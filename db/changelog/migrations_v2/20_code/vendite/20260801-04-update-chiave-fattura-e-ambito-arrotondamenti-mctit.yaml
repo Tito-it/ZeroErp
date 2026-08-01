@@ -1,0 +1,427 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 3b.2 + 3b.4-bis + 3b.4-ter — la coppia (termine, modalita') entra nella
+#   chiave della fattura, nell'ambito degli arrotondamenti e nel ricalcolo
+#   (piano-db-satelliti-fattura.md §3.3-b, decisioni D-7 / D-B / D-N).
+#
+# PERCHE' UN CHANGESET SOLO, e non tre. Lo dice il piano in due punti, ed e' la
+#   stessa ragione: 3b.4-bis «va fatto nello stesso changeset della chiave —
+#   separarli lascia una finestra in cui due fatture condividono il saldo»
+#   (C-20), e D-N «i tre pezzi vanno insieme: due su tre e' peggio di zero,
+#   perche' sembra a posto». C'e' anche un vincolo meccanico: cambiando la
+#   firma di get/set dello scope, `fn_ricalcola_totali_fattura` va aggiornata
+#   nella stessa transazione o smette di compilare.
+#
+# ── 3b.2 — la chiave della fattura ────────────────────────────────────────
+#   `fn_build_fattura_key` chiama la catena unica (3b.1) e aggiunge la coppia
+#   agli elementi di chiave. E' la chiamata che chiude C-13: la catena esisteva
+#   gia' riscritta, ma finche' nessuno la invocava restava «un secondo
+#   risolutore in attesa di essere usato».
+#
+# ── 3b.4-bis — l'ambito degli arrotondamenti ──────────────────────────────
+#   Il saldo di arrotondamento e' condiviso da tutte le fatture dello stesso
+#   ambito. Se l'ambito non contiene termine e modalita' mentre la CHIAVE si',
+#   due fatture diverse (per termine) si passano il saldo l'una all'altra: la
+#   seconda parte dal residuo della prima e il suo totale cambia. E' C-20, ed
+#   e' il difetto che D-7 introdurrebbe se lo si applicasse da solo.
+#
+#   🔴 `NULLS NOT DISTINCT` SULL'INDICE UNICO, e non e' un dettaglio.
+#   Le 5 colonne d'ambito di oggi sono tutte NOT NULL; le due nuove no — anzi
+#   saranno NULL nella grande maggioranza dei casi. In un indice unico
+#   PostgreSQL considera i NULL **distinti fra loro**, quindi con la clausola
+#   di default lo stesso ambito verrebbe inserito una volta per ogni ricalcolo
+#   e il saldo si frammenterebbe in righe gemelle: nessun errore, solo
+#   arrotondamenti che smettono di compensarsi. E' la stessa trappola dei NULL
+#   gia' incontrata in 3b.0-b sul `WHERE` (li' risolta con
+#   `IS NOT DISTINCT FROM`), qui nella sua forma da indice. PostgreSQL 15+
+#   offre la clausola esatta e siamo su 18.
+#
+#   ⚠️ Anche qui la DROP delle vecchie firme di get/set e' obbligatoria:
+#   `CREATE OR REPLACE` con parametri in piu' crea un OVERLOAD, e con i DEFAULT
+#   le chiamate esistenti diventerebbero ambigue. Verificato in transazione il
+#   2026-08-01, stessa trappola di 3b.0-b.
+#
+# ── 3b.4-ter — lo storno del proprio contributo ───────────────────────────
+#   Oggi il ricalcolo legge il saldo d'ambito e ci somma il proprio
+#   arrotondamento. Rieseguito sulla stessa fattura, legge un saldo che
+#   contiene GIA' il suo contributo precedente e converge su un valore diverso:
+#   il totale resta stabile solo perche' l'arrotondamento e' piccolo, ma la
+#   scomposizione in testata (`arrotondamento_precedente`/`attuale`) diventa
+#   falsa — e uno dei due va in stampa. Leggendo `saldo − COALESCE(proprio
+#   attuale, 0)` il ricalcolo **ripete** il primo invece di inseguirlo, ed e'
+#   idempotente per costruzione.
+#
+# EFFETTO SUL DATO ESISTENTE: nessuna migrazione. Le righe d'ambito di oggi
+#   hanno le due colonne nuove a NULL, e le fatture esistenti hanno
+#   `termine_pagamento_id` NULL finche' 3b.3 non comincia a scriverlo: con
+#   `NULLS NOT DISTINCT` continuano a incontrarsi sulla stessa riga di saldo,
+#   esattamente come prima. La separazione degli ambiti si accende sulle
+#   fatture nuove.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260801-04-update-chiave-fattura-e-ambito-arrotondamenti-mctit.yaml
+
+  - changeSet:
+      id: 20260801-04-update-chiave-fattura-e-ambito-arrotondamenti
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        D-7/D-B/D-N: la coppia (termine, modalita') entra nella chiave di
+        fn_build_fattura_key, nell'ambito degli arrotondamenti (indice unico
+        NULLS NOT DISTINCT) e nel ricalcolo, che ora storna il proprio
+        contributo prima di rileggere il saldo. Un changeSet solo: separarli
+        lascia due fatture a condividere il saldo (C-20).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ══ 3b.2 — la coppia entra nella chiave della fattura ═══════════
+              CREATE OR REPLACE FUNCTION vendite.fn_build_fattura_key(
+                  p_attivita_id vendite.attivita_fatturabili.id%TYPE
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: chiave logica di aggregazione del documento a partire da una
+              --        attivita' fatturabile. Da D-7/D-B comprende anche le
+              --        condizioni di pagamento: due attivita' con termini diversi
+              --        finiscono su due fatture.
+              -- Regole: le condizioni si risolvono con la catena UNICA
+              --         (fn_resolve_termini_pagamento, 3b.1) — questa e' la
+              --         chiamata che chiude C-13, perche' una catena riscritta e
+              --         mai invocata resta un secondo risolutore in attesa d'uso.
+              DECLARE
+                  v_ba_id               anagrafiche.billing_account.id%TYPE;
+                  v_ba_fattura_id       anagrafiche.billing_account.id%TYPE;
+                  v_tipo_doc_fiscale_id config.tipi_doc_fiscale.id%TYPE;
+                  v_valuta_id           config.valute.id%TYPE;
+                  v_utility_id          config.utilities.id%TYPE;
+                  v_emittente_id        anagrafiche.soggetti_ruoli.id%TYPE;
+                  v_reseller_id         anagrafiche.soggetti_ruoli.id%TYPE;
+                  v_registro_id         vendite.registri_fatturazione.id%TYPE;
+                  v_termine_id          config.termini_pagamento.id%TYPE;
+                  v_modalita_id         config.modalita_pagamento.id%TYPE;
+              BEGIN
+                  -- Guard: parametro obbligatorio
+                  IF p_attivita_id IS NULL OR p_attivita_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_build_fattura_key', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_attivita_id', 'valore', p_attivita_id),
+                          NULL::uuid, 'p_attivita_id obbligatorio e > 0'
+                      );
+                  END IF;
+
+                  -- Recupera BA, tipo doc, valuta, utility dall'attivita'
+                  SELECT a.billing_account_id,
+                         COALESCE(ba.parent_account_id, a.billing_account_id),
+                         a.tipo_doc_fiscale_id,
+                         a.valuta_id,
+                         ba.utility_id
+                    INTO v_ba_id, v_ba_fattura_id, v_tipo_doc_fiscale_id, v_valuta_id, v_utility_id
+                    FROM vendite.attivita_fatturabili a
+                    JOIN anagrafiche.billing_account ba ON ba.id = a.billing_account_id
+                   WHERE a.id = p_attivita_id;
+
+                  IF v_ba_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_build_fattura_key', 'E_VALORE_MANCANTE',
+                          jsonb_build_object('attivita_id', p_attivita_id),
+                          NULL::uuid, concat('attivita o BA non trovati per id ', p_attivita_id)
+                      );
+                  END IF;
+
+                  -- Emittente dal mapping BA → emittente fiscale
+                  v_emittente_id := anagrafiche.fn_get_emittente_fiscale_id(v_ba_fattura_id);
+
+                  -- Reseller dal mapping BA → reseller (opzionale)
+                  SELECT rb.reseller_soggetto_ruolo_id
+                    INTO v_reseller_id
+                    FROM anagrafiche.resellers_billing_account rb
+                   WHERE rb.billing_account_id = v_ba_fattura_id
+                   ORDER BY rb.id
+                   LIMIT 1;
+
+                  -- Registro dal tipo documento
+                  v_registro_id := vendite.fn_get_registro_id(v_tipo_doc_fiscale_id);
+
+                  -- Condizioni di pagamento: catena unica (3b.1).
+                  SELECT t.termine_pagamento_id, t.modalita_pagamento_id
+                    INTO v_termine_id, v_modalita_id
+                    FROM vendite.fn_resolve_termini_pagamento(p_attivita_id) t;
+
+                  RETURN jsonb_build_object(
+                      'billing_account_id', v_ba_fattura_id,
+                      'tipo_doc_fiscale_id', v_tipo_doc_fiscale_id,
+                      'valuta_id', v_valuta_id,
+                      'emittente_soggetto_ruolo_id', v_emittente_id,
+                      'reseller_soggetto_ruolo_id', v_reseller_id,
+                      'utility_id', v_utility_id,
+                      'registro_id', v_registro_id,
+                      'termine_pagamento_id', v_termine_id,
+                      'modalita_pagamento_id', v_modalita_id
+                  );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_build_fattura_key(bigint)
+              IS 'Chiave logica aggregazione documento da attivita_fatturabili. BA padre se presente, emittente, reseller, registro, e da D-7/D-B la coppia (termine_pagamento_id, modalita_pagamento_id) risolta dalla catena unica fn_resolve_termini_pagamento.';
+
+              -- ══ 3b.4-bis — l'ambito degli arrotondamenti prende la coppia ═══
+              ALTER TABLE vendite.fatture_arrotondamenti_scope
+                  ADD COLUMN IF NOT EXISTS termine_pagamento_id  BIGINT,
+                  ADD COLUMN IF NOT EXISTS modalita_pagamento_id INTEGER;
+
+              DO $$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                                  WHERE conrelid = 'vendite.fatture_arrotondamenti_scope'::regclass
+                                    AND conname  = 'fk_arrotondamenti_scope_termine_pagamento') THEN
+                      ALTER TABLE vendite.fatture_arrotondamenti_scope
+                          ADD CONSTRAINT fk_arrotondamenti_scope_termine_pagamento
+                          FOREIGN KEY (termine_pagamento_id) REFERENCES config.termini_pagamento (id);
+                  END IF;
+                  IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                                  WHERE conrelid = 'vendite.fatture_arrotondamenti_scope'::regclass
+                                    AND conname  = 'fk_arrotondamenti_scope_modalita_pagamento') THEN
+                      ALTER TABLE vendite.fatture_arrotondamenti_scope
+                          ADD CONSTRAINT fk_arrotondamenti_scope_modalita_pagamento
+                          FOREIGN KEY (modalita_pagamento_id) REFERENCES config.modalita_pagamento (id);
+                  END IF;
+              END
+              $$;
+
+              -- L'indice unico diventa a 7 dimensioni. NULLS NOT DISTINCT: senza,
+              -- ogni ricalcolo con termine NULL creerebbe una riga d'ambito nuova
+              -- e il saldo si frammenterebbe in silenzio.
+              DROP INDEX IF EXISTS vendite.uq_fatture_arrotondamenti_scope_key;
+              CREATE UNIQUE INDEX uq_fatture_arrotondamenti_scope_key
+                  ON vendite.fatture_arrotondamenti_scope
+                  USING btree (billing_account_id, utility_id, tipo_doc_fiscale_id,
+                               emittente_soggetto_ruolo_id, valuta_id,
+                               termine_pagamento_id, modalita_pagamento_id)
+                  NULLS NOT DISTINCT;
+
+              COMMENT ON COLUMN vendite.fatture_arrotondamenti_scope.termine_pagamento_id IS
+                  'Elemento dell''ambito di compensazione degli arrotondamenti (D-N pezzo 1): deve rispecchiare la chiave di aggregazione della fattura, altrimenti due fatture separate da D-7 si passerebbero il saldo (C-20).';
+              COMMENT ON COLUMN vendite.fatture_arrotondamenti_scope.modalita_pagamento_id IS
+                  'Elemento dell''ambito di compensazione degli arrotondamenti (D-N pezzo 1), stessa semantica di termine_pagamento_id.';
+
+              -- Getter e setter dell'ambito: due parametri in piu'. La DROP della
+              -- vecchia firma e' obbligatoria (overload + DEFAULT = chiamata ambigua).
+              DROP FUNCTION IF EXISTS vendite.fn_get_arrotondamento_scope(bigint, integer, bigint, bigint, integer);
+              DROP FUNCTION IF EXISTS vendite.fn_set_arrotondamento_scope(bigint, integer, bigint, bigint, integer, numeric);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_get_arrotondamento_scope(
+                  p_billing_account_id          anagrafiche.billing_account.id%TYPE,
+                  p_utility_id                  config.utilities.id%TYPE,
+                  p_tipo_doc_fiscale_id         config.tipi_doc_fiscale.id%TYPE,
+                  p_emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE,
+                  p_valuta_id                   config.valute.id%TYPE,
+                  p_termine_pagamento_id        config.termini_pagamento.id%TYPE DEFAULT NULL,
+                  p_modalita_pagamento_id       config.modalita_pagamento.id%TYPE DEFAULT NULL
+              )
+              RETURNS numeric
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              -- Scopo: saldo di arrotondamento accumulato nell'ambito. Da D-N
+              --        l'ambito comprende anche le condizioni di pagamento.
+              -- Regole: assenza di riga = saldo zero, non errore.
+              DECLARE
+                  v_saldo vendite.fatture_arrotondamenti_scope.saldo_arrotondamento%TYPE;
+              BEGIN
+                  SELECT s.saldo_arrotondamento
+                    INTO v_saldo
+                    FROM vendite.fatture_arrotondamenti_scope s
+                   WHERE s.billing_account_id = p_billing_account_id
+                     AND s.utility_id = p_utility_id
+                     AND s.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id
+                     AND s.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+                     AND s.valuta_id = p_valuta_id
+                     AND s.termine_pagamento_id  IS NOT DISTINCT FROM p_termine_pagamento_id
+                     AND s.modalita_pagamento_id IS NOT DISTINCT FROM p_modalita_pagamento_id;
+
+                  RETURN COALESCE(v_saldo, 0);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_arrotondamento_scope(bigint, integer, bigint, bigint, integer, bigint, integer)
+              IS 'Saldo arrotondamento dell''ambito di compensazione. Da D-N l''ambito comprende (termine_pagamento_id, modalita_pagamento_id), confrontati con IS NOT DISTINCT FROM perche'' sono NULL nella maggioranza dei casi. Assenza di riga = 0.';
+
+              CREATE OR REPLACE FUNCTION vendite.fn_set_arrotondamento_scope(
+                  p_billing_account_id          anagrafiche.billing_account.id%TYPE,
+                  p_utility_id                  config.utilities.id%TYPE,
+                  p_tipo_doc_fiscale_id         config.tipi_doc_fiscale.id%TYPE,
+                  p_emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE,
+                  p_valuta_id                   config.valute.id%TYPE,
+                  p_saldo                       numeric,
+                  p_termine_pagamento_id        config.termini_pagamento.id%TYPE DEFAULT NULL,
+                  p_modalita_pagamento_id       config.modalita_pagamento.id%TYPE DEFAULT NULL
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: scrive il saldo dell'ambito (upsert). Da D-N l'ambito
+              --        comprende anche le condizioni di pagamento.
+              -- Regole: l'upsert poggia su uq_fatture_arrotondamenti_scope_key, che
+              --         e' NULLS NOT DISTINCT: senza quella clausola due ambiti con
+              --         termine NULL non collidono e il saldo si sdoppia.
+              BEGIN
+                  INSERT INTO vendite.fatture_arrotondamenti_scope AS s (
+                      billing_account_id, utility_id, tipo_doc_fiscale_id,
+                      emittente_soggetto_ruolo_id, valuta_id,
+                      termine_pagamento_id, modalita_pagamento_id,
+                      saldo_arrotondamento
+                  )
+                  VALUES (
+                      p_billing_account_id, p_utility_id, p_tipo_doc_fiscale_id,
+                      p_emittente_soggetto_ruolo_id, p_valuta_id,
+                      p_termine_pagamento_id, p_modalita_pagamento_id,
+                      COALESCE(p_saldo, 0)
+                  )
+                  ON CONFLICT (billing_account_id, utility_id, tipo_doc_fiscale_id,
+                               emittente_soggetto_ruolo_id, valuta_id,
+                               termine_pagamento_id, modalita_pagamento_id)
+                  DO UPDATE SET saldo_arrotondamento = EXCLUDED.saldo_arrotondamento,
+                                data_update = now(),
+                                user_update = current_user;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_set_arrotondamento_scope(bigint, integer, bigint, bigint, integer, numeric, bigint, integer)
+              IS 'Upsert del saldo arrotondamento dell''ambito. Da D-N l''ambito comprende (termine_pagamento_id, modalita_pagamento_id); l''ON CONFLICT poggia su uq_fatture_arrotondamenti_scope_key, che e'' NULLS NOT DISTINCT.';
+
+              -- ══ 3b.4-ter — il ricalcolo storna il proprio contributo ════════
+              CREATE OR REPLACE FUNCTION vendite.fn_ricalcola_totali_fattura(
+                  p_fattura_id vendite.fatture.id%TYPE
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: ricalcola imponibile, imposta, fondi, arrotondamento e
+              --        totale a pagare della fattura, aggiornando il saldo
+              --        dell'ambito di compensazione.
+              -- Regole: da D-N pezzo 2 il saldo d'ambito si legge AL NETTO del
+              --         contributo gia' dato da questa fattura
+              --         (`saldo - COALESCE(arrotondamento_attuale, 0)`): cosi' una
+              --         riesecuzione RIPETE il primo calcolo invece di inseguirlo,
+              --         e la scomposizione in testata resta vera — e' quella che
+              --         va in stampa. Da D-N pezzo 1 l'ambito comprende anche le
+              --         condizioni di pagamento della fattura.
+              DECLARE
+                  v_imponibile_tot  vendite.fatture.imponibile_tot%TYPE;
+                  v_imposta_tot     vendite.fatture.imposta_tot%TYPE;
+                  v_totale_doc      vendite.fatture.totale_doc%TYPE;
+                  v_totale_fondi    vendite.fatture_fondi_fattura.importo%TYPE;
+                  v_totale_a_pagare vendite.fatture.totale_a_pagare%TYPE;
+                  v_raw_totale      vendite.fatture.totale_a_pagare%TYPE;
+                  v_round_totale    vendite.fatture.totale_a_pagare%TYPE;
+                  v_arro_attuale    vendite.fatture.arrotondamento_attuale%TYPE;
+                  v_arro_precedente vendite.fatture.arrotondamento_precedente%TYPE;
+                  v_arro_proprio    vendite.fatture.arrotondamento_attuale%TYPE;
+                  v_saldo_scope     vendite.fatture_arrotondamenti_scope.saldo_arrotondamento%TYPE;
+                  v_billing_account_id          vendite.fatture.billing_account_id%TYPE;
+                  v_tipo_doc_fiscale_id         vendite.fatture.tipo_doc_fiscale_id%TYPE;
+                  v_emittente_soggetto_ruolo_id vendite.fatture.emittente_soggetto_ruolo_id%TYPE;
+                  v_valuta_id      vendite.fatture.valuta_id%TYPE;
+                  v_termine_id     vendite.fatture.termine_pagamento_id%TYPE;
+                  v_modalita_id    vendite.fatture.modalita_pagamento_id%TYPE;
+                  v_utility_id     config.utilities.id%TYPE;
+                  v_min_soglia_min anagrafiche.emittenti_fiscali_utilities.minimo_soglia_min%TYPE;
+                  v_min_soglia_max anagrafiche.emittenti_fiscali_utilities.minimo_soglia_max%TYPE;
+                  v_decimali       anagrafiche.emittenti_fiscali_utilities.arrotondamento_importi_dec%TYPE;
+                  v_metodo         anagrafiche.emittenti_fiscali_utilities.metodo_arrotondamento_importi%TYPE;
+              BEGIN
+                  IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_totali_fattura', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_fattura_id', 'valore', p_fattura_id), NULL::uuid, 'p_fattura_id obbligatorio e > 0');
+                  END IF;
+
+                  -- Le condizioni di pagamento entrano qui perche' da D-N fanno
+                  -- parte dell'ambito; `arrotondamento_attuale` serve allo storno.
+                  SELECT f.billing_account_id, f.tipo_doc_fiscale_id, f.emittente_soggetto_ruolo_id, f.valuta_id,
+                         f.termine_pagamento_id, f.modalita_pagamento_id, f.arrotondamento_attuale
+                    INTO v_billing_account_id, v_tipo_doc_fiscale_id, v_emittente_soggetto_ruolo_id, v_valuta_id,
+                         v_termine_id, v_modalita_id, v_arro_proprio
+                    FROM vendite.fatture f WHERE f.id = p_fattura_id;
+
+                  SELECT COALESCE(
+                      (SELECT fl.utility_id FROM vendite.fatturazione_lotti_fatture lf JOIN vendite.fatturazione_lotti fl ON fl.id = lf.lotto_id WHERE lf.fattura_id = p_fattura_id ORDER BY lf.id DESC LIMIT 1),
+                      (SELECT ba.utility_id FROM anagrafiche.billing_account ba WHERE ba.id = v_billing_account_id)
+                  ) INTO v_utility_id;
+
+                  SELECT COALESCE(SUM(r.imponibile), 0), COALESCE(SUM(r.imposta), 0)
+                    INTO v_imponibile_tot, v_imposta_tot
+                    FROM vendite.fatture_riepiloghi_iva r WHERE r.fattura_id = p_fattura_id;
+
+                  v_totale_fondi := vendite.fn_get_totale_fondi_fattura(p_fattura_id);
+                  v_totale_doc := COALESCE(v_imponibile_tot, 0) + COALESCE(v_imposta_tot, 0);
+
+                  SELECT e.minimo_soglia_min, e.minimo_soglia_max, e.arrotondamento_importi_dec, COALESCE(e.metodo_arrotondamento_importi, 'HALF_UP')
+                    INTO v_min_soglia_min, v_min_soglia_max, v_decimali, v_metodo
+                    FROM anagrafiche.emittenti_fiscali_utilities e
+                   WHERE e.emittente_soggetto_ruolo_id = v_emittente_soggetto_ruolo_id AND e.utility_id = v_utility_id AND e.attivo IS TRUE LIMIT 1;
+
+                  IF v_decimali IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_totali_fattura', 'E_CONFIG_MANCANTE',
+                          jsonb_build_object('emittente', v_emittente_soggetto_ruolo_id, 'utility_id', v_utility_id, 'fattura_id', p_fattura_id),
+                          NULL::uuid, concat('configurazione emittente/utility mancante per fattura ', p_fattura_id));
+                  END IF;
+
+                  -- D-N pezzo 2: il saldo d'ambito AL NETTO del proprio contributo.
+                  -- Senza lo storno, la riesecuzione parte da un saldo che contiene
+                  -- gia' il proprio arrotondamento e converge altrove: il totale
+                  -- resta simile, la scomposizione in testata diventa falsa.
+                  v_saldo_scope := vendite.fn_get_arrotondamento_scope(
+                      v_billing_account_id, v_utility_id, v_tipo_doc_fiscale_id,
+                      v_emittente_soggetto_ruolo_id, v_valuta_id,
+                      v_termine_id, v_modalita_id);
+                  v_arro_precedente := COALESCE(v_saldo_scope, 0) - COALESCE(v_arro_proprio, 0);
+
+                  v_raw_totale := v_totale_doc + COALESCE(v_totale_fondi, 0) + COALESCE(v_arro_precedente, 0);
+                  v_round_totale := 0;
+
+                  IF v_metodo = 'UP' THEN
+                      v_round_totale := (CASE WHEN v_raw_totale >= 0 THEN ceil(v_raw_totale * power(10::NUMERIC, v_decimali)) ELSE -ceil(abs(v_raw_totale) * power(10::NUMERIC, v_decimali)) END) / power(10::NUMERIC, v_decimali);
+                  ELSIF v_metodo = 'DOWN' THEN
+                      v_round_totale := (CASE WHEN v_raw_totale >= 0 THEN floor(v_raw_totale * power(10::NUMERIC, v_decimali)) ELSE -floor(abs(v_raw_totale) * power(10::NUMERIC, v_decimali)) END) / power(10::NUMERIC, v_decimali);
+                  ELSIF v_metodo = 'HALF_DOWN' THEN
+                      v_round_totale := (CASE WHEN v_raw_totale >= 0 THEN ceil((v_raw_totale * power(10::NUMERIC, v_decimali)) - 0.5) ELSE -ceil((abs(v_raw_totale) * power(10::NUMERIC, v_decimali)) - 0.5) END) / power(10::NUMERIC, v_decimali);
+                  ELSE
+                      v_round_totale := (CASE WHEN v_raw_totale >= 0 THEN floor((v_raw_totale * power(10::NUMERIC, v_decimali)) + 0.5) ELSE -floor((abs(v_raw_totale) * power(10::NUMERIC, v_decimali)) + 0.5) END) / power(10::NUMERIC, v_decimali);
+                  END IF;
+
+                  v_arro_attuale := v_round_totale - v_raw_totale;
+                  v_totale_a_pagare := v_raw_totale + v_arro_attuale;
+
+                  PERFORM vendite.fn_set_arrotondamento_scope(
+                      v_billing_account_id, v_utility_id, v_tipo_doc_fiscale_id,
+                      v_emittente_soggetto_ruolo_id, v_valuta_id,
+                      COALESCE(v_arro_precedente, 0) + COALESCE(v_arro_attuale, 0),
+                      v_termine_id, v_modalita_id);
+
+                  UPDATE vendite.fatture f
+                     SET imponibile_tot = v_imponibile_tot, imposta_tot = v_imposta_tot, totale_doc = v_totale_doc,
+                         arrotondamento_precedente = v_arro_precedente, arrotondamento_attuale = v_arro_attuale, totale_a_pagare = v_totale_a_pagare,
+                         minimo = ((v_min_soglia_min IS NOT NULL AND v_totale_a_pagare >= v_min_soglia_min) AND (v_min_soglia_max IS NULL OR v_totale_a_pagare <= v_min_soglia_max)),
+                         data_update = now(), user_update = current_user
+                   WHERE f.id = p_fattura_id;
+
+                  PERFORM vendite.fn_sync_contabili_fondo_fattura(p_fattura_id);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_ricalcola_totali_fattura(bigint)
+              IS 'Ricalcola totali e arrotondamento della fattura. D-N pezzo 1: l''ambito di compensazione comprende (termine_pagamento_id, modalita_pagamento_id). D-N pezzo 2: il saldo d''ambito si legge al netto del contributo gia'' dato da questa fattura, cosi'' la riesecuzione ripete il primo calcolo invece di inseguirlo e la scomposizione precedente/attuale in testata resta vera.';

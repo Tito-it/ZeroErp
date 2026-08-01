@@ -2,16 +2,26 @@
 # ⚙️ Funzione `fn_get_or_create_commessa`
 
 ```sql
-CREATE FUNCTION fn_get_or_create_commessa(p_billing_account_id bigint, p_utility_id integer, p_tipo_commessa character varying, p_policy_fatturazione character varying, p_fatturazione_immediata boolean, p_priorita_operativa character varying, p_emittente_soggetto_ruolo_id bigint, p_competenza_dal date, p_competenza_al date, p_meta jsonb, p_force_new boolean)
+CREATE FUNCTION fn_get_or_create_commessa(p_billing_account_id bigint, p_utility_id integer, p_tipo_commessa character varying, p_policy_fatturazione character varying, p_fatturazione_immediata boolean, p_priorita_operativa character varying, p_emittente_soggetto_ruolo_id bigint, p_competenza_dal date, p_competenza_al date, p_meta jsonb, p_force_new boolean, p_termine_pagamento_id bigint, p_modalita_pagamento_id integer)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_get_or_create_commessa(p_billing_account_id bigint, p_utility_id integer, p_tipo_commessa character varying DEFAULT 'AUTO'::character varying, p_policy_fatturazione character varying DEFAULT 'DA_DOCUMENTO'::character varying, p_fatturazione_immediata boolean DEFAULT false, p_priorita_operativa character varying DEFAULT 'NORMALE'::character varying, p_emittente_soggetto_ruolo_id bigint DEFAULT NULL::bigint, p_competenza_dal date DEFAULT NULL::date, p_competenza_al date DEFAULT NULL::date, p_meta jsonb DEFAULT '{}'::jsonb, p_force_new boolean DEFAULT false)
+CREATE OR REPLACE FUNCTION vendite.fn_get_or_create_commessa(p_billing_account_id bigint, p_utility_id integer, p_tipo_commessa character varying DEFAULT 'AUTO'::character varying, p_policy_fatturazione character varying DEFAULT 'DA_DOCUMENTO'::character varying, p_fatturazione_immediata boolean DEFAULT false, p_priorita_operativa character varying DEFAULT 'NORMALE'::character varying, p_emittente_soggetto_ruolo_id bigint DEFAULT NULL::bigint, p_competenza_dal date DEFAULT NULL::date, p_competenza_al date DEFAULT NULL::date, p_meta jsonb DEFAULT '{}'::jsonb, p_force_new boolean DEFAULT false, p_termine_pagamento_id bigint DEFAULT NULL::bigint, p_modalita_pagamento_id integer DEFAULT NULL::integer)
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
+-- Scopo: recupera o crea la commessa coerente con il contesto
+--        dimensionale. Da D-R la chiave comprende anche le condizioni
+--        di pagamento: un documento con termine diverso NON riusa una
+--        commessa esistente, ne apre una nuova — cosi' la divergenza
+--        emerge al push e non a valle, in fattura.
+-- Regole: la chiave vive in TRE posti (hash del lock, WHERE del riuso,
+--         INSERT) e i tre vanno tenuti identici. I due parametri nuovi
+--         sono in coda e con DEFAULT NULL: nessun chiamante da adeguare
+--         subito, e finche' passano NULL il comportamento e' quello di
+--         prima.
 DECLARE
     v_commessa_id vendite.commesse.id%TYPE;
     v_ba_utility  anagrafiche.billing_account.utility_id%TYPE;
@@ -76,7 +86,10 @@ BEGIN
     v_emittente := COALESCE(p_emittente_soggetto_ruolo_id, anagrafiche.fn_get_emittente_fiscale_id(p_billing_account_id));
 
     IF NOT p_force_new THEN
-        -- Advisory lock su contesto dimensionale
+        -- SPECCHIO 1 — advisory lock sul contesto dimensionale.
+        -- Le due dimensioni nuove entrano QUI: senza, due push
+        -- concorrenti con termini diversi non si serializzerebbero
+        -- e potrebbero creare due volte la stessa commessa.
         PERFORM pg_advisory_xact_lock(
             hashtext('fn_get_or_create_commessa'),
             hashtext(
@@ -84,11 +97,15 @@ BEGIN
                 p_tipo_commessa || E'\x1F' || p_policy_fatturazione || E'\x1F' ||
                 p_fatturazione_immediata::text || E'\x1F' || p_priorita_operativa || E'\x1F' ||
                 COALESCE(v_emittente::text, '') || E'\x1F' ||
-                COALESCE(p_competenza_dal::text, '') || E'\x1F' || COALESCE(p_competenza_al::text, '')
+                COALESCE(p_competenza_dal::text, '') || E'\x1F' || COALESCE(p_competenza_al::text, '') || E'\x1F' ||
+                COALESCE(p_termine_pagamento_id::text, '') || E'\x1F' ||
+                COALESCE(p_modalita_pagamento_id::text, '')
             )
         );
 
-        -- Cerca commessa riusabile (stato non terminale)
+        -- SPECCHIO 2 — WHERE della commessa riusabile.
+        -- ⚠️ IS NOT DISTINCT FROM sulle due nuove: sono NULL quasi
+        -- sempre, e con `=` nessuna commessa verrebbe mai riusata.
         SELECT c.id INTO v_commessa_id
           FROM vendite.commesse c
           JOIN vendite.stati_commessa sc ON sc.id = c.stato_commessa_id AND sc.chiude_commessa = FALSE
@@ -101,6 +118,8 @@ BEGIN
            AND COALESCE(c.emittente_soggetto_ruolo_id, -1) = COALESCE(v_emittente, -1)
            AND c.competenza_dal IS NOT DISTINCT FROM p_competenza_dal
            AND c.competenza_al IS NOT DISTINCT FROM p_competenza_al
+           AND c.termine_pagamento_id  IS NOT DISTINCT FROM p_termine_pagamento_id
+           AND c.modalita_pagamento_id IS NOT DISTINCT FROM p_modalita_pagamento_id
          ORDER BY c.id DESC LIMIT 1;
 
         IF v_commessa_id IS NOT NULL THEN RETURN v_commessa_id; END IF;
@@ -108,20 +127,23 @@ BEGIN
 
     v_codice := 'CMM-' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS') || '-' || substr(md5(random()::text), 1, 6);
 
+    -- SPECCHIO 3 — INSERT: la commessa nasce con la chiave completa.
     INSERT INTO vendite.commesse (codice, tipo_commessa, policy_fatturazione, fatturazione_immediata,
         priorita_operativa, billing_account_id, utility_id, emittente_soggetto_ruolo_id,
-        competenza_dal, competenza_al, meta)
+        competenza_dal, competenza_al, meta,
+        termine_pagamento_id, modalita_pagamento_id)
     VALUES (v_codice, p_tipo_commessa, p_policy_fatturazione, p_fatturazione_immediata,
         p_priorita_operativa, p_billing_account_id, p_utility_id, v_emittente,
-        p_competenza_dal, p_competenza_al, COALESCE(p_meta, '{}'::jsonb))
+        p_competenza_dal, p_competenza_al, COALESCE(p_meta, '{}'::jsonb),
+        p_termine_pagamento_id, p_modalita_pagamento_id)
     RETURNING id INTO v_commessa_id;
 
     RETURN v_commessa_id;
 END;
 $function$
 
-COMMENT ON FUNCTION vendite.fn_get_or_create_commessa(p_billing_account_id bigint, p_utility_id integer, p_tipo_commessa character varying, p_policy_fatturazione character varying, p_fatturazione_immediata boolean, p_priorita_operativa character varying, p_emittente_soggetto_ruolo_id bigint, p_competenza_dal date, p_competenza_al date, p_meta jsonb, p_force_new boolean)
-IS 'Recupera o crea commessa coerente con BA/utility e fallback emittente fiscale. Advisory lock previene doppia creazione.';
+COMMENT ON FUNCTION vendite.fn_get_or_create_commessa(p_billing_account_id bigint, p_utility_id integer, p_tipo_commessa character varying, p_policy_fatturazione character varying, p_fatturazione_immediata boolean, p_priorita_operativa character varying, p_emittente_soggetto_ruolo_id bigint, p_competenza_dal date, p_competenza_al date, p_meta jsonb, p_force_new boolean, p_termine_pagamento_id bigint, p_modalita_pagamento_id integer)
+IS 'Recupera o crea commessa coerente con BA/utility e fallback emittente fiscale. Da D-R la chiave di raggruppamento comprende anche (termine_pagamento_id, modalita_pagamento_id): un documento sorgente con condizioni diverse apre una commessa NUOVA invece di riusarne una. Advisory lock previene la doppia creazione e include le stesse dimensioni del WHERE.';
 ```
 
 ---

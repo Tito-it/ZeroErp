@@ -16,10 +16,14 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
+| termine_pagamento_id | bigint | YES |  |
+| modalita_pagamento_id | integer | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| FOREIGN KEY | fk_arrotondamenti_scope_modalita_pagamento | modalita_pagamento_id |
+| FOREIGN KEY | fk_arrotondamenti_scope_termine_pagamento | termine_pagamento_id |
 | FOREIGN KEY | fk_fatture_arrotondamenti_scope_ba | billing_account_id |
 | FOREIGN KEY | fk_fatture_arrotondamenti_scope_emittente | emittente_soggetto_ruolo_id |
 | FOREIGN KEY | fk_fatture_arrotondamenti_scope_tipo_doc | tipo_doc_fiscale_id |
@@ -31,7 +35,7 @@
 | Nome | Definizione |
 |------|-------------|
 | pk_fatture_arrotondamenti_scope | `CREATE UNIQUE INDEX pk_fatture_arrotondamenti_scope ON vendite.fatture_arrotondamenti_scope USING btree (id)` |
-| uq_fatture_arrotondamenti_scope_key | `CREATE UNIQUE INDEX uq_fatture_arrotondamenti_scope_key ON vendite.fatture_arrotondamenti_scope USING btree (billing_account_id, utility_id, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id, valuta_id)` |
+| uq_fatture_arrotondamenti_scope_key | `CREATE UNIQUE INDEX uq_fatture_arrotondamenti_scope_key ON vendite.fatture_arrotondamenti_scope USING btree (billing_account_id, utility_id, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id, valuta_id, termine_pagamento_id, modalita_pagamento_id) NULLS NOT DISTINCT` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

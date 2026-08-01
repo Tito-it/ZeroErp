@@ -1,81 +1,110 @@
 # ⚙️ Funzione `fn_resolve_termini_pagamento`
 
 ```sql
-CREATE FUNCTION fn_resolve_termini_pagamento(p_fattura_id bigint, p_billing_account_id bigint, p_attivita_ids bigint[])
+CREATE FUNCTION fn_resolve_termini_pagamento(p_attivita_id bigint)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_resolve_termini_pagamento(p_fattura_id bigint DEFAULT NULL::bigint, p_billing_account_id bigint DEFAULT NULL::bigint, p_attivita_ids bigint[] DEFAULT NULL::bigint[])
- RETURNS TABLE(termini_pagamento_id bigint, termini_distinti bigint[])
+CREATE OR REPLACE FUNCTION vendite.fn_resolve_termini_pagamento(p_attivita_id bigint)
+ RETURNS TABLE(termine_pagamento_id bigint, modalita_pagamento_id integer)
  LANGUAGE plpgsql
+ STABLE
 AS $function$
+-- Scopo: unica implementazione della catena delle condizioni di
+--        pagamento (C-13). Risolve per UNA attivita' la coppia che
+--        entra nella chiave di aggregazione della fattura (D-7/D-B).
+-- Regole: i due campi scendono la catena in modo INDIPENDENTE, perche'
+--         la modalita' ha meno livelli del termine (il preventivo non
+--         la porta). Assenza totale = TP_1RATA sul termine (D-J) e
+--         NULL sulla modalita': `config.modalita_pagamento` non ha una
+--         riga «default», e sceglierne una arbitrariamente finirebbe
+--         sulla FatturaPA.
 DECLARE
-    v_tp_fattura config.termini_pagamento.id%TYPE;
-    v_tp_cliente config.termini_pagamento.id%TYPE;
-    v_tp_default config.termini_pagamento.id%TYPE;
+    v_sorgente_codice  config.sorgenti.codice_interno%TYPE;
+    v_sorgente_uid     vendite.attivita_fatturabili.sorgente_uid%TYPE;
+    v_ba_fattura_id    anagrafiche.billing_account.id%TYPE;
+    v_termine          config.termini_pagamento.id%TYPE;
+    v_modalita         config.modalita_pagamento.id%TYPE;
 BEGIN
-    -- Guard
-    IF p_fattura_id IS NOT NULL AND p_fattura_id <= 0 THEN
-        PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_termini_pagamento', 'E_PARAMETRO_INVALIDO',
-            jsonb_build_object('parametro', 'p_fattura_id', 'valore', p_fattura_id), NULL::uuid, 'p_fattura_id se fornito deve essere > 0');
+    -- Guard: id numerico obbligatorio e positivo (linee-guida-sql).
+    IF p_attivita_id IS NULL OR p_attivita_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', 'fn_resolve_termini_pagamento', 'E_PARAMETRO_INVALIDO',
+            jsonb_build_object('parametro', 'p_attivita_id', 'valore', p_attivita_id),
+            NULL::uuid, 'p_attivita_id obbligatorio e > 0'
+        );
     END IF;
 
-    -- 1) Termine dalla fattura
-    IF p_fattura_id IS NOT NULL THEN
-        SELECT f.termini_pagamento_id INTO v_tp_fattura FROM vendite.fatture f WHERE f.id = p_fattura_id;
-        IF v_tp_fattura IS NOT NULL THEN
-            RETURN QUERY SELECT v_tp_fattura, ARRAY[v_tp_fattura]::BIGINT[];
-            RETURN;
-        END IF;
+    -- BA della FATTURA = padre se c'e', stessa espressione di
+    -- fn_build_fattura_key: le condizioni sono di chi riceve il
+    -- documento, non del conto figlio che ha generato la riga.
+    SELECT s.codice_interno,
+           a.sorgente_uid,
+           COALESCE(ba.parent_account_id, a.billing_account_id)
+      INTO v_sorgente_codice, v_sorgente_uid, v_ba_fattura_id
+      FROM vendite.attivita_fatturabili a
+      JOIN anagrafiche.billing_account ba ON ba.id = a.billing_account_id
+      LEFT JOIN config.sorgenti s ON s.id = a.sorgente_tipo_id
+     WHERE a.id = p_attivita_id;
+
+    IF v_ba_fattura_id IS NULL THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', 'fn_resolve_termini_pagamento', 'E_VALORE_MANCANTE',
+            jsonb_build_object('attivita_id', p_attivita_id),
+            NULL::uuid, concat('attivita non trovata per id ', p_attivita_id)
+        );
     END IF;
 
-    -- 2) Termine dalla sorgente attivita'
-    IF p_attivita_ids IS NOT NULL AND array_length(p_attivita_ids, 1) > 0 THEN
-        RETURN QUERY
-        WITH sorg AS (
-            SELECT a.id, s.codice_interno AS src_code, a.sorgente_uid
-              FROM vendite.attivita_fatturabili a
-              JOIN config.sorgenti s ON s.id = a.sorgente_tipo_id
-             WHERE a.id = ANY(p_attivita_ids)
-        ), terms AS (
-            SELECT DISTINCT CASE
-                WHEN src.src_code = 'ORDINE_VENDITA' THEN o.termini_pagamento_id
-                WHEN src.src_code = 'PREVENTIVO'     THEN p.termini_pagamento_id
-                WHEN src.src_code = 'CONTRATTO'      THEN c.termini_pagamento_id
-                ELSE NULL END AS tp_id
-              FROM sorg src
-              LEFT JOIN vendite.ordini     o ON (src.src_code='ORDINE_VENDITA' AND src.sorgente_uid = o.uid)
-              LEFT JOIN vendite.preventivi p ON (src.src_code='PREVENTIVO'     AND src.sorgente_uid = p.uid)
-              LEFT JOIN vendite.contratti  c ON (src.src_code='CONTRATTO'      AND src.sorgente_uid = c.uid)
-        ), agg AS (
-            SELECT ARRAY_REMOVE(ARRAY_AGG(DISTINCT tp_id), NULL) AS termini FROM terms
-        )
-        SELECT CASE WHEN array_length(agg.termini, 1) = 1 THEN agg.termini[1] ELSE NULL END, agg.termini FROM agg;
-        RETURN;
+    -- ── Livello 1: documento sorgente ────────────────────────────
+    -- L'ordine porta entrambi, il preventivo il solo termine. Nessun
+    -- ramo contratto: non ha colonne di pagamento.
+    IF v_sorgente_codice = 'ORDINE_VENDITA' THEN
+        SELECT o.termine_pagamento_id, o.modalita_pagamento_id
+          INTO v_termine, v_modalita
+          FROM vendite.ordini o
+         WHERE o.uid = v_sorgente_uid;
+    ELSIF v_sorgente_codice = 'PREVENTIVO' THEN
+        SELECT p.termine_pagamento_id
+          INTO v_termine
+          FROM vendite.preventivi p
+         WHERE p.uid = v_sorgente_uid;
     END IF;
 
-    -- 3) Termine dal cliente (billing account)
-    IF p_billing_account_id IS NOT NULL THEN
-        SELECT cl.termine_pagamento_id INTO v_tp_cliente
-          FROM anagrafiche.clienti cl
-          JOIN anagrafiche.billing_account ba ON ba.id = p_billing_account_id
-         WHERE cl.billing_account_id = ba.id LIMIT 1;
-        IF v_tp_cliente IS NOT NULL THEN
-            RETURN QUERY SELECT v_tp_cliente, ARRAY[v_tp_cliente]::BIGINT[];
-            RETURN;
-        END IF;
+    -- ── Livello 2: cliente del BA PADRE ──────────────────────────
+    -- Costante su tutte le attivita' che aggregano insieme, perche'
+    -- il BA padre e' gia' elemento di chiave: questo livello non puo'
+    -- spaccare una fattura. Deterministico grazie a
+    -- uq_clienti_istanza_utility: una riga sola, non un LIMIT 1.
+    -- Si interroga solo per i campi ancora scoperti, cosi' il
+    -- livello 1 non viene sovrascritto.
+    IF v_termine IS NULL OR v_modalita IS NULL THEN
+        SELECT COALESCE(v_termine,  cl.termine_pagamento_id),
+               COALESCE(v_modalita, cl.modalita_pagamento_id)
+          INTO v_termine, v_modalita
+          FROM anagrafiche.billing_account ba
+          JOIN anagrafiche.clienti cl
+            ON cl.istanza_utility_id = ba.istanza_utility_id
+         WHERE ba.id = v_ba_fattura_id;
     END IF;
 
-    -- 4) Default TP_1RATA
-    SELECT tp.id INTO v_tp_default FROM config.termini_pagamento tp WHERE tp.codice_interno = 'TP_1RATA' AND tp.attivo IS TRUE LIMIT 1;
-    RETURN QUERY SELECT v_tp_default, ARRAY_REMOVE(ARRAY[v_tp_default], NULL)::BIGINT[];
+    -- ── Livello 3: default ───────────────────────────────────────
+    -- Solo il termine ha un default (D-J). La modalita' resta NULL.
+    IF v_termine IS NULL THEN
+        SELECT tp.id
+          INTO v_termine
+          FROM config.termini_pagamento tp
+         WHERE tp.codice_interno = 'TP_1RATA'
+           AND tp.attivo IS TRUE;
+    END IF;
+
+    RETURN QUERY SELECT v_termine, v_modalita;
 END;
 $function$
 
-COMMENT ON FUNCTION vendite.fn_resolve_termini_pagamento(p_fattura_id bigint, p_billing_account_id bigint, p_attivita_ids bigint[])
-IS 'Risolve termini_pagamento: fattura → sorgente attivita → cliente → default TP_1RATA.';
+COMMENT ON FUNCTION vendite.fn_resolve_termini_pagamento(p_attivita_id bigint)
+IS 'Catena unica condizioni di pagamento per attivita'' (C-13): ritorna la coppia (termine_pagamento_id, modalita_pagamento_id) scendendo documento sorgente -> cliente (per istanza_utility) -> default TP_1RATA sul solo termine. I due campi scendono in modo indipendente: il preventivo porta il termine ma non la modalita''.';
 ```
 
 ---
