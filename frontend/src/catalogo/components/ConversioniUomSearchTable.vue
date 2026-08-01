@@ -30,9 +30,9 @@ const {
 } = useListaConfigurabilePage(store, {
   newTooltipKey: 'catalogo.nuova_conversione',
   onNew: () => emit('new'),
-  // `uom_from_codice`, non la descrizione: e' il preset default del seed ed e'
-  // l'unico dei due che il BE sa ordinare (la descrizione e' `ordinabile=f`).
-  searchTableOptions: { defaultSortField: 'uom_from_codice' },
+  // `valido_al`: regola di dominio sulle liste con date di validita' (vedi lo
+  // store, che porta la stessa scelta e il perche' della direzione).
+  searchTableOptions: { defaultSortField: 'valido_al' },
 })
 
 // `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).

@@ -28,11 +28,14 @@ logger = logging.getLogger(__name__)
 _SQL_DATE_INFINITY = "'infinity'::date"
 
 
+# `attivo` e' NUCLEO: lo stato ordina sempre. Aggiunta in anticipo sul seed
+# della lista listini (passata unica 2026-08-01, richiesta del team DB).
 LISTINI_ORDER_COLUMNS: dict[str, str] = {
     "codice": "l.codice",
     "descrizione": "l.descrizione",
     "utility_descrizione": "u.descrizione",
     "tipologia_descrizione": "lt.descrizione",
+    "attivo": "l.attivo",
     "data_insert": "l.data_insert",
     "data_update": "l.data_update",
 }
@@ -81,6 +84,7 @@ RIGHE_ORDER_COLUMNS: dict[str, str] = {
     "billing_account_codice": "ba.codice",
     "billing_account_descrizione": "srd_ba.ragione_sociale_completa",
     "utility_descrizione": "cu.descrizione",
+    "attivo": "r.attivo",
 }
 
 

@@ -81,6 +81,33 @@ def celle_per_riga(html):
     return out
 
 
+# Scopo: Mappa campo di contratto -> indice di colonna, leggendo i <th> della
+#        tabella righe RENDERIZZATA (non un elenco fisso: se il template
+#        riordina le colonne la mappa segue). Serve al caso 5 per accusare la
+#        cella GIUSTA: un '-' e' un difetto solo nella colonna di un campo che
+#        il context valorizza — su un campo None (es. sconto NULL dei KIT
+#        padre, prezzo composto) il trattino e' il comportamento corretto.
+#        Lezione del 2026-08-01: il vecchio check segnalava QUALUNQUE '-' in
+#        una riga con QUALCHE campo valorizzato, e il primo giro reale dalla
+#        corsia pull-commesse (righe kit con sconto NULL) lo ha fatto scattare
+#        a vuoto — mascherato fin li' da fixture con tutti i campi pieni.
+def colonne_contratto(html, campi_header):
+    blocco = re.search(r"Righe fattura.*?</tr>", html, re.S)
+    if not blocco:
+        return {}
+    header = [
+        re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", h)).strip().lower()
+        for h in re.findall(r"<th[^>]*>(.*?)</th>", blocco.group(0), re.S)
+    ]
+    mappa = {}
+    for campo, etichetta in campi_header.items():
+        for j, testo in enumerate(header):
+            if etichetta in testo:
+                mappa[campo] = j
+                break
+    return mappa
+
+
 print("\n=== SMOKE render stampa fattura (contratto context <-> template) ===\n")
 
 with connection.cursor() as cur:
@@ -166,17 +193,42 @@ check("4) ogni riga del context compare con quantita' e importo",
       "; ".join(disallineate[:3]) if disallineate
       else f"{len(celle)} righe rese su {len(righe_ctx)} nel context")
 
-# 5) nessun trattino dove il context ha un valore. E' il sintomo esatto del
-#    difetto d'origine: chiave sbagliata -> `.get()` torna None -> "-".
+# 5) nessun trattino NELLA COLONNA di un campo che il context valorizza. E' il
+#    sintomo esatto del difetto d'origine: chiave sbagliata -> `.get()` torna
+#    None -> "-". Il confronto e' posizionale (mappa campo->colonna dai <th>):
+#    un '-' su un campo None nel context e' comportamento corretto, non difetto.
+_CAMPO_HEADER = {
+    "quantita": "q.ta",
+    "prezzo_unitario": "prezzo",
+    "sconto_percentuale": "sconto",
+    "importo_riga": "importo",
+}
+col_di = colonne_contratto(html, _CAMPO_HEADER)
 trattini = []
+if len(col_di) != len(_CAMPO_HEADER):
+    # Mappa incompleta = il template ha cambiato le etichette: il presidio
+    # non deve degradare in silenzio a "non controllo niente".
+    trattini.append(
+        f"mappa campo->colonna incompleta: trovate {sorted(col_di)} "
+        f"su {sorted(_CAMPO_HEADER)} — header del template cambiati?"
+    )
+elif len(set(col_di.values())) != len(col_di):
+    # Mappa ambigua = due campi risolti sulla STESSA colonna (il match e' per
+    # sottostringa sul primo <th> che contiene l'etichetta): il presidio
+    # guarderebbe la cella sbagliata restando verde. Fail-loud anche qui.
+    trattini.append(
+        f"mappa campo->colonna ambigua: {col_di} — due etichette di "
+        "_CAMPO_HEADER matchano lo stesso <th>?"
+    )
 for i, riga in enumerate(righe_ctx):
     if i >= len(celle):
         continue
-    valorizzati = [c for c in CONTRATTO if riga.get(c) is not None]
-    if valorizzati and celle[i].count("-") > 0:
-        posizioni = [j for j, c in enumerate(celle[i]) if c == "-"]
-        trattini.append(f"riga {i + 1}: celle {posizioni} a trattino "
-                        f"con {len(valorizzati)} campi valorizzati nel context")
+    for campo, j in col_di.items():
+        if riga.get(campo) is not None and j < len(celle[i]) and celle[i][j] == "-":
+            trattini.append(
+                f"riga {i + 1}: colonna '{campo}' (cella {j}) a trattino "
+                f"ma il context vale {riga.get(campo)!r}"
+            )
 check("5) nessuna cella a trattino dove il context ha un valore", not trattini,
       "; ".join(trattini[:3]))
 
@@ -204,19 +256,32 @@ except Exception as exc:  # noqa: BLE001
 # 8) AUTO-VERIFICA. Un presidio che non puo' fallire non presidia nulla: il
 #    difetto d'origine e' sopravvissuto proprio a controlli sempre verdi. Si
 #    rende lo stesso template con un context MUTATO — la chiave di contratto
-#    rinominata, esattamente il difetto storico — e si pretende che il caso 5
-#    lo intercetti.
+#    rinominata, esattamente il difetto storico — e si pretende che il
+#    rilevatore POSIZIONALE del caso 5 lo intercetti: il documento mutato
+#    mostra '-' nella colonna Importo la' dove il contratto VERO (righe_ctx
+#    originali) ha un valore. Il confronto e' contro le righe originali per
+#    costruzione: un `any('-')` generico sarebbe diventato banalmente vero
+#    (i kit padre hanno lo sconto legittimamente a trattino) e il presidio
+#    sarebbe morto restando verde.
 ctx_rotto = {**ctx, "righe": [
     {k: v for k, v in r.items() if k != "importo_riga"} for r in righe_ctx
 ]}
 try:
     html_rotto = _render_html_with_jinja(versione["html_template"], ctx_rotto)
     celle_rotte = celle_per_riga(html_rotto)
-    intercettato = any(c.count("-") > 0 for c in celle_rotte)
+    j_importo = col_di.get("importo_riga")
+    intercettato = j_importo is not None and any(
+        riga.get("importo_riga") is not None
+        and i < len(celle_rotte)
+        and j_importo < len(celle_rotte[i])
+        and celle_rotte[i][j_importo] == "-"
+        for i, riga in enumerate(righe_ctx)
+    )
 except Exception:  # noqa: BLE001 — anche sollevare va bene: il difetto emerge
     intercettato = True
 check("8) auto-verifica: il presidio del caso 5 e' vivo", intercettato,
-      "rimuovendo `importo_riga` dal context il documento deve mostrare trattini")
+      "rimuovendo `importo_riga` dal context il documento deve mostrare '-' "
+      "nella colonna Importo dove il contratto vero ha un valore")
 
 print("\n--- righe rese ---")
 for c in celle:

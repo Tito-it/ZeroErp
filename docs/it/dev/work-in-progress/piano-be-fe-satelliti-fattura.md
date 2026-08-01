@@ -134,6 +134,15 @@ codice morto con i test verdi.
 >    guard di uscita DRAFT**, che è la controprova positiva dell'asserzione
 >    2b. Lo smoke resta com'è: la copertura pipeline la dà il giro, non una
 >    fixture che simula lo step.
+>    📎 *Coda del giro (2026-08-01)*: le fatture reali hanno smascherato un
+>    **falso positivo** nel caso 5 di `smoke-fatturazione-render-stampa.py` —
+>    segnalava *qualunque* trattino in una riga con *qualche* campo
+>    valorizzato, e le righe **kit padre** del percorso pull (sconto NULL →
+>    trattino legittimo) lo facevano scattare a vuoto; mascherato fin lì da
+>    fixture con tutti i campi pieni. Rilevatore reso **posizionale** (mappa
+>    campo→colonna letta dai `<th>`, fail-loud se gli header cambiano) e
+>    auto-verifica riancorata al contratto vero — un `any('-')` generico
+>    sarebbe diventato banalmente verde per sempre. Ora verde su fattura 835.
 
 ### 3.2 `smoke-fattura-scadenze.py`
 

@@ -16,10 +16,14 @@ from django.db import connection
 from apps.core.db._helpers import row_to_dict, rows_to_list
 from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
 
+# `attivo` e' NUCLEO: lo stato ordina sempre. Aggiunta in anticipo sul seed
+# della lista articoli (passata unica 2026-08-01, richiesta del team DB: la
+# stessa voce mancava su nove whitelist e sarebbe arrivata un lotto per volta).
 ARTICOLI_ORDER_COLUMNS: dict[str, str] = {
     "codice": "a.codice",
     "descrizione": "a.descrizione",
     "uom_codice": "a.uom_codice",
+    "attivo": "a.attivo",
     "data_insert": "a.data_insert",
     "data_update": "a.data_update",
 }
@@ -56,8 +60,9 @@ UOM_ORDER_COLUMNS: dict[str, str] = {  # alias: u = catalogo.unita_misura
 #
 # `valido_dal`/`valido_al` pronte dal 2026-08-01 (regola di dominio: le date di
 # validita', quando una lista le mostra, ordinano SEMPRE — e `valido_al` e' il
-# default d'elezione). Il seed delle due colonne e' in arrivo dal team DB;
-# tenerle gia' qui evita la finestra di frecce bugiarde alla consegna.
+# default d'elezione). Il seed delle due colonne e' arrivato dal team DB lo
+# stesso giorno (lista_colonna 296/297, `ordinabile=t`): contratto allineato,
+# presidiato da test_liste_configurabili_seed.
 UOM_CONVERSIONI_ORDER_COLUMNS: dict[str, str] = {
     "uom_from_codice": "uf.codice",
     "uom_to_codice": "ut.codice",

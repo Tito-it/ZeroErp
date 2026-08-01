@@ -26,10 +26,19 @@ from apps.core.services.error_manager import ErrorManager
 # Mappatura colonne ammesse per ORDER BY lato lista template.
 # Whitelist anti-injection: i nomi vengono interpolati nella SQL e
 # non possono provenire da input utente non validati.
+# `attivo` e' NUCLEO: lo stato ordina sempre (regola di dominio, seed lista
+# 'documenti.template_documenti'). Le quattro descrizioni restano nude perche'
+# sono alias di output della SELECT — `emittente_fiscale_descrizione` in
+# particolare e' un COALESCE, che ORDER BY risolve solo per alias.
 TEMPLATES_ORDER_COLUMNS: dict[str, str] = {
     "codice": "t.codice",
     "codice_interno": "t.codice_interno",
     "descrizione": "t.descrizione",
+    "attivo": "t.attivo",
+    "is_default": "t.is_default",
+    "tipo_documento_output_descrizione": "tipo_documento_output_descrizione",
+    "sorgente_tipo_descrizione": "sorgente_tipo_descrizione",
+    "emittente_fiscale_descrizione": "emittente_fiscale_descrizione",
     "data_insert": "t.data_insert",
     "data_update": "t.data_update",
 }
@@ -127,13 +136,25 @@ VERSIONE_UPDATE_COLUMNS: tuple[str, ...] = (
 
 
 # Mappatura colonne ammesse per ORDER BY lato lista asset.
+# `attivo` e' NUCLEO (lo stato ordina sempre). `valido_al` aggiunta insieme a
+# `valido_dal` gia' presente: dove una lista mostra le date di validita', quelle
+# colonne ordinano — e `valido_al` e' il default d'elezione.
+# `asset_tipo_descrizione` ed `emittente_fiscale_descrizione` restano nude: sono
+# alias di output (la seconda e' un COALESCE).
 ASSET_ORDER_COLUMNS: dict[str, str] = {
     "codice": "a.codice",
     "codice_interno": "a.codice_interno",
     "descrizione": "a.descrizione",
+    "attivo": "a.attivo",
+    "asset_tipo_descrizione": "asset_tipo_descrizione",
+    "emittente_fiscale_descrizione": "emittente_fiscale_descrizione",
+    "file_name": "a.file_name",
+    "file_size_bytes": "a.file_size_bytes",
+    "mime_type": "a.mime_type",
     "data_insert": "a.data_insert",
     "data_update": "a.data_update",
     "valido_dal": "a.valido_dal",
+    "valido_al": "a.valido_al",
 }
 
 

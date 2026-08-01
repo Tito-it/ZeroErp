@@ -33,6 +33,7 @@ _ORDER_COLS: dict[str, str] = {
     "valido_dal": "p.valido_dal",
     "valido_al": "p.valido_al",
     "attivo": "p.attivo",
+    "tipo_variazione": "p.tipo_variazione",
     "data_insert": "p.data_insert",
     "data_update": "p.data_update",
 }
