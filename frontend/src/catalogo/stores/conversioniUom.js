@@ -22,16 +22,17 @@ export const useConversioniUomStore = defineStore('catalogo-conversioni-uom', ()
     limit: 25,
     offset: 0,
     // Regola di dominio (Tid, 2026-08-01): quando una lista mostra le date di
-    // validita', `valido_al` E' l'ordinamento di default. `asc` perche' i NULL
-    // (conversioni senza scadenza) finiscono in fondo: in testa sale cio' che
-    // scade prima, che e' l'informazione che si va a cercare.
+    // validita', `valido_al` E' l'ordinamento di default, in DESC. In Postgres
+    // `DESC` porta i NULL in testa: prima le conversioni senza scadenza, poi
+    // quelle con validita' piu' lunga, e in fondo le scadute — cioe' cio' che
+    // vale ora sopra, cio' che non vale piu' sotto.
     //
     // ⚠️ Il preset del seed dichiara ancora `uom_from_codice asc`: allineamento
     // chiesto al team DB. Nessuno dei due e' letto dall'altro — il FE invia il
     // proprio `order_by` e `ordinamento_default` non e' ancora consumato —
     // quindi oggi vince questa riga.
     order_by: 'valido_al',
-    order_dir: 'asc'
+    order_dir: 'desc'
   })
 
   // Scopo: Carica la pagina corrente delle conversioni (server-side).

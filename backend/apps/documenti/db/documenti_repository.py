@@ -138,7 +138,8 @@ VERSIONE_UPDATE_COLUMNS: tuple[str, ...] = (
 # Mappatura colonne ammesse per ORDER BY lato lista asset.
 # `attivo` e' NUCLEO (lo stato ordina sempre). `valido_al` aggiunta insieme a
 # `valido_dal` gia' presente: dove una lista mostra le date di validita', quelle
-# colonne ordinano — e `valido_al` e' il default d'elezione.
+# colonne ordinano — e `valido_al` DESC e' il default d'elezione (i NULL, cioe'
+# gli asset senza scadenza, salgono in testa; le scadenze vecchie vanno in fondo).
 # `asset_tipo_descrizione` ed `emittente_fiscale_descrizione` restano nude: sono
 # alias di output (la seconda e' un COALESCE).
 ASSET_ORDER_COLUMNS: dict[str, str] = {

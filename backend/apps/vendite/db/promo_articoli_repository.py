@@ -33,7 +33,10 @@ _ORDER_COLS: dict[str, str] = {
     "valido_dal": "p.valido_dal",
     "valido_al": "p.valido_al",
     "attivo": "p.attivo",
-    "tipo_variazione": "p.tipo_variazione",
+    # `tipo_variazione` NON e' in whitelist: nel catalogo la colonna e'
+    # `ordinabile=f` (a video e' una cella composita «TIPO: valore», ordinarla
+    # per il solo tipo direbbe poco). Tenerla qui sarebbe una capacita' che
+    # nessuna colonna puo' richiedere. Se il seed la ribalta a `t`, e' una riga.
     "data_insert": "p.data_insert",
     "data_update": "p.data_update",
 }

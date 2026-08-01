@@ -1,21 +1,26 @@
 <script setup>
-// Scopo: DataTable admin promo articoli (vendite.promo_articoli).
+// Scopo: Lista admin promo articoli configurabile
+//        (`<ListaConfigurabile codice="vendite.promo_articoli">`): colonne,
+//        ordine e visibilita' dal catalogo `ui.lista_colonna`, con ritiro
+//        dinamico e personalizzazione per utente.
 //        STADIO 0 resolver v5: overlay temporale (articolo, uom) -> batte
 //        listini e matrice categoria. Unico livello con PREZZO_FISSO.
-import { computed, ref, onMounted } from 'vue'
+//        Nessun export: il dominio non ha endpoint (lo scaffolding omette
+//        l'azione da se', non ricevendo `exportFn`).
+import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePromoArticoliStore } from '../stores/promoArticoli'
-import { useSearchTable } from '../../core/composables/useSearchTable'
+import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
-import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
+import { TAB_ENTITIES } from '../../core/constants'
 import { buildBoolOptions } from '../../core/utils/options'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import AttivoTag from '../../core/components/AttivoTag.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
+import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
@@ -24,8 +29,15 @@ const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
 const store = usePromoArticoliStore()
 const isBlocked = useInjectBlocked()
-const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
-  defaultSortField: 'valido_dal'
+const {
+  searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
+  listaRef, dirty, onConfigLoaded, pageActions,
+} = useListaConfigurabilePage(store, {
+  newTooltipKey: 'vendite.promo_articoli.new',
+  onNew: () => emit('new'),
+  // `valido_al` DESC: regola di dominio sulle liste con date di validita'
+  // (vedi lo store, che porta la stessa scelta e il perche' della direzione).
+  searchTableOptions: { defaultSortField: 'valido_al', defaultSortOrder: 'desc' },
 })
 
 const attivoFilter = ref(true)
@@ -33,24 +45,6 @@ const uomFilter = ref(null)
 const tipoVariazioneFilter = ref(null)
 
 const boolOptions = buildBoolOptions(t)
-const pageActions = computed(() => [
-  {
-    key: 'reload',
-    kind: 'utility',
-    label: t('common.reload_list'),
-    icon: MANAGE_ICONS.RELOAD,
-    command: reload,
-  },
-  {
-    key: 'new',
-    kind: 'primary',
-    label: t('common.new'),
-    tooltip: t('vendite.promo_articoli.new'),
-    icon: MANAGE_ICONS.ADD,
-    hideWhenReadonly: true,
-    command: () => emit('new'),
-  },
-])
 
 const tipoVariazioneOptions = [
   { value: null, label: t('common.all') },
@@ -72,7 +66,8 @@ function onTipoVariazioneChange() {
   applyFilters()
 }
 
-function onRowClick(event) { emit('row-click', event.data) }
+// `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
+function onRowClick(data) { emit('row-click', data) }
 
 useTabFreshness(store, TAB_ENTITIES.PROMO_ARTICOLI)
 onMounted(() => store.fetchList())
@@ -118,87 +113,40 @@ onMounted(() => store.fetchList())
       </div>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
+          <ListaConfigStatusTag :dirty="dirty" />
           <ReadonlyBadge />
         </template>
       </PageActionsBar>
     </div>
 
-    <DataTable
-      :value="store.items"
+    <ListaConfigurabile
+      ref="listaRef"
+      codice="vendite.promo_articoli"
+      :rows="store.items"
+      :total="store.totalRecords"
       :loading="store.loading"
-      v-bind="paginatorProps"
-      lazy
-      removable-sort
-      striped-rows
-      scrollable
-      scrollHeight="flex"
-      class="app-datatable"
+      :paginator-options="paginatorProps"
+      :page="tablePage"
+      :sort-field="paginatorProps.sortField"
+      :sort-order="paginatorProps.sortOrder"
       @page="onPage"
       @sort="onSort"
       @row-click="onRowClick"
-      selection-mode="single"
-      data-key="id"
+      @config-loaded="onConfigLoaded"
     >
-      <Column
-        field="codice"
-        :header="t('vendite.promo_articoli.col_codice')"
-        sortable
-        style="width: 140px;"
-      />
-      <Column
-        field="descrizione"
-        :header="t('vendite.promo_articoli.col_descrizione')"
-        sortable
-        style="min-width: 200px;"
-      />
-      <Column
-        field="articolo_codice"
-        :header="t('vendite.promo_articoli.col_articolo')"
-        sortable
-        style="min-width: 180px;"
-      >
-        <template #body="{ data }">
-          {{ data.articolo_codice }} — {{ data.articolo_descrizione }}
-        </template>
-      </Column>
-      <Column
-        field="uom_codice"
-        :header="t('vendite.promo_articoli.col_uom')"
-        sortable
-        style="width: 100px;"
-      />
-      <Column
-        field="tipo_variazione"
-        :header="t('vendite.promo_articoli.col_variazione')"
-        style="width: 200px;"
-      >
-        <template #body="{ data }">
-          <span>{{ data.tipo_variazione }}: {{ data.valore_variazione }}</span>
-        </template>
-      </Column>
-      <Column
-        field="valido_dal"
-        :header="t('vendite.promo_articoli.col_valido_dal')"
-        sortable
-        style="width: 120px;"
-      />
-      <Column
-        field="valido_al"
-        :header="t('vendite.promo_articoli.col_valido_al')"
-        sortable
-        style="width: 120px;"
-      />
-      <Column
-        field="attivo"
-        :header="t('vendite.promo_articoli.col_attivo')"
-        sortable
-        style="width: 100px;"
-      >
-        <template #body="{ data }">
-          <AttivoTag :active="data.attivo" />
-        </template>
-      </Column>
-    </DataTable>
+      <template #cell-articolo_codice="{ data }">
+        {{ data.articolo_codice }} — {{ data.articolo_descrizione }}
+      </template>
+      <!-- Cella composita: il tipo da solo non basta a leggere la promo, serve
+           il valore accanto. E' il motivo per cui nel seed la colonna e'
+           `ordinabile=f` e la voce non sta in whitelist. -->
+      <template #cell-tipo_variazione="{ data }">
+        <span>{{ data.tipo_variazione }}: {{ data.valore_variazione }}</span>
+      </template>
+      <template #cell-attivo="{ data }">
+        <AttivoTag :active="data.attivo" />
+      </template>
+    </ListaConfigurabile>
     </template>
   </div>
 </template>
