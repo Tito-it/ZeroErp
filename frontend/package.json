@@ -15,7 +15,7 @@
   "dependencies": {
     "@primeuix/themes": "^2.0.3",
     "@vue/devtools-api": "^8.2.1",
-    "axios": "^1.18.1",
+    "axios": "^1.19.0",
     "chart.js": "^4.5.1",
     "pinia": "^4.0.2",
     "primeicons": "^7.0.0",
@@ -35,7 +35,7 @@
     "npm-run-all2": "^9.0.3",
     "oxlint": "~1.76.0",
     "prettier": "3.9.6",
-    "vite": "^8.1.5",
+    "vite": "^8.2.0",
     "vite-plugin-vue-devtools": "^8.2.1"
   },
   "overrides": {
