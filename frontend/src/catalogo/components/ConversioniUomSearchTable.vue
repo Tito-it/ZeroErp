@@ -30,9 +30,9 @@ const {
 } = useListaConfigurabilePage(store, {
   newTooltipKey: 'catalogo.nuova_conversione',
   onNew: () => emit('new'),
-  // `valido_al`: regola di dominio sulle liste con date di validita' (vedi lo
-  // store, che porta la stessa scelta e il perche' della direzione).
-  searchTableOptions: { defaultSortField: 'valido_al' },
+  // `valido_al` DESC: regola di dominio sulle liste con date di validita'
+  // (vedi lo store, che porta la stessa scelta e il perche' della direzione).
+  searchTableOptions: { defaultSortField: 'valido_al', defaultSortOrder: 'desc' },
 })
 
 // `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
