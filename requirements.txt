@@ -7,13 +7,13 @@ colorama==0.4.6
 deepmerge==2.1.0
 distlib==0.4.3
 EditorConfig==0.17.1
-filelock==3.32.0
+filelock==3.32.2
 hjson==3.1.0
 identify==2.6.19
 idna==3.18
 Jinja2==3.1.6
 jsbeautifier==2.0.3
-Markdown==3.10.2
+Markdown==3.10.3
 MarkupSafe==3.0.3
 nodeenv==1.10.0
 packaging==26.2
@@ -26,7 +26,7 @@ psycopg2-binary==2.9.12
 Pygments==2.20.0
 pymdown-extensions==11.0.1
 python-dateutil==2.9.0.post0
-python-discovery==1.5.0
+python-discovery==1.5.1
 python-dotenv==1.2.2
 PyYAML==6.0.3
 requests==2.34.2
@@ -37,6 +37,6 @@ termcolor==3.3.0
 tomli==2.4.1
 typing_extensions==4.16.0
 urllib3==2.7.0
-virtualenv==21.7.0
+virtualenv==21.7.1
 wcmatch==11.0
-zensical==0.0.51
+zensical==0.0.52
