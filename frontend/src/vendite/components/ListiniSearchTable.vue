@@ -1,6 +1,13 @@
 <script setup>
-// Scopo: DataTable paginata listini con search, filtro utility e attivo.
+// Scopo: Lista listini configurabile
+//        (`<ListaConfigurabile codice="vendite.listini">`): colonne, ordine e
+//        visibilita' dal catalogo `ui.lista_colonna`, con ritiro dinamico e
+//        personalizzazione per utente.
 // Row expansion: mostra le versioni del listino sotto la riga (default aperto).
+//        E' un master-detail, quindi la pagina PILOTA l'espansione
+//        (`v-model:expanded-rows`) invece di lasciarla alla lista: serve
+//        "espandi tutte", il toggle da azione di riga e il fetch lazy delle
+//        versioni. Il dettaglio sta nello slot `row-expansion`.
 // Pulsanti riga listino: toggle versioni (chiude/apre expansion), test resolver.
 // Mini-tabella versioni nell'expansion: + nuova versione, transizioni stato,
 // gestione righe prezzo (apre VersioneDrawer dal parent).
@@ -8,7 +15,7 @@ import { ref, onMounted, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useListiniStore } from '../stores/listini'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useSearchTable } from '../../core/composables/useSearchTable'
+import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { lookupCodici } from '../../core/apiCore'
@@ -26,6 +33,8 @@ import Tag from 'primevue/tag'
 import AttivoTag from '../../core/components/AttivoTag.vue'
 import Button from 'primevue/button'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
+import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
@@ -55,8 +64,15 @@ const { confirmDelete } = useConfirmAction()
 // confondere gli operatori. Future: estendere a un'azione processo dedicata
 // se servono ruoli intermedi (es. "supporto pricing").
 const auth = useAuthStore()
-const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
-  defaultSortField: 'descrizione'
+const {
+  searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
+  listaRef, dirty, onConfigLoaded, pageActions: pageActionsBase,
+} = useListaConfigurabilePage(store, {
+  newTooltipKey: 'vendite.listini.nuovo_listino',
+  onNew: () => emit('new'),
+  // Allineato al preset del seed (`codice asc`).
+  searchTableOptions: { defaultSortField: 'codice' },
+  extraActions: () => extraPageActions.value,
 })
 
 const utilityFilter = ref(null)
@@ -101,7 +117,8 @@ function onAttivoChange() {
   applyFilters()
 }
 
-function onRowClick(event) { emit('row-click', event.data) }
+// `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
+function onRowClick(data) { emit('row-click', data) }
 
 // Espande tutte le righe correntemente in lista. Il preload delle versioni
 // viene gia' fatto dallo store dentro fetchList; qui ci limitiamo a mappare
@@ -208,10 +225,10 @@ function onEliminaListino(listino) {
   })
 }
 
-// Scopo: azioni standard della toolbar lista. Il componente PageActionsBar
-// decide la resa responsive: primaria visibile, utility inline desktop,
-// menu compatto su schermi piccoli.
-const pageActions = computed(() => [
+// Scopo: azioni utility SPECIFICHE di questa pagina, inserite dallo scaffolding
+// prima di "Nuovo". Reload/personalizza/new arrivano da
+// `useListaConfigurabilePage`, che le tiene una volta sola per tutte le liste.
+const extraPageActions = computed(() => [
   {
     key: 'toggle-all-versioni',
     kind: 'utility',
@@ -237,23 +254,9 @@ const pageActions = computed(() => [
     visible: auth.isSuperAdmin || auth.isActionAllowed(PRICING_ACTIONS.OVERRIDE),
     command: () => emit('test-resolver'),
   },
-  {
-    key: 'reload',
-    kind: 'utility',
-    label: t('common.reload_list'),
-    icon: MANAGE_ICONS.RELOAD,
-    command: reload,
-  },
-  {
-    key: 'new',
-    kind: 'primary',
-    label: t('common.new'),
-    tooltip: t('vendite.listini.nuovo_listino'),
-    icon: MANAGE_ICONS.ADD,
-    hideWhenReadonly: true,
-    command: () => emit('new'),
-  },
 ])
+
+const pageActions = pageActionsBase
 
 // Scopo: azioni di riga del listino (toggle expansion + elimina conditional).
 function buildListinoActions(data) {
@@ -360,46 +363,43 @@ onMounted(() => store.fetchList())
           <AlertScadenzeWidget />
         </template>
         <template #suffix>
+          <ListaConfigStatusTag :dirty="dirty" />
           <ReadonlyBadge />
         </template>
       </PageActionsBar>
     </div>
 
-    <DataTable
-      :value="store.items"
+    <ListaConfigurabile
+      ref="listaRef"
+      codice="vendite.listini"
+      v-model:expanded-rows="expandedRows"
+      :rows="store.items"
+      :total="store.totalRecords"
       :loading="store.loading"
-      v-model:expandedRows="expandedRows"
-      v-bind="paginatorProps"
-      lazy removable-sort striped-rows scrollable scrollHeight="flex"
-      class="app-datatable"
-      @page="onPage" @sort="onSort" @row-click="onRowClick"
-      selection-mode="single" data-key="id"
+      :paginator-options="paginatorProps"
+      :page="tablePage"
+      :sort-field="paginatorProps.sortField"
+      :sort-order="paginatorProps.sortOrder"
+      @page="onPage"
+      @sort="onSort"
+      @row-click="onRowClick"
+      @config-loaded="onConfigLoaded"
     >
-      <Column field="codice" :header="t('vendite.listini.col_codice')" sortable style="width: 140px;" />
-      <Column field="descrizione" :header="t('vendite.listini.col_descrizione')" sortable style="min-width: 200px;" />
-      <Column field="utility_descrizione" :header="t('vendite.listini.col_utility')" sortable style="width: 150px;">
-        <template #body="{ data }">
-          <span>{{ data.utility_descrizione || t('vendite.listini.commercio') }}</span>
-        </template>
-      </Column>
-      <Column field="tipologia_descrizione" :header="t('vendite.listini.col_tipologia')" sortable style="width: 150px;">
-        <template #body="{ data }">
-          <span>{{ data.tipologia_descrizione || '—' }}</span>
-        </template>
-      </Column>
-      <Column field="versioni_count" :header="t('vendite.listini.col_versioni')" style="width: 80px;" />
-      <Column field="attivo" :header="t('vendite.listini.col_attivo')" style="width: 80px;">
-        <template #body="{ data }">
-          <AttivoTag :active="data.attivo" />
-        </template>
-      </Column>
-      <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false" frozen alignFrozen="right">
-        <template #body="{ data }">
-          <RowActionsMenu :row="data" :actions="buildListinoActions(data)" />
-        </template>
-      </Column>
+      <template #cell-utility_descrizione="{ data }">
+        <span>{{ data.utility_descrizione || t('vendite.listini.commercio') }}</span>
+      </template>
+      <template #cell-tipologia_descrizione="{ data }">
+        <span>{{ data.tipologia_descrizione || '—' }}</span>
+      </template>
+      <template #cell-attivo="{ data }">
+        <AttivoTag :active="data.attivo" />
+      </template>
 
-      <template #expansion="{ data: listino }">
+      <template #actions="{ data, compact }">
+        <RowActionsMenu :row="data" :actions="buildListinoActions(data)" :force-compact="compact" />
+      </template>
+
+      <template #row-expansion="{ data: listino }">
         <div class="app-row-expansion">
           <div class="app-row-expansion__header">
             <span class="app-row-expansion__title">
@@ -445,7 +445,7 @@ onMounted(() => store.fetchList())
           </DataTable>
         </div>
       </template>
-    </DataTable>
+    </ListaConfigurabile>
 
     <AttivaVersioneDialog
       :visible="attivaDialogVisible"

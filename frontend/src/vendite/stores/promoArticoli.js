@@ -18,10 +18,10 @@ export const usePromoArticoliStore = createCrudStore('vendite-promo-articoli', {
   },
   tabEntity: TAB_ENTITIES.PROMO_ARTICOLI,
   // Regola di dominio: dove una lista mostra le date di validita', `valido_al`
-  // e' l'ordinamento di default, in DESC. In Postgres `DESC` porta i NULL in
-  // testa: prima le promo senza scadenza, poi quelle con validita' piu' lunga,
-  // e in fondo le scadute — cioe' cio' che vale ora sopra, cio' che non vale
-  // piu' sotto.
+  // e' l'ordinamento di default, in DESC: scadenza piu' lontana in testa,
+  // promo scadute in fondo — cio' che vale ora sopra, cio' che non vale piu'
+  // sotto. (Qui `valido_al` e' NOT NULL: ogni promo ha una scadenza, quindi
+  // non esiste il caso "senza scadenza" delle conversioni UoM.)
   orderBy: 'valido_al',
   orderDir: 'desc',
   startsEmpty: false,

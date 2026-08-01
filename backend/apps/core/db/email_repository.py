@@ -24,9 +24,70 @@ def _parse_jsonb_field(row: dict[str, Any], field: str) -> None:
         except (json.JSONDecodeError, TypeError):
             pass
 
-from apps.core.db._helpers import fetchone_scalar, row_to_dict, rows_to_list
+from apps.core.db._helpers import (
+    fetchone_scalar,
+    row_to_dict,
+    rows_to_list,
+    sql_order_direction,
+)
 from apps.core.db.sql_write_helpers import execute_dynamic_update
 from apps.core.services import crypto_service
+
+
+# Whitelist ORDER BY delle tre liste email: chiave = `campo_sorgente` che il
+# frontend invia come sortField, valore = espressione SQL qualificata. Le
+# descrizioni delle UO restano nude perche' sono alias di output della SELECT.
+#
+# Prima del 2026-08-01 le tre liste NON sapevano ordinare: l'ORDER BY era
+# cablato nel repository (`ea.codice`, `et.codice, et.lingua`,
+# `el.data_insert DESC`) e le view non leggevano nemmeno `order_by`. La lista
+# log lo INVIAVA gia' — lo store manda `order_by=data_insert` — e veniva
+# ignorato in silenzio.
+EMAIL_ACCOUNT_ORDER_COLUMNS: dict[str, str] = {  # alias: ea = config.email_account
+    "codice": "ea.codice",
+    "descrizione": "ea.descrizione",
+    "email_from": "ea.email_from",
+    "smtp_host": "ea.smtp_host",
+    "unita_organizzativa_descrizione": "unita_organizzativa_descrizione",
+    "attivo": "ea.attivo",
+}
+
+EMAIL_TEMPLATE_ORDER_COLUMNS: dict[str, str] = {  # alias: et = config.email_template
+    "codice": "et.codice",
+    "lingua": "et.lingua",
+    "oggetto": "et.oggetto",
+    "unita_organizzativa_descrizione": "unita_organizzativa_descrizione",
+    "attivo": "et.attivo",
+}
+
+# alias: el = config.email_log, ea = account, et = template
+EMAIL_LOG_ORDER_COLUMNS: dict[str, str] = {
+    "data_insert": "el.data_insert",
+    "destinatario": "el.destinatario",
+    "oggetto": "el.oggetto",
+    "stato": "el.stato",
+    "ambito": "el.ambito",
+    "tentativi": "el.tentativi",
+    "inviato_at": "el.inviato_at",
+    "account_codice": "account_codice",
+    "template_codice": "template_codice",
+}
+
+
+# Scopo: risolve la clausola ORDER BY dalla whitelist, con fallback esplicito.
+#        Il tiebreaker sull'id lo aggiunge il chiamante: e' l'unica cosa che
+#        cambia fra le tre liste (`ea.id`, `et.id`, `el.id`). La direzione passa
+#        da `sql_order_direction` (convenzione di casa: NULL come valore
+#        minimo), non da un if riscritto qui.
+def _email_order_clause(
+    order_by: str | None,
+    order_dir: str | None,
+    *,
+    colonne: dict[str, str],
+    default: str,
+) -> str:
+    colonna = colonne.get(order_by or "", default)
+    return f"{colonna} {sql_order_direction(order_dir)}"
 
 
 class EmailRepository:
@@ -44,6 +105,8 @@ class EmailRepository:
         attivo_only: bool = True,
         limit: int = 50,
         offset: int = 0,
+        order_by: str | None = None,
+        order_dir: str | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
         conditions: list[str] = []
         params: list[Any] = []
@@ -56,6 +119,10 @@ class EmailRepository:
             params.extend([like, like, like])
 
         where = " AND ".join(conditions) if conditions else "TRUE"
+        order_clause = _email_order_clause(
+            order_by, order_dir,
+            colonne=EMAIL_ACCOUNT_ORDER_COLUMNS, default="ea.codice",
+        )
         sql = f"""
             SELECT ea.id, ea.codice, ea.descrizione,
                    ea.unita_organizzativa_id,
@@ -67,7 +134,7 @@ class EmailRepository:
               FROM config.email_account ea
               LEFT JOIN config.unita_organizzative uo ON uo.id = ea.unita_organizzativa_id
              WHERE {where}
-             ORDER BY ea.codice
+             ORDER BY {order_clause}, ea.id
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params.extend([limit, offset])
@@ -253,6 +320,8 @@ class EmailRepository:
         attivo_only: bool = True,
         limit: int = 50,
         offset: int = 0,
+        order_by: str | None = None,
+        order_dir: str | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
         conditions: list[str] = []
         params: list[Any] = []
@@ -268,6 +337,14 @@ class EmailRepository:
             params.extend([like, like])
 
         where = " AND ".join(conditions) if conditions else "TRUE"
+        # Default storico a due chiavi (`codice, lingua`): un template esiste in
+        # piu' lingue, e separarle a video renderebbe la lista illeggibile.
+        order_clause = _email_order_clause(
+            order_by, order_dir,
+            colonne=EMAIL_TEMPLATE_ORDER_COLUMNS, default="et.codice",
+        )
+        if not order_by:
+            order_clause = "et.codice ASC, et.lingua ASC"
         sql = f"""
             SELECT et.id, et.codice,
                    et.unita_organizzativa_id,
@@ -280,7 +357,7 @@ class EmailRepository:
               FROM config.email_template et
               LEFT JOIN config.unita_organizzative uo ON uo.id = et.unita_organizzativa_id
              WHERE {where}
-             ORDER BY et.codice, et.lingua
+             ORDER BY {order_clause}, et.id
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params.extend([limit, offset])
@@ -460,6 +537,8 @@ class EmailRepository:
         data_a: str | None = None,
         limit: int = 50,
         offset: int = 0,
+        order_by: str | None = None,
+        order_dir: str | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
         conditions: list[str] = []
         params: list[Any] = []
@@ -488,6 +567,11 @@ class EmailRepository:
             params.extend([like, like])
 
         where = " AND ".join(conditions) if conditions else "TRUE"
+        # Default `data_insert DESC`: un log si legge dal piu' recente.
+        order_clause = _email_order_clause(
+            order_by or "data_insert", order_dir or "desc",
+            colonne=EMAIL_LOG_ORDER_COLUMNS, default="el.data_insert",
+        )
         sql = f"""
             SELECT el.id, el.destinatario, el.destinatari_cc, el.oggetto,
                    el.stato, el.errore, el.tentativi, el.inviato_at,
@@ -500,7 +584,7 @@ class EmailRepository:
               LEFT JOIN config.email_account ea ON ea.id = el.email_account_id
               LEFT JOIN config.email_template et ON et.id = el.email_template_id
              WHERE {where}
-             ORDER BY el.data_insert DESC, el.id DESC
+             ORDER BY {order_clause}, el.id DESC
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params.extend([limit, offset])

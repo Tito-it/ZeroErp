@@ -15,6 +15,10 @@ export const useArticoliStore = createCrudStore('catalogo-articoli', {
   // (non e' in gateKeys) — comportamento preservato esatto.
   filterDefaults: { attivo: true, is_composito: null, tipo_voce_id: null, gruppo_voce_id: null },
   gateKeys: ['is_composito', 'tipo_voce_id', 'gruppo_voce_id'],
-  orderBy: 'descrizione',
+  // `codice`: e' il preset default del seed della lista `catalogo.articoli`
+  // (identificatore, colonna fissata). Prima era `descrizione` e le due
+  // dichiarazioni divergevano — invisibile finche' il FE non consuma
+  // `ordinamento_default`, poi sarebbe cambiato l'ordine da solo.
+  orderBy: 'codice',
   extraActions: { disattiva: disattivaArticolo, riattiva: riattivaArticolo },
 })

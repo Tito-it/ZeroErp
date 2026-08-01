@@ -34,6 +34,13 @@
 //
 // Le colonne con `tipo_colonna='azione'` non hanno field e si renderizzano
 // via slot `actions`. L'app cliente passa il proprio RowActionsMenu.
+//
+// Dettaglio inline (master-detail): slot `row-expansion` + `v-model:expanded-rows`
+// se la pagina deve pilotare l'apertura delle righe.
+//   <ListaConfigurabile v-model:expanded-rows="expandedRows" ...>
+//     <template #row-expansion="{ data }"> ...tabella figlia... </template>
+// Convive col ritiro dinamico: a riga aperta si vedono prima le colonne
+// ritirate, poi il dettaglio.
 
 import { computed, ref, onMounted, watch, useSlots } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -92,6 +99,16 @@ const props = defineProps({
   // (uniformita' UI). La priorita' di ritiro arriva dal catalogo
   // (`ui.lista_colonna.priorita`, esposta da fn_resolve_lista_config).
   responsive: { type: Boolean, default: true },
+  // Stato di espansione PILOTATO dal caller (`v-model:expanded-rows`), per le
+  // liste master-detail che devono aprire/chiudere righe da sole (es. listini:
+  // "espandi tutte", toggle da azione di riga, fetch lazy del dettaglio).
+  // Omesso (default `null`) = la lista gestisce l'espansione da se', che e' il
+  // caso di tutte le liste senza dettaglio inline.
+  //
+  // ⚠️ Quando e' pilotato, la lista NON azzera piu' lo stato: chi lo possiede
+  // decide anche quando svuotarlo. Azzerarlo qui cancellerebbe le righe che il
+  // caller ha appena riaperto (su listini, tutte, a ogni fetch).
+  expandedRows: { type: Object, default: null },
 })
 
 const emit = defineEmits([
@@ -99,6 +116,7 @@ const emit = defineEmits([
   'sort',
   'row-click',
   'config-loaded',
+  'update:expandedRows',
 ])
 
 const { t, te } = useI18n()
@@ -200,11 +218,37 @@ const haAzioni = computed(
     !!slots.actions,
 )
 
+// Dettaglio inline del caller (slot `row-expansion`): master-detail dentro la
+// riga, es. le versioni sotto ogni listino. Convive con le colonne ritirate —
+// una riga aperta mostra prima quelle, poi il dettaglio.
+const haRowExpansion = computed(() => !!slots['row-expansion'])
+
 // Ritiro dinamico colonne (prop `responsive`). Il composable osserva la
 // larghezza reale del contenitore (root della lista) e ritira le colonne a
 // priorita' piu' bassa quando la somma delle larghezze supera lo spazio.
 const containerRef = ref(null)
-const expandedRows = ref({})
+
+// Espansione: una sola per DataTable, condivisa fra le due cose che la usano —
+// le colonne ritirate dal packing e il dettaglio inline del caller. Lo stato e'
+// interno finche' il caller non passa `v-model:expanded-rows`; da quel momento
+// e' suo, e qui si legge e si riemette soltanto.
+const _expandedRowsInterno = ref({})
+const expansionPilotata = computed(() => props.expandedRows !== null)
+const expandedRows = computed({
+  get: () => (expansionPilotata.value ? props.expandedRows : _expandedRowsInterno.value),
+  set: (v) => {
+    if (expansionPilotata.value) emit('update:expandedRows', v)
+    else _expandedRowsInterno.value = v
+  },
+})
+
+// Scopo: azzera l'espansione solo quando e' la lista a possederla. Con
+// `v-model` il proprietario e' il caller: sovrascriverlo qui gli cancellerebbe
+// sotto i piedi le righe appena aperte.
+function resetExpansionSePropria() {
+  if (!expansionPilotata.value) _expandedRowsInterno.value = {}
+}
+
 const {
   visibleColumns: _responsiveVisible,
   hiddenColumns: _responsiveHidden,
@@ -234,7 +278,9 @@ const colonneRitirate = computed(() =>
 watch(
   () => colonneRitirate.value.length,
   (n) => {
-    if (n === 0) expandedRows.value = {}
+    // Con un dettaglio inline del caller l'espansione serve comunque, anche a
+    // zero colonne ritirate: qui non c'e' nessuno stato fantasma da pulire.
+    if (n === 0 && !haRowExpansion.value) resetExpansionSePropria()
   },
 )
 
@@ -255,12 +301,12 @@ const firstOffset = computed(() =>
 // Azzeriamo lo stato expansion su cambio pagina/sort: le chiavi dataKey della
 // pagina precedente non hanno senso sulla nuova.
 function onPage(event) {
-  expandedRows.value = {}
+  resetExpansionSePropria()
   emit('page', event)
 }
 
 function onSort(event) {
-  expandedRows.value = {}
+  resetExpansionSePropria()
   emit('sort', event)
 }
 
@@ -410,7 +456,7 @@ defineExpose({
            Apre la riga di espansione che mostra le colonne ritirate (zero
            dati persi). -->
       <Column
-        v-if="colonneRitirate.length > 0"
+        v-if="colonneRitirate.length > 0 || haRowExpansion"
         expander
         :header="''"
         class="lista-config-expander"
@@ -456,11 +502,16 @@ defineExpose({
         <slot name="empty" />
       </template>
 
-      <!-- Riga di espansione con le colonne ritirate dinamicamente. Riusa gli
-           slot custom `cell-{codice}` del caller (es. Tag stato), cosi' la
-           resa e' identica a quella a video. -->
-      <template v-if="colonneRitirate.length > 0" #expansion="{ data }">
-        <div class="lista-config-expansion">
+      <!-- Riga di espansione: le colonne ritirate dinamicamente (che riusano
+           gli slot `cell-{codice}` del caller, cosi' la resa e' identica a
+           quella a video) e SOTTO il dettaglio inline del caller. Le due cose
+           condividono l'unica espansione che DataTable mette a disposizione,
+           quindi coesistono qui invece di escludersi. -->
+      <template
+        v-if="colonneRitirate.length > 0 || haRowExpansion"
+        #expansion="{ data }"
+      >
+        <div v-if="colonneRitirate.length > 0" class="lista-config-expansion">
           <div
             v-for="col in colonneRitirate"
             :key="col.codice"
@@ -476,6 +527,7 @@ defineExpose({
             </span>
           </div>
         </div>
+        <slot name="row-expansion" :data="data" />
       </template>
     </DataTable>
 

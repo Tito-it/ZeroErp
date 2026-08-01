@@ -165,11 +165,14 @@ _LISTE: tuple[tuple[str, object], ...] = (
     ("catalogo.uom_tipi", _da_costante("apps.catalogo.db.catalogo_repository", "UOM_TIPI_ORDER_COLUMNS")),
     ("catalogo.unita_misura", _da_costante("apps.catalogo.db.catalogo_repository", "UOM_ORDER_COLUMNS")),
     ("catalogo.conversioni_uom", _da_costante("apps.catalogo.db.catalogo_repository", "UOM_CONVERSIONI_ORDER_COLUMNS")),
-    # Quarto lotto, 2026-08-01. `documenti.template_documenti` e
-    # `documenti.template_asset` NON sono qui: il seed le consegna con le
-    # colonne del nucleo ancora `ordinabile=f`, quindi la conversione aspetta
-    # il ribaltamento della lettera (vedi brief).
+    # Quarto lotto, 2026-08-01.
     ("vendite.promo_articoli", _da_costante("apps.vendite.db.promo_articoli_repository", "_ORDER_COLS")),
+    ("documenti.template_documenti", _da_costante("apps.documenti.db.documenti_repository", "TEMPLATES_ORDER_COLUMNS")),
+    ("documenti.template_asset", _da_costante("apps.documenti.db.documenti_repository", "ASSET_ORDER_COLUMNS")),
+    # Quinto lotto, 2026-08-01.
+    ("catalogo.articoli", _da_costante("apps.catalogo.db.catalogo_repository", "ARTICOLI_ORDER_COLUMNS")),
+    ("vendite.listini", _da_costante("apps.vendite.db.listini_repository", "LISTINI_ORDER_COLUMNS")),
+    ("anagrafiche.operatori", _da_costante("apps.amm_software.db.amm_software_repository", "ALLOWED_ORDER_COLUMNS")),
     # Preesistenti: erano fuori da qualunque presidio prima del 2026-07-31.
     ("anagrafiche.clienti", _da_costante("apps.anagrafiche.db.clienti_repository", "_CLIENTI_ORDER_COLS")),
     ("anagrafiche.fornitori", _da_costante("apps.anagrafiche.db.fornitori_repository", "_FORNITORI_ORDER_COLS")),
