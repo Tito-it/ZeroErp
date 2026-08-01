@@ -16,7 +16,7 @@ id,lista_id,codice,descrizione,ambito,profilo_accesso_id,emittente_fiscale_id,is
 15,15,indirizzi_default,Vista standard indirizzi,sistema,,,t,25,"[{""col"":""indirizzo_normalizzato"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit
 16,16,tipi_ruolo_tipi_indirizzo_default,Vista standard matrice ruoli / indirizzi,sistema,,,t,25,"[{""col"":""tipo_ruolo_descrizione"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit
 17,17,pratiche_default,Vista standard pratiche,sistema,,,t,25,"[{""col"":""data_apertura"",""dir"":""desc""}]",t,2026-07-31 00:00:00,mctit
-18,18,emittenti_fiscali_default,Vista standard emittenti fiscali,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit
+18,18,emittenti_fiscali_default,Vista standard emittenti fiscali,sistema,,,t,25,"[{""col"":""ragione_sociale_completa"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit
 19,19,emittente_billing_account_default,Vista standard billing account emittente,sistema,,,t,25,"[{""col"":""billing_account_codice"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit
 20,20,uom_tipi_default,Vista standard tipi di unita di misura,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit
 21,21,unita_misura_default,Vista standard unita di misura,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit

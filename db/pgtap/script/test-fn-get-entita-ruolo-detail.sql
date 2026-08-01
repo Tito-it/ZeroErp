@@ -11,7 +11,7 @@
 --  6) Ogni elemento in righe CL ha chiave entita_id
 --  7) p_utility_id NULL non filtra (stesse righe di default)
 --  8) Risultato per FO ha campo codice
---  9) Risultato per EF ha campo codice e descrizione
+--  9) Risultato per EF ha campo codice e attivo
 -- 10) Risultato per tipo ruolo senza tabella ha meta in righe
 -- ------------------------------------------------------------
 SELECT plan(10);
@@ -178,7 +178,16 @@ SELECT ok(
 );
 
 -- =========================================================
--- Test 9: EF ha campo codice e descrizione
+-- Test 9: EF ha campo codice e attivo
+--
+-- ⚠️ Asseriva `codice` + `descrizione`. La funzione e' GENERICA:
+--    introspeziona config.tipi_ruoli.entita_tabella ed emette tutte le
+--    colonne non di sistema, quindi questo test non descriveva un
+--    contratto ma la FORMA della tabella. Dal 2026-08-02
+--    anagrafiche.emittenti_fiscali.descrizione non esiste piu' (cantiere
+--    emittente, Fase 4 / 20260802-22) e la chiave giustamente non compare.
+--    Sostituita con `attivo`, che e' della tabella e non e' fra le colonne
+--    escluse. Da rileggere se un giorno la lista di esclusione cambia.
 -- =========================================================
 
 SELECT ok(
@@ -186,7 +195,7 @@ SELECT ok(
     WHEN (SELECT count(*) FROM tmp_sr_ef) = 0 THEN true
     ELSE (
       SELECT (result->'righe'->0) ? 'codice'
-         AND (result->'righe'->0) ? 'descrizione'
+         AND (result->'righe'->0) ? 'attivo'
       FROM (
         SELECT script.fn_get_entita_ruolo_detail(
           (SELECT soggetto_ruolo_id FROM tmp_sr_ef)
@@ -194,7 +203,7 @@ SELECT ok(
       ) sub
     )
   END,
-  'Risultato per EF ha campo codice e descrizione in righe (o skip se nessun EF)'
+  'Risultato per EF ha campo codice e attivo in righe (o skip se nessun EF)'
 );
 
 -- =========================================================

@@ -259,7 +259,6 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 258,17,stato,Stato,Stato corrente della pratica,stato_descrizione,informazione,string,,130,90,center,Stato,6,t,t,t,f,f,t,2026-07-31 00:00:00,mctit,pratiche.col_stato,92
 259,17,data_insert,Data inserimento,Data e ora di creazione della pratica,data_insert,informazione,datetime,datetime_short,150,100,center,Audit,7,t,t,t,f,f,t,2026-07-31 00:00:00,mctit,common.data_insert,10
 260,18,codice,Codice,Codice dell emittente fiscale,codice,identificatore,string,,140,10,left,Identificazione,1,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,amministrazione.emittenti_fiscali.col_codice,100
-261,18,descrizione,Descrizione,Descrizione dell emittente fiscale,descrizione,informazione,string,,220,20,left,Identificazione,1,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,amministrazione.emittenti_fiscali.col_descrizione,95
 262,18,ragione_sociale,Ragione sociale,Ragione sociale del soggetto emittente,ragione_sociale_completa,informazione,string,,260,30,left,Soggetto,2,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,amministrazione.emittenti_fiscali.col_ragione_sociale,90
 263,18,partita_iva,Partita IVA,Partita IVA dell emittente fiscale,partita_iva,informazione,string,,150,40,left,Soggetto,2,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,amministrazione.emittenti_fiscali.col_piva,75
 264,18,attivo,Stato,Emittente attivo o disattivato,attivo,informazione,boolean,yesno,110,50,center,Stato,3,t,t,t,f,f,t,2026-07-31 00:00:00,mctit,amministrazione.emittenti_fiscali.col_attivo,60
@@ -376,3 +375,4 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 375,33,valido_dal,Valido dal,Inizio validita dell associazione,valido_dal,informazione,date,date_short,,70,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.matrice_categorie_listini.col_valido_dal,50
 376,33,valido_al,Valido al,Fine validita — vuoto significa senza scadenza,valido_al,informazione,date,date_short,,80,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.matrice_categorie_listini.col_valido_al,50
 377,33,attivo,Stato,Associazione attiva o disattivata,attivo,informazione,boolean,,,90,center,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.matrice_categorie_listini.col_attivo,50
+378,32,dettaglio,Dettaglio,Riepilogo sintetico della modifica — colonna composta lato frontend,,informazione,string,,,50,left,,,f,f,f,f,f,t,2026-08-02 00:00:00,mctit,amministrazione.audit_col_dettaglio,50

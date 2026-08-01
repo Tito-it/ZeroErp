@@ -1,0 +1,149 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 4 del cantiere emittente — DROP di
+#   anagrafiche.emittenti_fiscali.descrizione
+#   (brief-emittente-ragione-sociale-dal-soggetto.md §5 Fase 4.2)
+#
+# ── COSA SI TOGLIE, E PERCHE' ────────────────────────────────────────────
+#   Una colonna NOT NULL a testo libero che duplicava la ragione sociale del
+#   soggetto associato e ci divergeva su 2 emittenti su 2 («TEST» contro
+#   «Azienda SC REQUIRED con dati»). L'uno-a-uno soggetto<->emittente e'
+#   imposto dai vincoli — emittenti_fiscali UNIQUE (soggetto_ruolo_id) x
+#   soggetti_ruoli UNIQUE (soggetto_id, tipo_ruolo_id) — quindi l'unico scopo
+#   plausibile di un'etichetta propria, distinguere piu' emittenti dello stesso
+#   soggetto, non e' nemmeno rappresentabile.
+#   Sorgente unica da qui in avanti: anagrafiche.soggetti.ragione_sociale_completa,
+#   la stessa che fn_snapshot_intestazione_fattura congela sulla fattura.
+#
+# ── ORDINE, E PERCHE' QUESTO NUMERO ──────────────────────────────────────
+#   ⚠️ Il numero non e' decorativo. `changelog-autogen.yaml` interleava
+#   00_schema e 20_code in ordine TEMPORALE GLOBALE per nome file, non per
+#   fase: quindi su un database pulito questo changeSet gira DOPO
+#   20260802-20 (le 6 viste) e 20260802-21 (le 3 funzioni), che sono
+#   esattamente i lettori da togliere prima. Numerarlo piu' basso di quelli
+#   romperebbe il primo `liquibase update` su DB vergine, e non lo si
+#   scoprirebbe qui ma in CI.
+#
+# ── PRECONDIZIONI = IL CENSIMENTO DI FASE 4.1, RESO AUTOMATICO ───────────
+#   Il brief chiede un censimento manuale prima della DROP. Un censimento
+#   fatto una volta e' vero una volta: qui diventa una precondizione, quindi
+#   viene rifatto a ogni applicazione, su ogni ambiente.
+#     - nessuna VISTA dipende dalla colonna (pg_depend). Superfluo per
+#       PostgreSQL, che rifiuterebbe la DROP da solo — ma il messaggio di
+#       Liquibase dice QUALE vista, quello di PG no;
+#     - nessuna FUNZIONE la nomina, COMMENTI ESCLUSI. L'esclusione dei
+#       commenti non e' pignoleria: la prima stesura del pgTAP di Fase 1 e'
+#       nata rossa proprio perche' cercava la stringa dentro le note che
+#       spiegavano la rimozione.
+#   ⚠️ Restano fuori dal perimetro di queste precondizioni i lettori Python e
+#   Vue: vivono in un altro repository di lavoro e non sono interrogabili da
+#   qui. Sono le Fasi 2 e 3, dichiarate pronte da Tid il 2026-08-02.
+#
+# ── COSA NON SERVE ───────────────────────────────────────────────────────
+#   - Nessuna bonifica dati: la colonna sparisce, non si allinea (brief §7).
+#   - Nessun CASCADE: se qualcosa dipende ancora dalla colonna si deve
+#     ROMPERE qui, rumorosamente, non essere trascinato via in silenzio.
+#   - storico.emittenti_fiscali non si tocca: e' a `snapshot` JSONB, non a
+#     colonne. Gli snapshot gia' scritti conservano la chiave `descrizione`,
+#     ed e' corretto che sia cosi': erano veri quando sono stati presi.
+#   - Il vincolo NOT NULL se ne va con la colonna, non serve toglierlo prima.
+#
+# ⚠️ IRREVERSIBILE NEI DATI. I due valori esistenti («Emittente fiscale test
+#   1», «TEST») non sono recuperabili dopo l'apply se non dallo storico. Sono
+#   entrambi etichette di test, ed e' il motivo per cui la DROP non e'
+#   preceduta da una copia di salvataggio: non c'e' niente da salvare.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260802-22-alter-emittenti-fiscali-drop-descrizione-mctit.yaml
+
+  - changeSet:
+      id: 20260802-22-alter-emittenti-fiscali-drop-descrizione
+      author: mctit
+      failOnError: true
+      comment: >
+        Fase 4 del cantiere emittente: DROP di
+        anagrafiche.emittenti_fiscali.descrizione. La denominazione
+        dell'emittente viene ora dalla sola ragione_sociale_completa del
+        soggetto associato (viste 20260802-20, funzioni 20260802-21).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - columnExists:
+              schemaName: anagrafiche
+              tableName: emittenti_fiscali
+              columnName: descrizione
+          # Nessuna vista/regola dipende ancora dalla colonna.
+          - sqlCheck:
+              expectedResult: 0
+              sql: |
+                SELECT COUNT(DISTINCT dep.relname)
+                  FROM pg_depend d
+                  JOIN pg_rewrite r    ON r.oid = d.objid
+                  JOIN pg_class   dep  ON dep.oid = r.ev_class
+                  JOIN pg_class   src  ON src.oid = d.refobjid
+                  JOIN pg_namespace n  ON n.oid = src.relnamespace
+                  JOIN pg_attribute a  ON a.attrelid = src.oid
+                                      AND a.attnum   = d.refobjsubid
+                 WHERE n.nspname = 'anagrafiche'
+                   AND src.relname = 'emittenti_fiscali'
+                   AND a.attname = 'descrizione';
+          # Nessuna funzione la nomina piu', al netto dei commenti.
+          #
+          # ⚠️ IL PATTERN E' STRETTO APPOSTA, e la prima stesura sbagliava.
+          #   Diceva `(ef|efba|e)\.descrizione` e faceva fallire la
+          #   precondizione con «Expected 0 got 3»: le tre erano
+          #   fn_create_indirizzo, fn_guard_fornitore_attivo e
+          #   fn_get_user_profile, che usano l'alias nudo `e` per tabelle che
+          #   con l'emittente non c'entrano nulla. Tre falsi allarmi su un
+          #   database gia' pulito.
+          #   `ef` e' l'alias usato ovunque nel repo per emittenti_fiscali;
+          #   `efba` e' emittenti_fiscali_billing_account, che una colonna
+          #   `descrizione` non ce l'ha nemmeno. Allargare il pattern non
+          #   aggiungeva copertura, aggiungeva rumore — e un presidio che
+          #   grida al lupo si smette di credere come uno che tace.
+          - sqlCheck:
+              expectedResult: 0
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+                   AND regexp_replace(p.prosrc, '--[^\n]*', '', 'g')
+                       ~ 'ef\.descrizione|emittenti_fiscali\.descrizione';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.emittenti_fiscali
+                  DROP COLUMN descrizione;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Rollback strutturale: ricrea la colonna con un valore di
+              -- ripiego. I testi originali NON tornano — stanno solo negli
+              -- snapshot di storico.emittenti_fiscali. E' un rollback che
+              -- rimette la forma, non il contenuto, e va detto invece che
+              -- lasciato credere.
+              ALTER TABLE anagrafiche.emittenti_fiscali
+                  ADD COLUMN descrizione VARCHAR;
+
+              UPDATE anagrafiche.emittenti_fiscali ef
+                 SET descrizione = COALESCE(s.ragione_sociale_completa, ef.codice)
+                FROM anagrafiche.soggetti_ruoli sr
+                LEFT JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+               WHERE sr.id = ef.soggetto_ruolo_id;
+
+              ALTER TABLE anagrafiche.emittenti_fiscali
+                  ALTER COLUMN descrizione SET NOT NULL;

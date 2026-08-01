@@ -988,17 +988,17 @@ semplice alla più complessa, così le prime servono da rodaggio.
 | ✅ 31-07 | `amministrazione/components/CategorieClientiSearchTable.vue` | 5 | sì |
 | ✅ 01-08 | `amministrazione/components/EmittenteFiscaleBillingAccountTab.vue` | 5 | sì |
 | ✅ 31-07 | `amministrazione/components/UtilitiesTipiRuoloSearchTable.vue` | 5 | sì |
-| ☐ | `amministrazione/views/AuditLogView.vue` | 5 | sì |
+| ☐ 🔵 | `amministrazione/views/AuditLogView.vue` | 5 | sì |
 | ✅ 31-07 | `anagrafiche/components/IndirizziSearchTable.vue` | 5 | sì |
 | ☐ | `vendite/views/ApprovazioniPrezzoListView.vue` | 5 | sì |
-| ☐ | `amministrazione/views/EmailAccountsListView.vue` | 6 | sì |
-| ☐ | `amministrazione/views/EmailTemplatesListView.vue` | 6 | sì |
+| ✅ 01-08 | `amministrazione/views/EmailAccountsListView.vue` | 6 | sì |
+| ✅ 01-08 | `amministrazione/views/EmailTemplatesListView.vue` | 6 | sì |
 | ✅ 01-08 | `amministrazione/views/EmittentiFiscaliListView.vue` | 6 | sì |
 | ☐ | `catalogo/components/ArticoloBomDrawer.vue` | 6 | — |
 | ✅ 01-08 | `catalogo/components/ConversioniUomSearchTable.vue` | 6 | sì |
 | ✅ 01-08 | `catalogo/components/UnitaMisuraSearchTable.vue` | 6 | sì |
 | ☐ | `vendite/components/VersioneDrawer.vue` | 6 | sì |
-| ☐ | `amministrazione/views/EmailLogsListView.vue` | 7 | sì |
+| ✅ 01-08 | `amministrazione/views/EmailLogsListView.vue` | 7 | sì |
 | ✅ 01-08 | `config/components/TemplateDocumentiSearchTable.vue` | 7 | sì |
 | ✅ 01-08 | `config/components/TemplateAssetSearchTable.vue` | 8 | sì |
 | ✅ 01-08 | `pratiche/components/PraticheSearchTable.vue` | 8 | sì |
@@ -1006,7 +1006,7 @@ semplice alla più complessa, così le prime servono da rodaggio.
 | ☐ | `vendite/components/ContrattiBillingAccountDrawer.vue` | 8 | — |
 | ✅ 01-08 | `vendite/components/PromoArticoliSearchTable.vue` | 8 | sì |
 | ☐ | `vendite/offerte/components/OffertaEccezioniDrawer.vue` | 8 | — |
-| ☐ | `amministrazione/components/CategorieClientiListiniSearchTable.vue` | 9 | sì |
+| ✅ 01-08 | `amministrazione/components/CategorieClientiListiniSearchTable.vue` | 9 | sì |
 | ✅ 31-07 | `amministrazione/components/TipiRuoloTipiIndirizzoSearchTable.vue` | 9 | sì |
 | ✅ 01-08 | `amministrazione/views/OperatoriListView.vue` | 9 | sì |
 | ✅ 01-08 | `catalogo/components/ArticoliSearchTable.vue` | 9 | sì |
@@ -1616,9 +1616,29 @@ segnalato «nucleo rotto» su una lista che lo stato lo ordina eccome. Un falso
 allarme ripetuto insegna a ignorare il controllo, ed è il modo in cui un presidio
 muore.
 
-##### Sesto lotto — 🟡 seed SCRITTO, 4 liste su 5 verdi (2026-08-01)
+##### Sesto lotto — ✅ 4 liste CONVERTITE, `storico.audit_log` era sospesa e ora è sbloccata (2026-08-01/02)
 
-> Liste **29-33**, colonne **346-377**, preset 29-33. **Zero chiavi i18n nuove.**
+> **Aggiornamento 2026-08-02, verificato sul pushato.** Il BE ha convertito
+> **quattro** delle cinque (`8983528ac`): le tre email e
+> `CategorieClientiListiniSearchTable`, con la riga in `_LISTE`. La quinta,
+> `AuditLogView`, l'hanno **sospesa** con una motivazione scritta nel test:
+> «il seed non ha la colonna calcolata *Dettaglio*, che la pagina mostra».
+> **Avevano ragione**: il `.vue` ha 5 `<Column>` e il seed ne portava 4 —
+> l'ultima è quella senza `field=`, che rende `rowSummary(data)`. Colonna
+> **378** aggiunta a `lista_colonna.csv` (`campo_sorgente` vuoto, tutti i flag
+> `f`, `attivo=t`) + riga `32,378,50,t,f` in `lista_preset_colonna.csv`, sul
+> precedente di `anagrafiche.operatori` (341 `ruolo`) e `anagrafiche.clienti`
+> (14 `sosp_riatt`). Nessun changeset: i loader `runOnChange` la ripescano.
+> Chiave i18n `amministrazione.audit_col_dettaglio` **già esistente**.
+>
+> 🔴 **È il terzo errore sulla stessa lista, e sempre nella parte scritta a
+> mano.** Prima quattro chiavi i18n inventate, poi una colonna intera saltata.
+> `storico.audit_log` è l'unica lista che il generatore non può produrre
+> (polimorfa) ed è l'unica su cui abbiamo sbagliato due volte: la correlazione
+> non è casuale. **Dove lo strumento non arriva, contare le `<Column>` del
+> `.vue` prima di dichiarare il seed completo** — qui bastava `4 ≠ 5`.
+>
+> Liste **29-33**, colonne **346-378**, preset 29-33. **Zero chiavi i18n nuove.**
 > Nato dalla mappa di prontezza qui sotto: la famiglia email era il blocco più
 > grosso rimasto, è stata chiesta al BE **prima** di scegliere il lotto, e loro
 > l'hanno preparata — quindi il lotto è arrivato con tre liste già pronte invece
@@ -1629,7 +1649,7 @@ muore.
 | `config.email_account` | 29 | `amministrazione/views/EmailAccountsListView.vue` | 6 | **6** | ✅ ok |
 | `config.email_template` | 30 | `amministrazione/views/EmailTemplatesListView.vue` | 6 | 5 | ✅ ok |
 | `config.email_log` | 31 | `amministrazione/views/EmailLogsListView.vue` | 7 | 6 | ✅ ok |
-| `storico.audit_log` | 32 | `amministrazione/views/AuditLogView.vue` | 4 | **4** | ✅ ok |
+| `storico.audit_log` | 32 | `amministrazione/views/AuditLogView.vue` | 4 → **5** | **4** | 🔵 sbloccata 02-08 |
 | `anagrafiche.categorie_clienti_listini` | 33 | `amministrazione/components/CategorieClientiListiniSearchTable.vue` | 9 | 6 | ⛔ nucleo |
 
 🔴 **L'unica voce da chiedere**: `emittente_ragione_sociale` in `_ORDER_COLS` di
@@ -1672,6 +1692,22 @@ generatore non la può produrre da solo, e va scritta a mano sapendo perché.
 | `ApprovazioniPrezzoListView` | ❌ nessuna — `order_by="data_insert"` **cablato** nel service | ⛔ lavoro BE |
 | `CodaLavoriTab` · `CodaStampaTab` | ❌ nessuna — le liste ordinano per `id DESC` (monitoraggio) | ⛔ decisione di dominio |
 | `SituazioneApertaView` · `DashboardBacklogView` · `DashboardCompetenzaView` | `query_paged_view`, whitelist **a carico del chiamante** | 🔵 da verificare caso per caso |
+| `VersioneDrawer` (righe di versione listino) | ✅ `RIGHE_ORDER_COLUMNS` (`listini_repository`), 8 voci | ⛔ **non per la whitelist**: vedi sotto |
+| `CommessaGestioneDrawer` (righe commessa) | ❌ nessuna — `ORDER BY id` fisso, e il `.vue` non emette nemmeno `@sort` | ⛔ lavoro BE |
+
+⚠️ **Le ultime due righe mancavano alla misura del 2026-08-01** — la mappa ne
+copriva 11 sulle 13 lazy rimaste, e queste due erano state saltate, non
+valutate. Aggiunte il 2026-08-02. È lo stesso modo in cui `AuditLogView` e
+`CategorieClientiListini` erano finite fuori misura: **una lista che nessuno
+guarda non è una lista senza problemi.**
+
+🔴 **`VersioneDrawer` ha l'ordinamento e non basta.** La sua `<DataTable>` non
+monta le righe dello store paginato ma un computed `righeUnificate`, che fonde
+`store.items` con i **compositi** caricati a parte (`loadBundleCompositi`,
+fuori dalla paginazione). `<ListaConfigurabile>` ha `lazy` **fisso** e prende
+`total` dal caller: con righe aggiunte dopo la paginazione, conteggio e pagine
+mentirebbero. Non è un allineamento di whitelist, è la domanda «i compositi
+sono righe della lista o un'altra cosa» — cioè una decisione, come le altre sei.
 
 ✅ **La leva più grande era la famiglia email — ed è stata tirata.** Tre liste
 ferme sulla stessa mancanza, in un solo repository: chiesta come **passata
@@ -1693,11 +1729,15 @@ e `CategorieClientiListiniSearchTable` non era stata guardata affatto. La
 conclusione che ne era seguita — «aspettare la famiglia email e farne uno da
 cinque» — si è rivelata giusta: è esattamente il sesto lotto.
 
-**Cosa resta dopo il sesto**: `ApprovazioniPrezzoListView` (decidere *se* debba
-essere ordinabile, prima di seedarla: oggi l'`order_by` è cablato), le due code
-(l'ordine `id DESC` è il loro contenuto informativo, renderle ordinabili è una
-scelta di dominio) e le tre dashboard, da guardare una per una. Nessuna di
-queste è un allineamento meccanico: sono tutte decisioni.
+**Cosa resta dopo il sesto** (aggiornato 2026-08-02, 13 liste):
+`ApprovazioniPrezzoListView` (decidere *se* debba essere ordinabile, prima di
+seedarla: oggi l'`order_by` è cablato), le due code (l'ordine `id DESC` è il
+loro contenuto informativo, renderle ordinabili è una scelta di dominio), le
+tre dashboard da guardare una per una, `VersioneDrawer` (i compositi fuori
+paginazione), `CommessaGestioneDrawer` (nessun ordinamento, né BE né FE), i
+quattro drawer senza endpoint paginato — e `AuditLogView`, l'**unica**
+meccanica del gruppo, ora sbloccata dalla colonna 378. Tolta quella, **nessuna
+delle dodici è un allineamento meccanico: sono tutte decisioni.**
 
 #### Gruppo B — tabelle annidate (37 file, senza paginator)
 
@@ -1768,6 +1808,60 @@ maturità.
 ---
 
 ## 9. Registro
+
+### 2026-08-02 · Il sesto lotto è stato convertito mentre non guardavamo, e la lista sospesa aveva ragione di esserlo
+
+Ripresa del binario dopo la consegna BE/FE `8983528ac`. **Prima di tutto, tre
+misure rifatte sul codice invece che rilette da qui** — e due delle tre
+smentivano questo documento.
+
+| Misura | Il documento diceva | Il codice dice |
+| --- | --- | --- |
+| liste convertite | 17/34 | **21/34** (email ×3 + categorie_clienti_listini) |
+| `storico.audit_log` | seed «✅ ok» | seed **incompleto**, conversione sospesa dal BE |
+| KO aperti | 1 (`emittente_ragione_sociale`) | **1**, invariato |
+
+**La conversione del sesto lotto era già fatta e l'inventario non lo sapeva.**
+Le quattro liste sono state convertite e registrate in `_LISTE`, ma nessuno ha
+barrato le righe qui: il documento è restato a 17 mentre il codice stava a 21.
+È il difetto opposto a quello di ieri — ieri una misura a mano contro uno
+strumento che aveva ragione, oggi un documento che non è stato aggiornato dalla
+sponda che ha fatto il lavoro. **Il registro va scritto da chi consegna, o
+diventa una fonte che mente in silenzio.**
+
+🔴 **La quinta lista era sospesa, e la motivazione era corretta.** Il BE l'ha
+scritta dove serviva — nel commento di `_LISTE` in
+`test_liste_configurabili_seed.py` — invece che in una richiesta: «`storico.audit_log`
+NON e' qui: il seed non ha la colonna calcolata *Dettaglio*, che la pagina
+mostra». Verificato: `AuditLogView.vue` ha **cinque** `<Column>`, il seed ne
+portava **quattro**. La mancante è quella senza `field=`, che rende
+`rowSummary(data)` — cioè esattamente la categoria che il generatore sa
+produrre («colonne calcolate FE, `campo_sorgente` vuoto») e che qui è stata
+scritta a mano perché la lista è polimorfa.
+
+**Sbloccata**: colonna `378` in `lista_colonna.csv` + `32,378,50,t,f` in
+`lista_preset_colonna.csv`, sul precedente delle altre due calcolate FE già
+seedate (`operatori.ruolo` 341, `clienti.sosp_riatt` 14). Nessun changeset —
+i loader `runOnChange` la ripescano. Chiave i18n già esistente. Il presidio
+resta a **un solo KO**, quello di ieri.
+
+> **La regolarità, ormai con tre punti sulla stessa retta**: su
+> `storico.audit_log` abbiamo sbagliato le chiavi i18n *e* saltato una colonna,
+> ed è l'unica lista che il generatore non può produrre. Il pezzo scritto a mano
+> non è solo quello in cui si sbaglia: è quello in cui si sbaglia **più volte**,
+> perché manca anche il controllo che il generatore fa di suo. Contromisura
+> minima e a costo zero: **contare le `<Column>` del `.vue` e confrontarle col
+> numero di righe seedate** prima di dichiarare una lista pronta.
+
+**Un buco della mappa di prontezza, da colmare al prossimo giro**: `VersioneDrawer`
+e `CommessaGestioneDrawer` sono Gruppo A con paginator, non convertite, e **non
+compaiono nella mappa** misurata il 2026-08-01 — che copre 11 delle 13 liste
+lazy rimaste. Non sono state valutate né dichiarate difficili: sono state
+saltate. Vanno misurate prima di comporre il settimo lotto, o si ripete
+l'errore già fatto con `AuditLogView` e `CategorieClientiListini`, date per
+«nessuna whitelist» senza guardare il repository giusto.
+
+---
 
 ### 2026-08-01 · Sesto lotto, e metà del Gruppo A è fatta
 
