@@ -21,7 +21,8 @@ AS $function$
 --         riesecuzione RIPETE il primo calcolo invece di inseguirlo,
 --         e la scomposizione in testata resta vera — e' quella che
 --         va in stampa. Da D-N pezzo 1 l'ambito comprende anche le
---         condizioni di pagamento della fattura.
+--         condizioni di pagamento della fattura. Da 3b.3 l'utility
+--         si LEGGE dalla testata invece di essere dedotta.
 DECLARE
     v_imponibile_tot  vendite.fatture.imponibile_tot%TYPE;
     v_imposta_tot     vendite.fatture.imposta_tot%TYPE;
@@ -53,16 +54,20 @@ BEGIN
 
     -- Le condizioni di pagamento entrano qui perche' da D-N fanno
     -- parte dell'ambito; `arrotondamento_attuale` serve allo storno.
+    -- ⚠️ 3b.3: `utility_id` si legge dalla testata. Prima veniva
+    -- dedotto con COALESCE(lotto, BA) — una seconda derivazione
+    -- dello stesso fatto, che pero' partiva dal BA della fattura
+    -- (il PADRE) mentre la chiave usa quello dell'attivita' (il
+    -- FIGLIO): appena la gerarchia esiste, il documento verrebbe
+    -- arrotondato con la configurazione emittente/utility di
+    -- un'altra utility. Una riga senza utility_id non si indovina:
+    -- cade su E_CONFIG_MANCANTE poche righe sotto, che e' il
+    -- comportamento voluto.
     SELECT f.billing_account_id, f.tipo_doc_fiscale_id, f.emittente_soggetto_ruolo_id, f.valuta_id,
-           f.termine_pagamento_id, f.modalita_pagamento_id, f.arrotondamento_attuale
+           f.termine_pagamento_id, f.modalita_pagamento_id, f.arrotondamento_attuale, f.utility_id
       INTO v_billing_account_id, v_tipo_doc_fiscale_id, v_emittente_soggetto_ruolo_id, v_valuta_id,
-           v_termine_id, v_modalita_id, v_arro_proprio
+           v_termine_id, v_modalita_id, v_arro_proprio, v_utility_id
       FROM vendite.fatture f WHERE f.id = p_fattura_id;
-
-    SELECT COALESCE(
-        (SELECT fl.utility_id FROM vendite.fatturazione_lotti_fatture lf JOIN vendite.fatturazione_lotti fl ON fl.id = lf.lotto_id WHERE lf.fattura_id = p_fattura_id ORDER BY lf.id DESC LIMIT 1),
-        (SELECT ba.utility_id FROM anagrafiche.billing_account ba WHERE ba.id = v_billing_account_id)
-    ) INTO v_utility_id;
 
     SELECT COALESCE(SUM(r.imponibile), 0), COALESCE(SUM(r.imposta), 0)
       INTO v_imponibile_tot, v_imposta_tot
@@ -126,7 +131,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_ricalcola_totali_fattura(p_fattura_id bigint)
-IS 'Ricalcola totali e arrotondamento della fattura. D-N pezzo 1: l''ambito di compensazione comprende (termine_pagamento_id, modalita_pagamento_id). D-N pezzo 2: il saldo d''ambito si legge al netto del contributo gia'' dato da questa fattura, cosi'' la riesecuzione ripete il primo calcolo invece di inseguirlo e la scomposizione precedente/attuale in testata resta vera.';
+IS 'Ricalcola totali e arrotondamento della fattura. D-N pezzo 1: l''ambito di compensazione comprende (termine_pagamento_id, modalita_pagamento_id). D-N pezzo 2: il saldo d''ambito si legge al netto del contributo gia'' dato da questa fattura, cosi'' la riesecuzione ripete il primo calcolo invece di inseguirlo e la scomposizione precedente/attuale in testata resta vera. Da 3b.3 l''utility si legge da vendite.fatture.utility_id: la deduzione COALESCE(lotto, BA) partiva dal BA della fattura (il padre) mentre la chiave usa quello dell''attivita'' (il figlio), quindi con la gerarchia attiva avrebbe scelto la configurazione di arrotondamento di un''altra utility.';
 ```
 
 ---

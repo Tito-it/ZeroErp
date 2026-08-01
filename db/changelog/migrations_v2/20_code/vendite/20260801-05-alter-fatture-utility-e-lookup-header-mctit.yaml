@@ -1,0 +1,411 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 3b.3 — il lookup della testata torna a specchiare la chiave
+#   (piano-db-satelliti-fattura.md §3.3-b e §6, decisioni D-7 / D-B / D-P).
+#
+# IL DIFETTO. `fn_build_fattura_key` produce oggi NOVE elementi di chiave; il
+#   `WHERE` che cerca la fattura gia' aperta nel lotto ne confronta SEI. Mancano
+#   `utility_id` — che manca da sempre, e' il bug preesistente citato dal piano —
+#   e la coppia (`termine_pagamento_id`, `modalita_pagamento_id`) appena entrata
+#   in chiave con 3b.2. Una chiave che separa e un lookup che non distingue si
+#   annullano a vicenda: le attivita' vengono assegnate a documenti diversi dal
+#   punto di vista della chiave e poi rifuse nella stessa fattura dal lookup.
+#   E' il §6 — «ogni elemento della chiave deve comparire, identico, in tre
+#   posti» — e questo changeSet chiude il secondo e il terzo specchio.
+#
+# ── PERCHE' SERVE UNA COLONNA, e non basta dedurre l'utility ──────────────
+#   `vendite.fatture` non ha `utility_id`: non c'e' proprio niente su cui
+#   confrontare. L'unico modo di sapere oggi l'utility di una fattura e' la
+#   deduzione dentro `fn_ricalcola_totali_fattura`,
+#   `COALESCE(lotto.utility_id, BA.utility_id)` — e quella deduzione NON
+#   riproduce il valore che sta in chiave:
+#
+#     · la chiave prende l'utility dal BA dell'ATTIVITA' (il figlio);
+#     · la testata porta il BA della FATTURA, che per D-P e' il PADRE.
+#
+#   Finche' la gerarchia dei billing account e' piatta i due valori coincidono
+#   e il difetto non si vede. Misurato sul DB il 2026-08-01: 42 BA di cui ZERO
+#   con `parent_account_id`, 34 attivita', 10 fatture, nessun lotto che mescola
+#   utility, e le due derivazioni concordi su tutte e 10. Cioe': oggi e' latente
+#   e si accende esattamente il giorno in cui nasce il primo BA padre — che e'
+#   il presupposto su cui D-P e' costruita. Un difetto che aspetta la
+#   funzionalita' che stiamo scrivendo non e' un difetto teorico.
+#
+#   Percio' la fattura porta la propria utility in una COLONNA: e' il secondo
+#   specchio del §6, «le colonne di testata che la descrivono». Il beneficio
+#   collaterale e' che sparisce una seconda fonte di verita': oggi e' la
+#   deduzione del ricalcolo a scegliere la riga di
+#   `anagrafiche.emittenti_fiscali_utilities`, cioe' i DECIMALI e il METODO di
+#   arrotondamento del documento. Due modi di rispondere alla stessa domanda,
+#   uno dei quali decide quanto vale la fattura.
+#
+# ── PERCHE' UN CHANGESET SOLO ─────────────────────────────────────────────
+#   Colonna, INSERT che la scrive e `WHERE` che la confronta non si possono
+#   separare, e non per eleganza: nella finestra fra i due la colonna
+#   esisterebbe vuota mentre il lookup gia' la confronta, quindi NESSUNA
+#   fattura esistente combacerebbe piu' e ogni attivita' ne aprirebbe una
+#   nuova. Un changeSet a meta' qui non degrada, moltiplica i documenti.
+#   Stessa ragione dei tre specchi di 3b.0-b e dei tre pezzi di D-N.
+#
+# ── NESSUNA DROP, e va detto perche' ──────────────────────────────────────
+#   Le due funzioni cambiano CORPO ma non FIRMA, quindi qui `CREATE OR REPLACE`
+#   sostituisce davvero. La `DROP` obbligatoria di 3b.0-b e 3b.4-bis serviva
+#   perche' li' i PARAMETRI cambiavano: in PostgreSQL una funzione e'
+#   identificata da (nome, tipi degli argomenti) e aggiungerne uno crea un
+#   OVERLOAD invece di sostituire. Non e' il caso di questo file — ma la
+#   verifica post-apply che le firme vive siano una sola resta buona abitudine.
+#
+# EFFETTO SUL DATO ESISTENTE: le 10 fatture in tabella vengono backfillate con
+#   la stessa espressione che il ricalcolo usava fin qui, quindi il loro totale
+#   non cambia di un centesimo — cambia solo dove il dato e' scritto. Il
+#   backfill non sveglia nessun guard: tutti quelli restrittivi su `fatture`
+#   sono montati con `UPDATE OF` su colonne che non tocchiamo (verificato su
+#   `pg_get_triggerdef` il 2026-08-01: stato, snapshot intestazione, canale
+#   origine).
+#
+# ⚠️ RICADUTA SUI pgTAP: `fn_ricalcola_totali_fattura` smette di dedurre e
+#   legge la colonna, quindi le fixture che creano una fattura a mano devono
+#   valorizzare `utility_id` o cadono su E_CONFIG_MANCANTE. Sono TRE file, gli
+#   unici che inseriscono una fattura e poi chiamano il ricalcolo:
+#   test-ricalcola-totali-fattura-arrotondamento.sql,
+#   test-ricalcola-riepiloghi-iva.sql, test-fatture-righe-importo-e-kit-v1.sql.
+#   Adeguati nello stesso giro. Nessun fallback transitorio in funzione: non
+#   siamo in produzione e un fallback qui vorrebbe dire tenere in vita proprio
+#   la deduzione sbagliata che il changeSet esiste per togliere.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260801-05-alter-fatture-utility-e-lookup-header-mctit.yaml
+
+  - changeSet:
+      id: 20260801-05-alter-fatture-utility-e-lookup-header
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        3b.3 — vendite.fatture prende utility_id (colonna + FK + backfill),
+        fn_get_or_create_fattura_header allinea il WHERE del lookup ai nove
+        elementi della chiave e scrive utility/termine/modalita' in testata,
+        fn_ricalcola_totali_fattura legge la colonna invece di dedurre
+        l'utility da lotto/BA. Un changeSet solo: separarli lascia una
+        finestra in cui nessuna fattura combacia e ogni attivita' ne apre una
+        nuova (§6, i tre specchi della chiave).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ══ 1. La fattura porta la propria utility ══════════════════════
+              -- Nullable per scelta: l'unico creatore applicativo la valorizza
+              -- sempre dalla chiave, ma una fattura creata a mano (fixture,
+              -- manutenzione) non ha una utility da dedurre — e inventargliela
+              -- vorrebbe dire riportare dentro la deduzione che stiamo
+              -- togliendo. NULL significa «non lo so», e a valle il ricalcolo
+              -- lo dice con E_CONFIG_MANCANTE invece di indovinare.
+              ALTER TABLE vendite.fatture
+                  ADD COLUMN IF NOT EXISTS utility_id INTEGER;
+
+              DO $$
+              BEGIN
+                  IF NOT EXISTS (
+                      SELECT 1 FROM pg_constraint
+                       WHERE conrelid = 'vendite.fatture'::regclass
+                         AND conname  = 'fk_fatture_utility'
+                  ) THEN
+                      ALTER TABLE vendite.fatture
+                          ADD CONSTRAINT fk_fatture_utility
+                          FOREIGN KEY (utility_id)
+                          REFERENCES config.utilities (id);
+                  END IF;
+              END
+              $$;
+
+              COMMENT ON COLUMN vendite.fatture.utility_id IS
+                  'Utility del documento, elemento della chiave di aggregazione (§6, secondo specchio). Si scrive dalla chiave alla creazione: viene dal BA dell''ATTIVITA'' (il figlio), mentre billing_account_id porta il BA della FATTURA (il padre, D-P) — percio'' NON e'' deducibile dalle altre colonne della testata appena la gerarchia esiste, ed e'' la ragione per cui e'' una colonna e non una derivazione. La legge fn_ricalcola_totali_fattura per scegliere la riga di emittenti_fiscali_utilities, cioe'' decimali e metodo di arrotondamento.';
+
+              -- ── Backfill: la stessa espressione che il ricalcolo usava ──────
+              -- Non e' una migrazione di significato, e' un trasloco: il valore
+              -- che fin qui veniva ricalcolato a ogni giro viene scritto una
+              -- volta dove appartiene. Verificato che le due derivazioni
+              -- concordano su tutte le fatture esistenti, quindi nessun totale
+              -- si sposta.
+              UPDATE vendite.fatture f
+                 SET utility_id = COALESCE(
+                         (SELECT fl.utility_id
+                            FROM vendite.fatturazione_lotti_fatture lf
+                            JOIN vendite.fatturazione_lotti fl ON fl.id = lf.lotto_id
+                           WHERE lf.fattura_id = f.id
+                           ORDER BY lf.id DESC
+                           LIMIT 1),
+                         (SELECT ba.utility_id
+                            FROM anagrafiche.billing_account ba
+                           WHERE ba.id = f.billing_account_id)
+                     )
+               WHERE f.utility_id IS NULL;
+
+              -- ══ 2. Il lookup della testata torna a specchiare la chiave ═════
+              CREATE OR REPLACE FUNCTION vendite.fn_get_or_create_fattura_header(
+                  p_lotto_id    vendite.fatturazione_lotti.id%TYPE,
+                  p_attivita_id vendite.attivita_fatturabili.id%TYPE
+              )
+              RETURNS bigint
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: recupera o crea la testata DRAFT della fattura a cui
+              --        l'attivita' appartiene, dentro il lotto dato.
+              -- Regole: il `WHERE` del lookup e la INSERT devono nominare gli
+              --         STESSI elementi della chiave prodotta da
+              --         fn_build_fattura_key (§6). Se la chiave separa e il
+              --         lookup no, le due meta' si annullano e le attivita'
+              --         tornano nella stessa fattura.
+              DECLARE
+                  v_key          JSONB;
+                  v_fattura_id   vendite.fatture.id%TYPE;
+                  v_stato_doc_id config.stati_doc_fiscale.id%TYPE;
+                  v_registro_id  vendite.registri_fatturazione.id%TYPE;
+                  v_ba_id        anagrafiche.billing_account.id%TYPE;
+                  v_tipo_doc_id  config.tipi_doc_fiscale.id%TYPE;
+                  v_valuta_id    config.valute.id%TYPE;
+                  v_utility_id   config.utilities.id%TYPE;
+                  v_emittente_id anagrafiche.soggetti_ruoli.id%TYPE;
+                  v_reseller_id  anagrafiche.soggetti_ruoli.id%TYPE;
+                  v_termine_id   config.termini_pagamento.id%TYPE;
+                  v_modalita_id  config.modalita_pagamento.id%TYPE;
+              BEGIN
+                  -- Guard: parametri obbligatori
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 OR p_attivita_id IS NULL OR p_attivita_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_get_or_create_fattura_header', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id/p_attivita_id', 'lotto_id', p_lotto_id, 'attivita_id', p_attivita_id),
+                          NULL::uuid, 'p_lotto_id e p_attivita_id obbligatori e > 0'
+                      );
+                  END IF;
+
+                  -- Chiave documento dall'attivita': nove elementi, e da qui in
+                  -- giu' vanno usati tutti e nove.
+                  v_key := vendite.fn_build_fattura_key(p_attivita_id);
+                  v_ba_id        := (v_key->>'billing_account_id')::BIGINT;
+                  v_tipo_doc_id  := (v_key->>'tipo_doc_fiscale_id')::BIGINT;
+                  v_valuta_id    := (v_key->>'valuta_id')::INTEGER;
+                  v_emittente_id := (v_key->>'emittente_soggetto_ruolo_id')::BIGINT;
+                  v_reseller_id  := NULLIF(v_key->>'reseller_soggetto_ruolo_id', '')::BIGINT;
+                  v_utility_id   := NULLIF(v_key->>'utility_id', '')::INTEGER;
+                  v_registro_id  := (v_key->>'registro_id')::BIGINT;
+                  v_termine_id   := NULLIF(v_key->>'termine_pagamento_id', '')::BIGINT;
+                  v_modalita_id  := NULLIF(v_key->>'modalita_pagamento_id', '')::INTEGER;
+
+                  -- Completezza della chiave: si pretendono solo gli elementi
+                  -- che NON possono legittimamente mancare. utility_id entra
+                  -- nell'elenco perche' anagrafiche.billing_account.utility_id e'
+                  -- NOT NULL: se qui arriva vuoto, la chiave e' rotta, non
+                  -- «senza utility». Termine e modalita' restano fuori, e non e'
+                  -- una dimenticanza: la modalita' e' NULL nella maggioranza dei
+                  -- casi (nessun default inventato, finirebbe sulla FatturaPA) e
+                  -- il termine ha il default TP_1RATA della catena — la sua
+                  -- assenza la presidia la Fase 4 al momento di generare le rate.
+                  IF v_ba_id IS NULL OR v_tipo_doc_id IS NULL OR v_valuta_id IS NULL
+                     OR v_emittente_id IS NULL OR v_utility_id IS NULL OR v_registro_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_get_or_create_fattura_header', 'E_VALORE_MANCANTE',
+                          jsonb_build_object('attivita_id', p_attivita_id, 'chiave', v_key),
+                          NULL::uuid, concat('chiave documento incompleta per attivita_id ', p_attivita_id)
+                      );
+                  END IF;
+
+                  -- Stato DRAFT
+                  SELECT id INTO v_stato_doc_id
+                    FROM config.stati_doc_fiscale
+                   WHERE codice_interno = 'DRAFT' AND attivo IS TRUE
+                   ORDER BY id LIMIT 1;
+
+                  IF v_stato_doc_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_get_or_create_fattura_header', 'E_CONFIG_MANCANTE',
+                          jsonb_build_object('codice_interno', 'DRAFT'),
+                          NULL::uuid, 'stato DRAFT non trovato'
+                      );
+                  END IF;
+
+                  -- Cerca fattura gia' nel lotto con la stessa chiave.
+                  -- ⚠️ IS NOT DISTINCT FROM sui tre elementi nullable: con `=`
+                  -- il NULL non combacia mai, quindi ogni giro aprirebbe una
+                  -- fattura nuova per i casi — che sono la maggioranza — in cui
+                  -- reseller o modalita' non ci sono. E' la stessa trappola dei
+                  -- NULL gia' pagata in 3b.0-b sul WHERE della commessa e in
+                  -- 3b.4-bis sull'indice d'ambito, terza forma.
+                  SELECT f.id INTO v_fattura_id
+                    FROM vendite.fatturazione_lotti_fatture lf
+                    JOIN vendite.fatture f ON f.id = lf.fattura_id
+                   WHERE lf.lotto_id = p_lotto_id
+                     AND f.billing_account_id = v_ba_id
+                     AND f.tipo_doc_fiscale_id = v_tipo_doc_id
+                     AND f.valuta_id = v_valuta_id
+                     AND f.emittente_soggetto_ruolo_id = v_emittente_id
+                     AND f.reseller_soggetto_ruolo_id IS NOT DISTINCT FROM v_reseller_id
+                     AND f.utility_id IS NOT DISTINCT FROM v_utility_id
+                     AND f.registro_id = v_registro_id
+                     AND f.termine_pagamento_id IS NOT DISTINCT FROM v_termine_id
+                     AND f.modalita_pagamento_id IS NOT DISTINCT FROM v_modalita_id
+                   ORDER BY f.id LIMIT 1;
+
+                  IF v_fattura_id IS NOT NULL THEN RETURN v_fattura_id; END IF;
+
+                  -- Crea fattura + link lotto. Le colonne di testata sono il
+                  -- secondo specchio: quello che la chiave ha deciso, qui si
+                  -- scrive.
+                  INSERT INTO vendite.fatture (registro_id, data, tipo_doc_fiscale_id, stato_doc_fiscale_id,
+                      emittente_soggetto_ruolo_id, billing_account_id, reseller_soggetto_ruolo_id,
+                      utility_id, valuta_id, tasso_cambio,
+                      termine_pagamento_id, modalita_pagamento_id, meta)
+                  VALUES (v_registro_id, current_date, v_tipo_doc_id, v_stato_doc_id,
+                      v_emittente_id, v_ba_id, v_reseller_id,
+                      v_utility_id, v_valuta_id, 1,
+                      v_termine_id, v_modalita_id, jsonb_build_object('lotto_id', p_lotto_id))
+                  RETURNING id INTO v_fattura_id;
+
+                  INSERT INTO vendite.fatturazione_lotti_fatture (lotto_id, fattura_id, esclusa, meta)
+                  VALUES (p_lotto_id, v_fattura_id, FALSE, jsonb_build_object('origine', 'bozza'));
+
+                  RETURN v_fattura_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_or_create_fattura_header(bigint, bigint)
+              IS 'Recupera o crea testata fattura DRAFT per lotto dalla chiave documento dell''attivita''. Da 3b.3 il WHERE del lookup confronta TUTTI e nove gli elementi della chiave — utility_id (che mancava da sempre) e la coppia (termine, modalita'') entrata con D-7/D-B — con IS NOT DISTINCT FROM sui nullable, e la INSERT scrive in testata utility, termine e modalita''. Chiave e lookup disallineati si annullano a vicenda: cfr. §6 del piano, i tre specchi.';
+
+              -- ══ 3. Il ricalcolo legge l'utility, non la deduce ══════════════
+              CREATE OR REPLACE FUNCTION vendite.fn_ricalcola_totali_fattura(
+                  p_fattura_id vendite.fatture.id%TYPE
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: ricalcola imponibile, imposta, fondi, arrotondamento e
+              --        totale a pagare della fattura, aggiornando il saldo
+              --        dell'ambito di compensazione.
+              -- Regole: da D-N pezzo 2 il saldo d'ambito si legge AL NETTO del
+              --         contributo gia' dato da questa fattura
+              --         (`saldo - COALESCE(arrotondamento_attuale, 0)`): cosi' una
+              --         riesecuzione RIPETE il primo calcolo invece di inseguirlo,
+              --         e la scomposizione in testata resta vera — e' quella che
+              --         va in stampa. Da D-N pezzo 1 l'ambito comprende anche le
+              --         condizioni di pagamento della fattura. Da 3b.3 l'utility
+              --         si LEGGE dalla testata invece di essere dedotta.
+              DECLARE
+                  v_imponibile_tot  vendite.fatture.imponibile_tot%TYPE;
+                  v_imposta_tot     vendite.fatture.imposta_tot%TYPE;
+                  v_totale_doc      vendite.fatture.totale_doc%TYPE;
+                  v_totale_fondi    vendite.fatture_fondi_fattura.importo%TYPE;
+                  v_totale_a_pagare vendite.fatture.totale_a_pagare%TYPE;
+                  v_raw_totale      vendite.fatture.totale_a_pagare%TYPE;
+                  v_round_totale    vendite.fatture.totale_a_pagare%TYPE;
+                  v_arro_attuale    vendite.fatture.arrotondamento_attuale%TYPE;
+                  v_arro_precedente vendite.fatture.arrotondamento_precedente%TYPE;
+                  v_arro_proprio    vendite.fatture.arrotondamento_attuale%TYPE;
+                  v_saldo_scope     vendite.fatture_arrotondamenti_scope.saldo_arrotondamento%TYPE;
+                  v_billing_account_id          vendite.fatture.billing_account_id%TYPE;
+                  v_tipo_doc_fiscale_id         vendite.fatture.tipo_doc_fiscale_id%TYPE;
+                  v_emittente_soggetto_ruolo_id vendite.fatture.emittente_soggetto_ruolo_id%TYPE;
+                  v_valuta_id      vendite.fatture.valuta_id%TYPE;
+                  v_termine_id     vendite.fatture.termine_pagamento_id%TYPE;
+                  v_modalita_id    vendite.fatture.modalita_pagamento_id%TYPE;
+                  v_utility_id     config.utilities.id%TYPE;
+                  v_min_soglia_min anagrafiche.emittenti_fiscali_utilities.minimo_soglia_min%TYPE;
+                  v_min_soglia_max anagrafiche.emittenti_fiscali_utilities.minimo_soglia_max%TYPE;
+                  v_decimali       anagrafiche.emittenti_fiscali_utilities.arrotondamento_importi_dec%TYPE;
+                  v_metodo         anagrafiche.emittenti_fiscali_utilities.metodo_arrotondamento_importi%TYPE;
+              BEGIN
+                  IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_totali_fattura', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_fattura_id', 'valore', p_fattura_id), NULL::uuid, 'p_fattura_id obbligatorio e > 0');
+                  END IF;
+
+                  -- Le condizioni di pagamento entrano qui perche' da D-N fanno
+                  -- parte dell'ambito; `arrotondamento_attuale` serve allo storno.
+                  -- ⚠️ 3b.3: `utility_id` si legge dalla testata. Prima veniva
+                  -- dedotto con COALESCE(lotto, BA) — una seconda derivazione
+                  -- dello stesso fatto, che pero' partiva dal BA della fattura
+                  -- (il PADRE) mentre la chiave usa quello dell'attivita' (il
+                  -- FIGLIO): appena la gerarchia esiste, il documento verrebbe
+                  -- arrotondato con la configurazione emittente/utility di
+                  -- un'altra utility. Una riga senza utility_id non si indovina:
+                  -- cade su E_CONFIG_MANCANTE poche righe sotto, che e' il
+                  -- comportamento voluto.
+                  SELECT f.billing_account_id, f.tipo_doc_fiscale_id, f.emittente_soggetto_ruolo_id, f.valuta_id,
+                         f.termine_pagamento_id, f.modalita_pagamento_id, f.arrotondamento_attuale, f.utility_id
+                    INTO v_billing_account_id, v_tipo_doc_fiscale_id, v_emittente_soggetto_ruolo_id, v_valuta_id,
+                         v_termine_id, v_modalita_id, v_arro_proprio, v_utility_id
+                    FROM vendite.fatture f WHERE f.id = p_fattura_id;
+
+                  SELECT COALESCE(SUM(r.imponibile), 0), COALESCE(SUM(r.imposta), 0)
+                    INTO v_imponibile_tot, v_imposta_tot
+                    FROM vendite.fatture_riepiloghi_iva r WHERE r.fattura_id = p_fattura_id;
+
+                  v_totale_fondi := vendite.fn_get_totale_fondi_fattura(p_fattura_id);
+                  v_totale_doc := COALESCE(v_imponibile_tot, 0) + COALESCE(v_imposta_tot, 0);
+
+                  SELECT e.minimo_soglia_min, e.minimo_soglia_max, e.arrotondamento_importi_dec, COALESCE(e.metodo_arrotondamento_importi, 'HALF_UP')
+                    INTO v_min_soglia_min, v_min_soglia_max, v_decimali, v_metodo
+                    FROM anagrafiche.emittenti_fiscali_utilities e
+                   WHERE e.emittente_soggetto_ruolo_id = v_emittente_soggetto_ruolo_id AND e.utility_id = v_utility_id AND e.attivo IS TRUE LIMIT 1;
+
+                  IF v_decimali IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_totali_fattura', 'E_CONFIG_MANCANTE',
+                          jsonb_build_object('emittente', v_emittente_soggetto_ruolo_id, 'utility_id', v_utility_id, 'fattura_id', p_fattura_id),
+                          NULL::uuid, concat('configurazione emittente/utility mancante per fattura ', p_fattura_id));
+                  END IF;
+
+                  -- D-N pezzo 2: il saldo d'ambito AL NETTO del proprio contributo.
+                  -- Senza lo storno, la riesecuzione parte da un saldo che contiene
+                  -- gia' il proprio arrotondamento e converge altrove: il totale
+                  -- resta simile, la scomposizione in testata diventa falsa.
+                  v_saldo_scope := vendite.fn_get_arrotondamento_scope(
+                      v_billing_account_id, v_utility_id, v_tipo_doc_fiscale_id,
+                      v_emittente_soggetto_ruolo_id, v_valuta_id,
+                      v_termine_id, v_modalita_id);
+                  v_arro_precedente := COALESCE(v_saldo_scope, 0) - COALESCE(v_arro_proprio, 0);
+
+                  v_raw_totale := v_totale_doc + COALESCE(v_totale_fondi, 0) + COALESCE(v_arro_precedente, 0);
+                  v_round_totale := 0;
+
+                  IF v_metodo = 'UP' THEN
+                      v_round_totale := (CASE WHEN v_raw_totale >= 0 THEN ceil(v_raw_totale * power(10::NUMERIC, v_decimali)) ELSE -ceil(abs(v_raw_totale) * power(10::NUMERIC, v_decimali)) END) / power(10::NUMERIC, v_decimali);
+                  ELSIF v_metodo = 'DOWN' THEN
+                      v_round_totale := (CASE WHEN v_raw_totale >= 0 THEN floor(v_raw_totale * power(10::NUMERIC, v_decimali)) ELSE -floor(abs(v_raw_totale) * power(10::NUMERIC, v_decimali)) END) / power(10::NUMERIC, v_decimali);
+                  ELSIF v_metodo = 'HALF_DOWN' THEN
+                      v_round_totale := (CASE WHEN v_raw_totale >= 0 THEN ceil((v_raw_totale * power(10::NUMERIC, v_decimali)) - 0.5) ELSE -ceil((abs(v_raw_totale) * power(10::NUMERIC, v_decimali)) - 0.5) END) / power(10::NUMERIC, v_decimali);
+                  ELSE
+                      v_round_totale := (CASE WHEN v_raw_totale >= 0 THEN floor((v_raw_totale * power(10::NUMERIC, v_decimali)) + 0.5) ELSE -floor((abs(v_raw_totale) * power(10::NUMERIC, v_decimali)) + 0.5) END) / power(10::NUMERIC, v_decimali);
+                  END IF;
+
+                  v_arro_attuale := v_round_totale - v_raw_totale;
+                  v_totale_a_pagare := v_raw_totale + v_arro_attuale;
+
+                  PERFORM vendite.fn_set_arrotondamento_scope(
+                      v_billing_account_id, v_utility_id, v_tipo_doc_fiscale_id,
+                      v_emittente_soggetto_ruolo_id, v_valuta_id,
+                      COALESCE(v_arro_precedente, 0) + COALESCE(v_arro_attuale, 0),
+                      v_termine_id, v_modalita_id);
+
+                  UPDATE vendite.fatture f
+                     SET imponibile_tot = v_imponibile_tot, imposta_tot = v_imposta_tot, totale_doc = v_totale_doc,
+                         arrotondamento_precedente = v_arro_precedente, arrotondamento_attuale = v_arro_attuale, totale_a_pagare = v_totale_a_pagare,
+                         minimo = ((v_min_soglia_min IS NOT NULL AND v_totale_a_pagare >= v_min_soglia_min) AND (v_min_soglia_max IS NULL OR v_totale_a_pagare <= v_min_soglia_max)),
+                         data_update = now(), user_update = current_user
+                   WHERE f.id = p_fattura_id;
+
+                  PERFORM vendite.fn_sync_contabili_fondo_fattura(p_fattura_id);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_ricalcola_totali_fattura(bigint)
+              IS 'Ricalcola totali e arrotondamento della fattura. D-N pezzo 1: l''ambito di compensazione comprende (termine_pagamento_id, modalita_pagamento_id). D-N pezzo 2: il saldo d''ambito si legge al netto del contributo gia'' dato da questa fattura, cosi'' la riesecuzione ripete il primo calcolo invece di inseguirlo e la scomposizione precedente/attuale in testata resta vera. Da 3b.3 l''utility si legge da vendite.fatture.utility_id: la deduzione COALESCE(lotto, BA) partiva dal BA della fattura (il padre) mentre la chiave usa quello dell''attivita'' (il figlio), quindi con la gerarchia attiva avrebbe scelto la configurazione di arrotondamento di un''altra utility.';

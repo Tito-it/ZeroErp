@@ -44,6 +44,7 @@
 | canale_origine | USER-DEFINED | NO | 'ADMIN'::config.canale_origine |
 | emittente_snapshot | jsonb | YES |  |
 | cliente_snapshot | jsonb | YES |  |
+| utility_id | integer | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -57,6 +58,7 @@
 | FOREIGN KEY | fk_fatture_stato_doc_fiscale | stato_doc_fiscale_id |
 | FOREIGN KEY | fk_fatture_termini_pagamento | termine_pagamento_id |
 | FOREIGN KEY | fk_fatture_tipo_doc_fiscale | tipo_doc_fiscale_id |
+| FOREIGN KEY | fk_fatture_utility | utility_id |
 | FOREIGN KEY | fk_fatture_valuta | valuta_id |
 | PRIMARY KEY | pk_fatture | id |
 

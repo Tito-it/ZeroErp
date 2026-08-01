@@ -45,11 +45,17 @@ SELECT ok(
 
 -- 12) Seed: le 5 colonne "Emittente" (una per lista documento) ora bindano
 --     la descrizione, non il codice tecnico.
+--     ⚠️ 2026-08-01: due chiavi aggiornate. `contratti.col_emittente` e
+--     `preventivi.col_emittente` sono diventate `vendite.contratti.*` e
+--     `vendite.preventivi.*` con la normalizzazione delle chiavi i18n del
+--     cantiere liste/PrimeVue (commit 0c32ea34c, piano-migrazione-primevue-5
+--     §9 «80 su 80»). Il test contava 3 su 5 e falliva su una rinomina, non
+--     su una regressione del binding.
 SELECT is(
   (SELECT count(*)::int
      FROM ui.lista_colonna
     WHERE etichetta_i18n_key IN (
-            'contratti.col_emittente','preventivi.col_emittente',
+            'vendite.contratti.col_emittente','vendite.preventivi.col_emittente',
             'vendite.offerte.col_emittente','vendite.ordini.col_emittente',
             'vendite.ddt.col_emittente')
       AND campo_sorgente = 'emittente_fiscale_descrizione'),

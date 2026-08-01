@@ -1611,6 +1611,37 @@ segnalato «nucleo rotto» su una lista che lo stato lo ordina eccome. Un falso
 allarme ripetuto insegna a ignorare il controllo, ed è il modo in cui un presidio
 muore.
 
+##### Mappa di prontezza delle liste rimaste (misurata 2026-08-01)
+
+> **A cosa serve.** L'inventario del Gruppo A è ordinato per numero di colonne,
+> ma tre lotti hanno dimostrato che la difficoltà vera è un'altra: **se il
+> backend sa già ordinare e paginare**. Questa mappa dice quali liste sono
+> pescabili subito e quali richiedono lavoro BE *prima* della conversione — che
+> è la domanda che il BE ha chiesto esplicitamente di anticipare in consegna.
+
+| Lista / `.vue` | Whitelist di ordinamento | Pescabile? |
+| --- | --- | --- |
+| `AuditLogView` | `_AUDIT_ORDER_COLUMNS` (attributo di classe, `frozenset`) | ✅ sì |
+| `CategorieClientiListiniSearchTable` | `_ORDER_COLS` | ✅ sì |
+| `ApprovazioniPrezzoListView` | ❌ nessuna — `order_by="data_insert"` **cablato** nel service | ⛔ lavoro BE |
+| `EmailAccountsListView` · `EmailTemplatesListView` · `EmailLogsListView` | ❌ nessuna in `email_repository.py` | ⛔ lavoro BE |
+| `CodaLavoriTab` · `CodaStampaTab` | ❌ nessuna — le liste ordinano per `id DESC` (monitoraggio) | ⛔ lavoro BE |
+| `SituazioneApertaView` · `DashboardBacklogView` · `DashboardCompetenzaView` | `query_paged_view`, whitelist **a carico del chiamante** | 🔵 da verificare caso per caso |
+
+🔴 **La leva più grande è la famiglia email**: tre liste ferme sulla stessa
+mancanza, in un solo repository. Prepararle sblocca **il blocco singolo più
+grosso** rimasto, e — come per `attivo` — conviene farlo come passata unica
+invece che una lista per volta. Stessa forma già vista su `conversioni_uom`:
+non basta la whitelist, servono anche i query param e l'envelope paginato
+sull'endpoint (è **lavoro BE prima della conversione, non dopo**).
+
+⚠️ **Due correzioni a una lettura precedente**, entrambe da misura sul file
+sbagliato: `AuditLogView` era stata data come «nessuna whitelist» guardando
+`session_audit_repository.py`, mentre la sua vive in `amm_software_repository.py`;
+e `CategorieClientiListiniSearchTable` non era stata guardata affatto. Sono
+pescabili entrambe. Un sesto lotto di sole due liste è corto: conviene attendere
+che la famiglia email sia pronta e farne uno da cinque.
+
 #### Gruppo B — tabelle annidate (37 file, senza paginator)
 
 Dentro drawer, dialog e pannelli. **Non** vanno su `ListaConfigurabile`:
