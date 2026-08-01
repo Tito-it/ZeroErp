@@ -12,12 +12,14 @@ CREATE OR REPLACE FUNCTION vendite.fn_annulla_lotto_da_draft(p_lotto_id bigint)
  RETURNS TABLE(updated_lotti integer, updated_attivita integer, deleted_fatture integer, deleted_righe integer)
  LANGUAGE plpgsql
 AS $function$
--- Scopo: rollback tecnico di un lotto MASSIVO in DRAFT — cancella
---        le fatture PRE-FISCALI (DRAFT/EMESSA), ripristina le
---        attivita' e CHIUDE il lotto portandolo ad ANNULLATA.
--- Nome:  rinominata da fn_reset_lotto_draft il 2026-08-01 (D-L
---        pt.1). Il vecchio nome prometteva un ritorno in bozza che
---        questa funzione non fa e che ancora non esiste (Fase 6).
+-- Scopo: rollback tecnico di un lotto in DRAFT — cancella le fatture
+--        PRE-FISCALI (DRAFT/EMESSA), ripristina le attivita' e CHIUDE
+--        il lotto portandolo ad ANNULLATA.
+-- Perimetro (D-L pt.2 + D-T): vale per MASSIVO **e** GIORNALIERO. Il
+--        vincolo al solo MASSIVO e' caduto quando D-T ha reso lecita
+--        la transizione DRAFT->ANNULLATA per entrambi: un giro
+--        giornaliero interrotto deve poter tornare indietro come uno
+--        massivo. Nessun altro controllo dipende dal tipo di lotto.
 DECLARE
     v_tipo_lotto           vendite.fatturazione_lotti.tipo_lotto%TYPE;
     v_stato_doc_fiscale_id vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE;
@@ -44,12 +46,6 @@ BEGIN
     IF v_tipo_lotto IS NULL THEN
         PERFORM script.fn_log_and_raise_error('vendite', 'fn_annulla_lotto_da_draft', 'E_VALORE_MANCANTE',
             jsonb_build_object('lotto_id', p_lotto_id), NULL::uuid, concat('lotto_id ', p_lotto_id));
-    END IF;
-
-    IF v_tipo_lotto <> 'MASSIVO' THEN
-        PERFORM script.fn_log_and_raise_error('vendite', 'fn_annulla_lotto_da_draft', 'E_PARAMETRO_INVALIDO',
-            jsonb_build_object('parametro', 'tipo_lotto', 'valore', v_tipo_lotto, 'lotto_id', p_lotto_id),
-            NULL::uuid, concat('rollback solo per MASSIVO, tipo=', v_tipo_lotto));
     END IF;
 
     SELECT s.id INTO v_draft_id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE LIMIT 1;
@@ -109,7 +105,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_annulla_lotto_da_draft(p_lotto_id bigint)
-IS 'Rollback tecnico lotto MASSIVO DRAFT: elimina fatture/righe PRE-FISCALI (DRAFT/EMESSA), ripristina le attivita e CHIUDE il lotto portandolo ad ANNULLATA. Rinominata da fn_reset_lotto_draft il 2026-08-01 (D-L pt.1, rilievo C-17): il nome vecchio prometteva un ritorno in bozza che questa funzione non fa — e che ancora non esiste, e'' la Fase 6. Il task_code del registry resta reset_lotto_draft, che e'' il nome del TASK e non della funzione.';
+IS 'Rollback tecnico di un lotto in DRAFT: elimina fatture/righe PRE-FISCALI (DRAFT/EMESSA), ripristina le attivita e CHIUDE il lotto portandolo ad ANNULLATA. Rinominata da fn_reset_lotto_draft il 2026-08-01 (D-L pt.1): il nome vecchio prometteva un ritorno in bozza che non fa. Dal 2026-08-02 (D-L pt.2 + D-T) vale per MASSIVO **e** GIORNALIERO: la transizione DRAFT->ANNULLATA e'' lecita per entrambi e nessun altro controllo dipende dal tipo di lotto — un giro giornaliero interrotto deve poter tornare indietro come uno massivo. Il task_code del registry resta reset_lotto_draft, che e'' il nome del TASK.';
 ```
 
 ---

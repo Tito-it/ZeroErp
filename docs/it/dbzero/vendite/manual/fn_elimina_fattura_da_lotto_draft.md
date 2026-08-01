@@ -1,4 +1,4 @@
-## 📘 Documentazione Concettuale – Funzione `vendite.fn_elimina_fattura_draft_da_lotto`
+## 📘 Documentazione Concettuale – Funzione `vendite.fn_elimina_fattura_da_lotto_draft`
 
 > 👀 **Vedi anche**
 >
@@ -18,7 +18,7 @@
 ---
 ### 🎯 Scopo Principale
 (latest review 10-02-2026)  
-La funzione **`vendite.fn_elimina_fattura_draft_da_lotto()`** effettua il reset tecnico
+La funzione **`vendite.fn_elimina_fattura_da_lotto_draft()`** effettua il reset tecnico
 di **una singola fattura** appartenente a un lotto **MASSIVO** in stato **DRAFT**,
 senza annullare il lotto.
 
@@ -48,7 +48,7 @@ Ritorna una riga con:
 
 ```sql
 SELECT *
-FROM vendite.fn_elimina_fattura_draft_da_lotto(
+FROM vendite.fn_elimina_fattura_da_lotto_draft(
   p_lotto_id => 123,
   p_fattura_id => 456
 );

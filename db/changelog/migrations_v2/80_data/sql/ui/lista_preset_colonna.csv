@@ -212,7 +212,6 @@ preset_id,colonna_id,ordine,visibile,fissata
 17,258,90,t,f
 17,259,100,f,f
 18,260,10,t,t
-18,261,20,t,f
 18,262,30,t,f
 18,263,40,t,f
 18,264,50,t,f
@@ -329,3 +328,4 @@ preset_id,colonna_id,ordine,visibile,fissata
 33,375,70,t,f
 33,376,80,t,f
 33,377,90,t,f
+32,378,50,t,f

@@ -24,6 +24,13 @@ BEGIN
     --   intermedio (un livello di chiamata in meno).
     --
     --   Drop output column rinviato a Chunk B post BE migrato.
+    --
+    -- Fase 1 cantiere emittente (2026-08-02):
+    --   emittenti_descrizione aggrega la SOLA
+    --   ragione_sociale_completa del soggetto. Il COALESCE su
+    --   ef.descrizione e' caduto sia nel valore sia nell'ORDER BY
+    --   dell'aggregazione: lasciarlo nell'ORDER BY avrebbe
+    --   ordinato l'elenco per un campo non piu' mostrato.
     -- =========================================================
     RETURN QUERY
     WITH ctx AS (
@@ -93,9 +100,9 @@ BEGIN
           SELECT
               COUNT(*) AS cnt,
               string_agg(
-                  COALESCE(s_ef.ragione_sociale_completa, ef.descrizione),
+                  s_ef.ragione_sociale_completa,
                   ', '
-                  ORDER BY COALESCE(s_ef.ragione_sociale_completa, ef.descrizione)
+                  ORDER BY s_ef.ragione_sociale_completa
               ) AS descrizione
             FROM config.user_emittenti_fiscali uef
             JOIN anagrafiche.emittenti_fiscali ef
@@ -112,7 +119,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_operatore_detail(p_auth_user_id integer)
-IS 'Riga di dettaglio operatore + 6 capability per il drawer admin (Fase 1 P1 2026-04-29; Fase 7 cleanup 2026-04-29: rimossa call interna fn_get_ruolo_sistema E rimossa colonna ruolo_sistema dall''output - BE post-Fase 7 LANDED non la legge piu''). Migra in DB la query inline da Python e calcola capability via funzioni esistenti come single source of truth: fn_check_operatore_invitabile, fn_is_super_admin, fn_check_ultimo_super_admin_attivo. LANGUAGE plpgsql STABLE.';
+IS 'Riga di dettaglio operatore + 6 capability per il drawer admin (Fase 1 P1 2026-04-29; Fase 7 cleanup 2026-04-29: rimossa call interna fn_get_ruolo_sistema E rimossa colonna ruolo_sistema dall''output - BE post-Fase 7 LANDED non la legge piu''). Migra in DB la query inline da Python e calcola capability via funzioni esistenti come single source of truth: fn_check_operatore_invitabile, fn_is_super_admin, fn_check_ultimo_super_admin_attivo. emittenti_descrizione aggrega la ragione_sociale_completa dei soggetti emittenti (Fase 1 cantiere emittente 2026-08-02: caduto il fallback su emittenti_fiscali.descrizione, valore e ORDER BY). LANGUAGE plpgsql STABLE.';
 ```
 
 ---

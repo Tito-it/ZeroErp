@@ -267,16 +267,17 @@ SELECT ok(
 -- ============================================================
 CREATE TEMP TABLE tmp_emittente_1 AS
 WITH ins_emittente AS (
+    -- `descrizione` non esiste piu' (cantiere emittente, Fase 4 /
+    -- 20260802-22): la denominazione viene dalla ragione sociale del
+    -- soggetto associato, che questa fixture crea gia'.
     INSERT INTO anagrafiche.emittenti_fiscali (
         soggetto_ruolo_id,
         codice,
-        descrizione,
         brand_meta
     )
     SELECT
         r.soggetto_ruolo_id,
         k.codice_ef1,
-        'Emittente fiscale test 1',
         jsonb_build_object('test_scope', k.test_scope)
     FROM tmp_ef_role_1 r,
          tmp_costanti_ef k
@@ -355,16 +356,15 @@ SELECT ok(
 -- ============================================================
 CREATE TEMP TABLE tmp_emittente_2 AS
 WITH ins_emittente AS (
+    -- Vedi la nota sull'emittente 1: niente piu' `descrizione`.
     INSERT INTO anagrafiche.emittenti_fiscali (
         soggetto_ruolo_id,
         codice,
-        descrizione,
         brand_meta
     )
     SELECT
         r.soggetto_ruolo_id,
         k.codice_ef2,
-        'Emittente fiscale test 2',
         jsonb_build_object('test_scope', k.test_scope)
     FROM tmp_ef_role_2 r,
          tmp_costanti_ef k

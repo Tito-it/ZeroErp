@@ -41,15 +41,17 @@ AS $function$
     --     per operatori esistenti. Mantenere la firma generica
     --     evita falsi 0-rows quando un auth_user tecnico viene
     --     comunque interrogato per diagnostica.
-    --   - emittente_descrizione pre-aggregata: COALESCE
-    --     ragione_sociale_completa | descrizione (stesso
-    --     pattern di fn_get_operatore_detail).
+    --   - emittente_descrizione viene dalla SOLA ragione sociale
+    --     del soggetto (Fase 1 cantiere emittente, 2026-08-02):
+    --     il COALESCE su ef.descrizione e' caduto, perche' la
+    --     colonna sparisce in Fase 4 e perche' un fallback su un
+    --     campo che diverge non e' una rete, e' un rinvio.
     -- =========================================================
     WITH state AS (
         SELECT
             p_auth_user_id                                                   AS auth_user_id,
             uef.emittente_fiscale_id                                         AS emittente_id,
-            COALESCE(s_ef.ragione_sociale_completa, ef.descrizione)::text    AS emittente_descrizione,
+            s_ef.ragione_sociale_completa::text                               AS emittente_descrizione,
             script.fn_check_ultimo_super_admin_attivo(p_auth_user_id)        AS is_last_sa
           FROM (VALUES (p_auth_user_id)) AS b(auth_user_id)
           LEFT JOIN config.user_emittenti_fiscali uef
@@ -76,7 +78,7 @@ AS $function$
 $function$
 
 COMMENT ON FUNCTION script.fn_get_user_emittenti_scope(p_auth_user_id integer)
-IS 'Vista dichiarativa dello scope emittenti per un auth_user (drawer Operatore Fase 2 P1 2026-04-29). Ritorna sempre 1 riga (GLOBAL se l''utente non ha associazioni). MULTI e'' impossibile per UNIQUE(auth_user_id) di Fase 1; allowed_scope_modes resta TEXT[] per non vincolare il futuro. Capability can_change_scope derivata da fn_check_ultimo_super_admin_attivo (regola unica: lockout-guard). LANGUAGE sql STABLE.';
+IS 'Vista dichiarativa dello scope emittenti per un auth_user (drawer Operatore Fase 2 P1 2026-04-29). Ritorna sempre 1 riga (GLOBAL se l''utente non ha associazioni). MULTI e'' impossibile per UNIQUE(auth_user_id) di Fase 1; allowed_scope_modes resta TEXT[] per non vincolare il futuro. Capability can_change_scope derivata da fn_check_ultimo_super_admin_attivo (regola unica: lockout-guard). emittente_descrizione = anagrafiche.soggetti.ragione_sociale_completa del soggetto associato (Fase 1 cantiere emittente 2026-08-02: caduto il fallback su emittenti_fiscali.descrizione). LANGUAGE sql STABLE.';
 ```
 
 ---
