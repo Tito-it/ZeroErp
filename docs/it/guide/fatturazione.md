@@ -405,7 +405,7 @@ un numero fiscale (DEFINITIVA) a una fattura di cui non si è certificata l'IVA 
   (`processi=[]`): serve solo a portare lotto e fattura a EMESSA prima della numerazione,
   garantendo lo stesso invariante.
 
-> Rollback: ammesso solo da stati **pre-fiscali** (DRAFT/EMESSA). `fn_reset_lotto_draft`
+> Rollback: ammesso solo da stati **pre-fiscali** (DRAFT/EMESSA). `fn_annulla_lotto_da_draft`
 > **cancella** le fatture pre-fiscali del lotto (non numerate); le fiscali (DEFINITIVA in poi)
 > sono rifiutate.
 
@@ -476,7 +476,7 @@ fatture e chiude il lotto**. Non è un rollback reversibile: è una demolizione.
   auto-run, proprio perché distruttivo. Serve una richiesta esplicita
   (`POST /lotti/<id>/reset-draft/`).
 * Per una singola fattura esiste l'alternativa che **non** annulla il lotto:
-  `fn_reset_lotto_fattura_draft` (richiede la fattura **strettamente DRAFT**).
+  `fn_elimina_fattura_draft_da_lotto` (richiede la fattura **strettamente DRAFT**).
 * Se `rollback` è `[]` (array vuoto), lo step non prevede operazioni di pulizia.
 
 ### Regole operative del modello lotti

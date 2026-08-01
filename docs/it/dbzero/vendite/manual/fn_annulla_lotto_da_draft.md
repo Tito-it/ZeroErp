@@ -1,4 +1,4 @@
-## 📘 Documentazione Concettuale – Funzione `vendite.fn_reset_lotto_draft`
+## 📘 Documentazione Concettuale – Funzione `vendite.fn_annulla_lotto_da_draft`
 
 > 👀 **Vedi anche**
 >
@@ -20,7 +20,7 @@
 ---
 ### 🎯 Scopo Principale
 (latest review 09-02-2026)  
-La funzione **`vendite.fn_reset_lotto_draft()`** effettua il **rollback tecnico**
+La funzione **`vendite.fn_annulla_lotto_da_draft()`** effettua il **rollback tecnico**
 di un lotto **MASSIVO** in stato **DRAFT**, eliminando i documenti generati
 dal draft e ripristinando le righe di `attivita_fatturabili`.
 
@@ -64,7 +64,7 @@ Ritorna una riga con:
 
 ```sql
 SELECT *
-FROM vendite.fn_reset_lotto_draft(
+FROM vendite.fn_annulla_lotto_da_draft(
   p_lotto_id => 123
 );
 ```

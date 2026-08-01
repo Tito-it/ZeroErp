@@ -17,3 +17,8 @@ id,pipeline_id,task_code,annullabile,resume_mode,attivo,meta,data_insert,user_in
 16,6,stampa_documenti_lotto,t,RESUME_TASK,t,"{""scope"":""DEFINITIVA"",""tipo_lotto"":""GIORNALIERO""}",2026-07-20 00:00:00+02,titodb,,
 17,1,snapshot_indirizzi_lotto,t,RESUME_TASK,t,"{""scope"":""DRAFT""}",2026-07-31 00:00:00+02,titodb,,
 18,8,snapshot_indirizzi_lotto,t,RESUME_TASK,t,"{""scope"":""DRAFT"",""tipo_lotto"":""GIORNALIERO""}",2026-07-31 00:00:00+02,titodb,,
+19,3,genera_scadenze_lotto,t,RESUME_STEP,t,"{""scope"":""EMESSA""}",2026-08-01 00:00:00+02,titodb,,
+20,2,genera_scadenze_lotto,t,RESUME_STEP,t,"{""scope"":""EMESSA"",""tipo_lotto"":""GIORNALIERO""}",2026-08-01 00:00:00+02,titodb,,
+21,2,genera_fondi_source_lotto,t,RESUME_STEP,t,"{""scope"":""EMESSA"",""tipo_lotto"":""GIORNALIERO""}",2026-08-01 00:00:00+02,titodb,,
+22,2,applica_fondi_lotto,t,RESUME_STEP,t,"{""scope"":""EMESSA"",""tipo_lotto"":""GIORNALIERO""}",2026-08-01 00:00:00+02,titodb,,
+23,2,ricalcola_iva_lotto,t,RESUME_STEP,t,"{""scope"":""EMESSA"",""tipo_lotto"":""GIORNALIERO""}",2026-08-01 00:00:00+02,titodb,,
