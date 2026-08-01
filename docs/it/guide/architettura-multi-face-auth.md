@@ -93,7 +93,7 @@ nell'account.
 
 ## 3. Il nuovo bridge: `identita_digitali`
 
-La tabella [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
+La tabella [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/views/risorse_umane_auth_user)
 resta valida **come caso particolare** — il bridge del dipendente. Accanto a lei
 nasce `anagrafiche.identita_digitali`, il bridge generico che collega qualunque
 `soggetti_ruoli` a un `auth_user`.

@@ -344,3 +344,35 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 343,28,valido_al,Valido fino al,Fine validita dell identita — vuoto significa senza scadenza,valido_al,informazione,date,date_short,,70,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.col_valido_al,50
 344,28,is_active,Stato,Identita attiva o disattivata,is_active,informazione,boolean,,,80,center,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.col_stato,50
 345,28,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-08-01 00:00:00,mctit,common.col_azioni,50
+346,29,codice,Codice,Codice dell account di posta,codice,identificatore,string,,,10,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_codice,50
+347,29,descrizione,Descrizione,Descrizione dell account,descrizione,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_descrizione,50
+348,29,smtp_host,Host SMTP,Server SMTP usato per l invio,smtp_host,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_smtp_host,50
+349,29,email_from,Email mittente,Indirizzo che compare come mittente,email_from,informazione,string,,,40,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_from,50
+350,29,unita_organizzativa_descrizione,Unita organizzativa,Unita organizzativa proprietaria dell account,unita_organizzativa_descrizione,informazione,string,,,50,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_uo,50
+351,29,attivo,Attivo,Account attivo o disattivato,attivo,informazione,boolean,,,60,center,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_attivo,50
+352,30,codice,Codice,Codice del template,codice,identificatore,string,,,10,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_codice,50
+353,30,oggetto,Oggetto,Oggetto della mail generata,oggetto,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_oggetto,50
+354,30,lingua,Lingua,Lingua del template,lingua,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_lingua,50
+355,30,unita_organizzativa_descrizione,Unita organizzativa,Unita organizzativa proprietaria del template,unita_organizzativa_descrizione,informazione,string,,,40,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_uo,50
+356,30,variabili_disponibili,Variabili disponibili,Segnaposto utilizzabili nel corpo del template,variabili_disponibili,informazione,string,,,50,left,,,t,f,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_variabili,50
+357,30,attivo,Attivo,Template attivo o disattivato,attivo,informazione,boolean,,,60,center,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_attivo,50
+358,31,data_insert,Inviato il,Data e ora di registrazione dell invio,data_insert,identificatore,datetime,datetime_short,,10,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_inviato_at,50
+359,31,destinatario,Destinatario,Indirizzo di destinazione,destinatario,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_destinatario,50
+360,31,oggetto,Oggetto,Oggetto della mail inviata,oggetto,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_oggetto,50
+361,31,template_codice,Template,Template usato per comporre la mail,template_codice,informazione,string,,,40,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_template,50
+362,31,account_codice,Account,Account di posta che ha eseguito l invio,account_codice,informazione,string,,,50,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_account,50
+363,31,errore,Errore,Messaggio di errore dell ultimo tentativo fallito,errore,informazione,string,,,60,left,,,t,f,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_errore,50
+364,31,stato,Stato,Esito dell invio,stato,informazione,string,,,70,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.email_stato,50
+365,32,timestamp,Quando,Istante della modifica registrata,timestamp,identificatore,datetime,datetime_short,,10,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.audit_col_data,50
+366,32,tabella,Tabella,Sorgente di audit — tabella storicizzata di origine,tabella,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.audit_col_tipo,50
+367,32,tipo_operazione,Operazione,Tipo di operazione registrata,tipo_operazione,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.audit_col_operazione,50
+368,32,user_modifica,Utente,Utente che ha eseguito la modifica,user_modifica,informazione,string,,,40,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.audit_col_chi,50
+369,33,categoria_codice,Categoria,Categoria cliente a cui il listino si applica,categoria_codice,identificatore,string,,,10,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.matrice_categorie_listini.col_categoria,50
+370,33,utility_codice,Utility,Utility di riferimento,utility_codice,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.matrice_categorie_listini.col_utility,50
+371,33,emittente_ragione_sociale,Emittente,Emittente fiscale a cui la riga appartiene,emittente_ragione_sociale,informazione,string,,,30,left,,,t,f,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.matrice_categorie_listini.col_emittente,50
+372,33,classe_utenza_codice,Classe utenza,Classe di utenza a cui il listino si applica,classe_utenza_codice,informazione,string,,,40,left,,,t,f,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.matrice_categorie_listini.col_classe_utenza,50
+373,33,listino_codice,Listino,Listino associato alla categoria,listino_codice,informazione,string,,,50,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.matrice_categorie_listini.col_listino,50
+374,33,tipo_variazione,Variazione,Tipo di variazione applicata al listino,tipo_variazione,informazione,string,,,60,left,,,t,f,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.matrice_categorie_listini.col_variazione,50
+375,33,valido_dal,Valido dal,Inizio validita dell associazione,valido_dal,informazione,date,date_short,,70,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.matrice_categorie_listini.col_valido_dal,50
+376,33,valido_al,Valido al,Fine validita — vuoto significa senza scadenza,valido_al,informazione,date,date_short,,80,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.matrice_categorie_listini.col_valido_al,50
+377,33,attivo,Stato,Associazione attiva o disattivata,attivo,informazione,boolean,,,90,center,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,amministrazione.matrice_categorie_listini.col_attivo,50

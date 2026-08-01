@@ -190,6 +190,27 @@ WHITELIST_BE: dict[str, tuple] = {
     "vendite.listini": ("apps/vendite/db/listini_repository.py", "LISTINI_ORDER_COLUMNS"),
     "anagrafiche.operatori": ("apps/amm_software/db/amm_software_repository.py",
                               "ALLOWED_ORDER_COLUMNS"),
+    # Sesto lotto (2026-08-01). Le tre email nascono dalla passata unica del BE
+    # su `email_repository` (whitelist + query param + envelope paginato: la
+    # forma di ApiConversioniUomList), chiesta PRIMA di scegliere il lotto
+    # invece che in consegna.
+    "config.email_account": ("apps/core/db/email_repository.py",
+                             "EMAIL_ACCOUNT_ORDER_COLUMNS"),
+    "config.email_template": ("apps/core/db/email_repository.py",
+                              "EMAIL_TEMPLATE_ORDER_COLUMNS"),
+    "config.email_log": ("apps/core/db/email_repository.py", "EMAIL_LOG_ORDER_COLUMNS"),
+    # `_AUDIT_ORDER_COLUMNS` vive DENTRO la classe: nello stesso modulo c'e'
+    # anche `ALLOWED_ORDER_COLUMNS` (operatori), quindi l'ancora di classe non
+    # e' un vezzo — senza, si leggerebbe la costante sbagliata.
+    # ⚠️ Lista POLIMORFA: non legge una tabella, legge `storico.{code}` scelta a
+    # runtime da `script.vw_audit_sources`, e proietta alias sintetizzati
+    # (`tabella` <- `code`, `user_modifica` <- `user_insert`). Quindi
+    # `vista_sql` resta NULL e i tipi si mettono a mano: non c'e'
+    # `information_schema` da interrogare, perche' non c'e' UN oggetto.
+    "storico.audit_log": ("apps/amm_software/db/amm_software_repository.py",
+                          "_AUDIT_ORDER_COLUMNS", "class AmmSoftwareRepository"),
+    "anagrafiche.categorie_clienti_listini": (
+        "apps/anagrafiche/db/categorie_clienti_listini_repository.py", "_ORDER_COLS"),
 }
 
 # Colonne che devono ordinare SEMPRE, quando la lista ce l'ha (regola di

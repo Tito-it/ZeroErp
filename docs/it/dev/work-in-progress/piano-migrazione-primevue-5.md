@@ -5,11 +5,11 @@
 > CORSO**. §6.1 (Pinia 4) è **chiuso e resta valido**. §6.2/6.3 (primeicons 8)
 > è stato eseguito e poi **annullato**. §6.4 (PrimeVue 5 + themes 3) **non è
 > più una questione tecnica**. Il binario vivo è §8-bis: la conversione delle
-> liste a `<ListaConfigurabile>` è partita — **11/34 convertite** (`vendite.lotti`
-> e le 4 del primo lotto il 2026-07-31, le 3 del secondo e le 3 del terzo il
-> 2026-08-01) e **6 col seed consegnabile** — il quarto lotto (whitelist evase,
-> controllo verde) e il quinto (verde al primo passaggio, nessun blocco):
-> mancano solo i `.vue`. È utile con QUALUNQUE esito della questione licenza.
+> liste a `<ListaConfigurabile>` è partita — **17/34 convertite** (`vendite.lotti`
+> e le 4 del primo lotto il 2026-07-31; il secondo, terzo, **quarto e quinto**
+> lotto il 2026-08-01) e **5 col seed consegnabile** (il sesto lotto: 4 liste su
+> 5 verdi, una sola voce di whitelist da chiedere). Metà del Gruppo A è fatta.
+> È utile con QUALUNQUE esito della questione licenza.
 >
 > 🚨 **PrimeVue ha cambiato licenza al confine della major.** `primevue`,
 > `@primeuix/themes` e `primeicons` erano **MIT** fino alla versione
@@ -999,24 +999,24 @@ semplice alla più complessa, così le prime servono da rodaggio.
 | ✅ 01-08 | `catalogo/components/UnitaMisuraSearchTable.vue` | 6 | sì |
 | ☐ | `vendite/components/VersioneDrawer.vue` | 6 | sì |
 | ☐ | `amministrazione/views/EmailLogsListView.vue` | 7 | sì |
-| ☐ | `config/components/TemplateDocumentiSearchTable.vue` | 7 | sì |
-| ☐ | `config/components/TemplateAssetSearchTable.vue` | 8 | sì |
+| ✅ 01-08 | `config/components/TemplateDocumentiSearchTable.vue` | 7 | sì |
+| ✅ 01-08 | `config/components/TemplateAssetSearchTable.vue` | 8 | sì |
 | ✅ 01-08 | `pratiche/components/PraticheSearchTable.vue` | 8 | sì |
 | ☐ | `strumenti/components/CodaLavoriTab.vue` | 8 | sì |
 | ☐ | `vendite/components/ContrattiBillingAccountDrawer.vue` | 8 | — |
-| ☐ | `vendite/components/PromoArticoliSearchTable.vue` | 8 | sì |
+| ✅ 01-08 | `vendite/components/PromoArticoliSearchTable.vue` | 8 | sì |
 | ☐ | `vendite/offerte/components/OffertaEccezioniDrawer.vue` | 8 | — |
 | ☐ | `amministrazione/components/CategorieClientiListiniSearchTable.vue` | 9 | sì |
 | ✅ 31-07 | `amministrazione/components/TipiRuoloTipiIndirizzoSearchTable.vue` | 9 | sì |
-| ☐ | `amministrazione/views/OperatoriListView.vue` | 9 | sì |
-| ☐ | `catalogo/components/ArticoliSearchTable.vue` | 9 | sì |
+| ✅ 01-08 | `amministrazione/views/OperatoriListView.vue` | 9 | sì |
+| ✅ 01-08 | `catalogo/components/ArticoliSearchTable.vue` | 9 | sì |
 | ☐ | `strumenti/components/CodaStampaTab.vue` | 9 | sì |
 | ☐ | `vendite/components/CommessaGestioneDrawer.vue` | 9 | sì |
 | ✅ 2026-07-31 | `vendite/views/LottiListView.vue` | 9 | sì |
 | ☐ | `vendite/views/SituazioneApertaView.vue` | 10 | sì |
 | ☐ | `vendite/components/ContrattoRigheDrawer.vue` | 11 | — |
 | ☐ | `vendite/views/DashboardBacklogView.vue` | 11 | sì |
-| ☐ | `vendite/components/ListiniSearchTable.vue` | 13 | sì |
+| ✅ 01-08 | `vendite/components/ListiniSearchTable.vue` | 13 | sì |
 | ☐ | `vendite/views/DashboardCompetenzaView.vue` | 23 | sì |
 
 ##### `vendite.lotti` — ✅ CONVERTITA il 2026-07-31, validata in-app da Tid
@@ -1459,13 +1459,14 @@ Da sapere prima di convertire i `.vue`:
   > **ri-misurati**, non ricopiati.
 - **`conversioni_uom` non ha colonna azioni**: nel `.vue` non c'è kebab di riga.
 
-##### Quarto lotto — ✅ seed CONSEGNABILE, 3 liste su 3 (2026-08-01)
+##### Quarto lotto — ✅ CHIUSO: seed + 3 liste CONVERTITE (2026-08-01)
 
-> **Chiuso in giornata.** Righe di seed nei quattro CSV (liste **23-25**, colonne
-> **298-320**, preset 23-25); il BE ha evaso **tutte e 12** le voci di whitelist
-> — non solo le due che bloccavano — e il controllo di consegna è passato da
-> «1 su 3» a **25 liste allineate in tutte e tre le direzioni**. Restano da
-> convertire i tre `.vue`.
+> **Chiuso in giornata, su entrambe le sponde.** Righe di seed nei quattro CSV
+> (liste **23-25**, colonne **298-320**, preset 23-25); il BE ha evaso **tutte e
+> 12** le voci di whitelist — non solo le due che bloccavano — e il controllo di
+> consegna è passato da «1 su 3» a **25 liste allineate in tutte e tre le
+> direzioni**. ✅ **I tre `.vue` sono stati convertiti** lo stesso giorno
+> (`fb59cc5a4` e il commit precedente per `promo_articoli`).
 >
 > La selezione è stata fatta **misurando**, non leggendo l'inventario, e la
 > misura ha ribaltato l'ordine del piano.
@@ -1561,13 +1562,17 @@ esplicito di Tid** e messo in `requirements.txt` (stessa versione del backend,
 **controllo** di consegna non ha mai avuto questo vincolo: non usa il DB e gira
 ovunque ci sia il repo.
 
-##### Quinto lotto — ✅ seed CONSEGNABILE, 3 liste su 3, nessun blocco (2026-08-01)
+##### Quinto lotto — ✅ CHIUSO: seed + 3 liste CONVERTITE, senza attese (2026-08-01)
 
 > **Il primo lotto che nasce senza rompere il nucleo su nessuna delle tre**, ed è
 > il dividendo della passata `attivo`: due di queste liste l'avevano già in
 > whitelist *prima* di essere scelte. Liste **26-28**, colonne **321-345**,
 > preset 26-28. Controllo di consegna **ok su tutte e tre al primo passaggio**;
 > **zero chiavi i18n nuove**.
+>
+> ✅ **Convertito lo stesso giorno** (`fb59cc5a4`), senza che nessuna delle due
+> sponde abbia dovuto aspettare l'altra: seed e `.vue` sono atterrati nella
+> stessa giornata in cui il lotto è stato scelto. È il primo a riuscirci.
 
 | Lista | `lista_id` | `.vue` | Col. | Ordina | `vista_sql` |
 | --- | --- | --- | --- | --- | --- |
@@ -1611,6 +1616,46 @@ segnalato «nucleo rotto» su una lista che lo stato lo ordina eccome. Un falso
 allarme ripetuto insegna a ignorare il controllo, ed è il modo in cui un presidio
 muore.
 
+##### Sesto lotto — 🟡 seed SCRITTO, 4 liste su 5 verdi (2026-08-01)
+
+> Liste **29-33**, colonne **346-377**, preset 29-33. **Zero chiavi i18n nuove.**
+> Nato dalla mappa di prontezza qui sotto: la famiglia email era il blocco più
+> grosso rimasto, è stata chiesta al BE **prima** di scegliere il lotto, e loro
+> l'hanno preparata — quindi il lotto è arrivato con tre liste già pronte invece
+> che con tre richieste da fare.
+
+| Lista | `lista_id` | `.vue` | Col. | Ordina | Consegna |
+| --- | --- | --- | --- | --- | --- |
+| `config.email_account` | 29 | `amministrazione/views/EmailAccountsListView.vue` | 6 | **6** | ✅ ok |
+| `config.email_template` | 30 | `amministrazione/views/EmailTemplatesListView.vue` | 6 | 5 | ✅ ok |
+| `config.email_log` | 31 | `amministrazione/views/EmailLogsListView.vue` | 7 | 6 | ✅ ok |
+| `storico.audit_log` | 32 | `amministrazione/views/AuditLogView.vue` | 4 | **4** | ✅ ok |
+| `anagrafiche.categorie_clienti_listini` | 33 | `amministrazione/components/CategorieClientiListiniSearchTable.vue` | 9 | 6 | ⛔ nucleo |
+
+🔴 **L'unica voce da chiedere**: `emittente_ragione_sociale` in `_ORDER_COLS` di
+`categorie_clienti_listini_repository`. **È nucleo** — la ragione sociale ordina
+sempre — quindi blocca quella lista e solo quella. Le altre tre non ordinabili
+(`classe_utenza_codice`, `tipo_variazione`, e l'emittente stesso) sono nate
+`ordinabile = f`.
+
+**La passata email ha reso due liste su tre complete al 100%**, e nessuna delle
+cinque rompe il nucleo per colpa nostra. È la seconda conferma dello schema:
+chiedere il lavoro BE **prima** di scegliere il lotto, non in consegna.
+
+⚠️ **`storico.audit_log` è una lista POLIMORFA**, l'unica finora. Non legge una
+tabella: legge `storico.{code}` scelta a runtime da `script.vw_audit_sources`, e
+proietta alias sintetizzati (`tabella` ← `code`, `user_modifica` ← `user_insert`).
+Quindi `vista_sql` resta NULL e i tipi si mettono a mano — non c'è un
+`information_schema` da interrogare, perché non c'è **un** oggetto. Il
+generatore non la può produrre da solo, e va scritta a mano sapendo perché.
+
+> ⚠️ **E scrivendola a mano ho inventato quattro chiavi i18n** invece di
+> leggerle dal `.vue` (`amministrazione.audit_timestamp` e sorelle, mentre le
+> vere sono `audit_col_data`, `audit_col_tipo`, `audit_col_operazione`,
+> `audit_col_chi`). Corrette. Il generatore le deduce dalle etichette e non
+> sbaglia: **il pezzo scritto a mano è quello in cui si sbaglia**, ed è
+> esattamente il pezzo che il generatore non poteva coprire.
+
 ##### Mappa di prontezza delle liste rimaste (misurata 2026-08-01)
 
 > **A cosa serve.** L'inventario del Gruppo A è ordinato per numero di colonne,
@@ -1621,26 +1666,38 @@ muore.
 
 | Lista / `.vue` | Whitelist di ordinamento | Pescabile? |
 | --- | --- | --- |
-| `AuditLogView` | `_AUDIT_ORDER_COLUMNS` (attributo di classe, `frozenset`) | ✅ sì |
-| `CategorieClientiListiniSearchTable` | `_ORDER_COLS` | ✅ sì |
+| `AuditLogView` | `_AUDIT_ORDER_COLUMNS` (attributo di classe, `frozenset`) | ✅ **seedata**, lotto 6 |
+| `CategorieClientiListiniSearchTable` | `_ORDER_COLS` | ✅ **seedata**, lotto 6 |
+| `EmailAccountsListView` · `EmailTemplatesListView` · `EmailLogsListView` | ~~nessuna~~ → ✅ tre whitelist + endpoint paginati (BE, `fb59cc5a4`) | ✅ **seedate**, lotto 6 |
 | `ApprovazioniPrezzoListView` | ❌ nessuna — `order_by="data_insert"` **cablato** nel service | ⛔ lavoro BE |
-| `EmailAccountsListView` · `EmailTemplatesListView` · `EmailLogsListView` | ❌ nessuna in `email_repository.py` | ⛔ lavoro BE |
-| `CodaLavoriTab` · `CodaStampaTab` | ❌ nessuna — le liste ordinano per `id DESC` (monitoraggio) | ⛔ lavoro BE |
+| `CodaLavoriTab` · `CodaStampaTab` | ❌ nessuna — le liste ordinano per `id DESC` (monitoraggio) | ⛔ decisione di dominio |
 | `SituazioneApertaView` · `DashboardBacklogView` · `DashboardCompetenzaView` | `query_paged_view`, whitelist **a carico del chiamante** | 🔵 da verificare caso per caso |
 
-🔴 **La leva più grande è la famiglia email**: tre liste ferme sulla stessa
-mancanza, in un solo repository. Prepararle sblocca **il blocco singolo più
-grosso** rimasto, e — come per `attivo` — conviene farlo come passata unica
-invece che una lista per volta. Stessa forma già vista su `conversioni_uom`:
-non basta la whitelist, servono anche i query param e l'envelope paginato
-sull'endpoint (è **lavoro BE prima della conversione, non dopo**).
+✅ **La leva più grande era la famiglia email — ed è stata tirata.** Tre liste
+ferme sulla stessa mancanza, in un solo repository: chiesta come **passata
+unica prima di scegliere il lotto**, il BE ha aggiunto le tre whitelist
+(`EMAIL_ACCOUNT_/TEMPLATE_/LOG_ORDER_COLUMNS`) e portato le tre view alla forma
+di `ApiConversioniUomList` — `parse_list_params`, `order_by`/`order_dir`,
+`paginated_envelope`. Risultato: le tre liste sono entrate nel sesto lotto già
+verdi, due delle quali complete al 100%.
+
+> **Il metodo che ha funzionato due volte** (`attivo`, poi email): guardare il
+> residuo **prima** di comporre il lotto, isolare il blocco che vale più liste,
+> e chiederlo come passata unica. La stessa richiesta spezzata in tre consegne
+> sarebbe costata tre giri e avrebbe prodotto tre lotti con le frecce morte.
 
 ⚠️ **Due correzioni a una lettura precedente**, entrambe da misura sul file
 sbagliato: `AuditLogView` era stata data come «nessuna whitelist» guardando
 `session_audit_repository.py`, mentre la sua vive in `amm_software_repository.py`;
-e `CategorieClientiListiniSearchTable` non era stata guardata affatto. Sono
-pescabili entrambe. Un sesto lotto di sole due liste è corto: conviene attendere
-che la famiglia email sia pronta e farne uno da cinque.
+e `CategorieClientiListiniSearchTable` non era stata guardata affatto. La
+conclusione che ne era seguita — «aspettare la famiglia email e farne uno da
+cinque» — si è rivelata giusta: è esattamente il sesto lotto.
+
+**Cosa resta dopo il sesto**: `ApprovazioniPrezzoListView` (decidere *se* debba
+essere ordinabile, prima di seedarla: oggi l'`order_by` è cablato), le due code
+(l'ordine `id DESC` è il loro contenuto informativo, renderle ordinabili è una
+scelta di dominio) e le tre dashboard, da guardare una per una. Nessuna di
+queste è un allineamento meccanico: sono tutte decisioni.
 
 #### Gruppo B — tabelle annidate (37 file, senza paginator)
 
@@ -1711,6 +1768,47 @@ maturità.
 ---
 
 ## 9. Registro
+
+### 2026-08-01 · Sesto lotto, e metà del Gruppo A è fatta
+
+Giornata chiusa a **17/34 convertite** — metà esatta del Gruppo A — con il sesto
+lotto seedato e quattro liste su cinque verdi.
+
+| | |
+|---|---|
+| convertite in giornata | **12** (secondo, terzo, quarto, quinto lotto) |
+| seed scritti in giornata | **11** liste (quarto, quinto, sesto) |
+| KO aperti a fine giornata | **1** (`emittente_ragione_sociale`, nucleo) |
+| chiavi i18n nuove chieste dal 5° e 6° lotto | **zero** |
+
+**Il metodo ha retto due volte di fila, e la seconda era una previsione.** Con
+`attivo` avevamo chiesto una passata unica e il BE l'aveva estesa a nove
+whitelist: il quinto lotto ne ha raccolto il dividendo senza attese. Con la
+famiglia email abbiamo fatto la stessa cosa **deliberatamente** — mappa di
+prontezza del residuo, isolato il blocco che valeva tre liste, chiesto **prima**
+di comporre il lotto. Il BE ha aggiunto le tre whitelist e portato le view alla
+forma di `ApiConversioniUomList`, e le tre liste sono entrate nel sesto lotto
+già verdi, due complete al 100%. Spezzata in tre consegne, la stessa richiesta
+sarebbe costata tre giri e avrebbe prodotto tre lotti con le frecce morte.
+
+**La prima lista polimorfa del binario.** `storico.audit_log` non legge una
+tabella ma `storico.{code}`, scelta a runtime da `script.vw_audit_sources`, con
+alias sintetizzati. Il generatore non la può produrre: non c'è un
+`information_schema` da interrogare perché non c'è **un** oggetto. Scritta a
+mano — ed è lì che ho inventato quattro chiavi i18n invece di leggerle dal
+`.vue`. Corrette. La regolarità è netta e vale per i prossimi casi simili: **il
+pezzo scritto a mano è quello in cui si sbaglia**, e capita di doverlo scrivere
+proprio dove lo strumento non arriva. Quando succede, la verifica va fatta con
+più cura, non con meno.
+
+**Il presidio ha preso anche l'altro mio errore**: `emittente_ragione_sociale` è
+nucleo, e non l'avevo visto nella misura preliminare perché cercavo
+`ragione_sociale` fra i pattern mentre la colonna ha un prefisso. Il controllo
+la riconosce per sottostringa. Due errori miei intercettati in un lotto solo,
+entrambi da uno strumento che a inizio giornata non aveva né il quarto controllo
+né la lettura dei `frozenset`.
+
+---
 
 ### 2026-08-01 · Quinto lotto: il primo che non aspetta nessuno, e il generatore che smentisce una misura a mano
 

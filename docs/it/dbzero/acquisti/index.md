@@ -14,6 +14,5 @@
 ## ⚙️ Funzioni
 - [fn_get_acquisti_note](funzioni/fn_get_acquisti_note.md)
 - [trgfn_acq_ordini_only_consegna_tipo_con](funzioni/trgfn_acq_ordini_only_consegna_tipo_con.md)
-- [trgfn_ddt_indirizzi_only_allowed_tipi](funzioni/trgfn_ddt_indirizzi_only_allowed_tipi.md)
 
 ## 🔍 Views

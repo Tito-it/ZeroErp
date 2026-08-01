@@ -18,7 +18,6 @@
 > * [vendite.promo_articoli](/dbzero/vendite/tabelle/promo_articoli)
 > * [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti) (BoM versionata immutabile)
 > * [vendite.fn_resolve_prezzo_listino_v2](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2)
-> * [vendite.fn_resolve_prezzo_composito](/dbzero/vendite/funzioni/fn_resolve_prezzo_composito)
 >
 > **Vedi anche** — API e service backend:
 >
@@ -220,7 +219,10 @@ Un articolo composito (`is_composito = true`) ha una distinta base in `articoli_
 - **Nessun componente esposto** (CASO B / B1 / B2): il composito ha un prezzo unico (riga listino sul composito, o somma componenti a fallback). Resolver al push, status quo.
 - **Almeno un componente esposto** (CASO A): il resolver ritorna N righe (una per componente). Ogni componente esposto diventa una **riga negoziabile a se' stante** dentro il documento sorgente — vedi §5.2.1 sotto. Al push, la pipeline espande l'articolo composito in N righe `commesse_attivita` separate.
 
-Logica completa in [vendite.fn_resolve_prezzo_composito](/dbzero/vendite/funzioni/fn_resolve_prezzo_composito).
+Logica completa in [vendite.fn_resolve_prezzo_listino_v2](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2),
+che è **bundle-aware** tramite `p_articolo_padre_contesto`: il vecchio
+`fn_resolve_prezzo_composito` è stato ritirato e il resolver canonico è uno solo
+(cfr. `dev/work-done/brief-db-drop-fn-resolve-prezzo-composito.md`).
 
 #### 5.2.1 Componenti CASO A nel ciclo preventivo → commessa
 

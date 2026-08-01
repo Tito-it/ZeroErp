@@ -22,13 +22,10 @@
 - [comune_trasformazioni](tabelle/comune_trasformazioni.md)
 - [comuni](tabelle/comuni.md) — * **Audit Trail**: Conservare una traccia immutabile di ogni modifica e cancellazione applicata a `config.comuni`. * **Versioning dei record**: Permettere la ricostruzione dello stato storico di ogni comune in un dato momento. * **Query storiche**: Supportare interrogazioni basate su intervalli temporali grazie ai campi `valid_from` e `valid_to`. * **Classificazione operazioni**: Utilizzare `tipo_operazione_id` e `change_type` per distinguere INSERT iniziale, UPDATE e DELETE. ---
 - [conti_bancari](tabelle/conti_bancari.md)
-- [dati_catastali](tabelle/dati_catastali.md)
 - [dati_societari](tabelle/dati_societari.md) — * **Versionamento completo**   Acquisire snapshot di ogni record di `anagrafiche.dati_societari` per garantire la tracciabilità delle evoluzioni nel tempo. * **Audit e compliance**   Conservare informazioni su chi (`user_insert`) e quando (`data_insert`) è stata eseguita l’operazione, nonché su quale transazione di business (`tx_id`). * **Intervalli di validità**   Definire periodi di efficacia di ciascuno snapshot con `valid_from` (inclusivo) e `valid_to` (esclusivo), facilitando interrogazioni temporali.
 - [ddt](tabelle/ddt.md)
 - [ddt_righe](tabelle/ddt_righe.md)
 - [documenti_fatturazione_canali](tabelle/documenti_fatturazione_canali.md)
-- [documenti_generati](tabelle/documenti_generati.md)
-- [documenti_generati_file](tabelle/documenti_generati_file.md)
 - [emittenti_fiscali](tabelle/emittenti_fiscali.md)
 - [eventi_assets](tabelle/eventi_assets.md)
 - [fatturazione_lotti](tabelle/fatturazione_lotti.md)
@@ -73,7 +70,6 @@
 - [profili_accesso_bindings](tabelle/profili_accesso_bindings.md)
 - [psp](tabelle/psp.md)
 - [registri_fatturazione](tabelle/registri_fatturazione.md)
-- [regole_fatturazione_articolo](tabelle/regole_fatturazione_articolo.md)
 - [regole_generazione](tabelle/regole_generazione.md)
 - [render_engine_documento](tabelle/render_engine_documento.md)
 - [resellers](tabelle/resellers.md)
@@ -93,7 +89,6 @@
 - [soggetti_ruoli_conti_bancari](tabelle/soggetti_ruoli_conti_bancari.md)
 - [sospensioni](tabelle/sospensioni.md)
 - [stati_pdp](tabelle/stati_pdp.md)
-- [sto_demo_storico](tabelle/sto_demo_storico.md)
 - [stradario](tabelle/stradario.md) — * **Audit Trail**: Conservare una traccia completa di ogni modifica o cancellazione effettuata su `config.stradario`. * **Versioning dei record**: Permettere la ricostruzione dello stato di una via in un dato momento, grazie ai campi `valid_from` e `valid_to`. * **Riproduzione dello schema**: Utilizzare il campo **`snapshot`** (JSONB) per salvare tutti i dettagli di `config.stradario` al momento dell’operazione, anche a fronte di evoluzioni dello schema. * **Classificazione delle operazioni**: Impiegare **`tipo_operazione_id`** (1=insert iniziale, 2=update, 3=delete) e **`change_type`** (A=Active, S=Suppressed, F=Fused, D=Divided) per distinguere rapidamente la natura del cambiamento.
 - [stradario_trasformazioni](tabelle/stradario_trasformazioni.md)
 - [template_asset](tabelle/template_asset.md)
