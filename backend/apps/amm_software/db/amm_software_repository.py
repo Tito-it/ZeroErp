@@ -164,8 +164,8 @@ class AmmSoftwareRepository:
                    ru.attivo,
                    ru.valido_dal::text,
                    ru.valido_al::text,
-                   (SELECT string_agg(COALESCE(s_ef.ragione_sociale_completa, ef.descrizione), ', '
-                                      ORDER BY COALESCE(s_ef.ragione_sociale_completa, ef.descrizione))
+                   (SELECT string_agg(s_ef.ragione_sociale_completa, ', '
+                                      ORDER BY s_ef.ragione_sociale_completa)
                       FROM config.user_emittenti_fiscali uef
                       JOIN anagrafiche.emittenti_fiscali ef ON ef.id = uef.emittente_fiscale_id
                       LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
@@ -1275,17 +1275,21 @@ class AmmSoftwareRepository:
 
     # Scopo: Lista emittenti fiscali per dropdown scope operatore.
     #        Espone ragione_sociale del soggetto associato via soggetto_ruolo_id.
+    # `emittenti_fiscali.descrizione` non viene piu' proiettata ne' usata come
+    # tiebreaker d'ordine (etichetta interna divergente, in via di eliminazione —
+    # brief `brief-emittente-ragione-sociale-dal-soggetto.md`): il consumer FE
+    # (`formatEmittenteOptionLabel`) legge `ragione_sociale`, gia' presente.
     def list_emittenti_fiscali(self) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
-                """SELECT ef.id, ef.codice, ef.descrizione,
+                """SELECT ef.id, ef.codice,
                           ef.soggetto_ruolo_id,
                           s.ragione_sociale_completa AS ragione_sociale
                      FROM anagrafiche.emittenti_fiscali ef
                      LEFT JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ef.soggetto_ruolo_id
                      LEFT JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
                     WHERE ef.attivo = true
-                    ORDER BY s.ragione_sociale_completa, ef.descrizione"""
+                    ORDER BY s.ragione_sociale_completa, ef.codice"""
             )
             return rows_to_list(cursor)
 

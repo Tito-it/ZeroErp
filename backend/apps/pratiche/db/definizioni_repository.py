@@ -114,13 +114,22 @@ class DefinizioniRepository:
     # SELECT condiviso lista↔dettaglio (header edizione + drift): una sola fonte,
     # così le due letture non possono divergere sulle colonne. Le clausole
     # WHERE/ORDER BY le aggiunge il metodo chiamante.
+    #
+    # `emittente_display` viene dalla ragione sociale del SOGGETTO dell'emittente
+    # (`ragione_sociale_completa`, la stessa che la fattura congela), non da
+    # `emittenti_fiscali.descrizione`: quella colonna è un'etichetta interna che
+    # diverge dal nome dell'azienda ed è in via di eliminazione (brief
+    # `brief-emittente-ragione-sociale-dal-soggetto.md`). Niente fallback su
+    # `descrizione`: la vista è piena su tutti i soggetti_ruoli.
+    # `ragione_sociale_completa` — e non `ragione_sociale` — perché sulle persone
+    # fisiche la seconda è vuota (il nome sta in nome/cognome).
     _DEFINIZIONE_SELECT = """
         SELECT
             wd.id,
             wd.tipo_prestazione_id,
             tp.descrizione                       AS tipo_prestazione_descrizione,
             wd.emittente_fiscale_id,
-            ef.descrizione                       AS emittente_display,
+            s_ef.ragione_sociale_completa        AS emittente_display,
             wd.versione,
             wd.stato,
             wd.descrizione,
@@ -132,6 +141,8 @@ class DefinizioniRepository:
         FROM pratiche.workflow_definizioni wd
         JOIN pratiche.tipi_prestazione tp ON tp.id = wd.tipo_prestazione_id
         LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = wd.emittente_fiscale_id
+        LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+        LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
         LEFT JOIN pratiche.vw_definizioni_drift drift ON drift.definizione_id = wd.id
     """
 

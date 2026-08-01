@@ -155,7 +155,7 @@ _SELECT_COLS_OFFERTA = """
     -- option singola del Select disabled. Senza questi campi il display
     -- resta vuoto in modifica nonostante `emittente_fiscale_id` valorizzato.
     ef.codice           AS emittente_fiscale_codice,
-    COALESCE(s_ef.ragione_sociale_completa, ef.descrizione)
+    s_ef.ragione_sociale_completa
                         AS emittente_fiscale_descrizione,
     o.billing_account_id,
     -- soggetto_ruolo del cliente (BA): serve al FE per la gestione

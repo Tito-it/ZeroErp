@@ -250,7 +250,12 @@ export const useAuthStore = defineStore('auth', () => {
       // `soggetto_ruolo_id` (senza prefisso). E' la PK verso soggetti_ruoli.
       soggettoRuoloId: ef.soggetto_ruolo_id ?? null,
       codice: ef.emittente_codice ?? null,
-      ragioneSociale: ef.ragione_sociale_completa ?? ef.emittente_descrizione ?? null,
+      // `ragione_sociale_completa` arriva dal merge con
+      // fn_get_soggetto_dati_by_ruolo ed e' sempre presente: il vecchio fallback
+      // su `emittente_descrizione` (etichetta interna dell'emittente, in via di
+      // eliminazione) era codice morto — tolto il 2026-08-02, vedi
+      // `brief-emittente-ragione-sociale-dal-soggetto.md`.
+      ragioneSociale: ef.ragione_sociale_completa ?? null,
     }
   })
 

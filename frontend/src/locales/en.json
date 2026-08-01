@@ -665,7 +665,7 @@
       "usage_hint": "List of fiscal issuers with override configured for the same utility (only when the matrix is for the Fiscal Issuer role).",
       "usage_count": "Fiscal issuers with override",
       "usage_col_codice": "Code",
-      "usage_col_descrizione": "Description",
+      "usage_col_ragione_sociale": "Business name",
       "col_utility_codice": "Utility code",
       "col_utility_descrizione": "Utility",
       "col_tipo_ruolo_codice": "Role code",

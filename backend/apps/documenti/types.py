@@ -36,6 +36,11 @@ class TemplateDocumentoListRow(TypedDict):
     file_name_pattern: str | None
     emittente_fiscale_id: int
     emittente_fiscale_codice: str
+    # ⚠️ Nonostante il nome, porta la RAGIONE SOCIALE del soggetto emittente
+    # (`soggetti.ragione_sociale_completa`), non `emittenti_fiscali.descrizione`:
+    # quella e' un'etichetta interna divergente, in via di eliminazione (brief
+    # `brief-emittente-ragione-sociale-dal-soggetto.md`). L'alias e' rimasto per
+    # non rompere i punti a valle; la rinomina e' una fase separata.
     emittente_fiscale_descrizione: str
     data_insert: datetime
     data_update: datetime
