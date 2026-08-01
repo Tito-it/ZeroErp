@@ -24,3 +24,6 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert
 23,vendite.promo_articoli,Promozioni articolo,vendite,NULL,t,2026-08-01 00:00:00,mctit
 24,documenti.template_documenti,Template documenti,documenti,NULL,t,2026-08-01 00:00:00,mctit
 25,documenti.template_asset,Asset dei template documenti,documenti,NULL,t,2026-08-01 00:00:00,mctit
+26,catalogo.articoli,Articoli di catalogo,catalogo,vw_articoli_dettaglio,t,2026-08-01 00:00:00,mctit
+27,vendite.listini,Listini di vendita,vendite,NULL,t,2026-08-01 00:00:00,mctit
+28,anagrafiche.operatori,Operatori,anagrafiche,NULL,t,2026-08-01 00:00:00,mctit
