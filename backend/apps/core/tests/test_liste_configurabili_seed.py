@@ -156,7 +156,7 @@ _LISTE: tuple[tuple[str, object], ...] = (
     ("config.tipi_ruolo_tipi_indirizzo", _whitelist_tipi_ruolo_tipi_indirizzo),
     # Secondo lotto, 2026-07-31 (seed nato gia' in regola: `pratiche` e il tab
     # BA non hanno chiesto nulla al backend, emittenti solo `partita_iva`).
-    ("pratiche.pratiche", _da_costante("apps.pratiche.db.pratiche_repository", "_PRATICHE_ORDER_COLS")),
+    ("pratiche.pratiche", _da_costante("apps.pratiche.db.pratiche_repository", "PRATICHE_ORDER_COLS")),
     ("anagrafiche.emittenti_fiscali", _da_costante("apps.anagrafiche.db.emittenti_fiscali_repository", "_EMITTENTI_ORDER_COLS")),
     ("anagrafiche.emittente_billing_account", _whitelist_emittente_billing_account),
     # Terzo lotto, 2026-08-01: le tre liste UoM di catalogo. L'ordinamento
