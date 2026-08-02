@@ -155,7 +155,17 @@ WHITELIST_BE: dict[str, tuple] = {
     "config.utilities_tipi_ruolo": ("apps/config/db/utilities_tipi_ruolo_repository.py", "_ORDER_COLS"),
     "config.tipi_ruolo_tipi_indirizzo": ("apps/config/db/tipi_ruolo_tipi_indirizzo_repository.py",
                                          "_ORDER_COLS"),
-    "pratiche.pratiche": ("apps/pratiche/db/pratiche_repository.py", "_PRATICHE_ORDER_COLS"),
+    # ⚠️ Era `_PRATICHE_ORDER_COLS`. Rinominata dal BE il 2026-08-02 nella
+    # passata del 7° lotto: le whitelist passano da privata/`ClassVar` a
+    # costante di MODULO pubblica, perche' un gate che le derivava dalla classe
+    # si svuotava quando un test mockava il repository — il controllo dipendeva
+    # dal mock invece che dal codice. La regola che ne hanno tratto («una
+    # whitelist e' un dato, non un comportamento») e' giusta, ma e' la SECONDA
+    # volta in un giorno che questo registro resta indietro su una rinomina,
+    # dopo `AUDIT_ORDER_COLUMNS`. Il presidio se ne accorge e si ferma, che e'
+    # il comportamento voluto; ma quando il BE rinomina una whitelist,
+    # aggiornare qui e' parte della stessa passata.
+    "pratiche.pratiche": ("apps/pratiche/db/pratiche_repository.py", "PRATICHE_ORDER_COLS"),
     "vendite.lotti": ("apps/vendite/db/vendite_repository.py", "LOTTI_SORT_COLUMNS"),
     "vendite.contratti": ("apps/vendite/db/contratti_repository.py", "_ORDER_COLS_CONTRATTI"),
     "vendite.preventivi": ("apps/vendite/db/preventivi_repository.py", "_ORDER_COLS_PREVENTIVI"),
@@ -217,6 +227,21 @@ WHITELIST_BE: dict[str, tuple] = {
                           "AUDIT_ORDER_COLUMNS"),
     "anagrafiche.categorie_clienti_listini": (
         "apps/anagrafiche/db/categorie_clienti_listini_repository.py", "_ORDER_COLS"),
+    # Settimo lotto (2026-08-02), dalla passata unica del BE. Tutte e tre le
+    # whitelist sono costanti di MODULO: il BE le ha portate fuori dalla classe
+    # dopo aver scoperto che un gate derivato dal `ClassVar` si svuotava quando
+    # un test mockava il repository — il controllo dipendeva dal mock invece che
+    # dal codice. «Una whitelist e' un dato, non un comportamento.»
+    "dbops.coda_lavori": ("apps/core/services/coda_lavori/repository.py",
+                          "ELENCA_SORT_SQL"),
+    "vendite.fatture_stampa_coda": ("apps/vendite/db/pipeline_repository.py",
+                                    "CODA_STAMPA_SORT_SQL"),
+    # ⚠️ La coda approvazioni non ha una whitelist propria: passa da
+    # `cerca_pratiche`, quindi la sua e' quella delle pratiche. E' il motivo per
+    # cui la mappa di prontezza l'aveva data per «senza ordinamento» — cercata
+    # nel repository che porta il nome della lista, dove non c'e'.
+    "vendite.approvazioni_prezzo": ("apps/pratiche/db/pratiche_repository.py",
+                                    "PRATICHE_ORDER_COLS"),
 }
 
 # Colonne che devono ordinare SEMPRE, quando la lista ce l'ha (regola di

@@ -53,7 +53,22 @@ Tre cose da notare, perché sono scelte e non dettagli:
 * **La quadratura sta sull'ultima rata.** Le prime rate portano la quota
   arrotondata, l'ultima assorbe la differenza — così la somma delle rate è
   **esattamente** il totale del documento, non una sua approssimazione.
-  Esempio: 100 € in 3 rate → 33,33 + 33,33 + **33,34**.
+
+  ⚠️ «Assorbe la differenza» **non vuol dire «riceve di più»**: la direzione
+  dipende da come arrotonda la divisione, e con i termini di oggi va quasi
+  sempre nel verso opposto a quello che ci si aspetta.
+
+  | Base | Rate | Piano | L'ultima riceve |
+  | --- | ---: | --- | --- |
+  | 10,03 | 2 | 5,02 · **5,01** | **meno** (5,015 arrotonda per eccesso) |
+  | 100,00 | 3 | 33,33 · 33,33 · **33,34** | più (33,3333 arrotonda per difetto) |
+
+  Con **2 rate** `base/2` finisce sempre per 0 o 5 al terzo decimale, quindi
+  `HALF_UP` arrotonda sempre per eccesso e la prima rata è sempre ≥ dell'ultima:
+  il verso opposto si osserva solo **da 3 rate in su**. ℹ️ E il catalogo di oggi
+  arriva **al massimo a 2 rate**, quindi la riga con 100,00 illustra la formula
+  ma **non è riproducibile** senza aggiungere un termine. L'unico invariante che
+  vale sempre è: **Σ rate = totale a pagare, esatta al centesimo**.
 * **Il cavallo d'anno non ha codice dedicato.** `20/12/2026 + 30 giorni` dà
   `19/01/2027` perché è PostgreSQL a gestire il calendario: nessuna aritmetica
   scritta a mano, quindi nessun caso limite da ricordare.

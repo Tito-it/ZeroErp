@@ -70,8 +70,18 @@ SELECT is(
          WHERE ld.codice = 'anagrafiche.fornitori'
            AND lc.attivo = TRUE
     ),
-    15,
-    '4. Catalogo fornitori: esattamente 15 colonne attive'
+    -- ⚠️ 13, non 15, e il 15 non e' mai stato vero rispetto al seed.
+    --    Il commit che ha parametrizzato questa lista (2000d8261) ha introdotto
+    --    `id_fiscale` — che UNISCE codice fiscale e partita IVA, vedi il test 5
+    --    qui sotto — e ha disattivato le due colonne che rimpiazza
+    --    (`codice_fiscale` e `partita_iva`, entrambe `attivo=f` nel CSV dallo
+    --    stesso commit). Il conto pero' e' rimasto a quello di prima.
+    --    15 colonne attive erano ottenibili solo con un database DIVERGENTE dal
+    --    seed: il test passava per la divergenza, non nonostante.
+    --    Emerso il 2026-08-02, quando una modifica non correlata allo stesso
+    --    CSV ha fatto ri-girare il loader `runOnChange` e riallineato il DB.
+    13,
+    '4. Catalogo fornitori: esattamente 13 colonne attive (id_fiscale unisce CF e P.IVA)'
 );
 
 -- =========================================================

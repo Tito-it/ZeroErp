@@ -1,9 +1,39 @@
 # Brief DB — snapshot dell'intestazione fiscale della fattura
 
+> ## ✅ CHIUSO — 2026-08-02
+>
+> **Tutte le richieste sono state evase.** `emittente_snapshot` /
+> `cliente_snapshot` in testata con guard di congelamento (I.1),
+> `fn_snapshot_intestazione_fattura` come funzione **sorella** e non estensione
+> (I.2), wrapper rinominato `fn_snapshot_fattura_lotto` col sesto contatore
+> (I.3), guard di uscita da DRAFT col criterio allargato — indirizzi **e**
+> intestazione (I.4, codice **575**), pgTAP `plan(12)` (I.6).
+>
+> ✅ **Anche il §3.6 è stato evaso** (I.5, 2026-08-02): la matrice
+> `config.tipi_ruolo_tipi_indirizzo` per il ruolo **EF** è seminata con i cinque
+> tipi decisi in §10.3 — `SEDE-LEG`, `DOM-FISC`, `SEDE-OP`, `POSTALE`, `RESID`,
+> tutti `obbligatorio = false`. Verificato dopo l'apply: `SPED` viene ora
+> **respinto** dal guard su un ruolo EF, `SEDE-LEG` e `RESID` passano.
+>
+> ⚠️ **Due rettifiche a questo documento, da leggere se lo si riusa come
+> modello.** (1) La premessa del §3.6 — «gli emittenti hanno oggi `SEDE-LEG` sul
+> layer RUOLO grazie al fail-open» — è **falsa**: i ruoli EF non hanno **alcun**
+> indirizzo, le sedi stanno tutte sul layer SOGGETTO. Era già rilevato in §10.3 e
+> riconfermato il 2026-08-02. Il fail-open non reggeva nulla: era un buco non
+> sfruttato, non un puntello — la conclusione «seedare» resta giusta, cade solo
+> l'urgenza. (2) Il numero **«42 emittenti su 42»** di §10.3 non conta gli
+> emittenti: gli emittenti fiscali sono **2**. Conta le coppie
+> `billing_account → emittente` (oggi 43). La metà che importa — **zero sul layer
+> RUOLO** — è confermata.
+>
+> Stato del cantiere: [piano-db-satelliti-fattura.md](../work-in-progress/piano-db-satelliti-fattura.md) §9.
+
+---
+
 > **Chi scrive:** BE (`dev/backend-tid`), 2026-07-31.
 > **A chi:** team DB (`dev/db-tid`).
 > **Cos'è:** **estensione della Fase 2** («ristampa conforme») del piano
-> [piano-be-fe-satelliti-fattura.md](piano-be-fe-satelliti-fattura.md). Non è un
+> [piano-be-fe-satelliti-fattura.md](../work-in-progress/piano-be-fe-satelliti-fattura.md). Non è un
 > cantiere nuovo: è il completamento della stessa garanzia che la Fase 1 ha
 > aperto a metà.
 > **Prerequisiti nuovi:** nessuno. Si innesta su 2.0-2.2 già applicate.

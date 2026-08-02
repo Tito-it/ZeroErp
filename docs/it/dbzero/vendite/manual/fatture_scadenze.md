@@ -54,8 +54,29 @@ importo dell'ULTIMA rata = totale_a_pagare − somma delle precedenti
 ```
 
 La quadratura sull'ultima rata è ciò che rende `Σ importo` **esattamente** uguale a
-`totale_a_pagare` e non una sua approssimazione: 100 € in 3 rate danno
-33,33 + 33,33 + **33,34**.
+`totale_a_pagare`, e non una sua approssimazione.
+
+⚠️ **«L'ultima assorbe la differenza» non significa «l'ultima è la più alta».**
+La direzione dipende da come arrotonda la divisione, ed è controintuitiva proprio
+nei casi che si incontrano oggi:
+
+| Base | Rate | Piano | L'ultima riceve |
+| --- | ---: | --- | --- |
+| 10,03 | 2 | 5,02 · **5,01** | **meno** — 5,015 arrotonda per eccesso |
+| 0,03 | 2 | 0,02 · **0,01** | **meno** |
+| 100,00 | 3 | 33,33 · 33,33 · **33,34** | più — 33,3333 arrotonda per difetto |
+
+Con **2 rate** `base/2` finisce sempre per 0 o 5 al terzo decimale: `HALF_UP`
+arrotonda quindi sempre per eccesso e la prima rata è **sempre ≥** dell'ultima.
+Il verso opposto si vede solo da 3 rate in su — e il catalogo di oggi arriva al
+massimo a **2**, quindi la riga con 100,00 illustra la formula ma **non è
+riproducibile** senza aggiungere un termine.
+
+Un solo invariante vale in ogni caso: **Σ rate = `totale_a_pagare`, al centesimo.**
+Chi scrive un test asserisca quello e i **valori attesi rata per rata**; «le prime
+uguali fra loro e l'ultima diversa» con due rate è una frase **vacua** — un insieme
+di un elemento è sempre omogeneo — e non distingue «resto sull'ultima» da «resto
+sulla prima».
 
 > ⚠️ La formula ha **un ramo solo**, tutto in giorni, dopo la riforma di
 > `config.termini_pagamento` del 31-07-2026. Documentazione o codice che nomini

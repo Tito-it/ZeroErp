@@ -32,3 +32,6 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert
 31,config.email_log,Log invii email,config,NULL,t,2026-08-01 00:00:00,mctit
 32,storico.audit_log,Log di audit,storico,NULL,t,2026-08-01 00:00:00,mctit
 33,anagrafiche.categorie_clienti_listini,Listini per categoria cliente,anagrafiche,NULL,t,2026-08-01 00:00:00,mctit
+34,dbops.coda_lavori,Coda lavori,dbops,NULL,t,2026-08-02 00:00:00,mctit
+35,vendite.fatture_stampa_coda,Coda stampa documenti,vendite,NULL,t,2026-08-02 00:00:00,mctit
+36,vendite.approvazioni_prezzo,Coda approvazioni prezzo,vendite,NULL,t,2026-08-02 00:00:00,mctit

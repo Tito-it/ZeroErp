@@ -49,7 +49,7 @@
 > ora può dire di no. Ricaduta nostra chiusa: **574
 > `E_FATTURA_NON_NUMERABILE_INCOERENTE` registrato** in `error_policies.py`.
 > **Prerequisiti:**
-> [brief-db-snapshot-indirizzi-fattura.md](brief-db-snapshot-indirizzi-fattura.md) ·
+> [brief-db-snapshot-indirizzi-fattura.md](../work-done/brief-db-snapshot-indirizzi-fattura.md) ·
 > [piano-db-satelliti-fattura.md](piano-db-satelliti-fattura.md) §Fase 4
 >
 > Questo documento è il **piano di lavoro applicativo**: cosa si tocca, in quale
@@ -405,7 +405,7 @@ Verifica di fase: smoke §3.1 casi 1-4 e 6 verdi.
 (Testo originale della fase:)
 
 > ⚠️ **Estesa il 2026-07-31 — leggere
-> [brief-db-snapshot-intestazione-fattura.md](brief-db-snapshot-intestazione-fattura.md)
+> [brief-db-snapshot-intestazione-fattura.md](../work-done/brief-db-snapshot-intestazione-fattura.md)
 > prima di scrivere questa fase.** Misurando per rispondere a una domanda di Tid
 > («per l'emittente possiamo usare lo storico degli indirizzi?» — no, §2 del
 > brief) è emerso che il perimetro qui sotto è **incompleto**: congela

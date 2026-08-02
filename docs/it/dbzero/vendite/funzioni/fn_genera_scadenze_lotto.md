@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_genera_scadenze_lotto.md" %}
 # ⚙️ Funzione `fn_genera_scadenze_lotto`
 
 ```sql

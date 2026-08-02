@@ -1,5 +1,24 @@
 # Brief DB → BE — Piano rate della fattura (scadenze)
 
+> ## ✅ CHIUSO — 2026-08-02
+>
+> **Contratto onorato su entrambi i lati.** DB: generatore, wrapper, seed,
+> armamento delle due corsie e guard D-K alla numerazione, tutti applicati e
+> coperti da pgTAP. BE: cablaggio, sei contatori, guard d'ordine e **smoke verde**
+> (`smoke-fattura-scadenze.py`, 10 casi, più il PDF nel caso 9 di
+> `smoke-fatturazione-render-stampa.py`), entrambi con prova di mutazione.
+>
+> **Non restano voci aperte.** Il §6 («se si produce una lista») è condizionale e
+> nessuna lista serve; il §7 elenca ciò che è **fuori scope per decisione**:
+> riconciliazione rata↔incasso, blocco `2.4 DatiPagamento` e portale clienti —
+> in quest'ordine, quando si riaprirà il tema incassi.
+>
+> **Da qui in avanti si legge come riferimento**, non come lavoro: formula,
+> codici errore, contatori e trappole restano validi. Lo stato del cantiere sta
+> in [piano-db-satelliti-fattura.md](../work-in-progress/piano-db-satelliti-fattura.md) §9.
+
+---
+
 > **Riscritto il 2026-08-02.** La stesura precedente era del 2026-07-29 e portava
 > in testa un blocco di revisione: era «superata in parte sostanziale», perché
 > descriveva un lavoro da fare e buona parte di quel lavoro è stata poi decisa
@@ -8,12 +27,12 @@
 > che è il difetto che questo cantiere ha già pagato altrove. **La storia sta in
 > git**: qui resta solo ciò che serve adesso.
 >
-> **Fonte di verità sullo stato**: [piano-db-satelliti-fattura.md](piano-db-satelliti-fattura.md) §9.
+> **Fonte di verità sullo stato**: [piano-db-satelliti-fattura.md](../work-in-progress/piano-db-satelliti-fattura.md) §9.
 > Questo documento è il **contratto verso il BE** — cosa il DB espone, cosa il BE
 > deve cablare, e dove i due si incontrano.
 >
 > **Fratello**: [brief-db-snapshot-indirizzi-fattura.md](brief-db-snapshot-indirizzi-fattura.md) (step DRAFT).
-> **Lavoro applicativo a valle**: [piano-be-fe-satelliti-fattura.md](piano-be-fe-satelliti-fattura.md).
+> **Lavoro applicativo a valle**: [piano-be-fe-satelliti-fattura.md](../work-in-progress/piano-be-fe-satelliti-fattura.md).
 
 ---
 
@@ -37,9 +56,9 @@ Quattro conseguenze, di cui una fiscale:
 
 ## 2. Dove siamo
 
-**Aggiornato il 2026-08-02: la catena è chiusa su entrambi i lati e il task è
-armato.** Resta il solo smoke di accettazione (§5 punto 6) — prima di scriverlo,
-leggere il **§5-bis**: tre cose lo farebbero fallire su comportamenti corretti.
+**Aggiornato il 2026-08-02: il cantiere è CHIUSO su entrambi i lati.** Task
+armato, guard D-K applicato, smoke verde. Il **§5-bis** resta come nota di
+manutenzione: dice perché lo smoke gira su fatture nuove e cosa non asserire.
 
 | Pezzo | Stato |
 |---|---|
@@ -52,7 +71,11 @@ leggere il **§5-bis**: tre cose lo farebbero fallire su comportamenti corretti.
 | Corsia GIORNALIERO/EMESSA (pipeline 2), prima vuota | ✅ **riempita**: fondi → fondi → IVA → scadenze |
 | Invariante pgTAP sui `processi`, esteso a tutte le tappe | ✅ `test-pipeline-processi-invariante-v1.sql`, 7/7 |
 | **Guard D-K alla numerazione** (Fase 4b) — `numera_fatture` ora rifiuta i documenti incoerenti | ✅ **applicato** (`20260802-24`), pgTAP 9/9 — **§5-bis punto 3** |
-| **Smoke di accettazione end-to-end** | 🟡 **in corso, lato BE** — l'unica cosa aperta |
+| **Smoke di accettazione end-to-end** | ✅ **VERDE** (`7a041d2e7`): `smoke-fattura-scadenze.py` **10 casi** + il PDF in `smoke-fatturazione-render-stampa.py` caso 9, entrambi con **prova di mutazione** |
+
+> ✅ **CONTRATTO ONORATO SU ENTRAMBI I LATI (2026-08-02).** Non restano voci
+> aperte. Il brief si legge ora come riferimento — formula, errori, contatori —
+> non come lavoro da fare.
 
 ---
 
@@ -150,9 +173,11 @@ Nessuna logica di calcolo in Python: solo cablaggio, sul modello esatto di
 3. ✅ voce in `ALLOWED_TASK_FUNCTIONS` → `vendite.fn_genera_scadenze_lotto`;
 4. ✅ i **sei contatori** nel risultato del task, con i due `skipped` separati;
 5. ✅ test unitari dell'handler (run + dry-run) e del wrapper;
-6. 🟡 smoke sul percorso reale: le rate esistono, quadrano **al centesimo** con
-   `totale_a_pagare`, e il PDF le stampa. **⚠️ Leggere il §5-bis prima di
-   scriverlo.**
+6. ✅ smoke sul percorso reale: `smoke-fattura-scadenze.py` **10 casi** verdi con
+   prova di mutazione, e il PDF coperto dal **caso 9** di
+   `smoke-fatturazione-render-stampa.py` (9/9) — messo lì e non duplicato, perché
+   la macchina per verificare un rendering (template, contesto, Jinja, PDF reale)
+   esiste già in quel file.
 
 ### L'armamento: fatto, in entrambi i tempi ✅
 
@@ -258,7 +283,7 @@ drawer fattura tramite il BB `ScadenzeSintesi` / `useScadenzeSintesi`, e mostra
 Per far vedere le rate non serve nessuna lista.
 
 Se invece si decide di farla, valgono le regole di
-[piano-migrazione-primevue-5.md](piano-migrazione-primevue-5.md), e non sono
+[piano-migrazione-primevue-5.md](../work-in-progress/piano-migrazione-primevue-5.md), e non sono
 formalità: `<ListaConfigurabile>` è parametrizzato dalla configurazione risolta
 dal BE, quindi **senza configurazione non si monta**.
 

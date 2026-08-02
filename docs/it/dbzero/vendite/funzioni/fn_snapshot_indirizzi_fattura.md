@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_snapshot_indirizzi_fattura.md" %}
 # ⚙️ Funzione `fn_snapshot_indirizzi_fattura`
 
 ```sql

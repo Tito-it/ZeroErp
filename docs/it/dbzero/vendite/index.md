@@ -127,8 +127,8 @@
 - [fn_genera_ddt_riconsegna](funzioni/fn_genera_ddt_riconsegna.md) — (rev 2026-07-26)
 - [fn_genera_fondi_fattura_source](funzioni/fn_genera_fondi_fattura_source.md) — (latest review 12-02-2026)   La funzione **`vendite.fn_genera_fondi_fattura_source()`** genera record in `fatture_fondi_fattura_source` per fatture con `minimo = true`, e mantiene allineata la source in base al saldo documento.
 - [fn_genera_pratica_da_preventivo](funzioni/fn_genera_pratica_da_preventivo.md) — (latest review 08-07-2026)
-- [fn_genera_scadenze_fattura](funzioni/fn_genera_scadenze_fattura.md)
-- [fn_genera_scadenze_lotto](funzioni/fn_genera_scadenze_lotto.md)
+- [fn_genera_scadenze_fattura](funzioni/fn_genera_scadenze_fattura.md) — (latest review 02-08-2026)
+- [fn_genera_scadenze_lotto](funzioni/fn_genera_scadenze_lotto.md) — (latest review 02-08-2026)
 - [fn_get_anno_registro](funzioni/fn_get_anno_registro.md) — (latest review 26-01-2026) La funzione **`vendite.fn_get_anno_registro`** calcola l’anno di riferimento per la numerazione dei registri con `reset_policy = ANNUALE`.
 - [fn_get_arrotondamento_scope](funzioni/fn_get_arrotondamento_scope.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_get_arrotondamento_scope()`** restituisce il **saldo tecnico** degli arrotondamenti per l'ambito di fatturazione (BA, utility, tipo documento, emittente, valuta). Se l'ambito non esiste, ritorna `0`.
 - [fn_get_commessa_stato](funzioni/fn_get_commessa_stato.md) — (latest review 26-02-2026)   Restituisce in una singola query lo stato operativo di una commessa:
@@ -184,7 +184,7 @@
 - [fn_resolve_lotto_utility_emittente](funzioni/fn_resolve_lotto_utility_emittente.md) — (latest review 22-02-2026) Helper condiviso per risolvere e validare `utility_id` ed `emittente_soggetto_ruolo_id` nei flussi lotto (`fatturazione_lotti` e `attivita_fatturabili_lotti`).
 - [fn_resolve_prezzo_listino_v2](funzioni/fn_resolve_prezzo_listino_v2.md) — (rev 2026-05-20 — 9° param p_listino_versione_id_preferito: fast path diretto)
 - [fn_resolve_stato_esecuzione](funzioni/fn_resolve_stato_esecuzione.md) — (latest review 22-02-2026) Helper condiviso per risolvere in modo uniforme il valore di `stato_esecuzione` nei flussi `fatturazione_lotti` e `attivita_fatturabili`.
-- [fn_resolve_termini_pagamento](funzioni/fn_resolve_termini_pagamento.md)
+- [fn_resolve_termini_pagamento](funzioni/fn_resolve_termini_pagamento.md) — (latest review 02-08-2026)
 - [fn_riapri_riconsegna_reso](funzioni/fn_riapri_riconsegna_reso.md) — (rev 2026-07-26)
 - [fn_ricalcola_fattura](funzioni/fn_ricalcola_fattura.md) — La funzione **`vendite.fn_ricalcola_fattura()`** e` un wrapper che esegue, **in sequenza**:
 - [fn_ricalcola_riepiloghi_iva_lotto](funzioni/fn_ricalcola_riepiloghi_iva_lotto.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_ricalcola_riepiloghi_iva_lotto()`** ricalcola i riepiloghi IVA per tutte le fatture collegate a un lotto, usando un’elaborazione a batch e delegando il ricalcolo alla funzione per singola fattura.   Al termine di ciascun ricalcolo aggiorna anche i **totali testata**.
@@ -198,9 +198,9 @@
 - [fn_set_documento_canale_stato](funzioni/fn_set_documento_canale_stato.md) — (latest review 24-02-2026) Gestisce in modo uniforme la transizione stato dei canali fatturabili per documento sorgente.
 - [fn_set_fatturazione_lotto_stato](funzioni/fn_set_fatturazione_lotto_stato.md) — (latest review 27-01-2026)   La funzione **`vendite.fn_set_fatturazione_lotto_stato()`** aggiorna lo **stato job** del lotto di fatturazione e allinea lo **stato operativo**.
 - [fn_set_runtime_task_run_esito](funzioni/fn_set_runtime_task_run_esito.md) — Helper condiviso per applicare l'esito runtime di un task-run nei domini `LOTTO` e `ATTIVITA_FATTURABILI`.
-- [fn_snapshot_fattura_lotto](funzioni/fn_snapshot_fattura_lotto.md)
-- [fn_snapshot_indirizzi_fattura](funzioni/fn_snapshot_indirizzi_fattura.md)
-- [fn_snapshot_intestazione_fattura](funzioni/fn_snapshot_intestazione_fattura.md)
+- [fn_snapshot_fattura_lotto](funzioni/fn_snapshot_fattura_lotto.md) — (latest review 02-08-2026)
+- [fn_snapshot_indirizzi_fattura](funzioni/fn_snapshot_indirizzi_fattura.md) — (latest review 02-08-2026)
+- [fn_snapshot_intestazione_fattura](funzioni/fn_snapshot_intestazione_fattura.md) — (latest review 02-08-2026)
 - [fn_start_lotto_task_run](funzioni/fn_start_lotto_task_run.md) — Apre un nuovo record runtime task su lotto in stato `IN_ESECUZIONE`.
 - [fn_sync_attivita_stato_esecuzione](funzioni/fn_sync_attivita_stato_esecuzione.md) — (latest review 22-02-2026) Sincronizza `stato_esecuzione` delle righe `attivita_fatturabili` collegate a un lotto attività.
 - [fn_sync_contabili_fondo_fattura](funzioni/fn_sync_contabili_fondo_fattura.md) — Sincronizzare i fondi fattura assegnati a una fattura figlia nel layer **contabile pre-posting** (`pagamenti.vendite_contabili` / `pagamenti.vendite_contabili_righe`), senza scrivere movimenti pagamenti diretti.
@@ -218,7 +218,7 @@
 - [trgfn_attivita_fatturabili_normalize](funzioni/trgfn_attivita_fatturabili_normalize.md) — (latest review 21/01/2026) La funzione `vendite.trgfn_attivita_fatturabili_normalize()` applica una **normalizzazione minima** su `vendite.attivita_fatturabili` per garantire coerenza **temporale** e **tecnica** dei dati prima della scrittura.
 - [trgfn_commesse_attivita_guard_quantita_immutabile](funzioni/trgfn_commesse_attivita_guard_quantita_immutabile.md)
 - [trgfn_commesse_attivita_guard_tipo_doc_emittibile](funzioni/trgfn_commesse_attivita_guard_tipo_doc_emittibile.md) — (rev 2026-06-19)
-- [trgfn_commesse_guard_chiave_immutabile](funzioni/trgfn_commesse_guard_chiave_immutabile.md)
+- [trgfn_commesse_guard_chiave_immutabile](funzioni/trgfn_commesse_guard_chiave_immutabile.md) — (latest review 02-08-2026)
 - [trgfn_commesse_guard_transizione](funzioni/trgfn_commesse_guard_transizione.md) — (rev 2026-06-07)
 - [trgfn_contratti_default_emittente](funzioni/trgfn_contratti_default_emittente.md) — (rev 2026-05-26)
 - [trgfn_contratti_default_valuta](funzioni/trgfn_contratti_default_valuta.md)
@@ -250,11 +250,11 @@
 - [trgfn_dlt_block_ordrig_ddtrig](funzioni/trgfn_dlt_block_ordrig_ddtrig.md) — La trigger function `vendite.trgfn_dlt_block_ordrig_ddtrig()` blocca la cancellazione fisica di righe ordine/DDT per preservare la coerenza del fulfillment e la tracciabilità operativa.
 - [trgfn_documenti_sync_canali](funzioni/trgfn_documenti_sync_canali.md) — (latest review 24-02-2026)   La funzione trigger `vendite.trgfn_documenti_sync_canali()` mantiene allineato il registro `documenti_fatturazione_canali` sugli eventi principali dei documenti commerciali.
 - [trgfn_event_log_append_only](funzioni/trgfn_event_log_append_only.md)
-- [trgfn_fattura_satellite_guard_congelamento](funzioni/trgfn_fattura_satellite_guard_congelamento.md)
+- [trgfn_fattura_satellite_guard_congelamento](funzioni/trgfn_fattura_satellite_guard_congelamento.md) — (latest review 02-08-2026)
 - [trgfn_fatturazione_lotti_gen_codice](funzioni/trgfn_fatturazione_lotti_gen_codice.md) — Genera automaticamente `codice` su `vendite.fatturazione_lotti` quando non valorizzato in INSERT/UPDATE.
 - [trgfn_fatturazione_lotti_guard_stato](funzioni/trgfn_fatturazione_lotti_guard_stato.md) — (latest review 24-01-2026) La funzione **`vendite.trgfn_fatturazione_lotti_guard_stato()`** controlla le transizioni tra stati documento sui lotti di fatturazione.
 - [trgfn_fatture_guard_stato](funzioni/trgfn_fatture_guard_stato.md) — (latest review 24-01-2026) La funzione **`vendite.trgfn_fatture_guard_stato()`** controlla le transizioni tra stati documento sulle fatture, bloccando quelle non ammesse.
-- [trgfn_fatture_guard_uscita_draft](funzioni/trgfn_fatture_guard_uscita_draft.md)
+- [trgfn_fatture_guard_uscita_draft](funzioni/trgfn_fatture_guard_uscita_draft.md) — (latest review 02-08-2026)
 - [trgfn_fatture_log_sync_ad_stmt](funzioni/trgfn_fatture_log_sync_ad_stmt.md) — Sincronizza stato `critical` e `stato_esecuzione` delle fatture coinvolte dopo DELETE su `vendite.fatture_log` (trigger statement-level).
 - [trgfn_fatture_log_sync_ai_stmt](funzioni/trgfn_fatture_log_sync_ai_stmt.md) — Sincronizza stato `critical` e `stato_esecuzione` delle fatture coinvolte dopo INSERT su `vendite.fatture_log` (trigger statement-level).
 - [trgfn_fatture_log_sync_au_stmt](funzioni/trgfn_fatture_log_sync_au_stmt.md) — Sincronizza stato `critical` e `stato_esecuzione` delle fatture coinvolte dopo UPDATE su `vendite.fatture_log` (trigger statement-level).

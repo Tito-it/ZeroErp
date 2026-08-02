@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_snapshot_fattura_lotto.md" %}
 # ⚙️ Funzione `fn_snapshot_fattura_lotto`
 
 ```sql

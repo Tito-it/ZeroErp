@@ -8,8 +8,10 @@
 > liste a `<ListaConfigurabile>` è partita — **22/34 convertite** (`vendite.lotti`
 > e le 4 del primo lotto il 2026-07-31; secondo, terzo, quarto e quinto lotto il
 > 2026-08-01; il sesto fra l'1 e il 2 agosto, `storico.audit_log` compresa).
-> **Il Gruppo A non ha più nulla di meccanico**: le 12 rimaste sono tutte
-> decisioni (§8-bis, «Cosa resta dopo il sesto»).
+> **Il Gruppo A non ha più nulla di meccanico**: le 12 rimaste erano tutte
+> decisioni — **prese il 2026-08-02** (§8-bis, «Le quattro decisioni»). Il 7°
+> lotto è **seedato**: 3 liste convertibili subito, 36 codici a catalogo,
+> presidio verde su tutte e 36. Cosa resta e di chi: §9, «Cosa resta aperto».
 > È utile con QUALUNQUE esito della questione licenza.
 >
 > 🚨 **PrimeVue ha cambiato licenza al confine della major.** `primevue`,
@@ -1016,7 +1018,7 @@ semplice alla più complessa, così le prime servono da rodaggio.
 | ✅ 31-07 | `amministrazione/components/UtilitiesTipiRuoloSearchTable.vue` | 5 | sì |
 | ✅ 02-08 | `amministrazione/views/AuditLogView.vue` | 5 | sì |
 | ✅ 31-07 | `anagrafiche/components/IndirizziSearchTable.vue` | 5 | sì |
-| ☐ | `vendite/views/ApprovazioniPrezzoListView.vue` | 5 | sì |
+| ☐ 🔵 | `vendite/views/ApprovazioniPrezzoListView.vue` | 5 | sì |
 | ✅ 01-08 | `amministrazione/views/EmailAccountsListView.vue` | 6 | sì |
 | ✅ 01-08 | `amministrazione/views/EmailTemplatesListView.vue` | 6 | sì |
 | ✅ 01-08 | `amministrazione/views/EmittentiFiscaliListView.vue` | 6 | sì |
@@ -1028,7 +1030,7 @@ semplice alla più complessa, così le prime servono da rodaggio.
 | ✅ 01-08 | `config/components/TemplateDocumentiSearchTable.vue` | 7 | sì |
 | ✅ 01-08 | `config/components/TemplateAssetSearchTable.vue` | 8 | sì |
 | ✅ 01-08 | `pratiche/components/PraticheSearchTable.vue` | 8 | sì |
-| ☐ | `strumenti/components/CodaLavoriTab.vue` | 8 | sì |
+| ☐ 🔵 | `strumenti/components/CodaLavoriTab.vue` | 8 | sì |
 | ☐ | `vendite/components/ContrattiBillingAccountDrawer.vue` | 8 | — |
 | ✅ 01-08 | `vendite/components/PromoArticoliSearchTable.vue` | 8 | sì |
 | ☐ | `vendite/offerte/components/OffertaEccezioniDrawer.vue` | 8 | — |
@@ -1036,7 +1038,7 @@ semplice alla più complessa, così le prime servono da rodaggio.
 | ✅ 31-07 | `amministrazione/components/TipiRuoloTipiIndirizzoSearchTable.vue` | 9 | sì |
 | ✅ 01-08 | `amministrazione/views/OperatoriListView.vue` | 9 | sì |
 | ✅ 01-08 | `catalogo/components/ArticoliSearchTable.vue` | 9 | sì |
-| ☐ | `strumenti/components/CodaStampaTab.vue` | 9 | sì |
+| ☐ 🔵 | `strumenti/components/CodaStampaTab.vue` | 9 | sì |
 | ☐ | `vendite/components/CommessaGestioneDrawer.vue` | 9 | sì |
 | ✅ 2026-07-31 | `vendite/views/LottiListView.vue` | 9 | sì |
 | ☐ | `vendite/views/SituazioneApertaView.vue` | 10 | sì |
@@ -1839,6 +1841,27 @@ come **passata unica prima di comporre il lotto**, non in consegna. Cosa
 **blocca** (nucleo, quindi la consegna aspetta) e cosa **migliora** vanno
 separati nella richiesta, così il BE decide invece di eseguire.
 
+##### ✅ Settimo lotto — SEEDATO il 2026-08-02, 3 liste convertibili subito
+
+| Lista | `lista_id` | `.vue` da convertire | Col. | Ordina | Apertura |
+| --- | --- | --- | --- | --- | --- |
+| `dbops.coda_lavori` | 34 | `strumenti/components/CodaLavoriTab.vue` | 8 | 6 | `started_at desc` |
+| `vendite.fatture_stampa_coda` | 35 | `strumenti/components/CodaStampaTab.vue` | 9 | 7 | `data_update desc` |
+| `vendite.approvazioni_prezzo` | 36 | `vendite/views/ApprovazioniPrezzoListView.vue` | 5 | 3 | `data_insert desc` |
+
+**Nessuna delle tre aspetta nessuno**: il presidio le dà allineate in tutte e
+tre le direzioni, e i preset replicano i default che il BE già applica — quindi
+al primo caricamento la lista non si riordina sotto gli occhi dell'operatore.
+
+⚠️ **Una sola coda lato FE**: su `vendite.approvazioni_prezzo` il `.vue` monta
+ancora `field="priorita_codice"` mentre il seed ordina per
+`priorita_descrizione` (decisione Tid su proposta BE). Vanno allineati insieme
+alla conversione, e l'API deve esporre la descrizione nella riga.
+
+🔵 `CommessaGestioneDrawer` **non è in questo lotto**: il DB ha fatto la sua
+parte (`20260802-26`), ma prima del seed serve che BE e FE facciano passare
+`order_by`/`order_dir` fino alla funzione. Vedi «Cosa resta aperto» in §9.
+
 ##### 📋 Commessa BE per il 7° lotto — misurata il 2026-08-02
 
 Colonne dei cinque `.vue` incrociate con la whitelist di ciascuno. Tutti e
@@ -1848,13 +1871,35 @@ trappola di `ListiniSearchTable` non si applica).
 🔴 **Blocca la consegna** — è nucleo, e senza queste la lista nasce con una
 freccia che non ordina:
 
-| Lista | Voce da aggiungere | Famiglia di nucleo |
-| --- | --- | --- |
-| `CodaLavoriTab` | `stato` | stato |
-| `CodaStampaTab` | `stato` · `emittente_codice` | stato · numero/codice |
-| `ApprovazioniPrezzoListView` | `priorita_codice` | numero/codice |
-| `CommessaGestioneDrawer` | `data_attivita` · **uno fra** `stato_approvazione` / `stato_emissione` | data · stato |
-| `VersioneDrawer` | *(nessuna: il nucleo è già coperto)* | — |
+| Lista | Voce da aggiungere | Famiglia di nucleo | Esito |
+| --- | --- | --- | --- |
+| `CodaLavoriTab` | `stato` | stato | ✅ BE |
+| `CodaStampaTab` | `stato` · `emittente_codice` | stato · numero/codice | ✅ BE |
+| `ApprovazioniPrezzoListView` | ~~`priorita_codice`~~ | ~~numero/codice~~ | ⛔ **RITIRATA** |
+| `CommessaGestioneDrawer` | `data_attivita` · **uno fra** `stato_approvazione` / `stato_emissione` | data · stato | ✅ DB, ma **non in whitelist** |
+| `VersioneDrawer` | *(nessuna: il nucleo è già coperto)* | — | — |
+
+> ⚠️ **Due voci di questa tabella erano indirizzate male, e il BE l'ha detto.
+> Corrette il 2026-08-02.**
+>
+> - **`priorita_codice` è RITIRATA.** Non era aggiungibile alla whitelist, e
+>   soprattutto non era il problema: quello vero era una **colonna vuota**, già
+>   risolto lato FE. Il seed della lista 36 usa `campo_sorgente =
+>   priorita_descrizione` (decisione Tid su proposta BE), e con il `codice`
+>   logico `priorita` la famiglia *numero/codice* non si attiva nemmeno.
+>   Chiedere quella voce sarebbe stato far lavorare il BE su un sintomo.
+> - **Le due voci di `CommessaGestioneDrawer` non erano voci di whitelist.**
+>   Ordine e paginazione vivono **dentro `fn_list_commessa_attivita`**: il BE
+>   non aveva un punto in cui metterle. Si risolvono lato DB, ed è ciò che fa
+>   `20260802-26` — la whitelist chiusa della funzione include `data_attivita`,
+>   `stato_approvazione` e `stato_emissione`, quindi il nucleo *stato* che
+>   avevamo segnalato scoperto è coperto lì.
+>
+> ➡️ Regola che ne esce: **prima di scrivere una voce di commessa, verificare
+> che il destinatario abbia un posto dove metterla.** Una richiesta indirizzata
+> allo strato sbagliato costa un giro a entrambi, e la seconda l'avevamo
+> generata proprio noi segnalando un nucleo scoperto senza dire *dove* andasse
+> chiuso.
 
 🔵 **Migliora, non blocca** — se non arrivano, la colonna nasce
 `ordinabile = f` e si ribalta quando la voce c'è (è già successo con `attivo`):
@@ -1966,6 +2011,111 @@ maturità.
 ---
 
 ## 9. Registro
+
+### 2026-08-02 · Settimo lotto — le 4 consegne del BE evase lato DB
+
+Risposta del team DB alle quattro consegne della voce qui sotto. **Tutte e
+quattro chiuse**; le prime tre scritte e verificate, la quarta è una decisione.
+
+**Prima di eseguire, le affermazioni del BE sono state verificate sul codice, non
+sul documento**: whitelist categorie-listini estesa ✅, colonna corretta a
+`ragione_sociale_completa` ✅ (hanno preso anche il difetto che *il presidio non
+può vedere*, perché confronta nomi e non l'SQL sotto), `ELENCA_SORT_SQL` a 6
+voci ✅, `CODA_STAMPA_SORT_SQL` a 8 con `NULLS LAST` dove serve ✅,
+inchiodatura di `order_by` rimossa ✅.
+
+**1 — Riga 371 ribaltata** a `ordinabile=t`, **dopo** che la whitelist esiste e
+mai prima. Il presidio è passato da «nucleo rotto» a «il BE sa ordinarle ma il
+seed non le offre» e infine a verde: è la stretta di mano che avevano descritto,
+funzionata esattamente come previsto.
+
+**2 — `fn_list_commessa_attivita` accetta l'ordinamento** (`20260802-26`).
+⚠️ `DROP FUNCTION` obbligatoria: con 6 parametri già tutti a DEFAULT, un
+`CREATE OR REPLACE` avrebbe creato un **overload** e reso ambigua ogni chiamata
+a 6 argomenti. Whitelist chiusa di 7 colonne + tiebreak `ca.id`; un nome fuori
+whitelist **solleva** invece di ripiegare. Verificato in transazione: 14
+combinazioni colonna×direzione girano, ASC e DESC danno estremi opposti, due
+pagine consecutive non hanno duplicati né buchi, l'iniezione è respinta, e
+**senza parametri l'ordine resta `ca.id`** — nessuna chiamata esistente cambia
+risultato. La validazione dell'ordinamento è stata messa **prima** della query
+di esistenza della commessa, come il BE ha fatto sulle approvazioni.
+
+**3 — Seed delle 3 liste** (34 `dbops.coda_lavori`, 35
+`vendite.fatture_stampa_coda`, 36 `vendite.approvazioni_prezzo`), colonne
+379-400. **36 liste allineate in tutte e tre le direzioni, al primo passaggio**:
+nessun giro di ritorno col BE, che è il dividendo della passata unica.
+
+> ⚠️ **Tre curature che il generatore non poteva fare, e sono le uniche che
+> contano:**
+>
+> - **I preset replicano il default del BE**, non ne inventano uno:
+>   `started_at desc` per i lavori e `data_update desc` per la stampa sono
+>   default **espliciti chiesti da Tid il 2026-07-23**, non casuali. Un preset
+>   diverso avrebbe riordinato la lista sotto gli occhi dell'operatore al primo
+>   caricamento.
+> - **`fattura` ordina per `fattura_numero`, non per `fattura_id`.** Il BE ha
+>   aggiunto quella voce apposta (`f.numero`, `NULLS LAST` perché è NULL finché
+>   la fattura è in bozza). Seedare l'id avrebbe ordinato per un numero che a
+>   video non c'è.
+> - **`id` delle approvazioni nasce `ordinabile = f`**: non è in
+>   `PRATICHE_ORDER_COLS`. È la regola già pagata — mai `t` con la speranza.
+
+**4 — Priorità: `priorita_descrizione`**, come proposto dal BE e approvato da
+Tid. Il codice logico della colonna resta `priorita`, il `campo_sorgente` è la
+descrizione, il codice serve solo al colore del Tag. ➡️ **Ricade sul FE**: il
+`.vue` monta ancora `field="priorita_codice"`, e l'API deve esporre
+`priorita_descrizione` nella riga.
+
+**Applicazione**: ✅ **fatta.** `20260802-26` EXECUTED, liste 34/35/36 e colonne
+379-400 atterrate, riga 371 a `ordinabile = true`, firma della funzione a 8
+parametri. Baseline `vendite`: 36 rossi, 36 noti, **nessuna regressione**.
+
+> 🔴 **Un test si è rotto per colpa nostra, e la causa merita di essere scritta.**
+> `test-lista-commessa-attivita-fatturata-v1.sql` inchiodava la firma dentro un
+> cast:
+>
+> ```sql
+> 'vendite.fn_list_commessa_attivita(bigint,character varying,…,integer,integer)'::regprocedure
+> ```
+>
+> Con due parametri in più quella firma non esiste: il cast non trova nulla e il
+> file **muore alla prima riga**, quindi le altre 3 asserzioni — il vero
+> contenuto — non vengono nemmeno eseguite. È la forma peggiore di rosso:
+> sembra un test che fallisce, è un test che *non gira*.
+> Riscritto per risolvere **per nome** (`pg_proc` + `proname`): quel che si
+> vuole sapere è che la funzione dichiari la colonna `fatturata`, non con quali
+> parametri. Ora è immune alla prossima aggiunta, e se nascesse un overload la
+> subquery scalare troverebbe due righe e fallirebbe rumorosamente.
+>
+> ⚠️ **Come ci è sfuggito**: i chiamanti *erano* stati censiti prima della DROP,
+> ma l'output del `grep` era stato **troncato con `head`** e i due file pgTAP
+> stavano sotto la decima riga. Un censimento troncato non è un censimento. È la
+> terza volta in due giorni che un controllo dà una risposta parziale e viene
+> trattato come completa — dopo i commenti dentro `prosrc` e l'alias nudo `e`.
+> ➡️ Regola: **quando si conta per decidere, non si tronca l'output.**
+>
+> ℹ️ `test-fn-list-commessa-attivita-v1.sql` è rosso ma **non per questo**: era
+> già in `baseline-rossi.tsv` come `ERRORE_FIXTURE` (guard `tipo_doc_fiscale`),
+> e muore nel fixture da prima.
+
+#### 📌 Cosa resta aperto sul binario delle liste (2026-08-02, fine giornata)
+
+**22/34 convertite · 36 codici seedati · 0 KO nel presidio.**
+
+| # | Cosa | Di chi | Blocca |
+| --- | --- | --- | --- |
+| 1 | Convertire i 3 `.vue` del 7° lotto (le due code + approvazioni) | **BE/FE** | niente: seed pronto, presidio verde |
+| 2 | Su approvazioni, allineare il `.vue` a `priorita_descrizione` ed esporla in API | **BE/FE** | va fatto **insieme** alla conversione, o la freccia nasce morta |
+| 3 | `CommessaGestioneDrawer`: passare `order_by`/`order_dir` da view e repository fino a `fn_list_commessa_attivita`, e far emettere `@sort` al `.vue` | **BE/FE** | blocca il **seed** di quella lista (poi torna al DB) |
+| 4 | `VersioneDrawer`: i **compositi** devono arrivare dall'endpoint insieme alle altre righe | **BE** | blocca tutto il resto su quella lista: è l'unica domanda di **modello** rimasta |
+| 5 | Le 3 dashboard | — | **rinviate per scelta** (decisione 2): ordinano già, si fanno per ultime |
+| 6 | I 4 drawer senza endpoint paginato | — | **fermi per scelta** (decisione 4) |
+
+➡️ **Sul percorso critico c'è solo il punto 4.** Gli altri sono lavoro noto e
+sequenziale; quello è una decisione di modello che nessuno ha ancora preso —
+*i compositi sono righe di quella lista, o una sezione a parte?*
+
+---
 
 ### 2026-08-02 · Settimo lotto — la passata BE: 3 liste pronte, 1 bloccata dove non ce l'aspettavamo
 

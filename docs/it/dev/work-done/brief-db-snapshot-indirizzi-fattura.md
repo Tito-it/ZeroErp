@@ -1,8 +1,25 @@
 # Brief DB — Snapshot indirizzi della fattura
 
+> ## ✅ CHIUSO — 2026-08-02
+>
+> **La Fase 2 del piano è chiusa**: `fn_snapshot_indirizzo_soggetto`,
+> `fn_resolve_indirizzo_documento`, le due funzioni di snapshot (per fattura e
+> per lotto), il seed della pipeline e i pgTAP sono applicati e verdi. Il guard
+> «`FATT` obbligatorio» di 2.5 non esiste come pezzo separato: è stato **assorbito
+> da I.4** del cantiere intestazione, che nasce già col criterio allargato —
+> indirizzi **e** intestazione — invece di essere riaperto dopo.
+>
+> ⚠️ **Non lavorare da questo documento.** La tabella di revisione qui sotto
+> elenca i punti in cui il brief diceva cose poi rivelatesi sbagliate: restano a
+> verbale perché la correzione è più istruttiva del testo corretto. Il
+> design-of-record è [piano-db-satelliti-fattura.md](../work-in-progress/piano-db-satelliti-fattura.md),
+> lo stato il suo §9.
+
+---
+
 > ⚠️ **REVISIONE 2026-07-30 — questo brief è SUPERATO IN PIÙ PUNTI.**
 > Il documento operativo di riferimento è
-> **[piano-db-satelliti-fattura.md](piano-db-satelliti-fattura.md)**: unifica
+> **[piano-db-satelliti-fattura.md](../work-in-progress/piano-db-satelliti-fattura.md)**: unifica
 > questo brief e il fratello, riporta la verifica critica sul codice vivo
 > (22 rilievi) e le decisioni chiuse da Tid il 2026-07-29/30.
 > **Non lavorare da questo brief senza aver letto quel piano.**
@@ -20,7 +37,7 @@
 > **Stato:** superato dal piano unificato (vedi sopra)
 > **Vincolo:** il BE non procede fino all'apply di questo brief (regola prerequisiti DB)
 > **Fratello:** [brief-db-generazione-scadenze-fattura.md](brief-db-generazione-scadenze-fattura.md) — stesso cantiere, step diverso della pipeline
-> **Lavoro applicativo a valle:** [piano-be-fe-satelliti-fattura.md](piano-be-fe-satelliti-fattura.md) — include gli **smoke di accettazione** che collaudano questo brief
+> **Lavoro applicativo a valle:** [piano-be-fe-satelliti-fattura.md](../work-in-progress/piano-be-fe-satelliti-fattura.md) — include gli **smoke di accettazione** che collaudano questo brief
 
 ---
 

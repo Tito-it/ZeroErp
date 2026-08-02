@@ -49,7 +49,7 @@ avuto associazioni emittente: in quel caso `scope_mode='GLOBAL'`).
 | `auth_user_id` | `INTEGER` | Echo del parametro in input (utile per JOIN da query batch). |
 | `scope_mode` | `TEXT` | `'GLOBAL'` o `'SINGLE'`. Il valore `'MULTI'` è chiuso applicativamente (vedi sotto). |
 | `emittente_id` | `config.user_emittenti_fiscali.emittente_fiscale_id%TYPE` (`bigint`) | `NULL` se `scope_mode='GLOBAL'`, valorizzato se `'SINGLE'`. |
-| `emittente_descrizione` | `TEXT` | `COALESCE(soggetti.ragione_sociale_completa, emittenti_fiscali.descrizione)`. Pre-aggregata per evitare N+1 al frontend. `NULL` se GLOBAL. |
+| `emittente_descrizione` | `TEXT` | `anagrafiche.soggetti.ragione_sociale_completa` del soggetto emittente. Pre-aggregata per evitare N+1 al frontend. `NULL` se GLOBAL. |
 | `allowed_scope_modes` | `TEXT[]` | Sempre `['GLOBAL','SINGLE']`. Tipo array `TEXT` per non vincolare il futuro (es. reintroduzione di MULTI). |
 | `can_change_scope` | `BOOLEAN` | `false` sse l'utente è l'**ultimo** SUPER_ADMIN attivo del sistema. |
 | `change_scope_reason` | `TEXT` | Motivo del blocco in `it-IT`, `NULL` se concesso. |
@@ -100,8 +100,13 @@ can_change_scope = NOT script.fn_check_ultimo_super_admin_attivo(p_auth_user_id)
 * Nessun riferimento a `django.*` → `LANGUAGE sql` ammesso.
 * `LEFT JOIN` da una `(VALUES (p_auth_user_id))` base assicura **1 riga
   sempre**, anche in assenza di righe `user_emittenti_fiscali`.
-* `emittente_descrizione` pre-aggregata via `COALESCE` (stesso pattern
-  di [`fn_get_operatore_detail`](/dbzero/script/funzioni/fn_get_operatore_detail)).
+* `emittente_descrizione` viene dalla **sola** ragione sociale del soggetto
+  emittente (stesso pattern di
+  [`fn_get_operatore_detail`](/dbzero/script/funzioni/fn_get_operatore_detail)).
+  ⚠️ Fino al 02-08-2026 era un `COALESCE` con `emittenti_fiscali.descrizione`:
+  quella colonna **non esiste più** (duplicava la ragione sociale del soggetto e
+  ci divergeva, cfr. `brief-emittente-ragione-sociale-dal-soggetto.md`), e il
+  fallback è caduto con lei.
 
 ## Tipi nel `RETURNS TABLE`
 

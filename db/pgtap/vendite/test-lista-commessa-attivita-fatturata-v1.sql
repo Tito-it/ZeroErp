@@ -38,10 +38,24 @@ SELECT plan(4);
 -- ============================================================
 -- 1 — STRUTTURA
 -- ============================================================
+-- ⚠️ La firma NON si scrive a mano. Questa asserzione inchiodava
+--    `(bigint,varchar,varchar,date,integer,integer)` in un `::regprocedure`, e
+--    si e' rotta il 2026-08-02 quando la funzione ha preso `p_order_by`/
+--    `p_order_dir` (changeset 20260802-26, 7o lotto liste configurabili): la
+--    firma e' diventata a 8 parametri e il cast non ha piu' trovato nulla.
+--    Il test moriva alla prima riga, quindi le altre 3 asserzioni — che sono
+--    il vero contenuto del file — non venivano nemmeno eseguite.
+--
+--    Cio' che qui interessa e' che la funzione DICHIARI la colonna, non con
+--    quali parametri: si risolve per NOME. Se qualcuno creasse un overload per
+--    sbaglio, la subquery scalare troverebbe due righe e fallirebbe
+--    rumorosamente — che e' esattamente il segnale che si vuole.
 SELECT ok(
-  pg_get_function_result(
-    'vendite.fn_list_commessa_attivita(bigint,character varying,character varying,date,integer,integer)'::regprocedure
-  ) LIKE '%fatturata boolean%',
+  (SELECT pg_get_function_result(p.oid) LIKE '%fatturata boolean%'
+     FROM pg_proc p
+     JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'vendite'
+      AND p.proname = 'fn_list_commessa_attivita'),
   '1) fn_list_commessa_attivita dichiara la colonna fatturata boolean');
 
 -- ============================================================
