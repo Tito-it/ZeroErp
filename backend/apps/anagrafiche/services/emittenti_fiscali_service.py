@@ -77,8 +77,8 @@ class EmittentiFiscaliService:
 
     # Scopo: Crea un emittente fiscale completo in una transazione atomica.
     #        Obiettivo: associa il soggetto al ruolo EF e crea il record emittente.
-    #        Perimetro: validazione soggetto_id (con P.IVA obbligatoria), codice e
-    #        descrizione, get_or_create ruolo, insert emittente con campi opzionali.
+    #        Perimetro: validazione soggetto_id (con P.IVA obbligatoria) e codice,
+    #        get_or_create ruolo, insert emittente con campi opzionali.
     #        Risultato: dict con id dell'emittente e soggetto_ruolo_id.
     #        Nota: il primo emittente creato attiva il trigger default_bootstrap che
     #        popola automaticamente il default mapping in emittenti_fiscali_billing_account.
@@ -101,9 +101,11 @@ class EmittentiFiscaliService:
             message="L'emittente fiscale richiede un soggetto con Partita IVA.",
         )
 
-        # Campi obbligatori dell'emittente
+        # Campi obbligatori dell'emittente. `descrizione` non c'e' piu' dal
+        # 2026-08-02 (DROP `20260802-22`): il nome dell'emittente e' la ragione
+        # sociale del soggetto scelto sopra, non un testo digitato a parte
+        # (brief `brief-emittente-ragione-sociale-dal-soggetto.md`).
         codice = require_str(payload, "codice", "Codice emittente obbligatorio.")
-        descrizione = require_str(payload, "descrizione", "Descrizione emittente obbligatoria.")
 
         # Campi opzionali (incluso attivo se passato dal payload, default DB true)
         emittente_data = self._extract_emittente_data(payload)
@@ -116,7 +118,6 @@ class EmittentiFiscaliService:
                 lambda: {"id": self._repo.create_emittente(
                     soggetto_ruolo_id=soggetto_ruolo_id,
                     codice=codice,
-                    descrizione=descrizione,
                     **emittente_data,
                 )},
                 {

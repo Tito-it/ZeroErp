@@ -1049,7 +1049,7 @@
       "ed_msg_allinea_ok": "Nuova BOZZA creata dal preset aggiornato."
     },
     "emittenti_fiscali": {
-      "search_placeholder": "Cerca per codice, descrizione, ragione sociale, P.IVA, CF...",
+      "search_placeholder": "Cerca per codice, ragione sociale, P.IVA, CF...",
       "new": "Nuovo emittente fiscale",
       "create_title": "Nuovo emittente fiscale",
       "edit_title": "Modifica emittente fiscale",
@@ -1069,7 +1069,6 @@
       "metodo_down": "Sempre verso il basso (DOWN)",
       "field_soggetto": "Soggetto",
       "field_codice": "Codice",
-      "field_descrizione": "Descrizione",
       "field_attivo": "Attivo",
       "field_regime_fiscale_rf": "Regime fiscale (RF)",
       "regime_fiscale_rf_hint": "Codice regime fiscale RF del tracciato FE/SdI (es. RF01, RF19).",
@@ -1080,7 +1079,6 @@
       "field_valuta_hint": "Valuta proposta dai form preventivi/contratti quando non c'e' un billing account selezionato. Lasciare vuota fa partire il form senza default.",
       "soggetto_no_piva": "Il soggetto selezionato non ha Partita IVA. Un emittente fiscale richiede un soggetto con P.IVA valida (requisito SDI). Cambia soggetto o aggiorna la sua scheda anagrafica.",
       "col_codice": "Codice",
-      "col_descrizione": "Descrizione",
       "col_ragione_sociale": "Ragione sociale",
       "col_cf": "Codice fiscale",
       "col_piva": "Partita IVA",

@@ -44,6 +44,23 @@ class TaskEsitoParziale:
 class PipelineStepExecutor:
     """Controparte Django della funzione SQL vendite.fn_execute_pipeline_step."""
 
+    # Dipendenze d'ORDINE fra task dello STESSO step: `task -> task che deve
+    # precederlo`. Non e' una dipendenza logica generica (quella e' la sequenza
+    # degli step): e' il sottoinsieme in cui invertire l'ordine dentro un solo
+    # step produce un risultato SBAGLIATO invece che un errore.
+    #
+    # `genera_scadenze_lotto` dopo `ricalcola_iva_lotto`: la base di
+    # ripartizione del piano rate e' `fatture.totale_a_pagare`, che nasce dal
+    # ricalcolo. Con l'ordine invertito la base non e' pronta e il generatore
+    # solleva `E_SCADENZE_BASE_NON_PRONTA` per OGNI fattura del lotto (D-D
+    # caso NULL) — cioe' un giro interamente rosso che sembra un difetto dei
+    # dati mentre e' una riga di configurazione girata. La verifica sta qui e
+    # non nel solo CSV perche' la configurazione la scrive un altro team, e
+    # un ordine sbagliato deve fermarsi PRIMA di scrivere, non dopo.
+    _TASK_ORDER_DEPENDENCIES: dict[str, tuple[str, ...]] = {
+        "genera_scadenze_lotto": ("ricalcola_iva_lotto",),
+    }
+
     # Scopo: Inizializza la istanza.
     def __init__(
         self,
@@ -69,6 +86,7 @@ class PipelineStepExecutor:
             "reset_lotto_draft_default": self._handle_reset_lotto_draft_task,
             "pull_attivita_da_commessa_default": self._handle_pull_attivita_da_commessa_task,
             "snapshot_indirizzi_lotto_default": self._handle_snapshot_indirizzi_lotto_task,
+            "genera_scadenze_lotto_default": self._handle_genera_scadenze_lotto_task,
         }
 
     # Scopo: Gestisce uno step pipeline validando input, risolvendo processi da configurazione DB e dispatch dei task
@@ -131,6 +149,14 @@ class PipelineStepExecutor:
             log_to_db=True,
         )
 
+        self._validate_task_order(
+            processi,
+            lotto_id=lotto_id,
+            stato_doc_fiscale_id=stato_doc_fiscale_id,
+            tipo_lotto=tipo_lotto,
+            rollback=rollback,
+        )
+
         pipeline_id = self.repository.get_pipeline_id_for_step(
             tipo_lotto,
             stato_doc_fiscale_id,
@@ -149,6 +175,54 @@ class PipelineStepExecutor:
                 dry_run=dry_run,
                 pipeline_id=pipeline_id,
             )
+
+    # Scopo: Verifica le dipendenze d'ordine di `_TASK_ORDER_DEPENDENCIES` sulla
+    #        sequenza di task dello step, PRIMA che il primo task scriva.
+    #        Perimetro deliberatamente stretto, e le due esclusioni sono
+    #        entrambe casi legittimi, non scorciatoie:
+    #        - se il predecessore NON e' in questo step non si fallisce: puo'
+    #          vivere in uno step precedente, ed e' una configurazione valida
+    #          (fallire li' vieterebbe di spezzare la catena su piu' step);
+    #        - in ROLLBACK non si verifica: la catena di annullamento percorre
+    #          i passi a ritroso, quindi l'ordine richiesto e' l'opposto.
+    #        Risultato atteso: `E_PIPELINE_VALIDATION` con i due task nel detail
+    #        — una configurazione girata si legge dal messaggio, senza dover
+    #        risalire da N fatture rosse alla riga di CSV che le ha prodotte.
+    def _validate_task_order(
+        self,
+        processi: list[dict[str, Any]],
+        *,
+        lotto_id: int,
+        stato_doc_fiscale_id: int,
+        tipo_lotto: str,
+        rollback: bool,
+    ) -> None:
+        if rollback:
+            return
+        sequenza = [str(p.get("task", "")).strip() for p in processi]
+        for posizione, task in enumerate(sequenza):
+            for predecessore in self._TASK_ORDER_DEPENDENCIES.get(task, ()):
+                if predecessore not in sequenza:
+                    continue  # vive in uno step precedente: configurazione valida
+                if sequenza.index(predecessore) > posizione:
+                    ErrorManager.raise_error(
+                        code="E_PIPELINE_VALIDATION",
+                        message="Ordine dei task della pipeline non valido.",
+                        detail=(
+                            f"Il task '{task}' deve seguire '{predecessore}' "
+                            f"nello stesso step, ma lo precede: {' > '.join(sequenza)}"
+                        ),
+                        context={
+                            "lotto_id": lotto_id,
+                            "stato_doc_fiscale_id": stato_doc_fiscale_id,
+                            "tipo_lotto": tipo_lotto,
+                            "task": task,
+                            "predecessore": predecessore,
+                            "sequenza": sequenza,
+                        },
+                        function_name="vendite.pipeline_step_executor._validate_task_order",
+                        log_to_db=True,
+                    )
 
     # Scopo: Gestisce il task di step con logging fase, risoluzione handler via registry e gestione errori applicativi
     def _run_task(
@@ -848,6 +922,60 @@ class PipelineStepExecutor:
                 error_code="E_INDIRIZZO_FATTURA_MANCANTE",
                 error_message=(
                     f"Snapshot indirizzi completato con {failed_rows} fatture "
+                    "in errore (dettaglio sui log fattura)."
+                ),
+                meta={"task": task, **esito},
+            )
+        return None
+
+    # Scopo: Task `genera_scadenze_lotto` (step EMESSA, piano DB satelliti
+    #        Fase 4): genera il piano rate delle fatture del lotto via
+    #        `fn_genera_scadenze_lotto`.
+    #        Perimetro: le fatture lavorabili del lotto; il DB applica D-Q da
+    #        solo (la fattura difettosa e' marcata 'C' su fatture_log e le
+    #        ALTRE ricevono le loro rate), quindi questo handler NON solleva.
+    #        Risultato atteso: `failed_rows == 0` → task_run COMPLETATO;
+    #        `failed_rows > 0` → `TaskEsitoParziale`, cioe' task_run ERRORE
+    #        senza raise — con COMPLETATO il resolver darebbe SKIP al rilancio
+    #        e la correzione non verrebbe mai riletta (D-Q p.3), con un raise
+    #        il rollback cancellerebbe anche le rate delle fatture sane.
+    #        ⚠️ Il codice d'errore NON e' uno dei quattro `E_SCADENZE_*` di
+    #        dominio: le cause per-fattura sono quattro (termine mancante,
+    #        base non pronta, termine inconciliabile, fattura bloccata) e
+    #        nessuna domina — sceglierne una qui farebbe raccontare al cockpit
+    #        una diagnosi che il wrapper non ha misurato. Il dettaglio vero sta
+    #        sui log fattura, dove il DB scrive il messaggio originale.
+    def _handle_genera_scadenze_lotto_task(
+        self,
+        *,
+        task: str,
+        fn_name: str | None,
+        lotto_id: int,
+        stato_doc_fiscale_id: int,
+        context: LottoContext,
+        params: dict[str, Any],
+        dry_run: bool,
+    ) -> TaskEsitoParziale | None:
+        batch_size_raw = params.get("batch_size")
+        batch_size = int(batch_size_raw) if batch_size_raw is not None else 1000
+        esito = self._run_validated_task(
+            task=task,
+            fn_name=fn_name,
+            lotto_id=lotto_id,
+            stato_doc_fiscale_id=stato_doc_fiscale_id,
+            dry_run=dry_run,
+            action=lambda: self.repository.run_genera_scadenze_lotto_task(
+                lotto_id=lotto_id, batch_size=batch_size,
+            ),
+        )
+        if esito is None:  # dry-run: nessuna esecuzione, nessun esito.
+            return None
+        failed_rows = int(esito.get("failed_rows") or 0)
+        if failed_rows > 0:
+            return TaskEsitoParziale(
+                error_code="E_SCADENZE_LOTTO_PARZIALE",
+                error_message=(
+                    f"Generazione scadenze completata con {failed_rows} fatture "
                     "in errore (dettaglio sui log fattura)."
                 ),
                 meta={"task": task, **esito},

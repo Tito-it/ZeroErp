@@ -179,6 +179,12 @@ class VenditePipelineRepository:
         # anche l'intestazione — il nome vecchio ne diceva meta' (brief
         # snapshot-intestazione §10.8).
         "snapshot_indirizzi_lotto": "vendite.fn_snapshot_fattura_lotto",
+        # Fase 4 del piano DB satelliti (changeSet `20260801-09`). Il task vive
+        # nello step EMESSA e va DOPO `ricalcola_iva_lotto`: la base di
+        # ripartizione e' `totale_a_pagare`, che prima del ricalcolo non esiste
+        # ancora — l'ordine e' presidiato da `_TASK_ORDER_DEPENDENCIES` in
+        # `pipeline_step_executor`, non lasciato alla sola configurazione.
+        "genera_scadenze_lotto": "vendite.fn_genera_scadenze_lotto",
     }
 
     # Scopo: Gestisce `_to_jsonb_param` nel flusso applicativo del modulo.
@@ -1546,6 +1552,47 @@ class VenditePipelineRepository:
             "updated_rows": int(row[2]),
             "intestazioni_scritte": int(row[3]),
             "skipped_rows": int(row[4]),
+            "failed_rows": int(row[5]),
+        }
+
+    # Scopo: Genera il piano rate delle fatture del lotto delegando a
+    #        `vendite.fn_genera_scadenze_lotto` (Fase 4.2 piano DB satelliti).
+    #        Perimetro: le sole fatture LAVORABILI (DRAFT o EMESSA e senza un
+    #        critico attivo di un ALTRO task); risultato atteso: sei contatori,
+    #        di cui `deleted_rows`/`inserted_rows` misurano il DELETE+INSERT del
+    #        generatore — un rilancio su piano invariato torna `del=N ins=N`,
+    #        non zero, quindi non sono un indicatore di «lavoro nuovo».
+    #        I due motivi di salto restano SEPARATI e non vanno sommati:
+    #        `skipped_rows` sono fatture oltre EMESSA (chiuse: nessun lavoro da
+    #        fare, D-F), `skipped_errore_rows` sono fatture con un critico
+    #        altrui (rotte a monte, D-Q). Per il cockpit sono l'opposto, e un
+    #        totale unico direbbe «cinque saltate» confondendo i due casi.
+    #        Come la gemella degli indirizzi la funzione NON solleva per la
+    #        singola fattura difettosa: l'esito sta in `failed_rows`, che
+    #        l'handler traduce in task_run ERRORE.
+    def run_genera_scadenze_lotto_task(
+        self,
+        *,
+        lotto_id: int,
+        batch_size: int = 1000,
+    ) -> dict[str, int]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT fatture_count, deleted_rows, inserted_rows,
+                       skipped_rows, skipped_errore_rows, failed_rows
+                FROM vendite.fn_genera_scadenze_lotto(%s, %s)
+                """,
+                [lotto_id, batch_size],
+            )
+            row = cursor.fetchone()
+        assert row is not None  # la fn ritorna sempre una riga di contatori
+        return {
+            "fatture_count": int(row[0]),
+            "deleted_rows": int(row[1]),
+            "inserted_rows": int(row[2]),
+            "skipped_rows": int(row[3]),
+            "skipped_errore_rows": int(row[4]),
             "failed_rows": int(row[5]),
         }
 

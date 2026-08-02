@@ -29,6 +29,14 @@ Indice test eseguiti:
 27) PipelineStepExecutorUnitTests.test_execute_step_snapshot_indirizzi_dry_run_skips
 28) PipelineStepExecutorUnitTests.test_execute_step_snapshot_indirizzi_failed_rows_chiude_task_run_errore (D-Q p.3)
 29) PipelineStepExecutorUnitTests.test_execute_step_snapshot_indirizzi_senza_falliti_completa_task_run
+30) PipelineStepExecutorUnitTests.test_execute_step_runs_genera_scadenze_lotto_task (Fase 4 satelliti)
+31) PipelineStepExecutorUnitTests.test_execute_step_genera_scadenze_dry_run_skips
+32) PipelineStepExecutorUnitTests.test_execute_step_genera_scadenze_failed_rows_chiude_task_run_errore (D-Q p.3)
+33) PipelineStepExecutorUnitTests.test_execute_step_genera_scadenze_senza_falliti_completa_task_run
+34) PipelineStepExecutorUnitTests.test_execute_step_genera_scadenze_dopo_ricalcola_iva_ok (ordine)
+35) PipelineStepExecutorUnitTests.test_execute_step_genera_scadenze_prima_di_ricalcola_iva_rifiutato (ordine)
+36) PipelineStepExecutorUnitTests.test_execute_step_genera_scadenze_senza_ricalcola_iva_nello_step_ammesso (ordine)
+37) PipelineStepExecutorUnitTests.test_execute_step_ordine_non_verificato_in_rollback (ordine)
 """
 
 from unittest.mock import MagicMock, patch
@@ -67,6 +75,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             "close_lotto": None,
             "reset_lotto_draft": "vendite.fn_annulla_lotto_da_draft",
             "snapshot_indirizzi_lotto": "vendite.fn_snapshot_fattura_lotto",
+            "genera_scadenze_lotto": "vendite.fn_genera_scadenze_lotto",
         }
         # Tracing: default nessuna policy → nessun tracing (test esistenti non cambiano).
         repo.get_pipeline_id_for_step.return_value = 100
@@ -771,3 +780,245 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
 
         repo.complete_lotto_task_run.assert_called_once_with(778)
         repo.fail_lotto_task_run.assert_not_called()
+
+    # Scopo: task `genera_scadenze_lotto` (Fase 4 satelliti fattura) — il run
+    #        felice esegue il wrapper repo col batch di default e, senza fatture
+    #        fallite, il task_run chiude in COMPLETATO.
+    def test_execute_step_runs_genera_scadenze_lotto_task(self):
+        processi = [{
+            "task": "genera_scadenze_lotto",
+            "fase": "Generazione scadenze",
+            "params": {"implementation_key": "default"},
+        }]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "genera_scadenze_lotto_default"
+        repo.run_genera_scadenze_lotto_task.return_value = {
+            "fatture_count": 3, "deleted_rows": 0, "inserted_rows": 6,
+            "skipped_rows": 0, "skipped_errore_rows": 0, "failed_rows": 0,
+        }
+
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        repo.run_genera_scadenze_lotto_task.assert_called_once_with(
+            lotto_id=1, batch_size=1000,
+        )
+
+    # Scopo: dry-run — nessuna esecuzione del wrapper (gate in _run_validated_task).
+    def test_execute_step_genera_scadenze_dry_run_skips(self):
+        processi = [{
+            "task": "genera_scadenze_lotto",
+            "fase": "Generazione scadenze",
+            "params": {"implementation_key": "default"},
+        }]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "genera_scadenze_lotto_default"
+
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=True,
+        )
+
+        repo.run_genera_scadenze_lotto_task.assert_not_called()
+
+    # Scopo: ⚠️ D-Q p.3 sul gemello scadenze — `failed_rows > 0` chiude il
+    #        task_run in ERRORE SENZA sollevare, cosi' il rilancio dello step
+    #        (policy RESUME_STEP) ripete davvero il task invece di saltarlo.
+    #        Verifica anche che i due contatori di salto restino SEPARATI nel
+    #        meta: «chiusa» e «rotta» non vanno sommate.
+    def test_execute_step_genera_scadenze_failed_rows_chiude_task_run_errore(self):
+        processi = [{
+            "task": "genera_scadenze_lotto",
+            "fase": "Generazione scadenze",
+            "params": {"implementation_key": "default"},
+        }]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "genera_scadenze_lotto_default"
+        repo.task_policy_exists.return_value = True
+        run_mode = MagicMock()
+        run_mode.execution_mode = "RUN"
+        repo.resolve_lotto_task_execution_mode.return_value = run_mode
+        task_run = MagicMock()
+        task_run.task_run_id = 881
+        repo.start_lotto_task_run.return_value = task_run
+        repo.run_genera_scadenze_lotto_task.return_value = {
+            "fatture_count": 4, "deleted_rows": 2, "inserted_rows": 6,
+            "skipped_rows": 2, "skipped_errore_rows": 1, "failed_rows": 1,
+        }
+
+        # Nessuna eccezione: lo step si completa (D-Q).
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        repo.fail_lotto_task_run.assert_called_once()
+        args, kwargs = repo.fail_lotto_task_run.call_args
+        self.assertEqual(args[0], 881)
+        self.assertEqual(args[1], "E_SCADENZE_LOTTO_PARZIALE")
+        self.assertEqual(kwargs["meta"]["failed_rows"], 1)
+        self.assertEqual(kwargs["meta"]["skipped_rows"], 2)
+        self.assertEqual(kwargs["meta"]["skipped_errore_rows"], 1)
+        repo.complete_lotto_task_run.assert_not_called()
+
+    # Scopo: simmetrico — `failed_rows == 0` con tracing attivo chiude il
+    #        task_run in COMPLETATO, anche con fatture SALTATE: un lotto in cui
+    #        tutte le fatture sono gia' definitive e' un giro riuscito, non un
+    #        giro fallito.
+    def test_execute_step_genera_scadenze_senza_falliti_completa_task_run(self):
+        processi = [{
+            "task": "genera_scadenze_lotto",
+            "fase": "Generazione scadenze",
+            "params": {"implementation_key": "default"},
+        }]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "genera_scadenze_lotto_default"
+        repo.task_policy_exists.return_value = True
+        run_mode = MagicMock()
+        run_mode.execution_mode = "RUN"
+        repo.resolve_lotto_task_execution_mode.return_value = run_mode
+        task_run = MagicMock()
+        task_run.task_run_id = 882
+        repo.start_lotto_task_run.return_value = task_run
+        repo.run_genera_scadenze_lotto_task.return_value = {
+            "fatture_count": 0, "deleted_rows": 0, "inserted_rows": 0,
+            "skipped_rows": 3, "skipped_errore_rows": 0, "failed_rows": 0,
+        }
+
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        repo.complete_lotto_task_run.assert_called_once_with(882)
+        repo.fail_lotto_task_run.assert_not_called()
+
+    # Scopo: ORDINE (piano DB satelliti Fase 4) — nello step EMESSA le scadenze
+    #        girano DOPO il ricalcolo IVA, perche' la base di ripartizione e'
+    #        `totale_a_pagare`. Con la sequenza corretta lo step passa e i due
+    #        wrapper sono invocati in quell'ordine.
+    def test_execute_step_genera_scadenze_dopo_ricalcola_iva_ok(self):
+        processi = [
+            {"task": "ricalcola_iva_lotto", "fase": "IVA", "params": {"implementation_key": "default"}},
+            {"task": "genera_scadenze_lotto", "fase": "Generazione scadenze", "params": {"implementation_key": "default"}},
+        ]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.side_effect = (
+            lambda *, task_code, implementation_key: f"{task_code}_default"
+        )
+        repo.run_genera_scadenze_lotto_task.return_value = {
+            "fatture_count": 1, "deleted_rows": 0, "inserted_rows": 1,
+            "skipped_rows": 0, "skipped_errore_rows": 0, "failed_rows": 0,
+        }
+
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        chiamati = [c[0] for c in repo.method_calls]
+        self.assertLess(
+            chiamati.index("run_ricalcola_iva_lotto_task"),
+            chiamati.index("run_genera_scadenze_lotto_task"),
+        )
+
+    # Scopo: ⚠️ IL TEST CHE CONTA sull'ordine — la sequenza invertita e'
+    #        RIFIUTATA prima che un solo task scriva. Senza questo guard il
+    #        generatore solleverebbe `E_SCADENZE_BASE_NON_PRONTA` su OGNI
+    #        fattura, e un giro interamente rosso sembrerebbe un difetto dei
+    #        dati invece di una riga di configurazione girata.
+    def test_execute_step_genera_scadenze_prima_di_ricalcola_iva_rifiutato(self):
+        processi = [
+            {"task": "genera_scadenze_lotto", "fase": "Generazione scadenze", "params": {"implementation_key": "default"}},
+            {"task": "ricalcola_iva_lotto", "fase": "IVA", "params": {"implementation_key": "default"}},
+        ]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.side_effect = (
+            lambda *, task_code, implementation_key: f"{task_code}_default"
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            executor.execute_step(
+                lotto_id=1,
+                stato_doc_fiscale_id=2,
+                tipo_lotto="MASSIVO",
+                rollback=False,
+                dry_run=False,
+            )
+
+        self.assertEqual(ctx.exception.code, "E_PIPELINE_VALIDATION")
+        self.assertIn("genera_scadenze_lotto", str(ctx.exception.detail))
+        self.assertIn("ricalcola_iva_lotto", str(ctx.exception.detail))
+        # Nessuna scrittura: il rifiuto precede il primo task.
+        repo.run_genera_scadenze_lotto_task.assert_not_called()
+        repo.run_ricalcola_iva_lotto_task.assert_not_called()
+
+    # Scopo: il guard NON e' un obbligo di co-presenza — se il ricalcolo IVA
+    #        vive in uno step precedente lo step delle scadenze e' valido.
+    #        Fallire qui vieterebbe di spezzare la catena su piu' step.
+    def test_execute_step_genera_scadenze_senza_ricalcola_iva_nello_step_ammesso(self):
+        processi = [{
+            "task": "genera_scadenze_lotto",
+            "fase": "Generazione scadenze",
+            "params": {"implementation_key": "default"},
+        }]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "genera_scadenze_lotto_default"
+        repo.run_genera_scadenze_lotto_task.return_value = {
+            "fatture_count": 1, "deleted_rows": 0, "inserted_rows": 1,
+            "skipped_rows": 0, "skipped_errore_rows": 0, "failed_rows": 0,
+        }
+
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        repo.run_genera_scadenze_lotto_task.assert_called_once()
+
+    # Scopo: in ROLLBACK l'ordine non si verifica — la catena di annullamento
+    #        percorre i passi a ritroso, quindi la sequenza «invertita» e'
+    #        esattamente quella attesa e bloccarla impedirebbe l'annullamento.
+    def test_execute_step_ordine_non_verificato_in_rollback(self):
+        processi = [
+            {"task": "genera_scadenze_lotto", "fase": "Generazione scadenze", "params": {"implementation_key": "default"}},
+            {"task": "ricalcola_iva_lotto", "fase": "IVA", "params": {"implementation_key": "default"}},
+        ]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.side_effect = (
+            lambda *, task_code, implementation_key: f"{task_code}_default"
+        )
+        repo.run_genera_scadenze_lotto_task.return_value = {
+            "fatture_count": 1, "deleted_rows": 1, "inserted_rows": 0,
+            "skipped_rows": 0, "skipped_errore_rows": 0, "failed_rows": 0,
+        }
+
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=True,
+            dry_run=False,
+        )
+
+        repo.run_genera_scadenze_lotto_task.assert_called_once()
