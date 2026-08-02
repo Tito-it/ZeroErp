@@ -1467,6 +1467,13 @@ class ErrorPolicyRegistry:
         "E_TASK_FATTURA": ErrorPolicy(code="E_TASK_FATTURA", http_status=400, ui_action="show_error_banner", user_message="Errore task fattura."),
         "E_TASK_IMPLEMENTATION_NOT_FOUND": ErrorPolicy(code="E_TASK_IMPLEMENTATION_NOT_FOUND", http_status=404, ui_action="show_error_banner", user_message="Implementazione task non trovata."),
         "E_TASK_RESET_REQUIRED": ErrorPolicy(code="E_TASK_RESET_REQUIRED", http_status=409, ui_action="show_error_banner", user_message="Reset necessario prima di rieseguire."),
+        # ── Satelliti fattura: esiti PARZIALI dei task per-fattura (D-Q) ──
+        # Non sono errori di richiesta: viaggiano su `task_runs.error_code` e
+        # arrivano all'utente dal cockpit. Registrarli serve al `user_message`:
+        # senza policy il fallback li mostrerebbe tutti come «Errore di
+        # validazione», che non dice ne' cosa e' successo ne' dove guardare.
+        "E_INDIRIZZO_FATTURA_MANCANTE": ErrorPolicy(code="E_INDIRIZZO_FATTURA_MANCANTE", http_status=422, ui_action="show_error_banner", user_message="Alcune fatture non hanno l'indirizzo di fatturazione: vedi i log delle fatture interessate."),
+        "E_SCADENZE_LOTTO_PARZIALE": ErrorPolicy(code="E_SCADENZE_LOTTO_PARZIALE", http_status=422, ui_action="show_error_banner", user_message="Piano rate non generato per alcune fatture: vedi i log delle fatture interessate."),
         "E_TIPO_FONDO_NOT_FOUND": ErrorPolicy(code="E_TIPO_FONDO_NOT_FOUND", http_status=404, ui_action="show_empty_state", user_message="Tipo fondo non trovato."),
         # ── Commesse ──
         "E_COMMESSA_SORGENTE_SCONOSCIUTA": ErrorPolicy(code="E_COMMESSA_SORGENTE_SCONOSCIUTA", http_status=400, ui_action="show_error_banner", user_message="Sorgente commessa sconosciuta."),

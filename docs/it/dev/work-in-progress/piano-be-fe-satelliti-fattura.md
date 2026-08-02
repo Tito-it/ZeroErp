@@ -33,13 +33,19 @@
 > regressione, **smoke §3.3 scritto e verde** (6/6, con prova di mutazione),
 > ricaduta **D-S** (utility in colonna) corretta, e la nostra segnalazione sui
 > clienti senza termine **chiusa da D-J** (fallback `TP_1RATA` nella catena).
-> **Fase 3 (task scadenze)** è l'unica ferma: aspetta che il DB apra la sua
-> Fase 4 — il cui brief è marcato «superato in parte sostanziale» da D-I e va
-> riscritto prima di partire. ⏸️ **D-L.1**: la rinomina è già decisa (D-L,
-> 2026-07-30) — da concordare col DB solo l'**ordine dell'apply**.
-> **Prerequisiti (bloccanti):**
+> **Fase 3 (task scadenze) ✅ REGISTRAZIONE FATTA (2026-08-02)**: il DB aveva già
+> consegnato la sua Fase 4 la sera del 01-08 (`20260801-08/-09`, PR #1119) e noi
+> non ce ne eravamo accorti. Task registrato, handler cablato, guard d'ordine
+> scritto, **binding provato con chiamata reale** (i 3452 verdi mockano il
+> repository e non provano una riga di SQL). Resta **solo l'armamento dei CSV,
+> che è del DB** — il prerequisito che lo bloccava era proprio questa
+> registrazione. ✅ **D-L.1 e D-L.2** chiuse su entrambi gli strati.
+> ⚠️ Il `brief-db-generazione-scadenze-fattura.md` **non va riscritto**: il
+> design-of-record delle scadenze è il piano DB (formula a ramo unico post-D-E,
+> tre casi di D-D), e quel brief è superato.
+> **Prerequisiti:**
 > [brief-db-snapshot-indirizzi-fattura.md](brief-db-snapshot-indirizzi-fattura.md) ·
-> [brief-db-generazione-scadenze-fattura.md](brief-db-generazione-scadenze-fattura.md)
+> [piano-db-satelliti-fattura.md](piano-db-satelliti-fattura.md) §Fase 4
 >
 > Questo documento è il **piano di lavoro applicativo**: cosa si tocca, in quale
 > ordine, e come si verifica. Le decisioni di dominio e le richieste al team DB
@@ -416,16 +422,74 @@ snapshot — se manca, manca, ed è giusto che si veda.
 Verifica di fase: smoke §3.1 caso 5, il test di conformità (modifico l'anagrafica,
 ristampo, il documento non cambia).
 
-### Fase 3 — Task generazione scadenze (dopo apply brief scadenze)
+### Fase 3 — Task generazione scadenze ✅ **REGISTRAZIONE FATTA (2026-08-02)** — armamento alla palla al DB
 
-Stessa forma della Fase 1, sui punti di intervento gemelli
-(`run_genera_scadenze_lotto_task`, `_handle_genera_scadenze_lotto_task`).
+> **Cos'è cambiato.** Il DB **aveva già consegnato la sua Fase 4** la sera del
+> 2026-08-01 (`20260801-08` e `-09`, merge PR #1119): `fn_genera_scadenze_fattura`
+> e `fn_genera_scadenze_lotto` sono applicate e verdi (pgTAP 14/14 e 11/11), e il
+> seed **inerte** è a posto (registry **20**, impl **20**, `task_policy` **19-23**,
+> queste ultime comprese le tre che D-C assegna alla corsia GIORNALIERO).
+> Il brief `brief-db-generazione-scadenze-fattura.md` **non va più riscritto**: il
+> design-of-record è il piano DB, con la formula a ramo unico post-D-E e i tre casi
+> di D-D già implementati.
 
-⚠️ **Attenzione all'ordine dentro lo step**: il task va **dopo**
-`ricalcola_iva_lotto` (prima i totali non esistono). L'ordine è nel seed DB, ma i
-test dell'executor devono asserirlo, non fidarsi.
+Stessa forma della Fase 1, sui punti di intervento gemelli.
 
-Verifica di fase: smoke §3.2 completo.
+| # | Cosa | Dove |
+| --- | --- | --- |
+| 3.1 | `genera_scadenze_lotto` → `vendite.fn_genera_scadenze_lotto` in `ALLOWED_TASK_FUNCTIONS` | `db/pipeline_repository.py` |
+| 3.2 | `run_genera_scadenze_lotto_task` — sei contatori; ⚠️ `skipped_rows` (oltre EMESSA, D-F) e `skipped_errore_rows` (critico altrui, D-Q) restano **separati**: per il cockpit «chiusa» e «rotta» sono l'opposto | `db/pipeline_repository.py` |
+| 3.3 | `_handle_genera_scadenze_lotto_task` + registry `genera_scadenze_lotto_default`; `failed_rows > 0` → `TaskEsitoParziale` (task_run **ERRORE senza raise**, D-Q p.3) | `services/pipeline_step_executor.py` |
+| 3.4 | `E_SCADENZE_LOTTO_PARZIALE` + `E_INDIRIZZO_FATTURA_MANCANTE` registrati (422) | `core/services/error_policies.py` |
+| 3.5 | Guard d'ordine `_TASK_ORDER_DEPENDENCIES` + 8 test | `services/pipeline_step_executor.py` |
+
+**Il codice d'errore del parziale non è uno dei quattro `E_SCADENZE_*` di dominio.**
+A differenza degli indirizzi — dove `E_INDIRIZZO_FATTURA_MANCANTE` è la causa
+dominante reale — qui le cause per-fattura sono quattro (termine mancante, base non
+pronta, termine inconciliabile, fattura bloccata) e **nessuna domina**: sceglierne
+una farebbe raccontare al cockpit una diagnosi che il wrapper non ha misurato. Il
+messaggio originale del DB resta sui log fattura, che è dove si guarda.
+
+⚠️ **L'ordine dentro lo step non è più solo una riga di seed.** Il task va **dopo**
+`ricalcola_iva_lotto` (la base di ripartizione è `totale_a_pagare`, che prima non
+esiste). Ora c'è un **guard nell'executor** (`_TASK_ORDER_DEPENDENCIES`) che rifiuta
+la sequenza invertita **prima che il primo task scriva**: senza, il generatore
+solleverebbe `E_SCADENZE_BASE_NON_PRONTA` su *ogni* fattura, e un giro interamente
+rosso sembrerebbe un difetto dei dati invece di una riga di configurazione girata.
+Due esclusioni volute, entrambe casi legittimi: se il predecessore **non è in questo
+step** non si fallisce (può vivere in uno step precedente), e in **rollback** non si
+verifica (la catena di annullamento va a ritroso).
+
+**Verifica.** 3452 test verdi (+8). ⚠️ **Ma mockano il repository e non provano una
+riga di SQL** ([[feedback_rinomina_db_binding_mockato]]): il binding è stato provato
+con **chiamata reale** in transazione con rollback, attraverso `system_process_context`
+— senza il canale di sistema la RLS restituisce zero lotti, e uno zero fail-closed
+somiglia a un dato ([[feedback_rls_query_contesto_sistema]]). Esiti misurati:
+
+| Caso | Esito |
+| --- | --- |
+| lotto inesistente | sei contatori a zero — il nome risolve (una fn assente darebbe `42883`) |
+| `lotto_id = 0` | guard DB: «p_lotto_id obbligatorio e > 0» |
+| lotti **278/245** (DEFINITIVA) | `skipped_rows = 1`, `failed = 0` → **D-F verificato dal vivo** |
+| lotti **603/604/489** (EMESSA) | `failed_rows` = tutte, con `E_SCADENZE_TERMINE_MANCANTE` |
+
+🟢 **L'ultima riga NON è un difetto, ed è stato verificato invece che assunto.** Le 4
+fatture esistenti (632, 834-836) sono state create il **31/07 alle 15:19 e 23:09**;
+la catena che scrive il termine in testata è entrata con la Fase 3b il **01/08 fra le
+12:32 e le 13:39** (`20260801-04/05/06`), e la `fn_get_or_create_fattura_header` viva
+oggi scrive sia `termine_pagamento_id` sia `modalita_pagamento_id`. Sono fatture
+**anteriori di ~13 ore** al meccanismo: il rifiuto è il comportamento corretto per una
+testata senza termine. **Conseguenza operativa: lo smoke §3.2 va girato su fatture
+nuove**, prodotte da un giro post-3b — sulle quattro esistenti sarà rosso per sempre,
+e sarebbe un rosso che non dice niente.
+
+⛔ **Cosa resta, ed è del DB** (passo 4.3 del loro piano): l'**armamento**, cioè il
+nodo `genera_scadenze_lotto` nei `processi` della pipeline **3** in coda a
+`ricalcola_iva_lotto`, e il **riempimento della corsia 2** (GIORNALIERO/EMESSA, oggi
+`processi = []`) con fondi + IVA + scadenze come vuole D-C. Il prerequisito che li
+bloccava — la registrazione del task lato BE — **è caduto con questa fase**.
+
+Verifica di fase: smoke §3.2 completo, dopo l'armamento e su un lotto nuovo.
 
 ### Fase 4 — Regressioni di D-7 🟡 **SBLOCCATA (2026-08-01): la chiave è a DB**
 
