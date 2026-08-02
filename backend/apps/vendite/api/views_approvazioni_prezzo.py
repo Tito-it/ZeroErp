@@ -15,14 +15,18 @@
 
 from __future__ import annotations
 
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    extend_schema,
+    inline_serializer,
+)
 from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.payload_validators import qp_int
+from apps.core.api.payload_validators import qp_int, qp_str
 from apps.core.api.success_responses import success_response
 from apps.vendite.services import approvazioni_prezzo_service
 from apps.vendite.services._approvazioni_prezzo_constants import (
@@ -266,6 +270,15 @@ class ApprovazioniPrezzoCodaView(DomainAPIView):
     is_search_endpoint = True
 
     @extend_schema(
+        parameters=[
+            OpenApiParameter(name="limit", type=int, required=False),
+            OpenApiParameter(name="offset", type=int, required=False),
+            OpenApiParameter(
+                name="order_by", type=str, required=False,
+                description="Colonna di ordinamento (whitelist pratiche).",
+            ),
+            OpenApiParameter(name="order_dir", type=str, required=False),
+        ],
         responses={200: _CODA_RESPONSE},
         tags=["vendite"],
         summary="Coda approvazioni prezzo (workflow L3)",
@@ -275,9 +288,14 @@ class ApprovazioniPrezzoCodaView(DomainAPIView):
         # Clamp esplicito su DEFAULT_LIMIT/MAX_LIMIT centralizzati (apps/core/api/constants).
         limit = max(1, min(MAX_LIMIT, qp_int(request.query_params.get("limit"), default=DEFAULT_LIMIT)))
         offset = max(0, qp_int(request.query_params.get("offset"), default=0))
+        # `order_by`/`order_dir` passano al service, che li valida contro la
+        # whitelist delle pratiche. Prima del 2026-08-02 la view non li leggeva
+        # e il service inchiodava `data_insert desc`: la lista non ordinava.
         data = approvazioni_prezzo_service.lista_coda(
             auth_user_id=auth_user_id,
             limit=limit,
             offset=offset,
+            order_by=qp_str(request.query_params.get("order_by")),
+            order_dir=qp_str(request.query_params.get("order_dir")),
         )
         return success_response(data)

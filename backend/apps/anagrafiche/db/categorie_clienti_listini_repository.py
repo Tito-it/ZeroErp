@@ -23,11 +23,19 @@ from apps.core.db._helpers import row_to_dict, rows_to_list, sql_order_direction
 # Whitelist colonne ammesse per ORDER BY: protegge da SQL injection sul
 # parametro order_by ricevuto dal frontend. Gli alias mappano a espressioni
 # sicure lato DB.
+#
+# `emittente_ragione_sociale` appartiene al NUCLEO sempre ordinabile (regola di
+# Tid: data del contesto, numero, ragione sociale, billing account, id fiscale,
+# utility, totale, stato). Mancava, ed era l'unica delle 11 a mancare: la
+# colonna era `ordinabile=f` nel seed (riga 371) e il team DB la ribalta a `t`
+# ORA che la whitelist esiste — mai prima, o la freccia comparirebbe a video e
+# ripiegherebbe in silenzio sul default.
 _ORDER_COLS: dict[str, str] = {
     "categoria_codice": "cc.codice",
     "categoria_descrizione": "cc.descrizione",
     "utility_codice": "u.codice",
     "utility_descrizione": "u.descrizione",
+    "emittente_ragione_sociale": "s.ragione_sociale_completa",
     "listino_codice": "l.codice",
     "listino_descrizione": "l.descrizione",
     "valido_dal": "m.valido_dal",
@@ -51,7 +59,15 @@ _SELECT_COLS = """
     u.descrizione AS utility_descrizione,
     m.emittente_soggetto_ruolo_id,
     COALESCE(tr.codice_interno, tr.codice) AS emittente_codice_ruolo,
-    s.ragione_sociale AS emittente_ragione_sociale,
+    -- ⚠️ `ragione_sociale_completa`, NON `ragione_sociale`: la seconda e'
+    -- NULL su ogni persona fisica (11 soggetti su 26 alla misura del brief
+    -- `brief-emittente-ragione-sociale-dal-soggetto.md`), dove il nome sta in
+    -- cognome/nome. La colonna completa e' GENERATED ALWAYS AS
+    -- COALESCE(ragione_sociale, cognome || ' ' || nome), quindi copre entrambi
+    -- i casi. Il difetto era invisibile solo perche' i due emittenti in
+    -- tabella sono societa': si sarebbe visto al primo emittente ditta
+    -- individuale. Corretto il 2026-08-02 su segnalazione del team DB.
+    s.ragione_sociale_completa AS emittente_ragione_sociale,
     m.classe_utenza_id,
     clu.codice AS classe_utenza_codice,
     clu.descrizione AS classe_utenza_descrizione,
