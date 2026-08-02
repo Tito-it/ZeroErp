@@ -95,7 +95,7 @@ function emptyForm() {
     // Denormalizzati dal payload BE (list/detail JOIN). Servono solo per
     // il display read-only in edit; non sono inviati nel payload.
     emittente_fiscale_codice: null,
-    emittente_fiscale_descrizione: null,
+    emittente_ragione_sociale: null,
     context_builder_code: '',
     file_name_pattern: '',
     is_default: false,
@@ -115,7 +115,7 @@ async function loadDetail() {
     sorgente_tipo_id: data.sorgente_tipo_id ?? null,
     emittente_fiscale_id: data.emittente_fiscale_id ?? null,
     emittente_fiscale_codice: data.emittente_fiscale_codice ?? null,
-    emittente_fiscale_descrizione: data.emittente_fiscale_descrizione ?? null,
+    emittente_ragione_sociale: data.emittente_ragione_sociale ?? null,
     context_builder_code: data.context_builder_code ?? '',
     file_name_pattern: data.file_name_pattern ?? '',
     is_default: data.is_default ?? false,

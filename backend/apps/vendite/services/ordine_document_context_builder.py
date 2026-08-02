@@ -136,9 +136,19 @@ class OrdineDocumentContextBuilder(DocumentContextBuilder):
                 "codice": testata.get("utility_codice"),
                 "descrizione": testata.get("utility_descrizione"),
             },
+            # `denominazione` aggiunta il 2026-08-03: il contesto portava solo
+            # id e codice, quindi il template non aveva un nome da stampare e
+            # ripiegava sul codice — a video usciva
+            # «Emittente fiscale PGTAP-EF-20260126172242554».
+            # Stesso nome di chiave della fattura (`emittente.denominazione`),
+            # cosi' chi scrive un template usa un nome solo su tutti i
+            # documenti. Fonte: `emittente_ragione_sociale` della vista, cioe'
+            # la ragione sociale del SOGGETTO emittente — la stessa che la
+            # fattura congela nello snapshot di intestazione.
             "emittente": {
                 "id": testata.get("emittente_fiscale_id"),
                 "codice": testata.get("emittente_fiscale_codice"),
+                "denominazione": testata.get("emittente_ragione_sociale"),
             },
             "pagamento": {
                 "modalita_codice": testata.get("modalita_pagamento_codice"),

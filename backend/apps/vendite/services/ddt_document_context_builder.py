@@ -143,9 +143,14 @@ class DdtDocumentContextBuilder(DocumentContextBuilder):
                 "codice": testata.get("utility_codice"),
                 "descrizione": testata.get("utility_descrizione"),
             },
+            # `denominazione` aggiunta il 2026-08-03, stesso difetto dell'ordine:
+            # senza un nome il template ripiegava sul codice e stampava
+            # «Emittente fiscale PGTAP-EF-2026...». Chiave allineata a fattura e
+            # ordine — un nome solo per tutti i documenti.
             "emittente": {
                 "id": testata.get("emittente_fiscale_id"),
                 "codice": testata.get("emittente_fiscale_codice"),
+                "denominazione": testata.get("emittente_ragione_sociale"),
             },
             "valuta_codice": testata.get("valuta_codice"),
             "origine": {

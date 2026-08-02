@@ -59,7 +59,7 @@ _ORDER_COLS_PREVENTIVI: dict[str, str] = {
     "stato_descrizione": "v.stato_descrizione",
     # `stato_codice_interno` (tecnica, severity del Tag) ed
     # `emittente_fiscale_codice` (la colonna Emittente legge
-    # `emittente_fiscale_descrizione`) sono uscite il 2026-07-31: nessuna
+    # `emittente_ragione_sociale`) sono uscite il 2026-07-31: nessuna
     # colonna del catalogo le invia come sortField.
     "valuta_codice": "v.valuta_codice",
     "competenza_mese": "v.competenza_mese",
@@ -291,7 +291,7 @@ class PreventiviRepository(
                 p.emittente_fiscale_id,
                 ef.codice AS emittente_fiscale_codice,
                 s_ef.ragione_sociale_completa
-                    AS emittente_fiscale_descrizione,
+                    AS emittente_ragione_sociale,
                 -- Flag informativo (UX): il BA ha un contratto ATTIVO per
                 -- la coppia (utility, data preventivo)? Se false il pricing
                 -- delle righe passera' dallo STADIO 2 (matrice categoria→
@@ -326,10 +326,11 @@ class PreventiviRepository(
             LEFT JOIN config.utilities u ON u.id = p.utility_id
             LEFT JOIN config.valute v ON v.id = p.valuta_id
             LEFT JOIN config.termini_pagamento tp ON tp.id = p.termine_pagamento_id
-            -- Decode emittente fiscale: codice + ragione sociale (con fallback
-            -- a descrizione plain dell'EF). Pattern allineato a documenti repo
-            -- per UX uniforme nei drawer (EmittenteFiscaleField in modalita' edit
-            -- legge questi campi denormalizzati senza round-trip aggiuntivo).
+            -- Decode emittente fiscale: codice + ragione sociale del soggetto
+            -- (nessun fallback a `emittenti_fiscali.descrizione`, rimosso col
+            -- brief emittente-ragione-sociale-dal-soggetto). Pattern allineato a
+            -- documenti repo per UX uniforme nei drawer (EmittenteFiscaleField
+            -- in edit legge questi campi denormalizzati senza round-trip).
             LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = p.emittente_fiscale_id
             LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
             LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id

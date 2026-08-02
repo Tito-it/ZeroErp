@@ -129,7 +129,7 @@ class DocumentiRepositoryListTemplatesTests(TestCase):
         data_sql = cursor.execute.call_args_list[1].args[0]
         self.assertIn("ORDER BY t.codice ASC, t.id ASC", data_sql)
         self.assertIn("s_ef.ragione_sociale_completa", data_sql)
-        self.assertIn("AS emittente_fiscale_descrizione", data_sql)
+        self.assertIn("AS emittente_ragione_sociale", data_sql)
         self.assertIn("LEFT JOIN anagrafiche.soggetti_ruoli sr_ef", data_sql)
 
     # 1. filtri valorizzati e search ILIKE entrano nei params.
