@@ -1715,11 +1715,31 @@ generatore non la può produrre da solo, e va scritta a mano sapendo perché.
 | `AuditLogView` | `_AUDIT_ORDER_COLUMNS` (attributo di classe, `frozenset`) | ✅ **seedata**, lotto 6 |
 | `CategorieClientiListiniSearchTable` | `_ORDER_COLS` | ✅ **seedata**, lotto 6 |
 | `EmailAccountsListView` · `EmailTemplatesListView` · `EmailLogsListView` | ~~nessuna~~ → ✅ tre whitelist + endpoint paginati (BE, `fb59cc5a4`) | ✅ **seedate**, lotto 6 |
-| `ApprovazioniPrezzoListView` | ❌ nessuna — `order_by="data_insert"` **cablato** nel service | ⛔ lavoro BE |
-| `CodaLavoriTab` · `CodaStampaTab` | ❌ nessuna — le liste ordinano per `id DESC` (monitoraggio) | ⛔ decisione di dominio |
-| `SituazioneApertaView` · `DashboardBacklogView` · `DashboardCompetenzaView` | `query_paged_view`, whitelist **a carico del chiamante** | 🔵 da verificare caso per caso |
+| `ApprovazioniPrezzoListView` | ✅ `_PRATICHE_ORDER_COLS` (10 voci) — passa da `cerca_pratiche`; il service **inchioda** `order_by="data_insert"` | 🔵 far passare il parametro |
+| `CodaLavoriTab` | ✅ `_ELENCA_SORT_SQL` (4 voci) + endpoint con `sort_by`/`sort_dir` | 🔵 estendere la whitelist |
+| `CodaStampaTab` | ✅ `_CODA_STAMPA_SORT_SQL` (3 voci) + endpoint con `sort_by`/`sort_dir` | 🔵 estendere la whitelist |
+| `SituazioneApertaView` · `DashboardBacklogView` · `DashboardCompetenzaView` | `query_paged_view` (`order_by` è un suo parametro) — **e i `.vue` ordinano già**: 4 · 6 · 12 colonne `sortable` con `@sort` | 🔵 rinviate per scelta |
 | `VersioneDrawer` (righe di versione listino) | ✅ `RIGHE_ORDER_COLUMNS` (`listini_repository`), 8 voci | ⛔ **non per la whitelist**: vedi sotto |
-| `CommessaGestioneDrawer` (righe commessa) | ❌ nessuna — `ORDER BY id` fisso, e il `.vue` non emette nemmeno `@sort` | ⛔ lavoro BE |
+| `CommessaGestioneDrawer` (righe commessa) | ❌ nessuna — `ORDER BY id` fisso, e il `.vue` non emette nemmeno `@sort` | 🔵 lavoro BE |
+
+🔴 **Ri-misurata il 2026-08-02: la mappa sbagliava su cinque righe su sei, e
+sempre nello stesso verso — dava per assente un ordinamento che c'era.**
+
+| Diceva | È |
+| --- | --- |
+| `ApprovazioniPrezzo`: «nessuna whitelist» | la whitelist esiste ed è quella delle pratiche: il service ci passa attraverso e **inchioda** il valore in [`approvazioni_prezzo_service.py:624`](../../../../backend/apps/vendite/services/approvazioni_prezzo_service.py#L624) |
+| le due code: «nessuna, ordinano per `id DESC`» | **entrambe** hanno una whitelist e un endpoint che accetta `sort_by`/`sort_dir`; il default di `CodaStampa` è `data_update DESC`, non `id` |
+| le dashboard: «da verificare caso per caso» | ordinano **già oggi**, sia lato `.vue` sia lato BE |
+
+Il motivo dell'errore è sempre lo stesso, ed è il terzo caso in due giorni dopo
+`AuditLogView` e `CategorieClientiListini`: **la whitelist è stata cercata nel
+repository che porta il nome della lista**. Queste la tengono altrove — in un
+service condiviso (`cerca_pratiche`), in un `ClassVar` dentro la classe, o
+dietro un helper generico. ➡️ **La domanda giusta non è «esiste un
+`_ORDER_COLS` in quel file», è «questo endpoint, oggi, accetta un
+ordinamento».** Si risponde leggendo la catena view→service→repository, che è
+poi lo stesso limite già scritto per il presidio: confronta una costante, non
+l'endpoint che la attraversa.
 
 ⚠️ **Le ultime due righe mancavano alla misura del 2026-08-01** — la mappa ne
 copriva 11 sulle 13 lazy rimaste, e queste due erano state saltate, non
@@ -1770,6 +1790,106 @@ blocco, non una lista per volta, perché tre di esse (le due code e
 `ApprovazioniPrezzoListView`) sono la stessa domanda posta a oggetti diversi:
 *un ordine implicito è un dato o un default?*
 
+##### ✅ Le quattro decisioni — prese da Tid il 2026-08-02
+
+Le dodici non erano dodici problemi ma **quattro domande**, ognuna posta a più
+liste. Le risposte, e cosa ne consegue:
+
+| # | Domanda | Decisione | Effetto |
+| --- | --- | --- | --- |
+| 1 | L'ordine delle code è un dato o un default? | **Default → ordinabili** | 3 liste entrano nel 7° lotto |
+| 2 | Le dashboard vanno personalizzate? | **Sì, come le altre — ma per ultime** | 3 liste rinviate, non escluse |
+| 3 | I due drawer si uniformano? | **Sì, entrambi** | 2 liste, di cui 1 con una domanda aperta |
+| 4 | Vale la paginazione per i 4 cassetti? | **Per ora no** | 4 liste ferme |
+
+**1 — Le code sono un default, quindi ordinabili.** `CodaLavoriTab`,
+`CodaStampaTab`, `ApprovazioniPrezzoListView`. La misura qui sopra dice che
+costano molto meno di quanto il piano dichiarava: **nessuna delle tre parte da
+zero.** Per le due code la whitelist esiste e l'endpoint accetta già
+`sort_by`/`sort_dir` — va solo estesa alle colonne del nucleo e il `.vue` deve
+emettere `@sort`. Per le approvazioni la whitelist è addirittura completa (10
+voci): basta smettere di inchiodare il valore nel service e lasciar passare il
+parametro dalla view.
+
+**2 — Le dashboard sono cruscotti, ma si trattano come le altre.** Motivo di
+Tid: **ordinano già oggi** (e la misura lo conferma: 4, 6 e 12 colonne
+`sortable`), quindi il salto è corto; e l'export CSV — che il building block dà
+gratis — su un cruscotto è più utile che altrove. **Restano per ultime** per
+scelta, non per difficoltà: sono le tre più grosse e nessuno le sta aspettando.
+
+**3 — I due drawer si uniformano a tutte le altre liste.**
+`CommessaGestioneDrawer` ordina per **`data_attivita` (default)** e
+**`segment_key`** — entrambe colonne che il `.vue` già mostra, quindi nessun
+campo nuovo da esporre. ⚠️ Su `VersioneDrawer` «uniformare» **implica una
+risposta alla domanda dei compositi**, che resta l'unica aperta delle dodici: se
+la lista è una sola, i compositi devono arrivare **dal server insieme alle altre
+righe** e non essere attaccati dopo, altrimenti totale e pagine mentono. È
+lavoro BE sull'endpoint, non un allineamento di whitelist.
+
+**4 — I quattro cassetti restano come sono.** `ArticoloBomDrawer`,
+`ContrattiBillingAccountDrawer`, `ContrattoRigheDrawer`,
+`OffertaEccezioniDrawer`: caricano tutto in una volta e il building block ha
+`lazy` fisso, quindi servirebbero quattro endpoint paginati nuovi prima di
+toccare la parte visibile. Su cassetti da poche righe è tutto costo e nessun
+beneficio.
+
+➡️ **Il 7° lotto sono le 5 liste dei punti 1 e 3** — e per il metodo che ha già
+funzionato due volte (`attivo`, poi la famiglia email), il lavoro BE va chiesto
+come **passata unica prima di comporre il lotto**, non in consegna. Cosa
+**blocca** (nucleo, quindi la consegna aspetta) e cosa **migliora** vanno
+separati nella richiesta, così il BE decide invece di eseguire.
+
+##### 📋 Commessa BE per il 7° lotto — misurata il 2026-08-02
+
+Colonne dei cinque `.vue` incrociate con la whitelist di ciascuno. Tutti e
+cinque hanno **una sola** `<DataTable>`, quindi il conteggio è affidabile (la
+trappola di `ListiniSearchTable` non si applica).
+
+🔴 **Blocca la consegna** — è nucleo, e senza queste la lista nasce con una
+freccia che non ordina:
+
+| Lista | Voce da aggiungere | Famiglia di nucleo |
+| --- | --- | --- |
+| `CodaLavoriTab` | `stato` | stato |
+| `CodaStampaTab` | `stato` · `emittente_codice` | stato · numero/codice |
+| `ApprovazioniPrezzoListView` | `priorita_codice` | numero/codice |
+| `CommessaGestioneDrawer` | `data_attivita` · **uno fra** `stato_approvazione` / `stato_emissione` | data · stato |
+| `VersioneDrawer` | *(nessuna: il nucleo è già coperto)* | — |
+
+🔵 **Migliora, non blocca** — se non arrivano, la colonna nasce
+`ordinabile = f` e si ribalta quando la voce c'è (è già successo con `attivo`):
+
+| Lista | Voci |
+| --- | --- |
+| `CodaStampaTab` | `id` · `operatore` |
+| `ApprovazioniPrezzoListView` | `id` |
+| `VersioneDrawer` | `iva_aliquota` |
+| `CommessaGestioneDrawer` | `competenza_mese` · `segment_key` · `quantita` · `prezzo_snapshot` |
+
+⚙️ **Due lavori che non sono voci di whitelist**, e sono i più grossi dei cinque:
+
+1. **`ApprovazioniPrezzoListView` — far passare il parametro.** La whitelist è
+   già completa (`_PRATICHE_ORDER_COLS`, 10 voci): il service chiama
+   `cerca_pratiche(..., order_by="data_insert", order_dir="desc")` con i valori
+   **inchiodati** ([`approvazioni_prezzo_service.py:624`](../../../../backend/apps/vendite/services/approvazioni_prezzo_service.py#L624)).
+   Serve che view e service li accettino e li inoltrino. È l'unica delle cinque
+   dove il lavoro è di **cablaggio**, non di dominio.
+2. **`VersioneDrawer` — i compositi.** La `<DataTable>` monta un computed che
+   fonde le righe paginate dal server con i compositi caricati a parte. Il BB ha
+   `lazy` fisso e prende `total` dal caller: con righe aggiunte dopo la
+   paginazione, conteggio e pagine mentono. **Decisione presa: la lista è una
+   sola**, quindi i compositi devono arrivare **dall'endpoint insieme alle
+   altre righe**. Finché non lo fanno, questa lista non è seedabile: è l'unica
+   delle cinque che ha un prerequisito, non una richiesta.
+
+⚠️ **Una conseguenza da segnalare a Tid, perché la decisione presa non basta.**
+Su `CommessaGestioneDrawer` la richiesta era «ordine per data (default) e
+segmento». `data_attivita` copre la famiglia *data*, ma `segment_key` **non è
+nucleo**, e il nucleo *stato* resta scoperto: la lista ha `stato_approvazione` e
+`stato_emissione`, nessuna delle due ordinabile. O se ne rende ordinabile
+almeno una, o la lista nasce con il presidio rosso. Non è una svista della
+decisione: è che la regola del nucleo chiede una cosa in più di quella che si
+vede guardando la pagina.
 > ➡️ **Aggiornamento 2026-08-02 (BE): la passata BE del 7° lotto è FATTA** per
 > le due code e le approvazioni — whitelist estese al nucleo e inchiodatura
 > rimossa. `CommessaGestioneDrawer` è risultata **bloccata lato DB** (ordine e

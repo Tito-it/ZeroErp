@@ -37,15 +37,22 @@ Quattro conseguenze, di cui una fiscale:
 
 ## 2. Dove siamo
 
-Il DB è **pronto e applicato**: non c'è niente da aspettare per cominciare.
+**Aggiornato il 2026-08-02: la catena è chiusa su entrambi i lati e il task è
+armato.** Resta il solo smoke di accettazione (§5 punto 6) — prima di scriverlo,
+leggere il **§5-bis**: tre cose lo farebbero fallire su comportamenti corretti.
 
 | Pezzo | Stato |
 |---|---|
 | `vendite.fn_genera_scadenze_fattura(fattura_id)` — il generatore | ✅ applicata, pgTAP 14/14 |
 | `vendite.fn_genera_scadenze_lotto(lotto_id, batch_size)` — il wrapper | ✅ applicata, pgTAP 11/11 |
 | Codici errore **570-573** | ✅ registrati in `config.messaggi_errore` |
-| Registro del task: `pipeline_task_registry` **20**, `impl` **20**, `task_policy` **19-23** | ✅ seminati, **inerti** |
-| Il task nei `processi` dello step EMESSA | ⛔ **non armato** — §5 |
+| Registro del task: `pipeline_task_registry` **20**, `impl` **20**, `task_policy` **19-23** | ✅ seminati |
+| Cablaggio BE (handler, wrapper, `ALLOWED_TASK_FUNCTIONS`, sei contatori, test) | ✅ **fatto** (`14970e898`) |
+| Il task nei `processi` dello step EMESSA | ✅ **ARMATO** su pipeline **3** (MASSIVO) e **2** (GIORNALIERO) |
+| Corsia GIORNALIERO/EMESSA (pipeline 2), prima vuota | ✅ **riempita**: fondi → fondi → IVA → scadenze |
+| Invariante pgTAP sui `processi`, esteso a tutte le tappe | ✅ `test-pipeline-processi-invariante-v1.sql`, 7/7 |
+| **Guard D-K alla numerazione** (Fase 4b) — `numera_fatture` ora rifiuta i documenti incoerenti | ✅ **applicato** (`20260802-24`), pgTAP 9/9 — **§5-bis punto 3** |
+| **Smoke di accettazione end-to-end** | 🟡 **in corso, lato BE** — l'unica cosa aperta |
 
 ---
 
@@ -116,6 +123,19 @@ quando abbassarle.
   documento a credito non si rateizza (`CHECK (importo >= 0)`);
 - una fattura **senza rate non è una fattura difettosa**.
 
+> ℹ️ **Un quinto codice, che non è del generatore ma vi arriverà addosso lo
+> stesso**: **574 `E_FATTURA_NON_NUMERABILE_INCOERENTE`**, sollevato da
+> `fn_assign_numero_fattura` nello step **DEFINITIVA**. Non nasce qui, ma è il
+> valle naturale di questo lavoro: è il presidio che impedisce di dare un numero
+> fiscale a un documento a cui le rate mancano. Le sei condizioni e le
+> conseguenze pratiche sono nel **§5-bis punto 3**.
+>
+> Attenzione a non confonderlo con il **571** `E_SCADENZE_BASE_NON_PRONTA`: il
+> 571 dice «i totali non ci sono ancora, il piano rate non si può calcolare» ed è
+> dello step EMESSA; il 574 dice «il documento è incoerente, non merita un numero
+> fiscale» ed è dello step DEFINITIVA. Stesso sintomo a monte, momenti e rimedi
+> diversi.
+
 ---
 
 ## 5. Cosa deve fare il BE
@@ -123,32 +143,109 @@ quando abbassarle.
 Nessuna logica di calcolo in Python: solo cablaggio, sul modello esatto di
 `ricalcola_iva_lotto`.
 
-1. handler `_handle_genera_scadenze_lotto_task` in `pipeline_step_executor.py`
+1. ✅ handler `_handle_genera_scadenze_lotto_task` in `pipeline_step_executor.py`
    (+ entry nel `handler_registry`);
-2. wrapper `run_genera_scadenze_lotto_task(*, lotto_id, batch_size)` in
+2. ✅ wrapper `run_genera_scadenze_lotto_task(*, lotto_id, batch_size)` in
    `pipeline_repository.py`;
-3. voce in `ALLOWED_TASK_FUNCTIONS` → `vendite.fn_genera_scadenze_lotto`;
-4. i **sei contatori** nel risultato del task, con i due `skipped` separati;
-5. test unitari dell'handler (run + dry-run) e del wrapper;
-6. smoke sul percorso reale: le rate esistono, quadrano **al centesimo** con
-   `totale_a_pagare`, e il PDF le stampa.
+3. ✅ voce in `ALLOWED_TASK_FUNCTIONS` → `vendite.fn_genera_scadenze_lotto`;
+4. ✅ i **sei contatori** nel risultato del task, con i due `skipped` separati;
+5. ✅ test unitari dell'handler (run + dry-run) e del wrapper;
+6. 🟡 smoke sul percorso reale: le rate esistono, quadrano **al centesimo** con
+   `totale_a_pagare`, e il PDF le stampa. **⚠️ Leggere il §5-bis prima di
+   scriverlo.**
 
-### L'armamento: chi muove per primo
+### L'armamento: fatto, in entrambi i tempi ✅
 
-Il seed è in **due tempi**, come per lo snapshot indirizzi e per la stessa
+Il seed era in **due tempi**, come per lo snapshot indirizzi e per la stessa
 ragione: il dispatch dei task non è dinamico.
 
-**Fatto**: registro, implementazione e policy sono seminati e **inerti** — non
-fanno partire niente.
+Entrambi i tempi sono stati eseguiti il 2026-08-02, nell'ordine giusto: prima la
+registrazione del task lato BE, poi il nodo `genera_scadenze_lotto` nei `processi`
+dello step EMESSA. La **corsia giornaliera** (`fatturazione_pipeline` id 2), che
+era vuota, è stata riempita nello stesso giro con fondi + IVA + scadenze: finché
+restava così emetteva documenti senza riepilogo IVA né totali.
 
-**Da fare, in quest'ordine**: prima voi registrate il task in
-`ALLOWED_TASK_FUNCTIONS`, poi noi aggiungiamo il nodo `genera_scadenze_lotto` ai
-`processi` dello step EMESSA. Invertire l'ordine fa morire il lotto su un task
-sconosciuto.
+📌 **Due presidi sull'ordine, complementari — non toglierne uno.** Il task deve
+stare **dopo** `ricalcola_iva_lotto`, perché prima la base `totale_a_pagare` non
+esiste. Oggi l'invariante è sorvegliato da due parti, che guardano oggetti
+diversi:
 
-⚠️ Nello stesso giro va riempita la **corsia giornaliera** (`fatturazione_pipeline`
-id 2), oggi vuota: fondi + IVA + scadenze. Finché resta così quella corsia emette
-documenti senza riepilogo IVA né totali.
+| Presidio | Dove | Cosa vede |
+|---|---|---|
+| `_TASK_ORDER_DEPENDENCIES` | `pipeline_step_executor.py` (BE) | la **configurazione letta** a runtime, prima che il primo task scriva |
+| `test-pipeline-processi-invariante-v1.sql` | `db/pgtap/vendite/` (DB) | il **seed** che quella configurazione la produce |
+
+Non sono la stessa difesa scritta due volte: il primo protegge un giro già
+avviato da una config girata, il secondo impedisce che la config sbagliata nasca.
+Chi in futuro li trovasse entrambi non ne rimuova uno pensando a un doppione.
+
+---
+
+## 5-bis. Prima di scrivere lo smoke: tre cose che lo farebbero fallire su comportamenti corretti
+
+**1. Va girato su fatture NUOVE, prodotte da un giro post-3b.** Le fatture
+esistenti al 2026-08-02 (**632, 834-836**) sono state create il 31/07; la catena
+che scrive `termine_pagamento_id` in testata è entrata il 01/08 con la Fase 3b.
+Sono **anteriori di ~13 ore** al meccanismo, quindi su di loro
+`E_SCADENZE_TERMINE_MANCANTE` (570) è **il comportamento corretto**, non un
+difetto. Uno smoke puntato sul parco esistente sarà rosso per sempre, e sarà un
+rosso che non insegna niente.
+
+**2. La quadratura si asserisce solo sulle fatture con base positiva.** Il punto 6
+chiede che le rate quadrino al centesimo con `totale_a_pagare`; il **§4** dice che
+con `totale_a_pagare <= 0` le rate sono **zero** ed è un documento legittimo. Le
+due frasi convivono solo se lo smoke **esclude** dalla quadratura le fatture a
+base non positiva. Altrimenti fallisce sulla prima fattura interamente coperta da
+acconti — e fallirebbe *correttamente*, che è il modo peggiore di scoprirlo.
+
+**3. D-K è ARRIVATO (2026-08-02, `20260802-24` applicato): la numerazione ora
+verifica sei condizioni.** Non è più un avviso su qualcosa che verrà — è il
+comportamento di adesso, e tocca direttamente lo smoke.
+
+`vendite.fn_assign_numero_fattura` rifiuta con
+**`E_FATTURA_NON_NUMERABILE_INCOERENTE` (574)** un documento che violi anche una
+sola di queste:
+
+| # | Condizione |
+|---|---|
+| 1 | `totale_a_pagare` è NULL — i totali non sono mai stati calcolati |
+| 2 | ci sono righe ma **nessun riepilogo IVA** |
+| 3 | `totale_a_pagare > 0` e **nessuna rata**, oppure **Σ rate ≠ totale_a_pagare** |
+| 4 | `totale_a_pagare <= 0` ma **esistono rate** (D-D allo specchio) |
+| 5 | i **riepiloghi IVA non quadrano** con i totali di testata |
+| 6 | `totale_a_pagare` **non è la somma dei suoi addendi** (`totale_doc` + fondi + arrotondamenti) |
+
+Insieme verificano una catena continua, senza anelli scoperti:
+`riepiloghi IVA →(5) totale_doc →(6) totale_a_pagare →(3/4) rate`.
+
+**Cosa cambia per voi, in concreto:**
+
+- **Lo step `numera_fatture` ora può dire di no**, e prima non l'aveva mai fatto.
+  L'errore arriva con **tutti** i motivi insieme (array `motivi` nel payload, e
+  concatenati nel messaggio), non uno per giro: un solo rilancio vi dice tutto
+  ciò che manca al documento.
+- Il codice **574 è già registrato** in `config.messaggi_errore` dalla Fase 1.3 —
+  se non è ancora in `error_policies.py`, va aggiunto lì.
+- **Le fixture che numerano fatture prive di satelliti si rompono.** Lato DB era
+  **una** su tre: `test-numera-fattura-opz-emessa`, sanata facendole costruire un
+  documento completo con le funzioni vere (`fn_ricalcola_riepilogo_iva_fattura` →
+  `fn_ricalcola_totali_fattura` → `fn_genera_scadenze_fattura`) invece di
+  scrivere i satelliti a mano. Se avete fixture Python che numerano, è lo stesso
+  lavoro.
+- Le fatture **632, 834-836** ora **non sono numerabili** — condizione 3, non
+  hanno rate perché non hanno il termine in testata. È la seconda ragione, dopo
+  il punto 1, per cui lo smoke va su documenti nuovi.
+
+> ℹ️ **Una precisazione che smonta una motivazione che girava.** Il guard sta
+> *prima* del consumo del progressivo, ma **non** per evitare un buco di
+> numerazione: verificato il 2026-08-02, `fn_get_next_progressivo` non usa alcuna
+> sequence — è `pg_advisory_xact_lock` + `UPDATE last_numero` — quindi è
+> transazionale e il numero fa rollback insieme al documento. Il danno che il
+> guard evita è l'**opposto e irreversibile**: un numero fiscale valido su un
+> documento invalido. Una volta numerato, il documento è DEFINITIVA, i satelliti
+> sono congelati e **le rate mancanti non si possono più aggiungere**: si ripara
+> solo con una nota di variazione. Se trovate la frase «nextval non fa rollback»
+> nei changeSet precedenti, è superata.
 
 ---
 

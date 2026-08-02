@@ -1,0 +1,169 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# fn_ricalcola_riepilogo_iva_fattura — due difetti sul controllo dello stato,
+#   trovati il 2026-08-02 adeguando le fixture al guard D-K (Fase 4b).
+#
+# ⚠️ SONO DUE DIFETTI OPPOSTI NELLA STESSA FUNZIONE, e vale la pena vederli
+#   insieme perche' derivano dallo stesso errore di fondo: usare un valore
+#   NULLABILE come se fosse la prova che una riga esiste.
+#
+# ── DIFETTO 1 (fail-closed con la diagnosi sbagliata) ────────────────────────
+#   Codice precedente:
+#       SELECT f.stato_doc_fiscale_id INTO v_stato_id FROM vendite.fatture f ...
+#       IF v_stato_id IS NULL THEN  -> E_FATTURA_NON_TROVATA
+#   `vendite.fatture.stato_doc_fiscale_id` e' NULLABLE (verificato su
+#   information_schema). Quindi l'IF non distingue «la fattura non c'e'» da
+#   «la fattura c'e' ma non ha stato»: nel secondo caso risponde «Fattura non
+#   trovata (id N)» mandando chi legge a cercare un documento che invece esiste.
+#   RIPRODOTTO: la fixture di test-numera-fattura-opz-emessa creava la fattura
+#   senza stato e la funzione la dichiarava inesistente.
+#   Rimedio: `IF NOT FOUND` per l'esistenza — che e' cio' che NOT FOUND misura —
+#   e un controllo separato, con un messaggio proprio, per lo stato assente.
+#
+# ── DIFETTO 2 (fail-open di FORMA, oggi IRRAGGIUNGIBILE) ─────────────────────
+#   Codice precedente:
+#       SELECT s.codice_interno INTO v_codice_interno FROM config.stati_doc_fiscale ...
+#       IF v_codice_interno NOT IN ('DRAFT', 'EMESSA') THEN -> errore
+#   Se `v_codice_interno` fosse NULL, `NULL NOT IN ('DRAFT','EMESSA')` non vale
+#   FALSE: vale **NULL**, quindi l'IF NON scatterebbe e la funzione proseguirebbe
+#   su un documento di stato ignoto. Verificato in SQL:
+#   `SELECT NULL::text NOT IN ('DRAFT','EMESSA')` restituisce NULL.
+#
+#   ⚠️ ONESTA' SULLA PORTATA — questo NON e' un bug vivo, ed e' bene scriverlo
+#   invece di lasciar credere il contrario. Provato a raggiungerlo forzando uno
+#   `stato_doc_fiscale_id` inesistente: non ci si arriva. Esiste la FK
+#   `fk_fatture_stato_doc_fiscale`, quindi la colonna puo' contenere solo un id
+#   valido oppure NULL — e il NULL ora e' respinto poco sopra dal controllo del
+#   difetto 1. Il ramo e' quindi INESEGUIBILE allo stato attuale del modello.
+#   Si aggiunge `IS NULL OR` lo stesso, per due ragioni misurate e non per
+#   scrupolo: costa zero a runtime, e rende il guard indipendente da un vincolo
+#   che vive in un'altra tabella — se un domani la FK venisse allentata (o la
+#   funzione riusata su una tabella che non ce l'ha) il guard continuerebbe a
+#   dire di NO invece di tacere. Un guard che non sa dire di si' deve dire di NO.
+#
+# PERCHE' NON SI ESTENDE AD ALTRE FUNZIONI. Censite le sorelle che usano lo
+#   stesso schema: `fn_numera_fattura_opz_emessa` sonda `v_registro_id IS NULL`,
+#   ma `vendite.fatture.registro_id` e' NOT NULL, quindi li' l'IS NULL non puo'
+#   mentire — forma fragile, difetto assente, e si tocchera' quando quella
+#   funzione verra' riaperta per altro. `fn_snapshot_indirizzi_fattura` e
+#   `fn_snapshot_intestazione_fattura` usano gia' `IF NOT FOUND`: sono la forma
+#   corretta e restano il modello.
+#
+# NESSUN CODICE ERRORE NUOVO: si riusano E_FATTURA_NON_TROVATA (140) per
+#   l'esistenza e E_VALORE_MANCANTE (32) per lo stato assente, entrambi gia' a
+#   catalogo. Il COMMENT viene esteso: quello attuale ("Ricalcola riepiloghi IVA
+#   fattura. Ammesso solo per DRAFT/EMESSA.") non dice nulla del perimetro.
+#
+# Base: doc auto-gen docs/it/dbzero/vendite/funzioni/fn_ricalcola_riepilogo_iva_fattura.md
+#   (corpo vivo). Firma e RETURNS invariati -> CREATE OR REPLACE puro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260802-25-fix-fn-ricalcola-riepilogo-iva-diagnosi-stato-mctit.yaml
+
+  - changeSet:
+      id: 20260802-25-fix-fn-ricalcola-riepilogo-iva-diagnosi-stato
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_ricalcola_riepilogo_iva_fattura: distingue «fattura assente» da
+        «fattura senza stato» (prima diceva «non trovata» per entrambe) e chiude
+        il fail-open del guard di stato, che con codice_interno NULL non scattava.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_ricalcola_riepilogo_iva_fattura(
+                  p_fattura_id vendite.fatture.id%TYPE
+              )
+              RETURNS TABLE(deleted_rows integer, inserted_rows integer)
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_deleted_rows  INTEGER := 0;
+                  v_inserted_rows INTEGER := 0;
+                  v_stato_id      vendite.fatture.stato_doc_fiscale_id%TYPE;
+                  v_codice_interno config.stati_doc_fiscale.codice_interno%TYPE;
+                  v_stato_emittente_id anagrafiche.soggetti.stato_id%TYPE;
+              BEGIN
+                  IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_fattura_id', 'valore', p_fattura_id), NULL::uuid, 'p_fattura_id obbligatorio e > 0');
+                  END IF;
+
+                  SELECT f.stato_doc_fiscale_id INTO v_stato_id FROM vendite.fatture f WHERE f.id = p_fattura_id;
+
+                  -- ⚠️ L'esistenza si misura con NOT FOUND, non con l'IS NULL di
+                  --    una colonna NULLABILE. `stato_doc_fiscale_id` puo' essere
+                  --    NULL su una fattura che esiste: il codice precedente la
+                  --    dichiarava «non trovata» e mandava a cercare un documento
+                  --    che invece era li'.
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_FATTURA_NON_TROVATA',
+                          jsonb_build_object('fattura_id', p_fattura_id), NULL::uuid, p_fattura_id::text);
+                  END IF;
+
+                  -- La fattura c'e' ma non ha stato: e' un'altra cosa, e va detta
+                  -- come tale. Senza stato non si puo' decidere se il ricalcolo
+                  -- sia ammesso, quindi non si procede.
+                  IF v_stato_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_VALORE_MANCANTE',
+                          jsonb_build_object('fattura_id', p_fattura_id, 'campo', 'stato_doc_fiscale_id'),
+                          NULL::uuid, concat('stato_doc_fiscale_id della fattura ', p_fattura_id));
+                  END IF;
+
+                  SELECT s.codice_interno INTO v_codice_interno FROM config.stati_doc_fiscale s WHERE s.id = v_stato_id;
+
+                  -- ⚠️ `IS NULL OR`: senza, uno stato non risolvibile renderebbe
+                  --    l'espressione NULL — e `NULL NOT IN (...)` NON e' vero,
+                  --    quindi l'IF non scatterebbe e il ricalcolo procederebbe su
+                  --    un documento di stato ignoto. Oggi il ramo e' IRRAGGIUNGIBILE
+                  --    (la FK fk_fatture_stato_doc_fiscale ammette solo id validi, e
+                  --    il NULL e' respinto sopra): si tiene perche' costa zero e non
+                  --    fa dipendere questo guard da un vincolo di un'altra tabella.
+                  IF v_codice_interno IS NULL OR v_codice_interno NOT IN ('DRAFT', 'EMESSA') THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'stato_doc_fiscale', 'valore', v_codice_interno,
+                                             'stato_doc_fiscale_id', v_stato_id, 'fattura_id', p_fattura_id),
+                          NULL::uuid, concat('ricalcolo IVA non ammesso per stato ', COALESCE(v_codice_interno, '(non risolvibile)')));
+                  END IF;
+
+                  -- Recupero stato emittente per override aliquota IVA
+                  SELECT s.stato_id INTO v_stato_emittente_id
+                    FROM vendite.fatture f
+                    JOIN anagrafiche.soggetti_ruoli sr ON sr.id = f.emittente_soggetto_ruolo_id
+                    JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                   WHERE f.id = p_fattura_id;
+
+                  DELETE FROM vendite.fatture_riepiloghi_iva WHERE fattura_id = p_fattura_id;
+                  GET DIAGNOSTICS v_deleted_rows = ROW_COUNT;
+
+                  INSERT INTO vendite.fatture_riepiloghi_iva (fattura_id, iva_id, natura_id, esigibilita, split_payment, imponibile, imposta, arrotondamento)
+                  SELECT r.fattura_id, r.iva_id, n.id, r.esigibilita, r.split_payment,
+                         ROUND(SUM(COALESCE(r.imponibile_riga, 0)), 2),
+                         ROUND(ROUND(SUM(COALESCE(r.imponibile_riga, 0)), 2) * (COALESCE(config.fn_get_aliquota_iva(r.iva_id, v_stato_emittente_id), 0)::NUMERIC / 100::NUMERIC), 2),
+                         SUM(COALESCE(r.imponibile_riga, 0)) - ROUND(SUM(COALESCE(r.imponibile_riga, 0)), 2)
+                    FROM vendite.fatture_righe r
+                    LEFT JOIN config.iva i ON i.id = r.iva_id
+                    LEFT JOIN config.iva_natura n ON n.codice = r.iva_natura
+                   WHERE r.fattura_id = p_fattura_id
+                   GROUP BY r.fattura_id, r.iva_id, n.id, r.esigibilita, r.split_payment;
+                  GET DIAGNOSTICS v_inserted_rows = ROW_COUNT;
+
+                  RETURN QUERY SELECT v_deleted_rows, v_inserted_rows;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_ricalcola_riepilogo_iva_fattura(p_fattura_id bigint)
+              IS 'Ricalcola i riepiloghi IVA di una fattura (DELETE + INSERT per fattura_id), raggruppando le righe per aliquota/natura/esigibilita/split e applicando l''override di aliquota per stato dell''emittente. Ammesso SOLO in DRAFT o EMESSA: oltre quella soglia il documento e'' uno snapshot fiscale. rev 2026-08-02: due difetti chiusi sul controllo dello stato, opposti fra loro e con la stessa radice — usare un valore nullabile come prova di esistenza. (1) L''esistenza si misura con NOT FOUND: stato_doc_fiscale_id e'' NULLABLE, quindi l''IS NULL precedente dichiarava «fattura non trovata» anche per una fattura che esiste ma non ha stato, mandando a cercare un documento presente; ora i due casi hanno messaggi distinti (E_FATTURA_NON_TROVATA vs E_VALORE_MANCANTE). (2) Il guard di stato era fail-open nella FORMA: con codice_interno NULL l''espressione NOT IN vale NULL e l''IF non sarebbe scattato; il ramo e'' pero'' IRRAGGIUNGIBILE oggi (la FK fk_fatture_stato_doc_fiscale ammette solo id validi e il NULL e'' respinto dal punto 1), quindi l''IS NULL OR aggiunto e'' difesa in profondita'' e non la correzione di un bug vivo — si tiene perche'' costa zero e svincola il guard da un constraint di un''altra tabella. Trovati adeguando le fixture al guard D-K della Fase 4b.';

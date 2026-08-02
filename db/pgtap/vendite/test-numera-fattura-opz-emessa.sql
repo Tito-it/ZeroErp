@@ -23,23 +23,38 @@ CREATE TEMP TABLE tmp_costanti_nf AS
 SELECT
   'pgtap_numera_fattura'::text AS test_scope;
 
+-- ⚠️ La terna (emittente, utility, billing account) si sceglie INSIEME, non a
+--   tre pescate indipendenti. Il ricalcolo dei totali pretende una riga di
+--   configurazione in anagrafiche.emittenti_fiscali_utilities per la coppia
+--   (emittente, utility) e fallisce con E_CONFIG_MANCANTE se non c'e': prendere
+--   l'ultimo emittente e l'ultimo BA separatamente li accoppia a caso, e il
+--   test diventa una lotteria sui dati. Qui si parte DALLA configurazione e si
+--   scende al BA che le corrisponde — la fixture seleziona sulla proprieta' che
+--   le serve.
 CREATE TEMP TABLE tmp_refs_nf AS
-SELECT
-  (SELECT soggetto_ruolo_id
-     FROM anagrafiche.emittenti_fiscali
-    WHERE attivo IS TRUE
-    ORDER BY data_insert DESC NULLS LAST
-    LIMIT 1) AS emittente_soggetto_ruolo_id,
-  (SELECT id
-     FROM anagrafiche.billing_account
-    ORDER BY data_insert DESC NULLS LAST
-    LIMIT 1) AS billing_account_id;
+SELECT efu.emittente_soggetto_ruolo_id,
+       efu.utility_id,
+       (SELECT ba.id
+          FROM anagrafiche.billing_account ba
+         WHERE ba.utility_id = efu.utility_id
+         ORDER BY ba.id
+         LIMIT 1) AS billing_account_id
+  FROM anagrafiche.emittenti_fiscali_utilities efu
+  JOIN anagrafiche.emittenti_fiscali ef
+    ON ef.soggetto_ruolo_id = efu.emittente_soggetto_ruolo_id
+   AND ef.attivo IS TRUE
+ WHERE efu.attivo IS TRUE
+   AND EXISTS (SELECT 1 FROM anagrafiche.billing_account ba
+                WHERE ba.utility_id = efu.utility_id)
+ ORDER BY efu.emittente_soggetto_ruolo_id, efu.utility_id
+ LIMIT 1;
 
 SELECT ok(
-  (SELECT emittente_soggetto_ruolo_id IS NOT NULL
-     AND billing_account_id IS NOT NULL
-   FROM tmp_refs_nf),
-  'Riferimenti minimi presenti'
+  (SELECT count(*) = 1 FROM tmp_refs_nf
+    WHERE emittente_soggetto_ruolo_id IS NOT NULL
+      AND billing_account_id IS NOT NULL
+      AND utility_id IS NOT NULL),
+  'Riferimenti minimi presenti (terna emittente/utility/BA con configurazione)'
 );
 
 -- ============================================================
@@ -79,6 +94,11 @@ WITH ins AS (
     data,
     emittente_soggetto_ruolo_id,
     billing_account_id,
+    utility_id,
+    stato_doc_fiscale_id,
+    tipo_doc_fiscale_id,
+    valuta_id,
+    termine_pagamento_id,
     meta
   )
   SELECT
@@ -86,6 +106,24 @@ WITH ins AS (
     current_date,
     (SELECT emittente_soggetto_ruolo_id FROM tmp_refs_nf),
     (SELECT billing_account_id FROM tmp_refs_nf),
+    (SELECT utility_id FROM tmp_refs_nf),
+    -- ⚠️ Lo stato va valorizzato: una fattura senza stato non esiste nella
+    --   realta' (l'unico creatore, fn_get_or_create_fattura_header, inserisce
+    --   sempre in DRAFT). Con lo stato a NULL
+    --   fn_ricalcola_riepilogo_iva_fattura risponde «fattura non trovata»,
+    --   perche' legge lo stato con SELECT INTO e diagnostica l'IS NULL della
+    --   VARIABILE come riga assente: il documento c'e', e' il suo stato a
+    --   mancare. Difetto reale della funzione, ma la fixture non deve
+    --   esercitarlo per sbaglio partendo da uno stato impossibile.
+    (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'DRAFT'),
+    -- tipo documento e valuta servono al ricalcolo: sono due dei sette elementi
+    -- della chiave di fatture_arrotondamenti_scope, che li vuole NOT NULL.
+    (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1),
+    -- config.valute non ha la colonna `attivo`: si preferisce EUR e si ripiega
+    -- sull'id piu' basso, cosi' la scelta resta deterministica in ogni caso.
+    (SELECT id FROM config.valute ORDER BY (iso_code <> 'EUR'), id LIMIT 1),
+    (SELECT id FROM config.termini_pagamento
+      WHERE codice_interno = 'TP_1RATA' AND attivo IS TRUE),
     jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_nf))
   RETURNING id
 )
@@ -115,6 +153,24 @@ SELECT
   100::numeric,
   (SELECT id FROM config.iva WHERE attivo IS TRUE ORDER BY id LIMIT 1),
   jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_nf));
+
+-- ⚠️ 2026-08-02: la fattura di test deve essere anche COERENTE.
+--   Il guard D-K (Fase 4b, E_FATTURA_NON_NUMERABILE_INCOERENTE) rifiuta un
+--   documento con i totali non calcolati, senza riepilogo IVA o senza piano
+--   rate. La fixture aveva la riga ma nient'altro: numerava un documento privo
+--   di IVA, di totali e di scadenze — cioe' esattamente la situazione della
+--   fattura 362, DEFINITIVA con numero 6, totale 200 e zero rate, che e'
+--   l'origine del guard. Anche qui il guard non e' troppo severo: la fixture
+--   stava simulando uno stato che nella realta' si e' verificato.
+--
+--   I satelliti si costruiscono con le FUNZIONI VERE e non a mano: cosi' il
+--   test resta valido quando cambiano le formule, e non si limita a soddisfare
+--   il guard scrivendogli sotto i numeri che vuole leggere.
+--   L'ordine e' quello della pipeline: IVA -> totali -> rate (le rate si
+--   ripartiscono su totale_a_pagare, che prima non esiste).
+SELECT vendite.fn_ricalcola_riepilogo_iva_fattura((SELECT id FROM tmp_fattura_nf));
+SELECT vendite.fn_ricalcola_totali_fattura((SELECT id FROM tmp_fattura_nf));
+SELECT vendite.fn_genera_scadenze_fattura((SELECT id FROM tmp_fattura_nf));
 
 -- ============================================================
 -- 3) Numerazione fattura

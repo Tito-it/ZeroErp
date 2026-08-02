@@ -199,16 +199,22 @@ WHITELIST_BE: dict[str, tuple] = {
     "config.email_template": ("apps/core/db/email_repository.py",
                               "EMAIL_TEMPLATE_ORDER_COLUMNS"),
     "config.email_log": ("apps/core/db/email_repository.py", "EMAIL_LOG_ORDER_COLUMNS"),
-    # `_AUDIT_ORDER_COLUMNS` vive DENTRO la classe: nello stesso modulo c'e'
-    # anche `ALLOWED_ORDER_COLUMNS` (operatori), quindi l'ancora di classe non
-    # e' un vezzo — senza, si leggerebbe la costante sbagliata.
+    # ⚠️ Aggiornato il 2026-08-02: era `_AUDIT_ORDER_COLUMNS` DENTRO la classe,
+    # con l'ancora `class AmmSoftwareRepository` per non confonderla con
+    # `ALLOWED_ORDER_COLUMNS` (operatori) che vive nello stesso modulo. Il BE
+    # l'ha promossa a costante di modulo `AUDIT_ORDER_COLUMNS` convertendo
+    # AuditLogView — forma giusta, coerente con le altre otto whitelist, e ora
+    # l'ancora di classe non serve piu': i due nomi non collidono.
+    # Il presidio ha segnalato «whitelist illeggibile» e si e' rifiutato di
+    # dichiarare il seed a posto, che e' il comportamento voluto: meglio dire
+    # «non lo so» che dare per verificata una lista che non si e' guardata.
     # ⚠️ Lista POLIMORFA: non legge una tabella, legge `storico.{code}` scelta a
     # runtime da `script.vw_audit_sources`, e proietta alias sintetizzati
     # (`tabella` <- `code`, `user_modifica` <- `user_insert`). Quindi
     # `vista_sql` resta NULL e i tipi si mettono a mano: non c'e'
     # `information_schema` da interrogare, perche' non c'e' UN oggetto.
     "storico.audit_log": ("apps/amm_software/db/amm_software_repository.py",
-                          "_AUDIT_ORDER_COLUMNS", "class AmmSoftwareRepository"),
+                          "AUDIT_ORDER_COLUMNS"),
     "anagrafiche.categorie_clienti_listini": (
         "apps/anagrafiche/db/categorie_clienti_listini_repository.py", "_ORDER_COLS"),
 }

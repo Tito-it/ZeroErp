@@ -26,17 +26,39 @@ BEGIN
 
     SELECT f.stato_doc_fiscale_id INTO v_stato_id FROM vendite.fatture f WHERE f.id = p_fattura_id;
 
-    IF v_stato_id IS NULL THEN
+    -- ⚠️ L'esistenza si misura con NOT FOUND, non con l'IS NULL di
+    --    una colonna NULLABILE. `stato_doc_fiscale_id` puo' essere
+    --    NULL su una fattura che esiste: il codice precedente la
+    --    dichiarava «non trovata» e mandava a cercare un documento
+    --    che invece era li'.
+    IF NOT FOUND THEN
         PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_FATTURA_NON_TROVATA',
             jsonb_build_object('fattura_id', p_fattura_id), NULL::uuid, p_fattura_id::text);
     END IF;
 
+    -- La fattura c'e' ma non ha stato: e' un'altra cosa, e va detta
+    -- come tale. Senza stato non si puo' decidere se il ricalcolo
+    -- sia ammesso, quindi non si procede.
+    IF v_stato_id IS NULL THEN
+        PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_VALORE_MANCANTE',
+            jsonb_build_object('fattura_id', p_fattura_id, 'campo', 'stato_doc_fiscale_id'),
+            NULL::uuid, concat('stato_doc_fiscale_id della fattura ', p_fattura_id));
+    END IF;
+
     SELECT s.codice_interno INTO v_codice_interno FROM config.stati_doc_fiscale s WHERE s.id = v_stato_id;
 
-    IF v_codice_interno NOT IN ('DRAFT', 'EMESSA') THEN
+    -- ⚠️ `IS NULL OR`: senza, uno stato non risolvibile renderebbe
+    --    l'espressione NULL — e `NULL NOT IN (...)` NON e' vero,
+    --    quindi l'IF non scatterebbe e il ricalcolo procederebbe su
+    --    un documento di stato ignoto. Oggi il ramo e' IRRAGGIUNGIBILE
+    --    (la FK fk_fatture_stato_doc_fiscale ammette solo id validi, e
+    --    il NULL e' respinto sopra): si tiene perche' costa zero e non
+    --    fa dipendere questo guard da un vincolo di un'altra tabella.
+    IF v_codice_interno IS NULL OR v_codice_interno NOT IN ('DRAFT', 'EMESSA') THEN
         PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_PARAMETRO_INVALIDO',
-            jsonb_build_object('parametro', 'stato_doc_fiscale', 'valore', v_codice_interno, 'fattura_id', p_fattura_id),
-            NULL::uuid, concat('ricalcolo IVA non ammesso per stato ', v_codice_interno));
+            jsonb_build_object('parametro', 'stato_doc_fiscale', 'valore', v_codice_interno,
+                               'stato_doc_fiscale_id', v_stato_id, 'fattura_id', p_fattura_id),
+            NULL::uuid, concat('ricalcolo IVA non ammesso per stato ', COALESCE(v_codice_interno, '(non risolvibile)')));
     END IF;
 
     -- Recupero stato emittente per override aliquota IVA
@@ -66,7 +88,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_ricalcola_riepilogo_iva_fattura(p_fattura_id bigint)
-IS 'Ricalcola riepiloghi IVA fattura. Ammesso solo per DRAFT/EMESSA.';
+IS 'Ricalcola i riepiloghi IVA di una fattura (DELETE + INSERT per fattura_id), raggruppando le righe per aliquota/natura/esigibilita/split e applicando l''override di aliquota per stato dell''emittente. Ammesso SOLO in DRAFT o EMESSA: oltre quella soglia il documento e'' uno snapshot fiscale. rev 2026-08-02: due difetti chiusi sul controllo dello stato, opposti fra loro e con la stessa radice — usare un valore nullabile come prova di esistenza. (1) L''esistenza si misura con NOT FOUND: stato_doc_fiscale_id e'' NULLABLE, quindi l''IS NULL precedente dichiarava «fattura non trovata» anche per una fattura che esiste ma non ha stato, mandando a cercare un documento presente; ora i due casi hanno messaggi distinti (E_FATTURA_NON_TROVATA vs E_VALORE_MANCANTE). (2) Il guard di stato era fail-open nella FORMA: con codice_interno NULL l''espressione NOT IN vale NULL e l''IF non sarebbe scattato; il ramo e'' pero'' IRRAGGIUNGIBILE oggi (la FK fk_fatture_stato_doc_fiscale ammette solo id validi e il NULL e'' respinto dal punto 1), quindi l''IS NULL OR aggiunto e'' difesa in profondita'' e non la correzione di un bug vivo — si tiene perche'' costa zero e svincola il guard da un constraint di un''altra tabella. Trovati adeguando le fixture al guard D-K della Fase 4b.';
 ```
 
 ---
