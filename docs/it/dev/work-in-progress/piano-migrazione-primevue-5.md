@@ -2012,6 +2012,45 @@ maturità.
 
 ## 9. Registro
 
+### 2026-08-03 · `VersioneDrawer` sbloccata: i compositi sono UNA lista sola
+
+Il BE ha chiuso **l'unica voce che era sul percorso critico** — la domanda di
+modello sui compositi — e con essa l'ultimo ostacolo non-decisionale del Gruppo A.
+
+**La decisione**: righe standalone e compositi bundle sono **una lista sola**
+(Tid, 2026-08-02), quindi arrivano insieme dallo stesso endpoint paginato. Il BE
+li unisce con una `UNION ALL` e `total` li conta entrambi; l'endpoint separato è
+stato **rimosso** (`urls_listini`, `views_listini`, `listini_service`,
+`api/listini.js` si sono tutti accorciati).
+
+Prima i compositi venivano da una seconda chiamata e venivano concatenati nel
+`.vue` **dopo** la paginazione: conteggio e numero di pagine erano quelli delle
+sole righe standalone, cioè mentivano. Era esattamente il motivo per cui questa
+lista non poteva montare `<ListaConfigurabile>`, che ha `lazy` fisso e prende
+`total` dal caller.
+
+Due proiezioni nuove che servono al seed: **`is_composito`** (discriminatore) e
+**`row_key`** (chiave stabile della DataTable — l'id per le standalone,
+`composito:<uuid>` per i padri, che un id di testata non ce l'hanno perché sono
+N righe in `listini_righe_componenti`).
+
+✅ Hanno anche aggiunto **`iva_aliquota`** a `RIGHE_ORDER_COLUMNS`, che era la
+voce «migliora» della commessa: la whitelist ora copre tutte e cinque le colonne
+visibili più `attivo`.
+
+➡️ **La palla torna al DB**: la lista è seedabile e non aspetta più nessuno.
+
+> ⚠️ **Nota di metodo, terza volta in due giorni.** Questo lavoro non è stato
+> annotato qui: la spiegazione — buona, e più chiara di quanto sarebbe stato un
+> riassunto — vive in un commento dentro `VersioneDrawer.vue`. Chi legge il
+> piano per sapere cosa resta aperto trova ancora il punto 4 come bloccante,
+> e non lo è più da un push.
+> È lo stesso schema del sesto lotto convertito «mentre non guardavamo» e della
+> conversione di `AuditLogView`. Il documento non si aggiorna da solo, e chi
+> consegna è l'unico che sa cosa ha consegnato.
+
+---
+
 ### 2026-08-02 · Settimo lotto — le 4 consegne del BE evase lato DB
 
 Risposta del team DB alle quattro consegne della voce qui sotto. **Tutte e
@@ -2107,13 +2146,15 @@ parametri. Baseline `vendite`: 36 rossi, 36 noti, **nessuna regressione**.
 | 1 | Convertire i 3 `.vue` del 7° lotto (le due code + approvazioni) | **BE/FE** | niente: seed pronto, presidio verde |
 | 2 | Su approvazioni, allineare il `.vue` a `priorita_descrizione` ed esporla in API | **BE/FE** | va fatto **insieme** alla conversione, o la freccia nasce morta |
 | 3 | `CommessaGestioneDrawer`: passare `order_by`/`order_dir` da view e repository fino a `fn_list_commessa_attivita`, e far emettere `@sort` al `.vue` | **BE/FE** | blocca il **seed** di quella lista (poi torna al DB) |
-| 4 | `VersioneDrawer`: i **compositi** devono arrivare dall'endpoint insieme alle altre righe | **BE** | blocca tutto il resto su quella lista: è l'unica domanda di **modello** rimasta |
+| 4 | ~~`VersioneDrawer`: i compositi~~ → ✅ **CHIUSO 2026-08-03** (UNION lato BE, endpoint separato rimosso). Resta il **seed** della lista | **DB** | niente: era l'ultima domanda di modello |
 | 5 | Le 3 dashboard | — | **rinviate per scelta** (decisione 2): ordinano già, si fanno per ultime |
 | 6 | I 4 drawer senza endpoint paginato | — | **fermi per scelta** (decisione 4) |
 
-➡️ **Sul percorso critico c'è solo il punto 4.** Gli altri sono lavoro noto e
-sequenziale; quello è una decisione di modello che nessuno ha ancora preso —
-*i compositi sono righe di quella lista, o una sezione a parte?*
+➡️ **Il percorso critico è vuoto** (aggiornato 2026-08-03). Il punto 4 era
+l'unica decisione di modello rimasta ed è stata presa: i compositi sono righe
+della lista, e il BE le unisce in `UNION` sullo stesso endpoint paginato.
+Da qui in avanti resta solo lavoro noto e sequenziale — seed lato DB,
+conversione lato BE/FE.
 
 ---
 
