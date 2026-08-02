@@ -9,7 +9,6 @@ db/pgtap/anagrafiche/test-catasto-unita-immobiliare.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-clienti-sync-utility-pdp-policy.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-create-istanza-from-pdp.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-dati-societari-policy.sql	ERRORE_FIXTURE
-db/pgtap/anagrafiche/test-emittenti-fiscali.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-fn-crea-operatore.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-fn-crea-risorsa-umana.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-fn-get-or-create-indirizzo-dettaglio.sql	ASSERZIONE

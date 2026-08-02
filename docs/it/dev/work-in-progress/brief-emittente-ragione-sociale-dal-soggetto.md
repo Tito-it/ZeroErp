@@ -252,6 +252,42 @@ liste e un documento nello stesso istante.
 | 4.3 | Seed `lista_colonna` della **lista 18** (emittenti fiscali): oggi mostra e ordina per `descrizione`; deve passare alla ragione sociale, e con lei `ordinamento_default` del preset |
 | 4.4 | pgTAP: la colonna non esiste più; i test che la valorizzavano sono rimossi |
 
+#### ✅ ESEGUITA il 2026-08-02 — e il censimento di 4.1 era incompleto in due punti
+
+Changeset `20260802-22` (DROP) e `20260802-23` (lista 18) applicati; pgTAP
+`anagrafiche/test-emittente-denominazione-da-soggetto-v1.sql` `plan(13)` verde;
+baseline `anagrafiche script vendite documenti pratiche rls config` senza
+regressioni. Il censimento 4.1 è stato riscritto come **precondizione** del
+changeset invece che come controllo manuale: un censimento fatto a mano è vero
+una volta, una precondizione si rifà a ogni apply su ogni ambiente.
+
+🔴 **Due categorie di lettore che 4.1 non prevedeva**, entrambe invisibili a un
+`grep` della colonna:
+
+1. **I `%TYPE`.** `fn_get_user_profile` dichiarava
+   `v_ef_descrizione anagrafiche.emittenti_fiscali.descrizione%TYPE`. Non
+   somiglia a una lettura, ma blocca la DROP esattamente come una `SELECT`.
+   Ci è caduto dentro il pattern testuale per fortuna, non per progetto.
+2. ⭐ **I consumatori GENERICI, ed è la scoperta che vale.**
+   `script.fn_get_entita_ruolo_detail` non nomina mai la colonna: introspeziona
+   `config.tipi_ruoli.entita_tabella` ed emette in JSONB tutte le colonne non
+   di sistema. Il suo test asseriva che la riga dell'emittente avesse `codice`
+   **e `descrizione`** — cioè descriveva la *forma della tabella*, non un
+   contratto. **Nessun grep poteva trovarlo**, perché il nome della colonna
+   nel codice non compare: si scopre a runtime. L'unica cosa che l'ha visto è
+   stata la **suite pgTAP** girata contro la baseline.
+
+   ➡️ Regola che ne esce, valida per ogni DROP futura: **il censimento
+   testuale non copre i lettori che leggono lo schema invece del nome.** Dopo
+   una DROP la suite completa non è una verifica di cortesia, è l'unico
+   strumento che vede quella categoria.
+
+⚠️ Il pattern della precondizione va tenuto **stretto** (`ef\.descrizione`,
+`emittenti_fiscali\.descrizione`) e i commenti vanno tolti da `prosrc` prima di
+cercare. Entrambe le lezioni sono state pagate in giornata con due falsi
+allarmi: la stringa che sopravvive nelle note che spiegano la rimozione, e
+l'alias nudo `e` che aggancia tabelle estranee.
+
 ---
 
 ## 6. Definizione di «fatto»
