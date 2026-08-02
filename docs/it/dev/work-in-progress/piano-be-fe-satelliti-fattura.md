@@ -44,8 +44,10 @@
 > ⚠️ Il `brief-db-generazione-scadenze-fattura.md` **non va riscritto**: è stato
 > riscritto dal DB il 02-08 ed è ora il **contratto verso il BE**; il
 > design-of-record dello stato resta il piano DB §9.
-> 📌 **Prossimo, e non è nostro da avviare**: D-K (Fase 4b), il guard di coerenza
-> alla numerazione — vedi la Fase 3 per cosa romperà.
+> ✅ **D-K (Fase 4b) è ATTERRATO** (`20260802-24`, applicato il 2026-08-02 alle
+> 22:31 — il nostro commit delle 23:05 non lo sapeva ancora): `numera_fatture`
+> ora può dire di no. Ricaduta nostra chiusa: **574
+> `E_FATTURA_NON_NUMERABILE_INCOERENTE` registrato** in `error_policies.py`.
 > **Prerequisiti:**
 > [brief-db-snapshot-indirizzi-fattura.md](brief-db-snapshot-indirizzi-fattura.md) ·
 > [piano-db-satelliti-fattura.md](piano-db-satelliti-fattura.md) §Fase 4
@@ -571,11 +573,35 @@ Tre correzioni di rotta accolte dal team DB, tutte già dentro il file:
 2. **La quadratura è condizionata a `totale_a_pagare > 0`** — stesa su tutto il lotto
    fallirebbe sulla prima fattura coperta da acconti, e fallirebbe *correttamente*:
    il modo peggiore di accorgersene. Il caso a base zero ha un test proprio.
-3. 📌 **D-K (Fase 4b) è un heads-up, non un blocco**: quando il guard di coerenza
-   arriverà, `numera_fatture` rifiuterà le fatture con base positiva e nessuna rata.
-   Questo smoke **non cambia** — asserisce già quell'invariante, quindi ne è il
-   presidio anticipato. Andranno riviste le **fixture che numerano** fatture prive di
-   satelliti, che oggi passano solo perché nessuno guarda.
+3. ✅ **D-K (Fase 4b) NON è più un heads-up: è atterrato** (`20260802-24` applicato
+   alle 22:31 del 2026-08-02; il nostro commit delle 23:05 lo dava ancora come
+   futuro — segnalato dal team DB, e avevano ragione). `fn_assign_numero_fattura`
+   rifiuta con **574 `E_FATTURA_NON_NUMERABILE_INCOERENTE`** un documento che violi
+   una di **sei** condizioni, e le riporta **tutte insieme** nel payload invece che
+   una per giro. Verificano una catena continua senza anelli scoperti:
+   `riepiloghi IVA →(5) totale_doc →(6) totale_a_pagare →(3/4) rate`.
+   Tre ricadute, e la previsione ha retto solo in parte:
+   - lo smoke §3.2 **non cambia**, come previsto: asseriva già l'invariante che il
+     guard presidia, quindi ne era il presidio anticipato;
+   - ✅ **574 registrato** in `error_policies.py` (422). Era seedato in
+     `config.messaggi_errore` dalla Fase 1.3 ma non qui, quindi il fallback lo
+     mostrava come «Errore di validazione». ⚠️ Non confonderlo con il **571**
+     `E_SCADENZE_BASE_NON_PRONTA`: il 571 è dello step EMESSA e dice «i totali non
+     ci sono ancora», il 574 è dello step DEFINITIVA e dice «il documento non
+     merita un numero fiscale». Stesso sintomo a monte, momenti e rimedi diversi;
+   - **le fixture che numerano**: lato nostro nessuna si rompe — i test unitari
+     mockano il repository e non attraversano il guard, che è a DB. L'unica cosa
+     che numera contro il DB reale è `smoke-c9-fatturazione-parte-alta.py`.
+     🔎 **Girato il 2026-08-02: verde, ma il verde NON copre D-K** — `numerati=0`,
+     `lotti=0`, perché la competenza 2026-06 è già interamente lavorata e il giro
+     non produce lotti nuovi. Il guard non è mai stato invocato: è un verde a
+     vuoto sul punto che interessa, e va detto invece di contarlo come prova.
+   > 📌 **La prova end-to-end di D-K manca ancora.** Il modo economico e
+   > deterministico per averla è aggiungere allo smoke §3.2 — che una fattura
+   > completa la costruisce già — due casi in rollback: la fattura con le rate
+   > **è numerabile**, e la stessa fattura **senza** rate viene rifiutata con 574.
+   > Esercita il guard sul percorso vero senza consumare numeri fiscali sul DB
+   > condiviso, che è ciò che rende C-9 inadatto a presidiarlo.
 
 ⚠️ Due cose misurate scrivendolo, che valgono più della riga di codice che le ha
 prodotte:
