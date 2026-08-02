@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 import json
-from typing import Any, ClassVar
+from typing import Any
 
 from django.db import connection
 
@@ -138,6 +138,35 @@ class TaskExecutionMode:
     last_tentativo: int | None
     policy_meta: dict[str, Any]
     run_meta: dict[str, Any]
+
+
+# Whitelist ORDER BY della coda stampa: chiave = `campo_sorgente` inviato dal
+# frontend, valore = espressione SQL qualificata. `{dir}` solo dove serve NULLS
+# LAST (la direzione va PRIMA della clausola).
+#
+# ⚠️ A livello MODULO, non attributo di classe: il gate del service ne DERIVA
+# l'elenco, e una whitelist raggiungibile solo attraverso la classe diventa
+# vuota appena un test mocka il repository — il gate finirebbe per dipendere dal
+# mock invece che dal codice.
+#
+# Aggiunte il 2026-08-02: `stato` e `fattura_numero` sono NUCLEO sempre
+# ordinabile (a video il numero e' composto da `fatturaLabel`, ma cio' che si
+# ordina e' il numero della fattura); `id`, `emittente_codice` e `operatore`
+# completano le colonne gia' mostrate dalla pagina.
+CODA_STAMPA_SORT_SQL: dict[str, str] = {
+    "id": "c.id",
+    "fattura_id": "c.sorgente_id",
+    # NULLS LAST esplicito: il numero e` NULL finche` la fattura e` in bozza —
+    # in DESC finirebbe in testa.
+    "fattura_numero": "f.numero {dir} NULLS LAST",
+    "emittente_codice": "ef.codice {dir} NULLS LAST",
+    "operatore": "c.user_insert",
+    "stato": "c.stato",
+    # NULLS LAST esplicito: lotto_id e` NULL per le stampe fuori lotto (es.
+    # ristampe singole) — in DESC finirebbero in testa.
+    "lotto_id": "c.lotto_id {dir} NULLS LAST",
+    "data_update": "c.data_update",
+}
 
 
 class VenditePipelineRepository:
@@ -1930,21 +1959,13 @@ class VenditePipelineRepository:
     #        Filtri opzionali stati/lotto/intervallo `data_insert` (`data_a`
     #        bound ESCLUSIVO: il chiamante passa gia` il giorno+1).
     #        Ordinamento (2026-07-23, richiesta Tid): `sort_by`/`sort_dir` da
-    #        whitelist `_CODA_STAMPA_SORT_SQL` — il service valida, qui assert
+    #        whitelist `CODA_STAMPA_SORT_SQL` — il service valida, qui assert
     #        di defense-in-depth. Default `data_update DESC` («aggiornato»: la
     #        riga lavorata piu` di recente in testa); tiebreaker `c.id DESC`
     #        per un ordine stabile. E` una lista di monitoraggio, non la corsia
     #        del worker. Ritorna `{items, total}` via BB
     #        `fetch_paged_with_total` (fallback pagina-stantia: la coda si
     #        auto-svuota sotto l'utente a ogni drain).
-    _CODA_STAMPA_SORT_SQL: ClassVar[dict[str, str]] = {
-        "fattura_id": "c.sorgente_id",
-        # NULLS LAST esplicito: lotto_id e` NULL per le stampe fuori lotto
-        # (es. ristampe singole) — in DESC finirebbero in testa.
-        "lotto_id": "c.lotto_id {dir} NULLS LAST",
-        "data_update": "c.data_update",
-    }
-
     def elenca_coda_stampa(
         self,
         *,
@@ -1979,7 +2000,7 @@ class VenditePipelineRepository:
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         safe_limit = max(1, min(int(limit), LIST_MAX_LIMIT))
         safe_offset = max(0, int(offset))
-        sort_expr = self._CODA_STAMPA_SORT_SQL.get(sort_by)
+        sort_expr = CODA_STAMPA_SORT_SQL.get(sort_by)
         assert sort_expr is not None, f"sort_by non in whitelist: {sort_by!r}"
         assert sort_dir in ("ASC", "DESC"), f"sort_dir non valido: {sort_dir!r}"
         order_by = (

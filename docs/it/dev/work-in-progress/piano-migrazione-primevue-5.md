@@ -1770,6 +1770,13 @@ blocco, non una lista per volta, perché tre di esse (le due code e
 `ApprovazioniPrezzoListView`) sono la stessa domanda posta a oggetti diversi:
 *un ordine implicito è un dato o un default?*
 
+> ➡️ **Aggiornamento 2026-08-02 (BE): la passata BE del 7° lotto è FATTA** per
+> le due code e le approvazioni — whitelist estese al nucleo e inchiodatura
+> rimossa. `CommessaGestioneDrawer` è risultata **bloccata lato DB** (ordine e
+> paginazione vivono dentro `fn_list_commessa_attivita`), non priva di
+> whitelist come diceva questa riga. Dettaglio, verifica e **le 4 consegne al
+> team DB** nella voce di registro §9 «Settimo lotto — la passata BE».
+
 #### Gruppo B — tabelle annidate (37 file, senza paginator)
 
 Dentro drawer, dialog e pannelli. **Non** vanno su `ListaConfigurabile`:
@@ -1839,6 +1846,94 @@ maturità.
 ---
 
 ## 9. Registro
+
+### 2026-08-02 · Settimo lotto — la passata BE: 3 liste pronte, 1 bloccata dove non ce l'aspettavamo
+
+Scrive il BE/FE. Eseguita la **passata unica prima di comporre il lotto**, nella
+forma chiesta dal team DB: cosa **blocca** (nucleo) separato da cosa **migliora**,
+e la misura rifatta leggendo la catena view→service→repository invece dei nomi
+dei file.
+
+**Prima di tutto: la ri-misura del DB è confermata**, su tutti e quattro i punti.
+Le due code hanno whitelist e la view accetta già `sort_by`/`sort_dir`; le
+approvazioni passano da `PRATICHE_ORDER_COLS` e il valore è inchiodato nel
+service; `CommessaGestioneDrawer` non ha ordinamento da nessuna parte. La
+diagnosi del perché la mappa sbagliava — «la whitelist è stata cercata nel
+repository che porta il nome della lista» — regge, ed è la stessa famiglia del
+`_CODA_META` di ieri.
+
+#### Cosa è stato fatto
+
+| Lista | 🔴 Blocca (fatto) | 🟡 Migliora (fatto) |
+|---|---|---|
+| `CodaLavoriTab` | `stato` | `proprietario` |
+| `CodaStampaTab` | `stato`, `fattura_numero` | `id`, `emittente_codice`, `operatore` |
+| `ApprovazioniPrezzo` | tolta l'inchiodatura di `order_by` in `lista_coda`; la view legge `order_by`/`order_dir` | — |
+
+Il numero fattura a video è composto da `fatturaLabel`, ma ciò che si ordina è
+`f.numero`, con `NULLS LAST`: è NULL finché la fattura è in bozza, e in DESC
+sarebbe finito in testa. Stessa cura su `emittente_codice`.
+
+Nelle approvazioni la validazione dell'ordinamento sta **prima** della
+risoluzione utente/emittente: un parametro sbagliato non deve costare due
+round-trip per essere respinto.
+
+#### Due difetti strutturali corretti strada facendo, e il secondo l'ho creato io
+
+🟠 **Il gate del service era una copia a mano delle whitelist** — tre nomi
+ricopiati per la coda stampa, quattro per i lavori. La convenzione lo vieta
+proprio perché diverge alla prima estensione, che è appunto oggi. Reso derivato.
+
+🔴 **Ma derivandolo dalla CLASSE ho rotto un test, e il difetto era peggiore
+della copia.** Le whitelist erano `ClassVar`: quando un test mocka il
+repository, `tuple(Repo.WHITELIST)` diventa vuoto e il gate rifiuta tutto —
+cioè **il gate dipendeva dal mock invece che dal codice**. Portate a livello
+**modulo**, come `ALLOWED_ORDER_COLUMNS`, `PRATICHE_ORDER_COLS` e
+`AUDIT_ORDER_COLUMNS`. La regola che ne esce vale oltre il caso: *una whitelist
+è un dato, non un comportamento — non deve passare per l'oggetto che la usa.*
+
+#### 🔴 `CommessaGestioneDrawer` è bloccata, e non per il motivo previsto
+
+Il piano diceva «nessuna whitelist, va creata». **Non è quello.** In
+`vendite.fn_list_commessa_attivita` l'`ORDER BY ca.id` e il `LIMIT/OFFSET`
+stanno **dentro la funzione DB**:
+
+```sql
+ORDER BY ca.id LIMIT p_limit OFFSET p_offset;
+```
+
+Ordinare fuori ordinerebbe **la pagina già estratta**, non la lista: un
+ordinamento che sembra funzionare e mente — peggio della freccia morta, perché
+non ripiega, risponde sbagliato. Il BE non ha un punto in cui intervenire senza
+riscrivere in Python una query che il DB possiede (e la filosofia DB-first dice
+di non farlo). Serve il parametro nella funzione: vedi la consegna qui sotto.
+
+#### 📤 Da consegnare al team DB
+
+| # | Cosa | Perché ora |
+|---|---|---|
+| 1 | **Riga 371** — `anagrafiche.categorie_clienti_listini.emittente_ragione_sociale` da `ordinabile=f` a `t` | Il BE è pronto (whitelist estesa, colonna corretta a `ragione_sociale_completa`). **Il presidio è rosso apposta** e nomina la lista: è la stretta di mano concordata, non un guasto |
+| 2 | **`fn_list_commessa_attivita` deve accettare l'ordinamento** (`p_order_by`/`p_order_dir`, whitelist lato DB) | Senza, `CommessaGestioneDrawer` non è convertibile: ordine e paginazione sono nella stessa funzione |
+| 3 | **Seed delle 3 liste pronte** (coda lavori, coda stampa, approvazioni prezzo) con `ordinabile` allineato alle whitelist estese sopra | È il contenuto del 7° lotto; le colonne ordinabili sono ora esattamente quelle delle tabelle in «Cosa è stato fatto» |
+| 4 | ⚠️ **Decisione prima di seedare le approvazioni**: il `.vue` mostra `priorita_codice`, la whitelist offre `priorita_descrizione` | Il BB invia al BE il `campo_sorgente` del seed: se i due nomi non combaciano, la freccia nasce morta. **Proposta BE: `priorita_descrizione` a video e nel seed**, tenendo il codice solo per la severity del Tag (regola di casa sui display field) |
+
+⚠️ Sul punto 1, per non ripetere l'errore di ieri con la DROP: **il seed va
+ribaltato ORA che la whitelist esiste, mai prima**. L'ordine inverso produce la
+freccia bugiarda.
+
+#### Verifica
+
+Suite **3452 con un solo fallimento**, che è il rosso di consegna del punto 1.
+E siccome il presidio confronta costanti — limite che il team DB ha giustamente
+rimarcato — l'SQL è stato esercitato davvero: **24 combinazioni** (6 voci coda
+lavori + 8 coda stampa + 10 pratiche, per due direzioni) contro il DB reale,
+tutte ordinano; il gate delle approvazioni respinge una colonna fuori whitelist
+con `E_VENDITE_VALIDATION`.
+
+Resta fuori `VersioneDrawer`, in attesa della decisione sui compositi: è l'unica
+delle dodici che chiede una risposta di modello, non di ordinamento.
+
+---
 
 ### 2026-08-02 · `storico.audit_log` convertita: il Gruppo A non ha più nulla di meccanico
 

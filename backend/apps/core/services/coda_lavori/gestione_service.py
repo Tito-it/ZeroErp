@@ -25,6 +25,7 @@ from typing import Any
 from apps.core.db.maintenance_repository import MaintenanceRepository
 from apps.core.services.coda_lavori.repository import (
     DEFAULT_EXTRA_TENTATIVI,
+    ELENCA_SORT_SQL,
     CodaLavoriRepository,
 )
 from apps.core.services.coda_lavori.scope import scope_key_da_emittenti
@@ -175,9 +176,12 @@ def elenca_coda_lavori(
     caller_key, owner_filter = _resolve_scope_keys(user)
     if tutti:
         owner_filter = None
+    # `allowed` DERIVATO dalla whitelist del repository, mai ricopiato: era una
+    # copia a mano di 4 nomi e sarebbe divergita alla prima estensione (che
+    # infatti e' arrivata il 2026-08-02 con `stato`/`proprietario`).
     sort_by, sort_dir = _valida_ordinamento(
         sort_by, sort_dir,
-        allowed=("id", "job_type", "started_at", "ended_at"),
+        allowed=tuple(ELENCA_SORT_SQL),
         default="started_at",
         function_name="core.gestione_code.elenca_coda_lavori",
     )
@@ -220,14 +224,21 @@ def elenca_coda_stampa(
     sort_dir: str | None = None,
 ) -> dict[str, Any]:
     caller_username = getattr(user, "username", None)
+
+    # Import lazy come sotto (la coda stampa e' satellite di vendite, vedi
+    # header): serve QUI perche' `allowed` e' DERIVATO dalla whitelist del
+    # repository invece di essere ricopiato a mano.
+    from apps.vendite.db.pipeline_repository import (
+        CODA_STAMPA_SORT_SQL,
+        VenditePipelineRepository,
+    )
+
     sort_by, sort_dir = _valida_ordinamento(
         sort_by, sort_dir,
-        allowed=("fattura_id", "lotto_id", "data_update"),
+        allowed=tuple(CODA_STAMPA_SORT_SQL),
         default="data_update",
         function_name="core.gestione_code.elenca_coda_stampa",
     )
-
-    from apps.vendite.db.pipeline_repository import VenditePipelineRepository
 
     esito = VenditePipelineRepository().elenca_coda_stampa(
         operatore=None if tutti else caller_username,

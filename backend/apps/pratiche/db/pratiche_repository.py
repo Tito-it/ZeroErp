@@ -32,7 +32,7 @@ __all__ = ["PraticheRepository", "coerce_jsonb_dict"]
 # sortField), valore = espressione SQL. Qualificata dove la chiave e' una
 # colonna fisica (la query joina otto tabelle); nuda dove e' un alias di output
 # della SELECT, che ORDER BY risolve solo cosi'.
-_PRATICHE_ORDER_COLS: dict[str, str] = {
+PRATICHE_ORDER_COLS: dict[str, str] = {
     "codice": "p.codice",
     "descrizione": "p.descrizione",
     "data_apertura": "p.data_apertura",
@@ -190,8 +190,8 @@ class PraticheRepository:
     ) -> tuple[list[dict[str, Any]], int]:
         safe_limit = max(1, min(int(limit), 200))
         safe_offset = max(0, int(offset))
-        order_col = _PRATICHE_ORDER_COLS.get(
-            order_by, _PRATICHE_ORDER_COLS["data_insert"]
+        order_col = PRATICHE_ORDER_COLS.get(
+            order_by, PRATICHE_ORDER_COLS["data_insert"]
         )
         direction = sql_order_direction(order_dir)
 

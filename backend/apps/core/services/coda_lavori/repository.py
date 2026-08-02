@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 from datetime import date
-from typing import Any, ClassVar
+from typing import Any
 
 from django.db import connection
 
@@ -48,6 +48,31 @@ STALE_MINUTI_DEFAULT = 30
 # Default dei tentativi extra concessi da un requeue manuale (fonte unica:
 # service e view NON lo ripetono — passano None/omettono il kwarg).
 DEFAULT_EXTRA_TENTATIVI = 3
+
+# Whitelist ORDER BY della lista code: chiave = `campo_sorgente` inviato dal
+# frontend, valore = espressione SQL (nuda solo dove e' un alias di output della
+# SELECT, che e' l'unico caso in cui ORDER BY la risolve). `{dir}` compare solo
+# dove serve NULLS LAST — la direzione va PRIMA della clausola; altrove si
+# appende in coda.
+#
+# ⚠️ A livello MODULO, non attributo di classe, per due motivi che vanno
+# insieme: (1) il gate del service ne DERIVA l'elenco invece di ricopiarlo, e
+# una whitelist raggiungibile solo attraverso la classe diventa vuota appena un
+# test mocka `CodaLavoriRepository` — il gate lascerebbe passare tutto o niente
+# a seconda del mock, non del codice; (2) una whitelist e' un DATO, e i dati di
+# questo repo (origini, stati, soglie) stanno tutti qui sopra.
+#
+# `stato` aggiunta il 2026-08-02: e' NUCLEO sempre ordinabile e mancava, mentre
+# la colonna e' a video da sempre. `proprietario` e' l'alias di
+# `scope->>'username'` proiettato dalla SELECT.
+ELENCA_SORT_SQL: dict[str, str] = {
+    "id": "id",
+    "job_type": "job_type",
+    "stato": "stato",
+    "proprietario": "proprietario {dir} NULLS LAST",
+    "started_at": "started_at {dir} NULLS LAST",
+    "ended_at": "ended_at {dir} NULLS LAST",
+}
 
 
 class CodaLavoriRepository:
@@ -435,13 +460,6 @@ class CodaLavoriRepository:
     # non ancora avviati/conclusi: NULLS LAST esplicito, così ordinando per
     # «avviato» i job mai partiti stanno in fondo in ENTRAMBE le direzioni
     # (senza, in DESC PG li metterebbe in testa).
-    _ELENCA_SORT_SQL: ClassVar[dict[str, str]] = {
-        "id": "id",
-        "job_type": "job_type",
-        "started_at": "started_at {dir} NULLS LAST",
-        "ended_at": "ended_at {dir} NULLS LAST",
-    }
-
     # Scopo: Elenco paginato dei job per la UI di gestione code (tracciamento).
     #        Proietta stato/tentativi/errore/timeline/proprietario + `is_mio`
     #        (il job è del chiamante: la `scope_key` combacia) calcolato QUI, così
@@ -455,7 +473,7 @@ class CodaLavoriRepository:
     #        auto-svuotano sotto l'utente — mai «0 risultati» a offset alto).
     #
     #        Ordinamento (2026-07-23, richiesta Tid): `sort_by`/`sort_dir` da
-    #        whitelist `_ELENCA_SORT_SQL` — il service ha già validato, qui
+    #        whitelist `ELENCA_SORT_SQL` — il service ha già validato, qui
     #        l'assert è defense-in-depth (mai input libero nell'SQL). Default
     #        `started_at DESC` (l'ultimo lavoro avviato in testa); tiebreaker
     #        `id DESC` sempre, per un ordine stabile tra righe pari. È una
@@ -495,7 +513,7 @@ class CodaLavoriRepository:
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         safe_limit = max(1, min(int(limit), LIST_MAX_LIMIT))
         safe_offset = max(0, int(offset))
-        sort_expr = self._ELENCA_SORT_SQL.get(sort_by)
+        sort_expr = ELENCA_SORT_SQL.get(sort_by)
         assert sort_expr is not None, f"sort_by non in whitelist: {sort_by!r}"
         assert sort_dir in ("ASC", "DESC"), f"sort_dir non valido: {sort_dir!r}"
         # `{dir}` presente solo nelle espressioni con NULLS LAST (la direzione
