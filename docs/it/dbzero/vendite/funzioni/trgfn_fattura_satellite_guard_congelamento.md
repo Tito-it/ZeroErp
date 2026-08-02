@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_fattura_satellite_guard_congelamento.md" %}
 # ⚙️ Funzione `trgfn_fattura_satellite_guard_congelamento`
 
 ```sql

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_genera_scadenze_fattura.md" %}
 # ⚙️ Funzione `fn_genera_scadenze_fattura`
 
 ```sql

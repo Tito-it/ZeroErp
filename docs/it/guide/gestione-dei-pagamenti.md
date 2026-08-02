@@ -87,6 +87,63 @@ vendite
 
 ---
 
+## Il piano rate e gli incassi: due metà che non si toccano ancora
+
+> Sezione aggiunta il **2026-08-02**, quando il piano rate è entrato in esercizio.
+> Fino ad allora `vendite.fatture_scadenze` era vuota per costruzione e questa
+> guida non aveva motivo di nominarla.
+
+Da oggi una fattura porta il proprio **piano rate**: quante rate, a quale data,
+per quale importo. Lo genera la pipeline nello step EMESSA e vive in
+[vendite.fatture_scadenze](/dbzero/vendite/tabelle/fatture_scadenze).
+
+### 🔴 Un incasso è agganciato alla FATTURA, non alla RATA
+
+È il punto da avere chiaro prima di progettare qualsiasi cosa in quest'area.
+`pagamenti.vendite_movimenti` porta `fattura_id` e `billing_account_id`, e si
+ferma lì: nell'intero database **non esiste alcuna colonna `scadenza_id`**.
+
+Le due metà quindi **non si parlano**:
+
+```text
+vendite.fatture_scadenze     "questa fattura si paga in 2 rate, il 30/09 e il 31/10"
+                                          ⟂  nessun collegamento
+pagamenti.vendite_movimenti  "su questa fattura sono entrati 500 €"
+```
+
+### Cosa si può e cosa NON si può rispondere oggi
+
+| Domanda | Risposta |
+|---|---|
+| Quanto resta da incassare su una fattura? | ✅ `pagamenti.fn_get_saldo_fattura` — residuo = `totale_a_pagare` − movimenti attivi |
+| Come è rateizzata questa fattura? | ✅ `vendite.fatture_scadenze` |
+| **Questa rata è stata pagata?** | ❌ **non derivabile** |
+| Quali rate sono scadute o insolute? | ❌ **non derivabile** |
+
+Ne segue una regola pratica: **nessuna colonna «scaduta / insoluta / da
+incassare», nessuna colorazione di sollecito, nessun filtro «da incassare»**. Su
+una fattura già incassata sarebbero tutte false, e un dato che mente è peggio di
+un dato assente.
+
+Si può fare l'elenco del **piano rate**; uno **scadenzario** è un'altra cosa, e il
+modello oggi non può sostenerlo.
+
+### ⚠️ Due avvertenze per chi costruirà l'aggancio
+
+* **Il piano rate è uno snapshot congelato.** Oltre `DRAFT`/`EMESSA` le rate non
+  si toccano più (guard sui satelliti della fattura). La riconciliazione dovrà
+  quindi scrivere **altrove** — una tabella di allocazione, o `vendite_movimenti`
+  — e **mai** «marcare la rata come pagata» aggiornando `fatture_scadenze`.
+* **«Prossima rata» è un concetto temporale, non di pagamento**: la prossima per
+  data, e se sono tutte passate l'ultima. La regola vive già nel frontend ed è una
+  per tutto il prodotto — chi la ricalcolasse per conto proprio farebbe dire a due
+  schermate cose diverse sullo stesso documento.
+
+Le attività aperte e il loro ordine sono in
+[brief-incassi-riconciliazione-rate-promemoria.md](../dev/work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md).
+
+---
+
 ## Centri di riscossione e enti di incasso
 
 ### Centri di riscossione

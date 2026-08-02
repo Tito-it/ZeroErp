@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_snapshot_indirizzo_soggetto.md" %}
 # ⚙️ Funzione `fn_snapshot_indirizzo_soggetto`
 
 ```sql

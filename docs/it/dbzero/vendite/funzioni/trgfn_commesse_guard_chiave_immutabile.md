@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_commesse_guard_chiave_immutabile.md" %}
 # ⚙️ Funzione `trgfn_commesse_guard_chiave_immutabile`
 
 ```sql

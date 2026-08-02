@@ -89,7 +89,7 @@
 - [fn_registra_tentativo_login](funzioni/fn_registra_tentativo_login.md)
 - [fn_resolve_codice_postale](funzioni/fn_resolve_codice_postale.md) — Risolve il `codice_postale_id` con logica di fallback a due livelli. Unica source of truth per la logica CAP (prima nel watcher Vue).
 - [fn_resolve_emittente_for_user](funzioni/fn_resolve_emittente_for_user.md)
-- [fn_resolve_indirizzo_documento](funzioni/fn_resolve_indirizzo_documento.md)
+- [fn_resolve_indirizzo_documento](funzioni/fn_resolve_indirizzo_documento.md) — (latest review 02-08-2026)
 - [fn_resolve_livello_area](funzioni/fn_resolve_livello_area.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 - [fn_resolve_livello_oggetto](funzioni/fn_resolve_livello_oggetto.md) — (latest review 08-03-2026) La funzione **`script.fn_resolve_livello_oggetto`** risolve il livello di accesso per un singolo model Django (`app_label` + `model_name`).
 - [fn_ricalcola_prezzo_padre_da_componenti](funzioni/fn_ricalcola_prezzo_padre_da_componenti.md)
@@ -106,7 +106,7 @@
 - [fn_search_stradario](funzioni/fn_search_stradario.md) — (latest review 13-03-2026) Ricerca vie (stradario) per autocomplete frontend. L'utente seleziona un comune e cerca una via nel comune selezionato.
 - [fn_search_stradario_generale](funzioni/fn_search_stradario_generale.md) — Ricerca vie su `config.stradario_generale` (senza comune/CAP). Serve per autocomplete "via nuova": l'utente cerca una via in tutta Italia, poi sceglie comune e CAP separatamente.
 - [fn_snapshot_indirizzo](funzioni/fn_snapshot_indirizzo.md)
-- [fn_snapshot_indirizzo_soggetto](funzioni/fn_snapshot_indirizzo_soggetto.md)
+- [fn_snapshot_indirizzo_soggetto](funzioni/fn_snapshot_indirizzo_soggetto.md) — (latest review 02-08-2026)
 - [fn_subentro_cliente](funzioni/fn_subentro_cliente.md) — (latest review 01-03-26)
 - [fn_valida_codice_fiscale](funzioni/fn_valida_codice_fiscale.md) — * **Validazione formale** del Codice Fiscale (CF) calcolando e confrontando il carattere di controllo. * **Supporto omocodici**, garantendo validità anche per CF derivati con omolettere. * **Delegare al backend** i controlli di congruenza con data di nascita, sesso e luogo di nascita per mantenere flessibilità applicativa.
 - [fn_valida_partita_iva](funzioni/fn_valida_partita_iva.md) — Verificare **formalmente** la correttezza di una Partita IVA italiana (11 cifre) calcolando il **check digit** con l’algoritmo di Luhn modificato, restituendo:

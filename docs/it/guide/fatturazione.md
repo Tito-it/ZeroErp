@@ -626,9 +626,57 @@ aspetto nel tempo**: cambiare la distinta o le regole dell'articolo non tocca i
 documenti già emessi. Rigenerare una fattura passa invece dal reset del lotto,
 che riscrive le righe leggendo le regole correnti.
 
-E **non si numera un documento vuoto**: `fn_assign_numero_fattura` rifiuta una
-fattura senza righe, prima che il progressivo venga consumato — `nextval` non fa
-rollback, quindi fallire dopo lascerebbe comunque un buco nella numerazione.
+### Non si numera un documento incoerente
+
+`fn_assign_numero_fattura` è il **punto unico** in cui il progressivo viene
+assegnato — `fn_numera_fattura_opz_emessa` delega qui — quindi i controlli messi
+lì valgono per qualunque percorso, senza doverli enumerare.
+
+Rifiuta in due casi, entrambi **prima** di consumare il progressivo:
+
+| Codice | Quando |
+|---|---|
+| `E_FATTURA_SENZA_RIGHE` | il documento non ha righe |
+| `E_FATTURA_NON_NUMERABILE_INCOERENTE` (**574**) | il documento è incoerente — sei condizioni, qui sotto |
+
+Le sei condizioni del secondo (guard **D-K**, dal 2026-08-02) non sono un elenco
+di controlli scelti a gusto: verificano una **catena continua**, senza anelli
+scoperti, fra ciò che il documento dichiara e ciò che lo compone.
+
+```text
+riepiloghi IVA ──(5)──► totale_doc ──(6)──► totale_a_pagare ──(3/4)──► rate
+```
+
+1. `totale_a_pagare` è `NULL` — i totali non sono mai stati calcolati;
+2. ci sono righe ma **nessun riepilogo IVA**;
+3. `totale_a_pagare > 0` e **nessuna rata**, oppure Σ rate ≠ `totale_a_pagare`;
+4. `totale_a_pagare <= 0` ma **esistono rate** (un documento non positivo non si
+   rateizza);
+5. i riepiloghi IVA **non quadrano** con i totali di testata;
+6. `totale_a_pagare` **non è la somma dei suoi addendi**
+   (`totale_doc` + fondi + arrotondamenti).
+
+L'errore arriva con **tutti** i motivi insieme, non uno per volta: un solo
+rilancio dice all'operatore tutto ciò che manca al documento.
+
+> ⚠️ **Perché prima del progressivo — e una motivazione da non ripetere.** Fino
+> al 2026-08-02 questa scelta veniva spiegata con «`nextval` non fa rollback,
+> fallire dopo lascerebbe un buco nella numerazione». **Non è vero in questo
+> modello**: `fn_get_next_progressivo` non usa alcuna sequence — è
+> `pg_advisory_xact_lock` + `UPDATE last_numero` su
+> `registri_fatturazione_progressivi` — quindi è transazionale e il numero fa
+> rollback insieme al documento.
+>
+> Le ragioni vere sono altre: non si scrive prima di aver validato; un documento
+> già rotto non deve entrare in contesa sull'advisory lock del registro; e non si
+> dipende dal fatto che il chiamante ripulisca.
+>
+> **Il danno che il guard evita è l'opposto, ed è irreversibile**: un numero
+> fiscale valido su un documento invalido. Una volta numerato il documento è
+> DEFINITIVA, i satelliti sono congelati, e **le rate mancanti non si possono più
+> aggiungere** — si ripara solo con una nota di variazione, quando il documento è
+> già in mano al cliente e magari già allo SDI. Un salto nella sequenza è
+> un'anomalia di registro che si spiega; una fattura sbagliata no.
 
 ---
 
