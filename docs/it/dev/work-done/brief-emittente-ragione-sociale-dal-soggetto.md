@@ -6,11 +6,14 @@
 > in SQL, e l'ultimo miglio è a video.
 > **Cos'è:** la proposta di eliminare `anagrafiche.emittenti_fiscali.descrizione`
 > e far leggere ovunque la ragione sociale del **soggetto** associato.
-> **Stato (agg. 2026-08-02, BE/FE):** decisione presa da Tid — **si toglie**,
-> con ordine BE+FE prima e DROP in coda. **Fase 2 (BE) e Fase 3 (FE) ESEGUITE**
-> e verdi. Restano la Fase 1 residua e la Fase 4, entrambe di competenza DB:
-> vedi **§10**, che è il capitolo operativo aggiornato — le sezioni 1-9 restano
-> come sono state scritte, con due rettifiche di misura segnalate in loco.
+> **Stato (agg. 2026-08-02): CHIUSA.** Decisione di Tid — **si toglie**. Tutte e
+> quattro le fasi eseguite: DB (Fase 1 e 4, commit `4052c6d4e`), BE/FE (Fase 2 e
+> 3, commit `b7f4695cd` + la cerniera successiva). La colonna **non esiste più**,
+> i cinque criteri di §6 sono soddisfatti e **Tid ha validato a video il
+> 2026-08-02**. Unico strascico, non un difetto di questo cantiere: il **caveat
+> di copertura pgTAP** in §10.5, che resta al team DB. Il capitolo operativo è
+> **§10** — le sezioni 1-9 restano come scritte, con due rettifiche di misura
+> segnalate in loco.
 
 ---
 
@@ -428,12 +431,86 @@ Sequenza senza stati rotti, **in tre battute**:
 3. **DB** — `DROP COLUMN` + adeguamento di `fn_crea_emittente_fiscale` /
    `fn_update_*` + pgTAP (§5 4.2/4.4).
 
-### 10.4 Definizione di «fatto» — dove siamo
+### 10.4 La Fase 1 residua e la Fase 4 — FATTE dal DB (`4052c6d4e`)
+
+Consegnato tutto quanto chiesto in 10.3: fallback tolto dalle 6 viste e dalle 2
+funzioni, `fn_get_user_profile` allineata, seed della lista 18 (via la riga
+`261`, preset su `ragione_sociale_completa`), `DROP COLUMN` (`20260802-22`) e un
+test pgTAP nuovo — `test-emittente-denominazione-da-soggetto-v1.sql`, **13/13
+verde**, con la fixture che fa divergere i valori di proposito come chiedeva
+§5 1.3.
+
+> ⚠️ **La cerniera è stata attraversata in due battute invece che in tre, e nel
+> mezzo l'anagrafica emittenti è rimasta rotta.** La DROP è arrivata **prima**
+> del passo 2: per qualche ora `emittenti_fiscali_repository` ha continuato a
+> fare `SELECT ef.descrizione` su una colonna inesistente — lista, dettaglio,
+> ricerca e creazione emittente rispondevano
+> `ProgrammingError: la colonna ef.descrizione non esiste`. Nessun test lo ha
+> intercettato: le 3444 girano a **DB mockato**, e il difetto era per
+> costruzione invisibile lì.
+>
+> Chiuso il 2026-08-02 completando il passo 2 (sotto). La lezione è sull'ordine,
+> non su chi: quando una modifica ha una cerniera dichiarata, la battuta di mezzo
+> va **eseguita**, non solo scritta nel piano — e va verificata contro il DB
+> vero, perché è l'unico posto dove quel tipo di rottura si vede.
+
+**Passo 2 completato (BE/FE)** — `descrizione` rimossa da:
+
+| File | Cosa |
+|---|---|
+| `anagrafiche/db/emittenti_fiscali_repository.py` | whitelist `_EMITTENTI_ORDER_COLS`, proiezione lista + dettaglio, `ILIKE` di ricerca, `INSERT` di `create_emittente`, `_UPDATE_ALLOWED`. Nuova costante `_EMITTENTI_ORDER_DEFAULT = "ragione_sociale_completa"` |
+| `anagrafiche/services/emittenti_fiscali_service.py` | niente più `require_str(payload, "descrizione")` in `crea_emittente` |
+| `anagrafiche/api/views_emittenti_fiscali.py` | serializer `@extend_schema` create/update, `default_order`, testo del parametro `search` |
+| `amministrazione/components/EmittenteFiscaleDrawer.vue` | campo tolto dal form, dal payload e da `canSave`. In EDIT il nome è già a video: lo mostra il `SoggettoMessageBanner` |
+| `stores/emittentiFiscali.js` · `views/EmittentiFiscaliListView.vue` | `orderBy` e `defaultSortField` su `ragione_sociale_completa` — **entrambi**: quando lo store preimposta l'ordine, il `defaultSortField` del componente è dormiente, e lasciarne uno indietro fa nascere la lista ordinata diversamente da come si dichiara |
+| locali IT/EN | tolte le due chiavi orfane `field_descrizione`/`col_descrizione` del blocco emittenti; `search_placeholder` non promette più una ricerca su un campo che non esiste |
+| `tests/api/test_emittenti_fiscali_api.py` | payload e fixture ripuliti. Passavano comunque (service mockato): il punto non era il rosso, era che descrivevano un contratto scomparso |
+
+**Verifica del passo 2**, di nuovo contro il DB reale e non solo a test mockati:
+lista (2/2, ordinata per ragione sociale), dettaglio, ricerca, e **ogni voce
+della whitelist esercitata una per una** — nessuna ripiega in silenzio. Nel
+payload non c'è più la chiave `descrizione`. Suite BE **3444 verde**, presidio
+seed↔whitelist **7/7**, lint e build FE puliti, locali simmetrici (3649 chiavi
+per parte).
+
+### 10.5 Definizione di «fatto» — dove siamo
 
 | § | Criterio | Stato |
 |---|---|---|
-| 6.1 | Ragione sociale su tutte e 9 le liste | ✅ per costruzione (viste già a posto + i 4 lettori diretti ripuntati). Resta la **verifica a video** di §3.4 |
+| 6.1 | Ragione sociale su tutte e 9 le liste | ✅ verificato sui dati (i due emittenti che §1 citava come divergenti mostrano ora il nome giusto) **e validato a video da Tid il 2026-08-02** — §3.4 soddisfatta |
 | 6.2 | Offerta stampata con la ragione sociale del soggetto | ✅ (lo era già; ora senza fallback) |
-| 6.3 | Emittente **persona fisica** col nome completo | ⏳ **non dimostrato**: nessuno dei due emittenti in tabella è una PF. È il test che distingue `ragione_sociale_completa` da `ragione_sociale` — senza, la scelta di §3 resta argomentata ma non provata |
-| 6.4 | `grep` a zero su tutto il repo | 🟡 restano i soli punti della cerniera (`emittenti_fiscali_repository`, 4 righe) e i 2 falsi positivi di `pratiche_repository` (lì `ef` è `config.esiti_flussi_pratiche`, non l'emittente) |
-| 6.5 | Colonna sparita, pgTAP verde | ⏳ owner DB |
+| 6.3 | Emittente **persona fisica** col nome completo | ✅ **garantito dal modello, non da un caso di prova** — vedi sotto |
+| 6.4 | `grep` a zero su tutto il repo | ✅ zero occorrenze in `backend/` e `frontend/src`. Restano i 2 falsi positivi di `pratiche_repository` (lì `ef` è `config.esiti_flussi_pratiche`, non l'emittente) |
+| 6.5 | Colonna sparita, pgTAP verde | 🟡 colonna sparita ✅, test del cantiere verde ✅ — ma vedi il caveat sotto |
+
+**Su 6.3 il criterio si chiude sul modello, non su un caso di prova** (rilievo di
+Tid, 2026-08-02). La sorgente scelta è **una sola** e non c'è alcun ramo che
+distingua PF da PG: `ragione_sociale_completa` è una colonna
+**`GENERATED ALWAYS AS COALESCE(ragione_sociale, cognome || ' ' || nome)`** —
+la persona fisica è dentro la definizione della colonna. Misurato oggi: 37
+soggetti, **27 senza `ragione_sociale`** (le PF) e **zero** senza
+`ragione_sociale_completa` (`Terenzi Lucilla`, `Rossi Mario`, …).
+
+Creare un emittente ditta individuale eserciterebbe la stessa identica riga di
+codice: proverebbe il `COALESCE` di PostgreSQL, non questa modifica. Il criterio
+6.3 nasceva dal timore che qualcuno ripuntasse i lettori su
+`soggetti.ragione_sociale` (§3) — timore legittimo **prima** di scegliere, senza
+oggetto **dopo**, perché nel repo quel nome non compare più come sorgente di
+denominazione emittente. Resta valido l'avvertimento di §3 per chiunque tocchi
+questi lettori in futuro.
+
+⚠️ **Il caveat su 6.5, perché non venga letto come un verde pieno.** La baseline
+pgTAP mostra oggi **15 rossi nuovi** (4 in `anagrafiche`, 11 in `script`) che
+**non riguardano questo cantiere**: la causa comune è una violazione RLS
+all'INSERT nelle *fixture* (`billing_account`, `ordini`), il sintomo di
+[[feedback_rls_query_contesto_sistema]], non la colonna droppata. Vanno guardati
+dal team DB, e sono citati qui solo perché chiunque rifaccia il conteggio li
+troverà.
+
+Più rilevante per **questo** cantiere: delle 3 funzioni modificate,
+`fn_get_operatore_detail` ha un test **verde**, ma
+`fn_get_user_emittenti_scope` e `fn_get_user_profile` sono coperte da file
+**già rossi in baseline** — e un file che fallisce nel fixture non esegue
+nessuna asserzione, quindi la sua copertura vale zero
+(cf. `.codex/AGENTS.md`). Il cambio di sorgente su quelle due funzioni è
+**verificato in applicazione** ma **non presidiato da un test verde**.

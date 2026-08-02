@@ -1049,7 +1049,7 @@
       "ed_msg_allinea_ok": "New DRAFT created from the updated preset."
     },
     "emittenti_fiscali": {
-      "search_placeholder": "Search by code, description, business name, VAT, tax code...",
+      "search_placeholder": "Search by code, business name, VAT, tax code...",
       "new": "New fiscal issuer",
       "create_title": "New fiscal issuer",
       "edit_title": "Edit fiscal issuer",
@@ -1069,7 +1069,6 @@
       "metodo_down": "Always down (DOWN)",
       "field_soggetto": "Subject",
       "field_codice": "Code",
-      "field_descrizione": "Description",
       "field_attivo": "Active",
       "field_regime_fiscale_rf": "Tax regime (RF)",
       "regime_fiscale_rf_hint": "RF tax regime code of the FE/SdI layout (e.g. RF01, RF19).",
@@ -1080,7 +1079,6 @@
       "field_valuta_hint": "Currency proposed by quotation/contract forms when no billing account is selected. Leave empty to start with no default.",
       "soggetto_no_piva": "The selected subject has no VAT number. A fiscal issuer requires a subject with a valid VAT number (SDI requirement). Change subject or update its profile.",
       "col_codice": "Code",
-      "col_descrizione": "Description",
       "col_ragione_sociale": "Business name",
       "col_cf": "Tax code",
       "col_piva": "VAT number",

@@ -45,6 +45,31 @@ ALLOWED_ORDER_COLUMNS: dict[str, str] = {
 }
 
 
+# Whitelist ORDER BY del log di audit (`storico.audit_log`): chiave =
+# `campo_sorgente` che il frontend invia come sortField (il nome del campo COME
+# APPARE nel risultato), valore = colonna reale della CTE `events`. I due nomi
+# divergono su tre colonne su quattro, ed e' l'unico posto del sistema dove
+# succede.
+#
+# Era un `frozenset` confrontato DOPO una mappatura interna, e conteneva sia i
+# nomi logici sia quelli SQL. `tabella` -> `code` non tornava (`code` non era
+# nell'insieme): l'ordinamento per *Tabella* ripiegava in silenzio sul default,
+# pur essendo `sortable` a video. Una mappa sola, letta una volta.
+#
+# Vive a livello MODULO come `ALLOWED_ORDER_COLUMNS` qui sopra (era attributo di
+# classe): due whitelist con lo stesso ruolo e due forme diverse nello stesso
+# file sono il modo in cui un presidio finisce per leggere il simbolo sbagliato
+# — e su questa mappa era gia' successo.
+# `dettaglio` non c'e' di proposito: nel seed e' `ordinabile=f` (colonna
+# calcolata lato FE, senza `campo_sorgente`).
+AUDIT_ORDER_COLUMNS: dict[str, str] = {
+    "timestamp": "valid_from",
+    "tabella": "code",
+    "tipo_operazione": "tipo_operazione",
+    "user_modifica": "user_insert",
+}
+
+
 # Fase 8 — Model riservati: non possono essere target di override granulari.
 # Sono il kernel del sistema permessi: ammettere override a livello model
 # qui aprirebbe scenari di lockout ricorsivo (es. negare a un admin
@@ -962,22 +987,6 @@ class AmmSoftwareRepository:
 
     _OP_LABELS: dict[int, str] = {1: "INIZIALE", 2: "MODIFICA", 3: "ELIMINAZIONE"}
 
-    # Whitelist ORDER BY audit log: chiave = `campo_sorgente` che il frontend
-    # invia come sortField (il nome del campo COME APPARE nel risultato),
-    # valore = colonna reale della CTE `events`. I due nomi divergono su tre
-    # colonne su quattro, ed e' l'unico posto del sistema dove succede.
-    #
-    # Era un `frozenset` confrontato DOPO una mappatura interna, e conteneva sia
-    # i nomi logici sia quelli SQL. `tabella` -> `code` non tornava (`code` non
-    # era nell'insieme): l'ordinamento per *Tabella* ripiegava in silenzio sul
-    # default, pur essendo `sortable` a video. Una mappa sola, letta una volta.
-    _AUDIT_ORDER_COLUMNS: dict[str, str] = {
-        "timestamp": "valid_from",
-        "tabella": "code",
-        "tipo_operazione": "tipo_operazione",
-        "user_modifica": "user_insert",
-    }
-
     # Scopo: Restituisce le sorgenti audit ammesse (Fase 5).
     #        Single source of truth lato DB: `script.vw_audit_sources` gia'
     #        filtrata `attivo=true` e ordinata per `code`. Sostituisce l'ex
@@ -1120,8 +1129,8 @@ class AmmSoftwareRepository:
             params.append(data_a)
 
         # Ordinamento sicuro: la whitelist traduce il nome di risultato nel nome
-        # colonna in un passaggio solo (vedi `_AUDIT_ORDER_COLUMNS`).
-        order_column = self._AUDIT_ORDER_COLUMNS.get(order_by or "")
+        # colonna in un passaggio solo (vedi `AUDIT_ORDER_COLUMNS`).
+        order_column = AUDIT_ORDER_COLUMNS.get(order_by or "")
         if order_column:
             direction = sql_order_direction(order_dir, default_desc=True)
             sql += f"ORDER BY {order_column} {direction}, valid_from DESC "  # noqa: S608

@@ -5,10 +5,11 @@
 > CORSO**. §6.1 (Pinia 4) è **chiuso e resta valido**. §6.2/6.3 (primeicons 8)
 > è stato eseguito e poi **annullato**. §6.4 (PrimeVue 5 + themes 3) **non è
 > più una questione tecnica**. Il binario vivo è §8-bis: la conversione delle
-> liste a `<ListaConfigurabile>` è partita — **17/34 convertite** (`vendite.lotti`
-> e le 4 del primo lotto il 2026-07-31; il secondo, terzo, **quarto e quinto**
-> lotto il 2026-08-01) e **5 col seed consegnabile** (il sesto lotto: 4 liste su
-> 5 verdi, una sola voce di whitelist da chiedere). Metà del Gruppo A è fatta.
+> liste a `<ListaConfigurabile>` è partita — **22/34 convertite** (`vendite.lotti`
+> e le 4 del primo lotto il 2026-07-31; secondo, terzo, quarto e quinto lotto il
+> 2026-08-01; il sesto fra l'1 e il 2 agosto, `storico.audit_log` compresa).
+> **Il Gruppo A non ha più nulla di meccanico**: le 12 rimaste sono tutte
+> decisioni (§8-bis, «Cosa resta dopo il sesto»).
 > È utile con QUALUNQUE esito della questione licenza.
 >
 > 🚨 **PrimeVue ha cambiato licenza al confine della major.** `primevue`,
@@ -791,6 +792,31 @@ mai**.
 Totale file con `DataTable` grezza: **77**, di cui **6** sono i
 wrapper stessi (giusto che la usino) → **bersaglio reale: 71**.
 
+> 📉 **Ri-misurato il 2026-08-02: i file con `DataTable` grezza sono scesi a
+> 56.** I 77 sono la fotografia del 2026-07-29 e restano qui perché sono il
+> metro con cui è stato dimensionato il lavoro; il numero vivo è quello sopra.
+> Il calo (−21) è più grande delle 22 conversioni del Gruppo A perché alcune
+> pagine montavano più `DataTable` nello stesso file.
+>
+> Contro cosa verificarlo, visto che i denominatori in questo documento sono
+> **tre e diversi**, e confonderli è il modo più facile di litigare sui numeri:
+>
+> | Misura | Oggi | Cos'è |
+> |---|---|---|
+> | codici seedati (`ui.lista_definizione`) | **33** | le liste configurate a DB |
+> | righe nel registro del presidio (`_LISTE`) | **33** | devono coincidere con la riga sopra, sempre |
+> | file consumer che montano `<ListaConfigurabile>` | **32** | meno dei codici: `ResiCodaTable` ne serve **due** con `:codice` dinamico |
+> | file del Gruppo A convertiti | **22 / 34** | il denominatore dell'inventario qui sotto |
+> | file con `DataTable` grezza | **56** | scende anche per conversioni fuori Gruppo A |
+>
+> Comandi per rifare le prime tre in un colpo:
+>
+> ```bash
+> tail -n +2 db/changelog/migrations_v2/80_data/sql/ui/lista_definizione.csv | grep -c .
+> grep -rl "<ListaConfigurabile" frontend/src --include=*.vue | wc -l   # +3 falsi positivi: sono citazioni in commento
+> grep -rl "from 'primevue/datatable'" frontend/src --include=*.vue | wc -l
+> ```
+
 #### Cosa serve davvero per convertire una lista (leggere prima di iniziare)
 
 ⚠️ **`<ListaConfigurabile>` non è uno scambio di componente.** Il BB è
@@ -988,7 +1014,7 @@ semplice alla più complessa, così le prime servono da rodaggio.
 | ✅ 31-07 | `amministrazione/components/CategorieClientiSearchTable.vue` | 5 | sì |
 | ✅ 01-08 | `amministrazione/components/EmittenteFiscaleBillingAccountTab.vue` | 5 | sì |
 | ✅ 31-07 | `amministrazione/components/UtilitiesTipiRuoloSearchTable.vue` | 5 | sì |
-| ☐ 🔵 | `amministrazione/views/AuditLogView.vue` | 5 | sì |
+| ✅ 02-08 | `amministrazione/views/AuditLogView.vue` | 5 | sì |
 | ✅ 31-07 | `anagrafiche/components/IndirizziSearchTable.vue` | 5 | sì |
 | ☐ | `vendite/views/ApprovazioniPrezzoListView.vue` | 5 | sì |
 | ✅ 01-08 | `amministrazione/views/EmailAccountsListView.vue` | 6 | sì |
@@ -1616,7 +1642,7 @@ segnalato «nucleo rotto» su una lista che lo stato lo ordina eccome. Un falso
 allarme ripetuto insegna a ignorare il controllo, ed è il modo in cui un presidio
 muore.
 
-##### Sesto lotto — ✅ 4 liste CONVERTITE, `storico.audit_log` era sospesa e ora è sbloccata (2026-08-01/02)
+##### Sesto lotto — ✅ CHIUSO: 5 liste CONVERTITE, `storico.audit_log` compresa (2026-08-01/02)
 
 > **Aggiornamento 2026-08-02, verificato sul pushato.** Il BE ha convertito
 > **quattro** delle cinque (`8983528ac`): le tre email e
@@ -1649,7 +1675,7 @@ muore.
 | `config.email_account` | 29 | `amministrazione/views/EmailAccountsListView.vue` | 6 | **6** | ✅ ok |
 | `config.email_template` | 30 | `amministrazione/views/EmailTemplatesListView.vue` | 6 | 5 | ✅ ok |
 | `config.email_log` | 31 | `amministrazione/views/EmailLogsListView.vue` | 7 | 6 | ✅ ok |
-| `storico.audit_log` | 32 | `amministrazione/views/AuditLogView.vue` | 4 → **5** | **4** | 🔵 sbloccata 02-08 |
+| `storico.audit_log` | 32 | `amministrazione/views/AuditLogView.vue` | 4 → **5** | **4** | ✅ convertita 02-08 |
 | `anagrafiche.categorie_clienti_listini` | 33 | `amministrazione/components/CategorieClientiListiniSearchTable.vue` | 9 | 6 | ⛔ nucleo |
 
 🔴 **L'unica voce da chiedere**: `emittente_ragione_sociale` in `_ORDER_COLS` di
@@ -1729,15 +1755,20 @@ e `CategorieClientiListiniSearchTable` non era stata guardata affatto. La
 conclusione che ne era seguita — «aspettare la famiglia email e farne uno da
 cinque» — si è rivelata giusta: è esattamente il sesto lotto.
 
-**Cosa resta dopo il sesto** (aggiornato 2026-08-02, 13 liste):
-`ApprovazioniPrezzoListView` (decidere *se* debba essere ordinabile, prima di
-seedarla: oggi l'`order_by` è cablato), le due code (l'ordine `id DESC` è il
-loro contenuto informativo, renderle ordinabili è una scelta di dominio), le
-tre dashboard da guardare una per una, `VersioneDrawer` (i compositi fuori
-paginazione), `CommessaGestioneDrawer` (nessun ordinamento, né BE né FE), i
-quattro drawer senza endpoint paginato — e `AuditLogView`, l'**unica**
-meccanica del gruppo, ora sbloccata dalla colonna 378. Tolta quella, **nessuna
-delle dodici è un allineamento meccanico: sono tutte decisioni.**
+**Cosa resta dopo il sesto** (aggiornato 2026-08-02 a conversione avvenuta,
+**12 liste**): `ApprovazioniPrezzoListView` (decidere *se* debba essere
+ordinabile, prima di seedarla: oggi l'`order_by` è cablato), le due code
+(l'ordine `id DESC` è il loro contenuto informativo, renderle ordinabili è una
+scelta di dominio), le tre dashboard da guardare una per una, `VersioneDrawer`
+(i compositi fuori paginazione), `CommessaGestioneDrawer` (nessun ordinamento,
+né BE né FE) e i quattro drawer senza endpoint paginato.
+
+`AuditLogView` era la **tredicesima e l'unica meccanica**: sbloccata dalla
+colonna 378 e convertita il 2026-08-02. Da qui in avanti **nessuna delle dodici
+è un allineamento meccanico: sono tutte decisioni** — e conviene affrontarle in
+blocco, non una lista per volta, perché tre di esse (le due code e
+`ApprovazioniPrezzoListView`) sono la stessa domanda posta a oggetti diversi:
+*un ordine implicito è un dato o un default?*
 
 #### Gruppo B — tabelle annidate (37 file, senza paginator)
 
@@ -1808,6 +1839,57 @@ maturità.
 ---
 
 ## 9. Registro
+
+### 2026-08-02 · `storico.audit_log` convertita: il Gruppo A non ha più nulla di meccanico
+
+Scrive il BE/FE, su richiesta di Tid (di norma questo documento lo tiene il team
+DB: se la regola resta, questa voce va riletta da loro).
+
+Consegnata la colonna **378** (*Dettaglio*), l'ultima conversione senza domande
+aperte è stata fatta: `AuditLogView.vue` monta ora
+`<ListaConfigurabile codice="storico.audit_log">`. Con lei il conteggio passa a
+**22/34** e **le dodici rimaste sono tutte decisioni**.
+
+| | |
+|---|---|
+| liste convertite | 21/34 → **22/34** |
+| codici seedati ↔ registro `_LISTE` | **33 ↔ 33** |
+| file con `DataTable` grezza | **56** (erano 77 il 29-07) |
+
+**Cosa è stato scritto.** Uno store nuovo (`stores/auditLog.js`): lo
+scaffolding `useListaConfigurabilePage` vuole uno store che possieda
+`items`/`totalRecords`/`loading`/`filters`/`fetchList`, e qui filtri e
+paginazione vivevano dentro il `.vue`. Ne è uscito anche un allineamento: il
+floor temporale passa da un «ultimo mese» calcolato a mano a
+`defaultFiltroDataDaString()`, che è la fonte unica del filtro data delle liste.
+
+**Tre slot soli, e uno mancante di proposito.** `tabella` e `tipo_operazione`
+per i Tag, `dettaglio` per il riepilogo (nel seed ha `campo_sorgente` vuoto: il
+valore può arrivare solo da lì). Su `timestamp` **non** c'è slot, perché il seed
+dichiara `datetime_short` e mettercelo salterebbe il formatter del catalogo —
+una delle trappole già pagate su questo binario.
+
+**Nessuna casella di ricerca**, ed è coerenza col modello, non una dimenticanza:
+`AuditLogView` (BE) non legge `search` e nel seed tutte le colonne hanno
+`ricercabile_full=f`. Lo store tiene comunque la chiave `search` perché
+`useSearchTable` ci scrive dentro, ma non la invia.
+
+🟠 **Una asimmetria raddrizzata mentre passavo, e vale oltre questa lista.** In
+`amm_software_repository` convivevano `ALLOWED_ORDER_COLUMNS` a livello **modulo**
+e `_AUDIT_ORDER_COLUMNS` come attributo **di classe**: due whitelist con lo
+stesso ruolo, nello stesso file, in due forme diverse. È esattamente il terreno
+su cui un presidio finisce per leggere il simbolo sbagliato — e su questa mappa
+**era già successo** (il `frozenset` confrontato dopo la traduzione
+`tabella`→`code`, che faceva ripiegare l'ordinamento per *Tabella* in silenzio).
+Promossa a modulo come `AUDIT_ORDER_COLUMNS`.
+
+**Verifica.** Presidio **7/7** con la lista registrata e la nota di sospensione
+rimossa; suite BE verde; lint e build FE puliti. Poi, siccome **il presidio è
+statico**, l'ordinamento è stato esercitato contro il DB reale su **574 righe**:
+tutte e quattro le voci della whitelist ordinano in entrambi i versi, e
+`dettaglio` — `ordinabile=f` nel seed — ripiega sul default senza sollevare.
+
+---
 
 ### 2026-08-02 · Il sesto lotto è stato convertito mentre non guardavamo, e la lista sospesa aveva ragione di esserlo
 

@@ -38,7 +38,7 @@ class EmittentiFiscaliView(AdminAPIView):
     @extend_schema(
         parameters=[
             OpenApiParameter(name="search", type=str, required=False,
-                             description="Ricerca su codice, descrizione, ragione_sociale, P.IVA, C.F."),
+                             description="Ricerca su codice, ragione_sociale, P.IVA, C.F."),
             OpenApiParameter(name="attivo", type=bool, required=False),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
@@ -52,7 +52,10 @@ class EmittentiFiscaliView(AdminAPIView):
     )
     # Scopo: Lista paginata emittenti fiscali con search e filtro attivo.
     def get(self, request: Request) -> JsonResponse:
-        p = parse_list_params(request.query_params, default_order="descrizione")
+        # Default d'ordinamento allineato all'`ordinamento_default` del preset
+        # `emittenti_fiscali_default` (seed lista 18): la ragione sociale del
+        # soggetto. Era `descrizione`, colonna droppata il 2026-08-02.
+        p = parse_list_params(request.query_params, default_order="ragione_sociale_completa")
         svc = EmittentiFiscaliService()
         results, total = svc.list_emittenti_fiscali(
             search=p["search"],
@@ -64,9 +67,11 @@ class EmittentiFiscaliView(AdminAPIView):
 
     @extend_schema(
         request=inline_serializer(name="EmittenteFiscaleCreateReq", fields={
-            "soggetto_id": serializers.UUIDField(help_text="UUID del soggetto: deve avere P.IVA valorizzata."),
+            "soggetto_id": serializers.UUIDField(
+                help_text="UUID del soggetto: deve avere P.IVA valorizzata. "
+                          "La denominazione dell'emittente e' la ragione sociale di questo soggetto.",
+            ),
             "codice": serializers.CharField(),
-            "descrizione": serializers.CharField(),
             "attivo": serializers.BooleanField(required=False, help_text="Default DB: true."),
             "regime_fiscale_rf": serializers.CharField(
                 required=False,
@@ -113,7 +118,6 @@ class EmittentiFiscaliDetailView(AdminAPIView):
 
     @extend_schema(
         request=inline_serializer(name="EmittenteFiscaleUpdateReq", fields={
-            "descrizione": serializers.CharField(required=False),
             "attivo": serializers.BooleanField(required=False),
             "regime_fiscale_rf": serializers.CharField(required=False),
             "bollo_auto": serializers.BooleanField(required=False),
