@@ -24,7 +24,7 @@
 --   nulla e presidiano il caso in cui qualcuno ricrei la colonna e ricominci
 --   a leggerla.
 -- ------------------------------------------------------------
--- Indice test (1..13):
+-- Indice test (1..14):
 --  1-6)  le 6 viste vw_*_lista non nominano piu' ef.descrizione
 --        (contratti, preventivi, offerte, ordini, ddt, resi)
 --  7-9)  le 3 funzioni script.fn_get_* non nominano piu' ef.descrizione
@@ -32,12 +32,22 @@
 -- 10)    fn_get_user_profile non dichiara piu' il %TYPE sulla colonna
 --        eliminata: un %TYPE non somiglia a una lettura ma lo e'
 -- 11)    la colonna non esiste piu' (Fase 4)
--- 12-13) PROVA DI VALORE: le due funzioni continuano a dare la ragione
---        sociale del soggetto dopo la DROP (nessuna regressione)
+-- 12-14) PROVA DI VALORE sulle TRE funzioni toccate: continuano a dare la
+--        ragione sociale del soggetto dopo la DROP (nessuna regressione)
+--
+-- ⚠️ Il test 14 nasce da un rilievo del BE (2026-08-02): delle tre funzioni
+--    modificate, i file dedicati di `fn_get_user_emittenti_scope` e
+--    `fn_get_user_profile` sono in `baseline-rossi.tsv` come ERRORE_FIXTURE,
+--    e un file che muore nel fixture non esegue NESSUNA asserzione: la sua
+--    copertura vale zero, non «parziale». Il rilievo era giusto a meta':
+--    `fn_get_user_emittenti_scope` era gia' coperta qui dal test 12, ma
+--    `fn_get_user_profile` aveva solo asserzioni strutturali (9 e 10) — ed e'
+--    l'unica delle tre che ha davvero CAMBIATO valore, perche' prima leggeva
+--    `ef.descrizione` nuda. Era il buco vero. Lo chiude il 14.
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(13);
+SELECT plan(14);
 
 -- ============================================================
 -- 1-6) Strutturale: le viste non nominano piu' ef.descrizione
@@ -177,6 +187,56 @@ SELECT CASE
                 LATERAL script.fn_get_operatore_detail(c.auth_user_id) od),
         (SELECT attesa FROM tmp_ctx_emittente),
         '13) fn_get_operatore_detail aggrega la ragione sociale del soggetto')
+END;
+
+-- ============================================================
+-- 14) fn_get_user_profile — la terza funzione, e l'unica che ha
+--     cambiato VALORE: prima metteva in `emittente_descrizione` la
+--     `ef.descrizione` nuda, cioe' l'etichetta interna.
+--
+--     L'asserzione e' SELF-REFERENZIALE, ed e' per questo che e' forte:
+--     il blocco `emittente` del profilo e' costruito come
+--         jsonb_build_object(..., 'emittente_descrizione', ...)
+--           || fn_get_soggetto_dati_by_ruolo(...)
+--     quindi porta nello STESSO oggetto sia quella chiave sia la
+--     `ragione_sociale_completa` del soggetto. Era esattamente la
+--     patologia del cantiere — due valori diversi sotto due chiavi
+--     vicine, e il consumatore che sceglieva. Ora devono coincidere, e
+--     il test non dipende da nessun dato esterno per dirlo.
+--
+--     Il candidato replica i guard della funzione (identita OPERATORE
+--     attiva e in finestra, risorsa umana attiva e in finestra): la fn
+--     solleva E_ADMIN_VALIDAZIONE su chi non li soddisfa, e un raise
+--     qui abortirebbe la transazione facendo morire il file.
+-- ============================================================
+CREATE TEMP TABLE tmp_ctx_profilo AS
+SELECT au.id AS auth_user_id
+  FROM django.auth_user au
+  JOIN anagrafiche.identita_digitali idg
+    ON idg.auth_user_id = au.id
+   AND idg.ruolo_applicativo = 'OPERATORE'
+   AND idg.attivo IS TRUE
+   AND (idg.valido_dal IS NULL OR idg.valido_dal <= CURRENT_DATE)
+   AND (idg.valido_al  IS NULL OR idg.valido_al  >= CURRENT_DATE)
+  JOIN anagrafiche.risorse_umane ru
+    ON ru.soggetto_ruolo_id = idg.soggetto_ruolo_id
+   AND ru.attivo IS TRUE
+   AND (ru.valido_dal IS NULL OR ru.valido_dal <= CURRENT_DATE)
+   AND (ru.valido_al  IS NULL OR ru.valido_al  >= CURRENT_DATE)
+ ORDER BY au.id
+ LIMIT 1;
+
+SELECT CASE
+    WHEN NOT EXISTS (SELECT 1 FROM tmp_ctx_profilo)
+    THEN skip('14) Nessun operatore che soddisfi i guard del profilo — test saltato')
+    ELSE is(
+        (SELECT p.prof -> 'emittente' ->> 'emittente_descrizione'
+           FROM tmp_ctx_profilo c,
+                LATERAL (SELECT script.fn_get_user_profile(c.auth_user_id) AS prof) p),
+        (SELECT p.prof -> 'emittente' ->> 'ragione_sociale_completa'
+           FROM tmp_ctx_profilo c,
+                LATERAL (SELECT script.fn_get_user_profile(c.auth_user_id) AS prof) p),
+        '14) fn_get_user_profile: emittente_descrizione coincide con la ragione sociale del soggetto')
 END;
 
 SELECT * FROM finish();
