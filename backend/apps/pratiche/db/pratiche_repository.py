@@ -33,6 +33,9 @@ __all__ = ["PraticheRepository", "coerce_jsonb_dict"]
 # colonna fisica (la query joina otto tabelle); nuda dove e' un alias di output
 # della SELECT, che ORDER BY risolve solo cosi'.
 PRATICHE_ORDER_COLS: dict[str, str] = {
+    # `id` aggiunto il 2026-08-02 (commessa BE 7° lotto, voce «migliora»): la
+    # coda approvazioni prezzo mostra la colonna e passa da questa whitelist.
+    "id": "p.id",
     "codice": "p.codice",
     "descrizione": "p.descrizione",
     "data_apertura": "p.data_apertura",

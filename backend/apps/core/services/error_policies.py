@@ -1473,6 +1473,19 @@ class ErrorPolicyRegistry:
         # senza policy il fallback li mostrerebbe tutti come «Errore di
         # validazione», che non dice ne' cosa e' successo ne' dove guardare.
         "E_INDIRIZZO_FATTURA_MANCANTE": ErrorPolicy(code="E_INDIRIZZO_FATTURA_MANCANTE", http_status=422, ui_action="show_error_banner", user_message="Alcune fatture non hanno l'indirizzo di fatturazione: vedi i log delle fatture interessate."),
+        # D-K (Fase 4b, changeSet `20260802-24`): `fn_assign_numero_fattura` non
+        # numera piu' un documento incoerente — sei condizioni sulla catena
+        # riepiloghi IVA -> totale_doc -> totale_a_pagare -> rate. Il codice era
+        # seedato in `config.messaggi_errore` dalla Fase 1.3 ma non qui, quindi
+        # il fallback lo mostrava come «Errore di validazione»: su un rifiuto di
+        # numerazione e' proprio il messaggio che non aiuta.
+        # ⚠️ NON confonderlo con `E_SCADENZE_BASE_NON_PRONTA` (571): quello dice
+        # «i totali non ci sono ancora» ed e' dello step EMESSA; questo dice «il
+        # documento non merita un numero fiscale» ed e' dello step DEFINITIVA.
+        # 422 e non 409: il documento e' incompleto, non in conflitto — e la
+        # riparazione e' rilanciare gli step a monte, non ritentare la stessa
+        # chiamata.
+        "E_FATTURA_NON_NUMERABILE_INCOERENTE": ErrorPolicy(code="E_FATTURA_NON_NUMERABILE_INCOERENTE", http_status=422, ui_action="show_error_banner", user_message="Fattura non numerabile: totali, riepiloghi IVA o piano rate incoerenti. Il dettaglio dei motivi e' nei log della fattura."),
         "E_SCADENZE_LOTTO_PARZIALE": ErrorPolicy(code="E_SCADENZE_LOTTO_PARZIALE", http_status=422, ui_action="show_error_banner", user_message="Piano rate non generato per alcune fatture: vedi i log delle fatture interessate."),
         "E_TIPO_FONDO_NOT_FOUND": ErrorPolicy(code="E_TIPO_FONDO_NOT_FOUND", http_status=404, ui_action="show_empty_state", user_message="Tipo fondo non trovato."),
         # ── Commesse ──
