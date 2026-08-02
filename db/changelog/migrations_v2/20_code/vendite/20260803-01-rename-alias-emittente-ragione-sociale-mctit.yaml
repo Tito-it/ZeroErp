@@ -1,0 +1,158 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Coda del cantiere emittente — l'alias dice finalmente cosa contiene
+#   emittente_fiscale_descrizione -> emittente_ragione_sociale (6 viste)
+#   (brief-emittente-ragione-sociale-dal-soggetto.md §7, fase parcheggiata)
+#
+# ── PERCHE' ORA, DOPO AVER DECISO DI NON FARLO ───────────────────────────
+#   Il brief teneva la rinomina come «fase separata, se la si vuole», e aveva
+#   ragione: mescolarla alla sostituzione della sorgente avrebbe trasformato
+#   una modifica invisibile in un breaking su decine di punti. Quella fase e'
+#   finita, e adesso il nome e' peggiorato: `..._descrizione` fa riferimento a
+#   `emittenti_fiscali.descrizione`, una colonna **che dal 2026-08-02 non
+#   esiste piu'**. Non e' piu' un nome impreciso: e' un nome che rimanda a
+#   qualcosa di cancellato, e chi lo legge fra sei mesi cerchera' una colonna
+#   inesistente.
+#
+#   Il nome giusto era gia' in casa: `categorie_clienti_listini` proietta
+#   `s.ragione_sociale_completa AS emittente_ragione_sociale`. Due nomi per lo
+#   stesso identico contenuto, e si tiene quello onesto.
+#
+#   Decisione di Tid (2026-08-03): si uniforma tutto al secondo nome. Il DB
+#   fa la sua parte per prima e diventa lo stato di riferimento; BE e FE
+#   inseguono. E' un **breaking secco**, ammesso perche' non esiste ancora un
+#   ambiente di produzione.
+#
+# ── ⚠️ PERCHE' `ALTER VIEW ... RENAME COLUMN` E NON UN DROP+CREATE ───────
+#   1. `CREATE OR REPLACE VIEW` **non puo' rinominare una colonna**: verificato
+#      su questo DB, risponde «non e' possibile eliminare colonne da una
+#      vista». Quindi la strada in-place non esiste.
+#   2. `DROP` + `CREATE` funzionerebbe (nessun oggetto dipende da queste sei
+#      viste, verificato via pg_depend) ma **perderebbe i GRANT in silenzio**:
+#      ognuna porta `zeroerp_app` e `zeroerp_batch_fatturazione`, e il ruolo
+#      batch smetterebbe di leggerle senza che nulla lo dica. Un errore che si
+#      manifesta lontano da dove lo si e' commesso.
+#   3. `ALTER ... RENAME COLUMN` fa una cosa sola, conserva definizione,
+#      reloption (`security_invoker`) e privilegi, e non tocca i JOIN.
+#
+#   ℹ️ Conseguenza da sapere: su un database pulito le viste nascono con il
+#   nome vecchio (changeSet `20260802-20`) e vengono rinominate qui. La
+#   definizione self-contained resta quella del `-20`; questo file e' la
+#   correzione dell'etichetta. E' il prezzo del punto 2, ed e' il piu' basso.
+#
+# ── COSA NON CAMBIA ──────────────────────────────────────────────────────
+#   Il CONTENUTO. Era gia' `s_ef.ragione_sociale_completa` dal 2026-08-02:
+#   qui cambia solo il nome della colonna. Nessuna riga cambia valore.
+#
+# ── 🔴 COSA SI ROMPE, E VA CHIUSO SUBITO DOPO ────────────────────────────
+#   Ogni lettore che seleziona `emittente_fiscale_descrizione` da queste viste
+#   smette di funzionare all'istante. E' voluto e sorvegliato: la lista delle
+#   modifiche BE/FE parte insieme a questo changeSet. Il seed delle liste
+#   (8 righe di `campo_sorgente`) e' allineato nello stesso giro, quindi fino
+#   a che il BE non rinomina i propri alias di risposta quelle colonne si
+#   vedono vuote.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260803-01-rename-alias-emittente-ragione-sociale-mctit.yaml
+
+  - changeSet:
+      id: 20260803-01-rename-alias-emittente-ragione-sociale
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Le 6 viste vendite.vw_*_lista rinominano la colonna
+        emittente_fiscale_descrizione in emittente_ragione_sociale: il nome
+        rimandava a emittenti_fiscali.descrizione, droppata il 2026-08-02.
+        Il contenuto non cambia. ALTER RENAME e non DROP+CREATE per non
+        perdere i GRANT a zeroerp_app e zeroerp_batch_fatturazione.
+      preConditions:
+        - onFail: HALT
+        - and:
+          # Le sei espongono ancora il nome vecchio...
+          - sqlCheck:
+              expectedResult: 6
+              sql: |
+                SELECT COUNT(*)
+                  FROM information_schema.columns
+                 WHERE table_schema = 'vendite'
+                   AND column_name  = 'emittente_fiscale_descrizione';
+          # ...e nessuna ha gia' quello nuovo (rinomina non ripetuta a meta').
+          - sqlCheck:
+              expectedResult: 0
+              sql: |
+                SELECT COUNT(*)
+                  FROM information_schema.columns
+                 WHERE table_schema = 'vendite'
+                   AND table_name LIKE 'vw_%_lista'
+                   AND column_name  = 'emittente_ragione_sociale';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER VIEW vendite.vw_contratti_lista
+                  RENAME COLUMN emittente_fiscale_descrizione TO emittente_ragione_sociale;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER VIEW vendite.vw_preventivi_lista
+                  RENAME COLUMN emittente_fiscale_descrizione TO emittente_ragione_sociale;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER VIEW vendite.vw_offerte_commerciali_lista
+                  RENAME COLUMN emittente_fiscale_descrizione TO emittente_ragione_sociale;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER VIEW vendite.vw_ordini_lista
+                  RENAME COLUMN emittente_fiscale_descrizione TO emittente_ragione_sociale;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER VIEW vendite.vw_ddt_lista
+                  RENAME COLUMN emittente_fiscale_descrizione TO emittente_ragione_sociale;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER VIEW vendite.vw_resi_lista
+                  RENAME COLUMN emittente_fiscale_descrizione TO emittente_ragione_sociale;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER VIEW vendite.vw_contratti_lista
+                  RENAME COLUMN emittente_ragione_sociale TO emittente_fiscale_descrizione;
+              ALTER VIEW vendite.vw_preventivi_lista
+                  RENAME COLUMN emittente_ragione_sociale TO emittente_fiscale_descrizione;
+              ALTER VIEW vendite.vw_offerte_commerciali_lista
+                  RENAME COLUMN emittente_ragione_sociale TO emittente_fiscale_descrizione;
+              ALTER VIEW vendite.vw_ordini_lista
+                  RENAME COLUMN emittente_ragione_sociale TO emittente_fiscale_descrizione;
+              ALTER VIEW vendite.vw_ddt_lista
+                  RENAME COLUMN emittente_ragione_sociale TO emittente_fiscale_descrizione;
+              ALTER VIEW vendite.vw_resi_lista
+                  RENAME COLUMN emittente_ragione_sociale TO emittente_fiscale_descrizione;

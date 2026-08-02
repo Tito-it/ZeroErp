@@ -2,25 +2,30 @@
 -- test-emittente-ddt-simmetria-v1.sql
 -- Copertura: brief-db emittente DDT legato allo user + etichetta soggetto
 -- ------------------------------------------------------------
+-- ⚠️ Rinominato il 2026-08-03: l'alias era `emittente_fiscale_descrizione`,
+--    nome che rimandava a `emittenti_fiscali.descrizione` — colonna droppata
+--    il 2026-08-02. Il contenuto non e' mai cambiato in questa passata: e'
+--    la ragione sociale del soggetto emittente da quando il COALESCE e'
+--    caduto. Changeset `20260803-01` (ALTER VIEW ... RENAME COLUMN).
 -- Indice test (1..12):
---  1-5) le 5 viste lista espongono emittente_fiscale_descrizione
+--  1-5) le 5 viste lista espongono emittente_ragione_sociale
 --  6) trigger trg_ddt_a10_default_emittente_ins presente su vendite.ddt
 --  7) trigger trg_ddt_z10_guard_emittente_ba_ins_upd presente su vendite.ddt
 --  8) trigger guard_emittente_ba presente su vendite.preventivi
 --  9) trigger guard_emittente_ba presente su vendite.offerte_commerciali
 -- 10) firing order: default_emittente PRIMA di normalize (nome ordina prima)
 -- 11) firing order: guard_emittente_ba DOPO normalize (nome ordina dopo)
--- 12) seed: le 5 colonne "Emittente" bindano campo_sorgente=emittente_fiscale_descrizione
+-- 12) seed: le 5 colonne "Emittente" bindano campo_sorgente=emittente_ragione_sociale
 -- ============================================================
 BEGIN;
 SELECT plan(12);
 
--- 1-5) colonna emittente_fiscale_descrizione nelle 5 viste lista.
-SELECT has_column('vendite', 'vw_ddt_lista',                 'emittente_fiscale_descrizione', '1) vw_ddt_lista.emittente_fiscale_descrizione');
-SELECT has_column('vendite', 'vw_ordini_lista',              'emittente_fiscale_descrizione', '2) vw_ordini_lista.emittente_fiscale_descrizione');
-SELECT has_column('vendite', 'vw_preventivi_lista',          'emittente_fiscale_descrizione', '3) vw_preventivi_lista.emittente_fiscale_descrizione');
-SELECT has_column('vendite', 'vw_offerte_commerciali_lista', 'emittente_fiscale_descrizione', '4) vw_offerte_commerciali_lista.emittente_fiscale_descrizione');
-SELECT has_column('vendite', 'vw_contratti_lista',           'emittente_fiscale_descrizione', '5) vw_contratti_lista.emittente_fiscale_descrizione');
+-- 1-5) colonna emittente_ragione_sociale nelle 5 viste lista.
+SELECT has_column('vendite', 'vw_ddt_lista',                 'emittente_ragione_sociale', '1) vw_ddt_lista.emittente_ragione_sociale');
+SELECT has_column('vendite', 'vw_ordini_lista',              'emittente_ragione_sociale', '2) vw_ordini_lista.emittente_ragione_sociale');
+SELECT has_column('vendite', 'vw_preventivi_lista',          'emittente_ragione_sociale', '3) vw_preventivi_lista.emittente_ragione_sociale');
+SELECT has_column('vendite', 'vw_offerte_commerciali_lista', 'emittente_ragione_sociale', '4) vw_offerte_commerciali_lista.emittente_ragione_sociale');
+SELECT has_column('vendite', 'vw_contratti_lista',           'emittente_ragione_sociale', '5) vw_contratti_lista.emittente_ragione_sociale');
 
 -- 6-9) trigger presenti.
 SELECT has_trigger('vendite', 'ddt',                 'trg_ddt_a10_default_emittente_ins',                     '6) trg_ddt_a10_default_emittente_ins');
@@ -58,8 +63,8 @@ SELECT is(
             'vendite.contratti.col_emittente','vendite.preventivi.col_emittente',
             'vendite.offerte.col_emittente','vendite.ordini.col_emittente',
             'vendite.ddt.col_emittente')
-      AND campo_sorgente = 'emittente_fiscale_descrizione'),
-  5, '12) le 5 colonne Emittente bindano emittente_fiscale_descrizione'
+      AND campo_sorgente = 'emittente_ragione_sociale'),
+  5, '12) le 5 colonne Emittente bindano emittente_ragione_sociale'
 );
 
 SELECT * FROM finish();
