@@ -20,6 +20,20 @@ DECLARE
     v_anno        vendite.fatture.anno%TYPE;
     v_mese        SMALLINT;
     v_numero      vendite.fatture.numero%TYPE;
+    -- D-K: stato dei satelliti, letto una volta sola.
+    v_tot_pagare  vendite.fatture.totale_a_pagare%TYPE;
+    v_tot_doc     vendite.fatture.totale_doc%TYPE;
+    v_impo_tot    vendite.fatture.imponibile_tot%TYPE;
+    v_imps_tot    vendite.fatture.imposta_tot%TYPE;
+    v_n_iva       INTEGER;
+    v_sum_impo    NUMERIC;
+    v_sum_imps    NUMERIC;
+    v_n_rate      INTEGER;
+    v_sum_rate    NUMERIC;
+    v_fondi       NUMERIC;
+    v_arr_prec    vendite.fatture.arrotondamento_precedente%TYPE;
+    v_arr_att     vendite.fatture.arrotondamento_attuale%TYPE;
+    v_motivi      TEXT[] := ARRAY[]::TEXT[];
 BEGIN
     -- Guard: parametro obbligatorio
     IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
@@ -51,10 +65,14 @@ BEGIN
 
     -- ----------------------------------------------------
     -- Guard D3: un documento senza righe non si numera.
-    -- ⚠️ QUI e non piu' sotto: il progressivo di registro non
-    --    torna indietro (nextval non fa rollback), quindi fallire
-    --    dopo fn_get_next_progressivo lascerebbe comunque un buco
-    --    nella numerazione fiscale.
+    -- ⚠️ RETTIFICA 2026-08-02: la motivazione originale diceva
+    --    «nextval non fa rollback». Non e' vero qui —
+    --    fn_get_next_progressivo e' table-based e transazionale
+    --    (verificato: nessuna sequence su
+    --    registri_fatturazione_progressivi.last_numero). Il guard
+    --    resta PRIMA, ma perche' non si scrive prima di aver
+    --    validato e per non entrare in contesa sull'advisory lock
+    --    del registro: vedi l'intestazione del changeSet.
     -- brief-fix-importi-riga-fattura-zero §4.5.
     -- ----------------------------------------------------
     PERFORM 1
@@ -67,6 +85,123 @@ BEGIN
             jsonb_build_object('fattura_id', p_fattura_id,
                                'registro_id', v_registro_id),
             NULL::uuid, p_fattura_id::text
+        );
+    END IF;
+
+    -- ----------------------------------------------------
+    -- Guard D-K (Fase 4b): coerenza del documento, sempre
+    -- PRIMA di consumare il progressivo.
+    -- Si guarda il RISULTATO, non chi avrebbe dovuto scriverlo:
+    -- cosi' il presidio copre anche il caso piu' probabile, cioe'
+    -- un task dello step EMESSA che non ha girato affatto.
+    -- Da qui in poi sappiamo gia' che le righe esistono.
+    -- ----------------------------------------------------
+    SELECT f.totale_a_pagare, f.totale_doc, f.imponibile_tot, f.imposta_tot,
+           (SELECT count(*)::int             FROM vendite.fatture_riepiloghi_iva i WHERE i.fattura_id = p_fattura_id),
+           (SELECT COALESCE(sum(i.imponibile), 0) FROM vendite.fatture_riepiloghi_iva i WHERE i.fattura_id = p_fattura_id),
+           (SELECT COALESCE(sum(i.imposta), 0)    FROM vendite.fatture_riepiloghi_iva i WHERE i.fattura_id = p_fattura_id),
+           (SELECT count(*)::int             FROM vendite.fatture_scadenze s WHERE s.fattura_id = p_fattura_id),
+           (SELECT COALESCE(sum(s.importo), 0)    FROM vendite.fatture_scadenze s WHERE s.fattura_id = p_fattura_id),
+           COALESCE(vendite.fn_get_totale_fondi_fattura(p_fattura_id), 0),
+           f.arrotondamento_precedente, f.arrotondamento_attuale
+      INTO v_tot_pagare, v_tot_doc, v_impo_tot, v_imps_tot,
+           v_n_iva, v_sum_impo, v_sum_imps, v_n_rate, v_sum_rate,
+           v_fondi, v_arr_prec, v_arr_att
+      FROM vendite.fatture f
+     WHERE f.id = p_fattura_id;
+
+    -- ⚠️ `array_append` e non `|| 'testo'`: con un letterale non
+    --    tipizzato PostgreSQL prova a leggerlo come letterale di
+    --    ARRAY e solleva «l'array deve iniziare con {». I rami che
+    --    usano format() non lo mostrano — format() restituisce gia'
+    --    un text — quindi il difetto si nasconde nei soli casi a
+    --    testo fisso. Qui la forma e' una sola per tutti e cinque.
+
+    -- 1) I totali non sono mai stati calcolati.
+    IF v_tot_pagare IS NULL THEN
+        v_motivi := array_append(v_motivi, 'totali non calcolati (totale_a_pagare assente)');
+    END IF;
+
+    -- 2) Righe presenti (verificato sopra) ma nessun riepilogo IVA.
+    IF v_n_iva = 0 THEN
+        v_motivi := array_append(v_motivi, 'riepilogo IVA assente');
+    END IF;
+
+    -- 3) Documento da incassare: il piano rate deve esserci e quadrare.
+    --    L'uguaglianza e' esatta perche' il generatore quadra per
+    --    costruzione (l'ultima rata assorbe la differenza) e i tipi
+    --    sono NUMERIC, non floating point.
+    IF v_tot_pagare > 0 AND v_n_rate = 0 THEN
+        v_motivi := array_append(v_motivi, 'piano rate assente');
+    ELSIF v_tot_pagare > 0 AND v_sum_rate <> v_tot_pagare THEN
+        v_motivi := array_append(v_motivi, format(
+            'somma delle rate (%s) diversa dal totale a pagare (%s)',
+            v_sum_rate, v_tot_pagare));
+    END IF;
+
+    -- 4) D-D allo specchio: un documento non positivo non si rateizza.
+    IF v_tot_pagare IS NOT NULL AND v_tot_pagare <= 0 AND v_n_rate > 0 THEN
+        v_motivi := array_append(v_motivi, format(
+            'presenti %s rate su un totale a pagare non positivo (%s)',
+            v_n_rate, v_tot_pagare));
+    END IF;
+
+    -- 5) I riepiloghi IVA devono quadrare con i totali di testata.
+    --    Si controlla la catena intera e non il solo estremo: due
+    --    scostamenti che si compensano darebbero un totale giusto
+    --    con dentro numeri sbagliati.
+    IF COALESCE(v_sum_impo, 0) <> COALESCE(v_impo_tot, 0)
+       OR COALESCE(v_sum_imps, 0) <> COALESCE(v_imps_tot, 0)
+       OR COALESCE(v_impo_tot, 0) + COALESCE(v_imps_tot, 0) <> COALESCE(v_tot_doc, 0) THEN
+        v_motivi := array_append(v_motivi, format(
+            'riepilogo IVA non coerente con i totali di testata (imponibile %s vs %s, imposta %s vs %s, totale_doc %s)',
+            v_sum_impo, v_impo_tot, v_sum_imps, v_imps_tot, v_tot_doc));
+    END IF;
+
+    -- 6) L'ultimo anello: `totale_a_pagare` deve DERIVARE da
+    --    `totale_doc`. Senza questo controllo la catena resta
+    --    aperta nel mezzo — la 5 lega i riepiloghi a totale_doc e
+    --    la 3 lega le rate a totale_a_pagare, ma nulla legherebbe
+    --    i due totali fra loro, e un fondo aggiunto dopo il
+    --    ricalcolo passerebbe indisturbato: rate che quadrano con
+    --    un totale che non tiene conto dell'acconto.
+    --    L'identita' e' quella di fn_ricalcola_totali_fattura:
+    --      totale_a_pagare = totale_doc + fondi
+    --                        + arrotondamento_precedente
+    --                        + arrotondamento_attuale
+    --    Non si ricalcola nulla: si verifica che il valore scritto
+    --    sia ancora quello che i suoi addendi producono.
+    --    Saltata se il totale e' NULL: l'ha gia' detto la 1, e
+    --    ripeterlo qui come «0 non corrisponde» sarebbe rumore.
+    IF v_tot_pagare IS NOT NULL
+       AND v_tot_pagare <> COALESCE(v_tot_doc, 0) + COALESCE(v_fondi, 0)
+                           + COALESCE(v_arr_prec, 0) + COALESCE(v_arr_att, 0) THEN
+        v_motivi := array_append(v_motivi, format(
+            'totale a pagare (%s) non corrisponde alla somma dei suoi addendi: totale_doc %s + fondi %s + arrotondamenti %s/%s',
+            v_tot_pagare, v_tot_doc, v_fondi, v_arr_prec, v_arr_att));
+    END IF;
+
+    -- Un errore solo, con TUTTI i motivi: chi lo riceve vede in una
+    -- volta cosa manca al documento invece di scoprirlo un giro
+    -- alla volta.
+    IF array_length(v_motivi, 1) > 0 THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', 'fn_assign_numero_fattura', 'E_FATTURA_NON_NUMERABILE_INCOERENTE',
+            jsonb_build_object(
+                'fattura_id',      p_fattura_id,
+                'registro_id',     v_registro_id,
+                'motivi',          to_jsonb(v_motivi),
+                'totale_a_pagare', v_tot_pagare,
+                'totale_doc',      v_tot_doc,
+                'riepiloghi_iva',  v_n_iva,
+                'rate',            v_n_rate,
+                'somma_rate',      v_sum_rate,
+                'fondi',           v_fondi,
+                'arrotondamento_precedente', v_arr_prec,
+                'arrotondamento_attuale',    v_arr_att),
+            NULL::uuid,
+            p_fattura_id::text,
+            array_to_string(v_motivi, '; ')
         );
     END IF;
 
@@ -92,7 +227,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_assign_numero_fattura(p_fattura_id bigint)
-IS 'Assegna anno/serie/numero alla fattura usando registro e progressivo con lock. rev 2026-07-28: rifiuta con E_FATTURA_SENZA_RIGHE una fattura priva di righe, PRIMA di consumare il progressivo (nextval non fa rollback: fallire dopo lascerebbe comunque un buco nella numerazione fiscale). E'' il punto UNICO in cui il progressivo viene assegnato — fn_numera_fattura_opz_emessa delega qui — quindi il presidio vale per qualunque percorso, senza doverli enumerare. Origine: fatture 207 e 208, DEFINITIVE e senza alcuna riga. Non retroattivo. brief-fix-importi-riga-fattura-zero §4.5 (D3).';
+IS 'Assegna anno/serie/numero alla fattura usando registro e progressivo con lock. E'' il punto UNICO in cui il progressivo viene assegnato — fn_numera_fattura_opz_emessa delega qui — quindi i presidi valgono per qualunque percorso senza doverli enumerare. Due guard, entrambi PRIMA di fn_get_next_progressivo: (a) E_FATTURA_SENZA_RIGHE, rev 2026-07-28, origine fatture 207 e 208 numerate e senza righe; (b) E_FATTURA_NON_NUMERABILE_INCOERENTE (D-K, Fase 4b, rev 2026-08-02) su sei condizioni che insieme verificano una catena continua — riepiloghi IVA -> totale_doc -> totale_a_pagare -> rate — senza anelli scoperti: totali non calcolati, riepilogo IVA assente, piano rate assente o non quadrante con totale_a_pagare, rate presenti su totale non positivo (D-D allo specchio), riepiloghi IVA non coerenti con i totali di testata, e totale_a_pagare diverso dalla somma dei suoi addendi (totale_doc + fondi + arrotondamento precedente e attuale). La quinta non e'' ridondante benche'' fn_ricalcola_totali_fattura derivi totale_doc dai riepiloghi: fatture_riepiloghi_iva e'' fuori dal guard di congelamento dei satelliti, quindi si puo'' riscrivere lasciando la testata al valore vecchio. La sesta chiude l''anello di mezzo, l''unico che restava aperto: senza, un fondo registrato DOPO il ricalcolo passa indisturbato e le rate quadrano con un totale che non tiene conto dell''acconto. Il guard verifica il RISULTATO e non rincorre gli scrittori, cosi'' copre anche il caso piu'' probabile — un task dello step EMESSA che non ha girato affatto — e accumula TUTTI i motivi in un errore solo. ⚠️ RETTIFICA 2026-08-02 alla motivazione che girava finora: la posizione PRIMA del progressivo NON serve a evitare un buco di numerazione. fn_get_next_progressivo non usa sequence — e'' table-based con advisory lock su registri_fatturazione_progressivi — quindi e'' transazionale e il numero fa rollback insieme al documento. Le ragioni vere sono tre: non si scrive prima di aver validato, non si entra in contesa sull''advisory lock del registro con un documento gia'' rotto, e non si dipende dal fatto che il chiamante ripulisca. Il danno che il guard evita e'' l''opposto e IRREVERSIBILE: un numero fiscale valido su un documento invalido, che una volta assegnato congela i satelliti e si ripara solo con una nota di variazione. Origine: fattura 362, DEFINITIVA con numero 6, totale 200 e zero rate. Non retroattivo. piano-db-satelliti-fattura §3.4-bis.';
 ```
 
 ---

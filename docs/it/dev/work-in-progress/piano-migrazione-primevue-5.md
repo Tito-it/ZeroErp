@@ -1839,6 +1839,58 @@ come **passata unica prima di comporre il lotto**, non in consegna. Cosa
 **blocca** (nucleo, quindi la consegna aspetta) e cosa **migliora** vanno
 separati nella richiesta, così il BE decide invece di eseguire.
 
+##### 📋 Commessa BE per il 7° lotto — misurata il 2026-08-02
+
+Colonne dei cinque `.vue` incrociate con la whitelist di ciascuno. Tutti e
+cinque hanno **una sola** `<DataTable>`, quindi il conteggio è affidabile (la
+trappola di `ListiniSearchTable` non si applica).
+
+🔴 **Blocca la consegna** — è nucleo, e senza queste la lista nasce con una
+freccia che non ordina:
+
+| Lista | Voce da aggiungere | Famiglia di nucleo |
+| --- | --- | --- |
+| `CodaLavoriTab` | `stato` | stato |
+| `CodaStampaTab` | `stato` · `emittente_codice` | stato · numero/codice |
+| `ApprovazioniPrezzoListView` | `priorita_codice` | numero/codice |
+| `CommessaGestioneDrawer` | `data_attivita` · **uno fra** `stato_approvazione` / `stato_emissione` | data · stato |
+| `VersioneDrawer` | *(nessuna: il nucleo è già coperto)* | — |
+
+🔵 **Migliora, non blocca** — se non arrivano, la colonna nasce
+`ordinabile = f` e si ribalta quando la voce c'è (è già successo con `attivo`):
+
+| Lista | Voci |
+| --- | --- |
+| `CodaStampaTab` | `id` · `operatore` |
+| `ApprovazioniPrezzoListView` | `id` |
+| `VersioneDrawer` | `iva_aliquota` |
+| `CommessaGestioneDrawer` | `competenza_mese` · `segment_key` · `quantita` · `prezzo_snapshot` |
+
+⚙️ **Due lavori che non sono voci di whitelist**, e sono i più grossi dei cinque:
+
+1. **`ApprovazioniPrezzoListView` — far passare il parametro.** La whitelist è
+   già completa (`_PRATICHE_ORDER_COLS`, 10 voci): il service chiama
+   `cerca_pratiche(..., order_by="data_insert", order_dir="desc")` con i valori
+   **inchiodati** ([`approvazioni_prezzo_service.py:624`](../../../../backend/apps/vendite/services/approvazioni_prezzo_service.py#L624)).
+   Serve che view e service li accettino e li inoltrino. È l'unica delle cinque
+   dove il lavoro è di **cablaggio**, non di dominio.
+2. **`VersioneDrawer` — i compositi.** La `<DataTable>` monta un computed che
+   fonde le righe paginate dal server con i compositi caricati a parte. Il BB ha
+   `lazy` fisso e prende `total` dal caller: con righe aggiunte dopo la
+   paginazione, conteggio e pagine mentono. **Decisione presa: la lista è una
+   sola**, quindi i compositi devono arrivare **dall'endpoint insieme alle
+   altre righe**. Finché non lo fanno, questa lista non è seedabile: è l'unica
+   delle cinque che ha un prerequisito, non una richiesta.
+
+⚠️ **Una conseguenza da segnalare a Tid, perché la decisione presa non basta.**
+Su `CommessaGestioneDrawer` la richiesta era «ordine per data (default) e
+segmento». `data_attivita` copre la famiglia *data*, ma `segment_key` **non è
+nucleo**, e il nucleo *stato* resta scoperto: la lista ha `stato_approvazione` e
+`stato_emissione`, nessuna delle due ordinabile. O se ne rende ordinabile
+almeno una, o la lista nasce con il presidio rosso. Non è una svista della
+decisione: è che la regola del nucleo chiede una cosa in più di quella che si
+vede guardando la pagina.
+
 #### Gruppo B — tabelle annidate (37 file, senza paginator)
 
 Dentro drawer, dialog e pannelli. **Non** vanno su `ListaConfigurabile`:

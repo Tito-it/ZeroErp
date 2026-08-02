@@ -398,12 +398,38 @@ avanzamento di step le fatture del lotto vengono allineate (`fn_sync_lotto_fattu
 per **EMESSA(2) prima di DEFINITIVA(8)** — `1→2→8`, **mai** `1→8`. Semantica: non si assegna
 un numero fiscale (DEFINITIVA) a una fattura di cui non si è certificata l'IVA (EMESSA).
 
-* **MASSIVO**: la fattura fa `1→2→8→3`. Lo step EMESSA calcola l'IVA (rifacibile: ha rollback
-  `reset_lotto_draft`), poi DEFINITIVA numera.
-* **GIORNALIERO**: stessa sequenza `1→2→8→3` a livello sia di lotto sia di fattura. L'IVA è già
-  calcolata alla nascita del documento, quindi lo step EMESSA giornaliero non ha task
-  (`processi=[]`): serve solo a portare lotto e fattura a EMESSA prima della numerazione,
-  garantendo lo stesso invariante.
+* **MASSIVO**: la fattura fa `1→2→8→3`. Lo step EMESSA prepara il documento pre-fiscale
+  (rifacibile: ha rollback `reset_lotto_draft`), poi DEFINITIVA numera.
+* **GIORNALIERO**: stessa sequenza `1→2→8→3` a livello sia di lotto sia di fattura, **con gli
+  stessi task** della corsia massiva. Cambia solo il rollback: la corsia immediata non ne ha,
+  perché arriva da sola fino alla numerazione e una fattura numerata non si resetta.
+
+> ⚠️ **Correzione (2026-08-02).** Fino a questa data la corsia GIORNALIERO aveva lo step EMESSA
+> **vuoto** (`processi=[]`), e questa guida lo spiegava con «l'IVA è già calcolata alla nascita
+> del documento». **Non era vero**: nessun trigger ricalcola IVA e totali dopo la nascita, quindi
+> quella corsia — se accesa — avrebbe emesso documenti numerati, stampati e inviati allo SDI
+> **senza riepilogo IVA né totali**. Non era una corsia che calcolava meno: era una corsia che
+> emetteva documenti invalidi. Il difetto è rimasto latente solo perché nessun lotto GIORNALIERO
+> era mai stato eseguito. Le due corsie EMESSA sono ora allineate, ed è un **invariante
+> presidiato**: `test-pipeline-processi-invariante-v1.sql` fallisce se una tappa qualsiasi ha
+> corsie con `processi` divergenti, o se una corsia attiva resta vuota.
+
+### I task dello step EMESSA (entrambe le corsie)
+
+| # | Task | Cosa fa |
+|---|---|---|
+| 1 | `genera_fondi_source_lotto` | genera i source di fondi/minimi |
+| 2 | `applica_fondi_lotto` | applica i fondi alle fatture del lotto |
+| 3 | `ricalcola_iva_lotto` | ricalcola riepiloghi IVA e totali — **produce `totale_a_pagare`** |
+| 4 | `genera_scadenze_lotto` | genera il **piano rate** di ogni fattura (`vendite.fatture_scadenze`) |
+
+⚠️ **L'ordine 3 → 4 non è negoziabile**: la base di ripartizione delle rate è `totale_a_pagare`,
+che prima del ricalcolo non esiste. Invertirli farebbe sollevare `E_SCADENZE_BASE_NON_PRONTA` su
+**ogni** fattura del lotto — un giro interamente rosso che sembra un difetto dei dati mentre è
+una riga di configurazione girata. L'ordine è sorvegliato due volte: da
+`_TASK_ORDER_DEPENDENCIES` in `pipeline_step_executor.py` (che rifiuta la sequenza invertita
+prima che il primo task scriva) e dal pgTAP sull'invariante (che impedisce al seed sbagliato di
+nascere).
 
 > Rollback: ammesso solo da stati **pre-fiscali** (DRAFT/EMESSA). `fn_annulla_lotto_da_draft`
 > **cancella** le fatture pre-fiscali del lotto (non numerate); le fiscali (DEFINITIVA in poi)
