@@ -33,16 +33,19 @@
 > regressione, **smoke §3.3 scritto e verde** (6/6, con prova di mutazione),
 > ricaduta **D-S** (utility in colonna) corretta, e la nostra segnalazione sui
 > clienti senza termine **chiusa da D-J** (fallback `TP_1RATA` nella catena).
-> **Fase 3 (task scadenze) ✅ REGISTRAZIONE FATTA (2026-08-02)**: il DB aveva già
-> consegnato la sua Fase 4 la sera del 01-08 (`20260801-08/-09`, PR #1119) e noi
-> non ce ne eravamo accorti. Task registrato, handler cablato, guard d'ordine
-> scritto, **binding provato con chiamata reale** (i 3452 verdi mockano il
-> repository e non provano una riga di SQL). Resta **solo l'armamento dei CSV,
-> che è del DB** — il prerequisito che lo bloccava era proprio questa
-> registrazione. ✅ **D-L.1 e D-L.2** chiuse su entrambi gli strati.
-> ⚠️ Il `brief-db-generazione-scadenze-fattura.md` **non va riscritto**: il
-> design-of-record delle scadenze è il piano DB (formula a ramo unico post-D-E,
-> tre casi di D-D), e quel brief è superato.
+> **Fase 3 (task scadenze) ✅ CHIUSA (2026-08-02)**. Il DB aveva già consegnato la
+> sua Fase 4 la sera del 01-08 (`20260801-08/-09`, PR #1119) e noi non ce ne
+> eravamo accorti. Task registrato, handler cablato, guard d'ordine scritto,
+> **binding provato con chiamata reale** (i 3452 verdi mockano il repository e non
+> provano una riga di SQL); poi il DB ha **armato entrambe le corsie** — corsia 2
+> inclusa, che era vuota — e lo **smoke §3.2 è verde (10 casi, con prova di
+> mutazione)**. Il cantiere satelliti non ha più fasi aperte lato nostro.
+> ✅ **D-L.1 e D-L.2** chiuse su entrambi gli strati.
+> ⚠️ Il `brief-db-generazione-scadenze-fattura.md` **non va riscritto**: è stato
+> riscritto dal DB il 02-08 ed è ora il **contratto verso il BE**; il
+> design-of-record dello stato resta il piano DB §9.
+> 📌 **Prossimo, e non è nostro da avviare**: D-K (Fase 4b), il guard di coerenza
+> alla numerazione — vedi la Fase 3 per cosa romperà.
 > **Prerequisiti:**
 > [brief-db-snapshot-indirizzi-fattura.md](brief-db-snapshot-indirizzi-fattura.md) ·
 > [piano-db-satelliti-fattura.md](piano-db-satelliti-fattura.md) §Fase 4
@@ -156,19 +159,73 @@ codice morto con i test verdi.
 >    auto-verifica riancorata al contratto vero — un `any('-')` generico
 >    sarebbe diventato banalmente verde per sempre. Ora verde su fattura 835.
 
-### 3.2 `smoke-fattura-scadenze.py`
+### 3.2 `smoke-fattura-scadenze.py` ✅ **SCRITTO E VERDE (2026-08-02)** — 10 casi, con prova di mutazione
 
-| # | Asserzione |
-|---|---|
-| 1 | Dopo un giro EMESSA, ogni fattura ha **almeno una rata** in `fatture_scadenze` |
-| 2 | `Σ importo` delle rate **quadra** con `fatture.totale_a_pagare` (base corretta, non `totale_doc`) |
-| 3 | Su un piano non divisibile (es. 100,00 / 3) la differenza è **sull'ultima rata** |
-| 4 | `numero_rata` progressivo da 1, nessun buco |
-| 5 | `meta.modalita_codice` popolato — è il campo che il contesto PDF legge già |
-| 6 | Testata: `termine_pagamento_id`, `modalita_pagamento_id`, `termine_pagamento_snapshot` **valorizzati** |
-| 7 | Il **PDF stampa il piano rate** (sezione non vuota, date e importi presenti) |
-| 8 | Percorso coppia legacy (cliente con giorni): **una sola rata**, data = data fattura + giorni, spostata a fine mese quando previsto |
-| 9 | Idempotenza: doppia esecuzione → stesse rate, nessun duplicato |
+| # | Asserzione | Stato |
+| --- | --- | --- |
+| 1 | Dopo un giro EMESSA, ogni fattura ha **almeno una rata** in `fatture_scadenze` | ✅ caso 1 |
+| 2 | `Σ importo` delle rate **quadra** con `fatture.totale_a_pagare` (base corretta, non `totale_doc`) | ✅ caso 2, **condizionato a base > 0** |
+| 3 | Su un piano non divisibile la differenza è **sull'ultima rata** | ✅ caso 3, riscritto — vedi sotto |
+| 4 | `numero_rata` progressivo da 1, nessun buco | ✅ caso 4 |
+| 5 | `meta.modalita_codice` popolato — è il campo che il contesto PDF legge già | ✅ caso 5 |
+| 6 | Testata: `termine_pagamento_id`, `modalita_pagamento_id`, `termine_pagamento_snapshot` **valorizzati** | ✅ caso 6 |
+| 7 | Il **PDF stampa il piano rate** (sezione non vuota, date e importi presenti) | ✅ **coperto altrove**: `smoke-fatturazione-render-stampa.py` **caso 9** — vedi sotto |
+| 8 | ~~Percorso coppia legacy (cliente con giorni)~~ | ⛔ **decaduto**: D-I ha eliminato le colonne. Verificato sul DB — `clienti.tipo_gg_scadenza_ft`, `nr_giorni_scadenza`, `fatture.giorni_pagamento`, `fine_mese` **non esistono più** |
+| 9 | Idempotenza: doppia esecuzione → stesse rate, nessun duplicato | ✅ caso 7, sul **piano intero** |
+
+In più, non previsti qui e aggiunti perché il contratto li richiede: **caso 0**
+(controprova a monte: la catena risolve termine e modalità dalla commessa — se è
+rosso lì il difetto è in 3b, non nelle scadenze), **caso 8** (base zero → zero rate
+senza fallimento, D-D) e **caso 9** (D-F: fattura oltre EMESSA in `skipped_rows` e
+non in `failed_rows`, i due contatori distinti).
+
+✅ **L'asserzione 7 è coperta, ma non qui: è il caso 9 di
+`smoke-fatturazione-render-stampa.py`** (2026-08-02, ora **9/9 verde**). Il piano rate
+a video è un fatto di **rendering**, e la macchina per verificarlo — template
+pubblicato, contesto, render Jinja `StrictUndefined`, PDF reale — vive già lì:
+duplicarla nel nostro smoke avrebbe creato due posti che sanno come si stampa una
+fattura. Tre cose emerse scrivendolo:
+
+- **è l'unico caso di quel file che SCRIVE**, e non è aggirabile: nessuna fattura del
+  sistema ha un piano rate, quindi un caso «trova una fattura con rate» sarebbe uno
+  **SKIP perenne** — una copertura che sembra esserci e non c'è. Le rate si generano
+  in `transaction.atomic()` e si fa rollback; l'intestazione del file lo dichiara;
+- **il controllo è integrato, non aggiunto**: la sezione è `{% if scadenze %}`, quindi
+  si asserisce **assente prima** della generazione e **presente dopo**, coi valori del
+  context nelle celle. Una sola asserzione di presenza sarebbe passata anche su un
+  template che stampa quattro trattini;
+- 🔎 **al primo giro la colonna «Modalità» stampava `-`** — legittimo, perché quella
+  fattura ha `modalita_pagamento_id` NULL, ma significava che il caso era **cieco
+  proprio sulla colonna più esposta** al difetto storico. Il fixture ora valorizza
+  anche la modalità e l'asserzione copre tutte e quattro le colonne. Reso:
+  `1 | 31-08-2026 | MP01 | 100,65 EUR`.
+
+✅ **Prova di mutazione**: togliendo `importo` dal context passato al template — il
+difetto storico esatto, chiave sbagliata → `.get()` None → trattino — il caso 9
+diventa rosso e gli altri restano verdi.
+
+⚠️ **L'esempio «100,00 / 3» non è riproducibile** e l'asserzione è stata riscritta.
+Il catalogo riformato **non ha termini a 3 rate** (massimo 2: `TP_30_60_2R`,
+`TP_30_60_EOM_2R`), quindi il caso si esercita con una base non divisibile costruita
+sul numero di rate reale. E soprattutto: con **due** rate la formulazione «le prime
+uguali fra loro, l'ultima diversa» è **vacua** — un insieme di un elemento è sempre
+omogeneo — e non distingue «resto sull'ultima» da «resto sulla prima». Il caso
+confronta quindi i **valori attesi rata per rata**, replicando la formula del brief.
+
+📐 **Come cade il resto, misurato** (domanda di Tid, 2026-08-02). Le prime *n−1* rate
+valgono `round(base / n)` col metodo del termine; l'**ultima è ciò che resta**. Non ha
+una direzione fissa — dipende da come arrotonda la divisione:
+
+| Base | Rate | |
+| --- | --- | --- |
+| 10,03 su 2 | 5,02 · **5,01** | 5,015 arrotonda per **eccesso** → l'ultima riceve **meno** |
+| 100,00 su 3 | 33,33 · 33,33 · **33,34** | 33,3333 arrotonda per **difetto** → l'ultima riceve **più** |
+
+L'invariante è uno solo: **Σ = `totale_a_pagare`, esatta al centesimo**. Con 2 rate
+`base/2` finisce sempre per 0 o 5 al terzo decimale, quindi HALF_UP arrotonda sempre
+per eccesso e la prima rata è sempre ≥ dell'ultima: il verso opposto si osserva solo
+da 3 rate in su. Misurato sulla funzione reale con un termine temporaneo a 3 rate,
+creato e annullato dentro la transazione.
 
 ### 3.3 `smoke-fattura-aggregazione-termini.py` — il presidio di D-7 ✅ **SCRITTO E VERDE (2026-08-01)**
 
@@ -422,7 +479,7 @@ snapshot — se manca, manca, ed è giusto che si veda.
 Verifica di fase: smoke §3.1 caso 5, il test di conformità (modifico l'anagrafica,
 ristampo, il documento non cambia).
 
-### Fase 3 — Task generazione scadenze ✅ **REGISTRAZIONE FATTA (2026-08-02)** — armamento alla palla al DB
+### Fase 3 — Task generazione scadenze ✅ **CHIUSA (2026-08-02)** — armata dal DB, smoke verde
 
 > **Cos'è cambiato.** Il DB **aveva già consegnato la sua Fase 4** la sera del
 > 2026-08-01 (`20260801-08` e `-09`, merge PR #1119): `fn_genera_scadenze_fattura`
@@ -483,22 +540,67 @@ testata senza termine. **Conseguenza operativa: lo smoke §3.2 va girato su fatt
 nuove**, prodotte da un giro post-3b — sulle quattro esistenti sarà rosso per sempre,
 e sarebbe un rosso che non dice niente.
 
-⛔ **Cosa resta, ed è del DB** (passo 4.3 del loro piano): l'**armamento**, cioè il
-nodo `genera_scadenze_lotto` nei `processi` della pipeline **3** in coda a
-`ricalcola_iva_lotto`, e il **riempimento della corsia 2** (GIORNALIERO/EMESSA, oggi
-`processi = []`) con fondi + IVA + scadenze come vuole D-C. Il prerequisito che li
-bloccava — la registrazione del task lato BE — **è caduto con questa fase**.
+✅ **Armamento fatto dal DB (2026-08-02)**, verificato sul DB vivo e non sulla parola:
 
-Verifica di fase: smoke §3.2 completo, dopo l'armamento e su un lotto nuovo.
+```text
+2 GIORNALIERO EMESSA -> genera_fondi_source_lotto > applica_fondi_lotto > ricalcola_iva_lotto > genera_scadenze_lotto
+3 MASSIVO     EMESSA -> genera_fondi_source_lotto > applica_fondi_lotto > ricalcola_iva_lotto > genera_scadenze_lotto
+```
 
-### Fase 4 — Regressioni di D-7 🟡 **SBLOCCATA (2026-08-01): la chiave è a DB**
+La corsia 2, che era `processi = []`, è stata riempita (D-C). Entrambe rispettano
+`_TASK_ORDER_DEPENDENCIES`. Il DB ha aggiunto un pgTAP che presidia lo stesso
+invariante **sul seed**: i due non sono un doppione — quello impedisce alla
+configurazione sbagliata di nascere, il nostro impedisce a una configurazione
+sbagliata di scrivere. Vanno tenuti entrambi.
+
+✅ **Smoke §3.2 scritto e verde (2026-08-02)**: `smoke-fattura-scadenze.py`, **10 casi**,
+con **prova di mutazione eseguita**. Il fixture mette il termine sulla **commessa**
+(D-R) e lascia che la catena lo porti in testata passando dalla chiave: forzare
+`fatture.termine_pagamento_id` avrebbe testato il fixture. Poi chiama gli stessi tre
+metodi repository dello step EMESSA nell'ordine reale. Copre, oltre alle sei
+asserzioni del §3.2: idempotenza sul **piano intero** (non sul conteggio — un
+generatore che sbaglia le date le riscriverebbe diverse mantenendo lo stesso numero
+di righe), base zero → zero rate senza fallimento (D-D), e D-F con i **due `skipped`
+tenuti distinti**.
+
+Tre correzioni di rotta accolte dal team DB, tutte già dentro il file:
+
+1. **Si gira su fatture nuove** — il fixture crea la propria. Sulle 4 preesistenti il
+   570 è il comportamento corretto, e uno smoke che le includesse sarebbe rosso per
+   sempre di un rosso che non dice niente.
+2. **La quadratura è condizionata a `totale_a_pagare > 0`** — stesa su tutto il lotto
+   fallirebbe sulla prima fattura coperta da acconti, e fallirebbe *correttamente*:
+   il modo peggiore di accorgersene. Il caso a base zero ha un test proprio.
+3. 📌 **D-K (Fase 4b) è un heads-up, non un blocco**: quando il guard di coerenza
+   arriverà, `numera_fatture` rifiuterà le fatture con base positiva e nessuna rata.
+   Questo smoke **non cambia** — asserisce già quell'invariante, quindi ne è il
+   presidio anticipato. Andranno riviste le **fixture che numerano** fatture prive di
+   satelliti, che oggi passano solo perché nessuno guarda.
+
+⚠️ Due cose misurate scrivendolo, che valgono più della riga di codice che le ha
+prodotte:
+
+- il `100,00 / 3` scritto nel §3.2 **non è riproducibile**: il catalogo riformato non
+  ha termini a 3 rate (massimo 2). La proprietà che quell'esempio voleva presidiare è
+  però esercitata con una base non divisibile costruita sul numero di rate reale — e
+  l'asserzione confronta i **valori attesi** rata per rata, non «le prime uguali e
+  l'ultima diversa», che con due rate è **vacuo** e non distinguerebbe «resto
+  sull'ultima» da «resto sulla prima»;
+- i `jsonb` letti da cursore raw arrivano **stringa** (psycopg 3 non li decodifica
+  fuori dall'ORM): serve `coerce_jsonb_dict`. È lo stesso difetto già pagato dal
+  worker della coda.
+
+Verifica di fase: ✅ completa.
+
+### Fase 4 — Regressioni di D-7 ✅ **CHIUSA (2026-08-01)**
 
 > **Cos'è cambiato.** La **Fase 3b del piano DB è CHIUSA** (`20260801-01..07`):
 > il termine è in chiave, `fn_build_fattura_key` e il lookup di
 > `fn_get_or_create_fattura_header` si specchiano, l'ambito arrotondamenti
-> segue la chiave. Quindi **questa fase non aspetta più la Fase 3**: le
-> regressioni di D-7 sono osservabili adesso, e la Fase 3 (task scadenze)
-> resta l'unica ferma, in attesa che il DB apra la sua Fase 4.
+> segue la chiave. Quindi questa fase non ha aspettato la Fase 3: le regressioni
+> di D-7 erano osservabili subito. ℹ️ La riga «la Fase 3 resta l'unica ferma»
+> che stava qui è **decaduta** il 2026-08-02, quando si è scoperto che il DB
+> aveva già consegnato la sua Fase 4 la sera prima.
 >
 > **Prima verifica fatta (2026-08-01): nessuna regressione.**
 > `smoke-fatturazione-aggregazione-righe.py` **verde, 10/10** — e la riga
@@ -574,8 +676,8 @@ guard si cancellano e si rifà un giro.
 
 | Cosa | Stato |
 |---|---|
-| Piano rate nel drawer | ✅ **nessun lavoro**: `ScadenzeSintesi` e il campo «Prossima rata» esistono e mostrano `—` finché le rate non arrivano. Dopo la Fase 3 si popolano da soli |
-| Campi «Modalità di pagamento» e «Termine» | ✅ già nel drawer, oggi sempre vuoti perché la testata è NULL. Dopo la Fase 3 vanno **verificati a video** (è il primo momento in cui mostrano un valore) |
+| Piano rate nel drawer | ✅ **nessun lavoro**: `ScadenzeSintesi` e il campo «Prossima rata» esistono e mostrano `—` finché le rate non arrivano. Con la Fase 3 chiusa (2026-08-02) si popolano da soli |
+| Campi «Modalità di pagamento» e «Termine» | ✅ già nel drawer. 🔎 **Validazione a video ancora da fare**: la Fase 3 è chiusa e la testata ora porta i valori (misurato: termine 3, modalità 5 `MP05`), quindi è **adesso** il primo momento in cui mostrano qualcosa. Serve una fattura **nuova**: sulle 4 preesistenti la testata è NULL e resterà tale |
 | Sezione indirizzi nel drawer fattura | ⏸️ decisione aperta, §7 |
 
 ---

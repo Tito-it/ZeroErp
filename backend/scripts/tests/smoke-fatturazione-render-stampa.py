@@ -24,10 +24,12 @@
 # dipendono dai dati — ma la CORRISPONDENZA context -> output, che e' il
 # contratto che si e' rotto.
 #
-# IDEMPOTENZA. Sola lettura: nessuna scrittura, nessun documento persistito,
-# nessuna riga in coda. Rieseguibile sempre.
+# IDEMPOTENZA. Nessun documento persistito, nessuna riga in coda. I casi 1-8
+# sono di SOLA LETTURA; il caso 9 (piano rate, aggiunto il 2026-08-02) genera
+# le rate dentro `transaction.atomic()` e fa ROLLBACK — vedi la sua nota per
+# il perche' non sia evitabile. Rieseguibile sempre.
 #
-# Indice test (1..8):
+# Indice test (1..9):
 #   1  esiste una versione PUBBLICATA del template fattura
 #   2  il context espone le chiavi di contratto delle righe
 #   3  il render Jinja non solleva (StrictUndefined attivo)
@@ -36,12 +38,17 @@
 #   6  i totali di testata compaiono nella LORO sezione del documento
 #   7  il PDF si genera e non e' un guscio vuoto
 #   8  auto-verifica: il presidio del caso 5 e' vivo (mutazione controllata)
+#   9  il documento stampa il PIANO RATE: sezione assente prima, presente dopo
+#      la generazione, coi valori del context nelle celle
+#      ✅ prova di mutazione (2026-08-02): togliendo `importo` dal context
+#         passato al template — il difetto storico, chiave sbagliata -> '-' —
+#         il caso 9 diventa ROSSO e gli altri restano verdi.
 # ------------------------------------------------------------
 
 import re
 from datetime import date
 
-from django.db import connection
+from django.db import connection, transaction
 
 from apps.documenti.db.documenti_repository import DocumentiRepository
 from apps.documenti.services.render_service import _render_html_with_jinja, render_pdf
@@ -282,6 +289,124 @@ except Exception:  # noqa: BLE001 — anche sollevare va bene: il difetto emerge
 check("8) auto-verifica: il presidio del caso 5 e' vivo", intercettato,
       "rimuovendo `importo_riga` dal context il documento deve mostrare '-' "
       "nella colonna Importo dove il contratto vero ha un valore")
+
+# 9) IL PIANO RATE SUL DOCUMENTO (piano BE/FE satelliti §3.2 asserzione 7).
+#    Il template ha la sezione `{% if scadenze %}` «Scadenze pagamento», e legge
+#    ogni campo con `.get()` — cioe' la stessa porta da cui sono entrati i due
+#    difetti storici: chiave sbagliata -> trattino stampato, PDF valido, coda
+#    FATTO, nessuno se ne accorge.
+#
+#    ⚠️ Questo e' l'UNICO caso che SCRIVE, e per una ragione che non si aggira:
+#    `fatture_scadenze` e' stata vuota per costruzione fino al 2026-08-02, e
+#    nessuna fattura del sistema ha ancora un piano rate. Un caso "trova una
+#    fattura con rate" sarebbe uno SKIP perenne, cioe' una copertura che sembra
+#    esserci e non c'e'. Le rate si generano qui, si rende, e la transazione fa
+#    ROLLBACK: fuori di qui nulla e' cambiato.
+#
+#    Il controllo e' integrato e non aggiunto: PRIMA di generare la sezione NON
+#    esiste (`{% if scadenze %}` e' falso), DOPO deve esistere e portare i
+#    valori. Un'asserzione di sola presenza sarebbe passata anche su un
+#    template che stampa quattro trattini.
+print()
+with connection.cursor() as cur:
+    cur.execute(
+        """
+        SELECT f.termine_pagamento_id, f.totale_a_pagare, s.codice_interno
+          FROM vendite.fatture f
+          LEFT JOIN config.stati_doc_fiscale s ON s.id = f.stato_doc_fiscale_id
+         WHERE f.id = %s
+        """, [fattura_id],
+    )
+    h_term, h_base, h_stato = cur.fetchone()
+
+sezione_prima = re.search(r"Scadenze pagamento.*?</table>", html, re.S)
+
+if h_stato not in ("DRAFT", "EMESSA"):
+    check("9) il documento stampa il piano rate", False,
+          f"fattura {fattura_id} in stato {h_stato}: oltre la soglia il "
+          "generatore rifiuta (573) e il caso non e' esercitabile — "
+          "scegliere una fattura pre-fiscale")
+elif h_base is None or h_base <= 0:
+    check("9) il documento stampa il piano rate", False,
+          f"totale_a_pagare={h_base}: con base non positiva le rate sono zero "
+          "per progetto (D-D) e non c'e' piano da stampare")
+else:
+    with transaction.atomic():
+        with connection.cursor() as cur:
+            # Fixture di RENDERING, non di dominio: se la testata non porta il
+            # termine (fatture anteriori alla catena 3b) se ne mette uno di
+            # catalogo. Qui si collauda il TEMPLATE — che la risoluzione del
+            # termine sia corretta lo presidia `smoke-fattura-scadenze.py`,
+            # dove il termine arriva dalla commessa passando dalla chiave.
+            if h_term is None:
+                cur.execute(
+                    "SELECT id FROM config.termini_pagamento"
+                    " WHERE attivo AND numero_rate > 1"
+                    " ORDER BY numero_rate DESC, id LIMIT 1"
+                )
+                t_row = cur.fetchone()
+                if t_row:
+                    cur.execute(
+                        "UPDATE vendite.fatture SET termine_pagamento_id = %s"
+                        " WHERE id = %s", [t_row[0], fattura_id],
+                    )
+            # Anche la MODALITA', per lo stesso motivo e con piu' forza: il
+            # generatore copia `meta.modalita_codice` dalla testata, e su una
+            # testata NULL la colonna «Modalita» stampa un trattino LEGITTIMO.
+            # Lasciarla cosi' renderebbe il caso cieco proprio sulla colonna
+            # piu' esposta al difetto storico — un `-` che nessuno accusa.
+            cur.execute(
+                "UPDATE vendite.fatture SET modalita_pagamento_id = COALESCE("
+                "  modalita_pagamento_id,"
+                "  (SELECT id FROM config.modalita_pagamento ORDER BY id LIMIT 1))"
+                " WHERE id = %s", [fattura_id],
+            )
+            cur.execute("SELECT * FROM vendite.fn_genera_scadenze_fattura(%s)",
+                        [fattura_id])
+            cur.fetchone()
+
+        ctx_scad = FatturaDocumentContextBuilder().build_context(fattura_id)
+        scadenze_ctx = ctx_scad.get("scadenze") or []
+        html_scad = _render_html_with_jinja(versione["html_template"], ctx_scad)
+        sezione = re.search(r"Scadenze pagamento.*?</table>", html_scad, re.S)
+
+        assenti = []
+        if sezione:
+            testo = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", sezione.group(0)))
+            # Tutte e quattro le colonne della sezione, `modalita_codice`
+            # inclusa: e' quella che il fixture valorizza apposta per non
+            # lasciarla a trattino e quindi non asserita.
+            for s in scadenze_ctx:
+                for campo in ("nr", "data", "importo", "modalita_codice"):
+                    valore = s.get(campo)
+                    if valore is not None and str(valore) not in testo:
+                        assenti.append(f"rata {s.get('nr')}: {campo}={valore}")
+            mancanti_mod = [s.get("nr") for s in scadenze_ctx
+                            if not s.get("modalita_codice")]
+            if mancanti_mod:
+                assenti.append(
+                    f"modalita_codice assente nel context per le rate {mancanti_mod}: "
+                    "il generatore non l'ha copiata dalla testata"
+                )
+        check("9) il documento stampa il piano rate",
+              sezione_prima is None and sezione is not None
+              and len(scadenze_ctx) > 0 and not assenti,
+              f"{len(scadenze_ctx)} rate nel context, sezione "
+              f"{'assente' if not sezione else 'presente'} "
+              f"(prima della generazione: {'assente' if not sezione_prima else 'PRESENTE'}) "
+              + (f"— valori non stampati: {'; '.join(assenti[:3])}" if assenti else ""))
+        if sezione:
+            print("\n--- sezione «Scadenze pagamento» resa ---")
+            for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", sezione.group(0), re.S)[1:]:
+                celle_s = [
+                    re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", c)).strip()
+                    for c in re.findall(r"<td[^>]*>(.*?)</td>", tr, re.S)
+                ]
+                if celle_s:
+                    print("   ", " | ".join(celle_s))
+
+        transaction.set_rollback(True)
+    print("\n    (rollback: nessuna rata persistita)")
 
 print("\n--- righe rese ---")
 for c in celle:
