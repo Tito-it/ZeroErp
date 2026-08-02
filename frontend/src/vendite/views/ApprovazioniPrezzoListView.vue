@@ -266,7 +266,14 @@ const pageActions = computed(() => [
         </template>
       </Column>
       <Column field="descrizione" :header="t('vendite.approvazioni_prezzo.col_descrizione')" sortable />
-      <Column field="priorita_codice" :header="t('vendite.approvazioni_prezzo.col_priorita')" sortable style="width: 110px;" />
+      <!-- `priorita_descrizione`, non `priorita_codice`: quest'ultimo non e'
+           proiettato da nessuna query pratiche (la SELECT espone
+           `priorita_codice_interno` e `priorita_descrizione`), quindi la cella
+           era VUOTA a video ed era pure marcata `sortable` su un campo
+           inesistente. `priorita_descrizione` e' gia' in `PRATICHE_ORDER_COLS`
+           ed e' lo stesso `campo_sorgente` che il seed usa per la lista
+           pratiche (riga 257): un nome solo per la stessa colonna. -->
+      <Column field="priorita_descrizione" :header="t('vendite.approvazioni_prezzo.col_priorita')" sortable style="width: 110px;" />
       <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
         <template #body="{ data }">
           <RowActionsMenu :row="data" :actions="buildRowActions(data)" />

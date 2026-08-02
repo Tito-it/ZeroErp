@@ -137,11 +137,6 @@ export function getLimitiPricingUtente(billingAccountId = null) {
 // dei figli BoM di un padre composito in contesto versione listino.
 // Vedi `manual/modello-componenti-bom.md` §8.
 
-// Lista articoli compositi che hanno almeno 1 prezzo bundle definito
-// nella versione. Per la sezione "Prezzi bundle compositi" del drawer.
-export function listBundleCompositi(listinoId, verId) {
-  return api.get(`${BASE}/${listinoId}/versioni/${verId}/bundle/`)
-}
 
 // Preview BoM corrente del padre composito + prezzi bundle già definiti
 // per quella versione listino. Pre-popola il Dialog di editing.

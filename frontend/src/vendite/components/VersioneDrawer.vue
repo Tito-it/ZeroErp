@@ -19,7 +19,6 @@ import {
   createRiga,
   updateRiga,
   deleteRiga,
-  listBundleCompositi,
   previewBundleComponenti,
   saveBundleComponenti,
   deleteBundleComponenti,
@@ -107,11 +106,9 @@ watch(
       store.setContext(props.listinoId, vid)
       searchText.value = ''
       store.fetchList()
-      loadBundleCompositi()
       closeForm()
     } else {
       store.clearContext()
-      bundleCompositi.value = []
       bundleDialogVisible.value = false
       bundlePadreCorrente.value = null
     }
@@ -121,11 +118,11 @@ watch(
 
 const isBozza = computed(() => props.versione?.stato === 'BOZZA')
 
-// Scopo: ricarica righe standalone (store) + lista compositi in parallelo.
-// Necessario perche' la sezione compositi non e' nel `store` paginato e
-// quindi il F5 della DataTable da solo non la aggiorna.
+// Scopo: ricarica la lista. Dal 2026-08-03 i compositi arrivano dallo STESSO
+// endpoint paginato delle righe standalone (UNION lato BE), quindi una fetch
+// sola basta: prima ne servivano due e il totale non teneva conto dei compositi.
 async function reloadAll() {
-  await Promise.all([store.fetchList(), loadBundleCompositi()])
+  await store.fetchList()
 }
 
 const pageActions = computed(() => [
@@ -174,7 +171,7 @@ function onRowSelect(event) {
   const r = event.data
   // Riga composito (modello unificato): non c'e' un form editabile testata
   // riga — i prezzi vivono in `listini_righe_componenti` via Dialog.
-  if (r?._isComposito) {
+  if (r?.is_composito) {
     selectedRow.value = null
     openBundleDialog({
       id: r.articolo_id,
@@ -232,7 +229,6 @@ function onArticoloSelected(item) {
 // ── Bundle compositi (modello unificato 2026-05-13) ──
 // Lista articoli compositi con almeno 1 prezzo bundle definito + Dialog
 // per editing. Refresh dopo ogni save bundle.
-const bundleCompositi = ref([])
 const bundleDialogVisible = ref(false)
 // Padre composito corrente: oggetto { id, codice, descrizione,
 // is_composito } passato come prop `articolo` al Dialog.
@@ -241,16 +237,6 @@ const bundlePadreCorrente = ref(null)
 // poter risolvere il mapping {componente_id -> articolo_componente_id}
 // al confirm della Dialog senza un secondo fetch.
 let _bundlePreviewCache = []
-
-async function loadBundleCompositi() {
-  if (!props.listinoId || !props.versione?.id) return
-  try {
-    const res = await listBundleCompositi(props.listinoId, props.versione.id)
-    bundleCompositi.value = res.data?.data ?? []
-  } catch {
-    bundleCompositi.value = []
-  }
-}
 
 // Callback `apiPreview` del Dialog: fetch BoM + prezzi gia' definiti.
 // La firma standard del building block e' (documentoId, params) →
@@ -301,7 +287,7 @@ async function onBundleConfirm({ overrides }) {
     { successMessage: t('vendite.listini.bundle_salvato') },
   )
   if (result !== null) {
-    await loadBundleCompositi()
+        await reloadAll()
     bundleDialogVisible.value = false
     bundlePadreCorrente.value = null
   }
@@ -370,7 +356,7 @@ async function onSave() {
 
 // === Eliminazione riga (con conferma) ===
 // Branching:
-//   - Riga standalone (`_isComposito=false`): DELETE su `listini_righe`.
+//   - Riga standalone (`is_composito=false`): DELETE su `listini_righe`.
 //   - Riga composito: DELETE dedicato su /bundle/<padre>/ → tabula rasa
 //     idempotente lato BE (soft-delete tutte le righe
 //     `listini_righe_componenti` del padre per la versione). Endpoint REST
@@ -379,7 +365,7 @@ async function onSave() {
 function onDelete(row) {
   const label = row.articolo_codice || row.articolo_descrizione || `#${row.id}`
   confirmDelete(label, async () => {
-    if (row._isComposito) {
+    if (row.is_composito) {
       const result = await execute(
         () => deleteBundleComponenti(
           props.listinoId, props.versione.id, row.articolo_id,
@@ -387,7 +373,7 @@ function onDelete(row) {
         { successMessage: t('vendite.listini.composito_eliminato') },
       )
       if (result !== null) {
-        await loadBundleCompositi()
+        await reloadAll()
       }
       return
     }
@@ -422,35 +408,20 @@ function buildRigaActions(row) {
   ]
 }
 
-// Lista unificata righe standalone + righe composito (modello unificato
-// BoM 2026-05-13). I compositi vanno in testa (layout fisso, no
-// paginazione): pochi in genere, e l'admin li vede subito sopra alle
-// righe standalone paginate. Marker `_isComposito: true` per
-// discriminare nelle azioni / colonne / handler. NB: il `data-key` resta
-// `id` per la DataTable, ma per i compositi non c'e' un `lrc.id` testata
-// (sono N righe in `listini_righe_componenti`) → usiamo
-// `composito:{articolo_id}` come chiave virtuale univoca.
-const righeUnificate = computed(() => {
-  const compositi = (bundleCompositi.value || []).map((c) => ({
-    id: `composito:${c.articolo_id}`,
-    _isComposito: true,
-    articolo_id: c.articolo_id,
-    articolo_codice: c.articolo_codice,
-    articolo_descrizione: c.articolo_descrizione,
-    uom_codice: null,
-    uom_id: null,
-    prezzo: null,
-    iva_id: c.iva_id,
-    iva_codice: c.iva_codice,
-    iva_aliquota: c.iva_aliquota,
-    n_componenti_bundle: c.n_componenti_bundle,
-  }))
-  const standalone = (store.items || []).map((r) => ({
-    ...r,
-    _isComposito: false,
-  }))
-  return [...compositi, ...standalone]
-})
+// Righe standalone e compositi bundle sono UNA lista sola (decisione Tid
+// 2026-08-02) e arrivano insieme dallo stesso endpoint paginato: il BE le
+// unisce con una UNION e `total` le conta entrambe.
+//
+// Prima i compositi venivano da un endpoint separato e venivano concatenati
+// QUI, dopo la paginazione: il conteggio e il numero di pagine erano quelli
+// delle sole righe standalone, quindi mentivano — ed era il motivo per cui
+// questa lista non poteva passare a `<ListaConfigurabile>`, che ha `lazy`
+// fisso e prende `total` dal caller.
+//
+// Il BE proietta `is_composito` (discriminatore) e `row_key` (chiave stabile
+// della DataTable: l'id per le standalone, `composito:<uuid>` per i padri, che
+// non hanno un id di testata perche' sono N righe in
+// `listini_righe_componenti`).
 
 // Dialog variazione percentuale massa
 const showVariazioneDialog = ref(false)
@@ -520,14 +491,14 @@ const onClose = useDrawerClose(emit)
            adattive (UoM/prezzo vuoti sui compositi, badge N componenti
            al posto del prezzo). Click riga discrimina: composito apre
            `ComponentiDialog`, standalone apre form edit inline. -->
-      <DataTable :value="righeUnificate" :loading="store.loading" striped-rows
-        class="app-datatable" data-key="id"
+      <DataTable :value="store.items" :loading="store.loading" striped-rows
+        class="app-datatable" data-key="row_key"
         lazy v-bind="paginatorProps" @page="onPage" @sort="onSort" removable-sort
         v-model:selection="selectedRow" selection-mode="single" @row-select="onRowSelect">
         <Column field="articolo_codice" :header="t('vendite.listini.col_articolo')" sortable style="width: 160px;">
           <template #body="{ data }">
             <span>{{ data.articolo_codice }}</span>
-            <Tag v-if="data._isComposito"
+            <Tag v-if="data.is_composito"
               :value="t('vendite.listini.tag_composito')"
               severity="info"
               style="margin-left: 0.4rem; font-size: 0.7rem;" />
@@ -539,7 +510,7 @@ const onClose = useDrawerClose(emit)
         </Column>
         <Column field="prezzo" :header="t('vendite.listini.col_prezzo')" sortable style="width: 140px;">
           <template #body="{ data }">
-            <span v-if="data._isComposito" style="color: var(--app-text-muted); font-style: italic;">
+            <span v-if="data.is_composito" style="color: var(--app-text-muted); font-style: italic;">
               {{ t('vendite.listini.composito_n_componenti', { n: data.n_componenti_bundle }) }}
             </span>
             <span v-else>{{ formatPrezzoListino(data.prezzo) }}</span>
