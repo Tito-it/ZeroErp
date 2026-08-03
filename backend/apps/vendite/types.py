@@ -678,6 +678,11 @@ class DashCompetenzaGruppoRow(TypedDict):
     ha_oneri: bool
     data_attivita_min: str | None
     data_attivita_max: str | None
+    # Id di dominio del documento sorgente, per aprirne il drawer dal kebab
+    # della lista (il `riferimento` e' il codice, che non basta: i drawer si
+    # aprono per id). NULL sui gruppi SOURCELESS (oneri di commessa), che un
+    # documento non ce l'hanno, e sui documenti fuori scope RLS.
+    documento_id: int | None
 
 
 class DashCompetenzaGruppoTipoRow(TypedDict):
