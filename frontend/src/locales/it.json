@@ -2675,6 +2675,9 @@
       "stadio_emessa_non_fatturata": "Emesse non fatturate",
       "stadio_fatturata": "Fatturate",
       "n_attivita": "attività",
+      "n_fatture": "nessuna fattura | 1 fattura | {n} fatture",
+      "n_fatture_errore": "fatture n/d",
+      "n_fatture_errore_tooltip": "Il conteggio delle fatture non è stato calcolato per un errore: il numero delle attività e gli altri dati della schermata restano validi. L'errore è tracciato nei log di sistema.",
       "in_ritardo": "{n} emesse in ritardo",
       "totale_competenza": "Totale competenza:",
       "fatturato_mese": "fatturato",
@@ -2771,6 +2774,8 @@
       "vai_al_lotto": "Vai al lotto #{id}",
       "azione_approva": "Approva",
       "azione_apri_commessa": "Apri commessa",
+      "azione_apri_documento": "Apri {codice}",
+      "card_hint_da_emettere": "Il numero conta le ATTIVITÀ da emettere, non le fatture che nasceranno: un articolo composito genera un'attività per componente, e più attività dello stesso cliente confluiscono nella stessa fattura anche quando vengono da documenti diversi. Le fatture saranno quindi meno dei gruppi elencati sotto.",
       "col_azioni": "Azioni"
     },
     "dash_comune": {

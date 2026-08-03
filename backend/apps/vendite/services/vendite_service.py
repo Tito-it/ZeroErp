@@ -474,7 +474,53 @@ class _CellaCompetenza:
 #        punto solo: la misura da mostrare e' l'imponibile riga per il
 #        fatturato, il teorico prezzo_snapshot×quantita per il resto del
 #        funnel — il FE rende, non decide.
-def _cella_stadio_payload(stadio: str, cella: _CellaCompetenza) -> dict[str, object]:
+# Stati della seconda misura delle card (conteggio fatture). Costanti e non
+# literal sparsi: sono contratto verso il FE, che ci decide cosa rendere.
+DASH_FATTURE_OK = "OK"
+DASH_FATTURE_NON_APPLICABILE = "NON_APPLICABILE"
+DASH_FATTURE_ERRORE = "ERRORE"
+
+
+# Scopo: decide `(n_fatture, stato)` di una cella. E' qui che le tre situazioni
+#        restano tre e non collassano in «manca il numero»:
+#          · stadio fuori dai calcolabili (DA_EMETTERE/DA_APPROVARE: la chiave
+#            documento non esiste ancora) -> NON_APPLICABILE, la card tace;
+#          · calcolo fallito su quello stadio                -> ERRORE, la card avvisa;
+#          · cella VUOTA (nessuna attivita')                 -> NON_APPLICABILE:
+#            «0 fatture» sotto «0 attivita'» sarebbe rumore, non informazione;
+#          · altrimenti -> OK, col conteggio (che puo' legittimamente essere 0:
+#            attivita' presenti e nessuna fattura ancora prodotta).
+#
+#        ⚠️ L'ordine dei rami conta, e va nel verso CONTROintuitivo: la cella
+#        vuota si valuta PRIMA del guasto. Il motivo e' che il calcolo fallisce
+#        per l'intero anno, non per un mese: segnalare l'errore anche dove non
+#        c'e' nulla da contare riempirebbe la griglia di avvertimenti — fino a
+#        12, quasi tutti su mesi vuoti — e il guasto vero annegherebbe nei
+#        propri falsi positivi. Con zero attivita' non ci sono fatture da
+#        prevedere, quindi tacere non nasconde niente. L'avvertimento resta
+#        dove sarebbe servito un numero.
+def _stato_fatture_cella(
+    stadio: str,
+    cella: _CellaCompetenza,
+    competenza: str,
+    fatture_per_cella: dict[tuple[str, str], int],
+    stadi_ko: set[str],
+) -> tuple[int | None, str]:
+    if stadio not in VenditeRepository.DASH_STADI_CON_CONTEGGIO_FATTURE:
+        return None, DASH_FATTURE_NON_APPLICABILE
+    if cella.n_attivita == 0:
+        return None, DASH_FATTURE_NON_APPLICABILE
+    if stadio in stadi_ko:
+        return None, DASH_FATTURE_ERRORE
+    return fatture_per_cella.get((competenza, stadio), 0), DASH_FATTURE_OK
+
+
+def _cella_stadio_payload(
+    stadio: str,
+    cella: _CellaCompetenza,
+    n_fatture: int | None = None,
+    n_fatture_stato: str = DASH_FATTURE_NON_APPLICABILE,
+) -> dict[str, object]:
     display = cella.valore_fatturato if stadio == "FATTURATA" else cella.valore
     return {
         "stadio": stadio,
@@ -485,6 +531,21 @@ def _cella_stadio_payload(stadio: str, cella: _CellaCompetenza) -> dict[str, obj
         "n_in_ritardo": cella.n_in_ritardo,
         "valore_in_ritardo": str(cella.valore_in_ritardo),
         "stati_fattura": cella.stati_fattura,
+        # Seconda misura della card: quante FATTURE, non quante attivita'.
+        # `0` -> la card dice zero; `None` -> non c'e' un numero, e il PERCHE'
+        # lo dice `n_fatture_stato`. Collassare `0` su `None` direbbe «non lo
+        # sappiamo» dove sappiamo benissimo che sono zero.
+        "n_fatture": n_fatture,
+        # Perche' il numero non c'e', in modo ESPLICITO invece che deducibile:
+        #   · OK              -> `n_fatture` e' valorizzato e attendibile;
+        #   · NON_APPLICABILE -> per questo stadio non si calcola per progetto
+        #                        (DA_EMETTERE: la chiave documento non esiste
+        #                        ancora) oppure la cella e' vuota -> la card tace;
+        #   · ERRORE          -> il calcolo doveva riuscire e NON e' riuscito
+        #                        -> la card lo segnala all'operatore.
+        # Senza questo campo gli ultimi due sarebbero indistinguibili a video, e
+        # un guasto avrebbe l'aspetto del comportamento normale.
+        "n_fatture_stato": n_fatture_stato,
     }
 
 
@@ -514,6 +575,13 @@ def fn_dash_competenza_mensile(
     repository = VenditeRepository()
     rows = repository.list_dash_competenza_mensile(anno=anno)
     errori_per_mese = repository.count_dash_competenza_errori_mensile(anno=anno)
+    # Conteggio fatture per (mese, stadio): una sola lettura per l'intera
+    # griglia, come gli errori — non una query per cella. `stadi_ko` sono gli
+    # stadi il cui calcolo e' fallito: restano distinti da quelli che non si
+    # calcolano per progetto (vedi `_stato_fatture_cella`).
+    fatture_per_cella, stadi_ko = repository.count_dash_competenza_fatture_mensile(
+        anno=anno,
+    )
 
     # Pivot del formato lungo: accumula per (mese, stadio); le righe FATTURATA
     # (una per stato fattura, gia' ordinate per ordine stato dal repository)
@@ -567,7 +635,15 @@ def fn_dash_competenza_mensile(
         mesi.append(
             {
                 "competenza_mese": competenza,
-                "stadi": [_cella_stadio_payload(s, c) for s, c in celle_mese],
+                "stadi": [
+                    _cella_stadio_payload(
+                        s, c,
+                        *_stato_fatture_cella(
+                            s, c, competenza, fatture_per_cella, stadi_ko,
+                        ),
+                    )
+                    for s, c in celle_mese
+                ],
                 "totali": {
                     "valore_teorico": str(totale_teorico),
                     "valore_fatturato": str(totale_fatturato),

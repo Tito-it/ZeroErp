@@ -2675,6 +2675,9 @@
       "stadio_emessa_non_fatturata": "Issued not invoiced",
       "stadio_fatturata": "Invoiced",
       "n_attivita": "activities",
+      "n_fatture": "no invoice | 1 invoice | {n} invoices",
+      "n_fatture_errore": "invoices n/a",
+      "n_fatture_errore_tooltip": "The invoice count could not be computed because of an error: the activity count and the rest of this screen are still valid. The error is recorded in the system logs.",
       "in_ritardo": "{n} issued late",
       "totale_competenza": "Accrual total:",
       "fatturato_mese": "invoiced",
@@ -2771,6 +2774,8 @@
       "vai_al_lotto": "Go to batch #{id}",
       "azione_approva": "Approve",
       "azione_apri_commessa": "Open job order",
+      "azione_apri_documento": "Open {codice}",
+      "card_hint_da_emettere": "This counts ACTIVITIES to be issued, not the invoices that will be created: a composite item yields one activity per component, and several activities for the same customer merge into a single invoice even when they come from different documents. The resulting invoices will therefore be fewer than the groups listed below.",
       "col_azioni": "Actions"
     },
     "dash_comune": {

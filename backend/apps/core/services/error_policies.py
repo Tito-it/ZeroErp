@@ -402,6 +402,22 @@ class ErrorPolicyRegistry:
             ui_action="highlight_form_fields",
             user_message="Per questa utility tipo e classe utenza non vanno valorizzati.",
         ),
+        # Diagnostico di sola TRACCIA (2026-08-03): registrato con
+        # `ErrorManager.log_error_only`, non sollevato mai — la previsione
+        # fatture della Lente 1 e' una misura secondaria e un suo guasto non
+        # deve far cadere il cruscotto. La policy esiste comunque perche' ogni
+        # codice va registrato prima dell'uso, e perche' se un domani questo
+        # diventasse sollevabile la risposta e' gia' definita: 200-with-warning
+        # non esiste, quindi 500 con banner (il numero manca per un guasto,
+        # non per progetto).
+        "E_VENDITE_DASH_PREVISIONE_FATTURE_FALLITA": ErrorPolicy(
+            code="E_VENDITE_DASH_PREVISIONE_FATTURE_FALLITA",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message=(
+                "Impossibile calcolare la previsione delle fatture da emettere."
+            ),
+        ),
         # ── Pricing v5 resolver (F2-BE-09/10) ──
         # Codici di dominio sollevati dal DB via script.fn_log_and_raise_error.
         # Policy UI: operatore/admin vede messaggio business-safe; detail tecnico
