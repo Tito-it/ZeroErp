@@ -39,7 +39,7 @@
 -- 7) Dopo: lotto DRAFT, stato_operativo APERTO, riaperto_il valorizzato
 -- 8) Le commesse_attivita sono tornate NON_EMESSA  <-- il test che vale
 -- 9) Le fatture del lotto sono state cancellate
--- 10) I task_runs NON sono stati toccati
+-- 10) I task_run sono chiusi ad ANNULLATO (il rilancio torna RUN, non SKIP)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -211,19 +211,33 @@ SELECT CASE
     '9) Le fatture del lotto sono state cancellate (rollback, non riapertura)')
 END;
 
--- I task_runs sono un REGISTRO DI ESECUZIONE, non una macchina di stato:
--- nessuno li consulta per decidere se rifare un task (misurato il 2026-08-03:
--- resume_mode e' letto da un solo metodo Python senza chiamanti, e
--- fn_start_lotto_task_run calcola gia' tentativo = MAX+1). Cancellarli o
--- disattivarli distruggerebbe storia utile senza sbloccare niente.
+-- 🔴 QUESTO TEST ERA SCRITTO AL CONTRARIO, e cristallizzava un bug.
+-- Diceva «i task_runs non si toccano», sulla base di un'analisi sbagliata:
+-- avevo verificato che `resume_mode` fosse letto da un metodo Python senza
+-- chiamanti e ne avevo concluso che nessuno consultasse i task_run. Il
+-- consumatore vero e' un altro — fn_resolve_lotto_task_execution_mode, che il
+-- runner chiama a OGNI task: legge l'ultimo task_run e su COMPLETATO risponde
+-- SKIP. Col test scritto cosi', il lotto riaperto rilanciava A VUOTO (tutti e
+-- quattro i task saltati, nessun errore, nessun task_run nuovo) e il file
+-- restava verde.
+--
+-- Ora si asserisce il fatto giusto, in DUE meta':
+--   * nessuna corsa attiva resta COMPLETATO -> il resolver torna a dire RUN;
+--   * il NUMERO di righe non cala -> la storia non si cancella, si chiude con
+--     esito, e il giro nuovo aprira' tentativo = MAX+1.
+-- ⚠️ Non si verifica `attivo`: quella colonna il resolver non la guarda
+-- nemmeno, ed e' proprio il motivo per cui disattivare le righe non avrebbe
+-- risolto niente.
 SELECT CASE
   WHEN NOT EXISTS (SELECT 1 FROM tmp_lotto_rld) THEN NULL
   ELSE ok(
-    (SELECT count(*) FROM vendite.fatturazione_lotti_task_runs
-      WHERE lotto_id = (SELECT id FROM tmp_lotto_rld)) = (SELECT n FROM tmp_runs_rld)
-    AND NOT EXISTS (SELECT 1 FROM vendite.fatturazione_lotti_task_runs
-                     WHERE lotto_id = (SELECT id FROM tmp_lotto_rld) AND attivo IS FALSE),
-    '10) I task_runs non sono stati toccati (ne cancellati ne disattivati)')
+    NOT EXISTS (SELECT 1 FROM vendite.fatturazione_lotti_task_runs
+                 WHERE lotto_id = (SELECT id FROM tmp_lotto_rld)
+                   AND attivo IS TRUE
+                   AND task_stato = 'COMPLETATO')
+    AND (SELECT count(*) FROM vendite.fatturazione_lotti_task_runs
+          WHERE lotto_id = (SELECT id FROM tmp_lotto_rld)) >= (SELECT n FROM tmp_runs_rld),
+    '10) I task_run del lotto sono chiusi ad ANNULLATO (il rilancio torna RUN, non SKIP) e la storia resta')
 END;
 
 SELECT * FROM finish();
