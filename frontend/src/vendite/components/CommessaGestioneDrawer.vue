@@ -105,6 +105,11 @@ const righePage = ref(1)
 const righePageSize = ref(PAGINATION.DEFAULT_ROWS)
 const righeLoading = ref(false)
 const selected = ref([])
+// Ordinamento server-side: l'ORDER BY vive dentro fn_list_commessa_attivita
+// (whitelist chiusa) — ordinare la pagina a valle risponderebbe sbagliato.
+// null = ordine storico per id (removable-sort riporta qui).
+const righeSortBy = ref(null)
+const righeSortDir = ref(1)
 
 const capabilities = computed(() => stato.value?.capabilities ?? {})
 
@@ -144,10 +149,15 @@ async function loadStato() {
 async function loadRighe() {
   righeLoading.value = true
   try {
-    const res = await listCommessaAttivita(props.commessaId, {
+    const params = {
       limit: righePageSize.value,
       offset: (righePage.value - 1) * righePageSize.value,
-    })
+    }
+    if (righeSortBy.value) {
+      params.order_by = righeSortBy.value
+      params.order_dir = righeSortDir.value === -1 ? 'desc' : 'asc'
+    }
+    const res = await listCommessaAttivita(props.commessaId, params)
     righe.value = res.data?.data?.rows ?? []
   } catch (err) {
     // Fail-visible: una tabella vuota per errore non deve sembrare "no righe".
@@ -170,6 +180,8 @@ watch(
     stato.value = null
     righe.value = []
     righePage.value = 1
+    righeSortBy.value = null
+    righeSortDir.value = 1
     selected.value = []
     await reloadAll()
   },
@@ -179,6 +191,15 @@ watch(
 function onRighePage(event) {
   righePage.value = Math.floor(event.first / event.rows) + 1
   righePageSize.value = event.rows
+  loadRighe()
+}
+
+// Scopo: ordinamento server-side; cambio criterio riparte da pagina 1.
+//        sortField null (removable-sort al terzo click) = ordine storico.
+function onRigheSort(event) {
+  righeSortBy.value = event.sortField ?? null
+  righeSortDir.value = event.sortOrder ?? 1
+  righePage.value = 1
   loadRighe()
 }
 
@@ -583,12 +604,16 @@ const drawerActions = computed(() => [
           paginator
           paginator-position="top"
           lazy
+          removable-sort
+          :sort-field="righeSortBy"
+          :sort-order="righeSortDir"
           :rows-per-page-options="PAGINATION.ROWS_OPTIONS"
           class="app-datatable app-datatable--inner"
           striped-rows
           size="small"
           data-key="id"
           @page="onRighePage"
+          @sort="onRigheSort"
         >
           <!-- Checkbox custom (pattern useSelezioneToggle): solo approvabili. -->
           <Column v-if="canApprova && righeApprovabili.length" headerStyle="width: 3rem">
@@ -609,27 +634,27 @@ const drawerActions = computed(() => [
               />
             </template>
           </Column>
-          <Column field="data_attivita" :header="t('vendite.commesse.col_data')" style="width: 100px;">
+          <Column field="data_attivita" sortable :header="t('vendite.commesse.col_data')" style="width: 100px;">
             <template #body="{ data }">
               {{ data.data_attivita ? displayDate(data.data_attivita) : '—' }}
             </template>
           </Column>
-          <Column field="competenza_mese" :header="t('vendite.commesse.col_competenza')" style="width: 100px;">
+          <Column field="competenza_mese" sortable :header="t('vendite.commesse.col_competenza')" style="width: 100px;">
             <template #body="{ data }">
               {{ data.competenza_mese ? displayDate(data.competenza_mese) : '—' }}
             </template>
           </Column>
-          <Column field="segment_key" :header="t('vendite.commesse.col_segmento')">
+          <Column field="segment_key" sortable :header="t('vendite.commesse.col_segmento')">
             <template #body="{ data }">
               <span class="app-commessa-segment" :title="data.segment_key">{{ data.segment_key }}</span>
             </template>
           </Column>
-          <Column field="quantita" :header="t('vendite.commesse.col_quantita')" style="width: 80px;">
+          <Column field="quantita" sortable :header="t('vendite.commesse.col_quantita')" style="width: 80px;">
             <template #body="{ data }">
               {{ data.quantita ?? '—' }}
             </template>
           </Column>
-          <Column field="prezzo_snapshot" :header="t('vendite.commesse.col_prezzo')" style="width: 110px;">
+          <Column field="prezzo_snapshot" sortable :header="t('vendite.commesse.col_prezzo')" style="width: 110px;">
             <template #body="{ data }">
               <span>
                 {{ data.prezzo_snapshot != null ? formatCurrency(Number(data.prezzo_snapshot)) : '—' }}
@@ -646,12 +671,12 @@ const drawerActions = computed(() => [
               </span>
             </template>
           </Column>
-          <Column field="stato_approvazione" :header="t('vendite.commesse.col_approvazione')" style="width: 100px;">
+          <Column field="stato_approvazione" sortable :header="t('vendite.commesse.col_approvazione')" style="width: 100px;">
             <template #body="{ data }">
               <Tag :value="data.stato_approvazione" :severity="statoApprovazioneAttivitaSeverity(data.stato_approvazione)" />
             </template>
           </Column>
-          <Column field="stato_emissione" :header="t('vendite.commesse.col_emissione')" style="width: 100px;">
+          <Column field="stato_emissione" sortable :header="t('vendite.commesse.col_emissione')" style="width: 100px;">
             <template #body="{ data }">
               <Tag :value="data.stato_emissione" :severity="statoEmissioneAttivitaSeverity(data.stato_emissione)" />
             </template>

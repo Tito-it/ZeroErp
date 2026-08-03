@@ -220,6 +220,7 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
         mocked_list.assert_called_once_with(
             commessa_id=1, stato_emissione=None, stato_approvazione=None,
             competenza_mese=None, limit=20, offset=0,
+            order_by=None, order_dir=None,
         )
 
     # Scopo: endpoint V1 richiede JWT.
@@ -239,6 +240,22 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
         mocked_list.assert_called_once_with(
             commessa_id=1, stato_emissione="NON_EMESSA", stato_approvazione="APPROVATA",
             competenza_mese="2026-02-01", limit=50, offset=0,
+            order_by=None, order_dir=None,
+        )
+
+    # Scopo: order_by/order_dir propagati al service (7° lotto liste, 2026-08-03).
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views.fn_list_commessa_attivita")
+    def test_get_commessa_attivita_con_ordinamento(self, mocked_list, _mock_auth):
+        mocked_list.return_value = {"commessa_id": 1, "count": 0, "rows": []}
+        response = self.client.get(
+            "/api/v1/vendite/commesse/1/attivita/?order_by=data_attivita&order_dir=desc"
+        )
+        self.assertEqual(response.status_code, 200)
+        mocked_list.assert_called_once_with(
+            commessa_id=1, stato_emissione=None, stato_approvazione=None,
+            competenza_mese=None, limit=50, offset=0,
+            order_by="data_attivita", order_dir="desc",
         )
 
     # Scopo: limit fuori range → 400.

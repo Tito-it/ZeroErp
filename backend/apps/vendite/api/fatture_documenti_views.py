@@ -69,3 +69,6 @@ ApiFatturaDocumentiList = _views.lista
 ApiFatturaDocumentoAllegati = _views.allegati
 ApiFatturaDocumentoFile = _views.file
 ApiFatturaDocumentoFileDownload = _views.file_download
+# Percorso 3 (ristampa fedele): ri-renderizza l'originale dalla versione
+# pinnata + contesto congelato. Vedi brief-ristampa-fedele-documenti.
+ApiFatturaDocumentoRistampa = _views.ristampa

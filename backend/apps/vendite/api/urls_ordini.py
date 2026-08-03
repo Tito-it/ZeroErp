@@ -15,6 +15,7 @@ from apps.vendite.api.ordini_documenti_views import (
     ApiOrdineDocumentoAnteprima,
     ApiOrdineDocumentoFile,
     ApiOrdineDocumentoFileDownload,
+    ApiOrdineDocumentoRistampa,
     ApiOrdineDocumentoGenera,
     ApiOrdineEmetti,
 )
@@ -122,6 +123,10 @@ urlpatterns = [
     path("<int:sorgente_id>/documenti/<int:documento_id>/file/<int:file_id>/",
          ApiOrdineDocumentoFileDownload.as_view(),
          name="vendite-ordine-documenti-file-download"),
+    # Ristampa fedele (percorso 3): versione pinnata + contesto congelato.
+    path("<int:sorgente_id>/documenti/<int:documento_id>/ristampa/",
+         ApiOrdineDocumentoRistampa.as_view(),
+         name="vendite-ordine-documenti-ristampa"),
 
     # Note partizionate (target_tipo='ORDINE'). Building block
     # PartitionedNoteRepository: 3 righe di cablaggio + view generata.

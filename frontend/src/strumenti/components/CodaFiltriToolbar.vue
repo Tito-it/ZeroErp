@@ -75,6 +75,11 @@ const { t } = useI18n()
         />
       </div>
     </div>
-    <PageActionsBar :actions="pageActions" />
+    <PageActionsBar :actions="pageActions">
+      <template #suffix>
+        <!-- Slot per i badge di stato lista (es. ListaConfigStatusTag). -->
+        <slot name="actions-suffix" />
+      </template>
+    </PageActionsBar>
   </div>
 </template>

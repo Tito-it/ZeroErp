@@ -27,6 +27,8 @@ View: `ApiCommessaAttivita` `ApiCommessaAttivita` (`apps.vendite.api.views`).
   - `competenza_mese` (date `YYYY-MM-DD`) — filtro mese di competenza (normalizzato al primo del mese dal DB)
   - `limit` (int) — righe per pagina (default 50, range 1-200)
   - `offset` (int) — offset paginazione (default 0)
+  - `order_by` (string) — colonna di ordinamento, whitelist chiusa: `id`, `data_attivita`, `competenza_mese`, `segment_key`, `quantita`, `prezzo_snapshot`, `stato_approvazione`, `stato_emissione`. Assente = ordine storico per `id`
+  - `order_dir` (string) — `asc` | `desc` (default `asc`)
 
 ## Output
 
@@ -66,7 +68,7 @@ View: `ApiCommessaAttivita` `ApiCommessaAttivita` (`apps.vendite.api.views`).
 }
 ```
 
-- `400`: parametri non validi (`E_COMMESSA_VALIDATION`) — es. `limit` fuori range 1-200
+- `400`: parametri non validi (`E_COMMESSA_VALIDATION`) — es. `limit` fuori range 1-200, `order_by` fuori whitelist, `order_dir` diverso da asc/desc
 - `404`: commessa non trovata (gestito dalla funzione DB)
 
 ## Regole
@@ -79,11 +81,12 @@ View: `ApiCommessaAttivita` `ApiCommessaAttivita` (`apps.vendite.api.views`).
 - La funzione DB normalizza `competenza_mese` al primo del mese (`date_trunc`).
 - JOIN su `config.sorgenti` per risolvere `sorgente_codice` (evita N+1 lato client).
 - `count` indica il numero di righe restituite nella pagina corrente, non il totale globale.
+- Ordinamento server-side (dal 2026-08-03, 7° lotto liste configurabili): `order_by`/`order_dir` sono validati nel service contro `ATTIVITA_SORT_COLUMNS` (specchio della whitelist chiusa dentro la fn DB, changeset `20260802-26`) e passati a `p_order_by`/`p_order_dir`. Ordine e paginazione vivono **dentro** la funzione: ordinare a valle ordinerebbe la sola pagina estratta. `order_by` assente = ordine storico `ca.id`; tiebreak `ca.id` sempre presente. La fn solleva `E_PARAMETRO_INVALIDO` su nome fuori whitelist (difesa in profondità, il service intercetta prima).
 - Funzione DB STABLE (read-only).
 
 ## Dipendenze DB
 
-- `vendite.fn_list_commessa_attivita(p_commessa_id, p_stato_emissione, p_stato_approvazione, p_competenza_mese, p_limit, p_offset)` — funzione principale, restituisce TABLE con 20 colonne
+- `vendite.fn_list_commessa_attivita(p_commessa_id, p_stato_emissione, p_stato_approvazione, p_competenza_mese, p_limit, p_offset, p_order_by, p_order_dir)` — funzione principale, restituisce TABLE con 21 colonne
 - `vendite.commesse_attivita` — tabella dati
 - `config.sorgenti` — JOIN per `sorgente_codice`
 

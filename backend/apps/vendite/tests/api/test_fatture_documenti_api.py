@@ -13,6 +13,9 @@
 #   1. genera_ok_passa_parametri — 201 + kwargs corretti a genera_documento
 #   2. lista_ok_envelope — 200 lista documenti generati per sorgente
 #   3. emetti_route_assente — POST emetti/ → 404 (nessuna emissione FATTURA)
+#   4. ristampa_richiede_jwt — 401 senza Authorization
+#   5. ristampa_ok_stream_pdf_inline — 200 + bytes + header fedeltà a 1
+#   6. ristampa_pdf_hash_diverso_header_a_zero — fedele nel contenuto, non nei byte
 # ------------------------------------------------------------
 
 from unittest.mock import Mock, patch
@@ -124,3 +127,83 @@ class TestFattureDocumentiApi(JwtMockedApiTest):
     def test_emetti_route_assente(self, _auth) -> None:
         resp = self.client.post(f"{_BASE}42/emetti/", data={})
         self.assertEqual(resp.status_code, 404)
+
+    # ------------------------------------------------------------------ #
+    # Ristampa fedele (percorso 3) — brief-ristampa-fedele-documenti      #
+    # ------------------------------------------------------------------ #
+
+    # 4. Senza JWT: 401 (come tutti gli endpoint documentali).
+    def test_ristampa_richiede_jwt(self) -> None:
+        resp = self.client.get(f"{_BASE}42/documenti/100/ristampa/")
+        self.assertEqual(resp.status_code, 401)
+
+    # 5. Ristampa OK: stream PDF `inline` + verdetto di fedeltà nell'header.
+    #    Sulla FATTURA è il percorso che conta di più: è un documento fiscale,
+    #    e riemetterlo non è un'opzione.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_DOC_GEN_SVC)
+    @patch(_DOC_REPO)
+    @patch(_VEN_REPO)
+    def test_ristampa_ok_stream_pdf_inline(
+        self, repo_cls, doc_repo_cls, doc_svc_cls, _auth,
+    ) -> None:
+        repo_cls.return_value.get_fattura_for_documento_generation.return_value = {
+            "id": 42,
+            "uid": "0190b000-0000-0000-0000-000000000042",
+            "emittente_fiscale_id": 11,
+        }
+        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
+            "id": 10, "codice": "FATTURA", "attivo": True,
+        }
+        doc_svc_cls.return_value.ristampa_fedele.return_value = {
+            "pdf_bytes": b"%PDF-1.4 storico",
+            "nome_file": "fattura-2025-1.pdf",
+            "mime_type": "application/pdf",
+            "size_bytes": 16,
+            "pdf_hash_match": True,
+        }
+
+        resp = self.client.get(f"{_BASE}42/documenti/100/ristampa/")
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.content, b"%PDF-1.4 storico")
+        self.assertEqual(resp["Content-Type"], "application/pdf")
+        # `inline`: è una consultazione, non un salvataggio (come l'anteprima).
+        self.assertIn("inline", resp["Content-Disposition"])
+        self.assertIn("fattura-2025-1.pdf", resp["Content-Disposition"])
+        # Il verdetto di fedeltà viaggia in header perché il corpo è il PDF.
+        self.assertEqual(resp["X-Ristampa-Pdf-Hash-Match"], "1")
+        # Il documento_id arriva al service dal path.
+        args = doc_svc_cls.return_value.ristampa_fedele.call_args.args
+        self.assertEqual(args[1], 100)
+
+    # 6. Byte diversi dall'originale (renderer non deterministico): NON è un
+    #    errore — decisione §8.2 «fedele nel contenuto, non nei byte». Il PDF
+    #    esce 200 e l'header lo DICHIARA, così la UI può avvisare.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_DOC_GEN_SVC)
+    @patch(_DOC_REPO)
+    @patch(_VEN_REPO)
+    def test_ristampa_pdf_hash_diverso_header_a_zero(
+        self, repo_cls, doc_repo_cls, doc_svc_cls, _auth,
+    ) -> None:
+        repo_cls.return_value.get_fattura_for_documento_generation.return_value = {
+            "id": 42,
+            "uid": "0190b000-0000-0000-0000-000000000042",
+            "emittente_fiscale_id": 11,
+        }
+        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
+            "id": 10, "codice": "FATTURA", "attivo": True,
+        }
+        doc_svc_cls.return_value.ristampa_fedele.return_value = {
+            "pdf_bytes": b"%PDF-1.4 storico",
+            "nome_file": "fattura-2025-1.pdf",
+            "mime_type": "application/pdf",
+            "size_bytes": 16,
+            "pdf_hash_match": False,
+        }
+
+        resp = self.client.get(f"{_BASE}42/documenti/100/ristampa/")
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp["X-Ristampa-Pdf-Hash-Match"], "0")

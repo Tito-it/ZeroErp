@@ -5,13 +5,20 @@
 //        Click riga = edit, pulsante Nuovo = create. Salva/Annulla sempre
 //        in basso sotto il form. Articolo immutabile in edit.
 //        Solo righe in versione BOZZA sono modificabili/eliminabili.
+//
+//        Lista convertita a <ListaConfigurabile> (config DB
+//        `vendite.listini_righe`, ui.lista_definizione id 37 — 7° lotto,
+//        2026-08-03): possibile da quando righe standalone e compositi
+//        arrivano dallo STESSO endpoint paginato (UNION lato BE, decisione
+//        Tid 2026-08-02) e `total` li conta entrambi. Click riga discrimina:
+//        composito apre ComponentiDialog, standalone apre form edit inline.
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { useSearchTable } from '../../core/composables/useSearchTable'
+import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { displayDate } from '../../core/utils/date'
 import { formatIvaLabel, formatNumber } from '../../core/utils/format'
 import { statoVersioneListinoSeverity, statoVersioneVisibile } from '../../core/utils/severity'
@@ -28,6 +35,9 @@ import { useArticoloUomOptions } from '../../core/composables/useArticoloUomOpti
 import { useListiniRigheStore } from '../stores/listiniRighe'
 import { MANAGE_ICONS } from '../../core/constants'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
+import AttivoTag from '../../core/components/AttivoTag.vue'
+import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -35,8 +45,6 @@ import FormFooter from '../../core/components/FormFooter.vue'
 import ApplicaVariazioneDialog from './ApplicaVariazioneDialog.vue'
 import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
@@ -57,9 +65,42 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:visible'])
 
-const { searchText, onPage, onSort, paginatorProps } = useSearchTable(store, {
-  defaultSortField: 'articolo_descrizione',
-  defaultSortOrder: 'asc',
+// Scaffolding lista configurabile: search/sort/page + azioni pagina standard
+// (Ricarica + Personalizza) + le azioni di dominio via `extraActions` (lazy:
+// il closure legge isBozza/formMode definiti sotto solo alla valutazione del
+// computed pageActions). Niente exportFn/onNew standard: la "Nuovo" ha
+// visibilita'/disable di dominio e viaggia fra le extra.
+const {
+  searchText, onPage, onSort, paginatorProps, tablePage,
+  listaRef, dirty, onConfigLoaded, pageActions,
+} = useListaConfigurabilePage(store, {
+  onReload: reloadAll,
+  extraActions: () => [
+    {
+      key: 'variazione',
+      kind: 'utility',
+      label: t('vendite.listini.variazione_short'),
+      tooltip: t('vendite.listini.variazione_pct_titolo'),
+      icon: 'pi pi-percentage',
+      showLabel: true,
+      visible: isBozza.value,
+      command: () => { showVariazioneDialog.value = true },
+    },
+    {
+      key: 'new',
+      kind: 'primary',
+      label: t('common.new'),
+      tooltip: t('vendite.listini.aggiungi_prezzo_hint'),
+      icon: MANAGE_ICONS.ADD,
+      visible: isBozza.value,
+      disabled: formMode.value === 'create' || isReadonly.value,
+      command: onNew,
+    },
+  ],
+  searchTableOptions: {
+    defaultSortField: 'articolo_descrizione',
+    defaultSortOrder: 'asc',
+  },
 })
 const DRAWER_WIDTH_RIGHE_LISTINO = '1000px'
 
@@ -68,7 +109,6 @@ const DRAWER_WIDTH_RIGHE_LISTINO = '1000px'
 const formMode = ref(null)
 const rigaEditId = ref(null)
 const form = ref({})
-const selectedRow = ref(null)
 
 // UoM operative dell'articolo selezionato (pattern ContrattoRigheDrawer).
 // Composable centralizzato (Fase 4.F1): autopick base solo in create.
@@ -125,54 +165,20 @@ async function reloadAll() {
   await store.fetchList()
 }
 
-const pageActions = computed(() => [
-  {
-    key: 'reload',
-    kind: 'utility',
-    label: t('common.refresh'),
-    tooltip: t('common.refresh'),
-    icon: 'pi pi-refresh',
-    class: 'app-page-action',
-    command: reloadAll,
-  },
-  {
-    key: 'variazione',
-    kind: 'utility',
-    label: t('vendite.listini.variazione_short'),
-    tooltip: t('vendite.listini.variazione_pct_titolo'),
-    icon: 'pi pi-percentage',
-    showLabel: true,
-    class: 'app-page-action',
-    visible: isBozza.value,
-    command: () => { showVariazioneDialog.value = true },
-  },
-  {
-    key: 'new',
-    kind: 'primary',
-    label: t('common.new'),
-    tooltip: t('vendite.listini.aggiungi_prezzo_hint'),
-    icon: MANAGE_ICONS.ADD,
-    visible: isBozza.value,
-    disabled: formMode.value === 'create' || isReadonly.value,
-    command: onNew,
-  },
-])
-
 // === Azioni master ===
 function onNew() {
   form.value = defaultForm()
   formMode.value = 'create'
   rigaEditId.value = null
-  selectedRow.value = null
   resetUomOptions()
 }
 
-function onRowSelect(event) {
-  const r = event.data
-  // Riga composito (modello unificato): non c'e' un form editabile testata
-  // riga — i prezzi vivono in `listini_righe_componenti` via Dialog.
+// Scopo: click riga (pattern standard liste = interazione principale).
+//        Composito → ComponentiDialog (i prezzi vivono in
+//        `listini_righe_componenti`); standalone in BOZZA → form edit inline;
+//        versioni non BOZZA → sola lettura, nessun form.
+function onRowClick(r) {
   if (r?.is_composito) {
-    selectedRow.value = null
     openBundleDialog({
       id: r.articolo_id,
       codice: r.articolo_codice,
@@ -182,8 +188,6 @@ function onRowSelect(event) {
     return
   }
   if (!isBozza.value) {
-    // In versioni non BOZZA le righe standalone sono sola lettura.
-    selectedRow.value = null
     return
   }
   form.value = {
@@ -297,7 +301,6 @@ function closeForm() {
   formMode.value = null
   rigaEditId.value = null
   form.value = {}
-  selectedRow.value = null
   resetUomOptions()
 }
 
@@ -410,13 +413,9 @@ function buildRigaActions(row) {
 
 // Righe standalone e compositi bundle sono UNA lista sola (decisione Tid
 // 2026-08-02) e arrivano insieme dallo stesso endpoint paginato: il BE le
-// unisce con una UNION e `total` le conta entrambe.
-//
-// Prima i compositi venivano da un endpoint separato e venivano concatenati
-// QUI, dopo la paginazione: il conteggio e il numero di pagine erano quelli
-// delle sole righe standalone, quindi mentivano — ed era il motivo per cui
-// questa lista non poteva passare a `<ListaConfigurabile>`, che ha `lazy`
-// fisso e prende `total` dal caller.
+// unisce con una UNION e `total` le conta entrambe. E' cio' che ha reso
+// possibile la conversione a `<ListaConfigurabile>` (prima i compositi
+// venivano concatenati QUI dopo la paginazione, e conteggio/pagine mentivano).
 //
 // Il BE proietta `is_composito` (discriminatore) e `row_key` (chiave stabile
 // della DataTable: l'id per le standalone, `composito:<uuid>` per i padri, che
@@ -476,55 +475,67 @@ const onClose = useDrawerClose(emit)
         </div>
       </div>
 
-      <!-- === MASTER: toolbar + lista paginata (server-side lazy) === -->
+      <!-- === MASTER: toolbar + lista configurabile (server-side lazy) === -->
       <div class="app-page-toolbar">
         <div class="app-page-filters">
           <InputText v-model="searchText" :placeholder="t('vendite.listini.righe_cerca_articolo')"
             style="width: 240px;" />
         </div>
-        <PageActionsBar :actions="pageActions" />
+        <PageActionsBar :actions="pageActions">
+          <template #suffix>
+            <ListaConfigStatusTag :dirty="dirty" />
+          </template>
+        </PageActionsBar>
       </div>
 
-      <!-- Lista unificata: righe composito (modello unificato BoM
-           2026-05-13) in testa (no paginazione) + righe standalone
-           paginate. Distinzione visiva via Tag "Composito" + colonne
-           adattive (UoM/prezzo vuoti sui compositi, badge N componenti
-           al posto del prezzo). Click riga discrimina: composito apre
-           `ComponentiDialog`, standalone apre form edit inline. -->
-      <DataTable :value="store.items" :loading="store.loading" striped-rows
-        class="app-datatable" data-key="row_key"
-        lazy v-bind="paginatorProps" @page="onPage" @sort="onSort" removable-sort
-        v-model:selection="selectedRow" selection-mode="single" @row-select="onRowSelect">
-        <Column field="articolo_codice" :header="t('vendite.listini.col_articolo')" sortable style="width: 160px;">
-          <template #body="{ data }">
-            <span>{{ data.articolo_codice }}</span>
-            <Tag v-if="data.is_composito"
-              :value="t('vendite.listini.tag_composito')"
-              severity="info"
-              style="margin-left: 0.4rem; font-size: 0.7rem;" />
-          </template>
-        </Column>
-        <Column field="articolo_descrizione" :header="t('catalogo.col_descrizione')" sortable style="min-width: 200px;" />
-        <Column field="uom_codice" :header="t('catalogo.col_uom')" style="width: 70px;">
-          <template #body="{ data }">{{ data.uom_codice || '—' }}</template>
-        </Column>
-        <Column field="prezzo" :header="t('vendite.listini.col_prezzo')" sortable style="width: 140px;">
-          <template #body="{ data }">
-            <span v-if="data.is_composito" style="color: var(--app-text-muted); font-style: italic;">
-              {{ t('vendite.listini.composito_n_componenti', { n: data.n_componenti_bundle }) }}
-            </span>
-            <span v-else>{{ formatPrezzoListino(data.prezzo) }}</span>
-          </template>
-        </Column>
-        <Column field="iva_aliquota" :header="t('vendite.listini.col_iva')" style="width: 70px;">
-          <template #body="{ data }">{{ formatIvaLabel(data) }}</template>
-        </Column>
-        <Column v-if="isBozza" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
-          <template #body="{ data }">
-            <RowActionsMenu :row="data" :actions="buildRigaActions(data)" />
-          </template>
-        </Column>
-      </DataTable>
+      <!-- Lista unificata (UNION BE): righe standalone + compositi nello
+           stesso flusso paginato. Distinzione visiva via Tag "Composito" +
+           colonne adattive (UoM/prezzo vuoti sui compositi, badge N
+           componenti al posto del prezzo). Click riga discrimina: composito
+           apre `ComponentiDialog`, standalone apre form edit inline. -->
+      <ListaConfigurabile
+        ref="listaRef"
+        codice="vendite.listini_righe"
+        data-key="row_key"
+        :rows="store.items"
+        :total="store.totalRecords"
+        :loading="store.loading"
+        :paginator-options="paginatorProps"
+        :page="tablePage"
+        :sort-field="paginatorProps.sortField"
+        :sort-order="paginatorProps.sortOrder"
+        @page="onPage"
+        @sort="onSort"
+        @row-click="onRowClick"
+        @config-loaded="onConfigLoaded"
+      >
+        <template #cell-articolo_codice="{ data }">
+          <span>{{ data.articolo_codice }}</span>
+          <Tag v-if="data.is_composito"
+            :value="t('vendite.listini.tag_composito')"
+            severity="info"
+            style="margin-left: 0.4rem; font-size: 0.7rem;" />
+        </template>
+        <template #cell-uom="{ data }">
+          {{ data.uom_codice || '—' }}
+        </template>
+        <template #cell-prezzo="{ data }">
+          <span v-if="data.is_composito" style="color: var(--app-text-muted); font-style: italic;">
+            {{ t('vendite.listini.composito_n_componenti', { n: data.n_componenti_bundle }) }}
+          </span>
+          <span v-else>{{ formatPrezzoListino(data.prezzo) }}</span>
+        </template>
+        <template #cell-iva_aliquota="{ data }">
+          {{ formatIvaLabel(data) }}
+        </template>
+        <template #cell-attivo="{ data }">
+          <AttivoTag :active="data.attivo" />
+        </template>
+
+        <template #actions="{ data, compact }">
+          <RowActionsMenu :row="data" :actions="buildRigaActions(data)" :force-compact="compact" />
+        </template>
+      </ListaConfigurabile>
 
       <!-- === DETAIL: form inserimento/modifica (inline, sotto la tabella) === -->
       <template v-if="formMode">

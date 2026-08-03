@@ -16,6 +16,7 @@ from apps.vendite.api.fatture_documenti_views import (
     ApiFatturaDocumentoAnteprima,
     ApiFatturaDocumentoFile,
     ApiFatturaDocumentoFileDownload,
+    ApiFatturaDocumentoRistampa,
     ApiFatturaDocumentoGenera,
 )
 from apps.vendite.api.fatture_views import ApiFatturaDetail
@@ -47,6 +48,12 @@ urlpatterns = [
     path("<int:sorgente_id>/documenti/<int:documento_id>/file/<int:file_id>/",
          ApiFatturaDocumentoFileDownload.as_view(),
          name="vendite-fattura-documenti-file-download"),
+    # Ristampa fedele (percorso 3): versione pinnata + contesto congelato.
+    # Sulla fattura e' il percorso piu' importante: e' un documento fiscale,
+    # e riemetterlo non e' un'opzione.
+    path("<int:sorgente_id>/documenti/<int:documento_id>/ristampa/",
+         ApiFatturaDocumentoRistampa.as_view(),
+         name="vendite-fattura-documenti-ristampa"),
     # Dettaglio di consultazione (drawer fattura): testata + righe + riepilogo
     # IVA + scadenze in un round-trip. ULTIMA della lista: `<int:fattura_id>/`
     # è il pattern più generico e deve cedere il passo a `note/` e `documenti/`.

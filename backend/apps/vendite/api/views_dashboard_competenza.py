@@ -486,6 +486,24 @@ class ApiDashboardCompetenzaErrori(DomainAPIView):
                 ),
             ),
             OpenApiParameter(
+                name="order_by",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Colonna di ordinamento (tipo_evento, lotto_codice, "
+                    "fattura_numero, error_code, data_evento). Assente = "
+                    "eventi recenti prima."
+                ),
+            ),
+            OpenApiParameter(
+                name="order_dir",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Direzione ordinamento: asc | desc.",
+            ),
+            OpenApiParameter(
                 name="page",
                 type=int,
                 location=OpenApiParameter.QUERY,
@@ -525,11 +543,17 @@ class ApiDashboardCompetenzaErrori(DomainAPIView):
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         competenza_mese = qp_iso_date_optional(qp.get("competenza_mese"), "competenza_mese")
+        # Ordinamento (convenzione order_by/order_dir): whitelist + direzione
+        # validate nel service (unica definizione, fail-fast 400).
+        order_by = qp_str(qp.get("order_by"))
+        order_dir = qp_str(qp.get("order_dir"))
         page = qp_int_strict(qp.get("page"), "page", 1)
         page_size = qp_int_strict(qp.get("page_size"), "page_size", 50)
 
         data = fn_dash_competenza_errori(
             competenza_mese=competenza_mese,
+            order_by=order_by,
+            order_dir=order_dir,
             page=page,
             page_size=page_size,
         )

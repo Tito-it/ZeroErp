@@ -506,6 +506,13 @@ class VenditeRepository:
         "codice": "codice",
         "cliente_display": "cliente_display",
         "valore_totale": "valore_totale",
+        # Estese 2026-08-03 (passata BE dashboard, 8° lotto liste): `stato_codice`
+        # chiude il nucleo *stato* (la lista mostra la colonna e nasceva con la
+        # freccia morta); `area`/`fase` per simmetria col gemello backlog, che
+        # ordina `area` da subito — stessa colonna a video, stesso comportamento.
+        "area": "area",
+        "fase": "fase",
+        "stato_codice": "stato_codice",
     }
 
     def list_dash_aperto_documenti(
@@ -1001,6 +1008,23 @@ class VenditeRepository:
         # nell'envelope e `usePagedDashFetch` la adotta. Senza, una pagina
         # stantia tornerebbe VUOTA con count > 0 e il FE ripiegherebbe sulla
         # PRIMA pagina — un secondo giro, e per giunta nel posto sbagliato.
+        # `documento_id`: il gruppo E' il documento sorgente, ma la vista ne
+        # espone solo `sorgente_uid` (uuid) e il `riferimento` (codice) — e i
+        # drawer di dominio si aprono per **id**. La LATERAL qui sotto risolve
+        # l'id dalla STESSA riga da cui la vista prende il codice (stessa
+        # coppia area+uid, stesso ORDER BY): id e codice non possono descrivere
+        # due documenti diversi.
+        # ⚠️ Drift noto e accettato: la regola di risoluzione e' scritta due
+        # volte — qui e dentro `vw_dash_competenza_gruppi` (che proietta
+        # `doc.codice`). Se il criterio cambiasse nella vista, va cambiato anche
+        # qui. La soluzione pulita e' che la vista esponga `documento_id`
+        # accanto al `riferimento`: e' una nota per il team DB, non un
+        # prerequisito (nessun DDL serve al FE per aprire il documento).
+        # Stesso schema — e stesso caveat dichiarato — di
+        # `ui_repository.fetch_preset_base_snapshot`.
+        # Gruppi SOURCELESS (oneri di commessa): `area_documento` NULL → la
+        # LATERAL non produce righe → `documento_id` NULL. E' corretto: quei
+        # gruppi un documento non ce l'hanno, e il FE offrira' la sola commessa.
         rows, total_count = self._query_paged_view(
             select_sql=f"""
             SELECT
@@ -1016,8 +1040,18 @@ class VenditeRepository:
                 g.valore,
                 g.ha_oneri,
                 g.data_attivita_min,
-                g.data_attivita_max
+                g.data_attivita_max,
+                doc.documento_id
             FROM vendite.vw_dash_competenza_gruppi g
+            LEFT JOIN LATERAL (
+                SELECT d.documento_id
+                  FROM vendite.vw_dash_fatturazione_documenti d
+                 WHERE g.area_documento IS NOT NULL
+                   AND d.area = g.area_documento
+                   AND d.documento_uid = g.sorgente_uid
+                 ORDER BY d.competenza_mese DESC NULLS LAST
+                 LIMIT 1
+            ) doc ON TRUE
             {where_clause}
             """,
             order_by=order_clause,
@@ -1043,6 +1077,7 @@ class VenditeRepository:
                     "ha_oneri": bool(row[10]),
                     "data_attivita_min": row[11].isoformat() if row[11] is not None else None,
                     "data_attivita_max": row[12].isoformat() if row[12] is not None else None,
+                    "documento_id": None if row[13] is None else int(row[13]),
                 }
             )
         return result, total_count
@@ -1141,6 +1176,18 @@ class VenditeRepository:
             for r in rows
         ]
 
+    # Colonne ordinabili della lista errori vivi (8° lotto liste, 2026-08-03).
+    # Alias di output della union: la vista non ha una PK e le colonne di
+    # documento sono NULLABLE per costruzione (un errore di task non ha fattura,
+    # una fattura critical non ha task) — NULLS LAST e' applicato nel metodo.
+    DASH_COMPETENZA_ERRORI_SORT_COLUMNS = {
+        "tipo_evento": "tipo_evento",
+        "lotto_codice": "lotto_codice",
+        "fattura_numero": "fattura_numero",
+        "error_code": "error_code",
+        "data_evento": "data_evento",
+    }
+
     # Scopo: Restituisce la lista paginata degli errori vivi (blocco 4 Lente 1:
     #        task run in ERRORE non superati + fatture critical), con filtro
     #        opzionale per mese di competenza.
@@ -1150,6 +1197,8 @@ class VenditeRepository:
         self,
         *,
         competenza_mese: date | None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
         limit: int,
         offset: int,
     ) -> tuple[list[DashCompetenzaErroreRow], int]:
@@ -1186,13 +1235,26 @@ class VenditeRepository:
             {where_clause}
         """
 
+        # ORDER BY server-side (stessa convenzione delle altre liste dash):
+        # colonna dalla whitelist + direzione, NULLS LAST esplicito (le colonne
+        # di documento sono NULL su meta' della union — in DESC finirebbero in
+        # testa), tiebreak = la catena deterministica storica sulle chiavi
+        # naturali. order_by assente -> ordine storico (eventi recenti prima).
+        _tiebreak = """tipo_evento ASC,
+                     lotto_id ASC NULLS LAST, fattura_id ASC NULLS LAST,
+                     task_code ASC NULLS LAST"""
+        sort_col = self.DASH_COMPETENZA_ERRORI_SORT_COLUMNS.get(order_by or "")
+        if sort_col is not None:
+            direction = sql_order_direction(order_dir)
+            order_clause = (
+                f"ORDER BY {sort_col} {direction} NULLS LAST, {_tiebreak}"
+            )
+        else:
+            order_clause = f"ORDER BY data_evento DESC NULLS LAST, {_tiebreak}"
+
         rows, total_count = self._query_paged_view(
             select_sql=select_sql,
-            order_by="""
-            ORDER BY data_evento DESC NULLS LAST, tipo_evento ASC,
-                     lotto_id ASC NULLS LAST, fattura_id ASC NULLS LAST,
-                     task_code ASC NULLS LAST
-            """,
+            order_by=order_clause,
             params=params,
             limit=limit,
             offset=offset,
@@ -1282,6 +1344,10 @@ class VenditeRepository:
         "cliente_display": "cliente_display",
         "valore_fermo": "valore_fermo",
         "stato_codice": "stato_codice",
+        # Estesa 2026-08-03 (passata BE dashboard, 8° lotto liste): la classe di
+        # azionabilita' e' colonna a video (Tag) e vocabolario chiuso a 3 valori —
+        # ordinarla raggruppa il lavoro per tipo di intervento.
+        "classe": "classe",
     }
 
     def list_dash_backlog_documenti(

@@ -22,6 +22,7 @@ from apps.vendite.api.offerte_documenti_views import (
     ApiOffertaDocumentoAnteprima,
     ApiOffertaDocumentoFile,
     ApiOffertaDocumentoFileDownload,
+    ApiOffertaDocumentoRistampa,
     ApiOffertaEmetti,
 )
 from apps.vendite.api.views_form_defaults import ApiOffertaFormDefaults
@@ -209,5 +210,11 @@ urlpatterns = [
         "<int:sorgente_id>/documenti/<int:documento_id>/file/<int:file_id>/",
         ApiOffertaDocumentoFileDownload.as_view(),
         name="vendite-offerta-documento-file-download",
+    ),
+    # Ristampa fedele (percorso 3): versione pinnata + contesto congelato.
+    path(
+        "<int:sorgente_id>/documenti/<int:documento_id>/ristampa/",
+        ApiOffertaDocumentoRistampa.as_view(),
+        name="vendite-offerta-documento-ristampa",
     ),
 ]

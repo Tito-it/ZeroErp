@@ -3418,8 +3418,17 @@
       "col_titolo": "Titolo",
       "col_nome_file": "Nome file",
       "col_stato": "Stato",
-      "action_download": "Scarica PDF",
-      "action_aggiungi_allegati": "Aggiungi allegati"
+      "action_download": "Scarica originale",
+      "action_aggiungi_allegati": "Aggiungi allegati",
+      "col_originale": "Originale",
+      "originale_presente": "Disponibile",
+      "originale_assente": "Non salvato",
+      "download_non_disponibile": "Il file originale non e' stato conservato per questo documento: usa la ristampa fedele.",
+      "action_ristampa_fedele": "Ristampa fedele",
+      "ristampa_fedele_hint": "Riproduce il documento com'era: modello e dati di allora.",
+      "ristampa_fedele_ok": "Ristampa fedele completata: identica all'originale.",
+      "ristampa_fedele_contenuto": "Ristampa fedele nel contenuto: il file differisce dall'originale nei soli byte (motore di stampa diverso).",
+      "ristampa_fedele_error": "Ristampa fedele non riuscita."
     },
     "emissione": {
       "titolo": "Emissione documento",

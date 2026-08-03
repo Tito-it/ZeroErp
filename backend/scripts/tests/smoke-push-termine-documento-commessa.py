@@ -1,0 +1,546 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Smoke — DOCUMENTO -> COMMESSA -> FATTURA: le condizioni di pagamento del
+#         documento sorgente arrivano fino al piano rate. Percorso REALE a
+#         ogni passo (push `pr_run_commesse_push_one`, pull `fn_emit_*`,
+#         selezione `fn_select_*`, generazione `FattureRigheService`,
+#         scadenze via task repository).
+# Uso:    ./manage-env.sh shell < scripts/tests/smoke-push-termine-documento-commessa.py
+# ------------------------------------------------------------
+#
+# PERCHE' ESISTE (brief-db-termine-dal-documento-alla-commessa §7, punti 2-4).
+# La fattura 2263 e' uscita col piano rate del CLIENTE invece che con quello
+# dell'ORDINE, in silenzio: il BE non passava le condizioni al push e il
+# livello 1 del resolver era strutturalmente irraggiungibile. Le due meta'
+# del fix (colonne nel contratto di push `20260803-02` + ripuntamento del
+# resolver `20260803-03` lato DB; propagazione + cache_key lato BE
+# `ad1151da9`) sono state provate ciascuna nel proprio recinto. Questo smoke
+# prova la CATENA INTERA dal documento al piano rate — il giro reale che la
+# §9.4 della risposta DB chiede esplicitamente per chiudere i punti 2, 3, 4.
+#
+# COSA NON RIFA'. Non riprova cio' che i fratelli gia' presidiano:
+# l'aggregazione per termine a parita' di commessa e' di
+# `smoke-fattura-aggregazione-termini.py`, la meccanica del piano rate
+# (quadratura, resto, basi non positive) e' di `smoke-fattura-scadenze.py`.
+# Qui il termine NON viene mai scritto sulla commessa dal fixture: ce lo deve
+# portare il push, o i test sono rossi.
+#
+# LA VIA REALE. Il fixture clona un ordine vero (testata+riga) in stato
+# CONFERMATO col termine multi-rata, poi ogni passo successivo e' il codice
+# di produzione: `pr_run_commesse_push_one` (handler + ponte approvazione +
+# PRONTA_FATTURAZIONE), `fn_emit_attivita_fatturabili_da_commessa` (la pull
+# che ristampa la sorgente a COMMESSA — la forma che ha nascosto il bug),
+# `fn_select_attivita_fatturabili` con lock, `FattureRigheService`, task IVA
+# e scadenze. Un fixture che scrivesse il termine sulla commessa o sulla
+# testata fattura testerebbe se stesso (lezione
+# `feedback_whitelist_dal_percorso_reale`).
+#
+# ISOLAMENTO. La competenza dei documenti clonati e' spostata ~14 mesi nel
+# futuro: la selezione del lotto (gia' filtrata per BA + emittente + tipo
+# doc) non puo' rastrellare attivita' vive dell'ambiente, ne' esserne
+# inquinata. L'attivita' di CONTROLLO del test 4 usa la competenza del mese
+# precedente per NON entrare nel lotto.
+#
+# IDEMPOTENZA. Tutto in `transaction.atomic()` con `set_rollback(True)`:
+# ordini, commesse, attivita', lotto, fatture e rate non persistono.
+# Rieseguibile all'infinito. Nessuna cancellazione preventiva: il fixture
+# non riusa nulla (marker uuid per ogni giro).
+#
+# Indice test (0..7):
+#   0  controprova binding: `fn_list_ordini_da_pushare` espone le condizioni
+#      dell'ordine e `PushableRow` le PORTA (il `col_map.get` e' vivo, non
+#      piu' inerte) — se e' rosso qui, il difetto e' nel contratto di push
+#   1  push reale: la commessa creata porta termine E modalita' dell'ordine
+#      (§7 punto 2)
+#   2  due ordini stesso cliente, termini diversi -> DUE commesse distinte
+#      (§7 punto 4, meta' commesse; esercita la chiave DB + cache_key)
+#   3  pull: le attivita' nascono nella forma reale (sorgente COMMESSA +
+#      `commessa_attivita_id`) e il resolver risolve il termine
+#      dell'ORDINE dal percorso che le attraversa (livello 1 ripuntato
+#      `20260803-03` + livello 2)
+#   4  controllo discriminante: commessa SENZA termine -> il resolver NON
+#      da' il termine dell'ordine (il valore del test 3 viene dal documento,
+#      non dal default ambientale) — skip parlante se il catalogo coincide
+#   5  giro fatture: DUE fatture, una per termine (§7 punto 4, meta' fatture)
+#   6  la testata porta il termine del DOCUMENTO, non del cliente
+#      (il caso 2263 alla rovescia) (§7 punto 3, testata)
+#   7  piano rate: la fattura del termine multi-rata ha le SUE rate e la
+#      somma quadra con `totale_a_pagare` (§7 punto 3, rate)
+# ------------------------------------------------------------
+
+import uuid
+from datetime import date, timedelta
+from decimal import Decimal
+
+from django.db import connection, transaction
+
+from apps.vendite.db.commesse_repository import CommesseRepository
+from apps.vendite.db.pipeline_repository import VenditePipelineRepository
+from apps.vendite.services.commesse_service import pr_run_commesse_push_one
+from apps.vendite.services.fatture_righe_service import FattureRigheService
+
+FAIL: list[str] = []
+SKIP: list[str] = []
+
+
+# Scopo: Registra ed emette l'esito di una singola asserzione dello smoke.
+def check(label, cond, detail=""):
+    print(("  OK   " if cond else "  FAIL ") + label + (f" — {detail}" if detail else ""))
+    if not cond:
+        FAIL.append(label)
+
+
+# Scopo: Segnala un caso NON esercitabile su questo ambiente, invece di
+#        tacerlo e far leggere «tutto verde» a una copertura mancata.
+def skip(label, motivo):
+    print(f"  SKIP {label} — {motivo}")
+    SKIP.append(label)
+
+
+# Scopo: Clona un ordine reale (testata) in stato CONFERMATO con le condizioni
+#        di pagamento volute. E' il punto d'ingresso della catena: da qui in
+#        poi il termine viaggia SOLO per mano del codice di produzione.
+def clona_ordine(cur, template_id, *, data_doc, termine_id, modalita_id, marker):
+    cur.execute(
+        """
+        INSERT INTO vendite.ordini (
+            soggetto_ruolo_id, billing_account_id, data, stato_doc_ordine_id,
+            valuta_id, tasso_cambio, modalita_pagamento_id, termine_pagamento_id,
+            fatturazione_trigger, canale_origine, utility_id,
+            emittente_fiscale_id, fatturazione_immediata, meta
+        )
+        SELECT o.soggetto_ruolo_id, o.billing_account_id, %s,
+               (SELECT id FROM config.stati_doc_ordini
+                 WHERE codice_interno = 'CONFERMATO'),
+               o.valuta_id, o.tasso_cambio, %s, %s,
+               'CONFERMATO', o.canale_origine, o.utility_id,
+               o.emittente_fiscale_id, false, jsonb_build_object('smoke', %s)
+          FROM vendite.ordini o WHERE o.id = %s
+        RETURNING id
+        """,
+        [data_doc, modalita_id, termine_id, marker, template_id],
+    )
+    return cur.fetchone()[0]
+
+
+# Scopo: Una riga d'ordine minimale (articolo NON composito: il fan-out BoM e'
+#        presidiato altrove e qui sporcherebbe i conteggi). `quantita` la
+#        deriva il trigger `trgfn_qta_from_operativa` dalla coppia operativa.
+def clona_riga(cur, ordine_id, riga_tpl, *, prezzo):
+    cur.execute(
+        """
+        INSERT INTO vendite.ordini_righe (
+            ordine_id, riga_nr, articolo_id, descrizione, quantita,
+            qta_operativa, uom_operativa_id,
+            prezzo_unitario, sconto_percentuale, iva_id, factor_to_base, attivo
+        ) VALUES (%s, 1, %s, %s, 1, 1, %s, %s, 0, %s, 1, true)
+        RETURNING id
+        """,
+        [ordine_id, riga_tpl["articolo_id"], riga_tpl["descrizione"],
+         riga_tpl["uom_id"], prezzo, riga_tpl["iva_id"]],
+    )
+    return cur.fetchone()[0]
+
+
+# Scopo: Fatture del lotto con termine di testata, ordinate.
+def fatture_del_lotto(cur, lotto_id):
+    cur.execute(
+        """
+        SELECT f.id, f.termine_pagamento_id, f.modalita_pagamento_id,
+               f.totale_a_pagare
+          FROM vendite.fatturazione_lotti_fatture lf
+          JOIN vendite.fatture f ON f.id = lf.fattura_id
+         WHERE lf.lotto_id = %s ORDER BY f.id
+        """, [lotto_id],
+    )
+    return cur.fetchall()
+
+
+print("\n=== SMOKE termine dal DOCUMENTO alla commessa e alla fattura (§7 punti 2-4) ===\n")
+
+repo_commesse = CommesseRepository()
+repo_pipeline = VenditePipelineRepository()
+
+with transaction.atomic():
+    with connection.cursor() as cur:
+        # RLS: ordini/commesse/lotti/fatture sono scoped per emittente. Senza
+        # GUC operatore le SELECT tornano 0 righe e le INSERT falliscono il
+        # WITH CHECK (trappola gia' pagata: un conteggio fail-closed somiglia
+        # a un dato).
+        cur.execute(
+            "SELECT set_config('app.ruolo_applicativo','OPERATORE',false),"
+            "       set_config('app.current_user_id', (SELECT auth_user_id::text"
+            "         FROM config.user_emittenti_fiscali LIMIT 1), false)"
+        )
+
+        # --- catalogo: il termine multi-rata (il caso ORD0004786) + un termine
+        #     DIVERSO per il secondo ordine. Presi dal catalogo reale.
+        cur.execute(
+            "SELECT id, codice_interno, numero_rate FROM config.termini_pagamento"
+            " WHERE attivo AND numero_rate > 1 ORDER BY numero_rate DESC, id LIMIT 1"
+        )
+        term = cur.fetchone()
+        if not term:
+            raise SystemExit("Nessun termine multi-rata a catalogo: giro non esercitabile.")
+        term_doc, term_doc_cod, n_rate = term
+
+        cur.execute(
+            "SELECT id, codice_interno FROM config.termini_pagamento"
+            " WHERE attivo AND id <> %s ORDER BY numero_rate ASC, id LIMIT 1",
+            [term_doc],
+        )
+        alt = cur.fetchone()
+        if not alt:
+            raise SystemExit("Serve un secondo termine attivo distinto: catalogo troppo povero.")
+        term_alt, term_alt_cod = alt
+
+        cur.execute("SELECT id FROM config.modalita_pagamento ORDER BY id LIMIT 1")
+        r = cur.fetchone()
+        modalita_id = r[0] if r else None
+
+        # --- template: un ordine vero visibile nello scope RLS dell'operatore
+        #     GUC (stessa coerenza emittente/BA, il guard di scope passa) e una
+        #     riga con articolo NON composito.
+        cur.execute(
+            """
+            SELECT o.id, o.billing_account_id
+              FROM vendite.ordini o
+             WHERE o.billing_account_id IS NOT NULL
+             ORDER BY o.id DESC LIMIT 1
+            """
+        )
+        row = cur.fetchone()
+        if not row:
+            raise SystemExit("Nessun ordine template nello scope RLS dell'operatore GUC.")
+        template_id, ba_id = row
+
+        cur.execute(
+            """
+            SELECT r.articolo_id, r.descrizione, r.iva_id, a.uom_id
+              FROM vendite.ordini_righe r
+              JOIN catalogo.articoli a
+                ON a.id = r.articolo_id AND a.is_composito IS FALSE
+             WHERE r.attivo AND r.quantita > 0
+             ORDER BY r.id DESC LIMIT 1
+            """
+        )
+        row = cur.fetchone()
+        if not row:
+            raise SystemExit("Nessuna riga template con articolo non composito.")
+        riga_tpl = {"articolo_id": row[0], "descrizione": row[1],
+                    "iva_id": row[2], "uom_id": row[3]}
+
+        # Competenza ISOLATA: ~14 mesi nel futuro, meta' mese. La selezione
+        # del lotto non incrocia nulla di vivo.
+        data_doc = (date.today() + timedelta(days=425)).replace(day=15)
+        competenza = data_doc.replace(day=1)
+
+        marker = uuid.uuid4().hex[:8]
+        ord_a = clona_ordine(cur, template_id, data_doc=data_doc, termine_id=term_doc,
+                             modalita_id=modalita_id, marker=f"{marker}-A")
+        clona_riga(cur, ord_a, riga_tpl, prezzo=Decimal("100.00"))
+        ord_b = clona_ordine(cur, template_id, data_doc=data_doc, termine_id=term_alt,
+                             modalita_id=modalita_id, marker=f"{marker}-B")
+        clona_riga(cur, ord_b, riga_tpl, prezzo=Decimal("200.00"))
+        print(f"ordini clonati: A={ord_a} ({term_doc_cod}, {n_rate} rate) · "
+              f"B={ord_b} ({term_alt_cod}) · BA {ba_id} · competenza {competenza}\n")
+
+    # 0) BINDING. La fn espone le colonne (T.1) e il PushableRow le porta
+    #    (`col_map.get`, ad1151da9): e' il punto esatto in cui il fix BE era
+    #    INERTE fino al changeset di oggi.
+    rows_a = repo_commesse.fetch_pushable_rows("ORDINE_VENDITA", sorgente_uid=ord_a)
+    check("0) fn_list -> PushableRow porta termine e modalita' dell'ordine",
+          len(rows_a) == 1
+          and rows_a[0].termine_pagamento_id == term_doc
+          and (modalita_id is None or rows_a[0].modalita_pagamento_id == modalita_id),
+          f"righe={len(rows_a)} termine={rows_a[0].termine_pagamento_id if rows_a else None} "
+          f"(atteso {term_doc} {term_doc_cod}) "
+          f"modalita'={rows_a[0].modalita_pagamento_id if rows_a else None} (attesa {modalita_id})")
+    print()
+
+    # --- push REALE (handler + ponte approvazione + PRONTA_FATTURAZIONE) ----
+    res_a = pr_run_commesse_push_one(sorgente_codice="ORDINE_VENDITA", sorgente_uid=ord_a)
+    res_b = pr_run_commesse_push_one(sorgente_codice="ORDINE_VENDITA", sorgente_uid=ord_b)
+    if len(res_a["commesse_ids"]) != 1 or len(res_b["commesse_ids"]) != 1:
+        raise SystemExit(f"Push inatteso: A->{res_a['commesse_ids']} B->{res_b['commesse_ids']}")
+    com_a, com_b = res_a["commesse_ids"][0], res_b["commesse_ids"][0]
+
+    with connection.cursor() as cur:
+        cur.execute(
+            "SELECT id, termine_pagamento_id, modalita_pagamento_id,"
+            "       emittente_soggetto_ruolo_id"
+            "  FROM vendite.commesse WHERE id = ANY(%s) ORDER BY id",
+            [[com_a, com_b]],
+        )
+        commesse = {r[0]: r for r in cur.fetchall()}
+
+        # 1) §7 punto 2: la commessa PORTA le condizioni del documento.
+        ca = commesse.get(com_a)
+        check("1) la commessa del push porta termine e modalita' dell'ordine (§7.2)",
+              ca is not None and ca[1] == term_doc
+              and (modalita_id is None or ca[2] == modalita_id),
+              f"commessa {com_a}: termine={ca[1] if ca else None} (atteso {term_doc}) "
+              f"modalita'={ca[2] if ca else None} (attesa {modalita_id})")
+
+        # 2) §7 punto 4 (meta' commesse): termini diversi -> commesse diverse.
+        cb = commesse.get(com_b)
+        check("2) due ordini stesso cliente, termini diversi -> DUE commesse (§7.4)",
+              com_a != com_b and cb is not None and cb[1] == term_alt,
+              f"A->commessa {com_a} ({term_doc_cod}) · B->commessa {com_b} "
+              f"({cb[1] if cb else None}, atteso {term_alt} {term_alt_cod})")
+        emittente_sr_id = ca[3] if ca else None
+    print()
+
+    # --- pull REALE: e' il passo che ristampa la sorgente a COMMESSA --------
+    with connection.cursor() as cur:
+        for cid in (com_a, com_b):
+            cur.execute(
+                "SELECT inserted_rows FROM"
+                " vendite.fn_emit_attivita_fatturabili_da_commessa(%s)", [cid],
+            )
+            inserted = cur.fetchone()[0]
+            if inserted < 1:
+                raise SystemExit(f"Pull commessa {cid}: nessuna attivita' emessa.")
+
+        cur.execute(
+            """
+            SELECT a.id, s.codice_interno, a.commessa_attivita_id, a.commessa_id,
+                   a.tipo_doc_fiscale_id, a.valuta_id
+              FROM vendite.attivita_fatturabili a
+              JOIN config.sorgenti s ON s.id = a.sorgente_tipo_id
+             WHERE a.commessa_id = ANY(%s) ORDER BY a.id
+            """, [[com_a, com_b]],
+        )
+        afs = cur.fetchall()
+        af_a = next((a for a in afs if a[3] == com_a), None)
+        forma_ok = bool(afs) and all(a[1] == "COMMESSA" and a[2] is not None for a in afs)
+
+        # 3) La FORMA REALE (quella che rendeva morto il vecchio livello 1) +
+        #    il resolver che ci vede attraverso (T.2). Asserzione doppia di
+        #    proposito: se un domani il pull smettesse di ristampare la
+        #    sorgente, questo test dira' che il contesto del giro e' cambiato.
+        ris_a = ris_b = None
+        if af_a is not None:
+            cur.execute(
+                "SELECT termine_pagamento_id FROM"
+                " vendite.fn_resolve_termini_pagamento(%s)", [af_a[0]],
+            )
+            ris_a = cur.fetchone()[0]
+        af_b = next((a for a in afs if a[3] == com_b), None)
+        if af_b is not None:
+            cur.execute(
+                "SELECT termine_pagamento_id FROM"
+                " vendite.fn_resolve_termini_pagamento(%s)", [af_b[0]],
+            )
+            ris_b = cur.fetchone()[0]
+        check("3) forma reale (sorgente COMMESSA + commessa_attivita_id) e il"
+              " resolver risolve il termine dell'ORDINE",
+              forma_ok and ris_a == term_doc and ris_b == term_alt,
+              f"forma={'ok' if forma_ok else 'NO'} · A->{ris_a} (atteso {term_doc}) "
+              f"· B->{ris_b} (atteso {term_alt})")
+
+        tipo_doc_id = afs[0][4] if afs else None
+        valuta_id = afs[0][5] if afs else None
+
+        # 4) CONTROLLO DISCRIMINANTE: senza il termine del documento la catena
+        #    deve dare ALTRO (cliente o default D-J). Se desse comunque
+        #    `term_doc`, il test 3 non proverebbe nulla. Competenza al mese
+        #    PRIMA per non entrare nel lotto di sotto.
+        cur.execute(
+            """
+            SELECT vendite.fn_get_or_create_commessa(
+                p_billing_account_id => %s, p_utility_id => c.utility_id,
+                p_emittente_soggetto_ruolo_id => c.emittente_soggetto_ruolo_id,
+                p_competenza_dal => %s, p_competenza_al => %s,
+                p_meta => %s::jsonb, p_force_new => true)
+              FROM vendite.commesse c WHERE c.id = %s
+            """,
+            [ba_id, competenza - timedelta(days=1), competenza - timedelta(days=1),
+             f'{{"smoke": "{marker}-ctrl"}}', com_a],
+        )
+        com_ctrl = cur.fetchone()[0]
+        cur.execute(
+            "SELECT istanza_utility_id, uom_id FROM vendite.attivita_fatturabili"
+            " WHERE id = %s", [af_a[0]],
+        )
+        istanza_ctrl, uom_ctrl = cur.fetchone()
+        cur.execute(
+            """
+            SELECT attivita_id FROM vendite.fn_upsert_commessa_attivita(
+                p_commessa_id => %s, p_segment_key => %s, p_articolo_id => %s,
+                p_istanza_utility_id => %s,
+                p_data_attivita => %s, p_uom_id => %s, p_quantita => 1,
+                p_competenza_mese => %s, p_competenza_dal => %s,
+                p_competenza_al => %s, p_prezzo_snapshot => 10,
+                p_prezzo_base_snapshot => NULL, p_origine_prezzo => NULL,
+                p_tipo_variazione_applicata => NULL,
+                p_valore_variazione_applicata => NULL, p_promo_id => NULL,
+                p_contratto_id => NULL, p_categoria_cliente_id_snapshot => NULL,
+                p_classe_utenza_id_snapshot => NULL,
+                p_tipo_doc_fiscale_id => %s,
+                p_valuta_id => %s, p_prezzo_bloccato => true,
+                p_meta => '{}'::jsonb)
+            """,
+            [com_ctrl, f"SMOKE:{marker}:CTRL", riga_tpl["articolo_id"],
+             istanza_ctrl, competenza - timedelta(days=1),
+             uom_ctrl, (competenza - timedelta(days=1)).replace(day=1),
+             competenza - timedelta(days=1), competenza - timedelta(days=1),
+             tipo_doc_id, valuta_id],
+        )
+        ca_ctrl = cur.fetchone()[0]
+        cur.execute(
+            """
+            INSERT INTO vendite.attivita_fatturabili (
+                articolo_id, istanza_utility_id, billing_account_id,
+                data_attivita, quantita, uom_id, qta_operativa,
+                uom_operativa_id, factor_to_base, prezzo_unitario, valuta_id,
+                tipo_doc_fiscale_id, competenza_mese, competenza_dal,
+                competenza_al, commessa_id, commessa_attivita_id,
+                sorgente_tipo_id, sorgente_uid, lock_in_fatturazione,
+                fatturato, approvato, stato_esecuzione, prezzo_bloccato, meta
+            )
+            SELECT a.articolo_id, a.istanza_utility_id, a.billing_account_id,
+                   %s, 1, a.uom_id, 1, a.uom_id, 1, 10, a.valuta_id,
+                   a.tipo_doc_fiscale_id, %s, %s, %s, %s, %s,
+                   a.sorgente_tipo_id, %s, FALSE, FALSE, FALSE,
+                   'PENDING', TRUE, '{}'::jsonb
+              FROM vendite.attivita_fatturabili a WHERE a.id = %s
+            RETURNING id
+            """,
+            [competenza - timedelta(days=1),
+             (competenza - timedelta(days=1)).replace(day=1),
+             competenza - timedelta(days=1), competenza - timedelta(days=1),
+             com_ctrl, ca_ctrl, str(uuid.uuid4()), af_a[0]],
+        )
+        af_ctrl = cur.fetchone()[0]
+        cur.execute(
+            "SELECT termine_pagamento_id FROM"
+            " vendite.fn_resolve_termini_pagamento(%s)", [af_ctrl],
+        )
+        ris_ctrl = cur.fetchone()[0]
+        if ris_ctrl == term_doc:
+            skip("4) controllo discriminante",
+                 f"il fallback ambientale (cliente/D-J) coincide col termine "
+                 f"del documento ({term_doc} {term_doc_cod}): il catalogo di "
+                 "questo ambiente non permette la controprova")
+        else:
+            check("4) senza termine sul documento la catena da' ALTRO"
+                  " (il test 3 e' discriminante)",
+                  ris_ctrl != term_doc,
+                  f"controllo -> {ris_ctrl} (cliente/default), documento -> {term_doc}")
+    print()
+
+    # --- lotto + selezione REALE + generazione REALE ------------------------
+    with connection.cursor() as cur:
+        cur.execute(
+            "SELECT utility_id FROM anagrafiche.billing_account WHERE id = %s",
+            [ba_id],
+        )
+        utility_id = cur.fetchone()[0]
+        lock_batch_id = str(uuid.uuid4())
+        cur.execute(
+            """
+            INSERT INTO vendite.fatturazione_lotti (
+                codice, competenza_mese, utility_id, tipo_doc_fiscale_id,
+                stato_doc_fiscale_id, emittente_soggetto_ruolo_id, tipo_lotto,
+                stato_lotto, stato_operativo, lock_batch_id, meta
+            )
+            SELECT %s, %s, %s, %s,
+                   (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno='DRAFT'),
+                   %s, 'MASSIVO', 'IN_ESECUZIONE', 'APERTO', %s,
+                   '{"smoke": true}'::jsonb
+            RETURNING id
+            """,
+            [f"SMOKE-TDOC-{marker}", competenza, utility_id, tipo_doc_id,
+             emittente_sr_id, lock_batch_id],
+        )
+        lotto_id = cur.fetchone()[0]
+
+        # Selezione REALE: stessa funzione del task `select_attivita`, con
+        # lock. Il perimetro (BA + competenza futura + emittente + tipo doc)
+        # isola le due attivita' del fixture.
+        cur.execute(
+            """
+            SELECT vendite.fn_select_attivita_fatturabili(
+                p_competenza_mese => %s,
+                p_tipo_doc_fiscale_id => %s,
+                p_lock_batch_id => %s::uuid,
+                p_lock => true,
+                p_data_fatturazione => CURRENT_DATE,
+                p_billing_account_id => %s,
+                p_utility_id => %s,
+                p_valuta_id => NULL,
+                p_emittente_soggetto_ruolo_id => %s,
+                p_limit => NULL,
+                p_gruppi => NULL::text[]
+            )
+            """,
+            [competenza, tipo_doc_id, lock_batch_id, ba_id, utility_id,
+             emittente_sr_id],
+        )
+        cur.execute(
+            "SELECT count(*) FROM vendite.attivita_fatturabili"
+            " WHERE lock_batch_id = %s::uuid", [lock_batch_id],
+        )
+        n_lock = cur.fetchone()[0]
+        if n_lock != 2:
+            raise SystemExit(
+                f"Selezione inattesa: {n_lock} attivita' lockate sul lotto "
+                f"{lotto_id} (attese 2). Contesto del giro cambiato?"
+            )
+        print(f"lotto {lotto_id} · 2 attivita' selezionate e lockate\n")
+
+    FattureRigheService().generate_fatture_righe(lotto_id)
+    repo_pipeline.run_ricalcola_iva_lotto_task(lotto_id=lotto_id)
+    esito_scad = repo_pipeline.run_genera_scadenze_lotto_task(lotto_id=lotto_id)
+
+    with connection.cursor() as cur:
+        fatture = fatture_del_lotto(cur, lotto_id)
+        termini_prodotti = sorted({f[1] for f in fatture})
+
+        # 5) §7 punto 4 (meta' fatture): due commesse, due fatture.
+        check("5) il giro produce DUE fatture, una per termine (§7.4)",
+              len(fatture) == 2 and termini_prodotti == sorted([term_doc, term_alt]),
+              f"fatture={[f[0] for f in fatture]} termini={termini_prodotti} "
+              f"attesi={sorted([term_doc, term_alt])}")
+
+        # 6) §7 punto 3 (testata): il termine e' quello del DOCUMENTO. La 2263
+        #    usci' col termine del cliente; qui deve uscire con quello
+        #    dell'ordine, e la controprova del test 4 dice che non e' un caso.
+        fatt_doc = next((f for f in fatture if f[1] == term_doc), None)
+        check("6) la testata porta il termine del documento, non del cliente (§7.3)",
+              fatt_doc is not None
+              and (modalita_id is None or fatt_doc[2] == modalita_id),
+              f"fattura={fatt_doc[0] if fatt_doc else None} termine={term_doc} "
+              f"{term_doc_cod} modalita'={fatt_doc[2] if fatt_doc else None}")
+
+        # 7) §7 punto 3 (rate): il piano rate e' quello del termine del
+        #    documento — N rate, somma = totale_a_pagare. Il caso ORD0004786
+        #    (2 rate 30/60 fine mese) e' esattamente questo.
+        if fatt_doc is None:
+            skip("7) piano rate", "nessuna fattura col termine del documento (vedi 5/6)")
+        else:
+            cur.execute(
+                "SELECT numero_rata, data_scadenza, importo"
+                "  FROM vendite.fatture_scadenze WHERE fattura_id = %s"
+                " ORDER BY numero_rata", [fatt_doc[0]],
+            )
+            rate = cur.fetchall()
+            somma = sum((r[2] for r in rate), Decimal("0"))
+            check(f"7) piano rate del documento: {n_rate} rate e quadratura (§7.3)",
+                  len(rate) == n_rate and fatt_doc[3] is not None
+                  and somma == fatt_doc[3] and esito_scad["failed_rows"] == 0,
+                  f"rate={[(r[0], str(r[1]), str(r[2])) for r in rate]} "
+                  f"Σ={somma} totale_a_pagare={fatt_doc[3]} contatori={esito_scad}")
+
+    transaction.set_rollback(True)
+
+print("\n=== ROLLBACK eseguito: nessun dato persistito ===")
+if SKIP:
+    print(f"=== SALTATI ({len(SKIP)}): {', '.join(SKIP)} ===")
+if FAIL:
+    print(f"=== FALLITI ({len(FAIL)}): {', '.join(FAIL)} ===")
+else:
+    print("=== TUTTI I TEST OK ===")

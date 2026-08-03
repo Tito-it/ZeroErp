@@ -329,3 +329,61 @@ E ci è servita due volte: il nostro test 9, alla prima stesura, usava l'ordine
 dietro un'attività esistente — **già pushato**, quindi giustamente escluso dalla
 `fn_list_*`. Stessa famiglia: una riga in uno stato che il percorso reale non ha.
 
+
+---
+
+## 10. ✅ Consuntivo BE (2026-08-03) — giro reale fatto, §7 chiusa 5/5
+
+### 10.1 Il giro reale che la vostra §9.4 chiedeva
+
+Nuovo smoke **`smoke-push-termine-documento-commessa.py`** (idempotente, tutto
+in rollback): clona un ordine vero in CONFERMATO col termine `TP_30_60_EOM_2R`
+e da lì in poi è **solo codice di produzione** — `pr_run_commesse_push_one`,
+`fn_emit_attivita_fatturabili_da_commessa`, `fn_select_attivita_fatturabili`
+con lock, `FattureRigheService`, task IVA e scadenze. Il termine non viene mai
+scritto a mano su commessa o testata: o lo porta la catena, o è rosso.
+
+**8/8 verdi.** In particolare:
+
+| §7 | Esito |
+|---|---|
+| 2 | ✅ la commessa del push porta termine **e** modalità dell'ordine |
+| 3 | ✅ la fattura esce col piano rate del **documento**: 2 rate, Σ = `totale_a_pagare` al centesimo — il caso 2263 alla rovescia, con **controprova discriminante** (commessa senza termine → la catena dà il termine del cliente, quindi il valore osservato viene dal documento e non dal default ambientale) |
+| 4 | ✅ due ordini stesso cliente con termini diversi → **due** commesse e **due** fatture |
+
+Con i vostri 1 e 5 (§9.4), la **definizione di fatto è chiusa 5/5**.
+
+### 10.2 🔴 Ma il giro ha trovato un difetto — NOSTRO, e il «si accende da sé» era falso
+
+Alla prima esecuzione il test 0 era rosso: `PushableRow.termine_pagamento_id`
+**None** con la colonna esposta e il valore giusto a DB. La causa non era vostra:
+`fetch_pushable_rows` costruisce la `col_map` filtrando i nomi sulla whitelist
+`_PUSHABLE_SHARED_COLS` — e le due colonne nuove **non c'erano**. Il
+`col_map.get` difensivo di §4 leggeva da una mappa che non le avrebbe contenute
+mai: la frase «si accende da sé appena le colonne compaiono» (§3.1) era
+**sbagliata**, e i 5 test di `ad1151da9` non potevano dirlo perché il mock del
+cursore era fermo al contratto a 29 colonne — un fixture che riproduce la forma
+sbagliata conferma un comportamento inesistente, **terza occorrenza** della
+lezione `feedback_whitelist_dal_percorso_reale` in questo stesso filone.
+
+Fix: le due colonne in `_PUSHABLE_SHARED_COLS` (con commento-sentinella: la
+whitelist È il cancello del binding), mock dei test allineato al contratto a 31
+colonne, asserzioni sul passaggio dei valori con **prova di mutazione eseguita**
+(togliendo i due nomi dalla whitelist diventa rosso SOLO
+`test_fetch_pushable_rows_maps_shared_columns`).
+
+### 10.3 Non-regressione
+
+- suite `apps.vendite`: **1436 verdi**;
+- `smoke-fattura-aggregazione-termini.py` **7/7** e `smoke-fattura-scadenze.py`
+  **10/10** rieseguiti col resolver ripuntato (`20260803-03`) sotto: verdi
+  entrambi, nessun cambiamento osservabile sul loro perimetro — coerente con la
+  vostra distribuzione «una sola attività si sposta su 35».
+
+### 10.4 Cosa resta
+
+- La **fattura 2263** resta com'è: EMESSA, non numerata, si corregge solo con
+  la vostra Fase 6 (ritorno a DRAFT) — invariato da §6/§8.5.
+- Validazione **a video** di «Termine»/«Modalità» nel drawer fattura su una
+  fattura nuova (era già l'unico aperto del cantiere satelliti, e ora una
+  fattura nuova porta davvero il termine del suo documento).

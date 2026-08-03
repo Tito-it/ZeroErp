@@ -218,6 +218,16 @@ const haAzioni = computed(
     !!slots.actions,
 )
 
+// Colonna di SELEZIONE (checkbox custom, pattern useSelezioneToggle): chrome
+// della lista come l'expander, NON una colonna di catalogo — non si ritira,
+// non si esporta, non si personalizza. Renderizzata solo se il caller passa lo
+// slot `#selection` (header nel gemello `#selection-header`). Estratta il
+// 2026-08-03 alla 2ª occorrenza (regola del 2, ok Tid): righe approvabili di
+// CommessaGestioneDrawer + emissione mirata dei gruppi fatturabili — PrimeVue 4
+// non ha piu' il predicato per-riga, quindi la checkbox e' custom per forza
+// (vedi useSelezioneToggle) e la Column deve viverla il BB.
+const haSelezione = computed(() => !!slots.selection)
+
 // Dettaglio inline del caller (slot `row-expansion`): master-detail dentro la
 // riga, es. le versioni sotto ogni listino. Convive con le colonne ritirate —
 // una riga aperta mostra prima quelle, poi il dettaglio.
@@ -452,6 +462,22 @@ defineExpose({
       @sort="onSort"
       @row-click="onRowClick"
     >
+      <!-- Colonna selezione (chrome, slot-driven): prima di tutto come nei
+           pattern useSelezioneToggle. Header = seleziona-tutto del caller. -->
+      <Column
+        v-if="haSelezione"
+        :exportable="false"
+        class="lista-config-selezione"
+        style="width: 3rem; max-width: 3rem;"
+      >
+        <template #header>
+          <slot name="selection-header" />
+        </template>
+        <template #body="{ data }">
+          <slot name="selection" :data="data" />
+        </template>
+      </Column>
+
       <!-- Expander: solo quando il ritiro dinamico ha nascosto colonne.
            Apre la riga di espansione che mostra le colonne ritirate (zero
            dati persi). -->

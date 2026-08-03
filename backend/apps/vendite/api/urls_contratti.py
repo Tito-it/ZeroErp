@@ -13,6 +13,7 @@ from apps.vendite.api.contratti_documenti_views import (
     ApiContrattoDocumentoAnteprima,
     ApiContrattoDocumentoFile,
     ApiContrattoDocumentoFileDownload,
+    ApiContrattoDocumentoRistampa,
     ApiContrattoDocumentoGenera,
     ApiContrattoEmetti,
 )
@@ -150,6 +151,12 @@ urlpatterns = [
         "<int:sorgente_id>/documenti/<int:documento_id>/file/<int:file_id>/",
         ApiContrattoDocumentoFileDownload.as_view(),
         name="vendite-contratti-documenti-file-download",
+    ),
+    # Ristampa fedele (percorso 3): versione pinnata + contesto congelato.
+    path(
+        "<int:sorgente_id>/documenti/<int:documento_id>/ristampa/",
+        ApiContrattoDocumentoRistampa.as_view(),
+        name="vendite-contratti-documenti-ristampa",
     ),
     # Note partizionate (vendite.note_contratto) — testata o riga.
     # GET ?target_riga_id=<rid> per filtrare le note della singola riga.

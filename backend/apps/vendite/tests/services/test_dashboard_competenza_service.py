@@ -33,19 +33,26 @@ Indice test eseguiti:
 14) DashCompetenzaErroriServiceTests.test_errori_ok_envelope_paginato
 15) DashCompetenzaErroriServiceTests.test_errori_competenza_opzionale_none
 16) DashCompetenzaErroriServiceTests.test_errori_competenza_normalizzata_al_primo
+16a) DashCompetenzaErroriServiceTests.test_errori_order_by_propagato
+16b) DashCompetenzaErroriServiceTests.test_errori_order_by_fuori_whitelist
+16c) DashCompetenzaErroriServiceTests.test_errori_order_dir_invalido
 17) DashCompetenzaGruppiServiceTests.test_gruppi_envelope_con_riepilogo_e_facet
 18) DashCompetenzaGruppiServiceTests.test_gruppi_filtro_tipo_inoltrato_alla_lista_e_ai_totali
 19) DashCompetenzaGruppiServiceTests.test_gruppi_facet_ignora_il_filtro_tipo
 20) DashCompetenzaGruppiServiceTests.test_gruppi_stadio_invalido
 21) DashCompetenzaGruppiServiceTests.test_gruppi_order_by_non_valido
 22) DashCompetenzaGruppiServiceTests.test_gruppi_competenza_normalizzata_al_primo
+23) DashCompetenzaGruppiRepositoryTests.test_query_risolve_id_documento_da_area_e_uid
+24) DashCompetenzaGruppiRepositoryTests.test_mapping_espone_documento_id_e_ne_preserva_il_null
 """
 
 from datetime import date
+from decimal import Decimal
 from unittest import TestCase
 from unittest.mock import patch
 
 from apps.core.services.service_errors import ServiceError
+from apps.vendite.db.vendite_repository import VenditeRepository
 from apps.vendite.services import vendite_service
 from apps.vendite.services.vendite_service import (
     fn_dash_competenza_attivita,
@@ -457,6 +464,42 @@ class DashCompetenzaErroriServiceTests(TestCase):
         kwargs = mock_repo.call_args.kwargs
         self.assertEqual(kwargs["competenza_mese"], date(2026, 5, 1))
 
+    # Scopo: order_by in whitelist → propagato al repository (8° lotto liste).
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_competenza_errori",
+        return_value=([], 0),
+    )
+    def test_errori_order_by_propagato(self, mock_repo):
+        fn_dash_competenza_errori(order_by="data_evento", order_dir="asc")
+        kwargs = mock_repo.call_args.kwargs
+        self.assertEqual(kwargs["order_by"], "data_evento")
+        self.assertEqual(kwargs["order_dir"], "asc")
+
+    # Scopo: order_by fuori whitelist → ServiceError 400, repo mai chiamato.
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_competenza_errori",
+        return_value=([], 0),
+    )
+    def test_errori_order_by_fuori_whitelist(self, mock_repo):
+        with self.assertRaises(ServiceError) as ctx:
+            fn_dash_competenza_errori(order_by="messaggio")
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        mock_repo.assert_not_called()
+
+    # Scopo: order_dir non asc/desc → ServiceError 400, repo mai chiamato.
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_competenza_errori",
+        return_value=([], 0),
+    )
+    def test_errori_order_dir_invalido(self, mock_repo):
+        with self.assertRaises(ServiceError) as ctx:
+            fn_dash_competenza_errori(order_by="data_evento", order_dir="banana")
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        mock_repo.assert_not_called()
+
 
 class DashCompetenzaGruppiServiceTests(TestCase):
     """Elenco GRUPPI FATTURABILI + filtro «tipo documento/sorgente».
@@ -553,3 +596,57 @@ class DashCompetenzaGruppiServiceTests(TestCase):
             repo.list_dash_competenza_gruppi_tipi,
         ):
             self.assertEqual(chiamata.call_args.kwargs["competenza_mese"], atteso)
+
+
+class DashCompetenzaGruppiRepositoryTests(TestCase):
+    """Risoluzione del DOCUMENTO del gruppo (repository, query mockata).
+
+    Il gruppo fatturabile E' un documento sorgente, ma la vista ne espone solo
+    l'uid e il codice: senza l'id il kebab della lista non puo' aprirne il
+    drawer, che si apre per id. Questi due test presidiano la coppia
+    «la query lo chiede» + «il mapping lo consegna»: separati di proposito,
+    perche' si rompono per cause diverse (SELECT modificata vs indice di
+    colonna sfasato da un inserimento a meta' proiezione).
+    """
+
+    # Scopo: righe finte con le 14 colonne della proiezione, ultima = documento_id.
+    def _rows(self, documento_id):
+        return [(
+            "ORDINE_VENDITA:uid-1", "ORDINE_VENDITA", "ORDINI", "ORD0005174",
+            4277, "CMM-2026…", "Rossi SRL", "DA_EMETTERE", 3, Decimal("731.00"),
+            False, date(2026, 8, 3), date(2026, 8, 3), documento_id,
+        )]
+
+    # 23) La SELECT risolve l'id dalla stessa coppia (area, uid) da cui la vista
+    #     prende il codice: id e codice devono descrivere lo STESSO documento,
+    #     altrimenti il kebab aprirebbe un documento diverso da quello scritto
+    #     nella riga — il difetto peggiore possibile qui, perche' sembra
+    #     funzionare.
+    @patch.object(VenditeRepository, "_query_paged_view")
+    def test_query_risolve_id_documento_da_area_e_uid(self, mock_query):
+        mock_query.return_value = (self._rows(5387), 1)
+        VenditeRepository().list_dash_competenza_gruppi(
+            competenza_mese=date(2026, 8, 1), stadio="DA_EMETTERE",
+            limit=25, offset=0,
+        )
+        sql = mock_query.call_args.kwargs["select_sql"]
+        self.assertIn("vw_dash_fatturazione_documenti", sql)
+        self.assertIn("d.area = g.area_documento", sql)
+        self.assertIn("d.documento_uid = g.sorgente_uid", sql)
+
+    # 24) Il mapping consegna l'id al FE. Il caso NULL non e' un dettaglio: i
+    #     gruppi SOURCELESS (oneri di commessa) non hanno documento, e il FE
+    #     deve poter nascondere l'azione invece di aprire un drawer vuoto.
+    @patch.object(VenditeRepository, "_query_paged_view")
+    def test_mapping_espone_documento_id_e_ne_preserva_il_null(self, mock_query):
+        mock_query.return_value = (self._rows(5387), 1)
+        righe, _ = VenditeRepository().list_dash_competenza_gruppi(
+            competenza_mese=date(2026, 8, 1), stadio=None, limit=25, offset=0,
+        )
+        self.assertEqual(righe[0]["documento_id"], 5387)
+
+        mock_query.return_value = (self._rows(None), 1)
+        righe, _ = VenditeRepository().list_dash_competenza_gruppi(
+            competenza_mese=date(2026, 8, 1), stadio=None, limit=25, offset=0,
+        )
+        self.assertIsNone(righe[0]["documento_id"])

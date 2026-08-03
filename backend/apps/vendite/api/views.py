@@ -26,6 +26,7 @@ from apps.core.api.payload_validators import (
     optional_uuid,
     qp_int_strict,
     qp_iso_date_optional,
+    qp_str,
 )
 from apps.core.api.success_responses import success_response
 from apps.vendite.services._fatturazione_job_helpers import (
@@ -916,6 +917,8 @@ class ApiCommessaAttivita(DomainAPIView):
             OpenApiParameter(name="competenza_mese", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro mese di competenza (YYYY-MM-DD)."),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False, description="Righe per pagina (default 50, max 200)."),
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False, description="Offset paginazione (default 0)."),
+            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False, description="Colonna di ordinamento (id, data_attivita, competenza_mese, segment_key, quantita, prezzo_snapshot, stato_approvazione, stato_emissione). Assente = ordine storico per id."),
+            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False, description="Direzione ordinamento: asc | desc (default asc)."),
         ],
         responses={
             200: inline_serializer(
@@ -941,6 +944,8 @@ class ApiCommessaAttivita(DomainAPIView):
         competenza_mese = request.query_params.get("competenza_mese") or None
         limit = optional_int({"limit": request.query_params.get("limit", "50")}, "limit")
         offset = optional_int({"offset": request.query_params.get("offset", "0")}, "offset")
+        # order_by/order_dir passano al service, che li valida contro la
+        # whitelist ATTIVITA_SORT_COLUMNS (specchio della fn DB).
         data = fn_list_commessa_attivita(
             commessa_id=commessa_id,
             stato_emissione=stato_emissione,
@@ -948,6 +953,8 @@ class ApiCommessaAttivita(DomainAPIView):
             competenza_mese=competenza_mese,
             limit=limit,
             offset=offset,
+            order_by=qp_str(request.query_params.get("order_by")),
+            order_dir=qp_str(request.query_params.get("order_dir")),
         )
         return success_response(data)
 

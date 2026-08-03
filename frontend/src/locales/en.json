@@ -3418,8 +3418,17 @@
       "col_titolo": "Title",
       "col_nome_file": "File name",
       "col_stato": "Status",
-      "action_download": "Download PDF",
-      "action_aggiungi_allegati": "Add attachments"
+      "action_download": "Download original",
+      "action_aggiungi_allegati": "Add attachments",
+      "col_originale": "Original",
+      "originale_presente": "Available",
+      "originale_assente": "Not stored",
+      "download_non_disponibile": "The original file was not stored for this document: use the faithful reprint.",
+      "action_ristampa_fedele": "Faithful reprint",
+      "ristampa_fedele_hint": "Reproduces the document as it was: template and data of that time.",
+      "ristampa_fedele_ok": "Faithful reprint completed: identical to the original.",
+      "ristampa_fedele_contenuto": "Reprint faithful in content: the file differs from the original in bytes only (different print engine).",
+      "ristampa_fedele_error": "Faithful reprint failed."
     },
     "emissione": {
       "titolo": "Document issuance",
