@@ -874,48 +874,22 @@ lavori stanno nello stesso cantiere, quindi si accendono insieme.
 Il [piano BE/FE](piano-be-fe-satelliti-fattura.md) resta valido, **meno due cose**
 (§3.8) e **più una** (C-10 chiude il follow-up sui gruppi prima di aprirlo).
 
-### 3.6 Fase 6 — Ritorno del lotto a DRAFT (C-18)
+### 3.6 Fase 6 — Ritorno del lotto a DRAFT (C-18) → **ESTRATTA**
 
-Slice a sé, **dopo** le scadenze: la pulizia dei satelliti al ritorno si scrive
-quando i satelliti esistono già. Realizza il disegno di Tid — *EMESSA = documento
-non modificabile; per correggere si riporta a DRAFT e si ricalcola* — che oggi è
-dichiarato a metà e non implementato.
-
-Presupposto verificato (C-19): **a EMESSA la fattura non è numerata**, quindi il
-ritorno non annulla mai un numero fiscale.
-
-### 6.0 — Analisi preliminare **obbligatoria** (W-1)
-
-> 🔴 **Questa fase descrive un'intenzione, non ancora il lavoro.** I passi
-> 6.1-6.8 vanno riscritti **dopo** questa analisi, non durante
-> l'implementazione. Stima: ~mezza giornata di lettura
-> (`fn_pipeline_task_runtime_support`, gestione dei log critici, stati del lotto).
-
-| # | Da chiarire | Stato |
-|---|---|---|
-| **A** | **`fatturazione_lotti_task_runs`**: non vengono **mai** cancellati, solo aggiornati d'esito. Tornando a DRAFT restano i record dei task già eseguiti in EMESSA, e `RESUME_STEP`/`RESUME_TASK` si basano su quelli: se li considera completati, il rilancio **salta i task che devono rigirare** | 🔴 **decisione presa (Tid)**: o si **generano task_run nuovi**, o si **resettano correttamente**. Lasciarli com'è non è un'opzione. Quale delle due, si decide con l'analisi |
-| **B** | **Log critici della fattura**: `fatture_log` non viene toccato dal ritorno, e il runner blocca l'avanzamento *«con almeno una criticità attiva»*. Un lotto riportato a DRAFT con i log vecchi ancora lì **non riparte mai** | 🟡 rinviato (Tid: «vedremo»), ma va risolto prima che la fase sia dichiarabile finita |
-| **C** | **Stati non fiscali del lotto** (`stato_operativo`, `stato_lotto`, `lotto_job_stato`): quali valori dopo il ritorno? E per ripartire da DRAFT servirebbe `is_lotto_in_errore = true`, che è **semanticamente sbagliato** su un lotto riaperto di proposito: serve un terzo meccanismo di ripartenza, non il riuso di quello dell'errore | 🟠 **da verificare prima dello sviluppo** |
-| **D** | **Lock sulle attività**: restano bloccate col `lock_batch_id` del lotto? Se sì, `select_attivita` le ritrova prese e va verificata l'idempotenza; se no, vanno sbloccate. E `stato_esecuzione` va riportato a NULL | 🟠 **da verificare prima dello sviluppo** |
-| **E** | **Concorrenza**: il runner ha `E_PIPELINE_LOTTO_IN_ESECUZIONE`, la funzione DB del ritorno non controlla nulla | 🟠 **da verificare prima dello sviluppo** |
-| **F** | **Due guard dichiarati solo nei test**: il rifiuto su fattura numerata e il perimetro «solo MASSIVO» stanno nel pgTAP 6.8 ma non nei passi 6.2 e 6.5 come guard espliciti | 🟠 **da verificare prima dello sviluppo** |
-
-> ✅ Il settimo punto emerso dall'analisi — il **saldo d'arrotondamento orfano** —
-> è uscito dalla Fase 6: è un difetto autonomo, va corretto comunque, ed è
-> diventato **D-N pezzo 3** in Fase 3b (C-23).
-
-### 6.1-6.8 — I passi, da riscrivere dopo 6.0
-
-| # | Cosa |
-|---|---|
-| 6.1 | Seed: append a `stati_doc_fiscale_transizioni.csv` — `EMESSA → DRAFT` con `solo_lotto = f`, `solo_fattura = t`. Il vincolo «solo MASSIVO» è già presidiato altrove: `trgfn_fatture_guard_stato` blocca ogni retrocessione sui lotti GIORNALIERO confrontando `ordine` |
-| 6.2 | `vendite.fn_riporta_lotto_a_draft(p_lotto_id)`: riporta **insieme** lotto e fatture nella stessa transazione (il guard di coerenza è un constraint trigger DEFERRED: gli stati intermedi sono leciti, il risultato dev'essere allineato). **Non cancella** le fatture: le riapre |
-| 6.3 | Pulizia di ciò che è stato prodotto in EMESSA: `fatture_scadenze` **cancellate**, `fatture_riepiloghi_iva` e totali azzerati, fondi via `fn_reset_fondi_fattura` (esiste già). `fatture_indirizzi` **si lasciano**: sono prodotte in DRAFT e si rigenerano da sole (upsert idempotente) |
-| 6.4 | ⚠️ **Il rerun deve ripartire dallo step giusto.** In `_select_steps`, un rilancio su lotto non in errore riparte da `steps[current_index + 1]` — cioè da EMESSA, **saltando la rigenerazione delle righe in DRAFT**. Il ritorno deve lasciare il lotto in una condizione che faccia ripartire da DRAFT, altrimenti l'operatore riporta indietro il documento e poi non riesce a correggerlo |
-| 6.5 | **Estrazione per-fattura da lotto EMESSA (D-N-bis)** — l'operazione «togli questa fattura dal giro»: append della transizione `EMESSA → ANNULLATA` per la **fattura**; `vendite.fn_estrai_fattura_da_lotto(p_lotto_id, p_fattura_id)` che (a) rifiuta se la fattura è **numerata**, (b) **stacca** la riga `fatturazione_lotti_fatture`, (c) porta la fattura ad **ANNULLATA**, (d) libera **solo** le sue attività. ⚠️ Dipende dalla correzione dell'over-free (D-L pt.3, C-22): senza, libera quelle di tutto il lotto |
-| 6.6 | **Eliminazione del flag `esclusa` (D-M)** — perimetro DB: `fn_lotto_emittente_stati_lf`, `fn_lotto_stato_esecuzione_v2`, `fn_guard_lotto_fatture_stato_coerente` (resta la sola eccezione `critical`), outbox di stampa, colonna. Da fare **qui**, non prima: l'estrazione è ciò che rende il flag definitivamente inutile. Il lato applicativo (filtro API, `types.py`) è in [piano BE/FE §4-bis](piano-be-fe-satelliti-fattura.md) |
-| 6.7 | **Innesco applicativo**: verbo nel `LottoDrawer` e **lista «estratte»** nel cockpit — è il promemoria che giustifica il modello «reperto». Punti di intervento in [piano BE/FE §4-bis](piano-be-fe-satelliti-fattura.md) |
-| 6.8 | pgTAP: transizione `EMESSA → DRAFT` ammessa per la fattura · lotto+fatture allineati al commit · scadenze e riepiloghi azzerati · ritorno rifiutato su lotto GIORNALIERO · ritorno rifiutato se **una sola** fattura è numerata · **estrazione**: fattura ad ANNULLATA e staccata, **solo** le sue attività liberate (le altre del lotto restano bloccate — è il test di C-22), estrazione rifiutata su fattura numerata |
+> ➡️ **Dal 2026-08-03 questa fase vive in un documento suo:**
+> **[piano-db-ritorno-lotto-a-draft.md](piano-db-ritorno-lotto-a-draft.md)**.
+>
+> **Perché è uscita.** Stava qui per un vincolo d'ordine (§3.7 punto 6: la pulizia
+> dei satelliti al ritorno si scrive quando i satelliti esistono già), non per
+> parentela di tema — «satelliti della fattura» sono indirizzi e piano rate,
+> quello è **riaprire un lotto**. **Il vincolo è soddisfatto**: Fasi 2 e 4 chiuse.
+> E dal 2026-08-03 ha un **movente reale** (la fattura 2263) e un perimetro suo,
+> spezzato in due slice.
+>
+> ⚠️ **Il registro di quel cantiere è il §7 di quel documento**, non il §9 di
+> questo: qui non resta nessuna riga da aggiornare. Sono state portate là anche
+> le eredità che servivano (C-18, C-19, D-Q, la correzione di 4.2, D-L.2, D-L.3,
+> D-M, D-N-bis), che qui restano al loro posto come storia.
 
 ### 3.7 Ordine di accensione, non negoziabile
 
@@ -1022,6 +996,13 @@ e ora lo accendiamo).
 | `generazione-cliente.md` | Il cliente perde due campi: le condizioni di pagamento vivono solo nel catalogo | 3a | piccolo |
 | `gestione-ordini.md`, `gestione-preventivi.md` | Citano il termine di pagamento sul documento: con D-7 quel termine ora **determina quante fatture nascono**. È un cambio di conseguenze, non di forma | 3b | piccolo ma va detto |
 
+➡️ **Due righe passano al cantiere estratto** (2026-08-03): `fatturazione.md`
+limitatamente alla **semantica del reset** e `cruscotti-fatturazione.md` per il
+**verbo nuovo nel drawer lotto** si evadono in
+[piano-db-ritorno-lotto-a-draft.md](piano-db-ritorno-lotto-a-draft.md) §7, non
+qui. Il resto di `fatturazione.md` (step pipeline, piano rate, snapshot indirizzi)
+resta debito **di questo** piano.
+
 Doc auto-gen `dbzero/*/manual/` già previste nel piano: 3a.9 (`termini_pagamento`,
 ritiro di `trgfn_clienti_normalize_giorni_scadenza`) e 4.4 (`fatture_scadenze`).
 
@@ -1100,7 +1081,7 @@ rientrati** e alcune debolezze che restano.
 
 | # | Debolezza | Mitigazione |
 |---|---|---|
-| **W-1** | La **Fase 6** è la parte meno istruita: disegnata in pochi scambi, mentre D-I è nata da una verifica su cinque tabelle | ✅ **affrontata**: §3.6 ha ora un passo **6.0 di analisi preliminare obbligatoria** con sei punti aperti, di cui uno già deciso (task_run) e uno rinviato (log critici). Il settimo — il saldo d'arrotondamento orfano — ne è uscito ed è diventato D-N pezzo 3 |
+| **W-1** | La **Fase 6** è la parte meno istruita: disegnata in pochi scambi, mentre D-I è nata da una verifica su cinque tabelle | ✅ **affrontata**: è nato un passo di **analisi preliminare obbligatoria** con sei punti aperti, di cui uno già deciso (task_run) e uno rinviato (log critici). Il settimo — il saldo d'arrotondamento orfano — ne è uscito ed è diventato D-N pezzo 3. ➡️ **Dal 2026-08-03 quell'analisi vive in [piano-db-ritorno-lotto-a-draft.md](piano-db-ritorno-lotto-a-draft.md) §4**, non più in §3.6 |
 | **W-2** | **Nessun criterio di «fatto» per le fasi DB.** La 3a è la fase con più superficie e nessun collaudo end-to-end | ✅ **chiuso dal BE (§8.5)**: gli smoke §3 del piano BE/FE passano dalla **pipeline reale** e coprono anche la 3a — `smoke-fattura-scadenze.py` asserisce già che la testata porti `termine_pagamento_id` e `modalita_pagamento_id` e che le rate quadrino, cioè che la catena **risolva attraverso il catalogo riformato**. Più una asserzione nuova sul vero rischio di 3a.4: **nessun cliente resta senza condizioni** dopo la migrazione |
 | **W-3** | **Nessun numero è stato riverificato** | ✅ **chiuso dal BE (§8.1)** — e **aveva ragione di esistere**: due misure erano sbagliate. «0 ordini e 0 preventivi» era in realtà **85 e 157**. La conclusione su D-7 regge ma per un altro motivo, più fragile (§0). I clienti con `M` sono **0**, quindi quella verifica di D-G è chiusa senza lavoro |
 | **W-4** | Stime **ottimistiche dove c'è frontend**: «3a ~1 giornata DB» copre nove punti | Trattarle come ordine di grandezza |
@@ -1267,12 +1248,12 @@ Coerenti con il vostro §3.8, e ora scritte anche nel piano BE/FE §9:
 
 | | |
 |---|---|
-| **Fasi** | **Fase 1 ✅** · **Fase 2 ✅** (2.5 assorbita da I.4) · **Fase 3a ✅** · **cantiere intestazione ✅** (I.1-I.6, I.5 inclusa dal 2026-08-02) · **Fase 3b ✅** · **Fase 4 ✅ CHIUSA** (4.1-4.5, armamento incluso) · **Fase 4b ✅ CHIUSA** (guard D-K a sei condizioni) · 🟡 **resta la sola Fase 6** (ritorno a DRAFT), che si apre con la **6.0 analisi preliminare obbligatoria** |
+| **Fasi** | **Fase 1 ✅** · **Fase 2 ✅** (2.5 assorbita da I.4) · **Fase 3a ✅** · **cantiere intestazione ✅** (I.1-I.6, I.5 inclusa dal 2026-08-02) · **Fase 3b ✅** · **Fase 4 ✅ CHIUSA** (4.1-4.5, armamento incluso) · **Fase 4b ✅ CHIUSA** (guard D-K a sei condizioni) · ➡️ **Fase 6 ESTRATTA** il 2026-08-03 in [piano-db-ritorno-lotto-a-draft.md](piano-db-ritorno-lotto-a-draft.md) — **tutte le fasi di questo piano sono chiuse** |
 | **changeSet** | **34 scritti e applicati** (`20260730-01`…`-08`, `20260731-01`…`-12`, `20260801-01`…`-10`, `20260802-01`, `-24`, `-25`, `-27`) + 9 codici errore + 2 script di ruolo + seed (task 2.3, catalogo termini, armamento pipeline **entrambe le corsie**, transizione D-T, matrice indirizzi ruolo EF) · **nessuno in sospeso** |
 | **pgTAP** | **12 nuovi verdi** — ai 10 precedenti si aggiungono `test-pipeline-processi-invariante-v1` plan 7 (invariante `processi` esteso a tutte le tappe) e `test-numerazione-guard-coerenza-v1` plan 9 (guard D-K) · **13 adeguati** · **1 rimosso** · **3 rientrati dalla baseline** |
 | **Doc** | ✅ **11 manuali di funzione scritti** (2026-08-02): 3 scadenze (`fn_resolve_termini_pagamento`, `fn_genera_scadenze_fattura`, `fn_genera_scadenze_lotto`), 5 indirizzi/intestazione (`script.fn_snapshot_indirizzo_soggetto`, `script.fn_resolve_indirizzo_documento`, `fn_snapshot_indirizzi_fattura`, `fn_snapshot_intestazione_fattura`, `fn_snapshot_fattura_lotto`), 3 guard (`trgfn_fattura_satellite_guard_congelamento`, `trgfn_fatture_guard_uscita_draft`, `trgfn_commesse_guard_chiave_immutabile`). ℹ️ **L'aggancio alla pagina auto-gen lo mette il generatore**: misurato 584 pagine con l'include e **solo queste 11 senza**, perché la rigenerazione non è ancora girata — nulla da cablare a mano. ✅ **Guide**: riscritta la sezione numerazione di `guide/fatturazione.md` (descriveva **un solo** guard e ripeteva la motivazione falsa sul `nextval`) e aggiunto a `guide/gestione-dei-pagamenti.md` il raccordo piano rate ↔ incassi, che non nominava le scadenze. ✅ **3a.9** (manuale `termini_pagamento` riscritto) · ✅ **4.4** (manuale `fatture_scadenze` + tabella task in `guide/fatturazione.md`) · ✅ `pratiche/manual/trgfn_sospensioni_giornale.md` riagganciato · ⚠️ i **due orfani** di `trgfn_clienti_normalize_giorni_scadenza` erano **già stati ritirati** da Tid in `c464fe50a`, non da noi · restano le guide del §4-bis · ℹ️ gli **indici** `dbzero/*/index*.md` portano ancora le descrizioni vecchie: si allineano alla rigenerazione, non si editano a mano |
 | **Baseline** | ✅ **Passata piena del 2026-08-02 dopo tutti gli apply**: **410 file**, 105 rossi di cui 104 noti. L'**unica** regressione è `ui/test-lista-fornitori-seed` (conta «esattamente 15 colonne attive», il DB ne ha 13) ed è del **filone liste**, non di questo cantiere: il CSV `ui/lista_colonna.csv` è modificato e non committato, e questo cantiere non ha mai toccato `ui/`. ⚠️ È anche l'ennesimo **conteggio nudo** che si rompe senza dire quale colonna manchi |
-| **Stato** | analisi chiusa, **20 decisioni** prese. 🎯 **Il cantiere è chiuso su entrambi i lati**: il BE ha registrato il task, aggiunto un guard d'ordine a runtime e prodotto lo **smoke verde** (`smoke-fattura-scadenze.py`, 10 casi + PDF nel caso 9 di `smoke-fatturazione-render-stampa.py`, entrambi con prova di mutazione). I **tre brief DB sono CHIUSI** (scadenze, indirizzi, intestazione). Restano: **Fase 6**, le guide del §4-bis, e fuori piano — nell'ordine deciso da Tid — **incassi/riconciliazione rata↔incasso**, poi **`2.4 DatiPagamento`**, poi SDI |
+| **Stato** | analisi chiusa, **20 decisioni** prese. 🎯 **Il cantiere è chiuso su entrambi i lati**: il BE ha registrato il task, aggiunto un guard d'ordine a runtime e prodotto lo **smoke verde** (`smoke-fattura-scadenze.py`, 10 casi + PDF nel caso 9 di `smoke-fatturazione-render-stampa.py`, entrambi con prova di mutazione). I **tre brief DB sono CHIUSI** (scadenze, indirizzi, intestazione). ➡️ **Dal 2026-08-03 la Fase 6 è estratta** in [piano-db-ritorno-lotto-a-draft.md](piano-db-ritorno-lotto-a-draft.md): di **questo** piano resta aperto il **solo debito documentale** delle guide del §4-bis (0/8), di cui due righe passano al cantiere estratto. Fuori piano, nell'ordine deciso da Tid: **incassi/riconciliazione rata↔incasso**, poi **`2.4 DatiPagamento`**, poi SDI |
 
 ### Fase 1 — Fondamenta comuni
 
@@ -1356,12 +1337,13 @@ Coerenti con il vostro §3.8, e ora scritte anche nel piano BE/FE §9:
 | 4.5 pgTAP scadenze | ✅ **CHIUSA** (2026-08-02): dei tre residui elencati, **due erano già coperti da test scritti per altro** — il **lock** da `test-fattura-satelliti-lock-congelamento-v1` di 2.6 (verifica esplicitamente la stessa regola su `fatture_scadenze`) e **seed/posizione** dal nuovo invariante di 4.3-bis. Resta solo `E_SCADENZE_TERMINE_INVALIDO` sul ramo `ripartizione`, che il CHECK del catalogo rende irraggiungibile senza aggirarlo: **documentato nel file invece che finto**. Metà fatta insieme a 4.1 (2026-08-01): `test-genera-scadenze-fattura-v1.sql` `plan(14)` copre quadratura, ribilanciamento 100/3, `numero_rata` progressivo, `fine_mese` **incluso il cavallo d'anno**, base a zero e negativa, idempotenza sul **piano intero** (non sul conteggio: un generatore che sbaglia le date le riscriverebbe diverse mantenendo lo stesso numero di righe) e tre codici d'errore su quattro | `db/pgtap/vendite/test-genera-scadenze-fattura-v1.sql` | Restano da coprire, quando i pezzi esistono: il **lock** (4.2), **seed e posizione** in pipeline (4.3), e `E_SCADENZE_TERMINE_INVALIDO` sul ramo `ripartizione`, che il CHECK del catalogo rende inserribile solo aggirandolo — documentato nel file invece di essere finto |
 | 4b.1-4b.4 Guard numerazione (D-K) | ✅ **CHIUSA** (2026-08-02) | `20260802-24` · pgTAP `test-numerazione-guard-coerenza-v1.sql` `plan(9)` | **SEI condizioni** (la 6ª aggiunta da Tid) che insieme verificano una **catena continua**: `riepiloghi IVA →(5) totale_doc →(6) totale_a_pagare →(3/4) rate`. La 6ª chiude l'anello di mezzo, l'unico aperto — senza, un **fondo/acconto registrato dopo il ricalcolo** passava indisturbato con rate che quadrano su un totale vecchio. 4b.2 era **già fatto** (codice 574 a seed dalla Fase 1.3). 4b.3: delle 3 fixture che la grep segnalava ne era rotta **una** — la grep sovrastima, misurare. 🔴 **RETTIFICA che vale oltre il cantiere**: la motivazione «il guard sta prima del progressivo perché `nextval` non fa rollback» (dal `20260728-05`, e ripetuta qui nella prima stesura) è **FALSA** — `fn_get_next_progressivo` non usa sequence, è advisory lock + `UPDATE last_numero`, quindi è transazionale e **il buco non si forma**. Il danno vero è l'opposto e **irreversibile**: numero fiscale valido su documento invalido → DEFINITIVA → satelliti congelati → le rate mancanti non si possono più aggiungere. ⚠️ **Rischio residuo tracciato, non affrontato**: nessun trigger `BEFORE DELETE` impedisce di cancellare una fattura già numerata |
 
-### Fase 6 — Ritorno a DRAFT + estrazione
+### Fase 6 — Ritorno a DRAFT + estrazione → **ESTRATTA (2026-08-03)**
 
-| Passo | Stato | changeSet | Note |
-|---|---|---|---|
-| **6.0 Analisi preliminare** | ⬜ | — | 🔴 **obbligatoria**: 6 punti, i passi sotto si riscrivono dopo |
-| 6.1-6.8 | ⏭️ | — | in attesa di 6.0 |
+➡️ Cantiere autonomo: **[piano-db-ritorno-lotto-a-draft.md](piano-db-ritorno-lotto-a-draft.md)**,
+il cui **§7 è il registro**. Motivo dell'estrazione nella **§3.6** di questo piano.
+
+⚠️ **Qui non resta nessuna riga da aggiornare**: due elenchi della stessa cosa
+divergono (§3.7-bis), quindi lo stub non si tiene «per comodità».
 
 ### D-L — Funzioni di reset
 
