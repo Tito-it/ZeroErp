@@ -21,7 +21,7 @@
 
 Non è un cantiere teorico. Il **2026-08-03** è arrivato dal campo il primo caso
 d'uso reale, documentato in
-[brief-db-termine-dal-documento-alla-commessa.md §6](brief-db-termine-dal-documento-alla-commessa.md):
+[brief-db-termine-dal-documento-alla-commessa.md §6](../work-done/brief-db-termine-dal-documento-alla-commessa.md):
 
 ```
 fattura 2263 — EMESSA, NON numerata, piano rate sbagliato
@@ -486,7 +486,7 @@ agganciate a questo cantiere e si evadono **qui**, non lì:
 
 | Cosa | Dove |
 |---|---|
-| Il caso reale che ha aperto il cantiere | [brief-db-termine-dal-documento-alla-commessa.md §6](brief-db-termine-dal-documento-alla-commessa.md) |
+| Il caso reale che ha aperto il cantiere | [brief-db-termine-dal-documento-alla-commessa.md §6](../work-done/brief-db-termine-dal-documento-alla-commessa.md) |
 | Da dove viene questo documento | [piano-db-satelliti-fattura.md](piano-db-satelliti-fattura.md) §3.6 (chiuso col puntatore qui) |
 | Le decisioni D-* citate in §1 | [piano-db-satelliti-fattura.md §2.1](piano-db-satelliti-fattura.md) |
 | I rilievi C-18 / C-19 / C-22 / C-23 | [piano-db-satelliti-fattura.md §1.2](piano-db-satelliti-fattura.md) |

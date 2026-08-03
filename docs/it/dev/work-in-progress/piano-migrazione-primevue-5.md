@@ -1,17 +1,22 @@
 # Piano operativo — Migrazione a PrimeVue 5 (+ @primeuix/themes 3, primeicons 8)
 
 > **Tipo**: piano operativo FE (`dev/backend-tid`) · **Data**: 2026-07-29 ·
-> **Owner**: Tid · **Stato**: 🔴 **UPGRADE FERMO** / 🟢 **DISACCOPPIAMENTO IN
-> CORSO**. §6.1 (Pinia 4) è **chiuso e resta valido**. §6.2/6.3 (primeicons 8)
+> **Owner**: Tid · **Stato**: 🔴 **UPGRADE FERMO** / ✅ **DISACCOPPIAMENTO
+> CHIUSO**. §6.1 (Pinia 4) è **chiuso e resta valido**. §6.2/6.3 (primeicons 8)
 > è stato eseguito e poi **annullato**. §6.4 (PrimeVue 5 + themes 3) **non è
-> più una questione tecnica**. Il binario vivo è §8-bis: la conversione delle
-> liste a `<ListaConfigurabile>` è partita — **22/34 convertite** (`vendite.lotti`
-> e le 4 del primo lotto il 2026-07-31; secondo, terzo, quarto e quinto lotto il
-> 2026-08-01; il sesto fra l'1 e il 2 agosto, `storico.audit_log` compresa).
-> **Il Gruppo A non ha più nulla di meccanico**: le 12 rimaste erano tutte
-> decisioni — **prese il 2026-08-02** (§8-bis, «Le quattro decisioni»). Il 7°
-> lotto è **seedato**: 3 liste convertibili subito, 36 codici a catalogo,
-> presidio verde su tutte e 36. Cosa resta e di chi: §9, «Cosa resta aperto».
+> più una questione tecnica**.
+>
+> ✅ **Il binario §8-bis è arrivato in fondo: Gruppo A 30/34 il 2026-08-03**, e
+> i **4 file rimasti sono fermi per decisione** (i cassetti senza endpoint
+> paginato, §8-bis decisione 4), non per debito. Cronologia: `vendite.lotti` e
+> il 1° lotto il 31-07; dal 2° al 5° l'01-08; il 6° fra l'1 e il 2 agosto
+> (`storico.audit_log` compresa); il **7°** (2 code + approvazioni prezzo +
+> `VersioneDrawer`) e l'**8°** (drawer commessa + le 5 liste delle 3 dashboard)
+> il **03-08**. Registro del presidio a **43/43**.
+>
+> Il rapporto che il piano voleva invertire — 14 liste sullo standard contro 71
+> con `DataTable` grezza (§8-bis, «il numero scomodo») — **è invertito**: 40
+> file montano il building block. Cosa resta e di chi: §9, «Cosa resta aperto».
 > È utile con QUALUNQUE esito della questione licenza.
 >
 > 🚨 **PrimeVue ha cambiato licenza al confine della major.** `primevue`,
@@ -794,22 +799,24 @@ mai**.
 Totale file con `DataTable` grezza: **77**, di cui **6** sono i
 wrapper stessi (giusto che la usino) → **bersaglio reale: 71**.
 
-> 📉 **Ri-misurato il 2026-08-02: i file con `DataTable` grezza sono scesi a
-> 56.** I 77 sono la fotografia del 2026-07-29 e restano qui perché sono il
-> metro con cui è stato dimensionato il lavoro; il numero vivo è quello sopra.
-> Il calo (−21) è più grande delle 22 conversioni del Gruppo A perché alcune
-> pagine montavano più `DataTable` nello stesso file.
+> 📉 **Ri-misurato: i file con `DataTable` grezza sono scesi a 56 il 2026-08-02
+> e a 48 a fine 03-08.** I 77 sono la fotografia del 2026-07-29 e restano qui
+> perché sono il metro con cui è stato dimensionato il lavoro; il numero vivo è
+> quello sopra. Il calo è più grande del numero di conversioni perché alcune
+> pagine montavano più `DataTable` nello stesso file (`DashboardCompetenzaView`
+> ne aveva tre). Le 48 rimaste sono in larghissima parte **Gruppo B**, che non
+> va convertito: il loro posto è `RigheMasterDetailTable`/`SearchDetailTable`.
 >
 > Contro cosa verificarlo, visto che i denominatori in questo documento sono
 > **tre e diversi**, e confonderli è il modo più facile di litigare sui numeri:
 >
-> | Misura | Oggi | Cos'è |
-> |---|---|---|
-> | codici seedati (`ui.lista_definizione`) | **33** | le liste configurate a DB |
-> | righe nel registro del presidio (`_LISTE`) | **33** | devono coincidere con la riga sopra, sempre |
-> | file consumer che montano `<ListaConfigurabile>` | **32** | meno dei codici: `ResiCodaTable` ne serve **due** con `:codice` dinamico |
-> | file del Gruppo A convertiti | **22 / 34** | il denominatore dell'inventario qui sotto |
-> | file con `DataTable` grezza | **56** | scende anche per conversioni fuori Gruppo A |
+> | Misura | 02-08 | **03-08 (fine)** | Cos'è |
+> |---|---|---|---|
+> | codici seedati (`ui.lista_definizione`) | 33 | **43** | le liste configurate a DB |
+> | righe nel registro del presidio (`_LISTE`) | 33 | **43** | devono coincidere con la riga sopra, sempre |
+> | file consumer che montano `<ListaConfigurabile>` | 32 | **40** | meno dei codici: `ResiCodaTable` ne serve **due** con `:codice` dinamico, e `DashboardCompetenzaView` ne monta **tre** |
+> | file del Gruppo A convertiti | 22 / 34 | **30 / 34** | il denominatore dell'inventario qui sotto; i 4 rimasti sono fermi per decisione 4 |
+> | file con `DataTable` grezza | 56 | **48** | scende anche per conversioni fuori Gruppo A |
 >
 > Comandi per rifare le prime tre in un colpo:
 >
@@ -1018,34 +1025,34 @@ semplice alla più complessa, così le prime servono da rodaggio.
 | ✅ 31-07 | `amministrazione/components/UtilitiesTipiRuoloSearchTable.vue` | 5 | sì |
 | ✅ 02-08 | `amministrazione/views/AuditLogView.vue` | 5 | sì |
 | ✅ 31-07 | `anagrafiche/components/IndirizziSearchTable.vue` | 5 | sì |
-| ☐ 🔵 | `vendite/views/ApprovazioniPrezzoListView.vue` | 5 | sì |
+| ✅ 03-08 | `vendite/views/ApprovazioniPrezzoListView.vue` | 5 | sì |
 | ✅ 01-08 | `amministrazione/views/EmailAccountsListView.vue` | 6 | sì |
 | ✅ 01-08 | `amministrazione/views/EmailTemplatesListView.vue` | 6 | sì |
 | ✅ 01-08 | `amministrazione/views/EmittentiFiscaliListView.vue` | 6 | sì |
-| ☐ | `catalogo/components/ArticoloBomDrawer.vue` | 6 | — |
+| ⏸ dec.4 | `catalogo/components/ArticoloBomDrawer.vue` | 6 | — |
 | ✅ 01-08 | `catalogo/components/ConversioniUomSearchTable.vue` | 6 | sì |
 | ✅ 01-08 | `catalogo/components/UnitaMisuraSearchTable.vue` | 6 | sì |
-| ☐ | `vendite/components/VersioneDrawer.vue` | 6 | sì |
+| ✅ 03-08 | `vendite/components/VersioneDrawer.vue` | 6 | sì |
 | ✅ 01-08 | `amministrazione/views/EmailLogsListView.vue` | 7 | sì |
 | ✅ 01-08 | `config/components/TemplateDocumentiSearchTable.vue` | 7 | sì |
 | ✅ 01-08 | `config/components/TemplateAssetSearchTable.vue` | 8 | sì |
 | ✅ 01-08 | `pratiche/components/PraticheSearchTable.vue` | 8 | sì |
-| ☐ 🔵 | `strumenti/components/CodaLavoriTab.vue` | 8 | sì |
-| ☐ | `vendite/components/ContrattiBillingAccountDrawer.vue` | 8 | — |
+| ✅ 03-08 | `strumenti/components/CodaLavoriTab.vue` | 8 | sì |
+| ⏸ dec.4 | `vendite/components/ContrattiBillingAccountDrawer.vue` | 8 | — |
 | ✅ 01-08 | `vendite/components/PromoArticoliSearchTable.vue` | 8 | sì |
-| ☐ | `vendite/offerte/components/OffertaEccezioniDrawer.vue` | 8 | — |
+| ⏸ dec.4 | `vendite/offerte/components/OffertaEccezioniDrawer.vue` | 8 | — |
 | ✅ 01-08 | `amministrazione/components/CategorieClientiListiniSearchTable.vue` | 9 | sì |
 | ✅ 31-07 | `amministrazione/components/TipiRuoloTipiIndirizzoSearchTable.vue` | 9 | sì |
 | ✅ 01-08 | `amministrazione/views/OperatoriListView.vue` | 9 | sì |
 | ✅ 01-08 | `catalogo/components/ArticoliSearchTable.vue` | 9 | sì |
-| ☐ 🔵 | `strumenti/components/CodaStampaTab.vue` | 9 | sì |
-| ☐ | `vendite/components/CommessaGestioneDrawer.vue` | 9 | sì |
+| ✅ 03-08 | `strumenti/components/CodaStampaTab.vue` | 9 | sì |
+| ✅ 03-08 | `vendite/components/CommessaGestioneDrawer.vue` | 9 | sì |
 | ✅ 2026-07-31 | `vendite/views/LottiListView.vue` | 9 | sì |
-| ☐ | `vendite/views/SituazioneApertaView.vue` | 10 | sì |
-| ☐ | `vendite/components/ContrattoRigheDrawer.vue` | 11 | — |
-| ☐ | `vendite/views/DashboardBacklogView.vue` | 11 | sì |
+| ✅ 03-08 | `vendite/views/SituazioneApertaView.vue` | 10 | sì |
+| ⏸ dec.4 | `vendite/components/ContrattoRigheDrawer.vue` | 11 | — |
+| ✅ 03-08 | `vendite/views/DashboardBacklogView.vue` | 11 | sì |
 | ✅ 01-08 | `vendite/components/ListiniSearchTable.vue` | 13 | sì |
-| ☐ | `vendite/views/DashboardCompetenzaView.vue` | 23 | sì |
+| ✅ 03-08 | `vendite/views/DashboardCompetenzaView.vue` | 23 | sì |
 
 ##### `vendite.lotti` — ✅ CONVERTITA il 2026-07-31, validata in-app da Tid
 
@@ -2012,6 +2019,65 @@ maturità.
 
 ## 9. Registro
 
+### 2026-08-03 · Settimo e ottavo lotto: il Gruppo A arriva in fondo (30/34)
+
+Scrive il BE/FE. Due lotti nella stessa giornata, resi possibili dal fatto che
+il DB ha consegnato i seed **due volte in giornata** — 7° lotto al mattino,
+8° nel pomeriggio, entrambi verdi al primo passaggio.
+
+**7° lotto — 4 conversioni.** `ApprovazioniPrezzoListView` (36) con nuovo store
+`approvazioniPrezzo`; `CodaLavoriTab` (34) e `CodaStampaTab` (35) con la
+factory `codeJobs`, e `useCodaFiltri` snellito ai soli helper UI (lo stato dei
+filtri è passato allo store); `VersioneDrawer` (37), possibile da quando righe
+standalone e compositi arrivano dallo stesso endpoint paginato.
+
+⚠️ Una coda del brief si è rivelata **già chiusa**: su approvazioni il `.vue`
+montava già `priorita_descrizione` e l'API la espone. Vale la pena dirlo perché
+è il secondo caso in due giorni in cui una voce di commessa descriveva un
+sintomo già risolto — **rimisurare prima di lavorare** costa dieci minuti e ne
+salva di più.
+
+**Passata BE dashboard** (prima dell'8° lotto, stesso metodo di `attivo` e
+della famiglia email): 4 liste su 5 ordinavano già server-side. I tre buchi
+veri: `dash_competenza_errori` non ordinava affatto (catena view→service→repo
+aggiunta, con `NULLS LAST` perché metà della union ha i campi documento NULL
+per costruzione), `stato_codice`/`area`/`fase` su aperto e `classe` su backlog.
+
+**8° lotto — 6 conversioni**: `CommessaGestioneDrawer` (38) + le 5 liste delle
+3 dashboard (39-43). Le due liste con checkbox — righe approvabili e gruppi
+fatturabili — usano lo **slot `selection` del BB**, estratto il giorno prima
+alla 2ª occorrenza: la colonna di selezione è chrome della lista, non catalogo.
+
+Sugli errori vivi è servito un pezzo in più: la union **non ha una PK** (il
+tiebreak lato BE è una catena di chiavi naturali), quindi la chiave di riga del
+DataTable si compone dalle stesse colonne — senza un `data-key` stabile Vue non
+ha su cosa riconciliare.
+
+#### 🔴 Il presidio era CIECO su quattro liste su sei
+
+Registrando le liste, il presidio ne segnalava mancanti solo **2 su 6**. Causa:
+la regex cercava `codice="..."` con `[^>]*` fra il nome del tag e l'attributo,
+ma un `>` può vivere **dentro** un attributo — e ci vive davvero, in
+`v-if="documentiCount > 0 || documentiLoading"` sulle dashboard. La classe
+negata si fermava lì.
+
+Il difetto è peggiore di come suona: il presidio **taceva proprio sulle liste
+appena convertite**, cioè il caso per cui esiste. Corretto con una finestra di
+caratteri al posto della classe negata, senza pretendere di sapere dove finisce
+il tag. ➡️ Regola che ne esce, gemella di quelle già pagate: **un controllo che
+non ha mai visto rosso non è ancora un controllo** — va provato su un caso che
+DEVE fallire.
+
+Registrato anche il primo caso di **whitelist che non vive in Python**:
+`vendite.commesse_attivita` la tiene dentro `fn_list_commessa_attivita` (ordine
+e paginazione stanno lì), e il presidio confronta lo specchio che il BE usa per
+validare prima del round-trip.
+
+**Verifiche**: 3503 test Django verdi, build + lint + i18n puliti, presidio
+43/43, nessuna `DataTable` grezza rimasta nei file toccati.
+
+---
+
 ### 2026-08-03 · Rename `emittente_fiscale_descrizione` → `emittente_ragione_sociale`: BE/FE allineati, una cosa TENUTA apposta
 
 Scrive il BE/FE. Rename eseguito su **20 file**: i 10 repository/types che
@@ -2178,24 +2244,26 @@ parametri. Baseline `vendite`: 36 rossi, 36 noti, **nessuna regressione**.
 > già in `baseline-rossi.tsv` come `ERRORE_FIXTURE` (guard `tipo_doc_fiscale`),
 > e muore nel fixture da prima.
 
-#### 📌 Cosa resta aperto sul binario delle liste (2026-08-02, fine giornata)
+#### 📌 Cosa resta aperto sul binario delle liste — ✅ NIENTE (2026-08-03)
 
-**22/34 convertite · 36 codici seedati · 0 KO nel presidio.**
+**30/34 convertite · 43 codici seedati · presidio 43/43 · 0 KO.**
 
-| # | Cosa | Di chi | Blocca |
-| --- | --- | --- | --- |
-| 1 | Convertire i 3 `.vue` del 7° lotto (le due code + approvazioni) | **BE/FE** | niente: seed pronto, presidio verde |
-| 2 | Su approvazioni, allineare il `.vue` a `priorita_descrizione` ed esporla in API | **BE/FE** | va fatto **insieme** alla conversione, o la freccia nasce morta |
-| 3 | `CommessaGestioneDrawer`: passare `order_by`/`order_dir` da view e repository fino a `fn_list_commessa_attivita`, e far emettere `@sort` al `.vue` | **BE/FE** | blocca il **seed** di quella lista (poi torna al DB) |
-| 4 | ~~`VersioneDrawer`: i compositi~~ → ✅ **CHIUSO 2026-08-03** (UNION lato BE, endpoint separato rimosso). Resta il **seed** della lista | **DB** | niente: era l'ultima domanda di modello |
-| 5 | Le 3 dashboard | — | **rinviate per scelta** (decisione 2): ordinano già, si fanno per ultime |
-| 6 | I 4 drawer senza endpoint paginato | — | **fermi per scelta** (decisione 4) |
+I 4 file non convertiti sono i cassetti fermi per **decisione 4**, non debito:
+caricano tutto in una volta e servirebbero quattro endpoint paginati nuovi
+prima di toccare la parte visibile.
 
-➡️ **Il percorso critico è vuoto** (aggiornato 2026-08-03). Il punto 4 era
-l'unica decisione di modello rimasta ed è stata presa: i compositi sono righe
-della lista, e il BE le unisce in `UNION` sullo stesso endpoint paginato.
-Da qui in avanti resta solo lavoro noto e sequenziale — seed lato DB,
-conversione lato BE/FE.
+| # | Cosa | Esito |
+| --- | --- | --- |
+| 1 | I 3 `.vue` del 7° lotto (le due code + approvazioni) | ✅ convertiti il 03-08 |
+| 2 | Su approvazioni, `priorita_descrizione` nel `.vue` e in API | ✅ **era già a posto**: il `.vue` montava già la descrizione e `cerca_pratiche` la espone. La voce era una coda che si era già chiusa da sé |
+| 3 | `CommessaGestioneDrawer`: `order_by`/`order_dir` fino a `fn_list_commessa_attivita` + `@sort` | ✅ cablato il 03-08 → ha sbloccato il seed (lista 38), poi convertito |
+| 4 | ~~`VersioneDrawer`: i compositi~~ | ✅ chiuso il 03-08 (UNION lato BE) + seed lista 37 + conversione |
+| 5 | Le 3 dashboard (5 liste) | ✅ **fatte il 03-08**, ultime come da decisione 2: passata BE (3 buchi chiusi), seed 39-43, conversione |
+| 6 | I 4 drawer senza endpoint paginato | ⏸ fermi per **decisione 4**, invariata |
+
+➡️ **Il binario è chiuso.** Da qui in avanti la regola resta quella di §8-bis:
+quando si tocca una lista per altri motivi, la si fa passare dal building
+block. Non c'è più un arretrato da consumare.
 
 ---
 

@@ -6,9 +6,20 @@
 > **Cos'è:** manca il percorso che ri-produce un documento **come fu emesso**,
 > usando la versione di template con cui nacque e il contesto congelato allora.
 > Il modello lo prevede e ne conserva tutti gli ingredienti; nessun codice li usa.
-> **Stato:** ✅ **cantiere ESEGUITO lato BE/FE il 2026-08-03**, dopo le tre
-> decisioni di §8 prese da Tid. Resta **una riga al DB** (§5.3). Dettaglio
-> nella sezione qui sotto.
+> **Stato:** ✅ **CHIUSO il 2026-08-03**, tutto nella stessa giornata: analisi
+> del DB al mattino, tre decisioni di §8 prese da Tid, esecuzione BE/FE, e
+> l'unica voce tornata al DB — `RISTAMPA_FEDELE` nel vocabolario eventi —
+> applicata con `20260803-05`. Brief figlio, chiuso:
+> [brief-db-evento-ristampa-fedele.md](brief-db-evento-ristampa-fedele.md).
+>
+> Definizione di «fatto» (§6): i punti **2 e 3 sono chiusi e presidiati dai
+> test**; **1 e 4** sono verifiche a video sul documento vero — il caso
+> dell'offerta di maggio resta il modo migliore per esercitarle alla prima
+> occasione utile. Non bloccano: il percorso è coperto dal lato del codice
+> (nessun `context_builder` invocato, versione pinnata anche OBSOLETA), e
+> quello che il PDF aggiungerebbe è la controprova sul dato reale.
+>
+> Dettaglio dell'esecuzione nella sezione qui sotto.
 
 ---
 
@@ -226,17 +237,19 @@ DB — ma allo stato della misura non ce n'è.
 | 5.2.2 | Sui 135 documenti senza file, «Scarica originale» non è disponibile: l'azione va **disabilitata con la ragione**, non lasciata a fallire con un `E_NOT_FOUND` generico |
 | 5.2.3 | «Genera nuovo documento» va presentata come un'azione che **produce un documento diverso**, perché lo è |
 
-### 5.3 DB — una riga, emersa dalla decisione §8.3
+### 5.3 DB — una riga, emersa dalla decisione §8.3 — ✅ FATTA
 
 > **Aggiornato il 2026-08-03 dal BE/FE.** La §4 resta corretta — gli
 > **invarianti** erano e sono tutti già a posto, non c'è niente da costruire lì.
 > Quello che è emerso non viene dagli invarianti ma dalla **decisione 8.3**
 > («la ristampa lascia traccia»): il valore che serve non esiste nel vocabolario.
 
-🔴 **Aggiungere `RISTAMPA_FEDELE` al CHECK
-`chk_documenti_generati_eventi_evento_tipo`**, oggi chiuso a quattro valori
-(`GENERATO`, `SCARICATO`, `STORAGE_ORPHAN`, `ALLEGATO_AGGIUNTO`, da
-`20260603-04`). Brief dedicato con SQL e verifica:
+✅ **`RISTAMPA_FEDELE` aggiunto al CHECK
+`chk_documenti_generati_eventi_evento_tipo`** — applicato dal team DB in
+giornata (`20260803-05`), insieme al `COMMENT ON COLUMN` e a un pgTAP che
+asserisce il valore nuovo **ammesso con esito `WARN`**. Era chiuso a quattro
+valori (`GENERATO`, `SCARICATO`, `STORAGE_ORPHAN`, `ALLEGATO_AGGIUNTO`, da
+`20260603-04`). Brief con SQL e verifica, ora chiuso:
 [brief-db-evento-ristampa-fedele.md](brief-db-evento-ristampa-fedele.md).
 
 **Non riusiamo `GENERATO`**: sarebbe esattamente la confusione che questo brief
@@ -247,12 +260,13 @@ Su `esito` **non serve nulla**: la ristampa usa `WARN` quando i byte non
 coincidono (decisione §8.2), e `WARN` è già nel CHECK `..._esito`
 (`OK`/`KO`/`WARN`) con esattamente quel significato.
 
-⚠️ **Il cantiere funziona già senza**: l'INSERT dell'evento è best-effort in
+ℹ️ **Nella finestra fra la consegna BE/FE e l'apply il cantiere ha funzionato
+lo stesso**, ed è per disegno: l'INSERT dell'evento è best-effort in
 transazione separata — stesso pattern del `SCARICATO` del download — quindi il
-CHECK lo rifiuta, il servizio logga `documenti.ristampa_fedele.evento_fallito` e
-il PDF esce comunque. Ma è un rosso che si vede solo nei log, e quelli si
-smettono di guardare: è il motivo per cui la riga non va rimandata a lungo, non
-per cui il cantiere è bloccato.
+CHECK lo rifiutava, il servizio loggava
+`documenti.ristampa_fedele.evento_fallito` e il PDF usciva comunque. Era però
+un rosso visibile solo nei log, e quelli si smettono di guardare: il motivo per
+cui la riga non andava rimandata. **Dall'apply la traccia c'è davvero.**
 
 **Niente seguito su §8.1**: la decisione è «sì, si conservano», e il 18-su-153
 si è rivelato una cancellazione errata dei riferimenti in ambiente di test — non

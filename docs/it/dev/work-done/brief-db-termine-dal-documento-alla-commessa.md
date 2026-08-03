@@ -1,13 +1,42 @@
 # Brief BE → DB — il termine di pagamento del documento non arriva alla commessa
 
+> ✅ **CHIUSO il 2026-08-03.** Tutto applicato e verificato in giornata, dal
+> difetto misurato alla validazione a video:
+>
+> - **DB**: T.1-T.4 applicati (`20260803-02` colonne esposte, `20260803-03`
+>   livello 1 ripuntato sulla sorgente effettiva via `commessa_attivita_id`),
+>   pgTAP `plan(9)` verde con prova di mutazione;
+> - **BE**: giro reale end-to-end con lo smoke dedicato, **8/8** — la fattura
+>   esce col piano rate del **documento**, due ordini con termini diversi
+>   producono due commesse e due fatture;
+> - **UI**: validazione a video di «Termine»/«Modalità» nel drawer fattura
+>   **fatta da Tid** — era l'ultimo aperto (§10.4).
+>
+> ➡️ **Definizione di «fatto» (§7) chiusa 5/5.**
+>
+> **Resta fuori dal cantiere, e non lo blocca**: la fattura **2263** —
+> EMESSA e non numerata — si corregge solo con la **Fase 6** del DB (ritorno a
+> DRAFT), che questo caso ha motivato ed è il primo movente reale registrato
+> (§6 e §8.5). Non va numerata nel frattempo.
+>
+> 💡 **Tre lezioni pagate qui**, tutte della stessa famiglia — *un livello si
+> verifica dal percorso che lo attraversa, non dal codice che lo dichiara*:
+> il livello 1 sembrava vivo ed era strutturalmente irraggiungibile; il primo
+> test lo confermava perché costruiva l'attività con un valore che il pull non
+> produce mai; e il «si accende da sé» di §3.1 era **falso** — la whitelist
+> `_PUSHABLE_SHARED_COLS` era il cancello, e un mock fermo al contratto a 29
+> colonne non poteva dirlo (§10.2, terza occorrenza nello stesso filone).
+>
+> ---
+>
 > **Chi scrive:** BE (`dev/backend-tid`), 2026-08-03.
 > **A chi:** team DB (`dev/db-tid`).
 > **Cos'è:** una fattura reale è uscita col piano rate **sbagliato**, in
 > silenzio. La metà applicativa è già corretta e testata; restano **due
 > colonne** nel contratto delle `fn_list_*_da_pushare` e **una decisione** sul
 > livello 1 di `fn_resolve_termini_pagamento`.
-> **Correlati:** [piano-db-satelliti-fattura.md](piano-db-satelliti-fattura.md) (D-R) ·
-> [piano-be-fe-satelliti-fattura.md](piano-be-fe-satelliti-fattura.md)
+> **Correlati:** [piano-db-satelliti-fattura.md](../work-in-progress/piano-db-satelliti-fattura.md) (D-R) ·
+> [piano-be-fe-satelliti-fattura.md](../work-in-progress/piano-be-fe-satelliti-fattura.md)
 
 ---
 

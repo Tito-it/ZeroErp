@@ -115,11 +115,12 @@ PUBBLICATE). Non blocca, ma è dichiarato.
 - `documenti.template_documenti_versioni` — versione pinnata, qualunque stato
 - `documenti.documenti_generati_eventi` — evento di audit
 
-⚠️ **Prerequisito**: `RISTAMPA_FEDELE` nel CHECK
-`chk_documenti_generati_eventi_evento_tipo` (set chiuso). Finché non c'è,
-l'evento viene rifiutato e il servizio logga
-`documenti.ristampa_fedele.evento_fallito` senza negare il PDF. Brief:
-`docs/it/dev/work-in-progress/brief-db-evento-ristampa-fedele.md`.
+`RISTAMPA_FEDELE` è nel CHECK `chk_documenti_generati_eventi_evento_tipo` dal
+2026-08-03 (`20260803-05`), insieme al pgTAP che lo asserisce ammesso con esito
+`WARN`. ℹ️ L'INSERT dell'evento resta **best-effort** in transazione separata
+(come il `SCARICATO` del download): se fallisse, il servizio logga
+`documenti.ristampa_fedele.evento_fallito` e il PDF esce comunque — negarlo per
+un log mancante sarebbe peggio del log mancante.
 
 ## Note di migrazione
 
