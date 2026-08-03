@@ -177,3 +177,155 @@ nota di variazione.
 4. due ordini dello stesso cliente con termini diversi producono **due**
    commesse e **due** fatture (D-7 + D-R insieme);
 5. il livello 1 del resolver o presidia davvero, o non c'è più.
+
+---
+
+## 8. 📎 Risposta DB (2026-08-03)
+
+> Rilievi verificati uno per uno sul DB prima di rispondere. **Tutti confermati**,
+> e uno è più forte di come lo avevate scritto.
+
+### 8.1 Le vostre misure, ricontrollate
+
+| Vostra affermazione | Verifica DB |
+|---|---|
+| Le `fn_list_*_da_pushare` non espongono il termine | ✅ **5 funzioni**, 32-34 colonne ciascuna, **zero** con `termine_pagamento` |
+| Il pull scrive `sorgente COMMESSA` | ✅ **35 attività su 35**. Non è «il livello 1 è dormiente»: è **strutturalmente irraggiungibile** |
+| Il tipo originale sopravvive | ✅ 23 `ORDINE_VENDITA`, 10 `PREVENTIVO`, 1 `DDT_VENDITA`, 1 nullo |
+| `0 commesse su 27` con termine | ✅ confermato |
+
+🔴 **Una correzione che ci riguarda.** Il manuale di
+`fn_resolve_termini_pagamento`, scritto il 2026-08-02, motivava il livello 1
+dormiente con «ordini e preventivi hanno zero righe». **Il motivo era sbagliato**:
+quel livello non scatterebbe nemmeno con le tabelle piene, perché il pull
+riscrive la sorgente. La vostra nota di metodo — *un livello si verifica dal
+percorso che lo attraversa, non dal codice che lo dichiara* — coglie esattamente
+l'errore. Manuale corretto.
+
+### 8.2 Decisioni
+
+| # | Decisione |
+|---|---|
+| **3.2** | ✅ **RIPUNTARE** (Tid, 2026-08-03). Una catena a quattro livelli di cui uno decorativo è peggio di una a tre: chi la legge conclude che il documento vince, ed è ciò che è appena successo |
+| **3.3** | ✅ **SÌ**: il termine **è** dimensione della chiave — verificato in `fn_get_or_create_commessa`. La vostra `cache_key` è allineata al modello, tenetela |
+
+### 8.3 🔴 La vostra proposta di ripuntamento non è applicabile così
+
+Scrivete «ripuntarlo su `sorgente_origine_tipo_id` + l'uid del documento
+originale». **Quell'uid non esiste**: `vendite.attivita_fatturabili` ha
+`sorgente_tipo_id`, `sorgente_uid`, `sorgente_riga` e `sorgente_origine_tipo_id`
+— si conserva il **tipo**, non l'**uid**. Sapremmo che viene da un ordine, non da
+*quale* ordine.
+
+Il percorso però c'è, ed è migliore perché non richiede colonne nuove:
+
+```text
+attivita_fatturabili.commessa_attivita_id
+        └──► commesse_attivita.sorgente_tipo_id   (ORDINE_VENDITA / PREVENTIVO)
+             commesse_attivita.sorgente_uid       (l'uid del documento VERO)
+```
+
+✅ Verificato: **35 attività su 35** hanno `commessa_attivita_id` valorizzato, la
+JOIN è totale. È la riga che avete misurato voi (`commesse_attivita 6735`).
+
+Il livello 1 riscritto copre quindi **due strade**, non una:
+
+1. attività **inserita direttamente** con sorgente documento → `a.sorgente_uid`
+   (comportamento attuale, resta);
+2. attività **prodotta dal pull** (`sorgente = COMMESSA`) → si risale via
+   `commessa_attivita_id` e si legge la sorgente vera.
+
+### 8.4 Piano
+
+| # | Cosa | Stato |
+|---|---|---|
+| **T.1** | Le 5 `fn_list_*_da_pushare` espongono `termine_pagamento_id` e `modalita_pagamento_id` | ✅ **applicato** `20260803-02` |
+| **T.2** | Ripuntamento del livello 1 di `fn_resolve_termini_pagamento` (§8.3) | ✅ **applicato** `20260803-03` |
+| **T.3** | pgTAP dal percorso reale | ✅ **9/9**, mutazione provata |
+| **T.4** | Doc: manuale del resolver | ✅ **fatto**, con la rettifica di §8.1 |
+
+⚠️ **Trappola nota su T.1**: aggiungere colonne a un `RETURNS TABLE` **non** si
+fa con `CREATE OR REPLACE` — PostgreSQL rifiuta. Serve `DROP FUNCTION` esplicita
+prima, e con essa la verifica dei chiamanti: una `SELECT *` posizionale a valle
+si romperebbe in silenzio.
+
+⚠️ **T.1 prima di T.2**: con le colonne esposte il livello 2 copre il caso
+normale, e T.2 diventa il presidio del caso residuo invece che l'unica difesa.
+L'ordine inverso lascerebbe il livello 1 a reggere tutto il traffico.
+
+### 8.5 Sul vicolo cieco di §6
+
+Confermato e utile: la matrice ammette `EMESSA → DRAFT` ma **la funzione che lo
+esegue non esiste**. È la Fase 6, e il vostro caso è il primo movente reale che
+abbiamo — lo registriamo nel piano come tale. Nel frattempo concordiamo: la 2263
+non va numerata.
+
+---
+
+## 9. ✅ Consuntivo DB (2026-08-03) — tutto applicato
+
+### 9.1 La prova sul vostro caso
+
+```
+attivita 2265 (quella della fattura 2263):
+   PRIMA -> termine 1   TP_30G_1R        1 rata   ← il CLIENTE
+   DOPO  -> termine 3   TP_30_60_EOM_2R  2 rate   ← l'ORDINE
+```
+
+Distribuzione su tutte le 35 attività: **una sola si sposta**, le altre 34
+restano dov'erano. Il cambio è quindi mirato, non un effetto di massa.
+
+### 9.2 Cosa è stato applicato
+
+| changeSet | Cosa |
+|---|---|
+| `20260803-02` | Le 5 `fn_list_*_da_pushare` con le due colonne. `DROP` esplicita: la `RETURNS TABLE` cambia |
+| `20260803-03` | Livello 1 del resolver sulla sorgente effettiva, via `commessa_attivita_id` |
+
+pgTAP `test-resolve-termini-livello-sorgente-v1.sql`, **plan(9)**, verde.
+Baseline `vendite`: 168 file, 36 rossi noti, **nessuna regressione**.
+
+**Prova di mutazione**: rimuovendo il blocco della sorgente effettiva diventano
+rossi **solo** i test 2, 4 e 5 — i tre che esercitano il livello 1. Gli altri sei
+restano verdi.
+
+### 9.3 🔴 Un difetto evitato, che vi riguarda se toccherete quel codice
+
+`commesse_attivita.sorgente_uid` è **TEXT**, `attivita_fatturabili.sorgente_uid`
+è **UUID**, e la sorgente è **polimorfa**: per convenzione preventivo e offerta
+usano l'uid, gli altri `id::text`.
+
+La prima stesura assegnava senza filtrare. **Il test passava** — oggi i valori in
+`commesse_attivita` sono tutti uuid validi (39 ORDINE, 44 PREVENTIVO, 1 DDT) — ma
+il primo CONTRATTO o CONSUMO che arrivasse lì avrebbe fatto **esplodere il cast**.
+
+L'assegnazione è ora ristretta a `ORDINE_VENDITA` e `PREVENTIVO`, che sono anche
+gli unici due tipi che il livello 1 gestisce e gli unici documentati come
+portatori di uid. Per contratti e DDT non avrebbe comunque nulla da leggere.
+Il **test 7** presidia che un tipo non gestito non sollevi.
+
+### 9.4 La vostra §7, punto per punto
+
+| # | Criterio | Stato |
+|---|---|---|
+| 1 | Le `fn_list_*` espongono le due colonne | ✅ **fatto** — verificato che la colonna porta il valore del documento e non un NULL fisso (test 9) |
+| 2 | Un ordine con termine non-default apre una commessa che lo porta | 🟡 **sbloccato, da provare con un giro vero**: la vostra metà era inerte e questo changeSet la accende |
+| 3 | La fattura che ne nasce ha il piano rate del documento | 🟡 idem — serve il giro end-to-end |
+| 4 | Due ordini con termini diversi → due commesse e due fatture | 🟡 idem. La conferma DB che serviva è in §8.2: il termine **è** dimensione della chiave |
+| 5 | Il livello 1 o presidia davvero, o non c'è più | ✅ **presidia**, ed è coperto dal percorso reale |
+
+➡️ **1 e 5 sono chiusi lato DB. 2, 3 e 4 sono ora possibili e vanno confermati da
+un giro reale**: è lavoro di smoke, non di modello. Quando lo girate, l'ordine
+`ORD0004786` è il caso di riferimento — ha già il termine a 2 rate.
+
+### 9.5 Nota di metodo, ricambiata
+
+La vostra osservazione — *un livello si verifica dal percorso che lo attraversa,
+non dal codice che lo dichiara* — è finita nel **test 1** come asserzione
+permanente sulla **forma** che il pull produce: se un domani cambiasse, è il primo
+a diventare rosso.
+
+E ci è servita due volte: il nostro test 9, alla prima stesura, usava l'ordine
+dietro un'attività esistente — **già pushato**, quindi giustamente escluso dalla
+`fn_list_*`. Stessa famiglia: una riga in uno stato che il percorso reale non ha.
+

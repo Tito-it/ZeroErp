@@ -1,0 +1,260 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# T.2 — il livello 1 della catena torna raggiungibile
+#   (brief-db-termine-dal-documento-alla-commessa.md §3.2, risposta DB §8.3)
+#
+# IL FATTO. Il livello «documento sorgente» non e' dormiente: e'
+#   STRUTTURALMENTE IRRAGGIUNGIBILE. Il pull scrive `sorgente = COMMESSA`
+#   sull'attivita' che genera (per disegno, rev 2026-06-28), quindi il resolver
+#   legge COMMESSA, non matcha ne' `ordini` ne' `preventivi` e salta.
+#   Misurato: 35 attivita_fatturabili su 35 hanno sorgente COMMESSA. Non e' un
+#   caso raro, e' la totalita' di cio' che arriva in fattura.
+#
+# ⚠️ IL MOTIVO CHE AVEVAMO SCRITTO ERA SBAGLIATO. Il manuale del 2026-08-02
+#   diceva «livello dormiente perche' ordini e preventivi hanno zero righe».
+#   Falso: non scatterebbe nemmeno a tabelle piene. La lezione, dal BE:
+#   *un livello si verifica dal percorso che lo attraversa, non dal codice che
+#   lo dichiara*. Il loro primo test in rollback aveva CONFERMATO il livello 1
+#   perche' costruiva l'attivita' a mano con `sorgente_tipo_id = 6`, un valore
+#   che il pull vero non produce mai.
+#
+# ⚠️ LA PROPOSTA DEL BRIEF NON ERA APPLICABILE. §3.2 chiedeva di ripuntare su
+#   `sorgente_origine_tipo_id` + l'uid del documento originale. Quell'uid NON
+#   ESISTE: attivita_fatturabili conserva il TIPO d'origine, non l'UID.
+#   Sapremmo che viene da un ordine, non da QUALE ordine.
+#   Il percorso vero passa dalla riga di commessa, che conserva entrambi:
+#       attivita_fatturabili.commessa_attivita_id
+#            -> commesse_attivita.sorgente_tipo_id  (ORDINE_VENDITA / PREVENTIVO)
+#               commesse_attivita.sorgente_uid      (l'uid del documento vero)
+#   Verificato: 35 attivita' su 35 hanno commessa_attivita_id -> JOIN totale.
+#   Nessuna colonna nuova.
+#
+# COSA FA. Prima del livello 1 risolve la sorgente EFFETTIVA e copre due strade:
+#   1) attivita' inserita DIRETTAMENTE con sorgente documento -> resta com'era;
+#   2) attivita' prodotta dal PULL (sorgente COMMESSA) -> risale alla riga di
+#      commessa e legge la sorgente originale.
+#   Il resto della catena non cambia.
+#
+# ⚠️ SI SOVRASCRIVE SOLO SE LA SORGENTE RISOLVE. Le variabili sono proprie e il
+#   valore si applica solo con `v_src_codice IS NOT NULL`: un `SELECT INTO`
+#   senza righe azzera, e azzerare qui perderebbe il caso legittimo della
+#   strada 1. E' la stessa trappola gia' pagata su questa funzione il
+#   2026-08-01 (livello cliente con JOIN inner).
+#
+# PERCHE' NON BASTAVA T.1. Con le condizioni propagate alla commessa il livello
+#   2 copre il caso normale, ma il livello 1 resta l'unico presidio per le
+#   attivita' inserite direttamente -- ed e' cio' che rende vera la frase
+#   «documento -> commessa -> cliente -> default» scritta in D-R. Una catena con
+#   un livello decorativo inganna chi la legge: e' appena successo.
+#
+# Firma e RETURNS TABLE INVARIATI -> CREATE OR REPLACE puro, nessun DROP.
+#
+# Base: corpo vivo dal DB (post 20260801-06) + firma con %TYPE dal medesimo
+#   YAML, che l'auto-gen scioglie.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260803-03-fix-resolve-termini-livello-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20260803-03-fix-resolve-termini-livello-sorgente
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_resolve_termini_pagamento: il livello 1 risolve la sorgente effettiva
+        risalendo da commessa_attivita_id, cosi' torna raggiungibile anche sulle
+        attivita' prodotte dal pull (che portano sorgente COMMESSA).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_resolve_termini_pagamento(
+                  p_attivita_id vendite.attivita_fatturabili.id%TYPE
+              )
+              RETURNS TABLE (
+                  termine_pagamento_id   config.termini_pagamento.id%TYPE,
+                  modalita_pagamento_id  config.modalita_pagamento.id%TYPE
+              )
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+
+              -- Scopo: unica implementazione della catena delle condizioni di
+              --        pagamento (C-13). Risolve per UNA attivita' la coppia che
+              --        entra nella chiave di aggregazione della fattura (D-7/D-B).
+              -- Regole: i due campi scendono la catena in modo INDIPENDENTE, perche'
+              --         la modalita' ha meno livelli del termine (il preventivo non
+              --         la porta). Assenza totale = TP_1RATA sul termine (D-J) e
+              --         NULL sulla modalita': `config.modalita_pagamento` non ha una
+              --         riga «default», e sceglierne una arbitrariamente finirebbe
+              --         sulla FatturaPA.
+              -- ⚠️ Ogni livello legge in variabili PROPRIE e la fusione avviene
+              --    dopo, con COALESCE in codice: un `SELECT ... INTO` che non trova
+              --    righe mette le variabili a NULL, quindi leggere direttamente
+              --    dentro `v_termine`/`v_modalita` farebbe CANCELLARE al livello a
+              --    valle cio' che il livello a monte aveva gia' risolto.
+              DECLARE
+                  v_sorgente_codice  config.sorgenti.codice_interno%TYPE;
+                  v_sorgente_uid     vendite.attivita_fatturabili.sorgente_uid%TYPE;
+                  v_commessa_id      vendite.commesse.id%TYPE;
+                  v_ba_fattura_id    anagrafiche.billing_account.id%TYPE;
+                  v_termine          config.termini_pagamento.id%TYPE;
+                  v_modalita         config.modalita_pagamento.id%TYPE;
+                  v_liv_termine      config.termini_pagamento.id%TYPE;
+                  v_liv_modalita     config.modalita_pagamento.id%TYPE;
+                  -- T.2: risoluzione della sorgente EFFETTIVA (vedi blocco piu' sotto).
+                  v_ca_id            vendite.attivita_fatturabili.commessa_attivita_id%TYPE;
+                  v_src_codice       config.sorgenti.codice_interno%TYPE;
+                  v_src_uid          vendite.commesse_attivita.sorgente_uid%TYPE;
+              BEGIN
+                  -- Guard: id numerico obbligatorio e positivo (linee-guida-sql).
+                  IF p_attivita_id IS NULL OR p_attivita_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_resolve_termini_pagamento', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_attivita_id', 'valore', p_attivita_id),
+                          NULL::uuid, 'p_attivita_id obbligatorio e > 0'
+                      );
+                  END IF;
+
+                  -- BA della FATTURA = padre se c'e', stessa espressione di
+                  -- fn_build_fattura_key: le condizioni sono di chi riceve il
+                  -- documento, non del conto figlio che ha generato la riga.
+                  SELECT s.codice_interno,
+                         a.sorgente_uid,
+                         a.commessa_id,
+                         a.commessa_attivita_id,
+                         COALESCE(ba.parent_account_id, a.billing_account_id)
+                    INTO v_sorgente_codice, v_sorgente_uid, v_commessa_id, v_ca_id, v_ba_fattura_id
+                    FROM vendite.attivita_fatturabili a
+                    JOIN anagrafiche.billing_account ba ON ba.id = a.billing_account_id
+                    LEFT JOIN config.sorgenti s ON s.id = a.sorgente_tipo_id
+                   WHERE a.id = p_attivita_id;
+
+                  IF v_ba_fattura_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_resolve_termini_pagamento', 'E_VALORE_MANCANTE',
+                          jsonb_build_object('attivita_id', p_attivita_id),
+                          NULL::uuid, concat('attivita non trovata per id ', p_attivita_id)
+                      );
+                  END IF;
+
+                  -- ── Sorgente EFFETTIVA (T.2) ─────────────────────────────────
+                  -- Il pull riscrive `sorgente = COMMESSA` sull'attivita' che genera, per
+                  -- disegno: il tipo originale resta su `sorgente_origine_tipo_id`, ma
+                  -- l'UID del documento vero NON e' conservato su attivita_fatturabili.
+                  -- Senza questo blocco il livello 1 non scatta MAI sulle attivita' che
+                  -- arrivano dal pull -- cioe' su tutte quelle che finiscono in fattura --
+                  -- e la catena a quattro livelli ne ha uno decorativo.
+                  -- Il documento vero si ritrova sulla riga di commessa, che conserva
+                  -- sorgente_tipo_id e sorgente_uid ORIGINALI.
+                  -- ⚠️ Si legge in variabili PROPRIE e si sovrascrive solo se la sorgente
+                  --    risolve: un `SELECT INTO` senza righe azzera, e azzerare qui
+                  --    significherebbe perdere anche il caso legittimo dell'attivita'
+                  --    inserita direttamente con sorgente documento.
+                  IF v_sorgente_codice = 'COMMESSA' AND v_ca_id IS NOT NULL THEN
+                      SELECT s2.codice_interno, ca.sorgente_uid
+                        INTO v_src_codice, v_src_uid
+                        FROM vendite.commesse_attivita ca
+                        LEFT JOIN config.sorgenti s2 ON s2.id = ca.sorgente_tipo_id
+                       WHERE ca.id = v_ca_id;
+
+                      -- ⚠️ Si accettano SOLO i due tipi che il livello 1 gestisce.
+                      --    Non e' una restrizione di comodo: la sorgente e'
+                      --    POLIMORFA e `commesse_attivita.sorgente_uid` e' TEXT,
+                      --    mentre `attivita_fatturabili.sorgente_uid` e' UUID.
+                      --    Per convenzione del modello preventivo/offerta usano
+                      --    l'uid, gli altri `id::text`: assegnare senza filtro
+                      --    farebbe esplodere il cast il giorno in cui una riga
+                      --    CONTRATTO o CONSUMI arriva qui (oggi non ce ne sono
+                      --    -- misurato: 39 ORDINE, 44 PREVENTIVO, 1 DDT, tutti
+                      --    uuid validi -- ma e' un rischio che matura da solo).
+                      --    Per contratti e DDT il livello 1 non avrebbe comunque
+                      --    nulla da leggere: non hanno colonne di pagamento.
+                      IF v_src_codice IN ('ORDINE_VENDITA', 'PREVENTIVO') THEN
+                          v_sorgente_codice := v_src_codice;
+                          v_sorgente_uid    := v_src_uid::uuid;
+                      END IF;
+                  END IF;
+
+                  -- ── Livello 1: documento sorgente ────────────────────────────
+                  -- L'ordine porta entrambi, il preventivo il solo termine. Nessun
+                  -- ramo contratto: non ha colonne di pagamento.
+                  IF v_sorgente_codice = 'ORDINE_VENDITA' THEN
+                      SELECT o.termine_pagamento_id, o.modalita_pagamento_id
+                        INTO v_liv_termine, v_liv_modalita
+                        FROM vendite.ordini o
+                       WHERE o.uid = v_sorgente_uid;
+                      v_termine  := COALESCE(v_termine,  v_liv_termine);
+                      v_modalita := COALESCE(v_modalita, v_liv_modalita);
+                  ELSIF v_sorgente_codice = 'PREVENTIVO' THEN
+                      SELECT p.termine_pagamento_id
+                        INTO v_liv_termine
+                        FROM vendite.preventivi p
+                       WHERE p.uid = v_sorgente_uid;
+                      v_termine := COALESCE(v_termine, v_liv_termine);
+                  END IF;
+
+                  -- ── Livello 2: COMMESSA (D-R) ────────────────────────────────
+                  -- La commessa POSSIEDE le proprie condizioni: la sorgente gliele
+                  -- propone alla nascita e sono elemento della sua chiave di
+                  -- raggruppamento, quindi tutte le attivita' di una commessa
+                  -- portano lo stesso valore e questo livello non puo' spaccare
+                  -- una fattura piu' di quanto D-R non abbia gia' spaccato la
+                  -- commessa. Sta PRIMA del cliente perche' e' piu' specifico e
+                  -- perche' cambiare le condizioni di un cliente non deve
+                  -- riscrivere quelle delle commesse gia' aperte.
+                  IF v_commessa_id IS NOT NULL AND (v_termine IS NULL OR v_modalita IS NULL) THEN
+                      SELECT c.termine_pagamento_id, c.modalita_pagamento_id
+                        INTO v_liv_termine, v_liv_modalita
+                        FROM vendite.commesse c
+                       WHERE c.id = v_commessa_id;
+                      v_termine  := COALESCE(v_termine,  v_liv_termine);
+                      v_modalita := COALESCE(v_modalita, v_liv_modalita);
+                  END IF;
+
+                  -- ── Livello 3: cliente del BA PADRE ──────────────────────────
+                  -- Costante su tutte le attivita' che aggregano insieme, perche'
+                  -- il BA padre e' gia' elemento di chiave: questo livello non puo'
+                  -- spaccare una fattura. Deterministico grazie a
+                  -- uq_clienti_istanza_utility: una riga sola, non un LIMIT 1.
+                  -- ⚠️ La JOIN e' inner: un BA padre senza riga cliente da ZERO
+                  -- righe, e leggere qui dentro le variabili di stato le
+                  -- azzererebbe (vedi nota in testa).
+                  IF v_termine IS NULL OR v_modalita IS NULL THEN
+                      SELECT cl.termine_pagamento_id, cl.modalita_pagamento_id
+                        INTO v_liv_termine, v_liv_modalita
+                        FROM anagrafiche.billing_account ba
+                        JOIN anagrafiche.clienti cl
+                          ON cl.istanza_utility_id = ba.istanza_utility_id
+                       WHERE ba.id = v_ba_fattura_id;
+                      v_termine  := COALESCE(v_termine,  v_liv_termine);
+                      v_modalita := COALESCE(v_modalita, v_liv_modalita);
+                  END IF;
+
+                  -- ── Livello 4: default ───────────────────────────────────────
+                  -- Solo il termine ha un default (D-J). La modalita' resta NULL.
+                  IF v_termine IS NULL THEN
+                      SELECT tp.id
+                        INTO v_termine
+                        FROM config.termini_pagamento tp
+                       WHERE tp.codice_interno = 'TP_1RATA'
+                         AND tp.attivo IS TRUE;
+                  END IF;
+
+                  RETURN QUERY SELECT v_termine, v_modalita;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_resolve_termini_pagamento(bigint)
+              IS 'Catena unica condizioni di pagamento per attivita'' (C-13): ritorna la coppia (termine_pagamento_id, modalita_pagamento_id) scendendo documento sorgente -> COMMESSA (D-R) -> cliente del BA padre -> default TP_1RATA sul solo termine. I due campi scendono in modo indipendente: il preventivo porta il termine ma non la modalita''. rev 2026-08-03 (T.2): il livello 1 risolve la SORGENTE EFFETTIVA. Il pull riscrive sorgente = COMMESSA sull''attivita'' generata, quindi il livello 1 non scattava MAI su cio'' che arriva in fattura (misurato: 35 attivita'' su 35). Il documento vero si ritrova da commessa_attivita_id -> commesse_attivita.sorgente_tipo_id/sorgente_uid, perche'' attivita_fatturabili conserva il TIPO d''origine ma non l''UID. Copre due strade: attivita'' inserita direttamente con sorgente documento (invariata) e attivita'' dal pull. La sovrascrittura avviene solo se la sorgente risolve: un SELECT INTO senza righe azzera, e azzerare perderebbe la prima strada. Ogni livello legge in variabili proprie e la fusione avviene con COALESCE in codice.';

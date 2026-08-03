@@ -75,14 +75,50 @@ cliente dà zero righe e avrebbe azzerato il termine trovato sul documento.
 
 ---
 
-### 🔎 Stato dei dati: il livello 1 oggi è dormiente
+### 🔁 Il livello 1 e la sorgente EFFETTIVA
 
-Misurato: `vendite.ordini` e `vendite.preventivi` hanno **zero righe** e tutte le
-attività arrivano da commessa. Il livello «documento sorgente» è quindi una
-**predisposizione** che si accenderà al primo uso reale, non un ramo in esercizio.
+> 🔴 **Rettifica 2026-08-03.** La prima stesura di questa pagina diceva che il
+> livello 1 era «dormiente perché `ordini` e `preventivi` hanno zero righe».
+> **Il motivo era sbagliato**: non scattava nemmeno a tabelle piene.
 
-Se ne tenga conto leggendo i test: quel livello non è esercitato, ed è dichiarato
-nei file invece di essere taciuto.
+Il **pull riscrive la sorgente**: l'attività che genera porta
+`sorgente = COMMESSA`, per disegno. Il resolver leggeva quel valore, non
+trovava né `ordini` né `preventivi`, e saltava — su **35 attività su 35**, cioè
+sulla totalità di ciò che arriva in fattura. Il livello non era dormiente, era
+**strutturalmente irraggiungibile**, e la catena a quattro livelli ne aveva uno
+decorativo.
+
+Il costo l'ha pagato una fattura vera: termine a 2 rate impostato su preventivo e
+ordine, documento uscito con **una** rata — e **senza errori**, perché le rate
+quadravano col totale.
+
+Da `20260803-03` il livello 1 risolve la **sorgente effettiva** e copre due
+strade:
+
+| Strada | Come |
+|---|---|
+| attività inserita **direttamente** con sorgente documento | `a.sorgente_uid` — invariata |
+| attività prodotta dal **pull** (`sorgente = COMMESSA`) | risale via `a.commessa_attivita_id` → `commesse_attivita.sorgente_tipo_id` + `sorgente_uid` |
+
+**Perché dalla riga di commessa e non da `sorgente_origine_tipo_id`**:
+`attivita_fatturabili` conserva il **tipo** d'origine ma **non l'uid**. Si saprebbe
+che viene da un ordine, non da *quale*. La riga di commessa conserva entrambi, e la
+JOIN è totale (35 su 35).
+
+⚠️ **La sovrascrittura è filtrata sui due tipi che il livello 1 gestisce**
+(`ORDINE_VENDITA`, `PREVENTIVO`), e non è una restrizione di comodo: la sorgente è
+**polimorfa** e `commesse_attivita.sorgente_uid` è `TEXT`, mentre
+`attivita_fatturabili.sorgente_uid` è `UUID`. Per convenzione preventivo e offerta
+usano l'uid, gli altri `id::text`: assegnare senza filtro farebbe **esplodere il
+cast** al primo contratto o consumo che arrivasse lì. Per contratti e DDT il
+livello 1 non avrebbe comunque nulla da leggere — non hanno colonne di pagamento.
+
+💡 **La lezione, che vale oltre questa funzione**: *un livello si verifica dal
+percorso che lo attraversa, non dal codice che lo dichiara*. Il primo test scritto
+per verificarlo lo aveva **confermato** — perché costruiva l'attività a mano con
+un `sorgente_tipo_id` che il pull non produce mai. Il presidio è ora il test 1 di
+`test-resolve-termini-livello-sorgente-v1.sql`, che asserisce la **forma** che il
+pull produce: se cambia, è il primo a dirlo.
 
 ---
 
