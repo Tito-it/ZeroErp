@@ -89,7 +89,7 @@
 ## ⚙️ Funzioni (manuale)
 - [fn_aggiungi_onere_commessa](manual/fn_aggiungi_onere_commessa.md) — (rev 2026-07-23)
 - [fn_annulla_commessa_attivita](manual/fn_annulla_commessa_attivita.md) — (rev 2026-07-28)
-- [fn_annulla_lotto_da_draft](manual/fn_annulla_lotto_da_draft.md) — (latest review 09-02-2026)   La funzione **`vendite.fn_annulla_lotto_da_draft()`** effettua il **rollback tecnico** di un lotto **MASSIVO** in stato **DRAFT**, eliminando i documenti generati dal draft e ripristinando le righe di `attivita_fatturabili`.
+- [fn_annulla_lotto_da_draft](manual/fn_annulla_lotto_da_draft.md) — (latest review 03-08-2026)   La funzione **`vendite.fn_annulla_lotto_da_draft()`** effettua il **rollback tecnico** di un lotto in stato **DRAFT**, eliminando i documenti generati dal draft, ripristinando le righe di `attivita_fatturabili` e **chiudendo** il lotto portandolo ad **ANNULLATA**.
 - [fn_annulla_reso](manual/fn_annulla_reso.md) — (rev 2026-07-13)
 - [fn_applica_fondi_fattura](manual/fn_applica_fondi_fattura.md) — La funzione **`vendite.fn_applica_fondi_fattura()`** applica i fondi fattura in stato `DISPONIBILE` ad una **fattura figlia**, creando le righe in `vendite.fatture_fondi_fattura` e aggiornando la `source` a stato `ASSEGNATO`.
 - [fn_approva_commessa_attivita](manual/fn_approva_commessa_attivita.md) — (rev 2026-06-07) `vendite.fn_approva_commessa_attivita(p_commessa_id, p_righe_ids, p_user)` porta le righe `commesse_attivita` da `stato_approvazione = 'BOZZA'` a `'APPROVATA'`.
@@ -102,7 +102,7 @@
 - [fn_cancel_lotto_task_run](manual/fn_cancel_lotto_task_run.md) — Chiude un task run impostando `task_stato = ANNULLATO`.
 - [fn_chiudi_contratto_per_successione](manual/fn_chiudi_contratto_per_successione.md) — `vendite.fn_chiudi_contratto_per_successione(...)` è la **seconda metà** del meccanismo di successione: dopo che [`fn_contratto_sovrapposto`](/dbzero/vendite/funzioni/fn_contratto_sovrapposto) ha individuato un contratto in conflitto, questa funzione lo **accorcia** per fare spazio al nuovo, impostando:
 - [fn_chiudi_riconsegna_reso](manual/fn_chiudi_riconsegna_reso.md) — (rev 2026-07-26)
-- [fn_cleanup_fatture_by_ids](manual/fn_cleanup_fatture_by_ids.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_cleanup_fatture_by_ids()`** centralizza il cleanup di fatture e righe correlate, ripristinando le righe di `attivita_fatturabili`.
+- [fn_cleanup_fatture_by_ids](manual/fn_cleanup_fatture_by_ids.md) — (latest review 03-08-2026)  
 - [fn_close_giornaliero_lotto](manual/fn_close_giornaliero_lotto.md) — (latest review 03-02-2026) La funzione **`vendite.fn_close_giornaliero_lotto()`** chiude operativamente un lotto di tipo **GIORNALIERO** e allinea lo stato documentale delle fatture collegate al valore passato (tipicamente stato `INVIATA`).
 - [fn_complete_lotto_task_run](manual/fn_complete_lotto_task_run.md) — Chiude un task run impostando `task_stato = COMPLETATO` e `ended_at`.
 - [fn_conferma_reso](manual/fn_conferma_reso.md) — (rev 2026-07-13)
@@ -190,6 +190,7 @@
 - [fn_ricalcola_totali_fattura](manual/fn_ricalcola_totali_fattura.md) — La funzione **`vendite.fn_ricalcola_totali_fattura()`** ricalcola i totali sulla testata fattura a partire dai **riepiloghi IVA** e dai **fondi fattura**, applicando le regole di arrotondamento definite per **emittente/utility**.
 - [fn_ricalcola_totali_ordine](manual/fn_ricalcola_totali_ordine.md) — (latest review 05-06-2026)
 - [fn_ricalcola_totali_preventivo](manual/fn_ricalcola_totali_preventivo.md) — (latest review 02-05-2026)
+- [fn_riporta_lotto_a_draft](manual/fn_riporta_lotto_a_draft.md) — (latest review 03-08-2026)  
 - [fn_select_attivita_fatturabili](manual/fn_select_attivita_fatturabili.md) — (latest review 27-01-2026) La funzione **`vendite.fn_select_attivita_fatturabili()`** seleziona le righe **eleggibili** per la fatturazione e, se richiesto, le **locka** in modo atomico.
 - [fn_set_arrotondamento_scope](manual/fn_set_arrotondamento_scope.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_set_arrotondamento_scope()`** imposta (upsert) il **saldo tecnico** degli arrotondamenti per l'ambito di fatturazione.
 - [fn_set_documento_canale_stato](manual/fn_set_documento_canale_stato.md) — (latest review 24-02-2026) Gestisce in modo uniforme la transizione stato dei canali fatturabili per documento sorgente.

@@ -27,6 +27,14 @@ coerente di **ricalcoli**, **job** e **processi successivi** (emissione, invio, 
   * `stato_lotto` (IN_ESECUZIONE | COMPLETATO | ERRORE)
   * `stato_doc_fiscale_id` (FK -> `config.stati_doc_fiscale`)
   * `stato_operativo` (APERTO | CHIUSO | ERRORE)
+* **Riapertura** (dal 03-08-2026): `riaperto_il` (timestamptz, `NULL` = mai
+  riaperto) — istante in cui il lotto è stato riportato in bozza **di proposito**
+  da [`fn_riporta_lotto_a_draft`](/dbzero/vendite/funzioni/fn_riporta_lotto_a_draft).
+  Serve a distinguere **«riaperto»** da **«rotto»**: senza, l'unico modo di far
+  ripartire il lotto sarebbe marcarlo in ERRORE, cioè dire una cosa falsa che i
+  cruscotti mostrerebbero in rosso. ⚠️ **Non è uno stato** e non sostituisce
+  nessuno dei tre sopra; va riportata a vuoto quando il lotto avanza oltre la
+  bozza, o il lotto rifarebbe lo stesso passo all'infinito.
 * **Governance**: `meta`, `storicizza`, `tx_id`, audit `data_*`/`user_*`.
 
 ---
