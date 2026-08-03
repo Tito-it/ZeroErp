@@ -306,6 +306,70 @@ punto in cui sono usati, non con una migrazione di massa.
 
 ---
 
+## Consultare i log
+
+Le sezioni precedenti descrivono come i log si **scrivono**. Questa descrive come
+si **leggono**: quale registro risponde a quale domanda, e da dove ci si arriva
+nell'applicazione.
+
+> Questa è la mappa **stabile**. Lo stato di avanzamento — quali strumenti
+> mancano ancora, quali registri non sono esposti, il piano per colmarli — vive
+> in [analisi-osservabilita-log.md](/dev/work-in-progress/analisi-osservabilita-log),
+> che si aggiorna con lo sviluppo. Qui si dice *cosa esiste e come si usa*, non
+> *cosa manca*: è la distinzione che tiene una guida leggibile a distanza di mesi.
+
+### Quale log risponde a quale domanda
+
+La prima scelta da fare non è «apro i log», è **quale registro**. Sbagliarla
+costa tempo, perché ognuno di questi risponde a una domanda diversa e in nessuno
+c'è la risposta dell'altro.
+
+| La domanda | Il registro | Nota |
+| --- | --- | --- |
+| «Cosa è andato storto, tecnicamente?» | `dbops.error_log` | Registro universale. **Sopravvive al rollback** (scrittura via dblink): è l'unico posto dove resta traccia di un errore in una transazione annullata |
+| «Chi ha chiamato cosa, via HTTP?» | `dbops.request_log` | Utente, path, status, durata, `request_id`, `error_code` |
+| «Quale funzione o automazione è stata eseguita?» | `dbops.audit_log` | `params`/`result`, `dry_run`, `sqlstate`, `rows_affected` |
+| «Il job notturno è girato? com'è finito?» | `maintenance.job_run_log` | Un record per esecuzione, pgAgent e headless; `run_uuid` per correlare col dominio |
+| «Cos'è successo a questo lotto/fattura, in ordine di tempo?» | `vendite.event_log` | Timeline append-only per dominio ed entità, con `severity` |
+| «Perché questo lotto non avanza?» | `vendite.fatturazione_lotti_log` + `fatturazione_lotti_task_runs` | Il primo dà fase ed esito, il secondo il **tentativo per tentativo** con `error_code`/`error_message` |
+| «Perché questa fattura è bloccata?» | `vendite.fatture_log` | Warning e critici del singolo documento. I critici **bloccano numerazione e invio** finché non sono disabilitati |
+| «Il lavoro che ho lanciato a che punto è?» | `dbops.coda_lavori` | Stato, tentativi, `ultimo_errore`, backoff |
+| «Com'era questo record prima?» | schema `storico.*` | Snapshot JSONB completo a ogni UPDATE/DELETE — non è un log eventi, è la storia del dato |
+
+**Il filo che li lega.** `tx_id` attraversa i registri scritti nella stessa
+transazione; `request_id` lega la richiesta HTTP a ciò che ne è seguito;
+`run_uuid` lega un job al suo dettaglio di dominio; `correlation_id` lega gli
+eventi di una stessa operazione in `event_log`. Quando si indaga, si parte da
+uno di questi quattro — non dal timestamp, che con più operazioni in parallelo
+non discrimina.
+
+### Da dove si arriva, nell'applicazione
+
+| Strumento | Percorso | Cosa mostra |
+| --- | --- | --- |
+| **Badge code + drawer rapido** | topbar (sempre visibile) | Job vivi delle due code e stato dei worker; da qui si scende al dettaglio |
+| **Code di lavoro** | Strumenti → Code di lavoro | Due schede (lavori e stampa): stato, tentativi, ultimo errore, timeline del job; azioni annulla/riaccoda. Il dettaglio di un job apre un drawer dedicato |
+| **Diagnostica del lotto** | Vendite → Lotti → clic sulla riga | Scheda **Task-run** (tentativo, esito, codice e messaggio d'errore) e scheda **Segnalazioni** con severità; da qui si fa ripartire uno step fallito |
+| **Errori vivi di fatturazione** | Vendite → Dashboard competenza, pannello errori | Task in errore non ancora superati da un ritentativo, più le fatture critiche; il codice del lotto è cliccabile e porta alla diagnostica |
+| **Esiti dei giri** | Vendite → Lotti, pannello in fondo | Riassunto delle esecuzioni per corsia e stato della coda di stampa |
+| **Audit delle modifiche** | Amm. Software → Audit log | Chi ha cambiato cosa (riservato agli amministratori) |
+| **Log email** | Amm. Software → Email log | Esiti di invio, tentativi, errore (riservato agli amministratori) |
+
+### Log applicativi Python
+
+Oltre ai registri su database, il backend scrive log su file
+(`RotatingFileHandler`, vedi `settings.py` → `LOGGING`). Servono per i
+traceback e per il comportamento interno del processo, e **si consultano sul
+server**, non dall'applicazione.
+
+⚠️ **Non sono lo stesso piano dei registri DB**, e la differenza conta quando
+si indaga: un errore di dominio finisce in `dbops.error_log` **anche se la
+transazione fallisce**, mentre un traceback Python resta solo nel file. Se una
+richiesta è andata storta e su `error_log` non c'è nulla, la traccia va cercata
+lì.
+
+---
+
 ## Setup operativo (devops)
 
 Questa sezione e destinata a devops e DBA. Descrive come configurare il logging persistente via dblink, che permette alla funzione `fn_log_error_only` di scrivere su `dbops.error_log` fuori transazione.
