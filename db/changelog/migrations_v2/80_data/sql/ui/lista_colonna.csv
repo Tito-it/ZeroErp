@@ -393,7 +393,7 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 393,35,tentativi,Tentativi,Colonna calcolata FE,,informazione,numeric,,,70,right,,,f,f,f,f,f,t,2026-08-02 00:00:00,mctit,strumenti.code.col_tentativi,20
 394,35,esito,Esito,Colonna calcolata FE,,informazione,string,,,80,left,,,f,f,f,f,f,t,2026-08-02 00:00:00,mctit,strumenti.code.col_esito,30
 395,35,data_update,Aggiornato,,data_update,informazione,datetime,datetime_short,,90,left,,,t,t,t,f,f,t,2026-08-02 00:00:00,mctit,strumenti.code.col_aggiornato,80
-396,36,id,Pratica,,id,identificatore,numeric,,,10,right,,,t,f,t,f,f,t,2026-08-02 00:00:00,mctit,vendite.approvazioni_prezzo.col_pratica,100
+396,36,id,Pratica,,id,identificatore,numeric,,,10,right,,,t,t,t,f,f,t,2026-08-02 00:00:00,mctit,vendite.approvazioni_prezzo.col_pratica,100
 397,36,data_insert,Data richiesta,,data_insert,informazione,datetime,datetime_short,,20,left,,,t,t,t,f,f,t,2026-08-02 00:00:00,mctit,vendite.approvazioni_prezzo.col_data,80
 398,36,descrizione,Descrizione,,descrizione,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-08-02 00:00:00,mctit,vendite.approvazioni_prezzo.col_descrizione,70
 399,36,priorita,Priorita',,priorita_descrizione,informazione,string,,,40,left,,,t,t,t,f,f,t,2026-08-02 00:00:00,mctit,vendite.approvazioni_prezzo.col_priorita,60

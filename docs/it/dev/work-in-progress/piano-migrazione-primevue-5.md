@@ -2187,13 +2187,15 @@ parametri. Baseline `vendite`: 36 rossi, 36 noti, **nessuna regressione**.
 | 1 | Convertire i 3 `.vue` del 7° lotto (le due code + approvazioni) | **BE/FE** | niente: seed pronto, presidio verde |
 | 2 | Su approvazioni, allineare il `.vue` a `priorita_descrizione` ed esporla in API | **BE/FE** | va fatto **insieme** alla conversione, o la freccia nasce morta |
 | 3 | `CommessaGestioneDrawer`: passare `order_by`/`order_dir` da view e repository fino a `fn_list_commessa_attivita`, e far emettere `@sort` al `.vue` | **BE/FE** | blocca il **seed** di quella lista (poi torna al DB) |
-| 4 | `VersioneDrawer`: i **compositi** devono arrivare dall'endpoint insieme alle altre righe | **BE** | blocca tutto il resto su quella lista: è l'unica domanda di **modello** rimasta |
+| 4 | ~~`VersioneDrawer`: i compositi~~ → ✅ **CHIUSO 2026-08-03** (UNION lato BE, endpoint separato rimosso). Resta il **seed** della lista | **DB** | niente: era l'ultima domanda di modello |
 | 5 | Le 3 dashboard | — | **rinviate per scelta** (decisione 2): ordinano già, si fanno per ultime |
 | 6 | I 4 drawer senza endpoint paginato | — | **fermi per scelta** (decisione 4) |
 
-➡️ **Sul percorso critico c'è solo il punto 4.** Gli altri sono lavoro noto e
-sequenziale; quello è una decisione di modello che nessuno ha ancora preso —
-*i compositi sono righe di quella lista, o una sezione a parte?*
+➡️ **Il percorso critico è vuoto** (aggiornato 2026-08-03). Il punto 4 era
+l'unica decisione di modello rimasta ed è stata presa: i compositi sono righe
+della lista, e il BE le unisce in `UNION` sullo stesso endpoint paginato.
+Da qui in avanti resta solo lavoro noto e sequenziale — seed lato DB,
+conversione lato BE/FE.
 
 ---
 

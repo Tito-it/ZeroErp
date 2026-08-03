@@ -11,9 +11,14 @@
 > 3, commit `b7f4695cd` + la cerniera successiva). La colonna **non esiste più**,
 > i cinque criteri di §6 sono soddisfatti e **Tid ha validato a video il
 > 2026-08-02**. Unico strascico, non un difetto di questo cantiere: il **caveat
-> di copertura pgTAP** in §10.5, che resta al team DB. Il capitolo operativo è
-> **§10** — le sezioni 1-9 restano come scritte, con due rettifiche di misura
-> segnalate in loco.
+> di copertura pgTAP** in §10.5 — **chiuso il 2026-08-02**, vedi la nota in coda
+> a quella sezione. Il capitolo operativo è **§10** — le sezioni 1-9 restano come
+> scritte, con due rettifiche di misura segnalate in loco.
+>
+> ➕ **§11 (2026-08-03): la coda.** La rinomina dell'alias che §7 aveva
+> parcheggiato è stata decisa da Tid ed eseguita lato DB —
+> `emittente_fiscale_descrizione` → `emittente_ragione_sociale`. **BE e FE hanno
+> ancora la loro parte da fare**, ed è elencata in §11.4.
 
 ---
 
@@ -550,3 +555,105 @@ Più rilevante per **questo** cantiere: delle 3 funzioni modificate,
 nessuna asserzione, quindi la sua copertura vale zero
 (cf. `.codex/AGENTS.md`). Il cambio di sorgente su quelle due funzioni è
 **verificato in applicazione** ma **non presidiato da un test verde**.
+
+> ✅ **Caveat 6.5 CHIUSO il 2026-08-02.** Il rilievo era giusto a metà, e la
+> metà giusta era quella che contava. `fn_get_user_emittenti_scope` **era** già
+> presidiata — dal test 12 di
+> `anagrafiche/test-emittente-denominazione-da-soggetto-v1.sql`, che la chiama e
+> ne verifica il valore: chi ha misurato aveva guardato il file col nome della
+> funzione, non chi la esercita. Scoperto invece **il buco vero**:
+> `fn_get_user_profile` aveva solo asserzioni strutturali, ed è l'unica delle
+> tre che ha davvero cambiato **valore** (le altre due avevano il `COALESCE` e
+> mostravano già il nome giusto; lei leggeva `ef.descrizione` nuda).
+>
+> Aggiunto il **test 14**, con un'asserzione self-referenziale più forte di
+> quella che si otterrebbe con una fixture: il blocco `emittente` del profilo
+> nasce da `jsonb_build_object(..., 'emittente_descrizione', …) ||
+> fn_get_soggetto_dati_by_ruolo(...)`, quindi porta **nello stesso oggetto**
+> sia quella chiave sia la `ragione_sociale_completa` del soggetto. Era
+> esattamente la patologia del cantiere — due valori diversi sotto due chiavi
+> vicine, e il consumatore che sceglieva. Il test verifica che ora coincidano, e
+> non dipende da nessun dato esterno per dirlo. **Non è una tautologia**: sui
+> due emittenti reali i valori erano «Emittente fiscale test 1» contro «Gestore
+> Test pgTAP», quindi prima della modifica sarebbe stato rosso.
+> `plan(14)`, 14/14, nessuno skip.
+
+---
+
+## 11. Coda — la rinomina dell'alias, che §7 aveva parcheggiato
+
+**§7 diceva di non farla**, e aveva ragione: mescolarla alla sostituzione della
+sorgente avrebbe trasformato una modifica invisibile in un breaking su decine di
+punti. Chiusa quella fase, la ragione si è rovesciata.
+
+### 11.1 Perché la si fa ora
+
+Il nome `emittente_fiscale_descrizione` faceva riferimento a
+`emittenti_fiscali.descrizione` — **una colonna che dal 2026-08-02 non esiste
+più**. Non era più solo impreciso: rimandava a qualcosa di cancellato, e chi lo
+legge fra sei mesi cercherebbe una colonna inesistente.
+
+Il nome giusto era già in casa: `categorie_clienti_listini` proiettava
+`s.ragione_sociale_completa AS emittente_ragione_sociale`. Due nomi per lo
+stesso identico contenuto; si tiene quello onesto.
+
+**Decisione di Tid (2026-08-03): si uniforma tutto al secondo nome.** Il DB fa
+la sua parte per primo e diventa lo stato di riferimento; BE e FE inseguono. È
+un **breaking secco**, ammesso perché non esiste ancora un ambiente di
+produzione.
+
+### 11.2 Cosa ha fatto il BE (fino al 2026-08-02)
+
+| Cosa | Verificato |
+|---|---|
+| Fase 2 completa: nessuna lettura di `ef.descrizione` resta in `backend/` | ✅ i 9 match residui sono **commenti** che spiegano la scelta — hanno documentato il perché nel codice, non solo cambiato le righe |
+| `categorie_clienti_listini`: whitelist estesa **e** sorgente corretta | ✅ `"emittente_ragione_sociale": "s.ragione_sociale_completa"`, e la SELECT non usa più `s.ragione_sociale` |
+| I due falsi positivi di `pratiche_repository` | ✅ confermati tali: lì `ef` è `config.esiti_flussi_pratiche` — **l'alias nudo su un'altra tabella**, la stessa trappola che aveva fatto fallire con 3 falsi allarmi la precondizione della DROP |
+
+🔵 Il difetto che **il presidio non poteva vedere** — `s.ragione_sociale` invece
+di `ragione_sociale_completa` — l'hanno preso: il controllo confronta nomi di
+colonna, non l'SQL che ci sta sotto, quindi quello andava detto a voce.
+
+### 11.3 Cosa ha fatto il DB (2026-08-03)
+
+`20260803-01`: le 6 viste `vendite.vw_*_lista` rinominano la colonna in
+`emittente_ragione_sociale`. **Il contenuto non cambia** — era già
+`s_ef.ragione_sociale_completa`: cambia solo il nome.
+
+⚠️ **`ALTER VIEW … RENAME COLUMN`, non `DROP`+`CREATE`**, per due ragioni
+misurate e non stimate:
+
+1. `CREATE OR REPLACE VIEW` **rifiuta** di rinominare una colonna — verificato
+   su questo DB: «non è possibile eliminare colonne da una vista». La strada
+   in-place non esiste.
+2. `DROP`+`CREATE` funzionerebbe (nessun oggetto dipende dalle sei, verificato
+   via `pg_depend`) ma **perderebbe i GRANT in silenzio**: ognuna porta
+   `zeroerp_app` e `zeroerp_batch_fatturazione`, e il ruolo batch smetterebbe di
+   leggerle senza che nulla lo dica.
+
+Provato in transazione prima di applicare: 6 rinominate, zero residui, GRANT e
+`security_invoker` conservati, valore identico.
+
+Allineati nello stesso giro: **8 righe di seed** (`campo_sorgente`; su 2 anche il
+`codice`, che ripeteva il nome sbagliato) e il pgTAP
+`vendite/test-emittente-ddt-simmetria-v1.sql`, **12/12**.
+
+ℹ️ Gli 11 changeset storici che creano le viste col nome vecchio **non sono
+stati toccati**: sono già mergiati, e il rename gira dopo di loro anche su un
+database pulito.
+
+### 11.4 🔴 Cosa resta a BE e FE — la finestra è aperta adesso
+
+Il DB è applicato, quindi **i lettori del nome vecchio sono già rotti**. È il
+breaking secco previsto, ma va chiuso subito.
+
+| Dove | Cosa |
+|---|---|
+| **BE — alias di risposta** | 26 occorrenze in 14 file: le liste che leggono dalle 6 viste non trovano più quel nome |
+| **BE — whitelist** | `documenti_repository.py:41` e `:151` — sono le due chiavi che tengono **rosso il presidio** su `documenti.template_documenti` e `template_asset` |
+| **BE — contesto di stampa** | `offerta_document_context_builder.py:134` costruisce la chiave JSON `emittente_fiscale.descrizione`; da rinominare col suo template (`template_offerta_iniziale.md`, righe 20 e 310) |
+| **FE** | 4 file |
+
+⚠️ Finché il BE non allinea gli alias di risposta, le 8 colonne «Emittente»
+delle liste si vedono **vuote**: il seed manda il nome nuovo, l'API risponde
+ancora col vecchio.
