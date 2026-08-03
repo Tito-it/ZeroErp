@@ -136,6 +136,19 @@ class ContrattoDocumentContextBuilder(DocumentContextBuilder):
                 "codice": testata.get("utility_codice"),
                 "descrizione": testata.get("utility_descrizione"),
             },
+            # Aggiunto il 2026-08-03 insieme a ordine/DDT/preventivo: il
+            # contesto contratto non aveva affatto l'emittente, mentre la
+            # testata lo espone per intero. Il modello di template in
+            # `manual/template_contratto_iniziale.md` ci aveva messo la stringa
+            # cablata «Emittente fiscale demo» — un segnaposto che, copiato in
+            # un template pubblicato, finisce stampato su un documento al
+            # cliente (e' successo su quattro template). Stessa chiave di
+            # fattura/ordine/DDT/preventivo: un nome solo su tutti i documenti.
+            "emittente": {
+                "id": testata.get("emittente_fiscale_id"),
+                "codice": testata.get("emittente_fiscale_codice"),
+                "denominazione": testata.get("emittente_ragione_sociale"),
+            },
             "listino": {
                 "id": testata.get("listino_id"),
                 "codice": testata.get("listino_codice"),
