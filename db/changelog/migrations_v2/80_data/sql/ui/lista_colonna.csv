@@ -405,3 +405,54 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 405,37,iva_aliquota,IVA,,iva_aliquota,informazione,numeric,,70,50,right,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.listini.col_iva,30
 406,37,attivo,Stato,,attivo,informazione,boolean,,110,60,center,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.listini.col_stato,20
 407,37,azioni,Azioni,,,azione,string,,70,999,center,,,f,f,f,f,f,t,2026-08-03 00:00:00,mctit,common.col_azioni,100
+408,38,data_attivita,Data,,data_attivita,identificatore,date,date_short,,10,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.commesse.col_data,100
+409,38,competenza_mese,Competenza,,competenza_mese,informazione,date,date_short,,20,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.commesse.col_competenza,70
+410,38,segment_key,Segmento,,segment_key,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.commesse.col_segmento,80
+411,38,quantita,Quantita,,quantita,informazione,numeric,,,40,right,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.commesse.col_quantita,60
+412,38,prezzo_snapshot,Prezzo,,prezzo_snapshot,informazione,numeric,,,50,right,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.commesse.col_prezzo,75
+413,38,stato_approvazione,Approvazione,,stato_approvazione,informazione,string,,,60,center,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.commesse.col_approvazione,90
+414,38,stato_emissione,Emissione,,stato_emissione,informazione,string,,,70,center,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.commesse.col_emissione,90
+415,38,azioni,Azioni,,,azione,string,,,999,center,,,f,f,f,f,f,t,2026-08-03 00:00:00,mctit,vendite.commesse.col_azioni,100
+416,39,anzianita_giorni,Aperto da,,anzianita_giorni,informazione,numeric,,,10,right,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.situazione_aperta.col_aperto_da,95
+417,39,area,Area,,area,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.situazione_aperta.col_area,70
+418,39,codice,Codice,,codice,identificatore,string,,,30,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.situazione_aperta.col_codice,100
+419,39,cliente_display,Cliente,,cliente_display,informazione,string,,,40,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.situazione_aperta.col_cliente,90
+420,39,fase,Fase,,fase,informazione,string,,,50,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.situazione_aperta.col_fase,65
+421,39,stato_codice,Stato,,stato_codice,informazione,string,,,60,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.situazione_aperta.col_stato,85
+422,39,valore_totale,Valore,,valore_totale,informazione,numeric,currency_eur,,70,right,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.situazione_aperta.col_valore,80
+423,39,unita_totali,Unita,,unita_totali,informazione,numeric,,,80,right,,,t,f,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.situazione_aperta.col_unita,40
+424,39,motivo_fermo,Motivo,,motivo_fermo,informazione,string,,,90,left,,,t,f,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.situazione_aperta.col_motivo,50
+425,39,azioni,Azioni,,,azione,string,,,999,center,,,f,f,f,f,f,t,2026-08-03 00:00:00,mctit,common.col_azioni,100
+426,40,anzianita_giorni,Fermo da,,anzianita_giorni,informazione,numeric,,,10,right,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_backlog.col_fermo_da,95
+427,40,classe,Classe,,classe,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_backlog.col_classe,88
+428,40,area,Area,,area,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_backlog.col_area,70
+429,40,codice,Codice,,codice,identificatore,string,,,40,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_backlog.col_codice,100
+430,40,cliente_display,Cliente,,cliente_display,informazione,string,,,50,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_backlog.col_cliente,90
+431,40,valore_fermo,Valore fermo,,valore_fermo,informazione,numeric,currency_eur,,60,right,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_backlog.col_valore,80
+432,40,unita_ferme,Unita,,unita_ferme,informazione,numeric,,,70,right,,,t,f,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_backlog.col_unita,40
+433,40,motivo_fermo,Motivo,,motivo_fermo,informazione,string,,,80,left,,,t,f,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_backlog.col_motivo,50
+434,40,azione,Azione consigliata,,azione,informazione,string,,,90,left,,,t,f,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_backlog.col_azione,60
+435,40,stato_codice,Stato,,stato_codice,informazione,string,,,100,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_backlog.col_stato,85
+436,40,azioni,Azioni,,,azione,string,,,999,center,,,f,f,f,f,f,t,2026-08-03 00:00:00,mctit,common.col_azioni,100
+437,41,tipo_evento,Tipo,,tipo_evento,identificatore,string,,,10,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_tipo_evento,90
+438,41,lotto_codice,Lotto,,lotto_codice,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_lotto,70
+439,41,fattura_numero,Fattura,,fattura_numero,informazione,numeric,,,30,right,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_fattura,75
+440,41,error_code,Codice errore,,error_code,informazione,string,,,40,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_codice_errore,85
+441,41,messaggio,Messaggio,,messaggio,informazione,string,,,50,left,,,t,f,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_messaggio,50
+442,41,data_evento,Data,,data_evento,informazione,datetime,datetime_short,,60,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_data_evento,95
+443,42,riferimento,Gruppo,,riferimento,identificatore,string,,,10,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_gruppo,100
+444,42,tipo_gruppo,Tipo,,tipo_gruppo,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_tipo_gruppo,70
+445,42,cliente_display,Cliente,,cliente_display,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_cliente,90
+446,42,commessa_codice,Commessa,,commessa_codice,informazione,string,,,40,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_commessa,85
+447,42,n_attivita,N. attivita,,n_attivita,informazione,numeric,,,50,right,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_n_attivita,60
+448,42,valore,Valore,,valore,informazione,numeric,currency_eur,,60,right,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_valore,95
+449,42,data_attivita_max,Periodo,,data_attivita_max,informazione,date,date_short,,70,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_periodo,65
+450,42,azioni,Azioni,,,azione,string,,,999,center,,,f,f,f,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_azioni,100
+451,43,commessa_codice,Commessa,,commessa_codice,identificatore,string,,,10,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_commessa,100
+452,43,cliente_display,Cliente,,cliente_display,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_cliente,90
+453,43,n_attivita,N. attivita,,n_attivita,informazione,numeric,,,30,right,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_n_attivita,60
+454,43,valore_tot,Valore,,valore_tot,informazione,numeric,currency_eur,,40,right,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_valore,95
+455,43,valore_fatturato_tot,Fatturato,,valore_fatturato_tot,informazione,numeric,currency_eur,,50,right,,,t,f,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_fatturato,70
+456,43,data_attivita_max,Periodo,,data_attivita_max,informazione,date,date_short,,60,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_periodo,65
+457,43,n_in_ritardo,In ritardo,,n_in_ritardo,informazione,numeric,,,70,right,,,t,f,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_ritardo,55
+458,43,azioni,Azioni,,,azione,string,,,999,center,,,f,f,f,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_azioni,100

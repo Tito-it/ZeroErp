@@ -248,6 +248,29 @@ WHITELIST_BE: dict[str, tuple] = {
     # alias di tabella.
     "vendite.listini_righe": ("apps/vendite/db/listini_repository.py",
                               "RIGHE_ORDER_COLUMNS"),
+    # Ottavo lotto (2026-08-03): le 3 dashboard vendite + il drawer commessa.
+    #
+    # ⚠️ `vendite.commesse_attivita` e' la PRIMA lista la cui whitelist non vive
+    # in Python: sta nel `CASE` di `vendite.fn_list_commessa_attivita`, perche'
+    # ordine e paginazione stanno nella stessa funzione e ordinare a valle
+    # ordinerebbe la pagina gia' estratta. Si registra col percorso della doc
+    # AUTO-GEN (che parte da `docs/`), non con un sorgente backend: cosi' il
+    # controllo resta senza DB e continua a leggere il repository.
+    "vendite.commesse_attivita": (
+        "docs/it/dbzero/vendite/funzioni/fn_list_commessa_attivita.md", ""),
+    # Le 5 dashboard tengono la whitelist come attributo di CLASSE, quindi
+    # serve l'ancora: nello stesso modulo ne convivono cinque e senza ancora si
+    # leggerebbe la prima che capita.
+    "vendite.dash_aperto_documenti": ("apps/vendite/db/vendite_repository.py",
+                                      "DASH_APERTO_SORT_COLUMNS", "class VenditeRepository"),
+    "vendite.dash_backlog_documenti": ("apps/vendite/db/vendite_repository.py",
+                                       "DASH_BACKLOG_SORT_COLUMNS", "class VenditeRepository"),
+    "vendite.dash_competenza_errori": ("apps/vendite/db/vendite_repository.py",
+                                       "DASH_COMPETENZA_ERRORI_SORT_COLUMNS", "class VenditeRepository"),
+    "vendite.dash_competenza_gruppi": ("apps/vendite/db/vendite_repository.py",
+                                       "DASH_COMPETENZA_GRUPPI_SORT_COLUMNS", "class VenditeRepository"),
+    "vendite.dash_competenza_commesse": ("apps/vendite/db/vendite_repository.py",
+                                         "DASH_COMPETENZA_COMMESSE_SORT_COLUMNS", "class VenditeRepository"),
 }
 
 # Colonne che devono ordinare SEMPRE, quando la lista ce l'ha (regola di
@@ -863,7 +886,43 @@ def genera(codice, descrizione, schema, vista, cols_vista, cols_vue, dizionario,
 #
 #        Solleva ValueError se non trova la costante: meglio fermarsi che
 #        rispondere "nessun problema" perche' non si e' guardato niente.
+# Scopo: estrae le chiavi di una whitelist che vive DENTRO una funzione DB,
+#        leggendole dalla documentazione auto-generata di quella funzione.
+#
+#        ⚠️ Perche' esiste questo secondo lettore. Per tutte le liste la
+#        whitelist sta in una costante Python. Per `vendite.commesse_attivita`
+#        no: ordine e paginazione vivono entrambi dentro
+#        `vendite.fn_list_commessa_attivita`, e ordinare a valle ordinerebbe la
+#        pagina gia' estratta. La whitelist e' quindi il `CASE` in PL/pgSQL.
+#
+#        Si legge dalla **doc auto-gen** e non dal DB di proposito: cosi'
+#        `--verifica-ordinamento` resta senza connessione — gira in CI e dove
+#        psycopg non c'e' — e continua a verificare lo stato del REPOSITORY,
+#        non quello di un database particolare che potrebbe essere disallineato.
+#
+#        Se la doc non c'e' o non ha il CASE si solleva: una lista non
+#        verificabile va detta, non saltata in silenzio.
+def whitelist_funzione_db(percorso_doc: str) -> set[str]:
+    file = ROOT / percorso_doc
+    if not file.exists():
+        raise ValueError(f"doc auto-gen non trovata: {percorso_doc} "
+                         "(va rigenerata dopo l'apply della funzione)")
+    testo = file.read_text(encoding="utf-8")
+    # `WHEN 'nome' THEN 'espressione'` — il ramo `WHEN ''` e' il default
+    # (nessun ordinamento chiesto) e non e' una colonna: la regex non lo prende.
+    chiavi = set(re.findall(r"WHEN\s+'([a-z_0-9]+)'\s+THEN", testo))
+    if not chiavi:
+        raise ValueError(f"nessun `WHEN '<nome>' THEN` in {percorso_doc}: "
+                         "la funzione non espone una whitelist leggibile")
+    return chiavi
+
+
 def whitelist_backend(percorso: str, costante: str, dentro: str | None = None) -> set[str]:
+    # Le liste il cui ordinamento vive in una funzione DB si registrano col
+    # percorso della doc auto-gen (che parte da `docs/`), non con un sorgente
+    # Python: si dirotta qui.
+    if percorso.startswith("docs/"):
+        return whitelist_funzione_db(percorso)
     file = ROOT / "backend" / percorso
     if not file.exists():
         raise ValueError(f"sorgente backend non trovato: {percorso}")
