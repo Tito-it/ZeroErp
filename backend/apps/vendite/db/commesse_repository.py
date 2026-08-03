@@ -42,6 +42,24 @@ _SORGENTE_FN_MAP: dict[str, str] = {
 # unico di espansione).
 _SORGENTE_SUPPORTA_RIGHE_IDS: frozenset[str] = frozenset({"PREVENTIVO"})
 
+# Colonne ordinabili della lista attivita' commessa: specchio della whitelist
+# CHIUSA dentro vendite.fn_list_commessa_attivita (changeset 20260802-26), dove
+# vivono ordine e paginazione — ordinare a valle ordinerebbe la sola pagina
+# estratta. Il service valida qui (fail-fast, un solo round-trip); la fn resta
+# l'autorita' e solleva E_PARAMETRO_INVALIDO su un nome fuori mappa.
+# Livello modulo, non ClassVar: e' un dato, e un test che mocka la classe non
+# deve poterla svuotare.
+ATTIVITA_SORT_COLUMNS: frozenset[str] = frozenset({
+    "id",
+    "data_attivita",
+    "competenza_mese",
+    "segment_key",
+    "quantita",
+    "prezzo_snapshot",
+    "stato_approvazione",
+    "stato_emissione",
+})
+
 # Nomi delle 26 colonne condivise da tutte le fn_list_*_da_pushare.
 # La colonna opzionale `riga_id` (presente in preventivi/ordini/contratti/ddt,
 # assente in consumi) e' aggiunta al col_map a runtime dentro
@@ -74,6 +92,13 @@ _PUSHABLE_SHARED_COLS = (
     "valuta_id",
     "meta",
     "tipo_doc_fiscale_id",
+    # Condizioni di pagamento del documento sorgente (contratto di push rev
+    # 2026-08-03, changeset 20260803-02). ⚠️ Questa whitelist E' il cancello
+    # del binding: una colonna esposta dalla fn ma assente qui non entra mai
+    # in `col_map`, e il `col_map.get` a valle resta None IN SILENZIO — e'
+    # successo davvero (smoke-push-termine-documento-commessa, test 0).
+    "termine_pagamento_id",
+    "modalita_pagamento_id",
 )
 
 
@@ -257,10 +282,12 @@ def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
         row[col_map["riga_id"]] if "riga_id" in col_map else None
     )
 
-    # Condizioni di pagamento del documento sorgente: lette con `col_map.get`
-    # come `riga_id`, cosi' il giorno in cui le fn DB le espongono la
-    # propagazione si accende senza toccare questo file. Finche' la colonna
-    # non c'e', restano None e nulla cambia.
+    # Condizioni di pagamento del documento sorgente. La lettura tollerante
+    # (`nome not in col_map` -> None) resta per le fn che non esponessero la
+    # colonna, ma NON basta da sola: `col_map` contiene solo i nomi in
+    # `_PUSHABLE_SHARED_COLS`, quindi ogni colonna nuova del contratto va
+    # aggiunta ANCHE alla whitelist o il binding resta muto (lezione del
+    # 2026-08-03: la prima stesura si fermo' qui e lo smoke la scopri').
     def _opt_int(nome: str) -> int | None:
         if nome not in col_map:
             return None
@@ -1177,9 +1204,13 @@ class CommesseRepository:
         competenza_mese: date | None = None,
         limit: int = 50,
         offset: int = 0,
+        order_by: str | None = None,
+        order_dir: str = "asc",
     ) -> dict:
         """Lista paginata attività di una commessa via vendite.fn_list_commessa_attivita.
 
+        order_by/order_dir passano alla fn DB (whitelist ATTIVITA_SORT_COLUMNS,
+        validata a monte dal service); None = ordine storico ca.id.
         Restituisce {"count": <total_righe_filtrate>, "rows": [dict, ...]}.
         """
         safe_limit = max(1, min(int(limit), 200))
@@ -1219,11 +1250,14 @@ class CommesseRepository:
                     p_stato_approvazione => %s,
                     p_competenza_mese => %s,
                     p_limit => %s,
-                    p_offset => %s
+                    p_offset => %s,
+                    p_order_by => %s,
+                    p_order_dir => %s
                 )
                 """,  # noqa: S608 — colonne da costante _ATTIVITA_COLS
                 [commessa_id, stato_emissione, stato_approvazione,
-                 competenza_mese, safe_limit, safe_offset],
+                 competenza_mese, safe_limit, safe_offset,
+                 order_by, order_dir],
             )
             raw_rows = cursor.fetchall()
 

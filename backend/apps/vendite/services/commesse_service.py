@@ -26,8 +26,9 @@ from uuid import UUID
 from django.db import DatabaseError, transaction
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.list_helpers import validate_order_params
 from apps.core.services.payload_helpers import PayloadValidator
-from apps.vendite.db.commesse_repository import CommesseRepository
+from apps.vendite.db.commesse_repository import ATTIVITA_SORT_COLUMNS, CommesseRepository
 from apps.vendite.db.listini_repository import ListiniRepository
 from apps.vendite.services.commesse_push_orchestrator import (
     CommessaPushOrchestrator,
@@ -825,6 +826,8 @@ def fn_list_commessa_attivita(
     competenza_mese: str | None = None,
     limit: int = 50,
     offset: int = 0,
+    order_by: str | None = None,
+    order_dir: str | None = None,
 ) -> dict:
     """Entrypoint servizio Python: lista attività commessa (paginata)."""
     _guard_commessa_id(commessa_id, function_name="vendite.commesse_service.fn_list_commessa_attivita")
@@ -837,6 +840,17 @@ def fn_list_commessa_attivita(
         function_name="vendite.commesse_service.fn_list_commessa_attivita",
         log_to_db=True,
     )
+    # Ordinamento validato PRIMA di toccare il DB (un parametro sbagliato non
+    # deve costare un round-trip): whitelist ATTIVITA_SORT_COLUMNS, specchio
+    # della mappa chiusa dentro la fn. None = ordine storico ca.id.
+    if order_by is not None:
+        order_by, order_dir = validate_order_params(
+            order_by,
+            (order_dir or "asc").lower(),
+            allowed_columns=ATTIVITA_SORT_COLUMNS,
+            error_code="E_COMMESSA_VALIDATION",
+            function_name="vendite.commesse_service.fn_list_commessa_attivita",
+        )
     from apps.core.api.payload_validators import optional_iso_date as _parse_date
 
     competenza_mese_date = _parse_date({"competenza_mese": competenza_mese}, "competenza_mese") if competenza_mese else None
@@ -849,6 +863,8 @@ def fn_list_commessa_attivita(
         competenza_mese=competenza_mese_date,
         limit=limit,
         offset=offset,
+        order_by=order_by,
+        order_dir=order_dir or "asc",
     )
     return {"commessa_id": commessa_id, **data}
 

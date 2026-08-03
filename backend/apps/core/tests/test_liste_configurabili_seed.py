@@ -183,6 +183,15 @@ _LISTE: tuple[tuple[str, object], ...] = (
     # il 2026-08-02, conversione completata. E' l'unica lista polimorfa
     # (`storico.{code}` scelto a runtime da `script.vw_audit_sources`).
     ("storico.audit_log", _da_costante("apps.amm_software.db.amm_software_repository", "AUDIT_ORDER_COLUMNS")),
+    # Settimo lotto, 2026-08-03: le due code Strumenti + la coda approvazioni
+    # prezzo (che attraversa `cerca_pratiche`, stessa whitelist della lista
+    # pratiche) + le righe versione listino (endpoint UNION standalone+compositi,
+    # decisione Tid 2026-08-02). Le whitelist delle code sono i dizionari
+    # nome->SQL dei rispettivi repository: `set(dict)` = le chiavi.
+    ("dbops.coda_lavori", _da_costante("apps.core.services.coda_lavori.repository", "ELENCA_SORT_SQL")),
+    ("vendite.fatture_stampa_coda", _da_costante("apps.vendite.db.pipeline_repository", "CODA_STAMPA_SORT_SQL")),
+    ("vendite.approvazioni_prezzo", _da_costante("apps.pratiche.db.pratiche_repository", "PRATICHE_ORDER_COLS")),
+    ("vendite.listini_righe", _da_costante("apps.vendite.db.listini_repository", "RIGHE_ORDER_COLUMNS")),
     # Preesistenti: erano fuori da qualunque presidio prima del 2026-07-31.
     ("anagrafiche.clienti", _da_costante("apps.anagrafiche.db.clienti_repository", "_CLIENTI_ORDER_COLS")),
     ("anagrafiche.fornitori", _da_costante("apps.anagrafiche.db.fornitori_repository", "_FORNITORI_ORDER_COLS")),
