@@ -112,6 +112,29 @@ Riferimento: [audit-e-tracciabilita.md](../../guide/audit-e-tracciabilita.md).
 `requirements.in` non c'è error tracking (nessun Sentry/structlog). Un traceback Python
 oggi **non è correlabile** alla richiesta che l'ha generato. È la Fase 0 (§5.2).
 
+> 🔴 **Aggiornamento 2026-08-03 — due registri di questa tabella non sono in
+> salute, e la Fase 1 li dà per buoni.** Misurato sul DB, non stimato:
+>
+> - **`dbops.error_log`: il 67% delle righe (41.885 su 62.418) ha codice
+>   `MESSAGGIO_NON_DEFINITO`.** Il codice non è a catalogo, la funzione ripiega
+>   sul segnaposto, e siccome la tabella conserva la **FK** al messaggio e non
+>   il codice in chiaro, il codice originale è **perduto** (verificato: non è
+>   nel `context`). Il punto 6 della Fase 1 — «correlazione: ultime richieste e
+>   errori con lo stesso `request_id`/`tx_id`» — su due terzi delle righe
+>   restituirebbe voci che non sanno dire quale errore rappresentano.
+>   Rimedio già pronto: [brief-db-seed-messaggi-errore-mancanti.md](brief-db-seed-messaggi-errore-mancanti.md).
+> - **`vendite.event_log` è write-only**: scritto da due repository, **mai
+>   riletto** (zero endpoint, zero consumatori). Non compare in questa tabella
+>   ma è la timeline per entità dei domini di vendita, cioè materiale naturale
+>   della Fase 1. Inoltre l'`actor` è popolato al 100% ma vale **sempre**
+>   `service:django`: il punto 5 della Fase 1 («contesto identità») non può
+>   ricostruire *chi* ha agito da lì.
+>
+> Nessuno dei due cambia la tesi di questo documento — la **rafforzano**: sono
+> altri due modi in cui «guardare i dati di produzione» oggi non basta. Ma
+> vanno considerati prerequisiti della Fase 1, non dettagli.
+> Stato completo e piano: [analisi-osservabilita-log.md](analisi-osservabilita-log.md).
+
 ### 3.2 Stato e storia di un'entità
 
 | Cosa | Dove |
@@ -159,6 +182,18 @@ dimostra che il pattern è già accettato nel progetto.
 `dbops.fn_purge_cleanup_expired` (purge a batch) — già in uso su `request_log`,
 `error_log`, `audit_log`, `ai_query_log`. È **lo standard di progetto** per i dati a
 scadenza: il registro estrazioni e i pacchetti ci vanno sopra, non su una regola nuova.
+
+> ✅ **Verificato il 2026-08-03: il meccanismo funziona** (job `automations_cleanup`,
+> ultimo giro 2026-08-02) — quindi la scelta di appoggiarcisi regge. Due precisazioni
+> che non la invalidano ma vanno sapute:
+>
+> - lo standard è applicato alle `dbops.*` e **non ai log di dominio**:
+>   `vendite.event_log`, `fatturazione_lotti_log` e `fatture_log` non hanno
+>   `cleanup_at` e crescono senza policy. Per i pacchetti è irrilevante; diventa
+>   rilevante se un domani il pacchetto includesse i log di dominio del caso;
+> - su `error_log` restano **530 righe già scadute e non ancora rimosse**: il purge
+>   passa, ma non è a saldo zero. Da tenere presente se si dimensiona il TTL dei
+>   pacchetti sul comportamento osservato invece che su quello dichiarato.
 
 ---
 

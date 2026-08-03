@@ -53,12 +53,18 @@ Nessun parametro.
   (case-insensitive; fuori whitelist → `E_VENDITE_VALIDATION`; assente = tutte).
 - `order_by` / `order_dir` (opzionali): **ordinamento colonne server-side**
   (convenzione delle liste standard). `order_by` in whitelist —
-  `anzianita_giorni` (default, "fermo da") | `area` | `codice` |
-  `cliente_display` | `valore_fermo` | `stato_codice`; `order_dir` = `asc` |
+  `anzianita_giorni` (default, "fermo da") | `area` | `classe` | `codice` |
+  `cliente_display` | `valore_fermo` | `stato_codice` (`classe` aggiunta il
+  2026-08-03: è colonna a video e vocabolario chiuso a 3 valori, ordinarla
+  raggruppa il lavoro per tipo di intervento); `order_dir` = `asc` |
   `desc` (default `desc` su `anzianita_giorni`: i più vecchi prima). Server-side
   perché la lista è paginata: ordine corretto su **tutte** le pagine, non solo
   su quella visibile. Colonna fuori whitelist o direzione ≠ asc/desc → 400
-  (`E_VENDITE_VALIDATION`). Tiebreak stabile `(area, documento_id)`.
+  (`E_VENDITE_VALIDATION`). Tiebreak stabile `area ASC, documento_id <stessa
+  direzione della colonna>`: dal 2026-08-03 lo spareggio tecnico segue il verso
+  (a parità di valore, in DESC viene prima il documento più recente), mentre
+  `area` resta ASC perché raggruppa. L'univocità — e quindi la paginazione
+  deterministica — non cambia.
 - `page` / `page_size` (opzionali): paginazione standard (default 1/50, max 200).
 
 ## Output
