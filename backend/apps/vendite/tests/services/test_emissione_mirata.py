@@ -246,9 +246,15 @@ class GiroHandlerMirataTests(SimpleTestCase):
 
     # 15) La presenza dei gruppi nel payload sceglie la corsia: un solo job
     #     type, due perimetri (invariante I-1: un solo core).
+    #     `lotti` valorizzato di proposito: dal 2026-08-04 una mirata che non
+    #     produce lotti fallisce con la diagnosi del perimetro
+    #     (E_FATTURAZIONE_GIRO_NESSUN_LOTTO, test in
+    #     test_fatturazione_giro_handler) — qui si verifica solo l'instradamento.
     @patch(_GIRO)
     def test_payload_con_gruppi_usa_corsia_mirata(self, mock_giro):
-        mock_giro.return_value = {"lane": 1, "esiti": [], "lotti": []}
+        mock_giro.return_value = {
+            "lane": 1, "esiti": [], "lotti": [{"lotto_id": 7}],
+        }
         fatturazione_giro_handler(
             {"competenza_mese": "2026-06-15", "gruppi": ["PREVENTIVO:a"]},
         )

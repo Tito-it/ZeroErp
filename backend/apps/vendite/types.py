@@ -157,6 +157,37 @@ class CommessaEmittibileLane(TypedDict):
     total_candidate: int
 
 
+class GruppoDiagnosi(TypedDict):
+    # Fotografia di un GRUPPO FATTURABILE richiesto da un'emissione mirata che
+    # non ha prodotto lotti: serve a dire all'operatore PERCHE'. Sono fatti
+    # misurati (stato della testata + conteggi righe per stato), non un verdetto:
+    # l'ammissibilità resta di `fn_list_emittibili_lane`, unica sede del criterio.
+    # `commessa_codice`/`stato_commessa`/`commessa_emittibile` sono NULL quando il
+    # gruppo non ha nessuna riga (chiave sconosciuta o già ripulita).
+    gruppo_key: str
+    commessa_codice: str | None
+    stato_commessa: str | None
+    commessa_emittibile: bool | None
+    n_righe: int
+    n_emesse: int
+    # Righe fuori gioco per proprio stato: la dashboard le NASCONDE
+    # (stato_emissione ANNULLATA / approvazione RIFIUTATA sono esclusi da
+    # vw_dash_competenza_attivita), ma qui vanno contate a parte — altrimenti
+    # un gruppo «3 emesse + 1 annullata» non risulterebbe mai interamente
+    # evaso, e una riga rifiutata verrebbe raccontata come «non ancora
+    # approvata», che e' falso.
+    n_annullate: int
+    n_rifiutate: int
+    n_non_approvate: int
+    n_senza_tipo_doc: int
+    n_fuori_competenza: int
+    # Righe che soddisfano TUTTE le condizioni di candidatura (approvate, non
+    # emesse, con tipo doc, entro il bound di competenza): se > 0 e il gruppo non
+    # è entrato in nessuna terna, il blocco è sulla TESTATA (commessa non
+    # emittibile) — il caso del 2026-08-03.
+    n_pronte: int
+
+
 class CommessaStatoResult(TypedDict):
     # Stato testata + flag di governance (da vendite.stati_commessa)
     stato_commessa_id: int

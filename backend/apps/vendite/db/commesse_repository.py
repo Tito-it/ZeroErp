@@ -21,6 +21,7 @@ from apps.vendite.types import (
     CommessaEmittibileLane,
     CommessaPushLogRow,
     CommessaStatoResult,
+    GruppoDiagnosi,
 )
 
 # Repository SQL: incapsula accesso DB per commesse, commesse_attivita e push log.
@@ -1168,6 +1169,122 @@ class CommesseRepository:
                     utility_id=int(row[2]),
                     competenza_mese=row[3],
                     total_candidate=int(row[4]),
+                )
+                for row in cursor.fetchall()
+            ]
+
+    # Scopo: Spiega perche' i gruppi fatturabili richiesti NON sono entrati in
+    #        nessuna terna di `list_emittibili_lane`. Diagnostica, non decisione:
+    #        descrive i FATTI delle righe del gruppo (stato testata, conteggi per
+    #        stato riga, tipo doc, competenza) e lascia la classificazione al
+    #        service. L'ammissibilita' resta della sola `fn_list_emittibili_lane`
+    #        — qui non si riproduce il criterio, si racconta cosa c'e'.
+    #
+    #        Nasce dal caso reale del 2026-08-03: un'emissione mirata su un
+    #        ordine di giugno ha prodotto zero lotti in silenzio perche' la
+    #        commessa era rimasta in BOZZA (non emittibile). L'operatore leggeva
+    #        «nessun lotto prodotto» senza sapere che cosa lo bloccasse.
+    #
+    #        Da chiamare SOLO quando il giro non ha emesso nulla: dopo
+    #        un'emissione riuscita le righe sono gia' EMESSA e la fotografia
+    #        descriverebbe lo stato di arrivo, non quello che ha impedito il giro.
+    #        `competenza_mese` e' lo stesso bound superiore passato alla discovery.
+    def diagnostica_gruppi(
+        self,
+        *,
+        gruppi: tuple[str, ...] | list[str],
+        competenza_mese: date | None = None,
+    ) -> list[GruppoDiagnosi]:
+        chiavi = [k for k in (str(g).strip() for g in gruppi) if k]
+        if not chiavi:
+            return []
+        bound = None if competenza_mese is None else competenza_mese.replace(day=1)
+        # Parametri NOMINALI: `chiavi` e `bound` ricorrono piu' volte nella
+        # query, e una lista posizionale di ripetizioni e' il posto classico
+        # dove un riordino silenzioso scambia due filtri.
+        params = {"chiavi": chiavi, "bound": bound}
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                WITH richiesti AS (
+                    SELECT unnest(%(chiavi)s::text[]) AS gruppo_key
+                ), righe AS (
+                    SELECT vendite.fn_build_gruppo_fatturabile_key(
+                               ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id
+                           )                        AS gruppo_key,
+                           co.codice                AS commessa_codice,
+                           sc.codice_interno        AS stato_commessa,
+                           sc.emittibile            AS commessa_emittibile,
+                           ca.stato_emissione,
+                           ca.stato_approvazione,
+                           ca.tipo_doc_fiscale_id,
+                           ca.competenza_mese
+                      FROM vendite.commesse_attivita ca
+                      JOIN vendite.commesse co
+                        ON co.id = ca.commessa_id
+                      JOIN vendite.stati_commessa sc
+                        ON sc.id = co.stato_commessa_id
+                     WHERE vendite.fn_build_gruppo_fatturabile_key(
+                               ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id
+                           ) = ANY (%(chiavi)s::text[])
+                )
+                SELECT r.gruppo_key,
+                       min(x.commessa_codice)                       AS commessa_codice,
+                       min(x.stato_commessa)                        AS stato_commessa,
+                       bool_or(x.commessa_emittibile)               AS commessa_emittibile,
+                       count(x.gruppo_key)                          AS n_righe,
+                       count(*) FILTER (
+                           WHERE x.stato_emissione = 'EMESSA')      AS n_emesse,
+                       count(*) FILTER (
+                           WHERE x.stato_emissione = 'ANNULLATA')   AS n_annullate,
+                       count(*) FILTER (
+                           WHERE x.stato_emissione = 'NON_EMESSA'
+                             AND x.stato_approvazione = 'RIFIUTATA')
+                                                                    AS n_rifiutate,
+                       count(*) FILTER (
+                           WHERE x.stato_emissione = 'NON_EMESSA'
+                             AND x.stato_approvazione NOT IN
+                                 ('APPROVATA', 'RIFIUTATA'))        AS n_non_approvate,
+                       count(*) FILTER (
+                           WHERE x.stato_emissione = 'NON_EMESSA'
+                             AND x.stato_approvazione = 'APPROVATA'
+                             AND x.tipo_doc_fiscale_id IS NULL)     AS n_senza_tipo_doc,
+                       count(*) FILTER (
+                           WHERE x.stato_emissione = 'NON_EMESSA'
+                             AND x.stato_approvazione = 'APPROVATA'
+                             AND x.tipo_doc_fiscale_id IS NOT NULL
+                             AND %(bound)s::date IS NOT NULL
+                             AND x.competenza_mese > %(bound)s::date)
+                                                                    AS n_fuori_competenza,
+                       count(*) FILTER (
+                           WHERE x.stato_emissione = 'NON_EMESSA'
+                             AND x.stato_approvazione = 'APPROVATA'
+                             AND x.tipo_doc_fiscale_id IS NOT NULL
+                             AND (%(bound)s::date IS NULL
+                                  OR x.competenza_mese <= %(bound)s::date))
+                                                                    AS n_pronte
+                  FROM richiesti r
+                  LEFT JOIN righe x
+                    ON x.gruppo_key = r.gruppo_key
+                 GROUP BY r.gruppo_key
+                 ORDER BY r.gruppo_key
+                """,
+                params,
+            )
+            return [
+                GruppoDiagnosi(
+                    gruppo_key=row[0],
+                    commessa_codice=row[1],
+                    stato_commessa=row[2],
+                    commessa_emittibile=bool(row[3]) if row[3] is not None else None,
+                    n_righe=int(row[4]),
+                    n_emesse=int(row[5]),
+                    n_annullate=int(row[6]),
+                    n_rifiutate=int(row[7]),
+                    n_non_approvate=int(row[8]),
+                    n_senza_tipo_doc=int(row[9]),
+                    n_fuori_competenza=int(row[10]),
+                    n_pronte=int(row[11]),
                 )
                 for row in cursor.fetchall()
             ]

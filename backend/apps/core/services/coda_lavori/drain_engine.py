@@ -30,6 +30,21 @@ logger = logging.getLogger(__name__)
 _BACKOFF_BASE_SECONDI = 60
 _BACKOFF_CAP_SECONDI = 3600
 
+# Chiave con cui un handler dichiara, nel `context` del suo `ServiceError`, che
+# il fallimento e' DETERMINISTICO: riprovare produrrebbe lo stesso esito, quindi
+# il motore va in ERRORE subito invece di bruciare i tentativi con backoff.
+# Casi tipici: payload malformato, perimetro che non contiene lavoro fatturabile.
+# Costante esportata e non letterale duplicato: la chiave vive in due moduli
+# (chi la scrive e chi la legge) e un refuso la renderebbe muta, non rotta.
+CONTEXT_KEY_TERMINALE = "terminale"
+
+
+# Scopo: Costruisce il `context` di un ServiceError terminale, con eventuali
+#        campi diagnostici del chiamante. Zucchero, ma evita che la chiave si
+#        propaghi come stringa nei domini.
+def contesto_terminale(**extra: Any) -> dict[str, Any]:
+    return {CONTEXT_KEY_TERMINALE: True, **extra}
+
 
 # Scopo: secondi di attesa prima del prossimo tentativo, esponenziale cappato
 #        (1ª ritenta ~1m, poi 2m, 4m… fino a 1h).
@@ -111,11 +126,35 @@ class QueueDrainEngine:
         try:
             result = self._per_item(item)
         except ServiceError as exc:
+            errore: dict[str, Any] = {
+                "code": exc.code,
+                "message": str(exc.message or exc),
+                "detail": exc.detail,
+            }
+            # Il `context` dell'handler viene PERSISTITO in `ultimo_errore`:
+            # e' il dettaglio strutturato del fallimento (es. un motivo per
+            # gruppo non servito) e senza questa riga andrebbe perso — il
+            # repository serializza con `json.dumps(default=str)`, quindi
+            # date/Decimal degradano a stringa invece di far saltare la
+            # scrittura di stato.
+            if exc.context:
+                errore["context"] = exc.context
             return self._registra_errore(
                 item,
-                {"code": exc.code, "message": str(exc.message or exc), "detail": exc.detail},
+                errore,
+                # Fallimento DETERMINISTICO dichiarato dall'handler: si va in
+                # ERRORE subito, senza consumare i tentativi. Ritentare un
+                # payload malformato o un perimetro non fatturabile riproduce lo
+                # stesso esito N volte, tiene il job «in corso» a video e scrive
+                # N volte lo stesso errore. `context` e' il canale gia'
+                # esistente su ServiceError; NON si usa `retryable`, che nel
+                # progetto significa «l'utente puo' riprovare con altri dati»
+                # (envelope API) — semantica diversa da «il motore ritenti».
+                terminale_forzato=bool(exc.context.get(CONTEXT_KEY_TERMINALE)),
             )
         except Exception as exc:  # noqa: BLE001 — resilienza per-riga voluta
+            # Eccezione non prevista: nessuna dichiarazione, quindi si assume
+            # transitoria e valgono i tentativi (comportamento storico).
             return self._registra_errore(
                 item, {"code": type(exc).__name__, "message": str(exc)},
             )
@@ -123,9 +162,17 @@ class QueueDrainEngine:
         return {"esito": "fatto", "job_type": item.job_type}
 
     # Scopo: Traduce un fallimento in transizione ERRORE (terminale) o PENDING
-    #        con backoff (retry), secondo la soglia tentativi del work-item.
-    def _registra_errore(self, item: QueueItem, errore: dict[str, Any]) -> dict[str, Any]:
-        terminale = item.tentativi + 1 >= item.max_tentativi
+    #        con backoff (retry), secondo la soglia tentativi del work-item —
+    #        salvo `terminale_forzato`, con cui l'handler dichiara che riprovare
+    #        non cambierebbe nulla.
+    def _registra_errore(
+        self,
+        item: QueueItem,
+        errore: dict[str, Any],
+        *,
+        terminale_forzato: bool = False,
+    ) -> dict[str, Any]:
+        terminale = terminale_forzato or item.tentativi + 1 >= item.max_tentativi
         retry_after = None if terminale else self._backoff(item.tentativi + 1)
         self._backend.mark_error(
             item.id, errore=errore, retry_after_secondi=retry_after,

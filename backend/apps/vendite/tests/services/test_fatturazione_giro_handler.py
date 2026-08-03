@@ -13,6 +13,12 @@
 #   2. competenza_mancante_raises_payload
 #   3. competenza_invalida_raises_payload
 #   4. handler_registrato_dopo_boot
+#   5. mirata_senza_lotti_fallisce_con_motivo (E_FATTURAZIONE_GIRO_NESSUN_LOTTO)
+#   6. mirata_senza_lotti_e_terminale (niente retry su fallimento deterministico)
+#   7. mirata_con_lotti_non_diagnostica (la diagnosi non gira sul percorso felice)
+#   8. giro_di_massa_a_vuoto_resta_successo (perimetro non nominale)
+#   9. mirata_con_terne_fallite_riporta_errori_terna (no diagnosi di perimetro,
+#      non terminale: un errore pipeline puo' essere transiente)
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -22,6 +28,7 @@ from unittest.mock import patch
 
 from django.test import SimpleTestCase
 
+from apps.core.services.coda_lavori.drain_engine import CONTEXT_KEY_TERMINALE
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.services.fatturazione_giro_handler import (
     HANDLER_CODE,
@@ -29,6 +36,20 @@ from apps.vendite.services.fatturazione_giro_handler import (
 )
 
 _GIRO = "apps.vendite.services.fatturazione_driver_service.esegui_giro_fatturazione"
+_REPO = "apps.vendite.db.commesse_repository.CommesseRepository"
+
+# Fotografia del caso reale del 2026-08-03 (job 141): righe pronte, testata in
+# BOZZA. `n_pronte` valorizzato + `commessa_emittibile=False` e' cio' che
+# distingue «il lavoro c'e' ma la commessa e' chiusa alla fatturazione» da
+# «non c'era lavoro».
+_DIAGNOSI_COMMESSA_BOZZA = [{
+    "gruppo_key": "ORDINE_VENDITA:019eb2ac",
+    "commessa_codice": "CMM-20260610175449872-e059eb",
+    "stato_commessa": "BOZZA",
+    "commessa_emittibile": False,
+    "n_righe": 5, "n_emesse": 0, "n_non_approvate": 0,
+    "n_senza_tipo_doc": 0, "n_fuori_competenza": 0, "n_pronte": 5,
+}]
 
 
 class FatturazioneGiroHandlerTests(SimpleTestCase):
@@ -89,3 +110,95 @@ class FatturazioneGiroHandlerTests(SimpleTestCase):
         )
         self.assertIn(HANDLER_CODE, registered_handlers())
         self.assertIs(get_handler(HANDLER_CODE), fatturazione_giro_handler)
+
+    # 5. Emissione mirata che non produce lotti: fallisce, e il messaggio dice
+    #    PERCHE' (il difetto misurato era un «fatto» muto con lotti: []).
+    @patch(_REPO)
+    @patch(_GIRO)
+    def test_mirata_senza_lotti_fallisce_con_motivo(self, mock_giro, mock_repo) -> None:
+        mock_giro.return_value = {"lane": 0, "lotti": [], "falliti": 0, "esiti": []}
+        mock_repo.return_value.diagnostica_gruppi.return_value = _DIAGNOSI_COMMESSA_BOZZA
+
+        with self.assertRaises(ServiceError) as ctx:
+            fatturazione_giro_handler(
+                {"competenza_mese": "2026-06-01",
+                 "gruppi": ["ORDINE_VENDITA:019eb2ac"]},
+                scope=None,
+            )
+
+        self.assertEqual(ctx.exception.code, "E_FATTURAZIONE_GIRO_NESSUN_LOTTO")
+        # Il messaggio nomina la commessa e lo stato che blocca: e' quello che
+        # l'operatore legge nel toast (FE: `ultimo_errore.message`).
+        self.assertIn("CMM-20260610175449872-e059eb", ctx.exception.message)
+        self.assertIn("BOZZA", ctx.exception.message)
+        motivi = ctx.exception.context["gruppi_non_serviti"]
+        self.assertEqual(motivi[0]["motivo"], "COMMESSA_NON_EMITTIBILE")
+        # La diagnosi usa lo STESSO bound di competenza del giro.
+        self.assertEqual(
+            mock_repo.return_value.diagnostica_gruppi.call_args.kwargs["competenza_mese"],
+            date(2026, 6, 1),
+        )
+
+    # 6. Il fallimento e' deterministico → terminale: la coda non lo ritenta 5 volte.
+    @patch(_REPO)
+    @patch(_GIRO)
+    def test_mirata_senza_lotti_e_terminale(self, mock_giro, mock_repo) -> None:
+        mock_giro.return_value = {"lane": 0, "lotti": [], "falliti": 0}
+        mock_repo.return_value.diagnostica_gruppi.return_value = _DIAGNOSI_COMMESSA_BOZZA
+
+        with self.assertRaises(ServiceError) as ctx:
+            fatturazione_giro_handler(
+                {"competenza_mese": "2026-06-01", "gruppi": ["g1"]}, scope=None,
+            )
+        self.assertTrue(ctx.exception.context.get(CONTEXT_KEY_TERMINALE))
+
+    # 7. Percorso felice: nessuna diagnosi (dopo l'emissione le righe sono EMESSA
+    #    e la fotografia racconterebbe l'arrivo, non l'ostacolo).
+    @patch(_REPO)
+    @patch(_GIRO)
+    def test_mirata_con_lotti_non_diagnostica(self, mock_giro, mock_repo) -> None:
+        mock_giro.return_value = {
+            "lane": 1, "lotti": [{"lotto_id": 1279}], "falliti": 0, "esiti": [{"x": 1}],
+        }
+        result = fatturazione_giro_handler(
+            {"competenza_mese": "2026-06-01", "gruppi": ["g1"]}, scope=None,
+        )
+        mock_repo.return_value.diagnostica_gruppi.assert_not_called()
+        self.assertEqual(result["lotti"], [{"lotto_id": 1279}])
+
+    # 8. Giro di MASSA a vuoto: resta un successo. Il perimetro non e' nominale —
+    #    «questo mese non c'era nulla da fatturare» e' un esito legittimo, e il
+    #    cron lo produce di routine.
+    @patch(_REPO)
+    @patch(_GIRO)
+    def test_giro_di_massa_a_vuoto_resta_successo(self, mock_giro, mock_repo) -> None:
+        mock_giro.return_value = {"lane": 0, "lotti": [], "falliti": 0}
+        result = fatturazione_giro_handler({"competenza_mese": "2026-06-01"}, scope=None)
+        mock_repo.return_value.diagnostica_gruppi.assert_not_called()
+        self.assertEqual(result["lotti"], [])
+
+    # 9. Terne trovate ma pipeline fallita: la causa vera e' negli esiti per
+    #    terna — la diagnosi di perimetro racconterebbe la cosa sbagliata
+    #    (NON_DETERMINATO su un perimetro perfettamente valido). E NON e'
+    #    terminale: un errore pipeline puo' essere transiente, i retry della
+    #    coda sono il rimedio giusto.
+    @patch(_REPO)
+    @patch(_GIRO)
+    def test_mirata_con_terne_fallite_riporta_errori_terna(
+        self, mock_giro, mock_repo,
+    ) -> None:
+        mock_giro.return_value = {
+            "lane": 1, "lotti": [], "falliti": 1,
+            "esiti": [{"ok": False, "errore_code": "E_LOCK_LOTTO",
+                       "errore_detail": "lotto in lavorazione"}],
+        }
+
+        with self.assertRaises(ServiceError) as ctx:
+            fatturazione_giro_handler(
+                {"competenza_mese": "2026-06-01", "gruppi": ["g1"]}, scope=None,
+            )
+
+        self.assertEqual(ctx.exception.code, "E_FATTURAZIONE_GIRO_NESSUN_LOTTO")
+        self.assertIn("E_LOCK_LOTTO", ctx.exception.message)
+        self.assertFalse(ctx.exception.context.get(CONTEXT_KEY_TERMINALE))
+        mock_repo.return_value.diagnostica_gruppi.assert_not_called()
