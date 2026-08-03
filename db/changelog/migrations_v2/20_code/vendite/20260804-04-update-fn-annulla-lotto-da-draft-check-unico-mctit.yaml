@@ -1,0 +1,147 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.fn_annulla_lotto_da_draft — le precondizioni escono dal corpo
+#   (risposta-db-azioni-lista-lotto.md §3.2)
+#
+# ── COSA CAMBIA ──────────────────────────────────────────────────────────
+#   Le due precondizioni (lotto in DRAFT, fatture tutte pre-fiscali) non
+#   sono piu' scritte QUI: si leggono da script.fn_check_lotto_annullabile,
+#   che e' la stessa funzione che alimenta enabled/reasons nelle
+#   capabilities. La funzione solleva il codice del PRIMO motivo.
+#   Il corpo operativo (cleanup + chiusura del lotto) e' invariato.
+#
+# ── PERCHE' ──────────────────────────────────────────────────────────────
+#   Perche' il pulsante e la funzione non possano piu' divergere. E' la
+#   lezione del 2026-07-31: «Annulla lotto» era visibile da EMESSA in poi,
+#   dove la funzione rifiuta — e la correzione di allora fu ricopiare la
+#   precondizione in Vue. Una regola, un posto.
+#
+# ── COSA CAMBIA PER IL CHIAMANTE (breaking, voluto) ──────────────────────
+#   I codici errore diventano PARLANTI al posto del generico
+#   E_PARAMETRO_INVALIDO:
+#     - lotto non in DRAFT              -> E_LOTTO_NON_ANNULLABILE (798)
+#     - fatture oltre il pre-fiscale    -> E_LOTTO_FATTURE_NON_PRE_FISCALI (799)
+#     - lotto inesistente               -> E_LOTTO_NON_TROVATO (143), era
+#                                          E_VALORE_MANCANTE
+#   Il context dell'errore porta ora l'array completo `motivi`: il BE puo'
+#   mostrarli tutti, non solo il primo. Nessun known_marker del backend
+#   dipendeva dai codici vecchi (verificato su pipeline_repository.py).
+#
+# ── COSA NON CAMBIA ──────────────────────────────────────────────────────
+#   Firma, RETURNS TABLE, effetti, task_code `reset_lotto_draft` del
+#   registry e il permesso omonimo. Il lock_batch_id continua a essere
+#   passato alla primitiva (reset GLOBALE: e' il per-fattura che passa
+#   NULL — C-22).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260804-04-update-fn-annulla-lotto-da-draft-check-unico-mctit.yaml
+
+  - changeSet:
+      id: 20260804-04-update-fn-annulla-lotto-da-draft-check-unico
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_annulla_lotto_da_draft legge le precondizioni da
+        script.fn_check_lotto_annullabile invece di riscriverle: stessa
+        sorgente delle capabilities. Codici errore parlanti al posto di
+        E_PARAMETRO_INVALIDO. Corpo operativo invariato.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_annulla_lotto_da_draft(
+                  p_lotto_id vendite.fatturazione_lotti.id%TYPE
+              )
+               RETURNS TABLE(updated_lotti integer, updated_attivita integer,
+                             deleted_fatture integer, deleted_righe integer)
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: rollback tecnico di un lotto in DRAFT — cancella le
+              --        fatture PRE-FISCALI (DRAFT/EMESSA), ripristina le
+              --        attivita' e CHIUDE il lotto portandolo ad ANNULLATA.
+              -- Perimetro (D-L pt.2 + D-T): vale per MASSIVO **e** GIORNALIERO.
+              --        Il vincolo al solo MASSIVO e' caduto quando D-T ha reso
+              --        lecita la transizione DRAFT->ANNULLATA per entrambi.
+              -- rev 2026-08-04: le precondizioni NON si scrivono piu' qui.
+              --        Arrivano da script.fn_check_lotto_annullabile, la stessa
+              --        che alimenta enabled/reasons di
+              --        script.fn_available_actions_lotto. Il pulsante e la
+              --        funzione non possono piu' divergere.
+              DECLARE
+                  v_lock_batch_id        vendite.fatturazione_lotti.lock_batch_id%TYPE;
+                  v_annullata_id         config.stati_doc_fiscale.id%TYPE;
+                  v_motivi               jsonb;
+                  v_fatture_ids          BIGINT[];
+                  v_updated_lotti        INTEGER := 0;
+                  v_updated_attivita     INTEGER := 0;
+                  v_deleted_fatture      INTEGER := 0;
+                  v_deleted_righe        INTEGER := 0;
+              BEGIN
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_annulla_lotto_da_draft', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id), NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                  END IF;
+
+                  -- PRECONDIZIONI — sede unica. Il check verifica anche
+                  -- l'esistenza del lotto (E_LOTTO_NON_TROVATO) e solleva
+                  -- il codice del PRIMO motivo; il context porta l'elenco
+                  -- completo, cosi' il BE puo' mostrarli tutti.
+                  v_motivi := script.fn_check_lotto_annullabile(p_lotto_id);
+                  IF jsonb_array_length(v_motivi) > 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_annulla_lotto_da_draft',
+                          v_motivi -> 0 ->> 'codice',
+                          jsonb_build_object('lotto_id', p_lotto_id, 'motivi', v_motivi),
+                          NULL::uuid,
+                          v_motivi -> 0 ->> 'dettaglio');
+                  END IF;
+
+                  SELECT fl.lock_batch_id
+                    INTO v_lock_batch_id
+                    FROM vendite.fatturazione_lotti fl WHERE fl.id = p_lotto_id;
+
+                  SELECT s.id INTO v_annullata_id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'ANNULLATA' AND s.attivo IS TRUE LIMIT 1;
+                  IF v_annullata_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_annulla_lotto_da_draft', 'E_CONFIG_MANCANTE',
+                          jsonb_build_object('codice_interno', 'ANNULLATA'), NULL::uuid, 'stato ANNULLATA non configurato');
+                  END IF;
+
+                  SELECT array_agg(lf.fattura_id) INTO v_fatture_ids
+                    FROM vendite.fatturazione_lotti_fatture lf WHERE lf.lotto_id = p_lotto_id;
+                  IF v_fatture_ids IS NULL THEN v_fatture_ids := ARRAY[]::BIGINT[]; END IF;
+
+                  -- ⚠️ Qui il lock_batch_id SI passa, ed e' corretto: il reset
+                  -- globale deve liberare anche le attivita' agganciate al lotto
+                  -- che non sono mai diventate riga. E' il per-fattura che deve
+                  -- passare NULL (C-22).
+                  SELECT c.deleted_fatture, c.deleted_righe, c.updated_attivita INTO v_deleted_fatture, v_deleted_righe, v_updated_attivita
+                    FROM vendite.fn_cleanup_fatture_by_ids(v_fatture_ids, v_lock_batch_id) AS c;
+
+                  UPDATE vendite.fatturazione_lotti SET stato_operativo = 'CHIUSO', stato_doc_fiscale_id = v_annullata_id, stato_lotto = 'COMPLETATO', data_update = now(), user_update = current_user WHERE id = p_lotto_id;
+                  GET DIAGNOSTICS v_updated_lotti = ROW_COUNT;
+
+                  RETURN QUERY SELECT v_updated_lotti, v_updated_attivita, v_deleted_fatture, v_deleted_righe;
+              END;
+              $function$;
+
+              -- COMMENT esige tipi RISOLTI: qui il %TYPE non si usa.
+              COMMENT ON FUNCTION vendite.fn_annulla_lotto_da_draft(bigint)
+              IS 'Rollback tecnico di un lotto in DRAFT: elimina fatture/righe PRE-FISCALI (DRAFT/EMESSA), ripristina le attivita e CHIUDE il lotto portandolo ad ANNULLATA. Rinominata da fn_reset_lotto_draft il 2026-08-01 (D-L pt.1): il nome vecchio prometteva un ritorno in bozza che non fa. Dal 2026-08-02 (D-L pt.2 + D-T) vale per MASSIVO **e** GIORNALIERO. Il task_code del registry resta reset_lotto_draft, che e'' il nome del TASK. rev 2026-08-04: le precondizioni non sono piu'' scritte qui — arrivano da script.fn_check_lotto_annullabile, la STESSA che alimenta enabled/reasons di script.fn_available_actions_lotto, cosi'' il pulsante e la funzione non possono divergere (lezione del vicolo cieco 2026-07-31). Solleva il codice del PRIMO motivo (E_LOTTO_NON_ANNULLABILE / E_LOTTO_FATTURE_NON_PRE_FISCALI / E_LOTTO_NON_TROVATO, non piu'' E_PARAMETRO_INVALIDO) e mette l''elenco completo dei motivi nel context.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              SELECT 1;

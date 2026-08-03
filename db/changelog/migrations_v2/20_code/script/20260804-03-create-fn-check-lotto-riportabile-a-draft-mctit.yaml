@@ -1,0 +1,152 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_check_lotto_riportabile_a_draft — motivi ostativi al
+#   RITORNO IN BOZZA di un lotto (risposta-db-azioni-lista-lotto.md §3.2)
+#
+# SORGENTE UNICA della regola:
+#   1. vendite.fn_riporta_lotto_a_draft (20260804-05) solleva il codice
+#      del PRIMO motivo;
+#   2. script.fn_available_actions_lotto (20260804-06) espone l'azione
+#      'riporta_a_draft' con enabled=false + reasons.
+#
+# PERCHE' SERVE: e' la seconda occorrenza dello stesso difetto del
+#   pulsante «Annulla lotto». Oggi il FE gate «Riporta a bozza» con un
+#   semplice !isDraft, mentre le precondizioni vere sono tre e stanno
+#   qui: su un lotto DEFINITIVA il pulsante c'e' e fallisce.
+#
+# I TRE MOTIVI, nell'ordine in cui la fn di mutazione li solleva:
+#   1. lotto oltre il pre-fiscale (800) — oltre EMESSA c'e' la
+#      numerazione, che e' il punto di non ritorno del documento
+#      fiscale, non una scelta di questa funzione;
+#   2. almeno una fattura oltre il pre-fiscale (799) — delegato alla
+#      sede unica;
+#   3. almeno una fattura NUMERATA (801) — ⚠️ controllo sul FATTO (il
+#      numero) e non sullo stato che dovrebbe implicarlo: a EMESSA la
+#      fattura non e' numerata (C-19), quindi il motivo 1 basterebbe;
+#      ma il danno qui sarebbe irreversibile — cancellare una fattura
+#      numerata apre un buco nella numerazione fiscale — e su un danno
+#      irreversibile si guarda il fatto.
+#
+# ⚠️ Il motivo 3 e' deliberatamente ridondante rispetto al 2: NON
+#   semplificarlo via. E' la cintura oltre le bretelle, e il commento
+#   della fn di mutazione lo dice da quando e' nata (RD-1, 2026-08-03).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260804-03-create-fn-check-lotto-riportabile-a-draft-mctit.yaml
+
+  - changeSet:
+      id: 20260804-03-create-fn-check-lotto-riportabile-a-draft
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Funzione pura: motivi ostativi al ritorno in bozza di un lotto (stato
+        oltre il pre-fiscale, fatture oltre il pre-fiscale, fatture numerate).
+        Sorgente unica condivisa fra fn_riporta_lotto_a_draft e le capabilities.
+        Ritorna [] se il lotto puo' tornare in bozza.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_lotto_riportabile_a_draft(
+                  p_lotto_id vendite.fatturazione_lotti.id%TYPE
+              )
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: elencare i motivi che impediscono il RITORNO IN BOZZA di
+              --   un lotto. Funzione PURA (fn_check_*): nessun raise di dominio,
+              --   nessuna scrittura. Consumatori: vendite.fn_riporta_lotto_a_draft
+              --   (che solleva il codice del primo motivo) e
+              --   script.fn_available_actions_lotto (che espone enabled + reasons).
+              -- Ritorna: [] se riportabile; altrimenti array ordinato di
+              --   {codice, reason, reason_key, dettaglio}.
+              DECLARE
+                v_motivi    jsonb := '[]'::jsonb;
+                v_stato_cod config.stati_doc_fiscale.codice_interno%TYPE;
+                v_trovato   boolean;
+                v_numerate  integer;
+              BEGIN
+                -- Guard parametro (AGENTS.md).
+                IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'script','fn_check_lotto_riportabile_a_draft','E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','lotto_id','valore',p_lotto_id),
+                    NULL::uuid, 'lotto_id obbligatorio (>0)');
+                END IF;
+
+                SELECT true, sdf.codice_interno
+                  INTO v_trovato, v_stato_cod
+                  FROM vendite.fatturazione_lotti fl
+                  LEFT JOIN config.stati_doc_fiscale sdf
+                    ON sdf.id = fl.stato_doc_fiscale_id
+                 WHERE fl.id = p_lotto_id;
+
+                IF NOT COALESCE(v_trovato, false) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'script','fn_check_lotto_riportabile_a_draft','E_LOTTO_NON_TROVATO',
+                    jsonb_build_object('lotto_id',p_lotto_id),
+                    NULL::uuid, p_lotto_id::text);
+                END IF;
+
+                -- MOTIVO 1 — il lotto e' oltre il pre-fiscale.
+                -- Oltre EMESSA c'e' la numerazione: il punto di non ritorno
+                -- del documento fiscale, non una scelta di questa funzione.
+                IF COALESCE(v_stato_cod, '') NOT IN ('DRAFT', 'EMESSA') THEN
+                  v_motivi := v_motivi || jsonb_build_object(
+                    'codice',     'E_LOTTO_NON_RIPORTABILE_A_DRAFT',
+                    'reason',     'STATO_NON_PRE_FISCALE',
+                    'reason_key', 'vendite.lotti.azione_reason.stato_non_pre_fiscale',
+                    'dettaglio',  COALESCE(v_stato_cod, '-'));
+                END IF;
+
+                -- MOTIVO 2 — fatture oltre il pre-fiscale (sede unica).
+                v_motivi := v_motivi
+                          || script.fn_check_lotto_fatture_pre_fiscali(p_lotto_id);
+
+                -- MOTIVO 3 — fatture gia' numerate.
+                -- ⚠️ Ridondante per costruzione rispetto al motivo 2 (a EMESSA
+                -- la fattura non e' numerata, C-19) e va tenuto lo stesso: il
+                -- danno sarebbe irreversibile, quindi si guarda il FATTO e non
+                -- lo stato che dovrebbe implicarlo.
+                SELECT count(*)
+                  INTO v_numerate
+                  FROM vendite.fatture f
+                  JOIN vendite.fatturazione_lotti_fatture lf
+                    ON lf.fattura_id = f.id
+                 WHERE lf.lotto_id = p_lotto_id
+                   AND f.numero IS NOT NULL;
+
+                IF v_numerate > 0 THEN
+                  v_motivi := v_motivi || jsonb_build_object(
+                    'codice',     'E_LOTTO_FATTURE_NUMERATE',
+                    'reason',     'FATTURE_NUMERATE',
+                    'reason_key', 'vendite.lotti.azione_reason.fatture_numerate',
+                    'dettaglio',  v_numerate);
+                END IF;
+
+                RETURN v_motivi;
+              END;
+              $function$;
+
+              -- COMMENT e DROP esigono tipi RISOLTI: qui il %TYPE non si usa.
+              COMMENT ON FUNCTION script.fn_check_lotto_riportabile_a_draft(bigint)
+              IS 'Funzione PURA (fn_check_*): motivi ostativi al ritorno in bozza di un lotto. Ritorna [] se riportabile, altrimenti array ordinato di {codice, reason, reason_key, dettaglio}. Motivo 1: lotto oltre il pre-fiscale, cioe'' non in DRAFT ne'' EMESSA (codice 800) — oltre EMESSA c''e'' la numerazione e da li'' non si torna. Motivo 2: fatture oltre il pre-fiscale (codice 799), delegato a script.fn_check_lotto_fatture_pre_fiscali. Motivo 3: fatture gia'' NUMERATE (codice 801) — ⚠️ deliberatamente ridondante rispetto al 2 e da NON semplificare via: il controllo guarda il numero e non lo stato che dovrebbe implicarlo, perche'' cancellare una fattura numerata aprirebbe un buco nella numerazione fiscale. Sorgente UNICA condivisa da vendite.fn_riporta_lotto_a_draft (solleva) e script.fn_available_actions_lotto (espone enabled/reasons): sostituisce il gate !isDraft scritto a mano nel drawer, che su un lotto DEFINITIVA mostrava un pulsante destinato a fallire. rev 2026-08-04.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_check_lotto_riportabile_a_draft(bigint);
