@@ -77,6 +77,13 @@ _CODICE_TIPO_FILE_PDF_FINALE = "PDF_FINALE"
 # sul guard `trgfn_child_requires_active_parent`.
 _CODICE_TIPO_FILE_ALLEGATO = "ALLEGATO"
 
+# Tipo evento della ristampa fedele (percorso 3). Distinto da `GENERATO`
+# perche' NON e' un'emissione: nessun documento nuovo, nessun progressivo.
+# ⚠️ Prerequisito DB: va aggiunto al CHECK
+# `chk_documenti_generati_eventi_evento_tipo` (set chiuso). Finche' non c'e',
+# l'INSERT dell'evento viene rifiutato e il servizio logga senza negare il PDF.
+_EVENTO_RISTAMPA_FEDELE = "RISTAMPA_FEDELE"
+
 # MIME canonical del file principale generato in v1.
 _MIME_PDF = "application/pdf"
 
@@ -600,6 +607,179 @@ class DocumentGenerationService:
             "size_bytes": int(file_row["file_size_bytes"]),
             "documento_id": documento_id,
         }
+
+    # Scopo: RISTAMPA FEDELE (percorso 3, brief-ristampa-fedele-documenti):
+    #        ri-renderizza un documento **com'era**, dalla versione di template
+    #        con cui nacque e dal contesto CONGELATO di allora. E' l'unico
+    #        percorso che mantiene la promessa del modello sui documenti privi
+    #        di file salvato, e l'unico modo di verificare che un file
+    #        conservato sia davvero quello giusto.
+    #
+    #        Le tre cose che lo distinguono da `genera_documento`, e che sono
+    #        il motivo per cui esiste:
+    #         1. la versione e' quella **pinnata** sul documento
+    #            (`template_versione_id`), caricata anche se OBSOLETA — NON la
+    #            pubblicata di oggi;
+    #         2. il contesto e' quello **letto** da `context_json` — NON
+    #            ricostruito dai dati correnti (sarebbe un documento nuovo
+    #            travestito da vecchio);
+    #         3. NON persiste nulla: nessuna riga in `documenti_generati`,
+    #            nessun progressivo consumato, nessuno stato sorgente toccato.
+    #            L'unica scrittura e' l'evento di audit (decisione Tid §8.3).
+    #
+    #        Fedelta' (decisione Tid §8.2 — "soluzione 1"): il confronto
+    #        autoritativo e' sul **contenuto** (`context_hash` + `template_hash`
+    #        letti dallo snapshot: gli ingredienti sono gli stessi per
+    #        costruzione). Il `pdf_hash` viene ricalcolato e confrontato, ma una
+    #        differenza di BYTE non e' un errore: un renderer puo' non essere
+    #        deterministico fra versioni della libreria (font, metadati, data di
+    #        produzione). Il risultato lo DICHIARA (`pdf_hash_match`) invece di
+    #        nasconderlo — e il caller decide come presentarlo.
+    #        Ritorna i bytes per lo streaming + i metadati di fedelta'.
+    def ristampa_fedele(
+        self,
+        user: AbstractBaseUser | AnonymousUser | None,
+        documento_id: int,
+    ) -> dict[str, Any]:
+        self._v.guard_positive_int(documento_id, field="documento_id")
+        guard_user_authenticated(user)
+        assert user is not None
+        scope = resolve_emittente_scope(user)
+
+        # 1) snapshot congelato (testata + context_json), con scope emittente.
+        documento = self._repo.get_documento_generato_snapshot(
+            documento_id, emittente_ids_scope=scope,
+        )
+        ErrorManager.require(
+            documento is not None,
+            code=E_NOT_FOUND,
+            message="Documento generato non trovato.",
+            detail=f"documento_id={documento_id}",
+        )
+        assert documento is not None
+
+        # 2) versione PINNATA (anche OBSOLETA: e' quella di allora).
+        versione_id = documento.get("template_versione_id")
+        ErrorManager.require(
+            versione_id is not None,
+            code=E_VALIDATION,
+            message=(
+                "Documento senza versione di template: non e' ristampabile "
+                "fedelmente."
+            ),
+            detail=f"documento_id={documento_id}",
+        )
+        versione = self._repo.get_versione_by_id(int(versione_id))
+        ErrorManager.require(
+            versione is not None,
+            code=E_NOT_FOUND,
+            message="Versione di template del documento non trovata.",
+            detail=f"documento_id={documento_id} versione_id={versione_id}",
+        )
+        assert versione is not None
+
+        # 3) contesto CONGELATO. Deve essere un oggetto: `context_json` e'
+        #    jsonb NOT NULL a DB, ma un documento con contesto vuoto non e'
+        #    ri-renderizzabile e va detto invece di produrre un PDF a campi
+        #    vuoti (il render e' StrictUndefined: fallirebbe comunque, ma con
+        #    un messaggio che parla di Jinja e non del documento).
+        context = documento.get("context_json")
+        ErrorManager.require(
+            isinstance(context, dict) and len(context) > 0,
+            code=E_VALIDATION,
+            message=(
+                "Documento senza contesto congelato: non e' ristampabile "
+                "fedelmente."
+            ),
+            detail=f"documento_id={documento_id}",
+        )
+        assert isinstance(context, dict)
+
+        # 4) render con gli ingredienti di allora.
+        pdf_bytes = render_pdf(template_versione=versione, context=context)
+        if not pdf_bytes:
+            ErrorManager.raise_error(
+                code=E_RENDER_FAILED,
+                message="Ristampa fedele ha restituito output PDF vuoto.",
+            )
+            raise  # unreachable
+
+        # 5) verifica di fedelta'. Il template_hash ricalcolato sulla versione
+        #    caricata deve coincidere con quello congelato: se diverge, la
+        #    versione e' stata modificata dopo la generazione — cosa che il DB
+        #    impedisce sulle PUBBLICATE, quindi qui significherebbe un
+        #    documento nato da una versione poi cambiata in BOZZA. Non blocca
+        #    (il PDF e' comunque il piu' fedele ottenibile) ma va dichiarato.
+        pdf_hash_atteso = documento.get("pdf_hash")
+        pdf_hash_ristampa = self._sha256_bytes(pdf_bytes)
+        template_hash_atteso = documento.get("template_hash")
+        template_hash_ricalcolato = self._compute_template_hash(versione)
+
+        risultato = {
+            "pdf_bytes": pdf_bytes,
+            "nome_file": documento["nome_file"],
+            "mime_type": _MIME_PDF,
+            "size_bytes": len(pdf_bytes),
+            "documento_id": documento_id,
+            "template_versione_id": int(versione_id),
+            "versione": versione.get("versione"),
+            "versione_stato": versione.get("stato"),
+            # Fedelta' dichiarata, non presunta (decisione §8.2).
+            "pdf_hash_atteso": pdf_hash_atteso,
+            "pdf_hash_ristampa": pdf_hash_ristampa,
+            "pdf_hash_match": pdf_hash_ristampa == pdf_hash_atteso,
+            "template_hash_match": template_hash_ricalcolato == template_hash_atteso,
+        }
+
+        if not risultato["pdf_hash_match"]:
+            # Non e' un errore (§8.2): il contenuto e' fedele, i byte no.
+            # Va loggato perche' e' il segnale con cui ci si accorge di un
+            # cambio di motore di render.
+            logger.info(
+                "documenti.ristampa_fedele.pdf_hash_diverso documento_id=%s "
+                "atteso=%s ottenuto=%s template_hash_match=%s",
+                documento_id, pdf_hash_atteso, pdf_hash_ristampa,
+                risultato["template_hash_match"],
+            )
+
+        # 6) evento di audit (decisione Tid §8.3: la ristampa lascia traccia).
+        #    E' l'UNICA scrittura del percorso, e resta best-effort come il
+        #    `SCARICATO` del download: il PDF e' gia' prodotto, un fallimento
+        #    del log non deve negarlo all'operatore.
+        #    ⚠️ Prerequisito DB: `RISTAMPA_FEDELE` nel CHECK
+        #    `chk_documenti_generati_eventi_evento_tipo` (brief al team DB).
+        #    Finche' non c'e', l'INSERT viene rifiutato e qui si logga.
+        try:
+            with transaction.atomic():
+                self._repo.emit_evento_documento({
+                    "documento_generato_id": documento_id,
+                    "evento_tipo": _EVENTO_RISTAMPA_FEDELE,
+                    "user_id": getattr(user, "id", None),
+                    # `WARN` e non un valore nuovo: il CHECK `esito` ammette
+                    # OK|KO|WARN e "fedele nel contenuto ma non nei byte" e'
+                    # esattamente un warning, non un fallimento.
+                    "esito": "OK" if risultato["pdf_hash_match"] else "WARN",
+                    "messaggio": (
+                        None if risultato["pdf_hash_match"]
+                        else "Ristampa fedele nel contenuto, non nei byte."
+                    ),
+                    "detail": {
+                        "size_bytes": len(pdf_bytes),
+                        "template_versione_id": int(versione_id),
+                        "pdf_hash_atteso": pdf_hash_atteso,
+                        "pdf_hash_ristampa": pdf_hash_ristampa,
+                        "pdf_hash_match": risultato["pdf_hash_match"],
+                        "template_hash_match": risultato["template_hash_match"],
+                    },
+                    "meta": {},
+                })
+        except Exception:
+            logger.exception(
+                "documenti.ristampa_fedele.evento_fallito documento_id=%s",
+                documento_id,
+            )
+
+        return risultato
 
     # Scopo: Aggiunge allegati (file secondari) a un documento generato
     #        gia' esistente (modalita' "append" del building block: l'utente

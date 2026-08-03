@@ -75,3 +75,6 @@ ApiOffertaDocumentiList = _views.lista
 ApiOffertaDocumentoAllegati = _views.allegati
 ApiOffertaDocumentoFile = _views.file
 ApiOffertaDocumentoFileDownload = _views.file_download
+# Percorso 3 (ristampa fedele): ri-renderizza l'originale dalla versione
+# pinnata + contesto congelato. Vedi brief-ristampa-fedele-documenti.
+ApiOffertaDocumentoRistampa = _views.ristampa

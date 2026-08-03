@@ -157,10 +157,28 @@ export const useDocumentiPerSorgenteStore = defineStore(STORE_NAME, () => {
     }
   }
 
+  // Scopo: RISTAMPA FEDELE (percorso 3): ri-renderizza il documento com'era.
+  //        Ritorna anche `pdfHashMatch`, letto dall'header
+  //        `X-Ristampa-Pdf-Hash-Match`: `true` = identico byte per byte,
+  //        `false` = fedele nel CONTENUTO ma non nei byte (renderer non
+  //        deterministico, decisione §8.2). Il caller lo dice all'operatore
+  //        invece di nasconderlo. `null` se l'header manca (proxy che lo
+  //        filtra): "non verificabile" != "diverso", e va distinto.
+  async function ristampaFedele(documentoId) {
+    if (!sorgenteId.value) throw new Error('Sorgente non impostata')
+    const res = await getClient().ristampaFedele(sorgenteId.value, documentoId)
+    const raw = res.headers?.['x-ristampa-pdf-hash-match']
+    return {
+      blob: res.data,
+      fileName: extractFileName(res) || `documento-${documentoId}.pdf`,
+      pdfHashMatch: raw == null ? null : raw === '1',
+    }
+  }
+
   return {
     sorgenteCode, sorgenteId, items, totalRecords, loading, lastError,
     setSorgente, fetchList, genera, anteprima, download,
-    listFiles, aggiungiAllegati, downloadFile,
+    listFiles, aggiungiAllegati, downloadFile, ristampaFedele,
   }
 }, { userScoped: true })
 

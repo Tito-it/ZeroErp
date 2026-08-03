@@ -102,14 +102,39 @@ function statoSeverity(stato) {
 const isEmpty = computed(() => !store.loading && (store.items?.length ?? 0) === 0)
 const showListChrome = computed(() => !isEmpty.value || !props.hideHeaderWhenEmpty)
 
+// Scopo: le azioni di riga distinguono i TRE percorsi, che prima si
+//        confondevano in uno solo (brief ristampa-fedele §5.2):
+//         1. «Scarica originale» — il file prodotto allora, byte per byte.
+//            Disponibile SOLO se il file esiste: la persistenza dei file e'
+//            iniziata il 2026-07-21, e per i documenti anteriori l'azione
+//            e' DISABILITATA CON LA RAGIONE invece di fallire con un 404
+//            generico (§5.2.2).
+//         2. «Ristampa fedele» — ri-renderizza l'originale dalla versione di
+//            template di allora e dal contesto congelato. E' l'unico percorso
+//            possibile sui documenti senza file, e la verifica di un file
+//            conservato.
+//        Il terzo percorso — «Genera nuovo documento», che produce un
+//        documento DIVERSO col modello di oggi — non vive qui: e' un'azione
+//        della sorgente (pulsante di emissione), non di un documento gia'
+//        generato. Tenerlo fuori da questo menu e' parte del chiarimento.
 function buildRowActions(row) {
+  const haFile = row.has_file_principale !== false
   const actions = [
     {
       key: 'download',
       label: t('documenti.lista.action_download'),
       icon: MANAGE_ICONS.DOWNLOAD,
       severity: 'primary',
+      disabled: !haFile,
+      tooltip: haFile ? '' : t('documenti.lista.download_non_disponibile'),
       command: () => onDownload(row.id),
+    },
+    {
+      key: 'ristampa',
+      label: t('documenti.lista.action_ristampa_fedele'),
+      icon: 'pi pi-history',
+      tooltip: t('documenti.lista.ristampa_fedele_hint'),
+      command: () => onRistampaFedele(row.id),
     },
   ]
   if (props.allowAllegati) {
@@ -158,6 +183,27 @@ async function onDownload(documentoId) {
   } catch (err) {
     notify.error(t('documenti.genera_pdf.download_error'))
     console.error('download', err)
+  }
+}
+
+// Scopo: ristampa fedele (percorso 3). Il PDF si scarica come gli altri; la
+//        differenza sta nel VERDETTO che si comunica dopo: se i byte non
+//        coincidono con l'originale il documento e' fedele nel contenuto ma
+//        non nei byte (renderer non deterministico, decisione §8.2) e va
+//        detto — un warn, non un errore. `null` = header assente: non
+//        verificabile, che e' diverso da "diverso".
+async function onRistampaFedele(documentoId) {
+  try {
+    const { blob, fileName, pdfHashMatch } = await store.ristampaFedele(documentoId)
+    downloadBlob(blob, fileName)
+    if (pdfHashMatch === false) {
+      notify.warn(t('documenti.lista.ristampa_fedele_contenuto'))
+    } else {
+      notify.success(t('documenti.lista.ristampa_fedele_ok'))
+    }
+  } catch (err) {
+    notify.error(t('documenti.lista.ristampa_fedele_error'))
+    console.error('ristampaFedele', err)
   }
 }
 
@@ -243,6 +289,20 @@ async function reload() {
       <Column field="stato" :header="t('documenti.lista.col_stato')" style="width: 120px;">
         <template #body="{ data }">
           <Tag :value="data.stato" :severity="statoSeverity(data.stato)" />
+        </template>
+      </Column>
+      <!-- Presenza del file originale: dice a colpo d'occhio quali documenti
+           si possono scaricare com'erano e quali vanno ri-renderizzati. Non
+           e' un difetto del documento (la persistenza e' iniziata dopo), per
+           questo e' `secondary` e non `danger`. -->
+      <Column :header="t('documenti.lista.col_originale')" style="width: 110px;">
+        <template #body="{ data }">
+          <Tag
+            :value="data.has_file_principale !== false
+              ? t('documenti.lista.originale_presente')
+              : t('documenti.lista.originale_assente')"
+            :severity="data.has_file_principale !== false ? 'success' : 'secondary'"
+          />
         </template>
       </Column>
       <Column :header="''" class="app-col-actions" style="width: 80px;">

@@ -77,3 +77,6 @@ ApiDdtDocumentiList = _views.lista
 ApiDdtDocumentoAllegati = _views.allegati
 ApiDdtDocumentoFile = _views.file
 ApiDdtDocumentoFileDownload = _views.file_download
+# Percorso 3 (ristampa fedele): ri-renderizza l'originale dalla versione
+# pinnata + contesto congelato. Vedi brief-ristampa-fedele-documenti.
+ApiDdtDocumentoRistampa = _views.ristampa

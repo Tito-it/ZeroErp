@@ -6,8 +6,77 @@
 > **Cos'è:** manca il percorso che ri-produce un documento **come fu emesso**,
 > usando la versione di template con cui nacque e il contesto congelato allora.
 > Il modello lo prevede e ne conserva tutti gli ingredienti; nessun codice li usa.
-> **Stato:** analisi misurata, **nessuna riga scritta**. Serve una decisione su
-> §8 prima di aprire il cantiere.
+> **Stato:** ✅ **cantiere ESEGUITO lato BE/FE il 2026-08-03**, dopo le tre
+> decisioni di §8 prese da Tid. Resta **una riga al DB** (§5.3). Dettaglio
+> nella sezione qui sotto.
+
+---
+
+## ✅ Stato di esecuzione — 2026-08-03 (scrive il BE/FE)
+
+Le tre decisioni di §8 sono state prese da Tid e il cantiere è stato eseguito
+nella stessa giornata. La previsione del brief si è rivelata esatta: **è stato
+corto perché il pezzo difficile c'era già** — `render_pdf(*, template_versione,
+context)` aveva davvero la firma giusta (§5.1.2), e nessun motore nuovo è stato
+scritto.
+
+### Le decisioni prese
+
+| § | Domanda | Decisione di Tid |
+| --- | --- | --- |
+| 8.1 | Si conservano i file per tutti? | **Sì.** Il 18-su-153 non è una politica di conservazione: è una **cancellazione errata dei riferimenti** (le 135 righe-indice rimosse il 2026-07-21; i PDF su storage erano intatti). Siamo in test. ➡️ Il percorso 1 resta la strada normale, il 3 la rete di sicurezza — **non va dimensionato per il carico** |
+| 8.2 | Che si fa se il `pdf_hash` non combacia? | **Soluzione 1**: «fedele nel contenuto, non nei byte», dichiarato. Niente pinning del motore di render (più forte ma molto più caro) |
+| 8.3 | La ristampa lascia traccia? | **Sì** — evento sul documento esistente. È l'unica scrittura del percorso, e non viola §5.1.4 |
+
+### Cosa è stato fatto
+
+**BE** — `DocumentGenerationService.ristampa_fedele(user, documento_id)`:
+
+- legge lo **snapshot congelato** con una lettura dedicata
+  (`get_documento_generato_snapshot`: testata + `context_json`, separata dalle
+  altre perché il contesto può essere grande e serve solo qui);
+- carica la **versione pinnata** con `get_versione_by_id`, che **non filtra per
+  stato** — una versione `OBSOLETA` è il caso normale della ristampa fedele, non
+  l'eccezione;
+- **non invoca alcun context_builder**: il contesto si legge, non si ricostruisce;
+- non persiste nulla (§5.1.4 rispettato): l'unica scrittura è l'evento;
+- endpoint `GET .../documenti/<documento_id>/ristampa/` dalla **factory
+  condivisa**, quindi cablato in un colpo su **tutti e 6** i domini sorgente —
+  con un test di presidio che fallisce se un dominio resta indietro;
+- il verdetto di fedeltà viaggia nell'header `X-Ristampa-Pdf-Hash-Match`
+  (`1`/`0`), perché il corpo della risposta è il PDF.
+
+**§5.1.5 fatto**: il commento di `DocumentoGenera` non dice più «ristampa» —
+dice che emette un documento nuovo, e spiega perché il vecchio nome ingannava.
+
+**FE** — le tre azioni sono ora distinte (§5.2):
+
+- «**Scarica originale**» — disabilitata **con la ragione** sui documenti senza
+  file, invece di fallire con un `E_NOT_FOUND` generico. Per saperlo serviva un
+  dato che la lista non esponeva: aggiunto `has_file_principale` alla proiezione;
+- «**Ristampa fedele**» — nuova, con toast di successo se i byte coincidono e di
+  **warning** se no («fedele nel contenuto»): entrambi sono esiti positivi;
+- «**Genera nuovo documento**» — tolta dal menu di un documento già generato:
+  è un'azione della **sorgente**, non del documento, e tenerla lì era metà della
+  confusione. Aggiunta anche una colonna *Originale* alla lista, per vedere a
+  colpo d'occhio quali documenti hanno il file.
+
+**Test**: 15 sul service + 3 sull'endpoint + 2 di presidio del routing. Quelli
+che contano davvero sono i primi tre: presidiano **chi viene chiamato e con
+cosa** (versione pinnata sì, `get_versione_pubblicata_attiva` no, nessun
+builder), perché è l'unica cosa che distingue una ristampa fedele da un
+documento nuovo travestito da vecchio — e guardando il PDF prodotto non si vede.
+
+Suite completa **3485 verdi**, build + lint + i18n puliti.
+
+### Cosa resta
+
+1. 🔴 **La riga al DB** — vedi §5.3 riscritto.
+2. ⏳ **La validazione in-app di Tid** sul caso di prova di §6.4: l'offerta di
+   maggio deve uscire con la v1 e la chiave `emittente_fiscale.descrizione`.
+   È l'unica verifica che il codice non può dare da sé.
+
+Doc dell'API: `docs/it/backend/documenti/manual/api_ristampa_fedele.md`.
 
 ---
 
@@ -128,6 +197,13 @@ promessa si regge sono già imposti dal database**, e già presidiati da pgTAP.
 Se durante il cantiere emergesse un invariante scoperto, quello sì tornerebbe al
 DB — ma allo stato della misura non ce n'è.
 
+> **Verificato a cantiere fatto (2026-08-03):** nessun invariante scoperto è
+> emerso — questa sezione ha retto per intero. L'unica voce tornata al DB
+> **non è un invariante** ma un **valore di vocabolario** (`RISTAMPA_FEDELE` nel
+> CHECK degli eventi), conseguenza della decisione §8.3 presa dopo che questa
+> analisi era stata scritta. Il titolo di questa sezione resta vero nel merito;
+> il conto aggiornato è in §5.3.
+
 ---
 
 ## 5. Le attività, per competenza
@@ -150,10 +226,37 @@ DB — ma allo stato della misura non ce n'è.
 | 5.2.2 | Sui 135 documenti senza file, «Scarica originale» non è disponibile: l'azione va **disabilitata con la ragione**, non lasciata a fallire con un `E_NOT_FOUND` generico |
 | 5.2.3 | «Genera nuovo documento» va presentata come un'azione che **produce un documento diverso**, perché lo è |
 
-### 5.3 DB — niente da costruire (vedi §4)
+### 5.3 DB — una riga, emersa dalla decisione §8.3
 
-Resta a carico del DB solo l'eventuale seguito di §8.1, se la decisione sulla
-conservazione dei file comportasse un intervento sui dati.
+> **Aggiornato il 2026-08-03 dal BE/FE.** La §4 resta corretta — gli
+> **invarianti** erano e sono tutti già a posto, non c'è niente da costruire lì.
+> Quello che è emerso non viene dagli invarianti ma dalla **decisione 8.3**
+> («la ristampa lascia traccia»): il valore che serve non esiste nel vocabolario.
+
+🔴 **Aggiungere `RISTAMPA_FEDELE` al CHECK
+`chk_documenti_generati_eventi_evento_tipo`**, oggi chiuso a quattro valori
+(`GENERATO`, `SCARICATO`, `STORAGE_ORPHAN`, `ALLEGATO_AGGIUNTO`, da
+`20260603-04`). Brief dedicato con SQL e verifica:
+[brief-db-evento-ristampa-fedele.md](brief-db-evento-ristampa-fedele.md).
+
+**Non riusiamo `GENERATO`**: sarebbe esattamente la confusione che questo brief
+smonta — una ristampa non è un'emissione, e un audit che le mescola non permette
+più di distinguerle guardando la timeline.
+
+Su `esito` **non serve nulla**: la ristampa usa `WARN` quando i byte non
+coincidono (decisione §8.2), e `WARN` è già nel CHECK `..._esito`
+(`OK`/`KO`/`WARN`) con esattamente quel significato.
+
+⚠️ **Il cantiere funziona già senza**: l'INSERT dell'evento è best-effort in
+transazione separata — stesso pattern del `SCARICATO` del download — quindi il
+CHECK lo rifiuta, il servizio logga `documenti.ristampa_fedele.evento_fallito` e
+il PDF esce comunque. Ma è un rosso che si vede solo nei log, e quelli si
+smettono di guardare: è il motivo per cui la riga non va rimandata a lungo, non
+per cui il cantiere è bloccato.
+
+**Niente seguito su §8.1**: la decisione è «sì, si conservano», e il 18-su-153
+si è rivelato una cancellazione errata dei riferimenti in ambiente di test — non
+una politica da implementare né dati da correggere.
 
 ---
 
@@ -169,6 +272,16 @@ conservazione dei file comportasse un intervento sui dati.
    **diversa** da quella che uscirebbe emettendola oggi. Se esce uguale a quella
    di oggi, il percorso sta ricostruendo il contesto invece di leggerlo.
 
+> **Stato al 2026-08-03** (scrive il BE/FE). I punti **2 e 3 sono chiusi e
+> presidiati dai test**: il confronto degli hash è dichiarato nella risposta
+> (`X-Ristampa-Pdf-Hash-Match`) e la non-persistenza è verificata
+> (`create_documento_generato` / `next_progressivo_sorgente` mai chiamati).
+> I punti **1 e 4 richiedono l'app**: sono la validazione di Tid, e il 4 è
+> quello che conta — se l'offerta di maggio uscisse uguale a quella di oggi, il
+> percorso starebbe ricostruendo il contesto invece di leggerlo. I test lo
+> escludono dal lato del codice (nessun `context_builder` invocato), ma la
+> controprova sul documento vero la dà solo il PDF.
+
 ---
 
 ## 7. Cosa **non** si chiede
@@ -182,21 +295,37 @@ conservazione dei file comportasse un intervento sui dati.
 
 ---
 
-## 8. Decisioni aperte
+## 8. Decisioni ~~aperte~~ — ✅ PRESE DA TID il 2026-08-03
+
+> Le tre risposte sono nel riquadro di stato in testa al documento. Restano qui
+> le domande com'erano poste, perché la formulazione spiega **perché** ognuna
+> era una decisione e non un dettaglio implementativo.
 
 1. **Si conservano i file per tutti i documenti?** Oggi 18 su 153. Se la risposta
    è sì, il percorso 1 diventa la strada normale e il 3 la rete di sicurezza; se
    è no, il 3 diventa la strada principale e va progettato per reggere il carico.
    È una scelta di **politica di conservazione**, non di implementazione.
+   ➡️ **SÌ.** E con una precisazione che cambia la lettura del dato: il 18 su
+   153 **non fotografa una politica**, fotografa una cancellazione errata dei
+   riferimenti in ambiente di test (i PDF su storage erano intatti). Il numero
+   non era una scelta di conservazione mai fatta — era un incidente.
 2. **Che si fa se il `pdf_hash` non combacia?** Un renderer può non essere
    deterministico fra versioni della libreria (font, metadati, data di
    produzione). Le due strade sono: dichiarare la ristampa «fedele nel
    contenuto, non nei byte» e confrontare il solo `context_hash`, oppure pinnare
    anche la versione del motore. La prima è onesta e a costo zero; la seconda è
    più forte e più cara.
+   ➡️ **Prima strada.** Il verdetto non è nascosto: viaggia nell'header
+   `X-Ristampa-Pdf-Hash-Match` e il FE lo traduce in successo o warning —
+   **entrambi esiti positivi**. Il `template_hash` viene confrontato in aggiunta:
+   se diverge, la versione è stata toccata dopo la generazione (possibile solo
+   su BOZZA) e anche questo è dichiarato.
 3. **La ristampa fedele lascia traccia?** Un evento sul documento esistente è
    utile per l'audit e non viola §5.1.4 — ma va deciso, perché è l'unica
    scrittura che questo percorso farebbe.
+   ➡️ **SÌ**, evento `RISTAMPA_FEDELE` (`OK` / `WARN`) col dettaglio di fedeltà.
+   È la decisione che ha fatto emergere l'unica voce rimasta al DB: quel valore
+   non è nel CHECK del vocabolario eventi (§5.3).
 
 ---
 

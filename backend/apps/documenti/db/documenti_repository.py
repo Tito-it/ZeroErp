@@ -1196,7 +1196,20 @@ class DocumentiRepository:
                 d.pdf_hash,
                 d.generato_da_user_id,
                 d.generato_at,
-                d.emittente_fiscale_id
+                d.emittente_fiscale_id,
+                -- Il file originale esiste? La persistenza dei file e' iniziata
+                -- il 2026-07-21: i documenti anteriori NON hanno il file, e per
+                -- loro «Scarica originale» risponderebbe 404. Il flag permette
+                -- alla UI di disabilitare l'azione CON LA RAGIONE invece di
+                -- lasciarla fallire (brief ristampa-fedele §5.2.2), e di
+                -- proporre al suo posto la ristampa fedele, che per quei
+                -- documenti e' l'unico percorso possibile.
+                EXISTS (
+                    SELECT 1
+                      FROM documenti.documenti_generati_file f
+                     WHERE f.documento_generato_id = d.id
+                       AND f.is_principale = true
+                ) AS has_file_principale
               FROM documenti.documenti_generati d
              WHERE {where_clause}
              ORDER BY d.generato_at DESC, d.id DESC
@@ -1256,6 +1269,73 @@ class DocumentiRepository:
         """  # noqa: S608
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
+            results = rows_to_list(cursor)
+        return results[0] if results else None
+
+    # Scopo: Snapshot CONGELATO di un documento generato: la testata + il
+    #        `context_json` con cui fu stampato. Separato da
+    #        `get_documento_generato` perche' il context puo' essere grande e
+    #        serve SOLO alla ristampa fedele — le altre letture (download,
+    #        liste, allegati) non devono pagarlo.
+    #        ⚠️ E' la lettura portante della ristampa fedele: il contesto si
+    #        LEGGE, non si ricostruisce (un contesto ricostruito e' un
+    #        documento nuovo travestito da vecchio). Immutabilita' garantita a
+    #        DB da `trgfn_documenti_generati_protect_snapshot`.
+    def get_documento_generato_snapshot(
+        self,
+        documento_id: int,
+        *,
+        emittente_ids_scope: list[int] | None,
+    ) -> dict[str, Any] | None:
+        conditions = ["d.id = %s"]
+        params: list[Any] = [int(documento_id)]
+        if emittente_ids_scope is not None:
+            conditions.append("d.emittente_fiscale_id = ANY(%s)")
+            params.append(list(emittente_ids_scope))
+        where_clause = " AND ".join(conditions)
+
+        sql = f"""
+            SELECT
+                d.id,
+                d.uid::text AS uid,
+                d.template_documento_id,
+                d.template_versione_id,
+                d.sorgente_tipo_id,
+                d.sorgente_uid,
+                d.sorgente_riga,
+                d.stato,
+                d.titolo,
+                d.nome_file,
+                d.context_json,
+                d.context_hash,
+                d.template_hash,
+                d.pdf_hash,
+                d.generato_at,
+                d.emittente_fiscale_id
+              FROM documenti.documenti_generati d
+             WHERE {where_clause}
+        """  # noqa: S608
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            results = rows_to_list(cursor)
+        return results[0] if results else None
+
+    # Scopo: Versione template per id SENZA filtri di stato ne' di template.
+    #        E' la lettura della ristampa fedele: la versione pinnata sul
+    #        documento va caricata **anche se OBSOLETA o non piu' attiva** —
+    #        e' esattamente quella con cui il documento nacque. Le altre
+    #        letture (`get_versione`, `get_versione_pubblicata_attiva`)
+    #        filtrano di proposito e non servono qui.
+    #        Nessun rischio di leak: l'id arriva da una riga di
+    #        `documenti_generati` gia' passata per lo scope emittente.
+    def get_versione_by_id(self, versione_id: int) -> dict[str, Any] | None:
+        sql = f"""
+            SELECT {_VERSIONI_PROJECTION_DETAIL}
+            {_VERSIONI_FROM}
+            WHERE v.id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(versione_id)])
             results = rows_to_list(cursor)
         return results[0] if results else None
 

@@ -76,3 +76,6 @@ ApiOrdineDocumentiList = _views.lista
 ApiOrdineDocumentoAllegati = _views.allegati
 ApiOrdineDocumentoFile = _views.file
 ApiOrdineDocumentoFileDownload = _views.file_download
+# Percorso 3 (ristampa fedele): ri-renderizza l'originale dalla versione
+# pinnata + contesto congelato. Vedi brief-ristampa-fedele-documenti.
+ApiOrdineDocumentoRistampa = _views.ristampa
