@@ -153,7 +153,8 @@ diventa «smonto il lotto». È fatto.
 | # | Decisione | Esito |
 |---|---|---|
 | **RD-1** ⭐ | **Perché un lotto può tornare a DRAFT** | ✅ **DECISA (Tid, 2026-08-03): per QUALSIASI motivo.** Che contenga fatture in errore o fatture semplicemente **da correggere**, non fa differenza: *«l'operatore sa perché lo deve portare indietro e noi dobbiamo solo permetterlo»*. **Conseguenze dirette**: (1) la funzione **non chiede il motivo** e non ha rami condizionati alla causa — nessun guard «solo se in errore», nessun guard «solo se ha criticità»; (2) il **punto B entra in 6-A** e si risolve **sempre**, non «quando serve»: se il ritorno lasciasse i log critici attivi, il lotto riaperto non ripartirebbe — e siccome il ritorno è ammesso per qualsiasi motivo, non esiste un caso in cui possiamo permetterci di non ripulirli; (3) il presidio si sposta **a valle**: ciò che deve restare vietato è numerare un documento incoerente (D-K, già in piedi), non riaprire un lotto |
-| **RD-2** | **Come fa il rilancio a sapere che deve rifare il passo** (ex punto C) | 🟡 **istruita, in attesa di conferma**: strada **B**, una **colonna DATA** sul lotto (non un booleano — intuizione di Tid 2026-08-03, e stesso pattern di `obsoleto_dal`). La strada A è **caduta sulla misura**: `stato_lotto` ha una macchina a stati cablata in Python che accetta esattamente 3 valori. Vedi §4.4 e §4.6 |
+| **RD-2** | **Come fa il rilancio a sapere che deve rifare il passo** (ex punto C) | ✅ **DECISA (Tid, 2026-08-03): strada B, una colonna DATA** sul lotto (`riaperto_il`), non un booleano — stesso pattern di `obsoleto_dal` ([[reference_deprecabilita_catalogo_obsoleto_dal]]): una data si spiega da sola, si ordina, e non chiede a nessuno di ricordarsi di spegnere un flag. La strada **A è caduta sulla misura**: `stato_lotto` ha una macchina a stati cablata in Python che accetta esattamente 3 valori e rifiuta il resto. La strada **C** (dedurlo dai `task_runs`) è caduta con il punto A, §4.9. Vedi §4.4 e §4.6 |
+| **RD-4** ⭐ | **Chi possiede il ripristino** (rilievo di Tid, 2026-08-03) | ✅ **DECISA: una funzione sola.** Il reset di *tutte* le tabelle vive in **`fn_cleanup_fatture_by_ids`** e in nessun altro posto; lo **stato del lotto** è un'altra cosa e appartiene all'operazione che chiama. La prima stesura di `fn_riporta_lotto_a_draft` aveva messo il reset delle `commesse_attivita` **dentro di sé** — cioè aveva duplicato la pulizia in due grafie, completa in una funzione e incompleta nelle altre due che chiamano la stessa primitiva. 🔴 **Conseguenza misurata**: `fn_annulla_lotto_da_draft` e `fn_elimina_fattura_da_lotto_draft` lasciavano le attività a `EMESSA` — righe **emesse senza fattura**, che nessun giro futuro può riprendere. Orfane oggi **0**: il difetto era **latente**, si armava al primo annullamento. `20260803-10` sposta il passo nella primitiva; le tre chiamanti non contengono più **nessuna riga** di pulizia |
 | **RD-3** | **Non si bonificano dati esistenti** | ✅ **DECISA (Tid, 2026-08-03): siamo in test.** Fatture e lotti già sbagliati **non si correggono**, né a mano né con codice: non è tempo speso bene. La **2263 resta com'è** — vale come caso di prova, non come lavoro da chiudere. Coerente con [[project_no_produzione_solo_sviluppo]] e con D-G del piano satelliti |
 
 ## 2. Perimetro — 6-A adesso, 6-B dopo
@@ -384,27 +385,215 @@ progetto per la deprecabilità di catalogo (`obsoleto_dal`,
 [[reference_deprecabilita_catalogo_obsoleto_dal]]): una **DATA come asse separato**
 invece di un flag booleano.
 
+### 4.7 Esiti — le misure, fatte il 2026-08-03
+
+**Canale**: `titodb` ha `rolbypassrls = false` **ma è owner** delle tabelle e
+`relforcerowsecurity = false` → l'owner bypassa la RLS. I conteggi sotto sono
+reali, non fail-closed ([[feedback_conteggi_rls_zero_non_errore]] disinnescata).
+
+**Il caso** — lotto **1200** `LTF-0001225` MASSIVO, `EMESSA` / `stato_lotto =
+COMPLETATO` / `stato_operativo = APERTO` · fattura **2263** **senza numero**
+(C-19 confermato **sul dato**, non sulla teoria), `critical = f`,
+`stato_esecuzione = COMPLETED` · 1 attività · satelliti: 1 scadenza, 1 riepilogo
+IVA, 1 riga, 2 indirizzi · `fatture_log`: **zero righe**.
+
+| # | Esito |
+|---|---|
+| **M1** | vedi sopra. 🔴 **`lotto_job_stato` non esiste**: non è colonna di nessuna tabella del DB — è il nome di un **metodo Python** (`set_lotto_job_stato`) che scrive `stato_lotto`. Gli stati non fiscali sono **due**, non tre |
+| **M2** | 8 `task_runs` (4 DRAFT + 4 EMESSA), **tutti** `tentativo = 1`, `COMPLETATO`, `attivo = t` |
+| **M3** | **zero** righe in `fatture_log` per la 2263 → il punto B **non morde su questo caso** (morde sul caso generale) |
+| **M4** | 1 attività, `lock_in_fatturazione = t`, `fatturato = t` |
+| **M5** | 1 scadenza · 1 riepilogo IVA · 1 riga · 2 indirizzi |
+| **M6** | vedi §4.8 |
+| **M7** | 🔴 **100 `task_runs` in tutta la tabella, 100 con `attivo = true`**. Nessuno scrittore di `attivo = false`, mai |
+
+### 4.8 M6 — la prova in transazione (`ROLLBACK`), e l'ordine di lavoro che ne esce
+
+| Passo | Esito misurato |
+|---|---|
+| sposto **solo il lotto** `EMESSA → DRAFT` | ✅ **passa senza obiezioni** (`UPDATE 1`) — la riga 2 della matrice lo permette |
+| sposto **solo la fattura** `EMESSA → DRAFT` | ❌ **respinta**: `E_LOTTO_PARAMETRO_NON_COERENTE`, *«transizione 2→1»*, da `trgfn_fatture_guard_stato()` |
+| `SET CONSTRAINTS ALL IMMEDIATE` con lotto DRAFT e fattura EMESSA | ❌ `E_LOTTO_FATTURE_STATO_INCOERENTE` — il guard differito **scatta**, come previsto da C-18 |
+
+➡️ **Il seed della transizione lato fattura è il prerequisito assoluto**: senza
+quella riga in matrice **niente** funziona, nemmeno `fn_sync_lotto_fatture_stato`.
+
+ℹ️ Il messaggio d'errore del guard consiglia `fn_sync_lotto_fatture_stato` come
+rimedio. ⚠️ **Non è sufficiente qui**: quella funzione **salta le fatture
+`critical`** (D-L.2, §1.5), e RD-1 dice che il ritorno vale **per qualsiasi
+motivo** — quindi anche per i lotti che di critiche ne hanno.
+
+### 4.9 🔴 Il punto A cade: la sua premessa è falsa
+
+Il punto A poggiava su *«`RESUME_STEP`/`RESUME_TASK` si basano sui `task_runs`: se
+li considera completati, il rilancio salta i task che devono rigirare»*.
+**Misurato: nessuno li consulta per decidere.** Catena di prove:
+
+1. `fn_start_lotto_task_run` calcola
+   `tentativo = COALESCE(MAX(tentativo), 0) + 1` e fa **sempre INSERT**. Non
+   filtra su `attivo`, non riusa nulla: **ogni rilancio crea già una riga nuova**;
+2. `attivo` non è mai stato scritto a `false` da nessuno (M7);
+3. `resume_mode` è letto **una volta sola**, da `get_task_policy`
+   (`pipeline_repository.py:708`) — e quel metodo ha **zero chiamanti**. In
+   `services/` e `api/` la parola «resume» non compare;
+4. 🔴 **`fn_pipeline_task_runtime_support` non esiste come funzione**: è il nome di
+   un **changeSet** (`20260218-07`), che crea 9 funzioni con altri nomi. La stima
+   originale «mezza giornata di lettura su `fn_pipeline_task_runtime_support`»
+   puntava a un oggetto inesistente.
+
+➡️ **Il ritorno a DRAFT non deve toccare i `task_runs`.** Sono un registro di
+esecuzione, non una macchina di stato: nessuno decide su di essi.
+
+⚠️ **Questo contraddice una decisione presa** (*«o si generano nuovi o si
+resettano; lasciarli com'è non è un'opzione»*). La decisione era corretta **data la
+premessa**; la premessa non regge alla misura, e la terza strada allora esclusa —
+**lasciarli** — è quella giusta. `RESUME_*` è una **policy dormiente**, come lo era
+`attivo`: seminata, trasportata, mai consumata.
+
+### 4.10 Riepilogo: i sette punti, chiusi
+
+| # | Esito |
+|---|---|
+| **A** | ❌ **cade** (§4.9): non si tocca nulla dei `task_runs` |
+| **B** | ✅ **risolto da RD-1**: il ritorno **spegne sempre** i log critici (`disabilitato = true`, non DELETE: restano come storia) |
+| **C** | ✅ **RD-2 strada B**: colonna **data** sul lotto (§4.4, §4.6) |
+| **D** | ✅ **assorbito dal punto G**: le attività si sganciano e si sbloccano |
+| **E** | ✅ advisory lock a 2 argomenti nella funzione ([[reference_advisory_lock_2_arg_namespace]]) |
+| **F** | ✅ i due guard diventano **espliciti** nella funzione, non solo nei test |
+| **G** | ✅ **il livello attività**, §4.5 — è la condizione perché il ritorno serva a qualcosa |
+
 ---
 
-## 5. I passi — **da scrivere dopo la §4**
+## 5. I passi
 
-> 🔴 Volutamente vuoto. La bozza che stava in §3.6 del piano satelliti (vecchi
-> 6.1-6.8) **non è un piano esecutivo**: è un'intenzione scritta prima
-> dell'analisi, e va riscritta, non adattata.
+> ✅ Scritti dopo la §4, come previsto. I pgTAP nascono **insieme** alla funzione,
+> non dopo — correzione d'ordine decisa chiudendo la Fase 3b del cantiere fratello.
+>
+> ⚠️ **Numerazione contesa il 2026-08-03**: un altro lavoro (`documenti`, ristampa
+> fedele) occupava lo stesso `NN` e qualcosa ha rinumerato i file **dopo** la
+> scrittura. I numeri definitivi sono **`20260803-07`** (colonna) e **`-08`**
+> (funzione), scelti fuori dalla zona contesa. L'ordine fra i due **non è
+> estetico**: `changelog-autogen.yaml` interleava `00_schema` e `20_code` in ordine
+> temporale globale per nome file, quindi la colonna **deve** avere il numero più
+> basso o su DB vergine la funzione girerebbe prima della colonna che la
+> `preCondition` pretende.
 
-Quello che si sa già di dover produrre, come promemoria e non come specifica:
+### 5.1 Ordine, e perché non è negoziabile
 
-- il **seed** della transizione mancante lato **fattura** (§1.1: quella lato lotto
-  c'è già — sono due righe diverse, e vanno contate separatamente prima di
-  scrivere il CSV);
-- `vendite.fn_riporta_lotto_a_draft(p_lotto_id)`, che riporta **insieme** lotto e
-  fatture nella stessa transazione;
-- la **pulizia** di ciò che è stato prodotto in EMESSA (scadenze, riepiloghi,
-  totali, fondi). Gli **indirizzi si lasciano**: sono prodotti in DRAFT e si
-  rigenerano da soli (upsert idempotente);
-- i due **guard** del punto F;
-- i **pgTAP**, scritti **insieme** alla funzione e non dopo — correzione d'ordine
-  decisa chiudendo la 3b.
+```
+A1 seed transizione fattura   ← senza, NIENTE passa (provato in M6)
+   └─ A2 colonna riaperto_il  ← RD-2, indipendente da A1
+        └─ A3 la funzione     ← usa entrambe
+             └─ A4 pgTAP
+                  └─ A5 brief al BE
+```
+
+### 5.2 I passi
+
+| # | Cosa | Note |
+|---|---|---|
+| **A1** | **Seed**: la riga **2** di `stati_doc_fiscale_transizioni.csv` passa da `meta {"tipo_lotto":"MASSIVO"}` a **`{}`** | 🔴 **CORRETTO in corsa** — la prima stesura aggiungeva una riga `solo_fattura = t`, giusta per il disegno **(i)** e **sbagliata per il (ii)**: se le fatture si **cancellano** non transitano mai, quindi quella riga sarebbe stata una transizione **dichiarata legale e mai eseguita** — cioè lo stesso difetto che C-18 denuncia. Rimossa. Serve invece il lato **lotto**: `trgfn_fatturazione_lotti_guard_stato` **legge il `meta`** e ne applica `tipo_lotto`, quindi con `MASSIVO` un lotto GIORNALIERO non potrebbe tornare indietro. `{}` allinea il perimetro a D-L.2 e D-T. ✅ **Punto F verificato vero**: la retrocessione dei GIORNALIERO resta comunque presidiata da `trgfn_fatture_guard_stato`, che confronta `ordine`. Nessun changeSet: loader `runOnChange` |
+| **A2** | **Colonna** `vendite.fatturazione_lotti.riaperto_il timestamptz NULL` — `20260803-07` | RD-2 strada B. Nessun default, nessun backfill: `NULL` = mai riaperto. Si accende al ritorno, **si spegne quando il lotto avanza** oltre DRAFT — altrimenti rifà lo stesso passo per sempre |
+| **A3** | **`vendite.fn_riporta_lotto_a_draft(p_lotto_id bigint)`** — `20260803-08` | il cuore — vedi §5.3 |
+| **A4** | **pgTAP** — `db/pgtap/vendite/test-riporta-lotto-a-draft-v1.sql` `plan(10)` | vedi §5.4 |
+| **A5** | **Brief al BE** | §6 |
+
+### 5.3 A3 — l'ordine interno della funzione
+
+**Tre livelli**, non due. È la correzione che il punto G impone.
+
+| | Cosa | Perché lì |
+|---|---|---|
+| 1 | `pg_advisory_xact_lock` a **2 argomenti** (namespace + `lotto_id`) | punto E. Mai la forma a 1 argomento ([[reference_advisory_lock_2_arg_namespace]]) |
+| 2 | **Guard**: lotto esiste · **nessuna fattura numerata** · perimetro | punto F, espliciti e non solo nei test. ⚠️ Il guard su `numero` è quello che protegge da C-19 al contrario: a EMESSA non è numerata, ma la funzione non deve fidarsi dello stato — deve **guardare il numero** |
+| 3 | **Fatture → DRAFT**, tutte, **anche le `critical`** | RD-1. Con `UPDATE` diretto e **non** `fn_sync_lotto_fatture_stato`, che le critiche le salta (§4.8) |
+| 4 | **Lotto → DRAFT** + `riaperto_il = now()` | il guard di coerenza è DEFERRED: 3 e 4 possono stare in qualsiasi ordine, purché entrambi dentro la transazione |
+| 5 | **Pulizia satelliti**: `fatture_scadenze` DELETE · riepiloghi IVA e totali azzerati · fondi via `fn_reset_fondi_fattura` | ⚠️ Gli **indirizzi si lasciano**: nascono in DRAFT e si rigenerano da soli (upsert idempotente) |
+| 6 | **Attività**: `commesse_attivita.stato_emissione → NON_EMESSA` · `attivita_fatturabili` sganciate (`fattura_riga_id = NULL`, `fatturato = false`, `lock_in_fatturazione = false`) | 🔴 **punto G** — senza, il giro successivo non ha niente da riemettere |
+| 7 | **Log critici**: `fatture_log.disabilitato = true` sulle fatture del lotto | RD-1 / punto B. **Non DELETE**: restano come storia |
+| — | **`task_runs`: non si toccano** | §4.9 |
+
+⚠️ **Da verificare scrivendo**: se `generate_fatture_righe` è `DELETE+INSERT`
+(come `fn_genera_scadenze_fattura`) allora le righe le rigenera lui e al passo 6
+basta sganciare; se è solo `INSERT`, il ritorno deve cancellarle o il rilancio
+duplica. È l'unico punto ancora aperto, e si chiude leggendo quella funzione
+**prima** di scrivere la nostra.
+
+### 5.4 A4 — cosa devono mordere i pgTAP
+
+- transizione `EMESSA → DRAFT` **ammessa per la fattura** (oggi respinta — è il
+  test che diventa verde con A1);
+- lotto e fatture **allineati al commit** (il guard differito non protesta);
+- scadenze e riepiloghi **azzerati**, indirizzi **rimasti**;
+- 🔴 **le attività tornano `NON_EMESSA` e sganciate** — punto G, ed è il test che
+  vale di più perché presidia la *ragione* del ritorno, non la sua forma;
+- ritorno **rifiutato se una sola fattura è numerata**;
+- una fattura **`critical` torna indietro anche lei** (RD-1) — è il test che
+  distingue questa funzione da `fn_sync_lotto_fatture_stato`;
+- i log critici risultano **spenti ma presenti** (`disabilitato = true`, conteggio
+  invariato);
+- **idempotenza**: rieseguire il ritorno su un lotto già in DRAFT non rompe nulla.
+
+⚠️ Le fixture: la condizione «fattura in errore» **si scrive a mano** — nessuna
+delle due `fn_sync_*` serve a forzarla (§1.5).
+
+### 5.5 A5 — l'invariante di copertura (RD-5)
+
+**Il problema, posto da Tid**: oggi ripristiniamo *n* tabelle, ma domani ne nasce
+una nuova collegata alla fatturazione — e la pulizia non se ne accorge.
+
+Misurato: il fallimento sarebbe di **due tipi opposti**, e nessuno dei due è
+«continua a funzionare».
+
+| la figlia nasce con… | cosa succede |
+|---|---|
+| `ON DELETE CASCADE` | viene cancellata **in silenzio**, anche se doveva sopravvivere |
+| `NO ACTION` | la `DELETE` **esplode** con una violazione di FK grezza, davanti all'operatore |
+
+**RD-5 — non si costruisce una lista, si legge il catalogo.** Un registro dei
+«satelliti della fattura» sarebbe una cosa in più da ricordarsi di aggiornare, e
+dimenticarla non farebbe rumore. **Le FK sono già il registro**: dichiarano la
+verità e sono aggiornate per costruzione.
+
+`db/pgtap/vendite/test-cleanup-fattura-copertura-figlie-v1.sql` `plan(5)` legge
+da `pg_constraint` **ogni** figlia di `vendite.fatture` e pretende che sia
+classificata in una di quattro categorie, **con la motivazione scritta**:
+
+| categoria | significato |
+|---|---|
+| `GESTITA` | la pulizia la nomina e la tratta (verificato dal test 3, non dichiarato) |
+| `CASCADE_DB` | ci pensa la FK, ed è giusto così |
+| `BLOCCO_VOLUTO` | `NO ACTION` di proposito: quel documento **non si deve** poter disfare (incasso, invio SDI) |
+| `SCOPERTA_NOTA` | tabella non ancora in uso: **eccezione a tempo**, valida finché resta vuota |
+
+Le 15 figlie di oggi sono tutte classificate. ⚠️ **Un rosso non si spegne
+aggiungendo la voce**: si decide a quale categoria appartiene. Il rosso non è il
+problema, è la domanda.
+
+Quattro scelte che valgono più della lista:
+
+- si asserisce la **copertura** (quante classificate su quante esistono) e non un
+  confronto fra elenchi: un confronto **passerebbe** anche se una figlia sparisse
+  dal catalogo, uscendo dal paragone invece di violarlo;
+- il test **2** guarda nel verso opposto — una voce rimasta dopo che la tabella è
+  stata tolta è rumore che rende l'inventario poco credibile;
+- il test **4** presidia i `BLOCCO_VOLUTO`: se qualcuno degradasse
+  `pagamenti.vendite_movimenti` a `CASCADE`, **gli incassi verrebbero cancellati
+  in silenzio**. È il modo peggiore di perdere una difesa, perché sembra una
+  semplificazione;
+- il test **5** fa **scadere** l'eccezione: `attivita_consumi` è fuori copertura
+  perché nessuno la popola (0 righe, `fattura_id` **nullable**, unico lettore
+  `fn_list_consumi_da_pushare`). Il giorno che il flusso si accende il test
+  diventa rosso — cioè esattamente quando serve saperlo.
+
+✅ **Prova di mutazione fatta, due volte**: togliendo una voce dall'inventario
+(che simula una tabella nuova) fallisce **solo** il test 1 e **ne fa il nome**
+(`vendite.fatture_scadenze`); dichiarando `GESTITA` una tabella che la pulizia
+non nomina falliscono 1, 2 e 3, ognuno col nome giusto.
+
+ℹ️ **Cosa NON copre**: le figlie di `vendite.fatturazione_lotti`. Il perimetro qui
+è la fattura, che è ciò che la pulizia cancella. L'estensione al lotto è la stessa
+forma e si scrive quando serve.
 
 ---
 
@@ -450,17 +639,22 @@ Conterrà almeno:
 
 | | |
 |---|---|
-| **Stato** | 🟡 **aperto**. Estratto dal piano satelliti il 2026-08-03. Nessun changeSet scritto |
-| **Slice** | **6-A** ⬜ · **6-B** ⏭️ (§2) |
-| **Prossimo passo** | **§4 — analisi preliminare obbligatoria** |
+| **Stato** | ✅ **CHIUSA lato DB (2026-08-03)** — analisi, A1-A5 **applicati**, pgTAP **verdi**, doc e brief scritti. 5 changeSet: `20260803-07`…`-10` + seed CSV |
+| **Slice** | **6-A** ✅ **CHIUSA lato DB** (A1-A5 + doc + brief) · **6-B** ⏭️ (§2) |
+| **Prossimo passo** | `pgtap-baseline.sh vendite` + rigenerazione auto-gen (Tid) · poi **sincronia col BE** sulle due richieste del brief · **6-B** quando serve |
 
 ### Slice 6-A
 
 | Passo | Stato | changeSet | Note |
 |---|---|---|---|
-| **§4 Analisi preliminare** | ⬜ | — | 🔴 **obbligatoria**: 6 punti (A-F) + 7 misure sul lotto 1200 |
-| §5 Passi esecutivi | ⏭️ | — | si scrivono dopo la §4 |
-| §6 Brief al BE | ⏭️ | — | esce dalla §4 |
+| **§4 Analisi preliminare** | ✅ **CHIUSA** (2026-08-03) | — | 7 punti con risposta + 7 misure + prova in transazione. 🔴 **A cade** (§4.9), 🔴 **G è nuovo** (§4.5). Esiti in §4.7-§4.10 |
+| **A1** Seed transizione lotto | ✅ **applicato** | — (solo CSV) | riga **2** di `stati_doc_fiscale_transizioni.csv`: `meta` da `{"tipo_lotto":"MASSIVO"}` a `{}`. ⚠️ **corretto in corsa**, vedi §5.2 |
+| **A2** Colonna `riaperto_il` | ✅ **applicata** | `20260803-07` | inerte finché A3 non la scrive |
+| **A3** `fn_riporta_lotto_a_draft` | ✅ **applicata** | `20260803-08` + fix `20260803-09` | 5 contatori, **3 livelli**, sorella di `fn_annulla_lotto_da_draft`. 🔴 **Il `-08` era rotto e il pgTAP l'ha preso al primo giro**: `pg_advisory_xact_lock(integer, bigint)` **non esiste** — gli overload sono `(bigint)` e `(integer, integer)`, quindi la forma a due argomenti vuole **due int4**. Rimedio `hashtext(p_lotto_id::text)` e **non** `::int`: il cast esploderebbe oltre i 2 miliardi, mentre una collisione di hash serializza due lotti diversi e basta — sbaglia dalla parte prudente. Nello stesso fix: firma ancorata con **`%TYPE`** (rilievo di Tid; `linee-guida-sql` §funzione madre: parametri, DECLARE, RETURNS/RETURNS TABLE, COMMENT), **`SECURITY INVOKER`** esplicito, e **`DROP` davanti alla `CREATE`** perché `CREATE OR REPLACE` non può cambiare un `RETURNS TABLE`. ⚠️ Nel `COMMENT ON FUNCTION` i tipi vanno **risolti**: `%TYPE` lì non è ammesso |
+| **A4** pgTAP | ✅ **VERDE 10/10** (2026-08-03) | `test-riporta-lotto-a-draft-v1.sql` `plan(10)` | ⚠️ i test 4-10 si **saltano** se il DB non ha lotti pre-fiscali con fatture: dichiarato nel file, non nascosto. Il primo giro ha trovato il bug del lock in A3 — **i test sono nati con la funzione ed e` servito** |
+| **A5** Invariante copertura figlie | ✅ **APPLICATO e VERDE 5/5** (2026-08-03) | `20260803-10` · `test-cleanup-fattura-copertura-figlie-v1.sql` `plan(5)` | **RD-4 + RD-5**, §5.5. Il `-10` fa di `fn_cleanup_fatture_by_ids` il **proprietario unico** del ripristino (assorbe il reset `commesse_attivita`, +1 contatore `riemesse_attivita`, `DROP` obbligatoria perché cambia il `RETURNS TABLE`) e sana un difetto **latente**: le due sorelle lasciavano attività **emesse senza fattura**, irrecuperabili — 0 orfane oggi, si armava al primo annullamento. Il test legge le figlie da `pg_constraint` e ne pretende la classificazione: **15/15** classificate, mutazione provata due volte, il rosso **fa il nome** della tabella. 🔴 **Rettifica a un mio allarme**: avevo annunciato un secondo bug su `fatture_fondi_fattura_source` — **non esiste**. Cercavo una `DELETE` e non l'ho trovata, ma `fn_reset_fondi_fattura` la tratta con una **UPDATE** che azzera `fattura_figlia_id` e rimette il fondo `DISPONIBILE`: è il trattamento giusto, quei crediti devono sopravvivere |
+| **§6 Brief al BE** | ✅ **scritto** (2026-08-03) | — | [brief-be-ritorno-lotto-a-draft.md](brief-be-ritorno-lotto-a-draft.md). Due richieste sole, entrambe nel runner: **leggere** `riaperto_il` come terzo motivo per rifare lo step corrente, e **azzerarla** quando il lotto avanza. ✅ Verificato che i 3 codici errore sollevati sono **già** in `error_policies.py`: nessuna registrazione da chiedere |
+| Doc | ✅ **scritta** (2026-08-03) | — | manuale nuovo `manual/fn_riporta_lotto_a_draft.md` · colonna `riaperto_il` aggiunta a `manual/fatturazione_lotti.md` · ⚠️ **rettificato il manuale della sorella** `fn_annulla_lotto_da_draft`, stale su due punti che D-L.2 aveva cambiato (diceva «solo MASSIVO» e «tutte le fatture in DRAFT»): le due pagine si contraddicevano. Rigenerazione auto-gen a cura di Tid |
 
 ### Slice 6-B
 

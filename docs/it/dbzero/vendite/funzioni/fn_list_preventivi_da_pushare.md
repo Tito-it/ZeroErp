@@ -9,7 +9,7 @@ CREATE FUNCTION fn_list_preventivi_da_pushare(p_competenza_mese date, p_billing_
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_list_preventivi_da_pushare(p_competenza_mese date DEFAULT NULL::date, p_billing_account_id bigint DEFAULT NULL::bigint, p_limit integer DEFAULT NULL::integer, p_preventivo_id bigint DEFAULT NULL::bigint, p_righe_ids bigint[] DEFAULT NULL::bigint[])
- RETURNS TABLE(preventivo_id bigint, preventivo_uid uuid, riga_id bigint, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, competenza_dal date, competenza_al date, fatturazione_immediata boolean, sorgente_tipo_id bigint, sorgente_uid text, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, factor_to_base numeric, competenza_mese date, prezzo_snapshot numeric, prezzo_bloccato boolean, pricing_mode character varying, tipo_movimento character varying, tipo_consumo character varying, valuta_id integer, meta jsonb, tipo_doc_fiscale_id bigint)
+ RETURNS TABLE(preventivo_id bigint, preventivo_uid uuid, riga_id bigint, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, competenza_dal date, competenza_al date, fatturazione_immediata boolean, sorgente_tipo_id bigint, sorgente_uid text, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, factor_to_base numeric, competenza_mese date, prezzo_snapshot numeric, prezzo_bloccato boolean, pricing_mode character varying, tipo_movimento character varying, tipo_consumo character varying, valuta_id integer, meta jsonb, tipo_doc_fiscale_id bigint, termine_pagamento_id bigint, modalita_pagamento_id integer)
  LANGUAGE plpgsql
 AS $function$
 DECLARE
@@ -139,7 +139,9 @@ BEGIN
       'tipo_commessa',       'REALE',
       'policy_fatturazione', 'DA_DOCUMENTO'
     )                                                             AS meta,
-    v_tipo_doc_fiscale_id                                         AS tipo_doc_fiscale_id
+    v_tipo_doc_fiscale_id                                         AS tipo_doc_fiscale_id,
+    p.termine_pagamento_id,
+    NULL::integer
   FROM vendite.preventivi p
   -- Predicato di riga dalla vista unica (eleggibilita' condivisa
   -- con capability e pannello smistamento).
@@ -167,7 +169,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_preventivi_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_preventivo_id bigint, p_righe_ids bigint[])
-IS 'Righe preventivo pronte per il push su commessa (stato ACCETTATO, testata completa; predicato di riga dalla vista unica vw_preventivi_righe_smistabili_commessa). p_preventivo_id: push singolo UI-driven. p_righe_ids (rev 12-06-2026, brief smistamento): sottoinsieme righe del pannello, richiede p_preventivo_id (E_PUSH_RIGHE_IDS_SENZA_PREVENTIVO), righe non eleggibili skippate in silenzio (D5). NULL = batch invariato. rev 2026-06-28: sorgente/stato per codice_interno (analisi-hardcoded-codice §3a).';
+IS 'Righe preventivo pronte per il push su commessa (stato ACCETTATO, testata completa; predicato di riga dalla vista unica vw_preventivi_righe_smistabili_commessa). p_preventivo_id: push singolo UI-driven. p_righe_ids (rev 12-06-2026, brief smistamento): sottoinsieme righe del pannello, richiede p_preventivo_id (E_PUSH_RIGHE_IDS_SENZA_PREVENTIVO), righe non eleggibili skippate in silenzio (D5). NULL = batch invariato. rev 2026-06-28: sorgente/stato per codice_interno (analisi-hardcoded-codice §3a). Espone termine_pagamento_id del preventivo; modalita_pagamento_id e'' NULL perche'' i preventivi non la portano (rev 2026-08-03, T.1).';
 ```
 
 ---

@@ -1,6 +1,6 @@
 id,stato_from_id,stato_to_id,ammesso,solo_lotto,solo_fattura,meta,data_insert,user_insert,data_update,user_update
 1,1,2,t,t,f,{},2026-02-10 09:00:00+01,titodb,2026-06-19 00:00:00+02,mctit
-2,2,1,t,t,f,"{""tipo_lotto"": ""MASSIVO""}",2026-02-10 09:00:00+01,titodb,2026-02-17 09:46:27.064058+01,titodb
+2,2,1,t,t,f,{},2026-02-10 09:00:00+01,titodb,2026-08-03 00:00:00+02,mctit
 3,2,8,t,t,f,{},2026-02-10 09:00:00+01,titodb,2026-06-19 00:00:00+02,mctit
 4,1,8,f,t,f,"{""tipo_lotto"": ""GIORNALIERO""}",2026-02-10 09:00:00+01,titodb,2026-06-19 00:00:00+02,mctit
 5,8,3,t,t,f,{},2026-02-10 09:00:00+01,titodb,2026-02-17 09:46:27.064058+01,titodb

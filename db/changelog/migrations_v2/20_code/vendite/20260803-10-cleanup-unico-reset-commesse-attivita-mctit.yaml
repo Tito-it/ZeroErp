@@ -1,0 +1,454 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Consolidamento: il ripristino delle commesse_attivita torna dentro
+#   fn_cleanup_fatture_by_ids — proprietario UNICO della pulizia
+#   (piano-db-ritorno-lotto-a-draft.md, decisione RD-4)
+#
+# ── IL PROBLEMA, DETTO SENZA GIRI ────────────────────────────────────────
+#   Il 2026-08-03 `fn_riporta_lotto_a_draft` ha aggiunto un passo che la
+#   pulizia non faceva: riportare `commesse_attivita.stato_emissione` a
+#   NON_EMESSA, senza il quale le attivita' restano marcate come emesse e
+#   `fn_emit_attivita_fatturabili_da_commessa` — che filtra proprio su
+#   quel campo — non le riprende mai piu'.
+#   L'ha aggiunto DENTRO DI SE'. Quindi da quel momento la stessa pulizia
+#   esisteva in due grafie: completa in una funzione, incompleta nelle
+#   altre due che chiamano lo stesso cleanup.
+#
+#   🔴 Conseguenza misurata: `fn_annulla_lotto_da_draft` e
+#   `fn_elimina_fattura_da_lotto_draft` cancellano le fatture e liberano
+#   le attivita_fatturabili, ma lasciano le commesse_attivita a EMESSA.
+#   Risultato: righe di commessa **emesse senza fattura**, che nessun giro
+#   futuro puo' riprendere e che il cruscotto competenza continua a
+#   contare come lavorate.
+#   ⚠️ Oggi le orfane sono **0**: il difetto e' LATENTE, non gia' esploso.
+#   Si arma alla prima chiamata di annullamento su un lotto con attivita'
+#   di commessa. E' esattamente il tipo di difetto che si scopre mesi
+#   dopo, quando nessuno collega piu' la causa all'effetto.
+#
+# ── LA REGOLA DI CASA, APPLICATA ─────────────────────────────────────────
+#   Una logica che compare la seconda volta si estrae. Qui non e' nemmeno
+#   una scelta di eleganza: la pulizia ha TRE chiamanti e la correttezza
+#   di ognuno dipende dal fatto che facciano la stessa cosa. Un proprietario
+#   unico e' l'unico modo di non doverlo ricordare.
+#
+#   Ed e' corretto per tutti e tre:
+#     * annullamento del lotto  -> le attivita' devono tornare emittibili,
+#       il lavoro non e' stato fatto;
+#     * eliminazione di UNA fattura -> idem, per le sue attivita';
+#     * ritorno a DRAFT -> idem, ed e' il motivo per cui e' nato il passo.
+#
+# ── COSA CAMBIA NELLA FIRMA ──────────────────────────────────────────────
+#   `fn_cleanup_fatture_by_ids` guadagna un QUARTO contatore,
+#   `riemesse_attivita`. Contatori separati: un numero unico direbbe
+#   «dieci cose fatte» senza distinguere attivita' SBLOCCATE (il livello
+#   fatturabile) da attivita' RIMESSE IN CODA (il livello commessa), che
+#   sono due fatti diversi e possono divergere.
+#   ⚠️ `CREATE OR REPLACE` non puo' cambiare un `RETURNS TABLE`: serve la
+#   `DROP` esplicita. I tre chiamanti leggono per NOME (`SELECT c.deleted_fatture,
+#   ...`), quindi una colonna in piu' non li rompe e non vanno toccati —
+#   tranne fn_riporta_lotto_a_draft, che qui SMETTE di fare il lavoro da
+#   sola e si limita a leggere il contatore.
+#
+# ── LA POPOLAZIONE E' LA STESSA, E DEVE RESTARLO ─────────────────────────
+#   Le commesse_attivita da rimettere in coda si raccolgono con il
+#   PREDICATO IDENTICO a quello della UPDATE su attivita_fatturabili, e
+#   subito prima di essa: quella UPDATE azzera `fattura_riga_id`, cioe'
+#   distrugge il legame. Se i due filtri divergessero, si sbloccherebbe un
+#   insieme e se ne rimetterebbe in coda un altro — un difetto silenzioso
+#   e con effetti a mesi di distanza.
+#
+# ── ⚠️ COSA QUESTO CHANGESET NON RISOLVE ─────────────────────────────────
+#   Resta aperto il problema piu' generale sollevato da Tid: se domani
+#   nasce una tabella nuova collegata alla fattura, questa funzione NON se
+#   ne accorge. Oggi il fallimento e' di due tipi opposti e nessuno dei due
+#   e' «continua a funzionare»: una figlia in CASCADE viene cancellata IN
+#   SILENZIO; una figlia in NO ACTION fa ESPLODERE la DELETE con una
+#   violazione di FK grezza, davanti all'operatore. Il presidio contro
+#   questo e' un invariante di catalogo, ed e' un lavoro a parte
+#   (piano §5.5).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260803-10-cleanup-unico-reset-commesse-attivita-mctit.yaml
+
+  - changeSet:
+      id: 20260803-10-cleanup-unico-reset-commesse-attivita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_cleanup_fatture_by_ids diventa il proprietario unico del
+        ripristino: assorbe il reset di commesse_attivita.stato_emissione a
+        NON_EMESSA e restituisce il contatore riemesse_attivita. Le tre
+        funzioni chiamanti lo ereditano; fn_riporta_lotto_a_draft smette di
+        farlo per conto suo.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'vendite'
+                AND p.proname IN ('fn_cleanup_fatture_by_ids', 'fn_riporta_lotto_a_draft')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ============================================================
+              -- 1) La primitiva: unico proprietario del ripristino
+              -- ============================================================
+              DROP FUNCTION IF EXISTS vendite.fn_cleanup_fatture_by_ids(bigint[], uuid);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_cleanup_fatture_by_ids(
+                p_fatture_ids   bigint[],
+                p_lock_batch_id vendite.fatturazione_lotti.lock_batch_id%TYPE
+              )
+              RETURNS TABLE(
+                deleted_fatture   INTEGER,
+                deleted_righe     INTEGER,
+                updated_attivita  INTEGER,
+                riemesse_attivita INTEGER
+              )
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                v_righe_ids         bigint[];
+                v_ca_ids            bigint[];
+                v_deleted_fatture   integer := 0;
+                v_deleted_righe     integer := 0;
+                v_updated_attivita  integer := 0;
+                v_riemesse_attivita integer := 0;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Cleanup centralizzato di fatture/righe e ripristino
+                --   COMPLETO di cio' che le fatture avevano consumato:
+                --   attivita_fatturabili (sblocco) e commesse_attivita
+                --   (ritorno in coda di emissione).
+                --
+                -- Regole:
+                --   - usa GUC di manutenzione per bypass guard fatturato
+                --   - su ripristino: stato_esecuzione torna a NULL
+                --   - D-N pezzo 3 (C-23): PRIMA di cancellare, restituisce
+                --     all'ambito di compensazione l'arrotondamento che le
+                --     fatture cancellate gli avevano lasciato
+                --   - RD-4: il ritorno a NON_EMESSA delle commesse_attivita
+                --     vive QUI e non nei chiamanti, perche' i chiamanti sono
+                --     tre e la correttezza di ognuno dipende dal fatto che
+                --     facciano la stessa cosa
+                -- =========================================================
+                IF p_fatture_ids IS NULL OR array_length(p_fatture_ids, 1) IS NULL THEN
+                  RETURN QUERY SELECT 0, 0, 0, 0;
+                  RETURN;
+                END IF;
+
+                PERFORM set_config('zeroerp.maintenance_reset_lotto_draft', 'on', true);
+
+                -- ── D-N pezzo 3 / C-23: storno prima di ogni cancellazione ────
+                -- In testa alla funzione perche' legge le fatture INTATTE: cosi'
+                -- resta corretto qualunque passo venga aggiunto qui sotto.
+                -- UPDATE e non upsert: se la riga d'ambito non c'e', quella
+                -- fattura non ha mai contribuito e non c'e' niente da togliere —
+                -- crearla con saldo negativo inventerebbe un debito.
+                -- IS NOT DISTINCT FROM sulle due colonne nullable: con `=` le
+                -- fatture senza modalita' (la maggioranza) non troverebbero il
+                -- proprio ambito e non stornerebbero nulla, in silenzio.
+                WITH storno AS (
+                  SELECT f.billing_account_id,
+                         f.utility_id,
+                         f.tipo_doc_fiscale_id,
+                         f.emittente_soggetto_ruolo_id,
+                         f.valuta_id,
+                         f.termine_pagamento_id,
+                         f.modalita_pagamento_id,
+                         SUM(COALESCE(f.arrotondamento_attuale, 0)) AS quota
+                    FROM vendite.fatture f
+                   WHERE f.id = ANY(p_fatture_ids)
+                     AND COALESCE(f.arrotondamento_attuale, 0) <> 0
+                   GROUP BY f.billing_account_id, f.utility_id, f.tipo_doc_fiscale_id,
+                            f.emittente_soggetto_ruolo_id, f.valuta_id,
+                            f.termine_pagamento_id, f.modalita_pagamento_id
+                )
+                UPDATE vendite.fatture_arrotondamenti_scope s
+                   SET saldo_arrotondamento = s.saldo_arrotondamento - st.quota
+                  FROM storno st
+                 WHERE s.billing_account_id          = st.billing_account_id
+                   AND s.utility_id                  = st.utility_id
+                   AND s.tipo_doc_fiscale_id         = st.tipo_doc_fiscale_id
+                   AND s.emittente_soggetto_ruolo_id = st.emittente_soggetto_ruolo_id
+                   AND s.valuta_id                   = st.valuta_id
+                   AND s.termine_pagamento_id  IS NOT DISTINCT FROM st.termine_pagamento_id
+                   AND s.modalita_pagamento_id IS NOT DISTINCT FROM st.modalita_pagamento_id;
+
+                PERFORM vendite.fn_reset_fondi_fattura(f_id)
+                  FROM unnest(p_fatture_ids) AS f_id;
+
+                SELECT array_agg(r.id)
+                  INTO v_righe_ids
+                  FROM vendite.fatture_righe r
+                 WHERE r.fattura_id = ANY(p_fatture_ids);
+
+                IF v_righe_ids IS NULL THEN
+                  v_righe_ids := ARRAY[]::bigint[];
+                END IF;
+
+                DELETE FROM vendite.note
+                 WHERE target_tipo = 'FATTURA'
+                   AND target_riga_id = ANY(v_righe_ids);
+
+                DELETE FROM vendite.note
+                 WHERE target_tipo = 'FATTURA'
+                   AND target_id = ANY(p_fatture_ids);
+
+                DELETE FROM vendite.fatture_riepiloghi_iva
+                 WHERE fattura_id = ANY(p_fatture_ids);
+
+                DELETE FROM vendite.fatture_righe
+                 WHERE fattura_id = ANY(p_fatture_ids);
+                GET DIAGNOSTICS v_deleted_righe = ROW_COUNT;
+
+                DELETE FROM vendite.fatture_log
+                 WHERE fattura_id = ANY(p_fatture_ids);
+
+                DELETE FROM vendite.fatturazione_lotti_fatture
+                 WHERE fattura_id = ANY(p_fatture_ids);
+
+                DELETE FROM vendite.fatture
+                 WHERE id = ANY(p_fatture_ids);
+                GET DIAGNOSTICS v_deleted_fatture = ROW_COUNT;
+
+                -- ⚠️ RD-4: si raccoglie PRIMA della UPDATE qui sotto, che azzera
+                -- `fattura_riga_id` e con esso il legame. Il predicato e'
+                -- IDENTICO a quello della UPDATE, di proposito: se i due
+                -- divergessero si sbloccherebbe un insieme di attivita' e se ne
+                -- rimetterebbe in coda un altro, in silenzio.
+                SELECT array_agg(DISTINCT af.commessa_attivita_id)
+                  INTO v_ca_ids
+                  FROM vendite.attivita_fatturabili af
+                 WHERE af.commessa_attivita_id IS NOT NULL
+                   AND (
+                         (p_lock_batch_id IS NOT NULL AND af.lock_batch_id = p_lock_batch_id)
+                      OR af.fattura_riga_id = ANY(v_righe_ids)
+                       );
+
+                IF v_ca_ids IS NULL THEN
+                  v_ca_ids := ARRAY[]::bigint[];
+                END IF;
+
+                -- ⚠️ Il primo ramo prende TUTTE le attivita' del batch: e'
+                -- voluto nel reset globale (libera anche quelle agganciate al
+                -- lotto che non sono mai diventate riga) ed e' il motivo per cui
+                -- il reset PER-FATTURA deve passare p_lock_batch_id NULL (C-22).
+                UPDATE vendite.attivita_fatturabili
+                   SET lock_in_fatturazione = false,
+                       lock_batch_id = NULL,
+                       fatturato = false,
+                       fattura_riga_id = NULL,
+                       stato_esecuzione = NULL,
+                       data_update = now(),
+                       user_update = current_user
+                 WHERE (p_lock_batch_id IS NOT NULL AND lock_batch_id = p_lock_batch_id)
+                    OR fattura_riga_id = ANY(v_righe_ids);
+                GET DIAGNOSTICS v_updated_attivita = ROW_COUNT;
+
+                -- 🔴 RD-4 — il livello che mancava. Senza, le attivita' restano
+                -- marcate come emesse: fn_emit_attivita_fatturabili_da_commessa
+                -- filtra su stato_emissione = 'EMESSA' e non le riprende mai
+                -- piu', e il cruscotto competenza continua a contarle lavorate.
+                -- Solo le EMESSA: le ANNULLATA sono state annullate di proposito
+                -- e non tornano in coda per una pulizia.
+                UPDATE vendite.commesse_attivita ca
+                   SET stato_emissione = 'NON_EMESSA',
+                       data_update     = now(),
+                       user_update     = current_user
+                 WHERE ca.id = ANY(v_ca_ids)
+                   AND ca.stato_emissione = 'EMESSA';
+                GET DIAGNOSTICS v_riemesse_attivita = ROW_COUNT;
+
+                RETURN QUERY
+                SELECT v_deleted_fatture, v_deleted_righe, v_updated_attivita, v_riemesse_attivita;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_cleanup_fatture_by_ids(bigint[], uuid)
+              IS 'Pulizia centralizzata delle fatture e ripristino COMPLETO di cio'' che avevano consumato. Cancella note, riepiloghi IVA, righe, log, collegamento al lotto e testate; storna dall''ambito di compensazione l''arrotondamento delle fatture cancellate (D-N pezzo 3 / C-23) PRIMA di toccarle; azzera i fondi; sblocca le attivita_fatturabili; e — dal 2026-08-03, RD-4 — riporta le commesse_attivita collegate a stato_emissione = NON_EMESSA. ⚠️ Quest''ultimo passo vive QUI e non nei chiamanti: sono TRE (fn_annulla_lotto_da_draft, fn_elimina_fattura_da_lotto_draft, fn_riporta_lotto_a_draft) e la correttezza di ognuno dipende dal fatto che facciano la stessa cosa — senza, le attivita'' restano emesse senza fattura e nessun giro futuro le riprende. ⚠️ La popolazione delle commesse_attivita usa il predicato IDENTICO alla UPDATE su attivita_fatturabili e si raccoglie PRIMA di essa, che azzera fattura_riga_id. ⚠️ Il ramo su p_lock_batch_id prende TUTTE le attivita'' del batch: corretto nel reset globale, ed e'' il motivo per cui il reset per-fattura deve passare NULL (C-22).';
+
+              -- ============================================================
+              -- 2) Il chiamante: smette di farlo per conto suo
+              -- ============================================================
+              CREATE OR REPLACE FUNCTION vendite.fn_riporta_lotto_a_draft(
+                  p_lotto_id vendite.fatturazione_lotti.id%TYPE
+              )
+              RETURNS TABLE(
+                  updated_lotti     INTEGER,
+                  updated_attivita  INTEGER,
+                  deleted_fatture   INTEGER,
+                  deleted_righe     INTEGER,
+                  riemesse_attivita INTEGER
+              )
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: rollback di un lotto PRE-FISCALE verso DRAFT — cancella le
+              --        fatture, ripristina attivita' e commesse_attivita (delegando
+              --        tutto alla primitiva) e marca il lotto come riaperto. Il
+              --        lotto resta vivo e ripartira' dallo step DRAFT.
+              -- Perimetro (RD-1): si torna indietro per QUALSIASI motivo. Nessun
+              --        guard sulla causa. MASSIVO **e** GIORNALIERO, su lotti
+              --        DRAFT o EMESSA.
+              -- RD-4:  il ripristino NON si scrive qui. Questa funzione decide
+              --        COSA si riporta indietro e in quale stato lascia il lotto;
+              --        il COME si ripulisce e' della primitiva, che ha tre
+              --        chiamanti e deve comportarsi allo stesso modo per tutti.
+              DECLARE
+                  v_tipo_lotto           vendite.fatturazione_lotti.tipo_lotto%TYPE;
+                  v_stato_doc_fiscale_id vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE;
+                  v_lock_batch_id        vendite.fatturazione_lotti.lock_batch_id%TYPE;
+                  v_draft_id             config.stati_doc_fiscale.id%TYPE;
+                  v_emessa_id            config.stati_doc_fiscale.id%TYPE;
+                  v_fatture_ids          BIGINT[];
+                  v_numerate             INTEGER := 0;
+                  v_bad_fatture          INTEGER := 0;
+                  v_updated_lotti        INTEGER := 0;
+                  v_updated_attivita     INTEGER := 0;
+                  v_deleted_fatture      INTEGER := 0;
+                  v_deleted_righe        INTEGER := 0;
+                  v_riemesse_attivita    INTEGER := 0;
+              BEGIN
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_riporta_lotto_a_draft', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id), NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                  END IF;
+
+                  SELECT fl.tipo_lotto, fl.stato_doc_fiscale_id, fl.lock_batch_id
+                    INTO v_tipo_lotto, v_stato_doc_fiscale_id, v_lock_batch_id
+                    FROM vendite.fatturazione_lotti fl WHERE fl.id = p_lotto_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_riporta_lotto_a_draft', 'E_VALORE_MANCANTE',
+                          jsonb_build_object('lotto_id', p_lotto_id), NULL::uuid, concat('lotto_id ', p_lotto_id));
+                  END IF;
+
+                  SELECT s.id INTO v_draft_id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE LIMIT 1;
+                  IF v_draft_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_riporta_lotto_a_draft', 'E_CONFIG_MANCANTE',
+                          jsonb_build_object('codice_interno', 'DRAFT'), NULL::uuid, 'stato DRAFT non configurato');
+                  END IF;
+
+                  SELECT s.id INTO v_emessa_id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'EMESSA' AND s.attivo IS TRUE LIMIT 1;
+                  IF v_emessa_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_riporta_lotto_a_draft', 'E_CONFIG_MANCANTE',
+                          jsonb_build_object('codice_interno', 'EMESSA'), NULL::uuid, 'stato EMESSA non configurato');
+                  END IF;
+
+                  -- Il lotto dev'essere PRE-FISCALE. Oltre EMESSA c'e' la
+                  -- numerazione, e da li' non si torna: e' il punto di non ritorno
+                  -- del documento fiscale, non una scelta di questa funzione.
+                  IF v_stato_doc_fiscale_id IS DISTINCT FROM v_draft_id
+                     AND v_stato_doc_fiscale_id IS DISTINCT FROM v_emessa_id THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_riporta_lotto_a_draft', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'stato_doc_fiscale', 'valore', v_stato_doc_fiscale_id, 'lotto_id', p_lotto_id),
+                          NULL::uuid, concat('ritorno a DRAFT solo da DRAFT o EMESSA, stato=', v_stato_doc_fiscale_id));
+                  END IF;
+
+                  -- Stesso criterio sulle fatture (perimetro pre-fiscale, D-L.2).
+                  SELECT count(*) INTO v_bad_fatture
+                    FROM vendite.fatture f JOIN vendite.fatturazione_lotti_fatture lf ON lf.fattura_id = f.id
+                   WHERE lf.lotto_id = p_lotto_id
+                     AND f.stato_doc_fiscale_id IS DISTINCT FROM v_draft_id
+                     AND f.stato_doc_fiscale_id IS DISTINCT FROM v_emessa_id;
+
+                  IF v_bad_fatture > 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_riporta_lotto_a_draft', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'fatture_non_pre_fiscali', 'count', v_bad_fatture, 'lotto_id', p_lotto_id),
+                          NULL::uuid, concat('fatture non pre-fiscali (DRAFT/EMESSA): ', v_bad_fatture));
+                  END IF;
+
+                  -- ⚠️ Guard ESPLICITO sul numero, e non solo sullo stato. A EMESSA
+                  -- la fattura non e' numerata (C-19), quindi il controllo di stato
+                  -- basterebbe: ma il danno qui sarebbe irreversibile — cancellare
+                  -- una fattura gia' numerata apre un buco nella numerazione
+                  -- fiscale. Si guarda il FATTO (il numero), non lo stato che
+                  -- dovrebbe implicarlo.
+                  SELECT count(*) INTO v_numerate
+                    FROM vendite.fatture f JOIN vendite.fatturazione_lotti_fatture lf ON lf.fattura_id = f.id
+                   WHERE lf.lotto_id = p_lotto_id AND f.numero IS NOT NULL;
+
+                  IF v_numerate > 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_riporta_lotto_a_draft', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'fatture_numerate', 'count', v_numerate, 'lotto_id', p_lotto_id),
+                          NULL::uuid, concat('fatture gia'' numerate: ', v_numerate));
+                  END IF;
+
+                  SELECT array_agg(lf.fattura_id) INTO v_fatture_ids
+                    FROM vendite.fatturazione_lotti_fatture lf WHERE lf.lotto_id = p_lotto_id;
+                  IF v_fatture_ids IS NULL THEN v_fatture_ids := ARRAY[]::BIGINT[]; END IF;
+
+                  -- Concorrenza (punto E dell'analisi): il runner ha il suo
+                  -- E_PIPELINE_LOTTO_IN_ESECUZIONE, ma e' applicativo e non protegge
+                  -- chi chiama la funzione per altra via.
+                  -- POSIZIONE: dopo TUTTE le guard e i lookup di validazione, com'e'
+                  -- convenzione di casa — una chiamata invalida (lotto inesistente,
+                  -- fattura numerata) non deve serializzare gli altri chiamanti. Qui
+                  -- il rischio TOCTOU e' benigno: due ritorni concorrenti sullo stesso
+                  -- lotto portano entrambi allo stesso esito, il secondo non trova
+                  -- piu' fatture da cancellare.
+                  -- ⚠️ Forma a DUE argomenti (quella a uno condivide uno spazio di
+                  -- lock globale con feature scorrelate), e i due argomenti sono DUE
+                  -- int4: `(integer, integer)` e `(bigint)` sono gli unici overload
+                  -- esistenti. La chiave passa da hashtext e NON da un cast, perche'
+                  -- `p_lotto_id::int` esploderebbe oltre i 2 miliardi mentre una
+                  -- collisione di hash serializza due lotti diversi — cioe' sbaglia
+                  -- dalla parte prudente.
+                  PERFORM pg_advisory_xact_lock(
+                      hashtext('vendite.fn_riporta_lotto_a_draft'),
+                      hashtext(p_lotto_id::text)
+                  );
+
+                  -- ⚠️ Qui il lock_batch_id SI passa, ed e' corretto: e' un reset
+                  -- GLOBALE del lotto, quindi deve liberare anche le attivita'
+                  -- agganciate al batch che non sono mai diventate riga. E' il
+                  -- per-fattura che deve passare NULL (C-22).
+                  -- RD-4: il ripristino delle commesse_attivita arriva da qui, non
+                  -- si riscrive. Se domani la pulizia dovra' toccare un livello in
+                  -- piu', lo si aggiunge in UN posto e le tre chiamanti lo ereditano.
+                  SELECT c.deleted_fatture, c.deleted_righe, c.updated_attivita, c.riemesse_attivita
+                    INTO v_deleted_fatture, v_deleted_righe, v_updated_attivita, v_riemesse_attivita
+                    FROM vendite.fn_cleanup_fatture_by_ids(v_fatture_ids, v_lock_batch_id) AS c;
+
+                  -- stato_operativo torna APERTO: il lotto ha di nuovo lavoro da
+                  -- fare. stato_lotto NON si tocca di proposito — ha una macchina a
+                  -- stati cablata in Python, e da COMPLETATO come da ERRORE l'unica
+                  -- transizione ammessa e' verso IN_ESECUZIONE, che e' esattamente
+                  -- quello che fara' il prossimo giro.
+                  UPDATE vendite.fatturazione_lotti
+                     SET stato_doc_fiscale_id = v_draft_id,
+                         stato_operativo      = 'APERTO',
+                         riaperto_il          = now(),
+                         data_update          = now(),
+                         user_update          = current_user
+                   WHERE id = p_lotto_id;
+                  GET DIAGNOSTICS v_updated_lotti = ROW_COUNT;
+
+                  RETURN QUERY SELECT v_updated_lotti, v_updated_attivita, v_deleted_fatture, v_deleted_righe, v_riemesse_attivita;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_riporta_lotto_a_draft(bigint)
+              IS 'Rollback di un lotto PRE-FISCALE (DRAFT o EMESSA) verso DRAFT, per MASSIVO e GIORNALIERO. Delega TUTTA la pulizia a fn_cleanup_fatture_by_ids — fatture, righe, riepiloghi, log, note, link, storno arrotondamenti, sblocco attivita_fatturabili e ritorno delle commesse_attivita a NON_EMESSA (RD-4): questa funzione decide COSA si riporta indietro, non COME si ripulisce. Marca il lotto con riaperto_il (RD-2), lo rimette APERTO e lo lascia vivo: ripartira'' dallo step DRAFT. RD-1: si torna indietro per QUALSIASI motivo, nessun guard sulla causa; cio'' che resta vietato e'' numerare un documento incoerente (guard D-K). ⚠️ Rifiuta se una sola fattura e'' gia'' NUMERATA: il controllo guarda il numero e non lo stato, perche'' il danno sarebbe irreversibile. ⚠️ NON tocca i task_runs: nessuno li consulta per decidere (misurato 2026-08-03), sono un registro di esecuzione. Sorella di fn_annulla_lotto_da_draft, che invece CHIUDE il lotto portandolo ad ANNULLATA.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              SELECT 1;

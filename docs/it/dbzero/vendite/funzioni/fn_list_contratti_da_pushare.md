@@ -9,7 +9,7 @@ CREATE FUNCTION fn_list_contratti_da_pushare(p_competenza_mese date, p_billing_a
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_list_contratti_da_pushare(p_competenza_mese date DEFAULT NULL::date, p_billing_account_id bigint DEFAULT NULL::bigint, p_limit integer DEFAULT NULL::integer, p_contratto_id bigint DEFAULT NULL::bigint)
- RETURNS TABLE(contratto_id bigint, contratto_uid uuid, riga_id bigint, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, competenza_dal date, competenza_al date, fatturazione_immediata boolean, sorgente_tipo_id bigint, sorgente_uid text, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, factor_to_base numeric, competenza_mese date, prezzo_snapshot numeric, prezzo_bloccato boolean, pricing_mode character varying, tipo_movimento character varying, tipo_consumo character varying, valuta_id integer, meta jsonb, tipo_doc_fiscale_id bigint)
+ RETURNS TABLE(contratto_id bigint, contratto_uid uuid, riga_id bigint, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, competenza_dal date, competenza_al date, fatturazione_immediata boolean, sorgente_tipo_id bigint, sorgente_uid text, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, factor_to_base numeric, competenza_mese date, prezzo_snapshot numeric, prezzo_bloccato boolean, pricing_mode character varying, tipo_movimento character varying, tipo_consumo character varying, valuta_id integer, meta jsonb, tipo_doc_fiscale_id bigint, termine_pagamento_id bigint, modalita_pagamento_id integer)
  LANGUAGE plpgsql
 AS $function$
 DECLARE
@@ -88,7 +88,9 @@ BEGIN
       'tipo_commessa',       'AUTO',
       'policy_fatturazione', 'DA_DOCUMENTO'
     ),
-    v_tipo_doc_fiscale_id
+    v_tipo_doc_fiscale_id,
+    NULL::bigint,
+    NULL::integer
   FROM vendite.contratti c
   JOIN vendite.contratti_righe cr
     ON cr.contratto_id = c.id
@@ -113,7 +115,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_contratti_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_contratto_id bigint)
-IS 'Lista righe contratto eligible al push su commessa (stato ATTIVO). uom_id da catalogo.articoli (canonica). p_contratto_id opzionale: NULL=batch globale, NOT NULL=singolo contratto. Filtri in AND. Esclude EMESSA via NOT EXISTS. (20260511-33: cr.quantita_fissa -> cr.quantita dopo rename colonna) rev 2026-06-28: sorgente/stato per codice_interno (analisi-hardcoded-codice §3a). rev 2026-07-19: esclusione su ALLOCAZIONE del mese via script.fn_get_stato_push_segment (vede anche componenti #CMP), non piu'' solo EMESSA — brief-db-push-commessa-gia-inviato §4a. rev 2026-07-27: fatturazione_immediata proiettata dalla colonna vendite.contratti.fatturazione_immediata (era costante FALSE) — simmetria del flag di corsia, brief-db-emissione-fattura-per-documento-sorgente PARTE B. prezzo_bloccato resta legato alla riga (prezzo valorizzato): l''accoppiamento flag/prezzo esiste solo sui preventivi.';
+IS 'Lista righe contratto eligible al push su commessa (stato ATTIVO). uom_id da catalogo.articoli (canonica). p_contratto_id opzionale: NULL=batch globale, NOT NULL=singolo contratto. Filtri in AND. Esclude EMESSA via NOT EXISTS. (20260511-33: cr.quantita_fissa -> cr.quantita dopo rename colonna) rev 2026-06-28: sorgente/stato per codice_interno (analisi-hardcoded-codice §3a). rev 2026-07-19: esclusione su ALLOCAZIONE del mese via script.fn_get_stato_push_segment (vede anche componenti #CMP), non piu'' solo EMESSA — brief-db-push-commessa-gia-inviato §4a. rev 2026-07-27: fatturazione_immediata proiettata dalla colonna vendite.contratti.fatturazione_immediata (era costante FALSE) — simmetria del flag di corsia, brief-db-emissione-fattura-per-documento-sorgente PARTE B. prezzo_bloccato resta legato alla riga (prezzo valorizzato): l''accoppiamento flag/prezzo esiste solo sui preventivi. Espone termine_pagamento_id e modalita_pagamento_id a NULL: i contratti non hanno colonne di pagamento, la cascata scende al livello successivo (rev 2026-08-03, T.1).';
 ```
 
 ---

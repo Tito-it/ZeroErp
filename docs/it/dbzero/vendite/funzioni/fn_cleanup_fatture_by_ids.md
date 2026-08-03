@@ -9,19 +9,23 @@ CREATE FUNCTION fn_cleanup_fatture_by_ids(p_fatture_ids bigint[], p_lock_batch_i
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_cleanup_fatture_by_ids(p_fatture_ids bigint[], p_lock_batch_id uuid)
- RETURNS TABLE(deleted_fatture integer, deleted_righe integer, updated_attivita integer)
+ RETURNS TABLE(deleted_fatture integer, deleted_righe integer, updated_attivita integer, riemesse_attivita integer)
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-  v_righe_ids bigint[];
-  v_deleted_fatture integer := 0;
-  v_deleted_righe integer := 0;
-  v_updated_attivita integer := 0;
+  v_righe_ids         bigint[];
+  v_ca_ids            bigint[];
+  v_deleted_fatture   integer := 0;
+  v_deleted_righe     integer := 0;
+  v_updated_attivita  integer := 0;
+  v_riemesse_attivita integer := 0;
 BEGIN
   -- =========================================================
   -- Scopo:
   --   Cleanup centralizzato di fatture/righe e ripristino
-  --   attivita_fatturabili collegate.
+  --   COMPLETO di cio' che le fatture avevano consumato:
+  --   attivita_fatturabili (sblocco) e commesse_attivita
+  --   (ritorno in coda di emissione).
   --
   -- Regole:
   --   - usa GUC di manutenzione per bypass guard fatturato
@@ -29,9 +33,13 @@ BEGIN
   --   - D-N pezzo 3 (C-23): PRIMA di cancellare, restituisce
   --     all'ambito di compensazione l'arrotondamento che le
   --     fatture cancellate gli avevano lasciato
+  --   - RD-4: il ritorno a NON_EMESSA delle commesse_attivita
+  --     vive QUI e non nei chiamanti, perche' i chiamanti sono
+  --     tre e la correttezza di ognuno dipende dal fatto che
+  --     facciano la stessa cosa
   -- =========================================================
   IF p_fatture_ids IS NULL OR array_length(p_fatture_ids, 1) IS NULL THEN
-    RETURN QUERY SELECT 0, 0, 0;
+    RETURN QUERY SELECT 0, 0, 0, 0;
     RETURN;
   END IF;
 
@@ -110,6 +118,24 @@ BEGIN
    WHERE id = ANY(p_fatture_ids);
   GET DIAGNOSTICS v_deleted_fatture = ROW_COUNT;
 
+  -- ⚠️ RD-4: si raccoglie PRIMA della UPDATE qui sotto, che azzera
+  -- `fattura_riga_id` e con esso il legame. Il predicato e'
+  -- IDENTICO a quello della UPDATE, di proposito: se i due
+  -- divergessero si sbloccherebbe un insieme di attivita' e se ne
+  -- rimetterebbe in coda un altro, in silenzio.
+  SELECT array_agg(DISTINCT af.commessa_attivita_id)
+    INTO v_ca_ids
+    FROM vendite.attivita_fatturabili af
+   WHERE af.commessa_attivita_id IS NOT NULL
+     AND (
+           (p_lock_batch_id IS NOT NULL AND af.lock_batch_id = p_lock_batch_id)
+        OR af.fattura_riga_id = ANY(v_righe_ids)
+         );
+
+  IF v_ca_ids IS NULL THEN
+    v_ca_ids := ARRAY[]::bigint[];
+  END IF;
+
   -- ⚠️ Il primo ramo prende TUTTE le attivita' del batch: e'
   -- voluto nel reset globale (libera anche quelle agganciate al
   -- lotto che non sono mai diventate riga) ed e' il motivo per cui
@@ -126,13 +152,27 @@ BEGIN
       OR fattura_riga_id = ANY(v_righe_ids);
   GET DIAGNOSTICS v_updated_attivita = ROW_COUNT;
 
+  -- 🔴 RD-4 — il livello che mancava. Senza, le attivita' restano
+  -- marcate come emesse: fn_emit_attivita_fatturabili_da_commessa
+  -- filtra su stato_emissione = 'EMESSA' e non le riprende mai
+  -- piu', e il cruscotto competenza continua a contarle lavorate.
+  -- Solo le EMESSA: le ANNULLATA sono state annullate di proposito
+  -- e non tornano in coda per una pulizia.
+  UPDATE vendite.commesse_attivita ca
+     SET stato_emissione = 'NON_EMESSA',
+         data_update     = now(),
+         user_update     = current_user
+   WHERE ca.id = ANY(v_ca_ids)
+     AND ca.stato_emissione = 'EMESSA';
+  GET DIAGNOSTICS v_riemesse_attivita = ROW_COUNT;
+
   RETURN QUERY
-  SELECT v_deleted_fatture, v_deleted_righe, v_updated_attivita;
+  SELECT v_deleted_fatture, v_deleted_righe, v_updated_attivita, v_riemesse_attivita;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_cleanup_fatture_by_ids(p_fatture_ids bigint[], p_lock_batch_id uuid)
-IS 'Cleanup centralizzato fatture/righe con ripristino attivita e reset stato_esecuzione=NULL. Da D-N pezzo 3 (C-23) restituisce all''ambito di compensazione l''arrotondamento delle fatture che cancella, PRIMA di cancellarle: senza, il saldo d''ambito diventa la somma di cio'' che e'' stato emesso e di cio'' che e'' stato buttato, e la fattura successiva eredita il riporto di un documento che non esiste piu''. Lo storno e'' un UPDATE e non un upsert (nessuna riga d''ambito = nessun contributo mai dato) e confronta le due colonne nullable con IS NOT DISTINCT FROM. ⚠️ Il ramo lock_batch_id del ripristino attivita libera TUTTO il batch: chi resetta una sola fattura deve passare NULL (C-22).';
+IS 'Pulizia centralizzata delle fatture e ripristino COMPLETO di cio'' che avevano consumato. Cancella note, riepiloghi IVA, righe, log, collegamento al lotto e testate; storna dall''ambito di compensazione l''arrotondamento delle fatture cancellate (D-N pezzo 3 / C-23) PRIMA di toccarle; azzera i fondi; sblocca le attivita_fatturabili; e — dal 2026-08-03, RD-4 — riporta le commesse_attivita collegate a stato_emissione = NON_EMESSA. ⚠️ Quest''ultimo passo vive QUI e non nei chiamanti: sono TRE (fn_annulla_lotto_da_draft, fn_elimina_fattura_da_lotto_draft, fn_riporta_lotto_a_draft) e la correttezza di ognuno dipende dal fatto che facciano la stessa cosa — senza, le attivita'' restano emesse senza fattura e nessun giro futuro le riprende. ⚠️ La popolazione delle commesse_attivita usa il predicato IDENTICO alla UPDATE su attivita_fatturabili e si raccoglie PRIMA di essa, che azzera fattura_riga_id. ⚠️ Il ramo su p_lock_batch_id prende TUTTE le attivita'' del batch: corretto nel reset globale, ed e'' il motivo per cui il reset per-fattura deve passare NULL (C-22).';
 ```
 
 ---

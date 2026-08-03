@@ -19,18 +19,28 @@
 
 ---
 ### 🎯 Scopo Principale
-(latest review 09-02-2026)  
+(latest review 03-08-2026)  
 La funzione **`vendite.fn_annulla_lotto_da_draft()`** effettua il **rollback tecnico**
-di un lotto **MASSIVO** in stato **DRAFT**, eliminando i documenti generati
-dal draft e ripristinando le righe di `attivita_fatturabili`.
+di un lotto in stato **DRAFT**, eliminando i documenti generati dal draft,
+ripristinando le righe di `attivita_fatturabili` e **chiudendo** il lotto
+portandolo ad **ANNULLATA**.
+
+> ⚠️ **Da non confondere con la sorella.**
+> [`fn_riporta_lotto_a_draft`](/dbzero/vendite/funzioni/fn_riporta_lotto_a_draft)
+> fa la stessa pulizia ma **lascia il lotto vivo** e lo rimette in bozza perché
+> riparta. Questa invece lo **chiude**: il lotto non lavorerà più.
 
 ---
 
 ### Regole principali
 
-* Ammesso **solo** per `tipo_lotto = MASSIVO`.
+* Ammesso per `tipo_lotto` **MASSIVO** e **GIORNALIERO** (dal 02-08-2026: un giro
+  giornaliero interrotto deve poter tornare indietro come uno massivo).
 * Ammesso **solo** se `stato_doc_fiscale = DRAFT`.
-* Tutte le fatture del lotto devono essere in **DRAFT**.
+* Tutte le fatture del lotto devono essere **pre-fiscali**, cioè in **DRAFT** o
+  **EMESSA** (dal 02-08-2026): pre-fiscale significa non numerata, quindi
+  cancellabile. Restringerlo alle sole DRAFT renderebbe non annullabile un lotto
+  tornato in bozza con dentro una fattura marcata critica, che resta EMESSA.
 * Aggiorna il lotto:  
   * `stato_doc_fiscale = ANNULLATA`  
   * `stato_operativo = CHIUSO`  

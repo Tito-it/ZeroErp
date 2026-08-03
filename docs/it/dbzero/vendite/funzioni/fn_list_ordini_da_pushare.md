@@ -9,7 +9,7 @@ CREATE FUNCTION fn_list_ordini_da_pushare(p_competenza_mese date, p_billing_acco
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_list_ordini_da_pushare(p_competenza_mese date DEFAULT NULL::date, p_billing_account_id bigint DEFAULT NULL::bigint, p_limit integer DEFAULT NULL::integer, p_ordine_id bigint DEFAULT NULL::bigint)
- RETURNS TABLE(ordine_id bigint, ordine_uid uuid, riga_id bigint, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, competenza_dal date, competenza_al date, fatturazione_immediata boolean, sorgente_tipo_id bigint, sorgente_uid text, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, factor_to_base numeric, competenza_mese date, prezzo_snapshot numeric, prezzo_bloccato boolean, pricing_mode character varying, tipo_movimento character varying, tipo_consumo character varying, valuta_id integer, meta jsonb, tipo_doc_fiscale_id bigint)
+ RETURNS TABLE(ordine_id bigint, ordine_uid uuid, riga_id bigint, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, competenza_dal date, competenza_al date, fatturazione_immediata boolean, sorgente_tipo_id bigint, sorgente_uid text, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, factor_to_base numeric, competenza_mese date, prezzo_snapshot numeric, prezzo_bloccato boolean, pricing_mode character varying, tipo_movimento character varying, tipo_consumo character varying, valuta_id integer, meta jsonb, tipo_doc_fiscale_id bigint, termine_pagamento_id bigint, modalita_pagamento_id integer)
  LANGUAGE plpgsql
 AS $function$
 DECLARE
@@ -87,7 +87,9 @@ BEGIN
       'tipo_commessa',       'AUTO',
       'policy_fatturazione', 'DA_DOCUMENTO'
     ),
-    v_tipo_doc_fiscale_id
+    v_tipo_doc_fiscale_id,
+    o.termine_pagamento_id,
+    o.modalita_pagamento_id
   FROM vendite.ordini o
   JOIN anagrafiche.billing_account ba ON ba.id = o.billing_account_id
   -- rev 2026-07-10: join stato solo per ESCLUDERE i non eleggibili
@@ -118,7 +120,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_ordini_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_ordine_id bigint)
-IS 'Lista righe ordine eligible al push su commessa (fatturazione_trigger CONFERMATO; stato documento libero sull''asse spedizione, esclusi DRAFT/ANNULLATO/FATTURATO). uom_id da catalogo.articoli (canonica). p_ordine_id opzionale: NULL=batch globale, NOT NULL=singolo ordine. Filtri in AND. Esclude EMESSA via NOT EXISTS. rev 2026-07-10: fix orfano trigger CONFERMATO evaso (decoupling fatturazione/spedizione, piano-db-fix-orfano-push-ordine-confermato). rev 2026-07-19: esclusione su ALLOCAZIONE via script.fn_get_stato_push_segment (vede anche componenti #CMP), non piu'' solo EMESSA — brief-db-push-commessa-gia-inviato §4a. rev 2026-07-27: fatturazione_immediata proiettata dalla colonna vendite.ordini.fatturazione_immediata (era costante FALSE) — simmetria del flag di corsia, brief-db-emissione-fattura-per-documento-sorgente PARTE B. prezzo_bloccato resta la costante TRUE: l''accoppiamento flag/prezzo esiste solo sui preventivi.';
+IS 'Lista righe ordine eligible al push su commessa (fatturazione_trigger CONFERMATO; stato documento libero sull''asse spedizione, esclusi DRAFT/ANNULLATO/FATTURATO). uom_id da catalogo.articoli (canonica). p_ordine_id opzionale: NULL=batch globale, NOT NULL=singolo ordine. Filtri in AND. Esclude EMESSA via NOT EXISTS. rev 2026-07-10: fix orfano trigger CONFERMATO evaso (decoupling fatturazione/spedizione, piano-db-fix-orfano-push-ordine-confermato). rev 2026-07-19: esclusione su ALLOCAZIONE via script.fn_get_stato_push_segment (vede anche componenti #CMP), non piu'' solo EMESSA — brief-db-push-commessa-gia-inviato §4a. rev 2026-07-27: fatturazione_immediata proiettata dalla colonna vendite.ordini.fatturazione_immediata (era costante FALSE) — simmetria del flag di corsia, brief-db-emissione-fattura-per-documento-sorgente PARTE B. prezzo_bloccato resta la costante TRUE: l''accoppiamento flag/prezzo esiste solo sui preventivi. Espone termine_pagamento_id e modalita_pagamento_id dell''ordine (rev 2026-08-03, T.1).';
 ```
 
 ---
