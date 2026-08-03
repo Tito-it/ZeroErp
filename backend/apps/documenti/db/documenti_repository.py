@@ -27,9 +27,9 @@ from apps.core.services.error_manager import ErrorManager
 # Whitelist anti-injection: i nomi vengono interpolati nella SQL e
 # non possono provenire da input utente non validati.
 # `attivo` e' NUCLEO: lo stato ordina sempre (regola di dominio, seed lista
-# 'documenti.template_documenti'). Le quattro descrizioni restano nude perche'
-# sono alias di output della SELECT — `emittente_fiscale_descrizione` in
-# particolare e' un COALESCE, che ORDER BY risolve solo per alias.
+# 'documenti.template_documenti'). Le quattro voci di decodifica restano nude
+# perche' sono alias di output della SELECT (colonne di tabelle JOINte):
+# ORDER BY le risolve per alias.
 TEMPLATES_ORDER_COLUMNS: dict[str, str] = {
     "codice": "t.codice",
     "codice_interno": "t.codice_interno",
@@ -38,7 +38,7 @@ TEMPLATES_ORDER_COLUMNS: dict[str, str] = {
     "is_default": "t.is_default",
     "tipo_documento_output_descrizione": "tipo_documento_output_descrizione",
     "sorgente_tipo_descrizione": "sorgente_tipo_descrizione",
-    "emittente_fiscale_descrizione": "emittente_fiscale_descrizione",
+    "emittente_ragione_sociale": "emittente_ragione_sociale",
     "data_insert": "t.data_insert",
     "data_update": "t.data_update",
 }
@@ -140,15 +140,15 @@ VERSIONE_UPDATE_COLUMNS: tuple[str, ...] = (
 # `valido_dal` gia' presente: dove una lista mostra le date di validita', quelle
 # colonne ordinano — e `valido_al` DESC e' il default d'elezione (i NULL, cioe'
 # gli asset senza scadenza, salgono in testa; le scadenze vecchie vanno in fondo).
-# `asset_tipo_descrizione` ed `emittente_fiscale_descrizione` restano nude: sono
-# alias di output (la seconda e' un COALESCE).
+# `asset_tipo_descrizione` ed `emittente_ragione_sociale` restano nude: sono
+# alias di output della SELECT (colonne di tabelle JOINte).
 ASSET_ORDER_COLUMNS: dict[str, str] = {
     "codice": "a.codice",
     "codice_interno": "a.codice_interno",
     "descrizione": "a.descrizione",
     "attivo": "a.attivo",
     "asset_tipo_descrizione": "asset_tipo_descrizione",
-    "emittente_fiscale_descrizione": "emittente_fiscale_descrizione",
+    "emittente_ragione_sociale": "emittente_ragione_sociale",
     "file_name": "a.file_name",
     "file_size_bytes": "a.file_size_bytes",
     "mime_type": "a.mime_type",
@@ -282,7 +282,7 @@ _ASSET_PROJECTION = """
     a.emittente_fiscale_id,
     ef.codice             AS emittente_fiscale_codice,
     s_ef.ragione_sociale_completa
-                          AS emittente_fiscale_descrizione,
+                          AS emittente_ragione_sociale,
     a.valido_dal,
     a.valido_al,
     a.attivo,
@@ -323,7 +323,7 @@ _TEMPLATES_PROJECTION = """
     t.emittente_fiscale_id,
     ef.codice            AS emittente_fiscale_codice,
     s_ef.ragione_sociale_completa
-                         AS emittente_fiscale_descrizione,
+                         AS emittente_ragione_sociale,
     t.data_insert,
     t.data_update
 """

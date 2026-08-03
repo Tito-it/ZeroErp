@@ -205,6 +205,17 @@ class PushableRow:
     # `<sorgente>_righe_componenti` (refactor componenti 2026-05-11) invece
     # di chiamare il resolver al push. Default None per backward compat.
     riga_sorgente_id: int | None = None
+    # Condizioni di pagamento del DOCUMENTO SORGENTE, propagate alla commessa
+    # (D-R: il termine vive sulla commessa ed entra nella sua chiave).
+    # ⚠️ Oggi `fn_list_*_da_pushare` NON le espone (verificato 2026-08-03: 29
+    # colonne, nessuna delle due), quindi restano None e la propagazione e'
+    # INERTE: si accende da se' quando il DB aggiungera' le colonne, senza
+    # altre modifiche qui. Il default None e' quindi voluto, non difensivo.
+    # NON si risolvono in Python: qui si COPIA il valore del documento, non si
+    # percorre la cascata — un secondo risolutore divergerebbe in silenzio
+    # (brief scadenze §8).
+    termine_pagamento_id: int | None = None
+    modalita_pagamento_id: int | None = None
 
 
 def _decode_jsonb(value: Any, default: Any) -> Any:
@@ -246,6 +257,16 @@ def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
         row[col_map["riga_id"]] if "riga_id" in col_map else None
     )
 
+    # Condizioni di pagamento del documento sorgente: lette con `col_map.get`
+    # come `riga_id`, cosi' il giorno in cui le fn DB le espongono la
+    # propagazione si accende senza toccare questo file. Finche' la colonna
+    # non c'e', restano None e nulla cambia.
+    def _opt_int(nome: str) -> int | None:
+        if nome not in col_map:
+            return None
+        valore = row[col_map[nome]]
+        return int(valore) if valore is not None else None
+
     return PushableRow(
         billing_account_id=_col("billing_account_id"),
         utility_id=_col("utility_id"),
@@ -276,6 +297,8 @@ def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
         valuta_id=_col("valuta_id"),
         meta=meta_raw,
         tipo_doc_fiscale_id=_col("tipo_doc_fiscale_id"),
+        termine_pagamento_id=_opt_int("termine_pagamento_id"),
+        modalita_pagamento_id=_opt_int("modalita_pagamento_id"),
     )
 
 
@@ -416,8 +439,18 @@ class CommesseRepository:
         competenza_al: date | None = None,
         meta: dict | None = None,
         force_new: bool = False,
+        termine_pagamento_id: int | None = None,
+        modalita_pagamento_id: int | None = None,
     ) -> int:
-        """Risolve o crea una commessa. Restituisce commessa_id."""
+        """Risolve o crea una commessa. Restituisce commessa_id.
+
+        `termine_pagamento_id`/`modalita_pagamento_id` sono le condizioni di
+        pagamento del DOCUMENTO SORGENTE: la commessa le POSSIEDE (D-R) e da
+        li' la catena `fn_resolve_termini_pagamento` le porta in fattura.
+        `fn_get_or_create_commessa` accettava gia' i due parametri; il BE non
+        li passava, ed e' il difetto che faceva uscire ogni fattura col
+        termine del CLIENTE anche quando l'ordine ne dichiarava un altro.
+        """
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -432,7 +465,9 @@ class CommesseRepository:
                     p_competenza_dal => %s,
                     p_competenza_al => %s,
                     p_meta => %s::jsonb,
-                    p_force_new => %s
+                    p_force_new => %s,
+                    p_termine_pagamento_id => %s,
+                    p_modalita_pagamento_id => %s
                 )
                 """,
                 [
@@ -447,6 +482,8 @@ class CommesseRepository:
                     competenza_al,
                     self._to_jsonb_param(meta),
                     force_new,
+                    termine_pagamento_id,
+                    modalita_pagamento_id,
                 ],
             )
             row = cursor.fetchone()

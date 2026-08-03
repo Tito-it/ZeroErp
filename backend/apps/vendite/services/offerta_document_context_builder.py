@@ -128,10 +128,19 @@ class OffertaDocumentContextBuilder(DocumentContextBuilder):
                 "codice_interno": testata.get("stato_codice_interno"),
                 "descrizione": testata.get("stato_descrizione"),
             },
+            # Chiave rinominata `descrizione` → `ragione_sociale` il 2026-08-03,
+            # a valle del template: la versione PUBBLICATA di `OffertaComm`
+            # legge `.get("ragione_sociale") or .get("descrizione")`, quindi il
+            # passaggio e' assorbito da entrambi i lati e non c'e' finestra di
+            # render rotto. Era l'ultimo punto in cui sopravviveva il nome
+            # vecchio: il corpo del template vive a DB
+            # (`documenti.template_documenti_versioni`), non in questo repo, e
+            # rinominare qui prima di la' avrebbe fatto fallire il render con
+            # `StrictUndefined` — non svuotato il campo.
             "emittente_fiscale": {
                 "id": testata.get("emittente_fiscale_id"),
                 "codice": testata.get("emittente_fiscale_codice"),
-                "descrizione": testata.get("emittente_fiscale_descrizione"),
+                "ragione_sociale": testata.get("emittente_ragione_sociale"),
             },
             "utility_ref": {
                 "id": testata.get("utility_id"),

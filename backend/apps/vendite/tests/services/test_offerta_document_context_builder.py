@@ -38,7 +38,7 @@ def _testata_row(*, listino_id: int | None = 100) -> dict[str, Any]:
         "codice": "OFC0000007",
         "emittente_fiscale_id": 3,
         "emittente_fiscale_codice": "EF-3",
-        "emittente_fiscale_descrizione": "Azienda Emittente Spa",
+        "emittente_ragione_sociale": "Azienda Emittente Spa",
         "billing_account_id": 10,
         "ba_codice": "BA-10",
         "billing_account_display": "Cliente Offerta Srl",

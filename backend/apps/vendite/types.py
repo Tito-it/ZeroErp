@@ -243,12 +243,12 @@ class PreventivoDetailRow(TypedDict):
     totale_documento: str | None
     emittente_fiscale_id: int | None
     emittente_fiscale_codice: str | None
-    # ⚠️ Nonostante il nome, porta la RAGIONE SOCIALE del soggetto emittente
-    # (`soggetti.ragione_sociale_completa`), non `emittenti_fiscali.descrizione`:
-    # quella e' un'etichetta interna divergente, in via di eliminazione (brief
-    # `brief-emittente-ragione-sociale-dal-soggetto.md`). L'alias e' rimasto per
-    # non rompere 40+ punti a valle; la rinomina e' una fase separata.
-    emittente_fiscale_descrizione: str | None
+    # Ragione sociale del SOGGETTO emittente (`soggetti.ragione_sociale_completa`),
+    # non `emittenti_fiscali.descrizione` (etichetta interna divergente, in via di
+    # eliminazione — brief `brief-emittente-ragione-sociale-dal-soggetto.md`).
+    # Rinominata da `emittente_fiscale_descrizione` il 2026-08-03 (piano
+    # PrimeVue 5, registro), in pari con viste e seed liste.
+    emittente_ragione_sociale: str | None
     ba_ha_contratto_attivo: bool
     storicizza: bool
     meta: dict[str, Any]
@@ -424,10 +424,10 @@ class OffertaRow(TypedDict):
     # Denormalizzazione EF (pattern preventivi): consumati da
     # `EmittenteFiscaleField` in modalita' edit per costruire la option
     # singola del Select disabled senza round-trip aggiuntivo.
-    # ⚠️ `emittente_fiscale_descrizione` porta la RAGIONE SOCIALE del soggetto
+    # ⚠️ `emittente_ragione_sociale` porta la RAGIONE SOCIALE del soggetto
     # emittente, non `emittenti_fiscali.descrizione` (vedi PreventivoDetailRow).
     emittente_fiscale_codice: str | None
-    emittente_fiscale_descrizione: str | None
+    emittente_ragione_sociale: str | None
     ba_codice: str | None
     billing_account_display: str | None
     # ID fiscale univoco (CF persona fisica o P.IVA) del soggetto del BA.

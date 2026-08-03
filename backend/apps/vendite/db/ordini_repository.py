@@ -196,7 +196,7 @@ class OrdiniRepository(
     #        i campi non esposti in lista: `meta`, `storicizza`,
     #        `istanza_utility_id` del BA (serve al FE per la cascata indirizzi
     #        a 3 livelli nel drawer indirizzi documento).
-    #        `emittente_fiscale_descrizione` (ragione sociale del SOGGETTO
+    #        `emittente_ragione_sociale` (ragione sociale del SOGGETTO
     #        emittente, consumata da EmittenteFiscaleField nel drawer EDIT)
     #        arriva dalla vista (esposta dal DB team il 2026-07-13).
     #        Ritorna None se id inesistente.
