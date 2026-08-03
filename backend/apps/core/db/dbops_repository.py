@@ -230,7 +230,7 @@ class DbopsRepository:
                        {search_codice_interno}
                        OR t.descrizione ILIKE %(search)s
                    )
-                 ORDER BY {order_column} {order_dir}, t.id
+                 ORDER BY {order_column} {order_dir}, t.id {order_dir}
                  LIMIT %(limit)s OFFSET %(offset)s
                 """,
                 {

@@ -232,7 +232,7 @@ class ListiniRepository:
               LEFT JOIN config.utilities u ON u.id = l.utility_id
               LEFT JOIN config.listini_tipologie lt ON lt.id = l.tipologia_id
             {where_clause}
-             ORDER BY {order_column} {safe_order_dir}, l.id ASC
+             ORDER BY {order_column} {safe_order_dir}, l.id {safe_order_dir}
              LIMIT %s OFFSET %s
         """
 

@@ -19,6 +19,7 @@ from apps.core.db._helpers import (
     row_to_dict,
     rows_to_list,
     sql_order_direction,
+    sql_tiebreak_direction,
 )
 
 
@@ -143,6 +144,7 @@ class EmittentiFiscaliRepository:
             order_by, _EMITTENTI_ORDER_COLS[_EMITTENTI_ORDER_DEFAULT]
         )
         direction = sql_order_direction(order_dir)
+        tiebreak_dir = sql_tiebreak_direction(direction)
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
             SELECT ef.id,
@@ -174,7 +176,7 @@ class EmittentiFiscaliRepository:
                     OR s.partita_iva ILIKE %s
                    ))
                AND (%s::boolean IS NULL OR ef.attivo = %s)
-             ORDER BY {order_col} {direction}, ef.id
+             ORDER BY {order_col} {direction}, ef.id {tiebreak_dir}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params: list[Any] = [
@@ -335,6 +337,7 @@ class EmittentiFiscaliBillingAccountRepository:
             order_by, self._ORDER_COLS["billing_account_codice"]
         )
         direction = sql_order_direction(order_dir)
+        tiebreak_dir = sql_tiebreak_direction(direction)
         # Default-first e' il prefisso fisso dell'ordinamento (la riga default
         # in testa qualunque colonna si ordini). Se pero' l'operatore ordina
         # PROPRIO per is_default — colonna del catalogo, `ordinabile=t` — il
@@ -362,7 +365,7 @@ class EmittentiFiscaliBillingAccountRepository:
                     OR s.ragione_sociale_completa ILIKE %s
                     OR s.id_fiscale_univoco_cf_piva ILIKE %s
                    ))
-             ORDER BY {order_prefix}{order_col} {direction}, m.id
+             ORDER BY {order_prefix}{order_col} {direction}, m.id {tiebreak_dir}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params: list[Any] = [

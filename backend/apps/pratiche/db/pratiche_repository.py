@@ -17,6 +17,7 @@ from apps.core.db._helpers import (
     row_to_dict,
     rows_to_list,
     sql_order_direction,
+    sql_tiebreak_direction,
 )
 from apps.core.services.error_manager import ErrorManager
 
@@ -197,6 +198,7 @@ class PraticheRepository:
             order_by, PRATICHE_ORDER_COLS["data_insert"]
         )
         direction = sql_order_direction(order_dir)
+        tiebreak_dir = sql_tiebreak_direction(direction)
 
         conditions: list[str] = ["p.emittente_fiscale_id = %s"]
         params: list[Any] = [emittente_fiscale_id]
@@ -259,7 +261,7 @@ class PraticheRepository:
             FROM pratiche.pratiche p
             {self._PRATICA_JOINS}
             {where_clause}
-            ORDER BY {order_col} {direction}, p.id
+            ORDER BY {order_col} {direction}, p.id {tiebreak_dir}
             LIMIT %s OFFSET %s
         """
 

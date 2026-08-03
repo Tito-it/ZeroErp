@@ -44,6 +44,13 @@ Indice test eseguiti:
 22) DashCompetenzaGruppiServiceTests.test_gruppi_competenza_normalizzata_al_primo
 23) DashCompetenzaGruppiRepositoryTests.test_query_risolve_id_documento_da_area_e_uid
 24) DashCompetenzaGruppiRepositoryTests.test_mapping_espone_documento_id_e_ne_preserva_il_null
+25) DashCompetenzaFatturePerCellaTests.test_n_fatture_innestato_sulla_cella_di_quello_stadio
+26) DashCompetenzaFatturePerCellaTests.test_stadio_non_calcolabile_e_non_applicabile
+27) DashCompetenzaFatturePerCellaTests.test_calcolo_fallito_e_errore_non_silenzio
+28) DashCompetenzaFatturePerCellaTests.test_cella_vuota_tace_senza_essere_errore
+29) DashCompetenzaFatturePerCellaTests.test_zero_esplicito_non_diventa_none
+30) DashCompetenzaFatturePerCellaTests.test_una_sola_lettura_per_la_griglia
+31) DashCompetenzaFatturePerCellaTests.test_errore_solo_dove_ci_sono_attivita
 """
 
 from datetime import date
@@ -102,6 +109,21 @@ _ROWS_GENNAIO = [
 
 
 class DashCompetenzaMensileServiceTests(TestCase):
+    # Scopo: neutralizza la terza lettura della griglia (conteggio fatture per
+    #        cella) su TUTTI i test della classe. Non un decoratore per metodo:
+    #        e' una dipendenza DB che nessuno di questi test esercita, e in CI
+    #        — dove il database non c'e' — una query vera li farebbe fallire
+    #        tutti insieme per un motivo che non riguarda cio' che asseriscono.
+    #        I test che la misurano davvero la mockano per proprio conto.
+    def setUp(self):
+        patcher = patch.object(
+            vendite_service.VenditeRepository,
+            "count_dash_competenza_fatture_mensile",
+            return_value=({}, set()),
+        )
+        self._mock_fatture = patcher.start()
+        self.addCleanup(patcher.stop)
+
     # Scopo: La griglia ha sempre 12 mesi x 4 stadi anche a repository vuoto.
     @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
     @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile", return_value=[])
@@ -650,3 +672,155 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
             competenza_mese=date(2026, 8, 1), stadio=None, limit=25, offset=0,
         )
         self.assertIsNone(righe[0]["documento_id"])
+
+
+class DashCompetenzaFatturePerCellaTests(TestCase):
+    """La seconda misura delle card: quante FATTURE, non quante attivita'.
+
+    Il difetto che questi test bloccano non e' un numero sbagliato ma un
+    numero INVENTATO — e, dal rilievo del 2026-08-03, un SILENZIO ambiguo:
+    «non si calcola per progetto» e «doveva calcolarsi e si e' rotto»
+    finivano entrambi su un campo assente, quindi a video erano la stessa
+    cosa. Un guasto che prende l'aspetto del comportamento normale e' il
+    modo peggiore di sbagliare, ed e' proprio cio' che questo cantiere sta
+    togliendo dal cruscotto.
+    """
+
+    _RIGHE = [
+        {
+            "competenza_mese": "2026-01-01", "stadio": "FATTURATA",
+            "stato_fattura_codice_interno": "EMESSA", "stato_fattura_codice": "EM",
+            "n_attivita": 9, "valore": "900.00", "valore_fatturato": "900.00",
+            "n_in_ritardo": 0, "valore_in_ritardo": "0",
+        },
+        {
+            "competenza_mese": "2026-01-01", "stadio": "DA_EMETTERE",
+            "stato_fattura_codice_interno": None, "stato_fattura_codice": None,
+            "n_attivita": 3, "valore": "300.00", "valore_fatturato": "0",
+            "n_in_ritardo": 0, "valore_in_ritardo": "0",
+        },
+        {
+            "competenza_mese": "2026-01-01", "stadio": "EMESSA_NON_FATTURATA",
+            "stato_fattura_codice_interno": None, "stato_fattura_codice": None,
+            "n_attivita": 5, "valore": "500.00", "valore_fatturato": "0",
+            "n_in_ritardo": 0, "valore_in_ritardo": "0",
+        },
+    ]
+
+    # Scopo: cella di uno stadio del primo mese della griglia.
+    def _cella(self, data, stadio):
+        return next(c for c in data["mesi"][0]["stadi"] if c["stadio"] == stadio)
+
+    # 25) Il conteggio arriva alla cella GIUSTA. Con piu' stadi popolati nello
+    #     stesso mese, un innesto per chiave sbagliata (solo mese, ignorando lo
+    #     stadio) spalmerebbe le 2 fatture di FATTURATA anche sugli altri — e
+    #     sarebbe invisibile in un test a stadio singolo.
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
+    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile")
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_fatture_mensile")
+    def test_n_fatture_innestato_sulla_cella_di_quello_stadio(
+        self, mock_fatture, mock_rows, _mock_err,
+    ):
+        mock_rows.return_value = self._RIGHE
+        mock_fatture.return_value = ({("2026-01-01", "FATTURATA"): 2}, set())
+        data = fn_dash_competenza_mensile(anno=2026)
+        fatturata = self._cella(data, "FATTURATA")
+        self.assertEqual(fatturata["n_fatture"], 2)
+        self.assertEqual(fatturata["n_fatture_stato"], "OK")
+
+    # 26) Stadio NON calcolabile per progetto (DA_EMETTERE): nessun numero e
+    #     stato NON_APPLICABILE -> la card tace, ed e' corretto che taccia.
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
+    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile")
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_fatture_mensile")
+    def test_stadio_non_calcolabile_e_non_applicabile(
+        self, mock_fatture, mock_rows, _mock_err,
+    ):
+        mock_rows.return_value = self._RIGHE
+        mock_fatture.return_value = ({("2026-01-01", "FATTURATA"): 2}, set())
+        cella = self._cella(fn_dash_competenza_mensile(anno=2026), "DA_EMETTERE")
+        self.assertIsNone(cella["n_fatture"])
+        self.assertEqual(cella["n_fatture_stato"], "NON_APPLICABILE")
+
+    # 27) 🔴 Il cuore del rilievo: calcolo FALLITO -> stato ERRORE, non
+    #     NON_APPLICABILE. Se questi due collassassero, un guasto sarebbe
+    #     indistinguibile a video dal comportamento normale — e nessuno
+    #     verrebbe mai a saperlo, perche' il warning vive nei log del server.
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
+    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile")
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_fatture_mensile")
+    def test_calcolo_fallito_e_errore_non_silenzio(
+        self, mock_fatture, mock_rows, _mock_err,
+    ):
+        mock_rows.return_value = self._RIGHE
+        mock_fatture.return_value = ({}, {"EMESSA_NON_FATTURATA"})
+        data = fn_dash_competenza_mensile(anno=2026)
+        rotta = self._cella(data, "EMESSA_NON_FATTURATA")
+        self.assertIsNone(rotta["n_fatture"])
+        self.assertEqual(rotta["n_fatture_stato"], "ERRORE")
+        # ...e il guasto di UNO stadio non contagia gli altri.
+        self.assertEqual(
+            self._cella(data, "DA_EMETTERE")["n_fatture_stato"], "NON_APPLICABILE",
+        )
+
+    # 28) Cella VUOTA: nessuna attivita' -> nessun conteggio da mostrare
+    #     («0 fatture» sotto «0 attivita'» e' rumore), ma NON e' un errore.
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
+    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile", return_value=[])
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_fatture_mensile", return_value=({}, set()))
+    def test_cella_vuota_tace_senza_essere_errore(
+        self, _mock_fatture, _mock_rows, _mock_err,
+    ):
+        data = fn_dash_competenza_mensile(anno=2026)
+        for mese in data["mesi"]:
+            for cella in mese["stadi"]:
+                self.assertIsNone(cella["n_fatture"])
+                self.assertEqual(cella["n_fatture_stato"], "NON_APPLICABILE")
+
+    # 29) Zero VERO: attivita' presenti, stadio calcolabile, nessuna fattura
+    #     ancora -> 0 con stato OK. E' il caso che un `or None` scritto per
+    #     comodita' trasformerebbe in un silenzio.
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
+    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile")
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_fatture_mensile")
+    def test_zero_esplicito_non_diventa_none(self, mock_fatture, mock_rows, _mock_err):
+        mock_rows.return_value = self._RIGHE
+        mock_fatture.return_value = ({("2026-01-01", "EMESSA_NON_FATTURATA"): 0}, set())
+        cella = self._cella(fn_dash_competenza_mensile(anno=2026), "EMESSA_NON_FATTURATA")
+        self.assertEqual(cella["n_fatture"], 0)
+        self.assertEqual(cella["n_fatture_stato"], "OK")
+
+    # 30) UNA sola lettura per l'intera griglia, non una per cella (48 query
+    #     per un cruscotto sarebbero un difetto di per se').
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
+    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile", return_value=[])
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_fatture_mensile", return_value=({}, set()))
+    def test_una_sola_lettura_per_la_griglia(self, mock_fatture, _mock_rows, _mock_err):
+        fn_dash_competenza_mensile(anno=2026)
+        mock_fatture.assert_called_once_with(anno=2026)
+
+    # 31) L'avvertimento NON si spande sui mesi vuoti. Il calcolo fallisce per
+    #     l'intero anno: senza questo presidio, un guasto accenderebbe fino a
+    #     12 avvertimenti, quasi tutti su mesi in cui non c'era niente da
+    #     contare — e il caso vero annegherebbe fra i propri falsi positivi.
+    #     Presidia l'ORDINE dei rami di `_stato_fatture_cella`, che una prova
+    #     di mutazione ha mostrato essere l'unica parte non coperta (e da
+    #     correggere: il codice valutava prima il guasto).
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
+    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_mensile")
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_fatture_mensile")
+    def test_errore_solo_dove_ci_sono_attivita(self, mock_fatture, mock_rows, _mock_err):
+        mock_rows.return_value = self._RIGHE            # solo GENNAIO e' popolato
+        mock_fatture.return_value = ({}, {"EMESSA_NON_FATTURATA"})
+        data = fn_dash_competenza_mensile(anno=2026)
+
+        # Gennaio ha 5 attivita' in quello stadio: li' il numero serviva.
+        self.assertEqual(
+            self._cella(data, "EMESSA_NON_FATTURATA")["n_fatture_stato"], "ERRORE",
+        )
+        # Gli altri 11 mesi sono vuoti: tacciono, nonostante lo stesso guasto.
+        for mese in data["mesi"][1:]:
+            cella = next(
+                c for c in mese["stadi"] if c["stadio"] == "EMESSA_NON_FATTURATA"
+            )
+            self.assertEqual(cella["n_fatture_stato"], "NON_APPLICABILE")

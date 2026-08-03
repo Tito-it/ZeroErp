@@ -23,6 +23,7 @@ import DonutTransito from '../../core/components/charts/DonutTransito.vue'
 import Button from 'primevue/button'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import CommessaGestioneDrawer from '../components/CommessaGestioneDrawer.vue'
+import DocumentoDrawerHost from '../_shared/documenti/DocumentoDrawerHost.vue'
 import LottoDrawer from '../components/LottoDrawer.vue'
 import { useDashMesiNav } from '../../core/composables/useDashMesiNav'
 import { useReadonlyMode, useInjectReadonly } from '../../core/composables/useReadonlyMode'
@@ -39,6 +40,8 @@ import { labelOrCode } from '../../core/utils/i18nLabel'
 import { statoDocFiscaleSeverity } from '../../core/utils/severity'
 import { approvaCompetenza } from '../api/commesse'
 import { getFatturazioneRun, runFatturazione, runNumerazione } from '../api/lotti'
+import { useDocumentoDrawer } from '../_shared/documenti/useDocumentoDrawer'
+import { buildApriDocumentoAction, DASH_AREA_CONFIG } from '../dashboardAree'
 import { useSelezioneToggle } from '../_shared/righe/useSelezioneToggle'
 import { STADIO_GRUPPI, useDashboardCompetenzaStore } from '../stores/dashboardCompetenza'
 
@@ -155,11 +158,35 @@ const cards = computed(() => {
   return meseCorrente.value.stadi.map((cella) => ({
     stadio: cella.stadio,
     nAttivita: cella.n_attivita ?? 0,
+    // Seconda misura: quante FATTURE. `?? null` e NON `?? 0`: dove il numero
+    // non c'e', dire «0 fatture» sarebbe un'affermazione, e falsa.
+    nFatture: cella.n_fatture ?? null,
+    // ...e il PERCHE' non c'e', che il FE non deve dedurre: `NON_APPLICABILE`
+    // (per progetto: «Da emettere» non ha ancora una chiave documento) fa
+    // tacere la card, `ERRORE` le fa mostrare un avvertimento. Erano
+    // indistinguibili fino al 2026-08-03, e un guasto aveva percio' lo stesso
+    // aspetto del funzionamento normale.
+    nFattureStato: cella.n_fatture_stato ?? 'NON_APPLICABILE',
     valoreDisplay: Number(cella.valore_display ?? 0),
     nInRitardo: cella.n_in_ritardo ?? 0,
     statiFattura: cella.stati_fattura ?? [],
   }))
 })
+
+// Scopo: chiarimento sulla MISURA della card, quando il numero non dice cio'
+//        che sembra dire. Oggi solo «Da emettere», che e' la card azionabile:
+//        li' il conteggio guida una decisione (premere «Fattura»), e chi lo
+//        legge come «quante fatture nasceranno» sbaglia in due modi opposti —
+//        un articolo COMPOSITO produce un'attivita' per componente (3 righe da
+//        una riga d'ordine), e all'inverso piu' attivita' confluiscono nella
+//        STESSA fattura per via dell'aggregazione. Nel caso reale che ha fatto
+//        nascere questo hint: 3 attivita' -> 1 gruppo -> 1 fattura.
+//        Chiave i18n condizionale (`te`): una card senza spiegazione non
+//        mostra l'icona, invece di mostrarla vuota.
+function cardHint(stadio) {
+  const key = `vendite.dashboard_competenza.card_hint_${String(stadio).toLowerCase()}`
+  return te(key) ? t(key) : null
+}
 
 // Difetto D2 (§6-bis, corretto 2026-07-27): il verbo «Rendi definitive» stava
 // sulla card EMESSA_NON_FATTURATA, ma numera i LOTTI IN STATO EMESSA, cioe'
@@ -641,8 +668,22 @@ function fatturaGruppi(righe) {
 }
 
 // Scopo: kebab riga della lista gruppi — «Fattura questo» (gate permesso +
-//        readonly, come il verbo di massa) e apertura della commessa che lo
-//        contiene, per ispezionare le righe prima di decidere.
+//        readonly, come il verbo di massa), apertura del DOCUMENTO che da'
+//        nome al gruppo e, come seconda via, della commessa che lo contiene.
+//
+// L'ordine non e' estetico: la riga NOMINA un documento (`riferimento` =
+// ORD0005174), quindi l'azione principale deve aprire quello. Fino al
+// 2026-08-03 c'era la sola «Apri commessa», che portava a un oggetto
+// DIVERSO da quello scritto nella riga — e su una commessa multi-documento
+// (piu' ordini sulla stessa commessa) l'operatore ci trovava dentro anche
+// righe di un altro documento, senza che nulla glielo avesse annunciato.
+// La commessa resta raggiungibile: e' il contenitore in cui il gruppo verra'
+// fatturato, e vederlo prima di premere «Fattura» ha senso.
+//
+// I gruppi SOURCELESS (oneri di commessa) non hanno documento: `documento_id`
+// e `area_documento` sono NULL e il BB nasconde da se' la voce — lasciando la
+// sola commessa, che per loro E' il riferimento (il `riferimento` di quelle
+// righe e' infatti il codice commessa).
 function buildGruppoRowActions(row) {
   return [
     {
@@ -653,6 +694,14 @@ function buildGruppoRowActions(row) {
       disabled: azioneLoading.value || giroMirataInCorso.value,
       command: () => fatturaGruppi([row]),
     },
+    buildApriDocumentoAction({
+      area: row.area_documento,
+      documentoId: row.documento_id,
+      label: t('vendite.dashboard_competenza.azione_apri_documento', {
+        codice: row.riferimento ?? '',
+      }),
+      onApri: apriDocumentoDrawer,
+    }),
     {
       key: 'apri_commessa',
       label: t('vendite.dashboard_competenza.azione_apri_commessa'),
@@ -695,6 +744,19 @@ function apriCommessa(row) {
   commessaDrawerId.value = row.commessa_id
   commessaDrawerVisible.value = true
 }
+
+// Host cross-dominio per il drawer del documento sorgente del gruppo (stesso
+// BB dei drill-down Situazione aperta/Backlog e delle tappe dei Passaggi).
+// `onClose` ricarica: dal drawer l'operatore puo' aver fatto avanzare il
+// documento (confermarlo, evaderlo) e la riga che lo ha aperto sarebbe
+// stantia — o addirittura fuori dal perimetro «da emettere».
+const {
+  visible: docDrawerVisible,
+  tipo: docDrawerTipo,
+  id: docDrawerId,
+  apri: apriDocumentoDrawer,
+  onVisibleChange: onDocDrawerVisible,
+} = useDocumentoDrawer(() => reloadDopoAzione())
 
 // Raggiungibilita' contestuale (B-5): dal pannello errori si atterra sul
 // LottoDrawer diagnostico gia' filtrato sul lotto dell'evento — l'operatore
@@ -850,9 +912,53 @@ onActivated(() => {
             @click="selezionaStadio(card.stadio)"
             @keydown.enter="selezionaStadio(card.stadio)"
           >
-            <span class="app-dash-card-title">{{ stadioLabel(card.stadio) }}</span>
+            <span class="app-dash-card-title">
+              {{ stadioLabel(card.stadio) }}
+              <!-- Chiarimento sulla MISURA (stesso pattern della card Ordini in
+                   Situazione aperta): il numero conta ATTIVITA', non documenti
+                   ne' fatture. Focusabile + aria-label: il v-tooltip PrimeVue
+                   si attiva anche su focus, quindi la spiegazione e'
+                   raggiungibile da tastiera e screen reader. -->
+              <i
+                v-if="cardHint(card.stadio)"
+                v-tooltip.bottom="cardHint(card.stadio)"
+                class="pi pi-info-circle app-dash-card-hint"
+                role="img"
+                tabindex="0"
+                :aria-label="cardHint(card.stadio)"
+                @click.stop
+                @keydown.enter.stop
+              />
+            </span>
             <span class="app-dash-stat-n">{{ card.nAttivita }}</span>
             <span class="app-dash-stat-sub">{{ t('vendite.dashboard_competenza.n_attivita') }}</span>
+            <!-- Seconda misura, la grana che conta per l'operatore: quante
+                 FATTURE. `nFattureStato === 'OK'` e non un truthy check su
+                 nFatture — zero fatture e' un'informazione da mostrare. -->
+            <span
+              v-if="card.nFattureStato === 'OK'"
+              class="app-dash-stat-fatture"
+            >
+              {{ t('vendite.dashboard_competenza.n_fatture', card.nFatture,
+                    { n: card.nFatture }) }}
+            </span>
+            <!-- Calcolo FALLITO: la card lo dice invece di tacere come fa
+                 sugli stadi non calcolabili per progetto. Il resto della
+                 schermata resta valido — l'avvertimento e' circoscritto alla
+                 misura che manca, non un allarme sul cruscotto. -->
+            <span
+              v-else-if="card.nFattureStato === 'ERRORE'"
+              v-tooltip.bottom="t('vendite.dashboard_competenza.n_fatture_errore_tooltip')"
+              class="app-dash-stat-fatture-ko"
+              role="img"
+              tabindex="0"
+              :aria-label="t('vendite.dashboard_competenza.n_fatture_errore_tooltip')"
+              @click.stop
+              @keydown.enter.stop
+            >
+              <i class="pi pi-exclamation-triangle" />
+              {{ t('vendite.dashboard_competenza.n_fatture_errore') }}
+            </span>
             <span class="app-dash-stat-euro">{{ formatCurrency(card.valoreDisplay) }}</span>
             <!-- Verbo APPROVA a grana mese (Fase A cockpit): solo sul card
                  DA_APPROVARE, gate permesso+readonly; @click.stop per non
@@ -1294,5 +1400,13 @@ onActivated(() => {
       :lotto-id="lottoDrawerId"
       @changed="reloadDopoAzione"
     />
+
+    <!-- Host del drawer di dettaglio del DOCUMENTO sorgente del gruppo
+         (kebab «Apri ...»): il tipo arriva dal registry, l'id dal BE. -->
+    <DocumentoDrawerHost
+      :visible="docDrawerVisible"
+      :tipo-codice="docDrawerTipo"
+      :doc-id="docDrawerId"
+      @update:visible="onDocDrawerVisible" />
   </div>
 </template>

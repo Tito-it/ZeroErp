@@ -20,6 +20,7 @@ from apps.core.db._helpers import (
     row_to_dict,
     rows_to_list,
     sql_order_direction,
+    sql_tiebreak_direction,
 )
 
 
@@ -238,6 +239,7 @@ class ClientiRepository:
             order_by, _CLIENTI_ORDER_COLS["ragione_sociale_completa"]
         )
         direction = sql_order_direction(order_dir)
+        tiebreak_dir = sql_tiebreak_direction(direction)
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
             SELECT cl.id,
@@ -301,7 +303,7 @@ class ClientiRepository:
                        )
                      )
                    )
-             ORDER BY {order_col} {direction}, cl.id
+             ORDER BY {order_col} {direction}, cl.id {tiebreak_dir}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params = [

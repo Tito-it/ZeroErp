@@ -20,6 +20,7 @@ from apps.core.db._helpers import (
     row_to_dict,
     rows_to_list,
     sql_order_direction,
+    sql_tiebreak_direction,
 )
 
 
@@ -96,6 +97,7 @@ class PromoArticoliRepository:
     ) -> tuple[list[dict[str, Any]], int]:
         order_column = _ORDER_COLS.get(order_by, _ORDER_COLS["valido_dal"])
         direction = sql_order_direction(order_dir)
+        tiebreak_dir = sql_tiebreak_direction(direction)
         safe_limit = max(1, min(int(limit), 200))
         safe_offset = max(0, int(offset))
 
@@ -145,7 +147,7 @@ class PromoArticoliRepository:
                 SELECT {_SELECT_COLS}
                   {_FROM_JOINS}
                 {where_clause}
-                 ORDER BY {order_column} {direction}, p.id ASC
+                 ORDER BY {order_column} {direction}, p.id {tiebreak_dir}
                  LIMIT %s OFFSET %s
                 """,  # noqa: S608
                 params + [safe_limit, safe_offset],
