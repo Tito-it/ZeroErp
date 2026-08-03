@@ -244,6 +244,16 @@ with transaction.atomic():
         ord_b = clona_ordine(cur, template_id, data_doc=data_doc, termine_id=term_alt,
                              modalita_id=modalita_id, marker=f"{marker}-B")
         clona_riga(cur, ord_b, riga_tpl, prezzo=Decimal("200.00"))
+        # uid dei due ordini: e' con questi che si costruisce il perimetro
+        # dei gruppi, cosi' la selezione prende SOLO cio' che il fixture ha
+        # creato (vedi la nota sulla selezione piu' avanti).
+        cur.execute(
+            "SELECT id, uid::text FROM vendite.ordini WHERE id = ANY(%s)",
+            [[ord_a, ord_b]],
+        )
+        uid_per_id = dict(cur.fetchall())
+        uid_a, uid_b = uid_per_id[ord_a], uid_per_id[ord_b]
+
         print(f"ordini clonati: A={ord_a} ({term_doc_cod}, {n_rate} rate) · "
               f"B={ord_b} ({term_alt_cod}) · BA {ba_id} · competenza {competenza}\n")
 
@@ -459,8 +469,14 @@ with transaction.atomic():
         lotto_id = cur.fetchone()[0]
 
         # Selezione REALE: stessa funzione del task `select_attivita`, con
-        # lock. Il perimetro (BA + competenza futura + emittente + tipo doc)
-        # isola le due attivita' del fixture.
+        # lock. Il perimetro e' ristretto ai GRUPPI dei due ordini clonati.
+        # ⚠️ Prima ci si affidava a «BA + competenza futura + emittente + tipo
+        # doc», presumendo che bastassero a isolare il fixture: non bastano.
+        # Il template e' «l'ordine piu' recente», quindi cambia insieme
+        # all'ambiente, e con lui il BA di lavoro — il 2026-08-03 il perimetro
+        # ha iniziato a contenere una terza attivita' e lo smoke si e' fermato
+        # sul proprio guard. Filtrare per gruppo lega il fixture a cio' che ha
+        # creato lui, non a cio' che gli capita intorno.
         cur.execute(
             """
             SELECT vendite.fn_select_attivita_fatturabili(
@@ -474,11 +490,12 @@ with transaction.atomic():
                 p_valuta_id => NULL,
                 p_emittente_soggetto_ruolo_id => %s,
                 p_limit => NULL,
-                p_gruppi => NULL::text[]
+                p_gruppi => %s::text[]
             )
             """,
             [competenza, tipo_doc_id, lock_batch_id, ba_id, utility_id,
-             emittente_sr_id],
+             emittente_sr_id,
+             [f"ORDINE_VENDITA:{uid_a}", f"ORDINE_VENDITA:{uid_b}"]],
         )
         cur.execute(
             "SELECT count(*) FROM vendite.attivita_fatturabili"

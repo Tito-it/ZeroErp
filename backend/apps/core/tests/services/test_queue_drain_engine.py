@@ -15,6 +15,8 @@
 #   4. resilienza_per_riga
 #   5. reaper_chiamato_e_disabilitato
 #   6. backoff_esponenziale_cappato
+#   7. terminale_dichiarato_non_consuma_tentativi
+#   8. eccezione_non_prevista_resta_riprovabile
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ from apps.core.services.coda_lavori.backend import QueueItem
 from apps.core.services.coda_lavori.drain_engine import (
     QueueDrainEngine,
     backoff_secondi_default,
+    contesto_terminale,
 )
 from apps.core.services.service_errors import ServiceError
 
@@ -147,3 +150,45 @@ class QueueDrainEngineTests(SimpleTestCase):
         self.assertEqual(backoff_secondi_default(2), 120)
         self.assertEqual(backoff_secondi_default(3), 240)
         self.assertEqual(backoff_secondi_default(99), 3600)  # cap
+
+    # 7. Fallimento DICHIARATO deterministico dall'handler: ERRORE subito, anche
+    #    se i tentativi non sono esauriti. Senza questo, un perimetro non
+    #    fatturabile o un payload malformato verrebbero ripetuti max_tentativi
+    #    volte con lo stesso esito, tenendo il job «in corso» a video.
+    def test_terminale_dichiarato_non_consuma_tentativi(self) -> None:
+        backend = MagicMock()
+        backend.reap_stale.return_value = 0
+        backend.claim.return_value = [_item(1, tentativi=0, max_tentativi=5)]
+        per_item = MagicMock(side_effect=ServiceError(
+            code="E_PERIMETRO", message="niente da fatturare",
+            context=contesto_terminale(gruppi_non_serviti=[{"motivo": "X"}]),
+        ))
+        engine = QueueDrainEngine(backend, per_item=per_item)
+
+        summary = engine.drain(limit=10, stale_minuti=0)
+
+        self.assertEqual(summary["errore"], 1)
+        self.assertEqual(summary["riprovabili"], 0)
+        self.assertIsNone(backend.mark_error.call_args.kwargs["retry_after_secondi"])
+        # Il context dell'handler DEVE arrivare in ultimo_errore: e' il
+        # dettaglio strutturato (motivi per gruppo) — senza, resterebbe solo
+        # il testo del messaggio da riparsare.
+        errore = backend.mark_error.call_args.kwargs["errore"]
+        self.assertEqual(
+            errore["context"]["gruppi_non_serviti"], [{"motivo": "X"}],
+        )
+
+    # 8. Eccezione non prevista (non dichiarata): resta riprovabile, comportamento
+    #    storico — solo l'handler sa se riprovare ha senso.
+    def test_eccezione_non_prevista_resta_riprovabile(self) -> None:
+        backend = MagicMock()
+        backend.reap_stale.return_value = 0
+        backend.claim.return_value = [_item(1, tentativi=0, max_tentativi=5)]
+        per_item = MagicMock(side_effect=RuntimeError("connessione persa"))
+        engine = QueueDrainEngine(backend, per_item=per_item)
+
+        summary = engine.drain(limit=10, stale_minuti=0)
+
+        self.assertEqual(summary["riprovabili"], 1)
+        self.assertEqual(summary["errore"], 0)
+        self.assertIsNotNone(backend.mark_error.call_args.kwargs["retry_after_secondi"])

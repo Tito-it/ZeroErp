@@ -54,6 +54,7 @@ import {
   numeraLotto,
   ristampaLotto,
   resetLottoDraft,
+  riportaLottoADraft,
   resetLottoFatturaDraft,
 } from '../api/lotti'
 
@@ -266,6 +267,35 @@ function resetDraft() {
   })
 }
 
+// Scopo: RIPORTA A BOZZA il lotto (Fase 6) — è il verbo opposto a `resetDraft`
+//        qui sopra, e la differenza va detta all'operatore invece che lasciata
+//        intuire dai nomi: quello CHIUDE il lotto e libera le attività per un
+//        giro nuovo, questo lo rimette in lavorazione perché si possa
+//        correggere a monte e RIFARE lo stesso lotto.
+//        Distruttivo comunque (le fatture si cancellano e il rilancio le
+//        rigenera), quindi stessa conferma forte del gemello.
+//        Visibile oltre DRAFT: è lì che serve — su un lotto già in bozza non
+//        c'è nulla da riportare indietro.
+function riportaADraft() {
+  confirmAction({
+    title: t('vendite.lotti.riporta_draft_header'),
+    message: t('vendite.lotti.riporta_draft_conferma'),
+    danger: true,
+    acceptLabel: t('vendite.lotti.riporta_draft_accept'),
+    onAccept: async () => {
+      const res = await execute(() => riportaLottoADraft(props.lottoId))
+      if (res !== null) {
+        notify.success(t('vendite.lotti.riporta_draft_esito', {
+          fatture: res?.deleted_fatture ?? 0,
+          attivita: res?.riemesse_attivita ?? 0,
+        }))
+        await reloadAll()
+        emit('changed')
+      }
+    },
+  })
+}
+
 // Scopo: reset di una singola fattura DRAFT del lotto.
 function resetFattura(row) {
   confirmAction({
@@ -453,6 +483,20 @@ function fatturaNumero(row) {
             size="small"
             :disabled="loading"
             @click="resetDraft"
+          />
+          <!-- Fase 6: ritorno in lavorazione. Complementare al pulsante qui
+               sopra e mai insieme a lui — quello vive in DRAFT, questo oltre:
+               `!isDraft` non è una scorciatoia ma la condizione vera, perché
+               un lotto già in bozza non ha nulla da riportare indietro. -->
+          <Button
+            v-if="canResetLotto && !isDraft"
+            :label="t('vendite.lotti.riporta_draft')"
+            icon="pi pi-replay"
+            severity="danger"
+            outlined
+            size="small"
+            :disabled="loading"
+            @click="riportaADraft"
           />
         </div>
 

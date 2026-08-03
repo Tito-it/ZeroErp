@@ -135,7 +135,8 @@ class LottoPipelineRunner:
         return None if lotto_id in (0, None) else lotto_id
 
     # Scopo: Determina da quale step (singolo) ripartire. Tre casi:
-    #  - rerun MASSIVO in errore: ri-esegue dallo step CORRENTE (invariato);
+    #  - deve rifare lo step CORRENTE: rerun in errore OPPURE lotto riportato a
+    #    bozza e non ancora rifatto (vedi `deve_rifare_step_corrente`);
     #  - successo su lotto ESISTENTE (lotto_id passato dal driver): avanza allo step
     #    SUCCESSIVO a quello gia` eseguito — abilita la progressione multi-step, prima
     #    assente nel ramo di successo (steps[:1] prendeva sempre il primo step);
@@ -145,7 +146,7 @@ class LottoPipelineRunner:
         *,
         steps: list[Any],
         is_existing_lotto_request: bool,
-        is_massivo_error_rerun: bool,
+        deve_rifare_step_corrente: bool,
         lotto_stato_doc_corrente: int | None,
     ) -> list[Any]:
         if lotto_stato_doc_corrente is None:
@@ -156,8 +157,13 @@ class LottoPipelineRunner:
         current_index = step_index_by_stato.get(lotto_stato_doc_corrente)
         if current_index is None:
             return steps
-        if is_massivo_error_rerun:
-            # Resume su step corrente in errore; evita transizioni retroattive non ammesse.
+        if deve_rifare_step_corrente:
+            # Resume sullo step corrente; evita transizioni retroattive non ammesse.
+            # Due cause, stesso comportamento: lo step e` fallito (rerun in
+            # errore) oppure e` RIUSCITO ma il suo risultato non andava bene e il
+            # lotto e` stato riportato a bozza. Nel secondo caso marcare il lotto
+            # ERRORE per ottenere lo stesso effetto sarebbe una bugia visibile:
+            # comparirebbe fra i falliti nei cruscotti (brief DB→BE §3).
             return steps[current_index:]
         if is_existing_lotto_request:
             # Successo su lotto esistente: prosegui dallo step successivo (driver multi-step).
@@ -373,6 +379,18 @@ class LottoPipelineRunner:
                     effective_tipo_lotto == "MASSIVO"
                     and self.repository.is_lotto_in_errore(lotto_id)
                 )
+                # Fase 6 — ritorno a bozza. Il lotto e` stato riportato a DRAFT
+                # da un'azione dell'operatore e deve RIFARE lo step, non
+                # avanzare: senza questa lettura cadrebbe nel ramo «lotto
+                # esistente» e ripartirebbe da EMESSA, saltando proprio la
+                # rigenerazione delle righe per cui era stato riaperto.
+                # ⚠️ Tenuto DISTINTO da `is_massivo_error_rerun` invece che
+                # fuso in un flag solo: quello governa anche il rollback
+                # automatico dello step (`_should_execute_auto_step_rollback`),
+                # che qui NON va eseguito — le fatture le ha gia` cancellate la
+                # funzione DB, e un rollback in piu` lavorerebbe sul vuoto.
+                is_lotto_riaperto = self.repository.is_lotto_riaperto(lotto_id)
+                deve_rifare_step_corrente = is_massivo_error_rerun or is_lotto_riaperto
                 draft_id = self.repository.get_stato_doc_fiscale_id("DRAFT")
                 emessa_id = self.repository.get_stato_doc_fiscale_id("EMESSA")
                 rerun_reset_step_ids = {
@@ -401,7 +419,7 @@ class LottoPipelineRunner:
                 steps = self._resolve_steps_for_run(
                     steps=steps,
                     is_existing_lotto_request=is_existing_lotto_request,
-                    is_massivo_error_rerun=is_massivo_error_rerun,
+                    deve_rifare_step_corrente=deve_rifare_step_corrente,
                     lotto_stato_doc_corrente=lotto_stato_doc_corrente,
                 )
                 # Modalita` operativa: un run esegue un solo step pipeline (il prossimo disponibile).
@@ -496,6 +514,36 @@ class LottoPipelineRunner:
                         dry_run=params.dry_run,
                         correlation_id=correlation_id,
                     )
+
+                # Fase 6 — «chi accende il segnale lo spegne», ma SOLO se il
+                # rifacimento ha davvero rifatto qualcosa.
+                #
+                # ⚠️ La condizione non e` «lo step e` stato eseguito» ma «il
+                # lotto ha di nuovo fatture», e la differenza non e` teorica:
+                # un lotto riaperto puo` attraversare lo step senza produrre
+                # nulla — misurato il 2026-08-03 sul lotto 1279, dove i quattro
+                # task dello step DRAFT sono stati saltati (`execution_mode =
+                # SKIP`, perche` i loro `task_runs` del giro precedente sono
+                # ancora COMPLETATO e attivi). Spegnere il segnale li` lo
+                # spegnerebbe su un giro a vuoto: il lotto resterebbe vuoto E
+                # senza segnale, e il rilancio successivo passerebbe allo step
+                # dopo su un documento che non esiste — cioe` il «non fa nulla»
+                # che ha fatto scoprire il difetto.
+                #
+                # Tenendo il segnale acceso finche` le fatture non ci sono, il
+                # problema resta VISIBILE e il lotto continua a chiedere il
+                # proprio rifacimento, invece di sembrare a posto.
+                # (La causa dello SKIP va sanata a monte, sui `task_runs`: non
+                # si aggira qui, o avremmo due posti che decidono se un task va
+                # rifatto.)
+                #
+                # Sta DENTRO la transazione dello step: se lo step solleva, il
+                # rollback ripristina `riaperto_il` — stesso principio del
+                # ritiro segnalazioni qui sopra.
+                if steps and is_lotto_riaperto and self.repository.list_fatture_by_lotto(
+                    lotto_id, limit=1,
+                ):
+                    self.repository.azzera_riaperto_il(lotto_id)
 
                 # D-Q: lo step si e` completato (le fatture sane hanno il loro
                 # lavoro), ma se restano fatture in errore il lotto va marcato

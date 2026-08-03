@@ -32,6 +32,16 @@ Indice test eseguiti:
 30) test_runner_non_ritira_segnalazioni_senza_step_da_eseguire (D-Q p.2)
 31) test_until_done_si_ferma_su_step_con_fatture_in_errore (D-Q, driver)
 32) test_until_done_prosegue_dopo_rilancio_riuscito (D-Q, driver)
+33) test_lotto_riaperto_rifa_step_corrente (Fase 6)
+34) test_lotto_non_riaperto_avanza_allo_step_successivo (Fase 6, controprova)
+35) test_lotto_riaperto_azzera_il_segnale_dopo_lo_step (Fase 6)
+36) test_lotto_riaperto_non_azzera_se_nessuno_step_eseguito (Fase 6)
+37) test_lotto_riaperto_non_innesca_rollback_automatico (Fase 6)
+38) test_lotto_riaperto_non_azzera_se_il_giro_non_ha_prodotto_fatture (Fase 6)
+
+Nota Fase 6 (2026-08-03): i test 33-37 presidiano il ritorno del lotto a
+DRAFT. Il 33 e il 34 vanno letti in COPPIA: da soli non distinguono un ramo
+che discrimina da uno che risponde sempre allo stesso modo.
 
 Nota D-Q (2026-07-31): i test 13-14 ora esercitano il blocco sull'AVANZAMENTO
 (lotto esistente → step successivo); il rilancio dello STESSO step con
@@ -96,6 +106,32 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         # Scopo: Determina se il lotto e` in errore usando lo stato job persistito.
         def is_lotto_in_errore(self, lotto_id):
             return self.get_lotto_job_stato(lotto_id) == "ERRORE"
+
+        # Scopo: Fase 6 — il lotto e` stato riportato a bozza e non ha ancora
+        #        rifatto il giro. Default False: i mock che esercitano la
+        #        riapertura lo sovrascrivono.
+        def is_lotto_riaperto(self, lotto_id):
+            return False
+
+        # Scopo: fatture del lotto. Il default NON e` vuoto perche` il caso
+        #        normale e` «il lotto le ha»: e` l'assenza a essere l'eccezione
+        #        (giro a vuoto), e la dichiarano i test che la esercitano.
+        def list_fatture_by_lotto(self, lotto_id, *, limit=50000):
+            return [1]
+
+        # Scopo: Spegne il segnale di riapertura. Registra la chiamata invece di
+        #        essere un no-op: «e` stato azzerato» e` proprio cio` che i test
+        #        della Fase 6 devono poter asserire.
+        # ⚠️ Lista creata pigramente e NON in `__init__`: meta` delle ~20
+        #        sottoclassi di questo mock definisce il proprio `__init__`
+        #        senza chiamare `super()` (es. `_StatefulRepo`). Un attributo
+        #        inizializzato li` sparirebbe su quelle istanze, e il primo test
+        #        della Fase 6 che le usasse fallirebbe con un AttributeError che
+        #        non parla del difetto vero.
+        def azzera_riaperto_il(self, lotto_id):
+            if not hasattr(self, "riaperto_azzerato"):
+                self.riaperto_azzerato: list[int] = []
+            self.riaperto_azzerato.append(lotto_id)
 
         # Scopo: Recupera `lotto_stato_doc_fiscale_id` dal contesto applicativo o dal database.
         def get_lotto_stato_doc_fiscale_id(self, lotto_id):
@@ -981,4 +1017,173 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         self.assertIsNone(esito["errore"])
         self.assertEqual(
             [c["stato_doc_fiscale_id"] for c in step_executor.calls], [1, 2, 8],
+        )
+
+    # ------------------------------------------------------------------
+    # Fase 6 — ritorno del lotto a DRAFT (brief DB→BE ritorno-lotto-a-draft)
+    # ------------------------------------------------------------------
+
+    # Scopo: 🔴 il cuore della Fase 6. Un lotto riportato a bozza NON e' in
+    #        errore: senza la lettura di `riaperto_il` cadrebbe nel ramo «lotto
+    #        esistente riuscito» e ripartirebbe dallo step SUCCESSIVO (EMESSA),
+    #        saltando proprio la rigenerazione delle righe per cui era stato
+    #        riaperto. Qui deve rifare lo step CORRENTE (DRAFT = 1).
+    def test_lotto_riaperto_rifa_step_corrente(self):
+        class _RiapertoRepo(self._RepoMock):
+            # Scopo: lotto esistente, NON in errore, con il segnale di
+            #        riapertura acceso e stato fiscale fermo a DRAFT.
+            def get_lotto_job_stato(self, lotto_id):
+                return "COMPLETATO"
+
+            def is_lotto_riaperto(self, lotto_id):
+                return True
+
+        repo = _RiapertoRepo()
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with _fake_tx():
+            runner.run_pipeline(LottoPipelineParams(lotto_id=10, dry_run=False))
+        # Step 1 = DRAFT, cioe' quello corrente: rifatto, non saltato.
+        self.assertEqual(
+            [c["stato_doc_fiscale_id"] for c in step_executor.calls], [1],
+        )
+
+    # Scopo: controprova del test precedente — senza il segnale, lo STESSO
+    #        lotto avanza allo step successivo. Se questa fosse verde insieme a
+    #        una versione rotta della precedente, vorrebbe dire che il ramo non
+    #        discrimina: le due vanno lette in coppia.
+    def test_lotto_non_riaperto_avanza_allo_step_successivo(self):
+        class _NormaleRepo(self._RepoMock):
+            def get_lotto_job_stato(self, lotto_id):
+                return "COMPLETATO"
+
+        repo = _NormaleRepo()
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with _fake_tx():
+            runner.run_pipeline(LottoPipelineParams(lotto_id=10, dry_run=False))
+        self.assertEqual(
+            [c["stato_doc_fiscale_id"] for c in step_executor.calls], [2],
+        )
+
+    # Scopo: «chi accende il segnale lo spegne». Dopo che il giro ha rifatto lo
+    #        step, `riaperto_il` va azzerato: senza, il lotto rifarebbe lo
+    #        stesso passo per sempre (brief §3 punto 2).
+    def test_lotto_riaperto_azzera_il_segnale_dopo_lo_step(self):
+        class _RiapertoRepo(self._RepoMock):
+            def get_lotto_job_stato(self, lotto_id):
+                return "COMPLETATO"
+
+            def is_lotto_riaperto(self, lotto_id):
+                return True
+
+        repo = _RiapertoRepo()
+        runner = LottoPipelineRunner(
+            repository=repo, step_executor=self._StepExecutorMock(),
+        )
+        with _fake_tx():
+            runner.run_pipeline(LottoPipelineParams(lotto_id=10, dry_run=False))
+        self.assertEqual(getattr(repo, "riaperto_azzerato", []), [10])
+
+    # Scopo: il segnale NON si spegne se non c'e' stato alcuno step da eseguire
+    #        (catena gia' all'ultimo passo). Spegnerlo li' sarebbe una bugia:
+    #        la riapertura non e' stata onorata da nessuno.
+    def test_lotto_riaperto_non_azzera_se_nessuno_step_eseguito(self):
+        class _RiapertoUltimoStepRepo(self._RepoMock):
+            def get_lotto_job_stato(self, lotto_id):
+                return "COMPLETATO"
+
+            def is_lotto_riaperto(self, lotto_id):
+                return True
+
+            def get_lotto_stato_doc_fiscale_id(self, lotto_id):
+                # Stato non presente nel catalogo step -> nessuno step risolto.
+                return 12345
+
+            def list_pipeline_steps(self, tipo_lotto, **kwargs):
+                return []
+
+        repo = _RiapertoUltimoStepRepo()
+        runner = LottoPipelineRunner(
+            repository=repo, step_executor=self._StepExecutorMock(),
+        )
+        with _fake_tx():
+            runner.run_pipeline(LottoPipelineParams(lotto_id=10, dry_run=False))
+        self.assertEqual(getattr(repo, "riaperto_azzerato", []), [])
+
+    # Scopo: il lotto riaperto NON deve innescare il rollback automatico dello
+    #        step. Le fatture le ha gia' cancellate la funzione DB: un rollback
+    #        in piu' lavorerebbe sul vuoto. E' la ragione per cui il flag di
+    #        riapertura resta DISTINTO da `is_massivo_error_rerun` invece di
+    #        essere fuso con lui — se venissero fusi, questo test diventa rosso.
+    def test_lotto_riaperto_non_innesca_rollback_automatico(self):
+        class _RiapertoRepo(self._RepoMock):
+            def get_lotto_job_stato(self, lotto_id):
+                return "COMPLETATO"
+
+            def is_lotto_riaperto(self, lotto_id):
+                return True
+
+            # ⚠️ Rollback NON distruttivo sullo step DRAFT: senza questo il
+            #    test sarebbe VACUO. Il mock base espone un rollback solo sullo
+            #    step 2 e per giunta `reset_lotto_draft`, che il guard scarta
+            #    come distruttivo — quindi il rollback non partirebbe comunque,
+            #    e il test resterebbe verde anche fondendo i due flag (provato:
+            #    la prima stesura non moriva sotto mutazione).
+            def get_step_processes(
+                self,
+                stato_doc_fiscale_id,
+                *,
+                tipo_lotto,
+                utility_id,
+                tipo_doc_fiscale_id,
+                rollback,
+            ):
+                if rollback and stato_doc_fiscale_id == 1:
+                    return [{"task": "ricalcola_iva_lotto", "params": {}}]
+                return []
+
+        repo = _RiapertoRepo()
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with _fake_tx():
+            runner.run_pipeline(
+                LottoPipelineParams(
+                    lotto_id=10, dry_run=False, meta={"auto_step_rollback": True},
+                )
+            )
+        self.assertEqual(
+            [c.get("rollback") for c in step_executor.calls], [False],
+            "Il lotto riaperto non deve eseguire il rollback dello step: le "
+            "fatture le ha gia' cancellate la funzione DB",
+        )
+
+    # 38) 🔴 Il caso scoperto sul campo (lotto 1279, 2026-08-03): il rifacimento
+    #     attraversa lo step ma NON produce fatture — i task erano tutti in
+    #     `SKIP` perche' i loro task_runs risultavano gia' COMPLETATO. Il
+    #     segnale NON deve spegnersi: se si spegnesse, il lotto resterebbe
+    #     vuoto E senza segnale, e il rilancio dopo passerebbe allo step
+    #     successivo su un documento che non esiste. E' esattamente il «non fa
+    #     nulla» che ha portato a scoprire il difetto.
+    def test_lotto_riaperto_non_azzera_se_il_giro_non_ha_prodotto_fatture(self):
+        class _RiapertoAVuotoRepo(self._RepoMock):
+            def get_lotto_job_stato(self, lotto_id):
+                return "COMPLETATO"
+
+            def is_lotto_riaperto(self, lotto_id):
+                return True
+
+            # Lo step gira, ma il lotto resta senza fatture.
+            def list_fatture_by_lotto(self, lotto_id, *, limit=50000):
+                return []
+
+        repo = _RiapertoAVuotoRepo()
+        runner = LottoPipelineRunner(
+            repository=repo, step_executor=self._StepExecutorMock(),
+        )
+        with _fake_tx():
+            runner.run_pipeline(LottoPipelineParams(lotto_id=10, dry_run=False))
+        self.assertEqual(
+            getattr(repo, "riaperto_azzerato", []), [],
+            "Un rifacimento a vuoto non deve spegnere il segnale di riapertura",
         )
