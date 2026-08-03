@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.request_log — colonna emittente_attivo_id
+#   (brief-db-impersonazione-scope-emittente.md §4.4.1 / §8.9).
+#
+# A COSA SERVE. Il middleware BE scrive gia' una riga per ogni /api/* con
+#   auth_user_id, path e status_code. Con questa colonna la stessa riga dice
+#   anche IN CHE VESTE l'utente stava operando: senza infrastruttura nuova si
+#   ottiene «cosa ha fatto, e da dentro quale emittente».
+#
+# ⚠️ NESSUNA FK, deliberato. Precedente in casa: pratiche.reconcile_errori e'
+#   dichiaratamente senza FK perche' e' un log resiliente. request_log e' ad
+#   alto volume con purge automatica (cleanup_at): una FK verso
+#   emittenti_fiscali aggiungerebbe un lookup per riga e — peggio — farebbe si'
+#   che un log storico impedisca di rimuovere un emittente. Il valore qui e' un
+#   dato registrato, non un riferimento vivo.
+#
+# ⚠️ NULLABLE, e resta NULL nella stragrande maggioranza delle righe: la
+#   valorizzano solo le richieste con emittente attivo. NULL significa «nessuna
+#   impersonazione», che e' il comportamento di default di chiunque non sia un
+#   super admin che ha scelto.
+#
+# Copre anche i tentativi RESPINTI: uno switch rifiutato (status 403) resta qui
+#   con l'emittente che si voleva assumere. E' la meta' che la storicizzazione
+#   di config.user_emittente_attivo non puo' dare, perche' registra solo i
+#   cambi riusciti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260804-12-alter-request-log-add-emittente-attivo-mctit.yaml
+
+  - changeSet:
+      id: 20260804-12-alter-request-log-add-emittente-attivo
+      author: mctit
+      comment: >
+        Aggiunge dbops.request_log.emittente_attivo_id: traccia in che veste
+        (quale emittente attivo) e' stata servita ogni richiesta API. Senza FK
+        per scelta: log ad alto volume con purge.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: dbops
+                tableName: request_log
+            - not:
+                - columnExists:
+                    schemaName: dbops
+                    tableName: request_log
+                    columnName: emittente_attivo_id
+      changes:
+        - addColumn:
+            schemaName: dbops
+            tableName: request_log
+            columns:
+              - column:
+                  name: emittente_attivo_id
+                  type: bigint
+                  remarks: >-
+                    Emittente fiscale attivo (impersonato) al momento della
+                    richiesta. NULL = nessuna impersonazione. Senza FK: log ad
+                    alto volume con purge, il valore e' registrato non
+                    referenziato.
+
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              COMMENT ON COLUMN dbops.request_log.emittente_attivo_id IS
+                'anagrafiche.emittenti_fiscali.id su cui l''utente stava operando '
+                '(GUC app.current_emittente_id). NULL = nessuna impersonazione. '
+                'Nessuna FK deliberata: log ad alto volume con purge, un record '
+                'storico non deve impedire di rimuovere un emittente. Insieme a '
+                'storico.user_emittente_attivo copre l''audit del brief: qui i '
+                'tentativi, anche respinti (status 403), nella gemella storica i '
+                'cambi riusciti.';
+
+      rollback:
+        - dropColumn:
+            schemaName: dbops
+            tableName: request_log
+            columnName: emittente_attivo_id

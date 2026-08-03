@@ -1,0 +1,136 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_check_lotto_fatture_pre_fiscali — la definizione di
+#   «pre-fiscale» per le fatture di un lotto, in UN posto solo.
+#   (risposta-db-azioni-lista-lotto.md §3.2)
+#
+# PERCHE' ESISTE: la stessa SELECT count(*) sul perimetro pre-fiscale
+#   e' oggi scritta due volte — in fn_annulla_lotto_da_draft e in
+#   fn_riporta_lotto_a_draft — e sta per diventare tre con le
+#   capabilities della lista lotti. E' il FATTO condiviso dai due
+#   verbi distruttivi: entrambi cancellano fatture, ed entrambi
+#   possono farlo solo finche' il documento non e' fiscalmente nato.
+#
+# COS'E' PRE-FISCALE: DRAFT o EMESSA. A EMESSA la fattura non e'
+#   ancora numerata (C-19), quindi e' ancora demolibile. Da DEFINITIVA
+#   in poi no. ⚠️ La condizione e' scritta con IS DISTINCT FROM sui
+#   DUE id (e non con un NOT IN sui codici): cosi' una fattura con
+#   stato_doc_fiscale_id NULL conta come NON pre-fiscale — fail-closed.
+#   Un NOT IN via JOIN la perderebbe per strada.
+#
+# Funzione PURA (fn_check_*): non solleva errori di dominio, non
+#   scrive. Solleva solo su parametro invalido e su configurazione
+#   mancante (installazione rotta, non condizione di dominio).
+# Codici errore: 799 E_LOTTO_FATTURE_NON_PRE_FISCALI (messaggi_errore.csv).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260804-01-create-fn-check-lotto-fatture-pre-fiscali-mctit.yaml
+
+  - changeSet:
+      id: 20260804-01-create-fn-check-lotto-fatture-pre-fiscali
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Funzione pura: motivi ostativi legati alle FATTURE del lotto (almeno una
+        oltre lo stato pre-fiscale DRAFT/EMESSA). Sorgente unica condivisa dai
+        due verbi distruttivi del lotto (annulla, riporta a bozza) e dalle
+        capabilities. Ritorna [] se tutte le fatture sono demolibili.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_lotto_fatture_pre_fiscali(
+                  p_lotto_id vendite.fatturazione_lotti.id%TYPE
+              )
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: elencare i motivi, sul versante FATTURE, che impediscono
+              --   di demolire il contenuto di un lotto. Funzione PURA
+              --   (fn_check_*): nessun raise di dominio, nessuna scrittura.
+              --   Consumatori: script.fn_check_lotto_annullabile,
+              --   script.fn_check_lotto_riportabile_a_draft e — per loro
+              --   tramite — script.fn_available_actions_lotto.
+              -- Ritorna: [] se tutte le fatture del lotto sono pre-fiscali;
+              --   altrimenti array di {codice, reason, reason_key, dettaglio}.
+              DECLARE
+                v_motivi    jsonb := '[]'::jsonb;
+                v_draft_id  config.stati_doc_fiscale.id%TYPE;
+                v_emessa_id config.stati_doc_fiscale.id%TYPE;
+                v_bad       integer;
+              BEGIN
+                -- Guard parametro (AGENTS.md): id assente o non valido e' un
+                -- errore di programmazione, non una condizione di dominio.
+                IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'script','fn_check_lotto_fatture_pre_fiscali','E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','lotto_id','valore',p_lotto_id),
+                    NULL::uuid, 'lotto_id obbligatorio (>0)');
+                END IF;
+
+                SELECT s.id INTO v_draft_id
+                  FROM config.stati_doc_fiscale s
+                 WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE LIMIT 1;
+                IF v_draft_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'script','fn_check_lotto_fatture_pre_fiscali','E_CONFIG_MANCANTE',
+                    jsonb_build_object('codice_interno','DRAFT'),
+                    NULL::uuid, 'stato DRAFT non configurato');
+                END IF;
+
+                SELECT s.id INTO v_emessa_id
+                  FROM config.stati_doc_fiscale s
+                 WHERE s.codice_interno = 'EMESSA' AND s.attivo IS TRUE LIMIT 1;
+                IF v_emessa_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'script','fn_check_lotto_fatture_pre_fiscali','E_CONFIG_MANCANTE',
+                    jsonb_build_object('codice_interno','EMESSA'),
+                    NULL::uuid, 'stato EMESSA non configurato');
+                END IF;
+
+                -- MOTIVO UNICO — almeno una fattura oltre il pre-fiscale.
+                -- IS DISTINCT FROM su entrambi gli id: lo stato NULL conta
+                -- come NON pre-fiscale (fail-closed), un JOIN lo perderebbe.
+                SELECT count(*)
+                  INTO v_bad
+                  FROM vendite.fatture f
+                  JOIN vendite.fatturazione_lotti_fatture lf
+                    ON lf.fattura_id = f.id
+                 WHERE lf.lotto_id = p_lotto_id
+                   AND f.stato_doc_fiscale_id IS DISTINCT FROM v_draft_id
+                   AND f.stato_doc_fiscale_id IS DISTINCT FROM v_emessa_id;
+
+                IF v_bad > 0 THEN
+                  v_motivi := v_motivi || jsonb_build_object(
+                    'codice',     'E_LOTTO_FATTURE_NON_PRE_FISCALI',
+                    'reason',     'FATTURE_NON_PRE_FISCALI',
+                    'reason_key', 'vendite.lotti.azione_reason.fatture_non_pre_fiscali',
+                    'dettaglio',  v_bad);
+                END IF;
+
+                RETURN v_motivi;
+              END;
+              $function$;
+
+              -- COMMENT e DROP esigono tipi RISOLTI: qui il %TYPE non si usa.
+              COMMENT ON FUNCTION script.fn_check_lotto_fatture_pre_fiscali(bigint)
+              IS 'Funzione PURA (fn_check_*): motivi ostativi, sul versante FATTURE, alla demolizione del contenuto di un lotto. Ritorna [] se tutte le fatture sono pre-fiscali (DRAFT o EMESSA, cioe'' non ancora numerate — C-19), altrimenti {codice, reason, reason_key, dettaglio} con il conteggio (codice 799). Sede UNICA della definizione di «pre-fiscale» per le fatture di un lotto: la usano script.fn_check_lotto_annullabile e script.fn_check_lotto_riportabile_a_draft, e per loro tramite le due fn di mutazione e le capabilities. ⚠️ La condizione e'' IS DISTINCT FROM sui due id e non un NOT IN sui codici: una fattura con stato_doc_fiscale_id NULL deve contare come NON pre-fiscale (fail-closed). rev 2026-08-04.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_check_lotto_fatture_pre_fiscali(bigint);

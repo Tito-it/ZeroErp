@@ -214,7 +214,7 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 213,12,stato_doc_fiscale,Stato fiscale,Stato fiscale dei documenti del lotto,stato_doc_fiscale_descrizione,informazione,string,,150,90,center,Stato,3,f,t,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_stato_doc,50
 214,12,data_insert,Creato,Data e ora di creazione del lotto,data_insert,informazione,datetime,datetime_short,150,100,center,Audit,4,f,t,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_creato,10
 215,12,user_insert,Creato da,Utente che ha generato il lotto,user_insert,informazione,string,,120,110,left,Audit,4,f,t,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_creato_da,5
-216,12,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,f,2026-07-30 00:00:00,mctit,common.col_azioni,100
+216,12,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-07-30 00:00:00,mctit,common.col_azioni,100
 217,13,codice,Codice,Codice della categoria cliente,codice,identificatore,string,,160,10,left,Identificazione,1,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,amministrazione.categorie_clienti.col_codice,100
 218,13,descrizione,Descrizione,Descrizione della categoria cliente,descrizione,informazione,string,,300,20,left,Identificazione,1,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,amministrazione.categorie_clienti.col_descrizione,95
 219,13,ordinamento,Ordinamento,Peso di ordinamento nelle liste di scelta,ordinamento,informazione,numeric,,120,30,right,Configurazione,2,f,t,t,f,f,t,2026-07-31 00:00:00,mctit,amministrazione.categorie_clienti.col_ordinamento,40

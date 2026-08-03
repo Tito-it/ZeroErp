@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_check_lotto_annullabile — motivi ostativi all'ANNULLAMENTO
+#   di un lotto (risposta-db-azioni-lista-lotto.md §3.2)
+#
+# SORGENTE UNICA della regola, sul modello di fn_check_commessa_chiudibile:
+#   1. vendite.fn_annulla_lotto_da_draft (20260804-04) solleva il codice
+#      del PRIMO motivo;
+#   2. script.fn_available_actions_lotto (20260804-06) espone l'azione
+#      'annulla' con enabled=false + reasons.
+#
+# PERCHE' SERVE (il bug che chiude): fino al 2026-07-31 il pulsante
+#   «Annulla lotto» era visibile da EMESSA in poi, dove la funzione
+#   rifiuta — un vicolo cieco trovato in-app. E' stato tappato con un
+#   v-if in Vue, cioe' ricopiando in JavaScript una precondizione che
+#   vive in PL/pgSQL. Da qui in avanti la precondizione e' UNA, e la UI
+#   la legge invece di riscriverla.
+#
+# I DUE MOTIVI, nell'ordine in cui la fn di mutazione li solleva:
+#   1. il lotto non e' in DRAFT (798) — l'annullamento CHIUDE il lotto
+#      portandolo ad ANNULLATA e non si riapre: e' ammesso solo finche'
+#      il lotto non ha prodotto nulla oltre la bozza. Da EMESSA la via
+#      d'uscita e' un'altra ed e' non distruttiva: «riporta in bozza»;
+#   2. almeno una fattura oltre il pre-fiscale (799) — delegato a
+#      script.fn_check_lotto_fatture_pre_fiscali, che e' la sede unica
+#      della definizione di «pre-fiscale».
+#
+# NON e' un motivo il tipo di lotto: dal 2026-08-02 (D-L pt.2 + D-T)
+#   l'annullamento vale per MASSIVO **e** GIORNALIERO.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260804-02-create-fn-check-lotto-annullabile-mctit.yaml
+
+  - changeSet:
+      id: 20260804-02-create-fn-check-lotto-annullabile
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Funzione pura: motivi ostativi all'annullamento di un lotto (stato non
+        DRAFT, fatture oltre il pre-fiscale). Sorgente unica condivisa fra
+        fn_annulla_lotto_da_draft e le capabilities. Ritorna [] se annullabile.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_lotto_annullabile(
+                  p_lotto_id vendite.fatturazione_lotti.id%TYPE
+              )
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: elencare i motivi che impediscono l'ANNULLAMENTO di un
+              --   lotto. Funzione PURA (fn_check_*): nessun raise di dominio,
+              --   nessuna scrittura. Consumatori: vendite.fn_annulla_lotto_da_draft
+              --   (che solleva il codice del primo motivo) e
+              --   script.fn_available_actions_lotto (che espone enabled + reasons).
+              -- Ritorna: [] se annullabile; altrimenti array ordinato di
+              --   {codice, reason, reason_key, dettaglio}.
+              DECLARE
+                v_motivi    jsonb := '[]'::jsonb;
+                v_stato_cod config.stati_doc_fiscale.codice_interno%TYPE;
+                v_trovato   boolean;
+              BEGIN
+                -- Guard parametro (AGENTS.md).
+                IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'script','fn_check_lotto_annullabile','E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','lotto_id','valore',p_lotto_id),
+                    NULL::uuid, 'lotto_id obbligatorio (>0)');
+                END IF;
+
+                -- Stato corrente per CODICE: il codice_interno e' la chiave
+                -- stabile, l'id no (lezione B-4). LEFT JOIN perche' un lotto
+                -- senza stato deve arrivare al confronto e fallirlo, non
+                -- sparire dalla riga.
+                SELECT true, sdf.codice_interno
+                  INTO v_trovato, v_stato_cod
+                  FROM vendite.fatturazione_lotti fl
+                  LEFT JOIN config.stati_doc_fiscale sdf
+                    ON sdf.id = fl.stato_doc_fiscale_id
+                 WHERE fl.id = p_lotto_id;
+
+                IF NOT COALESCE(v_trovato, false) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'script','fn_check_lotto_annullabile','E_LOTTO_NON_TROVATO',
+                    jsonb_build_object('lotto_id',p_lotto_id),
+                    NULL::uuid, p_lotto_id::text);
+                END IF;
+
+                -- MOTIVO 1 — il lotto non e' in bozza.
+                -- L'annullamento e' terminale (ANNULLATA chiude il lotto e non
+                -- si riapre): si concede solo prima che il lotto abbia
+                -- prodotto qualcosa. Da EMESSA la strada e' «riporta in bozza».
+                IF COALESCE(v_stato_cod, '') <> 'DRAFT' THEN
+                  v_motivi := v_motivi || jsonb_build_object(
+                    'codice',     'E_LOTTO_NON_ANNULLABILE',
+                    'reason',     'STATO_NON_DRAFT',
+                    'reason_key', 'vendite.lotti.azione_reason.stato_non_draft',
+                    'dettaglio',  COALESCE(v_stato_cod, '-'));
+                END IF;
+
+                -- MOTIVO 2 — fatture oltre il pre-fiscale. Delegato: la
+                -- definizione di «pre-fiscale» sta in un posto solo.
+                v_motivi := v_motivi
+                          || script.fn_check_lotto_fatture_pre_fiscali(p_lotto_id);
+
+                RETURN v_motivi;
+              END;
+              $function$;
+
+              -- COMMENT e DROP esigono tipi RISOLTI: qui il %TYPE non si usa.
+              COMMENT ON FUNCTION script.fn_check_lotto_annullabile(bigint)
+              IS 'Funzione PURA (fn_check_*): motivi ostativi all''annullamento di un lotto. Ritorna [] se annullabile, altrimenti array ordinato di {codice, reason, reason_key, dettaglio}. Motivo 1: lotto non in DRAFT (codice 798) — ANNULLATA e'' terminale e non si riapre, quindi si concede solo prima che il lotto abbia prodotto qualcosa; da EMESSA la via d''uscita non distruttiva e'' fn_riporta_lotto_a_draft. Motivo 2: fatture oltre il pre-fiscale (codice 799), delegato a script.fn_check_lotto_fatture_pre_fiscali. Il tipo di lotto NON e'' un motivo: dal 2026-08-02 (D-L pt.2 + D-T) vale per MASSIVO e GIORNALIERO. Sorgente UNICA condivisa da vendite.fn_annulla_lotto_da_draft (solleva) e script.fn_available_actions_lotto (espone enabled/reasons): chiude il vicolo cieco del pulsante visibile da EMESSA, trovato in-app il 2026-07-31 e tappato allora con un v-if in Vue. rev 2026-08-04.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_check_lotto_annullabile(bigint);

@@ -20,6 +20,12 @@ SELECT plan(5);
 SET LOCAL zeroerp.allow_lock_columns_override = 'on';
 SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
 
+-- Dal 2026-08-04 il resolver guarda PRIMA l'emittente attivo di sessione
+-- (GUC app.current_emittente_id, impersonazione di scope). Questi cinque casi
+-- descrivono il ramo "riga di configurazione": la GUC va azzerata, altrimenti
+-- l'esito dipenderebbe da come e' stata lasciata la sessione.
+SET LOCAL app.current_emittente_id = '';
+
 -- ============================================================
 -- Setup contesto: serve almeno un emittente attivo nel DB di sviluppo
 -- ============================================================
@@ -33,12 +39,19 @@ ORDER BY ef.id
 LIMIT 1;
 
 CREATE TEMP TABLE tmp_resolve_user AS
+-- Fixture rev 2026-08-04: la selezione passava da
+-- risorse_umane_auth_user.ruolo_sistema, colonna rimossa dal changeSet
+-- 20260429-19a. Da allora il file falliva nel setup e non eseguiva NESSUNA
+-- asserzione (baseline: ERRORE_FIXTURE) — copertura zero su una funzione
+-- comunque viva. L'equivalente attuale di "utente operativo" e' l'identita
+-- digitale OPERATORE attiva, la stessa usata dagli altri test di scope.
 SELECT au.id AS user_id
 FROM django.auth_user au
-JOIN anagrafiche.risorse_umane_auth_user rau ON rau.auth_user_id = au.id
+JOIN anagrafiche.identita_digitali idg
+  ON idg.auth_user_id      = au.id
+ AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+ AND idg.attivo            = true
 WHERE au.is_active = true
-  AND rau.attivo = true
-  AND rau.ruolo_sistema <> 'DISABILITATO'::config.ruolo_sistema
 ORDER BY au.id
 LIMIT 1;
 

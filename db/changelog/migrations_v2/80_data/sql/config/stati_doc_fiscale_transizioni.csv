@@ -1,7 +1,7 @@
 id,stato_from_id,stato_to_id,ammesso,solo_lotto,solo_fattura,meta,data_insert,user_insert,data_update,user_update
 1,1,2,t,t,f,{},2026-02-10 09:00:00+01,titodb,2026-06-19 00:00:00+02,mctit
-2,2,1,t,t,f,{},2026-02-10 09:00:00+01,titodb,2026-08-03 00:00:00+02,mctit
-3,2,8,t,t,f,{},2026-02-10 09:00:00+01,titodb,2026-06-19 00:00:00+02,mctit
+2,2,1,t,t,f,"{""action_key"":""riporta_a_draft"",""label_key"":""vendite.lotti.azione_riporta_a_draft"",""severity"":""warn"",""icon"":""pi pi-undo"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-02-10 09:00:00+01,titodb,2026-08-04 00:00:00+02,mctit
+3,2,8,t,t,f,"{""action_key"":""numera"",""label_key"":""vendite.lotti.azione_numera"",""severity"":""success"",""icon"":""pi pi-verified"",""requires_confirm"":true,""outlined"":false,""manuale"":true}",2026-02-10 09:00:00+01,titodb,2026-08-04 00:00:00+02,mctit
 4,1,8,f,t,f,"{""tipo_lotto"": ""GIORNALIERO""}",2026-02-10 09:00:00+01,titodb,2026-06-19 00:00:00+02,mctit
 5,8,3,t,t,f,{},2026-02-10 09:00:00+01,titodb,2026-02-17 09:46:27.064058+01,titodb
 6,1,2,t,f,t,{},2026-02-10 09:00:00+01,titodb,2026-02-17 09:46:27.064058+01,titodb
@@ -9,4 +9,4 @@ id,stato_from_id,stato_to_id,ammesso,solo_lotto,solo_fattura,meta,data_insert,us
 8,2,8,t,f,t,{},2026-02-10 09:00:00+01,titodb,2026-02-17 09:46:27.064058+01,titodb
 9,8,3,t,f,t,{},2026-02-10 09:00:00+01,titodb,2026-02-17 09:46:27.064058+01,titodb
 10,3,6,t,f,t,{},2026-02-10 09:00:00+01,titodb,2026-02-17 09:46:27.064058+01,titodb
-11,1,7,t,t,f,{},2026-08-02 00:00:00+02,mctit,2026-08-02 00:00:00+02,mctit
+11,1,7,t,t,f,"{""action_key"":""annulla"",""label_key"":""vendite.lotti.azione_annulla"",""severity"":""danger"",""icon"":""pi pi-times-circle"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-08-02 00:00:00+02,mctit,2026-08-04 00:00:00+02,mctit
