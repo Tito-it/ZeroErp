@@ -36,26 +36,43 @@ BEGIN
   --   - usa solo connessione separata via dblink (out-of-tx)
   --   - non solleva eccezioni verso il chiamante
   --   - in caso di failure del canale di log emette WARNING
+  --   - cascata lingua: preferisce v_lang, ripiega su 'it'
+  --     (2026-08-03: prima era un lookup secco su v_lang e
+  --     una sessione non italiana non loggava affatto)
+  --   - se il codice non e' a catalogo, il codice originale
+  --     viene conservato in context->>'codice_errore_originale'
   -- =========================================================
 
   IF p_tx_id IS NULL THEN
     p_tx_id := dbops.fn_get_or_create_session_tx_id();
   END IF;
 
+  -- Riga nella lingua di sessione se esiste, altrimenti la
+  -- riga italiana: ORDER BY booleano, TRUE prima in DESC.
   SELECT id, messaggio, causa, soluzione
     INTO v_id, v_msg, v_detail, v_hint
   FROM config.messaggi_errore
   WHERE codice = p_error_code
-    AND lingua = v_lang
+    AND lingua IN (v_lang, 'it')
+  ORDER BY (lingua = v_lang) DESC
   LIMIT 1;
 
   IF NOT FOUND THEN
+    -- Il codice originale sopravvive al ripiego: error_log
+    -- conserva solo la FK messaggio_errore_id, quindi senza
+    -- questa riga la registrazione resta ma il nome
+    -- dell'errore si perde per sempre (brief §9.9).
+    v_ctx := v_ctx || jsonb_build_object(
+               'codice_errore_originale', p_error_code);
+
     -- Fallback: recupera ANCHE id da MESSAGGIO_NON_DEFINITO
+    -- (stessa cascata: la riga esiste solo in 'it').
     SELECT id, messaggio || ' ' || p_error_code, causa, soluzione
       INTO v_id, v_msg, v_detail, v_hint
     FROM config.messaggi_errore
     WHERE codice = 'MESSAGGIO_NON_DEFINITO'
-      AND lingua = v_lang
+      AND lingua IN (v_lang, 'it')
+    ORDER BY (lingua = v_lang) DESC
     LIMIT 1;
 
     IF v_msg IS NULL THEN
@@ -148,7 +165,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_log_error_only(p_area text, p_function_name text, p_error_code text, p_context jsonb, p_tx_id uuid, VARIADIC p_valori text[])
-IS 'Logga su dbops.error_log via connessione dblink separata (out-of-transaction), senza sollevare eccezioni.';
+IS 'Logga su dbops.error_log via connessione dblink separata (out-of-transaction), senza sollevare eccezioni. Post 2026-08-03: cascata lingua con ripiego su ''it'' (come fn_get_messaggio e fn_log_and_raise_error) e, se il codice non e'' a catalogo, conservazione del codice originale in context->>''codice_errore_originale''.';
 ```
 
 ---

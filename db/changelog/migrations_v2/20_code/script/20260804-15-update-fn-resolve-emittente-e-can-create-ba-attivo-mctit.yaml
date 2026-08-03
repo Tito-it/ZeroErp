@@ -1,0 +1,219 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Dentro quale emittente si crea: il resolver e il gate dei billing account
+#   (brief-db-impersonazione-scope-emittente.md §4.3, §8.3, §8.7).
+#
+# ⚠️ SI CORREGGONO INSIEME PERCHE' RISPONDONO ALLA STESSA DOMANDA. Il brief
+#   chiede solo il resolver, e cosi' com'e' la richiesta non funziona: su
+#   anagrafiche.billing_account il guard di fascia a10
+#   (trgfn_billing_account_guard_admin_globale -> fn_check_user_can_create_ba)
+#   scatta PRIMA del trigger z90 che chiama il resolver. Per un super admin —
+#   che per definizione non ha riga in user_emittenti_fiscali — quel guard oggi
+#   risponde false finche' esiste almeno un emittente attivo: verificato sul DB
+#   di sviluppo. Cambiare solo il resolver lascerebbe la creazione bloccata a
+#   monte, cioe' esattamente lo scenario che il §4.3 del brief vuole abilitare.
+#
+# IL MODELLO (decisione Tid 2026-08-04). Tutti lavorano dentro un emittente:
+#   per l'operatore e' un PERMESSO (la riga in user_emittenti_fiscali, fissata
+#   nella sua configurazione), per il super admin e' una SCELTA (obbligatoria al
+#   login, salvata in config.user_emittente_attivo, riproposta alle sessioni
+#   successive). Stessa semantica, sorgente diversa.
+#
+# --- fn_resolve_emittente_for_user: una regola sola --------------------------
+#
+#   emittente attivo SE VALIDO PER L'UTENTE, altrimenti la riga di configurazione
+#
+#   Il super admin passa dal primo ramo, l'operatore dal secondo. Il "se valido"
+#   e' un giro dalla canonica, non una lettura secca come chiede il §4.3: costa
+#   un check per INSERT (non per riga, quindi l'obiezione di costo del §3 del
+#   brief non si applica) e rende l'invariante «mai allargante» vera per
+#   costruzione, invece che per convenzione sul fatto che il BE non setti mai la
+#   GUC a un operatore. Senza, un operatore di A con la GUC su B aggancerebbe il
+#   documento a B e l'errore arriverebbe piu' avanti come violazione di guard,
+#   invece che come «non puoi lavorare su B».
+#
+# ℹ️ CONTESTI SENZA GUC INVARIATI (job, trigger in batch, seed): v_attivo resta
+#   NULL e la funzione si comporta come prima, incluso il ritorno NULL per
+#   l'admin globale. I tre trigger di default emittente (ordini, contratti,
+#   preventivi) continuano a sollevare il proprio codice *_EMITTENTE_NON_RISOLTO
+#   quando il resolver torna NULL: e' il messaggio che il super admin vedra' in
+#   modalita' «Tutti gli emittenti», ed e' per questo che i testi vengono
+#   riscritti nel CSV dei messaggi.
+#
+# --- fn_check_user_can_create_ba: completata, non indebolita -----------------
+#
+#   Oggi dice «puoi creare un BA se appartieni a un emittente». Da adesso dice
+#   «se appartieni O ci stai dentro» — la stessa frase, applicata al modello
+#   sopra. Nessuna eccezione per il super admin: il ramo nuovo vale per chiunque
+#   abbia un emittente attivo valido, ed e' quello che lo rende difendibile.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260804-15-update-fn-resolve-emittente-e-can-create-ba-attivo-mctit.yaml
+
+  - changeSet:
+      id: 20260804-15-update-fn-resolve-emittente-e-can-create-ba-attivo
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_resolve_emittente_for_user ritorna l'emittente attivo se valido per
+        l'utente, altrimenti la riga di configurazione; fn_check_user_can_create_ba
+        ammette anche chi sta lavorando dentro un emittente. Senza la seconda, il
+        guard a10 su billing_account blocca il super admin prima che il resolver
+        entri in gioco.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'script'
+                AND p.proname IN ('fn_resolve_emittente_for_user',
+                                  'fn_check_user_can_create_ba')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_resolve_emittente_for_user(
+                  p_auth_user_id integer
+              )
+              RETURNS bigint
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  v_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_attivo               anagrafiche.emittenti_fiscali.id%TYPE;
+              BEGIN
+                  -- Guard input: p_auth_user_id obbligatorio e > 0
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script',
+                          'fn_resolve_emittente_for_user',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object(
+                              'detail', 'p_auth_user_id obbligatorio e > 0',
+                              'auth_user_id', p_auth_user_id
+                          ),
+                          NULL::uuid,
+                          'p_auth_user_id obbligatorio e > 0'
+                      );
+                  END IF;
+
+                  -- =========================================================
+                  -- Regola unica (rev 2026-08-04):
+                  --   emittente attivo se valido per l'utente,
+                  --   altrimenti la riga di configurazione.
+                  -- Il super admin passa dal primo ramo, l'operatore dal
+                  -- secondo. Il controllo di validita' passa dalla canonica:
+                  -- cosi' l'invariante "solo restringente, mai allargante" e'
+                  -- vera per costruzione e non per convenzione sul fatto che
+                  -- il BE non setti la GUC agli operatori.
+                  -- =========================================================
+                  v_attivo := NULLIF(
+                                  current_setting('app.current_emittente_id', true),
+                                  ''
+                              )::bigint;
+
+                  IF v_attivo IS NOT NULL
+                     AND script.fn_check_user_emittente_scope(p_auth_user_id, v_attivo) THEN
+                      RETURN v_attivo;
+                  END IF;
+
+                  -- Modello 1-a-1: dopo la migration UNIQUE(auth_user_id)
+                  -- esiste al massimo una riga per utente. LIMIT 1 difensivo.
+                  -- NB: nessun filtro su ef.attivo perche' per costruzione
+                  -- l'EF associato a un utente e' sempre attivo:
+                  --   - dbops.trgfn_child_requires_active_parent su
+                  --     user_emittenti_fiscali blocca INSERT/UPDATE su EF non attivo
+                  --   - dbops.trgfn_prevent_deactivate_if_children su
+                  --     emittenti_fiscali blocca la disattivazione di un EF
+                  --     con righe figlie in user_emittenti_fiscali
+                  -- Aggiungere il filtro qui creerebbe incoerenza con
+                  -- script.fn_check_user_can_create_ba (che non filtra).
+                  SELECT uef.emittente_fiscale_id
+                    INTO v_emittente_fiscale_id
+                    FROM config.user_emittenti_fiscali uef
+                   WHERE uef.auth_user_id = p_auth_user_id
+                   LIMIT 1;
+
+                  RETURN v_emittente_fiscale_id;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_resolve_emittente_for_user(p_auth_user_id integer)
+              IS 'Resolver utente->emittente di lavoro. Regola (rev 2026-08-04): emittente attivo (GUC app.current_emittente_id) se valido per l''utente secondo fn_check_user_emittente_scope, altrimenti la riga 1-a-1 di config.user_emittenti_fiscali. Ritorna anagrafiche.emittenti_fiscali.id (PK reale) o NULL se l''utente non ha ne'' emittente attivo ne'' riga (admin globale in modalita'' "tutti gli emittenti"). Nessun filtro su ef.attivo: per costruzione l''EF associato a un utente e'' sempre attivo (trigger di guardia su entrambi i lati). NON solleva errore in caso di NULL: il chiamante decide la semantica (i trigger di default emittente sollevano *_EMITTENTE_NON_RISOLTO).';
+
+              CREATE OR REPLACE FUNCTION script.fn_check_user_can_create_ba(
+                  p_auth_user_id integer
+              )
+              RETURNS boolean
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  v_has_assoc        boolean;
+                  v_emittenti_attivi bigint;
+                  v_attivo           bigint;
+              BEGIN
+                  -- Guard input: parametro obbligatorio. Pure check, niente raise:
+                  -- ritorna FALSE in caso di input invalido (il trigger di fascia
+                  -- a10 decidera' se sollevare o meno).
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      RETURN false;
+                  END IF;
+
+                  -- 1) Sta lavorando dentro un emittente? (rev 2026-08-04)
+                  --    E' la stessa regola del ramo 2 in forma di sessione:
+                  --    "appartieni a un emittente" oppure "ci stai dentro".
+                  --    Il controllo passa dalla canonica, quindi un utente con
+                  --    emittente attivo fuori dal proprio scope NON guadagna
+                  --    il diritto di creare.
+                  v_attivo := NULLIF(
+                                  current_setting('app.current_emittente_id', true),
+                                  ''
+                              )::bigint;
+
+                  IF v_attivo IS NOT NULL
+                     AND script.fn_check_user_emittente_scope(p_auth_user_id, v_attivo) THEN
+                      RETURN true;
+                  END IF;
+
+                  -- 2) Esiste una riga per l'utente in user_emittenti_fiscali?
+                  --    Se si' => operatore (o admin di emittente) => puo' creare BA.
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM config.user_emittenti_fiscali uef
+                       WHERE uef.auth_user_id = p_auth_user_id
+                  ) INTO v_has_assoc;
+
+                  IF v_has_assoc THEN
+                      RETURN true;
+                  END IF;
+
+                  -- 3) Nessuna associazione: ammesso solo se l'istanza non ha
+                  --    alcun emittente attivo (caso "0 emittenti").
+                  SELECT COUNT(*)
+                    INTO v_emittenti_attivi
+                    FROM anagrafiche.emittenti_fiscali ef
+                   WHERE ef.attivo = true;
+
+                  RETURN v_emittenti_attivi = 0;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_user_can_create_ba(p_auth_user_id integer)
+              IS 'Pure check: l''utente puo'' creare un billing account? Regola (rev 2026-08-04): true se sta lavorando dentro un emittente valido (GUC app.current_emittente_id verificata da fn_check_user_emittente_scope), oppure se ha una riga in config.user_emittenti_fiscali, oppure se l''istanza non ha alcun emittente attivo (bootstrap). Altrimenti false. Usata dal guard a10 anagrafiche.trgfn_billing_account_guard_admin_globale.';
