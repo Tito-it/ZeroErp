@@ -398,3 +398,10 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 398,36,descrizione,Descrizione,,descrizione,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-08-02 00:00:00,mctit,vendite.approvazioni_prezzo.col_descrizione,70
 399,36,priorita,Priorita',,priorita_descrizione,informazione,string,,,40,left,,,t,t,t,f,f,t,2026-08-02 00:00:00,mctit,vendite.approvazioni_prezzo.col_priorita,60
 400,36,azioni,Azioni,,,azione,string,,70,999,center,,,f,f,f,f,f,t,2026-08-02 00:00:00,mctit,common.col_azioni,100
+401,37,articolo_codice,Articolo,,articolo_codice,identificatore,string,,160,10,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.listini.col_articolo,100
+402,37,articolo_descrizione,Descrizione,,articolo_descrizione,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,catalogo.col_descrizione,90
+403,37,uom,UoM,,uom_codice,informazione,string,,70,30,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,catalogo.col_uom,40
+404,37,prezzo,Prezzo,,prezzo,informazione,numeric,,140,40,right,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.listini.col_prezzo,80
+405,37,iva_aliquota,IVA,,iva_aliquota,informazione,numeric,,70,50,right,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.listini.col_iva,30
+406,37,attivo,Stato,,attivo,informazione,boolean,,110,60,center,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.listini.col_stato,20
+407,37,azioni,Azioni,,,azione,string,,70,999,center,,,f,f,f,f,f,t,2026-08-03 00:00:00,mctit,common.col_azioni,100

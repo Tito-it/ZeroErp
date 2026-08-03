@@ -35,3 +35,4 @@ id,lista_id,codice,descrizione,ambito,profilo_accesso_id,emittente_fiscale_id,is
 34,34,coda_lavori_default,Vista standard coda lavori,sistema,,,t,25,"[{""col"":""started_at"",""dir"":""desc""}]",t,2026-08-02 00:00:00,mctit
 35,35,coda_stampa_default,Vista standard coda stampa,sistema,,,t,25,"[{""col"":""data_update"",""dir"":""desc""}]",t,2026-08-02 00:00:00,mctit
 36,36,approvazioni_prezzo_default,Vista standard approvazioni prezzo,sistema,,,t,25,"[{""col"":""data_insert"",""dir"":""desc""}]",t,2026-08-02 00:00:00,mctit
+37,37,listini_righe_default,Vista standard righe versione listino,sistema,,,t,25,"[{""col"":""articolo_descrizione"",""dir"":""asc""}]",t,2026-08-03 00:00:00,mctit

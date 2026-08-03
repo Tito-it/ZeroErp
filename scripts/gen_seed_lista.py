@@ -242,6 +242,12 @@ WHITELIST_BE: dict[str, tuple] = {
     # nel repository che porta il nome della lista, dove non c'e'.
     "vendite.approvazioni_prezzo": ("apps/pratiche/db/pratiche_repository.py",
                                     "PRATICHE_ORDER_COLS"),
+    # Righe di versione listino (2026-08-03). La lista e' una UNION di righe
+    # standalone e compositi bundle: dopo la UNION l'ORDER BY vede solo i nomi
+    # PROIETTATI, per questo la whitelist mappa nome -> se stesso e non ad
+    # alias di tabella.
+    "vendite.listini_righe": ("apps/vendite/db/listini_repository.py",
+                              "RIGHE_ORDER_COLUMNS"),
 }
 
 # Colonne che devono ordinare SEMPRE, quando la lista ce l'ha (regola di
