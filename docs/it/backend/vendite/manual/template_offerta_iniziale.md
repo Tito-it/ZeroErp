@@ -14,10 +14,19 @@ Il template usa solo il document context preparato dal backend
 (`apps.vendite.services.offerta_document_context_builder.OffertaDocumentContextBuilder`).
 Non esegue query, chiamate esterne o logica business.
 
-Shape del context (versione 1, [vedi sorgente](../../../../../backend/apps/vendite/services/offerta_document_context_builder.py)):
+Shape del context ([vedi sorgente](../../../../../backend/apps/vendite/services/offerta_document_context_builder.py)):
+
+> ⚠️ **Questo file è un modello da copiare, non un registro storico** — lo dice
+> lo Scopo qui sopra. Quindi va tenuto allineato al context builder: chi lo apre
+> per scrivere un template nuovo copia quello che ci trova. Aggiornato il
+> 2026-08-03 col rename `emittente_fiscale.descrizione` →
+> `.ragione_sociale`; nella stessa passata sono stati tolti dall'esempio HTML il
+> segnaposto `"Emittente fiscale demo"` e la nota di lavoro «Dati emittente/asset
+> da collegare nelle prossime iterazioni», che erano finiti — per copia — su
+> quattro template PUBBLICATI e quindi su documenti diretti al cliente.
 
 - `offerta` — testata: `codice`, `validita_dal/al`, `data_emissione`,
-  `stato.{codice,descrizione}`, `emittente_fiscale.{codice,descrizione}`,
+  `stato.{codice,descrizione}`, `emittente_fiscale.{codice,ragione_sociale}`,
   `utility_ref.{codice,descrizione}`, `listino.{codice,descrizione,versione_codice}`,
   `pricing.{modalita,tipo_variazione_globale,valore_variazione_globale}`,
   `revisione_numero`, `contratto.{id,numero}` (popolato dopo push), `meta`.
@@ -307,13 +316,11 @@ Shape del context (versione 1, [vedi sorgente](../../../../../backend/apps/vendi
       <div class="brand">
         <div class="brand-mark">ZE</div>
         <div class="brand-name">
-          {{ offerta.emittente_fiscale.descrizione or "Emittente fiscale demo" }}
+          {{ offerta.emittente_fiscale.ragione_sociale }}
         </div>
         <div class="brand-meta">
           {% if offerta.emittente_fiscale.codice %}
             Codice emittente: {{ offerta.emittente_fiscale.codice }}
-          {% else %}
-            Dati emittente/asset da collegare nelle prossime iterazioni
           {% endif %}
         </div>
       </div>
