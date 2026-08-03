@@ -82,7 +82,7 @@ documentati nelle API delle sorgenti funzionali che li espongono
         "file_name_pattern": "preventivo-{numero}.pdf",
         "emittente_fiscale_id": 5,
         "emittente_fiscale_codice": "EF-001",
-        "emittente_fiscale_descrizione": "Acme SRL",
+        "emittente_ragione_sociale": "Acme SRL",
         "data_insert": "2026-04-29T00:00:00+02:00",
         "data_update": "2026-04-29T00:00:00+02:00"
       }

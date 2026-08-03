@@ -60,7 +60,7 @@ function emptyForm() {
     emittente_fiscale_id: null,
     // Denormalizzati dal payload BE per display read-only in edit.
     emittente_fiscale_codice: null,
-    emittente_fiscale_descrizione: null,
+    emittente_ragione_sociale: null,
     mime_type: null,
     file_name: null,
     file_size_bytes: null,
@@ -83,7 +83,7 @@ async function loadDetail() {
     asset_tipo_id: data.asset_tipo_id ?? null,
     emittente_fiscale_id: data.emittente_fiscale_id ?? null,
     emittente_fiscale_codice: data.emittente_fiscale_codice ?? null,
-    emittente_fiscale_descrizione: data.emittente_fiscale_descrizione ?? null,
+    emittente_ragione_sociale: data.emittente_ragione_sociale ?? null,
     mime_type: data.mime_type ?? null,
     file_name: data.file_name ?? null,
     file_size_bytes: data.file_size_bytes ?? null,

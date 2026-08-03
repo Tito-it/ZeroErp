@@ -75,7 +75,7 @@ _ORDER_COLS_CONTRATTI: dict[str, str] = {
     # uscite il 2026-07-31: nessuna colonna del catalogo le usa come
     # `campo_sorgente` (le prime due sono tecniche — danno la severity al Tag di
     # stato, nel seed sono invisibili e `ordinabile=f`; la colonna Emittente
-    # legge `emittente_fiscale_descrizione`). Una voce che nessuna colonna puo'
+    # legge `emittente_ragione_sociale`). Una voce che nessuna colonna puo'
     # richiedere e' una capacita' irraggiungibile, non una riserva.
     "categoria_cliente_snapshot_codice": "v.categoria_cliente_snapshot_codice",
     "data_insert": "v.data_insert",
@@ -98,7 +98,7 @@ _SELECT_COLS_CONTRATTO = """
     -- `emittente_fiscale_id` valorizzato.
     ef.codice           AS emittente_fiscale_codice,
     s_ef.ragione_sociale_completa
-                        AS emittente_fiscale_descrizione,
+                        AS emittente_ragione_sociale,
     c.billing_account_id,
     -- soggetto_ruolo del cliente (BA): serve al FE per la gestione
     -- indirizzi documento (elenco anagrafico cascata).

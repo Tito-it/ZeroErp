@@ -2012,42 +2012,83 @@ maturità.
 
 ## 9. Registro
 
-### 2026-08-03 · `VersioneDrawer` sbloccata: i compositi sono UNA lista sola
+### 2026-08-03 · Rename `emittente_fiscale_descrizione` → `emittente_ragione_sociale`: BE/FE allineati, una cosa TENUTA apposta
 
-Il BE ha chiuso **l'unica voce che era sul percorso critico** — la domanda di
-modello sui compositi — e con essa l'ultimo ostacolo non-decisionale del Gruppo A.
+Scrive il BE/FE. Rename eseguito su **20 file**: i 10 repository/types che
+proiettavano l'alias, i 4 test che lo asserivano, i 4 file FE e i 2 manuali API
+correnti (`api_ui_admin_personalizzazioni`, `api_documenti_templates`). I brief
+storici in `work-done/` **non** sono stati riscritti: registrano cosa era vero
+allora.
 
-**La decisione**: righe standalone e compositi bundle sono **una lista sola**
-(Tid, 2026-08-02), quindi arrivano insieme dallo stesso endpoint paginato. Il BE
-li unisce con una `UNION ALL` e `total` li conta entrambi; l'endpoint separato è
-stato **rimosso** (`urls_listini`, `views_listini`, `listini_service`,
-`api/listini.js` si sono tutti accorciati).
+Con il seed arrivato nello stesso push, **la suite torna verde: 3452 OK**. Le due
+chiavi di whitelist di `documenti_repository` che tenevano rosso il presidio ora
+combaciano col `campo_sorgente` rinominato.
 
-Prima i compositi venivano da una seconda chiamata e venivano concatenati nel
-`.vue` **dopo** la paginazione: conteggio e numero di pagine erano quelli delle
-sole righe standalone, cioè mentivano. Era esattamente il motivo per cui questa
-lista non poteva montare `<ListaConfigurabile>`, che ha `lazy` fisso e prende
-`total` dal caller.
+Verificato contro il DB reale: le 9 liste che attraversano l'alias rispondono e
+proiettano il nome nuovo, nessuna porta più il vecchio. Le 6 viste `vw_*_lista`
+risolvono la colonna (tornano 0 righe perché interrogate senza GUC operatore —
+è la RLS, non l'assenza di dati).
 
-Due proiezioni nuove che servono al seed: **`is_composito`** (discriminatore) e
-**`row_key`** (chiave stabile della DataTable — l'id per le standalone,
-`composito:<uuid>` per i padri, che un id di testata non ce l'hanno perché sono
-N righe in `listini_righe_componenti`).
+#### ✅ La chiave JSON dell'offerta — tenuta ferma, poi chiusa in giornata
 
-✅ Hanno anche aggiunto **`iva_aliquota`** a `RIGHE_ORDER_COLUMNS`, che era la
-voce «migliora» della commessa: la whitelist ora copre tutte e cinque le colonne
-visibili più `attivo`.
+⛔→✅ **`emittente_fiscale.descrizione` → `ragione_sociale`: rinominata**, ma
+**dopo** il template e non prima. Il paragrafo che segue resta perché la ragione
+dell'attesa è la parte che vale.
 
-➡️ **La palla torna al DB**: la lista è seedabile e non aspetta più nessuno.
+La sorgente era già il nome nuovo, la chiave no.
 
-> ⚠️ **Nota di metodo, terza volta in due giorni.** Questo lavoro non è stato
-> annotato qui: la spiegazione — buona, e più chiara di quanto sarebbe stato un
-> riassunto — vive in un commento dentro `VersioneDrawer.vue`. Chi legge il
-> piano per sapere cosa resta aperto trova ancora il punto 4 come bloccante,
-> e non lo è più da un push.
-> È lo stesso schema del sesto lotto convertito «mentre non guardavamo» e della
-> conversione di `AuditLogView`. Il documento non si aggiorna da solo, e chi
-> consegna è l'unico che sa cosa ha consegnato.
+Il motivo è che il template da aggiornare **non è quello indicato**: il
+`.md` in `docs/it/backend/vendite/manual/` documenta il template, ma il corpo
+vivo è **dato a DB** — `documenti.template_documenti_versioni`, versione
+**id 44** (`OffertaComm`, stato **PUBBLICATA**), il cui `html_template` contiene
+`offerta.emittente_fiscale.descrizione`.
+
+Con `StrictUndefined` rinominare la chiave da sola non svuota il campo: **fa
+fallire il render** dell'offerta. È la stessa famiglia del difetto
+builder↔template che lo smoke C-9 aveva scoperto sulla stampa FATTURA.
+
+➡️ **Andata così, e la sequenza ha funzionato.** Il team DB ha pubblicato nuove
+versioni dei quattro template scritte **tolleranti al fallback**
+(`.get("ragione_sociale") or .get("descrizione") or …`): con entrambe le forme
+accettate non esiste una finestra di render rotto, e il BE ha potuto rinominare
+la chiave subito dopo. È il modello da riusare quando il contro-pezzo di un
+rename è dato a DB — costa una riga di template e toglie il vincolo di
+simultaneità.
+
+#### 🔴 E cercandolo è saltato fuori altro: tre stampe mostrano l'impalcatura
+
+Partiti da una segnalazione di Tid — l'ordine stampava
+«Emittente fiscale PGTAP-EF-20260126172242554» — si è visto che **non era il
+rename**: era un testo di scaffolding rimasto dentro template **PUBBLICATI**.
+Cercata la famiglia invece del caso singolo, sono tre:
+
+| Template (versione PUBBLICATA) | Cosa stampa oggi |
+|---|---|
+| `Ordini vendita` (id 74) | `Emittente fiscale {{ ordine.emittente.codice or "demo" }}` |
+| `DDT vendita` (id 47) | `Emittente fiscale {{ ddt.emittente.codice or "demo" }}` |
+| `Preventivo` (id 7) | `Emittente fiscale demo` — **stringa cablata**, uguale su ogni preventivo |
+
+Tutti e tre hanno anche la riga
+«Dati emittente/asset da collegare nelle prossime iterazioni», che è una nota di
+lavoro finita su documenti che vanno al cliente.
+
+**Metà del difetto era del BE, ed è chiusa**: il contesto non offriva un nome da
+stampare. `ordine` e `ddt` avevano solo `id` e `codice`; il `preventivo` non
+aveva affatto il blocco emittente. Ora tutti e tre espongono
+`emittente.denominazione` — stessa chiave della fattura, che stampa bene, così
+chi scrive un template usa un nome solo. Verificato: i tre contesti portano
+«Gestore Test pgTAP».
+
+**L'altra metà era dato a DB, ed è stata fatta in giornata**: nuove versioni
+PUBBLICATE (ordini 139, DDT 140, offerta 141, preventivo 8) che leggono
+`emittente.denominazione` con fallback, senza più la riga di promemoria. Il team
+DB ha anche corretto un quarto caso che il BE non aveva contato: **anche
+l'offerta** aveva la nota di lavoro e il «Emittente fiscale demo» cablato.
+
+✅ Verificato a valle: i quattro contesti espongono esattamente la chiave che il
+rispettivo template pubblicato legge — `ordine`/`ddt`/`preventivo`
+`.emittente.denominazione`, offerta `.emittente_fiscale.ragione_sociale` — e
+tutti e quattro valorizzano «Gestore Test pgTAP» invece del codice.
 
 ---
 

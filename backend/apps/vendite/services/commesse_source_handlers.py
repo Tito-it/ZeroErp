@@ -435,6 +435,15 @@ class BaseSourceHandler(ABC):
                     tipo_commessa = self._extract_tipo_commessa(row)
                     policy_fatturazione = self._extract_policy_fatturazione(row)
 
+                    # ⚠️ Le condizioni di pagamento SONO dimensioni di questa
+                    # chiave, non decorazione: D-R le mette nella chiave della
+                    # commessa. Ometterle qui farebbe collassare in UNA sola
+                    # commessa due ordini dello stesso cliente con termini
+                    # DIVERSI — la cache locale restituirebbe l'id della prima
+                    # e la seconda erediterebbe il termine sbagliato. E'
+                    # l'errore che si commette fixando solo la propagazione:
+                    # produce un difetto piu' difficile da vedere di quello
+                    # che si voleva togliere.
                     cache_key = (
                         row.billing_account_id,
                         row.utility_id,
@@ -444,6 +453,8 @@ class BaseSourceHandler(ABC):
                         row.emittente_soggetto_ruolo_id,
                         row.competenza_dal,
                         row.competenza_al,
+                        row.termine_pagamento_id,
+                        row.modalita_pagamento_id,
                     )
 
                     if cache_key in commessa_cache:
@@ -458,6 +469,8 @@ class BaseSourceHandler(ABC):
                             emittente_soggetto_ruolo_id=row.emittente_soggetto_ruolo_id,
                             competenza_dal=row.competenza_dal,
                             competenza_al=row.competenza_al,
+                            termine_pagamento_id=row.termine_pagamento_id,
+                            modalita_pagamento_id=row.modalita_pagamento_id,
                         )
                         commessa_cache[cache_key] = commessa_id
 

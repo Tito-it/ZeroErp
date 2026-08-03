@@ -161,6 +161,15 @@ class PreventivoDocumentContextBuilder(DocumentContextBuilder):
                 "id": testata.get("utility_id"),
                 "descrizione": testata.get("utility_descrizione"),
             },
+            # Aggiunto il 2026-08-03: il contesto preventivo non aveva affatto
+            # l'emittente, e il template pubblicato stampava la stringa cablata
+            # «Emittente fiscale demo» su ogni preventivo. Stessa forma di
+            # fattura/ordine/DDT — un nome solo di chiave su tutti i documenti.
+            "emittente": {
+                "id": testata.get("emittente_fiscale_id"),
+                "codice": testata.get("emittente_fiscale_codice"),
+                "denominazione": testata.get("emittente_ragione_sociale"),
+            },
             "termine_pagamento": {
                 "id": testata.get("termine_pagamento_id"),
                 "descrizione": testata.get("termine_pagamento_descrizione"),

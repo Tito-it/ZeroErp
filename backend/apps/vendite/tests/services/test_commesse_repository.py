@@ -8,6 +8,8 @@
 """
 Indice test eseguiti:
 1) CommesseRepositoryUnitTests.test_get_or_create_commessa_returns_int
+1b) CommesseRepositoryUnitTests.test_get_or_create_commessa_propaga_condizioni_pagamento
+1c) CommesseRepositoryUnitTests.test_get_or_create_commessa_condizioni_assenti_passano_null
 2) CommesseRepositoryUnitTests.test_link_sorgente_returns_int
 3) CommesseRepositoryUnitTests.test_upsert_attivita_returns_result
 4) CommesseRepositoryUnitTests.test_upsert_attivita_uses_defaults
@@ -115,6 +117,42 @@ class CommesseRepositoryUnitTests(TestCase):
         self.assertEqual(result, 42)
         sql = mock_cursor_factory.return_value.execute.call_args[0][0]
         self.assertIn("fn_get_or_create_commessa", sql)
+
+    # Scopo: PROPAGAZIONE CONDIZIONI DI PAGAMENTO (2026-08-03). Il termine del
+    #        documento sorgente deve arrivare a `fn_get_or_create_commessa`:
+    #        e' da li' che la catena lo porta in fattura (D-R). Il difetto che
+    #        questo test blocca e' costato una fattura reale — ORD0004786
+    #        dichiarava 2 rate a 30/60 e la 2263 e' uscita con 1 rata a 30 gg,
+    #        perche' il BE non passava i due parametri che la fn accettava gia'.
+    @patch("apps.vendite.db.commesse_repository.connection.cursor")
+    def test_get_or_create_commessa_propaga_condizioni_pagamento(self, mock_cursor_factory):
+        mock_cursor_factory.return_value = _mock_cursor(fetchone=(77,))
+        repo = CommesseRepository()
+        repo.get_or_create_commessa(
+            billing_account_id=1,
+            utility_id=2,
+            emittente_soggetto_ruolo_id=3,
+            competenza_dal=date(2026, 8, 1),
+            competenza_al=date(2026, 8, 31),
+            termine_pagamento_id=3,
+            modalita_pagamento_id=5,
+        )
+        sql, args = mock_cursor_factory.return_value.execute.call_args[0]
+        # I due parametri devono essere NOMINATI nella chiamata: la fn ha 13
+        # argomenti e la chiamata e' per nome, quindi un posizionale sbagliato
+        # non e' rilevabile guardando i soli valori.
+        self.assertIn("p_termine_pagamento_id", sql)
+        self.assertIn("p_modalita_pagamento_id", sql)
+        self.assertEqual(args[-2:], [3, 5])
+
+    # Scopo: senza condizioni si passano NULL, non si omettono: la fn ha una
+    #        firma fissa e un argomento in meno la renderebbe irrisolvibile.
+    @patch("apps.vendite.db.commesse_repository.connection.cursor")
+    def test_get_or_create_commessa_condizioni_assenti_passano_null(self, mock_cursor_factory):
+        mock_cursor_factory.return_value = _mock_cursor(fetchone=(78,))
+        CommesseRepository().get_or_create_commessa(billing_account_id=1)
+        args = mock_cursor_factory.return_value.execute.call_args[0][1]
+        self.assertEqual(args[-2:], [None, None])
 
     # Scopo: Verifica che get_or_create_commessa accetti i default (#7).
     @patch("apps.vendite.db.commesse_repository.connection.cursor")
