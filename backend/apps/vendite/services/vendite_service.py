@@ -951,9 +951,34 @@ def fn_dash_backlog_documenti(
 def fn_dash_competenza_errori(
     *,
     competenza_mese: date | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
     page: int = 1,
     page_size: int = 50,
 ) -> dict[str, object]:
+    # Ordinamento server-side (8° lotto liste, 2026-08-03): whitelist +
+    # direzione validate qui, fail-fast 400 — stessa forma delle altre liste
+    # dash. Assenti -> ordine storico (eventi recenti prima).
+    ErrorManager.require(
+        order_by is None
+        or order_by in VenditeRepository.DASH_COMPETENZA_ERRORI_SORT_COLUMNS,
+        code="E_VENDITE_VALIDATION",
+        message="Colonna di ordinamento non valida.",
+        detail=(
+            f"order_by='{order_by}' non ammesso. Valori: "
+            f"{', '.join(sorted(VenditeRepository.DASH_COMPETENZA_ERRORI_SORT_COLUMNS))}."
+        ),
+        context={"order_by": order_by},
+        function_name="vendite.vendite_service.fn_dash_competenza_errori",
+    )
+    ErrorManager.require(
+        order_dir is None or order_dir.lower() in ("asc", "desc"),
+        code="E_VENDITE_VALIDATION",
+        message="Direzione di ordinamento non valida.",
+        detail="order_dir deve essere 'asc' o 'desc'.",
+        context={"order_dir": order_dir},
+        function_name="vendite.vendite_service.fn_dash_competenza_errori",
+    )
     offset = _validate_pagination(
         page, page_size, "vendite.vendite_service.fn_dash_competenza_errori"
     )
@@ -963,6 +988,8 @@ def fn_dash_competenza_errori(
         competenza_mese=(
             competenza_mese.replace(day=1) if competenza_mese is not None else None
         ),
+        order_by=order_by,
+        order_dir=order_dir,
         limit=page_size,
         offset=offset,
     )

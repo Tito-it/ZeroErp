@@ -33,6 +33,9 @@ Indice test eseguiti:
 14) DashCompetenzaErroriServiceTests.test_errori_ok_envelope_paginato
 15) DashCompetenzaErroriServiceTests.test_errori_competenza_opzionale_none
 16) DashCompetenzaErroriServiceTests.test_errori_competenza_normalizzata_al_primo
+16a) DashCompetenzaErroriServiceTests.test_errori_order_by_propagato
+16b) DashCompetenzaErroriServiceTests.test_errori_order_by_fuori_whitelist
+16c) DashCompetenzaErroriServiceTests.test_errori_order_dir_invalido
 17) DashCompetenzaGruppiServiceTests.test_gruppi_envelope_con_riepilogo_e_facet
 18) DashCompetenzaGruppiServiceTests.test_gruppi_filtro_tipo_inoltrato_alla_lista_e_ai_totali
 19) DashCompetenzaGruppiServiceTests.test_gruppi_facet_ignora_il_filtro_tipo
@@ -456,6 +459,42 @@ class DashCompetenzaErroriServiceTests(TestCase):
         fn_dash_competenza_errori(competenza_mese=date(2026, 5, 17))
         kwargs = mock_repo.call_args.kwargs
         self.assertEqual(kwargs["competenza_mese"], date(2026, 5, 1))
+
+    # Scopo: order_by in whitelist → propagato al repository (8° lotto liste).
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_competenza_errori",
+        return_value=([], 0),
+    )
+    def test_errori_order_by_propagato(self, mock_repo):
+        fn_dash_competenza_errori(order_by="data_evento", order_dir="asc")
+        kwargs = mock_repo.call_args.kwargs
+        self.assertEqual(kwargs["order_by"], "data_evento")
+        self.assertEqual(kwargs["order_dir"], "asc")
+
+    # Scopo: order_by fuori whitelist → ServiceError 400, repo mai chiamato.
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_competenza_errori",
+        return_value=([], 0),
+    )
+    def test_errori_order_by_fuori_whitelist(self, mock_repo):
+        with self.assertRaises(ServiceError) as ctx:
+            fn_dash_competenza_errori(order_by="messaggio")
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        mock_repo.assert_not_called()
+
+    # Scopo: order_dir non asc/desc → ServiceError 400, repo mai chiamato.
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_competenza_errori",
+        return_value=([], 0),
+    )
+    def test_errori_order_dir_invalido(self, mock_repo):
+        with self.assertRaises(ServiceError) as ctx:
+            fn_dash_competenza_errori(order_by="data_evento", order_dir="banana")
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        mock_repo.assert_not_called()
 
 
 class DashCompetenzaGruppiServiceTests(TestCase):
