@@ -13,8 +13,6 @@ import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import InputNumber from 'primevue/inputnumber'
 import Textarea from 'primevue/textarea'
 import Select from 'primevue/select'
@@ -25,6 +23,7 @@ import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import DocumentoCollegamentiBar from '../_shared/lineage/DocumentoCollegamentiBar.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
@@ -39,7 +38,7 @@ import { mapAvailableActionsToDrawerActions } from '../../core/composables/useDr
 import { useSelezioneToggle } from '../_shared/righe/useSelezioneToggle'
 import { DRAWER_WIDTH, PAGINATION } from '../../core/constants'
 import { STATO_APPROVAZIONE_ATTIVITA, STATO_EMISSIONE_ATTIVITA } from '../constants'
-import { displayDate, toDateString } from '../../core/utils/date'
+import { toDateString } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
 import { extractApiError } from '../../core/utils/apiError'
 import {
@@ -187,6 +186,32 @@ watch(
   },
   { immediate: true },
 )
+
+// Ref alla lista configurabile (per il modale «personalizza», raggiungibile
+// dal drawer tramite l'azione dedicata sotto).
+const listaRef = ref(null)
+
+// Prop paginator per il BB: qui non c'e' useSearchTable (il drawer non e' una
+// pagina lista), quindi la compone il drawer con lo stato che gia' possiede.
+const righePaginatorOptions = computed(() => ({
+  totalRecords: stato.value?.total_attivita ?? 0,
+  rows: righePageSize.value,
+  first: (righePage.value - 1) * righePageSize.value,
+  rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
+}))
+
+// Scopo: allinea la dimensione pagina a quella risolta dal BE (una volta).
+const configAllineata = ref(false)
+function onConfigLoaded(config) {
+  if (configAllineata.value) return
+  configAllineata.value = true
+  const nuovoLimit = config?.pagina_dimensione
+  if (nuovoLimit && nuovoLimit !== righePageSize.value) {
+    righePageSize.value = nuovoLimit
+    righePage.value = 1
+    loadRighe()
+  }
+}
 
 function onRighePage(event) {
   righePage.value = Math.floor(event.first / event.rows) + 1
@@ -595,98 +620,74 @@ const drawerActions = computed(() => [
           </div>
         </div>
 
-        <DataTable
-          :value="righe"
+        <ListaConfigurabile
+          ref="listaRef"
+          codice="vendite.commesse_attivita"
+          data-key="id"
+          :rows="righe"
+          :total="stato?.total_attivita ?? 0"
           :loading="righeLoading"
-          :total-records="stato?.total_attivita ?? 0"
-          :rows="righePageSize"
-          :first="(righePage - 1) * righePageSize"
-          paginator
-          paginator-position="top"
-          lazy
-          removable-sort
+          :paginator-options="righePaginatorOptions"
+          :page="righePage"
           :sort-field="righeSortBy"
           :sort-order="righeSortDir"
-          :rows-per-page-options="PAGINATION.ROWS_OPTIONS"
-          class="app-datatable app-datatable--inner"
-          striped-rows
-          size="small"
-          data-key="id"
           @page="onRighePage"
           @sort="onRigheSort"
+          @config-loaded="onConfigLoaded"
         >
-          <!-- Checkbox custom (pattern useSelezioneToggle): solo approvabili. -->
-          <Column v-if="canApprova && righeApprovabili.length" headerStyle="width: 3rem">
-            <template #header>
-              <Checkbox
-                :model-value="allSelected"
-                binary
-                :indeterminate="anySelected"
-                @update:model-value="toggleAll"
+          <!-- Checkbox custom (pattern useSelezioneToggle): solo approvabili.
+               Colonna di CHROME del BB, non a catalogo. -->
+          <template v-if="canApprova && righeApprovabili.length" #selection-header>
+            <Checkbox
+              :model-value="allSelected"
+              binary
+              :indeterminate="anySelected"
+              @update:model-value="toggleAll"
+            />
+          </template>
+          <template v-if="canApprova && righeApprovabili.length" #selection="{ data }">
+            <Checkbox
+              :model-value="isSelected(data)"
+              binary
+              :disabled="!isSelectable(data)"
+              @update:model-value="toggleRow(data)"
+            />
+          </template>
+
+          <!-- data_attivita e competenza_mese non hanno slot: il seed dichiara
+               `date_short` e il formatter di serie le rende gia' cosi'. -->
+          <template #cell-segment_key="{ data }">
+            <span class="app-commessa-segment" :title="data.segment_key">{{ data.segment_key }}</span>
+          </template>
+          <template #cell-quantita="{ data }">
+            {{ data.quantita ?? '—' }}
+          </template>
+          <template #cell-prezzo_snapshot="{ data }">
+            <span>
+              {{ data.prezzo_snapshot != null ? formatCurrency(Number(data.prezzo_snapshot)) : '—' }}
+              <i
+                v-if="data.prezzo_bloccato"
+                class="pi pi-lock"
+                v-tooltip.bottom="t('vendite.commesse.prezzo_bloccato')"
               />
-            </template>
-            <template #body="{ data }">
-              <Checkbox
-                :model-value="isSelected(data)"
-                binary
-                :disabled="!isSelectable(data)"
-                @update:model-value="toggleRow(data)"
+              <i
+                v-if="data.prezzo_da_riallineare"
+                class="pi pi-exclamation-triangle app-dash-ritardo"
+                v-tooltip.bottom="t('vendite.commesse.prezzo_da_riallineare')"
               />
-            </template>
-          </Column>
-          <Column field="data_attivita" sortable :header="t('vendite.commesse.col_data')" style="width: 100px;">
-            <template #body="{ data }">
-              {{ data.data_attivita ? displayDate(data.data_attivita) : '—' }}
-            </template>
-          </Column>
-          <Column field="competenza_mese" sortable :header="t('vendite.commesse.col_competenza')" style="width: 100px;">
-            <template #body="{ data }">
-              {{ data.competenza_mese ? displayDate(data.competenza_mese) : '—' }}
-            </template>
-          </Column>
-          <Column field="segment_key" sortable :header="t('vendite.commesse.col_segmento')">
-            <template #body="{ data }">
-              <span class="app-commessa-segment" :title="data.segment_key">{{ data.segment_key }}</span>
-            </template>
-          </Column>
-          <Column field="quantita" sortable :header="t('vendite.commesse.col_quantita')" style="width: 80px;">
-            <template #body="{ data }">
-              {{ data.quantita ?? '—' }}
-            </template>
-          </Column>
-          <Column field="prezzo_snapshot" sortable :header="t('vendite.commesse.col_prezzo')" style="width: 110px;">
-            <template #body="{ data }">
-              <span>
-                {{ data.prezzo_snapshot != null ? formatCurrency(Number(data.prezzo_snapshot)) : '—' }}
-                <i
-                  v-if="data.prezzo_bloccato"
-                  class="pi pi-lock"
-                  v-tooltip.bottom="t('vendite.commesse.prezzo_bloccato')"
-                />
-                <i
-                  v-if="data.prezzo_da_riallineare"
-                  class="pi pi-exclamation-triangle app-dash-ritardo"
-                  v-tooltip.bottom="t('vendite.commesse.prezzo_da_riallineare')"
-                />
-              </span>
-            </template>
-          </Column>
-          <Column field="stato_approvazione" sortable :header="t('vendite.commesse.col_approvazione')" style="width: 100px;">
-            <template #body="{ data }">
-              <Tag :value="data.stato_approvazione" :severity="statoApprovazioneAttivitaSeverity(data.stato_approvazione)" />
-            </template>
-          </Column>
-          <Column field="stato_emissione" sortable :header="t('vendite.commesse.col_emissione')" style="width: 100px;">
-            <template #body="{ data }">
-              <Tag :value="data.stato_emissione" :severity="statoEmissioneAttivitaSeverity(data.stato_emissione)" />
-            </template>
-          </Column>
-          <Column v-if="!isReadonly" :header="t('vendite.commesse.col_azioni')" class="app-col-actions" :exportable="false">
-            <template #body="{ data }">
-              <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
-            </template>
-          </Column>
-        </DataTable>
+            </span>
+          </template>
+          <template #cell-stato_approvazione="{ data }">
+            <Tag :value="data.stato_approvazione" :severity="statoApprovazioneAttivitaSeverity(data.stato_approvazione)" />
+          </template>
+          <template #cell-stato_emissione="{ data }">
+            <Tag :value="data.stato_emissione" :severity="statoEmissioneAttivitaSeverity(data.stato_emissione)" />
+          </template>
+
+          <template v-if="!isReadonly" #actions="{ data, compact }">
+            <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
+          </template>
+        </ListaConfigurabile>
 
       </template>
 

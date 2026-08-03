@@ -127,6 +127,19 @@ def _whitelist_coda_resi(vista: str):
     return risolvi
 
 
+# Scopo: risolutore per le 5 whitelist delle dashboard vendite, che vivono
+#        come ClassVar di `VenditeRepository` (cinque nello stesso modulo:
+#        una costante di modulo per ognuna sarebbe stata piu' rumore che
+#        informazione). L'ancora e' la classe, non il modulo.
+def _whitelist_di_classe(attributo: str):
+    def risolvi() -> set[str]:
+        from apps.vendite.db.vendite_repository import VenditeRepository
+
+        return set(getattr(VenditeRepository, attributo))
+
+    return risolvi
+
+
 # Scopo: fabbrica di risolutori per le whitelist che vivono in una costante di
 #        modulo con nome proprio (la maggioranza). Evita nove funzioni identiche
 #        a meno del nome — le uniche scritte a mano sopra sono quelle con una
@@ -192,6 +205,21 @@ _LISTE: tuple[tuple[str, object], ...] = (
     ("vendite.fatture_stampa_coda", _da_costante("apps.vendite.db.pipeline_repository", "CODA_STAMPA_SORT_SQL")),
     ("vendite.approvazioni_prezzo", _da_costante("apps.pratiche.db.pratiche_repository", "PRATICHE_ORDER_COLS")),
     ("vendite.listini_righe", _da_costante("apps.vendite.db.listini_repository", "RIGHE_ORDER_COLUMNS")),
+    # Ottavo lotto, 2026-08-03: il drawer commessa + le 5 liste delle 3
+    # dashboard vendite. Chiude il Gruppo A.
+    #
+    # ⚠️ `commesse_attivita` e' la PRIMA lista la cui whitelist NON vive in
+    # Python: ordine e paginazione stanno dentro `fn_list_commessa_attivita`
+    # (ordinare a valle ordinerebbe la pagina gia' estratta), e il BE ne tiene
+    # solo lo specchio per validare prima del round-trip. E' quello specchio
+    # che il presidio confronta col seed: se i due divergessero, il BE
+    # rifiuterebbe una colonna che la funzione accetta (o viceversa).
+    ("vendite.commesse_attivita", _da_costante("apps.vendite.db.commesse_repository", "ATTIVITA_SORT_COLUMNS")),
+    ("vendite.dash_aperto_documenti", _whitelist_di_classe("DASH_APERTO_SORT_COLUMNS")),
+    ("vendite.dash_backlog_documenti", _whitelist_di_classe("DASH_BACKLOG_SORT_COLUMNS")),
+    ("vendite.dash_competenza_errori", _whitelist_di_classe("DASH_COMPETENZA_ERRORI_SORT_COLUMNS")),
+    ("vendite.dash_competenza_gruppi", _whitelist_di_classe("DASH_COMPETENZA_GRUPPI_SORT_COLUMNS")),
+    ("vendite.dash_competenza_commesse", _whitelist_di_classe("DASH_COMPETENZA_COMMESSE_SORT_COLUMNS")),
     # Preesistenti: erano fuori da qualunque presidio prima del 2026-07-31.
     ("anagrafiche.clienti", _da_costante("apps.anagrafiche.db.clienti_repository", "_CLIENTI_ORDER_COLS")),
     ("anagrafiche.fornitori", _da_costante("apps.anagrafiche.db.fornitori_repository", "_FORNITORI_ORDER_COLS")),
@@ -359,8 +387,17 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
             # della variabile produrrebbe un falso "codice lista" inesistente.
             # Sono comunque coperti: `ResiCodaTable` sceglie fra due costanti,
             # entrambe presenti in `_LISTE`.
+            #
+            # ⚠️ **Niente `[^>]*` fra il tag e l'attributo** (difetto corretto il
+            # 2026-08-03): un `>` puo' vivere DENTRO un attributo — e ci vive
+            # davvero, in `v-if="documentiCount > 0 || documentiLoading"` sulle
+            # dashboard. La classe negata si fermava li' e quattro liste su sei
+            # risultavano NON MONTATE: il presidio taceva proprio sulle liste
+            # appena convertite, che e' il caso per cui esiste. Ora si cerca
+            # `codice="..."` entro una finestra di caratteri dal nome del tag,
+            # senza pretendere di sapere dove finisce il tag stesso.
             for m in re.finditer(
-                r"<ListaConfigurabile\b[^>]*?(?<![:@\w-])codice=\"([^\"]+)\"",
+                r"<ListaConfigurabile\b.{0,400}?(?<![:@\w-])codice=\"([^\"]+)\"",
                 senza_commenti,
                 re.S,
             ):

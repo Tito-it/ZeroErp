@@ -146,10 +146,16 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
     gruppiTipi.value = []
   }
 
+  // Ordinamento del pannello errori: default `data_evento desc` (eventi
+  // recenti prima), che replica il default del BE e il preset del seed — la
+  // lista non si riordina sotto gli occhi al primo caricamento.
+  const erroriSort = useSortState('data_evento')
   const erroriFetch = usePagedDashFetch(
     (paging, competenzaMese) =>
       listDashboardCompetenzaErrori({
         competenza_mese: competenzaMese,
+        order_by: erroriSort.orderBy.value,
+        order_dir: erroriSort.orderDir.value,
         ...paging,
       }),
     { defaultPageSize: PAGINATION.COMPACT_ROWS }
@@ -181,6 +187,7 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
 
   // Scopo: azzera il pannello errori (cambio mese/anno) e invalida le fetch.
   function resetErrori() {
+    erroriSort.reset()
     erroriFetch.reset()
   }
 
@@ -200,6 +207,7 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
     gruppiTipo.value = null
     gruppiTipi.value = []
     gruppiFetch.resetAll()
+    erroriSort.reset()
     erroriFetch.resetAll()
   }
 
@@ -239,6 +247,9 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
     erroriPageSize: erroriFetch.pageSize,
     erroriLoading: erroriFetch.loading,
     applyErroriPage: erroriFetch.applyPageEvent,
+    erroriOrderBy: erroriSort.orderBy,
+    erroriOrderDir: erroriSort.orderDir,
+    applyErroriSort: erroriSort.apply,
     fetchMensile: aggregata.fetchRiepilogo,
     fetchCommesse,
     fetchErrori,

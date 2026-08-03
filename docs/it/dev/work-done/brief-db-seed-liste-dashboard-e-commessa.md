@@ -1,5 +1,35 @@
 # Brief BE → DB — seed liste configurabili: 3 dashboard + drawer commessa (8° lotto)
 
+> ✅ **CHIUSO il 2026-08-03**, stesso giorno della richiesta. Il team DB ha
+> seedato le **6 liste (38-43)** con 51 colonne, e il BE/FE ha convertito i
+> `.vue` nella stessa giornata: **il Gruppo A è a 30/34**, e i 4 file rimasti
+> sono i cassetti fermi per decisione (§8 punto 4 del piano), non debito.
+>
+> **La promessa della passata BE ha retto**: tutte e sei le liste sono nate
+> verdi al PRIMO passaggio del presidio, senza un giro di ritorno. Registro a
+> **43/43**.
+>
+> Tre scelte del DB che divergono dal brief e sono **migliori** di quanto
+> proposto:
+>
+> - `codice` come identificatore su aperto e backlog, non la prima colonna: la
+>   convenzione dice «la prima», ma la regola vera è «quella che l'operatore
+>   non deve poter nascondere», e su un elenco di documenti è il codice;
+> - lista 38 **senza** ordinamento di apertura: il brief offriva `id asc`, ma
+>   `id` non è colonna seedata e il preset avrebbe puntato a qualcosa che nel
+>   catalogo non c'è. Vuoto = ordine storico `ca.id`, che è già il default
+>   della funzione;
+> - il presidio del DB sa ora leggere una whitelist che vive in una **funzione
+>   DB** (`fn_list_commessa_attivita`), la prima del progetto.
+>
+> ⚠️ **Un difetto trovato registrando le liste, e corretto**: il presidio
+> Python ne vedeva solo 2 su 6. La regex cercava `codice="..."` con `[^>]*`
+> fra tag e attributo, ma un `>` vive dentro `v-if="documentiCount > 0 || …"`
+> e la ricerca si fermava lì — il presidio **taceva proprio sulle liste appena
+> convertite**, che è il caso per cui esiste.
+>
+> ---
+>
 > **Chi scrive:** BE/FE (`dev/backend-tid`), 2026-08-03.
 > **A chi:** team DB (`dev/db-tid`).
 > **Cos'è:** la richiesta di seed (`ui.lista_definizione` + `ui.lista_colonna` +

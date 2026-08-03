@@ -7,16 +7,15 @@
 //        nel DB/BE (vw_dash_backlog_* + config.motivi_fermo): la view rende.
 //        Layout: contatori per classe (card cliccabili = filtro) + filtro
 //        area + lista per anzianita' con motivo/azione/stato.
-import { computed, onActivated } from 'vue'
+import { computed, onActivated, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import DashEmptyState from '../../core/components/DashEmptyState.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useNotify } from '../../core/composables/useNotify'
@@ -63,6 +62,28 @@ const {
 // Ordinamento colonne per il DataTable (controllato): campo dallo store,
 // direzione nella convenzione PrimeVue (1 asc, -1 desc).
 const documentiSortOrder = computed(() => (orderDir.value === 'desc' ? -1 : 1))
+
+// Ref alla lista configurabile + prop paginator (lo stato di pagina vive nello
+// store dashboard, non in useSearchTable: si compongono qui).
+const listaRef = ref(null)
+const documentiPaginatorOptions = computed(() => ({
+  totalRecords: documentiCount.value,
+  rows: documentiPageSize.value,
+  first: (documentiPage.value - 1) * documentiPageSize.value,
+  rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
+}))
+
+// Scopo: allinea una volta la dimensione pagina a quella risolta dal BE.
+const configAllineata = ref(false)
+function onConfigLoaded(config) {
+  if (configAllineata.value) return
+  configAllineata.value = true
+  const nuovoLimit = config?.pagina_dimensione
+  if (nuovoLimit && nuovoLimit !== documentiPageSize.value) {
+    documentiPageSize.value = nuovoLimit
+    store.fetchDocumenti()
+  }
+}
 
 // Scopo: decodifiche i18n con fallback al codice grezzo (fail-visible per
 //        classi/motivi/aree future introdotte DB-side). Motivi e aree dai BB
@@ -326,87 +347,62 @@ onActivated(() => {
             />
           </div>
         </div>
-        <DataTable
+        <ListaConfigurabile
           v-if="documentiCount > 0 || documentiLoading"
-          :value="documenti"
+          ref="listaRef"
+          codice="vendite.dash_backlog_documenti"
+          data-key="documento_id"
+          :rows="documenti"
+          :total="documentiCount"
           :loading="documentiLoading"
-          :total-records="documentiCount"
-          :rows="documentiPageSize"
-          :first="(documentiPage - 1) * documentiPageSize"
-          paginator
-          paginator-position="top"
-          lazy
-          :rows-per-page-options="PAGINATION.ROWS_OPTIONS"
+          :paginator-options="documentiPaginatorOptions"
+          :page="documentiPage"
           :sort-field="orderBy"
           :sort-order="documentiSortOrder"
-          class="app-datatable app-datatable--inner"
-          striped-rows
           @page="onDocumentiPage"
           @sort="onDocumentiSort"
+          @config-loaded="onConfigLoaded"
         >
-          <Column field="anzianita_giorni" :header="t('vendite.dashboard_backlog.col_fermo_da')" sortable style="width: 110px;">
-            <template #body="{ data }">
-              <span
-                class="app-dash-ritardo"
-                v-tooltip.bottom="data.data_riferimento ? displayDate(data.data_riferimento) : ''"
-              >
-                {{ data.anzianita_giorni !== null
-                  ? t('vendite.dashboard_backlog.fermo_da_giorni', { n: data.anzianita_giorni })
-                  : '—' }}
-              </span>
-            </template>
-          </Column>
-          <Column field="classe" :header="t('vendite.dashboard_backlog.col_classe')" style="width: 140px;">
-            <template #body="{ data }">
-              <Tag :value="classeLabel(data.classe)" :severity="classeBacklogSeverity(data.classe)" />
-            </template>
-          </Column>
-          <Column field="area" :header="t('vendite.dashboard_backlog.col_area')" sortable style="width: 110px;">
-            <template #body="{ data }">
-              {{ areaLabel(data.area) }}
-            </template>
-          </Column>
-          <Column field="codice" :header="t('vendite.dashboard_backlog.col_codice')" sortable style="width: 130px;">
-            <template #body="{ data }">
-              {{ data.codice ?? '—' }}
-            </template>
-          </Column>
-          <Column field="cliente_display" :header="t('vendite.dashboard_backlog.col_cliente')" sortable>
-            <template #body="{ data }">
-              {{ data.cliente_display ?? '—' }}
-            </template>
-          </Column>
-          <Column field="valore_fermo" :header="t('vendite.dashboard_backlog.col_valore')" sortable style="width: 120px;">
-            <template #body="{ data }">
-              {{ data.valore_fermo !== null ? formatCurrency(data.valore_fermo) : '—' }}
-            </template>
-          </Column>
-          <Column field="unita_ferme" :header="t('vendite.dashboard_backlog.col_unita')" style="width: 90px;">
-            <template #body="{ data }">
-              {{ data.unita_ferme ?? '—' }}
-            </template>
-          </Column>
-          <Column field="motivo_fermo" :header="t('vendite.dashboard_backlog.col_motivo')">
-            <template #body="{ data }">
-              {{ motivoLabel(data.motivo_fermo) }}
-            </template>
-          </Column>
-          <Column field="azione" :header="t('vendite.dashboard_backlog.col_azione')">
-            <template #body="{ data }">
-              {{ data.azione ?? '—' }}
-            </template>
-          </Column>
-          <Column field="stato_codice" :header="t('vendite.dashboard_backlog.col_stato')" sortable style="width: 120px;">
-            <template #body="{ data }">
-              <Tag :value="data.stato_codice ?? '—'" :severity="statoSeverity(data)" />
-            </template>
-          </Column>
-          <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
-            <template #body="{ data }">
-              <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
-            </template>
-          </Column>
-        </DataTable>
+          <template #cell-anzianita_giorni="{ data }">
+            <span
+              class="app-dash-ritardo"
+              v-tooltip.bottom="data.data_riferimento ? displayDate(data.data_riferimento) : ''"
+            >
+              {{ data.anzianita_giorni !== null
+                ? t('vendite.dashboard_backlog.fermo_da_giorni', { n: data.anzianita_giorni })
+                : '—' }}
+            </span>
+          </template>
+          <template #cell-classe="{ data }">
+            <Tag :value="classeLabel(data.classe)" :severity="classeBacklogSeverity(data.classe)" />
+          </template>
+          <template #cell-area="{ data }">
+            {{ areaLabel(data.area) }}
+          </template>
+          <template #cell-codice="{ data }">
+            {{ data.codice ?? '—' }}
+          </template>
+          <template #cell-cliente_display="{ data }">
+            {{ data.cliente_display ?? '—' }}
+          </template>
+          <!-- valore_fermo non ha slot: il seed dichiara `currency_eur`. -->
+          <template #cell-unita_ferme="{ data }">
+            {{ data.unita_ferme ?? '—' }}
+          </template>
+          <template #cell-motivo_fermo="{ data }">
+            {{ motivoLabel(data.motivo_fermo) }}
+          </template>
+          <template #cell-azione="{ data }">
+            {{ data.azione ?? '—' }}
+          </template>
+          <template #cell-stato_codice="{ data }">
+            <Tag :value="data.stato_codice ?? '—'" :severity="statoSeverity(data)" />
+          </template>
+
+          <template #actions="{ data, compact }">
+            <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
+          </template>
+        </ListaConfigurabile>
         <DashEmptyState
           v-else
           :loaded="documentiLoaded"

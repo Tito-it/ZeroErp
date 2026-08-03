@@ -1,5 +1,20 @@
 # Brief BE → DB — un valore nel CHECK `evento_tipo` per la ristampa fedele
 
+> ✅ **CHIUSO il 2026-08-03**, stesso giorno della richiesta. Il team DB ha
+> applicato `20260803-05`: il CHECK ammette ora cinque valori, il
+> `COMMENT ON COLUMN` è allineato, e il pgTAP è passato a `plan(15)` con
+> l'asserzione che `RISTAMPA_FEDELE` è **ammesso con esito `WARN`** — il caso
+> normale, non l'eccezione. Senza quel test il valore nuovo sarebbe entrato
+> senza presidio, e un rifiuto del CHECK si vedrebbe solo nei log (l'evento è
+> best-effort per disegno).
+>
+> ➡️ Da qui in poi la ristampa fedele **lascia traccia davvero**: fino
+> all'apply il servizio produceva il PDF e loggava il rifiuto dell'INSERT.
+> Resta solo la validazione in-app di Tid sul caso di prova §6.4 dell'altro
+> brief (l'offerta di maggio).
+>
+> ---
+>
 > **Chi scrive:** BE/FE (`dev/backend-tid`), 2026-08-03.
 > **A chi:** team DB (`dev/db-tid`).
 > **Cos'è:** **una riga** — aggiungere `RISTAMPA_FEDELE` al set chiuso di
