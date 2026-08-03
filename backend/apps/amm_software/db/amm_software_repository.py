@@ -15,7 +15,7 @@ from typing import Any, ClassVar
 
 from django.db import DatabaseError, connection, transaction
 
-from apps.core.db._helpers import row_to_dict, rows_to_list, sql_order_direction
+from apps.core.db._helpers import row_to_dict, rows_to_list, sql_order_direction, sql_tiebreak_direction
 
 from apps.core.services.auth_constants import TIPO_PROFILO_SUPER_ADMIN
 from apps.core.services.error_manager import ErrorManager
@@ -168,7 +168,8 @@ class AmmSoftwareRepository:
         order_column = ALLOWED_ORDER_COLUMNS.get(order_by or "")
         if order_column:
             direction = sql_order_direction(order_dir)
-            order_clause = f"ORDER BY {order_column} {direction}, au.id"
+            tiebreak_dir = sql_tiebreak_direction(direction)
+            order_clause = f"ORDER BY {order_column} {direction}, au.id {tiebreak_dir}"
         else:
             order_clause = "ORDER BY soggetto_cognome ASC, au.username ASC, au.id"
 
@@ -1133,6 +1134,10 @@ class AmmSoftwareRepository:
         order_column = AUDIT_ORDER_COLUMNS.get(order_by or "")
         if order_column:
             direction = sql_order_direction(order_dir, default_desc=True)
+            # `valid_from DESC` NON e' uno spareggio tecnico ma l'ordine
+            # STORICO delle versioni di una stessa riga (la piu' recente
+            # prima): resta fisso anche ordinando al contrario, altrimenti la
+            # storia di un record si leggerebbe a rovescio.
             sql += f"ORDER BY {order_column} {direction}, valid_from DESC "  # noqa: S608
         else:
             sql += "ORDER BY valid_from DESC "

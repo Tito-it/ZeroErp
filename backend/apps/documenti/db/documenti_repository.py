@@ -447,7 +447,7 @@ class DocumentiRepository:
             SELECT {_TEMPLATES_PROJECTION}
             {_TEMPLATES_FROM}
             {where_clause}
-            ORDER BY {order_column} {safe_order_dir}, t.id ASC
+            ORDER BY {order_column} {safe_order_dir}, t.id {safe_order_dir}
             LIMIT %s OFFSET %s
         """
 
@@ -757,7 +757,7 @@ class DocumentiRepository:
             SELECT {_ASSET_PROJECTION}
             {_ASSET_FROM}
             {where_clause}
-            ORDER BY {order_column} {safe_order_dir}, a.id ASC
+            ORDER BY {order_column} {safe_order_dir}, a.id {safe_order_dir}
             LIMIT %s OFFSET %s
         """
 

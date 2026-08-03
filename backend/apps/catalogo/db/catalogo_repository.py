@@ -245,7 +245,7 @@ class CatalogoRepository:
                 {self._articoli_detail_projection()}
             FROM catalogo.vw_articoli_dettaglio a
             {where_clause}
-            ORDER BY {order_column} {safe_order_dir}, a.id ASC
+            ORDER BY {order_column} {safe_order_dir}, a.id {safe_order_dir}
             LIMIT %s OFFSET %s
         """
 
@@ -520,7 +520,7 @@ class CatalogoRepository:
                        ut.user_insert, ut.user_update, ut.data_insert, ut.data_update
                 FROM catalogo.uom_tipi ut
                 {where_clause}
-                ORDER BY {order_column} {safe_order_dir}, ut.id ASC
+                ORDER BY {order_column} {safe_order_dir}, ut.id {safe_order_dir}
                 LIMIT %s OFFSET %s
                 """,
                 params + [safe_limit, safe_offset],
@@ -628,7 +628,7 @@ class CatalogoRepository:
                 FROM catalogo.unita_misura u
                 JOIN catalogo.uom_tipi ut ON ut.id = u.tipo_uom_id
                 {where_clause}
-                ORDER BY {order_column} {safe_order_dir}, u.id ASC
+                ORDER BY {order_column} {safe_order_dir}, u.id {safe_order_dir}
                 LIMIT %s OFFSET %s
                 """,
                 params + [safe_limit, safe_offset],
@@ -733,7 +733,7 @@ class CatalogoRepository:
                 JOIN catalogo.unita_misura uf ON uf.id = c.uom_from_id
                 JOIN catalogo.unita_misura ut ON ut.id = c.uom_to_id
                 {where_clause}
-                ORDER BY {order_column} {safe_order_dir}, c.id ASC
+                ORDER BY {order_column} {safe_order_dir}, c.id {safe_order_dir}
                 LIMIT %s OFFSET %s
                 """,
                 params + [safe_limit, safe_offset],

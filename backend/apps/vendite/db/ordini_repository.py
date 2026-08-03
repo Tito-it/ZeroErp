@@ -24,6 +24,7 @@ from apps.core.db._helpers import (
     row_to_dict,
     rows_to_list,
     sql_order_direction,
+    sql_tiebreak_direction,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.db.sql_write_helpers import execute_dynamic_update
@@ -121,6 +122,7 @@ class OrdiniRepository(
     ) -> tuple[list[dict[str, Any]], int]:
         order_column = _ORDER_COLS_ORDINI.get(order_by, _ORDER_COLS_ORDINI["data"])
         direction = sql_order_direction(order_dir)
+        tiebreak_dir = sql_tiebreak_direction(direction)
         # `max_limit`: lista cap 200 (gia' via parse_list_params), export fino a
         # EXPORT_MAX_ROWS+1 per non troncare in silenzio (guard su COUNT reale).
         safe_limit = max(1, min(int(limit), max_limit))
@@ -177,7 +179,7 @@ class OrdiniRepository(
             FROM vendite.vw_ordini_lista v
             LEFT JOIN config.sorgenti s ON s.id = v.frontiera_tipo_id
             {where}
-            ORDER BY {order_column} {direction}, v.id ASC
+            ORDER BY {order_column} {direction}, v.id {tiebreak_dir}
             LIMIT %s OFFSET %s
         """  # noqa: S608
 

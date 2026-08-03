@@ -16,6 +16,7 @@ from apps.core.db._helpers import (
     row_to_dict,
     rows_to_list,
     sql_order_direction,
+    sql_tiebreak_direction,
 )
 
 from django.db import connection, transaction
@@ -47,6 +48,7 @@ class IndirizziRepository:
     ) -> tuple[list[dict[str, Any]], int]:
         order_col = order_by if order_by in _ORDER_COLS else "indirizzo_normalizzato"
         direction = sql_order_direction(order_dir)
+        tiebreak_dir = sql_tiebreak_direction(direction)
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
 
         sql = f"""
@@ -65,7 +67,7 @@ class IndirizziRepository:
              WHERE (%s::text IS NULL OR vid.indirizzo_normalizzato ILIKE %s
                     OR vid.descrizione_comune ILIKE %s)
                AND (%s::integer IS NULL OR vid.comune_id = %s)
-             ORDER BY {order_col} {direction}, vid.indirizzo_dettaglio_id
+             ORDER BY {order_col} {direction}, vid.indirizzo_dettaglio_id {tiebreak_dir}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         with connection.cursor() as cursor:

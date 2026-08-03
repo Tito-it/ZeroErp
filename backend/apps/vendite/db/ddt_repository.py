@@ -26,6 +26,7 @@ from apps.core.db._helpers import (
     row_to_dict,
     rows_to_list,
     sql_order_direction,
+    sql_tiebreak_direction,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.db.sql_write_helpers import execute_dynamic_update
@@ -124,6 +125,7 @@ class DdtRepository(
         # su tutte le bozze (lo assegna il trigger a EMESSO) e i default
         # PostgreSQL le mandavano IN CIMA ordinando dal piu' recente.
         direction = sql_order_direction(order_dir)
+        tiebreak_dir = sql_tiebreak_direction(direction)
         # `max_limit`: la lista pagina (cap 200, gia' imposto da
         # parse_list_params), l'export chiede fino a EXPORT_MAX_ROWS+1 per
         # intercettare l'overflow SENZA troncare in silenzio (il guard di
@@ -182,7 +184,7 @@ class DdtRepository(
             FROM vendite.vw_ddt_lista v
             LEFT JOIN config.sorgenti s ON s.id = v.frontiera_tipo_id
             {where}
-            ORDER BY {order_column} {direction}, v.id ASC
+            ORDER BY {order_column} {direction}, v.id {tiebreak_dir}
             LIMIT %s OFFSET %s
         """  # noqa: S608
 
