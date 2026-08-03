@@ -21,11 +21,12 @@ from apps.vendite.services.pipeline_step_executor import PipelineStepExecutor
 from apps.vendite.services.fatture_righe_service import FattureRigheService
 from apps.vendite.services.lotto_reset_service import LottoResetService
 from apps.vendite.types import (
+    AnnullaLottoDaDraftResult,
+    EliminaFatturaDaLottoDraftResult,
     GroupAttivitaKey,
     LottoPipelineMeta,
     LottoTaskRunRow,
-    AnnullaLottoDaDraftResult,
-    EliminaFatturaDaLottoDraftResult,
+    RiportaLottoADraftResult,
 )
 
 # Facade servizi: mantiene firme dichiarative e delega alle classi OOP.
@@ -493,6 +494,15 @@ def fn_annulla_lotto_da_draft(*, lotto_id: int) -> AnnullaLottoDaDraftResult:
     """Entrypoint servizio Python con lo stesso intento della funzione SQL fn_annulla_lotto_da_draft."""
     service = LottoResetService()
     return service.annulla_lotto_da_draft(lotto_id)
+
+
+# Scopo: Facade applicativa: RIPORTA A BOZZA il lotto (Fase 6) perche' si possa
+#        correggere a monte e rifare il giro. Cancella le fatture e riporta le
+#        `commesse_attivita` a NON_EMESSA; il rilancio le rigenera.
+def fn_riporta_lotto_a_draft(*, lotto_id: int) -> RiportaLottoADraftResult:
+    """Entrypoint servizio Python con lo stesso intento della funzione SQL fn_riporta_lotto_a_draft."""
+    service = LottoResetService()
+    return service.riporta_lotto_a_draft(lotto_id)
 
 
 # Scopo: Facade applicativa: elimina UNA fattura DRAFT dal lotto, liberandone

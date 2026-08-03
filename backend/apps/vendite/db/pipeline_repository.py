@@ -26,11 +26,12 @@ from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.value_normalizer import as_bool, empty_to_none
 from apps.vendite.types import (
+    AnnullaLottoDaDraftResult,
+    EliminaFatturaDaLottoDraftResult,
     LottoPipelineMeta,
     LottoSegnalazioniSummary,
     LottoTaskRunRow,
-    AnnullaLottoDaDraftResult,
-    EliminaFatturaDaLottoDraftResult,
+    RiportaLottoADraftResult,
 )
 
 # Repository SQL: incapsula accesso DB per orchestrazione pipeline vendite.
@@ -2149,6 +2150,66 @@ class VenditePipelineRepository:
             "deleted_fatture": int(row[2]),
             "deleted_righe": int(row[3]),
         }
+
+    # Scopo: RIPORTA A BOZZA un lotto gia' lavorato perche' si possa correggere
+    #        a monte e rifare il giro (Fase 6, brief DB→BE ritorno-lotto-a-draft).
+    #        E' un ROLLBACK, non una riapertura: le fatture si CANCELLANO e il
+    #        rilancio le rigenera. Distinto da `annulla_lotto_da_draft`, che
+    #        invece chiude il lotto (ANNULLATA) e non lo rimette in gioco.
+    # Perimetro (guard nella fn): lotti MASSIVO o GIORNALIERO in DRAFT o EMESSA.
+    #        ⚠️ Rifiuta se anche UNA sola fattura ha gia' un numero — guarda il
+    #        numero, non lo stato: un numero fiscale assegnato non si ritira.
+    # Effetto laterale che conta: riporta `commesse_attivita.stato_emissione` a
+    #        NON_EMESSA. Senza, il lotto ripartirebbe senza NIENTE da emettere
+    #        (la selezione scarta le gia' emesse) e il cruscotto competenza
+    #        continuerebbe a contarle come fatturate.
+    def riporta_lotto_a_draft(self, lotto_id: int) -> RiportaLottoADraftResult:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT updated_lotti, updated_attivita, deleted_fatture, "
+                "       deleted_righe, riemesse_attivita, annullati_task_run "
+                "FROM vendite.fn_riporta_lotto_a_draft(%s)",
+                [lotto_id],
+            )
+            row = cursor.fetchone()
+            assert row is not None
+        return {
+            "updated_lotti": int(row[0]),
+            "updated_attivita": int(row[1]),
+            "deleted_fatture": int(row[2]),
+            "deleted_righe": int(row[3]),
+            "riemesse_attivita": int(row[4]),
+            "annullati_task_run": int(row[5]),
+        }
+
+    # Scopo: Il lotto e' stato riportato a bozza e non ha ancora rifatto il giro?
+    #        E' il TERZO motivo per rifare lo step corrente invece di avanzare
+    #        (gli altri due: rerun in errore, primo run). Deliberatamente una
+    #        DATA e non un booleano: si spiega da sola e si ordina.
+    # ⚠️ Nessun vincolo sul `tipo_lotto`, a differenza di `is_lotto_in_errore`
+    #        che vale solo per i MASSIVO: la fn di ritorno a bozza ammette anche
+    #        i GIORNALIERO, e un giornaliero riaperto deve rifare lo step come
+    #        gli altri.
+    def is_lotto_riaperto(self, lotto_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT (riaperto_il IS NOT NULL) FROM vendite.fatturazione_lotti"
+                " WHERE id = %s",
+                [lotto_id],
+            )
+            row = cursor.fetchone()
+        return bool(row[0]) if row else False
+
+    # Scopo: Spegne il segnale di riapertura dopo che il giro l'ha onorato.
+    #        Senza, il lotto rifarebbe lo stesso step all'infinito (§3 del brief).
+    #        Idempotente: un secondo azzeramento non fa nulla.
+    def azzera_riaperto_il(self, lotto_id: int) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE vendite.fatturazione_lotti SET riaperto_il = NULL"
+                " WHERE id = %s AND riaperto_il IS NOT NULL",
+                [lotto_id],
+            )
 
     # Scopo: Elimina UNA fattura DRAFT dal lotto (estrazione per-fattura),
     #        liberandone le attivita'. ⚠️ Passa `NULL` come `lock_batch_id`

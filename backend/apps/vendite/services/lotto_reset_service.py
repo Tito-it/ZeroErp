@@ -8,7 +8,11 @@
 
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db.pipeline_repository import VenditePipelineRepository
-from apps.vendite.types import AnnullaLottoDaDraftResult, EliminaFatturaDaLottoDraftResult
+from apps.vendite.types import (
+    AnnullaLottoDaDraftResult,
+    EliminaFatturaDaLottoDraftResult,
+    RiportaLottoADraftResult,
+)
 
 # Servizio applicativo: espone il reset tecnico lotto DRAFT.
 
@@ -34,6 +38,26 @@ class LottoResetService:
         assert lotto_id is not None
         assert lotto_id > 0
         return self.repository.annulla_lotto_da_draft(lotto_id)
+
+    # Scopo: RITORNO A BOZZA del lotto (Fase 6): guard sui parametri + delega.
+    #        Da non confondere col vicino `annulla_lotto_da_draft`, che CHIUDE
+    #        il lotto: questo lo rimette in gioco perche' rifaccia il giro.
+    #        Le precondizioni vere (tipo lotto, stato, nessuna fattura numerata)
+    #        stanno nella funzione DB e non si riscrivono qui: qui si presidia
+    #        solo il parametro, come fa il gemello.
+    def riporta_lotto_a_draft(self, lotto_id: int) -> RiportaLottoADraftResult:
+        ErrorManager.require(
+            lotto_id is not None and lotto_id > 0,
+            code="E_RESET_LOTTO_VALIDATION",
+            message="Parametro lotto non valido.",
+            detail="lotto_id obbligatorio e > 0",
+            context={"lotto_id": lotto_id},
+            function_name="vendite.lotto_reset_service.riporta_lotto_a_draft",
+            log_to_db=True,
+        )
+        assert lotto_id is not None
+        assert lotto_id > 0
+        return self.repository.riporta_lotto_a_draft(lotto_id)
 
     # Scopo: Estrazione/eliminazione di una singola fattura DRAFT dal lotto
     #        (guard sui parametri + delega al repository).

@@ -42,6 +42,24 @@ class AnnullaLottoDaDraftResult(TypedDict):
     deleted_righe: int
 
 
+class RiportaLottoADraftResult(TypedDict):
+    # Esito del ritorno a bozza (Fase 6). Simmetrico ad
+    # `AnnullaLottoDaDraftResult` piu' `riemesse_attivita`: il contatore delle
+    # `commesse_attivita` riportate a NON_EMESSA, che e' l'effetto senza il
+    # quale il lotto ripartirebbe senza niente da emettere.
+    updated_lotti: int
+    updated_attivita: int
+    deleted_fatture: int
+    deleted_righe: int
+    riemesse_attivita: int
+    # Task run chiusi ad ANNULLATO (changeset 20260803-12). E' il contatore che
+    # rende il ritorno a bozza EFFICACE: finche' i task run restavano
+    # COMPLETATO, `fn_resolve_lotto_task_execution_mode` rispondeva SKIP e il
+    # lotto riaperto rilanciava a vuoto. Su TUTTI gli step, non solo DRAFT —
+    # annullare la sola bozza avrebbe spostato lo SKIP un passo piu' avanti.
+    annullati_task_run: int
+
+
 class EliminaFatturaDaLottoDraftResult(TypedDict):
     updated_attivita: int
     deleted_fatture: int

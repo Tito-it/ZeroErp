@@ -54,6 +54,7 @@ from apps.vendite.services.pipeline_service import (
     fn_get_lotto_segnalazioni_summary,
     fn_get_lotto_task_runs,
     fn_annulla_lotto_da_draft,
+    fn_riporta_lotto_a_draft,
     fn_elimina_fattura_da_lotto_draft,
     numera_lotto,
     ristampa_lotto,
@@ -321,6 +322,62 @@ class ApiResetLottoDraft(DomainAPIView):
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
+
+
+class ApiRiportaLottoADraft(DomainAPIView):
+    # Fase 6 — ritorno del lotto a bozza. E' un'AZIONE DELL'OPERATORE, non un
+    # task di pipeline: sta qui come endpoint e NON in `ALLOWED_TASK_FUNCTIONS`
+    # (raccomandazione del team DB nel brief §4), esattamente come le due
+    # funzioni di reset che le stanno accanto.
+    # Gate: riusa `reset_lotto_draft`, l'azione di processo dell'annullamento.
+    # E' la stessa classe di potere — cancellare fatture pre-fiscali di un
+    # lotto — e chi puo' annullare un lotto puo' a maggior ragione rimetterlo
+    # in lavorazione. Se un domani si volesse separare, serve un codename nuovo
+    # a catalogo: non si inventa qui.
+    area_funzionale = "vendite"
+    post_permission = "reset_lotto_draft"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=str,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Chiave idempotenza obbligatoria per endpoint write.",
+            )
+        ],
+        request=inline_serializer(
+            name="VenditeRiportaLottoADraftRequest",
+            fields={},
+        ),
+        responses={
+            200: inline_serializer(
+                name="VenditeRiportaLottoADraftResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeRiportaLottoADraftData",
+                        fields={
+                            "updated_lotti": serializers.IntegerField(),
+                            "updated_attivita": serializers.IntegerField(),
+                            "deleted_fatture": serializers.IntegerField(),
+                            "deleted_righe": serializers.IntegerField(),
+                            "riemesse_attivita": serializers.IntegerField(),
+                            "annullati_task_run": serializers.IntegerField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Gestisce la richiesta HTTP POST del relativo endpoint API.
+    def post(self, request: Request, lotto_id: int) -> JsonResponse:
+        # Scopo: Gestisce la logica interna del caso d'uso richiamato dall'endpoint.
+        def _handler(_payload: dict[str, object]) -> dict[str, object]:
+            return dict(fn_riporta_lotto_a_draft(lotto_id=lotto_id))
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
 class ApiResetLottoFatturaDraft(DomainAPIView):
