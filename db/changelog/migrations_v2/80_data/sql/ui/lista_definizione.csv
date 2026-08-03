@@ -36,3 +36,9 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert
 35,vendite.fatture_stampa_coda,Coda stampa documenti,vendite,NULL,t,2026-08-02 00:00:00,mctit
 36,vendite.approvazioni_prezzo,Coda approvazioni prezzo,vendite,NULL,t,2026-08-02 00:00:00,mctit
 37,vendite.listini_righe,Righe di versione listino,vendite,NULL,t,2026-08-03 00:00:00,mctit
+38,vendite.commesse_attivita,Attivita di commessa,vendite,NULL,t,2026-08-03 00:00:00,mctit
+39,vendite.dash_aperto_documenti,Situazione aperta — documenti,vendite,NULL,t,2026-08-03 00:00:00,mctit
+40,vendite.dash_backlog_documenti,Backlog — documenti fermi,vendite,NULL,t,2026-08-03 00:00:00,mctit
+41,vendite.dash_competenza_errori,Competenza — errori vivi,vendite,NULL,t,2026-08-03 00:00:00,mctit
+42,vendite.dash_competenza_gruppi,Competenza — gruppi fatturabili,vendite,NULL,t,2026-08-03 00:00:00,mctit
+43,vendite.dash_competenza_commesse,Competenza — drill-down commesse,vendite,NULL,t,2026-08-03 00:00:00,mctit

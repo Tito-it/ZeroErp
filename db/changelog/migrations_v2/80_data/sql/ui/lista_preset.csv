@@ -36,3 +36,9 @@ id,lista_id,codice,descrizione,ambito,profilo_accesso_id,emittente_fiscale_id,is
 35,35,coda_stampa_default,Vista standard coda stampa,sistema,,,t,25,"[{""col"":""data_update"",""dir"":""desc""}]",t,2026-08-02 00:00:00,mctit
 36,36,approvazioni_prezzo_default,Vista standard approvazioni prezzo,sistema,,,t,25,"[{""col"":""data_insert"",""dir"":""desc""}]",t,2026-08-02 00:00:00,mctit
 37,37,listini_righe_default,Vista standard righe versione listino,sistema,,,t,25,"[{""col"":""articolo_descrizione"",""dir"":""asc""}]",t,2026-08-03 00:00:00,mctit
+38,38,commesse_attivita_default,Vista standard attivita commessa,sistema,,,t,25,,t,2026-08-03 00:00:00,mctit
+39,39,dash_aperto_documenti_default,Vista standard situazione aperta,sistema,,,t,25,"[{""col"":""anzianita_giorni"",""dir"":""desc""}]",t,2026-08-03 00:00:00,mctit
+40,40,dash_backlog_documenti_default,Vista standard backlog,sistema,,,t,25,"[{""col"":""anzianita_giorni"",""dir"":""desc""}]",t,2026-08-03 00:00:00,mctit
+41,41,dash_competenza_errori_default,Vista standard errori competenza,sistema,,,t,10,"[{""col"":""data_evento"",""dir"":""desc""}]",t,2026-08-03 00:00:00,mctit
+42,42,dash_competenza_gruppi_default,Vista standard gruppi fatturabili,sistema,,,t,25,"[{""col"":""valore"",""dir"":""desc""}]",t,2026-08-03 00:00:00,mctit
+43,43,dash_competenza_commesse_default,Vista standard drill-down commesse,sistema,,,t,25,"[{""col"":""valore_tot"",""dir"":""desc""}]",t,2026-08-03 00:00:00,mctit
