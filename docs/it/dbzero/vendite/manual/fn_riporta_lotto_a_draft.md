@@ -14,7 +14,7 @@
 >
 • [vendite.fn_cleanup_fatture_by_ids](/dbzero/vendite/funzioni/fn_cleanup_fatture_by_ids)  
 > • [vendite.fn_annulla_lotto_da_draft](/dbzero/vendite/funzioni/fn_annulla_lotto_da_draft)  
-> • [vendite.fn_elimina_fattura_da_lotto_draft](/dbzero/vendite/funzioni/fn_elimina_fattura_da_lotto_draft)  
+> • [vendite.fn_elimina_fattura_da_lotto](/dbzero/vendite/funzioni/fn_elimina_fattura_da_lotto)  
 
 ---
 

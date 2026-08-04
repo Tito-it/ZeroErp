@@ -1,0 +1,475 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D-M passo 1 — `esclusa` esce dalla FIRMA dell'helper condiviso, e con
+#   essa i tre chiamanti (piano-db-ritorno-lotto-a-draft.md, Slice 6-B B4)
+#
+# ── PERCHE' UN CHANGESET SOLO PER QUATTRO FUNZIONI ───────────────────────
+#   Perche' la firma di vendite.fn_resolve_stato_esecuzione cambia, e una
+#   firma non si cambia a meta': fra il DROP dell'helper e l'aggiornamento
+#   dei chiamanti non deve esistere un istante in cui qualcuno chiama una
+#   funzione che non c'e' piu'. Stanno insieme perche' sono una cosa sola.
+#
+# ── COSA ESCE, E PERCHE' DUE PARAMETRI E NON UNO ─────────────────────────
+#   `p_esclusa` era il PRIMO ramo dell'helper: se la fattura era esclusa,
+#   si restituiva lo stato corrente senza calcolare niente. Il flag e'
+#   dormiente da sempre — nessuno lo valorizza, l'unico INSERT che lo
+#   nomina passa FALSE — quindi quel ramo non e' mai stato preso.
+#
+#   🔴 Uscendo `p_esclusa`, muore anche `p_current_stato_esecuzione`:
+#   era usato **solo** dentro quel ramo (`RETURN p_current_stato_esecuzione`).
+#   Lasciarlo sarebbe peggio che toglierlo — un parametro che nessun
+#   chiamante puo' piu' influenzare e' una bugia nella firma, e la
+#   prossima persona ci perde tempo a capire cosa ci fa li'.
+#
+#   La firma passa quindi da sei parametri a quattro:
+#     (p_stato_source, p_has_critical, p_fatturato, p_default_stato_esecuzione)
+#
+# ── ⚠️ DROP ESPLICITO, NON «CREATE OR REPLACE» ───────────────────────────
+#   Togliere un parametro non sostituisce la funzione: ne crea una
+#   SECONDA con arieta' diversa, e con i DEFAULT su tutti i parametri le
+#   chiamate esistenti diventerebbero ambigue (PostgreSQL non sa quale
+#   scegliere e solleva). Si DROPpa la firma vecchia per intero.
+#
+# ── I TRE CHIAMANTI, tutti in notazione con nome ─────────────────────────
+#   fn_sync_lotto_fatture_stato · fn_sync_fatture_log_critical_lotto ·
+#   fn_set_fatturazione_lotto_stato. Usano tutti `p_xxx => valore`, quindi
+#   l'aggiornamento e' togliere due righe per chiamata. In due di loro
+#   sparisce anche il predicato `AND COALESCE(lf.esclusa, false) IS FALSE`,
+#   che era una condizione sempre vera.
+#
+# ── C'E' UN QUARTO CHIAMANTE, ED E' MORTO ────────────────────────────────
+#   `fn_sync_attivita_stato_esecuzione` passa anch'essa `p_esclusa`, ma non
+#   viene aggiornata: nomina la tabella `vendite.attivita_fatturabili_lotti`,
+#   che non esiste piu'. Dettaglio nel corpo, alla voce «Chiamante 4/4».
+#
+# ── DEBITO TROVATO, NON TOCCATO ──────────────────────────────────────────
+#   `fn_set_fatturazione_lotto_stato` solleva sette volte `E_GENERICO` con
+#   il messaggio vero infilato nel context. E' contro la regola dei codici
+#   registrati, ma non c'entra con `esclusa`: correggerlo qui vorrebbe dire
+#   nascondere una modifica di dominio dentro una pulizia. Va in un lavoro
+#   suo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260804-19-drop-p-esclusa-da-resolve-stato-esecuzione-mctit.yaml
+
+  - changeSet:
+      id: 20260804-19-drop-p-esclusa-da-resolve-stato-esecuzione
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        D-M: il parametro p_esclusa esce da vendite.fn_resolve_stato_esecuzione, e
+        con lui p_current_stato_esecuzione che era usato solo in quel ramo. Firma da
+        sei a quattro parametri, con DROP esplicito. Aggiornati nello stesso
+        changeSet i tre chiamanti, che perdono anche il predicato su lf.esclusa.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ DROP della firma vecchia PER INTERO: togliere un parametro
+              -- crea un overload, non sostituisce, e con i DEFAULT ovunque le
+              -- chiamate esistenti diventerebbero ambigue.
+              DROP FUNCTION IF EXISTS vendite.fn_resolve_stato_esecuzione(
+                  text, character varying, boolean, boolean, boolean, character varying);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_resolve_stato_esecuzione(
+                  p_stato_source              text DEFAULT NULL::text,
+                  p_has_critical              boolean DEFAULT false,
+                  p_fatturato                 boolean DEFAULT false,
+                  p_default_stato_esecuzione  vendite.fatturazione_lotti_fatture.stato_esecuzione%TYPE DEFAULT 'PENDING'
+              )
+               RETURNS vendite.fatturazione_lotti_fatture.stato_esecuzione%TYPE
+               LANGUAGE plpgsql
+               IMMUTABLE
+              AS $function$
+              DECLARE
+                v_source  text;
+                v_default vendite.fatturazione_lotti_fatture.stato_esecuzione%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Normalizzare e risolvere lo stato_esecuzione runtime
+                --   evitando duplicazioni CASE nelle funzioni lotto/attivita.
+                --
+                -- Regole:
+                --   - critical=true   -> ERRORE
+                --   - fatturato=true  -> COMPLETED
+                --   - mapping source:
+                --       IN_ESECUZIONE -> RUNNING
+                --       COMPLETATO    -> COMPLETED
+                --       ERRORE        -> ERRORE
+                --       PENDING/RUNNING/COMPLETED pass-through
+                --   - fallback su default (PENDING)
+                --
+                -- rev 2026-08-04 (D-M): via `p_esclusa`, che era il primo ramo
+                --   e non e' mai stato preso — il flag e' dormiente da sempre.
+                --   Via con lui `p_current_stato_esecuzione`, che serviva SOLO
+                --   a quel ramo: un parametro che nessun chiamante puo' piu'
+                --   influenzare e' una bugia nella firma.
+                -- =========================================================
+                IF COALESCE(p_has_critical, false) THEN
+                  RETURN 'ERRORE';
+                END IF;
+
+                IF COALESCE(p_fatturato, false) THEN
+                  RETURN 'COMPLETED';
+                END IF;
+
+                v_source  := upper(btrim(COALESCE(p_stato_source, '')));
+                v_default := upper(btrim(COALESCE(p_default_stato_esecuzione, 'PENDING')));
+
+                IF v_default NOT IN ('PENDING','RUNNING','COMPLETED','ERRORE') THEN
+                  v_default := 'PENDING';
+                END IF;
+
+                IF v_source = '' THEN
+                  RETURN v_default;
+                END IF;
+
+                IF v_source = 'IN_ESECUZIONE' THEN
+                  RETURN 'RUNNING';
+                ELSIF v_source = 'COMPLETATO' THEN
+                  RETURN 'COMPLETED';
+                ELSIF v_source IN ('PENDING','RUNNING','COMPLETED','ERRORE') THEN
+                  RETURN v_source;
+                END IF;
+
+                RETURN v_default;
+              END
+              $function$;
+
+              -- COMMENT esige tipi RISOLTI: qui il %TYPE non si usa.
+              COMMENT ON FUNCTION vendite.fn_resolve_stato_esecuzione(text, boolean, boolean, character varying)
+              IS 'Helper condiviso: risolve stato_esecuzione con priorita critical/fatturato e mapping stato_lotto. rev 2026-08-04 (D-M): firma da sei a quattro parametri. Via p_esclusa — il flag fatturazione_lotti_fatture.esclusa e'' dormiente da sempre (nessuno lo valorizza) e quel ramo non e'' mai stato preso — e via con lui p_current_stato_esecuzione, che era usato SOLO dentro quel ramo. ⚠️ La firma vecchia a sei parametri e'' stata DROPpata per intero e non sostituita: togliere un parametro crea un overload, e con i DEFAULT su tutti le chiamate esistenti sarebbero diventate ambigue.';
+
+              -- ── Chiamante 1/3 ──────────────────────────────────────────
+              CREATE OR REPLACE FUNCTION vendite.fn_sync_lotto_fatture_stato(
+                  p_lotto_id                    vendite.fatturazione_lotti.id%TYPE,
+                  p_target_stato_doc_fiscale_id config.stati_doc_fiscale.id%TYPE DEFAULT NULL
+              )
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              -- rev 2026-08-04 (D-M): via il predicato su lf.esclusa (sempre
+              --   vero) e l'argomento p_esclusa all'helper.
+              DECLARE
+                  v_stato_lotto vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE;
+                  v_target      config.stati_doc_fiscale.id%TYPE;
+                  v_tipo_lotto  vendite.fatturazione_lotti.tipo_lotto%TYPE;
+                  v_inviata_id  config.stati_doc_fiscale.id%TYPE;
+              BEGIN
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_sync_lotto_fatture_stato', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id), NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                  END IF;
+
+                  IF p_target_stato_doc_fiscale_id IS NOT NULL AND p_target_stato_doc_fiscale_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_sync_lotto_fatture_stato', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_target_stato_doc_fiscale_id', 'valore', p_target_stato_doc_fiscale_id), NULL::uuid, 'p_target_stato_doc_fiscale_id se fornito deve essere > 0');
+                  END IF;
+
+                  SELECT tipo_lotto, stato_doc_fiscale_id INTO v_tipo_lotto, v_stato_lotto
+                    FROM vendite.fatturazione_lotti WHERE id = p_lotto_id FOR UPDATE;
+
+                  IF v_stato_lotto IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_sync_lotto_fatture_stato', 'E_LOTTO_NON_TROVATO',
+                          jsonb_build_object('lotto_id', p_lotto_id), NULL::uuid, p_lotto_id::text);
+                  END IF;
+
+                  v_target := COALESCE(p_target_stato_doc_fiscale_id, v_stato_lotto);
+
+                  IF v_target IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_sync_lotto_fatture_stato', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'stato_doc_fiscale_target', 'lotto_id', p_lotto_id), NULL::uuid, concat('stato_doc_fiscale target obbligatorio per lotto ', p_lotto_id));
+                  END IF;
+
+                  -- Allinea stato fatture (escluse le critical)
+                  UPDATE vendite.fatture f SET stato_doc_fiscale_id = v_target, data_update = now(), user_update = current_user
+                    FROM vendite.fatturazione_lotti_fatture lf
+                   WHERE lf.lotto_id = p_lotto_id AND lf.fattura_id = f.id
+                     AND COALESCE(f.critical, FALSE) IS FALSE AND f.stato_doc_fiscale_id IS DISTINCT FROM v_target;
+
+                  -- Sync stato_esecuzione sul ponte
+                  UPDATE vendite.fatturazione_lotti_fatture lf
+                     SET stato_doc_fiscale_id = f.stato_doc_fiscale_id,
+                         stato_esecuzione = vendite.fn_resolve_stato_esecuzione(
+                             p_stato_source => 'COMPLETATO',
+                             p_has_critical => COALESCE(f.critical, FALSE),
+                             p_fatturato => FALSE, p_default_stato_esecuzione => 'COMPLETED'),
+                         data_update = now(), user_update = current_user
+                    FROM vendite.fatture f WHERE lf.lotto_id = p_lotto_id AND lf.fattura_id = f.id;
+
+                  -- GIORNALIERO + INVIATA → chiusura lotto
+                  IF v_tipo_lotto = 'GIORNALIERO' THEN
+                      SELECT id INTO v_inviata_id FROM config.stati_doc_fiscale WHERE codice_interno = 'INVIATA' AND attivo IS TRUE ORDER BY ordine LIMIT 1;
+                      IF v_inviata_id IS NOT NULL AND v_target = v_inviata_id THEN
+                          UPDATE vendite.fatturazione_lotti SET stato_operativo = 'CHIUSO', data_update = now(), user_update = current_user WHERE id = p_lotto_id;
+                      END IF;
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_sync_lotto_fatture_stato(bigint, bigint)
+              IS 'Allinea stato fatture del lotto e sincronizza stato_esecuzione. GIORNALIERO+INVIATA chiude lotto. rev 2026-08-04 (D-M): via il predicato su lf.esclusa, che era una condizione sempre vera, e via l''argomento p_esclusa all''helper.';
+
+              -- ── Chiamante 2/3 ──────────────────────────────────────────
+              CREATE OR REPLACE FUNCTION vendite.fn_sync_fatture_log_critical_lotto(p_fattura_ids bigint[])
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Ricalcola flag critical sulle fatture toccate da log
+                --   e propaga stato_esecuzione sul ponte lotto-fattura.
+                --
+                -- Regole:
+                --   - mapping stato_esecuzione delegato a helper condiviso
+                --   - has_critical=true -> ERRORE
+                --   - lotto IN_ESECUZIONE -> RUNNING
+                --   - altri casi attivi -> COMPLETED
+                --
+                -- rev 2026-08-04 (D-M): via il predicato su lf.esclusa e
+                --   l'argomento p_esclusa all'helper.
+                -- =========================================================
+                IF p_fattura_ids IS NULL OR array_length(p_fattura_ids, 1) IS NULL THEN
+                  RETURN;
+                END IF;
+
+                WITH changed AS (
+                  SELECT DISTINCT x.fattura_id
+                  FROM unnest(p_fattura_ids) AS x(fattura_id)
+                  WHERE x.fattura_id IS NOT NULL
+                    AND x.fattura_id > 0
+                ),
+                calc AS (
+                  SELECT
+                    c.fattura_id,
+                    EXISTS (
+                      SELECT 1
+                      FROM vendite.fatture_log fl
+                      WHERE fl.fattura_id = c.fattura_id
+                        AND fl.disabilitato IS FALSE
+                        AND fl.status = 'C'
+                    ) AS has_critical
+                  FROM changed c
+                )
+                UPDATE vendite.fatture f
+                   SET critical = calc.has_critical,
+                       data_update = now(),
+                       user_update = current_user
+                  FROM calc
+                 WHERE f.id = calc.fattura_id
+                   AND f.critical IS DISTINCT FROM calc.has_critical;
+
+                WITH changed AS (
+                  SELECT DISTINCT x.fattura_id
+                  FROM unnest(p_fattura_ids) AS x(fattura_id)
+                  WHERE x.fattura_id IS NOT NULL
+                    AND x.fattura_id > 0
+                ),
+                calc AS (
+                  SELECT
+                    c.fattura_id,
+                    EXISTS (
+                      SELECT 1
+                      FROM vendite.fatture_log fl
+                      WHERE fl.fattura_id = c.fattura_id
+                        AND fl.disabilitato IS FALSE
+                        AND fl.status = 'C'
+                    ) AS has_critical
+                  FROM changed c
+                )
+                UPDATE vendite.fatturazione_lotti_fatture lf
+                   SET stato_esecuzione = vendite.fn_resolve_stato_esecuzione(
+                         p_stato_source => l.stato_lotto,
+                         p_has_critical => calc.has_critical,
+                         p_fatturato => false,
+                         p_default_stato_esecuzione => 'COMPLETED'
+                       ),
+                       data_update = now(),
+                       user_update = current_user
+                  FROM calc,
+                       vendite.fatturazione_lotti l
+                 WHERE lf.fattura_id = calc.fattura_id
+                   AND l.id = lf.lotto_id
+                   AND (
+                         l.stato_lotto = 'IN_ESECUZIONE'
+                         OR l.stato_operativo = 'APERTO'
+                       )
+                   AND lf.stato_esecuzione IS DISTINCT FROM vendite.fn_resolve_stato_esecuzione(
+                         p_stato_source => l.stato_lotto,
+                         p_has_critical => calc.has_critical,
+                         p_fatturato => false,
+                         p_default_stato_esecuzione => 'COMPLETED'
+                       );
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_sync_fatture_log_critical_lotto(bigint[])
+              IS 'Ricalcola fatture.critical e propaga stato_esecuzione su lotti_fatture tramite helper condiviso. rev 2026-08-04 (D-M): via il predicato su lf.esclusa, che era una condizione sempre vera, e via l''argomento p_esclusa all''helper.';
+
+              -- ── Chiamante 3/3 ──────────────────────────────────────────
+              CREATE OR REPLACE FUNCTION vendite.fn_set_fatturazione_lotto_stato(
+                  p_lotto_id   vendite.fatturazione_lotti.id%TYPE,
+                  p_stato_lotto text,
+                  p_note        text DEFAULT NULL::text
+              )
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_stato_corrente vendite.fatturazione_lotti.stato_lotto%TYPE;
+                v_stato_lotto_input vendite.fatturazione_lotti.stato_lotto%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Aggiorna lo stato tecnico del lotto e mantiene
+                --   allineato stato_esecuzione su fatturazione_lotti_fatture.
+                --
+                -- Regole:
+                --   - mapping stato_esecuzione delegato a helper condiviso
+                --   - critical=true  -> ERRORE
+                --
+                -- rev 2026-08-04 (D-M): via l'argomento p_esclusa all'helper.
+                -- =========================================================
+                IF p_lotto_id IS NULL OR p_lotto_id <= 0 OR p_stato_lotto IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_set_fatturazione_lotto_stato', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','lotto_id e stato_lotto obbligatori')),
+                    NULL::uuid, 'Parametri obbligatori mancanti'
+                  );
+                END IF;
+
+                v_stato_lotto_input := upper(btrim(p_stato_lotto));
+
+                IF v_stato_lotto_input NOT IN ('IN_ESECUZIONE','COMPLETATO','ERRORE') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_set_fatturazione_lotto_stato', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','stato_lotto non valido', 'stato_lotto', p_stato_lotto)),
+                    NULL::uuid, 'stato_lotto non valido'
+                  );
+                END IF;
+
+                SELECT stato_lotto
+                  INTO v_stato_corrente
+                  FROM vendite.fatturazione_lotti
+                 WHERE id = p_lotto_id
+                 FOR UPDATE;
+
+                IF NOT FOUND THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_set_fatturazione_lotto_stato', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','lotto non trovato', 'lotto_id', p_lotto_id)),
+                    NULL::uuid,
+                    concat('Lotto non trovato ', 'lotto_id: ', p_lotto_id::text)
+                  );
+                END IF;
+
+                IF v_stato_corrente = v_stato_lotto_input THEN
+                  RETURN;
+                END IF;
+
+                IF v_stato_corrente = 'IN_ESECUZIONE'
+                   AND v_stato_lotto_input NOT IN ('COMPLETATO','ERRORE') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_set_fatturazione_lotto_stato', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','transizione non ammessa', 'da', v_stato_corrente, 'a', v_stato_lotto_input)),
+                    NULL::uuid,
+                    concat('Transizione non ammessa: stato in esecuzione' , ' da ', v_stato_corrente, ' a ', v_stato_lotto_input)
+                  );
+                END IF;
+
+                IF v_stato_corrente = 'ERRORE' AND v_stato_lotto_input <> 'IN_ESECUZIONE' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_set_fatturazione_lotto_stato', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','transizione non ammessa', 'da', v_stato_corrente, 'a', v_stato_lotto_input)),
+                    NULL::uuid,
+                    concat('Transizione non ammessa: stato errore' , ' da ', v_stato_corrente, ' a ', v_stato_lotto_input)
+                  );
+                END IF;
+
+                IF v_stato_corrente = 'COMPLETATO' AND v_stato_lotto_input <> 'IN_ESECUZIONE' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_set_fatturazione_lotto_stato', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','transizione non ammessa', 'da', v_stato_corrente, 'a', v_stato_lotto_input)),
+                    NULL::uuid,
+                    concat('Transizione non ammessa: stato completato' , ' da ', v_stato_corrente, ' a ', v_stato_lotto_input)
+                  );
+                END IF;
+
+                UPDATE vendite.fatturazione_lotti
+                   SET stato_lotto = v_stato_lotto_input,
+                       meta = CASE
+                                WHEN p_note IS NULL THEN meta
+                                ELSE jsonb_set(meta, '{note_stato}', to_jsonb(p_note), true)
+                              END,
+                       data_update = now(),
+                       user_update = current_user
+                 WHERE id = p_lotto_id;
+
+                UPDATE vendite.fatturazione_lotti_fatture lf
+                   SET stato_esecuzione = vendite.fn_resolve_stato_esecuzione(
+                         p_stato_source => v_stato_lotto_input,
+                         p_has_critical => COALESCE(f.critical, false),
+                         p_fatturato => false,
+                         p_default_stato_esecuzione => 'PENDING'
+                       ),
+                       data_update = now(),
+                       user_update = current_user
+                  FROM vendite.fatture f
+                 WHERE lf.lotto_id = p_lotto_id
+                   AND lf.fattura_id = f.id
+                   AND lf.stato_esecuzione IS DISTINCT FROM vendite.fn_resolve_stato_esecuzione(
+                         p_stato_source => v_stato_lotto_input,
+                         p_has_critical => COALESCE(f.critical, false),
+                         p_fatturato => false,
+                         p_default_stato_esecuzione => 'PENDING'
+                       );
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_set_fatturazione_lotto_stato(bigint, text, text)
+              IS 'Aggiorna stato_lotto tecnico e sincronizza stato_esecuzione fatture tramite helper condiviso. rev 2026-08-04 (D-M): via l''argomento p_esclusa all''helper, il flag e'' dormiente e quel ramo non e'' mai stato preso.';
+
+              -- ── Chiamante 4/4: NON si tocca, ed e' una scelta ──────────
+              -- 🔴 `vendite.fn_sync_attivita_stato_esecuzione` chiama l'helper
+              -- con `p_esclusa => false` costante, quindi la DROP della firma
+              -- vecchia la lascia a invocare una funzione che non esiste piu'.
+              -- Sembrerebbe da aggiornare qui. NON lo si fa, perche' quella
+              -- funzione e' gia' morta due volte:
+              --   * nomina la tabella `vendite.attivita_fatturabili_lotti`,
+              --     che NON ESISTE;
+              --   * filtra su `attivita_fatturabili.lotto_attivita_id`, che
+              --     non e' piu' una colonna di quella tabella.
+              -- Non ha chiamanti, e non potrebbe girare nemmeno se ne avesse:
+              -- alla prima esecuzione plpgsql risolverebbe i %TYPE del DECLARE
+              -- e fallirebbe. Sopravvive solo perche' PostgreSQL non
+              -- ri-valida le funzioni gia' create quando si droppa una tabella.
+              --
+              -- ⚠️ Il primo tentativo di questo changeSet PROVAVA a ricrearla
+              -- e il migrate e' fallito (2026-08-04): un `%TYPE` in FIRMA si
+              -- risolve alla CREATE, non alla prima esecuzione. E' stato il
+              -- modo in cui la funzione morta si e' fatta trovare.
+              --
+              -- Rianimarla o seppellirla e' una decisione che non appartiene a
+              -- D-M: qui si toglie un parametro a un helper, non si adotta una
+              -- famiglia di funzioni orfane. Vedi M4-quater nel piano.
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              SELECT 1;

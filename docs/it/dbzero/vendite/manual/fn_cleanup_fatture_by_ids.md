@@ -16,7 +16,7 @@
 **Approfondimento funzioni:**
 >
 • [vendite.fn_annulla_lotto_da_draft](/dbzero/vendite/funzioni/fn_annulla_lotto_da_draft)  
-> • [vendite.fn_elimina_fattura_da_lotto_draft](/dbzero/vendite/funzioni/fn_elimina_fattura_da_lotto_draft)  
+> • [vendite.fn_elimina_fattura_da_lotto](/dbzero/vendite/funzioni/fn_elimina_fattura_da_lotto)  
 > • [vendite.fn_riporta_lotto_a_draft](/dbzero/vendite/funzioni/fn_riporta_lotto_a_draft)  
 > • [vendite.fn_reset_fondi_fattura](/dbzero/vendite/funzioni/fn_reset_fondi_fattura)  
 
@@ -42,7 +42,7 @@ avevano consumato.
 |---|---|
 | [`fn_annulla_lotto_da_draft`](/dbzero/vendite/funzioni/fn_annulla_lotto_da_draft) | → **ANNULLATA**: il lotto si chiude |
 | [`fn_riporta_lotto_a_draft`](/dbzero/vendite/funzioni/fn_riporta_lotto_a_draft) | → **DRAFT**: il lotto resta vivo e riparte |
-| [`fn_elimina_fattura_da_lotto_draft`](/dbzero/vendite/funzioni/fn_elimina_fattura_da_lotto_draft) | **non lo tocca**: agisce su una fattura sola |
+| [`fn_elimina_fattura_da_lotto`](/dbzero/vendite/funzioni/fn_elimina_fattura_da_lotto) | **non lo tocca**: agisce su una fattura sola |
 
 Sono tre operazioni diverse che condividono **la stessa** pulizia. È il motivo per
 cui la pulizia non può stare dentro nessuna delle tre: la correttezza di ognuna
