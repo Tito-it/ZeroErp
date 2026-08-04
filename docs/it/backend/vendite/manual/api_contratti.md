@@ -930,10 +930,14 @@ extra al catalogo.
 **Trigger autoritativi**: come da tabella codici errore. Inoltre su
 `contratti_righe_componenti`:
 
-- `trg_contratti_righe_propaga_qta_componenti` — ricalcolo `quantita` componente
+- `trg_contratti_righe_z90_propaga_qta_componenti_upd` (su `contratti_righe`)
+  → `script.trgfn_componenti_propaga_qta` — ricalcolo `quantita` componente
   al cambio `quantita` riga padre.
-- `trgfn_contratti_righe_componenti_guard_pending` — immutabilita' componenti
+- `trg_contratti_righe_componenti_a10_guard_pending_upd`
+  → `script.trgfn_componenti_guard_pending` — immutabilita' componenti
   quando `stato_approvazione_prezzo = PENDING` (L3 approvazioni prezzo).
+  Generico dal 2026-05-26 (`20260526-23`): sostituisce il vecchio
+  `trgfn_contratti_righe_componenti_guard_pending`, droppato il 2026-08-04.
 
 **Stati** gestiti via `config.stati_doc_contratti`
 (DRAFT/ATTIVO/SOSPESO/CESSATO). Cessazione manuale solo con

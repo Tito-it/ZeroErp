@@ -559,3 +559,68 @@ ritirato.
 catalogo come storia — non si cancella un messaggio che può essere già finito in
 un log — ma il degrado a `E_DATABASE` che avete misurato non ha più un percorso
 che lo produca. Non serve toccare la regex.
+
+---
+
+## 10. Chiusura della metà a video (BE/FE, 2026-08-04, sera)
+
+> Scritto da BE/FE dopo il §9. Le due richieste del §9.3 sono fatte; il
+> cantiere BE/FE è chiuso, resta la validazione in-app.
+
+### 10.1 Le due richieste del §9.3
+
+| Richiesta | Stato |
+| --- | --- |
+| `E_PREV_ANNULLA_COMMESSA_EMESSA` in `error_policies.py` | ✅ **409** + messaggio che dice cosa fare («storna le attività emesse dal lato fatturazione, oppure crea una revisione») |
+| Nona chiave `vendite.preventivi.azione_reason.commessa_gia_emessa` | ✅ tradotta it + en |
+
+Nessun'altra riga di codice: `reasons` e `nessuna_azione_key` erano già cablati
+dal giro precedente e si sono accesi da soli, come previsto.
+
+### 10.2 Il §8.2 rimisurato dopo il vostro apply
+
+Stessi documenti, stesso canale, misura ripetuta:
+
+| Prova | Prima (§8.2) | Ora |
+| --- | --- | --- |
+| preventivi #302 / #301 / #299 | bottone acceso, `reasons` assente | **`enabled=false`**, `reason=GIA_IN_COMMESSA`, `reason_key` risolvibile |
+| preventivi #535 / #1816 | accesi | accesi, `reasons` vuoto — corretto |
+| ordine #633 | acceso | acceso |
+| ordine EVASO #5388 | barra vuota e muta | **`nessuna_azione_key = vendite.ordini.stato_info.evaso`** |
+
+Le quattro righe sono ribaltate come annunciato. Estendendo la misura a tutta la
+popolazione raggiungibile (163 preventivi, 89 ordini, 29 DDT): **27 ordini e 9
+DDT** ricevono la nota — gli stessi numeri del vostro §9.2, contati da un'altra
+parte — e **ogni** chiave emessa in campo è risolvibile dai locales (7 chiavi
+distinte, verificate una per una, non a campione).
+
+### 10.3 Il vostro presidio i18n l'ha preso al primo colpo
+
+Il guard esteso nel giro precedente (`nessuna_azione_key` + famiglia
+`stati_doc_*.csv`) ha segnalato la nona chiave **prima** che qualcuno la
+cercasse a mano: un solo rosso, con il file che la emette. È la differenza fra
+accorgersene ora e accorgersene guardando una schermata fra tre settimane.
+
+### 10.4 Sui due limiti dichiarati nel §9.2
+
+**I 5 ordini EVASO senza nota.** Dal lato frontend il vincolo che ve lo fa
+sembrare obbligato **non esiste**: la prop `infoKey` di `DrawerActionsBar` non
+richiede che la lista sia vuota, rende la nota *accanto* alle azioni vive (è una
+riga muted in coda alla barra, non un banner al posto dei pulsanti). Se decidete
+che la nota accompagna sempre lo stato chiuso, è la riga che dite voi in tre
+funzioni e **zero righe** qui. La scelta resta di dominio — «cosa sta
+succedendo» è vero anche con un bottone acceso accanto — ma non fatela per un
+vincolo di resa che non c'è.
+
+**Il ramo `reasons` dell'ordine non esercitato (test 5 in SKIP).** Confermato
+anche da qui: nella popolazione non c'è un solo ordine con l'annullamento
+bloccato, quindi quel ramo non è mai passato per il frontend. Il codice di resa è
+lo stesso del preventivo — che è esercitato su 12 documenti e reso corretto —
+ma resta un ramo che nessuno ha visto a video. Se durante la validazione in-app
+esce un ordine con DDT collegati, quello è il caso da guardare per primo.
+
+### 10.5 Stato
+
+- [x] tutte le richieste BE/FE dei §5, §5.1 e §9.3 — fatte;
+- [x] 9 chiavi i18n (it + en), 4 policy errore, guard i18n **verde**, `vite build` pulito, 689 core + 1480 vendite verdi;
+- [ ] **validazione in-app di Tid** — è l'unica voce rimasta dell'intero cantiere.

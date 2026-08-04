@@ -108,7 +108,11 @@ Tradotte le otto del §5.1 del brief DB. Testi presi dalla tabella §4 del brief
 il DDT consegnato dice di usare il **reso**, l'ordine evaso dice che lo stato
 **si ricalcola dai DDT**.
 
-## 5. Cosa resta fermo, e da chi dipende
+## 5. Cosa restava fermo, e da chi dipendeva
+
+> ✅ **Superato la sera stessa**: il DB ha applicato l'esposizione mancante e il
+> consolidamento. Vedi §7. La sezione resta com'era scritta perché è la misura
+> che ha motivato la richiesta, e perché il §7 si legge come suo ribaltamento.
 
 **Il §6 del brief DB, ultima riga: `reasons` e `nessuna_azione_key` non sono
 ancora esposte da `fn_available_actions_preventivo` / `_ordine`.** Conseguenze
@@ -174,14 +178,54 @@ cantiere. **La soluzione giusta è il consolidamento §7.3 già deciso**:
 `fn_check_preventivo_annullabile` assorbe il criterio della porta, e quel codice
 sparisce da solo. Fino ad allora il buco resta, ed è scritto qui.
 
-## 7. Definizione di «fatto»
+## 7. Secondo giro — il DB ha chiuso, noi anche (2026-08-04, sera)
 
-- [x] tre codici errore a policy (409 + messaggio d'azione) — `error_policies.py`;
+Il team DB ha applicato `20260804-68/-69/-70` (capability: `reasons` +
+`nessuna_azione_key`, su **tre** funzioni — anche il DDT, che il §6 del loro
+brief non contava) e `-73/-74` (consolidamento §7.3). Dettaglio nel loro §9.
+
+**Da noi è servito quello che avevano chiesto, e nient'altro:**
+
+| Cosa | Dove |
+| --- | --- |
+| `E_PREV_ANNULLA_COMMESSA_EMESSA` → 409 | `error_policies.py` |
+| `vendite.preventivi.azione_reason.commessa_gia_emessa` | `it.json` + `en.json` |
+
+Il resto si è acceso da solo: `reasons` e `nessuna_azione_key` erano cablati dal
+primo giro, e questo era il punto di cablarli in anticipo.
+
+**Rimisurato sul DB, stessi documenti del §2:** i preventivi #302/#301/#299
+hanno ora il bottone **spento col motivo**, l'ordine EVASO #5388 espone la nota,
+mentre #535 / #1816 / #633 restano accesi. Su tutta la popolazione (163
+preventivi, 89 ordini, 29 DDT): 27 ordini e 9 DDT con la nota, e **tutte** le 7
+chiavi emesse in campo risolvibili dai locales.
+
+**Il guard i18n esteso al §6.1 ha ripagato subito**: ha segnalato la nona chiave
+da solo, con il file che la emette, prima che qualcuno la cercasse.
+
+**Il §6.2 è chiuso dal DB**: `PREV_ANNULLAMENTO_COMMESSA_ATTIVA` non è più
+sollevato da nessuna funzione viva. Il degrado a `E_DATABASE` esiste ancora come
+comportamento dell'estrattore, ma non ha più un percorso che lo produca — e
+infatti non abbiamo toccato la regex, come scritto allora.
+
+**Due limiti che il DB ha dichiarato** (loro §9.2) e su cui abbiamo una cosa da
+dire: i 5 ordini EVASO senza nota **non** dipendono da un vincolo del frontend —
+`infoKey` rende la nota anche accanto ad azioni vive, quindi «nota sempre sullo
+stato chiuso» costa zero righe qui; e il ramo `reasons` dell'ordine non è
+esercitato da nessun documento vivo, quindi è il primo caso da guardare se
+durante la validazione esce un ordine con DDT collegati.
+
+## 8. Definizione di «fatto»
+
+- [x] **quattro** codici errore a policy (409 + messaggio d'azione) — `error_policies.py`;
 - [x] verbi «Annulla» verificati end-to-end sulle capability vive (nessun codice necessario);
 - [x] prop `infoKey` su `DrawerActionsBar` + CSS + cablaggio sugli 8 drawer vendite;
-- [x] 8 chiavi i18n del brief tradotte it/en;
-- [x] presidio `check_i18n_keys.py` esteso a `nessuna_azione_key` + `stati_doc_*.csv` — **verde**;
-- [x] `vite build` pulito, 689 test core + 1480 test vendite verdi;
-- [ ] **validazione in-app di Tid** (annullamento preventivo da EMESSO/ACCETTATO e ordine da CONFERMATO);
-- [ ] **attesa DB**: esposizione `reasons` + `nessuna_azione_key` nelle due `fn_available_actions_*` → allora la nota e i bottoni spenti si vedono, senza altro lavoro FE;
-- [ ] **attesa DB**: consolidamento §7.3 (chiude il §6.2 qui sopra).
+- [x] **nove** chiavi i18n del brief tradotte it/en;
+- [x] presidio `check_i18n_keys.py` esteso a `nessuna_azione_key` + `stati_doc_*.csv` — **verde**, e ha già intercettato la nona chiave da solo;
+- [x] `vite build` pulito, 689 test core + 1480 test vendite verdi (ripetuti dopo il secondo giro);
+- [x] ~~attesa DB~~: esposizione `reasons` + `nessuna_azione_key` — **arrivata**, `20260804-68/-69/-70`, verificata in campo (§7);
+- [x] ~~attesa DB~~: consolidamento §7.3 — **arrivato**, `20260804-73/-74`: il §6.2 è chiuso, `PREV_ANNULLAMENTO_COMMESSA_ATTIVA` non è più sollevato da nessuna funzione viva;
+- [ ] **validazione in-app di Tid** (annullamento preventivo da EMESSO/ACCETTATO e ordine da CONFERMATO; per il ramo `reasons` dell'ordine serve un ordine con DDT collegati — oggi non ne esiste nessuno, è il caso mai visto a video).
+
+**Il cantiere BE/FE è chiuso**: resta solo la riga di validazione. Alla conferma
+di Tid, questo brief e quello DB passano in `work-done`.
