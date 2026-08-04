@@ -286,7 +286,6 @@ def fn_list_lotto_fatture(
     *,
     lotto_id: int,
     stato_esecuzione: str | None = None,
-    esclusa: bool | None = None,
     auth_user_id: int | None = None,
     sort_by: str = "fattura_id",
     sort_dir: str = "asc",
@@ -315,7 +314,6 @@ def fn_list_lotto_fatture(
     results, total_count = repository.list_lotto_fatture(
         lotto_id=lotto_id,
         stato_esecuzione=stato_esecuzione,
-        esclusa=esclusa,
         auth_user_id=auth_user_id,
         sort_by=sort_by,
         sort_dir=sort_dir,

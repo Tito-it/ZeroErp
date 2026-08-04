@@ -1816,6 +1816,50 @@ class ErrorPolicyRegistry:
                 "buco nella numerazione fiscale."
             ),
         ),
+        # Precondizioni dell'eliminazione per-fattura dal lotto (DB 2026-08-04,
+        # slice 6-B, codici 831-834 da `script.fn_check_fattura_eliminabile_da_lotto`).
+        # Tutti 409 per la stessa ragione dei gemelli sul lotto intero: chi li
+        # vede ha chiesto un'operazione che lo stato corrente non consente, non
+        # ha compilato male un campo.
+        "E_LOTTO_NON_PRE_FISCALE": ErrorPolicy(
+            code="E_LOTTO_NON_PRE_FISCALE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Il lotto e` oltre lo stato pre-fiscale: non si possono piu` togliere "
+                "fatture."
+            ),
+        ),
+        # Legame lotto-fattura assente: tipicamente una lista stantia (la
+        # fattura e` gia` stata tolta da un'altra sessione). Conflitto di stato,
+        # non 404: il documento esiste, e` il legame che non c'e` piu`.
+        "E_FATTURA_NON_COLLEGATA_AL_LOTTO": ErrorPolicy(
+            code="E_FATTURA_NON_COLLEGATA_AL_LOTTO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "La fattura non risulta collegata a questo lotto: ricaricare l'elenco."
+            ),
+        ),
+        "E_FATTURA_GIA_FISCALE": ErrorPolicy(
+            code="E_FATTURA_GIA_FISCALE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "La fattura e` oltre lo stato pre-fiscale: non puo` essere tolta dal lotto."
+            ),
+        ),
+        # Ridondante rispetto al precedente per scelta del DB, e va tenuto:
+        # guarda il NUMERO, non lo stato che dovrebbe implicarlo.
+        "E_FATTURA_GIA_NUMERATA": ErrorPolicy(
+            code="E_FATTURA_GIA_NUMERATA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "La fattura ha gia` un numero: toglierla dal lotto aprirebbe un buco "
+                "nella numerazione fiscale."
+            ),
+        ),
         # C-8: ristampa massiva su lotto non DEFINITIVA (I-7: niente numerazione
         # backdoor via ristampa): conflitto di stato (409).
         "E_LOTTO_NON_RISTAMPABILE": ErrorPolicy(

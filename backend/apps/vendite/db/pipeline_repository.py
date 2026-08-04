@@ -27,7 +27,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.value_normalizer import as_bool, empty_to_none
 from apps.vendite.types import (
     AnnullaLottoDaDraftResult,
-    EliminaFatturaDaLottoDraftResult,
+    EliminaFatturaDaLottoResult,
     LottoPipelineMeta,
     LottoSegnalazioniSummary,
     LottoTaskRunRow,
@@ -2211,20 +2211,24 @@ class VenditePipelineRepository:
                 [lotto_id],
             )
 
-    # Scopo: Elimina UNA fattura DRAFT dal lotto (estrazione per-fattura),
-    #        liberandone le attivita'. ⚠️ Passa `NULL` come `lock_batch_id`
-    #        alla primitiva di cleanup: passare quello del lotto libererebbe
-    #        l'INTERO batch invece della sola fattura (C-22/D-L.3, misurato dal
-    #        team DB: 15 attivita' liberate contro 0).
-    def elimina_fattura_da_lotto_draft(
+    # Scopo: Elimina UNA fattura dal lotto, liberandone le attivita'. ⚠️ Passa
+    #        `NULL` come `lock_batch_id` alla primitiva di cleanup: passare
+    #        quello del lotto libererebbe l'INTERO batch invece della sola
+    #        fattura (C-22/D-L.3, misurato dal team DB: 15 attivita' liberate
+    #        contro 0).
+    #        Rinominata il 2026-08-04 insieme alla funzione SQL (slice 6-B): il
+    #        «draft» era riferito al LOTTO, che ora basta sia pre-fiscale
+    #        (DRAFT o EMESSA) — lo stesso confine delle due sorelle. Il nome
+    #        vecchio aveva smesso di dire la verita'.
+    def elimina_fattura_da_lotto(
         self,
         lotto_id: int,
         fattura_id: int,
-    ) -> EliminaFatturaDaLottoDraftResult:
+    ) -> EliminaFatturaDaLottoResult:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT updated_attivita, deleted_fatture, deleted_righe "
-                "FROM vendite.fn_elimina_fattura_da_lotto_draft(%s, %s)",
+                "SELECT updated_attivita, deleted_fatture, deleted_righe, riemesse_attivita "
+                "FROM vendite.fn_elimina_fattura_da_lotto(%s, %s)",
                 [lotto_id, fattura_id],
             )
             row = cursor.fetchone()
@@ -2233,6 +2237,7 @@ class VenditePipelineRepository:
             "updated_attivita": int(row[0]),
             "deleted_fatture": int(row[1]),
             "deleted_righe": int(row[2]),
+            "riemesse_attivita": int(row[3]),
         }
 
     # Scopo: Recupera `next_fattura_riga_nr` dal contesto applicativo o dal database.

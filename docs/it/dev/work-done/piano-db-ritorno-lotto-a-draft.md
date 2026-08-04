@@ -1,10 +1,56 @@
 # Piano DB — ritorno del lotto a DRAFT
 
+> 🟢 **CANTIERE CHIUSO — 2026-08-04.** Entrambe le slice sono in esercizio, DB e
+> lato applicativo:
+>
+> * **6-A** (ritorno del lotto in bozza) — DB il 2026-08-03, BE/FE il 2026-08-04,
+>   verificata dallo smoke `smoke-ritorno-lotto-a-draft.py`: **9/9 verdi** sul
+>   percorso reale. Brief archiviato in
+>   [brief-be-ritorno-lotto-a-draft.md](brief-be-ritorno-lotto-a-draft.md).
+> * **6-B** (eliminazione per-fattura + via il flag `esclusa`) — DB il 2026-08-04,
+>   BE/FE lo stesso giorno. Il **brief B5 non è stato scritto**: le quattro
+>   rotture erano già elencate nel §7 di questo piano, e riscriverle altrove
+>   sarebbe stato un giro in più. Consuntivo del lato applicativo qui sotto.
+>
+> **Cosa ha fatto il BE/FE per la 6-B** (tutte e quattro le rotture del §7):
+>
+> 1. **nome della funzione** — `fn_elimina_fattura_da_lotto` propagata su
+>    repository, service, view e test. ⚠️ URL (`reset-draft/`) e permesso
+>    (`reset_lotto_draft`) **non** seguono la rinomina: sono contratti verso il
+>    client e verso il catalogo permessi;
+> 2. **quarto contatore** `riemesse_attivita` — repository, `types.py`, schema
+>    OpenAPI e messaggio d'esito, che ora distingue le attività sbloccate da
+>    quelle rimesse in coda;
+> 3. **filtro `esclusa`** — era rotto *adesso*: via da query, parametro OpenAPI,
+>    `types.py`, service, client FE e dai due test dedicati (spariscono: il
+>    filtro non esiste più, non è stato «adattato»);
+> 4. **codici 831-834** registrati in `error_policies.py` come **409**, coerenti
+>    coi gemelli sul lotto intero.
+>
+> Testi del drawer riscritti: la conferma dice ora che la fattura **viene
+> eliminata** e che righe, note e log spariscono con lei — con RD-7 «estratta dal
+> lotto» sarebbe stato fuorviante. Binding provato con chiamata **reale**
+> (transazione + rollback), non sui mock.
+>
+> **Un difetto trovato proprio da quella prova**, e che non riguardava la 6-B: il
+> ruolo dei worker non aveva `DELETE` su `vendite.note`, quindi il rollback
+> automatico della pipeline massiva falliva **solo** dal canale batch. Chiuso lo
+> stesso giorno →
+> [brief-db-grant-batch-cleanup-note.md](brief-db-grant-batch-cleanup-note.md).
+>
+> **Resta aperto, e non è di questo cantiere:** il debito del consuntivo (il
+> presidio che confronta ciò che le funzioni scrivono con ciò che esiste ed è
+> concesso), che il team DB ha deciso di aprire come slice a sé perché serve a
+> tutti i ruoli batch. **M6** (PDF orfani) resta una segnalazione: rischio basso,
+> la stampa si accoda alla numerazione, cioè fuori dal perimetro pre-fiscale.
+>
+> ---
+>
 > **Cos'è.** Il cantiere che realizza il disegno di Tid — *EMESSA = documento non
 > modificabile; per correggere si riporta a DRAFT e si ricalcola* — che oggi è
 > **dichiarato a metà e non implementato**.
 >
-> **Estratto il 2026-08-03** da [piano-db-satelliti-fattura.md](piano-db-satelliti-fattura.md)
+> **Estratto il 2026-08-03** da [piano-db-satelliti-fattura.md](../work-in-progress/piano-db-satelliti-fattura.md)
 > §3.6, dove era la «Fase 6». Ci stava per un vincolo d'ordine (§3.7 punto 6:
 > *«satelliti completi → poi ritorno a DRAFT, che deve saper ripulire ciò che
 > quelle fasi producono»*), non per parentela di tema. **Quel vincolo è
@@ -21,7 +67,7 @@
 
 Non è un cantiere teorico. Il **2026-08-03** è arrivato dal campo il primo caso
 d'uso reale, documentato in
-[brief-db-termine-dal-documento-alla-commessa.md §6](../work-done/brief-db-termine-dal-documento-alla-commessa.md):
+[brief-db-termine-dal-documento-alla-commessa.md §6](brief-db-termine-dal-documento-alla-commessa.md):
 
 ```
 fattura 2263 — EMESSA, NON numerata, piano rate sbagliato
@@ -654,8 +700,8 @@ Conterrà almeno:
 | | |
 |---|---|
 | **Stato** | ✅ **CHIUSA lato DB (2026-08-03)** — analisi, A1-A5 **applicati**, pgTAP **verdi**, doc e brief scritti. 5 changeSet: `20260803-07`…`-10` + seed CSV |
-| **Slice** | **6-A** ✅ **CHIUSA lato DB** (A1-A5 + doc + brief) · **6-B** ✅ **CHIUSA lato DB il 2026-08-04** — ridotta da [RD-7](#1-bis-decisioni-di-questo-cantiere), applicata e verde. Resta il solo **brief al BE** (B5) |
-| **Prossimo passo** | **Il brief al BE (B5)**: quattro rotture in una comunicazione sola — nome della funzione (`fn_elimina_fattura_da_lotto`), quarto contatore `riemesse_attivita`, filtro `esclusa` dell'API + `types.py`, PDF orfani (M6). ⚠️ Il filtro `esclusa` è **rotto adesso**: la lista fatture del lotto interroga una colonna che non esiste più |
+| **Slice** | **6-A** ✅ **CHIUSA** (DB 08-03 · BE/FE 08-04, smoke 9/9) · **6-B** ✅ **CHIUSA** (DB e BE/FE il 08-04) — ridotta da [RD-7](#1-bis-decisioni-di-questo-cantiere) |
+| **Prossimo passo** | — **nessuno**: il cantiere è chiuso (2026-08-04). Le quattro rotture del B5 sono state lavorate dal BE/FE leggendo questo §7, senza passare da un brief separato; vedi il box in testa al documento. **M6** (PDF orfani) resta una segnalazione a rischio basso |
 | **Debito lasciato aperto** | Il **presidio** che avrebbe trovato le funzioni fantasma da solo: una vista `dbops` che confronta i riferimenti `schema.tabella` estratti da `pg_get_functiondef` con `pg_class`, più un pgTAP che pretende zero righe. È il gemello a DB del guardrail sui codici errore scritto dal BE. Senza, la prossima funzione morta si trova di nuovo per caso — come è successo a queste tre |
 
 ### Slice 6-A
@@ -668,7 +714,7 @@ Conterrà almeno:
 | **A3** `fn_riporta_lotto_a_draft` | ✅ **applicata** | `20260803-08` + fix `20260803-09` | 5 contatori, **3 livelli**, sorella di `fn_annulla_lotto_da_draft`. 🔴 **Il `-08` era rotto e il pgTAP l'ha preso al primo giro**: `pg_advisory_xact_lock(integer, bigint)` **non esiste** — gli overload sono `(bigint)` e `(integer, integer)`, quindi la forma a due argomenti vuole **due int4**. Rimedio `hashtext(p_lotto_id::text)` e **non** `::int`: il cast esploderebbe oltre i 2 miliardi, mentre una collisione di hash serializza due lotti diversi e basta — sbaglia dalla parte prudente. Nello stesso fix: firma ancorata con **`%TYPE`** (rilievo di Tid; `linee-guida-sql` §funzione madre: parametri, DECLARE, RETURNS/RETURNS TABLE, COMMENT), **`SECURITY INVOKER`** esplicito, e **`DROP` davanti alla `CREATE`** perché `CREATE OR REPLACE` non può cambiare un `RETURNS TABLE`. ⚠️ Nel `COMMENT ON FUNCTION` i tipi vanno **risolti**: `%TYPE` lì non è ammesso |
 | **A4** pgTAP | ✅ **VERDE 10/10** (2026-08-03) | `test-riporta-lotto-a-draft-v1.sql` `plan(10)` | ⚠️ i test 4-10 si **saltano** se il DB non ha lotti pre-fiscali con fatture: dichiarato nel file, non nascosto. Il primo giro ha trovato il bug del lock in A3 — **i test sono nati con la funzione ed e` servito** |
 | **A5** Invariante copertura figlie | ✅ **APPLICATO e VERDE 5/5** (2026-08-03) | `20260803-10` · `test-cleanup-fattura-copertura-figlie-v1.sql` `plan(5)` | **RD-4 + RD-5**, §5.5. Il `-10` fa di `fn_cleanup_fatture_by_ids` il **proprietario unico** del ripristino (assorbe il reset `commesse_attivita`, +1 contatore `riemesse_attivita`, `DROP` obbligatoria perché cambia il `RETURNS TABLE`) e sana un difetto **latente**: le due sorelle lasciavano attività **emesse senza fattura**, irrecuperabili — 0 orfane oggi, si armava al primo annullamento. Il test legge le figlie da `pg_constraint` e ne pretende la classificazione: **15/15** classificate, mutazione provata due volte, il rosso **fa il nome** della tabella. 🔴 **Rettifica a un mio allarme**: avevo annunciato un secondo bug su `fatture_fondi_fattura_source` — **non esiste**. Cercavo una `DELETE` e non l'ho trovata, ma `fn_reset_fondi_fattura` la tratta con una **UPDATE** che azzera `fattura_figlia_id` e rimette il fondo `DISPONIBILE`: è il trattamento giusto, quei crediti devono sopravvivere |
-| **§6 Brief al BE** | ✅ **scritto** (2026-08-03) | — | [brief-be-ritorno-lotto-a-draft.md](../work-done/brief-be-ritorno-lotto-a-draft.md). Due richieste sole, entrambe nel runner: **leggere** `riaperto_il` come terzo motivo per rifare lo step corrente, e **azzerarla** quando il lotto avanza. ✅ Verificato che i 3 codici errore sollevati sono **già** in `error_policies.py`: nessuna registrazione da chiedere |
+| **§6 Brief al BE** | ✅ **scritto** (2026-08-03) | — | [brief-be-ritorno-lotto-a-draft.md](brief-be-ritorno-lotto-a-draft.md). Due richieste sole, entrambe nel runner: **leggere** `riaperto_il` come terzo motivo per rifare lo step corrente, e **azzerarla** quando il lotto avanza. ✅ Verificato che i 3 codici errore sollevati sono **già** in `error_policies.py`: nessuna registrazione da chiedere |
 | Doc | ✅ **scritta** (2026-08-03) | — | manuale nuovo `manual/fn_riporta_lotto_a_draft.md` · colonna `riaperto_il` aggiunta a `manual/fatturazione_lotti.md` · ⚠️ **rettificato il manuale della sorella** `fn_annulla_lotto_da_draft`, stale su due punti che D-L.2 aveva cambiato (diceva «solo MASSIVO» e «tutte le fatture in DRAFT»): le due pagine si contraddicevano. Rigenerazione auto-gen a cura di Tid |
 
 ### Slice 6-B
@@ -723,7 +769,7 @@ Conterrà almeno:
 
 ### Debito documentale ereditato
 
-Due righe del [§4-bis del piano satelliti](piano-db-satelliti-fattura.md) sono
+Due righe del [§4-bis del piano satelliti](../work-in-progress/piano-db-satelliti-fattura.md) sono
 agganciate a questo cantiere e si evadono **qui**, non lì:
 
 | Guida | Cosa cambia |
@@ -737,9 +783,9 @@ agganciate a questo cantiere e si evadono **qui**, non lì:
 
 | Cosa | Dove |
 |---|---|
-| Il caso reale che ha aperto il cantiere | [brief-db-termine-dal-documento-alla-commessa.md §6](../work-done/brief-db-termine-dal-documento-alla-commessa.md) |
-| Da dove viene questo documento | [piano-db-satelliti-fattura.md](piano-db-satelliti-fattura.md) §3.6 (chiuso col puntatore qui) |
-| Le decisioni D-* citate in §1 | [piano-db-satelliti-fattura.md §2.1](piano-db-satelliti-fattura.md) |
-| I rilievi C-18 / C-19 / C-22 / C-23 | [piano-db-satelliti-fattura.md §1.2](piano-db-satelliti-fattura.md) |
-| Lato applicativo di 6-B | [piano-be-fe-satelliti-fattura.md §4-bis](piano-be-fe-satelliti-fattura.md) |
-| Cosa viene **dopo** questo cantiere | [brief-incassi-riconciliazione-rate-promemoria.md](brief-incassi-riconciliazione-rate-promemoria.md) — incassi → `2.4 DatiPagamento` → SDI |
+| Il caso reale che ha aperto il cantiere | [brief-db-termine-dal-documento-alla-commessa.md §6](brief-db-termine-dal-documento-alla-commessa.md) |
+| Da dove viene questo documento | [piano-db-satelliti-fattura.md](../work-in-progress/piano-db-satelliti-fattura.md) §3.6 (chiuso col puntatore qui) |
+| Le decisioni D-* citate in §1 | [piano-db-satelliti-fattura.md §2.1](../work-in-progress/piano-db-satelliti-fattura.md) |
+| I rilievi C-18 / C-19 / C-22 / C-23 | [piano-db-satelliti-fattura.md §1.2](../work-in-progress/piano-db-satelliti-fattura.md) |
+| Lato applicativo di 6-B | [piano-be-fe-satelliti-fattura.md §4-bis](../work-in-progress/piano-be-fe-satelliti-fattura.md) |
+| Cosa viene **dopo** questo cantiere | [brief-incassi-riconciliazione-rate-promemoria.md](../work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md) — incassi → `2.4 DatiPagamento` → SDI |
