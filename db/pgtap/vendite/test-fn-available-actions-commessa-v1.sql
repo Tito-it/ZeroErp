@@ -6,7 +6,7 @@
 -- ------------------------------------------------------------
 -- Indice test (1..6):
 --  1) BOZZA: azione 'annulla' disponibile
---  2) BOZZA: solo 1 azione manuale (automatiche ->APERTA/->PRONTA escluse)
+--  2) BOZZA: azioni manuali = {annulla, rendi_pronta} (automatica ->APERTA esclusa)
 --  3) BOZZA: can_edit_righe = true (stato modificabile)
 --  4) PRONTA: azioni = {chiudi, riapri, annulla}
 --  5) PRONTA: is_emittibile = true
@@ -84,12 +84,23 @@ SELECT ok(
   'BOZZA: azione annulla disponibile'
 );
 
+-- Adeguamento 2026-08-04 (brief-db-emittibilita-visibile-e-sbloccabile §3.3,
+-- changeSet 20260804-27): da BOZZA le azioni manuali sono DUE. La transizione
+-- ->PRONTA_FATTURAZIONE era dichiarata automatica e ora e' `rendi_pronta`,
+-- un bottone che nasce spento quando la commessa non e' pronta e porta con se'
+-- il motivo. Resta automatica la sola ->APERTA.
+--
+-- ⚠️ Si asserisce l'INSIEME delle chiavi, non piu' il conteggio: `= 2` sarebbe
+-- passato anche con due azioni sbagliate, ed e' esattamente il modo in cui un
+-- test smette di misurare quello per cui era stato scritto.
 SELECT is(
-  jsonb_array_length(
-    script.fn_available_actions_commessa((SELECT commessa_id FROM tmp_commessa_aa)) -> 'available_actions'
+  (
+    SELECT array_agg(e->>'key' ORDER BY e->>'key') FROM jsonb_array_elements(
+      script.fn_available_actions_commessa((SELECT commessa_id FROM tmp_commessa_aa)) -> 'available_actions'
+    ) e
   ),
-  1,
-  'BOZZA: solo 1 azione manuale (automatiche ->APERTA/->PRONTA escluse)'
+  ARRAY['annulla', 'rendi_pronta'],
+  'BOZZA: azioni manuali = {annulla, rendi_pronta} (automatica ->APERTA esclusa)'
 );
 
 SELECT is(

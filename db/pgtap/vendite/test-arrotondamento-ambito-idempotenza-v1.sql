@@ -251,13 +251,18 @@ SELECT CASE
 END;
 
 -- Presidio della regressione vera e propria: che il chiamante per-fattura
--- passi NULL. Il giro completo non e' esercitabile qui (pretende un lotto in
--- DRAFT e in questo DB non ce ne sono), quindi si verifica il punto esatto in
--- cui il difetto viveva.
+-- passi NULL. Il giro completo non e' esercitabile qui, quindi si verifica il
+-- punto esatto in cui il difetto viveva.
+-- ⚠️ Questa asserzione cerca la funzione PER NOME: se il nome cambia, la
+-- sottoquery non trova niente e il test diventa rosso per il motivo sbagliato
+-- («la funzione non esiste») invece che per quello giusto («il corpo non passa
+-- piu' NULL»). E' gia' successo: rinominata in fn_elimina_fattura_da_lotto il
+-- 2026-08-04 (RD-7), quando il perimetro del LOTTO e' passato da DRAFT a
+-- pre-fiscale e il vecchio nome ha smesso di dire la verita'.
 SELECT ok(
   (SELECT pg_get_functiondef(p.oid) LIKE '%fn_cleanup_fatture_by_ids(ARRAY[p_fattura_id], NULL%'
      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-    WHERE n.nspname = 'vendite' AND p.proname = 'fn_elimina_fattura_da_lotto_draft'),
+    WHERE n.nspname = 'vendite' AND p.proname = 'fn_elimina_fattura_da_lotto'),
   '12) C-22: il reset per-fattura passa NULL come lock_batch_id');
 
 SELECT * FROM finish();

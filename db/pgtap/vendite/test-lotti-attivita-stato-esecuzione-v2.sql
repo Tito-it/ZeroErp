@@ -18,11 +18,10 @@
 -- 12) fn_resolve_lotto_utility_emittente risolve utility
 -- 13) fn_resolve_lotto_utility_emittente blocca utility incoerente
 -- 14) fn_resolve_stato_esecuzione: IN_ESECUZIONE -> RUNNING
--- 15) fn_resolve_stato_esecuzione: esclusa=true mantiene stato corrente
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(15);
+SELECT plan(14);
 
 CREATE TEMP TABLE tmp_costanti_las AS
 SELECT
@@ -349,9 +348,7 @@ SELECT throws_ok(
 SELECT is(
   vendite.fn_resolve_stato_esecuzione(
     p_stato_source => 'IN_ESECUZIONE',
-    p_current_stato_esecuzione => NULL::varchar,
     p_has_critical => false,
-    p_esclusa => false,
     p_fatturato => false,
     p_default_stato_esecuzione => 'PENDING'
   ),
@@ -359,18 +356,14 @@ SELECT is(
   'fn_resolve_stato_esecuzione mappa IN_ESECUZIONE -> RUNNING'
 );
 
-SELECT is(
-  vendite.fn_resolve_stato_esecuzione(
-    p_stato_source => 'COMPLETATO',
-    p_current_stato_esecuzione => 'PENDING'::varchar,
-    p_has_critical => false,
-    p_esclusa => true,
-    p_fatturato => false,
-    p_default_stato_esecuzione => 'PENDING'
-  ),
-  'PENDING'::varchar,
-  'fn_resolve_stato_esecuzione con esclusa=true mantiene stato corrente'
-);
+-- Adeguamento 2026-08-04 (D-M, changeSet 20260804-19): il test
+-- «esclusa=true mantiene stato corrente» E' STATO RIMOSSO, non riscritto.
+-- Verificava il primo ramo dell'helper, che con il flag `esclusa` e' stato
+-- eliminato: `p_esclusa` e `p_current_stato_esecuzione` non esistono piu'
+-- nella firma (da sei parametri a quattro). Non c'e' un comportamento
+-- equivalente da spostare altrove — il ramo non c'e' proprio piu', quindi
+-- riscrivere il test vorrebbe dire inventargli un soggetto.
+-- Il plan scende da 15 a 14.
 
 SELECT * FROM finish();
 ROLLBACK;

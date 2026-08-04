@@ -455,7 +455,7 @@ WHERE id = (
 SELECT ok(
     (
       SELECT deleted_fatture = 1
-      FROM vendite.fn_elimina_fattura_da_lotto_draft(
+      FROM vendite.fn_elimina_fattura_da_lotto(
           p_lotto_id => (
             SELECT id
             FROM tmp_lotto_rl2

@@ -12,6 +12,8 @@ CREATE OR REPLACE FUNCTION vendite.fn_prepare_sdi_payload(p_lotto_id bigint, p_s
  RETURNS TABLE(fattura_sdi_id bigint, fattura_id bigint, tentativo_num smallint, stato_sdi_id bigint, codice_documento text, numero_fattura bigint, data_fattura date, billing_account_id bigint, emittente_soggetto_ruolo_id bigint, valuta_id integer, totale_a_pagare numeric)
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-08-04 (D-M): via il predicato su lf.esclusa, che era
+--   una condizione sempre vera (flag dormiente).
 DECLARE
     v_stato_sdi_id config.stati_sdi.id%TYPE;
     v_exists_lotto BOOLEAN := FALSE;
@@ -54,7 +56,7 @@ BEGIN
                COALESCE(f.anno::text, '') || COALESCE(f.serie, '') || COALESCE(f.numero::text, '') AS codice_doc
           FROM vendite.fatturazione_lotti_fatture lf
           JOIN vendite.fatture f ON f.id = lf.fattura_id
-         WHERE lf.lotto_id = p_lotto_id AND lf.esclusa IS FALSE
+         WHERE lf.lotto_id = p_lotto_id
     ), upserted AS (
         INSERT INTO vendite.fatture_sdi (fattura_id, tentativo, stato_sdi_id, meta)
         SELECT tf.f_id,
@@ -83,7 +85,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_prepare_sdi_payload(p_lotto_id bigint, p_stato_sdi_codice_interno character varying, p_force_new_tentativo boolean)
-IS 'Prepara dataset SDI per lotto e apre/riusa tentativi su fatture_sdi. rev 2026-07-28: il totale documento viene letto da vendite.fatture.totale_a_pagare — prima sommava fatture_riepiloghi_iva.totale_riga, colonna che su quella tabella NON esiste (le sue colonne di importo sono imponibile, imposta, arrotondamento). Era un errore latente: plpgsql pianifica alla prima esecuzione, quindi sarebbe esploso al primo lotto portato a INVIATA. totale_a_pagare e'' il valore prodotto da fn_ricalcola_totali_fattura, fondi e arrotondamento dell''emittente-utility inclusi: ricostruirlo qui sarebbe una seconda implementazione della stessa regola fiscale. NB: `totale_riga` esiste, ma come colonna calcolata delle viste di riepilogo IVA degli ALTRI documenti (vw_ordini_riepilogo_iva_dettaglio e sorelle) — omonimia, non la stessa cosa. brief-fix-importi-riga-fattura-zero §4.4 (D2).';
+IS 'Prepara dataset SDI per lotto e apre/riusa tentativi su fatture_sdi. rev 2026-07-28: il totale documento viene letto da vendite.fatture.totale_a_pagare — prima sommava fatture_riepiloghi_iva.totale_riga, colonna che su quella tabella NON esiste. totale_a_pagare e'' il valore prodotto da fn_ricalcola_totali_fattura, fondi e arrotondamento dell''emittente-utility inclusi: ricostruirlo qui sarebbe una seconda implementazione della stessa regola fiscale. rev 2026-08-04 (D-M): via il predicato su lf.esclusa, che era una condizione sempre vera.';
 ```
 
 ---

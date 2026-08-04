@@ -26,7 +26,7 @@ SELECT l.id AS lotto_id,
      JOIN vendite.fatture f ON ((f.id = lf.fattura_id)))
      LEFT JOIN config.stati_doc_fiscale sl ON ((sl.id = l.stato_doc_fiscale_id)))
      LEFT JOIN config.stati_doc_fiscale sf ON ((sf.id = f.stato_doc_fiscale_id)))
-  WHERE ((COALESCE(lf.esclusa, false) IS FALSE) AND (COALESCE(f.critical, false) IS FALSE) AND (f.stato_doc_fiscale_id IS DISTINCT FROM l.stato_doc_fiscale_id));
+  WHERE ((COALESCE(f.critical, false) IS FALSE) AND (f.stato_doc_fiscale_id IS DISTINCT FROM l.stato_doc_fiscale_id));
 ```
 
 
