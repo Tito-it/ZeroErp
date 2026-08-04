@@ -72,9 +72,43 @@ SELECT ok(
   );
 
 -- =========================================================
+-- ⚠️ TEST 3 e 4 — perche' NON si asserisce sul codice errore
+--
+-- Fino al 2026-08-04 questi due test facevano
+--     throws_matching(..., 'E_ADMIN_USERNAME_DUPLICATO')
+-- e passavano. Passavano **per il motivo sbagliato**: il codice non
+-- compare mai nel messaggio sollevato. `script.fn_log_and_raise_error`
+-- fa `RAISE EXCEPTION '%', v_msg USING DETAIL/HINT` — senza ERRCODE — e
+-- `v_msg` e' il testo localizzato preso da `config.messaggi_errore`.
+-- Il codice finiva nel messaggio **solo** quando la riga mancava dal
+-- seed, perche' allora `script.fn_get_messaggio` ritorna il segnaposto
+-- '[MESSAGGIO NON DEFINITO: <codice>]'.
+--
+-- Il 2026-08-04 il loader dei messaggi ha ripescato il CSV, la riga e'
+-- comparsa, e i due test sono diventati rossi. Erano verdi perche'
+-- mancava un dato: un test che verde-ggia per l'assenza di qualcosa non
+-- misura quello che dice di misurare.
+--
+-- Si asserisce quindi sul messaggio, ma **espresso tramite il codice**:
+-- si chiede a `fn_get_messaggio` lo stesso testo che il raiser
+-- sollevera'. Il test resta leggibile in termini di dominio, non si
+-- rompe se cambia la traduzione, e regge anche se la riga sparisse di
+-- nuovo dal seed (in quel caso entrambi i lati diventano il segnaposto).
+-- Si asserisce anche lo SQLSTATE: e' P0001 per ogni RAISE senza ERRCODE.
+--
+-- 🔴 Il vero problema non e' questo test: e' che il codice di dominio
+-- **non e' recuperabile dall'eccezione** — non e' in ERRCODE, non e' in
+-- DETAIL (= `causa`), non e' in HINT (= `soluzione`). Zero dei 635
+-- messaggi 'it' contiene il proprio codice. Il backend lo cerca con una
+-- regex nel testo (`ErrorTranslator._extract_app_error_code`), quindi
+-- non lo trova mai per un errore correttamente seedato.
+-- Vedi brief-be-bonifica-riferimenti-morti.md §6.
+-- =========================================================
+
+-- =========================================================
 -- 3) Errore: username duplicato
 -- =========================================================
-SELECT throws_matching(
+SELECT throws_ok(
     format(
       $$SELECT anagrafiche.fn_crea_auth_user(
         p_username := %L,
@@ -84,14 +118,15 @@ SELECT throws_matching(
       (SELECT test_username FROM tmp_auth_ctx),
       (SELECT test_email FROM tmp_auth_ctx)
     ),
-    'E_ADMIN_USERNAME_DUPLICATO',
-    '3. Errore username duplicato'
+    'P0001',
+    script.fn_get_messaggio('E_ADMIN_USERNAME_DUPLICATO'),
+    '3. Errore username duplicato (E_ADMIN_USERNAME_DUPLICATO)'
   );
 
 -- =========================================================
 -- 4) Errore: email duplicata
 -- =========================================================
-SELECT throws_matching(
+SELECT throws_ok(
     format(
       $$SELECT anagrafiche.fn_crea_auth_user(
         p_username := 'altro_' || %L,
@@ -101,8 +136,9 @@ SELECT throws_matching(
       (SELECT test_username FROM tmp_auth_ctx),
       (SELECT test_email FROM tmp_auth_ctx)
     ),
-    'E_ADMIN_EMAIL_DUPLICATA',
-    '4. Errore email duplicata'
+    'P0001',
+    script.fn_get_messaggio('E_ADMIN_EMAIL_DUPLICATA'),
+    '4. Errore email duplicata (E_ADMIN_EMAIL_DUPLICATA)'
   );
 
 -- =========================================================

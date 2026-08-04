@@ -132,6 +132,37 @@ jobs:
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
             "GRANT USAGE, CREATE ON SCHEMA public TO zeroerp; GRANT CREATE ON DATABASE zeroerp TO zeroerp;"
 
+      - name: Installa plpgsql_check nel container Postgres
+        # Serve al guardrail «riferimenti morti» in fondo a questo workflow.
+        # Il changeSet che crea l'estensione (20260804-36) e' CONDIZIONALE su
+        # pg_available_extensions: se il pacchetto non c'e' viene saltato senza
+        # essere marcato eseguito, quindi si riprende da solo appena c'e'. Per
+        # questo il passo va PRIMA del giro provision.
+        #
+        # ⚠️ Si installa nel container del service, non sul runner: postgres
+        # gira li' dentro e le estensioni le carica dal SUO filesystem.
+        # L'immagine postgis/postgis:18-3.6 ha gia' il repo PGDG configurato
+        # (ci prende postgis), quindi basta un apt-get.
+        #
+        # Se un giorno questo passo diventasse lento o fragile, l'alternativa
+        # e' un'immagine custom costruita a monte: piu' pulita, ma vuole un
+        # registry e un job di build: sproporzionata per un pacchetto solo.
+        run: |
+          set -euo pipefail
+          CID="$(docker ps --filter 'ancestor=postgis/postgis:18-3.6' --format '{{.ID}}' | head -1)"
+          if [ -z "$CID" ]; then
+            echo "::error::container del service postgres non trovato"
+            exit 1
+          fi
+          docker exec "$CID" bash -euo pipefail -c \
+            "apt-get update -qq && apt-get install -y -qq postgresql-18-plpgsql-check"
+          # Verifica che postgres lo veda davvero: senza, il changeSet -36
+          # verrebbe saltato e il guardrail fallirebbe piu' tardi con un
+          # messaggio meno chiaro di questo.
+          docker exec "$CID" psql -U postgres -d zeroerp -tAc \
+            "SELECT count(*) FROM pg_available_extensions WHERE name='plpgsql_check';" \
+            | grep -qx 1
+
       - name: Liquibase admin (provision - pre)
         run: |
           liquibase \
@@ -195,6 +226,27 @@ jobs:
           # brief-naming-stato-codice-interno.md. RAISE -> exit !=0 con ON_ERROR_STOP.
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
             -f scripts/sql/check_naming_stato_codice.sql
+
+      - name: Guardrail riferimenti morti (funzioni plpgsql + dati di config)
+        env:
+          PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+        run: |
+          # Compila con plpgsql_check ogni funzione plpgsql non-estensione e
+          # fallisce se trova un riferimento che non si risolve (tabella o
+          # colonna inesistente, variabile speciale sbagliata, ramo senza
+          # RETURN) fuori dal registro del debito dbops.riferimenti_morti_esenzioni.
+          #
+          # ⚠️ PostgreSQL non ri-valida i corpi plpgsql quando si droppa o si
+          # rinomina qualcosa: una funzione puo' restare rotta per mesi senza
+          # che niente protesti, e si scopre quando qualcuno la esegue. Il
+          # 2026-08-04 ce n'erano 34, la piu' vecchia rotta da undici mesi, e
+          # una era l'autocomplete vie del backend.
+          # Vedi brief-db-bonifica-riferimenti-morti.md.
+          #
+          # Fallisce anche se una voce del registro non serve piu': il debito
+          # deve calare, non solo non crescere.
+          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
+            -f scripts/sql/guardrail_riferimenti_morti.sql
 
       - name: Django check
         working-directory: ./backend

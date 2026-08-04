@@ -1,0 +1,33 @@
+# 📚 Tabella `riferimenti_morti_esenzioni`
+
+## 🗂️ Campi principali
+| Colonna | Tipo | Nullable | Default |
+|---------|------|----------|---------|
+| id | integer | NO |  |
+| schema_nome | text | NO |  |
+| funzione | text | NO |  |
+| esito_like | text | NO |  |
+| motivo | text | NO |  |
+| data_registrazione | date | NO | CURRENT_DATE |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | text | NO | CURRENT_USER |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | text | NO | CURRENT_USER |
+| tx_id | uuid | YES |  |
+
+## 🔒 Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| CHECK | chk_riferimenti_morti_esenzioni_motivo |  |
+| CHECK | chk_riferimenti_morti_esenzioni_pattern |  |
+| PRIMARY KEY | pk_riferimenti_morti_esenzioni | id |
+| UNIQUE | uq_riferimenti_morti_esenzioni_voce | schema_nome, funzione, esito_like |
+
+## 📑 Indici
+| Nome | Definizione |
+|------|-------------|
+| pk_riferimenti_morti_esenzioni | `CREATE UNIQUE INDEX pk_riferimenti_morti_esenzioni ON dbops.riferimenti_morti_esenzioni USING btree (id)` |
+| uq_riferimenti_morti_esenzioni_voce | `CREATE UNIQUE INDEX uq_riferimenti_morti_esenzioni_voce ON dbops.riferimenti_morti_esenzioni USING btree (schema_nome, funzione, esito_like)` |
+
+---
+{% include-markdown "signature-core.md" %}

@@ -1,0 +1,187 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Template documento — duplicazione in BOZZA con le chiavi indirizzo
+#   CANONICHE (brief-db-template-preventivo-indirizzi.md §3)
+#
+# ── IL DIFETTO ───────────────────────────────────────────────────────────
+#   Nel PDF del preventivo l'area indirizzi stampa solo ragione sociale e
+#   CAP: via, citta' e provincia spariscono. Lo snapshot a DB e' completo
+#   e corretto — e' il template a cercarlo con i nomi della shape v1,
+#   pre-canonica:
+#
+#     template cerca      snapshot contiene
+#     ------------------  ------------------
+#     denominazione       intestazione
+#     indirizzo           via (+ display)
+#     comune              citta
+#     provincia           prov
+#     nazione             stato
+#     cap                 cap          <- l'unica che combaciava
+#
+# ── 🔴 PERCHE' NON SE N'ERA ACCORTO NESSUNO ──────────────────────────────
+#   Il template usa `s.get("comune")` invece di `s.comune`. Con l'accesso
+#   diretto, StrictUndefined avrebbe fatto FALLIRE il render il giorno del
+#   rilascio. Con `.get()` la chiave mancante diventa stringa vuota e il
+#   PDF esce **plausibile ma monco**: il difetto e' sopravvissuto finche'
+#   un occhio umano non ha letto un indirizzo senza via.
+#   E' la stessa forma di tutto cio' che e' emerso il 2026-08-04: le cose
+#   rotte che non fanno rumore restano rotte a lungo.
+#
+# ── COSA FA QUESTO CHANGESET (e cosa NON fa) ─────────────────────────────
+#   Duplica in **BOZZA** ogni versione PUBBLICATA il cui corpo contenga
+#   almeno una chiave vecchia, applicando la sola rinomina delle chiavi.
+#   NON pubblica: l'attivazione e' un passo separato, dopo la verifica.
+#   NON riscrive il template: tutto il resto del corpo resta identico.
+#
+#   ⚠️ Non si passa da un blocco Jinja riscritto a mano. Le rinomine sono
+#   ANCORATE alla forma `s.get("<chiave>")` — non alla parola nuda —
+#   perche' `cliente.denominazione` compare legittimamente come fallback e
+#   una sostituzione cieca lo distruggerebbe. Si coprono entrambe le
+#   forme di virgolette (doppie e singole): quale delle due usi ciascun
+#   template non e' verificabile dal repo, i corpi vivono nel DB.
+#
+# ── PERIMETRO: TUTTI i template, non solo il preventivo ──────────────────
+#   Il brief afferma che solo il Preventivo e' difettoso. Il changeSet non
+#   si fida di quell'elenco e lavora **per condizione, non per nome**:
+#   tocca ogni template che contiene una chiave vecchia. Se il preventivo
+#   e' davvero l'unico, ne nasce una sola BOZZA e le altre non vengono
+#   sfiorate; se ordini, contratti o offerte hanno lo stesso difetto —
+#   sono documenti quasi identici, e questi errori di solito si copiano
+#   insieme al resto — vengono sistemati nello stesso giro.
+#   Il conteggio delle BOZZE create dice quale delle due ipotesi era vera.
+#
+# ── COSA RESTA APERTO ────────────────────────────────────────────────────
+#   1. `context_schema`: copiato invariato. Se dichiara le chiavi vecchie
+#      va riallineato — il brief lo segnala e dichiara di NON averlo
+#      verificato (§4.2). Si guarda sulla BOZZA, prima di pubblicare.
+#   2. Il fallback `via` -> `display` del DDT: non e' una rinomina ma un
+#      ramo in piu', quindi non entra in una sostituzione meccanica. Con
+#      `via` valorizzato il difetto e' comunque chiuso.
+#   3. I documenti gia' stampati restano com'erano: la ristampa fedele usa
+#      la versione pinnata. Confermato da Tid che sono tutti di test.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260804-61-template-documenti-bozza-chiavi-indirizzo-canoniche-mctit.yaml
+
+  - changeSet:
+      id: 20260804-61-template-documenti-bozza-chiavi-indirizzo-canoniche
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: HALT
+        # Se non c'e' niente da correggere il changeSet non ha ragione di
+        # esistere: MARK_RAN invece di creare BOZZE identiche all'originale.
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT CASE WHEN EXISTS (
+                SELECT 1 FROM documenti.template_documenti_versioni v
+                 WHERE v.stato = 'PUBBLICATA' AND v.attivo IS TRUE
+                   AND (v.html_template LIKE '%s.get("denominazione")%'
+                     OR v.html_template LIKE '%s.get("indirizzo")%'
+                     OR v.html_template LIKE '%s.get("comune")%'
+                     OR v.html_template LIKE '%s.get("provincia")%'
+                     OR v.html_template LIKE '%s.get("nazione")%'
+                     OR v.html_template LIKE '%s.get(''denominazione'')%'
+                     OR v.html_template LIKE '%s.get(''indirizzo'')%'
+                     OR v.html_template LIKE '%s.get(''comune'')%'
+                     OR v.html_template LIKE '%s.get(''provincia'')%'
+                     OR v.html_template LIKE '%s.get(''nazione'')%')
+              ) THEN 1 ELSE 0 END;
+      comment: >
+        Duplica in BOZZA le versioni template PUBBLICATE che leggono lo snapshot
+        indirizzo con le chiavi pre-canoniche, rinominandole. Non pubblica: e' un
+        passo separato. Lavora per condizione e non per nome, quindi copre anche
+        ordini/contratti/offerte se hanno lo stesso difetto.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              WITH da_correggere AS (
+                  SELECT v.*
+                    FROM documenti.template_documenti_versioni v
+                   WHERE v.stato = 'PUBBLICATA'
+                     AND v.attivo IS TRUE
+                     AND (v.html_template LIKE '%s.get("denominazione")%'
+                       OR v.html_template LIKE '%s.get("indirizzo")%'
+                       OR v.html_template LIKE '%s.get("comune")%'
+                       OR v.html_template LIKE '%s.get("provincia")%'
+                       OR v.html_template LIKE '%s.get("nazione")%'
+                       OR v.html_template LIKE '%s.get(''denominazione'')%'
+                       OR v.html_template LIKE '%s.get(''indirizzo'')%'
+                       OR v.html_template LIKE '%s.get(''comune'')%'
+                       OR v.html_template LIKE '%s.get(''provincia'')%'
+                       OR v.html_template LIKE '%s.get(''nazione'')%')
+              )
+              INSERT INTO documenti.template_documenti_versioni (
+                  template_documento_id, versione, stato, titolo,
+                  formato_template, html_template, css_template,
+                  markdown_template, render_engine_id, page_format,
+                  page_orientation, margin_top_mm, margin_right_mm,
+                  margin_bottom_mm, margin_left_mm, context_schema, meta, attivo)
+              SELECT d.template_documento_id,
+                     -- Numero successivo PER TEMPLATE: la versione non e'
+                     -- globale, e due template possono avere la stessa.
+                     (SELECT max(v2.versione) + 1
+                        FROM documenti.template_documenti_versioni v2
+                       WHERE v2.template_documento_id = d.template_documento_id),
+                     'BOZZA',
+                     d.titolo,
+                     d.formato_template,
+                     -- ⚠️ Rinomina ANCORATA a `s.get(...)`: `cliente.denominazione`
+                     -- e' un fallback legittimo e non va toccato. Entrambe le
+                     -- forme di virgolette, perche' dal repo non e' verificabile
+                     -- quale usi ciascun template.
+                     replace(replace(replace(replace(replace(
+                     replace(replace(replace(replace(replace(
+                         d.html_template,
+                         's.get("denominazione")', 's.get("intestazione")'),
+                         's.get("indirizzo")',     's.get("via")'),
+                         's.get("comune")',        's.get("citta")'),
+                         's.get("provincia")',     's.get("prov")'),
+                         's.get("nazione")',       's.get("stato")'),
+                         's.get(''denominazione'')', 's.get(''intestazione'')'),
+                         's.get(''indirizzo'')',     's.get(''via'')'),
+                         's.get(''comune'')',        's.get(''citta'')'),
+                         's.get(''provincia'')',     's.get(''prov'')'),
+                         's.get(''nazione'')',       's.get(''stato'')'),
+                     d.css_template,
+                     d.markdown_template,
+                     d.render_engine_id,
+                     d.page_format,
+                     d.page_orientation,
+                     d.margin_top_mm, d.margin_right_mm,
+                     d.margin_bottom_mm, d.margin_left_mm,
+                     -- context_schema invariato: se dichiara le chiavi vecchie
+                     -- va riallineato, ma e' una verifica da fare guardando il
+                     -- contenuto (§4.2 del brief, che il BE non ha controllato).
+                     d.context_schema,
+                     -- Traccia di provenienza: da quale versione nasce e perche'.
+                     coalesce(d.meta, '{}'::jsonb) || jsonb_build_object(
+                         'origine_versione_id', d.id,
+                         'origine_versione',    d.versione,
+                         'motivo',              'chiavi snapshot indirizzo canoniche',
+                         'brief',               'brief-db-template-preventivo-indirizzi.md'),
+                     d.attivo
+                FROM da_correggere d;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DELETE FROM documenti.template_documenti_versioni
+               WHERE stato = 'BOZZA'
+                 AND meta ->> 'brief' = 'brief-db-template-preventivo-indirizzi.md';

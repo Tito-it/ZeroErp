@@ -1,0 +1,120 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Bonifica riferimenti morti — F4, guard che falliscono quando servono
+#   Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md
+#
+# ── 🔴 IL DIFETTO CHE IL BRIEF NON VEDE ──────────────────────────────────
+#   Il brief segnala `sqlerrm` usato fuori da un blocco EXCEPTION. E' vero,
+#   ma non e' il primo problema: la funzione chiamata e'
+#   `anagrafiche.fn_log_and_raise_error`, che **non esiste**. Nel DB c'e'
+#   solo `script.fn_log_and_raise_error(text,text,text,jsonb,uuid,VARIADIC text[])`.
+#
+#   plpgsql_check si ferma alla prima sotto-espressione che non si risolve —
+#   `sqlerrm` dentro `jsonb_build_object` — e non arriva mai a controllare
+#   il nome della funzione. Riparare solo cio' che il check ha stampato
+#   avrebbe lasciato il guard rotto e il giro successivo del check lo
+#   avrebbe ri-segnalato con un altro messaggio.
+#   ⚠️ E' la ragione per cui la bonifica va **ri-misurata dopo ogni passo**:
+#   il check e' un setaccio a maglie che si stringono, non una lista.
+#
+# ── COSA CAMBIA ──────────────────────────────────────────────────────────
+#   1) `anagrafiche.` -> `script.` sul nome della funzione di log.
+#   2) Via `'error', SQLERRM`: fuori da un handler non c'e' nessun errore
+#      da riportare, e plpgsql prova infatti a risolverlo come colonna.
+#   3) `'data_attivazione', 0` -> il valore vero (`NEW.data_attivazione`,
+#      che in quel ramo e' NULL: e' esattamente cio' che si vuole dire) piu'
+#      lo stato che ha innescato la regola. Uno zero letterale in un
+#      contesto d'errore e' peggio di nessun contesto: dice il falso.
+#
+#   Il guard e' agganciato a `trg_sepa_mandati_guard_ins_upd` su
+#   `pagamenti.sepa_mandati`: e' vivo, e oggi fallisce con un errore
+#   incomprensibile proprio nel momento in cui deve spiegare.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260804-40-fix-trgfn-sepa-mandati-guard-log-mctit.yaml
+
+  - changeSet:
+      id: 20260804-40-fix-trgfn-sepa-mandati-guard-log
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        F4 — anagrafiche.trgfn_sepa_mandati_guard: chiamava
+        anagrafiche.fn_log_and_raise_error (inesistente) e usava SQLERRM fuori da
+        un handler. Corretti entrambi, piu' il contesto che riportava uno 0
+        letterale al posto della data.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_sepa_mandati_guard()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+
+                /*
+                  Guard trigger per pagamenti.sepa_mandati.
+
+                  Responsabilità
+                  --------------
+                  1) Validazione di coerenza stato/dati:
+                    - se NEW.stato = 'ATTIVO' allora NEW.data_attivazione deve essere valorizzata.
+                    - in caso contrario genera errore applicativo (vincolo logico / check-like).
+
+                  2) Normalizzazione campi testuali (pre-insert / pre-update):
+                    - UMR: rimuove tutti gli spazi (whitespace) per garantire confronto e univocità consistenti.
+                    - IBAN snapshot: rimuove whitespace e forza uppercase (standard IBAN).
+
+                  Note tecniche
+                  ------------
+                  - Trigger tipicamente da usare BEFORE INSERT OR UPDATE, così può modificare NEW.
+
+                  rev 2026-08-04 (bonifica riferimenti morti, F4):
+                    - anagrafiche.fn_log_and_raise_error non esiste: e' script.
+                    - SQLERRM fuori da un blocco EXCEPTION non e' una variabile
+                      risolvibile: plpgsql la cerca come colonna e fallisce.
+                    - il contesto riportava 'data_attivazione' = 0 letterale.
+                */
+
+
+                -- Stato ATTIVO richiede data_attivazione
+                IF NEW.stato = 'ATTIVO' AND NEW.data_attivazione IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                                      'database',
+                                      'trgfn_sepa_mandati_guard',
+                                      'E_DATA_ERRATA',
+                                      jsonb_build_object(
+                                        'tabella','pagamenti.sepa_mandati',
+                                        'stato', NEW.stato,
+                                        'data_attivazione', NEW.data_attivazione
+                                      ) , NULL::uuid, 'data attivazione per stato ATTIVO'
+                                    );
+                END IF;
+
+                -- Normalizzazione UMR e IBAN snapshot
+                IF NEW.umr IS NOT NULL THEN
+                  NEW.umr := regexp_replace(NEW.umr, '\s+', '', 'g');
+                END IF;
+                IF NEW.iban_snapshot IS NOT NULL THEN
+                  NEW.iban_snapshot := upper(regexp_replace(NEW.iban_snapshot, '\s+', '', 'g'));
+                END IF;
+
+                RETURN NEW;
+              END
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

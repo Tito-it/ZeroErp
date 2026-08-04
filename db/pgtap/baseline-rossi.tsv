@@ -57,7 +57,6 @@ db/pgtap/script/test-fn-get-uo-id-for-user.sql	ASSERZIONE
 db/pgtap/script/test-fn-get-user-emittenti-scope.sql	ERRORE_FIXTURE
 db/pgtap/script/test-fn-get-user-profile-guc-aware.sql	ERRORE_FIXTURE
 db/pgtap/script/test-fn-is-super-admin.sql	ASSERZIONE
-db/pgtap/script/test-fn-search-stradario.sql	ERRORE_FIXTURE
 db/pgtap/script/test-guard-utility-tipo-ruolo.sql	ERRORE_FIXTURE
 db/pgtap/script/test-seed-stati-doc-ordini-evaso-v1.sql	ASSERZIONE
 db/pgtap/ui/test-lista-contratti-seed.sql	ASSERZIONE

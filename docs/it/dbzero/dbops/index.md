@@ -24,6 +24,7 @@
 - [pipeline_task_registry](tabelle/pipeline_task_registry.md) — (latest review 08-02-2026) `dbops.pipeline_task_registry` e` il catalogo dei **task ammessi** per ciascun dominio pipeline. Impedisce l'esecuzione di task non registrati e centralizza la governance delle azioni eseguibili dal motore applicativo.
 - [pipeline_task_registry_impl](tabelle/pipeline_task_registry_impl.md) — (latest review 08-02-2026) `dbops.pipeline_task_registry_impl` definisce le **implementazioni consentite** per ciascun task. Serve a gestire in modo controllato le varianti (`default`, `v2`, `gas_v1`, ecc.) senza dispatch dinamico libero.
 - [request_log](tabelle/request_log.md) — (latest review 05-03-2026)
+- [riferimenti_morti_esenzioni](tabelle/riferimenti_morti_esenzioni.md)
 - [sec_functions_owner](tabelle/sec_functions_owner.md) — * **Centralizzare l'elenco delle funzioni "sensibili"** che richiedono owner dedicato. * **Garantire automaticamente la corretta assegnazione dei permessi**, tramite `dbops.fn_sync_functions_owner()`. * **Prevenire errori operativi o di sicurezza** derivanti da modifiche accidentali o ripristini non controllati. * Supportare la procedura di *hardening post-deploy*, mantenendo coerenza anche in CI, dopo migrazioni o clonazioni del database.
 - [sessioni_utente](tabelle/sessioni_utente.md) — (latest review 05-03-2026)
 - [transaction_ids](tabelle/transaction_ids.md) — (latest review 10-01-26) La tabella **`dbops.transaction_ids`** funge da **registro centrale** di tutti gli identificativi di transazione (UUID) utilizzati in Zero ERP: ogni volta che viene avviata un’operazione di modifica dati (inserimento, aggiornamento o cancellazione) che coinvolge più tabelle, si genera un nuovo **`tx_id`** in questa tabella e lo si propaga a tutte le righe interessate, garantendo la **tracciabilità** e il **raggruppamento** coerente delle modifiche.
@@ -41,6 +42,7 @@
 - [fn_audit_begin](funzioni/fn_audit_begin.md) — La funzione **`fn_audit_begin`** avvia una nuova sessione di auditing registrando un evento iniziale nella tabella `dbops.audit_log`. È utilizzata come punto di partenza per tracciare processi o automazioni che richiedono visibilità sull’intero ciclo di esecuzione.
 - [fn_audit_end](funzioni/fn_audit_end.md) — La funzione **`fn_audit_end`** chiude una sessione di auditing avviata da `fn_audit_begin`, registrando lo stato finale nel record corrispondente in `dbops.audit_log`.
 - [fn_audit_log_once](funzioni/fn_audit_log_once.md) — (latest review 10-01-26) La funzione **`fn_audit_log_once`** registra un singolo evento di audit senza richiedere una sessione completa (`fn_audit_begin`/`fn_audit_end`). È utile per eventi puntuali o messaggi informativi.
+- [fn_check_funzioni_riferimenti_morti](funzioni/fn_check_funzioni_riferimenti_morti.md)
 - [fn_check_pipeline_task_registered](funzioni/fn_check_pipeline_task_registered.md) — (latest review 08-02-2026) Verifica che un task sia registrato e **attivo** per un dominio. La funzione fallisce con errore applicativo se il task non e` ammesso.
 - [fn_cleanup_triggers_suffix_2](funzioni/fn_cleanup_triggers_suffix_2.md)
 - [fn_col_exists](funzioni/fn_col_exists.md)
@@ -107,4 +109,6 @@
 - [vw_indici_ridondanti_prefisso](views/vw_indici_ridondanti_prefisso.md) — (latest review 27-07-26)
 - [vw_non_editable_fields](views/vw_non_editable_fields.md) — (latest review 2026-05-22 — aggiunto riferimento al sistema lock condizionali)
 - [vw_parameter_fk_surrogate_dangling](views/vw_parameter_fk_surrogate_dangling.md) — (latest review 02-05-2026)
+- [vw_riferimenti_morti_da_sanare](views/vw_riferimenti_morti_da_sanare.md)
+- [vw_riferimenti_morti_rientrati](views/vw_riferimenti_morti_rientrati.md)
 - [vw_trigger_functions](views/vw_trigger_functions.md) — * Fornire una panoramica centralizzata dei trigger utente presenti in ogni tabella del database. * Rendere immediatamente accessibili:

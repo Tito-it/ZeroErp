@@ -1,0 +1,101 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Bonifica riferimenti morti — F3
+#   Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md
+#
+#   `script.fn_log_and_raise_error(..., VARIADIC p_valori text[])` riceveva
+#   `p_max_retries`, che e' `integer`. Verso `text` non esiste cast
+#   implicito: la chiamata **non si risolve**.
+#
+#   Non e' cosmetico. Quel ramo scatta solo quando l'advisory lock sulla MV
+#   non si ottiene entro i tentativi: e' il momento in cui serve leggere
+#   «timeout sul refresh di vendite.mv_ddt_ordini», e invece si legge «la
+#   funzione script.fn_log_and_raise_error(...) non esiste». Il guard esiste
+#   e fallisce esattamente quando serve.
+#
+# ⚠️ NOTA FUORI PERIMETRO (segnalata, non toccata qui)
+#   Questa funzione usa `pg_try_advisory_lock(hashtext(...))` nella forma a
+#   **un** argomento, contro la regola di progetto che vuole sempre la forma
+#   a due (namespace + chiave), per non condividere lo spazio delle chiavi
+#   con chiunque altro. Cambiarla vuol dire assegnare un namespace: e' una
+#   decisione a se', non una bonifica di riferimenti morti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260804-45-fix-fn-refresh-mv-ddt-ordini-variadic-mctit.yaml
+
+  - changeSet:
+      id: 20260804-45-fix-fn-refresh-mv-ddt-ordini-variadic
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        F3 — dbops.fn_refresh_mv_ddt_ordini: p_max_retries (integer) passato a un
+        parametro VARIADIC text[] senza cast. Il guard del timeout sul lock
+        falliva proprio quando doveva spiegare.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_refresh_mv_ddt_ordini(p_concurrent boolean DEFAULT true, p_max_retries integer DEFAULT 3)
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_locked boolean;
+                v_try    integer := 0;
+              BEGIN
+
+                v_locked := pg_try_advisory_lock(hashtext('vendite.mv_ddt_ordini'));
+                IF NOT v_locked THEN
+
+                  WHILE v_try < p_max_retries AND NOT v_locked LOOP
+                    v_try := v_try + 1;
+                    PERFORM pg_sleep(1);
+                    v_locked := pg_try_advisory_lock(hashtext('vendite.mv_ddt_ordini'));
+                  END LOOP;
+                  IF NOT v_locked THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','fn_refresh_mv_ddt_ordini','E_REFRESH_LOCK_TIMEOUT',
+                      jsonb_build_object('mv','vendite.mv_ddt_ordini','retries',p_max_retries),
+                      NULL::uuid,
+                      -- rev 2026-08-04 (bonifica F3): p_max_retries e' integer e il
+                      --   parametro e' VARIADIC text[]. Senza il cast la chiamata non
+                      --   si risolve e il guard, proprio quando scade il lock, solleva
+                      --   «la funzione non esiste» invece del timeout.
+                      'MV : vendite.mv_ddt_ordini' , p_max_retries::text);
+                  END IF;
+                END IF;
+
+                BEGIN
+                  IF p_concurrent THEN
+                    EXECUTE 'REFRESH MATERIALIZED VIEW CONCURRENTLY vendite.mv_ddt_ordini';
+                  ELSE
+                    EXECUTE 'REFRESH MATERIALIZED VIEW vendite.mv_ddt_ordini';
+                  END IF;
+                EXCEPTION WHEN others THEN
+
+                  IF p_concurrent THEN
+                    EXECUTE 'REFRESH MATERIALIZED VIEW vendite.mv_ddt_ordini';
+                  ELSE
+                    RAISE;
+                  END IF;
+                END;
+
+                PERFORM pg_advisory_unlock(hashtext('vendite.mv_ddt_ordini'));
+              END;
+              $function$
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

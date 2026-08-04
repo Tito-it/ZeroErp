@@ -99,8 +99,12 @@ AS $function$
                           'uom_ordine', v_uom_ordine,
                           'uom_ddt', v_uom_ddt),
         NULL::uuid,
-        'ordine_riga', NEW.ordine_riga_id::text, v_uom_ordine,
-        'ddt_riga', NEW.ddt_riga_id::text, v_uom_ddt
+        -- rev 2026-08-04 (bonifica F3): v_uom_ordine e v_uom_ddt sono
+        --   bigint e il parametro e' VARIADIC text[]. Senza ::text la
+        --   chiamata non si risolve e il mismatch di UoM non viene
+        --   mai riportato con il suo codice.
+        'ordine_riga', NEW.ordine_riga_id::text, v_uom_ordine::text,
+        'ddt_riga', NEW.ddt_riga_id::text, v_uom_ddt::text
       );
     END IF;
 

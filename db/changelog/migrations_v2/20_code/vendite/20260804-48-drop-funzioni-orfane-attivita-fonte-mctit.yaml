@@ -1,0 +1,113 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Bonifica riferimenti morti — F1, la coda del drop «attivita pipeline»
+#   Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md
+#   Segue `20260804-32`, che ne aveva chiuse altre due.
+#
+# ── ⚠️ NON SONO TRE CASI DELLA STESSA FAMIGLIA ───────────────────────────
+#   Il brief le mette insieme come «coda del drop del 2026-02-27». Due lo
+#   sono; la terza no, e la differenza conta perche' e' un modo di morire
+#   che nessun presidio sul «drop di tabella» intercetta.
+#
+#   ── A. Il CASCADE che non porta via i corpi (le prime due) ─────────────
+#   `20260227-16-drop-attivita-pipeline-deprecated` droppo' con `CASCADE`
+#   `attivita_fatturabili_lotti`, `attivita_fatturabili_sorgenti_branch_policy`
+#   e il resto della famiglia. Il `CASCADE` porta via viste, vincoli e
+#   trigger, ma **non i corpi plpgsql**: PostgreSQL non li traccia come
+#   dipendenze e non ri-valida mai una funzione gia' creata.
+#
+#     · `fn_list_attivita_sorgenti_abilitate` legge
+#       `vendite.attivita_fatturabili_sorgenti_branch_policy`. Non c'e' piu'.
+#     · `trgfn_attivita_fatturabili_lotti_gen_codice` ha il corpo pulito —
+#       chiama solo `script.fn_generate_codice('lotti_attivita')` — ma il
+#       suo trigger se n'e' andato col `CASCADE` insieme alla tabella.
+#       Resta una trigger function senza trigger e senza tabella.
+#
+#   ── 🔴 B. Il riuso del nome di trigger (la terza) ──────────────────────
+#   `trgfn_attivita_fatturabili_guard_fonte` non c'entra col drop del
+#   2026-02-27. E' morta il **2025-10-26**, e in silenzio:
+#
+#     20250829-12  crea la funzione e il suo trigger su attivita_fatturabili
+#     20251119-31  rinomina il trigger (giro di allineamento nomi)
+#     20251026-02  DROP TRIGGER … guard_fonte + CREATE TRIGGER **con lo
+#                  stesso nome** puntato a script.trgfn_guard_sorgente_polimorfa
+#                  ^^^ qui la funzione si stacca, e nessuno se ne accorge:
+#                      il trigger con quel nome continua a esistere
+#     20260225-45  droppa anche quel trigger («ridondante con la FK
+#                  commessa_attivita_id nel flusso commessa-only»)
+#
+#   Un `DROP TRIGGER` seguito da un `CREATE TRIGGER` che riusa il nome non
+#   lascia traccia della funzione rimasta scollegata. Il presidio che serve
+#   qui non e' «attenzione quando droppi una tabella» ma «nessuna trigger
+#   function senza trigger» — cioe' la classe ORFANA del controllo.
+#
+#   ⚠️ E la funzione e' morta **tre volte**, non una:
+#     · nessun trigger la usa (dal 2025-10-26);
+#     · legge `vendite.regole_fatturazione_articolo`, che non esiste: la
+#       tabella e' `vendite.articolo_regole_fatturazione`;
+#     · valida `fonte_quantita`, colonna che **non esiste in nessuna
+#       tabella del database** (verificato su information_schema).
+#   Nemmeno riagganciandola potrebbe funzionare.
+#
+# ── LE REGOLE CHE DICHIARAVA SONO SCOPERTE? ──────────────────────────────
+#   Verificato, perche' droppare un guard senza guardare cosa presidiava e'
+#   il modo di trasformare una bonifica in una regressione:
+#     · `competenza_dal <= competenza_al`  -> CHECK `chk_attivita_competenza_dal_al`
+#     · `competenza_mese` al primo del mese -> CHECK `chk_attivita_competenza_mese_primo`
+#     · `competenza_dal`/`competenza_al` mai NULL insieme -> le riempie
+#       `trgfn_attivita_fatturabili_normalize` (agganciato e vivo)
+#     · `fonte_quantita` in ('TIMESHEET','MANUALE','FISSA') -> **regola
+#       estinta**: la colonna non esiste piu' da nessuna parte
+#   Resta scoperta la sola «data_attivita dentro l'intervallo di
+#   competenza». E' una regola sensata, ma riportarla in vita qui vorrebbe
+#   dire ri-decidere il dominio dentro una bonifica: si annota nel brief e
+#   la si decide separatamente.
+#
+# ── VERIFICA DEI CONSUMATORI (2026-08-04) ────────────────────────────────
+#   Le sei sedi, come per `20260804-32`:
+#     · backend/     -> nessuna
+#     · frontend/src -> nessuna
+#     · 80_data      -> nessuna (nessun task registry, nessun binding handler)
+#     · db/pgtap     -> nessuna
+#     · altre funzioni/viste vive -> nessuna
+#     · repo intero  -> solo i changeSet che le hanno create e doc di
+#                       lavori chiusi
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260804-48-drop-funzioni-orfane-attivita-fonte-mctit.yaml
+
+  - changeSet:
+      id: 20260804-48-drop-funzioni-orfane-attivita-fonte
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        F1 — DROP di vendite.fn_list_attivita_sorgenti_abilitate (legge una tabella
+        droppata il 2026-02-27), vendite.trgfn_attivita_fatturabili_lotti_gen_codice
+        e vendite.trgfn_attivita_fatturabili_guard_fonte (orfane). L'ultima e' morta
+        per riuso del nome di trigger nel 2025-10-26, non per il drop: causa diversa,
+        stesso esito. Zero consumatori in DB, BE, FE, seed e pgTAP.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_list_attivita_sorgenti_abilitate(integer);
+
+              DROP FUNCTION IF EXISTS vendite.trgfn_attivita_fatturabili_lotti_gen_codice();
+
+              DROP FUNCTION IF EXISTS vendite.trgfn_attivita_fatturabili_guard_fonte();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;
