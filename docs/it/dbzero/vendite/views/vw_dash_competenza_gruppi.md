@@ -17,14 +17,14 @@ WITH aggregato AS (
             a.cliente_display,
             a.stadio,
             a.commessa_emittibile,
-            a.commessa_stato_codice,
+            a.commessa_stato_codice_interno,
             count(*) AS n_attivita,
             COALESCE(sum(a.valore), (0)::numeric) AS valore,
             min(a.data_attivita) AS data_attivita_min,
             max(a.data_attivita) AS data_attivita_max,
             bool_or(((a.tipo_movimento)::text = 'ONERE'::text)) AS ha_oneri
            FROM vendite.vw_dash_competenza_attivita a
-          GROUP BY a.competenza_mese, a.gruppo_key, a.sorgente_tipo_id, a.sorgente_uid, a.commessa_id, a.commessa_codice, a.emittente_soggetto_ruolo_id, a.cliente_display, a.stadio, a.commessa_emittibile, a.commessa_stato_codice
+          GROUP BY a.competenza_mese, a.gruppo_key, a.sorgente_tipo_id, a.sorgente_uid, a.commessa_id, a.commessa_codice, a.emittente_soggetto_ruolo_id, a.cliente_display, a.stadio, a.commessa_emittibile, a.commessa_stato_codice_interno
         )
  SELECT g.competenza_mese,
     g.gruppo_key,
@@ -44,7 +44,7 @@ WITH aggregato AS (
     g.sorgente_tipo_id,
     g.sorgente_uid,
     g.commessa_emittibile,
-    g.commessa_stato_codice
+    g.commessa_stato_codice_interno
    FROM ((aggregato g
      LEFT JOIN config.sorgenti s ON ((s.id = g.sorgente_tipo_id)))
      LEFT JOIN LATERAL ( SELECT d.codice
