@@ -18,6 +18,14 @@ più il presidio che impedisce a queste cose di tornare.
 > tre giri rossi, tutti diagnosticati e corretti (dettaglio e lezioni al §7) — e in
 > tutti e tre il guardrail ha fatto il suo mestiere invece di passare in silenzio.
 >
+> 🔴 **Riaperto e richiuso il 2026-08-05.** Il team BE ha dimostrato che la classe
+> `FP_VARIADIC` poggiava su una **premessa falsa** (§3.1): non erano falsi
+> positivi ma **16 difetti veri** in 12 funzioni, uno dei quali cambiava il
+> comportamento invece del solo messaggio. Corretti da `20260805-01..04`;
+> guardrail e baseline verdi. Il presidio ha fatto quello per cui esiste — ha
+> tenuto il conto — ma non poteva accorgersi da solo che una sua regola mentiva:
+> è servito qualcuno che la mettesse in discussione.
+>
 > Resta aperto il solo [brief per il BE](../work-in-progress/brief-be-bonifica-riferimenti-morti.md),
 > in lavorazione presso quel team: il suo punto 1 (il codice errore di dominio non
 > arriva al backend) è il difetto più serio emerso, e non l'ha trovato il presidio
@@ -81,25 +89,47 @@ affinamento dopo, il quadro sembrava questo:
 file stampa apposta anche i falsi positivi, così si controllano a campione invece
 di fidarsi della classificazione.
 
-### 3.1 🔴 Il controllo a campione andava fatto davvero: una riga era mal classificata
+### 3.1 🔴 La classe `FP_VARIADIC` poggiava su una premessa **falsa**
 
-La regola `FP_VARIADIC` diceva: *«42883 con argomenti tutti testo-compatibili =
-variadico omesso, è rumore»*. Ma `jsonb` è nella lista dei testo-compatibili, e
-uno **scambio di argomenti** fra un `text` e un `jsonb` produce esattamente la
-stessa firma di un variadico omesso. Passava per rumore:
+Il commento della v1 diceva:
+
+> «`fn_log_and_raise_error(..., VARIADIC text[])` ammette di omettere del tutto i
+> valori variadici; plpgsql_check non lo sa.»
+
+**Non è vero.** Solo `VARIADIC "any"` — quello di `format()` — ammette zero
+argomenti variadici. Un `VARIADIC <tipo>[]` no, e la chiamata non si risolve
+davvero, a runtime, esattamente come diceva lo strumento:
 
 ```
-dbops.fn_audit_log_once('fn_run_automations_storico','SKIP_EXISTS','STORICO',
-                        jsonb_build_object(...), 'Trigger already present')
+SELECT script.fn_log_and_raise_error('t','p','E_X',NULL::jsonb,NULL::uuid);
+-> ERRORE: la funzione script.fn_log_and_raise_error(...) non esiste
+... , VARIADIC ARRAY[]::text[]);
+-> risolve, e arriva alla logica di dominio
 ```
 
-La firma è `(p_function_name text, p_status text, p_params jsonb, p_message text, …)`:
-il 3° e il 4° argomento sono **invertiti**. La chiamata non si risolve.
+⚠️ **Il modo in cui l'errore si è propagato è più istruttivo dell'errore.** La
+regola è stata stretta **due volte** senza mai toccare l'assunto che la reggeva:
 
-**Rimedio (v3):** l'esenzione vale solo se la funzione chiamata **ha davvero** un
-parametro `VARIADIC` (`pg_proc.provariadic <> 0`). Delle 17 righe del primo giro
-questa era l'unica a non chiamare `fn_log_and_raise_error`/`fn_log_error_only` —
-ed era l'unica sbagliata. Riparata da `20260804-44`.
+| | Stretta | Difetti trovati |
+|---|---|---|
+| v2 | «guarda i TIPI: se ce n'è uno non testuale è un difetto vero» | 4 (famiglia F3) |
+| v3 | «l'esenzione vale solo se la funzione è davvero `VARIADIC`» | 1 (`20260804-44`) |
+
+Ogni giro trovava difetti veri e con ciò **confermava** la premessa. Nessuno dei
+due ha chiesto: *ma è vero che si possono omettere?* Una regola sbagliata che
+produce risultati utili è più difficile da smascherare di una che non produce
+niente.
+
+Segnalato dal **team BE** il 2026-08-05, con censimento sui corpi vivi. Corretto
+da `20260805-01`: l'esenzione richiede `provariadic = '"any"'::regtype`. Nessuna
+delle quattro funzioni variadic di ZeroErp è `"any"`, quindi la classe è ora
+**strutturalmente vuota** — ed è il risultato giusto: si tiene per il giorno in
+cui ne nascesse una, non per far tacere qualcosa.
+
+Un difetto era comunque emerso già con la v3: la chiamata a
+`dbops.fn_audit_log_once` con il 3° e 4° argomento **invertiti**, che passava per
+rumore perché `jsonb` è fra i tipi testo-compatibili e uno scambio produce la
+stessa firma di un variadico omesso (`20260804-44`).
 
 ### 3.2 I tre limiti che restano, e che nessuna regola può togliere
 
@@ -335,6 +365,56 @@ La quarta è il caso interessante. `20260718-16` la documenta:
 nell'intenzione, che nessuna query trova. Da qui il **registro delle esenzioni
 motivate**: questa funzione ne è la prima e unica voce.
 
+### F8 — Chiamate senza valori variadici (16 siti, 12 funzioni) 🔴
+
+Emersa **dopo** la chiusura del cantiere, dalla segnalazione BE del §3.1. Sedici
+chiamate passavano 5 argomenti, cioè nessun valore variadico: non si risolvono.
+
+| changeSet | Perimetro |
+|---|---|
+| `20260805-02` | `documenti` — 14 siti in 10 guard |
+| `20260805-03` | `script.fn_change_user_emittenti_scope` — 1 |
+| `20260805-04` | `dbops.trgfn_prevent_deactivate_if_children` — 1 |
+
+**Il rimedio non è uniforme, e serve guardare i messaggi.** Undici codici su
+dodici non hanno segnaposto `%s`: lì `VARIADIC ARRAY[]::text[]` è la forma esatta
+(`fn_log_and_raise_error` fa `format` solo se l'array non è vuoto). Ma
+`E_ATTIVO_BLOCK` ne ha uno, e un array vuoto avrebbe stampato `%s` alla lettera.
+
+🔴 **Il caso `dbops` è diverso in natura dagli altri quindici.** Altrove il guard
+blocca comunque e si perde solo il messaggio. Qui `fn_log_error_only` ha per
+contratto *«logga e non solleva»* — verificato, zero `RAISE EXCEPTION` nel corpo —
+quindi una chiamata che non si risolve **solleva**, e il ramo che doveva limitarsi
+ad annotare «controllo figli saltato» faceva fallire una disattivazione
+**legittima**. Ramo stretto, ma la funzione è agganciata a **96 tabelle**.
+
+E ci sono **tre** difetti in quella sola chiamata — di nuovo il setaccio del §3.3:
+il codice era `E_ATTIVO_BLOCK`, il cui messaggio parla della *generazione* della
+regola da parte del framework di automazione, non di questo salto a runtime. Nuovo
+codice `E_ATTIVO_BLOCK_REF_NULL` (id 840), appeso al CSV.
+
+#### ⚠️ Tre volte lo stesso errore di metodo, tutti miei
+
+Misurare l'estensione del problema è costato tre tentativi sbagliati, e vale la
+pena scriverli perché sono lo stesso errore:
+
+1. il primo censimento contava le occorrenze **dentro i commenti** (`-- … integrare
+   fn_log_and_raise_error(...)` conta come una chiamata a un argomento) → 22 invece
+   di 16. Anche il censimento del BE ne contava 20 per la stessa ragione;
+2. il secondo si disallineava sulle **virgolette raddoppiate** dentro le stringhe
+   (`l''utente`) → 23;
+3. la segnalazione «cinque messaggi mancanti dal CSV» era un artefatto di
+   `awk -F,` su un file con **campi quotati contenenti virgole**. Rifatto con un
+   parser CSV vero: 638 righe da entrambe le parti, zero divergenze.
+
+Ogni volta ho creduto a un pattern match senza controllare il dato. La misura
+buona — 16 siti in 12 funzioni — è quella su cui **due metodi indipendenti
+concordano**: `plpgsql_check` e un censimento sui corpi con parser corretto.
+Ne segue anche che **`plpgsql_check` non sotto-riporta**: era la mia ipotesi
+guardando la differenza, ed era sbagliata.
+
+---
+
 ---
 
 ## 5. Il presidio, che è il punto
@@ -444,6 +524,7 @@ sensazione della copertura senza averla, che è esattamente ciò che è successo
 | Presidio (misura, registro, viste, seed) | ✅ applicato | `-62` `-63` `-64` `-65` |
 | pgTAP `test-riferimenti-morti-v1.sql` | ✅ **5/5 verde** | — |
 | Guardrail + 2 passi in `ci-validate.yaml` | ✅ guardrail provato a mano (exit 0); i due passi CI vanno esercitati alla prossima pipeline | — |
+| F8 — chiamate senza valori variadici (16 siti, 12 funzioni) | ✅ applicato e verde | `20260805-01..04` |
 | Brief per il BE | ✅ [`brief-be-bonifica-riferimenti-morti.md`](../work-in-progress/brief-be-bonifica-riferimenti-morti.md) | — |
 
 ### ✅ Verifiche dopo il migrate (2026-08-04, 20:45)

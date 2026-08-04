@@ -192,6 +192,41 @@ database cresciuto nel tempo.
 
 ---
 
+## 4-bis. ⚠️ Il punto cieco peggiore: una regola che mente
+
+C'è un modo di sbagliare che nessuno dei due presidi può intercettare da solo, ed
+è successo davvero — vale la pena raccontarlo perché è il più difficile da vedere.
+
+Il controllo sui riferimenti morti classifica ogni segnalazione, e alcune le
+etichetta come **rumore**. Una di quelle etichette poggiava su un'affermazione
+tecnica **sbagliata**: si era scritto che una certa forma di chiamata era lecita e
+che era lo strumento a non capirla. Non era vero: lo strumento aveva ragione, e
+sedici chiamate rotte sono state zittite per due giri di lavoro.
+
+⚠️ **La regola sbagliata è stata perfino affinata due volte.** Ogni giro la
+restringeva un po', trovava difetti veri, e con ciò **confermava** l'assunto di
+partenza. Nessuno dei due ha chiesto se l'assunto fosse vero.
+
+Da qui tre cose che valgono per qualunque presidio:
+
+* **Un'etichetta rassicurante è più pericolosa di un errore.** Un errore lo si
+  guarda; un'etichetta la si legge una volta e poi ci si fida. È lo stesso
+  meccanismo per cui un test rosso registrato in baseline con la causa sbagliata è
+  rimasto mesi a coprire una funzione che non partiva.
+* **Chi scrive la regola non è la persona giusta per verificarla.** Quel difetto
+  l'ha trovato un altro team, che aveva un motivo indipendente per guardare — non
+  il presidio, e nemmeno chi l'aveva costruito.
+* **Le esenzioni vanno scritte con la loro giustificazione tecnica**, non solo con
+  il nome della categoria. Se accanto all'etichetta c'è la frase che la motiva,
+  quella frase può essere letta e contestata. Se c'è solo l'etichetta, no.
+
+Il presidio ha comunque fatto il suo mestiere: ha tenuto il conto, e quando la
+regola è stata corretta i sedici difetti sono comparsi tutti insieme, con nome e
+posizione. Quello che un presidio **non** può fare è accorgersi da solo che una
+sua regola mente.
+
+---
+
 ## 5. Se un cancello della CI diventa rosso
 
 Prima di considerarlo un problema della CI, vale la pena tenere presente l'ordine
@@ -235,6 +270,10 @@ La ricetta, nell'ordine:
    copertura senza averla.
 6. **Scrivi i limiti accanto al controllo.** Ogni misura ha punti ciechi. Se non
    sono scritti, il primo che legge un risultato verde crede che copra tutto.
+7. **Motiva ogni esenzione con la sua ragione tecnica, non con la categoria.**
+   Un'etichetta si legge e ci si fida; una frase che spiega *perché* quella riga è
+   rumore può essere contestata da chi passa. Vedi §4-bis: è così che una regola
+   fondata su un'affermazione falsa è sopravvissuta a due revisioni.
 
 ---
 
