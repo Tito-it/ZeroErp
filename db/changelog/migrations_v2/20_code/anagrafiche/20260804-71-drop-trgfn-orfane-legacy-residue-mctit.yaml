@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fix CI — due trigger function orfane che esistono SOLO su un database
+#          costruito da zero
+#   Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md
+#
+# ── COME SONO SALTATE FUORI ──────────────────────────────────────────────
+#   Il guardrail dei riferimenti morti, alla sua prima esecuzione vera in
+#   CI (2026-08-04), ha segnalato due `ORFANA` che sul server di sviluppo
+#   NON esistono:
+#
+#     anagrafiche.trgfn_soggetti_ins_upd_genera_cdsoggetto
+#     config.trgfn_stradario_upd_dlt_storico_stradario
+#
+#   Verificato: su dev le funzioni non ci sono proprio (`pg_proc` vuoto), e
+#   i changeSet che le droppano risultano `EXECUTED` —
+#   `20250922-01`, `20250922-02` e `20250922-03`, del 2025-09-22.
+#
+# ── ⚠️ IL PUNTO, CHE VALE OLTRE QUESTE DUE ──────────────────────────────
+#   Un database **incrementale** e un database **costruito da zero** non
+#   sono la stessa cosa, anche partendo dagli stessi changelog. Quei DROP
+#   vivono nel tree legacy `migrations/`, incluso con `includeAll`
+#   alfabetico dentro `changelog-master.yaml`; l'ordine relativo fra chi
+#   crea e chi droppa regge sul dev, dove i changeSet sono stati applicati
+#   nel tempo, ma in CI l'esito e' diverso e le funzioni sopravvivono.
+#
+#   Ricostruire l'archeologia di quell'ordinamento per correggerlo alla
+#   fonte vorrebbe dire toccare changeSet del 2025 gia' mergiati — cosa che
+#   non si fa, rompe la sequenza dei checksum. Si corregge in avanti: un
+#   DROP in `migrations_v2`, che il master include **dopo** tutto il
+#   legacy, quindi vale qualunque sia l'ordine a monte.
+#
+#   ℹ️ Su dev questo changeSet e' un no-op (`IF EXISTS` su funzioni gia'
+#   assenti). Serve alla CI, e a chiunque ricostruisca il database da zero
+#   — cioe' al giorno in cui si prepara un ambiente nuovo.
+#
+# ── PERCHE' SI DROPPANO E NON SI RIAGGANCIANO ────────────────────────────
+#   La decisione e' del 2025-09-22 e non si sta rimettendo in discussione:
+#   erano state sostituite (generazione codice soggetto e storicizzazione
+#   stradario passano da altri meccanismi) e i changeSet di allora servivano
+#   proprio a toglierle. Qui si completa quell'intenzione dove non era
+#   arrivata, non si decide qualcosa di nuovo.
+#
+#   ⚠️ Prima di droppare si e' verificato che siano davvero senza trigger:
+#   e' la classe `ORFANA` del controllo, che le valida contro OGNI tabella
+#   agganciata e le segnala solo quando le tabelle sono zero.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260804-71-drop-trgfn-orfane-legacy-residue-mctit.yaml
+
+  - changeSet:
+      id: 20260804-71-drop-trgfn-orfane-legacy-residue
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Fix CI — DROP di anagrafiche.trgfn_soggetti_ins_upd_genera_cdsoggetto e
+        config.trgfn_stradario_upd_dlt_storico_stradario, orfane. I DROP del
+        2025-09-22 stanno nel tree legacy e su un database costruito da zero non
+        sono efficaci: qui si completa l'intenzione di allora dopo tutto il legacy.
+        No-op sul DB di sviluppo, dove le funzioni non esistono gia' piu'.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_soggetti_ins_upd_genera_cdsoggetto();
+
+              DROP FUNCTION IF EXISTS config.trgfn_stradario_upd_dlt_storico_stradario();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

@@ -1,0 +1,331 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il perche' del bottone spento arriva a video: `reasons` sull'annullamento
+#   del preventivo + `nessuna_azione_key` (brief-db-vie-uscita-operatore, §6
+#   ultima riga aperta).
+#
+# PERCHE' ADESSO. Da quando l'annullamento e' tornato disponibile
+#   (`20260804-33/-35`), il bottone «Annulla» compare ACCESO anche sui
+#   preventivi che il guard rifiutera': misurato dal BE su tre documenti reali
+#   (#302, #301, #299, gia' in commessa). L'operatore scopre il divieto dopo
+#   il click. La regola c'e' gia' ed e' una sola — script.fn_check_preventivo_
+#   annullabile — ma finora la leggeva soltanto il guard. Da qui la legge anche
+#   la capability, che e' esattamente il patto del §3 del brief: una regola, due
+#   lettori, nessuna divergenza possibile fra UI e database.
+#
+# ⚠️ IL COMMENT DELLA FUNZIONE GUARD LO DAVA GIA' PER FATTO. La
+#   trgfn_preventivi_guard_annullamento dichiara «la stessa funzione letta da
+#   fn_available_actions_preventivo»: fino a questo changeSet era un'intenzione,
+#   non un fatto. Ora e' vero.
+#
+# ℹ️ CONTRATTO FE, VERIFICATO E NON DEDOTTO. `useDrawerActions.js` (BB
+#   `mapAvailableActionsToDrawerActions`) fa:
+#       const reasons = action.reasons?.length ? action.reasons : [action]
+#   cioe': se `reasons` e' un array pieno vince e finisce nel tooltip riga per
+#   riga; se e' vuoto o assente si ricade sui campi singolari `reason` /
+#   `reason_key` dell'azione. Percio' aggiungere `reasons` NON rompe il motivo
+#   `requires_righe` gia' cablato: continua a passare dal ramo singolare.
+#   Nessun lavoro FE: si accende da solo. Stesso schema gia' in casa su
+#   fn_available_actions_ddt (rev 2026-07-19) e _commessa (rev 2026-07-24).
+#
+# ⚠️ I MOTIVI SI SOMMANO, NON SI SOSTITUISCONO. La forma facile sarebbe un
+#   CASE che, verso ANNULLATO, guarda i motivi dell'annullabilita' e ignora
+#   `requires_righe`. Sarebbe una regola che ne spegne un'altra in silenzio: un
+#   preventivo con tutte le righe disattivate CHE HA GIA' GENERATO UN ORDINE
+#   ricade in entrambe. Oggi le due non si incrociano (nessuna transizione verso
+#   ANNULLATO porta `requires_righe` nel meta — verificato), ma e' un fatto di
+#   dato, non di costruzione: domani basta un seed. Qui i motivi si concatenano
+#   in UN array e tutto il resto ne discende — `enabled` = array vuoto,
+#   `reason`/`reason_key` = primo elemento. Cosi' non esiste il caso «bloccato
+#   per due ragioni, ne mostro una e l'altra sparisce».
+#
+# ℹ️ `nessuna_azione_key` e' esposta anche qui, benche' nessuno stato del
+#   preventivo ne abbia una nel `meta` (le quattro seminate stanno su ordini e
+#   ddt). Non e' codice morto: e' la meta' DB della simmetria che il FE ha gia'
+#   fatto cablando la prop `infoKey` su tutti e otto i drawer. Il giorno in cui
+#   si semina la chiave su uno stato del preventivo, non si tocca nulla.
+#   Esposta SOLO quando nessuna azione e' abilitata (§4 del brief): se ci sono
+#   bottoni vivi, la nota non ha ragione di comparire.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260804-68-update-fn-available-actions-preventivo-reasons-annullamento-mctit.yaml
+
+  - changeSet:
+      id: 20260804-68-update-fn-available-actions-preventivo-reasons-annullamento
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_available_actions_preventivo espone i motivi ostativi
+        dell'annullamento (da script.fn_check_preventivo_annullabile, la stessa
+        letta dal guard) e la nessuna_azione_key dello stato corrente. Il
+        bottone «Annulla» si spegne col perche' invece di rifiutare dopo il
+        click.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'script'
+                AND p.proname = 'fn_check_preventivo_annullabile'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_available_actions_preventivo(p_preventivo_id bigint)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: capability preventivo per detail API (pattern data-driven).
+              --   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
+              --   config.stati_doc_preventivi (bottone PDF data-driven via capabilities).
+              --   rev 2026-07-16: + enabled/reason/reason_key da meta.requires_righe
+              --   (documento vuoto non avanza di stato).
+              --   rev 2026-07-19: label_key e reason_key nel namespace i18n
+              --   vendite.preventivi.* (era preventivi.*, radice spostata dal FE
+              --   nella migrazione radici i18n) — brief-i18n-radici-uniformi §5.
+              --   rev 2026-08-04: + reasons sull'annullamento, da
+              --   script.fn_check_preventivo_annullabile — la STESSA funzione che
+              --   vendite.trgfn_preventivi_guard_annullamento usa per sollevare
+              --   (sorgente unica: la UI non puo' divergere dal guard). I motivi
+              --   si SOMMANO a quello di requires_righe in un array solo, da cui
+              --   discendono enabled/reason/reason_key. + nessuna_azione_key
+              --   dal meta dello stato, esposta quando nessuna azione e' abilitata
+              --   (brief-db-vie-uscita-operatore §4 regola R3 e §6).
+              DECLARE
+                  v_stato_id          vendite.preventivi.stato_doc_preventivo_id%TYPE;
+                  v_stato_cod         config.stati_doc_preventivi.codice_interno%TYPE;
+                  v_ba_id             vendite.preventivi.billing_account_id%TYPE;
+                  v_utility_id        vendite.preventivi.utility_id%TYPE;
+                  v_pdf_mode          config.stati_doc_preventivi.pdf_mode%TYPE;
+                  v_pdf_allow         config.stati_doc_preventivi.pdf_allow_allegati%TYPE;
+                  v_nessuna_key       text;
+                  v_nessuna_azione    boolean := false;
+                  v_actions           jsonb;
+                  v_ha_righe          boolean := false;
+                  v_mot_annulla       jsonb := '[]'::jsonb;
+                  v_can_edit          boolean;
+                  v_can_push          boolean;
+                  v_can_rev           boolean;
+                  v_push_reason       text;
+                  v_push_reason_key   text;
+                  v_can_ordine        boolean;
+                  v_ordine_reason     text;
+                  v_ordine_reason_key text;
+                  c_sempre_non_edit CONSTANT jsonb := '["utility_id"]'::jsonb;
+                  c_non_edit_extra  CONSTANT jsonb := '["billing_account_id","istanza_utility_id","valuta_id","termine_pagamento_id","validita_dal","validita_al","competenza_mese","fatturazione_immediata","meta"]'::jsonb;
+                  -- Motivo "documento vuoto" nella STESSA forma dei motivi delle
+                  -- fn_check_* ({codice, reason, reason_key, dettaglio}), cosi' i
+                  -- due mondi si concatenano senza conversioni. `codice` e' quello
+                  -- che il guard della porta solleva davvero (PREV_NESSUNA_RIGA_ATTIVA
+                  -- in vendite.fn_cambia_stato_preventivo): qui non si solleva nulla,
+                  -- ma un codice inventato diventerebbe una bugia il giorno in cui
+                  -- qualcuno lo confronta con l'errore ricevuto.
+                  c_motivo_senza_righe CONSTANT jsonb := jsonb_build_array(
+                      jsonb_build_object(
+                          'codice',     'PREV_NESSUNA_RIGA_ATTIVA',
+                          'reason',     'DOCUMENTO_SENZA_RIGHE',
+                          'reason_key', 'common.azione_reason.senza_righe',
+                          'dettaglio',  0));
+                  c_action_crea_revisione CONSTANT jsonb := jsonb_build_object(
+                      'key',                  'crea_revisione',
+                      'target_state',         NULL,
+                      'label_key',            'vendite.preventivi.azione_crea_revisione',
+                      'severity',             'info',
+                      'icon',                 'pi pi-clone',
+                      'requires_confirm',     true,
+                      'requires_motivazione', false,
+                      'enabled',              true,
+                      'reason',               NULL,
+                      'reason_key',           NULL
+                  );
+                  c_action_push_commessa CONSTANT jsonb := jsonb_build_object(
+                      'key',                  'push_commessa',
+                      'target_state',         NULL,
+                      'label_key',            'vendite.preventivi.azione_push_commessa',
+                      'severity',             'info',
+                      'icon',                 'pi pi-arrow-right',
+                      'requires_motivazione', false,
+                      'requires_confirm',     true,
+                      'enabled',              true,
+                      'reason',               NULL,
+                      'reason_key',           NULL
+                  );
+                  c_action_genera_ordine CONSTANT jsonb := jsonb_build_object(
+                      'key',                  'genera_ordine',
+                      'target_state',         NULL,
+                      'label_key',            'vendite.preventivi.azione_genera_ordine',
+                      'severity',             'info',
+                      'icon',                 'pi pi-shopping-cart',
+                      'requires_confirm',     true,
+                      'requires_motivazione', false,
+                      'enabled',              true,
+                      'reason',               NULL,
+                      'reason_key',           NULL
+                  );
+              BEGIN
+                  -- Stato corrente + testata + capability PDF (pdf_mode/allow_allegati)
+                  -- + la chiave "nessuna azione" dello stato (dato, non codice).
+                  SELECT p.stato_doc_preventivo_id, sdp.codice_interno,
+                         p.billing_account_id, p.utility_id,
+                         sdp.pdf_mode, sdp.pdf_allow_allegati,
+                         sdp.meta->>'nessuna_azione_key'
+                    INTO v_stato_id, v_stato_cod, v_ba_id, v_utility_id,
+                         v_pdf_mode, v_pdf_allow, v_nessuna_key
+                    FROM vendite.preventivi p
+                    JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+                   WHERE p.id = p_preventivo_id;
+
+                  IF NOT FOUND THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Precondizione "documento non vuoto" per le transizioni che la
+                  -- esigono (meta.requires_righe). La fn sa solo COME contare le
+                  -- proprie righe: specchia il guard di fn_cambia_stato_preventivo
+                  -- (PREV_NESSUNA_RIGA_ATTIVA, rev 2026-07-16): SOLO presenza di
+                  -- riga attiva, nessun vincolo su quantita/prezzo/totale.
+                  v_ha_righe := EXISTS (
+                      SELECT 1 FROM vendite.preventivi_righe pr
+                       WHERE pr.preventivo_id = p_preventivo_id
+                         AND pr.attivo IS TRUE
+                  );
+
+                  -- Motivi ostativi all'ANNULLAMENTO, calcolati UNA VOLTA SOLA.
+                  -- Fn pura: [] quando e' lecito. E' la stessa che solleva nel guard.
+                  v_mot_annulla := script.fn_check_preventivo_annullabile(p_preventivo_id);
+
+                  SELECT COALESCE(
+                      jsonb_agg(
+                          jsonb_build_object(
+                              'key',              t.meta->>'action_key',
+                              'target_state',     sa.codice_interno,
+                              'label_key',        t.meta->>'label_key',
+                              'severity',         t.meta->>'severity',
+                              'icon',             t.meta->>'icon',
+                              'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
+                              -- Tutto discende dall'array dei motivi: nessuna
+                              -- regola puo' mascherarne un'altra.
+                              'enabled',          jsonb_array_length(m.motivi) = 0,
+                              'reason',           m.motivi -> 0 ->> 'reason',
+                              'reason_key',       m.motivi -> 0 ->> 'reason_key',
+                              'reasons',          m.motivi
+                          )
+                          ORDER BY sa.ordine
+                      ),
+                      '[]'::jsonb
+                  )
+                  INTO v_actions
+                  FROM config.transizioni_stati_preventivi t
+                  JOIN config.stati_doc_preventivi sa ON sa.id = t.stato_a_id
+                  -- I motivi della destinazione, sommati in un array solo.
+                  -- Ordine: prima quelli specifici della destinazione, poi il
+                  -- generico "documento vuoto"; il primo e' quello che il FE
+                  -- mostra nel caso singolare.
+                  CROSS JOIN LATERAL (
+                      SELECT CASE WHEN sa.codice_interno = 'ANNULLATO'
+                                  THEN v_mot_annulla ELSE '[]'::jsonb END
+                          || CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                       AND NOT v_ha_righe
+                                  THEN c_motivo_senza_righe ELSE '[]'::jsonb END AS motivi
+                  ) m
+                  WHERE t.stato_da_id = v_stato_id
+                    AND t.attivo IS TRUE
+                    AND COALESCE((t.meta->>'manuale')::boolean, true) IS TRUE
+                    AND t.meta ? 'action_key'
+                    AND t.meta ? 'label_key';
+
+                  v_can_edit := (v_stato_cod = 'DRAFT');
+                  v_can_rev  := (v_stato_cod = 'EMESSO');
+
+                  v_can_push := (v_stato_cod = 'ACCETTATO')
+                      AND vendite.fn_preventivo_ha_residuo_commessa(p_preventivo_id);
+
+                  v_can_ordine := (v_stato_cod = 'ACCETTATO')
+                      AND vendite.fn_preventivo_ha_residuo_ordine(p_preventivo_id);
+
+                  IF v_can_rev THEN
+                      v_actions := v_actions || jsonb_build_array(c_action_crea_revisione);
+                  END IF;
+
+                  IF v_can_push THEN
+                      v_actions := v_actions || jsonb_build_array(c_action_push_commessa);
+                  END IF;
+
+                  IF v_can_ordine THEN
+                      v_actions := v_actions || jsonb_build_array(c_action_genera_ordine);
+                  END IF;
+
+                  IF v_can_push THEN
+                      v_push_reason     := NULL;
+                      v_push_reason_key := NULL;
+                  ELSIF v_stato_cod <> 'ACCETTATO' THEN
+                      v_push_reason     := 'PREVENTIVO_NON_ACCETTATO';
+                      v_push_reason_key := 'vendite.preventivi.push_commessa_reason.non_accettato';
+                  ELSIF v_ba_id IS NULL OR v_utility_id IS NULL THEN
+                      v_push_reason     := 'PREVENTIVO_SENZA_BILLING_ACCOUNT';
+                      v_push_reason_key := 'vendite.preventivi.push_commessa_reason.senza_billing_account';
+                  ELSE
+                      v_push_reason     := 'PREVENTIVO_NESSUNA_RIGA_COMMESSA';
+                      v_push_reason_key := 'vendite.preventivi.push_commessa_reason.nessuna_riga';
+                  END IF;
+
+                  IF v_can_ordine THEN
+                      v_ordine_reason     := NULL;
+                      v_ordine_reason_key := NULL;
+                  ELSIF v_stato_cod <> 'ACCETTATO' THEN
+                      v_ordine_reason     := 'PREVENTIVO_NON_ACCETTATO';
+                      v_ordine_reason_key := 'vendite.preventivi.genera_ordine_reason.non_accettato';
+                  ELSE
+                      v_ordine_reason     := 'PREVENTIVO_NESSUNA_RIGA_ORDINE';
+                      v_ordine_reason_key := 'vendite.preventivi.genera_ordine_reason.nessuna_riga';
+                  END IF;
+
+                  -- La nota "cosa fare invece" si mostra SOLO quando non resta
+                  -- nessun bottone vivo: e' una risposta alla lista vuota, non un
+                  -- commento permanente allo stato. Valutata DOPO gli append, che
+                  -- aggiungono azioni sempre abilitate.
+                  SELECT NOT EXISTS (
+                      SELECT 1
+                        FROM jsonb_array_elements(v_actions) AS a
+                       WHERE COALESCE((a->>'enabled')::boolean, true) IS TRUE
+                  ) INTO v_nessuna_azione;
+
+                  RETURN jsonb_build_object(
+                      'available_actions',            v_actions,
+                      'can_edit_testata',             v_can_edit,
+                      'can_edit_righe',               v_can_edit,
+                      'can_push_commessa',            v_can_push,
+                      'can_push_commessa_reason',     v_push_reason,
+                      'can_push_commessa_reason_key', v_push_reason_key,
+                      'can_genera_ordine',            v_can_ordine,
+                      'can_genera_ordine_reason',     v_ordine_reason,
+                      'can_genera_ordine_reason_key', v_ordine_reason_key,
+                      'can_create_revisione',         v_can_rev,
+                      'nessuna_azione_key',           CASE WHEN v_nessuna_azione THEN v_nessuna_key END,
+                      'non_editable_fields',          CASE WHEN v_can_edit
+                                                          THEN c_sempre_non_edit
+                                                          ELSE c_sempre_non_edit || c_non_edit_extra END,
+                      'pdf',                          jsonb_build_object('mode', v_pdf_mode, 'allow_allegati', v_pdf_allow),
+                      'stato_codice',                 v_stato_cod
+                  );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_available_actions_preventivo(p_preventivo_id bigint)
+              IS 'Capability preventivo per detail API: available_actions + can_edit_* + push_commessa + genera_ordine + create_revisione + nessuna_azione_key + non_editable_fields + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_preventivi (bottone PDF data-driven via capabilities). rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il preventivo non ha righe attive -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard PREV_NESSUNA_RIGA_ATTIVA: SOLO presenza, nessun vincolo su quantita/prezzo/totale). rev 2026-07-19: le 3 label_key (crea_revisione/push_commessa/genera_ordine) e le 5 reason_key (push_commessa_reason.*, genera_ordine_reason.*) passano al namespace i18n vendite.preventivi.* — la radice preventivi.* e'' stata spostata sotto vendite.* dal FE nella migrazione radici i18n; brief-i18n-radici-uniformi §5. rev 2026-08-04: le azioni verso ANNULLATO espongono reasons da script.fn_check_preventivo_annullabile (stessa fn del guard trgfn_preventivi_guard_annullamento: UI e database non possono divergere); i motivi si sommano a quello di requires_righe in un array unico da cui discendono enabled/reason/reason_key. + nessuna_azione_key dal meta dello stato corrente, esposta solo quando nessuna azione risulta abilitata (brief-db-vie-uscita-operatore §4 regola R3, §6).';
