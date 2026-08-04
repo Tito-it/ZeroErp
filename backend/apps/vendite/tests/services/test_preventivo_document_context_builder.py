@@ -110,7 +110,9 @@ class BuildContextHappyPathTests(SimpleTestCase):
         self.assertEqual(prev["validita_dal_iso"], "2026-05-04")
         self.assertEqual(prev["fatturazione_immediata"], False)
         self.assertEqual(prev["stato"]["codice"], "BOZZA")
-        self.assertEqual(prev["totali"]["imponibile"], "100.00")
+        # Numeri formattati per la stampa (2026-08-04): il context non porta
+        # piu' la scala della colonna DB ma il formato italiano.
+        self.assertEqual(prev["totali"]["imponibile"], "100,00")
         self.assertEqual(prev["totali"]["valuta_codice"], "EUR")
         self.assertEqual(prev["meta"], {"note": "abc"})
 
@@ -120,11 +122,12 @@ class BuildContextHappyPathTests(SimpleTestCase):
             {"billing_account_id": 100, "denominazione": "Acme Srl"},
         )
 
-        # Righe + riepilogo IVA pass-through dal repo.
+        # Righe + riepilogo IVA dal repo, coi soli campi numerici formattati.
         self.assertEqual(len(ctx["righe"]), 2)
         self.assertEqual(ctx["righe"][0]["descrizione"], "Riga 1")
         self.assertEqual(len(ctx["riepilogo_iva"]), 1)
-        self.assertEqual(ctx["riepilogo_iva"][0]["iva_aliquota"], "22.00")
+        self.assertEqual(ctx["riepilogo_iva"][0]["iva_aliquota"], "22,00")
+        self.assertEqual(ctx["riepilogo_iva"][0]["imponibile"], "100,00")
 
         # Indirizzi pass-through.
         self.assertEqual(ctx["indirizzi"][0]["snapshot"]["via"], "X")

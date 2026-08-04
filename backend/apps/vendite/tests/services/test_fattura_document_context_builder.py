@@ -111,11 +111,11 @@ class BuildContextFatturaTests(SimpleTestCase):
         self.assertEqual(fattura["utility"]["codice"], "BASE")
         self.assertEqual(fattura["utility"]["descrizione"], "Servizio Base")
         self.assertEqual(fattura["bollo_applicato"], False)
-        self.assertEqual(fattura["totali"]["imponibile"], "100.00")
-        self.assertEqual(fattura["totali"]["imposta"], "22.00")
-        self.assertEqual(fattura["totali"]["iva"], "22.00")  # alias template
-        self.assertEqual(fattura["totali"]["documento"], "122.00")
-        self.assertEqual(fattura["totali"]["a_pagare"], "122.00")
+        self.assertEqual(fattura["totali"]["imponibile"], "100,00")
+        self.assertEqual(fattura["totali"]["imposta"], "22,00")
+        self.assertEqual(fattura["totali"]["iva"], "22,00")  # alias template
+        self.assertEqual(fattura["totali"]["documento"], "122,00")
+        self.assertEqual(fattura["totali"]["a_pagare"], "122,00")
         self.assertEqual(fattura["totali"]["valuta_codice"], "EUR")
         # Chiavi «ricche» sempre presenti (StrictUndefined), None se non sorgentate.
         for k in ("origine", "pagamento", "utility"):
@@ -202,8 +202,8 @@ class BuildContextFatturaTests(SimpleTestCase):
         ctx = FatturaDocumentContextBuilder(repo=repo).build_context(42)
 
         self.assertEqual(len(ctx["riepilogo_iva"]), 1)
-        self.assertEqual(ctx["riepilogo_iva"][0]["iva_aliquota"], "22.00")
-        self.assertEqual(ctx["riepilogo_iva"][0]["imposta"], "22.00")
+        self.assertEqual(ctx["riepilogo_iva"][0]["iva_aliquota"], "22,00")
+        self.assertEqual(ctx["riepilogo_iva"][0]["imposta"], "22,00")
         repo.list_fattura_riepilogo_iva.assert_called_once_with(42)
 
     # 3. Le scadenze (piano pagamenti) sono shaped con chiavi stabili per il
@@ -230,7 +230,7 @@ class BuildContextFatturaTests(SimpleTestCase):
         s0 = ctx["scadenze"][0]
         self.assertEqual(s0["nr"], 1)
         self.assertEqual(s0["data"], "31-07-2026")  # formattazione IT
-        self.assertEqual(s0["importo"], "61.00")
+        self.assertEqual(s0["importo"], "61,00")
         self.assertEqual(s0["modalita_codice"], "BONIFICO")
         # meta None → modalita_codice None (nessun errore)
         self.assertIsNone(ctx["scadenze"][1]["modalita_codice"])

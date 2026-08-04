@@ -26,11 +26,14 @@
 from __future__ import annotations
 
 import json
-from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
+from apps.documenti.services.context_builders._number_formatting import (
+    format_misura,
+    formatta_campi,
+)
 from apps.documenti.services.context_builders._date_formatting import (
     format_date_it,
     format_date_iso,
@@ -157,7 +160,7 @@ class OffertaDocumentContextBuilder(DocumentContextBuilder):
             "pricing": {
                 "modalita": self._resolve_modalita(testata),
                 "tipo_variazione_globale": testata.get("tipo_variazione_globale"),
-                "valore_variazione_globale": _format_decimal_6(
+                "valore_variazione_globale": format_misura(
                     testata.get("valore_variazione_globale")
                 ),
             },
@@ -188,9 +191,11 @@ class OffertaDocumentContextBuilder(DocumentContextBuilder):
             return "A"
         return "B"
 
-    # Scopo: Normalizza le righe-eccezione formattando i campi decimali
-    #        prezzo (e i prezzi dei componenti BoM annidati) a 6 cifre,
-    #        coerente col builder contratto. Il blob `componenti` puo'
+    # Scopo: Normalizza le righe-eccezione formattando prezzi e quantita'
+    #        (e quelli dei componenti BoM annidati) con la regola comune a
+    #        tutti i documenti — minimo 2 decimali, massimo 6, senza zeri
+    #        superflui (fino al 2026-08-04 erano sempre sei: `120.000000`).
+    #        Il blob `componenti` puo'
     #        arrivare gia' come lista di dict (psycopg con encoder jsonb)
     #        oppure come stringa JSON (driver/lateral con jsonb_agg): in
     #        quest'ultimo caso lo deserializziamo prima dello shape, cosi'
@@ -202,10 +207,10 @@ class OffertaDocumentContextBuilder(DocumentContextBuilder):
     ) -> list[dict[str, Any]]:
         shaped: list[dict[str, Any]] = []
         for riga in eccezioni:
-            r = dict(riga)
-            for field in ("prezzo_unitario", "quantita", "qta_operativa"):
-                if field in r:
-                    r[field] = _format_decimal_6(r.get(field))
+            r = formatta_campi(
+                riga,
+                misure=("prezzo_unitario", "quantita", "qta_operativa"),
+            )
             r["componenti"] = self._coerce_componenti(r.get("componenti"))
             shaped.append(r)
         return shaped
@@ -227,20 +232,10 @@ class OffertaDocumentContextBuilder(DocumentContextBuilder):
 
     # Scopo: Formatta i campi prezzo/quantita di un componente BoM annidato.
     def _shape_componente(self, comp: dict[str, Any]) -> dict[str, Any]:
-        for field in ("prezzo_unitario", "quantita", "coeff_qta_snapshot"):
-            if field in comp:
-                comp[field] = _format_decimal_6(comp.get(field))
-        return comp
-
-
-def _format_decimal_6(value: Any) -> str | None:
-    if value is None:
-        return None
-    try:
-        dec = Decimal(str(value))
-    except (InvalidOperation, ValueError):
-        return str(value)
-    return f"{dec:.6f}"
+        return formatta_campi(
+            comp,
+            misure=("prezzo_unitario", "quantita", "coeff_qta_snapshot"),
+        )
 
 
 # Registrazione esplicita: l'import del modulo (triggerato da

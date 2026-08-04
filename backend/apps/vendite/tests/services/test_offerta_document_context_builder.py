@@ -97,7 +97,7 @@ class BuildContextOffertaTests(SimpleTestCase):
         self.assertEqual(ctx["offerta"]["validita_al"], "30-06-2026")
         self.assertEqual(ctx["offerta"]["pricing"]["modalita"], "A")
         self.assertEqual(
-            ctx["offerta"]["pricing"]["valore_variazione_globale"], "10.000000",
+            ctx["offerta"]["pricing"]["valore_variazione_globale"], "10,00",
         )
         self.assertEqual(ctx["offerta"]["stato"]["codice"], "EMESSA")
         self.assertEqual(ctx["offerta"]["emittente_fiscale"]["codice"], "EF-3")
@@ -148,11 +148,11 @@ class BuildContextOffertaTests(SimpleTestCase):
         ctx = OffertaDocumentContextBuilder(repo=repo).build_context(7)
 
         riga = ctx["eccezioni"][0]
-        self.assertEqual(riga["prezzo_unitario"], "12.500000")
-        self.assertEqual(riga["quantita"], "2.000000")
+        self.assertEqual(riga["prezzo_unitario"], "12,50")
+        self.assertEqual(riga["quantita"], "2,00")
         comp = riga["componenti"][0]
-        self.assertEqual(comp["prezzo_unitario"], "5.250000")
-        self.assertEqual(comp["coeff_qta_snapshot"], "1.000000")
+        self.assertEqual(comp["prezzo_unitario"], "5,25")
+        self.assertEqual(comp["coeff_qta_snapshot"], "1,00")
 
     # 2b. componenti come stringa JSON (psycopg/jsonb_agg) -> deserializzati
     #     in lista di dict, prezzi formattati. Senza questa coercion il
@@ -183,8 +183,8 @@ class BuildContextOffertaTests(SimpleTestCase):
         self.assertEqual(len(riga["componenti"]), 1)
         comp = riga["componenti"][0]
         self.assertEqual(comp["componente_descrizione"], "C1")
-        self.assertEqual(comp["prezzo_unitario"], "1.500000")
-        self.assertEqual(comp["quantita"], "2.000000")
+        self.assertEqual(comp["prezzo_unitario"], "1,50")
+        self.assertEqual(comp["quantita"], "2,00")
 
     # 2c. componenti nullo / stringa vuota / JSON invalido -> lista vuota
     #     (no crash). Garantisce che il template non rompa con eccezioni

@@ -1401,7 +1401,7 @@ class PraticheRepository:
             row = cursor.fetchone()
             ErrorManager.require(
                 row is not None,
-                code="E_COMPETENZA_INSERT",
+                code="E_FLUSSO_COMPETENZA_INSERT",
                 message="Errore inserimento competenza flusso (RETURNING id nullo)",
             )
             assert row is not None

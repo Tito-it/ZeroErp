@@ -101,8 +101,8 @@ class BuildContextOrdineTests(SimpleTestCase):
         self.assertEqual(ordine["origine"]["tipo"], "PREVENTIVO")
         self.assertEqual(ordine["origine"]["codice"], "P-2026/123")
         self.assertEqual(ordine["agente_denominazione"], "Mario Rossi")
-        self.assertEqual(ordine["totali"]["imponibile"], "100.00")
-        self.assertEqual(ordine["totali"]["documento"], "122.00")
+        self.assertEqual(ordine["totali"]["imponibile"], "100,00")
+        self.assertEqual(ordine["totali"]["documento"], "122,00")
         self.assertEqual(ordine["totali"]["valuta_codice"], "EUR")
 
         cliente = ctx["cliente"]
@@ -148,8 +148,8 @@ class BuildContextOrdineTests(SimpleTestCase):
         ctx = OrdineDocumentContextBuilder(repo=repo).build_context(7)
 
         self.assertEqual(len(ctx["riepilogo_iva"]), 1)
-        self.assertEqual(ctx["riepilogo_iva"][0]["iva_aliquota"], "22.00")
-        self.assertEqual(ctx["riepilogo_iva"][0]["imposta"], "22.00")
+        self.assertEqual(ctx["riepilogo_iva"][0]["iva_aliquota"], "22,00")
+        self.assertEqual(ctx["riepilogo_iva"][0]["imposta"], "22,00")
         repo.list_riepilogo_iva.assert_called_once_with(7)
 
 

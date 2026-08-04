@@ -3007,8 +3007,8 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Errore durante l'inserimento del flusso.",
         ),
-        "E_COMPETENZA_INSERT": ErrorPolicy(
-            code="E_COMPETENZA_INSERT",
+        "E_FLUSSO_COMPETENZA_INSERT": ErrorPolicy(
+            code="E_FLUSSO_COMPETENZA_INSERT",
             http_status=500,
             ui_action="show_error_banner",
             user_message="Errore durante l'inserimento della competenza del flusso.",
@@ -3047,8 +3047,8 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Allegato non trovato.",
         ),
-        "E_COMPETENZA_NOT_FOUND": ErrorPolicy(
-            code="E_COMPETENZA_NOT_FOUND",
+        "E_FLUSSO_COMPETENZA_NOT_FOUND": ErrorPolicy(
+            code="E_FLUSSO_COMPETENZA_NOT_FOUND",
             http_status=404,
             ui_action="show_empty_state",
             user_message="Competenza del flusso non trovata.",
@@ -3106,13 +3106,19 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Pipeline interrotta: superato il numero massimo di iterazioni.",
         ),
-        # Worker di stampa: il documento non sa a quale emittente appartiene —
-        # dato incoerente, non input dell'operatore.
-        "E_EMITTENTE_NON_RISOLTO": ErrorPolicy(
-            code="E_EMITTENTE_NON_RISOLTO",
+        # Worker di stampa: la FATTURA in coda non sa a quale emittente
+        # appartiene — dato incoerente, non input dell'operatore.
+        # ⚠️ Da non confondere con `E_ORDINE_/E_CONTRATTO_/E_PREV_EMITTENTE_NON_RISOLTO`,
+        # che dicono il contrario: là è CHI CREA a non avere un emittente da cui
+        # derivare il default, qui è il documento già esistente ad esserne privo.
+        # Il prefisso per documento (rinomina richiesta dal DB il 2026-08-04,
+        # brief seed round 2 §6.3) è ciò che tiene distinte le due famiglie in
+        # `error_log`, dove compaiono affiancate.
+        "E_FATTURA_EMITTENTE_NON_RISOLTO": ErrorPolicy(
+            code="E_FATTURA_EMITTENTE_NON_RISOLTO",
             http_status=500,
             ui_action="show_error_banner",
-            user_message="Emittente fiscale non risolvibile per il documento.",
+            user_message="Emittente fiscale non risolvibile per la fattura in coda di stampa.",
         ),
 
         # -- Core / Amm. software ------------------------------------------
