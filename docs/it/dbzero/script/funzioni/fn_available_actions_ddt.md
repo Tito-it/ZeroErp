@@ -28,11 +28,17 @@ AS $function$
 --   nelle 7 cause via vendite.fn_ddt_push_diagnosi (fonte unica) +
 --   rami DDT_FATTURA_DA_ORDINE/SOLO_TRASPORTO/MERCE_IN_VIAGGIO +
 --   precedenza a due livelli — brief-db-ddt-reason-push-catch-all §3.
+--   rev 2026-08-04: + nessuna_azione_key dal meta dello stato,
+--   esposta quando nessuna azione e' abilitata: sugli stati chiusi
+--   CONSEGNATO e RESO dice all'operatore cosa fare invece
+--   (brief-db-vie-uscita-operatore §4, regola R3).
 DECLARE
     v_ddt        vendite.ddt%ROWTYPE;
     v_stato_cod  config.stati_doc_ddt.codice_interno%TYPE;
     v_pdf_mode   config.stati_doc_ddt.pdf_mode%TYPE;
     v_pdf_allow  config.stati_doc_ddt.pdf_allow_allegati%TYPE;
+    v_nessuna_key    text;
+    v_nessuna_azione boolean := false;
     v_actions    jsonb;
     v_can_change boolean := false;
     v_ha_righe   boolean := false;
@@ -59,8 +65,12 @@ BEGIN
         RETURN NULL;
     END IF;
 
-    SELECT sdd.codice_interno, sdd.pdf_mode, sdd.pdf_allow_allegati
-      INTO v_stato_cod, v_pdf_mode, v_pdf_allow
+    -- Stato corrente + capability PDF + la chiave "nessuna azione"
+    -- dello stato (dato, non codice: si cambia il testo senza
+    -- toccare questa funzione).
+    SELECT sdd.codice_interno, sdd.pdf_mode, sdd.pdf_allow_allegati,
+           sdd.meta->>'nessuna_azione_key'
+      INTO v_stato_cod, v_pdf_mode, v_pdf_allow, v_nessuna_key
       FROM config.stati_doc_ddt sdd
      WHERE sdd.id = v_ddt.stato_doc_ddt_id;
 
@@ -197,6 +207,16 @@ BEGIN
         );
     END IF;
 
+    -- La nota "cosa fare invece" si mostra SOLO quando non resta
+    -- nessun bottone vivo. NON si appoggia a v_can_change, che qui
+    -- conta anche i disabilitati (vedi sopra): userebbe un conteggio
+    -- pensato per l'opposto e la nota non comparirebbe mai.
+    SELECT NOT EXISTS (
+        SELECT 1
+          FROM jsonb_array_elements(v_actions) AS a
+         WHERE COALESCE((a->>'enabled')::boolean, true) IS TRUE
+    ) INTO v_nessuna_azione;
+
     RETURN jsonb_build_object(
         'available_actions',            v_actions,
         'can_change_state',             v_can_change,
@@ -205,6 +225,7 @@ BEGIN
         'can_push_commessa',            v_push_ok,
         'can_push_commessa_reason',     v_push_reason,
         'can_push_commessa_reason_key', v_push_reason_key,
+        'nessuna_azione_key',           CASE WHEN v_nessuna_azione THEN v_nessuna_key END,
         'non_editable_fields',          CASE WHEN v_stato_cod = 'DRAFT'
                                              THEN c_non_edit_draft
                                              ELSE c_non_edit_tutti END,
@@ -215,7 +236,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_ddt(p_ddt_id bigint)
-IS 'Capability DDT per detail API: available_actions + push_commessa (fn_list_ddt_da_pushare) + can_change_state + can_edit_* + non_editable_fields + stato_codice. Mirror di fn_available_actions_ordine. rev 2026-07-19: transizioni verso EMESSO via fn_check_ddt_emittibile; reason push GIA_INVIATO/GIA_FATTURATO via fn_get_stato_push_segment. rev 2026-07-19 (ter): il catch-all DDT_NON_PUSHABILE e'' decomposto nelle 7 cause di esclusione via vendite.fn_ddt_push_diagnosi (fonte unica, equivalenza col lister blindata a pgTAP); rami propri DDT_FATTURA_DA_ORDINE (XOR, speculare di ORDINE_FATTURA_DA_DDT), DDT_SOLO_TRASPORTO (causale non fatturabile), DDT_MERCE_IN_VIAGGIO (stato pre-trigger); casi senza-BA/contatore/annullato/reso nel generico riscritto (non piu'' basato sullo stato); precedenza a due livelli (documento prima, poi riga azionabile) — brief-db-ddt-reason-push-catch-all §3.';
+IS 'Capability DDT per detail API: available_actions + push_commessa (fn_list_ddt_da_pushare) + can_change_state + can_edit_* + nessuna_azione_key + non_editable_fields + stato_codice. Mirror di fn_available_actions_ordine. rev 2026-07-19: transizioni verso EMESSO via fn_check_ddt_emittibile; reason push GIA_INVIATO/GIA_FATTURATO via fn_get_stato_push_segment. rev 2026-07-19 (ter): il catch-all DDT_NON_PUSHABILE e'' decomposto nelle 7 cause di esclusione via vendite.fn_ddt_push_diagnosi (fonte unica, equivalenza col lister blindata a pgTAP); rami propri DDT_FATTURA_DA_ORDINE (XOR, speculare di ORDINE_FATTURA_DA_DDT), DDT_SOLO_TRASPORTO (causale non fatturabile), DDT_MERCE_IN_VIAGGIO (stato pre-trigger); casi senza-BA/contatore/annullato/reso nel generico riscritto (non piu'' basato sullo stato); precedenza a due livelli (documento prima, poi riga azionabile) — brief-db-ddt-reason-push-catch-all §3. rev 2026-08-04: + nessuna_azione_key dal meta dello stato corrente (CONSEGNATO / RESO), esposta solo quando nessuna azione risulta abilitata — valutata a parte da can_change_state, che qui conta apposta anche le disabilitate (brief-db-vie-uscita-operatore §4 regola R3).';
 ```
 
 ---
