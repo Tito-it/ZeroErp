@@ -1,0 +1,112 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Bonifica riferimenti morti — F7, trigger function orfane area contratti
+#   Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md
+#
+# ── LA DOMANDA GIUSTA, E LA RISPOSTA ─────────────────────────────────────
+#   Il brief la pone bene: «una guard scritta e mai agganciata e' un
+#   presidio che si crede attivo e non lo e' — il problema potrebbe essere
+#   il trigger mancante, non la funzione di troppo». Verificato una per
+#   una, e in tutte e tre l'assenza del trigger e' **deliberata e
+#   documentata nel changeSet che l'ha causata**. Nessun presidio scoperto.
+#
+#   ── 1) trgfn_contratti_guard_modalita_c_activation ─────────────────────
+#   ── 2) trgfn_contratti_righe_guard_modalita_c ──────────────────────────
+#   Creati da `20260414-12` con i loro trigger. Droppati da
+#   `20260515-10-alter-contratti-add-listino-versione-drop-modalita`, che
+#   smonta il modello di pricing a modalita' A/B/C:
+#
+#     «DROP TRIGGER trg_contratti_a10_guard_modalita_c_activation_ins_upd
+#      (guard attivazione modalita' C — sostituito da trigger Step 2.3)»
+#     «DROP TRIGGER trg_contratti_righe_a10_guard_modalita_c_ins_upd
+#      (guard righe modalita' C — ora le righe sono eccezioni tipizzate)»
+#
+#   Lo Step 2.3 e' arrivato: su `contratti` oggi presidiano
+#   `trgfn_contratti_guard_transizione_stato` e
+#   `trgfn_contratti_lock_post_attivazione`; su `contratti_righe`
+#   `trgfn_contratti_righe_guard_aggiunta_fuori_listino`,
+#   `…_guard_esclusione_figlio_bundle` e `…_lock_post_attivazione`.
+#   Le due vecchie parlano di `contratti.listino_id IS NULL` come segno di
+#   «modalita' C»: un concetto che il refactor ha tolto. Riagganciarle
+#   bloccherebbe righe legittime.
+#
+#   ── 3) trgfn_contratti_righe_componenti_guard_pending ──────────────────
+#   Creata da `20260511-40` col suo trigger. `20260526-23` l'ha
+#   **sostituita** con il generico `script.trgfn_componenti_guard_pending`
+#   (nato da `20260526-02` per servire sia i componenti di contratto sia
+#   quelli delle offerte commerciali, brief simmetria contratti/offerte).
+#   Il generico e' agganciato e vivo su
+#   `trg_contratti_righe_componenti_a10_guard_pending_upd`: il presidio
+#   c'e', e' solo un'altra funzione. Questa e' la versione superata.
+#   ⚠️ Va rimosso anche il manuale
+#   `docs/it/dbzero/vendite/manual/trgfn_contratti_righe_componenti_guard_pending.md`,
+#   che documenta come attivo un presidio sostituito da due mesi.
+#
+# ── 🔴 COSA NON SI DROPPA, E PERCHE' ─────────────────────────────────────
+#   Il brief elenca in F7 anche `script.trgfn_guard_sorgente_polimorfa_tipizzata`.
+#   **Non si tocca.** Non e' un residuo: e' una funzione *parcheggiata di
+#   proposito*, e la decisione e' gia' scritta in `20260718-16`:
+#
+#     «⚠️ NON agganciata: il trigger su attivita_fatturabili (suo target di
+#      progetto) fu rimosso DELIBERATAMENTE con 20260225-45. Il riaggancio
+#      (D6) e' quindi da ri-decidere con Tid … la funzione resta
+#      disponibile, documentata come NON attiva.»
+#
+#   Ha pure il suo pgTAP (`test-guard-sorgente-polimorfa-testuale-v1.sql`)
+#   e una sorella `_testuale`. Droppare qui vorrebbe dire disfare una
+#   decisione presa altrove, per obbedire a un controllo automatico.
+#
+#   ⚠️ E' il limite strutturale della classe `ORFANA`: distingue «senza
+#   trigger» da «con trigger», non «residuo» da «parcheggiata». La
+#   differenza sta nell'intenzione, che nessuna query trova. Per questo il
+#   presidio nasce con un **registro delle esenzioni motivate**: questa
+#   funzione e' la sua prima voce, e serve a impedire che il prossimo giro
+#   ri-proponga di droppare cio' che e' gia' stato deciso di tenere.
+#
+# ── VERIFICA DEI CONSUMATORI (2026-08-04) ────────────────────────────────
+#   Le sei sedi: nessun consumatore in DB, FE, seed, pgTAP.
+#   ⚠️ Nel BE resta un **commento** stale in
+#   `apps/vendite/db/contratti_repository.py:762`:
+#     «Il trigger trgfn_contratti_guard_modalita_c_activation fa fail-fast
+#      se modalita' C e righe incomplete.»
+#   Promette un presidio che non esiste dal 2026-05-15. Non e' codice, non
+#   rompe niente, ma e' documentazione che mente: va nel brief per il BE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260804-51-drop-trgfn-orfane-contratti-mctit.yaml
+
+  - changeSet:
+      id: 20260804-51-drop-trgfn-orfane-contratti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        F7 — DROP delle tre trigger function orfane dell'area contratti: le due
+        modalita' C (trigger droppati da 20260515-10 col refactor pricing, logica
+        sostitutiva Step 2.3 in servizio) e guard_pending (sostituita dal generico
+        script.trgfn_componenti_guard_pending, 20260526-23). NON si tocca
+        script.trgfn_guard_sorgente_polimorfa_tipizzata: orfana di proposito (D6).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.trgfn_contratti_guard_modalita_c_activation();
+
+              DROP FUNCTION IF EXISTS vendite.trgfn_contratti_righe_guard_modalita_c();
+
+              DROP FUNCTION IF EXISTS vendite.trgfn_contratti_righe_componenti_guard_pending();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

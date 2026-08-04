@@ -25,6 +25,13 @@ BEGIN
 -- Regole:
 --  1) Singleton: massimo 1 record in anagrafiche.gestori
 --  2) Il soggetto collegato DEVE avere partita_iva valorizzata
+--
+-- rev 2026-08-04 (bonifica riferimenti morti, F4):
+--   la prima chiamata di log usava dbops.fn_log_and_raise_error
+--   (inesistente) e mescolava un argomento con nome
+--   (`p_codice_errore`, per giunta non un parametro vero: e'
+--   `p_error_code`) con argomenti posizionali, che PostgreSQL
+--   non ammette. Resa identica alle due sorelle sotto.
 -- =========================================================
 
     ----------------------------------------------------------------
@@ -38,15 +45,14 @@ BEGIN
     WHERE sr.id = NEW.soggetto_ruolo_id;
 
     IF v_soggetto_id IS NULL THEN
-        PERFORM dbops.fn_log_and_raise_error(
+        PERFORM script.fn_log_and_raise_error(
             'database' ,
             TG_NAME,
-            p_codice_errore := 'E_GESTORE_SOGGETTO_RUOLO_MANCANTE',
+            'E_GESTORE_SOGGETTO_RUOLO_MANCANTE',
             jsonb_build_object(
                     'table', TG_TABLE_NAME,
                     'soggetto_ruolo_id', NEW.soggetto_ruolo_id
                 ),
-            --NEW.tx_id,
             NULL::uuid,
             NEW.soggetto_ruolo_id::text
         );
@@ -65,11 +71,10 @@ BEGIN
                 'soggetto_id', v_soggetto_id,
                 'soggetto_ruolo_id', NEW.soggetto_ruolo_id
             ),
-            --NEW.tx_id,
             NULL::uuid,
             'gestore',
             v_soggetto_id::text,
-            NEW.soggetto_ruolo_id::text      
+            NEW.soggetto_ruolo_id::text
         );
     END IF;
 
@@ -94,7 +99,6 @@ BEGIN
                 'existing_gestore_id', v_existing_id,
                 'new_soggetto_ruolo_id', NEW.soggetto_ruolo_id
                 ),
-            --NEW.tx_id,
             NULL::uuid,
             NEW.soggetto_ruolo_id::text
         );

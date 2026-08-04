@@ -1,0 +1,315 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Bonifica riferimenti morti — F5, e non e' «un campo che il record non ha»
+#   Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md
+#
+# ── COSA HA TROVATO DAVVERO IL CONTROLLO ─────────────────────────────────
+#   Il brief classifica questa riga come «campi che il record non ha, da
+#   esaminare uno per uno». Esaminata: non sono campi mancanti, e' **codice
+#   morto**, e la differenza cambia il rimedio.
+#
+#   La funzione e' un BB generico parametrico via `TG_ARGV`. Due rami
+#   scrivono su colonne che dipendono dai parametri:
+#
+#     · `IF v_fill_uom_id_base THEN NEW.uom_id := NEW.uom_operativa_id`
+#     · `IF v_target_col = 'quantita_fissa' THEN NEW.quantita_fissa := …`
+#
+#   Misurato invece di dedotto:
+#     · **nessuna** delle sei tabelle agganciate (contratti_righe, ddt_righe,
+#       offerte_commerciali_eccezioni, ordini_righe, preventivi_righe,
+#       resi_righe) ha una colonna `uom_id`;
+#     · `quantita_fissa` non esiste in **nessuna tabella del database**
+#       (information_schema, tutti gli schemi);
+#     · tutti e sei i trigger passano `'false'` per il primo e `'quantita'`
+#       (o il default) per il secondo.
+#   I due rami non sono raggiungibili, e accenderli farebbe fallire ogni
+#   riga della tabella su cui li si accendesse.
+#
+#   ⚠️ Perche' il classificatore automatico non poteva dirlo: la sua regola
+#   e' «se l'errore compare su alcune tabelle e non su tutte, e' il ramo di
+#   un'altra tabella». Qui compare su **tutte e sei** — perche' nessuna ha
+#   quelle colonne — quindi sembra un difetto vero. Il ramo non dipende
+#   dalla tabella ma da un **argomento del trigger**, dimensione che la
+#   regola non guarda.
+#
+# ── IL RIMEDIO, E PERCHE' QUESTO ─────────────────────────────────────────
+#   Via i due rami e via i due parametri che li governavano. E' il
+#   precedente di `20260804-29` (ramo `ELSE` mai preso + `p_scope` rimasto
+#   con un solo valore lecito): un parametro che nessun chiamante puo' piu'
+#   influenzare e' una bugia nella firma, e un ramo che non compila e'
+#   peggio di una funzionalita' assente — sembra esserci.
+#
+#   Alternativa scartata: rendere l'assegnazione dinamica
+#   (`jsonb_populate_record`) per conservare `target_col` parametrico.
+#   Costa una conversione record<->jsonb su ogni riga di sei tabelle in
+#   BEFORE INSERT/UPDATE, per una capacita' che nessuno ha mai usato.
+#
+# ── ⚠️ GLI ARGOMENTI SCALANO: FUNZIONE E TRIGGER INSIEME ─────────────────
+#   `fonte_nullability_col` era `TG_ARGV[3]`, diventa `TG_ARGV[1]`. Un
+#   trigger lasciato indietro passerebbe `'false'` come nome di colonna
+#   sorgente, e `to_jsonb(NEW) ->> 'false'` darebbe NULL: la riga
+#   passerebbe il guard `E_QTA_MISSING` che doveva fermarla.
+#   Per questo i sei `CREATE TRIGGER` stanno **nello stesso changeSet**
+#   della funzione, non in uno successivo: Liquibase esegue un changeSet in
+#   una transazione sola, e non deve esistere un istante in cui la firma
+#   nuova convive con gli argomenti vecchi.
+#   I nomi dei trigger restano identici: l'ordine di scatto dei BEFORE ROW
+#   e' alfabetico sul nome, non sull'ordine di creazione, quindi ricrearli
+#   non sposta niente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260804-52-drop-rami-morti-trgfn-qta-from-operativa-mctit.yaml
+
+  - changeSet:
+      id: 20260804-52-drop-rami-morti-trgfn-qta-from-operativa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        F5 — script.trgfn_qta_from_operativa: tolti i due rami irraggiungibili
+        (NEW.uom_id e target_col='quantita_fissa': colonne che non esistono su
+        nessuna tabella, e nessuno dei 6 trigger li accendeva) e i due parametri
+        TG_ARGV che li governavano. I 6 trigger sono ricreati nello stesso
+        changeSet perche' gli argomenti scalano.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_qta_from_operativa()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                -- Parametri
+                v_fill_factor_to_base boolean := false;
+                v_fonte_col           text    := NULL;
+                v_fonte_val           text    := NULL;
+
+                -- Mapping/policy
+                v_factor_map   numeric;
+                v_qty_step     numeric;
+                v_max_dec      int;
+                v_forbid_frac  boolean;
+
+                -- Fattore effettivo usato per i calcoli (rispetta snapshot se presente)
+                v_factor_used  numeric := 1;
+
+                BEGIN
+
+                -- ------------------------------------------------------------
+                -- script.trgfn_qta_from_operativa()
+                -- Sorgente unica: UoM/quantità OPERATIVA.
+                -- Su INSERT: calcola sempre quantita da qta_operativa.
+                -- Su UPDATE: short-circuit se nessun input operativo è cambiato.
+                --
+                -- TG_ARGV (opzionali):
+                --   [0] fill_factor_to_base :: boolean  (default FALSE)
+                --       Se TRUE e NEW.factor_to_base è NULL, salva lo snapshot del fattore usato.
+                --   [1] fonte_nullability_col :: text   (default NULL)
+                --       Nome colonna che governa la nullabilita' di qta_operativa.
+                --       Se valorizzato e qta_operativa IS NULL: legge il valore di quella colonna
+                --       via to_jsonb(NEW). Se != 'FISSA' (e non NULL) -> RETURN NEW senza raise.
+                --       Usare per tabelle con fonte_quantita_attesa (es. contratti_righe).
+                --
+                -- rev 2026-08-04 (bonifica riferimenti morti, F5) — tolti due rami morti
+                --   e i due parametri che li governavano:
+                --     · [1] fill_uom_id_base -> scriveva NEW.uom_id. Nessuna delle sei
+                --       tabelle agganciate ha una colonna `uom_id`, e tutti e sei i
+                --       trigger passavano 'false': il ramo non era raggiungibile, e se
+                --       lo si fosse acceso avrebbe fatto fallire ogni riga.
+                --     · [2] target_col = 'quantita_fissa' -> `quantita_fissa` non
+                --       esiste in **nessuna** tabella del database, e tutti e sei i
+                --       trigger passavano 'quantita'. Un parametro con un solo valore
+                --       lecito e' una bugia nella firma.
+                --   Gli argomenti scalano: fonte_nullability_col era [3], ora e' [1].
+                --   Precedente: 20260804-29 (stesso ragionamento su p_scope).
+                -- ------------------------------------------------------------
+
+                --------------------------------------------------------------------
+                -- short-circuit: solo su UPDATE dove nessun input operativo è cambiato.
+                -- Su INSERT: calcola sempre (qta_operativa + uom → quantita).
+                --------------------------------------------------------------------
+                IF TG_OP = 'UPDATE'
+                   AND NEW.qta_operativa    IS NOT DISTINCT FROM OLD.qta_operativa
+                   AND NEW.uom_operativa_id IS NOT DISTINCT FROM OLD.uom_operativa_id
+                   AND NEW.factor_to_base   IS NOT DISTINCT FROM OLD.factor_to_base THEN
+                  RETURN NEW;
+                END IF;
+
+                -- 0) Parametri
+                IF TG_NARGS >= 1 THEN
+                  v_fill_factor_to_base := lower(coalesce(TG_ARGV[0],'')) IN ('1','t','true','y','yes');
+                END IF;
+                IF TG_NARGS >= 2 AND TG_ARGV[1] IS NOT NULL AND TG_ARGV[1] <> '' THEN
+                  v_fonte_col := TG_ARGV[1];
+                END IF;
+
+                -- Verifica qta_operativa: NULL consentito se la fonte non e' 'FISSA'
+                IF NEW.qta_operativa IS NULL THEN
+                  IF v_fonte_col IS NOT NULL THEN
+                    v_fonte_val := to_jsonb(NEW) ->> v_fonte_col;
+                    IF v_fonte_val IS NOT NULL AND v_fonte_val <> 'FISSA' THEN
+                      RETURN NEW;
+                    END IF;
+                  END IF;
+                  PERFORM script.fn_log_and_raise_error(
+                    'application',
+                    'script.trgfn_qta_from_operativa',
+                    'E_QTA_MISSING',
+                    jsonb_build_object(
+                      'schema', TG_TABLE_SCHEMA,
+                      'table',  TG_TABLE_NAME,
+                      'qualified_table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                      'articolo_id', NEW.articolo_id,
+                      'uom_operativa_id', NEW.uom_operativa_id
+                    ),
+                    NULL::uuid,
+                    'table',  TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                    'column', 'qta_operativa'
+                  );
+                END IF;
+
+                --------------------------------------------------------------------
+                -- 1) UoM operativa: se manca, fallback a UoM base articolo
+                --------------------------------------------------------------------
+                IF NEW.uom_operativa_id IS NULL THEN
+                  SELECT a.uom_id
+                    INTO NEW.uom_operativa_id
+                  FROM catalogo.articoli a
+                  WHERE a.id = NEW.articolo_id;
+                END IF;
+
+                IF NEW.uom_operativa_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'application','script.trgfn_qta_from_operativa',
+                    'E_UOM_MISSING',
+                    jsonb_build_object('articolo_id', NEW.articolo_id),
+                    NULL::uuid,
+                    'articolo_id', COALESCE(NEW.articolo_id::text, 'NULL')
+                  );
+                END IF;
+
+                --------------------------------------------------------------------
+                -- 2) Mapping factor/policy
+                --------------------------------------------------------------------
+                SELECT aum.factor_to_base,
+                      aum.qty_step,
+                      COALESCE(aum.max_decimals,6),
+                      aum.forbid_fraction
+                  INTO v_factor_map, v_qty_step, v_max_dec, v_forbid_frac
+                FROM catalogo.articoli_uom_operativa aum
+                WHERE aum.articolo_id = NEW.articolo_id
+                  AND aum.uom_id      = NEW.uom_operativa_id
+                  AND aum.attivo      = TRUE
+                  AND (aum.valido_dal IS NULL OR aum.valido_dal <= CURRENT_DATE)
+                  AND (aum.valido_al  IS NULL OR aum.valido_al  >= CURRENT_DATE)
+                LIMIT 1;
+
+                v_factor_map := COALESCE(v_factor_map, 1);
+
+                v_factor_used := COALESCE(NEW.factor_to_base, v_factor_map, 1);
+
+                IF v_fill_factor_to_base THEN
+                  IF NEW.factor_to_base IS NULL THEN
+                    NEW.factor_to_base := v_factor_used;
+                  END IF;
+                END IF;
+
+                --------------------------------------------------------------------
+                -- 3) Policy su quantità operativa
+                --------------------------------------------------------------------
+                IF v_forbid_frac IS TRUE AND NEW.qta_operativa <> TRUNC(NEW.qta_operativa) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database','script.trgfn_qta_from_operativa',
+                    'E_QTA_OPERATIVA_NON_INTERA',
+                    jsonb_build_object(
+                      'articolo_id', NEW.articolo_id,
+                      'uom_operativa_id', NEW.uom_operativa_id,
+                      'qta_operativa', NEW.qta_operativa
+                    ),
+                    NULL::uuid,
+                    'articolo_id', NEW.articolo_id::text,
+                    'uom_operativa_id', NEW.uom_operativa_id::text
+                  );
+                END IF;
+
+                IF v_qty_step IS NOT NULL AND v_qty_step > 0 THEN
+                  IF abs(NEW.qta_operativa / v_qty_step - ROUND(NEW.qta_operativa / v_qty_step)) > 1e-9 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','script.trgfn_qta_from_operativa',
+                      'E_QTA_OPER_STEP_INVALIDO',
+                      jsonb_build_object(
+                        'articolo_id', NEW.articolo_id,
+                        'uom_operativa_id', NEW.uom_operativa_id,
+                        'qta_operativa', NEW.qta_operativa,
+                        'qty_step', v_qty_step
+                      ),
+                      NULL::uuid,
+                      'articolo_id',NEW.articolo_id::text,
+                      'uom_operativa_id',NEW.uom_operativa_id::text
+                    );
+                  END IF;
+                END IF;
+
+                --------------------------------------------------------------------
+                -- 4) Calcolo finale della quantita' base
+                --------------------------------------------------------------------
+                NEW.quantita := ROUND(NEW.qta_operativa * v_factor_used, 6);
+
+                RETURN NEW;
+              END;
+              $function$
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Ricreazione dei sei trigger: gli argomenti sono scalati, e un trigger
+              -- che passasse ancora ('true','false','quantita','fonte_quantita_attesa')
+              -- leggerebbe 'false' come nome di colonna sorgente. Funzione e trigger
+              -- stanno nello STESSO changeSet apposta: non deve esistere un istante in
+              -- cui la nuova firma convive con i vecchi argomenti.
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_qta_from_operativa_ins_upd ON vendite.contratti_righe;
+              CREATE TRIGGER trg_contratti_righe_a10_qta_from_operativa_ins_upd
+                BEFORE INSERT OR UPDATE ON vendite.contratti_righe
+                FOR EACH ROW EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'fonte_quantita_attesa');
+
+              DROP TRIGGER IF EXISTS trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd ON vendite.offerte_commerciali_eccezioni;
+              CREATE TRIGGER trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd
+                BEFORE INSERT OR UPDATE ON vendite.offerte_commerciali_eccezioni
+                FOR EACH ROW EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'fonte_quantita_attesa');
+
+              DROP TRIGGER IF EXISTS trg_ddt_righe_a10_qta_from_operativa_ins_upd ON vendite.ddt_righe;
+              CREATE TRIGGER trg_ddt_righe_a10_qta_from_operativa_ins_upd
+                BEFORE INSERT OR UPDATE ON vendite.ddt_righe
+                FOR EACH ROW EXECUTE FUNCTION script.trgfn_qta_from_operativa('true');
+
+              DROP TRIGGER IF EXISTS trg_ordini_righe_a10_qta_from_operativa_ins_upd ON vendite.ordini_righe;
+              CREATE TRIGGER trg_ordini_righe_a10_qta_from_operativa_ins_upd
+                BEFORE INSERT OR UPDATE ON vendite.ordini_righe
+                FOR EACH ROW EXECUTE FUNCTION script.trgfn_qta_from_operativa('true');
+
+              DROP TRIGGER IF EXISTS trg_preventivi_righe_a10_qta_from_operativa_ins_upd ON vendite.preventivi_righe;
+              CREATE TRIGGER trg_preventivi_righe_a10_qta_from_operativa_ins_upd
+                BEFORE INSERT OR UPDATE ON vendite.preventivi_righe
+                FOR EACH ROW EXECUTE FUNCTION script.trgfn_qta_from_operativa('true');
+
+              DROP TRIGGER IF EXISTS trg_resi_righe_a10_qta_from_operativa_ins_upd ON vendite.resi_righe;
+              CREATE TRIGGER trg_resi_righe_a10_qta_from_operativa_ins_upd
+                BEFORE INSERT OR UPDATE ON vendite.resi_righe
+                FOR EACH ROW EXECUTE FUNCTION script.trgfn_qta_from_operativa('true');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

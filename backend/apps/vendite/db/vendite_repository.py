@@ -1614,7 +1614,6 @@ class VenditeRepository:
         *,
         lotto_id: int,
         stato_esecuzione: str | None,
-        esclusa: bool | None,
         auth_user_id: int | None = None,
         sort_by: str,
         sort_dir: str,
@@ -1638,9 +1637,6 @@ class VenditeRepository:
         if stato_esecuzione is not None:
             conditions.append("fllf.stato_esecuzione = %s")
             params.append(stato_esecuzione)
-        if esclusa is not None:
-            conditions.append("fllf.esclusa = %s")
-            params.append(esclusa)
 
         self._add_scope_emittente(
             auth_user_id, "f.emittente_soggetto_ruolo_id", conditions, params
@@ -1678,7 +1674,6 @@ class VenditeRepository:
                 fllf.stato_doc_fiscale_id,
                 sdf.descrizione         AS stato_doc_fiscale_descrizione,
                 fllf.stato_esecuzione,
-                fllf.esclusa,
                 f.numero,
                 f.serie,
                 f.data,
@@ -1717,17 +1712,16 @@ class VenditeRepository:
                     "stato_doc_fiscale_id": None if row[5] is None else int(row[5]),
                     "stato_doc_fiscale_descrizione": row[6],
                     "stato_esecuzione": str(row[7]),
-                    "esclusa": bool(row[8]),
-                    "numero": None if row[9] is None else int(row[9]),
-                    "serie": row[10],
-                    "data": row[11].isoformat() if row[11] is not None else None,
-                    "billing_account_id": int(row[12]),
-                    "totale_doc": str(row[13]) if row[13] is not None else None,
-                    "totale_a_pagare": str(row[14]) if row[14] is not None else None,
-                    "soggetto_id": int(row[15]),
-                    "ragione_sociale_completa": row[16],
-                    "id_fiscale_univoco_cf_piva": row[17],
-                    "stato_doc_fiscale_codice": row[18],
+                    "numero": None if row[8] is None else int(row[8]),
+                    "serie": row[9],
+                    "data": row[10].isoformat() if row[10] is not None else None,
+                    "billing_account_id": int(row[11]),
+                    "totale_doc": str(row[12]) if row[12] is not None else None,
+                    "totale_a_pagare": str(row[13]) if row[13] is not None else None,
+                    "soggetto_id": int(row[14]),
+                    "ragione_sociale_completa": row[15],
+                    "id_fiscale_univoco_cf_piva": row[16],
+                    "stato_doc_fiscale_codice": row[17],
                 }
             )
         return result, total_count

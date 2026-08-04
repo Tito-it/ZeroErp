@@ -14,7 +14,9 @@
 -- 7)  DRAFT -> non_editable_fields = solo cliente (billing_account_id, soggetto_ruolo_id)
 -- 8)  DRAFT -> tutte le azioni hanno label_key valorizzato
 -- 9)  CONFERMATO (riga pushabile) -> can_push_commessa=true, push_commessa in azioni
--- 10) CONFERMATO -> can_change_state=false (CONFERMATO->ANNULLATO disattiva), can_edit_testata=false
+-- 10) CONFERMATO -> can_change_state=true (CONFERMATO->ANNULLATO RIACCESA dal
+--     cantiere «vie d'uscita per l'operatore», 20260804-33/34/35),
+--     can_edit_testata=false, azioni = annulla + push_commessa
 -- ------------------------------------------------------------
 -- Nota emittente: trgfn_ordini_default_emittente (20260601-21) richiede
 --   emittente_fiscale_id su INSERT quando la GUC app.current_user_id e' vuota.
@@ -217,17 +219,40 @@ SELECT CASE
 END;
 
 -- ============================================================
--- TEST 10) CONFERMATO -> can_change_state=false (no transizioni manuali attive),
---          can_edit_testata=false
+-- TEST 10) CONFERMATO -> can_change_state=TRUE, can_edit_testata=false
+--
+--   rev 04-08-2026 — ⚠️ ATTESA CAMBIATA, e non e' una regressione.
+--   Fino al 2026-08-04 il test pretendeva `can_change_state = false`,
+--   con la motivazione «CONFERMATO->ANNULLATO attivo=false». Il cantiere
+--   *vie d'uscita per l'operatore* (`20260804-33/34/35`, applicato alle
+--   13:25) ha portato quella riga di `config.transizioni_stati_ordini` a
+--   `attivo = true`: poter annullare un ordine confermato e' lo scopo
+--   dichiarato di quel lavoro. Il test era rimasto indietro rispetto
+--   alla decisione, non il contrario.
+--
+--   ⚠️ `can_edit_testata` resta **false**, ed e' il punto che rende il
+--   test ancora utile: una via d'uscita non e' un permesso di modifica.
+--   Un ordine confermato si annulla, non si riscrive. Se un domani
+--   `can_edit_testata` diventasse true, e' qui che si deve accorgere
+--   qualcuno.
+--
+--   Si asserisce anche l'INSIEME delle chiavi (`annulla` +
+--   `push_commessa`) invece del solo booleano: `can_change_state = true`
+--   sarebbe vero anche se la transizione accesa fosse un'altra.
 -- ============================================================
 SELECT CASE
   WHEN (SELECT push_ba_id FROM tmp_refs_aao) IS NULL
   THEN skip('10) skip: nessun billing_account pushabile/coerente nel seed')
   ELSE ok(
-    (SELECT (script.fn_available_actions_ordine(o.id)->>'can_change_state')::boolean IS FALSE
+    (SELECT (script.fn_available_actions_ordine(o.id)->>'can_change_state')::boolean IS TRUE
         AND (script.fn_available_actions_ordine(o.id)->>'can_edit_testata')::boolean IS FALSE
+        AND (SELECT jsonb_agg(elem->>'key' ORDER BY elem->>'key')
+               FROM jsonb_array_elements(
+                      script.fn_available_actions_ordine(o.id)->'available_actions'
+                    ) AS elem)
+            = '["annulla", "push_commessa"]'::jsonb
        FROM tmp_ord_conf o),
-    'CONFERMATO: can_change_state=false (CONFERMATO->ANNULLATO attivo=false), can_edit_testata=false'
+    'CONFERMATO: can_change_state=true (CONFERMATO->ANNULLATO riacceso), can_edit_testata=false, azioni = annulla + push_commessa'
   )
 END;
 

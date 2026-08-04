@@ -141,11 +141,19 @@ LOOP
                 EXECUTE FUNCTION script.trgfn_storico_generic(%L)
               $f$, trg_name, rtab.schema_name, rtab.table_name, fk_col);
             EXCEPTION WHEN duplicate_object THEN
-              PERFORM dbops.fn_audit_log_once('fn_run_automations_storico','SKIP_EXISTS','STORICO',
-                jsonb_build_object('table', rtab.schema_name||'.'||rtab.table_name,'trigger', trg_name::text),'Trigger already present');
+              -- rev 2026-08-04 (bonifica F3): la chiamata era posizionale con
+              --   il 3o e 4o argomento invertiti (rule_type al posto di
+              --   p_params jsonb, e il jsonb al posto di p_message). Resa a
+              --   nomi, come la sorella in DRYRUN qui sopra.
+              PERFORM dbops.fn_audit_log_once(
+                p_function_name => 'fn_run_automations_storico',
+                p_status        => 'SKIP_EXISTS',
+                p_rule_type     => 'STORICO',
+                p_params        => jsonb_build_object('table', rtab.schema_name||'.'||rtab.table_name,'trigger', trg_name::text),
+                p_message       => 'Trigger already present');
             WHEN OTHERS THEN
               PERFORM script.fn_log_and_raise_error('dbops','run_automations','E_STORICO_UD',
-                jsonb_build_object('table', rtab.schema_name||'.'||rtab.table_name,'error',SQLERRM), NULL::uuid, ARRAY[SQLERRM]);
+                jsonb_build_object('table', rtab.schema_name||'.'||rtab.table_name,'error',SQLERRM), NULL::uuid, SQLERRM);
             END;
           END IF;
         END IF;

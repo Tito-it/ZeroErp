@@ -46,165 +46,51 @@
 --
 --   4) SQL DINAMICO — un errore di sintassi dentro un `EXECUTE` e' quasi
 --      sempre un segnaposto non ancora sostituito, non codice rotto.
+--
+-- ── v3 (2026-08-04), dopo la prima bonifica vera ─────────────────────
+--   Tre cose imparate lavorando le 33 righe, tutte scritte qui perche' il
+--   prossimo che legge non le ri-scopra:
+--
+--   A) La regola VARIADIC era troppo larga e ha scusato un difetto vero.
+--      Ora l'esenzione richiede che la funzione chiamata **abbia davvero**
+--      un parametro VARIADIC (`pg_proc.provariadic <> 0`). Dettaglio nel
+--      commento della regola (2) piu' sotto.
+--
+--   B) ⚠️ La regola RAMO_ALTRA_TABELLA ha un buco speculare a quello che
+--      copre. Confronta le tabelle **agganciate**: un ramo scritto per una
+--      tabella che non e' agganciata a niente — perche' non esiste piu' —
+--      compare su tutte e passa per difetto vero. Il verdetto e' giusto
+--      (e' codice morto), la motivazione no. Non e' automatizzabile:
+--      per questo la lista REALE si **legge**, non si applica.
+--
+--   C) Esiste una terza forma di ramo condizionale che nessuna regola
+--      vede: quella che dipende da `TG_ARGV`, non dalla tabella. Un BB
+--      generico parametrico puo' avere rami irraggiungibili con tutti i
+--      trigger esistenti (caso `trgfn_qta_from_operativa`, `20260804-52`):
+--      per deciderlo bisogna leggere gli argomenti dei trigger, non le
+--      loro tabelle.
+--
+--   E una che il controllo non trova per costruzione: un riferimento che
+--   si risolve verso la cosa **sbagliata** (`fn_admin_merge_stradario`
+--   scriveva comune_id in colonne via_id_*, `20260804-60`). La semantica
+--   non si compila.
 -- ------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION pg_temp.misura_funzioni_rotte()
-RETURNS TABLE(classe text, schema_nome text, funzione text, argomenti text, esito text)
-LANGUAGE plpgsql AS $misura$
-DECLARE
-  r          record;
-  rel        record;
-  m          text;
-  v_relazioni int;
-  v_tipi     text[];
-BEGIN
-  CREATE TEMP TABLE IF NOT EXISTS tmp_raw(
-    nsp text, pro text, args text, relid oid, msg text
-  ) ON COMMIT DROP;
-  DELETE FROM tmp_raw;
-
-  FOR r IN
-    SELECT p.oid                                     AS oid,
-           n.nspname::text                           AS nsp,
-           p.proname::text                           AS pro,
-           pg_get_function_identity_arguments(p.oid) AS args,
-           (p.prorettype = 'trigger'::regtype)       AS is_trg
-      FROM pg_proc p
-      JOIN pg_namespace n ON n.oid = p.pronamespace
-      JOIN pg_language  l ON l.oid = p.prolang
-     WHERE l.lanname = 'plpgsql'
-       AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-       AND n.nspname NOT LIKE 'pg\_%'
-       -- fuori tutto cio' che appartiene a un'estensione: non e' codice
-       -- che manteniamo noi (PostGIS, topology, pgagent).
-       AND NOT EXISTS (SELECT 1 FROM pg_depend d
-                        WHERE d.objid = p.oid AND d.deptype = 'e')
-     ORDER BY n.nspname, p.proname
-  LOOP
-    IF r.is_trg THEN
-      -- Trigger function: si valida contro OGNI tabella su cui e'
-      -- agganciata. Zero tabelle = orfana, e non e' validabile.
-      v_relazioni := 0;
-      FOR rel IN
-        SELECT DISTINCT tg.tgrelid
-          FROM pg_trigger tg
-         WHERE tg.tgfoid = r.oid AND NOT tg.tgisinternal
-      LOOP
-        v_relazioni := v_relazioni + 1;
-        BEGIN
-          FOR m IN SELECT c FROM plpgsql_check_function(
-                     r.oid::regprocedure, relid => rel.tgrelid::regclass,
-                     fatal_errors => false) AS c
-          LOOP
-            IF m LIKE 'error:%' THEN
-              INSERT INTO tmp_raw VALUES (r.nsp, r.pro, r.args, rel.tgrelid, m);
-            END IF;
-          END LOOP;
-        EXCEPTION WHEN OTHERS THEN
-          INSERT INTO tmp_raw VALUES (r.nsp, r.pro, r.args, rel.tgrelid,
-                                      'error:CHECK-KO:' || SQLERRM);
-        END;
-      END LOOP;
-
-      IF v_relazioni = 0 THEN
-        classe := 'ORFANA'; schema_nome := r.nsp; funzione := r.pro;
-        argomenti := r.args;
-        esito := 'trigger function senza alcun trigger agganciato: non validabile, e gia'' di per se'' un residuo';
-        RETURN NEXT;
-      END IF;
-
-    ELSE
-      BEGIN
-        FOR m IN SELECT c FROM plpgsql_check_function(
-                   r.oid::regprocedure, fatal_errors => false) AS c
-        LOOP
-          IF m LIKE 'error:%' THEN
-            INSERT INTO tmp_raw VALUES (r.nsp, r.pro, r.args, NULL, m);
-          END IF;
-        END LOOP;
-      EXCEPTION WHEN OTHERS THEN
-        INSERT INTO tmp_raw VALUES (r.nsp, r.pro, r.args, NULL,
-                                    'error:CHECK-KO:' || SQLERRM);
-      END;
-    END IF;
-  END LOOP;
-
-  -- ── Classificazione ──────────────────────────────────────────────
-  FOR r IN
-    SELECT t.nsp, t.pro, t.args, t.msg,
-           count(*)                                   AS visto_su,
-           (SELECT count(DISTINCT tg.tgrelid)
-              FROM pg_trigger tg
-              JOIN pg_proc p2 ON p2.oid = tg.tgfoid
-              JOIN pg_namespace n2 ON n2.oid = p2.pronamespace
-             WHERE n2.nspname = t.nsp AND p2.proname = t.pro
-               AND NOT tg.tgisinternal)                AS tabelle_totali
-      FROM tmp_raw t
-     GROUP BY t.nsp, t.pro, t.args, t.msg
-     ORDER BY t.nsp, t.pro, t.msg
-  LOOP
-    schema_nome := r.nsp; funzione := r.pro; argomenti := r.args; esito := r.msg;
-
-    -- (1) Errore visto solo su ALCUNE delle tabelle del trigger: e' il
-    --     ramo dedicato a un'altra tabella, non un difetto.
-    IF r.tabelle_totali > 1 AND r.visto_su < r.tabelle_totali THEN
-      classe := 'FP_RAMO_ALTRA_TABELLA';
-
-    -- (1-bis) «relazione X non esiste» dove X e' una TRANSITION TABLE
-    --     dichiarata nel CREATE TRIGGER (`REFERENCING NEW TABLE AS ...`).
-    --     Esiste solo durante lo scatto del trigger, plpgsql_check non la
-    --     vede. Il nome non si indovina: si legge da pg_trigger, che lo
-    --     conserva in tgnewtable/tgoldtable.
-    ELSIF r.msg ~ '^error:42P01:' AND EXISTS (
-            SELECT 1
-              FROM pg_trigger tg
-              JOIN pg_proc p3      ON p3.oid = tg.tgfoid
-              JOIN pg_namespace n3 ON n3.oid = p3.pronamespace
-             WHERE n3.nspname = r.nsp AND p3.proname = r.pro
-               AND NOT tg.tgisinternal
-               AND substring(r.msg from '"([^"]+)"')
-                   IN (tg.tgnewtable::text, tg.tgoldtable::text))
-    THEN
-      classe := 'FP_TRANSITION_TABLE';
-
-    -- (1-ter) Errore di SINTASSI dentro un EXECUTE: e' SQL costruito a
-    --     runtime, con dentro segnaposto che non sono SQL valido finche'
-    --     non vengono sostituiti. plpgsql_check prova a interpretarlo
-    --     comunque.
-    ELSIF r.msg ~ '^error:42601:' AND r.msg LIKE '%:EXECUTE:%' THEN
-      classe := 'FP_SQL_DINAMICO';
-
-    -- (2) «funzione non esiste» (SQLSTATE 42883): falso positivo SOLO se
-    --     tutti i tipi passati sono testo-compatibili — allora e' la
-    --     variadic che plpgsql_check non sa risolvere. Se c'e' un tipo
-    --     non testuale, il cast non esiste e la chiamata fallisce davvero.
-    ELSIF r.msg ~ '^error:42883:' AND r.msg LIKE '%(%)%' THEN
-      v_tipi := string_to_array(
-                  btrim(substring(r.msg from '\(([^)]*)\)')), ', ');
-      IF NOT EXISTS (
-           SELECT 1 FROM unnest(v_tipi) AS x(t)
-            WHERE btrim(x.t) NOT IN ('unknown','text','name','jsonb','uuid',
-                                     'character varying','"unknown"'))
-      THEN
-        classe := 'FP_VARIADIC';
-      ELSE
-        classe := 'REALE';
-      END IF;
-
-    ELSE
-      classe := 'REALE';
-    END IF;
-
-    RETURN NEXT;
-  END LOOP;
-END
-$misura$;
+-- ⚠️ v3 — la misura NON e' piu' definita qui.
+--    Vive nel DB come `dbops.fn_check_funzioni_riferimenti_morti()`
+--    (changeSet `20260804-62`), perche' la chiamano in due: questo script
+--    e il pgTAP `db/pgtap/dbops/test-riferimenti-morti-v1.sql`. Due copie
+--    della stessa classificazione sono due copie che prima o poi
+--    divergono, e un presidio che diverge dal suo strumento mente in
+--    silenzio.
+--    Le REGOLE e i loro limiti restano documentati qui sopra: e' il posto
+--    dove si va a leggere prima di fidarsi di un'etichetta.
 
 \pset pager off
 
 -- ⚠️ Si materializza UNA VOLTA: la funzione valida ~500 funzioni una per
 -- una, interrogarla tre volte triplicherebbe il lavoro per niente.
-CREATE TEMP TABLE misura AS SELECT * FROM pg_temp.misura_funzioni_rotte();
+CREATE TEMP TABLE misura AS SELECT * FROM dbops.fn_check_funzioni_riferimenti_morti();
 
 -- 1) Il conto per classe: la scala del problema, senza rumore.
 SELECT classe, count(*) AS righe, count(DISTINCT schema_nome||'.'||funzione) AS funzioni
@@ -220,3 +106,33 @@ SELECT schema_nome, funzione, argomenti, esito
 SELECT classe, schema_nome, funzione, esito
   FROM misura WHERE classe LIKE 'FP\_%'
  ORDER BY classe, schema_nome, funzione;
+
+-- ------------------------------------------------------------
+-- 4) SECONDA MISURA — riferimenti morti scritti in un DATO
+--
+-- ⚠️ plpgsql_check compila i CORPI. Un riferimento a una tabella scritto
+--    come stringa in una tabella di configurazione gli e' invisibile: nel
+--    corpo che lo consuma compare solo come parametro, e nessuna analisi
+--    statica del codice puo' arrivarci.
+--
+--    Non e' teoria. Il 2026-08-04 questa misura ha trovato la riga
+--    `lotti_attivita` di config.sistema_codici, che puntava a
+--    `vendite.attivita_fatturabili_lotti` — droppata cinque mesi prima,
+--    nello stesso `DROP … CASCADE` da cui e' nato tutto questo cantiere.
+--    Le funzioni erano state trovate al primo giro; la riga di
+--    configurazione no, ed era la stessa morte.
+--    (Rimossa da `20260804-50`.)
+--
+--    Le colonne sono quelle che nominano una relazione per stringa: se ne
+--    aggiungono altre, si estende questa UNION. Il criterio per entrarci
+--    e' semplice — una colonna che contiene un nome di tabella e che
+--    nessuna FK protegge.
+-- ------------------------------------------------------------
+SELECT 'config.sistema_codici' AS tabella,
+       sc.id::text             AS riga,
+       sc.codice_interno       AS chiave,
+       sc.schema_tabella || '.' || sc.nome_tabella AS riferimento_morto
+  FROM config.sistema_codici sc
+ WHERE sc.nome_tabella IS NOT NULL
+   AND to_regclass(sc.schema_tabella || '.' || sc.nome_tabella) IS NULL
+ ORDER BY 1, 2;

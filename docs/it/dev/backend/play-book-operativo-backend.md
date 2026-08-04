@@ -340,10 +340,12 @@ di un core (`registered_job` → `maintenance.job_run_log`, `origine=CRON`):
   renderizza fatture di ogni emittente, emittente autoritativo dalla riga). Anti-overlap:
   advisory-lock `registered_job` (un solo drainer stampa alla volta).
 
-> ⚠️ **Gate deploy `draina_coda_stampa`**: richiede i GRANT del ruolo batch sul path di
-> render (vedi `work-in-progress/brief-db-grant-batch-coda-stampa.md`). Finché il team DB
-> non li applica, il worker fallisce «permesso negato per la tabella fatture_stampa_coda».
-> `draina_coda_lavori` è invece deployabile **subito** (smoke reale ok).
+> ✅ **Gate deploy `draina_coda_stampa` superato (2026-08-04).** I GRANT del ruolo batch
+> sul path di render sono applicati — brief archiviato in
+> `work-done/brief-db-grant-batch-coda-stampa.md` — e da allora **l'installer abilita
+> entrambi i timer**. Se su un host il worker stampa fallisse ancora con «permesso negato»,
+> il posto da guardare è il provisioning del ruolo (`scripts/sql/provision_db_role_batch_fatturazione.sql`),
+> non questo gate.
 
 Su questa macchina (dev): `User=tid`, app in `/home/tid/apps/ZeroErp/backend`, venv
 `backend/.venv`, avvio via il wrapper riusabile **`bin/run-command.sh`** (carica `env.sh`
@@ -353,8 +355,7 @@ come `start-gunicorn.sh`); i segreti (incl. `DB_SYSTEM_FATTURAZIONE_*`) arrivano
 ### 16.0) Modo rapido (script idempotente)
 
 Invece dei blocchi manuali §16.1/16.2, un solo comando scrive gli unit, fa
-`daemon-reload` e abilita **solo** la coda generica (la coda stampa resta scritta ma
-disabilitata, gate GRANT DB):
+`daemon-reload` e abilita **entrambi** i timer (coda generica e coda stampa):
 
 ```bash
 sudo /home/tid/apps/ZeroErp/backend/bin/install-timers.sh
@@ -380,8 +381,9 @@ Cadenze default (nell'installer, override via `__ONCALENDAR__`): coda-lavori
 `*:0/1` (ogni minuto; tunable a `*:0/30` per uno spinner UI più reattivo — il
 polling FE ha timeout ~3 min), coda-stampa `*:0/2` (ogni 2 min, tunable, P-5:
 ritardo accettabile tra «Rendi definitive» e PDF disponibile). La coda stampa
-richiede `DB_SYSTEM_FATTURAZIONE_*` in `.env.systemd` (già presente su questo host)
-e i GRANT del ruolo batch prima dell'abilitazione.
+richiede `DB_SYSTEM_FATTURAZIONE_*` in `.env.systemd` (già presente su questo host);
+i GRANT del ruolo batch sono applicati dal `provision_db_role_batch_fatturazione.sql`,
+che la CI esegue — su un host nuovo va lanciato prima dei timer.
 
 > Per validare i template in locale, senza root né systemctl:
 > `backend/bin/install-timers.sh --render-only /tmp/units && systemd-analyze verify /tmp/units/*`.

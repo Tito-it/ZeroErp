@@ -3,11 +3,12 @@
 -- pgTAP test per Zero ERP
 -- Test: script.fn_available_actions_preventivo — meta transizioni e filtro manuale
 -- ------------------------------------------------------------
--- Indice test (1..7) — rev 12-06-2026 (allineamento: ACCETTATO→ANNULLATO
--- disattivata dal 22-05; capability push/ordine gated dal residuo):
+-- Indice test (1..8) — rev 04-08-2026 (ACCETTATO→ANNULLATO RIACCESA dal
+-- cantiere «vie d'uscita per l'operatore», 20260804-33/34/35; capability
+-- push/ordine gated dal residuo):
 -- 1) Preventivo inesistente → NULL
--- 2) Preventivo ACCETTATO (senza righe/BA) → 0 azioni (annulla solo da DRAFT;
---    EVASO automatico escluso; push/genera gated dal residuo)
+-- 2) Preventivo ACCETTATO (senza righe/BA) → solo 'annulla' (EVASO automatico
+--    escluso; push/genera gated dal residuo). Asserito come insieme di chiavi.
 -- 3) Preventivo DRAFT, azione ANNULLATO → key='annulla' valorizzato (regressione bug meta={})
 -- 4) Preventivo DRAFT, azione ANNULLATO → label_key='vendite.preventivi.azione_annulla' valorizzato
 -- 5) Preventivo ACCETTATO senza BA/righe → can_push_commessa=false, reason SENZA_BILLING_ACCOUNT
@@ -111,19 +112,37 @@ SELECT is(
 );
 
 -- ============================================================
--- TEST 2) Preventivo ACCETTATO (senza righe/BA) → 0 azioni
---         ACCETTATO→ANNULLATO disattivata (22-05: annulla solo da DRAFT);
---         ACCETTATO→EVASO esclusa (manuale=false); push_commessa e
---         genera_ordine non appese (nessun residuo su fixture vuota).
+-- TEST 2) Preventivo ACCETTATO (senza righe/BA) → solo 'annulla'
+--
+--   rev 04-08-2026 — ⚠️ ATTESA CAMBIATA, e non e' una regressione.
+--   Fino al 2026-08-04 questo test pretendeva **0 azioni**, con la nota
+--   «ACCETTATO→ANNULLATO disattivata (22-05: annulla solo da DRAFT)».
+--   Il cantiere *vie d'uscita per l'operatore* (`20260804-33/34/35`,
+--   applicato alle 13:25) ha **riacceso** la transizione: la riga
+--   ACCETTATO→ANNULLATO di `config.transizioni_stati_preventivi` e'
+--   tornata `attivo = true`, perche' dare all'operatore una via d'uscita
+--   da ACCETTATO e' esattamente lo scopo di quel cantiere.
+--   Il test era rimasto indietro rispetto alla decisione.
+--
+--   Restano escluse: ACCETTATO→EVASO (manuale=false), push_commessa e
+--   genera_ordine (gated dal residuo, che su fixture vuota non c'e').
+--
+--   ⚠️ Si asserisce l'INSIEME delle chiavi, non il conteggio: un
+--   `= 1` sarebbe passato anche con l'azione sbagliata, e questo test
+--   e' gia' stato scavalcato una volta da un cambio di dominio.
 -- ============================================================
 SELECT is(
-  (SELECT jsonb_array_length(
-           script.fn_available_actions_preventivo(p.id)->'available_actions'
-         )
-     FROM tmp_prev_aa_accettato p
+  (SELECT coalesce(
+            jsonb_agg(elem->>'key' ORDER BY elem->>'key'),
+            '[]'::jsonb
+          )
+     FROM tmp_prev_aa_accettato p,
+          jsonb_array_elements(
+            script.fn_available_actions_preventivo(p.id)->'available_actions'
+          ) AS elem
   ),
-  0,
-  'fn_available_actions_preventivo ACCETTATO senza righe/BA: 0 azioni'
+  '["annulla"]'::jsonb,
+  'fn_available_actions_preventivo ACCETTATO senza righe/BA: solo ''annulla'''
 );
 
 -- ============================================================

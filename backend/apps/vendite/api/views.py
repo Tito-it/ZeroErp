@@ -58,7 +58,7 @@ from apps.vendite.services.pipeline_service import (
     fn_get_lotto_task_runs,
     fn_annulla_lotto_da_draft,
     fn_riporta_lotto_a_draft,
-    fn_elimina_fattura_da_lotto_draft,
+    fn_elimina_fattura_da_lotto,
     numera_lotto,
     ristampa_lotto,
     run_lotto_pipeline,
@@ -384,6 +384,15 @@ class ApiRiportaLottoADraft(DomainAPIView):
 
 
 class ApiResetLottoFatturaDraft(DomainAPIView):
+    """Elimina UNA fattura pre-fiscale dal lotto, liberandone le attivita'.
+
+    ⚠️ Il perimetro del LOTTO e' passato da DRAFT a pre-fiscale (DRAFT o
+    EMESSA) con la slice 6-B del 2026-08-04: e' lo stesso confine delle due
+    azioni sul lotto intero, ed e' quello che il drawer applicava gia' — prima
+    la chiamata su un lotto EMESSA falliva. URL e permesso NON seguono la
+    rinomina della funzione DB: sono contratti verso client e catalogo permessi.
+    """
+
     area_funzionale = "vendite"
     post_permission = "reset_lotto_fattura_draft"
     @extend_schema(
@@ -410,6 +419,9 @@ class ApiResetLottoFatturaDraft(DomainAPIView):
                             "updated_attivita": serializers.IntegerField(),
                             "deleted_fatture": serializers.IntegerField(),
                             "deleted_righe": serializers.IntegerField(),
+                            # Quarto contatore dal 2026-08-04 (slice 6-B):
+                            # attivita' di commessa tornate NON_EMESSA.
+                            "riemesse_attivita": serializers.IntegerField(),
                         },
                     ),
                     "meta": serializers.DictField(required=False),
@@ -421,7 +433,7 @@ class ApiResetLottoFatturaDraft(DomainAPIView):
     def post(self, request: Request, lotto_id: int, fattura_id: int) -> JsonResponse:
         # Scopo: Gestisce la logica interna del caso d'uso richiamato dall'endpoint.
         def _handler(_payload: dict[str, object]) -> dict[str, object]:
-            result = fn_elimina_fattura_da_lotto_draft(lotto_id=lotto_id, fattura_id=fattura_id)
+            result = fn_elimina_fattura_da_lotto(lotto_id=lotto_id, fattura_id=fattura_id)
             return result
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
@@ -723,7 +735,6 @@ class ApiLottoFattureList(DomainAPIView):
     @extend_schema(
         parameters=[
             OpenApiParameter(name="stato_esecuzione", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro stato esecuzione fattura."),
-            OpenApiParameter(name="esclusa", type=bool, location=OpenApiParameter.QUERY, required=False, description="Filtro fatture escluse (true/false)."),
             OpenApiParameter(name="sort_by", type=str, location=OpenApiParameter.QUERY, required=False, description="Colonna di ordinamento (default fattura_id)."),
             OpenApiParameter(name="sort_dir", type=str, location=OpenApiParameter.QUERY, required=False, description="Direzione ordinamento: asc/desc (default asc)."),
             OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False, description="Numero pagina (default 1)."),
@@ -753,9 +764,6 @@ class ApiLottoFattureList(DomainAPIView):
         raw_stato_esecuzione = request.query_params.get("stato_esecuzione")
         stato_esecuzione = raw_stato_esecuzione.strip() or None if raw_stato_esecuzione is not None else None
 
-        raw_esclusa = request.query_params.get("esclusa")
-        esclusa = optional_bool({"esclusa": raw_esclusa}, "esclusa") if raw_esclusa is not None else None
-
         sort_by = request.query_params.get("sort_by", "fattura_id").strip() or "fattura_id"
         sort_dir = request.query_params.get("sort_dir", "asc").strip() or "asc"
         page = optional_int({"page": request.query_params.get("page", "1")}, "page")
@@ -766,7 +774,6 @@ class ApiLottoFattureList(DomainAPIView):
         data = fn_list_lotto_fatture(
             lotto_id=lotto_id,
             stato_esecuzione=stato_esecuzione,
-            esclusa=esclusa,
             auth_user_id=auth_user_id,
             sort_by=sort_by,
             sort_dir=sort_dir,
@@ -1275,7 +1282,7 @@ class ApiFatturazioneNumeraLotto(DomainAPIView):
 
 class ApiFatturazioneRistampaLotto(DomainAPIView):
     """C-8: ristampa MASSIVA di un lotto DEFINITIVA. Accoda in
-    `vendite.fatture_stampa_coda` una riga per ogni fattura non esclusa
+    `vendite.fatture_stampa_coda` una riga per ogni fattura del lotto
     (idempotente sui vivi); il worker `draina_coda_stampa` le renderizza (async,
     stato via pannello esiti C-5). Accodamento SINCRONO (INSERT veloce), non un
     job con polling. Stampa = lettura (I-4): nessun `post_permission` (come la

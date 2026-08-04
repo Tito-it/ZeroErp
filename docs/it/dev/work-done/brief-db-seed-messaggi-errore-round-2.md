@@ -1,9 +1,42 @@
 # Brief BE → DB — seed round 2: i 28 codici che il check ha fatto emergere
 
+> 🟢 **CHIUSO — 2026-08-04.** Seed applicato, rinomine fatte da entrambe le parti
+> nell'ordine giusto, **controprova finale eseguita sul database vivo**:
+>
+> ```text
+> script.fn_log_error_only(..., 'E_PIPELINE_DRIVER_MAX_ITER', ...)
+>   registrato come: E_PIPELINE_DRIVER_MAX_ITER
+>   messaggio      : Pipeline interrotta: superato il numero massimo di iterazioni.
+>   fallback usato : nessuno — il codice si è risolto
+> ```
+>
+> È il codice che aveva motivato il §9.6 del round-1: quello che finiva nel log
+> senza essere dichiarato da nessuna parte, e che un confronto
+> `error_policies.py` ↔ catalogo avrebbe dato per verde. Ora si nomina da solo.
+>
+> **Stato misurato dopo il merge di `Tito-dev`:**
+>
+> | Verifica | Esito |
+> | --- | --- |
+> | codici dichiarati dal BE senza riga a catalogo | **nessuno** (396 dichiarati, 635 righe CSV) |
+> | seed applicato al database | ✅ 636 righe in `config.messaggi_errore` |
+> | nomi vecchi (`E_COMPETENZA_*`, `E_EMITTENTE_NON_RISOLTO`) nel DB | **nessuno** — la finestra del §6.4 si è chiusa senza degradi |
+> | rinomine R1/R2/R3 lato BE | ✅ nomi nuovi in `error_policies.py`, vecchi assenti dai call-site |
+> | guardrail `test_error_codes_declared_guardrail` | ✅ verde nella suite (3563 test) |
+>
+> Il `migrate` che il §6.4 dava ancora da fare **è girato**: la nota «⏳ manca solo
+> il migrate» è superata dai fatti sopra.
+>
+> **Cosa resta, e non è di questo brief:** il presidio del §6.2 lato DB è nato e
+> al primo giro ha già trovato un orfano; la sua evoluzione (`plpgsql_check`) vive
+> ora in [brief-db-bonifica-riferimenti-morti](../work-in-progress/brief-db-bonifica-riferimenti-morti.md).
+>
+> ---
+
 **Chi scrive:** BE (`dev/backend-tid`), 2026-08-04.
 **A chi:** team DB (`dev/db-tid`).
 **Riferimento:** vostra risposta in
-[brief-db-seed-messaggi-errore-mancanti.md](../work-done/brief-db-seed-messaggi-errore-mancanti.md) §9.6
+[brief-db-seed-messaggi-errore-mancanti.md](brief-db-seed-messaggi-errore-mancanti.md) §9.6
 («Palla al BE — codici che nessun catalogo può indovinare»), passo 5 della
 lavorazione §9.8.
 
@@ -205,6 +238,22 @@ lato catalogo che ci impegniamo a fare **nello stesso giro**.
 | R1 | `E_EMITTENTE_NON_RISOLTO` → **`E_FATTURA_EMITTENTE_NON_RISOLTO`** | `stampa_coda_drainer_service.py` (2 call-site), `error_policies.py` (1 `ErrorPolicy`), `test_stampa_coda_drainer_service.py` (1 assert) | rinominiamo la riga 811 del CSV e allineiamo il testo a «…per la fattura in coda di stampa» |
 | R2 | `E_COMPETENZA_INSERT` → **`E_FLUSSO_COMPETENZA_INSERT`** | `pratiche_repository.py` (1), `error_policies.py` (1) | rinominiamo la riga 805 |
 | R3 | `E_COMPETENZA_NOT_FOUND` → **`E_FLUSSO_COMPETENZA_NOT_FOUND`** | `pratiche_service.py` (1), `error_policies.py` (1) | rinominiamo la riga 806 |
+
+> ✅ **Chiuso il 2026-08-04, nell'ordine giusto.** Il BE ha rinominato i tre codici
+> (verificato: i nomi nuovi sono in `error_policies.py`, i vecchi non compaiono più in
+> nessun call-site), e subito dopo abbiamo rinominato le tre righe del CSV — **id 805,
+> 806, 811 invariati**, cambia solo il `codice`, quindi il loader `runOnChange`
+> aggiorna le righe esistenti senza lasciare orfani.
+>
+> Il testo di 811 è stato allineato al `user_message` che il BE espone davvero
+> («…per la fattura in coda di stampa»), non a quello che avevamo ipotizzato: il
+> catalogo continua a dire esattamente ciò che dice l'API, che era il presupposto di
+> tutto il seed. Verificato anche che **nessuna funzione del database** citasse i nomi
+> vecchi, e che ogni codice dichiarato dal BE abbia una riga a catalogo.
+>
+> ⏳ Manca solo il `migrate`: finché non gira, il database ha ancora i nomi vecchi e
+> i tre codici degradano — con il codice originale conservato nel `context`, quindi
+> senza perdita di informazione.
 
 ⚠️ **L'ordine conta e la finestra si chiude.** Le tre righe sono seminate **con i nomi
 attuali**, perché il catalogo deve nominare i codici esattamente come li emette il

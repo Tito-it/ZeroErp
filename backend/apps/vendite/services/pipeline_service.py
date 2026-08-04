@@ -22,7 +22,7 @@ from apps.vendite.services.fatture_righe_service import FattureRigheService
 from apps.vendite.services.lotto_reset_service import LottoResetService
 from apps.vendite.types import (
     AnnullaLottoDaDraftResult,
-    EliminaFatturaDaLottoDraftResult,
+    EliminaFatturaDaLottoResult,
     GroupAttivitaKey,
     LottoPipelineMeta,
     LottoTaskRunRow,
@@ -282,7 +282,7 @@ def numera_lotto(
 
 
 # Scopo: C-8 — Ristampa MASSIVA di un lotto DEFINITIVA: accoda in
-#        `vendite.fatture_stampa_coda` una riga per ogni fattura non esclusa del
+#        `vendite.fatture_stampa_coda` una riga per ogni fattura del
 #        lotto (`fn_accoda_stampe_lotto`, idempotente sui work-item vivi); il
 #        worker `draina_coda_stampa` le renderizza (async — lo stato si vede nel
 #        pannello esiti C-5). Stampa = lettura (I-4): NESSUNA numerazione qui. Il
@@ -505,16 +505,17 @@ def fn_riporta_lotto_a_draft(*, lotto_id: int) -> RiportaLottoADraftResult:
     return service.riporta_lotto_a_draft(lotto_id)
 
 
-# Scopo: Facade applicativa: elimina UNA fattura DRAFT dal lotto, liberandone
-#        le attivita' (estrazione per-fattura).
-def fn_elimina_fattura_da_lotto_draft(
+# Scopo: Facade applicativa: elimina UNA fattura dal lotto, liberandone le
+#        attivita'. Perimetro lotto E fattura PRE-FISCALI (DRAFT o EMESSA);
+#        togliere la fattura significa CANCELLARLA, non archiviarla (RD-7).
+def fn_elimina_fattura_da_lotto(
     *,
     lotto_id: int,
     fattura_id: int,
-) -> EliminaFatturaDaLottoDraftResult:
-    """Entrypoint servizio Python con lo stesso intento della funzione SQL fn_elimina_fattura_da_lotto_draft."""
+) -> EliminaFatturaDaLottoResult:
+    """Entrypoint servizio Python con lo stesso intento della funzione SQL fn_elimina_fattura_da_lotto."""
     service = LottoResetService()
-    return service.elimina_fattura_da_lotto_draft(lotto_id, fattura_id)
+    return service.elimina_fattura_da_lotto(lotto_id, fattura_id)
 
 
 # Scopo: Restituisce riepilogo segnalazioni del lotto con regola di blocco step successivo.

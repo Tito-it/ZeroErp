@@ -69,7 +69,7 @@ documento **trasversale**.
 > è già costato due volte in una settimana. Le fatture **2263** e **2457** sono
 > uscite con il piano rate sbagliato, sono in stato EMESSA, e **non si possono
 > né correggere né disfare** — la matrice ammette `EMESSA → DRAFT` ma
-> [la funzione che lo esegue non esiste](piano-db-ritorno-lotto-a-draft.md),
+> [la funzione che lo esegue non esiste](../work-done/piano-db-ritorno-lotto-a-draft.md),
 > e oltre DEFINITIVA l'unica strada sarebbe una nota di variazione che non
 > abbiamo. Sull'ambiente ci sono già **6 fatture DEFINITIVE numerate**: da
 > quelle non si torna indietro in alcun modo.

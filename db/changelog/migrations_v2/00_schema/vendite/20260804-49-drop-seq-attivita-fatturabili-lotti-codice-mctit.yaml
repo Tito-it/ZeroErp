@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Bonifica riferimenti morti — F1, il residuo che il controllo NON vede
+#   Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md
+#
+# ── IL PUNTO CIECO ───────────────────────────────────────────────────────
+#   `plpgsql_check` compila i **corpi delle funzioni**. Non guarda i dati,
+#   e non guarda gli oggetti di schema che nessuno nomina in un corpo.
+#   Del drop del 2026-02-27 restavano quindi due cose che il primo giro non
+#   poteva vedere:
+#
+#     · questa sequenza, `vendite.attivita_fatturabili_lotti_codice_seq`,
+#       creata insieme alla colonna `codice` della tabella e sopravvissuta
+#       al `DROP TABLE … CASCADE` perche' era una sequenza **autonoma**,
+#       non una identity posseduta dalla colonna;
+#     · la riga 13 di `config.sistema_codici`, che punta per **stringa** a
+#       `vendite.attivita_fatturabili_lotti` (changeSet `20260804-50`).
+#
+#   E' il motivo per cui il presidio nasce con **due** misure e non una:
+#   la seconda cerca i riferimenti testuali a tabelle inesistenti nelle
+#   tabelle di configurazione. Un riferimento morto scritto in un dato e'
+#   morto quanto uno scritto in un corpo, e si vede anche meno.
+#
+# ── PERCHE' SI PUO' DROPPARE ─────────────────────────────────────────────
+#   La sequenza serviva a `script.fn_generate_codice('lotti_attivita')`,
+#   che era chiamata solo da `trgfn_attivita_fatturabili_lotti_gen_codice`
+#   — droppata da `20260804-48`. Nessun altro oggetto la nomina
+#   (verificato su pg_depend e sul repo). Non ha mai potuto generare un
+#   codice per una tabella che non c'e'.
+#
+# ⚠️ Numerazione: questo file sta in `00_schema` ma deve girare **dopo**
+#   `20_code/…-48` che droppa la funzione chiamante. L'autogen ordina per
+#   **NN**, non per fase (regola pagata con un migrate rosso in
+#   `piano-db-ritorno-lotto-a-draft` M4-septies), quindi -49 dopo -48
+#   e' esattamente l'ordine che serve.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260804-49-drop-seq-attivita-fatturabili-lotti-codice-mctit.yaml
+
+  - changeSet:
+      id: 20260804-49-drop-seq-attivita-fatturabili-lotti-codice
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        F1 — DROP della sequenza vendite.attivita_fatturabili_lotti_codice_seq,
+        sopravvissuta al DROP TABLE CASCADE del 2026-02-27 perche' autonoma.
+        La usava solo la trigger function droppata da 20260804-48.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP SEQUENCE IF EXISTS vendite.attivita_fatturabili_lotti_codice_seq;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE SEQUENCE IF NOT EXISTS vendite.attivita_fatturabili_lotti_codice_seq;

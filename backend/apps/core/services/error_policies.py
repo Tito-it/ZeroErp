@@ -1816,6 +1816,50 @@ class ErrorPolicyRegistry:
                 "buco nella numerazione fiscale."
             ),
         ),
+        # Precondizioni dell'eliminazione per-fattura dal lotto (DB 2026-08-04,
+        # slice 6-B, codici 831-834 da `script.fn_check_fattura_eliminabile_da_lotto`).
+        # Tutti 409 per la stessa ragione dei gemelli sul lotto intero: chi li
+        # vede ha chiesto un'operazione che lo stato corrente non consente, non
+        # ha compilato male un campo.
+        "E_LOTTO_NON_PRE_FISCALE": ErrorPolicy(
+            code="E_LOTTO_NON_PRE_FISCALE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Il lotto e` oltre lo stato pre-fiscale: non si possono piu` togliere "
+                "fatture."
+            ),
+        ),
+        # Legame lotto-fattura assente: tipicamente una lista stantia (la
+        # fattura e` gia` stata tolta da un'altra sessione). Conflitto di stato,
+        # non 404: il documento esiste, e` il legame che non c'e` piu`.
+        "E_FATTURA_NON_COLLEGATA_AL_LOTTO": ErrorPolicy(
+            code="E_FATTURA_NON_COLLEGATA_AL_LOTTO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "La fattura non risulta collegata a questo lotto: ricaricare l'elenco."
+            ),
+        ),
+        "E_FATTURA_GIA_FISCALE": ErrorPolicy(
+            code="E_FATTURA_GIA_FISCALE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "La fattura e` oltre lo stato pre-fiscale: non puo` essere tolta dal lotto."
+            ),
+        ),
+        # Ridondante rispetto al precedente per scelta del DB, e va tenuto:
+        # guarda il NUMERO, non lo stato che dovrebbe implicarlo.
+        "E_FATTURA_GIA_NUMERATA": ErrorPolicy(
+            code="E_FATTURA_GIA_NUMERATA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "La fattura ha gia` un numero: toglierla dal lotto aprirebbe un buco "
+                "nella numerazione fiscale."
+            ),
+        ),
         # C-8: ristampa massiva su lotto non DEFINITIVA (I-7: niente numerazione
         # backdoor via ristampa): conflitto di stato (409).
         "E_LOTTO_NON_RISTAMPABILE": ErrorPolicy(
@@ -2050,6 +2094,30 @@ class ErrorPolicyRegistry:
             http_status=409,
             ui_action="show_error_banner",
             user_message="L'ordine non ha righe eleggibili per l'operazione.",
+        ),
+        # Vie d'uscita per l'operatore (brief-db-vie-uscita-operatore §5.1):
+        # l'annullamento dell'ordine torna disponibile da CONFERMATO, ma
+        # `script.fn_check_ordine_annullabile` lo rifiuta se la merce e' gia'
+        # uscita o il lavoro e' gia' andato in fatturazione. Codici sollevati dal
+        # guard DB (`trgfn_ordini_guard_transizione`), tradotti dal regex di
+        # `ordini_service._db_errors`: qui si dichiara la policy HTTP/UI.
+        "E_ORD_ANNULLA_CON_DDT": ErrorPolicy(
+            code="E_ORD_ANNULLA_CON_DDT",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "L'ordine ha gia' DDT collegati: la merce e' uscita, per "
+                "riportarla dentro si registra un reso."
+            ),
+        ),
+        "E_ORD_ANNULLA_IN_COMMESSA": ErrorPolicy(
+            code="E_ORD_ANNULLA_IN_COMMESSA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "L'ordine e' gia' stato inviato a fatturazione: annulla prima "
+                "le attivita' in commessa."
+            ),
         ),
         # Conversione upstream (preventivo/offerta → ordine, §7.4): il documento
         # di origine non è in uno stato che ammette la generazione di un ordine
@@ -2551,6 +2619,21 @@ class ErrorPolicyRegistry:
             http_status=409,
             ui_action="show_error_banner",
             user_message="Preventivo gia' inviato a fatturazione.",
+        ),
+        # Vie d'uscita per l'operatore (brief-db-vie-uscita-operatore §5.1):
+        # l'annullamento del preventivo torna disponibile da EMESSO/ACCETTATO, e
+        # `script.fn_check_preventivo_annullabile` lo rifiuta quando il documento
+        # ha gia' prodotto qualcosa a valle. Il codice arriva dal DB (guard
+        # `trgfn_preventivi_guard_annullamento`): qui si dichiara solo la policy
+        # HTTP/UI, come per il gemello E_PREV_GIA_IN_COMMESSA sopra.
+        "E_PREV_ORDINE_GIA_GENERATO": ErrorPolicy(
+            code="E_PREV_ORDINE_GIA_GENERATO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Il preventivo ha gia' generato un ordine: annulla prima "
+                "l'ordine collegato."
+            ),
         ),
         "E_PREV_REVISIONE_ATTIVA": ErrorPolicy(
             code="E_PREV_REVISIONE_ATTIVA",

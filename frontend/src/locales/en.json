@@ -1512,6 +1512,10 @@
       "azione_consegna": "Mark delivered",
       "azione_reso": "Mark returned",
       "azione_annulla": "Cancel DDT",
+      "stato_info": {
+        "consegnato_usa_reso": "The goods have been delivered: to bring them back you register a return, you do not cancel the DDT.",
+        "reso": "This DDT came back with a return: its status follows the return on its own."
+      },
       "azione_push_commessa": "Send to job",
       "conferma_cambio_stato": "Move the DDT to status {stato}?",
       "stato_cambiato": "DDT status updated",
@@ -1727,6 +1731,14 @@
       "abbandono_bozza_conferma": "Delete draft",
       "azione_conferma": "Confirm order",
       "azione_annulla": "Cancel order",
+      "azione_reason": {
+        "ddt_collegati": "The order already has linked DDTs: the goods are out, and to bring them back you register a return.",
+        "gia_in_commessa": "The order has already been sent to invoicing: cancel the job order activities first."
+      },
+      "stato_info": {
+        "evaso": "The order is fulfilled: its status is recalculated from the DDTs, it is not set by hand.",
+        "parzialmente_evaso": "Fulfilment in progress: the status is recalculated at every DDT."
+      },
       "azione_push_commessa": "Send to job",
       "conferma_cambio_stato": "Move the order to state {stato}?",
       "stato_cambiato": "Order status updated",
@@ -2453,6 +2465,10 @@
         "non_accettato": "Order generation will be available once the quote is accepted.",
         "nessuna_riga": "No line: add at least one line to generate the order."
       },
+      "azione_reason": {
+        "ordine_gia_generato": "The quote has already generated an order: cancel the linked order first.",
+        "gia_in_commessa": "The quote has already been sent to invoicing: cancel the job order activities first."
+      },
       "conferma_cambio_stato": "Confirm status change to {stato}? This may be irreversible.",
       "conferma_revisione": "Create a new revision? The current revision will be deactivated.",
       "stato_cambiato": "Quote status updated",
@@ -2937,9 +2953,12 @@
       "azione_annulla": "Cancel job order",
       "azione_chiudi": "Close job order",
       "azione_riapri": "Reopen job order",
+      "azione_rendi_pronta": "Mark ready for invoicing",
       "azione_reason": {
         "righe_emesse": "Some lines have already been issued to an invoice",
-        "righe_da_emettere": "Approved lines are still waiting to be issued"
+        "righe_da_emettere": "Approved lines are still waiting to be issued",
+        "nessuna_riga_pronta": "No approved line to invoice: approve at least one activity.",
+        "emittente_mancante": "The job order has no fiscal issuer: without it no invoice can be issued."
       },
       "col_data": "Date",
       "col_competenza": "Accrual",
@@ -3090,10 +3109,10 @@
       "riporta_draft_conferma": "The invoices in this batch will be DELETED and the job-order lines will go back to «to be issued». The batch stays open: the next run regenerates the invoices, so you can fix the upstream data and redo them. This cannot be undone, and is not possible once an invoice has been numbered.",
       "riporta_draft_accept": "Reopen for processing",
       "riporta_draft_esito": "Batch reopened: {fatture} invoices deleted, {attivita} job-order lines back to be issued.",
-      "reset_fattura_header": "Extract the invoice from the batch",
-      "reset_fattura_conferma": "Warning: the invoice is DELETED (not reset to draft) and its activities become free again for a new batch. Allowed only on unnumbered invoices. Proceed?",
-      "reset_fattura_esito": "Invoice extracted from the batch: activities freed",
-      "azione_reset_fattura": "Extract from batch",
+      "reset_fattura_header": "Delete the invoice from the batch",
+      "reset_fattura_conferma": "Warning: the invoice is DELETED — lines, VAT summaries, notes and logs go with it, and the content cannot be recovered. Its activities are released and will return in the next run. Allowed only while the document is not numbered. Proceed?",
+      "reset_fattura_esito": "Invoice deleted from the batch: {attivita} activities released, {riemesse} project lines back to be issued",
+      "azione_reset_fattura": "Delete from batch",
       "azione_anteprima_fattura": "PDF preview",
       "azione_documenti_fattura": "Documents",
       "documenti_fattura_titolo": "Invoice documents",
@@ -3125,7 +3144,11 @@
         "stato_non_draft": "The batch is no longer a draft: cancelling is only allowed before it produces invoices. From ISSUED the way out is \"Return to processing\".",
         "stato_non_pre_fiscale": "The batch is beyond the pre-fiscal stage: it cannot return to processing.",
         "fatture_non_pre_fiscali": "The batch contains invoices beyond the pre-fiscal stage: they cannot be deleted.",
-        "fatture_numerate": "The batch contains already numbered invoices: deleting them would leave a gap in the fiscal numbering."
+        "fatture_numerate": "The batch contains already numbered invoices: deleting them would leave a gap in the fiscal numbering.",
+        "lotto_non_pre_fiscale": "The batch is beyond the pre-fiscal stage: invoices can no longer be removed from it.",
+        "fattura_non_collegata": "The invoice does not belong to this batch.",
+        "fattura_non_pre_fiscale": "The invoice is beyond the pre-fiscal stage: it cannot be deleted.",
+        "fattura_numerata": "The invoice is already numbered: deleting it would leave a gap in the fiscal numbering."
       },
       "azione_non_piu_disponibile": "This action is no longer available on this batch: the list has been refreshed."
     }

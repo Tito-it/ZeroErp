@@ -31,6 +31,16 @@
 //   - stile bottone std:     .app-manage-btn      (main.css)
 //   - voce menu danger:      .app-menu-item-danger (main.css)
 //
+// `infoKey` (2026-08-04, brief-db-vie-uscita-operatore §4 — regola R3): chiave
+// i18n emessa dal DB (`meta->>'nessuna_azione_key'` degli stati doc, esposta
+// dalle capability) che spiega all'operatore PERCHE' su questo stato non c'e'
+// nessuna azione da azionare, e cosa fare invece (es. DDT CONSEGNATO -> «per
+// rientrare si registra un reso»). Una lista di azioni vuota e' indistinguibile
+// da un errore di caricamento: la nota la rende una risposta. Il BB risolve la
+// chiave con `labelOrCode` (fail-visible: chiave assente -> la chiave grezza,
+// mai testo sparito) e la rende come nota discreta accanto alle azioni. Nessun
+// testo viene dal DB: viaggiano solo indirizzi i18n.
+//
 // Uso tipico nel drawer:
 //   const drawerActions = computed(() => [
 //     ...mapAvailableActionsToDrawerActions({ availableActions, t, onAction }),
@@ -50,16 +60,23 @@
 // outlined: default true per kind:'manage', false altrove. Override esplicito ammesso
 //   (es. kind:'state' severity:'danger' outlined:true per cessazione/annullamento).
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import Menu from 'primevue/menu'
 import { MANAGE_ICONS } from '../constants'
 import { useActionBar } from '../composables/useActionBar'
+import { labelOrCode } from '../utils/i18nLabel'
 
 const props = defineProps({
   actions: { type: Array, default: () => [] },
   disabled: { type: Boolean, default: false },
   menuTooltip: { type: String, default: '' },
+  // Chiave i18n della spiegazione «qui non c'e' niente da azionare» (vedi
+  // testata). Null/assente = nessuna nota, comportamento invariato.
+  infoKey: { type: String, default: '' },
 })
+
+const { t, te } = useI18n()
 
 // Scopo: per le voci dentro Menu popup, se l'azione ha un badge counter
 //   lo appendiamo alla label (es. "Gestisci righe (5)"). Pattern di lettura
@@ -129,10 +146,17 @@ const compactMenuItems = computed(() => menuItems(compactMenuActions.value))
 const compactHasBadge = computed(() =>
   compactMenuActions.value.some(a => a.kind === 'manage' && a.badge != null && a.badge !== ''),
 )
+
+// Nota «nessuna azione»: risolta fail-visible (chiave sconosciuta -> la chiave
+// stessa, cosi' il buco si vede a schermo invece di sparire). Vuota = niente
+// nota, e la barra torna a comparire solo se ci sono azioni.
+const infoText = computed(() =>
+  (props.infoKey ? labelOrCode(t, te, props.infoKey, props.infoKey) : ''),
+)
 </script>
 
 <template>
-  <div v-if="visibleActions.length" class="app-drawer-actions">
+  <div v-if="visibleActions.length || infoText" class="app-drawer-actions">
     <slot name="prefix" />
 
     <span class="app-drawer-actions-desktop">
@@ -199,6 +223,14 @@ const compactHasBadge = computed(() =>
         <span v-if="compactHasBadge" class="app-drawer-action-badge app-drawer-action-badge-dot" />
       </span>
       <Menu ref="compactMenuRef" :model="compactMenuItems" popup />
+    </span>
+
+    <!-- Perche' qui non c'e' nulla da azionare (R3 del brief vie d'uscita).
+         Nota discreta, non un banner: convive con le azioni manage/secondary
+         che restano disponibili anche negli stati chiusi (note, PDF). -->
+    <span v-if="infoText" class="app-drawer-actions-info">
+      <i class="pi pi-info-circle" aria-hidden="true" />
+      <span>{{ infoText }}</span>
     </span>
   </div>
 </template>

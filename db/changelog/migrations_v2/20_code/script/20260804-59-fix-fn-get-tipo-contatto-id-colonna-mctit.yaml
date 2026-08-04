@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Bonifica riferimenti morti — F2, famiglia stradario/contatti
+#   Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md
+#
+#   `config.tipi_contatti.cod_int_tipo_contatto` non esiste: la colonna e'
+#   `codice_interno`, con il suo vincolo `uq_tipi_contatti_codice_interno`
+#   e un trigger di lock che la protegge dalle modifiche. La funzione era
+#   rimasta indietro rispetto all'allineamento dei nomi.
+#
+#   ⚠️ Il **parametro** conserva il nome vecchio (`p_cod_int_tipo_contatto`):
+#   cambiarlo e' un cambio di firma, e chi chiamasse a nome smetterebbe di
+#   funzionare. Qui si ripara cio' che non si risolve, non si riordina la
+#   nomenclatura.
+#
+#   Nessun consumatore nel repo. La funzione e' comunque strutturalmente
+#   sana — guard, log con `E_DEFAULT_CONTATTO_MISSING` (codice registrato),
+#   `VARIADIC ARRAY[]::text[]` scritto correttamente — quindi si ripara.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260804-59-fix-fn-get-tipo-contatto-id-colonna-mctit.yaml
+
+  - changeSet:
+      id: 20260804-59-fix-fn-get-tipo-contatto-id-colonna
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        F2 — script.fn_get_tipo_contatto_id: la colonna di config.tipi_contatti e'
+        codice_interno, non cod_int_tipo_contatto. Il nome del parametro resta
+        invariato: e' firma.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_tipo_contatto_id(p_cod_int_tipo_contatto character varying)
+               RETURNS integer
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  v_id  INTEGER;
+                  v_tx  UUID;
+              BEGIN
+                  -- 0) Recupero o genero il tx_id per il log
+                  v_tx := dbops.fn_get_or_create_session_tx_id();
+
+                  -- 1) Recupera l'ID del tipo di contatto
+                  -- rev 2026-08-04 (bonifica riferimenti morti, F2): la colonna di
+                  --   config.tipi_contatti e' `codice_interno`, non
+                  --   `cod_int_tipo_contatto`. Il nome del PARAMETRO resta com'e': e'
+                  --   parte della firma e cambiarlo romperebbe le chiamate a nome.
+                  SELECT id
+                    INTO v_id
+                    FROM config.tipi_contatti
+                  WHERE codice_interno = p_cod_int_tipo_contatto;
+
+                  -- 2) Se non trovato, loggo e sollevo eccezione
+                  IF v_id IS NULL THEN
+
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',                                 -- p_area
+                          'script.fn_get_tipo_contatto_id',           -- p_function_name
+                          'E_DEFAULT_CONTATTO_MISSING',                -- p_error_code
+                          jsonb_build_object(                         -- p_context
+                            'cod_int_tipo_contatto', p_cod_int_tipo_contatto,
+                            'tabella', 'config.tipi_contatti',
+                            'campo', 'cod_int_tipo_contatto'
+                          ),
+                          v_tx ,                                        -- p_tx_id       
+                          VARIADIC ARRAY[]::text[]
+                      );
+
+                  END IF;
+
+                  RETURN v_id;
+              END;
+              $function$
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

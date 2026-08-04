@@ -1,0 +1,70 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Bonifica riferimenti morti — F1, il riferimento morto scritto in un DATO
+#   Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md
+#
+# ── COSA RESTAVA ─────────────────────────────────────────────────────────
+#   `config.sistema_codici` riga 13:
+#
+#     codice_interno = 'lotti_attivita'
+#     schema_tabella = 'vendite'
+#     nome_tabella   = 'attivita_fatturabili_lotti'   <-- droppata 2026-02-27
+#
+#   Nessun codice la nominava piu' dopo `20260804-48`: e' configurazione
+#   che punta nel vuoto. `script.fn_generate_codice('lotti_attivita')`
+#   avrebbe trovato la riga, e poi non avrebbe trovato la tabella.
+#
+# ── ⚠️ PERCHE' IL CONTROLLO DELLE FUNZIONI NON POTEVA VEDERLA ────────────
+#   `plpgsql_check` compila i corpi. Qui il riferimento non e' in un corpo:
+#   e' una **stringa in una tabella di configurazione**, e nel corpo di
+#   `fn_generate_codice` compare solo come parametro. Nessuna analisi
+#   statica del codice puo' arrivarci — serve una misura sui dati.
+#
+#   La misura (aggiunta al presidio, `db/pgtap/dbops/test-riferimenti-morti-v1.sql`):
+#
+#     SELECT … FROM config.sistema_codici
+#      WHERE nome_tabella IS NOT NULL
+#        AND to_regclass(schema_tabella||'.'||nome_tabella) IS NULL;
+#
+#   Al 2026-08-04 restituiva **una** riga: questa. Dopo, zero.
+#
+# ── SEED ─────────────────────────────────────────────────────────────────
+#   `config.sistema_codici` non e' rispecchiata da un CSV `runOnChange`
+#   (verificato: nessun CSV del repo contiene 'lotti_attivita'), quindi la
+#   DELETE non viene riscritta al migrate successivo. Stesso schema del
+#   precedente `20260209-03-delete-sistema-codici-fatture`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260804-50-delete-sistema-codici-lotti-attivita-mctit.yaml
+
+  - changeSet:
+      id: 20260804-50-delete-sistema-codici-lotti-attivita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        F1 — rimuove da config.sistema_codici la riga 'lotti_attivita', che punta
+        per stringa a vendite.attivita_fatturabili_lotti (droppata il 2026-02-27).
+        Riferimento morto in un dato: invisibile a plpgsql_check.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM config.sistema_codici
+              WHERE codice_interno = 'lotti_attivita'
+                AND nome_tabella   = 'attivita_fatturabili_lotti';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

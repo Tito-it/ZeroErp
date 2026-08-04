@@ -63,7 +63,7 @@ conferma — inclusi i distruttivi. (Cinque azioni = sei voci di capability:
 [stati_doc_fiscale_transizioni](/dbzero/config/tabelle/stati_doc_fiscale_transizioni) ·
 [fn_annulla_lotto_da_draft](/dbzero/vendite/funzioni/fn_annulla_lotto_da_draft) ·
 [fn_get_lotto_segnalazioni_summary](/dbzero/vendite/funzioni/fn_get_lotto_segnalazioni_summary) ·
-[piano-db-ritorno-lotto-a-draft](../work-in-progress/piano-db-ritorno-lotto-a-draft.md)
+[piano-db-ritorno-lotto-a-draft](piano-db-ritorno-lotto-a-draft.md)
 
 ---
 
@@ -114,7 +114,7 @@ Chiediamo lo stesso, per il lotto.
 | 3 | **Rendi definitive** | `POST /vendite/fatturazione/lotti/<id>/numera/` | `numera_fatture_lotti` | lotto in **EMESSA** (gate fiscale I-7) | [pipeline_service.py:253-282](../../../../backend/apps/vendite/services/pipeline_service.py#L253-L282) |
 | 4 | **Ristampa documenti** | `POST /vendite/fatturazione/lotti/<id>/ristampa/` | nessuna (stampa = lettura, I-4) | lotto in **DEFINITIVA** | [pipeline_service.py:284-300](../../../../backend/apps/vendite/services/pipeline_service.py#L284-L300) |
 | 5 | **Annulla lotto** | `POST /vendite/lotti/<id>/reset-draft/` | `reset_lotto_draft` | stato **DRAFT**; **nessuna fattura oltre il pre-fiscale** (solo DRAFT/EMESSA); MASSIVO **o** GIORNALIERO | [fn_annulla_lotto_da_draft](/dbzero/vendite/funzioni/fn_annulla_lotto_da_draft) |
-| 6 | **Riporta a bozza** | `POST /vendite/lotti/<id>/riporta-a-draft/` | `reset_lotto_draft` | 🔴 **da definire con la Fase 6**: matrice EMESSA→DRAFT `solo_lotto`, nessuna fattura numerata, tipo lotto | [piano-db-ritorno-lotto-a-draft](../work-in-progress/piano-db-ritorno-lotto-a-draft.md) §1, §4.5, punti C/D/F/G |
+| 6 | **Riporta a bozza** | `POST /vendite/lotti/<id>/riporta-a-draft/` | `reset_lotto_draft` | 🔴 **da definire con la Fase 6**: matrice EMESSA→DRAFT `solo_lotto`, nessuna fattura numerata, tipo lotto | [piano-db-ritorno-lotto-a-draft](piano-db-ritorno-lotto-a-draft.md) §1, §4.5, punti C/D/F/G |
 
 ⚠️ **Segnalazione, non richiesta.** `vendite.fn_riporta_lotto_a_draft` è
 chiamata dal BE ([pipeline_repository.py:2166-2171](../../../../backend/apps/vendite/db/pipeline_repository.py#L2166-L2171),

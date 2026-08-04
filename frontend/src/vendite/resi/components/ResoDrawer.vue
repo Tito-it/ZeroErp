@@ -245,7 +245,7 @@ async function onCoperturaRiconsegnaCambiata() {
           </template>
         </DrawerEntityHeader>
 
-        <DrawerActionsBar :actions="drawerActions" />
+        <DrawerActionsBar :actions="drawerActions" :info-key="detail?.nessuna_azione_key || ''" />
 
         <!-- Collegamenti diretti: per il reso la catena significativa e'
              l'ORIGINE (reso <- DDT <- ordine), qui riassunta nei chip; il

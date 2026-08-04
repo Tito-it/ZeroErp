@@ -1,5 +1,28 @@
 # Piano BE/FE — satelliti della fattura (indirizzi + piano rate)
 
+> 🟡 **STATO AL 2026-08-04 — lavoro tecnico FINITO, restano tre decisioni di prodotto.**
+>
+> Fasi 0-5 chiuse fra il 31-07 e il 02-08. Il 04-08 sono state chiuse anche le
+> quattro voci del §4-bis che dipendevano dalle fasi DB:
+>
+> | §4-bis | Esito |
+> | --- | --- |
+> | **6.6** — flag `esclusa` fuori da filtro API e `types.py` | ✅ fatto (era **rotto**: la lista fatture del lotto interrogava una colonna droppata) |
+> | **6.7** — ritorno a DRAFT / eliminazione per-fattura | ✅ fatto. ⚠️ **La «lista estratte» non serve più**: con RD-7 togliere una fattura vuol dire cancellarla, quindi non c'è nulla da elencare — quella riga è superata, non rinviata |
+> | **D-L** — rinomina funzioni di reset | ✅ allineata su entrambi gli strati (`fn_annulla_lotto_da_draft`, `fn_elimina_fattura_da_lotto`); URL e `task_code` invariati come previsto |
+> | **D-Q** — «non avanzare» ≠ «non ripartire» | ✅ implementato: il blocco per criticità non impedisce più il rilancio dello stesso step |
+>
+> **Fase 6 FE:** piano rate e campi pagamento non richiedevano lavoro. La
+> **validazione a video di «Termine» e «Modalità di pagamento» è OK** (Tid,
+> 2026-08-04) — era il primo momento utile, perché serviva una fattura nuova.
+>
+> ⏸️ **Restano aperte solo le tre decisioni del §7**, che sono di prodotto e non
+> di implementazione: indirizzo correggibile su fattura DRAFT, lista degli
+> indirizzi per tipo nel dettaglio, badge documenti nella barra azioni. Finché
+> non sono prese, questo piano resta qui: non c'è codice in sospeso.
+>
+> ---
+
 > ⚠️ **REVISIONE 2026-07-30 — leggere prima
 > [piano-db-satelliti-fattura.md](piano-db-satelliti-fattura.md).**
 > La verifica critica sui due brief ha cambiato alcune premesse di questo piano:
@@ -11,7 +34,7 @@
 > | §4 Fase 4 | Il follow-up temuto sui **«gruppi con termini misti» non serve**: un gruppo fatturabile è **un solo** documento sorgente (o gli oneri di **una** commessa), quindi porta un solo termine per costruzione. D-7 non può spaccarlo. Resta vero che una corsa su tutto il mese può produrre **più fatture** di prima: è lo smoke §3.3 a sorvegliarlo | C-10 |
 > | §4 Fase 1 | Il mixin `IndirizziDocumentoRepositoryMixin` va **ripuntato** su `script.fn_resolve_indirizzo_documento`: oggi `find_indirizzo_ruolo_per_tipi` preferisce l'indirizzo generico e **ignora l'istanza** del documento. È una **correzione**, non un refactor estetico | C-14c |
 > | **nuovo** | La riforma **D-I** elimina due campi dal `ClienteDrawer` (`tipo_gg_scadenza_ft`, `nr_giorni_scadenza`) con le 4 opzioni `opt_gg_*` e le relative chiavi i18n. Lavoro FE non previsto qui | D-I |
-> | **nuovo** | Fase 6 DB aggiunge un verbo al `LottoDrawer` (ritorno a DRAFT / estrazione fattura) e una **lista «estratte»** nel cockpit | D-N-bis |
+> | **nuovo** | Fase 6 DB aggiunge un verbo al `LottoDrawer` (ritorno a DRAFT / eliminazione fattura). ⚠️ La **lista «estratte»** prevista qui **non si farà**: RD-7 (04-08) ha deciso che togliere una fattura vuol dire cancellarla | D-N-bis |
 >
 > **Revisione 2026-07-30 (seconda passata) — riallineamento dei perimetri.**
 > Verifica richiesta da Tid: *«il DB non si è preso carico di attività che avevamo
@@ -703,7 +726,7 @@ guard si cancellano e si rifà un giro.
 | Cosa | Stato |
 |---|---|
 | Piano rate nel drawer | ✅ **nessun lavoro**: `ScadenzeSintesi` e il campo «Prossima rata» esistono e mostrano `—` finché le rate non arrivano. Con la Fase 3 chiusa (2026-08-02) si popolano da soli |
-| Campi «Modalità di pagamento» e «Termine» | ✅ già nel drawer. 🔎 **Validazione a video ancora da fare**: la Fase 3 è chiusa e la testata ora porta i valori (misurato: termine 3, modalità 5 `MP05`), quindi è **adesso** il primo momento in cui mostrano qualcosa. Serve una fattura **nuova**: sulle 4 preesistenti la testata è NULL e resterà tale |
+| Campi «Modalità di pagamento» e «Termine» | ✅ **validati a video da Tid (2026-08-04)**. Erano già nel drawer, ma prima della Fase 3 non avevano niente da mostrare; sulle fatture preesistenti la testata resta NULL, quindi la prova richiedeva una fattura **nuova** |
 | Sezione indirizzi nel drawer fattura | ⏸️ decisione aperta, §7 |
 
 ---
@@ -718,10 +741,10 @@ Sono elencate qui perché **l'owner è il BE**; la fase DB resta il loro innesco
 | Innesco (piano DB) | Cosa tocca a noi | Quando |
 |---|---|---|
 | **3a.7** — riforma condizioni di pagamento (D-I) | ✅ **FATTA (2026-07-31, PR #1100), ANTICIPATA rispetto al DROP** — decisione presa con Tid e team DB: le colonne legacy non avevano lettori a valle e il `NOT NULL` ha un `DEFAULT`, quindi anticipare **elimina** l'accoppiamento invece di gestirlo — 3a.5/3a.6 diventano DROP pure, senza deploy FE da sincronizzare. Fatto: `ClienteDrawer.vue` (via i 2 campi + `tipoGgOptions`), 6 chiavi i18n it+en, `clienti_repository` (2 whitelist + SELECT), `clienti_service`, `views_clienti`, `test_clienti_repository`. Verifiche: 1068 test verdi, `check_i18n_keys` pulito, eslint + build Vite ok. **Residui CHIUSI la sera stessa**: `fn_update_cliente` riscritta dal DB (`20260731-08`, con 3a.5) e `E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI` **ritirato** da `error_policies.py` — il trigger non esiste più, la policy era codice morto; resta il gemello fornitori, che il suo trigger ce l'ha ancora. **3a.7 completamente chiusa** | ~~Contestuale al DROP~~ → anticipata |
-| **6.6** — eliminazione del flag `esclusa` (D-M) | **filtro API** e **`types.py`** (il resto è DB) | Con la Fase 6 DB |
-| **6.7** — ritorno a DRAFT / estrazione (D-N-bis) | Verbo nel `LottoDrawer` con conferma esplicita di **cosa si perde**, e **lista «estratte»** nel cockpit. ✅ **Anticipo fatto il 2026-08-01** (bug trovato in-app da Tid: da un lotto EMESSA il pulsante «Riporta a bozza» era un vicolo cieco con `E_PARAMETRO_INVALIDO`): il pulsante ora è **gated su lotto DRAFT** (`canResetLotto && isDraft`) e le etichette dicono la verità — «**Annulla lotto**», conferma «passa ad ANNULLATA e viene chiuso: non si riapre», esito «Lotto annullato» (it+en; chiavi i18n `reset*` invariate: rispecchiano il `task_code`, che per D-L non si muove). Il commento nel `.vue` rimanda a QUESTA riga per il verbo vero di uscita da EMESSA: quando 6.7 arriverà sarà un'azione **distinta**, non una riapertura di quel gate | Dopo 6.0-6.5 DB (il fix etichetta/gate NON lo sostituisce) |
-| **D-L** — rinomina funzioni di reset | **4 righe obbligatorie + ~12 nomi Python** da allineare (vedi sotto): decisione Tid 2026-07-30, si rinomina su **entrambi** gli strati | Contestuale alla rinomina |
-| **D-Q** — fattura in errore, lotto non avanza ma si rilancia (decisione Tid 2026-07-31) | **La regola di blocco** (`lotto_segnalazioni_service`) e **il ritiro delle segnalazioni scritte dal BE** (vedi sotto): senza, la via d'uscita definita da Tid non esiste | **Prima** dell'accensione del task in pipeline (DB 2.3) |
+| **6.6** — eliminazione del flag `esclusa` (D-M) | ✅ **FATTO (2026-08-04)**: filtro API, parametro OpenAPI, `types.py`, service, client FE e i due test dedicati (rimossi: il filtro non esiste più, non è stato «adattato»). ⚠️ Era **rotto adesso** — la lista fatture del lotto interrogava una colonna droppata dal DB | Con la Fase 6 DB |
+| **6.7** — ritorno a DRAFT / eliminazione per-fattura (D-N-bis) | ✅ **CHIUSO (2026-08-04)**. Il verbo «Riporta in lavorazione» è nel drawer **e** nel kebab della lista lotti, con conferma che dice cosa si perde; l'eliminazione per-fattura funziona ora anche su lotto **EMESSA** (il DB ha allargato il perimetro a pre-fiscale, chiudendo il vicolo cieco che il fix del 01-08 aveva solo tamponato lato FE). ⚠️ **La «lista estratte» NON si fa**: RD-7 ha stabilito che togliere una fattura vuol dire **cancellarla**, quindi non esiste un archivio di estratte da elencare — la riga è superata dalla decisione, non rinviata | ~~Dopo 6.0-6.5 DB~~ → fatto |
+| **D-L** — rinomina funzioni di reset | ✅ **FATTO**: `fn_annulla_lotto_da_draft` (02-08) e `fn_elimina_fattura_da_lotto` (04-08) allineate su repository, service, view e test. URL (`reset-draft/`), permesso e `task_code` **non** seguono la rinomina: sono contratti verso client e catalogo | Contestuale alla rinomina |
+| **D-Q** — fattura in errore, lotto non avanza ma si rilancia (decisione Tid 2026-07-31) | ✅ **FATTO**: il blocco per criticità distingue ora l'avanzamento dal **rilancio dello stesso step** (`blocks_next_step and not is_rilancio_stesso_step`), e il ritiro delle segnalazioni di lotto scritte dal BE avviene dentro la transazione dello step | **Prima** dell'accensione del task in pipeline (DB 2.3) |
 | **DB 2.3** — seed del task snapshot indirizzi | ✅ **FATTA** (registrazione + handler in Fase 1; armamento DB applicato il 2026-07-31). **Coda del 2026-07-31 sera**: il DB ha rinominato il wrapper in `fn_snapshot_fattura_lotto` (scrive anche l'intestazione — brief §10.8) e il BE è stato riallineato: valore in `ALLOWED_TASK_FUNCTIONS`, query del wrapper, **sesto contatore `intestazioni_scritte`** già letto. Il `task_code` e il nome del metodo Python restano `snapshot_indirizzi_lotto`/`run_snapshot_indirizzi_lotto_task`: l'ancora stabile è il task, non la funzione dietro il wrapper | ~~Prima che il DB armi lo step DRAFT~~ → chiusa |
 
 ### D-L: il minimo indispensabile, misurato

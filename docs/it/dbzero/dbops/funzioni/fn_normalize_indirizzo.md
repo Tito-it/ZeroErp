@@ -29,9 +29,11 @@ BEGIN
         via_norm := UPPER(TRIM(rec.descrizione_completa));
         civico_norm := '';
 
-        SELECT id INTO codice_postale_id 
+        -- rev 2026-08-04 (bonifica riferimenti morti, F2): la colonna e'
+        --   `codice` dal 2025-08-17 (20250817-24), non `codice_postale`.
+        SELECT id INTO codice_postale_id
         FROM config.codici_postali
-        WHERE codice_postale = rec.cod_postale
+        WHERE codice = rec.cod_postale
           AND comune_id = p_comune_id
         LIMIT 1;
 

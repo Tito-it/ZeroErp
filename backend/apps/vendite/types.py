@@ -60,10 +60,15 @@ class RiportaLottoADraftResult(TypedDict):
     annullati_task_run: int
 
 
-class EliminaFatturaDaLottoDraftResult(TypedDict):
+class EliminaFatturaDaLottoResult(TypedDict):
     updated_attivita: int
     deleted_fatture: int
     deleted_righe: int
+    # Quarto contatore (DB 2026-08-04, slice 6-B): tenuto separato dal primo
+    # di proposito — «attivita' sbloccate» e «attivita' di commessa tornate
+    # NON_EMESSA» sono fatti diversi per il cockpit, un totale unico li
+    # confonderebbe. Stessa forma delle due sorelle sul lotto intero.
+    riemesse_attivita: int
 
 
 class LottoSegnalazioniSummary(TypedDict):
@@ -101,7 +106,6 @@ class LottoFattureRow(TypedDict):
     stato_doc_fiscale_descrizione: str | None
     stato_doc_fiscale_codice: str | None
     stato_esecuzione: str
-    esclusa: bool
     numero: int | None
     serie: str | None
     data: str | None

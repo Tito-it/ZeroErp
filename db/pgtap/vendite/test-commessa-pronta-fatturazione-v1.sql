@@ -160,7 +160,11 @@ SELECT is(
     (SELECT jsonb_build_object(
               'righe',       count(*),
               'emittibile',  bool_and(v.commessa_emittibile),
-              'stato',       min(v.commessa_stato_codice))
+              -- rev 04-08-2026: era `commessa_stato_codice`. Rinominata in
+              -- `_codice_interno` da 20260804-67: esporre codice_interno con
+              -- un alias *_codice viola linee-guida-sql §6c e faceva fallire
+              -- il guardrail di naming in CI.
+              'stato',       min(v.commessa_stato_codice_interno))
        FROM vendite.vw_dash_competenza_attivita v
       WHERE v.commessa_id = (SELECT com_a FROM _fx)),
     jsonb_build_object('righe', 1, 'emittibile', false, 'stato', 'BOZZA'),

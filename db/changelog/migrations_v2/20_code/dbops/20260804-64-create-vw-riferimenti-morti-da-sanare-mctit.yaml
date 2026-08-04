@@ -1,0 +1,107 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Bonifica riferimenti morti — le due viste del presidio
+#   Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md §5
+#
+#   Sono l'anti-join fra la misura (`dbops.fn_check_funzioni_riferimenti_morti`,
+#   `20260804-62`) e il registro del debito
+#   (`dbops.riferimenti_morti_esenzioni`, `20260804-63`), nei due versi:
+#
+#     vw_riferimenti_morti_da_sanare   difetti NON registrati -> il lavoro
+#     vw_riferimenti_morti_rientrati   voci registrate che non corrispondono
+#                                      piu' a un difetto -> righe da TOGLIERE
+#
+#   La seconda e' quella che rende il registro un debito invece che un
+#   elenco di eccezioni. Senza, il registro puo' solo allungarsi.
+#
+# ── ⚠️ NON SI INTERROGANO PIU' DI UNA VOLTA PER GIRO ────────────────────
+#   Ogni SELECT su queste viste ri-compila ~500 funzioni: sono viste su una
+#   funzione costosa, non su una tabella. Chi ne serve entrambe (il pgTAP,
+#   il guardrail) materializza **la misura** una volta in una temp table e
+#   fa l'anti-join li'. Le viste servono a chi ne vuole una sola, e a chi
+#   guarda a mano.
+#
+# ── numerazione ──────────────────────────────────────────────────────────
+#   -64 dopo -62 (funzione) e -63 (tabella): l'autogen ordina per NN, non
+#   per fase, quindi chi dipende deve avere il numero piu' alto. E' la
+#   regola pagata con un migrate rosso in piano-db-ritorno-lotto-a-draft
+#   (M4-septies).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260804-64-create-vw-riferimenti-morti-da-sanare-mctit.yaml
+
+  - changeSet:
+      id: 20260804-64-create-vw-riferimenti-morti-da-sanare
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Presidio — le due viste che incrociano la misura col registro del debito:
+        vw_riferimenti_morti_da_sanare (difetti non registrati) e
+        vw_riferimenti_morti_rientrati (voci del registro ormai di troppo).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_riferimenti_morti_da_sanare
+              WITH (security_invoker = on) AS
+              SELECT m.classe,
+                     m.schema_nome,
+                     m.funzione,
+                     m.argomenti,
+                     m.esito
+                FROM dbops.fn_check_funzioni_riferimenti_morti() m
+               WHERE m.classe IN ('REALE', 'ORFANA')
+                 AND NOT EXISTS (
+                       SELECT 1
+                         FROM dbops.riferimenti_morti_esenzioni e
+                        WHERE e.schema_nome = m.schema_nome
+                          AND e.funzione    = m.funzione
+                          AND m.esito LIKE e.esito_like
+                     );
+
+              COMMENT ON VIEW dbops.vw_riferimenti_morti_da_sanare IS
+              'Riferimenti morti (REALE/ORFANA) non coperti dal registro del debito: e'' la lista di lavoro. Deve essere vuota. ⚠️ Ogni SELECT ri-compila ~500 funzioni.';
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_riferimenti_morti_rientrati
+              WITH (security_invoker = on) AS
+              SELECT e.id,
+                     e.schema_nome,
+                     e.funzione,
+                     e.esito_like,
+                     e.data_registrazione,
+                     e.motivo
+                FROM dbops.riferimenti_morti_esenzioni e
+               WHERE NOT EXISTS (
+                       SELECT 1
+                         FROM dbops.fn_check_funzioni_riferimenti_morti() m
+                        WHERE m.classe IN ('REALE', 'ORFANA')
+                          AND m.schema_nome = e.schema_nome
+                          AND m.funzione    = e.funzione
+                          AND m.esito LIKE e.esito_like
+                     );
+
+              COMMENT ON VIEW dbops.vw_riferimenti_morti_rientrati IS
+              'Voci del registro del debito che non corrispondono piu'' a nessun difetto: righe da TOGLIERE. E'' cio'' che impedisce al registro di diventare un elenco di eccezioni permanenti.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_riferimenti_morti_rientrati;
+
+              DROP VIEW IF EXISTS dbops.vw_riferimenti_morti_da_sanare;

@@ -15,10 +15,10 @@ DECLARE
   v_locked boolean;
   v_try    integer := 0;
 BEGIN
-  
+
   v_locked := pg_try_advisory_lock(hashtext('vendite.mv_ddt_ordini'));
   IF NOT v_locked THEN
-    
+
     WHILE v_try < p_max_retries AND NOT v_locked LOOP
       v_try := v_try + 1;
       PERFORM pg_sleep(1);
@@ -29,7 +29,11 @@ BEGIN
         'database','fn_refresh_mv_ddt_ordini','E_REFRESH_LOCK_TIMEOUT',
         jsonb_build_object('mv','vendite.mv_ddt_ordini','retries',p_max_retries),
         NULL::uuid,
-        'MV : vendite.mv_ddt_ordini' , p_max_retries);
+        -- rev 2026-08-04 (bonifica F3): p_max_retries e' integer e il
+        --   parametro e' VARIADIC text[]. Senza il cast la chiamata non
+        --   si risolve e il guard, proprio quando scade il lock, solleva
+        --   «la funzione non esiste» invece del timeout.
+        'MV : vendite.mv_ddt_ordini' , p_max_retries::text);
     END IF;
   END IF;
 
@@ -40,7 +44,7 @@ BEGIN
       EXECUTE 'REFRESH MATERIALIZED VIEW vendite.mv_ddt_ordini';
     END IF;
   EXCEPTION WHEN others THEN
-    
+
     IF p_concurrent THEN
       EXECUTE 'REFRESH MATERIALIZED VIEW vendite.mv_ddt_ordini';
     ELSE

@@ -14,6 +14,13 @@ CREATE OR REPLACE FUNCTION vendite.fn_prepare_sdi_payload(p_lotto_id bigint, p_s
 AS $function$
 -- rev 2026-08-04 (D-M): via il predicato su lf.esclusa, che era
 --   una condizione sempre vera (flag dormiente).
+-- rev 2026-08-04 (bonifica riferimenti morti, F2):
+--   `tentativo` -> `tentativo_num` (nome reale della colonna) e
+--   numerazione a MAX+1 sempre: il vecchio
+--   `MAX + CASE WHEN force THEN 1 ELSE 0 END` produceva 0 al
+--   primo tentativo con force=false — cioe' nella
+--   configurazione in seed — e violava
+--   chk_fatture_sdi_tentativo_num (> 0).
 DECLARE
     v_stato_sdi_id config.stati_sdi.id%TYPE;
     v_exists_lotto BOOLEAN := FALSE;
@@ -45,7 +52,7 @@ BEGIN
             jsonb_build_object('codice_interno', p_stato_sdi_codice_interno), NULL::uuid, p_stato_sdi_codice_interno, 'config.stati_sdi');
     END IF;
 
-    -- Upsert fatture_sdi + RETURN QUERY (logica invariata dall'originale)
+    -- Upsert fatture_sdi + RETURN QUERY
     RETURN QUERY
     WITH target_fatture AS (
         -- rev 2026-07-28: si porta dietro anche totale_a_pagare,
@@ -58,16 +65,32 @@ BEGIN
           JOIN vendite.fatture f ON f.id = lf.fattura_id
          WHERE lf.lotto_id = p_lotto_id
     ), upserted AS (
-        INSERT INTO vendite.fatture_sdi (fattura_id, tentativo, stato_sdi_id, meta)
+        INSERT INTO vendite.fatture_sdi (fattura_id, tentativo_num, stato_sdi_id, meta)
         SELECT tf.f_id,
-               COALESCE((SELECT MAX(fs2.tentativo) FROM vendite.fatture_sdi fs2 WHERE fs2.fattura_id = tf.f_id), 0)
-                 + CASE WHEN p_force_new_tentativo THEN 1 ELSE 0 END,
+               -- ⚠️ MAX + 1 SEMPRE. Il filtro sotto garantisce che
+               --    con force = false si inserisca solo dove non
+               --    esiste nulla (MAX NULL -> 1); con force = true
+               --    e' il tentativo successivo. Il vecchio
+               --    `+ CASE WHEN force THEN 1 ELSE 0 END` dava 0
+               --    nel primo caso e violava il CHECK > 0.
+               (COALESCE((SELECT MAX(fs2.tentativo_num)
+                            FROM vendite.fatture_sdi fs2
+                           WHERE fs2.fattura_id = tf.f_id), 0) + 1)::smallint,
                v_stato_sdi_id, '{}'::jsonb
           FROM target_fatture tf
          WHERE p_force_new_tentativo IS TRUE
             OR NOT EXISTS (SELECT 1 FROM vendite.fatture_sdi fs3 WHERE fs3.fattura_id = tf.f_id)
-        ON CONFLICT (fattura_id, tentativo) DO UPDATE SET stato_sdi_id = v_stato_sdi_id, data_update = now()
-        RETURNING vendite.fatture_sdi.id AS fs_id, vendite.fatture_sdi.fattura_id AS fs_fattura_id, vendite.fatture_sdi.tentativo AS fs_tentativo, vendite.fatture_sdi.stato_sdi_id AS fs_stato_sdi_id
+        -- ⚠️ Conflict target sul NOME del vincolo: `fattura_id` e
+        --    `tentativo_num` sono anche parametri OUT di questa
+        --    funzione, e ripeterli come lista di colonne li
+        --    espone alla risoluzione come variabili plpgsql.
+        --    data_update la scrive trg_fatture_sdi_audit_data_user_upd.
+        ON CONFLICT ON CONSTRAINT uq_fatture_sdi_fattura_tentativo
+          DO UPDATE SET stato_sdi_id = v_stato_sdi_id
+        RETURNING vendite.fatture_sdi.id            AS fs_id,
+                  vendite.fatture_sdi.fattura_id    AS fs_fattura_id,
+                  vendite.fatture_sdi.tentativo_num AS fs_tentativo,
+                  vendite.fatture_sdi.stato_sdi_id  AS fs_stato_sdi_id
     )
     SELECT u.fs_id, u.fs_fattura_id, u.fs_tentativo, u.fs_stato_sdi_id,
            tf.codice_doc, tf.numero, tf.data, tf.billing_account_id,
@@ -85,7 +108,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_prepare_sdi_payload(p_lotto_id bigint, p_stato_sdi_codice_interno character varying, p_force_new_tentativo boolean)
-IS 'Prepara dataset SDI per lotto e apre/riusa tentativi su fatture_sdi. rev 2026-07-28: il totale documento viene letto da vendite.fatture.totale_a_pagare — prima sommava fatture_riepiloghi_iva.totale_riga, colonna che su quella tabella NON esiste. totale_a_pagare e'' il valore prodotto da fn_ricalcola_totali_fattura, fondi e arrotondamento dell''emittente-utility inclusi: ricostruirlo qui sarebbe una seconda implementazione della stessa regola fiscale. rev 2026-08-04 (D-M): via il predicato su lf.esclusa, che era una condizione sempre vera.';
+IS 'Prepara/aggiorna le righe vendite.fatture_sdi del lotto e ne restituisce il payload. Tentativo numerato MAX+1 (>= 1, come da chk_fatture_sdi_tentativo_num). Task pipeline prepare_sdi_payload_lotto.';
 ```
 
 ---

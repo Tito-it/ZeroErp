@@ -21,14 +21,18 @@ BEGIN
     v_tx := dbops.fn_get_or_create_session_tx_id();
 
     -- 1) Recupera l'ID del tipo di contatto
+    -- rev 2026-08-04 (bonifica riferimenti morti, F2): la colonna di
+    --   config.tipi_contatti e' `codice_interno`, non
+    --   `cod_int_tipo_contatto`. Il nome del PARAMETRO resta com'e': e'
+    --   parte della firma e cambiarlo romperebbe le chiamate a nome.
     SELECT id
       INTO v_id
       FROM config.tipi_contatti
-    WHERE cod_int_tipo_contatto = p_cod_int_tipo_contatto;
+    WHERE codice_interno = p_cod_int_tipo_contatto;
 
     -- 2) Se non trovato, loggo e sollevo eccezione
     IF v_id IS NULL THEN
-    
+
         PERFORM script.fn_log_and_raise_error(
             'database',                                 -- p_area
             'script.fn_get_tipo_contatto_id',           -- p_function_name
@@ -41,7 +45,7 @@ BEGIN
             v_tx ,                                        -- p_tx_id       
             VARIADIC ARRAY[]::text[]
         );
-        
+
     END IF;
 
     RETURN v_id;

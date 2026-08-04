@@ -1,0 +1,84 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Bonifica riferimenti morti — F6, flusso
+#   Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md
+#
+#   «control reached end of function without RETURN» (2F005). Oggi non fa
+#   danno — `script.fn_log_and_raise_error` solleva sempre, quindi il flusso
+#   non arriva mai in fondo — ma la funzione sta appoggiando la propria
+#   correttezza su una proprieta' di **un'altra** funzione. E' esattamente
+#   il genere di legame implicito che si rompe in silenzio.
+#
+#   Agganciata a `trg_transaction_ids_upd_dlt_prevent_modification_generic`
+#   su `script.transaction_ids`: blocca UPDATE e DELETE sulla tabella dei
+#   tx_id. `RETURN NULL` e' anche la risposta corretta nel merito: in un
+#   BEFORE ROW annulla l'operazione.
+#
+#   ⚠️ Nota di lettura: il `p_function_name` passato al log dice
+#   'trgfn_prevent_parameters_audit_modification', nome di un'altra
+#   funzione. Non e' un errore di esecuzione e non tocca il perimetro di
+#   questa bonifica, ma e' un'etichetta sbagliata nei log: segnalata nel
+#   brief, non corretta qui per non mescolare due cose.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260804-56-fix-trgfn-prevent-modification-generic-return-mctit.yaml
+
+  - changeSet:
+      id: 20260804-56-fix-trgfn-prevent-modification-generic-return
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        F6 — script.trgfn_prevent_modification_generic: aggiunto il RETURN NULL
+        mancante (2F005). Oggi innocuo perche' la fn di log solleva sempre, ma la
+        correttezza dipendeva da una proprieta' di un'altra funzione.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_prevent_modification_generic()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+
+              BEGIN
+
+                PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'trgfn_prevent_parameters_audit_modification',
+                    'E_TABELLA_OP_NON_CONSENTITA',
+                    jsonb_build_object(
+                      'nome_tabella', TG_TABLE_NAME,
+                      'trigger_op',        TG_OP
+                    ),
+                    NULL::uuid,
+                    TG_TABLE_NAME::text,
+                    TG_OP::text
+                  );
+
+                -- rev 2026-08-04 (bonifica riferimenti morti, F6): manca(va) il RETURN.
+                --   Oggi la riga sopra solleva sempre, quindi il flusso non ci arriva —
+                --   ma «non ci arriva mai» e' una proprieta' di
+                --   script.fn_log_and_raise_error, non di questa funzione. Il giorno in
+                --   cui quella diventasse non-fatale in qualche ramo, una trigger
+                --   function che cade oltre il proprio END solleva 2F005 al posto
+                --   dell'errore di dominio. Il RETURN NULL e' anche la risposta giusta
+                --   nel merito: BEFORE ROW, l'operazione va annullata.
+                RETURN NULL;
+              END;
+              $function$
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

@@ -43,15 +43,28 @@ BEGIN
   END IF;
 
   -- Inserimento in storico.stradario_trasformazioni
+  --
+  -- rev 2026-08-04 (bonifica riferimenti morti, F2): due difetti, e il
+  --   secondo era invisibile al controllo.
+  --   1) I nomi: le colonne sono `via_id_orig` / `via_id_nuovo`, non
+  --      `id_comune_orig` / `id_comune_nuovo`.
+  --   2) ⚠️ I VALORI: si scriveva il `comune_id` delle due righe di
+  --      stradario. Ma questa funzione fonde due **vie** — sposta
+  --      anagrafiche.indirizzi_dettaglio.stradario_id da p_id_orig a
+  --      p_id_target — e il comune non e' cio' che si sta trasformando.
+  --      Riparare solo i nomi avrebbe prodotto record che dicono «la via 12
+  --      e' diventata la via 47» riportando due id di comune: una
+  --      trasformazione falsa, per giunta credibile. Si registrano gli id
+  --      di stradario, gli stessi su cui agisce la UPDATE qui sotto.
   INSERT INTO storico.stradario_trasformazioni(
-    id_comune_orig,
-    id_comune_nuovo,
+    via_id_orig,
+    via_id_nuovo,
     tipo_evento,
     data_evento,
     note
   ) VALUES (
-    (SELECT comune_id FROM config.stradario WHERE id = p_id_orig),
-    (SELECT comune_id FROM config.stradario WHERE id = p_id_target),
+    p_id_orig,
+    p_id_target,
     p_event_type,
     p_event_date,
     p_note
