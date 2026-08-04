@@ -10,9 +10,15 @@ più il presidio che impedisce a queste cose di tornare.
 > **Stato al 2026-08-04, secondo giro: CHIUSO lato DB.** Le 33 righe del primo
 > giro sono state lette una per una contro il DB vivo; sette conclusioni erano
 > sbagliate o incomplete e sono corrette qui sotto, ognuna col perché. I 28
-> changeSet `20260804-37..65` sono **applicati e verdi**: il presidio misura
-> **0 difetti aperti** e **1 sola voce** nel registro del debito, che è una
-> decisione già presa (D6). Resta il commit. Il §7 è il registro di avanzamento.
+> changeSet `20260804-37..65` sono **applicati, verdi e committati**: il presidio
+> misura **0 difetti aperti** e **1 sola voce** nel registro del debito, che è una
+> decisione già presa (D6). Il §7 è il registro di avanzamento.
+>
+> ⚠️ **Non ancora verificato sul campo:** i due passi CI (installazione di
+> `plpgsql_check` nel container del service + guardrail) non sono mai girati in
+> una pipeline. Finché non lo fanno, quella metà del presidio è scritta e provata
+> a mano, non dimostrata. È l'unica ragione per cui il brief resta qui e non in
+> `work-done`.
 
 ---
 
@@ -481,9 +487,17 @@ sul **codice**, non togliere la riga dal seed. Dettagli nel brief BE §4.
 
 ### ⬜ Resta da fare
 
-1. **Commit** (in attesa del «procedi»).
-2. **Scrivere un pgTAP per `fn_prepare_sdi_payload`**: oggi non ne ha nessuno, ed
-   è un passo di due pipeline attive che fino a oggi non poteva funzionare.
+1. ~~Commit~~ ✅ fatto.
+2. ~~pgTAP per `fn_prepare_sdi_payload`~~ ✅ fatto:
+   [`db/pgtap/vendite/test-fn-prepare-sdi-payload-v1.sql`](../../../../db/pgtap/vendite/test-fn-prepare-sdi-payload-v1.sql),
+   `plan(10)` verde. Il test 7 è quello che tiene chiuso il secondo difetto (il
+   tentativo a 0), e **è stato verificato che coglierebbe la regressione**:
+   rimettendo la vecchia formula in transazione, l'INSERT viene respinta da
+   `chk_fatture_sdi_tentativo_num`. Un test che passa senza saper fallire non
+   presidia niente, quindi la prova andava fatta.
+   ⚠️ Copertura **condizionata**: la fixture sceglie un lotto con fatture dai dati
+   esistenti, quindi su un DB appena migrato i test 7-10 fanno skip — proprio i
+   quattro che contano. Dichiarato in testa al file.
 3. **Esercitare i due passi CI** alla prossima pipeline: l'installazione di
    `postgresql-18-plpgsql-check` via `docker exec` è l'unico pezzo non ancora
    provato sul campo.

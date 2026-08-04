@@ -66,17 +66,26 @@ databaseChangeLog:
         pure che elencano i motivi per cui un documento non si puo' annullare
         (figli gia' generati a valle). Sede unica per guard e capability, come
         le sorelle della commessa.
+      # ⚠️ NESSUNA preCondition sul CONTENUTO di config.sorgenti, e non e' una
+      #   dimenticanza. Le righe PREVENTIVO e ORDINE_VENDITA arrivano dal seed
+      #   80_data (20251002-21-upsert-config-sorgenti-table.yaml), fase che il
+      #   master processa DOPO 20_code: su un database costruito da zero — cioe'
+      #   la CI — qui il vocabolario e' ancora vuoto e una sqlCheck fallisce
+      #   sempre («Expected 2 got 0»), fermando l'intera migrazione. Sul DB di
+      #   sviluppo passa solo perche' quel seed e' gia' dentro da mesi: e' la
+      #   trappola classica, verde in locale e rossa in CI. Provato il
+      #   2026-08-04. La dipendenza dal vocabolario e' comunque solo di RUNTIME:
+      #   le due funzioni risolvono l'id per codice_interno quando vengono
+      #   chiamate, e per allora 80_data e' passata da un pezzo.
       preConditions:
         - onFail: HALT
         - and:
             - tableExists:
                 schemaName: vendite
                 tableName: commesse_sorgenti
-            - sqlCheck:
-                expectedResult: 2
-                sql: >
-                  SELECT count(*) FROM config.sorgenti
-                   WHERE codice_interno IN ('PREVENTIVO', 'ORDINE_VENDITA')
+            - tableExists:
+                schemaName: config
+                tableName: sorgenti
       changes:
         - sql:
             dbms: postgresql
