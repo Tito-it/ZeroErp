@@ -144,6 +144,8 @@ FROM _app_schemas s
 --   * i   -> INSERT only: append-only (audit/log) o upsert ON CONFLICT DO NOTHING.
 --   * u   -> UPDATE only: tabelle che il batch SOLO aggiorna (es. stato_emissione),
 --            senza inserirle/cancellarle (l'INSERT e' del flusso operatore/push).
+--   * d   -> DELETE only: tabelle che il batch SOLO ripulisce (rollback/cleanup),
+--            senza mai crearne le righe.
 -- Tutte le tabelle scritte anche INDIRETTAMENTE dai trigger/upsert della pipeline.
 -- Una tabella nuova non concessa fallisce RUMOROSAMENTE (permission denied):
 -- quando la pipeline scrive una nuova tabella, aggiungere la riga nel grado giusto.
@@ -184,6 +186,12 @@ INSERT INTO _perimeter (nspname, relname, grade) VALUES
     ('documenti', 'documenti_generati',             'i'),
     ('documenti', 'documenti_generati_file',        'i'),
     ('documenti', 'documenti_generati_eventi',      'i'),
+    -- DELETE only: il cleanup del rollback automatico (fn_cleanup_fatture_by_ids)
+    -- cancella le note della fattura. Il batch non le crea mai: l'INSERT e' del
+    -- flusso operatore. Il perimetro conteneva 'note_fatture', tabella del
+    -- modello precedente all'unificazione delle note (0 righe, nessuna funzione
+    -- la scrive): il grant era rimasto sulla tabella vecchia.
+    ('vendite', 'note',                             'd'),
     -- UPDATE only: il batch aggiorna stato_emissione, non inserisce/cancella
     ('vendite', 'commesse_attivita',                'u'),
     -- coda stampa (C-2b): il drainer fa SOLO claim/marca/reaper (UPDATE).
@@ -215,6 +223,10 @@ FROM _perimeter p WHERE p.grade = 'i'
 
 SELECT format('GRANT UPDATE ON TABLE %I.%I TO %I', p.nspname, p.relname, :'batch_role')
 FROM _perimeter p WHERE p.grade = 'u'
+\gexec
+
+SELECT format('GRANT DELETE ON TABLE %I.%I TO %I', p.nspname, p.relname, :'batch_role')
+FROM _perimeter p WHERE p.grade = 'd'
 \gexec
 
 -- ------------------------------------------------------------------
