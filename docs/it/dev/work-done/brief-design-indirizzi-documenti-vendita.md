@@ -1,8 +1,30 @@
 # Brief design — Indirizzi documento generici (pannello, tipologie, cascata)
 
 > **Tipo**: design-of-record · **Data**: 2026-07-11 · **Owner**: Tid
-> **Stato**: 🟢 IN CORSO — DB ✅ + BE 5 domini ✅ + FE pilota DDT ✅ + review/hardening ✅ (2026-07-12).
-> Aperti: montaggio pannello sugli altri 4 drawer, PDF context builder, form una-tantum evoluto.
+> **Stato**: 🟢 **CHIUSO — 2026-08-04** (decisione di Tid). Il modello è in
+> esercizio su tutti i domini: catena di risoluzione unica a DB
+> (`fn_resolve_indirizzo_documento` + le due `fn_snapshot_indirizzo*`), BB
+> service condiviso lato BE (`_indirizzi_documento_helpers`), pannello e drawer
+> lato FE, cascata lungo preventivo → ordine → DDT.
+>
+> ⚠️ **Un difetto trovato in-app da Tid il giorno della chiusura, e tracciato
+> altrove invece che nascosto qui.** Nel PDF del **preventivo** l'area indirizzi
+> stampa solo intestazione e CAP: il template v2 legge lo snapshot con le chiavi
+> della shape v1 (`denominazione`/`indirizzo`/`comune`/`provincia`/`nazione`)
+> mentre il canonico — quello che il DB dichiara e produce — è
+> `intestazione`/`via`/`cap`/`citta`/`prov`/`stato`/`display`. **Il dato a DB è
+> corretto**: è il rendering a perderlo, e per giunta in silenzio, perché il
+> template usa `.get()` invece dell'accesso diretto (con `StrictUndefined` il
+> render sarebbe fallito il primo giorno). Verificati tutti e sei i template
+> pubblicati: il difetto è **isolato al preventivo**, il DDT usa le chiavi
+> giuste. Correzione richiesta in
+> [brief-db-template-preventivo-indirizzi.md](../work-in-progress/brief-db-template-preventivo-indirizzi.md)
+> (aperto): il template è un dato a DB e una versione PUBBLICATA è immutabile,
+> quindi serve una v3.
+>
+> Storico dello stato precedente: 🟢 IN CORSO — DB ✅ + BE 5 domini ✅ + FE pilota
+> DDT ✅ + review/hardening ✅ (2026-07-12). Aperti allora: montaggio pannello
+> sugli altri 4 drawer, PDF context builder, form una-tantum evoluto.
 > **Origine**: residuo "DdtIndirizziPanel" di [brief-fe-ddt-vendita.md](../work-done/brief-fe-ddt-vendita.md) §10,
 > allargato a building block generico per tutti i documenti vendita.
 > **Prerequisito bloccante**: [brief-db-indirizzi-documenti-simmetria-e-cascata.md](../work-done/brief-db-indirizzi-documenti-simmetria-e-cascata.md)
