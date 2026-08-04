@@ -759,9 +759,15 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
             cursor.execute(sql, vals)
             return cursor.rowcount > 0
 
-    # Scopo: Cambia lo stato documentale del contratto. Il trigger
-    #        trgfn_contratti_guard_modalita_c_activation fa fail-fast
-    #        se modalita' C e righe incomplete.
+    # Scopo: Cambia lo stato documentale del contratto. Il fail-fast e' a DB,
+    #        su due trigger di `vendite.contratti`:
+    #          - trgfn_contratti_guard_transizione_stato: transizione ammessa
+    #            dalla matrice `config.transizioni_stati_contratti`;
+    #          - trgfn_contratti_lock_post_attivazione: immutabilita' della
+    #            testata dopo l'attivazione.
+    #        (Fino al 2026-08-04 qui era nominato
+    #        trgfn_contratti_guard_modalita_c_activation, droppato con il
+    #        modello di pricing a modalita' A/B/C il 2026-05-15.)
     def update_stato(self, contratto_id: int, stato_doc_contratto_id: int) -> bool:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -1051,11 +1057,15 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
     #       quantita_padre, data_riferimento, ba_id, utility_id,
     #       emittente_sr_id, classe_utenza_id) -> SETOF record
     #
-    # Trigger DB attivi su `contratti_righe_componenti`:
-    #   - trg_contratti_righe_propaga_qta_componenti: ricalcolo quantita
+    # Trigger DB attivi (nomi verificati sul DB, 2026-08-04):
+    #   - su `contratti_righe`: trg_contratti_righe_z90_propaga_qta_componenti_upd
+    #     -> script.trgfn_componenti_propaga_qta: ricalcolo quantita
     #     componente al cambio quantita padre
-    #   - trgfn_contratti_righe_componenti_guard_pending: immutabilita' su
-    #     righe con `stato_approvazione_prezzo = PENDING`
+    #   - su `contratti_righe_componenti`:
+    #     trg_contratti_righe_componenti_a10_guard_pending_upd
+    #     -> script.trgfn_componenti_guard_pending (generico dal 2026-05-26,
+    #     sostituisce trgfn_contratti_righe_componenti_guard_pending):
+    #     immutabilita' su righe con `stato_approvazione_prezzo = PENDING`
 
     # Scopo: Init componenti BoM per una riga padre composita. Wrapper
     # `fn_contratto_riga_componenti_init`. La fn DB e' idempotente: no-op

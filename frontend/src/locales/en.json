@@ -2467,7 +2467,8 @@
       },
       "azione_reason": {
         "ordine_gia_generato": "The quote has already generated an order: cancel the linked order first.",
-        "gia_in_commessa": "The quote has already been sent to invoicing: cancel the job order activities first."
+        "gia_in_commessa": "The quote has already been sent to invoicing: cancel the job order activities first.",
+        "commessa_gia_emessa": "Some lines have already been invoiced through the job order: reverse them on the invoicing side, or create a new revision of the quote."
       },
       "conferma_cambio_stato": "Confirm status change to {stato}? This may be irreversible.",
       "conferma_revisione": "Create a new revision? The current revision will be deactivated.",

@@ -230,15 +230,31 @@ messaggio (semplice ma sporca la UI), oppure `SQLSTATE` custom della classe `U0`
 ma cambia il comportamento di ogni errore dell'applicazione: va fatta come slice
 a sé, con un pgTAP e un test Django che asseriscono il giro completo.
 
+> **Risposta del BE (2026-08-05):**
+> [brief-db-codice-errore-strutturato](brief-db-codice-errore-strutturato.md).
+> Misurato sul percorso reale: il codice **arriva nel 91% dei casi**, non perché
+> il DB lo mandi ma perché il driver allega lo statement chiamante, dove il
+> codice è scritto come letterale. Si perde sui **9** call site che lo passano da
+> variabile — le guard di cambio stato — e sui **76** che usano codici senza
+> prefisso `E_`. Forma scelta: `CONSTRAINT = p_error_code` (round-trip verificato
+> fino a `django.db.DatabaseError`, `str(exc)` invariato → il DB può andare per
+> primo senza toccare il BE).
+
 ---
 
 ## 6. Riepilogo di cosa serve dal BE
 
-| # | Cosa | Dove | Urgenza |
-|---|---|---|---|
-| 1 | 🔴 Decidere come far arrivare il codice errore al translator (§5) | `fn_log_and_raise_error` + `error_translator.py` | **alta** |
-| 2 | Esercitare il passo SDI, che ora gira per la prima volta | pipeline MASSIVO/GIORNALIERO | **alta** |
-| 3 | Decidere se `force_new_tentativo=false` deve restituire anche le fatture già registrate | `fn_prepare_sdi_payload` | media |
-| 4 | Controllare il FE su `provincia_sigla` non più paddata | lookup vie | media |
-| 5 | Riscrivere il commento a `contratti_repository.py:762` | contratti | bassa |
-| 6 | Correggere `api_contratti.md:935` | doc BE | bassa |
+| # | Cosa | Dove | Urgenza | Stato (BE, 2026-08-05) |
+|---|---|---|---|---|
+| 1 | 🔴 Decidere come far arrivare il codice errore al translator (§5) | `fn_log_and_raise_error` + `error_translator.py` | **alta** | ✅ analizzato e rilanciato al DB: [brief-db-codice-errore-strutturato](brief-db-codice-errore-strutturato.md) |
+| 2 | Esercitare il passo SDI, che ora gira per la prima volta | pipeline MASSIVO/GIORNALIERO | **alta** | ⏸️ **sospeso** (decisione Tid). `vendite.fatture_sdi` ha **0 righe**: mai girato. Da ora le pipeline 5 e 7 ci scrivono, ma nessuno legge — il builder XML non esiste e l'executor scarta il valore di ritorno |
+| 3 | Decidere se `force_new_tentativo=false` deve restituire anche le fatture già registrate | `fn_prepare_sdi_payload` | media | ✅ deciso: **no**. La semantica attuale è quella giusta per una pipeline (ciò che torna è ciò che va spedito). Il payload completo del lotto, se servirà, è una **funzione read-only separata** |
+| 4 | Controllare il FE su `provincia_sigla` non più paddata | lookup vie | media | ✅ **niente da fare**: `StradarioAutocomplete` usa solo `indirizzo_normalizzato`, `useIndirizzoBase` solo `codice_postale_id`. Né `provincia_sigla` né `cap` sono letti |
+| 5 | Riscrivere il commento a `contratti_repository.py:762` | contratti | bassa | ✅ fatto — più **due** occorrenze non censite a `contratti_repository.py:1057` |
+| 6 | Correggere `api_contratti.md:935` | doc BE | bassa | ✅ fatto — anche `:934` (`trg_contratti_righe_propaga_qta_componenti` non esiste: è `trg_contratti_righe_z90_propaga_qta_componenti_upd`) |
+
+⚠️ **Fuori lista, ma vivo**: la classe `FP_VARIADIC` del brief DB non è rumore —
+**20 call site in 15 funzioni** chiamano `fn_log_and_raise_error`/`fn_log_error_only`
+con 5 argomenti, e una funzione `VARIADIC text[]` non è chiamabile con zero
+argomenti variadici (42883 a runtime, provato live). Dettaglio e censimento in
+[brief-db-codice-errore-strutturato §8](brief-db-codice-errore-strutturato.md).

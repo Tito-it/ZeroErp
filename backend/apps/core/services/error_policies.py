@@ -2635,6 +2635,24 @@ class ErrorPolicyRegistry:
                 "l'ordine collegato."
             ),
         ),
+        # Il quarto motivo, arrivato col consolidamento §7.3 del brief: era la
+        # regola che viveva DENTRO `fn_cambia_stato_preventivo` (col codice senza
+        # prefisso `E_`, quindi invisibile all'estrattore e degradato a
+        # E_DATABASE), ora assorbita in `fn_check_preventivo_annullabile` come
+        # motivo a se'. Piu' preciso del fratello E_PREV_GIA_IN_COMMESSA: quello
+        # dice che esiste un collegamento a commessa, questo che a valle esiste
+        # gia' una FATTURA — e una fattura senza l'origine che la giustifica non
+        # si crea annullando il preventivo, si corregge dal lato fatturazione.
+        "E_PREV_ANNULLA_COMMESSA_EMESSA": ErrorPolicy(
+            code="E_PREV_ANNULLA_COMMESSA_EMESSA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Righe del preventivo gia' fatturate in commessa: l'annullamento "
+                "non e' ammesso. Storna le attivita' emesse dal lato "
+                "fatturazione, oppure crea una revisione del preventivo."
+            ),
+        ),
         "E_PREV_REVISIONE_ATTIVA": ErrorPolicy(
             code="E_PREV_REVISIONE_ATTIVA",
             http_status=409,
