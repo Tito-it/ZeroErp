@@ -1,5 +1,6 @@
 from django.urls import path
 
+from apps.core.api.emittente_attivo_views import EmittenteAttivoView
 from apps.core.api.me_view import UserProfileView
 from apps.core.api.sessioni_view import (
     SessioneRevocaView,
@@ -75,6 +76,11 @@ urlpatterns = [
         "me/",
         UserProfileView.as_view(),
         name="core-user-profile",
+    ),
+    path(
+        "me/emittente-attivo/",
+        EmittenteAttivoView.as_view(),
+        name="core-emittente-attivo",
     ),
     path(
         "me/sessioni/",

@@ -22,6 +22,7 @@ from rest_framework.exceptions import AuthenticationFailed
 from apps.core.api.token_serializers import SidTokenObtainPairSerializer
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.services.auth_constants import (
+    JWT_CLAIM_EMITTENTE_ATTIVO_ID,
     JWT_CLAIM_IDENTITA_ID,
     JWT_CLAIM_RUOLO_APPLICATIVO,
     RUOLO_APPLICATIVO_CLIENTE_PORTALE,
@@ -29,6 +30,7 @@ from apps.core.services.auth_constants import (
     RUOLO_APPLICATIVO_OPERATORE,
     RUOLO_APPLICATIVO_SHOP_CUSTOMER,
 )
+from apps.core.services.emittente_attivo_service import EmittenteAttivoService
 
 E_VESTE_NON_ATTIVA = "E_VESTE_NON_ATTIVA"
 
@@ -97,6 +99,20 @@ class MultiVesteTokenSerializer(SidTokenObtainPairSerializer):
         refresh = self.get_token(self.user)
         refresh[JWT_CLAIM_IDENTITA_ID] = int(identita["id"])
         refresh[JWT_CLAIM_RUOLO_APPLICATIVO] = identita["ruolo_applicativo"]
+
+        # Step 4: emittente attivo (impersonazione di scope). Solo per gli
+        # OPERATORI: portale e shop non hanno un emittente dentro cui lavorare,
+        # e un claim inerte li' sarebbe solo rumore in un token firmato.
+        #   - operatore  → il suo emittente di permesso;
+        #   - super admin → la preferenza salvata, se ancora valida;
+        #   - nessuno dei due → claim OMESSO = «Tutti gli emittenti», e il FE
+        #     chiede di scegliere (`deve_scegliere` in /me/).
+        # Il claim si aggancia al refresh: SimpleJWT lo copia sull'access.
+        if identita["ruolo_applicativo"] == RUOLO_APPLICATIVO_OPERATORE:
+            attivo = EmittenteAttivoService().risolvi_per_login(self.user.id)
+            if attivo is not None:
+                refresh[JWT_CLAIM_EMITTENTE_ATTIVO_ID] = int(attivo)
+
         data["refresh"] = str(refresh)
         data["access"] = str(refresh.access_token)
         return data

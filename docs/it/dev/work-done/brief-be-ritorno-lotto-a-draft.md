@@ -1,10 +1,46 @@
 # Brief DB → BE — ritorno del lotto a DRAFT
 
+> 🟢 **CHIUSO — 2026-08-04.** Le due richieste del §3 sono implementate e i
+> **quattro punti del §7 sono verificati sul percorso reale** (fn DB + runner
+> vero, non mock) dallo smoke idempotente
+> [`smoke-ritorno-lotto-a-draft.py`](../../../../backend/scripts/tests/smoke-ritorno-lotto-a-draft.py),
+> rieseguito il 2026-08-04: **9 test su 9 verdi**, con `set_rollback(True)` —
+> nessun dato persistito.
+>
+> | § | Punto | Esito misurato |
+> | --- | --- | --- |
+> | 7.1 | il lotto riaperto **riparte dallo step DRAFT** e rigenera le righe | ✅ righe prima 2 → dopo 2, stato DRAFT (il difetto temuto dal brief avrebbe dato stato EMESSA e righe 0) |
+> | 7.2 | dopo l'avanzamento `riaperto_il` torna `NULL` | ✅ spento — niente loop infinito |
+> | 7.3 | il lotto riaperto **non compare fra i falliti** | ✅ `stato_lotto = COMPLETATO`, mai ERRORE |
+> | 7.4 | l'operatore ha un verbo per chiedere il ritorno, gated | ✅ `POST /vendite/lotti/<id>/riporta-a-draft/`, gate `reset_lotto_draft`; dal 2026-08-04 il verbo è anche nel **kebab della lista lotti**, esposto dalle capability |
+>
+> **Come sono state realizzate le due richieste del §3:**
+>
+> 1. **lettura** — `riaperto_il` è il terzo motivo per rifare il passo corrente,
+>    accanto al lotto in errore: stesso comportamento, causa diversa, come
+>    chiedevate (`pipeline_repository.is_lotto_riaperto` →
+>    `deve_rifare_step_corrente` nel runner);
+> 2. **azzeramento** — `azzera_riaperto_il` scatta all'avanzamento riuscito,
+>    dentro la transazione dello step: se lo step fallisce, il rollback
+>    ripristina il segnale. Nessuna funzione DB aggiuntiva è servita.
+>
+> `stato_lotto` **non** è stato allargato, come avevate raccomandato.
+>
+> **Il §6 non è più aperto.** Il punto (3) di D-Q — «`lotto_segnalazioni_service`
+> vieta anche il rilancio, che è la via d'uscita» — è chiuso nel runner: il blocco
+> per criticità distingue ora l'**avanzamento** dal **rilancio dello stesso step**
+> (`blocks_next_step and not is_rilancio_stesso_step`), che resta ammesso.
+>
+> **Cosa resta fuori, come previsto dal §5:** l'estrazione della singola fattura
+> (slice 6-B del piano), che arriverà con un brief suo.
+>
+> ---
+>
 > **Cos'è.** Il lato DB del ritorno in bozza di un lotto è **applicato e testato**
 > (2026-08-03). Questo documento è ciò che serve a voi per usarlo, più **una cosa
 > che senza di voi non funziona**.
 >
-> **Piano completo**: [piano-db-ritorno-lotto-a-draft.md](piano-db-ritorno-lotto-a-draft.md).
+> **Piano completo**: [piano-db-ritorno-lotto-a-draft.md](../work-in-progress/piano-db-ritorno-lotto-a-draft.md).
 > **Movente**: [brief-db-termine-dal-documento-alla-commessa.md §6](brief-db-termine-dal-documento-alla-commessa.md)
 > — la fattura 2263 del lotto 1200, EMESSA e non disfabile. È vostro.
 
@@ -56,7 +92,7 @@ registro storico e restano tali.
 
 **Questo è il pezzo che senza di voi non funziona.**
 
-Oggi [`pipeline_runner.py:144-167`](../../../backend/apps/vendite/services/pipeline_runner.py)
+Oggi [`pipeline_runner.py:144-167`](../../../../backend/apps/vendite/services/pipeline_runner.py)
 decide così:
 
 ```python

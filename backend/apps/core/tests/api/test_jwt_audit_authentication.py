@@ -18,6 +18,8 @@ Indice test eseguiti:
  6) test_user_without_id_skipped — difensivo: nessun .id → no GUC
  7) test_jwt_senza_identita_claim_raise_401 — token senza claim → E_JWT_SENZA_IDENTITA
  8) test_identita_non_attiva_raise_401 — CTE count 0 → E_IDENTITA_NON_ATTIVA
+ 9) test_claim_emittente_attivo_propagato — claim → GUC + rivalidazione «attivo»
+10) test_token_senza_claim_emittente_non_solleva — token pre-cantiere restano validi
 """
 
 from unittest import TestCase
@@ -44,13 +46,20 @@ def _mock_user(user_id: int = 42, username: str = "mctit") -> MagicMock:
     return user
 
 
-def _mock_token_with_identita(identita_id: int | None = 7) -> MagicMock:
+def _mock_token_with_identita(
+    identita_id: int | None = 7, emittente_attivo_id: int | None = None,
+) -> MagicMock:
     """Token validato SimpleJWT: espone `.get(claim)`. Se identita_id
-    e' None simula un token pre-§8.3.2 (senza claim)."""
+    e' None simula un token pre-§8.3.2 (senza claim).
+    `emittente_attivo_id` None = modalita' «Tutti gli emittenti» (claim
+    assente), che e' anche la forma dei token emessi prima
+    dell'impersonazione di scope."""
     token = MagicMock()
     def _get(key, default=None):
         if key == "identita_id":
             return identita_id
+        if key == "emittente_attivo_id":
+            return emittente_attivo_id
         return default
     token.get = MagicMock(side_effect=_get)
     return token
@@ -130,8 +139,10 @@ class JwtAuditAuthenticationTests(TestCase):
         self.assertIn("false", sql)
         self.assertNotIn("SET LOCAL", sql)
 
-    # Scopo: Params nell'ordine del nuovo set_jwt_gucs con identita_id:
-    # [identita_id, user_id (CTE), username, user_id (GUC)]
+    # Scopo: Params nell'ordine del set_jwt_gucs con identita_id + emittente
+    # attivo: [identita_id, user_id (CTE), emittente x2 (CTE ef_row),
+    # username, user_id (GUC)]. Senza claim emittente i due slot sono None
+    # → la CTE non seleziona nulla e la GUC resta vuota.
     @patch(_CONN)
     @patch(_PARENT_AUTH)
     def test_set_gucs_passes_identita_user_and_username(self, mock_parent, mock_conn):
@@ -144,7 +155,39 @@ class JwtAuditAuthenticationTests(TestCase):
         self.auth.authenticate(_mock_request())
 
         params = mock_cursor.execute.call_args[0][1]
-        self.assertEqual(params, ["501", "99", "alice", "99"])
+        self.assertEqual(params, ["501", "99", None, None, "alice", "99"])
+
+    # 9) Claim emittente attivo presente → arriva alla CTE come intero, due
+    #    volte (guard NOT NULL + confronto sulla PK).
+    @patch(_CONN)
+    @patch(_PARENT_AUTH)
+    def test_claim_emittente_attivo_propagato(self, mock_parent, mock_conn):
+        mock_parent.return_value = (
+            _mock_user(user_id=99, username="alice"),
+            _mock_token_with_identita(identita_id=501, emittente_attivo_id=32),
+        )
+        mock_cursor = _mock_cursor_row(mock_conn)
+
+        self.auth.authenticate(_mock_request())
+
+        params = mock_cursor.execute.call_args[0][1]
+        self.assertEqual(params, ["501", "99", 32, 32, "alice", "99"])
+        sql = mock_cursor.execute.call_args[0][0]
+        self.assertIn("app.current_emittente_id", sql)
+        # La rivalidazione «emittente ancora attivo» vive nella CTE, non nel
+        # Python: e' cio' che chiude il caso del token con emittente spento.
+        self.assertIn("ef.attivo = true", sql)
+
+    # 10) Token PRE-impersonazione (nessun claim emittente): nessun errore,
+    #     modalita' globale. I token gia' emessi restano validi a scadenza.
+    @patch(_CONN)
+    @patch(_PARENT_AUTH)
+    def test_token_senza_claim_emittente_non_solleva(self, mock_parent, mock_conn):
+        mock_parent.return_value = (
+            _mock_user(), _mock_token_with_identita(identita_id=7),
+        )
+        _mock_cursor_row(mock_conn)
+        self.assertIsNotNone(self.auth.authenticate(_mock_request()))
 
     # Scopo: DatabaseError dal cursor.execute non deve propagare —
     # cleanup best-effort + log warning. Ma set_jwt_gucs ritorna False

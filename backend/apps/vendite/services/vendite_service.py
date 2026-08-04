@@ -8,10 +8,13 @@
 # Contiene operazioni facade generiche sullo schema vendite,
 # non legate a un sottodominio specifico (pipeline, reset, ecc.).
 
+import logging
 import math
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
+
+from django.db import DatabaseError
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_enum_param, validate_pagination
@@ -37,6 +40,8 @@ from apps.vendite.types import (
     LottoFattureRow,
     LottoListRow,
 )
+
+logger = logging.getLogger(__name__)
 
 _SORT_BY_VALIDI: tuple[str, ...] = ("fattura_id", "nominativo", "totale_doc")
 _SORT_DIR_VALIDI: tuple[str, ...] = ("asc", "desc")
@@ -217,6 +222,28 @@ def fn_lotti_mensile(*, anno: int, auth_user_id: int | None = None) -> dict[str,
 #        cockpit Fase B). Scope emittente applicato in repo: lotto fuori scope o
 #        inesistente → E_LOTTO_NOT_FOUND (404), indistinguibili per non leakare
 #        l'esistenza (coerente RLS operatori).
+#
+#        Dal 2026-08-04 la testata porta anche il blob CAPABILITY letto da
+#        `script.fn_available_actions_lotto`: quali verbi di governo sono
+#        disponibili sul lotto, quali abilitati e — quando non lo sono — perche'
+#        (`enabled` + `reasons`). E' la stessa sorgente che le due fn di
+#        mutazione usano per sollevare, quindi il drawer NON ricalcola nulla:
+#        prima quelle condizioni erano cinque `computed` in LottoDrawer.vue e
+#        avevano gia' prodotto un pulsante-vicolo-cieco (in-app, 2026-07-31).
+#        ⚠️ ORDINE VINCOLANTE: il blob si legge DOPO `get_lotto`, che e' l'unico
+#        cancello di scope — `fn_available_actions_lotto` non filtra per
+#        emittente. Stesso ordine di lettura della fattura (api.md §dettaglio).
+#
+#        Collisione di chiavi: il blob porta `tipo_lotto`, che la testata ha
+#        gia'. E' lo stesso valore letto dalla stessa colonna, quindi il merge
+#        e' innocuo; `stato_codice` (blob) e `stato_doc_fiscale_codice`
+#        (testata) sono nomi diversi per lo stesso codice, come per le sorelle.
+#
+#        Fallback graceful (pattern offerte/contratti): se il capability layer
+#        e' rotto (DatabaseError) si logga e si ritorna la testata SENZA blob.
+#        Il FE degrada a sola consultazione (nessuna azione), ma l'operatore
+#        vede comunque il lotto — una rottura delle capability non deve
+#        impedire la lettura dell'entita'.
 def fn_get_lotto(*, lotto_id: int, auth_user_id: int | None = None) -> dict[str, object]:
     ErrorManager.require(
         bool(lotto_id and lotto_id > 0),
@@ -239,7 +266,16 @@ def fn_get_lotto(*, lotto_id: int, auth_user_id: int | None = None) -> dict[str,
             log_to_db=True,
         )
     assert lotto is not None
-    return dict(lotto)
+    result = dict(lotto)
+    try:
+        result.update(repository.get_available_actions_lotto(lotto_id))
+    except DatabaseError as exc:
+        logger.warning(
+            "fn_available_actions_lotto fallita per lotto_id=%s: %s. "
+            "Dettaglio ritornato senza blob capability (drawer in sola consultazione).",
+            lotto_id, exc,
+        )
+    return result
 
 
 # Scopo: Restituisce elenco fatture di un lotto con decodifiche, filtri e ordinamento opzionali.

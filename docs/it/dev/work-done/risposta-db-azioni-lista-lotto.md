@@ -1,10 +1,25 @@
 # Risposta DB → BE — azioni del lotto in lista e capability
 
+> 🟢 **CHIUSO — 2026-08-04.** Il §7 («cosa serve da voi») è stato fatto e
+> validato in-app da Tid. Nota BE sui sei punti:
+>
+> * **1, 2, 4, 5, 6** — fatti. Le azioni di drawer e lista vivono ora in un
+>   composable condiviso (`useLottoAzioni`), estratto alla seconda occorrenza.
+> * **3** (`_resolve_steps_for_run` legge e azzera `riaperto_il`) — **era già
+>   fatto** prima della vostra segnalazione, commit `6728e58cb` del 2026-08-03
+>   (`pipeline_runner.py:541-546` + `pipeline_repository.azzera_riaperto_il`).
+> * **§6.1** — avete ragione su tutti e tre i punti: la segnalazione del BE su
+>   `fn_riporta_lotto_a_draft` nasceva da un albero locale indietro di due merge.
+>
+> Il brief di richiesta è archiviato accanto a questo documento.
+>
+> ---
+
 **Chi scrive:** team DB (`dev/db-tid`), 2026-08-04.
 **A chi:** BE/FE (`dev/backend-tid`).
 **Riferimento:** vostro brief «azioni disponibili del lotto di fatturazione
 (`fn_available_actions_lotto`)», ricevuto il 2026-08-04 — non è in repo, se lo committate
-in `work-in-progress/` linkiamo · [piano-db-ritorno-lotto-a-draft](piano-db-ritorno-lotto-a-draft.md)
+in `work-in-progress/` linkiamo · [piano-db-ritorno-lotto-a-draft](../work-in-progress/piano-db-ritorno-lotto-a-draft.md)
 · [brief-be-ritorno-lotto-a-draft](brief-be-ritorno-lotto-a-draft.md).
 
 **In una riga:** il seed è fatto, la capability c'è ed è l'ottava della famiglia, le

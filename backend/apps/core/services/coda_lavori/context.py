@@ -56,6 +56,7 @@ def operator_identity_context(
     *,
     username: str | None,
     identita_id: int | None,
+    emittente_attivo_id: int | None = None,
 ) -> Iterator[None]:
     # Guard fail-loud: un job OPERATORE senza identità completa nello scope è
     # un bug di accodamento (il CHECK DB garantisce scope non-null, ma non il
@@ -74,6 +75,14 @@ def operator_identity_context(
     # in un round-trip. False = identità revocata/inattiva o errore DB.
     identita_attiva = set_jwt_gucs(
         username=username, user_id=auth_user_id, identita_id=identita_id,
+        # Emittente CONGELATO all'enqueue: il job lavora dentro l'emittente in
+        # cui si trovava chi l'ha chiesto, non dentro quello in cui l'utente si
+        # trova adesso (potrebbe averlo cambiato, o essersi sconnesso). Senza,
+        # il worker girerebbe in modalita' globale e un giro chiesto «dentro A»
+        # toccherebbe anche B — silenziosamente, perche' nulla lo direbbe.
+        # `None` = job accodato in modalita' globale, o prima del cantiere:
+        # comportamento storico invariato.
+        emittente_attivo_id=emittente_attivo_id,
     )
     try:
         # Fail-loud DENTRO il try: anche su identità non attiva i GUC parziali

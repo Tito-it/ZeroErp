@@ -122,7 +122,7 @@ oggi **non è correlabile** alla richiesta che l'ha generato. È la Fase 0 (§5.
 >   nel `context`). Il punto 6 della Fase 1 — «correlazione: ultime richieste e
 >   errori con lo stesso `request_id`/`tx_id`» — su due terzi delle righe
 >   restituirebbe voci che non sanno dire quale errore rappresentano.
->   Rimedio già pronto: [brief-db-seed-messaggi-errore-mancanti.md](brief-db-seed-messaggi-errore-mancanti.md).
+>   Rimedio già pronto: [brief-db-seed-messaggi-errore-mancanti.md](../work-done/brief-db-seed-messaggi-errore-mancanti.md).
 > - **`vendite.event_log` è write-only**: scritto da due repository, **mai
 >   riletto** (zero endpoint, zero consumatori). Non compare in questa tabella
 >   ma è la timeline per entità dei domini di vendita, cioè materiale naturale

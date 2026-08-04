@@ -124,7 +124,8 @@
     "tipo_soggetto": "Tipo soggetto",
     "select_tipo_soggetto": "Seleziona tipo soggetto",
     "select_comune": "Cerca comune...",
-    "select_via": "Cerca via..."
+    "select_via": "Cerca via...",
+    "retry": "Riprova"
   },
   "strumenti": {
     "code": {
@@ -3075,20 +3076,16 @@
       "rerun": "Riprova step",
       "rerun_header": "Riprova step in errore",
       "rerun_conferma": "Ri-eseguire lo step corrente del lotto in errore?",
-      "numera": "Rendi definitive",
       "numera_header": "Rendi definitive le fatture",
       "numera_conferma": "Numerare in modo definitivo le fatture del lotto? La numerazione fiscale è un atto irreversibile; le stampe verranno accodate.",
       "numera_esito": "Fatture numerate: lotto reso definitivo",
-      "ristampa": "Ristampa documenti",
       "ristampa_header": "Ristampa documenti del lotto",
       "ristampa_conferma": "Accodare la ristampa dei documenti di tutte le fatture del lotto? I PDF verranno rigenerati in background; nessuna numerazione.",
       "ristampa_esito": "{n} documenti accodati per la stampa",
-      "reset": "Annulla lotto",
       "reset_header": "Annulla il lotto",
       "reset_conferma": "Attenzione: questa azione DEMOLISCE le fatture pre-fiscali del lotto (non numerate). Le attività tornano libere per un lotto nuovo. Il lotto passa ad ANNULLATA e viene chiuso: non si riapre. Procedere?",
       "reset_accept": "Annulla il lotto",
       "reset_esito": "Lotto annullato: {fatture} fatture eliminate, {attivita} attività liberate",
-      "riporta_draft": "Riporta in lavorazione",
       "riporta_draft_header": "Riportare il lotto in lavorazione?",
       "riporta_draft_conferma": "Le fatture di questo lotto verranno ELIMINATE e le righe di commessa torneranno «da emettere». Il lotto resta aperto: al prossimo giro le fatture vengono rigenerate, così puoi correggere i dati a monte e rifarle. Operazione non annullabile; non è possibile se una fattura è già stata numerata.",
       "riporta_draft_accept": "Riporta in lavorazione",
@@ -3119,7 +3116,18 @@
       "attention": "Attenzioni",
       "blocca_step": "Le segnalazioni bloccano l'avanzamento al prossimo step.",
       "nessuna_segnalazione": "Nessuna segnalazione",
-      "azione_apri_fattura": "Apri fattura"
+      "azione_apri_fattura": "Apri fattura",
+      "azione_numera": "Rendi definitive",
+      "azione_ristampa": "Ristampa documenti",
+      "azione_annulla": "Annulla lotto",
+      "azione_riporta_a_draft": "Riporta in lavorazione",
+      "azione_reason": {
+        "stato_non_draft": "Il lotto non è più in bozza: l'annullamento è ammesso solo prima che il lotto produca fatture. Da EMESSA la via d'uscita è «Riporta in lavorazione».",
+        "stato_non_pre_fiscale": "Il lotto è oltre lo stato pre-fiscale: non può tornare in lavorazione.",
+        "fatture_non_pre_fiscali": "Il lotto contiene fatture oltre lo stato pre-fiscale: non possono essere eliminate.",
+        "fatture_numerate": "Il lotto contiene fatture già numerate: eliminarle aprirebbe un buco nella numerazione fiscale."
+      },
+      "azione_non_piu_disponibile": "Azione non più disponibile su questo lotto: la lista è stata aggiornata."
     }
   },
   "dash_mesi": {
@@ -3967,6 +3975,24 @@
       "allineamento_left": "Sinistra",
       "allineamento_right": "Destra",
       "allineamento_center": "Centro"
+    }
+  },
+  "core": {
+    "emittente_attivo": {
+      "tutti": "Tutti gli emittenti",
+      "aria": "Emittente attivo",
+      "conferma_titolo": "Cambiare emittente di lavoro?",
+      "cambio_errore": "Cambio emittente non riuscito. Riprova.",
+      "conferma_emittente": "Da ora lavorerai dentro «{nome}»: vedrai e potrai creare solo documenti di questo emittente.",
+      "conferma_globale": "Passerai a «Tutti gli emittenti»: vedrai i dati di tutti, ma non potrai creare documenti finché non ne selezioni uno.",
+      "conferma_schede": "Le schede aperte verranno chiuse e la pagina ricaricata.",
+      "conferma_schede_modificate": "Le schede aperte verranno chiuse: {n} con modifiche non salvate, che andranno perse.",
+      "scelta_titolo": "Seleziona l'emittente di lavoro",
+      "scelta_messaggio": "Scegli l'emittente dentro cui vuoi lavorare. Potrai cambiarlo in qualsiasi momento dalla barra in alto.",
+      "scelta_conferma": "Inizia",
+      "globale_sola_lettura": "Stai vedendo tutti gli emittenti: per creare documenti seleziona un emittente dalla barra in alto.",
+      "scelta_errore": "Non è stato possibile caricare gli emittenti. Riprova, oppure continua in sola lettura.",
+      "scelta_rimanda": "Continua senza selezionare"
     }
   }
 }

@@ -69,6 +69,9 @@ def _dispatch_item(item: QueueItem) -> dict[str, Any] | None:
         scope.get("auth_user_id"),
         username=scope.get("username"),
         identita_id=scope.get("identita_id"),
+        # Congelato all'enqueue (chiave assente sui job accodati prima del
+        # cantiere impersonazione → None → comportamento storico).
+        emittente_attivo_id=scope.get("emittente_attivo_id"),
     ):
         return handler(item.payload, scope=item.scope)
 
