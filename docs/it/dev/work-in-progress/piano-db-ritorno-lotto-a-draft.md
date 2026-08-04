@@ -656,7 +656,7 @@ Conterrà almeno:
 | **Stato** | ✅ **CHIUSA lato DB (2026-08-03)** — analisi, A1-A5 **applicati**, pgTAP **verdi**, doc e brief scritti. 5 changeSet: `20260803-07`…`-10` + seed CSV |
 | **Slice** | **6-A** ✅ **CHIUSA lato DB** (A1-A5 + doc + brief) · **6-B** ✅ **CHIUSA lato DB il 2026-08-04** — ridotta da [RD-7](#1-bis-decisioni-di-questo-cantiere), applicata e verde. Resta il solo **brief al BE** (B5) |
 | **Prossimo passo** | **Il brief al BE (B5)**: quattro rotture in una comunicazione sola — nome della funzione (`fn_elimina_fattura_da_lotto`), quarto contatore `riemesse_attivita`, filtro `esclusa` dell'API + `types.py`, PDF orfani (M6). ⚠️ Il filtro `esclusa` è **rotto adesso**: la lista fatture del lotto interroga una colonna che non esiste più |
-| **Debito lasciato aperto** | Il **presidio** che avrebbe trovato le funzioni fantasma da solo: una vista `dbops` che confronta i riferimenti `schema.tabella` estratti da `pg_get_functiondef` con `pg_class`, più un pgTAP che pretende zero righe. È il gemello a DB del guardrail sui codici errore scritto dal BE. Senza, la prossima funzione morta si trova di nuovo per caso — come è successo a queste tre |
+| **Debito lasciato aperto** | ✅ **Raccolto il 2026-08-04**: il presidio non è una vista fatta in casa ma l'estensione **`plpgsql_check`** (changeSet `20260804-36`), che valida davvero i corpi — colonne comprese, rami mai eseguiti inclusi. Primo giro: **27 difetti su 21 funzioni** + 6 trigger function orfane, fra cui una **quarta** funzione della famiglia «attivita pipeline» che il grep per nome non aveva visto. Cantiere e lista di lavoro: [brief-db-bonifica-riferimenti-morti](brief-db-bonifica-riferimenti-morti.md) |
 
 ### Slice 6-A
 

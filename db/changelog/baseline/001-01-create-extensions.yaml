@@ -37,19 +37,35 @@ databaseChangeLog:
               CREATE EXTENSION IF NOT EXISTS pg_trgm;
             #  CREATE EXTENSION IF NOT EXISTS pgagent;
   # pgAgent: prova a creare solo se esiste l'estensione nel server; altrimenti non bloccare la pipeline
+  #
+  # 🔴 FIX 2026-08-04 — questa preCondition non e' MAI stata soddisfatta.
+  #   `sqlCheck` confronta il risultato come STRINGA e con `equals`: un
+  #   booleano arriva come `true` o `t` a seconda del driver, e nessuno dei
+  #   due combacia con `TRUE`. Il changeSet e' quindi sempre stato scartato,
+  #   e con `onFail: CONTINUE` senza lasciare traccia in DATABASECHANGELOG —
+  #   migrate verde, estensione mai creata. Su dbdev pgAgent c'e' perche' fu
+  #   installato A MANO, non da qui.
+  #   Trovato replicando lo stesso errore su plpgsql_check (20260804-36).
+  #   Ora si CONTA: numero contro numero, nessuna ambiguita' di formato.
+  #   Correzione di una preCondition su changeSet gia' pushato: rientra
+  #   nell'eccezione concordata il 2026-07-18. Il changeSet non ha mai
+  #   girato, quindi non esiste un checksum da invalidare; `validCheckSums:
+  #   ANY` e' aggiunto per prudenza sui DB dove per caso avesse girato.
   - changeSet:
       id: 001-01-02-create-pgagent-extension
       author: mctit
       context: provision
       labels: provision
+      validCheckSums:
+        - ANY
       preConditions:
         - onFail: CONTINUE
         - onError: CONTINUE
         - dbms:
             type: postgresql
         - sqlCheck:
-            expectedResult: "TRUE"
-            sql: "SELECT EXISTS (SELECT 1 FROM pg_available_extensions WHERE name='pgagent');"
+            expectedResult: "1"
+            sql: "SELECT count(*) FROM pg_available_extensions WHERE name='pgagent';"
 
       changes:
         - sql:

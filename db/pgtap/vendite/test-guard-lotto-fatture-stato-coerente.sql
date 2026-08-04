@@ -10,13 +10,13 @@
 -- Indice test
 --  1) Riferimenti minimi presenti
 --  2) Lotto creato
---  3) Fatture test create (ok / critical / da-escludere)
+--  3) Fatture test create (ok / critical)
 --  4) Ponte lotto-fatture creato
 --  5) Stato iniziale allineato => guard NON solleva
 --  6) Lotto avanzato a EMESSA senza sync => guard SOLLEVA (caso incidente)
 --  7) Dopo fn_sync_lotto_fatture_stato => guard NON solleva (non-regressione)
---  8) Le eccezioni sono davvero rimaste indietro (anti-test-vacuo del 7)
---  9) La vista di sorveglianza non elenca le eccezioni
+--  8) L eccezione critical e davvero rimasta indietro (anti-test-vacuo del 7)
+--  9) La vista di sorveglianza non elenca l eccezione
 -- 10) Lotto senza fatture => guard NON solleva
 -- 11) I 3 constraint trigger esistono, sono CONSTRAINT e DEFERRED
 -- 12) End-to-end con SET CONSTRAINTS IMMEDIATE: l'UPDATE che disallinea fallisce
@@ -116,28 +116,26 @@ WITH base AS (
          jsonb_build_object('test_scope', b.test_scope, 'case', v.caso)
     FROM base b
     CROSS JOIN (VALUES (10.00, FALSE, 'ok'),
-                       (12.00, TRUE,  'critical'),
-                       (14.00, FALSE, 'esclusa')) AS v(importo, critical, caso)
+                       (12.00, TRUE,  'critical')) AS v(importo, critical, caso)
   RETURNING id, critical, stato_doc_fiscale_id, meta ->> 'case' AS caso
 )
 SELECT * FROM ins;
 
 SELECT is(
-  (SELECT count(*)::int FROM tmp_fatture_glf), 3,
-  '3) Fatture test create (ok / critical / esclusa)'
+  (SELECT count(*)::int FROM tmp_fatture_glf), 2,
+  '3) Fatture test create (ok / critical)'
 );
 
-INSERT INTO vendite.fatturazione_lotti_fatture (lotto_id, fattura_id, stato_doc_fiscale_id, esclusa, meta)
+INSERT INTO vendite.fatturazione_lotti_fatture (lotto_id, fattura_id, stato_doc_fiscale_id, meta)
 SELECT (SELECT lotto_id FROM tmp_lotto_glf),
        f.id,
        f.stato_doc_fiscale_id,
-       (f.caso = 'esclusa'),
        jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_glf))
   FROM tmp_fatture_glf f;
 
 SELECT is(
   (SELECT count(*)::int FROM vendite.fatturazione_lotti_fatture
-    WHERE lotto_id = (SELECT lotto_id FROM tmp_lotto_glf)), 3,
+    WHERE lotto_id = (SELECT lotto_id FROM tmp_lotto_glf)), 2,
   '4) Ponte lotto-fatture creato'
 );
 
@@ -171,14 +169,22 @@ SELECT throws_ok(
 --    Non-regressione: il percorso reale della pipeline non e' ostacolato.
 --
 -- ⚠️ PREPARAZIONE OBBLIGATORIA DAL 2026-07-31 (piano satelliti I.4). Il sync
---    porta a EMESSA la sola fattura non critical e non esclusa — il caso 'ok' —
+--    porta a EMESSA la sola fattura non critical — il caso 'ok' —
 --    e da oggi vendite.trgfn_fatture_guard_uscita_draft pretende che chi lascia
 --    la bozza sia completo: indirizzo obbligatorio dell'ambito FATTURE piu'
 --    intestazione fiscale congelata delle due parti. Senza queste due
 --    scritture il sync fallirebbe con E_FATTURA_NON_EMETTIBILE_INCOMPLETA e il
 --    test 7 diventerebbe rosso per una ragione che non sta esaminando.
---    Le altre due fatture (critical ed esclusa) restano volutamente nude: il
---    sync non le tocca, ed e' proprio cio' che il test 8 verifica.
+--    L'altra fattura (critical) resta volutamente nuda: il sync non la tocca,
+--    ed e' proprio cio' che il test 8 verifica.
+--    ⚠️ Adeguamento 2026-08-04 (D-M): le eccezioni erano DUE, `esclusa` e
+--    `critical`. Il flag `esclusa` e' stato eliminato perche' dormiente
+--    (nessuno lo valorizzava), quindi la terza fattura della fixture e' sparita
+--    con lui: senza il flag sarebbe stata una fattura come le altre, il sync
+--    l'avrebbe allineata e — non essendo preparata con indirizzo e
+--    intestazione — avrebbe fatto fallire il test 7 con
+--    E_FATTURA_NON_EMETTIBILE_INCOMPLETA, cioe' per una ragione che il test
+--    non sta esaminando.
 -- ------------------------------------------------------------
 INSERT INTO vendite.fatture_indirizzi (fattura_id, tipo_indirizzo_id, snapshot)
 SELECT f.id,
@@ -213,8 +219,8 @@ SELECT ok(
      FROM vendite.fatturazione_lotti_fatture lf
      JOIN vendite.fatture f ON f.id = lf.fattura_id
     WHERE lf.lotto_id = (SELECT lotto_id FROM tmp_lotto_glf)
-      AND (COALESCE(lf.esclusa, FALSE) IS TRUE OR COALESCE(f.critical, FALSE) IS TRUE)),
-  '8) Fatture esclusa/critical rimaste a DRAFT mentre il lotto e'' EMESSA (eccezioni reali)'
+      AND COALESCE(f.critical, FALSE) IS TRUE),
+  '8) Fattura critical rimasta a DRAFT mentre il lotto e'' EMESSA (eccezione reale)'
 );
 
 -- ------------------------------------------------------------

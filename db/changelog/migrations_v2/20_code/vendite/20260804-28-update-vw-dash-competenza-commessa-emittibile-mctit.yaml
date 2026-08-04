@@ -1,0 +1,196 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Le due viste della dashboard competenza dicono se la commessa e' emittibile
+#   (brief-db-emittibilita-visibile-e-sbloccabile.md §3.1).
+#
+# IL PROBLEMA. La lista e il motore rispondevano in modo diverso alla stessa
+#   domanda. La vista escludeva solo le commesse ANNULLATA e guardava lo stadio
+#   riga per riga; il motore (vendite.fn_list_emittibili_lane) pretende invece
+#   che la TESTATA sia in uno stato con stati_commessa.emittibile = true.
+#   Risultato: la card «Da emettere» prometteva un lavoro che il motore
+#   rifiutava, e nessuno diceva perche'.
+#
+# SEGNALARE, NON NASCONDERE (decisione Tid). Filtrare via le righe bloccate le
+#   renderebbe invisibili invece che bloccate — e sono lavoro reale. Con le due
+#   colonne la lista puo' marcare la riga, spiegare il motivo e far nascere il
+#   verbo «Fattura questo» gia' disabilitato, invece di lasciarlo partire per
+#   non fare nulla.
+#
+# DUE COLONNE, NON UNA. Il brief ne chiedeva una (booleano) dicendo pero' «ci
+#   serve poter dire PERCHE' e' bloccata, non solo CHE lo e'»: il booleano da
+#   solo non lo consente. Si aggiungono entrambe — il flag per decidere, il
+#   codice di stato per spiegare — e costano lo stesso, perche' la vista fa gia'
+#   il JOIN su stati_commessa per il filtro ANNULLATA.
+#
+# ⚠️ security_invoker=on VA RI-SPECIFICATO. E' una reloption che PostgreSQL
+#   AZZERA a ogni CREATE OR REPLACE VIEW, e non compare in pg_get_viewdef:
+#   perderla qui riaprirebbe il buco RLS sull'emittente chiuso col fix V-1.
+#
+# ⚠️ COLONNE IN CODA, non in mezzo. CREATE OR REPLACE VIEW ammette solo
+#   l'aggiunta in fondo alla select-list: cambiare l'ordine richiederebbe un
+#   DROP, che qui trascinerebbe la vista dipendente.
+#
+# ℹ️ Nella vista dei gruppi le due colonne entrano anche nella GROUP BY: sono
+#   costanti dentro il gruppo (dipendono dalla commessa, che e' gia' nella
+#   chiave), quindi non spezzano nessuna aggregazione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260804-28-update-vw-dash-competenza-commessa-emittibile-mctit.yaml
+
+  - changeSet:
+      id: 20260804-28-update-vw-dash-competenza-commessa-emittibile
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vw_dash_competenza_attivita e vw_dash_competenza_gruppi espongono
+        commessa_emittibile e commessa_stato_codice: la dashboard puo' dire
+        quali righe il motore di fatturazione non prendera', e perche'.
+        security_invoker=on ri-specificato su entrambe.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_dash_competenza_attivita
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_dash_competenza_gruppi
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_attivita
+              WITH (security_invoker=on) AS
+               SELECT ca.competenza_mese,
+                  co.id AS commessa_id,
+                  co.codice::text AS commessa_codice,
+                  ca.id AS commessa_attivita_id,
+                  co.emittente_soggetto_ruolo_id,
+                  s.ragione_sociale_completa AS cliente_display,
+                  ca.articolo_id,
+                  ca.data_attivita,
+                  ca.quantita,
+                  ca.stato_approvazione,
+                  ca.stato_emissione,
+                      CASE
+                          WHEN ca.stato_emissione::text <> 'EMESSA'::text AND ca.stato_approvazione::text <> 'APPROVATA'::text THEN 'DA_APPROVARE'::text
+                          WHEN ca.stato_emissione::text <> 'EMESSA'::text THEN 'DA_EMETTERE'::text
+                          WHEN af.fattura_riga_id IS NULL THEN 'EMESSA_NON_FATTURATA'::text
+                          ELSE 'FATTURATA'::text
+                      END::character varying AS stadio,
+                  COALESCE(ca.prezzo_snapshot, 0::numeric) * ca.quantita AS valore,
+                  af.data_insert AS data_emissione,
+                      CASE
+                          WHEN af.id IS NULL THEN NULL::boolean
+                          ELSE date_trunc('month'::text, af.data_insert)::date > ca.competenza_mese
+                      END AS emessa_in_ritardo,
+                  af.sospesa,
+                  af.posticipa_al,
+                  f.id AS fattura_id,
+                  af.fattura_riga_id,
+                  f.anno AS fattura_anno,
+                  f.serie AS fattura_serie,
+                  f.numero AS fattura_numero,
+                  sdf.codice_interno AS stato_fattura_codice_interno,
+                  sdf.codice AS stato_fattura_codice,
+                      CASE
+                          WHEN fr.id IS NULL THEN NULL::numeric
+                          WHEN COALESCE(fr.qta, 0::numeric) = 0::numeric THEN 0::numeric
+                          ELSE fr.imponibile_riga * af.quantita / fr.qta
+                      END::numeric(18,6) AS valore_fatturato,
+                  COALESCE(f.critical, false) AS fattura_critical,
+                  lf.lotto_id,
+                  ca.sorgente_tipo_id,
+                  ca.sorgente_uid,
+                  ca.tipo_movimento,
+                  vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) AS gruppo_key,
+                  sc.emittibile AS commessa_emittibile,
+                  sc.codice_interno AS commessa_stato_codice
+                 FROM vendite.commesse co
+                   JOIN vendite.stati_commessa sc ON sc.id = co.stato_commessa_id
+                   JOIN vendite.commesse_attivita ca ON ca.commessa_id = co.id
+                   LEFT JOIN vendite.attivita_fatturabili af ON af.commessa_attivita_id = ca.id
+                   LEFT JOIN vendite.fatture_righe fr ON fr.id = af.fattura_riga_id
+                   LEFT JOIN vendite.fatture f ON f.id = fr.fattura_id
+                   LEFT JOIN config.stati_doc_fiscale sdf ON sdf.id = f.stato_doc_fiscale_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = co.billing_account_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                   LEFT JOIN LATERAL ( SELECT flf.lotto_id
+                         FROM vendite.fatturazione_lotti_fatture flf
+                        WHERE flf.fattura_id = f.id
+                        ORDER BY flf.lotto_id DESC
+                       LIMIT 1) lf ON true
+                   CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids(NULLIF(current_setting('app.current_user_id'::text, true), ''::text)::integer) AS sr_ids) escope
+                WHERE (escope.sr_ids IS NULL OR (co.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))) AND sc.codice_interno::text <> 'ANNULLATA'::text AND ca.stato_emissione::text <> 'ANNULLATA'::text AND (ca.stato_approvazione::text <> 'RIFIUTATA'::text OR ca.stato_emissione::text = 'EMESSA'::text);
+
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_gruppi
+              WITH (security_invoker=on) AS
+               WITH aggregato AS (
+                       SELECT a.competenza_mese,
+                          a.gruppo_key,
+                          a.sorgente_tipo_id,
+                          a.sorgente_uid,
+                          a.commessa_id,
+                          a.commessa_codice,
+                          a.emittente_soggetto_ruolo_id,
+                          a.cliente_display,
+                          a.stadio,
+                          a.commessa_emittibile,
+                          a.commessa_stato_codice,
+                          count(*) AS n_attivita,
+                          COALESCE(sum(a.valore), 0::numeric) AS valore,
+                          min(a.data_attivita) AS data_attivita_min,
+                          max(a.data_attivita) AS data_attivita_max,
+                          bool_or(a.tipo_movimento::text = 'ONERE'::text) AS ha_oneri
+                         FROM vendite.vw_dash_competenza_attivita a
+                        GROUP BY a.competenza_mese, a.gruppo_key, a.sorgente_tipo_id, a.sorgente_uid, a.commessa_id, a.commessa_codice, a.emittente_soggetto_ruolo_id, a.cliente_display, a.stadio, a.commessa_emittibile, a.commessa_stato_codice
+                      )
+               SELECT g.competenza_mese,
+                  g.gruppo_key,
+                  COALESCE(s.codice_interno, 'ONERI_COMMESSA'::character varying) AS tipo_gruppo,
+                  s.area AS area_documento,
+                  COALESCE(doc.codice, g.commessa_codice, g.gruppo_key) AS riferimento,
+                  g.commessa_id,
+                  g.commessa_codice,
+                  g.emittente_soggetto_ruolo_id,
+                  g.cliente_display,
+                  g.stadio,
+                  g.n_attivita,
+                  g.valore,
+                  g.data_attivita_min,
+                  g.data_attivita_max,
+                  g.ha_oneri,
+                  g.sorgente_tipo_id,
+                  g.sorgente_uid,
+                  g.commessa_emittibile,
+                  g.commessa_stato_codice
+                 FROM aggregato g
+                   LEFT JOIN config.sorgenti s ON s.id = g.sorgente_tipo_id
+                   LEFT JOIN LATERAL ( SELECT d.codice
+                         FROM vendite.vw_dash_fatturazione_documenti d
+                        WHERE s.area IS NOT NULL AND d.area::text = s.area::text AND d.documento_uid = g.sorgente_uid
+                        ORDER BY d.competenza_mese DESC NULLS LAST
+                       LIMIT 1) doc ON true;
+
+              COMMENT ON COLUMN vendite.vw_dash_competenza_attivita.commessa_emittibile IS
+                'stati_commessa.emittibile della testata: false = il motore di fatturazione NON prendera'' questa riga, per quanto la riga stessa sia pronta. Esposta per marcare, non per filtrare (brief-db-emittibilita-visibile-e-sbloccabile SS3.1).';
+              COMMENT ON COLUMN vendite.vw_dash_competenza_attivita.commessa_stato_codice IS
+                'Codice interno dello stato della commessa: dice PERCHE'' la riga e'' bloccata, dove commessa_emittibile dice soltanto CHE lo e''.';
+              COMMENT ON COLUMN vendite.vw_dash_competenza_gruppi.commessa_emittibile IS
+                'Propagata da vw_dash_competenza_attivita: costante dentro il gruppo, che e'' gia'' per commessa.';
+              COMMENT ON COLUMN vendite.vw_dash_competenza_gruppi.commessa_stato_codice IS
+                'Propagata da vw_dash_competenza_attivita: costante dentro il gruppo, che e'' gia'' per commessa.';

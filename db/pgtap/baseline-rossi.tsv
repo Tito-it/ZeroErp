@@ -14,7 +14,6 @@ db/pgtap/anagrafiche/test-fn-crea-risorsa-umana.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-fn-get-or-create-indirizzo-dettaglio.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-indirizzi-fallback.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-indirizzi-istanza-cascata.sql	ASSERZIONE
-db/pgtap/anagrafiche/test_indirizzi_unique_res.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-istanza-cliente-chain.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-istanze-dati-precontrattuali.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-risorse-umane-auth-user-view.sql	ERRORE_FIXTURE
@@ -26,6 +25,7 @@ db/pgtap/anagrafiche/test-soggetti-ruoli-guard-natura-ammessa.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-sync-auth-user-is-active-multi-role.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-trgfn-istanze-utilities-require-utility-dichiarata.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-trgfn-pdp-a10-guard.sql	ERRORE_FIXTURE
+db/pgtap/anagrafiche/test_indirizzi_unique_res.sql	ERRORE_FIXTURE
 db/pgtap/catalogo/test-articoli-componenti-guard-attivo-composito.sql	ERRORE_FIXTURE
 db/pgtap/catalogo/test-articoli-componenti-solo-componente.sql	ASSERZIONE
 db/pgtap/catalogo/test-articoli-vincoli-note-uom-overlap.sql	ERRORE_FIXTURE

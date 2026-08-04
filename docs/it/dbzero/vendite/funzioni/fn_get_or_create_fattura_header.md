@@ -19,6 +19,9 @@ AS $function$
 --         fn_build_fattura_key (§6). Se la chiave separa e il
 --         lookup no, le due meta' si annullano e le attivita'
 --         tornano nella stessa fattura.
+-- rev 2026-08-04 (D-M): la INSERT sul ponte non nomina piu'
+--         `esclusa`: era l'unico punto che la scriveva, e ci
+--         scriveva la costante FALSE.
 DECLARE
     v_key          JSONB;
     v_fattura_id   vendite.fatture.id%TYPE;
@@ -124,8 +127,8 @@ BEGIN
         v_termine_id, v_modalita_id, jsonb_build_object('lotto_id', p_lotto_id))
     RETURNING id INTO v_fattura_id;
 
-    INSERT INTO vendite.fatturazione_lotti_fatture (lotto_id, fattura_id, esclusa, meta)
-    VALUES (p_lotto_id, v_fattura_id, FALSE, jsonb_build_object('origine', 'bozza'));
+    INSERT INTO vendite.fatturazione_lotti_fatture (lotto_id, fattura_id, meta)
+    VALUES (p_lotto_id, v_fattura_id, jsonb_build_object('origine', 'bozza'));
 
     RETURN v_fattura_id;
 END;

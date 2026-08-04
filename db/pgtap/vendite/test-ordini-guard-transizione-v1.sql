@@ -12,7 +12,17 @@
 -- 3) DRAFT->CONFERMATO senza righe -> throws E_ORDINE_CONFERMA_SENZA_RIGHE
 -- 4) DRAFT->ANNULLATO -> ok (transizione manuale attiva)
 -- 5) DRAFT->SPEDITO (fuori matrice) -> throws E_ORDINE_TRANSIZIONE_NON_AMMESSA
--- 6) CONFERMATO->ANNULLATO (attivo=false) -> throws E_ORDINE_TRANSIZIONE_NON_AMMESSA
+-- 6) CONFERMATO->ANNULLATO senza figli a valle -> ok (lives)
+-- 7) CONFERMATO->ANNULLATO con l'ordine gia' in commessa -> throws
+--
+-- rev 2026-08-04: il caso 6 fissava la transizione come DISATTIVA
+-- (attivo=false) e si aspettava E_ORDINE_TRANSIZIONE_NON_AMMESSA. Quella
+-- disattivazione lasciava un ordine confermato senza NESSUNA via d'uscita
+-- azionabile da una persona: decisione di Tid, si riattiva con tutti i
+-- controlli che devono impedirla. Il test segue la decisione nuova e diventa
+-- piu' forte: non basta che l'annullamento sia ammesso, deve essere ammesso
+-- SOLO quando non c'e' gia' qualcosa a valle.
+-- Brief: docs/it/dev/work-in-progress/brief-db-vie-uscita-operatore.md
 -- ------------------------------------------------------------
 
 -- Nota emittente: gli ordini passano emittente_fiscale_id esplicito e
@@ -21,7 +31,7 @@
 --   di stato testate non dipendono dal billing_account.
 
 BEGIN;
-SELECT plan(6);
+SELECT plan(7);
 
 -- Contesto non-API: GUC vuota.
 SELECT set_config('app.current_user_id', '', true);
@@ -167,14 +177,47 @@ SELECT throws_ok(
 );
 
 -- ============================================================
--- 6) CONFERMATO->ANNULLATO (attivo=false) -> throws E_ORDINE_TRANSIZIONE_NON_AMMESSA
+-- 6) CONFERMATO->ANNULLATO senza figli a valle -> ok
+--    L'ordine di fixture non ha DDT ne' commesse collegate:
+--    script.fn_check_ordine_annullabile ritorna [] e il guard lascia passare.
 -- ============================================================
-SELECT throws_ok(
+SELECT lives_ok(
   format($q$UPDATE vendite.ordini SET stato_doc_ordine_id =
               (SELECT stato_ann_id FROM tmp_refs_gt) WHERE id = %s$q$,
          (SELECT id FROM tmp_gt_e)),
+  '6) CONFERMATO->ANNULLATO senza figli a valle -> ammesso'
+);
+
+-- ============================================================
+-- 7) CONFERMATO->ANNULLATO con l'ordine gia' inviato a fatturazione -> throws
+--    Un secondo ordine confermato, questa volta agganciato a una commessa:
+--    il guard legge la stessa funzione pura del bottone e rifiuta.
+-- ============================================================
+CREATE TEMP TABLE tmp_gt_f AS
+WITH ins AS (
+  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
+      stato_doc_ordine_id, valuta_id, data, storicizza, meta)
+  SELECT r.soggetto_ruolo_id, NULL::bigint, r.emittente_fiscale_id, r.stato_conf_id, r.valuta_id,
+         DATE '2026-06-15', false, '{"test_scope":"pgtap_guard_transizione","slot":"F"}'::jsonb
+  FROM tmp_refs_gt r RETURNING id
+) SELECT id FROM ins;
+
+INSERT INTO vendite.commesse (codice, billing_account_id, utility_id, stato_commessa_id)
+SELECT 'PGTAP-GT-COM', c.billing_account_id, c.utility_id, c.stato_commessa_id
+  FROM vendite.commesse c LIMIT 1;
+
+INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
+SELECT (SELECT id FROM vendite.commesse WHERE codice = 'PGTAP-GT-COM'),
+       (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA'),
+       (SELECT id FROM tmp_gt_f)::text,
+       'ROOT';
+
+SELECT throws_ok(
+  format($q$UPDATE vendite.ordini SET stato_doc_ordine_id =
+              (SELECT stato_ann_id FROM tmp_refs_gt) WHERE id = %s$q$,
+         (SELECT id FROM tmp_gt_f)),
   'P0001', NULL,
-  '6) CONFERMATO->ANNULLATO (attivo=false) -> throws E_ORDINE_TRANSIZIONE_NON_AMMESSA'
+  '7) CONFERMATO->ANNULLATO con ordine gia'' in commessa -> rifiutato dal guard'
 );
 
 SELECT * FROM finish();

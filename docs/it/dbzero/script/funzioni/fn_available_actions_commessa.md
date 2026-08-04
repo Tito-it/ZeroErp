@@ -14,14 +14,19 @@ CREATE OR REPLACE FUNCTION script.fn_available_actions_commessa(p_commessa_id bi
  STABLE
 AS $function$
 -- Scopo:
---   Capability della commessa per il detail/stato API. Mirror data-driven
---   di fn_available_actions_ordine, senza azioni applicative (solo stato).
---   Le transizioni utente (meta.manuale=true + action_key/label_key) sono
---   esposte come bottoni; le automatiche (bridge push/emittibilita') no.
---   rev 2026-07-24: + enabled/reasons su chiudi/annulla, dalle funzioni
---   pure script.fn_check_commessa_chiudibile / _annullabile — le STESSE
---   che vendite.trgfn_commesse_guard_transizione usa per sollevare
+--   Capability della commessa per il detail/stato API. Mirror
+--   data-driven di fn_available_actions_ordine, senza azioni
+--   applicative (solo stato). Le transizioni utente
+--   (meta.manuale=true + action_key/label_key) sono esposte come
+--   bottoni; le automatiche no.
+--   rev 2026-07-24: + enabled/reasons su chiudi/annulla, dalle
+--   funzioni pure script.fn_check_commessa_chiudibile /
+--   _annullabile — le STESSE che
+--   vendite.trgfn_commesse_guard_transizione usa per sollevare
 --   (sorgente unica: la UI non puo' divergere dal guard).
+--   rev 2026-08-04: stessa cosa per l'ingresso in
+--   PRONTA_FATTURAZIONE, che da oggi e' un'azione manuale
+--   (brief-db-emittibilita-visibile-e-sbloccabile §3.3).
 DECLARE
     v_stato_id      vendite.commesse.stato_commessa_id%TYPE;
     v_stato_cod     vendite.stati_commessa.codice_interno%TYPE;
@@ -29,6 +34,7 @@ DECLARE
     v_emittibile    vendite.stati_commessa.emittibile%TYPE;
     v_actions       jsonb;
     v_can_change    boolean := false;
+    v_mot_pronta    jsonb;
     v_mot_chiudi    jsonb;
     v_mot_annulla   jsonb;
 BEGIN
@@ -43,17 +49,16 @@ BEGIN
         RETURN NULL;
     END IF;
 
-    -- Motivi ostativi alle due uscite terminali, calcolati UNA VOLTA
-    -- SOLA e riusati sotto per enabled e reasons. Le fn sono pure:
-    -- ritornano [] quando l'uscita e' lecita.
+    -- Motivi ostativi alle destinazioni con regola di dominio,
+    -- calcolati UNA VOLTA SOLA e riusati sotto per enabled e
+    -- reasons. Le fn sono pure: ritornano [] quando e' lecito.
+    v_mot_pronta  := script.fn_check_commessa_pronta_fatturazione(p_commessa_id);
     v_mot_chiudi  := script.fn_check_commessa_chiudibile(p_commessa_id);
     v_mot_annulla := script.fn_check_commessa_annullabile(p_commessa_id);
 
     -- Transizioni manuali (utente) disponibili dallo stato corrente.
     -- Filtri: attivo, manuale=true, presenza action_key/label_key.
     -- Le automatiche (manuale=false, senza action_key) sono escluse.
-    -- enabled/reasons: le azioni terminali portano il verdetto delle
-    -- fn_check_*; tutte le altre nascono abilitate senza motivi.
     SELECT COALESCE(
         jsonb_agg(
             jsonb_build_object(
@@ -65,13 +70,15 @@ BEGIN
                 'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
                 'outlined',         COALESCE((t.meta->>'outlined')::boolean, false),
                 'enabled',          CASE sa.codice_interno
-                                      WHEN 'CHIUSA'    THEN jsonb_array_length(v_mot_chiudi)  = 0
-                                      WHEN 'ANNULLATA' THEN jsonb_array_length(v_mot_annulla) = 0
+                                      WHEN 'PRONTA_FATTURAZIONE' THEN jsonb_array_length(v_mot_pronta)  = 0
+                                      WHEN 'CHIUSA'              THEN jsonb_array_length(v_mot_chiudi)  = 0
+                                      WHEN 'ANNULLATA'           THEN jsonb_array_length(v_mot_annulla) = 0
                                       ELSE true
                                     END,
                 'reasons',          CASE sa.codice_interno
-                                      WHEN 'CHIUSA'    THEN v_mot_chiudi
-                                      WHEN 'ANNULLATA' THEN v_mot_annulla
+                                      WHEN 'PRONTA_FATTURAZIONE' THEN v_mot_pronta
+                                      WHEN 'CHIUSA'              THEN v_mot_chiudi
+                                      WHEN 'ANNULLATA'           THEN v_mot_annulla
                                       ELSE '[]'::jsonb
                                     END
             )
@@ -89,8 +96,8 @@ BEGIN
       AND (t.meta->>'label_key') IS NOT NULL;
 
     -- can_change_state sulle sole azioni ABILITATE: con le azioni
-    -- disabilitate ora presenti in lista, il vecchio
-    -- jsonb_array_length(v_actions) > 0 sarebbe sempre true.
+    -- disabilitate presenti in lista, jsonb_array_length(v_actions) > 0
+    -- sarebbe sempre true.
     SELECT EXISTS (
         SELECT 1
           FROM jsonb_array_elements(v_actions) AS a
@@ -108,7 +115,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_commessa(p_commessa_id bigint)
-IS 'Capability commessa per detail/stato API: available_actions (transizioni manuali da vendite.transizioni_stati_commessa, data-driven dal meta), can_change_state, can_edit_righe (stati_commessa.modificabile), is_emittibile (stati_commessa.emittibile), stato_codice. Mirror di fn_available_actions_ordine senza azioni applicative. Fallback NULL se commessa inesistente. rev 2026-07-24 (brief-db-guard-uscita-commessa-e-capabilities): ogni azione porta enabled + reasons; chiudi/annulla prendono il verdetto dalle funzioni pure script.fn_check_commessa_chiudibile / _annullabile, le STESSE usate dal guard di transizione (sorgente unica: la UI non puo'' divergere dal DB). ATTENZIONE CONTRATTO: la presenza di un''azione in available_actions NON significa piu'' eseguibile — i consumatori devono leggere enabled. can_change_state e'' calcolato sulle sole azioni abilitate.';
+IS 'Capability della commessa per il detail/stato API: azioni manuali disponibili dallo stato corrente, con enabled/reasons dalle funzioni pure fn_check_commessa_pronta_fatturazione / _chiudibile / _annullabile — le stesse usate dal guard di transizione, cosi'' la UI non puo'' divergere. rev 2026-08-04: aggiunta la destinazione PRONTA_FATTURAZIONE, diventata azione manuale.';
 ```
 
 ---
