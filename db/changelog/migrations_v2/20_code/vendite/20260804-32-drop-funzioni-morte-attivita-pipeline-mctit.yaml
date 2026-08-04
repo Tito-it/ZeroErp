@@ -1,0 +1,106 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Bonifica — si tolgono le due funzioni superstiti della «attivita
+#   pipeline», morte dal 2026-02-27
+#   (piano-db-ritorno-lotto-a-draft.md, misure M4-quater / M4-quinquies)
+#
+# ── PERCHE' SONO MORTE ───────────────────────────────────────────────────
+#   Entrambe leggono `vendite.attivita_fatturabili_lotti`, droppata di
+#   proposito il 2026-02-27 (`20260227-16-drop-attivita-pipeline-deprecated`)
+#   insieme al resto della famiglia, con `CASCADE`.
+#
+#   Il `CASCADE` porta via viste e vincoli ma **non i corpi plpgsql**:
+#   PostgreSQL non li traccia come dipendenze e non ri-valida le funzioni
+#   gia' create. Da qui la sopravvivenza. Non potrebbero girare nemmeno
+#   volendo: alla prima esecuzione plpgsql risolverebbe i `%TYPE` del
+#   DECLARE e fallirebbe.
+#
+#   `fn_resolve_commessa_prezzi` legge anche `l.utility_id` e
+#   `l.emittente_soggetto_ruolo_id` di quella tabella;
+#   `fn_sync_attivita_stato_esecuzione` filtra per di piu' su
+#   `attivita_fatturabili.lotto_attivita_id`, che non e' piu' nemmeno una
+#   colonna. Sono morte due volte.
+#
+# ── 🔴 ERANO GIA' STATE VISTE, E LASCIATE LI' ────────────────────────────
+#   Il 2026-03-31, durante la campagna di sostituzione degli `E_GENERICO`,
+#   entrambe furono incontrate e **saltate**. Esiste un changeSet che
+#   serve solo a dirlo — `20260331-26-skip-fn-sync-attivita-stato-esecuzione`:
+#
+#     «Dipende da vendite.attivita_fatturabili_lotti (tabella rimossa).
+#      Da verificare se la funzione va rimossa dal DB.»
+#
+#   e la nota gemella per l'altra in `work-done/correzione-e-generico.md`
+#   (righe 160 e 195). Quella verifica non e' mai stata fatta: cinque mesi
+#   dopo, una delle due ha fatto fallire un migrate ed e' cosi' che ci
+#   siamo tornati sopra. Una segnalazione in un commento non e' un
+#   presidio — e' un promemoria che nessuno rilegge.
+#
+# ── VERIFICA DEI CONSUMATORI (2026-08-04) ────────────────────────────────
+#   Cercate in sei posti, non solo nel codice Python, perche' qui una
+#   funzione puo' essere invocata **per nome da un dato**:
+#     · backend/            -> nessuna occorrenza
+#     · frontend/src        -> nessuna
+#     · 80_data (seed, CSV) -> nessuna: nessun task registry, nessun
+#                              binding handler la nomina
+#     · db/pgtap            -> nessuna
+#     · altre funzioni e viste vive -> nessuna
+#     · repo intero         -> solo i changeSet che le hanno create e la
+#                              documentazione di lavori gia' chiusi
+#
+# ── PERCHE' SI DROPPA E NON SI RISCRIVE ──────────────────────────────────
+#   Riscriverle vorrebbe dire inventare un requisito: nessuno ha chiesto
+#   quella funzionalita', e le tabelle su cui erano costruite sono state
+#   tolte di proposito. Se un domani servisse sincronizzare gli stati
+#   delle attivita' o risolvere i prezzi di commessa, si scrivera'
+#   qualcosa sulle tabelle di oggi — e non somigliera' a queste.
+#
+#   Tenerle costava: comparivano nella doc auto-generata come parte del
+#   sistema, e `fn_resolve_commessa_prezzi` era perfino linkata dalla
+#   guida utente `gestione-commesse.md`. Un nome che suona centrale al
+#   pricing, su una funzione che non puo' girare, e' un inganno che
+#   qualcuno prima o poi paga.
+#
+# ── COSA NON SI TOCCA ────────────────────────────────────────────────────
+#   Il changeSet `20260331-26`: e' storia gia' applicata. La sua
+#   preCondition `tableExists` lo lascia in MARK_RAN, quindi non
+#   interferisce.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260804-32-drop-funzioni-morte-attivita-pipeline-mctit.yaml
+
+  - changeSet:
+      id: 20260804-32-drop-funzioni-morte-attivita-pipeline
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Bonifica: DROP di vendite.fn_resolve_commessa_prezzi e
+        vendite.fn_sync_attivita_stato_esecuzione, superstiti della famiglia
+        «attivita pipeline» droppata il 2026-02-27. Nessun consumatore in DB, BE,
+        FE, seed o pgTAP; non potrebbero girare perche' leggono una tabella che
+        non esiste. Gia' segnalate come da rimuovere il 2026-03-31.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_resolve_commessa_prezzi(bigint);
+
+              DROP FUNCTION IF EXISTS vendite.fn_sync_attivita_stato_esecuzione(
+                  bigint, character varying);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              SELECT 1;

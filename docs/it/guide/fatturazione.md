@@ -502,11 +502,15 @@ fatture e chiude il lotto**. Non è un rollback reversibile: è una demolizione.
   auto-run, proprio perché distruttivo. Serve una richiesta esplicita
   (`POST /lotti/<id>/reset-draft/`).
 * Per una singola fattura esiste l'alternativa che **non** annulla il lotto:
-  `fn_elimina_fattura_da_lotto_draft`. A dover essere in bozza è il **lotto**;
-  la fattura basta che sia **pre-fiscale** (DRAFT o EMESSA, cioè non ancora
-  numerata). Dal 2026-08-02 il perimetro è identico a quello dell'annullamento
-  del lotto: serviva per togliere la singola fattura difettosa rimasta a EMESSA
-  in un lotto tornato in bozza, che prima non era possibile.
+  `fn_elimina_fattura_da_lotto`. Dal 2026-08-04 il perimetro è **pre-fiscale su
+  entrambi i fronti**: sia il lotto sia la fattura devono essere in DRAFT o
+  EMESSA, cioè non ancora numerati. Prima si pretendeva il lotto in **bozza**, e
+  quel vincolo era di troppo: il caso che motiva l'azione è proprio la fattura
+  difettosa dentro un lotto **emesso**, dove il pulsante c'era e non funzionava.
+  ⚠️ Togliere una fattura vuol dire **cancellarla**, testata compresa, e dopo non
+  è più possibile sapere cosa diceva: resta solo la registrazione storica del suo
+  passaggio nel lotto. È la stessa cosa che il ritorno in bozza fa su tutte le
+  fatture del lotto insieme — qui la si fa su una sola.
 * Se `rollback` è `[]` (array vuoto), lo step non prevede operazioni di pulizia.
 
 ### Regole operative del modello lotti

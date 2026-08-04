@@ -1,0 +1,112 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D-M passo 3 — via la colonna `fatturazione_lotti_fatture.esclusa`
+#   (piano-db-ritorno-lotto-a-draft.md, Slice 6-B B4)
+#
+# ── PERCHE' SPARISCE ─────────────────────────────────────────────────────
+#   Era dormiente da sempre: nessun percorso la valorizzava e l'unico
+#   INSERT che la nominava ci scriveva `FALSE` letterale. Undici oggetti
+#   la interrogavano o la propagavano — nove leggendo la colonna, due
+#   passandola come parametro — e tutti stavano valutando una costante.
+#   Una colonna cosi' non e' neutra: ogni volta che qualcuno legge una di
+#   quelle query deve fermarsi a capire se il caso «esclusa» sia vivo,
+#   e la risposta e' no da quando la colonna esiste.
+#
+#   Con RD-7 il flag perde anche l'ultima ragione teorica di esistere: la
+#   fattura tolta dal lotto viene CANCELLATA e la riga di ponte con lei,
+#   quindi non c'e' piu' nessuno scenario in cui serva una riga che sta
+#   nel ponte ma «non conta».
+#
+# ── ⚠️ L'ORDINE DELLE FASI, che qui e' sostanza ──────────────────────────
+#   🔴 RETTIFICA (2026-08-04, dopo il migrate): `changelog-autogen.yaml`
+#   ordina i file **per numero NN**, NON per fase — 00_schema e 20_code
+#   sono mescolati nella stessa sequenza. Quindi questo changeSet gira
+#   DOPO `-19` e `-20`, non prima: quando la colonna cade, le funzioni
+#   sono gia' state riscritte senza. Il che va bene.
+#   ⚠️ Ma vale anche il contrario, ed e' costato un giro: il `-20`
+#   ricreava la vista PRIMA che questo la droppasse, quindi la vista
+#   restava a terra. La ricrea `20260804-31`, che ha numero piu' alto.
+#   La fase conta solo per **80_data** (includeAll nel master, dopo
+#   l'autogen): di li' viene la regola nota, e di li' l'equivoco.
+#
+#   🔴 La **vista** invece e' una dipendenza vera e registrata: senza il
+#   DROP esplicito qui sotto, l'ALTER fallirebbe. La si toglie e la
+#   ricrea `20260804-31` — numero piu' alto di questo, non «fase successiva» —
+#   con la sua reloption `security_invoker=on` ri-specificata.
+#
+#   🔴 E c'e' una SECONDA dipendenza, che il primo tentativo non aveva
+#   previsto e che ha fatto fallire il migrate del 2026-08-04: il
+#   CONSTRAINT TRIGGER differito dell'invariante lotto<->fatture e'
+#   dichiarato `AFTER INSERT OR UPDATE OF lotto_id, fattura_id, esclusa
+#   OR DELETE`. Una colonna nominata in una lista `UPDATE OF` e' una
+#   dipendenza registrata esattamente come lo e' per una vista.
+#   Anche questo si toglie qui e si ricrea in `20260804-30`, senza
+#   `esclusa` nella lista.
+#
+#   ⚠️ PostgreSQL suggerisce `DROP ... CASCADE`. **Non si usa**: porterebbe
+#   via il trigger in silenzio, lasciando l'invariante scoperto senza che
+#   nessuno se ne accorga. Le dipendenze si tolgono a mano, una per una,
+#   e si rimettono.
+#
+#   ⚠️ Il nome del trigger e' **troncato a 63 caratteri** da PostgreSQL:
+#   quello creato si chiama `..._coerente_ins_upd`, non `..._ins_upd_dlt`
+#   come lo si legge nel changeSet che lo crea. Il suffisso che
+#   documentava il DELETE e' andato perso nel troncamento. Il DROP qui
+#   sotto usa comunque il nome per esteso: viene troncato allo stesso
+#   modo, quindi combacia.
+#
+# ── COSA NON SERVE TOCCARE ───────────────────────────────────────────────
+#   Lo storico: `storico.fatturazione_lotti_fatture` non specchia le
+#   colonne, tiene uno `snapshot jsonb`. Le fotografie gia' scritte
+#   conservano la chiave `esclusa` — ed e' corretto: erano vere quando
+#   sono state prese.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260804-21-drop-column-esclusa-lotti-fatture-mctit.yaml
+
+  - changeSet:
+      id: 20260804-21-drop-column-esclusa-lotti-fatture
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: vendite
+            tableName: fatturazione_lotti_fatture
+            columnName: esclusa
+      comment: >
+        D-M: via la colonna dormiente fatturazione_lotti_fatture.esclusa. Due
+        dipendenze registrate la trattengono e vanno tolte a mano, mai con
+        CASCADE: la vista vw_lotti_fatture_incoerenti (ricreata da 20260804-31) e
+        il constraint trigger dell'invariante, che la nomina nella lista UPDATE OF
+        (ricreato da 20260804-30).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_lotti_fatture_incoerenti;
+
+              DROP TRIGGER IF EXISTS trg_fatturazione_lotti_fatture_def_guard_stato_coerente_ins_upd_dlt
+                  ON vendite.fatturazione_lotti_fatture;
+
+              ALTER TABLE vendite.fatturazione_lotti_fatture
+                  DROP COLUMN IF EXISTS esclusa;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              ALTER TABLE vendite.fatturazione_lotti_fatture
+                  ADD COLUMN IF NOT EXISTS esclusa boolean NOT NULL DEFAULT false;
