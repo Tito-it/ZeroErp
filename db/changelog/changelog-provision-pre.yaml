@@ -10,3 +10,18 @@ databaseChangeLog:
   - include:
       file: baseline/001-01-create-extensions.yaml
       relativeToChangelogFile: true
+  # ⚠️ plpgsql_check vive in migrations_v2 ma DEVE essere incluso anche qui.
+  #   Il master lo raggiunge solo via changelog-autogen, e la CI lancia il
+  #   master con `--contexts="!provision"`: quel changeSet ha
+  #   `context: provision`, quindi li' viene escluso e in CI l'estensione non
+  #   nasceva mai. Sul server di sviluppo passava inosservato perche' il
+  #   master si lancia anche con `--contexts=provision`.
+  #   Scoperto il 2026-08-04: il guardrail dei riferimenti morti falliva in
+  #   CI con «Estensione plpgsql_check assente» — cioe' facendo esattamente
+  #   il suo mestiere, invece di passare in silenzio senza aver misurato.
+  #   ℹ️ Nessun doppio: il file dichiara il proprio `logicalFilePath`, quindi
+  #   l'identita' del changeSet e' la stessa da entrambe le vie e Liquibase
+  #   lo esegue una volta sola.
+  - include:
+      file: migrations_v2/00_schema/dbops/20260804-36-create-extension-plpgsql-check-mctit.yaml
+      relativeToChangelogFile: true
