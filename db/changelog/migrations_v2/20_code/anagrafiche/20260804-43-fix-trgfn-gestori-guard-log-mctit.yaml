@@ -1,0 +1,161 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Bonifica riferimenti morti — F4
+#   Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md
+#
+# ── DUE DIFETTI, ENTRAMBI NELLA PRIMA CHIAMATA ───────────────────────────
+#   1) Argomenti posizionali dopo un argomento con nome:
+#
+#        dbops.fn_log_and_raise_error(
+#            'database', TG_NAME,
+#            p_codice_errore := 'E_GESTORE_SOGGETTO_RUOLO_MANCANTE',   <-- con nome
+#            jsonb_build_object(...),                                  <-- posizionale
+#            ...
+#
+#      PostgreSQL non lo ammette: dopo il primo argomento con nome devono
+#      esserlo tutti. E' cio' che il check segnala.
+#   2) `dbops.fn_log_and_raise_error` **non esiste**: c'e' solo
+#      `script.fn_log_and_raise_error`, ed e' quella che le **altre due**
+#      chiamate della stessa funzione usano correttamente. Il refuso e'
+#      isolato alla prima.
+#      ⚠️ Il parametro si chiama `p_error_code`, non `p_codice_errore`:
+#      anche il nome usato era inventato. Si passa tutto posizionale, come
+#      nelle due chiamate sorelle sotto.
+#
+#   Agganciato a `trg_gestori_a10_guard_ins_upd` su `anagrafiche.gestori`:
+#   e' il guard che presidia il singleton gestore e l'obbligo di partita
+#   IVA. Il ramo rotto e' il primo — «soggetto_ruolo inesistente» — cioe'
+#   proprio quello che deve parlare chiaro quando qualcuno crea un gestore
+#   puntando a un ruolo che non c'e'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260804-43-fix-trgfn-gestori-guard-log-mctit.yaml
+
+  - changeSet:
+      id: 20260804-43-fix-trgfn-gestori-guard-log
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        F4 — anagrafiche.trgfn_gestori_guard: la prima chiamata di log mescolava
+        argomenti con nome e posizionali, usava un nome di parametro inesistente
+        (p_codice_errore) e puntava a dbops.fn_log_and_raise_error, che non esiste.
+        Allineata alle altre due chiamate della stessa funzione.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_gestori_guard()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_soggetto_id   uuid;
+                  v_partita_iva   text;
+                  v_existing_id   integer;
+              BEGIN
+
+              -- =========================================================
+              -- anagrafiche.trgfn_gestori_guard_ins_upd()
+              -- Guard di dominio per anagrafiche.gestori
+              --
+              -- Regole:
+              --  1) Singleton: massimo 1 record in anagrafiche.gestori
+              --  2) Il soggetto collegato DEVE avere partita_iva valorizzata
+              --
+              -- rev 2026-08-04 (bonifica riferimenti morti, F4):
+              --   la prima chiamata di log usava dbops.fn_log_and_raise_error
+              --   (inesistente) e mescolava un argomento con nome
+              --   (`p_codice_errore`, per giunta non un parametro vero: e'
+              --   `p_error_code`) con argomenti posizionali, che PostgreSQL
+              --   non ammette. Resa identica alle due sorelle sotto.
+              -- =========================================================
+
+                  ----------------------------------------------------------------
+                  -- 0) Verifica che il soggetto_ruolo esista e risali al soggetto
+                  ----------------------------------------------------------------
+                  SELECT s.id, s.partita_iva
+                  INTO v_soggetto_id, v_partita_iva
+                  FROM anagrafiche.soggetti_ruoli sr
+                  JOIN anagrafiche.soggetti s
+                  ON s.id = sr.soggetto_id
+                  WHERE sr.id = NEW.soggetto_ruolo_id;
+
+                  IF v_soggetto_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database' ,
+                          TG_NAME,
+                          'E_GESTORE_SOGGETTO_RUOLO_MANCANTE',
+                          jsonb_build_object(
+                                  'table', TG_TABLE_NAME,
+                                  'soggetto_ruolo_id', NEW.soggetto_ruolo_id
+                              ),
+                          NULL::uuid,
+                          NEW.soggetto_ruolo_id::text
+                      );
+                  END IF;
+
+                  ----------------------------------------------------------------
+                  -- 1) Regola: il soggetto del gestore deve avere PARTITA IVA
+                  ----------------------------------------------------------------
+                  IF v_partita_iva IS NULL OR btrim(v_partita_iva) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database' ,
+                          TG_NAME,
+                          'E_RUOLO_RICHIEDE_PIVA',
+                          jsonb_build_object(
+                              'table', TG_TABLE_NAME,
+                              'soggetto_id', v_soggetto_id,
+                              'soggetto_ruolo_id', NEW.soggetto_ruolo_id
+                          ),
+                          NULL::uuid,
+                          'gestore',
+                          v_soggetto_id::text,
+                          NEW.soggetto_ruolo_id::text
+                      );
+                  END IF;
+
+                  ----------------------------------------------------------------
+                  -- 2) Regola singleton: massimo 1 record in anagrafiche.gestori
+                  --
+                  -- NB: id <> NEW.id per permettere UPDATE sulla stessa riga.
+                  ----------------------------------------------------------------
+                  SELECT g.id
+                  INTO v_existing_id
+                  FROM anagrafiche.gestori g
+                  WHERE g.id <> COALESCE(NEW.id, -1)
+                  LIMIT 1;
+
+                  IF FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database' ,
+                          TG_NAME,
+                          'E_GESTORE_SINGLETON_VIOLATO',
+                          jsonb_build_object
+                              ('table', TG_TABLE_NAME,
+                              'existing_gestore_id', v_existing_id,
+                              'new_soggetto_ruolo_id', NEW.soggetto_ruolo_id
+                              ),
+                          NULL::uuid,
+                          NEW.soggetto_ruolo_id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

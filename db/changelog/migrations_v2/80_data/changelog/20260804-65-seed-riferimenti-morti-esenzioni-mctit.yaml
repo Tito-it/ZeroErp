@@ -1,0 +1,92 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Bonifica riferimenti morti — la PRIMA E UNICA voce del registro
+#   Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md §5
+#
+# ── IL PUNTO DI PARTENZA E' ZERO, NON 34 ────────────────────────────────
+#   Il brief prevedeva che il primo giro fosse rosso su 27 e che «va bene:
+#   serve a fissare il punto di partenza». Non e' andata cosi', ed e'
+#   meglio: i changeSet `20260804-37..60` hanno sanato **tutto**, quindi il
+#   registro nasce con una sola voce — e quell'unica voce non e' un debito
+#   da pagare, e' una decisione gia' presa.
+#
+#   Un registro che nasce con 34 righe e' un registro che nessuno legge.
+#   Uno che nasce con una riga, e quella riga e' motivata, e' un registro.
+#
+#   (Nota di misura: i difetti erano **28** REALE, non 27. Il ventottesimo
+#   era la chiamata a `fn_audit_log_once` in `fn_run_automations_storico`,
+#   che la vecchia regola VARIADIC classificava come falso positivo. Stretta
+#   la regola, e' emerso — vedi `20260804-44`.)
+#
+# ── PERCHE' QUESTA VOCE E' PERMANENTE (finche' D6 non e' chiusa) ─────────
+#   `script.trgfn_guard_sorgente_polimorfa_tipizzata` e' orfana **di
+#   proposito**. Non e' un residuo che nessuno ha tolto: e' una funzione
+#   parcheggiata con una decisione aperta, scritta nero su bianco nel
+#   changeSet `20260718-16`.
+#
+#   ⚠️ E' il limite strutturale della classe ORFANA, e vale la pena dirlo
+#   perche' e' generale: la misura distingue «con trigger» da «senza
+#   trigger», non «residuo» da «parcheggiata». La differenza sta
+#   nell'intenzione, e l'intenzione non e' una proprieta' del catalogo di
+#   sistema. Senza questa riga il presidio proporrebbe a ogni giro di
+#   droppare cio' che si e' gia' deciso di tenere — e un presidio che
+#   chiede sempre la stessa cosa sbagliata e' un presidio che si impara a
+#   ignorare.
+#
+# ── SEED ─────────────────────────────────────────────────────────────────
+#   `DELETE` + `INSERT` invece di un upsert: cosi' questo file e' lo
+#   **specchio** del registro e non solo la sua prima riga. Quando il
+#   debito cambia si edita qui, in un changeSet nuovo con numerazione
+#   successiva (mai modificare uno gia' mergiato).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260804-65-seed-riferimenti-morti-esenzioni-mctit.yaml
+
+  - changeSet:
+      id: 20260804-65-seed-riferimenti-morti-esenzioni
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Prima voce del registro del debito: script.trgfn_guard_sorgente_polimorfa_tipizzata,
+        orfana di proposito con decisione D6 aperta (20260718-16). Tutti gli altri 34
+        difetti del primo giro sono stati sanati dai changeSet 20260804-37..60.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM dbops.riferimenti_morti_esenzioni;
+
+              INSERT INTO dbops.riferimenti_morti_esenzioni
+                     (schema_nome, funzione, esito_like, motivo, data_registrazione)
+              VALUES (
+                'script',
+                'trgfn_guard_sorgente_polimorfa_tipizzata',
+                '%senza alcun trigger%',
+                'ORFANA DI PROPOSITO, decisione D6 aperta. Il changeSet 20260718-16 la '
+                'documenta come non agganciata: il suo target di progetto '
+                '(vendite.attivita_fatturabili) perse il trigger con 20260225-45 '
+                '(«ridondante con la FK commessa_attivita_id nel flusso commessa-only») '
+                'e il riaggancio va ri-deciso con Tid alla luce di quella motivazione. '
+                'Ha una sorella trgfn_guard_sorgente_polimorfa_testuale per il modello B '
+                'e un pgTAP proprio. Esce da questo registro solo quando D6 e'' chiusa: '
+                'se la risposta e'' «riaggancia», con il CREATE TRIGGER; se e'' «non '
+                'serve piu''», con il DROP FUNCTION.',
+                DATE '2026-08-04'
+              );
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DELETE FROM dbops.riferimenti_morti_esenzioni
+               WHERE funzione = 'trgfn_guard_sorgente_polimorfa_tipizzata';

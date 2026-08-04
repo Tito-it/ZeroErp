@@ -32,8 +32,10 @@ BEGIN
       SELECT array_agg(DISTINCT schema_name) INTO v_schemas
         FROM dbops.automation_scope;
     ELSE
-      SELECT array_agg(nspname) INTO v_schemas
-        FROM pg_namespace
+      -- rev 2026-08-04 (bonifica riferimenti morti, F6): il FROM non
+      --   dichiarava l'alias `n` che le tre condizioni del WHERE usano.
+      SELECT array_agg(n.nspname) INTO v_schemas
+        FROM pg_namespace n
       WHERE n.nspname NOT LIKE 'pg_%'
         AND n.nspname <> 'information_schema'
         AND n.nspname <> 'storico';

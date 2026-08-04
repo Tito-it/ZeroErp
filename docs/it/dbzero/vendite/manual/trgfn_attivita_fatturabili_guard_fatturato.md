@@ -9,7 +9,7 @@
 **Approfondimento funzioni:**
 >
 • [vendite.trgfn_attivita_fatturabili_normalize](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_normalize)  
-> • [vendite.trgfn_attivita_fatturabili_guard_fonte](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_guard_fonte)  
+> • [vendite.trgfn_attivita_fatturabili_guard_quantita_immutabile](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_guard_quantita_immutabile)  
 >
 ### 🎯 Scopo Principale
 (latest review 26-01-2026)

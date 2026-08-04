@@ -1,0 +1,195 @@
+# ⚙️ Funzione `fn_check_funzioni_riferimenti_morti`
+
+```sql
+CREATE FUNCTION fn_check_funzioni_riferimenti_morti()
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION dbops.fn_check_funzioni_riferimenti_morti()
+ RETURNS TABLE(classe text, schema_nome text, funzione text, argomenti text, esito text)
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  r          record;
+  rel        record;
+  m          text;
+  v_relazioni int;
+  v_tipi     text[];
+  v_chiamata text;
+  v_e_variadic boolean;
+BEGIN
+  CREATE TEMP TABLE IF NOT EXISTS tmp_raw(
+    nsp text, pro text, args text, relid oid, msg text
+  ) ON COMMIT DROP;
+  DELETE FROM tmp_raw;
+
+  FOR r IN
+    SELECT p.oid                                     AS oid,
+           n.nspname::text                           AS nsp,
+           p.proname::text                           AS pro,
+           pg_get_function_identity_arguments(p.oid) AS args,
+           (p.prorettype = 'trigger'::regtype)       AS is_trg
+      FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+      JOIN pg_language  l ON l.oid = p.prolang
+     WHERE l.lanname = 'plpgsql'
+       AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+       AND n.nspname NOT LIKE 'pg\_%'
+       -- fuori tutto cio' che appartiene a un'estensione: non e' codice
+       -- che manteniamo noi (PostGIS, topology, pgagent).
+       AND NOT EXISTS (SELECT 1 FROM pg_depend d
+                        WHERE d.objid = p.oid AND d.deptype = 'e')
+     ORDER BY n.nspname, p.proname
+  LOOP
+    IF r.is_trg THEN
+      -- Trigger function: si valida contro OGNI tabella su cui e'
+      -- agganciata. Zero tabelle = orfana, e non e' validabile.
+      v_relazioni := 0;
+      FOR rel IN
+        SELECT DISTINCT tg.tgrelid
+          FROM pg_trigger tg
+         WHERE tg.tgfoid = r.oid AND NOT tg.tgisinternal
+      LOOP
+        v_relazioni := v_relazioni + 1;
+        BEGIN
+          FOR m IN SELECT c FROM plpgsql_check_function(
+                     r.oid::regprocedure, relid => rel.tgrelid::regclass,
+                     fatal_errors => false) AS c
+          LOOP
+            IF m LIKE 'error:%' THEN
+              INSERT INTO tmp_raw VALUES (r.nsp, r.pro, r.args, rel.tgrelid, m);
+            END IF;
+          END LOOP;
+        EXCEPTION WHEN OTHERS THEN
+          INSERT INTO tmp_raw VALUES (r.nsp, r.pro, r.args, rel.tgrelid,
+                                      'error:CHECK-KO:' || SQLERRM);
+        END;
+      END LOOP;
+
+      IF v_relazioni = 0 THEN
+        classe := 'ORFANA'; schema_nome := r.nsp; funzione := r.pro;
+        argomenti := r.args;
+        esito := 'trigger function senza alcun trigger agganciato: non validabile, e gia'' di per se'' un residuo';
+        RETURN NEXT;
+      END IF;
+
+    ELSE
+      BEGIN
+        FOR m IN SELECT c FROM plpgsql_check_function(
+                   r.oid::regprocedure, fatal_errors => false) AS c
+        LOOP
+          IF m LIKE 'error:%' THEN
+            INSERT INTO tmp_raw VALUES (r.nsp, r.pro, r.args, NULL, m);
+          END IF;
+        END LOOP;
+      EXCEPTION WHEN OTHERS THEN
+        INSERT INTO tmp_raw VALUES (r.nsp, r.pro, r.args, NULL,
+                                    'error:CHECK-KO:' || SQLERRM);
+      END;
+    END IF;
+  END LOOP;
+
+  -- ── Classificazione ──────────────────────────────────────────────
+  FOR r IN
+    SELECT t.nsp, t.pro, t.args, t.msg,
+           count(*)                                   AS visto_su,
+           (SELECT count(DISTINCT tg.tgrelid)
+              FROM pg_trigger tg
+              JOIN pg_proc p2 ON p2.oid = tg.tgfoid
+              JOIN pg_namespace n2 ON n2.oid = p2.pronamespace
+             WHERE n2.nspname = t.nsp AND p2.proname = t.pro
+               AND NOT tg.tgisinternal)                AS tabelle_totali
+      FROM tmp_raw t
+     GROUP BY t.nsp, t.pro, t.args, t.msg
+     ORDER BY t.nsp, t.pro, t.msg
+  LOOP
+    schema_nome := r.nsp; funzione := r.pro; argomenti := r.args; esito := r.msg;
+
+    -- (1) Errore visto solo su ALCUNE delle tabelle del trigger: e' il
+    --     ramo dedicato a un'altra tabella, non un difetto.
+    IF r.tabelle_totali > 1 AND r.visto_su < r.tabelle_totali THEN
+      classe := 'FP_RAMO_ALTRA_TABELLA';
+
+    -- (1-bis) «relazione X non esiste» dove X e' una TRANSITION TABLE
+    --     dichiarata nel CREATE TRIGGER (`REFERENCING NEW TABLE AS ...`).
+    --     Esiste solo durante lo scatto del trigger, plpgsql_check non la
+    --     vede. Il nome non si indovina: si legge da pg_trigger, che lo
+    --     conserva in tgnewtable/tgoldtable.
+    ELSIF r.msg ~ '^error:42P01:' AND EXISTS (
+            SELECT 1
+              FROM pg_trigger tg
+              JOIN pg_proc p3      ON p3.oid = tg.tgfoid
+              JOIN pg_namespace n3 ON n3.oid = p3.pronamespace
+             WHERE n3.nspname = r.nsp AND p3.proname = r.pro
+               AND NOT tg.tgisinternal
+               AND substring(r.msg from '"([^"]+)"')
+                   IN (tg.tgnewtable::text, tg.tgoldtable::text))
+    THEN
+      classe := 'FP_TRANSITION_TABLE';
+
+    -- (1-ter) Errore di SINTASSI dentro un EXECUTE: e' SQL costruito a
+    --     runtime, con dentro segnaposto che non sono SQL valido finche'
+    --     non vengono sostituiti. plpgsql_check prova a interpretarlo
+    --     comunque.
+    ELSIF r.msg ~ '^error:42601:' AND r.msg LIKE '%:EXECUTE:%' THEN
+      classe := 'FP_SQL_DINAMICO';
+
+    -- (2) «funzione non esiste» (SQLSTATE 42883): falso positivo SOLO se
+    --     tutti i tipi passati sono testo-compatibili — allora e' la
+    --     variadic che plpgsql_check non sa risolvere. Se c'e' un tipo
+    --     non testuale, il cast non esiste e la chiamata fallisce davvero.
+    --
+    -- ⚠️ v3 (2026-08-04) — la regola era TROPPO LARGA e ha scusato un
+    --     difetto vero. La chiamata
+    --       dbops.fn_audit_log_once('…','SKIP_EXISTS','STORICO', jsonb, '…')
+    --     ha il 3o e 4o argomento INVERTITI rispetto alla firma
+    --     (p_params jsonb, p_message text). Ma `jsonb` e' nella lista dei
+    --     testo-compatibili, quindi uno scambio fra un text e un jsonb
+    --     produce esattamente la stessa firma di un variadico omesso, e
+    --     usciva etichettato FP_VARIADIC.
+    --     Rimedio: l'esenzione vale solo se la funzione chiamata **ha
+    --     davvero** un parametro VARIADIC. Se non ce l'ha, il variadico
+    --     non c'entra e l'errore e' reale.
+    --     Delle 17 righe FP_VARIADIC del primo giro, questa era l'unica a
+    --     non chiamare fn_log_and_raise_error / fn_log_error_only — ed era
+    --     l'unica sbagliata.
+    ELSIF r.msg ~ '^error:42883:' AND r.msg LIKE '%(%)%' THEN
+      v_tipi := string_to_array(
+                  btrim(substring(r.msg from '\(([^)]*)\)')), ', ');
+      -- Nome della funzione chiamata, come compare nel messaggio:
+      -- «la funzione <schema>.<nome>(tipi) non esiste».
+      v_chiamata := substring(r.msg from '([A-Za-z_][A-Za-z0-9_$]*\.[A-Za-z_][A-Za-z0-9_$]*)\s*\(');
+      v_e_variadic := EXISTS (
+        SELECT 1
+          FROM pg_proc p4
+          JOIN pg_namespace n4 ON n4.oid = p4.pronamespace
+         WHERE n4.nspname || '.' || p4.proname = v_chiamata
+           AND p4.provariadic <> 0
+      );
+      IF v_e_variadic AND NOT EXISTS (
+           SELECT 1 FROM unnest(v_tipi) AS x(t)
+            WHERE btrim(x.t) NOT IN ('unknown','text','name','jsonb','uuid',
+                                     'character varying','"unknown"'))
+      THEN
+        classe := 'FP_VARIADIC';
+      ELSE
+        classe := 'REALE';
+      END IF;
+
+    ELSE
+      classe := 'REALE';
+    END IF;
+
+    RETURN NEXT;
+  END LOOP;
+END
+$function$
+
+COMMENT ON FUNCTION dbops.fn_check_funzioni_riferimenti_morti()
+IS 'Compila con plpgsql_check ogni funzione plpgsql non-estensione e classifica i difetti (REALE, ORFANA, FP_*). Fonte unica: la usano sia scripts/sql/check_funzioni_riferimenti_morti.sql sia il pgTAP db/pgtap/dbops/test-riferimenti-morti-v1.sql. Richiede l''estensione plpgsql_check.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

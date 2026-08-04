@@ -125,7 +125,15 @@ Le colonne `sorgente_tipo_id` / `sorgente_riga` / `sorgente_uid` **non hanno un
 guard polimorfo di esistenza**. Storia:
 
 * `20251026-02`: agganciato `trg_attivita_fatturabili_a10_guard_fonte_ins_upd`
-  (guard polimorfo, oggi `script.trgfn_guard_sorgente_polimorfa_tipizzata`);
+  (guard polimorfo, oggi `script.trgfn_guard_sorgente_polimorfa_tipizzata`).
+  ⚠️ Il changeSet **droppa e ricrea quel nome di trigger**, che fino a quel
+  momento apparteneva a `vendite.trgfn_attivita_fatturabili_guard_fonte`: da lì
+  quella funzione è rimasta **orfana in silenzio** — il trigger col suo nome
+  continuava a esistere, puntato a un'altra funzione. Nessuno se n'è accorto per
+  nove mesi, finché non l'ha trovata `plpgsql_check`
+  ([brief-db-bonifica-riferimenti-morti](/dev/work-in-progress/brief-db-bonifica-riferimenti-morti) F1).
+  Droppata da `20260804-48`: nominava anche una tabella e una colonna che non
+  esistono più, quindi non avrebbe potuto girare nemmeno riagganciandola;
 * `20260225-45`: **rimosso deliberatamente** — nel flusso commessa-only la
   sorgente è sempre COMMESSA e la FK `commessa_attivita_id` garantisce già il
   padre; il probe polimorfo era ridondante;

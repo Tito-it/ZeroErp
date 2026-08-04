@@ -1,0 +1,106 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Bonifica riferimenti morti — F4
+#   Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md
+#
+# ── DUE DIFETTI ──────────────────────────────────────────────────────────
+#   1) `TGNAME` non esiste. La variabile speciale e' `TG_NAME`, con
+#      l'underscore. Senza, plpgsql la cerca come colonna e fallisce.
+#      Il refuso e' in **entrambe** le chiamate.
+#   2) `anagrafiche.fn_log_and_raise_error` **non esiste**: c'e' solo
+#      `script.fn_log_and_raise_error`. Il check non lo segnala perche' si
+#      ferma su `TGNAME`, che viene prima.
+#
+#   Sono i gemelli di `trgfn_soggetti_conti_bancari_guard` (20260804-41) su
+#   `soggetti_ruoli_conti_bancari`: stesse regole, stesso schema sbagliato,
+#   refusi diversi. Nati dallo stesso copia-incolla, si erano rotti in due
+#   punti diversi — e nessuno dei due se n'era accorto perche' entrambi
+#   falliscono **solo** nel ramo che blocca.
+#
+#   Agganciato a `trg_soggetti_ruoli_conti_bancari_guard_ins_upd`: e' vivo.
+#   ⚠️ Qui il `tx_id` viene gia' passato (`NEW.tx_id`) e resta com'era: la
+#   tabella ha la colonna, non e' fra i difetti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260804-42-fix-trgfn-soggetti-ruoli-conti-bancari-guard-mctit.yaml
+
+  - changeSet:
+      id: 20260804-42-fix-trgfn-soggetti-ruoli-conti-bancari-guard
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        F4 — anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard: TGNAME al posto
+        di TG_NAME (due volte) e schema errato sulla funzione di log
+        (anagrafiche -> script).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Guard su anagrafiche.soggetti_ruoli_conti_bancari.
+              --
+              -- rev 2026-08-04 (bonifica riferimenti morti, F4):
+              --   - TGNAME -> TG_NAME (la variabile speciale ha l'underscore;
+              --     senza, plpgsql la risolve come colonna e non la trova).
+              --   - anagrafiche.fn_log_and_raise_error non esiste: e' script.
+              DECLARE
+                v_attivo boolean;
+              BEGIN
+                -- Evita legami a conti disattivati
+                SELECT attivo INTO v_attivo
+                  FROM anagrafiche.conti_bancari
+                WHERE id = NEW.conto_bancario_id;
+                IF v_attivo IS NOT TRUE THEN
+
+                  PERFORM script.fn_log_and_raise_error(
+                                      'database',
+                                      TG_NAME,
+                                      'E_CONTO_BANCARIO',
+                                      jsonb_build_object(
+                                        'tabella','soggetti_ruoli_conti_bancari',
+                                        'conto_bancario_id',  NEW.conto_bancario_id::text
+                                      ) ,
+                                       NEW.tx_id::uuid,
+                                       NEW.conto_bancario_id::text
+                                    );
+                END IF;
+
+                -- Coerenza date
+                IF NEW.valido_dal IS NOT NULL AND NEW.valido_al IS NOT NULL
+                  AND NEW.valido_al < NEW.valido_dal THEN
+
+                      PERFORM script.fn_log_and_raise_error(
+                                      'database',
+                                      TG_NAME,
+                                      'E_DATA_AL_MINORE_DAL',
+                                      jsonb_build_object(
+                                        'tabella','anagrafiche.soggetti_ruoli_conti_bancari',
+                                        'valido_al',  NEW.valido_al::text,
+                                        'valido_dal',  NEW.valido_dal::text
+                                      ) ,
+                                      NEW.tx_id::uuid,
+                                      NEW.valido_al::text, NEW.valido_dal::text
+                                    );
+                END IF;
+                RETURN NEW;
+              END
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

@@ -30,21 +30,27 @@ BEGIN
     Note tecniche
     ------------
     - Trigger tipicamente da usare BEFORE INSERT OR UPDATE, così può modificare NEW.
+
+    rev 2026-08-04 (bonifica riferimenti morti, F4):
+      - anagrafiche.fn_log_and_raise_error non esiste: e' script.
+      - SQLERRM fuori da un blocco EXCEPTION non e' una variabile
+        risolvibile: plpgsql la cerca come colonna e fallisce.
+      - il contesto riportava 'data_attivazione' = 0 letterale.
   */
 
 
   -- Stato ATTIVO richiede data_attivazione
   IF NEW.stato = 'ATTIVO' AND NEW.data_attivazione IS NULL THEN
-    PERFORM anagrafiche.fn_log_and_raise_error(
+    PERFORM script.fn_log_and_raise_error(
                         'database',
                         'trgfn_sepa_mandati_guard',
                         'E_DATA_ERRATA',
                         jsonb_build_object(
                           'tabella','pagamenti.sepa_mandati',
-                          'data_attivazione',  0,
-                          'error', SQLERRM
+                          'stato', NEW.stato,
+                          'data_attivazione', NEW.data_attivazione
                         ) , NULL::uuid, 'data attivazione per stato ATTIVO'
-                      ); 
+                      );
   END IF;
 
   -- Normalizzazione UMR e IBAN snapshot

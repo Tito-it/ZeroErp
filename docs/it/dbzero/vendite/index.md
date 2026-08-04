@@ -213,7 +213,7 @@
 - [trgfn_attivita_fatturabili_guard_ba_coerenza](funzioni/trgfn_attivita_fatturabili_guard_ba_coerenza.md) — (latest review 29-01-2026)   La funzione **`vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()`** valida la coerenza tra `billing_account_id` e `istanza_utility_id` sulle righe di `attivita_fatturabili`.
 - [trgfn_attivita_fatturabili_guard_commessa](funzioni/trgfn_attivita_fatturabili_guard_commessa.md) — (latest review 24-02-2026)   La funzione trigger `vendite.trgfn_attivita_fatturabili_guard_commessa()` applica il guardrail anti-bypass sul dominio `attivita_fatturabili`, impedendo scritture senza collegamento commessa quando il flag è attivo.
 - [trgfn_attivita_fatturabili_guard_fatturato](funzioni/trgfn_attivita_fatturabili_guard_fatturato.md) — (latest review 26-01-2026) La funzione **`vendite.trgfn_attivita_fatturabili_guard_fatturato()`** blocca modifiche o cancellazioni di righe di `vendite.attivita_fatturabili` che risultano gia` agganciate a una riga di fattura.
-- [trgfn_attivita_fatturabili_guard_fonte](funzioni/trgfn_attivita_fatturabili_guard_fonte.md) — (latest review 29-01-2026)   La funzione **`vendite.trgfn_attivita_fatturabili_guard_fonte()`** verifica la coerenza della **fonte quantita** e delle **competenze** per le righe di `attivita_fatturabili`.
+- [trgfn_attivita_fatturabili_guard_fonte](funzioni/trgfn_attivita_fatturabili_guard_fonte.md)
 - [trgfn_attivita_fatturabili_guard_quantita_immutabile](funzioni/trgfn_attivita_fatturabili_guard_quantita_immutabile.md)
 - [trgfn_attivita_fatturabili_lotti_gen_codice](funzioni/trgfn_attivita_fatturabili_lotti_gen_codice.md)
 - [trgfn_attivita_fatturabili_normalize](funzioni/trgfn_attivita_fatturabili_normalize.md) — (latest review 21/01/2026) La funzione `vendite.trgfn_attivita_fatturabili_normalize()` applica una **normalizzazione minima** su `vendite.attivita_fatturabili` per garantire coerenza **temporale** e **tecnica** dei dati prima della scrittura.
@@ -230,7 +230,7 @@
 - [trgfn_contratti_guard_transizione_stato](funzioni/trgfn_contratti_guard_transizione_stato.md) — (latest review 12-05-2026 — aggiunto check PENDING componenti BoM CASO A)
 - [trgfn_contratti_lock_post_attivazione](funzioni/trgfn_contratti_lock_post_attivazione.md) — Il pricing di un contratto attivo è **immutabile per design** (§3-bis-A del brief): né listino, né variazione globale, né versione fissata possono essere cambiati dopo l'attivazione. Questo garantisce stabilità del calcolo prezzi per tutta la durata del contratto e coerenza dell'audit trail.
 - [trgfn_contratti_normalize](funzioni/trgfn_contratti_normalize.md) — La trigger function `vendite.trgfn_contratti_normalize()` completa i dati minimi del contratto in insert quando il numero documento e` presente.
-- [trgfn_contratti_righe_componenti_guard_pending](funzioni/trgfn_contratti_righe_componenti_guard_pending.md) — - **Decisione L3 sul componente esatto** — quando un componente di una riga contratto ha un prezzo out-of-policy in attesa di approvazione, l'approvatore L3 deve decidere sulla riga esatta proposta. - **Guard testata complementare** — `trgfn_contratti_guard_transizione_stato` (aggiornato in `20260511-41`) blocca la transizione DRAFT→ATTIVO se qualsiasi componente è PENDING. I due guard garantiscono che nessun contratto divenga operativo con prezzi incerti. - **Pattern denylist difensivo** — elenco esplicito dei campi struttura.
+- [trgfn_contratti_righe_componenti_guard_pending](funzioni/trgfn_contratti_righe_componenti_guard_pending.md)
 - [trgfn_contratti_righe_guard_aggiunta_fuori_listino](funzioni/trgfn_contratti_righe_guard_aggiunta_fuori_listino.md) — Un operatore che vuole modificare il prezzo di un articolo già in listino deve usare `OVERRIDE`, non `AGGIUNTA`. Questo guard è la **barriera DB-first** che rende impossibile la confusione tra i due tipi, anche da psql diretto o da chiamate API non validate.
 - [trgfn_contratti_righe_guard_esclusione_figlio_bundle](funzioni/trgfn_contratti_righe_guard_esclusione_figlio_bundle.md)
 - [trgfn_contratti_righe_guard_modalita_c](funzioni/trgfn_contratti_righe_guard_modalita_c.md)
@@ -289,6 +289,7 @@
 - [trgfn_preventivi_default_emittente](funzioni/trgfn_preventivi_default_emittente.md)
 - [trgfn_preventivi_default_valuta](funzioni/trgfn_preventivi_default_valuta.md)
 - [trgfn_preventivi_gen_codice](funzioni/trgfn_preventivi_gen_codice.md) — La trigger function `vendite.trgfn_preventivi_gen_codice()` genera automaticamente `numero` preventivo quando il campo non viene valorizzato.
+- [trgfn_preventivi_guard_annullamento](funzioni/trgfn_preventivi_guard_annullamento.md)
 - [trgfn_preventivi_guard_emittente_ba](funzioni/trgfn_preventivi_guard_emittente_ba.md) — (rev 2026-07-13)
 - [trgfn_preventivi_guard_transizione_approvazione](funzioni/trgfn_preventivi_guard_transizione_approvazione.md) — (latest revision 12-05-2026b — form atomic: rimosso Check 3 prezzo NULL; Sprint E listini v5 §14.6)
 - [trgfn_preventivi_guard_utility_istanza_coerenza](funzioni/trgfn_preventivi_guard_utility_istanza_coerenza.md)

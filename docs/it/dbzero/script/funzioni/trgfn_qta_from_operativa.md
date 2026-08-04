@@ -15,8 +15,6 @@ AS $function$
 DECLARE
   -- Parametri
   v_fill_factor_to_base boolean := false;
-  v_fill_uom_id_base    boolean := false;
-  v_target_col          text    := 'quantita';
   v_fonte_col           text    := NULL;
   v_fonte_val           text    := NULL;
 
@@ -40,15 +38,24 @@ DECLARE
   -- TG_ARGV (opzionali):
   --   [0] fill_factor_to_base :: boolean  (default FALSE)
   --       Se TRUE e NEW.factor_to_base è NULL, salva lo snapshot del fattore usato.
-  --   [1] fill_uom_id_base    :: boolean  (default FALSE)
-  --       Se TRUE, copia NEW.uom_operativa_id in NEW.uom_id.
-  --   [2] target_col          :: text     (default 'quantita')
-  --       Nome colonna target per la quantita' base calcolata.
-  --   [3] fonte_nullability_col :: text   (default NULL)
+  --   [1] fonte_nullability_col :: text   (default NULL)
   --       Nome colonna che governa la nullabilita' di qta_operativa.
   --       Se valorizzato e qta_operativa IS NULL: legge il valore di quella colonna
   --       via to_jsonb(NEW). Se != 'FISSA' (e non NULL) -> RETURN NEW senza raise.
   --       Usare per tabelle con fonte_quantita_attesa (es. contratti_righe).
+  --
+  -- rev 2026-08-04 (bonifica riferimenti morti, F5) — tolti due rami morti
+  --   e i due parametri che li governavano:
+  --     · [1] fill_uom_id_base -> scriveva NEW.uom_id. Nessuna delle sei
+  --       tabelle agganciate ha una colonna `uom_id`, e tutti e sei i
+  --       trigger passavano 'false': il ramo non era raggiungibile, e se
+  --       lo si fosse acceso avrebbe fatto fallire ogni riga.
+  --     · [2] target_col = 'quantita_fissa' -> `quantita_fissa` non
+  --       esiste in **nessuna** tabella del database, e tutti e sei i
+  --       trigger passavano 'quantita'. Un parametro con un solo valore
+  --       lecito e' una bugia nella firma.
+  --   Gli argomenti scalano: fonte_nullability_col era [3], ora e' [1].
+  --   Precedente: 20260804-29 (stesso ragionamento su p_scope).
   -- ------------------------------------------------------------
 
   --------------------------------------------------------------------
@@ -66,14 +73,8 @@ DECLARE
   IF TG_NARGS >= 1 THEN
     v_fill_factor_to_base := lower(coalesce(TG_ARGV[0],'')) IN ('1','t','true','y','yes');
   END IF;
-  IF TG_NARGS >= 2 THEN
-    v_fill_uom_id_base := lower(coalesce(TG_ARGV[1],'')) IN ('1','t','true','y','yes');
-  END IF;
-  IF TG_NARGS >= 3 AND TG_ARGV[2] IS NOT NULL AND TG_ARGV[2] <> '' THEN
-    v_target_col := TG_ARGV[2];
-  END IF;
-  IF TG_NARGS >= 4 AND TG_ARGV[3] IS NOT NULL AND TG_ARGV[3] <> '' THEN
-    v_fonte_col := TG_ARGV[3];
+  IF TG_NARGS >= 2 AND TG_ARGV[1] IS NOT NULL AND TG_ARGV[1] <> '' THEN
+    v_fonte_col := TG_ARGV[1];
   END IF;
 
   -- Verifica qta_operativa: NULL consentito se la fonte non e' 'FISSA'
@@ -119,10 +120,6 @@ DECLARE
       NULL::uuid,
       'articolo_id', COALESCE(NEW.articolo_id::text, 'NULL')
     );
-  END IF;
-
-  IF v_fill_uom_id_base THEN
-    NEW.uom_id := NEW.uom_operativa_id;
   END IF;
 
   --------------------------------------------------------------------
@@ -188,13 +185,9 @@ DECLARE
   END IF;
 
   --------------------------------------------------------------------
-  -- 4) Calcolo finale della base (colonna target parametrica)
+  -- 4) Calcolo finale della quantita' base
   --------------------------------------------------------------------
-  IF v_target_col = 'quantita_fissa' THEN
-    NEW.quantita_fissa := ROUND(NEW.qta_operativa * v_factor_used, 6);
-  ELSE
-    NEW.quantita := ROUND(NEW.qta_operativa * v_factor_used, 6);
-  END IF;
+  NEW.quantita := ROUND(NEW.qta_operativa * v_factor_used, 6);
 
   RETURN NEW;
 END;

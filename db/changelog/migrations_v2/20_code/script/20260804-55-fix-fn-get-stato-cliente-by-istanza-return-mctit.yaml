@@ -1,0 +1,75 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Bonifica riferimenti morti — F6, flusso e valore di ritorno
+#   Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md
+#
+#   Due segnalazioni per la stessa causa: `SELECT COALESCE(...)` scritta
+#   nuda, senza `INTO` e senza `RETURN`.
+#     · 42601 — «la query non ha una destinazione per i dati restituiti»
+#     · 2F005 — «control reached end of function without RETURN»
+#   Non e' un difetto sottile: la funzione **non ha mai potuto** restituire
+#   uno stato cliente. Che sia sopravvissuta cosi' dice che non la chiama
+#   nessuno — nel repo la nomina solo il commento di un pgTAP che le fa da
+#   specchio (`test-fn-get-billing-account-by-istanza.sql`).
+#
+#   Si ripara e non si droppa perche' la logica e' completa e sensata
+#   (stato del cliente dell'istanza, con fallback sul codice 'IS'): manca
+#   solo la parola `RETURN`. Droppare qui vorrebbe dire buttare una
+#   decisione di dominio gia' presa per un refuso di una riga.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260804-55-fix-fn-get-stato-cliente-by-istanza-return-mctit.yaml
+
+  - changeSet:
+      id: 20260804-55-fix-fn-get-stato-cliente-by-istanza-return
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        F6 — script.fn_get_stato_cliente_by_istanza: SELECT nuda senza INTO ne'
+        RETURN (42601 + 2F005). La funzione non ha mai potuto restituire un
+        valore. Diventa RETURN COALESCE(...).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_stato_cliente_by_istanza(p_istanza_id bigint)
+               RETURNS integer
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              BEGIN
+              -- 1. Funzione di recupero stato_cliente per un'istanza
+              --
+              -- rev 2026-08-04 (bonifica riferimenti morti, F6): la SELECT era nuda —
+              --   senza INTO e senza RETURN. In plpgsql una query senza destinazione e'
+              --   un errore (42601), e anche superandolo la funzione sarebbe uscita
+              --   senza valore (2F005). Non ha mai potuto restituire niente.
+              RETURN COALESCE(
+                  (SELECT c.stato_cliente_id
+                  FROM anagrafiche.clienti c
+                  WHERE c.istanza_utility_id = p_istanza_id 
+                  ORDER BY c.id DESC
+                  LIMIT 1),
+                  (SELECT id
+                  FROM config.stati_cliente
+                  WHERE codice_interno = 'IS'
+                  LIMIT 1)
+              );
+              END
+              $function$
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

@@ -9,7 +9,7 @@ CREATE FUNCTION fn_search_stradario(p_comune_id integer, p_search text, p_limit 
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_search_stradario(p_comune_id integer DEFAULT NULL::integer, p_search text DEFAULT NULL::text, p_limit integer DEFAULT 30)
- RETURNS TABLE(stradario_id integer, toponimo character varying, denominazione character varying, indirizzo_normalizzato text, comune_id integer, comune_descrizione character varying, provincia_sigla character, codice_postale_id integer, cap character)
+ RETURNS TABLE(stradario_id integer, toponimo character varying, denominazione character varying, indirizzo_normalizzato text, comune_id integer, comune_descrizione character varying, provincia_sigla text, codice_postale_id integer, cap text)
  LANGUAGE plpgsql
  STABLE PARALLEL SAFE
 AS $function$
@@ -80,6 +80,11 @@ BEGIN
     -- Query principale
     -- Filtro toponomastica.attivo = true per escludere
     -- toponimi disattivati.
+    --
+    -- ⚠️ I due ::text non sono cosmetici: allineano il tipo
+    --    della query a quello dichiarato in RETURNS TABLE.
+    --    RETURN QUERY pretende corrispondenza esatta, non
+    --    accetta la conversione implicita.
     -- =============================================================
 
     RETURN QUERY
@@ -90,9 +95,9 @@ BEGIN
         sg.indirizzo_normalizzato AS indirizzo_normalizzato,
         c.id                    AS comune_id,
         c.descrizione           AS comune_descrizione,
-        p.sigla                 AS provincia_sigla,
+        p.sigla::text           AS provincia_sigla,
         cp.id                   AS codice_postale_id,
-        cp.codice               AS cap
+        cp.codice::text         AS cap
     FROM config.stradario s
     JOIN config.stradario_generale sg ON sg.id = s.stradario_generale_id
     JOIN config.toponomastica t       ON t.id  = sg.toponomastica_id
@@ -110,7 +115,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_search_stradario(p_comune_id integer, p_search text, p_limit integer)
-IS 'Ricerca vie (stradario) per autocomplete frontend. Filtra per comune e/o testo fuzzy su indirizzo_normalizzato. JOIN stradario -> stradario_generale -> toponomastica + comuni -> province + codici_postali. STABLE, PARALLEL SAFE.';
+IS 'Ricerca vie (stradario) per autocomplete. provincia_sigla e cap sono text esplicito: con %TYPE la firma si congelava al CREATE e la ALTER TYPE del 2026-04-02 la lasciava indietro (brief-db-bonifica-riferimenti-morti F2).';
 ```
 
 ---

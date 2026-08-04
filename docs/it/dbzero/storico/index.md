@@ -104,6 +104,7 @@
 - [tipi_soggetto_dettaglio_tipi_indirizzo](tabelle/tipi_soggetto_dettaglio_tipi_indirizzo.md)
 - [trasferimenti](tabelle/trasferimenti.md)
 - [trasferimenti_righe](tabelle/trasferimenti_righe.md)
+- [user_emittente_attivo](tabelle/user_emittente_attivo.md)
 - [user_emittenti_fiscali](tabelle/user_emittenti_fiscali.md)
 - [user_override_aree](tabelle/user_override_aree.md)
 - [user_override_azioni](tabelle/user_override_azioni.md)

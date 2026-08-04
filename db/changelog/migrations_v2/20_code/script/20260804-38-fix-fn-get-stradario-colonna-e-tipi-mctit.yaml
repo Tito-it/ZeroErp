@@ -1,0 +1,178 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Bonifica riferimenti morti — F2, famiglia stradario/contatti
+#   Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md
+#
+# ── DUE DIFETTI, NON UNO ─────────────────────────────────────────────────
+#   1) `cp.codice_postale` non esiste: la colonna e' `codice` dal
+#      **2025-08-17** (`20250817-24-codici_postali-rename-codice_postale-to-codice`).
+#      La funzione e' del 2025-06: la rinomina non le e' mai arrivata.
+#      Sono undici mesi di silenzio, e si spiegano: PostgreSQL non ri-valida
+#      i corpi plpgsql, e il ramo rotto e' quello con `p_comune_id`
+#      valorizzato — plpgsql pianifica **per statement**, quindi finche'
+#      nessuno passa un comune il difetto non si vede.
+#
+#   2) `cod_postale` e `provincia` erano dichiarate `character` — cioe'
+#      `char(1)`, perche' `character` senza lunghezza vale 1. Le sorgenti
+#      sono `varchar(50)` e `char(10)`. Anche riparando il nome, il
+#      `RETURN QUERY` sarebbe morto sul tipo. Stessa trappola documentata
+#      per esteso in `20260804-37` (fn_search_stradario): la si paga due
+#      volte perche' sono due funzioni sorelle sulle stesse colonne.
+#
+#   Verificato sul DB vivo prima e dopo:
+#     ramo ELSE (senza comune)  -> funzionava gia', restava dentro
+#                                  stradario_generale e non toccava cp
+#     ramo IF   (con comune)    -> ERRORE: la colonna cp.codice_postale
+#                                  non esiste
+#
+# ── IL RIMEDIO ───────────────────────────────────────────────────────────
+#   `cp.codice`, e le due colonne malate a `text` esplicito con cast in
+#   query (in entrambi i rami, anche nei letterali del ramo ELSE che
+#   dicevano `''::character`).
+#   `RETURNS TABLE` cambia -> serve il DROP, `CREATE OR REPLACE` non basta.
+#
+# ── CONSUMATORI ──────────────────────────────────────────────────────────
+#   Nessuno nel BE, nessuno nel FE, nessun pgTAP. La chiama solo
+#   `dbops.fn_normalize_indirizzo` (a sua volta rotta, riparata da
+#   `20260804-58`) e la nomina uno snippet in `docs/sql/snippets_utilita/`.
+#   Si ripara e non si droppa perche' e' la sola lettura "stradario per
+#   comune" con geoloc e descrizione composta: non ha rimpiazzi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260804-38-fix-fn-get-stradario-colonna-e-tipi-mctit.yaml
+
+  - changeSet:
+      id: 20260804-38-fix-fn-get-stradario-colonna-e-tipi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        F2 — script.fn_get_stradario: cp.codice_postale non esiste dal 2025-08-17
+        (ora codice) e cod_postale/provincia erano character = char(1) contro
+        sorgenti varchar(50)/char(10). Colonna corretta e due tipi a text
+        esplicito con cast in query, su entrambi i rami.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_stradario(integer, text);
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_stradario(
+                  p_comune_id  config.comuni.id%TYPE DEFAULT NULL,
+                  p_indirizzo  text                  DEFAULT ''
+              )
+              RETURNS TABLE (
+                  stradario_id              config.stradario.id%TYPE,
+                  via_id                    config.stradario_generale.id%TYPE,
+                  toponomastica_id          config.toponomastica.id%TYPE,
+                  descrizione_toponomastica config.toponomastica.descrizione%TYPE,
+                  sigla_stato               config.stati.sigla_stato%TYPE,
+                  descrizione_via           config.stradario_generale.descrizione%TYPE,
+                  descrizione_breve         config.stradario_generale.descrizione_breve%TYPE,
+                  -- ⚠️ text ESPLICITO: erano `character`, cioe' char(1),
+                  --    contro varchar(50) e char(10) delle sorgenti.
+                  cod_postale               text,
+                  comune                    config.comuni.descrizione%TYPE,
+                  provincia                 text,
+                  geoloc                    geometry,
+                  descrizione_completa      text
+              )
+              LANGUAGE plpgsql
+              AS $function$
+                BEGIN
+                  -- Funzione per ottenere le informazioni dello stradario
+                  /* La funzione se indicato uno specifico comune restituisce le informazioni
+                      relative a tutte le vie di quel comune, altrimenti restituisce tutte le vie
+                      dello stradario_generale che contengono l'indirizzo indicato.
+
+                      p_comune_id: ID del comune (opzionale)
+                      p_indirizzo: stringa da cercare nell'indirizzo (opzionale)
+                     */
+
+                  IF p_comune_id IS NOT NULL THEN
+                    -- ricerca filtrata per comune
+                    -- ⚠️ cp.codice (era cp.codice_postale fino a 20250817-24)
+                    --    e i due ::text allineano la query ai tipi dichiarati.
+                    RETURN QUERY
+                    SELECT
+                      s.id                      AS stradario_id,
+                      v.id                      AS via_id,
+                      t.id                      AS toponomastica_id,
+                      t.descrizione             AS descrizione_toponomastica,
+                      st.sigla_stato            AS sigla_stato,
+                      v.descrizione             AS descrizione_via,
+                      v.descrizione_breve       AS descrizione_breve,
+                      cp.codice::text           AS cod_postale,
+                      c.descrizione             AS comune,
+                      pr.sigla::text            AS provincia,
+                      s.geoloc                  AS geoloc,
+                      CONCAT_WS(' ', t.descrizione, v.descrizione)
+                                              AS descrizione_completa
+                    FROM config.stradario s
+                      JOIN config.stradario_generale v  ON s.stradario_generale_id = v.id
+                      JOIN config.toponomastica t       ON v.toponomastica_id = t.id
+                      JOIN config.comuni c              ON s.comune_id = c.id
+                      JOIN config.province pr           ON c.provincia_id = pr.id
+                      JOIN config.codici_postali cp     ON s.codice_postale_id = cp.id
+                      LEFT JOIN config.stati st         ON t.stato_id = st.id
+                    WHERE s.comune_id = p_comune_id
+                      AND (t.descrizione || ' ' || v.descrizione)
+                          ILIKE '%' || p_indirizzo || '%'
+                    ORDER BY v.descrizione;
+
+                  ELSE
+                    -- ricerca libera su tutto lo stradario_generale
+                    -- Qui comune/CAP/provincia non sono determinati: restano
+                    -- i segnaposto vuoti, ora ::text come la dichiarazione.
+                    RETURN QUERY
+                    SELECT
+                      NULL::integer             AS stradario_id,
+                      v.id                      AS via_id,
+                      t.id                      AS toponomastica_id,
+                      t.descrizione             AS descrizione_toponomastica,
+                      st.sigla_stato            AS sigla_stato,
+                      v.descrizione             AS descrizione_via,
+                      v.descrizione_breve       AS descrizione_breve,
+                      ''::text                  AS cod_postale,
+                      ''::character varying     AS comune,
+                      ''::text                  AS provincia,
+                      NULL::geometry            AS geoloc,
+                      CONCAT_WS(' ', t.descrizione, v.descrizione)
+                                              AS descrizione_completa
+                    FROM config.stradario_generale v
+                      JOIN config.toponomastica t   ON v.toponomastica_id = t.id
+                      LEFT JOIN config.stati st     ON t.stato_id = st.id
+                    WHERE (t.descrizione || ' ' || v.descrizione)
+                          ILIKE '%' || p_indirizzo || '%'
+                    ORDER BY v.descrizione;
+                  END IF;
+                END;
+                $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_get_stradario(integer, text) IS
+              'Stradario per comune (o ricerca libera su stradario_generale). cod_postale e provincia sono text esplicito: erano character = char(1) (brief-db-bonifica-riferimenti-morti F2).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_stradario(integer, text);

@@ -14,8 +14,6 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_documenti_sync_canali()
 AS $function$
 DECLARE
   v_source_code config.sorgenti.codice_interno%TYPE;
-  v_order_uid text;
-  v_ddt_uid text;
   v_prev_src_id config.sorgenti.id%TYPE;
   v_ord_src_id config.sorgenti.id%TYPE;
   v_ddt_src_id config.sorgenti.id%TYPE;
@@ -32,10 +30,17 @@ BEGIN
   --     consuma canale PREVENTIVO
   --   - ddt: apre canale DDT_VENDITA; se da ORDINE_VENDITA,
   --     consuma canale ordine
-  --   - ddt_ordini: safety net consumo ordine->ddt
   --   - contratti: apre canale DIRETTO su sorgente CONTRATTO
   --   Tutte le sorgenti aprono il proprio canale alla creazione
   --   per simmetria e completezza della storia documento.
+  --
+  -- rev 2026-08-04 (bonifica riferimenti morti, F5): tolto il ramo
+  --   `TG_TABLE_NAME = 'ddt_ordini'` (safety net consumo ordine->ddt).
+  --   `vendite.ddt_ordini` non esiste piu': era la sola lettrice di
+  --   NEW.ordine_id / NEW.ddt_id, campi che nessuna delle quattro tabelle
+  --   agganciate possiede. Con la tabella se n'e' andato anche il trigger,
+  --   e il ramo era irraggiungibile. Il consumo ordine->ddt resta
+  --   presidiato dal ramo `ddt` qui sotto.
   --
   -- NOTE codice_interno (rev 2026-06-28, analisi-hardcoded-codice §3a #13):
   --   le sorgenti sono risolte per codice_interno (immutabile), non per
@@ -167,36 +172,6 @@ BEGIN
           END IF;
         END IF;
       END IF;
-    END IF;
-
-    RETURN NEW;
-  END IF;
-
-  -- ---------------------------------------------------------
-  -- DDT_ORDINI (safety net)
-  -- ---------------------------------------------------------
-  IF TG_TABLE_NAME = 'ddt_ordini' AND TG_OP = 'INSERT' THEN
-    SELECT o.uid::text INTO v_order_uid
-    FROM vendite.ordini o
-    WHERE o.id = NEW.ordine_id;
-
-    SELECT d.uid::text INTO v_ddt_uid
-    FROM vendite.ddt d
-    WHERE d.id = NEW.ddt_id;
-
-    IF v_ord_src_id IS NOT NULL
-       AND v_ddt_src_id IS NOT NULL
-       AND v_order_uid IS NOT NULL
-       AND v_ddt_uid IS NOT NULL THEN
-      PERFORM vendite.fn_set_documento_canale_stato(
-        p_sorgente_tipo_id     => v_ord_src_id,
-        p_sorgente_uid         => v_order_uid,
-        p_canale_codice        => 'ORDINE_VENDITA',
-        p_stato_canale         => 'CONSUMATO',
-        p_target_sorgente_tipo_id => v_ddt_src_id,
-        p_target_sorgente_uid  => v_ddt_uid,
-        p_meta                 => jsonb_build_object('event', 'ORDINE_TO_DDT_LINK', 'ddt_id', NEW.ddt_id, 'ordine_id', NEW.ordine_id)
-      );
     END IF;
 
     RETURN NEW;

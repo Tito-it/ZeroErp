@@ -9,21 +9,23 @@ CREATE FUNCTION fn_get_stradario(p_comune_id integer, p_indirizzo text)
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_stradario(p_comune_id integer DEFAULT NULL::integer, p_indirizzo text DEFAULT ''::text)
- RETURNS TABLE(stradario_id integer, via_id integer, toponomastica_id integer, descrizione_toponomastica character varying, sigla_stato character varying, descrizione_via character varying, descrizione_breve character varying, cod_postale character, comune character varying, provincia character, geoloc geometry, descrizione_completa text)
+ RETURNS TABLE(stradario_id integer, via_id integer, toponomastica_id integer, descrizione_toponomastica character varying, sigla_stato character varying, descrizione_via character varying, descrizione_breve character varying, cod_postale text, comune character varying, provincia text, geoloc geometry, descrizione_completa text)
  LANGUAGE plpgsql
 AS $function$
   BEGIN
     -- Funzione per ottenere le informazioni dello stradario
-    /* La funzione se indicato unno specifico comune restituisce le informazioni
+    /* La funzione se indicato uno specifico comune restituisce le informazioni
         relative a tutte le vie di quel comune, altrimenti restituisce tutte le vie
         dello stradario_generale che contengono l'indirizzo indicato.
-        
+
         p_comune_id: ID del comune (opzionale)
         p_indirizzo: stringa da cercare nell'indirizzo (opzionale)
        */
 
     IF p_comune_id IS NOT NULL THEN
       -- ricerca filtrata per comune
+      -- ⚠️ cp.codice (era cp.codice_postale fino a 20250817-24)
+      --    e i due ::text allineano la query ai tipi dichiarati.
       RETURN QUERY
       SELECT
         s.id                      AS stradario_id,
@@ -33,11 +35,11 @@ AS $function$
         st.sigla_stato            AS sigla_stato,
         v.descrizione             AS descrizione_via,
         v.descrizione_breve       AS descrizione_breve,
-        cp.codice_postale         AS cod_postale,
+        cp.codice::text           AS cod_postale,
         c.descrizione             AS comune,
-        pr.sigla                  AS provincia,
+        pr.sigla::text            AS provincia,
         s.geoloc                  AS geoloc,
-        CONCAT_WS(' ', t.descrizione, v.descrizione) 
+        CONCAT_WS(' ', t.descrizione, v.descrizione)
                                 AS descrizione_completa
       FROM config.stradario s
         JOIN config.stradario_generale v  ON s.stradario_generale_id = v.id
@@ -53,6 +55,8 @@ AS $function$
 
     ELSE
       -- ricerca libera su tutto lo stradario_generale
+      -- Qui comune/CAP/provincia non sono determinati: restano
+      -- i segnaposto vuoti, ora ::text come la dichiarazione.
       RETURN QUERY
       SELECT
         NULL::integer             AS stradario_id,
@@ -62,9 +66,9 @@ AS $function$
         st.sigla_stato            AS sigla_stato,
         v.descrizione             AS descrizione_via,
         v.descrizione_breve       AS descrizione_breve,
-        ''::character             AS cod_postale,
+        ''::text                  AS cod_postale,
         ''::character varying     AS comune,
-        ''::character             AS provincia,
+        ''::text                  AS provincia,
         NULL::geometry            AS geoloc,
         CONCAT_WS(' ', t.descrizione, v.descrizione)
                                 AS descrizione_completa
@@ -79,9 +83,7 @@ AS $function$
   $function$
 
 COMMENT ON FUNCTION script.fn_get_stradario(p_comune_id integer, p_indirizzo text)
-IS 'Restituisce le informazioni dello stradario filtrate per comune e/o indirizzo.
-     Se p_comune_id è specificato, restituisce le vie di quel comune;
-     altrimenti restituisce tutte le vie che contengono l''indirizzo indicato.';
+IS 'Stradario per comune (o ricerca libera su stradario_generale). cod_postale e provincia sono text esplicito: erano character = char(1) (brief-db-bonifica-riferimenti-morti F2).';
 ```
 
 ---

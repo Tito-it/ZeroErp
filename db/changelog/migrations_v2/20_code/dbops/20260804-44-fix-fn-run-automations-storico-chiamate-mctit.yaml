@@ -1,0 +1,240 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Bonifica riferimenti morti — F3, piu' un difetto che era classificato FP
+#   Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md
+#
+# ── 1) IL DIFETTO F3 (segnalato) ─────────────────────────────────────────
+#   `script.fn_log_and_raise_error(..., VARIADIC p_valori text[])` riceveva
+#   `ARRAY[SQLERRM]`, cioe' un `text[]` dove il variadico si aspetta valori
+#   `text` sciolti. Senza la parola chiave `VARIADIC` davanti, PostgreSQL
+#   prova a mettere l'intero array in **una** casella di tipo text: cast
+#   inesistente, chiamata fallita.
+#   Si passa `SQLERRM` e basta: e' un valore solo, e li' — dentro un
+#   blocco `EXCEPTION WHEN OTHERS` — SQLERRM e' legittimo.
+#   Effetto pratico: il ramo che deve spiegare perche' la creazione del
+#   trigger di storico e' fallita, falliva a sua volta e nascondeva la
+#   causa vera.
+#
+# ── 🔴 2) IL DIFETTO CHE IL CHECK AVEVA CLASSIFICATO «FALSO POSITIVO» ────
+#   Nella stessa funzione:
+#
+#     dbops.fn_audit_log_once('fn_run_automations_storico','SKIP_EXISTS','STORICO',
+#                             jsonb_build_object(...), 'Trigger already present')
+#
+#   La firma e'
+#     (p_function_name text, p_status text, p_params jsonb, p_message text,
+#      p_exec_mode text, ...)
+#
+#   Il 3o e il 4o argomento sono **invertiti**: 'STORICO' (che sarebbe
+#   `p_rule_type`) finisce dove va il jsonb, e il jsonb dove va il
+#   messaggio. La chiamata non si risolve.
+#
+#   ⚠️ Il controllo l'aveva etichettata `FP_VARIADIC`. La regola diceva:
+#   «42883 con argomenti tutti testo-compatibili = variadico omesso, e'
+#   rumore». Ma `jsonb` e' nella lista dei testo-compatibili, e uno scambio
+#   fra un `text` e un `jsonb` produce **esattamente la stessa firma** di
+#   un variadico omesso. La regola scusava una classe di errori che non
+#   voleva scusare.
+#   Il rimedio sta in `scripts/sql/check_funzioni_riferimenti_morti.sql`:
+#   l'esenzione ora vale solo se la funzione chiamata **ha davvero** un
+#   parametro VARIADIC. Delle 17 righe FP_VARIADIC del primo giro, questa
+#   era l'unica a non chiamare `fn_log_and_raise_error`/`fn_log_error_only`
+#   — ed era l'unica sbagliata.
+#
+#   La chiamata gemella venti righe sopra (ramo DRYRUN) usa gli argomenti
+#   **a nome** ed e' sempre stata corretta. Questa si allinea a quella:
+#   con quindici parametri quasi tutti opzionali, il posizionale e' una
+#   trappola che si richiude da sola.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260804-44-fix-fn-run-automations-storico-chiamate-mctit.yaml
+
+  - changeSet:
+      id: 20260804-44-fix-fn-run-automations-storico-chiamate
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        F3 — dbops.fn_run_automations_storico: ARRAY[SQLERRM] passato a un
+        parametro VARIADIC text[] senza la parola chiave VARIADIC, e chiamata a
+        fn_audit_log_once con 3o e 4o argomento invertiti (era classificata
+        FP_VARIADIC dal controllo: la regola e' stata stretta di conseguenza).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_run_automations_storico(p_exec_mode text, p_schemas text[], p_dry_run boolean)
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_schemas text[];
+                rtab record;
+                rrule record;
+                rel  regclass;
+                has_sto boolean;
+                fk_col   text;
+                tmpl     text;
+                trg_name text;
+                exist_strat text;
+              BEGIN
+
+                    /*
+                      Scopo
+                      -----
+                      Esegue l'automazione di provisioning dei trigger di storico sulle tabelle "in scope",
+                      applicando le regole abilitate in dbops.automation_rules_tbl di tipo 'STORICO'.
+
+                      La funzione:
+                      1) risolve lo scope degli schemi (dbops.fn_resolve_scope),
+                      2) scorre tutte le tabelle (relkind='r') degli schemi target (escluso 'storico'),
+                        filtrate da dbops.fn_table_in_scope(schema, table),
+                      3) per ogni tabella applica le regole STORICO compatibili con:
+                        - enabled = true
+                        - exec_mode = 'AUTO' oppure exec_mode = p_exec_mode
+                        - match su schema (dbops.fn_schema_match)
+                        - match su tabella: '*ALL' oppure pattern ILIKE su r.target_table
+                      4) se esiste la tabella storico corrispondente (storico.<table_name>),
+                        assicura la presenza del trigger UPDATE+DELETE sulla tabella base usando:
+                        - nome trigger derivato da template (rrule.name_template, default 'trg_z90_{table}_storico_upd_dlt')
+                        - funzione trigger generica script.trgfn_storico_generic(fk_col)
+
+                      Esistenza trigger / strategie
+                      -----------------------------
+                      La creazione del trigger è condizionata da rrule.existence_strategy (default 'BY_NAME'):
+                      - BY_NAME     : verifica esistenza per nome trigger
+                      - BY_FUNCTION : verifica esistenza per funzione trigger
+                      - BOTH        : considera presente se esiste per nome OR per funzione
+                      Questo evita duplicazioni e permette migrazioni graduali da trigger legacy a trigger generici.
+
+                      Colonna FK logica (fk_col)
+                      --------------------------
+                      Determina la colonna FK logica passata alla funzione trigger tramite:
+                      - override (dbops.fn_get_override_col) con chiave 'STORICO_FK'
+                      - fallback: <table_name>_id
+
+                      Legacy triggers
+                      ---------------
+                      Se rrule.params->>'drop_legacy_ud' è true, elimina eventuali trigger legacy
+                      (pattern trg_{table}_upd_storico e trg_{table}_dlt_storico) dopo aver gestito
+                      la creazione/validazione del trigger generico.
+
+                      Modalità DRY RUN
+                      ---------------
+                      Se p_dry_run=true non esegue DDL (CREATE TRIGGER/DROP TRIGGER) e registra invece
+                      un audit con dbops.fn_audit_log_once indicando cosa verrebbe creato.
+
+                      Error handling
+                      --------------
+                      - duplicate_object: logga SKIP_EXISTS su audit (trigger già presente)
+                      - altri errori: log strutturato e rilancio tramite script.fn_log_and_raise_error
+                        includendo tabella e messaggio SQLERRM.
+                    */
+
+
+
+
+              v_schemas := dbops.fn_resolve_scope(p_schemas);
+
+              FOR rtab IN
+                SELECT n.nspname AS schema_name,
+                      c.relname  AS table_name,
+                      (quote_ident(n.nspname)||'.'||quote_ident(c.relname))::regclass AS rel
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid=c.relnamespace
+                WHERE c.relkind='r'
+                  AND n.nspname = ANY(v_schemas)
+                  AND n.nspname <> 'storico'                  
+                  AND dbops.fn_table_in_scope(n.nspname, c.relname)
+              LOOP
+                FOR rrule IN
+                  SELECT *
+                  FROM dbops.automation_rules_tbl r
+                  WHERE r.enabled
+                    AND upper(btrim(r.rule_type))='STORICO'
+                    AND (upper(btrim(r.exec_mode)) = 'AUTO' OR r.exec_mode = p_exec_mode)
+                    AND dbops.fn_schema_match(r.target_schema, rtab.schema_name)
+                    AND (UPPER (r.target_table) = '*ALL' OR rtab.table_name ILIKE r.target_table)
+
+                    ORDER BY r.priority, r.id
+                  LOOP
+                    exist_strat := COALESCE(rrule.existence_strategy,'BY_NAME');
+
+                    SELECT EXISTS(
+                      SELECT 1 FROM pg_class c2
+                      JOIN pg_namespace n2 ON n2.oid=c2.relnamespace
+                    WHERE n2.nspname='storico'
+                      AND c2.relkind='r'
+                      AND c2.relname=rtab.table_name
+                    ) INTO has_sto;
+
+                    IF has_sto THEN
+                      fk_col := dbops.fn_get_override_col(rtab.schema_name, rtab.table_name, 'STORICO_FK', rtab.table_name||'_id');
+
+                      tmpl     := COALESCE(rrule.name_template, 'trg_z90_{table}_storico_upd_dlt');
+                      trg_name := dbops.fn_name_from_template(tmpl, rtab.schema_name, rtab.table_name, NULL,NULL,NULL, 'upd_dlt');
+                      exist_strat := COALESCE(rrule.existence_strategy,'BY_NAME');
+
+                      IF (exist_strat='BY_NAME'     AND NOT dbops.fn_trigger_exists_by_name(rtab.rel, trg_name))
+                      OR (exist_strat='BY_FUNCTION' AND NOT dbops.fn_trigger_exists_by_function(rtab.rel,'script','trgfn_upd_dlt_storico_generic'))
+                      OR (exist_strat='BOTH'        AND NOT (dbops.fn_trigger_exists_by_name(rtab.rel, trg_name)
+                                                        OR dbops.fn_trigger_exists_by_function(rtab.rel,'script','trgfn_upd_dlt_storico_generic')))
+                      THEN
+                        IF p_dry_run THEN
+                          PERFORM dbops.fn_audit_log_once(
+                            p_function_name => 'fn_run_automations_storico',
+                            p_status => 'DRYRUN', p_rule_type => 'STORICO', p_dry_run => true,
+                            p_params => jsonb_build_object('table', rtab.schema_name||'.'||rtab.table_name,'trigger', trg_name,'action','DRYRUN_CREATE_TRIGGER_UD'),
+                            p_message => 'Storico UPDATE+DELETE trigger would be created'
+                          );
+                        ELSE
+                          BEGIN
+                            EXECUTE format($f$
+                              CREATE TRIGGER %I
+                              BEFORE UPDATE OR DELETE ON %I.%I
+                              FOR EACH ROW
+                              EXECUTE FUNCTION script.trgfn_storico_generic(%L)
+                            $f$, trg_name, rtab.schema_name, rtab.table_name, fk_col);
+                          EXCEPTION WHEN duplicate_object THEN
+                            -- rev 2026-08-04 (bonifica F3): la chiamata era posizionale con
+                            --   il 3o e 4o argomento invertiti (rule_type al posto di
+                            --   p_params jsonb, e il jsonb al posto di p_message). Resa a
+                            --   nomi, come la sorella in DRYRUN qui sopra.
+                            PERFORM dbops.fn_audit_log_once(
+                              p_function_name => 'fn_run_automations_storico',
+                              p_status        => 'SKIP_EXISTS',
+                              p_rule_type     => 'STORICO',
+                              p_params        => jsonb_build_object('table', rtab.schema_name||'.'||rtab.table_name,'trigger', trg_name::text),
+                              p_message       => 'Trigger already present');
+                          WHEN OTHERS THEN
+                            PERFORM script.fn_log_and_raise_error('dbops','run_automations','E_STORICO_UD',
+                              jsonb_build_object('table', rtab.schema_name||'.'||rtab.table_name,'error',SQLERRM), NULL::uuid, SQLERRM);
+                          END;
+                        END IF;
+                      END IF;
+
+                      IF COALESCE((rrule.params->>'drop_legacy_ud')::boolean,false) THEN
+                        EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I', dbops.fn_name_from_template('trg_{table}_upd_storico',rtab.schema_name,rtab.table_name,NULL,NULL,NULL,NULL), rtab.schema_name, rtab.table_name);
+                        EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I', dbops.fn_name_from_template('trg_{table}_dlt_storico',rtab.schema_name,rtab.table_name,NULL,NULL,NULL,NULL), rtab.schema_name, rtab.table_name);
+                      END IF;
+
+                    END IF;
+                  END LOOP;
+                END LOOP;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

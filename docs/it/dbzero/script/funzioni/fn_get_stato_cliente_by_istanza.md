@@ -15,7 +15,12 @@ CREATE OR REPLACE FUNCTION script.fn_get_stato_cliente_by_istanza(p_istanza_id b
 AS $function$
 BEGIN
 -- 1. Funzione di recupero stato_cliente per un'istanza
-SELECT COALESCE(
+--
+-- rev 2026-08-04 (bonifica riferimenti morti, F6): la SELECT era nuda —
+--   senza INTO e senza RETURN. In plpgsql una query senza destinazione e'
+--   un errore (42601), e anche superandolo la funzione sarebbe uscita
+--   senza valore (2F005). Non ha mai potuto restituire niente.
+RETURN COALESCE(
     (SELECT c.stato_cliente_id
     FROM anagrafiche.clienti c
     WHERE c.istanza_utility_id = p_istanza_id 
