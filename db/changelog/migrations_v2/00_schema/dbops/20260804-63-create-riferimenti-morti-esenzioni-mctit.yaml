@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # Bonifica riferimenti morti — IL REGISTRO DEL DEBITO
-#   Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md §5
+#   Brief: docs/it/dev/work-done/brief-db-bonifica-riferimenti-morti.md §5
 #
 # ── PERCHE' UNA TABELLA E NON UN FILE ────────────────────────────────────
 #   Il registro lo leggono in **due**: il pgTAP

@@ -2,7 +2,7 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- Zero ERP — PRESIDIO sui riferimenti morti nelle funzioni
 --
--- Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md §5
+-- Brief: docs/it/dev/work-done/brief-db-bonifica-riferimenti-morti.md §5
 --
 -- Pezzi del presidio (nessuno duplica la logica di un altro):
 --   dbops.fn_check_funzioni_riferimenti_morti()   la misura      (20260804-62)

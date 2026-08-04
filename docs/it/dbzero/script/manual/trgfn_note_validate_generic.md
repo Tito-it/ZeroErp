@@ -1,4 +1,4 @@
-## 📘 Documentazione Concettuale – Funzione `vendite.trgfn_note_validate_generic()`
+## 📘 Documentazione Concettuale – Funzione `script.trgfn_note_validate_generic()`
 
 > 👀 **Vedi anche**
 >
@@ -7,7 +7,7 @@
 
 ---
 ### 🎯 Scopo Principale
-La trigger function `vendite.trgfn_note_validate_generic()` valida la coerenza
+La trigger function `script.trgfn_note_validate_generic()` valida la coerenza
 delle note ancorate a una riga documento (`anchor_tipo = 'RIGA'`), verificando
 che `target_riga_id` appartenga davvero alla testata indicata da `target_id`.
 
@@ -26,8 +26,14 @@ che `target_riga_id` appartenga davvero alla testata indicata da `target_id`.
 
 ### Utilizzo
 
-Viene usata come validatore generico su trigger `BEFORE INSERT/UPDATE` delle
-tabelle note dominio vendite, evitando note agganciate a righe non coerenti.
+Validatore **generico**: vive in `script` proprio perche' non appartiene a un
+dominio solo. E' agganciato a **sette** trigger `BEFORE INSERT/UPDATE` sulle
+tabelle note — `note_contratto`, `note_ddt`, `note_fatture`,
+`note_offerte_commerciali`, `note_ordini`, `note_preventivo` — ed evita che una
+nota resti agganciata a una riga che appartiene a un altro documento.
+
+La tabella righe e la colonna FK si passano per `TG_ARGV`, quindi la stessa
+funzione serve domini diversi senza sapere niente di loro.
 
 ---
 

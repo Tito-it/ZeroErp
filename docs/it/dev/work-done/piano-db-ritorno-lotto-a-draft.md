@@ -42,7 +42,7 @@
 > come lo avevamo immaginato: non una vista fatta in casa ma l'estensione
 > `plpgsql_check`, che valida i corpi per davvero — colonne comprese, rami mai
 > eseguiti inclusi. Cantiere suo:
-> [brief-db-bonifica-riferimenti-morti](../work-in-progress/brief-db-bonifica-riferimenti-morti.md).
+> [brief-db-bonifica-riferimenti-morti](../work-done/brief-db-bonifica-riferimenti-morti.md).
 > **M6** (PDF orfani) resta una segnalazione: rischio basso, la stampa si accoda
 > alla numerazione, cioè fuori dal perimetro pre-fiscale.
 >
@@ -704,7 +704,7 @@ Conterrà almeno:
 | **Stato** | ✅ **CHIUSA lato DB (2026-08-03)** — analisi, A1-A5 **applicati**, pgTAP **verdi**, doc e brief scritti. 5 changeSet: `20260803-07`…`-10` + seed CSV |
 | **Slice** | **6-A** ✅ **CHIUSA** (DB 08-03 · BE/FE 08-04, smoke 9/9) · **6-B** ✅ **CHIUSA** (DB e BE/FE il 08-04) — ridotta da [RD-7](#1-bis-decisioni-di-questo-cantiere) |
 | **Prossimo passo** | — **nessuno**: il cantiere è chiuso (2026-08-04). Le quattro rotture del B5 sono state lavorate dal BE/FE leggendo questo §7, senza passare da un brief separato; vedi il box in testa al documento. **M6** (PDF orfani) resta una segnalazione a rischio basso |
-| **Debito lasciato aperto** | ✅ **Raccolto il 2026-08-04**: il presidio non è una vista fatta in casa ma l'estensione **`plpgsql_check`** (changeSet `20260804-36`), che valida davvero i corpi — colonne comprese, rami mai eseguiti inclusi. Primo giro: **27 difetti su 21 funzioni** + 6 trigger function orfane, fra cui una **quarta** funzione della famiglia «attivita pipeline» che il grep per nome non aveva visto. Cantiere e lista di lavoro: [brief-db-bonifica-riferimenti-morti](../work-in-progress/brief-db-bonifica-riferimenti-morti.md) |
+| **Debito lasciato aperto** | ✅ **Raccolto il 2026-08-04**: il presidio non è una vista fatta in casa ma l'estensione **`plpgsql_check`** (changeSet `20260804-36`), che valida davvero i corpi — colonne comprese, rami mai eseguiti inclusi. Primo giro: **27 difetti su 21 funzioni** + 6 trigger function orfane, fra cui una **quarta** funzione della famiglia «attivita pipeline» che il grep per nome non aveva visto. Cantiere e lista di lavoro: [brief-db-bonifica-riferimenti-morti](../work-done/brief-db-bonifica-riferimenti-morti.md) |
 
 ### Slice 6-A
 

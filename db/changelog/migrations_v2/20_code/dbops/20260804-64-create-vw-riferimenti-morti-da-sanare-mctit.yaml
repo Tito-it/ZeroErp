@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # Bonifica riferimenti morti — le due viste del presidio
-#   Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md §5
+#   Brief: docs/it/dev/work-done/brief-db-bonifica-riferimenti-morti.md §5
 #
 #   Sono l'anti-join fra la misura (`dbops.fn_check_funzioni_riferimenti_morti`,
 #   `20260804-62`) e il registro del debito

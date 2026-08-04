@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # Fix CI — due trigger function orfane che esistono SOLO su un database
 #          costruito da zero
-#   Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md
+#   Brief: docs/it/dev/work-done/brief-db-bonifica-riferimenti-morti.md
 #
 # ── COME SONO SALTATE FUORI ──────────────────────────────────────────────
 #   Il guardrail dei riferimenti morti, alla sua prima esecuzione vera in

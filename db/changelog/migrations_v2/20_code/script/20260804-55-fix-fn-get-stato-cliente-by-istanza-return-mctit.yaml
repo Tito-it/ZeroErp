@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # Bonifica riferimenti morti — F6, flusso e valore di ritorno
-#   Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md
+#   Brief: docs/it/dev/work-done/brief-db-bonifica-riferimenti-morti.md
 #
 #   Due segnalazioni per la stessa causa: `SELECT COALESCE(...)` scritta
 #   nuda, senza `INTO` e senza `RETURN`.
