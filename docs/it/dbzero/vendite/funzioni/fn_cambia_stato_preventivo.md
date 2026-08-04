@@ -18,7 +18,7 @@ DECLARE
   v_nuovo_stato_id      config.stati_doc_preventivi.id%TYPE;
   v_transizione_ok      boolean;
   v_count_righe         bigint;
-  v_has_commessa        boolean;
+  v_motivi              jsonb;
   v_numero              vendite.preventivi.numero%TYPE;
   v_uid                 vendite.preventivi.uid%TYPE;
 BEGIN
@@ -32,8 +32,9 @@ BEGIN
   --   - La transizione deve essere presente e attiva nella matrice
   --   - DRAFT → EMESSO: richiede almeno una riga attiva
   --     (SOLO presenza: un totale pari a zero non blocca)
-  --   - Verso ANNULLATO: blocco duro se il preventivo ha righe
-  --     gia' inviate in commessa (stato_emissione EMESSA)
+  --   - Verso ANNULLATO: l'ammissibilita' NON e' decisa qui.
+  --     La chiede a script.fn_check_preventivo_annullabile, che e'
+  --     la sede unica della regola (rev 2026-08-04).
   --
   -- Parametri:
   --   p_preventivo_id : ID del preventivo
@@ -53,6 +54,18 @@ BEGIN
   --   quantita > 0. Per emettere basta che il documento ABBIA
   --   righe: prezzo/totale 0 e' un caso legittimo. Regola valida
   --   per tutti i domini documentali.
+  --
+  -- NOTE rev 2026-08-04 (brief-db-vie-uscita-operatore §7.3):
+  --   il guard verso ANNULLATO che stava qui — righe con
+  --   stato_emissione EMESSA in commessa — e' stato ASSORBITO da
+  --   script.fn_check_preventivo_annullabile, che lo espone come
+  --   MOTIVO 2 accanto agli altri due. Qui resta solo la chiamata.
+  --   Perche': la stessa domanda aveva due risposte diverse (questa
+  --   e quella del trigger), e prima o poi sarebbero divergute.
+  --   Con l'assorbimento esce di scena anche il codice
+  --   PREV_ANNULLAMENTO_COMMESSA_ATTIVA, privo del prefisso `E_` e
+  --   percio' invisibile sia al presidio del catalogo messaggi sia
+  --   all'estrattore del backend (che lo degradava a E_DATABASE).
   -- ==========================================================
 
   -- Guard: parametri obbligatori
@@ -142,23 +155,25 @@ BEGIN
     END IF;
   END IF;
 
-  -- Guard verso ANNULLATO: blocco se righe in commessa attive.
-  -- Usa v_uid gia' caricato e starts_with() (PG 18, index-friendly).
+  -- Verso ANNULLATO: la regola NON e' qui. La sede unica e'
+  -- script.fn_check_preventivo_annullabile, la stessa che legge il
+  -- trigger di guard e la stessa che accende il bottone nelle
+  -- capability. Qui si solleva il PRIMO motivo; il contesto porta
+  -- l'array intero, cosi' il log li conserva tutti.
   IF p_nuovo_stato = 'ANNULLATO' THEN
-    SELECT EXISTS(
-      SELECT 1
-        FROM vendite.commesse_attivita ca
-       WHERE starts_with(ca.segment_key, 'PREV:' || v_uid::text || ':R:')
-         AND ca.stato_emissione = 'EMESSA'
-    ) INTO v_has_commessa;
+    v_motivi := script.fn_check_preventivo_annullabile(p_preventivo_id);
 
-    IF v_has_commessa THEN
+    IF jsonb_array_length(v_motivi) > 0 THEN
       PERFORM script.fn_log_and_raise_error(
         'vendite', 'fn_cambia_stato_preventivo',
-        'PREV_ANNULLAMENTO_COMMESSA_ATTIVA',
-        jsonb_build_object('preventivo_id', p_preventivo_id),
+        v_motivi -> 0 ->> 'codice',
+        jsonb_build_object(
+          'preventivo_id', p_preventivo_id,
+          'numero',        v_numero,
+          'motivi',        v_motivi
+        ),
         NULL::uuid,
-        v_numero
+        COALESCE(v_numero, p_preventivo_id::text)
       );
     END IF;
   END IF;
@@ -176,7 +191,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_cambia_stato_preventivo(p_preventivo_id bigint, p_nuovo_stato character varying, p_user text)
-IS 'Transizione di stato preventivo validata dalla matrice config.transizioni_stati_preventivi. Guard DRAFT->EMESSO: SOLO presenza di righe attive (PREV_NESSUNA_RIGA_ATTIVA); guard verso ANNULLATO (no commessa EMESSA). Stato corrente/destinazione e RETURNS per codice_interno (immutabile). rev 2026-06-28: analisi-hardcoded-codice §3a #1. rev 2026-07-16: rimossi guard PREV_TOTALE_NON_POSITIVO e filtro quantita>0 — un documento a totale zero deve poter essere emesso (regola valida per tutti i domini).';
+IS 'Transizione di stato preventivo validata dalla matrice config.transizioni_stati_preventivi. Guard DRAFT->EMESSO: SOLO presenza di righe attive (PREV_NESSUNA_RIGA_ATTIVA). Verso ANNULLATO: l''ammissibilita'' e'' delegata a script.fn_check_preventivo_annullabile — sede unica condivisa col trigger di guard e con fn_available_actions_preventivo — e si solleva il codice del primo motivo. Stato corrente/destinazione e RETURNS per codice_interno (immutabile). rev 2026-06-28: analisi-hardcoded-codice §3a #1. rev 2026-07-16: rimossi guard PREV_TOTALE_NON_POSITIVO e filtro quantita>0 — un documento a totale zero deve poter essere emesso. rev 2026-08-04: assorbita la regola locale sull''annullamento (righe EMESSA in commessa) dentro la fn pura; esce di scena il codice PREV_ANNULLAMENTO_COMMESSA_ATTIVA, privo di prefisso E_ e percio'' invisibile al presidio del catalogo e non agganciabile dal backend (brief-db-vie-uscita-operatore §7.3).';
 ```
 
 ---

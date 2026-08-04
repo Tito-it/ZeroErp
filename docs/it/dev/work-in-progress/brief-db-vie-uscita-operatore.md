@@ -193,10 +193,29 @@ compaiano prima.
 - [x] `meta` dei quattro stati «chiusi» — CSV `stati_doc_ordini` / `stati_doc_ddt`;
 - [x] pgTAP: per ciascuno dei sei stati, o l'azione c'è ed è azionabile, o c'è la spiegazione;
 - [x] `test-transizioni-uscita-manuale-v1.sql` **verde 3/3**, e tolto dalla baseline (103 → 102);
-- [ ] esposizione di `reasons` e `nessuna_azione_key` in `fn_available_actions_preventivo` / `_ordine` — **da fare**, è la metà che porta il perché a video. ⚠️ **Non è più solo un residuo: da quando l'annullamento è tornato disponibile è l'unica cosa che manca perché l'operatore veda un bottone spento invece di un rifiuto a click fatto** — il FE è cablato e aspetta i due campi (§8);
-- [ ] guard di matrice per il preventivo (§6.2) — **da fare**.
+- [x] esposizione di `reasons` e `nessuna_azione_key` — `20260804-68` (preventivo), `-69` (ordine), **`-70` (DDT)**. ⚠️ **Questa riga diceva «preventivo / _ordine» e sbagliava il conto**: delle quattro `nessuna_azione_key` seminate, due vivono su stati del **DDT** (CONSEGNATO, RESO). Fermarsi ai due domini nominati avrebbe lasciato metà del lavoro a dato e invisibile — ed è esattamente la riga «DDT CONSEGNATO / RESO: barra vuota e muta» che il BE ha misurato in campo (§8.2);
+- [x] consolidamento delle due regole di annullamento (§7.3) — `20260804-73` (la fn pura assorbe il criterio della porta), `-74` (la porta delega); con esso esce di scena `PREV_ANNULLAMENTO_COMMESSA_ATTIVA`, che chiude il §8.3;
+- [ ] guard di matrice per il preventivo (§6.2) — **da fare**;
+- [ ] storicizzazione del preventivo (§7.2) — **da fare**, resta il prerequisito del guard di matrice.
 
-**Tutto applicato il 2026-08-04**, changeSet `20260804-33`, `-34`, `-35` EXECUTED.
+**Tutto applicato il 2026-08-04**: `20260804-33`, `-34`, `-35`, `-68`, `-69`, `-70`, `-73`, `-74` EXECUTED. Il codice errore nuovo `E_PREV_ANNULLA_COMMESSA_EMESSA` (id 839) è a catalogo: il loader `runOnChange` dei messaggi ha ripescato il CSV da solo (`RERAN`), senza changeSet dedicato.
+
+**pgTAP del cantiere, sul database aggiornato:**
+
+| Suite | Esito |
+| --- | --- |
+| `script/test-capability-motivi-e-nessuna-azione-v1.sql` *(nuovo)* | **9/9** |
+| `config/test-transizioni-uscita-manuale-v1.sql` | **3/3** |
+| `script/test-catalogo-messaggi-errore-completo.sql` | **4/4** |
+| 21 suite che toccano le funzioni modificate | **zero variazioni** prima/dopo |
+
+⚠️ Resta **1 rosso** su `vendite/test-fn-cambia-stato-preventivo.sql`, ed è
+preesistente e già in `baseline-rossi.tsv`: il test 9 pretende che
+`DRAFT → EMESSO` sia vietata con totale zero, cioè fissa una decisione
+**ribaltata il 2026-07-16** («un documento a totale zero deve poter essere
+emesso»). È lo stesso fenomeno che il §7.4 mette in guardia più sotto: un test
+che fotografa la scelta vecchia diventa rosso quando la scelta cambia. Va
+riscritto o ritirato, ma è un debito di quel cantiere, non di questo.
 
 ### 6.0 Il presidio è diventato la regola, invece di elencare eccezioni
 
@@ -309,7 +328,13 @@ Rimedio: `storicizza` a default `true` sulla tabella, backfill del flag sulle ri
 esistenti, registrazione in `config.storico_set_storicizza` — la stessa procedura già
 seguita per `config.user_emittente_attivo`.
 
-### 7.3 🔴 Ho introdotto io una seconda regola di annullamento
+### 7.3 ✅ Ho introdotto io una seconda regola di annullamento — RISOLTO
+
+> **Chiuso il 2026-08-04** con `20260804-73` (la fn pura assorbe) e `-74` (la
+> porta delega). Il testo che segue è la diagnosi come fu scritta; il §9.3
+> racconta come è stata risolta, e **perché il criterio della porta è stato
+> assorbito e non cancellato** — cosa che alla prima lettura sembrava ovvia e
+> non lo era.
 
 Va scritto perché è esattamente l'errore contro cui è nata la regola R2 di questo
 brief. Oggi, per la domanda «questo preventivo si può annullare?», esistono **due**
@@ -341,10 +366,23 @@ dell'ordine. Una regola, una sede, un messaggio.
 
 ### 7.4 L'ordine di lavoro che ne esce
 
-1. **Storicizzazione del preventivo** (§7.2). Prima di tutto: è ciò che rende
-   verificabile qualunque cosa venga dopo, ed è indipendente dal resto.
-2. **Consolidamento delle due regole di annullamento** (§7.3). Chiude un'incoerenza
-   che abbiamo introdotto noi, e va fatta comunque.
+> **Aggiornamento 2026-08-04 (sera).** L'ordine è stato eseguito **a partire dal
+> punto 2**, non dal punto 1, e la ragione va scritta: davanti al punto 1 c'era
+> l'esposizione delle capability (§6, ultima riga), che non compare in questa
+> lista perché quando fu scritta sembrava un residuo. Non lo era: era l'unica
+> cosa che separava l'operatore dal bottone spento col motivo, e teneva fermi
+> BE e FE. Fatta quella, il punto 2 è venuto subito dopo perché chiudeva anche
+> il rifiuto illeggibile misurato dalla metà a video (§8.3). **Restano il punto
+> 1, il 3 e il 4**, nell'ordine originale — che per loro tre resta valido: la
+> storia prima del guard, il guard prima del test che lo fissa.
+
+1. **Storicizzazione del preventivo** (§7.2). ⏳ **Da fare.** Prima del guard di
+   matrice: è ciò che rende verificabile qualunque cosa venga dopo, ed è
+   indipendente dal resto.
+2. ~~**Consolidamento delle due regole di annullamento** (§7.3).~~ ✅ **Fatto il
+   2026-08-04**, `20260804-73` + `-74`. Chiudeva un'incoerenza introdotta da noi;
+   ha chiuso anche il §8.3 del BE, perché con esso sparisce il codice senza
+   prefisso `E_` che il backend non riusciva a tradurre.
 3. **Guard di matrice** `trgfn_preventivi_guard_transizione`, sul modello dell'ordine.
    A questo punto è una formalità a basso rischio: sappiamo che nessuno viola la
    matrice, abbiamo la storia per accorgercene se qualcosa cambia, e la regola di
@@ -434,3 +472,90 @@ argomento in più per metterlo prima del guard di matrice nell'ordine del §7.4.
 2. consolidamento §7.3 → chiude l'8.3;
 3. resta a Tid la validazione in-app dell'annullamento (preventivo da
    EMESSO/ACCETTATO, ordine da CONFERMATO).
+
+---
+
+## 9. Risposta del DB alla metà a video (2026-08-04, sera)
+
+> Scritto dal team DB su `dev/db-tid`, dopo il §8. Chiude le due voci che il
+> §8.4 aspettava; la terza (validazione in-app) resta a Tid.
+
+### 9.1 Fatto
+
+| Voce del §8.4 | Stato |
+| --- | --- |
+| `reasons` + `nessuna_azione_key` nelle capability | ✅ `20260804-68/-69/-70` **applicati**. Non due funzioni ma **tre**: il §6 sottostimava, vedi sopra |
+| Consolidamento §7.3 | ✅ `20260804-73/-74` **applicati**, pgTAP verde |
+| Validazione in-app | ⏳ resta a Tid |
+
+**Verificato sui documenti che avete misurato**, non su fixture costruite:
+i preventivi #302 / #301 / #299 ora danno `enabled=false` con
+`reason=GIA_IN_COMMESSA`; #535 e #1816 restano accesi; l'ordine #633 resta
+acceso; l'ordine EVASO #5388 espone `nessuna_azione_key =
+vendite.ordini.stato_info.evaso`. Le vostre quattro righe del §8.2 sono
+tutte ribaltate.
+
+### 9.2 Misurato, non dedotto
+
+Le asserzioni del pgTAP nuovo (`test-capability-motivi-e-nessuna-azione-v1.sql`,
+**9/9**) non guardano un documento scelto a mano ma la popolazione intera, e i
+conteggi stanno nella descrizione dei test:
+
+| Misura | Esito |
+| --- | --- |
+| preventivi con azione verso ANNULLATO | 92, `enabled` concorde col verdetto della fn pura su **92/92** |
+| di cui bloccati | 12, con `reasons` identico ai motivi della fn pura |
+| ordini con azione verso ANNULLATO | 57, concordi **57/57** |
+| documenti in stato chiuso senza azioni vive | 27 ordini + 9 DDT, **tutti** ricevono la nota |
+| regressione sulle suite toccate | 21 suite, **zero** variazioni prima/dopo |
+
+⚠️ **Un limite dichiarato, non nascosto.** 5 ordini EVASO su 32 **non**
+ricevono la nota, perché hanno ancora «Invia a fatturazione» abilitata: la
+regola del §4 è «la nota risponde alla lista vuota», e con un bottone vivo la
+lista vuota non c'è. È coerente col brief, ma è una decisione che vale la pena
+riguardare: se preferite che la nota accompagni sempre lo stato chiuso anche
+accanto a un'azione applicativa, è una riga da cambiare in tre funzioni. Nota
+a margine: quei 5 ordini esistono perché `test-seed-stati-doc-ordini-evaso-v1.sql`
+è rosso in baseline sui test 4 e 6 — EVASO non è più terminale come quel test
+afferma, e la reason `ORDINE_GIA_EVASO` non esiste più. Debito preesistente,
+non introdotto qui.
+
+⚠️ **Un ramo non misurato.** Il test 5 va in SKIP: oggi non esiste **nessun**
+ordine con l'annullamento bloccato, quindi il ramo `reasons` dell'ordine non è
+esercitato da nessun soggetto vivo. È lo stesso codice del preventivo, che è
+coperto su 12 documenti, ma vale saperlo invece di leggere un verde che non ha
+misurato niente.
+
+### 9.3 Due cose che vi riguardano
+
+🔴 **Un nono codice errore, e una nona chiave i18n.** Il consolidamento del
+§7.3 non poteva limitarsi a cancellare la regola della porta. Misurato prima di
+decidere: 10 preventivi hanno righe già `EMESSA` in commessa e **tutti e 10**
+sono anche in `commesse_sorgenti`, quindi il motivo esistente li coprirebbe —
+ma la sovrapposizione è un fatto, non una costruzione. `commesse_sorgenti` ha
+un solo scrittore, `fn_link_commessa_sorgente`, e **nessuna funzione del
+database la chiama**: la scrivete voi, da `commesse_repository.link_sorgente()`,
+con una chiamata separata dall'upsert delle attività. Quindi un motivo legge una
+*registrazione* fatta da Python e l'altro un *effetto* prodotto dal database:
+coincidono finché un solo percorso scrive entrambe le cose. Il criterio della
+porta è stato perciò **assorbito come motivo a sé**, non cancellato. Ne
+discendono due cose per voi:
+
+| Cosa | Valore |
+| --- | --- |
+| Codice errore nuovo, da dichiarare in `error_policies.py` (409, come i tre fratelli) | `E_PREV_ANNULLA_COMMESSA_EMESSA` (id 839) |
+| Chiave i18n nuova, la nona | `vendite.preventivi.azione_reason.commessa_gia_emessa` |
+
+**Il travaso è già avvenuto**, misurato dopo l'apply: dei 47 preventivi con
+l'annullamento bloccato, **10 ricevono ora `E_PREV_ANNULLA_COMMESSA_EMESSA`** e
+37 restano su `E_PREV_GIA_IN_COMMESSA`. È un codice più preciso — dice che a
+valle esiste una **fattura**, non solo un collegamento — ed è un cambio visibile
+all'API: finché non lo dichiarate in `error_policies.py`, quei 10 casi
+degradano al generico, esattamente come il codice che questo lavoro ha appena
+ritirato.
+
+🟢 **`PREV_ANNULLAMENTO_COMMESSA_ATTIVA` è morto.** Verificato: dopo `-74`,
+**zero** funzioni vive in `vendite` e `script` lo sollevano. La riga resta a
+catalogo come storia — non si cancella un messaggio che può essere già finito in
+un log — ma il degrado a `E_DATABASE` che avete misurato non ha più un percorso
+che lo produca. Non serve toccare la regex.
