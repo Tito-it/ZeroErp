@@ -14,11 +14,12 @@ più il presidio che impedisce a queste cose di tornare.
 > misura **0 difetti aperti** e **1 sola voce** nel registro del debito, che è una
 > decisione già presa (D6). Il §7 è il registro di avanzamento.
 >
-> ⚠️ **Non ancora verificato sul campo:** i due passi CI (installazione di
-> `plpgsql_check` nel container del service + guardrail) non sono mai girati in
-> una pipeline. Finché non lo fanno, quella metà del presidio è scritta e provata
-> a mano, non dimostrata. È l'unica ragione per cui il brief resta qui e non in
-> `work-done`.
+> ⚠️ **Il presidio in CI è in accensione.** Tre giri rossi, tutti diagnosticati e
+> corretti (`-67`, `-68`, include in `changelog-provision-pre.yaml`, guardrail
+> spostato dopo il migrate di Django): dettaglio e lezioni al §7. Il guardrail ha
+> fatto il suo mestiere in tutti e tre. Finché una pipeline non passa, quella metà
+> del presidio è dimostrata a pezzi e non nel suo insieme: è l'unica ragione per
+> cui il brief resta qui e non in `work-done`.
 
 ---
 
@@ -485,9 +486,58 @@ in `ERRCODE`/`HINT`. Il test passava **solo perché quel messaggio mancava dal
 seed**: ora c'è (`Username gia' in uso.`) e il test cade. Il rimedio è asserire
 sul **codice**, non togliere la riga dal seed. Dettagli nel brief BE §4.
 
+### ⚠️ Accendere il presidio in CI: tre giri rossi, e cosa hanno insegnato
+
+Il guardrail non è passato al primo colpo, ed è la parte più istruttiva del
+cantiere: **un presidio scritto non è un presidio acceso**, e la differenza si
+paga tutta la prima volta che gira davvero.
+
+| Giro | Errore | Causa | Fix |
+|---|---|---|---|
+| 1 | `mislabel: VIEW vendite.vw_dash_competenza_attivita` | non nostro: `20260804-28` esponeva `codice_interno AS commessa_stato_codice` | `-67` (4 viste, no CASCADE) |
+| 2 | «Estensione plpgsql_check assente» | `20260804-36` ha `context: provision` e vive in `migrations_v2`: la CI lancia il master con `--contexts="!provision"` e i passi di provision usano changelog **separati** | include esplicito in `changelog-provision-pre.yaml` |
+| 3 | 11 `REALE` su `django.auth_user` + 2 `ORFANA` | vedi sotto | passo spostato dopo `manage.py migrate` + `-68` |
+
+**Il guardrail ha fatto il suo mestiere in tutti e tre.** Al giro 2 in particolare:
+avendo scelto di **fallire** invece di saltare quando l'estensione manca, ha detto
+ad alta voce che non poteva misurare. Con lo `skip` silenzioso — l'alternativa
+comoda — la pipeline sarebbe stata verde con copertura zero, e ce ne saremmo
+accorti fra sei mesi. È lo stesso modo di fallire da cui nasce questo brief.
+
+#### 🔴 `django.auth_user`: il database è completo solo dopo **due** migratori
+
+Una decina di funzioni DB leggono `django.auth_user`, che crea `manage.py
+migrate`, non Liquibase. Il guardrail stava a valle di Liquibase e a monte di
+Django: misurava un database a metà e produceva dieci falsi difetti. Spostato
+dopo il migrate di Django.
+
+Non è un dettaglio di ordinamento: dice che in questo progetto lo schema non ha
+un proprietario solo, e qualunque controllo sulle *definizioni vive* deve girare
+quando entrambi hanno finito.
+
+#### 🔴 Incrementale ≠ costruito da zero
+
+Due trigger function orfane comparse **solo in CI**: sul server di sviluppo non
+esistono, e i changeSet che le droppano (`20250922-01/02/03`) risultano
+`EXECUTED`. Stanno però nel tree legacy `migrations/`, incluso con `includeAll`
+alfabetico: l'ordine relativo fra chi crea e chi droppa regge su un database
+cresciuto nel tempo e non regge su uno costruito da zero.
+
+⚠️ È la scoperta più scomoda del cantiere, e vale ben oltre queste due funzioni:
+**il DB di sviluppo e un DB ricostruito dai changelog non sono lo stesso
+oggetto**, anche partendo dagli stessi file. Tutto ciò che verifichiamo solo su
+dev — e fin qui era *tutto* — verifica lo stato di una macchina, non la
+riproducibilità delle migrazioni. La CI, la prima volta che ha guardato davvero
+dentro le funzioni, l'ha vista subito.
+
+Corretto in avanti con `-68` (in `migrations_v2`, che il master include dopo
+tutto il legacy), perché toccare changeSet del 2025 già mergiati romperebbe la
+sequenza dei checksum. Su dev è un no-op.
+
 ### ⬜ Resta da fare
 
-1. ~~Commit~~ ✅ fatto.
+1. ~~Commit~~ ✅ fatto (restano da committare `-67`, `-68`, il riordino CI e il
+   pgTAP SDI).
 2. ~~pgTAP per `fn_prepare_sdi_payload`~~ ✅ fatto:
    [`db/pgtap/vendite/test-fn-prepare-sdi-payload-v1.sql`](../../../../db/pgtap/vendite/test-fn-prepare-sdi-payload-v1.sql),
    `plan(10)` verde. Il test 7 è quello che tiene chiuso il secondo difetto (il

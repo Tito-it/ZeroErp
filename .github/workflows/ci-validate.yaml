@@ -227,6 +227,21 @@ jobs:
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
             -f scripts/sql/check_naming_stato_codice.sql
 
+      - name: Django check
+        working-directory: ./backend
+        run: |
+          source .venv/bin/activate
+          python manage.py check
+
+      - name: Django migrate (schema django)
+        working-directory: ./backend
+        run: |
+          source .venv/bin/activate
+          python manage.py migrate contenttypes --noinput
+          python manage.py migrate auth --noinput
+          python manage.py migrate token_blacklist --fake
+          python manage.py migrate --noinput
+
       - name: Guardrail riferimenti morti (funzioni plpgsql + dati di config)
         env:
           PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
@@ -245,23 +260,17 @@ jobs:
           #
           # Fallisce anche se una voce del registro non serve piu': il debito
           # deve calare, non solo non crescere.
+          #
+          # ⚠️ POSIZIONE: DOPO il migrate di Django, e non e' un dettaglio.
+          # Una decina di funzioni del DB leggono `django.auth_user` — lo
+          # schema `django` lo crea `manage.py migrate`, non Liquibase.
+          # Messo prima, il guardrail misurava un database a meta' e
+          # segnalava dieci falsi difetti «relation django.auth_user does not
+          # exist» (visto in CI il 2026-08-04). Il DB e' completo solo quando
+          # entrambi i migratori hanno finito: e' li' che ha senso compilarne
+          # i corpi.
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
             -f scripts/sql/guardrail_riferimenti_morti.sql
-
-      - name: Django check
-        working-directory: ./backend
-        run: |
-          source .venv/bin/activate
-          python manage.py check
-
-      - name: Django migrate (schema django)
-        working-directory: ./backend
-        run: |
-          source .venv/bin/activate
-          python manage.py migrate contenttypes --noinput
-          python manage.py migrate auth --noinput
-          python manage.py migrate token_blacklist --fake
-          python manage.py migrate --noinput
 
       - name: Django tests
         working-directory: ./backend
