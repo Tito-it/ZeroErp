@@ -82,6 +82,12 @@ INSERT INTO _perimeter (nspname, relname, grade) VALUES
     ('documenti', 'documenti_generati',             'i'),
     ('documenti', 'documenti_generati_file',        'i'),
     ('documenti', 'documenti_generati_eventi',      'i'),
+    -- DELETE only: il cleanup del rollback automatico (fn_cleanup_fatture_by_ids)
+    -- cancella le note della fattura. Il batch non le crea mai: l'INSERT e' del
+    -- flusso operatore. Il perimetro conteneva 'note_fatture', tabella del
+    -- modello precedente all'unificazione delle note (0 righe, nessuna funzione
+    -- la scrive): il grant era rimasto sulla tabella vecchia.
+    ('vendite', 'note',                             'd'),
     ('vendite', 'commesse_attivita',                'u'),
     ('vendite', 'fatture_stampa_coda',              'u');
 
@@ -93,6 +99,7 @@ SELECT p.nspname, p.relname, unnest(
         WHEN 'iu'  THEN ARRAY['INSERT', 'UPDATE']
         WHEN 'i'   THEN ARRAY['INSERT']
         WHEN 'u'   THEN ARRAY['UPDATE']
+        WHEN 'd'   THEN ARRAY['DELETE']
     END
 ) AS privilege_type
 FROM _perimeter p;
