@@ -27,6 +27,9 @@ _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _REPO = "apps.vendite.api.views.CodaLavoriRepository"
 _RESOLVER = "apps.vendite.api.views.PermissionResolver"
 _EXTRACT_IDENTITA = "apps.vendite.api.views.extract_identita_id_from_request"
+# Emittente attivo del JWT: congelato nello scope del job (impersonazione di
+# scope). Mockato come l'identita' — il claim vero non passa dai test API.
+_EXTRACT_EMITTENTE = "apps.vendite.api.views.extract_emittente_attivo_from_request"
 
 _NUMERA = "/api/v1/vendite/fatturazione/numera/"
 
@@ -69,11 +72,12 @@ class FatturazioneNumeraApiTests(JwtMockedApiTest):
     # 3. Accoda un job OPERATORE FATTURAZIONE_NUMERA con identità COMPLETA nello
     #    scope catturato e chiave BUSINESS (competenza + emittenti ordinati).
     @patch(_AUTH, return_value=(_mock_user(), None))
+    @patch(_EXTRACT_EMITTENTE, return_value=3)
     @patch(_EXTRACT_IDENTITA, return_value=5)
     @patch(_RESOLVER)
     @patch(_REPO)
     def test_numera_ok_accoda_operatore_scope_business_key(
-        self, repo_cls, resolver, _extract, _auth,
+        self, repo_cls, resolver, _extract, _extract_ef, _auth,
     ) -> None:
         resolver.get_emittenti_ids.return_value = [4, 3]  # non ordinati
         repo_cls.return_value.accoda.return_value = 777
@@ -94,6 +98,9 @@ class FatturazioneNumeraApiTests(JwtMockedApiTest):
         self.assertEqual(kwargs["run_as"], "OPERATORE")
         self.assertEqual(kwargs["scope"], {
             "auth_user_id": 9, "username": "op9", "identita_id": 5,
+            # Congelato all'enqueue: senza, il worker girerebbe in modalità
+            # globale e il giro chiesto «dentro 3» toccherebbe anche il 4.
+            "emittente_attivo_id": 3,
             "emittente_ids": [4, 3],
             "scope_key": "3,4",  # ownership scope-based del polling
         })

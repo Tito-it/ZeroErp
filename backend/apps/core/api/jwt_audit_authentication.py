@@ -24,7 +24,10 @@ from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
-from apps.core.services.auth_constants import JWT_CLAIM_IDENTITA_ID
+from apps.core.services.auth_constants import (
+    JWT_CLAIM_EMITTENTE_ATTIVO_ID,
+    JWT_CLAIM_IDENTITA_ID,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +46,13 @@ JWT_IDENTITY_GUCS: tuple[str, ...] = (
     "app.current_identita_id",
     "app.ruolo_applicativo",
     "app.soggetto_ruolo_id",
+    # Emittente attivo (impersonazione di scope). DEVE stare in questa tupla:
+    # `JWT_GUC_RESET_SQL` è derivato da qui, ed è il reset di inizio richiesta.
+    # Fuori dalla tupla la GUC resterebbe appiccicata alla connessione del pool
+    # e la richiesta successiva — di un ALTRO utente — erediterebbe
+    # l'impersonazione. È il rischio più serio dell'intero cantiere, ed è tutto
+    # lato applicativo: il DB si limita a leggere ciò che trova.
+    "app.current_emittente_id",
 )
 
 # SQL che azzera (stringa vuota, session-scoped) tutti i JWT_IDENTITY_GUCS
@@ -129,6 +139,7 @@ def set_jwt_gucs(
     username: str,
     user_id: int | str,
     identita_id: int | str | None = None,
+    emittente_attivo_id: int | str | None = None,
     request: Any | None = None,
 ) -> bool:
     # Guard §8.3.4: modello 1:N non ammette risoluzione implicita.
@@ -137,11 +148,20 @@ def set_jwt_gucs(
         return False
     try:
         with connection.cursor() as cursor:
-            # Unica query CTE: valida (user, identita) + setta i 5 GUC
+            # Unica query CTE: valida (user, identita) + setta i 6 GUC
             # + ritorna il count delle righe (1 se valida, 0 se revocata
-            # o non appartenente a quell'auth_user). I 5 GUC qui settati
+            # o non appartenente a quell'auth_user). I 6 GUC qui settati
             # sono l'elenco canonico JWT_IDENTITY_GUCS (il reset middleware
             # ne deriva): tenere allineato se si aggiunge/rimuove un GUC.
+            #
+            # `ef_row` rivalida l'emittente del claim a OGNI richiesta, sul
+            # solo requisito che il DB non controlla: che sia ancora ATTIVO.
+            # Costa un lookup su PK dentro una query che già facciamo, e
+            # chiude il caso «token emesso ieri, emittente disattivato oggi»
+            # — che altrimenti farebbe lavorare l'utente dentro un emittente
+            # spento fino alla scadenza dell'access token. Lo SCOPE invece non
+            # si rivalida qui: ci pensa il DB a ogni chiamata, e un claim fuori
+            # perimetro produce insieme vuoto (fail-closed), non accesso.
             cursor.execute(
                 """
                 WITH id_row AS (
@@ -149,6 +169,12 @@ def set_jwt_gucs(
                       FROM anagrafiche.identita_digitali
                      WHERE id = %s AND auth_user_id = %s
                        AND attivo = true
+                ), ef_row AS (
+                    SELECT ef.id
+                      FROM anagrafiche.emittenti_fiscali ef
+                     WHERE %s::bigint IS NOT NULL
+                       AND ef.id = %s::bigint
+                       AND ef.attivo = true
                 )
                 SELECT
                     set_config('app.jwt_user',            %s,                                                     false),
@@ -156,9 +182,14 @@ def set_jwt_gucs(
                     set_config('app.current_identita_id', COALESCE((SELECT id::text               FROM id_row), ''), false),
                     set_config('app.ruolo_applicativo',   COALESCE((SELECT ruolo_applicativo::text FROM id_row), ''), false),
                     set_config('app.soggetto_ruolo_id',   COALESCE((SELECT soggetto_ruolo_id::text FROM id_row), ''), false),
+                    set_config('app.current_emittente_id',COALESCE((SELECT id::text               FROM ef_row), ''), false),
                     (SELECT COUNT(*) FROM id_row)                                                                AS identita_count
                 """,
-                [str(identita_id), str(user_id), str(username), str(user_id)],
+                [
+                    str(identita_id), str(user_id),
+                    emittente_attivo_id, emittente_attivo_id,
+                    str(username), str(user_id),
+                ],
             )
             row = cursor.fetchone()
             identita_trovata = bool(row) and row[-1] > 0
@@ -237,7 +268,17 @@ class JwtAuditAuthentication(JWTAuthentication):
         # Popolazione GUC + verifica identita in singola query CTE.
         # Se non trovata attiva per questa coppia (user, identita),
         # le GUC restano vuote e set_jwt_gucs ritorna False.
-        identita_ok = self._set_gucs(request, user, user_id, int(identita_id))
+        # Emittente attivo: claim OPZIONALE. Assente = modalità «Tutti gli
+        # emittenti», cioè GUC vuota e comportamento identico a prima
+        # dell'impersonazione. Non si solleva mai per la sua assenza: i token
+        # emessi prima di questo cantiere restano validi fino a scadenza.
+        emittente_attivo_id = validated_token.get(JWT_CLAIM_EMITTENTE_ATTIVO_ID)
+        identita_ok = self._set_gucs(
+            request, user, user_id, int(identita_id),
+            emittente_attivo_id=(
+                int(emittente_attivo_id) if emittente_attivo_id is not None else None
+            ),
+        )
         if not identita_ok:
             logger.warning(
                 "security.identita_non_attiva user_id=%s identita_id=%s",
@@ -247,15 +288,21 @@ class JwtAuditAuthentication(JWTAuthentication):
 
         return result
 
-    # Scopo: Imposta le 5 GUC sulla connessione corrente, validando la
+    # Scopo: Imposta le 6 GUC sulla connessione corrente, validando la
     # coppia (auth_user, identita_id). Metodo separato e mockabile dai
     # test che non vogliono toccare il DB (vedi
     # apps/core/tests/_helpers/jwt_mock.py). Ritorna True se l'identita
     # richiesta e' attiva per quell'auth_user, False altrimenti.
-    def _set_gucs(self, request, user, user_id, identita_id) -> bool:
+    # `emittente_attivo_id` keyword-only con default: i test che mockano
+    # questo metodo con la vecchia firma continuano a funzionare.
+    def _set_gucs(
+        self, request, user, user_id, identita_id, *,
+        emittente_attivo_id: int | None = None,
+    ) -> bool:
         return set_jwt_gucs(
             username=str(user),
             user_id=user_id,
             identita_id=identita_id,
+            emittente_attivo_id=emittente_attivo_id,
             request=request,
         )

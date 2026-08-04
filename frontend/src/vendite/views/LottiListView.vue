@@ -11,6 +11,7 @@ import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
 import Select from 'primevue/select'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
+import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import ExportDialog from '../../core/components/ExportDialog.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
@@ -22,6 +23,7 @@ import FatturazioneEsitiPanel from '../components/FatturazioneEsitiPanel.vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useNotify } from '../../core/composables/useNotify'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
+import { useLottoAzioni } from '../composables/useLottoAzioni'
 import { useDashMesiNav } from '../../core/composables/useDashMesiNav'
 import { extractApiError } from '../../core/utils/apiError'
 import { READONLY_DOMAINS } from '../../core/constants'
@@ -31,7 +33,9 @@ import { useLottiStore } from '../stores/lotti'
 
 const { t } = useI18n()
 const notify = useNotify()
-useReadonlyMode(READONLY_DOMAINS.VENDITE)
+// Il valore serve anche qui, non solo ai figli: in sola lettura il kebab di
+// riga non propone azioni di governo (il BE resta il guard vero).
+const { isReadonly } = useReadonlyMode(READONLY_DOMAINS.VENDITE)
 const store = useLottiStore()
 
 // Filtro stato lotto (select statico sui valori di dominio; una nuova voce si
@@ -160,15 +164,27 @@ onActivated(() => {
 const drawerVisible = ref(false)
 const drawerLottoId = ref(null)
 
-// Scopo: accesso alla riga con il click, come le liste standard. L'unica
-//        azione era «apri», cioè lo stesso gesto: il kebab è stato tolto
-//        (decisione Tid 2026-07-31) e la colonna `azioni` disattivata nel
-//        catalogo — si riattiva lì quando le azioni di riga diventeranno
-//        più d'una.
+// Scopo: accesso alla riga con il click, come le liste standard. Il kebab
+//        (tolto il 2026-07-31, quando l'unica azione era «apri», cioè lo stesso
+//        gesto) torna il 2026-08-04 con le azioni di governo: la colonna
+//        `azioni` del catalogo è stata riattivata dal team DB.
 function apriLotto(row) {
   drawerLottoId.value = row.id
   drawerVisible.value = true
 }
+
+// Azioni di riga: stesso composable del drawer — conferme, chiamate e testi
+// stanno in una sede sola. La lista non ha il blob capability (scelta del team
+// DB: nessuna lista del progetto lo consuma per riga), quindi il kebab propone
+// i verbi PLAUSIBILI per lo stato della riga e la verifica vera avviene al
+// click, leggendo la capability di quel lotto: se il DB dice no, l'operatore
+// legge il motivo invece di veder fallire l'azione.
+const { azioniRiga, loading: azioniLoading } = useLottoAzioni({
+  onDone: async () => {
+    await load()
+    await loadMensile()
+  },
+})
 
 // Azioni di pagina: quelle standard del BB (reload / personalizza / export).
 // Niente «Nuovo» — un lotto non si crea da qui, lo genera la pipeline: lo
@@ -299,6 +315,20 @@ const azioniPagina = computed(() =>
               severity="info"
             />
             <span v-else>—</span>
+          </template>
+
+          <!-- Azioni di governo del lotto senza passare dal drawer: avanza /
+               rilancia step, rendi definitive, ristampa, annulla, riporta in
+               lavorazione. Le voci proposte dipendono dallo stato della riga;
+               il verdetto vero (e il motivo di un rifiuto) arriva dal DB al
+               click — vedi useLottoAzioni. -->
+          <template #actions="{ data, compact }">
+            <RowActionsMenu
+              :row="data"
+              :actions="azioniRiga(data, { readonly: isReadonly })"
+              :disabled="azioniLoading"
+              :force-compact="compact"
+            />
           </template>
 
           <template #empty>

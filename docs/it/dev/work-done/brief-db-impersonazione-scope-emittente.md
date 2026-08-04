@@ -1,6 +1,28 @@
 # Brief BE → DB — impersonazione di scope emittente per SUPER_ADMIN
 
-> 🟢 **Stato: ACCOLTO — in sviluppo lato DB (2026-08-04).** L'impianto regge: la
+> ✅ **CHIUSO il 2026-08-04.** Consegnato su entrambi i lati e validato a video
+> da Tid al primo accesso reale: il super admin sceglie l'emittente, la
+> combo cambia scope, i dati si restringono.
+>
+> - **DB**: changeSet `20260804-11` … `-16`, pgTAP **10/10**, sei suite di scope
+>   preesistenti invariate, un rosso di baseline rientrato (§8.11);
+> - **BE/FE**: claim JWT, sesta GUC, endpoint di switch, `/me/`, combo di
+>   topbar, dialog della prima scelta, congelamento dell'emittente nei job —
+>   suite **3556 verdi** (§9).
+>
+> **Due code, entrambe dichiarate e nessuna bloccante:**
+> ⏳ `storico.user_emittente_attivo` si materializza col job pgagent delle
+> 21:00 — la registrazione in `config.storico_set_storicizza` **c'è**
+> (verificata: `config.user_emittente_attivo`, `insert_manuale = true`), manca
+> solo la gemella. Da ricontrollare a valle della prima esecuzione.
+> 🟠 I verbi di creazione non sono spenti area per area in modalità «Tutti gli
+> emittenti»: il DB rifiuta con i messaggi riscritti, ma l'utente lo scopre a
+> fine compilazione (§9.4). Richiede prima di decidere quali aree esigono
+> davvero un emittente — lavoro a sé, non un residuo di questo.
+>
+> ---
+>
+> 🟢 **Stato precedente: ACCOLTO — in sviluppo lato DB (2026-08-04).** L'impianto regge: la
 > canonica è davvero la sede unica, e le policy RLS non vanno toccate (verifica in
 > §8.1). **Cambiano tre cose**: il §4.3 da solo non basta, perché lo scenario che lo
 > giustifica è bloccato a monte da un gate che il brief non nomina (§8.3); il §4.2
@@ -10,7 +32,9 @@
 > decade: il log dello switch esiste già, è la storicizzazione (§8.8).
 >
 > **Leggere il §8 prima del resto:** §1–§7 sono il testo originale del BE, lasciato
-> integro come richiesta in ingresso.
+> integro come richiesta in ingresso. **Il §9 è la chiusura del BE** (2026-08-04):
+> cosa è stato costruito sopra il vostro impianto, le tre decisioni prese
+> strada facendo e le due cose che restano scoperte.
 
 **Chi scrive:** BE (`dev/backend-tid`), 2026-08-03.
 **A chi:** team DB (`dev/db-tid`).
@@ -216,7 +240,7 @@ restringano, quindi non la esponiamo prima.
    riemette access+refresh (validando che l'emittente esista, sia attivo e —
    per un non‑super‑admin — sia nel suo scope).
 2. GUC in `set_jwt_gucs()` e, **soprattutto**, nella tupla `JWT_IDENTITY_GUCS`
-   di [jwt_audit_authentication.py:40](../../../backend/apps/core/api/jwt_audit_authentication.py#L40):
+   di [jwt_audit_authentication.py:40](../../../../backend/apps/core/api/jwt_audit_authentication.py#L40):
    il reset di fine richiesta è derivato da quella tupla. Dimenticarla lì
    lascerebbe la GUC appiccicata alla connessione del pool e la **richiesta
    successiva, di un altro utente, erediterebbe l'impersonazione**. È il rischio
@@ -526,3 +550,95 @@ Restano al BE, invariati rispetto al §6: claim JWT, endpoint di switch, GUC **e
 tupla `JWT_IDENTITY_GUCS`**, `/me/`, congelamento dell'emittente nel payload dei job.
 Con in più: caricare il default da `config.user_emittente_attivo` al login e imporre la
 scelta quando è vuoto.
+
+---
+
+## 9. Chiusura BE — cosa è stato costruito, e cosa resta
+
+> **Chi scrive:** BE (`dev/backend-tid`), 2026-08-04, dopo l'apply del §8.11.
+> Suite backend **3556 verdi**, build frontend pulita, primo accesso reale
+> validato da Tid.
+
+### 9.1 Verifica indipendente del vostro impianto
+
+Prima di costruirci sopra, le funzioni sono state provate sul DB vivo con la
+GUC settata a mano — non lette, eseguite:
+
+| Caso | Misura |
+| --- | --- |
+| Super admin, nessuna GUC | `_pk_ids` `NULL`, `check` true su tutti, `can_create_ba` **false** |
+| Super admin, GUC = 32 | `_pk_ids` `{32}`, `_sr_ids` `{72}`, `check(44)` **false**, `resolve` 32, `can_create_ba` **true** |
+| Operatore (whitelist `{32}`), GUC = 44 | `_pk_ids` **`{}`** — non allarga, si auto-restringe |
+| Super admin, GUC = id inesistente | `_pk_ids` `{999999}` (zero righe di fatto), `_sr_ids` **`{}`** |
+
+L'invariante del §2 regge, e il `coalesce` del §8.4 fa il suo lavoro. La
+modalità globale in sola lettura (§8.2.2) è confermata dal `can_create_ba`
+false: non è una convenzione di UI, è il DB.
+
+### 9.2 Le tre decisioni prese strada facendo
+
+**a) L'endpoint di switch riemette i token, non si limita a salvare.**
+`POST /api/v1/core/me/emittente-attivo/` valida, persiste in
+`config.user_emittente_attivo` e restituisce access+refresh **nuovi** col claim
+aggiornato. Salvare soltanto avrebbe avuto effetto al login successivo: la
+combo sarebbe cambiata senza che i dati si restringessero — l'interfaccia che
+mente, cioè il difetto peggiore di tutti. Il refresh presentato deve
+appartenere all'utente autenticato (guard anti-scambio).
+
+**b) La rivalidazione «emittente ancora attivo» vive nella CTE di
+`set_jwt_gucs`, a ogni richiesta.** Il §3 stabilisce che il DB non valida la
+GUC, e resta così: il controllo è applicativo. La CTE aggiunge un `ef_row` che
+popola `app.current_emittente_id` **solo** se l'emittente è ancora
+`attivo = true`. Costa un lookup su PK dentro una query che già facevamo, e
+chiude il caso «token emesso ieri, emittente disattivato oggi» — che
+altrimenti farebbe lavorare l'utente dentro un emittente spento fino alla
+scadenza dell'access token. Lo **scope** invece non si rivalida lì: ci pensate
+voi a ogni chiamata, e un claim fuori perimetro produce insieme vuoto.
+
+**c) L'emittente attivo è CONGELATO nei lavori accodati.** Il worker esegue
+minuti dopo, su un processo senza browser né token: senza congelamento
+girerebbe in modalità globale, e un giro chiesto «dentro A» toccherebbe anche
+B, in silenzio. L'emittente viene catturato all'enqueue in
+`dbops.coda_lavori.scope` (chiave `emittente_attivo_id`, il CHECK
+`chk_coda_lavori_run_as_scope` verifica solo la presenza dello scope) e
+rimesso come GUC da `operator_identity_context`. Chiave assente sui job
+accodati prima del cantiere → `None` → comportamento storico.
+
+> ⚠️ **Effetto collaterale da conoscere.** Poiché `fn_get_emittenti_scope_pk_ids`
+> ora interseca con la GUC, `PermissionResolver.get_emittenti_ids` all'enqueue
+> restituisce l'emittente attivo invece di `NULL`. Ne consegue che la
+> `scope_key` del job — che governa **dedup dei job vivi e ownership del
+> polling** — passa da `ALL` a `32` per un super admin dentro un emittente. È
+> coerente (due super admin in emittenti diversi non si contendono più i job),
+> ma è un cambio di comportamento che non era stato previsto da nessuna delle
+> due metà del brief.
+
+### 9.3 Cosa espone il BE al frontend
+
+`/api/v1/core/me/` porta un blocco `emittente_attivo` con quattro campi:
+`emittente_fiscale_id` (dal **claim**, non dalla preferenza: dopo un passaggio
+a «Tutti» i due divergono), `modalita_globale`, `puo_scegliere` (falso per
+l'operatore: il suo emittente è un permesso, non una scelta) e
+`deve_scegliere`.
+
+> 💡 **«Non ha mai scelto» e «ha scelto Tutti» sono due stati diversi che dal
+> claim si vedono uguali** — assente in entrambi. A distinguerli è la
+> preferenza salvata. Senza questa distinzione il dialog bloccante
+> ricomparirebbe a ogni caricamento proprio a chi ha appena deciso di vedere
+> tutto. Trovato da un test, non a video.
+
+### 9.4 Due cose che restano scoperte
+
+1. 🟠 **I verbi di creazione non sono spenti area per area** in modalità
+   globale. Il punto centrale ci sarebbe (`useReadonlyMode`), ma applicarlo lì
+   bloccherebbe anche l'amministrazione del software, che di emittente non ha
+   bisogno: il super admin non potrebbe più creare utenti o parametri proprio
+   mentre guarda tutto. Oggi la topbar avvisa e il **DB rifiuta** con i vostri
+   `*_EMITTENTE_NON_RISOLTO`, i cui testi riscritti (§8.6) rimandano alla combo
+   — la catena funziona, ma l'utente lo scopre a fine compilazione. Spegnere i
+   verbi richiede prima decidere quali aree esigono davvero un emittente.
+2. 🟡 **Lo storico degli switch non esiste ancora.** Verificato:
+   `SELECT to_regclass('storico.user_emittente_attivo')` → `NULL`. Il job
+   pgagent gira alle 21:00 (§8.11), quindi **fino a quel momento i cambi di
+   emittente non vengono registrati da nessuna parte** — ed è proprio la
+   tracciabilità che ha motivato il §4.4. Da ricontrollare domattina.

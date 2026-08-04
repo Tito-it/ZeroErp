@@ -79,7 +79,7 @@ visualizzatore costruito oggi mostrerebbe in maggioranza righe che non sanno
 dire cosa rappresentano.
 
 ➡️ Prerequisito, già scritto:
-[brief-db-seed-messaggi-errore-mancanti.md](brief-db-seed-messaggi-errore-mancanti.md)
+[brief-db-seed-messaggi-errore-mancanti.md](../work-done/brief-db-seed-messaggi-errore-mancanti.md)
 (207 codici, proposta SQL validata e idempotente).
 
 ### 1.3 🔴 `event_log` è write-only
@@ -164,7 +164,7 @@ successivo.
 ### Passo 1 — Rendere nominabili gli errori *(prerequisito)*
 
 Applicare il seed dei 207 codici
-([brief](brief-db-seed-messaggi-errore-mancanti.md), già pronto e validato) e
+([brief](../work-done/brief-db-seed-messaggi-errore-mancanti.md), già pronto e validato) e
 decidere il check CI che impedisca il ripetersi del disallineamento fra
 `error_policies.py` e il catalogo DB.
 
@@ -244,7 +244,7 @@ DB: brief dedicato.
 | [Messaggi-di-Errore-e-Generazione-Log.md](../../guide/Messaggi-di-Errore-e-Generazione-Log.md) | La guida **stabile**: modello di scrittura + mappa di consultazione. Quando un passo di qui atterra, la guida si aggiorna e qui resta la storia |
 | [analisi-diagnostica-produzione-senza-accesso-db.md](analisi-diagnostica-produzione-senza-accesso-db.md) | Altro mestiere (§0). Ne condividiamo la **Fase 0** (Passo 2) e ne siamo il fornitore per la Fase 1 |
 | [fatturazione-roadmap.md](fatturazione-roadmap.md) | I suoi item **#5 vista errori**, **#6 alerting**, **#7 correlation_id** sono qui dentro. La roadmap resta il documento di dominio, questo quello trasversale |
-| [brief-db-seed-messaggi-errore-mancanti.md](brief-db-seed-messaggi-errore-mancanti.md) | Il Passo 1, già scritto |
+| [brief-db-seed-messaggi-errore-mancanti.md](../work-done/brief-db-seed-messaggi-errore-mancanti.md) | Il Passo 1, già scritto |
 | [audit-e-tracciabilita.md](../../guide/audit-e-tracciabilita.md) | Il suo §8 «Pianificato» chiede già `GET /core/request-log/` e una «dashboard anomalie»: stesso bisogno, arrivato prima |
 
 ---

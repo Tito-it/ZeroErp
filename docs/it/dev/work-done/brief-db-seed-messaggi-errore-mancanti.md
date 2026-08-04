@@ -1,8 +1,22 @@
 # Brief BE → DB — il registro errori non sa nominare due terzi degli errori
 
-> 🟢 **Stato: ACCOLTO CON MODIFICHE — APPLICATO e verificato il 2026-08-03.**
+> 🟢 **CHIUSO — 2026-08-04.** Il passo 5 (§9.8), l'ultimo aperto, è fatto lato BE:
+> il check anti-ricaduta esiste ed è costruito **sui punti di chiamata** come
+> chiedeva il §9.6 — [`test_error_codes_declared_guardrail.py`](../../../../backend/apps/core/tests/test_error_codes_declared_guardrail.py)
+> (AST, senza DB, allowlist vuota). Al primo giro ha trovato **28 codici** sfilati:
+> 24 dichiarati, un generico `E_NOT_FOUND` corretto in quattro call-site, e
+> `E_VALIDAZIONE` (che è vostro) sostituito con `E_ANAG_VALIDAZIONE` in due.
+> `E_OFFERTA_XXX` era un **falso positivo**: è il testo di un commento che
+> documenta la convenzione `RAISE EXCEPTION USING MESSAGE=...`, non un call-site.
+>
+> **Il seguito vive altrove:** i 28 codici nuovi vanno a catalogo →
+> [brief-db-seed-messaggi-errore-round-2.md](../work-in-progress/brief-db-seed-messaggi-errore-round-2.md)
+> (aperto), che porta anche il vostro gemello del check lato DB.
+>
+> ---
+>
+> 🟢 **Stato precedente: ACCOLTO CON MODIFICHE — APPLICATO e verificato il 2026-08-03.**
 > Seed a catalogo (595 righe), fix funzione applicato, controprova verde: §9.8.
-> Resta aperto il solo check anti-ricaduta (§9.6), che è lavoro condiviso BE+DB.
 > La diagnosi è confermata sui dati e i 207 testi sono buoni. **Cambiano quattro cose:**
 > il seed viaggia sul CSV Liquibase e non come `INSERT` (§9.2); la lista cresce di
 > 14 codici sollevati da funzioni DB vive (§9.3); insieme al seed parte un fix a
@@ -26,7 +40,7 @@
 > rollback e idempotente:
 > [`backend/scripts/db-proposals/PROPOSTA_seed_messaggi_errore_mancanti.sql`](../../../../backend/scripts/db-proposals/PROPOSTA_seed_messaggi_errore_mancanti.sql).
 > **Correlati:** [Messaggi-di-Errore-e-Generazione-Log.md](../../guide/Messaggi-di-Errore-e-Generazione-Log.md) ·
-> [analisi-diagnostica-produzione-senza-accesso-db.md](analisi-diagnostica-produzione-senza-accesso-db.md) (Fase 0)
+> [analisi-diagnostica-produzione-senza-accesso-db.md](../work-in-progress/analisi-diagnostica-produzione-senza-accesso-db.md) (Fase 0)
 
 ---
 

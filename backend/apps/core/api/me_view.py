@@ -17,7 +17,11 @@ from apps.core.api.base_views import DomainAPIView
 from apps.core.api.success_responses import success_response
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.db.core_repository import CoreRepository
-from apps.core.services.auth_constants import JWT_CLAIM_IDENTITA_ID
+from apps.core.services.auth_constants import (
+    JWT_CLAIM_EMITTENTE_ATTIVO_ID,
+    JWT_CLAIM_IDENTITA_ID,
+)
+from apps.core.services.emittente_attivo_service import EmittenteAttivoService
 from apps.core.services.permissions_resolver import PermissionResolver
 
 
@@ -143,7 +147,24 @@ class UserProfileView(DomainAPIView):
         # il JWT porta l'identita_id preciso iniettato al login, e /me/
         # deve riflettere ESATTAMENTE quella veste (non una delle N).
         profile["identita"] = self._identita_del_jwt(request)
+        # Impersonazione di scope: dentro quale emittente sta lavorando questa
+        # SESSIONE (dal claim, non dalla preferenza salvata: dopo un passaggio
+        # a «Tutti gli emittenti» i due valori divergono, ed è il claim che
+        # comanda la GUC e quindi ciò che l'utente vede).
+        profile["emittente_attivo"] = EmittenteAttivoService().descrivi(
+            request.user.id, self._emittente_attivo_del_jwt(request),
+        )
         return success_response(profile)
+
+    # Scopo: Legge `emittente_attivo_id` dal JWT validato. Claim assente =
+    # modalità «Tutti gli emittenti» (o token emesso prima del cantiere).
+    @staticmethod
+    def _emittente_attivo_del_jwt(request: Request) -> int | None:
+        token = request.auth
+        if token is None or not hasattr(token, "get"):
+            return None
+        valore = token.get(JWT_CLAIM_EMITTENTE_ATTIVO_ID)
+        return int(valore) if valore is not None else None
 
     # Scopo: Legge identita_id dal JWT validato e ritorna il dettaglio
     # dell'identita, oppure None se il JWT non ha il claim (token

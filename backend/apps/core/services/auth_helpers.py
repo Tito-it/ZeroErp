@@ -24,7 +24,10 @@ from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.core.db.auth_repository import AuthRepository
-from apps.core.services.auth_constants import JWT_CLAIM_IDENTITA_ID
+from apps.core.services.auth_constants import (
+    JWT_CLAIM_EMITTENTE_ATTIVO_ID,
+    JWT_CLAIM_IDENTITA_ID,
+)
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.token_service import TokenService
 
@@ -61,6 +64,24 @@ def extract_identita_id_from_request(request: Any) -> int | None:
     if claim is None:
         return None
     return _safe_int_or_none(claim.get(JWT_CLAIM_IDENTITA_ID))
+
+
+# Scopo: Estrae `emittente_attivo_id` dal JWT validato — l'emittente dentro
+#        cui l'utente sta lavorando in QUESTA sessione (impersonazione di
+#        scope). None = modalita' «Tutti gli emittenti», o token emesso prima
+#        del cantiere.
+#
+#        Serve a CONGELARE l'emittente nei lavori accodati: il worker esegue
+#        minuti dopo, su un processo che non ha ne' il browser ne' il token, e
+#        senza questo valore girerebbe come se l'utente fosse in modalita'
+#        globale. Il lavoro deve fare cio' che e' stato chiesto NEL MOMENTO in
+#        cui e' stato chiesto — anche se nel frattempo l'utente ha cambiato
+#        emittente, o ha fatto logout.
+def extract_emittente_attivo_from_request(request: Any) -> int | None:
+    claim = getattr(request, "auth", None)
+    if claim is None:
+        return None
+    return _safe_int_or_none(claim.get(JWT_CLAIM_EMITTENTE_ATTIVO_ID))
 
 
 # Scopo: Estrae `identita_id` dal meta JSONB di un token monouso

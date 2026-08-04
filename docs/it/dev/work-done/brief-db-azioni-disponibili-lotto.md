@@ -1,5 +1,51 @@
 # Brief BE → DB — azioni disponibili del lotto di fatturazione (`fn_available_actions_lotto`)
 
+> 🟢 **CHIUSO — 2026-08-04.** DB applicato e verde (risposta: §1 di
+> [risposta-db-azioni-lista-lotto.md](risposta-db-azioni-lista-lotto.md)); BE/FE
+> completati e **validati in-app da Tid** lo stesso giorno.
+>
+> **Consegnato lato BE/FE:**
+>
+> * `get_lotto` espone il blob capability (`VenditeRepository.get_available_actions_lotto`
+>   → merge nel dettaglio **dopo** il cancello di scope, con fallback graceful se
+>   il capability layer si rompe);
+> * i 4 codici errore nuovi + `E_LOTTO_NON_TROVATO` registrati in `error_policies.py`
+>   come **409**, non 400: chi li vede ha forzato un'azione che l'interfaccia
+>   mostrava già disabilitata col motivo;
+> * `LottoDrawer.vue` passa a `DrawerActionsBar` + `mapAvailableActionsToDrawerActions`:
+>   **le cinque `computed` di stato sono sparite**, incluso il `!isDraft` che su un
+>   lotto DEFINITIVA mostrava un pulsante destinato a fallire;
+> * `LottiListView.vue` monta il kebab con i cinque verbi;
+> * `useLottoAzioni` — conferme, chiamate, toast e permessi in **una sola sede**,
+>   estratto alla seconda occorrenza (regola del 2, ok Tid).
+>
+> **Due scostamenti dal brief, entrambi motivati dal DB e accettati:**
+>
+> 1. **Niente capability per riga di lista** (§4.3 → §3.3 della risposta). Il kebab
+>    propone i verbi plausibili per lo stato della riga e, **al click**, legge la
+>    capability di quel lotto: se il DB dice no, l'operatore legge il motivo invece
+>    di veder fallire l'azione. Una chiamata sola, pagata solo quando si agisce.
+> 2. **`avanza_step` / `rilancia_step` restano gate del frontend** (§5 della
+>    risposta): il loro verdetto vive nel runner Python e farne scendere metà
+>    creerebbe la seconda copia della regola che questo lavoro elimina.
+>
+> **Correzione a quanto scritto qui sotto:** il ⚠️ del §3 su
+> `fn_riporta_lotto_a_draft` («non risulta in migrations/pgtap/doc») **era
+> sbagliato** — la funzione esiste dal 2026-08-03 (`20260803-08/-09/-12`). Il
+> `grep` era stato fatto su un albero locale indietro di due merge DB. Il verbo
+> esce quindi dalle capability **abilitato**. Il §6.1 della risposta ha ragione su
+> tutti e tre i punti.
+>
+> **Un caso emerso dai dati reali**, non dal brief: con la regola storica «Avanza
+> step» sarebbe comparso anche sui lotti DEFINITIVA — invisibile nel drawer di un
+> lotto alla volta, evidente in una lista dove i chiusi sono la maggioranza. Ora
+> l'avanzamento si propone solo da DRAFT.
+>
+> Il testo che segue è il brief originale, lasciato integro come richiesta in
+> ingresso.
+>
+> ---
+
 **Chi scrive:** BE/FE (`dev/backend-tid`), 2026-08-04.
 **A chi:** team DB (`dev/db-tid`).
 **Cos'è:** portare le azioni di governo del lotto **anche nella lista lotti**
@@ -17,7 +63,7 @@ conferma — inclusi i distruttivi. (Cinque azioni = sei voci di capability:
 [stati_doc_fiscale_transizioni](/dbzero/config/tabelle/stati_doc_fiscale_transizioni) ·
 [fn_annulla_lotto_da_draft](/dbzero/vendite/funzioni/fn_annulla_lotto_da_draft) ·
 [fn_get_lotto_segnalazioni_summary](/dbzero/vendite/funzioni/fn_get_lotto_segnalazioni_summary) ·
-[piano-db-ritorno-lotto-a-draft](piano-db-ritorno-lotto-a-draft.md)
+[piano-db-ritorno-lotto-a-draft](../work-in-progress/piano-db-ritorno-lotto-a-draft.md)
 
 ---
 
@@ -68,7 +114,7 @@ Chiediamo lo stesso, per il lotto.
 | 3 | **Rendi definitive** | `POST /vendite/fatturazione/lotti/<id>/numera/` | `numera_fatture_lotti` | lotto in **EMESSA** (gate fiscale I-7) | [pipeline_service.py:253-282](../../../../backend/apps/vendite/services/pipeline_service.py#L253-L282) |
 | 4 | **Ristampa documenti** | `POST /vendite/fatturazione/lotti/<id>/ristampa/` | nessuna (stampa = lettura, I-4) | lotto in **DEFINITIVA** | [pipeline_service.py:284-300](../../../../backend/apps/vendite/services/pipeline_service.py#L284-L300) |
 | 5 | **Annulla lotto** | `POST /vendite/lotti/<id>/reset-draft/` | `reset_lotto_draft` | stato **DRAFT**; **nessuna fattura oltre il pre-fiscale** (solo DRAFT/EMESSA); MASSIVO **o** GIORNALIERO | [fn_annulla_lotto_da_draft](/dbzero/vendite/funzioni/fn_annulla_lotto_da_draft) |
-| 6 | **Riporta a bozza** | `POST /vendite/lotti/<id>/riporta-a-draft/` | `reset_lotto_draft` | 🔴 **da definire con la Fase 6**: matrice EMESSA→DRAFT `solo_lotto`, nessuna fattura numerata, tipo lotto | [piano-db-ritorno-lotto-a-draft](piano-db-ritorno-lotto-a-draft.md) §1, §4.5, punti C/D/F/G |
+| 6 | **Riporta a bozza** | `POST /vendite/lotti/<id>/riporta-a-draft/` | `reset_lotto_draft` | 🔴 **da definire con la Fase 6**: matrice EMESSA→DRAFT `solo_lotto`, nessuna fattura numerata, tipo lotto | [piano-db-ritorno-lotto-a-draft](../work-in-progress/piano-db-ritorno-lotto-a-draft.md) §1, §4.5, punti C/D/F/G |
 
 ⚠️ **Segnalazione, non richiesta.** `vendite.fn_riporta_lotto_a_draft` è
 chiamata dal BE ([pipeline_repository.py:2166-2171](../../../../backend/apps/vendite/db/pipeline_repository.py#L2166-L2171),
@@ -171,15 +217,15 @@ Chiediamo `attivo = t`. Nient'altro cambia: `larghezza_default = 70`,
 
 ## 5. Cosa NON chiediamo
 
-- **Nessun nuovo stato, nessuna nuova transizione**: le capabilities *leggono*
+* **Nessun nuovo stato, nessuna nuova transizione**: le capabilities *leggono*
   la macchina, non la estendono. Se la Fase 6 aggiunge EMESSA→DRAFT, la funzione
   la espone da sé perché la prende dalla matrice.
-- **Nessun permesso a DB**: i codename (`genera_fatture_lotti`,
+* **Nessun permesso a DB**: i codename (`genera_fatture_lotti`,
   `numera_fatture_lotti`, `reset_lotto_draft`) restano gestiti dalla catena
   permessi esistente; il FE nasconde per permesso, il DB disabilita per stato.
   Sono due filtri ortogonali, come per la commessa (`permission` di
   `useDrawerActions` vs `enabled`/`reasons` del BE).
-- **Nessuna modifica alle sei fn di mutazione**, se non l'eventuale rifattorizzazione
+* **Nessuna modifica alle sei fn di mutazione**, se non l'eventuale rifattorizzazione
   interna del §4.2 per farle poggiare sulle `fn_check_*`.
 
 ---
@@ -206,14 +252,14 @@ Nessuno di questi quattro punti parte prima che §4.1 e §4.4 siano su
 
 ## 7. Definizione di «fatto»
 
-- [ ] `script.fn_available_actions_lotto` esiste, documentata in auto-gen, con
+* [x] `script.fn_available_actions_lotto` esiste, documentata in auto-gen, con
       `COMMENT` che dichiara il contratto `enabled` come per la commessa;
-- [ ] le `fn_check_*` del §4.2 sono la sede unica: le fn di mutazione non
+* [x] le `fn_check_*` del §4.2 sono la sede unica: le fn di mutazione non
       ricalcolano le stesse condizioni;
-- [ ] pgTAP: per ciascuno dei sei verbi, un caso «lecito» e un caso «rifiutato»
+* [x] pgTAP: per ciascuno dei sei verbi, un caso «lecito» e un caso «rifiutato»
       che verifica **lo stesso verdetto** tra `fn_check_*` e la fn di mutazione;
-- [ ] `ui.lista_colonna` id 216 `attivo = t`;
-- [ ] risposta sul §4.3 (per-riga o set-based) e sul vocabolario delle `key`.
+* [x] `ui.lista_colonna` id 216 `attivo = t`;
+* [x] risposta sul §4.3 (per-riga o set-based) e sul vocabolario delle `key`.
 
 ## 8. Domande aperte per voi
 

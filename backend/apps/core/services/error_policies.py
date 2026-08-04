@@ -1770,6 +1770,52 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Il lotto non e` in stato EMESSA: numerazione non applicabile.",
         ),
+        # Precondizioni dei due verbi distruttivi del lotto (DB 2026-08-04,
+        # changeSet 20260804-02..05): le due fn di mutazione sollevano ora il
+        # codice del PRIMO motivo restituito dalle fn_check pure, al posto dei
+        # generici E_PARAMETRO_INVALIDO / E_VALORE_MANCANTE. Sono le STESSE
+        # fn_check da cui `script.fn_available_actions_lotto` ricava
+        # `enabled`/`reasons`: se l'operatore vede l'errore, e` perche' ha
+        # forzato un'azione che il drawer mostrava gia` disabilitata col motivo
+        # — quindi conflitto di stato (409), non input malformato.
+        "E_LOTTO_NON_ANNULLABILE": ErrorPolicy(
+            code="E_LOTTO_NON_ANNULLABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Il lotto non e` in stato BOZZA: l'annullamento non e` applicabile. "
+                "Da EMESSA la via d'uscita e` «Riporta in bozza»."
+            ),
+        ),
+        "E_LOTTO_NON_RIPORTABILE_A_DRAFT": ErrorPolicy(
+            code="E_LOTTO_NON_RIPORTABILE_A_DRAFT",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Il lotto e` oltre lo stato pre-fiscale: non puo` tornare in bozza."
+            ),
+        ),
+        "E_LOTTO_FATTURE_NON_PRE_FISCALI": ErrorPolicy(
+            code="E_LOTTO_FATTURE_NON_PRE_FISCALI",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Il lotto contiene fatture oltre lo stato pre-fiscale: non possono "
+                "essere eliminate."
+            ),
+        ),
+        # Ridondante rispetto al precedente per scelta del DB, e va tenuto:
+        # guarda il NUMERO della fattura, non lo stato che dovrebbe implicarlo.
+        # Cancellare una fattura numerata aprirebbe un buco nella numerazione.
+        "E_LOTTO_FATTURE_NUMERATE": ErrorPolicy(
+            code="E_LOTTO_FATTURE_NUMERATE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Il lotto contiene fatture gia` numerate: l'operazione aprirebbe un "
+                "buco nella numerazione fiscale."
+            ),
+        ),
         # C-8: ristampa massiva su lotto non DEFINITIVA (I-7: niente numerazione
         # backdoor via ristampa): conflitto di stato (409).
         "E_LOTTO_NON_RISTAMPABILE": ErrorPolicy(
@@ -2903,6 +2949,209 @@ class ErrorPolicyRegistry:
             http_status=400,
             ui_action="show_error_banner",
             user_message="Errore configurazione lista.",
+        ),
+        # ==================================================================
+        # Codici sollevati dal codice ma mai dichiarati qui — sanati il
+        # 2026-08-04 (risposta DB al brief seed messaggi errore, §9.6).
+        #
+        # Il buco: questo registro descrive cio' che DICHIARIAMO, mentre a
+        # `dbops.error_log` arriva cio' che CHIAMIAMO. I due insiemi si erano
+        # sfilati di 28 codici, invisibili a un confronto
+        # `error_policies.py` <-> catalogo DB — che li avrebbe dati per verdi.
+        # Ora il guardrail `test_error_codes_declared_guardrail.py` confronta
+        # i PUNTI DI CHIAMATA con questo dict, che e' il confronto giusto.
+        # ==================================================================
+
+        # -- Pratiche: guasti tecnici di scrittura/lettura ------------------
+        # Sono fallimenti di query o INSERT senza RETURNING: non li causa
+        # l'operatore e non c'e' un campo da evidenziare — 500.
+        "E_PRATICA_QUERY": ErrorPolicy(
+            code="E_PRATICA_QUERY",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Errore durante la lettura delle pratiche.",
+        ),
+        "E_PRATICA_INSERT": ErrorPolicy(
+            code="E_PRATICA_INSERT",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Errore durante l'inserimento della pratica.",
+        ),
+        "E_GIORNALE_QUERY": ErrorPolicy(
+            code="E_GIORNALE_QUERY",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Errore durante la lettura del giornale.",
+        ),
+        "E_NOTA_INSERT": ErrorPolicy(
+            code="E_NOTA_INSERT",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Errore durante l'inserimento della nota.",
+        ),
+        "E_ALLEGATO_INSERT": ErrorPolicy(
+            code="E_ALLEGATO_INSERT",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Errore durante l'inserimento dell'allegato.",
+        ),
+        "E_SOSPENSIONE_INSERT": ErrorPolicy(
+            code="E_SOSPENSIONE_INSERT",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Errore durante l'inserimento della sospensione.",
+        ),
+        "E_FLUSSO_INSERT": ErrorPolicy(
+            code="E_FLUSSO_INSERT",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Errore durante l'inserimento del flusso.",
+        ),
+        "E_COMPETENZA_INSERT": ErrorPolicy(
+            code="E_COMPETENZA_INSERT",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Errore durante l'inserimento della competenza del flusso.",
+        ),
+        "E_FLUSSO_PRESA_IN_CARICO": ErrorPolicy(
+            code="E_FLUSSO_PRESA_IN_CARICO",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Errore durante la presa in carico del flusso.",
+        ),
+        "E_GENERAZIONE_PRATICA": ErrorPolicy(
+            code="E_GENERAZIONE_PRATICA",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Errore durante la generazione della pratica dal flusso.",
+        ),
+        "E_HANDLER_NON_REGISTRATO": ErrorPolicy(
+            code="E_HANDLER_NON_REGISTRATO",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Handler di flusso non registrato: configurazione incompleta.",
+        ),
+        "E_PRATICA_SORGENTE_TIPO_INVALIDO": ErrorPolicy(
+            code="E_PRATICA_SORGENTE_TIPO_INVALIDO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Codice sorgente non presente in configurazione.",
+        ),
+        # Rimpiazzano il generico `E_NOT_FOUND` che quattro call-site
+        # sollevavano per entita' diverse: un 404 che non dice cosa manca non
+        # e' diagnosticabile a valle (le note usano E_NOTA_NOT_FOUND, gia'
+        # dichiarato).
+        "E_ALLEGATO_NOT_FOUND": ErrorPolicy(
+            code="E_ALLEGATO_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Allegato non trovato.",
+        ),
+        "E_COMPETENZA_NOT_FOUND": ErrorPolicy(
+            code="E_COMPETENZA_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Competenza del flusso non trovata.",
+        ),
+
+        # -- Vendite: parametri di collegamento pratica/flusso --------------
+        "E_PRATICA_ID_OBBLIGATORIO": ErrorPolicy(
+            code="E_PRATICA_ID_OBBLIGATORIO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Pratica obbligatoria.",
+        ),
+        "E_PRATICA_ID_INVALIDO": ErrorPolicy(
+            code="E_PRATICA_ID_INVALIDO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Pratica non valida.",
+        ),
+        "E_FLUSSO_ID_OBBLIGATORIO": ErrorPolicy(
+            code="E_FLUSSO_ID_OBBLIGATORIO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Flusso obbligatorio.",
+        ),
+        "E_FLUSSO_ID_INVALIDO": ErrorPolicy(
+            code="E_FLUSSO_ID_INVALIDO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Flusso non valido.",
+        ),
+
+        # -- Vendite: giri di fatturazione (handler coda lavori) ------------
+        "E_FATTURAZIONE_GIRO_PAYLOAD": ErrorPolicy(
+            code="E_FATTURAZIONE_GIRO_PAYLOAD",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Parametri del giro di fatturazione non validi.",
+        ),
+        "E_FATTURAZIONE_NUMERA_PAYLOAD": ErrorPolicy(
+            code="E_FATTURAZIONE_NUMERA_PAYLOAD",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Parametri della numerazione non validi.",
+        ),
+        # Richiesta valida, esito nullo: nessun lotto nel perimetro chiesto.
+        "E_FATTURAZIONE_GIRO_NESSUN_LOTTO": ErrorPolicy(
+            code="E_FATTURAZIONE_GIRO_NESSUN_LOTTO",
+            http_status=422,
+            ui_action="show_error_banner",
+            user_message="Nessun lotto da fatturare nel perimetro indicato.",
+        ),
+        "E_PIPELINE_DRIVER_MAX_ITER": ErrorPolicy(
+            code="E_PIPELINE_DRIVER_MAX_ITER",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Pipeline interrotta: superato il numero massimo di iterazioni.",
+        ),
+        # Worker di stampa: il documento non sa a quale emittente appartiene —
+        # dato incoerente, non input dell'operatore.
+        "E_EMITTENTE_NON_RISOLTO": ErrorPolicy(
+            code="E_EMITTENTE_NON_RISOLTO",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Emittente fiscale non risolvibile per il documento.",
+        ),
+
+        # -- Core / Amm. software ------------------------------------------
+        "E_AMM_OPERATORE_NOT_FOUND": ErrorPolicy(
+            code="E_AMM_OPERATORE_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Operatore non trovato.",
+        ),
+        # ⚠️ Codici-modulo generici (validazione, not-found e accesso negato
+        # sotto la stessa etichetta): 400 come il gemello `E_EMAIL`. Andrebbero
+        # spacchettati per verbo — debito noto, non toccato qui per non
+        # cambiare gli status HTTP di endpoint gia' in uso.
+        "E_EMAIL_OP": ErrorPolicy(
+            code="E_EMAIL_OP",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Operazione email non riuscita.",
+        ),
+        "E_EMAIL_ADMIN": ErrorPolicy(
+            code="E_EMAIL_ADMIN",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Operazione sulla configurazione email non riuscita.",
+        ),
+        # Impersonazione di scope emittente per SUPER_ADMIN: la selezione e'
+        # solo restringente, quindi un valore non ammesso e' un tentativo di
+        # uscire dal proprio perimetro (403), non un campo mal compilato.
+        "E_EMITTENTE_ATTIVO_NON_VALIDO": ErrorPolicy(
+            code="E_EMITTENTE_ATTIVO_NON_VALIDO",
+            http_status=403,
+            ui_action="show_error_banner",
+            user_message="Emittente non selezionabile: inesistente, disattivato o fuori dal tuo perimetro.",
+        ),
+        "E_EMITTENTE_ATTIVO_TOKEN": ErrorPolicy(
+            code="E_EMITTENTE_ATTIVO_TOKEN",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Refresh token richiesto per applicare il cambio di emittente.",
         ),
     }
 

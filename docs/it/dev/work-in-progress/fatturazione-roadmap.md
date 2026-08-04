@@ -46,7 +46,7 @@ ciò che serve alla richiesta di uno **strumento di consultazione dei log**
 documento principale dell'osservabilità: gli item **#5 (vista errori)**,
 **#6 (alerting)** e **#7 (correlation_id)** di questa roadmap vivono lì come
 passi di un piano unico, insieme al prerequisito
-[brief-db-seed-messaggi-errore-mancanti.md](brief-db-seed-messaggi-errore-mancanti.md).
+[brief-db-seed-messaggi-errore-mancanti.md](../work-done/brief-db-seed-messaggi-errore-mancanti.md).
 Questa roadmap resta il documento **di dominio** (fatturazione); quello è il
 documento **trasversale**.
 
@@ -109,7 +109,7 @@ documento **trasversale**.
 > ⚠️ **La riga «`fatture_scadenze` esiste ma non è nel flusso operativo» qui
 > sotto non è più vera** ed è conservata solo come storia. Ora il piano rate
 > nasce dentro la pipeline, e le sue condizioni arrivano dal documento sorgente
-> ([brief-db-termine-dal-documento-alla-commessa.md](brief-db-termine-dal-documento-alla-commessa.md), 03/08).
+> ([brief-db-termine-dal-documento-alla-commessa.md](../work-done/brief-db-termine-dal-documento-alla-commessa.md), 03/08).
 
 **Problema:** il flusso si ferma a INVIATA/SDI. La fattura deve generare scritture contabili, aggiornare il partitario e alimentare lo scadenzario.
 

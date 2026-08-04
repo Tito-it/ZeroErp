@@ -1,0 +1,144 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Test unit di `EmittenteAttivoService` — le regole di «dentro quale
+#        emittente sto lavorando» (impersonazione di scope). Repository
+#        mockato: qui si prova la POLITICA (chi vince fra permesso e
+#        preferenza, cosa succede a una scelta decaduta, cosa vede il FE),
+#        non l'SQL.
+#
+#        La regola di sicurezza vera — «solo restringente, mai allargante» —
+#        NON è sotto test qui perché non vive qui: sta nelle funzioni di scope
+#        del DB ed è coperta dai loro pgTAP (caso 3). Questo modulo può al più
+#        proporre l'emittente sbagliato, e il DB restringerebbe comunque.
+#
+# Indice test (0..N):
+#   0. operatore_usa_il_suo_emittente_di_permesso
+#   1. operatore_ignora_la_preferenza (il permesso vince, sempre)
+#   2. super_admin_usa_la_preferenza_valida
+#   3. super_admin_senza_preferenza_entra_in_globale
+#   4. preferenza_decaduta_viene_cancellata
+#   5. imposta_valida_e_persiste
+#   6. imposta_rifiuta_emittente_non_valido
+#   7. imposta_globale_non_cancella_la_preferenza
+#   8. descrivi_super_admin_senza_scelta_deve_scegliere
+#   9. descrivi_operatore_non_puo_scegliere
+#  10. descrivi_modalita_globale_esplicita
+# ------------------------------------------------------------
+
+from __future__ import annotations
+
+from unittest.mock import MagicMock
+
+from django.test import SimpleTestCase
+
+from apps.core.services.emittente_attivo_service import (
+    E_EMITTENTE_ATTIVO_NON_VALIDO,
+    EmittenteAttivoService,
+)
+from apps.core.services.service_errors import ServiceError
+
+_UTENTE = 42
+
+
+# Scopo: repository mockato con la configurazione del caso in esame.
+def _repo(*, permesso=None, preferenza=None, valida=True) -> MagicMock:
+    repo = MagicMock()
+    repo.get_emittente_di_permesso.return_value = permesso
+    repo.get_preferenza.return_value = preferenza
+    repo.is_scelta_valida.return_value = valida
+    return repo
+
+
+class RisolviPerLoginTests(SimpleTestCase):
+
+    # 0. L'operatore entra dentro il suo emittente, senza scelte da fare.
+    def test_operatore_usa_il_suo_emittente_di_permesso(self) -> None:
+        repo = _repo(permesso=32)
+        self.assertEqual(
+            EmittenteAttivoService(repo).risolvi_per_login(_UTENTE), 32,
+        )
+        # La preferenza non viene nemmeno letta: per lui non esiste.
+        repo.get_preferenza.assert_not_called()
+
+    # 1. Se un operatore avesse anche una preferenza (residuo di quando era
+    #    super admin), il PERMESSO vince: la preferenza non è un permesso.
+    def test_operatore_ignora_la_preferenza(self) -> None:
+        service = EmittenteAttivoService(_repo(permesso=32, preferenza=44))
+        self.assertEqual(service.risolvi_per_login(_UTENTE), 32)
+
+    # 2. Super admin: la preferenza salvata, se ancora valida.
+    def test_super_admin_usa_la_preferenza_valida(self) -> None:
+        service = EmittenteAttivoService(_repo(preferenza=44, valida=True))
+        self.assertEqual(service.risolvi_per_login(_UTENTE), 44)
+
+    # 3. Nessuna preferenza → modalità globale, e il FE chiederà di scegliere.
+    def test_super_admin_senza_preferenza_entra_in_globale(self) -> None:
+        service = EmittenteAttivoService(_repo(preferenza=None))
+        self.assertIsNone(service.risolvi_per_login(_UTENTE))
+
+    # 4. Preferenza decaduta (emittente disattivato o uscito dallo scope): si
+    #    CANCELLA e si riparte dalla scelta. Trascinarla in silenzio farebbe
+    #    lavorare l'utente dentro un emittente spento.
+    def test_preferenza_decaduta_viene_cancellata(self) -> None:
+        repo = _repo(preferenza=44, valida=False)
+        service = EmittenteAttivoService(repo)
+        self.assertIsNone(service.risolvi_per_login(_UTENTE))
+        repo.delete_preferenza.assert_called_once_with(_UTENTE)
+
+
+class ImpostaTests(SimpleTestCase):
+
+    # 5. Scelta valida: persistita e restituita per il nuovo claim.
+    def test_imposta_valida_e_persiste(self) -> None:
+        repo = _repo(valida=True)
+        self.assertEqual(EmittenteAttivoService(repo).imposta(_UTENTE, 44), 44)
+        repo.set_preferenza.assert_called_once_with(_UTENTE, 44)
+
+    # 6. Scelta non valida: errore di dominio, e NIENTE persistenza — una
+    #    preferenza scritta e poi rifiutata riapparirebbe al login successivo.
+    def test_imposta_rifiuta_emittente_non_valido(self) -> None:
+        repo = _repo(valida=False)
+        with self.assertRaises(ServiceError) as ctx:
+            EmittenteAttivoService(repo).imposta(_UTENTE, 999)
+        self.assertEqual(ctx.exception.code, E_EMITTENTE_ATTIVO_NON_VALIDO)
+        repo.set_preferenza.assert_not_called()
+
+    # 7. «Tutti gli emittenti» è uno stato di SESSIONE: non tocca la
+    #    preferenza, così al prossimo login si rientra dove si lavorava.
+    def test_imposta_globale_non_cancella_la_preferenza(self) -> None:
+        repo = _repo(preferenza=44)
+        self.assertIsNone(EmittenteAttivoService(repo).imposta(_UTENTE, None))
+        repo.set_preferenza.assert_not_called()
+        repo.delete_preferenza.assert_not_called()
+
+
+class DescriviTests(SimpleTestCase):
+
+    # 8. Super admin che non ha MAI scelto (nessuna preferenza) → dialog
+    #    iniziale bloccante.
+    def test_descrivi_super_admin_senza_scelta_deve_scegliere(self) -> None:
+        d = EmittenteAttivoService(_repo(preferenza=None)).descrivi(_UTENTE, None)
+        self.assertTrue(d["puo_scegliere"])
+        self.assertTrue(d["deve_scegliere"])
+        self.assertTrue(d["modalita_globale"])
+
+    # 9. L'operatore non sceglie: niente combo, niente dialog.
+    def test_descrivi_operatore_non_puo_scegliere(self) -> None:
+        d = EmittenteAttivoService(_repo(permesso=32)).descrivi(_UTENTE, 32)
+        self.assertFalse(d["puo_scegliere"])
+        self.assertFalse(d["deve_scegliere"])
+        self.assertFalse(d["modalita_globale"])
+        self.assertEqual(d["emittente_fiscale_id"], 32)
+
+    # 10. Super admin che ha SCELTO «Tutti»: è in globale e può scegliere, ma
+    #     non «deve» — ha già deciso, e lo si vede dalla preferenza salvata.
+    #     Dal solo claim i due stati sono indistinguibili (assente in
+    #     entrambi): senza la preferenza il dialog bloccante ricomparirebbe a
+    #     ogni caricamento proprio a chi ha appena scelto di vedere tutto.
+    def test_descrivi_modalita_globale_esplicita(self) -> None:
+        d = EmittenteAttivoService(_repo(preferenza=44)).descrivi(_UTENTE, None)
+        self.assertTrue(d["modalita_globale"])
+        self.assertTrue(d["puo_scegliere"])
+        self.assertFalse(d["deve_scegliere"])

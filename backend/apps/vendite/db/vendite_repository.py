@@ -17,6 +17,7 @@ from django.db import DatabaseError, connection, transaction
 
 from apps.core.db._helpers import (
     LIST_MAX_LIMIT,
+    call_jsonb_fn,
     jsonb_out,
     query_paged_view,
     row_to_dict,
@@ -456,6 +457,18 @@ class VenditeRepository:
         if row is None:
             return None
         return self._map_lotto_row(row)
+
+    # Scopo: Capability del lotto per il detail API (wrapper su
+    #        `script.fn_available_actions_lotto`, ottava della famiglia
+    #        fn_available_actions_*): `available_actions` con enabled/reasons,
+    #        `can_change_state`, `stato_codice`, `tipo_lotto`.
+    #        ⚠️ NESSUNO scope qui: la fn non filtra per emittente. Il cancello
+    #        e' la `get_lotto` sopra (RLS + whitelist applicativa), che il
+    #        service chiama PRIMA — chiamare questa su un id fuori scope
+    #        risponderebbe capability di un lotto che l'operatore non vede.
+    # Perimetro: sola lettura; `{}` se il lotto non esiste (fn → NULL).
+    def get_available_actions_lotto(self, lotto_id: int) -> dict[str, Any]:
+        return call_jsonb_fn("script.fn_available_actions_lotto", int(lotto_id))
 
     # Scopo: Restituisce le celle non vuote (area × fase) del serbatoio
     #        pre-commessa. Il completamento a griglia 5 aree × 3 fasi

@@ -12,7 +12,10 @@ from apps.core.services.coda_lavori.repository import (
     CodaLavoriRepository,
 )
 from apps.core.services.coda_lavori.scope import scope_key_da_emittenti
-from apps.core.services.auth_helpers import extract_identita_id_from_request
+from apps.core.services.auth_helpers import (
+    extract_emittente_attivo_from_request,
+    extract_identita_id_from_request,
+)
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_order_params
 from apps.core.services.permissions_resolver import PermissionResolver
@@ -689,6 +692,16 @@ class ApiLottoDetail(DomainAPIView):
                             "emittente_soggetto_ruolo_id": serializers.IntegerField(allow_null=True),
                             "data_insert": serializers.CharField(allow_null=True),
                             "user_insert": serializers.CharField(),
+                            # Blob capability (script.fn_available_actions_lotto):
+                            # assente se il capability layer e' rotto (fallback
+                            # graceful nel service) → required=False.
+                            "available_actions": serializers.ListField(
+                                child=serializers.DictField(), required=False,
+                            ),
+                            "can_change_state": serializers.BooleanField(required=False),
+                            "stato_codice": serializers.CharField(
+                                required=False, allow_null=True,
+                            ),
                         },
                     ),
                     "meta": serializers.DictField(required=False),
@@ -696,7 +709,7 @@ class ApiLottoDetail(DomainAPIView):
             )
         },
     )
-    # Scopo: Restituisce via GET la testata del lotto (scope emittente).
+    # Scopo: Restituisce via GET la testata del lotto + capability (scope emittente).
     def get(self, request: Request, lotto_id: int) -> JsonResponse:
         auth_user_id = get_scope_user_id(request)
         data = fn_get_lotto(lotto_id=lotto_id, auth_user_id=auth_user_id)
@@ -1416,6 +1429,14 @@ def _accoda_job_fatturazione(
         code="E_VALIDATION_INPUT",
         message="Identità operatore non risolta dal token.",
     )
+    # Emittente ATTIVO congelato ora: il worker esegue minuti dopo, senza
+    # token, e senza questo valore girerebbe in modalità globale — un giro
+    # chiesto «dentro A» toccherebbe anche B. Va catturato PRIMA dello scope,
+    # perché lo scope stesso ne risente: dal 2026-08-04 le funzioni di scope
+    # intersecano con l'emittente attivo, quindi `emittente_ids` (e con esso
+    # `scope_key`, che governa dedup e ownership del polling) riflette già
+    # l'impersonazione. Le due cose devono raccontare la stessa storia.
+    emittente_attivo_id = extract_emittente_attivo_from_request(request)
     # Scope emittente CATTURATO ora (None = admin globale): serve al vincolo
     # DB run_as↔scope, all'idempotenza di business e all'audit.
     emittente_ids = PermissionResolver.get_emittenti_ids(user)
@@ -1455,6 +1476,7 @@ def _accoda_job_fatturazione(
             "auth_user_id": int(user.id),
             "username": str(user.username),
             "identita_id": identita_id,
+            "emittente_attivo_id": emittente_attivo_id,
             "emittente_ids": emittente_ids,
             # Token di ownership del polling: scope-based (chi condivide lo
             # scope vede il job condiviso via dedup). Vedi scope_key_da_emittenti.
