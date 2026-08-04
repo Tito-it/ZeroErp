@@ -145,6 +145,10 @@ diventa «smonto il lotto». È fatto.
   DRAFT staccata sembrerebbe lavorabile ed entrerebbe nei conteggi delle bozze), le
   sue attività tornano libere. Serve l'append della transizione `EMESSA → ANNULLATA`
   per la **fattura**.
+  > 🔴 **SUPERATA il 2026-08-04 — vedi [RD-7](#1-bis-decisioni-di-questo-cantiere).**
+  > Il modello «reperto» è stato abbandonato: la fattura si **cancella**. Cade con
+  > esso l'append `EMESSA → ANNULLATA`, che non serve più. Il testo qui sopra resta
+  > per la storia della decisione, non come istruzione di lavoro.
 
 ---
 
@@ -156,6 +160,7 @@ diventa «smonto il lotto». È fatto.
 | **RD-2** | **Come fa il rilancio a sapere che deve rifare il passo** (ex punto C) | ✅ **DECISA (Tid, 2026-08-03): strada B, una colonna DATA** sul lotto (`riaperto_il`), non un booleano — stesso pattern di `obsoleto_dal` ([[reference_deprecabilita_catalogo_obsoleto_dal]]): una data si spiega da sola, si ordina, e non chiede a nessuno di ricordarsi di spegnere un flag. La strada **A è caduta sulla misura**: `stato_lotto` ha una macchina a stati cablata in Python che accetta esattamente 3 valori e rifiuta il resto. La strada **C** (dedurlo dai `task_runs`) è caduta con il punto A, §4.9. Vedi §4.4 e §4.6 |
 | **RD-4** ⭐ | **Chi possiede il ripristino** (rilievo di Tid, 2026-08-03) | ✅ **DECISA: una funzione sola.** Il reset di *tutte* le tabelle vive in **`fn_cleanup_fatture_by_ids`** e in nessun altro posto; lo **stato del lotto** è un'altra cosa e appartiene all'operazione che chiama. La prima stesura di `fn_riporta_lotto_a_draft` aveva messo il reset delle `commesse_attivita` **dentro di sé** — cioè aveva duplicato la pulizia in due grafie, completa in una funzione e incompleta nelle altre due che chiamano la stessa primitiva. 🔴 **Conseguenza misurata**: `fn_annulla_lotto_da_draft` e `fn_elimina_fattura_da_lotto_draft` lasciavano le attività a `EMESSA` — righe **emesse senza fattura**, che nessun giro futuro può riprendere. Orfane oggi **0**: il difetto era **latente**, si armava al primo annullamento. `20260803-10` sposta il passo nella primitiva; le tre chiamanti non contengono più **nessuna riga** di pulizia |
 | **RD-3** | **Non si bonificano dati esistenti** | ✅ **DECISA (Tid, 2026-08-03): siamo in test.** Fatture e lotti già sbagliati **non si correggono**, né a mano né con codice: non è tempo speso bene. La **2263 resta com'è** — vale come caso di prova, non come lavoro da chiudere. Coerente con [[project_no_produzione_solo_sviluppo]] e con D-G del piano satelliti |
+| **RD-7** ⭐ | **Il «reperto» cade: la fattura tolta dal lotto si CANCELLA** (sostituisce D-N-bis, §1.7) | ✅ **DECISA (Tid, 2026-08-04): si cancella, testata compresa.** Motivazione di Tid: *«non serve a nulla sapere cosa era scritto su un documento che qualcuno ha deciso di rieseguire»*. **L'argomento che ha deciso**: riportare in bozza un lotto **intero** già cancella le sue fatture EMESSA, testata compresa — è ciò che `fn_riporta_lotto_a_draft` fa dal 2026-08-03 via `fn_cleanup_fatture_by_ids`. Sarebbe incoerente che la stessa operazione su **una** riga lasciasse un fantasma. **Il prezzo, misurato e accettato**: `vendite.fatture.storicizza` ha default **`false`** e nessuno lo accende (`fn_get_or_create_fattura_header` non nomina la colonna), quindi la cancellazione **non lascia traccia** del contenuto — l'unica riga che resta è quella del ponte, storicizzato (default `true`), che dice «la fattura X era in questo lotto ed è uscita» puntando a un id che non esiste più. Alzare `storicizza` sulle fatture è una decisione **separata e più grande** (storicizzerebbe ogni UPDATE di ogni fattura) e **non entra qui**. **Conseguenze dirette**: (1) niente append `EMESSA → ANNULLATA` per la fattura — il test 6 di `test-annulla-lotto-vuoto-v1.sql`, che oggi presidia proprio l'assenza di quella riga, **resta valido e non si tocca**; (2) niente scomposizione di `fn_cleanup_fatture_by_ids` — la strada (a) concordata il 2026-08-04 **decade**, RD-4 resta intatta senza lavoro; (3) niente funzione nuova: si **allarga la funzione che esiste**; (4) **un solo verbo** nel kebab, quindi cade anche il problema delle due voci omonime |
 
 ## 2. Perimetro — 6-A adesso, 6-B dopo
 
@@ -164,7 +169,12 @@ Il cantiere si consegna in **due slice**, e solo la prima serve al caso reale.
 | Slice | Cosa | Serve alla 2263? |
 |---|---|---|
 | **6-A** ⭐ | seed transizione · `fn_riporta_lotto_a_draft` · pulizia satelliti · ripartenza del rerun (BE) · pgTAP | **sì** |
-| **6-B** | estrazione per-fattura (D-N-bis) · eliminazione flag `esclusa` (D-M) · verbo nel `LottoDrawer` + lista «estratte» (FE) | no |
+| **6-B** | eliminazione per-fattura da lotto pre-fiscale (~~D-N-bis~~ **RD-7**) · eliminazione flag `esclusa` (D-M) · etichette e gate nel `LottoDrawer` (FE) | no |
+
+> ⚠️ **La 6-B si è ridotta** con RD-7 (2026-08-04). Non c'è più un'«estrazione» da
+> costruire accanto all'eliminazione: sono **la stessa operazione**, e quella
+> esiste già — va solo allargato il perimetro. Cade anche la «lista estratte»: se
+> la fattura è cancellata non c'è niente da elencare. Vedi §7 → Slice 6-B.
 
 **Sono separabili — verificato**: 6-B dipende da D-L.3/C-22 (§1.6, **fatto**) e non
 dipende da nessun passo di 6-A. Al contrario, D-M dipende da D-N-bis («l'estrazione
@@ -629,6 +639,10 @@ Conterrà almeno:
 > `logicalFilePath`, `runOnChange: false` nello stato committato. La numerazione
 > `NN` è una **sequenza globale per data fra tutte le cartelle**.
 > Ultimo occupato al momento dell'estrazione: **20260802-27**.
+> Aggiornato al **2026-08-04**: l'ultimo occupato è **20260804-16** (cantiere
+> impersonazione scope emittente). ⚠️ Nella stessa giornata possono correre due
+> cantieri: prima di prendere un numero si guarda cosa c'è **già nel working tree**,
+> anche non committato, e si accoda al massimo — non si riempiono i buchi.
 >
 > ⚠️ **Da dove si copia cosa**: il **corpo** di una funzione esistente dalla doc
 > auto-gen `docs/it/dbzero/` (riflette l'oggetto vivo); la **firma + `RETURNS`**
@@ -640,8 +654,8 @@ Conterrà almeno:
 | | |
 |---|---|
 | **Stato** | ✅ **CHIUSA lato DB (2026-08-03)** — analisi, A1-A5 **applicati**, pgTAP **verdi**, doc e brief scritti. 5 changeSet: `20260803-07`…`-10` + seed CSV |
-| **Slice** | **6-A** ✅ **CHIUSA lato DB** (A1-A5 + doc + brief) · **6-B** ⏭️ (§2) |
-| **Prossimo passo** | `pgtap-baseline.sh vendite` + rigenerazione auto-gen (Tid) · poi **sincronia col BE** sulle due richieste del brief · **6-B** quando serve |
+| **Slice** | **6-A** ✅ **CHIUSA lato DB** (A1-A5 + doc + brief) · **6-B** 🟡 **APERTA il 2026-08-04**, ridotta da [RD-7](#1-bis-decisioni-di-questo-cantiere) |
+| **Prossimo passo** | **B1** della Slice 6-B (§7). Il BE ha chiuso la sua metà di 6-A il 2026-08-04: `riaperto_il` era già letta e azzerata dal commit `6728e58cb` del 03-08 — la nostra segnalazione era superata |
 
 ### Slice 6-A
 
@@ -658,11 +672,44 @@ Conterrà almeno:
 
 ### Slice 6-B
 
-| Passo | Stato | changeSet | Note |
+> **Riaperta il 2026-08-04** con [RD-7](#1-bis-decisioni-di-questo-cantiere), che la
+> **riduce**: niente estrazione da costruire, niente lista «estratte», niente
+> scomposizione della primitiva. Resta l'allargamento di una funzione che esiste e
+> la rimozione di un flag dormiente.
+
+#### Le misure, fatte prima di scrivere (2026-08-04)
+
+| # | Misura | Esito |
+|---|---|---|
+| **M1** | La funzione da allargare esiste già | `fn_elimina_fattura_da_lotto_draft` pretende **la fattura** pre-fiscale (DRAFT **o** EMESSA — già allargata da D-L pt.2 il 2026-08-02) e **il lotto** in DRAFT. L'unico pezzo da cambiare è il perimetro del **lotto** |
+| **M2** 🔴 | Il FE è già scritto come se il perimetro fosse quello nuovo | `LottoDrawer.vue` gate la voce di riga sul solo stato della **fattura** (`preFiscale`) e **non guarda lo stato del lotto**: su un lotto EMESSA la voce compare e la chiamata **fallisce**. È la **terza** occorrenza dello stesso difetto (dopo «Annulla lotto» il 07-31 e «Riporta a bozza»). L'allargamento non aggiunge una funzionalità: **chiude un bug vivo**, e lo chiude dalla parte giusta — allineando il DB al FE invece di aggiungere l'ennesimo gate in Vue |
+| **M3** | Dopo l'allargamento il nome mente | `_da_lotto_draft`: il «draft» è riferito al **lotto**, che non sarà più obbligatorio. Due precedenti identici in questo stesso cantiere — `fn_elimina_fattura_draft_da_lotto` → `_da_lotto_draft` (02-08) e `fn_reset_lotto_draft` → `fn_annulla_lotto_da_draft` (01-08, D-L pt.1). Si rinomina in **`fn_elimina_fattura_da_lotto`** |
+| **M4** ⚠️ | Il perimetro di `esclusa` è più largo del §1.7 | Il §1.7 dice «cinque punti la interrogano». Sono **nove** in DB — `fn_prepare_sdi_payload`, `fn_accoda_stampe_lotto`, `fn_sync_lotto_fatture_stato`, `fn_get_or_create_fattura_header`, `fn_guard_lotto_fatture_stato_coerente`, `fn_sync_fatture_log_critical_lotto`, `fn_set_fatturazione_lotto_stato`, `fn_resolve_stato_esecuzione`, `vw_lotti_fatture_incoerenti` — più un **parametro di firma** (`p_esclusa` di `fn_resolve_stato_esecuzione`) e **quattro** punti BE (filtro query, parametro OpenAPI, `types.py`, un test API). ✅ Confermato che **nessuno la valorizza**: l'unico INSERT che la nomina passa `FALSE` letterale |
+| **M5** | La traccia della cancellazione | Ponte `fatturazione_lotti_fatture`: `storicizza` default **`true`** → la DELETE finisce nello storico. `vendite.fatture`: default **`false`** e nessuno lo accende → la testata sparisce senza lasciare contenuto. Accettato in RD-7 |
+| **M6** | PDF orfani | `documenti.documenti_generati` si aggancia alla sorgente per `sorgente_uid` **testuale, senza FK**: cancellare la fattura lascia l'eventuale record del PDF a puntare nel vuoto. Rischio basso — la stampa si accoda alla **numerazione**, cioè fuori dal perimetro pre-fiscale — ma va detto al BE |
+
+#### I passi
+
+| Passo | Stato | changeSet | Cosa |
 |---|---|---|---|
-| Estrazione per-fattura (D-N-bis) | ⏭️ | — | prerequisito D-L.3/C-22 **fatto** (§1.6) |
-| Eliminazione flag `esclusa` (D-M) | ⏭️ | — | dipende dall'estrazione |
-| Verbo `LottoDrawer` + lista «estratte» | ⏭️ | — | FE — [piano BE/FE §4-bis](piano-be-fe-satelliti-fattura.md) |
+| **B1** Codici parlanti + `script.fn_check_fattura_eliminabile_da_lotto` | ⬜ | — | Funzione **pura**, quattro motivi in ordine: lotto oltre il pre-fiscale · fattura non collegata · fattura oltre il pre-fiscale · fattura già numerata. Stesso schema di `fn_check_lotto_annullabile`: la leggono **sia** la mutazione (che solleva il primo motivo) **sia** la UI. Codici nuovi da **831** (l'ultimo occupato è 830) |
+| **B2** `fn_elimina_fattura_da_lotto` | ⬜ | — | `DROP` del vecchio nome + `CREATE` del nuovo, perimetro del **lotto** allargato a pre-fiscale, precondizioni lette da B1. Il corpo operativo non cambia: `fn_cleanup_fatture_by_ids(ARRAY[id], NULL)` — il `NULL` resta il punto C-22 |
+| **B3** pgTAP | ⬜ | — | File nuovo (caso lecito + caso rifiutato per ciascuno dei 4 motivi, ed **equivalenza** check ↔ mutazione) + aggiornamento dei **due** file che nominano la funzione (vedi trappole) |
+| **B4** D-M — via il flag `esclusa` | ⬜ | — | I **nove** punti DB di M4 in un colpo solo, poi `DROP COLUMN`. ⚠️ `fn_resolve_stato_esecuzione` lo ha in **firma**: `DROP`+`CREATE` e tutti i chiamanti nello stesso changeSet |
+| **B5** Doc + brief BE | ⬜ | — | Manuali delle due funzioni · brief con **tre** rotture per loro: il **nome** della funzione (repository), il filtro `esclusa` dell'API + `types.py`, e i PDF orfani di M6 |
+
+#### ⚠️ Trappole note
+
+1. **Il test 12 di `test-arrotondamento-ambito-idempotenza-v1.sql` cerca la funzione
+   per nome** (`p.proname = 'fn_elimina_fattura_da_lotto_draft'`) per verificare che
+   il corpo passi `NULL` come `lock_batch_id`. Con la rinomina la sottoquery non
+   trova più niente e il test diventa rosso **per il motivo sbagliato** — non «il
+   corpo è cambiato» ma «la funzione non esiste». Va aggiornato nello stesso passo.
+2. **`test-fatturazione-reset-lotto-draft.sql` la chiama per nome**: stessa cosa.
+3. **Il test 6 di `test-annulla-lotto-vuoto-v1.sql` NON si tocca.** Presidia
+   l'assenza della transizione `→ ANNULLATA` per la fattura ed è ancora corretto:
+   con RD-7 quella riga non serve più. Era il rischio principale della vecchia
+   D-N-bis ed è rientrato da solo.
 
 ### Debito documentale ereditato
 

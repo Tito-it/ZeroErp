@@ -114,8 +114,151 @@ nostra, §9.7): serve a voi solo per capire la natura della riga.
 
 ## 5. Definizione di «fatto»
 
-- [ ] i 28 codici sono in `messaggi_errore.csv` (non solo nella tabella di un DB);
-- [ ] il gemello lato DB del check esiste, così i due registri si presidiano a vicenda;
-- [ ] controprova su uno dei 28 (`E_PIPELINE_DRIVER_MAX_ITER` è il candidato
-      naturale: è il codice che ha motivato il §9.6) — compare in `error_log`
-      col proprio nome.
+* [x] i 28 codici sono in `messaggi_errore.csv` (non solo nella tabella di un DB) — id **802–829**;
+* [x] il gemello lato DB del check esiste, così i due registri si presidiano a vicenda — §6.2;
+* [x] controprova su uno dei 28 (`E_PIPELINE_DRIVER_MAX_ITER`, il codice che ha
+      motivato il §9.6) — compare in `error_log` **col proprio nome**, §6.6.
+
+---
+
+## 6. Risposta DB (2026-08-04)
+
+### 6.1 Verifica dei 28, e seed
+
+Ricontrollati uno per uno prima di seminare: 28 codici distinti, **tutti** dichiarati
+in `error_policies.py`, **nessuno** già a catalogo, **nessun `%s`** nei testi (sono
+frasi finite, coerenti con il §9.7). Appesi al CSV con `causa`/`soluzione` stringa
+vuota come le altre, **id 802–829**, nessun changeSet nuovo: il loader `runOnChange`
+li carica al prossimo `migrate`.
+
+Sul segnaposto: confermiamo la vostra lettura di `E_OFFERTA_XXX`. Era rumore del
+nostro grep testuale — cercava letterali `E_*` ovunque, commenti compresi. La vostra
+analisi AST è la fonte giusta, e questo è un buon promemoria sul perché il gemello
+lato DB non poteva essere un `grep` sugli YAML (§6.2).
+
+### 6.2 Il gemello lato DB c'è — e al primo giro ha trovato un orfano
+
+[`db/pgtap/script/test-catalogo-messaggi-errore-completo.sql`](../../../../db/pgtap/script/test-catalogo-messaggi-errore-completo.sql),
+quattro casi. Il cuore è il test 2: estrae da **`pg_proc.prosrc`** i codici che le
+funzioni passano a `fn_log_and_raise_error` / `fn_log_error_only` e verifica che
+esistano a catalogo. Oggi sono **301 codici distinti su 342 funzioni**. Quando è
+rosso, l'output nomina codice e funzione, e la riparazione è un append al CSV.
+
+La fonte è il **database vivo**, non i file, e non è un dettaglio estetico: al primo
+giro il test ha trovato
+
+```text
+E_FATTURA_NON_ANNULLABILE  <-  vendite.trgfn_fatture_numerata_non_annulabile
+```
+
+un trigger **attivo** che solleva un codice mai entrato in catalogo. Era invisibile
+alla nostra analisi di ieri, che scandiva gli YAML di `migrations_v2`: quel trigger è
+definito nella cartella **legacy** `db/changelog/migrations/39_vendite/`. Una scansione
+dei sorgenti l'avrebbe mancato per sempre; `pg_proc` no.
+
+Seminato anche lui, id **830**, con `causa` e `soluzione` scritte: la regola che
+protegge (una fattura già numerata non può uscire dal registro con un cambio di stato,
+o la sequenza fiscale resta con un buco) merita di essere spiegata nel punto in cui
+qualcuno la incontra.
+
+Stato del test: **rosso adesso**, verde dopo il `migrate` — è rosso *perché* il seed
+non è ancora applicato. Verificato simulando l'apply in transazione: 4/4. Non va messo
+in baseline.
+
+### 6.3 Due nomi che il registro non saprà distinguere
+
+Nessuno dei due blocca il seed — sono seminati come li avete scritti — ma è il momento
+buono per cambiarli, perché costano tre righe di CSV oggi e un pezzo di storia domani.
+
+**`E_EMITTENTE_NON_RISOLTO`.** A catalogo esistono già
+`E_ORDINE_EMITTENTE_NON_RISOLTO`, `E_CONTRATTO_EMITTENTE_NON_RISOLTO` e
+`E_PREV_EMITTENTE_NON_RISOLTO`, e ieri ne abbiamo riscritto i testi. Sembrano la
+stessa famiglia, ma dicono il contrario: quelli significano «**chi crea** non ha un
+emittente da cui derivare il default», il vostro (in `stampa_coda_drainer_service`)
+significa «**il documento in coda** non ce l'ha, dato sporco». Chi leggerà `error_log`
+li vedrà accanto e li tratterà come varianti. Proposta: **`E_FATTURA_EMITTENTE_NON_RISOLTO`**,
+che si allinea alla convenzione per documento già in uso.
+
+**`E_COMPETENZA_INSERT` / `E_COMPETENZA_NOT_FOUND`.** Qui la collisione è più
+insidiosa perché la parola è la stessa ma il dominio no. A catalogo `E_COMPETENZA` e
+`E_COMPETENZA_SUPERATA` (sollevati da `trgfn_attivita_fatturabili_guard_fonte`)
+parlano di **competenza temporale** — il mese o l'intervallo dal/al di un'attività
+fatturabile. I vostri parlano di **competenze del flusso**, che è un'altra cosa.
+Proposta: **`E_FLUSSO_COMPETENZA_INSERT`** / **`E_FLUSSO_COMPETENZA_NOT_FOUND`**,
+coerenti con la famiglia `E_FLUSSO_*` che avete già (`E_FLUSSO_INSERT`,
+`E_FLUSSO_ID_INVALIDO`, `E_FLUSSO_PRESA_IN_CARICO`).
+
+Se preferite tenerli così, va bene lo stesso: sono nomi, non difetti — ma allora vale
+la pena scriverlo da qualche parte, perché fra sei mesi non si distinguono più. La
+meccanica della rinomina, se la accettate, è nel §6.4.
+
+### 6.4 Cosa resta al BE — richieste, non modifiche
+
+Questo cantiere è **solo DB**: `error_policies.py`, i call-site e i test Python non
+vengono toccati da noi (§9.7). Quello che segue è quindi una richiesta, con l'effetto
+lato catalogo che ci impegniamo a fare **nello stesso giro**.
+
+| # | Cosa | Dove, lato vostro | Cosa facciamo noi quando lo fate |
+| --- | --- | --- | --- |
+| R1 | `E_EMITTENTE_NON_RISOLTO` → **`E_FATTURA_EMITTENTE_NON_RISOLTO`** | `stampa_coda_drainer_service.py` (2 call-site), `error_policies.py` (1 `ErrorPolicy`), `test_stampa_coda_drainer_service.py` (1 assert) | rinominiamo la riga 811 del CSV e allineiamo il testo a «…per la fattura in coda di stampa» |
+| R2 | `E_COMPETENZA_INSERT` → **`E_FLUSSO_COMPETENZA_INSERT`** | `pratiche_repository.py` (1), `error_policies.py` (1) | rinominiamo la riga 805 |
+| R3 | `E_COMPETENZA_NOT_FOUND` → **`E_FLUSSO_COMPETENZA_NOT_FOUND`** | `pratiche_service.py` (1), `error_policies.py` (1) | rinominiamo la riga 806 |
+
+⚠️ **L'ordine conta e la finestra si chiude.** Le tre righe sono seminate **con i nomi
+attuali**, perché il catalogo deve nominare i codici esattamente come li emette il
+backend: rinominarle prima di voi significherebbe che per qualche giorno quei tre
+codici non si risolvono e degradano. E conviene decidere adesso: il seed **non è
+ancora applicato** a nessun database, quindi oggi la rinomina costa tre stringhe;
+dopo l'apply costa anche una riga di catalogo orfana e un pezzo di storia del log
+sotto il nome vecchio.
+
+Sui due `E_EMAIL_*` che segnalate voi stessi come debito (§3, nota 1): d'accordo sulla
+diagnosi, e per la stessa ragione dei tre sopra. Non è una nostra richiesta perché
+spacchettarli sposta lo status HTTP di endpoint in uso — decisione vostra, sulla vostra
+metà.
+
+### 6.5 Sul «meno urgente del primo»
+
+È vero, e vale la pena dire perché con precisione: dal `20260803-11` il ripiego
+conserva `context->>'codice_errore_originale'`, quindi **l'informazione non si perde
+comunque**. Quello che si perde senza la riga a catalogo è la possibilità di
+**contare**: `error_log` si unisce al catalogo per FK, quindi un codice non seminato
+non compare in nessun raggruppamento per codice — c'è, ma solo se lo si va a cercare
+nel jsonb. È la differenza fra un errore leggibile e un errore misurabile.
+
+### 6.6 Attività svolte lato DB — registro
+
+Perimetro rispettato: **nessun file di `backend/` è stato modificato.** Le tre
+rinomine del §6.3 sono richieste al BE (§6.4), non modifiche applicate.
+
+| # | Attività | File | Stato |
+| --- | --- | --- | --- |
+| 1 | Verifica dei 28 codici prima del seed: tutti dichiarati in `error_policies.py`, nessuno già a catalogo, nessun `%s`, nessun duplicato | — | ✅ |
+| 2 | Seed dei 28 codici, lingua `it`, `causa`/`soluzione` vuote, **id 802–829** | `80_data/sql/config/messaggi_errore.csv` | ✅ append puro |
+| 3 | Check gemello lato DB, quattro casi, legge `pg_proc.prosrc` | `db/pgtap/script/test-catalogo-messaggi-errore-completo.sql` | ✅ nuovo |
+| 4 | Seed di `E_FATTURA_NON_ANNULLABILE` (**id 830**) — orfano trovato dal check al primo giro, con `causa` e `soluzione` scritte | stesso CSV | ✅ |
+| 5 | Verifica del check simulando l'apply in transazione con rollback | — | ✅ 4/4 |
+| 6 | Risposta DB nel brief (§6) | questo documento | ✅ |
+| 7 | Controprova su `E_PIPELINE_DRIVER_MAX_ITER` e su `E_FATTURA_NON_ANNULLABILE` in `dbops.error_log` | — | ✅ entrambi registrati col proprio nome |
+
+**Numeri finali:** CSV a **628 righe**, +29 in append (28 richiesti + 1 orfano),
+nessun `id` duplicato, nessuna coppia `(codice, lingua)` duplicata, nessuna riga
+preesistente toccata.
+
+**Esito dopo l'apply (2026-08-04).** Catalogo a **628 righe**, le 29 nuove tutte
+dentro. Il check gemello è **4/4 verde** — il test 2, che prima nominava
+`E_FATTURA_NON_ANNULLABILE`, è rientrato da solo con il seed. Non è mai stato messo in
+`baseline-rossi.tsv`: era rosso *perché* il seed non era applicato, non per un difetto.
+Da qui in avanti, se torna rosso, l'output dice quale codice e quale funzione, e la
+riparazione è un append al CSV.
+
+**Controprova, per esteso.** Due chiamate a `fn_log_error_only` e una rilettura di
+`dbops.error_log` (righe riconoscibili da `function_name = 'round2-*'`):
+
+| Codice | Prima | Ora |
+| --- | --- | --- |
+| `E_PIPELINE_DRIVER_MAX_ITER` | `MESSAGGIO_NON_DEFINITO` | «Pipeline interrotta: superato il numero massimo di iterazioni.» |
+| `E_FATTURA_NON_ANNULLABILE` | `MESSAGGIO_NON_DEFINITO` | «Fattura %s gia' numerata: l'annullamento non e' ammesso.» |
+
+Il secondo è la chiusura del cerchio: un codice che nessuno dei due registri conosceva,
+trovato dal check e reso leggibile nello stesso giro.
