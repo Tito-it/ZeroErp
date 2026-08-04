@@ -2,12 +2,26 @@
 
 > 👀 **Vedi anche**
 >
-[pratiche.sospensioni](/dbzero/pratiche/manual/sospensioni)
-> [pratiche.giornale](/dbzero/pratiche/manual/giornale)
+> **Tabelle:**
+>
+> • [pratiche.sospensioni](/dbzero/pratiche/manual/sospensioni) — la tabella sorvegliata
+> • [pratiche.giornale](/dbzero/pratiche/manual/giornale) — dove finiscono gli eventi
+>
+> **Le due funzioni vive descritte qui:**
+>
+> • [pratiche.trgfn_sospensioni_giornale_ins](/dbzero/pratiche/funzioni/trgfn_sospensioni_giornale_ins)
+> • [pratiche.trgfn_sospensioni_giornale_riattivazione](/dbzero/pratiche/funzioni/trgfn_sospensioni_giornale_riattivazione)
 
 ---
 ### 🎯 Scopo Principale
 Due trigger functions per registrare nel giornale gli eventi di sospensione e riattivazione.
+
+> ℹ️ **Questa pagina copre una coppia, non un oggetto singolo.** Nel database non
+> esiste una funzione `trgfn_sospensioni_giornale`: il nome del file è il **prefisso
+> di famiglia** delle due funzioni reali, `_ins` e `_riattivazione`. Sono documentate
+> insieme perché sono i due lati dello stesso fatto — una sospensione che si apre e
+> la stessa sospensione che si chiude — e leggerne una sola non spiega il giornale.
+> Le rispettive schede auto-generate sono linkate qui sopra.
 
 ---
 

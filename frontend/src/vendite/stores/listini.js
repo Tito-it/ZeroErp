@@ -24,7 +24,10 @@ export const useListiniStore = defineStore('vendite-listini', () => {
     attivo: true,
     limit: 10,
     offset: 0,
-    order_by: 'descrizione',
+    // `codice`: e' il preset default del seed della lista `vendite.listini`
+    // (identificatore, colonna fissata). Il `defaultSortField` del componente
+    // e' dormiente finche' questo preset esiste: la verita' e' qui.
+    order_by: 'codice',
     order_dir: 'asc'
   })
 

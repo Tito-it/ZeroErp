@@ -6,6 +6,7 @@
 - [fn_available_actions_commessa](manual/fn_available_actions_commessa.md) — (latest review 16-06-2026) Espone le **capability del ciclo di vita di una commessa** per il detail/stato API: quali azioni di stato l'utente può eseguire e cosa può modificare. Mirror del pattern `fn_available_actions_ordine` / `_offerta` / `_contratto` / `_preventivo`, **senza azioni applicative** (il push è *verso* la commessa, non un'azione della commessa).
 - [fn_available_actions_contratto](manual/fn_available_actions_contratto.md)
 - [fn_available_actions_ddt](manual/fn_available_actions_ddt.md) — (rev 2026-07-09)
+- [fn_available_actions_lotto](manual/fn_available_actions_lotto.md) — (latest review 04-08-2026) Espone le **capability del lotto di fatturazione** per il detail API: quali azioni di governo sono disponibili sul lotto, quali sono **abilitate** e — quando non lo sono — **perché**. Ottava della famiglia `fn_available_actions_*` (ordine, DDT, reso, offerta, preventivo, contratto, commessa): stesso contratto, stessi consumatori frontend.
 - [fn_available_actions_offerta](manual/fn_available_actions_offerta.md)
 - [fn_available_actions_ordine](manual/fn_available_actions_ordine.md)
 - [fn_available_actions_preventivo](manual/fn_available_actions_preventivo.md)
@@ -16,7 +17,11 @@
 - [fn_check_azione_processo](manual/fn_check_azione_processo.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 - [fn_check_blocco_login](manual/fn_check_blocco_login.md)
 - [fn_check_ddt_emittibile](manual/fn_check_ddt_emittibile.md) — (creata 2026-07-19 — brief-db-guard-righe-avanzamento-stato §1a-bis Rev 2)
+- [fn_check_fattura_eliminabile_da_lotto](manual/fn_check_fattura_eliminabile_da_lotto.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono di togliere una fattura da un lotto**. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando la fattura si può togliere.
 - [fn_check_indirizzo_duplicato](manual/fn_check_indirizzo_duplicato.md)
+- [fn_check_lotto_annullabile](manual/fn_check_lotto_annullabile.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono l'annullamento** di un lotto di fatturazione. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando l'annullamento è lecito.
+- [fn_check_lotto_fatture_pre_fiscali](manual/fn_check_lotto_fatture_pre_fiscali.md) — (latest review 04-08-2026) Dice se le fatture di un lotto sono ancora **demolibili**, cioè se nessuna ha superato lo stato pre-fiscale. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando tutte le fatture del lotto sono pre-fiscali.
+- [fn_check_lotto_riportabile_a_draft](manual/fn_check_lotto_riportabile_a_draft.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono il ritorno in bozza** di un lotto di fatturazione. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando il ritorno è lecito.
 - [fn_check_operatore_invitabile](manual/fn_check_operatore_invitabile.md)
 - [fn_check_parameter_fk_surrogate](manual/fn_check_parameter_fk_surrogate.md) — (latest review 02-05-2026)
 - [fn_check_rinuncia_reversibile](manual/fn_check_rinuncia_reversibile.md) — (creata 2026-07-26 — brief-db-chiusura-riconsegna-reso-definitivo §5.1)
@@ -79,6 +84,7 @@
 - [fn_registra_tentativo_login](manual/fn_registra_tentativo_login.md)
 - [fn_resolve_codice_postale](manual/fn_resolve_codice_postale.md) — Risolve il `codice_postale_id` con logica di fallback a due livelli. Unica source of truth per la logica CAP (prima nel watcher Vue).
 - [fn_resolve_emittente_for_user](manual/fn_resolve_emittente_for_user.md)
+- [fn_resolve_indirizzo_documento](manual/fn_resolve_indirizzo_documento.md) — (latest review 02-08-2026)
 - [fn_resolve_livello_area](manual/fn_resolve_livello_area.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 - [fn_resolve_livello_oggetto](manual/fn_resolve_livello_oggetto.md) — (latest review 08-03-2026) La funzione **`script.fn_resolve_livello_oggetto`** risolve il livello di accesso per un singolo model Django (`app_label` + `model_name`).
 - [fn_ricalcola_prezzo_padre_da_componenti](manual/fn_ricalcola_prezzo_padre_da_componenti.md)
@@ -95,6 +101,7 @@
 - [fn_search_stradario](manual/fn_search_stradario.md) — (latest review 13-03-2026) Ricerca vie (stradario) per autocomplete frontend. L'utente seleziona un comune e cerca una via nel comune selezionato.
 - [fn_search_stradario_generale](manual/fn_search_stradario_generale.md) — Ricerca vie su `config.stradario_generale` (senza comune/CAP). Serve per autocomplete "via nuova": l'utente cerca una via in tutta Italia, poi sceglie comune e CAP separatamente.
 - [fn_snapshot_indirizzo](manual/fn_snapshot_indirizzo.md)
+- [fn_snapshot_indirizzo_soggetto](manual/fn_snapshot_indirizzo_soggetto.md) — (latest review 02-08-2026)
 - [fn_subentro_cliente](manual/fn_subentro_cliente.md) — (latest review 01-03-26)
 - [fn_valida_codice_fiscale](manual/fn_valida_codice_fiscale.md) — * **Validazione formale** del Codice Fiscale (CF) calcolando e confrontando il carattere di controllo. * **Supporto omocodici**, garantendo validità anche per CF derivati con omolettere. * **Delegare al backend** i controlli di congruenza con data di nascita, sesso e luogo di nascita per mantenere flessibilità applicativa.
 - [fn_valida_partita_iva](manual/fn_valida_partita_iva.md) — Verificare **formalmente** la correttezza di una Partita IVA italiana (11 cifre) calcolando il **check digit** con l’algoritmo di Luhn modificato, restituendo:
@@ -111,7 +118,6 @@
 - [trgfn_config_sistema_codici_sync_gen_codice](manual/trgfn_config_sistema_codici_sync_gen_codice.md) — La funzione `script.trgfn_config_sistema_codici_sync_gen_codice()` mantiene **sincronizzati** trigger e trigger function per la **generazione automatica dei codici/numero** in base a `config.sistema_codici`.
 - [trgfn_delete_block_by_guc](manual/trgfn_delete_block_by_guc.md) — (latest review 23-01-2026) La funzione `script.trgfn_delete_block_by_guc()` e` una **trigger function generica** che blocca le DELETE, consentendo il bypass tramite una **GUC** di manutenzione.
 - [trgfn_guard_emittente_scope](manual/trgfn_guard_emittente_scope.md) — (rev 2026-06-01 — aggiunta modalità `fiscale` PK; delega alla canonica `fn_check_user_emittente_scope`) La trigger function **`script.trgfn_guard_emittente_scope`** implementa il defense-in-depth: blocca INSERT/UPDATE se l'utente corrente non ha visibilità sull'emittente fiscale della riga.
-- [trgfn_guard_sorgente_polimorfa](manual/trgfn_guard_sorgente_polimorfa.md)
 - [trgfn_guard_sorgente_polimorfa_testuale](manual/trgfn_guard_sorgente_polimorfa_testuale.md) — Valida la sorgente polimorfa delle **tabelle di collegamento a chiave unica TESTUALE** (modello B): la colonna `sorgente_uid` è **TEXT** e contiene la chiave nel **formato dettato da `config.sorgenti.key_selector`**:
 - [trgfn_guard_sorgente_polimorfa_tipizzata](manual/trgfn_guard_sorgente_polimorfa_tipizzata.md) — Valida la **coerenza dei riferimenti di sorgente** per le tabelle che adottano il **modello A — colonne tipizzate alternative**:
 - [trgfn_guard_utility_tipo_ruolo_by_cols](manual/trgfn_guard_utility_tipo_ruolo_by_cols.md) — La funzione **`script.trgfn_guard_utility_tipo_ruolo_by_cols()`** e` una trigger function generica che applica il controllo utility/ruolo su tabelle con colonne configurabili.
@@ -133,7 +139,3 @@
 - [vw_stati_estesi](manual/vw_stati_estesi.md) — La vista `script.vw_stati_estesi` fornisce un accesso **arricchito** ai dati della tabella `config.stati`, estraendo e presentando in colonne dedicate alcune informazioni aggiuntive memorizzate nel campo JSON `extra_country`.
 - [vw_stato_sorgente](manual/vw_stato_sorgente.md) — (latest review 01-07-2026) `script.vw_stato_sorgente` è la **union dei resolver di dominio** della proiezione stato (brief-db-proiezione-stato-dominio, deliverable D3): è l'**unica superficie di dispatch** — niente `resolver_key`, niente CASE statico. Un tipo sorgente senza ramo semplicemente **non ha righe** = non risolto: il wrapper `pratiche.fn_stato_sorgente` degrada a `UNKNOWN` e il milestone resta manuale come oggi.
 - [vw_stradario_esteso](manual/vw_stradario_esteso.md) — * **Aggregazione logica**: unire in un’unica sorgente i dati di via, toponomastica e stato, evitando join ripetuti nei client e nelle applicazioni. * **Pulizia dati**: fornire alias chiari (`id_via`, `id_toponomastica`, `tipo_toponimo`, `sigla_stato`, `nome_strada`) per facilitare l’interpretazione dei risultati. * **Performance**: ridurre il carico di join runtime raggruppando più tabelle in un’unica view materializzata (se necessario).
-
-## 📘 Altri contenuti manuali
-- [fn_get_contatti_default](manual/fn_get_contatti_default.md) — * **Ottenere il contatto “di riferimento”**   Fornire un modo semplice e univoco per ottenere il **contatto principale** da utilizzare in un certo contesto (es. contatto predefinito del cliente, contatto principale del ruolo Gestore, ecc.).
-- [fn_get_user_profile_auth_flags](manual/fn_get_user_profile_auth_flags.md)

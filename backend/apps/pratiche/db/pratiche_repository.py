@@ -17,6 +17,7 @@ from apps.core.db._helpers import (
     row_to_dict,
     rows_to_list,
     sql_order_direction,
+    sql_tiebreak_direction,
 )
 from apps.core.services.error_manager import ErrorManager
 
@@ -32,7 +33,10 @@ __all__ = ["PraticheRepository", "coerce_jsonb_dict"]
 # sortField), valore = espressione SQL. Qualificata dove la chiave e' una
 # colonna fisica (la query joina otto tabelle); nuda dove e' un alias di output
 # della SELECT, che ORDER BY risolve solo cosi'.
-_PRATICHE_ORDER_COLS: dict[str, str] = {
+PRATICHE_ORDER_COLS: dict[str, str] = {
+    # `id` aggiunto il 2026-08-02 (commessa BE 7° lotto, voce «migliora»): la
+    # coda approvazioni prezzo mostra la colonna e passa da questa whitelist.
+    "id": "p.id",
     "codice": "p.codice",
     "descrizione": "p.descrizione",
     "data_apertura": "p.data_apertura",
@@ -190,10 +194,11 @@ class PraticheRepository:
     ) -> tuple[list[dict[str, Any]], int]:
         safe_limit = max(1, min(int(limit), 200))
         safe_offset = max(0, int(offset))
-        order_col = _PRATICHE_ORDER_COLS.get(
-            order_by, _PRATICHE_ORDER_COLS["data_insert"]
+        order_col = PRATICHE_ORDER_COLS.get(
+            order_by, PRATICHE_ORDER_COLS["data_insert"]
         )
         direction = sql_order_direction(order_dir)
+        tiebreak_dir = sql_tiebreak_direction(direction)
 
         conditions: list[str] = ["p.emittente_fiscale_id = %s"]
         params: list[Any] = [emittente_fiscale_id]
@@ -256,7 +261,7 @@ class PraticheRepository:
             FROM pratiche.pratiche p
             {self._PRATICA_JOINS}
             {where_clause}
-            ORDER BY {order_col} {direction}, p.id
+            ORDER BY {order_col} {direction}, p.id {tiebreak_dir}
             LIMIT %s OFFSET %s
         """
 
@@ -1396,7 +1401,7 @@ class PraticheRepository:
             row = cursor.fetchone()
             ErrorManager.require(
                 row is not None,
-                code="E_COMPETENZA_INSERT",
+                code="E_FLUSSO_COMPETENZA_INSERT",
                 message="Errore inserimento competenza flusso (RETURNING id nullo)",
             )
             assert row is not None

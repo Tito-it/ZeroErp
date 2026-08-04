@@ -40,7 +40,15 @@ OUT="../requirements.txt"
 [[ -n "${VIRTUAL_ENV:-}" ]] || { echo "Activate venv first (source .venv/bin/activate)"; exit 1; }
 
 
-python -m pip install -U pip
+# 1) Aggiorna pip — PINNATO a < 26.2 (2026-08-01)
+#    pip 26.2 ha RIMOSSO `stdlib_pkgs` da `pip._internal.utils.compat`, che
+#    pip-tools importa in `piptools/sync.py`: con pip >= 26.2 sia
+#    `python -m piptools compile` sia `pip-sync` muoiono con ImportError
+#    all'import del modulo (7.6.0 e' l'ultima release pip-tools esistente,
+#    non c'e' una versione a cui salire).
+#    RIMUOVERE IL PIN quando pip-tools pubblica una release compatibile con
+#    pip >= 26.2 (verifica: `pip index versions pip-tools`).
+python -m pip install -U "pip<26.2"
 
 # 2) Assicura pip-tools
 python -m pip install -U pip-tools

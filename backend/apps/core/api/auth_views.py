@@ -31,6 +31,7 @@ from apps.core.api.throttling import LoginRateThrottle
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.services import session_audit_service
 from apps.core.services.auth_constants import (
+    JWT_CLAIM_EMITTENTE_ATTIVO_ID,
     JWT_CLAIM_IDENTITA_ID,
     JWT_CLAIM_RUOLO_APPLICATIVO,
     RUOLO_APPLICATIVO_CLIENTE_PORTALE,
@@ -62,6 +63,14 @@ def _decode_refresh_payload(refresh_str: str | None) -> dict:
 # call site login/refresh per passare l'identita a set_jwt_gucs.
 def _extract_identita_id_from_refresh(refresh_str: str | None) -> int | None:
     val = _decode_refresh_payload(refresh_str).get(JWT_CLAIM_IDENTITA_ID)
+    return int(val) if val is not None else None
+
+
+# Scopo: Estrae il claim `emittente_attivo_id` dal refresh token, per
+# ripopolare la GUC durante il refresh (che non passa dalla DRF auth chain).
+# Claim assente = modalita' «Tutti gli emittenti» → None, GUC vuota.
+def _extract_emittente_attivo_from_refresh(refresh_str: str | None) -> int | None:
+    val = _decode_refresh_payload(refresh_str).get(JWT_CLAIM_EMITTENTE_ATTIVO_ID)
     return int(val) if val is not None else None
 
 
@@ -342,6 +351,13 @@ class AuditTokenRefreshView(TokenRefreshView):
                         username=username,
                         user_id=user_id,
                         identita_id=identita_id,
+                        # L'emittente attivo viaggia col refresh (rotation
+                        # preserva i claim custom): senza, ogni refresh
+                        # riporterebbe l'utente in modalita' globale a sua
+                        # insaputa. La CTE ricontrolla che sia ancora attivo.
+                        emittente_attivo_id=_extract_emittente_attivo_from_refresh(
+                            request.data.get("refresh")
+                        ),
                         request=request._request if hasattr(request, "_request") else request,
                     )
                     if not gucs_ok:

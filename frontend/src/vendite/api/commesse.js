@@ -14,7 +14,8 @@ export function getCommessaStato(commessaId) {
   return api.get(`${BASE}/${commessaId}/stato/`)
 }
 
-// GET righe attivita' paginate (limit/offset; filtri stato opzionali).
+// GET righe attivita' paginate (limit/offset; filtri stato opzionali;
+// order_by/order_dir opzionali — whitelist nella fn DB, assenti = ordine per id).
 export function listCommessaAttivita(commessaId, params = {}) {
   return api.get(`${BASE}/${commessaId}/attivita/`, { params })
 }

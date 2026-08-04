@@ -21,6 +21,7 @@ from apps.vendite.types import (
     CommessaEmittibileLane,
     CommessaPushLogRow,
     CommessaStatoResult,
+    GruppoDiagnosi,
 )
 
 # Repository SQL: incapsula accesso DB per commesse, commesse_attivita e push log.
@@ -41,6 +42,24 @@ _SORGENTE_FN_MAP: dict[str, str] = {
 # acquisiranno il parametro (sviluppo concentrico: la whitelist e' il punto
 # unico di espansione).
 _SORGENTE_SUPPORTA_RIGHE_IDS: frozenset[str] = frozenset({"PREVENTIVO"})
+
+# Colonne ordinabili della lista attivita' commessa: specchio della whitelist
+# CHIUSA dentro vendite.fn_list_commessa_attivita (changeset 20260802-26), dove
+# vivono ordine e paginazione — ordinare a valle ordinerebbe la sola pagina
+# estratta. Il service valida qui (fail-fast, un solo round-trip); la fn resta
+# l'autorita' e solleva E_PARAMETRO_INVALIDO su un nome fuori mappa.
+# Livello modulo, non ClassVar: e' un dato, e un test che mocka la classe non
+# deve poterla svuotare.
+ATTIVITA_SORT_COLUMNS: frozenset[str] = frozenset({
+    "id",
+    "data_attivita",
+    "competenza_mese",
+    "segment_key",
+    "quantita",
+    "prezzo_snapshot",
+    "stato_approvazione",
+    "stato_emissione",
+})
 
 # Nomi delle 26 colonne condivise da tutte le fn_list_*_da_pushare.
 # La colonna opzionale `riga_id` (presente in preventivi/ordini/contratti/ddt,
@@ -74,6 +93,13 @@ _PUSHABLE_SHARED_COLS = (
     "valuta_id",
     "meta",
     "tipo_doc_fiscale_id",
+    # Condizioni di pagamento del documento sorgente (contratto di push rev
+    # 2026-08-03, changeset 20260803-02). ⚠️ Questa whitelist E' il cancello
+    # del binding: una colonna esposta dalla fn ma assente qui non entra mai
+    # in `col_map`, e il `col_map.get` a valle resta None IN SILENZIO — e'
+    # successo davvero (smoke-push-termine-documento-commessa, test 0).
+    "termine_pagamento_id",
+    "modalita_pagamento_id",
 )
 
 
@@ -205,6 +231,17 @@ class PushableRow:
     # `<sorgente>_righe_componenti` (refactor componenti 2026-05-11) invece
     # di chiamare il resolver al push. Default None per backward compat.
     riga_sorgente_id: int | None = None
+    # Condizioni di pagamento del DOCUMENTO SORGENTE, propagate alla commessa
+    # (D-R: il termine vive sulla commessa ed entra nella sua chiave).
+    # ⚠️ Oggi `fn_list_*_da_pushare` NON le espone (verificato 2026-08-03: 29
+    # colonne, nessuna delle due), quindi restano None e la propagazione e'
+    # INERTE: si accende da se' quando il DB aggiungera' le colonne, senza
+    # altre modifiche qui. Il default None e' quindi voluto, non difensivo.
+    # NON si risolvono in Python: qui si COPIA il valore del documento, non si
+    # percorre la cascata — un secondo risolutore divergerebbe in silenzio
+    # (brief scadenze §8).
+    termine_pagamento_id: int | None = None
+    modalita_pagamento_id: int | None = None
 
 
 def _decode_jsonb(value: Any, default: Any) -> Any:
@@ -246,6 +283,18 @@ def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
         row[col_map["riga_id"]] if "riga_id" in col_map else None
     )
 
+    # Condizioni di pagamento del documento sorgente. La lettura tollerante
+    # (`nome not in col_map` -> None) resta per le fn che non esponessero la
+    # colonna, ma NON basta da sola: `col_map` contiene solo i nomi in
+    # `_PUSHABLE_SHARED_COLS`, quindi ogni colonna nuova del contratto va
+    # aggiunta ANCHE alla whitelist o il binding resta muto (lezione del
+    # 2026-08-03: la prima stesura si fermo' qui e lo smoke la scopri').
+    def _opt_int(nome: str) -> int | None:
+        if nome not in col_map:
+            return None
+        valore = row[col_map[nome]]
+        return int(valore) if valore is not None else None
+
     return PushableRow(
         billing_account_id=_col("billing_account_id"),
         utility_id=_col("utility_id"),
@@ -276,6 +325,8 @@ def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
         valuta_id=_col("valuta_id"),
         meta=meta_raw,
         tipo_doc_fiscale_id=_col("tipo_doc_fiscale_id"),
+        termine_pagamento_id=_opt_int("termine_pagamento_id"),
+        modalita_pagamento_id=_opt_int("modalita_pagamento_id"),
     )
 
 
@@ -416,8 +467,18 @@ class CommesseRepository:
         competenza_al: date | None = None,
         meta: dict | None = None,
         force_new: bool = False,
+        termine_pagamento_id: int | None = None,
+        modalita_pagamento_id: int | None = None,
     ) -> int:
-        """Risolve o crea una commessa. Restituisce commessa_id."""
+        """Risolve o crea una commessa. Restituisce commessa_id.
+
+        `termine_pagamento_id`/`modalita_pagamento_id` sono le condizioni di
+        pagamento del DOCUMENTO SORGENTE: la commessa le POSSIEDE (D-R) e da
+        li' la catena `fn_resolve_termini_pagamento` le porta in fattura.
+        `fn_get_or_create_commessa` accettava gia' i due parametri; il BE non
+        li passava, ed e' il difetto che faceva uscire ogni fattura col
+        termine del CLIENTE anche quando l'ordine ne dichiarava un altro.
+        """
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -432,7 +493,9 @@ class CommesseRepository:
                     p_competenza_dal => %s,
                     p_competenza_al => %s,
                     p_meta => %s::jsonb,
-                    p_force_new => %s
+                    p_force_new => %s,
+                    p_termine_pagamento_id => %s,
+                    p_modalita_pagamento_id => %s
                 )
                 """,
                 [
@@ -447,6 +510,8 @@ class CommesseRepository:
                     competenza_al,
                     self._to_jsonb_param(meta),
                     force_new,
+                    termine_pagamento_id,
+                    modalita_pagamento_id,
                 ],
             )
             row = cursor.fetchone()
@@ -1108,6 +1173,122 @@ class CommesseRepository:
                 for row in cursor.fetchall()
             ]
 
+    # Scopo: Spiega perche' i gruppi fatturabili richiesti NON sono entrati in
+    #        nessuna terna di `list_emittibili_lane`. Diagnostica, non decisione:
+    #        descrive i FATTI delle righe del gruppo (stato testata, conteggi per
+    #        stato riga, tipo doc, competenza) e lascia la classificazione al
+    #        service. L'ammissibilita' resta della sola `fn_list_emittibili_lane`
+    #        — qui non si riproduce il criterio, si racconta cosa c'e'.
+    #
+    #        Nasce dal caso reale del 2026-08-03: un'emissione mirata su un
+    #        ordine di giugno ha prodotto zero lotti in silenzio perche' la
+    #        commessa era rimasta in BOZZA (non emittibile). L'operatore leggeva
+    #        «nessun lotto prodotto» senza sapere che cosa lo bloccasse.
+    #
+    #        Da chiamare SOLO quando il giro non ha emesso nulla: dopo
+    #        un'emissione riuscita le righe sono gia' EMESSA e la fotografia
+    #        descriverebbe lo stato di arrivo, non quello che ha impedito il giro.
+    #        `competenza_mese` e' lo stesso bound superiore passato alla discovery.
+    def diagnostica_gruppi(
+        self,
+        *,
+        gruppi: tuple[str, ...] | list[str],
+        competenza_mese: date | None = None,
+    ) -> list[GruppoDiagnosi]:
+        chiavi = [k for k in (str(g).strip() for g in gruppi) if k]
+        if not chiavi:
+            return []
+        bound = None if competenza_mese is None else competenza_mese.replace(day=1)
+        # Parametri NOMINALI: `chiavi` e `bound` ricorrono piu' volte nella
+        # query, e una lista posizionale di ripetizioni e' il posto classico
+        # dove un riordino silenzioso scambia due filtri.
+        params = {"chiavi": chiavi, "bound": bound}
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                WITH richiesti AS (
+                    SELECT unnest(%(chiavi)s::text[]) AS gruppo_key
+                ), righe AS (
+                    SELECT vendite.fn_build_gruppo_fatturabile_key(
+                               ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id
+                           )                        AS gruppo_key,
+                           co.codice                AS commessa_codice,
+                           sc.codice_interno        AS stato_commessa,
+                           sc.emittibile            AS commessa_emittibile,
+                           ca.stato_emissione,
+                           ca.stato_approvazione,
+                           ca.tipo_doc_fiscale_id,
+                           ca.competenza_mese
+                      FROM vendite.commesse_attivita ca
+                      JOIN vendite.commesse co
+                        ON co.id = ca.commessa_id
+                      JOIN vendite.stati_commessa sc
+                        ON sc.id = co.stato_commessa_id
+                     WHERE vendite.fn_build_gruppo_fatturabile_key(
+                               ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id
+                           ) = ANY (%(chiavi)s::text[])
+                )
+                SELECT r.gruppo_key,
+                       min(x.commessa_codice)                       AS commessa_codice,
+                       min(x.stato_commessa)                        AS stato_commessa,
+                       bool_or(x.commessa_emittibile)               AS commessa_emittibile,
+                       count(x.gruppo_key)                          AS n_righe,
+                       count(*) FILTER (
+                           WHERE x.stato_emissione = 'EMESSA')      AS n_emesse,
+                       count(*) FILTER (
+                           WHERE x.stato_emissione = 'ANNULLATA')   AS n_annullate,
+                       count(*) FILTER (
+                           WHERE x.stato_emissione = 'NON_EMESSA'
+                             AND x.stato_approvazione = 'RIFIUTATA')
+                                                                    AS n_rifiutate,
+                       count(*) FILTER (
+                           WHERE x.stato_emissione = 'NON_EMESSA'
+                             AND x.stato_approvazione NOT IN
+                                 ('APPROVATA', 'RIFIUTATA'))        AS n_non_approvate,
+                       count(*) FILTER (
+                           WHERE x.stato_emissione = 'NON_EMESSA'
+                             AND x.stato_approvazione = 'APPROVATA'
+                             AND x.tipo_doc_fiscale_id IS NULL)     AS n_senza_tipo_doc,
+                       count(*) FILTER (
+                           WHERE x.stato_emissione = 'NON_EMESSA'
+                             AND x.stato_approvazione = 'APPROVATA'
+                             AND x.tipo_doc_fiscale_id IS NOT NULL
+                             AND %(bound)s::date IS NOT NULL
+                             AND x.competenza_mese > %(bound)s::date)
+                                                                    AS n_fuori_competenza,
+                       count(*) FILTER (
+                           WHERE x.stato_emissione = 'NON_EMESSA'
+                             AND x.stato_approvazione = 'APPROVATA'
+                             AND x.tipo_doc_fiscale_id IS NOT NULL
+                             AND (%(bound)s::date IS NULL
+                                  OR x.competenza_mese <= %(bound)s::date))
+                                                                    AS n_pronte
+                  FROM richiesti r
+                  LEFT JOIN righe x
+                    ON x.gruppo_key = r.gruppo_key
+                 GROUP BY r.gruppo_key
+                 ORDER BY r.gruppo_key
+                """,
+                params,
+            )
+            return [
+                GruppoDiagnosi(
+                    gruppo_key=row[0],
+                    commessa_codice=row[1],
+                    stato_commessa=row[2],
+                    commessa_emittibile=bool(row[3]) if row[3] is not None else None,
+                    n_righe=int(row[4]),
+                    n_emesse=int(row[5]),
+                    n_annullate=int(row[6]),
+                    n_rifiutate=int(row[7]),
+                    n_non_approvate=int(row[8]),
+                    n_senza_tipo_doc=int(row[9]),
+                    n_fuori_competenza=int(row[10]),
+                    n_pronte=int(row[11]),
+                )
+                for row in cursor.fetchall()
+            ]
+
     # --- Gruppo 3b: Lista attività commessa (paginata) ---
 
     # Colonne restituite da vendite.fn_list_commessa_attivita.
@@ -1140,9 +1321,13 @@ class CommesseRepository:
         competenza_mese: date | None = None,
         limit: int = 50,
         offset: int = 0,
+        order_by: str | None = None,
+        order_dir: str = "asc",
     ) -> dict:
         """Lista paginata attività di una commessa via vendite.fn_list_commessa_attivita.
 
+        order_by/order_dir passano alla fn DB (whitelist ATTIVITA_SORT_COLUMNS,
+        validata a monte dal service); None = ordine storico ca.id.
         Restituisce {"count": <total_righe_filtrate>, "rows": [dict, ...]}.
         """
         safe_limit = max(1, min(int(limit), 200))
@@ -1182,11 +1367,14 @@ class CommesseRepository:
                     p_stato_approvazione => %s,
                     p_competenza_mese => %s,
                     p_limit => %s,
-                    p_offset => %s
+                    p_offset => %s,
+                    p_order_by => %s,
+                    p_order_dir => %s
                 )
                 """,  # noqa: S608 — colonne da costante _ATTIVITA_COLS
                 [commessa_id, stato_emissione, stato_approvazione,
-                 competenza_mese, safe_limit, safe_offset],
+                 competenza_mese, safe_limit, safe_offset,
+                 order_by, order_dir],
             )
             raw_rows = cursor.fetchall()
 

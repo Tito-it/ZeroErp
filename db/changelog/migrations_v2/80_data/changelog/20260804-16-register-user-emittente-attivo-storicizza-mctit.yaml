@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Registra config.user_emittente_attivo fra le tabelle a storicizzazione
+#   PERMANENTE (brief-db-impersonazione-scope-emittente.md §8.8).
+#
+# ⚠️ SENZA QUESTA RIGA SI PERDEREBBERO TUTTI GLI SWITCH TRANNE IL PRIMO. Il
+#   trigger generico di storicizzazione, per le tabelle NON registrate in
+#   config.storico_set_storicizza, azzera il flag `storicizza` dopo ogni UPDATE:
+#   il record verrebbe storicizzato una volta sola e poi mai piu'. Su una
+#   tabella che esiste proprio per registrare i cambi di veste sarebbe un difetto
+#   silenzioso — il log ci sarebbe, con dentro un solo evento per utente.
+#
+# ℹ️ Il job settimanale maintenance.proc_sync_storico_set_storicizza registra da
+#   solo ogni tabella che abbia la colonna `storicizza`, quindi prima o poi ci
+#   arriverebbe. "Prima o poi" non basta: fra l'apply e la domenica successiva ci
+#   stanno tutti gli switch della settimana. La riga si mette qui, esplicita.
+#
+# ℹ️ insert_manuale = true: dichiara che la registrazione e' una decisione, non
+#   il risultato della sincronizzazione automatica (che scrive false).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260804-16-register-user-emittente-attivo-storicizza-mctit.yaml
+
+  - changeSet:
+      id: 20260804-16-register-user-emittente-attivo-storicizza
+      author: mctit
+      comment: >
+        Registra config.user_emittente_attivo in config.storico_set_storicizza:
+        storicizzazione permanente, altrimenti il flag si azzera dopo il primo
+        UPDATE e il registro degli switch conserverebbe un solo evento per utente.
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: user_emittente_attivo
+            - tableExists:
+                schemaName: config
+                tableName: storico_set_storicizza
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              INSERT INTO config.storico_set_storicizza (table_name, insert_manuale)
+              VALUES ('config.user_emittente_attivo', true)
+              ON CONFLICT (table_name) DO NOTHING;
+
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM config.storico_set_storicizza
+               WHERE table_name = 'config.user_emittente_attivo';

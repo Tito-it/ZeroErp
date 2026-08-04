@@ -15,7 +15,7 @@ from uuid import UUID
 
 from django.db import connection, transaction
 
-from apps.core.db._helpers import row_to_dict, rows_to_list
+from apps.core.db._helpers import extract_paginated, row_to_dict, rows_to_list
 from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
 
 logger = logging.getLogger(__name__)
@@ -28,11 +28,14 @@ logger = logging.getLogger(__name__)
 _SQL_DATE_INFINITY = "'infinity'::date"
 
 
+# `attivo` e' NUCLEO: lo stato ordina sempre. Aggiunta in anticipo sul seed
+# della lista listini (passata unica 2026-08-01, richiesta del team DB).
 LISTINI_ORDER_COLUMNS: dict[str, str] = {
     "codice": "l.codice",
     "descrizione": "l.descrizione",
     "utility_descrizione": "u.descrizione",
     "tipologia_descrizione": "lt.descrizione",
+    "attivo": "l.attivo",
     "data_insert": "l.data_insert",
     "data_update": "l.data_update",
 }
@@ -73,14 +76,27 @@ RIGA_UPDATE_COLUMNS: dict[str, str] = {
     key: value for key, value in RIGA_CREATE_COLUMNS.items() if key not in {"articolo_id", "uom_id"}
 }
 
+# Whitelist ORDER BY delle righe di versione listino: chiave = `campo_sorgente`
+# inviato dal frontend, valore = **alias di output** della SELECT.
+#
+# ⚠️ Alias di output e non colonne qualificate, perche' `list_righe` e' una
+# `UNION ALL` (righe standalone + compositi bundle): dopo una UNION l'ORDER BY
+# vede solo i nomi proiettati, non le tabelle delle due gambe.
+#
+# 🔴 Rimosse il 2026-08-03: `billing_account_codice`, `billing_account_descrizione`
+# e `utility_descrizione`. Puntavano agli alias `ba`, `srd_ba` e `cu`, che non
+# esistono nel FROM da quando il cleanup v5 (F1-DB-25) ha tolto quelle
+# dimensioni da `listini_righe`. Non erano frecce morte che ripiegano in
+# silenzio: erano **500** (`elemento FROM per la tabella "ba" mancante`) per
+# chiunque le inviasse. Il commento del metodo diceva gia' che i parametri
+# erano ignorati; la whitelist non era stata ripulita.
 RIGHE_ORDER_COLUMNS: dict[str, str] = {
-    "articolo_codice": "ad.codice",
-    "articolo_descrizione": "ad.descrizione",
-    "uom_codice": "u.codice",
-    "prezzo": "r.prezzo",
-    "billing_account_codice": "ba.codice",
-    "billing_account_descrizione": "srd_ba.ragione_sociale_completa",
-    "utility_descrizione": "cu.descrizione",
+    "articolo_codice": "articolo_codice",
+    "articolo_descrizione": "articolo_descrizione",
+    "uom_codice": "uom_codice",
+    "prezzo": "prezzo",
+    "iva_aliquota": "iva_aliquota",
+    "attivo": "attivo",
 }
 
 
@@ -216,7 +232,7 @@ class ListiniRepository:
               LEFT JOIN config.utilities u ON u.id = l.utility_id
               LEFT JOIN config.listini_tipologie lt ON lt.id = l.tipologia_id
             {where_clause}
-             ORDER BY {order_column} {safe_order_dir}, l.id ASC
+             ORDER BY {order_column} {safe_order_dir}, l.id {safe_order_dir}
              LIMIT %s OFFSET %s
         """
 
@@ -780,8 +796,18 @@ class ListiniRepository:
         assert row is not None
         return int(row[0])
 
-    # Scopo: Restituisce le righe prezzo della versione con display fields articolo/UoM e contesto,
-    #        paginazione server-side e filtri opzionali (search articolo, billing_account, utility).
+    # Scopo: Restituisce le righe della versione listino con display fields
+    #        articolo/UoM, paginazione server-side e search sull'articolo.
+    #
+    #        ⚠️ UNA lista sola (decisione Tid 2026-08-02): la SELECT e' una
+    #        `UNION ALL` fra le righe standalone di `listini_righe` e i
+    #        **compositi con prezzo bundle** aggregati da
+    #        `listini_righe_componenti`. Prima i compositi arrivavano da un
+    #        endpoint separato e il FE li concatenava DOPO la paginazione: con
+    #        righe aggiunte a valle, `total` e numero di pagine mentivano.
+    #        Ogni riga porta `is_composito` (discriminatore per il FE) e
+    #        `row_key` (chiave stabile della DataTable: l'id per le standalone,
+    #        `composito:<uuid>` per i padri, che non hanno un id di testata).
     def list_righe(
         self,
         listino_id: int,
@@ -838,51 +864,114 @@ class ListiniRepository:
                 ON u.id = r.uom_id
         """
 
-        count_sql = f"SELECT COUNT(*) {from_clause} {where_clause}"
-        data_sql = f"""
-            SELECT
-                r.id,
-                r.listino_versione_id,
-                r.articolo_id,
-                ad.codice AS articolo_codice,
-                ad.descrizione AS articolo_descrizione,
-                r.uom_id,
-                u.codice AS uom_codice,
-                u.descrizione AS uom_descrizione,
-                r.prezzo,
-                -- IVA dell'articolo (denormalizzata dal `vw_articoli_dettaglio`).
-                -- Necessaria per la lista unificata righe+compositi del drawer
-                -- versione listino: il FE mostra la colonna IVA per ogni riga
-                -- (audit visivo + coerenza padre-figlio nei bundle).
-                ad.iva_id,
-                ad.iva_codice,
-                ad.iva_aliquota_iva AS iva_aliquota,
-                r.meta,
-                r.attivo,
-                r.data_insert,
-                r.user_insert,
-                r.data_update,
-                r.user_update
-            {from_clause}
-            {where_clause}
-             ORDER BY {order_column} {safe_order_dir} NULLS LAST, r.id ASC
-             LIMIT %s OFFSET %s
-        """
+        # ── Gamba 2: i compositi con prezzo bundle ────────────────────────
+        # Stessi filtri della gamba standalone (search sull'articolo, guard
+        # listino↔versione); `attivo` non e' una colonna di
+        # `listini_righe_componenti` a livello di padre: il composito ESISTE
+        # nella lista se ha almeno un componente attivo, quindi il filtro
+        # `attivo=False` non ha compositi da mostrare.
+        cond_comp: list[str] = ["lrc.listino_versione_id = %s", "lrc.attivo = TRUE"]
+        params_comp: list[Any] = [versione_id]
+        _append_ilike_search(
+            conditions=cond_comp,
+            params=params_comp,
+            left_column="adc.codice",
+            right_column="adc.descrizione",
+            search=search,
+        )
+        where_comp = "WHERE " + " AND ".join(cond_comp)
+        # `attivo=False` chiede esplicitamente le righe disattivate: i compositi
+        # non ne hanno, quindi la gamba si annulla invece di sporcare l'elenco.
+        if attivo is False:
+            cond_comp.append("FALSE")
+            where_comp = "WHERE " + " AND ".join(cond_comp)
 
-        # Parametri: join_guard (listino_id) + where params, duplicati per count e data.
-        count_params = join_guard_params + params
-        data_params = join_guard_params + params + [safe_limit, safe_offset]
+        data_sql = f"""
+            WITH unione AS (
+                SELECT
+                    r.id::text                          AS row_key,
+                    FALSE                               AS is_composito,
+                    r.id,
+                    r.listino_versione_id,
+                    r.articolo_id,
+                    ad.codice                           AS articolo_codice,
+                    ad.descrizione                      AS articolo_descrizione,
+                    r.uom_id,
+                    u.codice                            AS uom_codice,
+                    u.descrizione                       AS uom_descrizione,
+                    r.prezzo,
+                    -- IVA dell'articolo (denormalizzata dal `vw_articoli_dettaglio`):
+                    -- il FE mostra la colonna IVA per ogni riga (audit visivo +
+                    -- coerenza padre-figlio nei bundle).
+                    ad.iva_id,
+                    ad.iva_codice,
+                    ad.iva_aliquota_iva                 AS iva_aliquota,
+                    NULL::bigint                        AS n_componenti_bundle,
+                    r.meta,
+                    r.attivo,
+                    r.data_insert,
+                    r.user_insert,
+                    r.data_update,
+                    r.user_update
+                {from_clause}
+                {where_clause}
+
+                UNION ALL
+
+                SELECT
+                    'composito:' || lrc.articolo_padre_id::text AS row_key,
+                    TRUE                                AS is_composito,
+                    NULL::bigint                        AS id,
+                    lrc.listino_versione_id,
+                    lrc.articolo_padre_id               AS articolo_id,
+                    adc.codice                          AS articolo_codice,
+                    adc.descrizione                     AS articolo_descrizione,
+                    NULL::bigint                        AS uom_id,
+                    NULL::varchar                       AS uom_codice,
+                    NULL::varchar                       AS uom_descrizione,
+                    -- Il composito non ha un prezzo proprio: il suo valore e' la
+                    -- somma dei componenti, mostrata come badge «N componenti».
+                    NULL::numeric                       AS prezzo,
+                    adc.iva_id,
+                    adc.iva_codice,
+                    adc.iva_aliquota_iva                AS iva_aliquota,
+                    COUNT(*)                            AS n_componenti_bundle,
+                    NULL::jsonb                         AS meta,
+                    TRUE                                AS attivo,
+                    MIN(lrc.data_insert)                AS data_insert,
+                    MIN(lrc.user_insert)                AS user_insert,
+                    MAX(lrc.data_update)                AS data_update,
+                    NULL::text                          AS user_update
+                  FROM vendite.listini_righe_componenti lrc
+                  JOIN vendite.listini_versioni vc
+                    ON vc.id = lrc.listino_versione_id
+                   AND vc.listino_id = %s
+                  LEFT JOIN catalogo.vw_articoli_dettaglio adc
+                    ON adc.id = lrc.articolo_padre_id
+                {where_comp}
+                 GROUP BY lrc.articolo_padre_id, lrc.listino_versione_id,
+                          adc.codice, adc.descrizione, adc.iva_id,
+                          adc.iva_codice, adc.iva_aliquota_iva
+            )
+            SELECT *, COUNT(*) OVER() AS total_count
+              FROM unione
+             ORDER BY {order_column} {safe_order_dir} NULLS LAST, row_key ASC
+             LIMIT %s OFFSET %s
+        """  # noqa: S608 — order_column da whitelist, direzione normalizzata
+
+        # L'ordine dei parametri segue le due gambe della UNION:
+        # gamba 1 (join_guard + where), gamba 2 (join_guard + where), poi paginazione.
+        data_params = (
+            join_guard_params + params
+            + join_guard_params + params_comp
+            + [safe_limit, safe_offset]
+        )
 
         with connection.cursor() as cursor:
-            cursor.execute(count_sql, count_params)
-            row = cursor.fetchone()
-            assert row is not None
-            total_count = int(row[0])
-
             cursor.execute(data_sql, data_params)
-            results = rows_to_list(cursor)
-
-        return results, total_count
+            # `extract_paginated` ricava righe e totale da `COUNT(*) OVER()`:
+            # una sola valutazione della union invece di count + data separati.
+            return extract_paginated(cursor)
 
     # Scopo: Restituisce il dettaglio singolo della riga prezzo in perimetro listino/versione.
     def get_riga(self, listino_id: int, versione_id: int, riga_id: int) -> dict[str, Any] | None:
@@ -1232,9 +1321,11 @@ class ListiniRepository:
     # componenti via resolver bundle-aware); listini_righe diretti su
     # padre composito sono vietati (trigger 20260513-04).
     #
-    # API repo: 3 metodi
-    #   - list_compositi_con_bundle(versione_id): elenco padri compositi
-    #     che hanno almeno 1 prezzo bundle definito in quella versione
+    # API repo: 2 metodi
+    #   (l'elenco dei padri compositi con prezzo bundle NON e' piu' un metodo
+    #    a se': dal 2026-08-03 e' la seconda gamba della UNION in `list_righe`,
+    #    perche' righe standalone e compositi sono UNA lista sola e devono
+    #    essere paginati e contati insieme)
     #   - list_bundle_preview(versione_id, padre_id, data_riferimento):
     #     BoM corrente del padre LEFT JOIN prezzi gia' definiti, per
     #     popolare il Dialog di editing
@@ -1253,32 +1344,6 @@ class ListiniRepository:
     # — un SUM(lrc.prezzo) puro sarebbe fuorviante perche' ignora i
     # coefficienti. Il totale per padre vive nel preview del Dialog detail
     # (`list_bundle_preview`) dove abbiamo accesso a `ac.coeff_qta`.
-    def list_compositi_con_bundle(
-        self, versione_id: int,
-    ) -> list[dict[str, Any]]:
-        sql = """
-            SELECT
-                lrc.articolo_padre_id                 AS articolo_id,
-                ad.codice                             AS articolo_codice,
-                ad.descrizione                        AS articolo_descrizione,
-                ad.iva_id,
-                iva.codice                            AS iva_codice,
-                iva.aliquota_iva                      AS iva_aliquota,
-                COUNT(*)                              AS n_componenti_bundle
-              FROM vendite.listini_righe_componenti lrc
-              LEFT JOIN catalogo.vw_articoli_dettaglio ad
-                ON ad.id = lrc.articolo_padre_id
-              LEFT JOIN config.iva iva
-                ON iva.id = ad.iva_id
-             WHERE lrc.listino_versione_id = %s
-               AND lrc.attivo = TRUE
-             GROUP BY lrc.articolo_padre_id, ad.codice, ad.descrizione,
-                      ad.iva_id, iva.codice, iva.aliquota_iva
-             ORDER BY ad.codice NULLS LAST
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [versione_id])
-            return rows_to_list(cursor)
 
     # Scopo: Preview BoM corrente di un padre composito + LEFT JOIN sui
     # prezzi gia' definiti in `listini_righe_componenti` per la versione

@@ -152,13 +152,13 @@ def _lavora_item(
             stato = repo.marca_stampa_errore(
                 coda_id,
                 errore={
-                    "code": "E_EMITTENTE_NON_RISOLTO",
+                    "code": "E_FATTURA_EMITTENTE_NON_RISOLTO",
                     "message": "Emittente fiscale non risolto per la fattura in coda.",
                     "fattura_id": fattura_id,
                 },
                 soglia_tentativi=soglia_tentativi,
             )
-            return _esito_da_stato(stato, code="E_EMITTENTE_NON_RISOLTO")
+            return _esito_da_stato(stato, code="E_FATTURA_EMITTENTE_NON_RISOLTO")
 
         # C-2d: numerazione backstop PRIMA del render (idempotente).
         repo.numera_fattura_backstop(fattura_id)

@@ -23,6 +23,9 @@ BEGIN
   --   - has_critical=true -> ERRORE
   --   - lotto IN_ESECUZIONE -> RUNNING
   --   - altri casi attivi -> COMPLETED
+  --
+  -- rev 2026-08-04 (D-M): via il predicato su lf.esclusa e
+  --   l'argomento p_esclusa all'helper.
   -- =========================================================
   IF p_fattura_ids IS NULL OR array_length(p_fattura_ids, 1) IS NULL THEN
     RETURN;
@@ -75,9 +78,7 @@ BEGIN
   UPDATE vendite.fatturazione_lotti_fatture lf
      SET stato_esecuzione = vendite.fn_resolve_stato_esecuzione(
            p_stato_source => l.stato_lotto,
-           p_current_stato_esecuzione => lf.stato_esecuzione,
            p_has_critical => calc.has_critical,
-           p_esclusa => COALESCE(lf.esclusa, false),
            p_fatturato => false,
            p_default_stato_esecuzione => 'COMPLETED'
          ),
@@ -87,16 +88,13 @@ BEGIN
          vendite.fatturazione_lotti l
    WHERE lf.fattura_id = calc.fattura_id
      AND l.id = lf.lotto_id
-     AND COALESCE(lf.esclusa, false) IS FALSE
      AND (
            l.stato_lotto = 'IN_ESECUZIONE'
            OR l.stato_operativo = 'APERTO'
          )
      AND lf.stato_esecuzione IS DISTINCT FROM vendite.fn_resolve_stato_esecuzione(
            p_stato_source => l.stato_lotto,
-           p_current_stato_esecuzione => lf.stato_esecuzione,
            p_has_critical => calc.has_critical,
-           p_esclusa => COALESCE(lf.esclusa, false),
            p_fatturato => false,
            p_default_stato_esecuzione => 'COMPLETED'
          );
@@ -104,7 +102,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_sync_fatture_log_critical_lotto(p_fattura_ids bigint[])
-IS 'Ricalcola fatture.critical e propaga stato_esecuzione su lotti_fatture tramite helper condiviso.';
+IS 'Ricalcola fatture.critical e propaga stato_esecuzione su lotti_fatture tramite helper condiviso. rev 2026-08-04 (D-M): via il predicato su lf.esclusa, che era una condizione sempre vera, e via l''argomento p_esclusa all''helper.';
 ```
 
 ---

@@ -121,7 +121,7 @@ _ORDER_COLS_OFFERTE: dict[str, str] = {
     "utility_descrizione": "v.utility_descrizione",
     "listino_codice": "v.listino_codice",
     "validita_dal": "v.validita_dal",
-    "validita_al": "v.validita_al",
+    "validita_al": "COALESCE(v.validita_al, 'infinity'::date)",
     "data_emissione": "v.data_emissione",
     "stato_descrizione": "v.stato_descrizione",
     "data_accettazione": "v.data_accettazione",
@@ -151,12 +151,12 @@ _SELECT_COLS_OFFERTA = """
     o.codice,
     o.emittente_fiscale_id,
     -- Denormalizzazione EF (pattern preventivi): il FE `EmittenteFiscaleField`
-    -- in edit mode legge codice + descrizione dal record per costruire la
+    -- in edit mode legge codice + ragione sociale dal record per costruire la
     -- option singola del Select disabled. Senza questi campi il display
     -- resta vuoto in modifica nonostante `emittente_fiscale_id` valorizzato.
     ef.codice           AS emittente_fiscale_codice,
-    COALESCE(s_ef.ragione_sociale_completa, ef.descrizione)
-                        AS emittente_fiscale_descrizione,
+    s_ef.ragione_sociale_completa
+                        AS emittente_ragione_sociale,
     o.billing_account_id,
     -- soggetto_ruolo del cliente (BA): serve al FE per la gestione
     -- indirizzi documento (elenco anagrafico cascata).
@@ -218,10 +218,11 @@ _FROM_JOINS_OFFERTA = """
     -- rischio di duplicazione. Il FE usa contratto_id/numero per il dialog
     -- "gia' generato" e per il deep-link a ContrattoDrawer post-push.
     LEFT JOIN vendite.contratti c ON c.offerta_id = o.id
-    -- Decode emittente fiscale: codice + ragione sociale (con fallback a
-    -- descrizione plain dell'EF). Pattern allineato a preventivi_repository
-    -- per UX uniforme nei drawer (EmittenteFiscaleField in modalita' edit
-    -- legge questi campi denormalizzati senza round-trip aggiuntivo).
+    -- Decode emittente fiscale: codice + ragione sociale del soggetto
+    -- (nessun fallback a `emittenti_fiscali.descrizione`, rimosso col brief
+    -- emittente-ragione-sociale-dal-soggetto). Pattern allineato a
+    -- preventivi_repository per UX uniforme nei drawer (EmittenteFiscaleField
+    -- in edit legge questi campi denormalizzati senza round-trip).
     LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = o.emittente_fiscale_id
     LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
     LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id

@@ -33,6 +33,11 @@ from django.db import connection, transaction
 # Il `{filter_clause}` viene risolto con uno snippet sicuro (`p.lista_id = %s`
 # o `p.id = %s`) — non e' un punto di iniezione perche' viene scelto fra
 # stringhe statiche.
+# `emittente_ragione_sociale` porta la ragione sociale del SOGGETTO
+# dell'emittente, non `emittenti_fiscali.descrizione` (etichetta interna
+# divergente, in via di eliminazione — brief
+# `brief-emittente-ragione-sociale-dal-soggetto.md`). Alias rinominato il
+# 2026-08-03 (era `emittente_fiscale_descrizione`), in pari con viste e seed.
 _PRESET_SELECT_SQL = """
     SELECT p.id,
            p.lista_id,
@@ -44,7 +49,7 @@ _PRESET_SELECT_SQL = """
            pa.descrizione                 AS profilo_accesso_descrizione,
            p.emittente_fiscale_id,
            ef.codice                      AS emittente_fiscale_codice,
-           ef.descrizione                 AS emittente_fiscale_descrizione,
+           s_ef.ragione_sociale_completa  AS emittente_ragione_sociale,
            p.is_default,
            p.pagina_dimensione,
            p.ordinamento_default,
@@ -60,6 +65,10 @@ _PRESET_SELECT_SQL = """
            ON pa.id = p.profilo_accesso_id
       LEFT JOIN anagrafiche.emittenti_fiscali       ef
            ON ef.id = p.emittente_fiscale_id
+      LEFT JOIN anagrafiche.soggetti_ruoli          sr_ef
+           ON sr_ef.id = ef.soggetto_ruolo_id
+      LEFT JOIN anagrafiche.soggetti                s_ef
+           ON s_ef.id = sr_ef.soggetto_id
      WHERE {filter_clause}
 """
 

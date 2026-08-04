@@ -8,21 +8,25 @@
 # Contiene operazioni generiche sullo schema vendite che non appartengono
 # a nessun sottodominio specifico (pipeline, reset, ecc.).
 
+import logging
 import re
 from datetime import date
 from typing import Any
 
-from django.db import connection
+from django.db import DatabaseError, connection, transaction
 
 from apps.core.db._helpers import (
     LIST_MAX_LIMIT,
+    call_jsonb_fn,
     jsonb_out,
     query_paged_view,
     row_to_dict,
     rows_to_list,
     sql_order_direction,
+    sql_tiebreak_direction,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
+from apps.core.services.error_manager import ErrorManager
 from apps.vendite.types import (
     DashApertoDocumentoRow,
     DashApertoRiepilogoRow,
@@ -41,6 +45,8 @@ from apps.vendite.types import (
     LottoFattureRow,
     LottoListRow,
 )
+
+logger = logging.getLogger(__name__)
 
 # Whitelist colonne ordinamento per list_lotto_fatture; mai interpolate direttamente.
 _SORT_COLUMNS: dict[str, str] = {
@@ -343,7 +349,8 @@ class VenditeRepository:
         sort_col = self.LOTTI_SORT_COLUMNS.get(order_by or "")
         if sort_col is not None:
             direction = sql_order_direction(order_dir)
-            order_clause = f"ORDER BY {sort_col} {direction}, fl.id DESC"
+            tiebreak_dir = sql_tiebreak_direction(direction)
+            order_clause = f"ORDER BY {sort_col} {direction}, fl.id {tiebreak_dir}"
         else:
             order_clause = "ORDER BY fl.data_insert DESC, fl.id DESC"
 
@@ -451,6 +458,18 @@ class VenditeRepository:
             return None
         return self._map_lotto_row(row)
 
+    # Scopo: Capability del lotto per il detail API (wrapper su
+    #        `script.fn_available_actions_lotto`, ottava della famiglia
+    #        fn_available_actions_*): `available_actions` con enabled/reasons,
+    #        `can_change_state`, `stato_codice`, `tipo_lotto`.
+    #        ⚠️ NESSUNO scope qui: la fn non filtra per emittente. Il cancello
+    #        e' la `get_lotto` sopra (RLS + whitelist applicativa), che il
+    #        service chiama PRIMA — chiamare questa su un id fuori scope
+    #        risponderebbe capability di un lotto che l'operatore non vede.
+    # Perimetro: sola lettura; `{}` se il lotto non esiste (fn → NULL).
+    def get_available_actions_lotto(self, lotto_id: int) -> dict[str, Any]:
+        return call_jsonb_fn("script.fn_available_actions_lotto", int(lotto_id))
+
     # Scopo: Restituisce le celle non vuote (area × fase) del serbatoio
     #        pre-commessa. Il completamento a griglia 5 aree × 3 fasi
     #        (celle vuote = zeri, DL-13) e' a carico del service — qui NON si
@@ -506,6 +525,13 @@ class VenditeRepository:
         "codice": "codice",
         "cliente_display": "cliente_display",
         "valore_totale": "valore_totale",
+        # Estese 2026-08-03 (passata BE dashboard, 8° lotto liste): `stato_codice`
+        # chiude il nucleo *stato* (la lista mostra la colonna e nasceva con la
+        # freccia morta); `area`/`fase` per simmetria col gemello backlog, che
+        # ordina `area` da subito — stessa colonna a video, stesso comportamento.
+        "area": "area",
+        "fase": "fase",
+        "stato_codice": "stato_codice",
     }
 
     def list_dash_aperto_documenti(
@@ -565,9 +591,10 @@ class VenditeRepository:
         sort_col = self.DASH_APERTO_SORT_COLUMNS.get(order_by or "")
         if sort_col is not None:
             direction = sql_order_direction(order_dir)
+            tiebreak_dir = sql_tiebreak_direction(direction)
             order_clause = (
                 f"ORDER BY {sort_col} {direction}, "
-                "area ASC, documento_id ASC"
+                f"area ASC, documento_id {tiebreak_dir}"
             )
         else:
             order_clause = """
@@ -657,6 +684,124 @@ class VenditeRepository:
             )
         return result
 
+    # Scopo: Conteggio FATTURE per (mese, stadio) della Lente 1 — la seconda
+    #        misura delle card, accanto alle attivita'. Serve perche' le due
+    #        grane divergono di molto e in modo non intuitivo: a luglio 2026,
+    #        18 gruppi fatturabili hanno prodotto 6 fatture (una ne conteneva
+    #        10). Chi legge «n attivita'» come «n fatture» sbaglia sempre, e
+    #        di parecchio.
+    # Perimetro: parte SEMPRE da `vw_dash_competenza_attivita`, che porta con
+    #        se' lo scope emittente (GUC fail-closed) e le esclusioni di
+    #        dominio: una query diretta sulle tabelle dovrebbe replicarli, e
+    #        prima o poi divergerebbe.
+    # Risultato: tupla `(conteggi, stadi_in_errore)`.
+    #        · `conteggi`: {(competenza_mese_iso, stadio): n_fatture}
+    #        · `stadi_in_errore`: gli stadi il cui calcolo e' FALLITO.
+    #
+    # ⚠️ I due esiti «non ho un numero» NON sono lo stesso esito, ed e' il
+    #    motivo per cui questo metodo ritorna due cose invece di un dict solo:
+    #      · lo stadio non e' calcolabile PER PROGETTO (DA_EMETTERE: la chiave
+    #        documento non esiste ancora) -> la card tace, ed e' corretto;
+    #      · il calcolo doveva riuscire e si e' ROTTO -> la card deve DIRLO.
+    #    Fonderli su un unico «assente» ripeterebbe, un livello piu' in la',
+    #    lo stesso appiattimento che qui sotto si evita fra `None` e `0`: il
+    #    guasto prenderebbe l'aspetto del comportamento normale (rilievo di
+    #    Tid, 2026-08-03).
+    #
+    # ⚠️ DUE MISURE DI NATURA DIVERSA, deliberatamente nello stesso metodo ma
+    #    con due query:
+    #    · FATTURATA          -> conteggio CERTO: le fatture esistono.
+    #    · EMESSA_NON_FATTURATA -> PREVISIONE, calcolata con la funzione
+    #      autoritativa `fn_build_fattura_key` sulle attivita' gia' emesse
+    #      (che a questo stadio esistono come `attivita_fatturabili`): non e'
+    #      una stima, e' la stessa chiave che il generatore usera'. Per lo
+    #      stadio DA_EMETTERE la stessa cosa NON e' possibile — quelle righe
+    #      sono `commesse_attivita` senza `attivita_fatturabili`, e la chiave
+    #      si calcola solo da li': riscriverla altrove sarebbe un secondo
+    #      risolutore delle condizioni di pagamento (vietato, brief scadenze
+    #      §8) proprio sulle dimensioni che spaccano o uniscono le fatture.
+    # Stadi per cui questo metodo SA produrre un conteggio. Vive qui, accanto
+    # alle due query che lo rendono vero, e non nel service: e' il service a
+    # doverlo chiedere al repository, altrimenti la stessa conoscenza starebbe
+    # scritta in due posti e il giorno in cui una terza query si aggiunge
+    # (previsione DA_EMETTERE, quando il DB esporra' la chiave a monte) uno
+    # dei due resterebbe indietro in silenzio.
+    DASH_STADI_CON_CONTEGGIO_FATTURE = frozenset(
+        {"FATTURATA", "EMESSA_NON_FATTURATA"}
+    )
+
+    def count_dash_competenza_fatture_mensile(
+        self, *, anno: int,
+    ) -> tuple[dict[tuple[str, str], int], set[str]]:
+        out: dict[tuple[str, str], int] = {}
+        errori: set[str] = set()
+
+        # --- FATTURATA: dato certo, nessuna funzione, nessun rischio.
+        sql_reali = """
+            SELECT competenza_mese, COUNT(DISTINCT fattura_id)::integer
+            FROM vendite.vw_dash_competenza_attivita
+            WHERE stadio = 'FATTURATA' AND fattura_id IS NOT NULL
+              AND competenza_mese >= make_date(%s, 1, 1)
+              AND competenza_mese <  (make_date(%s, 1, 1) + interval '1 year')
+            GROUP BY competenza_mese
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql_reali, [anno, anno])
+            for row in cursor.fetchall():
+                out[(row[0].isoformat(), "FATTURATA")] = int(row[1])
+
+        # --- EMESSA_NON_FATTURATA: previsione esatta, ma BEST-EFFORT.
+        # `fn_build_fattura_key` e' VOLATILE (chiamata per riga) e SOLLEVA su
+        # attivita' con chiave incompleta (BA mancante). Su un cruscotto —
+        # la prima schermata che l'operatore apre — una singola riga
+        # malformata renderebbe illeggibile l'INTERA pagina: sarebbe un
+        # fail-closed nel posto sbagliato. Savepoint isolato: se salta,
+        # si perde una misura secondaria, non il cruscotto.
+        sql_previste = """
+            SELECT v.competenza_mese,
+                   COUNT(DISTINCT vendite.fn_build_fattura_key(af.id))::integer
+            FROM vendite.vw_dash_competenza_attivita v
+            JOIN vendite.attivita_fatturabili af
+              ON af.commessa_attivita_id = v.commessa_attivita_id
+            WHERE v.stadio = 'EMESSA_NON_FATTURATA'
+              AND v.competenza_mese >= make_date(%s, 1, 1)
+              AND v.competenza_mese <  (make_date(%s, 1, 1) + interval '1 year')
+            GROUP BY v.competenza_mese
+        """
+        try:
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(sql_previste, [anno, anno])
+                    for row in cursor.fetchall():
+                        out[(row[0].isoformat(), "EMESSA_NON_FATTURATA")] = int(row[1])
+        except DatabaseError as exc:
+            # Lo stadio entra in `errori`: il service lo tradurra' in uno stato
+            # ESPLICITO verso il FE, che mostrera' un avvertimento invece di
+            # tacere come fa sugli stadi non calcolabili per progetto.
+            errori.add("EMESSA_NON_FATTURATA")
+            # Traccia a DB oltre che nel file di log: un warning che vive solo
+            # in un file rotante sul server e' una ricevuta che nessuno ritira.
+            ErrorManager.log_error_only(
+                code="E_VENDITE_DASH_PREVISIONE_FATTURE_FALLITA",
+                context={
+                    "anno": anno,
+                    "stadio": "EMESSA_NON_FATTURATA",
+                    "errore": str(exc)[:500],
+                },
+                area="vendite",
+                function_name=(
+                    "vendite.VenditeRepository."
+                    "count_dash_competenza_fatture_mensile"
+                ),
+            )
+            logger.warning(
+                "Previsione fatture EMESSA_NON_FATTURATA non calcolabile "
+                "(anno=%s): la card lo segnalera' all'operatore.",
+                anno, exc_info=True,
+            )
+
+        return out, errori
+
     # Scopo: Restituisce il conteggio errori vivi (blocco 4 Lente 1) per mese
     #        di competenza di un anno — alimenta il semaforo/badge mensile
     #        senza caricare l'intera lista errori.
@@ -727,9 +872,14 @@ class VenditeRepository:
         # commessa_attivita_id). order_by assente/non ammesso -> default storico
         # (valore DESC).
         sort_col = self.DASH_COMPETENZA_ATTIVITA_SORT_COLUMNS.get(order_by or "")
-        tiebreak = "commessa_codice ASC, commessa_attivita_id ASC"
+        # Direzione risolta PRIMA del ramo: il default (valore DESC) deve
+        # avere il tiebreak coerente quanto la colonna scelta dall'utente.
+        # `commessa_codice` raggruppa (resta ASC), `commessa_attivita_id` e' la
+        # chiave tecnica univoca e segue la direzione (2026-08-03).
+        direction = sql_order_direction(order_dir, default_desc=sort_col is None)
+        tiebreak_dir = sql_tiebreak_direction(direction)
+        tiebreak = f"commessa_codice ASC, commessa_attivita_id {tiebreak_dir}"
         if sort_col is not None:
-            direction = sql_order_direction(order_dir)
             order_clause = f"ORDER BY {sort_col} {direction}, {tiebreak}"
         else:
             order_clause = f"ORDER BY valore DESC NULLS LAST, {tiebreak}"
@@ -856,11 +1006,14 @@ class VenditeRepository:
         # Assente/non ammesso -> default valore_tot DESC (le commesse piu' pesanti
         # prima), coerente col default a grana attivita'.
         sort_col = self.DASH_COMPETENZA_COMMESSE_SORT_COLUMNS.get(order_by or "")
-        tiebreak = "commessa_codice ASC, commessa_id ASC"
+        # sql_order_direction ritorna gia' 'ASC NULLS FIRST'/'DESC NULLS LAST':
+        # NON aggiungere un secondo NULLS (errore di sintassi PG). Direzione
+        # risolta prima del ramo cosi' anche il default DESC ha il tiebreak
+        # coerente; `commessa_codice` raggruppa, `commessa_id` segue.
+        direction = sql_order_direction(order_dir, default_desc=sort_col is None)
+        tiebreak_dir = sql_tiebreak_direction(direction)
+        tiebreak = f"commessa_codice ASC, commessa_id {tiebreak_dir}"
         if sort_col is not None:
-            # sql_order_direction ritorna gia' 'ASC NULLS FIRST'/'DESC NULLS LAST':
-            # NON aggiungere un secondo NULLS (errore di sintassi PG).
-            direction = sql_order_direction(order_dir)
             order_clause = f"ORDER BY {sort_col} {direction}, {tiebreak}"
         else:
             order_clause = f"ORDER BY valore_tot DESC NULLS LAST, {tiebreak}"
@@ -985,11 +1138,13 @@ class VenditeRepository:
         # gruppo_key l'ordine fra quelle righe sarebbe indefinito e la
         # paginazione non deterministica (frontend-standards §Paginazione
         # deterministica): righe ripetute o saltate cambiando pagina.
-        tiebreak = "gruppo_key ASC, stadio ASC"
         sort_col = self.DASH_COMPETENZA_GRUPPI_SORT_COLUMNS.get(order_by or "")
+        # sql_order_direction ritorna gia' 'ASC NULLS FIRST'/'DESC NULLS LAST'.
+        # Direzione prima del ramo: vale anche per il default DESC.
+        direction = sql_order_direction(order_dir, default_desc=sort_col is None)
+        tiebreak_dir = sql_tiebreak_direction(direction)
+        tiebreak = f"gruppo_key ASC, stadio {tiebreak_dir}"
         if sort_col is not None:
-            # sql_order_direction ritorna gia' 'ASC NULLS FIRST'/'DESC NULLS LAST'.
-            direction = sql_order_direction(order_dir)
             order_clause = f"ORDER BY {sort_col} {direction}, {tiebreak}"
         else:
             # Default: i gruppi che pesano di piu' in cima (stessa logica del
@@ -1001,6 +1156,23 @@ class VenditeRepository:
         # nell'envelope e `usePagedDashFetch` la adotta. Senza, una pagina
         # stantia tornerebbe VUOTA con count > 0 e il FE ripiegherebbe sulla
         # PRIMA pagina — un secondo giro, e per giunta nel posto sbagliato.
+        # `documento_id`: il gruppo E' il documento sorgente, ma la vista ne
+        # espone solo `sorgente_uid` (uuid) e il `riferimento` (codice) — e i
+        # drawer di dominio si aprono per **id**. La LATERAL qui sotto risolve
+        # l'id dalla STESSA riga da cui la vista prende il codice (stessa
+        # coppia area+uid, stesso ORDER BY): id e codice non possono descrivere
+        # due documenti diversi.
+        # ⚠️ Drift noto e accettato: la regola di risoluzione e' scritta due
+        # volte — qui e dentro `vw_dash_competenza_gruppi` (che proietta
+        # `doc.codice`). Se il criterio cambiasse nella vista, va cambiato anche
+        # qui. La soluzione pulita e' che la vista esponga `documento_id`
+        # accanto al `riferimento`: e' una nota per il team DB, non un
+        # prerequisito (nessun DDL serve al FE per aprire il documento).
+        # Stesso schema — e stesso caveat dichiarato — di
+        # `ui_repository.fetch_preset_base_snapshot`.
+        # Gruppi SOURCELESS (oneri di commessa): `area_documento` NULL → la
+        # LATERAL non produce righe → `documento_id` NULL. E' corretto: quei
+        # gruppi un documento non ce l'hanno, e il FE offrira' la sola commessa.
         rows, total_count = self._query_paged_view(
             select_sql=f"""
             SELECT
@@ -1016,8 +1188,18 @@ class VenditeRepository:
                 g.valore,
                 g.ha_oneri,
                 g.data_attivita_min,
-                g.data_attivita_max
+                g.data_attivita_max,
+                doc.documento_id
             FROM vendite.vw_dash_competenza_gruppi g
+            LEFT JOIN LATERAL (
+                SELECT d.documento_id
+                  FROM vendite.vw_dash_fatturazione_documenti d
+                 WHERE g.area_documento IS NOT NULL
+                   AND d.area = g.area_documento
+                   AND d.documento_uid = g.sorgente_uid
+                 ORDER BY d.competenza_mese DESC NULLS LAST
+                 LIMIT 1
+            ) doc ON TRUE
             {where_clause}
             """,
             order_by=order_clause,
@@ -1043,6 +1225,7 @@ class VenditeRepository:
                     "ha_oneri": bool(row[10]),
                     "data_attivita_min": row[11].isoformat() if row[11] is not None else None,
                     "data_attivita_max": row[12].isoformat() if row[12] is not None else None,
+                    "documento_id": None if row[13] is None else int(row[13]),
                 }
             )
         return result, total_count
@@ -1141,6 +1324,18 @@ class VenditeRepository:
             for r in rows
         ]
 
+    # Colonne ordinabili della lista errori vivi (8° lotto liste, 2026-08-03).
+    # Alias di output della union: la vista non ha una PK e le colonne di
+    # documento sono NULLABLE per costruzione (un errore di task non ha fattura,
+    # una fattura critical non ha task) — NULLS LAST e' applicato nel metodo.
+    DASH_COMPETENZA_ERRORI_SORT_COLUMNS = {
+        "tipo_evento": "tipo_evento",
+        "lotto_codice": "lotto_codice",
+        "fattura_numero": "fattura_numero",
+        "error_code": "error_code",
+        "data_evento": "data_evento",
+    }
+
     # Scopo: Restituisce la lista paginata degli errori vivi (blocco 4 Lente 1:
     #        task run in ERRORE non superati + fatture critical), con filtro
     #        opzionale per mese di competenza.
@@ -1150,6 +1345,8 @@ class VenditeRepository:
         self,
         *,
         competenza_mese: date | None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
         limit: int,
         offset: int,
     ) -> tuple[list[DashCompetenzaErroreRow], int]:
@@ -1186,13 +1383,28 @@ class VenditeRepository:
             {where_clause}
         """
 
+        # ORDER BY server-side (stessa convenzione delle altre liste dash):
+        # colonna dalla whitelist + direzione, NULLS LAST esplicito (le colonne
+        # di documento sono NULL su meta' della union — in DESC finirebbero in
+        # testa), tiebreak = la catena deterministica storica sulle chiavi
+        # naturali. order_by assente -> ordine storico (eventi recenti prima).
+        _tiebreak = """tipo_evento ASC,
+                     lotto_id ASC NULLS LAST, fattura_id ASC NULLS LAST,
+                     task_code ASC NULLS LAST"""
+        sort_col = self.DASH_COMPETENZA_ERRORI_SORT_COLUMNS.get(order_by or "")
+        if sort_col is not None:
+            direction = sql_order_direction(order_dir)
+            # Il tiebreak qui e' una catena di chiavi NATURALI (la union non ha
+            # una PK): resta fissa, non e' uno spareggio tecnico da allineare.
+            order_clause = (
+                f"ORDER BY {sort_col} {direction} NULLS LAST, {_tiebreak}"
+            )
+        else:
+            order_clause = f"ORDER BY data_evento DESC NULLS LAST, {_tiebreak}"
+
         rows, total_count = self._query_paged_view(
             select_sql=select_sql,
-            order_by="""
-            ORDER BY data_evento DESC NULLS LAST, tipo_evento ASC,
-                     lotto_id ASC NULLS LAST, fattura_id ASC NULLS LAST,
-                     task_code ASC NULLS LAST
-            """,
+            order_by=order_clause,
             params=params,
             limit=limit,
             offset=offset,
@@ -1282,6 +1494,10 @@ class VenditeRepository:
         "cliente_display": "cliente_display",
         "valore_fermo": "valore_fermo",
         "stato_codice": "stato_codice",
+        # Estesa 2026-08-03 (passata BE dashboard, 8° lotto liste): la classe di
+        # azionabilita' e' colonna a video (Tag) e vocabolario chiuso a 3 valori —
+        # ordinarla raggruppa il lavoro per tipo di intervento.
+        "classe": "classe",
     }
 
     def list_dash_backlog_documenti(
@@ -1345,9 +1561,10 @@ class VenditeRepository:
         sort_col = self.DASH_BACKLOG_SORT_COLUMNS.get(order_by or "")
         if sort_col is not None:
             direction = sql_order_direction(order_dir)
+            tiebreak_dir = sql_tiebreak_direction(direction)
             order_clause = (
                 f"ORDER BY {sort_col} {direction}, "
-                "area ASC, documento_id ASC"
+                f"area ASC, documento_id {tiebreak_dir}"
             )
         else:
             order_clause = """
@@ -1623,6 +1840,16 @@ class VenditeRepository:
                 -- (composto a DB da fn_resolve_indirizzo_documento, due layer).
                 f.emittente_snapshot->'sede'->>'display'
                                              AS emittente_sede,
+                -- Utility del documento: dalla COLONNA di testata (D-S,
+                -- 2026-08-01), non dedotta dal billing account. Sono due
+                -- derivazioni diverse e possono divergere: la chiave di
+                -- aggregazione prende l'utility dal BA dell'**attivita'** (il
+                -- figlio), mentre `f.billing_account_id` e' il BA della
+                -- fattura (il **padre**, D-P). Finche' non esistono BA con
+                -- `parent_account_id` le due coincidono, ma dedurla da `ba`
+                -- rimetterebbe qui lo stesso difetto latente che D-S ha
+                -- appena tolto dal ricalcolo totali.
+                f.utility_id,
                 util.codice                  AS utility_codice,
                 util.descrizione             AS utility_descrizione,
                 mpag.codice                  AS pagamento_modalita_codice,
@@ -1668,7 +1895,7 @@ class VenditeRepository:
               JOIN anagrafiche.billing_account ba
                 ON ba.id = f.billing_account_id
               LEFT JOIN config.utilities util
-                ON util.id = ba.utility_id
+                ON util.id = f.utility_id
               LEFT JOIN config.modalita_pagamento mpag
                 ON mpag.id = f.modalita_pagamento_id
               LEFT JOIN config.termini_pagamento tpag

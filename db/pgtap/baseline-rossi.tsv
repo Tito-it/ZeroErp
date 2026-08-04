@@ -9,13 +9,11 @@ db/pgtap/anagrafiche/test-catasto-unita-immobiliare.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-clienti-sync-utility-pdp-policy.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-create-istanza-from-pdp.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-dati-societari-policy.sql	ERRORE_FIXTURE
-db/pgtap/anagrafiche/test-emittenti-fiscali.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-fn-crea-operatore.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-fn-crea-risorsa-umana.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-fn-get-or-create-indirizzo-dettaglio.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-indirizzi-fallback.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-indirizzi-istanza-cascata.sql	ASSERZIONE
-db/pgtap/anagrafiche/test_indirizzi_unique_res.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-istanza-cliente-chain.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-istanze-dati-precontrattuali.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-risorse-umane-auth-user-view.sql	ERRORE_FIXTURE
@@ -27,6 +25,7 @@ db/pgtap/anagrafiche/test-soggetti-ruoli-guard-natura-ammessa.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-sync-auth-user-is-active-multi-role.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-trgfn-istanze-utilities-require-utility-dichiarata.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-trgfn-pdp-a10-guard.sql	ERRORE_FIXTURE
+db/pgtap/anagrafiche/test_indirizzi_unique_res.sql	ERRORE_FIXTURE
 db/pgtap/catalogo/test-articoli-componenti-guard-attivo-composito.sql	ERRORE_FIXTURE
 db/pgtap/catalogo/test-articoli-componenti-solo-componente.sql	ASSERZIONE
 db/pgtap/catalogo/test-articoli-vincoli-note-uom-overlap.sql	ERRORE_FIXTURE
@@ -40,7 +39,6 @@ db/pgtap/config/test-toponomastica-stradario-generale.sql	ERRORE_FIXTURE
 db/pgtap/config/test-user-emittenti-fiscali-immutable.sql	ERRORE_FIXTURE
 db/pgtap/dbops/test-automazione-guard-utility-tipo-ruolo.sql	ASSERZIONE
 db/pgtap/dbops/test-fn-apply-chiusura-scadenze-v1.sql	ERRORE_FIXTURE
-db/pgtap/dbops/test-pipeline-task-registry.sql	ERRORE_FIXTURE
 db/pgtap/documenti/test-documenti-template-documenti.sql	ERRORE_FIXTURE
 db/pgtap/pagamenti/test-compensazioni-contabili-model.sql	ERRORE_FIXTURE
 db/pgtap/pagamenti/test-enti-incasso-psp.sql	ERRORE_FIXTURE
@@ -59,7 +57,6 @@ db/pgtap/script/test-fn-get-uo-id-for-user.sql	ASSERZIONE
 db/pgtap/script/test-fn-get-user-emittenti-scope.sql	ERRORE_FIXTURE
 db/pgtap/script/test-fn-get-user-profile-guc-aware.sql	ERRORE_FIXTURE
 db/pgtap/script/test-fn-is-super-admin.sql	ASSERZIONE
-db/pgtap/script/test-fn-resolve-emittente-for-user.sql	ERRORE_FIXTURE
 db/pgtap/script/test-fn-search-stradario.sql	ERRORE_FIXTURE
 db/pgtap/script/test-guard-utility-tipo-ruolo.sql	ERRORE_FIXTURE
 db/pgtap/script/test-seed-stati-doc-ordini-evaso-v1.sql	ASSERZIONE
@@ -84,7 +81,7 @@ db/pgtap/vendite/test-fatturazione-draft.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fatturazione-pipeline-fallback.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fatturazione-pipeline-task-runtime.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fatturazione-reset-lotto-draft.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-fatture-arrotondamenti-scope.sql	ASSERZIONE
+db/pgtap/vendite/test-fatture-arrotondamenti-scope.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-cambia-stato-preventivo.sql	ASSERZIONE
 db/pgtap/vendite/test-fn-contratto-righe-preview-nuovi-campi-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-list-commessa-attivita-v1.sql	ERRORE_FIXTURE
@@ -103,4 +100,3 @@ db/pgtap/vendite/test-guard-esclusione-figlio-bundle-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-listini-versioni-guard-transizione-stato-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-ordini-modello-ext.sql	ASSERZIONE
 db/pgtap/vendite/test-preventivi-approvazione-prezzo.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-ricalcola-totali-fattura-arrotondamento.sql	ERRORE_FIXTURE

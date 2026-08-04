@@ -26,10 +26,19 @@ from apps.core.services.error_manager import ErrorManager
 # Mappatura colonne ammesse per ORDER BY lato lista template.
 # Whitelist anti-injection: i nomi vengono interpolati nella SQL e
 # non possono provenire da input utente non validati.
+# `attivo` e' NUCLEO: lo stato ordina sempre (regola di dominio, seed lista
+# 'documenti.template_documenti'). Le quattro voci di decodifica restano nude
+# perche' sono alias di output della SELECT (colonne di tabelle JOINte):
+# ORDER BY le risolve per alias.
 TEMPLATES_ORDER_COLUMNS: dict[str, str] = {
     "codice": "t.codice",
     "codice_interno": "t.codice_interno",
     "descrizione": "t.descrizione",
+    "attivo": "t.attivo",
+    "is_default": "t.is_default",
+    "tipo_documento_output_descrizione": "tipo_documento_output_descrizione",
+    "sorgente_tipo_descrizione": "sorgente_tipo_descrizione",
+    "emittente_ragione_sociale": "emittente_ragione_sociale",
     "data_insert": "t.data_insert",
     "data_update": "t.data_update",
 }
@@ -127,13 +136,26 @@ VERSIONE_UPDATE_COLUMNS: tuple[str, ...] = (
 
 
 # Mappatura colonne ammesse per ORDER BY lato lista asset.
+# `attivo` e' NUCLEO (lo stato ordina sempre). `valido_al` aggiunta insieme a
+# `valido_dal` gia' presente: dove una lista mostra le date di validita', quelle
+# colonne ordinano — e `valido_al` DESC e' il default d'elezione (i NULL, cioe'
+# gli asset senza scadenza, salgono in testa; le scadenze vecchie vanno in fondo).
+# `asset_tipo_descrizione` ed `emittente_ragione_sociale` restano nude: sono
+# alias di output della SELECT (colonne di tabelle JOINte).
 ASSET_ORDER_COLUMNS: dict[str, str] = {
     "codice": "a.codice",
     "codice_interno": "a.codice_interno",
     "descrizione": "a.descrizione",
+    "attivo": "a.attivo",
+    "asset_tipo_descrizione": "asset_tipo_descrizione",
+    "emittente_ragione_sociale": "emittente_ragione_sociale",
+    "file_name": "a.file_name",
+    "file_size_bytes": "a.file_size_bytes",
+    "mime_type": "a.mime_type",
     "data_insert": "a.data_insert",
     "data_update": "a.data_update",
     "valido_dal": "a.valido_dal",
+    "valido_al": "COALESCE(a.valido_al, 'infinity'::date)",
 }
 
 
@@ -259,8 +281,8 @@ _ASSET_PROJECTION = """
     a.sha256,
     a.emittente_fiscale_id,
     ef.codice             AS emittente_fiscale_codice,
-    COALESCE(s_ef.ragione_sociale_completa, ef.descrizione)
-                          AS emittente_fiscale_descrizione,
+    s_ef.ragione_sociale_completa
+                          AS emittente_ragione_sociale,
     a.valido_dal,
     a.valido_al,
     a.attivo,
@@ -300,8 +322,8 @@ _TEMPLATES_PROJECTION = """
     t.file_name_pattern,
     t.emittente_fiscale_id,
     ef.codice            AS emittente_fiscale_codice,
-    COALESCE(s_ef.ragione_sociale_completa, ef.descrizione)
-                         AS emittente_fiscale_descrizione,
+    s_ef.ragione_sociale_completa
+                         AS emittente_ragione_sociale,
     t.data_insert,
     t.data_update
 """
@@ -425,7 +447,7 @@ class DocumentiRepository:
             SELECT {_TEMPLATES_PROJECTION}
             {_TEMPLATES_FROM}
             {where_clause}
-            ORDER BY {order_column} {safe_order_dir}, t.id ASC
+            ORDER BY {order_column} {safe_order_dir}, t.id {safe_order_dir}
             LIMIT %s OFFSET %s
         """
 
@@ -735,7 +757,7 @@ class DocumentiRepository:
             SELECT {_ASSET_PROJECTION}
             {_ASSET_FROM}
             {where_clause}
-            ORDER BY {order_column} {safe_order_dir}, a.id ASC
+            ORDER BY {order_column} {safe_order_dir}, a.id {safe_order_dir}
             LIMIT %s OFFSET %s
         """
 
@@ -1174,7 +1196,20 @@ class DocumentiRepository:
                 d.pdf_hash,
                 d.generato_da_user_id,
                 d.generato_at,
-                d.emittente_fiscale_id
+                d.emittente_fiscale_id,
+                -- Il file originale esiste? La persistenza dei file e' iniziata
+                -- il 2026-07-21: i documenti anteriori NON hanno il file, e per
+                -- loro «Scarica originale» risponderebbe 404. Il flag permette
+                -- alla UI di disabilitare l'azione CON LA RAGIONE invece di
+                -- lasciarla fallire (brief ristampa-fedele §5.2.2), e di
+                -- proporre al suo posto la ristampa fedele, che per quei
+                -- documenti e' l'unico percorso possibile.
+                EXISTS (
+                    SELECT 1
+                      FROM documenti.documenti_generati_file f
+                     WHERE f.documento_generato_id = d.id
+                       AND f.is_principale = true
+                ) AS has_file_principale
               FROM documenti.documenti_generati d
              WHERE {where_clause}
              ORDER BY d.generato_at DESC, d.id DESC
@@ -1234,6 +1269,73 @@ class DocumentiRepository:
         """  # noqa: S608
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
+            results = rows_to_list(cursor)
+        return results[0] if results else None
+
+    # Scopo: Snapshot CONGELATO di un documento generato: la testata + il
+    #        `context_json` con cui fu stampato. Separato da
+    #        `get_documento_generato` perche' il context puo' essere grande e
+    #        serve SOLO alla ristampa fedele — le altre letture (download,
+    #        liste, allegati) non devono pagarlo.
+    #        ⚠️ E' la lettura portante della ristampa fedele: il contesto si
+    #        LEGGE, non si ricostruisce (un contesto ricostruito e' un
+    #        documento nuovo travestito da vecchio). Immutabilita' garantita a
+    #        DB da `trgfn_documenti_generati_protect_snapshot`.
+    def get_documento_generato_snapshot(
+        self,
+        documento_id: int,
+        *,
+        emittente_ids_scope: list[int] | None,
+    ) -> dict[str, Any] | None:
+        conditions = ["d.id = %s"]
+        params: list[Any] = [int(documento_id)]
+        if emittente_ids_scope is not None:
+            conditions.append("d.emittente_fiscale_id = ANY(%s)")
+            params.append(list(emittente_ids_scope))
+        where_clause = " AND ".join(conditions)
+
+        sql = f"""
+            SELECT
+                d.id,
+                d.uid::text AS uid,
+                d.template_documento_id,
+                d.template_versione_id,
+                d.sorgente_tipo_id,
+                d.sorgente_uid,
+                d.sorgente_riga,
+                d.stato,
+                d.titolo,
+                d.nome_file,
+                d.context_json,
+                d.context_hash,
+                d.template_hash,
+                d.pdf_hash,
+                d.generato_at,
+                d.emittente_fiscale_id
+              FROM documenti.documenti_generati d
+             WHERE {where_clause}
+        """  # noqa: S608
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            results = rows_to_list(cursor)
+        return results[0] if results else None
+
+    # Scopo: Versione template per id SENZA filtri di stato ne' di template.
+    #        E' la lettura della ristampa fedele: la versione pinnata sul
+    #        documento va caricata **anche se OBSOLETA o non piu' attiva** —
+    #        e' esattamente quella con cui il documento nacque. Le altre
+    #        letture (`get_versione`, `get_versione_pubblicata_attiva`)
+    #        filtrano di proposito e non servono qui.
+    #        Nessun rischio di leak: l'id arriva da una riga di
+    #        `documenti_generati` gia' passata per lo scope emittente.
+    def get_versione_by_id(self, versione_id: int) -> dict[str, Any] | None:
+        sql = f"""
+            SELECT {_VERSIONI_PROJECTION_DETAIL}
+            {_VERSIONI_FROM}
+            WHERE v.id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(versione_id)])
             results = rows_to_list(cursor)
         return results[0] if results else None
 

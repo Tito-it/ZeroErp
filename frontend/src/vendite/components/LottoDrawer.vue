@@ -10,7 +10,6 @@ import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
-import Button from 'primevue/button'
 import Tabs from 'primevue/tabs'
 import TabList from 'primevue/tablist'
 import Tab from 'primevue/tab'
@@ -21,6 +20,7 @@ import Column from 'primevue/column'
 import Message from 'primevue/message'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
+import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import PdfDocumentiSorgenteDialog from '../../documenti/components/PdfDocumentiSorgenteDialog.vue'
@@ -35,6 +35,12 @@ import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
 import { useActionPermission } from '../../core/composables/useActionPermission'
+import { mapAvailableActionsToDrawerActions } from '../../core/composables/useDrawerActions'
+import {
+  useLottoAzioni,
+  LOTTO_AZIONE_PERMESSO,
+  LOTTO_AZIONE_PIPELINE_UI,
+} from '../composables/useLottoAzioni'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { displayDate, displayTimestamp } from '../../core/utils/date'
@@ -50,10 +56,6 @@ import {
   listLottoFatture,
   listLottoTaskRuns,
   getLottoSegnalazioni,
-  runLottoPipeline,
-  numeraLotto,
-  ristampaLotto,
-  resetLottoDraft,
   resetLottoFatturaDraft,
 } from '../api/lotti'
 
@@ -65,7 +67,9 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:visible', 'changed'])
-const { t } = useI18n()
+// `te` serve a `mapAvailableActionsToDrawerActions`: chiave i18n mancante →
+// mostra il codice macchina invece del path (fail-visible).
+const { t, te } = useI18n()
 const { execute, loading } = useApiHandler()
 const notify = useNotify()
 const { confirmAction } = useConfirmAction()
@@ -80,12 +84,10 @@ const docStore = useDocumentiPerSorgenteStore()
 const parentReadonly = useInjectReadonly()
 const isReadonly = computed(() => parentReadonly.value || props.readonly)
 
-// Gate azioni: pipeline (avanza/rerun), numerazione e i due reset hanno permessi
-// propri. La numerazione (Rendi definitive) è un gate fiscale SEPARATO (I-7):
-// permesso dedicato, non lo stesso di «Avanza».
-const { isAllowed: canPipeline } = useActionPermission('genera_fatture_lotti')
-const { isAllowed: canNumera } = useActionPermission('numera_fatture_lotti')
-const { isAllowed: canResetLotto } = useActionPermission('reset_lotto_draft')
+// Gate azioni di riga fattura. I permessi delle azioni di GOVERNO del lotto non
+// si leggono più qui: viaggiano come `action` sulle entry della barra e li
+// filtra `DrawerActionsBar` (`auth.isActionAllowed`), un solo meccanismo per
+// tutti i drawer.
 const { isAllowed: canResetFattura } = useActionPermission('reset_lotto_fattura_draft')
 
 const lotto = ref(null)
@@ -103,21 +105,17 @@ const pdfFatturaId = ref(null)
 const fatturaDrawerVisible = ref(false)
 const fatturaDrawerId = ref(null)
 
-const isErrore = computed(() => lotto.value?.stato_lotto === 'ERRORE')
-const isInEsecuzione = computed(() => lotto.value?.stato_lotto === 'IN_ESECUZIONE')
-// Gate fiscale I-7: il lotto è numerabile quando è in EMESSA (prossimo step =
-// DEFINITIVA). Gate sul CODICE stabile, mai la descrizione display (lezione B-4).
-// Gate del pulsante «Annulla lotto»: fn_reset_lotto_draft ammette SOLO lotti in
-// DRAFT (E_PARAMETRO_INVALIDO altrove). Senza questo v-if il pulsante era un
-// vicolo cieco da EMESSA in poi: visibile per solo permesso, errore criptico al
-// click (bug trovato in-app da Tid il 2026-07-31). Il verbo per uscire da
-// EMESSA (ritorno a DRAFT / estrazione fattura) è D-N-bis, fase 6.7 DB: quando
-// arriverà sarà un'azione distinta, non questa.
-const isDraft = computed(() => lotto.value?.stato_doc_fiscale_codice === 'DRAFT')
-const isEmessa = computed(() => lotto.value?.stato_doc_fiscale_codice === 'EMESSA')
-// Lotto DEFINITIVA (fatture numerate) → abilita la ristampa MASSIVA (C-8):
-// re-stampa, mai numerazione (il BE gate DEFINITIVA garantisce I-7).
-const isDefinitiva = computed(() => lotto.value?.stato_doc_fiscale_codice === 'DEFINITIVA')
+// Capability dal BE (`script.fn_available_actions_lotto`, 2026-08-04): quali
+// verbi di governo esistono su QUESTO lotto, quali sono abilitati e — se non lo
+// sono — perché. Le condizioni fiscali (DRAFT / EMESSA / DEFINITIVA) NON si
+// scrivono più qui: erano cinque `computed` che ricopiavano in JavaScript
+// precondizioni scritte in PL/pgSQL, e avevano già prodotto un pulsante-vicolo
+// cieco («Annulla lotto» visibile da EMESSA, trovato in-app il 2026-07-31).
+// Ora la sorgente è una sola: le stesse `fn_check_*` da cui le funzioni di
+// mutazione sollevano. Resta al frontend il solo gate di pipeline (avanza /
+// rilancia), che il DB non espone di proposito: vive in `useLottoAzioni`,
+// condiviso col kebab della lista.
+const availableActions = computed(() => lotto.value?.available_actions ?? [])
 
 // Segnalazioni bloccanti: mostra il banner se il lotto ha criticità.
 const haSegnalazioniCritiche = computed(() => (segnalazioni.value?.critical_count ?? 0) > 0)
@@ -188,83 +186,68 @@ watch(
   { immediate: true },
 )
 
-// ------------------------------------------------------------------ azioni
-// Scopo: avanza la pipeline del lotto di UN step (com'è il motore). Il rerun
-//        su ERRORE è lo stesso comando: ri-esegue lo step corrente.
-function avanzaStep(isRerun) {
-  confirmAction({
-    title: isRerun ? t('vendite.lotti.rerun_header') : t('vendite.lotti.avanza_header'),
-    message: isRerun ? t('vendite.lotti.rerun_conferma') : t('vendite.lotti.avanza_conferma'),
-    onAccept: async () => {
-      const res = await execute(() => runLottoPipeline(props.lottoId))
-      if (res !== null) {
-        notify.success(t('vendite.lotti.avanza_esito'))
-        await reloadAll()
-        emit('changed')
-      }
-    },
-  })
-}
+// ------------------------------------------------- barra azioni di governo
+// Le azioni (conferme, chiamate, toast) vivono nel composable condiviso col
+// kebab della lista lotti: una sola sede — estratto alla seconda occorrenza
+// (regola del 2, ok Tid 2026-08-04). Qui resta solo il refresh post-azione,
+// che è del drawer.
+const { esegui: eseguiAzione, verbiPipeline, loading: azioniLoading } = useLottoAzioni({
+  onDone: async () => {
+    await reloadAll()
+    emit('changed')
+  },
+})
 
-// Scopo: «Rendi definitive» (C-4) — numera il lotto EMESSA (step DEFINITIVA:
-//        numera + accoda stampa). Atto fiscale consapevole → conferma esplicita.
-function rendiDefinitive() {
-  confirmAction({
-    title: t('vendite.lotti.numera_header'),
-    message: t('vendite.lotti.numera_conferma'),
-    onAccept: async () => {
-      const res = await execute(() => numeraLotto(props.lottoId))
-      if (res !== null) {
-        notify.success(t('vendite.lotti.numera_esito'))
-        await reloadAll()
-        emit('changed')
-      }
-    },
-  })
-}
+// Scopo: azioni del drawer — quelle di stato dal blob capability, più i due
+//        verbi di pipeline che il DB deliberatamente NON espone (avanza e
+//        rilancia): il loro gate è fatto di step successivo, criticità attive e
+//        distinzione avanza/rilancio dello stesso step, e vive per intero nel
+//        runner Python. Finché sta lì, resta gate del frontend — farne scendere
+//        solo un pezzo creerebbe la seconda copia della regola che questo
+//        lavoro elimina (risposta DB 2026-08-04 §5).
+const drawerActions = computed(() => {
+  const azioni = mapAvailableActionsToDrawerActions({
+    availableActions: availableActions.value,
+    t,
+    te,
+    readonly: isReadonly,
+    onAction: (action) => eseguiAzione(props.lottoId, action.key),
+  }).map((a) => ({
+    ...a,
+    ...(LOTTO_AZIONE_PERMESSO[a.key] ? { action: LOTTO_AZIONE_PERMESSO[a.key] } : {}),
+    // La numerazione è uno STEP di pipeline: con criticità attive il runner la
+    // rifiuta (`blocks_next_step`). Il DB non conosce le segnalazioni, quindi
+    // questo disabilitato lo aggiunge chi le ha: noi. Non sovrascrive un
+    // `disabled` già vero arrivato dalle `fn_check_*` (né il suo tooltip,
+    // che spiega il motivo del DB).
+    ...(a.key === 'numera' && haSegnalazioniCritiche.value && !a.disabled
+      ? { disabled: true, tooltip: t('vendite.lotti.blocca_step') }
+      : {}),
+  }))
 
-// Scopo: «Ristampa documenti» (C-8) — accoda in coda stampa le fatture del
-//        lotto DEFINITIVA; il worker draina_coda_stampa le renderizza (async, lo
-//        stato si vede nel pannello esiti della lista lotti). Stampa = lettura
-//        (I-4): re-stampa, nessuna numerazione (il gate BE DEFINITIVA lo garantisce).
-function ristampaDocumenti() {
-  confirmAction({
-    title: t('vendite.lotti.ristampa_header'),
-    message: t('vendite.lotti.ristampa_conferma'),
-    onAccept: async () => {
-      const res = await execute(() => ristampaLotto(props.lottoId))
-      if (res !== null) {
-        notify.success(t('vendite.lotti.ristampa_esito', { n: res?.accodate ?? 0 }))
-      }
-    },
-  })
-}
+  if (isReadonly.value) return azioni
 
-// Scopo: ANNULLA il lotto DRAFT — demolizione. Il nome storico «reset/riporta
-//        a bozza» mentiva: fn_reset_lotto_draft porta il lotto ad
-//        ANNULLATA/CHIUSO (le fatture pre-fiscali si eliminano, le attività
-//        tornano libere); non esiste nessun «ritorno in bozza». Etichette
-//        allineate al verbo vero (stessa presa d'atto della rinomina DB D-L
-//        → fn_annulla_lotto_da_draft); conferma forte e onesta.
-function resetDraft() {
-  confirmAction({
-    title: t('vendite.lotti.reset_header'),
-    message: t('vendite.lotti.reset_conferma'),
-    danger: true,
-    acceptLabel: t('vendite.lotti.reset_accept'),
-    onAccept: async () => {
-      const res = await execute(() => resetLottoDraft(props.lottoId))
-      if (res !== null) {
-        notify.success(t('vendite.lotti.reset_esito', {
-          fatture: res?.deleted_fatture ?? 0,
-          attivita: res?.updated_attivita ?? 0,
-        }))
-        await reloadAll()
-        emit('changed')
-      }
-    },
-  })
-}
+  // I due verbi di pipeline, con la stessa regola che usa il kebab della lista
+  // (sede unica nel composable). Il rilancio dello stesso step è ammesso ANCHE
+  // con criticità attive (D-Q p.1): è la via d'uscita — si corregge il dato a
+  // monte e si ri-esegue. L'avanzamento no, quello lo blocca il runner.
+  for (const key of verbiPipeline(lotto.value)) {
+    const ui = LOTTO_AZIONE_PIPELINE_UI[key]
+    const bloccato = key === 'avanza_step' && haSegnalazioniCritiche.value
+    azioni.unshift({
+      key,
+      kind: 'state',
+      label: t(ui.label_key),
+      icon: ui.icon,
+      severity: ui.severity,
+      action: LOTTO_AZIONE_PERMESSO[key],
+      disabled: bloccato,
+      tooltip: bloccato ? t('vendite.lotti.blocca_step') : undefined,
+      command: () => eseguiAzione(props.lottoId, key),
+    })
+  }
+  return azioni
+})
 
 // Scopo: reset di una singola fattura DRAFT del lotto.
 function resetFattura(row) {
@@ -340,7 +323,14 @@ function buildFatturaActions(row) {
       command: () => apriDocumentiFattura(row),
     },
   ]
-  if (!isReadonly.value && canResetFattura.value && row.stato_doc_fiscale_codice === 'DRAFT') {
+  // Perimetro allargato dal DB il 2026-08-02 (D-T): l'estrazione accetta
+  // qualunque fattura PRE-FISCALE, cioe' non numerata — DRAFT **o EMESSA** —
+  // e lotti sia MASSIVO sia GIORNALIERO. Restringere qui a DRAFT nasconderebbe
+  // l'azione proprio nel caso che la motiva: la fattura EMESSA critica rimasta
+  // indietro in un lotto. Il presidio vero e' fiscale e sta a DB (le numerate
+  // sono rifiutate), qui si evita solo di proporre un'azione impossibile.
+  const preFiscale = ['DRAFT', 'EMESSA'].includes(row.stato_doc_fiscale_codice)
+  if (!isReadonly.value && canResetFattura.value && preFiscale) {
     actions.push({
       key: 'reset',
       label: t('vendite.lotti.azione_reset_fattura'),
@@ -396,58 +386,10 @@ function fatturaNumero(row) {
           {{ t('vendite.lotti.segnalazioni_bloccanti', { n: segnalazioni.critical_count }) }}
         </Message>
 
-        <!-- Azioni di governo del lotto (nascoste in sola lettura). -->
-        <div v-if="!isReadonly" class="app-lotto-actions">
-          <Button
-            v-if="canPipeline && isErrore"
-            :label="t('vendite.lotti.rerun')"
-            icon="pi pi-replay"
-            severity="warn"
-            size="small"
-            :disabled="loading"
-            @click="avanzaStep(true)"
-          />
-          <!-- Gate fiscale I-7: su lotto EMESSA il verbo è «Rendi definitive»
-               (numera, permesso dedicato), NON il generico «Avanza». -->
-          <Button
-            v-else-if="isEmessa && canNumera"
-            :label="t('vendite.lotti.numera')"
-            icon="pi pi-verified"
-            severity="success"
-            size="small"
-            :disabled="loading || haSegnalazioniCritiche"
-            @click="rendiDefinitive"
-          />
-          <Button
-            v-else-if="canPipeline && !isInEsecuzione && !isEmessa"
-            :label="t('vendite.lotti.avanza')"
-            icon="pi pi-forward"
-            size="small"
-            :disabled="loading || haSegnalazioniCritiche"
-            @click="avanzaStep(false)"
-          />
-          <!-- Ristampa MASSIVA (C-8): lotto DEFINITIVA → accoda le fatture in
-               coda stampa (async). Indipendente dal verbo di stato sopra. -->
-          <Button
-            v-if="isDefinitiva"
-            :label="t('vendite.lotti.ristampa')"
-            icon="pi pi-print"
-            severity="secondary"
-            size="small"
-            :disabled="loading"
-            @click="ristampaDocumenti"
-          />
-          <Button
-            v-if="canResetLotto && isDraft"
-            :label="t('vendite.lotti.reset')"
-            icon="pi pi-undo"
-            severity="danger"
-            outlined
-            size="small"
-            :disabled="loading"
-            @click="resetDraft"
-          />
-        </div>
+        <!-- Azioni di governo del lotto. Quali esistono, quali sono abilitate e
+             perché no lo dice il BE (`available_actions`): qui si rende e si
+             chiama. In sola lettura la barra resta vuota. -->
+        <DrawerActionsBar :actions="drawerActions" :disabled="loading || azioniLoading" />
 
         <Tabs value="fatture" class="app-mt-1">
           <TabList>
@@ -588,11 +530,6 @@ function fatturaNumero(row) {
 .app-lotto-step {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
-}
-.app-lotto-actions {
-  display: flex;
   gap: 0.5rem;
   margin-top: 0.75rem;
 }

@@ -208,6 +208,42 @@ def sql_order_direction(
     return "DESC NULLS LAST" if is_desc else "ASC NULLS FIRST"
 
 
+def sql_tiebreak_direction(direction: str) -> str:
+    """Verso del **tiebreak**, allineato a quello della colonna primaria.
+
+    Prende la clausola prodotta da `sql_order_direction` e ne estrae il solo
+    verso (`'ASC'` / `'DESC'`), da interpolare sul tiebreak::
+
+        direction = sql_order_direction(order_dir)
+        tiebreak_dir = sql_tiebreak_direction(direction)
+        ...
+        ORDER BY {order_column} {direction}, cc.id {tiebreak_dir}
+
+    **Perche'** (decisione Tid 2026-08-03): il tiebreak era inchiodato ad `ASC`
+    in tutti i punti che costruiscono un ORDER BY. Ordinando i preventivi per
+    data DESC, a parita' di data si vedeva prima il piu' VECCHIO — dentro il
+    giorno l'elenco andava al contrario di come l'operatore lo aveva chiesto.
+    Allineando il verso, «il piu' recente in cima» vale anche a parita' di
+    data, e la stessa coerenza si estende a qualunque colonna (cliente,
+    utility, stato...).
+
+    ⚠️ **La paginazione deterministica non e' toccata**: dipende
+    dall'UNIVOCITA' del tiebreak, non dal suo verso (frontend-standards,
+    REGOLA CRITICA). `id` resta univoco in entrambe le direzioni.
+
+    **Niente `NULLS` qui, ed e' il motivo per cui il tiebreak dev'essere `id`**
+    (decisione Tid 2026-08-03): su una chiave tecnica non nullable non
+    servono. Un tiebreak nullable — es. `numero`, NULL sulle bozze finche' il
+    trigger non lo assegna — reintrodurrebbe in DESC i vuoti in cima, cioe'
+    esattamente il difetto che `sql_order_direction` ha corretto.
+
+    **Non si applica ai criteri GERARCHICI**, che non sono spareggi tecnici ma
+    ordine logico e restano fissi: le righe di uno stesso reso vanno lette nel
+    loro ordine naturale anche quando la lista e' ordinata al contrario.
+    """
+    return "DESC" if direction.strip().upper().startswith("DESC") else "ASC"
+
+
 def extract_paginated(cursor) -> tuple[list[dict[str, Any]], int]:
     """Estrae risultati paginati da query con COUNT(*) OVER() AS total_count.
 

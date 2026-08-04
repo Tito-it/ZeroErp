@@ -35,7 +35,7 @@ const props = defineProps({
   nonEditableFields: { type: Array, default: () => [] },
   isEdit: { type: Boolean, default: false },
   // Detail testata per il display denormalizzato dell'emittente in EDIT
-  // (emittente_fiscale_descrizione/codice via EmittenteFiscaleField :record).
+  // (emittente_ragione_sociale/codice via EmittenteFiscaleField :record).
   // null in create: il campo mostra l'emittente del profilo operatore.
   record: { type: Object, default: null },
 })

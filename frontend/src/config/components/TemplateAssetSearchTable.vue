@@ -1,23 +1,26 @@
 <script setup>
-// Scopo: DataTable lista asset documentali (Tranche L). Pattern coerente
-//        con TemplateDocumentiSearchTable. Le righe non si possono
+// Scopo: Lista asset documentali configurabile
+//        (`<ListaConfigurabile codice="documenti.template_asset">`): colonne,
+//        ordine e visibilita' dal catalogo `ui.lista_colonna`, con ritiro
+//        dinamico e personalizzazione per utente. Le righe non si possono
 //        eliminare fisicamente (trigger DB A3): soft-disable via PATCH
-//        `attivo=false` o `valido_al`.
-import { computed, ref, onMounted } from 'vue'
+//        `attivo=false` o `valido_al`. Nessun export: il dominio non ha
+//        endpoint (lo scaffolding omette l'azione da se').
+import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTemplateAssetDocumentiStore } from '../stores/templateAssetDocumenti'
-import { useSearchTable } from '../../core/composables/useSearchTable'
+import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
-import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
+import { TAB_ENTITIES } from '../../core/constants'
 import { buildBoolOptions } from '../../core/utils/options'
 import { formatSize } from '../../core/utils/format'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import AttivoTag from '../../core/components/AttivoTag.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
+import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
@@ -26,30 +29,18 @@ const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
 const store = useTemplateAssetDocumentiStore()
 const isBlocked = useInjectBlocked()
-const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } =
-  useSearchTable(store, { defaultSortField: 'codice' })
+const {
+  searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
+  listaRef, dirty, onConfigLoaded, pageActions,
+} = useListaConfigurabilePage(store, {
+  newTooltipKey: 'config.modelli_documenti.asset.new',
+  onNew: () => emit('new'),
+  searchTableOptions: { defaultSortField: 'codice' },
+})
 
 const attivoFilter = ref(true)
 const assetTipoFilter = ref(null)
 const boolOptions = buildBoolOptions(t)
-const pageActions = computed(() => [
-  {
-    key: 'reload',
-    kind: 'utility',
-    label: t('common.reload_list'),
-    icon: MANAGE_ICONS.RELOAD,
-    command: reload,
-  },
-  {
-    key: 'new',
-    kind: 'primary',
-    label: t('common.new'),
-    tooltip: t('config.modelli_documenti.asset.new'),
-    icon: MANAGE_ICONS.ADD,
-    hideWhenReadonly: true,
-    command: () => emit('new'),
-  },
-])
 
 function onAttivoChange() {
   store.filters.attivo = attivoFilter.value
@@ -59,7 +50,8 @@ function onAssetTipoChange() {
   store.filters.asset_tipo_id = assetTipoFilter.value
   applyFilters()
 }
-function onRowClick(event) { emit('row-click', event.data) }
+// `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
+function onRowClick(data) { emit('row-click', data) }
 
 useTabFreshness(store, TAB_ENTITIES.TEMPLATE_ASSET_DOCUMENTI)
 onMounted(() => store.fetchList())
@@ -95,44 +87,36 @@ onMounted(() => store.fetchList())
         </div>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
+            <ListaConfigStatusTag :dirty="dirty" />
             <ReadonlyBadge />
           </template>
         </PageActionsBar>
       </div>
 
-      <DataTable
-        :value="store.items"
+      <ListaConfigurabile
+        ref="listaRef"
+        codice="documenti.template_asset"
+        :rows="store.items"
+        :total="store.totalRecords"
         :loading="store.loading"
-        v-bind="paginatorProps"
-        lazy
-        removable-sort
-        striped-rows
-        scrollable
-        scrollHeight="flex"
-        class="app-datatable"
+        :paginator-options="paginatorProps"
+        :page="tablePage"
+        :sort-field="paginatorProps.sortField"
+        :sort-order="paginatorProps.sortOrder"
         @page="onPage"
         @sort="onSort"
         @row-click="onRowClick"
-        selection-mode="single"
-        data-key="id"
+        @config-loaded="onConfigLoaded"
       >
-        <Column field="codice" :header="t('config.modelli_documenti.asset.col_codice')" sortable style="width: 160px;" />
-        <Column field="descrizione" :header="t('config.modelli_documenti.asset.col_descrizione')" sortable style="min-width: 240px;" />
-        <Column field="asset_tipo_descrizione" :header="t('config.modelli_documenti.asset.col_tipo')" sortable style="width: 160px;" />
-        <Column field="mime_type" :header="t('config.modelli_documenti.asset.col_mime')" style="width: 160px;" />
-        <Column field="file_name" :header="t('config.modelli_documenti.asset.col_file_name')" style="min-width: 200px;" />
-        <Column field="file_size_bytes" :header="t('config.modelli_documenti.asset.col_size')" sortable style="width: 110px;">
-          <template #body="{ data }">
-            {{ formatSize(data.file_size_bytes) }}
-          </template>
-        </Column>
-        <Column field="emittente_fiscale_descrizione" :header="t('config.modelli_documenti.col_emittente')" style="width: 200px;" />
-        <Column field="attivo" :header="t('common.attivo')" sortable style="width: 100px;">
-          <template #body="{ data }">
-            <AttivoTag :active="data.attivo" />
-          </template>
-        </Column>
-      </DataTable>
+        <!-- Byte grezzi a video sono illeggibili: la cella resta formattata,
+             ma l'ordinamento e' numerico sul campo (BE, `a.file_size_bytes`). -->
+        <template #cell-file_size_bytes="{ data }">
+          {{ formatSize(data.file_size_bytes) }}
+        </template>
+        <template #cell-attivo="{ data }">
+          <AttivoTag :active="data.attivo" />
+        </template>
+      </ListaConfigurabile>
     </template>
   </div>
 </template>

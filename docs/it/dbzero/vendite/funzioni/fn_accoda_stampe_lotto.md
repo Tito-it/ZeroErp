@@ -15,9 +15,12 @@ DECLARE
     v_sorgente_tipo_id config.sorgenti.id%TYPE;
     v_accodate         integer := 0;
 BEGIN
-    -- Scopo: accoda un work-item di stampa PENDING per ogni fattura
-    --   NON esclusa del lotto; delega numerazione+render al worker.
+    -- Scopo: accoda un work-item di stampa PENDING per ogni
+    --   fattura del lotto; delega numerazione+render al worker.
     --   Idempotente: l'indice unico parziale scarta i doppioni vivi.
+    -- rev 2026-08-04 (D-M): via il predicato su lf.esclusa. Il
+    --   flag era dormiente, quindi «ogni fattura non esclusa»
+    --   ha sempre voluto dire «ogni fattura».
 
     -- Guard parametro ID: no NULL, no <= 0 (non normalizzare).
     IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
@@ -39,7 +42,7 @@ BEGIN
             NULL::uuid, 'config.sorgenti FATTURA assente');
     END IF;
 
-    -- Accoda le fatture del lotto (escluse le esclusa=true).
+    -- Accoda le fatture del lotto.
     -- sorgente_uid = id::text (key_selector FATTURA).
     INSERT INTO vendite.fatture_stampa_coda
         (sorgente_tipo_id, sorgente_id, sorgente_uid, lotto_id)
@@ -47,7 +50,6 @@ BEGIN
       FROM vendite.fatturazione_lotti_fatture lf
       JOIN vendite.fatture f ON f.id = lf.fattura_id
      WHERE lf.lotto_id = p_lotto_id
-       AND lf.esclusa IS NOT TRUE
     ON CONFLICT (sorgente_tipo_id, sorgente_id)
        WHERE stato IN ('PENDING', 'IN_CORSO')
        DO NOTHING;
@@ -58,7 +60,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_accoda_stampe_lotto(p_lotto_id bigint)
-IS 'Accoda in vendite.fatture_stampa_coda un work-item PENDING per ogni fattura non esclusa del lotto (sorgente FATTURA, sorgente_uid=id::text). Idempotente via indice unico parziale uq_fatture_stampa_coda_vivo (ON CONFLICT DO NOTHING). Ritorna il numero di righe effettivamente accodate. Chiamata dal task pipeline stampa_documenti_lotto; numerazione (backstop) e render vivono nel worker drainer. Brief: brief-db-processi-fatturazione-cockpit §4.';
+IS 'Accoda in vendite.fatture_stampa_coda un work-item PENDING per ogni fattura del lotto (sorgente FATTURA, sorgente_uid=id::text). Idempotente via indice unico parziale uq_fatture_stampa_coda_vivo (ON CONFLICT DO NOTHING). Ritorna il numero di righe effettivamente accodate. Chiamata dal task pipeline stampa_documenti_lotto; numerazione (backstop) e render vivono nel worker drainer. Brief: brief-db-processi-fatturazione-cockpit §4. rev 2026-08-04 (D-M): via il predicato su lf.esclusa — il flag era dormiente, quindi «ogni fattura non esclusa» ha sempre voluto dire «ogni fattura».';
 ```
 
 ---

@@ -26,6 +26,7 @@ from apps.vendite.api.views import (
     ApiLottoTaskRuns,
     ApiResetLottoDraft,
     ApiResetLottoFatturaDraft,
+    ApiRiportaLottoADraft,
     ApiRunCommessePush,
     ApiRunLottoPipeline,
     ApiRunLottoPipelineUntilDone,
@@ -223,6 +224,14 @@ urlpatterns = [
         "lotti/<int:lotto_id>/reset-draft/",
         ApiResetLottoDraft.as_view(),
         name="vendite-reset-lotto-draft",
+    ),
+    # Fase 6: ritorno a bozza. Vicino a `reset-draft` di proposito — sono i due
+    # verbi che disfano il lavoro di un lotto — ma fanno cose opposte: quello
+    # CHIUDE il lotto (ANNULLATA), questo lo rimette in lavorazione.
+    path(
+        "lotti/<int:lotto_id>/riporta-a-draft/",
+        ApiRiportaLottoADraft.as_view(),
+        name="vendite-lotto-riporta-a-draft",
     ),
     path(
         "lotti/<int:lotto_id>/fatture/<int:fattura_id>/reset-draft/",

@@ -1,0 +1,174 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.trgfn_commesse_guard_transizione — la regola di ingresso esce dal
+#   trigger e va nella funzione pura
+#   (brief-db-emittibilita-visibile-e-sbloccabile.md §3.3).
+#
+# COS'ERA. Il guard aveva due regole scritte in due modi diversi:
+#   - Regola 2 (-> PRONTA_FATTURAZIONE): condizione scritta A MANO dentro il
+#     trigger, «esiste almeno una riga APPROVATA e NON_EMESSA»;
+#   - Regola 3 (-> CHIUSA / ANNULLATA): delega a fn_check_commessa_chiudibile /
+#     _annullabile, con la nota esplicita «sorgente UNICA, condivisa con
+#     fn_available_actions_commessa».
+#   La seconda forma e' quella giusta e la prima e' rimasta indietro.
+#
+# ⚠️ PERCHE' ADESSO NON E' PIU' RINVIABILE. Finche' la transizione verso
+#   PRONTA_FATTURAZIONE era automatica, nessun bottone la offriva e la
+#   condizione scritta a mano non aveva un gemello da contraddire. Rendendola
+#   manuale (changeSet 20260804-28) il bottone nasce, e con due copie della
+#   regola nascerebbe subito il difetto che il brief vuole chiudere: la UI dice
+#   «si puo'», il guard dice «no». Una regola, una sede.
+#
+# COSA CAMBIA. Le due regole diventano un unico blocco: si sceglie la funzione
+#   pura in base allo stato di destinazione e si solleva il codice del PRIMO
+#   motivo. Stessa forma gia' usata dalla Regola 3, estesa a tre destinazioni.
+#
+# ⚠️ IL CRITERIO SI ALLARGA, DI PROPOSITO. La condizione scritta a mano
+#   ignorava `tipo_doc_fiscale_id`; fn_check_commessa_pronta_fatturazione la
+#   include, perche' e' un filtro di fn_list_emittibili_lane. Una commessa con
+#   righe approvate ma senza tipo documento prima poteva dichiararsi pronta e
+#   non produrre nulla: adesso viene fermata qui, che e' il punto in cui
+#   qualcuno puo' ancora rimediare. Si aggiunge anche il motivo «emittente
+#   mancante», assente dal guard vecchio.
+#
+# ℹ️ Nessun cambio agli altri due rami (matrice delle transizioni, uscite
+#   terminali) ne' alla forma dei RAISE: stessi codici, stessa arita' dei
+#   valori, stesso context.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260804-26-update-trgfn-commesse-guard-transizione-check-unico-mctit.yaml
+
+  - changeSet:
+      id: 20260804-26-update-trgfn-commesse-guard-transizione-check-unico
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        La regola di ingresso a PRONTA_FATTURAZIONE esce dal trigger e passa a
+        script.fn_check_commessa_pronta_fatturazione, come gia' fanno le uscite
+        terminali con le proprie fn_check_*. Serve perche' la transizione sta
+        per diventare manuale: senza sede unica, bottone e guard divergono.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'script'
+                AND p.proname = 'fn_check_commessa_pronta_fatturazione'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_commesse_guard_transizione()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: enforcement DB-first del grafo transizioni stato commessa.
+              --   La transizione (OLD.stato -> NEW.stato) e' ammessa solo se
+              --   presente e attiva in vendite.transizioni_stati_commessa.
+              --   In piu', le destinazioni che hanno una regola di dominio la
+              --   leggono dalla propria funzione pura:
+              --     -> PRONTA_FATTURAZIONE  fn_check_commessa_pronta_fatturazione
+              --     -> CHIUSA               fn_check_commessa_chiudibile
+              --     -> ANNULLATA            fn_check_commessa_annullabile
+              --   Le stesse che script.fn_available_actions_commessa usa per
+              --   accendere o spegnere i bottoni: sorgente UNICA, la UI non
+              --   puo' divergere dal guard.
+              --   rev 2026-08-04: la regola di ingresso, prima scritta a mano
+              --   qui dentro, e' passata alla funzione pura (brief §3.3).
+              DECLARE
+                  v_codice_da vendite.stati_commessa.codice_interno%TYPE;
+                  v_codice_a  vendite.stati_commessa.codice_interno%TYPE;
+                  v_ammessa   boolean := false;
+                  v_motivi    jsonb;
+              BEGIN
+                  -- No-op se lo stato non cambia davvero (UPDATE su altre colonne).
+                  IF NEW.stato_commessa_id IS NOT DISTINCT FROM OLD.stato_commessa_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT
+                      max(CASE WHEN id = OLD.stato_commessa_id THEN codice_interno END),
+                      max(CASE WHEN id = NEW.stato_commessa_id THEN codice_interno END)
+                    INTO v_codice_da, v_codice_a
+                    FROM vendite.stati_commessa
+                   WHERE id IN (OLD.stato_commessa_id, NEW.stato_commessa_id);
+
+                  -- Regola 1: la transizione deve esistere ed essere attiva in matrice.
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM vendite.transizioni_stati_commessa t
+                       WHERE t.stato_da_id = OLD.stato_commessa_id
+                         AND t.stato_a_id  = NEW.stato_commessa_id
+                         AND t.attivo IS TRUE
+                  ) INTO v_ammessa;
+
+                  IF NOT v_ammessa THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          'E_COMMESSA_STATO_TRANSIZIONE_INVALIDA',
+                          jsonb_build_object(
+                              'commessa_id', NEW.id,
+                              'codice',      NEW.codice,
+                              'stato_da',    v_codice_da,
+                              'stato_a',     v_codice_a
+                          ),
+                          NEW.tx_id,
+                          NEW.id::text,
+                          coalesce(v_codice_da, 'NULL'),
+                          coalesce(v_codice_a,  'NULL')
+                      );
+                  END IF;
+
+                  -- Regola 2 (rev 2026-08-04): destinazioni con regola di
+                  -- dominio. Ingresso e uscite trattati allo stesso modo: la
+                  -- regola vera vive nelle fn_check_*, qui si solleva soltanto,
+                  -- col codice del PRIMO motivo. Arita' fissa dei valori
+                  -- (codice commessa, dettaglio): vale per tutta la famiglia.
+                  IF v_codice_a IN ('PRONTA_FATTURAZIONE', 'CHIUSA', 'ANNULLATA') THEN
+                      v_motivi := CASE v_codice_a
+                                    WHEN 'PRONTA_FATTURAZIONE' THEN script.fn_check_commessa_pronta_fatturazione(NEW.id)
+                                    WHEN 'CHIUSA'              THEN script.fn_check_commessa_chiudibile(NEW.id)
+                                    ELSE                            script.fn_check_commessa_annullabile(NEW.id)
+                                  END;
+
+                      IF jsonb_array_length(v_motivi) > 0 THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME::text,
+                              v_motivi -> 0 ->> 'codice',
+                              jsonb_build_object(
+                                  'commessa_id', NEW.id,
+                                  'codice',      NEW.codice,
+                                  'stato_da',    v_codice_da,
+                                  'stato_a',     v_codice_a,
+                                  'motivi',      v_motivi
+                              ),
+                              NEW.tx_id,
+                              coalesce(NEW.codice, NEW.id::text),
+                              coalesce(v_motivi -> 0 ->> 'dettaglio', '0')
+                          );
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_commesse_guard_transizione()
+              IS 'Trigger function: enforcement del grafo transizioni stato commessa (matrice vendite.transizioni_stati_commessa) + regole di dominio delegate alle fn_check_* pure, condivise con script.fn_available_actions_commessa. rev 2026-08-04: anche l''ingresso in PRONTA_FATTURAZIONE passa dalla funzione pura (prima era scritto a mano nel trigger), perche'' la transizione diventa manuale e bottone e guard devono leggere lo stesso verdetto.';

@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D-M passo 4 — si rimette il constraint trigger che `20260804-21` ha
+#   dovuto togliere per liberare la colonna
+#   (piano-db-ritorno-lotto-a-draft.md, Slice 6-B B4)
+#
+# ── PERCHE' ESISTE QUESTO CHANGESET ──────────────────────────────────────
+#   Il trigger dell'invariante lotto<->fatture sul PONTE era dichiarato
+#   `AFTER INSERT OR UPDATE OF lotto_id, fattura_id, esclusa OR DELETE`.
+#   Una colonna nominata in una lista `UPDATE OF` e' una **dipendenza
+#   registrata**, esattamente come per una vista: finche' c'e', la colonna
+#   non si droppa. Il migrate del 2026-08-04 e' fallito proprio li'.
+#
+#   `20260804-21` (fase 00_schema) lo toglie insieme alla vista, poi
+#   droppa la colonna. Qui — fase 20_code, che gira dopo — si rimette,
+#   con la lista `UPDATE OF` senza `esclusa`.
+#
+# ── ⚠️ PERCHE' NON SI E' USATO `DROP ... CASCADE` ────────────────────────
+#   E' quello che PostgreSQL suggerisce nel messaggio d'errore, ed e' la
+#   strada sbagliata: avrebbe portato via il trigger **in silenzio**,
+#   lasciando l'invariante scoperto senza che niente lo segnalasse. Un
+#   presidio che sparisce senza rumore e' peggio di un presidio che non
+#   c'e' mai stato, perche' tutti continuano a credere che ci sia.
+#   Le dipendenze si tolgono a mano, una per una, e si rimettono.
+#
+# ── ⚠️ IL NOME E' TRONCATO, E IL TRONCAMENTO HA MANGIATO UN'INFORMAZIONE ─
+#   `trg_fatturazione_lotti_fatture_def_guard_stato_coerente_ins_upd_dlt`
+#   e' lungo 67 caratteri: PostgreSQL tronca gli identificatori a 63, e
+#   il trigger reale si chiama `..._coerente_ins_upd`. Il suffisso `_dlt`,
+#   che documentava lo scatto anche sul DELETE, e' andato perso — ed e'
+#   per questo che l'errore del migrate nominava un trigger che nei
+#   changeSet non esiste con quel nome.
+#   Si continua a scrivere il nome per esteso, come faceva l'originale:
+#   viene troncato allo stesso modo, quindi combacia. Cambiarlo adesso
+#   vorrebbe dire creare un trigger nuovo e lasciare il vecchio vivo.
+#
+# ── COSA NON CAMBIA ──────────────────────────────────────────────────────
+#   Timing, `DEFERRABLE INITIALLY DEFERRED`, `FOR EACH ROW` e la funzione
+#   invocata. Cambia solo la lista delle colonne sorvegliate: due invece
+#   di tre. L'invariante e' lo stesso, sorvegliato negli stessi momenti,
+#   meno uno che non poteva mai verificarsi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260804-30-ricrea-trigger-guard-perimetro-senza-esclusa-mctit.yaml
+
+  - changeSet:
+      id: 20260804-30-ricrea-trigger-guard-perimetro-senza-esclusa
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        D-M: rimette il constraint trigger differito sul ponte lotto-fattura, che
+        20260804-21 ha dovuto togliere per liberare la colonna esclusa. Lista
+        UPDATE OF senza esclusa; timing, deferrabilita e funzione invariati.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 3c) Cambia il legame lotto-fattura.
+              -- ⚠️ Il DROP resta anche qui, per rendere il changeSet
+              -- ri-applicabile su un DB dove la colonna era gia' sparita e il
+              -- trigger no.
+              DROP TRIGGER IF EXISTS trg_fatturazione_lotti_fatture_def_guard_stato_coerente_ins_upd_dlt
+                ON vendite.fatturazione_lotti_fatture;
+
+              CREATE CONSTRAINT TRIGGER trg_fatturazione_lotti_fatture_def_guard_stato_coerente_ins_upd_dlt
+              AFTER INSERT OR UPDATE OF lotto_id, fattura_id OR DELETE
+              ON vendite.fatturazione_lotti_fatture
+              DEFERRABLE INITIALLY DEFERRED
+              FOR EACH ROW
+              EXECUTE FUNCTION vendite.trgfn_lotto_fatture_guard_stato_coerente();
+
+              COMMENT ON TRIGGER trg_fatturazione_lotti_fatture_def_guard_stato_coerente_ins_upd_dlt
+                ON vendite.fatturazione_lotti_fatture
+                IS 'Al COMMIT verifica il lotto quando cambia il perimetro: aggancio o sgancio di una fattura. rev 2026-08-04 (D-M): la lista UPDATE OF non contiene piu'' `esclusa` — il flag e'' stato eliminato perche'' dormiente, e la sua presenza qui era anche cio'' che tratteneva la colonna al momento del DROP. ⚠️ Il nome reale e'' troncato a 63 caratteri (`..._coerente_ins_upd`): il suffisso _dlt, che documenta lo scatto sul DELETE, esiste solo nel changeSet.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_fatturazione_lotti_fatture_def_guard_stato_coerente_ins_upd_dlt
+                ON vendite.fatturazione_lotti_fatture;

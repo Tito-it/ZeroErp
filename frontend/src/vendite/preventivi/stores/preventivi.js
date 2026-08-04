@@ -1,5 +1,6 @@
 // Store Pinia per la gestione preventivi vendita (lista, dettaglio, CRUD, azioni stato).
 
+import { defaultFiltroDataDaString } from '../../../core/utils/date'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import {
@@ -15,8 +16,9 @@ import { TAB_ENTITIES } from '../../../core/constants'
 export const usePreventiviStore = defineStore('vendite-preventivi', () => {
   const { emitDataChanged } = useTabEvents()
 
-  // Default data_da: 1 gennaio anno corrente - 1
-  const defaultDataDa = `${new Date().getFullYear() - 1}-01-01`
+  // Floor temporale di default delle liste: vedi `defaultFiltroDataDaString`
+  // (oggi-60gg al primo del mese). Regola unica di progetto, non ricalcolata qui.
+  const defaultDataDa = defaultFiltroDataDaString()
 
   const filters = ref({
     search: '',
@@ -36,7 +38,7 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
   })
 
   // Lista paginata preventivi con guardia empty-state standard (BB
-  // useListaEmptyStateFetch). `data_da` default-anno-1 conta come filtro attivo:
+  // useListaEmptyStateFetch). `data_da` col default standard conta come filtro attivo:
   // garantisce l'auto-load all'apertura (frontend-standards "Filtro data standard").
   // Paginazione limit/offset standard (riallineata 2026-06-03: il BE usa ora
   // parse_list_params, era l'unico dominio su page/page_size).

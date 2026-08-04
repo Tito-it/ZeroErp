@@ -30,6 +30,10 @@ from typing import Any
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
+from apps.documenti.services.context_builders._number_formatting import (
+    format_importo,
+    formatta_campi,
+)
 from apps.documenti.services.context_builders._date_formatting import (
     format_date_it,
     format_date_iso,
@@ -89,8 +93,26 @@ class PreventivoDocumentContextBuilder(DocumentContextBuilder):
         )
         assert testata is not None
 
-        righe = self._repo.list_righe(sorgente_id)
-        riepilogo_iva = self._repo.list_riepilogo_iva(sorgente_id)
+        # Numeri pronti per la stampa (2026-08-04, segnalazione di Tid: la
+        # quantita' usciva «5.000000»). I valori arrivavano grezzi dal
+        # repository, cioe' con la scala della colonna: qui prendono il
+        # formato italiano, come le date poco piu' sotto. Misure e importi
+        # seguono due regole diverse — vedi `_number_formatting`.
+        righe = [
+            formatta_campi(
+                r,
+                misure=("quantita", "qta_operativa", "prezzo_unitario", "sconto_percentuale"),
+                importi=("importo_riga", "iva_aliquota"),
+            )
+            for r in self._repo.list_righe(sorgente_id)
+        ]
+        riepilogo_iva = [
+            formatta_campi(
+                r,
+                importi=("iva_aliquota", "imponibile", "imposta", "arrotondamento", "totale_riga"),
+            )
+            for r in self._repo.list_riepilogo_iva(sorgente_id)
+        ]
         # Proiezione STABILE degli indirizzi documento: il mixin condiviso
         # aggiunge chiavi per il drawer FE (tipo_indirizzo_codice,
         # origine_tipo_indirizzo_*) derivate da JOIN LIVE su dati mutabili
@@ -161,14 +183,23 @@ class PreventivoDocumentContextBuilder(DocumentContextBuilder):
                 "id": testata.get("utility_id"),
                 "descrizione": testata.get("utility_descrizione"),
             },
+            # Aggiunto il 2026-08-03: il contesto preventivo non aveva affatto
+            # l'emittente, e il template pubblicato stampava la stringa cablata
+            # «Emittente fiscale demo» su ogni preventivo. Stessa forma di
+            # fattura/ordine/DDT — un nome solo di chiave su tutti i documenti.
+            "emittente": {
+                "id": testata.get("emittente_fiscale_id"),
+                "codice": testata.get("emittente_fiscale_codice"),
+                "denominazione": testata.get("emittente_ragione_sociale"),
+            },
             "termine_pagamento": {
                 "id": testata.get("termine_pagamento_id"),
                 "descrizione": testata.get("termine_pagamento_descrizione"),
             },
             "totali": {
-                "imponibile": testata.get("totale_imponibile"),
-                "iva": testata.get("totale_iva"),
-                "documento": testata.get("totale_documento"),
+                "imponibile": format_importo(testata.get("totale_imponibile")),
+                "iva": format_importo(testata.get("totale_iva")),
+                "documento": format_importo(testata.get("totale_documento")),
                 "valuta_id": testata.get("valuta_id"),
                 "valuta_codice": testata.get("valuta_codice"),
             },

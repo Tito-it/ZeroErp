@@ -2015,21 +2015,6 @@ _KNOWN_BUNDLE_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 
 
-# Scopo: Lista articoli compositi che hanno almeno 1 prezzo bundle
-#        definito in `listini_righe_componenti` per la versione data.
-#        Usata dal FE per popolare la sezione "Prezzi bundle compositi"
-#        del drawer versione listino. Sola lettura, ammessa su versione
-#        in qualsiasi stato (BOZZA per editing, ATTIVA/CHIUSA per audit).
-def fn_list_bundle_compositi(
-    listino_id: int,
-    versione_id: int,
-) -> list[dict[str, Any]]:
-    function_name = "vendite.listini_service.fn_list_bundle_compositi"
-    listino = _get_listino_or_raise(listino_id, function_name=function_name)
-    _ = listino  # guard solo: la versione vive sotto il listino
-    _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
-    repository = ListiniRepository()
-    return repository.list_compositi_con_bundle(versione_id)
 
 
 # Scopo: Preview della BoM di un padre composito in contesto versione

@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 import json
-from typing import Any, ClassVar
+from typing import Any
 
 from django.db import connection
 
@@ -26,11 +26,12 @@ from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.value_normalizer import as_bool, empty_to_none
 from apps.vendite.types import (
+    AnnullaLottoDaDraftResult,
+    EliminaFatturaDaLottoDraftResult,
     LottoPipelineMeta,
     LottoSegnalazioniSummary,
     LottoTaskRunRow,
-    ResetLottoDraftResult,
-    ResetLottoFatturaDraftResult,
+    RiportaLottoADraftResult,
 )
 
 # Repository SQL: incapsula accesso DB per orchestrazione pipeline vendite.
@@ -140,6 +141,35 @@ class TaskExecutionMode:
     run_meta: dict[str, Any]
 
 
+# Whitelist ORDER BY della coda stampa: chiave = `campo_sorgente` inviato dal
+# frontend, valore = espressione SQL qualificata. `{dir}` solo dove serve NULLS
+# LAST (la direzione va PRIMA della clausola).
+#
+# ⚠️ A livello MODULO, non attributo di classe: il gate del service ne DERIVA
+# l'elenco, e una whitelist raggiungibile solo attraverso la classe diventa
+# vuota appena un test mocka il repository — il gate finirebbe per dipendere dal
+# mock invece che dal codice.
+#
+# Aggiunte il 2026-08-02: `stato` e `fattura_numero` sono NUCLEO sempre
+# ordinabile (a video il numero e' composto da `fatturaLabel`, ma cio' che si
+# ordina e' il numero della fattura); `id`, `emittente_codice` e `operatore`
+# completano le colonne gia' mostrate dalla pagina.
+CODA_STAMPA_SORT_SQL: dict[str, str] = {
+    "id": "c.id",
+    "fattura_id": "c.sorgente_id",
+    # NULLS LAST esplicito: il numero e` NULL finche` la fattura e` in bozza —
+    # in DESC finirebbe in testa.
+    "fattura_numero": "f.numero {dir} NULLS LAST",
+    "emittente_codice": "ef.codice {dir} NULLS LAST",
+    "operatore": "c.user_insert",
+    "stato": "c.stato",
+    # NULLS LAST esplicito: lotto_id e` NULL per le stampe fuori lotto (es.
+    # ristampe singole) — in DESC finirebbero in testa.
+    "lotto_id": "c.lotto_id {dir} NULLS LAST",
+    "data_update": "c.data_update",
+}
+
+
 class VenditePipelineRepository:
     """Wrapper SQL a basso livello per l'orchestrazione pipeline vendite."""
 
@@ -171,7 +201,7 @@ class VenditePipelineRepository:
         "prepare_sdi_payload_lotto": "vendite.fn_prepare_sdi_payload",
         "numera_fatture": "vendite.fn_numera_fattura_opz_emessa",
         "close_lotto": None,
-        "reset_lotto_draft": "vendite.fn_reset_lotto_draft",
+        "reset_lotto_draft": "vendite.fn_annulla_lotto_da_draft",
         "pull_attivita_da_commessa": "vendite.fn_emit_attivita_fatturabili_da_commessa",
         # Il `task_code` resta `snapshot_indirizzi_lotto` (seed, handler, policy
         # e registry non si muovono); la funzione SQL e' stata rinominata dal
@@ -179,6 +209,12 @@ class VenditePipelineRepository:
         # anche l'intestazione — il nome vecchio ne diceva meta' (brief
         # snapshot-intestazione §10.8).
         "snapshot_indirizzi_lotto": "vendite.fn_snapshot_fattura_lotto",
+        # Fase 4 del piano DB satelliti (changeSet `20260801-09`). Il task vive
+        # nello step EMESSA e va DOPO `ricalcola_iva_lotto`: la base di
+        # ripartizione e' `totale_a_pagare`, che prima del ricalcolo non esiste
+        # ancora — l'ordine e' presidiato da `_TASK_ORDER_DEPENDENCIES` in
+        # `pipeline_step_executor`, non lasciato alla sola configurazione.
+        "genera_scadenze_lotto": "vendite.fn_genera_scadenze_lotto",
     }
 
     # Scopo: Gestisce `_to_jsonb_param` nel flusso applicativo del modulo.
@@ -1549,6 +1585,47 @@ class VenditePipelineRepository:
             "failed_rows": int(row[5]),
         }
 
+    # Scopo: Genera il piano rate delle fatture del lotto delegando a
+    #        `vendite.fn_genera_scadenze_lotto` (Fase 4.2 piano DB satelliti).
+    #        Perimetro: le sole fatture LAVORABILI (DRAFT o EMESSA e senza un
+    #        critico attivo di un ALTRO task); risultato atteso: sei contatori,
+    #        di cui `deleted_rows`/`inserted_rows` misurano il DELETE+INSERT del
+    #        generatore — un rilancio su piano invariato torna `del=N ins=N`,
+    #        non zero, quindi non sono un indicatore di «lavoro nuovo».
+    #        I due motivi di salto restano SEPARATI e non vanno sommati:
+    #        `skipped_rows` sono fatture oltre EMESSA (chiuse: nessun lavoro da
+    #        fare, D-F), `skipped_errore_rows` sono fatture con un critico
+    #        altrui (rotte a monte, D-Q). Per il cockpit sono l'opposto, e un
+    #        totale unico direbbe «cinque saltate» confondendo i due casi.
+    #        Come la gemella degli indirizzi la funzione NON solleva per la
+    #        singola fattura difettosa: l'esito sta in `failed_rows`, che
+    #        l'handler traduce in task_run ERRORE.
+    def run_genera_scadenze_lotto_task(
+        self,
+        *,
+        lotto_id: int,
+        batch_size: int = 1000,
+    ) -> dict[str, int]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT fatture_count, deleted_rows, inserted_rows,
+                       skipped_rows, skipped_errore_rows, failed_rows
+                FROM vendite.fn_genera_scadenze_lotto(%s, %s)
+                """,
+                [lotto_id, batch_size],
+            )
+            row = cursor.fetchone()
+        assert row is not None  # la fn ritorna sempre una riga di contatori
+        return {
+            "fatture_count": int(row[0]),
+            "deleted_rows": int(row[1]),
+            "inserted_rows": int(row[2]),
+            "skipped_rows": int(row[3]),
+            "skipped_errore_rows": int(row[4]),
+            "failed_rows": int(row[5]),
+        }
+
     # Scopo: Ritira le segnalazioni critiche di LOTTO alzate dal BE (D-Q p.2:
     #        «chi alza la bandiera la abbassa»). Due famiglie, riconoscibili dal
     #        meta e MAI le righe altrui:
@@ -1883,21 +1960,13 @@ class VenditePipelineRepository:
     #        Filtri opzionali stati/lotto/intervallo `data_insert` (`data_a`
     #        bound ESCLUSIVO: il chiamante passa gia` il giorno+1).
     #        Ordinamento (2026-07-23, richiesta Tid): `sort_by`/`sort_dir` da
-    #        whitelist `_CODA_STAMPA_SORT_SQL` — il service valida, qui assert
+    #        whitelist `CODA_STAMPA_SORT_SQL` — il service valida, qui assert
     #        di defense-in-depth. Default `data_update DESC` («aggiornato»: la
     #        riga lavorata piu` di recente in testa); tiebreaker `c.id DESC`
     #        per un ordine stabile. E` una lista di monitoraggio, non la corsia
     #        del worker. Ritorna `{items, total}` via BB
     #        `fetch_paged_with_total` (fallback pagina-stantia: la coda si
     #        auto-svuota sotto l'utente a ogni drain).
-    _CODA_STAMPA_SORT_SQL: ClassVar[dict[str, str]] = {
-        "fattura_id": "c.sorgente_id",
-        # NULLS LAST esplicito: lotto_id e` NULL per le stampe fuori lotto
-        # (es. ristampe singole) — in DESC finirebbero in testa.
-        "lotto_id": "c.lotto_id {dir} NULLS LAST",
-        "data_update": "c.data_update",
-    }
-
     def elenca_coda_stampa(
         self,
         *,
@@ -1932,7 +2001,7 @@ class VenditePipelineRepository:
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         safe_limit = max(1, min(int(limit), LIST_MAX_LIMIT))
         safe_offset = max(0, int(offset))
-        sort_expr = self._CODA_STAMPA_SORT_SQL.get(sort_by)
+        sort_expr = CODA_STAMPA_SORT_SQL.get(sort_by)
         assert sort_expr is not None, f"sort_by non in whitelist: {sort_by!r}"
         assert sort_dir in ("ASC", "DESC"), f"sort_dir non valido: {sort_dir!r}"
         order_by = (
@@ -2059,12 +2128,18 @@ class VenditePipelineRepository:
             assert row is not None
         return row[0]
 
-    # Scopo: Gestisce `reset_lotto_draft` nel flusso applicativo del modulo.
-    def reset_lotto_draft(self, lotto_id: int) -> ResetLottoDraftResult:
+    # Scopo: ANNULLA un lotto che si trova in DRAFT: porta il lotto ad
+    #        ANNULLATA/CHIUSO, elimina le sue fatture pre-fiscali (non
+    #        numerate) e libera le attivita'. Non «riporta a bozza»: il nome
+    #        vecchio (`reset_lotto_draft`) diceva il contrario di cio' che fa,
+    #        ed e' la ragione di D-L. ⚠️ Il `task_code` di pipeline resta
+    #        `reset_lotto_draft` (seed CSV, immutabile) e cosi' il
+    #        `post_permission`: qui cambia solo il nome della funzione.
+    def annulla_lotto_da_draft(self, lotto_id: int) -> AnnullaLottoDaDraftResult:
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT updated_lotti, updated_attivita, deleted_fatture, deleted_righe "
-                "FROM vendite.fn_reset_lotto_draft(%s)",
+                "FROM vendite.fn_annulla_lotto_da_draft(%s)",
                 [lotto_id],
             )
             row = cursor.fetchone()
@@ -2076,16 +2151,80 @@ class VenditePipelineRepository:
             "deleted_righe": int(row[3]),
         }
 
-    # Scopo: Gestisce `reset_lotto_fattura_draft` nel flusso applicativo del modulo.
-    def reset_lotto_fattura_draft(
+    # Scopo: RIPORTA A BOZZA un lotto gia' lavorato perche' si possa correggere
+    #        a monte e rifare il giro (Fase 6, brief DB→BE ritorno-lotto-a-draft).
+    #        E' un ROLLBACK, non una riapertura: le fatture si CANCELLANO e il
+    #        rilancio le rigenera. Distinto da `annulla_lotto_da_draft`, che
+    #        invece chiude il lotto (ANNULLATA) e non lo rimette in gioco.
+    # Perimetro (guard nella fn): lotti MASSIVO o GIORNALIERO in DRAFT o EMESSA.
+    #        ⚠️ Rifiuta se anche UNA sola fattura ha gia' un numero — guarda il
+    #        numero, non lo stato: un numero fiscale assegnato non si ritira.
+    # Effetto laterale che conta: riporta `commesse_attivita.stato_emissione` a
+    #        NON_EMESSA. Senza, il lotto ripartirebbe senza NIENTE da emettere
+    #        (la selezione scarta le gia' emesse) e il cruscotto competenza
+    #        continuerebbe a contarle come fatturate.
+    def riporta_lotto_a_draft(self, lotto_id: int) -> RiportaLottoADraftResult:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT updated_lotti, updated_attivita, deleted_fatture, "
+                "       deleted_righe, riemesse_attivita, annullati_task_run "
+                "FROM vendite.fn_riporta_lotto_a_draft(%s)",
+                [lotto_id],
+            )
+            row = cursor.fetchone()
+            assert row is not None
+        return {
+            "updated_lotti": int(row[0]),
+            "updated_attivita": int(row[1]),
+            "deleted_fatture": int(row[2]),
+            "deleted_righe": int(row[3]),
+            "riemesse_attivita": int(row[4]),
+            "annullati_task_run": int(row[5]),
+        }
+
+    # Scopo: Il lotto e' stato riportato a bozza e non ha ancora rifatto il giro?
+    #        E' il TERZO motivo per rifare lo step corrente invece di avanzare
+    #        (gli altri due: rerun in errore, primo run). Deliberatamente una
+    #        DATA e non un booleano: si spiega da sola e si ordina.
+    # ⚠️ Nessun vincolo sul `tipo_lotto`, a differenza di `is_lotto_in_errore`
+    #        che vale solo per i MASSIVO: la fn di ritorno a bozza ammette anche
+    #        i GIORNALIERO, e un giornaliero riaperto deve rifare lo step come
+    #        gli altri.
+    def is_lotto_riaperto(self, lotto_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT (riaperto_il IS NOT NULL) FROM vendite.fatturazione_lotti"
+                " WHERE id = %s",
+                [lotto_id],
+            )
+            row = cursor.fetchone()
+        return bool(row[0]) if row else False
+
+    # Scopo: Spegne il segnale di riapertura dopo che il giro l'ha onorato.
+    #        Senza, il lotto rifarebbe lo stesso step all'infinito (§3 del brief).
+    #        Idempotente: un secondo azzeramento non fa nulla.
+    def azzera_riaperto_il(self, lotto_id: int) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE vendite.fatturazione_lotti SET riaperto_il = NULL"
+                " WHERE id = %s AND riaperto_il IS NOT NULL",
+                [lotto_id],
+            )
+
+    # Scopo: Elimina UNA fattura DRAFT dal lotto (estrazione per-fattura),
+    #        liberandone le attivita'. ⚠️ Passa `NULL` come `lock_batch_id`
+    #        alla primitiva di cleanup: passare quello del lotto libererebbe
+    #        l'INTERO batch invece della sola fattura (C-22/D-L.3, misurato dal
+    #        team DB: 15 attivita' liberate contro 0).
+    def elimina_fattura_da_lotto_draft(
         self,
         lotto_id: int,
         fattura_id: int,
-    ) -> ResetLottoFatturaDraftResult:
+    ) -> EliminaFatturaDaLottoDraftResult:
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT updated_attivita, deleted_fatture, deleted_righe "
-                "FROM vendite.fn_reset_lotto_fattura_draft(%s, %s)",
+                "FROM vendite.fn_elimina_fattura_da_lotto_draft(%s, %s)",
                 [lotto_id, fattura_id],
             )
             row = cursor.fetchone()

@@ -12,7 +12,10 @@ from apps.core.services.coda_lavori.repository import (
     CodaLavoriRepository,
 )
 from apps.core.services.coda_lavori.scope import scope_key_da_emittenti
-from apps.core.services.auth_helpers import extract_identita_id_from_request
+from apps.core.services.auth_helpers import (
+    extract_emittente_attivo_from_request,
+    extract_identita_id_from_request,
+)
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_order_params
 from apps.core.services.permissions_resolver import PermissionResolver
@@ -26,6 +29,7 @@ from apps.core.api.payload_validators import (
     optional_uuid,
     qp_int_strict,
     qp_iso_date_optional,
+    qp_str,
 )
 from apps.core.api.success_responses import success_response
 from apps.vendite.services._fatturazione_job_helpers import (
@@ -52,8 +56,9 @@ from apps.vendite.services.pipeline_service import (
     esiti_fatturazione,
     fn_get_lotto_segnalazioni_summary,
     fn_get_lotto_task_runs,
-    fn_reset_lotto_draft,
-    fn_reset_lotto_fattura_draft,
+    fn_annulla_lotto_da_draft,
+    fn_riporta_lotto_a_draft,
+    fn_elimina_fattura_da_lotto_draft,
     numera_lotto,
     ristampa_lotto,
     run_lotto_pipeline,
@@ -314,12 +319,68 @@ class ApiResetLottoDraft(DomainAPIView):
     def post(self, request: Request, lotto_id: int) -> JsonResponse:
         # Scopo: Gestisce la logica interna del caso d'uso richiamato dall'endpoint.
         def _handler(_payload: dict[str, object]) -> dict[str, object]:
-            result = fn_reset_lotto_draft(lotto_id=lotto_id)
+            result = fn_annulla_lotto_da_draft(lotto_id=lotto_id)
             return result
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
+
+
+class ApiRiportaLottoADraft(DomainAPIView):
+    # Fase 6 — ritorno del lotto a bozza. E' un'AZIONE DELL'OPERATORE, non un
+    # task di pipeline: sta qui come endpoint e NON in `ALLOWED_TASK_FUNCTIONS`
+    # (raccomandazione del team DB nel brief §4), esattamente come le due
+    # funzioni di reset che le stanno accanto.
+    # Gate: riusa `reset_lotto_draft`, l'azione di processo dell'annullamento.
+    # E' la stessa classe di potere — cancellare fatture pre-fiscali di un
+    # lotto — e chi puo' annullare un lotto puo' a maggior ragione rimetterlo
+    # in lavorazione. Se un domani si volesse separare, serve un codename nuovo
+    # a catalogo: non si inventa qui.
+    area_funzionale = "vendite"
+    post_permission = "reset_lotto_draft"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=str,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Chiave idempotenza obbligatoria per endpoint write.",
+            )
+        ],
+        request=inline_serializer(
+            name="VenditeRiportaLottoADraftRequest",
+            fields={},
+        ),
+        responses={
+            200: inline_serializer(
+                name="VenditeRiportaLottoADraftResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeRiportaLottoADraftData",
+                        fields={
+                            "updated_lotti": serializers.IntegerField(),
+                            "updated_attivita": serializers.IntegerField(),
+                            "deleted_fatture": serializers.IntegerField(),
+                            "deleted_righe": serializers.IntegerField(),
+                            "riemesse_attivita": serializers.IntegerField(),
+                            "annullati_task_run": serializers.IntegerField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Gestisce la richiesta HTTP POST del relativo endpoint API.
+    def post(self, request: Request, lotto_id: int) -> JsonResponse:
+        # Scopo: Gestisce la logica interna del caso d'uso richiamato dall'endpoint.
+        def _handler(_payload: dict[str, object]) -> dict[str, object]:
+            return dict(fn_riporta_lotto_a_draft(lotto_id=lotto_id))
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
 class ApiResetLottoFatturaDraft(DomainAPIView):
@@ -360,7 +421,7 @@ class ApiResetLottoFatturaDraft(DomainAPIView):
     def post(self, request: Request, lotto_id: int, fattura_id: int) -> JsonResponse:
         # Scopo: Gestisce la logica interna del caso d'uso richiamato dall'endpoint.
         def _handler(_payload: dict[str, object]) -> dict[str, object]:
-            result = fn_reset_lotto_fattura_draft(lotto_id=lotto_id, fattura_id=fattura_id)
+            result = fn_elimina_fattura_da_lotto_draft(lotto_id=lotto_id, fattura_id=fattura_id)
             return result
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
@@ -631,6 +692,16 @@ class ApiLottoDetail(DomainAPIView):
                             "emittente_soggetto_ruolo_id": serializers.IntegerField(allow_null=True),
                             "data_insert": serializers.CharField(allow_null=True),
                             "user_insert": serializers.CharField(),
+                            # Blob capability (script.fn_available_actions_lotto):
+                            # assente se il capability layer e' rotto (fallback
+                            # graceful nel service) → required=False.
+                            "available_actions": serializers.ListField(
+                                child=serializers.DictField(), required=False,
+                            ),
+                            "can_change_state": serializers.BooleanField(required=False),
+                            "stato_codice": serializers.CharField(
+                                required=False, allow_null=True,
+                            ),
                         },
                     ),
                     "meta": serializers.DictField(required=False),
@@ -638,7 +709,7 @@ class ApiLottoDetail(DomainAPIView):
             )
         },
     )
-    # Scopo: Restituisce via GET la testata del lotto (scope emittente).
+    # Scopo: Restituisce via GET la testata del lotto + capability (scope emittente).
     def get(self, request: Request, lotto_id: int) -> JsonResponse:
         auth_user_id = get_scope_user_id(request)
         data = fn_get_lotto(lotto_id=lotto_id, auth_user_id=auth_user_id)
@@ -916,6 +987,8 @@ class ApiCommessaAttivita(DomainAPIView):
             OpenApiParameter(name="competenza_mese", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro mese di competenza (YYYY-MM-DD)."),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False, description="Righe per pagina (default 50, max 200)."),
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False, description="Offset paginazione (default 0)."),
+            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False, description="Colonna di ordinamento (id, data_attivita, competenza_mese, segment_key, quantita, prezzo_snapshot, stato_approvazione, stato_emissione). Assente = ordine storico per id."),
+            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False, description="Direzione ordinamento: asc | desc (default asc)."),
         ],
         responses={
             200: inline_serializer(
@@ -941,6 +1014,8 @@ class ApiCommessaAttivita(DomainAPIView):
         competenza_mese = request.query_params.get("competenza_mese") or None
         limit = optional_int({"limit": request.query_params.get("limit", "50")}, "limit")
         offset = optional_int({"offset": request.query_params.get("offset", "0")}, "offset")
+        # order_by/order_dir passano al service, che li valida contro la
+        # whitelist ATTIVITA_SORT_COLUMNS (specchio della fn DB).
         data = fn_list_commessa_attivita(
             commessa_id=commessa_id,
             stato_emissione=stato_emissione,
@@ -948,6 +1023,8 @@ class ApiCommessaAttivita(DomainAPIView):
             competenza_mese=competenza_mese,
             limit=limit,
             offset=offset,
+            order_by=qp_str(request.query_params.get("order_by")),
+            order_dir=qp_str(request.query_params.get("order_dir")),
         )
         return success_response(data)
 
@@ -1352,6 +1429,14 @@ def _accoda_job_fatturazione(
         code="E_VALIDATION_INPUT",
         message="Identità operatore non risolta dal token.",
     )
+    # Emittente ATTIVO congelato ora: il worker esegue minuti dopo, senza
+    # token, e senza questo valore girerebbe in modalità globale — un giro
+    # chiesto «dentro A» toccherebbe anche B. Va catturato PRIMA dello scope,
+    # perché lo scope stesso ne risente: dal 2026-08-04 le funzioni di scope
+    # intersecano con l'emittente attivo, quindi `emittente_ids` (e con esso
+    # `scope_key`, che governa dedup e ownership del polling) riflette già
+    # l'impersonazione. Le due cose devono raccontare la stessa storia.
+    emittente_attivo_id = extract_emittente_attivo_from_request(request)
     # Scope emittente CATTURATO ora (None = admin globale): serve al vincolo
     # DB run_as↔scope, all'idempotenza di business e all'audit.
     emittente_ids = PermissionResolver.get_emittenti_ids(user)
@@ -1391,6 +1476,7 @@ def _accoda_job_fatturazione(
             "auth_user_id": int(user.id),
             "username": str(user.username),
             "identita_id": identita_id,
+            "emittente_attivo_id": emittente_attivo_id,
             "emittente_ids": emittente_ids,
             # Token di ownership del polling: scope-based (chi condivide lo
             # scope vede il job condiviso via dedup). Vedi scope_key_da_emittenti.

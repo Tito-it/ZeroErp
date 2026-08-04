@@ -17,21 +17,29 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import row_to_dict, rows_to_list, sql_order_direction
+from apps.core.db._helpers import row_to_dict, rows_to_list, sql_order_direction, sql_tiebreak_direction
 
 
 # Whitelist colonne ammesse per ORDER BY: protegge da SQL injection sul
 # parametro order_by ricevuto dal frontend. Gli alias mappano a espressioni
 # sicure lato DB.
+#
+# `emittente_ragione_sociale` appartiene al NUCLEO sempre ordinabile (regola di
+# Tid: data del contesto, numero, ragione sociale, billing account, id fiscale,
+# utility, totale, stato). Mancava, ed era l'unica delle 11 a mancare: la
+# colonna era `ordinabile=f` nel seed (riga 371) e il team DB la ribalta a `t`
+# ORA che la whitelist esiste — mai prima, o la freccia comparirebbe a video e
+# ripiegherebbe in silenzio sul default.
 _ORDER_COLS: dict[str, str] = {
     "categoria_codice": "cc.codice",
     "categoria_descrizione": "cc.descrizione",
     "utility_codice": "u.codice",
     "utility_descrizione": "u.descrizione",
+    "emittente_ragione_sociale": "s.ragione_sociale_completa",
     "listino_codice": "l.codice",
     "listino_descrizione": "l.descrizione",
     "valido_dal": "m.valido_dal",
-    "valido_al": "m.valido_al",
+    "valido_al": "COALESCE(m.valido_al, 'infinity'::date)",
     "attivo": "m.attivo",
     "data_insert": "m.data_insert",
     "data_update": "m.data_update",
@@ -51,7 +59,15 @@ _SELECT_COLS = """
     u.descrizione AS utility_descrizione,
     m.emittente_soggetto_ruolo_id,
     COALESCE(tr.codice_interno, tr.codice) AS emittente_codice_ruolo,
-    s.ragione_sociale AS emittente_ragione_sociale,
+    -- ⚠️ `ragione_sociale_completa`, NON `ragione_sociale`: la seconda e'
+    -- NULL su ogni persona fisica (11 soggetti su 26 alla misura del brief
+    -- `brief-emittente-ragione-sociale-dal-soggetto.md`), dove il nome sta in
+    -- cognome/nome. La colonna completa e' GENERATED ALWAYS AS
+    -- COALESCE(ragione_sociale, cognome || ' ' || nome), quindi copre entrambi
+    -- i casi. Il difetto era invisibile solo perche' i due emittenti in
+    -- tabella sono societa': si sarebbe visto al primo emittente ditta
+    -- individuale. Corretto il 2026-08-02 su segnalazione del team DB.
+    s.ragione_sociale_completa AS emittente_ragione_sociale,
     m.classe_utenza_id,
     clu.codice AS classe_utenza_codice,
     clu.descrizione AS classe_utenza_descrizione,
@@ -110,6 +126,7 @@ class CategorieClientiListiniRepository:
     ) -> tuple[list[dict[str, Any]], int]:
         order_column = _ORDER_COLS.get(order_by, _ORDER_COLS["valido_dal"])
         direction = sql_order_direction(order_dir)
+        tiebreak_dir = sql_tiebreak_direction(direction)
         safe_limit = max(1, min(int(limit), 200))
         safe_offset = max(0, int(offset))
 
@@ -164,7 +181,7 @@ class CategorieClientiListiniRepository:
                 SELECT {_SELECT_COLS}
                   {_FROM_JOINS}
                 {where_clause}
-                 ORDER BY {order_column} {direction}, m.id ASC
+                 ORDER BY {order_column} {direction}, m.id {tiebreak_dir}
                  LIMIT %s OFFSET %s
                 """,  # noqa: S608
                 params + [safe_limit, safe_offset],

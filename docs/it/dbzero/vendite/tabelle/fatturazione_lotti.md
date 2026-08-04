@@ -24,6 +24,7 @@
 | tipo_lotto | text | NO | 'MASSIVO'::text |
 | stato_operativo | text | NO | 'APERTO'::text |
 | emittente_soggetto_ruolo_id | bigint | NO |  |
+| riaperto_il | timestamp with time zone | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

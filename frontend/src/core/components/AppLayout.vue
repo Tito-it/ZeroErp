@@ -6,6 +6,7 @@ import { useRouter } from 'vue-router'
 import Drawer from 'primevue/drawer'
 import AppSidebar from './AppSidebar.vue'
 import AppTopbar from './AppTopbar.vue'
+import EmittenteAttivoDialog from './EmittenteAttivoDialog.vue'
 import ContentTabs from './ContentTabs.vue'
 import AppBreadcrumb from './AppBreadcrumb.vue'
 import SplitReadonlyPanel from './SplitReadonlyPanel.vue'
@@ -118,6 +119,10 @@ function onMobileNavigate() {
         :show-hamburger="ui.isMobile"
         @toggle-menu="mobileMenuOpen = !mobileMenuOpen"
       />
+      <!-- Prima scelta dell'emittente di lavoro: bloccante, e solo per chi
+           non ha mai scelto (impersonazione di scope). Vive nel layout perche'
+           deve comparire su qualunque rotta l'utente atterri dopo il login. -->
+      <EmittenteAttivoDialog />
       <ContentTabs />
       <main class="app-content" :class="{ 'split-active': tabs.isSplit }">
         <!-- Pannello primario (sempre presente) -->

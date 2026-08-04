@@ -14,6 +14,7 @@ import { syncUserLanguage } from '../core/i18n'
 import { useUiStore } from './ui'
 import { useNavigationStore } from './navigation'
 import { isJwtExpired } from '../core/jwt'
+import { switchEmittenteAttivo } from '../core/api/emittenteAttivo'
 
 export const useAuthStore = defineStore('auth', () => {
   const accessToken = ref(local.get(STORAGE_KEYS.ACCESS_TOKEN))
@@ -250,9 +251,46 @@ export const useAuthStore = defineStore('auth', () => {
       // `soggetto_ruolo_id` (senza prefisso). E' la PK verso soggetti_ruoli.
       soggettoRuoloId: ef.soggetto_ruolo_id ?? null,
       codice: ef.emittente_codice ?? null,
-      ragioneSociale: ef.ragione_sociale_completa ?? ef.emittente_descrizione ?? null,
+      // `ragione_sociale_completa` arriva dal merge con
+      // fn_get_soggetto_dati_by_ruolo ed e' sempre presente: il vecchio fallback
+      // su `emittente_descrizione` (etichetta interna dell'emittente, in via di
+      // eliminazione) era codice morto — tolto il 2026-08-02, vedi
+      // `brief-emittente-ragione-sociale-dal-soggetto.md`.
+      ragioneSociale: ef.ragione_sociale_completa ?? null,
     }
   })
+
+  // Impersonazione di scope: dentro quale emittente sta lavorando QUESTA
+  // sessione. Arriva da /me/ (blocco `emittente_attivo`), che lo legge dal
+  // claim JWT — non dalla preferenza salvata: dopo un passaggio a «Tutti gli
+  // emittenti» i due valori divergono, e comanda il claim.
+  //
+  // ⚠️ Da non confondere con `emittenteCorrente`, che resta l'emittente di
+  // PERMESSO dell'operatore (la sua riga in user_emittenti_fiscali). Per un
+  // operatore i due coincidono sempre; per il super admin il primo e' una
+  // scelta e il secondo e' null.
+  const emittenteAttivo = computed(() => user.value?.emittente_attivo ?? null)
+
+  // Modalita' «Tutti gli emittenti»: nessun emittente attivo. E' SOLA LETTURA
+  // per costruzione, non per scelta di UI — `emittente_fiscale_id` e' NOT NULL
+  // sui documenti di vendita e senza emittente attivo il DB non ha con cosa
+  // valorizzarlo (rifiuta con `*_EMITTENTE_NON_RISOLTO`). I verbi di creazione
+  // vanno spenti qui, per non far scoprire il vincolo a fine compilazione.
+  const isModalitaGlobale = computed(
+    () => emittenteAttivo.value?.modalita_globale === true
+  )
+
+  // Mostra o no la combo in topbar: l'operatore non sceglie, il suo emittente
+  // e' un permesso.
+  const puoScegliereEmittente = computed(
+    () => emittenteAttivo.value?.puo_scegliere === true
+  )
+
+  // Scelta mai fatta (o decaduta): il FE impone il dialog iniziale. Distinto
+  // da «ha scelto Tutti», che non deve riproporre nulla.
+  const deveScegliereEmittente = computed(
+    () => emittenteAttivo.value?.deve_scegliere === true
+  )
 
   // Scopo: Domini visibili. Filtri applicati:
   //   - adminOnly: solo SUPER_ADMIN (es. Amm. Software).
@@ -322,6 +360,31 @@ export const useAuthStore = defineStore('auth', () => {
     return azioniAbilitate.value[codename] === true
   }
 
+  // Scopo: Cambia l'emittente attivo di sessione e riparte pulito.
+  //        `emittenteFiscaleId = null` = «Tutti gli emittenti».
+  //
+  //        I token vengono SOSTITUITI prima del ricaricamento: l'emittente
+  //        attivo vive in un claim JWT, quindi finche' i vecchi token restano
+  //        in localStorage la sessione continua a lavorare nell'emittente
+  //        precedente. Salvarli e' la parte che non puo' fallire — per questo
+  //        avviene qui e non nel componente.
+  //
+  //        Il ricaricamento e' un `window.location.assign('/')` deliberato, non
+  //        una navigazione del router: cambiare emittente cambia CIO' CHE SI
+  //        VEDE ovunque, e mezza applicazione ha stato in cache (KeepAlive
+  //        delle viste, store user-scoped, cache lookup a livello di modulo).
+  //        Ripartire dal boot e' l'unico modo per non lasciare in giro dati
+  //        dell'emittente precedente, ed e' esattamente il rischio che
+  //        l'impersonazione esiste per evitare. Costa un secondo.
+  async function cambiaEmittenteAttivo(emittenteFiscaleId) {
+    const esito = await switchEmittenteAttivo(emittenteFiscaleId, refreshToken.value)
+    if (!esito?.access || !esito?.refresh) {
+      throw new Error('Cambio emittente senza token: sessione non aggiornata')
+    }
+    setTokens(esito.access, esito.refresh)
+    window.location.assign('/')
+  }
+
   // Scopo: Getter per determinare se l'operatore deve cambiare password.
   const mustChangePassword = computed(() =>
     passwordChangeRequired.value || !!user.value?.deve_cambiare_password
@@ -344,6 +407,11 @@ export const useAuthStore = defineStore('auth', () => {
     isShopCustomer,
     isAdminGlobale,
     emittenteCorrente,
+    emittenteAttivo,
+    isModalitaGlobale,
+    puoScegliereEmittente,
+    deveScegliereEmittente,
+    cambiaEmittenteAttivo,
     mustChangePassword,
     passwordChangeRequired,
     displayName,

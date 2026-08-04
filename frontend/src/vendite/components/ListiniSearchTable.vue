@@ -1,6 +1,13 @@
 <script setup>
-// Scopo: DataTable paginata listini con search, filtro utility e attivo.
+// Scopo: Lista listini configurabile
+//        (`<ListaConfigurabile codice="vendite.listini">`): colonne, ordine e
+//        visibilita' dal catalogo `ui.lista_colonna`, con ritiro dinamico e
+//        personalizzazione per utente.
 // Row expansion: mostra le versioni del listino sotto la riga (default aperto).
+//        E' un master-detail, quindi la pagina PILOTA l'espansione
+//        (`v-model:expanded-rows`) invece di lasciarla alla lista: serve
+//        "espandi tutte", il toggle da azione di riga e il fetch lazy delle
+//        versioni. Il dettaglio sta nello slot `row-expansion`.
 // Pulsanti riga listino: toggle versioni (chiude/apre expansion), test resolver.
 // Mini-tabella versioni nell'expansion: + nuova versione, transizioni stato,
 // gestione righe prezzo (apre VersioneDrawer dal parent).
@@ -8,7 +15,7 @@ import { ref, onMounted, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useListiniStore } from '../stores/listini'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useSearchTable } from '../../core/composables/useSearchTable'
+import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { lookupCodici } from '../../core/apiCore'
@@ -26,6 +33,8 @@ import Tag from 'primevue/tag'
 import AttivoTag from '../../core/components/AttivoTag.vue'
 import Button from 'primevue/button'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
+import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
@@ -55,8 +64,15 @@ const { confirmDelete } = useConfirmAction()
 // confondere gli operatori. Future: estendere a un'azione processo dedicata
 // se servono ruoli intermedi (es. "supporto pricing").
 const auth = useAuthStore()
-const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
-  defaultSortField: 'descrizione'
+const {
+  searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
+  listaRef, dirty, onConfigLoaded, pageActions: pageActionsBase,
+} = useListaConfigurabilePage(store, {
+  newTooltipKey: 'vendite.listini.nuovo_listino',
+  onNew: () => emit('new'),
+  // Allineato al preset del seed (`codice asc`).
+  searchTableOptions: { defaultSortField: 'codice' },
+  extraActions: () => extraPageActions.value,
 })
 
 const utilityFilter = ref(null)
@@ -101,7 +117,8 @@ function onAttivoChange() {
   applyFilters()
 }
 
-function onRowClick(event) { emit('row-click', event.data) }
+// `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
+function onRowClick(data) { emit('row-click', data) }
 
 // Espande tutte le righe correntemente in lista. Il preload delle versioni
 // viene gia' fatto dallo store dentro fetchList; qui ci limitiamo a mappare
@@ -116,35 +133,30 @@ function collapseAllRows() {
   expandedRows.value = {}
 }
 
-async function toggleAllRows() {
+function toggleAllRows() {
   if (allRowsExpanded.value) {
     collapseAllRows()
     return
   }
   expandAllRows()
-  await Promise.all(
-    store.items
-      .filter(it => !store.versioniByListino[it.id])
-      .map(it => store.fetchVersioniListino(it.id))
-  )
+  // Il caricamento delle versioni mancanti lo fa il watch qui sotto: vale per
+  // QUALUNQUE strada porti una riga ad aprirsi, non solo per questo pulsante.
 }
 
-// Toggle expansion di una singola riga (usato dal pulsante "versioni" della riga).
-// Il fetch lazy serve per i casi in cui il preload del store e' fallito o
-// quando l'utente collassa-riapre senza cambiare pagina.
-async function toggleExpand(listino) {
-  const next = { ...expandedRows.value }
-  if (next[listino.id]) {
-    delete next[listino.id]
-    expandedRows.value = next
-  } else {
-    next[listino.id] = true
-    expandedRows.value = next
-    if (!store.versioniByListino[listino.id]) {
-      await store.fetchVersioniListino(listino.id)
-    }
-  }
-}
+// Scopo: carica le versioni delle righe appena aperte che non le hanno in
+// cache. Il preload dello store dentro `fetchList` copre il caso normale;
+// questo e' la rete per quando fallisce — senza, il pannello resterebbe con lo
+// spinner all'infinito, perche' nessun altro andrebbe a caricarle.
+//
+// Sta su un watch e non dentro un handler perche' i modi di aprire una riga
+// sono piu' d'uno (chevron della lista, "espandi tutte", ripristino di stato):
+// legarlo a un pulsante solo e' esattamente il difetto che aveva la versione
+// precedente, dove il chevron apriva senza caricare nulla.
+watch(expandedRows, (aperte) => {
+  Object.keys(aperte || {})
+    .filter(id => aperte[id] && !store.versioniByListino[id])
+    .forEach(id => store.fetchVersioniListino(Number(id)))
+})
 
 // Stato dialog conferma attivazione (D3) — dichiarato prima delle funzioni
 // che lo referenziano per evitare TDZ in caso di chiamata sincrona durante setup.
@@ -208,10 +220,10 @@ function onEliminaListino(listino) {
   })
 }
 
-// Scopo: azioni standard della toolbar lista. Il componente PageActionsBar
-// decide la resa responsive: primaria visibile, utility inline desktop,
-// menu compatto su schermi piccoli.
-const pageActions = computed(() => [
+// Scopo: azioni utility SPECIFICHE di questa pagina, inserite dallo scaffolding
+// prima di "Nuovo". Reload/personalizza/new arrivano da
+// `useListaConfigurabilePage`, che le tiene una volta sola per tutte le liste.
+const extraPageActions = computed(() => [
   {
     key: 'toggle-all-versioni',
     kind: 'utility',
@@ -237,33 +249,17 @@ const pageActions = computed(() => [
     visible: auth.isSuperAdmin || auth.isActionAllowed(PRICING_ACTIONS.OVERRIDE),
     command: () => emit('test-resolver'),
   },
-  {
-    key: 'reload',
-    kind: 'utility',
-    label: t('common.reload_list'),
-    icon: MANAGE_ICONS.RELOAD,
-    command: reload,
-  },
-  {
-    key: 'new',
-    kind: 'primary',
-    label: t('common.new'),
-    tooltip: t('vendite.listini.nuovo_listino'),
-    icon: MANAGE_ICONS.ADD,
-    hideWhenReadonly: true,
-    command: () => emit('new'),
-  },
 ])
 
-// Scopo: azioni di riga del listino (toggle expansion + elimina conditional).
+const pageActions = pageActionsBase
+
+// Scopo: azioni di riga del listino. Niente toggle versioni: ad aprire e
+// chiudere la riga ci pensa il chevron di `<ListaConfigurabile>`, a sinistra.
+// Prima della conversione quel chevron non c'era e il toggle stava qui; averli
+// entrambi non era solo ridondante — i due comandi si disallineavano a video e,
+// peggio, solo questo caricava le versioni mancanti.
 function buildListinoActions(data) {
   return [
-    {
-      key: 'toggle-versioni',
-      label: expandedRows.value[data.id] ? t('vendite.listini.nascondi_versioni') : t('vendite.listini.mostra_versioni'),
-      icon: expandedRows.value[data.id] ? MANAGE_ICONS.COLLAPSE : MANAGE_ICONS.EXPAND,
-      command: () => toggleExpand(data),
-    },
     {
       key: 'elimina-listino',
       label: t('vendite.listini.elimina_listino'),
@@ -360,46 +356,43 @@ onMounted(() => store.fetchList())
           <AlertScadenzeWidget />
         </template>
         <template #suffix>
+          <ListaConfigStatusTag :dirty="dirty" />
           <ReadonlyBadge />
         </template>
       </PageActionsBar>
     </div>
 
-    <DataTable
-      :value="store.items"
+    <ListaConfigurabile
+      ref="listaRef"
+      codice="vendite.listini"
+      v-model:expanded-rows="expandedRows"
+      :rows="store.items"
+      :total="store.totalRecords"
       :loading="store.loading"
-      v-model:expandedRows="expandedRows"
-      v-bind="paginatorProps"
-      lazy removable-sort striped-rows scrollable scrollHeight="flex"
-      class="app-datatable"
-      @page="onPage" @sort="onSort" @row-click="onRowClick"
-      selection-mode="single" data-key="id"
+      :paginator-options="paginatorProps"
+      :page="tablePage"
+      :sort-field="paginatorProps.sortField"
+      :sort-order="paginatorProps.sortOrder"
+      @page="onPage"
+      @sort="onSort"
+      @row-click="onRowClick"
+      @config-loaded="onConfigLoaded"
     >
-      <Column field="codice" :header="t('vendite.listini.col_codice')" sortable style="width: 140px;" />
-      <Column field="descrizione" :header="t('vendite.listini.col_descrizione')" sortable style="min-width: 200px;" />
-      <Column field="utility_descrizione" :header="t('vendite.listini.col_utility')" sortable style="width: 150px;">
-        <template #body="{ data }">
-          <span>{{ data.utility_descrizione || t('vendite.listini.commercio') }}</span>
-        </template>
-      </Column>
-      <Column field="tipologia_descrizione" :header="t('vendite.listini.col_tipologia')" sortable style="width: 150px;">
-        <template #body="{ data }">
-          <span>{{ data.tipologia_descrizione || '—' }}</span>
-        </template>
-      </Column>
-      <Column field="versioni_count" :header="t('vendite.listini.col_versioni')" style="width: 80px;" />
-      <Column field="attivo" :header="t('vendite.listini.col_attivo')" style="width: 80px;">
-        <template #body="{ data }">
-          <AttivoTag :active="data.attivo" />
-        </template>
-      </Column>
-      <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false" frozen alignFrozen="right">
-        <template #body="{ data }">
-          <RowActionsMenu :row="data" :actions="buildListinoActions(data)" />
-        </template>
-      </Column>
+      <template #cell-utility_descrizione="{ data }">
+        <span>{{ data.utility_descrizione || t('vendite.listini.commercio') }}</span>
+      </template>
+      <template #cell-tipologia_descrizione="{ data }">
+        <span>{{ data.tipologia_descrizione || '—' }}</span>
+      </template>
+      <template #cell-attivo="{ data }">
+        <AttivoTag :active="data.attivo" />
+      </template>
 
-      <template #expansion="{ data: listino }">
+      <template #actions="{ data, compact }">
+        <RowActionsMenu :row="data" :actions="buildListinoActions(data)" :force-compact="compact" />
+      </template>
+
+      <template #row-expansion="{ data: listino }">
         <div class="app-row-expansion">
           <div class="app-row-expansion__header">
             <span class="app-row-expansion__title">
@@ -445,7 +438,7 @@ onMounted(() => store.fetchList())
           </DataTable>
         </div>
       </template>
-    </DataTable>
+    </ListaConfigurabile>
 
     <AttivaVersioneDialog
       :visible="attivaDialogVisible"

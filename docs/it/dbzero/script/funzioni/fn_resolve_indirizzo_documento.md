@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_resolve_indirizzo_documento.md" %}
 # ⚙️ Funzione `fn_resolve_indirizzo_documento`
 
 ```sql

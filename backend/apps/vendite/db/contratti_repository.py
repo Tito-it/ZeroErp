@@ -27,6 +27,7 @@ from apps.core.db._helpers import (
     row_to_dict,
     rows_to_list,
     sql_order_direction,
+    sql_tiebreak_direction,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
@@ -58,7 +59,7 @@ _ORDER_COLS_CONTRATTI: dict[str, str] = {
     "numero": "v.numero",
     "data": "v.data",
     "valido_dal": "v.valido_dal",
-    "valido_al": "v.valido_al",
+    "valido_al": "COALESCE(v.valido_al, 'infinity'::date)",
     "ba_codice": "v.ba_codice",
     "ragione_sociale_completa": "v.ragione_sociale_completa",
     "id_fiscale_univoco_cf_piva": "v.id_fiscale_univoco_cf_piva",
@@ -75,7 +76,7 @@ _ORDER_COLS_CONTRATTI: dict[str, str] = {
     # uscite il 2026-07-31: nessuna colonna del catalogo le usa come
     # `campo_sorgente` (le prime due sono tecniche — danno la severity al Tag di
     # stato, nel seed sono invisibili e `ordinabile=f`; la colonna Emittente
-    # legge `emittente_fiscale_descrizione`). Una voce che nessuna colonna puo'
+    # legge `emittente_ragione_sociale`). Una voce che nessuna colonna puo'
     # richiedere e' una capacita' irraggiungibile, non una riserva.
     "categoria_cliente_snapshot_codice": "v.categoria_cliente_snapshot_codice",
     "data_insert": "v.data_insert",
@@ -97,8 +98,8 @@ _SELECT_COLS_CONTRATTO = """
     -- questi campi il display resta vuoto in modifica nonostante
     -- `emittente_fiscale_id` valorizzato.
     ef.codice           AS emittente_fiscale_codice,
-    COALESCE(s_ef.ragione_sociale_completa, ef.descrizione)
-                        AS emittente_fiscale_descrizione,
+    s_ef.ragione_sociale_completa
+                        AS emittente_ragione_sociale,
     c.billing_account_id,
     -- soggetto_ruolo del cliente (BA): serve al FE per la gestione
     -- indirizzi documento (elenco anagrafico cascata).
@@ -331,6 +332,7 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
     ) -> tuple[list[dict[str, Any]], int]:
         order_column = _ORDER_COLS_CONTRATTI.get(order_by, _ORDER_COLS_CONTRATTI["data"])
         direction = sql_order_direction(order_dir)
+        tiebreak_dir = sql_tiebreak_direction(direction)
         # `max_limit`: lista cap 200 (gia' via parse_list_params), export fino a
         # EXPORT_MAX_ROWS+1 per non troncare in silenzio (guard su COUNT reale).
         safe_limit = max(1, min(int(limit), max_limit))
@@ -422,7 +424,7 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
                   FROM vendite.vw_contratti_lista v
                   LEFT JOIN config.sorgenti s ON s.id = v.frontiera_tipo_id
                 {where_clause}
-                 ORDER BY {order_column} {direction}, v.id ASC
+                 ORDER BY {order_column} {direction}, v.id {tiebreak_dir}
                  LIMIT %s OFFSET %s
                 """,  # noqa: S608
                 params + [safe_limit, safe_offset],

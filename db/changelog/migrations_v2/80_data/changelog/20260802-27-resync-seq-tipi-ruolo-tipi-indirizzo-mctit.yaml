@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I.5 — matrice indirizzi del ruolo EF: risincronizzazione della sequence
+#   (piano-db-satelliti-fattura.md, passo I.5 · brief intestazione §3.6 e §10.3)
+#
+# COSA ACCOMPAGNA. Il seed vero e' l'append di 5 righe al CSV
+#   80_data/sql/config/tipi_ruolo_tipi_indirizzo.csv (id 16-20, ruolo 7 EMITT_FISC
+#   -> SEDE-LEG, DOM-FISC, SEDE-OP, POSTALE, RESID). Non serve un changeSet per
+#   caricarle: il loader 20251130-51 e' runOnChange e ripesca il file.
+#
+# PERCHE' ALLORA QUESTO FILE. Perche' `config.tipi_ruolo_tipi_indirizzo.id` e'
+#   servito da una SEQUENCE (`config.ruoli_tipi_indirizzo_id_seq`) e il CSV
+#   assegna gli id ESPLICITAMENTE: un INSERT con id esplicito **non avanza la
+#   sequence**. Dopo il caricamento la tabella arriverebbe a 20 con la sequence
+#   ferma a 15, e i prossimi cinque inserimenti applicativi fallirebbero uno
+#   dopo l'altro su chiave duplicata.
+#   ⚠️ Non e' teorico: questa tabella ha un CRUD amministrativo lato BE (il
+#   PayloadValidator la elenca fra i consumer), quindi la sequence viene usata
+#   davvero. E' la differenza con le tabelle della pipeline, che si popolano
+#   SOLO da CSV e per cui il resync non serve.
+#   Misurato prima dell'intervento: max(id) = 15 e last_value = 15, nessuna
+#   deriva pregressa — chi ha aggiunto le righe 14 e 15 aveva risincronizzato.
+#
+# FORMA IDEMPOTENTE: `GREATEST(max(id), last_value)`. Rieseguirlo non fa mai
+#   arretrare la sequence, e se un giorno qualcuno inserisse dall'applicazione
+#   PRIMA che questo giri, il valore piu' alto resta quello buono.
+#
+# ── LA DECISIONE DI MERITO, gia' presa e qui solo eseguita ───────────────────
+# `obbligatorio = false` su tutte e cinque, e NON e' una cautela: il flag ha i
+#   denti (`trgfn_soggetti_ruoli_guard_indirizzi_required` solleva
+#   E_INDIRIZZO_OBBLIGATORIO_MANCANTE). Con ZERO indirizzi sui ruoli EF,
+#   marcare SEDELEG obbligatorio romperebbe ogni emittente al primo
+#   aggiornamento — e a torto, perche' quel guard pretende l'indirizzo sul
+#   RUOLO mentre il modello accetta come valido quello del SOGGETTO. L'obbligo
+#   «la fattura deve avere la sede dell'emittente» appartiene al DOCUMENTO ed e'
+#   gia' presidiato dal guard di uscita da DRAFT (575).
+#
+# LA LISTA E' COMPLETA ALLA PRIMA RIGA, e il motivo e' il punto dell'intera
+#   operazione: seedare la matrice **non aggiunge un permesso, sostituisce
+#   l'assenza di regole con una regola** — da quel momento tutto cio' che non e'
+#   elencato e' VIETATO. Da qui i cinque tipi: SEDE-OP perche' il «luogo fisico»
+#   di una societa' e' la sede operativa e non la residenza; RESID perche' un
+#   emittente puo' essere una ditta individuale o un professionista, e la
+#   matrice e' per RUOLO e non per tipo di soggetto. SPED resta fuori: e' un
+#   fatto logistico, e aggiungere un tipo dopo e' banale mentre toglierlo no.
+#
+# ⚠️ RETTIFICA a una premessa che girava. Il brief §3.6 motivava la richiesta
+#   con «gli emittenti hanno oggi SEDE-LEG sul layer RUOLO grazie al fail-open».
+#   Misurato (gia' in §10.3, riconfermato il 2026-08-02): i ruoli EF hanno
+#   **ZERO indirizzi**, e le sedi stanno tutte sul layer SOGGETTO. Il fail-open
+#   quindi non regge nulla — non e' un puntello, e' un buco non sfruttato. La
+#   conclusione del brief resta valida (seedare chiude un buco a orologeria),
+#   cade solo l'argomento d'urgenza. Ed e' proprio perche' oggi non serve che si
+#   fa adesso: «oggi non serve» e' l'argomento che ha lasciato vuota per mesi la
+#   corsia GIORNALIERO dello step EMESSA.
+#
+# ⚠️ Il numero «42 emittenti su 42» che circola nel piano §9 e nel brief §10.3
+#   NON conta gli emittenti: gli emittenti fiscali sono **2**. Conta le coppie
+#   billing_account -> emittente (oggi 43). La meta' che importa — zero sul
+#   layer RUOLO — e' confermata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260802-27-resync-seq-tipi-ruolo-tipi-indirizzo-mctit.yaml
+
+  - changeSet:
+      id: 20260802-27-resync-seq-tipi-ruolo-tipi-indirizzo
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        I.5: risincronizza config.ruoli_tipi_indirizzo_id_seq dopo l'append delle
+        5 righe della matrice indirizzi per il ruolo EF (id espliciti da CSV non
+        avanzano la sequence, e la tabella ha un CRUD applicativo).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SELECT setval(
+                  'config.ruoli_tipi_indirizzo_id_seq',
+                  GREATEST(
+                      (SELECT COALESCE(max(id), 1) FROM config.tipi_ruolo_tipi_indirizzo),
+                      (SELECT last_value FROM config.ruoli_tipi_indirizzo_id_seq)
+                  ),
+                  true
+              );

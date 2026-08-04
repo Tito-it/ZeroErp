@@ -67,10 +67,13 @@ const soggettoSelezionato = ref(null)
 // `config.parameters` con cascata user->group->default (Fase 3 — A5).
 // Il campo `attivo` ha sempre `true` lato FE: la colonna DB ha gia' DEFAULT
 // true, non passa per parameters (vedi note brief DB 2026-04-29).
+// `descrizione` non fa piu' parte del form dal 2026-08-02: la colonna e' stata
+// droppata (`20260802-22`) e la denominazione dell'emittente e' la ragione
+// sociale del SOGGETTO selezionato sopra — si cambia di la', non qui.
+// Vedi `brief-emittente-ragione-sociale-dal-soggetto.md`.
 function defaultForm() {
   return {
     codice: '',
-    descrizione: '',
     attivo: true,
     regime_fiscale_rf: '',
     bollo_auto: false,
@@ -124,7 +127,6 @@ function resetForm() {
 function populateFormFromDetail(d) {
   form.value = {
     codice: d.codice || '',
-    descrizione: d.descrizione || '',
     attivo: !!d.attivo,
     regime_fiscale_rf: d.regime_fiscale_rf || '',
     bollo_auto: !!d.bollo_auto,
@@ -178,18 +180,19 @@ watch(() => form.value.bollo_auto, (v) => {
   if (!v) form.value.bollo_soglia = null
 })
 
+// In EDIT non c'e' piu' un campo obbligatorio da validare (`descrizione` era
+// l'unico): i restanti sono opzionali o hanno default, quindi il salvataggio e'
+// sempre ammesso. In CREATE restano soggetto con P.IVA e codice.
 const canSave = computed(() => {
-  if (isEdit.value) return form.value.descrizione.trim().length > 0
+  if (isEdit.value) return true
   return !!soggettoSelezionato.value
       && soggettoHasPartitaIva.value
       && form.value.codice.trim().length > 0
-      && form.value.descrizione.trim().length > 0
 })
 
 async function save() {
   if (!canSave.value) return
   const payload = {
-    descrizione: form.value.descrizione.trim(),
     attivo: form.value.attivo,
     regime_fiscale_rf: form.value.regime_fiscale_rf || null,
     bollo_auto: form.value.bollo_auto,
@@ -282,10 +285,10 @@ function close() {
               />
             </div>
 
-            <div class="form-field">
-              <label>{{ t('amministrazione.emittenti_fiscali.field_descrizione') }} *</label>
-              <InputText v-model="form.descrizione" maxlength="200" class="w-full" />
-            </div>
+            <!-- Nessun campo "descrizione": la denominazione dell'emittente e'
+                 la ragione sociale del soggetto, gia' mostrata dal
+                 SoggettoMessageBanner qui sopra (colonna droppata il
+                 2026-08-02, `brief-emittente-ragione-sociale-dal-soggetto.md`). -->
 
             <h4 class="mt-3">{{ t('amministrazione.emittenti_fiscali.section_fiscale') }}</h4>
 

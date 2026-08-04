@@ -968,7 +968,7 @@ def aggiorna_nota_pratica(nota_id: int, pratica_id: int, contenuto: str) -> None
     )
     repo = PraticheRepository()
     updated = repo.update_nota_pratica(nota_id, pratica_id, contenuto.strip())
-    ErrorManager.require(updated, code="E_NOT_FOUND", message=f"Nota {nota_id} non trovata per pratica {pratica_id}")
+    ErrorManager.require(updated, code="E_NOTA_NOT_FOUND", message=f"Nota {nota_id} non trovata per pratica {pratica_id}")
 
 
 # Scopo: Elimina una nota.
@@ -978,7 +978,7 @@ def elimina_nota_pratica(nota_id: int, pratica_id: int) -> None:
     ErrorManager.require(nota_id > 0, code="E_INVALID_ID", message="nota_id deve essere > 0")
     repo = PraticheRepository()
     deleted = repo.delete_nota_pratica(nota_id, pratica_id)
-    ErrorManager.require(deleted, code="E_NOT_FOUND", message=f"Nota {nota_id} non trovata per pratica {pratica_id}")
+    ErrorManager.require(deleted, code="E_NOTA_NOT_FOUND", message=f"Nota {nota_id} non trovata per pratica {pratica_id}")
 
 
 # -- ALLEGATI PRATICHE ---------------------------------------------------
@@ -1021,7 +1021,7 @@ def elimina_allegato_pratica(allegato_id: int, pratica_id: int) -> None:
     ErrorManager.require(allegato_id > 0, code="E_INVALID_ID", message="allegato_id deve essere > 0")
     repo = PraticheRepository()
     deleted = repo.delete_allegato_pratica(allegato_id, pratica_id)
-    ErrorManager.require(deleted, code="E_NOT_FOUND", message=f"Allegato {allegato_id} non trovato per pratica {pratica_id}")
+    ErrorManager.require(deleted, code="E_ALLEGATO_NOT_FOUND", message=f"Allegato {allegato_id} non trovato per pratica {pratica_id}")
 
 
 # -- SOSPENSIONI --------------------------------------------------------
@@ -1416,7 +1416,7 @@ def elimina_competenza_flusso(competenza_id: int) -> None:
     deleted = repo.delete_competenza_flusso(competenza_id)
     ErrorManager.require(
         deleted,
-        code="E_NOT_FOUND",
+        code="E_FLUSSO_COMPETENZA_NOT_FOUND",
         message=f"Competenza {competenza_id} non trovata",
     )
 

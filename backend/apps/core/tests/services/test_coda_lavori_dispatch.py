@@ -73,11 +73,17 @@ class DispatchTests(SimpleTestCase):
         scope = {
             "auth_user_id": 9, "username": "op9", "identita_id": 5,
             "emittente_ids": [3, 4],
+            # Emittente congelato all'enqueue: il worker deve rimetterlo,
+            # altrimenti il job gira in modalità globale e tocca anche gli
+            # emittenti che il richiedente non stava guardando.
+            "emittente_attivo_id": 3,
         }
 
         result = _dispatch_item(_item("OPERATORE", scope))
 
-        op_ctx.assert_called_once_with(9, username="op9", identita_id=5)
+        op_ctx.assert_called_once_with(
+            9, username="op9", identita_id=5, emittente_attivo_id=3,
+        )
         handler.assert_called_once_with({"a": 1}, scope=scope)
         self.assertEqual(result, {"ok": 2})
 
@@ -108,19 +114,39 @@ class OperatorIdentityContextTests(SimpleTestCase):
     #    nel finally (JWT_GUC_RESET_SQL sulla connessione del worker).
     @patch(f"{_CTX}.connection")
     @patch(f"{_CTX}.set_jwt_gucs", return_value=True)
-    def test_context_operatore_setta_5_guc_e_resetta(
+    def test_context_operatore_setta_6_guc_e_resetta(
         self, set_gucs, conn,
     ) -> None:
         from apps.core.api.jwt_audit_authentication import JWT_GUC_RESET_SQL
         from apps.core.services.coda_lavori.context import (
             operator_identity_context,
         )
-        with operator_identity_context(9, username="op9", identita_id=5):
+        with operator_identity_context(
+            9, username="op9", identita_id=5, emittente_attivo_id=3,
+        ):
             set_gucs.assert_called_once_with(
                 username="op9", user_id=9, identita_id=5,
+                emittente_attivo_id=3,
             )
         cursor = conn.cursor.return_value.__enter__.return_value
         cursor.execute.assert_called_once_with(JWT_GUC_RESET_SQL)
+
+    # 5-bis. Job accodato PRIMA del cantiere impersonazione: la chiave non
+    #        esiste nello scope → None → modalità globale, comportamento
+    #        storico. I job in coda al momento del rilascio non devono fallire.
+    @patch(f"{_CTX}.connection")
+    @patch(f"{_CTX}.set_jwt_gucs")
+    def test_context_operatore_senza_emittente_congelato(
+        self, set_gucs, conn,  # noqa: ARG002
+    ) -> None:
+        from apps.core.services.coda_lavori.context import (
+            operator_identity_context,
+        )
+        with operator_identity_context(9, username="op9", identita_id=5):
+            set_gucs.assert_called_once_with(
+                username="op9", user_id=9, identita_id=5,
+                emittente_attivo_id=None,
+            )
 
     # 6. Scope incompleto (bug di accodamento) → fail-loud, nessun set GUC.
     @patch(f"{_CTX}.connection")

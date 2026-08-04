@@ -245,8 +245,12 @@ query, chiamate esterne o logica business. Le righe esposte in `righe` sono:
     <header class="header">
       <div class="brand">
         <div class="brand-mark">ZE</div>
-        <div class="brand-name">Emittente fiscale demo</div>
-        <div class="brand-meta">Dati emittente/asset da collegare nelle prossime iterazioni</div>
+        <div class="brand-name">{{ contratto.emittente.denominazione }}</div>
+        <div class="brand-meta">
+          {% if contratto.emittente.codice %}
+            Codice emittente: {{ contratto.emittente.codice }}
+          {% endif %}
+        </div>
       </div>
 
       <div class="doc-title">

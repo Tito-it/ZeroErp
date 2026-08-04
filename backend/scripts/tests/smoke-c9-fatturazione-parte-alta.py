@@ -4,7 +4,25 @@
 # Percorso REALE: enqueue identico alle view, drain dai worker systemd
 # (zeroerp-coda-lavori / zeroerp-coda-stampa, ogni minuto).
 # Verifica di verità con connessione BYPASSRLS (ruolo batch) separata.
-# Competenza: 2026-06 (15 attivita' BOZZA da approvare, 37 APPROVATE da emettere).
+#
+# ⚠️⚠️ QUESTO SMOKE **NON FA ROLLBACK**, ed e' l'unico della famiglia. Approva
+# attivita', emette fatture, consuma progressivi fiscali e accoda stampe: tutto
+# persiste. Non e' una svista da sanare — passa dalla coda e dai worker, che
+# girano in transazioni proprie in un altro processo, quindi un rollback non e'
+# rappresentabile. Lanciarlo equivale a emettere le fatture a mano dalla UI: la
+# differenza e' che qui ogni passaggio viene verificato mentre accade.
+# Gli smoke rollback-safe sono gli altri (scadenze, indirizzi, aggregazione).
+#
+# COMPETENZA — parametrica dal 2026-08-03. Default invariato **2026-06**
+# (15 attivita' BOZZA da approvare, 37 APPROVATE da emettere), override con:
+#
+#     SMOKE_C9_COMPETENZA=2026-08-01 ./manage-env.sh shell < scripts/tests/smoke-c9-fatturazione-parte-alta.py
+#
+# Serviva perche' un mese gia' interamente lavorato fa passare lo smoke a
+# VUOTO: il 2026-08-02 e' girato verde con `numerati=0` e `lotti=0` — nessun
+# lotto nuovo, guard di numerazione mai invocato. Un verde che non ha
+# esercitato niente e' peggio di un rosso, e con la costante cablata l'unico
+# modo di accorgersene era leggere i contatori a mano.
 # ------------------------------------------------------------
 import os
 import time
@@ -23,7 +41,25 @@ from apps.core.services.coda_lavori.scope import scope_key_da_emittenti
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.vendite.services.commesse_service import approva_attivita_competenza
 
-COMPETENZA = date(2026, 6, 1)
+# Scopo: Competenza su cui gira lo smoke. Da `SMOKE_C9_COMPETENZA` (ISO
+#        `YYYY-MM-DD`), altrimenti il default storico. Il valore viene
+#        normalizzato al PRIMO del mese: la competenza e' mensile e passare
+#        una data a meta' mese produrrebbe un giro che non trova nulla senza
+#        dire perche' — fallire sul formato e' meglio che girare a vuoto.
+def _competenza_da_env() -> date:
+    raw = (os.environ.get("SMOKE_C9_COMPETENZA") or "").strip()
+    if not raw:
+        return date(2026, 6, 1)
+    try:
+        d = date.fromisoformat(raw)
+    except ValueError as exc:
+        raise SystemExit(
+            f"SMOKE_C9_COMPETENZA='{raw}' non e' una data ISO YYYY-MM-DD: {exc}"
+        ) from exc
+    return d.replace(day=1)
+
+
+COMPETENZA = _competenza_da_env()
 FAIL = []
 WARN = []
 

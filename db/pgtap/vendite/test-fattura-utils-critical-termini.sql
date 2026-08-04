@@ -13,7 +13,7 @@
 -- 7) Sync critical con log critical attivo
 -- 8) Sync critical dopo disabilitazione log
 -- 9) Resolve termini fallback su TP_1RATA
--- 10) Resolve termini errore su fattura_id non valido
+-- 10) Resolve termini errore su attivita_id non valido
 -- 11) Sync pagamento fondo errore su fattura_id non valido
 -- 12) Cleanup completato
 -- ------------------------------------------------------------
@@ -287,32 +287,53 @@ SELECT is(
 -- ============================================================
 -- 5) Resolve termini pagamento
 -- ============================================================
-SELECT is(
-  (
-    SELECT x.termini_pagamento_id
-    FROM vendite.fn_resolve_termini_pagamento(
-      p_fattura_id => NULL,
-      p_billing_account_id => NULL,
-      p_attivita_ids => NULL
-    ) x
-    LIMIT 1
-  ),
-  (SELECT tp_default_id FROM tmp_refs_fu),
-  'Resolve termini fallback su TP_1RATA'
-);
+-- ⚠️ 2026-08-01: adeguato alla firma nuova. 3b.1 ha riscritto
+--   `fn_resolve_termini_pagamento` **per attivita'** — un solo parametro
+--   `p_attivita_id`, ritorno a coppia `(termine, modalita')` — e questo test
+--   la invocava ancora con la terna `(p_fattura_id, p_billing_account_id,
+--   p_attivita_ids)`. Il file moriva qui, quindi da 3b.1 in poi non eseguiva
+--   piu' NESSUNA asserzione: la nota di 3b.1 «nessun chiamante da adeguare»
+--   guardava le funzioni DB e il backend, e non i pgTAP — che sono chiamanti
+--   a tutti gli effetti.
+-- Il fallback si esercita scegliendo un'attivita' per cui NESSUN livello a
+-- monte del default risponde: niente termine sulla commessa e niente sul
+-- cliente del BA padre. Il criterio di selezione e' lo STESSO della catena,
+-- altrimenti il test misura un livello diverso da quello che crede.
+CREATE TEMP TABLE tmp_att_fallback_fu AS
+SELECT a.id
+  FROM vendite.attivita_fatturabili a
+  JOIN anagrafiche.billing_account ba  ON ba.id  = a.billing_account_id
+  JOIN anagrafiche.billing_account bap ON bap.id = COALESCE(ba.parent_account_id, ba.id)
+  LEFT JOIN vendite.commesse c   ON c.id = a.commessa_id
+  LEFT JOIN anagrafiche.clienti cl ON cl.istanza_utility_id = bap.istanza_utility_id
+ WHERE c.termine_pagamento_id IS NULL
+   AND cl.termine_pagamento_id IS NULL
+ ORDER BY a.id
+ LIMIT 1;
+
+SELECT CASE
+  WHEN (SELECT count(*) FROM tmp_att_fallback_fu) = 0
+    THEN skip('nessuna attivita con commessa e cliente privi di termine', 1)
+  ELSE is(
+    (
+      SELECT x.termine_pagamento_id
+      FROM vendite.fn_resolve_termini_pagamento(
+        (SELECT id FROM tmp_att_fallback_fu)
+      ) x
+      LIMIT 1
+    ),
+    (SELECT tp_default_id FROM tmp_refs_fu),
+    'Resolve termini fallback su TP_1RATA'
+  )
+END;
 
 SELECT throws_ok(
   $$
-    SELECT *
-    FROM vendite.fn_resolve_termini_pagamento(
-      p_fattura_id => -1,
-      p_billing_account_id => NULL,
-      p_attivita_ids => NULL
-    );
+    SELECT * FROM vendite.fn_resolve_termini_pagamento(-1);
   $$,
   'P0001',
   NULL,
-  'Resolve termini errore su fattura_id non valido'
+  'Resolve termini errore su attivita_id non valido'
 );
 
 -- ============================================================

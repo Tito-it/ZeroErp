@@ -12,7 +12,7 @@
 -- 5) Creato/recuperato ruolo EF per soggetto 1
 -- 6) Inserito emittente fiscale 1
 -- 7) Esiste esattamente un emittente di default nel mapping
--- 8) Esiste un billing_account senza mapping emittente
+-- 8) Predisposto un billing_account senza mapping emittente
 -- 9) Fallback funzione emittente (default)
 -- 10) Creato/recuperato ruolo EF per soggetto 2
 -- 11) Inserito emittente fiscale 2
@@ -267,16 +267,17 @@ SELECT ok(
 -- ============================================================
 CREATE TEMP TABLE tmp_emittente_1 AS
 WITH ins_emittente AS (
+    -- `descrizione` non esiste piu' (cantiere emittente, Fase 4 /
+    -- 20260802-22): la denominazione viene dalla ragione sociale del
+    -- soggetto associato, che questa fixture crea gia'.
     INSERT INTO anagrafiche.emittenti_fiscali (
         soggetto_ruolo_id,
         codice,
-        descrizione,
         brand_meta
     )
     SELECT
         r.soggetto_ruolo_id,
         k.codice_ef1,
-        'Emittente fiscale test 1',
         jsonb_build_object('test_scope', k.test_scope)
     FROM tmp_ef_role_1 r,
          tmp_costanti_ef k
@@ -302,22 +303,47 @@ SELECT is(
 );
 
 -- ============================================================
--- 8) Billing account senza mapping
+-- 8) Un billing account SENZA mapping emittente
+--
+-- ⚠️ Questo blocco CERCAVA un BA gia' privo di mapping, e ha smesso di
+--    trovarlo quando e' arrivato `trg_billing_account_z90_link_ef_ins`:
+--    ogni BA creato dall'app viene agganciato a un emittente, quindi i
+--    BA senza mapping oggi sono ZERO. La ricerca tornava vuota e faceva
+--    cadere a cascata i test 8, 12, 13 e 14 — il caso da manuale della
+--    «fixture rimasta indietro rispetto a un guard entrato dopo».
+--
+--    La condizione non si cerca piu': si COSTRUISCE, togliendo il
+--    mapping a un BA esistente. E' lecito e mirato:
+--      - siamo dentro BEGIN/ROLLBACK, il database non cambia;
+--      - il trigger non lo ricrea, perche' si attiva solo sull'INSERT
+--        del billing account, non sulla DELETE del mapping;
+--      - la riga di DEFAULT (billing_account_id IS NULL) resta intatta:
+--        `IN (subquery)` non la seleziona, e serve al test 9.
+--
+--    Cio' che i test 9-14 presidiano — il ramo di fallback di
+--    fn_get_emittente_fiscale_id e l'override per BA — e' codice vivo:
+--    va costruito lo stato, non sperato.
 -- ============================================================
 CREATE TEMP TABLE tmp_ba_no_map AS
 SELECT ba.id AS billing_account_id
 FROM anagrafiche.billing_account ba
-WHERE NOT EXISTS (
-    SELECT 1
-    FROM anagrafiche.emittenti_fiscali_billing_account m
-    WHERE m.billing_account_id = ba.id
-)
+ORDER BY ba.id
 LIMIT 1;
 
-SELECT ok(
-    (SELECT count(*) FROM tmp_ba_no_map) = 1,
-    'Esiste un billing_account senza mapping emittente'
-);
+DELETE FROM anagrafiche.emittenti_fiscali_billing_account m
+ WHERE m.billing_account_id IN (SELECT billing_account_id FROM tmp_ba_no_map);
+
+SELECT CASE
+    WHEN (SELECT count(*) FROM tmp_ba_no_map) = 0
+    THEN skip('8) Nessun billing_account nel database — test saltato')
+    ELSE ok(
+        NOT EXISTS (
+            SELECT 1
+              FROM anagrafiche.emittenti_fiscali_billing_account m
+              JOIN tmp_ba_no_map t ON t.billing_account_id = m.billing_account_id
+        ),
+        'Predisposto un billing_account senza mapping emittente')
+END;
 
 CREATE TEMP TABLE tmp_emittente_default AS
 SELECT m.emittente_soggetto_ruolo_id
@@ -329,11 +355,14 @@ LIMIT 1;
 -- ============================================================
 -- 9) Fallback funzione emittente (default)
 -- ============================================================
-SELECT is(
-    anagrafiche.fn_get_emittente_fiscale_id((SELECT billing_account_id FROM tmp_ba_no_map)),
-    (SELECT emittente_soggetto_ruolo_id::bigint FROM tmp_emittente_default),
-    'Fallback funzione emittente (default)'
-);
+SELECT CASE
+    WHEN (SELECT count(*) FROM tmp_ba_no_map) = 0
+    THEN skip('9) Nessun billing_account nel database — test saltato')
+    ELSE is(
+        anagrafiche.fn_get_emittente_fiscale_id((SELECT billing_account_id FROM tmp_ba_no_map)),
+        (SELECT emittente_soggetto_ruolo_id::bigint FROM tmp_emittente_default),
+        'Fallback funzione emittente (default)')
+END;
 
 -- ============================================================
 -- 10) Ruolo EF per soggetto 2
@@ -355,16 +384,15 @@ SELECT ok(
 -- ============================================================
 CREATE TEMP TABLE tmp_emittente_2 AS
 WITH ins_emittente AS (
+    -- Vedi la nota sull'emittente 1: niente piu' `descrizione`.
     INSERT INTO anagrafiche.emittenti_fiscali (
         soggetto_ruolo_id,
         codice,
-        descrizione,
         brand_meta
     )
     SELECT
         r.soggetto_ruolo_id,
         k.codice_ef2,
-        'Emittente fiscale test 2',
         jsonb_build_object('test_scope', k.test_scope)
     FROM tmp_ef_role_2 r,
          tmp_costanti_ef k
@@ -401,34 +429,45 @@ WITH ins AS (
 )
 SELECT id FROM ins;
 
-SELECT is(
-    (SELECT count(*)::int FROM tmp_map_ba),
-    1,
-    'Inserito mapping BA -> emittente (override)'
-);
+SELECT CASE
+    WHEN (SELECT count(*) FROM tmp_ba_no_map) = 0
+    THEN skip('12) Nessun billing_account nel database — test saltato')
+    ELSE is(
+        (SELECT count(*)::int FROM tmp_map_ba),
+        1,
+        'Inserito mapping BA -> emittente (override)')
+END;
 
 -- ============================================================
 -- 13) Verifica override funzione emittente
 -- ============================================================
-SELECT is(
-    anagrafiche.fn_get_emittente_fiscale_id((SELECT billing_account_id FROM tmp_ba_no_map)),
-    (SELECT soggetto_ruolo_id::bigint FROM tmp_ef_role_2),
-    'Override funzione emittente (mapping BA)'
-);
+SELECT CASE
+    WHEN (SELECT count(*) FROM tmp_ba_no_map) = 0
+    THEN skip('13) Nessun billing_account nel database — test saltato')
+    ELSE is(
+        anagrafiche.fn_get_emittente_fiscale_id((SELECT billing_account_id FROM tmp_ba_no_map)),
+        (SELECT soggetto_ruolo_id::bigint FROM tmp_ef_role_2),
+        'Override funzione emittente (mapping BA)')
+END;
 
 -- ============================================================
 -- 14) Blocco disattivazione emittente con mapping
 -- ============================================================
-SELECT throws_ok(
-    $$
-    UPDATE anagrafiche.emittenti_fiscali
-    SET attivo = false
-    WHERE id = (SELECT id FROM tmp_emittente_2);
-    $$,
-    'P0001',
-    NULL,
-    'Blocco disattivazione emittente con mapping BA'
-);
+-- Ha senso solo se il mapping del test 12 e' stato davvero creato:
+-- e' quel mapping a rendere l'emittente non disattivabile.
+SELECT CASE
+    WHEN (SELECT count(*) FROM tmp_map_ba) = 0
+    THEN skip('14) Nessun mapping BA creato (vedi 12) — test saltato')
+    ELSE throws_ok(
+        $$
+        UPDATE anagrafiche.emittenti_fiscali
+        SET attivo = false
+        WHERE id = (SELECT id FROM tmp_emittente_2);
+        $$,
+        'P0001',
+        NULL,
+        'Blocco disattivazione emittente con mapping BA')
+END;
 
 SELECT * FROM finish();
 ROLLBACK;

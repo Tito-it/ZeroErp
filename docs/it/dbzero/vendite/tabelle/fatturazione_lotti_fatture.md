@@ -8,7 +8,6 @@
 | lotto_id | bigint | NO |  |
 | fattura_id | bigint | NO |  |
 | stato_sdi_id | bigint | YES |  |
-| esclusa | boolean | NO | false |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |

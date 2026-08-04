@@ -73,3 +73,6 @@ ApiContrattoDocumentiList = _views.lista
 ApiContrattoDocumentoAllegati = _views.allegati
 ApiContrattoDocumentoFile = _views.file
 ApiContrattoDocumentoFileDownload = _views.file_download
+# Percorso 3 (ristampa fedele): ri-renderizza l'originale dalla versione
+# pinnata + contesto congelato. Vedi brief-ristampa-fedele-documenti.
+ApiContrattoDocumentoRistampa = _views.ristampa

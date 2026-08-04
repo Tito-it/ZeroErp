@@ -1797,6 +1797,32 @@ a {
   color: var(--app-text-muted);
 }
 
+/* Seconda misura della card stadio: il numero di FATTURE, sotto quello delle
+ * attivita'. Piu' marcata del sottotitolo muted (e' un dato, non un'etichetta)
+ * ma piu' piccola del numero principale: le due grane restano distinguibili a
+ * colpo d'occhio senza competere. */
+.app-dash-stat-fatture {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--app-text-color);
+  margin-top: 0.15rem;
+}
+
+/* Variante "la misura non si e' potuta calcolare": occupa lo stesso posto del
+ * conteggio, in colore di avvertimento. Non e' un errore del cruscotto — il
+ * resto della card e' valido — quindi resta della stessa taglia del dato che
+ * sostituisce, senza gridare. `cursor: help` come gli altri chiarimenti. */
+.app-dash-stat-fatture-ko {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--app-warning-color);
+  margin-top: 0.15rem;
+  cursor: help;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
 /* Recuperi tardivi (emesse fuori dal mese di competenza): colore "fermo". */
 .app-dash-ritardo {
   font-size: 0.78rem;

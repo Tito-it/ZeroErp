@@ -14,6 +14,7 @@ from apps.vendite.api.ddt_documenti_views import (
     ApiDdtDocumentoAnteprima,
     ApiDdtDocumentoFile,
     ApiDdtDocumentoFileDownload,
+    ApiDdtDocumentoRistampa,
     ApiDdtDocumentoGenera,
     ApiDdtEmetti,
 )
@@ -87,6 +88,10 @@ urlpatterns = [
     path("<int:sorgente_id>/documenti/<int:documento_id>/file/<int:file_id>/",
          ApiDdtDocumentoFileDownload.as_view(),
          name="vendite-ddt-documenti-file-download"),
+    # Ristampa fedele (percorso 3): versione pinnata + contesto congelato.
+    path("<int:sorgente_id>/documenti/<int:documento_id>/ristampa/",
+         ApiDdtDocumentoRistampa.as_view(),
+         name="vendite-ddt-documenti-ristampa"),
 
     # Righe
     path("<int:ddt_id>/righe/", ApiDdtRighe.as_view(),

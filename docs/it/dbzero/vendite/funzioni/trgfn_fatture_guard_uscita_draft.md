@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_fatture_guard_uscita_draft.md" %}
 # ⚙️ Funzione `trgfn_fatture_guard_uscita_draft`
 
 ```sql

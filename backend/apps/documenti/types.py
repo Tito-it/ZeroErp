@@ -36,7 +36,12 @@ class TemplateDocumentoListRow(TypedDict):
     file_name_pattern: str | None
     emittente_fiscale_id: int
     emittente_fiscale_codice: str
-    emittente_fiscale_descrizione: str
+    # Ragione sociale del SOGGETTO emittente (`soggetti.ragione_sociale_completa`),
+    # non `emittenti_fiscali.descrizione` (etichetta interna divergente, in via di
+    # eliminazione — brief `brief-emittente-ragione-sociale-dal-soggetto.md`).
+    # Rinominata da `emittente_fiscale_descrizione` il 2026-08-03 (piano
+    # PrimeVue 5, registro), in pari con viste e seed liste.
+    emittente_ragione_sociale: str
     data_insert: datetime
     data_update: datetime
 
@@ -109,7 +114,7 @@ class TemplateAssetListRow(TypedDict):
     sha256: str
     emittente_fiscale_id: int
     emittente_fiscale_codice: str
-    emittente_fiscale_descrizione: str
+    emittente_ragione_sociale: str
     valido_dal: date
     valido_al: date | None
     attivo: bool

@@ -358,3 +358,13 @@ class DashboardCompetenzaErroriApiTests(JwtMockedApiTest):
         self.client.get(self._URL)
         kwargs = mocked_fn.call_args.kwargs
         self.assertIsNone(kwargs["competenza_mese"])
+
+    # Scopo: order_by/order_dir propagati al service (8° lotto liste, 2026-08-03).
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views_dashboard_competenza.fn_dash_competenza_errori")
+    def test_errori_ordinamento_propagato(self, mocked_fn, _mock_auth):
+        mocked_fn.return_value = _ERRORI_RESPONSE
+        self.client.get(f"{self._URL}?order_by=data_evento&order_dir=asc")
+        kwargs = mocked_fn.call_args.kwargs
+        self.assertEqual(kwargs["order_by"], "data_evento")
+        self.assertEqual(kwargs["order_dir"], "asc")

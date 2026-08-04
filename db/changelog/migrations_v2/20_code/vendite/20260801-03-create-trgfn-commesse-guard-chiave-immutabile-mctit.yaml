@@ -1,0 +1,149 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 3b.0-c — immutabilita' delle condizioni di pagamento su una commessa
+#   che ha gia' lavoro attaccato (piano-db-satelliti-fattura.md, D-R).
+#
+# PERCHE' ESISTE. Da 3b.0-b il termine di pagamento e' un ELEMENTO DELLA CHIAVE
+#   di raggruppamento della commessa: un documento sorgente con termine diverso
+#   non riusa questa commessa, ne apre una nuova. Ne discende che cambiarlo a
+#   posteriori e' contraddittorio — le attivita' gia' collegate erano finite
+#   qui **proprio perche'** il termine era quello di prima, e dopo la modifica
+#   si troverebbero raggruppate sotto una chiave che non le descrive.
+#
+# E SAREBBE SILENZIOSO, che e' il motivo per cui serve un guard e non una nota
+#   nella documentazione: nessun errore, nessun conteggio sbagliato, solo una
+#   fattura che a valle aggrega righe raccolte con condizioni diverse da quelle
+#   con cui verranno fatturate.
+#
+# LA SOGLIA E' «HA ATTIVITA' COLLEGATE», non lo stato della commessa.
+#   Una commessa appena creata dal push e ancora vuota si puo' correggere: non
+#   ha raggruppato niente, quindi non c'e' nessuna promessa da tradire. Dal
+#   primo `commesse_attivita` in poi la chiave e' un fatto.
+#   Si e' scelta questa soglia e non `stato_commessa` perche' e' quella che
+#   descrive il danno reale: il problema non e' che la commessa sia avanzata,
+#   e' che qualcosa sia stato raggruppato sotto la chiave vecchia.
+#
+# PERIMETRO STRETTO: `UPDATE OF termine_pagamento_id, modalita_pagamento_id`.
+#   Il trigger non si sveglia sugli UPDATE che non toccano le due colonne —
+#   che sono la quasi totalita' — e il confronto `IS DISTINCT FROM` lascia
+#   passare le riscritture dello stesso valore (un UPDATE che rimette il
+#   termine identico non e' un cambio di chiave).
+#
+# BYPASS: lo stesso GUC degli altri guard di dominio
+#   (`zeroerp.maintenance_reset_lotto_draft`), per coerenza con
+#   `trgfn_commesse_attivita_guard_quantita_immutabile`. Un guard di dominio
+#   senza via d'uscita tecnica diventa un ostacolo alle manutenzioni, non una
+#   garanzia.
+#
+# ⚠️ Errore `E_COMMESSA_CHIAVE_IMMUTABILE` (id 576), gia' appeso a
+#   `messaggi_errore.csv`: nessun loader nuovo, il runOnChange esistente
+#   ripesca il file.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260801-03-create-trgfn-commesse-guard-chiave-immutabile-mctit.yaml
+
+  - changeSet:
+      id: 20260801-03-create-trgfn-commesse-guard-chiave-immutabile
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Guard D-R: blocca il cambio di termine/modalita' di pagamento su una
+        commessa che ha gia' attivita' collegate, perche' sono elemento della
+        sua chiave di raggruppamento. Commessa vuota: modifica ammessa.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_commesse_guard_chiave_immutabile()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- =========================================================
+              -- Scopo:
+              --   Le condizioni di pagamento sono elemento della chiave di
+              --   raggruppamento della commessa (D-R): una volta che alla
+              --   commessa e' stato attaccato del lavoro, cambiarle lascerebbe
+              --   quelle attivita' sotto una chiave che non le descrive.
+              -- Regole:
+              --   - blocca UPDATE di termine/modalita' se esiste almeno una
+              --     riga in commesse_attivita per questa commessa;
+              --   - commessa ancora vuota: modifica ammessa (non ha raggruppato
+              --     nulla, non c'e' promessa da tradire);
+              --   - riscrivere lo STESSO valore non e' un cambio di chiave e
+              --     passa (IS DISTINCT FROM);
+              --   - bypass tecnico via GUC zeroerp.maintenance_reset_lotto_draft,
+              --     coerente con gli altri guard di dominio.
+              -- =========================================================
+              DECLARE
+                  v_bypass    text;
+                  v_attivita  bigint;
+                  v_campo     text;
+              BEGIN
+                  v_bypass := current_setting('zeroerp.maintenance_reset_lotto_draft', true);
+                  IF v_bypass IS NOT NULL AND lower(v_bypass) IN ('1','true','on','yes') THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF NEW.termine_pagamento_id IS NOT DISTINCT FROM OLD.termine_pagamento_id
+                     AND NEW.modalita_pagamento_id IS NOT DISTINCT FROM OLD.modalita_pagamento_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT count(*) INTO v_attivita
+                    FROM vendite.commesse_attivita ca
+                   WHERE ca.commessa_id = OLD.id;
+
+                  IF v_attivita = 0 THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- Quale delle due si sta muovendo: finisce nel messaggio, cosi'
+                  -- chi lo legge sa dove guardare senza aprire il payload.
+                  v_campo := CASE
+                      WHEN NEW.termine_pagamento_id IS DISTINCT FROM OLD.termine_pagamento_id
+                       AND NEW.modalita_pagamento_id IS DISTINCT FROM OLD.modalita_pagamento_id
+                          THEN 'termine e modalita'' di pagamento'
+                      WHEN NEW.termine_pagamento_id IS DISTINCT FROM OLD.termine_pagamento_id
+                          THEN 'termine di pagamento'
+                      ELSE 'modalita'' di pagamento'
+                  END;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_COMMESSA_CHIAVE_IMMUTABILE',
+                      jsonb_build_object(
+                          'commessa_id', OLD.id,
+                          'codice', OLD.codice,
+                          'attivita_collegate', v_attivita,
+                          'termine_old', OLD.termine_pagamento_id,
+                          'termine_new', NEW.termine_pagamento_id,
+                          'modalita_old', OLD.modalita_pagamento_id,
+                          'modalita_new', NEW.modalita_pagamento_id),
+                      NULL::uuid, OLD.codice, v_campo, v_attivita::text
+                  );
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_commesse_guard_chiave_immutabile()
+              IS 'Guard D-R: termine/modalita'' di pagamento sono elemento della chiave di raggruppamento della commessa, quindi non si cambiano una volta che ci sono attivita'' collegate (si apre una commessa nuova). Commessa vuota: ammesso. Riscrittura dello stesso valore: ammessa. Bypass via GUC zeroerp.maintenance_reset_lotto_draft. Errore E_COMMESSA_CHIAVE_IMMUTABILE.';
+
+              DROP TRIGGER IF EXISTS trg_vendite_commesse_a10_guard_chiave_immutabile_upd ON vendite.commesse;
+
+              CREATE TRIGGER trg_vendite_commesse_a10_guard_chiave_immutabile_upd
+                  BEFORE UPDATE OF termine_pagamento_id, modalita_pagamento_id
+                  ON vendite.commesse
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_commesse_guard_chiave_immutabile();

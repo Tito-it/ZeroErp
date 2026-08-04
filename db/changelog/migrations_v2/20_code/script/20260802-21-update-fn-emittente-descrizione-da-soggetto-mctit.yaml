@@ -1,0 +1,739 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 1 del cantiere emittente — le 3 funzioni script.fn_get_* smettono di
+#   dipendere da anagrafiche.emittenti_fiscali.descrizione
+#   (brief-emittente-ragione-sociale-dal-soggetto.md §5 Fase 1.2)
+#
+# ── LE TRE NON ERANO UN GRUPPO OMOGENEO ──────────────────────────────────
+#   Il brief le liquidava con «1.2 idem». Misurate sulla doc auto-gen il
+#   2026-08-02, facevano tre cose diverse:
+#
+#     fn_get_user_emittenti_scope  COALESCE(s_ef.ragione_sociale_completa,
+#                                           ef.descrizione)  -> fallback
+#     fn_get_operatore_detail      idem, due volte (valore + ORDER BY del
+#                                  string_agg)                -> fallback
+#     fn_get_user_profile          ef.descrizione NUDA        -> 🔴 difetto vivo
+#
+#   Le prime due mostrano gia' il nome giusto e qui perdono solo la rete. La
+#   terza no: il profilo utente restituisce OGGI l'etichetta interna
+#   dell'emittente. E' il difetto della stessa famiglia di quello dell'offerta
+#   commerciale, trovato perche' le tre sono state guardate una per una invece
+#   che come categoria.
+#
+# ── L'ASSURDO DI fn_get_user_profile, che vale la pena scrivere ───────────
+#   Il blocco 'emittente' del profilo e' costruito cosi':
+#
+#       jsonb_build_object(..., 'emittente_descrizione', v_ef_descrizione, ...)
+#         || COALESCE(v_ef_soggetto, '{}'::jsonb)
+#
+#   dove `v_ef_soggetto` viene da fn_get_soggetto_dati_by_ruolo, che porta gia'
+#   la ragione sociale del soggetto. Cioe' **nello stesso oggetto JSON
+#   convivevano il nome giusto e l'etichetta interna**, sotto due chiavi
+#   diverse, e il consumatore sceglieva. E' esattamente la patologia che il
+#   brief §1 descrive sul frontend (`ragione_sociale || descrizione`), con la
+#   differenza che qui i due valori non si escludono nemmeno: viaggiano insieme.
+#
+# ── UNA DIPENDENZA CHE IL BRIEF NON AVEVA CENSITO ────────────────────────
+#   ⚠️ `fn_get_user_profile` dichiarava
+#
+#       v_ef_descrizione anagrafiche.emittenti_fiscali.descrizione%TYPE;
+#
+#   Un `%TYPE` **sulla colonna che la Fase 4 elimina**: al `DROP COLUMN` la
+#   funzione non compilerebbe piu', e l'errore arriverebbe dalla DROP e non da
+#   qui. Il censimento della Fase 4.1 del brief cerca `ef.descrizione` e
+#   `emittenti_fiscali.descrizione` nel testo: questo `%TYPE` ci cade dentro per
+#   fortuna, non per progetto. Diventa `text`, che e' anche il tipo della nuova
+#   sorgente. **Da cercare anche altrove prima della DROP**: i `%TYPE` sono
+#   riferimenti alla colonna che non somigliano a letture della colonna.
+#
+# ── COSA NON CAMBIA ──────────────────────────────────────────────────────
+#   Nomi e tipi di output invariati su tutte e tre: `emittente_descrizione`,
+#   `emittenti_descrizione` e la chiave JSON `emittente_descrizione` restano
+#   come sono. La rinomina, se la si vuole, e' una fase separata (brief §7).
+#   Firma e RETURNS ripresi dagli YAML che le definiscono (20260429-03/11/14),
+#   non dalla doc auto-gen: l'auto-gen scioglie i `%TYPE` e ricopiarla da li'
+#   perderebbe il legame con le colonne.
+#
+# ⚠️ La garanzia che `ragione_sociale_completa` sia valorizzata e' EMPIRICA
+#   (26 su 26), non strutturale: la colonna e' nullable e nessun trigger di
+#   anagrafiche.soggetti la scrive. Vedi la nota estesa in 20260802-20.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260802-21-update-fn-emittente-descrizione-da-soggetto-mctit.yaml
+
+  - changeSet:
+      id: 20260802-21-update-fn-emittente-descrizione-da-soggetto
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_get_user_emittenti_scope, fn_get_operatore_detail e
+        fn_get_user_profile prendono la denominazione dell'emittente dalla sola
+        ragione sociale del soggetto. Le prime due perdono il fallback COALESCE,
+        la terza smette di restituire l'etichetta interna. Prerequisito della
+        DROP di Fase 4.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - columnExists:
+              schemaName: anagrafiche
+              tableName: emittenti_fiscali
+              columnName: soggetto_ruolo_id
+          - columnExists:
+              schemaName: anagrafiche
+              tableName: soggetti
+              columnName: ragione_sociale_completa
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_user_emittenti_scope(
+                  p_auth_user_id INTEGER  -- django.auth_user.id (no %TYPE su django.*)
+              )
+              RETURNS TABLE (
+                  auth_user_id           INTEGER,
+                  scope_mode             TEXT,
+                  emittente_id           config.user_emittenti_fiscali.emittente_fiscale_id%TYPE,
+                  emittente_descrizione  TEXT,
+                  allowed_scope_modes    TEXT[],
+                  can_change_scope       BOOLEAN,
+                  change_scope_reason    TEXT
+              )
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  -- =========================================================
+                  -- Scopo:
+                  --   Vista dichiarativa "scope emittenti" per un auth_user.
+                  --   Ritorna sempre 1 riga (anche se l'utente non ha
+                  --   associazioni emittente: scope_mode=GLOBAL).
+                  --
+                  -- Mappatura scope_mode (Fase 2):
+                  --   - 0 righe in user_emittenti_fiscali  -> GLOBAL
+                  --   - 1 riga                              -> SINGLE
+                  --   - >1 righe                            -> impossibile per
+                  --     UNIQUE(auth_user_id) introdotto in Fase 1 refactor
+                  --     operatore-emittenti (20260408-11). Il vincolo DB
+                  --     copre il caso MULTI: la fn vede al massimo 1 riga.
+                  --
+                  -- Capability:
+                  --   can_change_scope = NOT fn_check_ultimo_super_admin_attivo
+                  --   (regola unica: se sei l'ultimo SUPER_ADMIN, lockout
+                  --   guard - allineato a Fase 1).
+                  --
+                  -- Note:
+                  --   - VALUES base garantisce 1 riga anche se l'auth_user
+                  --     non ha mai avuto associazioni (LEFT JOIN da base
+                  --     verso user_emittenti_fiscali).
+                  --   - Nessun filtro su esistenza identita OPERATORE: il
+                  --     caller (drawer admin) gia' interroga la fn solo
+                  --     per operatori esistenti. Mantenere la firma generica
+                  --     evita falsi 0-rows quando un auth_user tecnico viene
+                  --     comunque interrogato per diagnostica.
+                  --   - emittente_descrizione viene dalla SOLA ragione sociale
+                  --     del soggetto (Fase 1 cantiere emittente, 2026-08-02):
+                  --     il COALESCE su ef.descrizione e' caduto, perche' la
+                  --     colonna sparisce in Fase 4 e perche' un fallback su un
+                  --     campo che diverge non e' una rete, e' un rinvio.
+                  -- =========================================================
+                  WITH state AS (
+                      SELECT
+                          p_auth_user_id                                                   AS auth_user_id,
+                          uef.emittente_fiscale_id                                         AS emittente_id,
+                          s_ef.ragione_sociale_completa::text                               AS emittente_descrizione,
+                          script.fn_check_ultimo_super_admin_attivo(p_auth_user_id)        AS is_last_sa
+                        FROM (VALUES (p_auth_user_id)) AS b(auth_user_id)
+                        LEFT JOIN config.user_emittenti_fiscali uef
+                          ON uef.auth_user_id = b.auth_user_id
+                        LEFT JOIN anagrafiche.emittenti_fiscali ef
+                          ON ef.id = uef.emittente_fiscale_id
+                        LEFT JOIN anagrafiche.soggetti_ruoli sr_ef
+                          ON sr_ef.id = ef.soggetto_ruolo_id
+                        LEFT JOIN anagrafiche.soggetti s_ef
+                          ON s_ef.id = sr_ef.soggetto_id
+                  )
+                  SELECT
+                      s.auth_user_id,
+                      CASE WHEN s.emittente_id IS NULL THEN 'GLOBAL' ELSE 'SINGLE' END  AS scope_mode,
+                      s.emittente_id,
+                      s.emittente_descrizione,
+                      ARRAY['GLOBAL','SINGLE']::text[]                                     AS allowed_scope_modes,
+                      NOT s.is_last_sa                                                     AS can_change_scope,
+                      CASE WHEN s.is_last_sa
+                           THEN 'Ultimo SUPER_ADMIN attivo: il cambio scope e'' bloccato per evitare il lockout del sistema'
+                           ELSE NULL
+                      END                                                                  AS change_scope_reason
+                    FROM state s;
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_get_user_emittenti_scope(p_auth_user_id integer)
+              IS 'Vista dichiarativa dello scope emittenti per un auth_user (drawer Operatore Fase 2 P1 2026-04-29). Ritorna sempre 1 riga (GLOBAL se l''utente non ha associazioni). MULTI e'' impossibile per UNIQUE(auth_user_id) di Fase 1; allowed_scope_modes resta TEXT[] per non vincolare il futuro. Capability can_change_scope derivata da fn_check_ultimo_super_admin_attivo (regola unica: lockout-guard). emittente_descrizione = anagrafiche.soggetti.ragione_sociale_completa del soggetto associato (Fase 1 cantiere emittente 2026-08-02: caduto il fallback su emittenti_fiscali.descrizione). LANGUAGE sql STABLE.';
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_operatore_detail(
+                  p_auth_user_id INTEGER
+              )
+              RETURNS TABLE (
+                  auth_user_id              INTEGER,
+                  username                  VARCHAR(150),
+                  email                     VARCHAR(254),
+                  first_name                VARCHAR(150),
+                  last_name                 VARCHAR(150),
+                  soggetto_cognome          anagrafiche.soggetti.cognome%TYPE,
+                  soggetto_nome             anagrafiche.soggetti.nome%TYPE,
+                  soggetto_id               anagrafiche.soggetti.id%TYPE,
+                  ragione_sociale_completa  anagrafiche.soggetti.ragione_sociale_completa%TYPE,
+                  codice_fiscale            anagrafiche.soggetti.codice_fiscale%TYPE,
+                  is_super_admin            BOOLEAN,
+                  ruolo_applicativo         TEXT,
+                  is_active                 BOOLEAN,
+                  unita_organizzativa_id    config.unita_organizzative.id%TYPE,
+                  unita_organizzativa_nome  config.unita_organizzative.descrizione%TYPE,
+                  risorsa_umana_id          anagrafiche.risorse_umane.id%TYPE,
+                  attivo                    anagrafiche.risorse_umane.attivo%TYPE,
+                  valido_dal                TEXT,
+                  valido_al                 TEXT,
+                  override_aree_count       BIGINT,
+                  override_azioni_count     BIGINT,
+                  emittenti_count           BIGINT,
+                  emittenti_descrizione     TEXT,
+                  last_login                TIMESTAMPTZ,
+                  invito_inviato_at         anagrafiche.identita_digitali.invito_inviato_at%TYPE,
+                  deve_cambiare_password    anagrafiche.identita_digitali.deve_cambiare_password%TYPE,
+                  can_invite                BOOLEAN,
+                  invite_reason             TEXT,
+                  can_disable               BOOLEAN,
+                  disable_reason            TEXT,
+                  can_demote_super_admin    BOOLEAN,
+                  demote_reason             TEXT
+              )
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Update Chunk A Fase 7 (2026-04-29):
+                  --   Rimossa chiamata interna a script.fn_get_ruolo_sistema.
+                  --   Il campo ruolo_sistema (output text, contratto BE
+                  --   invariato) viene calcolato inline con CASE WHEN su
+                  --   fn_has_identita_attiva + fn_is_super_admin - stessa
+                  --   logica del wrapper legacy ma senza dispatch
+                  --   intermedio (un livello di chiamata in meno).
+                  --
+                  --   Drop output column rinviato a Chunk B post BE migrato.
+                  --
+                  -- Fase 1 cantiere emittente (2026-08-02):
+                  --   emittenti_descrizione aggrega la SOLA
+                  --   ragione_sociale_completa del soggetto. Il COALESCE su
+                  --   ef.descrizione e' caduto sia nel valore sia nell'ORDER BY
+                  --   dell'aggregazione: lasciarlo nell'ORDER BY avrebbe
+                  --   ordinato l'elenco per un campo non piu' mostrato.
+                  -- =========================================================
+                  RETURN QUERY
+                  WITH ctx AS (
+                      SELECT
+                          script.fn_check_operatore_invitabile(p_auth_user_id) AS inv_jsonb,
+                          script.fn_is_super_admin(p_auth_user_id) AS is_sa,
+                          script.fn_check_ultimo_super_admin_attivo(p_auth_user_id) AS is_last_sa
+                  )
+                  SELECT
+                      au.id                                                  AS auth_user_id,
+                      au.username,
+                      au.email,
+                      au.first_name,
+                      au.last_name,
+                      COALESCE(s.cognome, au.last_name)                      AS soggetto_cognome,
+                      COALESCE(s.nome,    au.first_name)                     AS soggetto_nome,
+                      s.id                                                   AS soggetto_id,
+                      s.ragione_sociale_completa,
+                      s.codice_fiscale,
+                      ctx.is_sa                                              AS is_super_admin,
+                      id.ruolo_applicativo::text                             AS ruolo_applicativo,
+                      au.is_active,
+                      ru.unita_organizzativa_id,
+                      uo.descrizione                                         AS unita_organizzativa_nome,
+                      ru.id                                                  AS risorsa_umana_id,
+                      ru.attivo,
+                      ru.valido_dal::text                                    AS valido_dal,
+                      ru.valido_al::text                                     AS valido_al,
+                      COALESCE((SELECT COUNT(*) FROM config.user_override_aree uoa
+                                 WHERE uoa.auth_user_id = au.id), 0)         AS override_aree_count,
+                      COALESCE((SELECT COUNT(*) FROM config.user_override_azioni uoz
+                                 WHERE uoz.auth_user_id = au.id), 0)         AS override_azioni_count,
+                      COALESCE(ef_agg.cnt, 0)                                AS emittenti_count,
+                      ef_agg.descrizione                                     AS emittenti_descrizione,
+                      au.last_login,
+                      id.invito_inviato_at,
+                      id.deve_cambiare_password,
+                      (ctx.inv_jsonb ->> 'invitabile')::boolean              AS can_invite,
+                      ctx.inv_jsonb ->> 'motivo'                             AS invite_reason,
+                      NOT ctx.is_last_sa                                     AS can_disable,
+                      CASE WHEN ctx.is_last_sa
+                           THEN 'Ultimo SUPER_ADMIN attivo: disabilitarlo causerebbe il lockout del sistema'
+                           ELSE NULL
+                      END                                                    AS disable_reason,
+                      CASE WHEN ctx.is_sa
+                           THEN NOT ctx.is_last_sa
+                           ELSE NULL
+                      END                                                    AS can_demote_super_admin,
+                      CASE
+                           WHEN NOT ctx.is_sa  THEN NULL
+                           WHEN ctx.is_last_sa THEN 'Ultimo SUPER_ADMIN attivo: la rimozione del binding causerebbe il lockout del sistema'
+                           ELSE NULL
+                      END                                                    AS demote_reason
+                    FROM django.auth_user au
+                    LEFT JOIN anagrafiche.identita_digitali id
+                      ON id.auth_user_id      = au.id
+                     AND id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                    LEFT JOIN anagrafiche.soggetti_ruoli sr
+                      ON sr.id = id.soggetto_ruolo_id
+                    LEFT JOIN anagrafiche.risorse_umane ru
+                      ON ru.soggetto_ruolo_id = sr.id
+                    LEFT JOIN anagrafiche.soggetti s
+                      ON s.id = sr.soggetto_id
+                    LEFT JOIN config.unita_organizzative uo
+                      ON uo.id = ru.unita_organizzativa_id
+                    LEFT JOIN LATERAL (
+                        SELECT
+                            COUNT(*) AS cnt,
+                            string_agg(
+                                s_ef.ragione_sociale_completa,
+                                ', '
+                                ORDER BY s_ef.ragione_sociale_completa
+                            ) AS descrizione
+                          FROM config.user_emittenti_fiscali uef
+                          JOIN anagrafiche.emittenti_fiscali ef
+                            ON ef.id = uef.emittente_fiscale_id
+                          LEFT JOIN anagrafiche.soggetti_ruoli sr_ef
+                            ON sr_ef.id = ef.soggetto_ruolo_id
+                          LEFT JOIN anagrafiche.soggetti s_ef
+                            ON s_ef.id = sr_ef.soggetto_id
+                         WHERE uef.auth_user_id = au.id
+                    ) ef_agg ON true
+                    CROSS JOIN ctx
+                   WHERE au.id = p_auth_user_id;
+              END;
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_get_operatore_detail(p_auth_user_id integer)
+              IS 'Riga di dettaglio operatore + 6 capability per il drawer admin (Fase 1 P1 2026-04-29; Fase 7 cleanup 2026-04-29: rimossa call interna fn_get_ruolo_sistema E rimossa colonna ruolo_sistema dall''output - BE post-Fase 7 LANDED non la legge piu''). Migra in DB la query inline da Python e calcola capability via funzioni esistenti come single source of truth: fn_check_operatore_invitabile, fn_is_super_admin, fn_check_ultimo_super_admin_attivo. emittenti_descrizione aggrega la ragione_sociale_completa dei soggetti emittenti (Fase 1 cantiere emittente 2026-08-02: caduto il fallback su emittenti_fiscali.descrizione, valore e ORDER BY). LANGUAGE plpgsql STABLE.';
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_user_profile(p_auth_user_id integer)
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  v_result                  jsonb;
+                  v_utente                  jsonb;
+                  -- Blocco identita
+                  v_identita_id             anagrafiche.identita_digitali.id%TYPE;
+                  v_ruolo_applicativo       anagrafiche.identita_digitali.ruolo_applicativo%TYPE;
+                  v_ruolo_applicativo_out   text;  -- output top-level GUC-aware (§20260421-05)
+                  v_identita_attiva         anagrafiche.identita_digitali.attivo%TYPE;
+                  v_identita_val_dal        anagrafiche.identita_digitali.valido_dal%TYPE;
+                  v_identita_val_al         anagrafiche.identita_digitali.valido_al%TYPE;
+                  v_is_super_admin          boolean;
+                  -- Blocco risorse_umane
+                  v_risorsa_umana_id        anagrafiche.risorse_umane.id%TYPE;
+                  v_soggetto_ruolo_id       anagrafiche.risorse_umane.soggetto_ruolo_id%TYPE;
+                  v_qualifica_id            anagrafiche.risorse_umane.qualifica_id%TYPE;
+                  v_uo_id                   anagrafiche.risorse_umane.unita_organizzativa_id%TYPE;
+                  v_valido_dal              anagrafiche.risorse_umane.valido_dal%TYPE;
+                  v_valido_al               anagrafiche.risorse_umane.valido_al%TYPE;
+                  v_ru_attivo               anagrafiche.risorse_umane.attivo%TYPE;
+                  v_risorse_umane           jsonb;
+                  -- Flag autenticazione avanzata
+                  v_deve_cambiare_password  anagrafiche.identita_digitali.deve_cambiare_password%TYPE;
+                  -- Blocco soggetto
+                  v_soggetto                jsonb;
+                  -- Blocco emittente
+                  v_emittente               jsonb;
+                  -- Variabili emittente lookup
+                  v_uef_id                  config.user_emittenti_fiscali.id%TYPE;
+                  v_ef_id                   anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_ef_uid                  anagrafiche.emittenti_fiscali.uid%TYPE;
+                  v_ef_codice               anagrafiche.emittenti_fiscali.codice%TYPE;
+                  -- ⚠️ Fase 1 cantiere emittente (2026-08-02): era
+                  --   `anagrafiche.emittenti_fiscali.descrizione%TYPE`, cioe' un
+                  --   riferimento alla colonna che la Fase 4 elimina. Un %TYPE
+                  --   non somiglia a una lettura della colonna ma lo e' a tutti
+                  --   gli effetti: lasciato li', la DROP fallirebbe lontano da
+                  --   qui. Ora `text`, che e' anche il tipo della nuova sorgente
+                  --   (anagrafiche.soggetti.ragione_sociale_completa).
+                  v_ef_descrizione          text;
+                  v_ef_sr_id                anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+                  v_ef_regime               anagrafiche.emittenti_fiscali.regime_fiscale_rf%TYPE;
+                  v_ef_valuta_id            anagrafiche.emittenti_fiscali.valuta_id%TYPE;
+                  -- Qualifica e UO risolti
+                  v_qualifica_codice          config.qualifiche.codice%TYPE;
+                  v_qualifica_codice_interno  config.qualifiche.codice_interno%TYPE;
+                  v_qualifica_descrizione     config.qualifiche.descrizione%TYPE;
+                  v_uo_codice                 config.unita_organizzative.codice%TYPE;
+                  v_uo_codice_interno         config.unita_organizzative.codice_interno%TYPE;
+                  v_uo_descrizione            config.unita_organizzative.descrizione%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo (post Fase 7 step 3, 29-04-2026):
+                  --   Profilo utente completo (JSONB) post-rimozione chiave
+                  --   'ruolo_sistema'. Source of truth invariato: identita
+                  --   OPERATORE + risorse_umane via soggetto_ruolo. Top-level
+                  --   ruolo_applicativo GUC-aware (20260421-05); top-level
+                  --   is_super_admin context-aware (20260421-03).
+                  -- =========================================================
+
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_get_user_profile',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          'p_auth_user_id obbligatorio e > 0.'
+                      );
+                  END IF;
+
+                  -- 1. Query accorpata: auth_user + identita_digitali
+                  --    (OPERATORE) + risorse_umane + qualifica + UO.
+                  SELECT jsonb_build_object(
+                             'auth_user_id', au.id,
+                             'username',     au.username,
+                             'first_name',   au.first_name,
+                             'last_name',    au.last_name,
+                             'email',        au.email
+                         ),
+                         id.id,
+                         id.ruolo_applicativo,
+                         id.attivo,
+                         id.valido_dal,
+                         id.valido_al,
+                         id.deve_cambiare_password,
+                         ru.id,
+                         ru.soggetto_ruolo_id,
+                         ru.qualifica_id,
+                         ru.unita_organizzativa_id,
+                         ru.valido_dal,
+                         ru.valido_al,
+                         ru.attivo,
+                         q.codice,
+                         q.codice_interno,
+                         q.descrizione,
+                         uo.codice,
+                         uo.codice_interno,
+                         uo.descrizione
+                    INTO v_utente,
+                         v_identita_id,
+                         v_ruolo_applicativo,
+                         v_identita_attiva,
+                         v_identita_val_dal,
+                         v_identita_val_al,
+                         v_deve_cambiare_password,
+                         v_risorsa_umana_id,
+                         v_soggetto_ruolo_id,
+                         v_qualifica_id,
+                         v_uo_id,
+                         v_valido_dal,
+                         v_valido_al,
+                         v_ru_attivo,
+                         v_qualifica_codice,
+                         v_qualifica_codice_interno,
+                         v_qualifica_descrizione,
+                         v_uo_codice,
+                         v_uo_codice_interno,
+                         v_uo_descrizione
+                    FROM django.auth_user au
+                    LEFT JOIN anagrafiche.identita_digitali id
+                      ON id.auth_user_id = au.id
+                     AND id.ruolo_applicativo = 'OPERATORE'
+                    LEFT JOIN anagrafiche.risorse_umane ru
+                      ON ru.soggetto_ruolo_id = id.soggetto_ruolo_id
+                    LEFT JOIN config.qualifiche q
+                      ON q.id = ru.qualifica_id
+                    LEFT JOIN config.unita_organizzative uo
+                      ON uo.id = ru.unita_organizzativa_id
+                   WHERE au.id = p_auth_user_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_get_user_profile',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          'auth_user con id=' || p_auth_user_id || ' non trovato.'
+                      );
+                  END IF;
+
+                  IF v_identita_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_get_user_profile',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          'Nessuna identita OPERATORE per auth_user_id=' || p_auth_user_id || '.'
+                      );
+                  END IF;
+
+                  -- Guard: identita disabilitata / ruolo DISABILITATO / inattiva.
+                  IF v_identita_attiva = false OR v_ruolo_applicativo = 'DISABILITATO' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_get_user_profile',
+                          'E_UTENTE_DISABILITATO',
+                          jsonb_build_object(
+                              'auth_user_id', p_auth_user_id,
+                              'ruolo_applicativo', v_ruolo_applicativo::text,
+                              'identita_attiva', v_identita_attiva
+                          ),
+                          NULL::uuid,
+                          'Utente disabilitato: identita non attiva o ruolo DISABILITATO.'
+                      );
+                  END IF;
+
+                  -- Guard: identita fuori finestra temporale
+                  IF v_identita_val_dal IS NOT NULL AND CURRENT_DATE < v_identita_val_dal THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_get_user_profile',
+                          'E_UTENTE_NON_ATTIVO',
+                          jsonb_build_object('auth_user_id', p_auth_user_id,
+                                             'valido_dal', v_identita_val_dal),
+                          NULL::uuid,
+                          v_identita_val_dal::text
+                      );
+                  END IF;
+                  IF v_identita_val_al IS NOT NULL AND CURRENT_DATE > v_identita_val_al THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_get_user_profile',
+                          'E_UTENTE_SCADUTO',
+                          jsonb_build_object('auth_user_id', p_auth_user_id,
+                                             'valido_al', v_identita_val_al),
+                          NULL::uuid,
+                          v_identita_val_al::text
+                      );
+                  END IF;
+
+                  IF v_soggetto_ruolo_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_get_user_profile',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('identita_id', v_identita_id),
+                          NULL::uuid,
+                          'Nessun record risorse_umane per identita id=' || v_identita_id || '.'
+                      );
+                  END IF;
+
+                  -- Guard: risorsa umana disattivata / fuori finestra
+                  IF v_ru_attivo = false THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_get_user_profile',
+                          'E_UTENTE_DISABILITATO',
+                          jsonb_build_object('auth_user_id', p_auth_user_id,
+                                             'risorsa_umana_id', v_risorsa_umana_id),
+                          NULL::uuid,
+                          v_risorsa_umana_id::text
+                      );
+                  END IF;
+                  IF v_valido_dal IS NOT NULL AND CURRENT_DATE < v_valido_dal THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_get_user_profile',
+                          'E_UTENTE_NON_ATTIVO',
+                          jsonb_build_object('auth_user_id', p_auth_user_id,
+                                             'valido_dal', v_valido_dal),
+                          NULL::uuid,
+                          v_valido_dal::text
+                      );
+                  END IF;
+                  IF v_valido_al IS NOT NULL AND CURRENT_DATE > v_valido_al THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_get_user_profile',
+                          'E_UTENTE_SCADUTO',
+                          jsonb_build_object('auth_user_id', p_auth_user_id,
+                                             'valido_al', v_valido_al),
+                          NULL::uuid,
+                          v_valido_al::text
+                      );
+                  END IF;
+
+                  -- is_super_admin top-level (GUC-aware via fn_is_super_admin).
+                  v_is_super_admin := script.fn_is_super_admin(p_auth_user_id);
+
+                  -- Top-level ruolo_applicativo: GUC-first (veste del JWT
+                  -- corrente), fallback al ruolo dell'identita OPERATORE.
+                  v_ruolo_applicativo_out := COALESCE(
+                      NULLIF(current_setting('app.ruolo_applicativo', true), ''),
+                      v_ruolo_applicativo::text
+                  );
+
+                  v_risorse_umane := jsonb_build_object(
+                      'risorsa_umana_id',                v_risorsa_umana_id,
+                      'risorse_umane_auth_user_id',      v_identita_id,
+                      'soggetto_ruolo_id',               v_soggetto_ruolo_id,
+                      'qualifica_id',                    v_qualifica_id,
+                      'qualifica_codice',                v_qualifica_codice,
+                      'qualifica_codice_interno',        v_qualifica_codice_interno,
+                      'qualifica_descrizione',           v_qualifica_descrizione,
+                      'unita_organizzativa_id',          v_uo_id,
+                      'unita_organizzativa_codice',      v_uo_codice,
+                      'unita_organizzativa_codice_interno', v_uo_codice_interno,
+                      'unita_organizzativa_descrizione', v_uo_descrizione,
+                      'valido_dal',                      v_valido_dal,
+                      'valido_al',                       v_valido_al,
+                      'attivo',                          v_ru_attivo
+                  );
+
+                  -- 2. Blocco soggetto via fn_get_soggetto_dati_by_ruolo
+                  SELECT row_to_json(t.*)::jsonb
+                    INTO v_soggetto
+                    FROM script.fn_get_soggetto_dati_by_ruolo(v_soggetto_ruolo_id) t;
+
+                  -- 3. Risolve emittente fiscale (priorita' whitelist -> gestore)
+                  --    ⚠️ Fase 1 cantiere emittente (2026-08-02):
+                  --    emittente_descrizione viene dalla ragione sociale del
+                  --    SOGGETTO dell'emittente, non piu' da ef.descrizione. I
+                  --    due rami del UNION ALL joinano entrambi soggetti_ruoli ->
+                  --    soggetti: il tipo resta text in tutti e due, quindi il
+                  --    UNION non cambia forma.
+                  v_emittente := NULL;
+
+                  SELECT x.user_emittente_fiscale_id,
+                         x.emittente_fiscale_id,
+                         x.emittente_fiscale_uid,
+                         x.emittente_codice,
+                         x.emittente_descrizione,
+                         x.emittente_soggetto_ruolo_id,
+                         x.regime_fiscale_rf,
+                         x.valuta_id
+                    INTO v_uef_id,
+                         v_ef_id,
+                         v_ef_uid,
+                         v_ef_codice,
+                         v_ef_descrizione,
+                         v_ef_sr_id,
+                         v_ef_regime,
+                         v_ef_valuta_id
+                    FROM (
+                        SELECT *
+                          FROM (
+                              SELECT 1 AS priorita,
+                                     uef.id  AS user_emittente_fiscale_id,
+                                     ef.id   AS emittente_fiscale_id,
+                                     ef.uid  AS emittente_fiscale_uid,
+                                     ef.codice AS emittente_codice,
+                                     s_ef.ragione_sociale_completa AS emittente_descrizione,
+                                     ef.soggetto_ruolo_id AS emittente_soggetto_ruolo_id,
+                                     ef.regime_fiscale_rf,
+                                     ef.valuta_id
+                                FROM config.user_emittenti_fiscali uef
+                                JOIN anagrafiche.emittenti_fiscali ef
+                                  ON ef.id = uef.emittente_fiscale_id
+                                LEFT JOIN anagrafiche.soggetti_ruoli sr_ef
+                                  ON sr_ef.id = ef.soggetto_ruolo_id
+                                LEFT JOIN anagrafiche.soggetti s_ef
+                                  ON s_ef.id = sr_ef.soggetto_id
+                               WHERE uef.auth_user_id = p_auth_user_id
+                                 AND ef.attivo = true
+                               ORDER BY uef.id
+                               LIMIT 1
+                          ) whitelist
+
+                        UNION ALL
+
+                        SELECT *
+                          FROM (
+                              SELECT 2 AS priorita,
+                                     NULL::bigint AS user_emittente_fiscale_id,
+                                     ef.id   AS emittente_fiscale_id,
+                                     ef.uid  AS emittente_fiscale_uid,
+                                     ef.codice AS emittente_codice,
+                                     s_ef.ragione_sociale_completa AS emittente_descrizione,
+                                     ef.soggetto_ruolo_id AS emittente_soggetto_ruolo_id,
+                                     ef.regime_fiscale_rf,
+                                     ef.valuta_id
+                                FROM anagrafiche.emittenti_fiscali_billing_account efba
+                                JOIN anagrafiche.emittenti_fiscali ef
+                                  ON ef.soggetto_ruolo_id = efba.emittente_soggetto_ruolo_id
+                                LEFT JOIN anagrafiche.soggetti_ruoli sr_ef
+                                  ON sr_ef.id = ef.soggetto_ruolo_id
+                                LEFT JOIN anagrafiche.soggetti s_ef
+                                  ON s_ef.id = sr_ef.soggetto_id
+                               WHERE efba.billing_account_id IS NULL
+                                 AND efba.is_default = true
+                                 AND ef.attivo = true
+                               LIMIT 1
+                          ) fallback
+                    ) x
+                   ORDER BY x.priorita
+                   LIMIT 1;
+
+                  IF v_ef_id IS NOT NULL THEN
+                      DECLARE
+                          v_ef_soggetto jsonb;
+                      BEGIN
+                          SELECT row_to_json(t.*)::jsonb
+                            INTO v_ef_soggetto
+                            FROM script.fn_get_soggetto_dati_by_ruolo(v_ef_sr_id) t;
+
+                          v_emittente := jsonb_build_object(
+                              'emittente_fiscale_id',      v_ef_id,
+                              'emittente_fiscale_uid',     v_ef_uid,
+                              'emittente_codice',          v_ef_codice,
+                              'emittente_descrizione',     v_ef_descrizione,
+                              'user_emittente_fiscale_id', v_uef_id,
+                              'regime_fiscale_rf',         v_ef_regime,
+                              'valuta_id',                 v_ef_valuta_id
+                          ) || COALESCE(v_ef_soggetto, '{}'::jsonb);
+                      END;
+                  END IF;
+
+                  -- 4. Risultato finale (post-rimozione chiave 'ruolo_sistema').
+                  v_result := jsonb_build_object(
+                      'utente',                   v_utente,
+                      'is_super_admin',           v_is_super_admin,
+                      'ruolo_applicativo',        v_ruolo_applicativo_out,
+                      'risorse_umane',            v_risorse_umane,
+                      'soggetto',                 v_soggetto,
+                      'emittente',                v_emittente,
+                      'permessi_area',            script.fn_get_user_permissions_map(p_auth_user_id),
+                      'azioni_abilitate',         script.fn_get_user_actions_map(p_auth_user_id),
+                      'permessi_oggetto',         script.fn_get_user_object_permissions_map(p_auth_user_id),
+                      'deve_cambiare_password',   COALESCE(v_deve_cambiare_password, false)
+                  );
+
+                  RETURN v_result;
+              END;
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_get_user_profile(p_auth_user_id integer)
+              IS 'Profilo utente completo (JSONB). Post Fase 7 step 3 (29-04-2026): rimossa la chiave ruolo_sistema dall''output - BE post-Fase 7 LANDED non la legge piu''. Top-level ruolo_applicativo GUC-aware (20260421-05); is_super_admin context-aware (20260421-03/04). Richiede identita OPERATORE (raise E_ADMIN_VALIDAZIONE altrimenti). La chiave emittente.emittente_descrizione porta la ragione_sociale_completa del soggetto emittente (Fase 1 cantiere emittente 2026-08-02: prima leggeva emittenti_fiscali.descrizione nuda, cioe'' l''etichetta interna).';

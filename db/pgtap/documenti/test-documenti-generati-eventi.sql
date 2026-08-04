@@ -2,7 +2,7 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: documenti.documenti_generati_eventi
---   - INSERT eventi v1 ammessi (GENERATO/SCARICATO/STORAGE_ORPHAN)
+--   - INSERT eventi ammessi (GENERATO/SCARICATO/STORAGE_ORPHAN/RISTAMPA_FEDELE)
 --   - CHECK evento_tipo (set chiuso v1: ANTEPRIMA, RENDER_KO rifiutati)
 --   - CHECK esito (OK/KO/WARN)
 --   - CHECK messaggio non-vuoto / detail jsonb object
@@ -11,7 +11,7 @@
 --   - storico OFF (no provisioning automatico)
 --   - default audit popolati su INSERT minimo
 -- ------------------------------------------------------------
--- Indice test (1..14):
+-- Indice test (1..15):
 --  1) Setup: documento generato di riferimento creato
 --  2) INSERT evento GENERATO esito=OK passa
 --  3) INSERT evento SCARICATO con messaggio passa
@@ -26,10 +26,11 @@
 -- 12) FK: documento_generato_id inesistente -> 23503
 -- 13) Storico OFF: storico.documenti_generati_eventi NON esiste
 -- 14) Default audit: data_insert e user_insert popolati su INSERT minimo
+-- 15) CHECK evento_tipo: RISTAMPA_FEDELE ammesso, con esito WARN
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(14);
+SELECT plan(15);
 
 -- ============================================================
 -- Setup contesto: emittente + template + versione + documento generato
@@ -274,6 +275,36 @@ SELECT ok(
     WHERE documento_generato_id = (SELECT id FROM tmp_dge_doc)
       AND evento_tipo = 'GENERATO'),
   'Default audit: data_insert e user_insert popolati su INSERT minimo'
+);
+
+-- ============================================================
+-- 15) RISTAMPA_FEDELE ammesso, con esito WARN
+--
+-- La ristampa fedele ri-produce un documento dallo snapshot congelato e NON
+-- crea righe in `documenti_generati`: l'evento e' la sua UNICA scrittura
+-- (20260803-04). Va presidiato che il valore sia ammesso, altrimenti il CHECK
+-- lo rifiuta e il servizio si limita a loggare — un rosso che si vede solo nei
+-- log, cioe' uno che si smette di guardare.
+--
+-- `WARN` e' il caso normale, non l'eccezione: significa «fedele nel contenuto,
+-- non nei byte» (decisione Tid, brief ristampa fedele §8.2) e capita ogni volta
+-- che il motore di render cambia fra l'emissione e la ristampa.
+-- ============================================================
+INSERT INTO documenti.documenti_generati_eventi (
+  documento_generato_id, evento_tipo, esito, messaggio, detail
+)
+SELECT (SELECT id FROM tmp_dge_doc), 'RISTAMPA_FEDELE', 'WARN',
+       'Ristampa fedele: contenuto identico, byte diversi',
+       jsonb_build_object('pdf_hash_match', false);
+
+SELECT is(
+  (SELECT COUNT(*)::int FROM documenti.documenti_generati_eventi
+    WHERE documento_generato_id = (SELECT id FROM tmp_dge_doc)
+      AND evento_tipo = 'RISTAMPA_FEDELE'
+      AND esito = 'WARN'
+      AND (detail->>'pdf_hash_match')::boolean IS FALSE),
+  1,
+  'CHECK evento_tipo: RISTAMPA_FEDELE ammesso, con esito WARN'
 );
 
 SELECT * FROM finish();

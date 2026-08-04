@@ -233,7 +233,7 @@ function close() {
               />
               <Column
                 field="emittente_descrizione"
-                :header="t('amministrazione.matrice_utilities_ruoli.usage_col_descrizione')"
+                :header="t('amministrazione.matrice_utilities_ruoli.usage_col_ragione_sociale')"
                 style="min-width: 220px;"
               />
               <Column

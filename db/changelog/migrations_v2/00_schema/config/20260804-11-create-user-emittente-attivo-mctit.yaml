@@ -1,0 +1,139 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Crea config.user_emittente_attivo — l'emittente fiscale su cui un utente sta
+# lavorando (brief-db-impersonazione-scope-emittente.md §8.8).
+#
+# IL MODELLO. Tutti lavorano dentro un emittente. Per l'operatore e' un
+#   PERMESSO — la riga in config.user_emittenti_fiscali, fissata nella sua
+#   configurazione. Per il super admin e' una SCELTA — obbligatoria al primo
+#   login, salvata qui, riproposta alle sessioni successive, modificabile dalla
+#   combo in topbar. Stessa semantica, sorgente diversa.
+#
+# ⚠️ QUESTA TABELLA E' UNA PREFERENZA, NON UN PERMESSO. Non concede accesso a
+#   nulla: l'autorizzazione resta la whitelist (user_emittenti_fiscali) piu' il
+#   profilo SUPER_ADMIN. Qui c'e' solo il valore da riproporre al prossimo login.
+#   Il perimetro della sessione viaggia sulla GUC app.current_emittente_id, che
+#   il BE popola dal claim JWT: il database legge SOLO quella. Se le funzioni di
+#   scope ripiegassero su questa tabella quando la GUC e' assente, ogni job
+#   batch e ogni trigger senza GUC erediterebbero in silenzio l'emittente
+#   preferito dell'ultimo super admin che ha fatto login.
+#
+# ⚠️ PERCHE' NON UNA RIGA IN user_emittenti_fiscali (la scorciatoia economica).
+#   Sarebbe mezza ignorata: sia fn_check_user_emittente_scope sia
+#   fn_get_emittenti_scope_pk_ids escono al ramo super admin PRIMA di leggere la
+#   whitelist. Non restringerebbe nulla, ma comparirebbe nel drawer operatori
+#   come scope_mode='SINGLE'. Il peggio dei due mondi.
+#
+# ⚠️ FK CON ON DELETE CASCADE, di proposito. La gemella dei permessi ha un guard
+#   che impedisce di disattivare un emittente con righe figlie: qui sarebbe un
+#   errore: la preferenza di un utente bloccherebbe un'operazione
+#   amministrativa. Per una preferenza il comportamento giusto e' l'opposto —
+#   emittente sparito, preferenza decaduta, al login si torna a scegliere.
+#
+# STORICIZZAZIONE = il log dello switch. La colonna `storicizza` fa provvedere
+#   al framework (automation STORICO/STORICO_PROVISION, *all/*all): nasce
+#   storico.user_emittente_attivo con snapshot jsonb, user_insert, data_insert,
+#   tx_id, append-only. E' il «chi, quando, da -> a» che il brief chiedeva al
+#   §4.4.2 senza inventare una tabella di log. La registrazione in
+#   config.storico_set_storicizza (indispensabile: senza, il flag si azzera dopo
+#   il PRIMO update e si perderebbero tutti gli switch successivi) e' nel
+#   changeSet 20260804-16.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260804-11-create-user-emittente-attivo-mctit.yaml
+
+  - changeSet:
+      id: 20260804-11-create-user-emittente-attivo
+      author: mctit
+      comment: >
+        Crea config.user_emittente_attivo: emittente fiscale di lavoro per
+        utente (preferenza persistente, non permesso). Alimenta il default
+        della GUC app.current_emittente_id al login. Storicizzata: la gemella
+        storico.* e' il log append-only degli switch.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - not:
+                - tableExists:
+                    schemaName: config
+                    tableName: user_emittente_attivo
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: emittenti_fiscali
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: user_emittente_attivo
+            remarks: >-
+              Emittente fiscale su cui l'utente sta lavorando (preferenza, NON
+              permesso). Serve a riproporre la scelta al login successivo: il
+              perimetro effettivo della sessione viaggia sulla GUC
+              app.current_emittente_id. Riga assente = nessuna scelta ancora
+              fatta (per il super admin il BE la impone al primo accesso).
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_user_emittente_attivo
+                    nullable: false
+
+              - column: { name: auth_user_id, type: integer, constraints: { nullable: false }, remarks: "django.auth_user.id. Una sola riga per utente." }
+              - column: { name: emittente_fiscale_id, type: bigint, constraints: { nullable: false }, remarks: "anagrafiche.emittenti_fiscali.id (PK reale), come la GUC." }
+
+              - column: { name: data_insert, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_insert, type: text, defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+              - column: { name: data_update, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_update, type: text, defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+              - column: { name: storicizza, type: boolean, defaultValueBoolean: true, constraints: { nullable: false }, remarks: "Storicizzazione permanente: ogni switch finisce in storico.user_emittente_attivo." }
+              - column: { name: tx_id, type: uuid, remarks: "Transaction id, gestito da dbops.trgfn_tx_id_managed." }
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: user_emittente_attivo
+            columnNames: auth_user_id
+            constraintName: uq_user_emittente_attivo_auth_user
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: user_emittente_attivo
+            baseColumnNames: emittente_fiscale_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: emittenti_fiscali
+            referencedColumnNames: id
+            constraintName: fk_user_emittente_attivo_emittente
+            onDelete: CASCADE
+
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              COMMENT ON TABLE config.user_emittente_attivo IS
+                'Emittente fiscale di lavoro per utente. PREFERENZA, NON PERMESSO: '
+                'non concede accesso a nulla, l''autorizzazione resta la whitelist '
+                'config.user_emittenti_fiscali piu'' il profilo SUPER_ADMIN. Serve a '
+                'riproporre la scelta al login; il perimetro della sessione viaggia '
+                'sulla GUC app.current_emittente_id, unica fonte letta dalle funzioni '
+                'di scope. Storicizzata: storico.user_emittente_attivo e'' il registro '
+                'append-only degli switch (brief-db-impersonazione-scope-emittente '
+                'SS8.8, 2026-08-04).';
+              COMMENT ON CONSTRAINT fk_user_emittente_attivo_emittente ON config.user_emittente_attivo IS
+                'ON DELETE CASCADE deliberato: una preferenza non deve mai impedire di '
+                'rimuovere un emittente fiscale. Emittente sparito, preferenza decaduta, '
+                'al login si torna a scegliere.';
+
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: user_emittente_attivo

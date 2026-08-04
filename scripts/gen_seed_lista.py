@@ -155,7 +155,17 @@ WHITELIST_BE: dict[str, tuple] = {
     "config.utilities_tipi_ruolo": ("apps/config/db/utilities_tipi_ruolo_repository.py", "_ORDER_COLS"),
     "config.tipi_ruolo_tipi_indirizzo": ("apps/config/db/tipi_ruolo_tipi_indirizzo_repository.py",
                                          "_ORDER_COLS"),
-    "pratiche.pratiche": ("apps/pratiche/db/pratiche_repository.py", "_PRATICHE_ORDER_COLS"),
+    # ⚠️ Era `_PRATICHE_ORDER_COLS`. Rinominata dal BE il 2026-08-02 nella
+    # passata del 7° lotto: le whitelist passano da privata/`ClassVar` a
+    # costante di MODULO pubblica, perche' un gate che le derivava dalla classe
+    # si svuotava quando un test mockava il repository — il controllo dipendeva
+    # dal mock invece che dal codice. La regola che ne hanno tratto («una
+    # whitelist e' un dato, non un comportamento») e' giusta, ma e' la SECONDA
+    # volta in un giorno che questo registro resta indietro su una rinomina,
+    # dopo `AUDIT_ORDER_COLUMNS`. Il presidio se ne accorge e si ferma, che e'
+    # il comportamento voluto; ma quando il BE rinomina una whitelist,
+    # aggiornare qui e' parte della stessa passata.
+    "pratiche.pratiche": ("apps/pratiche/db/pratiche_repository.py", "PRATICHE_ORDER_COLS"),
     "vendite.lotti": ("apps/vendite/db/vendite_repository.py", "LOTTI_SORT_COLUMNS"),
     "vendite.contratti": ("apps/vendite/db/contratti_repository.py", "_ORDER_COLS_CONTRATTI"),
     "vendite.preventivi": ("apps/vendite/db/preventivi_repository.py", "_ORDER_COLS_PREVENTIVI"),
@@ -174,6 +184,93 @@ WHITELIST_BE: dict[str, tuple] = {
     "catalogo.unita_misura": ("apps/catalogo/db/catalogo_repository.py", "UOM_ORDER_COLUMNS"),
     "catalogo.conversioni_uom": ("apps/catalogo/db/catalogo_repository.py",
                                  "UOM_CONVERSIONI_ORDER_COLUMNS"),
+    # Quarto lotto (2026-08-01). Mappate PRIMA di generare il seed: il
+    # controllo di consegna salta le liste che non trova qui, e una lista
+    # saltata in silenzio e' come non aver fatto il controllo. Le tre whitelist
+    # esistono gia' — e' il criterio con cui il lotto e' stato scelto.
+    "documenti.template_documenti": ("apps/documenti/db/documenti_repository.py",
+                                     "TEMPLATES_ORDER_COLUMNS"),
+    "documenti.template_asset": ("apps/documenti/db/documenti_repository.py",
+                                 "ASSET_ORDER_COLUMNS"),
+    "vendite.promo_articoli": ("apps/vendite/db/promo_articoli_repository.py", "_ORDER_COLS"),
+    # Quinto lotto (2026-08-01). Stesso criterio del quarto: mappate prima di
+    # generare. `ALLOWED_ORDER_COLUMNS` e' un `frozenset({...})` — forma che il
+    # lettore ha imparato a leggere proprio per questa lista.
+    "catalogo.articoli": ("apps/catalogo/db/catalogo_repository.py", "ARTICOLI_ORDER_COLUMNS"),
+    "vendite.listini": ("apps/vendite/db/listini_repository.py", "LISTINI_ORDER_COLUMNS"),
+    "anagrafiche.operatori": ("apps/amm_software/db/amm_software_repository.py",
+                              "ALLOWED_ORDER_COLUMNS"),
+    # Sesto lotto (2026-08-01). Le tre email nascono dalla passata unica del BE
+    # su `email_repository` (whitelist + query param + envelope paginato: la
+    # forma di ApiConversioniUomList), chiesta PRIMA di scegliere il lotto
+    # invece che in consegna.
+    "config.email_account": ("apps/core/db/email_repository.py",
+                             "EMAIL_ACCOUNT_ORDER_COLUMNS"),
+    "config.email_template": ("apps/core/db/email_repository.py",
+                              "EMAIL_TEMPLATE_ORDER_COLUMNS"),
+    "config.email_log": ("apps/core/db/email_repository.py", "EMAIL_LOG_ORDER_COLUMNS"),
+    # ⚠️ Aggiornato il 2026-08-02: era `_AUDIT_ORDER_COLUMNS` DENTRO la classe,
+    # con l'ancora `class AmmSoftwareRepository` per non confonderla con
+    # `ALLOWED_ORDER_COLUMNS` (operatori) che vive nello stesso modulo. Il BE
+    # l'ha promossa a costante di modulo `AUDIT_ORDER_COLUMNS` convertendo
+    # AuditLogView — forma giusta, coerente con le altre otto whitelist, e ora
+    # l'ancora di classe non serve piu': i due nomi non collidono.
+    # Il presidio ha segnalato «whitelist illeggibile» e si e' rifiutato di
+    # dichiarare il seed a posto, che e' il comportamento voluto: meglio dire
+    # «non lo so» che dare per verificata una lista che non si e' guardata.
+    # ⚠️ Lista POLIMORFA: non legge una tabella, legge `storico.{code}` scelta a
+    # runtime da `script.vw_audit_sources`, e proietta alias sintetizzati
+    # (`tabella` <- `code`, `user_modifica` <- `user_insert`). Quindi
+    # `vista_sql` resta NULL e i tipi si mettono a mano: non c'e'
+    # `information_schema` da interrogare, perche' non c'e' UN oggetto.
+    "storico.audit_log": ("apps/amm_software/db/amm_software_repository.py",
+                          "AUDIT_ORDER_COLUMNS"),
+    "anagrafiche.categorie_clienti_listini": (
+        "apps/anagrafiche/db/categorie_clienti_listini_repository.py", "_ORDER_COLS"),
+    # Settimo lotto (2026-08-02), dalla passata unica del BE. Tutte e tre le
+    # whitelist sono costanti di MODULO: il BE le ha portate fuori dalla classe
+    # dopo aver scoperto che un gate derivato dal `ClassVar` si svuotava quando
+    # un test mockava il repository — il controllo dipendeva dal mock invece che
+    # dal codice. «Una whitelist e' un dato, non un comportamento.»
+    "dbops.coda_lavori": ("apps/core/services/coda_lavori/repository.py",
+                          "ELENCA_SORT_SQL"),
+    "vendite.fatture_stampa_coda": ("apps/vendite/db/pipeline_repository.py",
+                                    "CODA_STAMPA_SORT_SQL"),
+    # ⚠️ La coda approvazioni non ha una whitelist propria: passa da
+    # `cerca_pratiche`, quindi la sua e' quella delle pratiche. E' il motivo per
+    # cui la mappa di prontezza l'aveva data per «senza ordinamento» — cercata
+    # nel repository che porta il nome della lista, dove non c'e'.
+    "vendite.approvazioni_prezzo": ("apps/pratiche/db/pratiche_repository.py",
+                                    "PRATICHE_ORDER_COLS"),
+    # Righe di versione listino (2026-08-03). La lista e' una UNION di righe
+    # standalone e compositi bundle: dopo la UNION l'ORDER BY vede solo i nomi
+    # PROIETTATI, per questo la whitelist mappa nome -> se stesso e non ad
+    # alias di tabella.
+    "vendite.listini_righe": ("apps/vendite/db/listini_repository.py",
+                              "RIGHE_ORDER_COLUMNS"),
+    # Ottavo lotto (2026-08-03): le 3 dashboard vendite + il drawer commessa.
+    #
+    # ⚠️ `vendite.commesse_attivita` e' la PRIMA lista la cui whitelist non vive
+    # in Python: sta nel `CASE` di `vendite.fn_list_commessa_attivita`, perche'
+    # ordine e paginazione stanno nella stessa funzione e ordinare a valle
+    # ordinerebbe la pagina gia' estratta. Si registra col percorso della doc
+    # AUTO-GEN (che parte da `docs/`), non con un sorgente backend: cosi' il
+    # controllo resta senza DB e continua a leggere il repository.
+    "vendite.commesse_attivita": (
+        "docs/it/dbzero/vendite/funzioni/fn_list_commessa_attivita.md", ""),
+    # Le 5 dashboard tengono la whitelist come attributo di CLASSE, quindi
+    # serve l'ancora: nello stesso modulo ne convivono cinque e senza ancora si
+    # leggerebbe la prima che capita.
+    "vendite.dash_aperto_documenti": ("apps/vendite/db/vendite_repository.py",
+                                      "DASH_APERTO_SORT_COLUMNS", "class VenditeRepository"),
+    "vendite.dash_backlog_documenti": ("apps/vendite/db/vendite_repository.py",
+                                       "DASH_BACKLOG_SORT_COLUMNS", "class VenditeRepository"),
+    "vendite.dash_competenza_errori": ("apps/vendite/db/vendite_repository.py",
+                                       "DASH_COMPETENZA_ERRORI_SORT_COLUMNS", "class VenditeRepository"),
+    "vendite.dash_competenza_gruppi": ("apps/vendite/db/vendite_repository.py",
+                                       "DASH_COMPETENZA_GRUPPI_SORT_COLUMNS", "class VenditeRepository"),
+    "vendite.dash_competenza_commesse": ("apps/vendite/db/vendite_repository.py",
+                                         "DASH_COMPETENZA_COMMESSE_SORT_COLUMNS", "class VenditeRepository"),
 }
 
 # Colonne che devono ordinare SEMPRE, quando la lista ce l'ha (regola di
@@ -190,7 +287,11 @@ NUCLEO_ORDINABILE: dict[str, tuple[str, ...]] = {
     "id fiscale": ("id_fiscale", "partita_iva"),
     "utility": ("utility",),
     "totale": ("totale",),
-    "stato": ("stato", "attivo"),
+    # `is_active`/`is_attivo`: stessa colonna di dominio con nome inglese
+    # (amm_software). Senza questi alias il controllo segnalerebbe «nucleo
+    # rotto: stato» su una lista che lo stato lo ordina eccome — un falso
+    # allarme che, ripetuto, insegna a ignorare il controllo.
+    "stato": ("stato", "attivo", "is_active"),
 }
 
 CAMPI_DEF = ["id", "codice", "descrizione", "schema_dati", "vista_sql", "attivo",
@@ -785,7 +886,43 @@ def genera(codice, descrizione, schema, vista, cols_vista, cols_vue, dizionario,
 #
 #        Solleva ValueError se non trova la costante: meglio fermarsi che
 #        rispondere "nessun problema" perche' non si e' guardato niente.
+# Scopo: estrae le chiavi di una whitelist che vive DENTRO una funzione DB,
+#        leggendole dalla documentazione auto-generata di quella funzione.
+#
+#        ⚠️ Perche' esiste questo secondo lettore. Per tutte le liste la
+#        whitelist sta in una costante Python. Per `vendite.commesse_attivita`
+#        no: ordine e paginazione vivono entrambi dentro
+#        `vendite.fn_list_commessa_attivita`, e ordinare a valle ordinerebbe la
+#        pagina gia' estratta. La whitelist e' quindi il `CASE` in PL/pgSQL.
+#
+#        Si legge dalla **doc auto-gen** e non dal DB di proposito: cosi'
+#        `--verifica-ordinamento` resta senza connessione — gira in CI e dove
+#        psycopg non c'e' — e continua a verificare lo stato del REPOSITORY,
+#        non quello di un database particolare che potrebbe essere disallineato.
+#
+#        Se la doc non c'e' o non ha il CASE si solleva: una lista non
+#        verificabile va detta, non saltata in silenzio.
+def whitelist_funzione_db(percorso_doc: str) -> set[str]:
+    file = ROOT / percorso_doc
+    if not file.exists():
+        raise ValueError(f"doc auto-gen non trovata: {percorso_doc} "
+                         "(va rigenerata dopo l'apply della funzione)")
+    testo = file.read_text(encoding="utf-8")
+    # `WHEN 'nome' THEN 'espressione'` — il ramo `WHEN ''` e' il default
+    # (nessun ordinamento chiesto) e non e' una colonna: la regex non lo prende.
+    chiavi = set(re.findall(r"WHEN\s+'([a-z_0-9]+)'\s+THEN", testo))
+    if not chiavi:
+        raise ValueError(f"nessun `WHEN '<nome>' THEN` in {percorso_doc}: "
+                         "la funzione non espone una whitelist leggibile")
+    return chiavi
+
+
 def whitelist_backend(percorso: str, costante: str, dentro: str | None = None) -> set[str]:
+    # Le liste il cui ordinamento vive in una funzione DB si registrano col
+    # percorso della doc auto-gen (che parte da `docs/`), non con un sorgente
+    # Python: si dirotta qui.
+    if percorso.startswith("docs/"):
+        return whitelist_funzione_db(percorso)
     file = ROOT / "backend" / percorso
     if not file.exists():
         raise ValueError(f"sorgente backend non trovato: {percorso}")
@@ -802,7 +939,14 @@ def whitelist_backend(percorso: str, costante: str, dentro: str | None = None) -
         base = testo.index(dentro) if dentro else 0
         if dentro and dentro not in testo:
             raise ValueError(f"ancora `{dentro}` non trovata in {percorso}")
-        m = re.compile(rf"^[ \t]*{re.escape(costante)}\s*(?::[^=\n]*)?=\s*\{{",
+        # `NOME = {...}`, `NOME: tipo = {...}`, ma anche `NOME = frozenset({...})`
+        # / `set({...})`: la forma con wrapper e' usata dove la whitelist e' un
+        # insieme immutabile (amm_software). Senza questo ramo il lettore non
+        # trova la costante e la lista viene SALTATA dal controllo di consegna —
+        # cioe' dichiarata a posto senza essere stata guardata, che e' il modo
+        # peggiore di fallire per uno strumento che esiste per guardare.
+        m = re.compile(rf"^[ \t]*{re.escape(costante)}\s*(?::[^=\n]*)?=\s*"
+                       rf"(?:frozenset|set)?\s*\(?\s*\{{",
                        re.M).search(testo, base)
         if not m:
             raise ValueError(f"costante `{costante}` non trovata in {percorso}"
@@ -835,6 +979,7 @@ def verifica_ordinamento(solo: str | None = None) -> int:
         print(f"[X] lista `{solo}` non presente nel seed", file=sys.stderr)
         return 1
     colonne = list(csv.DictReader((SEED_DIR / "lista_colonna.csv").open(encoding="utf-8")))
+    preset = list(csv.DictReader((SEED_DIR / "lista_preset.csv").open(encoding="utf-8")))
 
     problemi = saltate = 0
     for riga in sorted(liste, key=lambda r: r["codice"]):
@@ -868,7 +1013,34 @@ def verifica_ordinamento(solo: str | None = None) -> int:
                  if (cand := [c for c in attive if any(k in c["codice"] for k in chiavi)])
                  and not any(c["campo_sorgente"] in wl for c in cand)]
 
-        if not bugiarde and not irraggiungibili and not rotte:
+        # 4. l'ordinamento di APERTURA della lista. `ordinamento_default` del
+        #    preset deve puntare a una colonna che il backend sa ordinare E che
+        #    il seed offre come ordinabile. E' una quarta direzione, non un
+        #    doppione delle prime tre: quelle guardano le COLONNE, questa
+        #    guarda il primo ORDER BY che la lista manda da sola, prima che
+        #    l'utente tocchi niente. Un default rotto non si manifesta come
+        #    freccia che non ordina — si manifesta come lista che apre
+        #    nell'ordine sbagliato, e nessuno lo collega al seed.
+        #    Trovato cosi' il difetto di `anagrafiche.clienti` (2026-08-01):
+        #    default scritto col `codice` logico (`ragione_sociale`) invece che
+        #    col `campo_sorgente` (`ragione_sociale_completa`), quindi fuori
+        #    whitelist E fuori seed. Era li' da maggio.
+        default_rotti = []
+        for pre in preset:
+            grezzo = (pre["ordinamento_default"] or "").strip()
+            if pre["lista_id"] != riga["id"] or not grezzo:
+                continue
+            try:
+                col = json.loads(grezzo)[0]["col"]
+            except (ValueError, KeyError, IndexError, TypeError):
+                default_rotti.append(f"{pre['codice']}: `ordinamento_default` illeggibile")
+                continue
+            if col not in wl:
+                default_rotti.append(f"{pre['codice']}: `{col}` non e' nella whitelist del BE")
+            elif col not in ordinabili:
+                default_rotti.append(f"{pre['codice']}: `{col}` non e' offerta come ordinabile")
+
+        if not bugiarde and not irraggiungibili and not rotte and not default_rotti:
             print(f"  {codice:<40}ok  ({len(attive)} colonne, whitelist {len(wl)})")
             continue
         problemi += 1
@@ -879,6 +1051,8 @@ def verifica_ordinamento(solo: str | None = None) -> int:
             print(f"      il BE sa ordinarle ma il seed non le offre : {', '.join(irraggiungibili)}")
         if rotte:
             print(f"      NUCLEO rotto (deve ordinare sempre)        : {', '.join(rotte)}")
+        if default_rotti:
+            print(f"      ordinamento di APERTURA del preset        : {'; '.join(default_rotti)}")
 
     plurale = lambda n, s, p: f"{n} {s if n == 1 else p}"  # noqa: E731
     print()

@@ -65,8 +65,12 @@ SELECT (
   ) AS emittente_soggetto_ruolo_id,
   (
     SELECT v.id
-    FROM config.valute v --WHERE v.attivo IS TRUE
-    ORDER BY v.id
+    -- config.valute NON ha la colonna `attivo` (come altre 45 tabelle di
+    -- config): il filtro qui era commentato, e un filtro commentato invita a
+    -- riattivarlo. Si sceglie EUR e si ripiega sull'id piu' basso: deterministico
+    -- in ogni caso, senza presupporre una colonna che non esiste.
+    FROM config.valute v
+    ORDER BY (v.iso_code <> 'EUR'), v.id
     LIMIT 1
   ) AS valuta_id,
   (

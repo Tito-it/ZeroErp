@@ -9,6 +9,9 @@
 Indice test eseguiti:
 1) CommesseSourceHandlersTests.test_handler_ordini_sorgente_codice_ordine_vendita
 2) CommesseSourceHandlersTests.test_process_rows_crea_commessa_e_upsert
+2b) CommesseSourceHandlersTests.test_process_rows_propaga_condizioni_pagamento_alla_commessa
+2c) CommesseSourceHandlersTests.test_cache_commessa_separa_per_termine_di_pagamento
+2d) CommesseSourceHandlersTests.test_cache_commessa_riusa_a_parita_di_termine
 3) CommesseSourceHandlersTests.test_process_rows_dry_run_skippa_upsert
 4) CommesseSourceHandlersTests.test_process_rows_extract_tipo_commessa_da_meta
 5) CommesseSourceHandlersTests.test_process_rows_extract_policy_fatturazione_da_meta
@@ -171,6 +174,56 @@ class CommesseSourceHandlersTests(TestCase):
         repo.batch_upsert_attivita.assert_called_once()
         inputs = repo.batch_upsert_attivita.call_args[0][0]
         self.assertEqual(len(inputs), 1)
+
+    # Scopo: PROPAGAZIONE — il termine del documento sorgente arriva alla
+    #        commessa. E' la meta' visibile del difetto del 2026-08-03:
+    #        ORD0004786 dichiarava 2 rate a 30/60, la fattura 2263 e' uscita
+    #        con 1 rata a 30 gg perche' la commessa nasceva senza termine e la
+    #        catena ripiegava sul cliente.
+    def test_process_rows_propaga_condizioni_pagamento_alla_commessa(self):
+        repo = _mock_repo()
+        repo.fetch_pushable_rows.return_value = [
+            _make_row(termine_pagamento_id=3, modalita_pagamento_id=5)
+        ]
+        HandlerPreventivi(repo).run()
+
+        kwargs = repo.get_or_create_commessa.call_args.kwargs
+        self.assertEqual(kwargs["termine_pagamento_id"], 3)
+        self.assertEqual(kwargs["modalita_pagamento_id"], 5)
+
+    # Scopo: ⚠️ IL TEST CHE CONTA — le condizioni sono DIMENSIONI DI CHIAVE
+    #        (D-R), quindi due righe identiche in tutto tranne il termine
+    #        devono aprire DUE commesse. Se la `cache_key` locale non le
+    #        include, la seconda riga riusa l'id della prima e ne eredita il
+    #        termine: un difetto piu' insidioso di quello che si e' appena
+    #        tolto, perche' la commessa esiste, e' popolata e sembra giusta.
+    def test_cache_commessa_separa_per_termine_di_pagamento(self):
+        repo = _mock_repo()
+        repo.get_or_create_commessa.side_effect = [10, 11]
+        repo.fetch_pushable_rows.return_value = [
+            _make_row(segment_key="K:1", sorgente_uid="uid-1", termine_pagamento_id=3),
+            _make_row(segment_key="K:2", sorgente_uid="uid-2", termine_pagamento_id=7),
+        ]
+        HandlerPreventivi(repo).run()
+
+        self.assertEqual(repo.get_or_create_commessa.call_count, 2)
+        termini = [c.kwargs["termine_pagamento_id"]
+                   for c in repo.get_or_create_commessa.call_args_list]
+        self.assertEqual(termini, [3, 7])
+
+    # Scopo: simmetrico — a parita' di termine la cache continua a fare il suo
+    #        mestiere: due righe con lo STESSO termine restano UNA commessa.
+    #        Senza questo, il test sopra si potrebbe soddisfare disattivando
+    #        la cache, che e' un altro modo di sbagliare.
+    def test_cache_commessa_riusa_a_parita_di_termine(self):
+        repo = _mock_repo()
+        repo.fetch_pushable_rows.return_value = [
+            _make_row(segment_key="K:1", sorgente_uid="uid-1", termine_pagamento_id=3),
+            _make_row(segment_key="K:2", sorgente_uid="uid-2", termine_pagamento_id=3),
+        ]
+        HandlerPreventivi(repo).run()
+
+        self.assertEqual(repo.get_or_create_commessa.call_count, 1)
 
     # Scopo: regressione review 2026-07-23 — le segment_key FALLITE nel batch
     #        vanno ESCLUSE dalla risoluzione id post-upsert. Per gli UPDATE

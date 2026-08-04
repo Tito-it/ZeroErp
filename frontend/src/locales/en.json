@@ -124,7 +124,8 @@
     "tipo_soggetto": "Subject type",
     "select_tipo_soggetto": "Select subject type",
     "select_comune": "Search municipality...",
-    "select_via": "Search street..."
+    "select_via": "Search street...",
+    "retry": "Retry"
   },
   "strumenti": {
     "code": {
@@ -665,7 +666,7 @@
       "usage_hint": "List of fiscal issuers with override configured for the same utility (only when the matrix is for the Fiscal Issuer role).",
       "usage_count": "Fiscal issuers with override",
       "usage_col_codice": "Code",
-      "usage_col_descrizione": "Description",
+      "usage_col_ragione_sociale": "Business name",
       "col_utility_codice": "Utility code",
       "col_utility_descrizione": "Utility",
       "col_tipo_ruolo_codice": "Role code",
@@ -1049,7 +1050,7 @@
       "ed_msg_allinea_ok": "New DRAFT created from the updated preset."
     },
     "emittenti_fiscali": {
-      "search_placeholder": "Search by code, description, business name, VAT, tax code...",
+      "search_placeholder": "Search by code, business name, VAT, tax code...",
       "new": "New fiscal issuer",
       "create_title": "New fiscal issuer",
       "edit_title": "Edit fiscal issuer",
@@ -1069,7 +1070,6 @@
       "metodo_down": "Always down (DOWN)",
       "field_soggetto": "Subject",
       "field_codice": "Code",
-      "field_descrizione": "Description",
       "field_attivo": "Active",
       "field_regime_fiscale_rf": "Tax regime (RF)",
       "regime_fiscale_rf_hint": "RF tax regime code of the FE/SdI layout (e.g. RF01, RF19).",
@@ -1080,7 +1080,6 @@
       "field_valuta_hint": "Currency proposed by quotation/contract forms when no billing account is selected. Leave empty to start with no default.",
       "soggetto_no_piva": "The selected subject has no VAT number. A fiscal issuer requires a subject with a valid VAT number (SDI requirement). Change subject or update its profile.",
       "col_codice": "Code",
-      "col_descrizione": "Description",
       "col_ragione_sociale": "Business name",
       "col_cf": "Tax code",
       "col_piva": "VAT number",
@@ -2358,6 +2357,7 @@
       "col_ragione_sociale": "Client",
       "col_ba_codice": "Account code",
       "col_istanza_utility": "Instance code",
+      "col_validita_dal": "Valid from",
       "col_validita_al": "Valid until",
       "col_utility_descrizione": "Utility descr.",
       "col_totale_imponibile": "Taxable",
@@ -2603,8 +2603,6 @@
       "col_gestione": "Management",
       "nessuna_versione": "No version",
       "nuova_versione": "New version",
-      "mostra_versioni": "Show versions",
-      "nascondi_versioni": "Hide versions",
       "espandi_tutte_versioni": "Expand all versions",
       "comprimi_tutte_versioni": "Collapse all versions",
       "gestisci_righe": "Manage price rows",
@@ -2678,6 +2676,9 @@
       "stadio_emessa_non_fatturata": "Issued not invoiced",
       "stadio_fatturata": "Invoiced",
       "n_attivita": "activities",
+      "n_fatture": "no invoice | 1 invoice | {n} invoices",
+      "n_fatture_errore": "invoices n/a",
+      "n_fatture_errore_tooltip": "The invoice count could not be computed because of an error: the activity count and the rest of this screen are still valid. The error is recorded in the system logs.",
       "in_ritardo": "{n} issued late",
       "totale_competenza": "Accrual total:",
       "fatturato_mese": "invoiced",
@@ -2774,6 +2775,8 @@
       "vai_al_lotto": "Go to batch #{id}",
       "azione_approva": "Approve",
       "azione_apri_commessa": "Open job order",
+      "azione_apri_documento": "Open {codice}",
+      "card_hint_da_emettere": "This counts ACTIVITIES to be issued, not the invoices that will be created: a composite item yields one activity per component, and several activities for the same customer merge into a single invoice even when they come from different documents. The resulting invoices will therefore be fewer than the groups listed below.",
       "col_azioni": "Actions"
     },
     "dash_comune": {
@@ -2890,6 +2893,9 @@
     },
     "lineage": {
       "titolo": "Lineage",
+      "col_pratica": "Case",
+      "col_fase": "Phase",
+      "col_transito": "Transit",
       "pratica": "Case",
       "frontiera": "In progress",
       "origine": "Origin",
@@ -3070,23 +3076,24 @@
       "rerun": "Retry step",
       "rerun_header": "Retry failed step",
       "rerun_conferma": "Re-run the current step of the failed batch?",
-      "numera": "Finalize",
       "numera_header": "Finalize invoices",
       "numera_conferma": "Assign definitive numbers to the batch invoices? Fiscal numbering is irreversible; prints will be queued.",
       "numera_esito": "Invoices numbered: batch finalized",
-      "ristampa": "Reprint documents",
       "ristampa_header": "Reprint batch documents",
       "ristampa_conferma": "Queue the reprint of all the batch invoice documents? PDFs will be regenerated in the background; no numbering.",
       "ristampa_esito": "{n} documents queued for printing",
-      "reset": "Cancel batch",
       "reset_header": "Cancel the batch",
       "reset_conferma": "Warning: this action DESTROYS the batch's pre-fiscal invoices (unnumbered). Activities become free again for a new batch. The batch is set to CANCELLED and closed: it cannot be reopened. Proceed?",
       "reset_accept": "Cancel the batch",
       "reset_esito": "Batch cancelled: {fatture} invoices deleted, {attivita} activities freed",
-      "reset_fattura_header": "Reset invoice to draft",
-      "reset_fattura_conferma": "Reset this invoice to DRAFT? It will be removed from the batch.",
-      "reset_fattura_esito": "Invoice reset to draft",
-      "azione_reset_fattura": "Reset to draft",
+      "riporta_draft_header": "Reopen this batch for processing?",
+      "riporta_draft_conferma": "The invoices in this batch will be DELETED and the job-order lines will go back to «to be issued». The batch stays open: the next run regenerates the invoices, so you can fix the upstream data and redo them. This cannot be undone, and is not possible once an invoice has been numbered.",
+      "riporta_draft_accept": "Reopen for processing",
+      "riporta_draft_esito": "Batch reopened: {fatture} invoices deleted, {attivita} job-order lines back to be issued.",
+      "reset_fattura_header": "Extract the invoice from the batch",
+      "reset_fattura_conferma": "Warning: the invoice is DELETED (not reset to draft) and its activities become free again for a new batch. Allowed only on unnumbered invoices. Proceed?",
+      "reset_fattura_esito": "Invoice extracted from the batch: activities freed",
+      "azione_reset_fattura": "Extract from batch",
       "azione_anteprima_fattura": "PDF preview",
       "azione_documenti_fattura": "Documents",
       "documenti_fattura_titolo": "Invoice documents",
@@ -3109,7 +3116,18 @@
       "attention": "Attentions",
       "blocca_step": "Alerts block progression to the next step.",
       "nessuna_segnalazione": "No alert",
-      "azione_apri_fattura": "Open invoice"
+      "azione_apri_fattura": "Open invoice",
+      "azione_numera": "Finalize invoices",
+      "azione_ristampa": "Reprint documents",
+      "azione_annulla": "Cancel batch",
+      "azione_riporta_a_draft": "Return to processing",
+      "azione_reason": {
+        "stato_non_draft": "The batch is no longer a draft: cancelling is only allowed before it produces invoices. From ISSUED the way out is \"Return to processing\".",
+        "stato_non_pre_fiscale": "The batch is beyond the pre-fiscal stage: it cannot return to processing.",
+        "fatture_non_pre_fiscali": "The batch contains invoices beyond the pre-fiscal stage: they cannot be deleted.",
+        "fatture_numerate": "The batch contains already numbered invoices: deleting them would leave a gap in the fiscal numbering."
+      },
+      "azione_non_piu_disponibile": "This action is no longer available on this batch: the list has been refreshed."
     }
   },
   "dash_mesi": {
@@ -3418,8 +3436,17 @@
       "col_titolo": "Title",
       "col_nome_file": "File name",
       "col_stato": "Status",
-      "action_download": "Download PDF",
-      "action_aggiungi_allegati": "Add attachments"
+      "action_download": "Download original",
+      "action_aggiungi_allegati": "Add attachments",
+      "col_originale": "Original",
+      "originale_presente": "Available",
+      "originale_assente": "Not stored",
+      "download_non_disponibile": "The original file was not stored for this document: use the faithful reprint.",
+      "action_ristampa_fedele": "Faithful reprint",
+      "ristampa_fedele_hint": "Reproduces the document as it was: template and data of that time.",
+      "ristampa_fedele_ok": "Faithful reprint completed: identical to the original.",
+      "ristampa_fedele_contenuto": "Reprint faithful in content: the file differs from the original in bytes only (different print engine).",
+      "ristampa_fedele_error": "Faithful reprint failed."
     },
     "emissione": {
       "titolo": "Document issuance",
@@ -3704,6 +3731,12 @@
       "col_stato": "Status",
       "col_attivo": "Active",
       "col_data_insert": "Created",
+      "col_data_update": "Updated",
+      "col_pec_email": "PEC",
+      "col_canale_fe": "SDI channel",
+      "col_split_payment": "Split payment",
+      "col_ritenuta_acconto": "Withholding",
+      "col_regime_fiscale": "Tax regime",
       "section_soggetto": "Subject",
       "section_pagamento": "Payment",
       "section_fiscale": "Tax",
@@ -3942,6 +3975,24 @@
       "allineamento_left": "Left",
       "allineamento_right": "Right",
       "allineamento_center": "Center"
+    }
+  },
+  "core": {
+    "emittente_attivo": {
+      "tutti": "All issuers",
+      "aria": "Active issuer",
+      "conferma_titolo": "Change working issuer?",
+      "cambio_errore": "Could not switch issuer. Please retry.",
+      "conferma_emittente": "From now on you will work inside “{nome}”: you will see and create documents for this issuer only.",
+      "conferma_globale": "You will switch to “All issuers”: you will see everyone's data, but you cannot create documents until you select one.",
+      "conferma_schede": "Open tabs will be closed and the page reloaded.",
+      "conferma_schede_modificate": "Open tabs will be closed: {n} with unsaved changes, which will be lost.",
+      "scelta_titolo": "Select your working issuer",
+      "scelta_messaggio": "Choose the issuer you want to work inside. You can change it any time from the top bar.",
+      "scelta_conferma": "Start",
+      "globale_sola_lettura": "You are viewing all issuers: to create documents, select one from the top bar.",
+      "scelta_errore": "Could not load issuers. Retry, or continue in read-only mode.",
+      "scelta_rimanda": "Continue without selecting"
     }
   }
 }

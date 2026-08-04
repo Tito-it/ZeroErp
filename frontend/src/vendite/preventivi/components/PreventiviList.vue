@@ -133,7 +133,7 @@ function buildRowActions(data) {
 
 useTabFreshness(store, TAB_ENTITIES.PREVENTIVO)
 
-// Lista preventivi: ha filtro data_da con default anno-1 (frontend-standards
+// Lista preventivi: ha filtro data_da con default standard (frontend-standards
 // "Filtro data standard"), quindi auto-load al mount. Lo store guard hasFilters
 // considera data_da come filtro attivo: non rischiamo di tirar giu' "tutti i
 // preventivi senza limiti" perche' il default e' di per se' un filtro temporale.

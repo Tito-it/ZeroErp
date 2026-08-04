@@ -34,7 +34,6 @@ from apps.vendite.services.listini_service import (
     fn_delete_versione,
     fn_get_listino_dettaglio,
     fn_get_versione,
-    fn_list_bundle_compositi,
     fn_list_listini,
     fn_list_righe,
     fn_list_tipologie_per_utility,
@@ -579,27 +578,6 @@ class ApiListiniTipologiePerUtility(DomainAPIView):
 # Persistenza assoluta (no delta). Solo versioni BOZZA editabili
 # (guard service + trigger DB immutabilita' v5).
 
-
-class ApiListinoVersioneBundleCompositi(DomainAPIView):
-    """GET /api/v1/vendite/listini/<lid>/versioni/<vid>/bundle/
-
-    Lista articoli compositi che hanno almeno 1 prezzo bundle definito
-    in quella versione listino. Per popolare la sezione "Prezzi bundle
-    compositi" del drawer versione.
-    """
-
-    area_funzionale = "vendite"
-    is_search_endpoint = True
-
-    @extend_schema(
-        responses={200: inline_serializer(
-            name="VenditeListinoVersioneBundleCompositiResponse",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
-    )
-    def get(self, request: Request, listino_id: int, ver_id: int) -> JsonResponse:  # noqa: ARG002
-        results = fn_list_bundle_compositi(listino_id, ver_id)
-        return success_response(results)
 
 
 class ApiListinoVersioneBundleDetail(DomainAPIView):

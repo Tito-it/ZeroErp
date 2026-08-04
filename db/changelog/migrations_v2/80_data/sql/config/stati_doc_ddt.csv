@@ -2,6 +2,6 @@ id,codice_interno,codice,descrizione,attivo,ordine,meta,data_insert,user_insert,
 1,DRAFT,DRAFT,Bozza,t,10,{},2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.328734+01,titodb,PREVIEW,f,APERTO,f
 2,EMESSO,EMESSO,Emesso,t,20,{},2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.328734+01,titodb,ARCHIVE,f,IN_CORSO,f
 4,SPEDITO,SPEDITO,Spedito,t,40,{},2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.328734+01,titodb,ARCHIVE,f,IN_CORSO,f
-5,CONSEGNATO,CONSEGNATO,Consegnato,t,50,{},2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.328734+01,titodb,ARCHIVE,f,CHIUSO,f
-7,RESO,RESO,Reso,t,60,{},2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.328734+01,titodb,ARCHIVE,f,CHIUSO,f
+5,CONSEGNATO,CONSEGNATO,Consegnato,t,50,"{""nessuna_azione_key"":""vendite.ddt.stato_info.consegnato_usa_reso""}",2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.328734+01,titodb,ARCHIVE,f,CHIUSO,f
+7,RESO,RESO,Reso,t,60,"{""nessuna_azione_key"":""vendite.ddt.stato_info.reso""}",2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.328734+01,titodb,ARCHIVE,f,CHIUSO,f
 6,ANNULLATO,ANNULLATO,Annullato,t,70,{},2025-09-15 16:46:46.709947+02,titodb,2026-07-16 00:00:00+02,mctit,ARCHIVE,f,CHIUSO,t

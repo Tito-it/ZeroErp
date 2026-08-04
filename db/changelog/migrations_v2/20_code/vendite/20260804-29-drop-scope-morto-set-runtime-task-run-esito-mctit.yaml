@@ -1,0 +1,286 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Bonifica — via lo scope morto da vendite.fn_set_runtime_task_run_esito
+#   (piano-db-ritorno-lotto-a-draft.md, misura M4-quinquies)
+#
+# ── IL DIFETTO ───────────────────────────────────────────────────────────
+#   La funzione ha due rami: `p_scope = 'LOTTO'` aggiorna
+#   `vendite.fatturazione_lotti_task_runs`, l'`ELSE` aggiorna
+#   `vendite.attivita_fatturabili_lotti_task_runs`. La seconda tabella
+#   **non esiste**: e' stata droppata di proposito il 2026-02-27
+#   (`20260227-16-drop-attivita-pipeline-deprecated`) insieme alla
+#   famiglia «attivita pipeline», con `CASCADE`.
+#
+#   🔴 Il `CASCADE` porta via viste e vincoli ma **non i corpi plpgsql**:
+#   PostgreSQL non li traccia come dipendenze. Cosi' la funzione e'
+#   rimasta viva con dentro un riferimento a un fantasma.
+#
+# ── PERCHE' NON E' MAI ESPLOSA (e perche' e' peggio cosi') ───────────────
+#   plpgsql pianifica **per singolo statement**, alla prima esecuzione di
+#   QUELLO statement. Il ramo `ELSE` non viene mai preso — i tre wrapper
+#   passano tutti `p_scope => 'LOTTO'` cablato — quindi non e' mai stato
+#   pianificato e non ha mai sollevato. Una mina disinnescata dal fatto
+#   che nessuno ci cammina sopra: i pgTAP del ritorno a bozza passano da
+#   questa funzione (RD-6 → fn_cancel_lotto_task_run) e sono verdi.
+#
+#   E' esattamente il modo in cui questi resti sopravvivono per mesi: non
+#   danno nessun segnale finche' qualcuno non tocca il ramo giusto.
+#
+# ── COSA SI FA ───────────────────────────────────────────────────────────
+#   Via il ramo, e via `p_scope` con lui: aveva **un solo valore lecito
+#   residuo**, quindi era un parametro che chiedeva una scelta senza
+#   offrirne. Da sei parametri a cinque. Sparisce anche la validazione
+#   `scope non valido`, che presidiava un vocabolario di due voci di cui
+#   una morta.
+#
+#   ⚠️ `DROP` esplicito della firma vecchia: togliere un parametro crea un
+#   overload, non sostituisce, e con i DEFAULT le chiamate diventerebbero
+#   ambigue. I **tre wrapper** si aggiornano nello stesso changeSet — una
+#   firma non si cambia a meta'.
+#
+# ── COSA NON SI TOCCA ────────────────────────────────────────────────────
+#   Il nome: `fn_set_runtime_task_run_esito` non promette due domini, lo
+#   prometteva il suo COMMENT — che qui viene corretto. Restano fuori le
+#   altre due funzioni fantasma (`fn_resolve_commessa_prezzi`,
+#   `fn_sync_attivita_stato_esecuzione`): sono **senza chiamanti**, quindi
+#   non urgono, e cancellarle o riscriverle e' una decisione a se'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260804-29-drop-scope-morto-set-runtime-task-run-esito-mctit.yaml
+
+  - changeSet:
+      id: 20260804-29-drop-scope-morto-set-runtime-task-run-esito
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Bonifica: via da fn_set_runtime_task_run_esito il ramo che aggiornava
+        vendite.attivita_fatturabili_lotti_task_runs, tabella droppata il
+        2026-02-27, e via con esso il parametro p_scope che aveva un solo valore
+        lecito residuo. Firma da sei a cinque parametri, DROP esplicito, i tre
+        wrapper aggiornati nello stesso changeSet.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ DROP della firma vecchia PER INTERO: togliere un parametro
+              -- crea un overload e con i DEFAULT le chiamate diventano ambigue.
+              DROP FUNCTION IF EXISTS vendite.fn_set_runtime_task_run_esito(
+                  text, bigint, text, text, text, jsonb);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_set_runtime_task_run_esito(
+                  p_task_run_id   vendite.fatturazione_lotti_task_runs.id%TYPE,
+                  p_task_stato    text,
+                  p_error_code    text  DEFAULT NULL::text,
+                  p_error_message text  DEFAULT NULL::text,
+                  p_meta          jsonb DEFAULT '{}'::jsonb
+              )
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_task_stato text;
+                v_error_code text;
+                v_meta jsonb;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Applicare in modo uniforme la chiusura di un task-run
+                --   runtime del LOTTO.
+                --
+                -- Regole:
+                --   - validazione input minimi
+                --   - update stato/ended_at/meta
+                --   - fail: valorizza error_code/error_message
+                --   - complete/cancel: non forza errori, salvo reset dedicato
+                --
+                -- rev 2026-08-04: via il ramo ATTIVITA_FATTURABILI e con esso
+                --   il parametro `p_scope`. Quel ramo aggiornava
+                --   vendite.attivita_fatturabili_lotti_task_runs, droppata il
+                --   2026-02-27 col resto della famiglia «attivita pipeline»:
+                --   il CASCADE non porta via i corpi plpgsql, che PostgreSQL
+                --   non traccia come dipendenze. Non e' mai esplosa perche'
+                --   plpgsql pianifica per singolo statement, alla prima
+                --   esecuzione di quello statement, e i tre wrapper passavano
+                --   tutti 'LOTTO' cablato: il ramo morto non e' mai stato
+                --   nemmeno pianificato.
+                -- =========================================================
+                v_task_stato := upper(COALESCE(NULLIF(btrim(p_task_stato), ''), ''));
+                v_error_code := NULLIF(btrim(p_error_code), '');
+                v_meta := COALESCE(p_meta, '{}'::jsonb);
+
+                IF p_task_run_id IS NULL OR p_task_run_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite',
+                    'fn_set_runtime_task_run_esito',
+                    'E_GENERICO',
+                    jsonb_build_object(
+                      'scope', 'LOTTO',
+                      'severity', 'C',
+                      'code', 'E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object(
+                        'detail', 'task_run_id obbligatorio',
+                        'task_run_id', p_task_run_id
+                      )
+                    ),
+                    NULL::uuid,
+                    'task_run_id obbligatorio'
+                  );
+                END IF;
+
+                IF v_task_stato NOT IN ('COMPLETATO', 'ERRORE', 'ANNULLATO') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite',
+                    'fn_set_runtime_task_run_esito',
+                    'E_GENERICO',
+                    jsonb_build_object(
+                      'scope', 'LOTTO',
+                      'severity', 'C',
+                      'code', 'E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object(
+                        'detail', 'task_stato non valido',
+                        'task_stato', p_task_stato
+                      )
+                    ),
+                    NULL::uuid,
+                    'task_stato non valido'
+                  );
+                END IF;
+
+                UPDATE vendite.fatturazione_lotti_task_runs
+                   SET task_stato = v_task_stato,
+                       ended_at = now(),
+                       error_code = CASE
+                         WHEN v_task_stato = 'ERRORE' THEN COALESCE(v_error_code, 'E_GENERICO')
+                         ELSE error_code
+                       END,
+                       error_message = CASE
+                         WHEN v_task_stato = 'ERRORE' THEN COALESCE(NULLIF(btrim(p_error_message), ''), 'Errore task')
+                         ELSE error_message
+                       END,
+                       meta = COALESCE(meta, '{}'::jsonb) || v_meta,
+                       data_update = now(),
+                       user_update = current_user
+                 WHERE id = p_task_run_id;
+
+                IF NOT FOUND THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite',
+                    'fn_set_runtime_task_run_esito',
+                    'E_GENERICO',
+                    jsonb_build_object(
+                      'scope', 'LOTTO',
+                      'severity', 'C',
+                      'code', 'E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object(
+                        'detail', 'task_run non trovato',
+                        'task_run_id', p_task_run_id
+                      )
+                    ),
+                    NULL::uuid,
+                    concat('task_run non trovato id:', p_task_run_id::text)
+                  );
+                END IF;
+              END
+              $function$;
+
+              -- COMMENT esige tipi RISOLTI: qui il %TYPE non si usa.
+              COMMENT ON FUNCTION vendite.fn_set_runtime_task_run_esito(bigint, text, text, text, jsonb)
+              IS 'Helper condiviso per chiudere un task-run runtime del LOTTO. rev 2026-08-04: via il ramo ATTIVITA_FATTURABILI e con esso il parametro p_scope, che restava con un solo valore lecito. Quel ramo aggiornava vendite.attivita_fatturabili_lotti_task_runs, droppata il 2026-02-27 (20260227-16) col resto della famiglia «attivita pipeline»: il CASCADE non porta via i corpi plpgsql, che PostgreSQL non traccia come dipendenze. ⚠️ Non era mai esplosa perche'' plpgsql pianifica per singolo statement alla prima esecuzione di quello statement, e i tre wrapper passavano tutti ''LOTTO'' cablato — il ramo morto non e'' mai stato nemmeno pianificato. Il COMMENT precedente prometteva due domini: era l''unica cosa che mentiva davvero.';
+
+              -- ── I tre wrapper ──────────────────────────────────────────
+              -- Firme invariate: cambia solo la chiamata all'helper, che non
+              -- ha piu' p_scope.
+              CREATE OR REPLACE FUNCTION vendite.fn_complete_lotto_task_run(
+                  p_task_run_id vendite.fatturazione_lotti_task_runs.id%TYPE,
+                  p_meta        jsonb DEFAULT '{}'::jsonb
+              )
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- Scopo: chiude con esito COMPLETATO un task-run lotto.
+                PERFORM vendite.fn_set_runtime_task_run_esito(
+                  p_task_run_id => p_task_run_id,
+                  p_task_stato => 'COMPLETATO',
+                  p_error_code => NULL,
+                  p_error_message => NULL,
+                  p_meta => p_meta
+                );
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_complete_lotto_task_run(bigint, jsonb)
+              IS 'Chiude un task run lotto con esito COMPLETATO (via helper condiviso). rev 2026-08-04: l''helper non ha piu'' p_scope.';
+
+              CREATE OR REPLACE FUNCTION vendite.fn_cancel_lotto_task_run(
+                  p_task_run_id vendite.fatturazione_lotti_task_runs.id%TYPE,
+                  p_meta        jsonb DEFAULT '{}'::jsonb
+              )
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- Scopo: chiude con esito ANNULLATO un task-run lotto.
+                -- ⚠️ E' la funzione che fn_riporta_lotto_a_draft chiama per
+                -- azzerare lo stato di esecuzione del lotto riaperto (RD-6):
+                -- il percorso vivo che passava accanto al ramo morto.
+                PERFORM vendite.fn_set_runtime_task_run_esito(
+                  p_task_run_id => p_task_run_id,
+                  p_task_stato => 'ANNULLATO',
+                  p_error_code => NULL,
+                  p_error_message => NULL,
+                  p_meta => p_meta
+                );
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_cancel_lotto_task_run(bigint, jsonb)
+              IS 'Chiude un task run lotto con esito ANNULLATO (via helper condiviso). Chiamata da vendite.fn_riporta_lotto_a_draft (RD-6) per riportare i task_run del lotto riaperto a RUN. rev 2026-08-04: l''helper non ha piu'' p_scope.';
+
+              CREATE OR REPLACE FUNCTION vendite.fn_fail_lotto_task_run(
+                  p_task_run_id   vendite.fatturazione_lotti_task_runs.id%TYPE,
+                  p_error_code    character varying,
+                  p_error_message text,
+                  p_meta          jsonb DEFAULT '{}'::jsonb
+              )
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- Scopo: chiude con esito ERRORE un task-run lotto.
+                PERFORM vendite.fn_set_runtime_task_run_esito(
+                  p_task_run_id => p_task_run_id,
+                  p_task_stato => 'ERRORE',
+                  p_error_code => p_error_code,
+                  p_error_message => p_error_message,
+                  p_meta => p_meta
+                );
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_fail_lotto_task_run(bigint, character varying, text, jsonb)
+              IS 'Chiude un task run lotto con esito ERRORE (via helper condiviso). rev 2026-08-04: l''helper non ha piu'' p_scope.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              SELECT 1;

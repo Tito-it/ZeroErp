@@ -34,7 +34,7 @@ const { t } = useI18n()
 const props = defineProps({
   modelValue: { type: [Number, null], default: null },
   // Record di dettaglio in edit (per leggere emittente_fiscale_codice e
-  // emittente_fiscale_descrizione denormalizzati). Non usato in create.
+  // emittente_ragione_sociale denormalizzati). Non usato in create.
   record: { type: Object, default: null },
   isEdit: { type: Boolean, default: false },
   disabled: { type: Boolean, default: false },
@@ -66,16 +66,19 @@ const {
 const useAdminLookup = computed(() => isAdminMode.value && !props.isEdit)
 
 // Sintesi della singola option per i casi disabled (edit o operatore-mode).
-// Riusa lo stesso shape del lookup admin (campi `id, codice, ragione_sociale,
-// descrizione`) cosi' il `formatEmittenteOptionLabel` produce display uniforme.
+// Riusa lo stesso shape del lookup admin (campi `id, codice, ragione_sociale`)
+// cosi' il `formatEmittenteOptionLabel` produce display uniforme.
+// La chiave `descrizione` e' stata tolta il 2026-08-02: era una copia dello
+// stesso valore, tenuta in vita solo dal fallback del formatter — ora rimosso
+// (`brief-emittente-ragione-sociale-dal-soggetto.md`). Il campo denormalizzato
+// `emittente_ragione_sociale` porta gia' la ragione sociale del soggetto.
 const recordAsOption = computed(() => {
   const r = props.record
   if (!r || r.emittente_fiscale_id == null) return null
   return {
     id: r.emittente_fiscale_id,
     codice: r.emittente_fiscale_codice ?? null,
-    ragione_sociale: r.emittente_fiscale_descrizione ?? null,
-    descrizione: r.emittente_fiscale_descrizione ?? null,
+    ragione_sociale: r.emittente_ragione_sociale ?? null,
   }
 })
 
@@ -86,7 +89,6 @@ const operatoreAsOption = computed(() => {
     id: ef.id,
     codice: ef.codice,
     ragione_sociale: ef.ragioneSociale,
-    descrizione: ef.ragioneSociale,
   }
 })
 

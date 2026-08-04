@@ -17,7 +17,12 @@ export const usePromoArticoliStore = createCrudStore('vendite-promo-articoli', {
     update: updatePromoArticolo
   },
   tabEntity: TAB_ENTITIES.PROMO_ARTICOLI,
-  orderBy: 'valido_dal',
+  // Regola di dominio: dove una lista mostra le date di validita', `valido_al`
+  // e' l'ordinamento di default, in DESC: scadenza piu' lontana in testa,
+  // promo scadute in fondo — cio' che vale ora sopra, cio' che non vale piu'
+  // sotto. (Qui `valido_al` e' NOT NULL: ogni promo ha una scadenza, quindi
+  // non esiste il caso "senza scadenza" delle conversioni UoM.)
+  orderBy: 'valido_al',
   orderDir: 'desc',
   startsEmpty: false,
   filterDefaults: {

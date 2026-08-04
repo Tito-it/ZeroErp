@@ -18,6 +18,7 @@ from apps.vendite.api.preventivi_documenti_views import (
     ApiPreventivoDocumentoAnteprima,
     ApiPreventivoDocumentoFile,
     ApiPreventivoDocumentoFileDownload,
+    ApiPreventivoDocumentoRistampa,
     ApiPreventivoDocumentoGenera,
     ApiPreventivoEmetti,
 )
@@ -263,6 +264,13 @@ urlpatterns = [
         "<int:sorgente_id>/documenti/<int:documento_id>/file/<int:file_id>/",
         ApiPreventivoDocumentoFileDownload.as_view(),
         name="vendite-preventivi-documenti-file-download",
+    ),
+    # Ristampa fedele (percorso 3): ri-renderizza l'originale dalla versione
+    # pinnata + contesto congelato. Non emette nulla di nuovo.
+    path(
+        "<int:sorgente_id>/documenti/<int:documento_id>/ristampa/",
+        ApiPreventivoDocumentoRistampa.as_view(),
+        name="vendite-preventivi-documenti-ristampa",
     ),
     # Note partizionate (vendite.note_preventivo) — testata o riga.
     # GET ?target_riga_id=<rid> per filtrare le note della singola riga.

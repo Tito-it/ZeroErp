@@ -28,6 +28,7 @@ from apps.core.db._helpers import (
     row_to_dict,
     rows_to_list,
     sql_order_direction,
+    sql_tiebreak_direction,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.db.sql_write_helpers import execute_dynamic_update
@@ -134,6 +135,7 @@ class ResiRepository:
     ) -> tuple[list[dict[str, Any]], int]:
         order_column = _ORDER_COLS_RESI.get(order_by, _ORDER_COLS_RESI["data"])
         direction = sql_order_direction(order_dir)
+        tiebreak_dir = sql_tiebreak_direction(direction)
         # `max_limit`: lista cap 200 (gia' via parse_list_params), export fino a
         # EXPORT_MAX_ROWS+1 per non troncare in silenzio (guard su COUNT reale).
         safe_limit = max(1, min(int(limit), max_limit))
@@ -184,7 +186,7 @@ class ResiRepository:
         data_sql = f"""
             SELECT v.* FROM vendite.vw_resi_lista v
             {where}
-            ORDER BY {order_column} {direction}, v.id ASC
+            ORDER BY {order_column} {direction}, v.id {tiebreak_dir}
             LIMIT %s OFFSET %s
         """  # noqa: S608
 
@@ -545,6 +547,11 @@ class ResiRepository:
         meta = _CODA_META[vista]
         order_column = meta["order_cols"].get(order_by) or "v.data"
         direction = sql_order_direction(order_dir, default_desc=True)
+        # ⚠️ Qui il tiebreak NON si allinea alla direzione (regola 2026-08-03,
+        # che vale per gli spareggi TECNICI): `v.reso_id DESC` raggruppa le
+        # righe di uno stesso reso e `v.resi_riga_id ASC` le tiene nel loro
+        # ordine naturale DENTRO il reso. Ribaltarle farebbe leggere le righe
+        # di un reso al contrario ordinando la lista per un'altra colonna.
         safe_limit = max(1, min(int(limit), max_limit))
         safe_offset = max(0, int(offset))
 

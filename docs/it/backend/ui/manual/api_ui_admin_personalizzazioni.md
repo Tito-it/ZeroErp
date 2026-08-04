@@ -175,7 +175,7 @@ Errori:
       "profilo_accesso_descrizione": null,
       "emittente_fiscale_id": null,
       "emittente_fiscale_codice": null,
-      "emittente_fiscale_descrizione": null,
+      "emittente_ragione_sociale": null,
       "is_default": true,
       "pagina_dimensione": 25,
       "ordinamento_default": [{"col": "ragione_sociale", "dir": "asc"}],

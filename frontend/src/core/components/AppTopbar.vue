@@ -21,6 +21,7 @@ import { MANAGE_ICONS } from '../constants'
 import SearchDrawer from './SearchDrawer.vue'
 import AiAssistantDrawer from './AiAssistantDrawer.vue'
 import CodeLavoroDrawer from './CodeLavoroDrawer.vue'
+import EmittenteAttivoSelect from './EmittenteAttivoSelect.vue'
 import { menuItemClass } from '../utils/rowActions'
 import { useNavigationFavorites } from '../composables/useNavigationFavorites'
 import { useQueueCountsPolling } from '../composables/useQueueCountsPolling'
@@ -41,16 +42,12 @@ const areaTitle = computed(() => {
   return resolveTabLabel(route.meta, t) || ''
 })
 
-const companyName = computed(() => {
-  // Per operatori e admin di emittente: identita 1-a-1 dal nuovo getter.
-  // Per admin globali: leggiamo direttamente dal blocco emittente del
-  // profilo (cascata 4b: gestore globale) come display informativo.
-  if (auth.emittenteCorrente) {
-    return auth.emittenteCorrente.ragioneSociale || ''
-  }
-  const em = auth.user?.emittente
-  return em?.ragione_sociale_completa || em?.emittente_descrizione || ''
-})
+// Il nome dell'emittente non e' piu' un computed di questo componente: dal
+// 2026-08-04 lo rende `EmittenteAttivoSelect`, che per chi PUO' scegliere e'
+// una combo (impersonazione di scope) e per l'operatore resta il testo di
+// prima. Il vecchio fallback sul «gestore globale» del profilo e' caduto con
+// esso: l'admin globale ora sceglie un emittente vero, non ne guarda uno
+// informativo che non corrispondeva a cio' che stava usando.
 
 const formattedDate = computed(() => {
   const now = new Date()
@@ -216,7 +213,7 @@ onMounted(async () => {
         @click="emit('toggle-menu')"
       />
       <i v-else class="pi pi-building"></i>
-      <span v-if="companyName" class="topbar-company">{{ companyName }}</span>
+      <EmittenteAttivoSelect />
     </div>
 
     <div class="topbar-center">

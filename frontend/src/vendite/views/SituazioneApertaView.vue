@@ -11,17 +11,16 @@
 //        Layout: card per area (click = filtro) con donut per fase + lista dei
 //        documenti ordinata per "in essere da", con filtro "aperti da oltre N
 //        giorni" (solo lista: le card restano la fotografia completa, DL-17).
-import { computed, onActivated } from 'vue'
+import { computed, onActivated, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import DashEmptyState from '../../core/components/DashEmptyState.vue'
 import DonutFasi from '../../core/components/charts/DonutFasi.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useNotify } from '../../core/composables/useNotify'
@@ -69,6 +68,29 @@ const {
 // Ordinamento colonne per il DataTable (controllato): il campo dallo store,
 // la direzione tradotta nella convenzione PrimeVue (1 asc, -1 desc).
 const documentiSortOrder = computed(() => (orderDir.value === 'desc' ? -1 : 1))
+
+// Ref alla lista configurabile + prop paginator: la view non usa
+// useSearchTable (lo stato di pagina vive nello store dashboard), quindi le
+// compone qui con quello che gia' possiede.
+const listaRef = ref(null)
+const documentiPaginatorOptions = computed(() => ({
+  totalRecords: documentiCount.value,
+  rows: documentiPageSize.value,
+  first: (documentiPage.value - 1) * documentiPageSize.value,
+  rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
+}))
+
+// Scopo: allinea una volta la dimensione pagina a quella risolta dal BE.
+const configAllineata = ref(false)
+function onConfigLoaded(config) {
+  if (configAllineata.value) return
+  configAllineata.value = true
+  const nuovoLimit = config?.pagina_dimensione
+  if (nuovoLimit && nuovoLimit !== documentiPageSize.value) {
+    documentiPageSize.value = nuovoLimit
+    store.fetchDocumenti()
+  }
+}
 
 // Scopo: decodifiche i18n fail-visible dai BB condivisi di dashboardAree
 //        (gruppo dash_comune, riusato dal Backlog): alias locali per tenere
@@ -382,87 +404,64 @@ onActivated(() => {
             />
           </div>
         </div>
-        <DataTable
+        <ListaConfigurabile
           v-if="documentiCount > 0 || documentiLoading"
-          :value="documenti"
+          ref="listaRef"
+          codice="vendite.dash_aperto_documenti"
+          data-key="documento_id"
+          :rows="documenti"
+          :total="documentiCount"
           :loading="documentiLoading"
-          :total-records="documentiCount"
-          :rows="documentiPageSize"
-          :first="(documentiPage - 1) * documentiPageSize"
-          paginator
-          paginator-position="top"
-          lazy
-          :rows-per-page-options="PAGINATION.ROWS_OPTIONS"
+          :paginator-options="documentiPaginatorOptions"
+          :page="documentiPage"
           :sort-field="orderBy"
           :sort-order="documentiSortOrder"
-          class="app-datatable app-datatable--inner"
-          striped-rows
           @page="onDocumentiPage"
           @sort="onDocumentiSort"
+          @config-loaded="onConfigLoaded"
         >
-          <Column field="anzianita_giorni" :header="t('vendite.situazione_aperta.col_aperto_da')" sortable style="width: 130px;">
-            <template #body="{ data }">
-              <span
-                class="app-dash-ritardo"
-                v-tooltip.bottom="data.data_riferimento ? displayDate(data.data_riferimento) : ''"
-              >
-                {{ data.anzianita_giorni !== null
-                  ? t('vendite.situazione_aperta.aperto_da_giorni', { n: data.anzianita_giorni })
-                  : '—' }}
-              </span>
-            </template>
-          </Column>
-          <Column field="area" :header="t('vendite.situazione_aperta.col_area')" style="width: 110px;">
-            <template #body="{ data }">
-              {{ areaLabel(data.area) }}
-            </template>
-          </Column>
-          <Column field="codice" :header="t('vendite.situazione_aperta.col_codice')" sortable style="width: 130px;">
-            <template #body="{ data }">
-              {{ data.codice ?? '—' }}
-            </template>
-          </Column>
-          <Column field="cliente_display" :header="t('vendite.situazione_aperta.col_cliente')" sortable>
-            <template #body="{ data }">
-              {{ data.cliente_display ?? '—' }}
-            </template>
-          </Column>
-          <Column field="fase" :header="t('vendite.situazione_aperta.col_fase')" style="width: 140px;">
-            <template #body="{ data }">
-              <Tag
-                v-if="data.fase"
-                :value="faseLabel(data.fase)"
-                :severity="faseDocumentoSeverity(data.fase)"
-              />
-              <span v-else>—</span>
-            </template>
-          </Column>
-          <Column field="stato_codice" :header="t('vendite.situazione_aperta.col_stato')" style="width: 120px;">
-            <template #body="{ data }">
-              <Tag :value="data.stato_codice ?? '—'" :severity="statoSeverity(data)" />
-            </template>
-          </Column>
-          <Column field="valore_totale" :header="t('vendite.situazione_aperta.col_valore')" sortable style="width: 120px;">
-            <template #body="{ data }">
-              {{ data.valore_totale !== null ? formatCurrency(data.valore_totale) : '—' }}
-            </template>
-          </Column>
-          <Column field="unita_totali" :header="t('vendite.situazione_aperta.col_unita')" style="width: 90px;">
-            <template #body="{ data }">
-              {{ data.unita_totali ?? '—' }}
-            </template>
-          </Column>
-          <Column field="motivo_fermo" :header="t('vendite.situazione_aperta.col_motivo')">
-            <template #body="{ data }">
-              {{ data.motivo_fermo ? motivoLabel(data.motivo_fermo) : '—' }}
-            </template>
-          </Column>
-          <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
-            <template #body="{ data }">
-              <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
-            </template>
-          </Column>
-        </DataTable>
+          <template #cell-anzianita_giorni="{ data }">
+            <span
+              class="app-dash-ritardo"
+              v-tooltip.bottom="data.data_riferimento ? displayDate(data.data_riferimento) : ''"
+            >
+              {{ data.anzianita_giorni !== null
+                ? t('vendite.situazione_aperta.aperto_da_giorni', { n: data.anzianita_giorni })
+                : '—' }}
+            </span>
+          </template>
+          <template #cell-area="{ data }">
+            {{ areaLabel(data.area) }}
+          </template>
+          <template #cell-codice="{ data }">
+            {{ data.codice ?? '—' }}
+          </template>
+          <template #cell-cliente_display="{ data }">
+            {{ data.cliente_display ?? '—' }}
+          </template>
+          <template #cell-fase="{ data }">
+            <Tag
+              v-if="data.fase"
+              :value="faseLabel(data.fase)"
+              :severity="faseDocumentoSeverity(data.fase)"
+            />
+            <span v-else>—</span>
+          </template>
+          <template #cell-stato_codice="{ data }">
+            <Tag :value="data.stato_codice ?? '—'" :severity="statoSeverity(data)" />
+          </template>
+          <!-- valore_totale non ha slot: il seed dichiara `currency_eur`. -->
+          <template #cell-unita_totali="{ data }">
+            {{ data.unita_totali ?? '—' }}
+          </template>
+          <template #cell-motivo_fermo="{ data }">
+            {{ data.motivo_fermo ? motivoLabel(data.motivo_fermo) : '—' }}
+          </template>
+
+          <template #actions="{ data, compact }">
+            <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
+          </template>
+        </ListaConfigurabile>
         <DashEmptyState
           v-else
           :loaded="documentiLoaded"

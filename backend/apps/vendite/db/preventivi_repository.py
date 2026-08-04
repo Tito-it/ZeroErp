@@ -20,6 +20,7 @@ from apps.core.db._helpers import (
     row_to_dict,
     rows_to_list,
     sql_order_direction,
+    sql_tiebreak_direction,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.db.sql_write_helpers import execute_dynamic_update
@@ -54,12 +55,12 @@ _ORDER_COLS_PREVENTIVI: dict[str, str] = {
     "totale_documento": "v.totale_documento",
     "totale_imponibile": "v.totale_imponibile",
     "totale_iva": "v.totale_iva",
-    "validita_al": "v.validita_al",
-    "validita_dal": "v.validita_dal",
+    "validita_al": "COALESCE(v.validita_al, 'infinity'::date)",
+    "validita_dal": "COALESCE(v.validita_dal, '-infinity'::date)",
     "stato_descrizione": "v.stato_descrizione",
     # `stato_codice_interno` (tecnica, severity del Tag) ed
     # `emittente_fiscale_codice` (la colonna Emittente legge
-    # `emittente_fiscale_descrizione`) sono uscite il 2026-07-31: nessuna
+    # `emittente_ragione_sociale`) sono uscite il 2026-07-31: nessuna
     # colonna del catalogo le invia come sortField.
     "valuta_codice": "v.valuta_codice",
     "competenza_mese": "v.competenza_mese",
@@ -158,6 +159,7 @@ class PreventiviRepository(
     ) -> tuple[list[PreventivoListRow], int]:
         order_column = _ORDER_COLS_PREVENTIVI.get(order_by, _ORDER_COLS_PREVENTIVI["data"])
         direction = sql_order_direction(order_dir)
+        tiebreak_dir = sql_tiebreak_direction(direction)
         # `max_limit`: lista cap 200 (gia' via parse_list_params), export fino a
         # EXPORT_MAX_ROWS+1 per non troncare in silenzio (guard su COUNT reale).
         safe_limit = max(1, min(int(limit), max_limit))
@@ -228,7 +230,7 @@ class PreventiviRepository(
             FROM vendite.vw_preventivi_lista v
             LEFT JOIN config.sorgenti s ON s.id = v.frontiera_tipo_id
             {where}
-            ORDER BY {order_column} {direction}, v.id ASC
+            ORDER BY {order_column} {direction}, v.id {tiebreak_dir}
             LIMIT %s OFFSET %s
         """  # noqa: S608
 
@@ -290,8 +292,8 @@ class PreventiviRepository(
                 p.totale_documento::text AS totale_documento,
                 p.emittente_fiscale_id,
                 ef.codice AS emittente_fiscale_codice,
-                COALESCE(s_ef.ragione_sociale_completa, ef.descrizione)
-                    AS emittente_fiscale_descrizione,
+                s_ef.ragione_sociale_completa
+                    AS emittente_ragione_sociale,
                 -- Flag informativo (UX): il BA ha un contratto ATTIVO per
                 -- la coppia (utility, data preventivo)? Se false il pricing
                 -- delle righe passera' dallo STADIO 2 (matrice categoria→
@@ -326,10 +328,11 @@ class PreventiviRepository(
             LEFT JOIN config.utilities u ON u.id = p.utility_id
             LEFT JOIN config.valute v ON v.id = p.valuta_id
             LEFT JOIN config.termini_pagamento tp ON tp.id = p.termine_pagamento_id
-            -- Decode emittente fiscale: codice + ragione sociale (con fallback
-            -- a descrizione plain dell'EF). Pattern allineato a documenti repo
-            -- per UX uniforme nei drawer (EmittenteFiscaleField in modalita' edit
-            -- legge questi campi denormalizzati senza round-trip aggiuntivo).
+            -- Decode emittente fiscale: codice + ragione sociale del soggetto
+            -- (nessun fallback a `emittenti_fiscali.descrizione`, rimosso col
+            -- brief emittente-ragione-sociale-dal-soggetto). Pattern allineato a
+            -- documenti repo per UX uniforme nei drawer (EmittenteFiscaleField
+            -- in edit legge questi campi denormalizzati senza round-trip).
             LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = p.emittente_fiscale_id
             LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
             LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id

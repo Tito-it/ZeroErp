@@ -14,6 +14,7 @@ import hashlib
 from datetime import date, datetime
 from typing import Any
 
+from apps.core.services.coda_lavori.drain_engine import contesto_terminale
 from apps.core.services.error_manager import ErrorManager, ServiceError
 
 # Job type dei lavori di fatturazione lanciati dall'app su `dbops.coda_lavori`
@@ -39,6 +40,7 @@ def parse_competenza_mese(raw: Any, *, error_code: str) -> date:
         bool(raw),
         code=error_code,
         message="Payload senza `competenza_mese`.",
+        context=contesto_terminale(),
     )
     try:
         return datetime.strptime(str(raw), "%Y-%m-%d").date().replace(day=1)
@@ -47,6 +49,7 @@ def parse_competenza_mese(raw: Any, *, error_code: str) -> date:
             code=error_code,
             message="`competenza_mese` non valida (atteso YYYY-MM-DD).",
             detail=str(raw),
+            context=contesto_terminale(),
         ) from exc
 
 
@@ -74,6 +77,7 @@ def parse_gruppi(raw: Any, *, error_code: str) -> tuple[str, ...] | None:
             code=error_code,
             message="`gruppi` deve essere una lista di chiavi gruppo fatturabile.",
             detail=f"tipo ricevuto: {type(raw).__name__}",
+            context=contesto_terminale(),
         )
     chiavi: list[str] = []
     for elemento in raw:
@@ -82,6 +86,7 @@ def parse_gruppi(raw: Any, *, error_code: str) -> tuple[str, ...] | None:
                 code=error_code,
                 message="`gruppi` contiene una chiave non valida (attesa stringa non vuota).",
                 detail=repr(elemento),
+                context=contesto_terminale(),
             )
         chiave = elemento.strip()
         if chiave not in chiavi:
@@ -92,6 +97,7 @@ def parse_gruppi(raw: Any, *, error_code: str) -> tuple[str, ...] | None:
         raise ServiceError(
             code=error_code,
             message="`gruppi` non puo` essere una lista vuota: omettere il campo per il giro di massa.",
+            context=contesto_terminale(),
         )
     if len(chiavi) > MAX_GRUPPI_EMISSIONE_MIRATA:
         raise ServiceError(
@@ -101,8 +107,170 @@ def parse_gruppi(raw: Any, *, error_code: str) -> tuple[str, ...] | None:
                 f"(max {MAX_GRUPPI_EMISSIONE_MIRATA})."
             ),
             detail=f"ricevuti: {len(chiavi)}",
+            context=contesto_terminale(),
         )
     return tuple(chiavi)
+
+
+# Motivi per cui un gruppo fatturabile richiesto non ha prodotto lotti. Sono
+# CLASSIFICAZIONI di una fotografia (`GruppoDiagnosi`), non un secondo criterio
+# di ammissibilita': l'unica sede del criterio resta `fn_list_emittibili_lane`.
+# Il codice finisce nell'esito del job; il testo, gia' in italiano, arriva
+# all'operatore via `ultimo_errore.message` (il FE lo rende cosi' com'e').
+MOTIVO_GRUPPO_SCONOSCIUTO = "GRUPPO_SCONOSCIUTO"
+MOTIVO_COMMESSA_NON_EMITTIBILE = "COMMESSA_NON_EMITTIBILE"
+MOTIVO_RIGHE_NON_APPROVATE = "RIGHE_NON_APPROVATE"
+MOTIVO_RIGHE_RIFIUTATE = "RIGHE_RIFIUTATE"
+MOTIVO_TIPO_DOC_MANCANTE = "TIPO_DOC_MANCANTE"
+MOTIVO_FUORI_COMPETENZA = "FUORI_COMPETENZA"
+MOTIVO_GIA_EMESSE = "GIA_EMESSE"
+MOTIVO_RIGHE_ANNULLATE = "RIGHE_ANNULLATE"
+MOTIVO_NESSUNA_RIGA_CANDIDATA = "NESSUNA_RIGA_CANDIDATA"
+MOTIVO_NON_DETERMINATO = "NON_DETERMINATO"
+
+# Quanti gruppi elencare per esteso nel messaggio all'operatore: oltre, il testo
+# diventa illeggibile in un toast e il dettaglio resta nell'esito strutturato.
+_MAX_GRUPPI_NEL_MESSAGGIO = 3
+
+
+# Scopo: Concordanza singolare/plurale nei testi all'operatore. Banale, ma i
+#        conteggi qui valgono spesso 1 («1 attività pronte» si nota, e fa
+#        sembrare trascurato tutto il messaggio che lo contiene).
+def _concorda(n: int, singolare: str, plurale: str) -> str:
+    return singolare if n == 1 else plurale
+
+
+# Scopo: Classifica UNA fotografia di gruppo non servito, in ordine di causa
+#        prossima. Restituisce `(codice_motivo, testo_it)`.
+#
+#        Il testo NON ripete il codice commessa: lo antepone gia' il compositore
+#        del messaggio, e il dato resta comunque a parte nell'esito strutturato.
+#
+#        L'ordine non e' arbitrario: se ci sono righe pronte a tutti gli effetti
+#        (approvate, con tipo doc, entro competenza) e il gruppo non e' entrato
+#        in nessuna terna, allora il blocco e' sulla TESTATA — ed e' il caso che
+#        ha motivato questa diagnostica (2026-08-03: commessa rimasta BOZZA,
+#        `stati_commessa.emittibile = false`, 15 attivita' di giugno invisibili
+#        alla fatturazione ma presenti nella dashboard). Solo quando NON ci sono
+#        righe pronte ha senso guardare perche' le righe non lo sono.
+#
+#        `NON_DETERMINATO` non e' una resa: e' l'unico esito onesto quando la
+#        fotografia non spiega l'esclusione (es. commessa senza emittente). Meglio
+#        dichiarare che non lo sappiamo che inventare una causa plausibile.
+def classifica_gruppo_non_servito(d: dict[str, Any]) -> tuple[str, str]:
+    if not d.get("n_righe"):
+        return (
+            MOTIVO_GRUPPO_SCONOSCIUTO,
+            "nessuna attività trovata per questa chiave gruppo",
+        )
+    if d.get("n_pronte"):
+        if d.get("commessa_emittibile") is False:
+            return (
+                MOTIVO_COMMESSA_NON_EMITTIBILE,
+                f"la commessa è in stato {d.get('stato_commessa') or '?'}, che non "
+                f"ammette fatturazione ({d['n_pronte']} attività "
+                f"{_concorda(d['n_pronte'], 'pronta', 'pronte')} in attesa)",
+            )
+        return (
+            MOTIVO_NON_DETERMINATO,
+            f"{d['n_pronte']} attività "
+            f"{_concorda(d['n_pronte'], 'risulta pronta', 'risultano pronte')} "
+            "ma il gruppo non è entrato in nessun lotto: verificare emittente e "
+            "utility della commessa",
+        )
+    if d.get("n_non_approvate"):
+        return (
+            MOTIVO_RIGHE_NON_APPROVATE,
+            f"{d['n_non_approvate']} attività non "
+            f"{_concorda(d['n_non_approvate'], 'è ancora approvata', 'sono ancora approvate')}",
+        )
+    if d.get("n_rifiutate"):
+        # Distinta da «non ancora approvata»: la rifiutata non e' in attesa di
+        # nessuno — dire all'operatore di aspettare l'approvazione lo
+        # manderebbe a bussare a una porta che e' gia' stata chiusa.
+        return (
+            MOTIVO_RIGHE_RIFIUTATE,
+            f"{d['n_rifiutate']} attività "
+            f"{_concorda(d['n_rifiutate'], 'è stata rifiutata', 'sono state rifiutate')} "
+            "in approvazione",
+        )
+    if d.get("n_senza_tipo_doc"):
+        return (
+            MOTIVO_TIPO_DOC_MANCANTE,
+            f"{d['n_senza_tipo_doc']} attività non "
+            f"{_concorda(d['n_senza_tipo_doc'], 'ha', 'hanno')} il tipo documento fiscale",
+        )
+    if d.get("n_fuori_competenza"):
+        return (
+            MOTIVO_FUORI_COMPETENZA,
+            f"{d['n_fuori_competenza']} attività "
+            f"{_concorda(d['n_fuori_competenza'], 'ha', 'hanno')} competenza successiva "
+            "al mese richiesto: rilanciare sul mese più recente (la selezione è cumulativa)",
+        )
+    # «Gia' emesse»: le annullate non contano come lavoro mancante — un gruppo
+    # con 3 emesse e 1 annullata E' interamente evaso, e senza questa somma
+    # cadrebbe nel fallback generico.
+    n_emesse = d.get("n_emesse") or 0
+    n_annullate = d.get("n_annullate") or 0
+    if n_emesse and n_emesse + n_annullate == d["n_righe"]:
+        return (
+            MOTIVO_GIA_EMESSE,
+            "l'unica attività del gruppo è già stata emessa"
+            if n_emesse == 1 and not n_annullate
+            else f"le {n_emesse} attività del gruppo sono già state emesse"
+            if n_emesse > 1 and not n_annullate
+            else f"le attività del gruppo sono già state emesse ({n_emesse}) "
+                 f"o annullate ({n_annullate})",
+        )
+    if n_annullate == d["n_righe"]:
+        return (
+            MOTIVO_RIGHE_ANNULLATE,
+            "le attività del gruppo sono state tutte annullate",
+        )
+    return (
+        MOTIVO_NESSUNA_RIGA_CANDIDATA,
+        "nessuna attività candidabile nel perimetro richiesto",
+    )
+
+
+# Scopo: Trasforma le fotografie dei gruppi richiesti nell'elenco strutturato dei
+#        NON serviti (`n_pronte` non basta: un gruppo con righe pronte e testata
+#        bloccata resta non servito). Ordine di input preservato: e' l'ordine in
+#        cui l'operatore ha spuntato le righe.
+def spiega_gruppi_non_serviti(
+    diagnosi: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    esiti: list[dict[str, Any]] = []
+    for d in diagnosi:
+        motivo, testo = classifica_gruppo_non_servito(d)
+        esiti.append({
+            "gruppo_key": d.get("gruppo_key"),
+            "commessa_codice": d.get("commessa_codice"),
+            "motivo": motivo,
+            "dettaglio": testo,
+        })
+    return esiti
+
+
+# Scopo: Compone il messaggio che l'operatore legge quando l'emissione mirata non
+#        produce nulla. Un elenco puntato non passa dal toast: si sceglie la forma
+#        «N su M, poi i primi tre per esteso». Il resto vive nell'esito.
+def messaggio_gruppi_non_serviti(
+    spiegazioni: list[dict[str, Any]], *, totale_richiesti: int,
+) -> str:
+    testa = (
+        f"Nessun lotto prodotto: {len(spiegazioni)} gruppi su {totale_richiesti} "
+        "non sono fatturabili."
+        if len(spiegazioni) != 1
+        else "Nessun lotto prodotto: il gruppo richiesto non è fatturabile."
+    )
+    dettagli = [
+        f"{s.get('commessa_codice') or s.get('gruppo_key')}: {s['dettaglio']}"
+        for s in spiegazioni[:_MAX_GRUPPI_NEL_MESSAGGIO]
+    ]
+    if len(spiegazioni) > _MAX_GRUPPI_NEL_MESSAGGIO:
+        dettagli.append(f"e altri {len(spiegazioni) - _MAX_GRUPPI_NEL_MESSAGGIO}")
+    return f"{testa} " + "; ".join(dettagli) + "."
 
 
 # Scopo: Digest stabile dell'insieme dei gruppi, per la chiave di BUSINESS

@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Passo A2 del cantiere «ritorno del lotto a DRAFT»
+#   (piano-db-ritorno-lotto-a-draft.md, decisione RD-2)
+#
+# ── IL PROBLEMA, IN UNA FRASE ────────────────────────────────────────────
+#   Quando un lotto torna in bozza, chi rilancia la pipeline deve sapere una
+#   cosa in piu': deve RIFARE il lavoro della bozza, o puo' saltare avanti?
+#   Oggi ha un solo modo per capirlo — guardare se il lotto e' andato in
+#   ERRORE. Ma un lotto riaperto dall'operatore NON e' andato in errore: ha
+#   funzionato benissimo, e' il risultato che non va bene. Marcarlo «in
+#   errore» per farlo ripartire sarebbe una bugia visibile: il cruscotto lo
+#   mostrerebbe rosso e i conteggi dei lotti falliti lo conterebbero.
+#
+# ── PERCHE' UNA COLONNA NUOVA E NON UN VALORE IN PIU' ────────────────────
+#   La strada economica sarebbe stata aggiungere un valore a stato_lotto.
+#   ⚠️ NON E' PRATICABILE, misurato il 2026-08-03: quella colonna non e' un
+#   vocabolario libero. Ha una macchina a stati cablata A MANO in Python
+#   (pipeline_repository.py, set_lotto_job_stato) che accetta ESATTAMENTE
+#   {IN_ESECUZIONE, COMPLETATO, ERRORE}, rifiuta tutto il resto con
+#   E_PIPELINE_STATO_LOTTO, e ha tre transizioni scritte una per una. Un
+#   quarto valore vuol dire riscrivere quella macchina: costo sul backend, e
+#   breaking. La colonna nuova invece non disturba NESSUNO di chi legge le
+#   colonne di oggi.
+#
+# ── PERCHE' UNA DATA E NON UN BOOLEANO (Tid, 2026-08-03) ─────────────────
+#   Una data si spiega da sola, si ordina, e non chiede a nessuno di
+#   ricordarsi di spegnere un flag. E' lo stesso asse gia' scelto dal
+#   progetto per la deprecabilita' di catalogo (`obsoleto_dal`): un fatto
+#   datato, non uno stato booleano da tenere sincronizzato.
+#   NULL = mai riaperto. Nessun default, nessun backfill: i lotti esistenti
+#   non sono mai stati riaperti, ed e' esattamente quello che NULL dice.
+#
+# ── ⚠️ QUANDO SI SPEGNE ──────────────────────────────────────────────────
+#   La colonna si accende con il ritorno (passo A3,
+#   vendite.fn_riporta_lotto_a_draft) e DEVE spegnersi quando il lotto
+#   avanza oltre DRAFT. Senza lo spegnimento il lotto rifarebbe lo stesso
+#   passo per sempre. Lo spegnimento e' parte del contratto verso il backend
+#   (§6 del piano): qui si crea solo il posto dove scriverlo.
+#
+# ── COSA NON FA QUESTO CHANGESET ─────────────────────────────────────────
+#   Non arma niente. E' una colonna nullable senza lettori: applicarla non
+#   cambia il comportamento di nulla, ed e' voluto — stesso criterio del
+#   «seed inerte» gia' usato per i task 2.3 e 4.3 del cantiere satelliti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260803-07-alter-fatturazione-lotti-add-riaperto-il-mctit.yaml
+
+  - changeSet:
+      id: 20260803-07-alter-fatturazione-lotti-add-riaperto-il
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fatturazione_lotti.riaperto_il — marcatore datato del ritorno
+        volontario in bozza (RD-2). Nullable, senza default: NULL = mai
+        riaperto. Inerte finche' fn_riporta_lotto_a_draft non lo scrive.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: fatturazione_lotti
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatturazione_lotti
+                ADD COLUMN IF NOT EXISTS riaperto_il timestamptz;
+
+              COMMENT ON COLUMN vendite.fatturazione_lotti.riaperto_il
+              IS 'Istante in cui il lotto e'' stato riportato in bozza DI PROPOSITO da un operatore (vendite.fn_riporta_lotto_a_draft). NULL = mai riaperto. Serve a distinguere «riaperto» da «rotto»: per far ripartire un lotto il runner guarda oggi stato_lotto = ''ERRORE'', che su un lotto riaperto volontariamente sarebbe falso e lo farebbe comparire fra i falliti nei cruscotti. E'' una DATA e non un booleano di proposito — stesso asse di config.* obsoleto_dal: si spiega da sola e si ordina. ⚠️ DEVE tornare NULL quando il lotto avanza oltre DRAFT, altrimenti il rilancio rifa'' lo stesso passo all''infinito. ⚠️ NON e'' uno stato: gli stati non fiscali del lotto restano stato_lotto e stato_operativo, e questa colonna non ne sostituisce nessuno.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              ALTER TABLE vendite.fatturazione_lotti
+                DROP COLUMN IF EXISTS riaperto_il;

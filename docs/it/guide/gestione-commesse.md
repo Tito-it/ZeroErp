@@ -329,7 +329,6 @@ FROM vendite.fn_emit_attivita_fatturabili_da_commessa(
 |----------|-------|
 | [`fn_link_commessa_sorgente`](/dbzero/vendite/funzioni/fn_link_commessa_sorgente) | Collega una sorgente alla commessa. **Ruolo auto-deciso a DB** `ROOT`/`COLLEGATO` (dal 2026-06-09; superato il vecchio modello mono-ROOT, non più "CONTRIBUENTE") |
 | [`fn_log_commessa_push_run`](/dbzero/vendite/funzioni/fn_log_commessa_push_run) | Registra esito push sorgente -> commessa |
-| [`fn_resolve_commessa_prezzi`](/dbzero/vendite/funzioni/fn_resolve_commessa_prezzi) | **Diagnostica su lotto** (NON riallinea le righe commessa): proietta/verifica i prezzi risolti per le attività di un lotto. Il riallineo prezzo riga è invece N5/N7 via le azioni prezzo commessa |
 
 ---
 

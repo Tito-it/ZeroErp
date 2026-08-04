@@ -189,10 +189,10 @@ class RuoloIndirizziView(DomainAPIView):
             # Risolvi tipo_indirizzo_codice → tipo_indirizzo_id
             tipo_codice = payload.get("tipo_indirizzo_codice")
             if not tipo_codice:
-                raise ServiceError(code="E_VALIDAZIONE", message="tipo_indirizzo_codice obbligatorio.")
+                raise ServiceError(code="E_ANAG_VALIDAZIONE", message="tipo_indirizzo_codice obbligatorio.")
             tipo_id = _repo.resolve_tipo_indirizzo_id(tipo_codice)
             if tipo_id is None:
-                raise ServiceError(code="E_VALIDAZIONE", message=f"Tipo indirizzo '{tipo_codice}' non trovato.")
+                raise ServiceError(code="E_ANAG_VALIDAZIONE", message=f"Tipo indirizzo '{tipo_codice}' non trovato.")
 
             istanza_utility_id = payload.get("istanza_utility_id")
             if istanza_utility_id is not None:

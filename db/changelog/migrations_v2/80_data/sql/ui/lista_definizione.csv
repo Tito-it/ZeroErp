@@ -21,3 +21,24 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert
 20,catalogo.uom_tipi,Tipi di unita di misura,catalogo,uom_tipi,t,2026-07-31 00:00:00,mctit
 21,catalogo.unita_misura,Unita di misura,catalogo,NULL,t,2026-07-31 00:00:00,mctit
 22,catalogo.conversioni_uom,Conversioni tra unita di misura,catalogo,NULL,t,2026-07-31 00:00:00,mctit
+23,vendite.promo_articoli,Promozioni articolo,vendite,NULL,t,2026-08-01 00:00:00,mctit
+24,documenti.template_documenti,Template documenti,documenti,NULL,t,2026-08-01 00:00:00,mctit
+25,documenti.template_asset,Asset dei template documenti,documenti,NULL,t,2026-08-01 00:00:00,mctit
+26,catalogo.articoli,Articoli di catalogo,catalogo,vw_articoli_dettaglio,t,2026-08-01 00:00:00,mctit
+27,vendite.listini,Listini di vendita,vendite,NULL,t,2026-08-01 00:00:00,mctit
+28,anagrafiche.operatori,Operatori,anagrafiche,NULL,t,2026-08-01 00:00:00,mctit
+29,config.email_account,Account email,config,NULL,t,2026-08-01 00:00:00,mctit
+30,config.email_template,Template email,config,NULL,t,2026-08-01 00:00:00,mctit
+31,config.email_log,Log invii email,config,NULL,t,2026-08-01 00:00:00,mctit
+32,storico.audit_log,Log di audit,storico,NULL,t,2026-08-01 00:00:00,mctit
+33,anagrafiche.categorie_clienti_listini,Listini per categoria cliente,anagrafiche,NULL,t,2026-08-01 00:00:00,mctit
+34,dbops.coda_lavori,Coda lavori,dbops,NULL,t,2026-08-02 00:00:00,mctit
+35,vendite.fatture_stampa_coda,Coda stampa documenti,vendite,NULL,t,2026-08-02 00:00:00,mctit
+36,vendite.approvazioni_prezzo,Coda approvazioni prezzo,vendite,NULL,t,2026-08-02 00:00:00,mctit
+37,vendite.listini_righe,Righe di versione listino,vendite,NULL,t,2026-08-03 00:00:00,mctit
+38,vendite.commesse_attivita,Attivita di commessa,vendite,NULL,t,2026-08-03 00:00:00,mctit
+39,vendite.dash_aperto_documenti,Situazione aperta — documenti,vendite,NULL,t,2026-08-03 00:00:00,mctit
+40,vendite.dash_backlog_documenti,Backlog — documenti fermi,vendite,NULL,t,2026-08-03 00:00:00,mctit
+41,vendite.dash_competenza_errori,Competenza — errori vivi,vendite,NULL,t,2026-08-03 00:00:00,mctit
+42,vendite.dash_competenza_gruppi,Competenza — gruppi fatturabili,vendite,NULL,t,2026-08-03 00:00:00,mctit
+43,vendite.dash_competenza_commesse,Competenza — drill-down commesse,vendite,NULL,t,2026-08-03 00:00:00,mctit

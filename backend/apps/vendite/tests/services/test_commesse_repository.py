@@ -8,6 +8,8 @@
 """
 Indice test eseguiti:
 1) CommesseRepositoryUnitTests.test_get_or_create_commessa_returns_int
+1b) CommesseRepositoryUnitTests.test_get_or_create_commessa_propaga_condizioni_pagamento
+1c) CommesseRepositoryUnitTests.test_get_or_create_commessa_condizioni_assenti_passano_null
 2) CommesseRepositoryUnitTests.test_link_sorgente_returns_int
 3) CommesseRepositoryUnitTests.test_upsert_attivita_returns_result
 4) CommesseRepositoryUnitTests.test_upsert_attivita_uses_defaults
@@ -62,7 +64,14 @@ def _mock_cursor(fetchone=None, fetchall=None, description=None):
     return cursor
 
 
-# Colonne restituite da fn_list_ordini_da_pushare (29 totali: 3 source + 26 shared).
+# Colonne restituite da fn_list_ordini_da_pushare (31 totali: 3 source + 28
+# shared — contratto rev 2026-08-03, changeset 20260803-02: le fn espongono
+# anche termine_pagamento_id e modalita_pagamento_id del documento).
+# ⚠️ Questa lista DEVE specchiare il contratto REALE della fn: e' cio' che
+# decide se `col_map` vede una colonna. La prima stesura del binding e' stata
+# «confermata» da un mock fermo a 29 colonne mentre la whitelist
+# `_PUSHABLE_SHARED_COLS` non era stata estesa — verde su un comportamento
+# inesistente (feedback_whitelist_dal_percorso_reale), scoperto dallo smoke.
 _ORDINI_COLS = [
     ("ordine_id",), ("ordine_uid",), ("riga_id",),
     ("billing_account_id",), ("utility_id",), ("emittente_soggetto_ruolo_id",),
@@ -74,13 +83,14 @@ _ORDINI_COLS = [
     ("prezzo_snapshot",), ("prezzo_bloccato",), ("pricing_mode",),
     ("tipo_movimento",), ("tipo_consumo",), ("valuta_id",),
     ("meta",), ("tipo_doc_fiscale_id",),
+    ("termine_pagamento_id",), ("modalita_pagamento_id",),
 ]
 
 # Tupla di test che simula una riga ordine.
 _ORDINI_ROW = (
     # 3 source-specific
     100, "uid-ordine-001", 200,
-    # 26 shared
+    # 28 shared
     1, 2, 3,
     date(2026, 6, 1), date(2026, 6, 30), False,
     6, "uid-ordine-001", "ORD:uid-ordine-001:R:200",
@@ -90,7 +100,9 @@ _ORDINI_ROW = (
     Decimal("22.50"), True, "FIXED",
     "NORMALE", "CONGUAGLIO", 1,
     {"tipo_commessa": "AUTO", "policy_fatturazione": "DA_DOCUMENTO"},
-    7,  # tipo_doc_fiscale_id
+    7,   # tipo_doc_fiscale_id
+    3,   # termine_pagamento_id (le condizioni del DOCUMENTO)
+    5,   # modalita_pagamento_id
 )
 
 
@@ -115,6 +127,42 @@ class CommesseRepositoryUnitTests(TestCase):
         self.assertEqual(result, 42)
         sql = mock_cursor_factory.return_value.execute.call_args[0][0]
         self.assertIn("fn_get_or_create_commessa", sql)
+
+    # Scopo: PROPAGAZIONE CONDIZIONI DI PAGAMENTO (2026-08-03). Il termine del
+    #        documento sorgente deve arrivare a `fn_get_or_create_commessa`:
+    #        e' da li' che la catena lo porta in fattura (D-R). Il difetto che
+    #        questo test blocca e' costato una fattura reale — ORD0004786
+    #        dichiarava 2 rate a 30/60 e la 2263 e' uscita con 1 rata a 30 gg,
+    #        perche' il BE non passava i due parametri che la fn accettava gia'.
+    @patch("apps.vendite.db.commesse_repository.connection.cursor")
+    def test_get_or_create_commessa_propaga_condizioni_pagamento(self, mock_cursor_factory):
+        mock_cursor_factory.return_value = _mock_cursor(fetchone=(77,))
+        repo = CommesseRepository()
+        repo.get_or_create_commessa(
+            billing_account_id=1,
+            utility_id=2,
+            emittente_soggetto_ruolo_id=3,
+            competenza_dal=date(2026, 8, 1),
+            competenza_al=date(2026, 8, 31),
+            termine_pagamento_id=3,
+            modalita_pagamento_id=5,
+        )
+        sql, args = mock_cursor_factory.return_value.execute.call_args[0]
+        # I due parametri devono essere NOMINATI nella chiamata: la fn ha 13
+        # argomenti e la chiamata e' per nome, quindi un posizionale sbagliato
+        # non e' rilevabile guardando i soli valori.
+        self.assertIn("p_termine_pagamento_id", sql)
+        self.assertIn("p_modalita_pagamento_id", sql)
+        self.assertEqual(args[-2:], [3, 5])
+
+    # Scopo: senza condizioni si passano NULL, non si omettono: la fn ha una
+    #        firma fissa e un argomento in meno la renderebbe irrisolvibile.
+    @patch("apps.vendite.db.commesse_repository.connection.cursor")
+    def test_get_or_create_commessa_condizioni_assenti_passano_null(self, mock_cursor_factory):
+        mock_cursor_factory.return_value = _mock_cursor(fetchone=(78,))
+        CommesseRepository().get_or_create_commessa(billing_account_id=1)
+        args = mock_cursor_factory.return_value.execute.call_args[0][1]
+        self.assertEqual(args[-2:], [None, None])
 
     # Scopo: Verifica che get_or_create_commessa accetti i default (#7).
     @patch("apps.vendite.db.commesse_repository.connection.cursor")
@@ -368,6 +416,12 @@ class CommesseRepositoryUnitTests(TestCase):
         self.assertTrue(row.prezzo_bloccato)
         self.assertEqual(row.tipo_doc_fiscale_id, 7)
         self.assertEqual(row.meta["tipo_commessa"], "AUTO")
+        # Le condizioni di pagamento del documento devono ATTRAVERSARE il
+        # binding: prova di mutazione — togliere i due nomi da
+        # `_PUSHABLE_SHARED_COLS` rende rosse queste due righe (e' il difetto
+        # reale del 2026-08-03, non un caso ipotetico).
+        self.assertEqual(row.termine_pagamento_id, 3)
+        self.assertEqual(row.modalita_pagamento_id, 5)
 
     # Scopo: Verifica validate_sorgente_map senza warning quando DB e map allineati.
     @patch("apps.vendite.db.commesse_repository.connection.cursor")
@@ -489,6 +543,7 @@ class CommesseRepositoryUnitTests(TestCase):
         repo = CommesseRepository()
         result = repo.list_commessa_attivita(
             1, stato_emissione="NON_EMESSA", limit=50, offset=0,
+            order_by="data_attivita", order_dir="desc",
         )
         self.assertEqual(result["count"], 5)  # total count, non len(rows)
         row = result["rows"][0]
@@ -501,9 +556,13 @@ class CommesseRepositoryUnitTests(TestCase):
         # Seconda execute (data query) contiene fn_list_commessa_attivita.
         sql = mock_cursor_factory.return_value.execute.call_args[0][0]
         self.assertIn("fn_list_commessa_attivita", sql)
+        self.assertIn("p_order_by", sql)
+        self.assertIn("p_order_dir", sql)
         params = mock_cursor_factory.return_value.execute.call_args[0][1]
         self.assertEqual(params[0], 1)  # commessa_id
         self.assertEqual(params[1], "NON_EMESSA")  # stato_emissione
+        self.assertEqual(params[6], "data_attivita")  # order_by → p_order_by
+        self.assertEqual(params[7], "desc")  # order_dir → p_order_dir
         # Prima execute (count query) verifica.
         count_sql = mock_cursor_factory.return_value.execute.call_args_list[0][0][0]
         self.assertIn("COUNT(*)", count_sql)

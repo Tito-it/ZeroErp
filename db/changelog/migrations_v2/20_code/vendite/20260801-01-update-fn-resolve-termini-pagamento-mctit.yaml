@@ -1,0 +1,224 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 3b.1 — catena UNICA delle condizioni di pagamento, per attivita'
+#   (piano-db-satelliti-fattura.md §3.3-b, C-13 + D-B + D-I + D-J).
+#
+# COSA CAMBIA, IN UNA RIGA: da «risolvi il termine per una fattura o per un
+#   insieme di attivita'» a «risolvi la COPPIA (termine, modalita') per UNA
+#   attivita'», che e' la granularita' della chiave di aggregazione (D-7).
+#
+# ⚠️ LA FUNZIONE VIVA E' GIA' ROTTA, e questo changeSet la ripara.
+#   La riforma 3a ha rinominato le colonne al singolare
+#   (`termini_pagamento_id` -> `termine_pagamento_id`) senza adeguarla:
+#   essendo plpgsql non e' stata invalidata, e oggi
+#       SELECT * FROM vendite.fn_resolve_termini_pagamento(NULL, NULL, ARRAY[1]);
+#   risponde «ERRORE: la colonna o.termini_pagamento_id non esiste».
+#   Non se n'e' accorto nessuno perche' il ramo rotto e' proprio quello che
+#   nessun test attraversa: `test-fattura-utils-critical-termini.sql` esercita
+#   il fallback (test 9) e il guard (test 10), che stanno a monte e a valle
+#   della sorgente. E' il motivo per cui 3b.5 chiede un test PER LIVELLO.
+#
+# PERCHE' LA FIRMA CAMBIA (e va droppata la vecchia):
+#   1. `p_fattura_id` sparisce. La catena serve a COSTRUIRE la chiave, cioe'
+#      gira PRIMA che la fattura esista: un livello «leggi dalla fattura» e'
+#      un cane che si morde la coda, ed era anche il modo per avere due
+#      risolutori (C-13) — uno per-fattura e uno per-attivita'.
+#   2. `p_attivita_ids[]` diventa `p_attivita_id`. Con D-7 la coppia e'
+#      ELEMENTO DI CHIAVE: attivita' con termini diversi finiscono su fatture
+#      diverse per costruzione. Chiedere «qual e' il termine di questo
+#      insieme?» non ha piu' senso, e infatti spariscono sia
+#      `termini_distinti[]` sia il ramo che tornava NULL sull'ambiguita'.
+#   3. Il ritorno diventa la COPPIA (D-B): la modalita' entra in chiave.
+#   `RETURNS TABLE` non e' modificabile con CREATE OR REPLACE, e i parametri
+#   cambiano: serve la DROP esplicita della vecchia firma.
+#
+# NESSUN CHIAMANTE DA ADEGUARE: verificato che nessuna funzione DB e nessun
+#   punto del backend la invocano (l'unico riferimento e' il pgTAP citato
+#   sopra, che 3b.5 riscrive). E' rimasta in piedi, rotta e inerte, che e'
+#   esattamente lo scenario contro cui C-13 metteva in guardia.
+#
+# LA CATENA, TRE LIVELLI (era quattro: il legacy 2a non esiste piu', D-I):
+#   1. documento sorgente  ordine -> termine E modalita'
+#                          preventivo -> solo termine
+#      ⚠️ ramo CONTRATTO RIMOSSO: non e' piu' una scelta di design, e'
+#         obbligatorio — `vendite.contratti` non ha piu' colonne di pagamento.
+#   2. cliente             via `ba.istanza_utility_id`, NON piu' `LIMIT 1`
+#   3. default             `TP_1RATA` per il termine · NULL per la modalita'
+#
+#   I DUE CAMPI SCENDONO IN MODO INDIPENDENTE. Un preventivo porta il termine
+#   ma non la modalita': se scendessero insieme, un preventivo con termine
+#   proprio farebbe perdere la modalita' del cliente. E' il motivo per cui
+#   D-B annota «la modalita' ha una catena piu' corta».
+#
+# IL FALLBACK VIVE QUI, E CHIUDE LA DOMANDA DEL BE (2026-07-31). Loro
+#   segnalavano 18 clienti su 21 senza `termine_pagamento_id` e temevano
+#   «zero rate in silenzio». D-J l'aveva gia' deciso: la colonna resta
+#   nullable e la catena scende a `TP_1RATA` (una rata alla data fattura).
+#   Il fallback sta nella catena e NON nel generatore di scadenze, che 4.1
+#   vuole «legge e non risolve»: metterlo li' ricreerebbe il secondo
+#   risolutore. Con questa catena `E_SCADENZE_TERMINE_MANCANTE` diventa una
+#   seconda linea che non scatta mai.
+#
+# IL CLIENTE SI RISOLVE DAL BA PADRE (Tid, 2026-08-01). La fattura si emette
+#   sul BA padre, quindi le condizioni di pagamento sono le SUE. Prenderle dal
+#   BA dell'attivita' spaccherebbe in N fatture cio' che deve restarne una:
+#   figli diversi dello stesso padre avrebbero clienti diversi e quindi termini
+#   diversi, e il termine e' elemento di chiave. Si usa percio' lo stesso
+#   `COALESCE(ba.parent_account_id, a.billing_account_id)` di
+#   `fn_build_fattura_key`, cosi' il livello 2 e' costante su tutte le attivita'
+#   che aggregano insieme — per costruzione, non per fortuna.
+#   Resta deterministico: `anagrafiche.clienti` ha `UNIQUE (istanza_utility_id)`,
+#   quindi il join per istanza seleziona una riga sola. E' proprio il difetto
+#   che il piano chiedeva di togliere sostituendo il `LIMIT 1`.
+#
+# ⚠️ CHI PUO' ANCORA SPACCARE, ED E' VOLUTO: il livello 1. Due attivita' dello
+#   stesso BA padre nate da due documenti sorgente con termini diversi vanno
+#   su due fatture — che e' esattamente la ragione per cui D-7 mette il termine
+#   in chiave («il sistema PERMETTE di scegliere un termine sul documento»).
+#   I livelli 2 e 3 non spaccano mai.
+#
+# 🔴 STATO DEI DATI, misurato il 2026-08-01 — il livello 1 oggi e' dormiente:
+#   `vendite.ordini` e `vendite.preventivi` hanno ZERO righe, e tutte e 34 le
+#   `attivita_fatturabili` hanno sorgente COMMESSA. Ne' l'attivita' ne' la
+#   commessa portano condizioni di pagamento (verificato sull'elenco colonne).
+#   Quindi oggi ogni attivita' scende al livello 2, e il termine risulta
+#   funzionalmente dipendente dal BA padre, che e' gia' in chiave: metterlo in
+#   chiave non spacca nulla e non costa nulla. D-7 e' una predisposizione che
+#   si accende il giorno in cui un documento sorgente porta il proprio termine.
+#   ⚠️ Il piano (§3.3-b, correzione 2026-07-30) diceva «il livello 1 ha dati:
+#   7 ordini e 19 preventivi con termine»: sul DB di sviluppo non e' piu' vero.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260801-01-update-fn-resolve-termini-pagamento-mctit.yaml
+
+  - changeSet:
+      id: 20260801-01-update-fn-resolve-termini-pagamento
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Catena unica delle condizioni di pagamento per attivita': ritorna la
+        coppia (termine, modalita') scendendo documento sorgente -> cliente ->
+        default TP_1RATA. Ripara le colonne rinominate dalla riforma 3a e
+        toglie il ramo contratto, che non ha piu' colonne di pagamento.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Vecchia firma: parametri diversi e RETURNS TABLE diverso.
+              DROP FUNCTION IF EXISTS vendite.fn_resolve_termini_pagamento(bigint, bigint, bigint[]);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_resolve_termini_pagamento(
+                  p_attivita_id vendite.attivita_fatturabili.id%TYPE
+              )
+              RETURNS TABLE (
+                  termine_pagamento_id   config.termini_pagamento.id%TYPE,
+                  modalita_pagamento_id  config.modalita_pagamento.id%TYPE
+              )
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              -- Scopo: unica implementazione della catena delle condizioni di
+              --        pagamento (C-13). Risolve per UNA attivita' la coppia che
+              --        entra nella chiave di aggregazione della fattura (D-7/D-B).
+              -- Regole: i due campi scendono la catena in modo INDIPENDENTE, perche'
+              --         la modalita' ha meno livelli del termine (il preventivo non
+              --         la porta). Assenza totale = TP_1RATA sul termine (D-J) e
+              --         NULL sulla modalita': `config.modalita_pagamento` non ha una
+              --         riga «default», e sceglierne una arbitrariamente finirebbe
+              --         sulla FatturaPA.
+              DECLARE
+                  v_sorgente_codice  config.sorgenti.codice_interno%TYPE;
+                  v_sorgente_uid     vendite.attivita_fatturabili.sorgente_uid%TYPE;
+                  v_ba_fattura_id    anagrafiche.billing_account.id%TYPE;
+                  v_termine          config.termini_pagamento.id%TYPE;
+                  v_modalita         config.modalita_pagamento.id%TYPE;
+              BEGIN
+                  -- Guard: id numerico obbligatorio e positivo (linee-guida-sql).
+                  IF p_attivita_id IS NULL OR p_attivita_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_resolve_termini_pagamento', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_attivita_id', 'valore', p_attivita_id),
+                          NULL::uuid, 'p_attivita_id obbligatorio e > 0'
+                      );
+                  END IF;
+
+                  -- BA della FATTURA = padre se c'e', stessa espressione di
+                  -- fn_build_fattura_key: le condizioni sono di chi riceve il
+                  -- documento, non del conto figlio che ha generato la riga.
+                  SELECT s.codice_interno,
+                         a.sorgente_uid,
+                         COALESCE(ba.parent_account_id, a.billing_account_id)
+                    INTO v_sorgente_codice, v_sorgente_uid, v_ba_fattura_id
+                    FROM vendite.attivita_fatturabili a
+                    JOIN anagrafiche.billing_account ba ON ba.id = a.billing_account_id
+                    LEFT JOIN config.sorgenti s ON s.id = a.sorgente_tipo_id
+                   WHERE a.id = p_attivita_id;
+
+                  IF v_ba_fattura_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_resolve_termini_pagamento', 'E_VALORE_MANCANTE',
+                          jsonb_build_object('attivita_id', p_attivita_id),
+                          NULL::uuid, concat('attivita non trovata per id ', p_attivita_id)
+                      );
+                  END IF;
+
+                  -- ── Livello 1: documento sorgente ────────────────────────────
+                  -- L'ordine porta entrambi, il preventivo il solo termine. Nessun
+                  -- ramo contratto: non ha colonne di pagamento.
+                  IF v_sorgente_codice = 'ORDINE_VENDITA' THEN
+                      SELECT o.termine_pagamento_id, o.modalita_pagamento_id
+                        INTO v_termine, v_modalita
+                        FROM vendite.ordini o
+                       WHERE o.uid = v_sorgente_uid;
+                  ELSIF v_sorgente_codice = 'PREVENTIVO' THEN
+                      SELECT p.termine_pagamento_id
+                        INTO v_termine
+                        FROM vendite.preventivi p
+                       WHERE p.uid = v_sorgente_uid;
+                  END IF;
+
+                  -- ── Livello 2: cliente del BA PADRE ──────────────────────────
+                  -- Costante su tutte le attivita' che aggregano insieme, perche'
+                  -- il BA padre e' gia' elemento di chiave: questo livello non puo'
+                  -- spaccare una fattura. Deterministico grazie a
+                  -- uq_clienti_istanza_utility: una riga sola, non un LIMIT 1.
+                  -- Si interroga solo per i campi ancora scoperti, cosi' il
+                  -- livello 1 non viene sovrascritto.
+                  IF v_termine IS NULL OR v_modalita IS NULL THEN
+                      SELECT COALESCE(v_termine,  cl.termine_pagamento_id),
+                             COALESCE(v_modalita, cl.modalita_pagamento_id)
+                        INTO v_termine, v_modalita
+                        FROM anagrafiche.billing_account ba
+                        JOIN anagrafiche.clienti cl
+                          ON cl.istanza_utility_id = ba.istanza_utility_id
+                       WHERE ba.id = v_ba_fattura_id;
+                  END IF;
+
+                  -- ── Livello 3: default ───────────────────────────────────────
+                  -- Solo il termine ha un default (D-J). La modalita' resta NULL.
+                  IF v_termine IS NULL THEN
+                      SELECT tp.id
+                        INTO v_termine
+                        FROM config.termini_pagamento tp
+                       WHERE tp.codice_interno = 'TP_1RATA'
+                         AND tp.attivo IS TRUE;
+                  END IF;
+
+                  RETURN QUERY SELECT v_termine, v_modalita;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_resolve_termini_pagamento(bigint)
+              IS 'Catena unica condizioni di pagamento per attivita'' (C-13): ritorna la coppia (termine_pagamento_id, modalita_pagamento_id) scendendo documento sorgente -> cliente (per istanza_utility) -> default TP_1RATA sul solo termine. I due campi scendono in modo indipendente: il preventivo porta il termine ma non la modalita''.';

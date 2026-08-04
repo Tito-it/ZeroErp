@@ -63,8 +63,11 @@ Nessun parametro.
   silenziosa).
 - `order_by` / `order_dir` (opzionali): **ordinamento colonne server-side**
   (convenzione delle liste standard, es. clienti/soggetti). `order_by` in
-  whitelist — `anzianita_giorni` (default, "aperto da") | `codice` |
-  `cliente_display` | `valore_totale`; `order_dir` = `asc` | `desc` (default
+  whitelist — `anzianita_giorni` (default, "aperto da") | `area` | `codice` |
+  `cliente_display` | `fase` | `stato_codice` | `valore_totale`
+  (`area`/`fase`/`stato_codice` aggiunte il 2026-08-03: erano colonne a video
+  che non ordinavano, e `stato_codice` lasciava scoperto il nucleo *stato*);
+  `order_dir` = `asc` | `desc` (default
   `desc` su `anzianita_giorni`: i più "in essere da" prima). Server-side perché
   la lista è paginata: l'ordine è corretto su **tutte** le pagine, non solo su
   quella visibile. Colonna fuori whitelist o direzione ≠ asc/desc → 400
@@ -124,8 +127,14 @@ criterio di popolazione), `data_riferimento` ("in essere da": data documento,
 garantiscono ORDER): default per `data_riferimento ASC NULLS LAST`, poi
 `valore_totale DESC NULLS LAST, area, documento_id`; con `order_by`/`order_dir`
 (vedi Input) l'ORDER BY diventa `<colonna whitelist> <asc|desc> NULLS LAST` +
-tiebreak `area, documento_id`. Colonna e direzione **whitelistate** (mai input
-grezzo nell'ORDER BY).
+tiebreak `area ASC, documento_id <stessa direzione della colonna>`. Colonna e
+direzione **whitelistate** (mai input grezzo nell'ORDER BY).
+
+⚠️ **Il tiebreak `documento_id` segue la direzione** dal 2026-08-03: ordinando
+DESC, a parità di valore viene prima il documento più recente. `area` resta
+invece ASC perché raggruppa, non spareggia. La paginazione deterministica non
+è toccata: dipende dall'univocità del tiebreak, non dal suo verso. Vedi
+`sql_tiebreak_direction` nel catalogo BB backend.
 
 ## Regole
 

@@ -28,7 +28,7 @@
 -- Un `SELECT fn(...)` nudo emetterebbe righe di risultato nel flusso che
 -- pg_prove interpreta come TAP, sporcando l'esito.
 -- ------------------------------------------------------------
--- Indice test (1..16):
+-- Indice test (1..17):
 --   1   script.fn_check_commessa_chiudibile presente
 --   2   script.fn_check_commessa_annullabile presente
 --   3   matrice: arco IN_ESECUZIONE->CHIUSA (3->5) presente, attivo e manuale
@@ -42,13 +42,14 @@
 --  11   [B] ->CHIUSA da IN_ESECUZIONE ammessa  <- chiude il vicolo cieco
 --  12   [C] _annullabile: motivo 558 con righe EMESSE
 --  13   [C] ->ANNULLATA con righe emesse rifiutata
+--  14a  [C] le tre azioni da IN_ESECUZIONE sono presenti e tutte disabilitate
 --  14   [C] capabilities: can_change_state=false se tutte le azioni sono disabilitate
 --  15   [D] ->ANNULLATA senza righe emesse ammessa
 --  16   fn_get_commessa_stato espone commessa_codice e cliente_display
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(16);
+SELECT plan(17);
 
 -- ============================================================
 -- 1..4 STRUTTURA
@@ -275,9 +276,39 @@ SELECT throws_ok(
   'P0001', NULL,
   '13) ->ANNULLATA con righe EMESSE rifiutata');
 
--- Discriminante del ricalcolo: entrambe le azioni manuali da IN_ESECUZIONE
--- (chiudi, annulla) sono disabilitate. Col vecchio
--- jsonb_array_length(actions) > 0 questo test fallirebbe.
+-- Discriminante del ricalcolo: TUTTE le azioni manuali da IN_ESECUZIONE
+-- sono disabilitate. Col vecchio jsonb_array_length(actions) > 0 questo
+-- test fallirebbe.
+--
+-- ⚠️ Adeguamento 2026-08-04 (brief-db-emittibilita-visibile-e-sbloccabile,
+-- changeSet 20260804-27): da IN_ESECUZIONE le azioni manuali sono diventate
+-- TRE — si e' aggiunta `rendi_pronta`. Le prime due si disabilitano da sole
+-- con la fixture C (riga EMESSA => annulla no; riga APPROVATA+NON_EMESSA =>
+-- chiudi no), ma quella stessa riga pendente e' esattamente cio' che ABILITA
+-- `rendi_pronta`: le due condizioni sono l'una il complemento dell'altra, e
+-- sulle righe lo scenario «tutte disabilitate» non e' piu' raggiungibile.
+--
+-- Lo si raggiunge dalla TESTATA: il secondo motivo di
+-- fn_check_commessa_pronta_fatturazione e' l'emittente fiscale mancante, che
+-- e' una condizione di testata e non di riga. Si azzera QUI, dopo le
+-- transizioni (che l'emittente lo pretendono) e prima della verifica.
+-- La commessa C non serve ad altro: i test 15 e 16 lavorano su tmp_d e tmp_a.
+UPDATE vendite.commesse
+   SET emittente_soggetto_ruolo_id = NULL
+ WHERE id = (SELECT commessa_id FROM tmp_c);
+
+-- Anti-test-vacuo: il 14 vale solo se le azioni ci sono DAVVERO e sono
+-- tutte spente. Senza questo, un giorno in cui l'array tornasse vuoto il
+-- test sotto passerebbe senza dimostrare niente.
+SELECT is(
+  (SELECT array_agg(e->>'key' ORDER BY e->>'key')
+     FROM jsonb_array_elements(
+       script.fn_available_actions_commessa((SELECT commessa_id FROM tmp_c))
+         -> 'available_actions') e
+    WHERE (e->>'enabled')::boolean IS FALSE),
+  ARRAY['annulla', 'chiudi', 'rendi_pronta'],
+  '14a) le tre azioni da IN_ESECUZIONE sono presenti e tutte disabilitate');
+
 SELECT is(
   (script.fn_available_actions_commessa((SELECT commessa_id FROM tmp_c))
      ->> 'can_change_state')::boolean,

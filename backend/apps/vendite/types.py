@@ -35,14 +35,32 @@ class GroupAttivitaKey(TypedDict):
     metodo_arrotondamento_quantita: str
 
 
-class ResetLottoDraftResult(TypedDict):
+class AnnullaLottoDaDraftResult(TypedDict):
     updated_lotti: int
     updated_attivita: int
     deleted_fatture: int
     deleted_righe: int
 
 
-class ResetLottoFatturaDraftResult(TypedDict):
+class RiportaLottoADraftResult(TypedDict):
+    # Esito del ritorno a bozza (Fase 6). Simmetrico ad
+    # `AnnullaLottoDaDraftResult` piu' `riemesse_attivita`: il contatore delle
+    # `commesse_attivita` riportate a NON_EMESSA, che e' l'effetto senza il
+    # quale il lotto ripartirebbe senza niente da emettere.
+    updated_lotti: int
+    updated_attivita: int
+    deleted_fatture: int
+    deleted_righe: int
+    riemesse_attivita: int
+    # Task run chiusi ad ANNULLATO (changeset 20260803-12). E' il contatore che
+    # rende il ritorno a bozza EFFICACE: finche' i task run restavano
+    # COMPLETATO, `fn_resolve_lotto_task_execution_mode` rispondeva SKIP e il
+    # lotto riaperto rilanciava a vuoto. Su TUTTI gli step, non solo DRAFT —
+    # annullare la sola bozza avrebbe spostato lo SKIP un passo piu' avanti.
+    annullati_task_run: int
+
+
+class EliminaFatturaDaLottoDraftResult(TypedDict):
     updated_attivita: int
     deleted_fatture: int
     deleted_righe: int
@@ -137,6 +155,37 @@ class CommessaEmittibileLane(TypedDict):
     utility_id: int
     competenza_mese: date
     total_candidate: int
+
+
+class GruppoDiagnosi(TypedDict):
+    # Fotografia di un GRUPPO FATTURABILE richiesto da un'emissione mirata che
+    # non ha prodotto lotti: serve a dire all'operatore PERCHE'. Sono fatti
+    # misurati (stato della testata + conteggi righe per stato), non un verdetto:
+    # l'ammissibilità resta di `fn_list_emittibili_lane`, unica sede del criterio.
+    # `commessa_codice`/`stato_commessa`/`commessa_emittibile` sono NULL quando il
+    # gruppo non ha nessuna riga (chiave sconosciuta o già ripulita).
+    gruppo_key: str
+    commessa_codice: str | None
+    stato_commessa: str | None
+    commessa_emittibile: bool | None
+    n_righe: int
+    n_emesse: int
+    # Righe fuori gioco per proprio stato: la dashboard le NASCONDE
+    # (stato_emissione ANNULLATA / approvazione RIFIUTATA sono esclusi da
+    # vw_dash_competenza_attivita), ma qui vanno contate a parte — altrimenti
+    # un gruppo «3 emesse + 1 annullata» non risulterebbe mai interamente
+    # evaso, e una riga rifiutata verrebbe raccontata come «non ancora
+    # approvata», che e' falso.
+    n_annullate: int
+    n_rifiutate: int
+    n_non_approvate: int
+    n_senza_tipo_doc: int
+    n_fuori_competenza: int
+    # Righe che soddisfano TUTTE le condizioni di candidatura (approvate, non
+    # emesse, con tipo doc, entro il bound di competenza): se > 0 e il gruppo non
+    # è entrato in nessuna terna, il blocco è sulla TESTATA (commessa non
+    # emittibile) — il caso del 2026-08-03.
+    n_pronte: int
 
 
 class CommessaStatoResult(TypedDict):
@@ -243,7 +292,12 @@ class PreventivoDetailRow(TypedDict):
     totale_documento: str | None
     emittente_fiscale_id: int | None
     emittente_fiscale_codice: str | None
-    emittente_fiscale_descrizione: str | None
+    # Ragione sociale del SOGGETTO emittente (`soggetti.ragione_sociale_completa`),
+    # non `emittenti_fiscali.descrizione` (etichetta interna divergente, in via di
+    # eliminazione — brief `brief-emittente-ragione-sociale-dal-soggetto.md`).
+    # Rinominata da `emittente_fiscale_descrizione` il 2026-08-03 (piano
+    # PrimeVue 5, registro), in pari con viste e seed liste.
+    emittente_ragione_sociale: str | None
     ba_ha_contratto_attivo: bool
     storicizza: bool
     meta: dict[str, Any]
@@ -419,8 +473,10 @@ class OffertaRow(TypedDict):
     # Denormalizzazione EF (pattern preventivi): consumati da
     # `EmittenteFiscaleField` in modalita' edit per costruire la option
     # singola del Select disabled senza round-trip aggiuntivo.
+    # ⚠️ `emittente_ragione_sociale` porta la RAGIONE SOCIALE del soggetto
+    # emittente, non `emittenti_fiscali.descrizione` (vedi PreventivoDetailRow).
     emittente_fiscale_codice: str | None
-    emittente_fiscale_descrizione: str | None
+    emittente_ragione_sociale: str | None
     ba_codice: str | None
     billing_account_display: str | None
     # ID fiscale univoco (CF persona fisica o P.IVA) del soggetto del BA.
@@ -671,6 +727,11 @@ class DashCompetenzaGruppoRow(TypedDict):
     ha_oneri: bool
     data_attivita_min: str | None
     data_attivita_max: str | None
+    # Id di dominio del documento sorgente, per aprirne il drawer dal kebab
+    # della lista (il `riferimento` e' il codice, che non basta: i drawer si
+    # aprono per id). NULL sui gruppi SOURCELESS (oneri di commessa), che un
+    # documento non ce l'hanno, e sui documenti fuori scope RLS.
+    documento_id: int | None
 
 
 class DashCompetenzaGruppoTipoRow(TypedDict):

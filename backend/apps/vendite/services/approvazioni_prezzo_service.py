@@ -34,7 +34,10 @@ from apps.core.db._helpers import resolve_config_id_by_codice_interno
 from apps.core.services.email_service import EmailDispatchService
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.permissions_resolver import PermissionResolver
-from apps.pratiche.db.pratiche_repository import PraticheRepository
+from apps.pratiche.db.pratiche_repository import (
+    PRATICHE_ORDER_COLS,
+    PraticheRepository,
+)
 from apps.pratiche.services.pratiche_service import (
     aggiorna_pratica,
     cambia_stato_pratica,
@@ -593,6 +596,8 @@ def lista_coda(
     auth_user_id: int | None,
     limit: int = 50,
     offset: int = 0,
+    order_by: str | None = None,
+    order_dir: str | None = None,
 ) -> dict[str, Any]:
     ErrorManager.require(
         auth_user_id is not None,
@@ -601,6 +606,24 @@ def lista_coda(
         function_name=f"{_FN}.lista_coda",
     )
     assert auth_user_id is not None
+
+    # L'ordinamento arriva dal chiamante ed e' validato contro la whitelist
+    # delle pratiche (`PRATICHE_ORDER_COLS`), che questa coda attraversa via
+    # `cerca_pratiche`. Fino al 2026-08-02 era INCHIODATO piu' sotto a
+    # `data_insert desc`: la whitelist da 10 voci esisteva ma non era
+    # raggiungibile da nessun percorso, quindi la lista non ordinava affatto —
+    # il difetto classico «la costante e' a posto, e' il percorso che e' morto».
+    # `None` conserva il default storico (data_insert desc), che resta anche il
+    # preset dichiarato dal seed.
+    # La validazione sta PRIMA della risoluzione utente/emittente: un parametro
+    # sbagliato non deve costare due round-trip per essere respinto.
+    ErrorManager.require(
+        order_by is None or order_by in PRATICHE_ORDER_COLS,
+        code="E_VENDITE_VALIDATION",
+        message="Colonna di ordinamento non ammessa per la coda approvazioni.",
+        detail=f"order_by={order_by!r}; ammesse: {sorted(PRATICHE_ORDER_COLS)}",
+        function_name=f"{_FN}.lista_coda",
+    )
 
     user = _get_user(auth_user_id)
     emittente_id = PermissionResolver.get_emittente_for_user(user)
@@ -621,8 +644,8 @@ def lista_coda(
         stato_codice_interno=_STATO_PRATICA_INIZIALE,
         limit=limit,
         offset=offset,
-        order_by="data_insert",
-        order_dir="desc",
+        order_by=order_by or "data_insert",
+        order_dir=order_dir or "desc",
     )
     # Capability per riga (Fase 5.B1). Permesso utente calcolato UNA volta
     # (i check non dipendono dalla riga); per-item solo la verifica linkability

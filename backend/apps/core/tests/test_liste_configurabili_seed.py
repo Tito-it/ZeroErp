@@ -127,6 +127,19 @@ def _whitelist_coda_resi(vista: str):
     return risolvi
 
 
+# Scopo: risolutore per le 5 whitelist delle dashboard vendite, che vivono
+#        come ClassVar di `VenditeRepository` (cinque nello stesso modulo:
+#        una costante di modulo per ognuna sarebbe stata piu' rumore che
+#        informazione). L'ancora e' la classe, non il modulo.
+def _whitelist_di_classe(attributo: str):
+    def risolvi() -> set[str]:
+        from apps.vendite.db.vendite_repository import VenditeRepository
+
+        return set(getattr(VenditeRepository, attributo))
+
+    return risolvi
+
+
 # Scopo: fabbrica di risolutori per le whitelist che vivono in una costante di
 #        modulo con nome proprio (la maggioranza). Evita nove funzioni identiche
 #        a meno del nome — le uniche scritte a mano sopra sono quelle con una
@@ -156,7 +169,7 @@ _LISTE: tuple[tuple[str, object], ...] = (
     ("config.tipi_ruolo_tipi_indirizzo", _whitelist_tipi_ruolo_tipi_indirizzo),
     # Secondo lotto, 2026-07-31 (seed nato gia' in regola: `pratiche` e il tab
     # BA non hanno chiesto nulla al backend, emittenti solo `partita_iva`).
-    ("pratiche.pratiche", _da_costante("apps.pratiche.db.pratiche_repository", "_PRATICHE_ORDER_COLS")),
+    ("pratiche.pratiche", _da_costante("apps.pratiche.db.pratiche_repository", "PRATICHE_ORDER_COLS")),
     ("anagrafiche.emittenti_fiscali", _da_costante("apps.anagrafiche.db.emittenti_fiscali_repository", "_EMITTENTI_ORDER_COLS")),
     ("anagrafiche.emittente_billing_account", _whitelist_emittente_billing_account),
     # Terzo lotto, 2026-08-01: le tre liste UoM di catalogo. L'ordinamento
@@ -165,6 +178,48 @@ _LISTE: tuple[tuple[str, object], ...] = (
     ("catalogo.uom_tipi", _da_costante("apps.catalogo.db.catalogo_repository", "UOM_TIPI_ORDER_COLUMNS")),
     ("catalogo.unita_misura", _da_costante("apps.catalogo.db.catalogo_repository", "UOM_ORDER_COLUMNS")),
     ("catalogo.conversioni_uom", _da_costante("apps.catalogo.db.catalogo_repository", "UOM_CONVERSIONI_ORDER_COLUMNS")),
+    # Quarto lotto, 2026-08-01.
+    ("vendite.promo_articoli", _da_costante("apps.vendite.db.promo_articoli_repository", "_ORDER_COLS")),
+    ("documenti.template_documenti", _da_costante("apps.documenti.db.documenti_repository", "TEMPLATES_ORDER_COLUMNS")),
+    ("documenti.template_asset", _da_costante("apps.documenti.db.documenti_repository", "ASSET_ORDER_COLUMNS")),
+    # Quinto lotto, 2026-08-01.
+    ("catalogo.articoli", _da_costante("apps.catalogo.db.catalogo_repository", "ARTICOLI_ORDER_COLUMNS")),
+    ("vendite.listini", _da_costante("apps.vendite.db.listini_repository", "LISTINI_ORDER_COLUMNS")),
+    # Sesto lotto, 2026-08-01/02.
+    ("config.email_account", _da_costante("apps.core.db.email_repository", "EMAIL_ACCOUNT_ORDER_COLUMNS")),
+    ("config.email_template", _da_costante("apps.core.db.email_repository", "EMAIL_TEMPLATE_ORDER_COLUMNS")),
+    ("config.email_log", _da_costante("apps.core.db.email_repository", "EMAIL_LOG_ORDER_COLUMNS")),
+    ("anagrafiche.categorie_clienti_listini", _da_costante("apps.anagrafiche.db.categorie_clienti_listini_repository", "_ORDER_COLS")),
+    ("anagrafiche.operatori", _da_costante("apps.amm_software.db.amm_software_repository", "ALLOWED_ORDER_COLUMNS")),
+    # `storico.audit_log` era sospesa: il seed aveva 4 colonne e la pagina ne
+    # mostra 5 (mancava la calcolata *Dettaglio*). Riga 378 aggiunta dal team DB
+    # il 2026-08-02, conversione completata. E' l'unica lista polimorfa
+    # (`storico.{code}` scelto a runtime da `script.vw_audit_sources`).
+    ("storico.audit_log", _da_costante("apps.amm_software.db.amm_software_repository", "AUDIT_ORDER_COLUMNS")),
+    # Settimo lotto, 2026-08-03: le due code Strumenti + la coda approvazioni
+    # prezzo (che attraversa `cerca_pratiche`, stessa whitelist della lista
+    # pratiche) + le righe versione listino (endpoint UNION standalone+compositi,
+    # decisione Tid 2026-08-02). Le whitelist delle code sono i dizionari
+    # nome->SQL dei rispettivi repository: `set(dict)` = le chiavi.
+    ("dbops.coda_lavori", _da_costante("apps.core.services.coda_lavori.repository", "ELENCA_SORT_SQL")),
+    ("vendite.fatture_stampa_coda", _da_costante("apps.vendite.db.pipeline_repository", "CODA_STAMPA_SORT_SQL")),
+    ("vendite.approvazioni_prezzo", _da_costante("apps.pratiche.db.pratiche_repository", "PRATICHE_ORDER_COLS")),
+    ("vendite.listini_righe", _da_costante("apps.vendite.db.listini_repository", "RIGHE_ORDER_COLUMNS")),
+    # Ottavo lotto, 2026-08-03: il drawer commessa + le 5 liste delle 3
+    # dashboard vendite. Chiude il Gruppo A.
+    #
+    # ⚠️ `commesse_attivita` e' la PRIMA lista la cui whitelist NON vive in
+    # Python: ordine e paginazione stanno dentro `fn_list_commessa_attivita`
+    # (ordinare a valle ordinerebbe la pagina gia' estratta), e il BE ne tiene
+    # solo lo specchio per validare prima del round-trip. E' quello specchio
+    # che il presidio confronta col seed: se i due divergessero, il BE
+    # rifiuterebbe una colonna che la funzione accetta (o viceversa).
+    ("vendite.commesse_attivita", _da_costante("apps.vendite.db.commesse_repository", "ATTIVITA_SORT_COLUMNS")),
+    ("vendite.dash_aperto_documenti", _whitelist_di_classe("DASH_APERTO_SORT_COLUMNS")),
+    ("vendite.dash_backlog_documenti", _whitelist_di_classe("DASH_BACKLOG_SORT_COLUMNS")),
+    ("vendite.dash_competenza_errori", _whitelist_di_classe("DASH_COMPETENZA_ERRORI_SORT_COLUMNS")),
+    ("vendite.dash_competenza_gruppi", _whitelist_di_classe("DASH_COMPETENZA_GRUPPI_SORT_COLUMNS")),
+    ("vendite.dash_competenza_commesse", _whitelist_di_classe("DASH_COMPETENZA_COMMESSE_SORT_COLUMNS")),
     # Preesistenti: erano fuori da qualunque presidio prima del 2026-07-31.
     ("anagrafiche.clienti", _da_costante("apps.anagrafiche.db.clienti_repository", "_CLIENTI_ORDER_COLS")),
     ("anagrafiche.fornitori", _da_costante("apps.anagrafiche.db.fornitori_repository", "_FORNITORI_ORDER_COLS")),
@@ -332,8 +387,17 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
             # della variabile produrrebbe un falso "codice lista" inesistente.
             # Sono comunque coperti: `ResiCodaTable` sceglie fra due costanti,
             # entrambe presenti in `_LISTE`.
+            #
+            # ⚠️ **Niente `[^>]*` fra il tag e l'attributo** (difetto corretto il
+            # 2026-08-03): un `>` puo' vivere DENTRO un attributo — e ci vive
+            # davvero, in `v-if="documentiCount > 0 || documentiLoading"` sulle
+            # dashboard. La classe negata si fermava li' e quattro liste su sei
+            # risultavano NON MONTATE: il presidio taceva proprio sulle liste
+            # appena convertite, che e' il caso per cui esiste. Ora si cerca
+            # `codice="..."` entro una finestra di caratteri dal nome del tag,
+            # senza pretendere di sapere dove finisce il tag stesso.
             for m in re.finditer(
-                r"<ListaConfigurabile\b[^>]*?(?<![:@\w-])codice=\"([^\"]+)\"",
+                r"<ListaConfigurabile\b.{0,400}?(?<![:@\w-])codice=\"([^\"]+)\"",
                 senza_commenti,
                 re.S,
             ):

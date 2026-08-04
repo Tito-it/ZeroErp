@@ -100,3 +100,19 @@ SUPER_ADMIN_PROFILO_CODICE = "SUPER_ADMIN"
 # Centralizzare i nomi qui evita typo cross-file (producer/consumer).
 JWT_CLAIM_IDENTITA_ID = "identita_id"
 JWT_CLAIM_RUOLO_APPLICATIVO = "ruolo_applicativo"
+
+# Scopo: Emittente fiscale ATTIVO della sessione (impersonazione di scope,
+# brief-db-impersonazione-scope-emittente). Porta la PK reale
+# `anagrafiche.emittenti_fiscali.id`; alimenta la GUC `app.current_emittente_id`
+# da cui il DB restringe liste, RLS e write-guard.
+#
+# **Claim assente = modalità «Tutti gli emittenti»**, cioè il comportamento
+# storico (nessuna restrizione). Non esiste un valore sentinella per «tutti»:
+# l'assenza È la modalità globale, e questo tiene vero il contratto del §3 del
+# brief — «GUC assente = comportamento identico a oggi» — senza casi speciali.
+#
+# Per l'OPERATORE il claim vale il suo emittente di whitelist: l'intersezione a
+# DB dà lo stesso insieme di prima (misurato), ma rende vera per tutti la frase
+# «si lavora sempre dentro un emittente». Per gli altri ruoli applicativi
+# (portale, shop) il claim non viene emesso: non hanno emittente.
+JWT_CLAIM_EMITTENTE_ATTIVO_ID = "emittente_attivo_id"

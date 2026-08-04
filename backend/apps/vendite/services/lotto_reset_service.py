@@ -8,7 +8,11 @@
 
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db.pipeline_repository import VenditePipelineRepository
-from apps.vendite.types import ResetLottoDraftResult, ResetLottoFatturaDraftResult
+from apps.vendite.types import (
+    AnnullaLottoDaDraftResult,
+    EliminaFatturaDaLottoDraftResult,
+    RiportaLottoADraftResult,
+)
 
 # Servizio applicativo: espone il reset tecnico lotto DRAFT.
 
@@ -18,38 +22,61 @@ class LottoResetService:
     def __init__(self, repository: VenditePipelineRepository | None = None) -> None:
         self.repository = repository or VenditePipelineRepository()
 
-    # Scopo: Gestisce `reset_lotto_draft` nel flusso applicativo del modulo.
-    def reset_lotto_draft(self, lotto_id: int) -> ResetLottoDraftResult:
+    # Scopo: Annullamento del lotto in DRAFT (guard sui parametri + delega al
+    #        repository). Nome allineato alla funzione SQL dopo D-L: e' un
+    #        annullamento, non un ritorno in bozza.
+    def annulla_lotto_da_draft(self, lotto_id: int) -> AnnullaLottoDaDraftResult:
         ErrorManager.require(
             lotto_id is not None and lotto_id > 0,
             code="E_RESET_LOTTO_VALIDATION",
             message="Parametro lotto non valido.",
             detail="lotto_id obbligatorio e > 0",
             context={"lotto_id": lotto_id},
-            function_name="vendite.lotto_reset_service.reset_lotto_draft",
+            function_name="vendite.lotto_reset_service.annulla_lotto_da_draft",
             log_to_db=True,
         )
         assert lotto_id is not None
         assert lotto_id > 0
-        return self.repository.reset_lotto_draft(lotto_id)
+        return self.repository.annulla_lotto_da_draft(lotto_id)
 
-    # Scopo: Gestisce `reset_lotto_fattura_draft` nel flusso applicativo del modulo.
-    def reset_lotto_fattura_draft(
+    # Scopo: RITORNO A BOZZA del lotto (Fase 6): guard sui parametri + delega.
+    #        Da non confondere col vicino `annulla_lotto_da_draft`, che CHIUDE
+    #        il lotto: questo lo rimette in gioco perche' rifaccia il giro.
+    #        Le precondizioni vere (tipo lotto, stato, nessuna fattura numerata)
+    #        stanno nella funzione DB e non si riscrivono qui: qui si presidia
+    #        solo il parametro, come fa il gemello.
+    def riporta_lotto_a_draft(self, lotto_id: int) -> RiportaLottoADraftResult:
+        ErrorManager.require(
+            lotto_id is not None and lotto_id > 0,
+            code="E_RESET_LOTTO_VALIDATION",
+            message="Parametro lotto non valido.",
+            detail="lotto_id obbligatorio e > 0",
+            context={"lotto_id": lotto_id},
+            function_name="vendite.lotto_reset_service.riporta_lotto_a_draft",
+            log_to_db=True,
+        )
+        assert lotto_id is not None
+        assert lotto_id > 0
+        return self.repository.riporta_lotto_a_draft(lotto_id)
+
+    # Scopo: Estrazione/eliminazione di una singola fattura DRAFT dal lotto
+    #        (guard sui parametri + delega al repository).
+    def elimina_fattura_da_lotto_draft(
         self,
         lotto_id: int,
         fattura_id: int,
-    ) -> ResetLottoFatturaDraftResult:
+    ) -> EliminaFatturaDaLottoDraftResult:
         ErrorManager.require(
             lotto_id is not None and lotto_id > 0 and fattura_id is not None and fattura_id > 0,
             code="E_RESET_LOTTO_FATTURA_VALIDATION",
             message="Parametri reset fattura non validi.",
             detail="lotto_id e fattura_id obbligatori e > 0",
             context={"lotto_id": lotto_id, "fattura_id": fattura_id},
-            function_name="vendite.lotto_reset_service.reset_lotto_fattura_draft",
+            function_name="vendite.lotto_reset_service.elimina_fattura_da_lotto_draft",
             log_to_db=True,
         )
         assert lotto_id is not None
         assert lotto_id > 0
         assert fattura_id is not None
         assert fattura_id > 0
-        return self.repository.reset_lotto_fattura_draft(lotto_id, fattura_id)
+        return self.repository.elimina_fattura_da_lotto_draft(lotto_id, fattura_id)

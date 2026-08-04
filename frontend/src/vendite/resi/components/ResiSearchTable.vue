@@ -74,7 +74,7 @@ function onRowClick(data) { emit('row-click', data) }
 
 useTabFreshness(store, TAB_ENTITIES.RESO)
 
-// Lista con filtro data_da default anno-1: auto-load al mount (lo store guard
+// Lista con filtro data_da default standard: auto-load al mount (lo store guard
 // hasFilters considera data_da come filtro attivo).
 onMounted(() => store.fetchList())
 </script>

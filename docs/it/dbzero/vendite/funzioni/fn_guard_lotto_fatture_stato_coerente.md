@@ -11,6 +11,12 @@ CREATE OR REPLACE FUNCTION vendite.fn_guard_lotto_fatture_stato_coerente(p_lotto
  RETURNS void
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-08-04 (D-M): via i due predicati su lf.esclusa e il
+--   campo `esclusa` dal jsonb di diagnostica. Quel campo serviva
+--   a spiegare perche' una fattura NON compariva fra le
+--   incoerenti: con il flag morto diceva sempre false, cioe'
+--   occupava spazio nel messaggio senza informare. Resta la sola
+--   eccezione `critical`, che e' viva.
 DECLARE
   v_stato_lotto vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE;
   v_count       integer;
@@ -37,14 +43,13 @@ BEGIN
     RETURN;
   END IF;
 
-  -- Fatture disallineate, escluse le due eccezioni di semantica.
+  -- Fatture disallineate, esclusa l'eccezione di semantica.
   -- Conteggio completo: e' il numero riportato nel messaggio.
   SELECT count(*)
     INTO v_count
     FROM vendite.fatturazione_lotti_fatture lf
     JOIN vendite.fatture f ON f.id = lf.fattura_id
    WHERE lf.lotto_id = p_lotto_id
-     AND COALESCE(lf.esclusa,  FALSE) IS FALSE
      AND COALESCE(f.critical, FALSE) IS FALSE
      AND f.stato_doc_fiscale_id IS DISTINCT FROM v_stato_lotto;
 
@@ -59,13 +64,11 @@ BEGIN
              jsonb_build_object(
                'fattura_id',       f.id,
                'stato_fattura_id', f.stato_doc_fiscale_id,
-               'esclusa',          COALESCE(lf.esclusa,  FALSE),
                'critical',         COALESCE(f.critical, FALSE)
              ) AS riga
         FROM vendite.fatturazione_lotti_fatture lf
         JOIN vendite.fatture f ON f.id = lf.fattura_id
        WHERE lf.lotto_id = p_lotto_id
-         AND COALESCE(lf.esclusa,  FALSE) IS FALSE
          AND COALESCE(f.critical, FALSE) IS FALSE
          AND f.stato_doc_fiscale_id IS DISTINCT FROM v_stato_lotto
        ORDER BY f.id
@@ -92,7 +95,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_guard_lotto_fatture_stato_coerente(p_lotto_id bigint)
-IS 'Guard dell''invariante lotto <-> fatture: solleva E_LOTTO_FATTURE_STATO_INCOERENTE (556) se il lotto ha fatture non escluse e non critical con stato_doc_fiscale_id diverso dal proprio. Pensata per essere invocata da un CONSTRAINT TRIGGER DEFERRED (valutazione al COMMIT): gli stati intermedi dentro la transazione sono leciti. No-op se il lotto non esiste piu'' o ha stato NULL.';
+IS 'Guard dell''invariante lotto <-> fatture: solleva E_LOTTO_FATTURE_STATO_INCOERENTE (556) se il lotto ha fatture non critical con stato_doc_fiscale_id diverso dal proprio. Pensata per essere invocata da un CONSTRAINT TRIGGER DEFERRED (valutazione al COMMIT): gli stati intermedi dentro la transazione sono leciti. No-op se il lotto non esiste piu'' o ha stato NULL. rev 2026-08-04 (D-M): via l''eccezione `esclusa` — il flag era dormiente — e via il campo omonimo dal jsonb di diagnostica, che diceva sempre false. Resta la sola eccezione `critical`, che e'' viva e valorizzata da fn_sync_fatture_log_critical_lotto.';
 ```
 
 ---

@@ -19,6 +19,7 @@ from apps.core.db._helpers import (
     row_to_dict,
     rows_to_list,
     sql_order_direction,
+    sql_tiebreak_direction,
 )
 
 
@@ -30,14 +31,24 @@ from apps.core.db._helpers import (
 # emittente la P.IVA *e'* l'identificativo fiscale, quindi appartiene al nucleo
 # sempre ordinabile. `valuta_iso` e `regime_fiscale_rf` restano fuori: nel seed
 # sono `ordinabile=f`.
+#
+# `descrizione` rimossa il 2026-08-02 con la DROP della colonna
+# (`20260802-22`, brief `brief-emittente-ragione-sociale-dal-soggetto.md`): il
+# nome dell'emittente e' la ragione sociale del suo soggetto. Il seed della
+# lista 18 ha tolto la colonna e il preset ordina ora per
+# `ragione_sociale_completa` — il default qui sotto deve dire la stessa cosa,
+# altrimenti la lista nasce ordinata diversamente da come si dichiara.
 _EMITTENTI_ORDER_COLS: dict[str, str] = {
     "codice": "ef.codice",
-    "descrizione": "ef.descrizione",
     "ragione_sociale_completa": "s.ragione_sociale_completa",
     "partita_iva": "s.partita_iva",
     "attivo": "ef.attivo",
     "data_insert": "ef.data_insert",
 }
+
+# Colonna d'ordinamento di default: allineata all'`ordinamento_default` del
+# preset `emittenti_fiscali_default` (seed `lista_preset`, riga 18).
+_EMITTENTI_ORDER_DEFAULT = "ragione_sociale_completa"
 
 
 class EmittentiFiscaliRepository:
@@ -77,14 +88,16 @@ class EmittentiFiscaliRepository:
     # Scopo: Crea record emittente fiscale.
     #        I trigger DB gestiscono: guard ruolo EF, normalize, audit, tx_id, storicizzazione,
     #        bootstrap del default mapping in emittenti_fiscali_billing_account (primo emittente).
-    #        Campi obbligatori (NOT NULL su tabella): soggetto_ruolo_id, codice, descrizione.
+    #        Campi obbligatori (NOT NULL su tabella): soggetto_ruolo_id, codice.
+    #        `descrizione` non esiste piu' dal 2026-08-02 (DROP `20260802-22`): il
+    #        nome dell'emittente e' la ragione sociale del soggetto, non un testo
+    #        digitato a parte.
     def create_emittente(self, **kwargs: Any) -> int:
         # Colonne fisse obbligatorie
-        cols = ["soggetto_ruolo_id", "codice", "descrizione"]
+        cols = ["soggetto_ruolo_id", "codice"]
         vals: list[Any] = [
             kwargs["soggetto_ruolo_id"],
             kwargs["codice"],
-            kwargs["descrizione"],
         ]
         # Colonne opzionali: incluse solo se valorizzate (non None)
         _OPTIONAL = [
@@ -124,20 +137,20 @@ class EmittentiFiscaliRepository:
         attivo: bool | None = None,
         limit: int = 25,
         offset: int = 0,
-        order_by: str = "descrizione",
+        order_by: str = _EMITTENTI_ORDER_DEFAULT,
         order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
         order_col = _EMITTENTI_ORDER_COLS.get(
-            order_by, _EMITTENTI_ORDER_COLS["descrizione"]
+            order_by, _EMITTENTI_ORDER_COLS[_EMITTENTI_ORDER_DEFAULT]
         )
         direction = sql_order_direction(order_dir)
+        tiebreak_dir = sql_tiebreak_direction(direction)
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
             SELECT ef.id,
                    ef.uid,
                    ef.soggetto_ruolo_id,
                    ef.codice,
-                   ef.descrizione,
                    ef.attivo,
                    ef.regime_fiscale_rf,
                    ef.bollo_auto,
@@ -158,18 +171,17 @@ class EmittentiFiscaliRepository:
               LEFT JOIN config.valute v          ON v.id  = ef.valuta_id
              WHERE (%s::text IS NULL OR (
                        ef.codice ILIKE %s
-                    OR ef.descrizione ILIKE %s
                     OR s.ragione_sociale_completa ILIKE %s
                     OR s.codice_fiscale ILIKE %s
                     OR s.partita_iva ILIKE %s
                    ))
                AND (%s::boolean IS NULL OR ef.attivo = %s)
-             ORDER BY {order_col} {direction}, ef.id
+             ORDER BY {order_col} {direction}, ef.id {tiebreak_dir}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params: list[Any] = [
             search_pattern, search_pattern, search_pattern,
-            search_pattern, search_pattern, search_pattern,
+            search_pattern, search_pattern,
             attivo, attivo,
             limit, offset,
         ]
@@ -184,7 +196,6 @@ class EmittentiFiscaliRepository:
                    ef.uid,
                    ef.soggetto_ruolo_id,
                    ef.codice,
-                   ef.descrizione,
                    ef.attivo,
                    ef.regime_fiscale_rf,
                    ef.bollo_auto,
@@ -217,8 +228,9 @@ class EmittentiFiscaliRepository:
     # =================================================================
 
     # Campi editabili sull'emittente (codice escluso: bloccato dal trigger lock_columns).
+    # `descrizione` tolta il 2026-08-02 con la DROP della colonna: il nome
+    # dell'emittente si cambia sul SOGGETTO, non qui.
     _UPDATE_ALLOWED = {
-        "descrizione",
         "attivo",
         "regime_fiscale_rf",
         "bollo_auto",
@@ -325,6 +337,7 @@ class EmittentiFiscaliBillingAccountRepository:
             order_by, self._ORDER_COLS["billing_account_codice"]
         )
         direction = sql_order_direction(order_dir)
+        tiebreak_dir = sql_tiebreak_direction(direction)
         # Default-first e' il prefisso fisso dell'ordinamento (la riga default
         # in testa qualunque colonna si ordini). Se pero' l'operatore ordina
         # PROPRIO per is_default — colonna del catalogo, `ordinabile=t` — il
@@ -352,7 +365,7 @@ class EmittentiFiscaliBillingAccountRepository:
                     OR s.ragione_sociale_completa ILIKE %s
                     OR s.id_fiscale_univoco_cf_piva ILIKE %s
                    ))
-             ORDER BY {order_prefix}{order_col} {direction}, m.id
+             ORDER BY {order_prefix}{order_col} {direction}, m.id {tiebreak_dir}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params: list[Any] = [

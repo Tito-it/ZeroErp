@@ -5,7 +5,8 @@
 -- ------------------------------------------------------------
 -- Indice test
 -- 1) Riferimenti minimi presenti
--- 2) Inserimento config emittente_fiscale_utilities
+-- 2) Config emittente/utility pronta (upsert: il test possiede i parametri
+--    di arrotondamento, non li eredita)
 -- 3) Inserimento fattura e riepilogo IVA
 -- 4) Ricalcolo totali con arrotondamento (decimali=0)
 -- 5) Aggiornamento minimo su soglia
@@ -59,6 +60,18 @@ SELECT ok(
 -- ============================================================
 -- 1) Config emittente/utility (decimali=0)
 -- ============================================================
+-- ⚠️ 2026-08-01: era una INSERT nuda e presupponeva che la coppia
+--   (emittente, utility) NON fosse ancora configurata. Il presupposto e'
+--   caduto quando il DB ha preso le configurazioni reali: la coppia (72, 5)
+--   esiste, l'unique la respingeva e il file moriva al secondo statement —
+--   quindi ZERO asserzioni eseguite, non «quattro su sei» (era la riga 106
+--   della baseline, ERRORE_FIXTURE).
+--   Ora e' un UPSERT, ed e' la forma giusta anche nel merito: questo test
+--   ASSERISCE un arrotondamento preciso (decimali 0, poi 2) e soglie 9/12,
+--   quindi deve possedere quei parametri invece di ereditare quelli che
+--   trova. Con la INSERT nuda sarebbe passato solo finche' nessuno
+--   configurava quell'emittente, e sarebbe diventato data-dependent il
+--   giorno dopo.
 CREATE TEMP TABLE tmp_conf_rt AS
 WITH ins AS (
   INSERT INTO anagrafiche.emittenti_fiscali_utilities (
@@ -68,6 +81,7 @@ WITH ins AS (
     minimo_soglia_max,
     arrotondamento_importi_dec,
     metodo_arrotondamento_importi,
+    attivo,
     meta
   )
   SELECT
@@ -77,14 +91,27 @@ WITH ins AS (
     12.00,
     0,
     'HALF_UP',
+    true,
     jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_rt))
+  ON CONFLICT (emittente_soggetto_ruolo_id, utility_id) DO UPDATE
+    SET minimo_soglia_min             = EXCLUDED.minimo_soglia_min,
+        minimo_soglia_max             = EXCLUDED.minimo_soglia_max,
+        arrotondamento_importi_dec    = EXCLUDED.arrotondamento_importi_dec,
+        metodo_arrotondamento_importi = EXCLUDED.metodo_arrotondamento_importi,
+        -- `attivo` va forzato: fn_ricalcola_totali_fattura filtra su
+        -- `attivo IS TRUE` e una configurazione disattivata farebbe cadere il
+        -- test su E_CONFIG_MANCANTE, cioe' su un guard diverso da quello in
+        -- esame.
+        attivo                        = true
+    -- `meta` NON si tocca sul ramo di conflitto: la riga preesistente e' di
+    -- qualcun altro e non va marcata come roba di test.
   RETURNING id
 )
 SELECT * FROM ins;
 
 SELECT ok(
   (SELECT id IS NOT NULL FROM tmp_conf_rt),
-  'Inserimento config emittente/utility'
+  'Config emittente/utility pronta (upsert)'
 );
 
 -- ============================================================
@@ -99,6 +126,11 @@ WITH ins AS (
     billing_account_id,
     tipo_doc_fiscale_id,
     valuta_id,
+    -- 3b.3: la fattura porta la propria utility. fn_ricalcola_totali_fattura
+    -- la LEGGE da qui (prima la deduceva da lotto/BA) per scegliere la riga
+    -- di emittenti_fiscali_utilities, cioe' decimali e metodo di
+    -- arrotondamento: senza, il test cade su E_CONFIG_MANCANTE.
+    utility_id,
     meta
   )
   SELECT
@@ -108,6 +140,7 @@ WITH ins AS (
     (SELECT billing_account_id FROM tmp_refs_rt),
     (SELECT tipo_doc_fiscale_id FROM tmp_refs_rt),
     (SELECT valuta_id FROM tmp_refs_rt),
+    (SELECT utility_id FROM tmp_refs_rt),
     jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_rt))
   RETURNING id
 )

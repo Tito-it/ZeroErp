@@ -37,7 +37,7 @@ const {
 } = useListaConfigurabilePage(store, {
   newTooltipKey: 'amministrazione.emittenti_fiscali.new',
   onNew: () => openCreate(),
-  searchTableOptions: { defaultSortField: 'descrizione' },
+  searchTableOptions: { defaultSortField: 'ragione_sociale_completa' },
 })
 
 // Tre drawer indipendenti: anagrafica, BA mapping, utility matrix.

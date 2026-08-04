@@ -21,11 +21,18 @@ export const useConversioniUomStore = defineStore('catalogo-conversioni-uom', ()
     attivo: true,
     limit: 25,
     offset: 0,
-    // `uom_from_codice`, non `uom_from_descrizione`: la descrizione non e' in
-    // whitelist BE (e nel seed e' `ordinabile=f`), quindi chiedendola l'ordine
-    // ripiegava in silenzio sul codice.
-    order_by: 'uom_from_codice',
-    order_dir: 'asc'
+    // Regola di dominio (Tid, 2026-08-01): quando una lista mostra le date di
+    // validita', `valido_al` E' l'ordinamento di default, in DESC. In Postgres
+    // `DESC` porta i NULL in testa: prima le conversioni senza scadenza, poi
+    // quelle con validita' piu' lunga, e in fondo le scadute — cioe' cio' che
+    // vale ora sopra, cio' che non vale piu' sotto.
+    //
+    // ⚠️ Il preset del seed dichiara ancora `uom_from_codice asc`: allineamento
+    // chiesto al team DB. Nessuno dei due e' letto dall'altro — il FE invia il
+    // proprio `order_by` e `ordinamento_default` non e' ancora consumato —
+    // quindi oggi vince questa riga.
+    order_by: 'valido_al',
+    order_dir: 'desc'
   })
 
   // Scopo: Carica la pagina corrente delle conversioni (server-side).

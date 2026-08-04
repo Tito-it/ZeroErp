@@ -1,24 +1,26 @@
 <script setup>
-// Scopo: DataTable lista template documentali sotto Configurazione
-//        (Tranche L). Pattern coerente con CategorieClientiSearchTable
-//        + UtilitiesTipiRuoloSearchTable: search + filtri (sorgente,
-//        attivo) + RowActionsMenu (modifica). Le versioni si gestiscono
-//        nel drawer template testata.
-import { computed, ref, onMounted } from 'vue'
+// Scopo: Lista template documentali configurabile
+//        (`<ListaConfigurabile codice="documenti.template_documenti">`):
+//        colonne, ordine e visibilita' dal catalogo `ui.lista_colonna`, con
+//        ritiro dinamico e personalizzazione per utente. Search + filtri
+//        (tipo output, sorgente, attivo); le versioni si gestiscono nel drawer
+//        template testata. Nessun export: il dominio non ha endpoint (lo
+//        scaffolding omette l'azione da se', non ricevendo `exportFn`).
+import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTemplateDocumentiStore } from '../stores/templateDocumenti'
-import { useSearchTable } from '../../core/composables/useSearchTable'
+import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
-import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
+import { TAB_ENTITIES } from '../../core/constants'
 import { buildBoolOptions } from '../../core/utils/options'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import AttivoTag from '../../core/components/AttivoTag.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
+import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
@@ -27,30 +29,18 @@ const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
 const store = useTemplateDocumentiStore()
 const isBlocked = useInjectBlocked()
-const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } =
-  useSearchTable(store, { defaultSortField: 'codice' })
+const {
+  searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
+  listaRef, dirty, onConfigLoaded, pageActions,
+} = useListaConfigurabilePage(store, {
+  newTooltipKey: 'config.modelli_documenti.new',
+  onNew: () => emit('new'),
+  searchTableOptions: { defaultSortField: 'codice' },
+})
 
 const attivoFilter = ref(true)
 const sorgenteTipoFilter = ref(null)
 const tipoOutputFilter = ref(null)
-const pageActions = computed(() => [
-  {
-    key: 'reload',
-    kind: 'utility',
-    label: t('common.reload_list'),
-    icon: MANAGE_ICONS.RELOAD,
-    command: reload,
-  },
-  {
-    key: 'new',
-    kind: 'primary',
-    label: t('common.new'),
-    tooltip: t('config.modelli_documenti.new'),
-    icon: MANAGE_ICONS.ADD,
-    hideWhenReadonly: true,
-    command: () => emit('new'),
-  },
-])
 
 const boolOptions = buildBoolOptions(t)
 
@@ -67,7 +57,8 @@ function onTipoOutputChange() {
   applyFilters()
 }
 
-function onRowClick(event) { emit('row-click', event.data) }
+// `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
+function onRowClick(data) { emit('row-click', data) }
 
 useTabFreshness(store, TAB_ENTITIES.TEMPLATE_DOCUMENTI)
 onMounted(() => store.fetchList())
@@ -110,80 +101,34 @@ onMounted(() => store.fetchList())
         </div>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
+            <ListaConfigStatusTag :dirty="dirty" />
             <ReadonlyBadge />
           </template>
         </PageActionsBar>
       </div>
 
-      <DataTable
-        :value="store.items"
+      <ListaConfigurabile
+        ref="listaRef"
+        codice="documenti.template_documenti"
+        :rows="store.items"
+        :total="store.totalRecords"
         :loading="store.loading"
-        v-bind="paginatorProps"
-        lazy
-        removable-sort
-        striped-rows
-        scrollable
-        scrollHeight="flex"
-        class="app-datatable"
+        :paginator-options="paginatorProps"
+        :page="tablePage"
+        :sort-field="paginatorProps.sortField"
+        :sort-order="paginatorProps.sortOrder"
         @page="onPage"
         @sort="onSort"
         @row-click="onRowClick"
-        selection-mode="single"
-        data-key="id"
+        @config-loaded="onConfigLoaded"
       >
-        <Column
-          field="codice"
-          :header="t('config.modelli_documenti.col_codice')"
-          sortable
-          style="width: 160px;"
-        />
-        <Column
-          field="descrizione"
-          :header="t('config.modelli_documenti.col_descrizione')"
-          sortable
-          style="min-width: 240px;"
-        />
-        <Column
-          field="tipo_documento_output_descrizione"
-          :header="t('config.modelli_documenti.col_tipo_output')"
-          sortable
-          style="width: 180px;"
-        />
-        <Column
-          field="sorgente_tipo_descrizione"
-          :header="t('config.modelli_documenti.col_sorgente')"
-          sortable
-          style="width: 180px;"
-        />
-        <Column
-          field="emittente_fiscale_descrizione"
-          :header="t('config.modelli_documenti.col_emittente')"
-          style="width: 200px;"
-        />
-        <Column
-          field="is_default"
-          :header="t('config.modelli_documenti.col_is_default')"
-          style="width: 110px;"
-        >
-          <template #body="{ data }">
-            <Tag
-              v-if="data.is_default"
-              :value="t('common.yes')"
-              severity="info"
-            />
-          </template>
-        </Column>
-        <Column
-          field="attivo"
-          :header="t('common.attivo')"
-          sortable
-          style="width: 100px;"
-        >
-          <template #body="{ data }">
-            <AttivoTag :active="data.attivo" />
-          </template>
-        </Column>
-      </DataTable>
+        <template #cell-is_default="{ data }">
+          <Tag v-if="data.is_default" :value="t('common.yes')" severity="info" />
+        </template>
+        <template #cell-attivo="{ data }">
+          <AttivoTag :active="data.attivo" />
+        </template>
+      </ListaConfigurabile>
     </template>
   </div>
 </template>

@@ -1,6 +1,8 @@
 // Store Pinia contratti v5. Lista + detail + CRUD testata + azioni righe/utility + cambio stato.
-// Filtro data obbligatorio (regola standard liste con date): data_da default anno-1.
+// Filtro data obbligatorio (regola standard liste con date): floor `data_da`
+// unico di progetto (oggi-60gg al primo del mese), vedi core/utils/date.
 import { defineStore } from 'pinia'
+import { defaultFiltroDataDaString } from '../../core/utils/date'
 import { ref } from 'vue'
 import {
   listContratti, getContratto, createContratto, updateContratto, cambiaStatoContratto,
@@ -11,7 +13,7 @@ import {
 import { useTabEvents } from '../../core/composables/useTabEvents'
 import { TAB_ENTITIES } from '../../core/constants'
 
-const defaultDataDa = `${new Date().getFullYear() - 1}-01-01`
+const defaultDataDa = defaultFiltroDataDaString()
 
 export const useContrattiStore = defineStore('vendite-contratti', () => {
   const { emitDataChanged } = useTabEvents()

@@ -43,12 +43,11 @@
 - [fatture_rettifiche](manual/fatture_rettifiche.md) — `vendite.fatture_rettifiche` modella il **legame N:N** fra **documenti rettificanti** (es. note di credito/debito) e **documenti rettificati** (fatture originarie).
 - [fatture_riepiloghi_iva](manual/fatture_riepiloghi_iva.md) — `vendite.fatture_riepiloghi_iva` è lo **specchietto fiscale** della fattura: aggrega le righe per **combinazione fiscale** e ne memorizza i totali. Serve per:
 - [fatture_righe](manual/fatture_righe.md) — (latest review **28-07-2026** — revisione sostanziale, vedi ⚠️ in fondo alla sezione) `vendite.fatture_righe` contiene le **righe economiche** di una fattura: descrizione, articolo (opzionale), UoM, quantità, prezzo, sconti, IVA e **imponibile congelato** (*snapshot*) al momento della generazione. Ogni riga è ordinata tramite `riga_nr` ed è collegata a una testata `vendite.fatture` (FK `fattura_id`). Supporta la **destinazione a BA diverso** dalla testata.
-- [fatture_scadenze](manual/fatture_scadenze.md) — `vendite.fatture_scadenze` memorizza lo **schedule di pagamento** (rate/scadenze) della fattura come **snapshot** al momento dell’emissione, così da:
+- [fatture_scadenze](manual/fatture_scadenze.md) — (latest review 02-08-26)
 - [fatture_sdi](manual/fatture_sdi.md) — (latest review 16-02-2026)   `vendite.fatture_sdi` rappresenta la **testata dei tentativi di invio SDI** per fattura.
 - [fatture_sdi_eventi](manual/fatture_sdi_eventi.md) — (latest review 16-02-2026)   `vendite.fatture_sdi_eventi` mantiene lo **storico cronologico eventi SDI** per ciascun tentativo (`fattura_sdi_id`).
 - [fatture_stampa_coda](manual/fatture_stampa_coda.md) — `vendite.fatture_stampa_coda` è la **coda (outbox) della stampa massiva delle fatture**. Il task di pipeline `stampa_documenti_lotto` vi **accoda** un work-item per fattura al momento della numerazione (step DEFINITIVA), poi lo step chiude subito la transazione; un **worker** esterno drena la coda, garantisce la numerazione (backstop idempotente) e delega il render al processo di stampa generico. Così il rendering dei PDF **non** avviene dentro la transazione di numerazione e **non** tiene il lock del registro fiscale.
 - [listini](manual/listini.md) — La tabella `vendite.listini` rappresenta la testata anagrafica dei listini prezzo del dominio vendite.
-- [listini_associazioni](manual/listini_associazioni.md) — (latest review 09-04-2026)
 - [listini_righe](manual/listini_righe.md) — La tabella `vendite.listini_righe` contiene i prezzi elementari per articolo/UOM, eventualmente specializzati per contesto (BA, utility, emittente fiscale).
 - [listini_righe_componenti](manual/listini_righe_componenti.md)
 - [listini_versioni](manual/listini_versioni.md) — (latest review 09-04-2026)
@@ -90,6 +89,7 @@
 ## ⚙️ Funzioni (manuale)
 - [fn_aggiungi_onere_commessa](manual/fn_aggiungi_onere_commessa.md) — (rev 2026-07-23)
 - [fn_annulla_commessa_attivita](manual/fn_annulla_commessa_attivita.md) — (rev 2026-07-28)
+- [fn_annulla_lotto_da_draft](manual/fn_annulla_lotto_da_draft.md) — (latest review 03-08-2026)   La funzione **`vendite.fn_annulla_lotto_da_draft()`** effettua il **rollback tecnico** di un lotto in stato **DRAFT**, eliminando i documenti generati dal draft, ripristinando le righe di `attivita_fatturabili` e **chiudendo** il lotto portandolo ad **ANNULLATA**.
 - [fn_annulla_reso](manual/fn_annulla_reso.md) — (rev 2026-07-13)
 - [fn_applica_fondi_fattura](manual/fn_applica_fondi_fattura.md) — La funzione **`vendite.fn_applica_fondi_fattura()`** applica i fondi fattura in stato `DISPONIBILE` ad una **fattura figlia**, creando le righe in `vendite.fatture_fondi_fattura` e aggiornando la `source` a stato `ASSEGNATO`.
 - [fn_approva_commessa_attivita](manual/fn_approva_commessa_attivita.md) — (rev 2026-06-07) `vendite.fn_approva_commessa_attivita(p_commessa_id, p_righe_ids, p_user)` porta le righe `commesse_attivita` da `stato_approvazione = 'BOZZA'` a `'APPROVATA'`.
@@ -102,7 +102,7 @@
 - [fn_cancel_lotto_task_run](manual/fn_cancel_lotto_task_run.md) — Chiude un task run impostando `task_stato = ANNULLATO`.
 - [fn_chiudi_contratto_per_successione](manual/fn_chiudi_contratto_per_successione.md) — `vendite.fn_chiudi_contratto_per_successione(...)` è la **seconda metà** del meccanismo di successione: dopo che [`fn_contratto_sovrapposto`](/dbzero/vendite/funzioni/fn_contratto_sovrapposto) ha individuato un contratto in conflitto, questa funzione lo **accorcia** per fare spazio al nuovo, impostando:
 - [fn_chiudi_riconsegna_reso](manual/fn_chiudi_riconsegna_reso.md) — (rev 2026-07-26)
-- [fn_cleanup_fatture_by_ids](manual/fn_cleanup_fatture_by_ids.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_cleanup_fatture_by_ids()`** centralizza il cleanup di fatture e righe correlate, ripristinando le righe di `attivita_fatturabili`.
+- [fn_cleanup_fatture_by_ids](manual/fn_cleanup_fatture_by_ids.md) — (latest review 03-08-2026)  
 - [fn_close_giornaliero_lotto](manual/fn_close_giornaliero_lotto.md) — (latest review 03-02-2026) La funzione **`vendite.fn_close_giornaliero_lotto()`** chiude operativamente un lotto di tipo **GIORNALIERO** e allinea lo stato documentale delle fatture collegate al valore passato (tipicamente stato `INVIATA`).
 - [fn_complete_lotto_task_run](manual/fn_complete_lotto_task_run.md) — Chiude un task run impostando `task_stato = COMPLETATO` e `ended_at`.
 - [fn_conferma_reso](manual/fn_conferma_reso.md) — (rev 2026-07-13)
@@ -118,6 +118,7 @@
 - [fn_ddt_riga_componenti_init](manual/fn_ddt_riga_componenti_init.md)
 - [fn_ddt_riga_componenti_preview](manual/fn_ddt_riga_componenti_preview.md)
 - [fn_documento_lineage](manual/fn_documento_lineage.md) — `vendite.fn_documento_lineage(p_tipo_id, p_uid, p_direzione)` è il **traversal ricorsivo** del grafo di genealogia, pensato per il pannello **"Passaggi"** del dettaglio documento: ritorna la **catena completa** degli archi attraversati, con lo stato di ogni tappa e `livello`/`ordine` per il rendering a timeline/albero.
+- [fn_elimina_fattura_da_lotto](manual/fn_elimina_fattura_da_lotto.md) — (latest review 04-08-2026)   Toglie **una sola fattura** da un lotto **cancellandola**, senza toccare il lotto né le altre fatture. È il verbo per il caso in cui un documento è sbagliato e va rifatto, mentre il resto del giro è sano.
 - [fn_emit_attivita_fatturabili_da_commessa](manual/fn_emit_attivita_fatturabili_da_commessa.md) — (latest review 16-06-2026) Esegue il pull da `commesse_attivita` verso `attivita_fatturabili` (step 0 pipeline attività fatturabili).
 - [fn_espandi_listino_versione](manual/fn_espandi_listino_versione.md)
 - [fn_fail_lotto_task_run](manual/fn_fail_lotto_task_run.md) — Chiude un task run in errore impostando `task_stato = ERRORE`, codice e messaggio.
@@ -125,6 +126,8 @@
 - [fn_genera_ddt_riconsegna](manual/fn_genera_ddt_riconsegna.md) — (rev 2026-07-26)
 - [fn_genera_fondi_fattura_source](manual/fn_genera_fondi_fattura_source.md) — (latest review 12-02-2026)   La funzione **`vendite.fn_genera_fondi_fattura_source()`** genera record in `fatture_fondi_fattura_source` per fatture con `minimo = true`, e mantiene allineata la source in base al saldo documento.
 - [fn_genera_pratica_da_preventivo](manual/fn_genera_pratica_da_preventivo.md) — (latest review 08-07-2026)
+- [fn_genera_scadenze_fattura](manual/fn_genera_scadenze_fattura.md) — (latest review 02-08-2026)
+- [fn_genera_scadenze_lotto](manual/fn_genera_scadenze_lotto.md) — (latest review 02-08-2026)
 - [fn_get_anno_registro](manual/fn_get_anno_registro.md) — (latest review 26-01-2026) La funzione **`vendite.fn_get_anno_registro`** calcola l’anno di riferimento per la numerazione dei registri con `reset_policy = ANNUALE`.
 - [fn_get_arrotondamento_scope](manual/fn_get_arrotondamento_scope.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_get_arrotondamento_scope()`** restituisce il **saldo tecnico** degli arrotondamenti per l'ambito di fatturazione (BA, utility, tipo documento, emittente, valuta). Se l'ambito non esiste, ritorna `0`.
 - [fn_get_commessa_stato](manual/fn_get_commessa_stato.md) — (latest review 26-02-2026)   Restituisce in una singola query lo stato operativo di una commessa:
@@ -171,17 +174,13 @@
 - [fn_push_offerta_a_contratto](manual/fn_push_offerta_a_contratto.md) — (rev6 2026-06-08 — guard **mutua esclusività** offerta→contratto/ordine; rev5 2026-06-01 — trasporto 1:1 stato approvazione prezzo anche sulle **righe**; rev4 2026-05-31 — successione contratti su overlap; rev3 2026-05-26 — copia `offerte_commerciali_eccezioni_componenti` → `contratti_righe_componenti`)
 - [fn_push_preventivo_a_ordine](manual/fn_push_preventivo_a_ordine.md) — (latest review 08-07-2026)
 - [fn_reset_fondi_fattura](manual/fn_reset_fondi_fattura.md) — La funzione **`vendite.fn_reset_fondi_fattura()`** ripristina i fondi fattura applicati ad una **fattura figlia**:
-- [fn_reset_lotto_draft](manual/fn_reset_lotto_draft.md) — (latest review 09-02-2026)   La funzione **`vendite.fn_reset_lotto_draft()`** effettua il **rollback tecnico** di un lotto **MASSIVO** in stato **DRAFT**, eliminando i documenti generati dal draft e ripristinando le righe di `attivita_fatturabili`.
-- [fn_reset_lotto_fattura_draft](manual/fn_reset_lotto_fattura_draft.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_reset_lotto_fattura_draft()`** effettua il reset tecnico di **una singola fattura** appartenente a un lotto **MASSIVO** in stato **DRAFT**, senza annullare il lotto.
 - [fn_resi_riga_residuo_riconsegna](manual/fn_resi_riga_residuo_riconsegna.md) — (rev 2026-07-26)
-- [fn_resolve_commessa_prezzi](manual/fn_resolve_commessa_prezzi.md) — La funzione `vendite.fn_resolve_commessa_prezzi` analizza le righe di `attivita_fatturabili` appartenenti a un lotto e confronta `prezzo_unitario` con il prezzo risolto via listino.
 - [fn_resolve_fatturazione_pipeline_step](manual/fn_resolve_fatturazione_pipeline_step.md) — (latest review 08-02-2026)   La funzione risolve la configurazione pipeline per un singolo step (`stato_doc_fiscale_id`) applicando fallback su `utility_id` e `tipo_doc_fiscale_id`.
 - [fn_resolve_lotto_task_execution_mode](manual/fn_resolve_lotto_task_execution_mode.md) — Determina in modo deterministico la modalita` di esecuzione del task: `RUN`, `SKIP`, `RESUME`, `RESET_REQUIRED`.
 - [fn_resolve_lotto_utility_emittente](manual/fn_resolve_lotto_utility_emittente.md) — (latest review 22-02-2026) Helper condiviso per risolvere e validare `utility_id` ed `emittente_soggetto_ruolo_id` nei flussi lotto (`fatturazione_lotti` e `attivita_fatturabili_lotti`).
-- [fn_resolve_prezzo_composito](manual/fn_resolve_prezzo_composito.md) — (latest review 22-04-2026)
-- [fn_resolve_prezzo_listino](manual/fn_resolve_prezzo_listino.md) — Risolve in modo deterministico il prezzo applicabile per una coppia `(articolo, uom)` in una data, dato un billing account. Unica funzione usata da preventivi, commesse e fatturazione: zero logica duplicata applicativa.
 - [fn_resolve_prezzo_listino_v2](manual/fn_resolve_prezzo_listino_v2.md) — (rev 2026-05-20 — 9° param p_listino_versione_id_preferito: fast path diretto)
 - [fn_resolve_stato_esecuzione](manual/fn_resolve_stato_esecuzione.md) — (latest review 22-02-2026) Helper condiviso per risolvere in modo uniforme il valore di `stato_esecuzione` nei flussi `fatturazione_lotti` e `attivita_fatturabili`.
+- [fn_resolve_termini_pagamento](manual/fn_resolve_termini_pagamento.md) — (latest review 02-08-2026)
 - [fn_riapri_riconsegna_reso](manual/fn_riapri_riconsegna_reso.md) — (rev 2026-07-26)
 - [fn_ricalcola_fattura](manual/fn_ricalcola_fattura.md) — La funzione **`vendite.fn_ricalcola_fattura()`** e` un wrapper che esegue, **in sequenza**:
 - [fn_ricalcola_riepiloghi_iva_lotto](manual/fn_ricalcola_riepiloghi_iva_lotto.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_ricalcola_riepiloghi_iva_lotto()`** ricalcola i riepiloghi IVA per tutte le fatture collegate a un lotto, usando un’elaborazione a batch e delegando il ricalcolo alla funzione per singola fattura.   Al termine di ciascun ricalcolo aggiorna anche i **totali testata**.
@@ -190,13 +189,16 @@
 - [fn_ricalcola_totali_fattura](manual/fn_ricalcola_totali_fattura.md) — La funzione **`vendite.fn_ricalcola_totali_fattura()`** ricalcola i totali sulla testata fattura a partire dai **riepiloghi IVA** e dai **fondi fattura**, applicando le regole di arrotondamento definite per **emittente/utility**.
 - [fn_ricalcola_totali_ordine](manual/fn_ricalcola_totali_ordine.md) — (latest review 05-06-2026)
 - [fn_ricalcola_totali_preventivo](manual/fn_ricalcola_totali_preventivo.md) — (latest review 02-05-2026)
+- [fn_riporta_lotto_a_draft](manual/fn_riporta_lotto_a_draft.md) — (latest review 03-08-2026)  
 - [fn_select_attivita_fatturabili](manual/fn_select_attivita_fatturabili.md) — (latest review 27-01-2026) La funzione **`vendite.fn_select_attivita_fatturabili()`** seleziona le righe **eleggibili** per la fatturazione e, se richiesto, le **locka** in modo atomico.
 - [fn_set_arrotondamento_scope](manual/fn_set_arrotondamento_scope.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_set_arrotondamento_scope()`** imposta (upsert) il **saldo tecnico** degli arrotondamenti per l'ambito di fatturazione.
 - [fn_set_documento_canale_stato](manual/fn_set_documento_canale_stato.md) — (latest review 24-02-2026) Gestisce in modo uniforme la transizione stato dei canali fatturabili per documento sorgente.
 - [fn_set_fatturazione_lotto_stato](manual/fn_set_fatturazione_lotto_stato.md) — (latest review 27-01-2026)   La funzione **`vendite.fn_set_fatturazione_lotto_stato()`** aggiorna lo **stato job** del lotto di fatturazione e allinea lo **stato operativo**.
 - [fn_set_runtime_task_run_esito](manual/fn_set_runtime_task_run_esito.md) — Helper condiviso per applicare l'esito runtime di un task-run nei domini `LOTTO` e `ATTIVITA_FATTURABILI`.
+- [fn_snapshot_fattura_lotto](manual/fn_snapshot_fattura_lotto.md) — (latest review 02-08-2026)
+- [fn_snapshot_indirizzi_fattura](manual/fn_snapshot_indirizzi_fattura.md) — (latest review 02-08-2026)
+- [fn_snapshot_intestazione_fattura](manual/fn_snapshot_intestazione_fattura.md) — (latest review 02-08-2026)
 - [fn_start_lotto_task_run](manual/fn_start_lotto_task_run.md) — Apre un nuovo record runtime task su lotto in stato `IN_ESECUZIONE`.
-- [fn_sync_attivita_stato_esecuzione](manual/fn_sync_attivita_stato_esecuzione.md) — (latest review 22-02-2026) Sincronizza `stato_esecuzione` delle righe `attivita_fatturabili` collegate a un lotto attività.
 - [fn_sync_contabili_fondo_fattura](manual/fn_sync_contabili_fondo_fattura.md) — Sincronizzare i fondi fattura assegnati a una fattura figlia nel layer **contabile pre-posting** (`pagamenti.vendite_contabili` / `pagamenti.vendite_contabili_righe`), senza scrivere movimenti pagamenti diretti.
 - [fn_sync_fattura_critical](manual/fn_sync_fattura_critical.md) — (latest review 29-01-2026)   La funzione **`vendite.fn_sync_fattura_critical()`** aggiorna il flag `fatture.critical` in base ai log attivi della fattura.
 - [fn_sync_fatture_log_critical_lotto](manual/fn_sync_fatture_log_critical_lotto.md) — (latest review 20-02-2026)   La funzione **`vendite.fn_sync_fatture_log_critical_lotto()`** sincronizza in modo set-based:
@@ -208,8 +210,8 @@
 - [trgfn_attivita_fatturabili_guard_fatturato](manual/trgfn_attivita_fatturabili_guard_fatturato.md) — (latest review 26-01-2026) La funzione **`vendite.trgfn_attivita_fatturabili_guard_fatturato()`** blocca modifiche o cancellazioni di righe di `vendite.attivita_fatturabili` che risultano gia` agganciate a una riga di fattura.
 - [trgfn_attivita_fatturabili_guard_fonte](manual/trgfn_attivita_fatturabili_guard_fonte.md) — (latest review 29-01-2026)   La funzione **`vendite.trgfn_attivita_fatturabili_guard_fonte()`** verifica la coerenza della **fonte quantita** e delle **competenze** per le righe di `attivita_fatturabili`.
 - [trgfn_attivita_fatturabili_normalize](manual/trgfn_attivita_fatturabili_normalize.md) — (latest review 21/01/2026) La funzione `vendite.trgfn_attivita_fatturabili_normalize()` applica una **normalizzazione minima** su `vendite.attivita_fatturabili` per garantire coerenza **temporale** e **tecnica** dei dati prima della scrittura.
-- [trgfn_attivita_norm_competenza_mese](manual/trgfn_attivita_norm_competenza_mese.md) — (latest review 29-01-2026)   La funzione **`vendite.trgfn_attivita_norm_competenza_mese()`** normalizza `competenza_mese` al **primo giorno del mese**.
 - [trgfn_commesse_attivita_guard_tipo_doc_emittibile](manual/trgfn_commesse_attivita_guard_tipo_doc_emittibile.md) — (rev 2026-06-19)
+- [trgfn_commesse_guard_chiave_immutabile](manual/trgfn_commesse_guard_chiave_immutabile.md) — (latest review 02-08-2026)
 - [trgfn_commesse_guard_transizione](manual/trgfn_commesse_guard_transizione.md) — (rev 2026-06-07)
 - [trgfn_contratti_default_emittente](manual/trgfn_contratti_default_emittente.md) — (rev 2026-05-26)
 - [trgfn_contratti_freeze_listino_versione](manual/trgfn_contratti_freeze_listino_versione.md) — Il modello unificato prevede che un contratto ATTIVO abbia una versione listino **fissa e immutabile**: dal momento dell'attivazione il resolver prezzi legge sempre quella versione, anche se il listino ha versioni successive. Questo garantisce stabilità del pricing per tutta la durata del contratto.
@@ -223,7 +225,6 @@
 - [trgfn_contratti_righe_lock_post_attivazione](manual/trgfn_contratti_righe_lock_post_attivazione.md) — Le eccezioni di un contratto attivo (OVERRIDE, ESCLUSIONE, AGGIUNTA) sono **immutabili post-attivazione** (§3-bis-A). Questo enforcement avviene a livello DB per garantire il blocco anche da psql diretto, script di manutenzione o chiamate API non validate. Il lock è simmetrico a quello sulla testata (`trgfn_contratti_lock_post_attivazione`).
 - [trgfn_contratti_snapshot_precontrattuali](manual/trgfn_contratti_snapshot_precontrattuali.md) — (latest review 20/01/26) La funzione `vendite.trgfn_contratti_snapshot_precontrattuali()` crea lo **snapshot** dei dati precontrattuali **solo alla creazione del contratto**.   La scelta progettuale e` deliberata: il contratto diventa la **fonte stabile** per i dati tecnici/commerciali e le eventuali correzioni richiedono **un nuovo contratto**.
 - [trgfn_ddt_default_emittente](manual/trgfn_ddt_default_emittente.md) — (rev 2026-07-13)
-- [trgfn_ddt_gen_codice](manual/trgfn_ddt_gen_codice.md) — La trigger function `vendite.trgfn_ddt_gen_codice()` genera automaticamente `numero` DDT quando il valore non viene fornito in inserimento.
 - [trgfn_ddt_gen_numero_emesso](manual/trgfn_ddt_gen_numero_emesso.md) — (rev 2026-07-09)
 - [trgfn_ddt_guard_causale_emissione](manual/trgfn_ddt_guard_causale_emissione.md) — (rev 2026-07-18)
 - [trgfn_ddt_guard_emittente_ba](manual/trgfn_ddt_guard_emittente_ba.md) — (rev 2026-07-13)
@@ -234,11 +235,11 @@
 - [trgfn_ddt_righe_componenti_guard_pending](manual/trgfn_ddt_righe_componenti_guard_pending.md) — - **Decisione L3 sul componente esatto** — quando un componente di una riga DDT ha un prezzo out-of-policy in attesa di approvazione, l'approvatore L3 deve decidere sulla riga esatta proposta. - **Pattern denylist difensivo** — elenco esplicito dei campi struttura. Se `ddt_righe_componenti` viene estesa con nuove colonne struttura, il trigger va aggiornato.
 - [trgfn_dlt_block_ordrig_ddtrig](manual/trgfn_dlt_block_ordrig_ddtrig.md) — La trigger function `vendite.trgfn_dlt_block_ordrig_ddtrig()` blocca la cancellazione fisica di righe ordine/DDT per preservare la coerenza del fulfillment e la tracciabilità operativa.
 - [trgfn_documenti_sync_canali](manual/trgfn_documenti_sync_canali.md) — (latest review 24-02-2026)   La funzione trigger `vendite.trgfn_documenti_sync_canali()` mantiene allineato il registro `documenti_fatturazione_canali` sugli eventi principali dei documenti commerciali.
-- [trgfn_fatturazione_lotti_attivita_gen_codice](manual/trgfn_fatturazione_lotti_attivita_gen_codice.md) — Genera automaticamente `codice` su `vendite.attivita_fatturabili_lotti` quando non valorizzato in INSERT/UPDATE.
+- [trgfn_fattura_satellite_guard_congelamento](manual/trgfn_fattura_satellite_guard_congelamento.md) — (latest review 02-08-2026)
 - [trgfn_fatturazione_lotti_gen_codice](manual/trgfn_fatturazione_lotti_gen_codice.md) — Genera automaticamente `codice` su `vendite.fatturazione_lotti` quando non valorizzato in INSERT/UPDATE.
 - [trgfn_fatturazione_lotti_guard_stato](manual/trgfn_fatturazione_lotti_guard_stato.md) — (latest review 24-01-2026) La funzione **`vendite.trgfn_fatturazione_lotti_guard_stato()`** controlla le transizioni tra stati documento sui lotti di fatturazione.
-- [trgfn_fatture_gen_codice](manual/trgfn_fatture_gen_codice.md) — Assegna automaticamente il numero fattura quando il campo `numero` non e` valorizzato.
 - [trgfn_fatture_guard_stato](manual/trgfn_fatture_guard_stato.md) — (latest review 24-01-2026) La funzione **`vendite.trgfn_fatture_guard_stato()`** controlla le transizioni tra stati documento sulle fatture, bloccando quelle non ammesse.
+- [trgfn_fatture_guard_uscita_draft](manual/trgfn_fatture_guard_uscita_draft.md) — (latest review 02-08-2026)
 - [trgfn_fatture_log_sync_ad_stmt](manual/trgfn_fatture_log_sync_ad_stmt.md) — Sincronizza stato `critical` e `stato_esecuzione` delle fatture coinvolte dopo DELETE su `vendite.fatture_log` (trigger statement-level).
 - [trgfn_fatture_log_sync_ai_stmt](manual/trgfn_fatture_log_sync_ai_stmt.md) — Sincronizza stato `critical` e `stato_esecuzione` delle fatture coinvolte dopo INSERT su `vendite.fatture_log` (trigger statement-level).
 - [trgfn_fatture_log_sync_au_stmt](manual/trgfn_fatture_log_sync_au_stmt.md) — Sincronizza stato `critical` e `stato_esecuzione` delle fatture coinvolte dopo UPDATE su `vendite.fatture_log` (trigger statement-level).
@@ -253,7 +254,6 @@
 - [trgfn_listini_righe_guard_stato](manual/trgfn_listini_righe_guard_stato.md) — Guard N6 — terzo livello di protezione: impedisce la modifica o cancellazione di righe listino quando lo stato della versione padre non lo consente o quando la riga e` gia` stata propagata a valle (commesse, attivita` fatturabili).
 - [trgfn_listini_versioni_guard_transizione_stato](manual/trgfn_listini_versioni_guard_transizione_stato.md) — (latest review 26-04-2026)
 - [trgfn_logs_guard_delete](manual/trgfn_logs_guard_delete.md) — (latest review 20-02-2026)   La funzione trigger **`vendite.trgfn_logs_guard_delete()`** blocca la cancellazione diretta dei log funzionali (`fatture_log`, `fatturazione_lotti_log`) salvo abilitazione esplicita di manutenzione.
-- [trgfn_note_validate_generic](manual/trgfn_note_validate_generic.md) — La trigger function `vendite.trgfn_note_validate_generic()` valida la coerenza delle note ancorate a una riga documento (`anchor_tipo = 'RIGA'`), verificando che `target_riga_id` appartenga davvero alla testata indicata da `target_id`.
 - [trgfn_offerte_commerciali_guard_emittente_ba](manual/trgfn_offerte_commerciali_guard_emittente_ba.md) — (rev 2026-07-13)
 - [trgfn_offerte_commerciali_revisione](manual/trgfn_offerte_commerciali_revisione.md) — (rev 2026-05-24)
 - [trgfn_ordini_default_emittente](manual/trgfn_ordini_default_emittente.md) — (rev 2026-06-01)
@@ -272,7 +272,6 @@
 - [trgfn_preventivi_guard_utility_istanza_coerenza](manual/trgfn_preventivi_guard_utility_istanza_coerenza.md)
 - [trgfn_preventivi_normalize](manual/trgfn_preventivi_normalize.md) — La trigger function `vendite.trgfn_preventivi_normalize()` completa i dati minimi di data documento in insert quando il numero preventivo e` gia` presente.
 - [trgfn_preventivi_righe_componenti_guard_pending](manual/trgfn_preventivi_righe_componenti_guard_pending.md) — - **Decisione L3 sul componente esatto** — quando un componente ha un prezzo out-of-policy in attesa di approvazione, l'approvatore L3 deve decidere sulla riga esatta che è stata proposta. Cambi a prezzo, quantita' o articolo durante la fase di approvazione renderebbero la decisione ambigua. - **Coerenza con il guard L3 esistente** — `trgfn_preventivi_guard_transizione_approvazione` blocca la transizione ad ACCETTATO se qualsiasi componente è PENDING. Insieme garantiscono che nessuna decisione commerciale avvenga con prezzi incerti sui componenti BoM CASO A. - **Pattern denylist difensivo** — elenco esplicito dei campi struttura: se `preventivi_righe_componenti` viene estesa con nuove colonne struttura, il trigger va aggiornato.
-- [trgfn_preventivi_righe_guard_pending](manual/trgfn_preventivi_righe_guard_pending.md) — (latest revision 22-04-2026, Sprint E listini v5 §14.6)
 - [trgfn_preventivi_righe_ricalcola_totali](manual/trgfn_preventivi_righe_ricalcola_totali.md) — (latest review 03-04-2026) `vendite.trgfn_preventivi_righe_ricalcola_totali()` e' la trigger function **STATEMENT-level** che mantiene i totali testata preventivo sempre coerenti con le righe. Invoca `vendite.fn_ricalcola_totali_preventivo()` **una sola volta per ogni preventivo_id coinvolto**, anche in caso di operazioni bulk (es. copia righe in revisione).
 - [trgfn_promo_articoli_guard_data_driven](manual/trgfn_promo_articoli_guard_data_driven.md) — (latest review 27-04-2026)
 - [trgfn_resi_gen_numero](manual/trgfn_resi_gen_numero.md) — (rev 2026-07-13)
@@ -332,3 +331,6 @@
 - [vw_stato_sorgente_ordine](manual/vw_stato_sorgente_ordine.md) — (latest review 2026-07-02) `vendite.vw_stato_sorgente_ordine` è il **resolver del dominio ORDINE (di vendita)** per la proiezione dello stato di dominio (brief-db-proiezione-stato-dominio, deliverable D2): espone il **descrittore normalizzato** dello stato **vivo** di ogni ordine di vendita — stato nativo + mapping `fase`/`esito`/`terminale` dichiarato su `config.stati_doc_ordini` — con chiave `(sorgente_tipo_id, sorgente_uid)` coerente con `pratiche.pratiche_sorgenti`.
 - [vw_stato_sorgente_preventivo](manual/vw_stato_sorgente_preventivo.md) — (latest review 01-07-2026) `vendite.vw_stato_sorgente_preventivo` è il **resolver del dominio PREVENTIVI** per la proiezione dello stato di dominio (brief-db-proiezione-stato-dominio, deliverable D2): espone il **descrittore normalizzato** dello stato **vivo** di ogni preventivo — stato nativo + mapping `fase`/`esito`/`terminale` dichiarato su `config.stati_doc_preventivi` — con chiave `(sorgente_tipo_id, sorgente_uid)` coerente con `pratiche.pratiche_sorgenti`.
 - [vw_stato_sorgente_reso](manual/vw_stato_sorgente_reso.md) — (latest review 2026-07-18)
+
+## 📘 Altri contenuti manuali
+- [trgfn_note_validate_generic](manual/trgfn_note_validate_generic.md) — La trigger function `vendite.trgfn_note_validate_generic()` valida la coerenza delle note ancorate a una riga documento (`anchor_tipo = 'RIGA'`), verificando che `target_riga_id` appartenga davvero alla testata indicata da `target_id`.

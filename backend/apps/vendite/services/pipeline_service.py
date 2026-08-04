@@ -21,11 +21,12 @@ from apps.vendite.services.pipeline_step_executor import PipelineStepExecutor
 from apps.vendite.services.fatture_righe_service import FattureRigheService
 from apps.vendite.services.lotto_reset_service import LottoResetService
 from apps.vendite.types import (
+    AnnullaLottoDaDraftResult,
+    EliminaFatturaDaLottoDraftResult,
     GroupAttivitaKey,
     LottoPipelineMeta,
     LottoTaskRunRow,
-    ResetLottoDraftResult,
-    ResetLottoFatturaDraftResult,
+    RiportaLottoADraftResult,
 )
 
 # Facade servizi: mantiene firme dichiarative e delega alle classi OOP.
@@ -487,22 +488,33 @@ def fn_generate_fatture_righe(*, lotto_id: int, dry_run: bool = False) -> int:
     return service.generate_fatture_righe(lotto_id, dry_run=dry_run)
 
 
-# Scopo: Facade applicativa: esegue reset tecnico completo del lotto in stato DRAFT.
-def fn_reset_lotto_draft(*, lotto_id: int) -> ResetLottoDraftResult:
-    """Entrypoint servizio Python con lo stesso intento della funzione SQL fn_reset_lotto_draft."""
+# Scopo: Facade applicativa: ANNULLA il lotto che si trova in DRAFT (stato ad
+#        ANNULLATA/CHIUSO, fatture pre-fiscali eliminate, attivita' liberate).
+def fn_annulla_lotto_da_draft(*, lotto_id: int) -> AnnullaLottoDaDraftResult:
+    """Entrypoint servizio Python con lo stesso intento della funzione SQL fn_annulla_lotto_da_draft."""
     service = LottoResetService()
-    return service.reset_lotto_draft(lotto_id)
+    return service.annulla_lotto_da_draft(lotto_id)
 
 
-# Scopo: Facade applicativa: esegue reset tecnico della singola fattura DRAFT nel lotto.
-def fn_reset_lotto_fattura_draft(
+# Scopo: Facade applicativa: RIPORTA A BOZZA il lotto (Fase 6) perche' si possa
+#        correggere a monte e rifare il giro. Cancella le fatture e riporta le
+#        `commesse_attivita` a NON_EMESSA; il rilancio le rigenera.
+def fn_riporta_lotto_a_draft(*, lotto_id: int) -> RiportaLottoADraftResult:
+    """Entrypoint servizio Python con lo stesso intento della funzione SQL fn_riporta_lotto_a_draft."""
+    service = LottoResetService()
+    return service.riporta_lotto_a_draft(lotto_id)
+
+
+# Scopo: Facade applicativa: elimina UNA fattura DRAFT dal lotto, liberandone
+#        le attivita' (estrazione per-fattura).
+def fn_elimina_fattura_da_lotto_draft(
     *,
     lotto_id: int,
     fattura_id: int,
-) -> ResetLottoFatturaDraftResult:
-    """Entrypoint servizio Python per reset singola fattura del lotto."""
+) -> EliminaFatturaDaLottoDraftResult:
+    """Entrypoint servizio Python con lo stesso intento della funzione SQL fn_elimina_fattura_da_lotto_draft."""
     service = LottoResetService()
-    return service.reset_lotto_fattura_draft(lotto_id, fattura_id)
+    return service.elimina_fattura_da_lotto_draft(lotto_id, fattura_id)
 
 
 # Scopo: Restituisce riepilogo segnalazioni del lotto con regola di blocco step successivo.

@@ -61,7 +61,7 @@ _TEMPLATE_DETAIL = {
     "file_name_pattern": "preventivo-{numero}.pdf",
     "emittente_fiscale_id": 5,
     "emittente_fiscale_codice": "EF-001",
-    "emittente_fiscale_descrizione": "Acme SRL",
+    "emittente_ragione_sociale": "Acme SRL",
     "data_insert": "2026-04-29T00:00:00+02:00",
     "data_update": "2026-04-29T00:00:00+02:00",
 }
@@ -469,7 +469,7 @@ class DocumentiAssetApiTests(JwtMockedApiTest):
         "sha256": "a" * 64,
         "emittente_fiscale_id": 5,
         "emittente_fiscale_codice": "EF-001",
-        "emittente_fiscale_descrizione": "Acme SRL",
+        "emittente_ragione_sociale": "Acme SRL",
         "valido_dal": "2026-05-01",
         "valido_al": None,
         "attivo": True,

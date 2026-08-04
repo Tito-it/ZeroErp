@@ -15,7 +15,6 @@ AS $function$
 BEGIN
   -- Scopo: chiude con esito COMPLETATO un task-run lotto.
   PERFORM vendite.fn_set_runtime_task_run_esito(
-    p_scope => 'LOTTO',
     p_task_run_id => p_task_run_id,
     p_task_stato => 'COMPLETATO',
     p_error_code => NULL,
@@ -26,7 +25,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_complete_lotto_task_run(p_task_run_id bigint, p_meta jsonb)
-IS 'Chiude un task run lotto con esito COMPLETATO (via helper condiviso).';
+IS 'Chiude un task run lotto con esito COMPLETATO (via helper condiviso). rev 2026-08-04: l''helper non ha piu'' p_scope.';
 ```
 
 ---

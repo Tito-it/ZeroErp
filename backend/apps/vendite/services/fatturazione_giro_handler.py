@@ -25,11 +25,16 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
+from apps.core.services.coda_lavori.drain_engine import contesto_terminale
+from apps.core.services.error_manager import ServiceError
 from apps.vendite.services._fatturazione_job_helpers import (
+    messaggio_gruppi_non_serviti,
     parse_competenza_mese,
     parse_gruppi,
+    spiega_gruppi_non_serviti,
 )
 
 # handler_code seedato in dbops.coda_lavori_tipi per il tipo FATTURAZIONE_GIRO.
@@ -49,6 +54,14 @@ _MODALITA_ONDEMAND = "differita"
 # (finisce in `coda.ultimo_errore`; non è una risposta HTTP → non va in
 # error_policies). Parse condiviso in _fatturazione_job_helpers (regola del 2).
 E_GIRO_PAYLOAD = "E_FATTURAZIONE_GIRO_PAYLOAD"
+
+# Emissione MIRATA che non produce nemmeno un lotto: il perimetro qui e'
+# NOMINALE — l'operatore ha indicato quei gruppi, uno per uno. «Zero lotti su N
+# gruppi chiesti» non e' un giro senza lavoro (quello e' il caso del giro di
+# massa, ed e' legittimo): e' una richiesta esplicita non soddisfatta, e deve
+# risultare tale nella coda. Stesso principio del ritiro delle bandiere sui task
+# per-fattura: chi chiede e non ottiene non legge «fatto».
+E_GIRO_NESSUN_LOTTO = "E_FATTURAZIONE_GIRO_NESSUN_LOTTO"
 
 
 # Scopo: Esegue il giro di fatturazione on-demand. `payload`:
@@ -89,12 +102,99 @@ def fatturazione_giro_handler(
         kwargs["fino_a_stato"] = fino_a_stato
 
     summary = esegui_giro_fatturazione(**kwargs)
+
+    # Emissione mirata a vuoto: si fallisce, invece di restituire un successo
+    # muto (difetto misurato il 2026-08-03, job 141). DUE cause distinte, e
+    # vanno tenute separate:
+    #   - terne trovate ma pipeline fallita (`falliti` > 0) → la causa vera e'
+    #     negli esiti per terna, e puo' essere TRANSIENTE (lock, DB): niente
+    #     diagnosi di perimetro (racconterebbe la cosa sbagliata) e niente
+    #     marca terminale (i retry della coda hanno senso);
+    #   - nessuna terna → la diagnosi di perimetro spiega perche', ed e'
+    #     deterministica (una commessa in BOZZA resta in BOZZA al 5° tentativo).
+    # La diagnosi gira SOLO a valle di un giro vuoto: dopo un'emissione
+    # riuscita le righe sono gia' EMESSA e la fotografia racconterebbe
+    # l'arrivo, non l'ostacolo.
+    if gruppi and not summary.get("lotti"):
+        if summary.get("falliti"):
+            _fallisci_giro_mirato_per_errori_terna(gruppi, summary)
+        _fallisci_giro_mirato(gruppi, competenza, summary)
+
     # Compatta per il `result` del job (la lista per-terna gonfierebbe il jsonb;
     # il dettaglio vive nei log/task_runs, correlati via job_run). La chiave
     # `lotti` NON si potata: e' l'estratto compatto che alimenta il «vai al
     # lotto» del FE, e senza di essa l'operatore dovrebbe cercare a mano nella
     # lista lotti il contenitore appena prodotto.
     return {k: v for k, v in summary.items() if k != "esiti"}
+
+
+# Scopo: SOLLEVA per il giro mirato in cui le terne c'erano ma OGNI pipeline e'
+#        fallita. Il messaggio riporta gli errori per terna (dagli `esiti` del
+#        core), non la fotografia del perimetro: il perimetro era valido, e'
+#        l'esecuzione che si e' rotta. NON terminale: un errore pipeline puo'
+#        essere transiente e i retry con backoff della coda sono il rimedio
+#        giusto — al contrario del fallimento di perimetro qui sotto.
+def _fallisci_giro_mirato_per_errori_terna(
+    gruppi: tuple[str, ...],
+    summary: dict[str, Any],
+) -> None:
+    errori = [
+        f"{e.get('errore_code') or '?'}: {e.get('errore_detail') or ''}".strip(": ")
+        for e in summary.get("esiti") or []
+        if not e.get("ok")
+    ]
+    raise ServiceError(
+        code=E_GIRO_NESSUN_LOTTO,
+        message=(
+            "Nessun lotto prodotto: il giro sui gruppi selezionati è fallito "
+            f"({'; '.join(errori) or 'nessun dettaglio dalle terne'})."
+        ),
+        detail=f"gruppi richiesti: {len(gruppi)}, terne fallite: {summary['falliti']}",
+        context={
+            "errori_terna": errori,
+            "summary": {k: v for k, v in summary.items() if k != "esiti"},
+        },
+    )
+
+
+# Scopo: Diagnostica i gruppi richiesti e SOLLEVA con il motivo per ciascuno.
+#        Obiettivo: l'operatore che ha chiesto «fattura questo» deve leggere
+#        perche' non e' successo, non un generico «nulla era fatturabile».
+#        Il messaggio finisce in `coda_lavori.ultimo_errore.message`, che il FE
+#        rende com'e'; il dettaglio strutturato (un motivo per gruppo) va in
+#        `context`, che il motore della coda PERSISTE dentro `ultimo_errore`
+#        (drain_engine._lavora_item): resta interrogabile senza riparsare il
+#        testo.
+#
+#        `context["terminale"]`: il fallimento e' DETERMINISTICO — una commessa in
+#        BOZZA resta in BOZZA anche al quinto tentativo. Senza questa marca la
+#        coda ripeterebbe il giro `max_tentativi` volte (5 per FATTURAZIONE_GIRO)
+#        con backoff, lasciando il job «in corso» a video per minuti e scrivendo
+#        cinque volte lo stesso errore.
+def _fallisci_giro_mirato(
+    gruppi: tuple[str, ...],
+    competenza: date,
+    summary: dict[str, Any],
+) -> None:
+    # Import locale come il core: l'handler e' importato in `ready()` e non deve
+    # tirarsi dietro il repository al boot.
+    from apps.vendite.db.commesse_repository import CommesseRepository
+
+    diagnosi = CommesseRepository().diagnostica_gruppi(
+        gruppi=gruppi, competenza_mese=competenza,
+    )
+    spiegazioni = spiega_gruppi_non_serviti(list(diagnosi))
+    raise ServiceError(
+        code=E_GIRO_NESSUN_LOTTO,
+        message=messaggio_gruppi_non_serviti(
+            spiegazioni, totale_richiesti=len(gruppi),
+        ),
+        detail=f"gruppi richiesti: {len(gruppi)}, lotti prodotti: 0",
+        context=contesto_terminale(
+            gruppi_non_serviti=spiegazioni,
+            summary={k: v for k, v in summary.items() if k != "esiti"},
+        ),
+    )
 
 
 # Scopo: Registra l'handler nel registry della coda. Chiamata da

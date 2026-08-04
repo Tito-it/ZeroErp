@@ -173,10 +173,20 @@ def build_documenti_sorgente_views(
                 fields={"data": serializers.DictField()},
             )},
         )
-        # Scopo: Genera e persiste un documento PDF dalla sorgente (ristampa/
-        #        archivio). Record in `documenti_generati` + evento `GENERATO`.
-        #        `template_documento_id` esplicito (override) oppure template
-        #        `is_default=true` per (sorgente, emittente).
+        # Scopo: EMETTE un documento NUOVO dalla sorgente: template pubblicato
+        #        OGGI + dati CORRENTI, record nuovo in `documenti_generati` +
+        #        evento `GENERATO`. `template_documento_id` esplicito
+        #        (override) oppure template `is_default=true` per
+        #        (sorgente, emittente).
+        #
+        #        ⚠️ **NON e' una ristampa**, benche' fino al 2026-08-03 questo
+        #        commento la chiamasse cosi': per un documento del 2025
+        #        produrrebbe il modello del 2026 con i dati di oggi — cioe'
+        #        l'opposto di riprodurre l'originale. Il nome sbagliato faceva
+        #        credere al chiamante di avere una ristampa (brief
+        #        ristampa-fedele §2.2: «non e' un difetto di questo codice, fa
+        #        bene il suo mestiere — e' il nome a mentire»).
+        #        La ristampa vera e' `DocumentoRistampaFedele` qui sotto.
         def post(self, request: Request, sorgente_id: int) -> JsonResponse:
             # Scopo: handler handle_post_json — risolve contesto e genera il PDF.
             def _execute(payload: dict[str, Any]) -> dict[str, Any]:
@@ -383,6 +393,63 @@ def build_documenti_sorgente_views(
     DocumentoFileDownload.__doc__ = f"`GET .../documenti/<documento_id>/file/<file_id>/` — {schema_prefix}."
     DocumentoFileDownload.area_funzionale = area_funzionale
 
+    class DocumentoRistampaFedele(DomainAPIView):
+        @extend_schema(
+            parameters=[
+                OpenApiParameter(
+                    name="X-Ristampa-Pdf-Hash-Match",
+                    type=str,
+                    location=OpenApiParameter.HEADER,
+                    response=True,
+                    required=False,
+                    description=(
+                        "`1` se il PDF ri-renderizzato coincide byte per byte "
+                        "con l'originale, `0` se e' fedele nel contenuto ma "
+                        "non nei byte (renderer non deterministico)."
+                    ),
+                ),
+            ],
+            responses={200: bytes},
+        )
+        # Scopo: RISTAMPA FEDELE — riproduce il documento **com'era**, dalla
+        #        versione di template con cui nacque e dal contesto congelato
+        #        di allora. Terzo percorso, distinto dagli altri due:
+        #         - `file/` scarica l'ORIGINALE (solo se il file esiste);
+        #         - `genera/` EMETTE un documento NUOVO (modello e dati di oggi);
+        #         - questo RI-RENDERIZZA l'originale, e funziona anche per i
+        #           documenti privi di file salvato.
+        #        Non persiste nulla (nessuna riga nuova, nessun progressivo):
+        #        l'unica scrittura e' l'evento di audit. Stream `inline` come
+        #        l'anteprima: e' una consultazione, non un salvataggio.
+        #        La fedelta' di BYTE viaggia in header invece che nel corpo,
+        #        perche' il corpo e' il PDF — dichiarata, non nascosta.
+        def get(
+            self, request: Request, sorgente_id: int, documento_id: int,
+        ) -> HttpResponse:
+            # Defense-in-depth come gli altri endpoint nested: la sorgente
+            # deve esistere ed essere visibile; lo scope vero e' sul documento.
+            _resolve_contesto(sorgente_id)
+
+            result = doc_service().ristampa_fedele(
+                request.user, int(documento_id),
+            )
+            response = HttpResponse(
+                result["pdf_bytes"], content_type=result["mime_type"],
+            )
+            response["Content-Disposition"] = (
+                f'inline; filename="{result["nome_file"]}"'
+            )
+            response["Content-Length"] = str(result["size_bytes"])
+            response["X-Ristampa-Pdf-Hash-Match"] = (
+                "1" if result["pdf_hash_match"] else "0"
+            )
+            return response
+
+    DocumentoRistampaFedele.__doc__ = (
+        f"`GET .../documenti/<documento_id>/ristampa/` — {schema_prefix}."
+    )
+    DocumentoRistampaFedele.area_funzionale = area_funzionale
+
     return SimpleNamespace(
         emetti=emetti_view,
         genera=DocumentoGenera,
@@ -391,5 +458,6 @@ def build_documenti_sorgente_views(
         allegati=DocumentoAllegati,
         file=DocumentoFile,
         file_download=DocumentoFileDownload,
+        ristampa=DocumentoRistampaFedele,
         resolve_contesto=_resolve_contesto,
     )

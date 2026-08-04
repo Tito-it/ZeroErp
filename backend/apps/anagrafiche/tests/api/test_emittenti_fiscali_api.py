@@ -64,7 +64,7 @@ class TestEmittentiFiscaliGetApi(JwtMockedApiTest):
     def test_get_emittenti_list(self, mock_svc_cls, _perm, _auth):
         """GET /anagrafiche/emittenti-fiscali/ — lista paginata."""
         mock_svc_cls.return_value.list_emittenti_fiscali.return_value = (
-            [{"id": 1, "codice": "EF-001", "descrizione": "Sede principale"}], 1
+            [{"id": 1, "codice": "EF-001", "ragione_sociale_completa": "Acme SRL"}], 1
         )
         resp = self.client.get("/api/v1/anagrafiche/emittenti-fiscali/")
         self.assertEqual(resp.status_code, 200)
@@ -77,7 +77,7 @@ class TestEmittentiFiscaliGetApi(JwtMockedApiTest):
     def test_get_emittente_detail(self, mock_svc_cls, _perm, _auth):
         """GET /anagrafiche/emittenti-fiscali/{id}/ — dettaglio."""
         mock_svc_cls.return_value.get_emittente.return_value = {
-            "id": 1, "codice": "EF-001", "descrizione": "Sede principale",
+            "id": 1, "codice": "EF-001", "ragione_sociale_completa": "Acme SRL",
         }
         resp = self.client.get("/api/v1/anagrafiche/emittenti-fiscali/1/")
         self.assertEqual(resp.status_code, 200)
@@ -116,7 +116,6 @@ class TestEmittentiFiscaliPostApi(JwtMockedApiTest):
             data=json.dumps({
                 "soggetto_id": "019bac81-3f96-7ce8-a086-7e0bd0a2fec1",
                 "codice": "EF-001",
-                "descrizione": "Sede principale",
             }),
             content_type="application/json",
         )
@@ -138,7 +137,6 @@ class TestEmittentiFiscaliPostApi(JwtMockedApiTest):
             data=json.dumps({
                 "soggetto_id": "019bac81-3f96-7ce8-a086-7e0bd0a2fec1",
                 "codice": "EF-002",
-                "descrizione": "Test no piva",
             }),
             content_type="application/json",
         )
@@ -150,7 +148,7 @@ class TestEmittentiFiscaliPostApi(JwtMockedApiTest):
     @patch(_PERM, return_value=True)
     @patch(_SVC)
     def test_post_emittente_missing_fields(self, mock_svc_cls, _perm, _auth):
-        """POST senza codice/descrizione → errore validazione dal service."""
+        """POST senza codice → errore validazione dal service."""
         mock_svc_cls.return_value.crea_emittente.side_effect = ServiceError(
             code="E_ANAG_VALIDAZIONE", message="Codice emittente obbligatorio.",
         )
@@ -181,7 +179,7 @@ class TestEmittentiFiscaliPatchApi(JwtMockedApiTest):
         mock_svc_cls.return_value.update_emittente.return_value = {"updated": True}
         resp = self.client.patch(
             "/api/v1/anagrafiche/emittenti-fiscali/1/",
-            data=json.dumps({"descrizione": "Nuova descrizione", "split_payment_default": True}),
+            data=json.dumps({"regime_fiscale_rf": "RF01", "attivo": True}),
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, 200)
@@ -198,7 +196,7 @@ class TestEmittentiFiscaliPatchApi(JwtMockedApiTest):
         )
         resp = self.client.patch(
             "/api/v1/anagrafiche/emittenti-fiscali/999/",
-            data=json.dumps({"descrizione": "X"}),
+            data=json.dumps({"regime_fiscale_rf": "RF01"}),
             content_type="application/json",
         )
         self.assertIn(resp.status_code, (400, 404, 422))
@@ -229,7 +227,6 @@ class TestEmittentiFiscaliAdminRequired(JwtMockedApiTest):
             data=json.dumps({
                 "soggetto_id": "019bac81-3f96-7ce8-a086-7e0bd0a2fec1",
                 "codice": "EF-001",
-                "descrizione": "Test",
             }),
             content_type="application/json",
         )

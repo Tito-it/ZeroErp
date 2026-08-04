@@ -15,6 +15,9 @@ Indice test eseguiti:
 6) CommesseServiceTests.test_fn_get_commessa_stato_not_found
 7) CommesseServiceTests.test_fn_list_commessa_attivita_ok
 8) CommesseServiceTests.test_fn_list_commessa_attivita_invalid_limit
+8a) CommesseServiceTests.test_fn_list_commessa_attivita_order_by_ok
+8b) CommesseServiceTests.test_fn_list_commessa_attivita_order_by_fuori_whitelist
+8c) CommesseServiceTests.test_fn_list_commessa_attivita_order_dir_invalido
 9) CommesseServiceTests.test_pr_run_commesse_push_invalid_source_types
 10) CommesseServiceTests.test_build_handlers_only_active_sources
 11) CommesseServiceTests.test_pr_run_commesse_push_one_ok_passa_sorgente_uid
@@ -797,6 +800,53 @@ class CommesseServiceTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             fn_list_commessa_attivita(commessa_id=1, limit=500, offset=0)
         self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
+
+    # Scopo: order_by in whitelist → normalizzato e propagato al repository.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_fn_list_commessa_attivita_order_by_ok(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import fn_list_commessa_attivita
+
+        mock_repo_cls.return_value.list_commessa_attivita.return_value = {
+            "count": 0,
+            "rows": [],
+        }
+
+        fn_list_commessa_attivita(
+            commessa_id=1, order_by="data_attivita", order_dir="DESC",
+        )
+
+        mock_repo_cls.return_value.list_commessa_attivita.assert_called_once_with(
+            1,
+            stato_emissione=None,
+            stato_approvazione=None,
+            competenza_mese=None,
+            limit=50,
+            offset=0,
+            order_by="data_attivita",
+            order_dir="desc",
+        )
+
+    # Scopo: order_by fuori whitelist → ServiceError, repo mai chiamato.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_fn_list_commessa_attivita_order_by_fuori_whitelist(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import fn_list_commessa_attivita
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_list_commessa_attivita(commessa_id=1, order_by="sorgente_codice")
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
+        mock_repo_cls.return_value.list_commessa_attivita.assert_not_called()
+
+    # Scopo: order_dir non asc/desc → ServiceError, repo mai chiamato.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_fn_list_commessa_attivita_order_dir_invalido(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import fn_list_commessa_attivita
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_list_commessa_attivita(
+                commessa_id=1, order_by="id", order_dir="banana",
+            )
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
+        mock_repo_cls.return_value.list_commessa_attivita.assert_not_called()
 
     # --- N7: Variazione prezzo eccezionale ---
 

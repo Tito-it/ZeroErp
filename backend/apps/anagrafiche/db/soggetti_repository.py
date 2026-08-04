@@ -18,6 +18,7 @@ from apps.core.db._helpers import (
     row_to_dict,
     rows_to_list,
     sql_order_direction,
+    sql_tiebreak_direction,
 )
 from apps.core.db.parameter_repository import ParameterRepository
 
@@ -147,6 +148,7 @@ class SoggettiRepository:
             order_by, _SOGGETTI_ORDER_COLS["ragione_sociale_completa"]
         )
         direction = sql_order_direction(order_dir)
+        tiebreak_dir = sql_tiebreak_direction(direction)
         # escape_ilike: senza, una search contenente %/_ agisce da wildcard
         # (stesso fix dei lookup BA/istanze/soggetti-ruoli).
         search_pattern = f"%{escape_ilike(search.strip())}%" if search and search.strip() else None
@@ -214,7 +216,7 @@ class SoggettiRepository:
                     OR s.partita_iva ILIKE %s
                    ))
                AND (%s::bigint IS NULL OR s.tipo_soggetto_dettaglio_id = %s)
-             ORDER BY {order_col} {direction}, s.id
+             ORDER BY {order_col} {direction}, s.id {tiebreak_dir}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params = [

@@ -124,7 +124,8 @@
     "tipo_soggetto": "Tipo soggetto",
     "select_tipo_soggetto": "Seleziona tipo soggetto",
     "select_comune": "Cerca comune...",
-    "select_via": "Cerca via..."
+    "select_via": "Cerca via...",
+    "retry": "Riprova"
   },
   "strumenti": {
     "code": {
@@ -665,7 +666,7 @@
       "usage_hint": "Elenco emittenti fiscali con override configurato per la stessa utility (solo se la matrice e' per il ruolo Emittente Fiscale).",
       "usage_count": "Emittenti fiscali con override",
       "usage_col_codice": "Codice",
-      "usage_col_descrizione": "Descrizione",
+      "usage_col_ragione_sociale": "Ragione sociale",
       "col_utility_codice": "Cod. Utility",
       "col_utility_descrizione": "Utility",
       "col_tipo_ruolo_codice": "Cod. Ruolo",
@@ -1049,7 +1050,7 @@
       "ed_msg_allinea_ok": "Nuova BOZZA creata dal preset aggiornato."
     },
     "emittenti_fiscali": {
-      "search_placeholder": "Cerca per codice, descrizione, ragione sociale, P.IVA, CF...",
+      "search_placeholder": "Cerca per codice, ragione sociale, P.IVA, CF...",
       "new": "Nuovo emittente fiscale",
       "create_title": "Nuovo emittente fiscale",
       "edit_title": "Modifica emittente fiscale",
@@ -1069,7 +1070,6 @@
       "metodo_down": "Sempre verso il basso (DOWN)",
       "field_soggetto": "Soggetto",
       "field_codice": "Codice",
-      "field_descrizione": "Descrizione",
       "field_attivo": "Attivo",
       "field_regime_fiscale_rf": "Regime fiscale (RF)",
       "regime_fiscale_rf_hint": "Codice regime fiscale RF del tracciato FE/SdI (es. RF01, RF19).",
@@ -1080,7 +1080,6 @@
       "field_valuta_hint": "Valuta proposta dai form preventivi/contratti quando non c'e' un billing account selezionato. Lasciare vuota fa partire il form senza default.",
       "soggetto_no_piva": "Il soggetto selezionato non ha Partita IVA. Un emittente fiscale richiede un soggetto con P.IVA valida (requisito SDI). Cambia soggetto o aggiorna la sua scheda anagrafica.",
       "col_codice": "Codice",
-      "col_descrizione": "Descrizione",
       "col_ragione_sociale": "Ragione sociale",
       "col_cf": "Codice fiscale",
       "col_piva": "Partita IVA",
@@ -2358,6 +2357,7 @@
       "col_ragione_sociale": "Cliente",
       "col_ba_codice": "Cd. Account",
       "col_istanza_utility": "Cod. Istanza",
+      "col_validita_dal": "Valida dal",
       "col_validita_al": "Validita'",
       "col_utility_descrizione": "Descr. Utility",
       "col_totale_imponibile": "Imponibile",
@@ -2603,8 +2603,6 @@
       "col_gestione": "Gestione",
       "nessuna_versione": "Nessuna versione",
       "nuova_versione": "Nuova Versione",
-      "mostra_versioni": "Mostra versioni",
-      "nascondi_versioni": "Nascondi versioni",
       "espandi_tutte_versioni": "Espandi tutte le versioni",
       "comprimi_tutte_versioni": "Comprimi tutte le versioni",
       "gestisci_righe": "Gestisci righe listino",
@@ -2678,6 +2676,9 @@
       "stadio_emessa_non_fatturata": "Emesse non fatturate",
       "stadio_fatturata": "Fatturate",
       "n_attivita": "attività",
+      "n_fatture": "nessuna fattura | 1 fattura | {n} fatture",
+      "n_fatture_errore": "fatture n/d",
+      "n_fatture_errore_tooltip": "Il conteggio delle fatture non è stato calcolato per un errore: il numero delle attività e gli altri dati della schermata restano validi. L'errore è tracciato nei log di sistema.",
       "in_ritardo": "{n} emesse in ritardo",
       "totale_competenza": "Totale competenza:",
       "fatturato_mese": "fatturato",
@@ -2774,6 +2775,8 @@
       "vai_al_lotto": "Vai al lotto #{id}",
       "azione_approva": "Approva",
       "azione_apri_commessa": "Apri commessa",
+      "azione_apri_documento": "Apri {codice}",
+      "card_hint_da_emettere": "Il numero conta le ATTIVITÀ da emettere, non le fatture che nasceranno: un articolo composito genera un'attività per componente, e più attività dello stesso cliente confluiscono nella stessa fattura anche quando vengono da documenti diversi. Le fatture saranno quindi meno dei gruppi elencati sotto.",
       "col_azioni": "Azioni"
     },
     "dash_comune": {
@@ -2890,6 +2893,9 @@
     },
     "lineage": {
       "titolo": "Passaggi",
+      "col_pratica": "Pratica",
+      "col_fase": "Fase",
+      "col_transito": "Transito",
       "pratica": "Pratica",
       "frontiera": "In esecuzione",
       "origine": "Origine",
@@ -3070,23 +3076,24 @@
       "rerun": "Riprova step",
       "rerun_header": "Riprova step in errore",
       "rerun_conferma": "Ri-eseguire lo step corrente del lotto in errore?",
-      "numera": "Rendi definitive",
       "numera_header": "Rendi definitive le fatture",
       "numera_conferma": "Numerare in modo definitivo le fatture del lotto? La numerazione fiscale è un atto irreversibile; le stampe verranno accodate.",
       "numera_esito": "Fatture numerate: lotto reso definitivo",
-      "ristampa": "Ristampa documenti",
       "ristampa_header": "Ristampa documenti del lotto",
       "ristampa_conferma": "Accodare la ristampa dei documenti di tutte le fatture del lotto? I PDF verranno rigenerati in background; nessuna numerazione.",
       "ristampa_esito": "{n} documenti accodati per la stampa",
-      "reset": "Annulla lotto",
       "reset_header": "Annulla il lotto",
       "reset_conferma": "Attenzione: questa azione DEMOLISCE le fatture pre-fiscali del lotto (non numerate). Le attività tornano libere per un lotto nuovo. Il lotto passa ad ANNULLATA e viene chiuso: non si riapre. Procedere?",
       "reset_accept": "Annulla il lotto",
       "reset_esito": "Lotto annullato: {fatture} fatture eliminate, {attivita} attività liberate",
-      "reset_fattura_header": "Reset fattura a bozza",
-      "reset_fattura_conferma": "Riportare questa fattura a DRAFT? Sarà rimossa dal lotto.",
-      "reset_fattura_esito": "Fattura riportata a bozza",
-      "azione_reset_fattura": "Reset a bozza",
+      "riporta_draft_header": "Riportare il lotto in lavorazione?",
+      "riporta_draft_conferma": "Le fatture di questo lotto verranno ELIMINATE e le righe di commessa torneranno «da emettere». Il lotto resta aperto: al prossimo giro le fatture vengono rigenerate, così puoi correggere i dati a monte e rifarle. Operazione non annullabile; non è possibile se una fattura è già stata numerata.",
+      "riporta_draft_accept": "Riporta in lavorazione",
+      "riporta_draft_esito": "Lotto riportato in lavorazione: {fatture} fatture eliminate, {attivita} righe di commessa di nuovo da emettere.",
+      "reset_fattura_header": "Estrai la fattura dal lotto",
+      "reset_fattura_conferma": "Attenzione: la fattura viene ELIMINATA (non riportata a bozza) e le sue attività tornano libere per un lotto nuovo. Ammesso solo su fatture non numerate. Procedere?",
+      "reset_fattura_esito": "Fattura estratta dal lotto: attività liberate",
+      "azione_reset_fattura": "Estrai dal lotto",
       "azione_anteprima_fattura": "Anteprima PDF",
       "azione_documenti_fattura": "Documenti",
       "documenti_fattura_titolo": "Documenti della fattura",
@@ -3109,7 +3116,18 @@
       "attention": "Attenzioni",
       "blocca_step": "Le segnalazioni bloccano l'avanzamento al prossimo step.",
       "nessuna_segnalazione": "Nessuna segnalazione",
-      "azione_apri_fattura": "Apri fattura"
+      "azione_apri_fattura": "Apri fattura",
+      "azione_numera": "Rendi definitive",
+      "azione_ristampa": "Ristampa documenti",
+      "azione_annulla": "Annulla lotto",
+      "azione_riporta_a_draft": "Riporta in lavorazione",
+      "azione_reason": {
+        "stato_non_draft": "Il lotto non è più in bozza: l'annullamento è ammesso solo prima che il lotto produca fatture. Da EMESSA la via d'uscita è «Riporta in lavorazione».",
+        "stato_non_pre_fiscale": "Il lotto è oltre lo stato pre-fiscale: non può tornare in lavorazione.",
+        "fatture_non_pre_fiscali": "Il lotto contiene fatture oltre lo stato pre-fiscale: non possono essere eliminate.",
+        "fatture_numerate": "Il lotto contiene fatture già numerate: eliminarle aprirebbe un buco nella numerazione fiscale."
+      },
+      "azione_non_piu_disponibile": "Azione non più disponibile su questo lotto: la lista è stata aggiornata."
     }
   },
   "dash_mesi": {
@@ -3418,8 +3436,17 @@
       "col_titolo": "Titolo",
       "col_nome_file": "Nome file",
       "col_stato": "Stato",
-      "action_download": "Scarica PDF",
-      "action_aggiungi_allegati": "Aggiungi allegati"
+      "action_download": "Scarica originale",
+      "action_aggiungi_allegati": "Aggiungi allegati",
+      "col_originale": "Originale",
+      "originale_presente": "Disponibile",
+      "originale_assente": "Non salvato",
+      "download_non_disponibile": "Il file originale non e' stato conservato per questo documento: usa la ristampa fedele.",
+      "action_ristampa_fedele": "Ristampa fedele",
+      "ristampa_fedele_hint": "Riproduce il documento com'era: modello e dati di allora.",
+      "ristampa_fedele_ok": "Ristampa fedele completata: identica all'originale.",
+      "ristampa_fedele_contenuto": "Ristampa fedele nel contenuto: il file differisce dall'originale nei soli byte (motore di stampa diverso).",
+      "ristampa_fedele_error": "Ristampa fedele non riuscita."
     },
     "emissione": {
       "titolo": "Emissione documento",
@@ -3704,6 +3731,12 @@
       "col_stato": "Stato",
       "col_attivo": "Attivo",
       "col_data_insert": "Creazione",
+      "col_data_update": "Aggiornamento",
+      "col_pec_email": "PEC",
+      "col_canale_fe": "Canale FE",
+      "col_split_payment": "Split payment",
+      "col_ritenuta_acconto": "Ritenuta",
+      "col_regime_fiscale": "Regime fiscale",
       "section_soggetto": "Soggetto",
       "section_pagamento": "Pagamento",
       "section_fiscale": "Fiscale",
@@ -3942,6 +3975,24 @@
       "allineamento_left": "Sinistra",
       "allineamento_right": "Destra",
       "allineamento_center": "Centro"
+    }
+  },
+  "core": {
+    "emittente_attivo": {
+      "tutti": "Tutti gli emittenti",
+      "aria": "Emittente attivo",
+      "conferma_titolo": "Cambiare emittente di lavoro?",
+      "cambio_errore": "Cambio emittente non riuscito. Riprova.",
+      "conferma_emittente": "Da ora lavorerai dentro «{nome}»: vedrai e potrai creare solo documenti di questo emittente.",
+      "conferma_globale": "Passerai a «Tutti gli emittenti»: vedrai i dati di tutti, ma non potrai creare documenti finché non ne selezioni uno.",
+      "conferma_schede": "Le schede aperte verranno chiuse e la pagina ricaricata.",
+      "conferma_schede_modificate": "Le schede aperte verranno chiuse: {n} con modifiche non salvate, che andranno perse.",
+      "scelta_titolo": "Seleziona l'emittente di lavoro",
+      "scelta_messaggio": "Scegli l'emittente dentro cui vuoi lavorare. Potrai cambiarlo in qualsiasi momento dalla barra in alto.",
+      "scelta_conferma": "Inizia",
+      "globale_sola_lettura": "Stai vedendo tutti gli emittenti: per creare documenti seleziona un emittente dalla barra in alto.",
+      "scelta_errore": "Non è stato possibile caricare gli emittenti. Riprova, oppure continua in sola lettura.",
+      "scelta_rimanda": "Continua senza selezionare"
     }
   }
 }

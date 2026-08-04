@@ -14,7 +14,7 @@ from typing import Any
 from django.db import connection
 
 from apps.anagrafiche.db._helpers import get_or_create_soggetto_ruolo
-from apps.core.db._helpers import extract_paginated, row_to_dict, sql_order_direction
+from apps.core.db._helpers import extract_paginated, row_to_dict, sql_order_direction, sql_tiebreak_direction
 
 
 # Whitelist colonne ammesse per ORDER BY: chiave = `campo_sorgente` del catalogo
@@ -105,6 +105,7 @@ class FornitoriRepository:
             order_by, _FORNITORI_ORDER_COLS["ragione_sociale_completa"]
         )
         direction = sql_order_direction(order_dir)
+        tiebreak_dir = sql_tiebreak_direction(direction)
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
             SELECT v.id,
@@ -145,7 +146,7 @@ class FornitoriRepository:
                    ))
                AND (%s::integer IS NULL OR v.stato_fornitore_id = %s)
                AND (%s::boolean IS NULL OR v.attivo = %s)
-             ORDER BY {order_col} {direction}, v.id
+             ORDER BY {order_col} {direction}, v.id {tiebreak_dir}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params: list[Any] = [

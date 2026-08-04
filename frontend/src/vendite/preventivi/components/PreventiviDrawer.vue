@@ -489,21 +489,12 @@ watch(() => props.visible, async (v) => {
     resetForm()
     // Contesto pratica (percorso pratica-first): eredita+blocca cliente/istanza.
     await prefillFromPratica()
-    // CREATE: pre-popoliamo la valuta dal BB resolve_valuta_default lato BE
-    // (catena BA -> EF-del-BA -> EF-utente). Senza BA il BE applica il
-    // livello 3 (EF dell'utente loggato, fallback gestore globale per admin
-    // globale). Best-effort: se l'API fallisce il form resta vuoto.
-    try {
-      // Se aperto da pratica con cliente attivo, il BA è già pre-compilato:
-      // passandolo, la valuta default riflette la catena BA -> EF-del-BA.
-      const res = await getPreventivoFormDefaults(form.value.billing_account_id ?? null)
-      const data = res?.data?.data
-      if (data && form.value.valuta_id == null && data.valuta_id != null) {
-        form.value.valuta_id = data.valuta_id
-      }
-    } catch {
-      // Non blocchiamo l'apertura del drawer se l'API e' giu'.
-    }
+    // CREATE: default dal BE (catena BA -> EF-del-BA -> EF-utente; senza BA
+    // il BE applica il livello 3). Stessa funzione che usa il watcher sul
+    // cambio BA: quando il BA arriva già precompilato dalla pratica non c'è
+    // nessun cambio da osservare, e prima di questo giro il termine di
+    // pagamento — che è nella stessa risposta — restava a terra.
+    await applicaDefaultsBa(form.value.billing_account_id ?? null)
   }
 })
 
@@ -561,7 +552,7 @@ const { close, onVisibleChange } = useDrawerAutosaveBozza({
 // persistiti dal payload preventivo).
 // Watcher BA→defaults condiviso (guard token + valuta BA-wins nel composable).
 // Extra preventivo: termine pagamento (solo se l'operatore non l'ha scelto).
-useBaFormDefaults({
+const { applicaDefaults: applicaDefaultsBa } = useBaFormDefaults({
   form,
   isEdit,
   fetchDefaults: getPreventivoFormDefaults,

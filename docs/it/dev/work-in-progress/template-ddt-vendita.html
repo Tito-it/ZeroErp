@@ -9,8 +9,12 @@
     <header class="header">
       <div class="brand">
         <div class="brand-mark">ZE</div>
-        <div class="brand-name">Emittente fiscale {{ ddt.emittente.codice or "demo" }}</div>
-        <div class="brand-meta">Dati emittente/asset da collegare nelle prossime iterazioni</div>
+        <div class="brand-name">{{ ddt.emittente.denominazione }}</div>
+        <div class="brand-meta">
+          {% if ddt.emittente.codice %}
+            Codice emittente: {{ ddt.emittente.codice }}
+          {% endif %}
+        </div>
       </div>
 
       <div class="doc-title">

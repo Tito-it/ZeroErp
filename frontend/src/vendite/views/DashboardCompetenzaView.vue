@@ -13,16 +13,16 @@ import { useI18n } from 'vue-i18n'
 import Checkbox from 'primevue/checkbox'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import DashMesiSidebar from '../../core/components/dash/DashMesiSidebar.vue'
 import DashMeseStepper from '../../core/components/dash/DashMeseStepper.vue'
 import DonutTransito from '../../core/components/charts/DonutTransito.vue'
 import Button from 'primevue/button'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import CommessaGestioneDrawer from '../components/CommessaGestioneDrawer.vue'
+import DocumentoDrawerHost from '../_shared/documenti/DocumentoDrawerHost.vue'
 import LottoDrawer from '../components/LottoDrawer.vue'
 import { useDashMesiNav } from '../../core/composables/useDashMesiNav'
 import { useReadonlyMode, useInjectReadonly } from '../../core/composables/useReadonlyMode'
@@ -33,12 +33,14 @@ import { useActionPermission } from '../../core/composables/useActionPermission'
 import { useJobPolling } from '../../core/composables/useJobPolling'
 import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS } from '../../core/constants'
 import { extractApiError } from '../../core/utils/apiError'
-import { displayDate, displayTimestamp } from '../../core/utils/date'
+import { displayDate } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
 import { labelOrCode } from '../../core/utils/i18nLabel'
 import { statoDocFiscaleSeverity } from '../../core/utils/severity'
 import { approvaCompetenza } from '../api/commesse'
 import { getFatturazioneRun, runFatturazione, runNumerazione } from '../api/lotti'
+import { useDocumentoDrawer } from '../_shared/documenti/useDocumentoDrawer'
+import { buildApriDocumentoAction } from '../dashboardAree'
 import { useSelezioneToggle } from '../_shared/righe/useSelezioneToggle'
 import { STADIO_GRUPPI, useDashboardCompetenzaStore } from '../stores/dashboardCompetenza'
 
@@ -95,6 +97,8 @@ const {
   erroriCount,
   erroriPage,
   erroriPageSize,
+  erroriOrderBy,
+  erroriOrderDir,
   erroriLoading,
 } = storeToRefs(store)
 
@@ -155,11 +159,35 @@ const cards = computed(() => {
   return meseCorrente.value.stadi.map((cella) => ({
     stadio: cella.stadio,
     nAttivita: cella.n_attivita ?? 0,
+    // Seconda misura: quante FATTURE. `?? null` e NON `?? 0`: dove il numero
+    // non c'e', dire «0 fatture» sarebbe un'affermazione, e falsa.
+    nFatture: cella.n_fatture ?? null,
+    // ...e il PERCHE' non c'e', che il FE non deve dedurre: `NON_APPLICABILE`
+    // (per progetto: «Da emettere» non ha ancora una chiave documento) fa
+    // tacere la card, `ERRORE` le fa mostrare un avvertimento. Erano
+    // indistinguibili fino al 2026-08-03, e un guasto aveva percio' lo stesso
+    // aspetto del funzionamento normale.
+    nFattureStato: cella.n_fatture_stato ?? 'NON_APPLICABILE',
     valoreDisplay: Number(cella.valore_display ?? 0),
     nInRitardo: cella.n_in_ritardo ?? 0,
     statiFattura: cella.stati_fattura ?? [],
   }))
 })
+
+// Scopo: chiarimento sulla MISURA della card, quando il numero non dice cio'
+//        che sembra dire. Oggi solo «Da emettere», che e' la card azionabile:
+//        li' il conteggio guida una decisione (premere «Fattura»), e chi lo
+//        legge come «quante fatture nasceranno» sbaglia in due modi opposti —
+//        un articolo COMPOSITO produce un'attivita' per componente (3 righe da
+//        una riga d'ordine), e all'inverso piu' attivita' confluiscono nella
+//        STESSA fattura per via dell'aggregazione. Nel caso reale che ha fatto
+//        nascere questo hint: 3 attivita' -> 1 gruppo -> 1 fattura.
+//        Chiave i18n condizionale (`te`): una card senza spiegazione non
+//        mostra l'icona, invece di mostrarla vuota.
+function cardHint(stadio) {
+  const key = `vendite.dashboard_competenza.card_hint_${String(stadio).toLowerCase()}`
+  return te(key) ? t(key) : null
+}
 
 // Difetto D2 (§6-bis, corretto 2026-07-27): il verbo «Rendi definitive» stava
 // sulla card EMESSA_NON_FATTURATA, ma numera i LOTTI IN STATO EMESSA, cioe'
@@ -431,6 +459,51 @@ function onErroriPage(event) {
   loadErrori()
 }
 
+// Scopo: ordinamento server-side del pannello errori (il BE lo espone dal
+//        2026-08-03: prima la lista non ordinava affatto).
+function onErroriSort(event) {
+  store.applyErroriSort(event)
+  loadErrori()
+}
+const erroriSortOrder = computed(() => (erroriOrderDir.value === 'desc' ? -1 : 1))
+
+// La union degli errori non ha una PK (il tiebreak lato BE e' una catena di
+// chiavi naturali): la chiave di riga per il DataTable si compone dalle stesse
+// colonne, altrimenti Vue non ha un `data-key` stabile su cui riconciliare.
+const erroriConChiave = computed(() =>
+  errori.value.map((r) => ({
+    ...r,
+    row_key_errore: [
+      r.tipo_evento, r.lotto_id ?? '', r.fattura_id ?? '', r.task_code ?? '',
+    ].join(':'),
+  })),
+)
+
+// Ref e prop paginator delle tre liste configurabili della Lente 1: lo stato
+// di pagina vive nello store dashboard (non in useSearchTable), quindi le
+// prop si compongono qui.
+const listaErroriRef = ref(null)
+const listaGruppiRef = ref(null)
+const listaCommesseRef = ref(null)
+const erroriPaginatorOptions = computed(() => ({
+  totalRecords: erroriCount.value,
+  rows: erroriPageSize.value,
+  first: (erroriPage.value - 1) * erroriPageSize.value,
+  rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
+}))
+const gruppiPaginatorOptions = computed(() => ({
+  totalRecords: gruppiCount.value,
+  rows: gruppiPageSize.value,
+  first: (gruppiPage.value - 1) * gruppiPageSize.value,
+  rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
+}))
+const commessePaginatorOptions = computed(() => ({
+  totalRecords: commesseCount.value,
+  rows: commessePageSize.value,
+  first: (commessePage.value - 1) * commessePageSize.value,
+  rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
+}))
+
 // Scopo: display compatto degli estremi fattura (serie numero/anno).
 function fatturaDisplay(row) {
   if (!row.fattura_id) return '—'
@@ -641,8 +714,22 @@ function fatturaGruppi(righe) {
 }
 
 // Scopo: kebab riga della lista gruppi — «Fattura questo» (gate permesso +
-//        readonly, come il verbo di massa) e apertura della commessa che lo
-//        contiene, per ispezionare le righe prima di decidere.
+//        readonly, come il verbo di massa), apertura del DOCUMENTO che da'
+//        nome al gruppo e, come seconda via, della commessa che lo contiene.
+//
+// L'ordine non e' estetico: la riga NOMINA un documento (`riferimento` =
+// ORD0005174), quindi l'azione principale deve aprire quello. Fino al
+// 2026-08-03 c'era la sola «Apri commessa», che portava a un oggetto
+// DIVERSO da quello scritto nella riga — e su una commessa multi-documento
+// (piu' ordini sulla stessa commessa) l'operatore ci trovava dentro anche
+// righe di un altro documento, senza che nulla glielo avesse annunciato.
+// La commessa resta raggiungibile: e' il contenitore in cui il gruppo verra'
+// fatturato, e vederlo prima di premere «Fattura» ha senso.
+//
+// I gruppi SOURCELESS (oneri di commessa) non hanno documento: `documento_id`
+// e `area_documento` sono NULL e il BB nasconde da se' la voce — lasciando la
+// sola commessa, che per loro E' il riferimento (il `riferimento` di quelle
+// righe e' infatti il codice commessa).
 function buildGruppoRowActions(row) {
   return [
     {
@@ -653,6 +740,14 @@ function buildGruppoRowActions(row) {
       disabled: azioneLoading.value || giroMirataInCorso.value,
       command: () => fatturaGruppi([row]),
     },
+    buildApriDocumentoAction({
+      area: row.area_documento,
+      documentoId: row.documento_id,
+      label: t('vendite.dashboard_competenza.azione_apri_documento', {
+        codice: row.riferimento ?? '',
+      }),
+      onApri: apriDocumentoDrawer,
+    }),
     {
       key: 'apri_commessa',
       label: t('vendite.dashboard_competenza.azione_apri_commessa'),
@@ -695,6 +790,19 @@ function apriCommessa(row) {
   commessaDrawerId.value = row.commessa_id
   commessaDrawerVisible.value = true
 }
+
+// Host cross-dominio per il drawer del documento sorgente del gruppo (stesso
+// BB dei drill-down Situazione aperta/Backlog e delle tappe dei Passaggi).
+// `onClose` ricarica: dal drawer l'operatore puo' aver fatto avanzare il
+// documento (confermarlo, evaderlo) e la riga che lo ha aperto sarebbe
+// stantia — o addirittura fuori dal perimetro «da emettere».
+const {
+  visible: docDrawerVisible,
+  tipo: docDrawerTipo,
+  id: docDrawerId,
+  apri: apriDocumentoDrawer,
+  onVisibleChange: onDocDrawerVisible,
+} = useDocumentoDrawer(() => reloadDopoAzione())
 
 // Raggiungibilita' contestuale (B-5): dal pannello errori si atterra sul
 // LottoDrawer diagnostico gia' filtrato sul lotto dell'evento — l'operatore
@@ -850,9 +958,53 @@ onActivated(() => {
             @click="selezionaStadio(card.stadio)"
             @keydown.enter="selezionaStadio(card.stadio)"
           >
-            <span class="app-dash-card-title">{{ stadioLabel(card.stadio) }}</span>
+            <span class="app-dash-card-title">
+              {{ stadioLabel(card.stadio) }}
+              <!-- Chiarimento sulla MISURA (stesso pattern della card Ordini in
+                   Situazione aperta): il numero conta ATTIVITA', non documenti
+                   ne' fatture. Focusabile + aria-label: il v-tooltip PrimeVue
+                   si attiva anche su focus, quindi la spiegazione e'
+                   raggiungibile da tastiera e screen reader. -->
+              <i
+                v-if="cardHint(card.stadio)"
+                v-tooltip.bottom="cardHint(card.stadio)"
+                class="pi pi-info-circle app-dash-card-hint"
+                role="img"
+                tabindex="0"
+                :aria-label="cardHint(card.stadio)"
+                @click.stop
+                @keydown.enter.stop
+              />
+            </span>
             <span class="app-dash-stat-n">{{ card.nAttivita }}</span>
             <span class="app-dash-stat-sub">{{ t('vendite.dashboard_competenza.n_attivita') }}</span>
+            <!-- Seconda misura, la grana che conta per l'operatore: quante
+                 FATTURE. `nFattureStato === 'OK'` e non un truthy check su
+                 nFatture — zero fatture e' un'informazione da mostrare. -->
+            <span
+              v-if="card.nFattureStato === 'OK'"
+              class="app-dash-stat-fatture"
+            >
+              {{ t('vendite.dashboard_competenza.n_fatture', card.nFatture,
+                    { n: card.nFatture }) }}
+            </span>
+            <!-- Calcolo FALLITO: la card lo dice invece di tacere come fa
+                 sugli stadi non calcolabili per progetto. Il resto della
+                 schermata resta valido — l'avvertimento e' circoscritto alla
+                 misura che manca, non un allarme sul cruscotto. -->
+            <span
+              v-else-if="card.nFattureStato === 'ERRORE'"
+              v-tooltip.bottom="t('vendite.dashboard_competenza.n_fatture_errore_tooltip')"
+              class="app-dash-stat-fatture-ko"
+              role="img"
+              tabindex="0"
+              :aria-label="t('vendite.dashboard_competenza.n_fatture_errore_tooltip')"
+              @click.stop
+              @keydown.enter.stop
+            >
+              <i class="pi pi-exclamation-triangle" />
+              {{ t('vendite.dashboard_competenza.n_fatture_errore') }}
+            </span>
             <span class="app-dash-stat-euro">{{ formatCurrency(card.valoreDisplay) }}</span>
             <!-- Verbo APPROVA a grana mese (Fase A cockpit): solo sul card
                  DA_APPROVARE, gate permesso+readonly; @click.stop per non
@@ -957,59 +1109,45 @@ onActivated(() => {
             <i class="pi pi-times-circle app-dash-mese-errori" />
             {{ t('vendite.dashboard_competenza.errori_titolo', { n: erroriCount }) }}
           </h4>
-          <DataTable
-            :value="errori"
+          <ListaConfigurabile
+            ref="listaErroriRef"
+            codice="vendite.dash_competenza_errori"
+            data-key="row_key_errore"
+            :rows="erroriConChiave"
+            :total="erroriCount"
             :loading="erroriLoading"
-            :total-records="erroriCount"
-            :rows="erroriPageSize"
-            :first="(erroriPage - 1) * erroriPageSize"
-            paginator
-            paginator-position="top"
-            lazy
-            :rows-per-page-options="PAGINATION.ROWS_OPTIONS"
-            class="app-datatable app-datatable--inner"
-            striped-rows
+            :paginator-options="erroriPaginatorOptions"
+            :page="erroriPage"
+            :sort-field="erroriOrderBy"
+            :sort-order="erroriSortOrder"
             @page="onErroriPage"
+            @sort="onErroriSort"
           >
-            <Column field="tipo_evento" :header="t('vendite.dashboard_competenza.col_tipo_evento')" style="width: 140px;">
-              <template #body="{ data }">
-                <Tag :value="tipoEventoLabel(data.tipo_evento)" severity="danger" />
-              </template>
-            </Column>
-            <Column field="lotto_codice" :header="t('vendite.dashboard_competenza.col_lotto')" style="width: 130px;">
-              <template #body="{ data }">
-                <Button
-                  v-if="data.lotto_id"
-                  link
-                  class="app-cell-link"
-                  :label="data.lotto_codice ?? String(data.lotto_id)"
-                  v-tooltip.top="t('vendite.dashboard_competenza.apri_lotto')"
-                  @click="apriLotto(data.lotto_id)"
-                />
-                <span v-else>{{ data.lotto_codice ?? '—' }}</span>
-              </template>
-            </Column>
-            <Column field="fattura_numero" :header="t('vendite.dashboard_competenza.col_fattura')" style="width: 110px;">
-              <template #body="{ data }">
-                {{ fatturaDisplay(data) }}
-              </template>
-            </Column>
-            <Column field="error_code" :header="t('vendite.dashboard_competenza.col_codice_errore')" style="width: 170px;">
-              <template #body="{ data }">
-                {{ data.error_code ?? data.task_code ?? '—' }}
-              </template>
-            </Column>
-            <Column field="messaggio" :header="t('vendite.dashboard_competenza.col_messaggio')">
-              <template #body="{ data }">
-                {{ data.messaggio ?? '—' }}
-              </template>
-            </Column>
-            <Column field="data_evento" :header="t('vendite.dashboard_competenza.col_data_evento')" style="width: 150px;">
-              <template #body="{ data }">
-                {{ data.data_evento ? displayTimestamp(data.data_evento) : '—' }}
-              </template>
-            </Column>
-          </DataTable>
+            <template #cell-tipo_evento="{ data }">
+              <Tag :value="tipoEventoLabel(data.tipo_evento)" severity="danger" />
+            </template>
+            <template #cell-lotto_codice="{ data }">
+              <Button
+                v-if="data.lotto_id"
+                link
+                class="app-cell-link"
+                :label="data.lotto_codice ?? String(data.lotto_id)"
+                v-tooltip.top="t('vendite.dashboard_competenza.apri_lotto')"
+                @click="apriLotto(data.lotto_id)"
+              />
+              <span v-else>{{ data.lotto_codice ?? '—' }}</span>
+            </template>
+            <template #cell-fattura_numero="{ data }">
+              {{ fatturaDisplay(data) }}
+            </template>
+            <template #cell-error_code="{ data }">
+              {{ data.error_code ?? data.task_code ?? '—' }}
+            </template>
+            <template #cell-messaggio="{ data }">
+              {{ data.messaggio ?? '—' }}
+            </template>
+            <!-- data_evento non ha slot: il seed dichiara `datetime_short`. -->
+          </ListaConfigurabile>
         </div>
 
         <!-- Drill-down per COMMESSA in pagina (click su card stadio, DEC-4):
@@ -1089,95 +1227,75 @@ onActivated(() => {
               </span>
             </div>
 
-            <DataTable
+            <ListaConfigurabile
               v-if="gruppiCount > 0 || gruppiLoading"
-              :value="gruppi"
+              ref="listaGruppiRef"
+              codice="vendite.dash_competenza_gruppi"
+              data-key="gruppo_key"
+              :rows="gruppi"
+              :total="gruppiCount"
               :loading="gruppiLoading"
-              :total-records="gruppiCount"
-              :rows="gruppiPageSize"
-              :first="(gruppiPage - 1) * gruppiPageSize"
-              paginator
-              paginator-position="top"
-              lazy
-              :rows-per-page-options="PAGINATION.ROWS_OPTIONS"
+              :paginator-options="gruppiPaginatorOptions"
+              :page="gruppiPage"
               :sort-field="gruppiOrderBy"
               :sort-order="gruppiSortOrder"
-              class="app-datatable app-datatable--inner"
-              striped-rows
-              data-key="gruppo_key"
               @page="onGruppiPage"
               @sort="onGruppiSort"
             >
-              <!-- Column checkbox CUSTOM: PrimeVue 4 non ha piu' il predicato
-                   per-riga sul selectionMode (BB useSelezioneToggle). -->
-              <Column v-if="canFatturare" headerStyle="width: 3rem">
-                <template #header>
-                  <Checkbox
-                    binary
-                    :model-value="tuttiGruppiSelezionati"
-                    :indeterminate="alcuniGruppiSelezionati"
-                    @update:model-value="toggleTuttiGruppi"
-                  />
-                </template>
-                <template #body="{ data }">
-                  <Checkbox
-                    binary
-                    :model-value="isGruppoSelezionato(data)"
-                    @update:model-value="toggleGruppo(data)"
-                  />
-                </template>
-              </Column>
-              <Column field="riferimento" :header="t('vendite.dashboard_competenza.col_gruppo')" sortable style="width: 170px;">
-                <template #body="{ data }">
-                  <strong>{{ gruppoRiferimento(data) }}</strong>
-                </template>
-              </Column>
-              <Column field="tipo_gruppo" :header="t('vendite.dashboard_competenza.col_tipo_gruppo')" sortable style="width: 150px;">
-                <template #body="{ data }">
-                  <Tag
-                    :value="gruppoTipoLabel(data)"
-                    :severity="data.ha_oneri ? 'warn' : 'secondary'"
-                  />
-                </template>
-              </Column>
-              <Column field="cliente_display" :header="t('vendite.dashboard_competenza.col_cliente')" sortable>
-                <template #body="{ data }">
-                  {{ data.cliente_display ?? '—' }}
-                </template>
-              </Column>
-              <Column field="commessa_codice" :header="t('vendite.dashboard_competenza.col_commessa')" sortable style="width: 140px;">
-                <template #body="{ data }">
-                  {{ data.commessa_codice ?? '—' }}
-                </template>
-              </Column>
-              <Column field="n_attivita" :header="t('vendite.dashboard_competenza.col_n_attivita')" sortable style="width: 100px;">
-                <template #body="{ data }">
-                  <Tag
-                    :value="String(data.n_attivita)"
-                    severity="secondary"
-                    v-tooltip.bottom="t('vendite.dashboard_competenza.n_attivita_tooltip', { n: data.n_attivita })"
-                  />
-                </template>
-              </Column>
-              <Column field="valore" :header="t('vendite.dashboard_competenza.col_valore')" sortable style="width: 130px;">
-                <template #body="{ data }">
-                  {{ data.valore !== null ? formatCurrency(data.valore) : '—' }}
-                </template>
-              </Column>
-              <Column field="data_attivita_max" :header="t('vendite.dashboard_competenza.col_periodo')" sortable style="width: 150px;">
-                <template #body="{ data }">
-                  <span v-if="data.data_attivita_min">
-                    {{ displayDate(data.data_attivita_min) }}<template v-if="data.data_attivita_max && data.data_attivita_max !== data.data_attivita_min"> – {{ displayDate(data.data_attivita_max) }}</template>
-                  </span>
-                  <span v-else>—</span>
-                </template>
-              </Column>
-              <Column :header="t('vendite.dashboard_competenza.col_azioni')" class="app-col-actions" :exportable="false">
-                <template #body="{ data }">
-                  <RowActionsMenu :row="data" :actions="buildGruppoRowActions(data)" />
-                </template>
-              </Column>
-            </DataTable>
+              <!-- Selezione dell'emissione mirata: chrome del BB (slot
+                   dedicato), non colonna di catalogo. PrimeVue 4 non ha piu'
+                   il predicato per-riga sul selectionMode: la checkbox e'
+                   custom (BB useSelezioneToggle). -->
+              <template v-if="canFatturare" #selection-header>
+                <Checkbox
+                  binary
+                  :model-value="tuttiGruppiSelezionati"
+                  :indeterminate="alcuniGruppiSelezionati"
+                  @update:model-value="toggleTuttiGruppi"
+                />
+              </template>
+              <template v-if="canFatturare" #selection="{ data }">
+                <Checkbox
+                  binary
+                  :model-value="isGruppoSelezionato(data)"
+                  @update:model-value="toggleGruppo(data)"
+                />
+              </template>
+
+              <template #cell-riferimento="{ data }">
+                <strong>{{ gruppoRiferimento(data) }}</strong>
+              </template>
+              <template #cell-tipo_gruppo="{ data }">
+                <Tag
+                  :value="gruppoTipoLabel(data)"
+                  :severity="data.ha_oneri ? 'warn' : 'secondary'"
+                />
+              </template>
+              <template #cell-cliente_display="{ data }">
+                {{ data.cliente_display ?? '—' }}
+              </template>
+              <template #cell-commessa_codice="{ data }">
+                {{ data.commessa_codice ?? '—' }}
+              </template>
+              <template #cell-n_attivita="{ data }">
+                <Tag
+                  :value="String(data.n_attivita)"
+                  severity="secondary"
+                  v-tooltip.bottom="t('vendite.dashboard_competenza.n_attivita_tooltip', { n: data.n_attivita })"
+                />
+              </template>
+              <!-- valore non ha slot: il seed dichiara `currency_eur`. -->
+              <template #cell-data_attivita_max="{ data }">
+                <span v-if="data.data_attivita_min">
+                  {{ displayDate(data.data_attivita_min) }}<template v-if="data.data_attivita_max && data.data_attivita_max !== data.data_attivita_min"> – {{ displayDate(data.data_attivita_max) }}</template>
+                </span>
+                <span v-else>—</span>
+              </template>
+
+              <template #actions="{ data, compact }">
+                <RowActionsMenu :row="data" :actions="buildGruppoRowActions(data)" :force-compact="compact" />
+              </template>
+            </ListaConfigurabile>
             <!-- Empty-state ONESTO (regola del BB usePagedDashFetch): «nessun
                  gruppo» si dice solo dopo una fetch RIUSCITA. Prima — o dopo un
                  errore di rete — la lista e' vuota per ignoranza, non per
@@ -1199,74 +1317,51 @@ onActivated(() => {
                 {{ t('vendite.dashboard_competenza.solo_ritardo') }}
               </label>
             </div>
-            <DataTable
+            <ListaConfigurabile
               v-if="commesseCount > 0 || commesseLoading"
-              :value="commesse"
+              ref="listaCommesseRef"
+              codice="vendite.dash_competenza_commesse"
+              data-key="commessa_id"
+              :rows="commesse"
+              :total="commesseCount"
               :loading="commesseLoading"
-              :total-records="commesseCount"
-              :rows="commessePageSize"
-              :first="(commessePage - 1) * commessePageSize"
-              paginator
-              paginator-position="top"
-              lazy
-              :rows-per-page-options="PAGINATION.ROWS_OPTIONS"
+              :paginator-options="commessePaginatorOptions"
+              :page="commessePage"
               :sort-field="commesseOrderBy"
               :sort-order="commesseSortOrder"
-              class="app-datatable app-datatable--inner"
-              striped-rows
-              data-key="commessa_id"
               @page="onCommessePage"
               @sort="onCommesseSort"
             >
-              <Column field="commessa_codice" :header="t('vendite.dashboard_competenza.col_commessa')" sortable style="width: 140px;">
-                <template #body="{ data }">
-                  {{ data.commessa_codice ?? `#${data.commessa_id}` }}
-                </template>
-              </Column>
-              <Column field="cliente_display" :header="t('vendite.dashboard_competenza.col_cliente')" sortable>
-                <template #body="{ data }">
-                  {{ data.cliente_display ?? '—' }}
-                </template>
-              </Column>
-              <Column field="n_attivita" :header="t('vendite.dashboard_competenza.col_n_attivita')" sortable style="width: 100px;">
-                <template #body="{ data }">
-                  <Tag :value="String(data.n_attivita)" severity="secondary" v-tooltip.bottom="t('vendite.dashboard_competenza.n_attivita_tooltip', { n: data.n_attivita })" />
-                </template>
-              </Column>
-              <Column field="valore_tot" :header="t('vendite.dashboard_competenza.col_valore')" sortable style="width: 130px;">
-                <template #body="{ data }">
-                  {{ data.valore_tot !== null ? formatCurrency(data.valore_tot) : '—' }}
-                </template>
-              </Column>
-              <Column field="valore_fatturato_tot" :header="t('vendite.dashboard_competenza.col_fatturato')" style="width: 130px;">
-                <template #body="{ data }">
-                  {{ data.valore_fatturato_tot !== null ? formatCurrency(data.valore_fatturato_tot) : '—' }}
-                </template>
-              </Column>
-              <Column field="data_attivita_max" :header="t('vendite.dashboard_competenza.col_periodo')" sortable style="width: 150px;">
-                <template #body="{ data }">
-                  <span v-if="data.data_attivita_min">
-                    {{ displayDate(data.data_attivita_min) }}<template v-if="data.data_attivita_max && data.data_attivita_max !== data.data_attivita_min"> – {{ displayDate(data.data_attivita_max) }}</template>
-                  </span>
-                  <span v-else>—</span>
-                </template>
-              </Column>
-              <Column field="n_in_ritardo" :header="t('vendite.dashboard_competenza.col_ritardo')" style="width: 90px;">
-                <template #body="{ data }">
-                  <span v-if="data.n_in_ritardo > 0" class="app-dash-ritardo">
-                    <i class="pi pi-clock" /> {{ data.n_in_ritardo }}
-                  </span>
-                  <span v-else>—</span>
-                </template>
-              </Column>
-              <!-- Azioni riga (Fase A cockpit): Approva (solo DA_APPROVARE, l'intera
-                   commessa) + Apri commessa (drawer col dettaglio attivita'). -->
-              <Column :header="t('vendite.dashboard_competenza.col_azioni')" class="app-col-actions" :exportable="false">
-                <template #body="{ data }">
-                  <RowActionsMenu :row="data" :actions="buildCommessaRowActions(data)" />
-                </template>
-              </Column>
-            </DataTable>
+              <template #cell-commessa_codice="{ data }">
+                {{ data.commessa_codice ?? `#${data.commessa_id}` }}
+              </template>
+              <template #cell-cliente_display="{ data }">
+                {{ data.cliente_display ?? '—' }}
+              </template>
+              <template #cell-n_attivita="{ data }">
+                <Tag :value="String(data.n_attivita)" severity="secondary" v-tooltip.bottom="t('vendite.dashboard_competenza.n_attivita_tooltip', { n: data.n_attivita })" />
+              </template>
+              <!-- valore_tot e valore_fatturato_tot non hanno slot: il seed
+                   dichiara `currency_eur` per entrambe. -->
+              <template #cell-data_attivita_max="{ data }">
+                <span v-if="data.data_attivita_min">
+                  {{ displayDate(data.data_attivita_min) }}<template v-if="data.data_attivita_max && data.data_attivita_max !== data.data_attivita_min"> – {{ displayDate(data.data_attivita_max) }}</template>
+                </span>
+                <span v-else>—</span>
+              </template>
+              <template #cell-n_in_ritardo="{ data }">
+                <span v-if="data.n_in_ritardo > 0" class="app-dash-ritardo">
+                  <i class="pi pi-clock" /> {{ data.n_in_ritardo }}
+                </span>
+                <span v-else>—</span>
+              </template>
+
+              <!-- Azioni riga (Fase A cockpit): Approva (solo DA_APPROVARE,
+                   l'intera commessa) + Apri commessa (drawer col dettaglio). -->
+              <template #actions="{ data, compact }">
+                <RowActionsMenu :row="data" :actions="buildCommessaRowActions(data)" :force-compact="compact" />
+              </template>
+            </ListaConfigurabile>
             <div v-else class="app-empty-state">
               <i class="pi pi-check-circle" />
               <p>{{ t('vendite.dashboard_competenza.nessuna_commessa') }}</p>
@@ -1294,5 +1389,13 @@ onActivated(() => {
       :lotto-id="lottoDrawerId"
       @changed="reloadDopoAzione"
     />
+
+    <!-- Host del drawer di dettaglio del DOCUMENTO sorgente del gruppo
+         (kebab «Apri ...»): il tipo arriva dal registry, l'id dal BE. -->
+    <DocumentoDrawerHost
+      :visible="docDrawerVisible"
+      :tipo-codice="docDrawerTipo"
+      :doc-id="docDrawerId"
+      @update:visible="onDocDrawerVisible" />
   </div>
 </template>

@@ -253,7 +253,7 @@ SELECT ok(
 SELECT ok(
     (
       SELECT updated_lotti = 1
-      FROM vendite.fn_reset_lotto_draft(
+      FROM vendite.fn_annulla_lotto_da_draft(
           (
             SELECT id
             FROM tmp_lotto_rl
@@ -455,7 +455,7 @@ WHERE id = (
 SELECT ok(
     (
       SELECT deleted_fatture = 1
-      FROM vendite.fn_reset_lotto_fattura_draft(
+      FROM vendite.fn_elimina_fattura_da_lotto(
           p_lotto_id => (
             SELECT id
             FROM tmp_lotto_rl2

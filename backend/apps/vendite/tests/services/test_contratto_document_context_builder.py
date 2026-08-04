@@ -104,7 +104,7 @@ class BuildContextContrattoTests(SimpleTestCase):
         self.assertEqual(ctx["contratto"]["pricing"]["modalita"], "A")
         self.assertEqual(ctx["cliente"]["denominazione"], "Cliente Contratto Srl")
         self.assertEqual(ctx["righe"], ctx["righe_preview"])
-        self.assertEqual(ctx["righe"][0]["prezzo_finale"], "90.000000")
+        self.assertEqual(ctx["righe"][0]["prezzo_finale"], "90,00")
         self.assertEqual(ctx["_meta"]["righe_source"], "PREVIEW_LISTINO")
         self.assertEqual(ctx["_meta"]["context_code"], "CONTRATTO")
         self.assertEqual(ctx["_meta"]["auth_user_id"], 9)
@@ -123,7 +123,7 @@ class BuildContextContrattoTests(SimpleTestCase):
 
         self.assertEqual(ctx["contratto"]["pricing"]["modalita"], "C")
         self.assertEqual(ctx["righe"], ctx["righe_contratto"])
-        self.assertEqual(ctx["righe"][0]["prezzo_unitario"], "50.000000")
+        self.assertEqual(ctx["righe"][0]["prezzo_unitario"], "50,00")
         self.assertEqual(ctx["righe_preview"], [])
         self.assertEqual(ctx["_meta"]["righe_source"], "CONTRATTI_RIGHE")
         repo.list_righe_preview.assert_not_called()

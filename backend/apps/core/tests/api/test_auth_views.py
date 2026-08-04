@@ -221,6 +221,11 @@ class AuditAuthViewsTests(TestCase):
             username="alice",
             user_id=42,
             identita_id=None,  # request.data.refresh mock -> parse fail -> None
+            # Emittente attivo: stessa sorte dell'identita' su un refresh
+            # mockato (parse fail -> None = modalita' globale). Il punto sotto
+            # test e' che il claim viene PROPAGATO al refresh: senza, ogni
+            # rinnovo del token riporterebbe l'utente fuori dal suo emittente.
+            emittente_attivo_id=None,
             request=request._request,
         )
         mock_record_refresh.assert_called_once()

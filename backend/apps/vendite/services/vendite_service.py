@@ -8,10 +8,13 @@
 # Contiene operazioni facade generiche sullo schema vendite,
 # non legate a un sottodominio specifico (pipeline, reset, ecc.).
 
+import logging
 import math
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
+
+from django.db import DatabaseError
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_enum_param, validate_pagination
@@ -37,6 +40,8 @@ from apps.vendite.types import (
     LottoFattureRow,
     LottoListRow,
 )
+
+logger = logging.getLogger(__name__)
 
 _SORT_BY_VALIDI: tuple[str, ...] = ("fattura_id", "nominativo", "totale_doc")
 _SORT_DIR_VALIDI: tuple[str, ...] = ("asc", "desc")
@@ -217,6 +222,28 @@ def fn_lotti_mensile(*, anno: int, auth_user_id: int | None = None) -> dict[str,
 #        cockpit Fase B). Scope emittente applicato in repo: lotto fuori scope o
 #        inesistente → E_LOTTO_NOT_FOUND (404), indistinguibili per non leakare
 #        l'esistenza (coerente RLS operatori).
+#
+#        Dal 2026-08-04 la testata porta anche il blob CAPABILITY letto da
+#        `script.fn_available_actions_lotto`: quali verbi di governo sono
+#        disponibili sul lotto, quali abilitati e — quando non lo sono — perche'
+#        (`enabled` + `reasons`). E' la stessa sorgente che le due fn di
+#        mutazione usano per sollevare, quindi il drawer NON ricalcola nulla:
+#        prima quelle condizioni erano cinque `computed` in LottoDrawer.vue e
+#        avevano gia' prodotto un pulsante-vicolo-cieco (in-app, 2026-07-31).
+#        ⚠️ ORDINE VINCOLANTE: il blob si legge DOPO `get_lotto`, che e' l'unico
+#        cancello di scope — `fn_available_actions_lotto` non filtra per
+#        emittente. Stesso ordine di lettura della fattura (api.md §dettaglio).
+#
+#        Collisione di chiavi: il blob porta `tipo_lotto`, che la testata ha
+#        gia'. E' lo stesso valore letto dalla stessa colonna, quindi il merge
+#        e' innocuo; `stato_codice` (blob) e `stato_doc_fiscale_codice`
+#        (testata) sono nomi diversi per lo stesso codice, come per le sorelle.
+#
+#        Fallback graceful (pattern offerte/contratti): se il capability layer
+#        e' rotto (DatabaseError) si logga e si ritorna la testata SENZA blob.
+#        Il FE degrada a sola consultazione (nessuna azione), ma l'operatore
+#        vede comunque il lotto — una rottura delle capability non deve
+#        impedire la lettura dell'entita'.
 def fn_get_lotto(*, lotto_id: int, auth_user_id: int | None = None) -> dict[str, object]:
     ErrorManager.require(
         bool(lotto_id and lotto_id > 0),
@@ -239,7 +266,16 @@ def fn_get_lotto(*, lotto_id: int, auth_user_id: int | None = None) -> dict[str,
             log_to_db=True,
         )
     assert lotto is not None
-    return dict(lotto)
+    result = dict(lotto)
+    try:
+        result.update(repository.get_available_actions_lotto(lotto_id))
+    except DatabaseError as exc:
+        logger.warning(
+            "fn_available_actions_lotto fallita per lotto_id=%s: %s. "
+            "Dettaglio ritornato senza blob capability (drawer in sola consultazione).",
+            lotto_id, exc,
+        )
+    return result
 
 
 # Scopo: Restituisce elenco fatture di un lotto con decodifiche, filtri e ordinamento opzionali.
@@ -474,7 +510,53 @@ class _CellaCompetenza:
 #        punto solo: la misura da mostrare e' l'imponibile riga per il
 #        fatturato, il teorico prezzo_snapshot×quantita per il resto del
 #        funnel — il FE rende, non decide.
-def _cella_stadio_payload(stadio: str, cella: _CellaCompetenza) -> dict[str, object]:
+# Stati della seconda misura delle card (conteggio fatture). Costanti e non
+# literal sparsi: sono contratto verso il FE, che ci decide cosa rendere.
+DASH_FATTURE_OK = "OK"
+DASH_FATTURE_NON_APPLICABILE = "NON_APPLICABILE"
+DASH_FATTURE_ERRORE = "ERRORE"
+
+
+# Scopo: decide `(n_fatture, stato)` di una cella. E' qui che le tre situazioni
+#        restano tre e non collassano in «manca il numero»:
+#          · stadio fuori dai calcolabili (DA_EMETTERE/DA_APPROVARE: la chiave
+#            documento non esiste ancora) -> NON_APPLICABILE, la card tace;
+#          · calcolo fallito su quello stadio                -> ERRORE, la card avvisa;
+#          · cella VUOTA (nessuna attivita')                 -> NON_APPLICABILE:
+#            «0 fatture» sotto «0 attivita'» sarebbe rumore, non informazione;
+#          · altrimenti -> OK, col conteggio (che puo' legittimamente essere 0:
+#            attivita' presenti e nessuna fattura ancora prodotta).
+#
+#        ⚠️ L'ordine dei rami conta, e va nel verso CONTROintuitivo: la cella
+#        vuota si valuta PRIMA del guasto. Il motivo e' che il calcolo fallisce
+#        per l'intero anno, non per un mese: segnalare l'errore anche dove non
+#        c'e' nulla da contare riempirebbe la griglia di avvertimenti — fino a
+#        12, quasi tutti su mesi vuoti — e il guasto vero annegherebbe nei
+#        propri falsi positivi. Con zero attivita' non ci sono fatture da
+#        prevedere, quindi tacere non nasconde niente. L'avvertimento resta
+#        dove sarebbe servito un numero.
+def _stato_fatture_cella(
+    stadio: str,
+    cella: _CellaCompetenza,
+    competenza: str,
+    fatture_per_cella: dict[tuple[str, str], int],
+    stadi_ko: set[str],
+) -> tuple[int | None, str]:
+    if stadio not in VenditeRepository.DASH_STADI_CON_CONTEGGIO_FATTURE:
+        return None, DASH_FATTURE_NON_APPLICABILE
+    if cella.n_attivita == 0:
+        return None, DASH_FATTURE_NON_APPLICABILE
+    if stadio in stadi_ko:
+        return None, DASH_FATTURE_ERRORE
+    return fatture_per_cella.get((competenza, stadio), 0), DASH_FATTURE_OK
+
+
+def _cella_stadio_payload(
+    stadio: str,
+    cella: _CellaCompetenza,
+    n_fatture: int | None = None,
+    n_fatture_stato: str = DASH_FATTURE_NON_APPLICABILE,
+) -> dict[str, object]:
     display = cella.valore_fatturato if stadio == "FATTURATA" else cella.valore
     return {
         "stadio": stadio,
@@ -485,6 +567,21 @@ def _cella_stadio_payload(stadio: str, cella: _CellaCompetenza) -> dict[str, obj
         "n_in_ritardo": cella.n_in_ritardo,
         "valore_in_ritardo": str(cella.valore_in_ritardo),
         "stati_fattura": cella.stati_fattura,
+        # Seconda misura della card: quante FATTURE, non quante attivita'.
+        # `0` -> la card dice zero; `None` -> non c'e' un numero, e il PERCHE'
+        # lo dice `n_fatture_stato`. Collassare `0` su `None` direbbe «non lo
+        # sappiamo» dove sappiamo benissimo che sono zero.
+        "n_fatture": n_fatture,
+        # Perche' il numero non c'e', in modo ESPLICITO invece che deducibile:
+        #   · OK              -> `n_fatture` e' valorizzato e attendibile;
+        #   · NON_APPLICABILE -> per questo stadio non si calcola per progetto
+        #                        (DA_EMETTERE: la chiave documento non esiste
+        #                        ancora) oppure la cella e' vuota -> la card tace;
+        #   · ERRORE          -> il calcolo doveva riuscire e NON e' riuscito
+        #                        -> la card lo segnala all'operatore.
+        # Senza questo campo gli ultimi due sarebbero indistinguibili a video, e
+        # un guasto avrebbe l'aspetto del comportamento normale.
+        "n_fatture_stato": n_fatture_stato,
     }
 
 
@@ -514,6 +611,13 @@ def fn_dash_competenza_mensile(
     repository = VenditeRepository()
     rows = repository.list_dash_competenza_mensile(anno=anno)
     errori_per_mese = repository.count_dash_competenza_errori_mensile(anno=anno)
+    # Conteggio fatture per (mese, stadio): una sola lettura per l'intera
+    # griglia, come gli errori — non una query per cella. `stadi_ko` sono gli
+    # stadi il cui calcolo e' fallito: restano distinti da quelli che non si
+    # calcolano per progetto (vedi `_stato_fatture_cella`).
+    fatture_per_cella, stadi_ko = repository.count_dash_competenza_fatture_mensile(
+        anno=anno,
+    )
 
     # Pivot del formato lungo: accumula per (mese, stadio); le righe FATTURATA
     # (una per stato fattura, gia' ordinate per ordine stato dal repository)
@@ -567,7 +671,15 @@ def fn_dash_competenza_mensile(
         mesi.append(
             {
                 "competenza_mese": competenza,
-                "stadi": [_cella_stadio_payload(s, c) for s, c in celle_mese],
+                "stadi": [
+                    _cella_stadio_payload(
+                        s, c,
+                        *_stato_fatture_cella(
+                            s, c, competenza, fatture_per_cella, stadi_ko,
+                        ),
+                    )
+                    for s, c in celle_mese
+                ],
                 "totali": {
                     "valore_teorico": str(totale_teorico),
                     "valore_fatturato": str(totale_fatturato),
@@ -951,9 +1063,34 @@ def fn_dash_backlog_documenti(
 def fn_dash_competenza_errori(
     *,
     competenza_mese: date | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
     page: int = 1,
     page_size: int = 50,
 ) -> dict[str, object]:
+    # Ordinamento server-side (8° lotto liste, 2026-08-03): whitelist +
+    # direzione validate qui, fail-fast 400 — stessa forma delle altre liste
+    # dash. Assenti -> ordine storico (eventi recenti prima).
+    ErrorManager.require(
+        order_by is None
+        or order_by in VenditeRepository.DASH_COMPETENZA_ERRORI_SORT_COLUMNS,
+        code="E_VENDITE_VALIDATION",
+        message="Colonna di ordinamento non valida.",
+        detail=(
+            f"order_by='{order_by}' non ammesso. Valori: "
+            f"{', '.join(sorted(VenditeRepository.DASH_COMPETENZA_ERRORI_SORT_COLUMNS))}."
+        ),
+        context={"order_by": order_by},
+        function_name="vendite.vendite_service.fn_dash_competenza_errori",
+    )
+    ErrorManager.require(
+        order_dir is None or order_dir.lower() in ("asc", "desc"),
+        code="E_VENDITE_VALIDATION",
+        message="Direzione di ordinamento non valida.",
+        detail="order_dir deve essere 'asc' o 'desc'.",
+        context={"order_dir": order_dir},
+        function_name="vendite.vendite_service.fn_dash_competenza_errori",
+    )
     offset = _validate_pagination(
         page, page_size, "vendite.vendite_service.fn_dash_competenza_errori"
     )
@@ -963,6 +1100,8 @@ def fn_dash_competenza_errori(
         competenza_mese=(
             competenza_mese.replace(day=1) if competenza_mese is not None else None
         ),
+        order_by=order_by,
+        order_dir=order_dir,
         limit=page_size,
         offset=offset,
     )

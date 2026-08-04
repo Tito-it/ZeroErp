@@ -104,6 +104,15 @@ Elenco dei **gruppi fatturabili** (emissione mirata, 2026-07-27).
 
 - `competenza_mese` (opzionale, date ISO, normalizzato al 1°): assente = errori
   vivi di tutti i mesi.
+- `order_by` / `order_dir` (opzionali, **dal 2026-08-03**): ordinamento
+  server-side. `order_by` in whitelist — `tipo_evento` | `lotto_codice` |
+  `fattura_numero` | `error_code` | `data_evento` (default); `order_dir` =
+  `asc` | `desc` (default `desc`: eventi recenti prima). Era l'unica lista
+  delle tre dashboard senza ordinamento. Colonna fuori whitelist o direzione
+  ≠ asc/desc → 400 (`E_VENDITE_VALIDATION`, validato nel service).
+  ⚠️ `NULLS LAST` esplicito su ogni colonna: metà della union non ha i campi
+  di documento (un errore di task non ha fattura, una fattura critical non ha
+  task), e in DESC quei NULL finirebbero in testa.
 - `page` / `page_size` (opzionali): paginazione standard.
 
 ## Output
@@ -225,8 +234,16 @@ perimetro con il conteggio (`tipo_gruppo`, `area_documento`, `n_gruppi`,
 Envelope paginato standard; ogni riga: `tipo_evento`
 (`TASK_ERRORE | FATTURA_CRITICA`), `competenza_mese`, `lotto_id/lotto_codice/
 stato_lotto`, `fattura_id/anno/serie/numero`, `task_code`, `error_code`,
-`messaggio`, `data_evento`. Ordinamento: `data_evento DESC NULLS LAST` +
-tiebreaker deterministico su chiavi naturali (la union non ha PK).
+`messaggio`, `data_evento`. Ordinamento: `data_evento DESC NULLS LAST` di
+default, oppure la colonna scelta via `order_by` (vedi Input), sempre seguita
+dal tiebreaker deterministico su **chiavi naturali** — `tipo_evento, lotto_id,
+fattura_id, task_code` — perché la union **non ha una PK**.
+
+⚠️ Per lo stesso motivo quel tiebreak **non segue la direzione** della colonna,
+a differenza delle altre liste (regola 2026-08-03): non è uno spareggio
+tecnico su una chiave univoca ma una catena di chiavi naturali. Lato FE la
+riga non ha un `id` su cui riconciliare, e `DashboardCompetenzaView` compone
+un `data-key` sintetico dalle stesse quattro colonne.
 
 ## Regole
 

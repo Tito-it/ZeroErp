@@ -8,7 +8,6 @@
 | uid | uuid | NO | uuidv7() |
 | soggetto_ruolo_id | bigint | NO |  |
 | codice | character varying | NO |  |
-| descrizione | character varying | NO |  |
 | attivo | boolean | NO | true |
 | regime_fiscale_rf | character varying | YES |  |
 | bollo_auto | boolean | YES |  |

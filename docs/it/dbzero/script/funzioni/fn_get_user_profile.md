@@ -44,7 +44,14 @@ DECLARE
     v_ef_id                   anagrafiche.emittenti_fiscali.id%TYPE;
     v_ef_uid                  anagrafiche.emittenti_fiscali.uid%TYPE;
     v_ef_codice               anagrafiche.emittenti_fiscali.codice%TYPE;
-    v_ef_descrizione          anagrafiche.emittenti_fiscali.descrizione%TYPE;
+    -- ⚠️ Fase 1 cantiere emittente (2026-08-02): era
+    --   `anagrafiche.emittenti_fiscali.descrizione%TYPE`, cioe' un
+    --   riferimento alla colonna che la Fase 4 elimina. Un %TYPE
+    --   non somiglia a una lettura della colonna ma lo e' a tutti
+    --   gli effetti: lasciato li', la DROP fallirebbe lontano da
+    --   qui. Ora `text`, che e' anche il tipo della nuova sorgente
+    --   (anagrafiche.soggetti.ragione_sociale_completa).
+    v_ef_descrizione          text;
     v_ef_sr_id                anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
     v_ef_regime               anagrafiche.emittenti_fiscali.regime_fiscale_rf%TYPE;
     v_ef_valuta_id            anagrafiche.emittenti_fiscali.valuta_id%TYPE;
@@ -267,6 +274,12 @@ BEGIN
       FROM script.fn_get_soggetto_dati_by_ruolo(v_soggetto_ruolo_id) t;
 
     -- 3. Risolve emittente fiscale (priorita' whitelist -> gestore)
+    --    ⚠️ Fase 1 cantiere emittente (2026-08-02):
+    --    emittente_descrizione viene dalla ragione sociale del
+    --    SOGGETTO dell'emittente, non piu' da ef.descrizione. I
+    --    due rami del UNION ALL joinano entrambi soggetti_ruoli ->
+    --    soggetti: il tipo resta text in tutti e due, quindi il
+    --    UNION non cambia forma.
     v_emittente := NULL;
 
     SELECT x.user_emittente_fiscale_id,
@@ -293,13 +306,17 @@ BEGIN
                        ef.id   AS emittente_fiscale_id,
                        ef.uid  AS emittente_fiscale_uid,
                        ef.codice AS emittente_codice,
-                       ef.descrizione AS emittente_descrizione,
+                       s_ef.ragione_sociale_completa AS emittente_descrizione,
                        ef.soggetto_ruolo_id AS emittente_soggetto_ruolo_id,
                        ef.regime_fiscale_rf,
                        ef.valuta_id
                   FROM config.user_emittenti_fiscali uef
                   JOIN anagrafiche.emittenti_fiscali ef
                     ON ef.id = uef.emittente_fiscale_id
+                  LEFT JOIN anagrafiche.soggetti_ruoli sr_ef
+                    ON sr_ef.id = ef.soggetto_ruolo_id
+                  LEFT JOIN anagrafiche.soggetti s_ef
+                    ON s_ef.id = sr_ef.soggetto_id
                  WHERE uef.auth_user_id = p_auth_user_id
                    AND ef.attivo = true
                  ORDER BY uef.id
@@ -315,13 +332,17 @@ BEGIN
                        ef.id   AS emittente_fiscale_id,
                        ef.uid  AS emittente_fiscale_uid,
                        ef.codice AS emittente_codice,
-                       ef.descrizione AS emittente_descrizione,
+                       s_ef.ragione_sociale_completa AS emittente_descrizione,
                        ef.soggetto_ruolo_id AS emittente_soggetto_ruolo_id,
                        ef.regime_fiscale_rf,
                        ef.valuta_id
                   FROM anagrafiche.emittenti_fiscali_billing_account efba
                   JOIN anagrafiche.emittenti_fiscali ef
                     ON ef.soggetto_ruolo_id = efba.emittente_soggetto_ruolo_id
+                  LEFT JOIN anagrafiche.soggetti_ruoli sr_ef
+                    ON sr_ef.id = ef.soggetto_ruolo_id
+                  LEFT JOIN anagrafiche.soggetti s_ef
+                    ON s_ef.id = sr_ef.soggetto_id
                  WHERE efba.billing_account_id IS NULL
                    AND efba.is_default = true
                    AND ef.attivo = true
@@ -370,7 +391,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_user_profile(p_auth_user_id integer)
-IS 'Profilo utente completo (JSONB). Post Fase 7 step 3 (29-04-2026): rimossa la chiave ruolo_sistema dall''output - BE post-Fase 7 LANDED non la legge piu''. Top-level ruolo_applicativo GUC-aware (20260421-05); is_super_admin context-aware (20260421-03/04). Richiede identita OPERATORE (raise E_ADMIN_VALIDAZIONE altrimenti).';
+IS 'Profilo utente completo (JSONB). Post Fase 7 step 3 (29-04-2026): rimossa la chiave ruolo_sistema dall''output - BE post-Fase 7 LANDED non la legge piu''. Top-level ruolo_applicativo GUC-aware (20260421-05); is_super_admin context-aware (20260421-03/04). Richiede identita OPERATORE (raise E_ADMIN_VALIDAZIONE altrimenti). La chiave emittente.emittente_descrizione porta la ragione_sociale_completa del soggetto emittente (Fase 1 cantiere emittente 2026-08-02: prima leggeva emittenti_fiscali.descrizione nuda, cioe'' l''etichetta interna).';
 ```
 
 ---

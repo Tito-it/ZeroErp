@@ -70,6 +70,22 @@ function buildSorgenteClient(basePathFn) {
         { responseType: 'blob' },
       )
     },
+
+    // Scopo: RISTAMPA FEDELE (percorso 3) — ri-renderizza il documento
+    //        com'era, dalla versione di template con cui nacque e dal
+    //        contesto congelato. Funziona anche sui documenti privi di file
+    //        salvato (persistenza iniziata il 2026-07-21), che sono gli unici
+    //        per cui `download` non e' disponibile.
+    //        ⚠️ Da NON confondere con `genera`, che EMETTE un documento nuovo
+    //        col modello di oggi e i dati di oggi.
+    //        La fedelta' di byte arriva nell'header `X-Ristampa-Pdf-Hash-Match`
+    //        (`1`/`0`): il corpo e' il PDF, quindi il verdetto viaggia li'.
+    ristampaFedele(sorgenteId, documentoId) {
+      return api.get(
+        `${basePathFn(sorgenteId)}/${documentoId}/ristampa/`,
+        { responseType: 'blob' },
+      )
+    },
   }
 }
 

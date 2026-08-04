@@ -8,6 +8,7 @@
 - [fn_available_actions_commessa](funzioni/fn_available_actions_commessa.md) — (latest review 16-06-2026) Espone le **capability del ciclo di vita di una commessa** per il detail/stato API: quali azioni di stato l'utente può eseguire e cosa può modificare. Mirror del pattern `fn_available_actions_ordine` / `_offerta` / `_contratto` / `_preventivo`, **senza azioni applicative** (il push è *verso* la commessa, non un'azione della commessa).
 - [fn_available_actions_contratto](funzioni/fn_available_actions_contratto.md)
 - [fn_available_actions_ddt](funzioni/fn_available_actions_ddt.md) — (rev 2026-07-09)
+- [fn_available_actions_lotto](funzioni/fn_available_actions_lotto.md) — (latest review 04-08-2026) Espone le **capability del lotto di fatturazione** per il detail API: quali azioni di governo sono disponibili sul lotto, quali sono **abilitate** e — quando non lo sono — **perché**. Ottava della famiglia `fn_available_actions_*` (ordine, DDT, reso, offerta, preventivo, contratto, commessa): stesso contratto, stessi consumatori frontend.
 - [fn_available_actions_offerta](funzioni/fn_available_actions_offerta.md)
 - [fn_available_actions_ordine](funzioni/fn_available_actions_ordine.md)
 - [fn_available_actions_preventivo](funzioni/fn_available_actions_preventivo.md)
@@ -20,8 +21,13 @@
 - [fn_check_blocco_login](funzioni/fn_check_blocco_login.md)
 - [fn_check_commessa_annullabile](funzioni/fn_check_commessa_annullabile.md)
 - [fn_check_commessa_chiudibile](funzioni/fn_check_commessa_chiudibile.md)
+- [fn_check_commessa_pronta_fatturazione](funzioni/fn_check_commessa_pronta_fatturazione.md)
 - [fn_check_ddt_emittibile](funzioni/fn_check_ddt_emittibile.md) — (creata 2026-07-19 — brief-db-guard-righe-avanzamento-stato §1a-bis Rev 2)
+- [fn_check_fattura_eliminabile_da_lotto](funzioni/fn_check_fattura_eliminabile_da_lotto.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono di togliere una fattura da un lotto**. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando la fattura si può togliere.
 - [fn_check_indirizzo_duplicato](funzioni/fn_check_indirizzo_duplicato.md)
+- [fn_check_lotto_annullabile](funzioni/fn_check_lotto_annullabile.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono l'annullamento** di un lotto di fatturazione. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando l'annullamento è lecito.
+- [fn_check_lotto_fatture_pre_fiscali](funzioni/fn_check_lotto_fatture_pre_fiscali.md) — (latest review 04-08-2026) Dice se le fatture di un lotto sono ancora **demolibili**, cioè se nessuna ha superato lo stato pre-fiscale. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando tutte le fatture del lotto sono pre-fiscali.
+- [fn_check_lotto_riportabile_a_draft](funzioni/fn_check_lotto_riportabile_a_draft.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono il ritorno in bozza** di un lotto di fatturazione. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando il ritorno è lecito.
 - [fn_check_operatore_invitabile](funzioni/fn_check_operatore_invitabile.md)
 - [fn_check_parameter_fk_surrogate](funzioni/fn_check_parameter_fk_surrogate.md) — (latest review 02-05-2026)
 - [fn_check_rinuncia_reversibile](funzioni/fn_check_rinuncia_reversibile.md) — (creata 2026-07-26 — brief-db-chiusura-riconsegna-reso-definitivo §5.1)
@@ -57,7 +63,6 @@
 - [fn_get_parameter_full](funzioni/fn_get_parameter_full.md)
 - [fn_get_profili_accesso_applicabili](funzioni/fn_get_profili_accesso_applicabili.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 - [fn_get_record_id_as_of](funzioni/fn_get_record_id_as_of.md) — * **Recupero rapido dell’ID in uno snapshot**: ottenere solo l’identificativo del record (`id`) valido alla data/ora specificata, senza dover deserializzare tutto il JSON. * **Ottimizzazione delle query**: operazione leggera nel caso serva solo l’ID, utile per controlli o join condizionali su storico.
-- [fn_get_ruolo_sistema](funzioni/fn_get_ruolo_sistema.md)
 - [fn_get_search_detail](funzioni/fn_get_search_detail.md) — * **Dettaglio per tipo ruolo**: la funzione usa un `CASE` sul `codice_interno` del tipo ruolo (immutabile, protetto da `trgfn_lock_columns`) per costruire sezioni specifiche. Gestisce CL (cliente), FO (fornitore) con logica diretta, e delega tutti gli altri ruoli a `fn_get_entita_ruolo_detail`.
 - [fn_get_setup_status](funzioni/fn_get_setup_status.md)
 - [fn_get_snapshot_as_of](funzioni/fn_get_snapshot_as_of.md) — (latest review 02-02-26) * **Recupero storico/flessibile**: ottenere lo stato di un record in un preciso istante, combinando storicizzazione e serializzazione diretta. * **Robustezza**: ogni errore di query viene tracciato con contesto completo, e l'esecuzione viene interrotta per evitare inconsistenze.
@@ -90,7 +95,7 @@
 - [fn_registra_tentativo_login](funzioni/fn_registra_tentativo_login.md)
 - [fn_resolve_codice_postale](funzioni/fn_resolve_codice_postale.md) — Risolve il `codice_postale_id` con logica di fallback a due livelli. Unica source of truth per la logica CAP (prima nel watcher Vue).
 - [fn_resolve_emittente_for_user](funzioni/fn_resolve_emittente_for_user.md)
-- [fn_resolve_indirizzo_documento](funzioni/fn_resolve_indirizzo_documento.md)
+- [fn_resolve_indirizzo_documento](funzioni/fn_resolve_indirizzo_documento.md) — (latest review 02-08-2026)
 - [fn_resolve_livello_area](funzioni/fn_resolve_livello_area.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 - [fn_resolve_livello_oggetto](funzioni/fn_resolve_livello_oggetto.md) — (latest review 08-03-2026) La funzione **`script.fn_resolve_livello_oggetto`** risolve il livello di accesso per un singolo model Django (`app_label` + `model_name`).
 - [fn_ricalcola_prezzo_padre_da_componenti](funzioni/fn_ricalcola_prezzo_padre_da_componenti.md)
@@ -107,7 +112,7 @@
 - [fn_search_stradario](funzioni/fn_search_stradario.md) — (latest review 13-03-2026) Ricerca vie (stradario) per autocomplete frontend. L'utente seleziona un comune e cerca una via nel comune selezionato.
 - [fn_search_stradario_generale](funzioni/fn_search_stradario_generale.md) — Ricerca vie su `config.stradario_generale` (senza comune/CAP). Serve per autocomplete "via nuova": l'utente cerca una via in tutta Italia, poi sceglie comune e CAP separatamente.
 - [fn_snapshot_indirizzo](funzioni/fn_snapshot_indirizzo.md)
-- [fn_snapshot_indirizzo_soggetto](funzioni/fn_snapshot_indirizzo_soggetto.md)
+- [fn_snapshot_indirizzo_soggetto](funzioni/fn_snapshot_indirizzo_soggetto.md) — (latest review 02-08-2026)
 - [fn_subentro_cliente](funzioni/fn_subentro_cliente.md) — (latest review 01-03-26)
 - [fn_valida_codice_fiscale](funzioni/fn_valida_codice_fiscale.md) — * **Validazione formale** del Codice Fiscale (CF) calcolando e confrontando il carattere di controllo. * **Supporto omocodici**, garantendo validità anche per CF derivati con omolettere. * **Delegare al backend** i controlli di congruenza con data di nascita, sesso e luogo di nascita per mantenere flessibilità applicativa.
 - [fn_valida_partita_iva](funzioni/fn_valida_partita_iva.md) — Verificare **formalmente** la correttezza di una Partita IVA italiana (11 cifre) calcolando il **check digit** con l’algoritmo di Luhn modificato, restituendo:
@@ -125,7 +130,6 @@
 - [trgfn_config_sistema_codici_sync_gen_codice](funzioni/trgfn_config_sistema_codici_sync_gen_codice.md) — La funzione `script.trgfn_config_sistema_codici_sync_gen_codice()` mantiene **sincronizzati** trigger e trigger function per la **generazione automatica dei codici/numero** in base a `config.sistema_codici`.
 - [trgfn_delete_block_by_guc](funzioni/trgfn_delete_block_by_guc.md) — (latest review 23-01-2026) La funzione `script.trgfn_delete_block_by_guc()` e` una **trigger function generica** che blocca le DELETE, consentendo il bypass tramite una **GUC** di manutenzione.
 - [trgfn_guard_emittente_scope](funzioni/trgfn_guard_emittente_scope.md) — (rev 2026-06-01 — aggiunta modalità `fiscale` PK; delega alla canonica `fn_check_user_emittente_scope`) La trigger function **`script.trgfn_guard_emittente_scope`** implementa il defense-in-depth: blocca INSERT/UPDATE se l'utente corrente non ha visibilità sull'emittente fiscale della riga.
-- [trgfn_guard_sorgente_polimorfa](funzioni/trgfn_guard_sorgente_polimorfa.md)
 - [trgfn_guard_sorgente_polimorfa_testuale](funzioni/trgfn_guard_sorgente_polimorfa_testuale.md) — Valida la sorgente polimorfa delle **tabelle di collegamento a chiave unica TESTUALE** (modello B): la colonna `sorgente_uid` è **TEXT** e contiene la chiave nel **formato dettato da `config.sorgenti.key_selector`**:
 - [trgfn_guard_sorgente_polimorfa_tipizzata](funzioni/trgfn_guard_sorgente_polimorfa_tipizzata.md) — Valida la **coerenza dei riferimenti di sorgente** per le tabelle che adottano il **modello A — colonne tipizzate alternative**:
 - [trgfn_guard_utility_tipo_ruolo_by_cols](funzioni/trgfn_guard_utility_tipo_ruolo_by_cols.md) — La funzione **`script.trgfn_guard_utility_tipo_ruolo_by_cols()`** e` una trigger function generica che applica il controllo utility/ruolo su tabelle con colonne configurabili.

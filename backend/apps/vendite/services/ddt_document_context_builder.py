@@ -40,6 +40,10 @@ from typing import Any
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
+from apps.documenti.services.context_builders._number_formatting import (
+    format_misura,
+    formatta_campi,
+)
 from apps.documenti.services.context_builders._date_formatting import (
     format_date_it,
     format_date_iso,
@@ -93,7 +97,15 @@ class DdtDocumentContextBuilder(DocumentContextBuilder):
         )
         assert testata is not None
 
-        righe = self._repo.list_righe(sorgente_id)
+        # Numeri pronti per la stampa (2026-08-04): vedi `_number_formatting`.
+        righe = [
+            formatta_campi(
+                r,
+                misure=("quantita", "qta_operativa", "factor_to_base"),
+                importi=("importo_riga",),
+            )
+            for r in self._repo.list_righe(sorgente_id)
+        ]
 
         return {
             "ddt": self._shape_ddt(testata),
@@ -143,9 +155,14 @@ class DdtDocumentContextBuilder(DocumentContextBuilder):
                 "codice": testata.get("utility_codice"),
                 "descrizione": testata.get("utility_descrizione"),
             },
+            # `denominazione` aggiunta il 2026-08-03, stesso difetto dell'ordine:
+            # senza un nome il template ripiegava sul codice e stampava
+            # «Emittente fiscale PGTAP-EF-2026...». Chiave allineata a fattura e
+            # ordine — un nome solo per tutti i documenti.
             "emittente": {
                 "id": testata.get("emittente_fiscale_id"),
                 "codice": testata.get("emittente_fiscale_codice"),
+                "denominazione": testata.get("emittente_ragione_sociale"),
             },
             "valuta_codice": testata.get("valuta_codice"),
             "origine": {
@@ -229,10 +246,12 @@ class DdtDocumentContextBuilder(DocumentContextBuilder):
             "porto_codice": testata.get("modalita_addebito_trasporto_codice"),
             "mittente_denominazione": testata.get("mittente_denominazione"),
             "vettore_denominazione": testata.get("vettore_denominazione"),
+            # ⚠️ `num_colli` NON si formatta: e' un conteggio, e «12,00 colli»
+            # sarebbe una lettura sbagliata. Pesi e volume invece sono misure.
             "num_colli": testata.get("num_colli"),
-            "peso_lordo": testata.get("peso_lordo"),
-            "peso_netto": testata.get("peso_netto"),
-            "volume": testata.get("volume"),
+            "peso_lordo": format_misura(testata.get("peso_lordo")),
+            "peso_netto": format_misura(testata.get("peso_netto")),
+            "volume": format_misura(testata.get("volume")),
             "targa": testata.get("targa"),
             "autista": testata.get("autista"),
             "tracking_code": testata.get("tracking_code"),

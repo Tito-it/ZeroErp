@@ -1,0 +1,475 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D-M passo 2 — `esclusa` esce dai cinque oggetti che leggono la COLONNA
+#   (piano-db-ritorno-lotto-a-draft.md, Slice 6-B B4)
+#
+# ── COSA SI TOGLIE, E PERCHE' NON CAMBIA NIENTE ──────────────────────────
+#   `fatturazione_lotti_fatture.esclusa` e' dormiente da sempre: nessuno la
+#   valorizza e l'unico INSERT che la nomina passa `FALSE` letterale.
+#   Ogni predicato che la interroga e' quindi una condizione **sempre
+#   vera**, e ogni argomento che la propaga trasporta una costante.
+#   Toglierli non cambia il comportamento di una riga: cambia solo cio'
+#   che il lettore deve tenere a mente.
+#
+# ── I CINQUE OGGETTI ─────────────────────────────────────────────────────
+#   1. fn_prepare_sdi_payload            — `AND lf.esclusa IS FALSE`
+#   2. fn_accoda_stampe_lotto            — `AND lf.esclusa IS NOT TRUE`
+#   3. fn_get_or_create_fattura_header   — la colonna nella INSERT del ponte
+#   4. fn_guard_lotto_fatture_stato_coerente — due predicati + il campo
+#      `esclusa` nel jsonb di diagnostica. ⚠️ Quel campo era **utile**
+#      quando il flag era vivo: diceva perche' una fattura non compariva
+#      fra le incoerenti. Con il flag morto dice sempre `false`, cioe'
+#      occupa spazio nel messaggio d'errore senza informare;
+#   5. vw_lotti_fatture_incoerenti       — il predicato nella WHERE.
+#      🔴 RETTIFICA (2026-08-04): la ricreazione della vista fatta QUI e'
+#      inefficace. `changelog-autogen.yaml` ordina per NUMERO e non per
+#      fase, quindi questo `-20` gira PRIMA di `00_schema/-21`, che poi la
+#      droppa per liberare la colonna. La vista viva la mette
+#      `20260804-31`. Il blocco qui sotto resta per i DB nuovi, dove il
+#      `-21` trova gia' tutto a posto.
+#
+# ── ⚠️ LA VISTA E LA SUA RELOPTION ───────────────────────────────────────
+#   `security_invoker=on` NON e' visibile in `pg_get_viewdef` e va
+#   **ri-specificata** in ogni CREATE OR REPLACE VIEW: PostgreSQL
+#   altrimenti la azzera in silenzio, e la vista tornerebbe a girare coi
+#   diritti del proprietario — cioe' aprirebbe un buco nella RLS
+#   emittente. E' la trappola gia' pagata con il fix V-1 della famiglia
+#   dashboard (2026-07-06).
+#
+# ── L'ECCEZIONE CHE RESTA ────────────────────────────────────────────────
+#   Nel guard e nella vista sopravvive la sola eccezione `critical`:
+#   quella e' viva, la valorizza fn_sync_fatture_log_critical_lotto, ed e'
+#   il motivo per cui un lotto tornato a DRAFT si lascia dietro le fatture
+#   rotte (D-L.2). Non si tocca.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260804-20-esclusa-via-dai-lettori-residui-mctit.yaml
+
+  - changeSet:
+      id: 20260804-20-esclusa-via-dai-lettori-residui
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        D-M: la colonna esclusa esce dai cinque oggetti che la leggevano
+        (fn_prepare_sdi_payload, fn_accoda_stampe_lotto,
+        fn_get_or_create_fattura_header, fn_guard_lotto_fatture_stato_coerente,
+        vw_lotti_fatture_incoerenti). Predicati sempre veri, comportamento
+        invariato. La vista ri-specifica security_invoker=on.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ── 1/5 — payload SDI ──────────────────────────────────────
+              CREATE OR REPLACE FUNCTION vendite.fn_prepare_sdi_payload(
+                  p_lotto_id                 vendite.fatturazione_lotti.id%TYPE,
+                  p_stato_sdi_codice_interno config.stati_sdi.codice_interno%TYPE DEFAULT 'DA_INVIARE',
+                  p_force_new_tentativo      boolean DEFAULT false
+              )
+               RETURNS TABLE(fattura_sdi_id bigint, fattura_id bigint, tentativo_num smallint, stato_sdi_id bigint, codice_documento text, numero_fattura bigint, data_fattura date, billing_account_id bigint, emittente_soggetto_ruolo_id bigint, valuta_id integer, totale_a_pagare numeric)
+               LANGUAGE plpgsql
+              AS $function$
+              -- rev 2026-08-04 (D-M): via il predicato su lf.esclusa, che era
+              --   una condizione sempre vera (flag dormiente).
+              DECLARE
+                  v_stato_sdi_id config.stati_sdi.id%TYPE;
+                  v_exists_lotto BOOLEAN := FALSE;
+              BEGIN
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_prepare_sdi_payload', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id), NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                  END IF;
+
+                  IF p_stato_sdi_codice_interno IS NULL OR btrim(p_stato_sdi_codice_interno) = '' THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_prepare_sdi_payload', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_stato_sdi_codice_interno', 'valore', p_stato_sdi_codice_interno), NULL::uuid, 'p_stato_sdi_codice_interno obbligatorio');
+                  END IF;
+
+                  SELECT EXISTS (SELECT 1 FROM vendite.fatturazione_lotti fl WHERE fl.id = p_lotto_id) INTO v_exists_lotto;
+
+                  IF NOT COALESCE(v_exists_lotto, FALSE) THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_prepare_sdi_payload', 'E_VALORE_MANCANTE',
+                          jsonb_build_object('lotto_id', p_lotto_id), NULL::uuid, concat('lotto_id ', p_lotto_id));
+                  END IF;
+
+                  SELECT s.id INTO v_stato_sdi_id
+                    FROM config.stati_sdi s
+                   WHERE s.codice_interno = p_stato_sdi_codice_interno AND s.attivo IS TRUE
+                   ORDER BY s.ordine NULLS LAST, s.id LIMIT 1;
+
+                  IF v_stato_sdi_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_prepare_sdi_payload', 'E_CODICE',
+                          jsonb_build_object('codice_interno', p_stato_sdi_codice_interno), NULL::uuid, p_stato_sdi_codice_interno, 'config.stati_sdi');
+                  END IF;
+
+                  -- Upsert fatture_sdi + RETURN QUERY (logica invariata dall'originale)
+                  RETURN QUERY
+                  WITH target_fatture AS (
+                      -- rev 2026-07-28: si porta dietro anche totale_a_pagare,
+                      -- letto qui dalla testata invece che ricostruito a valle.
+                      SELECT f.id AS f_id, f.numero, f.data, f.billing_account_id,
+                             f.emittente_soggetto_ruolo_id, f.valuta_id,
+                             f.totale_a_pagare,
+                             COALESCE(f.anno::text, '') || COALESCE(f.serie, '') || COALESCE(f.numero::text, '') AS codice_doc
+                        FROM vendite.fatturazione_lotti_fatture lf
+                        JOIN vendite.fatture f ON f.id = lf.fattura_id
+                       WHERE lf.lotto_id = p_lotto_id
+                  ), upserted AS (
+                      INSERT INTO vendite.fatture_sdi (fattura_id, tentativo, stato_sdi_id, meta)
+                      SELECT tf.f_id,
+                             COALESCE((SELECT MAX(fs2.tentativo) FROM vendite.fatture_sdi fs2 WHERE fs2.fattura_id = tf.f_id), 0)
+                               + CASE WHEN p_force_new_tentativo THEN 1 ELSE 0 END,
+                             v_stato_sdi_id, '{}'::jsonb
+                        FROM target_fatture tf
+                       WHERE p_force_new_tentativo IS TRUE
+                          OR NOT EXISTS (SELECT 1 FROM vendite.fatture_sdi fs3 WHERE fs3.fattura_id = tf.f_id)
+                      ON CONFLICT (fattura_id, tentativo) DO UPDATE SET stato_sdi_id = v_stato_sdi_id, data_update = now()
+                      RETURNING vendite.fatture_sdi.id AS fs_id, vendite.fatture_sdi.fattura_id AS fs_fattura_id, vendite.fatture_sdi.tentativo AS fs_tentativo, vendite.fatture_sdi.stato_sdi_id AS fs_stato_sdi_id
+                  )
+                  SELECT u.fs_id, u.fs_fattura_id, u.fs_tentativo, u.fs_stato_sdi_id,
+                         tf.codice_doc, tf.numero, tf.data, tf.billing_account_id,
+                         tf.emittente_soggetto_ruolo_id, tf.valuta_id,
+                         -- rev 2026-07-28: era SUM(ri.totale_riga) su
+                         -- vendite.fatture_riepiloghi_iva, colonna INESISTENTE
+                         -- (errore latente: plpgsql pianifica alla prima
+                         -- esecuzione). Il totale dovuto e' quello che
+                         -- fn_ricalcola_totali_fattura ha gia' calcolato,
+                         -- fondi e arrotondamento inclusi.
+                         COALESCE(tf.totale_a_pagare, 0)
+                    FROM upserted u
+                    JOIN target_fatture tf ON tf.f_id = u.fs_fattura_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_prepare_sdi_payload(bigint, character varying, boolean)
+              IS 'Prepara dataset SDI per lotto e apre/riusa tentativi su fatture_sdi. rev 2026-07-28: il totale documento viene letto da vendite.fatture.totale_a_pagare — prima sommava fatture_riepiloghi_iva.totale_riga, colonna che su quella tabella NON esiste. totale_a_pagare e'' il valore prodotto da fn_ricalcola_totali_fattura, fondi e arrotondamento dell''emittente-utility inclusi: ricostruirlo qui sarebbe una seconda implementazione della stessa regola fiscale. rev 2026-08-04 (D-M): via il predicato su lf.esclusa, che era una condizione sempre vera.';
+
+              -- ── 2/5 — coda di stampa ───────────────────────────────────
+              CREATE OR REPLACE FUNCTION vendite.fn_accoda_stampe_lotto(
+                  p_lotto_id vendite.fatturazione_lotti.id%TYPE
+              )
+               RETURNS integer
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_sorgente_tipo_id config.sorgenti.id%TYPE;
+                  v_accodate         integer := 0;
+              BEGIN
+                  -- Scopo: accoda un work-item di stampa PENDING per ogni
+                  --   fattura del lotto; delega numerazione+render al worker.
+                  --   Idempotente: l'indice unico parziale scarta i doppioni vivi.
+                  -- rev 2026-08-04 (D-M): via il predicato su lf.esclusa. Il
+                  --   flag era dormiente, quindi «ogni fattura non esclusa»
+                  --   ha sempre voluto dire «ogni fattura».
+
+                  -- Guard parametro ID: no NULL, no <= 0 (non normalizzare).
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_accoda_stampe_lotto', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id),
+                          NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                  END IF;
+
+                  -- Tipo sorgente FATTURA risolto da config (no hardcode dell'id).
+                  SELECT s.id INTO v_sorgente_tipo_id
+                    FROM config.sorgenti s
+                   WHERE s.codice_interno = 'FATTURA';
+
+                  IF v_sorgente_tipo_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_accoda_stampe_lotto', 'E_VALORE_MANCANTE',
+                          jsonb_build_object('sorgente', 'FATTURA'),
+                          NULL::uuid, 'config.sorgenti FATTURA assente');
+                  END IF;
+
+                  -- Accoda le fatture del lotto.
+                  -- sorgente_uid = id::text (key_selector FATTURA).
+                  INSERT INTO vendite.fatture_stampa_coda
+                      (sorgente_tipo_id, sorgente_id, sorgente_uid, lotto_id)
+                  SELECT v_sorgente_tipo_id, f.id, f.id::text, p_lotto_id
+                    FROM vendite.fatturazione_lotti_fatture lf
+                    JOIN vendite.fatture f ON f.id = lf.fattura_id
+                   WHERE lf.lotto_id = p_lotto_id
+                  ON CONFLICT (sorgente_tipo_id, sorgente_id)
+                     WHERE stato IN ('PENDING', 'IN_CORSO')
+                     DO NOTHING;
+
+                  GET DIAGNOSTICS v_accodate = ROW_COUNT;
+                  RETURN v_accodate;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_accoda_stampe_lotto(bigint)
+              IS 'Accoda in vendite.fatture_stampa_coda un work-item PENDING per ogni fattura del lotto (sorgente FATTURA, sorgente_uid=id::text). Idempotente via indice unico parziale uq_fatture_stampa_coda_vivo (ON CONFLICT DO NOTHING). Ritorna il numero di righe effettivamente accodate. Chiamata dal task pipeline stampa_documenti_lotto; numerazione (backstop) e render vivono nel worker drainer. Brief: brief-db-processi-fatturazione-cockpit §4. rev 2026-08-04 (D-M): via il predicato su lf.esclusa — il flag era dormiente, quindi «ogni fattura non esclusa» ha sempre voluto dire «ogni fattura».';
+
+              -- ── 3/5 — testata fattura: la INSERT sul ponte ─────────────
+              CREATE OR REPLACE FUNCTION vendite.fn_get_or_create_fattura_header(
+                  p_lotto_id    vendite.fatturazione_lotti.id%TYPE,
+                  p_attivita_id vendite.attivita_fatturabili.id%TYPE
+              )
+               RETURNS bigint
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: recupera o crea la testata DRAFT della fattura a cui
+              --        l'attivita' appartiene, dentro il lotto dato.
+              -- Regole: il `WHERE` del lookup e la INSERT devono nominare gli
+              --         STESSI elementi della chiave prodotta da
+              --         fn_build_fattura_key (§6). Se la chiave separa e il
+              --         lookup no, le due meta' si annullano e le attivita'
+              --         tornano nella stessa fattura.
+              -- rev 2026-08-04 (D-M): la INSERT sul ponte non nomina piu'
+              --         `esclusa`: era l'unico punto che la scriveva, e ci
+              --         scriveva la costante FALSE.
+              DECLARE
+                  v_key          JSONB;
+                  v_fattura_id   vendite.fatture.id%TYPE;
+                  v_stato_doc_id config.stati_doc_fiscale.id%TYPE;
+                  v_registro_id  vendite.registri_fatturazione.id%TYPE;
+                  v_ba_id        anagrafiche.billing_account.id%TYPE;
+                  v_tipo_doc_id  config.tipi_doc_fiscale.id%TYPE;
+                  v_valuta_id    config.valute.id%TYPE;
+                  v_utility_id   config.utilities.id%TYPE;
+                  v_emittente_id anagrafiche.soggetti_ruoli.id%TYPE;
+                  v_reseller_id  anagrafiche.soggetti_ruoli.id%TYPE;
+                  v_termine_id   config.termini_pagamento.id%TYPE;
+                  v_modalita_id  config.modalita_pagamento.id%TYPE;
+              BEGIN
+                  -- Guard: parametri obbligatori
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 OR p_attivita_id IS NULL OR p_attivita_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_get_or_create_fattura_header', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id/p_attivita_id', 'lotto_id', p_lotto_id, 'attivita_id', p_attivita_id),
+                          NULL::uuid, 'p_lotto_id e p_attivita_id obbligatori e > 0'
+                      );
+                  END IF;
+
+                  -- Chiave documento dall'attivita': nove elementi, e da qui in
+                  -- giu' vanno usati tutti e nove.
+                  v_key := vendite.fn_build_fattura_key(p_attivita_id);
+                  v_ba_id        := (v_key->>'billing_account_id')::BIGINT;
+                  v_tipo_doc_id  := (v_key->>'tipo_doc_fiscale_id')::BIGINT;
+                  v_valuta_id    := (v_key->>'valuta_id')::INTEGER;
+                  v_emittente_id := (v_key->>'emittente_soggetto_ruolo_id')::BIGINT;
+                  v_reseller_id  := NULLIF(v_key->>'reseller_soggetto_ruolo_id', '')::BIGINT;
+                  v_utility_id   := NULLIF(v_key->>'utility_id', '')::INTEGER;
+                  v_registro_id  := (v_key->>'registro_id')::BIGINT;
+                  v_termine_id   := NULLIF(v_key->>'termine_pagamento_id', '')::BIGINT;
+                  v_modalita_id  := NULLIF(v_key->>'modalita_pagamento_id', '')::INTEGER;
+
+                  -- Completezza della chiave: si pretendono solo gli elementi
+                  -- che NON possono legittimamente mancare. utility_id entra
+                  -- nell'elenco perche' anagrafiche.billing_account.utility_id e'
+                  -- NOT NULL: se qui arriva vuoto, la chiave e' rotta, non
+                  -- «senza utility». Termine e modalita' restano fuori, e non e'
+                  -- una dimenticanza: la modalita' e' NULL nella maggioranza dei
+                  -- casi (nessun default inventato, finirebbe sulla FatturaPA) e
+                  -- il termine ha il default TP_1RATA della catena — la sua
+                  -- assenza la presidia la Fase 4 al momento di generare le rate.
+                  IF v_ba_id IS NULL OR v_tipo_doc_id IS NULL OR v_valuta_id IS NULL
+                     OR v_emittente_id IS NULL OR v_utility_id IS NULL OR v_registro_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_get_or_create_fattura_header', 'E_VALORE_MANCANTE',
+                          jsonb_build_object('attivita_id', p_attivita_id, 'chiave', v_key),
+                          NULL::uuid, concat('chiave documento incompleta per attivita_id ', p_attivita_id)
+                      );
+                  END IF;
+
+                  -- Stato DRAFT
+                  SELECT id INTO v_stato_doc_id
+                    FROM config.stati_doc_fiscale
+                   WHERE codice_interno = 'DRAFT' AND attivo IS TRUE
+                   ORDER BY id LIMIT 1;
+
+                  IF v_stato_doc_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_get_or_create_fattura_header', 'E_CONFIG_MANCANTE',
+                          jsonb_build_object('codice_interno', 'DRAFT'),
+                          NULL::uuid, 'stato DRAFT non trovato'
+                      );
+                  END IF;
+
+                  -- Cerca fattura gia' nel lotto con la stessa chiave.
+                  -- ⚠️ IS NOT DISTINCT FROM sui tre elementi nullable: con `=`
+                  -- il NULL non combacia mai, quindi ogni giro aprirebbe una
+                  -- fattura nuova per i casi — che sono la maggioranza — in cui
+                  -- reseller o modalita' non ci sono. E' la stessa trappola dei
+                  -- NULL gia' pagata in 3b.0-b sul WHERE della commessa e in
+                  -- 3b.4-bis sull'indice d'ambito, terza forma.
+                  SELECT f.id INTO v_fattura_id
+                    FROM vendite.fatturazione_lotti_fatture lf
+                    JOIN vendite.fatture f ON f.id = lf.fattura_id
+                   WHERE lf.lotto_id = p_lotto_id
+                     AND f.billing_account_id = v_ba_id
+                     AND f.tipo_doc_fiscale_id = v_tipo_doc_id
+                     AND f.valuta_id = v_valuta_id
+                     AND f.emittente_soggetto_ruolo_id = v_emittente_id
+                     AND f.reseller_soggetto_ruolo_id IS NOT DISTINCT FROM v_reseller_id
+                     AND f.utility_id IS NOT DISTINCT FROM v_utility_id
+                     AND f.registro_id = v_registro_id
+                     AND f.termine_pagamento_id IS NOT DISTINCT FROM v_termine_id
+                     AND f.modalita_pagamento_id IS NOT DISTINCT FROM v_modalita_id
+                   ORDER BY f.id LIMIT 1;
+
+                  IF v_fattura_id IS NOT NULL THEN RETURN v_fattura_id; END IF;
+
+                  -- Crea fattura + link lotto. Le colonne di testata sono il
+                  -- secondo specchio: quello che la chiave ha deciso, qui si
+                  -- scrive.
+                  INSERT INTO vendite.fatture (registro_id, data, tipo_doc_fiscale_id, stato_doc_fiscale_id,
+                      emittente_soggetto_ruolo_id, billing_account_id, reseller_soggetto_ruolo_id,
+                      utility_id, valuta_id, tasso_cambio,
+                      termine_pagamento_id, modalita_pagamento_id, meta)
+                  VALUES (v_registro_id, current_date, v_tipo_doc_id, v_stato_doc_id,
+                      v_emittente_id, v_ba_id, v_reseller_id,
+                      v_utility_id, v_valuta_id, 1,
+                      v_termine_id, v_modalita_id, jsonb_build_object('lotto_id', p_lotto_id))
+                  RETURNING id INTO v_fattura_id;
+
+                  INSERT INTO vendite.fatturazione_lotti_fatture (lotto_id, fattura_id, meta)
+                  VALUES (p_lotto_id, v_fattura_id, jsonb_build_object('origine', 'bozza'));
+
+                  RETURN v_fattura_id;
+              END;
+              $function$;
+
+              -- ── 4/5 — guard di coerenza lotto <-> fatture ──────────────
+              CREATE OR REPLACE FUNCTION vendite.fn_guard_lotto_fatture_stato_coerente(
+                  p_lotto_id vendite.fatturazione_lotti.id%TYPE
+              )
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              -- rev 2026-08-04 (D-M): via i due predicati su lf.esclusa e il
+              --   campo `esclusa` dal jsonb di diagnostica. Quel campo serviva
+              --   a spiegare perche' una fattura NON compariva fra le
+              --   incoerenti: con il flag morto diceva sempre false, cioe'
+              --   occupava spazio nel messaggio senza informare. Resta la sola
+              --   eccezione `critical`, che e' viva.
+              DECLARE
+                v_stato_lotto vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE;
+                v_count       integer;
+                v_dettaglio   jsonb;
+              BEGIN
+                IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                  RETURN;
+                END IF;
+
+                -- Il lotto puo' essere stato cancellato nella stessa transazione:
+                -- essendo il check differito, qui la riga potrebbe non esserci piu'.
+                SELECT l.stato_doc_fiscale_id
+                  INTO v_stato_lotto
+                  FROM vendite.fatturazione_lotti l
+                 WHERE l.id = p_lotto_id;
+
+                IF NOT FOUND THEN
+                  RETURN;
+                END IF;
+
+                -- Limite documentato: senza stato lotto il confronto non e'
+                -- significativo (vedi testata del changeset).
+                IF v_stato_lotto IS NULL THEN
+                  RETURN;
+                END IF;
+
+                -- Fatture disallineate, esclusa l'eccezione di semantica.
+                -- Conteggio completo: e' il numero riportato nel messaggio.
+                SELECT count(*)
+                  INTO v_count
+                  FROM vendite.fatturazione_lotti_fatture lf
+                  JOIN vendite.fatture f ON f.id = lf.fattura_id
+                 WHERE lf.lotto_id = p_lotto_id
+                   AND COALESCE(f.critical, FALSE) IS FALSE
+                   AND f.stato_doc_fiscale_id IS DISTINCT FROM v_stato_lotto;
+
+                IF v_count = 0 THEN
+                  RETURN;
+                END IF;
+
+                SELECT jsonb_agg(x.riga ORDER BY x.fattura_id)
+                  INTO v_dettaglio
+                  FROM (
+                    SELECT f.id AS fattura_id,
+                           jsonb_build_object(
+                             'fattura_id',       f.id,
+                             'stato_fattura_id', f.stato_doc_fiscale_id,
+                             'critical',         COALESCE(f.critical, FALSE)
+                           ) AS riga
+                      FROM vendite.fatturazione_lotti_fatture lf
+                      JOIN vendite.fatture f ON f.id = lf.fattura_id
+                     WHERE lf.lotto_id = p_lotto_id
+                       AND COALESCE(f.critical, FALSE) IS FALSE
+                       AND f.stato_doc_fiscale_id IS DISTINCT FROM v_stato_lotto
+                     ORDER BY f.id
+                     LIMIT 20
+                  ) x;
+
+                PERFORM script.fn_log_and_raise_error(
+                  'vendite',
+                  'fn_guard_lotto_fatture_stato_coerente',
+                  'E_LOTTO_FATTURE_STATO_INCOERENTE',
+                  jsonb_build_object(
+                    'detail',              'Stato fatture non allineato allo stato del lotto a fine transazione',
+                    'lotto_id',            p_lotto_id,
+                    'stato_lotto_id',      v_stato_lotto,
+                    'fatture_incoerenti',  COALESCE(v_dettaglio, '[]'::jsonb),
+                    'totale_incoerenti',   v_count,
+                    'rimedio',             'SELECT vendite.fn_sync_lotto_fatture_stato(' || p_lotto_id::text || ', <stato_target>)'
+                  ),
+                  NULL::uuid,
+                  p_lotto_id::text,
+                  v_count::text
+                );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_guard_lotto_fatture_stato_coerente(bigint)
+              IS 'Guard dell''invariante lotto <-> fatture: solleva E_LOTTO_FATTURE_STATO_INCOERENTE (556) se il lotto ha fatture non critical con stato_doc_fiscale_id diverso dal proprio. Pensata per essere invocata da un CONSTRAINT TRIGGER DEFERRED (valutazione al COMMIT): gli stati intermedi dentro la transazione sono leciti. No-op se il lotto non esiste piu'' o ha stato NULL. rev 2026-08-04 (D-M): via l''eccezione `esclusa` — il flag era dormiente — e via il campo omonimo dal jsonb di diagnostica, che diceva sempre false. Resta la sola eccezione `critical`, che e'' viva e valorizzata da fn_sync_fatture_log_critical_lotto.';
+
+              -- ── 5/5 — vista delle incoerenze ──────────────────────────
+              -- ⚠️ `security_invoker=on` va RI-SPECIFICATA: non e' visibile in
+              -- pg_get_viewdef e un CREATE OR REPLACE senza reloption la
+              -- azzera in silenzio, riaprendo il buco RLS sull'emittente.
+              CREATE OR REPLACE VIEW vendite.vw_lotti_fatture_incoerenti
+              WITH (security_invoker=on) AS
+              SELECT l.id AS lotto_id,
+                  l.codice AS lotto_codice,
+                  l.tipo_lotto,
+                  l.stato_operativo,
+                  l.stato_doc_fiscale_id AS stato_lotto_id,
+                  sl.codice_interno AS stato_lotto_codice_interno,
+                  sl.codice AS stato_lotto_codice,
+                  f.id AS fattura_id,
+                  f.anno AS fattura_anno,
+                  f.serie AS fattura_serie,
+                  f.numero AS fattura_numero,
+                  f.stato_doc_fiscale_id AS stato_fattura_id,
+                  sf.codice_interno AS stato_fattura_codice_interno,
+                  sf.codice AS stato_fattura_codice,
+                  l.data_update AS lotto_data_update,
+                  f.data_update AS fattura_data_update
+                 FROM ((((vendite.fatturazione_lotti l
+                   JOIN vendite.fatturazione_lotti_fatture lf ON ((lf.lotto_id = l.id)))
+                   JOIN vendite.fatture f ON ((f.id = lf.fattura_id)))
+                   LEFT JOIN config.stati_doc_fiscale sl ON ((sl.id = l.stato_doc_fiscale_id)))
+                   LEFT JOIN config.stati_doc_fiscale sf ON ((sf.id = f.stato_doc_fiscale_id)))
+                WHERE ((COALESCE(f.critical, false) IS FALSE) AND (f.stato_doc_fiscale_id IS DISTINCT FROM l.stato_doc_fiscale_id));
+
+              COMMENT ON VIEW vendite.vw_lotti_fatture_incoerenti
+              IS 'Elenco delle fatture il cui stato fiscale non coincide con quello del lotto che le contiene: e'' la lista di lavoro dell''invariante presidiato da fn_guard_lotto_fatture_stato_coerente. rev 2026-08-04 (D-M): via il predicato su lf.esclusa, flag dormiente; resta la sola eccezione critical. ⚠️ security_invoker=on: da ri-specificare in ogni CREATE OR REPLACE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              SELECT 1;

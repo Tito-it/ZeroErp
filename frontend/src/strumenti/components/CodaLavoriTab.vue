@@ -8,24 +8,29 @@
 //        gated (proprie o code_manage). `is_mio` arriva dal BE (P-5: il FE non
 //        confronta identità). Gate stato sui CODICI stabili (I-2), enforcement
 //        vero nel BE (I-3: qui si nasconde, là si blinda).
-import { ref, computed } from 'vue'
+//
+//        Convertita a <ListaConfigurabile> (config DB `dbops.coda_lavori`,
+//        ui.lista_definizione id 34 — 7° lotto, 2026-08-03): personalizzazione
+//        colonne + ordinamento server-side (whitelist BE ELENCA_SORT_SQL,
+//        estesa a `stato`/`proprietario` il 2026-08-02) + preset
+//        `started_at desc` che replica il default BE. Stato lista nello store
+//        Pinia `useCodaLavoriStore` (stores/codeJobs.js).
+import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import Tag from 'primevue/tag'
+import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
+import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useNotify } from '../../core/composables/useNotify'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { usePagedDashFetch } from '../../core/composables/usePagedDashFetch'
 import { extractApiError } from '../../core/utils/apiError'
-import { displayTimestamp } from '../../core/utils/date'
 import { statoCodaLavoriSeverity, STATO_CODA_LAVORI_MAP } from '../../core/utils/severity'
-import { MANAGE_ICONS, PAGINATION } from '../../core/constants'
-import { annullaCodaLavoro, listCodaLavori, requeueCodaLavoro } from '../../core/api/tracciamento'
-import { useLazyTabLoad } from '../../core/composables/useLazyTabLoad'
+import { annullaCodaLavoro, requeueCodaLavoro } from '../../core/api/tracciamento'
 import { useCodaFiltri } from '../composables/useCodaFiltri'
+import { useCodaLavoriStore } from '../stores/codeJobs'
 import CodaFiltriToolbar from './CodaFiltriToolbar.vue'
 import CodaWorkerStato from './CodaWorkerStato.vue'
 import JobDettaglioDrawer from './JobDettaglioDrawer.vue'
@@ -36,60 +41,41 @@ const { execute, loading: azioneLoading } = useApiHandler()
 const { confirmAction } = useConfirmAction()
 const isReadonly = useInjectReadonly()
 
-// Filtri condivisi dei tab code (ambito, stato, date con default anno-1) —
-// composable estratto alla 2ª copia (regola del 2). Default per questo tab
-// (2026-07-23, richiesta Tid): stato IN_CORSO (la domanda primaria è «cosa
-// sta girando ora»), ordinamento «avviato» discendente.
-const {
-  filtri, ordinamento, applySortEvent,
-  canManage, statoOptions, ambitoOptions, buildParams,
-} = useCodaFiltri(STATO_CODA_LAVORI_MAP, {
-  statoDefault: 'IN_CORSO',
-  sortDefault: { field: 'started_at', order: -1 },
-})
+const store = useCodaLavoriStore()
 
-// Scopo: fetch di pagina per il BB paginato (filtri correnti in query).
-function fetchPage(paging) {
-  return listCodaLavori(buildParams(paging))
-}
-
-const {
-  items, count, page, pageSize, loading, fetch: fetchJobs, applyPageEvent,
-} = usePagedDashFetch(fetchPage, { defaultPageSize: PAGINATION.DEFAULT_ROWS })
+// Helper UI condivisi dei tab code (opzioni + gate azioni code_manage).
+const { canManage, statoOptions, ambitoOptions } = useCodaFiltri(STATO_CODA_LAVORI_MAP)
 
 // Stato worker: ricaricato insieme alla lista, così «Ricarica» aggiorna anche
 // l'ultimo giro (altrimenti resterebbe fermo al primo ingresso nel tab).
 const workerStatoRef = ref(null)
 
+// Scopo: fetch con refresh worker e cattura errore (fail-visible: una tabella
+//        vuota per errore non deve sembrare "coda vuota").
 async function load() {
   workerStatoRef.value?.refresh()
   try {
-    await fetchJobs()
+    await store.fetchList()
   } catch (err) {
     notify.error(extractApiError(err, t('common.error')))
   }
 }
 
-function onPage(event) {
-  applyPageEvent(event)
-  load()
-}
+const {
+  onPage, onSort, paginatorProps, tablePage,
+  listaRef, dirty, onConfigLoaded, pageActions,
+} = useListaConfigurabilePage(store, { onReload: load })
 
+// Cambio filtro toolbar: si riparte da pagina 1.
 function onFilterChange() {
-  page.value = 1
+  store.filters.offset = 0
   load()
 }
 
-// Scopo: sort lazy della DataTable — aggiorna lo stato e ricarica da pagina 1
-//        (l'ordinamento è server-side: la pagina corrente non ha più senso).
-function onSort(event) {
-  applySortEvent(event)
-  onFilterChange()
-}
-
-// Primo popolamento + freshness al rientro, senza doppio fetch iniziale
-// (BB estratto alla 3ª copia — la spiegazione del pattern vive lì).
-useLazyTabLoad(load)
+// Primo caricamento al mount: con <Tabs lazy> ogni attivazione del tab è un
+// MOUNT (pattern ResiCodaTable); la freshness al rientro rotta la gestisce
+// l'onActivated di useSearchTable dentro lo scaffolding.
+onMounted(load)
 
 // Drawer dettaglio (FE-6).
 const dettaglioVisible = ref(false)
@@ -166,109 +152,82 @@ function buildRowActions(row) {
   ]
 }
 
-const pageActions = computed(() => [
-  {
-    key: 'reload',
-    kind: 'utility',
-    label: t('common.reload_list'),
-    icon: MANAGE_ICONS.RELOAD,
-    command: load,
-  },
-])
+// Click riga = dettaglio, stesso gate delle azioni.
+function onRowClick(data) {
+  if (data.is_mio === true || canManage.value) apriDettaglio(data)
+}
 </script>
 
 <template>
   <div class="app-tab-content">
     <CodaFiltriToolbar
-      :filtri="filtri"
+      :filtri="store.filters"
       :stato-options="statoOptions"
       :ambito-options="ambitoOptions"
       :page-actions="pageActions"
       @change="onFilterChange"
-    />
+    >
+      <template #actions-suffix>
+        <ListaConfigStatusTag :dirty="dirty" />
+      </template>
+    </CodaFiltriToolbar>
 
     <!-- Liveness del drainer: dice se la coda sta girando o è ferma. Il
          conteggio delle sue esecuzioni è volutamente assente (un poller a
          1/min produce numeri enormi che non informano su nulla). -->
     <CodaWorkerStato ref="workerStatoRef" coda="coda_lavori" />
 
-    <DataTable
-      :value="items"
-      :loading="loading || azioneLoading"
-      :total-records="count"
-      :rows="pageSize"
-      :first="(page - 1) * pageSize"
-      paginator
-      paginator-position="top"
-      lazy
-      :sort-field="ordinamento.field"
-      :sort-order="ordinamento.order"
-      @sort="onSort"
-      scrollable
-      scroll-height="flex"
-      :rows-per-page-options="PAGINATION.ROWS_OPTIONS"
-      class="app-datatable app-datatable--inner"
-      striped-rows
+    <ListaConfigurabile
+      ref="listaRef"
+      codice="dbops.coda_lavori"
       data-key="id"
+      :rows="store.items"
+      :total="store.totalRecords"
+      :loading="store.loading || azioneLoading"
+      :paginator-options="paginatorProps"
+      :page="tablePage"
+      :sort-field="paginatorProps.sortField"
+      :sort-order="paginatorProps.sortOrder"
       @page="onPage"
-      @row-click="({ data }) => (data.is_mio === true || canManage) && apriDettaglio(data)"
+      @sort="onSort"
+      @row-click="onRowClick"
+      @config-loaded="onConfigLoaded"
     >
-      <Column field="id" header="ID" sortable style="width: 80px;" />
-      <Column field="job_type" :header="t('strumenti.code.col_tipo')" sortable>
-        <template #body="{ data }">
-          <span class="app-code-tipo">{{ data.job_type }}</span>
-        </template>
-      </Column>
-      <Column field="stato" :header="t('strumenti.code.col_stato')" style="width: 120px;">
-        <template #body="{ data }">
-          <Tag :value="data.stato" :severity="statoCodaLavoriSeverity(data.stato)" />
-        </template>
-      </Column>
-      <Column
-        v-if="filtri.ambito === 'tutti'"
-        field="proprietario"
-        :header="t('strumenti.code.col_proprietario')"
-        style="width: 140px;"
-      >
-        <template #body="{ data }">
-          <span>
-            {{ data.proprietario ?? '—' }}
-            <Tag
-              v-if="data.is_mio"
-              :value="t('strumenti.code.mio_tag')"
-              severity="info"
-              class="app-code-mio-tag"
-            />
-          </span>
-        </template>
-      </Column>
-      <Column :header="t('strumenti.code.col_tentativi')" style="width: 100px;">
-        <template #body="{ data }">
-          {{ data.tentativi }}/{{ data.max_tentativi }}
-        </template>
-      </Column>
-      <Column field="started_at" :header="t('strumenti.code.col_avviato')" sortable style="width: 150px;">
-        <template #body="{ data }">
-          {{ data.started_at ? displayTimestamp(data.started_at) : '—' }}
-        </template>
-      </Column>
-      <Column field="ended_at" :header="t('strumenti.code.col_concluso')" sortable style="width: 150px;">
-        <template #body="{ data }">
-          {{ data.ended_at ? displayTimestamp(data.ended_at) : '—' }}
-        </template>
-      </Column>
-      <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
-        <template #body="{ data }">
-          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
-        </template>
-      </Column>
+      <template #cell-job_type="{ data }">
+        <span class="app-code-tipo">{{ data.job_type }}</span>
+      </template>
+      <template #cell-stato="{ data }">
+        <Tag :value="data.stato" :severity="statoCodaLavoriSeverity(data.stato)" />
+      </template>
+      <template #cell-proprietario="{ data }">
+        <span>
+          {{ data.proprietario ?? '—' }}
+          <Tag
+            v-if="data.is_mio"
+            :value="t('strumenti.code.mio_tag')"
+            severity="info"
+            class="app-code-mio-tag"
+          />
+        </span>
+      </template>
+      <!-- Colonna calcolata FE (seed: campo_sorgente vuoto, ordinabile=f). -->
+      <template #cell-tentativi="{ data }">
+        {{ data.tentativi }}/{{ data.max_tentativi }}
+      </template>
+      <!-- started_at/ended_at non hanno slot: il seed dichiara
+           `datetime_short` e il formatter di serie le rende gia' cosi'. -->
+
+      <template #actions="{ data, compact }">
+        <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
+      </template>
+
       <template #empty>
         <div class="app-empty-state">
           <i class="pi pi-inbox" />
           <p>{{ t('strumenti.code.nessuna_riga') }}</p>
         </div>
       </template>
-    </DataTable>
+    </ListaConfigurabile>
 
     <JobDettaglioDrawer
       v-model:visible="dettaglioVisible"

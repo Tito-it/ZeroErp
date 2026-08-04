@@ -14,7 +14,7 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import row_to_dict, rows_to_list, sql_order_direction
+from apps.core.db._helpers import row_to_dict, rows_to_list, sql_order_direction, sql_tiebreak_direction
 
 
 # Whitelist colonne ammesse per ORDER BY: protegge da SQL injection sul
@@ -39,6 +39,10 @@ _RUOLO_EF_CODICE = "EF"
 # Frammento SQL FROM+JOIN+WHERE comune alle query usage emittenti fiscali.
 # Estratto per garantire allineamento tra count e list (evita drift in caso
 # di refactor di una sola delle due).
+# Il soggetto dell'emittente serve solo alla list (ragione sociale a video), ma
+# sta qui perche' il frammento e' condiviso: i due JOIN sono 1:1 su PK
+# (`emittenti_fiscali.soggetto_ruolo_id` e' NOT NULL + UNIQUE) e non alterano
+# la cardinalita' della count.
 _USAGE_FROM_WHERE = """
     FROM config.utilities_tipi_ruolo utr
     JOIN config.tipi_ruoli tr
@@ -47,6 +51,10 @@ _USAGE_FROM_WHERE = """
       ON efu.utility_id = utr.utility_id
     JOIN anagrafiche.emittenti_fiscali ef
       ON ef.soggetto_ruolo_id = efu.emittente_soggetto_ruolo_id
+    JOIN anagrafiche.soggetti_ruoli sr_ef
+      ON sr_ef.id = ef.soggetto_ruolo_id
+    JOIN anagrafiche.soggetti s_ef
+      ON s_ef.id = sr_ef.soggetto_id
    WHERE utr.id = %s
      AND COALESCE(tr.codice_interno, tr.codice) = %s
 """
@@ -75,6 +83,7 @@ class UtilitiesTipiRuoloRepository:
     ) -> tuple[list[dict[str, Any]], int]:
         order_column = _ORDER_COLS.get(order_by, _ORDER_COLS["utility_descrizione"])
         direction = sql_order_direction(order_dir)
+        tiebreak_dir = sql_tiebreak_direction(direction)
         safe_limit = max(1, min(int(limit), 200))
         safe_offset = max(0, int(offset))
 
@@ -139,7 +148,7 @@ class UtilitiesTipiRuoloRepository:
                   JOIN config.utilities  u  ON u.id  = utr.utility_id
                   JOIN config.tipi_ruoli tr ON tr.id = utr.tipo_ruolo_id
                 {where_clause}
-                ORDER BY {order_column} {direction}, utr.id ASC
+                ORDER BY {order_column} {direction}, utr.id {tiebreak_dir}
                 LIMIT %s OFFSET %s
                 """,  # noqa: S608
                 params + [safe_limit, safe_offset],
@@ -252,15 +261,20 @@ class UtilitiesTipiRuoloRepository:
         safe_limit = max(1, min(int(limit), 200))
         safe_offset = max(0, int(offset))
         total_count = self.count_emittenti_usage(record_id)
+        # `emittente_descrizione` porta la ragione sociale del SOGGETTO
+        # dell'emittente, non `emittenti_fiscali.descrizione` (etichetta interna
+        # divergente, in via di eliminazione — brief
+        # `brief-emittente-ragione-sociale-dal-soggetto.md`). L'alias resta
+        # invariato: il FE non si accorge del cambio di sorgente.
         sql = f"""
-            SELECT ef.id            AS emittente_id,
-                   ef.codice        AS emittente_codice,
-                   ef.descrizione   AS emittente_descrizione,
-                   ef.attivo        AS emittente_attivo,
-                   efu.id           AS override_id,
-                   efu.attivo       AS override_attivo
+            SELECT ef.id                         AS emittente_id,
+                   ef.codice                     AS emittente_codice,
+                   s_ef.ragione_sociale_completa AS emittente_descrizione,
+                   ef.attivo                     AS emittente_attivo,
+                   efu.id                        AS override_id,
+                   efu.attivo                    AS override_attivo
             {_USAGE_FROM_WHERE}
-             ORDER BY ef.descrizione ASC, ef.codice ASC
+             ORDER BY s_ef.ragione_sociale_completa ASC, ef.codice ASC
              LIMIT %s OFFSET %s
         """  # noqa: S608
         with connection.cursor() as cursor:

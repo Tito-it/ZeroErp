@@ -16,10 +16,14 @@ from django.db import connection
 from apps.core.db._helpers import row_to_dict, rows_to_list
 from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
 
+# `attivo` e' NUCLEO: lo stato ordina sempre. Aggiunta in anticipo sul seed
+# della lista articoli (passata unica 2026-08-01, richiesta del team DB: la
+# stessa voce mancava su nove whitelist e sarebbe arrivata un lotto per volta).
 ARTICOLI_ORDER_COLUMNS: dict[str, str] = {
     "codice": "a.codice",
     "descrizione": "a.descrizione",
     "uom_codice": "a.uom_codice",
+    "attivo": "a.attivo",
     "data_insert": "a.data_insert",
     "data_update": "a.data_update",
 }
@@ -56,14 +60,15 @@ UOM_ORDER_COLUMNS: dict[str, str] = {  # alias: u = catalogo.unita_misura
 #
 # `valido_dal`/`valido_al` pronte dal 2026-08-01 (regola di dominio: le date di
 # validita', quando una lista le mostra, ordinano SEMPRE — e `valido_al` e' il
-# default d'elezione). Il seed delle due colonne e' in arrivo dal team DB;
-# tenerle gia' qui evita la finestra di frecce bugiarde alla consegna.
+# default d'elezione). Il seed delle due colonne e' arrivato dal team DB lo
+# stesso giorno (lista_colonna 296/297, `ordinabile=t`): contratto allineato,
+# presidiato da test_liste_configurabili_seed.
 UOM_CONVERSIONI_ORDER_COLUMNS: dict[str, str] = {
     "uom_from_codice": "uf.codice",
     "uom_to_codice": "ut.codice",
     "fattore": "c.fattore",
     "valido_dal": "c.valido_dal",
-    "valido_al": "c.valido_al",
+    "valido_al": "COALESCE(c.valido_al, 'infinity'::date)",
     "attivo": "c.attivo",
 }
 
@@ -240,7 +245,7 @@ class CatalogoRepository:
                 {self._articoli_detail_projection()}
             FROM catalogo.vw_articoli_dettaglio a
             {where_clause}
-            ORDER BY {order_column} {safe_order_dir}, a.id ASC
+            ORDER BY {order_column} {safe_order_dir}, a.id {safe_order_dir}
             LIMIT %s OFFSET %s
         """
 
@@ -515,7 +520,7 @@ class CatalogoRepository:
                        ut.user_insert, ut.user_update, ut.data_insert, ut.data_update
                 FROM catalogo.uom_tipi ut
                 {where_clause}
-                ORDER BY {order_column} {safe_order_dir}, ut.id ASC
+                ORDER BY {order_column} {safe_order_dir}, ut.id {safe_order_dir}
                 LIMIT %s OFFSET %s
                 """,
                 params + [safe_limit, safe_offset],
@@ -623,7 +628,7 @@ class CatalogoRepository:
                 FROM catalogo.unita_misura u
                 JOIN catalogo.uom_tipi ut ON ut.id = u.tipo_uom_id
                 {where_clause}
-                ORDER BY {order_column} {safe_order_dir}, u.id ASC
+                ORDER BY {order_column} {safe_order_dir}, u.id {safe_order_dir}
                 LIMIT %s OFFSET %s
                 """,
                 params + [safe_limit, safe_offset],
@@ -728,7 +733,7 @@ class CatalogoRepository:
                 JOIN catalogo.unita_misura uf ON uf.id = c.uom_from_id
                 JOIN catalogo.unita_misura ut ON ut.id = c.uom_to_id
                 {where_clause}
-                ORDER BY {order_column} {safe_order_dir}, c.id ASC
+                ORDER BY {order_column} {safe_order_dir}, c.id {safe_order_dir}
                 LIMIT %s OFFSET %s
                 """,
                 params + [safe_limit, safe_offset],

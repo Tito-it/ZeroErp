@@ -1,0 +1,128 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 4 del cantiere emittente — la lista 18 (anagrafiche.emittenti_fiscali)
+#   smette di mostrare e di ordinare per una colonna che non esiste piu'
+#   (brief-emittente-ragione-sociale-dal-soggetto.md §5 Fase 4.3)
+#
+# ── PERCHE' SERVE UN CHANGESET E NON BASTA IL CSV ────────────────────────
+#   I quattro loader di ui.lista_* sono `loadUpdateData`: mirror VIVI dei CSV
+#   in inserimento e aggiornamento, ma **non cancellano nulla**. Togliere la
+#   riga dal CSV la fa sparire dal repository e la lascia nel database, cioe'
+#   il caso peggiore: invisibile a chi legge il seed, viva per chi legge la
+#   lista. Le due DELETE qui sotto sono l'unico modo di chiudere il cerchio.
+#   Le modifiche ai CSV accompagnano questo file (colonna 261 e il suo
+#   aggancio al preset rimossi, `ordinamento_default` del preset 18 riscritto).
+#
+# ── COSA CAMBIA A VIDEO ─────────────────────────────────────────────────
+#   La colonna *Descrizione* sparisce dall'elenco emittenti fiscali. Al suo
+#   posto resta *Ragione sociale* (colonna 262), che c'era gia', legge
+#   `ragione_sociale_completa` ed e' gia' ordinabile: nessuna colonna nuova da
+#   seedare, nessuna chiave i18n nuova.
+#
+# ── L'ORDINAMENTO DI APERTURA, E LA TRAPPOLA CHE C'E' DENTRO ────────────
+#   Il preset 18 apriva la lista ordinata per `descrizione`. Ora ordina per
+#   ⚠️ **`ragione_sociale_completa`, cioe' il `campo_sorgente`, NON il `codice`
+#   logico** (`ragione_sociale`). <ListaConfigurabile> monta le Column su
+#   `campo_sorgente`, quindi e' quello il nome che arriva al backend.
+#   E' esattamente l'errore che il 4o controllo di
+#   `gen_seed_lista.py --verifica-ordinamento` ha stanato su
+#   `anagrafiche.clienti`, dove era rimasto rotto da maggio senza che nessuno
+#   se ne accorgesse: un ordinamento di apertura sbagliato non da' errore,
+#   semplicemente non ordina.
+#   ✅ `ragione_sociale_completa` e' gia' in `_EMITTENTI_ORDER_COLS`, quindi
+#   il presidio resta verde senza chiedere niente al BE.
+#
+# 🔴 UNA VOCE PER IL BE, che non e' nel perimetro di questo changeSet.
+#   `_EMITTENTI_ORDER_COLS` usa `"descrizione"` anche come **default** del
+#   fallback (`.get(order_by, _EMITTENTI_ORDER_COLS["descrizione"])`): non e'
+#   solo una voce di whitelist da togliere, e' l'ordinamento applicato a OGNI
+#   query non ordinata della lista emittenti. Dopo la DROP quel default punta
+#   a una colonna inesistente. Da confermare allineato prima dell'apply.
+#
+# ── ORDINE DELLE DUE DELETE ─────────────────────────────────────────────
+#   Prima l'aggancio al preset, poi la colonna: `lista_preset_colonna` ha la
+#   FK verso `lista_colonna`. Verificato che non ci siano righe in
+#   `ui.lista_colonna_permesso` per la 261 (sono le uniche due tabelle dello
+#   schema `ui` con `colonna_id`).
+#
+#   Gira dopo i loader `20260507-06/07/08/09`: `includeAll` su 80_data ordina
+#   per nome file, e 20260802-23 > 20260507-09.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260802-23-seed-ui-lista-18-drop-colonna-descrizione-mctit.yaml
+
+  - changeSet:
+      id: 20260802-23-seed-ui-lista-18-drop-colonna-descrizione
+      author: mctit
+      failOnError: true
+      comment: >
+        Lista 18 (anagrafiche.emittenti_fiscali): elimina la colonna di
+        catalogo `descrizione` e il suo aggancio al preset, ora che la colonna
+        fisica e' stata droppata (20260802-22). L'ordinamento di apertura passa
+        a ragione_sociale_completa. Le DELETE servono perche' loadUpdateData
+        non cancella: togliere la riga dal CSV non basta.
+      preConditions:
+        - onFail: HALT
+        - and:
+          # La lista esiste e la colonna di catalogo e' ancora li'.
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM ui.lista_definizione
+                 WHERE codice = 'anagrafiche.emittenti_fiscali';
+          # La colonna che la sostituisce c'e' gia' ed e' ordinabile:
+          # senza questa, la lista resterebbe senza denominazione.
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM ui.lista_colonna lc
+                  JOIN ui.lista_definizione ld ON ld.id = lc.lista_id
+                 WHERE ld.codice = 'anagrafiche.emittenti_fiscali'
+                   AND lc.campo_sorgente = 'ragione_sociale_completa'
+                   AND lc.ordinabile IS TRUE
+                   AND lc.attivo IS TRUE;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM ui.lista_preset_colonna pc
+               USING ui.lista_colonna lc,
+                     ui.lista_definizione ld
+               WHERE pc.colonna_id = lc.id
+                 AND lc.lista_id   = ld.id
+                 AND ld.codice     = 'anagrafiche.emittenti_fiscali'
+                 AND lc.codice     = 'descrizione';
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM ui.lista_colonna lc
+               USING ui.lista_definizione ld
+               WHERE lc.lista_id = ld.id
+                 AND ld.codice   = 'anagrafiche.emittenti_fiscali'
+                 AND lc.codice   = 'descrizione';
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Ordinamento di apertura: il campo_sorgente, non il codice logico.
+              UPDATE ui.lista_preset p
+                 SET ordinamento_default = '[{"col":"ragione_sociale_completa","dir":"asc"}]'::jsonb
+                FROM ui.lista_definizione ld
+               WHERE p.lista_id = ld.id
+                 AND ld.codice  = 'anagrafiche.emittenti_fiscali'
+                 AND p.codice   = 'emittenti_fiscali_default';

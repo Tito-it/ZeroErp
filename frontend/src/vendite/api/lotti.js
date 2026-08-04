@@ -148,6 +148,19 @@ export function resetLottoDraft(lottoId) {
   )
 }
 
+// POST ritorno del lotto a BOZZA (Fase 6). Da non confondere con
+// `resetLottoDraft` qui sopra, che invece CHIUDE il lotto: questo lo rimette in
+// lavorazione perché si possa correggere a monte e rifare il giro. Le fatture
+// si cancellano comunque — è un rollback, non una riapertura — ma il rilancio
+// le rigenera, e le righe di commessa tornano «da emettere».
+export function riportaLottoADraft(lottoId) {
+  return api.post(
+    `${BASE}/${lottoId}/riporta-a-draft/`,
+    {},
+    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+  )
+}
+
 // POST reset di una singola fattura del lotto a DRAFT (fattura strettamente DRAFT).
 export function resetLottoFatturaDraft(lottoId, fatturaId) {
   return api.post(

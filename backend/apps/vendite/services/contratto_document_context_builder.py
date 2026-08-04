@@ -18,11 +18,14 @@
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
+from apps.documenti.services.context_builders._number_formatting import (
+    format_misura,
+    formatta_campi,
+)
 from apps.documenti.services.context_builders._date_formatting import (
     format_date_it,
     format_date_iso,
@@ -136,6 +139,19 @@ class ContrattoDocumentContextBuilder(DocumentContextBuilder):
                 "codice": testata.get("utility_codice"),
                 "descrizione": testata.get("utility_descrizione"),
             },
+            # Aggiunto il 2026-08-03 insieme a ordine/DDT/preventivo: il
+            # contesto contratto non aveva affatto l'emittente, mentre la
+            # testata lo espone per intero. Il modello di template in
+            # `manual/template_contratto_iniziale.md` ci aveva messo la stringa
+            # cablata «Emittente fiscale demo» — un segnaposto che, copiato in
+            # un template pubblicato, finisce stampato su un documento al
+            # cliente (e' successo su quattro template). Stessa chiave di
+            # fattura/ordine/DDT/preventivo: un nome solo su tutti i documenti.
+            "emittente": {
+                "id": testata.get("emittente_fiscale_id"),
+                "codice": testata.get("emittente_fiscale_codice"),
+                "denominazione": testata.get("emittente_ragione_sociale"),
+            },
             "listino": {
                 "id": testata.get("listino_id"),
                 "codice": testata.get("listino_codice"),
@@ -172,25 +188,22 @@ class ContrattoDocumentContextBuilder(DocumentContextBuilder):
             return "A"
         return "B"
 
+    # Scopo: righe con i numeri pronti per la stampa. Fino al 2026-08-04 qui
+    #        c'era un `_format_decimal_6` locale che forzava SEMPRE sei
+    #        decimali: `120.000000` per un canone di 120 euro. Ora vale la
+    #        regola comune a tutti i documenti (minimo 2, massimo 6, senza
+    #        zeri superflui), quindi «120,00» ma «0,153» dove i decimali sono
+    #        davvero significativi — che era la ragione per cui quei sei
+    #        decimali erano stati messi.
     def _shape_righe(self, righe: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        shaped: list[dict[str, Any]] = []
-        for riga in righe:
-            r = dict(riga)
-            for field in ("prezzo_finale", "prezzo_unitario", "override_prezzo"):
-                if field in r:
-                    r[field] = _format_decimal_6(r.get(field))
-            shaped.append(r)
-        return shaped
-
-
-def _format_decimal_6(value: Any) -> str | None:
-    if value is None:
-        return None
-    try:
-        dec = Decimal(str(value))
-    except (InvalidOperation, ValueError):
-        return str(value)
-    return f"{dec:.6f}"
+        return [
+            formatta_campi(
+                r,
+                misure=("prezzo_finale", "prezzo_unitario", "override_prezzo",
+                        "quantita", "qta_operativa", "quantita_fissa", "factor_to_base"),
+            )
+            for r in righe
+        ]
 
 
 # Registrazione esplicita: l'import del modulo (triggerato da

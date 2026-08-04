@@ -15,21 +15,59 @@ from typing import Any, ClassVar
 
 from django.db import DatabaseError, connection, transaction
 
-from apps.core.db._helpers import row_to_dict, rows_to_list, sql_order_direction
+from apps.core.db._helpers import row_to_dict, rows_to_list, sql_order_direction, sql_tiebreak_direction
 
 from apps.core.services.auth_constants import TIPO_PROFILO_SUPER_ADMIN
 from apps.core.services.error_manager import ErrorManager
 from apps.amm_software.constants import DEFAULT_LIMIT
 from apps.amm_software.types import OperatoreDetailRow, OperatoreRow
 
-# Colonne ammesse per ordinamento lista operatori. Niente piu' "ruolo_sistema":
-# il campo legacy non e' esposto. Per ordinare per stato amministrativo si usa
-# `is_super_admin` o `ruolo_applicativo`.
-ALLOWED_ORDER_COLUMNS = frozenset({
-    "last_name", "soggetto_cognome", "username", "is_super_admin",
-    "ruolo_applicativo", "is_active", "unita_organizzativa_nome",
-    "valido_dal", "valido_al",
-})
+# Whitelist ORDER BY lista operatori: chiave = `campo_sorgente` inviato dal
+# frontend, valore = espressione SQL. Le chiavi che sono alias di output della
+# SELECT restano nude (ORDER BY le risolve solo cosi'). Niente piu'
+# "ruolo_sistema": il campo legacy non e' esposto. Per ordinare per stato
+# amministrativo si usa `is_super_admin` o `ruolo_applicativo`.
+#
+# `valido_al` NULL = incarico senza scadenza, cioe' validita' INFINITA: va in
+# testa in DESC, non in fondo. Senza il COALESCE finirebbe dal lato sbagliato
+# (la SELECT casta a `::text`, quindi l'alias nudo ordinerebbe pure come
+# stringa: qui si ordina la colonna vera).
+ALLOWED_ORDER_COLUMNS: dict[str, str] = {
+    "last_name": "last_name",
+    "soggetto_cognome": "soggetto_cognome",
+    "username": "username",
+    "is_super_admin": "is_super_admin",
+    "ruolo_applicativo": "ruolo_applicativo",
+    "is_active": "is_active",
+    "unita_organizzativa_nome": "unita_organizzativa_nome",
+    "valido_dal": "ru.valido_dal",
+    "valido_al": "COALESCE(ru.valido_al, 'infinity'::date)",
+}
+
+
+# Whitelist ORDER BY del log di audit (`storico.audit_log`): chiave =
+# `campo_sorgente` che il frontend invia come sortField (il nome del campo COME
+# APPARE nel risultato), valore = colonna reale della CTE `events`. I due nomi
+# divergono su tre colonne su quattro, ed e' l'unico posto del sistema dove
+# succede.
+#
+# Era un `frozenset` confrontato DOPO una mappatura interna, e conteneva sia i
+# nomi logici sia quelli SQL. `tabella` -> `code` non tornava (`code` non era
+# nell'insieme): l'ordinamento per *Tabella* ripiegava in silenzio sul default,
+# pur essendo `sortable` a video. Una mappa sola, letta una volta.
+#
+# Vive a livello MODULO come `ALLOWED_ORDER_COLUMNS` qui sopra (era attributo di
+# classe): due whitelist con lo stesso ruolo e due forme diverse nello stesso
+# file sono il modo in cui un presidio finisce per leggere il simbolo sbagliato
+# — e su questa mappa era gia' successo.
+# `dettaglio` non c'e' di proposito: nel seed e' `ordinabile=f` (colonna
+# calcolata lato FE, senza `campo_sorgente`).
+AUDIT_ORDER_COLUMNS: dict[str, str] = {
+    "timestamp": "valid_from",
+    "tabella": "code",
+    "tipo_operazione": "tipo_operazione",
+    "user_modifica": "user_insert",
+}
 
 
 # Fase 8 — Model riservati: non possono essere target di override granulari.
@@ -125,10 +163,13 @@ class AmmSoftwareRepository:
 
         where_clause = " AND ".join(conditions) if conditions else "TRUE"
 
-        # Ordinamento sicuro (whitelist)
-        if order_by and order_by in ALLOWED_ORDER_COLUMNS:
+        # Ordinamento sicuro (whitelist): la mappa traduce il campo inviato dal
+        # client nell'espressione SQL, in un passaggio solo.
+        order_column = ALLOWED_ORDER_COLUMNS.get(order_by or "")
+        if order_column:
             direction = sql_order_direction(order_dir)
-            order_clause = f"ORDER BY {order_by} {direction}, au.id"
+            tiebreak_dir = sql_tiebreak_direction(direction)
+            order_clause = f"ORDER BY {order_column} {direction}, au.id {tiebreak_dir}"
         else:
             order_clause = "ORDER BY soggetto_cognome ASC, au.username ASC, au.id"
 
@@ -149,8 +190,8 @@ class AmmSoftwareRepository:
                    ru.attivo,
                    ru.valido_dal::text,
                    ru.valido_al::text,
-                   (SELECT string_agg(COALESCE(s_ef.ragione_sociale_completa, ef.descrizione), ', '
-                                      ORDER BY COALESCE(s_ef.ragione_sociale_completa, ef.descrizione))
+                   (SELECT string_agg(s_ef.ragione_sociale_completa, ', '
+                                      ORDER BY s_ef.ragione_sociale_completa)
                       FROM config.user_emittenti_fiscali uef
                       JOIN anagrafiche.emittenti_fiscali ef ON ef.id = uef.emittente_fiscale_id
                       LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
@@ -947,12 +988,6 @@ class AmmSoftwareRepository:
 
     _OP_LABELS: dict[int, str] = {1: "INIZIALE", 2: "MODIFICA", 3: "ELIMINAZIONE"}
 
-    # Colonne ammesse per ordinamento audit log (whitelist).
-    _AUDIT_ORDER_COLUMNS: frozenset[str] = frozenset({
-        "timestamp", "valid_from", "user_modifica", "user_insert",
-        "tabella", "tipo_operazione",
-    })
-
     # Scopo: Restituisce le sorgenti audit ammesse (Fase 5).
     #        Single source of truth lato DB: `script.vw_audit_sources` gia'
     #        filtrata `attivo=true` e ordinata per `code`. Sostituisce l'ex
@@ -1094,17 +1129,16 @@ class AmmSoftwareRepository:
             sql += "AND valid_from < (%s::date + INTERVAL '1 day') "
             params.append(data_a)
 
-        # Ordinamento sicuro (whitelist). Il FE manda il nome campo come
-        # appare nel risultato; mappiamo al nome colonna SQL.
-        _col_map = {
-            "timestamp": "valid_from",
-            "user_modifica": "user_insert",
-            "tabella": "code",
-        }
-        safe_col = _col_map.get(order_by, order_by) if order_by else None
-        if safe_col and safe_col in self._AUDIT_ORDER_COLUMNS:
+        # Ordinamento sicuro: la whitelist traduce il nome di risultato nel nome
+        # colonna in un passaggio solo (vedi `AUDIT_ORDER_COLUMNS`).
+        order_column = AUDIT_ORDER_COLUMNS.get(order_by or "")
+        if order_column:
             direction = sql_order_direction(order_dir, default_desc=True)
-            sql += f"ORDER BY {safe_col} {direction}, valid_from DESC "  # noqa: S608
+            # `valid_from DESC` NON e' uno spareggio tecnico ma l'ordine
+            # STORICO delle versioni di una stessa riga (la piu' recente
+            # prima): resta fisso anche ordinando al contrario, altrimenti la
+            # storia di un record si leggerebbe a rovescio.
+            sql += f"ORDER BY {order_column} {direction}, valid_from DESC "  # noqa: S608
         else:
             sql += "ORDER BY valid_from DESC "
         sql += "LIMIT %s OFFSET %s"
@@ -1255,17 +1289,21 @@ class AmmSoftwareRepository:
 
     # Scopo: Lista emittenti fiscali per dropdown scope operatore.
     #        Espone ragione_sociale del soggetto associato via soggetto_ruolo_id.
+    # `emittenti_fiscali.descrizione` non viene piu' proiettata ne' usata come
+    # tiebreaker d'ordine (etichetta interna divergente, in via di eliminazione —
+    # brief `brief-emittente-ragione-sociale-dal-soggetto.md`): il consumer FE
+    # (`formatEmittenteOptionLabel`) legge `ragione_sociale`, gia' presente.
     def list_emittenti_fiscali(self) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
-                """SELECT ef.id, ef.codice, ef.descrizione,
+                """SELECT ef.id, ef.codice,
                           ef.soggetto_ruolo_id,
                           s.ragione_sociale_completa AS ragione_sociale
                      FROM anagrafiche.emittenti_fiscali ef
                      LEFT JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ef.soggetto_ruolo_id
                      LEFT JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
                     WHERE ef.attivo = true
-                    ORDER BY s.ragione_sociale_completa, ef.descrizione"""
+                    ORDER BY s.ragione_sociale_completa, ef.codice"""
             )
             return rows_to_list(cursor)
 

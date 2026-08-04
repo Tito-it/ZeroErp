@@ -398,14 +398,40 @@ avanzamento di step le fatture del lotto vengono allineate (`fn_sync_lotto_fattu
 per **EMESSA(2) prima di DEFINITIVA(8)** — `1→2→8`, **mai** `1→8`. Semantica: non si assegna
 un numero fiscale (DEFINITIVA) a una fattura di cui non si è certificata l'IVA (EMESSA).
 
-* **MASSIVO**: la fattura fa `1→2→8→3`. Lo step EMESSA calcola l'IVA (rifacibile: ha rollback
-  `reset_lotto_draft`), poi DEFINITIVA numera.
-* **GIORNALIERO**: stessa sequenza `1→2→8→3` a livello sia di lotto sia di fattura. L'IVA è già
-  calcolata alla nascita del documento, quindi lo step EMESSA giornaliero non ha task
-  (`processi=[]`): serve solo a portare lotto e fattura a EMESSA prima della numerazione,
-  garantendo lo stesso invariante.
+* **MASSIVO**: la fattura fa `1→2→8→3`. Lo step EMESSA prepara il documento pre-fiscale
+  (rifacibile: ha rollback `reset_lotto_draft`), poi DEFINITIVA numera.
+* **GIORNALIERO**: stessa sequenza `1→2→8→3` a livello sia di lotto sia di fattura, **con gli
+  stessi task** della corsia massiva. Cambia solo il rollback: la corsia immediata non ne ha,
+  perché arriva da sola fino alla numerazione e una fattura numerata non si resetta.
 
-> Rollback: ammesso solo da stati **pre-fiscali** (DRAFT/EMESSA). `fn_reset_lotto_draft`
+> ⚠️ **Correzione (2026-08-02).** Fino a questa data la corsia GIORNALIERO aveva lo step EMESSA
+> **vuoto** (`processi=[]`), e questa guida lo spiegava con «l'IVA è già calcolata alla nascita
+> del documento». **Non era vero**: nessun trigger ricalcola IVA e totali dopo la nascita, quindi
+> quella corsia — se accesa — avrebbe emesso documenti numerati, stampati e inviati allo SDI
+> **senza riepilogo IVA né totali**. Non era una corsia che calcolava meno: era una corsia che
+> emetteva documenti invalidi. Il difetto è rimasto latente solo perché nessun lotto GIORNALIERO
+> era mai stato eseguito. Le due corsie EMESSA sono ora allineate, ed è un **invariante
+> presidiato**: `test-pipeline-processi-invariante-v1.sql` fallisce se una tappa qualsiasi ha
+> corsie con `processi` divergenti, o se una corsia attiva resta vuota.
+
+### I task dello step EMESSA (entrambe le corsie)
+
+| # | Task | Cosa fa |
+|---|---|---|
+| 1 | `genera_fondi_source_lotto` | genera i source di fondi/minimi |
+| 2 | `applica_fondi_lotto` | applica i fondi alle fatture del lotto |
+| 3 | `ricalcola_iva_lotto` | ricalcola riepiloghi IVA e totali — **produce `totale_a_pagare`** |
+| 4 | `genera_scadenze_lotto` | genera il **piano rate** di ogni fattura (`vendite.fatture_scadenze`) |
+
+⚠️ **L'ordine 3 → 4 non è negoziabile**: la base di ripartizione delle rate è `totale_a_pagare`,
+che prima del ricalcolo non esiste. Invertirli farebbe sollevare `E_SCADENZE_BASE_NON_PRONTA` su
+**ogni** fattura del lotto — un giro interamente rosso che sembra un difetto dei dati mentre è
+una riga di configurazione girata. L'ordine è sorvegliato due volte: da
+`_TASK_ORDER_DEPENDENCIES` in `pipeline_step_executor.py` (che rifiuta la sequenza invertita
+prima che il primo task scriva) e dal pgTAP sull'invariante (che impedisce al seed sbagliato di
+nascere).
+
+> Rollback: ammesso solo da stati **pre-fiscali** (DRAFT/EMESSA). `fn_annulla_lotto_da_draft`
 > **cancella** le fatture pre-fiscali del lotto (non numerate); le fiscali (DEFINITIVA in poi)
 > sono rifiutate.
 
@@ -476,7 +502,15 @@ fatture e chiude il lotto**. Non è un rollback reversibile: è una demolizione.
   auto-run, proprio perché distruttivo. Serve una richiesta esplicita
   (`POST /lotti/<id>/reset-draft/`).
 * Per una singola fattura esiste l'alternativa che **non** annulla il lotto:
-  `fn_reset_lotto_fattura_draft` (richiede la fattura **strettamente DRAFT**).
+  `fn_elimina_fattura_da_lotto`. Dal 2026-08-04 il perimetro è **pre-fiscale su
+  entrambi i fronti**: sia il lotto sia la fattura devono essere in DRAFT o
+  EMESSA, cioè non ancora numerati. Prima si pretendeva il lotto in **bozza**, e
+  quel vincolo era di troppo: il caso che motiva l'azione è proprio la fattura
+  difettosa dentro un lotto **emesso**, dove il pulsante c'era e non funzionava.
+  ⚠️ Togliere una fattura vuol dire **cancellarla**, testata compresa, e dopo non
+  è più possibile sapere cosa diceva: resta solo la registrazione storica del suo
+  passaggio nel lotto. È la stessa cosa che il ritorno in bozza fa su tutte le
+  fatture del lotto insieme — qui la si fa su una sola.
 * Se `rollback` è `[]` (array vuoto), lo step non prevede operazioni di pulizia.
 
 ### Regole operative del modello lotti
@@ -596,9 +630,57 @@ aspetto nel tempo**: cambiare la distinta o le regole dell'articolo non tocca i
 documenti già emessi. Rigenerare una fattura passa invece dal reset del lotto,
 che riscrive le righe leggendo le regole correnti.
 
-E **non si numera un documento vuoto**: `fn_assign_numero_fattura` rifiuta una
-fattura senza righe, prima che il progressivo venga consumato — `nextval` non fa
-rollback, quindi fallire dopo lascerebbe comunque un buco nella numerazione.
+### Non si numera un documento incoerente
+
+`fn_assign_numero_fattura` è il **punto unico** in cui il progressivo viene
+assegnato — `fn_numera_fattura_opz_emessa` delega qui — quindi i controlli messi
+lì valgono per qualunque percorso, senza doverli enumerare.
+
+Rifiuta in due casi, entrambi **prima** di consumare il progressivo:
+
+| Codice | Quando |
+|---|---|
+| `E_FATTURA_SENZA_RIGHE` | il documento non ha righe |
+| `E_FATTURA_NON_NUMERABILE_INCOERENTE` (**574**) | il documento è incoerente — sei condizioni, qui sotto |
+
+Le sei condizioni del secondo (guard **D-K**, dal 2026-08-02) non sono un elenco
+di controlli scelti a gusto: verificano una **catena continua**, senza anelli
+scoperti, fra ciò che il documento dichiara e ciò che lo compone.
+
+```text
+riepiloghi IVA ──(5)──► totale_doc ──(6)──► totale_a_pagare ──(3/4)──► rate
+```
+
+1. `totale_a_pagare` è `NULL` — i totali non sono mai stati calcolati;
+2. ci sono righe ma **nessun riepilogo IVA**;
+3. `totale_a_pagare > 0` e **nessuna rata**, oppure Σ rate ≠ `totale_a_pagare`;
+4. `totale_a_pagare <= 0` ma **esistono rate** (un documento non positivo non si
+   rateizza);
+5. i riepiloghi IVA **non quadrano** con i totali di testata;
+6. `totale_a_pagare` **non è la somma dei suoi addendi**
+   (`totale_doc` + fondi + arrotondamenti).
+
+L'errore arriva con **tutti** i motivi insieme, non uno per volta: un solo
+rilancio dice all'operatore tutto ciò che manca al documento.
+
+> ⚠️ **Perché prima del progressivo — e una motivazione da non ripetere.** Fino
+> al 2026-08-02 questa scelta veniva spiegata con «`nextval` non fa rollback,
+> fallire dopo lascerebbe un buco nella numerazione». **Non è vero in questo
+> modello**: `fn_get_next_progressivo` non usa alcuna sequence — è
+> `pg_advisory_xact_lock` + `UPDATE last_numero` su
+> `registri_fatturazione_progressivi` — quindi è transazionale e il numero fa
+> rollback insieme al documento.
+>
+> Le ragioni vere sono altre: non si scrive prima di aver validato; un documento
+> già rotto non deve entrare in contesa sull'advisory lock del registro; e non si
+> dipende dal fatto che il chiamante ripulisca.
+>
+> **Il danno che il guard evita è l'opposto, ed è irreversibile**: un numero
+> fiscale valido su un documento invalido. Una volta numerato il documento è
+> DEFINITIVA, i satelliti sono congelati, e **le rate mancanti non si possono più
+> aggiungere** — si ripara solo con una nota di variazione, quando il documento è
+> già in mano al cliente e magari già allo SDI. Un salto nella sequenza è
+> un'anomalia di registro che si spiega; una fattura sbagliata no.
 
 ---
 

@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D-M passo 5 — si rimette la vista che `20260804-21` ha dovuto togliere
+#   (piano-db-ritorno-lotto-a-draft.md, Slice 6-B B4)
+#
+# ── 🔴 LA LEZIONE, che vale oltre questo changeSet ───────────────────────
+#   `changelog-autogen.yaml` ordina i file **per numero NN**, non per fase:
+#   00_schema e 20_code sono MESCOLATI nella stessa sequenza. Quindi
+#
+#       20_code/20260804-20   gira PRIMA di   00_schema/20260804-21
+#
+#   Il `-20` ricreava la vista senza `esclusa`, il `-21` la droppava per
+#   liberare la colonna, e nessuno la rimetteva: risultato, vista sparita.
+#   La mia assunzione «le fasi ordinano, quindi 00_schema viene prima» era
+#   sbagliata. Ordina solo il NUMERO. (La fase conta per **80_data**, che
+#   sta nel master con `includeAll` dopo l'autogen — di li' viene la
+#   regola nota, e di li' l'equivoco.)
+#
+#   ⚠️ Corollario operativo: quando un changeSet di 00_schema toglie una
+#   dipendenza che un changeSet di 20_code deve ricreare, il ricreatore
+#   deve avere un **numero piu' alto**, non semplicemente stare in
+#   20_code. Qui: 31 > 21.
+#
+# ── COSA FA ──────────────────────────────────────────────────────────────
+#   Ricrea `vendite.vw_lotti_fatture_incoerenti` senza il predicato su
+#   `esclusa`. Resta la sola eccezione `critical`, che e' viva.
+#
+# ── ⚠️ LA RELOPTION ──────────────────────────────────────────────────────
+#   `security_invoker=on` NON e' visibile in `pg_get_viewdef` e va
+#   ri-specificata a ogni creazione: senza, PostgreSQL la azzera in
+#   silenzio e la vista torna a girare coi diritti del proprietario,
+#   scavalcando la RLS emittente. E' la trappola del fix V-1 (2026-07-06).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260804-31-ricrea-vw-lotti-fatture-incoerenti-mctit.yaml
+
+  - changeSet:
+      id: 20260804-31-ricrea-vw-lotti-fatture-incoerenti
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        D-M: rimette vw_lotti_fatture_incoerenti senza il predicato su esclusa.
+        Serve un changeSet a numero piu' alto del 20260804-21 perche'
+        changelog-autogen ordina per NN e non per fase: il 20260804-20 girava
+        prima del DROP e la vista restava a terra.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_lotti_fatture_incoerenti
+              WITH (security_invoker=on) AS
+              SELECT l.id AS lotto_id,
+                  l.codice AS lotto_codice,
+                  l.tipo_lotto,
+                  l.stato_operativo,
+                  l.stato_doc_fiscale_id AS stato_lotto_id,
+                  sl.codice_interno AS stato_lotto_codice_interno,
+                  sl.codice AS stato_lotto_codice,
+                  f.id AS fattura_id,
+                  f.anno AS fattura_anno,
+                  f.serie AS fattura_serie,
+                  f.numero AS fattura_numero,
+                  f.stato_doc_fiscale_id AS stato_fattura_id,
+                  sf.codice_interno AS stato_fattura_codice_interno,
+                  sf.codice AS stato_fattura_codice,
+                  l.data_update AS lotto_data_update,
+                  f.data_update AS fattura_data_update
+                 FROM ((((vendite.fatturazione_lotti l
+                   JOIN vendite.fatturazione_lotti_fatture lf ON ((lf.lotto_id = l.id)))
+                   JOIN vendite.fatture f ON ((f.id = lf.fattura_id)))
+                   LEFT JOIN config.stati_doc_fiscale sl ON ((sl.id = l.stato_doc_fiscale_id)))
+                   LEFT JOIN config.stati_doc_fiscale sf ON ((sf.id = f.stato_doc_fiscale_id)))
+                WHERE ((COALESCE(f.critical, false) IS FALSE) AND (f.stato_doc_fiscale_id IS DISTINCT FROM l.stato_doc_fiscale_id));
+
+              COMMENT ON VIEW vendite.vw_lotti_fatture_incoerenti
+              IS 'Elenco delle fatture il cui stato fiscale non coincide con quello del lotto che le contiene: e'' la lista di lavoro dell''invariante presidiato da fn_guard_lotto_fatture_stato_coerente. rev 2026-08-04 (D-M): via il predicato su lf.esclusa, flag eliminato perche'' dormiente; resta la sola eccezione critical. ⚠️ security_invoker=on: da ri-specificare in ogni CREATE OR REPLACE, non e'' visibile in pg_get_viewdef.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_lotti_fatture_incoerenti;

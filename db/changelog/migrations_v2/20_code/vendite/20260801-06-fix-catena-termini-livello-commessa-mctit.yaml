@@ -1,0 +1,222 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 3b.1 — correzione: alla catena mancava il livello COMMESSA
+#   (piano-db-satelliti-fattura.md §3.3-b riga 3b.1, decisione D-R).
+#
+# ── DIFETTO 1: D-R era inerte ─────────────────────────────────────────────
+#   Il piano prescrive una catena a QUATTRO livelli — «documento sorgente →
+#   commessa → cliente del BA padre → default TP_1RATA» — e la funzione
+#   applicata con `20260801-01` ne ha TRE: il livello commessa non c'e'.
+#
+#   Non e' un dettaglio di completezza, e' D-R che non funziona. D-R ha messo
+#   `termine_pagamento_id` / `modalita_pagamento_id` su `vendite.commesse` e li
+#   ha fatti entrare nella chiave di raggruppamento della commessa, con questa
+#   motivazione: la commessa **possiede** il termine, la sorgente glielo propone
+#   alla nascita e poi esce di scena. Ma se la catena che risolve le condizioni
+#   della fattura non legge quelle colonne, il possesso non ha effetti: due
+#   commesse dello stesso cliente con termini diversi — che D-R ha separato
+#   apposta, al prezzo di una commessa in piu' — tornerebbero in UNA fattura
+#   con il termine del cliente. Cioe' il meccanismo si paga e non si incassa.
+#
+#   Misurato sul DB il 2026-08-01: **34 attivita' su 34 hanno `commessa_id`**,
+#   e `vendite.ordini`/`vendite.preventivi` sono vuote — quindi il livello 1
+#   (documento sorgente) oggi non risponde mai e il livello mancante e'
+#   esattamente l'unico che avrebbe qualcosa da dire. `commesse` con termine
+#   valorizzato sono ancora 0, quindi **nessun dato e' sbagliato oggi**: il
+#   difetto e' latente e si accende al primo push che porta un termine.
+#
+#   Perche' la commessa sta PRIMA del cliente: e' piu' specifica, e soprattutto
+#   e' l'unico ordine che rende stabile il documento nel tempo — cambiare le
+#   condizioni di un cliente non deve riscrivere le condizioni delle commesse
+#   gia' aperte, che sono state raggruppate sotto quel termine.
+#
+# ── DIFETTO 2: `SELECT ... INTO` senza righe AZZERA i valori gia' risolti ──
+#   In PL/pgSQL un `SELECT ... INTO v_a, v_b` che non trova righe non lascia le
+#   variabili come stavano: le mette a **NULL**. Il livello cliente e' scritto
+#   come `SELECT COALESCE(v_termine, cl.termine_pagamento_id) ... INTO
+#   v_termine, v_modalita FROM billing_account JOIN clienti ...`, e la JOIN e'
+#   inner: se il BA padre non ha una riga cliente sulla sua istanza, la query
+#   torna **zero righe** e quel COALESCE — scritto apposta per non sovrascrivere
+#   il livello a monte — non viene nemmeno valutato. Risultato: un termine
+#   risolto dal documento sorgente verrebbe **cancellato** dal livello
+#   successivo, e la catena cadrebbe sul default. Il ramo e' irraggiungibile
+#   oggi solo perche' il livello 1 non ha dati; lo diventa appena ne ha.
+#
+#   Rimedio: ogni livello legge in variabili PROPRIE e la fusione si fa dopo,
+#   con un `COALESCE` in codice. Cosi' «non ho trovato niente» e «ho trovato
+#   NULL» smettono di essere la stessa cosa — che e' la forma generale dello
+#   stesso errore gia' pagato tre volte in questa fase sui confronti (`IS NOT
+#   DISTINCT FROM` in 3b.0-b e 3b.3, `NULLS NOT DISTINCT` in 3b.4-bis).
+#
+# NESSUNA DROP: firma e `RETURNS TABLE` restano identici a `20260801-01`,
+#   quindi `CREATE OR REPLACE` sostituisce davvero (la DROP servirebbe se
+#   cambiassero i parametri o le colonne di ritorno).
+#
+# EFFETTO SUL DATO ESISTENTE: nessuno. Con 0 commesse valorizzate la catena
+#   restituisce oggi esattamente cio' che restituiva prima — verificato
+#   confrontando la coppia risolta su tutte e 34 le attivita' prima e dopo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260801-06-fix-catena-termini-livello-commessa-mctit.yaml
+
+  - changeSet:
+      id: 20260801-06-fix-catena-termini-livello-commessa
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        3b.1 fix — la catena delle condizioni di pagamento recupera il livello
+        COMMESSA prescritto da D-R (senza, le colonne messe su vendite.commesse
+        non venivano lette da nessuno e la separazione pagata a monte tornava
+        in una fattura sola) e smette di azzerare i livelli gia' risolti quando
+        un livello a valle non trova righe.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_resolve_termini_pagamento(
+                  p_attivita_id vendite.attivita_fatturabili.id%TYPE
+              )
+              RETURNS TABLE (
+                  termine_pagamento_id   config.termini_pagamento.id%TYPE,
+                  modalita_pagamento_id  config.modalita_pagamento.id%TYPE
+              )
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              -- Scopo: unica implementazione della catena delle condizioni di
+              --        pagamento (C-13). Risolve per UNA attivita' la coppia che
+              --        entra nella chiave di aggregazione della fattura (D-7/D-B).
+              -- Regole: i due campi scendono la catena in modo INDIPENDENTE, perche'
+              --         la modalita' ha meno livelli del termine (il preventivo non
+              --         la porta). Assenza totale = TP_1RATA sul termine (D-J) e
+              --         NULL sulla modalita': `config.modalita_pagamento` non ha una
+              --         riga «default», e sceglierne una arbitrariamente finirebbe
+              --         sulla FatturaPA.
+              -- ⚠️ Ogni livello legge in variabili PROPRIE e la fusione avviene
+              --    dopo, con COALESCE in codice: un `SELECT ... INTO` che non trova
+              --    righe mette le variabili a NULL, quindi leggere direttamente
+              --    dentro `v_termine`/`v_modalita` farebbe CANCELLARE al livello a
+              --    valle cio' che il livello a monte aveva gia' risolto.
+              DECLARE
+                  v_sorgente_codice  config.sorgenti.codice_interno%TYPE;
+                  v_sorgente_uid     vendite.attivita_fatturabili.sorgente_uid%TYPE;
+                  v_commessa_id      vendite.commesse.id%TYPE;
+                  v_ba_fattura_id    anagrafiche.billing_account.id%TYPE;
+                  v_termine          config.termini_pagamento.id%TYPE;
+                  v_modalita         config.modalita_pagamento.id%TYPE;
+                  v_liv_termine      config.termini_pagamento.id%TYPE;
+                  v_liv_modalita     config.modalita_pagamento.id%TYPE;
+              BEGIN
+                  -- Guard: id numerico obbligatorio e positivo (linee-guida-sql).
+                  IF p_attivita_id IS NULL OR p_attivita_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_resolve_termini_pagamento', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_attivita_id', 'valore', p_attivita_id),
+                          NULL::uuid, 'p_attivita_id obbligatorio e > 0'
+                      );
+                  END IF;
+
+                  -- BA della FATTURA = padre se c'e', stessa espressione di
+                  -- fn_build_fattura_key: le condizioni sono di chi riceve il
+                  -- documento, non del conto figlio che ha generato la riga.
+                  SELECT s.codice_interno,
+                         a.sorgente_uid,
+                         a.commessa_id,
+                         COALESCE(ba.parent_account_id, a.billing_account_id)
+                    INTO v_sorgente_codice, v_sorgente_uid, v_commessa_id, v_ba_fattura_id
+                    FROM vendite.attivita_fatturabili a
+                    JOIN anagrafiche.billing_account ba ON ba.id = a.billing_account_id
+                    LEFT JOIN config.sorgenti s ON s.id = a.sorgente_tipo_id
+                   WHERE a.id = p_attivita_id;
+
+                  IF v_ba_fattura_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_resolve_termini_pagamento', 'E_VALORE_MANCANTE',
+                          jsonb_build_object('attivita_id', p_attivita_id),
+                          NULL::uuid, concat('attivita non trovata per id ', p_attivita_id)
+                      );
+                  END IF;
+
+                  -- ── Livello 1: documento sorgente ────────────────────────────
+                  -- L'ordine porta entrambi, il preventivo il solo termine. Nessun
+                  -- ramo contratto: non ha colonne di pagamento.
+                  IF v_sorgente_codice = 'ORDINE_VENDITA' THEN
+                      SELECT o.termine_pagamento_id, o.modalita_pagamento_id
+                        INTO v_liv_termine, v_liv_modalita
+                        FROM vendite.ordini o
+                       WHERE o.uid = v_sorgente_uid;
+                      v_termine  := COALESCE(v_termine,  v_liv_termine);
+                      v_modalita := COALESCE(v_modalita, v_liv_modalita);
+                  ELSIF v_sorgente_codice = 'PREVENTIVO' THEN
+                      SELECT p.termine_pagamento_id
+                        INTO v_liv_termine
+                        FROM vendite.preventivi p
+                       WHERE p.uid = v_sorgente_uid;
+                      v_termine := COALESCE(v_termine, v_liv_termine);
+                  END IF;
+
+                  -- ── Livello 2: COMMESSA (D-R) ────────────────────────────────
+                  -- La commessa POSSIEDE le proprie condizioni: la sorgente gliele
+                  -- propone alla nascita e sono elemento della sua chiave di
+                  -- raggruppamento, quindi tutte le attivita' di una commessa
+                  -- portano lo stesso valore e questo livello non puo' spaccare
+                  -- una fattura piu' di quanto D-R non abbia gia' spaccato la
+                  -- commessa. Sta PRIMA del cliente perche' e' piu' specifico e
+                  -- perche' cambiare le condizioni di un cliente non deve
+                  -- riscrivere quelle delle commesse gia' aperte.
+                  IF v_commessa_id IS NOT NULL AND (v_termine IS NULL OR v_modalita IS NULL) THEN
+                      SELECT c.termine_pagamento_id, c.modalita_pagamento_id
+                        INTO v_liv_termine, v_liv_modalita
+                        FROM vendite.commesse c
+                       WHERE c.id = v_commessa_id;
+                      v_termine  := COALESCE(v_termine,  v_liv_termine);
+                      v_modalita := COALESCE(v_modalita, v_liv_modalita);
+                  END IF;
+
+                  -- ── Livello 3: cliente del BA PADRE ──────────────────────────
+                  -- Costante su tutte le attivita' che aggregano insieme, perche'
+                  -- il BA padre e' gia' elemento di chiave: questo livello non puo'
+                  -- spaccare una fattura. Deterministico grazie a
+                  -- uq_clienti_istanza_utility: una riga sola, non un LIMIT 1.
+                  -- ⚠️ La JOIN e' inner: un BA padre senza riga cliente da ZERO
+                  -- righe, e leggere qui dentro le variabili di stato le
+                  -- azzererebbe (vedi nota in testa).
+                  IF v_termine IS NULL OR v_modalita IS NULL THEN
+                      SELECT cl.termine_pagamento_id, cl.modalita_pagamento_id
+                        INTO v_liv_termine, v_liv_modalita
+                        FROM anagrafiche.billing_account ba
+                        JOIN anagrafiche.clienti cl
+                          ON cl.istanza_utility_id = ba.istanza_utility_id
+                       WHERE ba.id = v_ba_fattura_id;
+                      v_termine  := COALESCE(v_termine,  v_liv_termine);
+                      v_modalita := COALESCE(v_modalita, v_liv_modalita);
+                  END IF;
+
+                  -- ── Livello 4: default ───────────────────────────────────────
+                  -- Solo il termine ha un default (D-J). La modalita' resta NULL.
+                  IF v_termine IS NULL THEN
+                      SELECT tp.id
+                        INTO v_termine
+                        FROM config.termini_pagamento tp
+                       WHERE tp.codice_interno = 'TP_1RATA'
+                         AND tp.attivo IS TRUE;
+                  END IF;
+
+                  RETURN QUERY SELECT v_termine, v_modalita;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_resolve_termini_pagamento(bigint)
+              IS 'Catena unica condizioni di pagamento per attivita'' (C-13): ritorna la coppia (termine_pagamento_id, modalita_pagamento_id) scendendo documento sorgente -> COMMESSA (D-R) -> cliente del BA padre (per istanza_utility) -> default TP_1RATA sul solo termine. I due campi scendono in modo indipendente: il preventivo porta il termine ma non la modalita''. Il livello commessa e'' cio'' che rende effettiva D-R: senza, le colonne messe su vendite.commesse non le legge nessuno e due commesse separate apposta tornano in una fattura sola. Ogni livello legge in variabili proprie e la fusione avviene con COALESCE in codice: un SELECT INTO senza righe azzera le variabili, e leggerle in place farebbe cancellare al livello a valle cio'' che quello a monte aveva risolto.';

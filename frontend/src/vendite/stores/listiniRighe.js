@@ -9,6 +9,10 @@ export const useListiniRigheStore = defineStore('vendite-listini-righe', () => {
   const items = ref([])
   const totalRecords = ref(0)
   const loading = ref(false)
+  // true dopo il primo fetch riuscito nel contesto corrente: serve al
+  // refetch condizionale di onConfigLoaded (<ListaConfigurabile>) e agli
+  // empty-state onesti.
+  const hasSearched = ref(false)
 
   // Contesto corrente: listino e versione. Impostati dal drawer padre.
   const listinoId = ref(null)
@@ -31,6 +35,7 @@ export const useListiniRigheStore = defineStore('vendite-listini-righe', () => {
     versioneId.value = newVersioneId
     items.value = []
     totalRecords.value = 0
+    hasSearched.value = false
     filters.value.search = ''
     filters.value.billing_account_id = null
     filters.value.offset = 0
@@ -42,6 +47,7 @@ export const useListiniRigheStore = defineStore('vendite-listini-righe', () => {
     versioneId.value = null
     items.value = []
     totalRecords.value = 0
+    hasSearched.value = false
   }
 
   // Scopo: Carica la pagina corrente di righe dal backend con filtri attivi.
@@ -70,13 +76,14 @@ export const useListiniRigheStore = defineStore('vendite-listini-righe', () => {
       const res = await listRighe(listinoId.value, versioneId.value, params)
       items.value = res.data.data.results
       totalRecords.value = res.data.data.count
+      hasSearched.value = true
     } finally {
       loading.value = false
     }
   }
 
   return {
-    items, totalRecords, loading,
+    items, totalRecords, loading, hasSearched,
     listinoId, versioneId,
     filters,
     setContext, clearContext, fetchList

@@ -138,6 +138,34 @@ Le operazioni di scrittura (`POST`, `PATCH`, `DELETE` sul path classico) restano
 
 ---
 
+## Ordinamento SQL — direzione e tiebreak (`apps/core/db/_helpers.py`)
+
+I due helper che compongono l'`ORDER BY` di ogni lista paginata. Si usano
+**insieme**: il primo decide il verso della colonna scelta dall'utente (e dove
+finiscono i NULL), il secondo allinea il tiebreak a quel verso.
+
+| Building Block | File | Descrizione |
+|---|---|---|
+| `sql_order_direction` | [_helpers.py](../../../../backend/apps/core/db/_helpers.py) | Verso della colonna primaria **con NULL come valore MINIMO**: `'ASC NULLS FIRST'` / `'DESC NULLS LAST'`. I default PostgreSQL sono l'opposto, quindi un campo vuoto finiva **in cima** proprio ordinando dal più recente — il caso della lista DDT, dove `numero` è NULL su tutte le bozze (decisione Tid 2026-07-19, regola del 2 su 29 call-site). `default_desc=True` per le liste che nascono dal più recente. |
+| `sql_tiebreak_direction` | [_helpers.py](../../../../backend/apps/core/db/_helpers.py) | **Verso del tiebreak, allineato alla colonna primaria** (decisione Tid 2026-08-03). Prende la clausola del primo helper e ne estrae il solo `ASC`/`DESC`: `ORDER BY {order_column} {direction}, cc.id {tiebreak_dir}`. Prima il tiebreak era inchiodato ad `ASC` in ~30 punti, quindi ordinando per data DESC, **a parità di data si vedeva prima il più vecchio** — dentro il giorno l'elenco andava al contrario di come era stato chiesto. ⚠️ **La paginazione deterministica non è toccata**: dipende dall'univocità del tiebreak, non dal suo verso. |
+
+**Regola d'uso — quale secondo campo si allinea e quale no:**
+
+| Tipo di secondo campo | Esempio | Comportamento |
+| --- | --- | --- |
+| **Spareggio tecnico** (chiave univoca, mai NULL) | `cc.id`, `documento_id`, `commessa_attivita_id` | **Segue** la direzione |
+| **Raggruppamento** | `area ASC`, `commessa_codice ASC`, `gruppo_key ASC` | Resta fisso (precede il tecnico) |
+| **Ordine logico** | `resi_riga_id ASC` dentro il reso, `valid_from DESC` sullo storico | Resta fisso: ribaltarlo farebbe leggere al contrario le righe di un reso o la storia di un record |
+| **Catena di chiavi naturali** (nessuna PK, es. su una `UNION`) | errori Lente 1: `tipo_evento, lotto_id, fattura_id, task_code` | Resta fissa |
+
+⚠️ **Il tiebreak tecnico deve essere `id`**, non il numero di documento: `numero`
+è NULL sulle bozze finché il trigger non lo assegna, e in DESC riporterebbe i
+vuoti in cima — cioè il difetto che `sql_order_direction` ha corretto. Su `id`
+il problema non esiste, ed è il motivo per cui non aggiungiamo `NULLS` al
+tiebreak. Test: `apps/core/tests/db/test_sql_order_helpers.py`.
+
+---
+
 ## Processi headless: canale di sistema RLS + registrazione run (`apps/core/services/`)
 
 Building block per i processi **headless** (management command / cron / systemd) che operano fuori dal ciclo richiesta web. Due concern ortogonali: (1) attraversare la RLS operatori come **processo di sistema** (RLS Path A, brief `work-done/brief-db-contesto-sistema-batch-fatturazione-rls.md`); (2) **registrare** ogni run in `maintenance.job_run_log` (brief `work-done/brief-design-job-run-registrazione.md`). Generici e riusabili da qualsiasi futuro job — nessun accoppiamento di dominio. Primo consumer: `run_fatturazione_batch`.
