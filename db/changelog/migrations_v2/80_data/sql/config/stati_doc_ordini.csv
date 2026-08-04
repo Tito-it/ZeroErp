@@ -6,5 +6,5 @@ id,codice_interno,codice,descrizione,attivo,ordine,meta,fase,terminale,pdf_mode,
 6,ANNULLATO,ANNULLATO,Annullato,t,60,{},CHIUSO,t,ARCHIVE,f,t
 7,FATTURATO,FATTURATO,Fatturato,t,70,{},CHIUSO,t,ARCHIVE,f,f
 1,DRAFT,DRAFT,Bozza,t,10,{},APERTO,f,PREVIEW,f,f
-8,EVASO,EVASO,Evaso,t,25,{},CHIUSO,t,ARCHIVE,f,f
-9,PARZIALMENTE_EVASO,PARZIALMENTE_EVASO,Parzialmente evaso,t,22,{},IN_CORSO,f,ARCHIVE,f,f
+8,EVASO,EVASO,Evaso,t,25,"{""nessuna_azione_key"":""vendite.ordini.stato_info.evaso""}",CHIUSO,t,ARCHIVE,f,f
+9,PARZIALMENTE_EVASO,PARZIALMENTE_EVASO,Parzialmente evaso,t,22,"{""nessuna_azione_key"":""vendite.ordini.stato_info.parzialmente_evaso""}",IN_CORSO,f,ARCHIVE,f,f

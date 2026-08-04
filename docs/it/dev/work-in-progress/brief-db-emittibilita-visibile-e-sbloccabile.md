@@ -137,7 +137,7 @@ nuovo, solo un passo più in là. Chiediamo la funzione pura, sul modello di
 `fn_check_commessa_chiudibile` / `_annullabile` che avete già scritto il
 2026-07-24:
 
-```
+```text
 script.fn_check_commessa_pronta_fatturazione(p_commessa_id) → jsonb  -- [] = lecito
 ```
 
@@ -211,11 +211,132 @@ resto.
 
 ## 6. Definizione di «fatto»
 
-- [ ] `commessa_emittibile` (o `stato_commessa`) esposto dalle due viste;
-- [ ] transizione `→ PRONTA_FATTURAZIONE` manuale con `meta` completo;
-- [ ] `fn_check_commessa_pronta_fatturazione` come sede unica di capability+guard;
-- [ ] pgTAP §3.4 verdi;
+- [x] `commessa_emittibile` (o `stato_commessa`) esposto dalle due viste — **entrambi**, §7.2;
+- [x] transizione `→ PRONTA_FATTURAZIONE` manuale con `meta` completo;
+- [x] `fn_check_commessa_pronta_fatturazione` come sede unica di capability+guard;
+- [x] pgTAP §3.4 verdi — 7/7, §7.4;
 - [ ] FE: riga bloccata segnalata in dashboard + verbo «Rendi pronta» sul drawer
       commessa (nostra metà, parte a prerequisiti pronti);
 - [ ] le 5 commesse di giugno sbloccate dall'interfaccia da Tid, e le 15 attività
       fatturate — è la prova che il giro si chiude.
+
+---
+
+## 7. Risposta DB (2026-08-04)
+
+> **Chi scrive:** team DB (`dev/db-tid`). Da qui in avanti il documento è la
+> risposta, non più la richiesta.
+
+### 7.1 Il buco è reale, e la lettura del brief regge
+
+Le tre richieste sono state accolte come scritte. Una precisazione sul §2.2, perché
+cambia cosa si sistema: la transizione dichiarata non-manuale non era l'unico
+problema. Sotto c'era una **seconda copia della regola**. Il guard di transizione
+verificava «almeno una riga APPROVATA e NON_EMESSA» con una condizione scritta a mano
+al proprio interno, mentre le uscite terminali (`CHIUSA`, `ANNULLATA`) delegavano già
+alle funzioni pure con tanto di nota «sorgente UNICA, condivisa con
+`fn_available_actions_commessa`». L'ingresso era rimasto indietro.
+
+Finché la transizione era automatica la cosa non si vedeva: nessun bottone la
+offriva, quindi non c'era un gemello da contraddire. Renderla manuale **senza**
+estrarre la regola avrebbe creato il difetto del §3.3 nel momento stesso in cui si
+chiudeva quello del §2.2.
+
+### 7.2 Cosa è stato fatto
+
+| # | Cosa | Dove |
+| --- | --- | --- |
+| 1 | `fn_check_commessa_pronta_fatturazione` — funzione pura, terza sorella di `_chiudibile` / `_annullabile` | `20260804-25` |
+| 2 | Il guard smette di avere la regola in casa e legge la funzione: ingresso e uscite trattati allo stesso modo | `20260804-26` |
+| 3 | `fn_available_actions_commessa` espone `enabled` + `reasons` anche per `PRONTA_FATTURAZIONE`, dalla **stessa** funzione | `20260804-27` |
+| 4 | Le due viste espongono `commessa_emittibile` **e** `commessa_stato_codice` | `20260804-28` |
+| 5 | Le tre transizioni verso `PRONTA_FATTURAZIONE` diventano manuali con `meta` completo | CSV `transizioni_stati_commessa.csv`, nessun changeSet (loader `runOnChange`) |
+| 6 | `E_COMMESSA_EMITTENTE_MANCANTE` a catalogo, con causa e soluzione | CSV `messaggi_errore.csv` |
+
+**Due colonne invece di una** (§3.1). Il brief ne chiedeva una dicendo però «ci serve
+poter dire *perché* è bloccata, non solo *che* lo è»: il booleano da solo non lo
+consente. Costano lo stesso, perché la vista fa già il JOIN su `stati_commessa` per
+il filtro `ANNULLATA`.
+
+**La regola la detta il motore.** I motivi della funzione pura sono lo specchio dei
+filtri di `fn_list_emittibili_lane`, che è chi decide davvero cosa è fatturabile. Due
+conseguenze:
+
+- il criterio si **allarga** rispetto al guard vecchio, che ignorava
+  `tipo_doc_fiscale_id`: una commessa con righe approvate ma senza tipo documento
+  poteva dichiararsi pronta e non produrre nulla. Adesso viene fermata dove qualcuno
+  può ancora rimediare;
+- si aggiunge il motivo **emittente mancante**. La colonna è nullable e nessun trigger
+  la pretende: una commessa senza emittente produrrebbe un raggruppamento che non
+  diventa nessuna fattura. Lo stato `PRONTA_FATTURAZIONE` dichiara «questa si può
+  fatturare»: se lo si raggiunge quando la promessa è falsa, il buco si riapre da
+  un'altra porta.
+
+Il `tipo_doc` invece **non** è diventato un motivo separato: esiste già un guard
+dedicato che impedisce a una riga emittibile di averlo nullo, quindi sarebbe stato un
+ramo irraggiungibile — codice che sembra coperto e non lo è. Resta nel filtro, dove
+serve.
+
+### 7.3 Sulla domanda «gli altri documenti sono a posto?»
+
+La verifica è stata rifatta come **regola**, non come conta di righe: su dati di test
+i numeri dicono cosa è stato cliccato di recente, non se il modello è corretto.
+
+Il difetto specifico del brief — una capacità che governa un motore e si raggiunge
+solo per via automatica — è **solo della commessa**: `stati_commessa.emittibile` è
+l'unico flag di quel tipo fra tutte e otto le tabelle di stato. Le altre hanno flag
+descrittivi (`terminale`, `is_bozza`, `is_abortito`) o riguardano il ciclo fatture,
+che ha il proprio cantiere.
+
+Ne è però uscita una regola generale che vale per ogni documento, presente e futuro:
+
+> **R1 — da ogni stato con uscite attive deve esistere almeno un'uscita che una
+> persona può azionare.** Se le uniche uscite sono automatiche, il documento dipende
+> da un evento che potrebbe non arrivare mai. L'eccezione è legittima solo se lo stato
+> è dichiarato senza ritorno, e allora va detto.
+
+R1 adesso è un test, non un'indagine da rifare a mano:
+[`test-transizioni-uscita-manuale-v1.sql`](../../../../db/pgtap/config/test-transizioni-uscita-manuale-v1.sql)
+scorre tutte e sette le matrici. **Oggi è rosso**, e nomina sei stati:
+
+```text
+ddt.CONSEGNATO, ddt.RESO, ordine.CONFERMATO,
+ordine.EVASO, ordine.PARZIALMENTE_EVASO, preventivo.ACCETTATO
+```
+
+Non è un'emergenza, è una **lista di decisioni**. Alcuni di quei casi sono
+probabilmente legittimi — le transizioni fra `EVASO` e `PARZIALMENTE_EVASO` sono
+ricalcoli guidati dalle quantità, non decisioni. Altri meno: le uscite manuali verso
+`ANNULLATO` esistono con `meta` completo (`action_key`, label, icona) ma sono
+**spente**, e da nessuna parte è scritto perché. Per ciascuno la risposta legittima è
+una di due, e va messa nero su bianco: *aggiungere la via d'uscita* oppure *dichiarare
+lo stato senza ritorno*. Il test è registrato in `baseline-rossi.tsv` proprio per
+questo: è debito dichiarato, e la baseline deve calare.
+
+### 7.4 Verifiche
+
+[`test-commessa-pronta-fatturazione-v1.sql`](../../../../db/pgtap/vendite/test-commessa-pronta-fatturazione-v1.sql)
+— **7/7 verdi**, i cinque casi del §3.4 più il preflight e la separazione fra
+transizione lecita e rifiutata. La fixture è **costruita dentro il test** (due
+commesse create copiando i riferimenti di una esistente), non pescata dai dati: i casi
+valgono anche su un database appena creato e non passano in silenzio per assenza di
+dati.
+
+Il caso 4 è l'invariante che conta: `enabled` del bottone e `[]` della funzione pura
+devono coincidere su entrambe le commesse. Non perché siano scritti «uguali», ma
+perché sono **la stessa** funzione.
+
+> ℹ️ **Una cosa scoperta scrivendo il test.** `vw_dash_competenza_attivita` filtra per
+> scope emittente leggendo `app.current_user_id`: senza quella GUC,
+> `fn_get_emittenti_scope_sr_ids` risponde `'{}'` e la vista non mostra **niente**. È
+> corretto (è la RLS applicativa che fa il suo lavoro) ma va saputo: qualunque test o
+> query manuale sulla dashboard senza GUC vede una lista vuota e sembra un bug dei
+> dati.
+
+### 7.5 Cosa resta
+
+- La palla FE del §6, invariata.
+- Le sei decisioni di R1 (§7.3), da prendere insieme.
+- Il `gruppi_coperti text[]` della lane (§5 del brief): non è stato fatto, il brief
+  stesso lo dichiara non urgente. Quando lo si affronta, la sede naturale è la lane,
+  non la diagnostica BE.

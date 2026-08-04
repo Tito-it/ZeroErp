@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `plpgsql_check` — l'estensione che valida i corpi delle funzioni
+#   (piano-db-ritorno-lotto-a-draft.md, debito lasciato aperto in §7)
+#
+# ── IL PROBLEMA CHE RISOLVE ──────────────────────────────────────────────
+#   PostgreSQL NON traccia cosa c'e' dentro il corpo di una funzione
+#   plpgsql. Se si droppa una tabella, blocca su viste, vincoli e trigger
+#   — ma le funzioni le lascia passare, e non le ri-valida mai piu'.
+#   Restano li', mute, e si scoprono solo quando qualcuno le esegue.
+#
+#   Non e' teoria: il 2026-02-27 e' stata droppata la famiglia «attivita
+#   pipeline» con `CASCADE`, e TRE funzioni sono sopravvissute nominando
+#   una tabella che non esisteva piu'. Due erano gia' state riconosciute
+#   morte il 2026-03-31 — con un changeSet che serve solo a dirlo — e
+#   sono rimaste in piedi altri cinque mesi. Le abbiamo ritrovate il
+#   2026-08-04 per caso, perche' una ha fatto fallire un migrate.
+#
+#   Una segnalazione in un commento non e' un presidio.
+#
+# ── PERCHE' QUESTA ESTENSIONE E NON UNA VISTA FATTA IN CASA ──────────────
+#   L'alternativa era una regex su `pg_get_functiondef` confrontata con
+#   `pg_class`. Funziona, ma:
+#     · prende anche le tabelle nominate DENTRO le stringhe — ne abbiamo
+#       gia' un caso, `trgfn_config_sistema_codici_sync_gen_codice`
+#       contiene `EXECUTE 'DROP TRIGGER … ON <tabella>'` ed e' sano;
+#     · non vede i nomi non qualificati ne' l'SQL costruito a runtime;
+#     · non arriva alle COLONNE — e meta' dei guai del 2026-08-04 erano
+#       colonne, non tabelle.
+#   `plpgsql_check` compila davvero il corpo, come farebbe la prima
+#   esecuzione: vede tabelle e colonne, vede i rami MAI ESEGUITI (il caso
+#   di `fn_set_runtime_task_run_esito`, col riferimento morto in un
+#   `ELSE` che nessuno prendeva) e non prova a validare l'SQL dinamico,
+#   quindi fa anche meno rumore.
+#
+# ── ⚠️ CONDIZIONALE, COME `pgagent` ──────────────────────────────────────
+#   L'estensione richiede un pacchetto di sistema
+#   (`postgresql-18-plpgsql-check`) che NON e' nell'immagine
+#   `postgis/postgis:18-3.6` usata dalla CI. Senza guard, ogni `liquibase
+#   update` in CI fallirebbe.
+#   Si usa lo stesso schema del changeSet `001-01-02` della baseline:
+#   `sqlCheck` su `pg_available_extensions` + `onFail: CONTINUE`. Se il
+#   pacchetto non c'e', il changeSet viene SALTATO e non marcato come
+#   eseguito — quindi si riprende da solo il giorno in cui il pacchetto
+#   viene installato.
+#
+#   ℹ️ La suite pgTAP non gira in CI (solo Liquibase e i test Django), per
+#   cui il presidio vive sul server di sviluppo. Portarlo in CI vorrebbe
+#   dire aggiungere il pacchetto all'immagine: e' un passo successivo, e
+#   va deciso a parte.
+#
+# ── INSTALLAZIONE DEL PACCHETTO (fuori da Liquibase) ─────────────────────
+#     sudo apt-get install -y postgresql-18-plpgsql-check
+#   Non serve `shared_preload_libraries`: la modalita' attiva
+#   (`plpgsql_check_function`) funziona con la sola CREATE EXTENSION.
+#
+# ── ⚠️ COME SI APPLICA: giro PROVISION, non il migrate normale ───────────
+#   `CREATE EXTENSION` vuole privilegi che l'utente del migrate ordinario
+#   non ha. In questo progetto le estensioni vivono tutte nel contesto
+#   `provision`, che gira come `postgres`:
+#
+#     scripts/liquibase5.sh update --contexts=provision --username=postgres
+#
+#   Il migrate ordinario gira con `--contexts="!provision"` e questo
+#   changeSet lo salta per costruzione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260804-36-create-extension-plpgsql-check-mctit.yaml
+
+  - changeSet:
+      id: 20260804-36-create-extension-plpgsql-check
+      author: mctit
+      # ⚠️ context provision, come TUTTE le estensioni del progetto: il
+      # migrate normale gira come `zeroerp` con `--contexts="!provision"`
+      # e non ha i privilegi per CREATE EXTENSION. Le estensioni si creano
+      # nel giro `--contexts=provision --username=postgres`.
+      context: provision
+      labels: provision
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      preConditions:
+        - onFail: CONTINUE
+        - onError: CONTINUE
+        - dbms:
+            type: postgresql
+        # ⚠️ Si conta, non si usa EXISTS. `sqlCheck` confronta il risultato
+        # come STRINGA e con `equals`: un booleano arriva come `true` o `t`
+        # secondo il driver, e nessuno dei due combacia con `TRUE`. La
+        # condizione risulterebbe sempre non soddisfatta e il changeSet
+        # verrebbe scartato IN SILENZIO — cioe' il difetto peggiore, perche'
+        # il migrate resta verde. Successo davvero il 2026-08-04.
+        - sqlCheck:
+            expectedResult: "1"
+            sql: "SELECT count(*) FROM pg_available_extensions WHERE name = 'plpgsql_check';"
+      comment: >
+        Crea l'estensione plpgsql_check, che valida i corpi delle funzioni plpgsql
+        (tabelle e colonne inesistenti, anche in rami mai eseguiti). Condizionale
+        come pgagent: se il pacchetto di sistema non c'e' il changeSet viene
+        saltato senza bloccare la pipeline, e si riprende quando c'e'.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE EXTENSION IF NOT EXISTS plpgsql_check;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP EXTENSION IF EXISTS plpgsql_check;

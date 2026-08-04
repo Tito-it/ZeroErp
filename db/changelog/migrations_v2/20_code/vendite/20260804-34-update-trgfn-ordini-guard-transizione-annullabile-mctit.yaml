@@ -1,0 +1,178 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.trgfn_ordini_guard_transizione — l'annullamento riattivato ha i suoi
+#   controlli (brief-db-vie-uscita-operatore.md §2, §3.2).
+#
+# ⚠️ QUESTO changeSet E' LA META' INDISPENSABILE DELLA RIATTIVAZIONE. Il seed
+#   ha appena riacceso CONFERMATO -> ANNULLATO in
+#   config.transizioni_stati_ordini: da sola, quella riga rende annullabile un
+#   ordine che ha gia' prodotto DDT o che e' gia' entrato in una commessa —
+#   cioe' sostituisce un vicolo cieco con un danno. La decisione di Tid era
+#   esplicita: «ok ma tutti i controlli che lo impediscono (evasione/ddt ecc.)».
+#   Sono qui.
+#
+# COSA CAMBIA. Si aggiunge una Regola 3 sulla stessa forma gia' usata dalla
+#   commessa: la destinazione ANNULLATO legge script.fn_check_ordine_annullabile
+#   e solleva il codice del PRIMO motivo. La regola vera vive nella funzione
+#   pura, che e' la STESSA letta da fn_available_actions_ordine: il bottone non
+#   puo' dire «si puo'» mentre il guard dice «no» (R2 del brief).
+#
+# ℹ️ Regole 1 e 2 intatte: matrice delle transizioni e DRAFT->CONFERMATO con
+#   almeno una riga attiva. Stessi codici, stessa arita' dei valori.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260804-34-update-trgfn-ordini-guard-transizione-annullabile-mctit.yaml
+
+  - changeSet:
+      id: 20260804-34-update-trgfn-ordini-guard-transizione-annullabile
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Il guard di transizione dell'ordine controlla l'annullamento tramite
+        script.fn_check_ordine_annullabile (DDT figli, commessa collegata).
+        Indispensabile: il seed ha riattivato CONFERMATO -> ANNULLATO.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'script' AND p.proname = 'fn_check_ordine_annullabile'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ordini_guard_transizione()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: enforcement DB-first del grafo transizioni stato ordine.
+              --   La transizione (OLD.stato -> NEW.stato) e' ammessa solo se
+              --   presente e attiva in config.transizioni_stati_ordini. In piu',
+              --   DRAFT->CONFERMATO richiede almeno una riga ordine ATTIVA, e
+              --   ->ANNULLATO passa da script.fn_check_ordine_annullabile.
+              --   Letto dalla matrice (no grafo hardcodato): SSOT col lato
+              --   lettura fn_available_actions_ordine.
+              --   rev 2026-07-16: Regola 2 filtra attivo IS TRUE.
+              --   rev 2026-08-04: Regola 3, l'annullamento riattivato ha i suoi
+              --   controlli (brief-db-vie-uscita-operatore).
+              DECLARE
+                  v_codice_da config.stati_doc_ordini.codice_interno%TYPE;
+                  v_codice_a  config.stati_doc_ordini.codice_interno%TYPE;
+                  v_ammessa   boolean := false;
+                  v_motivi    jsonb;
+              BEGIN
+                  -- No-op se lo stato non cambia davvero (UPDATE su altre colonne).
+                  IF NEW.stato_doc_ordine_id IS NOT DISTINCT FROM OLD.stato_doc_ordine_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT
+                      max(CASE WHEN id = OLD.stato_doc_ordine_id THEN codice_interno END),
+                      max(CASE WHEN id = NEW.stato_doc_ordine_id THEN codice_interno END)
+                    INTO v_codice_da, v_codice_a
+                    FROM config.stati_doc_ordini
+                   WHERE id IN (OLD.stato_doc_ordine_id, NEW.stato_doc_ordine_id);
+
+                  -- Regola 1: la transizione deve esistere ed essere attiva in matrice.
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM config.transizioni_stati_ordini t
+                       WHERE t.stato_da_id = OLD.stato_doc_ordine_id
+                         AND t.stato_a_id  = NEW.stato_doc_ordine_id
+                         AND t.attivo IS TRUE
+                  ) INTO v_ammessa;
+
+                  IF NOT v_ammessa THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          'E_ORDINE_TRANSIZIONE_NON_AMMESSA',
+                          jsonb_build_object(
+                              'ordine_id', NEW.id,
+                              'numero',    NEW.numero,
+                              'stato_da',  v_codice_da,
+                              'stato_a',   v_codice_a
+                          ),
+                          NEW.tx_id,
+                          NEW.id::text,
+                          coalesce(v_codice_da, 'NULL'),
+                          coalesce(v_codice_a,  'NULL')
+                      );
+                  END IF;
+
+                  -- Regola 2: DRAFT->CONFERMATO richiede almeno una riga ATTIVA.
+                  -- Spostata da ordini_service.py (E_ORD_NESSUNA_RIGA inline) per
+                  -- DB-first: vale per ogni chiamante, non solo conferma().
+                  -- Una riga disattivata e' logicamente cancellata: un ordine con
+                  -- sole righe inattive e' vuoto e non va confermato.
+                  -- Nessun vincolo su quantita/prezzo/totale: conta la sola
+                  -- presenza (un ordine a totale zero deve poter avanzare).
+                  IF v_codice_da = 'DRAFT' AND v_codice_a = 'CONFERMATO' THEN
+                      IF NOT EXISTS (
+                          SELECT 1 FROM vendite.ordini_righe r
+                           WHERE r.ordine_id = NEW.id
+                             AND r.attivo IS TRUE
+                      ) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME::text,
+                              'E_ORDINE_CONFERMA_SENZA_RIGHE',
+                              jsonb_build_object(
+                                  'ordine_id', NEW.id,
+                                  'numero',    NEW.numero
+                              ),
+                              NEW.tx_id,
+                              NEW.id::text,
+                              coalesce(NEW.numero, 'NULL')
+                          );
+                      END IF;
+                  END IF;
+
+                  -- Regola 3 (rev 2026-08-04): l'annullamento non deve poter
+                  -- cancellare un documento che ha gia' prodotto qualcosa a
+                  -- valle. La regola vive nella funzione pura, la STESSA che
+                  -- fn_available_actions_ordine usa per accendere il bottone:
+                  -- qui si solleva soltanto, col codice del PRIMO motivo.
+                  IF v_codice_a = 'ANNULLATO' THEN
+                      v_motivi := script.fn_check_ordine_annullabile(NEW.id);
+
+                      IF jsonb_array_length(v_motivi) > 0 THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME::text,
+                              v_motivi -> 0 ->> 'codice',
+                              jsonb_build_object(
+                                  'ordine_id', NEW.id,
+                                  'numero',    NEW.numero,
+                                  'stato_da',  v_codice_da,
+                                  'stato_a',   v_codice_a,
+                                  'motivi',    v_motivi
+                              ),
+                              NEW.tx_id,
+                              coalesce(NEW.numero, NEW.id::text),
+                              coalesce(v_motivi -> 0 ->> 'dettaglio', '0')
+                          );
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ordini_guard_transizione()
+              IS 'Trigger function: enforcement del grafo transizioni stato ordine (matrice config.transizioni_stati_ordini), riga attiva obbligatoria su DRAFT->CONFERMATO, e dal 2026-08-04 controlli sull''annullamento delegati a script.fn_check_ordine_annullabile — la stessa funzione letta da fn_available_actions_ordine, cosi'' bottone e guard non divergono.';
