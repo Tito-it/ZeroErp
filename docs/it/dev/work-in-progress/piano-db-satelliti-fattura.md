@@ -1,5 +1,38 @@
 # Piano DB — satelliti della fattura (indirizzi + piano rate)
 
+> 🟢 **STATO AL 2026-08-04 — cantiere tecnico CHIUSO, resta solo debito documentale.**
+>
+> * **Tutte le fasi sono chiuse** (1, 2, 3a, 3b, 4, 4b + cantiere intestazione);
+>   la **Fase 6** è stata estratta il 03-08 nel
+>   [piano ritorno-lotto-a-draft](../work-done/piano-db-ritorno-lotto-a-draft.md),
+>   **anch'esso chiuso e archiviato** il 04-08 su entrambi i lati (6-A e 6-B).
+> * Il **lato applicativo** del §3.5 è finito: le quattro voci che il piano BE/FE
+>   teneva nel suo §4-bis (flag `esclusa`, ritorno a DRAFT/eliminazione
+>   per-fattura, rinomina D-L, metà applicativa di D-Q) sono state chiuse il
+>   04-08. Restano lì **tre decisioni di prodotto**, non lavoro tecnico.
+> * ⬜ **L'unico residuo è il §4-bis di questo documento**: le guide utente.
+>   Misurato sul contenuto reale il 04-08 — **4 fatte su 9**:
+>
+>   | Guida | Stato |
+>   | --- | --- |
+>   | `fatturazione.md` | ✅ numerazione + piano rate + snapshot |
+>   | `gestione-dei-pagamenti.md` | ✅ raccordo piano rate ↔ incassi |
+>   | `gestione-degli-indirizzi.md` | ✅ snapshot + risoluzione per istanza |
+>   | `documenti-e-stampe.md` | ✅ indirizzo dallo snapshot |
+>   | `cruscotti-fatturazione.md` | ⬜ precondizioni D-K + i verbi nuovi del drawer lotto |
+>   | `generazione-cliente.md` | ⬜ il cliente porta solo `termine_pagamento_id` |
+>   | `gestione-ordini.md` · `gestione-preventivi.md` | ⬜ il termine determina **quante** fatture nascono (D-7) |
+>   | pagina nuova `config.termini_pagamento` | ⬜ non esiste |
+>
+>   ✅ **Nessuna guida cita più i campi legacy** `tipo_gg_scadenza_ft` /
+>   `nr_giorni_scadenza`: quel rischio è chiuso.
+>
+> Il documento resta qui finché le 5 righe mancanti non sono scritte o
+> trasferite altrove: archiviarlo adesso significherebbe perdere l'unico posto
+> in cui quel debito è censito.
+>
+> ---
+>
 > **Owner:** DB (`dev/db-tid`) · **Data:** 2026-07-29 · **Stato:** da approvare
 > (§2 contiene decisioni bloccanti)
 >
@@ -1253,7 +1286,7 @@ Coerenti con il vostro §3.8, e ora scritte anche nel piano BE/FE §9:
 | **pgTAP** | **12 nuovi verdi** — ai 10 precedenti si aggiungono `test-pipeline-processi-invariante-v1` plan 7 (invariante `processi` esteso a tutte le tappe) e `test-numerazione-guard-coerenza-v1` plan 9 (guard D-K) · **13 adeguati** · **1 rimosso** · **3 rientrati dalla baseline** |
 | **Doc** | ✅ **11 manuali di funzione scritti** (2026-08-02): 3 scadenze (`fn_resolve_termini_pagamento`, `fn_genera_scadenze_fattura`, `fn_genera_scadenze_lotto`), 5 indirizzi/intestazione (`script.fn_snapshot_indirizzo_soggetto`, `script.fn_resolve_indirizzo_documento`, `fn_snapshot_indirizzi_fattura`, `fn_snapshot_intestazione_fattura`, `fn_snapshot_fattura_lotto`), 3 guard (`trgfn_fattura_satellite_guard_congelamento`, `trgfn_fatture_guard_uscita_draft`, `trgfn_commesse_guard_chiave_immutabile`). ℹ️ **L'aggancio alla pagina auto-gen lo mette il generatore**: misurato 584 pagine con l'include e **solo queste 11 senza**, perché la rigenerazione non è ancora girata — nulla da cablare a mano. ✅ **Guide**: riscritta la sezione numerazione di `guide/fatturazione.md` (descriveva **un solo** guard e ripeteva la motivazione falsa sul `nextval`) e aggiunto a `guide/gestione-dei-pagamenti.md` il raccordo piano rate ↔ incassi, che non nominava le scadenze. ✅ **3a.9** (manuale `termini_pagamento` riscritto) · ✅ **4.4** (manuale `fatture_scadenze` + tabella task in `guide/fatturazione.md`) · ✅ `pratiche/manual/trgfn_sospensioni_giornale.md` riagganciato · ⚠️ i **due orfani** di `trgfn_clienti_normalize_giorni_scadenza` erano **già stati ritirati** da Tid in `c464fe50a`, non da noi · restano le guide del §4-bis · ℹ️ gli **indici** `dbzero/*/index*.md` portano ancora le descrizioni vecchie: si allineano alla rigenerazione, non si editano a mano |
 | **Baseline** | ✅ **Passata piena del 2026-08-02 dopo tutti gli apply**: **410 file**, 105 rossi di cui 104 noti. L'**unica** regressione è `ui/test-lista-fornitori-seed` (conta «esattamente 15 colonne attive», il DB ne ha 13) ed è del **filone liste**, non di questo cantiere: il CSV `ui/lista_colonna.csv` è modificato e non committato, e questo cantiere non ha mai toccato `ui/`. ⚠️ È anche l'ennesimo **conteggio nudo** che si rompe senza dire quale colonna manchi |
-| **Stato** | analisi chiusa, **20 decisioni** prese. 🎯 **Il cantiere è chiuso su entrambi i lati**: il BE ha registrato il task, aggiunto un guard d'ordine a runtime e prodotto lo **smoke verde** (`smoke-fattura-scadenze.py`, 10 casi + PDF nel caso 9 di `smoke-fatturazione-render-stampa.py`, entrambi con prova di mutazione). I **tre brief DB sono CHIUSI** (scadenze, indirizzi, intestazione). ➡️ **Dal 2026-08-03 la Fase 6 è estratta** in [piano-db-ritorno-lotto-a-draft.md](../work-done/piano-db-ritorno-lotto-a-draft.md): di **questo** piano resta aperto il **solo debito documentale** delle guide del §4-bis (0/8), di cui due righe passano al cantiere estratto. Fuori piano, nell'ordine deciso da Tid: **incassi/riconciliazione rata↔incasso**, poi **`2.4 DatiPagamento`**, poi SDI |
+| **Stato** | analisi chiusa, **20 decisioni** prese. 🎯 **Il cantiere è chiuso su entrambi i lati**: il BE ha registrato il task, aggiunto un guard d'ordine a runtime e prodotto lo **smoke verde** (`smoke-fattura-scadenze.py`, 10 casi + PDF nel caso 9 di `smoke-fatturazione-render-stampa.py`, entrambi con prova di mutazione). I **tre brief DB sono CHIUSI** (scadenze, indirizzi, intestazione). ➡️ **Dal 2026-08-03 la Fase 6 è estratta** in [piano-db-ritorno-lotto-a-draft.md](../work-done/piano-db-ritorno-lotto-a-draft.md): di **questo** piano resta aperto il **solo debito documentale** delle guide del §4-bis — **4 fatte su 9** alla misura del 2026-08-04 (dettaglio nel box in testa), di cui due righe passavano al cantiere estratto: `fatturazione.md` §reset ✅ evasa lì, `cruscotti-fatturazione.md` ⬜ ancora aperta. Fuori piano, nell'ordine deciso da Tid: **incassi/riconciliazione rata↔incasso**, poi **`2.4 DatiPagamento`**, poi SDI |
 
 ### Fase 1 — Fondamenta comuni
 

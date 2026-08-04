@@ -1282,7 +1282,7 @@ class ApiFatturazioneNumeraLotto(DomainAPIView):
 
 class ApiFatturazioneRistampaLotto(DomainAPIView):
     """C-8: ristampa MASSIVA di un lotto DEFINITIVA. Accoda in
-    `vendite.fatture_stampa_coda` una riga per ogni fattura non esclusa
+    `vendite.fatture_stampa_coda` una riga per ogni fattura del lotto
     (idempotente sui vivi); il worker `draina_coda_stampa` le renderizza (async,
     stato via pannello esiti C-5). Accodamento SINCRONO (INSERT veloce), non un
     job con polling. Stampa = lettura (I-4): nessun `post_permission` (come la

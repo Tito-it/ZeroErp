@@ -282,7 +282,7 @@ def numera_lotto(
 
 
 # Scopo: C-8 — Ristampa MASSIVA di un lotto DEFINITIVA: accoda in
-#        `vendite.fatture_stampa_coda` una riga per ogni fattura non esclusa del
+#        `vendite.fatture_stampa_coda` una riga per ogni fattura del
 #        lotto (`fn_accoda_stampe_lotto`, idempotente sui work-item vivi); il
 #        worker `draina_coda_stampa` le renderizza (async — lo stato si vede nel
 #        pannello esiti C-5). Stampa = lettura (I-4): NESSUNA numerazione qui. Il

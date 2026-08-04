@@ -10,7 +10,7 @@
 > documenta la convenzione `RAISE EXCEPTION USING MESSAGE=...`, non un call-site.
 >
 > **Il seguito vive altrove:** i 28 codici nuovi vanno a catalogo →
-> [brief-db-seed-messaggi-errore-round-2.md](../work-in-progress/brief-db-seed-messaggi-errore-round-2.md)
+> [brief-db-seed-messaggi-errore-round-2.md](brief-db-seed-messaggi-errore-round-2.md)
 > (aperto), che porta anche il vostro gemello del check lato DB.
 >
 > ---

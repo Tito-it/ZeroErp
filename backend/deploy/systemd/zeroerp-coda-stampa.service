@@ -2,8 +2,10 @@
 # Fonte di verità versionata: si edita QUI e si ri-renderizza con
 # `sudo backend/bin/install-timers.sh`. Placeholder per-host sostituiti
 # dall'installer: __APP_DIR__ (cartella backend), __APP_USER__ (owner app).
-# NB: l'installer scrive questo unit ma NON lo abilita finché il team DB non
-# applica i GRANT del ruolo batch sulla coda stampa/render.
+# NB: dal 2026-08-04 l'installer abilita anche questo timer. Il gate precedente
+# («scritto ma non abilitato, attende i GRANT del ruolo batch») è caduto quando
+# i GRANT sono stati applicati: tenerlo avrebbe dato a ogni host nuovo una coda
+# stampa spenta per un vincolo che non esiste più.
 [Unit]
 Description=ZeroERP drainer coda stampa (vendite.fatture_stampa_coda)
 After=network.target

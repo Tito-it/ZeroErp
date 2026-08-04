@@ -18,9 +18,12 @@
 > render sarebbe fallito il primo giorno). Verificati tutti e sei i template
 > pubblicati: il difetto è **isolato al preventivo**, il DDT usa le chiavi
 > giuste. Correzione richiesta in
-> [brief-db-template-preventivo-indirizzi.md](../work-in-progress/brief-db-template-preventivo-indirizzi.md)
-> (aperto): il template è un dato a DB e una versione PUBBLICATA è immutabile,
-> quindi serve una v3.
+> [brief-db-template-preventivo-indirizzi.md](brief-db-template-preventivo-indirizzi.md)
+> (🟢 **chiuso il 2026-08-04**: v3 PUBBLICATA, v2 OBSOLETA): il template è un
+> dato a DB e una versione PUBBLICATA è immutabile, quindi è servita una v3.
+> ⚠️ Quel brief lascia due seguiti aperti, entrambi a monte del rendering:
+> ordini/contratti/offerte **catturano** l'indirizzo ma il context builder non
+> lo espone (§7.1), e la forma dell'indirizzo diverge fra i sei builder (§7.2).
 >
 > Storico dello stato precedente: 🟢 IN CORSO — DB ✅ + BE 5 domini ✅ + FE pilota
 > DDT ✅ + review/hardening ✅ (2026-07-12). Aperti allora: montaggio pannello

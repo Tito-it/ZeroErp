@@ -2095,6 +2095,30 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="L'ordine non ha righe eleggibili per l'operazione.",
         ),
+        # Vie d'uscita per l'operatore (brief-db-vie-uscita-operatore §5.1):
+        # l'annullamento dell'ordine torna disponibile da CONFERMATO, ma
+        # `script.fn_check_ordine_annullabile` lo rifiuta se la merce e' gia'
+        # uscita o il lavoro e' gia' andato in fatturazione. Codici sollevati dal
+        # guard DB (`trgfn_ordini_guard_transizione`), tradotti dal regex di
+        # `ordini_service._db_errors`: qui si dichiara la policy HTTP/UI.
+        "E_ORD_ANNULLA_CON_DDT": ErrorPolicy(
+            code="E_ORD_ANNULLA_CON_DDT",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "L'ordine ha gia' DDT collegati: la merce e' uscita, per "
+                "riportarla dentro si registra un reso."
+            ),
+        ),
+        "E_ORD_ANNULLA_IN_COMMESSA": ErrorPolicy(
+            code="E_ORD_ANNULLA_IN_COMMESSA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "L'ordine e' gia' stato inviato a fatturazione: annulla prima "
+                "le attivita' in commessa."
+            ),
+        ),
         # Conversione upstream (preventivo/offerta → ordine, §7.4): il documento
         # di origine non è in uno stato che ammette la generazione di un ordine
         # (es. preventivo non ancora ACCETTATO).
@@ -2595,6 +2619,21 @@ class ErrorPolicyRegistry:
             http_status=409,
             ui_action="show_error_banner",
             user_message="Preventivo gia' inviato a fatturazione.",
+        ),
+        # Vie d'uscita per l'operatore (brief-db-vie-uscita-operatore §5.1):
+        # l'annullamento del preventivo torna disponibile da EMESSO/ACCETTATO, e
+        # `script.fn_check_preventivo_annullabile` lo rifiuta quando il documento
+        # ha gia' prodotto qualcosa a valle. Il codice arriva dal DB (guard
+        # `trgfn_preventivi_guard_annullamento`): qui si dichiara solo la policy
+        # HTTP/UI, come per il gemello E_PREV_GIA_IN_COMMESSA sopra.
+        "E_PREV_ORDINE_GIA_GENERATO": ErrorPolicy(
+            code="E_PREV_ORDINE_GIA_GENERATO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Il preventivo ha gia' generato un ordine: annulla prima "
+                "l'ordine collegato."
+            ),
         ),
         "E_PREV_REVISIONE_ATTIVA": ErrorPolicy(
             code="E_PREV_REVISIONE_ATTIVA",

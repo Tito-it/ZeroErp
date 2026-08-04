@@ -3,14 +3,33 @@
 > **Tipo**: brief infra/BE (piano eseguibile, NON azione DB) · **Target**:
 > `dev/backend-tid` · **Data**: 2026-07-21 · **Owner**: BE · **Priorità**: media (toglie le
 > «istruzioni a mano» dal deploy dei worker; non blocca funzionalità).
-> **Stato**: 🟢 **REALIZZATO (2026-07-21, working tree, non committato)** — Parte 1
-> (4 template versionati in `backend/deploy/systemd/` + `install-timers.sh` renderizza,
-> zero heredoc duplicati) e Parte 2 (job CI `validate-deploy` in `ci-validate.yaml`:
-> `bash -n`+`shellcheck` su `backend/bin/*.sh` + `systemd-analyze verify` sugli unit
-> renderizzati). Tutto **simulato verde in locale** (shellcheck severità piena, verify
-> exit 0, render == heredoc precedente). Playbook §16 riscritto sui template. Aperti:
-> commit + prima run CI reale su push; `sudo install-timers.sh` su host pulito = azione
-> runtime di Tid.
+> **Stato**: 🟢 **CHIUSO — 2026-08-04.** Parte 1 (4 template versionati in
+> `backend/deploy/systemd/` + `install-timers.sh` che li renderizza, zero heredoc
+> duplicati) e Parte 2 (job `validate-deploy` in `ci-validate.yaml`) sono **committate**
+> — la nota «working tree, non committato» del 2026-07-21 è superata.
+>
+> **Verificato il 2026-08-04**, non solo dichiarato:
+>
+> | Verifica | Esito |
+> | --- | --- |
+> | `install-timers.sh --render-only` | rende i 4 unit dai template |
+> | `systemd-analyze verify` sui render | **exit 0** |
+> | unit installati sull'host vs template renderizzati | **direttive identiche** (differiscono solo per i commenti di testata che i template hanno aggiunto) |
+> | timer sull'host | `zeroerp-coda-lavori.timer` e `zeroerp-coda-stampa.timer` **entrambi enabled + active** |
+>
+> ⚠️ **Un pezzo del brief era diventato falso, ed è stato corretto oggi.** L'installer, il
+> template della coda stampa e il playbook §16 dicevano che
+> `zeroerp-coda-stampa.timer` va **scritto ma non abilitato**, in attesa dei GRANT del
+> ruolo batch, rimandando a un brief che nel frattempo è stato chiuso e archiviato. Quei
+> GRANT ci sono (verificati: `UPDATE`/`SELECT` su `fatture_stampa_coda`, `INSERT` su
+> `documenti_generati`) e il timer è in esercizio. Un host nuovo si sarebbe trovato **metà
+> worker spenti** per un vincolo inesistente, con un rimando a un documento archiviato:
+> ora l'installer abilita entrambi i timer e i tre punti dicono la stessa cosa.
+>
+> **Resta l'unica azione runtime, che è di Tid** (richiede `sudo`):
+> `sudo backend/bin/install-timers.sh` su questo host. Non è più solo una formalità di
+> DoD — ri-renderizza gli unit dai template (oggi sull'host mancano le testate) ed è la
+> prova che il percorso completo funziona.
 >
 > Contesto: worker DRAINER della Fase C (`draina_coda_lavori`, `draina_coda_stampa`)
 > deployati via systemd timer (playbook §16). Vedi anche `play-book-operativo-backend.md`
@@ -78,11 +97,14 @@ Aggiungere un job/step leggero che **valida gli artefatti di deploy** (non li es
       (`__APP_DIR__`/`__APP_USER__`/`__ONCALENDAR__`).
 * [x] `install-timers.sh` renderizza i template (heredoc inline rimossi; nessuna
       definizione unit duplicata) + modalità `--render-only <DIR>` per la CI.
-* [~] `sudo backend/bin/install-timers.sh` su host pulito installa+abilita `coda-lavori`
-      (e scrive `coda-stampa` disabilitato): **render byte-equivalente all'heredoc
-      precedente verificato** (comportamento invariato) → il `sudo` reale su host è
-      azione runtime di Tid, non eseguibile in CI/agent.
+* [~] `sudo backend/bin/install-timers.sh` su host pulito installa+abilita **entrambi**
+      i timer (dal 2026-08-04: il gate GRANT sulla coda stampa è caduto). Verificato che
+      gli unit oggi installati hanno **direttive identiche** al render dei template →
+      nessuna deriva; il `sudo` reale resta azione runtime di Tid, non eseguibile
+      dall'agent.
 * [x] Step CI in `ci-validate.yaml` (job `validate-deploy`): `bash -n`/`shellcheck` +
-      `systemd-analyze verify` — **simulati verdi in locale**; prima run reale al push.
+      `systemd-analyze verify`. Committato; render e `verify` ri-simulati verdi il
+      2026-08-04 (lo `shellcheck` in locale non è installato — in CI viene messo da apt).
 * [x] Playbook §16 aggiornato: i template sono la fonte, gli heredoc §16.1/16.2 sostituiti
-      da un riferimento ai template + note CI.
+      da un riferimento ai template + note CI. Il gate GRANT della coda stampa è stato
+      riscritto come superato (2026-08-04).

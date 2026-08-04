@@ -1204,6 +1204,39 @@ const drawerActions = computed(() => [
   `mapAvailableActionsToDrawerActions(...)`: niente loop manuale `v-for="action in availableActions"`
   nel template.
 
+### Quando non c'e' nessuna azione — prop `infoKey`
+
+> **Una lista di azioni vuota e' indistinguibile da un errore di caricamento.**
+> Se da uno stato non si puo' fare nulla, la barra deve dirlo — e dire cosa si fa
+> invece.
+
+E' la faccia a video della regola R3 del brief
+[vie d'uscita per l'operatore](../work-in-progress/brief-db-vie-uscita-operatore.md):
+per ogni stato, **o la via d'uscita c'e', o c'e' scritto perche' non c'e'**. Il
+testo non e' una scelta del componente: e' un **dato**, la chiave i18n
+`meta->>'nessuna_azione_key'` della riga di `config.stati_doc_*`, che le
+capability `script.fn_available_actions_*` espongono quando nessuna azione e'
+abilitata. Cambiare il messaggio e' cambiare un seed, non toccare il frontend.
+
+```vue
+<DrawerActionsBar
+  :actions="drawerActions"
+  :info-key="detail?.nessuna_azione_key || ''"
+/>
+```
+
+| Regola | Perche' |
+| --- | --- |
+| La chiave arriva **dal BE**, mai scritta nel componente | Il vocabolario degli stati vive a DB; un `v-if` su `stato_codice_interno` nel drawer sarebbe la stessa regola scritta due volte |
+| La barra **compare** anche con zero azioni se c'e' la nota | Altrimenti l'unica cosa che spiega lo stato sparisce proprio nel caso in cui serve. Attenzione ai `v-if="drawerActions.length"` dei singoli drawer: vanno estesi alla chiave |
+| Risoluzione via `labelOrCode` (fail-visible) | Chiave assente dai locales → si vede la chiave grezza, non il vuoto: il difetto silenzioso torna rumoroso |
+| Il testo **non** arriva mai dal DB | Dal DB viaggiano solo indirizzi i18n (§Multilingua) |
+
+Distinta da `enabled: false` + `reasons` della **singola** azione (tooltip sul
+pulsante spento, vedi `mapAvailableActionsToDrawerActions`): quello spiega
+perche' *quel* pulsante non si puo' premere, questo perche' di pulsanti non ce
+n'e' nessuno.
+
 **Convenzioni centralizzate:**
 
 | Cosa | Dove |
@@ -1214,6 +1247,7 @@ const drawerActions = computed(() => [
 | Tooltip fallback kebab | `common.altre_azioni` ("Altre azioni") in `it.json` |
 | Wrapper barra azioni | `.app-drawer-actions` / `-desktop` / `-compact` in `main.css` |
 | Wrapper badge counter | `.app-drawer-action-wrap` + `.app-drawer-action-badge` |
+| Nota «nessuna azione» | `.app-drawer-actions-info` in `main.css` |
 
 ---
 

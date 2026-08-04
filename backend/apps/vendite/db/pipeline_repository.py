@@ -1703,7 +1703,7 @@ class VenditePipelineRepository:
             )
 
     # Scopo: Accoda in vendite.fatture_stampa_coda una riga PENDING per ogni
-    #        fattura non esclusa del lotto (outbox stampa, Fase C C-2c).
+    #        fattura del lotto (outbox stampa, Fase C C-2c).
     #        Idempotente (indice unico parziale sui work-item vivi).
     #        Ritorna il numero di righe accodate.
     def accoda_stampe_lotto(self, lotto_id: int) -> int:
