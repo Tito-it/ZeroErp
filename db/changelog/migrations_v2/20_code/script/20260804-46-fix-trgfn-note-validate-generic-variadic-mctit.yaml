@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # Bonifica riferimenti morti — F3
-#   Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md
+#   Brief: docs/it/dev/work-done/brief-db-bonifica-riferimenti-morti.md
 #
 #   `NEW.target_riga_id` e' `bigint` e finiva in un parametro
 #   `VARIADIC text[]`: nessun cast implicito, chiamata non risolta.

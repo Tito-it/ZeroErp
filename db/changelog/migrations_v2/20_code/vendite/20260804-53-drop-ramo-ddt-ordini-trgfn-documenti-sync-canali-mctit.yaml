@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # Bonifica riferimenti morti — F5, il ramo per una tabella che non esiste
-#   Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md
+#   Brief: docs/it/dev/work-done/brief-db-bonifica-riferimenti-morti.md
 #
 # ── COSA C'ERA ───────────────────────────────────────────────────────────
 #   Un ramo `IF TG_TABLE_NAME = 'ddt_ordini' AND TG_OP = 'INSERT'`, la

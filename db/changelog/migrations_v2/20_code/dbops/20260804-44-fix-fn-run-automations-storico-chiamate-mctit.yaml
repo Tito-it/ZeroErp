@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # Bonifica riferimenti morti — F3, piu' un difetto che era classificato FP
-#   Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md
+#   Brief: docs/it/dev/work-done/brief-db-bonifica-riferimenti-morti.md
 #
 # ── 1) IL DIFETTO F3 (segnalato) ─────────────────────────────────────────
 #   `script.fn_log_and_raise_error(..., VARIADIC p_valori text[])` riceveva

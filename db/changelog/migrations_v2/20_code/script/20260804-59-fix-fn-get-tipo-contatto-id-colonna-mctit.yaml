@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # Bonifica riferimenti morti — F2, famiglia stradario/contatti
-#   Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md
+#   Brief: docs/it/dev/work-done/brief-db-bonifica-riferimenti-morti.md
 #
 #   `config.tipi_contatti.cod_int_tipo_contatto` non esiste: la colonna e'
 #   `codice_interno`, con il suo vincolo `uq_tipi_contatti_codice_interno`

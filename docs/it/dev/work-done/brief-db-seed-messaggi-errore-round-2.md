@@ -29,7 +29,7 @@
 >
 > **Cosa resta, e non è di questo brief:** il presidio del §6.2 lato DB è nato e
 > al primo giro ha già trovato un orfano; la sua evoluzione (`plpgsql_check`) vive
-> ora in [brief-db-bonifica-riferimenti-morti](../work-in-progress/brief-db-bonifica-riferimenti-morti.md).
+> ora in [brief-db-bonifica-riferimenti-morti](../work-done/brief-db-bonifica-riferimenti-morti.md).
 >
 > ---
 

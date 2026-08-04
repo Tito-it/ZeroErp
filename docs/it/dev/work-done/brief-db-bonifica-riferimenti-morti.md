@@ -14,12 +14,14 @@ più il presidio che impedisce a queste cose di tornare.
 > misura **0 difetti aperti** e **1 sola voce** nel registro del debito, che è una
 > decisione già presa (D6). Il §7 è il registro di avanzamento.
 >
-> ⚠️ **Il presidio in CI è in accensione.** Tre giri rossi, tutti diagnosticati e
-> corretti (`-67`, `-68`, include in `changelog-provision-pre.yaml`, guardrail
-> spostato dopo il migrate di Django): dettaglio e lezioni al §7. Il guardrail ha
-> fatto il suo mestiere in tutti e tre. Finché una pipeline non passa, quella metà
-> del presidio è dimostrata a pezzi e non nel suo insieme: è l'unica ragione per
-> cui il brief resta qui e non in `work-done`.
+> ✅ **Il presidio è acceso e la pipeline è verde.** L'accensione in CI è costata
+> tre giri rossi, tutti diagnosticati e corretti (dettaglio e lezioni al §7) — e in
+> tutti e tre il guardrail ha fatto il suo mestiere invece di passare in silenzio.
+>
+> Resta aperto il solo [brief per il BE](../work-in-progress/brief-be-bonifica-riferimenti-morti.md),
+> in lavorazione presso quel team: il suo punto 1 (il codice errore di dominio non
+> arriva al backend) è il difetto più serio emerso, e non l'ha trovato il presidio
+> ma la riparazione di un pgTAP.
 
 ---
 
@@ -442,7 +444,7 @@ sensazione della copertura senza averla, che è esattamente ciò che è successo
 | Presidio (misura, registro, viste, seed) | ✅ applicato | `-62` `-63` `-64` `-65` |
 | pgTAP `test-riferimenti-morti-v1.sql` | ✅ **5/5 verde** | — |
 | Guardrail + 2 passi in `ci-validate.yaml` | ✅ guardrail provato a mano (exit 0); i due passi CI vanno esercitati alla prossima pipeline | — |
-| Brief per il BE | ✅ [`brief-be-bonifica-riferimenti-morti.md`](brief-be-bonifica-riferimenti-morti.md) | — |
+| Brief per il BE | ✅ [`brief-be-bonifica-riferimenti-morti.md`](../work-in-progress/brief-be-bonifica-riferimenti-morti.md) | — |
 
 ### ✅ Verifiche dopo il migrate (2026-08-04, 20:45)
 
@@ -555,4 +557,4 @@ sequenza dei checksum. Su dev è un no-op.
    droppate (`trgfn_attivita_fatturabili_guard_fonte`,
    `trgfn_contratti_righe_componenti_guard_pending`) sono già rimossi, e i due
    «Vedi anche» che li linkavano sono stati ripuntati.
-5. **Brief BE** da evadere: [brief-be-bonifica-riferimenti-morti](brief-be-bonifica-riferimenti-morti.md).
+5. **Brief BE** da evadere: [brief-be-bonifica-riferimenti-morti](../work-in-progress/brief-be-bonifica-riferimenti-morti.md).

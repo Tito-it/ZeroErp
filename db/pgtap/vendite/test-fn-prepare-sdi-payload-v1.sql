@@ -3,7 +3,7 @@
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_prepare_sdi_payload — payload SDI del lotto
 -- ------------------------------------------------------------
--- Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md
+-- Brief: docs/it/dev/work-done/brief-db-bonifica-riferimenti-morti.md
 --        (F2, changeSet 20260804-39)
 --
 -- Indice test (1..10):
