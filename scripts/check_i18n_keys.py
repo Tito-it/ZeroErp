@@ -78,15 +78,24 @@ RE_KEYPROP = re.compile(
     r"""\b(?:label_key|reason_key|labelKey|reasonKey)\s*[:=]\s*(['"`])([\w.]+)\1""")
 # Chiave costruita dinamicamente: punto cieco, si segnala e non si valuta
 RE_DINAMICA = re.compile(r"""(?<![\w$])\$?t[em]?\(\s*(?:(['"])[\w.]*\1\s*\+|`[^`]*\$\{)""")
+# Nomi delle proprieta' che portano un indirizzo i18n dal DB al frontend.
+# `nessuna_azione_key` (2026-08-04, brief-db-vie-uscita-operatore §4) e' la
+# terza: vive nel `meta` degli STATI (non delle transizioni) e spiega perche' da
+# quello stato non c'e' nessuna azione da azionare. Senza di lei qui, quelle
+# quattro chiavi sarebbero rimaste invisibili al guard — la stessa classe di
+# difetto che il guard esiste per intercettare.
+_PROP_KEY = "label_key|reason_key|nessuna_azione_key"
+
 # Chiavi emesse dal DB nelle doc auto-gen delle funzioni.
 # Il valore DEVE contenere un punto e stare sulla stessa riga: senza questi due
 # vincoli il match scavalca il fine riga e aggancia la chiave jsonb successiva
 # (`'label_key', t.meta->>'label_key',` + a capo + `'severity',` -> "severity").
 RE_DB_KEY = re.compile(
-    r"""['"](?:label_key|reason_key)['"][^\S\n]*,[^\S\n]*'(\w+(?:\.\w+)+)'""")
-RE_DB_ASSIGN = re.compile(r"""_(?:reason|label)_key\s*:?=\s*'(\w+(?:\.\w+)+)'""")
+    rf"""['"](?:{_PROP_KEY})['"][^\S\n]*,[^\S\n]*'(\w+(?:\.\w+)+)'""")
+RE_DB_ASSIGN = re.compile(
+    r"""_(?:reason|label|azione)_key\s*:?=\s*'(\w+(?:\.\w+)+)'""")
 # Seed CSV: JSON dentro CSV, quindi virgolette raddoppiate.
-RE_SEED_KEY = re.compile(r'""(?:label_key|reason_key)""\s*:\s*""(\w+(?:\.\w+)+)""')
+RE_SEED_KEY = re.compile(rf'""(?:{_PROP_KEY})""\s*:\s*""(\w+(?:\.\w+)+)""')
 
 
 def flatten(obj, prefisso="", out=None):
@@ -174,13 +183,19 @@ def main():
             for m in RE_DB_ASSIGN.finditer(testo):
                 db_keys.setdefault(m.group(1), set()).add(rel)
 
-    # Seconda sorgente: i seed delle transizioni di stato. Le label_key vivono
+    # Seconda sorgente: i seed di stato. Le label_key delle TRANSIZIONI vivono
     # nel `meta` jsonb e finiscono all'utente come etichette dei pulsanti di
-    # cambio stato, quindi valgono quanto quelle scritte nelle funzioni.
+    # cambio stato; la `nessuna_azione_key` degli STATI (`stati_doc_*.csv`) e'
+    # il testo che l'utente legge quando di pulsanti non ce n'e' nessuno.
+    # Entrambe valgono quanto quelle scritte nelle funzioni, e per un giorno
+    # solo le prime erano guardate: guardare i soli `transizioni_stati_*`
+    # lasciava fuori proprio il caso «nessuna azione», dove il testo mancante
+    # non lascia nemmeno un pulsante muto a segnalare che qualcosa c'era.
     if os.path.isdir(SEED):
         for dirpath, _dirs, files in os.walk(SEED):
             for f in sorted(files):
-                if not (f.startswith("transizioni_stati_") and f.endswith(".csv")):
+                if not (f.startswith(("transizioni_stati_", "stati_doc_"))
+                        and f.endswith(".csv")):
                     continue
                 path = os.path.join(dirpath, f)
                 with open(path, encoding="utf-8") as fh:

@@ -1512,6 +1512,10 @@
       "azione_consegna": "Segna consegnato",
       "azione_reso": "Segna reso",
       "azione_annulla": "Annulla DDT",
+      "stato_info": {
+        "consegnato_usa_reso": "La merce è consegnata: per farla rientrare si registra un reso, non si annulla il DDT.",
+        "reso": "Questo DDT è rientrato con un reso: lo stato segue il reso da solo."
+      },
       "azione_push_commessa": "Invia a commessa",
       "conferma_cambio_stato": "Portare il DDT nello stato {stato}?",
       "stato_cambiato": "Stato DDT aggiornato",
@@ -1727,6 +1731,14 @@
       "abbandono_bozza_conferma": "Elimina bozza",
       "azione_conferma": "Conferma ordine",
       "azione_annulla": "Annulla ordine",
+      "azione_reason": {
+        "ddt_collegati": "L'ordine ha già DDT collegati: la merce è uscita e per farla rientrare si registra un reso.",
+        "gia_in_commessa": "L'ordine è già stato inviato a fatturazione: annulla prima le attività in commessa."
+      },
+      "stato_info": {
+        "evaso": "L'ordine è evaso: lo stato si ricalcola dai DDT, non si imposta a mano.",
+        "parzialmente_evaso": "Evasione in corso: lo stato si ricalcola a ogni DDT."
+      },
       "azione_push_commessa": "Invia a commessa",
       "conferma_cambio_stato": "Portare l'ordine nello stato {stato}?",
       "stato_cambiato": "Stato ordine aggiornato",
@@ -2453,6 +2465,10 @@
         "non_accettato": "La generazione dell'ordine sara' disponibile dopo l'accettazione del preventivo.",
         "nessuna_riga": "Nessuna riga: aggiungi almeno una riga per generare l'ordine."
       },
+      "azione_reason": {
+        "ordine_gia_generato": "Il preventivo ha già generato un ordine: annulla prima l'ordine collegato.",
+        "gia_in_commessa": "Il preventivo è già stato inviato a fatturazione: annulla prima le attività in commessa."
+      },
       "conferma_cambio_stato": "Confermare il cambio di stato a {stato}? L'operazione potrebbe essere irreversibile.",
       "conferma_revisione": "Creare una nuova revisione? La revisione corrente verra' disattivata.",
       "stato_cambiato": "Stato preventivo aggiornato",
@@ -2937,9 +2953,12 @@
       "azione_annulla": "Annulla commessa",
       "azione_chiudi": "Chiudi commessa",
       "azione_riapri": "Riapri commessa",
+      "azione_rendi_pronta": "Rendi pronta per fatturazione",
       "azione_reason": {
         "righe_emesse": "Ci sono righe già emesse verso fattura",
-        "righe_da_emettere": "Restano righe approvate non ancora emesse"
+        "righe_da_emettere": "Restano righe approvate non ancora emesse",
+        "nessuna_riga_pronta": "Nessuna riga approvata da fatturare: approva almeno un'attività.",
+        "emittente_mancante": "Manca l'emittente fiscale sulla commessa: senza non si può emettere fattura."
       },
       "col_data": "Data",
       "col_competenza": "Competenza",
@@ -3125,7 +3144,11 @@
         "stato_non_draft": "Il lotto non è più in bozza: l'annullamento è ammesso solo prima che il lotto produca fatture. Da EMESSA la via d'uscita è «Riporta in lavorazione».",
         "stato_non_pre_fiscale": "Il lotto è oltre lo stato pre-fiscale: non può tornare in lavorazione.",
         "fatture_non_pre_fiscali": "Il lotto contiene fatture oltre lo stato pre-fiscale: non possono essere eliminate.",
-        "fatture_numerate": "Il lotto contiene fatture già numerate: eliminarle aprirebbe un buco nella numerazione fiscale."
+        "fatture_numerate": "Il lotto contiene fatture già numerate: eliminarle aprirebbe un buco nella numerazione fiscale.",
+        "lotto_non_pre_fiscale": "Il lotto è oltre lo stato pre-fiscale: non si possono più togliere fatture.",
+        "fattura_non_collegata": "La fattura non appartiene a questo lotto.",
+        "fattura_non_pre_fiscale": "La fattura è oltre lo stato pre-fiscale: non può essere eliminata.",
+        "fattura_numerata": "La fattura è già numerata: eliminarla aprirebbe un buco nella numerazione fiscale."
       },
       "azione_non_piu_disponibile": "Azione non più disponibile su questo lotto: la lista è stata aggiornata."
     }

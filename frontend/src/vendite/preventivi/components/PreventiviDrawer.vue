@@ -891,7 +891,7 @@ const drawerActions = computed(() => {
                - ACCETTATO/EVASO/RIFIUTATO/SCADUTO/ANNULLATO -> Scarica (apre lista)
              Resta componente dedicato dentro #suffix (stateful), non rappresentabile
              come azione `command: () => void`. -->
-        <DrawerActionsBar :actions="drawerActions">
+        <DrawerActionsBar :actions="drawerActions" :info-key="detail?.nessuna_azione_key || ''">
           <template #suffix>
             <EntityPdfButton
               :sorgente-code="SORGENTE_CODES.PREVENTIVO"

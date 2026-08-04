@@ -318,6 +318,27 @@ a {
   right: -0.15rem;
 }
 
+/* Nota «nessuna azione» della barra drawer (prop infoKey di DrawerActionsBar).
+ * Spiega perche' su questo stato non c'e' niente da azionare e cosa fare invece
+ * (brief-db-vie-uscita-operatore R3). Tono muted come gli altri qualificatori
+ * d'header: e' una risposta, non un allarme. `flex: 1 1 12rem` la manda a capo
+ * da sola quando la barra e' affollata, invece di stringere i pulsanti. */
+.app-drawer-actions-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 1 1 12rem;
+  min-width: 0;
+  color: var(--app-text-muted);
+  font-size: 0.8rem;
+  line-height: 1.25;
+}
+
+.app-drawer-actions-info .pi {
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
 /* ===== Classe utility DataTable compatta =====
  * Applicare class="app-datatable" su un wrapper o direttamente sulla DataTable.
  * Usa le variabili --app-table-* definite in theme.css per personalizzazione centralizzata.

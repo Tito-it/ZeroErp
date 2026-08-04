@@ -1,9 +1,42 @@
 # Brief BE → DB — seed round 2: i 28 codici che il check ha fatto emergere
 
+> 🟢 **CHIUSO — 2026-08-04.** Seed applicato, rinomine fatte da entrambe le parti
+> nell'ordine giusto, **controprova finale eseguita sul database vivo**:
+>
+> ```text
+> script.fn_log_error_only(..., 'E_PIPELINE_DRIVER_MAX_ITER', ...)
+>   registrato come: E_PIPELINE_DRIVER_MAX_ITER
+>   messaggio      : Pipeline interrotta: superato il numero massimo di iterazioni.
+>   fallback usato : nessuno — il codice si è risolto
+> ```
+>
+> È il codice che aveva motivato il §9.6 del round-1: quello che finiva nel log
+> senza essere dichiarato da nessuna parte, e che un confronto
+> `error_policies.py` ↔ catalogo avrebbe dato per verde. Ora si nomina da solo.
+>
+> **Stato misurato dopo il merge di `Tito-dev`:**
+>
+> | Verifica | Esito |
+> | --- | --- |
+> | codici dichiarati dal BE senza riga a catalogo | **nessuno** (396 dichiarati, 635 righe CSV) |
+> | seed applicato al database | ✅ 636 righe in `config.messaggi_errore` |
+> | nomi vecchi (`E_COMPETENZA_*`, `E_EMITTENTE_NON_RISOLTO`) nel DB | **nessuno** — la finestra del §6.4 si è chiusa senza degradi |
+> | rinomine R1/R2/R3 lato BE | ✅ nomi nuovi in `error_policies.py`, vecchi assenti dai call-site |
+> | guardrail `test_error_codes_declared_guardrail` | ✅ verde nella suite (3563 test) |
+>
+> Il `migrate` che il §6.4 dava ancora da fare **è girato**: la nota «⏳ manca solo
+> il migrate» è superata dai fatti sopra.
+>
+> **Cosa resta, e non è di questo brief:** il presidio del §6.2 lato DB è nato e
+> al primo giro ha già trovato un orfano; la sua evoluzione (`plpgsql_check`) vive
+> ora in [brief-db-bonifica-riferimenti-morti](../work-in-progress/brief-db-bonifica-riferimenti-morti.md).
+>
+> ---
+
 **Chi scrive:** BE (`dev/backend-tid`), 2026-08-04.
 **A chi:** team DB (`dev/db-tid`).
 **Riferimento:** vostra risposta in
-[brief-db-seed-messaggi-errore-mancanti.md](../work-done/brief-db-seed-messaggi-errore-mancanti.md) §9.6
+[brief-db-seed-messaggi-errore-mancanti.md](brief-db-seed-messaggi-errore-mancanti.md) §9.6
 («Palla al BE — codici che nessun catalogo può indovinare»), passo 5 della
 lavorazione §9.8.
 

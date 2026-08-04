@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # Installa gli unit systemd dei worker DRAINER (Fase C cockpit fatturazione):
-#   - zeroerp-coda-lavori  (coda generica dbops.coda_lavori)  → ABILITATO
-#   - zeroerp-coda-stampa  (coda stampa vendite.fatture_stampa_coda) → SOLO scritto,
-#     NON abilitato: richiede prima i GRANT del ruolo batch (vedi
-#     docs/it/dev/work-in-progress/brief-db-grant-batch-coda-stampa.md).
+#   - zeroerp-coda-lavori  (coda generica dbops.coda_lavori)          → ABILITATO
+#   - zeroerp-coda-stampa  (coda stampa vendite.fatture_stampa_coda)  → ABILITATO
+#
+# Fino al 2026-08-04 la coda stampa veniva scritta ma NON abilitata, in attesa
+# dei GRANT del ruolo batch. Quei GRANT sono applicati (brief archiviato in
+# docs/it/dev/work-done/brief-db-grant-batch-coda-stampa.md) e il timer gira in
+# esercizio: lasciare il gate avrebbe consegnato a ogni host nuovo una coda
+# stampa spenta, con un rimando a un vincolo che non esiste piu'.
 #
 # Idempotente: riscrive gli unit a ogni run. Da eseguire come root:
 #   sudo backend/bin/install-timers.sh
@@ -77,7 +81,7 @@ echo "Rendering unit dai template ($TEMPLATE_DIR)..."
 # Coda generica: ogni minuto (tunable a *:*:0/30 = ogni 30 SECONDI per UI più
 # reattiva; NB *:0/30 sarebbe ogni 30 minuti).
 render_unit "zeroerp-coda-lavori" "*:0/1"
-# Coda stampa: ogni 2 min (tunable, P-5). NON abilitato qui (gate GRANT DB).
+# Coda stampa: ogni 2 min (tunable, P-5).
 render_unit "zeroerp-coda-stampa" "*:0/2"
 
 # In render-only (CI) ci si ferma qui: niente daemon-reload né enable.
@@ -88,13 +92,12 @@ fi
 
 systemctl daemon-reload
 
-# Abilita SOLO la coda generica (smoke reale ok). La coda stampa resta scritta ma
-# disabilitata finché il team DB non applica i GRANT del ruolo batch.
+# Entrambi i timer: i GRANT del ruolo batch sulla coda stampa sono applicati
+# (vedi testata). Un host nuovo deve partire con lo stesso assetto di quello in
+# esercizio, non con meta' worker da accendere a mano.
 systemctl enable --now zeroerp-coda-lavori.timer
+systemctl enable --now zeroerp-coda-stampa.timer
 echo
-echo "OK: zeroerp-coda-lavori.timer abilitato."
-echo "    zeroerp-coda-stampa.timer scritto ma NON abilitato (attende GRANT DB:"
-echo "    docs/it/dev/work-in-progress/brief-db-grant-batch-coda-stampa.md)."
-echo "    Dopo i GRANT:  sudo systemctl enable --now zeroerp-coda-stampa.timer"
+echo "OK: zeroerp-coda-lavori.timer e zeroerp-coda-stampa.timer abilitati."
 echo
 systemctl list-timers 'zeroerp-coda-*' --no-pager || true

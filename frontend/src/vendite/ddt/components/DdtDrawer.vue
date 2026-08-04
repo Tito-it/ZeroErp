@@ -569,7 +569,7 @@ const drawerActions = computed(() => {
           </template>
         </DrawerEntityHeader>
 
-        <DrawerActionsBar :actions="drawerActions">
+        <DrawerActionsBar :actions="drawerActions" :info-key="detail?.nessuna_azione_key || ''">
           <template #suffix>
             <!-- Stampa DDT accompagnatorio: anteprima in bozza, gestione
                  documenti generati post-emissione. BB EntityPdfButton 1:1. -->

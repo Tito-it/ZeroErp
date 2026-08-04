@@ -580,7 +580,7 @@ const drawerActions = computed(() => {
           </template>
         </DrawerEntityHeader>
 
-        <DrawerActionsBar :actions="drawerActions">
+        <DrawerActionsBar :actions="drawerActions" :info-key="detail?.nessuna_azione_key || ''">
           <template #suffix>
             <!-- Stampa conferma d'ordine: anteprima PDF on-demand
                  (ristampabile, §12.4(a)). BB EntityPdfButton riusato 1:1. -->

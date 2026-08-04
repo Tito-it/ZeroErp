@@ -407,7 +407,11 @@ function fatturaNumero(row) {
         <!-- Azioni di governo del lotto. Quali esistono, quali sono abilitate e
              perché no lo dice il BE (`available_actions`): qui si rende e si
              chiama. In sola lettura la barra resta vuota. -->
-        <DrawerActionsBar :actions="drawerActions" :disabled="loading || azioniLoading" />
+        <DrawerActionsBar
+          :actions="drawerActions"
+          :info-key="lotto?.nessuna_azione_key || ''"
+          :disabled="loading || azioniLoading"
+        />
 
         <Tabs value="fatture" class="app-mt-1">
           <TabList>

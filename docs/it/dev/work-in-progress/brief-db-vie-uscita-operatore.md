@@ -133,6 +133,11 @@ riattivazione delle tre transizioni nei CSV, l'aggancio nei due guard e nelle du
 mostrare `reasons` sui bottoni spenti; mostrare `nessuna_azione_key` quando la lista
 è vuota. Nessun testo è hardcodato lato DB: viaggiano chiavi i18n.
 
+> ✅ **Fatta il 2026-08-04** — rendiconto in
+> [brief-be-fe-vie-uscita-operatore.md](brief-be-fe-vie-uscita-operatore.md),
+> riassunto qui al §8. Due delle tre voci sono già a video; la terza (`reasons`)
+> è cablata e aspetta solo il campo dal DB.
+
 ### 5.1 Cosa trova il BE, in concreto
 
 Tutto quanto segue è **già nel database** (changeSet `20260804-33/-34/-35` applicati).
@@ -176,6 +181,9 @@ dentro `reasons` sui bottoni spenti **appena** completiamo l'ultimo passo del §
 con lo stesso passo. Conviene quindi tradurle tutte insieme, ma non aspettarsi che
 compaiano prima.
 
+> ✅ **Tradotte tutte e otto (it + en) il 2026-08-04**, come suggerito. Le tre
+> policy errore sono a registro. Vedi §8.
+
 ## 6. Definizione di «fatto» — stato al 2026-08-04
 
 - [x] `fn_check_preventivo_annullabile` e `fn_check_ordine_annullabile` — `20260804-33`;
@@ -185,7 +193,7 @@ compaiano prima.
 - [x] `meta` dei quattro stati «chiusi» — CSV `stati_doc_ordini` / `stati_doc_ddt`;
 - [x] pgTAP: per ciascuno dei sei stati, o l'azione c'è ed è azionabile, o c'è la spiegazione;
 - [x] `test-transizioni-uscita-manuale-v1.sql` **verde 3/3**, e tolto dalla baseline (103 → 102);
-- [ ] esposizione di `reasons` e `nessuna_azione_key` in `fn_available_actions_preventivo` / `_ordine` — **da fare**, è la metà che porta il perché a video;
+- [ ] esposizione di `reasons` e `nessuna_azione_key` in `fn_available_actions_preventivo` / `_ordine` — **da fare**, è la metà che porta il perché a video. ⚠️ **Non è più solo un residuo: da quando l'annullamento è tornato disponibile è l'unica cosa che manca perché l'operatore veda un bottone spento invece di un rifiuto a click fatto** — il FE è cablato e aspetta i due campi (§8);
 - [ ] guard di matrice per il preventivo (§6.2) — **da fare**.
 
 **Tutto applicato il 2026-08-04**, changeSet `20260804-33`, `-34`, `-35` EXECUTED.
@@ -348,3 +356,81 @@ dell'ordine. Una regola, una sede, un messaggio.
 esattamente il controllo che è mancato riattivando `CONFERMATO → ANNULLATO`
 sull'ordine, dove un test che *fissava* la decisione vecchia è diventato rosso. Quel
 rosso ha fatto il suo mestiere; la prossima volta va previsto, non subito.
+
+---
+
+## 8. Risposta della metà a video (BE/FE, 2026-08-04)
+
+> Scritto da BE/FE su `dev/backend-tid`. Rendiconto completo:
+> [brief-be-fe-vie-uscita-operatore.md](brief-be-fe-vie-uscita-operatore.md).
+> Qui solo ciò che il team DB deve sapere per chiudere il §6.
+
+### 8.1 Fatto
+
+| Voce del §5 | Stato |
+| --- | --- |
+| Verbi «Annulla» disponibili | ✅ **Erano già a video**: `available_actions` è data-driven, la riattivazione dei CSV è bastata (conferma inclusa, `requires_confirm` nel `meta`). Zero righe di codice |
+| Tre codici errore a `error_policies.py` | ✅ 409 + messaggio d'azione. Verificato: da *400 «Errore di validazione»* a 409 parlante |
+| Otto chiavi i18n | ✅ it + en, testi presi dalla tabella §4 |
+| `reasons` sui bottoni spenti | ✅ **già supportato** dal building block dal brief guard-righe: si accende da solo quando il campo arriva |
+| `nessuna_azione_key` | ✅ prop `infoKey` su `DrawerActionsBar`, cablata su **tutti e otto** i drawer documento vendite (non solo ordine/DDT): il giorno in cui scrivete la chiave su un altro stato, non c'è codice da toccare |
+
+Nessun endpoint nuovo: l'annullamento passa dal cambio stato generico, il target
+arriva da `available_actions[].target_state`, il grafo resta solo vostro.
+
+### 8.2 Misurato sulle capability vive (non dedotto)
+
+Interrogate sul DB di sviluppo dal canale di sistema — le tabelle documento hanno
+RLS, e senza GUC si legge zero e si conclude il falso:
+
+| Prova | Esito |
+| --- | --- |
+| preventivo ACCETTATO #1816, EMESSO #535 | `annulla` presente e **abilitata** |
+| ordine CONFERMATO #633 | `annulla` presente e **abilitata** |
+| preventivi già in commessa #302 / #301 / #299 | `fn_check_preventivo_annullabile` dà `E_PREV_GIA_IN_COMMESSA`, ma il bottone è **acceso**: `reasons` non è nel blob |
+| ordine EVASO #5388 | zero azioni e `nessuna_azione_key` **assente dal blob** (è a dato nel `meta`, non ancora esposta) |
+
+Cioè: l'ultima riga aperta del §6 è **l'unica** cosa che separa l'operatore dal
+«bottone spento col motivo» invece del rifiuto dopo il click.
+
+### 8.3 Due segnalazioni che vi riguardano
+
+🔴 **Il presidio i18n era cieco su `nessuna_azione_key`.**
+`scripts/check_i18n_keys.py` guardava solo `label_key`/`reason_key` e, fra i
+seed, solo i file `transizioni_stati_*.csv`. La chiave nuova vive nel `meta`
+degli **stati** (`stati_doc_*.csv`): le quattro chiavi erano invisibili al guard,
+che restava verde. Esteso a entrambe le dimensioni. Se in futuro introducete una
+terza proprietà-indirizzo i18n, va aggiunta lì (`_PROP_KEY`), altrimenti l'errore
+torna silenzioso — e nel caso «nessuna azione» è peggio del solito: quando manca
+la label di un pulsante resta almeno il pulsante muto, qui non resta niente.
+
+Effetto collaterale: il guard, vedendo di più, ha reso verdi **7 chiavi rosse da
+prima** — 4 di `vendite.lotti.azione_reason.*` e 3 di `vendite.commesse.*`
+(cantieri azioni-lotto ed emittibilità). Erano motivi ostativi che il DB mandava
+e il frontend non sapeva dire. Tradotte.
+
+🔴 **`PREV_ANNULLAMENTO_COMMESSA_ATTIVA` non è leggibile dall'operatore.**
+Il vostro §7.3 lo cita come limite dichiarato del presidio catalogo. Lato BE il
+costo è più alto di così: l'estrattore di codici applicativi cerca `E_[A-Z]...`,
+quindi quel codice **non viene agganciato** e la risposta degrada a `E_DATABASE`
+— messaggio generico, dettaglio tecnico nascosto per policy. Provato:
+
+```text
+[PREV_ANNULLAMENTO_COMMESSA_ATTIVA] …  ->  E_DATABASE  http=400  "Errore durante l'operazione database."
+```
+
+Fino a ieri era teoria (da `ACCETTATO` il preventivo non si annullava affatto);
+da oggi è un percorso vivo. **Non l'abbiamo tappato lato BE di proposito**:
+allargare la regex fa falsi positivi — lo stesso conto del vostro §7.3 — e
+mappare a mano il singolo codice sarebbe una seconda regola di annullamento in un
+terzo posto, l'opposto della R2 di questo brief. Il **consolidamento §7.3**, che
+avete già deciso, lo chiude alla radice: quel codice sparisce da solo. È un
+argomento in più per metterlo prima del guard di matrice nell'ordine del §7.4.
+
+### 8.4 Cosa aspettiamo
+
+1. `reasons` + `nessuna_azione_key` nelle due `fn_available_actions_*` (§6,
+   ultima riga aperta) → **niente lavoro FE**, si accendono da soli;
+2. consolidamento §7.3 → chiude l'8.3;
+3. resta a Tid la validazione in-app dell'annullamento (preventivo da
+   EMESSO/ACCETTATO, ordine da CONFERMATO).
