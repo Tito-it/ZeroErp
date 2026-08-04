@@ -11,21 +11,31 @@
 import { watch } from 'vue'
 
 // Scopo: registra il watch su `form.value.billing_account_id` con guard
-// edit/no-op/token. `fetchDefaults(baId)` è la fn API del dominio; `apply`
-// (opzionale) applica i default extra specifici di dominio (es. termine
-// pagamento) dopo che la valuta è stata risolta.
+// edit/no-op/token, e restituisce `applicaDefaults(baId)` per i drawer che
+// devono applicare i default anche all'APERTURA — non solo al cambio BA.
+//
+// ⚠️ Perché `applicaDefaults` è esposta (fix 2026-08-04, segnalazione di Tid
+// «pagamento vuoto» sul PDF preventivo). Il watch scatta su un CAMBIO: quando
+// il BA arriva già precompilato (percorso pratica-first: `prefillFromPratica`
+// lo imposta all'apertura) non c'è nessun cambio da osservare, quindi i
+// default BA-derived non venivano mai applicati. Il drawer preventivi
+// compensava con una fetch propria all'apertura che però applicava **solo la
+// valuta**, scartando `termine_pagamento_id` — che era nella stessa risposta.
+// Risultato misurato: 141 preventivi su 163 senza termine di pagamento, e un
+// PDF con «Pagamento: -» anche per clienti che il termine ce l'hanno.
+// Ora la logica di applicazione è una sola e la usano entrambe le strade.
 export function useBaFormDefaults({ form, isEdit, fetchDefaults, apply = null }) {
   let token = 0
-  watch(() => form.value.billing_account_id, async (newBaId, oldBaId) => {
-    if (isEdit.value) return
-    if (!newBaId || newBaId === oldBaId) return
+
+  // Scopo: recupera e applica i default per un BA (o senza, `null`: il BE
+  //   risolve la valuta dall'EF dell'utente). Best-effort: un errore non
+  //   blocca il CREATE, il trigger DB risolverà comunque la valuta al save.
+  async function applicaDefaults(baId) {
     const tk = ++token
     let res
     try {
-      res = await fetchDefaults(newBaId)
+      res = await fetchDefaults(baId ?? null)
     } catch {
-      // Best-effort: errore form-defaults non blocca il CREATE.
-      // Il trigger DB risolverà comunque la valuta al save.
       return
     }
     // Apertura/chiusura veloce o cambio BA rapido: scarta la risposta stantia.
@@ -40,5 +50,13 @@ export function useBaFormDefaults({ form, isEdit, fetchDefaults, apply = null })
     // Default aggiuntivi specifici di dominio (sovrascrivono solo se vuoti,
     // a discrezione del callback).
     if (apply) apply(data, form.value)
+  }
+
+  watch(() => form.value.billing_account_id, (newBaId, oldBaId) => {
+    if (isEdit.value) return
+    if (!newBaId || newBaId === oldBaId) return
+    applicaDefaults(newBaId)
   })
+
+  return { applicaDefaults }
 }

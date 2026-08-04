@@ -1416,7 +1416,7 @@ def elimina_competenza_flusso(competenza_id: int) -> None:
     deleted = repo.delete_competenza_flusso(competenza_id)
     ErrorManager.require(
         deleted,
-        code="E_COMPETENZA_NOT_FOUND",
+        code="E_FLUSSO_COMPETENZA_NOT_FOUND",
         message=f"Competenza {competenza_id} non trovata",
     )
 

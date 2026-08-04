@@ -114,6 +114,8 @@ nostra, §9.7): serve a voi solo per capire la natura della riga.
 
 ## 5. Definizione di «fatto»
 
+* [x] **R1/R2/R3 rinominate lato BE** (§7) — resta al DB l'allineamento delle
+      righe 805, 806 e 811 del CSV;
 * [x] i 28 codici sono in `messaggi_errore.csv` (non solo nella tabella di un DB) — id **802–829**;
 * [x] il gemello lato DB del check esiste, così i due registri si presidiano a vicenda — §6.2;
 * [x] controprova su uno dei 28 (`E_PIPELINE_DRIVER_MAX_ITER`, il codice che ha
@@ -262,3 +264,67 @@ riparazione è un append al CSV.
 
 Il secondo è la chiusura del cerchio: un codice che nessuno dei due registri conosceva,
 trovato dal check e reso leggibile nello stesso giro.
+
+---
+
+## 7. Risposta BE (2026-08-04) — le tre rinomine sono fatte, palla al CSV
+
+> **Chi scrive:** BE (`dev/backend-tid`), dopo il vostro apply del §6.6.
+
+**R1, R2 e R3 accolte e applicate.** Le motivazioni del §6.3 reggono entrambe, e
+la seconda è quella che ci ha convinti di più: `E_COMPETENZA_*` sembrava
+innocuo finché non avete affiancato i due significati — competenza *temporale*
+di un'attività fatturabile contro competenze *del flusso*. Sono due cose che
+condividono solo la parola, ed è esattamente il tipo di ambiguità che non si
+nota finché non si legge il registro con occhi diversi dai propri.
+
+| # | Rinomina | Call-site toccati |
+| --- | --- | --- |
+| R1 | `E_EMITTENTE_NON_RISOLTO` → **`E_FATTURA_EMITTENTE_NON_RISOLTO`** | `stampa_coda_drainer_service.py` (2), `error_policies.py` (1), `test_stampa_coda_drainer_service.py` (1) |
+| R2 | `E_COMPETENZA_INSERT` → **`E_FLUSSO_COMPETENZA_INSERT`** | `pratiche_repository.py` (1), `error_policies.py` (1) |
+| R3 | `E_COMPETENZA_NOT_FOUND` → **`E_FLUSSO_COMPETENZA_NOT_FOUND`** | `pratiche_service.py` (1), `error_policies.py` (1) |
+
+I conteggi del §6.4 erano esatti: verificati con una ricerca su tutto
+`backend/` e `frontend/` prima di toccare, nessun call-site oltre quelli
+elencati e nessun residuo dopo. Le tre stringhe non sono sottostringhe di altri
+codici (`E_ORDINE_EMITTENTE_NON_RISOLTO` e compagnia non contengono
+`E_EMITTENTE_NON_RISOLTO`), quindi la sostituzione non ha potuto sbordare.
+
+### 7.1 Il testo di R1, per il vostro allineamento
+
+Il `user_message` è stato allineato a quello che proponete:
+
+> **`Emittente fiscale non risolvibile per la fattura in coda di stampa.`**
+
+Usatelo tale e quale sulla riga 811, così i due registri dicono la stessa frase.
+Per R2 e R3 i testi non cambiano.
+
+Nel codice, accanto alla policy R1 è rimasta scritta la ragione della rinomina —
+che le due famiglie dicono il **contrario** l'una dell'altra: là è chi crea a non
+avere un emittente da cui derivare il default, qui è il documento già esistente
+ad esserne privo. È la distinzione che il §6.3 fa, e volevamo che sopravvivesse
+al brief: chi rileggerà quella policy fra un anno non avrà questo documento
+aperto accanto.
+
+### 7.2 Stato
+
+Suite backend **verde sui perimetri toccati** (933 test fra `core`, `pratiche` e
+il drainer di stampa) e **guardrail anti-ricaduta verde**: i tre nomi nuovi sono
+dichiarati, quindi il check li presidia da subito.
+
+> ⚠️ **La finestra del §6.4 si è chiusa mentre la scrivevate.** Il §6.4 dice «il
+> seed non è ancora applicato», ma il §6.6 registra l'apply dello stesso giorno:
+> le tre righe sono già a catalogo **col nome vecchio**. Non è un problema —
+> nell'intervallo fra questo commit e il vostro allineamento del CSV i tre codici
+> degradano a `MESSAGGIO_NON_DEFINITO`, conservando però
+> `context->>'codice_errore_originale'` (§9.9 del round 1). Si perde la
+> *contabilità* per quei tre codici, non l'informazione, e per il tempo di un
+> giro di CSV. Era l'ordine che avevate indicato voi — prima il BE, poi il
+> catalogo — e resta quello giusto.
+
+### 7.3 Su `E_EMAIL_OP` / `E_EMAIL_ADMIN`
+
+Confermiamo che resta debito nostro e non lo chiudiamo qui: spacchettarli per
+verbo cambia lo status HTTP di endpoint già in uso dal frontend, quindi vuole il
+suo giro con la verifica lato UI. È annotato nel codice, dove lo incontrerà chi
+ci mette mano — non solo in questo brief.

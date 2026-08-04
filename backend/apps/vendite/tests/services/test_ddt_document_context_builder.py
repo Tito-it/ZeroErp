@@ -132,7 +132,7 @@ class BuildContextDdtTests(SimpleTestCase):
             trasporto["vettore_denominazione"], "Trasporti Veloci Snc",
         )
         self.assertEqual(trasporto["num_colli"], 3)
-        self.assertEqual(trasporto["peso_lordo"], "12.500")
+        self.assertEqual(trasporto["peso_lordo"], "12,50")
         self.assertEqual(trasporto["targa"], "AB123CD")
         self.assertEqual(trasporto["tracking_code"], "TRK-001")
 

@@ -36,6 +36,11 @@ from typing import Any
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
+from apps.documenti.services.context_builders._number_formatting import (
+    format_importo,
+    format_misura,
+    formatta_campi,
+)
 from apps.documenti.services.context_builders._date_formatting import (
     format_date_it,
     format_date_iso,
@@ -86,8 +91,26 @@ class OrdineDocumentContextBuilder(DocumentContextBuilder):
         )
         assert testata is not None
 
-        righe = self._repo.list_righe(sorgente_id)
-        riepilogo_iva = self._repo.list_riepilogo_iva(sorgente_id)
+        # Numeri pronti per la stampa (2026-08-04): vedi `_number_formatting`.
+        # Le quantita' evase/residue sono misure quanto quella ordinata: se
+        # una si legge «99,00» e l'altra «99.000000» la riga non si confronta.
+        righe = [
+            formatta_campi(
+                r,
+                misure=("quantita", "qta_operativa", "factor_to_base", "prezzo_unitario",
+                        "sconto_percentuale", "qta_evasa_operativa", "qta_residua_operativa"),
+                importi=("iva_aliquota", "importo_riga"),
+            )
+            for r in self._repo.list_righe(sorgente_id)
+        ]
+        riepilogo_iva = [
+            formatta_campi(
+                r,
+                importi=("iva_aliquota", "imponibile", "imposta", "arrotondamento",
+                         "totale_riga"),
+            )
+            for r in self._repo.list_riepilogo_iva(sorgente_id)
+        ]
 
         return {
             "ordine": self._shape_ordine(testata),
@@ -160,12 +183,13 @@ class OrdineDocumentContextBuilder(DocumentContextBuilder):
             },
             "agente_denominazione": testata.get("agente_denominazione"),
             "totali": {
-                "imponibile": testata.get("imponibile_tot"),
-                "sconto": testata.get("sconto_tot"),
-                "iva": testata.get("iva_tot"),
-                "documento": testata.get("totale_doc"),
+                "imponibile": format_importo(testata.get("imponibile_tot")),
+                "sconto": format_importo(testata.get("sconto_tot")),
+                "iva": format_importo(testata.get("iva_tot")),
+                "documento": format_importo(testata.get("totale_doc")),
                 "valuta_codice": testata.get("valuta_codice"),
-                "tasso_cambio": testata.get("tasso_cambio"),
+                # Misura, non denaro (vedi gemello in fattura).
+                "tasso_cambio": format_misura(testata.get("tasso_cambio")),
             },
             "meta": testata.get("meta") or {},
         }

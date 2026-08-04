@@ -158,7 +158,7 @@ class DrainerErrorPathTests(SimpleTestCase):
         ds.genera_documento.assert_not_called()
         repo.numera_fattura_backstop.assert_not_called()
         errore_arg = repo.marca_stampa_errore.call_args.kwargs["errore"]
-        self.assertEqual(errore_arg["code"], "E_EMITTENTE_NON_RISOLTO")
+        self.assertEqual(errore_arg["code"], "E_FATTURA_EMITTENTE_NON_RISOLTO")
         self.assertEqual(summary["errore"], 1)
 
     # 6. Resilienza per-riga: la prima fallisce, la seconda completa comunque.
