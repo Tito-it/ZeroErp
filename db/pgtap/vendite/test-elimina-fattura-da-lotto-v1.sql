@@ -1,0 +1,255 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+-- Test: eliminazione di UNA fattura da un lotto pre-fiscale
+--       (piano-db-ritorno-lotto-a-draft.md, Slice 6-B — RD-7)
+-- ------------------------------------------------------------
+-- Cosa presidia questo file
+--   RD-7 (2026-08-04): togliere una fattura dal lotto vuol dire
+--   CANCELLARLA. Il modello «reperto» — staccarla e portarla ad
+--   ANNULLATA — e' caduto perche' era incoerente: riportare in bozza un
+--   lotto INTERO cancella gia' le sue fatture EMESSA, e non aveva senso
+--   che la stessa operazione su UNA riga lasciasse un documento vuoto.
+--
+--   Con quella decisione l'unico lavoro rimasto e' allargare il
+--   perimetro del LOTTO da «DRAFT» a «pre-fiscale» e portare le quattro
+--   precondizioni in una sede sola.
+--
+-- 🔴 I TEST CHE VALGONO DI PIU' SONO IL 10 E L'11.
+--   Il 10 verifica l'unica cosa che conta davvero: dove la fn_check dice
+--   no, la funzione di mutazione SOLLEVA. Senza, le due meta' della
+--   stessa regola possono separarsi in silenzio.
+--   L'11 verifica che l'allargamento sia reale, cioe' che su un lotto
+--   EMESSA la fattura si possa togliere. E' il bug che questo lavoro
+--   chiude: il drawer proponeva gia' la voce su quei lotti (gate sul
+--   solo stato della fattura) e la chiamata falliva.
+--
+-- ⚠️ FIXTURE SCELTE, NON COSTRUITE, e detto invece che nascosto.
+--   Un lotto con fatture agganciate e' il prodotto di due step di
+--   pipeline: non si fabbrica in un pgTAP senza riscrivere la pipeline.
+--   Il file SCEGLIE lotti reali e lavora dentro BEGIN/ROLLBACK. Dove il
+--   DB non ha il caso, il test si SALTA invece di fallire. I test 1-5
+--   sono strutturali e girano sempre.
+-- ------------------------------------------------------------
+-- Indice test
+-- 1) La funzione nuova esiste, col nome nuovo e i quattro contatori
+-- 2) Il vecchio nome NON esiste piu (la rinomina e reale, niente doppione)
+-- 3) La fn_check esiste
+-- 4) I quattro codici errore sono a catalogo
+-- 5) La fn_check rifiuta parametri invalidi
+-- 6) Caso lecito: su lotto e fattura pre-fiscali il check non ha motivi
+-- 7) Motivo: il lotto e oltre il pre-fiscale
+-- 8) Motivo: la fattura non e collegata a quel lotto
+-- 9) Motivo: la fattura ha gia un numero
+-- 10) Equivalenza check <-> mutazione            <-- il test che vale
+-- 11) Il perimetro allargato: da lotto EMESSA si puo togliere  <-- il bug chiuso
+-- ------------------------------------------------------------
+
+BEGIN;
+
+SELECT plan(11);
+
+-- ============================================================
+-- Strutturali (girano sempre)
+-- ============================================================
+
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+     WHERE n.nspname = 'vendite'
+       AND p.proname = 'fn_elimina_fattura_da_lotto'
+       AND pg_get_function_result(p.oid) ILIKE '%riemesse_attivita%'
+       AND pg_get_function_result(p.oid) ILIKE '%deleted_fatture%'),
+  '1) La funzione esiste col nome nuovo e restituisce i quattro contatori');
+
+-- Niente alias di transizione: due nomi vivi per la stessa cosa sono
+-- esattamente il modo in cui i chiamanti si sfilano senza accorgersene.
+SELECT ok(
+  NOT EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+     WHERE n.nspname = 'vendite' AND p.proname = 'fn_elimina_fattura_da_lotto_draft'),
+  '2) Il vecchio nome non esiste piu: la rinomina e reale');
+
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+     WHERE n.nspname = 'script' AND p.proname = 'fn_check_fattura_eliminabile_da_lotto'),
+  '3) La funzione pura di check esiste');
+
+-- Un codice sollevato ma non a catalogo produce «MESSAGGIO NON DEFINITO»
+-- all'operatore: il presidio sta qui perche' e' un silenzio, non un errore.
+SELECT is(
+  (SELECT count(*)::integer FROM config.messaggi_errore m
+    WHERE m.codice IN ('E_LOTTO_NON_PRE_FISCALE', 'E_FATTURA_NON_COLLEGATA_AL_LOTTO',
+                       'E_FATTURA_GIA_FISCALE', 'E_FATTURA_GIA_NUMERATA')
+      AND m.lingua = 'it'),
+  4,
+  '4) I quattro codici errore sono a catalogo in lingua it');
+
+SELECT throws_ok(
+  $$ SELECT script.fn_check_fattura_eliminabile_da_lotto(0, 0) $$,
+  'P0001',
+  NULL,
+  '5) La fn_check rifiuta un lotto_id invalido');
+
+-- ============================================================
+-- Fixture
+-- ============================================================
+-- Criterio: una coppia (lotto, fattura) collegata, con entrambi
+-- pre-fiscali e la fattura NON numerata — cioe' il caso lecito. Il
+-- filtro sul numero e' lo stesso che il test 9 esercita: la fixture non
+-- muore su una condizione che il file verifica altrove.
+CREATE TEMP TABLE tmp_efl AS
+SELECT lf.lotto_id, lf.fattura_id
+  FROM vendite.fatturazione_lotti_fatture lf
+  JOIN vendite.fatturazione_lotti fl ON fl.id = lf.lotto_id
+  JOIN config.stati_doc_fiscale sl ON sl.id = fl.stato_doc_fiscale_id
+  JOIN vendite.fatture f ON f.id = lf.fattura_id
+  JOIN config.stati_doc_fiscale sf ON sf.id = f.stato_doc_fiscale_id
+ WHERE sl.codice_interno IN ('DRAFT', 'EMESSA')
+   AND sf.codice_interno IN ('DRAFT', 'EMESSA')
+   AND f.numero IS NULL
+ ORDER BY lf.lotto_id DESC, lf.fattura_id DESC
+ LIMIT 1;
+
+-- Un lotto oltre il pre-fiscale, per i motivi 1 e 2. ⚠️ Si pretende che
+-- NON contenga la fattura della fixture: il test 8 deve poter asserire
+-- lo scollegamento, e una fattura presente in due lotti — la chiave
+-- unica del ponte e' (lotto, fattura), quindi e' possibile — renderebbe
+-- quell'asserzione falsa per un motivo che non c'entra.
+CREATE TEMP TABLE tmp_efl_oltre AS
+SELECT fl.id AS lotto_id
+  FROM vendite.fatturazione_lotti fl
+  JOIN config.stati_doc_fiscale s ON s.id = fl.stato_doc_fiscale_id
+ WHERE s.codice_interno NOT IN ('DRAFT', 'EMESSA')
+   AND NOT EXISTS (
+         SELECT 1 FROM vendite.fatturazione_lotti_fatture x
+          WHERE x.lotto_id = fl.id
+            AND x.fattura_id = (SELECT fattura_id FROM tmp_efl))
+ ORDER BY fl.id DESC
+ LIMIT 1;
+
+-- ============================================================
+-- 6-9) I quattro verdetti della fn_check
+-- ============================================================
+
+SELECT CASE
+  WHEN NOT EXISTS (SELECT 1 FROM tmp_efl)
+    THEN skip('nessuna coppia lotto/fattura pre-fiscale su questo DB', 1)
+  ELSE is(
+    script.fn_check_fattura_eliminabile_da_lotto(
+      (SELECT lotto_id FROM tmp_efl), (SELECT fattura_id FROM tmp_efl)),
+    '[]'::jsonb,
+    '6) Caso lecito: lotto e fattura pre-fiscali, nessun motivo ostativo')
+END;
+
+SELECT CASE
+  WHEN NOT EXISTS (SELECT 1 FROM tmp_efl_oltre) OR NOT EXISTS (SELECT 1 FROM tmp_efl)
+    THEN skip('nessun lotto oltre il pre-fiscale su questo DB', 1)
+  ELSE ok(
+    EXISTS (
+      SELECT 1 FROM jsonb_array_elements(
+        script.fn_check_fattura_eliminabile_da_lotto(
+          (SELECT lotto_id FROM tmp_efl_oltre), (SELECT fattura_id FROM tmp_efl))) m
+       WHERE m->>'reason' = 'STATO_LOTTO_NON_PRE_FISCALE'),
+    '7) Motivo: il lotto oltre il pre-fiscale e rifiutato')
+END;
+
+-- La fattura della fixture esiste, ma non e' collegata al lotto scelto
+-- qui: il motivo deve nominare il legame, non lo stato.
+SELECT CASE
+  WHEN NOT EXISTS (SELECT 1 FROM tmp_efl_oltre) OR NOT EXISTS (SELECT 1 FROM tmp_efl)
+    THEN skip('serve un secondo lotto per provare lo scollegamento', 1)
+  ELSE ok(
+    EXISTS (
+      SELECT 1 FROM jsonb_array_elements(
+        script.fn_check_fattura_eliminabile_da_lotto(
+          (SELECT lotto_id FROM tmp_efl_oltre), (SELECT fattura_id FROM tmp_efl))) m
+       WHERE m->>'reason' = 'FATTURA_NON_COLLEGATA'),
+    '8) Motivo: la fattura non collegata a quel lotto e rifiutata')
+END;
+
+-- ⚠️ Il numero si mette e si toglie dentro il test: la fixture torna
+-- com'era e i test successivi lavorano sulla coppia intatta.
+UPDATE vendite.fatture SET numero = 999999
+ WHERE id = (SELECT fattura_id FROM tmp_efl)
+   AND EXISTS (SELECT 1 FROM tmp_efl);
+
+SELECT CASE
+  WHEN NOT EXISTS (SELECT 1 FROM tmp_efl)
+    THEN skip('nessuna coppia lotto/fattura pre-fiscale su questo DB', 1)
+  ELSE ok(
+    EXISTS (
+      SELECT 1 FROM jsonb_array_elements(
+        script.fn_check_fattura_eliminabile_da_lotto(
+          (SELECT lotto_id FROM tmp_efl), (SELECT fattura_id FROM tmp_efl))) m
+       WHERE m->>'reason' = 'FATTURA_NUMERATA'),
+    '9) Motivo: la fattura gia numerata e rifiutata (si guarda il numero)')
+END;
+
+-- ============================================================
+-- 10) 🔴 Equivalenza check <-> mutazione
+-- ============================================================
+-- Il cuore del file. La fattura e' ancora numerata (il numero si toglie
+-- DOPO): il check elenca almeno un motivo, e la mutazione deve
+-- sollevare. Se domani qualcuno rimettesse una precondizione a mano
+-- dentro la mutazione — o ne togliesse una — le due meta' si
+-- separerebbero e qui si vedrebbe.
+-- ⚠️ La chiamata sta dentro throws_ok proprio perche' deve sollevare:
+-- una chiamata nuda abortirebbe la transazione e i test successivi non
+-- verrebbero eseguiti affatto.
+SELECT CASE
+  WHEN NOT EXISTS (SELECT 1 FROM tmp_efl)
+    THEN skip('nessuna coppia lotto/fattura pre-fiscale su questo DB', 1)
+  WHEN jsonb_array_length(
+         script.fn_check_fattura_eliminabile_da_lotto(
+           (SELECT lotto_id FROM tmp_efl), (SELECT fattura_id FROM tmp_efl))) = 0
+    THEN ok(false,
+            '10) INCOERENZA: la fn_check non vede il numero che il test ha appena scritto')
+  ELSE throws_ok(
+    format($$ SELECT * FROM vendite.fn_elimina_fattura_da_lotto(%s, %s) $$,
+           (SELECT lotto_id FROM tmp_efl), (SELECT fattura_id FROM tmp_efl)),
+    'P0001',
+    NULL,
+    '10) Equivalenza: il check elenca motivi e la mutazione solleva')
+END;
+
+UPDATE vendite.fatture SET numero = NULL
+ WHERE id = (SELECT fattura_id FROM tmp_efl)
+   AND EXISTS (SELECT 1 FROM tmp_efl);
+
+-- ============================================================
+-- 11) 🔴 Il perimetro allargato
+-- ============================================================
+-- Il bug che questo lavoro chiude: prima la funzione pretendeva il LOTTO
+-- in DRAFT, mentre il drawer proponeva la voce su qualunque lotto con
+-- fattura pre-fiscale. Su un lotto EMESSA la voce c'era e falliva.
+-- Qui si asserisce il caso specifico — lotto EMESSA — e non il generico
+-- «pre-fiscale»: con DRAFT il test sarebbe passato anche prima
+-- dell'allargamento, cioe' non avrebbe misurato niente.
+CREATE TEMP TABLE tmp_efl_emessa AS
+SELECT lf.lotto_id, lf.fattura_id
+  FROM vendite.fatturazione_lotti_fatture lf
+  JOIN vendite.fatturazione_lotti fl ON fl.id = lf.lotto_id
+  JOIN config.stati_doc_fiscale sl ON sl.id = fl.stato_doc_fiscale_id
+  JOIN vendite.fatture f ON f.id = lf.fattura_id
+  JOIN config.stati_doc_fiscale sf ON sf.id = f.stato_doc_fiscale_id
+ WHERE sl.codice_interno = 'EMESSA'
+   AND sf.codice_interno IN ('DRAFT', 'EMESSA')
+   AND f.numero IS NULL
+ ORDER BY lf.lotto_id DESC
+ LIMIT 1;
+
+SELECT CASE
+  WHEN NOT EXISTS (SELECT 1 FROM tmp_efl_emessa)
+    THEN skip('nessun lotto EMESSA con fattura non numerata su questo DB', 1)
+  ELSE is(
+    script.fn_check_fattura_eliminabile_da_lotto(
+      (SELECT lotto_id FROM tmp_efl_emessa), (SELECT fattura_id FROM tmp_efl_emessa)),
+    '[]'::jsonb,
+    '11) Perimetro allargato: da un lotto EMESSA la fattura si puo togliere')
+END;
+
+SELECT * FROM finish();
+
+ROLLBACK;

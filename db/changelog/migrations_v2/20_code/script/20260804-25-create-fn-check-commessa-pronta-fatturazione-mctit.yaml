@@ -1,0 +1,161 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_check_commessa_pronta_fatturazione — sede unica del verdetto
+#   «questa commessa puo' dichiararsi pronta a fatturare?»
+#   (brief-db-emittibilita-visibile-e-sbloccabile.md §3.3).
+#
+# PERCHE' ESISTE. Il brief chiede di rendere manuale la transizione verso
+#   PRONTA_FATTURAZIONE. Renderla manuale senza estrarre la regola creerebbe
+#   subito il difetto che il brief stesso vuole evitare: il bottone direbbe
+#   «si puo'» e il guard a valle direbbe «no», perche' oggi la condizione vive
+#   scritta a mano dentro il trigger (Regola 2 di trgfn_commesse_guard_transizione)
+#   e fn_available_actions_commessa non la conosce. Terza sorella di
+#   fn_check_commessa_chiudibile / _annullabile (2026-07-24): stessa forma,
+#   stesso contratto, stessi consumatori.
+#
+# LA REGOLA LA DETTA IL MOTORE, NON QUESTA FUNZIONE. I motivi sono lo specchio
+#   dei filtri di vendite.fn_list_emittibili_lane, che e' chi decide davvero
+#   cosa e' fatturabile:
+#     riga:     stato_approvazione = 'APPROVATA'
+#           AND stato_emissione    = 'NON_EMESSA'
+#           AND tipo_doc_fiscale_id IS NOT NULL
+#     testata:  raggruppa per (emittente_soggetto_ruolo_id, tipo_doc, utility)
+#   Se un domani la lane cambia criterio, questa funzione va aggiornata con lei:
+#   e' l'unico accoppiamento voluto del disegno, ed e' meglio di due criteri che
+#   divergono in silenzio.
+#
+# ⚠️ IL tipo_doc_fiscale_id ENTRA NEL FILTRO, NON FRA I MOTIVI. Esiste gia' un
+#   guard dedicato (trgfn_commesse_attivita_guard_tipo_doc_emittibile,
+#   E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO) che impedisce a una riga
+#   APPROVATA + NON_EMESSA di avere tipo_doc nullo: un motivo separato qui
+#   sarebbe un ramo irraggiungibile, cioe' codice che sembra coperto e non lo e'.
+#   Resta nel WHERE per specchiare la lane: se quella riga esistesse comunque,
+#   semplicemente non conta come pronta, e scatta il motivo giusto.
+#
+# ⚠️ L'EMITTENTE E' UN MOTIVO VERO, anche se oggi tutte le commesse ce l'hanno.
+#   La colonna e' nullable e nessun trigger la valorizza o la pretende: una
+#   commessa senza emittente puo' esistere, e produrrebbe un raggruppamento che
+#   non diventa nessuna fattura. Lo stato PRONTA_FATTURAZIONE dichiara «questa
+#   commessa si puo' fatturare»: se lo si puo' raggiungere quando la promessa e'
+#   falsa, il buco che il brief chiude si riapre da un'altra porta.
+#
+# Ordine dei motivi: il guard solleva il PRIMO. Viene prima l'assenza di righe
+#   pronte, che e' la condizione di cui lo stato parla; l'emittente segue.
+#
+# ⚠️ NESSUNA preCondition SU config.messaggi_errore, e non e' una dimenticanza.
+#   Il codice E_COMMESSA_EMITTENTE_MANCANTE viaggia nel CSV dei messaggi, che il
+#   loader carica in 80_data — cioe' DOPO questa fase. Una preCondition che ne
+#   verificasse la presenza qui fallirebbe sempre al primo giro su un database
+#   che non ce l'ha ancora (provato: «Expected 1 got 0»), bloccando l'intera
+#   migrazione. La dipendenza e' comunque solo di RUNTIME: la funzione mette il
+#   codice in un jsonb, e chi lo risolve contro il catalogo e' il guard, che
+#   gira quando 80_data e' passata da un pezzo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260804-25-create-fn-check-commessa-pronta-fatturazione-mctit.yaml
+
+  - changeSet:
+      id: 20260804-25-create-fn-check-commessa-pronta-fatturazione
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Funzione pura che elenca i motivi che impediscono a una commessa di
+        passare a PRONTA_FATTURAZIONE. Sede unica condivisa fra il guard di
+        transizione e fn_available_actions_commessa: bottone e guard leggono
+        lo stesso verdetto. Specchio dei filtri di fn_list_emittibili_lane.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: commesse_attivita
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_commessa_pronta_fatturazione(
+                  p_commessa_id vendite.commesse.id%TYPE
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              -- Scopo: elencare i motivi che impediscono a una commessa di
+              --   dichiararsi PRONTA_FATTURAZIONE. Funzione PURA (fn_check_*):
+              --   nessun raise di dominio, nessuna scrittura. Consumatori: il
+              --   guard di transizione (che solleva il codice del primo motivo)
+              --   e fn_available_actions_commessa (che espone l'azione
+              --   disabled + reasons).
+              --   Brief: brief-db-emittibilita-visibile-e-sbloccabile §3.3.
+              -- Ritorna: [] se la commessa puo' passare; altrimenti array
+              --   ordinato di {codice, reason, reason_key, dettaglio}.
+              DECLARE
+                v_motivi    jsonb := '[]'::jsonb;
+                v_pronte    integer := 0;   -- conteggio, non specchio di colonna
+                v_emittente vendite.commesse.emittente_soggetto_ruolo_id%TYPE;
+                v_trovata   boolean := false;
+              BEGIN
+                -- Guard parametro (AGENTS.md): id assente o non valido e' un
+                -- errore di programmazione, non una condizione di dominio.
+                IF p_commessa_id IS NULL OR p_commessa_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'script','fn_check_commessa_pronta_fatturazione','E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','commessa_id','valore',p_commessa_id),
+                    NULL::uuid, 'commessa_id obbligatorio (>0)');
+                END IF;
+
+                SELECT c.emittente_soggetto_ruolo_id, true
+                  INTO v_emittente, v_trovata
+                  FROM vendite.commesse c
+                 WHERE c.id = p_commessa_id;
+
+                -- MOTIVO 1 — nessuna riga che il motore raccoglierebbe.
+                -- Le tre condizioni sono quelle di fn_list_emittibili_lane:
+                -- dichiarare pronta una commessa che la lane non vedrebbe
+                -- significa promettere un lavoro che non partira'.
+                -- Indice: ix_commesse_attivita_commessa_stati.
+                SELECT count(*)
+                  INTO v_pronte
+                  FROM vendite.commesse_attivita ca
+                 WHERE ca.commessa_id       = p_commessa_id
+                   AND ca.stato_approvazione = 'APPROVATA'
+                   AND ca.stato_emissione    = 'NON_EMESSA'
+                   AND ca.tipo_doc_fiscale_id IS NOT NULL;
+
+                IF v_pronte = 0 THEN
+                  v_motivi := v_motivi || jsonb_build_object(
+                    'codice',     'E_COMMESSA_NESSUNA_RIGA_APPROVATA',
+                    'reason',     'NESSUNA_RIGA_PRONTA',
+                    'reason_key', 'vendite.commesse.azione_reason.nessuna_riga_pronta',
+                    'dettaglio',  0);
+                END IF;
+
+                -- MOTIVO 2 — emittente fiscale assente sulla testata.
+                -- E' parte della chiave di raggruppamento della lane: senza,
+                -- il raggruppamento non diventa nessuna fattura.
+                IF v_trovata AND v_emittente IS NULL THEN
+                  v_motivi := v_motivi || jsonb_build_object(
+                    'codice',     'E_COMMESSA_EMITTENTE_MANCANTE',
+                    'reason',     'EMITTENTE_MANCANTE',
+                    'reason_key', 'vendite.commesse.azione_reason.emittente_mancante',
+                    'dettaglio',  0);
+                END IF;
+
+                RETURN v_motivi;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_commessa_pronta_fatturazione(bigint)
+              IS 'Pure check: motivi che impediscono a una commessa di passare a PRONTA_FATTURAZIONE. [] = transizione lecita. Specchio dei filtri di vendite.fn_list_emittibili_lane (riga APPROVATA + NON_EMESSA + tipo_doc valorizzato; testata con emittente). Sede unica condivisa da vendite.trgfn_commesse_guard_transizione e script.fn_available_actions_commessa: il bottone non puo'' divergere dal guard. Terza sorella di fn_check_commessa_chiudibile / _annullabile.';

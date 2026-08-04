@@ -1,0 +1,131 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.trgfn_preventivi_guard_annullamento — l'annullamento riattivato del
+#   preventivo ha i suoi controlli (brief-db-vie-uscita-operatore.md §3.1).
+#
+# ⚠️ SCOPERTA FACENDO IL LAVORO: IL PREVENTIVO NON HA UN GUARD DI TRANSIZIONE.
+#   Commessa e ordine hanno un trigger che legge la matrice e rifiuta cio' che
+#   non c'e'; il preventivo no. La sua matrice
+#   (config.transizioni_stati_preventivi) e' letta SOLO da
+#   fn_available_actions_preventivo, cioe' governa che bottoni compaiono, non
+#   cosa il database accetta. Un UPDATE diretto sullo stato passa comunque.
+#   Non e' un difetto introdotto qui: c'era gia'. Ma significa che riattivare
+#   la transizione nel seed, da solo, non avrebbe protetto niente.
+#
+# ⚠️ PERIMETRO DELIBERATAMENTE STRETTO: questo trigger presidia SOLO
+#   l'annullamento, non l'intera matrice. Rendere la matrice vincolante per il
+#   preventivo e' la cosa giusta e va fatta — ma e' un guard restrittivo su
+#   percorsi che nessuno ha mai verificato contro i test esistenti, e va
+#   valutato a parte con i pgTAP in mano. Introdurlo di soppiatto dentro un
+#   altro cantiere sarebbe il modo migliore per rompere qualcosa senza capire
+#   perche'. Annotato nel brief come decisione aperta.
+#
+# COSA FA. Sull'UPDATE che porta un preventivo ad ANNULLATO legge
+#   script.fn_check_preventivo_annullabile e solleva il codice del PRIMO
+#   motivo. La regola vive nella funzione pura, che e' la STESSA letta da
+#   fn_available_actions_preventivo: il bottone non puo' dire «si puo'» mentre
+#   il database dice «no» (R2 del brief).
+#
+# ℹ️ Fascia a10 (guard/blocco) e `UPDATE OF stato_doc_preventivo_id`: il
+#   trigger non si sveglia sugli update che non toccano lo stato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260804-35-create-trgfn-preventivi-guard-annullamento-mctit.yaml
+
+  - changeSet:
+      id: 20260804-35-create-trgfn-preventivi-guard-annullamento
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Nuovo guard sull'annullamento del preventivo, delegato a
+        script.fn_check_preventivo_annullabile. Serve perche' il preventivo non
+        ha un guard di transizione: la matrice governa solo i bottoni.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'script' AND p.proname = 'fn_check_preventivo_annullabile'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_preventivi_guard_annullamento()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: impedire l'annullamento di un preventivo che ha gia'
+              --   prodotto qualcosa a valle (un ordine generato, o l'ingresso
+              --   in una commessa). La regola vive in
+              --   script.fn_check_preventivo_annullabile, la stessa letta da
+              --   fn_available_actions_preventivo per accendere il bottone:
+              --   qui si solleva soltanto, col codice del PRIMO motivo.
+              --   Brief: brief-db-vie-uscita-operatore §3.1.
+              DECLARE
+                  v_codice_a config.stati_doc_preventivi.codice_interno%TYPE;
+                  v_motivi   jsonb;
+              BEGIN
+                  -- No-op se lo stato non cambia davvero.
+                  IF NEW.stato_doc_preventivo_id IS NOT DISTINCT FROM OLD.stato_doc_preventivo_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT sdp.codice_interno
+                    INTO v_codice_a
+                    FROM config.stati_doc_preventivi sdp
+                   WHERE sdp.id = NEW.stato_doc_preventivo_id;
+
+                  IF v_codice_a IS DISTINCT FROM 'ANNULLATO' THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_motivi := script.fn_check_preventivo_annullabile(NEW.id);
+
+                  IF jsonb_array_length(v_motivi) > 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          v_motivi -> 0 ->> 'codice',
+                          jsonb_build_object(
+                              'preventivo_id', NEW.id,
+                              'codice',        NEW.codice,
+                              'stato_a',       v_codice_a,
+                              'motivi',        v_motivi
+                          ),
+                          NEW.tx_id,
+                          coalesce(NEW.codice, NEW.id::text),
+                          coalesce(v_motivi -> 0 ->> 'dettaglio', '0')
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_preventivi_guard_annullamento()
+              IS 'Trigger function: blocca l''annullamento di un preventivo che ha gia'' un figlio a valle (ordine generato o riga in commesse_sorgenti), delegando il verdetto a script.fn_check_preventivo_annullabile — la stessa funzione letta da fn_available_actions_preventivo. Creata 2026-08-04 con la riattivazione delle transizioni verso ANNULLATO (brief-db-vie-uscita-operatore).';
+
+              DROP TRIGGER IF EXISTS trg_preventivi_a10_guard_annullamento_upd ON vendite.preventivi;
+
+              CREATE TRIGGER trg_preventivi_a10_guard_annullamento_upd
+                  BEFORE UPDATE OF stato_doc_preventivo_id ON vendite.preventivi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_preventivi_guard_annullamento();
+
+              COMMENT ON TRIGGER trg_preventivi_a10_guard_annullamento_upd ON vendite.preventivi
+              IS 'Fascia a10 (guard): rifiuta il passaggio ad ANNULLATO quando il preventivo ha gia'' generato un ordine o e'' entrato in una commessa. UPDATE OF sullo stato: non si sveglia sugli altri update.';

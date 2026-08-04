@@ -24,15 +24,15 @@ AS $function$
 -- RD-6:  🔴 i task_run si chiudono ad ANNULLATO, altrimenti
 --        fn_resolve_lotto_task_execution_mode li vede COMPLETATO e
 --        risponde SKIP: il lotto riaperto rilancia A VUOTO.
+-- rev 2026-08-04: le precondizioni NON si scrivono piu' qui.
+--        Arrivano da script.fn_check_lotto_riportabile_a_draft, la
+--        stessa che alimenta enabled/reasons di
+--        script.fn_available_actions_lotto.
 DECLARE
-    v_tipo_lotto           vendite.fatturazione_lotti.tipo_lotto%TYPE;
-    v_stato_doc_fiscale_id vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE;
     v_lock_batch_id        vendite.fatturazione_lotti.lock_batch_id%TYPE;
     v_draft_id             config.stati_doc_fiscale.id%TYPE;
-    v_emessa_id            config.stati_doc_fiscale.id%TYPE;
+    v_motivi               jsonb;
     v_fatture_ids          BIGINT[];
-    v_numerate             INTEGER := 0;
-    v_bad_fatture          INTEGER := 0;
     v_updated_lotti        INTEGER := 0;
     v_updated_attivita     INTEGER := 0;
     v_deleted_fatture      INTEGER := 0;
@@ -45,58 +45,31 @@ BEGIN
             jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id), NULL::uuid, 'p_lotto_id obbligatorio e > 0');
     END IF;
 
-    SELECT fl.tipo_lotto, fl.stato_doc_fiscale_id, fl.lock_batch_id
-      INTO v_tipo_lotto, v_stato_doc_fiscale_id, v_lock_batch_id
-      FROM vendite.fatturazione_lotti fl WHERE fl.id = p_lotto_id;
-
-    IF NOT FOUND THEN
-        PERFORM script.fn_log_and_raise_error('vendite', 'fn_riporta_lotto_a_draft', 'E_VALORE_MANCANTE',
-            jsonb_build_object('lotto_id', p_lotto_id), NULL::uuid, concat('lotto_id ', p_lotto_id));
+    -- PRECONDIZIONI — sede unica. Il check verifica anche
+    -- l'esistenza del lotto (E_LOTTO_NON_TROVATO) e solleva il
+    -- codice del PRIMO motivo; il context porta l'elenco completo.
+    -- ⚠️ Fra i motivi c'e' il guard sul NUMERO della fattura, che
+    -- e' ridondante rispetto allo stato e va tenuto lo stesso: il
+    -- danno sarebbe irreversibile, quindi si guarda il fatto e non
+    -- lo stato che dovrebbe implicarlo.
+    v_motivi := script.fn_check_lotto_riportabile_a_draft(p_lotto_id);
+    IF jsonb_array_length(v_motivi) > 0 THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', 'fn_riporta_lotto_a_draft',
+            v_motivi -> 0 ->> 'codice',
+            jsonb_build_object('lotto_id', p_lotto_id, 'motivi', v_motivi),
+            NULL::uuid,
+            v_motivi -> 0 ->> 'dettaglio');
     END IF;
+
+    SELECT fl.lock_batch_id
+      INTO v_lock_batch_id
+      FROM vendite.fatturazione_lotti fl WHERE fl.id = p_lotto_id;
 
     SELECT s.id INTO v_draft_id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE LIMIT 1;
     IF v_draft_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error('vendite', 'fn_riporta_lotto_a_draft', 'E_CONFIG_MANCANTE',
             jsonb_build_object('codice_interno', 'DRAFT'), NULL::uuid, 'stato DRAFT non configurato');
-    END IF;
-
-    SELECT s.id INTO v_emessa_id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'EMESSA' AND s.attivo IS TRUE LIMIT 1;
-    IF v_emessa_id IS NULL THEN
-        PERFORM script.fn_log_and_raise_error('vendite', 'fn_riporta_lotto_a_draft', 'E_CONFIG_MANCANTE',
-            jsonb_build_object('codice_interno', 'EMESSA'), NULL::uuid, 'stato EMESSA non configurato');
-    END IF;
-
-    -- Il lotto dev'essere PRE-FISCALE. Oltre EMESSA c'e' la
-    -- numerazione, e da li' non si torna.
-    IF v_stato_doc_fiscale_id IS DISTINCT FROM v_draft_id
-       AND v_stato_doc_fiscale_id IS DISTINCT FROM v_emessa_id THEN
-        PERFORM script.fn_log_and_raise_error('vendite', 'fn_riporta_lotto_a_draft', 'E_PARAMETRO_INVALIDO',
-            jsonb_build_object('parametro', 'stato_doc_fiscale', 'valore', v_stato_doc_fiscale_id, 'lotto_id', p_lotto_id),
-            NULL::uuid, concat('ritorno a DRAFT solo da DRAFT o EMESSA, stato=', v_stato_doc_fiscale_id));
-    END IF;
-
-    SELECT count(*) INTO v_bad_fatture
-      FROM vendite.fatture f JOIN vendite.fatturazione_lotti_fatture lf ON lf.fattura_id = f.id
-     WHERE lf.lotto_id = p_lotto_id
-       AND f.stato_doc_fiscale_id IS DISTINCT FROM v_draft_id
-       AND f.stato_doc_fiscale_id IS DISTINCT FROM v_emessa_id;
-
-    IF v_bad_fatture > 0 THEN
-        PERFORM script.fn_log_and_raise_error('vendite', 'fn_riporta_lotto_a_draft', 'E_PARAMETRO_INVALIDO',
-            jsonb_build_object('parametro', 'fatture_non_pre_fiscali', 'count', v_bad_fatture, 'lotto_id', p_lotto_id),
-            NULL::uuid, concat('fatture non pre-fiscali (DRAFT/EMESSA): ', v_bad_fatture));
-    END IF;
-
-    -- ⚠️ Guard ESPLICITO sul numero: si guarda il FATTO, non lo stato
-    -- che dovrebbe implicarlo. Il danno sarebbe irreversibile.
-    SELECT count(*) INTO v_numerate
-      FROM vendite.fatture f JOIN vendite.fatturazione_lotti_fatture lf ON lf.fattura_id = f.id
-     WHERE lf.lotto_id = p_lotto_id AND f.numero IS NOT NULL;
-
-    IF v_numerate > 0 THEN
-        PERFORM script.fn_log_and_raise_error('vendite', 'fn_riporta_lotto_a_draft', 'E_PARAMETRO_INVALIDO',
-            jsonb_build_object('parametro', 'fatture_numerate', 'count', v_numerate, 'lotto_id', p_lotto_id),
-            NULL::uuid, concat('fatture gia'' numerate: ', v_numerate));
     END IF;
 
     SELECT array_agg(lf.fattura_id) INTO v_fatture_ids
@@ -168,7 +141,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_riporta_lotto_a_draft(p_lotto_id bigint)
-IS 'Rollback di un lotto PRE-FISCALE (DRAFT o EMESSA) verso DRAFT, per MASSIVO e GIORNALIERO. Delega TUTTA la pulizia delle tabelle a fn_cleanup_fatture_by_ids (RD-4) e si occupa dello stato del LOTTO: stato fiscale a DRAFT, stato_operativo APERTO, riaperto_il (RD-2) e stato di ESECUZIONE. 🔴 RD-6: chiude ad ANNULLATO tutti i task_run attivi del lotto, perche'' fn_resolve_lotto_task_execution_mode legge l''ultimo task_run e su COMPLETATO risponde SKIP — senza questo passo il lotto riaperto rilancia A VUOTO, senza errori e senza task_run nuovi. ⚠️ Non basterebbe attivo = false: quella SELECT non filtra su attivo. Le corse non si cancellano: si chiudono con esito, e il giro nuovo apre tentativo = MAX+1, quindi la storia resta leggibile per intero. RD-1: si torna indietro per QUALSIASI motivo; cio'' che resta vietato e'' numerare un documento incoerente (guard D-K). ⚠️ Rifiuta se una sola fattura e'' gia'' NUMERATA: guarda il numero, non lo stato. Sorella di fn_annulla_lotto_da_draft, che invece CHIUDE il lotto portandolo ad ANNULLATA.';
+IS 'Rollback di un lotto PRE-FISCALE (DRAFT o EMESSA) verso DRAFT, per MASSIVO e GIORNALIERO. Delega TUTTA la pulizia delle tabelle a fn_cleanup_fatture_by_ids (RD-4) e si occupa dello stato del LOTTO: stato fiscale a DRAFT, stato_operativo APERTO, riaperto_il (RD-2) e stato di ESECUZIONE. 🔴 RD-6: chiude ad ANNULLATO tutti i task_run attivi del lotto, perche'' fn_resolve_lotto_task_execution_mode legge l''ultimo task_run e su COMPLETATO risponde SKIP — senza questo passo il lotto riaperto rilancia A VUOTO, senza errori e senza task_run nuovi. ⚠️ Non basterebbe attivo = false: quella SELECT non filtra su attivo. Le corse non si cancellano: si chiudono con esito, e il giro nuovo apre tentativo = MAX+1, quindi la storia resta leggibile per intero. RD-1: si torna indietro per QUALSIASI motivo; cio'' che resta vietato e'' numerare un documento incoerente (guard D-K). Sorella di fn_annulla_lotto_da_draft, che invece CHIUDE il lotto portandolo ad ANNULLATA. rev 2026-08-04: le precondizioni non sono piu'' scritte qui — arrivano da script.fn_check_lotto_riportabile_a_draft, la STESSA che alimenta enabled/reasons di script.fn_available_actions_lotto, cosi'' il pulsante e la funzione non possono divergere. ⚠️ Rifiuta ancora se una sola fattura e'' gia'' NUMERATA (ora E_LOTTO_FATTURE_NUMERATE): il controllo guarda il numero e non lo stato. Il pg_advisory_xact_lock resta DOPO le validazioni: una chiamata invalida non deve serializzare gli altri chiamanti.';
 ```
 
 ---

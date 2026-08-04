@@ -12,6 +12,8 @@ CREATE OR REPLACE FUNCTION vendite.fn_sync_lotto_fatture_stato(p_lotto_id bigint
  RETURNS void
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-08-04 (D-M): via il predicato su lf.esclusa (sempre
+--   vero) e l'argomento p_esclusa all'helper.
 DECLARE
     v_stato_lotto vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE;
     v_target      config.stati_doc_fiscale.id%TYPE;
@@ -43,18 +45,18 @@ BEGIN
             jsonb_build_object('parametro', 'stato_doc_fiscale_target', 'lotto_id', p_lotto_id), NULL::uuid, concat('stato_doc_fiscale target obbligatorio per lotto ', p_lotto_id));
     END IF;
 
-    -- Allinea stato fatture (escluse critical e escluse)
+    -- Allinea stato fatture (escluse le critical)
     UPDATE vendite.fatture f SET stato_doc_fiscale_id = v_target, data_update = now(), user_update = current_user
       FROM vendite.fatturazione_lotti_fatture lf
-     WHERE lf.lotto_id = p_lotto_id AND COALESCE(lf.esclusa, FALSE) IS FALSE AND lf.fattura_id = f.id
+     WHERE lf.lotto_id = p_lotto_id AND lf.fattura_id = f.id
        AND COALESCE(f.critical, FALSE) IS FALSE AND f.stato_doc_fiscale_id IS DISTINCT FROM v_target;
 
     -- Sync stato_esecuzione sul ponte
     UPDATE vendite.fatturazione_lotti_fatture lf
        SET stato_doc_fiscale_id = f.stato_doc_fiscale_id,
            stato_esecuzione = vendite.fn_resolve_stato_esecuzione(
-               p_stato_source => 'COMPLETATO', p_current_stato_esecuzione => lf.stato_esecuzione,
-               p_has_critical => COALESCE(f.critical, FALSE), p_esclusa => COALESCE(lf.esclusa, FALSE),
+               p_stato_source => 'COMPLETATO',
+               p_has_critical => COALESCE(f.critical, FALSE),
                p_fatturato => FALSE, p_default_stato_esecuzione => 'COMPLETED'),
            data_update = now(), user_update = current_user
       FROM vendite.fatture f WHERE lf.lotto_id = p_lotto_id AND lf.fattura_id = f.id;
@@ -70,7 +72,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_sync_lotto_fatture_stato(p_lotto_id bigint, p_target_stato_doc_fiscale_id bigint)
-IS 'Allinea stato fatture del lotto e sincronizza stato_esecuzione. GIORNALIERO+INVIATA chiude lotto.';
+IS 'Allinea stato fatture del lotto e sincronizza stato_esecuzione. GIORNALIERO+INVIATA chiude lotto. rev 2026-08-04 (D-M): via il predicato su lf.esclusa, che era una condizione sempre vera, e via l''argomento p_esclusa all''helper.';
 ```
 
 ---

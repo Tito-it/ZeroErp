@@ -206,6 +206,22 @@ lato catalogo che ci impegniamo a fare **nello stesso giro**.
 | R2 | `E_COMPETENZA_INSERT` → **`E_FLUSSO_COMPETENZA_INSERT`** | `pratiche_repository.py` (1), `error_policies.py` (1) | rinominiamo la riga 805 |
 | R3 | `E_COMPETENZA_NOT_FOUND` → **`E_FLUSSO_COMPETENZA_NOT_FOUND`** | `pratiche_service.py` (1), `error_policies.py` (1) | rinominiamo la riga 806 |
 
+> ✅ **Chiuso il 2026-08-04, nell'ordine giusto.** Il BE ha rinominato i tre codici
+> (verificato: i nomi nuovi sono in `error_policies.py`, i vecchi non compaiono più in
+> nessun call-site), e subito dopo abbiamo rinominato le tre righe del CSV — **id 805,
+> 806, 811 invariati**, cambia solo il `codice`, quindi il loader `runOnChange`
+> aggiorna le righe esistenti senza lasciare orfani.
+>
+> Il testo di 811 è stato allineato al `user_message` che il BE espone davvero
+> («…per la fattura in coda di stampa»), non a quello che avevamo ipotizzato: il
+> catalogo continua a dire esattamente ciò che dice l'API, che era il presupposto di
+> tutto il seed. Verificato anche che **nessuna funzione del database** citasse i nomi
+> vecchi, e che ogni codice dichiarato dal BE abbia una riga a catalogo.
+>
+> ⏳ Manca solo il `migrate`: finché non gira, il database ha ancora i nomi vecchi e
+> i tre codici degradano — con il codice originale conservato nel `context`, quindi
+> senza perdita di informazione.
+
 ⚠️ **L'ordine conta e la finestra si chiude.** Le tre righe sono seminate **con i nomi
 attuali**, perché il catalogo deve nominare i codici esattamente come li emette il
 backend: rinominarle prima di voi significherebbe che per qualche giorno quei tre

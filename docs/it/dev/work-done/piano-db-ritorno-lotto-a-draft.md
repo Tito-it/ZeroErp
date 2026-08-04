@@ -38,11 +38,13 @@
 > stesso giorno →
 > [brief-db-grant-batch-cleanup-note.md](brief-db-grant-batch-cleanup-note.md).
 >
-> **Resta aperto, e non è di questo cantiere:** il debito del consuntivo (il
-> presidio che confronta ciò che le funzioni scrivono con ciò che esiste ed è
-> concesso), che il team DB ha deciso di aprire come slice a sé perché serve a
-> tutti i ruoli batch. **M6** (PDF orfani) resta una segnalazione: rischio basso,
-> la stampa si accoda alla numerazione, cioè fuori dal perimetro pre-fiscale.
+> **Il debito del consuntivo è stato raccolto** lo stesso giorno, e meglio di
+> come lo avevamo immaginato: non una vista fatta in casa ma l'estensione
+> `plpgsql_check`, che valida i corpi per davvero — colonne comprese, rami mai
+> eseguiti inclusi. Cantiere suo:
+> [brief-db-bonifica-riferimenti-morti](../work-in-progress/brief-db-bonifica-riferimenti-morti.md).
+> **M6** (PDF orfani) resta una segnalazione: rischio basso, la stampa si accoda
+> alla numerazione, cioè fuori dal perimetro pre-fiscale.
 >
 > ---
 >
@@ -702,7 +704,7 @@ Conterrà almeno:
 | **Stato** | ✅ **CHIUSA lato DB (2026-08-03)** — analisi, A1-A5 **applicati**, pgTAP **verdi**, doc e brief scritti. 5 changeSet: `20260803-07`…`-10` + seed CSV |
 | **Slice** | **6-A** ✅ **CHIUSA** (DB 08-03 · BE/FE 08-04, smoke 9/9) · **6-B** ✅ **CHIUSA** (DB e BE/FE il 08-04) — ridotta da [RD-7](#1-bis-decisioni-di-questo-cantiere) |
 | **Prossimo passo** | — **nessuno**: il cantiere è chiuso (2026-08-04). Le quattro rotture del B5 sono state lavorate dal BE/FE leggendo questo §7, senza passare da un brief separato; vedi il box in testa al documento. **M6** (PDF orfani) resta una segnalazione a rischio basso |
-| **Debito lasciato aperto** | Il **presidio** che avrebbe trovato le funzioni fantasma da solo: una vista `dbops` che confronta i riferimenti `schema.tabella` estratti da `pg_get_functiondef` con `pg_class`, più un pgTAP che pretende zero righe. È il gemello a DB del guardrail sui codici errore scritto dal BE. Senza, la prossima funzione morta si trova di nuovo per caso — come è successo a queste tre |
+| **Debito lasciato aperto** | ✅ **Raccolto il 2026-08-04**: il presidio non è una vista fatta in casa ma l'estensione **`plpgsql_check`** (changeSet `20260804-36`), che valida davvero i corpi — colonne comprese, rami mai eseguiti inclusi. Primo giro: **27 difetti su 21 funzioni** + 6 trigger function orfane, fra cui una **quarta** funzione della famiglia «attivita pipeline» che il grep per nome non aveva visto. Cantiere e lista di lavoro: [brief-db-bonifica-riferimenti-morti](../work-in-progress/brief-db-bonifica-riferimenti-morti.md) |
 
 ### Slice 6-A
 
