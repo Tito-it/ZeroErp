@@ -19,7 +19,7 @@
 **A chi:** BE/FE (`dev/backend-tid`).
 **Riferimento:** vostro brief «azioni disponibili del lotto di fatturazione
 (`fn_available_actions_lotto`)», ricevuto il 2026-08-04 — non è in repo, se lo committate
-in `work-in-progress/` linkiamo · [piano-db-ritorno-lotto-a-draft](../work-in-progress/piano-db-ritorno-lotto-a-draft.md)
+in `work-in-progress/` linkiamo · [piano-db-ritorno-lotto-a-draft](piano-db-ritorno-lotto-a-draft.md)
 · [brief-be-ritorno-lotto-a-draft](brief-be-ritorno-lotto-a-draft.md).
 
 **In una riga:** il seed è fatto, la capability c'è ed è l'ottava della famiglia, le

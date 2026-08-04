@@ -33,7 +33,10 @@ export function getLotto(lottoId) {
   return api.get(`${BASE}/${lottoId}/`)
 }
 
-// GET fatture del lotto (stato esecuzione, esclusa, ordinamento, paginazione).
+// GET fatture del lotto (stato esecuzione, ordinamento, paginazione). Il
+// filtro `esclusa` non esiste piu': la colonna e' stata droppata dal DB il
+// 2026-08-04 (slice 6-B) perche' nessuno la valorizzava — ogni predicato che
+// la nominava era una condizione sempre vera.
 export function listLottoFatture(lottoId, params = {}) {
   return api.get(`${BASE}/${lottoId}/fatture/`, { params })
 }
@@ -161,8 +164,20 @@ export function riportaLottoADraft(lottoId) {
   )
 }
 
-// POST reset di una singola fattura del lotto a DRAFT (fattura strettamente DRAFT).
-export function resetLottoFatturaDraft(lottoId, fatturaId) {
+// POST elimina UNA fattura dal lotto, liberandone le attivita'. Togliere una
+// fattura vuol dire CANCELLARLA (RD-7): non c'e' nessun archivio di documenti
+// «estratti», coerente col ritorno in bozza del lotto intero, che le sue
+// fatture le cancella gia'.
+//
+// Perimetro (DB 2026-08-04): lotto **e** fattura pre-fiscali, cioe' DRAFT o
+// EMESSA. Prima il DB pretendeva il lotto in DRAFT mentre il drawer proponeva
+// la voce su qualunque lotto con una fattura pre-fiscale: su un lotto EMESSA la
+// chiamata falliva. L'URL resta `reset-draft/` — e' un contratto verso il
+// client, non segue le rinomine della funzione DB.
+//
+// Ritorna 4 contatori: updated_attivita, deleted_fatture, deleted_righe,
+// riemesse_attivita (righe di commessa tornate «da emettere»).
+export function eliminaFatturaDaLotto(lottoId, fatturaId) {
   return api.post(
     `${BASE}/${lottoId}/fatture/${fatturaId}/reset-draft/`,
     {},

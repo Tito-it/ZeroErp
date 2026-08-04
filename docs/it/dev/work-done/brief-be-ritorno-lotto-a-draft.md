@@ -40,7 +40,7 @@
 > (2026-08-03). Questo documento è ciò che serve a voi per usarlo, più **una cosa
 > che senza di voi non funziona**.
 >
-> **Piano completo**: [piano-db-ritorno-lotto-a-draft.md](../work-in-progress/piano-db-ritorno-lotto-a-draft.md).
+> **Piano completo**: [piano-db-ritorno-lotto-a-draft.md](piano-db-ritorno-lotto-a-draft.md).
 > **Movente**: [brief-db-termine-dal-documento-alla-commessa.md §6](brief-db-termine-dal-documento-alla-commessa.md)
 > — la fattura 2263 del lotto 1200, EMESSA e non disfabile. È vostro.
 

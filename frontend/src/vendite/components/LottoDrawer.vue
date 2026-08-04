@@ -56,7 +56,7 @@ import {
   listLottoFatture,
   listLottoTaskRuns,
   getLottoSegnalazioni,
-  resetLottoFatturaDraft,
+  eliminaFatturaDaLotto,
 } from '../api/lotti'
 
 const props = defineProps({
@@ -249,16 +249,22 @@ const drawerActions = computed(() => {
   return azioni
 })
 
-// Scopo: reset di una singola fattura DRAFT del lotto.
-function resetFattura(row) {
+// Scopo: elimina una singola fattura dal lotto (lotto e fattura pre-fiscali).
+//        La conferma dice esplicitamente che il documento viene CANCELLATO:
+//        non esiste un archivio di fatture «estratte» (RD-7).
+function eliminaFattura(row) {
   confirmAction({
     title: t('vendite.lotti.reset_fattura_header'),
     message: t('vendite.lotti.reset_fattura_conferma'),
     danger: true,
+    acceptLabel: t('vendite.lotti.azione_reset_fattura'),
     onAccept: async () => {
-      const res = await execute(() => resetLottoFatturaDraft(props.lottoId, row.fattura_id))
+      const res = await execute(() => eliminaFatturaDaLotto(props.lottoId, row.fattura_id))
       if (res !== null) {
-        notify.success(t('vendite.lotti.reset_fattura_esito'))
+        notify.success(t('vendite.lotti.reset_fattura_esito', {
+          attivita: res?.updated_attivita ?? 0,
+          riemesse: res?.riemesse_attivita ?? 0,
+        }))
         await reloadFatture()
         emit('changed')
       }
@@ -295,9 +301,10 @@ function apriFattura(row) {
   fatturaDrawerVisible.value = true
 }
 
-// Azioni di riga fattura: stampa (anteprima + archivio) sempre disponibili
-// (lettura); reset a bozza solo per fattura DRAFT fuori sola-lettura. Il gate
-// reset usa il codice stabile (codice_interno), MAI la descrizione display.
+// Azioni di riga fattura: consultazione e stampa (anteprima + archivio) sempre
+// disponibili (lettura); l'eliminazione dal lotto solo fuori sola-lettura, col
+// permesso, e dentro il perimetro pre-fiscale. I gate usano il codice stabile
+// (codice_interno), MAI la descrizione display.
 function buildFatturaActions(row) {
   const actions = [
     {
@@ -323,19 +330,30 @@ function buildFatturaActions(row) {
       command: () => apriDocumentiFattura(row),
     },
   ]
-  // Perimetro allargato dal DB il 2026-08-02 (D-T): l'estrazione accetta
-  // qualunque fattura PRE-FISCALE, cioe' non numerata — DRAFT **o EMESSA** —
-  // e lotti sia MASSIVO sia GIORNALIERO. Restringere qui a DRAFT nasconderebbe
-  // l'azione proprio nel caso che la motiva: la fattura EMESSA critica rimasta
-  // indietro in un lotto. Il presidio vero e' fiscale e sta a DB (le numerate
-  // sono rifiutate), qui si evita solo di proporre un'azione impossibile.
-  const preFiscale = ['DRAFT', 'EMESSA'].includes(row.stato_doc_fiscale_codice)
-  if (!isReadonly.value && canResetFattura.value && preFiscale) {
+  // Perimetro pre-fiscale, cioe' non numerato: DRAFT **o EMESSA**. Vale per la
+  // fattura (allargato dal DB il 2026-08-02, D-T: restringere a DRAFT
+  // nasconderebbe l'azione proprio nel caso che la motiva — la fattura critica
+  // rimasta indietro) **e per il lotto** (slice 6-B del 2026-08-04: il DB ha un
+  // codice dedicato, `E_LOTTO_NON_PRE_FISCALE`, quindi il caso lo considera
+  // raggiungibile). Le due condizioni sono separate a DB e vanno lette
+  // entrambe: guardare solo la riga rimetterebbe in scena il
+  // pulsante-vicolo-cieco che questo cantiere ha appena tolto altrove.
+  // Il presidio vero resta fiscale e sta a DB — qui si evita soltanto di
+  // proporre un'azione destinata a fallire.
+  const PRE_FISCALI = ['DRAFT', 'EMESSA']
+  const fatturaPreFiscale = PRE_FISCALI.includes(row.stato_doc_fiscale_codice)
+  const lottoPreFiscale = PRE_FISCALI.includes(lotto.value?.stato_doc_fiscale_codice)
+  if (!isReadonly.value && canResetFattura.value && fatturaPreFiscale && lottoPreFiscale) {
     actions.push({
-      key: 'reset',
+      key: 'elimina',
       label: t('vendite.lotti.azione_reset_fattura'),
-      icon: 'pi pi-undo',
-      command: () => resetFattura(row),
+      // Distruttiva e irreversibile (RD-7: il contenuto non e' recuperabile,
+      // `vendite.fatture` non e' storicizzata) → cestino + rosso, come impone
+      // lo standard per le azioni di riga distruttive. L'icona «undo» di prima
+      // raccontava il verbo vecchio («riporta a bozza»), non questo.
+      icon: MANAGE_ICONS.DELETE,
+      severity: 'danger',
+      command: () => eliminaFattura(row),
     })
   }
   return actions

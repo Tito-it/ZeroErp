@@ -10,14 +10,12 @@ Indice test eseguiti:
 1)  VenditeLottoFattureListApiTests.test_list_fatture_ok
 2)  VenditeLottoFattureListApiTests.test_list_fatture_v1_requires_jwt
 3)  VenditeLottoFattureListApiTests.test_list_fatture_filtro_stato_esecuzione
-4)  VenditeLottoFattureListApiTests.test_list_fatture_filtro_esclusa_true
-5)  VenditeLottoFattureListApiTests.test_list_fatture_filtro_esclusa_false
-6)  VenditeLottoFattureListApiTests.test_list_fatture_sort_by_nominativo
-7)  VenditeLottoFattureListApiTests.test_list_fatture_sort_by_totale_doc
-8)  VenditeLottoFattureListApiTests.test_list_fatture_sort_dir_desc
-9)  VenditeLottoFattureListApiTests.test_list_fatture_paginazione_parametri
-10) VenditeLottoFattureListApiTests.test_list_fatture_page_size_invalido
-11) VenditeLottoFattureListApiTests.test_list_fatture_page_invalida
+4)  VenditeLottoFattureListApiTests.test_list_fatture_sort_by_nominativo
+5)  VenditeLottoFattureListApiTests.test_list_fatture_sort_by_totale_doc
+6)  VenditeLottoFattureListApiTests.test_list_fatture_sort_dir_desc
+7)  VenditeLottoFattureListApiTests.test_list_fatture_paginazione_parametri
+8)  VenditeLottoFattureListApiTests.test_list_fatture_page_size_invalido
+9)  VenditeLottoFattureListApiTests.test_list_fatture_page_invalida
 12) VenditeLottoFattureListApiTests.test_list_fatture_sort_by_invalido
 13) VenditeLottoFattureListApiTests.test_list_fatture_sort_dir_invalido
 14) VenditeLottoFattureListApiTests.test_list_fatture_senza_filtri_lista_vuota_ok
@@ -42,7 +40,6 @@ _FATTURA_ROW = {
     "stato_doc_fiscale_descrizione": "Fattura emessa",
     "stato_doc_fiscale_codice": "EMESSA",
     "stato_esecuzione": "OK",
-    "esclusa": False,
     "numero": 234,
     "serie": None,
     "data": "2026-02-01",
@@ -98,24 +95,6 @@ class VenditeLottoFattureListApiTests(JwtMockedApiTest):
         self.client.get(self.url, {"stato_esecuzione": "ERRORE"})
         mocked_list.assert_called_once()
         self.assertEqual(mocked_list.call_args.kwargs["stato_esecuzione"], "ERRORE")
-
-    # Scopo: Verifica filtro esclusa=true passato correttamente.
-    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.vendite.api.views.fn_list_lotto_fatture")
-    def test_list_fatture_filtro_esclusa_true(self, mocked_list, _mock_auth):
-        mocked_list.return_value = _LIST_RESPONSE
-        self.client.get(self.url, {"esclusa": "true"})
-        mocked_list.assert_called_once()
-        self.assertIs(mocked_list.call_args.kwargs["esclusa"], True)
-
-    # Scopo: Verifica filtro esclusa=false passato correttamente.
-    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.vendite.api.views.fn_list_lotto_fatture")
-    def test_list_fatture_filtro_esclusa_false(self, mocked_list, _mock_auth):
-        mocked_list.return_value = _LIST_RESPONSE
-        self.client.get(self.url, {"esclusa": "false"})
-        mocked_list.assert_called_once()
-        self.assertIs(mocked_list.call_args.kwargs["esclusa"], False)
 
     # Scopo: Verifica sort_by=nominativo passato correttamente.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
@@ -194,7 +173,7 @@ class VenditeLottoFattureListApiTests(JwtMockedApiTest):
         mocked_list.assert_called_once()
         kwargs = mocked_list.call_args.kwargs
         self.assertIsNone(kwargs["stato_esecuzione"])
-        self.assertIsNone(kwargs["esclusa"])
+        self.assertNotIn("esclusa", kwargs)
         self.assertEqual(kwargs["lotto_id"], _LOTTO_ID)
         self.assertEqual(kwargs["sort_by"], "fattura_id")
         self.assertEqual(kwargs["sort_dir"], "asc")

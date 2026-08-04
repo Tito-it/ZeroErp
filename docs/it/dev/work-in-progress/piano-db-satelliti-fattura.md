@@ -877,7 +877,7 @@ Il [piano BE/FE](piano-be-fe-satelliti-fattura.md) resta valido, **meno due cose
 ### 3.6 Fase 6 — Ritorno del lotto a DRAFT (C-18) → **ESTRATTA**
 
 > ➡️ **Dal 2026-08-03 questa fase vive in un documento suo:**
-> **[piano-db-ritorno-lotto-a-draft.md](piano-db-ritorno-lotto-a-draft.md)**.
+> **[piano-db-ritorno-lotto-a-draft.md](../work-done/piano-db-ritorno-lotto-a-draft.md)**.
 >
 > **Perché è uscita.** Stava qui per un vincolo d'ordine (§3.7 punto 6: la pulizia
 > dei satelliti al ritorno si scrive quando i satelliti esistono già), non per
@@ -999,7 +999,7 @@ e ora lo accendiamo).
 ➡️ **Due righe passano al cantiere estratto** (2026-08-03): `fatturazione.md`
 limitatamente alla **semantica del reset** e `cruscotti-fatturazione.md` per il
 **verbo nuovo nel drawer lotto** si evadono in
-[piano-db-ritorno-lotto-a-draft.md](piano-db-ritorno-lotto-a-draft.md) §7, non
+[piano-db-ritorno-lotto-a-draft.md](../work-done/piano-db-ritorno-lotto-a-draft.md) §7, non
 qui. Il resto di `fatturazione.md` (step pipeline, piano rate, snapshot indirizzi)
 resta debito **di questo** piano.
 
@@ -1081,7 +1081,7 @@ rientrati** e alcune debolezze che restano.
 
 | # | Debolezza | Mitigazione |
 |---|---|---|
-| **W-1** | La **Fase 6** è la parte meno istruita: disegnata in pochi scambi, mentre D-I è nata da una verifica su cinque tabelle | ✅ **affrontata**: è nato un passo di **analisi preliminare obbligatoria** con sei punti aperti, di cui uno già deciso (task_run) e uno rinviato (log critici). Il settimo — il saldo d'arrotondamento orfano — ne è uscito ed è diventato D-N pezzo 3. ➡️ **Dal 2026-08-03 quell'analisi vive in [piano-db-ritorno-lotto-a-draft.md](piano-db-ritorno-lotto-a-draft.md) §4**, non più in §3.6 |
+| **W-1** | La **Fase 6** è la parte meno istruita: disegnata in pochi scambi, mentre D-I è nata da una verifica su cinque tabelle | ✅ **affrontata**: è nato un passo di **analisi preliminare obbligatoria** con sei punti aperti, di cui uno già deciso (task_run) e uno rinviato (log critici). Il settimo — il saldo d'arrotondamento orfano — ne è uscito ed è diventato D-N pezzo 3. ➡️ **Dal 2026-08-03 quell'analisi vive in [piano-db-ritorno-lotto-a-draft.md](../work-done/piano-db-ritorno-lotto-a-draft.md) §4**, non più in §3.6 |
 | **W-2** | **Nessun criterio di «fatto» per le fasi DB.** La 3a è la fase con più superficie e nessun collaudo end-to-end | ✅ **chiuso dal BE (§8.5)**: gli smoke §3 del piano BE/FE passano dalla **pipeline reale** e coprono anche la 3a — `smoke-fattura-scadenze.py` asserisce già che la testata porti `termine_pagamento_id` e `modalita_pagamento_id` e che le rate quadrino, cioè che la catena **risolva attraverso il catalogo riformato**. Più una asserzione nuova sul vero rischio di 3a.4: **nessun cliente resta senza condizioni** dopo la migrazione |
 | **W-3** | **Nessun numero è stato riverificato** | ✅ **chiuso dal BE (§8.1)** — e **aveva ragione di esistere**: due misure erano sbagliate. «0 ordini e 0 preventivi» era in realtà **85 e 157**. La conclusione su D-7 regge ma per un altro motivo, più fragile (§0). I clienti con `M` sono **0**, quindi quella verifica di D-G è chiusa senza lavoro |
 | **W-4** | Stime **ottimistiche dove c'è frontend**: «3a ~1 giornata DB» copre nove punti | Trattarle come ordine di grandezza |
@@ -1248,12 +1248,12 @@ Coerenti con il vostro §3.8, e ora scritte anche nel piano BE/FE §9:
 
 | | |
 |---|---|
-| **Fasi** | **Fase 1 ✅** · **Fase 2 ✅** (2.5 assorbita da I.4) · **Fase 3a ✅** · **cantiere intestazione ✅** (I.1-I.6, I.5 inclusa dal 2026-08-02) · **Fase 3b ✅** · **Fase 4 ✅ CHIUSA** (4.1-4.5, armamento incluso) · **Fase 4b ✅ CHIUSA** (guard D-K a sei condizioni) · ➡️ **Fase 6 ESTRATTA** il 2026-08-03 in [piano-db-ritorno-lotto-a-draft.md](piano-db-ritorno-lotto-a-draft.md) — **tutte le fasi di questo piano sono chiuse** |
+| **Fasi** | **Fase 1 ✅** · **Fase 2 ✅** (2.5 assorbita da I.4) · **Fase 3a ✅** · **cantiere intestazione ✅** (I.1-I.6, I.5 inclusa dal 2026-08-02) · **Fase 3b ✅** · **Fase 4 ✅ CHIUSA** (4.1-4.5, armamento incluso) · **Fase 4b ✅ CHIUSA** (guard D-K a sei condizioni) · ➡️ **Fase 6 ESTRATTA** il 2026-08-03 in [piano-db-ritorno-lotto-a-draft.md](../work-done/piano-db-ritorno-lotto-a-draft.md) — **tutte le fasi di questo piano sono chiuse** |
 | **changeSet** | **34 scritti e applicati** (`20260730-01`…`-08`, `20260731-01`…`-12`, `20260801-01`…`-10`, `20260802-01`, `-24`, `-25`, `-27`) + 9 codici errore + 2 script di ruolo + seed (task 2.3, catalogo termini, armamento pipeline **entrambe le corsie**, transizione D-T, matrice indirizzi ruolo EF) · **nessuno in sospeso** |
 | **pgTAP** | **12 nuovi verdi** — ai 10 precedenti si aggiungono `test-pipeline-processi-invariante-v1` plan 7 (invariante `processi` esteso a tutte le tappe) e `test-numerazione-guard-coerenza-v1` plan 9 (guard D-K) · **13 adeguati** · **1 rimosso** · **3 rientrati dalla baseline** |
 | **Doc** | ✅ **11 manuali di funzione scritti** (2026-08-02): 3 scadenze (`fn_resolve_termini_pagamento`, `fn_genera_scadenze_fattura`, `fn_genera_scadenze_lotto`), 5 indirizzi/intestazione (`script.fn_snapshot_indirizzo_soggetto`, `script.fn_resolve_indirizzo_documento`, `fn_snapshot_indirizzi_fattura`, `fn_snapshot_intestazione_fattura`, `fn_snapshot_fattura_lotto`), 3 guard (`trgfn_fattura_satellite_guard_congelamento`, `trgfn_fatture_guard_uscita_draft`, `trgfn_commesse_guard_chiave_immutabile`). ℹ️ **L'aggancio alla pagina auto-gen lo mette il generatore**: misurato 584 pagine con l'include e **solo queste 11 senza**, perché la rigenerazione non è ancora girata — nulla da cablare a mano. ✅ **Guide**: riscritta la sezione numerazione di `guide/fatturazione.md` (descriveva **un solo** guard e ripeteva la motivazione falsa sul `nextval`) e aggiunto a `guide/gestione-dei-pagamenti.md` il raccordo piano rate ↔ incassi, che non nominava le scadenze. ✅ **3a.9** (manuale `termini_pagamento` riscritto) · ✅ **4.4** (manuale `fatture_scadenze` + tabella task in `guide/fatturazione.md`) · ✅ `pratiche/manual/trgfn_sospensioni_giornale.md` riagganciato · ⚠️ i **due orfani** di `trgfn_clienti_normalize_giorni_scadenza` erano **già stati ritirati** da Tid in `c464fe50a`, non da noi · restano le guide del §4-bis · ℹ️ gli **indici** `dbzero/*/index*.md` portano ancora le descrizioni vecchie: si allineano alla rigenerazione, non si editano a mano |
 | **Baseline** | ✅ **Passata piena del 2026-08-02 dopo tutti gli apply**: **410 file**, 105 rossi di cui 104 noti. L'**unica** regressione è `ui/test-lista-fornitori-seed` (conta «esattamente 15 colonne attive», il DB ne ha 13) ed è del **filone liste**, non di questo cantiere: il CSV `ui/lista_colonna.csv` è modificato e non committato, e questo cantiere non ha mai toccato `ui/`. ⚠️ È anche l'ennesimo **conteggio nudo** che si rompe senza dire quale colonna manchi |
-| **Stato** | analisi chiusa, **20 decisioni** prese. 🎯 **Il cantiere è chiuso su entrambi i lati**: il BE ha registrato il task, aggiunto un guard d'ordine a runtime e prodotto lo **smoke verde** (`smoke-fattura-scadenze.py`, 10 casi + PDF nel caso 9 di `smoke-fatturazione-render-stampa.py`, entrambi con prova di mutazione). I **tre brief DB sono CHIUSI** (scadenze, indirizzi, intestazione). ➡️ **Dal 2026-08-03 la Fase 6 è estratta** in [piano-db-ritorno-lotto-a-draft.md](piano-db-ritorno-lotto-a-draft.md): di **questo** piano resta aperto il **solo debito documentale** delle guide del §4-bis (0/8), di cui due righe passano al cantiere estratto. Fuori piano, nell'ordine deciso da Tid: **incassi/riconciliazione rata↔incasso**, poi **`2.4 DatiPagamento`**, poi SDI |
+| **Stato** | analisi chiusa, **20 decisioni** prese. 🎯 **Il cantiere è chiuso su entrambi i lati**: il BE ha registrato il task, aggiunto un guard d'ordine a runtime e prodotto lo **smoke verde** (`smoke-fattura-scadenze.py`, 10 casi + PDF nel caso 9 di `smoke-fatturazione-render-stampa.py`, entrambi con prova di mutazione). I **tre brief DB sono CHIUSI** (scadenze, indirizzi, intestazione). ➡️ **Dal 2026-08-03 la Fase 6 è estratta** in [piano-db-ritorno-lotto-a-draft.md](../work-done/piano-db-ritorno-lotto-a-draft.md): di **questo** piano resta aperto il **solo debito documentale** delle guide del §4-bis (0/8), di cui due righe passano al cantiere estratto. Fuori piano, nell'ordine deciso da Tid: **incassi/riconciliazione rata↔incasso**, poi **`2.4 DatiPagamento`**, poi SDI |
 
 ### Fase 1 — Fondamenta comuni
 
@@ -1339,7 +1339,7 @@ Coerenti con il vostro §3.8, e ora scritte anche nel piano BE/FE §9:
 
 ### Fase 6 — Ritorno a DRAFT + estrazione → **ESTRATTA (2026-08-03)**
 
-➡️ Cantiere autonomo: **[piano-db-ritorno-lotto-a-draft.md](piano-db-ritorno-lotto-a-draft.md)**,
+➡️ Cantiere autonomo: **[piano-db-ritorno-lotto-a-draft.md](../work-done/piano-db-ritorno-lotto-a-draft.md)**,
 il cui **§7 è il registro**. Motivo dell'estrazione nella **§3.6** di questo piano.
 
 ⚠️ **Qui non resta nessuna riga da aggiornare**: due elenchi della stessa cosa
