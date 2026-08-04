@@ -1,0 +1,124 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Template documento — pubblicazione delle BOZZE create da `20260804-61`
+#   (brief-db-template-preventivo-indirizzi.md §6)
+#
+# ── SECONDO E ULTIMO PASSO ───────────────────────────────────────────────
+#   Il `-61` ha duplicato in BOZZA con le chiavi canoniche; qui si
+#   pubblica. Erano due changeSet e non uno di proposito: fra i due c'e'
+#   stata una verifica sul DB vivo, e senza quella si sarebbe pubblicato
+#   alla cieca il risultato di una sostituzione automatica su un testo
+#   che nessuno aveva letto.
+#
+# ── COSA HA DETTO LA VERIFICA (2026-08-04) ───────────────────────────────
+#   · **una sola** bozza creata: il template `test` (che e' il PREVENTIVO —
+#     il codice_interno e' un residuo di sviluppo, segnalato a parte),
+#     versione 3 da versione 2;
+#   · zero chiavi vecchie rimaste, cinque nuove presenti;
+#   · `cliente.denominazione` **intatto** — era il fallback legittimo che
+#     una sostituzione non ancorata avrebbe distrutto;
+#   · `context_schema` vuoto (`{}`): il punto §4.2 del brief si chiude da
+#     se', non c'era nulla da riallineare;
+#   · blocco indirizzi riletto con gli occhi, non solo contato.
+#
+# ── E GLI ALTRI CINQUE TEMPLATE? ─────────────────────────────────────────
+#   Domanda di Tid: ordini, contratti e offerte sono quasi identici,
+#   hanno lo stesso difetto? **No, e per una ragione che il brief non
+#   diceva**: non hanno affatto l'area indirizzi. `ddt-ven` ce l'ha ed e'
+#   corretta (usa `indirizzi.consegna.*` con accesso diretto, non
+#   `.get()`); `fattura` usa `cliente.indirizzo`, una stringa gia'
+#   composta dal context builder, quindi non tocca lo snapshot.
+#   ⚠️ Che un ordine e un contratto non riportino NESSUN indirizzo e' una
+#   domanda aperta, non un difetto di questo cantiere: annotata nel brief.
+#
+# ── PERCHE' SI USA LA FUNZIONE E NON UNA `UPDATE` ────────────────────────
+#   `documenti.trgfn_template_documenti_versioni_protect_pubblicata`
+#   blocca QUALSIASI update su una riga PUBBLICATA — quindi nemmeno si
+#   potrebbe chiudere la vecchia a mano.
+#   `fn_pubblica_template_documento_versione` conosce la strada: porta
+#   prima la vecchia a OBSOLETA (la colonna `stato` non e' nella lista
+#   `UPDATE OF` del trigger, quindi non scatta), poi con OLD.stato gia'
+#   cambiato ne aggiorna `valido_al`. In piu' rispetta il vincolo EXCLUDE
+#   che vieta due PUBBLICATE sovrapposte sullo stesso template.
+#
+# ── IDEMPOTENZA ──────────────────────────────────────────────────────────
+#   La preCondition esce in MARK_RAN se non c'e' nessuna BOZZA marcata da
+#   questo brief: se il `-61` era andato in MARK_RAN (niente da correggere)
+#   o se qualcuno ha gia' pubblicato a mano, qui non succede nulla.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260804-66-pubblica-template-bozza-chiavi-indirizzo-mctit.yaml
+
+  - changeSet:
+      id: 20260804-66-pubblica-template-bozza-chiavi-indirizzo
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT CASE WHEN EXISTS (
+                SELECT 1 FROM documenti.template_documenti_versioni v
+                 WHERE v.stato = 'BOZZA'
+                   AND v.meta ->> 'brief' = 'brief-db-template-preventivo-indirizzi.md'
+              ) THEN 1 ELSE 0 END;
+      comment: >
+        Pubblica le BOZZE create da 20260804-61 via
+        documenti.fn_pubblica_template_documento_versione, che porta a OBSOLETA e
+        chiude le versioni pubblicate precedenti. Da oggi i preventivi generati
+        stampano via, citta' e provincia.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $pubblica$
+              DECLARE
+                  b       record;
+                  v_esito record;
+              BEGIN
+                  FOR b IN
+                      SELECT v.id, v.versione, v.template_documento_id,
+                             coalesce(t.codice_interno, t.codice, '?') AS codice
+                        FROM documenti.template_documenti_versioni v
+                        JOIN documenti.template_documenti t
+                          ON t.id = v.template_documento_id
+                       WHERE v.stato = 'BOZZA'
+                         AND v.meta ->> 'brief' = 'brief-db-template-preventivo-indirizzi.md'
+                       ORDER BY v.id
+                  LOOP
+                      -- valido_dal = OGGI: la correzione vale dai documenti
+                      -- generati da adesso. I PDF gia' emessi restano com'erano
+                      -- (la ristampa fedele usa la versione pinnata) ed e'
+                      -- corretto cosi' — sono tutti di prova, confermato da Tid.
+                      SELECT * INTO v_esito
+                        FROM documenti.fn_pubblica_template_documento_versione(
+                               p_versione_id => b.id,
+                               p_valido_dal  => current_date,
+                               p_valido_al   => NULL);
+
+                      RAISE NOTICE
+                        'template % : pubblicata versione % (id %), versioni rese obsolete: %',
+                        b.codice, b.versione, b.id, v_esito.versioni_obsolete;
+                  END LOOP;
+              END
+              $pubblica$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              SELECT 1;
