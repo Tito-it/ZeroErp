@@ -1,0 +1,258 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fix CI — naming codice_interno/codice sulle viste dashboard competenza
+#   Regola: linee-guida-sql §6c, brief-naming-stato-codice-interno.md
+#   Guardrail: scripts/sql/check_naming_stato_codice.sql (passo CI)
+#
+# ── COSA FALLIVA ─────────────────────────────────────────────────────────
+#   Il passo CI «Guardrail naming codice_interno/codice» esce con errore:
+#
+#     [naming codice_interno/codice] mislabel rilevati nelle definizioni live:
+#     VIEW vendite.vw_dash_competenza_attivita
+#
+#   La riga incriminata:  `sc.codice_interno AS commessa_stato_codice`
+#   cioe' l'IMMUTABILE (`codice_interno`) esposto con il nome del MUTABILE
+#   (`codice`). E' il pattern A che il guardrail cerca, e la confusione che
+#   la regola §6c esiste per impedire: chi legge `*_codice` si aspetta un
+#   valore che puo' cambiare e che serve a mostrare, non una chiave logica
+#   su cui costruire condizioni.
+#
+# ── DA DOVE VIENE ────────────────────────────────────────────────────────
+#   Dal changeSet `20260804-28-update-vw-dash-competenza-commessa-emittibile`
+#   (commit `33226f02e`, cantiere *vie d'uscita per l'operatore*), che ha
+#   aggiunto la colonna. E' l'unico posto del repo dove quell'alias compare.
+#   ⚠️ Non si tocca quel changeSet: e' gia' mergiato, e modificarlo romperebbe
+#   la sequenza dei checksum Liquibase. Si corregge in avanti, come sempre.
+#
+# ── PERCHE' SERVONO QUATTRO VISTE ────────────────────────────────────────
+#   Rinominare una colonna vuole il DROP: `CREATE OR REPLACE VIEW` non sa
+#   farlo. E su `vw_dash_competenza_attivita` pendono tre dipendenti:
+#
+#     vw_dash_competenza_attivita
+#       ├── vw_dash_competenza_gruppi ── vw_dash_competenza_gruppi_riepilogo
+#       └── vw_dash_competenza_mensile
+#
+#   ⚠️ NIENTE `CASCADE`: porterebbe via i dipendenti in silenzio, e un
+#   presidio che sparisce senza rumore e' peggio di uno che non c'e' mai
+#   stato (stessa lezione di M4-sexies in piano-db-ritorno-lotto-a-draft).
+#   Si droppa a mano dal dipendente verso la base e si ricrea nell'ordine
+#   inverso, nello stesso changeSet: Liquibase lo esegue in una transazione
+#   sola, quindi non esiste un istante in cui le viste mancano.
+#
+#   `mensile` e `gruppi_riepilogo` NON nominano la colonna: si ricreano
+#   identiche, sono qui solo perche' la catena di dipendenze lo impone.
+#   Tutte e quattro conservano `security_invoker = on` — e' il fix V-1 che
+#   ha chiuso il buco RLS sull'emittente di questa famiglia di viste:
+#   ricrearle senza sarebbe una regressione di sicurezza silenziosa.
+#
+# ── IMPATTO ──────────────────────────────────────────────────────────────
+#   `commessa_stato_codice` -> `commessa_stato_codice_interno`, su
+#   `vw_dash_competenza_attivita` e `vw_dash_competenza_gruppi`.
+#   Consumatori verificati: nessuno nel backend, nessuno nel frontend.
+#   Un solo pgTAP la nomina (`test-commessa-pronta-fatturazione-v1.sql`),
+#   aggiornato nello stesso passo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260804-67-fix-naming-commessa-stato-codice-interno-mctit.yaml
+
+  - changeSet:
+      id: 20260804-67-fix-naming-commessa-stato-codice-interno
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Fix CI — vendite.vw_dash_competenza_attivita esponeva codice_interno come
+        commessa_stato_codice, contro linee-guida-sql §6c: il guardrail di naming
+        faceva fallire la pipeline. Rinominata in commessa_stato_codice_interno su
+        attivita e gruppi; mensile e gruppi_riepilogo ricreate identiche perche' la
+        catena di dipendenze lo impone. Nessun consumatore BE/FE.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Mai CASCADE: porterebbe via i dipendenti in silenzio. Si droppa a
+              -- mano, dal dipendente verso la base, e si ricrea nell'ordine inverso.
+              DROP VIEW IF EXISTS vendite.vw_dash_competenza_gruppi_riepilogo;
+              DROP VIEW IF EXISTS vendite.vw_dash_competenza_gruppi;
+              DROP VIEW IF EXISTS vendite.vw_dash_competenza_mensile;
+              DROP VIEW IF EXISTS vendite.vw_dash_competenza_attivita;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW vendite.vw_dash_competenza_attivita
+              WITH (security_invoker = on) AS
+               SELECT ca.competenza_mese,
+                  co.id AS commessa_id,
+                  co.codice::text AS commessa_codice,
+                  ca.id AS commessa_attivita_id,
+                  co.emittente_soggetto_ruolo_id,
+                  s.ragione_sociale_completa AS cliente_display,
+                  ca.articolo_id,
+                  ca.data_attivita,
+                  ca.quantita,
+                  ca.stato_approvazione,
+                  ca.stato_emissione,
+                      CASE
+                          WHEN ca.stato_emissione::text <> 'EMESSA'::text AND ca.stato_approvazione::text <> 'APPROVATA'::text THEN 'DA_APPROVARE'::text
+                          WHEN ca.stato_emissione::text <> 'EMESSA'::text THEN 'DA_EMETTERE'::text
+                          WHEN af.fattura_riga_id IS NULL THEN 'EMESSA_NON_FATTURATA'::text
+                          ELSE 'FATTURATA'::text
+                      END::character varying AS stadio,
+                  COALESCE(ca.prezzo_snapshot, 0::numeric) * ca.quantita AS valore,
+                  af.data_insert AS data_emissione,
+                      CASE
+                          WHEN af.id IS NULL THEN NULL::boolean
+                          ELSE date_trunc('month'::text, af.data_insert)::date > ca.competenza_mese
+                      END AS emessa_in_ritardo,
+                  af.sospesa,
+                  af.posticipa_al,
+                  f.id AS fattura_id,
+                  af.fattura_riga_id,
+                  f.anno AS fattura_anno,
+                  f.serie AS fattura_serie,
+                  f.numero AS fattura_numero,
+                  sdf.codice_interno AS stato_fattura_codice_interno,
+                  sdf.codice AS stato_fattura_codice,
+                      CASE
+                          WHEN fr.id IS NULL THEN NULL::numeric
+                          WHEN COALESCE(fr.qta, 0::numeric) = 0::numeric THEN 0::numeric
+                          ELSE fr.imponibile_riga * af.quantita / fr.qta
+                      END::numeric(18,6) AS valore_fatturato,
+                  COALESCE(f.critical, false) AS fattura_critical,
+                  lf.lotto_id,
+                  ca.sorgente_tipo_id,
+                  ca.sorgente_uid,
+                  ca.tipo_movimento,
+                  vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) AS gruppo_key,
+                  sc.emittibile AS commessa_emittibile,
+                  sc.codice_interno AS commessa_stato_codice_interno
+                 FROM vendite.commesse co
+                   JOIN vendite.stati_commessa sc ON sc.id = co.stato_commessa_id
+                   JOIN vendite.commesse_attivita ca ON ca.commessa_id = co.id
+                   LEFT JOIN vendite.attivita_fatturabili af ON af.commessa_attivita_id = ca.id
+                   LEFT JOIN vendite.fatture_righe fr ON fr.id = af.fattura_riga_id
+                   LEFT JOIN vendite.fatture f ON f.id = fr.fattura_id
+                   LEFT JOIN config.stati_doc_fiscale sdf ON sdf.id = f.stato_doc_fiscale_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = co.billing_account_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                   LEFT JOIN LATERAL ( SELECT flf.lotto_id
+                         FROM vendite.fatturazione_lotti_fatture flf
+                        WHERE flf.fattura_id = f.id
+                        ORDER BY flf.lotto_id DESC
+                       LIMIT 1) lf ON true
+                   CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids(NULLIF(current_setting('app.current_user_id'::text, true), ''::text)::integer) AS sr_ids) escope
+                WHERE (escope.sr_ids IS NULL OR (co.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))) AND sc.codice_interno::text <> 'ANNULLATA'::text AND ca.stato_emissione::text <> 'ANNULLATA'::text AND (ca.stato_approvazione::text <> 'RIFIUTATA'::text OR ca.stato_emissione::text = 'EMESSA'::text);
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW vendite.vw_dash_competenza_gruppi
+              WITH (security_invoker = on) AS
+               WITH aggregato AS (
+                       SELECT a.competenza_mese,
+                          a.gruppo_key,
+                          a.sorgente_tipo_id,
+                          a.sorgente_uid,
+                          a.commessa_id,
+                          a.commessa_codice,
+                          a.emittente_soggetto_ruolo_id,
+                          a.cliente_display,
+                          a.stadio,
+                          a.commessa_emittibile,
+                          a.commessa_stato_codice_interno,
+                          count(*) AS n_attivita,
+                          COALESCE(sum(a.valore), 0::numeric) AS valore,
+                          min(a.data_attivita) AS data_attivita_min,
+                          max(a.data_attivita) AS data_attivita_max,
+                          bool_or(a.tipo_movimento::text = 'ONERE'::text) AS ha_oneri
+                         FROM vendite.vw_dash_competenza_attivita a
+                        GROUP BY a.competenza_mese, a.gruppo_key, a.sorgente_tipo_id, a.sorgente_uid, a.commessa_id, a.commessa_codice, a.emittente_soggetto_ruolo_id, a.cliente_display, a.stadio, a.commessa_emittibile, a.commessa_stato_codice_interno
+                      )
+               SELECT g.competenza_mese,
+                  g.gruppo_key,
+                  COALESCE(s.codice_interno, 'ONERI_COMMESSA'::character varying) AS tipo_gruppo,
+                  s.area AS area_documento,
+                  COALESCE(doc.codice, g.commessa_codice, g.gruppo_key) AS riferimento,
+                  g.commessa_id,
+                  g.commessa_codice,
+                  g.emittente_soggetto_ruolo_id,
+                  g.cliente_display,
+                  g.stadio,
+                  g.n_attivita,
+                  g.valore,
+                  g.data_attivita_min,
+                  g.data_attivita_max,
+                  g.ha_oneri,
+                  g.sorgente_tipo_id,
+                  g.sorgente_uid,
+                  g.commessa_emittibile,
+                  g.commessa_stato_codice_interno
+                 FROM aggregato g
+                   LEFT JOIN config.sorgenti s ON s.id = g.sorgente_tipo_id
+                   LEFT JOIN LATERAL ( SELECT d.codice
+                         FROM vendite.vw_dash_fatturazione_documenti d
+                        WHERE s.area IS NOT NULL AND d.area::text = s.area::text AND d.documento_uid = g.sorgente_uid
+                        ORDER BY d.competenza_mese DESC NULLS LAST
+                       LIMIT 1) doc ON true;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW vendite.vw_dash_competenza_mensile
+              WITH (security_invoker = on) AS
+               SELECT competenza_mese,
+                  stadio,
+                  stato_fattura_codice_interno,
+                  count(*)::integer AS n_attivita,
+                  COALESCE(sum(valore), 0::numeric) AS valore_tot,
+                  COALESCE(sum(valore_fatturato), 0::numeric) AS valore_fatturato_tot,
+                  count(*) FILTER (WHERE emessa_in_ritardo)::integer AS n_in_ritardo,
+                  COALESCE(sum(valore) FILTER (WHERE emessa_in_ritardo), 0::numeric) AS valore_in_ritardo
+                 FROM vendite.vw_dash_competenza_attivita
+                GROUP BY competenza_mese, stadio, stato_fattura_codice_interno;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW vendite.vw_dash_competenza_gruppi_riepilogo
+              WITH (security_invoker = on) AS
+               SELECT competenza_mese,
+                  stadio,
+                  emittente_soggetto_ruolo_id,
+                  count(*)::integer AS n_gruppi,
+                  COALESCE(sum(n_attivita), 0::numeric)::bigint AS n_attivita,
+                  COALESCE(sum(valore), 0::numeric) AS valore,
+                  count(*) FILTER (WHERE tipo_gruppo::text = 'ONERI_COMMESSA'::text)::integer AS n_gruppi_oneri
+                 FROM vendite.vw_dash_competenza_gruppi g
+                GROUP BY competenza_mese, stadio, emittente_soggetto_ruolo_id;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN vendite.vw_dash_competenza_attivita.commessa_stato_codice_interno IS
+              'Codice interno (immutabile) dello stato della commessa. Rinominato da commessa_stato_codice il 2026-08-04: esporre codice_interno con un alias *_codice viola linee-guida-sql §6c e faceva fallire il guardrail di naming in CI.';
+
+              COMMENT ON COLUMN vendite.vw_dash_competenza_gruppi.commessa_stato_codice_interno IS
+              'Codice interno (immutabile) dello stato della commessa, propagato da vw_dash_competenza_attivita.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;
