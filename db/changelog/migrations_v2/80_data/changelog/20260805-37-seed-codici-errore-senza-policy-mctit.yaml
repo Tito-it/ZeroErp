@@ -1,0 +1,75 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Le 141 voci del registro del terzo lato
+#   Tabella: 20260805-36 · Misura: 20260805-35
+#   Brief: docs/it/dev/work-in-progress/brief-db-be-terzo-lato-presidio-codici.md
+#
+#   Fotografia del debito al 2026-08-05: i codici che una funzione plpgsql viva
+#   puo' nominare e che non hanno una voce in error_policies.py. Novanta su 141
+#   stanno in funzioni agganciate a un trigger, quindi sul percorso di una
+#   richiesta vera: sono quelli da decidere per primi.
+#
+# ── ⚠️ `DELETE` + `loadData`, non un upsert ─────────────────────────────
+#   Stessa scelta del registro dei codici fuori convenzione, e per lo stesso
+#   motivo: questo registro deve poter **calare**. Con un upsert, togliere una
+#   riga dal CSV non la toglierebbe dal database, e il cancello continuerebbe a
+#   saltare un codice che nel frattempo ha ottenuto la sua policy.
+#   Con il mirror basta togliere la riga dal CSV. Lezione pagata sul
+#   20260805-16, dove un DELETE gia' applicato non pote' rimediare a un CSV
+#   tornato indietro.
+#
+#   ⚠️ La lista si rigenera in ogni momento dalla misura canonica:
+#     SELECT codice, da_trigger FROM dbops.vw_codici_errore_da_dichiarare
+#      WHERE codice NOT IN (...le chiavi di error_policies.py...)
+#   ma il confronto col dizionario Python **non si puo' fare da SQL**: e' il
+#   motivo per cui il cancello vivra' lato backend (brief §5).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260805-37-seed-codici-errore-senza-policy-mctit.yaml
+
+  - changeSet:
+      id: 20260805-37-seed-codici-errore-senza-policy
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Le 141 voci del registro del terzo lato, fotografate il 2026-08-05.
+        Mirror esatto del CSV (DELETE + loadData, non upsert) perche' il registro
+        deve poter calare: togliere la riga dal CSV deve toglierla anche dal DB.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: codici_errore_senza_policy
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DELETE FROM dbops.codici_errore_senza_policy;
+        - loadData:
+            relativeToChangelogFile: true
+            file: ../sql/dbops/codici_errore_senza_policy.csv
+            tableName: codici_errore_senza_policy
+            schemaName: dbops
+            separator: ","
+            encoding: UTF-8
+            columns:
+              - column: { name: codice,             type: STRING }
+              - column: { name: da_trigger,         type: BOOLEAN }
+              - column: { name: data_registrazione, type: DATE }
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DELETE FROM dbops.codici_errore_senza_policy;

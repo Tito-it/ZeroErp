@@ -1,0 +1,99 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `W_` e' una convenzione, non uno strappo: i codici di WARNING sono conformi
+#   Brief: docs/it/dev/work-in-progress/brief-db-codice-errore-strutturato.md §15.15
+#   Decisione Tid, 2026-08-05. Tabella: 20260805-06 · Guardrail: stesso commit.
+#
+# ── COSA E' EMERSO ──────────────────────────────────────────────────────
+#   Il registro del debito conteneva `W_TXID_NOT_REGISTERED`, trattato come
+#   codice "fuori convenzione" da rinominare. Non lo e': la `W` sta per
+#   **warning**, ed e' una scelta deliberata. Il messaggio stesso comincia con
+#   «Warning - », e `dbops.trgfn_tx_id_managed` lo passa a
+#   `script.fn_log_error_only` — lo **logga soltanto**, non lo solleva mai.
+#
+#   Rinominarlo `E_TXID_NOT_REGISTERED` avrebbe fatto dire al codice una cosa
+#   falsa — che e' un errore — per far tornare un conteggio. La convenzione di
+#   `docs/it/dev/api.md` parla di codici di ERRORE: i warning sono un'altra
+#   famiglia, che il presidio non aveva considerato.
+#
+#   Quindi si allarga la convenzione a `^[EW]_[A-Z0-9_]+$` invece di forzare il
+#   dato dentro una regola che non lo riguardava.
+#
+# ── ⚠️ MA ALLARGARE APRE UN BUCO, E VA CHIUSO NELLO STESSO GIRO ─────────
+#   `ErrorPolicyRegistry.resolve` ha la scorciatoia «codice non registrato ma
+#   che comincia per E_ -> 400» **solo per `E_`**. Un codice `W_` che venisse
+#   SOLLEVATO arriverebbe al backend, non troverebbe policy, e cadrebbe su
+#   `E_GENERICO` -> **HTTP 500**: esattamente il difetto da cui e' nata tutta
+#   questa slice, reintrodotto da una regola allentata.
+#
+#   Per questo il guardrail acquisisce nello stesso commit il controllo **(E)**:
+#   *un codice `W_` non puo' comparire in una chiamata a fn_log_and_raise_error*.
+#   Loggarlo si, sollevarlo no. Verificato oggi: zero violazioni.
+#
+#   La regola diventa cosi' leggibile in una riga: **`E_` si solleva, `W_` si
+#   scrive nel log** — e non e' un commento, e' un cancello della CI.
+#
+# ── EFFETTO SUL REGISTRO ────────────────────────────────────────────────
+#   `W_TXID_NOT_REGISTERED` diventa conforme, quindi esce dal registro del
+#   debito (riga tolta dal CSV, che e' un mirror). Il CHECK della tabella va
+#   allargato con la stessa regex, altrimenti registro e presidio parlerebbero
+#   di due insiemi diversi — ed e' il motivo per cui la regex e' duplicata nei
+#   due posti con un avviso reciproco.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260805-28-allarga-convenzione-codici-warning-mctit.yaml
+
+  - changeSet:
+      id: 20260805-28-allarga-convenzione-codici-warning
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Allarga a ^[EW]_ la convenzione dei codici: la W dei warning e' una
+        scelta deliberata, non un codice storto. Il CHECK del registro del debito
+        si allinea alla regex del guardrail, che nello stesso commit acquisisce il
+        controllo (E): un codice W_ puo' essere loggato ma mai sollevato, perche'
+        sollevato darebbe 500.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ PRIMA la riga, POI il vincolo — e non e' pignoleria.
+              -- Allargare la convenzione rende `W_TXID_NOT_REGISTERED` conforme,
+              -- e un codice conforme NON puo' stare nel registro del debito: il
+              -- CHECK lo rifiuta. La riga esce anche dal CSV del registro (che e'
+              -- un mirror), ma quel seed vive in 80_data e gira DOPO 00_schema:
+              -- lasciare la pulizia solo al CSV farebbe fallire questa ALTER al
+              -- primo migrate, su ogni database che ha gia' la riga.
+              DELETE FROM dbops.messaggi_errore_codici_legacy
+               WHERE codice ~ '^[EW]_[A-Z0-9_]+$';
+
+              ALTER TABLE dbops.messaggi_errore_codici_legacy
+                DROP CONSTRAINT IF EXISTS chk_messaggi_errore_codici_legacy_non_conforme;
+
+              ALTER TABLE dbops.messaggi_errore_codici_legacy
+                ADD CONSTRAINT chk_messaggi_errore_codici_legacy_non_conforme
+                CHECK (codice !~ '^[EW]_[A-Z0-9_]+$');
+
+              COMMENT ON COLUMN dbops.messaggi_errore_codici_legacy.codice IS
+              'Codice cosi'' come sta in config.messaggi_errore. Esce da questo registro quando viene rinominato secondo convenzione oppure eliminato: in entrambi i casi la riga va TOLTA con un changeSet 80_data, e il controllo (C) del guardrail lo pretende. ⚠️ Convenzione allargata il 2026-08-05 (20260805-28): sono conformi sia `E_` (errori, si sollevano) sia `W_` (warning, si scrivono solo nel log). Un `W_` sollevato darebbe HTTP 500 lato backend, e il controllo (E) del guardrail lo vieta.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE dbops.messaggi_errore_codici_legacy
+                DROP CONSTRAINT IF EXISTS chk_messaggi_errore_codici_legacy_non_conforme;
+
+              ALTER TABLE dbops.messaggi_errore_codici_legacy
+                ADD CONSTRAINT chk_messaggi_errore_codici_legacy_non_conforme
+                CHECK (codice !~ '^E_[A-Z0-9_]+$');

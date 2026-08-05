@@ -5,7 +5,7 @@
 che il DB rinomini — così i lotti non hanno bisogno di un rilascio simultaneo.
 **Perimetro:** `apps/pratiche/services/pratiche_service.py` (23 codici su 27) più
 tre file con un codice ciascuno.
-**Origine:** [brief-db-codice-errore-strutturato](../work-in-progress/brief-db-codice-errore-strutturato.md) §15.11.
+**Origine:** [brief-db-codice-errore-strutturato](../work-done/brief-db-codice-errore-strutturato.md) §15.11.
 
 > ## ✅ Chiuso lato BE — 2026-08-05 (§7)
 >
@@ -19,7 +19,7 @@ tre file con un codice ciascuno.
 > l'asserzione «almeno un codice legacy» del test del §7.4 — che a quel punto
 > diventa il segnale che il cantiere è finito, non un test da aggirare.
 > Tracciata come item **18** nel riepilogo del
-> [brief principale](../work-in-progress/brief-db-codice-errore-strutturato.md).
+> [brief principale](../work-done/brief-db-codice-errore-strutturato.md).
 
 > **Non c'è niente di rotto adesso.** Questo brief serve a **non** romperlo: senza
 > il passo qui sotto, i prossimi lotti di rinomina farebbero uscire dall'API un

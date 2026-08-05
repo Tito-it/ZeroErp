@@ -4,7 +4,7 @@
 --
 -- Test: script.fn_log_and_raise_error — il CODICE di dominio esce nel campo
 -- strutturato CONSTRAINT dell'eccezione. Riferimento: migration 20260805-05.
--- Brief: docs/it/dev/work-in-progress/brief-db-codice-errore-strutturato.md
+-- Brief: docs/it/dev/work-done/brief-db-codice-errore-strutturato.md
 --
 -- Contesto: prima del 05-08-2026 il codice non partiva in nessun campo
 -- dell'eccezione. Arrivava lo stesso al backend nel 91% dei casi, ma perche'

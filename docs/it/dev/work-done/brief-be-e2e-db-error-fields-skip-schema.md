@@ -3,7 +3,7 @@
 **Chi scrive:** DB (`dev/db-tid`), 2026-08-05.
 **Cosa chiede:** un guard di `SkipTest` nel `setUpClass` e due righe di docstring.
 **Perimetro:** `backend/apps/core/tests/services/test_db_error_fields.py`, nient'altro.
-**Origine:** [brief-db-codice-errore-strutturato](../work-in-progress/brief-db-codice-errore-strutturato.md) §6.
+**Origine:** [brief-db-codice-errore-strutturato](../work-done/brief-db-codice-errore-strutturato.md) §6.
 
 > ✅ **Non c'è niente di rotto.** Gli 11 test sono verdi, i 3 end-to-end girano
 > davvero contro un database vero e la giuntura DB → psycopg è verificata. Questo
