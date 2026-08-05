@@ -49,8 +49,21 @@ databaseChangeLog:
         contratto e off-comm via documenti.fn_pubblica_template_documento_versione,
         che porta a OBSOLETA le precedenti. Da qui i tre PDF stampano l'indirizzo
         che il documento congelava e non mostrava.
+      # ⚠️ `CONTINUE` per lo stesso motivo del `20260805-09`: i template non
+      #   sono a seed, quindi su un database vergine (la CI) il changeSet
+      #   precedente non ha creato nessuna bozza e qui non c'e' niente da
+      #   pubblicare. Con `HALT` la migrazione si fermerebbe. Non marcato come
+      #   eseguito: il giorno in cui i template esistono, i due changeSet
+      #   ripartono insieme e nell'ordine giusto.
+      #
+      #   ⚠️ Il `RAISE EXCEPTION` dentro il DO resta, e non e' in contraddizione:
+      #   dice «se sono arrivato fin qui, le bozze DEVONO essere tre». La
+      #   preCondition decide se entrare, l'eccezione presidia cosa succede una
+      #   volta entrati — un no-op silenzioso qui significherebbe un PDF che
+      #   continua a non stampare l'indirizzo mentre il registro dice «fatto».
       preConditions:
-        - onFail: HALT
+        - onFail: CONTINUE
+        - onError: HALT
         - sqlCheck:
             expectedResult: 3
             sql: >

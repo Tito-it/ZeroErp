@@ -93,11 +93,45 @@ databaseChangeLog:
               --    trigger di storicizzazione sospeso: vedi la testata.
               DO $backfill$
               DECLARE
-                  v_prev integer;
-                  v_fatt integer;
+                  -- ⚠️ IL TRIGGER NON SI NOMINA A MANO, e la prima stesura lo
+                  --   faceva. Due ragioni, entrambe verificate:
+                  --   1. i trigger di storicizzazione NON nascono da un
+                  --      changeSet: li crea l'automazione dbops, che gira in
+                  --      `90_end/ci_apply`, cioe' DOPO questa fase. Su un
+                  --      database costruito da zero — la CI — qui il trigger
+                  --      ancora non esiste e un `ALTER TABLE ... DISABLE
+                  --      TRIGGER <nome>` fallisce fermando la migrazione;
+                  --   2. il nome non e' nemmeno stabile: il template
+                  --      dell'automazione produce `trg_z90_{tabella}_storico_upd_dlt`,
+                  --      mentre sul database di sviluppo il trigger si chiama
+                  --      `trg_preventivi_z90_storico_upd_dlt`. Scriverlo a mano
+                  --      significa scommettere su quale delle due forme si trova.
+                  --   Si cerca percio' il trigger per quello che FA — la sua
+                  --   funzione e' script.trgfn_storico_generic — e se non c'e'
+                  --   non si sospende nulla: su un database senza trigger non
+                  --   c'e' storia finta da evitare, e le tabelle sono vuote.
+                  r        record;
+                  v_prev   integer;
+                  v_fatt   integer;
+                  v_sospesi text[] := '{}';
               BEGIN
-                  ALTER TABLE vendite.preventivi DISABLE TRIGGER trg_preventivi_z90_storico_upd_dlt;
-                  ALTER TABLE vendite.fatture    DISABLE TRIGGER trg_fatture_z90_storico_upd_dlt;
+                  FOR r IN
+                      SELECT c.oid::regclass::text AS tabella, t.tgname
+                        FROM pg_trigger t
+                        JOIN pg_class c ON c.oid = t.tgrelid
+                        JOIN pg_proc p ON p.oid = t.tgfoid
+                       WHERE NOT t.tgisinternal
+                         AND p.proname = 'trgfn_storico_generic'
+                         AND c.oid IN ('vendite.preventivi'::regclass,
+                                       'vendite.fatture'::regclass)
+                  LOOP
+                      EXECUTE format('ALTER TABLE %s DISABLE TRIGGER %I', r.tabella, r.tgname);
+                      v_sospesi := v_sospesi || r.tgname;
+                  END LOOP;
+
+                  IF cardinality(v_sospesi) = 0 THEN
+                      RAISE NOTICE 'nessun trigger di storicizzazione da sospendere (database senza automazioni applicate)';
+                  END IF;
 
                   UPDATE vendite.preventivi SET storicizza = true WHERE storicizza IS DISTINCT FROM true;
                   GET DIAGNOSTICS v_prev = ROW_COUNT;
@@ -105,20 +139,26 @@ databaseChangeLog:
                   UPDATE vendite.fatture SET storicizza = true WHERE storicizza IS DISTINCT FROM true;
                   GET DIAGNOSTICS v_fatt = ROW_COUNT;
 
-                  ALTER TABLE vendite.preventivi ENABLE TRIGGER trg_preventivi_z90_storico_upd_dlt;
-                  ALTER TABLE vendite.fatture    ENABLE TRIGGER trg_fatture_z90_storico_upd_dlt;
+                  FOR r IN
+                      SELECT c.oid::regclass::text AS tabella, t.tgname
+                        FROM pg_trigger t
+                        JOIN pg_class c ON c.oid = t.tgrelid
+                       WHERE t.tgname = ANY (v_sospesi)
+                  LOOP
+                      EXECUTE format('ALTER TABLE %s ENABLE TRIGGER %I', r.tabella, r.tgname);
+                  END LOOP;
 
-                  RAISE NOTICE 'flag storicizza acceso su % preventivi e % fatture', v_prev, v_fatt;
+                  RAISE NOTICE 'flag storicizza acceso su % preventivi e % fatture (trigger sospesi: %)',
+                               v_prev, v_fatt, coalesce(array_length(v_sospesi, 1), 0);
 
-                  -- Il trigger va riacceso, sempre. Se una delle due ALTER di
-                  -- riaccensione non fosse arrivata, il documento resterebbe
-                  -- senza storia SENZA che nessuno se ne accorga: e' il difetto
-                  -- che questo cantiere sta chiudendo, e sarebbe beffardo
-                  -- reintrodurlo proprio qui.
+                  -- Il trigger va riacceso, sempre. Se una delle riaccensioni
+                  -- non fosse arrivata, il documento resterebbe senza storia
+                  -- SENZA che nessuno se ne accorga: e' il difetto che questo
+                  -- cantiere sta chiudendo, e sarebbe beffardo reintrodurlo
+                  -- proprio qui.
                   IF EXISTS (
                       SELECT 1 FROM pg_trigger t
-                       WHERE t.tgname IN ('trg_preventivi_z90_storico_upd_dlt',
-                                          'trg_fatture_z90_storico_upd_dlt')
+                       WHERE t.tgname = ANY (v_sospesi)
                          AND t.tgenabled = 'D'
                   ) THEN
                       RAISE EXCEPTION 'Un trigger di storicizzazione e'' rimasto disabilitato dopo il backfill.';
@@ -134,12 +174,33 @@ databaseChangeLog:
                WHERE table_name IN ('vendite.preventivi', 'vendite.fatture');
 
               DO $undo$
+              DECLARE r record; v_sospesi text[] := '{}';
               BEGIN
-                  ALTER TABLE vendite.preventivi DISABLE TRIGGER trg_preventivi_z90_storico_upd_dlt;
-                  ALTER TABLE vendite.fatture    DISABLE TRIGGER trg_fatture_z90_storico_upd_dlt;
+                  -- Stessa ricerca per funzione del changeSet: il nome del
+                  -- trigger non e' stabile e su un database vergine non esiste.
+                  FOR r IN
+                      SELECT c.oid::regclass::text AS tabella, t.tgname
+                        FROM pg_trigger t
+                        JOIN pg_class c ON c.oid = t.tgrelid
+                        JOIN pg_proc p ON p.oid = t.tgfoid
+                       WHERE NOT t.tgisinternal
+                         AND p.proname = 'trgfn_storico_generic'
+                         AND c.oid IN ('vendite.preventivi'::regclass,
+                                       'vendite.fatture'::regclass)
+                  LOOP
+                      EXECUTE format('ALTER TABLE %s DISABLE TRIGGER %I', r.tabella, r.tgname);
+                      v_sospesi := v_sospesi || r.tgname;
+                  END LOOP;
                   UPDATE vendite.preventivi SET storicizza = false WHERE storicizza IS TRUE;
                   UPDATE vendite.fatture    SET storicizza = false WHERE storicizza IS TRUE;
-                  ALTER TABLE vendite.preventivi ENABLE TRIGGER trg_preventivi_z90_storico_upd_dlt;
-                  ALTER TABLE vendite.fatture    ENABLE TRIGGER trg_fatture_z90_storico_upd_dlt;
+
+                  FOR r IN
+                      SELECT c.oid::regclass::text AS tabella, t.tgname
+                        FROM pg_trigger t
+                        JOIN pg_class c ON c.oid = t.tgrelid
+                       WHERE t.tgname = ANY (v_sospesi)
+                  LOOP
+                      EXECUTE format('ALTER TABLE %s ENABLE TRIGGER %I', r.tabella, r.tgname);
+                  END LOOP;
               END
               $undo$;
