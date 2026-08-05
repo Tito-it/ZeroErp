@@ -48,7 +48,7 @@ ON CONFLICT (codice_interno) DO NOTHING;
 
 CREATE TEMP TABLE tmp_rip_refs AS
 SELECT
-  (SELECT id FROM anagrafiche.emittenti_fiscali WHERE attivo = true LIMIT 1) AS emittente_id,
+  script.fn_pgtap_emittente_operatore() AS emittente_id,
   (SELECT id FROM config.stati_pratiche WHERE codice_interno = 'BOZZA') AS st_bozza,
   (SELECT id FROM config.stati_flussi_pratiche WHERE codice_interno = 'DA_ESEGUIRE') AS sf_da_eseguire,
   (SELECT id FROM config.stati_flussi_pratiche WHERE codice_interno = 'IN_CORSO') AS sf_in_corso,

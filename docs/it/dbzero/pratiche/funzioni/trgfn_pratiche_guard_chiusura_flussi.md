@@ -52,7 +52,7 @@ BEGIN
       PERFORM script.fn_log_and_raise_error(
           'pratiche',
           'pratiche.trgfn_pratiche_guard_chiusura_flussi',
-          'PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI',
+          'E_PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI',
           jsonb_build_object(
               'pratica_id', NEW.id,
               'flussi_bloccanti', v_bloccanti
@@ -74,7 +74,7 @@ BEGIN
       PERFORM script.fn_log_and_raise_error(
           'pratiche',
           'pratiche.trgfn_pratiche_guard_chiusura_flussi',
-          'PRATICHE_CHIUSURA_FLUSSI_APERTI',
+          'E_PRATICHE_CHIUSURA_FLUSSI_APERTI',
           jsonb_build_object(
               'pratica_id', NEW.id,
               'flussi_aperti', v_aperti

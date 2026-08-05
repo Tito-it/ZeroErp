@@ -53,7 +53,7 @@ BEGIN
     PERFORM script.fn_log_and_raise_error(
       'pratiche',
       'pratiche.trgfn_template_flussi_figli_guard_immutabile',
-      'TEMPLATE_DEFINIZIONE_CONGELATA',
+      'E_TEMPLATE_DEFINIZIONE_CONGELATA',
       jsonb_build_object(
         'operazione',        TG_OP,
         'tabella',           TG_TABLE_NAME,

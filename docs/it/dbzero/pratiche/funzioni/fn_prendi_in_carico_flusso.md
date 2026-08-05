@@ -76,7 +76,7 @@ BEGIN
     IF v_stato_id <> v_da_eseguire_id THEN
         PERFORM script.fn_log_and_raise_error(
             'pratiche', 'pratiche.fn_prendi_in_carico_flusso',
-            'FLUSSI_PRESA_CARICO_STATO_ERRATO',
+            'E_FLUSSI_PRESA_CARICO_STATO_ERRATO',
             jsonb_build_object('flusso_id', p_flusso_id, 'stato_id', v_stato_id, 'stato_richiesto', v_da_eseguire_id),
             NULL::uuid, p_flusso_id::text
         );
@@ -91,7 +91,7 @@ BEGIN
     IF v_risorsa_attuale IS NOT NULL THEN
         PERFORM script.fn_log_and_raise_error(
             'pratiche', 'pratiche.fn_prendi_in_carico_flusso',
-            'FLUSSI_GIA_ASSEGNATO',
+            'E_FLUSSI_GIA_ASSEGNATO',
             jsonb_build_object('flusso_id', p_flusso_id, 'risorsa_attuale', v_risorsa_attuale, 'risorsa_richiedente', p_risorsa_umana_id),
             NULL::uuid, p_flusso_id::text, v_risorsa_attuale::text
         );
@@ -119,7 +119,7 @@ BEGIN
         IF NOT v_competente THEN
             PERFORM script.fn_log_and_raise_error(
                 'pratiche', 'pratiche.fn_prendi_in_carico_flusso',
-                'FLUSSI_COMPETENZA_MANCANTE',
+                'E_FLUSSI_COMPETENZA_MANCANTE',
                 jsonb_build_object('flusso_id', p_flusso_id, 'template_flusso_id', v_template_id, 'risorsa_umana_id', p_risorsa_umana_id),
                 NULL::uuid, p_flusso_id::text, p_risorsa_umana_id::text
             );
@@ -135,7 +135,7 @@ BEGIN
         IF v_reparto_operatore IS NULL OR v_reparto_operatore <> v_unita_org THEN
             PERFORM script.fn_log_and_raise_error(
                 'pratiche', 'pratiche.fn_prendi_in_carico_flusso',
-                'FLUSSI_PRESA_NON_ELIGIBILE',
+                'E_FLUSSI_PRESA_NON_ELIGIBILE',
                 jsonb_build_object(
                     'flusso_id', p_flusso_id,
                     'unita_organizzativa_flusso', v_unita_org,

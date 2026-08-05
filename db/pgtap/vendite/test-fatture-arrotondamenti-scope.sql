@@ -8,6 +8,13 @@
 -- 5) Update saldo (upsert)
 -- 6) Guard parametri numerici (NULL o <=0)
 -- ============================================================
+-- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
+-- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
+-- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
+-- Brief: brief-db-pgtap-runner-rls-baseline §8.
+-- ⚠️ Questo file non apre una transazione propria: la riga va prima di plan().
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
 SELECT plan(6);
 -- ============================================================
 -- 1) Setup riferimenti base

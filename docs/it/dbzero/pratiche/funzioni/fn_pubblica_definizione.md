@@ -45,7 +45,7 @@ BEGIN
   -- (a) deve essere in BOZZA.
   IF v_stato <> 'BOZZA' THEN
     PERFORM script.fn_log_and_raise_error(
-      'pratiche', 'pratiche.fn_pubblica_definizione', 'DEFINIZIONE_NON_PUBBLICABILE',
+      'pratiche', 'pratiche.fn_pubblica_definizione', 'E_DEFINIZIONE_NON_PUBBLICABILE',
       jsonb_build_object('definizione_id', p_definizione_id, 'stato', v_stato),
       NULL::uuid, p_definizione_id::text,
       concat('non e'' in BOZZA (stato ', v_stato, ')'));
@@ -57,7 +57,7 @@ BEGIN
    WHERE tf.definizione_id = p_definizione_id AND tf.attivo;
   IF v_n_attivi = 0 THEN
     PERFORM script.fn_log_and_raise_error(
-      'pratiche', 'pratiche.fn_pubblica_definizione', 'DEFINIZIONE_NON_PUBBLICABILE',
+      'pratiche', 'pratiche.fn_pubblica_definizione', 'E_DEFINIZIONE_NON_PUBBLICABILE',
       jsonb_build_object('definizione_id', p_definizione_id),
       NULL::uuid, p_definizione_id::text, 'nessuno step attivo nella definizione');
   END IF;
@@ -78,7 +78,7 @@ BEGIN
   SELECT EXISTS (SELECT 1 FROM closure WHERE start_node = cur) INTO v_has_cycle;
   IF v_has_cycle THEN
     PERFORM script.fn_log_and_raise_error(
-      'pratiche', 'pratiche.fn_pubblica_definizione', 'DEFINIZIONE_NON_PUBBLICABILE',
+      'pratiche', 'pratiche.fn_pubblica_definizione', 'E_DEFINIZIONE_NON_PUBBLICABILE',
       jsonb_build_object('definizione_id', p_definizione_id),
       NULL::uuid, p_definizione_id::text, 'ciclo nel grafo dei prerequisiti');
   END IF;

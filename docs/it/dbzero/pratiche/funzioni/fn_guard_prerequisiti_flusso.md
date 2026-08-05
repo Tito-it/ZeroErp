@@ -36,7 +36,7 @@ BEGIN
     PERFORM script.fn_log_and_raise_error(
       'database',
       'fn_guard_prerequisiti_flusso',
-      'PRATICHE_PREREQUISITI_NON_SODDISFATTI',
+      'E_PRATICHE_PREREQUISITI_NON_SODDISFATTI',
       jsonb_build_object(
         'pratica_id', p_pratica_id,
         'template_flusso_id', p_template_flusso_id,

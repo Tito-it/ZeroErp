@@ -29,7 +29,7 @@ BEGIN
       PERFORM script.fn_log_and_raise_error(
         'pratiche',
         'pratiche.trgfn_template_flussi_guard_immutabile',
-        'TEMPLATE_DEFINIZIONE_CONGELATA',
+        'E_TEMPLATE_DEFINIZIONE_CONGELATA',
         jsonb_build_object(
           'operazione',        'DELETE',
           'tabella',           'template_flussi',
@@ -49,7 +49,7 @@ BEGIN
       PERFORM script.fn_log_and_raise_error(
         'pratiche',
         'pratiche.trgfn_template_flussi_guard_immutabile',
-        'TEMPLATE_DEFINIZIONE_CONGELATA',
+        'E_TEMPLATE_DEFINIZIONE_CONGELATA',
         jsonb_build_object(
           'operazione',     'INSERT',
           'tabella',        'template_flussi',
@@ -84,7 +84,7 @@ BEGIN
       PERFORM script.fn_log_and_raise_error(
         'pratiche',
         'pratiche.trgfn_template_flussi_guard_immutabile',
-        'TEMPLATE_DEFINIZIONE_CONGELATA',
+        'E_TEMPLATE_DEFINIZIONE_CONGELATA',
         jsonb_build_object(
           'operazione',        'UPDATE',
           'tabella',           'template_flussi',

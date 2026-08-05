@@ -60,7 +60,7 @@ DECLARE
     -- qualcuno lo confronta con l'errore ricevuto.
     c_motivo_senza_righe CONSTANT jsonb := jsonb_build_array(
         jsonb_build_object(
-            'codice',     'PREV_NESSUNA_RIGA_ATTIVA',
+            'codice',     'E_PREV_NESSUNA_RIGA_ATTIVA',
             'reason',     'DOCUMENTO_SENZA_RIGHE',
             'reason_key', 'common.azione_reason.senza_righe',
             'dettaglio',  0));

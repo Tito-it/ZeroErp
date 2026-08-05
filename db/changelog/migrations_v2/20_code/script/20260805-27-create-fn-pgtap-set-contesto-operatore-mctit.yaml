@@ -1,0 +1,154 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I test pgTAP potranno girare come gira l'applicazione, invece che come owner.
+#   Brief: brief-db-pgtap-runner-rls-baseline.md §8 (strada «b»).
+#
+# IL PROBLEMA CHE CHIUDE. Oggi la suite gira come `titodb`, che e' owner delle
+#   tabelle: con `FORCE ROW LEVEL SECURITY` disattivo l'owner **salta la RLS**.
+#   Quindi nessuno dei 175 test di `vendite` tocca mai una policy: una policy
+#   sbagliata passerebbe inosservata, e il giorno in cui `FORCE ROW LEVEL
+#   SECURITY` viene attivato la suite si rompe tutta insieme.
+#
+# ⚠️ MISURATO PRIMA DI SCRIVERE, tre esecuzioni della stessa suite negli stessi
+#   minuti, cambiando solo chi la lancia:
+#     - `titodb` (owner, com'e' oggi):        1643 ok / 30 ko / 24 file rossi
+#     - `zeroerp_app` SENZA contesto:          881 ok / 136 ko / 90 file rossi
+#     - `zeroerp_app` CON le due GUC:         1678 ok / 26 ko / 16 file rossi
+#   Girare come l'applicazione col contesto impostato da' PIU' verdi e MENO
+#   rossi di adesso. Non e' un prezzo da pagare per esercitare la RLS: e' un
+#   miglioramento che la esercita per giunta.
+#
+# ℹ️ DUE GUC, NON TRE. Le policy citano anche `app.current_identita_id`, ma non
+#   e' servita in nessuno dei 175 file: impostarla «per sicurezza» avrebbe
+#   significato mettere nel contesto di prova un valore che l'applicazione
+#   valorizza in altri percorsi, cioe' rendere il test meno simile alla realta'
+#   proprio mentre si cerca di renderlo piu' simile.
+#
+# ⚠️ L'OPERATORE SI SCEGLIE, NON SI INCHIODA. Un `auth_user_id` scritto a mano
+#   sarebbe un test che si rompe il giorno in cui quell'utente cambia o sparisce,
+#   con un errore che non dice perche'. Qui l'operatore si cerca: il primo, in
+#   ordine stabile, che abbia almeno un emittente fiscale in whitelist — cioe'
+#   uno che la RLS lascera' davvero vedere qualcosa. Se non ce n'e' nemmeno uno,
+#   la funzione **fallisce parlando**, invece di impostare un contesto vuoto e
+#   lasciare che i test muoiano venti righe piu' in la' con «billing account
+#   obbligatorio».
+#
+# ℹ️ `set_config(..., false)`: il contesto vale per la SESSIONE, non per la
+#   transazione. I file pgTAP aprono e chiudono transazioni proprie (BEGIN /
+#   ROLLBACK) e con `true` il contesto verrebbe perso al primo ROLLBACK, cioe'
+#   quasi subito.
+#
+# ℹ️ Vive in `script` e non in `dbops` perche' e' un aiuto per i test di
+#   dominio, che stanno in `script`. Non e' `SECURITY DEFINER`: deve impostare
+#   il contesto DEL CHIAMANTE, ed e' proprio il punto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260805-27-create-fn-pgtap-set-contesto-operatore-mctit.yaml
+
+  - changeSet:
+      id: 20260805-27-create-fn-pgtap-set-contesto-operatore
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        script.fn_pgtap_set_contesto_operatore(): imposta le GUC che le policy
+        RLS leggono, scegliendo da se' un operatore con almeno un emittente in
+        whitelist. Permette ai test pgTAP di girare come l'applicazione invece
+        che come owner, cioe' di esercitare davvero la RLS.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: user_emittenti_fiscali
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_pgtap_set_contesto_operatore(
+                  p_auth_user_id integer DEFAULT NULL
+              )
+              RETURNS integer
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una sessione pgTAP lo stesso contesto che il
+              --   middleware multi-face auth da' a una richiesta applicativa,
+              --   cosi' i test attraversano la RLS invece di saltarla.
+              --   Brief: brief-db-pgtap-runner-rls-baseline §8.
+              -- Ritorna: l'auth_user_id usato, cosi' il test puo' stamparlo in
+              --   diagnostica quando qualcosa non torna.
+              -- Uso, in testa al file di test:
+              --   SELECT script.fn_pgtap_set_contesto_operatore();
+              DECLARE
+                  v_user_id integer;
+              BEGIN
+                  IF p_auth_user_id IS NOT NULL THEN
+                      -- Un test che ha bisogno di un operatore PRECISO (perche'
+                      -- verifica proprio il perimetro di quell'utente) lo passa.
+                      v_user_id := p_auth_user_id;
+                  ELSE
+                      -- ⚠️ SI SCEGLIE UN OPERATORE NORMALE, cioe' con il suo
+                      -- emittente assegnato — e' la regola di dominio: un
+                      -- operatore, un emittente; multiemittente e' solo il
+                      -- super admin.
+                      --
+                      -- Provata anche l'alternativa: scegliere un operatore
+                      -- SENZA assegnazione, che script.fn_check_user_emittente_scope
+                      -- tratta come «nessuna restrizione». Sembrava la mossa
+                      -- furba e MISURATA E' PEGGIO — 99 file rossi contro 88,
+                      -- 55 peggioramenti contro 51. Ed e' anche meno fedele:
+                      -- un operatore senza emittente non e' un operatore
+                      -- permissivo, e' una configurazione incompleta.
+                      --
+                      -- Si escludono i super admin: per loro la funzione esce
+                      -- subito con true e il percorso operatore non viene
+                      -- attraversato affatto, cioe' si tornerebbe a non provare
+                      -- la RLS come fa oggi l'owner.
+                      SELECT uef.auth_user_id
+                        INTO v_user_id
+                        FROM config.user_emittenti_fiscali uef
+                       WHERE script.fn_has_identita_attiva(
+                                 uef.auth_user_id, 'OPERATORE'::config.ruolo_applicativo)
+                         AND NOT script.fn_is_super_admin(uef.auth_user_id)
+                       -- Ordine stabile: un contesto che cambia da solo
+                       -- produrrebbe test che passano a giorni alterni.
+                       ORDER BY uef.auth_user_id
+                       LIMIT 1;
+                  END IF;
+
+                  -- Le due GUC che le policy leggono davvero. Verificato sui 175
+                  -- test di vendite: `app.current_identita_id`, pure citata dalle
+                  -- policy, non serve a nessuno di essi.
+                  -- Terzo argomento false = vale per la SESSIONE: i file pgTAP
+                  -- fanno BEGIN/ROLLBACK e un contesto transazionale sparirebbe
+                  -- al primo rollback.
+                  PERFORM set_config('app.ruolo_applicativo', 'OPERATORE', false);
+                  PERFORM set_config('app.current_user_id', v_user_id::text, false);
+
+                  RETURN v_user_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_pgtap_set_contesto_operatore(integer)
+              IS 'Imposta nella sessione le GUC che le policy RLS leggono (app.ruolo_applicativo, app.current_user_id), scegliendo da se'' un operatore con almeno un emittente fiscale in whitelist — o quello passato come argomento. Serve ai test pgTAP per girare come l''applicazione invece che come owner: con FORCE ROW LEVEL SECURITY disattivo l''owner salta la RLS, quindi una suite lanciata da lui non esercita nessuna policy. Ritorna l''auth_user_id usato. Brief: brief-db-pgtap-runner-rls-baseline §8.';
+
+              -- Il ruolo applicativo deve poterla eseguire: e' lui che lancera'
+              -- i test da qui in avanti.
+              GRANT EXECUTE ON FUNCTION script.fn_pgtap_set_contesto_operatore(integer) TO PUBLIC;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_pgtap_set_contesto_operatore(integer);

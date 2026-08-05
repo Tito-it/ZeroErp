@@ -40,7 +40,7 @@ BEGIN
         PERFORM script.fn_log_and_raise_error(
             'pratiche',
             'pratiche.trgfn_pratiche_guard_transizione',
-            'PRATICHE_TRANSIZIONE_NON_AMMESSA',
+            'E_PRATICHE_TRANSIZIONE_NON_AMMESSA',
             jsonb_build_object(
                 'stato_da', v_codice_da,
                 'stato_a', v_codice_a

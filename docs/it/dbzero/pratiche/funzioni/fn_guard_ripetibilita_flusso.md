@@ -53,7 +53,7 @@ BEGIN
   PERFORM script.fn_log_and_raise_error(
     'pratiche',
     'pratiche.fn_guard_ripetibilita_flusso',
-    'PRATICHE_FLUSSO_NON_RIPETIBILE',
+    'E_PRATICHE_FLUSSO_NON_RIPETIBILE',
     jsonb_build_object(
       'pratica_id', p_pratica_id,
       'template_flusso_id', p_template_flusso_id,

@@ -151,7 +151,7 @@ BEGIN
     IF v_count_righe = 0 THEN
       PERFORM script.fn_log_and_raise_error(
         'vendite', 'fn_cambia_stato_preventivo',
-        'PREV_NESSUNA_RIGA_ATTIVA',
+        'E_PREV_NESSUNA_RIGA_ATTIVA',
         jsonb_build_object('preventivo_id', p_preventivo_id),
         NULL::uuid,
         v_numero

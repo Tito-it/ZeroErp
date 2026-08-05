@@ -28,7 +28,7 @@ BEGIN
      WHERE tf.id = NEW.template_flusso_id;
     PERFORM script.fn_log_and_raise_error(
       'pratiche','pratiche.trgfn_tfhe_guard_no_proiezione',
-      'TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER',
+      'E_TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER',
       jsonb_build_object('template_flusso_id', NEW.template_flusso_id,
                          'template_codice', v_codice,
                          'lato', 'handler_eventi'),

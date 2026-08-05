@@ -26,7 +26,7 @@ BEGIN
       PERFORM script.fn_log_and_raise_error(
         'pratiche',
         'pratiche.trgfn_workflow_definizioni_guard',
-        'DEFINIZIONE_TRANSIZIONE_NON_AMMESSA',
+        'E_DEFINIZIONE_TRANSIZIONE_NON_AMMESSA',
         jsonb_build_object(
           'definizione_id', NEW.id,
           'stato_da',       OLD.stato,
@@ -50,7 +50,7 @@ BEGIN
     PERFORM script.fn_log_and_raise_error(
       'pratiche',
       'pratiche.trgfn_workflow_definizioni_guard',
-      'DEFINIZIONE_PUBBLICATA_IMMUTABILE',
+      'E_DEFINIZIONE_PUBBLICATA_IMMUTABILE',
       jsonb_build_object(
         'definizione_id', NEW.id,
         'stato',          OLD.stato

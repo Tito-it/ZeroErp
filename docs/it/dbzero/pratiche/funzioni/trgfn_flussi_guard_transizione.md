@@ -37,12 +37,12 @@ BEGIN
         SELECT codice_interno INTO v_codice_a
         FROM config.stati_flussi_pratiche WHERE id = NEW.stato_id;
 
-        
+
 
          PERFORM script.fn_log_and_raise_error(
             'pratiche',
             'pratiche. trgfn_flussi_guard_transizione',
-            'FLUSSI_TRANSIZIONE_NON_AMMESSA',
+            'E_FLUSSI_TRANSIZIONE_NON_AMMESSA',
             jsonb_build_object(
                 'transizione', format('Transizione flusso non ammessa: %s -> %s',
                  v_codice_da, v_codice_a)   
@@ -50,8 +50,8 @@ BEGIN
             NULL::uuid,
             concat('Transizione flusso non ammessa: ', v_codice_da, ' -> ', v_codice_a)
         );
-     
-        
+
+
     END IF;
 
     RETURN NEW;

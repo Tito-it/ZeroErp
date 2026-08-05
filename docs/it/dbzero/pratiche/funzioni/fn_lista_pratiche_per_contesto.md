@@ -43,7 +43,7 @@ BEGIN
     PERFORM script.fn_log_and_raise_error(
       'pratiche',
       'pratiche.fn_lista_pratiche_per_contesto',
-      'PRATICHE_LISTA_CONTESTO_PARAMETRI_ESCLUSIVI',
+      'E_PRATICHE_LISTA_CONTESTO_PARAMETRI_ESCLUSIVI',
       jsonb_build_object(
         'soggetto_ruolo_id', p_soggetto_ruolo_id,
         'istanza_utility_id', p_istanza_utility_id,

@@ -38,7 +38,7 @@ BEGIN
   -- (1) La nuova versione si deriva SOLO da una PUBBLICATA.
   IF v_stato <> 'PUBBLICATA' THEN
     PERFORM script.fn_log_and_raise_error(
-      'pratiche', 'pratiche.fn_nuova_versione_definizione', 'DEFINIZIONE_NO_PUBBLICATA',
+      'pratiche', 'pratiche.fn_nuova_versione_definizione', 'E_DEFINIZIONE_NO_PUBBLICATA',
       jsonb_build_object('definizione_id', p_definizione_id, 'stato', v_stato),
       NULL::uuid, p_definizione_id::text);
   END IF;
@@ -51,7 +51,7 @@ BEGIN
           AND wd.stato = 'BOZZA'
      ) THEN
     PERFORM script.fn_log_and_raise_error(
-      'pratiche', 'pratiche.fn_nuova_versione_definizione', 'DEFINIZIONE_BOZZA_ESISTENTE',
+      'pratiche', 'pratiche.fn_nuova_versione_definizione', 'E_DEFINIZIONE_BOZZA_ESISTENTE',
       jsonb_build_object('tipo_prestazione_id', v_tipo_id,
                          'emittente_fiscale_id', v_emittente),
       NULL::uuid,
