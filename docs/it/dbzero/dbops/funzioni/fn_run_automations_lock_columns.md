@@ -81,12 +81,12 @@ BEGIN
     IF dbops.fn_col_exists(rtab.schema_name, rtab.table_name, 'codice_interno') THEN
       col_list := array_append(col_list, 'codice_interno');
       arg_list := array_append(arg_list, quote_literal('codice_interno'));
-      arg_list := array_append(arg_list, quote_literal('CODICE_NON_MODIFICABILE'));
+      arg_list := array_append(arg_list, quote_literal('E_CODICE_NON_MODIFICABILE'));
     END IF;
 
     FOR rcol IN
       SELECT column_name,
-             COALESCE(error_code, 'CODICE_NON_MODIFICABILE') AS error_code
+             COALESCE(error_code, 'E_CODICE_NON_MODIFICABILE') AS error_code
         FROM dbops.automation_lock_columns
        WHERE enabled
          AND target_schema = rtab.schema_name

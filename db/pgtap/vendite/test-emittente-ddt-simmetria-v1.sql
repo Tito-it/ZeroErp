@@ -18,6 +18,12 @@
 -- 12) seed: le 5 colonne "Emittente" bindano campo_sorgente=emittente_ragione_sociale
 -- ============================================================
 BEGIN;
+-- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
+-- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
+-- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
+-- Brief: brief-db-pgtap-runner-rls-baseline §8.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
 SELECT plan(12);
 
 -- 1-5) colonna emittente_ragione_sociale nelle 5 viste lista.

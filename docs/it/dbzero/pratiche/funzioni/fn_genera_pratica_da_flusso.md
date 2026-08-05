@@ -219,7 +219,7 @@ BEGIN
             PERFORM script.fn_log_and_raise_error(
                 'database',
                 'fn_genera_pratica_da_flusso',
-                'GENERAZIONE_TEMPLATE_NON_IN_DEFINIZIONE',
+                'E_GENERAZIONE_TEMPLATE_NON_IN_DEFINIZIONE',
                 jsonb_build_object(
                     'regola_id',              p_regola_id,
                     'template_dest_codice',   v_dest_codice,

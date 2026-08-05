@@ -36,7 +36,7 @@ VALUES ('NORMALE', 'NORMALE', 'Normale', 20, true) ON CONFLICT (codice_interno) 
 
 CREATE TEMP TABLE tmp_refs AS
 SELECT
-  (SELECT id FROM anagrafiche.emittenti_fiscali WHERE attivo = true LIMIT 1) AS emittente_id,
+  script.fn_pgtap_emittente_operatore() AS emittente_id,
   (SELECT id FROM anagrafiche.soggetti LIMIT 1)                              AS soggetto_id,
   (SELECT id FROM config.stati_pratiche        WHERE codice_interno = 'BOZZA'       LIMIT 1) AS stato_bozza_id,
   (SELECT id FROM config.stati_flussi_pratiche WHERE codice_interno = 'DA_ESEGUIRE' LIMIT 1) AS stato_da_eseguire_id,

@@ -1,0 +1,149 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Le fixture smettono di pescare un emittente a caso e chiedono IL PROPRIO.
+#   Brief: brief-db-pgtap-runner-rls-baseline.md §8.
+#
+# IL DIFETTO, MISURATO. Trentaquattro file di test scelgono l'emittente cosi':
+#
+#     SELECT id FROM anagrafiche.emittenti_fiscali WHERE attivo = true LIMIT 1
+#
+#   `LIMIT 1` senza `ORDER BY`: restituisce quello che capita. Nel database di
+#   sviluppo capita l'emittente **44** (`EMI-TEST`), che e' attivo, non ha un
+#   solo documento — i 163 preventivi e le 102 pratiche stanno tutti sul 32 — e
+#   soprattutto **non e' assegnato a nessun operatore**.
+#
+#   Finche' i test girano senza dichiarare chi sono, non importa: la domanda
+#   «questo utente puo' scrivere su questo emittente?» non ha nessuno a cui
+#   riferirsi e il guard lascia passare. Nel momento in cui un operatore c'e',
+#   quella scrittura diventa illegittima e viene respinta. Verificato: bastava
+#   impostare il contesto per far fallire **30 file di `pratiche` in un colpo**,
+#   tutti con «Utente 5 non autorizzato per emittente fiscale 44».
+#
+# ⚠️ NON SI RISOLVE ASSEGNANDO UN OPERATORE AL 44, e sembrerebbe la mossa
+#   ovvia. Le fixture continuerebbero a pescare a caso: a volte il 32, a volte
+#   il 44, e a seconda di chi sta agendo il test passerebbe o no. Sarebbe il
+#   rosso intermittente, che e' peggio del rosso fisso perche' si registra in
+#   baseline quando capita e copre un rosso vero quando torna verde.
+#
+# ℹ️ LA DIREZIONE E' QUESTA, e non l'inversa: il test non dichiara «mi serve
+#   l'emittente X». Dichiara per conto di CHI agisce, e l'emittente **discende
+#   dall'operatore** — come nell'applicazione, dove un utente non sceglie
+#   l'emittente, ce l'ha. Regola di dominio confermata da Tid: un operatore, un
+#   emittente; multiemittente e' solo il super admin.
+#
+# ⚠️ FUNZIONA ANCHE SENZA CONTESTO, ed e' voluto. Oggi i test girano come owner
+#   e senza operatore impostato: in quel caso la funzione restituisce comunque
+#   l'emittente di un operatore VERO, scelto in modo deterministico — cioe' il
+#   32, quello su cui stanno tutti i dati. Quindi ripara i 30 rossi **prima**
+#   che il runner cambi utente, invece di essere un pezzo che serve solo domani.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260805-38-create-fn-pgtap-emittente-operatore-mctit.yaml
+
+  - changeSet:
+      id: 20260805-38-create-fn-pgtap-emittente-operatore
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        script.fn_pgtap_emittente_operatore(): restituisce l'emittente
+        dell'operatore impostato nel contesto, o quello di un operatore reale
+        scelto in modo deterministico se il contesto non c'e'. Sostituisce nelle
+        fixture il «LIMIT 1 senza ORDER BY» che pescava un emittente a caso.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: user_emittenti_fiscali
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_pgtap_emittente_operatore()
+              RETURNS bigint
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP l'emittente su cui l'operatore
+              --   corrente puo' davvero scrivere, invece di uno qualsiasi.
+              --   Brief: brief-db-pgtap-runner-rls-baseline §8.
+              -- Uso, al posto di
+              --   (SELECT id FROM anagrafiche.emittenti_fiscali WHERE attivo LIMIT 1):
+              --   script.fn_pgtap_emittente_operatore()
+              DECLARE
+                  v_user_id     integer;
+                  v_emittente   bigint;
+              BEGIN
+                  -- 1) Se il contesto c'e', l'emittente e' quello di chi agisce.
+                  v_user_id := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+
+                  IF v_user_id IS NOT NULL THEN
+                      SELECT uef.emittente_fiscale_id
+                        INTO v_emittente
+                        FROM config.user_emittenti_fiscali uef
+                       WHERE uef.auth_user_id = v_user_id;
+
+                      IF v_emittente IS NOT NULL THEN
+                          RETURN v_emittente;
+                      END IF;
+                      -- Operatore senza assegnazione: non e' un errore
+                      -- (fn_check_user_emittente_scope lo tratta come «nessuna
+                      -- restrizione»), ma un emittente serve lo stesso perche'
+                      -- la colonna e' NOT NULL sui documenti. Si ripiega sotto.
+                  END IF;
+
+                  -- 2) Nessun contesto — il caso di oggi, con la suite lanciata
+                  --    dall'owner. Si prende l'emittente di un operatore VERO,
+                  --    scelto in modo deterministico: e' quello su cui i dati
+                  --    esistono, e la scelta non cambia fra un'esecuzione e
+                  --    l'altra. Ordinare e' il punto: senza ORDER BY si torna
+                  --    a pescare a caso, che e' il difetto che si sta togliendo.
+                  SELECT uef.emittente_fiscale_id
+                    INTO v_emittente
+                    FROM config.user_emittenti_fiscali uef
+                   ORDER BY uef.auth_user_id, uef.emittente_fiscale_id
+                   LIMIT 1;
+
+                  IF v_emittente IS NULL THEN
+                      -- Ultimo ripiego: nessun operatore ha un emittente
+                      -- assegnato. Si prende comunque un emittente attivo, ma
+                      -- ORDINATO — perche' un test che sceglie a caso non
+                      -- verifica, scommette.
+                      SELECT ef.id INTO v_emittente
+                        FROM anagrafiche.emittenti_fiscali ef
+                       WHERE ef.attivo IS TRUE
+                       ORDER BY ef.id
+                       LIMIT 1;
+                  END IF;
+
+                  IF v_emittente IS NULL THEN
+                      RAISE EXCEPTION
+                        'Nessun emittente fiscale attivo: le fixture non hanno su cosa lavorare.';
+                  END IF;
+
+                  RETURN v_emittente;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_pgtap_emittente_operatore()
+              IS 'Restituisce l''emittente fiscale su cui l''operatore corrente puo'' scrivere: quello assegnato a app.current_user_id se il contesto e'' impostato, altrimenti quello di un operatore reale scelto in modo deterministico. Sostituisce nelle fixture pgTAP il «SELECT id FROM anagrafiche.emittenti_fiscali WHERE attivo LIMIT 1», che senza ORDER BY pescava un emittente a caso — nel DB di sviluppo il 44, attivo ma senza documenti e senza operatore, che il guard trgfn_guard_emittente_scope rifiuta appena un contesto c''e''. Brief: brief-db-pgtap-runner-rls-baseline §8.';
+
+              GRANT EXECUTE ON FUNCTION script.fn_pgtap_emittente_operatore() TO PUBLIC;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_pgtap_emittente_operatore();

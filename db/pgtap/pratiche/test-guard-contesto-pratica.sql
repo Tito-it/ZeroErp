@@ -25,12 +25,7 @@ SELECT plan(12);
 -- 0) Precondizioni: recupera riferimenti
 -- =========================================================
 CREATE TEMP TABLE tmp_gc_refs AS
-SELECT (
-    SELECT id
-    FROM anagrafiche.emittenti_fiscali
-    WHERE attivo = true
-    LIMIT 1
-  ) AS emittente_id,
+SELECT script.fn_pgtap_emittente_operatore() AS emittente_id,
   (
     SELECT id
     FROM config.stati_pratiche

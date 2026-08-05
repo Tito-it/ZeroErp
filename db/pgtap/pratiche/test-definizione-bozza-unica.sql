@@ -39,7 +39,7 @@ DELETE FROM pratiche.tipi_prestazione WHERE codice_interno='TEST_BZU';
 -- 0) Precondizioni
 -- =========================================================
 CREATE TEMP TABLE tmp_bzu_refs AS
-SELECT (SELECT id FROM anagrafiche.emittenti_fiscali WHERE attivo=true LIMIT 1) AS emittente_id;
+SELECT script.fn_pgtap_emittente_operatore() AS emittente_id;
 SELECT ok((SELECT emittente_id IS NOT NULL FROM tmp_bzu_refs), '0. Precondizioni (emittente)');
 
 -- =========================================================

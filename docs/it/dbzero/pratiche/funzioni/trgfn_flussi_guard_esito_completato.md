@@ -26,7 +26,7 @@ BEGIN
     PERFORM script.fn_log_and_raise_error(
       'pratiche',
       'pratiche.trgfn_flussi_guard_esito_completato',
-      'FLUSSI_ESITO_OBBLIGATORIO',
+      'E_FLUSSI_ESITO_OBBLIGATORIO',
       jsonb_build_object(
         'flusso_id', NEW.id,
         'pratica_id', NEW.pratica_id,

@@ -42,7 +42,7 @@ AS $function$
             PERFORM script.fn_log_and_raise_error(
                 'database',
                 'fn_validate_cf_piva_it',
-                'PIVA_NON_VALIDA',
+                'E_PIVA_NON_VALIDA',
                 l_error_ctx,
                 NULL::uuid,
                 p_partita_iva::text
@@ -63,7 +63,7 @@ AS $function$
             PERFORM script.fn_log_and_raise_error(
                 'database',
                 'fn_validate_cf_piva_it',
-                'PIVA_NON_VALIDA',
+                'E_PIVA_NON_VALIDA',
                 l_error_ctx,
                 NULL::uuid,
                 p_piva_gruppo::text
@@ -99,7 +99,7 @@ AS $function$
                 PERFORM script.fn_log_and_raise_error(
                     'database',
                     'fn_validate_cf_piva_it',
-                    'CF_NON_VALIDO',
+                    'E_CF_NON_VALIDO',
                     l_error_ctx,
                     NULL::uuid,
                     p_codice_fiscale::text

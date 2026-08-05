@@ -16,6 +16,12 @@
 -- 10) anti-regressione: rename codice stati -> DRAFT->EMESSO risolta per codice_interno
 -- ------------------------------------------------------------
 BEGIN;
+-- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
+-- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
+-- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
+-- Brief: brief-db-pgtap-runner-rls-baseline §8.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
 SELECT plan(10);
 -- ============================================================
 -- Setup GUC app.current_user_id: il trigger trgfn_preventivi_default_emittente

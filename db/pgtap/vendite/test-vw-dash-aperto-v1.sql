@@ -49,6 +49,19 @@
 -- ------------------------------------------------------------
 
 BEGIN;
+-- ⚠️ QUESTO FILE NON USA script.fn_pgtap_set_contesto_operatore(), a differenza
+-- degli altri di vendite, e non e' una dimenticanza.
+-- Il test si costruisce il contesto DA SOLO (set_config piu' sotto, e
+-- perfino ALTER TABLE ... FORCE ROW LEVEL SECURITY in transazione) perche'
+-- cio' che verifica E' lo scope RLS: l'asserzione 13 pretende che il
+-- preventivo dell'emittente B risulti invisibile.
+-- Imporre un operatore in testa lo romperebbe prima di cominciare: la
+-- fixture crea documenti su un emittente derivato dal billing account, che
+-- non e' detto stia nella whitelist di quell'operatore — e il guard
+-- trgfn_guard_emittente_scope li rifiuterebbe, giustamente.
+-- Misurato: con la riga passa da 14 asserzioni a 4.
+-- Brief: brief-db-pgtap-runner-rls-baseline §8.
+
 SELECT plan(14);
 
 -- ============================================================

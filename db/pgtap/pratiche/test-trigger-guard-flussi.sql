@@ -49,12 +49,7 @@ INSERT INTO config.priorita_pratiche (
   )
 VALUES ('NORMALE', 'NORMALE', 'Normale', 20, true) ON CONFLICT (codice_interno) DO NOTHING;
 CREATE TEMP TABLE tmp_tg_refs AS
-SELECT (
-    SELECT id
-    FROM anagrafiche.emittenti_fiscali
-    WHERE attivo = true
-    LIMIT 1
-  ) AS emittente_id,
+SELECT script.fn_pgtap_emittente_operatore() AS emittente_id,
   (
     SELECT id
     FROM anagrafiche.soggetti

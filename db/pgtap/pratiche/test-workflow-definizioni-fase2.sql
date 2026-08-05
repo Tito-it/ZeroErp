@@ -70,7 +70,7 @@ INSERT INTO config.priorita_pratiche (codice, codice_interno, descrizione, seque
 VALUES ('NORMALE','NORMALE','Normale',20,true) ON CONFLICT (codice_interno) DO NOTHING;
 
 CREATE TEMP TABLE tmp_wf2_refs AS
-SELECT (SELECT id FROM anagrafiche.emittenti_fiscali WHERE attivo = true LIMIT 1) AS emittente_id;
+SELECT script.fn_pgtap_emittente_operatore() AS emittente_id;
 
 SELECT ok((SELECT emittente_id IS NOT NULL FROM tmp_wf2_refs), '0. Precondizioni (emittente)');
 

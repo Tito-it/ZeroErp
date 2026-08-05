@@ -56,7 +56,7 @@ BEGIN
         PERFORM script.fn_log_and_raise_error(
             'pratiche',
             'pratiche.trgfn_flussi_guard_chiusura_prematura',
-            'PRATICHE_CHIUSURA_FLUSSO_PREMATURO',
+            'E_PRATICHE_CHIUSURA_FLUSSO_PREMATURO',
             jsonb_build_object(
                 'pratica_id', NEW.pratica_id,
                 'flusso_id', NEW.id,

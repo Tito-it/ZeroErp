@@ -21,7 +21,7 @@ BEGIN
         PERFORM script.fn_log_and_raise_error(
             'database',
             'script.fn_guard_utility_tipo_ruolo',
-            'ERRORE_PARAMETRI',
+            'E_ERRORE_PARAMETRI',
             jsonb_build_object(
                 'detail', 'p_utility_id obbligatorio e > 0',
                 'p_utility_id', p_utility_id,
@@ -36,7 +36,7 @@ BEGIN
         PERFORM script.fn_log_and_raise_error(
             'database',
             'script.fn_guard_utility_tipo_ruolo',
-            'ERRORE_PARAMETRI',
+            'E_ERRORE_PARAMETRI',
             jsonb_build_object(
                 'detail', 'p_tipo_ruolo_id obbligatorio e > 0',
                 'p_tipo_ruolo_id', p_tipo_ruolo_id,

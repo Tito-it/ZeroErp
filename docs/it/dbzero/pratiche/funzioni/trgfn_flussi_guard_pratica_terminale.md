@@ -52,7 +52,7 @@ BEGIN
         PERFORM script.fn_log_and_raise_error(
             'pratiche',
             'pratiche.trgfn_flussi_guard_pratica_terminale',
-            'PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO',
+            'E_PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO',
             jsonb_build_object(
                 'pratica_id', NEW.pratica_id,
                 'stato', v_stato_codice
@@ -64,7 +64,7 @@ BEGIN
         PERFORM script.fn_log_and_raise_error(
             'pratiche',
             'pratiche.trgfn_flussi_guard_pratica_terminale',
-            'PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE',
+            'E_PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE',
             jsonb_build_object(
                 'pratica_id', NEW.pratica_id,
                 'flusso_id', NEW.id,
