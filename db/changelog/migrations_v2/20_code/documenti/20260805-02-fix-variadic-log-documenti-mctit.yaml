@@ -1,0 +1,566 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Riferimenti morti — F8: chiamate a fn_log_and_raise_error SENZA valori
+#   variadici (schema `documenti`)
+#   Guida: docs/it/guide/presidi-e-registri-del-debito.md
+#   Regola corretta da: 20260805-01
+#
+# ── IL DIFETTO ───────────────────────────────────────────────────────────
+#   `script.fn_log_and_raise_error(..., VARIADIC p_valori text[])` veniva
+#   chiamata con **5 argomenti**, cioe' senza alcun valore variadico. In
+#   PostgreSQL un `VARIADIC <tipo>[]` NON ammette zero argomenti variadici
+#   (solo `VARIADIC "any"` lo fa), quindi la chiamata **non si risolve**:
+#
+#     BEGIN; DELETE FROM documenti.template_asset WHERE id = ...;
+#     ERRORE: la funzione script.fn_log_and_raise_error(unknown, unknown,
+#             unknown, jsonb, uuid) non esiste
+#     CONTESTO: funzione PL/pgSQL documenti.trgfn_template_asset_block_delete()
+#
+# ── PERCHE' CONTA, AL DI LA' DEL MESSAGGIO BRUTTO ────────────────────────
+#   Sono tutti guard di **blocco**: scattano per impedire una cancellazione
+#   o una modifica vietata. Il blocco funziona — l'operazione fallisce
+#   comunque — ma:
+#     · il codice di dominio (es. `E_DOCUMENTI_ASSET_DELETE_BLOCKED`) non
+#       arriva mai al backend, che traduce in `E_DATABASE` e restituisce un
+#       400 generico con il dettaglio soppresso perche' classificato tecnico;
+#     · il log non viene scritto: `fn_log_and_raise_error` non gira proprio.
+#   L'utente vede «errore del database» dove doveva leggere perche' quel
+#   documento non si puo' cancellare.
+#
+# ── ⚠️ ERANO ETICHETTATE COME RUMORE ────────────────────────────────────
+#   Il controllo le classificava `FP_VARIADIC` per una premessa falsa
+#   scritta nella v1 («PostgreSQL ammette di omettere i valori variadici»).
+#   Segnalato dal team BE il 2026-08-05 e verificato: la regola e' corretta
+#   in `20260805-01`, e queste righe sono emerse come difetti veri.
+#   Lezione: un difetto nascosto sotto un'etichetta rassicurante e' peggio
+#   di uno nascosto sotto un altro difetto — nessuno ricontrolla le etichette.
+#
+# ── IL RIMEDIO ───────────────────────────────────────────────────────────
+#   `VARIADIC ARRAY[]::text[]` come sesto argomento. Verificato che nessuno
+#   dei 10 messaggi coinvolti contenga segnaposto `%s`: sono testi fissi,
+#   quindi non serve passare valori e un array vuoto e' la forma esatta.
+#   (`fn_log_and_raise_error` fa `format` solo se `array_length` non e' NULL.)
+#
+#   Corpi presi dall'oggetto vivo e modificati con un solo inserimento per
+#   call site: nessun'altra riga cambia.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20260805-02-fix-variadic-log-documenti-mctit.yaml
+
+  - changeSet:
+      id: 20260805-02-fix-variadic-log-documenti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        F8 — 14 chiamate a script.fn_log_and_raise_error senza valori variadici in
+        10 guard dello schema documenti: un VARIADIC tipizzato non ammette zero
+        argomenti variadici, quindi la chiamata non si risolve e il codice di dominio
+        non arriva al backend. Aggiunto VARIADIC ARRAY[]::text[].
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_documenti_generati_block_delete()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo:
+              --   Blocca la cancellazione fisica di documenti generati.
+              --
+              -- Regola:
+              --   La tabella è append-only sulla generazione storica.
+              --   Il ciclo vita si gestisce tramite stato (GENERATO → ARCHIVIATO/ANNULLATO).
+              --   Non si cancella mai fisicamente: la cancellazione invaliderebbe
+              --   il tracciamento della generazione e l'audit tramite context_json.
+              --
+              -- Errore:
+              --   E_DOCUMENTI_GENERATO_DELETE_BLOCKED
+              BEGIN
+                PERFORM script.fn_log_and_raise_error(
+                  'documenti', 'trgfn_documenti_generati_block_delete',
+                  'E_DOCUMENTI_GENERATO_DELETE_BLOCKED',
+                  jsonb_build_object(
+                    'documento_generato_id', OLD.id,
+                    'uid', OLD.uid::text,
+                    'stato', OLD.stato
+                  ),
+                  NULL::uuid,
+                  VARIADIC ARRAY[]::text[]
+                );
+                RETURN OLD;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_documenti_generati_check_coerenza()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo:
+              --   Valida la coerenza referenziale del documento generato.
+              --
+              -- Regole:
+              --   1. template_versione_id.template_documento_id ==
+              --      template_documento_id
+              --   2. template_documento_id.tipo_documento_output_id ==
+              --      tipo_documento_output_id
+              --   3. template_documento_id.sorgente_tipo_id ==
+              --      sorgente_tipo_id
+              --   4. template_documento_id.emittente_fiscale_id ==
+              --      emittente_fiscale_id
+              --
+              -- Se una di queste fallisce il record nasce inconsistente,
+              -- rendendo inaffidabile l'audit tramite context_json snapshot.
+              --
+              -- Errore:
+              --   E_DOCUMENTI_GENERATO_COERENZA
+              DECLARE
+                v_tv_template_id documenti.template_documenti_versioni.template_documento_id%TYPE;
+                v_tv_tipo_id documenti.template_documenti.tipo_documento_output_id%TYPE;
+                v_tv_sorgente_id documenti.template_documenti.sorgente_tipo_id%TYPE;
+                v_tv_emittente_id documenti.template_documenti.emittente_fiscale_id%TYPE;
+              BEGIN
+                SELECT
+                  template_documento_id,
+                  (SELECT tipo_documento_output_id
+                     FROM documenti.template_documenti
+                    WHERE id = template_documento_id) AS tipo_id,
+                  (SELECT sorgente_tipo_id
+                     FROM documenti.template_documenti
+                    WHERE id = template_documento_id) AS sorgente_id,
+                  (SELECT emittente_fiscale_id
+                     FROM documenti.template_documenti
+                    WHERE id = template_documento_id) AS emittente_id
+                  INTO v_tv_template_id, v_tv_tipo_id, v_tv_sorgente_id, v_tv_emittente_id
+                  FROM documenti.template_documenti_versioni
+                 WHERE id = NEW.template_versione_id;
+
+                IF v_tv_template_id != NEW.template_documento_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_documenti_generati_check_coerenza',
+                    'E_DOCUMENTI_GENERATO_COERENZA',
+                    jsonb_build_object(
+                      'template_versione_id', NEW.template_versione_id,
+                      'template_documento_id_atteso', v_tv_template_id,
+                      'template_documento_id_fornito', NEW.template_documento_id
+                    ),
+                    NULL::uuid,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+
+                IF v_tv_tipo_id != NEW.tipo_documento_output_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_documenti_generati_check_coerenza',
+                    'E_DOCUMENTI_GENERATO_COERENZA',
+                    jsonb_build_object(
+                      'template_documento_id', NEW.template_documento_id,
+                      'tipo_documento_output_id_atteso', v_tv_tipo_id,
+                      'tipo_documento_output_id_fornito', NEW.tipo_documento_output_id
+                    ),
+                    NULL::uuid,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+
+                IF v_tv_sorgente_id != NEW.sorgente_tipo_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_documenti_generati_check_coerenza',
+                    'E_DOCUMENTI_GENERATO_COERENZA',
+                    jsonb_build_object(
+                      'template_documento_id', NEW.template_documento_id,
+                      'sorgente_tipo_id_atteso', v_tv_sorgente_id,
+                      'sorgente_tipo_id_fornito', NEW.sorgente_tipo_id
+                    ),
+                    NULL::uuid,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+
+                IF v_tv_emittente_id != NEW.emittente_fiscale_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_documenti_generati_check_coerenza',
+                    'E_DOCUMENTI_GENERATO_COERENZA',
+                    jsonb_build_object(
+                      'template_documento_id', NEW.template_documento_id,
+                      'emittente_fiscale_id_atteso', v_tv_emittente_id,
+                      'emittente_fiscale_id_fornito', NEW.emittente_fiscale_id
+                    ),
+                    NULL::uuid,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_documenti_generati_eventi_block_delete()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo:
+              --   Blocca la cancellazione fisica di eventi della timeline documento.
+              --
+              -- Regola:
+              --   La tabella documenti_generati_eventi e' append-only per audit.
+              --   Una correzione/segnalazione si registra come nuovo evento
+              --   (esito KO/WARN), non cancellando lo storico.
+              --
+              -- Errore:
+              --   E_EVENTO_DOCUMENTO_DELETE_VIETATA
+              BEGIN
+                PERFORM script.fn_log_and_raise_error(
+                  'documenti', 'trgfn_documenti_generati_eventi_block_delete',
+                  'E_EVENTO_DOCUMENTO_DELETE_VIETATA',
+                  jsonb_build_object(
+                    'evento_id', OLD.id,
+                    'documento_generato_id', OLD.documento_generato_id,
+                    'evento_tipo', OLD.evento_tipo,
+                    'evento_at', OLD.evento_at::text
+                  ),
+                  NULL::uuid,
+                  VARIADIC ARRAY[]::text[]
+                );
+                RETURN OLD;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_documenti_generati_eventi_block_update()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo:
+              --   Blocca qualsiasi UPDATE sulla timeline degli eventi documento.
+              --
+              -- Regola:
+              --   La tabella documenti_generati_eventi e' append-only.
+              --   Nessun campo (incluso messaggio, detail, esito, meta) puo'
+              --   essere modificato dopo l'INSERT. Per registrare correzioni
+              --   o eventi successivi inserire una nuova riga.
+              --
+              -- Errore:
+              --   E_EVENTO_DOCUMENTO_UPDATE_VIETATA
+              BEGIN
+                PERFORM script.fn_log_and_raise_error(
+                  'documenti', 'trgfn_documenti_generati_eventi_block_update',
+                  'E_EVENTO_DOCUMENTO_UPDATE_VIETATA',
+                  jsonb_build_object(
+                    'evento_id', OLD.id,
+                    'documento_generato_id', OLD.documento_generato_id,
+                    'evento_tipo', OLD.evento_tipo,
+                    'evento_at', OLD.evento_at::text
+                  ),
+                  NULL::uuid,
+                  VARIADIC ARRAY[]::text[]
+                );
+                RETURN OLD;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_documenti_generati_file_protect_file()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo:
+              --   Blocca l'UPDATE di campi file su documenti_generati_file.
+              --
+              -- Regole:
+              --   Campi immutabili:
+              --     - documento_generato_id, file_tipo_id
+              --     - storage_key, sha256, file_size_bytes, mime_type, file_name
+              --     - is_principale
+              --   Campi modificabili (per futuro Fase B):
+              --     - meta, ordinamento (condizionatamente)
+              --
+              -- Errore:
+              --   E_DOCUMENTI_GENERATO_FILE_IMMUTABILE
+              BEGIN
+                IF  (NEW.documento_generato_id != OLD.documento_generato_id OR
+                     NEW.file_tipo_id          != OLD.file_tipo_id          OR
+                     NEW.storage_key           != OLD.storage_key           OR
+                     NEW.sha256                != OLD.sha256                OR
+                     NEW.file_size_bytes       != OLD.file_size_bytes       OR
+                     NEW.mime_type             != OLD.mime_type             OR
+                     NEW.file_name             != OLD.file_name             OR
+                     NEW.is_principale         != OLD.is_principale) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_documenti_generati_file_protect_file',
+                    'E_DOCUMENTI_GENERATO_FILE_IMMUTABILE',
+                    jsonb_build_object(
+                      'documento_generato_id', OLD.documento_generato_id,
+                      'file_tipo_id', OLD.file_tipo_id
+                    ),
+                    NULL::uuid,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+                RETURN NEW;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_documenti_generati_protect_snapshot()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo:
+              --   Blocca l'UPDATE di campi snapshot su un documento generato.
+              --
+              -- Regole:
+              --   Campi immutabili (snapshot):
+              --     - tipo_documento_output_id, template_documento_id,
+              --       template_versione_id, sorgente_tipo_id, sorgente_uid,
+              --       sorgente_riga, progressivo_sorgente, emittente_fiscale_id
+              --     - context_json, context_hash, template_hash, pdf_hash
+              --     - titolo, nome_file, uid
+              --     - generato_at, generato_da_user_id
+              --   Campi modificabili:
+              --     - stato, meta
+              --
+              --   Il documento rappresenta un'istantanea di generazione.
+              --   Se cambia il template, il tipo documento, la sorgente,
+              --   il context o i dati, quell'istantanea è corrotta.
+              --
+              -- Errore:
+              --   E_DOCUMENTI_GENERATO_SNAPSHOT_IMMUTABILE
+              BEGIN
+                IF  (NEW.tipo_documento_output_id      != OLD.tipo_documento_output_id      OR
+                     NEW.template_documento_id         != OLD.template_documento_id         OR
+                     NEW.template_versione_id          != OLD.template_versione_id          OR
+                     NEW.sorgente_tipo_id              != OLD.sorgente_tipo_id              OR
+                     NEW.sorgente_uid                  != OLD.sorgente_uid                  OR
+                     NEW.sorgente_riga                 IS DISTINCT FROM OLD.sorgente_riga   OR
+                     NEW.progressivo_sorgente          != OLD.progressivo_sorgente          OR
+                     NEW.emittente_fiscale_id          != OLD.emittente_fiscale_id          OR
+                     NEW.context_json                  != OLD.context_json                  OR
+                     NEW.context_hash                  != OLD.context_hash                  OR
+                     NEW.template_hash                 != OLD.template_hash                 OR
+                     NEW.pdf_hash                      != OLD.pdf_hash                      OR
+                     NEW.titolo                        != OLD.titolo                        OR
+                     NEW.nome_file                     != OLD.nome_file                     OR
+                     NEW.uid                           != OLD.uid                           OR
+                     NEW.generato_at                   != OLD.generato_at                   OR
+                     NEW.generato_da_user_id           IS DISTINCT FROM OLD.generato_da_user_id) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_documenti_generati_protect_snapshot',
+                    'E_DOCUMENTI_GENERATO_SNAPSHOT_IMMUTABILE',
+                    jsonb_build_object(
+                      'documento_generato_id', OLD.id,
+                      'uid', OLD.uid::text
+                    ),
+                    NULL::uuid,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+                RETURN NEW;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_template_asset_block_delete()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo:
+              --   Blocca la cancellazione fisica di asset.
+              --
+              -- Regola:
+              --   Non si cancellano mai asset fisicamente. Se un asset non
+              --   serve piu', si chiude impostando valido_al. Questo preserva
+              --   l'integrità storica dei documenti generati (che referenziano
+              --   via template_asset_id).
+              --
+              -- Errore:
+              --   E_DOCUMENTI_ASSET_DELETE_BLOCKED
+              BEGIN
+                PERFORM script.fn_log_and_raise_error(
+                  'documenti', 'trgfn_template_asset_block_delete',
+                  'E_DOCUMENTI_ASSET_DELETE_BLOCKED',
+                  jsonb_build_object(
+                    'template_asset_id', OLD.id,
+                    'emittente_fiscale_id', OLD.emittente_fiscale_id,
+                    'codice_interno', OLD.codice_interno
+                  ),
+                  NULL::uuid,
+                  VARIADIC ARRAY[]::text[]
+                );
+                RETURN OLD;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_template_asset_protect_file()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo:
+              --   Blocca la modifica di colonne file su asset.
+              --
+              -- Regole:
+              --   Campi immutabili (file specifics):
+              --     - storage_key, sha256, file_size_bytes, mime_type, file_name
+              --   Campi modificabili:
+              --     - meta, validita (via valido_al)
+              --
+              --   Il file (e il suo hash) non si modificano mai.
+              --   Se serve un file diverso si crea un nuovo asset.
+              --
+              -- Errore:
+              --   E_DOCUMENTI_ASSET_FILE_IMMUTABILE
+              BEGIN
+                IF  (NEW.storage_key    != OLD.storage_key    OR
+                     NEW.sha256         != OLD.sha256         OR
+                     NEW.file_size_bytes != OLD.file_size_bytes OR
+                     NEW.mime_type      != OLD.mime_type      OR
+                     NEW.file_name      != OLD.file_name) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_template_asset_protect_file',
+                    'E_DOCUMENTI_ASSET_FILE_IMMUTABILE',
+                    jsonb_build_object(
+                      'template_asset_id', OLD.id,
+                      'emittente_fiscale_id', OLD.emittente_fiscale_id,
+                      'codice_interno', OLD.codice_interno
+                    ),
+                    NULL::uuid,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+                RETURN NEW;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_template_documenti_versioni_block_delete()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo:
+              --   Blocca la cancellazione fisica di versioni template
+              --   quando sono in stato protetto o gia' utilizzate.
+              --
+              -- Regole:
+              --   1. Non si cancellano versioni PUBBLICATA o OBSOLETA
+              --      (manteniamo la storia per audit dei documenti generati).
+              --   2. Non si cancellano versioni gia' usate da almeno un
+              --      documento generato (integrità referenziale storica).
+              --   3. Solo versioni BOZZA non usate possono essere cancellate.
+              --
+              -- Errore:
+              --   E_DOCUMENTI_VERSIONE_DELETE_BLOCKED
+              DECLARE
+                v_count_documenti integer;
+              BEGIN
+                IF OLD.stato IN ('PUBBLICATA', 'OBSOLETA') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_template_documenti_versioni_block_delete',
+                    'E_DOCUMENTI_VERSIONE_DELETE_BLOCKED',
+                    jsonb_build_object(
+                      'template_documento_id', OLD.template_documento_id,
+                      'versione', OLD.versione,
+                      'stato', OLD.stato
+                    ),
+                    NULL::uuid,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+
+                SELECT COUNT(*)
+                  INTO v_count_documenti
+                  FROM documenti.documenti_generati
+                 WHERE template_versione_id = OLD.id;
+
+                IF v_count_documenti > 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_template_documenti_versioni_block_delete',
+                    'E_DOCUMENTI_VERSIONE_DELETE_BLOCKED',
+                    jsonb_build_object(
+                      'template_documento_id', OLD.template_documento_id,
+                      'versione', OLD.versione,
+                      'documento_generati_count', v_count_documenti
+                    ),
+                    NULL::uuid,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+
+                RETURN OLD;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_template_documenti_versioni_protect_pubblicata()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo:
+              --   Blocca l'UPDATE su una versione template quando e' in stato PUBBLICATA.
+              --   Una versione PUBBLICATA è immutabile: HTML, CSS, render engine,
+              --   validita', template_documento_id, versione non si modificano.
+              --   Per ogni cambio si crea una nuova BOZZA.
+              --
+              -- Errore:
+              --   E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE
+              BEGIN
+                IF OLD.stato = 'PUBBLICATA' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_template_documenti_versioni_protect_pubblicata',
+                    'E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE',
+                    jsonb_build_object(
+                      'template_documento_id', OLD.template_documento_id,
+                      'versione', OLD.versione,
+                      'stato', OLD.stato
+                    ),
+                    NULL::uuid,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+                RETURN NEW;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;
