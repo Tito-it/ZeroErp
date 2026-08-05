@@ -404,6 +404,19 @@ vera il trigger crea da sé lo snapshot iniziale. L'audit invece **non** è stat
 sospeso, ed è voluto: `data_update` di 163 preventivi e 12 fatture riporta oggi, ed è
 vero, le righe sono state scritte.
 
+> ⚠️ **Il trigger si cerca, non si nomina** (correzione del 2026-08-05, sera, dopo
+> una CI rossa). La prima stesura scriveva il nome a mano. Due cose lo rendono
+> sbagliato, e valgono per chiunque debba sospendere una storicizzazione: quei
+> trigger **non nascono da un changeSet** — li crea l'automazione `dbops`, che
+> gira in `90_end/ci_apply`, cioè **dopo** la fase `80_data` — quindi su un
+> database costruito da zero il trigger lì non esiste ancora e l'`ALTER TABLE …
+> DISABLE TRIGGER` ferma la migrazione; e il nome **non è stabile**, perché il
+> template dell'automazione produce `trg_z90_{tabella}_storico_upd_dlt` mentre in
+> sviluppo il trigger si chiama `trg_preventivi_z90_storico_upd_dlt`. Ora si cerca
+> per quello che il trigger **fa** (la sua funzione è `script.trgfn_storico_generic`)
+> e, se non c'è, non si sospende nulla: su un database senza trigger non c'è
+> storia finta da evitare. Verificato in entrambi gli scenari, con e senza.
+
 **Verificato dopo l'applicazione:** il flag sopravvive a tre `UPDATE` consecutivi sul
 preventivo producendo 4 righe di storico (1 iniziale + 3 stati) — memoria continua, non
 più una fotografia; `vendite.ordini`, iscritto ma mai esentato, ora tiene il flag

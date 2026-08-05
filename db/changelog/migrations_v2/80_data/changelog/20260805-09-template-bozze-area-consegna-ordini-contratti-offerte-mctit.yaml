@@ -75,8 +75,26 @@ databaseChangeLog:
         Crea (o riusa, per il contratto) le tre BOZZE di ord-ven, contratto e
         off-comm con l'area «Luogo di consegna», nella forma per-campo gia' in
         produzione sul ddt-ven. Non pubblica: e' il changeSet successivo.
+      # ⚠️ `CONTINUE` E NON `HALT`, ed e' stato pagato con una CI rossa.
+      #   I template documento NON sono a seed: nessun changeSet li crea, sono
+      #   nati a mano sul database di sviluppo. Su un database costruito da zero
+      #   — cioe' la CI — `documenti.template_documenti` e' VUOTA, la sqlCheck
+      #   qui sotto torna 0 invece di 3 e con `HALT` la migrazione si ferma.
+      #   Verde in locale, rossa in CI: la stessa trappola del `20260804-33`.
+      #
+      #   Si usa `CONTINUE` e non il `MARK_RAN` del changeSet gemello
+      #   (`20260804-61`), e la differenza conta: `MARK_RAN` segna il changeSet
+      #   come eseguito e non lo riprende MAI PIU', nemmeno il giorno in cui i
+      #   template esistono davvero. `CONTINUE` lo salta senza marcarlo, quindi
+      #   si riprende da solo quando la condizione diventa vera — lo stesso
+      #   schema del `20260804-36` per l'estensione plpgsql_check.
+      #
+      #   ℹ️ Il conteggio resta 3, non «almeno 1»: o ci sono tutti e tre i
+      #   template pubblicati, o non si tocca niente. Un ambiente a meta' non
+      #   riceve una meta' di lavoro senza che nessuno lo sappia.
       preConditions:
-        - onFail: HALT
+        - onFail: CONTINUE
+        - onError: HALT
         - and:
             - tableExists:
                 schemaName: documenti
