@@ -1359,6 +1359,28 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Impossibile disattivare: esistono record collegati ancora attivi.",
         ),
+        # I due sotto sono errori di CONFIGURAZIONE del trigger generico
+        # `dbops.trgfn_prevent_deactivate_if_children` (TG_ARGV insufficienti,
+        # colonna FK dichiarata inesistente sul figlio): non dipendono da cosa
+        # fa l'utente, quindi 500 e non 4xx. Raggiungibili dal ciclo richiesta
+        # perche' il trigger e' armato su ~96 tabelle e scatta sull'UPDATE
+        # `attivo = false` che parte dalle API di disattivazione.
+        # Registrati il 2026-08-05: prima erano irraggiungibili perche' i loro
+        # call site chiamavano `fn_log_and_raise_error` senza valori variadici
+        # e morivano su 42883 (bonifica riferimenti morti F8, changeSet
+        # 20260805-02/03/04).
+        "E_ATTIVO_BLOCK_ARGS": ErrorPolicy(
+            code="E_ATTIVO_BLOCK_ARGS",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Configurazione trigger di protezione non valida.",
+        ),
+        "E_ATTIVO_BLOCK_FKCOL_NOT_FOUND": ErrorPolicy(
+            code="E_ATTIVO_BLOCK_FKCOL_NOT_FOUND",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Configurazione trigger di protezione non valida.",
+        ),
         "E_DEFAULT_CONTATTO_MISSING": ErrorPolicy(
             code="E_DEFAULT_CONTATTO_MISSING",
             http_status=400,
@@ -1459,6 +1481,16 @@ class ErrorPolicyRegistry:
             http_status=400,
             ui_action="show_error_banner",
             user_message="Parametri scope operatore non validi.",
+        ),
+        # Stessa fn DB del precedente (`script.fn_change_user_emittenti_scope`),
+        # stesso 400: e' l'input della richiesta a non essere ammesso (piu' di un
+        # emittente su un modello operatore-emittente 1-a-1). Raggiungibile solo
+        # dal 2026-08-05 (vedi nota su E_ATTIVO_BLOCK_ARGS: changeSet 20260805-03).
+        "E_OPERATORE_SCOPE_MULTI_NON_AMMESSO": ErrorPolicy(
+            code="E_OPERATORE_SCOPE_MULTI_NON_AMMESSO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Scope operatore multiplo non ammesso: un operatore ha un solo emittente.",
         ),
         "E_UTENTE_BLOCCATO": ErrorPolicy(
             code="E_UTENTE_BLOCCATO",
@@ -2890,6 +2922,41 @@ class ErrorPolicyRegistry:
             http_status=409,
             ui_action="show_error_banner",
             user_message="File asset immutabile: storage_key/sha256/file_size/mime/file_name non modificabili. Crea un nuovo asset.",
+        ),
+        # ── Documenti — guard su `documenti_generati` (append-only + snapshot) ──
+        # Registrati il 2026-08-05. Le quattro guard che li sollevano esistevano
+        # gia', ma chiamavano `fn_log_and_raise_error` senza valori variadici:
+        # una funzione VARIADIC text[] non e' chiamabile con zero argomenti
+        # variadici, quindi morivano su 42883 «la funzione non esiste» invece di
+        # sollevare il codice (bonifica riferimenti morti F8, changeSet
+        # 20260805-02). Il blocco c'era lo stesso — un errore qualunque blocca —
+        # ma il codice non arrivava mai qui: 409/400 al posto di un 400 generico.
+        # Stesso status dei fratelli su `template_asset`/`template_documenti_versioni`.
+        "E_DOCUMENTI_GENERATO_DELETE_BLOCKED": ErrorPolicy(
+            code="E_DOCUMENTI_GENERATO_DELETE_BLOCKED",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Documento generato non eliminabile: la tabella e' append-only per audit.",
+        ),
+        "E_DOCUMENTI_GENERATO_FILE_IMMUTABILE": ErrorPolicy(
+            code="E_DOCUMENTI_GENERATO_FILE_IMMUTABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="File del documento generato immutabile dopo il salvataggio. Rigenera il documento.",
+        ),
+        "E_DOCUMENTI_GENERATO_SNAPSHOT_IMMUTABILE": ErrorPolicy(
+            code="E_DOCUMENTI_GENERATO_SNAPSHOT_IMMUTABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Snapshot del documento generato immutabile: i dati di generazione sono congelati.",
+        ),
+        # Coerenza referenziale del payload (template versione / tipo output /
+        # sorgente / emittente discordanti): e' l'input a essere incoerente -> 400.
+        "E_DOCUMENTI_GENERATO_COERENZA": ErrorPolicy(
+            code="E_DOCUMENTI_GENERATO_COERENZA",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Incoerenza nei riferimenti del documento generato.",
         ),
         # ── UI — personalizzazioni liste (schema ui, sviluppo-personalizzazioni-liste.md) ──
         # E_UI_LISTA_NON_TROVATA: sollevato da fn_resolve_lista_config quando il codice
