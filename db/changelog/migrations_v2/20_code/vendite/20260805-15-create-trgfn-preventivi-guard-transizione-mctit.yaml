@@ -1,0 +1,371 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# La matrice del preventivo diventa vincolante anche per il database, non solo
+#   per i bottoni (brief-db-vie-uscita-operatore §6.2 e §7.4 punto 3).
+#
+# COSA CAMBIA. Commessa, ordine, DDT, reso, contratto e offerta hanno tutti un
+#   trigger che legge la propria matrice e rifiuta cio' che non c'e'. Il
+#   preventivo no: la sua matrice governava quali bottoni compaiono, non che
+#   cosa il database accetta. Un `UPDATE` diretto sullo stato passava comunque.
+#
+# ⚠️ NON STIAMO RESTRINGENDO NIENTE DI VIVO, ed e' il motivo per cui il rischio
+#   e' basso. Rimisurato oggi: le funzioni che scrivono
+#   `vendite.preventivi.stato_doc_preventivo_id` sono DUE, e vanno entrambe
+#   dentro la matrice —
+#     - `fn_cambia_stato_preventivo`, che la valida gia' per conto suo;
+#     - `fn_push_preventivo_a_ordine`, che porta ACCETTATO -> EVASO (in
+#       matrice, transizione automatica), e che il §7.1 del brief NON aveva
+#       trovato perche' allora non scriveva lo stato.
+#   Quindi la regola passa da «vera per disciplina» a «vera per costruzione»
+#   senza chiudere nessuna porta che qualcuno stia usando.
+#
+# ⚠️ UN TEST CADE, ed era previsto (§7.4). `test-preventivi-approvazione-prezzo`
+#   crea preventivi in DRAFT e salta dritto ad ACCETTATO per arrivare in fretta
+#   allo stato che gli serve: DRAFT -> ACCETTATO non e' in matrice. La fixture
+#   viene corretta nello stesso commit facendole fare i due passi legittimi
+#   (DRAFT -> EMESSO -> ACCETTATO): il significato del test non cambia, cambia
+#   solo la scorciatoia. `test-guida-avanza-esito-proiettato` invece parte da
+#   EMESSO ed e' gia' in matrice: non si tocca.
+#
+# ⚠️ IL CODICE ERRORE E' NUOVO, e non e' pedanteria. La porta solleva oggi
+#   `PREV_TRANSIZIONE_NON_AMMESSA`, che e' senza prefisso `E_` ed e' iscritto in
+#   `dbops.messaggi_errore_codici_legacy` — il registro del debito che «deve
+#   calare». Far sollevare al guard quel codice avrebbe aumentato il debito;
+#   fargliene sollevare uno diverso avrebbe creato DUE voci per la STESSA
+#   regola, che e' esattamente l'errore pagato al §7.3 di questo brief. Quindi:
+#   codice nuovo `E_PREV_TRANSIZIONE_NON_AMMESSA` (id 841), e la porta passa a
+#   quello insieme al guard. Una regola, una voce.
+#
+# ℹ️ IL CONTROLLO RESTA IN DUE POSTI, e stavolta e' voluto: la porta lo fa
+#   PRIMA di scrivere (messaggio pulito sul percorso normale), il guard lo fa
+#   SULLA scrittura (copre chi la porta non la usa). E' difesa in profondita',
+#   non due regole: leggono la stessa matrice e da oggi dicono la stessa cosa.
+#
+# ℹ️ Solo la Regola 1 (matrice). Il guard dell'ordine ne ha una seconda, sul
+#   documento senza righe; per il preventivo quella regola vive nella porta
+#   (`PREV_NESSUNA_RIGA_ATTIVA`) e un `UPDATE` diretto la aggira ancora. E' la
+#   stessa asimmetria che questo changeSet chiude sulla matrice, e resta aperta
+#   sulle righe: va sanata, ma e' un'altra decisione e un altro changeSet — non
+#   si infila una seconda regola restrittiva dentro «la formalita' a basso
+#   rischio» che il §7.4 aveva pianificato.
+#
+# ℹ️ Nessuna preCondition sul catalogo messaggi: il codice nuovo viaggia nel CSV
+#   che il loader carica in 80_data, cioe' DOPO questa fase. Dipendenza di solo
+#   runtime, come gia' per `20260804-25`, `-33` e `-73`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260805-15-create-trgfn-preventivi-guard-transizione-mctit.yaml
+
+  - changeSet:
+      id: 20260805-15-create-trgfn-preventivi-guard-transizione
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        trgfn_preventivi_guard_transizione + trigger: la matrice
+        config.transizioni_stati_preventivi diventa vincolante per il database e
+        non solo per la UI. La porta fn_cambia_stato_preventivo passa allo
+        stesso codice errore nuovo E_PREV_TRANSIZIONE_NON_AMMESSA, cosi' la
+        stessa regola parla con una voce sola.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: transizioni_stati_preventivi
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'vendite' AND p.proname = 'fn_cambia_stato_preventivo'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_preventivi_guard_transizione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: enforcement DB-first del grafo transizioni del preventivo.
+              --   La transizione (OLD.stato -> NEW.stato) e' ammessa solo se
+              --   presente e ATTIVA in config.transizioni_stati_preventivi.
+              --   Letto dalla matrice, nessun grafo hardcodato: stessa sorgente
+              --   di fn_available_actions_preventivo, quindi la UI non puo'
+              --   proporre cio' che il database rifiuta, ne' viceversa.
+              --   Mirror di vendite.trgfn_ordini_guard_transizione (Regola 1).
+              --   Brief: brief-db-vie-uscita-operatore §6.2, §7.4 punto 3.
+              --
+              -- Cosa NON fa, per scelta:
+              --   - l'annullamento ha il suo guard dedicato
+              --     (trgfn_preventivi_guard_annullamento, 20260804-35): qui si
+              --     verifica solo che la strada esista, non che sia percorribile;
+              --   - la regola "documento senza righe" vive ancora nella porta
+              --     vendite.fn_cambia_stato_preventivo e un UPDATE diretto la
+              --     aggira: e' un'asimmetria dichiarata, non una dimenticanza.
+              DECLARE
+                  v_codice_da config.stati_doc_preventivi.codice_interno%TYPE;
+                  v_codice_a  config.stati_doc_preventivi.codice_interno%TYPE;
+                  v_ammessa   boolean := false;
+              BEGIN
+                  -- No-op se lo stato non cambia davvero (UPDATE su altre colonne).
+                  IF NEW.stato_doc_preventivo_id IS NOT DISTINCT FROM OLD.stato_doc_preventivo_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT
+                      max(CASE WHEN id = OLD.stato_doc_preventivo_id THEN codice_interno END),
+                      max(CASE WHEN id = NEW.stato_doc_preventivo_id THEN codice_interno END)
+                    INTO v_codice_da, v_codice_a
+                    FROM config.stati_doc_preventivi
+                   WHERE id IN (OLD.stato_doc_preventivo_id, NEW.stato_doc_preventivo_id);
+
+                  -- Regola unica: la transizione deve esistere ed essere attiva.
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM config.transizioni_stati_preventivi t
+                       WHERE t.stato_da_id = OLD.stato_doc_preventivo_id
+                         AND t.stato_a_id  = NEW.stato_doc_preventivo_id
+                         AND t.attivo IS TRUE
+                  ) INTO v_ammessa;
+
+                  IF NOT v_ammessa THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          'E_PREV_TRANSIZIONE_NON_AMMESSA',
+                          jsonb_build_object(
+                              'preventivo_id', NEW.id,
+                              'numero',        NEW.numero,
+                              'stato_da',      v_codice_da,
+                              'stato_a',       v_codice_a
+                          ),
+                          NEW.tx_id,
+                          coalesce(v_codice_da, 'NULL'),
+                          coalesce(v_codice_a,  'NULL')
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_preventivi_guard_transizione()
+              IS 'Trigger function: rende vincolante per il database la matrice config.transizioni_stati_preventivi, come gia'' avviene per ordine, DDT, commessa, reso, contratto e offerta. Legge la matrice (nessun grafo hardcodato), quindi condivide la sorgente con fn_available_actions_preventivo: la UI non puo'' proporre cio'' che il database rifiuta. Non valuta l''ammissibilita'' dell''annullamento, che ha il guard dedicato trgfn_preventivi_guard_annullamento. Creata 2026-08-05 (brief-db-vie-uscita-operatore §6.2, §7.4 punto 3).';
+
+              DROP TRIGGER IF EXISTS trg_preventivi_a10_guard_transizione_upd ON vendite.preventivi;
+
+              CREATE TRIGGER trg_preventivi_a10_guard_transizione_upd
+                  BEFORE UPDATE OF stato_doc_preventivo_id ON vendite.preventivi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_preventivi_guard_transizione();
+
+              COMMENT ON TRIGGER trg_preventivi_a10_guard_transizione_upd ON vendite.preventivi
+              IS 'Fascia a10 (guard): rifiuta le transizioni di stato che non sono in config.transizioni_stati_preventivi o che vi sono disattivate. UPDATE OF sullo stato: non si sveglia sugli altri update.';
+
+              -- ------------------------------------------------------------
+              -- La porta passa allo stesso codice del guard. Prima sollevava
+              -- PREV_TRANSIZIONE_NON_AMMESSA, che e' senza prefisso E_ e sta nel
+              -- registro del debito: lasciandolo, la stessa regola avrebbe avuto
+              -- due voci diverse a seconda di chi la incontrava per primo.
+              -- ------------------------------------------------------------
+              CREATE OR REPLACE FUNCTION vendite.fn_cambia_stato_preventivo(p_preventivo_id bigint, p_nuovo_stato character varying, p_user text)
+               RETURNS TABLE(preventivo_id bigint, stato_precedente character varying, stato_nuovo character varying)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_stato_corrente_id   vendite.preventivi.stato_doc_preventivo_id%TYPE;
+                v_stato_corrente_cod  config.stati_doc_preventivi.codice_interno%TYPE;
+                v_nuovo_stato_id      config.stati_doc_preventivi.id%TYPE;
+                v_transizione_ok      boolean;
+                v_count_righe         bigint;
+                v_motivi              jsonb;
+                v_numero              vendite.preventivi.numero%TYPE;
+                v_uid                 vendite.preventivi.uid%TYPE;
+              BEGIN
+                -- ==========================================================
+                -- Scopo:
+                --   Eseguire la transizione di stato di un preventivo vendita,
+                --   validando la transizione tramite la matrice configurabile
+                --   config.transizioni_stati_preventivi.
+                --
+                -- Regole:
+                --   - La transizione deve essere presente e attiva nella matrice
+                --   - DRAFT → EMESSO: richiede almeno una riga attiva
+                --     (SOLO presenza: un totale pari a zero non blocca)
+                --   - Verso ANNULLATO: l'ammissibilita' NON e' decisa qui.
+                --     La chiede a script.fn_check_preventivo_annullabile, che e'
+                --     la sede unica della regola (rev 2026-08-04).
+                --
+                -- Parametri:
+                --   p_preventivo_id : ID del preventivo
+                --   p_nuovo_stato   : codice_interno dello stato destinazione
+                --   p_user          : utente che esegue la transizione
+                --
+                -- Ritorna:
+                --   preventivo_id, stato_precedente (codice_interno), stato_nuovo (codice_interno)
+                --
+                -- NOTE codice_interno (rev 2026-06-28, analisi-hardcoded-codice §3a #1):
+                --   stato corrente e destinazione risolti per codice_interno
+                --   (immutabile), non per codice (mutabile). Literali DRAFT/EMESSO/
+                --   ANNULLATO sono codice_interno.
+                --
+                -- NOTE rev 2026-07-16 (solo presenza righe):
+                --   rimossi il guard PREV_TOTALE_NON_POSITIVO e il filtro
+                --   quantita > 0. Per emettere basta che il documento ABBIA
+                --   righe: prezzo/totale 0 e' un caso legittimo. Regola valida
+                --   per tutti i domini documentali.
+                --
+                -- NOTE rev 2026-08-04 (brief-db-vie-uscita-operatore §7.3):
+                --   il guard verso ANNULLATO che stava qui — righe con
+                --   stato_emissione EMESSA in commessa — e' stato ASSORBITO da
+                --   script.fn_check_preventivo_annullabile, che lo espone come
+                --   MOTIVO 2 accanto agli altri due. Qui resta solo la chiamata.
+                --
+                -- NOTE rev 2026-08-05 (§7.4 punto 3):
+                --   la matrice e' ora vincolante anche per il database, via
+                --   vendite.trgfn_preventivi_guard_transizione. Il controllo resta
+                --   ANCHE qui, ed e' voluto: qui si intercetta prima di scrivere,
+                --   li' si copre chi non passa da questa porta. Il codice sollevato
+                --   e' lo STESSO nei due punti — E_PREV_TRANSIZIONE_NON_AMMESSA —
+                --   perche' la regola e' una sola. Il precedente
+                --   PREV_TRANSIZIONE_NON_AMMESSA, privo del prefisso E_ e iscritto
+                --   in dbops.messaggi_errore_codici_legacy, esce di scena.
+                -- ==========================================================
+
+                -- Guard: parametri obbligatori
+                IF p_preventivo_id IS NULL OR p_preventivo_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_preventivo',
+                    'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('param', 'p_preventivo_id', 'value', p_preventivo_id),
+                    NULL::uuid,
+                    'p_preventivo_id = ' || COALESCE(p_preventivo_id::text, 'NULL')
+                  );
+                END IF;
+
+                -- Recupera stato corrente, numero e uid in una sola query
+                SELECT p.stato_doc_preventivo_id, sdp.codice_interno, p.numero, p.uid
+                  INTO v_stato_corrente_id, v_stato_corrente_cod, v_numero, v_uid
+                  FROM vendite.preventivi p
+                  JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+                 WHERE p.id = p_preventivo_id;
+
+                IF v_stato_corrente_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_preventivo',
+                    'PREV_STATO_CORRENTE_NON_TROVATO',
+                    jsonb_build_object('preventivo_id', p_preventivo_id),
+                    NULL::uuid,
+                    p_preventivo_id::text
+                  );
+                END IF;
+
+                -- Recupera ID dello stato destinazione
+                SELECT id INTO v_nuovo_stato_id
+                  FROM config.stati_doc_preventivi
+                 WHERE codice_interno = p_nuovo_stato AND attivo IS TRUE;
+
+                IF v_nuovo_stato_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_preventivo',
+                    'E_STATO_SCONOSCIUTO',
+                    jsonb_build_object('codice', p_nuovo_stato),
+                    NULL::uuid,
+                    p_nuovo_stato
+                  );
+                END IF;
+
+                -- Valida transizione via matrice config
+                SELECT EXISTS(
+                  SELECT 1
+                    FROM config.transizioni_stati_preventivi t
+                   WHERE t.stato_da_id = v_stato_corrente_id
+                     AND t.stato_a_id  = v_nuovo_stato_id
+                     AND t.attivo IS TRUE
+                ) INTO v_transizione_ok;
+
+                IF NOT v_transizione_ok THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_preventivo',
+                    'E_PREV_TRANSIZIONE_NON_AMMESSA',
+                    jsonb_build_object(
+                      'preventivo_id', p_preventivo_id,
+                      'stato_da', v_stato_corrente_cod,
+                      'stato_a', p_nuovo_stato
+                    ),
+                    NULL::uuid,
+                    v_stato_corrente_cod, p_nuovo_stato
+                  );
+                END IF;
+
+                -- Guard DRAFT → EMESSO: SOLO presenza di righe attive.
+                -- Nessun vincolo su quantita/prezzo/totale: un documento
+                -- a totale zero deve poter essere emesso (rev 2026-07-16).
+                IF v_stato_corrente_cod = 'DRAFT' AND p_nuovo_stato = 'EMESSO' THEN
+                  SELECT COUNT(*)
+                    INTO v_count_righe
+                    FROM vendite.preventivi_righe pr
+                   WHERE pr.preventivo_id = p_preventivo_id
+                     AND pr.attivo IS TRUE;
+
+                  IF v_count_righe = 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite', 'fn_cambia_stato_preventivo',
+                      'PREV_NESSUNA_RIGA_ATTIVA',
+                      jsonb_build_object('preventivo_id', p_preventivo_id),
+                      NULL::uuid,
+                      v_numero
+                    );
+                  END IF;
+                END IF;
+
+                -- Verso ANNULLATO: la regola NON e' qui. La sede unica e'
+                -- script.fn_check_preventivo_annullabile, la stessa che legge il
+                -- trigger di guard e la stessa che accende il bottone nelle
+                -- capability. Qui si solleva il PRIMO motivo; il contesto porta
+                -- l'array intero, cosi' il log li conserva tutti.
+                IF p_nuovo_stato = 'ANNULLATO' THEN
+                  v_motivi := script.fn_check_preventivo_annullabile(p_preventivo_id);
+
+                  IF jsonb_array_length(v_motivi) > 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite', 'fn_cambia_stato_preventivo',
+                      v_motivi -> 0 ->> 'codice',
+                      jsonb_build_object(
+                        'preventivo_id', p_preventivo_id,
+                        'numero',        v_numero,
+                        'motivi',        v_motivi
+                      ),
+                      NULL::uuid,
+                      COALESCE(v_numero, p_preventivo_id::text)
+                    );
+                  END IF;
+                END IF;
+
+                -- Esecuzione: aggiorna stato
+                UPDATE vendite.preventivi
+                   SET stato_doc_preventivo_id = v_nuovo_stato_id,
+                       user_update = COALESCE(p_user, CURRENT_USER)
+                 WHERE id = p_preventivo_id;
+
+                -- Ritorna risultato
+                RETURN QUERY
+                SELECT p_preventivo_id, v_stato_corrente_cod, p_nuovo_stato;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_cambia_stato_preventivo(p_preventivo_id bigint, p_nuovo_stato character varying, p_user text)
+              IS 'Transizione di stato preventivo validata dalla matrice config.transizioni_stati_preventivi. Guard DRAFT->EMESSO: SOLO presenza di righe attive (PREV_NESSUNA_RIGA_ATTIVA). Verso ANNULLATO: l''ammissibilita'' e'' delegata a script.fn_check_preventivo_annullabile — sede unica condivisa col trigger di guard e con fn_available_actions_preventivo — e si solleva il codice del primo motivo. Stato corrente/destinazione e RETURNS per codice_interno (immutabile). rev 2026-06-28: analisi-hardcoded-codice §3a #1. rev 2026-07-16: rimossi guard PREV_TOTALE_NON_POSITIVO e filtro quantita>0. rev 2026-08-04: assorbita la regola locale sull''annullamento dentro la fn pura; esce di scena PREV_ANNULLAMENTO_COMMESSA_ATTIVA. rev 2026-08-05: la matrice e'' vincolante anche per il database (vendite.trgfn_preventivi_guard_transizione) e la porta solleva lo STESSO codice del guard, E_PREV_TRANSIZIONE_NON_AMMESSA; il precedente PREV_TRANSIZIONE_NON_AMMESSA, senza prefisso E_ e iscritto nel registro del debito, esce di scena (brief-db-vie-uscita-operatore §7.4 punto 3).';

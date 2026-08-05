@@ -195,8 +195,8 @@ compaiano prima.
 - [x] `test-transizioni-uscita-manuale-v1.sql` **verde 3/3**, e tolto dalla baseline (103 → 102);
 - [x] esposizione di `reasons` e `nessuna_azione_key` — `20260804-68` (preventivo), `-69` (ordine), **`-70` (DDT)**. ⚠️ **Questa riga diceva «preventivo / _ordine» e sbagliava il conto**: delle quattro `nessuna_azione_key` seminate, due vivono su stati del **DDT** (CONSEGNATO, RESO). Fermarsi ai due domini nominati avrebbe lasciato metà del lavoro a dato e invisibile — ed è esattamente la riga «DDT CONSEGNATO / RESO: barra vuota e muta» che il BE ha misurato in campo (§8.2);
 - [x] consolidamento delle due regole di annullamento (§7.3) — `20260804-73` (la fn pura assorbe il criterio della porta), `-74` (la porta delega); con esso esce di scena `PREV_ANNULLAMENTO_COMMESSA_ATTIVA`, che chiude il §8.3;
-- [ ] guard di matrice per il preventivo (§6.2) — **da fare**;
-- [ ] storicizzazione del preventivo (§7.2) — **da fare**, resta il prerequisito del guard di matrice.
+- [x] storicizzazione del preventivo (§7.2) — `20260805-12/-13/-14`, **e la fattura insieme**. È costata più del previsto: poggiava su un registro che non aveva mai esentato nessuna tabella (§7.2-bis);
+- [x] guard di matrice per il preventivo (§6.2) — `20260805-15`, con il pgTAP che la fissa (`test-preventivi-guard-transizione-v1.sql`, 6/6). Codice errore nuovo `E_PREV_TRANSIZIONE_NON_AMMESSA`, adottato **anche dalla porta**: una regola, una voce.
 
 **Tutto applicato il 2026-08-04**: `20260804-33`, `-34`, `-35`, `-68`, `-69`, `-70`, `-73`, `-74` EXECUTED. Il codice errore nuovo `E_PREV_ANNULLA_COMMESSA_EMESSA` (id 839) è a catalogo: il loader `runOnChange` dei messaggi ha ripescato il CSV da solo (`RERAN`), senza changeSet dedicato.
 
@@ -271,6 +271,10 @@ per rompere qualcosa senza capire perché.
 
 **Decisione presa (Tid, 2026-08-04): si fa**, come slice a sé. La misura preliminare
 è stata fatta, ed è il §7.
+
+> ✅ **Fatto il 2026-08-05** con `20260805-15`: la matrice del preventivo è
+> vincolante per il database, come per tutti gli altri documenti. Vedi §7.4
+> punti 3 e 4.
 
 ---
 
@@ -495,12 +499,81 @@ dell'ordine. Una regola, una sede, un messaggio.
    2026-08-04**, `20260804-73` + `-74`. Chiudeva un'incoerenza introdotta da noi;
    ha chiuso anche il §8.3 del BE, perché con esso sparisce il codice senza
    prefisso `E_` che il backend non riusciva a tradurre.
-3. **Guard di matrice** `trgfn_preventivi_guard_transizione`, sul modello dell'ordine.
-   A questo punto è una formalità a basso rischio: sappiamo che nessuno viola la
-   matrice, abbiamo la storia per accorgercene se qualcosa cambia, e la regola di
-   dominio è già in una funzione pura.
-4. **pgTAP** che fissa la matrice come vincolante — e che, come quello dell'ordine,
-   diventerà rosso il giorno in cui qualcuno cambierà idea. È il punto.
+3. ~~**Guard di matrice** `trgfn_preventivi_guard_transizione`, sul modello dell'ordine.~~
+   ✅ **Fatto il 2026-08-05**, `20260805-15`. È stata la formalità a basso rischio
+   prevista, con **una sorpresa**: il §7.1 diceva «zero funzioni tranne la porta»,
+   e non è più vero — `fn_push_preventivo_a_ordine` scrive lo stato
+   (ACCETTATO → EVASO). È **in matrice**, quindi il percorso vivo non si rompe, ma
+   la misura del §7.1 andava rifatta e non data per buona.
+4. ~~**pgTAP** che fissa la matrice come vincolante.~~ ✅ **Fatto**,
+   `vendite/test-preventivi-guard-transizione-v1.sql`, **6/6**. I casi non sono
+   scritti a mano: la coppia vietata si **cerca nella matrice**, così il test non
+   afferma «DRAFT → ACCETTATO è vietata» come fatto eterno ma «ciò che la matrice
+   non prevede, il database lo rifiuta» — e resta rosso il giorno in cui qualcuno
+   cambia idea senza dirlo.
+
+#### Il controllo che il §7.4 imponeva prima del guard
+
+Fatto, e ha trovato quello che doveva. Delle 32 suite che toccano lo stato del
+preventivo, **una sola** usava una scorciatoia fuori matrice:
+`test-preventivi-approvazione-prezzo` creava i preventivi in DRAFT e saltava
+dritto ad ACCETTATO per arrivare in fretta allo stato che gli serviva. La fixture
+è stata corretta facendole fare i due passi legittimi (DRAFT → EMESSO →
+ACCETTATO): il significato del test non cambia, cambia la strada.
+`test-guida-avanza-esito-proiettato` invece partiva già da EMESSO e non è stata
+toccata. Regressione sulle 32 suite: **zero variazioni**.
+
+> 🔴 **Ma quella suite non gira, e non per colpa del guard.** È iscritta in
+> `baseline-rossi.tsv` come `ERRORE_FIXTURE` e produce **zero asserzioni**:
+> fallisce alla prima `INSERT`. Le cause sono due, entrambe precedenti a questo
+> cantiere — mancava `emittente_fiscale_id` (sistemato qui) e manca
+> `istanza_utility_id`, diventata `NOT NULL` dopo che la fixture era stata
+> scritta. La seconda non è stata sanata: richiede di ricostruire da dove nasce
+> un'istanza utility valida, ed è il genere di archeologia che rende la fixture
+> più fragile della cosa che dovrebbe verificare. **Va detto che la correzione
+> della scorciatoia è quindi oggi non esercitata**: sarà il primo a rianimare
+> quella suite a beneficiarne — e senza di essa avrebbe trovato il guard sulla
+> strada, incolpandolo.
+
+#### Il codice errore, e perché è nuovo
+
+La porta sollevava `PREV_TRANSIZIONE_NON_AMMESSA`, privo del prefisso `E_` e
+iscritto in `dbops.messaggi_errore_codici_legacy` — il registro del debito che
+«deve calare». Far sollevare al guard quel codice avrebbe **aumentato** il
+debito; fargliene sollevare uno diverso avrebbe creato **due voci per la stessa
+regola**, che è l'errore pagato al §7.3. Quindi codice nuovo
+`E_PREV_TRANSIZIONE_NON_AMMESSA` (id 841), e **la porta passa a quello insieme
+al guard**. Il controllo resta in due punti — la porta prima di scrivere, il
+guard sulla scrittura — ed è difesa in profondità voluta: leggono la stessa
+matrice e da oggi dicono la stessa cosa.
+
+> 🔴 **Il codice legacy resta a catalogo, e non è una dimenticanza.** Il piano del
+> cantiere «codice errore strutturato» prevede che il registro del debito cali
+> cancellando i codici superati, come ha fatto `20260805-11`. Su
+> `PREV_TRANSIZIONE_NON_AMMESSA` **non si può**: la `DELETE` viene rifiutata da
+> `fk_error_log_messaggio_errore_id` — quel codice ha **109 righe in
+> `dbops.error_log`**. Provato, non dedotto.
+>
+> Misurato sull'intero registro, il limite è strutturale: dei **53** codici del
+> debito, **46 sono bloccati da `error_log`** e solo **7** sono cancellabili — il
+> `-11` è riuscito perché quei quattro non erano mai stati loggati. Finché la
+> riga resta a catalogo fuori convenzione deve restare anche nel registro,
+> altrimenti il controllo (B) del guardrail diventa rosso: le due righe stanno o
+> cadono insieme.
+>
+> Qui il debito è comunque pagato **dove conta**: zero funzioni sollevano il
+> vecchio codice, due sollevano il nuovo. Quel che resta è una riga inerte, non
+> un difetto attivo. Se serve una misura che scenda davvero, quella onesta non è
+> «righe nel registro» ma «codici del registro ancora sollevati da una funzione
+> viva» — ed è una decisione del cantiere che possiede il registro, non di questo.
+
+<!-- markdownlint-disable-next-line MD028 -->
+> ℹ️ **Un'asimmetria che resta aperta, dichiarata.** Il guard dell'ordine ha una
+> seconda regola, sul documento senza righe. Per il preventivo quella regola vive
+> solo nella porta (`PREV_NESSUNA_RIGA_ATTIVA`) e un `UPDATE` diretto la aggira
+> ancora — esattamente come faceva la matrice fino a ieri. Non è stata infilata
+> qui dentro: sarebbe stata una seconda regola restrittiva dentro «la formalità a
+> basso rischio», ed è un'altra decisione.
 
 ⚠️ Prima del passo 3, cercare i pgTAP che eseguono transizioni sui preventivi: è
 esattamente il controllo che è mancato riattivando `CONFERMATO → ANNULLATO`
@@ -736,3 +809,61 @@ esce un ordine con DDT collegati, quello è il caso da guardare per primo.
 - [x] tutte le richieste BE/FE dei §5, §5.1 e §9.3 — fatte;
 - [x] 9 chiavi i18n (it + en), 4 policy errore, guard i18n **verde**, `vite build` pulito, 689 core + 1480 vendite verdi;
 - [ ] **validazione in-app di Tid** — è l'unica voce rimasta dell'intero cantiere.
+
+---
+
+## 11. Coda DB — il guard di matrice, e una riga che tocca a voi (2026-08-05, sera)
+
+> Scritta dal team DB dopo il §10. Il §7.4 punti 3 e 4 sono chiusi
+> (`20260805-15` applicato, pgTAP `test-preventivi-guard-transizione-v1.sql`
+> **6/6**). Qui solo ciò che ricade su di voi, più due debiti dichiarati.
+
+### 11.1 🔴 Una policy da aggiungere, una da togliere
+
+Rendendo vincolante la matrice del preventivo serviva un codice errore. Quello
+che la porta usava — `PREV_TRANSIZIONE_NON_AMMESSA` — è senza prefisso `E_` e
+sta nel registro del debito: riusarlo nel guard lo avrebbe fatto **crescere**,
+darne uno diverso al guard avrebbe creato **due voci per la stessa regola** (il
+§7.3, ripetuto). Quindi porta e guard sono passati **insieme** a un codice nuovo.
+
+| Cosa | Valore |
+| --- | --- |
+| Da dichiarare in `error_policies.py` | `E_PREV_TRANSIZIONE_NON_AMMESSA` (id 841) — è un rifiuto di percorso, non un errore di validazione |
+| Da togliere, perché non può più scattare | la policy esistente per `PREV_TRANSIZIONE_NON_AMMESSA`: **zero** funzioni lo sollevano ancora (verificato) |
+
+Finché la prima non c'è, chi tenta una transizione fuori matrice legge il
+messaggio generico invece del perché — lo stesso difetto che il §8.3 ci aveva
+segnalato e che il §7.3 aveva chiuso.
+
+### 11.2 Perché il codice vecchio resta comunque a catalogo
+
+Sembrerebbe il momento di cancellarlo dal seed, come `20260805-11` ha fatto con
+quattro codici. **Non si può:** la `DELETE` è rifiutata da
+`fk_error_log_messaggio_errore_id` — quel codice ha **109 righe in
+`dbops.error_log`**. Provato, non dedotto.
+
+Il limite è strutturale, non del singolo caso: dei **53** codici del registro del
+debito, **46 sono bloccati da `error_log`** e solo **7** sono cancellabili. Il
+`-11` è riuscito perché quei quattro non erano mai stati loggati. Finché la riga
+resta a catalogo fuori convenzione deve restare anche nel registro, altrimenti il
+controllo (B) del guardrail diventa rosso.
+
+Il debito è comunque pagato dove conta: nessuna funzione emette più quel codice.
+Segnalazione per il cantiere che possiede il registro: se serve una misura che
+scenda davvero, non è «righe nel registro» ma «codici del registro ancora
+sollevati da una funzione viva».
+
+### 11.3 Due debiti dichiarati, non nascosti
+
+* **`test-preventivi-approvazione-prezzo` produce zero asserzioni**, ed è così da
+  prima di questo lavoro (`baseline-rossi.tsv`, `ERRORE_FIXTURE`). Aveva due
+  cause: mancava `emittente_fiscale_id` — sistemato — e manca
+  `istanza_utility_id`, diventata `NOT NULL` dopo che la fixture fu scritta. La
+  seconda non è stata sanata. ⚠️ Nella stessa suite è stata corretta la
+  scorciatoia `DRAFT → ACCETTATO`, che il guard nuovo rifiuta a ragione: la
+  correzione **oggi non è esercitata da nessuno**, ma senza di essa il primo che
+  rianima quella suite troverebbe il guard sulla strada e ne darebbe la colpa a lui.
+* **Il guard fa solo la regola della matrice.** Quello dell'ordine ne ha una
+  seconda, sul documento senza righe; per il preventivo quella vive ancora solo
+  nella porta e un `UPDATE` diretto la aggira — esattamente come faceva la
+  matrice fino a ieri. Non è stata infilata qui dentro: è un'altra decisione.
