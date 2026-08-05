@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `storicizza` a default TRUE su preventivi e fatture, come gia' su ordini e
+#   DDT (brief-db-vie-uscita-operatore §7.2). Qui solo la struttura: il backfill
+#   delle righe esistenti e l'iscrizione al registro sono il changeSet `-14`.
+#
+# PERCHE' ANCHE LA FATTURA, che il §7.2 non nomina. Misurato prima di decidere:
+#   la fattura e' nella IDENTICA condizione del preventivo — colonna `storicizza`
+#   presente, tabella `storico.fatture` presente, ZERO righe di storico, tabella
+#   non iscritta al registro. Il messaggio che accompagna il brief dice «il
+#   preventivo e' l'unico documento del ciclo senza memoria»: non e' cosi', e la
+#   fattura e' il documento FISCALE. Non sapere quando e' cambiata e per mano di
+#   chi pesa piu' che sul preventivo, non meno. E' la stessa riga di lavoro fatta
+#   due volte: separarle avrebbe voluto dire tornarci sopra fra un mese.
+#
+# ⚠️ SU `preventivi` LA COLONNA E' ANCHE NULLABLE, e le altre no. Non e' un
+#   dettaglio estetico: il guard della funzione di storicizzazione e'
+#       IF TG_OP = 'UPDATE' AND NOT NEW.storicizza THEN RETURN NEW;
+#   e con `storicizza` a NULL l'espressione `NOT NULL` vale NULL, quindi l'IF non
+#   scatta e la riga viene storicizzata. Cioe' NULL si comporta come TRUE, al
+#   contrario di quanto chiunque legga la colonna si aspetterebbe. Oggi non ci
+#   sono NULL (verificato: 0 su 163), quindi il NOT NULL si mette senza bonifica
+#   e senza rischio — ma va messo adesso che costa zero.
+#
+# ℹ️ Il DEFAULT vale per le righe NUOVE. Le 163 preventivi e 12 fatture gia'
+#   esistenti restano a `false` finche' il `-14` non le accende: il default non
+#   riscrive il passato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260805-13-storicizza-default-preventivi-fatture-mctit.yaml
+
+  - changeSet:
+      id: 20260805-13-storicizza-default-preventivi-fatture
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.preventivi.storicizza e vendite.fatture.storicizza passano a
+        DEFAULT true (e NOT NULL sul preventivo, dove mancava): i documenti
+        nuovi nascono con la memoria accesa, come ordini e DDT.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: preventivi
+                columnName: storicizza
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture
+                columnName: storicizza
+            # Nessun NULL da bonificare prima del NOT NULL: se ne comparissero
+            # (per una scrittura fatta nel frattempo) meglio fermarsi e
+            # guardarli, invece di deciderne il valore qui dentro.
+            - sqlCheck:
+                expectedResult: 0
+                sql: >
+                  SELECT count(*) FROM vendite.preventivi WHERE storicizza IS NULL
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.preventivi ALTER COLUMN storicizza SET DEFAULT true;
+              ALTER TABLE vendite.preventivi ALTER COLUMN storicizza SET NOT NULL;
+              ALTER TABLE vendite.fatture    ALTER COLUMN storicizza SET DEFAULT true;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              ALTER TABLE vendite.preventivi ALTER COLUMN storicizza SET DEFAULT false;
+              ALTER TABLE vendite.preventivi ALTER COLUMN storicizza DROP NOT NULL;
+              ALTER TABLE vendite.fatture    ALTER COLUMN storicizza SET DEFAULT false;

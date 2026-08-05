@@ -303,7 +303,11 @@ gli `UPDATE` diretti: migrazioni, script di manutenzione, codice futuro. È dife
 profondità, non una falla che si sta chiudendo. Per questo il §7.4 lo mette **dopo**
 due cose che valgono di più.
 
-### 7.2 🔴 Il preventivo non ha memoria dei propri stati
+### 7.2 ✅ Il preventivo non ha memoria dei propri stati — RISOLTO, ma la causa era un'altra
+
+> **Chiuso il 2026-08-05** con `20260805-12`, `-13`, `-14`. La diagnosi qui sotto
+> era giusta nei sintomi e **sbagliata nella causa**: il rimedio in fondo al
+> paragrafo, da solo, non avrebbe funzionato. Il perché è al §7.2-bis.
 
 `vendite.preventivi` ha il trigger di storicizzazione, ma:
 
@@ -327,6 +331,105 @@ leggendo il codice, non i dati.
 Rimedio: `storicizza` a default `true` sulla tabella, backfill del flag sulle righe
 esistenti, registrazione in `config.storico_set_storicizza` — la stessa procedura già
 seguita per `config.user_emittente_attivo`.
+
+### 7.2-bis 🔴 Il registro dello storico non ha mai esentato nessuno
+
+Andando ad applicare il rimedio qui sopra è emerso che **la terza condizione non fa
+quello che questo brief credeva**, e non solo per il preventivo: per nessuna tabella
+del database.
+
+`script.trgfn_storico_generic`, dopo aver scritto lo storico, decide se **spegnere**
+l'interruttore `storicizza` sulla riga. Va spento per le tabelle «a richiesta» (si
+accende, si registra una modifica, si spegne) e va lasciato acceso per quelle a
+memoria continua, cioè le iscritte al registro. Il controllo era:
+
+```sql
+WHERE s.table_name = TG_TABLE_NAME        -- vale 'ordini'
+```
+
+`TG_TABLE_NAME` è il nome **nudo**; le 96 righe del registro sono tutte
+**qualificate** (`vendite.ordini`). Il confronto non ha quindi mai trovato nulla, per
+nessuna tabella: l'esenzione esisteva sulla carta e non ha mai funzionato. Ogni
+tabella registrava **la prima modifica di ogni riga e poi taceva per sempre**.
+
+**Misurato, non dedotto.** Una modifica registrata produce due righe di storico — lo
+stato precedente (valido «da sempre fino ad adesso») e quello nuovo (aperto). Dalla
+seconda in poi ne basterebbe una. Invece:
+
+| | righe | documenti | righe per documento |
+| --- | --- | --- | --- |
+| `storico.ordini` | 180 | 90 | **2,00 esatte** |
+| `storico.ddt` | 78 | 39 | **2,00 esatte** |
+
+Due esatte per tutti, senza una sola eccezione: una sola modifica registrata a testa.
+Confermato anche sul comportamento — acceso il flag su un ordine e fatti due `UPDATE`
+in transazione, dopo il primo risultava già `false`.
+
+> ⚠️ **Il precedente citato non era un precedente.** Il messaggio che accompagnava
+> questo brief diceva: «`vendite.ordini` è registrato e ha 180 righe di storico, il
+> preventivo è a un passo». Quelle 180 righe sono 90 documenti × 2: sembrano una
+> memoria che funziona e sono una fotografia sola a testa. Fare il rimedio del §7.2
+> senza correggere questo avrebbe dato al preventivo **una fotografia e poi silenzio**,
+> col §7.2 spuntato come «fatto».
+
+⚠️ **Il registro non si sana dal lato dato.** Verrebbe da togliere lo schema dalle 96
+righe, ma `acquisti.ddt` e `vendite.ddt` sono **entrambe** iscritte, come
+`acquisti.ordini` e `vendite.ordini`: col nome nudo diventerebbero indistinguibili e
+si esenterebbero a vicenda. Era il confronto a essere incompleto, non i dati.
+
+### 7.2-ter Cosa è stato fatto
+
+| changeSet | Fase | Cosa |
+| --- | --- | --- |
+| `20260805-12` | `20_code` | `trgfn_storico_generic` confronta il registro col nome **qualificato**. **Una riga di logica**, verificata a diff: tutto il resto della funzione è identico |
+| `20260805-13` | `00_schema` | `storicizza` a `DEFAULT true` su `preventivi` e `fatture`, più il `NOT NULL` che mancava sul preventivo |
+| `20260805-14` | `80_data` | iscrizione di `vendite.preventivi` e `vendite.fatture` al registro + accensione del flag sulle righe esistenti |
+
+**Anche la fattura, che questo brief non nominava.** Misurato: `vendite.fatture` era
+nella **identica** condizione del preventivo — colonna presente, `storico.fatture`
+presente, zero righe, non iscritta. Il messaggio che accompagnava il brief diceva «il
+preventivo è l'unico documento del ciclo senza memoria»: non era vero, e la fattura è
+il documento **fiscale**. Era la stessa riga di lavoro fatta due volte.
+
+⚠️ **Il backfill non produce storia finta**: l'accensione del flag avviene con il
+trigger di storicizzazione **sospeso**, perché armare il meccanismo non è un evento di
+dominio. Senza la sospensione sarebbero entrate 175 coppie di record che dicono
+«questo documento è cambiato il 2026-08-05» quando non è cambiato niente — la bugia
+che una tabella di storico non deve contenere. Non si perde nulla: alla prima modifica
+vera il trigger crea da sé lo snapshot iniziale. L'audit invece **non** è stato
+sospeso, ed è voluto: `data_update` di 163 preventivi e 12 fatture riporta oggi, ed è
+vero, le righe sono state scritte.
+
+**Verificato dopo l'applicazione:** il flag sopravvive a tre `UPDATE` consecutivi sul
+preventivo producendo 4 righe di storico (1 iniziale + 3 stati) — memoria continua, non
+più una fotografia; `vendite.ordini`, iscritto ma mai esentato, ora tiene il flag
+acceso; zero righe di storico prodotte dal backfill; entrambi i trigger riabilitati.
+Batteria pgTAP completa: **101 rossi su 423, gli stessi di prima**, nessuna regressione.
+
+⚠️ **Raggio d'azione: 96 tabelle insieme.** Da ora ogni tabella iscritta scrive
+storico a ogni `UPDATE` invece che una volta sola nella vita. È il comportamento che il
+registro dichiarava da sempre, ma il volume di scritture su `storico.*` cresce in modo
+sensibile e va guardato nelle prossime settimane. Le tabelle **non** iscritte non
+cambiano: restano a richiesta.
+
+> ℹ️ Non tutte le tabelle stavano ferme a 2: su 61 tabelle di storico con dati, 14
+> hanno più righe (`config.parameters` arriva a 9, `stradario` a 50). Lì qualcosa
+> riaccende l'interruttore a ogni scrittura — i modelli Django dichiarano `storicizza`
+> con default `True`, quindi un salvataggio che riscrive tutti i campi lo rimette a
+> `true`. Non è stato tracciato il percorso esatto perché non cambia la diagnosi, ma
+> va detto: il blocco colpiva chi non veniva riarmato per caso da fuori, e i documenti
+> di vendita erano nel gruppo bloccato.
+
+<!-- markdownlint-disable-next-line MD028 -->
+> 🔴 **Nota sullo stato del database.** Durante la batteria pgTAP di verifica una
+> transazione di prova è stata committata per errore, quindi le tre modifiche sono
+> **già sul database di sviluppo** mentre `databasechangelog` non le conosce. I tre
+> changeSet sono scritti per essere idempotenti (`CREATE OR REPLACE`,
+> `ALTER … SET DEFAULT`, `INSERT … ON CONFLICT DO NOTHING`, `UPDATE … WHERE storicizza
+> IS DISTINCT FROM true`), quindi vanno applicati lo stesso: non produrranno doppioni
+> né un secondo backfill, e servono perché il registro delle migrazioni sappia. Nessun
+> dato di test è finito nel database (verificato: zero righe create quel giorno in
+> soggetti, risorse umane, preventivi, ordini).
 
 ### 7.3 ✅ Ho introdotto io una seconda regola di annullamento — RISOLTO
 
@@ -376,9 +479,18 @@ dell'ordine. Una regola, una sede, un messaggio.
 > 1, il 3 e il 4**, nell'ordine originale — che per loro tre resta valido: la
 > storia prima del guard, il guard prima del test che lo fissa.
 
-1. **Storicizzazione del preventivo** (§7.2). ⏳ **Da fare.** Prima del guard di
-   matrice: è ciò che rende verificabile qualunque cosa venga dopo, ed è
-   indipendente dal resto.
+<!-- markdownlint-disable-next-line MD028 -->
+> **Aggiornamento 2026-08-05.** Fatto anche il punto 1, e con esso una correzione
+> che non era in programma: il registro dello storico non ha mai esentato nessuna
+> tabella, quindi il punto 1 come scritto qui sarebbe risultato «fatto» lasciando
+> il preventivo con una fotografia sola. Vedi §7.2-bis. **Restano il 3 e il 4.**
+
+1. ~~**Storicizzazione del preventivo** (§7.2).~~ ✅ **Fatto il 2026-08-05**,
+   `20260805-12` + `-13` + `-14`, **e la fattura insieme al preventivo**. Non è
+   costato quanto previsto: il rimedio scritto al §7.2 poggiava su un registro che
+   non ha mai funzionato per nessuna tabella, quindi è servito prima correggere
+   quello (§7.2-bis). Adesso il presupposto del punto 3 c'è davvero: se domani il
+   guard rifiuta una transizione che qualcuno faceva, la storia per capirlo esiste.
 2. ~~**Consolidamento delle due regole di annullamento** (§7.3).~~ ✅ **Fatto il
    2026-08-04**, `20260804-73` + `-74`. Chiudeva un'incoerenza introdotta da noi;
    ha chiuso anche il §8.3 del BE, perché con esso sparisce il codice senza

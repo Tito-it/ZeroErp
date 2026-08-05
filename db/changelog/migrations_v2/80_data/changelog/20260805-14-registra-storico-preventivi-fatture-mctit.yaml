@@ -1,0 +1,145 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il preventivo e la fattura entrano nel registro dello storico, e il flag si
+#   accende sulle righe che gia' esistono (brief-db-vie-uscita-operatore §7.2).
+#   Da qui i due documenti hanno memoria continua, come ordini e DDT dopo il
+#   `20260805-12`.
+#
+# LE TRE CONDIZIONI DELLO ZERO, chiuse qui e nel `-13`. Il §7.2 diceva: nessuna
+#   riga in `storico.preventivi`, nessun preventivo con `storicizza = true`,
+#   tabella non iscritta al registro. Le tre insieme spiegavano lo zero. Il `-13`
+#   mette il default per i documenti nuovi, questo accende il flag sui 163
+#   esistenti (e sulle 12 fatture) e iscrive entrambe le tabelle.
+#
+# ⚠️ IL BACKFILL NON DEVE PRODURRE STORIA FINTA, e per questo il trigger di
+#   storicizzazione viene SOSPESO durante l'UPDATE. Accendere il flag non e' un
+#   evento di dominio: e' l'armamento del meccanismo. Senza la sospensione
+#   l'UPDATE farebbe scattare il trigger e scriverebbe 175 coppie di record che
+#   dicono «questo documento e' cambiato il 2026-08-05», quando non e' cambiato
+#   niente — cioe' proprio la bugia che una tabella di storico non deve
+#   contenere. Non si perde nulla: alla prima modifica vera il trigger crea da
+#   se' lo snapshot iniziale (sezione 4.1, `tipo_operazione = 1`, valid_from
+#   1950), che e' esattamente la fotografia del "prima".
+#
+# ⚠️ L'audit invece NON si sospende, ed e' voluto: `data_update` e `user_update`
+#   diranno che le righe sono state toccate oggi, ed e' vero — lo sono state.
+#   Nasconderlo significherebbe mentire su una colonna di audit per rendere piu'
+#   bello un grafico.
+#
+# ⚠️ ORDINE OBBLIGATO: questo changeSet ha senso solo DOPO il `20260805-12`.
+#   Prima di quella correzione l'iscrizione al registro non esentava da niente
+#   (il confronto usava il nome nudo contro un registro qualificato), quindi il
+#   flag acceso qui verrebbe spento dal primo UPDATE e il preventivo avrebbe UNA
+#   fotografia sola invece della memoria. La preCondition lo verifica sul corpo
+#   della funzione, non sulla fiducia.
+#
+# ℹ️ `insert_manuale = false`: la colonna distingue le tabelle il cui storico e'
+#   alimentato a mano da quelle che lo ricevono dal trigger. Qui e' il trigger,
+#   come per tutte le altre 95 righe tranne `config.user_emittente_attivo`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260805-14-registra-storico-preventivi-fatture-mctit.yaml
+
+  - changeSet:
+      id: 20260805-14-registra-storico-preventivi-fatture
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Iscrive vendite.preventivi e vendite.fatture in
+        config.storico_set_storicizza e accende il flag sulle righe esistenti,
+        con il trigger di storicizzazione sospeso perche' l'armamento non e' un
+        evento di dominio e non deve finire nello storico.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: storico_set_storicizza
+            # Il registro deve gia' consultarsi col nome qualificato: senza il
+            # 20260805-12 questo changeSet non produce memoria, produce una
+            # fotografia sola per documento.
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'script'
+                    AND p.proname = 'trgfn_storico_generic'
+                    AND p.prosrc LIKE '%TG_TABLE_SCHEMA || ''.'' || TG_TABLE_NAME%'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1) Iscrizione al registro. Nome QUALIFICATO, come le altre 96
+              --    righe: e' la chiave con cui la funzione lo consulta.
+              INSERT INTO config.storico_set_storicizza (table_name, insert_manuale)
+              VALUES ('vendite.preventivi', false),
+                     ('vendite.fatture',    false)
+              ON CONFLICT (table_name) DO NOTHING;
+
+              -- 2) Accensione del flag sulle righe che gia' esistono, con il
+              --    trigger di storicizzazione sospeso: vedi la testata.
+              DO $backfill$
+              DECLARE
+                  v_prev integer;
+                  v_fatt integer;
+              BEGIN
+                  ALTER TABLE vendite.preventivi DISABLE TRIGGER trg_preventivi_z90_storico_upd_dlt;
+                  ALTER TABLE vendite.fatture    DISABLE TRIGGER trg_fatture_z90_storico_upd_dlt;
+
+                  UPDATE vendite.preventivi SET storicizza = true WHERE storicizza IS DISTINCT FROM true;
+                  GET DIAGNOSTICS v_prev = ROW_COUNT;
+
+                  UPDATE vendite.fatture SET storicizza = true WHERE storicizza IS DISTINCT FROM true;
+                  GET DIAGNOSTICS v_fatt = ROW_COUNT;
+
+                  ALTER TABLE vendite.preventivi ENABLE TRIGGER trg_preventivi_z90_storico_upd_dlt;
+                  ALTER TABLE vendite.fatture    ENABLE TRIGGER trg_fatture_z90_storico_upd_dlt;
+
+                  RAISE NOTICE 'flag storicizza acceso su % preventivi e % fatture', v_prev, v_fatt;
+
+                  -- Il trigger va riacceso, sempre. Se una delle due ALTER di
+                  -- riaccensione non fosse arrivata, il documento resterebbe
+                  -- senza storia SENZA che nessuno se ne accorga: e' il difetto
+                  -- che questo cantiere sta chiudendo, e sarebbe beffardo
+                  -- reintrodurlo proprio qui.
+                  IF EXISTS (
+                      SELECT 1 FROM pg_trigger t
+                       WHERE t.tgname IN ('trg_preventivi_z90_storico_upd_dlt',
+                                          'trg_fatture_z90_storico_upd_dlt')
+                         AND t.tgenabled = 'D'
+                  ) THEN
+                      RAISE EXCEPTION 'Un trigger di storicizzazione e'' rimasto disabilitato dopo il backfill.';
+                  END IF;
+              END
+              $backfill$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DELETE FROM config.storico_set_storicizza
+               WHERE table_name IN ('vendite.preventivi', 'vendite.fatture');
+
+              DO $undo$
+              BEGIN
+                  ALTER TABLE vendite.preventivi DISABLE TRIGGER trg_preventivi_z90_storico_upd_dlt;
+                  ALTER TABLE vendite.fatture    DISABLE TRIGGER trg_fatture_z90_storico_upd_dlt;
+                  UPDATE vendite.preventivi SET storicizza = false WHERE storicizza IS TRUE;
+                  UPDATE vendite.fatture    SET storicizza = false WHERE storicizza IS TRUE;
+                  ALTER TABLE vendite.preventivi ENABLE TRIGGER trg_preventivi_z90_storico_upd_dlt;
+                  ALTER TABLE vendite.fatture    ENABLE TRIGGER trg_fatture_z90_storico_upd_dlt;
+              END
+              $undo$;

@@ -29,7 +29,7 @@
 | minimo | boolean | NO | false |
 | data_contabilizzazione | date | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
-| storicizza | boolean | NO | false |
+| storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
