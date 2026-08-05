@@ -1,0 +1,268 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Tre BOZZE con l'area «Luogo di consegna» per ordine, contratto e offerta
+#   (brief-db-indirizzi-su-ordini-contratti-offerte.md §3). La pubblicazione e'
+#   il changeSet successivo: qui si scrive soltanto.
+#
+# IL FATTO. I tre documenti CONGELANO l'indirizzo e poi non lo stampano. Non era
+#   una scelta: il context builder raccoglieva il dato e lo lasciava cadere,
+#   quindi il template non avrebbe potuto renderlo nemmeno volendo. Dal
+#   2026-08-05 il BE passa `indirizzi.*` anche a questi tre; mancano le versioni
+#   che lo rendano.
+#
+# ⚠️ SI STAMPA UN SOLO SLOT, `consegna`, ed e' una decisione presa sul dato.
+#   Misurato prima di scrivere: in TUTTO il database esistono 32 snapshot
+#   indirizzo di documento e sono 32 su 32 di tipo CON. Nessuna riga di FATT,
+#   FORNITURA o RES e' mai stata scritta, su nessun dominio. Il contesto ne
+#   espone fino a quattro (segue `config.tipi_indirizzi_allowed`), ma un blocco
+#   per uno slot che nessun documento reale popola e' codice che nessuno puo'
+#   verificare se non a mano — e che invecchia senza che nessuno se ne accorga.
+#   La risposta alla domanda del §8 del brief e' quindi: restringete la
+#   dichiarazione nei builder.
+#
+# ⚠️ IL BLOCCO DEL BRIEF NON SI PUO' COPIARE COSI' COM'E', e la ragione e'
+#   misurabile. Il §3 propone `{{ indirizzi.consegna.intestazione }}<br>` senza
+#   guardia di campo, protetto dal solo `{% if indirizzi.consegna %}`. Ma gli
+#   snapshot NON hanno tutti la stessa forma:
+#     - ord-ven: 14 righe, `intestazione` valorizzata su  5;
+#     - contratto: 1 riga, `intestazione` valorizzata su  0 (la chiave non c'e'
+#       proprio nello snapshot);
+#     - off-comm: 1 riga, mancano `cap`, `citta`, `prov`.
+#   Il BE garantisce le CHIAVI (il suo helper normalizza a None), non i VALORI:
+#   con la guardia sul solo slot, 9 ordini su 14 e l'unico contratto
+#   stamperebbero una riga vuota. Si usa percio' la forma gia' in produzione sul
+#   template `ddt-ven` v3, che guarda ogni campo per conto suo. Il §4 del brief
+#   ha ragione sull'accesso diretto (niente `.get()`): quello e' rispettato.
+#
+# ℹ️ Il ramo `{% elif ... .display %}` e' oggi NON esercitato: `via` risulta
+#   valorizzata su 16 righe su 16 e non esiste un solo snapshot con `display` ma
+#   senza `via`. Si tiene lo stesso, perche' e' la forma del DDT e perche'
+#   `display` e' la versione libera di un indirizzo senza via strutturata — ma
+#   va saputo che nessun documento reale ci passa: se un giorno serve, va
+#   provato a mano.
+#
+# ℹ️ IL CONTRATTO RIUSA LA BOZZA CHE HA GIA'. La v3 del contratto (id 43) e' in
+#   BOZZA dal 2026-05-28 e risulta IDENTICA alla v2 pubblicata: stesso md5 su
+#   `html_template` e su `css_template`. E' una copia intatta, non il lavoro a
+#   meta' di qualcuno. Crearne una quarta lascerebbe quella orfana per sempre.
+#
+# ⚠️ ANCORA VERIFICATA, NON SPERATA. La sostituzione e' ancorata alla chiusura
+#   del riquadro «Cliente» piu' l'apertura della colonna di destra, che nei tre
+#   template ha etichetta diversa. Il DO verifica che l'ancora compaia
+#   ESATTAMENTE una volta e che l'HTML risultante sia diverso dall'originale:
+#   se un template viene ritoccato e l'ancora non combacia piu', il migrate si
+#   ferma. L'alternativa — una replace che non trova nulla — pubblicherebbe una
+#   versione nuova identica alla vecchia, cioe' il fallimento silenzioso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260805-09-template-bozze-area-consegna-ordini-contratti-offerte-mctit.yaml
+
+  - changeSet:
+      id: 20260805-09-template-bozze-area-consegna-ordini-contratti-offerte
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea (o riusa, per il contratto) le tre BOZZE di ord-ven, contratto e
+        off-comm con l'area «Luogo di consegna», nella forma per-campo gia' in
+        produzione sul ddt-ven. Non pubblica: e' il changeSet successivo.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: documenti
+                tableName: template_documenti_versioni
+            - sqlCheck:
+                expectedResult: 3
+                sql: >
+                  SELECT count(*) FROM documenti.template_documenti t
+                  JOIN documenti.template_documenti_versioni v
+                    ON v.template_documento_id = t.id
+                  WHERE t.codice_interno IN ('ord-ven', 'contratto', 'off-comm')
+                    AND v.stato = 'PUBBLICATA' AND v.attivo IS TRUE
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $bozze$
+              DECLARE
+                  c_brief CONSTANT text := 'brief-db-indirizzi-su-ordini-contratti-offerte.md';
+                  -- Forma per-campo, specchio di documenti.template `ddt-ven` v3.
+                  -- Accesso diretto (indirizzi.consegna.via), MAI .get(): se una
+                  -- chiave sparisce il render si pianta in sviluppo invece di
+                  -- stampare un indirizzo monco (§4 del brief).
+                  c_blocco CONSTANT text := concat_ws(chr(10),
+                      '          {% if indirizzi.consegna %}',
+                      '            <div class="muted">Luogo di consegna:</div>',
+                      '            {% if indirizzi.consegna.intestazione %}',
+                      '              <div>{{ indirizzi.consegna.intestazione }}</div>',
+                      '            {% endif %}',
+                      '            {% if indirizzi.consegna.via %}',
+                      '              <div>{{ indirizzi.consegna.via }}</div>',
+                      '            {% elif indirizzi.consegna.display %}',
+                      '              <div>{{ indirizzi.consegna.display }}</div>',
+                      '            {% endif %}',
+                      '            {% if indirizzi.consegna.cap or indirizzi.consegna.citta or indirizzi.consegna.prov %}',
+                      '              <div>',
+                      '                {{ [indirizzi.consegna.cap, indirizzi.consegna.citta] | select | join(" ") }}',
+                      '                {%- if indirizzi.consegna.prov %} ({{ indirizzi.consegna.prov }}){% endif %}',
+                      '              </div>',
+                      '            {% endif %}',
+                      '            {% if indirizzi.consegna.stato %}',
+                      '              <div>{{ indirizzi.consegna.stato }}</div>',
+                      '            {% endif %}',
+                      '          {% endif %}',
+                      '');
+                  r           record;
+                  v_src       documenti.template_documenti_versioni%ROWTYPE;
+                  v_ancora    text;
+                  v_occorrenze integer;
+                  v_html      text;
+                  v_bozza_id  bigint;
+                  v_versione  integer;
+              BEGIN
+                  FOR r IN
+                      SELECT * FROM (VALUES
+                          ('ord-ven',   'Dati ordine'),
+                          ('contratto', 'Dati contratto'),
+                          ('off-comm',  'Dati offerta')
+                      ) AS x(codice_interno, etichetta_colonna_destra)
+                  LOOP
+                      -- Sorgente: la versione PUBBLICATA attiva. E' quella che i
+                      -- documenti stampano oggi, quindi e' da li' che si parte.
+                      SELECT v.* INTO v_src
+                        FROM documenti.template_documenti t
+                        JOIN documenti.template_documenti_versioni v
+                          ON v.template_documento_id = t.id
+                       WHERE t.codice_interno = r.codice_interno
+                         AND v.stato = 'PUBBLICATA'
+                         AND v.attivo IS TRUE;
+
+                      IF NOT FOUND THEN
+                          RAISE EXCEPTION
+                            'Template % senza versione PUBBLICATA attiva: non c''e'' da cosa partire.',
+                            r.codice_interno;
+                      END IF;
+
+                      -- Ancora: chiusura del riquadro «Cliente» + apertura della
+                      -- colonna di destra, la cui etichetta distingue i tre
+                      -- template. Il blocco entra PRIMA, cioe' dentro il riquadro.
+                      v_ancora := concat_ws(chr(10),
+                          '        </div>',
+                          '      </div>',
+                          '',
+                          '      <div class="column">',
+                          '        <div class="label">' || r.etichetta_colonna_destra || '</div>');
+
+                      v_occorrenze := (length(v_src.html_template)
+                                       - length(replace(v_src.html_template, v_ancora, '')))
+                                      / length(v_ancora);
+
+                      IF v_occorrenze <> 1 THEN
+                          RAISE EXCEPTION
+                            'Template %: ancora trovata % volte invece di 1. Il template e'' stato ritoccato: rivedere il changeSet invece di pubblicare una copia identica.',
+                            r.codice_interno, v_occorrenze;
+                      END IF;
+
+                      v_html := replace(v_src.html_template, v_ancora, c_blocco || v_ancora);
+
+                      IF v_html = v_src.html_template THEN
+                          RAISE EXCEPTION
+                            'Template %: la sostituzione non ha cambiato nulla.', r.codice_interno;
+                      END IF;
+
+                      -- Bozza: si riusa quella eventualmente gia' presente (il
+                      -- contratto ne ha una dal 2026-05-28, identica alla
+                      -- pubblicata), altrimenti se ne crea una nuova.
+                      SELECT b.id, b.versione INTO v_bozza_id, v_versione
+                        FROM documenti.template_documenti_versioni b
+                       WHERE b.template_documento_id = v_src.template_documento_id
+                         AND b.stato = 'BOZZA'
+                         AND b.attivo IS TRUE
+                       ORDER BY b.versione DESC
+                       LIMIT 1;
+
+                      IF FOUND THEN
+                          UPDATE documenti.template_documenti_versioni
+                             SET html_template = v_html,
+                                 meta = coalesce(meta, '{}'::jsonb) || jsonb_build_object(
+                                          'origine_versione_id', v_src.id,
+                                          'origine_versione',    v_src.versione,
+                                          'motivo',              'area indirizzo di consegna',
+                                          'brief',               c_brief)
+                           WHERE id = v_bozza_id;
+
+                          RAISE NOTICE 'template % : riusata la BOZZA v% (id %)',
+                                       r.codice_interno, v_versione, v_bozza_id;
+                      ELSE
+                          INSERT INTO documenti.template_documenti_versioni (
+                              template_documento_id, versione, stato, titolo,
+                              formato_template, html_template, css_template,
+                              markdown_template, render_engine_id, page_format,
+                              page_orientation, margin_top_mm, margin_right_mm,
+                              margin_bottom_mm, margin_left_mm, context_schema,
+                              meta, attivo)
+                          SELECT v_src.template_documento_id,
+                                 -- Numero successivo PER TEMPLATE: la versione non
+                                 -- e' globale, due template possono avere la stessa.
+                                 (SELECT max(v2.versione) + 1
+                                    FROM documenti.template_documenti_versioni v2
+                                   WHERE v2.template_documento_id = v_src.template_documento_id),
+                                 'BOZZA',
+                                 v_src.titolo,
+                                 v_src.formato_template,
+                                 v_html,
+                                 v_src.css_template,
+                                 v_src.markdown_template,
+                                 v_src.render_engine_id,
+                                 v_src.page_format,
+                                 v_src.page_orientation,
+                                 v_src.margin_top_mm, v_src.margin_right_mm,
+                                 v_src.margin_bottom_mm, v_src.margin_left_mm,
+                                 v_src.context_schema,
+                                 coalesce(v_src.meta, '{}'::jsonb) || jsonb_build_object(
+                                     'origine_versione_id', v_src.id,
+                                     'origine_versione',    v_src.versione,
+                                     'motivo',              'area indirizzo di consegna',
+                                     'brief',               c_brief),
+                                 v_src.attivo
+                          RETURNING id, versione INTO v_bozza_id, v_versione;
+
+                          RAISE NOTICE 'template % : creata la BOZZA v% (id %)',
+                                       r.codice_interno, v_versione, v_bozza_id;
+                      END IF;
+                  END LOOP;
+              END
+              $bozze$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Le bozze CREATE si cancellano; quella RIUSATA (il contratto) si
+              -- riporta al contenuto della pubblicata da cui era stata copiata,
+              -- che e' esattamente com'era prima di questo changeSet.
+              UPDATE documenti.template_documenti_versioni b
+                 SET html_template = s.html_template,
+                     meta = b.meta - 'origine_versione_id' - 'origine_versione'
+                                   - 'motivo' - 'brief'
+                FROM documenti.template_documenti_versioni s
+               WHERE b.stato = 'BOZZA'
+                 AND b.meta ->> 'brief' = 'brief-db-indirizzi-su-ordini-contratti-offerte.md'
+                 AND s.id = (b.meta ->> 'origine_versione_id')::bigint
+                 AND b.versione <= s.versione;
+
+              DELETE FROM documenti.template_documenti_versioni b
+               WHERE b.stato = 'BOZZA'
+                 AND b.meta ->> 'brief' = 'brief-db-indirizzi-su-ordini-contratti-offerte.md';
