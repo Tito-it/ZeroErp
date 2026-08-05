@@ -43,6 +43,9 @@ from apps.documenti.services.context_builders.base import (
 )
 from apps.documenti.services.context_builders.registry import register_builder
 from apps.vendite.db.offerte_repository import OfferteRepository
+from apps.vendite.services._indirizzi_documento_helpers import (
+    shape_indirizzi_context,
+)
 
 E_VALIDATION = "E_DOCUMENTI_VALIDATION"
 E_NOT_FOUND = "E_DOCUMENTI_NOT_FOUND"
@@ -52,6 +55,13 @@ class OffertaDocumentContextBuilder(DocumentContextBuilder):
     """Builder di contesto per documenti OFFERTA_COMMERCIALE."""
 
     CODE = "OFFERTA_COMMERCIALE"
+
+    # Tipi indirizzo ammessi nell'ambito OFFERTE
+    # (`config.tipi_indirizzi_allowed`). Dichiarati qui e non letti a runtime:
+    # il context deve essere deterministico a parita' di documento (il
+    # `context_hash` governa il dedup), e una modifica di configurazione non
+    # puo' cambiare la forma di un contesto gia' generato.
+    _INDIRIZZI_CODICI: tuple[str, ...] = ("CON", "FATT", "FORNITURA", "RES")
 
     # Scopo: Iniezione opzionale del repository per testabilita' mock-only.
     def __init__(self, repo: OfferteRepository | None = None) -> None:
@@ -88,6 +98,15 @@ class OffertaDocumentContextBuilder(DocumentContextBuilder):
         return {
             "offerta": self._shape_offerta(testata),
             "cliente": self._shape_cliente(testata),
+            # Indirizzi congelati del documento (2026-08-05). Oggi
+            # `vendite.offerte_commerciali_indirizzi` e' vuota, quindi gli slot
+            # arrivano tutti a `None` e il PDF non cambia: la chiave c'e' perche'
+            # la forma sia gia' quella degli altri domini quando il dato
+            # arrivera' — non tre forme decise in tre momenti diversi.
+            "indirizzi": shape_indirizzi_context(
+                self._repo.list_indirizzi(sorgente_id),
+                codici_ammessi=self._INDIRIZZI_CODICI,
+            ),
             "utility": utility,
             "eccezioni": self._shape_eccezioni(eccezioni),
             # `_meta` qui e' una sezione del context (non
@@ -96,7 +115,8 @@ class OffertaDocumentContextBuilder(DocumentContextBuilder):
             "_meta": {
                 "locale": locale,
                 "auth_user_id": auth_user_id,
-                "context_version": 1,
+                # v2 (2026-08-05): aggiunto il blocco `indirizzi`.
+                "context_version": 2,
                 "context_code": self.CODE,
                 "righe_source": "OFFERTE_ECCEZIONI",
             },

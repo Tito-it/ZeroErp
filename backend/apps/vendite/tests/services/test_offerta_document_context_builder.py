@@ -88,7 +88,14 @@ class BuildContextOffertaTests(SimpleTestCase):
 
         self.assertEqual(
             set(ctx.keys()),
-            {"offerta", "cliente", "utility", "eccezioni", "_meta"},
+            {"offerta", "cliente", "indirizzi", "utility", "eccezioni", "_meta"},
+        )
+        # Slot indirizzi SEMPRE presenti anche senza righe: garantisce al
+        # template l'accesso diretto sotto StrictUndefined.
+        self.assertEqual(
+            ctx["indirizzi"],
+            {"consegna": None, "fatturazione": None, "fornitura": None,
+             "residenza": None},
         )
         self.assertEqual(ctx["offerta"]["codice"], "OFC0000007")
         self.assertEqual(ctx["offerta"]["data_emissione"], "27-05-2026")
