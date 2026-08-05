@@ -187,9 +187,33 @@ class DbErrorFieldsEndToEndTests(TestCase):
     che il pgTAP non puo' vedere — che i campi diag sopravvivano al giro
     libpq/psycopg fino a `django.db.DatabaseError`.
 
+    ⚠️ **Perche' FUNZIONANO, che non e' il motivo che sembra.** Non c'e' nessuna
+    fixture che provveda lo schema: la connessione e' quella **configurata**,
+    cioe' il database di sviluppo con lo schema Liquibase completo. Django crea
+    il database di test usa-e-getta **solo se almeno un test dichiara di averne
+    bisogno** (`django.test.TestCase`, `TransactionTestCase`, o
+    `databases = [...]`), e in `backend/apps` oggi **nessuno lo dichiara** — da
+    cui la riga «Skipping setup of unused database(s)» nell'output. Il giorno in
+    cui un test qualsiasi, in una app qualsiasi, dichiarera' un database, il
+    runner ne creera' uno per tutta la suite: li' ci sono solo le migration
+    Django, **non** Liquibase, quindi le funzioni PL/pgSQL non esistono. Il
+    guard in `setUpClass` verifica lo **schema**, non la raggiungibilita', ed e'
+    li' per quello: senza, questi tre fallirebbero addosso a chi ha scritto quel
+    `TestCase`, in una PR che col codice errore strutturato non c'entra niente.
+    Vedi `brief-be-e2e-db-error-fields-skip-schema.md` e la nota in AGENTS.md.
+
+    ⚠️ **Non aggiungere qui test che SCRIVONO.** Per lo stesso motivo — la
+    connessione e' quella vera — un test che scrive scrive sul database di
+    sviluppo. I tre attuali no: provocano un errore dentro un
+    `transaction.atomic()` che viene annullato, e non lasciano niente.
+
     Esecuzione:
         ZEROERP_TEST_DB_E2E=1 ./manage-test.sh \\
             apps.core.tests.services.test_db_error_fields -v 2
+
+    In CI girano a ogni PR: `ci-validate.yaml` esporta `ZEROERP_TEST_DB_E2E=1`
+    sullo step «Django tests», dove il database e' appena stato provvisto da
+    Liquibase.
     """
 
     @classmethod
@@ -205,6 +229,26 @@ class DbErrorFieldsEndToEndTests(TestCase):
             connection.ensure_connection()
         except Exception as exc:  # noqa: BLE001 — qualunque errore = DB non usabile
             raise unittest.SkipTest(f"DB non raggiungibile: {exc}") from exc
+
+        # ⚠️ Raggiungibile != provvisto. Se il runner ha creato il database di
+        # test usa-e-getta (accade appena UN test della suite dichiara un
+        # database), quel database ha solo le migration Django: le funzioni
+        # PL/pgSQL non ci sono. Senza questo controllo il test non salta —
+        # fallisce con «la funzione non esiste», addosso a chi ha scritto quel
+        # TestCase e in una PR che non c'entra.
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT to_regprocedure('script.fn_log_and_raise_error"
+                "(text,text,text,jsonb,uuid,text[])') IS NOT NULL"
+            )
+            row = cur.fetchone()
+        assert row is not None
+        if not row[0]:
+            raise unittest.SkipTest(
+                "schema Liquibase assente nel database dei test: il runner ne ha "
+                "creato uno usa-e-getta (qualche test dichiara un database). "
+                "Vedi brief-be-e2e-db-error-fields-skip-schema.md"
+            )
 
     # Scopo: Esegue SQL che solleva e restituisce l'eccezione catturata.
     def _solleva(self, sql: str) -> DatabaseError:

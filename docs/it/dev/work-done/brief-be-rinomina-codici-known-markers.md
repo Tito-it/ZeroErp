@@ -5,7 +5,21 @@
 che il DB rinomini — così i lotti non hanno bisogno di un rilascio simultaneo.
 **Perimetro:** `apps/pratiche/services/pratiche_service.py` (23 codici su 27) più
 tre file con un codice ciascuno.
-**Origine:** [brief-db-codice-errore-strutturato](brief-db-codice-errore-strutturato.md) §15.11.
+**Origine:** [brief-db-codice-errore-strutturato](../work-in-progress/brief-db-codice-errore-strutturato.md) §15.11.
+
+> ## ✅ Chiuso lato BE — 2026-08-05 (§7)
+>
+> Entrambi i nomi sono dichiarati per tutti e **51** i codici (39 vivi + 12 già
+> ritirati): **i lotti si aprono senza avvisare e senza sincronia**, che era lo
+> scopo del brief.
+>
+> ⚠️ **Resta una coda, e sta qui perché non si perda in work-done:** quando il
+> registro `dbops.messaggi_errore_codici_legacy` sarà vuoto, il BE deve togliere
+> le voci **vecchie** da `known_markers` e da `error_policies.py`, e con esse
+> l'asserzione «almeno un codice legacy» del test del §7.4 — che a quel punto
+> diventa il segnale che il cantiere è finito, non un test da aggirare.
+> Tracciata come item **18** nel riepilogo del
+> [brief principale](../work-in-progress/brief-db-codice-errore-strutturato.md).
 
 > **Non c'è niente di rotto adesso.** Questo brief serve a **non** romperlo: senza
 > il passo qui sotto, i prossimi lotti di rinomina farebbero uscire dall'API un
@@ -153,3 +167,90 @@ un errore che in questo cantiere è già costato un giro (§7 del brief principa
 ```bash
 grep -rEl "(^|[^A-Z_])CODICE([^A-Z_]|$)" backend/apps --include='*.py'
 ```
+
+---
+
+## 7. ✅ Fatto — BE, 2026-08-05
+
+Il punto 2 del §6 è chiuso: **potete aprire i lotti accoppiati quando volete,
+senza avvisare e senza sincronia.** Entrambi i nomi sono dichiarati.
+
+### 7.1 Cosa è stato messo
+
+| Dove | Cosa |
+|---|---|
+| `error_policies.py` | **49 voci gemelle** `E_*`, ognuna con lo **stesso** status, `ui_action` e messaggio del suo vecchio. Blocco unico in coda, con testata che spiega che è transitorio e che a lotto applicato si toglie la voce **vecchia**, non questa |
+| `pratiche_service._KNOWN_DB_ERROR_MARKERS` | **21 gemelli**, stesso marker del vecchio, in coda con la stessa spiegazione |
+| `test_pratiche_service_flussi.py` | `test_ogni_codice_legacy_ha_il_gemello_con_prefisso` — nuovo |
+
+Le voci sono state **generate** dalle vecchie, non ribattute a mano: la regola
+del §4 è «stesso status», e ricopiare 49 numeri a mano è il modo migliore per
+farne divergere uno.
+
+Perimetro: 39 codici vivi del registro + 12 già ritirati = 51, meno i 2 che il
+gemello ce l'avevano già. Non solo i 27 nominati dal Python: **anche i DB-only**.
+Il `known_markers` riguarda solo i 21 di `pratiche_service`, ma la **policy**
+serve a ogni codice che arriva dal DB, che il Python lo nomini o no — senza,
+dopo la rinomina risponderebbero 400 generico.
+
+Gli altri tre file del §3 (`definizioni_service.py`, `views_definizioni.py`,
+`approvazioni_prezzo_service.py`) nominano quei codici **solo dentro commenti**:
+nessuna logica, niente da cambiare. Come `db_error_fields.py`.
+
+### 7.2 ⚠️ Un pezzo era già scoperto, e il brief non lo dice
+
+I **12 codici del §1 già rinominati e ritirati** arrivano al backend col nome
+nuovo **da adesso**. Di quei 12, **11 non avevano policy**: cadevano sulla
+scorciatoia «`E_*` sconosciuto» → **400 «errore di validazione»**, perdendo lo
+status specifico. Fra questi:
+
+| Codice nuovo | Rispondeva | Ora |
+|---|---:|---:|
+| `E_PREV_REVISIONE_BOZZA_ESISTENTE` | 400 | **409** |
+| `E_PREV_REVISIONE_STATO_NON_AMMESSO` | 400 | **409** |
+| `E_PREV_STATO_CORRENTE_NON_TROVATO` | 400 | **404** |
+
+Non è una critica al metodo: è la conferma che il coordinamento del §4 serviva
+davvero, e che i primi tre lotti sono passati **prima** che ci fosse. Ora è
+sanato per tutti e 51, e per i prossimi lotti il problema non si pone.
+
+### 7.3 ⚠️ Trovato di passaggio: un codice mai registrato
+
+`E_TEMPLATE_CODICE_DUPLICATO` è dichiarato nei `known_markers` — mappa la
+violazione UNIQUE `uq_template_flussi_definizione_codice` — ma **non era in
+`error_policies.py`**, quindi un codice duplicato rispondeva **400** invece di
+409. Registrato (409, `highlight_form_fields`).
+
+Perché nessun presidio l'ha visto: `test_error_codes_declared_guardrail` cerca i
+codici passati come **kwarg** `code=`/`error_code=`, e questo sta dentro una
+tupla. È un punto cieco di quel guardrail, non un suo errore — ma vale la pena
+saperlo, perché ogni codice in `_KNOWN_DB_ERROR_MARKERS` ha la stessa forma.
+
+🔴 **Al DB**: `E_TEMPLATE_CODICE_DUPLICATO` **non è a catalogo** in
+`config.messaggi_errore`. È un codice inventato dal BE per una violazione di
+vincolo, quindi non passa da `fn_log_and_raise_error` e non serve al giro
+dell'API — ma quando finisce in `dbops.error_log` degrada a
+`MESSAGGIO_NON_DEFINITO`. Da seedare se lo ritenete giusto.
+
+### 7.4 Il presidio, perché il blocco non marcisca
+
+Il nuovo test asserisce, per ogni codice legacy dichiarato nei marker: che il
+gemello `E_*` sia dichiarato anche lui, che entrambi abbiano una policy, e che
+lo **status coincida**.
+
+Serve perché il difetto del §2 è invisibile per costruzione — dopo la rinomina
+l'API risponderebbe col codice ritirato e *non si romperebbe niente*. E copre
+anche il caso opposto: due status divergenti farebbero rispondere lo stesso
+errore 409 o 400 a seconda di quale lotto è passato.
+
+⚠️ Nota per chi toglierà le voci vecchie a lotto concluso: il test pretende
+che esista **almeno un** codice legacy finché la rinomina è in corso. All'ultimo
+lotto quell'asserzione va tolta insieme al blocco — è il segnale che il cantiere
+è finito, non un test da aggirare.
+
+| Esito | |
+|---|---|
+| `error_policies.py` | **511** voci, 511 distinte, nessuna duplicata |
+| `known_markers` | 44 voci: 21 legacy + 23 con prefisso; nessun legacy senza gemello, nessun gemello senza policy |
+| Status vecchio == nuovo | ✅ per tutti e 51 |
+| Suite intera | **3575 verdi** |

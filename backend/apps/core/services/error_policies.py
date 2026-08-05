@@ -3580,6 +3580,383 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Transazione non registrata: anomalia tecnica di tracciamento.",
         ),
+        # Codice inventato dal BE per la violazione UNIQUE
+        # `uq_template_flussi_definizione_codice` (marker in
+        # `pratiche_service._KNOWN_DB_ERROR_MARKERS`): non e' a catalogo DB.
+        # Non era registrato — quindi cadeva sulla scorciatoia «E_* sconosciuto»
+        # e un duplicato rispondeva 400 «errore di validazione» invece di 409.
+        # Trovato il 2026-08-05 mentre si aggiungevano i gemelli: sfugge al
+        # guardrail `test_error_codes_declared_guardrail` perche' quello guarda
+        # i kwarg `code=`/`error_code=`, e qui il codice sta dentro una tupla.
+        "E_TEMPLATE_CODICE_DUPLICATO": ErrorPolicy(
+            code="E_TEMPLATE_CODICE_DUPLICATO",
+            http_status=409,
+            ui_action="highlight_form_fields",
+            user_message="Codice gia' usato da un altro step della definizione.",
+        ),
+        # ══════════════════════════════════════════════════════════════════
+        # Gemelli `E_*` dei codici legacy — blocco TRANSITORIO
+        # (brief-be-rinomina-codici-known-markers, 2026-08-05)
+        # ══════════════════════════════════════════════════════════════════
+        # Il DB sta rinominando i codici fuori convenzione, un lotto per volta:
+        # `X` diventa `E_X` e il vecchio resta a catalogo marcato `obsoleto_dal`.
+        # Registrare QUI il nome nuovo **prima** che il lotto parta rende
+        # l'ordine di rilascio irrilevante: finche' il DB manda il vecchio
+        # scatta la voce vecchia, appena manda il nuovo scatta questa. Nessuna
+        # finestra in cui l'API risponde con un codice che il DB ha ritirato —
+        # che non romperebbe niente e per questo non se ne accorgerebbe nessuno.
+        #
+        # ⚠️ Ogni voce ha lo **stesso** status del suo vecchio: e' una rinomina,
+        # non una revisione. Se uno status va cambiato, si cambia il vecchio e
+        # si rigenera questo blocco, cosi' i due non divergono mai.
+        #
+        # ⚠️ Blocco a scadenza: quando il DB avvisa che un lotto e' applicato,
+        # si toglie la voce VECCHIA (non questa) e il codice esce di scena. A
+        # registro `dbops.messaggi_errore_codici_legacy` vuoto, restano solo
+        # queste e il commento va via con la tabella.
+        # <- CF_NON_VALIDO  (vivo)
+        "E_CF_NON_VALIDO": ErrorPolicy(
+            code="E_CF_NON_VALIDO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Codice fiscale non valido.",
+        ),
+        # <- CODICE_NON_MODIFICABILE  (vivo)
+        "E_CODICE_NON_MODIFICABILE": ErrorPolicy(
+            code="E_CODICE_NON_MODIFICABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Il codice interno non e' modificabile.",
+        ),
+        # <- DEFINIZIONE_BOZZA_ESISTENTE  (vivo)
+        "E_DEFINIZIONE_BOZZA_ESISTENTE": ErrorPolicy(
+            code="E_DEFINIZIONE_BOZZA_ESISTENTE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Esiste gia' una bozza di edizione per questo scope (tipo prestazione + emittente).",
+        ),
+        # <- DEFINIZIONE_NON_PUBBLICABILE  (vivo)
+        "E_DEFINIZIONE_NON_PUBBLICABILE": ErrorPolicy(
+            code="E_DEFINIZIONE_NON_PUBBLICABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="La bozza non e' pubblicabile: servono almeno uno step attivo e nessun ciclo di prerequisiti.",
+        ),
+        # <- DEFINIZIONE_NON_TROVATA  (vivo)
+        "E_DEFINIZIONE_NON_TROVATA": ErrorPolicy(
+            code="E_DEFINIZIONE_NON_TROVATA",
+            http_status=404,
+            ui_action="show_error_banner",
+            user_message="Nessuna definizione di workflow pubblicata per questo tipo.",
+        ),
+        # <- DEFINIZIONE_NO_PUBBLICATA  (vivo)
+        "E_DEFINIZIONE_NO_PUBBLICATA": ErrorPolicy(
+            code="E_DEFINIZIONE_NO_PUBBLICATA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Nuova versione non ammessa: manca un'edizione pubblicata da cui derivare.",
+        ),
+        # <- DEFINIZIONE_PUBBLICATA_IMMUTABILE  (vivo)
+        "E_DEFINIZIONE_PUBBLICATA_IMMUTABILE": ErrorPolicy(
+            code="E_DEFINIZIONE_PUBBLICATA_IMMUTABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Edizione non modificabile nello stato corrente.",
+        ),
+        # <- DEFINIZIONE_TRANSIZIONE_NON_AMMESSA  (vivo)
+        "E_DEFINIZIONE_TRANSIZIONE_NON_AMMESSA": ErrorPolicy(
+            code="E_DEFINIZIONE_TRANSIZIONE_NON_AMMESSA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Transizione di stato dell'edizione non ammessa.",
+        ),
+        # <- ERRORE_PARAMETRI  (vivo)
+        "E_ERRORE_PARAMETRI": ErrorPolicy(
+            code="E_ERRORE_PARAMETRI",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Parametri obbligatori mancanti o non validi.",
+        ),
+        # <- ERRORE_PARAMETRI_TABELLA  (vivo)
+        "E_ERRORE_PARAMETRI_TABELLA": ErrorPolicy(
+            code="E_ERRORE_PARAMETRI_TABELLA",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Parametro non trovato nella tabella di configurazione.",
+        ),
+        # <- FLUSSI_COMPETENZA_MANCANTE  (vivo)
+        "E_FLUSSI_COMPETENZA_MANCANTE": ErrorPolicy(
+            code="E_FLUSSI_COMPETENZA_MANCANTE",
+            http_status=403,
+            ui_action="show_error_banner",
+            user_message="Operatore non abilitato per questo tipo di flusso.",
+        ),
+        # <- FLUSSI_ESITO_NON_AMMESSO  (vivo)
+        "E_FLUSSI_ESITO_NON_AMMESSO": ErrorPolicy(
+            code="E_FLUSSI_ESITO_NON_AMMESSO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Esito non ammesso per questo step.",
+        ),
+        # <- FLUSSI_ESITO_OBBLIGATORIO  (vivo)
+        "E_FLUSSI_ESITO_OBBLIGATORIO": ErrorPolicy(
+            code="E_FLUSSI_ESITO_OBBLIGATORIO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Esito obbligatorio per completare il flusso.",
+        ),
+        # <- FLUSSI_GIA_ASSEGNATO  (vivo)
+        "E_FLUSSI_GIA_ASSEGNATO": ErrorPolicy(
+            code="E_FLUSSI_GIA_ASSEGNATO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Flusso gia' assegnato a un operatore.",
+        ),
+        # <- FLUSSI_PRESA_CARICO_STATO_ERRATO  (vivo)
+        "E_FLUSSI_PRESA_CARICO_STATO_ERRATO": ErrorPolicy(
+            code="E_FLUSSI_PRESA_CARICO_STATO_ERRATO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Presa in carico non consentita: il flusso non e' DA_ESEGUIRE.",
+        ),
+        # <- FLUSSI_PRESA_NON_ELIGIBILE  (vivo)
+        "E_FLUSSI_PRESA_NON_ELIGIBILE": ErrorPolicy(
+            code="E_FLUSSI_PRESA_NON_ELIGIBILE",
+            http_status=403,
+            ui_action="show_error_banner",
+            user_message="Presa in carico non consentita: il flusso e' instradato a un altro reparto.",
+        ),
+        # <- FLUSSI_TEMPLATE_FUORI_DEFINIZIONE  (vivo)
+        "E_FLUSSI_TEMPLATE_FUORI_DEFINIZIONE": ErrorPolicy(
+            code="E_FLUSSI_TEMPLATE_FUORI_DEFINIZIONE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Lo step non appartiene alla definizione della pratica.",
+        ),
+        # <- FLUSSI_TRANSIZIONE_NON_AMMESSA  (vivo)
+        "E_FLUSSI_TRANSIZIONE_NON_AMMESSA": ErrorPolicy(
+            code="E_FLUSSI_TRANSIZIONE_NON_AMMESSA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Transizione di stato flusso non ammessa.",
+        ),
+        # <- GENERAZIONE_TEMPLATE_NON_IN_DEFINIZIONE  (vivo)
+        "E_GENERAZIONE_TEMPLATE_NON_IN_DEFINIZIONE": ErrorPolicy(
+            code="E_GENERAZIONE_TEMPLATE_NON_IN_DEFINIZIONE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Lo step dichiarato dalla regola non esiste nella definizione della pratica figlia.",
+        ),
+        # <- MESSAGGIO_NON_DEFINITO  (vivo)
+        "E_MESSAGGIO_NON_DEFINITO": ErrorPolicy(
+            code="E_MESSAGGIO_NON_DEFINITO",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Messaggio di errore non definito a catalogo.",
+        ),
+        # <- PIVA_NON_VALIDA  (vivo)
+        "E_PIVA_NON_VALIDA": ErrorPolicy(
+            code="E_PIVA_NON_VALIDA",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Partita IVA non valida.",
+        ),
+        # <- PRATICHE_CHIUSURA_FLUSSI_APERTI  (vivo)
+        "E_PRATICHE_CHIUSURA_FLUSSI_APERTI": ErrorPolicy(
+            code="E_PRATICHE_CHIUSURA_FLUSSI_APERTI",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Impossibile chiudere la pratica: ci sono flussi ancora aperti. Completali o annullali, poi riprova.",
+        ),
+        # <- PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI  (vivo)
+        "E_PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI": ErrorPolicy(
+            code="E_PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Impossibile chiudere la pratica: flussi obbligatori non completati.",
+        ),
+        # <- PRATICHE_CHIUSURA_FLUSSO_PREMATURO  (vivo)
+        "E_PRATICHE_CHIUSURA_FLUSSO_PREMATURO": ErrorPolicy(
+            code="E_PRATICHE_CHIUSURA_FLUSSO_PREMATURO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Impossibile completare il flusso di chiusura: restano altri flussi obbligatori da completare.",
+        ),
+        # <- PRATICHE_FLUSSO_NON_RIPETIBILE  (vivo)
+        "E_PRATICHE_FLUSSO_NON_RIPETIBILE": ErrorPolicy(
+            code="E_PRATICHE_FLUSSO_NON_RIPETIBILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Il flusso non e' ripetibile in questa pratica.",
+        ),
+        # <- PRATICHE_ISTANZA_NON_COERENTE  (ritirato)
+        "E_PRATICHE_ISTANZA_NON_COERENTE": ErrorPolicy(
+            code="E_PRATICHE_ISTANZA_NON_COERENTE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="L'istanza non appartiene al soggetto indicato.",
+        ),
+        # <- PRATICHE_ISTANZA_SENZA_SOGGETTO  (ritirato)
+        "E_PRATICHE_ISTANZA_SENZA_SOGGETTO": ErrorPolicy(
+            code="E_PRATICHE_ISTANZA_SENZA_SOGGETTO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="L'istanza utility richiede anche il soggetto.",
+        ),
+        # <- PRATICHE_LISTA_CONTESTO_PARAMETRI_ESCLUSIVI  (vivo)
+        "E_PRATICHE_LISTA_CONTESTO_PARAMETRI_ESCLUSIVI": ErrorPolicy(
+            code="E_PRATICHE_LISTA_CONTESTO_PARAMETRI_ESCLUSIVI",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Indicare una sola lente di contesto: ruolo soggetto, istanza utility o solo interne.",
+        ),
+        # <- PRATICHE_PIN_IMMUTABILE  (vivo)
+        "E_PRATICHE_PIN_IMMUTABILE": ErrorPolicy(
+            code="E_PRATICHE_PIN_IMMUTABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="L'edizione di workflow pinnata dalla pratica e' immutabile.",
+        ),
+        # <- PRATICHE_PREREQUISITI_NON_SODDISFATTI  (vivo)
+        "E_PRATICHE_PREREQUISITI_NON_SODDISFATTI": ErrorPolicy(
+            code="E_PRATICHE_PREREQUISITI_NON_SODDISFATTI",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Flusso non ancora eseguibile: prerequisiti non soddisfatti.",
+        ),
+        # <- PRATICHE_RUOLO_NON_COERENTE  (ritirato)
+        "E_PRATICHE_RUOLO_NON_COERENTE": ErrorPolicy(
+            code="E_PRATICHE_RUOLO_NON_COERENTE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Il ruolo non appartiene al soggetto indicato.",
+        ),
+        # <- PRATICHE_RUOLO_SENZA_SOGGETTO  (ritirato)
+        "E_PRATICHE_RUOLO_SENZA_SOGGETTO": ErrorPolicy(
+            code="E_PRATICHE_RUOLO_SENZA_SOGGETTO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Il ruolo richiede anche il soggetto.",
+        ),
+        # <- PRATICHE_SORGENTI_FLUSSO_PRATICA_INCOERENTE  (vivo)
+        "E_PRATICHE_SORGENTI_FLUSSO_PRATICA_INCOERENTE": ErrorPolicy(
+            code="E_PRATICHE_SORGENTI_FLUSSO_PRATICA_INCOERENTE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Aggancio sorgente incoerente: il flusso appartiene a un'altra pratica.",
+        ),
+        # <- PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE  (vivo)
+        "E_PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE": ErrorPolicy(
+            code="E_PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Impossibile modificare il flusso: la pratica e' in stato terminale.",
+        ),
+        # <- PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO  (vivo)
+        "E_PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO": ErrorPolicy(
+            code="E_PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Impossibile creare un flusso: la pratica e' in stato terminale.",
+        ),
+        # <- PRATICHE_TRANSIZIONE_NON_AMMESSA  (vivo)
+        "E_PRATICHE_TRANSIZIONE_NON_AMMESSA": ErrorPolicy(
+            code="E_PRATICHE_TRANSIZIONE_NON_AMMESSA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Transizione di stato pratica non ammessa.",
+        ),
+        # <- PREV_NESSUNA_RIGA_ATTIVA  (vivo)
+        "E_PREV_NESSUNA_RIGA_ATTIVA": ErrorPolicy(
+            code="E_PREV_NESSUNA_RIGA_ATTIVA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Preventivo senza righe attive: serve almeno una riga per emettere.",
+        ),
+        # <- PREV_REVISIONE_BOZZA_ESISTENTE  (ritirato)
+        "E_PREV_REVISIONE_BOZZA_ESISTENTE": ErrorPolicy(
+            code="E_PREV_REVISIONE_BOZZA_ESISTENTE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Esiste gia' una revisione in BOZZA per questo preventivo. Completa o annulla la BOZZA esistente prima di crearne una nuova.",
+        ),
+        # <- PREV_REVISIONE_STATO_NON_AMMESSO  (ritirato)
+        "E_PREV_REVISIONE_STATO_NON_AMMESSO": ErrorPolicy(
+            code="E_PREV_REVISIONE_STATO_NON_AMMESSO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Revisione ammessa solo da preventivo EMESSO.",
+        ),
+        # <- PREV_STATO_CORRENTE_NON_TROVATO  (ritirato)
+        "E_PREV_STATO_CORRENTE_NON_TROVATO": ErrorPolicy(
+            code="E_PREV_STATO_CORRENTE_NON_TROVATO",
+            http_status=404,
+            ui_action="show_error_banner",
+            user_message="Stato corrente del preventivo non trovato.",
+        ),
+        # <- SEQUENZA_NON_CONFIGURATA  (vivo)
+        "E_SEQUENZA_NON_CONFIGURATA": ErrorPolicy(
+            code="E_SEQUENZA_NON_CONFIGURATA",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Sequenza di numerazione non configurata.",
+        ),
+        # <- TEMPLATE_DEFINIZIONE_CONGELATA  (vivo)
+        "E_TEMPLATE_DEFINIZIONE_CONGELATA": ErrorPolicy(
+            code="E_TEMPLATE_DEFINIZIONE_CONGELATA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Edizione per-emittente gia' emessa: la struttura non e' piu' modificabile (solo la descrizione e' correggibile).",
+        ),
+        # <- TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA  (ritirato)
+        "E_TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA": ErrorPolicy(
+            code="E_TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Modalita' esito AUTOMATICO ammessa solo su step a direzione INTERNA.",
+        ),
+        # <- TEMPLATE_FLUSSO_DOMINIO_ESITO_DEFAULT_VIETATO  (ritirato)
+        "E_TEMPLATE_FLUSSO_DOMINIO_ESITO_DEFAULT_VIETATO": ErrorPolicy(
+            code="E_TEMPLATE_FLUSSO_DOMINIO_ESITO_DEFAULT_VIETATO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Uno step DOMINIO non ammette esito default: l'esito lo calcola il dominio.",
+        ),
+        # <- TEMPLATE_FLUSSO_ESITO_DEFAULT_NON_VERDETTO  (ritirato)
+        "E_TEMPLATE_FLUSSO_ESITO_DEFAULT_NON_VERDETTO": ErrorPolicy(
+            code="E_TEMPLATE_FLUSSO_ESITO_DEFAULT_NON_VERDETTO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Esito default non valido: AUTOMATICO/CONTESTUALE richiedono un verdetto.",
+        ),
+        # <- TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO  (ritirato)
+        "E_TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO": ErrorPolicy(
+            code="E_TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Esito default obbligatorio per la modalita' esito scelta.",
+        ),
+        # <- TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER  (vivo)
+        "E_TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER": ErrorPolicy(
+            code="E_TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Conflitto sullo step: ammesso solo uno fra avanzamento su proiezione e handler eventi.",
+        ),
+        # <- TEMPLATE_FLUSSO_PROIEZIONE_STEP_DOMINIO  (vivo)
+        "E_TEMPLATE_FLUSSO_PROIEZIONE_STEP_DOMINIO": ErrorPolicy(
+            code="E_TEMPLATE_FLUSSO_PROIEZIONE_STEP_DOMINIO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Avanzamento su proiezione non ammesso su uno step DOMINIO.",
+        ),
+        # <- W_TXID_NOT_REGISTERED  (vivo)
+        "E_W_TXID_NOT_REGISTERED": ErrorPolicy(
+            code="E_W_TXID_NOT_REGISTERED",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Transazione non registrata: anomalia tecnica di tracciamento.",
+        ),
     }
 
     # Scopo: Risolve la policy per un codice errore. Per codici applicativi
