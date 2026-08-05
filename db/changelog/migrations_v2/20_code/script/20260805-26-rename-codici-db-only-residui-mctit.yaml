@@ -1,0 +1,3084 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Rinomina a `E_*` di TUTTI i codici DB-only rimasti — 11 codici, 14 funzioni
+#   Brief: docs/it/dev/work-in-progress/brief-db-codice-errore-strutturato.md §15.14
+#   Lotti precedenti: 20260805-19 (4), -20 (4), -25 (3)
+#
+#   Registro del debito: **39 -> 28**.
+#
+# ── PERCHE' UNO SOLO INVECE DI OTTO LOTTI ───────────────────────────────
+#   I primi tre lotti sono stati piccoli apposta: la procedura era nuova e non
+#   si sapeva dove fossero le trappole. Ha ripagato — hanno trovato il `;`
+#   mancante dopo `$function$` e il codice sollevato da DUE funzioni invece che
+#   una. Ora la procedura e' meccanica e le trappole sono note: spezzare i
+#   restanti in altri otto changeSet aggiungerebbe cerimonia, non sicurezza.
+#
+#   Restano fuori i **27 codici accoppiati al backend** (brief
+#   brief-be-rinomina-codici-known-markers.md): quelli non si toccano finche' il
+#   BE non ha dichiarato i nomi nuovi in `known_markers`.
+#
+# ── ⚠️ L'UNITA' DEL RITIRO E' IL CODICE, NON LA FUNZIONE ────────────────
+#   Lezione del 20260805-25, e qui vale per **tre** codici su undici:
+#     CODICE_NON_MODIFICABILE ...... 3 funzioni (automazione lock + 2 protect_num)
+#     PREV_NESSUNA_RIGA_ATTIVA ..... 2 funzioni (available_actions + cambia_stato)
+#     SEQUENZA_NON_CONFIGURATA ..... 2 funzioni (fn_generate_codice + trg sync)
+#     TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER ... 2 funzioni
+#   Rinominarne uno in una sola delle sue funzioni lascerebbe l'altra a
+#   sollevare un codice ritirato: il controllo (D) del guardrail lo vieta, ed e'
+#   esattamente cosi' che l'errore e' stato preso la prima volta.
+#   Le 14 funzioni qui sotto sono l'elenco COMPLETO dei posti che nominano gli
+#   11 codici, ricavato da pg_proc e non a memoria.
+#
+# ── ⚠️ UN GEMELLO `E_` ESISTEVA GIA' (e aveva il messaggio peggiore) ───
+#   `E_SOSPENSIONI_FLUSSO_NON_COERENTE` era gia' a catalogo (id 735), creato da
+#   qualcuno e **mai agganciato**: nessuna funzione lo solleva. Il suo messaggio
+#   era pero' piu' povero dell'originale — «Il flusso non appartiene alla pratica
+#   della sospensione.», senza segnaposti e senza causa/soluzione — mentre il
+#   303 ha «Il flusso %s non appartiene alla pratica %s» con entrambe.
+#
+#   Puntare la funzione al 735 cosi' com'era avrebbe **peggiorato** il messaggio
+#   che l'operatore legge, in un changeSet che si presenta come una rinomina.
+#   Quindi: il 735 eredita il contenuto del 303, la funzione punta al 735, e il
+#   303 viene ritirato. Nessun id nuovo per questo codice — sono 10 righe nuove,
+#   non 11.
+#
+#   Cercato su tutto il registro: e' l'unico caso. Ma vale come regola per i
+#   lotti futuri — **prima di creare il codice nuovo, verificare che non esista
+#   gia'**, e se esiste confrontare i due messaggi invece di assumere che quello
+#   nuovo sia migliore.
+#
+# ── ⚠️ FUORI DA QUESTO LOTTO: `W_TXID_NOT_REGISTERED` ───────────────────
+#   E' l'unico dei 12 DB-only che non si rinomina meccanicamente. Non e' un
+#   errore: e' un **warning** (il messaggio comincia con «Warning - »), e
+#   `dbops.trgfn_tx_id_managed` lo passa a `fn_log_error_only`, cioe' lo LOGGA
+#   soltanto — non lo solleva mai, quindi al backend non arriva.
+#   Chiamarlo `E_...` direbbe una cosa falsa. Resta nel registro in attesa di
+#   una decisione: allargare la convenzione a `^[EW]_`, rinominarlo comunque, o
+#   accettare che il registro si fermi a uno. Decisione di Tid.
+#
+# ── ⚠️ IL `;` DOPO `$function$` ─────────────────────────────────────────
+#   La doc auto-gen chiude i corpi senza punto e virgola: senza, il COMMENT che
+#   segue e' un errore di sintassi. Aggiunto a tutte e 14. Lezione del -19.
+#
+# ── RICHIESTA AL BACKEND ────────────────────────────────────────────────
+#   Gli 11 vecchi codici hanno una voce in `error_policies.py`: vanno
+#   **rinominate** ai nuovi nomi, non duplicate. Status invariati. Nessuno di
+#   questi 11 e' nominato altrove nel Python — e' il criterio con cui il lotto
+#   e' stato composto.
+#
+#   Corpi dalla doc auto-gen. Cambiano solo i 20 letterali.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260805-26-rename-codici-db-only-residui-mctit.yaml
+
+  - changeSet:
+      id: 20260805-26-rename-codici-db-only-residui
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Antepone il prefisso E_ agli 11 codici fuori convenzione che nessun
+        consumatore Python nomina, in tutte e 14 le funzioni che li sollevano.
+        Registro del debito 39 -> 28. I vecchi nomi restano a catalogo ritirati
+        con obsoleto_dal: hanno righe di log e la FK di dbops.error_log non ne
+        permette la cancellazione.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ── dbops.fn_run_automations_lock_columns · CODICE_NON_MODIFICABILE
+              CREATE OR REPLACE FUNCTION dbops.fn_run_automations_lock_columns(p_exec_mode text, p_schemas text[], p_dry_run boolean)
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_schemas text[];
+                rtab record;
+                rrule record;
+                rcol record;
+                rel  regclass;
+                col_list text[];
+                arg_list text[];
+                trg_name text;
+                tmpl     text;
+                exist_strat text;
+                update_cols text;
+                arg_text text;
+                created boolean;
+              BEGIN
+
+              /*
+                Scopo
+                -----
+                Esegue l'automazione di provisioning dei trigger "LOCK_COLUMNS" sulle tabelle in scope,
+                applicando il blocco su:
+                - codice_interno (se presente in tabella),
+                - colonne extra definite in dbops.automation_lock_columns.
+
+                Regole di selezione colonne
+                ---------------------------
+                1) codice_interno e' implicito: non si configura nella tabella di setup.
+                2) Le colonne extra sono lette da dbops.automation_lock_columns con:
+                   - enabled = true
+                   - exec_mode = 'AUTO' oppure exec_mode = p_exec_mode
+                3) Una colonna e' aggiunta solo se esiste fisicamente nella tabella target.
+
+                Trigger generato
+                ----------------
+                Unico trigger per tabella:
+                  BEFORE UPDATE OF <colonne>
+                  EXECUTE FUNCTION script.trgfn_lock_columns(<col,msgcode...>)
+                Nome trigger:
+                  trg_{table}_a10_lock_columns_upd (via dbops.fn_name_from_template)
+
+                Modalita' DRY RUN
+                ----------------
+                Se p_dry_run=true non esegue DDL (CREATE TRIGGER) e registra audit con dbops.fn_audit_log_once.
+
+                Error handling
+                --------------
+                In caso di errore nella creazione del trigger, log strutturato e rilancio tramite
+                script.fn_log_and_raise_error con contesto 'LOCK_COLUMNS'.
+              */
+
+                v_schemas := dbops.fn_resolve_scope(p_schemas);
+                FOR rtab IN
+                  SELECT n.nspname AS schema_name,
+                        c.relname AS table_name,
+                        (quote_ident(n.nspname)||'.'||quote_ident(c.relname))::regclass AS rel
+                  FROM pg_class c
+                  JOIN pg_namespace n ON n.oid=c.relnamespace
+                  WHERE c.relkind='r'
+                    AND n.nspname = ANY(v_schemas)
+                    AND dbops.fn_table_in_scope(n.nspname, c.relname)
+                LOOP
+                  rel := rtab.rel;
+                  col_list := ARRAY[]::text[];
+                  arg_list := ARRAY[]::text[];
+                  created := false;
+
+                  IF dbops.fn_col_exists(rtab.schema_name, rtab.table_name, 'codice_interno') THEN
+                    col_list := array_append(col_list, 'codice_interno');
+                    arg_list := array_append(arg_list, quote_literal('codice_interno'));
+                    arg_list := array_append(arg_list, quote_literal('E_CODICE_NON_MODIFICABILE'));
+                  END IF;
+
+                  FOR rcol IN
+                    SELECT column_name,
+                           COALESCE(error_code, 'E_CODICE_NON_MODIFICABILE') AS error_code
+                      FROM dbops.automation_lock_columns
+                     WHERE enabled
+                       AND target_schema = rtab.schema_name
+                       AND target_table = rtab.table_name
+                       AND (upper(btrim(exec_mode)) = 'AUTO' OR exec_mode = p_exec_mode)
+                     ORDER BY column_name
+                  LOOP
+                    IF dbops.fn_col_exists(rtab.schema_name, rtab.table_name, rcol.column_name) THEN
+                      IF NOT (rcol.column_name = ANY(col_list)) THEN
+                        col_list := array_append(col_list, rcol.column_name);
+                        arg_list := array_append(arg_list, quote_literal(rcol.column_name));
+                        arg_list := array_append(arg_list, quote_literal(rcol.error_code));
+                      END IF;
+                    END IF;
+                  END LOOP;
+
+                  IF array_length(col_list, 1) IS NOT NULL THEN
+                    FOR rrule IN
+                      SELECT *
+                        FROM dbops.automation_rules_tbl r
+                      WHERE r.enabled
+                        AND upper(btrim(r.rule_type))='LOCK_COLUMNS'
+                        AND dbops.fn_schema_match(r.target_schema, rtab.schema_name)
+                        AND (UPPER(r.target_table) = '*ALL' OR rtab.table_name ILIKE r.target_table)
+                        AND (upper(btrim(r.exec_mode)) = 'AUTO' OR r.exec_mode = p_exec_mode)
+                      ORDER BY r.priority, r.id
+                    LOOP
+                      EXIT WHEN created;
+                      exist_strat := COALESCE(rrule.existence_strategy,'BY_NAME');
+                      tmpl := COALESCE(rrule.name_template, 'trg_{table}_a10_lock_columns_upd');
+                      trg_name := dbops.fn_name_from_template(tmpl, rtab.schema_name, rtab.table_name, NULL, NULL, NULL, NULL);
+
+                      IF (exist_strat='BY_NAME'     AND NOT dbops.fn_trigger_exists_by_name(rel, trg_name))
+                      OR (exist_strat='BY_FUNCTION' AND NOT dbops.fn_trigger_exists_by_function(rel, 'script', 'trgfn_lock_columns'))
+                      OR (exist_strat='BOTH'        AND NOT (dbops.fn_trigger_exists_by_name(rel, trg_name)
+                                                        OR dbops.fn_trigger_exists_by_function(rel, 'script', 'trgfn_lock_columns')))
+                      THEN
+                        update_cols := (
+                          SELECT string_agg(quote_ident(c), ', ')
+                            FROM unnest(col_list) AS c
+                        );
+                        arg_text := array_to_string(arg_list, ', ');
+
+                        IF p_dry_run THEN
+                          PERFORM dbops.fn_audit_log_once(
+                            p_function_name => 'dbops.fn_run_automations',
+                            p_status        => 'DRYRUN',
+                            p_rule_type     => 'LOCK_COLUMNS',
+                            p_exec_mode     => p_exec_mode,
+                            p_parts         => ARRAY['LOCK_COLUMNS'],
+                            p_dry_run       => true,
+                            p_params        => jsonb_build_object(
+                                                'table', rtab.schema_name||'.'||rtab.table_name,
+                                                'trigger', trg_name,
+                                                'columns', col_list,
+                                                'action', 'DRYRUN_CREATE_TRIGGER'
+                                              ),
+                            p_message       => 'Trigger would be created'
+                          );
+                          created := true;
+                        ELSE
+                          BEGIN
+                            EXECUTE format($f$
+                              CREATE TRIGGER %I
+                              BEFORE UPDATE OF %s ON %I.%I
+                              FOR EACH ROW
+                              EXECUTE FUNCTION script.trgfn_lock_columns(%s)
+                            $f$, trg_name, update_cols, rtab.schema_name, rtab.table_name, arg_text);
+                            created := true;
+                          EXCEPTION WHEN others THEN
+                            PERFORM script.fn_log_and_raise_error(
+                              'dbops',
+                              'run_automations',
+                              'E_LOCK_COLUMNS',
+                              jsonb_build_object(
+                                'where','LOCK_COLUMNS',
+                                'table', rtab.schema_name||'.'||rtab.table_name,
+                                'error', SQLERRM
+                              ),
+                              NULL::uuid,
+                              SQLERRM
+                            );
+                          END;
+                        END IF;
+                      END IF;
+                    END LOOP;
+                  END IF;
+                END LOOP;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_run_automations_lock_columns(p_exec_mode text, p_schemas text[], p_dry_run boolean)
+              IS 'Crea i trigger di lock columns per codice_interno e colonne extra configurate.';
+
+              -- ── pratiche.fn_genera_pratica_da_flusso · GENERAZIONE_TEMPLATE_NON_IN_DEFINIZIONE
+              CREATE OR REPLACE FUNCTION pratiche.fn_genera_pratica_da_flusso(p_flusso_id bigint, p_regola_id bigint)
+               RETURNS bigint
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_pratica_sorgente_id   pratiche.pratiche.id%TYPE;
+                  v_emittente_id          pratiche.pratiche.emittente_fiscale_id%TYPE;
+                  v_soggetto_id           pratiche.pratiche.soggetto_id%TYPE;
+                  v_soggetto_ruolo_id     pratiche.pratiche.soggetto_ruolo_id%TYPE;
+                  v_istanza_utility_id    pratiche.pratiche.istanza_utility_id%TYPE;
+                  v_priorita_id           pratiche.pratiche.priorita_id%TYPE;
+                  v_tipo_prest_dest_id    pratiche.regole_generazione.tipo_prestazione_dest_id%TYPE;
+                  v_template_dest_id      pratiche.regole_generazione.template_flusso_dest_id%TYPE;
+                  v_stato_iniziale_id     config.stati_pratiche.id%TYPE;
+                  v_stato_flusso_id       config.stati_flussi_pratiche.id%TYPE;
+                  v_dest_sequenza         pratiche.template_flussi.sequenza%TYPE;
+                  v_nuova_pratica_id      pratiche.pratiche.id%TYPE;
+                  -- D2-8 (Fase 1): remap del template destinazione per codice
+                  -- dentro la definizione pinnata della figlia.
+                  v_nuova_definizione_id       pratiche.pratiche.definizione_id%TYPE;
+                  v_dest_codice                pratiche.template_flussi.codice%TYPE;
+                  v_template_dest_effettivo_id pratiche.template_flussi.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Genera la pratica figlia da un flusso completato secondo
+                  --   una regola di generazione. Idempotente: per la stessa
+                  --   coppia (flusso, tipo destinazione) esiste al massimo una
+                  --   figlia; le chiamate successive ritornano l'id esistente.
+                  --   Copia emittente/soggetto/contesto/priorita, valorizza
+                  --   pratica_padre_id + flusso_origine_id e, se la regola lo
+                  --   dichiara, crea il flusso iniziale della figlia (template
+                  --   destinazione rimappato per codice nella definizione della
+                  --   figlia, D2-8 definizione-aware).
+                  -- =========================================================
+
+                  -- Guard: parametri obbligatori
+                  IF p_flusso_id IS NULL OR p_flusso_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'fn_genera_pratica_da_flusso',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_flusso_id', 'valore', p_flusso_id),
+                          NULL::uuid,
+                          'p_flusso_id obbligatorio e > 0'
+                      );
+                  END IF;
+
+                  IF p_regola_id IS NULL OR p_regola_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'fn_genera_pratica_da_flusso',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_regola_id', 'valore', p_regola_id),
+                          NULL::uuid,
+                          'p_regola_id obbligatorio e > 0'
+                      );
+                  END IF;
+
+                  -- Recupera pratica_id dal flusso
+                  SELECT f.pratica_id
+                    INTO v_pratica_sorgente_id
+                    FROM pratiche.flussi f
+                   WHERE f.id = p_flusso_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'fn_genera_pratica_da_flusso',
+                          'E_VALORE_MANCANTE',
+                          jsonb_build_object('flusso_id', p_flusso_id),
+                          NULL::uuid,
+                          concat('flusso_id ', p_flusso_id)
+                      );
+                  END IF;
+
+                  -- Recupera dati pratica sorgente (incluso contesto, fix-4)
+                  SELECT p.emittente_fiscale_id, p.soggetto_id,
+                         p.soggetto_ruolo_id, p.istanza_utility_id, p.priorita_id
+                    INTO v_emittente_id, v_soggetto_id,
+                         v_soggetto_ruolo_id, v_istanza_utility_id, v_priorita_id
+                    FROM pratiche.pratiche p
+                   WHERE p.id = v_pratica_sorgente_id;
+
+                  -- Recupera regola di generazione (incluso flusso iniziale, fix-3)
+                  SELECT rg.tipo_prestazione_dest_id, rg.template_flusso_dest_id
+                    INTO v_tipo_prest_dest_id, v_template_dest_id
+                    FROM pratiche.regole_generazione rg
+                   WHERE rg.id = p_regola_id
+                     AND rg.attivo = true;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'fn_genera_pratica_da_flusso',
+                          'E_CODICE',
+                          jsonb_build_object('regola_id', p_regola_id),
+                          NULL::uuid,
+                          p_regola_id::text, 'pratiche.regole_generazione'
+                      );
+                  END IF;
+
+                  -- Idempotenza (fix-1): figlia gia' esistente per
+                  -- (flusso, tipo destinazione) -> ritorna l'id esistente.
+                  -- Vale per trigger auto, API /genera/ e doppi eventi.
+                  SELECT p.id
+                    INTO v_nuova_pratica_id
+                    FROM pratiche.pratiche p
+                   WHERE p.flusso_origine_id  = p_flusso_id
+                     AND p.tipo_prestazione_id = v_tipo_prest_dest_id
+                   LIMIT 1;
+
+                  IF FOUND THEN
+                      RETURN v_nuova_pratica_id;
+                  END IF;
+
+                  -- Determina stato iniziale (APERTA): la figlia auto-generata
+                  -- e' un lavoro gia' avviato, nasce operativa (coerente con il
+                  -- modello "la pratica nasce APERTA"). data_apertura viene
+                  -- valorizzata dal trigger trg_pratiche_m50_set_data_apertura_ins.
+                  SELECT sp.id
+                    INTO v_stato_iniziale_id
+                    FROM config.stati_pratiche sp
+                   WHERE sp.codice_interno = 'APERTA'
+                     AND sp.attivo = true
+                   LIMIT 1;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'fn_genera_pratica_da_flusso',
+                          'E_CODICE',
+                          jsonb_build_object('codice_interno', 'APERTA'),
+                          NULL::uuid,
+                          'APERTA', 'config.stati_pratiche'
+                      );
+                  END IF;
+
+                  -- Crea pratica target: genealogia completa (fix-2) e
+                  -- contesto propagato (fix-4, coerente col soggetto copiato).
+                  -- definizione_id NON passata: l'auto-pin (BEFORE INSERT) la
+                  -- risolve per l'emittente della figlia; RETURNING la rilegge.
+                  INSERT INTO pratiche.pratiche (
+                      emittente_fiscale_id,
+                      tipo_prestazione_id,
+                      soggetto_id,
+                      soggetto_ruolo_id,
+                      istanza_utility_id,
+                      stato_id,
+                      priorita_id,
+                      pratica_padre_id,
+                      flusso_origine_id
+                  ) VALUES (
+                      v_emittente_id,
+                      v_tipo_prest_dest_id,
+                      v_soggetto_id,
+                      v_soggetto_ruolo_id,
+                      v_istanza_utility_id,
+                      v_stato_iniziale_id,
+                      v_priorita_id,
+                      v_pratica_sorgente_id,
+                      p_flusso_id
+                  )
+                  RETURNING id, definizione_id
+                       INTO v_nuova_pratica_id, v_nuova_definizione_id;
+
+                  -- Flusso iniziale della figlia (fix-3): solo se la regola
+                  -- lo dichiara. Il template deve essere senza prerequisiti
+                  -- (la figlia nasce senza flussi): in caso contrario il
+                  -- guard prerequisiti blocca — errore di seed, fail-fast.
+                  IF v_template_dest_id IS NOT NULL THEN
+                      SELECT sfp.id
+                        INTO v_stato_flusso_id
+                        FROM config.stati_flussi_pratiche sfp
+                       WHERE sfp.codice_interno = 'DA_ESEGUIRE'
+                         AND sfp.attivo = true
+                       LIMIT 1;
+
+                      IF NOT FOUND THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'fn_genera_pratica_da_flusso',
+                              'E_CODICE',
+                              jsonb_build_object('codice_interno', 'DA_ESEGUIRE'),
+                              NULL::uuid,
+                              'DA_ESEGUIRE', 'config.stati_flussi_pratiche'
+                          );
+                      END IF;
+
+                      -- D2-8: la regola dichiara il template destinazione per id
+                      -- (nel preset). Rimappa per CODICE nella definizione PINNATA
+                      -- della figlia: con un fork l'id del preset non vi appartiene
+                      -- e il guard D2-7 lo bloccherebbe. In Fase 1 (no fork) e' lo
+                      -- stesso template. La sequenza viene dal template rimappato.
+                      SELECT tf.codice
+                        INTO v_dest_codice
+                        FROM pratiche.template_flussi tf
+                       WHERE tf.id = v_template_dest_id;
+
+                      SELECT tf2.id, tf2.sequenza
+                        INTO v_template_dest_effettivo_id, v_dest_sequenza
+                        FROM pratiche.template_flussi tf2
+                       WHERE tf2.definizione_id = v_nuova_definizione_id
+                         AND tf2.codice = v_dest_codice;
+
+                      IF NOT FOUND THEN
+                          -- La definizione pinnata della figlia non contiene lo
+                          -- step dichiarato dalla regola (es. fork che l'ha rimosso).
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'fn_genera_pratica_da_flusso',
+                              'E_GENERAZIONE_TEMPLATE_NON_IN_DEFINIZIONE',
+                              jsonb_build_object(
+                                  'regola_id',              p_regola_id,
+                                  'template_dest_codice',   v_dest_codice,
+                                  'definizione_figlia_id',  v_nuova_definizione_id,
+                                  'pratica_figlia_id',      v_nuova_pratica_id
+                              ),
+                              NULL::uuid,
+                              COALESCE(v_dest_codice, v_template_dest_id::text),
+                              v_nuova_definizione_id::text
+                          );
+                      END IF;
+
+                      INSERT INTO pratiche.flussi (
+                          pratica_id,
+                          template_flusso_id,
+                          stato_id,
+                          sequenza
+                      ) VALUES (
+                          v_nuova_pratica_id,
+                          v_template_dest_effettivo_id,
+                          v_stato_flusso_id,
+                          COALESCE(v_dest_sequenza, 0)
+                      );
+                  END IF;
+
+                  RETURN v_nuova_pratica_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.fn_genera_pratica_da_flusso(p_flusso_id bigint, p_regola_id bigint)
+              IS 'Genera pratica figlia da flusso completato secondo regola di generazione. Idempotente per (flusso, tipo dest): ritorna la figlia esistente. Copia emittente/soggetto/contesto/priorita; valorizza pratica_padre_id e flusso_origine_id; crea il flusso iniziale se la regola dichiara template_flusso_dest_id, RIMAPPANDOLO per codice nella definizione pinnata della figlia (D2-8 definizione-aware; fail-fast 512 se assente). Stato iniziale APERTA.';
+
+              -- ── pratiche.trgfn_pratiche_guard_pin_immutabile · PRATICHE_PIN_IMMUTABILE
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_guard_pin_immutabile()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: il PIN dell'edizione di workflow e' definitivo. Una volta
+              --        valorizzato non cambia: le pratiche in volo non migrano di
+              --        edizione (V6). Ammessa solo la prima valorizzazione
+              --        (NULL -> valore), es. il backfill Fase 0.
+              BEGIN
+                IF OLD.definizione_id IS NOT NULL
+                   AND NEW.definizione_id IS DISTINCT FROM OLD.definizione_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_pratiche_guard_pin_immutabile',
+                    'E_PRATICHE_PIN_IMMUTABILE',
+                    jsonb_build_object(
+                      'pratica_id',      NEW.id,
+                      'definizione_da',  OLD.definizione_id,
+                      'definizione_a',   NEW.definizione_id
+                    ),
+                    NEW.tx_id,
+                    NEW.id::text,
+                    OLD.definizione_id::text
+                  );
+                END IF;
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_pratiche_guard_pin_immutabile()
+              IS 'BEFORE UPDATE OF definizione_id su pratiche.pratiche: il pin dell''edizione di workflow e'' immutabile una volta valorizzato (PRATICHE_PIN_IMMUTABILE 513). Ammette solo NULL->valore (backfill Fase 0). Cuore di V6.';
+
+              -- ── pratiche.trgfn_pratiche_sorgenti_guard_coerenza_flusso · PRATICHE_SORGENTI_FLUSSO_PRATICA_INCOERENTE
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_sorgenti_guard_coerenza_flusso()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: garantire che il flusso d'origine del link (flusso_id)
+              --   appartenga alla stessa pratica del link. flusso_id ancora il
+              --   ROOT documento->flusso (brief-db-aggancio-documento-flusso):
+              --   deve essere un flusso DI quella pratica.
+              -- Regole:
+              --   1. Scatta solo se flusso_id e' valorizzato (COLLEGATO -> NULL,
+              --      non vincolati).
+              --   2. Se il flusso non esiste, RETURN NEW: la FK
+              --      fk_pratiche_sorgenti_flusso solleva l'errore corretto.
+              --   3. Se la pratica del flusso differisce da NEW.pratica_id ->
+              --      errore parlante.
+              DECLARE
+                  v_flusso_pratica_id pratiche.flussi.pratica_id%TYPE;
+              BEGIN
+                  -- (1) Solo link agganciati a un flusso.
+                  IF NEW.flusso_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT f.pratica_id INTO v_flusso_pratica_id
+                    FROM pratiche.flussi f
+                   WHERE f.id = NEW.flusso_id;
+
+                  -- (2) Flusso inesistente: lascia decidere la FK.
+                  IF NOT FOUND THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- (3) Coerenza pratica del flusso = pratica del link.
+                  IF v_flusso_pratica_id IS DISTINCT FROM NEW.pratica_id THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'pratiche',
+                          'pratiche.trgfn_pratiche_sorgenti_guard_coerenza_flusso',
+                          'E_PRATICHE_SORGENTI_FLUSSO_PRATICA_INCOERENTE',
+                          jsonb_build_object(
+                              'pratica_id', NEW.pratica_id,
+                              'flusso_id', NEW.flusso_id,
+                              'flusso_pratica_id', v_flusso_pratica_id,
+                              'ruolo_link', NEW.ruolo_link
+                          ),
+                          NEW.tx_id,
+                          NEW.flusso_id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_pratiche_sorgenti_guard_coerenza_flusso()
+              IS 'BEFORE INSERT/UPDATE OF flusso_id,pratica_id su pratiche_sorgenti: se flusso_id e'' valorizzato, il flusso deve appartenere alla stessa pratica del link. Flusso inesistente -> lascia sollevare la FK (brief-db-aggancio-documento-flusso).';
+
+              -- ── pratiche.trgfn_sospensioni_guard_coerenza_flusso · SOSPENSIONI_FLUSSO_NON_COERENTE
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_sospensioni_guard_coerenza_flusso()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: verifica che flusso_id appartenga alla stessa pratica_id della sospensione.
+              -- Se flusso_id IS NULL (sospensione pratica intera), nessun controllo.
+              DECLARE
+                  v_pratica_flusso pratiche.flussi.pratica_id%TYPE;
+              BEGIN
+                  IF NEW.flusso_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT pratica_id INTO v_pratica_flusso
+                  FROM pratiche.flussi WHERE id = NEW.flusso_id;
+
+                  IF v_pratica_flusso IS NULL OR v_pratica_flusso <> NEW.pratica_id THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'pratiche',
+                          'pratiche.trgfn_sospensioni_guard_coerenza_flusso',
+                          'E_SOSPENSIONI_FLUSSO_NON_COERENTE',
+                          jsonb_build_object(
+                              'flusso_id', NEW.flusso_id,
+                              'pratica_id', NEW.pratica_id
+                          ),
+                          NULL::uuid,
+                          concat('Il flusso ', NEW.flusso_id, ' non appartiene alla pratica ', NEW.pratica_id)
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_sospensioni_guard_coerenza_flusso()
+              IS 'Guard: verifica coerenza flusso_id/pratica_id su sospensioni.';
+
+              -- ── pratiche.trgfn_tfap_guard_compatibilita · TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER, TEMPLATE_FLUSSO_PROIEZIONE_STEP_DOMINIO
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_tfap_guard_compatibilita()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: config-time, un binding di avanzamento su proiezione e'
+              --   ammesso solo su step non-DOMINIO (D-B3) e non deve coesistere con
+              --   un handler_eventi COMPLETATO sullo stesso step (D-B10).
+              DECLARE
+                v_modalita pratiche.template_flussi.modalita_esito%TYPE;
+                v_codice   pratiche.template_flussi.codice%TYPE;
+              BEGIN
+                SELECT tf.modalita_esito, tf.codice
+                  INTO v_modalita, v_codice
+                  FROM pratiche.template_flussi tf
+                 WHERE tf.id = NEW.template_flusso_id;
+
+                -- Step DOMINIO: la proiezione produce verdetti -> non ammesso.
+                IF v_modalita = 'DOMINIO' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche','pratiche.trgfn_tfap_guard_compatibilita',
+                    'E_TEMPLATE_FLUSSO_PROIEZIONE_STEP_DOMINIO',
+                    jsonb_build_object('template_flusso_id', NEW.template_flusso_id,
+                                       'template_codice', v_codice,
+                                       'modalita_esito', v_modalita),
+                    dbops.fn_get_or_create_session_tx_id(),
+                    COALESCE(v_codice, NEW.template_flusso_id::text));
+                END IF;
+
+                -- Mutua esclusione con handler_eventi COMPLETATO ATTIVO: il
+                -- conflitto e' fra binding entrambi attivi (un handler disattivato
+                -- non dispatcha -> il cutover puo' disattivarlo, non serve DELETE).
+                IF NEW.attivo AND EXISTS (
+                  SELECT 1 FROM pratiche.template_flussi_handler_eventi e
+                   WHERE e.template_flusso_id = NEW.template_flusso_id
+                     AND e.evento = 'COMPLETATO'
+                     AND e.attivo
+                ) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche','pratiche.trgfn_tfap_guard_compatibilita',
+                    'E_TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER',
+                    jsonb_build_object('template_flusso_id', NEW.template_flusso_id,
+                                       'template_codice', v_codice,
+                                       'lato', 'binding_proiezione'),
+                    dbops.fn_get_or_create_session_tx_id(),
+                    COALESCE(v_codice, NEW.template_flusso_id::text));
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_tfap_guard_compatibilita()
+              IS 'BEFORE INSERT OR UPDATE su pratiche.template_flussi_avanzamento_proiezione (GUIDA D4/G2): il binding di avanzamento su proiezione e'' ammesso solo su step non-DOMINIO (D-B3, TEMPLATE_FLUSSO_PROIEZIONE_STEP_DOMINIO 517) e non puo'' coesistere con un handler_eventi COMPLETATO sullo stesso step (D-B10, TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER 518).';
+
+              -- ── pratiche.trgfn_tfhe_guard_no_proiezione · TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_tfhe_guard_no_proiezione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: config-time, non si puo' aggiungere un handler_eventi
+              --   COMPLETATO a uno step che ha gia' un binding di avanzamento su
+              --   proiezione (mutua esclusione, D-B10, lato simmetrico).
+              DECLARE
+                v_codice pratiche.template_flussi.codice%TYPE;
+              BEGIN
+                IF NEW.evento = 'COMPLETATO' AND NEW.attivo AND EXISTS (
+                  SELECT 1 FROM pratiche.template_flussi_avanzamento_proiezione b
+                   WHERE b.template_flusso_id = NEW.template_flusso_id
+                     AND b.attivo
+                ) THEN
+                  SELECT tf.codice INTO v_codice
+                    FROM pratiche.template_flussi tf
+                   WHERE tf.id = NEW.template_flusso_id;
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche','pratiche.trgfn_tfhe_guard_no_proiezione',
+                    'E_TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER',
+                    jsonb_build_object('template_flusso_id', NEW.template_flusso_id,
+                                       'template_codice', v_codice,
+                                       'lato', 'handler_eventi'),
+                    dbops.fn_get_or_create_session_tx_id(),
+                    COALESCE(v_codice, NEW.template_flusso_id::text));
+                END IF;
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_tfhe_guard_no_proiezione()
+              IS 'BEFORE INSERT OR UPDATE su pratiche.template_flussi_handler_eventi (GUIDA D4/G2, D-B10 lato simmetrico): vieta un handler_eventi COMPLETATO su uno step che ha gia'' un binding di avanzamento su proiezione (TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER 518).';
+
+              -- ── script.fn_available_actions_preventivo · PREV_NESSUNA_RIGA_ATTIVA
+              CREATE OR REPLACE FUNCTION script.fn_available_actions_preventivo(p_preventivo_id bigint)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: capability preventivo per detail API (pattern data-driven).
+              --   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
+              --   config.stati_doc_preventivi (bottone PDF data-driven via capabilities).
+              --   rev 2026-07-16: + enabled/reason/reason_key da meta.requires_righe
+              --   (documento vuoto non avanza di stato).
+              --   rev 2026-07-19: label_key e reason_key nel namespace i18n
+              --   vendite.preventivi.* (era preventivi.*, radice spostata dal FE
+              --   nella migrazione radici i18n) — brief-i18n-radici-uniformi §5.
+              --   rev 2026-08-04: + reasons sull'annullamento, da
+              --   script.fn_check_preventivo_annullabile — la STESSA funzione che
+              --   vendite.trgfn_preventivi_guard_annullamento usa per sollevare
+              --   (sorgente unica: la UI non puo' divergere dal guard). I motivi
+              --   si SOMMANO a quello di requires_righe in un array solo, da cui
+              --   discendono enabled/reason/reason_key. + nessuna_azione_key
+              --   dal meta dello stato, esposta quando nessuna azione e' abilitata
+              --   (brief-db-vie-uscita-operatore §4 regola R3 e §6).
+              DECLARE
+                  v_stato_id          vendite.preventivi.stato_doc_preventivo_id%TYPE;
+                  v_stato_cod         config.stati_doc_preventivi.codice_interno%TYPE;
+                  v_ba_id             vendite.preventivi.billing_account_id%TYPE;
+                  v_utility_id        vendite.preventivi.utility_id%TYPE;
+                  v_pdf_mode          config.stati_doc_preventivi.pdf_mode%TYPE;
+                  v_pdf_allow         config.stati_doc_preventivi.pdf_allow_allegati%TYPE;
+                  v_nessuna_key       text;
+                  v_nessuna_azione    boolean := false;
+                  v_actions           jsonb;
+                  v_ha_righe          boolean := false;
+                  v_mot_annulla       jsonb := '[]'::jsonb;
+                  v_can_edit          boolean;
+                  v_can_push          boolean;
+                  v_can_rev           boolean;
+                  v_push_reason       text;
+                  v_push_reason_key   text;
+                  v_can_ordine        boolean;
+                  v_ordine_reason     text;
+                  v_ordine_reason_key text;
+                  c_sempre_non_edit CONSTANT jsonb := '["utility_id"]'::jsonb;
+                  c_non_edit_extra  CONSTANT jsonb := '["billing_account_id","istanza_utility_id","valuta_id","termine_pagamento_id","validita_dal","validita_al","competenza_mese","fatturazione_immediata","meta"]'::jsonb;
+                  -- Motivo "documento vuoto" nella STESSA forma dei motivi delle
+                  -- fn_check_* ({codice, reason, reason_key, dettaglio}), cosi' i
+                  -- due mondi si concatenano senza conversioni. `codice` e' quello
+                  -- che il guard della porta solleva davvero (PREV_NESSUNA_RIGA_ATTIVA
+                  -- in vendite.fn_cambia_stato_preventivo): qui non si solleva nulla,
+                  -- ma un codice inventato diventerebbe una bugia il giorno in cui
+                  -- qualcuno lo confronta con l'errore ricevuto.
+                  c_motivo_senza_righe CONSTANT jsonb := jsonb_build_array(
+                      jsonb_build_object(
+                          'codice',     'E_PREV_NESSUNA_RIGA_ATTIVA',
+                          'reason',     'DOCUMENTO_SENZA_RIGHE',
+                          'reason_key', 'common.azione_reason.senza_righe',
+                          'dettaglio',  0));
+                  c_action_crea_revisione CONSTANT jsonb := jsonb_build_object(
+                      'key',                  'crea_revisione',
+                      'target_state',         NULL,
+                      'label_key',            'vendite.preventivi.azione_crea_revisione',
+                      'severity',             'info',
+                      'icon',                 'pi pi-clone',
+                      'requires_confirm',     true,
+                      'requires_motivazione', false,
+                      'enabled',              true,
+                      'reason',               NULL,
+                      'reason_key',           NULL
+                  );
+                  c_action_push_commessa CONSTANT jsonb := jsonb_build_object(
+                      'key',                  'push_commessa',
+                      'target_state',         NULL,
+                      'label_key',            'vendite.preventivi.azione_push_commessa',
+                      'severity',             'info',
+                      'icon',                 'pi pi-arrow-right',
+                      'requires_motivazione', false,
+                      'requires_confirm',     true,
+                      'enabled',              true,
+                      'reason',               NULL,
+                      'reason_key',           NULL
+                  );
+                  c_action_genera_ordine CONSTANT jsonb := jsonb_build_object(
+                      'key',                  'genera_ordine',
+                      'target_state',         NULL,
+                      'label_key',            'vendite.preventivi.azione_genera_ordine',
+                      'severity',             'info',
+                      'icon',                 'pi pi-shopping-cart',
+                      'requires_confirm',     true,
+                      'requires_motivazione', false,
+                      'enabled',              true,
+                      'reason',               NULL,
+                      'reason_key',           NULL
+                  );
+              BEGIN
+                  -- Stato corrente + testata + capability PDF (pdf_mode/allow_allegati)
+                  -- + la chiave "nessuna azione" dello stato (dato, non codice).
+                  SELECT p.stato_doc_preventivo_id, sdp.codice_interno,
+                         p.billing_account_id, p.utility_id,
+                         sdp.pdf_mode, sdp.pdf_allow_allegati,
+                         sdp.meta->>'nessuna_azione_key'
+                    INTO v_stato_id, v_stato_cod, v_ba_id, v_utility_id,
+                         v_pdf_mode, v_pdf_allow, v_nessuna_key
+                    FROM vendite.preventivi p
+                    JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+                   WHERE p.id = p_preventivo_id;
+
+                  IF NOT FOUND THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Precondizione "documento non vuoto" per le transizioni che la
+                  -- esigono (meta.requires_righe). La fn sa solo COME contare le
+                  -- proprie righe: specchia il guard di fn_cambia_stato_preventivo
+                  -- (PREV_NESSUNA_RIGA_ATTIVA, rev 2026-07-16): SOLO presenza di
+                  -- riga attiva, nessun vincolo su quantita/prezzo/totale.
+                  v_ha_righe := EXISTS (
+                      SELECT 1 FROM vendite.preventivi_righe pr
+                       WHERE pr.preventivo_id = p_preventivo_id
+                         AND pr.attivo IS TRUE
+                  );
+
+                  -- Motivi ostativi all'ANNULLAMENTO, calcolati UNA VOLTA SOLA.
+                  -- Fn pura: [] quando e' lecito. E' la stessa che solleva nel guard.
+                  v_mot_annulla := script.fn_check_preventivo_annullabile(p_preventivo_id);
+
+                  SELECT COALESCE(
+                      jsonb_agg(
+                          jsonb_build_object(
+                              'key',              t.meta->>'action_key',
+                              'target_state',     sa.codice_interno,
+                              'label_key',        t.meta->>'label_key',
+                              'severity',         t.meta->>'severity',
+                              'icon',             t.meta->>'icon',
+                              'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
+                              -- Tutto discende dall'array dei motivi: nessuna
+                              -- regola puo' mascherarne un'altra.
+                              'enabled',          jsonb_array_length(m.motivi) = 0,
+                              'reason',           m.motivi -> 0 ->> 'reason',
+                              'reason_key',       m.motivi -> 0 ->> 'reason_key',
+                              'reasons',          m.motivi
+                          )
+                          ORDER BY sa.ordine
+                      ),
+                      '[]'::jsonb
+                  )
+                  INTO v_actions
+                  FROM config.transizioni_stati_preventivi t
+                  JOIN config.stati_doc_preventivi sa ON sa.id = t.stato_a_id
+                  -- I motivi della destinazione, sommati in un array solo.
+                  -- Ordine: prima quelli specifici della destinazione, poi il
+                  -- generico "documento vuoto"; il primo e' quello che il FE
+                  -- mostra nel caso singolare.
+                  CROSS JOIN LATERAL (
+                      SELECT CASE WHEN sa.codice_interno = 'ANNULLATO'
+                                  THEN v_mot_annulla ELSE '[]'::jsonb END
+                          || CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                       AND NOT v_ha_righe
+                                  THEN c_motivo_senza_righe ELSE '[]'::jsonb END AS motivi
+                  ) m
+                  WHERE t.stato_da_id = v_stato_id
+                    AND t.attivo IS TRUE
+                    AND COALESCE((t.meta->>'manuale')::boolean, true) IS TRUE
+                    AND t.meta ? 'action_key'
+                    AND t.meta ? 'label_key';
+
+                  v_can_edit := (v_stato_cod = 'DRAFT');
+                  v_can_rev  := (v_stato_cod = 'EMESSO');
+
+                  v_can_push := (v_stato_cod = 'ACCETTATO')
+                      AND vendite.fn_preventivo_ha_residuo_commessa(p_preventivo_id);
+
+                  v_can_ordine := (v_stato_cod = 'ACCETTATO')
+                      AND vendite.fn_preventivo_ha_residuo_ordine(p_preventivo_id);
+
+                  IF v_can_rev THEN
+                      v_actions := v_actions || jsonb_build_array(c_action_crea_revisione);
+                  END IF;
+
+                  IF v_can_push THEN
+                      v_actions := v_actions || jsonb_build_array(c_action_push_commessa);
+                  END IF;
+
+                  IF v_can_ordine THEN
+                      v_actions := v_actions || jsonb_build_array(c_action_genera_ordine);
+                  END IF;
+
+                  IF v_can_push THEN
+                      v_push_reason     := NULL;
+                      v_push_reason_key := NULL;
+                  ELSIF v_stato_cod <> 'ACCETTATO' THEN
+                      v_push_reason     := 'PREVENTIVO_NON_ACCETTATO';
+                      v_push_reason_key := 'vendite.preventivi.push_commessa_reason.non_accettato';
+                  ELSIF v_ba_id IS NULL OR v_utility_id IS NULL THEN
+                      v_push_reason     := 'PREVENTIVO_SENZA_BILLING_ACCOUNT';
+                      v_push_reason_key := 'vendite.preventivi.push_commessa_reason.senza_billing_account';
+                  ELSE
+                      v_push_reason     := 'PREVENTIVO_NESSUNA_RIGA_COMMESSA';
+                      v_push_reason_key := 'vendite.preventivi.push_commessa_reason.nessuna_riga';
+                  END IF;
+
+                  IF v_can_ordine THEN
+                      v_ordine_reason     := NULL;
+                      v_ordine_reason_key := NULL;
+                  ELSIF v_stato_cod <> 'ACCETTATO' THEN
+                      v_ordine_reason     := 'PREVENTIVO_NON_ACCETTATO';
+                      v_ordine_reason_key := 'vendite.preventivi.genera_ordine_reason.non_accettato';
+                  ELSE
+                      v_ordine_reason     := 'PREVENTIVO_NESSUNA_RIGA_ORDINE';
+                      v_ordine_reason_key := 'vendite.preventivi.genera_ordine_reason.nessuna_riga';
+                  END IF;
+
+                  -- La nota "cosa fare invece" si mostra SOLO quando non resta
+                  -- nessun bottone vivo: e' una risposta alla lista vuota, non un
+                  -- commento permanente allo stato. Valutata DOPO gli append, che
+                  -- aggiungono azioni sempre abilitate.
+                  SELECT NOT EXISTS (
+                      SELECT 1
+                        FROM jsonb_array_elements(v_actions) AS a
+                       WHERE COALESCE((a->>'enabled')::boolean, true) IS TRUE
+                  ) INTO v_nessuna_azione;
+
+                  RETURN jsonb_build_object(
+                      'available_actions',            v_actions,
+                      'can_edit_testata',             v_can_edit,
+                      'can_edit_righe',               v_can_edit,
+                      'can_push_commessa',            v_can_push,
+                      'can_push_commessa_reason',     v_push_reason,
+                      'can_push_commessa_reason_key', v_push_reason_key,
+                      'can_genera_ordine',            v_can_ordine,
+                      'can_genera_ordine_reason',     v_ordine_reason,
+                      'can_genera_ordine_reason_key', v_ordine_reason_key,
+                      'can_create_revisione',         v_can_rev,
+                      'nessuna_azione_key',           CASE WHEN v_nessuna_azione THEN v_nessuna_key END,
+                      'non_editable_fields',          CASE WHEN v_can_edit
+                                                          THEN c_sempre_non_edit
+                                                          ELSE c_sempre_non_edit || c_non_edit_extra END,
+                      'pdf',                          jsonb_build_object('mode', v_pdf_mode, 'allow_allegati', v_pdf_allow),
+                      'stato_codice',                 v_stato_cod
+                  );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_available_actions_preventivo(p_preventivo_id bigint)
+              IS 'Capability preventivo per detail API: available_actions + can_edit_* + push_commessa + genera_ordine + create_revisione + nessuna_azione_key + non_editable_fields + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_preventivi (bottone PDF data-driven via capabilities). rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il preventivo non ha righe attive -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard PREV_NESSUNA_RIGA_ATTIVA: SOLO presenza, nessun vincolo su quantita/prezzo/totale). rev 2026-07-19: le 3 label_key (crea_revisione/push_commessa/genera_ordine) e le 5 reason_key (push_commessa_reason.*, genera_ordine_reason.*) passano al namespace i18n vendite.preventivi.* — la radice preventivi.* e'' stata spostata sotto vendite.* dal FE nella migrazione radici i18n; brief-i18n-radici-uniformi §5. rev 2026-08-04: le azioni verso ANNULLATO espongono reasons da script.fn_check_preventivo_annullabile (stessa fn del guard trgfn_preventivi_guard_annullamento: UI e database non possono divergere); i motivi si sommano a quello di requires_righe in un array unico da cui discendono enabled/reason/reason_key. + nessuna_azione_key dal meta dello stato corrente, esposta solo quando nessuna azione risulta abilitata (brief-db-vie-uscita-operatore §4 regola R3, §6).';
+
+              -- ── script.fn_generate_codice · SEQUENZA_NON_CONFIGURATA
+              CREATE OR REPLACE FUNCTION script.fn_generate_codice(tipo text)
+               RETURNS text
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                seq_val    BIGINT;
+                prefix     config.sistema_codici.prefisso%TYPE;
+                sep        config.sistema_codici.separatore%TYPE;
+                len        config.sistema_codici.lunghezza_numero%TYPE;
+                seq_name   TEXT;
+                risultato  TEXT;
+                v_context_name text := 'script.fn_generate_codice';
+                v_usa_sequenza config.sistema_codici.usa_sequenza%TYPE;
+                v_schema_tabella config.sistema_codici.schema_tabella%TYPE;
+                v_nome_tabella config.sistema_codici.nome_tabella%TYPE;
+                v_nome_colonna config.sistema_codici.nome_colonna%TYPE;
+              BEGIN
+                /*	Crea la funzione generica script.fn_generate_codice(tipo TEXT) che:
+                      - legge da config.sistema_codici i parametri per quel tipo
+                      - rispetta il flag usa_sequenza (se false restituisce NULL)
+                      - richiede la sequenza gia' presente (<schema>.<tabella>_<colonna>_seq)
+                      - concatena prefisso, separatore e numero formattato
+                */
+                SELECT prefisso,
+                       separatore,
+                       lunghezza_numero,
+                       usa_sequenza,
+                       schema_tabella,
+                       nome_tabella,
+                       nome_colonna
+                  INTO prefix,
+                       sep,
+                       len,
+                       v_usa_sequenza,
+                       v_schema_tabella,
+                       v_nome_tabella,
+                       v_nome_colonna
+                  FROM config.sistema_codici
+                WHERE codice_interno = tipo;
+
+                IF NOT FOUND THEN
+                  PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      v_context_name,
+                      'E_SEQUENZA_NON_CONFIGURATA',
+                      jsonb_build_object('codice_interno',tipo),
+                      NULL::uuid,
+                      tipo::TEXT
+                    );
+                END IF;
+
+                IF v_usa_sequenza IS DISTINCT FROM TRUE THEN
+                  RETURN NULL;
+                END IF;
+
+                IF v_schema_tabella IS NULL OR v_nome_tabella IS NULL OR v_nome_colonna IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      v_context_name,
+                      'E_SEQUENZA_NON_CONFIGURATA',
+                      jsonb_build_object('codice_interno',tipo),
+                      NULL::uuid,
+                      tipo::TEXT
+                    );
+                END IF;
+
+                seq_name := format('%I.%I_%I_seq', v_schema_tabella, v_nome_tabella, v_nome_colonna);
+
+                IF to_regclass(seq_name) IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      v_context_name,
+                      'E_SEQUENZA_NON_CONFIGURATA',
+                      jsonb_build_object('codice_interno', tipo, 'sequence_name', seq_name),
+                      NULL::uuid,
+                      tipo::TEXT
+                    );
+                END IF;
+
+                EXECUTE format('SELECT nextval(%L)', seq_name) INTO seq_val;
+                risultato := prefix || sep || lpad(seq_val::TEXT, len, '0');
+                RETURN risultato;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_generate_codice(tipo text)
+              IS 'Genera un codice basato su config.sistema_codici. Se usa_sequenza = false restituisce NULL. Richiede sequenza pre-provisionata <schema>.<tabella>_<colonna>_seq.';
+
+              -- ── script.fn_validate_cf_piva_it · CF_NON_VALIDO, PIVA_NON_VALIDA
+              CREATE OR REPLACE FUNCTION script.fn_validate_cf_piva_it(p_tipo_det_id bigint, p_partita_iva text, p_piva_gruppo text, p_codice_fiscale text)
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+                  DECLARE
+                      l_tipo_det RECORD;
+                      l_error_ctx JSONB;
+                      l_cf_valido BOOLEAN;
+                  BEGIN
+                      -- 0) Se tipo_soggetto_dettaglio non specificato, skip
+                      IF p_tipo_det_id IS NULL THEN
+                          RETURN;
+                      END IF;
+
+                      -- 0b) Recupero il tipo di dettaglio del soggetto
+                      SELECT formato_cf, formato_piva
+                      INTO STRICT l_tipo_det
+                      FROM config.tipi_soggetto_dettaglio
+                      WHERE id = p_tipo_det_id;
+
+                      ----------------------------------------------------------------
+                      -- 2) Validazione Partita IVA principale (se prevista e valorizzata)
+                      ----------------------------------------------------------------
+                      IF l_tipo_det.formato_piva <> 'NON_APPLICABILE'
+                      AND p_partita_iva IS NOT NULL
+                      AND NOT script.fn_valida_partita_iva(p_partita_iva)
+                      THEN
+                          l_error_ctx := jsonb_build_object(
+                              'tipo_det', p_tipo_det_id,
+                              'partita_iva', p_partita_iva
+                          );
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'fn_validate_cf_piva_it',
+                              'E_PIVA_NON_VALIDA',
+                              l_error_ctx,
+                              NULL::uuid,
+                              p_partita_iva::text
+                          );
+                      END IF;
+
+                      ----------------------------------------------------------------
+                      -- 3) Validazione Partita IVA Gruppo Acquisto (stesse regole)
+                      ----------------------------------------------------------------
+                      IF l_tipo_det.formato_piva <> 'NON_APPLICABILE'
+                      AND p_piva_gruppo IS NOT NULL
+                      AND NOT script.fn_valida_partita_iva(p_piva_gruppo)
+                      THEN
+                          l_error_ctx := jsonb_build_object(
+                              'tipo_det', p_tipo_det_id,
+                              'piva_gruppo_acquisto', p_piva_gruppo
+                          );
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'fn_validate_cf_piva_it',
+                              'E_PIVA_NON_VALIDA',
+                              l_error_ctx,
+                              NULL::uuid,
+                              p_piva_gruppo::text
+                          );
+                      END IF;
+
+                      ----------------------------------------------------------------
+                      -- 4) Validazione Codice Fiscale (se previsto e valorizzato)
+                      --    Dispatch in base a formato_cf:
+                      --    - ALFANUM_16: CF persona fisica (16 char, algoritmo tabella)
+                      --    - NUM_11:     CF persona giuridica (11 cifre, Luhn = P.IVA)
+                      ----------------------------------------------------------------
+                      IF l_tipo_det.formato_cf <> 'NON_APPLICABILE'
+                      AND p_codice_fiscale IS NOT NULL
+                      THEN
+                          -- Selezione validatore in base al formato
+                          IF l_tipo_det.formato_cf = 'ALFANUM_16' THEN
+                              l_cf_valido := script.fn_valida_codice_fiscale(p_codice_fiscale);
+                          ELSIF l_tipo_det.formato_cf = 'NUM_11' THEN
+                              l_cf_valido := script.fn_valida_partita_iva(p_codice_fiscale);
+                          ELSE
+                              -- Formato non ancora supportato per validazione check digit:
+                              -- accettiamo il valore (la lunghezza e' gia' verificata altrove)
+                              l_cf_valido := TRUE;
+                          END IF;
+
+                          IF NOT l_cf_valido THEN
+                              l_error_ctx := jsonb_build_object(
+                                  'tipo_det', p_tipo_det_id,
+                                  'codice_fiscale', p_codice_fiscale,
+                                  'formato_cf', l_tipo_det.formato_cf
+                              );
+                              PERFORM script.fn_log_and_raise_error(
+                                  'database',
+                                  'fn_validate_cf_piva_it',
+                                  'E_CF_NON_VALIDO',
+                                  l_error_ctx,
+                                  NULL::uuid,
+                                  p_codice_fiscale::text
+                              );
+                          END IF;
+                      END IF;
+
+                      RETURN;
+                  END;
+                  $function$;
+
+              COMMENT ON FUNCTION script.fn_validate_cf_piva_it(p_tipo_det_id bigint, p_partita_iva text, p_piva_gruppo text, p_codice_fiscale text)
+              IS 'Valida Partita IVA principale, Partita IVA di gruppo e Codice Fiscale per soggetti italiani.
+
+              La logica utilizza la configurazione del tipo soggetto di dettaglio (config.tipi_soggetto_dettaglio):
+              - se formato_piva = NON_APPLICABILE non viene eseguita alcuna validazione sulla P.IVA;
+              - se formato_cf  = NON_APPLICABILE non viene eseguita alcuna validazione sul Codice Fiscale.
+
+              Dispatch validazione CF in base a formato_cf:
+              - ALFANUM_16: fn_valida_codice_fiscale (algoritmo CF persona fisica, 16 char)
+              - NUM_11: fn_valida_partita_iva (algoritmo Luhn, CF persona giuridica = P.IVA)
+              - altri formati: nessuna validazione check digit (solo lunghezza)
+
+              In caso di valore non valido richiama script.fn_log_and_raise_error con i codici:
+              - PIVA_NON_VALIDA per P.IVA principale o di gruppo non valida,
+              - CF_NON_VALIDO per Codice Fiscale non valido.';
+
+              -- ── script.trgfn_config_sistema_codici_sync_gen_codice · SEQUENZA_NON_CONFIGURATA
+              CREATE OR REPLACE FUNCTION script.trgfn_config_sistema_codici_sync_gen_codice()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_context_name text := 'script.trgfn_config_sistema_codici_sync_gen_codice';
+                v_codice_interno config.sistema_codici.codice_interno%TYPE;
+                v_schema_tabella config.sistema_codici.schema_tabella%TYPE;
+                v_nome_tabella config.sistema_codici.nome_tabella%TYPE;
+                v_nome_colonna config.sistema_codici.nome_colonna%TYPE;
+                v_usa_sequenza config.sistema_codici.usa_sequenza%TYPE;
+                v_trg_name text;
+                v_fn_name text;
+                v_typcategory text;
+                v_condition text;
+              BEGIN
+                IF TG_OP = 'DELETE' THEN
+                  v_schema_tabella := OLD.schema_tabella;
+                  v_nome_tabella := OLD.nome_tabella;
+                  v_nome_colonna := OLD.nome_colonna;
+                  v_trg_name := format('trg_%s_a10_gen_codice_ins_upd', v_nome_tabella);
+                  v_fn_name := format('trgfn_%s_gen_codice', v_nome_tabella);
+
+                  IF v_schema_tabella IS NOT NULL AND v_nome_tabella IS NOT NULL THEN
+                    BEGIN
+                      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I;', v_trg_name, v_schema_tabella, v_nome_tabella);
+                    EXCEPTION WHEN undefined_table THEN
+                      NULL;
+                    END;
+
+                    BEGIN
+                      EXECUTE 'DROP TRIGGER IF EXISTS trg_attivita_fatturabili_lotti_a10_gen_codice_ins_upd ON vendite.attivita_fatturabili_lotti;';
+                    EXCEPTION WHEN undefined_table THEN
+                      NULL;
+                    END;
+
+                    EXECUTE format('DROP FUNCTION IF EXISTS %I.%I();', v_schema_tabella, v_fn_name);
+                  END IF;
+
+                  RETURN NULL;
+                END IF;
+
+                IF TG_OP = 'UPDATE' THEN
+                  IF OLD.schema_tabella IS DISTINCT FROM NEW.schema_tabella
+                     OR OLD.nome_tabella IS DISTINCT FROM NEW.nome_tabella
+                     OR OLD.nome_colonna IS DISTINCT FROM NEW.nome_colonna THEN
+                    v_trg_name := format('trg_%s_a10_gen_codice_ins_upd', OLD.nome_tabella);
+                    v_fn_name := format('trgfn_%s_gen_codice', OLD.nome_tabella);
+
+                    IF OLD.schema_tabella IS NOT NULL AND OLD.nome_tabella IS NOT NULL THEN
+                      BEGIN
+                        EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I;', v_trg_name, OLD.schema_tabella, OLD.nome_tabella);
+                      EXCEPTION WHEN undefined_table THEN
+                        NULL;
+                      END;
+
+                      BEGIN
+                        EXECUTE 'DROP TRIGGER IF EXISTS trg_attivita_fatturabili_lotti_a10_gen_codice_ins_upd ON vendite.attivita_fatturabili_lotti;';
+                      EXCEPTION WHEN undefined_table THEN
+                        NULL;
+                      END;
+
+                      EXECUTE format('DROP FUNCTION IF EXISTS %I.%I();', OLD.schema_tabella, v_fn_name);
+                    END IF;
+                  END IF;
+                END IF;
+
+                v_codice_interno := NEW.codice_interno;
+                v_schema_tabella := NEW.schema_tabella;
+                v_nome_tabella := NEW.nome_tabella;
+                v_nome_colonna := NEW.nome_colonna;
+                v_usa_sequenza := NEW.usa_sequenza;
+
+                v_trg_name := format('trg_%s_a10_gen_codice_ins_upd', v_nome_tabella);
+                v_fn_name := format('trgfn_%s_gen_codice', v_nome_tabella);
+
+                IF v_usa_sequenza IS DISTINCT FROM TRUE THEN
+                  IF v_schema_tabella IS NOT NULL AND v_nome_tabella IS NOT NULL THEN
+                    BEGIN
+                      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I;', v_trg_name, v_schema_tabella, v_nome_tabella);
+                    EXCEPTION WHEN undefined_table THEN
+                      NULL;
+                    END;
+
+                    BEGIN
+                      EXECUTE 'DROP TRIGGER IF EXISTS trg_attivita_fatturabili_lotti_a10_gen_codice_ins_upd ON vendite.attivita_fatturabili_lotti;';
+                    EXCEPTION WHEN undefined_table THEN
+                      NULL;
+                    END;
+
+                    EXECUTE format('DROP FUNCTION IF EXISTS %I.%I();', v_schema_tabella, v_fn_name);
+                  END IF;
+                  RETURN NULL;
+                END IF;
+
+                IF v_schema_tabella IS NULL OR v_nome_tabella IS NULL OR v_nome_colonna IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      v_context_name,
+                      'E_SEQUENZA_NON_CONFIGURATA',
+                      jsonb_build_object('codice_interno',v_codice_interno),
+                      NULL::uuid,
+                      v_codice_interno::TEXT
+                    );
+                END IF;
+
+                SELECT t.typcategory
+                  INTO v_typcategory
+                  FROM pg_attribute a
+                  JOIN pg_class c ON c.oid = a.attrelid
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                  JOIN pg_type t ON t.oid = a.atttypid
+                WHERE n.nspname = v_schema_tabella
+                  AND c.relname = v_nome_tabella
+                  AND a.attname = v_nome_colonna
+                  AND a.attnum > 0
+                  AND NOT a.attisdropped;
+
+                IF NOT FOUND THEN
+                  PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      v_context_name,
+                      'E_QUERY_FAILED_SCHEMA_TABLE',
+                      jsonb_build_object(
+                        'schema', v_schema_tabella,
+                        'tabella', v_nome_tabella,
+                        'colonna', v_nome_colonna
+                      ),
+                      NULL::uuid,
+                      coalesce(v_schema_tabella::text, '<null_schema>'),
+                      coalesce(v_nome_tabella::text, '<null_tabella>')
+                    );
+                END IF;
+
+                -- Crea la sequenza se non esiste ancora
+                EXECUTE format(
+                  'CREATE SEQUENCE IF NOT EXISTS %I.%I_%I_seq',
+                  v_schema_tabella,
+                  v_nome_tabella,
+                  v_nome_colonna
+                );
+
+                IF v_typcategory = 'N' THEN
+                  v_condition := format('(NEW.%I IS NULL OR NEW.%I = 0)', v_nome_colonna, v_nome_colonna);
+                ELSE
+                  v_condition := format('(NEW.%I IS NULL OR btrim(NEW.%I::text) = '''')', v_nome_colonna, v_nome_colonna);
+                END IF;
+
+                EXECUTE format(
+                  'CREATE OR REPLACE FUNCTION %I.%I() ' ||
+                  'RETURNS trigger LANGUAGE plpgsql AS $FN$ ' ||
+                  'BEGIN ' ||
+                  '  IF %s THEN ' ||
+                  '    NEW.%I := script.fn_generate_codice(%L); ' ||
+                  '  END IF; ' ||
+                  '  RETURN NEW; ' ||
+                  'END; ' ||
+                  '$FN$;',
+                  v_schema_tabella,
+                  v_fn_name,
+                  v_condition,
+                  v_nome_colonna,
+                  v_codice_interno
+                );
+
+                EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I;', v_trg_name, v_schema_tabella, v_nome_tabella);
+                EXECUTE format(
+                  'CREATE TRIGGER %I ' ||
+                  'BEFORE INSERT OR UPDATE OF %I ON %I.%I ' ||
+                  'FOR EACH ROW EXECUTE FUNCTION %I.%I();',
+                  v_trg_name,
+                  v_nome_colonna,
+                  v_schema_tabella,
+                  v_nome_tabella,
+                  v_schema_tabella,
+                  v_fn_name
+                );
+
+                RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_config_sistema_codici_sync_gen_codice()
+              IS 'Sincronizza trigger e sequenza di generazione codici in base a config.sistema_codici (crea/aggiorna/distrugge per usa_sequenza).';
+
+              -- ── vendite.fn_cambia_stato_preventivo · PREV_NESSUNA_RIGA_ATTIVA
+              CREATE OR REPLACE FUNCTION vendite.fn_cambia_stato_preventivo(p_preventivo_id bigint, p_nuovo_stato character varying, p_user text)
+               RETURNS TABLE(preventivo_id bigint, stato_precedente character varying, stato_nuovo character varying)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_stato_corrente_id   vendite.preventivi.stato_doc_preventivo_id%TYPE;
+                v_stato_corrente_cod  config.stati_doc_preventivi.codice_interno%TYPE;
+                v_nuovo_stato_id      config.stati_doc_preventivi.id%TYPE;
+                v_transizione_ok      boolean;
+                v_count_righe         bigint;
+                v_motivi              jsonb;
+                v_numero              vendite.preventivi.numero%TYPE;
+                v_uid                 vendite.preventivi.uid%TYPE;
+              BEGIN
+                -- ==========================================================
+                -- Scopo:
+                --   Eseguire la transizione di stato di un preventivo vendita,
+                --   validando la transizione tramite la matrice configurabile
+                --   config.transizioni_stati_preventivi.
+                --
+                -- Regole:
+                --   - La transizione deve essere presente e attiva nella matrice
+                --   - DRAFT → EMESSO: richiede almeno una riga attiva
+                --     (SOLO presenza: un totale pari a zero non blocca)
+                --   - Verso ANNULLATO: l'ammissibilita' NON e' decisa qui.
+                --     La chiede a script.fn_check_preventivo_annullabile, che e'
+                --     la sede unica della regola (rev 2026-08-04).
+                --
+                -- Parametri:
+                --   p_preventivo_id : ID del preventivo
+                --   p_nuovo_stato   : codice_interno dello stato destinazione
+                --   p_user          : utente che esegue la transizione
+                --
+                -- Ritorna:
+                --   preventivo_id, stato_precedente (codice_interno), stato_nuovo (codice_interno)
+                --
+                -- NOTE codice_interno (rev 2026-06-28, analisi-hardcoded-codice §3a #1):
+                --   stato corrente e destinazione risolti per codice_interno
+                --   (immutabile), non per codice (mutabile). Literali DRAFT/EMESSO/
+                --   ANNULLATO sono codice_interno.
+                --
+                -- NOTE rev 2026-07-16 (solo presenza righe):
+                --   rimossi il guard PREV_TOTALE_NON_POSITIVO e il filtro
+                --   quantita > 0. Per emettere basta che il documento ABBIA
+                --   righe: prezzo/totale 0 e' un caso legittimo. Regola valida
+                --   per tutti i domini documentali.
+                --
+                -- NOTE rev 2026-08-04 (brief-db-vie-uscita-operatore §7.3):
+                --   il guard verso ANNULLATO che stava qui — righe con
+                --   stato_emissione EMESSA in commessa — e' stato ASSORBITO da
+                --   script.fn_check_preventivo_annullabile, che lo espone come
+                --   MOTIVO 2 accanto agli altri due. Qui resta solo la chiamata.
+                --
+                -- NOTE rev 2026-08-05 (§7.4 punto 3):
+                --   la matrice e' ora vincolante anche per il database, via
+                --   vendite.trgfn_preventivi_guard_transizione. Il controllo resta
+                --   ANCHE qui, ed e' voluto: qui si intercetta prima di scrivere,
+                --   li' si copre chi non passa da questa porta. Il codice sollevato
+                --   e' lo STESSO nei due punti — E_PREV_TRANSIZIONE_NON_AMMESSA —
+                --   perche' la regola e' una sola. Il precedente
+                --   PREV_TRANSIZIONE_NON_AMMESSA, privo del prefisso E_ e iscritto
+                --   in dbops.messaggi_errore_codici_legacy, esce di scena.
+                -- ==========================================================
+
+                -- Guard: parametri obbligatori
+                IF p_preventivo_id IS NULL OR p_preventivo_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_preventivo',
+                    'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('param', 'p_preventivo_id', 'value', p_preventivo_id),
+                    NULL::uuid,
+                    'p_preventivo_id = ' || COALESCE(p_preventivo_id::text, 'NULL')
+                  );
+                END IF;
+
+                -- Recupera stato corrente, numero e uid in una sola query
+                SELECT p.stato_doc_preventivo_id, sdp.codice_interno, p.numero, p.uid
+                  INTO v_stato_corrente_id, v_stato_corrente_cod, v_numero, v_uid
+                  FROM vendite.preventivi p
+                  JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+                 WHERE p.id = p_preventivo_id;
+
+                IF v_stato_corrente_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_preventivo',
+                    'E_PREV_STATO_CORRENTE_NON_TROVATO',
+                    jsonb_build_object('preventivo_id', p_preventivo_id),
+                    NULL::uuid,
+                    p_preventivo_id::text
+                  );
+                END IF;
+
+                -- Recupera ID dello stato destinazione
+                SELECT id INTO v_nuovo_stato_id
+                  FROM config.stati_doc_preventivi
+                 WHERE codice_interno = p_nuovo_stato AND attivo IS TRUE;
+
+                IF v_nuovo_stato_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_preventivo',
+                    'E_STATO_SCONOSCIUTO',
+                    jsonb_build_object('codice', p_nuovo_stato),
+                    NULL::uuid,
+                    p_nuovo_stato
+                  );
+                END IF;
+
+                -- Valida transizione via matrice config
+                SELECT EXISTS(
+                  SELECT 1
+                    FROM config.transizioni_stati_preventivi t
+                   WHERE t.stato_da_id = v_stato_corrente_id
+                     AND t.stato_a_id  = v_nuovo_stato_id
+                     AND t.attivo IS TRUE
+                ) INTO v_transizione_ok;
+
+                IF NOT v_transizione_ok THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_preventivo',
+                    'E_PREV_TRANSIZIONE_NON_AMMESSA',
+                    jsonb_build_object(
+                      'preventivo_id', p_preventivo_id,
+                      'stato_da', v_stato_corrente_cod,
+                      'stato_a', p_nuovo_stato
+                    ),
+                    NULL::uuid,
+                    v_stato_corrente_cod, p_nuovo_stato
+                  );
+                END IF;
+
+                -- Guard DRAFT → EMESSO: SOLO presenza di righe attive.
+                -- Nessun vincolo su quantita/prezzo/totale: un documento
+                -- a totale zero deve poter essere emesso (rev 2026-07-16).
+                IF v_stato_corrente_cod = 'DRAFT' AND p_nuovo_stato = 'EMESSO' THEN
+                  SELECT COUNT(*)
+                    INTO v_count_righe
+                    FROM vendite.preventivi_righe pr
+                   WHERE pr.preventivo_id = p_preventivo_id
+                     AND pr.attivo IS TRUE;
+
+                  IF v_count_righe = 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite', 'fn_cambia_stato_preventivo',
+                      'E_PREV_NESSUNA_RIGA_ATTIVA',
+                      jsonb_build_object('preventivo_id', p_preventivo_id),
+                      NULL::uuid,
+                      v_numero
+                    );
+                  END IF;
+                END IF;
+
+                -- Verso ANNULLATO: la regola NON e' qui. La sede unica e'
+                -- script.fn_check_preventivo_annullabile, la stessa che legge il
+                -- trigger di guard e la stessa che accende il bottone nelle
+                -- capability. Qui si solleva il PRIMO motivo; il contesto porta
+                -- l'array intero, cosi' il log li conserva tutti.
+                IF p_nuovo_stato = 'ANNULLATO' THEN
+                  v_motivi := script.fn_check_preventivo_annullabile(p_preventivo_id);
+
+                  IF jsonb_array_length(v_motivi) > 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite', 'fn_cambia_stato_preventivo',
+                      v_motivi -> 0 ->> 'codice',
+                      jsonb_build_object(
+                        'preventivo_id', p_preventivo_id,
+                        'numero',        v_numero,
+                        'motivi',        v_motivi
+                      ),
+                      NULL::uuid,
+                      COALESCE(v_numero, p_preventivo_id::text)
+                    );
+                  END IF;
+                END IF;
+
+                -- Esecuzione: aggiorna stato
+                UPDATE vendite.preventivi
+                   SET stato_doc_preventivo_id = v_nuovo_stato_id,
+                       user_update = COALESCE(p_user, CURRENT_USER)
+                 WHERE id = p_preventivo_id;
+
+                -- Ritorna risultato
+                RETURN QUERY
+                SELECT p_preventivo_id, v_stato_corrente_cod, p_nuovo_stato;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_cambia_stato_preventivo(p_preventivo_id bigint, p_nuovo_stato character varying, p_user text)
+              IS 'Transizione di stato preventivo validata dalla matrice config.transizioni_stati_preventivi. Guard DRAFT->EMESSO: SOLO presenza di righe attive (PREV_NESSUNA_RIGA_ATTIVA). Verso ANNULLATO: l''ammissibilita'' e'' delegata a script.fn_check_preventivo_annullabile — sede unica condivisa col trigger di guard e con fn_available_actions_preventivo — e si solleva il codice del primo motivo. Stato corrente/destinazione e RETURNS per codice_interno (immutabile). rev 2026-06-28: analisi-hardcoded-codice §3a #1. rev 2026-07-16: rimossi guard PREV_TOTALE_NON_POSITIVO e filtro quantita>0. rev 2026-08-04: assorbita la regola locale sull''annullamento dentro la fn pura; esce di scena PREV_ANNULLAMENTO_COMMESSA_ATTIVA. rev 2026-08-05: la matrice e'' vincolante anche per il database (vendite.trgfn_preventivi_guard_transizione) e la porta solleva lo STESSO codice del guard, E_PREV_TRANSIZIONE_NON_AMMESSA; il precedente PREV_TRANSIZIONE_NON_AMMESSA, senza prefisso E_ e iscritto nel registro del debito, esce di scena (brief-db-vie-uscita-operatore §7.4 punto 3).';
+
+              -- ── vendite.trgfn_v_ddt_protect_num · CODICE_NON_MODIFICABILE
+              CREATE OR REPLACE FUNCTION vendite.trgfn_v_ddt_protect_num()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: rende ddt.numero immutabile UNA VOLTA assegnato (a EMESSO),
+              --   ma consente la prima valorizzazione (NULL->valore). Eccezione al
+              --   lock framework (disabilitato per vendite.ddt.numero) necessaria
+              --   perche' il numero si assegna a EMESSO, non in DRAFT (C6).
+              BEGIN
+                  IF OLD.numero IS NOT NULL
+                     AND NEW.numero IS DISTINCT FROM OLD.numero THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME, 'E_CODICE_NON_MODIFICABILE',
+                          jsonb_build_object(
+                              'column',    'numero',
+                              'old_value', OLD.numero,
+                              'new_value', NEW.numero
+                          ),
+                          NEW.tx_id,
+                          'numero'
+                      );
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_v_ddt_protect_num()
+              IS 'Protect condizionale ddt.numero: immutabile dopo la prima assegnazione (a EMESSO), consente NULL->valore. Sostituisce il lock piatto framework (disabilitato in automation_lock_columns) perche'' il numero DDT si assegna a EMESSO, non in DRAFT (C6). rev 2026-07-09.';
+
+              -- ── vendite.trgfn_v_resi_protect_num · CODICE_NON_MODIFICABILE
+              CREATE OR REPLACE FUNCTION vendite.trgfn_v_resi_protect_num()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: rende resi.numero immutabile UNA VOLTA assegnato (a
+              --   CONFERMATO), ma consente la prima valorizzazione (NULL->valore).
+              BEGIN
+                  IF OLD.numero IS NOT NULL
+                     AND NEW.numero IS DISTINCT FROM OLD.numero THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME, 'E_CODICE_NON_MODIFICABILE',
+                          jsonb_build_object(
+                              'column',    'numero',
+                              'old_value', OLD.numero,
+                              'new_value', NEW.numero
+                          ),
+                          NEW.tx_id,
+                          'numero'
+                      );
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_v_resi_protect_num()
+              IS 'Protect condizionale resi.numero: immutabile dopo la prima assegnazione (a CONFERMATO), consente NULL->valore. Mirror trgfn_v_ddt_protect_num. rev 2026-07-13.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback agli 11 codici senza prefisso: restano a catalogo
+              -- (ritirati), quindi i messaggi si risolvono comunque.
+              CREATE OR REPLACE FUNCTION dbops.fn_run_automations_lock_columns(p_exec_mode text, p_schemas text[], p_dry_run boolean)
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_schemas text[];
+                rtab record;
+                rrule record;
+                rcol record;
+                rel  regclass;
+                col_list text[];
+                arg_list text[];
+                trg_name text;
+                tmpl     text;
+                exist_strat text;
+                update_cols text;
+                arg_text text;
+                created boolean;
+              BEGIN
+
+              /*
+                Scopo
+                -----
+                Esegue l'automazione di provisioning dei trigger "LOCK_COLUMNS" sulle tabelle in scope,
+                applicando il blocco su:
+                - codice_interno (se presente in tabella),
+                - colonne extra definite in dbops.automation_lock_columns.
+
+                Regole di selezione colonne
+                ---------------------------
+                1) codice_interno e' implicito: non si configura nella tabella di setup.
+                2) Le colonne extra sono lette da dbops.automation_lock_columns con:
+                   - enabled = true
+                   - exec_mode = 'AUTO' oppure exec_mode = p_exec_mode
+                3) Una colonna e' aggiunta solo se esiste fisicamente nella tabella target.
+
+                Trigger generato
+                ----------------
+                Unico trigger per tabella:
+                  BEFORE UPDATE OF <colonne>
+                  EXECUTE FUNCTION script.trgfn_lock_columns(<col,msgcode...>)
+                Nome trigger:
+                  trg_{table}_a10_lock_columns_upd (via dbops.fn_name_from_template)
+
+                Modalita' DRY RUN
+                ----------------
+                Se p_dry_run=true non esegue DDL (CREATE TRIGGER) e registra audit con dbops.fn_audit_log_once.
+
+                Error handling
+                --------------
+                In caso di errore nella creazione del trigger, log strutturato e rilancio tramite
+                script.fn_log_and_raise_error con contesto 'LOCK_COLUMNS'.
+              */
+
+                v_schemas := dbops.fn_resolve_scope(p_schemas);
+                FOR rtab IN
+                  SELECT n.nspname AS schema_name,
+                        c.relname AS table_name,
+                        (quote_ident(n.nspname)||'.'||quote_ident(c.relname))::regclass AS rel
+                  FROM pg_class c
+                  JOIN pg_namespace n ON n.oid=c.relnamespace
+                  WHERE c.relkind='r'
+                    AND n.nspname = ANY(v_schemas)
+                    AND dbops.fn_table_in_scope(n.nspname, c.relname)
+                LOOP
+                  rel := rtab.rel;
+                  col_list := ARRAY[]::text[];
+                  arg_list := ARRAY[]::text[];
+                  created := false;
+
+                  IF dbops.fn_col_exists(rtab.schema_name, rtab.table_name, 'codice_interno') THEN
+                    col_list := array_append(col_list, 'codice_interno');
+                    arg_list := array_append(arg_list, quote_literal('codice_interno'));
+                    arg_list := array_append(arg_list, quote_literal('CODICE_NON_MODIFICABILE'));
+                  END IF;
+
+                  FOR rcol IN
+                    SELECT column_name,
+                           COALESCE(error_code, 'CODICE_NON_MODIFICABILE') AS error_code
+                      FROM dbops.automation_lock_columns
+                     WHERE enabled
+                       AND target_schema = rtab.schema_name
+                       AND target_table = rtab.table_name
+                       AND (upper(btrim(exec_mode)) = 'AUTO' OR exec_mode = p_exec_mode)
+                     ORDER BY column_name
+                  LOOP
+                    IF dbops.fn_col_exists(rtab.schema_name, rtab.table_name, rcol.column_name) THEN
+                      IF NOT (rcol.column_name = ANY(col_list)) THEN
+                        col_list := array_append(col_list, rcol.column_name);
+                        arg_list := array_append(arg_list, quote_literal(rcol.column_name));
+                        arg_list := array_append(arg_list, quote_literal(rcol.error_code));
+                      END IF;
+                    END IF;
+                  END LOOP;
+
+                  IF array_length(col_list, 1) IS NOT NULL THEN
+                    FOR rrule IN
+                      SELECT *
+                        FROM dbops.automation_rules_tbl r
+                      WHERE r.enabled
+                        AND upper(btrim(r.rule_type))='LOCK_COLUMNS'
+                        AND dbops.fn_schema_match(r.target_schema, rtab.schema_name)
+                        AND (UPPER(r.target_table) = '*ALL' OR rtab.table_name ILIKE r.target_table)
+                        AND (upper(btrim(r.exec_mode)) = 'AUTO' OR r.exec_mode = p_exec_mode)
+                      ORDER BY r.priority, r.id
+                    LOOP
+                      EXIT WHEN created;
+                      exist_strat := COALESCE(rrule.existence_strategy,'BY_NAME');
+                      tmpl := COALESCE(rrule.name_template, 'trg_{table}_a10_lock_columns_upd');
+                      trg_name := dbops.fn_name_from_template(tmpl, rtab.schema_name, rtab.table_name, NULL, NULL, NULL, NULL);
+
+                      IF (exist_strat='BY_NAME'     AND NOT dbops.fn_trigger_exists_by_name(rel, trg_name))
+                      OR (exist_strat='BY_FUNCTION' AND NOT dbops.fn_trigger_exists_by_function(rel, 'script', 'trgfn_lock_columns'))
+                      OR (exist_strat='BOTH'        AND NOT (dbops.fn_trigger_exists_by_name(rel, trg_name)
+                                                        OR dbops.fn_trigger_exists_by_function(rel, 'script', 'trgfn_lock_columns')))
+                      THEN
+                        update_cols := (
+                          SELECT string_agg(quote_ident(c), ', ')
+                            FROM unnest(col_list) AS c
+                        );
+                        arg_text := array_to_string(arg_list, ', ');
+
+                        IF p_dry_run THEN
+                          PERFORM dbops.fn_audit_log_once(
+                            p_function_name => 'dbops.fn_run_automations',
+                            p_status        => 'DRYRUN',
+                            p_rule_type     => 'LOCK_COLUMNS',
+                            p_exec_mode     => p_exec_mode,
+                            p_parts         => ARRAY['LOCK_COLUMNS'],
+                            p_dry_run       => true,
+                            p_params        => jsonb_build_object(
+                                                'table', rtab.schema_name||'.'||rtab.table_name,
+                                                'trigger', trg_name,
+                                                'columns', col_list,
+                                                'action', 'DRYRUN_CREATE_TRIGGER'
+                                              ),
+                            p_message       => 'Trigger would be created'
+                          );
+                          created := true;
+                        ELSE
+                          BEGIN
+                            EXECUTE format($f$
+                              CREATE TRIGGER %I
+                              BEFORE UPDATE OF %s ON %I.%I
+                              FOR EACH ROW
+                              EXECUTE FUNCTION script.trgfn_lock_columns(%s)
+                            $f$, trg_name, update_cols, rtab.schema_name, rtab.table_name, arg_text);
+                            created := true;
+                          EXCEPTION WHEN others THEN
+                            PERFORM script.fn_log_and_raise_error(
+                              'dbops',
+                              'run_automations',
+                              'E_LOCK_COLUMNS',
+                              jsonb_build_object(
+                                'where','LOCK_COLUMNS',
+                                'table', rtab.schema_name||'.'||rtab.table_name,
+                                'error', SQLERRM
+                              ),
+                              NULL::uuid,
+                              SQLERRM
+                            );
+                          END;
+                        END IF;
+                      END IF;
+                    END LOOP;
+                  END IF;
+                END LOOP;
+              END;
+              $function$;
+
+              CREATE OR REPLACE FUNCTION pratiche.fn_genera_pratica_da_flusso(p_flusso_id bigint, p_regola_id bigint)
+               RETURNS bigint
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_pratica_sorgente_id   pratiche.pratiche.id%TYPE;
+                  v_emittente_id          pratiche.pratiche.emittente_fiscale_id%TYPE;
+                  v_soggetto_id           pratiche.pratiche.soggetto_id%TYPE;
+                  v_soggetto_ruolo_id     pratiche.pratiche.soggetto_ruolo_id%TYPE;
+                  v_istanza_utility_id    pratiche.pratiche.istanza_utility_id%TYPE;
+                  v_priorita_id           pratiche.pratiche.priorita_id%TYPE;
+                  v_tipo_prest_dest_id    pratiche.regole_generazione.tipo_prestazione_dest_id%TYPE;
+                  v_template_dest_id      pratiche.regole_generazione.template_flusso_dest_id%TYPE;
+                  v_stato_iniziale_id     config.stati_pratiche.id%TYPE;
+                  v_stato_flusso_id       config.stati_flussi_pratiche.id%TYPE;
+                  v_dest_sequenza         pratiche.template_flussi.sequenza%TYPE;
+                  v_nuova_pratica_id      pratiche.pratiche.id%TYPE;
+                  -- D2-8 (Fase 1): remap del template destinazione per codice
+                  -- dentro la definizione pinnata della figlia.
+                  v_nuova_definizione_id       pratiche.pratiche.definizione_id%TYPE;
+                  v_dest_codice                pratiche.template_flussi.codice%TYPE;
+                  v_template_dest_effettivo_id pratiche.template_flussi.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Genera la pratica figlia da un flusso completato secondo
+                  --   una regola di generazione. Idempotente: per la stessa
+                  --   coppia (flusso, tipo destinazione) esiste al massimo una
+                  --   figlia; le chiamate successive ritornano l'id esistente.
+                  --   Copia emittente/soggetto/contesto/priorita, valorizza
+                  --   pratica_padre_id + flusso_origine_id e, se la regola lo
+                  --   dichiara, crea il flusso iniziale della figlia (template
+                  --   destinazione rimappato per codice nella definizione della
+                  --   figlia, D2-8 definizione-aware).
+                  -- =========================================================
+
+                  -- Guard: parametri obbligatori
+                  IF p_flusso_id IS NULL OR p_flusso_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'fn_genera_pratica_da_flusso',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_flusso_id', 'valore', p_flusso_id),
+                          NULL::uuid,
+                          'p_flusso_id obbligatorio e > 0'
+                      );
+                  END IF;
+
+                  IF p_regola_id IS NULL OR p_regola_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'fn_genera_pratica_da_flusso',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_regola_id', 'valore', p_regola_id),
+                          NULL::uuid,
+                          'p_regola_id obbligatorio e > 0'
+                      );
+                  END IF;
+
+                  -- Recupera pratica_id dal flusso
+                  SELECT f.pratica_id
+                    INTO v_pratica_sorgente_id
+                    FROM pratiche.flussi f
+                   WHERE f.id = p_flusso_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'fn_genera_pratica_da_flusso',
+                          'E_VALORE_MANCANTE',
+                          jsonb_build_object('flusso_id', p_flusso_id),
+                          NULL::uuid,
+                          concat('flusso_id ', p_flusso_id)
+                      );
+                  END IF;
+
+                  -- Recupera dati pratica sorgente (incluso contesto, fix-4)
+                  SELECT p.emittente_fiscale_id, p.soggetto_id,
+                         p.soggetto_ruolo_id, p.istanza_utility_id, p.priorita_id
+                    INTO v_emittente_id, v_soggetto_id,
+                         v_soggetto_ruolo_id, v_istanza_utility_id, v_priorita_id
+                    FROM pratiche.pratiche p
+                   WHERE p.id = v_pratica_sorgente_id;
+
+                  -- Recupera regola di generazione (incluso flusso iniziale, fix-3)
+                  SELECT rg.tipo_prestazione_dest_id, rg.template_flusso_dest_id
+                    INTO v_tipo_prest_dest_id, v_template_dest_id
+                    FROM pratiche.regole_generazione rg
+                   WHERE rg.id = p_regola_id
+                     AND rg.attivo = true;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'fn_genera_pratica_da_flusso',
+                          'E_CODICE',
+                          jsonb_build_object('regola_id', p_regola_id),
+                          NULL::uuid,
+                          p_regola_id::text, 'pratiche.regole_generazione'
+                      );
+                  END IF;
+
+                  -- Idempotenza (fix-1): figlia gia' esistente per
+                  -- (flusso, tipo destinazione) -> ritorna l'id esistente.
+                  -- Vale per trigger auto, API /genera/ e doppi eventi.
+                  SELECT p.id
+                    INTO v_nuova_pratica_id
+                    FROM pratiche.pratiche p
+                   WHERE p.flusso_origine_id  = p_flusso_id
+                     AND p.tipo_prestazione_id = v_tipo_prest_dest_id
+                   LIMIT 1;
+
+                  IF FOUND THEN
+                      RETURN v_nuova_pratica_id;
+                  END IF;
+
+                  -- Determina stato iniziale (APERTA): la figlia auto-generata
+                  -- e' un lavoro gia' avviato, nasce operativa (coerente con il
+                  -- modello "la pratica nasce APERTA"). data_apertura viene
+                  -- valorizzata dal trigger trg_pratiche_m50_set_data_apertura_ins.
+                  SELECT sp.id
+                    INTO v_stato_iniziale_id
+                    FROM config.stati_pratiche sp
+                   WHERE sp.codice_interno = 'APERTA'
+                     AND sp.attivo = true
+                   LIMIT 1;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'fn_genera_pratica_da_flusso',
+                          'E_CODICE',
+                          jsonb_build_object('codice_interno', 'APERTA'),
+                          NULL::uuid,
+                          'APERTA', 'config.stati_pratiche'
+                      );
+                  END IF;
+
+                  -- Crea pratica target: genealogia completa (fix-2) e
+                  -- contesto propagato (fix-4, coerente col soggetto copiato).
+                  -- definizione_id NON passata: l'auto-pin (BEFORE INSERT) la
+                  -- risolve per l'emittente della figlia; RETURNING la rilegge.
+                  INSERT INTO pratiche.pratiche (
+                      emittente_fiscale_id,
+                      tipo_prestazione_id,
+                      soggetto_id,
+                      soggetto_ruolo_id,
+                      istanza_utility_id,
+                      stato_id,
+                      priorita_id,
+                      pratica_padre_id,
+                      flusso_origine_id
+                  ) VALUES (
+                      v_emittente_id,
+                      v_tipo_prest_dest_id,
+                      v_soggetto_id,
+                      v_soggetto_ruolo_id,
+                      v_istanza_utility_id,
+                      v_stato_iniziale_id,
+                      v_priorita_id,
+                      v_pratica_sorgente_id,
+                      p_flusso_id
+                  )
+                  RETURNING id, definizione_id
+                       INTO v_nuova_pratica_id, v_nuova_definizione_id;
+
+                  -- Flusso iniziale della figlia (fix-3): solo se la regola
+                  -- lo dichiara. Il template deve essere senza prerequisiti
+                  -- (la figlia nasce senza flussi): in caso contrario il
+                  -- guard prerequisiti blocca — errore di seed, fail-fast.
+                  IF v_template_dest_id IS NOT NULL THEN
+                      SELECT sfp.id
+                        INTO v_stato_flusso_id
+                        FROM config.stati_flussi_pratiche sfp
+                       WHERE sfp.codice_interno = 'DA_ESEGUIRE'
+                         AND sfp.attivo = true
+                       LIMIT 1;
+
+                      IF NOT FOUND THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'fn_genera_pratica_da_flusso',
+                              'E_CODICE',
+                              jsonb_build_object('codice_interno', 'DA_ESEGUIRE'),
+                              NULL::uuid,
+                              'DA_ESEGUIRE', 'config.stati_flussi_pratiche'
+                          );
+                      END IF;
+
+                      -- D2-8: la regola dichiara il template destinazione per id
+                      -- (nel preset). Rimappa per CODICE nella definizione PINNATA
+                      -- della figlia: con un fork l'id del preset non vi appartiene
+                      -- e il guard D2-7 lo bloccherebbe. In Fase 1 (no fork) e' lo
+                      -- stesso template. La sequenza viene dal template rimappato.
+                      SELECT tf.codice
+                        INTO v_dest_codice
+                        FROM pratiche.template_flussi tf
+                       WHERE tf.id = v_template_dest_id;
+
+                      SELECT tf2.id, tf2.sequenza
+                        INTO v_template_dest_effettivo_id, v_dest_sequenza
+                        FROM pratiche.template_flussi tf2
+                       WHERE tf2.definizione_id = v_nuova_definizione_id
+                         AND tf2.codice = v_dest_codice;
+
+                      IF NOT FOUND THEN
+                          -- La definizione pinnata della figlia non contiene lo
+                          -- step dichiarato dalla regola (es. fork che l'ha rimosso).
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'fn_genera_pratica_da_flusso',
+                              'GENERAZIONE_TEMPLATE_NON_IN_DEFINIZIONE',
+                              jsonb_build_object(
+                                  'regola_id',              p_regola_id,
+                                  'template_dest_codice',   v_dest_codice,
+                                  'definizione_figlia_id',  v_nuova_definizione_id,
+                                  'pratica_figlia_id',      v_nuova_pratica_id
+                              ),
+                              NULL::uuid,
+                              COALESCE(v_dest_codice, v_template_dest_id::text),
+                              v_nuova_definizione_id::text
+                          );
+                      END IF;
+
+                      INSERT INTO pratiche.flussi (
+                          pratica_id,
+                          template_flusso_id,
+                          stato_id,
+                          sequenza
+                      ) VALUES (
+                          v_nuova_pratica_id,
+                          v_template_dest_effettivo_id,
+                          v_stato_flusso_id,
+                          COALESCE(v_dest_sequenza, 0)
+                      );
+                  END IF;
+
+                  RETURN v_nuova_pratica_id;
+              END;
+              $function$;
+
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_guard_pin_immutabile()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: il PIN dell'edizione di workflow e' definitivo. Una volta
+              --        valorizzato non cambia: le pratiche in volo non migrano di
+              --        edizione (V6). Ammessa solo la prima valorizzazione
+              --        (NULL -> valore), es. il backfill Fase 0.
+              BEGIN
+                IF OLD.definizione_id IS NOT NULL
+                   AND NEW.definizione_id IS DISTINCT FROM OLD.definizione_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_pratiche_guard_pin_immutabile',
+                    'PRATICHE_PIN_IMMUTABILE',
+                    jsonb_build_object(
+                      'pratica_id',      NEW.id,
+                      'definizione_da',  OLD.definizione_id,
+                      'definizione_a',   NEW.definizione_id
+                    ),
+                    NEW.tx_id,
+                    NEW.id::text,
+                    OLD.definizione_id::text
+                  );
+                END IF;
+                RETURN NEW;
+              END;
+              $function$;
+
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_sorgenti_guard_coerenza_flusso()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: garantire che il flusso d'origine del link (flusso_id)
+              --   appartenga alla stessa pratica del link. flusso_id ancora il
+              --   ROOT documento->flusso (brief-db-aggancio-documento-flusso):
+              --   deve essere un flusso DI quella pratica.
+              -- Regole:
+              --   1. Scatta solo se flusso_id e' valorizzato (COLLEGATO -> NULL,
+              --      non vincolati).
+              --   2. Se il flusso non esiste, RETURN NEW: la FK
+              --      fk_pratiche_sorgenti_flusso solleva l'errore corretto.
+              --   3. Se la pratica del flusso differisce da NEW.pratica_id ->
+              --      errore parlante.
+              DECLARE
+                  v_flusso_pratica_id pratiche.flussi.pratica_id%TYPE;
+              BEGIN
+                  -- (1) Solo link agganciati a un flusso.
+                  IF NEW.flusso_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT f.pratica_id INTO v_flusso_pratica_id
+                    FROM pratiche.flussi f
+                   WHERE f.id = NEW.flusso_id;
+
+                  -- (2) Flusso inesistente: lascia decidere la FK.
+                  IF NOT FOUND THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- (3) Coerenza pratica del flusso = pratica del link.
+                  IF v_flusso_pratica_id IS DISTINCT FROM NEW.pratica_id THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'pratiche',
+                          'pratiche.trgfn_pratiche_sorgenti_guard_coerenza_flusso',
+                          'PRATICHE_SORGENTI_FLUSSO_PRATICA_INCOERENTE',
+                          jsonb_build_object(
+                              'pratica_id', NEW.pratica_id,
+                              'flusso_id', NEW.flusso_id,
+                              'flusso_pratica_id', v_flusso_pratica_id,
+                              'ruolo_link', NEW.ruolo_link
+                          ),
+                          NEW.tx_id,
+                          NEW.flusso_id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_sospensioni_guard_coerenza_flusso()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: verifica che flusso_id appartenga alla stessa pratica_id della sospensione.
+              -- Se flusso_id IS NULL (sospensione pratica intera), nessun controllo.
+              DECLARE
+                  v_pratica_flusso pratiche.flussi.pratica_id%TYPE;
+              BEGIN
+                  IF NEW.flusso_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT pratica_id INTO v_pratica_flusso
+                  FROM pratiche.flussi WHERE id = NEW.flusso_id;
+
+                  IF v_pratica_flusso IS NULL OR v_pratica_flusso <> NEW.pratica_id THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'pratiche',
+                          'pratiche.trgfn_sospensioni_guard_coerenza_flusso',
+                          'SOSPENSIONI_FLUSSO_NON_COERENTE',
+                          jsonb_build_object(
+                              'flusso_id', NEW.flusso_id,
+                              'pratica_id', NEW.pratica_id
+                          ),
+                          NULL::uuid,
+                          concat('Il flusso ', NEW.flusso_id, ' non appartiene alla pratica ', NEW.pratica_id)
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_tfap_guard_compatibilita()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: config-time, un binding di avanzamento su proiezione e'
+              --   ammesso solo su step non-DOMINIO (D-B3) e non deve coesistere con
+              --   un handler_eventi COMPLETATO sullo stesso step (D-B10).
+              DECLARE
+                v_modalita pratiche.template_flussi.modalita_esito%TYPE;
+                v_codice   pratiche.template_flussi.codice%TYPE;
+              BEGIN
+                SELECT tf.modalita_esito, tf.codice
+                  INTO v_modalita, v_codice
+                  FROM pratiche.template_flussi tf
+                 WHERE tf.id = NEW.template_flusso_id;
+
+                -- Step DOMINIO: la proiezione produce verdetti -> non ammesso.
+                IF v_modalita = 'DOMINIO' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche','pratiche.trgfn_tfap_guard_compatibilita',
+                    'TEMPLATE_FLUSSO_PROIEZIONE_STEP_DOMINIO',
+                    jsonb_build_object('template_flusso_id', NEW.template_flusso_id,
+                                       'template_codice', v_codice,
+                                       'modalita_esito', v_modalita),
+                    dbops.fn_get_or_create_session_tx_id(),
+                    COALESCE(v_codice, NEW.template_flusso_id::text));
+                END IF;
+
+                -- Mutua esclusione con handler_eventi COMPLETATO ATTIVO: il
+                -- conflitto e' fra binding entrambi attivi (un handler disattivato
+                -- non dispatcha -> il cutover puo' disattivarlo, non serve DELETE).
+                IF NEW.attivo AND EXISTS (
+                  SELECT 1 FROM pratiche.template_flussi_handler_eventi e
+                   WHERE e.template_flusso_id = NEW.template_flusso_id
+                     AND e.evento = 'COMPLETATO'
+                     AND e.attivo
+                ) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche','pratiche.trgfn_tfap_guard_compatibilita',
+                    'TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER',
+                    jsonb_build_object('template_flusso_id', NEW.template_flusso_id,
+                                       'template_codice', v_codice,
+                                       'lato', 'binding_proiezione'),
+                    dbops.fn_get_or_create_session_tx_id(),
+                    COALESCE(v_codice, NEW.template_flusso_id::text));
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_tfhe_guard_no_proiezione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: config-time, non si puo' aggiungere un handler_eventi
+              --   COMPLETATO a uno step che ha gia' un binding di avanzamento su
+              --   proiezione (mutua esclusione, D-B10, lato simmetrico).
+              DECLARE
+                v_codice pratiche.template_flussi.codice%TYPE;
+              BEGIN
+                IF NEW.evento = 'COMPLETATO' AND NEW.attivo AND EXISTS (
+                  SELECT 1 FROM pratiche.template_flussi_avanzamento_proiezione b
+                   WHERE b.template_flusso_id = NEW.template_flusso_id
+                     AND b.attivo
+                ) THEN
+                  SELECT tf.codice INTO v_codice
+                    FROM pratiche.template_flussi tf
+                   WHERE tf.id = NEW.template_flusso_id;
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche','pratiche.trgfn_tfhe_guard_no_proiezione',
+                    'TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER',
+                    jsonb_build_object('template_flusso_id', NEW.template_flusso_id,
+                                       'template_codice', v_codice,
+                                       'lato', 'handler_eventi'),
+                    dbops.fn_get_or_create_session_tx_id(),
+                    COALESCE(v_codice, NEW.template_flusso_id::text));
+                END IF;
+                RETURN NEW;
+              END;
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_available_actions_preventivo(p_preventivo_id bigint)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: capability preventivo per detail API (pattern data-driven).
+              --   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
+              --   config.stati_doc_preventivi (bottone PDF data-driven via capabilities).
+              --   rev 2026-07-16: + enabled/reason/reason_key da meta.requires_righe
+              --   (documento vuoto non avanza di stato).
+              --   rev 2026-07-19: label_key e reason_key nel namespace i18n
+              --   vendite.preventivi.* (era preventivi.*, radice spostata dal FE
+              --   nella migrazione radici i18n) — brief-i18n-radici-uniformi §5.
+              --   rev 2026-08-04: + reasons sull'annullamento, da
+              --   script.fn_check_preventivo_annullabile — la STESSA funzione che
+              --   vendite.trgfn_preventivi_guard_annullamento usa per sollevare
+              --   (sorgente unica: la UI non puo' divergere dal guard). I motivi
+              --   si SOMMANO a quello di requires_righe in un array solo, da cui
+              --   discendono enabled/reason/reason_key. + nessuna_azione_key
+              --   dal meta dello stato, esposta quando nessuna azione e' abilitata
+              --   (brief-db-vie-uscita-operatore §4 regola R3 e §6).
+              DECLARE
+                  v_stato_id          vendite.preventivi.stato_doc_preventivo_id%TYPE;
+                  v_stato_cod         config.stati_doc_preventivi.codice_interno%TYPE;
+                  v_ba_id             vendite.preventivi.billing_account_id%TYPE;
+                  v_utility_id        vendite.preventivi.utility_id%TYPE;
+                  v_pdf_mode          config.stati_doc_preventivi.pdf_mode%TYPE;
+                  v_pdf_allow         config.stati_doc_preventivi.pdf_allow_allegati%TYPE;
+                  v_nessuna_key       text;
+                  v_nessuna_azione    boolean := false;
+                  v_actions           jsonb;
+                  v_ha_righe          boolean := false;
+                  v_mot_annulla       jsonb := '[]'::jsonb;
+                  v_can_edit          boolean;
+                  v_can_push          boolean;
+                  v_can_rev           boolean;
+                  v_push_reason       text;
+                  v_push_reason_key   text;
+                  v_can_ordine        boolean;
+                  v_ordine_reason     text;
+                  v_ordine_reason_key text;
+                  c_sempre_non_edit CONSTANT jsonb := '["utility_id"]'::jsonb;
+                  c_non_edit_extra  CONSTANT jsonb := '["billing_account_id","istanza_utility_id","valuta_id","termine_pagamento_id","validita_dal","validita_al","competenza_mese","fatturazione_immediata","meta"]'::jsonb;
+                  -- Motivo "documento vuoto" nella STESSA forma dei motivi delle
+                  -- fn_check_* ({codice, reason, reason_key, dettaglio}), cosi' i
+                  -- due mondi si concatenano senza conversioni. `codice` e' quello
+                  -- che il guard della porta solleva davvero (PREV_NESSUNA_RIGA_ATTIVA
+                  -- in vendite.fn_cambia_stato_preventivo): qui non si solleva nulla,
+                  -- ma un codice inventato diventerebbe una bugia il giorno in cui
+                  -- qualcuno lo confronta con l'errore ricevuto.
+                  c_motivo_senza_righe CONSTANT jsonb := jsonb_build_array(
+                      jsonb_build_object(
+                          'codice',     'PREV_NESSUNA_RIGA_ATTIVA',
+                          'reason',     'DOCUMENTO_SENZA_RIGHE',
+                          'reason_key', 'common.azione_reason.senza_righe',
+                          'dettaglio',  0));
+                  c_action_crea_revisione CONSTANT jsonb := jsonb_build_object(
+                      'key',                  'crea_revisione',
+                      'target_state',         NULL,
+                      'label_key',            'vendite.preventivi.azione_crea_revisione',
+                      'severity',             'info',
+                      'icon',                 'pi pi-clone',
+                      'requires_confirm',     true,
+                      'requires_motivazione', false,
+                      'enabled',              true,
+                      'reason',               NULL,
+                      'reason_key',           NULL
+                  );
+                  c_action_push_commessa CONSTANT jsonb := jsonb_build_object(
+                      'key',                  'push_commessa',
+                      'target_state',         NULL,
+                      'label_key',            'vendite.preventivi.azione_push_commessa',
+                      'severity',             'info',
+                      'icon',                 'pi pi-arrow-right',
+                      'requires_motivazione', false,
+                      'requires_confirm',     true,
+                      'enabled',              true,
+                      'reason',               NULL,
+                      'reason_key',           NULL
+                  );
+                  c_action_genera_ordine CONSTANT jsonb := jsonb_build_object(
+                      'key',                  'genera_ordine',
+                      'target_state',         NULL,
+                      'label_key',            'vendite.preventivi.azione_genera_ordine',
+                      'severity',             'info',
+                      'icon',                 'pi pi-shopping-cart',
+                      'requires_confirm',     true,
+                      'requires_motivazione', false,
+                      'enabled',              true,
+                      'reason',               NULL,
+                      'reason_key',           NULL
+                  );
+              BEGIN
+                  -- Stato corrente + testata + capability PDF (pdf_mode/allow_allegati)
+                  -- + la chiave "nessuna azione" dello stato (dato, non codice).
+                  SELECT p.stato_doc_preventivo_id, sdp.codice_interno,
+                         p.billing_account_id, p.utility_id,
+                         sdp.pdf_mode, sdp.pdf_allow_allegati,
+                         sdp.meta->>'nessuna_azione_key'
+                    INTO v_stato_id, v_stato_cod, v_ba_id, v_utility_id,
+                         v_pdf_mode, v_pdf_allow, v_nessuna_key
+                    FROM vendite.preventivi p
+                    JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+                   WHERE p.id = p_preventivo_id;
+
+                  IF NOT FOUND THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Precondizione "documento non vuoto" per le transizioni che la
+                  -- esigono (meta.requires_righe). La fn sa solo COME contare le
+                  -- proprie righe: specchia il guard di fn_cambia_stato_preventivo
+                  -- (PREV_NESSUNA_RIGA_ATTIVA, rev 2026-07-16): SOLO presenza di
+                  -- riga attiva, nessun vincolo su quantita/prezzo/totale.
+                  v_ha_righe := EXISTS (
+                      SELECT 1 FROM vendite.preventivi_righe pr
+                       WHERE pr.preventivo_id = p_preventivo_id
+                         AND pr.attivo IS TRUE
+                  );
+
+                  -- Motivi ostativi all'ANNULLAMENTO, calcolati UNA VOLTA SOLA.
+                  -- Fn pura: [] quando e' lecito. E' la stessa che solleva nel guard.
+                  v_mot_annulla := script.fn_check_preventivo_annullabile(p_preventivo_id);
+
+                  SELECT COALESCE(
+                      jsonb_agg(
+                          jsonb_build_object(
+                              'key',              t.meta->>'action_key',
+                              'target_state',     sa.codice_interno,
+                              'label_key',        t.meta->>'label_key',
+                              'severity',         t.meta->>'severity',
+                              'icon',             t.meta->>'icon',
+                              'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
+                              -- Tutto discende dall'array dei motivi: nessuna
+                              -- regola puo' mascherarne un'altra.
+                              'enabled',          jsonb_array_length(m.motivi) = 0,
+                              'reason',           m.motivi -> 0 ->> 'reason',
+                              'reason_key',       m.motivi -> 0 ->> 'reason_key',
+                              'reasons',          m.motivi
+                          )
+                          ORDER BY sa.ordine
+                      ),
+                      '[]'::jsonb
+                  )
+                  INTO v_actions
+                  FROM config.transizioni_stati_preventivi t
+                  JOIN config.stati_doc_preventivi sa ON sa.id = t.stato_a_id
+                  -- I motivi della destinazione, sommati in un array solo.
+                  -- Ordine: prima quelli specifici della destinazione, poi il
+                  -- generico "documento vuoto"; il primo e' quello che il FE
+                  -- mostra nel caso singolare.
+                  CROSS JOIN LATERAL (
+                      SELECT CASE WHEN sa.codice_interno = 'ANNULLATO'
+                                  THEN v_mot_annulla ELSE '[]'::jsonb END
+                          || CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                       AND NOT v_ha_righe
+                                  THEN c_motivo_senza_righe ELSE '[]'::jsonb END AS motivi
+                  ) m
+                  WHERE t.stato_da_id = v_stato_id
+                    AND t.attivo IS TRUE
+                    AND COALESCE((t.meta->>'manuale')::boolean, true) IS TRUE
+                    AND t.meta ? 'action_key'
+                    AND t.meta ? 'label_key';
+
+                  v_can_edit := (v_stato_cod = 'DRAFT');
+                  v_can_rev  := (v_stato_cod = 'EMESSO');
+
+                  v_can_push := (v_stato_cod = 'ACCETTATO')
+                      AND vendite.fn_preventivo_ha_residuo_commessa(p_preventivo_id);
+
+                  v_can_ordine := (v_stato_cod = 'ACCETTATO')
+                      AND vendite.fn_preventivo_ha_residuo_ordine(p_preventivo_id);
+
+                  IF v_can_rev THEN
+                      v_actions := v_actions || jsonb_build_array(c_action_crea_revisione);
+                  END IF;
+
+                  IF v_can_push THEN
+                      v_actions := v_actions || jsonb_build_array(c_action_push_commessa);
+                  END IF;
+
+                  IF v_can_ordine THEN
+                      v_actions := v_actions || jsonb_build_array(c_action_genera_ordine);
+                  END IF;
+
+                  IF v_can_push THEN
+                      v_push_reason     := NULL;
+                      v_push_reason_key := NULL;
+                  ELSIF v_stato_cod <> 'ACCETTATO' THEN
+                      v_push_reason     := 'PREVENTIVO_NON_ACCETTATO';
+                      v_push_reason_key := 'vendite.preventivi.push_commessa_reason.non_accettato';
+                  ELSIF v_ba_id IS NULL OR v_utility_id IS NULL THEN
+                      v_push_reason     := 'PREVENTIVO_SENZA_BILLING_ACCOUNT';
+                      v_push_reason_key := 'vendite.preventivi.push_commessa_reason.senza_billing_account';
+                  ELSE
+                      v_push_reason     := 'PREVENTIVO_NESSUNA_RIGA_COMMESSA';
+                      v_push_reason_key := 'vendite.preventivi.push_commessa_reason.nessuna_riga';
+                  END IF;
+
+                  IF v_can_ordine THEN
+                      v_ordine_reason     := NULL;
+                      v_ordine_reason_key := NULL;
+                  ELSIF v_stato_cod <> 'ACCETTATO' THEN
+                      v_ordine_reason     := 'PREVENTIVO_NON_ACCETTATO';
+                      v_ordine_reason_key := 'vendite.preventivi.genera_ordine_reason.non_accettato';
+                  ELSE
+                      v_ordine_reason     := 'PREVENTIVO_NESSUNA_RIGA_ORDINE';
+                      v_ordine_reason_key := 'vendite.preventivi.genera_ordine_reason.nessuna_riga';
+                  END IF;
+
+                  -- La nota "cosa fare invece" si mostra SOLO quando non resta
+                  -- nessun bottone vivo: e' una risposta alla lista vuota, non un
+                  -- commento permanente allo stato. Valutata DOPO gli append, che
+                  -- aggiungono azioni sempre abilitate.
+                  SELECT NOT EXISTS (
+                      SELECT 1
+                        FROM jsonb_array_elements(v_actions) AS a
+                       WHERE COALESCE((a->>'enabled')::boolean, true) IS TRUE
+                  ) INTO v_nessuna_azione;
+
+                  RETURN jsonb_build_object(
+                      'available_actions',            v_actions,
+                      'can_edit_testata',             v_can_edit,
+                      'can_edit_righe',               v_can_edit,
+                      'can_push_commessa',            v_can_push,
+                      'can_push_commessa_reason',     v_push_reason,
+                      'can_push_commessa_reason_key', v_push_reason_key,
+                      'can_genera_ordine',            v_can_ordine,
+                      'can_genera_ordine_reason',     v_ordine_reason,
+                      'can_genera_ordine_reason_key', v_ordine_reason_key,
+                      'can_create_revisione',         v_can_rev,
+                      'nessuna_azione_key',           CASE WHEN v_nessuna_azione THEN v_nessuna_key END,
+                      'non_editable_fields',          CASE WHEN v_can_edit
+                                                          THEN c_sempre_non_edit
+                                                          ELSE c_sempre_non_edit || c_non_edit_extra END,
+                      'pdf',                          jsonb_build_object('mode', v_pdf_mode, 'allow_allegati', v_pdf_allow),
+                      'stato_codice',                 v_stato_cod
+                  );
+              END;
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_generate_codice(tipo text)
+               RETURNS text
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                seq_val    BIGINT;
+                prefix     config.sistema_codici.prefisso%TYPE;
+                sep        config.sistema_codici.separatore%TYPE;
+                len        config.sistema_codici.lunghezza_numero%TYPE;
+                seq_name   TEXT;
+                risultato  TEXT;
+                v_context_name text := 'script.fn_generate_codice';
+                v_usa_sequenza config.sistema_codici.usa_sequenza%TYPE;
+                v_schema_tabella config.sistema_codici.schema_tabella%TYPE;
+                v_nome_tabella config.sistema_codici.nome_tabella%TYPE;
+                v_nome_colonna config.sistema_codici.nome_colonna%TYPE;
+              BEGIN
+                /*	Crea la funzione generica script.fn_generate_codice(tipo TEXT) che:
+                      - legge da config.sistema_codici i parametri per quel tipo
+                      - rispetta il flag usa_sequenza (se false restituisce NULL)
+                      - richiede la sequenza gia' presente (<schema>.<tabella>_<colonna>_seq)
+                      - concatena prefisso, separatore e numero formattato
+                */
+                SELECT prefisso,
+                       separatore,
+                       lunghezza_numero,
+                       usa_sequenza,
+                       schema_tabella,
+                       nome_tabella,
+                       nome_colonna
+                  INTO prefix,
+                       sep,
+                       len,
+                       v_usa_sequenza,
+                       v_schema_tabella,
+                       v_nome_tabella,
+                       v_nome_colonna
+                  FROM config.sistema_codici
+                WHERE codice_interno = tipo;
+
+                IF NOT FOUND THEN
+                  PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      v_context_name,
+                      'SEQUENZA_NON_CONFIGURATA',
+                      jsonb_build_object('codice_interno',tipo),
+                      NULL::uuid,
+                      tipo::TEXT
+                    );
+                END IF;
+
+                IF v_usa_sequenza IS DISTINCT FROM TRUE THEN
+                  RETURN NULL;
+                END IF;
+
+                IF v_schema_tabella IS NULL OR v_nome_tabella IS NULL OR v_nome_colonna IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      v_context_name,
+                      'SEQUENZA_NON_CONFIGURATA',
+                      jsonb_build_object('codice_interno',tipo),
+                      NULL::uuid,
+                      tipo::TEXT
+                    );
+                END IF;
+
+                seq_name := format('%I.%I_%I_seq', v_schema_tabella, v_nome_tabella, v_nome_colonna);
+
+                IF to_regclass(seq_name) IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      v_context_name,
+                      'SEQUENZA_NON_CONFIGURATA',
+                      jsonb_build_object('codice_interno', tipo, 'sequence_name', seq_name),
+                      NULL::uuid,
+                      tipo::TEXT
+                    );
+                END IF;
+
+                EXECUTE format('SELECT nextval(%L)', seq_name) INTO seq_val;
+                risultato := prefix || sep || lpad(seq_val::TEXT, len, '0');
+                RETURN risultato;
+              END;
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_validate_cf_piva_it(p_tipo_det_id bigint, p_partita_iva text, p_piva_gruppo text, p_codice_fiscale text)
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+                  DECLARE
+                      l_tipo_det RECORD;
+                      l_error_ctx JSONB;
+                      l_cf_valido BOOLEAN;
+                  BEGIN
+                      -- 0) Se tipo_soggetto_dettaglio non specificato, skip
+                      IF p_tipo_det_id IS NULL THEN
+                          RETURN;
+                      END IF;
+
+                      -- 0b) Recupero il tipo di dettaglio del soggetto
+                      SELECT formato_cf, formato_piva
+                      INTO STRICT l_tipo_det
+                      FROM config.tipi_soggetto_dettaglio
+                      WHERE id = p_tipo_det_id;
+
+                      ----------------------------------------------------------------
+                      -- 2) Validazione Partita IVA principale (se prevista e valorizzata)
+                      ----------------------------------------------------------------
+                      IF l_tipo_det.formato_piva <> 'NON_APPLICABILE'
+                      AND p_partita_iva IS NOT NULL
+                      AND NOT script.fn_valida_partita_iva(p_partita_iva)
+                      THEN
+                          l_error_ctx := jsonb_build_object(
+                              'tipo_det', p_tipo_det_id,
+                              'partita_iva', p_partita_iva
+                          );
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'fn_validate_cf_piva_it',
+                              'PIVA_NON_VALIDA',
+                              l_error_ctx,
+                              NULL::uuid,
+                              p_partita_iva::text
+                          );
+                      END IF;
+
+                      ----------------------------------------------------------------
+                      -- 3) Validazione Partita IVA Gruppo Acquisto (stesse regole)
+                      ----------------------------------------------------------------
+                      IF l_tipo_det.formato_piva <> 'NON_APPLICABILE'
+                      AND p_piva_gruppo IS NOT NULL
+                      AND NOT script.fn_valida_partita_iva(p_piva_gruppo)
+                      THEN
+                          l_error_ctx := jsonb_build_object(
+                              'tipo_det', p_tipo_det_id,
+                              'piva_gruppo_acquisto', p_piva_gruppo
+                          );
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'fn_validate_cf_piva_it',
+                              'PIVA_NON_VALIDA',
+                              l_error_ctx,
+                              NULL::uuid,
+                              p_piva_gruppo::text
+                          );
+                      END IF;
+
+                      ----------------------------------------------------------------
+                      -- 4) Validazione Codice Fiscale (se previsto e valorizzato)
+                      --    Dispatch in base a formato_cf:
+                      --    - ALFANUM_16: CF persona fisica (16 char, algoritmo tabella)
+                      --    - NUM_11:     CF persona giuridica (11 cifre, Luhn = P.IVA)
+                      ----------------------------------------------------------------
+                      IF l_tipo_det.formato_cf <> 'NON_APPLICABILE'
+                      AND p_codice_fiscale IS NOT NULL
+                      THEN
+                          -- Selezione validatore in base al formato
+                          IF l_tipo_det.formato_cf = 'ALFANUM_16' THEN
+                              l_cf_valido := script.fn_valida_codice_fiscale(p_codice_fiscale);
+                          ELSIF l_tipo_det.formato_cf = 'NUM_11' THEN
+                              l_cf_valido := script.fn_valida_partita_iva(p_codice_fiscale);
+                          ELSE
+                              -- Formato non ancora supportato per validazione check digit:
+                              -- accettiamo il valore (la lunghezza e' gia' verificata altrove)
+                              l_cf_valido := TRUE;
+                          END IF;
+
+                          IF NOT l_cf_valido THEN
+                              l_error_ctx := jsonb_build_object(
+                                  'tipo_det', p_tipo_det_id,
+                                  'codice_fiscale', p_codice_fiscale,
+                                  'formato_cf', l_tipo_det.formato_cf
+                              );
+                              PERFORM script.fn_log_and_raise_error(
+                                  'database',
+                                  'fn_validate_cf_piva_it',
+                                  'CF_NON_VALIDO',
+                                  l_error_ctx,
+                                  NULL::uuid,
+                                  p_codice_fiscale::text
+                              );
+                          END IF;
+                      END IF;
+
+                      RETURN;
+                  END;
+                  $function$;
+
+              CREATE OR REPLACE FUNCTION script.trgfn_config_sistema_codici_sync_gen_codice()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_context_name text := 'script.trgfn_config_sistema_codici_sync_gen_codice';
+                v_codice_interno config.sistema_codici.codice_interno%TYPE;
+                v_schema_tabella config.sistema_codici.schema_tabella%TYPE;
+                v_nome_tabella config.sistema_codici.nome_tabella%TYPE;
+                v_nome_colonna config.sistema_codici.nome_colonna%TYPE;
+                v_usa_sequenza config.sistema_codici.usa_sequenza%TYPE;
+                v_trg_name text;
+                v_fn_name text;
+                v_typcategory text;
+                v_condition text;
+              BEGIN
+                IF TG_OP = 'DELETE' THEN
+                  v_schema_tabella := OLD.schema_tabella;
+                  v_nome_tabella := OLD.nome_tabella;
+                  v_nome_colonna := OLD.nome_colonna;
+                  v_trg_name := format('trg_%s_a10_gen_codice_ins_upd', v_nome_tabella);
+                  v_fn_name := format('trgfn_%s_gen_codice', v_nome_tabella);
+
+                  IF v_schema_tabella IS NOT NULL AND v_nome_tabella IS NOT NULL THEN
+                    BEGIN
+                      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I;', v_trg_name, v_schema_tabella, v_nome_tabella);
+                    EXCEPTION WHEN undefined_table THEN
+                      NULL;
+                    END;
+
+                    BEGIN
+                      EXECUTE 'DROP TRIGGER IF EXISTS trg_attivita_fatturabili_lotti_a10_gen_codice_ins_upd ON vendite.attivita_fatturabili_lotti;';
+                    EXCEPTION WHEN undefined_table THEN
+                      NULL;
+                    END;
+
+                    EXECUTE format('DROP FUNCTION IF EXISTS %I.%I();', v_schema_tabella, v_fn_name);
+                  END IF;
+
+                  RETURN NULL;
+                END IF;
+
+                IF TG_OP = 'UPDATE' THEN
+                  IF OLD.schema_tabella IS DISTINCT FROM NEW.schema_tabella
+                     OR OLD.nome_tabella IS DISTINCT FROM NEW.nome_tabella
+                     OR OLD.nome_colonna IS DISTINCT FROM NEW.nome_colonna THEN
+                    v_trg_name := format('trg_%s_a10_gen_codice_ins_upd', OLD.nome_tabella);
+                    v_fn_name := format('trgfn_%s_gen_codice', OLD.nome_tabella);
+
+                    IF OLD.schema_tabella IS NOT NULL AND OLD.nome_tabella IS NOT NULL THEN
+                      BEGIN
+                        EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I;', v_trg_name, OLD.schema_tabella, OLD.nome_tabella);
+                      EXCEPTION WHEN undefined_table THEN
+                        NULL;
+                      END;
+
+                      BEGIN
+                        EXECUTE 'DROP TRIGGER IF EXISTS trg_attivita_fatturabili_lotti_a10_gen_codice_ins_upd ON vendite.attivita_fatturabili_lotti;';
+                      EXCEPTION WHEN undefined_table THEN
+                        NULL;
+                      END;
+
+                      EXECUTE format('DROP FUNCTION IF EXISTS %I.%I();', OLD.schema_tabella, v_fn_name);
+                    END IF;
+                  END IF;
+                END IF;
+
+                v_codice_interno := NEW.codice_interno;
+                v_schema_tabella := NEW.schema_tabella;
+                v_nome_tabella := NEW.nome_tabella;
+                v_nome_colonna := NEW.nome_colonna;
+                v_usa_sequenza := NEW.usa_sequenza;
+
+                v_trg_name := format('trg_%s_a10_gen_codice_ins_upd', v_nome_tabella);
+                v_fn_name := format('trgfn_%s_gen_codice', v_nome_tabella);
+
+                IF v_usa_sequenza IS DISTINCT FROM TRUE THEN
+                  IF v_schema_tabella IS NOT NULL AND v_nome_tabella IS NOT NULL THEN
+                    BEGIN
+                      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I;', v_trg_name, v_schema_tabella, v_nome_tabella);
+                    EXCEPTION WHEN undefined_table THEN
+                      NULL;
+                    END;
+
+                    BEGIN
+                      EXECUTE 'DROP TRIGGER IF EXISTS trg_attivita_fatturabili_lotti_a10_gen_codice_ins_upd ON vendite.attivita_fatturabili_lotti;';
+                    EXCEPTION WHEN undefined_table THEN
+                      NULL;
+                    END;
+
+                    EXECUTE format('DROP FUNCTION IF EXISTS %I.%I();', v_schema_tabella, v_fn_name);
+                  END IF;
+                  RETURN NULL;
+                END IF;
+
+                IF v_schema_tabella IS NULL OR v_nome_tabella IS NULL OR v_nome_colonna IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      v_context_name,
+                      'SEQUENZA_NON_CONFIGURATA',
+                      jsonb_build_object('codice_interno',v_codice_interno),
+                      NULL::uuid,
+                      v_codice_interno::TEXT
+                    );
+                END IF;
+
+                SELECT t.typcategory
+                  INTO v_typcategory
+                  FROM pg_attribute a
+                  JOIN pg_class c ON c.oid = a.attrelid
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                  JOIN pg_type t ON t.oid = a.atttypid
+                WHERE n.nspname = v_schema_tabella
+                  AND c.relname = v_nome_tabella
+                  AND a.attname = v_nome_colonna
+                  AND a.attnum > 0
+                  AND NOT a.attisdropped;
+
+                IF NOT FOUND THEN
+                  PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      v_context_name,
+                      'E_QUERY_FAILED_SCHEMA_TABLE',
+                      jsonb_build_object(
+                        'schema', v_schema_tabella,
+                        'tabella', v_nome_tabella,
+                        'colonna', v_nome_colonna
+                      ),
+                      NULL::uuid,
+                      coalesce(v_schema_tabella::text, '<null_schema>'),
+                      coalesce(v_nome_tabella::text, '<null_tabella>')
+                    );
+                END IF;
+
+                -- Crea la sequenza se non esiste ancora
+                EXECUTE format(
+                  'CREATE SEQUENCE IF NOT EXISTS %I.%I_%I_seq',
+                  v_schema_tabella,
+                  v_nome_tabella,
+                  v_nome_colonna
+                );
+
+                IF v_typcategory = 'N' THEN
+                  v_condition := format('(NEW.%I IS NULL OR NEW.%I = 0)', v_nome_colonna, v_nome_colonna);
+                ELSE
+                  v_condition := format('(NEW.%I IS NULL OR btrim(NEW.%I::text) = '''')', v_nome_colonna, v_nome_colonna);
+                END IF;
+
+                EXECUTE format(
+                  'CREATE OR REPLACE FUNCTION %I.%I() ' ||
+                  'RETURNS trigger LANGUAGE plpgsql AS $FN$ ' ||
+                  'BEGIN ' ||
+                  '  IF %s THEN ' ||
+                  '    NEW.%I := script.fn_generate_codice(%L); ' ||
+                  '  END IF; ' ||
+                  '  RETURN NEW; ' ||
+                  'END; ' ||
+                  '$FN$;',
+                  v_schema_tabella,
+                  v_fn_name,
+                  v_condition,
+                  v_nome_colonna,
+                  v_codice_interno
+                );
+
+                EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I;', v_trg_name, v_schema_tabella, v_nome_tabella);
+                EXECUTE format(
+                  'CREATE TRIGGER %I ' ||
+                  'BEFORE INSERT OR UPDATE OF %I ON %I.%I ' ||
+                  'FOR EACH ROW EXECUTE FUNCTION %I.%I();',
+                  v_trg_name,
+                  v_nome_colonna,
+                  v_schema_tabella,
+                  v_nome_tabella,
+                  v_schema_tabella,
+                  v_fn_name
+                );
+
+                RETURN NULL;
+              END;
+              $function$;
+
+              CREATE OR REPLACE FUNCTION vendite.fn_cambia_stato_preventivo(p_preventivo_id bigint, p_nuovo_stato character varying, p_user text)
+               RETURNS TABLE(preventivo_id bigint, stato_precedente character varying, stato_nuovo character varying)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_stato_corrente_id   vendite.preventivi.stato_doc_preventivo_id%TYPE;
+                v_stato_corrente_cod  config.stati_doc_preventivi.codice_interno%TYPE;
+                v_nuovo_stato_id      config.stati_doc_preventivi.id%TYPE;
+                v_transizione_ok      boolean;
+                v_count_righe         bigint;
+                v_motivi              jsonb;
+                v_numero              vendite.preventivi.numero%TYPE;
+                v_uid                 vendite.preventivi.uid%TYPE;
+              BEGIN
+                -- ==========================================================
+                -- Scopo:
+                --   Eseguire la transizione di stato di un preventivo vendita,
+                --   validando la transizione tramite la matrice configurabile
+                --   config.transizioni_stati_preventivi.
+                --
+                -- Regole:
+                --   - La transizione deve essere presente e attiva nella matrice
+                --   - DRAFT → EMESSO: richiede almeno una riga attiva
+                --     (SOLO presenza: un totale pari a zero non blocca)
+                --   - Verso ANNULLATO: l'ammissibilita' NON e' decisa qui.
+                --     La chiede a script.fn_check_preventivo_annullabile, che e'
+                --     la sede unica della regola (rev 2026-08-04).
+                --
+                -- Parametri:
+                --   p_preventivo_id : ID del preventivo
+                --   p_nuovo_stato   : codice_interno dello stato destinazione
+                --   p_user          : utente che esegue la transizione
+                --
+                -- Ritorna:
+                --   preventivo_id, stato_precedente (codice_interno), stato_nuovo (codice_interno)
+                --
+                -- NOTE codice_interno (rev 2026-06-28, analisi-hardcoded-codice §3a #1):
+                --   stato corrente e destinazione risolti per codice_interno
+                --   (immutabile), non per codice (mutabile). Literali DRAFT/EMESSO/
+                --   ANNULLATO sono codice_interno.
+                --
+                -- NOTE rev 2026-07-16 (solo presenza righe):
+                --   rimossi il guard PREV_TOTALE_NON_POSITIVO e il filtro
+                --   quantita > 0. Per emettere basta che il documento ABBIA
+                --   righe: prezzo/totale 0 e' un caso legittimo. Regola valida
+                --   per tutti i domini documentali.
+                --
+                -- NOTE rev 2026-08-04 (brief-db-vie-uscita-operatore §7.3):
+                --   il guard verso ANNULLATO che stava qui — righe con
+                --   stato_emissione EMESSA in commessa — e' stato ASSORBITO da
+                --   script.fn_check_preventivo_annullabile, che lo espone come
+                --   MOTIVO 2 accanto agli altri due. Qui resta solo la chiamata.
+                --
+                -- NOTE rev 2026-08-05 (§7.4 punto 3):
+                --   la matrice e' ora vincolante anche per il database, via
+                --   vendite.trgfn_preventivi_guard_transizione. Il controllo resta
+                --   ANCHE qui, ed e' voluto: qui si intercetta prima di scrivere,
+                --   li' si copre chi non passa da questa porta. Il codice sollevato
+                --   e' lo STESSO nei due punti — E_PREV_TRANSIZIONE_NON_AMMESSA —
+                --   perche' la regola e' una sola. Il precedente
+                --   PREV_TRANSIZIONE_NON_AMMESSA, privo del prefisso E_ e iscritto
+                --   in dbops.messaggi_errore_codici_legacy, esce di scena.
+                -- ==========================================================
+
+                -- Guard: parametri obbligatori
+                IF p_preventivo_id IS NULL OR p_preventivo_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_preventivo',
+                    'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('param', 'p_preventivo_id', 'value', p_preventivo_id),
+                    NULL::uuid,
+                    'p_preventivo_id = ' || COALESCE(p_preventivo_id::text, 'NULL')
+                  );
+                END IF;
+
+                -- Recupera stato corrente, numero e uid in una sola query
+                SELECT p.stato_doc_preventivo_id, sdp.codice_interno, p.numero, p.uid
+                  INTO v_stato_corrente_id, v_stato_corrente_cod, v_numero, v_uid
+                  FROM vendite.preventivi p
+                  JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+                 WHERE p.id = p_preventivo_id;
+
+                IF v_stato_corrente_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_preventivo',
+                    'E_PREV_STATO_CORRENTE_NON_TROVATO',
+                    jsonb_build_object('preventivo_id', p_preventivo_id),
+                    NULL::uuid,
+                    p_preventivo_id::text
+                  );
+                END IF;
+
+                -- Recupera ID dello stato destinazione
+                SELECT id INTO v_nuovo_stato_id
+                  FROM config.stati_doc_preventivi
+                 WHERE codice_interno = p_nuovo_stato AND attivo IS TRUE;
+
+                IF v_nuovo_stato_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_preventivo',
+                    'E_STATO_SCONOSCIUTO',
+                    jsonb_build_object('codice', p_nuovo_stato),
+                    NULL::uuid,
+                    p_nuovo_stato
+                  );
+                END IF;
+
+                -- Valida transizione via matrice config
+                SELECT EXISTS(
+                  SELECT 1
+                    FROM config.transizioni_stati_preventivi t
+                   WHERE t.stato_da_id = v_stato_corrente_id
+                     AND t.stato_a_id  = v_nuovo_stato_id
+                     AND t.attivo IS TRUE
+                ) INTO v_transizione_ok;
+
+                IF NOT v_transizione_ok THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_preventivo',
+                    'E_PREV_TRANSIZIONE_NON_AMMESSA',
+                    jsonb_build_object(
+                      'preventivo_id', p_preventivo_id,
+                      'stato_da', v_stato_corrente_cod,
+                      'stato_a', p_nuovo_stato
+                    ),
+                    NULL::uuid,
+                    v_stato_corrente_cod, p_nuovo_stato
+                  );
+                END IF;
+
+                -- Guard DRAFT → EMESSO: SOLO presenza di righe attive.
+                -- Nessun vincolo su quantita/prezzo/totale: un documento
+                -- a totale zero deve poter essere emesso (rev 2026-07-16).
+                IF v_stato_corrente_cod = 'DRAFT' AND p_nuovo_stato = 'EMESSO' THEN
+                  SELECT COUNT(*)
+                    INTO v_count_righe
+                    FROM vendite.preventivi_righe pr
+                   WHERE pr.preventivo_id = p_preventivo_id
+                     AND pr.attivo IS TRUE;
+
+                  IF v_count_righe = 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite', 'fn_cambia_stato_preventivo',
+                      'PREV_NESSUNA_RIGA_ATTIVA',
+                      jsonb_build_object('preventivo_id', p_preventivo_id),
+                      NULL::uuid,
+                      v_numero
+                    );
+                  END IF;
+                END IF;
+
+                -- Verso ANNULLATO: la regola NON e' qui. La sede unica e'
+                -- script.fn_check_preventivo_annullabile, la stessa che legge il
+                -- trigger di guard e la stessa che accende il bottone nelle
+                -- capability. Qui si solleva il PRIMO motivo; il contesto porta
+                -- l'array intero, cosi' il log li conserva tutti.
+                IF p_nuovo_stato = 'ANNULLATO' THEN
+                  v_motivi := script.fn_check_preventivo_annullabile(p_preventivo_id);
+
+                  IF jsonb_array_length(v_motivi) > 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite', 'fn_cambia_stato_preventivo',
+                      v_motivi -> 0 ->> 'codice',
+                      jsonb_build_object(
+                        'preventivo_id', p_preventivo_id,
+                        'numero',        v_numero,
+                        'motivi',        v_motivi
+                      ),
+                      NULL::uuid,
+                      COALESCE(v_numero, p_preventivo_id::text)
+                    );
+                  END IF;
+                END IF;
+
+                -- Esecuzione: aggiorna stato
+                UPDATE vendite.preventivi
+                   SET stato_doc_preventivo_id = v_nuovo_stato_id,
+                       user_update = COALESCE(p_user, CURRENT_USER)
+                 WHERE id = p_preventivo_id;
+
+                -- Ritorna risultato
+                RETURN QUERY
+                SELECT p_preventivo_id, v_stato_corrente_cod, p_nuovo_stato;
+              END
+              $function$;
+
+              CREATE OR REPLACE FUNCTION vendite.trgfn_v_ddt_protect_num()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: rende ddt.numero immutabile UNA VOLTA assegnato (a EMESSO),
+              --   ma consente la prima valorizzazione (NULL->valore). Eccezione al
+              --   lock framework (disabilitato per vendite.ddt.numero) necessaria
+              --   perche' il numero si assegna a EMESSO, non in DRAFT (C6).
+              BEGIN
+                  IF OLD.numero IS NOT NULL
+                     AND NEW.numero IS DISTINCT FROM OLD.numero THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME, 'CODICE_NON_MODIFICABILE',
+                          jsonb_build_object(
+                              'column',    'numero',
+                              'old_value', OLD.numero,
+                              'new_value', NEW.numero
+                          ),
+                          NEW.tx_id,
+                          'numero'
+                      );
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;
+
+              CREATE OR REPLACE FUNCTION vendite.trgfn_v_resi_protect_num()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: rende resi.numero immutabile UNA VOLTA assegnato (a
+              --   CONFERMATO), ma consente la prima valorizzazione (NULL->valore).
+              BEGIN
+                  IF OLD.numero IS NOT NULL
+                     AND NEW.numero IS DISTINCT FROM OLD.numero THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME, 'CODICE_NON_MODIFICABILE',
+                          jsonb_build_object(
+                              'column',    'numero',
+                              'old_value', OLD.numero,
+                              'new_value', NEW.numero
+                          ),
+                          NEW.tx_id,
+                          'numero'
+                      );
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;

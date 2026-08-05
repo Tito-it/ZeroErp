@@ -391,7 +391,7 @@ trova: è esattamente ciò per cui esiste il registro, con il suo motivo scritto
 ## Riferimenti
 
 * `docs/it/dev/work-done/brief-db-bonifica-riferimenti-morti.md` — la storia del primo giro (solo nel repository)
-* `docs/it/dev/work-in-progress/brief-db-codice-errore-strutturato.md` — perché il codice errore ha dovuto cambiare strada, e le due misure che lo presidiano (solo nel repository)
+* `docs/it/dev/work-done/brief-db-codice-errore-strutturato.md` — perché il codice errore ha dovuto cambiare strada, e le due misure che lo presidiano (solo nel repository)
 * [Linee guida API](../dev/api.md) §Tassonomia errori — il contratto visto dal lato backend
 * [Automazione DB](automazione-db.md) — il framework che applica le regole strutturali
 * `.codex/AGENTS.md` §Test — l'uso quotidiano della baseline

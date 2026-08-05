@@ -1,7 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- Guardrail CI — il contratto del codice errore strutturato
---   Brief: docs/it/dev/work-in-progress/brief-db-codice-errore-strutturato.md §10
+--   Brief: docs/it/dev/work-done/brief-db-codice-errore-strutturato.md §10
 --   Funzione presidiata: script.fn_log_and_raise_error (20260805-05)
 --   Registro letto: dbops.messaggi_errore_codici_legacy (20260805-06/07)
 --
@@ -51,10 +51,20 @@ DECLARE
     v_fuori          text;
     v_pagati         text;
     v_ritirati_vivi  text;
+    v_warning_sollevati text;
     -- ⚠️ Deve restare IDENTICO al CHECK chk_messaggi_errore_codici_legacy_non_conforme
-    --    (20260805-06). Se i due divergono, il registro e il presidio finiscono
-    --    per parlare di due insiemi diversi e nessuno se ne accorge.
-    c_convenzione CONSTANT text := '^E_[A-Z0-9_]+$';
+    --    (20260805-06, allargato da 20260805-28). Se i due divergono, il registro
+    --    e il presidio finiscono per parlare di due insiemi diversi e nessuno se
+    --    ne accorge.
+    --
+    -- ⚠️ DUE FAMIGLIE, NON UNA: `E_` sono errori e si sollevano; `W_` sono
+    --    warning e si scrivono soltanto nel log (es. W_TXID_NOT_REGISTERED, il
+    --    cui messaggio comincia con «Warning - »). Allargare la convenzione ai
+    --    warning evita di rinominarli in `E_` per far tornare un conteggio,
+    --    facendogli dire una cosa falsa — ma apre un buco che il controllo (E)
+    --    chiude: un `W_` sollevato arriverebbe al backend, non troverebbe policy
+    --    (la scorciatoia di resolve() e' solo per `E_`) e darebbe **HTTP 500**.
+    c_convenzione CONSTANT text := '^[EW]_[A-Z0-9_]+$';
 BEGIN
     -- ── (A) un solo mittente autorizzato sul canale CONSTRAINT ──────
     --
@@ -224,7 +234,38 @@ BEGIN
           'di debito, perche'' sembra pagato.', v_ritirati_vivi;
     END IF;
 
-    RAISE NOTICE 'OK — un solo mittente sul canale CONSTRAINT, nessun codice fuori convenzione non registrato, nessuna voce di troppo nel registro (% attive), nessun codice ritirato ancora sollevato (% ritirati).',
+    -- ── (E) un codice di WARNING non si solleva, si logga ───────────
+    --
+    -- ⚠️ E' il prezzo di aver allargato la convenzione ai `W_`. La scorciatoia
+    -- di `ErrorPolicyRegistry.resolve` («codice non registrato che comincia per
+    -- E_ -> 400») vale SOLO per `E_`: un `W_` che arrivasse al backend cadrebbe
+    -- su `E_GENERICO` -> **HTTP 500**. Cioe' il difetto da cui nasce questa
+    -- slice, reintrodotto da una regola allentata.
+    --
+    -- La regola in una riga: **`E_` si solleva, `W_` si scrive nel log.**
+    -- `fn_log_error_only` resta lecito per entrambi; `fn_log_and_raise_error` no.
+    SELECT string_agg(DISTINCT n.nspname || '.' || p.proname || '  ->  ' || m[1],
+                      E'\n  ' ORDER BY n.nspname || '.' || p.proname || '  ->  ' || m[1])
+      INTO v_warning_sollevati
+      FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace,
+      LATERAL regexp_matches(p.prosrc, 'fn_log_and_raise_error[^;]*?''(W_[A-Z0-9_]+)''', 'g') AS m
+     WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+       AND p.prolang = (SELECT oid FROM pg_language WHERE lanname = 'plpgsql');
+
+    IF v_warning_sollevati IS NOT NULL THEN
+        RAISE EXCEPTION
+          E'Codici di WARNING sollevati come errori:\n  %\n\n'
+          'Un codice `W_` puo'' essere scritto nel log (script.fn_log_error_only) ma non '
+          'sollevato (script.fn_log_and_raise_error). Sollevato arriva al backend, dove '
+          'la scorciatoia di ErrorPolicyRegistry.resolve vale solo per i codici `E_`: '
+          'cadrebbe su E_GENERICO, cioe'' **HTTP 500** — un errore di server per quello '
+          'che doveva essere un avviso.\n'
+          'Due strade: usare fn_log_error_only se e'' davvero un avviso, oppure — se e'' '
+          'un errore — dargli un codice `E_` e registrarlo in error_policies.py.', v_warning_sollevati;
+    END IF;
+
+    RAISE NOTICE 'OK — un solo mittente sul canale CONSTRAINT, nessun codice fuori convenzione non registrato, nessuna voce di troppo nel registro (% attive), nessun codice ritirato ancora sollevato (% ritirati), nessun warning sollevato come errore.',
         (SELECT count(*) FROM dbops.messaggi_errore_codici_legacy),
         (SELECT count(*) FROM config.messaggi_errore
           WHERE obsoleto_dal IS NOT NULL AND obsoleto_dal <= CURRENT_DATE);

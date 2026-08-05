@@ -579,10 +579,15 @@ un altro difetto: era nascosto **sotto un'etichetta**, come
 | 12 | Terzo lato del presidio: codici sollevati dal DB vs `error_policies.py` | da decidere | 🔴 **aperto** — 133 non dichiarati, misura pronta (§12.5) |
 | 13 | `obsoleto_dal`: ritirare un codice **con log** senza cancellarlo — sblocca 46 casi su 53 | DB | ✅ **fatto** — `20260805-17` + guardrail (D) + pgTAP 4/4 (§15) |
 | 14 | Cantiere rinomina — **1° lotto**: `trgfn_template_flussi_guard_modalita_esito`, 4 codici | DB | ✅ **fatto** — `20260805-19`, registro **50 → 46**, baseline `pratiche` invariata (§15.8) |
-| 15 | Cantiere rinomina — **2° lotto**: `trgfn_pratiche_guard_contesto`, 4 codici | DB | ⏳ **da applicare** — `20260805-20`, registro 46 → 42 (§15.9) |
+| 15 | Cantiere rinomina — **2° lotto**: `trgfn_pratiche_guard_contesto`, 4 codici | DB | ✅ **fatto** — `20260805-20`, registro **46 → 42**, baseline `pratiche` verde (§15.9) |
 | 16 | Cantiere rinomina — **3° lotto**: `fn_crea_revisione_preventivo` (+1 letterale in `fn_cambia_stato_preventivo`), 3 codici | DB | ✅ **fatto** — `20260805-25`, registro **42 → 39**, baseline `vendite` verde (§15.12) |
 | 17 | Cantiere rinomina — **lotti 4..n**: dei **39** rimasti, **27 accoppiati al BE** (23 in un solo file) e 12 DB-only | DB | ⏳ **aperto, ma DB-only**: il coordinamento col BE non serve più — entrambi i nomi sono dichiarati per tutti e 51 (39 vivi + 12 già ritirati), quindi i lotti si aprono senza avvisare e senza sincronia. Brief chiuso in [work-done](../work-done/brief-be-rinomina-codici-known-markers.md) §7 |
 | 18 | Cantiere rinomina — **pulizia finale BE**: togliere le voci vecchie da `known_markers` e `error_policies.py` | BE | ⏳ **aperto, senza fretta** — a registro vuoto. Una voce di troppo non fa danno; va tolta anche l'asserzione «almeno un legacy» del test (work-done §7.4) |
+| 19 | Cantiere rinomina — **tutti i DB-only in un lotto**: 11 codici, 14 funzioni | DB | ✅ **fatto** — `20260805-26`, registro **39 → 28**, baseline verde (§15.14) |
+| 20 | `W_` = warning: convenzione allargata a `^[EW]_` + controllo **(E)** «un warning non si solleva mai» | DB | ✅ **fatto** — `20260805-28`, registro **28 → 27** (§15.15) |
+| 21 | Cantiere rinomina — **ultimo lotto**: 26 codici, 28 funzioni. Registro **27 → 1** | DB | ⏳ **da applicare** — `20260805-29` (§15.17) |
+| 22 | `E_TEMPLATE_CODICE_DUPLICATO` seedato (rilievo BE) | DB | ⏳ **da applicare** — id 864 (§15.18) |
+| 23 | `MESSAGGIO_NON_DEFINITO`: unica voce residua — rinominare `W_*` via provision, o lasciarla | decisione Tid | 🔴 **aperto** (§15.17) |
 
 **Ordine obbligato:** ~~1 → 2 → 7~~ (DB, applicato da solo, nessuna finestra di
 rottura) · ~~6 → 3~~ (BE, in quest'ordine e non nell'altro: invertirli portava
@@ -1364,3 +1369,225 @@ esso servirebbe la sincronia.
 
 Sequenza: il DB prosegue sui 12 DB-only mentre il BE prepara il §4 del suo brief;
 i lotti accoppiati si aprono appena quelle voci sono in `Tito-dev`.
+
+### 15.14 `20260805-26` — tutti i DB-only in un colpo solo
+
+11 codici, **14 funzioni**, registro **39 → 28**.
+
+I primi tre lotti sono stati piccoli apposta, perché la procedura era nuova. Ha
+ripagato: hanno trovato il `;` mancante dopo `$function$` e il codice sollevato
+da due funzioni invece che una. Ora la procedura è meccanica e le trappole sono
+note — spezzare i restanti in altri otto changeSet aggiungerebbe cerimonia, non
+sicurezza.
+
+⚠️ **L'unità del ritiro è il codice, non la funzione**, e qui vale per quattro
+codici su undici: `CODICE_NON_MODIFICABILE` è sollevato da **3** funzioni,
+`PREV_NESSUNA_RIGA_ATTIVA`, `SEQUENZA_NON_CONFIGURATA` e
+`TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER` da **2** ciascuno. Le 14 funzioni
+sono l'elenco completo ricavato da `pg_proc`, non a memoria.
+
+> ⚠️ **Un gemello `E_` esisteva già, e aveva il messaggio peggiore.**
+> `E_SOSPENSIONI_FLUSSO_NON_COERENTE` era a catalogo (id 735), creato da qualcuno
+> e **mai agganciato**. Il suo testo però era più povero dell'originale — senza
+> segnaposti e senza causa/soluzione — mentre il 303 aveva
+> «Il flusso %s non appartiene alla pratica %s» con entrambe.
+>
+> Puntarci la funzione così com'era avrebbe **peggiorato ciò che l'operatore
+> legge**, dentro un changeSet che si presenta come una rinomina. Quindi il 735
+> eredita il contenuto del 303, la funzione punta al 735, il 303 viene ritirato:
+> 10 righe nuove, non 11.
+>
+> È l'unico caso su tutto il registro, ma resta come regola per i lotti futuri:
+> **prima di creare il codice nuovo, verificare che non esista già** — e se
+> esiste, confrontare i due messaggi invece di dare per scontato che il nuovo sia
+> migliore.
+
+### 15.15 ⭐ `W_` non era un codice storto: era un'altra famiglia
+
+`W_TXID_NOT_REGISTERED` stava nel registro come «da rinominare». **Non lo era.**
+La `W` sta per **warning**, è una scelta deliberata: il messaggio comincia con
+«Warning - », e `dbops.trgfn_tx_id_managed` lo passa a `fn_log_error_only` — lo
+**logga soltanto**, non lo solleva mai.
+
+Rinominarlo `E_TXID_NOT_REGISTERED` avrebbe fatto dire al codice una cosa falsa
+— che è un errore — **per far tornare un conteggio**. La convenzione di `api.md`
+parla di codici di *errore*: i warning sono una famiglia che il presidio non
+aveva considerato. Quindi si allarga la regola (`^[EW]_`), non si forza il dato.
+
+⚠️ **Ma allargare apre un buco, e va chiuso nello stesso giro.** La scorciatoia
+di `ErrorPolicyRegistry.resolve` vale **solo per `E_`**: un `W_` *sollevato*
+arriverebbe al backend, non troverebbe policy e cadrebbe su `E_GENERICO` →
+**HTTP 500**. Cioè il difetto da cui nasce tutta questa slice, reintrodotto da
+una regola allentata.
+
+Da qui il **controllo (E)**: *un codice `W_` non può comparire in una chiamata a
+`fn_log_and_raise_error`*. La regola sta in una riga — **`E_` si solleva, `W_` si
+scrive nel log** — e non è un commento, è un cancello della CI. Provato nei due
+versi: verde oggi, rosso col nome della funzione se qualcuno ne solleva uno.
+
+`20260805-28` allinea il `CHECK` del registro alla stessa regex.
+
+> ⚠️ **E l'ordine dentro il changeSet non è pignoleria.** Allargare la
+> convenzione rende `W_TXID_NOT_REGISTERED` *conforme*, e un codice conforme non
+> può stare nel registro: il `CHECK` lo rifiuta. La riga esce anche dal CSV, ma
+> quel seed vive in `80_data` e gira **dopo** `00_schema` — lasciare la pulizia
+> solo al CSV avrebbe fatto fallire la `ALTER` al primo migrate, su ogni database
+> che ha già la riga. Il changeSet se la toglie da solo, prima.
+
+Registro **28 → 27**.
+
+**✅ APPLICATO E VERIFICATO (2026-08-05).** `20260805-26` e `-28` sono `EXECUTED`,
+guardrail verde — *«27 attive, 23 ritirati, nessun warning sollevato come
+errore»* — e nessuna regressione nelle baseline degli schemi toccati.
+
+### 15.16 Dove siamo, e cosa resta
+
+| | 5 agosto, mattina | 5 agosto, sera |
+|---|---:|---:|
+| Codici fuori convenzione | **57** | **27** |
+| di cui cancellati (morti) | — | 6 |
+| di cui ritirati dopo rinomina | — | 23 |
+| di cui riclassificati (`W_`) | — | 1 |
+
+**−30 in una giornata**, e il registro può solo calare: il rubinetto è chiuso dal
+controllo (B), il ritorno di un codice ritirato dal (D), e un warning sollevato
+come errore dal (E).
+
+I **27 che restano** erano classificati «accoppiati al backend» perché il Python
+li riconosce dal testo. Se il BE ha davvero dichiarato **entrambi i nomi** per
+tutti — come risulta dalla riga 17 del §9 — quell'accoppiamento **non c'è più**:
+i lotti si aprono senza sincronia e senza preavviso, e il cantiere può arrivare a
+**zero** invece di fermarsi a 27. Da verificare prima di aprire il lotto, con la
+stessa misura del §15.11.
+
+> **La cosa che vale oltre questo cantiere.** Tre presidi sono stati scritti in
+> questa slice, e **tutti e tre sono diventati rossi almeno una volta su un
+> difetto vero**, non su un caso di prova:
+>
+> * **(B)** ha trovato la riga con l'apostrofo nel codice, la prima volta che è girato;
+> * **(D)** ha fermato un ritiro parziale — un codice sollevato da due funzioni, rinominato in una sola;
+> * **(E)** ha dimostrato di reggere il buco che l'allargamento a `W_` apriva.
+>
+> Un presidio che non è mai stato rosso non si sa se funziona. Questi si sa.
+
+### 15.17 `20260805-29` — l'ultimo lotto: il registro va da 57 a 1
+
+26 codici, 28 funzioni. Sbloccato dalla chiusura del brief BE: l'accoppiamento
+non è stato tolto allungando la lista ma **cambiando la condizione che la usa**
+(`structured.removeprefix("E_") in _CODICI_DICHIARATI`). La lista è un
+*perimetro*, non un elenco di stringhe esatte — ed è la ragione per cui l'ordine
+di rilascio è diventato indifferente.
+
+⚠️ **Corollario da tenere presente per sempre: la rinomina deve restare il solo
+prefisso.** `ERRORE_PARAMETRI` diventa `E_ERRORE_PARAMETRI`, che è brutto —
+«errore errore», senza modulo. Ribattezzarlo `E_PARAMETRI_NON_VALIDI` sarebbe uno
+sbaglio **tecnico**, non di gusto: `removeprefix("E_")` darebbe un nome che il BE
+non ha dichiarato, il campo strutturato verrebbe scartato e vincerebbe il marker,
+restituendo il vecchio codice. La bruttezza si corregge dopo, come slice a sé e
+con coordinamento.
+
+> ⚠️ **Due esclusioni, per motivi diversi e convergenti.**
+>
+> `MESSAGGIO_NON_DEFINITO` **non è un errore di dominio**: è il segnaposto che
+> `fn_log_error_only` scrive in `dbops.error_log` quando un codice non è a
+> catalogo. Non arriva mai a un client — con un codice sconosciuto il campo
+> `CONSTRAINT` porta comunque il codice *originale*, non questo. È un marcatore
+> di log, stessa famiglia di `W_TXID_NOT_REGISTERED`.
+>
+> E c'è un secondo motivo, **indipendente e dirimente**: l'unica funzione che lo
+> nomina è `script.fn_log_error_only`, di proprietà di **`postgres`** — mentre le
+> altre 28 sono di `titodb`, l'utente con cui gira Liquibase. Il
+> `CREATE OR REPLACE` falliva con *«bisogna essere proprietari»*, ed è così che è
+> saltato fuori: **la simulazione ha trovato un vincolo di permessi che nessuna
+> lettura del codice avrebbe mostrato.**
+>
+> Resta l'unica voce del registro. Proposta: rinominarlo
+> `W_MESSAGGIO_NON_DEFINITO` — la famiglia dei warning ora esiste ed è presidiata
+> dal controllo (E) — passando dal changelog di provision che gira come
+> `postgres`; oppure lasciarlo, accettando che il registro si fermi a uno.
+
+**Stato finale simulato:** *«1 attiva, 49 ritirati, nessun warning sollevato come
+errore»*.
+
+| | 5 agosto, mattina | 5 agosto, sera |
+|---:|---:|---:|
+| Codici fuori convenzione | **57** | **1** |
+| cancellati (morti) | — | 6 |
+| ritirati dopo rinomina | — | 49 |
+| riclassificati (`W_`) | — | 1 |
+
+### 15.18 Il seed che ci ha chiesto il BE
+
+`E_TEMPLATE_CODICE_DUPLICATO` è dichiarato nei loro marker (mappa la violazione
+di `uq_template_flussi_definizione_codice`) ma non era a catalogo. Seedato,
+id 864.
+
+Due precisazioni emerse verificandolo, entrambe utili a chi rileggerà:
+
+* **non è un constraint, è un indice unico** — per questo `pg_constraint` non lo
+  trova. Il marker del BE funziona lo stesso, perché il nome dell'indice compare
+  nel testo del 23505;
+* **oggi non degradava a `MESSAGGIO_NON_DEFINITO`**: nessuna funzione DB lo
+  nomina e il backend non scrive in `dbops.error_log`. Lo scenario era teorico —
+  il seed serve per completezza del catalogo, non a riparare un difetto in atto.
+
+---
+
+## 16. ✅ CHIUSO — 2026-08-05
+
+Tutto ciò che questo brief chiedeva è fatto, applicato e verificato. Il campo
+strutturato è in servizio, il registro del debito è passato da **57 a 1**, e il
+contratto è presidiato da tre cancelli che girano a ogni PR.
+
+| | Mattina | Sera |
+|---|---:|---:|
+| Codici fuori convenzione | **57** | **1** |
+| cancellati perché morti | — | 6 |
+| ritirati dopo rinomina | — | 49 |
+| riclassificati (`W_` = warning) | — | 1 |
+| Codici raggiungibili dal backend col loro nome | ~91% per caso | **100% per progetto** |
+
+**ChangeSet:** `20260805-05..08`, `-11`, `-16..20`, `-25`, `-26`, `-28`, `-29`.
+**pgTAP:** 13 asserzioni nuove sul campo strutturato + 4 su `obsoleto_dal`.
+**Guardrail:** `scripts/sql/guardrail_codice_errore_strutturato.sql`, 5 controlli.
+
+### Quello che vale oltre il cantiere
+
+Tre presidi sono nati qui, e **tutti e tre sono diventati rossi almeno una volta
+su un difetto vero**, non su un caso di prova:
+
+| | Cosa ha preso |
+|---|---|
+| **(B)** rubinetto sui codici nuovi | la riga con l'apostrofo dentro il codice, al primo giro |
+| **(D)** un codice ritirato non si solleva | un ritiro parziale: codice sollevato da due funzioni, rinominato in una sola |
+| **(E)** un warning non si solleva | il buco che l'allargamento a `W_` avrebbe aperto |
+
+Un presidio che non è mai stato rosso non si sa se funziona. Questi si sa.
+
+E la simulazione in transazione annullata, prima di ogni apply, ha fermato tre
+cose che nessuna rilettura del codice avrebbe mostrato: il `;` mancante dopo
+`$function$`, il gemello `E_` già esistente col messaggio peggiore, e il vincolo
+di **proprietà** su `fn_log_error_only` (di `postgres`, non dell'utente Liquibase).
+
+### ⚠️ Se arrivi qui da un percorso che non esiste più
+
+Quattordici changeSet applicati — `20260805-05, -06, -07, -08, -11, -16, -17,
+-18, -19, -20, -25, -26, -28, -29` — citano questo brief al vecchio percorso
+`docs/it/dev/work-in-progress/…`. Sono `runOnChange: false` e già `EXECUTED`:
+correggerli romperebbe i checksum, quindi restano così. **Il file è qui, in
+`work-done/`.** Non è un caso comune: succede quando un cantiere nasce e finisce
+nello stesso giorno, e i changeSet vengono scritti mentre il brief è ancora
+aperto.
+
+### Cosa resta, e dove è finito
+
+| | Dove |
+|---|---|
+| **Terzo lato del presidio** — ~141 codici `E_*` sollevati dal DB senza una voce in `error_policies.py`, 90 da trigger sul percorso richiesta | 🔴 **brief proprio**: [brief-db-be-terzo-lato-presidio-codici](../work-in-progress/brief-db-be-terzo-lato-presidio-codici.md) |
+| `MESSAGGIO_NON_DEFINITO`: unica voce del registro. Rinominarlo `W_*` via changelog di provision (è di `postgres`), o lasciarlo | decisione, §15.17 |
+| Pulizia BE: togliere le voci vecchie da `_KNOWN_DB_ERROR_MARKERS` e `error_policies.py`. **La condizione non va toccata** | BE, senza fretta |
+
+⚠️ **Non droppare `dbops.messaggi_errore_codici_legacy`** anche se è quasi vuota:
+finché esiste, il controllo (B) la legge e impedisce che un codice nuovo fuori
+convenzione entri senza registrazione. È il rubinetto che ha reso possibile tutto
+il resto.

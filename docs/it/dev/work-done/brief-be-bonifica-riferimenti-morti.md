@@ -33,7 +33,7 @@
 > | Cosa | Dove prosegue |
 > | --- | --- |
 > | §6 item 2 — il passo SDI gira per la prima volta e nessuno legge a valle (sospeso per decisione di Tid) | [fatturazione-roadmap §9](../work-in-progress/fatturazione-roadmap.md) — è materia di fatturazione, non di bonifica |
-> | §5 → i 133 codici `E_*` sollevati dal DB e non dichiarati in `error_policies.py` | [brief-db-codice-errore-strutturato §12.5](../work-in-progress/brief-db-codice-errore-strutturato.md) — il figlio, che prosegue |
+> | §5 → i 133 codici `E_*` sollevati dal DB e non dichiarati in `error_policies.py` | [brief-db-codice-errore-strutturato §12.5](../work-done/brief-db-codice-errore-strutturato.md) — il figlio, che prosegue |
 >
 > ---
 
@@ -268,7 +268,7 @@ ma cambia il comportamento di ogni errore dell'applicazione: va fatta come slice
 a sé, con un pgTAP e un test Django che asseriscono il giro completo.
 
 > **Risposta del BE (2026-08-05):**
-> [brief-db-codice-errore-strutturato](../work-in-progress/brief-db-codice-errore-strutturato.md).
+> [brief-db-codice-errore-strutturato](../work-done/brief-db-codice-errore-strutturato.md).
 > Misurato sul percorso reale: il codice **arriva nel 91% dei casi**, non perché
 > il DB lo mandi ma perché il driver allega lo statement chiamante, dove il
 > codice è scritto come letterale. Si perde sui **9** call site che lo passano da
@@ -283,7 +283,7 @@ a sé, con un pgTAP e un test Django che asseriscono il giro completo.
 
 | # | Cosa | Dove | Urgenza | Stato (BE, 2026-08-05) |
 |---|---|---|---|---|
-| 1 | 🔴 Decidere come far arrivare il codice errore al translator (§5) | `fn_log_and_raise_error` + `error_translator.py` | **alta** | ✅ analizzato e rilanciato al DB: [brief-db-codice-errore-strutturato](../work-in-progress/brief-db-codice-errore-strutturato.md) |
+| 1 | 🔴 Decidere come far arrivare il codice errore al translator (§5) | `fn_log_and_raise_error` + `error_translator.py` | **alta** | ✅ analizzato e rilanciato al DB: [brief-db-codice-errore-strutturato](../work-done/brief-db-codice-errore-strutturato.md) |
 | 2 | Esercitare il passo SDI, che ora gira per la prima volta | pipeline MASSIVO/GIORNALIERO | **alta** | ⏸️ **sospeso** (decisione Tid). `vendite.fatture_sdi` ha **0 righe**: mai girato. Da ora le pipeline 5 e 7 ci scrivono, ma nessuno legge — il builder XML non esiste e l'executor scarta il valore di ritorno |
 | 3 | Decidere se `force_new_tentativo=false` deve restituire anche le fatture già registrate | `fn_prepare_sdi_payload` | media | ✅ deciso: **no**. La semantica attuale è quella giusta per una pipeline (ciò che torna è ciò che va spedito). Il payload completo del lotto, se servirà, è una **funzione read-only separata** |
 | 4 | Controllare il FE su `provincia_sigla` non più paddata | lookup vie | media | ✅ **niente da fare**: `StradarioAutocomplete` usa solo `indirizzo_normalizzato`, `useIndirizzoBase` solo `codice_postale_id`. Né `provincia_sigla` né `cap` sono letti |
@@ -294,4 +294,4 @@ a sé, con un pgTAP e un test Django che asseriscono il giro completo.
 **20 call site in 15 funzioni** chiamano `fn_log_and_raise_error`/`fn_log_error_only`
 con 5 argomenti, e una funzione `VARIADIC text[]` non è chiamabile con zero
 argomenti variadici (42883 a runtime, provato live). Dettaglio e censimento in
-[brief-db-codice-errore-strutturato §8](../work-in-progress/brief-db-codice-errore-strutturato.md).
+[brief-db-codice-errore-strutturato §8](../work-done/brief-db-codice-errore-strutturato.md).

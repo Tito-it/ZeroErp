@@ -4,7 +4,7 @@
 --
 -- Test: config.messaggi_errore.obsoleto_dal — il ritiro di un codice errore
 -- NON tocca il runtime. Riferimento: migration 20260805-17.
--- Brief: docs/it/dev/work-in-progress/brief-db-codice-errore-strutturato.md §15
+-- Brief: docs/it/dev/work-done/brief-db-codice-errore-strutturato.md §15
 --
 -- Contesto: un codice legacy spesso non si puo' cancellare, perche'
 -- dbops.error_log ha una FK NOT NULL verso config.messaggi_errore(id) e 46
