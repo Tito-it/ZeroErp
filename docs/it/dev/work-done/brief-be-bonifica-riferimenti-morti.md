@@ -1,5 +1,42 @@
 # Brief BE — ricadute della bonifica dei riferimenti morti
 
+> 🟢 **CHIUSO — 2026-08-05, su ok di Tid.** Le sei voci del §6 sono chiuse; la
+> settima (`FP_VARIADIC`) pure. Quello che prosegue vive in due posti, entrambi
+> dichiarati qui sotto: nessuna riga di questo brief resta senza casa.
+>
+> **Il §5 — il punto serio — è chiuso end-to-end**, e non per deduzione dai
+> changeSet: il giro completo è stato eseguito sul database vivo. Il DB manda il
+> codice nel campo strutturato (`CONSTRAINT`, `20260805-05`), il translator lo
+> legge per primo col testo come ripiego, la policy risolve:
+>
+> ```text
+> script.fn_log_and_raise_error(... 'E_PREV_TRANSIZIONE_NON_AMMESSA' ...)
+>   → constraint_name = E_PREV_TRANSIZIONE_NON_AMMESSA
+>   → http 409 + «Transizione del preventivo non ammessa: da A a B.»
+> ```
+>
+> Prima lo stesso errore usciva come `E_DATABASE` a 400 con messaggio generico.
+> Il contratto invertito descritto nel §5 — più il seed è completo, meno
+> l'error handling funziona — non esiste più.
+>
+> **`FP_VARIADIC`: zero call site sotto i sei argomenti** (famiglia F8, commit
+> `b7d594244`). Verificato contando gli argomenti sul sorgente di ogni funzione
+> viva. ⚠️ Un conteggio ingenuo ne segnala cinque: quattro sono menzioni dentro
+> **commenti**, e il quinto è `anagrafiche.trgfn_clienti_sync_stato_pdp`, che di
+> argomenti ne ha sette — il contatore si ferma prima perché in una chiave jsonb
+> c'è **una parentesi chiusa di troppo** (`'…configurati correttamente)'`), che
+> gli fa credere chiusa la chiamata. Svista innocua, ma da togliere se il team DB
+> passa di lì.
+>
+> **Le due code, e dove sono andate:**
+>
+> | Cosa | Dove prosegue |
+> | --- | --- |
+> | §6 item 2 — il passo SDI gira per la prima volta e nessuno legge a valle (sospeso per decisione di Tid) | [fatturazione-roadmap §9](../work-in-progress/fatturazione-roadmap.md) — è materia di fatturazione, non di bonifica |
+> | §5 → i 133 codici `E_*` sollevati dal DB e non dichiarati in `error_policies.py` | [brief-db-codice-errore-strutturato §12.5](../work-in-progress/brief-db-codice-errore-strutturato.md) — il figlio, che prosegue |
+>
+> ---
+
 **Chi scrive:** team DB (`dev/db-tid`), 2026-08-04.
 **Perché:** i changeSet `20260804-37..65` hanno riparato funzioni che il backend
 chiama, e ne hanno droppate altre che il backend **documenta come attive**.
@@ -231,7 +268,7 @@ ma cambia il comportamento di ogni errore dell'applicazione: va fatta come slice
 a sé, con un pgTAP e un test Django che asseriscono il giro completo.
 
 > **Risposta del BE (2026-08-05):**
-> [brief-db-codice-errore-strutturato](brief-db-codice-errore-strutturato.md).
+> [brief-db-codice-errore-strutturato](../work-in-progress/brief-db-codice-errore-strutturato.md).
 > Misurato sul percorso reale: il codice **arriva nel 91% dei casi**, non perché
 > il DB lo mandi ma perché il driver allega lo statement chiamante, dove il
 > codice è scritto come letterale. Si perde sui **9** call site che lo passano da
@@ -246,7 +283,7 @@ a sé, con un pgTAP e un test Django che asseriscono il giro completo.
 
 | # | Cosa | Dove | Urgenza | Stato (BE, 2026-08-05) |
 |---|---|---|---|---|
-| 1 | 🔴 Decidere come far arrivare il codice errore al translator (§5) | `fn_log_and_raise_error` + `error_translator.py` | **alta** | ✅ analizzato e rilanciato al DB: [brief-db-codice-errore-strutturato](brief-db-codice-errore-strutturato.md) |
+| 1 | 🔴 Decidere come far arrivare il codice errore al translator (§5) | `fn_log_and_raise_error` + `error_translator.py` | **alta** | ✅ analizzato e rilanciato al DB: [brief-db-codice-errore-strutturato](../work-in-progress/brief-db-codice-errore-strutturato.md) |
 | 2 | Esercitare il passo SDI, che ora gira per la prima volta | pipeline MASSIVO/GIORNALIERO | **alta** | ⏸️ **sospeso** (decisione Tid). `vendite.fatture_sdi` ha **0 righe**: mai girato. Da ora le pipeline 5 e 7 ci scrivono, ma nessuno legge — il builder XML non esiste e l'executor scarta il valore di ritorno |
 | 3 | Decidere se `force_new_tentativo=false` deve restituire anche le fatture già registrate | `fn_prepare_sdi_payload` | media | ✅ deciso: **no**. La semantica attuale è quella giusta per una pipeline (ciò che torna è ciò che va spedito). Il payload completo del lotto, se servirà, è una **funzione read-only separata** |
 | 4 | Controllare il FE su `provincia_sigla` non più paddata | lookup vie | media | ✅ **niente da fare**: `StradarioAutocomplete` usa solo `indirizzo_normalizzato`, `useIndirizzoBase` solo `codice_postale_id`. Né `provincia_sigla` né `cap` sono letti |
@@ -257,4 +294,4 @@ a sé, con un pgTAP e un test Django che asseriscono il giro completo.
 **20 call site in 15 funzioni** chiamano `fn_log_and_raise_error`/`fn_log_error_only`
 con 5 argomenti, e una funzione `VARIADIC text[]` non è chiamabile con zero
 argomenti variadici (42883 a runtime, provato live). Dettaglio e censimento in
-[brief-db-codice-errore-strutturato §8](brief-db-codice-errore-strutturato.md).
+[brief-db-codice-errore-strutturato §8](../work-in-progress/brief-db-codice-errore-strutturato.md).

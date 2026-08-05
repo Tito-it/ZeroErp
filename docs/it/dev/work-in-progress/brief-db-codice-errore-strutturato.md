@@ -4,8 +4,8 @@
 **Cosa chiede:** una riga in `script.fn_log_and_raise_error` — il codice errore
 viaggia in un campo strutturato dell'eccezione invece di essere ripescato dal
 testo.
-**Origine:** [brief-be-bonifica-riferimenti-morti](brief-be-bonifica-riferimenti-morti.md) §5,
-che nasce da [brief-db-bonifica-riferimenti-morti](brief-db-bonifica-riferimenti-morti.md).
+**Origine:** [brief-be-bonifica-riferimenti-morti](../work-done/brief-be-bonifica-riferimenti-morti.md) §5,
+che nasce da [brief-db-bonifica-riferimenti-morti](../work-done/brief-db-bonifica-riferimenti-morti.md).
 **Perimetro:** **una** funzione DB + **un** metodo Python. Ma cambia il
 comportamento di ogni errore dell'applicazione: va fatta come slice a sé.
 
