@@ -130,13 +130,68 @@ $$;
    END IF;
    ```
 
-6. **Sollevamento dell'eccezione con DETAIL/HINT localizzati**
+6. **Sollevamento dell'eccezione con DETAIL/HINT localizzati e CODICE strutturato**
 
    ```plpgsql
    RAISE EXCEPTION '%', v_msg
-       USING DETAIL = coalesce(v_detail, ''),
-             HINT   = coalesce(v_hint,   '');
+       USING ERRCODE    = 'P0001',
+             DETAIL     = coalesce(v_detail, ''),
+             HINT       = coalesce(v_hint,   ''),
+             CONSTRAINT = p_error_code;      -- post 05-08-2026
    ```
+
+---
+
+### 🔑 Il contratto del codice errore (post 05-08-2026)
+
+Migration `20260805-05`. È la parte della funzione che il **backend** guarda.
+
+> **SQLSTATE `P0001` + campo `CONSTRAINT` valorizzato = errore di dominio**,
+> e il contenuto di `CONSTRAINT` è il codice di `config.messaggi_errore`.
+
+**Cosa risolve.** Prima di questa modifica il codice non partiva in nessun campo
+dell'eccezione: né nel messaggio (0 messaggi su 637 contengono il proprio
+codice), né in `causa`, né in `soluzione`. Arrivava lo stesso al backend nel 91%
+dei casi, ma per una ragione che non era una difesa: il driver allega al testo
+dell'eccezione anche lo **statement chiamante**, e lì il codice c'è — scritto a
+mano nella chiamata. Il backend lo pescava con una regex dal **sorgente della
+chiamata**, non dal dato.
+
+Funzionava finché il codice era un letterale. Per i nove call site che lo passano
+da espressione — le guard di cambio stato, `v_motivi -> 0 ->> 'codice'` — nel
+testo compariva il **nome della variabile**, e il backend ripiegava su
+`E_DATABASE`, classificato *tecnico*: messaggio localizzato scartato, dettaglio
+soppresso. Chi tentava una transizione non ammessa non leggeva perché.
+
+**Perché `CONSTRAINT` e non altro.** `RAISE ... USING` espone cinque campi
+strutturati oltre a `DETAIL`/`HINT`, e questo è il meno improprio: il codice
+errore *è* il nome della regola violata. Uno SQLSTATE custom sarebbe stato più
+pulito ma richiede una mappa `codice → sqlstate` da tenere allineata al seed,
+cioè un secondo posto da tenere in bolla. `COLUMN` funziona identico ma dice una
+cosa falsa; lo stesso vale per `SCHEMA`/`TABLE`, che pure sarebbero comodi per
+far viaggiare `p_area`: psycopg e Django li leggono per comporre i messaggi di
+`IntegrityError`.
+
+**Tre cose da sapere se ci si lavora sopra:**
+
+| Fatto | Conseguenza pratica |
+| --- | --- |
+| **Non cambia `str(exc)`** | il testo dell'eccezione è identico a prima, e il codice **non** vi compare. Per questo il DB ha potuto andare per primo, senza finestra di rottura |
+| **`CONSTRAINT = NULL` non solleva** | produce **stringa vuota**. Succede nelle guard che passano un'espressione che vale NULL: lato Python va trattata come assente (`... or None`) |
+| **Il campo sopravvive** | annidato in più livelli PL/pgSQL (trigger → guard → helper) e attraverso un `EXCEPTION ... RAISE;` che ri-solleva. Asserito in pgTAP, non dedotto |
+
+⚠️ **Questa è l'unica sede autorizzata a scrivere `CONSTRAINT` in un `RAISE`.**
+`P0001` è anche il default di qualunque `RAISE EXCEPTION` scritto a mano, e nel
+DB ce ne sono 135 in 46 funzioni: se uno di quelli usasse lo stesso campo per
+dire altro, il backend non fallirebbe — **risponderebbe sbagliato**, che è
+peggio. Presidiato in CI da `scripts/sql/guardrail_codice_errore_strutturato.sql`.
+
+**Test**: `db/pgtap/script/test-fn-log-and-raise-error-constraint-codice.sql`
+(il campo, il contratto negativo «il codice non sta nel messaggio», la
+sopravvivenza all'annidamento) e
+`db/pgtap/vendite/test-ordini-guard-transizione-v1.sql` test 8 (il percorso
+vero: `UPDATE` → trigger → guard → funzione pura → helper, con il codice deciso
+dal DB e non scritto nella chiamata).
 
 ---
 

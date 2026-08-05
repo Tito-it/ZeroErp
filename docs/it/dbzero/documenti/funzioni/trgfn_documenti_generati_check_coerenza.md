@@ -60,7 +60,8 @@ BEGIN
         'template_documento_id_atteso', v_tv_template_id,
         'template_documento_id_fornito', NEW.template_documento_id
       ),
-      NULL::uuid
+      NULL::uuid,
+      VARIADIC ARRAY[]::text[]
     );
   END IF;
 
@@ -73,7 +74,8 @@ BEGIN
         'tipo_documento_output_id_atteso', v_tv_tipo_id,
         'tipo_documento_output_id_fornito', NEW.tipo_documento_output_id
       ),
-      NULL::uuid
+      NULL::uuid,
+      VARIADIC ARRAY[]::text[]
     );
   END IF;
 
@@ -86,7 +88,8 @@ BEGIN
         'sorgente_tipo_id_atteso', v_tv_sorgente_id,
         'sorgente_tipo_id_fornito', NEW.sorgente_tipo_id
       ),
-      NULL::uuid
+      NULL::uuid,
+      VARIADIC ARRAY[]::text[]
     );
   END IF;
 
@@ -99,7 +102,8 @@ BEGIN
         'emittente_fiscale_id_atteso', v_tv_emittente_id,
         'emittente_fiscale_id_fornito', NEW.emittente_fiscale_id
       ),
-      NULL::uuid
+      NULL::uuid,
+      VARIADIC ARRAY[]::text[]
     );
   END IF;
 

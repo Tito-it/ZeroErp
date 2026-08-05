@@ -32,7 +32,8 @@ BEGIN
       'emittente_fiscale_id', OLD.emittente_fiscale_id,
       'codice_interno', OLD.codice_interno
     ),
-    NULL::uuid
+    NULL::uuid,
+    VARIADIC ARRAY[]::text[]
   );
   RETURN OLD;
 END;

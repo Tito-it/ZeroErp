@@ -37,7 +37,8 @@ BEGIN
         'versione', OLD.versione,
         'stato', OLD.stato
       ),
-      NULL::uuid
+      NULL::uuid,
+      VARIADIC ARRAY[]::text[]
     );
   END IF;
 
@@ -55,7 +56,8 @@ BEGIN
         'versione', OLD.versione,
         'documento_generati_count', v_count_documenti
       ),
-      NULL::uuid
+      NULL::uuid,
+      VARIADIC ARRAY[]::text[]
     );
   END IF;
 

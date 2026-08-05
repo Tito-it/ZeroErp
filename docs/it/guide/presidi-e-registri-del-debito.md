@@ -3,9 +3,10 @@
 > **Cos'è.** Come ZeroErp si accorge da solo che qualcosa si è rotto in silenzio,
 > e come tiene il conto di ciò che è rotto e non è ancora stato sistemato.
 >
-> Riguarda due controlli che oggi esistono — i **riferimenti morti** nelle funzioni
-> del database e la **baseline dei test rossi** — e la forma che hanno in comune.
-> Il §4 spiega perché uno gira da solo e l'altro va lanciato a mano, che è la
+> Riguarda i controlli che oggi esistono — i **riferimenti morti** nelle funzioni
+> del database, la **baseline dei test rossi** e il **codice errore che arriva al
+> backend** — e la forma che hanno in comune.
+> Il §4 spiega perché alcuni girano da soli e uno va lanciato a mano, che è la
 > domanda che si fanno tutti.
 
 ---
@@ -28,7 +29,7 @@ commento non presidia niente. È un promemoria, e i promemoria non si rileggono.
 Perché una cosa sia davvero presidiata serve qualcosa che **protesti da solo**,
 al momento giusto, senza che nessuno debba ricordarsene.
 
-Da qui i due controlli descritti sotto. Non sono due strumenti a caso: hanno la
+Da qui i controlli descritti sotto. Non sono strumenti presi a caso: hanno la
 stessa forma, e conviene conoscerla prima dei dettagli.
 
 ---
@@ -68,7 +69,7 @@ storia.
 
 ---
 
-## 3. I due presidi che esistono oggi
+## 3. I presidi che esistono oggi
 
 ### 3.1 Riferimenti morti nelle funzioni del database
 
@@ -133,13 +134,56 @@ cinque minuti a capire *perché* è rossa, invece di catalogarla per somiglianza
 copertura vale **zero**, non «parziale» — ed è peggio di un'area scoperta, perché
 sembra coperta.
 
+### 3.3 Il codice errore che arriva al backend
+
+**Cosa sorveglia.** Quando il database rifiuta un'operazione, manda al backend un
+**codice** — ed è da quel codice che dipendono la risposta HTTP (409 sul
+duplicato, 404 sul non trovato, 403 sul vietato) e il messaggio che l'operatore
+legge a video. Il codice viaggia in un campo dedicato dell'eccezione, riempito da
+`script.fn_log_and_raise_error`.
+
+Due modi di romperlo, e nessuno dei due fa rumore da solo:
+
+* **qualcun altro scrive nello stesso campo.** Sollevare un errore a mano è
+  possibile ovunque, e nel database ci sono 135 punti che lo fanno. Se uno di
+  quelli mettesse nel campo qualcosa che non è un codice, il backend non
+  fallirebbe: **risponderebbe la cosa sbagliata**, che è peggio, perché nessuno
+  se ne accorge;
+* **nasce un codice con un nome fuori convenzione.** I codici si chiamano
+  `E_MODULO_TIPO`. Il backend, davanti a un codice che non conosce, se comincia
+  per `E_` risponde comunque in modo sensato; se non comincia per `E_` risponde
+  **errore di server**. Un operatore che tenta una transizione non ammessa si
+  vedrebbe un 500 al posto di una spiegazione.
+
+| Pezzo | Dove |
+|---|---|
+| La sede unica che scrive il campo | `script.fn_log_and_raise_error` |
+| Il registro | `dbops.messaggi_errore_codici_legacy` |
+| Cancello automatico | `scripts/sql/guardrail_codice_errore_strutturato.sql` (passo CI) |
+| Test della suite | `db/pgtap/script/test-fn-log-and-raise-error-constraint-codice.sql` · `db/pgtap/vendite/test-ordini-guard-transizione-v1.sql` (test 8) |
+
+**Il registro contiene 57 nomi fuori convenzione ereditati** dal periodo in cui
+la regola non era presidiata. Rinominarli costerebbe più di quanto renda, quindi
+si tengono; ma dal 2026-08-05 **non se ne aggiungono altri**. Il registro deve
+calare, e quando arriva a zero la tabella si toglie.
+
+⚠️ **Qui il registro non chiede un motivo per riga**, al contrario di quello dei
+riferimenti morti. Non è una dimenticanza: là ogni voce è una decisione a sé,
+qui le 57 voci sono **una sola decisione** presa una volta. Un motivo
+obbligatorio avrebbe prodotto 57 copie della stessa frase — rumore che somiglia
+al rigore. La ragione sta scritta una volta, sulla tabella.
+
 ---
 
-## 4. Perché uno gira da solo e l'altro no
+## 4. Perché alcuni girano da soli e uno no
 
-Sì: il cancello automatico non va lanciato a mano. Ma i due controlli non sono la
-stessa cosa messa in due posti diversi — sono **due controlli di natura diversa**,
-e questo paragrafo spiega perché ognuno sta dove sta.
+Sì: i cancelli automatici non vanno lanciati a mano. Ma non sono la stessa cosa
+messa in posti diversi — sono **controlli di natura diversa**, e questo paragrafo
+spiega perché ognuno sta dove sta.
+
+Il confronto qui sotto mette a fuoco i due estremi, il §3.1 (cancello in CI) e il
+§3.2 (baseline da lanciare): il §3.3 appartiene alla stessa famiglia del §3.1 e
+vale per lui tutto ciò che si dice del cancello automatico.
 
 ### Cosa dà davvero il controllo automatico
 
@@ -279,7 +323,7 @@ La ricetta, nell'ordine:
 
 ## 7. Limiti noti
 
-Nessuno dei due controlli vede tutto, e conviene saperlo prima di fidarsi di un
+Nessuno di questi controlli vede tutto, e conviene saperlo prima di fidarsi di un
 risultato verde.
 
 **Il controllo sui riferimenti morti non vede:**
@@ -308,5 +352,7 @@ trova: è esattamente ciò per cui esiste il registro, con il suo motivo scritto
 ## Riferimenti
 
 * `docs/it/dev/work-done/brief-db-bonifica-riferimenti-morti.md` — la storia del primo giro (solo nel repository)
+* `docs/it/dev/work-in-progress/brief-db-codice-errore-strutturato.md` — perché il codice errore ha dovuto cambiare strada, e le due misure che lo presidiano (solo nel repository)
+* [Linee guida API](../dev/api.md) §Tassonomia errori — il contratto visto dal lato backend
 * [Automazione DB](automazione-db.md) — il framework che applica le regole strutturali
 * `.codex/AGENTS.md` §Test — l'uso quotidiano della baseline

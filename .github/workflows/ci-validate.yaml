@@ -227,6 +227,35 @@ jobs:
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
             -f scripts/sql/check_naming_stato_codice.sql
 
+      - name: Guardrail codice errore strutturato (canale CONSTRAINT + convenzione codici)
+        env:
+          PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+        run: |
+          # Presidia il contratto introdotto da 20260805-05: «SQLSTATE P0001 +
+          # campo CONSTRAINT valorizzato = errore di dominio». Su quella
+          # condizione il backend decide 409/404/403/400 e quale messaggio
+          # legge l'operatore.
+          #
+          # (A) un solo mittente sul canale: solo script.fn_log_and_raise_error
+          #     puo' scrivere CONSTRAINT in un RAISE. P0001 e' anche il default
+          #     di qualunque RAISE EXCEPTION scritto a mano, e nel DB ce ne
+          #     sono 135 in 46 funzioni: se uno di quelli usasse lo stesso
+          #     campo per dire altro, il backend non fallirebbe — risponderebbe
+          #     sbagliato, che e' peggio.
+          # (B) il rubinetto sulla convenzione E_{MODULO}_{TIPO}: un codice
+          #     senza prefisso E_ arriva al backend, non trova policy e cade su
+          #     E_GENERICO -> HTTP 500. I 57 ereditati stanno nel registro
+          #     dbops.messaggi_errore_codici_legacy; il 58esimo no.
+          # (C) e il registro deve CALARE: una voce che non corrisponde piu' a
+          #     nessun codice a seed va tolta.
+          #
+          # ⚠️ POSIZIONE: qui va bene prima del migrate di Django, al contrario
+          # del guardrail dei riferimenti morti. Quello compila i corpi plpgsql
+          # e ha bisogno dello schema `django`; questo legge solo pg_proc,
+          # config.messaggi_errore e il registro, che Liquibase ha gia' messo.
+          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
+            -f scripts/sql/guardrail_codice_errore_strutturato.sql
+
       - name: Django check
         working-directory: ./backend
         run: |

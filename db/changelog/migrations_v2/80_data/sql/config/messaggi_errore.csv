@@ -85,7 +85,6 @@ E_ATTIVO_REQUIRE,it,Errore generazione regola ATTIVO_require. Sqlerrm: %s,42,"",
 E_ATTIVO_BLOCK,it,Errore generazione regola ATTIVO_block. Sqlerrm: %s,43,"",""
 E_STATO_SCONOSCIUTO,it,Errore Stato errato o mancante: id = %s,9,"",""
 E_NOTE_CONFIG,it,Configurazione trigger errata: tabella %s inesistente,75,"",""
-E_NOTE_RIGA_MISMATCH',it,La riga %s non appartiene a %s %s,76,"",""
 E_SORG_CONF,it,Configurazione sorgente mancante/errata.Sorgente_tipo_id(%s),77,"",""
 E_SORG_KEY_MISSING,it,Chiave sorgente mancante: atteso sorgente_riga %s(%s),78,"",""
 E_SORG_KEYSEL,it,key_selector non supportato. (%s),79,"",""

@@ -30,7 +30,8 @@ BEGIN
         'versione', OLD.versione,
         'stato', OLD.stato
       ),
-      NULL::uuid
+      NULL::uuid,
+      VARIADIC ARRAY[]::text[]
     );
   END IF;
   RETURN NEW;
