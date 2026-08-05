@@ -6,20 +6,16 @@
 # ------------------------------------------------------------
 
 
-import re
 from dataclasses import asdict, dataclass
 from typing import Any
 
 from django.conf import settings
 from django.db import DatabaseError
 
+from apps.core.services.db_error_fields import app_error_code_from_text, db_error_code
 from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.request_context import get_request_id
 from apps.core.services.service_errors import ServiceError
-
-# Estrattore codici errore applicativi dai messaggi PG.
-# Convenzione: E_<DOMINIO>_<DETTAGLIO> (es. E_UTENTE_DISABILITATO, E_ANAG_VALIDAZIONE).
-_APP_ERROR_CODE_RE = re.compile(r"\bE_[A-Z][A-Z0-9_]+\b")
 
 # Translator centralizzato: converte errori Python/DB in payload API uniforme.
 
@@ -149,9 +145,11 @@ class ErrorTranslator:
         # Heuristica retryable: serializzazione/deadlock possono essere ritentati.
         retryable = sqlstate in {"40001", "40P01"}
 
-        # Cerca codice errore applicativo nel messaggio DB (es. E_UTENTE_DISABILITATO).
-        # fn_log_and_raise_error include il codice nel RAISE EXCEPTION via fn_get_messaggio.
-        app_code = ErrorTranslator._extract_app_error_code(raw_message)
+        # Codice di dominio: campo strutturato per primo (`CONSTRAINT` su
+        # SQLSTATE P0001, dal 2026-08-05), testo come ripiego per i RAISE
+        # diretti che non passano da `script.fn_log_and_raise_error`.
+        # Vedi `apps/core/services/db_error_fields.py` per il contratto.
+        app_code = db_error_code(exc, text=raw_message)
         if app_code:
             code = app_code
             # Per errori applicativi usa il messaggio pulito (senza stack)
@@ -169,7 +167,10 @@ class ErrorTranslator:
         )
 
     # Scopo: Estrae un codice errore applicativo E_* dal messaggio di eccezione DB.
+    #        Delegatore su `db_error_fields.app_error_code_from_text`: e' il solo
+    #        RIPIEGO testuale, la lettura primaria e' il campo strutturato in
+    #        `_from_database_error`. Resta come metodo perche' e' chiamato dai
+    #        test e da chi ha in mano il testo e non l'eccezione.
     @staticmethod
     def _extract_app_error_code(message: str) -> str | None:
-        match = _APP_ERROR_CODE_RE.search(message)
-        return match.group(0) if match else None
+        return app_error_code_from_text(message)

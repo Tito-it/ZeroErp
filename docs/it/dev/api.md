@@ -780,6 +780,23 @@ Presidio: `scripts/sql/guardrail_codice_errore_strutturato.sql` (in CI) verifica
 che **nessun altro** `RAISE` scriva `CONSTRAINT`. Un secondo mittente su quel
 canale non farebbe fallire niente: farebbe rispondere sbagliato.
 
+**Lato backend la lettura è una sola**, in `apps/core/services/db_error_fields.py`
+(`structured_db_error_code` → campo, `db_error_code` → campo con ripiego al
+testo). Non leggere `diag.constraint_name` a mano: prima del 2026-08-05 la stessa
+estrazione era riscritta in **quattro** punti, ognuno col suo modo, ed è così che
+si sono sfilati. I quattro delegano tutti al modulo:
+
+| Punto | Cosa fa col codice |
+| --- | --- |
+| `ErrorTranslator._from_database_error` | lo usa come `ApiError.code` (→ policy → status) |
+| `payload_helpers.translate_db_errors` | lo usa al posto del `fallback_code` di dominio |
+| `ErrorManager.raise_from_database_error` | lo accetta **solo se dichiarato** nei `known_markers` del chiamante (`message` vs `fallback_message` dipendono da «riconosciuto o no») |
+| `pratiche_service._raise_known_db_error` | idem, filtrato sui codici del dominio |
+
+Test: `apps/core/tests/services/test_db_error_fields.py` — 8 unitari sulla
+precedenza campo/testo e 3 end-to-end su DB reale (saltati se il DB non
+risponde), fra cui il caso in cui la regex **non** trova nulla e il campo sì.
+
 #### ⚠️ 57 codici ereditati fuori convenzione
 
 `ErrorPolicyRegistry.resolve` ha una scorciatoia — codice non registrato ma che

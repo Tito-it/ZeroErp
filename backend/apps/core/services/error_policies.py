@@ -3327,6 +3327,249 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Refresh token richiesto per applicare il cambio di emittente.",
         ),
+        # ══════════════════════════════════════════════════════════════════
+        # Codici DB fuori convenzione `E_*` — registro del debito
+        # (brief-db-codice-errore-strutturato §7, decisione Tid 2026-08-05)
+        # ══════════════════════════════════════════════════════════════════
+        # I 57 codici sotto sono sollevati dalle funzioni PL/pgSQL e sono
+        # regolarmente a seed in `config.messaggi_errore`, ma non seguono la
+        # convenzione `E_{MODULO}_{TIPO}` di `docs/it/dev/api.md`.
+        #
+        # PERCHE' VANNO REGISTRATI, E PERCHE' PRIMA del campo strutturato.
+        # Finche' il codice si ripescava dal testo dell'eccezione, la regex
+        # `\bE_[A-Z][A-Z0-9_]+\b` non li vedeva: si ripiegava su `E_DATABASE`,
+        # che e' registrato -> 400. Dal momento in cui il translator legge
+        # `diag.constraint_name` questi codici ARRIVANO davvero, e senza una
+        # voce qui `resolve()` li manda su `E_GENERICO` -> **500**: un 400 di
+        # oggi diventerebbe un errore di server. L'ordine dei due passi non e'
+        # indifferente, ed e' questo.
+        #
+        # Elenco autoritativo: `dbops.messaggi_errore_codici_legacy` (57 righe).
+        # E' un REGISTRO DEL DEBITO, non un elenco di eccezioni: deve calare.
+        # Il rubinetto e' chiuso a monte dal guardrail CI
+        # `scripts/sql/guardrail_codice_errore_strutturato.sql` (controllo B):
+        # un codice NUOVO fuori convenzione fa fallire la CI. Rinominarne uno
+        # significa toglierlo da li', dal CSV del registro e da qui.
+        #
+        # STATUS: assegnati con la tassonomia di `api.md` letta sul messaggio a
+        # seed, non sul nome — conflitto con lo stato corrente 409, input non
+        # valido o incoerente 400, non trovato 404, non abilitato 403,
+        # configurazione di sistema 500.
+        # `user_message` e' solo il ripiego: essendo codici NON tecnici, il
+        # messaggio che l'operatore legge resta quello localizzato del DB, coi
+        # segnaposto gia' riempiti.
+        # ── Anagrafica / validazioni di campo ──
+        "CF_NON_VALIDO": ErrorPolicy(
+            code="CF_NON_VALIDO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Codice fiscale non valido.",
+        ),
+        "PIVA_NON_VALIDA": ErrorPolicy(
+            code="PIVA_NON_VALIDA",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Partita IVA non valida.",
+        ),
+        # ── Parametri di chiamata delle funzioni DB ──
+        "ERRORE_PARAMETRI": ErrorPolicy(
+            code="ERRORE_PARAMETRI",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Parametri obbligatori mancanti o non validi.",
+        ),
+        "ERRORE_PARAMETRI_TABELLA": ErrorPolicy(
+            code="ERRORE_PARAMETRI_TABELLA",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Parametro non trovato nella tabella di configurazione.",
+        ),
+        # ── Immutabilita' di colonne e snapshot ──
+        "CODICE_NON_MODIFICABILE": ErrorPolicy(
+            code="CODICE_NON_MODIFICABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Il codice interno non e' modificabile.",
+        ),
+        # ── Catasto ──
+        "CATASTO_SOURCE_NOT_FOUND": ErrorPolicy(
+            code="CATASTO_SOURCE_NOT_FOUND",
+            http_status=404,
+            ui_action="show_error_banner",
+            user_message="Catasto di origine non trovato sull'istanza padre.",
+        ),
+        # ── Template di flusso: validazioni di progettazione dello step ──
+        "TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA": ErrorPolicy(
+            code="TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Modalita' esito AUTOMATICO ammessa solo su step a direzione INTERNA.",
+        ),
+        "TEMPLATE_FLUSSO_DOMINIO_ESITO_DEFAULT_VIETATO": ErrorPolicy(
+            code="TEMPLATE_FLUSSO_DOMINIO_ESITO_DEFAULT_VIETATO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Uno step DOMINIO non ammette esito default: l'esito lo calcola il dominio.",
+        ),
+        "TEMPLATE_FLUSSO_ESITO_DEFAULT_NON_VERDETTO": ErrorPolicy(
+            code="TEMPLATE_FLUSSO_ESITO_DEFAULT_NON_VERDETTO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Esito default non valido: AUTOMATICO/CONTESTUALE richiedono un verdetto.",
+        ),
+        "TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO": ErrorPolicy(
+            code="TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Esito default obbligatorio per la modalita' esito scelta.",
+        ),
+        "TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER": ErrorPolicy(
+            code="TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Conflitto sullo step: ammesso solo uno fra avanzamento su proiezione e handler eventi.",
+        ),
+        "TEMPLATE_FLUSSO_PROIEZIONE_STEP_DOMINIO": ErrorPolicy(
+            code="TEMPLATE_FLUSSO_PROIEZIONE_STEP_DOMINIO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Avanzamento su proiezione non ammesso su uno step DOMINIO.",
+        ),
+        "FLUSSI_PRESA_CARICO_STATO_ERRATO": ErrorPolicy(
+            code="FLUSSI_PRESA_CARICO_STATO_ERRATO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Presa in carico non consentita: il flusso non e' DA_ESEGUIRE.",
+        ),
+        "FLUSSI_GIA_ASSEGNATO": ErrorPolicy(
+            code="FLUSSI_GIA_ASSEGNATO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Flusso gia' assegnato a un operatore.",
+        ),
+        "FLUSSI_ESITO_NON_AMMESSO": ErrorPolicy(
+            code="FLUSSI_ESITO_NON_AMMESSO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Esito non ammesso per questo step.",
+        ),
+        "GENERAZIONE_TEMPLATE_NON_IN_DEFINIZIONE": ErrorPolicy(
+            code="GENERAZIONE_TEMPLATE_NON_IN_DEFINIZIONE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Lo step dichiarato dalla regola non esiste nella definizione della pratica figlia.",
+        ),
+        "SOSPENSIONI_FLUSSO_NON_COERENTE": ErrorPolicy(
+            code="SOSPENSIONI_FLUSSO_NON_COERENTE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Il flusso non appartiene alla pratica indicata.",
+        ),
+        # ── Pratiche: coerenza del contesto ──
+        "PRATICHE_ISTANZA_NON_COERENTE": ErrorPolicy(
+            code="PRATICHE_ISTANZA_NON_COERENTE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="L'istanza non appartiene al soggetto indicato.",
+        ),
+        "PRATICHE_RUOLO_NON_COERENTE": ErrorPolicy(
+            code="PRATICHE_RUOLO_NON_COERENTE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Il ruolo non appartiene al soggetto indicato.",
+        ),
+        "PRATICHE_ISTANZA_SENZA_RUOLO": ErrorPolicy(
+            code="PRATICHE_ISTANZA_SENZA_RUOLO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="L'istanza utility richiede anche il ruolo del soggetto.",
+        ),
+        "PRATICHE_ISTANZA_SENZA_SOGGETTO": ErrorPolicy(
+            code="PRATICHE_ISTANZA_SENZA_SOGGETTO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="L'istanza utility richiede anche il soggetto.",
+        ),
+        "PRATICHE_RUOLO_SENZA_SOGGETTO": ErrorPolicy(
+            code="PRATICHE_RUOLO_SENZA_SOGGETTO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Il ruolo richiede anche il soggetto.",
+        ),
+        "PRATICHE_SORGENTI_FLUSSO_PRATICA_INCOERENTE": ErrorPolicy(
+            code="PRATICHE_SORGENTI_FLUSSO_PRATICA_INCOERENTE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Aggancio sorgente incoerente: il flusso appartiene a un'altra pratica.",
+        ),
+        "PRATICHE_PIN_IMMUTABILE": ErrorPolicy(
+            code="PRATICHE_PIN_IMMUTABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="L'edizione di workflow pinnata dalla pratica e' immutabile.",
+        ),
+        # ── Preventivi: stato, revisione, precondizioni di emissione ──
+        "PREV_TRANSIZIONE_NON_AMMESSA": ErrorPolicy(
+            code="PREV_TRANSIZIONE_NON_AMMESSA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Transizione del preventivo non ammessa.",
+        ),
+        "PREV_STATO_NON_MODIFICABILE": ErrorPolicy(
+            code="PREV_STATO_NON_MODIFICABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Preventivo non modificabile nello stato corrente.",
+        ),
+        "PREV_STATO_CORRENTE_NON_TROVATO": ErrorPolicy(
+            code="PREV_STATO_CORRENTE_NON_TROVATO",
+            http_status=404,
+            ui_action="show_error_banner",
+            user_message="Stato corrente del preventivo non trovato.",
+        ),
+        "PREV_REVISIONE_STATO_NON_AMMESSO": ErrorPolicy(
+            code="PREV_REVISIONE_STATO_NON_AMMESSO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Revisione ammessa solo da preventivo EMESSO.",
+        ),
+        "PREV_NESSUNA_RIGA_ATTIVA": ErrorPolicy(
+            code="PREV_NESSUNA_RIGA_ATTIVA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Preventivo senza righe attive: serve almeno una riga per emettere.",
+        ),
+        "PREV_TOTALE_NON_POSITIVO": ErrorPolicy(
+            code="PREV_TOTALE_NON_POSITIVO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Totale del preventivo non positivo: richiesto un totale maggiore di zero.",
+        ),
+        "PREV_ANNULLAMENTO_COMMESSA_ATTIVA": ErrorPolicy(
+            code="PREV_ANNULLAMENTO_COMMESSA_ATTIVA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Annullamento bloccato: il preventivo ha righe in commessa attive.",
+        ),
+        # ── Configurazione di sistema: non e' l'utente a sbagliare ──
+        "SEQUENZA_NON_CONFIGURATA": ErrorPolicy(
+            code="SEQUENZA_NON_CONFIGURATA",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Sequenza di numerazione non configurata.",
+        ),
+        "MESSAGGIO_NON_DEFINITO": ErrorPolicy(
+            code="MESSAGGIO_NON_DEFINITO",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Messaggio di errore non definito a catalogo.",
+        ),
+        "W_TXID_NOT_REGISTERED": ErrorPolicy(
+            code="W_TXID_NOT_REGISTERED",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Transazione non registrata: anomalia tecnica di tracciamento.",
+        ),
     }
 
     # Scopo: Risolve la policy per un codice errore. Per codici applicativi
