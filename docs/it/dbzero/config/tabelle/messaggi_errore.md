@@ -10,6 +10,7 @@
 | id | bigint | NO |  |
 | causa | text | YES |  |
 | soluzione | text | YES |  |
+| obsoleto_dal | date | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

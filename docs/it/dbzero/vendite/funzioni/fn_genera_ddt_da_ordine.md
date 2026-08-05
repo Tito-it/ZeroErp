@@ -170,7 +170,11 @@ BEGIN
                AND COALESCE(orc.attivo, TRUE) IS TRUE;
         END IF;
 
-        -- Fulfillment: collega DDT<->ordine e alimenta mv_ddt_ordini.
+        -- Fulfillment: collega DDT<->ordine. Prima questa riga diceva
+        -- "e alimenta mv_ddt_ordini": quella vista materializzata e' stata
+        -- ritirata il 2026-08-05 (nessuno la leggeva, nessuno la
+        -- aggiornava). Il legame ordine<->DDT si ricava da qui e da
+        -- ddt.sorgente_uid, che e' cio' che l'applicazione usa davvero.
         -- qta_evasa = quantita base della riga DDT (derivata dal trigger).
         -- Il guard fulfillment valida articolo/uom/residuo (C2).
         INSERT INTO vendite.ordini_righe_fulfillment (

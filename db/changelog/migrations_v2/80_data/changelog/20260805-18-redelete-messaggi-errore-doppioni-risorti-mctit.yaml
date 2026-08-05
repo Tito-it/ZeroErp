@@ -1,0 +1,81 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I due doppioni sono RISORTI: il DELETE non tiene se il CSV torna indietro
+#   Brief: docs/it/dev/work-in-progress/brief-db-codice-errore-strutturato.md §15.7
+#   Ripete: 20260805-16 (che resta valido e non va toccato)
+#
+# ── COSA E' SUCCESSO ────────────────────────────────────────────────────
+#   `20260805-16` ha cancellato EMITTENTE_NON_MODIFICABILE (id 421) e
+#   PREV_STATO_NON_MODIFICABILE (id 351), ed e' `EXECUTED`. Le due righe sono
+#   pero' ricomparse nel database.
+#
+#   Il motivo non e' nel changeSet: e' che la rimozione dal **CSV** e' andata
+#   persa. Un commit successivo ha riportato
+#   `80_data/sql/config/messaggi_errore.csv` alla versione che le conteneva, e
+#   il loader `20260614-08` — `runOnChange: true`, cioe' un mirror vivo del CSV
+#   — le ha reinserite al migrate seguente. `-16` non poteva rimediare: e'
+#   `runOnChange: false` e gira una volta sola.
+#
+#   ⚠️ E' la regola delle «due mosse» (riga dal CSV **+** DELETE) vista dal lato
+#   che non si prevede: non basta farle entrambe, devono **restare** entrambe.
+#   Una riga tolta da un CSV mirror e' una modifica che qualunque merge puo'
+#   annullare in silenzio, mentre il changeSet che l'accompagnava e' gia' speso.
+#
+#   E' anche un argomento a favore di `obsoleto_dal` (20260805-17): essendo un
+#   VALORE dentro il CSV e non l'assenza di una riga, un ritiro non ha questa
+#   asimmetria — se il CSV torna indietro si perde il ritiro, ma il presidio
+#   (controllo B) torna rosso e lo dice. L'assenza di una riga, invece, non la
+#   presidia nessuno.
+#
+# ── PERCHE' UN FILE NUOVO E NON UNA CORREZIONE DI `-16` ─────────────────
+#   `-16` e' `runOnChange: false` e gia' `EXECUTED`: modificarlo farebbe
+#   fallire la validazione dei checksum al prossimo migrate. La regola del
+#   progetto e' esplicita — mai modificare un changelog gia' applicato, si crea
+#   sempre un file con numerazione successiva.
+#
+#   ⚠️ Su un database ricostruito da zero questo changeSet non trova nulla da
+#   cancellare, ed e' corretto: il CSV (ora di nuovo senza quelle righe) non le
+#   inserisce, `-16` non trova nulla, e questo nemmeno. Serve solo ai database
+#   che hanno attraversato la finestra in cui il CSV era tornato indietro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260805-18-redelete-messaggi-errore-doppioni-risorti-mctit.yaml
+
+  - changeSet:
+      id: 20260805-18-redelete-messaggi-errore-doppioni-risorti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ricancella i due doppioni senza prefisso reinseriti dal loader mirror
+        dopo che la loro rimozione dal CSV era andata persa in un merge. Il
+        20260805-16 resta valido: era gia' EXECUTED e non poteva rigirare.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Stessi id e stessi codici del 20260805-16. Zero righe in
+              -- dbops.error_log per entrambi (ri-verificato): la FK non blocca.
+              DELETE FROM config.messaggi_errore
+               WHERE (id, codice) IN (
+                       (351, 'PREV_STATO_NON_MODIFICABILE'),
+                       (421, 'EMITTENTE_NON_MODIFICABILE')
+                     );
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Vuoto di proposito: il rollback semanticamente corretto e'
+              -- quello del 20260805-16, che reinserisce le due righe. Ripeterlo
+              -- qui creerebbe due sorgenti della stessa verita'.
+              SELECT 1;

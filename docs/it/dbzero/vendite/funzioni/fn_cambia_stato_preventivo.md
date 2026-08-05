@@ -60,12 +60,16 @@ BEGIN
   --   stato_emissione EMESSA in commessa — e' stato ASSORBITO da
   --   script.fn_check_preventivo_annullabile, che lo espone come
   --   MOTIVO 2 accanto agli altri due. Qui resta solo la chiamata.
-  --   Perche': la stessa domanda aveva due risposte diverse (questa
-  --   e quella del trigger), e prima o poi sarebbero divergute.
-  --   Con l'assorbimento esce di scena anche il codice
-  --   PREV_ANNULLAMENTO_COMMESSA_ATTIVA, privo del prefisso `E_` e
-  --   percio' invisibile sia al presidio del catalogo messaggi sia
-  --   all'estrattore del backend (che lo degradava a E_DATABASE).
+  --
+  -- NOTE rev 2026-08-05 (§7.4 punto 3):
+  --   la matrice e' ora vincolante anche per il database, via
+  --   vendite.trgfn_preventivi_guard_transizione. Il controllo resta
+  --   ANCHE qui, ed e' voluto: qui si intercetta prima di scrivere,
+  --   li' si copre chi non passa da questa porta. Il codice sollevato
+  --   e' lo STESSO nei due punti — E_PREV_TRANSIZIONE_NON_AMMESSA —
+  --   perche' la regola e' una sola. Il precedente
+  --   PREV_TRANSIZIONE_NON_AMMESSA, privo del prefisso E_ e iscritto
+  --   in dbops.messaggi_errore_codici_legacy, esce di scena.
   -- ==========================================================
 
   -- Guard: parametri obbligatori
@@ -89,7 +93,7 @@ BEGIN
   IF v_stato_corrente_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_cambia_stato_preventivo',
-      'PREV_STATO_CORRENTE_NON_TROVATO',
+      'E_PREV_STATO_CORRENTE_NON_TROVATO',
       jsonb_build_object('preventivo_id', p_preventivo_id),
       NULL::uuid,
       p_preventivo_id::text
@@ -123,7 +127,7 @@ BEGIN
   IF NOT v_transizione_ok THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_cambia_stato_preventivo',
-      'PREV_TRANSIZIONE_NON_AMMESSA',
+      'E_PREV_TRANSIZIONE_NON_AMMESSA',
       jsonb_build_object(
         'preventivo_id', p_preventivo_id,
         'stato_da', v_stato_corrente_cod,
@@ -191,7 +195,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_cambia_stato_preventivo(p_preventivo_id bigint, p_nuovo_stato character varying, p_user text)
-IS 'Transizione di stato preventivo validata dalla matrice config.transizioni_stati_preventivi. Guard DRAFT->EMESSO: SOLO presenza di righe attive (PREV_NESSUNA_RIGA_ATTIVA). Verso ANNULLATO: l''ammissibilita'' e'' delegata a script.fn_check_preventivo_annullabile — sede unica condivisa col trigger di guard e con fn_available_actions_preventivo — e si solleva il codice del primo motivo. Stato corrente/destinazione e RETURNS per codice_interno (immutabile). rev 2026-06-28: analisi-hardcoded-codice §3a #1. rev 2026-07-16: rimossi guard PREV_TOTALE_NON_POSITIVO e filtro quantita>0 — un documento a totale zero deve poter essere emesso. rev 2026-08-04: assorbita la regola locale sull''annullamento (righe EMESSA in commessa) dentro la fn pura; esce di scena il codice PREV_ANNULLAMENTO_COMMESSA_ATTIVA, privo di prefisso E_ e percio'' invisibile al presidio del catalogo e non agganciabile dal backend (brief-db-vie-uscita-operatore §7.3).';
+IS 'Transizione di stato preventivo validata dalla matrice config.transizioni_stati_preventivi. Guard DRAFT->EMESSO: SOLO presenza di righe attive (PREV_NESSUNA_RIGA_ATTIVA). Verso ANNULLATO: l''ammissibilita'' e'' delegata a script.fn_check_preventivo_annullabile — sede unica condivisa col trigger di guard e con fn_available_actions_preventivo — e si solleva il codice del primo motivo. Stato corrente/destinazione e RETURNS per codice_interno (immutabile). rev 2026-06-28: analisi-hardcoded-codice §3a #1. rev 2026-07-16: rimossi guard PREV_TOTALE_NON_POSITIVO e filtro quantita>0. rev 2026-08-04: assorbita la regola locale sull''annullamento dentro la fn pura; esce di scena PREV_ANNULLAMENTO_COMMESSA_ATTIVA. rev 2026-08-05: la matrice e'' vincolante anche per il database (vendite.trgfn_preventivi_guard_transizione) e la porta solleva lo STESSO codice del guard, E_PREV_TRANSIZIONE_NON_AMMESSA; il precedente PREV_TRANSIZIONE_NON_AMMESSA, senza prefisso E_ e iscritto nel registro del debito, esce di scena (brief-db-vie-uscita-operatore §7.4 punto 3).';
 ```
 
 ---

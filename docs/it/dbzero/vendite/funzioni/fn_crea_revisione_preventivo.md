@@ -68,7 +68,7 @@ BEGIN
   IF v_stato_corrente_cod IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_crea_revisione_preventivo',
-      'PREV_STATO_CORRENTE_NON_TROVATO',
+      'E_PREV_STATO_CORRENTE_NON_TROVATO',
       jsonb_build_object('preventivo_id', p_preventivo_id),
       NULL::uuid,
       p_preventivo_id::text
@@ -79,7 +79,7 @@ BEGIN
   IF v_stato_corrente_cod NOT IN ('EMESSO') THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_crea_revisione_preventivo',
-      'PREV_REVISIONE_STATO_NON_AMMESSO',
+      'E_PREV_REVISIONE_STATO_NON_AMMESSO',
       jsonb_build_object(
         'preventivo_id', p_preventivo_id,
         'stato_corrente', v_stato_corrente_cod
@@ -101,7 +101,7 @@ BEGIN
   IF v_has_draft THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_crea_revisione_preventivo',
-      'PREV_REVISIONE_BOZZA_ESISTENTE',
+      'E_PREV_REVISIONE_BOZZA_ESISTENTE',
       jsonb_build_object('numero', v_numero),
       NULL::uuid,
       v_numero
@@ -247,7 +247,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_crea_revisione_preventivo(p_preventivo_id bigint, p_user text)
-IS 'Crea revisione DRAFT da preventivo EMESSO: copia testata, righe attive, componenti BoM (FK remap) e indirizzi. Stato corrente e risoluzione DRAFT per codice_interno (immutabile). rev 2026-06-28: analisi-hardcoded-codice §3a #2.';
+IS 'Crea revisione DRAFT da preventivo EMESSO: copia testata, righe attive, componenti BoM (FK remap) e indirizzi. Stato corrente e risoluzione DRAFT per codice_interno (immutabile). rev 2026-06-28: analisi-hardcoded-codice §3a #2. rev 2026-08-05 (20260805-25): codici rinominati con prefisso E_ — E_PREV_REVISIONE_STATO_NON_AMMESSO (850), E_PREV_REVISIONE_BOZZA_ESISTENTE (851), E_PREV_STATO_CORRENTE_NON_TROVATO (852); i vecchi nomi restano a catalogo ritirati con obsoleto_dal.';
 ```
 
 ---
