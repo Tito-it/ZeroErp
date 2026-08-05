@@ -788,6 +788,18 @@ comincia per `E_` → 400 «errore di validazione» — e **tutto il resto cade 
 l'hanno (`PRATICHE_TRANSIZIONE_NON_AMMESSA`, `PREV_*`, `FLUSSI_*`,
 `ERRORE_PARAMETRI`, `CF_NON_VALIDO`…), usati da 77 call site.
 
+Quattro di quei 57 sono usciti dal seed perché nessuno li sollevava più
+(`20260805-11`): **restano 53**. Di questi, **23 sono già registrati** col nome
+storto — per i loro 29 call site il campo strutturato è un guadagno secco: oggi
+sono mascherati da `E_DATABASE`, domani arrivano alla loro policy. **I 30 senza
+policy** (48 call site in 26 funzioni) sono quelli che passerebbero da 400 a 500,
+e vanno registrati **prima o insieme** all'adozione del campo.
+
+⚠️ **Registrare un codice che c'è già lo sovrascrive in silenzio**: in un dict
+literal Python l'ultima chiave vince, senza errore né warning, e nel progetto non
+gira nessun linter che lo intercetti. Prima di aggiungere un blocco di policy,
+verificare che `len(chiavi) == len(set(chiavi))`.
+
 Decisione del 2026-08-05: **si registrano in `error_policies.py` così come
 sono** — rinominarli costerebbe seed + call site + pgTAP senza comprare nulla —
 **e il rubinetto si chiude**: il controllo (B) del guardrail rifiuta ogni codice

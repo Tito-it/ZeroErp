@@ -162,10 +162,22 @@ Due modi di romperlo, e nessuno dei due fa rumore da solo:
 | Cancello automatico | `scripts/sql/guardrail_codice_errore_strutturato.sql` (passo CI) |
 | Test della suite | `db/pgtap/script/test-fn-log-and-raise-error-constraint-codice.sql` · `db/pgtap/vendite/test-ordini-guard-transizione-v1.sql` (test 8) |
 
-**Il registro contiene 57 nomi fuori convenzione ereditati** dal periodo in cui
-la regola non era presidiata. Rinominarli costerebbe più di quanto renda, quindi
-si tengono; ma dal 2026-08-05 **non se ne aggiungono altri**. Il registro deve
+**Il registro contiene i nomi fuori convenzione ereditati** dal periodo in cui la
+regola non era presidiata. Rinominarli costerebbe più di quanto renda, quindi si
+tengono; ma dal 2026-08-05 **non se ne aggiungono altri**. Il registro deve
 calare, e quando arriva a zero la tabella si toglie.
+
+È già calato il primo giorno, da **57 a 53**, e non rinominando: incrociando i
+codici con i punti che li sollevano davvero, quattro sono risultati **residui di
+controlli ritirati** — nessuno li usava più, né il database né il resto
+dell'applicazione. Sono usciti dal catalogo dei messaggi e dal registro insieme.
+
+⚠️ Prima di togliere un codice del genere va distinto se è **superato** o **non
+ancora agganciato**: un codice a catalogo che nessuno solleva può essere un
+residuo, oppure un pezzo di lavoro in corso a cui manca ancora il collegamento.
+Cancellare il secondo tipo rompe il lavoro di qualcun altro. Nei quattro casi la
+risposta era scritta nel database stesso, nei commenti delle funzioni che li
+avevano ritirati.
 
 ⚠️ **Qui il registro non chiede un motivo per riga**, al contrario di quello dei
 riferimenti morti. Non è una dimenticanza: là ogni voce è una decisione a sé,
