@@ -1,0 +1,107 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Si ritira `vendite.mv_ddt_ordini`, l'unica vista materializzata del database.
+#   Nessuno la leggeva, nessuno la aggiornava.
+#
+# COME E' VENUTA FUORI. Non da una caccia ai residui: correggendo il generatore
+#   della documentazione, che non vedeva le viste materializzate — le cercava in
+#   `information_schema.views`, dove non compaiono. Scrivendo la pagina che le
+#   mancava e' saltato fuori che non c'era niente da documentare.
+#
+# ⚠️ LA MISURA, prima della decisione:
+#     - righe contenute:                                   0
+#     - righe che la sua query produrrebbe adesso:        15
+#     - funzioni/viste che la LEGGONO:               nessuna — l'unica citazione
+#       in `fn_genera_ddt_da_ordine` e' dentro un COMMENTO
+#     - chi la AGGIORNA: `dbops.fn_refresh_mv_ddt_ordini`, che pero' nessuno
+#       chiama: ne' una funzione, ne' un job pgagent
+#   Cioe': ferma dalla nascita, e destinata a restarci perche' non esisteva un
+#   percorso che la aggiornasse. Non era rotta — era **non agganciata**.
+#
+# ⚠️ IL PEZZO CHE HA DECISO, ed e' del BE (risposta del 2026-08-05). Non basta
+#   sapere che il DB non la usa: il legame ordine<->DDT e' il **lineage**, cioe'
+#   la genealogia dei documenti, che e' fra le cose piu' visibili
+#   dell'applicazione. Verificato da loro: la genealogia NON la legge, l'arco
+#   Ordine->DDT si regge su `ddt.sorgente_uid`; e dove serve il dettaglio riga
+#   per riga il backend interroga direttamente `ordini_righe_fulfillment`
+#   (`ordini_repository.py`, `resi_repository.py`). Zero occorrenze in tutto BE
+#   e FE. Se invece il lineage l'avesse letta, avrebbe mostrato DDT scollegati
+#   dai loro ordini senza che nulla segnalasse un errore.
+#
+# ℹ️ Fra le due strade — agganciare il refresh, oppure prendere atto che il giro
+#   diretto sulla tabella basta — il codice vivo aveva gia' scelto la seconda da
+#   solo, senza che nessuno lo decidesse. Qui si scrive la decisione, non la si
+#   prende.
+#
+# ⚠️ CADONO INSIEME QUATTRO COSE, non una: questa vista, la sua funzione di
+#   refresh (`20260805-22`), il pgTAP che la presidiava (riscritto: teneva anche
+#   il test del gate emissione BoM, che resta) e il commento in
+#   `fn_genera_ddt_da_ordine` che la nomina (`20260805-23`). Lasciarne in piedi
+#   una qualsiasi significa presidiare, o promettere, un oggetto che non c'e'.
+#
+# ℹ️ L'indice `uq_mv_ddt_ordini` cade con la vista: e' l'unica dipendenza
+#   registrata su `pg_depend`. Nessun GRANT, nessuna riga nei registri dbops.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260805-21-drop-mv-ddt-ordini-mctit.yaml
+
+  - changeSet:
+      id: 20260805-21-drop-mv-ddt-ordini
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Ritira vendite.mv_ddt_ordini, unica vista materializzata del database:
+        zero letture nel DB, zero occorrenze in BE e FE, nessun percorso che la
+        aggiornasse. Il legame ordine<->DDT resta su ddt.sorgente_uid e su
+        vendite.ordini_righe_fulfillment, che sono cio' che l'applicazione usa.
+      preConditions:
+        # Se non c'e' piu' (ambiente gia' allineato, o database vergine dove non
+        # e' mai stata creata) non e' un errore: si passa oltre senza marcare.
+        - onFail: CONTINUE
+        - onError: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = 'vendite'
+                AND c.relname = 'mv_ddt_ordini'
+                AND c.relkind = 'm'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Niente CASCADE: se qualcosa dipendesse da questa vista, il DROP
+              -- deve FERMARSI e farcelo sapere, non trascinarselo dietro. Al
+              -- momento della scrittura l'unica dipendenza e' il suo indice
+              -- unico, che cade insieme all'oggetto per costruzione.
+              DROP MATERIALIZED VIEW vendite.mv_ddt_ordini;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE MATERIALIZED VIEW vendite.mv_ddt_ordini AS
+              SELECT DISTINCT dr.ddt_id,
+                  orr.ordine_id
+                 FROM vendite.ordini_righe_fulfillment f
+                   JOIN vendite.ddt_righe dr ON dr.id = f.ddt_riga_id
+                   JOIN vendite.ordini_righe orr ON orr.id = f.ordine_riga_id;
+
+              -- L'indice unico va ricreato insieme: senza, si perde
+              -- REFRESH ... CONCURRENTLY e ogni aggiornamento blocca le letture.
+              CREATE UNIQUE INDEX uq_mv_ddt_ordini
+                  ON vendite.mv_ddt_ordini USING btree (ddt_id, ordine_id);

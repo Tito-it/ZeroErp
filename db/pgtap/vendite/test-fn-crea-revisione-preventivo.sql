@@ -294,7 +294,7 @@ SELECT throws_ok(
     (SELECT id FROM tmp_rv_prev_accettato)
   ),
   'P0001', NULL,
-  '9. Revisione da ACCETTATO vietata (PREV_REVISIONE_STATO_NON_AMMESSO)'
+  '9. Revisione da ACCETTATO vietata (E_PREV_REVISIONE_STATO_NON_AMMESSO)'
 );
 
 -- ============================================================
@@ -302,7 +302,7 @@ SELECT throws_ok(
 --     rinominando il `codice` (mutabile) degli stati, la creazione revisione
 --     DEVE risolvere stato corrente (EMESSO) e DRAFT per `codice_interno`.
 --     Col vecchio codice lo stato corrente non risulterebbe 'EMESSO' ->
---     PREV_REVISIONE_STATO_NON_AMMESSO. Preventivo EMESSO fresco (numero nuovo,
+--     E_PREV_REVISIONE_STATO_NON_AMMESSO. Preventivo EMESSO fresco (numero nuovo,
 --     nessuna revisione DRAFT preesistente).
 -- ============================================================
 CREATE TEMP TABLE tmp_rv_prev_antireg AS

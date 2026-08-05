@@ -1,0 +1,278 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Rinomina a `E_*` dei 4 codici di trgfn_template_flussi_guard_modalita_esito
+#   Brief: docs/it/dev/work-in-progress/brief-db-codice-errore-strutturato.md §15
+#   Seed dei nuovi codici + ritiro dei vecchi: CSV (nessun changeSet, §15.4)
+#   Precedente della stessa famiglia: 20260805-15 (E_PREV_TRANSIZIONE_NON_AMMESSA)
+#
+# ── PERCHE' QUESTI QUATTRO, E PERCHE' INSIEME ───────────────────────────
+#   Il registro del debito (dbops.messaggi_errore_codici_legacy) ha 50 codici
+#   fuori convenzione. Ripulirli uno per uno costa 129 punti di intervento; per
+#   funzione costa molto meno, perche' una sola CREATE OR REPLACE ne libera piu'
+#   d'uno. Questa funzione ne porta **quattro**, ed e' l'unico gruppo da quattro
+#   che **nessun pgTAP asserisce** (verificato): e' quindi il lotto col miglior
+#   rapporto fra codici ritirati e superficie toccata.
+#
+#   La rinomina e' meccanica — si antepone `E_` — ed e' la stessa forma gia'
+#   usata dal BE in 20260805-15 (`PREV_TRANSIZIONE_NON_AMMESSA` ->
+#   `E_PREV_TRANSIZIONE_NON_AMMESSA`). Non e' un'occasione per riprogettare i
+#   nomi: il modulo e il tipo sono gia' leggibili, mancava solo il prefisso su
+#   cui `ErrorPolicyRegistry.resolve` decide 400 invece di 500.
+#
+# ── ⚠️ L'ORDINE DELLE TRE MOSSE, E PERCHE' NON E' INDIFFERENTE ──────────
+#   1. i 4 codici nuovi entrano a catalogo (CSV, id 842-845);
+#   2. questa funzione smette di sollevare i vecchi e solleva i nuovi;
+#   3. i vecchi vengono RITIRATI (`obsoleto_dal`, CSV) e tolti dal registro.
+#
+#   Il passo 3 non puo' precedere il 2: il controllo (D) del guardrail
+#   (scripts/sql/guardrail_codice_errore_strutturato.sql) fallisce se una
+#   funzione viva solleva un codice gia' ritirato — ed e' esattamente il suo
+#   mestiere. Il passo 1 non puo' seguire il 2: una funzione che solleva un
+#   codice non a catalogo produce `[MESSAGGIO NON DEFINITO: ...]` all'operatore.
+#   Stando tutto nello stesso migrate l'ordine e' garantito dalle fasi Liquibase
+#   (80_data dopo 20_code non basterebbe: il CSV del catalogo e' 80_data, quindi
+#   fra il passo 2 e il passo 1 c'e' una finestra **dentro** il migrate. E'
+#   accettabile perche' nessuno usa il DB durante un migrate, e a fine giro lo
+#   stato e' coerente — ma va saputo, non scoperto).
+#
+#   ⚠️ I vecchi codici NON si cancellano: hanno righe in dbops.error_log e la FK
+#   e' NOT NULL. Si ritirano con `obsoleto_dal` (changeSet 20260805-17). La riga
+#   resta, i log restano agganciati, e il messaggio continua a risolversi.
+#
+# ── RICHIESTA AL BACKEND ────────────────────────────────────────────────
+#   I 4 vecchi codici sono registrati in `error_policies.py` (aggiunti col
+#   blocco del 2026-08-05). Le loro voci vanno **rinominate** ai nuovi nomi, non
+#   duplicate: una chiave ripetuta in un dict literal Python vince l'ultima
+#   senza dire niente. Gli status non cambiano.
+#
+#   Corpo preso dalla doc auto-gen, non dagli YAML. Cambiano solo i 4 letterali.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260805-19-rename-codici-template-flussi-guard-modalita-esito-mctit.yaml
+
+  - changeSet:
+      id: 20260805-19-rename-codici-template-flussi-guard-modalita-esito
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Antepone il prefisso E_ ai 4 codici sollevati da
+        trgfn_template_flussi_guard_modalita_esito, cosi' il backend puo'
+        risolverne la policy invece di cadere su E_GENERICO (500). I vecchi nomi
+        restano a catalogo, ritirati con obsoleto_dal: hanno righe di log e la FK
+        di dbops.error_log non ne permette la cancellazione.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_template_flussi_guard_modalita_esito()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: invarianti di coerenza della configurazione esito del
+              --        template-step. I CHECK di dominio vivono come constraint;
+              --        qui solo coerenza, con errore parlante (config-time).
+              --        DOMINIO = esito calcolato da un BB di dominio: niente
+              --        default (Inv3); gli automatismi che scrivono un default
+              --        devono scrivere un verdetto (Inv4).
+              BEGIN
+                -- Invariante 1: un automatismo deve sapere quale esito scrivere.
+                -- (Riformulata per DOMINIO: vale solo per AUTOMATICO/CONTESTUALE.)
+                IF NEW.modalita_esito IN ('AUTOMATICO', 'CONTESTUALE')
+                   AND NEW.esito_default IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_template_flussi_guard_modalita_esito',
+                    'E_TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO',
+                    jsonb_build_object(
+                      'template_flusso_id', NEW.id,
+                      'codice',             NEW.codice,
+                      'modalita_esito',     NEW.modalita_esito
+                    ),
+                    NEW.tx_id,
+                    NEW.modalita_esito,
+                    COALESCE(NEW.codice, '')
+                  );
+                END IF;
+
+                -- Invariante 2: solo gli step a direzione INTERNA possono
+                -- auto-risolversi senza intervento umano (AUTOMATICO).
+                IF NEW.modalita_esito = 'AUTOMATICO' AND NEW.direzione <> 'INTERNA' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_template_flussi_guard_modalita_esito',
+                    'E_TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA',
+                    jsonb_build_object(
+                      'template_flusso_id', NEW.id,
+                      'codice',             NEW.codice,
+                      'direzione',          NEW.direzione
+                    ),
+                    NEW.tx_id,
+                    COALESCE(NEW.codice, ''),
+                    NEW.direzione
+                  );
+                END IF;
+
+                -- Invariante 3: DOMINIO non ammette esito_default (l'esito e'
+                -- calcolato a runtime dal building block di dominio).
+                IF NEW.modalita_esito = 'DOMINIO' AND NEW.esito_default IS NOT NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_template_flussi_guard_modalita_esito',
+                    'E_TEMPLATE_FLUSSO_DOMINIO_ESITO_DEFAULT_VIETATO',
+                    jsonb_build_object(
+                      'template_flusso_id', NEW.id,
+                      'codice',             NEW.codice,
+                      'esito_default',      NEW.esito_default
+                    ),
+                    NEW.tx_id,
+                    COALESCE(NEW.codice, ''),
+                    NEW.esito_default
+                  );
+                END IF;
+
+                -- Invariante 4: il default di un automatismo deve essere un
+                -- VERDETTO (is_verdetto=true): gli esiti di ramo sono calcolati
+                -- dal dominio, mai applicabili come default.
+                IF NEW.modalita_esito IN ('AUTOMATICO', 'CONTESTUALE')
+                   AND NEW.esito_default IS NOT NULL
+                   AND EXISTS (
+                     SELECT 1
+                       FROM config.esiti_flussi_pratiche e
+                      WHERE e.codice_interno = NEW.esito_default
+                        AND NOT e.is_verdetto
+                   ) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_template_flussi_guard_modalita_esito',
+                    'E_TEMPLATE_FLUSSO_ESITO_DEFAULT_NON_VERDETTO',
+                    jsonb_build_object(
+                      'template_flusso_id', NEW.id,
+                      'codice',             NEW.codice,
+                      'modalita_esito',     NEW.modalita_esito,
+                      'esito_default',      NEW.esito_default
+                    ),
+                    NEW.tx_id,
+                    NEW.esito_default,
+                    COALESCE(NEW.codice, '')
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_template_flussi_guard_modalita_esito()
+              IS 'BEFORE INSERT OR UPDATE OF modalita_esito/esito_default/direzione su pratiche.template_flussi: enforce Inv1 (esito_default obbligatorio per AUTOMATICO/CONTESTUALE, E_TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO id 842), Inv2 (AUTOMATICO solo INTERNA, E_TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA id 843), Inv3 (DOMINIO vieta esito_default, E_TEMPLATE_FLUSSO_DOMINIO_ESITO_DEFAULT_VIETATO id 844), Inv4 (esito_default di automatismo deve essere verdetto is_verdetto=true, E_TEMPLATE_FLUSSO_ESITO_DEFAULT_NON_VERDETTO id 845) con errori parlanti. Codici rinominati il 2026-08-05 (20260805-19): i vecchi nomi senza prefisso restano a catalogo ritirati con obsoleto_dal.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: si torna ai 4 codici senza prefisso. Restano a
+              -- catalogo (ritirati), quindi il messaggio si risolve comunque.
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_template_flussi_guard_modalita_esito()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: invarianti di coerenza della configurazione esito del
+              --        template-step. I CHECK di dominio vivono come constraint;
+              --        qui solo coerenza, con errore parlante (config-time).
+              --        DOMINIO = esito calcolato da un BB di dominio: niente
+              --        default (Inv3); gli automatismi che scrivono un default
+              --        devono scrivere un verdetto (Inv4).
+              BEGIN
+                -- Invariante 1: un automatismo deve sapere quale esito scrivere.
+                -- (Riformulata per DOMINIO: vale solo per AUTOMATICO/CONTESTUALE.)
+                IF NEW.modalita_esito IN ('AUTOMATICO', 'CONTESTUALE')
+                   AND NEW.esito_default IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_template_flussi_guard_modalita_esito',
+                    'TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO',
+                    jsonb_build_object(
+                      'template_flusso_id', NEW.id,
+                      'codice',             NEW.codice,
+                      'modalita_esito',     NEW.modalita_esito
+                    ),
+                    NEW.tx_id,
+                    NEW.modalita_esito,
+                    COALESCE(NEW.codice, '')
+                  );
+                END IF;
+
+                -- Invariante 2: solo gli step a direzione INTERNA possono
+                -- auto-risolversi senza intervento umano (AUTOMATICO).
+                IF NEW.modalita_esito = 'AUTOMATICO' AND NEW.direzione <> 'INTERNA' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_template_flussi_guard_modalita_esito',
+                    'TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA',
+                    jsonb_build_object(
+                      'template_flusso_id', NEW.id,
+                      'codice',             NEW.codice,
+                      'direzione',          NEW.direzione
+                    ),
+                    NEW.tx_id,
+                    COALESCE(NEW.codice, ''),
+                    NEW.direzione
+                  );
+                END IF;
+
+                -- Invariante 3: DOMINIO non ammette esito_default (l'esito e'
+                -- calcolato a runtime dal building block di dominio).
+                IF NEW.modalita_esito = 'DOMINIO' AND NEW.esito_default IS NOT NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_template_flussi_guard_modalita_esito',
+                    'TEMPLATE_FLUSSO_DOMINIO_ESITO_DEFAULT_VIETATO',
+                    jsonb_build_object(
+                      'template_flusso_id', NEW.id,
+                      'codice',             NEW.codice,
+                      'esito_default',      NEW.esito_default
+                    ),
+                    NEW.tx_id,
+                    COALESCE(NEW.codice, ''),
+                    NEW.esito_default
+                  );
+                END IF;
+
+                -- Invariante 4: il default di un automatismo deve essere un
+                -- VERDETTO (is_verdetto=true): gli esiti di ramo sono calcolati
+                -- dal dominio, mai applicabili come default.
+                IF NEW.modalita_esito IN ('AUTOMATICO', 'CONTESTUALE')
+                   AND NEW.esito_default IS NOT NULL
+                   AND EXISTS (
+                     SELECT 1
+                       FROM config.esiti_flussi_pratiche e
+                      WHERE e.codice_interno = NEW.esito_default
+                        AND NOT e.is_verdetto
+                   ) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_template_flussi_guard_modalita_esito',
+                    'TEMPLATE_FLUSSO_ESITO_DEFAULT_NON_VERDETTO',
+                    jsonb_build_object(
+                      'template_flusso_id', NEW.id,
+                      'codice',             NEW.codice,
+                      'modalita_esito',     NEW.modalita_esito,
+                      'esito_default',      NEW.esito_default
+                    ),
+                    NEW.tx_id,
+                    NEW.esito_default,
+                    COALESCE(NEW.codice, '')
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;

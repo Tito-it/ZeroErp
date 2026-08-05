@@ -291,6 +291,7 @@
 - [trgfn_preventivi_gen_codice](funzioni/trgfn_preventivi_gen_codice.md) — La trigger function `vendite.trgfn_preventivi_gen_codice()` genera automaticamente `numero` preventivo quando il campo non viene valorizzato.
 - [trgfn_preventivi_guard_annullamento](funzioni/trgfn_preventivi_guard_annullamento.md)
 - [trgfn_preventivi_guard_emittente_ba](funzioni/trgfn_preventivi_guard_emittente_ba.md) — (rev 2026-07-13)
+- [trgfn_preventivi_guard_transizione](funzioni/trgfn_preventivi_guard_transizione.md)
 - [trgfn_preventivi_guard_transizione_approvazione](funzioni/trgfn_preventivi_guard_transizione_approvazione.md) — (latest revision 12-05-2026b — form atomic: rimosso Check 3 prezzo NULL; Sprint E listini v5 §14.6)
 - [trgfn_preventivi_guard_utility_istanza_coerenza](funzioni/trgfn_preventivi_guard_utility_istanza_coerenza.md)
 - [trgfn_preventivi_normalize](funzioni/trgfn_preventivi_normalize.md) — La trigger function `vendite.trgfn_preventivi_normalize()` completa i dati minimi di data documento in insert quando il numero preventivo e` gia` presente.

@@ -69,9 +69,18 @@ comportamento di ogni errore dell'applicazione: va fatta come slice a sé.
 >
 > 🔴 **Restano aperti, tutti fuori slice:**
 >
-> * registro **53 → 51**: due voci sono doppioni senza prefisso di codici vivi,
->   e la motivazione per tenerle era un falso positivo da ricerca per
->   sottostringa — **azione DB** (§7);
+> * ~~registro **53 → 51**: due voci sono doppioni senza prefisso di codici
+>   vivi~~ — ✅ **fatto**, `20260805-16`. La motivazione per tenerle era un falso
+>   positivo da ricerca per sottostringa (§7);
+> * ~~il ritiro dei codici con log è bloccato dalla FK~~ — ✅ **risolto**:
+>   `obsoleto_dal` (`20260805-17`) permette di ritirare un codice senza
+>   cancellarlo, e il controllo **(D)** del guardrail impedisce che un codice
+>   ritirato torni a girare. §15;
+> * ⏳ **cantiere rinomina, aperto e in corso**: dei 57 codici fuori convenzione
+>   iniziali ne restano **46**, in circa 35 funzioni. Non sono ritirabili così
+>   come sono — **nessuno dei 46 è morto**, vanno prima rinominati a `E_*`, e il
+>   ritiro è la coda di ogni rinomina. Il costo si conta **per funzione**: una
+>   `CREATE OR REPLACE` ne libera fino a quattro (§15.8);
 > * **133 codici `E_*`** sollevati dal DB non sono dichiarati in
 >   `error_policies.py` (83 da trigger agganciate). Non è una regressione: manca
 >   il **terzo lato** del presidio — codici sollevati dal DB vs
@@ -566,8 +575,13 @@ un altro difetto: era nascosto **sotto un'etichetta**, come
 | 8 | Riga morta `E_NOTE_RIGA_MISMATCH'` (CSV riga 88 + DELETE) | DB | ✅ **fatto** — `20260805-08` (§7) |
 | 9 | 4 codici superati fuori dal seed: registro **57 → 53** | DB | ✅ **fatto** — `20260805-11` (§7) |
 | 10 | 5 status storici incoerenti con la semantica: decidere e allineare | Tid + BE | ✅ **fatto** — 4 applicati, 1 tenuto; test riscritto (§12.1) |
-| 11 | 2 doppioni senza prefisso di codici vivi: registro **53 → 51** | DB | 🔴 **da fare** — rilievo BE (§7) |
+| 11 | 2 doppioni senza prefisso di codici vivi: registro **53 → 51** | DB | ✅ **fatto** — `20260805-16` (§7) |
 | 12 | Terzo lato del presidio: codici sollevati dal DB vs `error_policies.py` | da decidere | 🔴 **aperto** — 133 non dichiarati, misura pronta (§12.5) |
+| 13 | `obsoleto_dal`: ritirare un codice **con log** senza cancellarlo — sblocca 46 casi su 53 | DB | ✅ **fatto** — `20260805-17` + guardrail (D) + pgTAP 4/4 (§15) |
+| 14 | Cantiere rinomina — **1° lotto**: `trgfn_template_flussi_guard_modalita_esito`, 4 codici | DB | ✅ **fatto** — `20260805-19`, registro **50 → 46**, baseline `pratiche` invariata (§15.8) |
+| 15 | Cantiere rinomina — **2° lotto**: `trgfn_pratiche_guard_contesto`, 4 codici | DB | ⏳ **da applicare** — `20260805-20`, registro 46 → 42 (§15.9) |
+| 16 | Cantiere rinomina — **3° lotto**: `fn_crea_revisione_preventivo` (+1 letterale in `fn_cambia_stato_preventivo`), 3 codici | DB | ✅ **fatto** — `20260805-25`, registro **42 → 39**, baseline `vendite` verde (§15.12) |
+| 17 | Cantiere rinomina — **lotti 4..n**: dei **39** rimasti, **27 accoppiati al BE** (23 in un solo file) e 12 DB-only | DB / DB+BE | ⏳ **aperto** — brief di coordinamento: `brief-be-rinomina-codici-known-markers.md` (§15.13) |
 
 **Ordine obbligato:** ~~1 → 2 → 7~~ (DB, applicato da solo, nessuna finestra di
 rottura) · ~~6 → 3~~ (BE, in quest'ordine e non nell'altro: invertirli portava
@@ -810,6 +824,11 @@ un test dedicato, perché è il caso che si rompe **senza** rompersi.
 Gli end-to-end sono **opt-in** (`ZEROERP_TEST_DB_E2E=1`), spenti di default per
 il vincolo CI di `AGENTS.md`. Suite intera: **3574 verdi**, 1 classe skipped.
 
+> ⚠️ **Aggiornamento del pomeriggio — vedi §14.** Il flag è stato **acceso in
+> CI**, quindi i tre e2e non sono più «da lanciare quando uno se ne ricorda»:
+> girano a ogni PR. Ed è emerso *perché* funzionano, che non è il motivo che
+> sembra e che va saputo prima di toccarli.
+
 > ⚠️ **Un test che rompeva i test degli altri.** La prima versione decideva se
 > saltare con `@skipUnless(_db_raggiungibile(), ...)`. L'argomento di un
 > decoratore si valuta **all'import**: quel probe apriva una connessione al DB di
@@ -910,3 +929,437 @@ confrontato con le chiavi estratte sopra. Al 2026-08-05: **53 su 53 coperti**,
 > successive. Ci sono cascate entrambe le sponde — il BE contando 20 call site
 > dove erano 16, il DB trovando 2 residui inesistenti alla ri-verifica. **Anche
 > la misura di un difetto è un programma, e può avere il suo difetto.**
+
+---
+
+## 14. Coda — perché i 3 e2e funzionano, e cosa li romperà (2026-08-05, pomeriggio)
+
+Lanciati sul server backend: **11 verdi**, i tre end-to-end compresi. Non era
+scontato — la previsione era che fallissero, perché `settings.py` non ha nessun
+blocco `TEST` sull'alias `default` e `manage-test.sh` non usa `--keepdb`: il
+runner avrebbe dovuto creare un database usa-e-getta con le sole migration
+Django, dove `script.fn_log_and_raise_error` non esiste.
+
+**La risposta era nella terza riga dell'output**, che è facile scorrere:
+
+```
+Skipping setup of unused database(s): default, system_fatturazione.
+```
+
+### 14.1 Il meccanismo
+
+Django prepara il database di test **solo se almeno un test dichiara di averne
+bisogno**: `django.test.TestCase`, `TransactionTestCase`, o un attributo
+`databases = [...]`. Censito su `backend/apps`:
+
+| Base class | Occorrenze |
+|---|---:|
+| `unittest.TestCase` | 114 |
+| `django.test.SimpleTestCase` | 86 |
+| `django.test.TestCase` / `TransactionTestCase` | **0** |
+
+Zero, ed è la conseguenza diretta della regola di `AGENTS.md` — *«i test devono
+funzionare in CI senza dipendere da un DB reale accessibile»*. Buona regola, e
+regge anche qui.
+
+Effetto: **nessun database di test viene creato**, quindi `django.db.connection`
+resta puntata a quella **configurata** — il database di sviluppo, con lo schema
+Liquibase completo. Ecco perché i tre e2e trovano la funzione e passano.
+
+### 14.2 ⚠️ Ma è una coincidenza, non un progetto
+
+Funzionano perché **nessuno**, in tutto il backend, ha ancora scritto un test che
+dichiari un database. Non è vietato — `AGENTS.md` dice «non usarlo *a meno che*
+il test non necessiti realmente del database», che è un'autorizzazione
+condizionata, non un divieto.
+
+Il primo che lo farà, in una app qualunque, farà creare al runner un database
+vuoto **per tutta la suite**. Lì le nostre funzioni PL/pgSQL non ci sono, e i tre
+e2e cominceranno a fallire con «la funzione `script.fn_log_and_raise_error` non
+esiste» — **dentro una PR che non c'entra niente**, addosso a chi non ha idea di
+cosa siano.
+
+È la stessa forma di difetto che questo brief racconta dall'inizio: **qualcosa
+che funziona per una ragione che nessuno ha progettato.** Il codice errore
+arrivava al backend nel 91% dei casi perché il driver allega al testo lo
+statement chiamante; questi tre test girano perché nessuno ha ancora scritto un
+`TestCase` con database. Due coincidenze diverse, la stessa fragilità.
+
+### 14.3 Cosa si è fatto (DB)
+
+| | |
+|---|---|
+| **CI** | `ZEROERP_TEST_DB_E2E: "1"` nello step «Django tests» di `ci-validate.yaml`. Funziona proprio grazie a §14.1: il job ha il servizio `postgres`, lo step gira **dopo** Liquibase e `manage.py migrate`, e con il setup dei database saltato la connessione è quella provvista. I tre e2e passano da «da lanciare a mano» a **eseguiti a ogni PR**: la giuntura DB → psycopg diventa presidiata da un cancello automatico invece che verificata a memoria |
+| **`.codex/AGENTS.md`** | la dipendenza implicita è scritta **subito sotto** la regola che la regge, nel §Regole test Django. Chi sta per scrivere un `django.test.TestCase` la legge *mentre decide*, non dopo che la CI è rossa |
+
+### 14.4 Cosa si chiede al BE
+
+Brief dedicato: [brief-be-e2e-db-error-fields-skip-schema](brief-be-e2e-db-error-fields-skip-schema.md).
+In sintesi:
+
+1. un **`SkipTest`** nel `setUpClass`, dopo `ensure_connection()`, che verifichi
+   `to_regprocedure('script.fn_log_and_raise_error(text,text,text,jsonb,uuid,text[])')`.
+   Non serve a farli girare — girano: serve a far dire **cos'è successo** il
+   giorno in cui non gireranno più. Uno skip che si spiega invece di un errore
+   criptico su una PR altrui. Lo snippet è scritto pronto nel brief;
+2. la condizione implicita del §14.1 nel **docstring** della classe, accanto alla
+   nota — ottima, da tenere — sul probe a import-time che faceva 469 rossi;
+3. ⚠️ **niente test che scrivono, in quel file.** Poiché la connessione è quella
+   vera, un test che scrive scriverebbe sul database di sviluppo. I tre attuali
+   no: provocano solo un errore dentro un `transaction.atomic()` che viene
+   annullato — ma il prossimo che aggiunge un caso lì dentro non ha modo di
+   saperlo, se non glielo si scrive accanto.
+
+---
+
+## 15. ⭐ `obsoleto_dal` — ritirare un codice senza cancellarlo (deciso 2026-08-05)
+
+### 15.1 Il muro
+
+Il ritiro di un codice legacy finora è stato un `DELETE` (`20260805-11`, `-16`).
+Provando a togliere `PREV_TRANSIZIONE_NON_AMMESSA` — rinominato in
+`E_PREV_TRANSIZIONE_NON_AMMESSA` da `20260805-15`, quindi il **primo debito
+davvero pagato** e non un codice morto — il `DELETE` è stato **rifiutato dalla
+foreign key**: `dbops.error_log.messaggio_errore_id` punta a
+`config.messaggi_errore(id)` ed è **`NOT NULL`**. Quel codice ha 109 righe di log.
+
+Non è un caso isolato. Misurato il 2026-08-05:
+
+| | |
+|---:|---|
+| **46 su 53** | codici del registro **con** righe di log → `DELETE` impossibile |
+| 7 | senza log → cancellabili (sono i casi già chiusi) |
+| **46.040** | righe di `error_log` complessive sui 46 |
+
+Quindi la strada del `DELETE` è chiusa per **quasi tutto il cantiere che resta**.
+
+### 15.2 ⚠️ E c'è un secondo problema, più insidioso della FK
+
+**Un `DELETE` su `messaggi_errore` passa in CI e può fallire su un DB longevo.**
+In CI `error_log` nasce vuota, quindi la FK non protesta mai; su `dev` — e domani
+in produzione — protesta se quel codice ha girato **almeno una volta**.
+
+Un changeSet il cui esito dipende da **quanto è vissuto il database** non è
+riproducibile: verde in CI, rosso da chi lo applica davvero. È la stessa
+avvertenza del registro delle migrazioni — *verificare solo su dev misura una
+macchina, non la riproducibilità*, qui nella forma opposta e più subdola, perché
+è la CI a dare la risposta rassicurante.
+
+⚠️ Anche i changeSet `-11` e `-16` già applicati hanno questa forma: hanno
+funzionato perché quei sei codici avevano **0 righe di log**, verificato prima di
+scriverli. Non è una fortuna, è il controllo che è stato fatto — ma non è una
+strada che scala.
+
+### 15.3 Le tre strade, e perché B
+
+| | Cosa | Perché no / sì |
+|---|---|---|
+| **A** | il changeSet cancella prima i log, poi il messaggio | funziona ovunque, ma **distrugge 46.040 righe di storia** per riordinare un catalogo. E il changeSet vive per sempre: il giorno della produzione farebbe la stessa cosa su dati veri. Si scambia evidenza per pulizia |
+| **C** | il guardrail smette di segnalare un codice fuori convenzione quando **nessuno lo solleva più** (obsolescenza *derivata*) | elegante e quasi gratis, ma **sotto-rileva**: non vede i codici sollevati dal **Python**, e il guardrail è uno script SQL — `backend/` non lo può leggere |
+| **B** ⭐ | **`obsoleto_dal`** sul catalogo: la riga resta, i log restano agganciati, il presidio ignora gli obsoleti | scelta |
+
+**Perché B, in tre punti:**
+
+1. **È il pattern che il progetto ha già deciso** per questa classe esatta —
+   deprecare una voce di catalogo referenziata da istanze storiche, senza usare
+   `attivo = false` che romperebbe i riferimenti. Colonna **data**, asse
+   «selezionabile per il nuovo» separato da «esiste» (`brief-db-deprecabilita-catalogo-vs-istanze` §0).
+2. **Funziona identico su dev, CI e produzione**: nessuna dipendenza dai dati,
+   nessun changeSet il cui esito cambia col vissuto del database.
+3. **È l'unica che fa funzionare davvero la storia del registro.** Il piano è
+   «il registro cala fino a zero, poi la tabella si droppa»: ma se le righe di
+   catalogo non si possono cancellare, un codice ritirato deve pur stare da
+   qualche parte. Con `obsoleto_dal` sta **nel catalogo**, che è il posto giusto,
+   e il registro può davvero svuotarsi.
+
+### 15.4 La forma
+
+**Colonna.** `config.messaggi_errore.obsoleto_dal DATE NULL`. NULL = in servizio;
+valorizzata = ritirata, non più nominabile da codice nuovo.
+
+⚠️ **`obsoleto_dal` NON deve nascondere il messaggio.** `fn_get_messaggio` e
+`fn_log_and_raise_error` continuano a risolverlo: se un percorso non ancora
+bonificato lo solleva, l'operatore deve leggere una frase, non
+`[MESSAGGIO NON DEFINITO]`. La colonna è un asse per il **presidio**, non un
+interruttore di runtime — è esattamente la differenza fra `obsoleto_dal` e
+`attivo` che la guida sulla deprecabilità mette in guardia di non confondere.
+
+**Seed.** La colonna va aggiunta **al CSV e alla lista `columns:` del loader**
+`20260614-08`: è un `loadUpdateData` `runOnChange` + `validCheckSums: ANY`, cioè
+un mirror vivo del CSV, e una colonna non elencata non verrebbe mai toccata.
+Estenderlo in place è lecito proprio perché è progettato per ri-girare. Nessun
+backfill: tutte le righe nascono `NULL`.
+
+**Guardrail** (`scripts/sql/guardrail_codice_errore_strutturato.sql`):
+
+| Controllo | Come cambia |
+|---|---|
+| **(B)** codici fuori convenzione non registrati | **ignora** i codici con `obsoleto_dal` valorizzata: sono ritirati, non debito |
+| **(C)** voci di troppo nel registro | oggi «il codice non è più a catalogo» → diventa «non è più a catalogo **oppure è obsoleto**»: in entrambi i casi la riga del registro va tolta |
+| **(D)** *nuovo* | ⚠️ **nessuna funzione viva solleva un codice obsoleto.** È il controllo che rende `obsoleto_dal` una promessa mantenuta invece di un'etichetta: si marca obsoleto **dopo** aver tolto i call site, e il presidio impedisce che qualcuno lo rimetta. Senza (D), `obsoleto_dal` sarebbe esattamente il tipo di etichetta rassicurante che il §4-bis della guida sui presidi indica come il punto cieco peggiore |
+
+**Procedura di ritiro, dopo questa slice** — tre righe, sempre le stesse:
+
+1. rinominare il codice ai call site (changeSet `20_code`) e aggiungere il nuovo
+   codice `E_*` al CSV del catalogo;
+2. valorizzare `obsoleto_dal` sulla riga vecchia (CSV del catalogo);
+3. togliere la riga dal CSV del registro (è un mirror: basta quello).
+
+Nessun `DELETE`, nessuna FK da schivare, nessuna riga di log persa, e il conto
+del registro cala di uno.
+
+### 15.5 Cosa serve, in ordine
+
+| # | Cosa | Dove |
+|---|---|---|
+| 1 | `ALTER TABLE config.messaggi_errore ADD COLUMN obsoleto_dal DATE` + `COMMENT` che dica **cosa non è** (non è `attivo`, non nasconde il messaggio) | `00_schema/config/` |
+| 2 | colonna nel CSV + nella lista `columns:` del loader `20260614-08` | `80_data` |
+| 3 | guardrail: (B) e (C) adeguati, **(D) nuovo** | `scripts/sql/` |
+| 4 | pgTAP: un codice obsoleto risolve ancora il messaggio; e il presidio lo ignora | `db/pgtap/script/` |
+| 5 | primo uso reale: ritirare `PREV_TRANSIZIONE_NON_AMMESSA`, registro **51 → 50** | `80_data` |
+| 6 | doc: la guida sui presidi (§3.3) e questa sezione | `docs/` |
+
+Il punto 5 è quello che chiude il giro iniziato con `20260805-15`: la rinomina
+c'è già, mancava solo un modo di ritirare il vecchio nome senza cancellare la
+storia.
+
+### 15.6 ✅ Fatto — 2026-08-05
+
+| # | Cosa | Dove |
+|---|---|---|
+| 1 | colonna `obsoleto_dal DATE` + `COMMENT` che dice **cosa non è** | `20260805-17` |
+| 2 | colonna nel CSV (token letterale `NULL`) e nel loader, con `nullValue` da `""` a `"NULL"` | `20260614-08` esteso in place |
+| 3 | guardrail: (B) e (C) adeguati, **(D) nuovo** | `guardrail_codice_errore_strutturato.sql` |
+| 4 | pgTAP `test-messaggi-errore-obsoleto-dal.sql` — **4/4 verdi** | `db/pgtap/script/` |
+| 5 | ritirato `PREV_TRANSIZIONE_NON_AMMESSA`: registro **51 → 50** | solo CSV, nessun changeSet |
+| 6 | guida presidi §3.3 e questa sezione | `docs/` |
+
+**Le prove, tutte in transazione annullata:**
+
+* guardrail verde a fine giro: *«50 attive, 1 ritirato»*;
+* **(D) sa diventare rosso**: marcando obsoleto un codice ancora vivo
+  (`ERRORE_PARAMETRI`) elenca le cinque funzioni che lo sollevano, col nome;
+* **(D) tace su un ritiro programmato**: con `obsoleto_dal` a data futura non
+  protesta, perché il codice è ancora in servizio;
+* un codice ritirato **risolve ancora il suo messaggio** — asserito sia in
+  simulazione sia dal pgTAP, ed è il contratto che regge tutto il resto.
+
+Il punto 5 non ha richiesto nessun changeSet: **due celle di CSV**. È la
+procedura del §15.4 alla sua prima applicazione, e vale identica per gli altri 45.
+
+### 15.7 ⚠️ Due trappole pagate mentre si costruiva
+
+**Il `DELETE` non tiene se il CSV torna indietro.** `20260805-16` era applicato e
+`EXECUTED`, eppure `EMITTENTE_NON_MODIFICABILE` e `PREV_STATO_NON_MODIFICABILE`
+sono **ricomparsi nel database**: un commit successivo ha riportato il CSV del
+catalogo alla versione con quelle righe, e il loader `runOnChange` le ha
+reinserite al migrate seguente. Il changeSet `-16` non poteva rimediare — è
+`runOnChange: false`, gira una volta sola.
+È la regola delle «due mosse» vista dal lato che non si prevede: non basta fare
+entrambe, devono anche **restare** entrambe. Un altro argomento a favore di
+`obsoleto_dal`, che essendo un *valore* nel CSV non ha questa asimmetria.
+
+**Il CSV del catalogo ha un campo che contiene un a capo** — 636 righe fisiche
+per 634 record. Aggiungere una colonna riga per riga spezza quel record e fa
+slittare tutto: al primo tentativo ha alterato **1.579 campi** senza che il
+confronto testuale se ne accorgesse, perché toglieva la colonna aggiunta e
+ritrovava il file «identico». L'unica verifica che vale è il confronto
+**record per record col parser CSV** — e con quella il round-trip risulta pulito:
+634 record, zero campi modificati.
+
+### 15.8 Primo lotto di rinomina — `trgfn_template_flussi_guard_modalita_esito`
+
+Con `obsoleto_dal` in servizio, il cantiere dei 50 codici fuori convenzione si
+apre. Prima misura utile: **nessuno dei 50 è pronto al ritiro** — sono tutti
+ancora sollevati da qualcuno. Il lavoro quindi non è ritirare, è **rinominare**;
+il ritiro è la coda di ogni rinomina.
+
+**Il costo si legge per funzione, non per codice.** Contati per codice sono 129
+punti di intervento; ma una sola `CREATE OR REPLACE` ne libera più d'uno:
+
+| Codici liberati | Funzione | pgTAP da toccare |
+|---:|---|---:|
+| **4** | `pratiche.trgfn_template_flussi_guard_modalita_esito` | **0** ⭐ |
+| 4 | `pratiche.fn_prendi_in_carico_flusso` | 2 |
+| 4 | `pratiche.trgfn_pratiche_guard_contesto` | 1 |
+| 3 | `vendite.fn_crea_revisione_preventivo` | 1 |
+
+Il primo lotto è quello con quattro codici e **zero test da aggiornare**:
+`20260805-19`, registro **50 → 46**.
+
+La rinomina è meccanica — si antepone `E_` — ed è la stessa forma usata dal BE in
+`20260805-15`. Non è l'occasione per riprogettare i nomi: modulo e tipo sono già
+leggibili, mancava solo il prefisso su cui `resolve()` decide 400 invece di 500.
+
+**Le tre mosse, e perché in quest'ordine:**
+
+1. i 4 codici nuovi entrano a catalogo (CSV, id 842-845);
+2. la funzione smette di sollevare i vecchi (`20260805-19`);
+3. i vecchi vengono ritirati con `obsoleto_dal` e tolti dal registro (CSV).
+
+Il 3 non può precedere il 2 — il controllo (D) fallirebbe, ed è il suo mestiere.
+Il 1 non può seguire il 2 — l'operatore leggerebbe `[MESSAGGIO NON DEFINITO]`.
+
+⚠️ **Nota onesta sull'ordine dentro il migrate:** il CSV del catalogo è `80_data`
+e la funzione è `20_code`, quindi fra il passo 2 e il passo 1 esiste una finestra
+**dentro** il migrate in cui la funzione solleva codici non ancora a catalogo. È
+accettabile — nessuno usa il database durante un migrate, e a fine giro lo stato
+è coerente — ma va saputo, non scoperto.
+
+**✅ APPLICATO E VERIFICATO (2026-08-05).** `20260805-19` è `EXECUTED`, e con lui
+`-16`, `-17`, `-18`. Sul DB:
+
+| | |
+|---|---|
+| Guardrail | **verde** — *«46 attive, 5 ritirati»* |
+| Registro | **50 → 46** |
+| Codici ritirati | 5 (`PREV_TRANSIZIONE_NON_AMMESSA` + i 4 del lotto) |
+| Nuovi `E_TEMPLATE_FLUSSO_*` a catalogo | 4 |
+| Doppioni risorti | **0** — `-18` ha chiuso la partita |
+| `pgtap-baseline.sh pratiche` | **nessuna regressione** |
+
+Il controllo (D) tace, cioè la funzione non nomina più i vecchi codici: è la
+prova che la rinomina è completa e non parziale.
+
+> ⚠️ **Un difetto trovato dalla simulazione, che la sola lettura non avrebbe
+> visto.** Il corpo copiato dalla doc auto-gen finisce con `$function$` **senza
+> punto e virgola** — nell'auto-gen il `COMMENT` che segue è un blocco separato,
+> nel changeSet è lo stesso statement. Senza il `;` l'apply muore con
+> *«errore di sintassi a o presso "COMMENT"»*. Vale per **ogni** changeSet che
+> ricopia un corpo dall'auto-gen: è una riga che il copia-incolla non porta con
+> sé.
+
+**Richiesta al BE:** i 4 vecchi codici hanno una voce in `error_policies.py`
+(dal blocco del 2026-08-05). Le voci vanno **rinominate**, non duplicate — una
+chiave ripetuta in un dict literal vince l'ultima senza dire niente. Gli status
+non cambiano.
+
+### 15.9 Secondo lotto — `trgfn_pratiche_guard_contesto`
+
+`20260805-20`. Altri **4 codici** in una funzione sola: la guard di coerenza fra
+soggetto, ruolo e istanza utility della pratica.
+
+| Vecchio | id | Nuovo | id |
+|---|---:|---|---:|
+| `PRATICHE_RUOLO_SENZA_SOGGETTO` | 305 | `E_PRATICHE_RUOLO_SENZA_SOGGETTO` | 846 |
+| `PRATICHE_RUOLO_NON_COERENTE` | 306 | `E_PRATICHE_RUOLO_NON_COERENTE` | 847 |
+| `PRATICHE_ISTANZA_NON_COERENTE` | 307 | `E_PRATICHE_ISTANZA_NON_COERENTE` | 848 |
+| `PRATICHE_ISTANZA_SENZA_SOGGETTO` | 308 | `E_PRATICHE_ISTANZA_SENZA_SOGGETTO` | 849 |
+
+Registro **46 → 42**. Simulazione verde: *«42 attive, 9 ritirati»*.
+
+> ⚠️ **Il pgTAP di quella guard non se ne accorge, ed è bene saperlo.**
+> `test-guard-contesto-pratica.sql` la copre con cinque
+> `throws_ok(sql, NULL, NULL, descrizione)`: i due `NULL` sono SQLSTATE e
+> messaggio attesi, quindi il test asserisce soltanto **che qualcosa fallisca**,
+> non *cosa*. La rinomina perciò non lo rompe — ma non è un merito suo: non se ne
+> accorgerebbe nemmeno se il codice fosse sbagliato. Il suo verde **non è** una
+> conferma della rinomina; la conferma è il controllo (D) del guardrail.
+> Non è materia di questo lotto, ma è un candidato per quando si passerà a
+> rinforzare le asserzioni deboli.
+
+### 15.10 Avanzamento del cantiere
+
+| Lotto | Funzione | Codici | Registro | Stato |
+|---|---|---:|---|---|
+| — | ritiro `PREV_TRANSIZIONE_NON_AMMESSA` (già rinominato da `20260805-15`) | 1 | 51 → 50 | ✅ |
+| 1° | `pratiche.trgfn_template_flussi_guard_modalita_esito` | 4 | 50 → 46 | ✅ applicato |
+| 2° | `pratiche.trgfn_pratiche_guard_contesto` | 4 | 46 → 42 | ⏳ da applicare |
+| 3° | `pratiche.fn_prendi_in_carico_flusso` | 4 | 42 → 38 | prossimo (2 pgTAP) |
+| 4° | `vendite.fn_crea_revisione_preventivo` | 3 | 38 → 35 | (1 pgTAP) |
+
+Da 57 di partenza a **42**: −15 in una giornata, di cui 6 cancellati (codici
+morti) e 9 ritirati con `obsoleto_dal` dopo rinomina. I 42 che restano vivono in
+circa 31 funzioni, e la coda è fatta soprattutto di funzioni che portano **un
+codice solo**: da lì in poi il rapporto fra fatica e resa peggiora, e conviene
+procedere per dominio invece che per conteggio.
+
+### 15.11 Terzo lotto — e la scoperta che riordina il cantiere
+
+**Il lotto previsto non si poteva fare da soli.** Il piano diceva
+`pratiche.fn_prendi_in_carico_flusso` (4 codici). Misurando prima di scrivere:
+quei quattro sono nominati **anche dal backend**, in
+`apps/pratiche/services/pratiche_service.py`, dentro una lista `known_markers`
+che riconosce l'errore da una **substring del messaggio** e ne restituisce il
+codice.
+
+⚠️ **Rinominarli a DB senza toccare il Python non romperebbe niente in modo
+rumoroso — ed è questo il problema.** Il messaggio non cambia, quindi il marker
+continua a corrispondere e l'API restituirebbe il **vecchio nome ormai ritirato**
+mentre il DB solleva il nuovo. Due verità diverse sullo stesso errore, e nessun
+test che protesti.
+
+Da qui il censimento che riordina tutto il cantiere:
+
+| | Codici | Funzioni | |
+|---|---:|---:|---|
+| ✅ **DB-only** | 20 | 15 | rinominabili da soli |
+| 🔴 **Accoppiati al backend** | 37 | 29 | vanno rilasciati **insieme** al Python |
+
+I lotti 1 e 2 erano DB-only per fortuna, non per scelta: la distinzione non era
+stata fatta. Da qui in poi è il primo criterio di composizione dei lotti.
+
+### 15.12 `20260805-25` — il lotto DB-only più grosso
+
+`vendite.fn_crea_revisione_preventivo`, 3 codici:
+
+| Vecchio | id | Nuovo | id |
+|---|---:|---|---:|
+| `PREV_REVISIONE_STATO_NON_AMMESSO` | 354 | `E_PREV_REVISIONE_STATO_NON_AMMESSO` | 850 |
+| `PREV_REVISIONE_BOZZA_ESISTENTE` | 355 | `E_PREV_REVISIONE_BOZZA_ESISTENTE` | 851 |
+| `PREV_STATO_CORRENTE_NON_TROVATO` | 357 | `E_PREV_STATO_CORRENTE_NON_TROVATO` | 852 |
+
+Registro **42 → 39**.
+
+**✅ APPLICATO E VERIFICATO (2026-08-05).** `20260805-25` è `EXECUTED`; guardrail
+verde — *«39 attive, 12 ritirati»* — e `pgtap-baseline.sh vendite` senza
+regressioni.
+
+> ⚠️ **La prima simulazione è fallita, e ha insegnato la regola che mancava.**
+> Il controllo (D) ha protestato: `PREV_STATO_CORRENTE_NON_TROVATO` **non è
+> esclusivo** di `fn_crea_revisione_preventivo` — lo solleva anche
+> `fn_cambia_stato_preventivo`. Rinominarlo in una sola delle due lasciava
+> l'altra a sollevare un codice ritirato.
+>
+> **L'unità del ritiro è il CODICE, non la funzione.** Il raggruppamento per
+> funzione serve solo a comporre i lotti e a stimarne il costo; prima di ritirare
+> un codice va verificato **ovunque** sia sollevato. Il changeSet contiene perciò
+> **due** `CREATE OR REPLACE`: la seconda cambia un solo letterale e lascia
+> intatto `PREV_NESSUNA_RIGA_ATTIVA`, che uscirà col suo lotto.
+>
+> È il primo caso in cui un presidio scritto in questa slice ha fermato un errore
+> di questa slice. Senza (D) il lotto sarebbe passato, e il difetto — una
+> funzione che solleva un codice dichiarato ritirato — non aveva nessun altro
+> modo di farsi notare.
+
+Nel pgTAP `test-fn-crea-revisione-preventivo.sql` il codice era citato in una
+descrizione di test e in un commento, mai in un'asserzione: aggiornati nello
+stesso commit, perché una descrizione che nomina un codice inesistente confonde
+chi legge fra sei mesi.
+
+### 15.13 Il fronte accoppiato al backend — brief di coordinamento
+
+Dei **39** codici ancora fuori convenzione, **27 sono nominati dal backend** e
+**23 stanno in un file solo**: la lista `known_markers` di
+`apps/pratiche/services/pratiche_service.py`. Gli altri 12 sono DB-only e il DB
+li rinomina da solo.
+
+Brief: [brief-be-rinomina-codici-known-markers](brief-be-rinomina-codici-known-markers.md).
+
+**La proposta, in una riga:** invece di un rilascio simultaneo per ogni lotto —
+sincronia fra due repository e due server, che prima o poi va storta — il BE
+**dichiara entrambi i nomi** in `known_markers` per un periodo. Poiché il campo
+strutturato vince su qualunque marker *purché il codice sia fra quelli
+dichiarati*, con entrambe le voci presenti:
+
+| Momento | Cosa arriva dal DB | Esito |
+|---|---|---|
+| prima della rinomina | vecchio codice | matcha la voce vecchia ✅ |
+| dopo la rinomina | nuovo codice | matcha la voce nuova ✅ |
+
+**L'ordine di rilascio diventa indifferente e la finestra di disallineamento
+sparisce.** È il campo strutturato che ripaga il debito che ha creato: senza di
+esso servirebbe la sincronia.
+
+Sequenza: il DB prosegue sui 12 DB-only mentre il BE prepara il §4 del suo brief;
+i lotti accoppiati si aprono appena quelle voci sono in `Tito-dev`.

@@ -159,8 +159,9 @@ Due modi di romperlo, e nessuno dei due fa rumore da solo:
 |---|---|
 | La sede unica che scrive il campo | `script.fn_log_and_raise_error` |
 | Il registro | `dbops.messaggi_errore_codici_legacy` |
+| Il ritiro di un nome vecchio | `config.messaggi_errore.obsoleto_dal` |
 | Cancello automatico | `scripts/sql/guardrail_codice_errore_strutturato.sql` (passo CI) |
-| Test della suite | `db/pgtap/script/test-fn-log-and-raise-error-constraint-codice.sql` · `db/pgtap/vendite/test-ordini-guard-transizione-v1.sql` (test 8) |
+| Test della suite | `db/pgtap/script/test-fn-log-and-raise-error-constraint-codice.sql` · `db/pgtap/script/test-messaggi-errore-obsoleto-dal.sql` · `db/pgtap/vendite/test-ordini-guard-transizione-v1.sql` (test 8) |
 
 **Il registro contiene i nomi fuori convenzione ereditati** dal periodo in cui la
 regola non era presidiata. Rinominarli costerebbe più di quanto renda, quindi si
@@ -178,6 +179,32 @@ residuo, oppure un pezzo di lavoro in corso a cui manca ancora il collegamento.
 Cancellare il secondo tipo rompe il lavoro di qualcun altro. Nei quattro casi la
 risposta era scritta nel database stesso, nei commenti delle funzioni che li
 avevano ritirati.
+
+### Perché quasi nessuno di questi nomi si può cancellare
+
+Quando un codice viene rinominato correttamente, verrebbe voglia di cancellare la
+riga vecchia. **Quasi mai si può**: ogni errore che il sistema registra lascia una
+riga di diario che *punta* alla voce del catalogo, e finché quel diario esiste la
+voce non si tocca. Al 2026-08-05 erano **46 nomi su 53**, per oltre 46.000 righe
+di diario.
+
+Cancellare il diario per riordinare il catalogo sarebbe distruggere una prova per
+sistemare un'etichetta. E c'è di peggio: una cancellazione del genere **riesce
+sulle installazioni nuove e fallisce su quelle che hanno una storia** — la prova
+automatica direbbe che va tutto bene proprio dove non c'è niente da rompere.
+
+Perciò un nome non si cancella: si **ritira**, scrivendo la data del ritiro
+accanto alla voce (`config.messaggi_errore.obsoleto_dal`). La voce resta, il
+diario resta agganciato, e — punto essenziale — **chi dovesse ancora incontrare
+quell'errore continua a leggere la spiegazione di sempre**, non un messaggio
+vuoto. È una dichiarazione di intenti («non usatelo più»), non un interruttore.
+
+⚠️ E una dichiarazione di intenti, da sola, è aria: qualcuno può sempre tornare a
+usarlo. Per questo il controllo automatico ne verifica una in più — **nessun
+punto del sistema deve poter sollevare un errore dichiarato ritirato**. Se
+succede, una delle due cose è falsa e la verifica lo dice. Senza quel controllo,
+la data di ritiro sarebbe l'etichetta rassicurante di cui parla il §4-bis: la
+cosa più pericolosa che si possa mettere in un registro.
 
 ⚠️ **Qui il registro non chiede un motivo per riga**, al contrario di quello dei
 riferimenti morti. Non è una dimenticanza: là ogni voce è una decisione a sé,

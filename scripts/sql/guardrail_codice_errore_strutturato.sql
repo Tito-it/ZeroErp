@@ -17,8 +17,19 @@
 --   A) un `RAISE ... USING ... CONSTRAINT =` fuori da fn_log_and_raise_error
 --   B) un codice di config.messaggi_errore fuori convenzione e non registrato
 --      nel debito
---   C) una voce del registro che non corrisponde piu' a nessun codice a seed:
---      il debito e' stato pagato, la riga va tolta
+--   C) una voce del registro che non corrisponde piu' a nessun codice a seed
+--      (o il cui codice e' stato ritirato): il debito e' pagato, la riga va tolta
+--   D) una funzione viva che solleva un codice RITIRATO (`obsoleto_dal`)
+--
+-- ── `obsoleto_dal`, dal 2026-08-05 (changeSet 20260805-17) ───────────────
+--   Un codice legacy spesso NON si puo' cancellare: `dbops.error_log` ha una FK
+--   NOT NULL verso `config.messaggi_errore(id)`, e 46 codici su 53 hanno righe
+--   di log. Si ritirano quindi valorizzando `obsoleto_dal` invece di
+--   cancellarli — la riga resta, i log restano agganciati, il runtime continua
+--   a risolvere il messaggio.
+--   ⚠️ Una data FUTURA e' un ritiro programmato: il codice e' ancora in
+--   servizio, quindi (B) continua a pretenderlo registrato e (D) non protesta.
+--   Tutti i controlli qui sotto guardano `obsoleto_dal <= CURRENT_DATE`.
 --
 -- Uso (read-only, nessuna scrittura):
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 -f scripts/sql/guardrail_codice_errore_strutturato.sql
@@ -36,9 +47,10 @@
 
 DO $guardrail$
 DECLARE
-    v_mittenti   text;
-    v_fuori      text;
-    v_pagati     text;
+    v_mittenti       text;
+    v_fuori          text;
+    v_pagati         text;
+    v_ritirati_vivi  text;
     -- ⚠️ Deve restare IDENTICO al CHECK chk_messaggi_errore_codici_legacy_non_conforme
     --    (20260805-06). Se i due divergono, il registro e il presidio finiscono
     --    per parlare di due insiemi diversi e nessuno se ne accorge.
@@ -103,10 +115,16 @@ BEGIN
     -- vorrebbe dire un secondo registro da 13 voci per comprare niente:
     -- quello che serve al backend e' il prefisso, perche' e' su quello che
     -- `ErrorPolicyRegistry.resolve` decide 400 invece di 500.
+    --
+    -- ⚠️ I codici RITIRATI (`obsoleto_dal` gia' scaduta) escono da questo
+    -- controllo: non sono debito da registrare, sono debito **pagato** che non
+    -- si e' potuto cancellare per via della FK di error_log. Pretenderli nel
+    -- registro impedirebbe al registro di calare, che e' il suo unico scopo.
     SELECT string_agg(DISTINCT me.codice, E'\n  ' ORDER BY me.codice)
       INTO v_fuori
       FROM config.messaggi_errore me
      WHERE me.codice !~ c_convenzione
+       AND (me.obsoleto_dal IS NULL OR me.obsoleto_dal > CURRENT_DATE)
        AND NOT EXISTS (
              SELECT 1 FROM dbops.messaggi_errore_codici_legacy l
               WHERE l.codice = me.codice);
@@ -133,25 +151,82 @@ BEGIN
     -- registro non serve piu' e va tolta dal CSV
     -- (80_data/sql/dbops/messaggi_errore_codici_legacy.csv). Il seed e'
     -- DELETE + loadData proprio per questo: e' un mirror, non un upsert.
-    SELECT string_agg(l.codice, E'\n  ' ORDER BY l.codice)
+    -- Due modi di pagare il debito, ed entrambi contano: il codice non esiste
+    -- piu' (cancellato), oppure e' stato RITIRATO con `obsoleto_dal` perche' la
+    -- FK di error_log non ne permetteva la cancellazione.
+    SELECT string_agg(l.codice || (CASE WHEN me.codice IS NULL
+                                        THEN ' (non piu'' a catalogo)'
+                                        ELSE ' (ritirato il ' || me.obsoleto_dal || ')' END),
+                      E'\n  ' ORDER BY l.codice)
       INTO v_pagati
       FROM dbops.messaggi_errore_codici_legacy l
-     WHERE NOT EXISTS (
-             SELECT 1 FROM config.messaggi_errore me
-              WHERE me.codice = l.codice);
+      LEFT JOIN config.messaggi_errore me
+             ON me.codice = l.codice
+            AND (me.obsoleto_dal IS NULL OR me.obsoleto_dal > CURRENT_DATE)
+     WHERE me.codice IS NULL
+        OR EXISTS (SELECT 1 FROM config.messaggi_errore x
+                    WHERE x.codice = l.codice
+                      AND x.obsoleto_dal IS NOT NULL
+                      AND x.obsoleto_dal <= CURRENT_DATE);
 
     IF v_pagati IS NOT NULL THEN
         RAISE EXCEPTION
           E'Voci di troppo nel registro dei codici legacy:\n  %\n\n'
-          'Questi codici non esistono piu'' in config.messaggi_errore: sono stati '
-          'rinominati o eliminati, cioe'' il debito e'' stato pagato. La riga va TOLTA '
-          'da db/changelog/migrations_v2/80_data/sql/dbops/messaggi_errore_codici_legacy.csv '
+          'Questi codici sono stati rinominati, eliminati o RITIRATI con obsoleto_dal: '
+          'in tutti e tre i casi il debito e'' pagato. La riga va TOLTA da '
+          'db/changelog/migrations_v2/80_data/sql/dbops/messaggi_errore_codici_legacy.csv '
           '(il loader e'' un mirror: DELETE + loadData, quindi basta togliere la riga). '
           'Non e'' pignoleria — un registro che si puo'' solo allungare smette di essere '
           'un registro e diventa il posto dove i problemi vanno a sparire.', v_pagati;
     END IF;
 
-    RAISE NOTICE 'OK — un solo mittente sul canale CONSTRAINT, nessun codice fuori convenzione non registrato, nessuna voce di troppo nel registro (% registrate).',
-        (SELECT count(*) FROM dbops.messaggi_errore_codici_legacy);
+    -- ── (D) nessuna funzione viva solleva un codice ritirato ────────
+    --
+    -- ⚠️ E' il controllo che rende `obsoleto_dal` una promessa mantenuta invece
+    -- di un'etichetta. Il ritiro si fa in due mosse — prima si tolgono i call
+    -- site, poi si valorizza la data — e senza (D) niente impedirebbe a qualcuno
+    -- di rimetterne uno: il codice tornerebbe a girare mentre il catalogo lo
+    -- dichiara ritirato, e nessuno se ne accorgerebbe. E' esattamente il punto
+    -- cieco del §4-bis della guida sui presidi: un'etichetta rassicurante e'
+    -- piu' pericolosa di un errore, perche' nessuno la ricontrolla.
+    --
+    -- ⚠️ LIMITE NOTO, da conoscere prima di fidarsi del verde: vede solo i
+    -- letterali nei corpi plpgsql. NON vede (a) i codici passati per
+    -- espressione — ma quelli escono dai `fn_check_*`, che ritornano codici
+    -- `E_*` e quindi non ritirabili per questa strada — e (b) i codici sollevati
+    -- dal **Python**: questo e' uno script SQL, `backend/` non lo puo' leggere.
+    -- Per quelli il presidio e' il test `test_error_codes_declared_guardrail`
+    -- lato BE.
+    SELECT string_agg(x.riga, E'\n  ' ORDER BY x.riga)
+      INTO v_ritirati_vivi
+      FROM (
+        SELECT DISTINCT me.codice || '  <-  ' || n.nspname || '.' || p.proname AS riga
+          FROM config.messaggi_errore me
+          JOIN pg_proc p
+            ON p.prosrc LIKE '%' || quote_literal(me.codice) || '%'
+          JOIN pg_namespace n
+            ON n.oid = p.pronamespace
+         WHERE me.obsoleto_dal IS NOT NULL
+           AND me.obsoleto_dal <= CURRENT_DATE
+           AND p.prolang = (SELECT oid FROM pg_language WHERE lanname = 'plpgsql')
+           AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+      ) x;
+
+    IF v_ritirati_vivi IS NOT NULL THEN
+        RAISE EXCEPTION
+          E'Codici RITIRATI ancora sollevati da funzioni vive:\n  %\n\n'
+          'La colonna config.messaggi_errore.obsoleto_dal dichiara questi codici fuori '
+          'servizio, ma il DB li solleva ancora. Una delle due cose e'' falsa. '
+          'Il ritiro si fa in QUEST''ORDINE: prima si tolgono i call site (changeSet '
+          '20_code, sostituendo il codice con quello nuovo `E_*`), poi si valorizza '
+          'obsoleto_dal nel CSV del catalogo. Se invece il codice serve ancora, va '
+          'rimessa a NULL la data: ritirarlo e continuare a usarlo e'' la forma peggiore '
+          'di debito, perche'' sembra pagato.', v_ritirati_vivi;
+    END IF;
+
+    RAISE NOTICE 'OK — un solo mittente sul canale CONSTRAINT, nessun codice fuori convenzione non registrato, nessuna voce di troppo nel registro (% attive), nessun codice ritirato ancora sollevato (% ritirati).',
+        (SELECT count(*) FROM dbops.messaggi_errore_codici_legacy),
+        (SELECT count(*) FROM config.messaggi_errore
+          WHERE obsoleto_dal IS NOT NULL AND obsoleto_dal <= CURRENT_DATE);
 END
 $guardrail$;

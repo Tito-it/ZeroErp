@@ -1,0 +1,110 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Due doppioni senza prefisso di codici vivi: registro del debito 53 -> 51
+#   Brief: docs/it/dev/work-in-progress/brief-db-codice-errore-strutturato.md
+#          §7 (rilievo BE) e §9 item 11
+#   Precedente della stessa famiglia: 20260805-11 (4 codici superati)
+#
+# ── IL RILIEVO, E L'ERRORE CHE LO NASCONDEVA ────────────────────────────
+#   Il 20260805-11 aveva tenuto a catalogo `EMITTENTE_NON_MODIFICABILE` e
+#   `PREV_STATO_NON_MODIFICABILE` con la motivazione «due li usa il backend».
+#   Non era vero, e il modo in cui l'errore e' nato merita una riga: la misura
+#   era una ricerca per SOTTOSTRINGA, che cercando `EMITTENTE_NON_MODIFICABILE`
+#   trova anche `E_EMITTENTE_NON_MODIFICABILE` — cioe' l'ALTRO codice, quello
+#   col prefisso, che e' vivo e usato dal backend. Il gemello copriva il
+#   doppione.
+#
+#   ⚠️ E' la stessa forma di errore di cui parla tutto il brief: una misura che
+#   conferma una premessa perche' guarda la cosa sbagliata. Rilevata dal team BE
+#   e ri-verificata qui con i confini di parola (`(?<![A-Z_])CODICE(?![A-Z_])`):
+#
+#     EMITTENTE_NON_MODIFICABILE   funzioni DB: 0 · backend/apps: 0 · frontend: 0
+#     PREV_STATO_NON_MODIFICABILE  funzioni DB: 0 · backend/apps: 0 · frontend: 0
+#
+#   (L'unica occorrenza in `backend/apps` e' la registrazione stessa in
+#   `error_policies.py`, non un uso: va tolta anche quella, ma e' lato BE.)
+#
+#   La prova che sono superati e non «non ancora agganciati» e' che il gemello
+#   col prefisso e' vivo: `E_EMITTENTE_NON_MODIFICABILE` in
+#   `anagrafiche/error_codes.py`, `E_PREV_STATO_NON_MODIFICABILE` in
+#   `vendite/services/preventivi_service.py`. Il rimpiazzo c'e' gia' ed e' in
+#   servizio.
+#
+# ── ⚠️ PERCHE' QUESTI DUE SI POSSONO CANCELLARE E ALTRI NO ──────────────
+#   `dbops.error_log.messaggio_errore_id` e' una FK verso
+#   `config.messaggi_errore(id)`, ed e' `NOT NULL`: una riga di catalogo con
+#   log a valle NON si cancella, la FK rifiuta. Misurato il 2026-08-05:
+#
+#     codici del registro CON righe di log ......  46 su 53  (46.040 righe)
+#     codici del registro SENZA righe di log ....   7
+#
+#   Questi due stanno fra i sette: **0 righe di log**, verificato prima di
+#   scrivere il changeSet. Per gli altri 46 la strada del DELETE e' chiusa e
+#   serve una decisione a parte (non e' di questo changeSet).
+#
+#   ⚠️ Nota di riproducibilita', che vale per tutta la famiglia: un DELETE su
+#   `messaggi_errore` **passa in CI e puo' fallire su un DB longevo**. In CI
+#   `error_log` nasce vuota, quindi la FK non protesta mai; su `dev` — e domani
+#   in produzione — protesta se quel codice ha girato almeno una volta. Un
+#   changeSet il cui esito dipende da quanto e' vissuto il database non e'
+#   riproducibile: e' esattamente il motivo per cui il caso dei 46 va deciso
+#   invece che forzato.
+#
+# ── DUE MOSSE PER IL CATALOGO, UNA PER IL REGISTRO ──────────────────────
+#   `config.messaggi_errore` e' caricata da un `loadUpdateData` runOnChange
+#   (20260614-08), cioe' un UPSERT: togliere la riga dal CSV non la cancella,
+#   e lasciarla nel CSV la farebbe tornare. Servono entrambe.
+#   Il registro invece ha un seed `DELETE` + `loadData` (mirror): bastano le
+#   righe tolte dal suo CSV. Registro **53 -> 51**.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260805-16-delete-messaggi-errore-doppioni-senza-prefisso-mctit.yaml
+
+  - changeSet:
+      id: 20260805-16-delete-messaggi-errore-doppioni-senza-prefisso
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Elimina i due codici senza prefisso EMITTENTE_NON_MODIFICABILE e
+        PREV_STATO_NON_MODIFICABILE: sono doppioni superati dei gemelli
+        E_EMITTENTE_NON_MODIFICABILE / E_PREV_STATO_NON_MODIFICABILE, vivi e in
+        servizio. Nessun consumatore con ricerca a confini di parola, e zero
+        righe in dbops.error_log. Registro del debito 53 -> 51.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Filtro su id E su codice: se un giorno uno di questi id fosse
+              -- riusato per altro, il changeSet non deve poter cancellare una
+              -- riga viva.
+              DELETE FROM config.messaggi_errore
+               WHERE (id, codice) IN (
+                       (351, 'PREV_STATO_NON_MODIFICABILE'),
+                       (421, 'EMITTENTE_NON_MODIFICABILE')
+                     );
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              INSERT INTO config.messaggi_errore (id, codice, lingua, messaggio, causa, soluzione)
+              VALUES
+                (351, 'PREV_STATO_NON_MODIFICABILE', 'it',
+                 'Preventivo non modificabile nello stato corrente (%s)',
+                 'Il preventivo e'' in uno stato che non consente modifiche.',
+                 'Portare il preventivo in stato DRAFT per poterlo modificare.'),
+                (421, 'EMITTENTE_NON_MODIFICABILE', 'it',
+                 'L''emittente fiscale (colonna %s) e'' un snapshot user-derived: immutabile post-creazione.',
+                 'La colonna preventivi.emittente_fiscale_id e'' protetta da automation_lock_columns (script.trgfn_lock_columns) per garantire snapshot semantics: l''emittente registrato e'' quello dell''operatore creatore al momento dell''INSERT, e cambiarlo post-fact invalida l''audit trail.',
+                 'Per cambiare l''emittente di un preventivo, creare una revisione (fn_crea_revisione_preventivo) che nasce con l''emittente dell''operatore corrente, oppure cancellare e ricreare il preventivo con l''utenza corretta.')
+              ON CONFLICT (id) DO NOTHING;

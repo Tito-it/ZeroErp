@@ -319,6 +319,29 @@ jobs:
           # escalata: le deprecation di terze parti (es. _UnionGenericAlias da
           # drf_spectacular) restano warning.
           DJANGO_DEPRECATION_GATE: "1"
+          # Accende i 3 test end-to-end di apps/core/tests/services/test_db_error_fields:
+          # RAISE nel DB -> psycopg -> django.db.DatabaseError -> ApiError -> HTTP status.
+          # Sono l'UNICO punto che verifica la GIUNTURA fra le due meta' del
+          # contratto del codice errore strutturato (20260805-05): che
+          # `diag.constraint_name` sopravviva davvero al giro libpq/psycopg. I
+          # pgTAP coprono il lato DB, i test unitari col diag finto coprono il
+          # lato Python, ma nessuno dei due vede il pezzo in mezzo. Spenti di
+          # default perche' richiedono un DB raggiungibile; qui c'e', ed e' stato
+          # appena provvisto da Liquibase + manage.py migrate.
+          #
+          # ⚠️ PERCHE' FUNZIONANO, e quando smetteranno. Django crea il database
+          # di test usa-e-getta SOLO se almeno un test dichiara di averne bisogno
+          # (`django.test.TestCase` / `TransactionTestCase` / `databases = [...]`).
+          # In questa suite NESSUNO lo fa — 114 `unittest.TestCase` e 86
+          # `SimpleTestCase`, per la regola «i test devono girare senza DB reale»
+          # di AGENTS.md — quindi il runner stampa «Skipping setup of unused
+          # database(s)» e la connessione resta quella configurata, cioe' il DB
+          # completo di schema Liquibase. Il giorno in cui un test dichiarera' un
+          # database, il runner ne creera' uno vuoto per TUTTA la suite: li'
+          # `script.fn_log_and_raise_error` non esiste e questi tre falliranno in
+          # una PR che non c'entra niente. E' una dipendenza implicita, scritta
+          # anche in .codex/AGENTS.md §Regole test Django.
+          ZEROERP_TEST_DB_E2E: "1"
         run: |
           source .venv/bin/activate
           python manage.py test

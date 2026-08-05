@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `obsoleto_dal` — ritirare un codice errore senza cancellarlo
+#   Brief: docs/it/dev/work-in-progress/brief-db-codice-errore-strutturato.md §15
+#   Decisione Tid 2026-08-05 (opzione B). Seed: 20260805-18. Presidio: 20260805-19.
+#   Pattern generale: docs/.../brief-db-deprecabilita-catalogo-vs-istanze.md §0
+#
+# ── IL MURO CHE QUESTA COLONNA APRE ─────────────────────────────────────
+#   Ritirare un codice legacy finora voleva dire cancellarne la riga di
+#   catalogo (20260805-11, -16). Non scala: `dbops.error_log.messaggio_errore_id`
+#   e' una FK verso `config.messaggi_errore(id)` **NOT NULL**, quindi un codice
+#   che ha girato almeno una volta non si cancella. Misurato il 2026-08-05:
+#
+#     codici del registro del debito CON righe di log ....  46 su 53
+#     righe di error_log su quei 46 .....................  46.040
+#
+#   I sei gia' ritirati stavano fra i sette senza log: non e' stata fortuna, e'
+#   il controllo fatto prima di scriverli — ma la strada finisce li'.
+#
+# ── ⚠️ E IL SECONDO PROBLEMA, PIU' INSIDIOSO DELLA FK ───────────────────
+#   Un DELETE su messaggi_errore **passa in CI e puo' fallire su un DB longevo**:
+#   in CI `error_log` nasce vuota e la FK non protesta mai; su dev — e domani in
+#   produzione — protesta se quel codice ha girato. Un changeSet il cui esito
+#   dipende da quanto e' VISSUTO il database non e' riproducibile, ed e' la CI a
+#   dare la risposta rassicurante. Con `obsoleto_dal` il ritiro non dipende piu'
+#   dai dati: e' lo stesso su dev, in CI e in produzione.
+#
+# ── ⚠️ COSA QUESTA COLONNA NON E' ───────────────────────────────────────
+#   NON e' `attivo`, e la differenza e' tutto il punto del pattern (guida sulla
+#   deprecabilita', §0): `attivo = false` romperebbe i riferimenti esistenti e i
+#   guard che li presidiano. `obsoleto_dal` e' un asse SEPARATO — «selezionabile
+#   per il nuovo» — che non tocca «esiste» ne' «si risolve».
+#
+#   In concreto: `script.fn_get_messaggio` e `script.fn_log_and_raise_error`
+#   **continuano a risolvere un codice obsoleto**. Deve essere cosi': finche' un
+#   percorso non ancora bonificato lo solleva, l'operatore deve leggere una
+#   frase, non `[MESSAGGIO NON DEFINITO: ...]`. La colonna serve al PRESIDIO, non
+#   al runtime. Nessuna funzione la legge, ed e' voluto.
+#
+#   Chi la legge e' il guardrail `scripts/sql/guardrail_codice_errore_strutturato.sql`:
+#     (B) ignora i codici obsoleti — sono ritirati, non debito da registrare;
+#     (C) una voce del registro il cui codice e' diventato obsoleto va TOLTA;
+#     (D) ⚠️ NUOVO — nessuna funzione viva puo' sollevare un codice obsoleto.
+#         Senza (D) questa colonna sarebbe un'etichetta rassicurante, cioe' il
+#         punto cieco peggiore descritto nel §4-bis della guida sui presidi: si
+#         marca obsoleto DOPO aver tolto i call site, e (D) impedisce che
+#         qualcuno li rimetta.
+#
+# ── NOTE DI APPLICAZIONE ────────────────────────────────────────────────
+#   · `config.messaggi_errore` non ha trigger (ne' audit ne' storico: non ha
+#     nemmeno le colonne data_insert/user_insert), quindi l'ADD COLUMN non
+#     richiede di rigenerare niente. `config.*` e' in `dbops.automation_scope`,
+#     ma le automazioni non toccano una tabella priva di colonne di audit.
+#   · Colonna DATA, nullable, nessun default: NULL = in servizio. Nessun
+#     backfill — tutte le righe nascono NULL, ed e' il valore giusto.
+#   · Nessun CHECK sulla data: una data futura e' un ritiro programmato, ed e'
+#     un uso legittimo che non va vietato per prudenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260805-17-add-obsoleto-dal-messaggi-errore-mctit.yaml
+
+  - changeSet:
+      id: 20260805-17-add-obsoleto-dal-messaggi-errore
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Aggiunge config.messaggi_errore.obsoleto_dal (DATE, nullable): permette di
+        ritirare un codice errore senza cancellarne la riga, che la FK NOT NULL da
+        dbops.error_log rende impossibile per 46 codici su 53. NON e' `attivo`: non
+        nasconde il messaggio, il runtime continua a risolverlo. La legge solo il
+        guardrail CI.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.messaggi_errore
+                ADD COLUMN IF NOT EXISTS obsoleto_dal DATE;
+
+              COMMENT ON COLUMN config.messaggi_errore.obsoleto_dal IS
+              'Data di ritiro del codice: NULL = in servizio, valorizzata = ritirato, non nominabile da codice nuovo. ⚠️ NON e'' `attivo` e non nasconde il messaggio: fn_get_messaggio e fn_log_and_raise_error continuano a risolvere un codice obsoleto, perche'' finche'' un percorso non bonificato lo solleva l''operatore deve leggere una frase e non il placeholder. Esiste per permettere il ritiro dove il DELETE e'' impossibile: dbops.error_log.messaggio_errore_id e'' una FK NOT NULL, quindi un codice che ha girato almeno una volta non si cancella (46 codici su 53 al 2026-08-05, 46.040 righe di log). La legge solo scripts/sql/guardrail_codice_errore_strutturato.sql: (B) ignora gli obsoleti, (C) pretende che escano dal registro del debito, (D) vieta che una funzione viva ne sollevi uno. Brief: brief-db-codice-errore-strutturato.md §15.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.messaggi_errore DROP COLUMN IF EXISTS obsoleto_dal;

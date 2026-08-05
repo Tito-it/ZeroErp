@@ -13,6 +13,28 @@
 #   trgfn_flussi_guard_chiusura_prematura (20260614-07) quando si tenta di
 #   completare il flusso di chiusura con altri obbligatori ancora bloccanti.
 # Pattern loadUpdateData simmetrico a 20260608-11.
+#
+# ── ESTESO IL 2026-08-05: colonna `obsoleto_dal` + `nullValue` ──────────
+#   Brief: brief-db-codice-errore-strutturato.md §15 · colonna: 20260805-17
+#
+#   Questo changeSet e' `runOnChange: true` + `validCheckSums: ANY`, cioe' un
+#   MIRROR VIVO del CSV: estenderlo in place e' lecito e previsto, perche' e'
+#   progettato per ri-girare. Una colonna non elencata in `columns:` non
+#   verrebbe mai toccata dal loader, quindi `obsoleto_dal` va aggiunta qui,
+#   non gestita con changeSet SQL paralleli.
+#
+#   ⚠️ `nullValue` passa da "" a "NULL", e serve. Con `nullValue: ""` una cella
+#   vuota diventa STRINGA VUOTA, non NULL — misurato: 331 righe hanno
+#   `causa = ''` e ZERO hanno `causa IS NULL`. Su una colonna DATE quella
+#   stringa vuota sarebbe un errore di cast. La convenzione del progetto e' il
+#   TOKEN LETTERALE (`NULL` nella cella) con `nullValue: "NULL"`.
+#
+#   ⚠️ Il cambio NON tocca le colonne esistenti: nessuna cella del CSV contiene
+#   il token `NULL` (verificato, 0 su 634 record), e le celle `""` continuano a
+#   produrre stringa vuota come prima. Verifica post-migrate:
+#     SELECT count(*) FILTER (WHERE causa IS NULL)  -- deve restare 0
+#          , count(*) FILTER (WHERE causa = '')     -- deve restare 331
+#       FROM config.messaggi_errore;
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -38,7 +60,8 @@ databaseChangeLog:
             schemaName: config
             separator: ","
             encoding: UTF-8
-            nullValue: ""
+            # Token letterale, non la cella vuota: vedi la nota in testata.
+            nullValue: "NULL"
             primaryKey: "id"
             columns:
               - column: { name: codice,    type: STRING }
@@ -47,3 +70,6 @@ databaseChangeLog:
               - column: { name: id,        type: NUMERIC }
               - column: { name: causa,     type: STRING }
               - column: { name: soluzione, type: STRING }
+              # Ritiro del codice: NULL = in servizio. Non e' `attivo` e non
+              # nasconde il messaggio — la legge solo il guardrail (20260805-17).
+              - column: { name: obsoleto_dal, type: DATE }

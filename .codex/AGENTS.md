@@ -228,6 +228,20 @@ Bonifica in corso: `docs/it/dev/work-done/brief-db-bonifica-pgtap-sorgente-polim
 I test Django devono funzionare in CI (GitHub Actions) **senza dipendere da un DB reale accessibile**:
 
 - **Usare `unittest.TestCase`** (o `django.test.SimpleTestCase`) per test unitari con mock. **Non** usare `django.test.TestCase` a meno che il test non necessiti realmente del database.
+- ⚠️ **Quella regola oggi regge una seconda cosa, non dichiarata: leggere prima di infrangerla.**
+  Django crea il database di test usa-e-getta **solo se almeno un test dichiara di
+  averne bisogno** (`django.test.TestCase`, `TransactionTestCase`, o `databases = [...]`).
+  Oggi in `backend/apps` **nessuno lo dichiara** (114 `unittest.TestCase`, 86
+  `SimpleTestCase`, zero `django.test.TestCase`), quindi il runner stampa
+  «Skipping setup of unused database(s)» e la connessione dei test resta quella
+  **configurata**, cioe' un DB con lo schema Liquibase completo.
+  Ci si appoggiano i 3 test end-to-end di
+  `apps/core/tests/services/test_db_error_fields.py` (attivi con
+  `ZEROERP_TEST_DB_E2E=1`, accesi in CI), che interrogano funzioni PL/pgSQL vere.
+  **Il primo test che dichiarera' un database fara' creare al runner un DB vuoto
+  per TUTTA la suite**: li' `script.fn_log_and_raise_error` non esiste e quei tre
+  falliranno con «la funzione non esiste», in una PR che non c'entra nulla. Non e'
+  un divieto — e' che, se lo fai, quei tre vanno adeguati nello stesso commit.
 - **Mockare ogni accesso DB**: se il codice sotto test usa `django.db.connection` (cursor, advisory lock, query dirette), mockare quei metodi nel test. Non fare affidamento sul DB di sviluppo.
 - **Pattern consigliato** per metodi che accedono al DB (es. advisory lock, cursor raw):
 

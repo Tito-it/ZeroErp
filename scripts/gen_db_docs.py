@@ -210,18 +210,93 @@ def gen_function_md_V1(schema, func, cur):
 
 
 # NUOVA: Genera Markdown per view
+def _matview_indexes_md(schema, view, cur):
+    """Indici di una materializzata.
+
+    Non e' un dettaglio da appassionati: senza almeno un indice UNIQUE su tutte
+    le righe, PostgreSQL rifiuta `REFRESH MATERIALIZED VIEW CONCURRENTLY` e
+    l'unico aggiornamento possibile prende un lock esclusivo, cioe' blocca chi
+    sta leggendo. Chi consulta questa pagina per capire come si aggiorna la
+    vista deve trovarci la risposta, non doverla cercare in pg_index.
+    """
+    cur.execute(
+        """
+        SELECT i.relname AS nome,
+               idx.indisunique AS unico,
+               pg_get_indexdef(idx.indexrelid) AS definizione
+        FROM pg_index idx
+        JOIN pg_class i ON i.oid = idx.indexrelid
+        JOIN pg_class c ON c.oid = idx.indrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = %s AND c.relname = %s
+        ORDER BY i.relname
+        """,
+        (schema, view)
+    )
+    rows = cur.fetchall()
+    out = ["## Indici\n"]
+    if not rows:
+        out.append(
+            "Nessun indice. ⚠️ Senza un indice **UNIQUE** su tutte le righe, "
+            "`REFRESH MATERIALIZED VIEW CONCURRENTLY` non e' utilizzabile: "
+            "l'aggiornamento prende un lock esclusivo e blocca le letture.\n"
+        )
+        return out
+
+    out.append("| Indice | Unico | Definizione |")
+    out.append("| --- | --- | --- |")
+    for r in rows:
+        out.append(f"| `{r['nome']}` | {'✅' if r['unico'] else '—'} | `{r['definizione']}` |")
+    out.append("")
+
+    if any(r['unico'] for r in rows):
+        unici = ", ".join(f"`{r['nome']}`" for r in rows if r['unico'])
+        out.append(
+            f"> ✅ L'indice unico ({unici}) abilita "
+            "`REFRESH MATERIALIZED VIEW CONCURRENTLY`, che aggiorna senza "
+            "bloccare chi legge. Toglierlo non romperebbe le query, ma "
+            "renderebbe ogni aggiornamento bloccante — un guasto che si "
+            "manifesta in esercizio e non in sviluppo.\n"
+        )
+    else:
+        out.append(
+            "> ⚠️ Nessuno degli indici e' UNIQUE, quindi "
+            "`REFRESH MATERIALIZED VIEW CONCURRENTLY` non e' utilizzabile e "
+            "l'aggiornamento blocca le letture.\n"
+        )
+    return out
+
+
 def gen_view_md(schema, view, cur):
     if DOCS_MINIMAL:
         return ""
-    # Ottiene la definizione della view
+    # ⚠️ La definizione si prende da pg_class/pg_get_viewdef e NON da pg_views.
+    #    pg_views contiene solo le viste normali: le MATERIALIZZATE stanno in
+    #    pg_matviews, quindi con la query precedente `mv_ddt_ordini` tornava
+    #    riga vuota e la sua pagina non veniva mai scritta. pg_get_viewdef
+    #    funziona per entrambe, e relkind ci dice quale DDL stampare.
     cur.execute(
-        "SELECT definition FROM pg_views WHERE schemaname=%s AND viewname=%s",
+        """
+        SELECT c.relkind,
+               -- Senza il flag "pretty": e' la forma che usa pg_views, quindi
+               -- le pagine delle 49 viste gia' esistenti restano identiche al
+               -- byte. Con pretty=true la definizione e' molto piu' leggibile
+               -- (spariscono i (((...))) annidati) ma cambierebbero 98 file in
+               -- un colpo: e' un miglioramento a se', non da infilare qui.
+               pg_get_viewdef(c.oid) AS definition,
+               c.relispopulated
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = %s AND c.relname = %s AND c.relkind IN ('v', 'm')
+        """,
         (schema, view)
     )
     row = cur.fetchone()
     if not row:
         return ""
     definition = row['definition']
+    is_matview = (row['relkind'] == 'm')
+    is_populated = row['relispopulated']
 
     # Reloptions della vista (security_invoker / security_barrier) NON compaiono
     # in pg_get_viewdef / pg_views.definition: sono opzioni dell'oggetto,
@@ -245,7 +320,7 @@ def gen_view_md(schema, view, cur):
     ]
     with_clause = f"\nWITH ({', '.join(sec_opts)})" if sec_opts else ""
 
-    lines = [f"# 🔍 View `{view}`\n"]
+    lines = [f"# 🔍 {'Materialized view' if is_matview else 'View'} `{view}`\n"]
     if sec_opts:
         lines.append(
             f"> 🔒 **Opzioni di sicurezza**: `{', '.join(sec_opts)}` — "
@@ -253,10 +328,34 @@ def gen_view_md(schema, view, cur):
             "esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE "
             "VIEW`, altrimenti PostgreSQL la azzera.\n"
         )
+
+    if is_matview:
+        # Una materializzata e' dato fermo: chi la legge deve sapere che il
+        # contenuto ha una data, e da cosa dipende il fatto che sia aggiornato.
+        lines.append(
+            "> 🧊 **Vista MATERIALIZZATA**: il contenuto e' una copia salvata su "
+            "disco, non una query eseguita al momento. Risponde veloce ma "
+            "risponde con quello che c'era all'ultimo `REFRESH`: se il dato "
+            "sottostante e' cambiato dopo, qui non si vede ancora. Non si "
+            "modifica con `CREATE OR REPLACE` — va cancellata e ricreata.\n"
+        )
+        if not is_populated:
+            lines.append(
+                "> ⚠️ **Attualmente NON popolata** (`WITH NO DATA`): ogni "
+                "interrogazione fallisce finche' non viene eseguito un "
+                "`REFRESH MATERIALIZED VIEW`.\n"
+            )
+
     lines.append("```sql")
-    lines.append(f"CREATE OR REPLACE VIEW {schema}.{view}{with_clause} AS")
+    if is_matview:
+        lines.append(f"CREATE MATERIALIZED VIEW {schema}.{view} AS")
+    else:
+        lines.append(f"CREATE OR REPLACE VIEW {schema}.{view}{with_clause} AS")
     lines.append(definition.strip())
     lines.append("```\n")
+
+    if is_matview:
+        lines.extend(_matview_indexes_md(schema, view, cur))
     # include manual se esiste
     #manual = include_manual(schema, 'views', view)
     #return manual + "\n".join(lines)
@@ -328,9 +427,21 @@ def write_docs_for_schema(schema, cur):
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
     # ☝️ FINE BLOCCO PROCEDURE
-    # Views
+    # Views — normali E materializzate.
+    # ⚠️ information_schema.views NON contiene le materializzate: non sono
+    #    nello standard SQL, sono un'estensione PostgreSQL. Con la query
+    #    precedente l'unica materializzata del database (vendite.mv_ddt_ordini)
+    #    non veniva mai scoperta e la sua pagina non e' mai esistita — senza
+    #    che nulla segnalasse la mancanza. Si interroga pg_class, dove
+    #    relkind 'v' = vista, 'm' = materializzata.
     cur.execute(
-        "SELECT table_name as view_name FROM information_schema.views WHERE table_schema=%s",
+        """
+        SELECT c.relname AS view_name
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = %s AND c.relkind IN ('v', 'm')
+        ORDER BY c.relname
+        """,
         (schema,)
     )
     for r in cur.fetchall():

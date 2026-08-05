@@ -6,7 +6,6 @@ Approfondimento tabelle:
 >
 [vendite.ddt_righe](/dbzero/vendite/tabelle/ddt_righe)   
 > [vendite.ordini_righe_fulfillment](/dbzero/vendite/tabelle/ordini_righe_fulfillment)   
-> [vendite.mv_ddt_ordini] – **vista materializzata** delle coppie Testata DDT ↔ Testata Ordine      
 > [config.stati_doc_ddt](/dbzero/config/tabelle/stati_doc_ddt)   
 
 ---
@@ -16,7 +15,7 @@ La tabella **`vendite.ddt`** rappresenta la **testata** dei Documenti di Traspor
 * Traccia i **metadati di spedizione** (data, mittente/destinatario, causale, vettore).
 * Collega le **righe** in `vendite.ddt_righe`.
 * Espone lo **stato** operativo tramite `config.stati_doc_ddt` (*DRAFT → EMESSO → SPEDITO → CONSEGNATO → RESO*, + *ANNULLATO*), con transizioni data-driven in `config.transizioni_stati_ddt`.
-* Partecipa alle ricostruzioni **ordine↔ddt** via fulfillment (riga↔riga) e alla derivazione **ddt↔ordine** (testata↔testata) tramite `mv_ddt_ordini`.
+* Partecipa alle ricostruzioni **ordine↔ddt** via fulfillment (riga↔riga); il legame **testata↔testata** si ricava da lì, oppure direttamente da `ddt.sorgente_uid`.
 
 > ℹ️ **Nota**: la definizione SQL della tabella è generata automaticamente dal progetto; qui si documentano struttura concettuale, vincoli e flussi.
 
@@ -27,7 +26,6 @@ La tabella **`vendite.ddt`** rappresenta la **testata** dei Documenti di Traspor
 
 * **`vendite.ddt_righe(ddt_id)`** → righe del documento (1–N).
 * **`vendite.ordini_righe_fulfillment(ddt_riga_id)`** → mappatura riga DDT con riga Ordine.
-* **`vendite.mv_ddt_ordini(ddt_id, ordine_id)`** → coppie testata↔testata derivate.
 * **`config.stati_doc_ddt(id)`** → stato del documento.
 
 > 立 **FK policy**: sui legami fulfillment → righe vige `ON DELETE RESTRICT` (no hard delete). Le cancellazioni sono rimpiazzate da flussi di **storno/annullo**.
@@ -79,8 +77,8 @@ DRAFT → EMESSO → SPEDITO → CONSEGNATO → RESO   (+ ANNULLATO; RESO anche 
      legame è sul fulfillment `(ordine_riga_id, ddt_riga_id)`, non più sulla testata.
    * **Proiezione stato ordine** (atomica): residuo pieno → `CONFERMATO`, `0 < residuo < pieno` →
      `PARZIALMENTE_EVASO`, residuo 0 → `EVASO` (predicato `fn_ordine_ha_residuo_evasione`).
-   * La **MV** `mv_ddt_ordini` riflette le coppie testata↔testata (refresh via
-     `dbops.fn_refresh_mv_ddt_ordini`, non nella fn).
+   * Il legame **testata↔testata** non ha un oggetto dedicato: si ricava dal
+     fulfillment o da `ddt.sorgente_uid`.
 
 2. **Consegna**
 
@@ -116,29 +114,35 @@ DRAFT → EMESSO → SPEDITO → CONSEGNATO → RESO   (+ ANNULLATO; RESO anche 
      AND d.stato_doc_ddt_id = :stato_id
    ORDER BY d.data DESC, d.id DESC;
   ```
-* **Ordini collegati a un DDT (via MV)**
+* **Ordini collegati a un DDT**
 
   ```sql
-  SELECT o.*
-    FROM vendite.mv_ddt_ordini m
-    JOIN vendite.ordini o ON o.id = m.ordine_id
-   WHERE m.ddt_id = :ddt_id;
+  SELECT DISTINCT o.*
+    FROM vendite.ordini_righe_fulfillment f
+    JOIN vendite.ddt_righe dr  ON dr.id = f.ddt_riga_id
+    JOIN vendite.ordini_righe orr ON orr.id = f.ordine_riga_id
+    JOIN vendite.ordini o      ON o.id = orr.ordine_id
+   WHERE dr.ddt_id = :ddt_id;
   ```
 
 ---
 
-### Manutenzione MV correlata
+### 🗑️ La vista materializzata `mv_ddt_ordini` è stata ritirata (2026-08-05)
 
-* **Refresh manuale**:
+Questa pagina documentava una scorciatoia — una vista materializzata che teneva
+pronte le coppie testata DDT ↔ testata Ordine — e le istruzioni per aggiornarla.
+**Non esiste più** (changeSet `20260805-21` e `-22`).
 
-  ```sql
-  REFRESH MATERIALIZED VIEW CONCURRENTLY vendite.mv_ddt_ordini;
-  ```
-* **Refresh controllato** (se attivata la funzione di servizio):
+Il motivo non è un cambio di disegno: era **ferma dalla nascita**. Nessuna
+funzione e nessuna vista la leggeva, il backend e il frontend non la nominavano,
+e soprattutto **nessuno chiamava il refresh** — né una funzione, né un job. Al
+momento del ritiro conteneva 0 righe mentre la sua query ne avrebbe prodotte 15.
+Chi l'avesse interrogata avrebbe letto «questo DDT non ha ordini» con la stessa
+sicurezza con cui avrebbe detto il vero.
 
-  ```sql
-  SELECT dbops.fn_refresh_mv_ddt_ordini(true, 3);
-  ```
+Il legame testata↔testata si ricava dai due percorsi che l'applicazione usa
+davvero: `vendite.ordini_righe_fulfillment` (vedi la query qui sopra) e
+`vendite.ddt.sorgente_uid`.
 
 ---
 
@@ -156,7 +160,6 @@ DRAFT → EMESSO → SPEDITO → CONSEGNATO → RESO   (+ ANNULLATO; RESO anche 
 * [ ] FK a domini/stati coerenti
 * [ ] Indici operativi creati
 * [ ] Trigger di blocco DELETE attivi su `ddt_righe`
-* [ ] MV `mv_ddt_ordini` presente e indicizzata (UNIQUE)
 * [ ] Procedure di **storno/annullo** definite nei flussi applicativi
 
 ---

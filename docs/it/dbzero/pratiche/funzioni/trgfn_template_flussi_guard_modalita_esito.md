@@ -26,7 +26,7 @@ BEGIN
     PERFORM script.fn_log_and_raise_error(
       'pratiche',
       'pratiche.trgfn_template_flussi_guard_modalita_esito',
-      'TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO',
+      'E_TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO',
       jsonb_build_object(
         'template_flusso_id', NEW.id,
         'codice',             NEW.codice,
@@ -44,7 +44,7 @@ BEGIN
     PERFORM script.fn_log_and_raise_error(
       'pratiche',
       'pratiche.trgfn_template_flussi_guard_modalita_esito',
-      'TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA',
+      'E_TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA',
       jsonb_build_object(
         'template_flusso_id', NEW.id,
         'codice',             NEW.codice,
@@ -62,7 +62,7 @@ BEGIN
     PERFORM script.fn_log_and_raise_error(
       'pratiche',
       'pratiche.trgfn_template_flussi_guard_modalita_esito',
-      'TEMPLATE_FLUSSO_DOMINIO_ESITO_DEFAULT_VIETATO',
+      'E_TEMPLATE_FLUSSO_DOMINIO_ESITO_DEFAULT_VIETATO',
       jsonb_build_object(
         'template_flusso_id', NEW.id,
         'codice',             NEW.codice,
@@ -88,7 +88,7 @@ BEGIN
     PERFORM script.fn_log_and_raise_error(
       'pratiche',
       'pratiche.trgfn_template_flussi_guard_modalita_esito',
-      'TEMPLATE_FLUSSO_ESITO_DEFAULT_NON_VERDETTO',
+      'E_TEMPLATE_FLUSSO_ESITO_DEFAULT_NON_VERDETTO',
       jsonb_build_object(
         'template_flusso_id', NEW.id,
         'codice',             NEW.codice,
@@ -106,7 +106,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION pratiche.trgfn_template_flussi_guard_modalita_esito()
-IS 'BEFORE INSERT OR UPDATE OF modalita_esito/esito_default/direzione su pratiche.template_flussi: enforce Inv1 (esito_default obbligatorio per AUTOMATICO/CONTESTUALE, 494), Inv2 (AUTOMATICO solo INTERNA, 495), Inv3 (DOMINIO vieta esito_default, 505), Inv4 (esito_default di automatismo deve essere verdetto is_verdetto=true, 506) con errori parlanti.';
+IS 'BEFORE INSERT OR UPDATE OF modalita_esito/esito_default/direzione su pratiche.template_flussi: enforce Inv1 (esito_default obbligatorio per AUTOMATICO/CONTESTUALE, E_TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO id 842), Inv2 (AUTOMATICO solo INTERNA, E_TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA id 843), Inv3 (DOMINIO vieta esito_default, E_TEMPLATE_FLUSSO_DOMINIO_ESITO_DEFAULT_VIETATO id 844), Inv4 (esito_default di automatismo deve essere verdetto is_verdetto=true, E_TEMPLATE_FLUSSO_ESITO_DEFAULT_NON_VERDETTO id 845) con errori parlanti. Codici rinominati il 2026-08-05 (20260805-19): i vecchi nomi senza prefisso restano a catalogo ritirati con obsoleto_dal.';
 ```
 
 ---
