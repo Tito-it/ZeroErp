@@ -50,6 +50,9 @@ from apps.documenti.services.context_builders.base import (
 )
 from apps.documenti.services.context_builders.registry import register_builder
 from apps.vendite.db.ordini_repository import OrdiniRepository
+from apps.vendite.services._indirizzi_documento_helpers import (
+    shape_indirizzi_context,
+)
 
 E_VALIDATION = "E_DOCUMENTI_VALIDATION"
 E_NOT_FOUND = "E_DOCUMENTI_NOT_FOUND"
@@ -59,6 +62,13 @@ class OrdineDocumentContextBuilder(DocumentContextBuilder):
     """Builder di contesto per documenti ORDINE_VENDITA (conferma d'ordine)."""
 
     CODE = "ORDINE_VENDITA"
+
+    # Tipi indirizzo ammessi nell'ambito ORDINI (`config.tipi_indirizzi_allowed`).
+    # Dichiarati qui e non letti a runtime: il context deve essere
+    # deterministico a parita' di documento (il `context_hash` governa il dedup),
+    # e una modifica di configurazione non puo' cambiare la forma di un contesto
+    # gia' generato.
+    _INDIRIZZI_CODICI: tuple[str, ...] = ("CON", "FATT")
 
     # Scopo: Iniezione opzionale del repository per testabilita' (mock).
     #        In runtime il default va benissimo: l'istanza e' singleton di
@@ -115,6 +125,15 @@ class OrdineDocumentContextBuilder(DocumentContextBuilder):
         return {
             "ordine": self._shape_ordine(testata),
             "cliente": self._shape_cliente(testata),
+            # Indirizzi congelati del documento (2026-08-05): il dato era gia'
+            # catturato in `vendite.ordini_indirizzi` ma non arrivava al
+            # template, che percio' non poteva stamparlo — una conferma
+            # d'ordine senza luogo di consegna. Forma unica cross-dominio
+            # (slot fissi): vedi `shape_indirizzi_context`.
+            "indirizzi": shape_indirizzi_context(
+                self._repo.list_indirizzi(sorgente_id),
+                codici_ammessi=self._INDIRIZZI_CODICI,
+            ),
             "righe": righe,
             "riepilogo_iva": riepilogo_iva,
             # `_meta`: parametri di rendering stabili a parita' di chiamata
@@ -125,7 +144,8 @@ class OrdineDocumentContextBuilder(DocumentContextBuilder):
             "_meta": {
                 "locale": locale,
                 "auth_user_id": auth_user_id,
-                "context_version": 1,
+                # v2 (2026-08-05): aggiunto il blocco `indirizzi`.
+                "context_version": 2,
                 "context_code": self.CODE,
             },
         }

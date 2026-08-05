@@ -35,6 +35,9 @@ from apps.documenti.services.context_builders.base import (
 )
 from apps.documenti.services.context_builders.registry import register_builder
 from apps.vendite.db.contratti_repository import ContrattiRepository
+from apps.vendite.services._indirizzi_documento_helpers import (
+    shape_indirizzi_context,
+)
 
 E_VALIDATION = "E_DOCUMENTI_VALIDATION"
 E_NOT_FOUND = "E_DOCUMENTI_NOT_FOUND"
@@ -44,6 +47,13 @@ class ContrattoDocumentContextBuilder(DocumentContextBuilder):
     """Builder di contesto per documenti CONTRATTO."""
 
     CODE = "CONTRATTO"
+
+    # Tipi indirizzo ammessi nell'ambito CONTRATTI
+    # (`config.tipi_indirizzi_allowed`). Dichiarati qui e non letti a runtime:
+    # il context deve essere deterministico a parita' di documento (il
+    # `context_hash` governa il dedup), e una modifica di configurazione non
+    # puo' cambiare la forma di un contesto gia' generato.
+    _INDIRIZZI_CODICI: tuple[str, ...] = ("CON", "FATT", "FORNITURA")
 
     # Scopo: Iniezione opzionale del repository per testabilita' mock-only.
     def __init__(self, repo: ContrattiRepository | None = None) -> None:
@@ -88,6 +98,14 @@ class ContrattoDocumentContextBuilder(DocumentContextBuilder):
         return {
             "contratto": self._shape_contratto(testata),
             "cliente": self._shape_cliente(testata),
+            # Indirizzi congelati del documento (2026-08-05): il dato era gia'
+            # catturato in `vendite.contratti_indirizzi` ma non arrivava al
+            # template, che percio' non poteva stamparlo. Forma unica
+            # cross-dominio (slot fissi): vedi `shape_indirizzi_context`.
+            "indirizzi": shape_indirizzi_context(
+                self._repo.list_indirizzi(sorgente_id),
+                codici_ammessi=self._INDIRIZZI_CODICI,
+            ),
             "utility": utility,
             "righe": righe_documento,
             "righe_contratto": self._shape_righe(righe_contratto),
@@ -98,7 +116,8 @@ class ContrattoDocumentContextBuilder(DocumentContextBuilder):
             "_meta": {
                 "locale": locale,
                 "auth_user_id": auth_user_id,
-                "context_version": 1,
+                # v2 (2026-08-05): aggiunto il blocco `indirizzi`.
+                "context_version": 2,
                 "context_code": self.CODE,
                 "righe_source": (
                     "PREVIEW_LISTINO"

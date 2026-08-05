@@ -33,6 +33,13 @@
 > **Le due domande di ritorno hanno risposta in §7**, misurata: la prima non è
 > una scelta ma una slice incompleta, e **metà del lavoro è nostro**.
 >
+> **Seguito (2026-08-05).** Tid ha deciso: si stampa l'indirizzo su ordini e
+> contratti (e offerte, per simmetria). La metà BE è **fatta** — i tre context
+> builder espongono `indirizzi` nella forma unica estratta a BB — e il resto è
+> passato al DB con
+> [brief-db-indirizzi-su-ordini-contratti-offerte.md](../work-in-progress/brief-db-indirizzi-su-ordini-contratti-offerte.md),
+> che porta anche la rinomina `test` → `preventivo`.
+>
 > ---
 
 **Chi scrive:** BE (`dev/backend-tid`), 2026-08-04.
