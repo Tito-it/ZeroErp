@@ -53,9 +53,17 @@ comportamento di ogni errore dell'applicazione: va fatta come slice a sé.
 > | Baseline `script vendite` | **nessuna regressione** (48 rossi, tutti già noti) |
 > | Guardrail riferimenti morti | **verde** dopo la modifica alla funzione |
 >
-> 🔴 **Resta il lato BE, e l'ordine non è indifferente:** prima i 57 codici in
-> `error_policies.py` (§7), **poi** i tre innesti con il guard `P0001` (§5).
-> Invertirli porta 77 call site da 400 a 500.
+> ✅ **Lato BE chiuso il 2026-08-05** nell'ordine indicato — prima i codici, poi
+> la lettura. Dettaglio e scoperte nel **§12**: i codici da registrare erano
+> **34 e non 57** (23 c'erano già, e trascriverli tutti creava chiavi duplicate
+> che in Python vincono in silenzio), e i punti di innesto erano **4 e non 3** —
+> il quarto è `pratiche_service`, dove il match avveniva su **frammenti di
+> messaggio in italiano**. Test: 11 verdi, di cui 3 end-to-end su DB reale.
+>
+> 🔴 **Resta aperto, fuori slice:** 133 codici `E_*` sollevati dal DB non sono
+> dichiarati in `error_policies.py` (83 da trigger agganciate). Non è una
+> regressione: manca il **terzo lato** del presidio — codici sollevati dal DB vs
+> `error_policies.py`, l'unica direzione che nessuno guarda (§12.4).
 
 ---
 
@@ -476,10 +484,10 @@ un altro difetto: era nascosto **sotto un'etichetta**, come
 |---|---|---|---|
 | 1 | `CONSTRAINT = p_error_code` in `fn_log_and_raise_error` (`runOnChange: false` — nel progetto `true` è solo crutch locale) | DB | ✅ **fatto** — `20260805-05` |
 | 2 | pgTAP §6: campo valorizzato su codice a seed + una guard del gruppo C + il **contratto negativo** | DB | ✅ **fatto** — 13/13 verdi (§11) |
-| 3 | Lettura del campo con guard `sqlstate = 'P0001'` nei 3 punti + test Django | BE | 🔴 **da fare, dopo il #6** |
+| 3 | Lettura del campo con guard `sqlstate = 'P0001'` nei 3 punti + test Django | BE | ✅ **fatto** — 4 punti, non 3 (§12) |
 | 4 | ~~20 call site variadici a 5 argomenti~~ | DB | ✅ **fatto** — `b7d594244` (§8) |
 | 5 | ~~Regola `FP_VARIADIC`~~ | DB | ✅ **fatto** — `20260805-01`, più stretta del richiesto (§8) |
-| 6 | Registrare i 57 codici senza prefisso in `error_policies.py` | BE | 🔴 **prerequisito del #3** (§7) |
+| 6 | Registrare i 57 codici senza prefisso in `error_policies.py` | BE | ✅ **fatto** — 34 nuovi, 23 c'erano già (§12) |
 | 7 | Presidio del contratto + rubinetto sui codici nuovi + registro del debito | DB | ✅ **fatto** — `20260805-06/-07` + guardrail (§10) |
 | 8 | Riga morta `E_NOTE_RIGA_MISMATCH'` (CSV riga 88 + DELETE) | DB | ✅ **fatto** — `20260805-08` (§7) |
 
@@ -598,3 +606,124 @@ sarebbe passato **anche senza la modifica**, pescando il codice dal testo dello
 statement — cioè avrebbe misurato il vecchio meccanismo credendo di misurare il
 nuovo. Lo stesso vale per il test 8 sulla guard ordini, che è lì proprio perché
 sull'helper il codice si sa già quando lo si chiama.
+
+---
+
+## 12. ✅ Lato BE — chiuso il 2026-08-05
+
+Eseguito nell'ordine obbligato del §9: prima i codici, poi la lettura.
+
+### 12.1 I codici (#6): erano 34, non 57
+
+**23 dei 57 erano già registrati.** Il brief li dava tutti da fare, e presi alla
+lettera producono **chiavi duplicate** nel dizionario di `error_policies.py` —
+che in Python non è un errore: l'ultima vince, in silenzio. In cinque casi la
+copia nuova aveva uno status **diverso** dalla voce storica, e uno di quei
+cinque (`FLUSSI_ESITO_OBBLIGATORIO`, da 409 a 400) ha fatto diventare rosso
+`test_workflow_guard_codes_hanno_policy_409` — un test che quegli status li
+aveva già fissati e che ha fatto esattamente il suo lavoro.
+
+Conservate **sempre** le voci preesistenti: sono il contratto in uso, e cambiare
+lo status di endpoint già in esercizio non era in perimetro. I 34 nuovi seguono
+la tassonomia di `api.md` letta **sul messaggio a seed, non sul nome** — un
+codice che si chiama `..._NON_AMMESSO` può essere un 409 (stato) o un 400
+(valore fuori dominio), e la differenza sta nel messaggio.
+
+| Status | Voci | Criterio |
+|---|---:|---|
+| 409 | 30 | conflitto con lo stato corrente: transizioni, immutabilità, «già esistente», precondizioni di emissione |
+| 400 | 20 | input non valido o incoerente, validazioni di campo, progettazione degli step template |
+| 404 | 3 | non trovato |
+| 403 | 2 | operatore non abilitato |
+| 500 | 3 | configurazione di sistema: non è l'utente a sbagliare |
+| 422 | 1 | voce storica preesistente, non toccata |
+
+Verifica: i 57 di `dbops.messaggi_errore_codici_legacy` risolvono tutti a una
+policy registrata, **nessuno** cade più su `E_GENERICO`; e nel registro non c'è
+**nessuna chiave duplicata** (464 voci, 464 distinte).
+
+⚠️ **Nota per chi tocca `error_policies.py`:** un dizionario con 464 chiavi non
+protesta se ne aggiungi una che c'è già. Prima di inserire, verificare — il
+sintomo non è un errore ma un comportamento che cambia altrove.
+
+### 12.2 La lettura (#3): i punti erano **quattro**
+
+Il brief ne indicava tre. Il quarto è `pratiche_service._raise_known_db_error`,
+ed è quello dove il vecchio meccanismo era messo peggio: i codici di quel dominio
+non hanno prefisso `E_`, quindi la regex non li ha **mai** visti e l'unico
+appiglio erano **14 frammenti di messaggio in italiano**
+(`"flussi ancora aperti"`, `"non e' ripetibile in questa pratica"`…). Bastava
+riformulare una frase nel seed — o tradurla, come il commento stesso avvertiva —
+e il match cadeva in silenzio sul generico.
+
+Estratta **una** lettura condivisa in
+[`apps/core/services/db_error_fields.py`](../../../../backend/apps/core/services/db_error_fields.py)
+(regola del 2, alla quarta copia): `structured_db_error_code` (solo campo) e
+`db_error_code` (campo + ripiego a regex). Modulo senza dipendenze interne: lo
+importano `error_translator`, `error_manager` e `payload_helpers`, e un import
+verso quei moduli sarebbe un ciclo.
+
+Nei due `raise_from_*` il codice dal campo è accettato **solo se il chiamante lo
+ha dichiarato** nei propri marker. Non è timidezza: in quelle firme `message` e
+`fallback_message` sono due messaggi diversi, scelti in base a «riconosciuto o
+no». Accettare un codice fuori lista farebbe usare il messaggio del caso
+riconosciuto per un errore che il chiamante non aspettava. L'insieme degli esiti
+resta identico a prima — cambia solo che il match non dipende più dal testo.
+
+Entrambe le indicazioni del §9 «cosa trova il BE già pronto» erano esatte e sono
+implementate: guard su `P0001` e `... or None` sulla stringa vuota. Il secondo ha
+un test dedicato, perché è il caso che si rompe **senza** rompersi.
+
+### 12.3 I test
+
+`apps/core/tests/services/test_db_error_fields.py` — **11 verdi**:
+
+* **8 unitari** sulla precedenza campo/testo, senza DB: il campo vince sul testo
+  anche quando il testo contiene un codice *diverso*; stringa vuota → ripiego;
+  campo assente → ripiego; **SQLSTATE `23xxx` → il campo si ignora**; un codice
+  legacy senza prefisso arriva e risolve a **409, non a 500**; e i due casi di
+  `raise_from_database_error` (codice dichiarato / non dichiarato);
+* **3 end-to-end su DB reale**, che sono l'unica cosa che un sostituto non può
+  dimostrare — che i campi diag sopravvivano al giro libpq/psycopg. Fra questi il
+  **caso del gruppo C**: codice passato da variabile, dove il test asserisce che
+  la regex **non trova nulla** e il campo sì. È il contrario del test che passa
+  per il motivo sbagliato: qui il vecchio meccanismo deve fallire.
+
+Gli end-to-end sono **opt-in** (`ZEROERP_TEST_DB_E2E=1`), spenti di default per
+il vincolo CI di `AGENTS.md`. Suite intera: **3574 verdi**, 1 classe skipped.
+
+> ⚠️ **Un test che rompeva i test degli altri.** La prima versione decideva se
+> saltare con `@skipUnless(_db_raggiungibile(), ...)`. L'argomento di un
+> decoratore si valuta **all'import**: quel probe apriva una connessione al DB di
+> sviluppo durante la *discovery*, prima che il runner predisponesse i database,
+> e faceva diventare rossi **469 test di altre app** (middleware che rispondeva
+> 500 invece di 404/400) — mentre la suite mirata delle stesse app, senza questo
+> file, era verde.
+>
+> Peggio: per un po' ho creduto che quei rossi fossero preesistenti, perché li
+> avevo confrontati con `HEAD` via `git stash`. **`git stash` non tocca i file
+> non tracciati**: il file incriminato restava al suo posto anche nella misura di
+> «baseline», che quindi mostrava lo stesso difetto (604 contro 601) e sembrava
+> assolverlo. Una baseline che contiene la causa non è una baseline. Tolto il
+> contatto col DB dall'import, la suite intera è verde: di rossi preesistenti non
+> ce n'era **nessuno**.
+
+### 12.4 Cosa resta aperto, e non è di questa slice
+
+**133 codici `E_*` sollevati da funzioni DB vive non sono dichiarati in
+`error_policies.py`** — 83 da trigger function agganciate, quindi sul percorso
+richiesta. Non è una regressione né un effetto di questa slice: sono così da
+sempre, e l'effetto è che lo status HTTP resta appiattito a 400 dove servirebbe
+409/404/403 (il messaggio localizzato arriva comunque all'operatore).
+
+Il motivo per cui nessuno se n'era accorto è strutturale, ed è la coda naturale
+del §10: esiste un presidio sui codici usati nel **codice Python**
+(`test_error_codes_declared_guardrail`) ed esiste quello DB sui codici sollevati
+vs `messaggi_errore.csv`. **Manca il terzo lato — codici sollevati dal DB vs
+`error_policies.py`** — ed è l'unica direzione che nessuno guarda: è da lì che
+sono passati questi 133, ed è la stessa direzione da cui erano passati i 9 codici
+del §8 diventati raggiungibili con F8.
+
+Misura già scritta e funzionante (≈40 righe, legge `pg_proc` + il testo di
+`error_policies.py`, non serve Django). Manca la decisione su come chiuderlo:
+83 status da assegnare uno per uno, e il presidio in `ci-validate.yaml`.

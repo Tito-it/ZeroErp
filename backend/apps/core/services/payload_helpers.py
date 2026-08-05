@@ -29,6 +29,7 @@ from uuid import UUID
 
 from django.db import DatabaseError, IntegrityError
 
+from apps.core.services.db_error_fields import APP_ERROR_CODE_RE, db_error_code
 from apps.core.services.error_manager import ErrorManager
 
 
@@ -842,7 +843,9 @@ def map_integrity_error(
 #        script.fn_log_and_raise_error: il codice arriva nella stringa
 #        dell'eccezione (MESSAGE o CONTEXT PL/pgSQL con l'istruzione SQL che
 #        contiene il literal del codice).
-DB_ERROR_CODE_RE = re.compile(r"\b(E_[A-Z][A-Z0-9_]+)\b")
+# Ripiego storico, ora dentro `db_error_fields.APP_ERROR_CODE_RE`: qui resta
+# come alias per i chiamanti/test che lo importavano da questo modulo.
+DB_ERROR_CODE_RE = APP_ERROR_CODE_RE
 
 
 # Scopo: Context manager condiviso che normalizza gli errori DB in
@@ -879,8 +882,11 @@ def translate_db_errors(
         )
     except DatabaseError as exc:
         exc_text = str(exc)
-        match = DB_ERROR_CODE_RE.search(exc_text)
-        code = match.group(1) if match else fallback_code
+        # Campo strutturato per primo (`CONSTRAINT` su P0001), poi il ripiego
+        # a regex sul testo: stessa semantica di prima — qualunque codice il DB
+        # dichiari vince sul `fallback_code` — ma letto da una fonte che non
+        # dipende da come e' scritto il call site nel corpo della funzione.
+        code = db_error_code(exc, text=exc_text) or fallback_code
         ErrorManager.raise_error(
             code=code,
             message=exc_text.split("\n", maxsplit=1)[0].strip()
