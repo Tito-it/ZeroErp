@@ -35,6 +35,7 @@ Indice test eseguiti:
 24) PraticheServiceFlussiTests.test_prendi_in_carico_non_eligibile
 25) PraticheServiceFlussiTests.test_list_operatori_reparto_ok
 26) PraticheServiceFlussiTests.test_list_operatori_reparto_errore_id_zero
+27) PraticheServiceFlussiTests.test_workflow_guard_codes_hanno_lo_status_atteso
 """
 
 from unittest.mock import MagicMock, patch
@@ -546,23 +547,49 @@ class PraticheServiceFlussiTests(SimpleTestCase):
             pratiche_service.cambia_stato_pratica(1, "APERTA")
         self.assertEqual(ctx.exception.code, "PRATICHE_TRANSIZIONE_NON_AMMESSA")
 
-    # Scopo: i codici workflow guard devono avere policy 409 (conflitto regola
-    # business), non finire nel default E_GENERICO (500). Regressione: codici
-    # mappati via marker ma non registrati in ErrorPolicyRegistry.
-    def test_workflow_guard_codes_hanno_policy_409(self):
+    # Scopo: i codici workflow guard devono essere registrati in
+    # ErrorPolicyRegistry (mai il default E_GENERICO = 500) e rispondere con lo
+    # status che gli compete. Regressione originale: codici mappati via marker ma
+    # non registrati.
+    #
+    # 2026-08-05 — status attesi per codice invece del 409 per tutti. Due motivi:
+    #  - la rilettura del brief codice-errore-strutturato ha separato il
+    #    conflitto-di-stato (409) dall'autorizzazione (403) e dall'input
+    #    mancante (400): erano tutti 409 per inerzia, non per scelta;
+    #  - un `assertEqual(..., 409)` uguale per tutti non si accorge se un codice
+    #    finisce sulla policy di un altro. E' successo davvero: registrare in
+    #    coda una chiave gia' presente la SOVRASCRIVE in silenzio (dict literal
+    #    Python, nessun errore ne' warning), ed e' stato questo test a prenderla.
+    def test_workflow_guard_codes_hanno_lo_status_atteso(self):
         from apps.core.services.error_policies import ErrorPolicyRegistry
 
-        for code in (
-            "PRATICHE_PREREQUISITI_NON_SODDISFATTI",
-            "PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO",
-            "PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE",
-            "PRATICHE_CHIUSURA_FLUSSO_PREMATURO",
-            "PRATICHE_TRANSIZIONE_NON_AMMESSA",
-            "FLUSSI_TRANSIZIONE_NON_AMMESSA",
-            "FLUSSI_ESITO_OBBLIGATORIO",
-        ):
+        attesi = {
+            # conflitto con lo stato corrente della pratica / del flusso
+            "PRATICHE_PREREQUISITI_NON_SODDISFATTI": 409,
+            "PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO": 409,
+            "PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE": 409,
+            "PRATICHE_CHIUSURA_FLUSSO_PREMATURO": 409,
+            "PRATICHE_TRANSIZIONE_NON_AMMESSA": 409,
+            "FLUSSI_TRANSIZIONE_NON_AMMESSA": 409,
+            "FLUSSI_PRESA_CARICO_STATO_ERRATO": 409,
+            "FLUSSI_GIA_ASSEGNATO": 409,
+            "DEFINIZIONE_NON_PUBBLICABILE": 409,
+            # il template non appartiene alla definizione pinnata: e' uno stato
+            # del percorso, non un campo compilato male (decisione Tid 2026-08-05)
+            "FLUSSI_TEMPLATE_FUORI_DEFINIZIONE": 409,
+            # autorizzazione: l'operatore non puo', non e' il momento a essere
+            # sbagliato
+            "FLUSSI_COMPETENZA_MANCANTE": 403,
+            "FLUSSI_PRESA_NON_ELIGIBILE": 403,
+            # input: manca un valore che l'operatore deve fornire
+            "FLUSSI_ESITO_OBBLIGATORIO": 400,
+            "FLUSSI_ESITO_NON_AMMESSO": 400,
+        }
+        for code, status in attesi.items():
             self.assertTrue(ErrorPolicyRegistry.has(code), f"{code} non registrato")
-            self.assertEqual(ErrorPolicyRegistry.resolve(code).http_status, 409, code)
+            self.assertEqual(
+                ErrorPolicyRegistry.resolve(code).http_status, status, code
+            )
 
     # Scopo: Regressione bug smoke 2026-06-11 — psycopg puo' restituire i
     # jsonb come str: meta del flusso str deve arrivare all'handler come dict

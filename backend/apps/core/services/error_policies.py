@@ -896,9 +896,12 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Lo step non appartiene alla definizione della pratica.",
         ),
+        # Status rivisto il 2026-08-05 (rilettura DB del brief
+        # codice-errore-strutturato, ok Tid): era l'unico 422 in una famiglia
+        # DEFINIZIONE_* tutta 409, e la semantica e' la stessa.
         "DEFINIZIONE_NON_PUBBLICABILE": ErrorPolicy(
             code="DEFINIZIONE_NON_PUBBLICABILE",
-            http_status=422,
+            http_status=409,
             ui_action="show_error_banner",
             user_message="La bozza non e' pubblicabile: servono almeno uno step "
                          "attivo e nessun ciclo di prerequisiti.",
@@ -1002,9 +1005,12 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Transizione di stato flusso non ammessa.",
         ),
+        # Status rivisto il 2026-08-05 (rilettura DB del brief
+        # codice-errore-strutturato, ok Tid): e' un campo obbligatorio non
+        # compilato, non uno stato che impedisce l'azione. Era 409.
         "FLUSSI_ESITO_OBBLIGATORIO": ErrorPolicy(
             code="FLUSSI_ESITO_OBBLIGATORIO",
-            http_status=409,
+            http_status=400,
             ui_action="show_error_banner",
             user_message="Esito obbligatorio per completare il flusso.",
         ),
@@ -1013,15 +1019,21 @@ class ErrorPolicyRegistry:
         # di step. Caso B (reparto, no skill): l'operatore non appartiene al
         # reparto anagrafico instradato. Entrambi sollevati da
         # pratiche.fn_prendi_in_carico_flusso e tradotti via marker nel service.
+        # Status rivisto il 2026-08-05 (rilettura DB del brief
+        # codice-errore-strutturato, ok Tid): e' autorizzazione (l'operatore
+        # non ha la competenza), non conflitto con lo stato. Era 409.
         "FLUSSI_COMPETENZA_MANCANTE": ErrorPolicy(
             code="FLUSSI_COMPETENZA_MANCANTE",
-            http_status=409,
+            http_status=403,
             ui_action="show_error_banner",
             user_message="Operatore non abilitato per questo tipo di flusso.",
         ),
+        # Status rivisto il 2026-08-05 (rilettura DB del brief
+        # codice-errore-strutturato, ok Tid): idem, autorizzazione: il flusso e'
+        # instradato a un altro reparto. Era 409.
         "FLUSSI_PRESA_NON_ELIGIBILE": ErrorPolicy(
             code="FLUSSI_PRESA_NON_ELIGIBILE",
-            http_status=409,
+            http_status=403,
             ui_action="show_error_banner",
             user_message="Presa in carico non consentita: il flusso e' instradato a un altro reparto.",
         ),
@@ -3391,13 +3403,6 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Il codice interno non e' modificabile.",
         ),
-        # ── Catasto ──
-        "CATASTO_SOURCE_NOT_FOUND": ErrorPolicy(
-            code="CATASTO_SOURCE_NOT_FOUND",
-            http_status=404,
-            ui_action="show_error_banner",
-            user_message="Catasto di origine non trovato sull'istanza padre.",
-        ),
         # ── Template di flusso: validazioni di progettazione dello step ──
         "TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA": ErrorPolicy(
             code="TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA",
@@ -3435,6 +3440,7 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Avanzamento su proiezione non ammesso su uno step DOMINIO.",
         ),
+        # ── Flussi: presa in carico, esiti, coerenza del template ──
         "FLUSSI_PRESA_CARICO_STATO_ERRATO": ErrorPolicy(
             code="FLUSSI_PRESA_CARICO_STATO_ERRATO",
             http_status=409,
@@ -3478,12 +3484,6 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Il ruolo non appartiene al soggetto indicato.",
         ),
-        "PRATICHE_ISTANZA_SENZA_RUOLO": ErrorPolicy(
-            code="PRATICHE_ISTANZA_SENZA_RUOLO",
-            http_status=400,
-            ui_action="show_error_banner",
-            user_message="L'istanza utility richiede anche il ruolo del soggetto.",
-        ),
         "PRATICHE_ISTANZA_SENZA_SOGGETTO": ErrorPolicy(
             code="PRATICHE_ISTANZA_SENZA_SOGGETTO",
             http_status=400,
@@ -3502,6 +3502,7 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Aggancio sorgente incoerente: il flusso appartiene a un'altra pratica.",
         ),
+        # ── Pratiche: stato e ciclo di vita ──
         "PRATICHE_PIN_IMMUTABILE": ErrorPolicy(
             code="PRATICHE_PIN_IMMUTABILE",
             http_status=409,
@@ -3538,18 +3539,6 @@ class ErrorPolicyRegistry:
             http_status=409,
             ui_action="show_error_banner",
             user_message="Preventivo senza righe attive: serve almeno una riga per emettere.",
-        ),
-        "PREV_TOTALE_NON_POSITIVO": ErrorPolicy(
-            code="PREV_TOTALE_NON_POSITIVO",
-            http_status=409,
-            ui_action="show_error_banner",
-            user_message="Totale del preventivo non positivo: richiesto un totale maggiore di zero.",
-        ),
-        "PREV_ANNULLAMENTO_COMMESSA_ATTIVA": ErrorPolicy(
-            code="PREV_ANNULLAMENTO_COMMESSA_ATTIVA",
-            http_status=409,
-            ui_action="show_error_banner",
-            user_message="Annullamento bloccato: il preventivo ha righe in commessa attive.",
         ),
         # ── Configurazione di sistema: non e' l'utente a sbagliare ──
         "SEQUENZA_NON_CONFIGURATA": ErrorPolicy(

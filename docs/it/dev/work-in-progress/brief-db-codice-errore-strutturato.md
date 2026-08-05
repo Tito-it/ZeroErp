@@ -55,15 +55,27 @@ comportamento di ogni errore dell'applicazione: va fatta come slice a sé.
 >
 > ✅ **Lato BE chiuso il 2026-08-05** nell'ordine indicato — prima i codici, poi
 > la lettura. Dettaglio e scoperte nel **§12**: i codici da registrare erano
-> **34 e non 57** (23 c'erano già, e trascriverli tutti creava chiavi duplicate
-> che in Python vincono in silenzio), e i punti di innesto erano **4 e non 3** —
-> il quarto è `pratiche_service`, dove il match avveniva su **frammenti di
-> messaggio in italiano**. Test: 11 verdi, di cui 3 end-to-end su DB reale.
+> **30 e non 57** (23 c'erano già, 4 sono usciti dal seed con `20260805-11`
+> mentre il BE lavorava; trascriverli tutti creava chiavi duplicate che in Python
+> vincono in silenzio), e i punti di innesto erano **4 e non 3** — il quarto è
+> `pratiche_service`, dove il match avveniva su **frammenti di messaggio in
+> italiano**. Test: 11 verdi, di cui 3 end-to-end su DB reale; suite intera 3574
+> verdi.
 >
-> 🔴 **Resta aperto, fuori slice:** 133 codici `E_*` sollevati dal DB non sono
-> dichiarati in `error_policies.py` (83 da trigger agganciate). Non è una
-> regressione: manca il **terzo lato** del presidio — codici sollevati dal DB vs
-> `error_policies.py`, l'unica direzione che nessuno guarda (§12.4).
+> ✅ **I 5 status divergenti sono decisi** (Tid, 2026-08-05): quattro applicati
+> (403/403/400/409), il quinto tenuto a 409. Il test non è stato aggiustato ma
+> **riscritto**: asserisce lo status atteso per ogni codice — 14 codici, non 7
+> con lo stesso numero (§12.1).
+>
+> 🔴 **Restano aperti, tutti fuori slice:**
+>
+> * registro **53 → 51**: due voci sono doppioni senza prefisso di codici vivi,
+>   e la motivazione per tenerle era un falso positivo da ricerca per
+>   sottostringa — **azione DB** (§7);
+> * **133 codici `E_*`** sollevati dal DB non sono dichiarati in
+>   `error_policies.py` (83 da trigger agganciate). Non è una regressione: manca
+>   il **terzo lato** del presidio — codici sollevati dal DB vs
+>   `error_policies.py`, l'unica direzione che nessuno guarda (§12.5).
 
 ---
 
@@ -329,10 +341,23 @@ Il brief concludeva *«dopo il campo strutturato sono rotti uguale — nessun
 peggioramento»*. Letto [`error_policies.py`](../../../../backend/apps/core/services/error_policies.py),
 non è così:
 
-| | Cosa arriva al translator | Policy | HTTP |
-|---|---|---|---|
-| **Oggi** | la regex non trova il codice → ripiego `E_DATABASE` | **registrata** | **400** |
-| **Dopo l'adozione BE** | arriva `PRATICHE_TRANSIZIONE_NON_AMMESSA` | non registrata, e la scorciatoia di `resolve()` è solo per `E_` → `E_GENERICO` | **500** |
+Oggi la regex non trova quei codici e il translator ripiega su `E_DATABASE`, che
+è registrato → **400** con messaggio generico. Domani il codice **arriva**, e da
+lì in poi dipende da una cosa sola: se è registrato o no.
+
+> ⚠️ **Correzione alla correzione.** Il brief BE dice che quei codici «non sono
+> registrati in `error_policies.py`». **Non è vero per tutti: 23 su 57 lo sono
+> già.** Le chiavi vere di `_POLICIES` sono 430, e fra queste ci sono
+> `PRATICHE_TRANSIZIONE_NON_AMMESSA`, `FLUSSI_TRANSIZIONE_NON_AMMESSA`, tutta la
+> famiglia `DEFINIZIONE_*`. Qualcuno le ha registrate col nome storto, e ha fatto
+> la cosa giusta.
+
+Il gruppo B si spacca in due metà con destini **opposti**:
+
+| | Codici | Call site | Oggi | Dopo l'adozione BE |
+|---|---:|---:|---|---|
+| **Già registrati** | **23** | **29** | `E_DATABASE` → 400 generico | ✅ la **loro** policy: status e messaggio giusti. **Migliorano il giorno stesso** |
+| **Non registrati** | **30** | **48** (in 26 funzioni) | `E_DATABASE` → 400 generico | 🔴 `resolve()` ha la scorciatoia solo per `E_` → `E_GENERICO` → **500** |
 
 Da 400 a 500 non è una sfumatura: cambia gli allarmi, cambia cosa finisce nei
 log di errore server, e cambia cosa fa il frontend. **Quindi la registrazione non
@@ -366,6 +391,55 @@ disattesa in silenzio, e il 58° non nasce.
 >
 > Piccolo dividendo del presidio: il controllo (B) è diventato rosso la prima
 > volta che ha girato, e su una cosa vera.
+
+> ✅ **Il registro è sceso a 53** (`20260805-11`). Incrociando i 57 codici coi
+> call site veri, **otto** non sono sollevati da nessuna funzione: due sono
+> **solo loggati** e non arriveranno mai a un client (`MESSAGGIO_NON_DEFINITO`,
+> `W_TXID_NOT_REGISTERED`), due sono i doppioni senza prefisso di codici vivi
+> (vedi il rilievo BE qui sotto), **quattro non hanno consumatori da nessuna
+> parte** — né DB, né Python, né FE — e sono usciti dal seed.
+>
+> ⚠️ Prima di cancellarli è servita la distinzione che conta: **superati** o
+> **non ancora agganciati**? Un codice a seed senza chiamanti può essere un
+> residuo o un pezzo della slice di qualcun altro che il call site non ha ancora
+> raggiunto. Per tutti e quattro l'ha detto il DB stesso:
+>
+> | Codice | id | Prova |
+> |---|---:|---|
+> | `PREV_TOTALE_NON_POSITIVO` | 353 | il corpo vivo di `fn_cambia_stato_preventivo`: *«rev 2026-07-16: rimossi il guard PREV_TOTALE_NON_POSITIVO e il filtro quantita > 0»* |
+> | `PREV_ANNULLAMENTO_COMMESSA_ATTIVA` | 356 | stesso corpo, nota di `20260804-74`: *«con l'assorbimento esce di scena anche il codice …, privo del prefisso `E_`»*. Rimpiazzato da `E_PREV_ANNULLA_COMMESSA_EMESSA` |
+> | `PRATICHE_ISTANZA_SENZA_RUOLO` | 304 | `trgfn_pratiche_guard_contesto` oggi solleva `..._ISTANZA_SENZA_SOGGETTO` e `..._RUOLO_SENZA_SOGGETTO`: la variante «senza ruolo» non c'è più |
+> | `CATASTO_SOURCE_NOT_FOUND` | 115 | `fn_clone_catasto_from_parent_by_istanza` oggi solleva `ERRORE_PARAMETRI` |
+>
+> ⚠️ **Controllo che avrebbe fatto fallire il migrate se saltato:**
+> `dbops.error_log` ha una FK verso `config.messaggi_errore(id)`. Verificato
+> **0 riferimenti** per tutte e quattro; con anche uno solo il `DELETE` sarebbe
+> morto sulla FK.
+>
+> Due mosse per il catalogo (righe dal CSV **+** `DELETE`, perché il loader è un
+> upsert), **una sola per il registro**: il suo seed è `DELETE` + `loadData`,
+> cioè un mirror — bastano le righe tolte dal CSV. È esattamente il motivo per
+> cui era stato scritto come mirror invece che come upsert.
+>
+> Simulazione dello stato post-migrate in transazione annullata: guardrail verde,
+> *«nessuna voce di troppo nel registro (53 registrate)»*.
+
+> 🔴 **Rilievo BE (2026-08-05): il registro può scendere ancora, a 51.** La
+> motivazione per tenere `EMITTENTE_NON_MODIFICABILE` e
+> `PREV_STATO_NON_MODIFICABILE` — *«due li usa il backend»* — non regge: il
+> backend usa `E_EMITTENTE_NON_MODIFICABILE` e `E_PREV_STATO_NON_MODIFICABILE`,
+> che sono **altri due codici**, entrambi a catalogo accanto ai loro gemelli
+> senza prefisso. La ricerca per sottostringa trova il codice lungo quando cerchi
+> quello corto — ed è la stessa forma di errore di cui parla tutto questo brief.
+>
+> Ri-misurato con i confini di parola (`(?<![A-Z_])CODICE\b`): per le due varianti
+> **senza** prefisso, **zero consumatori** in funzioni DB, in `backend/apps` e in
+> `frontend/src`. Sono doppioni superati esattamente come i quattro sopra, e la
+> prova è che il gemello con prefisso è vivo e usato.
+>
+> Azione **al team DB** (non fatta qui: è seed): togliere i due dai due CSV +
+> `DELETE`, registro **53 → 51**. Lato BE non cambia nulla — le policy dei due
+> codici con prefisso sono già registrate e sono quelle che scattano.
 
 ---
 
@@ -487,13 +561,18 @@ un altro difetto: era nascosto **sotto un'etichetta**, come
 | 3 | Lettura del campo con guard `sqlstate = 'P0001'` nei 3 punti + test Django | BE | ✅ **fatto** — 4 punti, non 3 (§12) |
 | 4 | ~~20 call site variadici a 5 argomenti~~ | DB | ✅ **fatto** — `b7d594244` (§8) |
 | 5 | ~~Regola `FP_VARIADIC`~~ | DB | ✅ **fatto** — `20260805-01`, più stretta del richiesto (§8) |
-| 6 | Registrare i 57 codici senza prefisso in `error_policies.py` | BE | ✅ **fatto** — 34 nuovi, 23 c'erano già (§12) |
+| 6 | Registrare i codici senza prefisso **e senza policy** in `error_policies.py` | BE | ✅ **fatto** — **30** (dei 53 rimasti, 23 c'erano già) (§12.1) |
 | 7 | Presidio del contratto + rubinetto sui codici nuovi + registro del debito | DB | ✅ **fatto** — `20260805-06/-07` + guardrail (§10) |
 | 8 | Riga morta `E_NOTE_RIGA_MISMATCH'` (CSV riga 88 + DELETE) | DB | ✅ **fatto** — `20260805-08` (§7) |
+| 9 | 4 codici superati fuori dal seed: registro **57 → 53** | DB | ✅ **fatto** — `20260805-11` (§7) |
+| 10 | 5 status storici incoerenti con la semantica: decidere e allineare | Tid + BE | ✅ **fatto** — 4 applicati, 1 tenuto; test riscritto (§12.1) |
+| 11 | 2 doppioni senza prefisso di codici vivi: registro **53 → 51** | DB | 🔴 **da fare** — rilievo BE (§7) |
+| 12 | Terzo lato del presidio: codici sollevati dal DB vs `error_policies.py` | da decidere | 🔴 **aperto** — 133 non dichiarati, misura pronta (§12.5) |
 
-**Ordine obbligato:** ~~1 → 2 → 7~~ (fatto: tutto DB, applicato da solo, nessuna
-finestra di rottura) · **resta 6 → 3** (BE, in quest'ordine e non nell'altro,
-altrimenti 77 call site passano da 400 a 500).
+**Ordine obbligato:** ~~1 → 2 → 7~~ (DB, applicato da solo, nessuna finestra di
+rottura) · ~~6 → 3~~ (BE, in quest'ordine e non nell'altro: invertirli portava
+77 call site da 400 a 500). **Entrambe le catene sono chiuse.** Restano 11 e 12,
+che non hanno vincoli di sequenza fra loro né con il resto.
 
 ### Cosa trova il BE già pronto
 
@@ -502,7 +581,8 @@ altrimenti 77 call site passano da 400 a 500).
 | Il campo | `diag.constraint_name` su `SQLSTATE = 'P0001'`, applicato e asserito |
 | ⚠️ Campo vuoto ≠ NULL | quando il codice viene da un'espressione che vale NULL, arriva **stringa vuota**: `... or None` non è cosmetico |
 | ⚠️ Il ripiego resta | 135 `RAISE EXCEPTION` diretti in 46 funzioni non passano dall'helper: per quelle il campo è vuoto e la regex è ancora l'unica strada |
-| I 57 codici da registrare | elenco vivo: `SELECT codice FROM dbops.messaggi_errore_codici_legacy ORDER BY 1` |
+| I codici da registrare | elenco vivo: `SELECT codice FROM dbops.messaggi_errore_codici_legacy ORDER BY 1` — **53 righe, e 23 hanno già la policy**: da fare sono le **30** che non compaiono fra le chiavi di `_POLICIES` |
+| ⚠️ Chiave duplicata = sovrascrittura muta | in un dict literal Python l'ultima vince **senza errore né warning**, e nel progetto non ci sono `ruff`/`flake8` che lo intercettino. Registrare un codice già presente **sostituisce** la policy esistente: le 23 vecchie voci vanno **rimosse esplicitamente**, non coperte |
 
 ---
 
@@ -579,6 +659,7 @@ volta e si legge una volta.
 | `00_schema/dbops/20260805-06-create-messaggi-errore-codici-legacy` | il registro del debito |
 | `80_data/changelog/20260805-07-seed-messaggi-errore-codici-legacy` + `80_data/sql/dbops/messaggi_errore_codici_legacy.csv` | le 57 voci. `DELETE` + `loadData`, non upsert: il registro deve poter **calare** togliendo una riga dal CSV |
 | `80_data/changelog/20260805-08-delete-messaggio-errore-codice-con-apostrofo` + riga 88 del CSV messaggi | la riga morta (§7) |
+| `80_data/changelog/20260805-11-delete-messaggi-errore-codici-superati` + 4 righe dai **due** CSV | i 4 codici superati: registro **57 → 53** (§7) |
 | `scripts/sql/guardrail_codice_errore_strutturato.sql` | i tre controlli (§10) |
 | `.github/workflows/ci-validate.yaml` | il passo di CI |
 | `db/pgtap/script/test-fn-log-and-raise-error-constraint-codice.sql` | 5 asserzioni, nuovo |
@@ -613,15 +694,23 @@ sull'helper il codice si sa già quando lo si chiama.
 
 Eseguito nell'ordine obbligato del §9: prima i codici, poi la lettura.
 
-### 12.1 I codici (#6): erano 34, non 57
+### 12.1 I codici (#6): erano 30, non 57
 
-**23 dei 57 erano già registrati.** Il brief li dava tutti da fare, e presi alla
-lettera producono **chiavi duplicate** nel dizionario di `error_policies.py` —
-che in Python non è un errore: l'ultima vince, in silenzio. In cinque casi la
-copia nuova aveva uno status **diverso** dalla voce storica, e uno di quei
-cinque (`FLUSSI_ESITO_OBBLIGATORIO`, da 409 a 400) ha fatto diventare rosso
-`test_workflow_guard_codes_hanno_policy_409` — un test che quegli status li
-aveva già fissati e che ha fatto esattamente il suo lavoro.
+Due sottrazioni, e nessuna delle due si vedeva dal brief iniziale:
+
+* **23 dei 57 erano già registrati** — la correzione del §7, confermata sul
+  file;
+* **4 sono usciti dal seed** con `20260805-11` mentre il BE lavorava: erano fra
+  i miei, e li ho tolti. 57 − 4 − 23 = **30**, che è il numero del §7.
+
+Registrarli tutti e 57 alla lettera produce **chiavi duplicate** nel dizionario
+di `error_policies.py` — che in Python non è un errore: l'ultima vince, in
+silenzio. In cinque casi la copia nuova aveva uno status **diverso** dalla voce
+storica, e uno di quei cinque (`FLUSSI_ESITO_OBBLIGATORIO`, da 409 a 400) ha
+fatto diventare rosso `test_workflow_guard_codes_hanno_policy_409` — un test che
+quegli status li aveva già fissati e che ha fatto esattamente il suo lavoro.
+Senza quel test la sovrascrittura sarebbe passata muta: è il caso da tenere a
+mente ogni volta che si tocca questo file.
 
 Conservate **sempre** le voci preesistenti: sono il contratto in uso, e cambiare
 lo status di endpoint già in esercizio non era in perimetro. I 34 nuovi seguono
@@ -631,16 +720,45 @@ codice che si chiama `..._NON_AMMESSO` può essere un 409 (stato) o un 400
 
 | Status | Voci | Criterio |
 |---|---:|---|
-| 409 | 30 | conflitto con lo stato corrente: transizioni, immutabilità, «già esistente», precondizioni di emissione |
-| 400 | 20 | input non valido o incoerente, validazioni di campo, progettazione degli step template |
-| 404 | 3 | non trovato |
-| 403 | 2 | operatore non abilitato |
+| 409 | 28 | conflitto con lo stato corrente: transizioni, immutabilità, «già esistente», precondizioni di emissione |
+| 400 | 19 | input non valido o incoerente, validazioni di campo, progettazione degli step template |
+| 404 | 2 | non trovato |
 | 500 | 3 | configurazione di sistema: non è l'utente a sbagliare |
 | 422 | 1 | voce storica preesistente, non toccata |
 
-Verifica: i 57 di `dbops.messaggi_errore_codici_legacy` risolvono tutti a una
+Verifica: i **53** di `dbops.messaggi_errore_codici_legacy` risolvono tutti a una
 policy registrata, **nessuno** cade più su `E_GENERICO`; e nel registro non c'è
-**nessuna chiave duplicata** (464 voci, 464 distinte).
+**nessuna chiave duplicata** (**460** voci, 460 distinte — cioè le 430 di prima
+più le 30 nuove, il conto del §7).
+
+#### ✅ I 5 status divergenti — decisi e applicati (Tid, 2026-08-05)
+
+Cinque voci storiche avevano uno status che non corrispondeva alla loro
+semantica. Non erano codici nuovi: rispondevano già così, quindi cambiarli è un
+**cambio di contratto** verso il FE e andava deciso, non fatto di slancio. La
+rilettura DB le ha esaminate una per una; **quattro applicate, una tenuta com'è**:
+
+| Codice | Prima | Ora | Perché |
+|---|---:|---:|---|
+| `FLUSSI_COMPETENZA_MANCANTE` | 409 | **403** | è autorizzazione — l'operatore non ha la competenza — non conflitto con lo stato |
+| `FLUSSI_PRESA_NON_ELIGIBILE` | 409 | **403** | idem: il flusso è instradato a un altro reparto |
+| `FLUSSI_ESITO_OBBLIGATORIO` | 409 | **400** | è un campo obbligatorio non compilato, non uno stato che impedisce l'azione |
+| `DEFINIZIONE_NON_PUBBLICABILE` | 422 | **409** | era l'unico 422 in una famiglia `DEFINIZIONE_*` tutta 409, a parità di semantica |
+| `FLUSSI_TEMPLATE_FUORI_DEFINIZIONE` | 409 | **409** | tenuto: «il template non appartiene alla definizione pinnata dalla pratica» descrive uno stato del percorso, non un campo compilato male |
+
+Erano tutti a 409 **per inerzia**, non per scelta: quando l'unica cosa che si
+sapeva era «non è un errore tecnico», 409 era la casella comoda.
+
+**Il test è stato riscritto, non aggiustato.** `test_workflow_guard_codes_hanno_policy_409`
+asseriva `409` per tutti; ora è
+`test_workflow_guard_codes_hanno_lo_status_atteso` e asserisce **lo status
+atteso per ogni codice**, su 14 codici invece di 7. La differenza non è
+cosmetica: un `assertEqual(..., 409)` uguale per tutti non si accorge se un
+codice finisce sulla policy di un altro — ed è esattamente quello che era
+successo con la chiave duplicata.
+
+Il pgTAP `test-assegnazione-flusso-eligibilita.sql` asserisce il **codice**, non
+lo status: non si rompe. Suite: 3574 verdi.
 
 ⚠️ **Nota per chi tocca `error_policies.py`:** un dizionario con 464 chiavi non
 protesta se ne aggiungi una che c'è già. Prima di inserire, verificare — il
@@ -708,7 +826,36 @@ il vincolo CI di `AGENTS.md`. Suite intera: **3574 verdi**, 1 classe skipped.
 > contatto col DB dall'import, la suite intera è verde: di rossi preesistenti non
 > ce n'era **nessuno**.
 
-### 12.4 Cosa resta aperto, e non è di questa slice
+### 12.4 I file consegnati, e cosa li dimostra
+
+| File | |
+|---|---|
+| `apps/core/services/db_error_fields.py` | **nuovo** — la lettura unica: `structured_db_error_code` (solo campo, guard `P0001`, stringa vuota → `None`), `db_error_code` (campo + ripiego regex), `db_diag`. Nessuna dipendenza interna: lo importano i tre moduli core e un import verso di loro sarebbe un ciclo |
+| `apps/core/services/error_translator.py` | usa `db_error_code`; `_extract_app_error_code` resta come delegatore del solo ripiego (lo chiamano i test); via la regex locale |
+| `apps/core/services/payload_helpers.py` | `translate_db_errors` usa `db_error_code`; `DB_ERROR_CODE_RE` resta come alias per chi lo importava |
+| `apps/core/services/error_manager.py` | `raise_from_database_error` accetta il campo **solo se dichiarato** nei `known_markers` del chiamante |
+| `apps/pratiche/services/pratiche_service.py` | il quarto punto: campo per primo, i 14 marker testuali restano come ripiego |
+| `apps/core/services/error_policies.py` | **30** voci nuove (i codici legacy) + **4** status rivisti (§12.1) |
+| `apps/core/tests/services/test_db_error_fields.py` | **nuovo** — 8 unitari + 3 end-to-end opt-in |
+| `apps/pratiche/tests/services/test_pratiche_service_flussi.py` | `..._policy_409` → `..._hanno_lo_status_atteso`: mappa codice → status su 14 codici |
+
+Documentazione: `api.md` §Tassonomia errori (dove vive la lettura unica e la
+tabella dei 4 punti), il [catalogo BB backend](../backend/catalogo-building-block-backend.md)
+(`db_error_fields` come building block), e questo §12.
+
+| Prova | Esito |
+|---|---|
+| `test_db_error_fields` | **11/11** — default: 8 run + 3 skipped; con `ZEROERP_TEST_DB_E2E=1`: 11 run |
+| `test_error_codes_declared_guardrail` | **verde** (2 test) |
+| `apps.pratiche.tests` | **234 verdi** dopo il cambio di status |
+| Suite intera | **3574 verdi**, 1 classe skipped |
+| Chiavi `_POLICIES` | **460**, 460 distinte, **nessuna duplicata** |
+| Registro legacy | **53/53** coperti, nessuno su `E_GENERICO` |
+| Modalità CI (senza DB) | verde: gli end-to-end si saltano, non falliscono |
+
+---
+
+### 12.5 Cosa resta aperto, e non è di questa slice
 
 **133 codici `E_*` sollevati da funzioni DB vive non sono dichiarati in
 `error_policies.py`** — 83 da trigger function agganciate, quindi sul percorso
@@ -727,3 +874,39 @@ del §8 diventati raggiungibili con F8.
 Misura già scritta e funzionante (≈40 righe, legge `pg_proc` + il testo di
 `error_policies.py`, non serve Django). Manca la decisione su come chiuderlo:
 83 status da assegnare uno per uno, e il presidio in `ci-validate.yaml`.
+
+---
+
+## 13. I due controlli, per non rifarli a mano
+
+**Chiavi duplicate in `error_policies.py`** (deve stampare due numeri uguali e
+lista vuota). È il controllo che manca a monte: nel progetto non ci sono
+`ruff`/`flake8` che intercettino una chiave ripetuta in un dict literal, e
+l'ultima vince senza dire niente.
+
+```bash
+python - <<'PY'
+import re, collections
+src = open('backend/apps/core/services/error_policies.py').read()
+k = re.findall(r'^\s*"([A-Z][A-Z0-9_]*)":\s*ErrorPolicy\(', src, re.M)
+print("voci:", len(k), "| distinte:", len(set(k)),
+      "| duplicate:", [x for x, c in collections.Counter(k).items() if c > 1])
+PY
+```
+
+**Copertura del registro legacy** (ogni codice del registro deve avere una
+policy; nessuno deve cadere su `E_GENERICO`):
+
+```sql
+SELECT codice FROM dbops.messaggi_errore_codici_legacy ORDER BY 1;
+```
+
+confrontato con le chiavi estratte sopra. Al 2026-08-05: **53 su 53 coperti**,
+460 voci totali, nessuna duplicata.
+
+> ⚠️ **Se si rifà il censimento dei call site**, togliere i commenti **prima** di
+> contare gli argomenti: un apostrofo dentro un commento SQL (`-- la funzione e'
+> VARIADIC`) apre una stringa che non si chiude più e inghiotte le virgole
+> successive. Ci sono cascate entrambe le sponde — il BE contando 20 call site
+> dove erano 16, il DB trovando 2 residui inesistenti alla ri-verifica. **Anche
+> la misura di un difetto è un programma, e può avere il suo difetto.**
