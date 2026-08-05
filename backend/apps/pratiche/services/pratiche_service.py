@@ -98,48 +98,12 @@ _KNOWN_DB_ERROR_MARKERS: tuple[tuple[str, str], ...] = (
     # + unique codice per definizione. Marker = substring stabile.
     ("TEMPLATE_DEFINIZIONE_CONGELATA", "edizione per-emittente"),
     ("E_TEMPLATE_CODICE_DUPLICATO", "uq_template_flussi_definizione_codice"),
-    # ── Gemelli `E_*` — blocco TRANSITORIO (brief-be-rinomina-codici-known-markers)
-    # Il DB sta rinominando questi codici un lotto per volta (`X` -> `E_X`, il
-    # vecchio resta a catalogo con `obsoleto_dal`). Dichiarare ENTRAMBI i nomi
-    # rende l'ordine di rilascio irrilevante: `raise_from_database_error` accetta
-    # il codice dal campo strutturato solo se e' fra quelli dichiarati qui, e
-    # cosi' lo e' sia prima sia dopo il lotto.
-    #
-    # ⚠️ Perche' il marker e' lo stesso del vecchio, ed e' corretto cosi': la
-    # rinomina tocca il CODICE, non il messaggio. Ed e' il difetto che questo
-    # blocco previene — senza la voce nuova il marker continuerebbe a matchare e
-    # l'API risponderebbe col nome che il DB ha appena ritirato, senza che nulla
-    # protesti. Il marker qui e' comunque quasi sempre peso morto: per gli errori
-    # sollevati via `script.fn_log_and_raise_error` il campo strutturato vince
-    # prima che il testo venga guardato; serve solo ai `RAISE EXCEPTION` diretti.
-    #
-    # ⚠️ A lotto applicato si toglie la riga VECCHIA, non questa.
-    ("E_PRATICHE_FLUSSO_NON_RIPETIBILE", "non e' ripetibile in questa pratica"),
-    (
-        "E_PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI",
-        "flussi obbligatori non completati",
-    ),
-    ("E_PRATICHE_CHIUSURA_FLUSSI_APERTI", "flussi ancora aperti"),
-    ("E_PRATICHE_PREREQUISITI_NON_SODDISFATTI", "Prerequisiti non soddisfatti per il template flusso"),
-    ("E_PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO", "Impossibile creare un flusso"),
-    ("E_PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE", "Impossibile modificare il flusso"),
-    ("E_PRATICHE_CHIUSURA_FLUSSO_PREMATURO", "Impossibile completare il flusso di chiusura"),
-    ("E_PRATICHE_TRANSIZIONE_NON_AMMESSA", "Transizione pratica non ammessa"),
-    ("E_FLUSSI_TRANSIZIONE_NON_AMMESSA", "Transizione flusso non ammessa"),
-    ("E_FLUSSI_ESITO_OBBLIGATORIO", "Esito obbligatorio per completare il flusso"),
-    ("E_FLUSSI_ESITO_NON_AMMESSO", "non ammesso per lo step"),
-    ("E_FLUSSI_COMPETENZA_MANCANTE", "non abilitato per il flusso"),
-    ("E_FLUSSI_PRESA_NON_ELIGIBILE", "non consentita del flusso"),
-    ("E_DEFINIZIONE_NON_TROVATA", "Nessuna definizione workflow pubblicata"),
-    ("E_FLUSSI_TEMPLATE_FUORI_DEFINIZIONE", "non appartiene alla definizione"),
-    ("E_DEFINIZIONE_NON_PUBBLICABILE", "non pubblicabile"),
-    ("E_DEFINIZIONE_PUBBLICATA_IMMUTABILE", "non modificabile: stato"),
-    ("E_DEFINIZIONE_TRANSIZIONE_NON_AMMESSA", "Transizione di stato definizione workflow"),
-    ("E_DEFINIZIONE_BOZZA_ESISTENTE", "una bozza di edizione workflow"),
-    ("E_DEFINIZIONE_NO_PUBBLICATA", "Nuova versione non ammessa"),
-    ("E_TEMPLATE_DEFINIZIONE_CONGELATA", "edizione per-emittente"),
-
 )
+
+# Perimetro dei codici che questo dominio si aspetta. Insieme, non elenco di
+# stringhe esatte: vedi il confronto in `_raise_known_db_error`, che accetta
+# anche la forma col prefisso `E_` dei codici in via di rinomina.
+_CODICI_DICHIARATI: frozenset[str] = frozenset(c for c, _ in _KNOWN_DB_ERROR_MARKERS)
 
 # Mapping vincoli DB sospensioni -> codici errore applicativi.
 # L'EXCLUDE ex_sospensioni_no_overlap (framework dbops.automazione_overlap)
@@ -255,8 +219,23 @@ def _raise_known_db_error(exc: DatabaseError, *, function_name: str) -> None:
     #    o tradurla, e il match cadeva in silenzio (fallback E_DATABASE).
     #    Filtro sui soli codici dichiarati: la lista e' anche il perimetro di
     #    cio' che questo dominio si aspetta e ha registrato in error_policies.
+    #
+    #    ⚠️ Si accetta anche la forma col prefisso `E_`. Il DB sta rinominando i
+    #    codici di questo dominio anteponendolo, un lotto per volta
+    #    (brief-db-codice-errore-strutturato §15), e la rinomina tocca il CODICE
+    #    non il MESSAGGIO: senza questa clausola, dopo un lotto il campo
+    #    strutturato verrebbe scartato, vincerebbe il marker testuale — che
+    #    corrisponde ancora — e l'API restituirebbe il nome vecchio, ormai
+    #    ritirato a catalogo. Non fallirebbe niente: e' proprio per questo che
+    #    non se ne accorgerebbe nessuno.
+    #    Una condizione invece di 21 voci gemelle da aggiungere e poi ripulire:
+    #    copre ogni lotto futuro senza altre modifiche, e quando i codici vecchi
+    #    usciranno dalla lista resta corretta com'e'.
     structured = structured_db_error_code(exc)
-    if structured is not None and any(c == structured for c, _ in _KNOWN_DB_ERROR_MARKERS):
+    if structured is not None and (
+        structured in _CODICI_DICHIARATI
+        or structured.removeprefix("E_") in _CODICI_DICHIARATI
+    ):
         ErrorManager.raise_error(
             code=structured,
             # message_primary = solo il RAISE, senza stack PL/pgSQL.

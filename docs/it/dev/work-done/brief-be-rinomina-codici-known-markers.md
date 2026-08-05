@@ -180,7 +180,7 @@ senza avvisare e senza sincronia.** Entrambi i nomi sono dichiarati.
 | Dove | Cosa |
 |---|---|
 | `error_policies.py` | **49 voci gemelle** `E_*`, ognuna con lo **stesso** status, `ui_action` e messaggio del suo vecchio. Blocco unico in coda, con testata che spiega che è transitorio e che a lotto applicato si toglie la voce **vecchia**, non questa |
-| `pratiche_service._KNOWN_DB_ERROR_MARKERS` | **21 gemelli**, stesso marker del vecchio, in coda con la stessa spiegazione |
+| `pratiche_service._raise_known_db_error` | **la condizione**, non la lista: accetta anche la forma col prefisso (§7.5) |
 | `test_pratiche_service_flussi.py` | `test_ogni_codice_legacy_ha_il_gemello_con_prefisso` — nuovo |
 
 Le voci sono state **generate** dalle vecchie, non ribattute a mano: la regola
@@ -254,3 +254,73 @@ lotto quell'asserzione va tolta insieme al blocco — è il segnale che il canti
 | `known_markers` | 44 voci: 21 legacy + 23 con prefisso; nessun legacy senza gemello, nessun gemello senza policy |
 | Status vecchio == nuovo | ✅ per tutti e 51 |
 | Suite intera | **3575 verdi** |
+
+---
+
+## 7.5 ✅ Rifatto con l'opzione B — 2026-08-05
+
+La prima versione aveva aggiunto **21 voci gemelle** a `_KNOWN_DB_ERROR_MARKERS`.
+Funzionava, ma la vostra osservazione è giusta e la soluzione è migliore: il
+problema non è la lista, è la **condizione di accettazione**. La lista è un
+**perimetro** — «i codici che questo dominio si aspetta» — non un elenco di
+stringhe esatte.
+
+```python
+_CODICI_DICHIARATI: frozenset[str] = frozenset(c for c, _ in _KNOWN_DB_ERROR_MARKERS)
+...
+if structured is not None and (
+    structured in _CODICI_DICHIARATI
+    or structured.removeprefix("E_") in _CODICI_DICHIARATI
+):
+```
+
+Le 21 voci sono state tolte. Una condizione copre ogni lotto futuro, non lascia
+niente da ripulire, e resta corretta anche quando i nomi vecchi usciranno dalla
+lista.
+
+⚠️ **Le voci gemelle in `error_policies.py` restano tutte e 49.** Lì non è
+duplicazione: la policy è per-codice, e dopo la rinomina è il nome nuovo a dover
+avere il suo status. È l'unico posto dove i due nomi devono coesistere davvero.
+
+⚠️ Applicata solo a `pratiche_service`. Il BB generico
+`ErrorManager.raise_from_database_error` mantiene il confronto stretto: i suoi
+chiamanti (ui, vendite, contratti, listini) dichiarano **solo** codici già `E_*`,
+quindi non hanno niente da rinominare e allargare il perimetro non comprerebbe
+nulla.
+
+### I test: il pezzo che mancava
+
+Avete ragione anche sul secondo punto, e vale la pena scriverlo com'è: quei test
+**non diventano rossi, diventano stantii**. Fabbricavano un `DatabaseError` col
+solo testo, quindi esercitavano il **ripiego testuale** mentre il percorso vero
+è il campo strutturato. Restavano verdi presidiando il ramo sbagliato.
+
+| Cosa | |
+|---|---|
+| `apps/core/tests/db_error_fakes.py` | **nuovo** — `make_db_error(testo, codice=…)` costruisce il finto con la catena `__cause__` completa (`sqlstate` + `diag`), cioè la forma che Django consegna davvero. Estratto alla 5ª copia: i 4 moduli di `pratiche` + `test_db_error_fields`, che ora usa questo e ha perso il suo locale |
+| 20 siti in 3 moduli | il finto porta il campo strutturato **col nome nuovo**, e l'asserzione passa al nome nuovo. Non tocca i 2 siti di `sospensioni` (`E_SOSPENSIONE_DATA_FUTURA` è già conforme: nessuna rinomina in arrivo) |
+| `test_codice_strutturato_accettato_in_entrambe_le_forme` | **nuovo** — cicla su **tutti** i codici dichiarati e verifica che il backend restituisca esattamente il nome che il DB ha mandato, in entrambe le forme, e che quel nome abbia una policy |
+| `test_codice_strutturato_fuori_perimetro_non_accettato` | **nuovo** — un codice non dichiarato non passa. Senza, il primo test passerebbe anche se la condizione fosse `if structured is not None` |
+
+L'accoppiamento sito↔codice non è stato indovinato: i 22 `DatabaseError` finti
+stanno in metodi con **un solo** finto e **una sola** asserzione di codice, quindi
+la trasformazione è stata fatta a macchina e verificata dalla suite — che infatti
+ha bocciato l'unico test rimasto disallineato (il mio, sui gemelli), e nessun altro.
+
+⚠️ La forma «accetta anche senza prefisso» vale solo per i codici dichiarati
+**senza** `E_`: per gli altri nessuno manda la variante spogliata, e accettarla
+allargherebbe il perimetro senza motivo. Il test lo asserisce esplicitamente —
+prima non lo faceva e falliva, il che è il modo giusto di scoprirlo.
+
+| Esito | |
+|---|---|
+| `apps.pratiche.tests` | 236 verdi |
+| `test_db_error_fields` | 11/11 con l'opt-in acceso |
+| Suite intera | **3576 verdi** |
+
+### Cosa resta, ed è più leggero di prima
+
+Alla fine dei lotti resta da togliere **solo** le voci vecchie da
+`_KNOWN_DB_ERROR_MARKERS` e da `error_policies.py`. La condizione non va toccata:
+quando nella lista ci saranno solo nomi `E_*`, `removeprefix` non troverà più
+nulla e il ramo diventerà semplicemente inerte.

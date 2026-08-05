@@ -43,6 +43,7 @@ from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
 
+from apps.core.tests.db_error_fakes import make_db_error
 from apps.core.services.service_errors import ServiceError
 from apps.pratiche.services import pratiche_service
 
@@ -314,14 +315,15 @@ class PraticheServiceTests(SimpleTestCase):
         from django.db import DatabaseError
 
         repo = MockRepo.return_value
-        repo.update_stato_pratica.side_effect = DatabaseError(
+        repo.update_stato_pratica.side_effect = make_db_error(
             "Impossibile chiudere la pratica: flussi obbligatori non completati (APPUNTAMENTO).",
-        )
+            codice="E_PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI",
+ )
 
         with self.assertRaises(ServiceError) as ctx:
             pratiche_service.cambia_stato_pratica(1, "CHIUSA")
         self.assertEqual(
-            ctx.exception.code, "PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI",
+            ctx.exception.code, "E_PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI",
         )
 
     # Scopo: Verifica errore se pratica_id <= 0 in cambio stato.

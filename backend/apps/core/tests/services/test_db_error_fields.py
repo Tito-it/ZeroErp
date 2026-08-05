@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import os
 import unittest
-from typing import Any
 from unittest import TestCase
 
 from django.db import DatabaseError
@@ -39,33 +38,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.error_translator import ErrorTranslator
 from apps.core.services.service_errors import ServiceError
-
-
-class _Diag:
-    """Forma del `diag` di psycopg3: solo i campi che il codice legge."""
-
-    def __init__(self, **campi: Any) -> None:
-        self.message_primary = campi.get("message_primary")
-        self.message_detail = campi.get("message_detail")
-        self.message_hint = campi.get("message_hint")
-        self.constraint_name = campi.get("constraint_name")
-
-
-class _CausaPg(Exception):
-    """Sta al posto dell'errore psycopg: `sqlstate` + `diag`, come il vero."""
-
-    def __init__(self, sqlstate: str, **diag: Any) -> None:
-        super().__init__(diag.get("message_primary", ""))
-        self.sqlstate = sqlstate
-        self.diag = _Diag(**diag)
-
-
-# Scopo: Costruisce un DatabaseError con la stessa catena `__cause__` che
-#        Django produce avvolgendo un errore psycopg.
-def _db_error(testo: str, sqlstate: str, **diag: Any) -> DatabaseError:
-    exc = DatabaseError(testo)
-    exc.__cause__ = _CausaPg(sqlstate, message_primary=testo, **diag)
-    return exc
+from apps.core.tests.db_error_fakes import make_db_error
 
 
 class DbErrorFieldsUnitTests(TestCase):
@@ -75,10 +48,10 @@ class DbErrorFieldsUnitTests(TestCase):
     def test_campo_strutturato_vince_sul_testo(self):
         # Nel testo c'e' un codice DIVERSO (e' il caso reale: la regex pescava
         # dallo statement chiamante). Deve vincere il campo.
-        exc = _db_error(
+        exc = make_db_error(
             "Messaggio.\nQUERY: SELECT script.fn_log_and_raise_error('a','b','E_DAL_TESTO',...)",
-            "P0001",
-            constraint_name="E_DAL_CAMPO",
+            sqlstate="P0001",
+            codice="E_DAL_CAMPO",
         )
         self.assertEqual(structured_db_error_code(exc), "E_DAL_CAMPO")
         self.assertEqual(db_error_code(exc), "E_DAL_CAMPO")
@@ -88,14 +61,14 @@ class DbErrorFieldsUnitTests(TestCase):
         # Quando il codice viene da un'espressione che vale NULL il campo arriva
         # STRINGA VUOTA, non None: senza `or None` si propagherebbe un codice
         # vuoto invece di ripiegare.
-        exc = _db_error("Messaggio E_DAL_TESTO qui.", "P0001", constraint_name="")
+        exc = make_db_error("Messaggio E_DAL_TESTO qui.", sqlstate="P0001", codice="")
         self.assertIsNone(structured_db_error_code(exc))
         self.assertEqual(db_error_code(exc), "E_DAL_TESTO")
 
     # Scopo: Verifica il caso `test_campo_assente_ripiega_sul_testo`.
     def test_campo_assente_ripiega_sul_testo(self):
         # I ~135 RAISE diretti che non passano dall'helper: il campo non c'e'.
-        exc = _db_error("Errore E_RAISE_DIRETTO.", "P0001")
+        exc = make_db_error("Errore E_RAISE_DIRETTO.", sqlstate="P0001")
         self.assertIsNone(structured_db_error_code(exc))
         self.assertEqual(db_error_code(exc), "E_RAISE_DIRETTO")
 
@@ -104,10 +77,10 @@ class DbErrorFieldsUnitTests(TestCase):
         # Violazione UNIQUE vera: `constraint_name` e' il nome del vincolo DB.
         # Prenderlo per un codice applicativo scavalcherebbe map_integrity_error
         # e darebbe un 500 al posto di un 409 parlante.
-        exc = _db_error(
+        exc = make_db_error(
             'duplicate key value violates unique constraint "uq_soggetti_cf"',
-            "23505",
-            constraint_name="uq_soggetti_cf",
+            sqlstate="23505",
+            codice="uq_soggetti_cf",
         )
         self.assertIsNone(structured_db_error_code(exc))
         self.assertIsNone(db_error_code(exc))
@@ -118,10 +91,10 @@ class DbErrorFieldsUnitTests(TestCase):
         # (nessun prefisso E_), quindi si ripiegava su E_DATABASE -> 400. Ora
         # arrivano: senza una voce in error_policies finirebbero su E_GENERICO
         # -> 500. La registrazione e' un prerequisito di questa lettura.
-        exc = _db_error(
+        exc = make_db_error(
             "Transizione pratica non ammessa: CHIUSA -> APERTA",
-            "P0001",
-            constraint_name="PRATICHE_TRANSIZIONE_NON_AMMESSA",
+            sqlstate="P0001",
+            codice="PRATICHE_TRANSIZIONE_NON_AMMESSA",
         )
         api = ErrorTranslator.to_api_error(exc)
         self.assertEqual(api.code, "PRATICHE_TRANSIZIONE_NON_AMMESSA")
@@ -130,7 +103,7 @@ class DbErrorFieldsUnitTests(TestCase):
 
     # Scopo: Verifica il caso `test_nessun_codice_ripiega_su_e_database`.
     def test_nessun_codice_ripiega_su_e_database(self):
-        exc = _db_error("Errore generico senza codice.", "P0001")
+        exc = make_db_error("Errore generico senza codice.", sqlstate="P0001")
         api = ErrorTranslator.to_api_error(exc)
         self.assertEqual(api.code, "E_DATABASE")
 
@@ -138,8 +111,11 @@ class DbErrorFieldsUnitTests(TestCase):
     def test_raise_from_database_error_usa_il_campo_se_dichiarato(self):
         # Il testo NON contiene il marker: prima del campo strutturato questo
         # caso ricadeva sul fallback_code.
-        exc = _db_error("Testo che non nomina il codice.", "P0001",
-                        constraint_name="E_UI_LISTA_NON_TROVATA")
+        exc = make_db_error(
+            "Testo che non nomina il codice.",
+            sqlstate="P0001",
+            codice="E_UI_LISTA_NON_TROVATA",
+        )
         with self.assertRaises(ServiceError) as ctx:
             ErrorManager.raise_from_database_error(
                 exc,
@@ -155,7 +131,7 @@ class DbErrorFieldsUnitTests(TestCase):
         # Un codice che il chiamante non ha dichiarato non e' "riconosciuto":
         # accettarlo gli farebbe usare il messaggio del caso riconosciuto per un
         # errore che non aspettava. Resta il fallback.
-        exc = _db_error("Testo qualunque.", "P0001", constraint_name="E_ALTRO_DOMINIO")
+        exc = make_db_error("Testo qualunque.", sqlstate="P0001", codice="E_ALTRO_DOMINIO")
         with self.assertRaises(ServiceError) as ctx:
             ErrorManager.raise_from_database_error(
                 exc,
