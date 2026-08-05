@@ -50,12 +50,23 @@ SELECT
     (SELECT id     FROM catalogo.articoli WHERE codice = 'ART_TEST_BASE') AS articolo_id,
     (SELECT uom_id FROM catalogo.articoli WHERE codice = 'ART_TEST_BASE') AS uom_id,
     (SELECT id FROM config.utilities ORDER BY id LIMIT 1) AS utility_id,
+    -- Emittente fiscale: il trigger BEFORE INSERT lo pretende quando la GUC
+    -- app.current_user_id e' vuota, cioe' sempre in contesto pgTAP. La sua
+    -- assenza teneva questo file a ERRORE_FIXTURE in baseline-rossi: falliva
+    -- alla prima INSERT e non eseguiva NESSUNA asserzione (2026-08-05).
+    (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
+      WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
     (SELECT id FROM config.stati_doc_preventivi WHERE codice_interno = 'DRAFT' LIMIT 1) AS stato_draft_id,
+    -- EMESSO serve come tappa intermedia: la matrice non ammette
+    -- DRAFT -> ACCETTATO, e dal 2026-08-05 il database la impone.
+    (SELECT id FROM config.stati_doc_preventivi WHERE codice_interno = 'EMESSO' LIMIT 1) AS stato_emesso_id,
     (SELECT id FROM config.stati_doc_preventivi WHERE codice_interno = 'ACCETTATO' LIMIT 1) AS stato_accettato_id;
 
 DO $pgtap$
 BEGIN
-    IF (SELECT articolo_id IS NULL OR utility_id IS NULL OR stato_draft_id IS NULL OR stato_accettato_id IS NULL FROM _t_ctx) THEN
+    IF (SELECT articolo_id IS NULL OR utility_id IS NULL OR stato_draft_id IS NULL
+               OR stato_emesso_id IS NULL OR stato_accettato_id IS NULL
+               OR emittente_fiscale_id IS NULL FROM _t_ctx) THEN
         RAISE EXCEPTION 'Seed fixture mancante (ART_TEST_BASE / utility / stati_doc_preventivi); impossibile eseguire test.';
     END IF;
 END
@@ -68,10 +79,10 @@ CREATE TEMP TABLE _t_prev (tag text, preventivo_id bigint, riga_id bigint);
 -- p_pending: riga stato=PENDING
 WITH ins_p AS (
     INSERT INTO vendite.preventivi (
-        numero, stato_doc_preventivo_id, utility_id, data
+        numero, stato_doc_preventivo_id, utility_id, data, emittente_fiscale_id
     )
     SELECT 'pgtap_appr_pnd_' || substring(md5(clock_timestamp()::text) from 1 for 6),
-           stato_draft_id, utility_id, CURRENT_DATE
+           stato_draft_id, utility_id, CURRENT_DATE, emittente_fiscale_id
       FROM _t_ctx
     RETURNING id
 ),
@@ -90,9 +101,9 @@ SELECT 'p_pending', preventivo_id, riga_id FROM ins_r;
 
 -- p_approved: riga stato=APPROVED
 WITH ins_p AS (
-    INSERT INTO vendite.preventivi (numero, stato_doc_preventivo_id, utility_id, data)
+    INSERT INTO vendite.preventivi (numero, stato_doc_preventivo_id, utility_id, data, emittente_fiscale_id)
     SELECT 'pgtap_appr_app_' || substring(md5(clock_timestamp()::text) from 1 for 6),
-           stato_draft_id, utility_id, CURRENT_DATE FROM _t_ctx
+           stato_draft_id, utility_id, CURRENT_DATE, emittente_fiscale_id FROM _t_ctx
     RETURNING id
 ),
 ins_r AS (
@@ -110,9 +121,9 @@ SELECT 'p_approved', preventivo_id, riga_id FROM ins_r;
 
 -- p_rejected: riga stato=REJECTED
 WITH ins_p AS (
-    INSERT INTO vendite.preventivi (numero, stato_doc_preventivo_id, utility_id, data)
+    INSERT INTO vendite.preventivi (numero, stato_doc_preventivo_id, utility_id, data, emittente_fiscale_id)
     SELECT 'pgtap_appr_rej_' || substring(md5(clock_timestamp()::text) from 1 for 6),
-           stato_draft_id, utility_id, CURRENT_DATE FROM _t_ctx
+           stato_draft_id, utility_id, CURRENT_DATE, emittente_fiscale_id FROM _t_ctx
     RETURNING id
 ),
 ins_r AS (
@@ -130,9 +141,9 @@ SELECT 'p_rejected', preventivo_id, riga_id FROM ins_r;
 
 -- p_null: riga stato=NULL (non in approvazione, baseline libero)
 WITH ins_p AS (
-    INSERT INTO vendite.preventivi (numero, stato_doc_preventivo_id, utility_id, data)
+    INSERT INTO vendite.preventivi (numero, stato_doc_preventivo_id, utility_id, data, emittente_fiscale_id)
     SELECT 'pgtap_appr_nul_' || substring(md5(clock_timestamp()::text) from 1 for 6),
-           stato_draft_id, utility_id, CURRENT_DATE FROM _t_ctx
+           stato_draft_id, utility_id, CURRENT_DATE, emittente_fiscale_id FROM _t_ctx
     RETURNING id
 ),
 ins_r AS (
@@ -147,6 +158,23 @@ ins_r AS (
 )
 INSERT INTO _t_prev (tag, preventivo_id, riga_id)
 SELECT 'p_null', preventivo_id, riga_id FROM ins_r;
+
+-- =========================================================
+-- I preventivi nascono in DRAFT, ma i test qui sotto verificano il guard
+-- dell'APPROVAZIONE PREZZO, che scatta entrando in ACCETTATO. Serve quindi
+-- portarli prima in EMESSO.
+--
+-- ⚠️ Perche' questo passo esiste (2026-08-05). Prima si saltava dritti da DRAFT
+-- ad ACCETTATO: comodo, e fuori matrice — `DRAFT -> ACCETTATO` non e' in
+-- config.transizioni_stati_preventivi. Funzionava solo perche' il preventivo
+-- era l'unico documento la cui matrice non era imposta dal database. Da quando
+-- c'e' vendite.trgfn_preventivi_guard_transizione (20260805-15) la scorciatoia
+-- viene rifiutata, giustamente. Il significato dei test non cambia: cambia solo
+-- che ci si arriva dalla porta invece che dalla finestra.
+-- =========================================================
+UPDATE vendite.preventivi
+   SET stato_doc_preventivo_id = (SELECT stato_emesso_id FROM _t_ctx)
+ WHERE id IN (SELECT preventivo_id FROM _t_prev);
 
 -- =========================================================
 -- 1) Transizione ad ACCETTATO con riga PENDING -> raise
@@ -276,9 +304,9 @@ SELECT lives_ok(
 -- =========================================================
 CREATE TEMP TABLE _t_prev_draft2 AS
 WITH ins_p AS (
-    INSERT INTO vendite.preventivi (numero, stato_doc_preventivo_id, utility_id, data)
+    INSERT INTO vendite.preventivi (numero, stato_doc_preventivo_id, utility_id, data, emittente_fiscale_id)
     SELECT 'pgtap_appr_drt_' || substring(md5(clock_timestamp()::text) from 1 for 6),
-           stato_draft_id, utility_id, CURRENT_DATE FROM _t_ctx
+           stato_draft_id, utility_id, CURRENT_DATE, emittente_fiscale_id FROM _t_ctx
     RETURNING id
 ),
 ins_r AS (
