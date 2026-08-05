@@ -33,7 +33,8 @@ BEGIN
       'evento_tipo', OLD.evento_tipo,
       'evento_at', OLD.evento_at::text
     ),
-    NULL::uuid
+    NULL::uuid,
+    VARIADIC ARRAY[]::text[]
   );
   RETURN OLD;
 END;

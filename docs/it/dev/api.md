@@ -751,6 +751,50 @@ in `error_policies.py` prima dell'uso. Il suffisso determina la categoria:
 | `_DUPLICATO` / `_IN_ESECUZIONE` | 409 | `E_ANAG_DUPLICATO` |
 | `_NEGATO` / `_DENIED` | 403 | `E_PERMESSO_NEGATO` |
 
+#### Come il codice arriva dal DB al backend (dal 2026-08-05)
+
+Gli errori di dominio nascono in PostgreSQL, da `script.fn_log_and_raise_error`.
+Il contratto di trasporto è **uno solo**:
+
+> **SQLSTATE `P0001` + campo `CONSTRAINT` valorizzato = errore di dominio**,
+> e il contenuto di `CONSTRAINT` è il codice di `config.messaggi_errore`.
+
+Il codice viaggia quindi in un **campo strutturato** dell'eccezione
+(`diag.constraint_name` lato psycopg), non nel testo. Gli altri campi restano
+dove erano: `DETAIL` = causa, `HINT` = soluzione, e il messaggio è il testo
+localizzato per l'operatore. **Il codice non compare nel messaggio, ed è una
+scelta**: il messaggio è per l'utente.
+
+⚠️ **La condizione su `P0001` non è prudenza, è necessaria.** Su una violazione
+di vincolo vera (classe `23xxx`) `constraint_name` contiene il nome del vincolo
+DB (`uq_...`, `fk_...`): leggerlo come codice applicativo scavalcherebbe
+`map_integrity_error`, che quei vincoli li traduce già. E se il campo è vuoto va
+trattato come assente (`... or None`): quando il codice arriva da un'espressione
+che vale NULL, PostgreSQL lo consegna come **stringa vuota**, non NULL.
+
+⚠️ **Il fallback a regex sul testo resta.** Nel DB ci sono 135 `RAISE EXCEPTION`
+diretti in 46 funzioni PL/pgSQL che non passano dall'helper: per quelle il campo
+esce vuoto. Si potrà togliere il giorno in cui quel numero sarà zero — non prima.
+
+Presidio: `scripts/sql/guardrail_codice_errore_strutturato.sql` (in CI) verifica
+che **nessun altro** `RAISE` scriva `CONSTRAINT`. Un secondo mittente su quel
+canale non farebbe fallire niente: farebbe rispondere sbagliato.
+
+#### ⚠️ 57 codici ereditati fuori convenzione
+
+`ErrorPolicyRegistry.resolve` ha una scorciatoia — codice non registrato ma che
+comincia per `E_` → 400 «errore di validazione» — e **tutto il resto cade su
+`E_GENERICO`, cioè 500**. Nel DB ci sono 57 codici che il prefisso non ce
+l'hanno (`PRATICHE_TRANSIZIONE_NON_AMMESSA`, `PREV_*`, `FLUSSI_*`,
+`ERRORE_PARAMETRI`, `CF_NON_VALIDO`…), usati da 77 call site.
+
+Decisione del 2026-08-05: **si registrano in `error_policies.py` così come
+sono** — rinominarli costerebbe seed + call site + pgTAP senza comprare nulla —
+**e il rubinetto si chiude**: il controllo (B) del guardrail rifiuta ogni codice
+*nuovo* fuori convenzione. I 57 ereditati vivono in
+`dbops.messaggi_errore_codici_legacy`, che è un **registro del debito e deve
+calare**; a zero righe la tabella si droppa.
+
 **Eccezione — codici middleware-level.** Alcune risposte sono costruite
 direttamente da `JwtAuditMiddleware` (helper `_json_error`, stesso envelope)
 e **non** passano dall'exception handler / `error_policies.py`:

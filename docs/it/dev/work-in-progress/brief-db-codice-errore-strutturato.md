@@ -17,6 +17,48 @@ comportamento di ogni errore dell'applicazione: va fatta come slice a sé.
 
 ---
 
+> ## ⚠️ Rilettura DB — 2026-08-05
+>
+> Le misure del brief sono state **ricontrollate sul DB vivo** e tornano tutte
+> (dettagli nei paragrafi, dove le cifre differiscono di poco è il seed che è
+> cresciuto). La proposta del §3 si accoglie **così com'è**. Cambiano tre cose:
+>
+> 1. **Il §8 è già stato fatto**, la notte prima che il brief arrivasse:
+>    commit `b7d594244` (famiglia **F8**), mergiato con la PR #1164. Oggi nel DB
+>    **non esiste più nessun call site a meno di 6 argomenti**. Gli item 4 e 5
+>    del riepilogo sono chiusi — vedere il §8 riscritto, che spiega anche perché
+>    i conteggi non coincidono (20-in-15 contro 16-in-12).
+> 2. **Il §7 non è neutro come lo racconta**: per i 77 call site senza prefisso
+>    `E_` l'adozione del campo lato BE porta un **400 di oggi a diventare un 500**.
+>    Non blocca la slice DB, ma vincola l'ordine dei passi. §7 riscritto.
+> 3. **Il §4.3 non è una valutazione da fare dopo**: i numeri la chiudono già.
+>    Il fallback a regex resta. §4 aggiornato.
+>
+> Aggiunte alla slice, decise con Tid il 2026-08-05:
+> **il presidio del contratto** (§10) e **la chiusura del rubinetto sui codici
+> fuori convenzione** (§7).
+
+---
+
+> ## ✅ Stato: slice DB **CHIUSA, applicata e verde** — 2026-08-05
+>
+> Tutto ciò che in questo brief è marcato «DB» è fatto, applicato sul DB di
+> sviluppo e verificato. Dettaglio nel §9; le prove nel §11.
+>
+> | Verifica | Esito |
+> | --- | --- |
+> | ChangeSet | `20260805-05` · `-06` · `-07` · `-08` — tutti `EXECUTED` |
+> | pgTAP | **13/13 verdi** (5 nuovi sull'helper + 8 sulla guard ordini, di cui 1 nuovo) |
+> | Guardrail nuovo | **verde**, exit 0 |
+> | Baseline `script vendite` | **nessuna regressione** (48 rossi, tutti già noti) |
+> | Guardrail riferimenti morti | **verde** dopo la modifica alla funzione |
+>
+> 🔴 **Resta il lato BE, e l'ordine non è indifferente:** prima i 57 codici in
+> `error_policies.py` (§7), **poi** i tre innesti con il guard `P0001` (§5).
+> Invertirli porta 77 call site da 400 a 500.
+
+---
+
 ## 1. Cosa serve al backend, e cosa riceve
 
 Il backend deve sapere **quale** errore è, non cosa dice: da `error_policies.py`
@@ -71,6 +113,13 @@ Censimento dei **971** call site nei corpi vivi:
 | **B** | **76** | codice letterale **senza prefisso `E_`** → la regex non lo riconosce |
 | **C** | **9** | codice da espressione → nel testo c'è il **nome della variabile** |
 
+> **Ricensimento DB del 2026-08-05:** **978** call site — A **886** (identico),
+> B **77**, C **9** (identico). Le differenze sono di conteggio, non di
+> sostanza: il quadro regge intero. ⚠️ Attenzione se lo si rifà: contare gli
+> argomenti significa spezzare sulle virgole di primo livello, e un apostrofo
+> dentro un commento SQL (`-- la funzione e' VARIADIC`) apre una stringa che non
+> si chiude più. Vanno tolti i commenti **prima** di contare — vedi §8.
+
 **Il gruppo C è il danno vivo.** Sono le guard di cambio stato, cioè gli errori
 che l'operatore incontra ogni giorno:
 
@@ -88,6 +137,18 @@ Per tutte e nove il translator ripiega su `E_DATABASE`, che è classificato
 **tecnico**: il messaggio localizzato viene **scartato** e sostituito da un testo
 generico, e il dettaglio è soppresso (*«Dettaglio tecnico non esposto»*). Chi
 tenta una transizione non ammessa non legge perché non è ammessa.
+
+> **Verifica DB (2026-08-05) — il gruppo C guadagna davvero.** Non era scontato:
+> quei codici non si vedono nel sorgente, quindi andava controllato *da dove
+> vengono*. Escono tutti dai `script.fn_check_*_annullabile`, la stessa funzione
+> pura che accende il bottone in `fn_available_actions_*`, e sono **tutti `E_*`**:
+> `E_ORD_ANNULLA_CON_DDT`, `E_ORD_ANNULLA_IN_COMMESSA`,
+> `E_PREV_GIA_IN_COMMESSA`, `E_PREV_ANNULLA_COMMESSA_EMESSA`,
+> `E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE`, `E_LOTTO_FATTURE_NUMERATE`,
+> `E_FATTURA_GIA_NUMERATA`, `E_RESO_NOT_FOUND`…
+> Quindi il gruppo C **non** ricade nel secondo muro del §7: il campo strutturato
+> lo porta fino in fondo, dal DB al banner che l'operatore legge. È questa la
+> giustificazione economica della slice.
 
 ⚠️ **Il gruppo A è la parte che preoccupa di più**, proprio perché funziona: se
 domani una di quelle 886 chiamate passa il codice per variabile — che è
@@ -164,10 +225,16 @@ esistono oggi continuano a comportarsi **esattamente** come prima. Quindi:
    il backend non cambia niente per nessuno: nuovo campo ignorato, comportamento
    invariato. Nessuna finestra di rottura, nessuna fase di compatibilità.
 2. Il backend adotta il campo subito dopo, con la lettura difensiva del §5.
-3. Solo quando i pgTAP e i test Django del §6 sono verdi si valuta se togliere il
-   fallback a regex. **Non prima**, perché ci sono funzioni che sollevano con
-   `RAISE EXCEPTION` diretto senza passare da `fn_log_and_raise_error`: per
-   quelle il campo resta vuoto e la regex è ancora l'unica strada.
+3. ~~Solo quando i pgTAP e i test Django del §6 sono verdi si valuta se togliere
+   il fallback a regex.~~ **Il fallback a regex resta, e non è una valutazione da
+   rimandare: la misura la chiude già.** Nel DB vivo ci sono **135
+   `RAISE EXCEPTION` diretti in 46 funzioni PL/pgSQL** che non passano da
+   `fn_log_and_raise_error`. Per quelle il campo esce vuoto e la regex è l'unica
+   strada. Il numero va scritto qui perché una porta lasciata socchiusa, fra un
+   anno, diventa un ticket «rimuovere il fallback legacy» aperto da chi la misura
+   non ce l'ha.
+   La regex si potrà togliere il giorno in cui quei 135 saranno zero — che è un
+   cantiere a sé, non la coda di questo.
 
 ---
 
@@ -214,13 +281,25 @@ dimenticare di lanciare:
   HTTP status giusto dalla policy. Non un mock: il mock non vede né i campi diag
   né il testo del driver, che è precisamente ciò che stiamo cambiando.
 
+> **Stato.** I due pgTAP sono **fatti e verdi** (§11): 5 asserzioni sull'helper e
+> il test 8 su `vendite.trgfn_ordini_guard_transizione`, che è la guard del
+> gruppo C scelta perché la sua fixture esisteva già.
+> Ne è stato aggiunto uno che il brief non chiedeva e che vale la pena tenere: il
+> **contratto negativo**, cioè che il codice **non** compaia nel messaggio. Senza,
+> fra sei mesi qualcuno lo rimette nel testo «per farlo trovare più facilmente» e
+> la scelta si perde senza che nulla diventi rosso — che è il modo in cui le
+> decisioni di progetto muoiono.
+>
+> 🔴 Il **test Django** resta al BE, ed è l'unico dei tre che qui non si poteva
+> scrivere.
+
 ---
 
-## 7. ⚠️ Nota — la riclassificazione dei codici senza prefisso (gruppo B)
+## 7. I codici senza prefisso (gruppo B) — ⚠️ non è neutro, e la decisione è presa
 
-**Non è in questa slice, ed è bene che non lo sia**, ma va deciso: il campo
-strutturato risolve A e C, **non risolve B**. Lì il problema non è il trasporto,
-è il **nome**.
+**Non è in questa slice**, ma va deciso *prima* che il BE adotti il campo: il
+campo strutturato risolve A e C, **non risolve B**. Lì il problema non è il
+trasporto, è il **nome**.
 
 Nel DB ci sono **57 codici distinti** (su 636) che non seguono la convenzione
 `E_{MODULO}_{TIPO}` di `docs/it/dev/api.md`: `PRATICHE_TRANSIZIONE_NON_AMMESSA`,
@@ -236,23 +315,98 @@ cominciano per `E_` (→ 400 «errore di validazione»). Tutti gli altri cadono 
 `E_GENERICO` → **HTTP 500**. Cioè: un operatore che tenta una transizione di
 pratica non ammessa fa apparire al frontend un errore di server.
 
-Le due strade, e nessuna è gratis:
+### ⚠️ Correzione: non è «rotti uguale», è un 400 che diventa un 500
 
-| | Cosa comporta | Chi tocca |
+Il brief concludeva *«dopo il campo strutturato sono rotti uguale — nessun
+peggioramento»*. Letto [`error_policies.py`](../../../../backend/apps/core/services/error_policies.py),
+non è così:
+
+| | Cosa arriva al translator | Policy | HTTP |
+|---|---|---|---|
+| **Oggi** | la regex non trova il codice → ripiego `E_DATABASE` | **registrata** | **400** |
+| **Dopo l'adozione BE** | arriva `PRATICHE_TRANSIZIONE_NON_AMMESSA` | non registrata, e la scorciatoia di `resolve()` è solo per `E_` → `E_GENERICO` | **500** |
+
+Da 400 a 500 non è una sfumatura: cambia gli allarmi, cambia cosa finisce nei
+log di errore server, e cambia cosa fa il frontend. **Quindi la registrazione non
+è un «poi si decide»: è un prerequisito di sequenza del passo 3.** La slice DB
+resta invece sicura da sola, perché finché il BE non legge il campo non cambia
+niente (§4).
+
+### Decisione (Tid, 2026-08-05): registrare **e** chiudere il rubinetto
+
+Nessuna delle due strade presa da sola. Rinominare i 57 costa il seed + 77 call
+site + i pgTAP che li asseriscono, e non compra nulla che la registrazione non
+compri; ma registrare e basta lascia in piedi l'obiezione giusta del brief — *il
+prossimo codice nascerà di nuovo storto*. Quindi tutte e due le metà:
+
+| | Cosa | Chi |
 |---|---|---|
-| **Rinominare** i 57 a `E_*` | seed `config.messaggi_errore`, tutti i call site, i pgTAP che asseriscono quei codici, `error_policies.py` | DB + BE |
-| **Registrarli** così come sono | solo `error_policies.py` (57 voci), ma la convenzione dichiarata in `api.md` resta disattesa e il prossimo codice nascerà di nuovo storto | solo BE |
+| **Registrare** i 57 così come sono | 57 voci in `error_policies.py`, **prima o insieme** all'adozione del campo | BE |
+| **Chiudere il rubinetto** | presidio CI: un codice **nuovo** fuori convenzione fa fallire la CI. I 57 esistenti vivono in un registro del debito che deve calare | DB — §10 |
 
-Decisione di Tid. **Non blocca questa slice**: oggi quei 76 call site sono rotti,
-dopo il campo strutturato sono rotti **uguale** — nessun peggioramento, solo un
-difetto che diventa visibile invece di restare confuso con l'altro.
+Così i 57 diventano un debito **numerato e visibile** invece di una convenzione
+disattesa in silenzio, e il 58° non nasce.
+
+> ✅ **Trovato mentre si costruiva il presidio, e già tolto** (`20260805-08`).
+> In `config.messaggi_errore` c'era una riga con un **apostrofo in coda al
+> codice**: `E_NOTE_RIGA_MISMATCH'` (id 76), che nessun call site può nominare —
+> il codice vero (id 792) esiste accanto, aggiunto da un seed successivo. Riga
+> morta, e veniva dal CSV (`80_data/sql/config/messaggi_errore.csv` riga 88),
+> quindi il DELETE da solo non sarebbe bastato: il loader è `runOnChange` e la
+> rimetterebbe. Tolta **in due mosse**, riga dal CSV *e* changeSet di DELETE.
+> Verificato: 0 residui.
+>
+> Piccolo dividendo del presidio: il controllo (B) è diventato rosso la prima
+> volta che ha girato, e su una cosa vera.
 
 ---
 
-## 8. ⚠️ Allegato — un difetto vivo sulla stessa funzione (`FP_VARIADIC`)
+## 8. ✅ Allegato `FP_VARIADIC` — **CHIUSO prima di arrivare** (commit `b7d594244`)
 
-Emerso misurando per questo brief, **indipendente da esso**, ma sta sulla
-funzione che questo brief modifica: conviene guardarli insieme.
+> **Non rifare niente di questo paragrafo.** La segnalazione è arrivata al DB per
+> altra via ed è stata sanata la notte fra il 4 e il 5 agosto, poche ore prima
+> che il brief fosse scritto: commit **`b7d594244` — «Bonifica riferimenti morti
+> — F8: chiamate senza valori variadici»**, mergiato con la PR #1164.
+> Ricensito il 2026-08-05 sui corpi vivi: **978 call site, arità minima 6**.
+> Nessun residuo.
+>
+> ⚠️ Eseguirlo oggi significherebbe rifare ~16 `CREATE OR REPLACE` su corpi che
+> nel frattempo sono cambiati: è il modo esatto di regredire in silenzio contro
+> cui mette in guardia la regola *«il DDL dalla doc auto-gen, mai dagli YAML»*.
+>
+> **Perché i conteggi non coincidono** (brief: 20 call site in 15 funzioni; F8:
+> 16 in 12). Nessuno dei due ha sbagliato a guardare: sono falsi positivi di
+> *parsing*. Contare gli argomenti di una chiamata vuol dire spezzare sulle
+> virgole di primo livello, e un apostrofo dentro un commento SQL — `-- la
+> funzione e' VARIADIC` — apre una stringa che non si chiude mai, inghiottendo
+> le virgole successive. Ci è cascata anche la ri-verifica di oggi: al primo giro
+> dava 2 residui, spariti togliendo i commenti *prima* di contare.
+> Piccola morale coerente col resto del brief: **anche la misura di un difetto è
+> un programma, e può avere il suo difetto.**
+>
+> **Cosa è stato fatto**, oltre ai call site:
+>
+> * i codici mancanti aggiunti (`E_ATTIVO_BLOCK_REF_NULL`, id 840) e il valore
+>   del segnaposto corretto dove parlava d'altro;
+> * la regola del presidio corretta da `20260805-01`, ma **più stretta** di come
+>   la chiedeva il §9 item 5: non «esenzione solo con ≥1 valore variadico», bensì
+>   `provariadic = '"any"'::regtype`, cioè la condizione a monte. Nessuna nostra
+>   funzione è `VARIADIC "any"`, quindi la classe resta **strutturalmente vuota**
+>   invece di svuotarsi caso per caso;
+> * il punto che questo paragrafo dà per scontato — *«il rimedio è il 6°
+>   argomento oppure `VARIADIC ARRAY[]::text[]`»* — era già stato affrontato: il
+>   rimedio **non è uniforme**, dipende dai `%s` del template a seed (11 codici su
+>   12 non ne avevano, per il dodicesimo serviva un valore). Con un segnaposto e
+>   l'array vuoto il `format` viene saltato e all'operatore arriva un `%s`
+>   letterale: un difetto silenzioso al posto di uno rumoroso.
+>
+> ✏️ *Nota lessicale, perché non si ripeta:* il 6° argomento **non è «il
+> messaggio»**. È un **valore** che riempie un `%s` del template in
+> `config.messaggi_errore`. Detto come lo dice il paragrafo qui sotto, invita a
+> passarci dentro il testo del messaggio.
+
+Quello che segue resta come **storia della diagnosi** — è ancora la spiegazione
+più chiara del perché il difetto esisteva.
 
 La regola v3 del classificatore (`brief-db-bonifica-riferimenti-morti` §3.1)
 esenta i 42883 su `fn_log_and_raise_error` se la funzione chiamata *ha* un
@@ -318,11 +472,129 @@ un altro difetto: era nascosto **sotto un'etichetta**, come
 
 ## 9. Riepilogo
 
-| # | Cosa | Chi | Urgenza |
+| # | Cosa | Chi | Stato |
 |---|---|---|---|
-| 1 | `CONSTRAINT = p_error_code` in `fn_log_and_raise_error` (nuovo changeSet `runOnChange`, numerazione successiva) | DB | **alta** |
-| 2 | pgTAP §6 (campo valorizzato + una guard del gruppo C) | DB | **alta** |
-| 3 | Lettura del campo con guard `sqlstate = 'P0001'` nei 3 punti + test Django | BE | **alta** — dopo l'apply |
-| 4 | 20 call site variadici a 5 argomenti (§8) | DB | **alta** — difetto vivo, indipendente |
-| 5 | Regola `FP_VARIADIC`: esenzione solo con ≥1 valore variadico (§8) | DB | media |
-| 6 | Riclassificare o registrare i 57 codici senza prefisso `E_` (§7) | decisione Tid | media |
+| 1 | `CONSTRAINT = p_error_code` in `fn_log_and_raise_error` (`runOnChange: false` — nel progetto `true` è solo crutch locale) | DB | ✅ **fatto** — `20260805-05` |
+| 2 | pgTAP §6: campo valorizzato su codice a seed + una guard del gruppo C + il **contratto negativo** | DB | ✅ **fatto** — 13/13 verdi (§11) |
+| 3 | Lettura del campo con guard `sqlstate = 'P0001'` nei 3 punti + test Django | BE | 🔴 **da fare, dopo il #6** |
+| 4 | ~~20 call site variadici a 5 argomenti~~ | DB | ✅ **fatto** — `b7d594244` (§8) |
+| 5 | ~~Regola `FP_VARIADIC`~~ | DB | ✅ **fatto** — `20260805-01`, più stretta del richiesto (§8) |
+| 6 | Registrare i 57 codici senza prefisso in `error_policies.py` | BE | 🔴 **prerequisito del #3** (§7) |
+| 7 | Presidio del contratto + rubinetto sui codici nuovi + registro del debito | DB | ✅ **fatto** — `20260805-06/-07` + guardrail (§10) |
+| 8 | Riga morta `E_NOTE_RIGA_MISMATCH'` (CSV riga 88 + DELETE) | DB | ✅ **fatto** — `20260805-08` (§7) |
+
+**Ordine obbligato:** ~~1 → 2 → 7~~ (fatto: tutto DB, applicato da solo, nessuna
+finestra di rottura) · **resta 6 → 3** (BE, in quest'ordine e non nell'altro,
+altrimenti 77 call site passano da 400 a 500).
+
+### Cosa trova il BE già pronto
+
+| | |
+| --- | --- |
+| Il campo | `diag.constraint_name` su `SQLSTATE = 'P0001'`, applicato e asserito |
+| ⚠️ Campo vuoto ≠ NULL | quando il codice viene da un'espressione che vale NULL, arriva **stringa vuota**: `... or None` non è cosmetico |
+| ⚠️ Il ripiego resta | 135 `RAISE EXCEPTION` diretti in 46 funzioni non passano dall'helper: per quelle il campo è vuoto e la regex è ancora l'unica strada |
+| I 57 codici da registrare | elenco vivo: `SELECT codice FROM dbops.messaggi_errore_codici_legacy ORDER BY 1` |
+
+---
+
+## 10. Il presidio del contratto (aggiunta DB, 2026-08-05)
+
+Il §3 dichiara un contratto — *«`P0001` + `CONSTRAINT` valorizzato = errore di
+dominio»* — ma finché resta un commento, è una convenzione. Nulla impedisce a un
+futuro `RAISE EXCEPTION ... USING CONSTRAINT = 'qualcosa'` scritto a mano di
+usare lo stesso canale per altro, e il BE si fiderebbe. Con **135 `RAISE`
+diretti** già in circolazione (§4) la probabilità non è teorica.
+
+Nuovo `scripts/sql/guardrail_codice_errore_strutturato.sql`, stessa forma dei due
+guardrail già in CI (`check_naming_stato_codice`, `guardrail_riferimenti_morti`):
+un `DO` che solleva, e con `ON_ERROR_STOP=1` il passo diventa rosso.
+
+| | Controllo | Perché |
+|---|---|---|
+| **A** | `RAISE ... USING ... CONSTRAINT =` fuori da `script.fn_log_and_raise_error` | il canale ha **un solo** mittente autorizzato, altrimenti il guard `P0001` del §5 si fida di un campo che qualcun altro ha scritto |
+| **B** | un codice di `config.messaggi_errore` fuori da `^E_[A-Z0-9_]+$` e non nel registro | il rubinetto del §7: i 57 sono debito noto, il 58° no |
+| **C** | una voce del registro che non corrisponde più a nessun codice a seed | **il debito deve calare**: un registro che si può solo allungare è il posto dove i problemi vanno a sparire |
+
+Dry-run prima di scriverlo, sul DB vivo: **(A) zero violazioni** — e il regex non
+inciampa sulle 36 funzioni che nominano `CONSTRAINT` per altri motivi (`ADD
+CONSTRAINT` in SQL dinamico), perché àncora la ricerca a `RAISE ... USING` dentro
+lo stesso statement. **(B) 58 codici** fuori convenzione: i 57 del §7 più la riga
+morta con l'apostrofo, che infatti si è tolta.
+
+✅ **Costruito e verde.** Dopo l'apply il guardrail esce con `exit 0` e il
+messaggio *«un solo mittente sul canale CONSTRAINT, nessun codice fuori
+convenzione non registrato, nessuna voce di troppo nel registro (57
+registrate)»*. È in CI come passo `Guardrail codice errore strutturato`, messo
+**prima** del migrate di Django — al contrario di quello dei riferimenti morti,
+che invece lo pretende dopo perché compila i corpi e ha bisogno dello schema
+`django`; questo legge solo `pg_proc`, `config.messaggi_errore` e il registro,
+che Liquibase ha già messo.
+
+### Perché il registro non chiede un `motivo` per riga
+
+`dbops.riferimenti_morti_esenzioni` impone un motivo di almeno 40 caratteri per
+riga, e lì è giusto: ogni voce è una **decisione indipendente**. Qui no: le 57
+voci sono **una sola decisione** (quella del §7) applicata 57 volte. Un campo
+`motivo` obbligatorio produrrebbe 57 copie della stessa frase, cioè rumore che
+somiglia a rigore. La motivazione sta nel `COMMENT ON TABLE`, dove è scritta una
+volta e si legge una volta.
+
+### Cosa **non** si è fatto, e perché
+
+* **Non** si controlla la forma piena `E_{MODULO}_{TIPO}` dichiarata in
+  `api.md`, ma solo il prefisso `E_` e l'alfabeto. Motivo: 13 codici conformi e
+  in uso hanno un solo underscore (`E_DATABASE`, `E_GENERICO`, `E_TOKEN`,
+  `E_PIPELINE`…), e diversi sono registrati in `error_policies.py`. Stringere
+  fino alla forma piena vorrebbe dire un secondo registro da 13 voci per
+  comprare, in cambio, niente: quello che serve al BE è **il prefisso**, perché
+  è su quello che `ErrorPolicyRegistry.resolve` decide 400 anziché 500.
+* **Non** si è messo un trigger su `config.messaggi_errore`. Sarebbe più
+  DB-first, ma i codici nuovi entrano solo dal CSV via Liquibase — che la CI
+  esegue — e un trigger su una tabella caricata in `runOnChange` da un
+  `loadUpdateData` è un modo eccellente per rompere un seed a metà giro.
+* **Non** si sono usati `SCHEMA`/`TABLE`/`COLUMN`/`DATATYPE`, pure liberi, per
+  far viaggiare `p_area` e `p_function_name`. Sarebbe comodo, ma psycopg e
+  Django leggono quei campi per comporre i messaggi di `IntegrityError`:
+  riempirli con «area» direbbe una cosa falsa. È la stessa obiezione con cui il
+  §3 scarta `COLUMN` — vale anche per i suoi fratelli.
+
+---
+
+## 11. Cosa è stato consegnato, e cosa lo dimostra
+
+### I file
+
+| File | |
+|---|---|
+| `20_code/script/20260805-05-update-fn-log-and-raise-error-constraint-codice` | il campo strutturato. Corpo dalla doc auto-gen, `runOnChange: false`, rollback al comportamento pre-slice |
+| `00_schema/dbops/20260805-06-create-messaggi-errore-codici-legacy` | il registro del debito |
+| `80_data/changelog/20260805-07-seed-messaggi-errore-codici-legacy` + `80_data/sql/dbops/messaggi_errore_codici_legacy.csv` | le 57 voci. `DELETE` + `loadData`, non upsert: il registro deve poter **calare** togliendo una riga dal CSV |
+| `80_data/changelog/20260805-08-delete-messaggio-errore-codice-con-apostrofo` + riga 88 del CSV messaggi | la riga morta (§7) |
+| `scripts/sql/guardrail_codice_errore_strutturato.sql` | i tre controlli (§10) |
+| `.github/workflows/ci-validate.yaml` | il passo di CI |
+| `db/pgtap/script/test-fn-log-and-raise-error-constraint-codice.sql` | 5 asserzioni, nuovo |
+| `db/pgtap/vendite/test-ordini-guard-transizione-v1.sql` | `plan(7)` → `plan(8)`: il gruppo C sul percorso vero |
+
+Documentazione: `api.md` §Tassonomia errori (il contratto visto dal BE + i 57
+codici), il manuale di `fn_log_and_raise_error`, e il **§3.3 nuovo** della guida
+*Presidi e registri del debito*.
+
+### Le prove
+
+| | |
+|---|---|
+| pgTAP helper | **5/5** — campo + `P0001`, DETAIL/HINT invariati, contratto negativo, annidamento, codice non a seed |
+| pgTAP guard ordini | **8/8** — l'8 asserisce `E_ORD_ANNULLA_IN_COMMESSA` sul campo, con il codice che arriva da `v_motivi` |
+| Guardrail nuovo | **exit 0** |
+| Guardrail riferimenti morti | **verde** dopo la modifica alla funzione |
+| `pgtap-baseline.sh script vendite` | **nessuna regressione** — 48 rossi, tutti già noti |
+| ChangeSet | `20260805-05..08` tutti `EXECUTED`; riga morta: **0 residui** |
+
+⚠️ **Una nota sui test, perché non tragga in inganno chi li legge dopo.** Il
+pgTAP sull'helper passa il codice **come parametro**, non come letterale nella
+chiamata. È voluto: è la forma del gruppo C. Un test scritto col letterale
+sarebbe passato **anche senza la modifica**, pescando il codice dal testo dello
+statement — cioè avrebbe misurato il vecchio meccanismo credendo di misurare il
+nuovo. Lo stesso vale per il test 8 sulla guard ordini, che è lì proprio perché
+sull'helper il codice si sa già quando lo si chiama.

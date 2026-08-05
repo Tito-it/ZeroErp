@@ -14,6 +14,9 @@
 -- 5) DRAFT->SPEDITO (fuori matrice) -> throws E_ORDINE_TRANSIZIONE_NON_AMMESSA
 -- 6) CONFERMATO->ANNULLATO senza figli a valle -> ok (lives)
 -- 7) CONFERMATO->ANNULLATO con l'ordine gia' in commessa -> throws
+-- 8) ...e il CODICE di dominio esce nel campo strutturato CONSTRAINT
+--    (gruppo C: il codice arriva da `v_motivi -> 0 ->> 'codice'`, non da un
+--     letterale — vedi brief-db-codice-errore-strutturato §2)
 --
 -- rev 2026-08-04: il caso 6 fissava la transizione come DISATTIVA
 -- (attivo=false) e si aspettava E_ORDINE_TRANSIZIONE_NON_AMMESSA. Quella
@@ -31,7 +34,7 @@
 --   di stato testate non dipendono dal billing_account.
 
 BEGIN;
-SELECT plan(7);
+SELECT plan(8);
 
 -- Contesto non-API: GUC vuota.
 SELECT set_config('app.current_user_id', '', true);
@@ -218,6 +221,58 @@ SELECT throws_ok(
          (SELECT id FROM tmp_gt_f)),
   'P0001', NULL,
   '7) CONFERMATO->ANNULLATO con ordine gia'' in commessa -> rifiutato dal guard'
+);
+
+-- ============================================================
+-- 8) Il codice di dominio esce nel campo strutturato CONSTRAINT
+--    Migration 20260805-05 · brief-db-codice-errore-strutturato §6
+--
+--    ⚠️ PERCHE' QUI E NON SOLO SULL'HELPER. Questo e' uno dei nove call site
+--    del "gruppo C": il codice non e' un letterale nella chiamata, arriva da
+--    `v_motivi -> 0 ->> 'codice'`. Ed e' esattamente il caso che il vecchio
+--    meccanismo NON copriva: il backend pescava il codice con una regex dal
+--    testo dell'eccezione, dove pero' il driver riporta lo statement chiamante
+--    — e li' c'era scritto il NOME DELLA VARIABILE, non il suo valore. Il
+--    ripiego era E_DATABASE, classificato tecnico: messaggio localizzato
+--    scartato e dettaglio soppresso. Chi provava ad annullare un ordine gia'
+--    in commessa non leggeva perche' non si poteva.
+--
+--    Un test sul solo `script.fn_log_and_raise_error` (che pure esiste, in
+--    test-fn-log-and-raise-error-constraint-codice.sql) non basterebbe a
+--    coprire questo: li' il codice si sa gia' quando si chiama. Qui il
+--    percorso e' quello vero, UPDATE -> trigger -> guard -> funzione pura ->
+--    helper, e il codice lo decide il DB.
+--
+--    Il test 7 usa throws_ok, che vede solo SQLSTATE e messaggio: i campi
+--    diagnostici richiedono un blocco EXCEPTION con GET STACKED DIAGNOSTICS.
+--    Lo stesso UPDATE si puo' rieseguire perche' il fallimento del 7 ha
+--    annullato solo il proprio statement, non la transazione del test.
+-- ============================================================
+CREATE FUNCTION pg_temp.capture_annulla(p_ordine_id bigint)
+RETURNS TABLE(v_sqlstate text, v_constraint text)
+LANGUAGE plpgsql
+AS $fn$
+BEGIN
+    BEGIN
+        UPDATE vendite.ordini
+           SET stato_doc_ordine_id = (SELECT stato_ann_id FROM tmp_refs_gt)
+         WHERE id = p_ordine_id;
+        v_sqlstate := NULL; v_constraint := NULL;
+        RETURN NEXT;
+    EXCEPTION WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS
+            v_sqlstate   = RETURNED_SQLSTATE,
+            v_constraint = CONSTRAINT_NAME;
+        RETURN NEXT;
+    END;
+END;
+$fn$;
+
+SELECT is(
+  (SELECT ROW(v_sqlstate, v_constraint)::text
+     FROM pg_temp.capture_annulla((SELECT id FROM tmp_gt_f))),
+  ROW('P0001', 'E_ORD_ANNULLA_IN_COMMESSA')::text,
+  '8) il codice di dominio (da v_motivi, non da letterale) esce nel campo CONSTRAINT'
 );
 
 SELECT * FROM finish();

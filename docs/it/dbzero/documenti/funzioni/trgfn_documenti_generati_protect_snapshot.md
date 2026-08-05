@@ -57,7 +57,8 @@ BEGIN
         'documento_generato_id', OLD.id,
         'uid', OLD.uid::text
       ),
-      NULL::uuid
+      NULL::uuid,
+      VARIADIC ARRAY[]::text[]
     );
   END IF;
   RETURN NEW;

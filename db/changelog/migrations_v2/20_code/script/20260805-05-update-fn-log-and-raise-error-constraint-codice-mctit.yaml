@@ -1,0 +1,273 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il codice errore di dominio viaggia in un campo STRUTTURATO dell'eccezione
+#   Brief: docs/it/dev/work-in-progress/brief-db-codice-errore-strutturato.md §3
+#   Richiesta del team BE (dev/backend-tid), 2026-08-05.
+#   Presidio del contratto: scripts/sql/guardrail_codice_errore_strutturato.sql
+#
+# ── IL PROBLEMA: OGGI FUNZIONA, MA NON PER PROGETTO ─────────────────────
+#   Il backend deve sapere QUALE errore e', non cosa dice: da error_policies.py
+#   dipendono il 409 sul duplicato, il 404 sul non trovato, il 403 sul vietato.
+#   Ma il codice non parte in nessuno dei tre campi che oggi valorizziamo:
+#
+#     messaggio  -> 0 messaggi su 637 contengono il proprio codice
+#     DETAIL     -> `causa`, 0 lo contengono
+#     HINT       -> `soluzione`, 0 lo contengono
+#
+#   Arriva lo stesso nel 91% dei casi, e qui sta il punto: arriva perche' il
+#   driver allega al testo dell'eccezione anche lo STATEMENT CHIAMANTE, e li'
+#   il codice c'e' — scritto a mano nella chiamata. Il backend lo pesca con una
+#   regex dal SORGENTE della chiamata, non dal dato.
+#
+#   Cioe': funziona finche' il codice e' un letterale. Censimento sui corpi
+#   vivi (978 call site):
+#     A  886  letterale `E_*`      -> la regex lo trova. Per fortuna.
+#     B   77  letterale senza `E_` -> la regex non lo riconosce
+#     C    9  da espressione       -> nel testo c'e' il NOME DELLA VARIABILE
+#
+#   ⚠️ Il gruppo C sono le guard di cambio stato: `v_motivi -> 0 ->> 'codice'`
+#   in trgfn_ordini_guard_transizione, trgfn_commesse_guard_transizione,
+#   fn_cambia_stato_preventivo, fn_riporta_lotto_a_draft, ... Per tutte e nove
+#   il backend ripiega su E_DATABASE, che e' classificato TECNICO: il messaggio
+#   localizzato viene SCARTATO e il dettaglio soppresso. Chi tenta una
+#   transizione non ammessa non legge perche' non e' ammessa — e sono gli
+#   errori che l'operatore incontra ogni giorno.
+#
+#   ⚠️ E il gruppo A e' la parte che preoccupa di piu', proprio perche' oggi
+#   funziona: il giorno in cui una di quelle 886 passasse il codice per
+#   variabile — che e' esattamente quello che e' successo alle nove del gruppo
+#   C, una alla volta — smetterebbe di funzionare IN SILENZIO. Niente
+#   fallirebbe, ne' a DB ne' in CI.
+#
+# ── LA FORMA: PERCHE' `CONSTRAINT` ──────────────────────────────────────
+#   `RAISE ... USING` espone cinque campi strutturati oltre a DETAIL/HINT.
+#   CONSTRAINT e' il meno improprio: il codice errore *e'* il nome della regola
+#   violata. Le alternative scartate, e perche':
+#
+#     SQLSTATE custom (classe U0)  pulito, ma SQLSTATE e' di 5 caratteri:
+#                                  servirebbe una mappa codice->sqlstate da
+#                                  tenere allineata al seed. Un secondo posto
+#                                  da tenere in bolla, cioe' il difetto da cui
+#                                  nasce tutto questo.
+#     prefisso nel messaggio       sporca il testo che legge l'operatore, e
+#                                  resta parsing
+#     COLUMN                       funziona identico, ma dice una cosa falsa:
+#                                  non e' una colonna
+#     DETAIL in JSON               DETAIL e' gia' occupato da `causa`, che e'
+#                                  per l'utente
+#
+#   ⚠️ Stessa obiezione, e vale anche per i fratelli liberi SCHEMA / TABLE /
+#   DATATYPE: sarebbe comodo farci viaggiare p_area e p_function_name, ma
+#   psycopg e Django leggono quei campi per comporre i messaggi di
+#   IntegrityError. Riempirli con «area» direbbe una cosa falsa.
+#
+# ── ⚠️ NON CAMBIA `str(exc)` — E QUESTO E' IL MOTIVO PER CUI IL DB VA PRIMA ─
+#   Verificato: con CONSTRAINT valorizzato il testo dell'eccezione resta
+#   identico e il codice NON vi compare. Quindi i tre parser di testo che
+#   esistono oggi lato BE (ErrorTranslator._extract_app_error_code,
+#   payload_helpers.DB_ERROR_CODE_RE, ErrorManager.raise_from_database_error)
+#   si comportano ESATTAMENTE come prima.
+#   Questo changeSet si applica da solo, senza toccare il backend, e non cambia
+#   niente per nessuno: campo nuovo ignorato, comportamento invariato. Nessuna
+#   finestra di rottura, nessuna fase di compatibilita'.
+#
+# ── VERIFICATO SUL DB, NON DEDOTTO ──────────────────────────────────────
+#   · CONSTRAINT sopravvive annidato in piu' livelli PL/pgSQL (il caso normale:
+#     trigger -> guard -> helper) e attraverso un `EXCEPTION ... RAISE;` che
+#     ri-solleva. Provato con GET STACKED DIAGNOSTICS su PostgreSQL 18.4.
+#   · Round-trip DB -> libpq -> psycopg3 -> django.db.DatabaseError: arrivano
+#     tutti i campi diag, `constraint_name` compreso (verifica del team BE).
+#   · ⚠️ `CONSTRAINT = NULL` NON solleva: produce STRINGA VUOTA. Conta per il
+#     gruppo C, dove `v_motivi -> 0 ->> 'codice'` puo' essere NULL — per questo
+#     la lettura lato BE deve fare `... or None`, altrimenti si ritrova un
+#     codice vuoto invece del ripiego sulla regex.
+#
+#   `ERRCODE = 'P0001'` e' gia' il default di RAISE EXCEPTION: renderlo
+#   esplicito serve a dichiarare il contratto — «P0001 + CONSTRAINT valorizzato
+#   = errore di dominio» — che e' la condizione su cui il backend si fida del
+#   campo. Su una violazione di vincolo vera (classe 23xxx) `constraint_name`
+#   contiene il nome del vincolo DB (`uq_...`, `fk_...`): senza quella
+#   condizione il BE lo scambierebbe per un codice applicativo.
+#
+# ── ⚠️ IL FALLBACK A REGEX LATO BE NON SI TOGLIE ────────────────────────
+#   Nel DB ci sono 135 `RAISE EXCEPTION` diretti in 46 funzioni plpgsql che non
+#   passano da qui: per quelle il campo esce vuoto e la regex resta l'unica
+#   strada. Il numero sta scritto nel brief §4 perche' una porta socchiusa, fra
+#   un anno, diventa un ticket «rimuovere il fallback legacy» aperto da chi la
+#   misura non ce l'ha.
+#
+#   Corpo preso dalla doc auto-gen (docs/it/dbzero/script/funzioni/), non dagli
+#   YAML: cambia solo il blocco 5. Ultima revisione precedente: 20260423-02-02.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260805-05-update-fn-log-and-raise-error-constraint-codice-mctit.yaml
+
+  - changeSet:
+      id: 20260805-05-update-fn-log-and-raise-error-constraint-codice
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il codice errore di dominio viaggia nel campo strutturato CONSTRAINT
+        dell'eccezione, cosi' il backend non deve piu' ripescarlo con una regex
+        dal testo dello statement chiamante. Non cambia str(exc): nessuna
+        regressione sui tre parser di testo esistenti.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_log_and_raise_error(p_area text, p_function_name text, p_error_code text, p_context jsonb, p_tx_id uuid, VARIADIC p_valori text[])
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_msg    text;
+                  v_detail text;
+                  v_hint   text;
+                  v_lang   text := coalesce(
+                      current_setting('myapp.user_language', true),
+                      'it'
+                  );
+              BEGIN
+                  -- =========================================================
+                  -- Scopo (post 23-04-2026, i18n incrementale):
+                  --   Logga l'errore nel sistema di logging e solleva
+                  --   RAISE EXCEPTION con messaggio, DETAIL e HINT
+                  --   localizzati secondo la lingua di sessione.
+                  --
+                  -- Cambiamento 23-04-2026: il recupero di causa/soluzione
+                  -- ora ricade su lingua='it' se la lingua richiesta non
+                  -- ha riga per il codice (stesso pattern di
+                  -- fn_get_messaggio). Il messaggio testuale era gia'
+                  -- context-aware perche' delegato a fn_get_messaggio.
+                  --
+                  -- Cambiamento 05-08-2026: il CODICE di dominio esce in un
+                  -- campo strutturato dell'eccezione (CONSTRAINT), non piu'
+                  -- solo dentro al testo dello statement chiamante. Vedi il
+                  -- blocco 5.
+                  -- =========================================================
+
+                  -- 1) Logging (non loc-sensitive).
+                  PERFORM script.fn_log_error_only(
+                      p_area, p_function_name, p_error_code,
+                      p_context, p_tx_id, VARIADIC p_valori
+                  );
+
+                  -- 2) Template messaggio (gia' gestisce fallback lingua
+                  -- internamente post 20260423-02-01).
+                  v_msg := script.fn_get_messaggio(
+                      p_error_code,
+                      NULL,
+                      v_lang
+                  );
+
+                  -- 3) Recupera causa e hint con fallback IT inline.
+                  -- Single-query: preferisci v_lang; se la riga esiste
+                  -- solo in 'it' vince quella per LIMIT 1.
+                  -- Semantica "riga intera vince": se la riga EN esiste
+                  -- ma ha causa/soluzione NULL, mantiene NULL (non mescola
+                  -- con IT -- ordering sceglie la riga della lingua
+                  -- richiesta come blocco atomico).
+                  SELECT causa, soluzione
+                    INTO v_detail, v_hint
+                    FROM config.messaggi_errore
+                   WHERE codice = p_error_code
+                     AND lingua IN (v_lang, 'it')
+                   ORDER BY (lingua = v_lang) DESC
+                   LIMIT 1;
+
+                  -- 4) Format placeholder con VARIADIC values, se presenti.
+                  IF array_length(p_valori, 1) IS NOT NULL THEN
+                      v_msg := format(v_msg, VARIADIC p_valori);
+                  END IF;
+
+                  -- 5) Sollevamento eccezione con DETAIL/HINT localizzati.
+                  --
+                  --    CONSTRAINT porta il CODICE di dominio: e' l'unico campo
+                  --    strutturato che il backend puo' leggere senza fare
+                  --    parsing del testo. Il codice NON compare nel messaggio,
+                  --    ed e' una scelta: il messaggio e' per l'utente.
+                  --
+                  --    ⚠️ CONTRATTO — «P0001 + CONSTRAINT valorizzato = errore
+                  --    di dominio». ERRCODE e' gia' il default: e' esplicito
+                  --    per dichiararlo. Il backend NON puo' fidarsi del campo
+                  --    fuori da P0001, perche' su una violazione di vincolo
+                  --    vera (classe 23xxx) `constraint_name` contiene il nome
+                  --    del vincolo DB (`uq_...`, `fk_...`).
+                  --
+                  --    ⚠️ Questo e' l'UNICO posto autorizzato a scrivere
+                  --    CONSTRAINT in un RAISE. Presidiato in CI da
+                  --    scripts/sql/guardrail_codice_errore_strutturato.sql: se
+                  --    un altro RAISE usa lo stesso canale per altro, il guard
+                  --    P0001 del backend si fiderebbe di un campo scritto da
+                  --    qualcun altro.
+                  --
+                  --    ⚠️ Se p_error_code e' NULL il campo esce come STRINGA
+                  --    VUOTA, non NULL (verificato). Succede nelle guard che
+                  --    passano `v_motivi -> 0 ->> 'codice'`: lato backend la
+                  --    lettura deve fare `... or None` per ricadere sulla
+                  --    regex invece di propagare un codice vuoto.
+                  RAISE EXCEPTION '%', v_msg
+                      USING ERRCODE    = 'P0001',
+                            DETAIL     = coalesce(v_detail, ''),
+                            HINT       = coalesce(v_hint, ''),
+                            CONSTRAINT = p_error_code;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_log_and_raise_error(p_area text, p_function_name text, p_error_code text, p_context jsonb, p_tx_id uuid, VARIADIC p_valori text[])
+              IS 'Logga e poi solleva exception con messaggio custom. Post 23-04-2026: causa/soluzione con fallback lingua=''it'' se la lingua richiesta (myapp.user_language) non ha riga per il codice. Messaggio delegato a fn_get_messaggio (gia'' context-aware). Post 05-08-2026: il CODICE di dominio esce nel campo strutturato CONSTRAINT dell''eccezione — contratto «P0001 + CONSTRAINT valorizzato = errore di dominio», unica sede autorizzata a scrivere quel campo (presidio: scripts/sql/guardrail_codice_errore_strutturato.sql). Il codice NON compare nel messaggio: quello e'' per l''utente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Rollback: si torna al RAISE senza campo strutturato. Il
+              -- backend ricade sulla regex, cioe' sul comportamento pre-slice.
+              CREATE OR REPLACE FUNCTION script.fn_log_and_raise_error(p_area text, p_function_name text, p_error_code text, p_context jsonb, p_tx_id uuid, VARIADIC p_valori text[])
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_msg    text;
+                  v_detail text;
+                  v_hint   text;
+                  v_lang   text := coalesce(
+                      current_setting('myapp.user_language', true),
+                      'it'
+                  );
+              BEGIN
+                  PERFORM script.fn_log_error_only(
+                      p_area, p_function_name, p_error_code,
+                      p_context, p_tx_id, VARIADIC p_valori
+                  );
+
+                  v_msg := script.fn_get_messaggio(p_error_code, NULL, v_lang);
+
+                  SELECT causa, soluzione
+                    INTO v_detail, v_hint
+                    FROM config.messaggi_errore
+                   WHERE codice = p_error_code
+                     AND lingua IN (v_lang, 'it')
+                   ORDER BY (lingua = v_lang) DESC
+                   LIMIT 1;
+
+                  IF array_length(p_valori, 1) IS NOT NULL THEN
+                      v_msg := format(v_msg, VARIADIC p_valori);
+                  END IF;
+
+                  RAISE EXCEPTION '%', v_msg
+                      USING DETAIL = coalesce(v_detail, ''),
+                            HINT   = coalesce(v_hint, '');
+              END;
+              $function$;

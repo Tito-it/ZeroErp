@@ -141,6 +141,16 @@ BEGIN
     --     variadic che plpgsql_check non sa risolvere. Se c'e' un tipo
     --     non testuale, il cast non esiste e la chiamata fallisce davvero.
     --
+    -- 🔴 v4 (2026-08-05) — LA PREMESSA DI v1 ERA FALSA. Solo
+    --     `VARIADIC "any"` (quello di `format()`) ammette ZERO argomenti
+    --     variadici; un `VARIADIC <tipo>[]` no. Verificato in SQL e in
+    --     plpgsql: la chiamata a 5 argomenti NON si risolve davvero.
+    --     Le due strette precedenti (v2 sui TIPI, v3 su provariadic <> 0)
+    --     hanno ridotto il danno senza mai toccare l'assunto che lo
+    --     causava. Segnalato dal team BE il 2026-08-05.
+    --     ⚠️ Da noi nessuna funzione e' `VARIADIC "any"`: la classe resta
+    --     strutturalmente vuota, ed e' il risultato giusto.
+    --
     -- ⚠️ v3 (2026-08-04) — la regola era TROPPO LARGA e ha scusato un
     --     difetto vero. La chiamata
     --       dbops.fn_audit_log_once('…','SKIP_EXISTS','STORICO', jsonb, '…')
@@ -166,7 +176,7 @@ BEGIN
           FROM pg_proc p4
           JOIN pg_namespace n4 ON n4.oid = p4.pronamespace
          WHERE n4.nspname || '.' || p4.proname = v_chiamata
-           AND p4.provariadic <> 0
+           AND p4.provariadic = '"any"'::regtype   -- virgolette: `any` e' riservata
       );
       IF v_e_variadic AND NOT EXISTS (
            SELECT 1 FROM unnest(v_tipi) AS x(t)

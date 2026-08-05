@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/trgfn_note_validate_generic.md" %}
 # ⚙️ Funzione `trgfn_note_validate_generic`
 
 ```sql

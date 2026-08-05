@@ -21,6 +21,7 @@
 - [fk_index_policy](tabelle/fk_index_policy.md) — (latest review 27-07-26) La tabella **`dbops.fk_index_policy`** definisce una **policy centralizzata** per la gestione degli indici sulle foreign key: una riga per vincolo, un flag che dice se l'indice deve esistere, e il comando che lo crea.
 - [idempotency_keys](tabelle/idempotency_keys.md) — (latest review 06-02-26) * Prevenire doppie esecuzioni in caso di retry o chiamate duplicate. * Restituire **la stessa risposta** quando arriva la stessa `idempotency_key`. * Collegare operazioni applicative alla **tracciabilità transazionale** tramite `tx_id`.
 - [lock_columns_conditional](tabelle/lock_columns_conditional.md)
+- [messaggi_errore_codici_legacy](tabelle/messaggi_errore_codici_legacy.md)
 - [pipeline_task_registry](tabelle/pipeline_task_registry.md) — (latest review 08-02-2026) `dbops.pipeline_task_registry` e` il catalogo dei **task ammessi** per ciascun dominio pipeline. Impedisce l'esecuzione di task non registrati e centralizza la governance delle azioni eseguibili dal motore applicativo.
 - [pipeline_task_registry_impl](tabelle/pipeline_task_registry_impl.md) — (latest review 08-02-2026) `dbops.pipeline_task_registry_impl` definisce le **implementazioni consentite** per ciascun task. Serve a gestire in modo controllato le varianti (`default`, `v2`, `gas_v1`, ecc.) senza dispatch dinamico libero.
 - [request_log](tabelle/request_log.md) — (latest review 05-03-2026)

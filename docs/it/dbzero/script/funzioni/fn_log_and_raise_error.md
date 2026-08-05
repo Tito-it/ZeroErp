@@ -32,6 +32,11 @@ BEGIN
     -- ha riga per il codice (stesso pattern di
     -- fn_get_messaggio). Il messaggio testuale era gia'
     -- context-aware perche' delegato a fn_get_messaggio.
+    --
+    -- Cambiamento 05-08-2026: il CODICE di dominio esce in un
+    -- campo strutturato dell'eccezione (CONSTRAINT), non piu'
+    -- solo dentro al testo dello statement chiamante. Vedi il
+    -- blocco 5.
     -- =========================================================
 
     -- 1) Logging (non loc-sensitive).
@@ -69,14 +74,41 @@ BEGIN
     END IF;
 
     -- 5) Sollevamento eccezione con DETAIL/HINT localizzati.
+    --
+    --    CONSTRAINT porta il CODICE di dominio: e' l'unico campo
+    --    strutturato che il backend puo' leggere senza fare
+    --    parsing del testo. Il codice NON compare nel messaggio,
+    --    ed e' una scelta: il messaggio e' per l'utente.
+    --
+    --    ⚠️ CONTRATTO — «P0001 + CONSTRAINT valorizzato = errore
+    --    di dominio». ERRCODE e' gia' il default: e' esplicito
+    --    per dichiararlo. Il backend NON puo' fidarsi del campo
+    --    fuori da P0001, perche' su una violazione di vincolo
+    --    vera (classe 23xxx) `constraint_name` contiene il nome
+    --    del vincolo DB (`uq_...`, `fk_...`).
+    --
+    --    ⚠️ Questo e' l'UNICO posto autorizzato a scrivere
+    --    CONSTRAINT in un RAISE. Presidiato in CI da
+    --    scripts/sql/guardrail_codice_errore_strutturato.sql: se
+    --    un altro RAISE usa lo stesso canale per altro, il guard
+    --    P0001 del backend si fiderebbe di un campo scritto da
+    --    qualcun altro.
+    --
+    --    ⚠️ Se p_error_code e' NULL il campo esce come STRINGA
+    --    VUOTA, non NULL (verificato). Succede nelle guard che
+    --    passano `v_motivi -> 0 ->> 'codice'`: lato backend la
+    --    lettura deve fare `... or None` per ricadere sulla
+    --    regex invece di propagare un codice vuoto.
     RAISE EXCEPTION '%', v_msg
-        USING DETAIL = coalesce(v_detail, ''),
-              HINT   = coalesce(v_hint, '');
+        USING ERRCODE    = 'P0001',
+              DETAIL     = coalesce(v_detail, ''),
+              HINT       = coalesce(v_hint, ''),
+              CONSTRAINT = p_error_code;
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_log_and_raise_error(p_area text, p_function_name text, p_error_code text, p_context jsonb, p_tx_id uuid, VARIADIC p_valori text[])
-IS 'Logga e poi solleva exception con messaggio custom. Post 23-04-2026: causa/soluzione con fallback lingua=''it'' se la lingua richiesta (myapp.user_language) non ha riga per il codice. Messaggio delegato a fn_get_messaggio (gia'' context-aware).';
+IS 'Logga e poi solleva exception con messaggio custom. Post 23-04-2026: causa/soluzione con fallback lingua=''it'' se la lingua richiesta (myapp.user_language) non ha riga per il codice. Messaggio delegato a fn_get_messaggio (gia'' context-aware). Post 05-08-2026: il CODICE di dominio esce nel campo strutturato CONSTRAINT dell''eccezione — contratto «P0001 + CONSTRAINT valorizzato = errore di dominio», unica sede autorizzata a scrivere quel campo (presidio: scripts/sql/guardrail_codice_errore_strutturato.sql). Il codice NON compare nel messaggio: quello e'' per l''utente.';
 ```
 
 ---
