@@ -1,94 +1,34 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
--- Test: rifiniture §10 — mv_ddt_ordini (refresh) + gate emissione BoM PENDING
--- ------------------------------------------------------------
--- Indice test (1..4):
---  1) mv_ddt_ordini e' una materialized view
---  2) dbops.fn_refresh_mv_ddt_ordini presente
---  3) dopo evasione + REFRESH: mv_ddt_ordini contiene la coppia (ddt_id, ordine_id)
---  4) gate emissione: componente BoM CASO A in PENDING blocca DRAFT->EMESSO
+--
+-- Test: gate emissione DDT — un componente di BoM in PENDING blocca DRAFT->EMESSO.
+--
+-- ⚠️ QUESTO FILE ERA PIU' LUNGO, ed e' stato accorciato il 2026-08-05.
+-- Presidiava anche `vendite.mv_ddt_ordini` (tre asserzioni: che esistesse, che
+-- esistesse la sua funzione di refresh, e che dopo un REFRESH comparisse la
+-- coppia ddt/ordine). Quella vista materializzata e' stata **ritirata**
+-- (changeSet 20260805-21/-22): nessuno la leggeva, nessuno la aggiornava, e il
+-- legame ordine<->DDT l'applicazione lo ricava da `ddt.sorgente_uid` e da
+-- `vendite.ordini_righe_fulfillment`. Tenere quelle asserzioni avrebbe voluto
+-- dire presidiare un oggetto che non c'e' piu'.
+--
+-- ℹ️ Vale la pena sapere perche' quelle tre asserzioni non hanno mai segnalato
+-- il problema: erano VERDI, ma il REFRESH lo eseguiva il test stesso. Provavano
+-- che il meccanismo funzionasse, non che qualcuno lo azionasse — ed era proprio
+-- quello che mancava. Un presidio che si accende da solo la corrente non dice
+-- se la corrente c'e'.
+--
+-- Indice test (1..1):
+--  1) gate emissione: componente BoM CASO A in PENDING blocca DRAFT->EMESSO
 --     (SKIP se il DB non ha un articolo composito con BoM attivo)
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(4);
+SELECT plan(1);
 
 -- ============================================================
--- 1-2) Oggetti MV
--- ============================================================
-SELECT ok(
-  EXISTS (SELECT 1 FROM pg_matviews WHERE schemaname='vendite' AND matviewname='mv_ddt_ordini'),
-  '1) mv_ddt_ordini e'' una materialized view'
-);
-SELECT ok(
-  EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-           WHERE n.nspname='dbops' AND p.proname='fn_refresh_mv_ddt_ordini'),
-  '2) dbops.fn_refresh_mv_ddt_ordini presente'
-);
-
--- ============================================================
--- Riferimenti + fixture ordine semplice -> genera DDT
--- ============================================================
-CREATE TEMP TABLE tmp_refs AS
-SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                       AS billing_account_id,
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id LIMIT 1) AS soggetto_ruolo_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND COALESCE(a.is_composito,FALSE) IS FALSE
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1) AS articolo_semplice_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
-  (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef ORDER BY ef.id LIMIT 1) AS emittente_sr_id,
-  (SELECT s.id FROM config.stati_doc_ordini s
-    WHERE s.codice_interno='CONFERMATO' AND s.attivo IS TRUE LIMIT 1) AS stato_ord_conf_id,
-  (SELECT s.id FROM config.stati_doc_ddt s
-    WHERE s.codice_interno='DRAFT' AND s.attivo IS TRUE LIMIT 1)  AS stato_ddt_draft_id,
-  (SELECT s.id FROM config.stati_doc_ddt s
-    WHERE s.codice_interno='EMESSO' AND s.attivo IS TRUE LIMIT 1) AS stato_ddt_emesso_id;
-
-CREATE TEMP TABLE tmp_ord AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (
-    soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-    valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_conf_id,
-         r.valuta_id, DATE '2026-07-01', 'SPEDITO', r.emittente_fiscale_id, false,
-         jsonb_build_object('test_scope','pgtap_ddt_mv_gate')
-  FROM tmp_refs r
-  RETURNING id, uid)
-SELECT * FROM ins;
-
-INSERT INTO vendite.ordini_righe (
-  ordine_id, riga_nr, articolo_id, descrizione,
-  qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-SELECT o.id, 1, r.articolo_semplice_id, 'Riga MV',
-       10.000000, 10.000000, 25.000000, r.iva_id, true, false,
-       jsonb_build_object('test_scope','pgtap_ddt_mv_gate')
-FROM tmp_ord o, tmp_refs r;
-
-CREATE TEMP TABLE tmp_ddt AS
-SELECT vendite.fn_genera_ddt_da_ordine((SELECT id FROM tmp_ord)) AS ddt_id;
-
--- ============================================================
--- 3) Refresh MV (non-concurrent, valido in transazione) + coppia presente
--- ============================================================
-REFRESH MATERIALIZED VIEW vendite.mv_ddt_ordini;
-
-SELECT ok(
-  EXISTS (
-    SELECT 1 FROM vendite.mv_ddt_ordini m
-     WHERE m.ddt_id = (SELECT ddt_id FROM tmp_ddt)
-       AND m.ordine_id = (SELECT id FROM tmp_ord)
-  ),
-  '3) mv_ddt_ordini contiene la coppia (ddt_id, ordine_id) post-refresh'
-);
-
--- ============================================================
--- 4) Gate emissione: componente BoM CASO A in PENDING blocca EMESSO.
+-- 1) Gate emissione: componente BoM CASO A in PENDING blocca EMESSO.
 --    Fixture composita costruita in blocco robusto (EXCEPTION -> skip):
 --    se il DB non ha un articolo composito con BoM attivo, o il setup non
 --    riesce, tmp_gate resta vuota e il test viene SKIPPATO (non fallisce).
@@ -178,7 +118,7 @@ SELECT CASE
                (SELECT stato_ddt_emesso_id FROM tmp_refs) WHERE id=%s$q$,
            (SELECT ddt_id FROM tmp_gate)),
     'P0001', NULL,
-    '4) gate emissione: componente BoM PENDING blocca DRAFT->EMESSO'
+    '1) gate emissione: componente BoM PENDING blocca DRAFT->EMESSO'
   )
 END;
 
