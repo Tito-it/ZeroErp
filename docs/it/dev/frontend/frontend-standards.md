@@ -1211,7 +1211,7 @@ const drawerActions = computed(() => [
 > invece.
 
 E' la faccia a video della regola R3 del brief
-[vie d'uscita per l'operatore](../work-in-progress/brief-db-vie-uscita-operatore.md):
+[vie d'uscita per l'operatore](../work-done/brief-db-vie-uscita-operatore.md):
 per ogni stato, **o la via d'uscita c'e', o c'e' scritto perche' non c'e'**. Il
 testo non e' una scelta del componente: e' un **dato**, la chiave i18n
 `meta->>'nessuna_azione_key'` della riga di `config.stati_doc_*`, che le

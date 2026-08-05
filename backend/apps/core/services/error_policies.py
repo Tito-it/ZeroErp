@@ -2697,6 +2697,27 @@ class ErrorPolicyRegistry:
                 "fatturazione, oppure crea una revisione del preventivo."
             ),
         ),
+        # Matrice del preventivo, ora vincolante anche a DB (brief vie-uscita
+        # §11.1, changeSet 20260805-15): dal 2026-08-05 la transizione fuori
+        # matrice e' rifiutata dal guard `trgfn_preventivi_guard_transizione`,
+        # non piu' dalla sola porta `fn_cambia_stato_preventivo`.
+        # ⚠️ UNO solo per DUE sedi: porta e guard sollevano lo stesso codice.
+        # Il precedente `PREV_TRANSIZIONE_NON_AMMESSA` (senza prefisso `E_`,
+        # quindi non agganciato dall'estrattore e degradato a E_DATABASE) resta
+        # dichiarato piu' sotto e a catalogo — la sua riga non e' cancellabile,
+        # ha 109 righe in `dbops.error_log` che la trattengono — ma nessuna
+        # funzione viva lo solleva piu'.
+        # 409 e non 400: e' un rifiuto di PERCORSO (lo stato di partenza non
+        # ammette quell'arrivo), non un campo compilato male.
+        "E_PREV_TRANSIZIONE_NON_AMMESSA": ErrorPolicy(
+            code="E_PREV_TRANSIZIONE_NON_AMMESSA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Transizione non ammessa dallo stato corrente del preventivo: "
+                "ricarica il documento e usa una delle azioni proposte."
+            ),
+        ),
         "E_PREV_REVISIONE_ATTIVA": ErrorPolicy(
             code="E_PREV_REVISIONE_ATTIVA",
             http_status=409,

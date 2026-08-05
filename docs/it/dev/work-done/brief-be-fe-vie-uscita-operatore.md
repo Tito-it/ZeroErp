@@ -1,5 +1,13 @@
 # Brief BE/FE — le vie d'uscita per l'operatore (la metà a video)
 
+> 🟢 **CHIUSO — 2026-08-05, su ok di Tid.** Il terzo e ultimo giro è stato una
+> riga sola: la policy di `E_PREV_TRANSIZIONE_NON_AMMESSA` (§9), chiesta dal DB
+> nel §11.1 del loro brief dopo aver reso vincolante la matrice del preventivo.
+> Tutto il resto era già fatto e verificato. Brief gemello:
+> [brief-db-vie-uscita-operatore.md](brief-db-vie-uscita-operatore.md).
+>
+> ---
+>
 > **Chi scrive:** BE/FE (`dev/backend-tid`), 2026-08-04.
 > **A chi:** Tid, e per conoscenza al team DB.
 > **Da dove nasce:** [brief-db-vie-uscita-operatore.md](brief-db-vie-uscita-operatore.md) §5
@@ -225,7 +233,55 @@ durante la validazione esce un ordine con DDT collegati.
 - [x] `vite build` pulito, 689 test core + 1480 test vendite verdi (ripetuti dopo il secondo giro);
 - [x] ~~attesa DB~~: esposizione `reasons` + `nessuna_azione_key` — **arrivata**, `20260804-68/-69/-70`, verificata in campo (§7);
 - [x] ~~attesa DB~~: consolidamento §7.3 — **arrivato**, `20260804-73/-74`: il §6.2 è chiuso, `PREV_ANNULLAMENTO_COMMESSA_ATTIVA` non è più sollevato da nessuna funzione viva;
-- [ ] **validazione in-app di Tid** (annullamento preventivo da EMESSO/ACCETTATO e ordine da CONFERMATO; per il ramo `reasons` dell'ordine serve un ordine con DDT collegati — oggi non ne esiste nessuno, è il caso mai visto a video).
+- [x] **quinta** policy: `E_PREV_TRANSIZIONE_NON_AMMESSA` (409) — terzo giro, §9;
+- [x] **validazione in-app di Tid** — chiusura autorizzata il 2026-08-05. ⚠️ Il ramo `reasons` dell'ordine resta **non esercitato a video**: nella popolazione non esiste un ordine con l'annullamento bloccato (stesso limite dichiarato dal DB al §9.2, test 5 in SKIP). È il primo caso da guardare se in futuro compare un ordine con DDT collegati.
 
-**Il cantiere BE/FE è chiuso**: resta solo la riga di validazione. Alla conferma
-di Tid, questo brief e quello DB passano in `work-done`.
+**Il cantiere BE/FE è chiuso**, e con esso il brief: passa in `work-done`
+insieme a quello DB.
+
+---
+
+## 9. Terzo giro — la matrice diventa vincolante (2026-08-05)
+
+Il DB ha chiuso i punti 1, 3 e 4 del loro §7.4 (storicizzazione `20260805-13`/`-14`,
+guard di matrice `20260805-15`, pgTAP 6/6) e ha chiesto una cosa sola a noi, nel
+loro §11.1.
+
+**Fatto:** `E_PREV_TRANSIZIONE_NON_AMMESSA` dichiarato in `error_policies.py` a
+**409** + `show_error_banner`, con messaggio che dice cosa fare invece di
+constatare («ricarica il documento e usa una delle azioni proposte»). 409 e non
+400 perché è un rifiuto di **percorso** — lo stato di partenza non ammette
+quell'arrivo — non un campo compilato male. Senza questa riga, chi tenta una
+transizione fuori matrice avrebbe letto il messaggio generico: lo stesso difetto
+che avevamo segnalato al §6.2 e che il consolidamento aveva chiuso, di ritorno da
+una porta nuova.
+
+**Non fatto, per decisione di Tid:** la seconda voce del §11.1, cioè togliere la
+policy del vecchio `PREV_TRANSIZIONE_NON_AMMESSA`. Il messaggio non è ancora
+stato corretto, quindi la riga resta. Le due cose sono indipendenti — dichiarare
+la nuova non richiede di ritirare la vecchia — e il codice vecchio resta comunque
+a catalogo: ha **109 righe** in `dbops.error_log` che ne bloccano la `DELETE`.
+
+**Verificato sul database**, non dedotto dai changeSet (canale di sistema: le
+tabelle documento hanno RLS e senza GUC si legge zero e si conclude il falso):
+
+| Prova | Esito |
+| --- | --- |
+| storicizzazione preventivo | **163/163** con `storicizza = true` (erano 0), tabella registrata in `config.storico_set_storicizza` |
+| `storico.preventivi` | 0 righe — **corretto**: la storia parte dal prossimo `UPDATE`, non è retroattiva |
+| guard di matrice | `trg_preventivi_a10_guard_transizione_upd` presente |
+| `E_PREV_TRANSIZIONE_NON_AMMESSA` | a catalogo (id 841), sollevato da **entrambe** le sedi: porta e guard |
+| codice vecchio ancora sollevato? | **no** — l'unica occorrenza in `fn_cambia_stato_preventivo` è un commento |
+
+⚠️ **Un falso positivo da conoscere**, perché costa mezz'ora: cercando chi solleva
+ancora il codice vecchio, un `LIKE '%PREV_TRANSIZIONE_NON_AMMESSA%'` intercetta
+anche `E_PREV_TRANSIZIONE_NON_AMMESSA`, cioè il nuovo. Serve un confronto che
+escluda il prefisso (`~ '(^|[^A-Z_])PREV_...'`) **e** poi leggere la riga trovata:
+la nostra era dentro un commento.
+
+**Nessun altro impatto BE**, controllato su entrambe le strade da cui poteva
+arrivarne: il backend non scrive mai `storicizza` sui preventivi, e non esiste un
+solo `UPDATE` diretto sullo stato — il repository passa da
+`fn_cambia_stato_preventivo`, che la matrice la validava già. Il guard aggiunge
+difesa in profondità senza cambiare un comportamento vivo, che è esattamente
+quanto il loro §7.1 aveva previsto misurando.
