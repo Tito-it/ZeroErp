@@ -3,7 +3,7 @@
 **Chi scrive:** DB (`dev/db-tid`), 2026-08-05.
 **Cosa chiede:** un guard di `SkipTest` nel `setUpClass` e due righe di docstring.
 **Perimetro:** `backend/apps/core/tests/services/test_db_error_fields.py`, nient'altro.
-**Origine:** [brief-db-codice-errore-strutturato](brief-db-codice-errore-strutturato.md) §6.
+**Origine:** [brief-db-codice-errore-strutturato](../work-in-progress/brief-db-codice-errore-strutturato.md) §6.
 
 > ✅ **Non c'è niente di rotto.** Gli 11 test sono verdi, i 3 end-to-end girano
 > davvero contro un database vero e la giuntura DB → psycopg è verificata. Questo
@@ -120,3 +120,50 @@ perché il prossimo che aggiunge un caso in quel file non ha modo di saperlo.
 
 Con il guard del §3.1 il giro si chiude: in CI girano, e se un giorno non potranno
 più girare lo diranno con una frase leggibile invece di un errore criptico.
+
+---
+
+## 5. ✅ Fatto — BE, 2026-08-05
+
+Tutto quanto chiesto, in `test_db_error_fields.py` e in nessun altro file.
+
+| § | Cosa | |
+|---|---|---|
+| 3.1 | guard di schema in `setUpClass`, dopo `ensure_connection()` | `to_regprocedure(...) IS NOT NULL` → `SkipTest` col messaggio che rimanda a questo brief |
+| 3.2 | docstring: **perché** funzionano | la dipendenza da «nessun test dichiara un database» è scritta per esteso, accanto alla nota sul probe a import-time che già c'era |
+| 3.3 | nota «niente test che scrivono» | scritta nel docstring, col perché: la connessione è quella vera |
+
+Aggiunto anche il rimando al fatto che in CI girano a ogni PR — chi legge il
+docstring trova sia come lanciarli a mano sia dove girano da soli.
+
+### Il guard è stato provato, non solo scritto
+
+Un guard che non si è mai visto scattare è una supposizione. Simulato il caso
+puntando la connessione a un database esistente ma senza schema
+(`DB_NAME=postgres`, con l'opt-in acceso):
+
+```
+setUpClass (…DbErrorFieldsEndToEndTests) ... skipped 'schema Liquibase assente
+nel database dei test: il runner ne ha creato uno usa-e-getta (qualche test
+dichiara un database). Vedi brief-be-e2e-db-error-fields-skip-schema.md'
+```
+
+Salta con la frase giusta invece di fallire con «la funzione non esiste» — che
+era esattamente il punto del §2.
+
+### La premessa, ri-misurata
+
+Il §1 dice «zero test dichiarano un database». Verificato in modo che regga:
+non con una grep su `TestCase` — `class X(TestCase)` non dice **quale**
+`TestCase`, e contando così ne risultavano 353 — ma sugli **import**. In
+`backend/apps`, `from django.test import` porta solo `SimpleTestCase` (86),
+`Client` (53), `override_settings` (9), `RequestFactory` (5): **mai** `TestCase`
+né `TransactionTestCase`, e **zero** `databases = [...]`. La premessa regge, e i
+numeri del brief tornano.
+
+| Esito | |
+|---|---|
+| opt-in acceso | 11/11 verdi, i 3 e2e girano davvero |
+| default | 8 verdi + classe skipped |
+| schema assente (simulato) | classe skipped col messaggio parlante |
+| suite intera | 3575 verdi |

@@ -581,7 +581,8 @@ un altro difetto: era nascosto **sotto un'etichetta**, come
 | 14 | Cantiere rinomina — **1° lotto**: `trgfn_template_flussi_guard_modalita_esito`, 4 codici | DB | ✅ **fatto** — `20260805-19`, registro **50 → 46**, baseline `pratiche` invariata (§15.8) |
 | 15 | Cantiere rinomina — **2° lotto**: `trgfn_pratiche_guard_contesto`, 4 codici | DB | ⏳ **da applicare** — `20260805-20`, registro 46 → 42 (§15.9) |
 | 16 | Cantiere rinomina — **3° lotto**: `fn_crea_revisione_preventivo` (+1 letterale in `fn_cambia_stato_preventivo`), 3 codici | DB | ✅ **fatto** — `20260805-25`, registro **42 → 39**, baseline `vendite` verde (§15.12) |
-| 17 | Cantiere rinomina — **lotti 4..n**: dei **39** rimasti, **27 accoppiati al BE** (23 in un solo file) e 12 DB-only | DB / DB+BE | ⏳ **aperto** — brief di coordinamento: `brief-be-rinomina-codici-known-markers.md` (§15.13) |
+| 17 | Cantiere rinomina — **lotti 4..n**: dei **39** rimasti, **27 accoppiati al BE** (23 in un solo file) e 12 DB-only | DB | ⏳ **aperto, ma DB-only**: il coordinamento col BE non serve più — entrambi i nomi sono dichiarati per tutti e 51 (39 vivi + 12 già ritirati), quindi i lotti si aprono senza avvisare e senza sincronia. Brief chiuso in [work-done](../work-done/brief-be-rinomina-codici-known-markers.md) §7 |
+| 18 | Cantiere rinomina — **pulizia finale BE**: togliere le voci vecchie da `known_markers` e `error_policies.py` | BE | ⏳ **aperto, senza fretta** — a registro vuoto. Una voce di troppo non fa danno; va tolta anche l'asserzione «almeno un legacy» del test (work-done §7.4) |
 
 **Ordine obbligato:** ~~1 → 2 → 7~~ (DB, applicato da solo, nessuna finestra di
 rottura) · ~~6 → 3~~ (BE, in quest'ordine e non nell'altro: invertirli portava
@@ -994,7 +995,7 @@ statement chiamante; questi tre test girano perché nessuno ha ancora scritto un
 
 ### 14.4 Cosa si chiede al BE
 
-Brief dedicato: [brief-be-e2e-db-error-fields-skip-schema](brief-be-e2e-db-error-fields-skip-schema.md).
+Brief dedicato: [brief-be-e2e-db-error-fields-skip-schema](../work-done/brief-be-e2e-db-error-fields-skip-schema.md).
 In sintesi:
 
 1. un **`SkipTest`** nel `setUpClass`, dopo `ensure_connection()`, che verifichi
@@ -1344,7 +1345,7 @@ Dei **39** codici ancora fuori convenzione, **27 sono nominati dal backend** e
 `apps/pratiche/services/pratiche_service.py`. Gli altri 12 sono DB-only e il DB
 li rinomina da solo.
 
-Brief: [brief-be-rinomina-codici-known-markers](brief-be-rinomina-codici-known-markers.md).
+Brief: [brief-be-rinomina-codici-known-markers](../work-done/brief-be-rinomina-codici-known-markers.md).
 
 **La proposta, in una riga:** invece di un rilascio simultaneo per ogni lotto —
 sincronia fra due repository e due server, che prima o poi va storta — il BE

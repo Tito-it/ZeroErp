@@ -36,6 +36,7 @@ Indice test eseguiti:
 25) PraticheServiceFlussiTests.test_list_operatori_reparto_ok
 26) PraticheServiceFlussiTests.test_list_operatori_reparto_errore_id_zero
 27) PraticheServiceFlussiTests.test_workflow_guard_codes_hanno_lo_status_atteso
+28) PraticheServiceFlussiTests.test_ogni_codice_legacy_ha_il_gemello_con_prefisso
 """
 
 from unittest.mock import MagicMock, patch
@@ -589,6 +590,39 @@ class PraticheServiceFlussiTests(SimpleTestCase):
             self.assertTrue(ErrorPolicyRegistry.has(code), f"{code} non registrato")
             self.assertEqual(
                 ErrorPolicyRegistry.resolve(code).http_status, status, code
+            )
+
+    # Scopo: ogni codice fuori convenzione dichiarato nei marker deve avere
+    # accanto il gemello `E_*`, con la STESSA policy.
+    #
+    # Perche' serve un test e non basta il blocco transitorio: il DB rinomina un
+    # lotto per volta e il messaggio NON cambia, quindi il marker continua a
+    # corrispondere. Senza il gemello dichiarato, dopo la rinomina l'API
+    # continuerebbe a restituire il nome che il DB ha appena ritirato — e non si
+    # romperebbe niente, che e' precisamente il motivo per cui nessuno se ne
+    # accorgerebbe. Con status diversi, invece, lo stesso errore risponderebbe
+    # 409 o 400 a seconda di quale lotto e' passato.
+    def test_ogni_codice_legacy_ha_il_gemello_con_prefisso(self):
+        from apps.core.services.error_policies import ErrorPolicyRegistry
+        from apps.pratiche.services.pratiche_service import _KNOWN_DB_ERROR_MARKERS
+
+        dichiarati = {code for code, _ in _KNOWN_DB_ERROR_MARKERS}
+        legacy = [c for c in dichiarati if not c.startswith("E_")]
+        self.assertTrue(legacy, "atteso almeno un codice legacy finche' la rinomina e' in corso")
+
+        for code in legacy:
+            gemello = f"E_{code}"
+            self.assertIn(
+                gemello, dichiarati,
+                f"{code} e' dichiarato nei marker ma {gemello} no: alla rinomina "
+                f"l'API risponderebbe col codice ritirato, in silenzio",
+            )
+            self.assertTrue(ErrorPolicyRegistry.has(code), f"{code} senza policy")
+            self.assertTrue(ErrorPolicyRegistry.has(gemello), f"{gemello} senza policy")
+            self.assertEqual(
+                ErrorPolicyRegistry.resolve(code).http_status,
+                ErrorPolicyRegistry.resolve(gemello).http_status,
+                f"{code} e {gemello} hanno status diversi: e' una rinomina, non una revisione",
             )
 
     # Scopo: Regressione bug smoke 2026-06-11 — psycopg puo' restituire i
