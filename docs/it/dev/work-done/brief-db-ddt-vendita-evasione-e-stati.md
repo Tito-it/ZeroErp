@@ -2,7 +2,7 @@
 
 > **Tipo**: brief DB (target `dev/db-tid`) · **Data**: 2026-07-09 · **Owner**: Tid
 > **Design-of-record**:
-> [analisi-ddt-vendita-stato-e-sviluppi.md](../work-in-progress/analisi-ddt-vendita-stato-e-sviluppi.md)
+> [analisi-ddt-vendita-stato-e-sviluppi.md](analisi-ddt-vendita-stato-e-sviluppi.md)
 > (mappa stato, regole di business, decisioni D-1..D-4 / A-1..A-3).
 > **Gate**: BE/FE partono a oggetti DB applicati ([[feedback_be_fe_attende_prerequisiti_db]]).
 > **Azioni DB al team DB** ([[feedback_db_actions_passaggio_team]]): questo brief

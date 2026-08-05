@@ -1,9 +1,41 @@
 # Brief DB — le vie d'uscita per l'operatore
 
+> 🟢 **CHIUSO — 2026-08-05, su ok di Tid.** Le sei vie d'uscita cieche sono
+> chiuse: due stati hanno riavuto l'annullamento, quattro dicono perché non ce
+> l'hanno. Il §7.4 è completo (storicizzazione `20260805-13`/`-14`, guard di
+> matrice `20260805-15`, pgTAP 6/6), e l'ultima riga BE — la policy del codice
+> nuovo — è stata aggiunta. Rendiconto della metà a video:
+> [brief-be-fe-vie-uscita-operatore.md](brief-be-fe-vie-uscita-operatore.md).
+>
+> **Verifica BE del 2026-08-05**, misurata sul database dal canale di sistema e
+> non letta dai documenti:
+>
+> * storicizzazione: **163/163** preventivi con `storicizza = true` (erano 0) e
+>   `vendite.preventivi` registrata in `config.storico_set_storicizza`.
+>   `storico.preventivi` resta a 0 righe ed è corretto — la storia si accumula
+>   dal prossimo `UPDATE`, non retroattivamente;
+> * guard di matrice: `trg_preventivi_a10_guard_transizione_upd` presente;
+> * `E_PREV_TRANSIZIONE_NON_AMMESSA` a catalogo (id 841), sollevato da
+>   **entrambe** le sedi — la porta e il guard — che è il punto della R2;
+> * il codice vecchio non è più sollevato: l'unica occorrenza residua in
+>   `fn_cambia_stato_preventivo` è un **commento** che ne documenta la
+>   sostituzione. ⚠️ Per accorgersene serve un confronto che escluda il prefisso:
+>   un `LIKE '%PREV_TRANSIZIONE_NON_AMMESSA%'` intercetta anche il codice nuovo e
+>   dà un falso positivo.
+>
+> **Una voce del §11.1 resta deliberatamente aperta**: la rimozione della policy
+> `PREV_TRANSIZIONE_NON_AMMESSA` da `error_policies.py`. Decisione di Tid
+> (2026-08-05): il messaggio non è ancora stato corretto, quindi la riga resta.
+> Non blocca nulla — le due policy sono indipendenti, e il codice vecchio resta
+> comunque a catalogo perché le sue 109 righe in `dbops.error_log` ne impediscono
+> la cancellazione.
+>
+> ---
+>
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-08-04.
 > **A chi:** Tid (decisioni di dominio, già prese) e BE/FE (la metà a video).
 > **Da dove nasce:** il presidio `test-transizioni-uscita-manuale-v1.sql`, scritto
-> chiudendo [brief-db-emittibilita-visibile-e-sbloccabile.md](brief-db-emittibilita-visibile-e-sbloccabile.md) §7.3.
+> chiudendo [brief-db-emittibilita-visibile-e-sbloccabile.md](../work-in-progress/brief-db-emittibilita-visibile-e-sbloccabile.md) §7.3.
 > Quel test ha trovato **sei stati** da cui un documento non ha nessuna uscita che
 > una persona possa azionare.
 > **Perché è un brief e non una riga di registro:** un documento fermo senza azioni
@@ -160,7 +192,7 @@ guardrail:
 | `E_ORD_ANNULLA_IN_COMMESSA` | l'ordine è già stato inviato a fatturazione | 409 |
 
 Il quarto, `E_COMMESSA_EMITTENTE_MANCANTE`, arriva dall'altro cantiere
-([emittibilità](brief-db-emittibilita-visibile-e-sbloccabile.md)).
+([emittibilità](../work-in-progress/brief-db-emittibilita-visibile-e-sbloccabile.md)).
 
 **Chiavi i18n da tradurre lato FE** — nessun testo viene dal DB:
 

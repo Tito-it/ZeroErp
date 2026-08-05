@@ -25,6 +25,7 @@
 | 6 | Alerting e monitoring | P3 | 🔴 non fatto — ma i mattoni ci sono |
 | 7 | `correlation_id` | P0 | 🟡 metà: pipeline sì, push no |
 | 8 | Diagrammi di stato | P2 | 🔴 zero `stateDiagram-v2` nel repo |
+| 9 | Passo SDI: prepara il payload, nessuno lo invia | — (nuovo, 05/08) | 🟡 **sospeso per decisione** — la pipeline ora scrive in `fatture_sdi`, manca il builder XML a valle |
 
 ### 🔑 La scoperta trasversale: `event_log` è **write-only**
 
@@ -327,6 +328,50 @@ documento **trasversale**.
 - Diagramma di stato del task_run: `IN_ESECUZIONE` → `COMPLETATO` | `ERRORE` | `ANNULLATO`
 - Evidenziare: dove il rollback è possibile, dove serve intervento manuale, dove il retry è automatico
 - Formato: Mermaid `stateDiagram-v2`, coerente col resto della guida
+
+---
+
+## 9. Il passo SDI: da oggi scrive, e nessuno legge (2026-08-05)
+
+> 🟡 **SOSPESO per decisione di Tid**, non dimenticato. Arriva qui dal cantiere
+> *bonifica dei riferimenti morti*
+> ([brief-be-bonifica-riferimenti-morti](../work-done/brief-be-bonifica-riferimenti-morti.md) §1.2 e §6 item 2),
+> che si chiude: la voce vive da qui in avanti in questa roadmap, perché è
+> materia di fatturazione e non di bonifica.
+
+**Cosa è cambiato.** `vendite.fn_prepare_sdi_payload` — passo `prepare_sdi_payload_lotto`
+(registry id 9), montato sulle pipeline **MASSIVO (id 5)** e **GIORNALIERO (id 7)** —
+**non è mai riuscito a girare**. Due difetti in serie: nominava la colonna
+`tentativo` (che si chiama `tentativo_num`), e riparato quello il calcolo dava
+`0` al primo giro con `force_new_tentativo = false` — cioè nella configurazione
+in seed — violando `chk_fatture_sdi_tentativo_num CHECK (> 0)`. Riparata il
+2026-08-04; verificato su un lotto reale: `false` → 1, `true` → 2.
+
+**Cosa significa adesso.** Il passo gira per la prima volta, quindi le due
+pipeline **scrivono** in `vendite.fatture_sdi` — che ad oggi ha **0 righe**,
+prova che non ha mai funzionato prima. Ma a valle non c'è nessuno:
+
+- il **builder XML FatturaPA non esiste** (il payload è preparato, il file no);
+- l'executor della pipeline **scarta il valore di ritorno** del task;
+- `vendite.fatture_sdi_eventi` resta da popolare.
+
+Cioè: da oggi si accumulano righe di tentativo per un invio che nessuno effettua.
+Non fa danno — il passo è idempotente per tentativo — ma è un dato che cresce
+senza un consumatore, e il ciclo di vita del documento continua a fermarsi a
+INVIATA/SDI come dicono gli item 1 e 2.
+
+**Due cose già decise**, da non ridiscutere quando si riprenderà:
+
+| Domanda | Decisione (2026-08-05) |
+| --- | --- |
+| `force_new_tentativo = false` deve restituire anche le fatture già registrate? | **No.** La semantica attuale è quella giusta per una pipeline: ciò che torna è ciò che va spedito. Il payload completo del lotto, se servirà, è una **funzione read-only separata** |
+| Il passo va esercitato subito? | **No, sospeso**: senza builder XML si eserciterebbe una catena che non porta a nulla |
+
+⚠️ **Un buco di copertura da sanare quando si riprende:** su
+`fn_prepare_sdi_payload` **non esiste nessun pgTAP**. La funzione è rimasta rotta
+per mesi senza che nulla lo segnalasse, ed è esattamente il tipo di silenzio che
+un test avrebbe rotto al primo giro. Se il BE aggiunge un test d'integrazione
+sulla pipeline, questo è il passo da includere per primo.
 
 ---
 

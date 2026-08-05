@@ -26,7 +26,7 @@ più il presidio che impedisce a queste cose di tornare.
 > tenuto il conto — ma non poteva accorgersi da solo che una sua regola mentiva:
 > è servito qualcuno che la mettesse in discussione.
 >
-> Resta aperto il solo [brief per il BE](../work-in-progress/brief-be-bonifica-riferimenti-morti.md),
+> Resta aperto il solo [brief per il BE](brief-be-bonifica-riferimenti-morti.md),
 > in lavorazione presso quel team: il suo punto 1 (il codice errore di dominio non
 > arriva al backend) è il difetto più serio emerso, e non l'ha trovato il presidio
 > ma la riparazione di un pgTAP.
@@ -525,7 +525,7 @@ sensazione della copertura senza averla, che è esattamente ciò che è successo
 | pgTAP `test-riferimenti-morti-v1.sql` | ✅ **5/5 verde** | — |
 | Guardrail + 2 passi in `ci-validate.yaml` | ✅ guardrail provato a mano (exit 0); i due passi CI vanno esercitati alla prossima pipeline | — |
 | F8 — chiamate senza valori variadici (16 siti, 12 funzioni) | ✅ applicato e verde | `20260805-01..04` |
-| Brief per il BE | ✅ [`brief-be-bonifica-riferimenti-morti.md`](../work-in-progress/brief-be-bonifica-riferimenti-morti.md) | — |
+| Brief per il BE | ✅ [`brief-be-bonifica-riferimenti-morti.md`](brief-be-bonifica-riferimenti-morti.md) | — |
 
 ### ✅ Verifiche dopo il migrate (2026-08-04, 20:45)
 
@@ -638,4 +638,4 @@ sequenza dei checksum. Su dev è un no-op.
    droppate (`trgfn_attivita_fatturabili_guard_fonte`,
    `trgfn_contratti_righe_componenti_guard_pending`) sono già rimossi, e i due
    «Vedi anche» che li linkavano sono stati ripuntati.
-5. **Brief BE** da evadere: [brief-be-bonifica-riferimenti-morti](../work-in-progress/brief-be-bonifica-riferimenti-morti.md).
+5. **Brief BE** da evadere: [brief-be-bonifica-riferimenti-morti](brief-be-bonifica-riferimenti-morti.md).

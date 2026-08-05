@@ -15,29 +15,42 @@
 
 ---
 
-> ## ⏱️ Stato avanzamento (aggiornato 2026-07-11)
+> ## 🟢 CHIUSA — 2026-08-05
 >
-> Le tabelle §2 sono la **fotografia iniziale** (pre-sviluppo). Avanzamento reale sulle fasi del §6:
+> **Tutte e sei le fasi del §6 sono fatte**, comprese le due che questo documento
+> ha portato aperte fino a oggi (Fase 4 lineage e slice RESI): erano state
+> realizzate dentro altri cantieri e nessuno era tornato a spuntarle qui.
+> Verifica del 2026-08-05 misurata sul database dal canale di sistema e sul
+> codice, non dedotta dai documenti.
 >
 > | Fase | Stato | Rif. |
-> |---|---|---|
-> | **1 — DB** (evasione + stati + gap + predisposizione PDF) | ✅ FATTO | [brief DB](../work-done/brief-db-ddt-vendita-evasione-e-stati.md) |
-> | **2 — BE** (service/repo/endpoint + evasione + push + note) | 🟢 ✅ CHIUSO (backlog realizzato 11-13/07) | [brief BE](../work-done/brief-be-ddt-vendita.md) §12–14 |
-> | **3 — FE** (lista + drawer + evasione + navigazione) | 🟢 ✅ CHIUSO (backlog realizzato 12-13/07) | [brief FE](../work-done/brief-fe-ddt-vendita.md) §11–13 |
+> | --- | --- | --- |
+> | **1 — DB** (evasione + stati + gap + predisposizione PDF) | ✅ FATTO | [brief DB](brief-db-ddt-vendita-evasione-e-stati.md) |
+> | **2 — BE** (service/repo/endpoint + evasione + push + note) | ✅ CHIUSO (11-13/07) | [brief BE](brief-be-ddt-vendita.md) §12–14 |
+> | **3 — FE** (lista + drawer + evasione + navigazione) | ✅ CHIUSO (12-13/07) | [brief FE](brief-fe-ddt-vendita.md) §11–13 |
 > | **3-bis — Standalone** (DDT senza sorgente, billing proprio) | ✅ FATTO | incluso in BE/FE |
 > | **5 — PDF** (stampa DDT + valuta/emittente drawer + PDF data-driven capabilities) | ✅ FATTO (2026-07-11) | [[handoff_20260711_ddt_stampa_orfano_refactor]] |
-> | **4 — Lineage** (accensione nodo DDT in `vw_documento_lineage`) | ⬜ APERTO | segue brief lineage esistente |
+> | **4 — Lineage** (accensione nodo DDT in `vw_documento_lineage`) | ✅ **FATTO** (verificato 2026-08-05) | §9.1 |
 >
-> **Slice minori** — chiuse: editing `ddt_indirizzi` (✅ UX v2 pilota DDT + rollout
-> 5 domini, 2026-07-12, brief design indirizzi §7), riepilogo IVA DDT (✅ 2026-07-12,
-> brief dedicato CHIUSO), export lista DDT (✅ 2026-07-11), colonna "Emittente"
-> a catalogo (✅ 2026-07-12, seed DB applicato — opt-in, mai nei preset, brief
+> **Slice minori** — tutte chiuse: editing `ddt_indirizzi` (✅ UX v2 pilota DDT +
+> rollout 5 domini, 2026-07-12, brief design indirizzi §7), riepilogo IVA DDT
+> (✅ 2026-07-12), export lista DDT (✅ 2026-07-11), colonna "Emittente" a
+> catalogo (✅ 2026-07-12, brief
 > [brief-db-ddt-colonna-emittente-catalogo](brief-db-ddt-colonna-emittente-catalogo.md)),
-> PDF DDT con indirizzo di consegna (✅ 2026-07-12, builder v2 + template v2
-> PUBBLICATA, brief design indirizzi §7-F10). Aperta: **slice RESI** (brief DB §12).
-> **Verifica visiva in-app** ✅ fatta da Tid (2026-07-13): drawer DDT + 4 drawer
-> rollout indirizzi, tutto ok.
-> Tutto il lavoro FE/BE è su `dev/backend-tid` **non committato** (commit → Tid).
+> PDF DDT con indirizzo di consegna (✅ 2026-07-12). **Slice RESI: ✅ chiusa**
+> (§9.2). **Verifica visiva in-app** ✅ Tid (2026-07-13).
+>
+> ⚠️ La riga «tutto il lavoro FE/BE è su `dev/backend-tid` non committato» è
+> **superata**: è mergiato da luglio. Restava scritta perché il documento si era
+> fermato al 2026-07-13.
+>
+> **Un residuo, e non è quello che sembrava.** Scrivendone il manuale il team DB
+> ha misurato `mv_ddt_ordini`: non le manca solo la pagina, è **un oggetto morto**
+> — 0 righe, nessun lettore, nessun percorso che la aggiorni. Il livello 3 del
+> §3.1 non ha mai funzionato, e gli altri due bastano. Raccomandazione:
+> **ritirarla** — §9.4.
+>
+> ---
 
 ## 1. Scopo e perimetro
 
@@ -130,6 +143,10 @@ nessuna azione "genera DDT" nel drawer ordine.
    diretta a `ordini_righe`.
 3. **Testata ↔ testata (derivata):** MV `mv_ddt_ordini(ddt_id, ordine_id)` =
    `DISTINCT` sul fulfillment, refresh via `dbops.fn_refresh_mv_ddt_ordini`.
+   🔴 **Questo livello non ha mai funzionato** (misurato il 2026-08-05): la MV è
+   vuota e nessuno la aggiorna né la legge — vedi §9.4. I consumatori reali usano
+   il livello 1 (il lineage, via `sorgente_uid`) e il livello 2 (il backend, che
+   interroga `ordini_righe_fulfillment` direttamente). Raccomandazione: ritirarla.
 
 ### 3.2 DDT → commessa → fattura (il transito)
 
@@ -258,5 +275,116 @@ il capitolato del `brief-db-ddt-vendita-evasione-e-stati.md`:
 - Codice: `backend/apps/vendite/services/commesse_source_handlers.py` (`HandlerDdt`),
   `backend/apps/vendite/db/ddt_repository.py` (minimale),
   `backend/apps/vendite/api/note_views.py` (note DDT da cablare).
-</content>
-</invoke>
+
+---
+
+## 9. Verifica di chiusura (2026-08-05)
+
+> Misurata sul database dal canale di sistema (`system_process_context`: le
+> tabelle documento hanno RLS, e senza GUC si legge zero e si conclude il falso)
+> e sul codice. Le tabelle del §2 restano com'erano: sono la fotografia
+> pre-sviluppo e non vanno riscritte, si legge questa sezione accanto.
+
+### 9.1 Fase 4 — il nodo DDT nel lineage è acceso
+
+| Prova | Esito |
+| --- | --- |
+| nodi in `vw_documento_lineage` | **29 DDT_VENDITA** (e 10 RESO_VENDITA) |
+| view API | `ApiDdtPassaggi` e `ApiResoPassaggi` montate dalla factory `build_passaggi_view`, accanto agli altri cinque domini |
+| frontend | lineage cablato in `DdtDrawer.vue` e `DdtSearchTable.vue` |
+
+La fase era stata realizzata dentro il cantiere lineage, che ha acceso tutti i
+nodi insieme invece che uno per volta: da qui la spunta mai riportata.
+
+### 9.2 Slice RESI — chiusa
+
+Tre brief in `work-done` (`brief-db-resi-vendita`, `brief-be-fe-resi-vendita`,
+`brief-be-fe-ddt-resi-dashboard`), dominio frontend `vendite/resi` con rotta e
+voce di navigazione, 10 nodi `RESO_VENDITA` nel lineage.
+
+### 9.3 I gap del §2.1, ricontrollati uno per uno
+
+| Voce del §2.1 | Allora | Oggi |
+| --- | --- | --- |
+| `fn_genera_ddt_da_ordine` | ❌ MANCANTE | ✅ esiste |
+| `config.transizioni_stati_ddt` | ❌ MANCANTE | ✅ 9 righe |
+| seed `config.causali_trasporto` | ⚠️ VUOTO | ✅ 8 righe (`aspetti_beni`: 10) |
+| `trgfn_ddt_guard_transizione_approvazione` | ⚠️ NON WIRED | ✅ `trg_ddt_a10_guard_transizione_upd` |
+| `trgfn_ddt_normalize` risolve per `codice` | ⚠️ FRAGILE | ✅ usa `codice_interno` |
+| manual `ddt.md` con colonne inesistenti | ⚠️ STALE | ✅ corretto |
+| doc MV `mv_ddt_ordini` | ⚠️ STALE | 🔴 **ancora assente** → §9.4 |
+
+Anche il §2.3 («FE inesistente») è superato per intero: dominio, rotta, voce di
+navigazione, e persino l'icona `app-nav-icon-ddt` che allora era definita e
+inutilizzata ora è agganciata in `navigation.js`.
+
+### 9.4 🔴 `mv_ddt_ordini` non è un buco di documentazione: è un oggetto morto
+
+> ⚠️ **Correzione del 2026-08-05 (sera).** Questo paragrafo diceva «manca solo la
+> pagina» e «la MV è viva». **Era sbagliato**, ed è istruttivo come: l'avevo
+> dedotto dall'esistenza dell'oggetto (`relkind = 'm'`) senza guardarci dentro.
+> Scrivendone il manuale, il team DB ha misurato il contenuto e ha trovato altro.
+
+| Domanda | Risposta misurata (team DB, 2026-08-05) |
+| --- | --- |
+| righe contenute adesso | **0** |
+| righe che la sua query produrrebbe | **15** |
+| chi la legge | **nessuno** — l'unica citazione in `fn_genera_ddt_da_ordine` è dentro un commento |
+| chi la aggiorna | `dbops.fn_refresh_mv_ddt_ordini`, che **nessuno chiama**: né una funzione, né un job pgagent |
+
+Non è una vista rotta: è una vista **mai agganciata**, ferma allo stato in cui è
+nata e destinata a restarci, perché non esiste un percorso che la aggiorni. Il
+pgTAP `test-ddt-gate-emissione-mv-v1.sql` è verde ma esegue **lui stesso** il
+`REFRESH`: prova che il meccanismo funziona, non che qualcuno lo azioni.
+
+**Verifica applicativa (BE/FE, 2026-08-05)** — conferma il quadro dall'altro lato:
+
+* `mv_ddt_ordini` e `fn_refresh_mv_ddt_ordini`: **zero occorrenze** in tutto il
+  backend e il frontend. Nessuna vista del database la usa;
+* il legame ordine↔DDT è **già derivato altrove, e funziona**: il backend
+  interroga `ordini_righe_fulfillment` direttamente
+  ([`ordini_repository.py:336`](../../../../backend/apps/vendite/db/ordini_repository.py#L336),
+  `resi_repository.py:876`), cioè il **livello 2** del §3.1;
+* il **lineage non la usa**: l'arco Ordine→DDT si regge su `sorgente_uid`, cioè
+  il **livello 1**. Nessun rischio nascosto sulla genealogia, che è il consumatore
+  più visibile di questo legame.
+
+**Ne discende una raccomandazione, non una scelta aperta: ritirarla.** Delle tre
+strade del §3.1 per legare ordine e DDT, le prime due sono vive e usate da
+consumatori reali; la terza — questa MV — è ridondante rispetto a entrambe.
+Agganciare il refresh significherebbe pagare una manutenzione per un fatto che
+l'applicazione già ricava in due modi diversi. È la seconda delle due strade
+oneste indicate dal DB («il giro diretto sulla tabella basta»), e il codice vivo
+l'ha già scelta da sé.
+
+⚠️ **La cosa da non fare** — parole del team DB, che vale la pena ripetere:
+leggerla un giorno credendola aggiornata. Risponderebbe «questo DDT non ha
+ordini» **con la stessa sicurezza con cui direbbe il vero**. È il difetto
+peggiore di tutti, perché non somiglia a un errore.
+
+Materiale per il cantiere dei riferimenti morti
+([brief-be-bonifica-riferimenti-morti](brief-be-bonifica-riferimenti-morti.md)).
+⚠️ Se si ritira, cadono con lei tre cose: la MV, `dbops.fn_refresh_mv_ddt_ordini`
+e il pgTAP che le testa — più la riga «livello 3» del §3.1 di questa analisi, che
+descrive un meccanismo che non ha mai funzionato.
+
+### 9.5 ⚠️ Una cosa che i documenti non dicono: il transito non è mai stato percorso
+
+Il meccanismo c'è tutto, ma **il percorso DDT → commessa → fattura è stato
+attraversato una volta sola** nei dati di sviluppo:
+
+| Misura | Valore |
+| --- | --- |
+| ordini per `fatturazione_trigger` | **89 su 89 = `CONFERMATO`** |
+| righe `commesse_sorgenti` di tipo DDT_VENDITA | **1** |
+| DDT nati da un ordine / righe di evasione | 15 / 20 |
+
+Non è un difetto e non contraddice la chiusura: è la **regola XOR del §3.3** che
+si vede nei dati — con `CONFERMATO` è l'ordine a pushare, e nessun ordine usa
+ancora la fatturazione differita. L'evasione ordine→DDT è esercitata (15 DDT, 20
+righe di fulfillment); è il transito a valle, cioè la ragione per cui questo
+cantiere esiste (§3.2), ad avere un solo passaggio all'attivo.
+
+⚠️ **Quindi il primo ordine messo a `SPEDITO` o `CONSEGNATO` è il caso da
+guardare per primo**: sarà il primo giro reale su un percorso che finora ha visto
+un solo documento.
