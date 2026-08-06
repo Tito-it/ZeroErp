@@ -3,7 +3,9 @@
 **Chi scrive:** DB (`dev/db-tid`), 2026-08-05.
 **Origine:** rilievo del team BE, §12.5 di
 [brief-db-codice-errore-strutturato](../work-done/brief-db-codice-errore-strutturato.md) (chiuso).
-**Stato:** 🟢 **fronte del percorso richiesta CHIUSO (§17, 2026-08-06). Cancello 4/4 · suite 3580/3580 · registro 141 → 51 · `da_trigger` senza policy 90 → **0** · 91 codici decisi in quattro lotti. Resta il lotto 5 (i 51 non da trigger), senza fretta.**
+**Stato:** 🟢 **percorso richiesta CHIUSO (§17): 91 codici decisi in 4 lotti, `da_trigger` senza policy 90 → 0** · **audit di coerenza degli status fatto (§21): 600 policy, 9 status, tutti RFC 9110**.
+🟡 In coda il **quarto lato** (§18-§20): 2 codici nuovi dichiarati, 3 `ui_action` corrette, e per il prezzo zero il codice giusto esisteva già.
+⚠️ **Palla al DB (§20.4): 2 righe dal registro + i 3 codici del §19.4 + l'handler `P0001`.** Poi resta solo il lotto 5 (i 51 non da trigger), senza fretta.
 **Perimetro:** misura e cancello lato DB · assegnazione dei significati lato BE.
 
 > **Non è una regressione.** Questo difetto c'era anche prima; la slice del codice
@@ -1112,3 +1114,250 @@ originale va perso** perché si cattura solo `MESSAGE_TEXT` (§18.3). Non-cattur
 **c) Lo script della misura in `scripts/sql/`**, con prefisso `check_` (lente,
 non cancello). Sì, è utile: la lente serve a ogni apertura di lotto, e riscriverla
 ogni volta è il modo in cui sono nati i tre numeri diversi del §2.
+
+---
+
+## 19. ✅ Risposta del DB al §18 — e la lente ne trova altri cinque (2026-08-06)
+
+> **Chi scrive:** DB (`dev/db-tid`), commit `feca4f935`. Tutto girato sul
+> database vivo dopo la migrazione, non dedotto dai CSV.
+> ℹ️ *Testo riportato nel brief dal BE: il commit del DB conteneva i changeSet,
+> il CSV e la lente, ma non questa sezione — e senza, il §20 rimanderebbe al
+> vuoto.*
+
+### 19.1 §18.5a — i due codici, e perché la leva era davvero lì
+
+`E_OFFERTA_NON_TROVATA` (894) e `E_PROFILO_ACCESSO_NON_TROVATO` (895), nelle
+famiglie che già esistevano. Entrambi hanno **un solo segnaposto**: il vincolo
+pratico che aveva guidato la scelta sbagliata resta soddisfatto, e in più dicono
+la verità.
+
+* `20260806-23` → `fn_push_offerta_a_contratto`. Tolto anche il valore variadico
+  `'offerta non trovata: ' || id`: il messaggio del codice nuovo lo dice già, e
+  ripeterlo era metà della frase autocontraddittoria;
+* `20260806-22` → `trgfn_profili_accesso_bindings_guard_coerenza`.
+
+⚠️ La **prima** guardia di `fn_push_offerta_a_contratto` resta
+`E_PARAMETRO_INVALIDO`, e lì è corretta. Le due occorrenze si somigliano, ed è il
+motivo per cui la prima passata della misura le aveva confuse: **conta il ramo
+che solleva, non la funzione.**
+
+Registro 51 → 53, `da_trigger` 0 → 1, per il tempo di un giro. Verificato:
+registro 53, vista 363, i due codici a catalogo, `E_STATO_SCONOSCIUTO` ritirato
+con `obsoleto_dal = 2026-08-06`.
+
+### 19.2 §18.5b — l'impatto misurato, e perché non-catturare non basta
+
+L'handler avvolge `fn_resolve_prezzo_listino_v2`; seguendo le chiamate a valle, i
+codici oggi inghiottiti sono **sette**, e arrivano tutti al client come
+`422 show_error_banner`. Dopo la correzione:
+
+| Codice | Diventerebbe |
+|---|---|
+| `E_ARTICOLO_ESCLUSO_DA_CONTRATTO` | 422 `show_error_banner` (invariato) |
+| `E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C` | 400 `show_error_banner` |
+| `E_PARAMETRO_INVALIDO` | 400 `highlight_form_fields` |
+| `E_LISTINO_VERSIONE_NON_ATTIVA` | 404 `show_error_banner` |
+| `E_CATEGORIA_LISTINO_NON_MAPPATA` · `E_PREZZO_LISTINO_NON_TROVATO` · `E_PREZZO_LISTINO_RIGA_NON_TROVATA` | 404 `show_empty_state` |
+
+Sei su sette cambiano comportamento, e due meritano una decisione prima di
+muoversi: le tre che diventano `show_empty_state` (ui_action pensata per una
+lista vuota, non per una scrittura fallita) e `E_PARAMETRO_INVALIDO` con
+`highlight_form_fields`, che evidenzierebbe un campo mai compilato dall'operatore.
+
+> Direzione giusta, ma togliere l'handler da solo **sposta** il difetto invece di
+> chiuderlo: due o tre policy vanno riviste insieme. È lavoro del BE, e questo è
+> il numero per dimensionarlo. → *risposta nel §20.2.*
+
+### 19.3 §18.5c — la lente c'è, gira, e si valida da sola
+
+`scripts/sql/check_messaggio_vs_condizione.sql`, prefisso `check_` come chiesto.
+Scritta in SQL invece di riusare il Python della prima passata: legge
+`pg_proc.prosrc` **vivo**, quindi non può divergere dalla doc auto-gen. Stampa
+una riga di contesto con la base misurata, perché un risultato vuoto non si
+confonda con un'euristica rotta.
+
+Eseguita: **978 punti, 344 codici, 31 candidati.**
+
+⭐ Il collaudo migliore è **cosa non stampa più**: `fn_push_offerta_a_contratto` e
+il guard dei profili sono spariti dal gruppo B. La stessa lente che li aveva
+trovati conferma che sono chiusi, senza che nessuno debba ricordarsi di
+ricontrollare.
+
+### 19.4 ⚠️ Ma ne ha trovati altri tre identici, più due di un quarto tipo
+
+Dei sei `E_PARAMETRO_INVALIDO` rimasti nel gruppo B, cinque sono guardie di
+parametro legittime. **Tre no**, e sono la fotocopia dei due appena corretti —
+`IF NOT FOUND` raccontato come «parametro non valido», 400 dove la verità è 404:
+
+| Funzione | Riga |
+|---|---|
+| `vendite.fn_chiudi_contratto_per_successione` | 44 |
+| `vendite.fn_contratto_riga_componenti_init` | 48 |
+| `vendite.fn_offerta_eccezione_componenti_init` | 57 |
+
+E **un quarto tipo, che la lente non cercava e ha trovato lo stesso**: in
+`fn_contratto_riga_componenti_init` (riga 93) e `fn_offerta_eccezione_componenti_init`
+(riga 122) `E_PARAMETRO_INVALIDO` si solleva su `IF v_prezzo = 0 AND obbligatorio`
+— un componente obbligatorio senza prezzo. Non è un parametro e non è un'assenza:
+è una **regola di dominio**.
+
+Il §17.2 diceva «un difetto isolato è un caso, due sono una direzione». Sono
+cinque più due, tutti nella stessa famiglia di funzioni, e dicono una cosa
+precisa: **`E_PARAMETRO_INVALIDO` sta facendo ciò che il §18.5a attribuiva ai
+codici generici — accumula significati.** Su 113 funzioni che lo nominano,
+almeno cinque lo usano per «non trovato» e due per una regola di prezzo.
+
+---
+
+## 20. Risposta BE al §19 — tre riscontri che cambiano le conclusioni (2026-08-06)
+
+### 20.1 §19.1 · i due codici sono dichiarati
+
+`E_OFFERTA_NON_TROVATA` e `E_PROFILO_ACCESSO_NON_TROVATO` → **404 ·
+`show_error_banner`**. Banner e non empty-state: sono scritture che falliscono
+(push verso contratto, guard sui binding), non pagine da svuotare.
+
+Verificato sul DB vivo: registro **53**, vista **363**, i due codici a catalogo,
+`E_STATO_SCONOSCIUTO` con `obsoleto_dal = 2026-08-06`. Il cancello ora segnala
+esattamente **2 righe da togliere** — l'ultimo giro.
+
+⭐ Vale la pena rileggere la frase del §19.1: *«conta il ramo che solleva, non la
+funzione»*. La prima guardia di `fn_push_offerta_a_contratto` resta
+`E_PARAMETRO_INVALIDO` **ed è corretta**: due punti quasi identici nella stessa
+funzione, verità diverse. È la ragione per cui la prima passata li aveva confusi.
+
+### 20.2 §19.2 · la tabella d'impatto è superata di una riga, e il difetto è già vivo
+
+Due correzioni al conto dei sette:
+
+**1. `E_LISTINO_VERSIONE_NON_ATTIVA` non è più 404: è 422** dall'audit di poche
+ore prima (§api.md). Quindi dopo la correzione dell'handler arriverebbe **422
+`show_error_banner`** — cioè *identico* a quello che il client riceve oggi
+dall'handler. **Un cambio di comportamento in meno**: sono cinque su sette, non
+sei.
+
+**2. ⚠️ Le tre `show_empty_state` sono un difetto che esiste già oggi, e
+l'handler non c'entra.** Quei tre codici li solleva solo
+`vendite.fn_resolve_prezzo_listino_v2`, che **l'API pricing chiama per via
+diretta**: lì arrivano al client senza passare da nessun handler, con
+`show_empty_state` addosso. L'handler non stava causando il difetto — ne stava
+nascondendo una parte.
+
+Quindi non era una cosa «da decidere prima di muoversi»: era da correggere
+comunque. **Fatto**: i tre passano a `show_error_banner`, status **404
+invariato** — la mappa, il prezzo e la riga davvero non ci sono, quello che era
+sbagliato è dire a una scrittura fallita di svuotare una pagina.
+
+**3. `E_PARAMETRO_INVALIDO` con `highlight_form_fields` resta.** L'obiezione è
+giusta nel merito — nel resolver è il chiamante a passare un parametro sbagliato,
+non l'operatore — ma la leva non è nel dizionario: **113 funzioni** lo nominano e
+per la grande maggioranza l'evidenziazione del campo è corretta. È esattamente il
+§18.2, e la cura è la stessa: correggere i punti che lo usano per dire altro
+(§19.4), non rimappare la parola.
+
+> Con questo, **togliere l'handler non sposta più il difetto**: restano cinque
+> codici che cambiano comportamento, e tutti e cinque nella direzione giusta.
+
+### 20.3 §19.4 · confermato, e un codice non serve crearlo
+
+**I tre `IF NOT FOUND`: sì**, stessa forma dei due appena chiusi. Servono i tre
+codici nelle rispettive famiglie e il BE li dichiara a **404** — tre righe.
+
+**I due sul prezzo zero: il codice esiste già.**
+`E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` è a catalogo, dichiarato nel lotto 3
+(**400 · `highlight_form_fields`**) e il suo messaggio è
+
+> «Componente obbligatorio [%s]: il prezzo deve essere diverso da zero.»
+
+cioè **letteralmente** la condizione `v_prezzo = 0 AND obbligatorio`. Non serve
+un codice nuovo: serve usare quello. Lo solleva già
+`script.trgfn_componenti_check_prezzo_obbligatorio` — le due funzioni
+`*_componenti_init` stanno dicendo la stessa cosa con la parola sbagliata.
+
+⭐ **Ed è la conferma migliore della diagnosi del §19.4.** Il codice giusto
+esisteva già, nella famiglia giusta, con il messaggio giusto: `E_PARAMETRO_INVALIDO`
+non è stato scelto perché mancasse un'alternativa, ma perché era **generico e a
+portata di mano**. È il modo in cui i codici generici accumulano significati.
+
+### 20.4 Cosa serve ora
+
+| # | Cosa | Chi |
+|---|---|---|
+| 1 | togliere **2 righe** dal registro (`E_OFFERTA_NON_TROVATA`, `E_PROFILO_ACCESSO_NON_TROVATO`) e riapplicare il `20260805-37` | DB |
+| 2 | i **3 codici nuovi** del §19.4 + far sollevare `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` nei due punti sul prezzo | DB |
+| 3 | dichiarare i 3 codici a 404 quando esistono | BE |
+| 4 | togliere l'handler `P0001` (§19.2) — ora senza effetti collaterali da sanare prima | DB |
+
+**Suite 3580/3580.** L'unico rosso è il verso 2 del cancello con le due righe del
+punto 1: il presidio che chiede al DB di completare il giro.
+
+---
+
+## 21. Audit di coerenza degli status — nato da qui, vale oltre (2026-08-06)
+
+Chiuso il percorso richiesta, la domanda naturale è stata: **i 600 status che
+abbiamo assegnato sono coerenti fra loro, o abbiamo appena creato una nuova
+divergenza?** L'audit è una costola di questo cantiere; il dettaglio operativo
+sta in [`api.md` §Tassonomia errori](../api.md), qui resta cosa ha trovato.
+
+### 21.1 Cosa è emerso
+
+| Cosa | Esito |
+|---|---|
+| `api.md` documentava **4 status**, il dizionario ne usava **11** | censimento completo, con la fonte RFC di ognuno |
+| **una sola** divergenza fra le 53 coppie legacy/prefissato: `EMITTENTE_NON_MODIFICABILE` 409 vs `E_EMITTENTE_NON_MODIFICABILE` 400 | la voce senza prefisso era **orfana** (il DB l'aveva già tolta dal catalogo il 2026-08-05): rimossa |
+| famiglia «immutabilità»: 29 codici a 409, **3 a 400** | i tre allineati a **409**, `ui_action` invariata |
+| tre status con **un solo uso**: 423, 428, 502 | 423 → **403** · 428 **ritirato** · 502 **resta** |
+| cinque 404 che erano configurazioni mancanti o non-trovati falsi | quattro → **500**, uno → **422** |
+
+Dopo: **600 policy, nove status, tutti RFC 9110** — nessuno fuori dal nucleo HTTP.
+
+### 21.2 Le tre cose che valgono più delle correzioni
+
+**1. Il suffisso non decide lo status.** `api.md` diceva «il suffisso *determina*
+la categoria». Assegnando 91 policy il nome ha mentito tre volte:
+`E_SNAPSHOT_ID_NOT_FOUND` è un **500**, `E_DELETE_NOT_ALLOWED` un **403** e non un
+409, `E_FULFILL_NOT_FOUND` un 404 ma per un'altra ragione. Ora il documento dice
+«suggerisce», con i controesempi.
+
+**2. Il criterio che distingue un 404 da un 500: chi può rimediare.** L'operatore
+cambiando la richiesta → 404. Nessuno finché qualcuno non configura → **500**:
+«non trovato» detto a chi non può trovarlo lo manda a cercare una cosa che per lui
+non esiste.
+
+**3. L'uniformità non è un valore in sé.** Dei tre status con un solo uso, due
+sono stati cambiati perché dicevano una cosa falsa e **il terzo è rimasto perché
+dice quella vera**: il 502 su `E_AI_PROVIDER_ERROR` è letteralmente la
+definizione RFC (gateway verso un server a monte). Normalizzarlo avrebbe perso
+l'unica informazione utile nei log.
+
+### 21.3 ⚠️ Due volte la misura ha mentito, e la seconda l'ha presa la suite
+
+* il primo censimento leggeva **570 blocchi su 602** — numeri plausibili e
+  sbagliati, finiti in `api.md` prima di accorgersene. Il parser si fermava a un
+  terminatore di indentazione che non è costante: ora il documento dice **come
+  rifarlo** (delimitare ogni voce con la chiave successiva);
+* `E_AI_CONFIRMATION_REQUIRED` è stato dichiarato «non usato da nessuno» sulla
+  base di un `grep` il cui filtro `-v error_policies.py` **escludeva il file di
+  test omonimo** — cioè proprio la prova cercata. Un test lo pinnava a 428. Se ne
+  è accorta la suite, non la misura.
+
+> Terza occorrenza della stessa lezione, dopo il 133/141/137 del §2 e il 23% del
+> §18.1: **anche la misura è un programma, e può avere il suo difetto.** Ed è il
+> motivo per cui nessuna di queste correzioni è stata applicata senza far girare
+> i 3580 test.
+
+### 21.4 Fuori perimetro ma nato qui — l'ambiente
+
+La suite non partiva affatto: nel venv c'era **Django 6.1**, che ha rimosso
+`django.utils.cache.cc_delim_re`, importato a livello di modulo da
+`rest_framework/views.py`. Non un test rosso: l'intero backend che non si importa.
+E **DRF 3.17.2 è l'ultima release esistente**, con quell'import ancora dentro.
+
+Correzione in `backend/requirements.in`: `Django>=6.0,<7.0` → `<6.1`, con scritto
+accanto **come si toglie** (quando esce una DRF che dichiara 6.1: verificare che
+`cc_delim_re` sia sparito da `rest_framework/`, poi rialzare). Il `requirements.txt`
+ricompilato è risultato **identico**: il tetto non cambia niente oggi, impedisce
+il prossimo `pip-compile --upgrade`. La CI non era mai stata rotta — era solo il
+venv locale.
