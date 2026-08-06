@@ -742,14 +742,166 @@ verificabile, non sostituisce la disciplina in review.
 ### Tassonomia errori
 
 Tutti i codici errore seguono `E_{MODULO}_{TIPO}` e DEVONO essere registrati
-in `error_policies.py` prima dell'uso. Il suffisso determina la categoria:
+in `error_policies.py` prima dell'uso. Il suffisso **suggerisce** la categoria:
 
-| Suffisso | HTTP | Esempio |
+| Suffisso | HTTP tipico | Esempio |
 | --- | --- | --- |
 | `_VALIDATION` / `_VALIDAZIONE` | 400 | `E_ANAG_VALIDAZIONE` |
 | `_NOT_FOUND` | 404 | `E_PRATICA_NOT_FOUND` |
 | `_DUPLICATO` / `_IN_ESECUZIONE` | 409 | `E_ANAG_DUPLICATO` |
 | `_NEGATO` / `_DENIED` | 403 | `E_PERMESSO_NEGATO` |
+
+#### ⚠️ Il suffisso NON decide lo status: decide il punto che solleva
+
+La tabella sopra è una **convenzione di naming**, non una regola di mapping. Usarla
+per assegnare uno status è il modo più rapido di sbagliare, e non è un'ipotesi:
+assegnando 91 policy in un giorno (2026-08-06) **il nome ha mentito tre volte**.
+
+| Codice | Cosa suggerisce il nome | Cosa fa davvero il punto che solleva | Status |
+| --- | --- | --- | --- |
+| `E_SNAPSHOT_ID_NOT_FOUND` | 404 | `EXCEPTION WHEN OTHERS` nella storicizzazione: non manca un record, fallisce la lettura della chiave | **500** |
+| `E_DELETE_NOT_ALLOWED` | 409 (stato sfavorevole) | blocca **sempre**, sbloccabile solo da una GUC di sistema: è un diritto che manca | **403** |
+| `E_FULFILL_NOT_FOUND` | «manca un legame» | la riga indicata non esiste (`SELECT INTO` → NULL) | **404** |
+
+E in senso opposto: `E_PARAMETRO_INVALIDO` viene sollevato in due punti su un
+`IF NOT FOUND`, dove la verità è 404 — ma **non si corregge cambiando la sua
+policy**: 113 funzioni lo nominano e per 111 il 400 è giusto. Un codice usato per
+due cose si spezza a monte, non si rimappa a valle.
+
+> **Regola operativa: leggere la funzione che solleva, non il nome del codice.**
+> Se il codice è sollevato da più punti con verità diverse, lo status giusto è il
+> **denominatore sicuro** (quello che non fa danno in nessuno dei punti), e il
+> codice va segnalato al team DB come candidato allo split.
+
+**Quando spezzare un codice e quando no.** Un codice a più significati si spezza
+quando i significati **portano a reazioni diverse della pagina**, non perché sono
+più d'uno: `E_STATO_SCONOSCIUTO` diceva «stato di workflow inesistente» (404, la
+pagina torna indietro) e «nazione dell'indirizzo non risolta» (400, si evidenzia
+il campo) — reazioni opposte, spezzato. `E_SOGGETTI_RUOLI` ne copre tre, ma tutte
+e tre chiedono un 400: tenuto insieme, con la ragione scritta nella policy.
+
+#### Gli status in uso, tutti — e cosa è standard e cosa è nostro
+
+⚠️ **Gli status HTTP non li abbiamo inventati noi.** Sono uno standard IETF:
+**RFC 9110 «HTTP Semantics»** (giugno 2022, che ha sostituito RFC 7231/7235), e
+il registro ufficiale dei codici è quello IANA. Quando questo documento dice
+«404 = non esiste» sta citando lo standard, non una convenzione di progetto.
+
+**Nostro** è invece tutto il resto, e conviene sapere dove passa il confine:
+
+| Cosa | Chi lo stabilisce |
+|---|---|
+| il significato di 400/403/404/409/500… | **RFC 9110** (standard) |
+| il nome dei codici (`E_MODULO_TIPO`) | noi |
+| quale codice mappa su quale status | **noi** — è la decisione di dominio |
+| il vocabolario `ui_action` | noi, non esiste nulla di standard |
+
+Censimento del dizionario al 2026-08-06, dopo l'audit di coerenza (**600
+policy**):
+
+| Status | Quanti | Fonte | Quando |
+| --- | --- | --- | --- |
+| **400** Bad Request | 222 | RFC 9110 | la richiesta è malformata o il valore è sbagliato |
+| **409** Conflict | 207 | RFC 9110 | «conflitto con lo stato attuale della risorsa» — la definizione dello standard è **letteralmente** il nostro caso: transizioni non ammesse, immutabilità, duplicati |
+| **404** Not Found | 73 | RFC 9110 | la cosa indicata non esiste |
+| **500** | 47 | RFC 9110 | anomalia tecnica: l'operatore non può farci niente |
+| **403** Forbidden | 23 | RFC 9110 | il diritto manca, e non dipende dallo stato |
+| **422** Unprocessable Content | 20 | RFC 9110 §15.5.21 | sintassi valida, **semantica** no: il payload si capisce ma non si può eseguire |
+| **401** Unauthorized | 4 | RFC 9110 | non autenticato (≠ 403: autenticato ma senza diritto) |
+| **501** Not Implemented | 3 | RFC 9110 | funzione non implementata / disattivata |
+| **502** Bad Gateway | 1 | RFC 9110 | un provider esterno ha risposto male |
+
+**Tutti e nove vengono da RFC 9110**: dopo l'audit non resta in uso nessuno
+status fuori dal nucleo HTTP.
+
+> ⚠️ **Se si rifà questo censimento**, contare i blocchi delimitando ogni voce
+> con la **chiave successiva**, non con un terminatore di indentazione: la prima
+> versione di questa tabella si fermava a 570 policy su 602 perché l'ultima riga
+> di un blocco non è sempre indentata allo stesso modo, e il conteggio risultava
+> plausibile ma sbagliato. *Anche la misura è un programma, e può avere il suo
+> difetto.*
+
+**Audit di coerenza del 2026-08-06** — cercando famiglie che rispondono in due
+modi, su 601 policy è emersa **una sola divergenza vera**:
+`EMITTENTE_NON_MODIFICABILE` (409) contro `E_EMITTENTE_NON_MODIFICABILE` (400),
+unica fra le **53** coppie legacy/prefissato. La voce senza prefisso era orfana —
+il team DB aveva già tolto quel codice dal catalogo — ed è stata rimossa; i tre
+codici della famiglia «immutabilità» che stavano a 400 sono passati a **409**,
+allineandosi agli altri 29. `ui_action` invariata: a video non cambia nulla,
+cambia il contratto.
+
+**I tre status con un solo uso, esaminati uno per uno** (2026-08-06). «Usato una
+volta sola» non è di per sé un difetto: il difetto è usare uno status per una
+cosa che lo standard non dice. Esito diverso per tutti e tre:
+
+| Era | Codice | Esito |
+| --- | --- | --- |
+| **423** Locked | `E_UTENTE_BLOCCATO` | → **403**. Il 423 di RFC 4918 è il lock WebDAV di una **risorsa**, non di un account; il gemello `E_USER_DISABILITATO` è già 403. ⚠️ E **non** 429, che sembrerebbe ovvio: `LoginView.resolveLoginError` intercetta il 429 **prima** di leggere il codice (throttle per IP) e il messaggio coi minuti rimanenti andrebbe perso |
+| **428** Precondition Required | `E_AI_CONFIRMATION_REQUIRED` | **ritirato**. Non lo sollevava nessuno: il flusso di conferma dei tool in scrittura restituisce **200 con `requires_confirmation` nel payload** — una conferma richiesta non è un errore HTTP. E il 428 (RFC 6585) significa «la richiesta deve essere condizionale», non «l'utente deve confermare» |
+| **502** Bad Gateway | `E_AI_PROVIDER_ERROR` | **resta**. Il backend chiama un provider esterno e ne riceve una risposta invalida: è letteralmente la definizione RFC del 502. Normalizzarlo a 500 perderebbe l'unica informazione che serve leggendo i log |
+
+> La lezione non è «meno status è meglio». È che **l'uniformità non è un valore
+> in sé**: due dei tre sono stati cambiati perché dicevano una cosa falsa, il
+> terzo è rimasto perché dice quella vera.
+
+⚠️ **Il nostro 404 è più largo di quello dell'RFC.** Nello standard il 404
+riguarda la **risorsa indirizzata dall'URI**; noi lo usiamo anche quando l'URI
+esiste ma un'entità **referenziata nel payload** non c'è (`E_FULFILL_NOT_FOUND`,
+`E_GESTORE_SOGGETTO_RUOLO_MANCANTE`). È un'estensione diffusa e in questa app è
+innocua — nessun interceptor reagisce globalmente al 404 — ma è una scelta, non
+la lettura letterale dello standard. L'alternativa RFC-stretta sarebbe 422.
+
+#### Cosa cambia davvero lo status, lato client
+
+Utile saperlo prima di discutere se un codice è 400 o 409: **in questa app la
+maggior parte del comportamento la decide `ui_action`, non lo status.** Gli unici
+status con un effetto globale sono:
+
+| Status | Effetto | Dove |
+| --- | --- | --- |
+| **401** | percorso di refresh del token | `src/core/api.js` |
+| **401 / 403** | il polling dei contatori si ferma | `useQueueCountsPolling` |
+| **>= 500** | toast «errore di sistema»: **stesso messaggio**, durata più lunga | `useApiHandler` + `useNotify.systemError` |
+
+Quindi un 500 **non nasconde** il messaggio del database — né lato backend
+(`is_technical_code` è una lista chiusa di tre codici, non dipende dallo status)
+né lato frontend. Dice «non è colpa tua» a chi legge i log, e lascia il toast più
+a lungo a video.
+
+#### Scegliere fra 409 e 400: chi ha scelto il valore in conflitto
+
+È il dubbio più frequente quando due entità «non vanno d'accordo». Il criterio:
+
+* **409 · `show_error_banner`** — l'operatore **non ha un campo da correggere**:
+  il conflitto è fra righe che non ha scelto lui (legami creati dal sistema,
+  stato del documento cambiato sotto). Il messaggio è «rileggi lo stato»;
+* **400 · `highlight_form_fields`** — il valore in conflitto **l'ha scelto lui**
+  in un form (un parent, un soggetto, un conto). Il messaggio è «correggi quel
+  campo».
+
+Stesso difetto apparente, status diverso: `E_ARTICOLO_MISMATCH` (riga ordine vs
+riga DDT, legami di sistema) è 409; `E_ID_FISCALI_DIVERSI` (parent account scelto
+a mano) è 400.
+
+#### Il cancello: ogni codice che il DB può nominare deve avere una policy
+
+`apps/core/tests/test_error_codes_db_policy_guardrail.py` — gira in CI a ogni PR
+(opt-in `ZEROERP_TEST_DB_E2E=1`, acceso in `ci-validate.yaml`) e confronta
+`dbops.vw_codici_errore_da_dichiarare` con il dizionario. Fallisce in tre versi:
+
+1. un codice che il DB può nominare, **senza policy e non nel registro** del
+   debito `dbops.codici_errore_senza_policy`;
+2. una voce del registro che **ha ottenuto** la sua policy (la riga va tolta dal
+   CSV: è debito pagato);
+3. una voce del registro che **nessuna funzione viva nomina più**.
+
+⚠️ Aggiungere una policy per un codice che è nel registro **fa diventare rosso il
+cancello** finché il team DB non toglie la riga e riapplica il changeSet
+`20260805-37`. Le due metà vanno concordate insieme: è il presidio che fa il suo
+mestiere, non un incidente.
+
+> Storia completa, criteri e casi: `docs/it/dev/work-in-progress/brief-db-be-terzo-lato-presidio-codici.md`
+> e [Presidi e registri del debito §3.4](/guide/presidi-e-registri-del-debito).
 
 #### Come il codice arriva dal DB al backend (dal 2026-08-05)
 

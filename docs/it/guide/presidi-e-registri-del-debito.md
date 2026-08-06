@@ -452,6 +452,29 @@ ciò che i dati presenti permettono di collaudare.
 Quella differenza sta nell'intenzione di chi l'ha scritto, e nessuna misura la
 trova: è esattamente ciò per cui esiste il registro, con il suo motivo scritto.
 
+### ⚠️ E c'è un difetto che non si presidia affatto
+
+I tre lati del §3.3 e §3.4 hanno tutti una regola **meccanica**: il codice è a
+catalogo? è dichiarato nel codice applicativo? ha un tipo di risposta? Sono
+domande a cui si risponde confrontando due elenchi.
+
+Ce n'è una quarta che non funziona così: **il messaggio descrive davvero la
+condizione che solleva l'errore?** Un `IF NOT FOUND` che solleva un codice
+chiamato «parametro non valido» è un difetto vero — l'operatore legge una frase
+che non c'entra, e il tipo di risposta ne discende sbagliato — ma riconoscerlo
+richiede di capire *cosa significa* quel ramo di codice.
+
+Misurato il 2026-08-06 su 998 punti di sollevamento: l'euristica migliore ha dato
+**~31 candidati per 7 difetti reali, il 23% di precisione**. Un cancello con quel
+rapporto verrebbe disattivato entro una settimana — sarebbe il §4-bis in azione,
+un presidio che grida al lupo finché nessuno lo ascolta più.
+
+Perciò resta una **lente da rilanciare a mano** quando si apre un lotto di
+lavoro, non un passo della CI. La convenzione dei nomi lo dice già da sola:
+`scripts/sql/check_*` è uno strumento, `scripts/sql/guardrail_*` è un cancello.
+**Sapere che una classe di difetti non è automatizzabile vale quanto
+automatizzarne un'altra**: evita di costruire un presidio che mente.
+
 ---
 
 ## Riferimenti

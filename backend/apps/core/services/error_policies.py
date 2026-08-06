@@ -1254,7 +1254,12 @@ class ErrorPolicyRegistry:
         ),
         "E_EMITTENTE_NON_MODIFICABILE": ErrorPolicy(
             code="E_EMITTENTE_NON_MODIFICABILE",
-            http_status=400,
+            # 400 -> 409 il 2026-08-06 (audit coerenza status, api.md
+            # §Tassonomia): «non si tocca piu' dopo la creazione» e' la
+            # definizione RFC 9110 del 409 — conflitto con lo stato attuale
+            # della risorsa — ed e' gia' lo status degli altri 29 codici della
+            # stessa famiglia. `ui_action` invariata: a video non cambia nulla.
+            http_status=409,
             ui_action="show_error_banner",
             user_message="L'emittente fiscale di un operatore e' immutabile. "
                          "Per cambiare l'associazione disattivare l'utente e "
@@ -1506,7 +1511,16 @@ class ErrorPolicyRegistry:
         ),
         "E_UTENTE_BLOCCATO": ErrorPolicy(
             code="E_UTENTE_BLOCCATO",
-            http_status=423,
+            # 423 -> 403 il 2026-08-06 (audit coerenza status). Il 423 e' il lock
+            # WebDAV di una RISORSA (RFC 4918), non di un account: qui e' un
+            # blocco temporaneo dopo troppi tentativi, sollevato da
+            # script.fn_check_blocco_login. Il gemello E_USER_DISABILITATO e'
+            # gia' 403. Il frontend aggancia il CODICE, non lo status
+            # (LoginView.resolveLoginError), quindi a video non cambia nulla.
+            # ⚠️ E NON 429, che sembrerebbe il candidato ovvio: LoginView
+            # intercetta il 429 PRIMA di leggere il codice (e' il throttle per
+            # IP) e il messaggio del DB coi minuti rimanenti andrebbe perso.
+            http_status=403,
             ui_action="show_error_banner",
             user_message="Account temporaneamente bloccato per troppi tentativi.",
         ),
@@ -1632,12 +1646,17 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Non hai i permessi per questo strumento AI.",
         ),
-        "E_AI_CONFIRMATION_REQUIRED": ErrorPolicy(
-            code="E_AI_CONFIRMATION_REQUIRED",
-            http_status=428,
-            ui_action="show_error_banner",
-            user_message="Operazione in scrittura: conferma esplicita richiesta.",
-        ),
+        # <- E_AI_CONFIRMATION_REQUIRED RIMOSSO il 2026-08-06 (audit coerenza
+        #    status). Non lo sollevava nessuno — ne' Python, ne' Vue, ne' il
+        #    database — e il motivo e' che il flusso di conferma dei tool in
+        #    scrittura ha scelto un'altra strada, migliore: `ai_assistant_service`
+        #    restituisce **200 con `requires_confirmation` nel payload**. Una
+        #    conferma richiesta non e' un errore HTTP.
+        #    ⚠️ E il 428 non c'entrava comunque: RFC 6585 lo definisce come «la
+        #    richiesta deve essere condizionale» (`If-Match`, per non perdere
+        #    aggiornamenti concorrenti), non «l'utente deve confermare».
+        #    Se un giorno servisse davvero un errore per questo caso, i due
+        #    presidi lo pretenderanno dichiarato: si riparte da qui, non dal 428.
         # --- Autenticazione: token, email, invito, cambio/reset password ---
         "E_TOKEN": ErrorPolicy(
             code="E_TOKEN",
@@ -2103,7 +2122,10 @@ class ErrorPolicyRegistry:
         # DB-ORD-LOCK 2026-06-04, codice DB messaggi_errore id 469).
         "E_ORD_CLIENTE_IMMUTABILE": ErrorPolicy(
             code="E_ORD_CLIENTE_IMMUTABILE",
-            http_status=400,
+            # 400 -> 409 il 2026-08-06 (audit coerenza status): immutabilita'
+            # post-creazione = conflitto con lo stato attuale (RFC 9110), come
+            # gli altri 29 della famiglia. `ui_action` invariata.
+            http_status=409,
             ui_action="show_error_banner",
             user_message=(
                 "Cliente immutabile dopo la creazione: per cambiare cliente "
@@ -2267,7 +2289,9 @@ class ErrorPolicyRegistry:
         # cambiare cliente = nuovo DDT (mirror E_ORD_CLIENTE_IMMUTABILE).
         "E_DDT_CLIENTE_IMMUTABILE": ErrorPolicy(
             code="E_DDT_CLIENTE_IMMUTABILE",
-            http_status=400,
+            # 400 -> 409 il 2026-08-06 (audit coerenza status), gemello di
+            # E_ORD_CLIENTE_IMMUTABILE. `ui_action` invariata.
+            http_status=409,
             ui_action="show_error_banner",
             user_message=(
                 "Cliente immutabile dopo la creazione: per cambiare cliente "
@@ -2815,15 +2839,14 @@ class ErrorPolicyRegistry:
                 "riferimento (billing account, dati precontrattuali, cliente)."
             ),
         ),
-        "EMITTENTE_NON_MODIFICABILE": ErrorPolicy(
-            code="EMITTENTE_NON_MODIFICABILE",
-            http_status=409,
-            ui_action="show_error_banner",
-            user_message=(
-                "L'emittente fiscale del preventivo non puo' essere modificato "
-                "dopo la creazione. Crea una revisione per cambiarlo."
-            ),
-        ),
+        # <- EMITTENTE_NON_MODIFICABILE (senza prefisso) RIMOSSO il 2026-08-06.
+        #    Il team DB aveva gia' cancellato quel codice dal catalogo il
+        #    2026-08-05 (changeSet 20260805-16, con il censimento «funzioni DB: 0
+        #    · backend/apps: 0 · frontend: 0»): qui era rimasta la voce orfana.
+        #    ⚠️ Non era inerte: dava 409 mentre il gemello vivo
+        #    `E_EMITTENTE_NON_MODIFICABILE` dava 400, ed era **l'unica** delle 53
+        #    coppie legacy/prefissato a divergere. Due risposte per lo stesso
+        #    concetto sopravvivono finche' nessuno confronta le due colonne.
         # ── Parametri di sistema ──
         "E_PARAMETER_NOT_FOUND": ErrorPolicy(
             code="E_PARAMETER_NOT_FOUND",
