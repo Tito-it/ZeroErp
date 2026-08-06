@@ -1385,3 +1385,91 @@ molte più occasioni di trovarne uno che oggi non viene esercitato. La passata v
 fatta **schema per schema, misurando ogni volta**, e ogni rosso nuovo va letto:
 sarà un difetto vero che la suite non stava vedendo, non un incidente da
 aggirare. Ed è esattamente ciò che si vuole da questo cantiere.
+
+---
+
+## 20. `script`: la passata trova il primo vero limite del pattern (2026-08-06)
+
+> Secondo schema del §19. `script` è stato scelto apposta come rodaggio — e ha
+> restituito più di quanto ci si aspettasse.
+
+### 20.1 Cosa è successo
+
+54 file trattati (4 li avevano già). Dei 54, **30 scrivono su tabelle con trigger
+differiti**: l'esposizione non viene dallo schema — `script` non ha tabelle
+proprie con differiti — ma da **dove i suoi test scrivono**.
+
+| `script`, da owner | ok | ko | file rossi |
+| --- | --- | --- | --- |
+| prima | 443 | 9 | 12 |
+| dopo, tutti e 54 | 425 | 9 | **14** |
+| **dopo, con 3 esclusi** | **443** | **9** | **12** |
+
+**Tre file diventavano rossi**, due dei quali erano verdi:
+
+```
+test-fn-guard-soggetto-pf-pura   7/0 -> 1/0   Indirizzo obbligatorio mancante per soggetto …
+test-fn-scope-ef-whitelist      10/0 -> 1/0   idem
+test-fn-is-super-admin           7/1 -> 4/1   Padre non attivo: figlio attivo non consentito
+```
+
+### 20.2 ⚠️ Il limite: `IMMEDIATE` in testa vieta una deferralità VOLUTA
+
+`anagrafiche.soggetti` ha **tre guard `DEFERRABLE INITIALLY DEFERRED`** —
+indirizzi, contatti, dati societari. Lì la deferralità non è un dettaglio
+tecnico: è il **contratto del dominio**. Si crea il soggetto, poi il suo
+indirizzo, e la completezza si verifica al `COMMIT`. È esattamente per questo che
+`anagrafiche.fn_crea_soggetto_pf` può restituire un soggetto ancora incompleto:
+il chiamante completa l'unità di lavoro prima di committare — ed è così che lo
+usa il backend (`soggetti_repository.py`).
+
+`SET CONSTRAINTS ALL IMMEDIATE` in testa pretende l'indirizzo **nell'istante
+stesso dell'INSERT del soggetto**: vieta il pattern che il dominio ha scelto. Il
+test non è sbagliato nel modo in cui costruisce — è sbagliato nel non finire.
+
+⚠️ **Quindi nessuna delle due posizioni è universalmente giusta**, e conviene
+dirlo chiaro prima di aprire il resto della passata:
+
+| posizione | cosa rompe | perché |
+| --- | --- | --- |
+| **in testa** (§17.2) | test che sfruttano la deferralità per costruire in più passi | i controlli scattano prima che l'unità di lavoro sia completa |
+| **in coda** (§17.2) | test che smontano i propri dati alla fine | i differiti scattano dopo il cleanup, su righe ormai cancellate |
+
+La posizione in testa resta quella giusta per i file **resi** transazionali
+(§16-§18): lì riproduce fedelmente il comportamento in autocommit, che era il
+metro da conservare. Per i file **già** transazionali (§19) il metro non esiste —
+non li ha mai esercitati nessuno — e la scelta va fatta guardando il file.
+
+### 20.3 Cosa è rimasto e cosa no
+
+**51 file su 54 tengono la riga a costo zero.** I tre esclusi la portano scritta
+dentro, con la ragione e con il debito dichiarato:
+
+> Senza la riga quei tre guard non vengono esercitati, e la fixture lascia un
+> soggetto che l'applicazione non potrebbe committare. **La correzione vera è
+> completare la fixture** (indirizzo + contatti): allora la riga si può
+> rimettere, e il test verifica sul serio.
+
+`script` torna a **443/9/12, zero differenze**.
+`scripts/pgtap-baseline.sh script config`: **18 rossi su 84, nessuna
+regressione**.
+
+### 20.4 Il metodo per i 254 che restano
+
+Il tasso non è più zero: su 54 file, **3 hanno reagito** (5,5%), e tutti e tre
+per la stessa ragione — fixture che non completano l'unità di lavoro. Quindi:
+
+1. **Applicare schema per schema**, mai in blocco.
+2. **Ogni rosso nuovo va letto**, e la domanda è sempre la stessa: *il test sta
+   costruendo qualcosa che l'applicazione potrebbe committare?* Se no, il difetto
+   è nella fixture e va completata. Se sì, la riga in quel file va tolta o
+   spostata.
+3. **Non accogliere mai un verde**: è la lezione del §17.1, e vale al contrario
+   anche qui — un file che resta verde con la riga ha davvero guadagnato
+   copertura, ma solo se scriveva su tabelle con differiti. Trenta su 54, in
+   `script`.
+
+Restano **254 file**: `vendite` 167, `anagrafiche` 22, `documenti` 11, `rls` 11,
+`dbops` 11, `pratiche` 10, `ui` 8, `catalogo` 8, `pagamenti` 4, `maintenance` 1,
+`shop` 1. ⚠️ `vendite` è due terzi del residuo e ha 150 trigger differiti su 57
+tabelle: è lì che ci si aspetta il grosso delle reazioni, e va tenuto per ultimo.
