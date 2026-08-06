@@ -4256,6 +4256,391 @@ class ErrorPolicyRegistry:
             # semantica, e da li' era arrivata fino allo status HTTP.
             user_message="Profilo di accesso non trovato.",
         ),
+        # ══════════════════════════════════════════════════════════════════
+        # TERZO LATO — lotto 5A: i 26 raggiunti dal backend (2026-08-07)
+        #   Brief §25. Sono codici con `da_trigger = false`, che NON vuol dire
+        #   «non li legge nessuno»: li solleva una funzione che **Django chiama
+        #   direttamente**, quindi arrivano all'operatore quanto quelli da
+        #   trigger. Il flag serviva a dare un ORDINE alle decisioni (§4), non a
+        #   escludere — vedi §24.4, dove questa confusione e' costata una frase
+        #   sbagliata nel riassunto.
+        # ══════════════════════════════════════════════════════════════════
+        # ── 404: la cosa indicata non esiste ──
+        "E_ARTICOLO_NOT_FOUND": ErrorPolicy(
+            code="E_ARTICOLO_NOT_FOUND",
+            http_status=404,
+            ui_action="show_error_banner",
+            user_message="Articolo non trovato.",
+        ),
+        "E_CLIENTE_NON_TROVATO": ErrorPolicy(
+            code="E_CLIENTE_NON_TROVATO",
+            http_status=404,
+            ui_action="show_error_banner",
+            user_message="Cliente non trovato.",
+        ),
+        "E_COMMESSA_NON_TROVATA": ErrorPolicy(
+            code="E_COMMESSA_NON_TROVATA",
+            http_status=404,
+            ui_action="show_error_banner",
+            # ⚠️ Stessa funzione (`fn_cambia_stato_commessa`) di
+            # `E_STATO_WORKFLOW_NON_TROVATO`, che sta gia' a 404: era la prova in
+            # casa che «da_trigger = false» non significa irraggiungibile.
+            user_message="Commessa non trovata.",
+        ),
+        "E_DOCUMENTI_VERSIONE_NOT_FOUND": ErrorPolicy(
+            code="E_DOCUMENTI_VERSIONE_NOT_FOUND",
+            http_status=404,
+            ui_action="show_error_banner",
+            user_message="Versione template documento non trovata.",
+        ),
+        "E_TIPO_RUOLO_NON_TROVATO": ErrorPolicy(
+            code="E_TIPO_RUOLO_NON_TROVATO",
+            http_status=404,
+            ui_action="show_error_banner",
+            user_message="Tipo ruolo non trovato.",
+        ),
+        "E_COD_INT_RUOLO": ErrorPolicy(
+            code="E_COD_INT_RUOLO",
+            http_status=404,
+            ui_action="show_error_banner",
+            # Il codice ruolo arriva dal CHIAMANTE (`assign_ruolo(soggetto_id,
+            # codice_ruolo)`) e non risolve nessuna riga di `config.tipi_ruoli`:
+            # e' un riferimento che non esiste, non una configurazione mancante.
+            user_message="Tipo ruolo non trovato per il codice indicato.",
+        ),
+        # ── 409: in conflitto con lo stato attuale ──
+        "E_COMMESSA_ATTIVITA_GIA_EMESSA": ErrorPolicy(
+            code="E_COMMESSA_ATTIVITA_GIA_EMESSA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Riga commessa gia' emessa: modifica non consentita.",
+        ),
+        "E_COMMESSA_NON_MODIFICABILE": ErrorPolicy(
+            code="E_COMMESSA_NON_MODIFICABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="La commessa non e' in uno stato modificabile.",
+        ),
+        "E_COMMESSA_SORGENTE_ALTRA_COMMESSA": ErrorPolicy(
+            code="E_COMMESSA_SORGENTE_ALTRA_COMMESSA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="La sorgente e' gia' collegata a un'altra commessa.",
+        ),
+        "E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO": ErrorPolicy(
+            code="E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="La versione template non e' in uno stato pubblicabile.",
+        ),
+        "E_FATTURA_SENZA_RIGHE": ErrorPolicy(
+            code="E_FATTURA_SENZA_RIGHE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Numerazione fiscale rifiutata: il documento non ha righe.",
+        ),
+        "E_VENDITA_PREVENTIVO_NESSUNA_RIGA_ORDINE": ErrorPolicy(
+            code="E_VENDITA_PREVENTIVO_NESSUNA_RIGA_ORDINE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Nessuna riga merce da portare a ordine.",
+        ),
+        "E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO": ErrorPolicy(
+            code="E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Il preventivo non e' in stato ACCETTATO: impossibile generare un ordine.",
+        ),
+        "E_RECONCILE_AMBIGUO": ErrorPolicy(
+            code="E_RECONCILE_AMBIGUO",
+            http_status=409,
+            ui_action="show_error_banner",
+            # ⚠️ CODICE-DATO: `pratiche.fn_reconcile_sorgente` non lo solleva —
+            # lo **scrive** nella colonna `errcode` di
+            # `pratiche.reconcile_errori` (best-effort, con RAISE WARNING come
+            # ripiego). Nessun codice Python legge quella tabella, quindi oggi
+            # non raggiunge nessun client: la policy c'e' perche' il cancello la
+            # pretende, come per `E_ATTIVO_BLOCK_REF_NULL` (§16.2).
+            user_message="Riconciliazione sorgente ambigua: piu' candidati.",
+        ),
+        # ── 422: la richiesta si capisce e non si puo' eseguire ──
+        "E_DOC_COMPOSITO_BOM_VUOTA": ErrorPolicy(
+            code="E_DOC_COMPOSITO_BOM_VUOTA",
+            http_status=422,
+            ui_action="show_error_banner",
+            # Gemello di `E_LISTINO_VERSIONE_NON_ATTIVA`: l'articolo composito
+            # c'e', la sua distinta non ha componenti validi ALLA DATA. Non e'
+            # un «non trovato», e' una configurazione che non regge quel giorno.
+            user_message="Articolo composito senza componenti validi alla data: distinta scaduta o assente.",
+        ),
+        # ── 500: anomalie tecniche ──
+        "E_QUERY_FAILED": ErrorPolicy(
+            code="E_QUERY_FAILED",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Errore di esecuzione della query sulla tabella indicata.",
+        ),
+        "E_JOB_TYPE_NON_TROVATO": ErrorPolicy(
+            code="E_JOB_TYPE_NON_TROVATO",
+            http_status=500,
+            ui_action="show_error_banner",
+            # `dbops.coda_lavori_tipi` non ha quel codice: un tipo di job che il
+            # backend accoda ma nessuno ha registrato. E' il gemello esatto di
+            # `E_PIPELINE_TASK_HANDLER_NOT_FOUND` — difetto di deploy, non
+            # risorsa mancante.
+            user_message="Tipo di job non registrato nel registry.",
+        ),
+        "E_SOGGETTI_RUOLI_RACE": ErrorPolicy(
+            code="E_SOGGETTI_RUOLI_RACE",
+            http_status=500,
+            ui_action="show_error_banner",
+            # Il commento nel DB lo chiama «caso anomalo»: unique_violation
+            # sull'insert e poi la SELECT non trova la riga. E' uno stato
+            # incoerente, non un errore dell'operatore.
+            user_message="Anomalia di concorrenza sull'assegnazione del ruolo.",
+        ),
+        # ── 501: disattivato di proposito ──
+        "E_JOB_TYPE_NON_ATTIVO": ErrorPolicy(
+            code="E_JOB_TYPE_NON_ATTIVO",
+            http_status=501,
+            ui_action="show_error_banner",
+            # ⚠️ Distinto dal gemello NON_TROVATO: qui il tipo **esiste** ed e'
+            # stato disattivato. Stessa famiglia di `E_AI_DISABLED` e
+            # `E_SHOP_NON_DISPONIBILE`, gia' a 501: funzione presente ma non
+            # servita. Il 503 sarebbe l'alternativa, ma introdurrebbe un
+            # dodicesimo status per un codice solo — vedi api.md sui one-off.
+            user_message="Tipo di job non attivo.",
+        ),
+        # ── 400 · campo da correggere ──
+        "E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO": ErrorPolicy(
+            code="E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Parametro non valido per la pubblicazione della versione template.",
+        ),
+        "E_PUSH_RIGHE_IDS_SENZA_PREVENTIVO": ErrorPolicy(
+            code="E_PUSH_RIGHE_IDS_SENZA_PREVENTIVO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Il filtro righe vale solo sul push di un singolo preventivo.",
+        ),
+        "E_PUSH_SORGENTE_ID_INVALIDO": ErrorPolicy(
+            code="E_PUSH_SORGENTE_ID_INVALIDO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Identificativo sorgente non valido: deve essere maggiore di zero.",
+        ),
+        "E_SOGGETTO_NULL": ErrorPolicy(
+            code="E_SOGGETTO_NULL",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Soggetto mancante per il ruolo indicato.",
+        ),
+        "E_SORG_NORM_NON_RISOLTA": ErrorPolicy(
+            code="E_SORG_NORM_NON_RISOLTA",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Chiave sorgente non traducibile per il tipo indicato.",
+        ),
+        "E_STATO_SORGENTE_PARAM_INVALIDO": ErrorPolicy(
+            code="E_STATO_SORGENTE_PARAM_INVALIDO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Parametri sorgente non validi.",
+        ),
+        "E_VALIDAZIONE": ErrorPolicy(
+            code="E_VALIDAZIONE",
+            http_status=400,
+            ui_action="show_error_banner",
+            # ⚠️ ACCUMULATORE: lo nominano **10 funzioni** e il messaggio e' un
+            # passthrough («Validazione fallita: %s»). Banner e non campo
+            # evidenziato proprio per questo: non sappiamo quale campo sarebbe.
+            # Stessa famiglia di `E_PARAMETRO_INVALIDO` (113 funzioni) — da
+            # tenere d'occhio alla prossima passata della lente.
+            user_message="Validazione fallita.",
+        ),
+        # ══════════════════════════════════════════════════════════════════
+        # TERZO LATO — lotto 5B: i 25 su catene SQL (2026-08-07)
+        #   Brief §26. Non li chiama il backend direttamente: li chiamano altre
+        #   funzioni SQL. Nove su 25 sono il **framework di automazione**
+        #   (`fn_run_automations_*`, `fn_ensure_storico_table`), che genera
+        #   trigger e tabelle: stessa famiglia degli `E_ATTIVO_*` del lotto 4,
+        #   stesso 500. Con questi il registro arriva a zero.
+        # ══════════════════════════════════════════════════════════════════
+        # ── 500: il framework di automazione e le anomalie ──
+        "E_AUDIT_UPDATE": ErrorPolicy(
+            code="E_AUDIT_UPDATE",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Generazione del trigger di audit fallita.",
+        ),
+        "E_DELETE_BLOCK": ErrorPolicy(
+            code="E_DELETE_BLOCK",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Generazione del trigger di blocco cancellazione fallita.",
+        ),
+        "E_LOCK_COLUMNS": ErrorPolicy(
+            code="E_LOCK_COLUMNS",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Automazione delle colonne di lock fallita.",
+        ),
+        "E_STORICO_UD": ErrorPolicy(
+            code="E_STORICO_UD",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Automazione di storicizzazione fallita.",
+        ),
+        "E_STORICO_PROVISION": ErrorPolicy(
+            code="E_STORICO_PROVISION",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Generazione della tabella di storico fallita.",
+        ),
+        "E_STORICO_PARENT_PK_NOT_FOUND": ErrorPolicy(
+            code="E_STORICO_PARENT_PK_NOT_FOUND",
+            http_status=500,
+            ui_action="show_error_banner",
+            # ⚠️ Finisce per NOT_FOUND e non e' un 404: non manca un record
+            # richiesto, il provisioning dello storico non riesce a determinare
+            # la PK della tabella padre. Stesso inganno di
+            # `E_SNAPSHOT_ID_NOT_FOUND` (§15.1).
+            user_message="Impossibile determinare la chiave primaria della tabella padre.",
+        ),
+        "E_TX_ID": ErrorPolicy(
+            code="E_TX_ID",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Generazione del trigger tx_id fallita.",
+        ),
+        "E_DEFAULT_ERRATO": ErrorPolicy(
+            code="E_DEFAULT_ERRATO",
+            http_status=500,
+            ui_action="show_error_banner",
+            # `script.fn_get_default_by_param`: il parametro non ha valori per
+            # quella tabella. E' un default mai configurato, non un dato
+            # sbagliato dall'operatore.
+            user_message="Nessun valore di default configurato per il parametro.",
+        ),
+        "E_SCADENZE_TERMINE_INVALIDO": ErrorPolicy(
+            code="E_SCADENZE_TERMINE_INVALIDO",
+            http_status=500,
+            ui_action="show_error_banner",
+            # ⭐ Il codice si autodenuncia: il commento nel DB dice che questo
+            # ramo «si raggiunge solo aggirando il catalogo», perche' il CHECK
+            # ammette solo 'UGUALI'. E' una guardia difensiva contro una
+            # configurazione corrotta — «un piano rate calcolato con una regola
+            # che non esiste sarebbe peggio di un errore». Non e' l'operatore.
+            user_message="Regola di ripartizione del termine di pagamento non valida.",
+        ),
+        # ── 409: in conflitto con lo stato attuale ──
+        "E_FORNITORE_NON_ATTIVO": ErrorPolicy(
+            code="E_FORNITORE_NON_ATTIVO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Fornitore non attivo.",
+        ),
+        "E_FORNITORE_BLOCCATO": ErrorPolicy(
+            code="E_FORNITORE_BLOCCATO",
+            http_status=409,
+            ui_action="show_error_banner",
+            # `v_blocca_ordini = true`: e' lo stato del fornitore a bloccare
+            # l'ordine, non un diritto che manca all'operatore (403).
+            user_message="Fornitore bloccato: non e' possibile emettere ordini.",
+        ),
+        "E_CLIENTE_NON_ATTIVO": ErrorPolicy(
+            code="E_CLIENTE_NON_ATTIVO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Il cliente non e' in stato attivo.",
+        ),
+        "E_COMMESSA_EMITTENTE_MANCANTE": ErrorPolicy(
+            code="E_COMMESSA_EMITTENTE_MANCANTE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Commessa senza emittente fiscale: fatturazione non possibile.",
+        ),
+        "E_COMMESSA_NESSUNA_RIGA_APPROVATA": ErrorPolicy(
+            code="E_COMMESSA_NESSUNA_RIGA_APPROVATA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Nessuna riga approvata: impossibile passare a PRONTA_FATTURAZIONE.",
+        ),
+        "E_SCADENZE_BASE_NON_PRONTA": ErrorPolicy(
+            code="E_SCADENZE_BASE_NON_PRONTA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Totale a pagare non calcolato: impossibile ripartire il piano rate.",
+        ),
+        "E_SCADENZE_FATTURA_BLOCCATA": ErrorPolicy(
+            code="E_SCADENZE_FATTURA_BLOCCATA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Lo stato della fattura non consente di rigenerare il piano rate.",
+        ),
+        "E_SCADENZE_TERMINE_MANCANTE": ErrorPolicy(
+            code="E_SCADENZE_TERMINE_MANCANTE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Termine di pagamento non valorizzato in testata.",
+        ),
+        "E_LOTTO_FATTURE_STATO_INCOERENTE": ErrorPolicy(
+            code="E_LOTTO_FATTURE_STATO_INCOERENTE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Fatture con stato fiscale diverso da quello del lotto.",
+        ),
+        # ── 404: la cosa indicata non esiste ──
+        "E_FORNITORE_NON_TROVATO": ErrorPolicy(
+            code="E_FORNITORE_NON_TROVATO",
+            http_status=404,
+            ui_action="show_error_banner",
+            user_message="Fornitore non trovato.",
+        ),
+        "E_SOGGETTO_NOT_FOUND": ErrorPolicy(
+            code="E_SOGGETTO_NOT_FOUND",
+            http_status=404,
+            ui_action="show_error_banner",
+            user_message="Soggetto non trovato.",
+        ),
+        # ── 400 · dato da correggere ──
+        "E_FORNITORE_ID_INVALIDO": ErrorPolicy(
+            code="E_FORNITORE_ID_INVALIDO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Identificativo fornitore non valido.",
+        ),
+        "E_DATA_CESSAZIONE_INVALIDA": ErrorPolicy(
+            code="E_DATA_CESSAZIONE_INVALIDA",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Data di cessazione precedente alla data di attivazione.",
+        ),
+        "E_ADMIN_UO_NON_TROVATA": ErrorPolicy(
+            code="E_ADMIN_UO_NON_TROVATA",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            # ⚠️ Il guard e' `NOT EXISTS (... id = %s AND attivo = true)`: copre
+            # DUE casi, unita' inesistente e unita' disattivata. Il 404 sarebbe
+            # giusto solo nel primo e mentirebbe nel secondo; il 400 col campo
+            # evidenziato — «scegline un'altra» — e' corretto in entrambi.
+            user_message="Unita' organizzativa non valida o non attiva.",
+        ),
+        "E_AUTH_USER_SOGGETTO_CON_PIVA": ErrorPolicy(
+            code="E_AUTH_USER_SOGGETTO_CON_PIVA",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Un operatore non puo' essere associato a un soggetto con partita IVA.",
+        ),
+        "E_AUTH_USER_SOGGETTO_SENZA_CF": ErrorPolicy(
+            code="E_AUTH_USER_SOGGETTO_SENZA_CF",
+            http_status=400,
+            ui_action="show_error_banner",
+            # Il dato manca sul SOGGETTO, non sul form in corso: evidenziare un
+            # campo manderebbe a cercare dove non c'e'.
+            user_message="Il soggetto non ha codice fiscale: non ammesso come operatore.",
+        ),
         # ── §19.4: gli altri tre `IF NOT FOUND` travestiti da «parametro» ──
         #   Stessa forma dei due sopra, trovati dalla lente
         #   `scripts/sql/check_messaggio_vs_condizione.sql` dopo che i primi due
