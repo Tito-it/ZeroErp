@@ -116,6 +116,26 @@ jobs:
             https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.4/postgresql-42.7.4.jar
           liquibase --version
 
+      - name: Guardrail runOnChange (00_schema / 20_code)
+        # ⚠️ POSIZIONE: prima di Liquibase, e non e' un dettaglio. Questo
+        # controllo legge SOLO i file YAML — non gli serve un database — e
+        # quello che presidia e' proprio il modo in cui la pipeline applica i
+        # changeSet. Metterlo dopo il migrate significherebbe scoprire a valle
+        # un difetto che ha gia' riscritto meta' schema.
+        #
+        # Cosa presidia: un changeSet di schema o di codice si applica UNA
+        # volta, in ordine di timeline. Con `runOnChange: true` ri-esegue anche
+        # nella SECONDA invocazione di Liquibase di questo workflow
+        # (--contexts=ci_apply, piu' sotto), fuori ordine, e riscrive il proprio
+        # corpo SOPRA le revisioni piu' recenti — che sono spente e non
+        # ri-eseguono. Su un DB di sviluppo l'invocazione e' una sola: il
+        # difetto non si vede fino a qui. Il 2026-08-06 riportava indietro 49
+        # funzioni a ogni build, fra cui dbops.trgfn_tx_id_managed.
+        #
+        # Resta lecito in 80_data (mirror CSV), 85_pgagent, 90_end: la'
+        # ri-eseguire e' il comportamento voluto.
+        run: python scripts/guardrail_run_on_change.py
+
       - name: Generate Liquibase autogen master (timeline)
         run: |
           python scripts/gen_master_autogen.py \

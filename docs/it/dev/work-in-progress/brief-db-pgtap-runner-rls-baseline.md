@@ -4,9 +4,14 @@
 > **Data**: 2026-07-29 · **Owner**: Tid · **Stato**: 🟡 **IN CORSO** —
 > il sintomo è rientrato per altra via (strada **(a)**), la decisione di passare
 > a **(b)** è presa il 2026-08-05 e il piano è al **§8**.
-> **Da leggere per primo: §11 e §12** — stato al 2026-08-06: la domanda aperta
-> del §10.3 è sciolta e la passata è completa su **tutti** gli schemi (408 file
-> su 426). Cosa resta: **§12.4** ·
+> **Da leggere per primo: §11 → §14** — stato al 2026-08-06. La domanda aperta
+> del §10.3 è sciolta (§11); la riga di contesto è in **408 file su 426**, con 4
+> esclusi motivati (§12); la prima misura sotto l'utente applicativo dice che il
+> residuo è **65 file, di cui 38 con una causa sola** (§13); il §13.3 è il
+> **primo difetto di prodotto** che il cantiere restituisce, corretto.
+> ⚠️ **Il §14 corregge il metro con cui erano stati presi i numeri dei §8.2,
+> §9.2, §12.2 e della prima stesura del §13.1**: leggerlo prima di citare una
+> cifra di quelle sezioni. Cosa resta: **§13.4** ·
 > **Priorità**: 🔴 **ALTA** — non per un difetto di prodotto, ma perché
 > **`scripts/pgtap-baseline.sh` oggi non può fare il suo mestiere**: distinguere
 > un rosso nuovo da uno noto. Finché non è risolto, ogni «zero regressioni»
@@ -204,6 +209,9 @@ di funzionare tutta insieme, perché l'owner non salterà più la RLS.
 
 ### 8.2 Quanto costa (b), misurato
 
+> ⚠️ **Valori assoluti sovrastimati: vedi §14** (misura senza `ON_ERROR_STOP`).
+> I confronti fra le righe restano validi — stesso metro su tutte.
+
 Non stimato: la suite `vendite` è stata eseguita **tre volte**, negli stessi
 minuti, cambiando solo chi la lancia.
 
@@ -282,6 +290,9 @@ Va rigenerata solo quando il runner cambierà utente (§9.3), perché è allora 
 descriverà un mondo diverso.
 
 ### 9.2 L'effetto, misurato col runner attuale (owner)
+
+> ⚠️ **Valori assoluti sovrastimati: vedi §14** (misura senza `ON_ERROR_STOP`).
+> I confronti fra le righe restano validi — stesso metro su tutte.
 
 | | ok | ko | file rossi o muti |
 | --- | --- | --- | --- |
@@ -569,6 +580,10 @@ un test adesso sa in che condizione gira, e se non ci gira sa perché.
 
 ### 12.2 L'effetto, misurato schema per schema da owner
 
+> ⚠️ **I valori assoluti qui sotto sono sovrastimati** — vedi §14. **La
+> conclusione regge**: «prima» e «dopo» sono stati misurati con lo stesso metro,
+> quindi «invariato» significa davvero invariato.
+
 Metodo del §11.2: aggiungere, rimisurare, **pretendere zero differenze**.
 
 | schema | file | prima (ok/ko/rossi) | dopo |
@@ -657,3 +672,238 @@ Dei cinque punti del §11.4 restano:
 4. **Passi 3 e 4 del §8.3**: cambio utente al runner e ribaselinatura. Ora sono
    davvero una riga in `scripts/testpgtap.sh` più una rigenerazione — tutto il
    resto è pronto.
+
+---
+
+## 13. La prima misura sotto `zeroerp_app` — e il primo difetto vero (2026-08-06)
+
+> Chiude il punto **1 del §12.4**. La credenziale del ruolo applicativo è stata
+> messa in `~/.pgpass`; il runner **non è ancora cambiato**.
+
+### 13.1 Il quadro
+
+> ⚠️ **Questo paragrafo è stato riscritto: la prima stesura riportava numeri
+> presi con un metro sbagliato.** Cosa non andava, cosa resta valido e come si
+> riconosce: **§14**. Sotto ci sono i numeri verificati, misurati riproducendo
+> `pg_prove` (`ON_ERROR_STOP=1`) e allineati alla baseline **file per file**.
+
+| suite intera, 426 file | ok | ko | file rossi |
+| --- | --- | --- | --- |
+| owner (com'è oggi) | 3853 | 74 | **88** |
+| **utente applicativo** | **3318** | **69** | **152** |
+
+Gli 88 dell'owner coincidono **esattamente** con la baseline, nome per nome:
+zero divergenze in entrambe le direzioni. È la prova che il metro è quello giusto.
+
+Il numero che conta non è però 152 — dentro ci sono anche i rossi già noti. È il
+**delta**: i file che l'owner vede verdi e l'utente applicativo no, cioè ciò che
+davvero blocca il cambio di runner.
+
+**Sessantacinque file.** E la loro distribuzione è la notizia buona:
+
+| causa | file | che cos'è |
+| --- | --- | --- |
+| `permesso negato per la tabella workflow_definizioni` | **38** | **una sola causa, e vale il 58% del delta**: 37 dei 43 file di `pratiche` più uno di `dbops`. Vedi §13.2 |
+| `bisogna essere proprietari della tabella …` | 9 | i test fanno `ALTER TABLE … FORCE ROW LEVEL SECURITY`: richiedono l'**owner per natura**. 6 sono la famiglia `rls/`, uno è `vendite/test-promo-articoli-guard-data-driven-v1` — quello che il §8.2 aveva già isolato come «il lavoro residuo a mano è UN file» |
+| `la nuova riga viola la regola di sicurezza per riga` | 7 | RLS **davvero esercitata**, su `commesse` (5) e `fatture_righe` (2). Non è un incidente: è il motivo per cui esiste questo brief |
+| `permesso negato per lo schema dbops` | 3 | i test fanno `CREATE TABLE dbops.…`: strumenti DBA, stessa famiglia «owner» |
+| GRANT mancanti mirati | 4 | `preventivi`, `pratiche_sorgenti`, `indirizzi_dettaglio`, `dashboard_definizione` |
+| non-ok o piano non rispettato | 3 | da guardare uno per uno |
+| `Profilo N (tipo AD_HOC): binding non coerente` | 1 | il `ui` del §12.3 — ora leggibile grazie al §13.3 |
+| `Nessun emittente fiscale attivo … GUC vuota` | 1 | `test-vw-dash-aperto-v1`, già escluso e documentato |
+
+Due letture, e sono entrambe utili:
+
+* **Il grosso è UNA correzione.** 38 file su 65 si fermano tutti sulla stessa
+  riga. Non sono 38 problemi: è un `SECURITY DEFINER` mancante (§13.2).
+* **Dodici file sono la famiglia «richiede owner»** (9 + 3): non sono difetti e
+  non lo diventeranno. Vanno riconosciuti come categoria, e il runner dovrà
+  saperli lanciare da owner. È quella, non i permessi, la vera precondizione al
+  passo 3 del §8.3.
+
+### 13.2 `pratiche` sotto l'utente applicativo: un trigger, non un permesso
+
+Il primo errore, letto come insegna il §10.3:
+
+```
+ERRORE: permesso negato per la tabella workflow_definizioni
+CONTESTO: funzione PL/pgSQL pratiche.trgfn_tipi_prestazione_bootstrap_definizione() riga 7
+          INSERT INTO pratiche.workflow_definizioni …
+```
+
+Un **trigger** `z90` su `pratiche.tipi_prestazione` scrive la definizione «v1 —
+preset iniziale», ed è `SECURITY INVOKER`. Ma `workflow_definizioni` è SELECT-only
+per il ruolo applicativo **per scelta** (`20260703-15`, §11.1). Quindi:
+**`zeroerp_app` non può creare un tipo di prestazione**, mai, per nessuna via.
+
+⚠️ **È il singolo blocco più grosso di tutto il cantiere**: **37 dei 43 file di
+`pratiche`, più uno di `dbops`**, si fermano su questa riga — 38 dei 65 file del
+delta. Ogni fixture che crea un tipo di prestazione muore lì, alla prima
+istruzione utile. Non sono 38 problemi da istruire: è una parola mancante.
+
+Oggi non si vede perché il backend non ci scrive — verificato, nessun
+`INSERT/UPDATE/DELETE` su `pratiche.tipi_prestazione` in `backend/`. È un buco
+**latente**: il giorno in cui nasce la schermata «nuovo tipo prestazione», si
+rompe.
+
+La correzione ha un precedente diretto nello stesso schema: `20260703-16` e
+`-17` hanno reso `SECURITY DEFINER` `fn_fork_nuova_versione` e
+`fn_pubblica_definizione` per la stessa ragione. Il bootstrap non è una scrittura
+che l'utente sceglie, è il dominio che si prepara da sé — il caso da manuale per
+il `DEFINER`. **Non fatto qui**: appartiene al cantiere delle definizioni
+versionate, e va deciso lì insieme ai 3 test del §11.1.
+
+### 13.3 ⚠️ Un guard che non ha mai detto la sua ragione — corretto
+
+Questo **non è un difetto di test**: è il primo difetto di prodotto che la strada
+(b) restituisce, e da solo ripaga il cantiere.
+
+Il messaggio registrato per `E_PROFILO_ACCESSO_BINDING_INCOERENTE` ha **due**
+segnaposto:
+
+```
+Profilo %s (tipo %s): binding non coerente col tipo del profilo.
+```
+
+ma tutti e quattro i punti di `config.trgfn_profili_accesso_bindings_guard_coerenza`
+che lo sollevavano passavano **un solo** valore variadico. `fn_log_and_raise_error`
+compone con `format(messaggio, VARIADIC valori)`, quindi ogni volta che il guard
+scattava esplodeva prima di parlare:
+
+```
+ERRORE: numero di argomenti non sufficiente per format()   (SQLSTATE 22023)
+```
+
+Chi lo incontrava vedeva un errore interno di PostgreSQL al posto della ragione, e
+nel log non finiva nessun codice di dominio. **Riprodotto anche da owner**: non
+c'entra l'utente applicativo, che ha solo avuto il merito di passare da lì.
+
+**Corretto** — changeSet `20260806-12`, `v_tipo_profilo::text` come secondo valore
+nei quattro punti. Ora il guard dice:
+
+```
+P0001 | Profilo 1 (tipo REPARTO): binding non coerente col tipo del profilo.
+```
+
+**Perché nessuno se n'era accorto, ed è la parte che vale.** Il test esiste —
+`config/test-profili-accesso-bindings-guard-coerenza.sql` — e passava.
+Usava `throws_ok(sql, NULL, NULL, descrizione)`: verifica **che** sollevi, non
+**che cosa**. Il crash di `format()` lo soddisfaceva esattamente come lo avrebbe
+soddisfatto il guard funzionante. Verde per la ragione sbagliata, con la
+descrizione che nominava il codice atteso senza mai controllarlo.
+
+Le asserzioni ora pretendono lo SQLSTATE. E tirando quel filo ne è uscita una
+seconda:
+
+⚠️ **L'asserzione 4 non collaudava il `CHECK`, e non lo ha mai fatto.** Si
+chiamava «CHECK xor: 0 colonne valorizzate», ma in PostgreSQL **i trigger BEFORE
+ROW girano prima che i vincoli CHECK siano valutati**: con zero colonne su un
+profilo REPARTO è il guard a intercettare, e `chk_profili_accesso_bindings_xor`
+non viene mai raggiunto. Misurato: `P0001`, non `23514`. L'unica asserzione che
+tocca davvero il CHECK è la **5**, e per un motivo preciso — con
+`unita_organizzativa_id` valorizzato il guard è soddisfatto e lascia passare,
+così l'xor può finalmente scattare.
+
+Lo stesso equivoco stava scritto **dentro la funzione**, nel commento
+«Pre-condizioni: il CHECK garantisce … prima che il trigger venga eseguito».
+È il contrario, ed è corretto nel changeSet: un commento sbagliato che aveva già
+ingannato un test non è un dettaglio di forma.
+
+Test **9/9 verde**, `pgtap-baseline.sh config` senza regressioni.
+
+### 13.4 Cosa resta, in ordine di resa
+
+1. **`trgfn_tipi_prestazione_bootstrap_definizione` → `SECURITY DEFINER`**
+   (§13.2). **Sblocca 38 dei 65 file del delta** — è la mossa con il rapporto
+   resa/costo più alto di tutto il cantiere, e ha già due precedenti nello stesso
+   schema (`20260703-16`, `-17`). Va evasa insieme ai 3 test su
+   `workflow_definizioni` del §11.1: cantiere definizioni versionate.
+2. **La famiglia «richiede owner»** (12 file: 9 `ALTER TABLE … FORCE ROW LEVEL
+   SECURITY` + 3 `CREATE TABLE dbops.…`). Non è un difetto, è una **categoria**:
+   serve una marcatura nel file e un runner che sappia lanciarli da owner. È la
+   vera precondizione al passo 3 del §8.3, ed è l'unico punto che richiede una
+   decisione di design, non una correzione.
+3. **I 7 file con RLS in scrittura** su `commesse` e `fatture_righe`: qui la
+   policy viene esercitata sul serio, ed è il motivo per cui esiste il brief.
+   Vanno guardati uno per uno — è lì che si scopre se una policy è giusta.
+4. **I 4 GRANT mirati** (`preventivi`, `pratiche_sorgenti`,
+   `indirizzi_dettaglio`, `dashboard_definizione`) e **i 2 test `ui`** del §12.3.
+   Nota: dopo il fix del §13.3 il loro errore è finalmente leggibile —
+   «Profilo 9469 (tipo AD_HOC): binding non coerente col tipo del profilo» — e
+   conferma la diagnosi del §12.3.
+5. **I 3 file con non-ok o piano non rispettato**, da guardare uno per uno.
+6. **Il cantiere `LIMIT 1`** (§11.3): 133 siti a rischio ALTO.
+7. Poi, e solo poi, **cambio utente al runner e ribaselinatura**.
+
+---
+
+## 14. ⚠️ Il metro era sbagliato — cosa cade e cosa regge (2026-08-06)
+
+> Trovato consolidando il brief: i conteggi non tornavano con
+> `scripts/pgtap-baseline.sh`, e non tornavano per un motivo preciso.
+
+### 14.1 Il difetto della misura
+
+Le misure di questo cantiere sono state prese lanciando i file con
+`psql -f`. Ma `pg_prove` — il runner vero, quello che sta dentro
+`scripts/testpgtap.sh` e `pgtap-baseline.sh` — li lancia con **`ON_ERROR_STOP=1`**.
+
+La differenza non è di forma. Senza quell'opzione **psql tira dritto dopo un
+errore**: continua a eseguire il file, continua a stampare `ok`, ed esce con
+codice **0**. Con l'opzione si ferma alla prima istruzione che fallisce.
+
+Esempio misurato, stesso file, stesso istante:
+
+```
+senza ON_ERROR_STOP : 6 ok su 6, exit 0                  -> sembra VERDE
+con  ON_ERROR_STOP  : 3 ok, exit 3                       -> e' ROSSO
+pg_prove            : Tests: 3, Bad plan. You planned 6 tests but ran 3.  FAIL
+```
+
+Conseguenza: **gli `ok` erano gonfiati e i file rossi sottostimati**. Il conto
+tornava a 3920/131/**86** contro gli **88** della baseline, e le due righe di
+scarto sembravano «rientrati» — non lo erano.
+
+Riprodotto `pg_prove` (piano + `not ok` + exit code, con `ON_ERROR_STOP=1`), gli
+88 file rossi da owner combaciano con la baseline **nome per nome, zero
+divergenze in entrambe le direzioni**.
+
+### 14.2 Cosa cade
+
+I **valori assoluti** dei §8.2, §9.2, §12.2 e della prima stesura del §13.1.
+Sono sovrastimati sugli `ok` e sottostimati sui rossi. In particolare:
+
+* il delta sotto l'utente applicativo non è 20 file: è **65**;
+* `pratiche` sotto l'utente applicativo non ha 5 file rossi ma **38 su 43** —
+  perché quasi tutti muoiono alla prima istruzione utile (§13.2), e senza
+  `ON_ERROR_STOP` proseguivano a produrre asserzioni verdi che il runner non
+  avrebbe mai visto.
+
+### 14.3 Cosa regge — e non è poco
+
+**Tutti i confronti prima/dopo restano validi**, perché i due lati sono stati
+misurati con lo stesso metro. Quindi restano vere, e non vanno rifatte:
+
+* §12.2 — la riga di contesto è **neutra da owner** su ogni schema: «prima» e
+  «dopo» sono stati misurati identicamente, e la differenza era zero;
+* §11.2 — `pratiche` con la riga di contesto è **identico file per file** a
+  `pratiche` senza;
+* il rientrato di `dbops` (§12.2) e la baseline scesa da 89 a 88: verificati con
+  `pgtap-baseline.sh`, cioè col metro giusto fin dall'inizio;
+* il difetto del §13.3 e la sua correzione: verificati con esecuzioni dirette e
+  `pgtap-baseline.sh config`, non con conteggi.
+
+La lezione è la stessa che questo brief ripete da tre settimane, applicata
+un'ultima volta a se stesso: **una misura vale quanto vale il modo in cui è
+presa**, e due numeri sono confrontabili solo se prodotti dallo stesso strumento.
+Era esattamente il §2 — «lo stesso file passa o fallisce a seconda di chi lo
+lancia» — con «come» al posto di «chi».
+
+### 14.4 Regola operativa
+
+Per misurare la suite fuori da `pgtap-baseline.sh` serve **`ON_ERROR_STOP=1`**, e
+un file va contato rosso se: exit ≠ 0, **oppure** c'è un `not ok`, **oppure** il
+piano `1..N` non coincide con le asserzioni eseguite. Le tre condizioni servono
+tutte: da sole nessuna riproduce `pg_prove`.
+
+Nel dubbio, non contare a mano: lanciare `scripts/pgtap-baseline.sh <schema>`.
