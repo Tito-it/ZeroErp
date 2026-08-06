@@ -150,6 +150,17 @@ databaseChangeLog:
               - column: { name: user_insert,         type: STRING }
               - column: { name: data_update,         type: STRING }
               - column: { name: user_update,         type: STRING }
+              # ⚠️ DUE COLONNE CHE IL LOADER ORIGINALE (20260608-08) NON DICHIARA,
+              #   e che quindi non erano mai state caricate da CSV:
+              #   - `ripetibilita` era gia' nel CSV ma il mirror la ignorava;
+              #   - `obsoleto_dal` non c'era proprio, ed era l'unica sede del dato
+              #     il changeSet 20260630-02 (ritiro dei tipi PREVENTIVI_IMMEDIATA
+              #     e _DIFFERITA). Aggiunta al CSV il 2026-08-06 con la stessa
+              #     convenzione di pratiche.tipi_prestazione: cella VUOTA = NULL,
+              #     letta con `nullValue: ""` e `type: DATE` (precedente vivo,
+              #     20260422-05).
+              - column: { name: ripetibilita,        type: STRING }
+              - column: { name: obsoleto_dal,        type: DATE }
 
         # 3) prerequisiti: FK doppia verso template_flussi (step e prerequisito)
         - loadUpdateData:

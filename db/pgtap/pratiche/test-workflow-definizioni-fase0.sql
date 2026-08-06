@@ -21,11 +21,41 @@
 -- 10) Cleanup (tipi cancellabili: cascata definizioni)
 -- ------------------------------------------------------------
 
+-- =========================================================
+-- Pulizia d'ingresso — FUORI dalla transazione, ed e' il punto
+-- =========================================================
+-- ⚠️ Questo file lasciava detriti quando falliva a meta'. Il cleanup «vero» sta
+--   alla sezione 10, in fondo: se il test muore prima — e col runner reale,
+--   che gira con ON_ERROR_STOP, muore alla PRIMA istruzione che fallisce — non
+--   ci arriva mai, e i tipi TEST_WDF* restano nel database. La corsa successiva
+--   ci inciampa sopra («valore chiave duplicato su uq_template_flussi_definizione_codice»)
+--   e da li' in poi il rosso non e' piu' del codice, e' della corsa precedente.
+--   Osservato il 2026-08-06 fra una misura da utente applicativo e una da owner.
+--
+-- Questa pulizia sta PRIMA di BEGIN apposta: in autocommit, quindi rimuove
+--   davvero i detriti di una corsa morta a meta'. Dentro la transazione verrebbe
+--   annullata insieme al resto e non servirebbe a niente.
+-- Brief: brief-db-pgtap-runner-rls-baseline §15.
+DELETE FROM pratiche.giornale WHERE pratica_id IN (
+  SELECT p.id FROM pratiche.pratiche p JOIN pratiche.tipi_prestazione tp ON tp.id = p.tipo_prestazione_id
+   WHERE tp.codice_interno IN ('TEST_WDF','TEST_WDF2','TEST_WDF3'));
+DELETE FROM pratiche.flussi WHERE pratica_id IN (
+  SELECT p.id FROM pratiche.pratiche p JOIN pratiche.tipi_prestazione tp ON tp.id = p.tipo_prestazione_id
+   WHERE tp.codice_interno IN ('TEST_WDF','TEST_WDF2','TEST_WDF3'));
+DELETE FROM pratiche.pratiche WHERE tipo_prestazione_id IN (
+  SELECT id FROM pratiche.tipi_prestazione WHERE codice_interno IN ('TEST_WDF','TEST_WDF2','TEST_WDF3'));
+DELETE FROM pratiche.template_flussi WHERE tipo_prestazione_id IN (
+  SELECT id FROM pratiche.tipi_prestazione WHERE codice_interno IN ('TEST_WDF','TEST_WDF2','TEST_WDF3'));
+DELETE FROM pratiche.tipi_prestazione
+ WHERE codice_interno IN ('TEST_WDF','TEST_WDF2','TEST_WDF3');
+
+-- Da qui in poi tutto e' reversibile: ROLLBACK in fondo al file.
+BEGIN;
+
 -- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
--- ⚠️ Questo file non apre una transazione propria: la riga va prima di plan().
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(11);
@@ -214,3 +244,10 @@ DELETE FROM pratiche.tipi_prestazione
 SELECT pass('10. Cleanup completato (delete tipo -> cascata definizioni ok)');
 
 SELECT * FROM finish();
+
+-- Le DELETE della sezione 10 restano: sono l'asserzione sulla cascata, e vanno
+-- eseguite. Ma non devono nemmeno loro lasciare traccia — il ROLLBACK annulla
+-- tutto quanto e' successo dopo BEGIN, compreso cio' che il test ha creato per
+-- misurarsi. Se il file muore prima di arrivare qui, la transazione viene
+-- comunque abbandonata alla chiusura della sessione: e' il senso della modifica.
+ROLLBACK;

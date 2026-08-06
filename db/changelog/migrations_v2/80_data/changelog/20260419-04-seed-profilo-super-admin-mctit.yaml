@@ -11,7 +11,13 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-04-seed-profilo-super-admin
       author: mctit
-      runOnChange: true
+      # ⚠️ Era `true`, spento il 2026-08-06. Il profilo SUPER_ADMIN (id 9100) e'
+      #   entrato nel seed dichiarativo: 80_data/sql/config/profili_accesso.csv.
+      #   Prima esisteva SOLO qui, e chi apriva il CSV per sapere quali profili di
+      #   accesso esistono ne vedeva tre su quattro — mancava proprio quello che fa
+      #   bypass totale dei permessi. Il mirror ri-ancorato 20260806-18 lo carica
+      #   dopo questo changeSet. I profili si cambiano SOLO dal CSV.
+      runOnChange: false
       validCheckSums:
         - ANY
       failOnError: true

@@ -4,14 +4,16 @@
 > **Data**: 2026-07-29 · **Owner**: Tid · **Stato**: 🟡 **IN CORSO** —
 > il sintomo è rientrato per altra via (strada **(a)**), la decisione di passare
 > a **(b)** è presa il 2026-08-05 e il piano è al **§8**.
-> **Da leggere per primo: §11 → §14** — stato al 2026-08-06. La domanda aperta
+> **Da leggere per primo: §11 → §15** — stato al 2026-08-06. La domanda aperta
 > del §10.3 è sciolta (§11); la riga di contesto è in **408 file su 426**, con 4
-> esclusi motivati (§12); la prima misura sotto l'utente applicativo dice che il
-> residuo è **65 file, di cui 38 con una causa sola** (§13); il §13.3 è il
-> **primo difetto di prodotto** che il cantiere restituisce, corretto.
-> ⚠️ **Il §14 corregge il metro con cui erano stati presi i numeri dei §8.2,
-> §9.2, §12.2 e della prima stesura del §13.1**: leggerlo prima di citare una
-> cifra di quelle sezioni. Cosa resta: **§13.4** ·
+> esclusi motivati (§12); il residuo sotto l'utente applicativo era **65 file, di
+> cui 38 con una causa sola** (§13), e quella causa è stata corretta: `pratiche`
+> passa da 38 a **10 file rossi** (§15). Due difetti di prodotto trovati e
+> chiusi: §13.3 e §15.1.
+> ⚠️ Due avvertenze prima di citare una cifra: il **§14** corregge il metro dei
+> §8.2, §9.2, §12.2 e della prima stesura del §13.1; il **§15.3** spiega perché
+> due corse consecutive con utenti diversi si sporcano il database a vicenda.
+> Cosa resta: **§13.4** più il §15.4 ·
 > **Priorità**: 🔴 **ALTA** — non per un difetto di prodotto, ma perché
 > **`scripts/pgtap-baseline.sh` oggi non può fare il suo mestiere**: distinguere
 > un rosso nuovo da uno noto. Finché non è risolto, ogni «zero regressioni»
@@ -907,3 +909,126 @@ piano `1..N` non coincide con le asserzioni eseguite. Le tre condizioni servono
 tutte: da sole nessuna riproduce `pg_prove`.
 
 Nel dubbio, non contare a mano: lanciare `scripts/pgtap-baseline.sh <schema>`.
+
+---
+
+## 15. Il `SECURITY DEFINER` del §13.2, applicato — e un ostacolo nuovo (2026-08-06)
+
+> Chiude il punto **1 del §13.4**, il primo per resa. E ne apre uno che il piano
+> non prevedeva: **i test si sporcano il database a vicenda**.
+
+### 15.1 Il risultato
+
+ChangeSet **`20260806-16`**: `pratiche.trgfn_tipi_prestazione_bootstrap_definizione`
+passa a `SECURITY DEFINER` con `search_path` fisso, sulla strada già battuta da
+`20260703-16` e `-17` nello stesso schema. Corpo e firma invariati.
+
+| `pratiche` (43 file) | ok | file rossi |
+| --- | --- | --- |
+| utente applicativo, prima | 93 | **38** |
+| utente applicativo, dopo | **353** | **10** |
+| owner, prima e dopo | 457 | 1 |
+
+**Ventotto file sbloccati con una parola**, e da owner non cambia niente.
+
+**Perché `DEFINER` e non un `GRANT`**: dare DML su `workflow_definizioni` al ruolo
+applicativo riaprirebbe ciò che `20260703-15` ha chiuso apposta — quella tabella
+si scrive solo attraverso le funzioni del dominio, che sanno mantenere
+l'invariante di versionamento. Il bootstrap non è una scrittura che l'utente
+sceglie: è il dominio che si prepara da sé, a partire da `NEW` e da nient'altro.
+
+### 15.2 I 10 che restano, e sono tutti la stessa cosa
+
+| causa | file |
+| --- | --- |
+| scrive direttamente su `pratiche.workflow_definizioni` | **7** |
+| scrive su `pratiche.template_flussi_avanzamento_proiezione` | **2** |
+| `bisogna essere proprietari della tabella sospensioni` | 1 |
+
+Le prime due righe sono **la stessa famiglia del §11.1, cresciuta da 3 a 9**:
+test che scrivono dove l'applicazione non scrive mai. Entrambe le tabelle sono
+`SELECT`-only per il ruolo applicativo **per scelta**. Non è un buco di permessi:
+è che quei test costruiscono stati che il dominio non permette di costruire —
+`test-workflow-definizioni-fase0` per esempio fa
+`DELETE FROM pratiche.workflow_definizioni` per fabbricare un «tipo senza preset»
+e verificare che il guard 507 scatti.
+
+⚠️ **E quella è un'intenzione legittima.** Un guard si prova solo mettendolo nella
+condizione che deve respingere, e se quella condizione è irraggiungibile per
+l'applicazione, il test ha bisogno di privilegi che l'applicazione non ha. Sono
+quindi **candidati alla categoria «richiede owner»** del §13.4 punto 2, non a una
+riscrittura. La decisione è del cantiere definizioni versionate.
+
+### 15.3 ⚠️ L'ostacolo nuovo: le corse si contaminano
+
+Applicato il changeSet, la misura da owner è passata da **457/6/1** a
+**448/6/2**. Non era il changeSet:
+
+```
+un valore chiave duplicato viola il vincolo univoco "uq_template_flussi_definizione_codice"
+La chiave (definizione_id, codice)=(5411, WDF_STEP) esiste già.
+```
+
+Le righe `TEST_WDF` e `TEST_WDF2` erano state inserite da **`zeroerp_app`**, cioè
+dalla misura sotto l'utente applicativo lanciata pochi minuti prima. Quel file
+muore alla 5ª asserzione su 11 — e il suo cleanup sta alla **sezione 10, in
+fondo**. Non ci arriva mai.
+
+**Il meccanismo, ed è generale.** Solo **10 dei 43 file di `pratiche`** aprono una
+transazione: gli altri 33 puliscono con `DELETE` in coda al file. Col runner vero,
+che gira con `ON_ERROR_STOP`, **un file che fallisce non raggiunge mai il proprio
+cleanup**. Finché ci sono rossi, ogni corsa lascia detriti, e il rosso successivo
+può essere causato dalla corsa precedente invece che dal codice.
+
+È il «verde per la ragione sbagliata» rovesciato: un **rosso** per la ragione
+sbagliata. E peggiora proprio adesso, perché la migrazione alla strada (b)
+comporta di lanciare la suite con due utenti diversi sullo stesso database.
+
+**Correzione applicata a `test-workflow-definizioni-fase0`**, e il pattern vale
+per tutti:
+
+1. **Pulizia d'ingresso FUORI dalla transazione**, in testa al file. In
+   autocommit, quindi rimuove davvero i detriti di una corsa morta a metà —
+   dentro la transazione verrebbe annullata insieme al resto e non servirebbe a
+   niente. È questa a sanare il database *una volta*.
+2. **`BEGIN;` … `ROLLBACK;`** attorno al corpo. Da lì in poi il file non lascia
+   traccia comunque vada, e se muore a metà la transazione viene abbandonata alla
+   chiusura della sessione.
+3. Le `DELETE` del cleanup finale **restano**: lì sono un'asserzione (verificano
+   la cascata), non una pulizia.
+
+Verificato: 11/11 verde da owner, residuo azzerato dal test stesso, e owner resta
+**457/6/1 anche dopo** una corsa completa sotto l'utente applicativo — la
+contaminazione è chiusa per quel file.
+
+### 15.4 Cosa si aggiunge al §13.4
+
+**Rendere transazionali i file che non lo sono.** Contati su tutta la suite:
+**77 file su 426** non aprono una transazione.
+
+| schema | file | transazionali | **NON** transazionali |
+| --- | --- | --- | --- |
+| `pratiche` | 43 | 11 | **32** |
+| `anagrafiche` | 54 | 34 | **20** |
+| `catalogo` | 15 | 8 | 7 |
+| `config` | 26 | 21 | 5 |
+| `dbops` | 16 | 11 | 5 |
+| `script` | 58 | 54 | 4 |
+| `vendite` | 175 | 171 | 4 |
+| `documenti` · `rls` · `ui` · `pagamenti` · `maintenance` · `shop` | 39 | 39 | 0 |
+| **totale** | **426** | **349** | **77** |
+
+La concentrazione dice dove intervenire: **`pratiche` e `anagrafiche` da soli
+sono 52 dei 77**, e `vendite` — il perimetro più grande e più lavorato — ne ha
+solo 4. Non è un abbellimento: senza, ogni misura sporca la successiva, e **la
+ribaselinatura finale registrerebbe rossi che sono detriti**, non debito. Va
+fatto *prima* del passo 3 del §8.3, insieme alla categoria «richiede owner».
+
+Il pattern da applicare è quello del §15.3: pulizia d'ingresso fuori dalla
+transazione, `BEGIN`/`ROLLBACK` attorno al corpo, e le `DELETE` che sono
+asserzioni lasciate dove sono.
+
+### 15.5 Verifica finale
+
+`scripts/pgtap-baseline.sh` sull'intera suite dopo tutte le modifiche di oggi:
+**88 rossi su 426, tutti già noti — nessuna regressione.**
