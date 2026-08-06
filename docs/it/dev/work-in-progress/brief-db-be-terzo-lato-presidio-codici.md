@@ -3,7 +3,7 @@
 **Chi scrive:** DB (`dev/db-tid`), 2026-08-05.
 **Origine:** rilievo del team BE, §12.5 di
 [brief-db-codice-errore-strutturato](../work-done/brief-db-codice-errore-strutturato.md) (chiuso).
-**Stato:** 🟡 **cancello acceso (§8) · lotto 1 `vendite` chiuso, 30 codici decisi, registro 141 → 114 (§10-§12) — ⚠️ restano 2 righe al DB (§12.3) e la suite Django non gira (§12.2). Prossimo: lotto 2.**
+**Stato:** 🟡 **cancello acceso (§8) · lotto 1 CHIUSO (§13) · lotti 2-3-4 scritti: 61 codici decisi, ⭐ i `da_trigger` senza policy sono ZERO (§16.3) — il percorso di una richiesta è coperto. ⚠️ Palla al DB in un giro solo (§16.4): 61 righe + 2 difetti trovati leggendo. Registro 112 → 51.**
 **Perimetro:** misura e cancello lato DB · assegnazione dei significati lato BE.
 
 > **Non è una regressione.** Questo difetto c'era anche prima; la slice del codice
@@ -656,3 +656,300 @@ Quindi il verso 2 le segnala: **le due righe vanno tolte** dal CSV e il
 Con questo il §11 è chiuso in entrambi i sensi, e il punto 4 riparte dal lotto 2
 (prossimo dominio da scegliere con Tid: `anagrafiche` ha 22 `da_trigger`,
 `script` 31).
+
+---
+
+## 13. ✅ Lotto 1 CHIUSO — 2026-08-06
+
+Le due righe sono uscite (`f505d8f12`) e il migrate è stato riapplicato alle
+**12:48:49**. Misurato dopo:
+
+| | inizio | fine lotto 1 |
+|---|---|---|
+| voci del registro | 141 | **112** |
+| di cui `da_trigger` | 90 | **60** |
+| codici con una policy decisa | 0 | **30** |
+
+**Cancello 4/4 verde. Suite 3580/3580 verde.** È la prima volta che le due sponde
+sono misurate insieme e concordano.
+
+⚠️ **Una cosa vista sul campo, e vale più del numero.** Nel mezzo della verifica
+il CSV del repo diceva 112 e il database vivo 114: il changeSet non era ancora
+stato riapplicato. Chi avesse controllato **dal CSV** avrebbe dichiarato chiuso
+un lavoro che nel database non era ancora arrivato. Il cancello no, perché guarda
+il database — ed è esattamente la ragione per cui il §11.1 dice «non dal CSV, dal
+cancello». Non era un errore di nessuno, solo due minuti di sfasamento: ma è
+proprio in quei due minuti che una verifica scritta male dice la cosa sbagliata.
+
+### Cosa vale oltre questo lotto
+
+* **Il registro ha fatto emergere un difetto di modellazione**, non solo del
+  debito: `E_STATO_SCONOSCIUTO` ne conteneva due, e nessuno se ne era accorto in
+  anni perché il codice «funzionava». Un registro serio non ricorda soltanto —
+  fa vedere.
+* **Il numero che conta non era 141.** Centoquattro codici prendevano già il 400
+  che gli spettava: il lavoro vero erano i ~37 con una verità diversa. Misurare
+  *quanto pesa* il debito prima di pagarlo ha risparmiato tre quarti del giro.
+* **Il nome del codice non decide.** Tre dei trenta hanno preso uno status
+  diverso da quello che il nome suggeriva, e si è visto solo leggendo il punto
+  che solleva.
+
+### Il prossimo lotto
+
+`anagrafiche` — **22 `da_trigger` su 28** (scelta di Tid, 2026-08-06). Dominio
+chiuso, pagine che l'operatore usa tutto il giorno. `script` (25 `da_trigger`)
+viene dopo di proposito: è trasversale, i suoi codici sono sollevati da guard
+generiche usate da mezzo database e conterrà altri casi a doppio significato come
+`E_STATO_SCONOSCIUTO`. Meglio arrivarci con un lotto di dominio già fatto, che dà
+il metro per riconoscerli.
+
+---
+
+## 14. Lotto 2 — `anagrafiche`, i 22 codici da trigger (2026-08-06)
+
+Scritti in `error_policies.py`, **non committati**. Decisioni di Tid sui tre casi
+dubbi prese lo stesso giorno (§14.3).
+
+### 14.1 La ripartizione
+
+| Status | Quanti | Codici |
+|---|---|---|
+| **404** | 2 | `E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO` (`IF NOT FOUND` sul soggetto) · `E_GESTORE_SOGGETTO_RUOLO_MANCANTE` (lookup a vuoto su `soggetti_ruoli`) |
+| **409** | 3 | `E_COLONNA_NON_MODIFICABILE` (colonna congelata, 7 guard `protect_update`) · `E_DISSOCIAZIONE_PARENT_CON_ATTIVITA` · `E_GESTORE_SINGLETON_VIOLATO` |
+| **500** | 1 | `E_RUOLO_APPLICATIVO_NON_GESTITO` |
+| **400** | 16 | 11 con `highlight_form_fields`, 5 con `show_error_banner` |
+
+### 14.2 ⚠️ La regola che sembra contraddire il lotto 1
+
+Nel lotto `vendite` i mismatch articolo/UoM hanno preso **409**; qui i tre
+mismatch (`E_ID_FISCALI_DIVERSI`, `E_BA_SOGGETTO_INCOERENTE_ISTANZA`,
+`E_RISORSA_UMANA_SOGGETTO_MISMATCH`) prendono **400 con il campo evidenziato**.
+
+Non è un'incoerenza: la differenza è **chi ha scelto il valore in conflitto**.
+In `vendite` erano legami DDT↔ordine creati dal sistema, e l'operatore non aveva
+un campo da correggere — poteva solo rileggere lo stato. Qui il parent, il
+soggetto e il conto li sceglie lui in un form.
+
+> **409 = «rileggi lo stato». 400 + highlight = «correggi quel campo».**
+> La regola vale per i lotti successivi ed è il criterio da applicare, non
+> l'elenco dei codici già decisi.
+
+### 14.3 Le tre decisioni, e un difetto trovato leggendo
+
+**1. ⚠️ `E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO` — il messaggio a catalogo
+descrive un'altra condizione.** Il ramo che solleva è `IF NOT FOUND` sulla SELECT
+su `anagrafiche.soggetti` («il soggetto non esiste»), ma il messaggio dice «Il
+soggetto richiede dati societari». **Oggi l'operatore legge una frase che non
+c'entra con l'errore che ha davanti.** Non è un problema di policy — il 404 è
+giusto comunque, e lo status non dipende dal messaggio — ma è un difetto vero e
+va corretto: **richiesta al team DB, §14.5.**
+
+**2. `E_SOGGETTI_RUOLI` → 400, candidato allo split ma non ora.** Copre tre
+condizioni (parametro nullo o `<= 0`, `NOT FOUND`, ruolo non coerente col tipo
+atteso) con un messaggio generico. È la malattia di `E_STATO_SCONOSCIUTO`, ma la
+cura è diversa e il motivo va scritto: **là le due metà chiedevano alla pagina
+reazioni opposte** (404 che svuota vs 400 che evidenzia), qui nessuna delle tre
+chiede qualcosa di diverso da un 400. E il codice è usato anche da
+`script.fn_guard_soggetto_ruolo`, cioè da altri domini: lo split costerebbe più
+di quanto renda. Decisione Tid: **400**, annotato nella policy.
+
+> La lezione generale: un codice a più significati va spezzato quando i
+> significati **portano a reazioni diverse**, non perché sono più d'uno.
+
+**3. `E_RUOLO_APPLICATIVO_NON_GESTITO` → 500.** È il ramo `ELSE` del guard di
+`identita_digitali`: scatta quando qualcuno estende l'enum dei ruoli applicativi
+senza scrivere la regola, e il guard «non apre per omissione». È **l'unico dei 22
+in cui l'operatore non può fare niente** — non ha sbagliato lui, manca una regola
+nel sistema. Un 400 lo nasconderebbe fra i 400 di chi compila male.
+
+> ✅ Verificato che il 500 **non** nasconde il messaggio del DB:
+> `ErrorTranslator.is_technical_code` è una lista chiusa di tre codici
+> (`E_PIPELINE`, `E_DATABASE`, `E_GENERICO`), non dipende dallo status. Era il
+> dubbio che rendeva il 500 rischioso, e non lo è.
+
+### 14.4 Stato
+
+**Suite 3580, un solo rosso**: il verso 2 con le 22 righe da togliere — il
+cancello che fa il suo mestiere, come nel lotto 1.
+
+### 14.5 Richieste al team DB
+
+**a) Togliere le 22 righe** dal CSV del registro e riapplicare il `20260805-37`:
+
+```
+E_BA_SOGGETTO_INCOERENTE_ISTANZA · E_COLONNA_NON_MODIFICABILE · E_CONTO_BANCARIO
+E_DATA_APERTURA · E_DATA_CHIUSURA · E_DATA_ERRATA · E_DATA_FINE_NON_MAGGIORE_DI_INIZIO
+E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO · E_DATI_SOCIETARI_TIPO_DETTAGLIO_NON_CONFIGURATO
+E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO · E_DISSOCIAZIONE_PARENT_CON_ATTIVITA
+E_FORMA_GIURIDICA_PAESE · E_GESTORE_SINGLETON_VIOLATO · E_GESTORE_SOGGETTO_RUOLO_MANCANTE
+E_ID_FISCALI_DIVERSI · E_PARENT_SELF · E_RISORSA_UMANA_SOGGETTO_MISMATCH
+E_RUOLO_APPLICATIVO_NON_GESTITO · E_RUOLO_NATURA_TIPO_DET_NULL · E_RUOLO_RICHIEDE_PIVA
+E_SOGGETTI_RUOLI · E_TIPO_INDIRIZZO_NON_PERMESSO
+```
+
+Il registro va da **112 a 90**, i `da_trigger` da **61 a 39**.
+
+> ℹ️ Le richieste dei lotti 2, 3 e 4 sono confluite in un **giro solo** (decisione
+> di Tid): l'elenco definitivo delle righe da togliere è nel §16.4.
+
+⚠️ **Verificare dal cancello, non dal CSV.** Nel lotto 1 c'è stato un momento in
+cui il CSV diceva 112 e il database 114 perché il changeSet non era ancora stato
+riapplicato: chi controlla dal CSV dichiara chiuso un lavoro che nel database non
+è arrivato.
+
+**b) Correggere il messaggio** di `E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO` in
+`config.messaggi_errore`. Oggi: «Il soggetto richiede dati societari. Soggetto_id
+%s». La condizione reale è «il soggetto non esiste»: qualcosa come «Soggetto %s
+non trovato: impossibile validare i dati societari.»
+
+> ℹ️ Vale la pena chiedersi se altri codici abbiano lo stesso scollamento fra
+> messaggio e condizione. Questo è saltato fuori **solo** leggendo il punto che
+> solleva, e nessun presidio lo guarda: il guardrail DB verifica che il codice
+> sia *a catalogo*, non che il messaggio *descriva* la condizione. È un quarto
+> lato, e per ora non lo presidia nessuno.
+
+---
+
+## 15. Lotto 3 — `script`, i 25 codici da trigger (2026-08-06)
+
+Scritti in `error_policies.py`, **non committati**. I codici da trigger che
+toccano una funzione `script.` sono 26, ma `E_SOGGETTI_RUOLI` era già del lotto 2
+(è condiviso con `anagrafiche`): **25 nuovi**.
+
+### 15.1 ⚠️ Questo lotto ha una fisionomia diversa dagli altri due
+
+`script` non è un dominio: sono **guard generiche montate a mano** sui trigger di
+mezzo database. E si vede nel risultato — **sette codici su 25 non nascono da un
+dato sbagliato ma da un pezzo montato male**:
+
+| Codice | Cosa è successo davvero |
+|---|---|
+| `E_SNAPSHOT_ID_NOT_FOUND` | `EXCEPTION WHEN OTHERS` della storicizzazione: non riesce a leggere la chiave |
+| `E_SNAPSHOT_CLOSE_ERROR` · `E_SNAPSHOT_INIT_INSERT_ERROR` · `E_SNAPSHOT_FINAL_INSERT_ERROR` | idem, sui tre passi dello snapshot |
+| `E_QUERY_FAILED_SCHEMA_TABLE` | SQL dinamico su una tabella che non esiste o non ha le colonne attese |
+| `E_ARGOMENTI_A_COPPIE` | trigger dichiarato con un numero **dispari** di argomenti |
+| `E_NOTE_CONFIG` | trigger note puntato a una tabella inesistente (`to_regclass` NULL) |
+
+**Fino a oggi prendevano tutti 400.** Un fallimento della storicizzazione
+arrivava al client come «hai sbagliato a compilare»: l'operatore non poteva farci
+niente e chi guardava i log non aveva modo di distinguerlo dagli errori di chi
+compila male. Decisione Tid (2026-08-06): **500 tutti e sette**.
+
+⚠️ `E_SNAPSHOT_ID_NOT_FOUND` è il caso di scuola del perché il nome non decide:
+finisce per `NOT_FOUND` e **non è un 404** — non manca un record richiesto,
+fallisce la lettura della chiave dentro un handler di eccezione.
+
+### 15.2 Il resto
+
+| Status | Quanti | Codici |
+|---|---|---|
+| **403** | 2 | `E_SCOPE_EMITTENTE` (`fn_check_user_emittente_scope` nega) · `E_TABELLA_OP_NON_CONSENTITA` (blocca sempre UPDATE/DELETE su `transaction_ids`) |
+| **404** | 1 | `E_SORG_NOT_FOUND` |
+| **409** | 1 | `E_CANALE_ORIGINE_IMMUTABILE` |
+| **400** | 14 | 7 `highlight_form_fields` (quantità, UoM, chiave sorgente, prezzo componente, target nota) · 7 `show_error_banner` (i sei guard BoM/componenti e il mismatch nota↔documento) |
+
+### 15.3 Stato
+
+**Suite 3580, un solo rosso**: 47 righe da togliere (22 del lotto 2 + 25 di
+questo). 588 policy dichiarate, nessuna duplicata.
+
+### 15.4 Richieste al team DB — lotti 2 e 3 insieme
+
+Tid le passa in un giro solo.
+
+**a) Togliere 47 righe** dal registro e riapplicare il `20260805-37`: le 22 del
+§14.5a più le 25 di questo lotto. Il registro va da **112 a 65**, i `da_trigger`
+da **61 a 14**. → **superato dal lotto 4: l'elenco definitivo è nel §16.4.**
+
+L'elenco esatto lo dà il cancello stesso, che è la fonte da usare:
+
+```bash
+ZEROERP_TEST_DB_E2E=1 ./manage-test.sh apps.core.tests.test_error_codes_db_policy_guardrail
+```
+
+**b) Correggere il messaggio** di `E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO`
+(§14.5b): descrive una condizione diversa da quella che solleva.
+
+**c) ⚠️ Il nome fantasma nel diario.**
+`script.trgfn_prevent_modification_generic` passa a `fn_log_and_raise_error` il
+nome **`trgfn_prevent_parameters_audit_modification`**, una funzione che nel
+database **non esiste più** (verificato: zero righe in `pg_proc`). Ogni errore di
+quel guard viene registrato in `dbops.error_log` sotto un pezzo fantasma: chi
+indagasse partirebbe da un nome che non c'è.
+
+La correzione è una riga — usare `TG_NAME`, come fanno gli altri guard generici.
+È lo stesso residuo di rinomina della bonifica riferimenti morti: **un nome
+hardcoded sopravvive alla funzione che lo portava**, e nessun presidio lo vede
+perché è una stringa, non un riferimento.
+
+---
+
+## 16. Lotto 4 — la coda, e il percorso richiesta arriva a zero (2026-08-06)
+
+Gli ultimi **14** codici da trigger. Non hanno un dominio che li tenga insieme —
+`catalogo` 2, `config` 4, `dbops` 5, `shop` 1: li tiene insieme il fatto di
+essere gli ultimi.
+
+### 16.1 La ripartizione
+
+| Status | Quanti | Codici |
+|---|---|---|
+| **500** | 6 | `E_ATTIVO_BLOCK` · `E_ATTIVO_REQUIRE` · `E_ATTIVO_BLOCK_REF_NULL` · `E_SQL_READ_TABLE` · `E_TXID_GENERATION` · `E_PROFILO_ACCESSO_TIPO_NON_GESTITO` |
+| **400** | 8 | 5 `highlight_form_fields` (conti IVA acq/ven, binding profilo, esito non verdetto, articolo non composito) · 3 `show_error_banner` (solo-componente, IVA discordante BoM, canale ricevuta shop) |
+
+Nessun 403, 404 o 409: la coda è fatta di anomalie tecniche e di validazioni.
+
+I sei 500 sono la stessa famiglia dei lotti precedenti — `EXCEPTION WHEN OTHERS`
+(tx_id), fallimento della **generazione** delle regole di automazione, trigger
+dichiarato con troppo pochi argomenti, e il terzo ramo `ELSE` per un enum esteso
+senza regola (`E_PROFILO_ACCESSO_TIPO_NON_GESTITO`, gemello esatto di
+`E_RUOLO_APPLICATIVO_NON_GESTITO` del lotto 2).
+
+### 16.2 ⚠️ Una scoperta sul registro: contiene codici che non arrivano mai
+
+`E_ATTIVO_BLOCK_REF_NULL` è nominato da **un solo punto**, e quel punto usa
+`script.fn_log_error_only` — che scrive in `dbops.error_log` e **non solleva**.
+Il codice non raggiunge mai un client: lo status che gli abbiamo dato non lo
+legge nessuno.
+
+Non è un errore del registro, ed è utile dirlo bene: **la misura è volutamente
+larga** (§7) e raccoglie ogni letterale `E_*` in un corpo PL/pgSQL vivo. Non
+può sapere se quel punto solleva o solo registra — né dovrebbe: il giorno in cui
+qualcuno cambia `fn_log_error_only` in `fn_log_and_raise_error`, il codice inizia
+a viaggiare e la policy c'è già.
+
+> Il costo di una policy in più è **una riga**. Il costo di accorgersi che manca
+> è un operatore che riceve un 400 al posto di un 403. La misura larga è
+> asimmetrica apposta, e questo è il caso che lo mostra dal lato meno ovvio.
+
+### 16.3 Dove siamo — il percorso di una richiesta è coperto
+
+| | inizio (2026-08-05) | ora |
+|---|---|---|
+| voci del registro | 141 | **51** (dopo l'applicazione) |
+| **`da_trigger` senza policy** | **90** | **0** |
+| codici decidi con una policy | 0 | **91** |
+
+**Zero.** Ogni codice `E_*` che una funzione agganciata a un trigger può nominare
+— cioè ogni codice che sta sul percorso di una richiesta vera — ha adesso un tipo
+di risposta deciso leggendo il punto che lo solleva.
+
+I **51** che restano stanno in funzioni **non** agganciate a un trigger: possono
+non essere mai raggiunte dal web, ed è la ragione per cui il DB li aveva messi in
+coda fin dall'inizio (§4). Sono il lotto 5, e non hanno fretta.
+
+### 16.4 Richiesta al team DB — l'elenco definitivo (lotti 2+3+4)
+
+**61 righe** da togliere dal CSV del registro e `20260805-37` da riapplicare.
+Sono **tutte** le voci `da_trigger` rimaste: dopo l'applicazione il registro va da
+**112 a 51** e i `da_trigger` a **zero**.
+
+L'elenco esatto lo stampa il cancello, ed è la fonte da usare (non il CSV):
+
+```bash
+ZEROERP_TEST_DB_E2E=1 ./manage-test.sh apps.core.tests.test_error_codes_db_policy_guardrail
+```
+
+Restano validi i due difetti da correggere: il **messaggio** di
+`E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO` (§14.5b) e il **nome fantasma** in
+`script.trgfn_prevent_modification_generic` (§15.4c).

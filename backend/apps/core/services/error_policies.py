@@ -4198,6 +4198,489 @@ class ErrorPolicyRegistry:
             # non deve svuotarsi — la ragione per cui il codice andava spezzato.
             user_message="Nazione non indicata e nessun default configurato.",
         ),
+        # ══════════════════════════════════════════════════════════════════
+        # TERZO LATO — lotto 2 `anagrafiche` (2026-08-06)
+        #   Brief: docs/it/dev/work-in-progress/brief-db-be-terzo-lato-presidio-codici.md §14
+        #
+        #   ⚠️ LA REGOLA CHE SEMBRA CONTRADDIRE IL LOTTO 1, E NON LO FA.
+        #   Nel lotto `vendite` i mismatch (articolo/UoM) hanno preso 409; qui i
+        #   tre mismatch prendono 400 con il campo evidenziato. La differenza e'
+        #   **chi ha scelto il valore in conflitto**: la' erano legami
+        #   DDT<->ordine creati dal sistema e l'operatore non aveva un campo da
+        #   correggere; qui parent, soggetto e conto li sceglie lui in un form.
+        #   409 = «rileggi lo stato», 400+highlight = «correggi quel campo».
+        # ══════════════════════════════════════════════════════════════════
+        # ── 404: la cosa indicata non esiste ──
+        "E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO": ErrorPolicy(
+            code="E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO",
+            http_status=404,
+            ui_action="show_error_banner",
+            # anagrafiche.trgfn_dati_societari_guard_tipo_soggetto, ramo
+            # `IF NOT FOUND` sulla SELECT su anagrafiche.soggetti.
+            # ⚠️ Il messaggio a catalogo («Il soggetto richiede dati societari»)
+            # descrive un'ALTRA condizione: difetto segnalato al team DB
+            # (brief §14.3). Lo status non ne dipende — il ramo che solleva e'
+            # inequivocabilmente «il soggetto non esiste».
+            user_message="Soggetto non trovato.",
+        ),
+        "E_GESTORE_SOGGETTO_RUOLO_MANCANTE": ErrorPolicy(
+            code="E_GESTORE_SOGGETTO_RUOLO_MANCANTE",
+            http_status=404,
+            ui_action="show_error_banner",
+            # anagrafiche.trgfn_gestori_guard: il lookup su soggetti_ruoli non
+            # da' nessuna riga (`v_soggetto_id IS NULL`).
+            user_message="Il soggetto_ruolo indicato per il gestore non esiste.",
+        ),
+        # ── 409: in conflitto con lo stato attuale ──
+        "E_COLONNA_NON_MODIFICABILE": ErrorPolicy(
+            code="E_COLONNA_NON_MODIFICABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            # Sette guard `*_protect_update` / `guard_immutabili` su
+            # anagrafiche, config e pratiche: la colonna e' congelata. Stessa
+            # famiglia (e stesso status) degli immutabili del lotto 1.
+            user_message="Colonna non modificabile.",
+        ),
+        "E_DISSOCIAZIONE_PARENT_CON_ATTIVITA": ErrorPolicy(
+            code="E_DISSOCIAZIONE_PARENT_CON_ATTIVITA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Parent non rimovibile: esistono attivita' non fatturate sul billing account.",
+        ),
+        "E_GESTORE_SINGLETON_VIOLATO": ErrorPolicy(
+            code="E_GESTORE_SINGLETON_VIOLATO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Esiste gia' un gestore: non e' possibile crearne un secondo.",
+        ),
+        # ── 500: l'unico dove l'operatore non puo' farci niente ──
+        "E_RUOLO_APPLICATIVO_NON_GESTITO": ErrorPolicy(
+            code="E_RUOLO_APPLICATIVO_NON_GESTITO",
+            http_status=500,
+            ui_action="show_error_banner",
+            # anagrafiche.trgfn_identita_digitali_guard_coerenza, ramo ELSE:
+            # qualcuno ha esteso l'enum dei ruoli applicativi senza scrivere la
+            # regola, e il guard «non apre per omissione». Non e' un errore di
+            # chi compila: manca una regola nel sistema, e il 500 lo dice a chi
+            # legge i log invece di nasconderlo fra i 400.
+            # ⚠️ Il 500 NON nasconde il messaggio del DB: `is_technical_code` e'
+            # una lista chiusa di tre codici, non dipende dallo status.
+            user_message="Ruolo applicativo non gestito dal guard di coerenza: regola mancante.",
+        ),
+        # ── 400 · campo da correggere (`highlight_form_fields`) ──
+        "E_DATA_APERTURA": ErrorPolicy(
+            code="E_DATA_APERTURA",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Cliente attivo senza data di apertura.",
+        ),
+        "E_DATA_CHIUSURA": ErrorPolicy(
+            code="E_DATA_CHIUSURA",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Data di chiusura anteriore alla data di attivazione.",
+        ),
+        "E_DATA_ERRATA": ErrorPolicy(
+            code="E_DATA_ERRATA",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Data errata o mancante.",
+        ),
+        "E_DATA_FINE_NON_MAGGIORE_DI_INIZIO": ErrorPolicy(
+            code="E_DATA_FINE_NON_MAGGIORE_DI_INIZIO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="La data finale deve essere successiva alla data iniziale.",
+        ),
+        "E_PARENT_SELF": ErrorPolicy(
+            code="E_PARENT_SELF",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Il parent account non puo' essere il record stesso.",
+        ),
+        "E_FORMA_GIURIDICA_PAESE": ErrorPolicy(
+            code="E_FORMA_GIURIDICA_PAESE",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Forma giuridica non coerente con il paese del soggetto.",
+        ),
+        "E_TIPO_INDIRIZZO_NON_PERMESSO": ErrorPolicy(
+            code="E_TIPO_INDIRIZZO_NON_PERMESSO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Tipo indirizzo non permesso per questo tipo di ruolo.",
+        ),
+        "E_CONTO_BANCARIO": ErrorPolicy(
+            code="E_CONTO_BANCARIO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            # ⚠️ La guard e' `attivo IS NOT TRUE`, che copre DUE casi: conto
+            # disattivato e conto inesistente (SELECT INTO -> NULL). Il 400 con
+            # il campo evidenziato e' corretto in entrambi; un 404 sarebbe
+            # giusto solo nel secondo e svuoterebbe la pagina nel primo.
+            user_message="Il conto bancario indicato non e' utilizzabile.",
+        ),
+        "E_ID_FISCALI_DIVERSI": ErrorPolicy(
+            code="E_ID_FISCALI_DIVERSI",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Il parent account appartiene a un identificativo fiscale diverso.",
+        ),
+        "E_BA_SOGGETTO_INCOERENTE_ISTANZA": ErrorPolicy(
+            code="E_BA_SOGGETTO_INCOERENTE_ISTANZA",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Soggetto del billing account diverso da quello dell'istanza utility.",
+        ),
+        "E_RISORSA_UMANA_SOGGETTO_MISMATCH": ErrorPolicy(
+            code="E_RISORSA_UMANA_SOGGETTO_MISMATCH",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Il soggetto collegato alla risorsa umana non e' un gestore.",
+        ),
+        # ── 400 · il problema non e' un campo del form (`show_error_banner`) ──
+        "E_DATI_SOCIETARI_TIPO_DETTAGLIO_NON_CONFIGURATO": ErrorPolicy(
+            code="E_DATI_SOCIETARI_TIPO_DETTAGLIO_NON_CONFIGURATO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Policy dati societari non configurata per questo tipo soggetto.",
+        ),
+        "E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO": ErrorPolicy(
+            code="E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Per questo tipo soggetto i dati societari non sono previsti.",
+        ),
+        "E_RUOLO_NATURA_TIPO_DET_NULL": ErrorPolicy(
+            code="E_RUOLO_NATURA_TIPO_DET_NULL",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Tipo soggetto dettaglio non configurato: ruolo non assegnabile.",
+        ),
+        "E_RUOLO_RICHIEDE_PIVA": ErrorPolicy(
+            code="E_RUOLO_RICHIEDE_PIVA",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Il ruolo richiede un soggetto con partita IVA valorizzata.",
+        ),
+        "E_SOGGETTI_RUOLI": ErrorPolicy(
+            code="E_SOGGETTI_RUOLI",
+            http_status=400,
+            ui_action="show_error_banner",
+            # ⚠️ CODICE A TRE CONDIZIONI, e il 400 e' il denominatore sicuro:
+            # parametro nullo o <= 0, soggetto_ruolo inesistente (NOT FOUND),
+            # ruolo non coerente col tipo atteso. Il NOT FOUND meriterebbe 404,
+            # ma nessuna delle tre chiede alla pagina una reazione diversa e il
+            # codice e' usato anche da `script.fn_guard_soggetto_ruolo`, quindi
+            # da altri domini: lo split costerebbe piu' di quanto renda.
+            # Decisione Tid 2026-08-06 — candidato allo split, non urgente.
+            user_message="Relazione soggetto/ruolo non valida.",
+        ),
+        # ══════════════════════════════════════════════════════════════════
+        # TERZO LATO — lotto 3 `script` (2026-08-06)
+        #   Brief: docs/it/dev/work-in-progress/brief-db-be-terzo-lato-presidio-codici.md §15
+        #
+        #   ⚠️ QUESTO LOTTO HA UNA FISIONOMIA DIVERSA DAI DUE PRECEDENTI.
+        #   `script` sono guard GENERICHE, montate a mano sui trigger di mezzo
+        #   database: sette codici su 25 non nascono da un dato sbagliato ma da
+        #   un PEZZO MONTATO MALE (trigger con argomenti dispari, tabella
+        #   inesistente, storicizzazione che fallisce). Prendono 500 — vedi il
+        #   blocco piu' sotto, e la ragione per cui e' importante.
+        # ══════════════════════════════════════════════════════════════════
+        # ── 500: anomalie tecniche, l'operatore non puo' farci niente ──
+        #   Fino a oggi prendevano il ripiego 400: un fallimento della
+        #   storicizzazione arrivava al client come «hai sbagliato a compilare».
+        #   ⚠️ Il 500 non nasconde il messaggio del DB (`is_technical_code` e'
+        #   una lista chiusa di tre codici), quindi il dettaglio arriva lo stesso.
+        "E_SNAPSHOT_ID_NOT_FOUND": ErrorPolicy(
+            code="E_SNAPSHOT_ID_NOT_FOUND",
+            http_status=500,
+            ui_action="show_error_banner",
+            # script.trgfn_storico_generic, `EXCEPTION WHEN OTHERS` sul
+            # ricavo dell'id: il nome dice NOT_FOUND ma non e' un 404 — e'
+            # la storicizzazione che non riesce a leggere la chiave.
+            user_message="Storicizzazione: impossibile determinare l'identificativo del record.",
+        ),
+        "E_SNAPSHOT_CLOSE_ERROR": ErrorPolicy(
+            code="E_SNAPSHOT_CLOSE_ERROR",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Storicizzazione: errore nella chiusura dello snapshot.",
+        ),
+        "E_SNAPSHOT_INIT_INSERT_ERROR": ErrorPolicy(
+            code="E_SNAPSHOT_INIT_INSERT_ERROR",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Storicizzazione: errore nell'inserimento dello snapshot iniziale.",
+        ),
+        "E_SNAPSHOT_FINAL_INSERT_ERROR": ErrorPolicy(
+            code="E_SNAPSHOT_FINAL_INSERT_ERROR",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Storicizzazione: errore nell'inserimento dello snapshot finale.",
+        ),
+        "E_QUERY_FAILED_SCHEMA_TABLE": ErrorPolicy(
+            code="E_QUERY_FAILED_SCHEMA_TABLE",
+            http_status=500,
+            ui_action="show_error_banner",
+            # Tre funzioni con SQL dinamico: la tabella non esiste o non ha le
+            # colonne attese. E' un montaggio sbagliato, non un dato sbagliato.
+            user_message="Interrogazione fallita sulla tabella indicata.",
+        ),
+        "E_ARGOMENTI_A_COPPIE": ErrorPolicy(
+            code="E_ARGOMENTI_A_COPPIE",
+            http_status=500,
+            ui_action="show_error_banner",
+            # script.trgfn_lock_columns: il trigger e' stato dichiarato con un
+            # numero dispari di argomenti. Se ne accorge chi lo monta, mai
+            # l'operatore.
+            user_message="Trigger configurato con argomenti non a coppie.",
+        ),
+        "E_NOTE_CONFIG": ErrorPolicy(
+            code="E_NOTE_CONFIG",
+            http_status=500,
+            ui_action="show_error_banner",
+            # script.trgfn_note_validate_generic: `to_regclass` NULL, cioe' il
+            # trigger punta a una tabella che non esiste.
+            user_message="Configurazione del trigger note errata: tabella inesistente.",
+        ),
+        # ── 403: non permesso ──
+        "E_SCOPE_EMITTENTE": ErrorPolicy(
+            code="E_SCOPE_EMITTENTE",
+            http_status=403,
+            ui_action="show_error_banner",
+            # script.trgfn_guard_emittente_scope: fn_check_user_emittente_scope
+            # nega. E' il perimetro dell'operatore, non uno stato sfavorevole.
+            user_message="Accesso negato per scope emittente fiscale.",
+        ),
+        "E_TABELLA_OP_NON_CONSENTITA": ErrorPolicy(
+            code="E_TABELLA_OP_NON_CONSENTITA",
+            http_status=403,
+            ui_action="show_error_banner",
+            # script.trgfn_prevent_modification_generic: solleva sempre — oggi
+            # monta su transaction_ids per bloccare UPDATE/DELETE. L'operazione
+            # non e' dell'operatore in nessuno stato.
+            user_message="Operazione non consentita su questa tabella.",
+        ),
+        # ── 404 ──
+        "E_SORG_NOT_FOUND": ErrorPolicy(
+            code="E_SORG_NOT_FOUND",
+            http_status=404,
+            ui_action="show_error_banner",
+            # Guard sorgente polimorfa: la riga referenziata non esiste nella
+            # tabella target.
+            user_message="Riferimento sorgente non trovato nella tabella target.",
+        ),
+        # ── 409 ──
+        "E_CANALE_ORIGINE_IMMUTABILE": ErrorPolicy(
+            code="E_CANALE_ORIGINE_IMMUTABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Il canale origine non e' modificabile dopo l'inserimento.",
+        ),
+        # ── 400 · campo da correggere (`highlight_form_fields`) ──
+        "E_QTA_MISSING": ErrorPolicy(
+            code="E_QTA_MISSING",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Quantita' nulla o mancante.",
+        ),
+        "E_QTA_OPERATIVA_NON_INTERA": ErrorPolicy(
+            code="E_QTA_OPERATIVA_NON_INTERA",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="La quantita' operativa deve essere un numero intero.",
+        ),
+        "E_QTA_OPER_STEP_INVALIDO": ErrorPolicy(
+            code="E_QTA_OPER_STEP_INVALIDO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Quantita' operativa non compatibile con lo step previsto.",
+        ),
+        "E_UOM_MISSING": ErrorPolicy(
+            code="E_UOM_MISSING",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Unita' di misura mancante.",
+        ),
+        "E_NOTE_TARGET_ID": ErrorPolicy(
+            code="E_NOTE_TARGET_ID",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Riga di destinazione mancante per una nota ancorata alla riga.",
+        ),
+        "E_SORG_KEY_MISSING": ErrorPolicy(
+            code="E_SORG_KEY_MISSING",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Chiave sorgente mancante.",
+        ),
+        "E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO": ErrorPolicy(
+            code="E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Componente obbligatorio: il prezzo deve essere diverso da zero.",
+        ),
+        # ── 400 · il problema non e' un campo del form (`show_error_banner`) ──
+        "E_DOC_COMPONENTE_BOM_NON_VALIDA": ErrorPolicy(
+            code="E_DOC_COMPONENTE_BOM_NON_VALIDA",
+            http_status=400,
+            ui_action="show_error_banner",
+            # La riga di distinta base esiste ma non e' valida alla data
+            # documento: si sceglie un altro componente, non si corregge un campo.
+            user_message="Riga BoM non valida alla data del documento.",
+        ),
+        "E_DOC_COMPONENTE_ID_INCOERENTE": ErrorPolicy(
+            code="E_DOC_COMPONENTE_ID_INCOERENTE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Componente non coerente con la riga di distinta base indicata.",
+        ),
+        "E_DOC_COMPONENTE_NON_BOM": ErrorPolicy(
+            code="E_DOC_COMPONENTE_NON_BOM",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Il componente non appartiene alla distinta base dell'articolo padre.",
+        ),
+        "E_DOC_COMPONENTE_OBBLIGATORIO": ErrorPolicy(
+            code="E_DOC_COMPONENTE_OBBLIGATORIO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Componente obbligatorio: non puo' essere disattivato dalla riga documento.",
+        ),
+        "E_DOC_RIGA_NON_COMPOSITO": ErrorPolicy(
+            code="E_DOC_RIGA_NON_COMPOSITO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="L'articolo della riga non e' composito: impossibile aggiungere componenti.",
+        ),
+        "E_LISTINO_COMPONENTE_COERENZA_BOM": ErrorPolicy(
+            code="E_LISTINO_COMPONENTE_COERENZA_BOM",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Riga listino componenti incoerente con la distinta base.",
+        ),
+        "E_NOTE_RIGA_MISMATCH": ErrorPolicy(
+            code="E_NOTE_RIGA_MISMATCH",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="La riga indicata non appartiene al documento della nota.",
+        ),
+        # ══════════════════════════════════════════════════════════════════
+        # TERZO LATO — lotto 4, la coda: `catalogo` · `config` · `dbops` · `shop`
+        #   (2026-08-06) Brief §16. Sono i 14 codici da trigger rimasti dopo i
+        #   tre lotti per dominio: nessuno arriva a piu' di due funzioni, e non
+        #   c'e' un dominio che li tenga insieme — li tiene insieme il fatto di
+        #   essere gli ultimi. Con questi il percorso di una richiesta e' coperto.
+        # ══════════════════════════════════════════════════════════════════
+        # ── 500: anomalie tecniche ──
+        "E_ATTIVO_BLOCK": ErrorPolicy(
+            code="E_ATTIVO_BLOCK",
+            http_status=500,
+            ui_action="show_error_banner",
+            # Sollevato da dbops.fn_run_automations_attivo dentro
+            # `EXCEPTION WHEN others`: fallisce la GENERAZIONE della regola di
+            # automazione, cioe' il framework che arma i trigger. Non e' un
+            # errore di chi compila, e non passa nemmeno da una richiesta web.
+            user_message="Generazione della regola di automazione ATTIVO_block fallita.",
+        ),
+        "E_ATTIVO_REQUIRE": ErrorPolicy(
+            code="E_ATTIVO_REQUIRE",
+            http_status=500,
+            ui_action="show_error_banner",
+            # Due punti, stessa natura: la generazione della regola (come sopra)
+            # e dbops.trgfn_child_requires_active_parent quando il trigger e'
+            # dichiarato con meno di 4 argomenti — un montaggio sbagliato.
+            user_message="Regola di automazione ATTIVO_require non generata o trigger configurato male.",
+        ),
+        "E_ATTIVO_BLOCK_REF_NULL": ErrorPolicy(
+            code="E_ATTIVO_BLOCK_REF_NULL",
+            http_status=500,
+            ui_action="show_error_banner",
+            # ⚠️ CODICE SOLO-LOG: l'unico punto che lo nomina usa
+            # `fn_log_error_only`, che scrive in dbops.error_log e NON solleva.
+            # Non arriva mai a un client, quindi questo status non lo legge
+            # nessuno: la policy esiste perche' il cancello lo pretende, ed e'
+            # giusto che lo pretenda — la misura e' volutamente larga e non puo'
+            # sapere se domani qualcuno lo fara' sollevare davvero. Vedi §16.2.
+            user_message="Colonna di riferimento nulla nel guard di disattivazione.",
+        ),
+        "E_SQL_READ_TABLE": ErrorPolicy(
+            code="E_SQL_READ_TABLE",
+            http_status=500,
+            ui_action="show_error_banner",
+            # dbops.trgfn_tx_id_managed, `EXCEPTION WHEN OTHERS` sulla lettura.
+            user_message="Errore in lettura sulla tabella indicata.",
+        ),
+        "E_TXID_GENERATION": ErrorPolicy(
+            code="E_TXID_GENERATION",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Generazione del tx_id fallita.",
+        ),
+        "E_PROFILO_ACCESSO_TIPO_NON_GESTITO": ErrorPolicy(
+            code="E_PROFILO_ACCESSO_TIPO_NON_GESTITO",
+            http_status=500,
+            ui_action="show_error_banner",
+            # Gemello esatto di E_RUOLO_APPLICATIVO_NON_GESTITO: ramo ELSE per un
+            # valore nuovo dell'enum senza regola. Il guard non apre per omissione.
+            user_message="Tipo profilo non gestito dal guard di coerenza bindings: regola mancante.",
+        ),
+        # ── 400 · campo da correggere (`highlight_form_fields`) ──
+        "E_IVA_CONTO_ACQ_ERR": ErrorPolicy(
+            code="E_IVA_CONTO_ACQ_ERR",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Il conto indicato per l'IVA acquisti non e' un conto di tipo Acquisto.",
+        ),
+        "E_IVA_CONTO_VEN_ERR": ErrorPolicy(
+            code="E_IVA_CONTO_VEN_ERR",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Il conto indicato per l'IVA vendite non e' un conto di tipo Vendita.",
+        ),
+        "E_PROFILO_ACCESSO_BINDING_INCOERENTE": ErrorPolicy(
+            code="E_PROFILO_ACCESSO_BINDING_INCOERENTE",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Binding non coerente con il tipo del profilo di accesso.",
+        ),
+        "E_STATO_DOC_ESITO_NON_VERDETTO": ErrorPolicy(
+            code="E_STATO_DOC_ESITO_NON_VERDETTO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            # Copre due condizioni (esito non verdetto / codice inesistente), ma
+            # entrambe si correggono nello stesso campo della configurazione.
+            user_message="L'esito indicato non e' un verdetto: non ammesso come proiezione.",
+        ),
+        "E_ARTICOLO_NON_COMPOSITO": ErrorPolicy(
+            code="E_ARTICOLO_NON_COMPOSITO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="L'articolo indicato non e' composito: non puo' avere una distinta base.",
+        ),
+        # ── 400 · il problema non e' un campo del form (`show_error_banner`) ──
+        "E_ARTICOLO_SOLO_COMPONENTE": ErrorPolicy(
+            code="E_ARTICOLO_SOLO_COMPONENTE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Articolo utilizzabile solo come componente: non inseribile come riga autonoma.",
+        ),
+        "E_BOM_IVA_DISCORDANTE": ErrorPolicy(
+            code="E_BOM_IVA_DISCORDANTE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Le aliquote IVA di articolo padre e componenti della distinta devono coincidere.",
+        ),
+        "E_SHOP_RICEVUTA_BA_CANALE_INVALIDO": ErrorPolicy(
+            code="E_SHOP_RICEVUTA_BA_CANALE_INVALIDO",
+            http_status=400,
+            ui_action="show_error_banner",
+            # La guard e' `IS DISTINCT FROM 'SHOP'`, che prende anche il BA
+            # inesistente (valore NULL): il 400 e' corretto in entrambi i casi,
+            # un 404 solo nel secondo.
+            user_message="Il billing account collegato alla ricevuta non e' di canale SHOP.",
+        ),
     }
 
     # Scopo: Risolve la policy per un codice errore. Per codici applicativi
