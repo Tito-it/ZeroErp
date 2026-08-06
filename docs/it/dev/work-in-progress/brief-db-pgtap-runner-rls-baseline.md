@@ -4,8 +4,9 @@
 > **Data**: 2026-07-29 · **Owner**: Tid · **Stato**: 🟡 **IN CORSO** —
 > il sintomo è rientrato per altra via (strada **(a)**), la decisione di passare
 > a **(b)** è presa il 2026-08-05 e il piano è al **§8**.
-> **Da leggere per primo: il §11** — stato al 2026-08-06, con la domanda aperta
-> del §10.3 sciolta e l'elenco di ciò che resta al **§11.4** ·
+> **Da leggere per primo: §11 e §12** — stato al 2026-08-06: la domanda aperta
+> del §10.3 è sciolta e la passata è completa su **tutti** gli schemi (408 file
+> su 426). Cosa resta: **§12.4** ·
 > **Priorità**: 🔴 **ALTA** — non per un difetto di prodotto, ma perché
 > **`scripts/pgtap-baseline.sh` oggi non può fare il suo mestiere**: distinguere
 > un rosso nuovo da uno noto. Finché non è risolto, ogni «zero regressioni»
@@ -546,3 +547,113 @@ fortuna.
 4. **Il cantiere `LIMIT 1`** (§11.3), 133 siti a rischio ALTO.
 5. Solo dopo: **passi 3 e 4 del §8.3** — cambio utente al runner e
    ribaselinatura.
+
+---
+
+## 12. La passata è completa: tutti gli schemi, 408 file su 426 (2026-08-06)
+
+> Chiude il punto **2 del §11.4**. Il runner **non è ancora cambiato**: anche
+> questo è tutto neutro o migliorativo con l'owner di oggi.
+
+### 12.1 Copertura
+
+| | file |
+| --- | --- |
+| con la riga di contesto | **408** |
+| esclusi, con la ragione scritta dentro | **4** |
+| famiglia `rls/`, fuori perimetro per definizione | 14 |
+| **totale suite** | **426** |
+
+Non resta un solo file del perimetro senza una riga o una spiegazione. Chi apre
+un test adesso sa in che condizione gira, e se non ci gira sa perché.
+
+### 12.2 L'effetto, misurato schema per schema da owner
+
+Metodo del §11.2: aggiungere, rimisurare, **pretendere zero differenze**.
+
+| schema | file | prima (ok/ko/rossi) | dopo |
+| --- | --- | --- | --- |
+| `script` | 58 | 449 / 17 / 10 | **invariato** |
+| `anagrafiche` | 54 | 360 / 47 / 22 | **invariato** |
+| `config` | 26 | 229 / 13 / 5 | **invariato** |
+| `dbops` | 16 | 154 / 1 / 2 | **160 / 1 / 1** ⬆ |
+| `catalogo` | 15 | 114 / 8 / 3 | **invariato** |
+| `documenti` | 11 | 106 / 0 / 0 | **invariato** |
+| `ui` | 8 | 96 / 8 / 4 | **invariato** |
+| `pagamenti` · `maintenance` · `shop` | 6 | 52 / 0 / 0 | **invariato** |
+
+`scripts/pgtap-baseline.sh` sull'**intera suite**: **nessuna regressione**, e un
+solo **rientrato**.
+
+**Il rientrato è vero, e si è verificato perché.** Il §8.4 aveva già scambiato per
+«rientrati» cinque test che erano solo lanciati da un altro utente, quindi
+l'etichetta non basta. `dbops/test-fn-apply-chiusura-scadenze-v1.sql` era **muto**
+(0 asserzioni) e ora ne fa **6 verdi**; lanciato senza la riga risponde ancora,
+alla lettera:
+
+```
+Nessun emittente fiscale attivo … GUC vuota, numero=PGTAP_FW_CONTR_SCAD
+```
+
+È lo stesso meccanismo dei dodici file di `vendite` del §9.2: la fixture chiamava
+`fn_resolve_emittente_for_user` senza contesto. Tolto dalla baseline con
+`--update dbops` (aggiornamento parziale, così le altre classificazioni restano
+quelle curate a mano): **89 → 88 righe**, ed è l'unica differenza nel file. Il
+registro del debito è calato di uno.
+
+### 12.3 I tre file esclusi oggi, e il difetto che ne esce
+
+Solo tre file peggioravano, e nessuno per un difetto proprio: in tutti e tre il
+contesto **non è lo sfondo, è il soggetto**.
+
+**`script/test-fn-current-identita-context.sql`** (7 → 6+1) — verifica cosa
+`fn_current_identita_context` legge in ogni combinazione di GUC, impostandole e
+azzerandole da sé. La sua prima asserzione è «nessuna GUC settata → tutte le
+colonne NULL»: una riga in testa ne distrugge la premessa prima di cominciare.
+Caso limpido, come `test-vw-dash-aperto-v1`.
+
+**`ui/test-fn-resolve-dashboard-config.sql`** (12 → 10+2) e
+**`ui/test-fn-resolve-lista-config.sql`** (13 → 10+3) — qui la ragione è scomoda e
+va detta per intero. Entrambi costruiscono un'identità **`CLIENTE_PORTALE`** e su
+quella verificano le precedenze fra preset. Ma la funzione filtra i profili per la
+veste corrente:
+
+```
+v_ruolo_guc := current_setting('app.ruolo_applicativo', true)   -- NULL = tutte le vesti
+… script.fn_get_profili_accesso_applicabili(p_auth_user_id, v_ruolo_guc)
+```
+
+Dichiarare `OPERATORE` esclude — **correttamente** — il profilo di un'identità
+portale. La funzione fa il suo mestiere; è l'accoppiata «identità portale + veste
+operatore» a non esistere.
+
+⚠️ **Ma il rovescio è peggiore, e non va lasciato implicito.** Senza GUC la veste
+è `NULL`, cioè *tutte* — e questa è una condizione che **l'applicazione non
+produce mai**, perché il middleware la valorizza sempre. Quelle asserzioni sono
+verdi in un mondo che non esiste: la stessa cosa che il §4 rimprovera alla strada
+(a). La correzione vera non è imporre una veste operatore, è far dichiarare al
+test **la veste coerente con la propria fixture** (`CLIENTE_PORTALE`) e
+riverificare le precedenze lì dentro. È una decisione del cantiere `ui`, non di
+questo brief: qui resta scritta, con la ragione, dentro i due file.
+
+C'è un indizio che lo conferma: `test-fn-resolve-lista-config` **conosce già** la
+GUC — la sua asserzione 12 la manipola apposta per verificare che la veste filtri.
+Sceglie di tenerla vuota per tutte le altre.
+
+### 12.4 Cosa resta adesso
+
+Dei cinque punti del §11.4 restano:
+
+1. **Misurare sotto `zeroerp_app`** — unico passo bloccato, serve la credenziale
+   del ruolo. Sta in `backend/.env` del server backend (`DB_USER=zeroerp_app` +
+   `DB_PASSWORD`); va messa in `~/.pgpass` (`localhost:5432:zeroerp:zeroerp_app:…`,
+   `chmod 600`) e **non** in un file dentro il repo: `.gitignore` filtra
+   `internal.env` esatto, non altri nomi.
+   ⚠️ **Non resettare la password del ruolo**: la si cambierebbe sotto i piedi al
+   backend.
+2. **I 3 test su `workflow_definizioni`** (§11.1) e **i 2 di `ui`** (§12.3) —
+   entrambi difetti di test, entrambi da evadere nel cantiere proprietario.
+3. **Il cantiere `LIMIT 1`** (§11.3): 133 siti a rischio ALTO.
+4. **Passi 3 e 4 del §8.3**: cambio utente al runner e ribaselinatura. Ora sono
+   davvero una riga in `scripts/testpgtap.sh` più una rigenerazione — tutto il
+   resto è pronto.

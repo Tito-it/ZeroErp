@@ -26,6 +26,17 @@
 -- BEGIN; + rollback implicito a fine file.
 -- ------------------------------------------------------------
 BEGIN;
+
+-- ⚠️ QUESTO FILE NON USA script.fn_pgtap_set_contesto_operatore(), a differenza
+-- degli altri, e non e' una dimenticanza.
+-- Qui il contesto non e' lo sfondo: e' il soggetto. Il test imposta e azzera le
+-- GUC da se' (SET LOCAL piu' sotto) e verifica cosa la funzione legge in ogni
+-- combinazione — a partire dall'asserzione 1, «nessuna GUC settata -> tutte le
+-- colonne NULL». Impostare un contesto in testa distruggerebbe la premessa
+-- della prima asserzione prima ancora di cominciare.
+-- Misurato: con la riga, 7 asserzioni diventano 6 verdi + 1 rossa.
+-- Brief: brief-db-pgtap-runner-rls-baseline §11.
+
 SELECT plan(7);
 -- =========================================================
 -- 1) Nessun GUC settato -> 3 NULL
