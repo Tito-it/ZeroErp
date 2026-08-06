@@ -33,6 +33,22 @@
 
 BEGIN;
 
+-- ⚠️ QUESTO FILE NON USA `SET CONSTRAINTS ALL IMMEDIATE`, a differenza degli
+--   altri, e non e' una dimenticanza.
+--   La fixture costruisce un soggetto con le funzioni del dominio
+--   (fn_crea_soggetto_pf e sorelle). Ma `anagrafiche.soggetti` ha TRE guard
+--   DEFERRABLE INITIALLY DEFERRED — indirizzi, contatti, dati societari — e la
+--   deferralita' li' e' VOLUTA: si crea il soggetto, poi il suo indirizzo, e la
+--   completezza si verifica al COMMIT. Forzare IMMEDIATE pretenderebbe
+--   l'indirizzo nell'istante stesso dell'INSERT del soggetto, cioe' vieterebbe
+--   il pattern che il dominio ha scelto — misurato: da 7 asserzioni verdi a 1,
+--   con «Indirizzo obbligatorio mancante per soggetto ...».
+--   ⚠️ Resta pero' un buco reale: senza la riga, quei tre guard non vengono
+--   esercitati da questo test, e la fixture lascia un soggetto che
+--   l'applicazione non potrebbe committare. La correzione vera e' completare la
+--   fixture (indirizzo + contatti) e allora la riga si puo' rimettere.
+--   Brief: brief-db-pgtap-runner-rls-baseline §20.
+
 -- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
