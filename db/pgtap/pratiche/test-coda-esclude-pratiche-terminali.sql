@@ -14,6 +14,14 @@
 -- 3) Pratica ANNULLATA: il flusso sparisce dalla coda (fix) [skip se no risorsa]
 -- 4) Cleanup
 -- ------------------------------------------------------------
+
+-- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
+-- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
+-- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
+-- Brief: brief-db-pgtap-runner-rls-baseline §8.
+-- ⚠️ Questo file non apre una transazione propria: la riga va prima di plan().
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
 SELECT plan(5);
 
 -- =========================================================
@@ -29,7 +37,7 @@ VALUES ('NORMALE', 'NORMALE', 'Normale', 20, true) ON CONFLICT (codice_interno) 
 
 CREATE TEMP TABLE tmp_ct_refs AS
 SELECT
-  (SELECT id FROM anagrafiche.emittenti_fiscali WHERE attivo = true LIMIT 1) AS emittente_id,
+  script.fn_pgtap_emittente_operatore() AS emittente_id,
   (SELECT id FROM anagrafiche.soggetti LIMIT 1) AS soggetto_id,
   (SELECT id FROM anagrafiche.risorse_umane ORDER BY id LIMIT 1) AS risorsa_id,
   (SELECT id FROM config.stati_pratiche WHERE codice_interno = 'APERTA') AS st_aperta,
