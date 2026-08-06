@@ -26,6 +26,12 @@ AS $function$
 --   runner Python (steps + criticita' + rilancio dello stesso
 --   step, D-Q p.1) e ricostruirlo qui sarebbe la seconda copia
 --   della regola che stiamo eliminando.
+--   rev 2026-08-06: + target_state_descrizione, la forma leggibile
+--   dello stato di destinazione. Serve alla frase di conferma
+--   «portare il documento nello stato X»: il codice_interno non e'
+--   quella forma e tradurlo nel FE sarebbe una seconda copia del
+--   vocabolario degli stati. NULL sulla ristampa, che non cambia
+--   stato.
 DECLARE
     v_stato_id     vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE;
     v_stato_cod    config.stati_doc_fiscale.codice_interno%TYPE;
@@ -64,6 +70,10 @@ BEGIN
             jsonb_build_object(
                 'key',              t.meta->>'action_key',
                 'target_state',     sa.codice_interno,
+                -- Forma leggibile della destinazione: la colonna
+                -- accanto, nello stesso JOIN. Il FE non puo'
+                -- derivarla dal codice.
+                'target_state_descrizione', sa.descrizione,
                 'label_key',        t.meta->>'label_key',
                 'severity',         t.meta->>'severity',
                 'icon',             t.meta->>'icon',
@@ -114,6 +124,9 @@ BEGIN
             jsonb_build_object(
                 'key',              'ristampa',
                 'target_state',     NULL,
+                -- Non e' un cambio di stato: nessuna destinazione
+                -- da nominare.
+                'target_state_descrizione', NULL,
                 'label_key',        'vendite.lotti.azione_ristampa',
                 'severity',         'secondary',
                 'icon',             'pi pi-print',
@@ -135,7 +148,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_lotto(p_lotto_id bigint)
-IS 'Capability del lotto di fatturazione per il detail API: available_actions + can_change_state + stato_codice + tipo_lotto. Ottava della famiglia fn_available_actions_*, mirror di fn_available_actions_commessa. I verbi numera / riporta_a_draft / annulla nascono DATA-DRIVEN da config.stati_doc_fiscale_transizioni (meta seedato il 2026-08-04) con lo STESSO predicato del guard vivo vendite.trgfn_fatturazione_lotti_guard_stato (ammesso + solo_fattura=false + meta.tipo_lotto compatibile): matrice e pulsanti non possono divergere. La ristampa e'' cablata perche'' non e'' una transizione (stampare e'' leggere, I-4) ed e'' disponibile su lotto DEFINITIVA. ATTENZIONE CONTRATTO: la presenza di un''azione in available_actions NON significa eseguibile — i consumatori devono leggere enabled e mostrare reasons; enabled/reasons di annulla e riporta_a_draft arrivano dalle funzioni PURE script.fn_check_lotto_annullabile / _riportabile_a_draft, le STESSE usate dalle fn di mutazione per sollevare. can_change_state e'' calcolato sulle sole azioni ABILITATE e sulle sole transizioni (la ristampa non cambia stato). 🔴 NON espone avanza_step / rilancia_step: quel gate (step successivo + criticita'' + rilancio dello stesso step, D-Q p.1) vive in LottoPipelineRunner e ricostruirlo qui sarebbe una seconda copia della regola. Fallback NULL se il lotto non esiste. rev 2026-08-04.';
+IS 'Capability del lotto di fatturazione per il detail API: available_actions + can_change_state + stato_codice + tipo_lotto. Ottava della famiglia fn_available_actions_*, mirror di fn_available_actions_commessa. I verbi numera / riporta_a_draft / annulla nascono DATA-DRIVEN da config.stati_doc_fiscale_transizioni (meta seedato il 2026-08-04) con lo STESSO predicato del guard vivo vendite.trgfn_fatturazione_lotti_guard_stato (ammesso + solo_fattura=false + meta.tipo_lotto compatibile): matrice e pulsanti non possono divergere. La ristampa e'' cablata perche'' non e'' una transizione (stampare e'' leggere, I-4) ed e'' disponibile su lotto DEFINITIVA. ATTENZIONE CONTRATTO: la presenza di un''azione in available_actions NON significa eseguibile — i consumatori devono leggere enabled e mostrare reasons; enabled/reasons di annulla e riporta_a_draft arrivano dalle funzioni PURE script.fn_check_lotto_annullabile / _riportabile_a_draft, le STESSE usate dalle fn di mutazione per sollevare. can_change_state e'' calcolato sulle sole azioni ABILITATE e sulle sole transizioni (la ristampa non cambia stato). 🔴 NON espone avanza_step / rilancia_step: quel gate (step successivo + criticita'' + rilancio dello stesso step, D-Q p.1) vive in LottoPipelineRunner e ricostruirlo qui sarebbe una seconda copia della regola. Fallback NULL se il lotto non esiste. rev 2026-08-04. rev 2026-08-06: + target_state_descrizione accanto a target_state (config.stati_doc_fiscale.descrizione della destinazione). Serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati; NULL sulla ristampa, che non cambia stato.';
 ```
 
 ---

@@ -1,0 +1,161 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Split di E_STATO_SCONOSCIUTO — 1 di 3 (commessa).
+#   Brief: brief-db-be-terzo-lato-presidio-codici.md §11.2 (decisione di Tid,
+#   2026-08-06: «si spezza»).
+#
+# ⚠️ PERCHE' NON E' UN RINOMINO. E_STATO_SCONOSCIUTO era sollevato da TRE
+#   funzioni che parlavano di DUE cose diverse:
+#     vendite.fn_cambia_stato_commessa   -> lo stato di workflow non esiste
+#     vendite.fn_cambia_stato_preventivo -> idem
+#     config.trgfn_toponomastica_normalize -> la NAZIONE dell'indirizzo non
+#                                             si risolve
+#   Un codice solo non puo' dire due cose. Assegnandogli 404 la form indirizzi
+#   si svuoterebbe mentre l'operatore digita; assegnandogli 400 il cambio stato
+#   mentirebbe. Non era un difetto di mapping: era un codice che ne conteneva
+#   due — stessa famiglia del §15 del brief-db-codice-errore-strutturato.
+#
+# ℹ️ Qui e nel -10 nasce E_STATO_WORKFLOW_NON_TROVATO; nel -11
+#   E_NAZIONE_NON_TROVATA. E_STATO_SCONOSCIUTO viene RITIRATO con
+#   `obsoleto_dal` (non cancellato: dbops.error_log ha una FK verso
+#   config.messaggi_errore e gli errori gia' accaduti devono continuare a
+#   risolvere il proprio messaggio).
+#
+# ⚠️ I TRE CHANGESET E IL SEED ATTERRANO INSIEME. Il controllo (D) del
+#   guardrail codice-errore-strutturato e' rosso se una funzione VIVA solleva
+#   un codice ritirato: se si applicasse il ritiro senza queste tre sostituzioni
+#   — o due su tre — la CI diventerebbe rossa e avrebbe ragione.
+#
+# ℹ️ NESSUNA preCondition sull'esistenza del nuovo codice a catalogo, e non e'
+#   una dimenticanza: `20_code` gira PRIMA di `80_data`, quindi al momento in
+#   cui questo changeSet viene applicato la riga 892 non esiste ancora.
+#   Pretenderla qui farebbe HALT sul primo migrate.
+#
+# Unica modifica al corpo: la stringa del codice sollevato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260806-09-update-fn-cambia-stato-commessa-stato-workflow-non-trovato-mctit.yaml
+
+  - changeSet:
+      id: 20260806-09-update-fn-cambia-stato-commessa-stato-workflow-non-trovato
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_cambia_stato_commessa solleva E_STATO_WORKFLOW_NON_TROVATO al posto
+        di E_STATO_SCONOSCIUTO, che diceva due cose diverse (stato di workflow
+        inesistente / nazione non risolta) e non poteva ricevere una policy
+        sola. Brief terzo lato §11.2.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: stati_commessa
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'vendite'
+                    AND p.proname = 'fn_cambia_stato_commessa'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_cambia_stato_commessa(p_commessa_id bigint, p_nuovo_stato character varying, p_user text DEFAULT NULL::text)
+               RETURNS TABLE(commessa_id bigint, stato_da character varying, stato_a character varying)
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: entrypoint sanzionato per il cambio stato commessa.
+              --   Valida parametri, risolve lo stato target, esegue l'UPDATE.
+              --   Matrice e guard di dominio sono enforced dal trigger
+              --   vendite.trgfn_commesse_guard_transizione sull'UPDATE.
+              --   rev 2026-08-06: la destinazione non risolta solleva
+              --   E_STATO_WORKFLOW_NON_TROVATO. Il precedente
+              --   E_STATO_SCONOSCIUTO lo condivideva con
+              --   config.trgfn_toponomastica_normalize, dove pero' «stato»
+              --   era la NAZIONE di un indirizzo: due verita' diverse sotto
+              --   un nome solo, quindi nessuna policy HTTP poteva essere
+              --   giusta per entrambe (404 qui, 400 la'). Brief terzo lato
+              --   §11.2. Il vecchio codice e' RITIRATO (obsoleto_dal), non
+              --   cancellato: regge il diario dei log gia' scritti.
+              DECLARE
+                v_stato_corrente_id   vendite.commesse.stato_commessa_id%TYPE;
+                v_stato_corrente_cod  vendite.stati_commessa.codice_interno%TYPE;
+                v_codice              vendite.commesse.codice%TYPE;
+                v_nuovo_stato_id      vendite.stati_commessa.id%TYPE;
+              BEGIN
+                -- Guard: parametri obbligatori
+                IF p_commessa_id IS NULL OR p_commessa_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_commessa',
+                    'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('p_commessa_id', p_commessa_id),
+                    NULL::uuid,
+                    'p_commessa_id'
+                  );
+                END IF;
+
+                -- Stato corrente + esistenza commessa
+                SELECT c.stato_commessa_id, sc.codice_interno, c.codice
+                  INTO v_stato_corrente_id, v_stato_corrente_cod, v_codice
+                  FROM vendite.commesse c
+                  JOIN vendite.stati_commessa sc ON sc.id = c.stato_commessa_id
+                 WHERE c.id = p_commessa_id;
+
+                IF v_stato_corrente_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_commessa',
+                    'E_COMMESSA_NON_TROVATA',
+                    jsonb_build_object('p_commessa_id', p_commessa_id),
+                    NULL::uuid,
+                    p_commessa_id::text
+                  );
+                END IF;
+
+                -- Stato target esiste ed e' attivo
+                SELECT id INTO v_nuovo_stato_id
+                  FROM vendite.stati_commessa
+                 WHERE codice_interno = p_nuovo_stato AND attivo IS TRUE;
+
+                IF v_nuovo_stato_id IS NULL THEN
+                  -- «La destinazione indicata non esiste»: e' un 404, e ora
+                  -- puo' dirlo perche' il codice non e' piu' condiviso con
+                  -- l'errore di compilazione dell'indirizzo.
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_commessa',
+                    'E_STATO_WORKFLOW_NON_TROVATO',
+                    jsonb_build_object('p_nuovo_stato', p_nuovo_stato),
+                    NULL::uuid,
+                    coalesce(p_nuovo_stato, 'NULL')
+                  );
+                END IF;
+
+                -- Esecuzione: aggiorna stato. Il trigger
+                -- vendite.trgfn_commesse_guard_transizione valida matrice +
+                -- guard di dominio; solleva se non ammessa.
+                UPDATE vendite.commesse
+                   SET stato_commessa_id = v_nuovo_stato_id,
+                       user_update = COALESCE(p_user, CURRENT_USER)
+                 WHERE id = p_commessa_id;
+
+                RETURN QUERY
+                SELECT p_commessa_id, v_stato_corrente_cod, p_nuovo_stato;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_cambia_stato_commessa(p_commessa_id bigint, p_nuovo_stato character varying, p_user text)
+              IS 'Entrypoint DB-first cambio stato commessa. Risolve codice->id e UPDATE; matrice + guard dominio (->PRONTA_FATTURAZIONE richiede righe approvate) enforced dal trigger trgfn_commesse_guard_transizione. rev 2026-06-07. rev 2026-08-06: la destinazione non risolta solleva E_STATO_WORKFLOW_NON_TROVATO (892) invece di E_STATO_SCONOSCIUTO (9), ritirato. Il vecchio codice era sollevato anche da config.trgfn_toponomastica_normalize, dove «stato» significava NAZIONE dell''indirizzo: due verita'' diverse sotto un nome solo, e nessun http_status poteva essere giusto per entrambe (404 la destinazione che non esiste, 400 il campo da correggere). Brief brief-db-be-terzo-lato-presidio-codici §11.2, decisione di Tid del 2026-08-06.';

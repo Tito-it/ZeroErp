@@ -18,6 +18,11 @@ AS $function$
 --   fn_available_actions_ddt (no push_commessa, no pdf).
 --   rev 2026-07-16: + enabled/reason/reason_key da meta.requires_righe
 --   (documento vuoto non avanza di stato).
+--   rev 2026-08-06: + target_state_descrizione, la forma leggibile
+--   dello stato di destinazione. Serve alla frase di conferma
+--   «portare il documento nello stato X»: il codice_interno non e'
+--   quella forma (DRAFT -> Bozza) e tradurlo nel FE sarebbe una
+--   seconda copia del vocabolario degli stati.
 DECLARE
     v_stato_id   vendite.resi.stato_doc_reso_id%TYPE;
     v_stato_cod  config.stati_doc_reso.codice_interno%TYPE;
@@ -55,6 +60,10 @@ BEGIN
             jsonb_build_object(
                 'key',              t.meta->>'action_key',
                 'target_state',     sa.codice_interno,
+                -- Forma leggibile della destinazione: la colonna
+                -- accanto, nello stesso JOIN. Il FE non puo'
+                -- derivarla dal codice.
+                'target_state_descrizione', sa.descrizione,
                 'label_key',        t.meta->>'label_key',
                 'severity',         t.meta->>'severity',
                 'icon',             t.meta->>'icon',
@@ -100,7 +109,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_reso(p_reso_id bigint)
-IS 'Capability reso per detail API: available_actions (matrice transizioni_stati_reso, filtro manuale) + can_change_state + can_edit_* + non_editable_fields + stato_codice. Mirror ridotto di fn_available_actions_ddt (no push/pdf). rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il reso non ha righe attive -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard E_RESO_SENZA_RIGHE).';
+IS 'Capability reso per detail API: available_actions (matrice transizioni_stati_reso, filtro manuale) + can_change_state + can_edit_* + non_editable_fields + stato_codice. Mirror ridotto di fn_available_actions_ddt (no push/pdf). rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il reso non ha righe attive -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard E_RESO_SENZA_RIGHE). rev 2026-08-06: + target_state_descrizione accanto a target_state (config.stati_doc_reso.descrizione della destinazione). Serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile (DRAFT -> Bozza) e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati.';
 ```
 
 ---

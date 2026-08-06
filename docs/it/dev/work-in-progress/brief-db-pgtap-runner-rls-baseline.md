@@ -477,7 +477,11 @@ senza contesto è **identico file per file**.
 | con contesto, prima del fix sotto | 454 | 6 | 1 |
 | **con contesto, dopo il fix** | **457** | **6** | **1** |
 
-`scripts/pgtap-baseline.sh pratiche` → **nessuna regressione**.
+`scripts/pgtap-baseline.sh pratiche` → **nessuna regressione**. E la verifica che
+conta di più: **la baseline è stata poi eseguita su tutta la suite, e nemmeno lì
+c'è una regressione**. Vale la pena dirlo perché la riga di contesto non è un
+intervento locale — accende trigger e policy — e il perimetro `pratiche` da solo
+non avrebbe dimostrato che gli altri schemi non ne risentono.
 
 **Il file che regrediva era la 34ª occorrenza dello stesso difetto.**
 `test-coda-esclude-pratiche-terminali.sql` era rimasto fuori dalla passata sui 33
