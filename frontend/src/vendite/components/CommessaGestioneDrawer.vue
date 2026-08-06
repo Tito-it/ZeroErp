@@ -230,6 +230,17 @@ function onRigheSort(event) {
 
 // ------------------------------------------------------------------ approva (A-1)
 // Scopo: approvazione con conferma; righeIds null = tutte (fn idempotente).
+
+// Scopo: il nome dello STATO di destinazione per la frase di conferma («Portare
+//   il documento nello stato {stato}?»). La descrizione leggibile la sa solo il
+//   database (`DRAFT` -> «Bozza», `ALLOCATO` -> «Allocato a magazzino»: non e'
+//   derivabile dal codice), quindi arriva dalla capability come
+//   `target_state_descrizione`. Finche' il DB non la espone si ripiega sulla
+//   label dell'azione — comportamento invariato, nessun testo mancante.
+function statoDestinazione(action) {
+  return action.target_state_descrizione || t(action.label_key)
+}
+
 function approva(righeIds) {
   const n = righeIds ? righeIds.length : (stato.value?.total_non_approvate ?? 0)
   confirmAction({
@@ -329,7 +340,7 @@ const stateActions = computed(() => mapAvailableActionsToDrawerActions({
   onAction: (action) => {
     confirmAction({
       title: t('vendite.commesse.stato_header'),
-      message: t('vendite.commesse.stato_conferma', { stato: t(action.label_key) }),
+      message: t('vendite.commesse.stato_conferma', { stato: statoDestinazione(action) }),
       onAccept: async () => {
         const res = await execute(() => cambiaStatoCommessa(props.commessaId, action.target_state))
         if (res !== null) {

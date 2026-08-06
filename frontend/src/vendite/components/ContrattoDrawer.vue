@@ -560,6 +560,17 @@ async function onConfermaCessazione() {
 // - requires_date=true  -> dialog con DatePicker (es. "cessa")
 // - requires_confirm    -> confirmAction con label_key dell'azione
 // - altrimenti          -> diretto
+
+// Scopo: il nome dello STATO di destinazione per la frase di conferma («Portare
+//   il documento nello stato {stato}?»). La descrizione leggibile la sa solo il
+//   database (`DRAFT` -> «Bozza», `ALLOCATO` -> «Allocato a magazzino»: non e'
+//   derivabile dal codice), quindi arriva dalla capability come
+//   `target_state_descrizione`. Finche' il DB non la espone si ripiega sulla
+//   label dell'azione — comportamento invariato, nessun testo mancante.
+function statoDestinazione(action) {
+  return action.target_state_descrizione || t(action.label_key)
+}
+
 function onCambiaStato(action) {
   // Transizione → ATTIVO: dialog dedicato con anteprima documento + allegati.
   // L'endpoint /emetti/ (multipart) orchestra atomic state + genera + allegati
@@ -584,7 +595,7 @@ function onCambiaStato(action) {
   if (action.requires_confirm) {
     confirmAction({
       title: t('vendite.contratti.conferma_titolo'),
-      message: t('vendite.contratti.conferma_cambio_stato', { stato: t(action.label_key) }),
+      message: t('vendite.contratti.conferma_cambio_stato', { stato: statoDestinazione(action) }),
       onAccept: () => eseguiCambioStato(action.target_state),
     })
     return

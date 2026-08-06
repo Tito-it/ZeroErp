@@ -27,8 +27,6 @@ End-to-end su DB reale (OPT-IN `ZEROERP_TEST_DB_E2E=1`, vedi la classe):
 
 from __future__ import annotations
 
-import os
-import unittest
 from unittest import TestCase
 
 from django.db import DatabaseError
@@ -38,6 +36,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.error_translator import ErrorTranslator
 from apps.core.services.service_errors import ServiceError
+from apps.core.tests.db_e2e import richiedi_db_provvisto
 from apps.core.tests.db_error_fakes import make_db_error
 
 
@@ -177,6 +176,9 @@ class DbErrorFieldsEndToEndTests(TestCase):
     li' per quello: senza, questi tre fallirebbero addosso a chi ha scritto quel
     `TestCase`, in una PR che col codice errore strutturato non c'entra niente.
     Vedi `brief-be-e2e-db-error-fields-skip-schema.md` e la nota in AGENTS.md.
+    Il guard vive in `apps/core/tests/db_e2e.py`: e' lo stesso prerequisito del
+    cancello `test_error_codes_db_policy_guardrail`, e quando quella dipendenza
+    implicita cadra' va sanato in un posto solo.
 
     ⚠️ **Non aggiungere qui test che SCRIVONO.** Per lo stesso motivo — la
     connessione e' quella vera — un test che scrive scrive sul database di
@@ -195,36 +197,12 @@ class DbErrorFieldsEndToEndTests(TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         super().setUpClass()
-        if os.environ.get("ZEROERP_TEST_DB_E2E") != "1":
-            raise unittest.SkipTest(
-                "end-to-end su DB reale disattivo: esporta ZEROERP_TEST_DB_E2E=1"
-            )
-        from django.db import connection
-
-        try:
-            connection.ensure_connection()
-        except Exception as exc:  # noqa: BLE001 — qualunque errore = DB non usabile
-            raise unittest.SkipTest(f"DB non raggiungibile: {exc}") from exc
-
-        # ⚠️ Raggiungibile != provvisto. Se il runner ha creato il database di
-        # test usa-e-getta (accade appena UN test della suite dichiara un
-        # database), quel database ha solo le migration Django: le funzioni
-        # PL/pgSQL non ci sono. Senza questo controllo il test non salta —
-        # fallisce con «la funzione non esiste», addosso a chi ha scritto quel
-        # TestCase e in una PR che non c'entra.
-        with connection.cursor() as cur:
-            cur.execute(
-                "SELECT to_regprocedure('script.fn_log_and_raise_error"
-                "(text,text,text,jsonb,uuid,text[])') IS NOT NULL"
-            )
-            row = cur.fetchone()
-        assert row is not None
-        if not row[0]:
-            raise unittest.SkipTest(
-                "schema Liquibase assente nel database dei test: il runner ne ha "
-                "creato uno usa-e-getta (qualche test dichiara un database). "
-                "Vedi brief-be-e2e-db-error-fields-skip-schema.md"
-            )
+        # Flag spenta, DB irraggiungibile, oppure schema Liquibase assente
+        # (database usa-e-getta creato dal runner) -> skip. Il guard sta in
+        # `apps/core/tests/db_e2e.py` perche' e' lo stesso prerequisito del
+        # cancello `test_error_codes_db_policy_guardrail`, e il giorno in cui la
+        # dipendenza implicita cadra' va sanato in un posto solo.
+        richiedi_db_provvisto()
 
     # Scopo: Esegue SQL che solleva e restituisce l'eccezione catturata.
     def _solleva(self, sql: str) -> DatabaseError:
