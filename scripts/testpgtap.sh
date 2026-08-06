@@ -14,6 +14,41 @@
 #   - il prefisso esplicito 'db/' forza db/pgtap/
 #   - in mancanza di prefisso: auto-detect (prima db/pgtap, poi backend/pgtap)
 #   - errore ambiguo se il file esiste in entrambi senza prefisso
+#
+# CON CHE UTENTE GIRA IL TEST — variabile PGTAP_RUNNER
+#
+#   PGTAP_RUNNER=owner   (default oggi) l'utente dell'env file, cioe' l'owner
+#                        degli oggetti. ⚠️ L'owner NON e' soggetto alla RLS
+#                        (salvo FORCE), quindi nessuna policy viene esercitata.
+#   PGTAP_RUNNER=app     l'utente applicativo (PGTAP_APP_USER, default
+#                        zeroerp_app): i test girano come gira l'applicazione,
+#                        RLS attiva. La password arriva da ~/.pgpass — la
+#                        PGPASSWORD dell'env file viene tolta apposta, altrimenti
+#                        si tenterebbe la password dell'owner sull'utente app.
+#
+#   Esempi:
+#     PGTAP_RUNNER=app scripts/testpgtap.sh vendite/test-promo-articoli-v1.sql
+#     PGTAP_RUNNER=app scripts/pgtap-baseline.sh vendite
+#
+# ECCEZIONE PER FILE — marcatore `-- pgtap-runner: owner`
+#
+# Una manciata di test richiede l'owner per natura: fanno DDL (ALTER TABLE …
+# FORCE ROW LEVEL SECURITY, CREATE TABLE dbops.…) che il ruolo applicativo non
+# puo' fare e non deve poter fare. Non sono difetti: nei test RLS e' proprio il
+# FORCE a rendere l'owner soggetto alle policy, e l'identita' la simulano le GUC
+# `app.*`, non il ruolo di connessione.
+#
+# Quei file dichiarano in intestazione, entro le prime 80 righe:
+#
+#     -- pgtap-runner: owner
+#     -- pgtap-runner-motivo: <perche', in chiaro>
+#
+# e restano sull'owner anche con PGTAP_RUNNER=app. Il marcatore va accanto al
+# test (lo segue nelle rinomine) e pretende la ragione scritta: e' un'eccezione
+# motivata, non un interruttore per far sparire un permesso mancante.
+#
+# Censimento dei marcati:
+#   grep -rlE '^-- pgtap-runner:[[:space:]]*owner' db/pgtap/*/*.sql
 
 set -e
 
@@ -129,6 +164,39 @@ if [ ! -f "$FULL_PATH" ]; then
   echo "Errore: file non trovato: $FULL_PATH" >&2
   exit 2
 fi
+
+# --- scelta dell'utente di connessione ---------------------------------------
+# Default owner (comportamento storico). Con PGTAP_RUNNER=app si passa all'utente
+# applicativo, tranne per i file che dichiarano il marcatore in intestazione.
+PGTAP_RUNNER="${PGTAP_RUNNER:-owner}"
+PGTAP_APP_USER="${PGTAP_APP_USER:-zeroerp_app}"
+
+case "$PGTAP_RUNNER" in
+  owner) ;;
+  app)
+    if head -n 80 "$FULL_PATH" | grep -qE '^--[[:space:]]*pgtap-runner:[[:space:]]*owner[[:space:]]*$'; then
+      # Eccezione dichiarata nel file: resta sull'owner, e lo dice.
+      motivo=$(head -n 80 "$FULL_PATH" \
+                 | grep -m1 -E '^--[[:space:]]*pgtap-runner-motivo:' \
+                 | sed -E 's/^--[[:space:]]*pgtap-runner-motivo:[[:space:]]*//')
+      if [ -z "$motivo" ]; then
+        echo "Errore: $REL_PATH dichiara 'pgtap-runner: owner' senza 'pgtap-runner-motivo'." >&2
+        echo "L'eccezione va motivata nel file." >&2
+        exit 4
+      fi
+      echo "ℹ️  $REL_PATH resta su owner ($PGUSER): $motivo" >&2
+    else
+      export PGUSER="$PGTAP_APP_USER"
+      # La password dell'owner non vale per l'utente app: si lascia decidere a
+      # ~/.pgpass. Senza questo unset, PGPASSWORD dell'env file vincerebbe.
+      unset PGPASSWORD
+    fi
+    ;;
+  *)
+    echo "Errore: PGTAP_RUNNER='$PGTAP_RUNNER' non valido (attesi: owner, app)." >&2
+    exit 4
+    ;;
+esac
 
 # pg_prove con path assoluto (funziona da qualsiasi CWD)
 pg_prove "$FULL_PATH"

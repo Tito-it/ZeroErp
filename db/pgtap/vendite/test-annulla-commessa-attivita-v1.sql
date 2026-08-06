@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: ALTER TABLE vendite.commesse_attivita_log ADD/DROP CONSTRAINT temporaneo:
+--   fault injection per dimostrare che l'INSERT del log fallisce davvero e che
+--   l'annullamento e' atomico. Senza DDL il ramo non e' raggiungibile.
 -- pgTAP test per Zero ERP
 -- Test: annullamento di una riga MANUALE di commessa
 --       (vendite.fn_annulla_commessa_attivita).

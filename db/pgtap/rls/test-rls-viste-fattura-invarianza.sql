@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: ALTER TABLE vendite.fatture_righe / fatture_riepiloghi_iva ENABLE + FORCE ROW
+--   LEVEL SECURITY: il test arma e disarma la RLS per misurare l'invarianza
+--   delle viste che ci joinano sopra.
 -- pgTAP test — INVARIANZA delle viste che joinano vendite.fatture_righe
 --   rispetto all'armamento della RLS sui satelliti fattura (20260729-01..05).
 --

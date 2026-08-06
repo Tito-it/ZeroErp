@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: ALTER TABLE vendite.ordini ENABLE + FORCE ROW LEVEL SECURITY, locale alla
+--   transazione: e' il FORCE a rendere l'owner soggetto alle policy.
 -- pgTAP test FUNZIONALE RLS multi-policy — vendite.ordini
 --
 -- Brief RLS §5/§11. ordini ha TRE policy PERMISSIVE (combinate in OR),

@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: ALTER TABLE pratiche.sospensioni DROP CONSTRAINT + riapplicazione via
+--   dbops.fn_apply_automazione_overlap(): il soggetto del test E' l'automazione
+--   che ricostruisce il vincolo EXCLUDE.
 -- pgTAP test per Zero ERP
 --
 -- Test: anti-overlap + guard data non futura su pratiche.sospensioni

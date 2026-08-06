@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: ALTER TABLE vendite.fatture ENABLE + FORCE ROW LEVEL SECURITY, locale alla
+--   transazione: e' il FORCE a rendere l'owner soggetto alle policy.
 -- pgTAP test FUNZIONALE RLS — vendite.fatture (policy EF_WHITELIST)
 --
 -- Brief RLS §11. A differenza di test-rls-policies-structure.sql (che

@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: ALTER TABLE vendite.preventivi FORCE ROW LEVEL SECURITY: il test verifica che
+--   la vista di dashboard resti coerente con la RLS armata.
 -- pgTAP test per Zero ERP
 --
 -- Test: viste "Situazione aperta" v2 — SERBATOIO PRE-COMMESSA

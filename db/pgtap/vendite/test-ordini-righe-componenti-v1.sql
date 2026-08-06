@@ -194,10 +194,15 @@ SELECT throws_like(
 -- =========================================================
 -- 16) fn_ordine_riga_componenti_init: riga inesistente -> raise
 -- =========================================================
+-- ⚠️ throws_like sulla frase, non throws_ok sul codice: tutti i raise di
+--    script.fn_log_and_raise_error condividono SQLSTATE P0001, quindi il codice
+--    non discrimina (stessa ragione di catalogo/test-guard-iva-reactivation-v1).
+--    Il pattern SALTA l'id interpolato — il messaggio 900 e'
+--    `Riga ordine %s non trovata.` — altrimenti si rompe al primo id diverso.
 SELECT throws_like(
     $$ SELECT vendite.fn_ordine_riga_componenti_init(2147483647, 1, current_date) $$,
-    '%Parametro non valido%',
-    '16) fn_ordine_riga_componenti_init: riga inesistente -> raise E_PARAMETRO_INVALIDO'
+    '%Riga ordine %non trovata%',
+    '16) fn_ordine_riga_componenti_init: riga inesistente -> raise E_ORDINE_RIGA_NON_TROVATA'
 );
 
 -- =========================================================
