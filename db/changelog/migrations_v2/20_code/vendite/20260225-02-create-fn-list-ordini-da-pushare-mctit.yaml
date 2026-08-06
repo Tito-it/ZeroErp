@@ -13,8 +13,10 @@ databaseChangeLog:
   - changeSet:
       id: 20260225-02-create-fn-list-ordini-da-pushare
       author: mctit
-      runOnChange: true
-      validCheckSum:
+      # ⚠️ Era `true`: definisce vendite.fn_list_ordini_da_pushare, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
         - ANY
       comment: "Lista ordini eligible al push su commessa: stato CONFERMATO, righe con quantita > 0 e prezzo >= 0."
       changes:

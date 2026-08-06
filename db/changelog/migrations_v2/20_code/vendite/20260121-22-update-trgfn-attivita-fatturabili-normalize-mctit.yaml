@@ -13,7 +13,11 @@ databaseChangeLog:
   - changeSet:
       id: 20260121-22-update-trgfn-attivita-fatturabili-normalize
       author: mctit
-      runOnChange: true
+      # ⚠️ Era `true`: definisce vendite.trgfn_attivita_fatturabili_normalize, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
+        - ANY
       comment: "Allinea normalizzazione sorgente a sorgente_tipo_id (FK)"
       changes:
         - sql:

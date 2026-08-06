@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Ri-ancora il mirror di config.transizioni_stati_preventivi DOPO il
+#   20260430-60, che lo sovrascrive.
+#
+# ⚠️ IL PROBLEMA, ED E' UNA DIVERGENZA CI-vs-DEV, NON UN DUBBIO DI STILE.
+#   Sulla stessa tabella insistono due sorgenti:
+#     20260403-04  loadUpdateData del CSV   (mirror vivo, runOnChange + ANY)
+#     20260430-60  UPDATE ... SET meta = '{...}'  (SOVRASCRITTURA piena)
+#   Nella timeline il secondo viene DOPO il primo. Su un database ricostruito
+#   da zero — la CI — girano entrambi una volta e vince l'SQL di aprile:
+#   il `meta` delle sette transizioni del preventivo torna a quella versione.
+#   Su dev non si vede, perche' li' il loader del CSV e' `runOnChange: true`
+#   con `validCheckSums: ANY` (quindi ri-esegue a ogni migrate) mentre il
+#   20260430-60 porta il refuso `validCheckSum` singolare — chiave che
+#   Liquibase ignora — e quindi NON ri-esegue. Il CSV vince su dev e perde
+#   in CI: due macchine, due matrici.
+#
+#   Cosa si perdeva in CI, in concreto:
+#     - `outlined: true` e `icon: pi pi-times-circle` sulle tre transizioni
+#       verso ANNULLATO (aspetto uniforme dell'azione «Annulla», 2026-08-06);
+#     - `requires_righe: true` su DRAFT->EMESSO (guard documento vuoto);
+#     - il namespace i18n `vendite.preventivi.*`, riportato a `preventivi.*`,
+#       radice che nei locales del frontend non esiste piu'.
+#
+# ℹ️ PERCHE' UN NUOVO CHANGESET E NON UN FIX DEL 20260430-60. Quello e'
+#   mergiato, e la regola del progetto e' forward-only: si aggiunge dopo, non
+#   si riscrive prima. Spegnerlo con `runOnChange: false` non basterebbe —
+#   su un database nuovo applicherebbe comunque, una volta, e comunque dopo
+#   il loader. L'unico modo perche' il CSV vinca SEMPRE e' un mirror piu'
+#   avanti nella timeline. Questo.
+#
+# ℹ️ E' lo STESSO CSV del 20260403-04, con le stesse colonne: non duplica un
+#   dato, duplica un'ancora. Resta `runOnChange: true` + `validCheckSums: ANY`
+#   perche' e' un mirror vivo — e' esattamente il caso per cui quella coppia
+#   e' giusta (a differenza delle definizioni di funzione in 20_code, dove
+#   il 2026-08-06 e' stata tolta ovunque).
+#
+# ⚠️ La sede della matrice del preventivo e' e resta il CSV
+#   `80_data/sql/config/transizioni_stati_preventivi.csv`. Chi deve cambiare
+#   un'azione tocca quello: nessun UPDATE nuovo su questa tabella.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260806-13-riancora-mirror-transizioni-preventivi-mctit.yaml
+
+  - changeSet:
+      id: 20260806-13-riancora-mirror-transizioni-preventivi
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Ri-applica il CSV di config.transizioni_stati_preventivi dopo il
+        20260430-60, che sovrascrive il meta con la versione di aprile. Senza,
+        un database ricostruito da zero (CI) perde outlined/icona
+        dell'annullamento, requires_righe su DRAFT->EMESSO e il namespace i18n
+        vendite.preventivi.*; dev non se ne accorge perche' li' il loader
+        ri-esegue a ogni migrate e il 20260430-60 no (refuso validCheckSum).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: transizioni_stati_preventivi
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/transizioni_stati_preventivi.csv
+            tableName: transizioni_stati_preventivi
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: STRING }
+              - column: { name: stato_da_id, type: NUMERIC }
+              - column: { name: stato_a_id, type: NUMERIC }
+              - column: { name: attivo, type: BOOLEAN }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column: { name: data_update, type: STRING }
+              - column: { name: user_update, type: STRING }

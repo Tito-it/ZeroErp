@@ -14,7 +14,11 @@ databaseChangeLog:
       id: 20260227-13-create-fn-batch-upsert-commessa-attivita
       author: mctit
       comment: "Batch wrapper su fn_upsert_commessa_attivita: accetta jsonb array, 1 round-trip DB, collect-all errors, contatori inserted/updated."
-      runOnChange: true
+      # ⚠️ Era `true`: definisce vendite.fn_batch_upsert_commessa_attivita, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
+        - ANY
       changes:
         - sql:
             splitStatements: false

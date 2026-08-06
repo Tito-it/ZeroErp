@@ -9,8 +9,10 @@ databaseChangeLog:
   - changeSet:
       id: 20260208-12-update-fn-get-or-create-lotto-guards
       author: mctit
-      runOnChange: true
-      validCheckSum:
+      # ⚠️ Era `true`: definisce vendite.trgfn_fatturazione_lotti_guard_stato, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
         - ANY
       comment: "Blocca il riuso di lotti COMPLETATI in fn_get_or_create_lotto"
       changes:

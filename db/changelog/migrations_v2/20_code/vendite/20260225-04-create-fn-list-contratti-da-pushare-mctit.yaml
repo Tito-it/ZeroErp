@@ -13,8 +13,10 @@ databaseChangeLog:
   - changeSet:
       id: 20260225-04-create-fn-list-contratti-da-pushare
       author: mctit
-      runOnChange: true
-      validCheckSum:
+      # ⚠️ Era `true`: definisce vendite.fn_list_contratti_da_pushare, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
         - ANY
       comment: "Lista righe contratto eligible al push su commessa: stato ATTIVO, righe attive con articolo. Predisposizione base."
       changes:

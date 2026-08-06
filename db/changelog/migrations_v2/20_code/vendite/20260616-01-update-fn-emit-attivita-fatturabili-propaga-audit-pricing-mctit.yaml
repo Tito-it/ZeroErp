@@ -22,7 +22,11 @@ databaseChangeLog:
   - changeSet:
       id: 20260616-01-update-fn-emit-attivita-fatturabili-propaga-audit-pricing
       author: mctit
-      runOnChange: true
+      # ⚠️ Era `true`: definisce vendite.fn_emit_attivita_fatturabili_da_commessa, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
+        - ANY
       comment: >
         fn_emit_attivita_fatturabili_da_commessa: propaga le 8 colonne audit
         snapshot pricing v5 da commesse_attivita ad attivita_fatturabili

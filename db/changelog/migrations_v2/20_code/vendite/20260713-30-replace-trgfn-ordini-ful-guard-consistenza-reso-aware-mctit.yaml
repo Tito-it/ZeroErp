@@ -27,8 +27,10 @@ databaseChangeLog:
   - changeSet:
       id: 20260713-30-replace-trgfn-ordini-ful-guard-consistenza-reso-aware
       author: mctit
-      runOnChange: true
-      validCheckSum:
+      # ⚠️ Era `true`: definisce vendite.trgfn_ordini_ful_guard_consistenza, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
         - ANY
       changes:
         - sql:

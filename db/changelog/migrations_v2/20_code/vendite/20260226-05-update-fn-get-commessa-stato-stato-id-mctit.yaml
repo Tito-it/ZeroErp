@@ -9,7 +9,11 @@ databaseChangeLog:
   - changeSet:
       id: 20260226-05-update-fn-get-commessa-stato-stato-id
       author: mctit
-      runOnChange: true
+      # ⚠️ Era `true`: definisce vendite.fn_get_commessa_stato, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
+        - ANY
       comment: "Adatta fn_get_commessa_stato a stato_commessa_id (FK stati_commessa). Aggiunge flag operativi nel risultato."
       changes:
         - sql:

@@ -9,7 +9,11 @@ databaseChangeLog:
   - changeSet:
       id: 20260226-06-create-fn-list-commesse-emittibili
       author: mctit
-      runOnChange: true
+      # ⚠️ Era `true`: definisce vendite.fn_list_commesse_emittibili, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
+        - ANY
       comment: "Funzione read-only: restituisce commesse in stato emittibile con attivita` non emesse."
       changes:
         - sql:

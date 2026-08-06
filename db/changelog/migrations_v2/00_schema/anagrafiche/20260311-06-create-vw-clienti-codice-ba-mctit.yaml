@@ -23,7 +23,11 @@ databaseChangeLog:
       id: 20260311-06-create-vw-clienti-codice-ba
       author: mctit
       comment: "Vista clienti + billing_account per ricerca codice e dettaglio entita' CL"
-      runOnChange: true
+      # ⚠️ Era `true`: definisce anagrafiche.vw_clienti_codice_ba, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
+        - ANY
       failOnError: true
       changes:
         - sql:

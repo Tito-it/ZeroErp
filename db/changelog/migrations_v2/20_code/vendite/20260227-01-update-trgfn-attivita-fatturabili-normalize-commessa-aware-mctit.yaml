@@ -9,7 +9,11 @@ databaseChangeLog:
   - changeSet:
       id: 20260227-01-update-trgfn-attivita-fatturabili-normalize-commessa-aware
       author: mctit
-      runOnChange: true
+      # ⚠️ Era `true`: definisce vendite.trgfn_attivita_fatturabili_normalize, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
+        - ANY
       comment: "Rende trgfn_attivita_fatturabili_normalize commessa-aware: skip normalizzazione competenze quando commessa_attivita_id IS NOT NULL, preserva risoluzione tipo_doc_fiscale_id e valuta_id nullable."
       changes:
         - sql:

@@ -25,7 +25,20 @@ databaseChangeLog:
   - changeSet:
       id: 20260713-38-update-matrice-transizioni-ddt-reso
       author: mctit
-      runOnChange: true
+      # ⚠️ Era `true`, ed e' stato spento il 2026-08-06: le tre modifiche che
+      #   questo SQL faceva sono ora NEL CSV del seed (20260709-10), che e' la
+      #   sede unica della matrice.
+      #     CONSEGNATO->RESO manuale:false  -> riga id 7 del CSV (c'era gia')
+      #     SPEDITO->RESO    attivo:false   -> riga id 6 del CSV (c'era gia')
+      #     RESO->CONSEGNATO nuova          -> riga id 9 del CSV (aggiunta oggi)
+      #   Restando `true` questo blocco rigirava DOPO il loader e la tabella
+      #   finiva per avere due sorgenti di verita': chi legge il CSV non vedeva
+      #   tutta la matrice, e una modifica al CSV poteva essere silenziosamente
+      #   ridecisa qui. Il changeSet resta (e' mergiato, non si cancella) ma da
+      #   oggi applica una volta sola e scrive esattamente cio' che il CSV
+      #   dichiara: e' inerte. Le prossime modifiche alla matrice si fanno SOLO
+      #   sul CSV.
+      runOnChange: false
       validCheckSums:
         - ANY
       changes:

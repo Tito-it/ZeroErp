@@ -9,7 +9,11 @@ databaseChangeLog:
   - changeSet:
       id: 20260226-09-update-fn-get-commessa-stato-ptype
       author: mctit
-      runOnChange: true
+      # ⚠️ Era `true`: definisce vendite.fn_get_commessa_stato, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
+        - ANY
       comment: "Riscrive fn_get_commessa_stato con %TYPE su parametri e RETURNS TABLE. DROP preventivo per cambio tipi colonna."
       changes:
         - sql:
