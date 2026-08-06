@@ -39,6 +39,24 @@
 --   12. §3f: deep_link opaco restituito fedele
 -- ------------------------------------------------------------
 BEGIN;
+
+-- ⚠️ QUESTO FILE NON USA script.fn_pgtap_set_contesto_operatore(), a differenza
+-- degli altri, e non e' una dimenticanza — ma la ragione qui e' scomoda e vale
+-- la pena scriverla per esteso.
+-- La fixture costruisce un'identita' CLIENTE_PORTALE (riga ~136) e su quella
+-- verifica le precedenze fra preset. La funzione filtra i profili per la veste
+-- corrente (`app.ruolo_applicativo` -> fn_get_profili_accesso_applicabili):
+-- dichiarare OPERATORE in testa esclude — CORRETTAMENTE — il profilo di
+-- un'identita' portale, e le asserzioni 6 e 10 cadono. La funzione fa il suo
+-- mestiere; e' l'accoppiata «identita' portale + veste operatore» a non esistere.
+-- ⚠️ Ma senza GUC la veste e' NULL = «tutte», e questa e' una condizione che
+-- l'applicazione non produce MAI: il middleware la valorizza sempre. Quindi
+-- oggi queste asserzioni sono verdi in un mondo che non esiste. La correzione
+-- vera e' far dichiarare al test la veste coerente con la propria fixture
+-- (CLIENTE_PORTALE), non imporgliene una operatore: e' una decisione del
+-- cantiere `ui`, non di questo brief.
+-- Brief: brief-db-pgtap-runner-rls-baseline §11.
+
 SELECT plan(12);
 
 -- =========================================================

@@ -36,6 +36,21 @@
 --   13. DB-A: ogni colonna dell'output espone la chiave priorita
 -- ------------------------------------------------------------
 BEGIN;
+
+-- ⚠️ QUESTO FILE NON USA script.fn_pgtap_set_contesto_operatore(), a differenza
+-- degli altri, e non e' una dimenticanza. Stessa ragione del gemello
+-- test-fn-resolve-dashboard-config.sql, dove e' spiegata per esteso.
+-- In breve: la fixture costruisce un'identita' CLIENTE_PORTALE (riga ~192, per
+-- evitare il guard PF pura) e la funzione filtra i profili per la veste
+-- corrente. Dichiarare OPERATORE in testa esclude — correttamente — quel
+-- profilo, e cadono le asserzioni 5, 7 e 11.
+-- Qui c'e' un indizio in piu': l'asserzione 12 manipola gia' `app.ruolo_applicativo`
+-- da sola, per verificare proprio che la veste filtri. Il file conosce la GUC e
+-- sceglie di tenerla vuota altrove — ma «veste vuota» e' una condizione che
+-- l'applicazione non produce mai. Correzione vera: dichiarare CLIENTE_PORTALE,
+-- decisione del cantiere `ui`.
+-- Brief: brief-db-pgtap-runner-rls-baseline §11.
+
 SELECT plan(13);
 -- =========================================================
 -- 1. Setup: lista + colonne + auth_user + identita

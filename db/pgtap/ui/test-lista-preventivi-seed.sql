@@ -25,6 +25,13 @@
 --   14. stato_codice_interno nel catalogo (campo_sorgente=stato_codice_interno) per Tag severity FE
 -- ------------------------------------------------------------
 BEGIN;
+
+-- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
+-- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
+-- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
+-- Brief: brief-db-pgtap-runner-rls-baseline §8.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
 SELECT plan(14);
 
 -- 1. Vista espone ragione_sociale_completa

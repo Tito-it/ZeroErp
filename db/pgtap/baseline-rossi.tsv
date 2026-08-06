@@ -38,7 +38,6 @@ db/pgtap/config/test-tipi-ruoli-nature-ammesse.sql	ASSERZIONE
 db/pgtap/config/test-toponomastica-stradario-generale.sql	ERRORE_FIXTURE
 db/pgtap/config/test-user-emittenti-fiscali-immutable.sql	ERRORE_FIXTURE
 db/pgtap/dbops/test-automazione-guard-utility-tipo-ruolo.sql	ASSERZIONE
-db/pgtap/dbops/test-fn-apply-chiusura-scadenze-v1.sql	ERRORE_FIXTURE
 db/pgtap/documenti/test-documenti-template-documenti.sql	ERRORE_FIXTURE
 db/pgtap/pagamenti/test-compensazioni-contabili-model.sql	ERRORE_FIXTURE
 db/pgtap/pagamenti/test-enti-incasso-psp.sql	ERRORE_FIXTURE
