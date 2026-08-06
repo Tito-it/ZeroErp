@@ -12,7 +12,13 @@ databaseChangeLog:
   - changeSet:
       id: 20251031-11-trgfn_tx_id_managed
       author: mctit
-      runOnChange: true
+      # ⚠️ Era `true`: con validCheckSums ANY il checksum e' sempre "cambiato",
+      #   quindi il changeSet ri-eseguiva a OGNI invocazione di liquibase. In CI
+      #   ce ne sono due (--contexts="!provision" poi --contexts=ci_apply) e la
+      #   seconda rimetteva questo corpo SOPRA le revisioni piu' recenti, che
+      #   sono runOnChange:false e non ri-eseguono. Su dev non si vedeva: una
+      #   sola invocazione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
       validCheckSums: [ANY]
 
       changes:
