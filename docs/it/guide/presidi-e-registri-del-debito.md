@@ -237,8 +237,11 @@ decide se mostrare un avviso o riportarti indietro, un allarme, un tentativo
 automatico — no. Al primo giro erano **141 codici**, 90 dei quali sollevati da
 funzioni agganciate a un trigger, cioè sul percorso di una richiesta vera.
 
-Il debito ha cominciato a calare il giorno dopo: primo lotto (`vendite`,
-2026-08-06) **141 → 114**. Uno dei codici non ha preso una risposta — è stato
+Il debito ha cominciato a calare il giorno dopo, e in quattro lotti i codici **sul
+percorso di una richiesta** sono passati da **90 a zero**: il registro da 141 a
+51, e quel che resta sta in funzioni che potrebbero non essere mai raggiunte dal
+web. Le decisioni sono state prese leggendo il punto che solleva, non il nome del
+codice: tre volte su novantuno il nome diceva un'altra cosa. Uno dei codici non ha preso una risposta — è stato
 **spezzato in due**, perché ne conteneva due: la stessa parola diceva «lo stato
 di workflow non esiste» (404) e «la nazione dell'indirizzo non si risolve» (400,
 con un campo da correggere). Un registro fatto bene non serve solo a ricordare
