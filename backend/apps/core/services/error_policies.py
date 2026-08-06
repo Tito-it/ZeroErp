@@ -55,7 +55,13 @@ class ErrorPolicyRegistry:
         ),
         "E_PIPELINE_NOT_FOUND": ErrorPolicy(
             code="E_PIPELINE_NOT_FOUND",
-            http_status=404,
+            # 404 -> 500 il 2026-08-06 (audit dei 404 «larghi», api.md).
+            # `pipeline_step_executor` lo solleva quando NON ESISTE una
+            # configurazione di pipeline per quello stato/tipo lotto: non e' una
+            # risorsa che l'operatore ha chiesto e non c'e', e' un pezzo che
+            # nessuno ha configurato. Il 404 gli diceva «non esiste», mandandolo
+            # a cercare una cosa che nessuno puo' trovare.
+            http_status=500,
             ui_action="show_error_banner",
             user_message="Configurazione pipeline non trovata.",
         ),
@@ -509,7 +515,14 @@ class ErrorPolicyRegistry:
         # operativa per quel periodo.
         "E_LISTINO_VERSIONE_NON_ATTIVA": ErrorPolicy(
             code="E_LISTINO_VERSIONE_NON_ATTIVA",
-            http_status=404,
+            # 404 -> 422 (audit 2026-08-06). Non era un «non trovato»: il
+            # listino c'e', la query di `fn_resolve_prezzo_listino_v2` cerca una
+            # versione `attivo = TRUE AND stato IN (ATTIVA, CHIUSA)` valida ALLA
+            # DATA, e non ne trova. La richiesta si capisce e non si puo'
+            # eseguire: e' la definizione del 422. Allineato al fratello
+            # `E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA`, che dice quasi la
+            # stessa cosa ed era gia' 422.
+            http_status=422,
             ui_action="show_error_banner",
             user_message=(
                 "Listino senza versione attiva alla data del documento. "
@@ -1533,13 +1546,20 @@ class ErrorPolicyRegistry:
         "E_PIPELINE_SCOPE_INCOMPLETE": ErrorPolicy(code="E_PIPELINE_SCOPE_INCOMPLETE", http_status=400, ui_action="highlight_form_fields", user_message="Scope pipeline incompleto."),
         "E_PIPELINE_STATO_LOTTO": ErrorPolicy(code="E_PIPELINE_STATO_LOTTO", http_status=409, ui_action="show_error_banner", user_message="Stato lotto non compatibile con l'operazione."),
         "E_PIPELINE_TASK": ErrorPolicy(code="E_PIPELINE_TASK", http_status=400, ui_action="show_error_banner", user_message="Errore task pipeline."),
-        "E_PIPELINE_TASK_HANDLER_NOT_FOUND": ErrorPolicy(code="E_PIPELINE_TASK_HANDLER_NOT_FOUND", http_status=404, ui_action="show_error_banner", user_message="Handler task non trovato."),
+        # 404 -> 500 (audit 2026-08-06): nessuna riga di registry per quel task,
+        # cioe' un handler mai registrato. Difetto di configurazione, non
+        # risorsa mancante.
+        "E_PIPELINE_TASK_HANDLER_NOT_FOUND": ErrorPolicy(code="E_PIPELINE_TASK_HANDLER_NOT_FOUND", http_status=500, ui_action="show_error_banner", user_message="Handler task non trovato."),
         "E_RESET_LOTTO_VALIDATION": ErrorPolicy(code="E_RESET_LOTTO_VALIDATION", http_status=400, ui_action="highlight_form_fields", user_message="Parametri reset lotto non validi."),
         "E_RESET_LOTTO_FATTURA_VALIDATION": ErrorPolicy(code="E_RESET_LOTTO_FATTURA_VALIDATION", http_status=400, ui_action="highlight_form_fields", user_message="Parametri reset fattura non validi."),
         "E_GENERATE_FATTURE_RIGHE_VALIDATION": ErrorPolicy(code="E_GENERATE_FATTURE_RIGHE_VALIDATION", http_status=400, ui_action="highlight_form_fields", user_message="Parametri generazione righe non validi."),
         "E_TASK": ErrorPolicy(code="E_TASK", http_status=400, ui_action="show_error_banner", user_message="Errore esecuzione task."),
         "E_TASK_FATTURA": ErrorPolicy(code="E_TASK_FATTURA", http_status=400, ui_action="show_error_banner", user_message="Errore task fattura."),
-        "E_TASK_IMPLEMENTATION_NOT_FOUND": ErrorPolicy(code="E_TASK_IMPLEMENTATION_NOT_FOUND", http_status=404, ui_action="show_error_banner", user_message="Implementazione task non trovata."),
+        # 404 -> 500 (audit 2026-08-06): `handler_registry.get(handler_code)`
+        # torna None — l'implementazione Python non e' registrata. Lo stesso
+        # punto lo logga gia' con severity="C": internamente e' trattato come
+        # anomalia di sistema, mentre l'HTTP diceva «non trovato».
+        "E_TASK_IMPLEMENTATION_NOT_FOUND": ErrorPolicy(code="E_TASK_IMPLEMENTATION_NOT_FOUND", http_status=500, ui_action="show_error_banner", user_message="Implementazione task non trovata."),
         "E_TASK_RESET_REQUIRED": ErrorPolicy(code="E_TASK_RESET_REQUIRED", http_status=409, ui_action="show_error_banner", user_message="Reset necessario prima di rieseguire."),
         # ── Satelliti fattura: esiti PARZIALI dei task per-fattura (D-Q) ──
         # Non sono errori di richiesta: viaggiano su `task_runs.error_code` e
@@ -1981,7 +2001,10 @@ class ErrorPolicyRegistry:
         ),
         "E_EMITTENTE_DEFAULT_MISSING": ErrorPolicy(
             code="E_EMITTENTE_DEFAULT_MISSING",
-            http_status=404,
+            # 404 -> 500 (audit 2026-08-06): nessuna riga con `is_default = true`
+            # in `emittenti_fiscali_billing_account`. E' un'installazione non
+            # configurata, e lo dice il messaggio stesso: «non configurato».
+            http_status=500,
             ui_action="show_error_banner",
             user_message="Emittente fiscale default non configurato.",
         ),

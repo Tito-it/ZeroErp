@@ -803,10 +803,10 @@ policy**):
 | --- | --- | --- | --- |
 | **400** Bad Request | 222 | RFC 9110 | la richiesta è malformata o il valore è sbagliato |
 | **409** Conflict | 207 | RFC 9110 | «conflitto con lo stato attuale della risorsa» — la definizione dello standard è **letteralmente** il nostro caso: transizioni non ammesse, immutabilità, duplicati |
-| **404** Not Found | 73 | RFC 9110 | la cosa indicata non esiste |
-| **500** | 47 | RFC 9110 | anomalia tecnica: l'operatore non può farci niente |
+| **404** Not Found | 68 | RFC 9110 | la cosa indicata non esiste |
+| **500** | 51 | RFC 9110 | anomalia tecnica: l'operatore non può farci niente |
 | **403** Forbidden | 23 | RFC 9110 | il diritto manca, e non dipende dallo stato |
-| **422** Unprocessable Content | 20 | RFC 9110 §15.5.21 | sintassi valida, **semantica** no: il payload si capisce ma non si può eseguire |
+| **422** Unprocessable Content | 21 | RFC 9110 §15.5.21 | sintassi valida, **semantica** no: il payload si capisce ma non si può eseguire |
 | **401** Unauthorized | 4 | RFC 9110 | non autenticato (≠ 403: autenticato ma senza diritto) |
 | **501** Not Implemented | 3 | RFC 9110 | funzione non implementata / disattivata |
 | **502** Bad Gateway | 1 | RFC 9110 | un provider esterno ha risposto male |
@@ -843,6 +843,32 @@ cosa che lo standard non dice. Esito diverso per tutti e tre:
 > La lezione non è «meno status è meglio». È che **l'uniformità non è un valore
 > in sé**: due dei tre sono stati cambiati perché dicevano una cosa falsa, il
 > terzo è rimasto perché dice quella vera.
+
+#### ⚠️ Il criterio che distingue un 404 da un 500: chi può rimediare
+
+Prima di scrivere 404 su un «non trovato», chiedersi **chi può fare qualcosa**:
+
+* **l'operatore, cambiando la richiesta** → 404 («quel documento non c'è»);
+* **nessuno, finché qualcuno non configura** → **500**. «Non trovato» detto a chi
+  non può trovarlo lo manda a cercare una cosa che per lui non esiste.
+
+L'audit del 2026-08-06 sui 404 ha spostato cinque codici per questa ragione:
+`E_PIPELINE_NOT_FOUND`, `E_PIPELINE_TASK_HANDLER_NOT_FOUND`,
+`E_TASK_IMPLEMENTATION_NOT_FOUND` ed `E_EMITTENTE_DEFAULT_MISSING` → **500**
+(pipeline, handler, implementazioni e default mai configurati; uno era già
+loggato internamente con `severity="C"` mentre l'HTTP diceva «non trovato»);
+`E_LISTINO_VERSIONE_NON_ATTIVA` → **422**, perché non era affatto un
+non-trovato — il listino c'è, manca una versione **valida alla data** — e il
+fratello `E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA` era già 422.
+
+⚠️ **Tre candidati sono stati risparmiati leggendo il codice**, e vale più dei
+cinque spostati: `E_PARAMETER_NOT_FOUND` sembrava configurazione mancante, ma è
+usato **anche** per l'`override_id` nell'URL di una DELETE, dove il 404 è
+corretto (semmai è da spezzare); `E_PREV_STATO_CORRENTE_NON_TROVATO` nasce da
+una JOIN che fallisce sia quando il preventivo non esiste (404 giusto) sia
+quando il suo stato è rotto; `E_INDIRIZZO_SNAPSHOT_NOT_FOUND` è un
+`IF NOT FOUND` su un id referenziato, cioè il 404 «largo» qui sotto.
+**Otto candidati dal messaggio, cinque veri dopo la lettura.**
 
 ⚠️ **Il nostro 404 è più largo di quello dell'RFC.** Nello standard il 404
 riguarda la **risorsa indirizzata dall'URI**; noi lo usiamo anche quando l'URI
