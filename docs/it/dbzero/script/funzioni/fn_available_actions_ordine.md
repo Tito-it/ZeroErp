@@ -34,6 +34,12 @@ AS $function$
 --   discendono enabled/reason/reason_key. + nessuna_azione_key dal
 --   meta dello stato, esposta quando nessuna azione e' abilitata
 --   (brief-db-vie-uscita-operatore §4 regola R3 e §6).
+--   rev 2026-08-06: + target_state_descrizione, la forma leggibile
+--   dello stato di destinazione. Serve alla frase di conferma
+--   «portare il documento nello stato X»: il codice_interno non e'
+--   quella forma (DRAFT -> Bozza, ALLOCATO -> Allocato a magazzino)
+--   e tradurlo nel FE sarebbe una seconda copia del vocabolario
+--   degli stati. NULL sulle azioni che non cambiano stato.
 DECLARE
     v_stato_id   vendite.ordini.stato_doc_ordine_id%TYPE;
     v_stato_cod  config.stati_doc_ordini.codice_interno%TYPE;
@@ -102,6 +108,10 @@ BEGIN
             jsonb_build_object(
                 'key',              t.meta->>'action_key',
                 'target_state',     sa.codice_interno,
+                -- Forma leggibile della destinazione: la colonna
+                -- accanto, nello stesso JOIN. Il FE non puo'
+                -- derivarla dal codice.
+                'target_state_descrizione', sa.descrizione,
                 'label_key',        t.meta->>'label_key',
                 'severity',         t.meta->>'severity',
                 'icon',             t.meta->>'icon',
@@ -181,6 +191,9 @@ BEGIN
             jsonb_build_object(
                 'key',              'push_commessa',
                 'target_state',     NULL,
+                -- Non e' un cambio di stato: nessuna destinazione
+                -- da nominare.
+                'target_state_descrizione', NULL,
                 'label_key',        'vendite.ordini.azione_push_commessa',
                 'severity',         'success',
                 'icon',             'pi pi-arrow-right',
@@ -222,7 +235,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_ordine(p_ordine_id bigint)
-IS 'Capability ordine di vendita per detail API: available_actions + push_commessa (decoupling fatturazione/spedizione, fn_list_ordini_da_pushare fonte unica; reason ORDINE_NON_CONFERMATO/ORDINE_FATTURA_DA_DDT/ORDINE_GIA_FATTURATO/ORDINE_NESSUNA_RIGA_PUSHABILE) + can_change_state + can_edit_* + nessuna_azione_key + non_editable_fields + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_ordini. rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e l''ordine non ha righe -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard Regola 2, che non filtra su attivo). rev 2026-07-19: reason ORDINE_GIA_INVIATO (allocato, in attesa fatturazione) distinta da ORDINE_GIA_FATTURATO, entrambe via script.fn_get_stato_push_segment (vede anche componenti #CMP) — brief-db-push-commessa-gia-inviato §4b. rev 2026-07-19 (bis): le 5 reason_key del push passano al namespace i18n vendite.ordini.* (era ordini.*, radice inesistente nei locales FE) — brief-db-i18n-namespace-reason-ordini; convenzione in docs/it/dev/frontend/i18n-namespace-radici.md. rev 2026-08-04: le azioni verso ANNULLATO espongono reasons da script.fn_check_ordine_annullabile (stessa fn del guard di transizione); i motivi si sommano a quello di requires_righe in un array unico da cui discendono enabled/reason/reason_key. + nessuna_azione_key dal meta dello stato corrente (EVASO / PARZIALMENTE_EVASO), esposta solo quando nessuna azione risulta abilitata — valutata a parte da can_change_state, che qui conta apposta anche le disabilitate (brief-db-vie-uscita-operatore §4 regola R3, §6).';
+IS 'Capability ordine di vendita per detail API: available_actions + push_commessa (decoupling fatturazione/spedizione, fn_list_ordini_da_pushare fonte unica; reason ORDINE_NON_CONFERMATO/ORDINE_FATTURA_DA_DDT/ORDINE_GIA_FATTURATO/ORDINE_NESSUNA_RIGA_PUSHABILE) + can_change_state + can_edit_* + nessuna_azione_key + non_editable_fields + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_ordini. rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e l''ordine non ha righe -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard Regola 2, che non filtra su attivo). rev 2026-07-19: reason ORDINE_GIA_INVIATO (allocato, in attesa fatturazione) distinta da ORDINE_GIA_FATTURATO, entrambe via script.fn_get_stato_push_segment (vede anche componenti #CMP) — brief-db-push-commessa-gia-inviato §4b. rev 2026-07-19 (bis): le 5 reason_key del push passano al namespace i18n vendite.ordini.* (era ordini.*, radice inesistente nei locales FE) — brief-db-i18n-namespace-reason-ordini; convenzione in docs/it/dev/frontend/i18n-namespace-radici.md. rev 2026-08-04: le azioni verso ANNULLATO espongono reasons da script.fn_check_ordine_annullabile (stessa fn del guard di transizione); i motivi si sommano a quello di requires_righe in un array unico da cui discendono enabled/reason/reason_key. + nessuna_azione_key dal meta dello stato corrente (EVASO / PARZIALMENTE_EVASO), esposta solo quando nessuna azione risulta abilitata — valutata a parte da can_change_state, che qui conta apposta anche le disabilitate (brief-db-vie-uscita-operatore §4 regola R3, §6). rev 2026-08-06: + target_state_descrizione accanto a target_state (config.stati_doc_ordini.descrizione della destinazione). Serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile (DRAFT -> Bozza, ALLOCATO -> Allocato a magazzino) e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati. NULL su push_commessa, che non e'' una transizione.';
 ```
 
 ---

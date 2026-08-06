@@ -3,7 +3,9 @@
 > **Tipo**: brief operativo per il **team DB** · **Target**: `dev/db-tid` ·
 > **Data**: 2026-07-29 · **Owner**: Tid · **Stato**: 🟡 **IN CORSO** —
 > il sintomo è rientrato per altra via (strada **(a)**), la decisione di passare
-> a **(b)** è presa il 2026-08-05 e il piano è al **§8** ·
+> a **(b)** è presa il 2026-08-05 e il piano è al **§8**.
+> **Da leggere per primo: il §11** — stato al 2026-08-06, con la domanda aperta
+> del §10.3 sciolta e l'elenco di ciò che resta al **§11.4** ·
 > **Priorità**: 🔴 **ALTA** — non per un difetto di prodotto, ma perché
 > **`scripts/pgtap-baseline.sh` oggi non può fare il suo mestiere**: distinguere
 > un rosso nuovo da uno noto. Finché non è risolto, ogni «zero regressioni»
@@ -393,6 +395,9 @@ provata e **misurata peggiore** (99 file rossi contro 88, 55 peggioramenti
 contro 51). È anche meno fedele: un operatore senza emittente non è permissivo,
 è una configurazione incompleta.
 
+> ✅ **Risolta il 2026-08-06, al §11.1.** Erano l'ipotesi 4 e l'ipotesi 2, ma
+> in forma più semplice di come sono scritte qui.
+
 ### 10.4 Un difetto trovato fuori perimetro, già corretto
 
 `test-fn-init-componenti-jsonb-override-v1` falliva a intermittenza. Dettaglio e
@@ -403,3 +408,141 @@ ordinamento — è comparso tre volte in un giorno**: nel test, nelle 33 fixture
 `pratiche`, e nella scelta dell'emittente. Vale la pena contarlo su tutta la
 suite prima di rigenerare la baseline: è un `grep`, e ogni occorrenza è un test
 che scommette invece di verificare.
+
+---
+
+## 11. Il divario di `pratiche`, sciolto (2026-08-06)
+
+> Trovato **senza** l'utente applicativo: bastavano il catalogo dei privilegi e
+> la lettura delle policy. Il runner resta invariato.
+
+### 11.1 Non era una causa ignota: erano due, entrambe già nell'elenco
+
+**Prima causa — 33 file su 37: manca il contesto, non le policy.** Nei 43 file di
+`pratiche` la chiamata a `fn_pgtap_set_contesto_operatore()` compariva **zero
+volte**, perché il §10.2 l'aveva tolta da tutti i 233 file fuori `vendite`. E
+`pratiche.pratiche` ha `relrowsecurity = true` con una sola policy `cmd=*`:
+
+```
+rls_pratiche_ef_whitelist:
+  current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+  AND script.fn_scope_ef_whitelist(current_setting('app.current_user_id', true)::int,
+                                   emittente_fiscale_id)
+```
+
+Senza GUC il primo membro è `NULL`, la policy è falsa, e la tabella risponde zero
+righe in lettura respingendo ogni scrittura. Il conto torna riga per riga: dei
+**37 file che perdevano asserzioni, 33 toccano `pratiche.pratiche`**. È la firma
+che si legge anche nei numeri — quasi tutti scendevano a **1 o 2 asserzioni**,
+cioè morivano subito dopo le precondizioni.
+
+Quindi l'**ipotesi 4** del §10.3, ma non nella forma temuta («le policy leggono
+anche reparto o identità»): le policy leggono esattamente le due GUC previste, e
+il contesto semplicemente non c'era.
+
+**Seconda causa — i 4 file restanti: privilegi, e non è un buco.** Tre scrivono
+su `pratiche.workflow_definizioni`, che per `zeroerp_app` è **in sola lettura per
+scelta**:
+
+| tabella `pratiche` | SELECT | INSERT | UPDATE | DELETE |
+|---|---|---|---|---|
+| `workflow_definizioni` | ✅ | ❌ | ❌ | ❌ |
+| `azioni_ui` | ✅ | ❌ | ❌ | ❌ |
+| `template_flussi_avanzamento_proiezione` | ✅ | ❌ | ❌ | ❌ |
+
+Il `GRANT SELECT` è deliberato (`20260703-15`, richiamato da `20260704-01`):
+l'applicazione **non scrive mai direttamente** su `workflow_definizioni`, ci
+passa da `fn_pubblica_definizione`, che è `SECURITY DEFINER` proprio per questo.
+Sul resto degli schemi i privilegi sono completi — verificato tabella per tabella
+con `has_table_privilege`, l'ipotesi 2 nella sua forma generale è **esclusa**.
+
+⚠️ **Ne esce un difetto vero, di test e non di privilegi.** I tre file portano la
+definizione in `RITIRATA` con un `UPDATE` diretto, ma **`RITIRATA` non è uno stato
+che qualcuno possa impostare**: si raggiunge solo come effetto della
+pubblicazione di una versione nuova, dentro `fn_pubblica_definizione`. Quei test
+collaudano quindi una transizione che in esercizio non esiste — è la stessa
+lezione del §4, un verde che non dice nulla. Vanno riscritti passando dalla
+funzione. Fuori perimetro di questo brief: appartiene al cantiere delle
+definizioni versionate.
+
+### 11.2 La riga di contesto è tornata in `pratiche`, e adesso è neutra
+
+Il §10.2 l'aveva rimossa perché rompeva 30 file. La causa era l'emittente 44, ed
+è stata sanata: rimessa oggi in tutti i **43 file**, il confronto con l'owner
+senza contesto è **identico file per file**.
+
+| `pratiche`, lanciato da owner | ok | ko | file rossi o muti |
+| --- | --- | --- | --- |
+| senza contesto (com'era) | 457 | 6 | 1 |
+| con contesto, prima del fix sotto | 454 | 6 | 1 |
+| **con contesto, dopo il fix** | **457** | **6** | **1** |
+
+`scripts/pgtap-baseline.sh pratiche` → **nessuna regressione**. E la verifica che
+conta di più: **la baseline è stata poi eseguita su tutta la suite, e nemmeno lì
+c'è una regressione**. Vale la pena dirlo perché la riga di contesto non è un
+intervento locale — accende trigger e policy — e il perimetro `pratiche` da solo
+non avrebbe dimostrato che gli altri schemi non ne risentono.
+
+**Il file che regrediva era la 34ª occorrenza dello stesso difetto.**
+`test-coda-esclude-pratiche-terminali.sql` era rimasto fuori dalla passata sui 33
+e conservava la riga
+`SELECT id FROM anagrafiche.emittenti_fiscali WHERE attivo = true LIMIT 1`.
+Appena dichiarato un contesto, l'errore è stato quello di sempre, alla lettera:
+
+```
+Accesso negato per scope emittente fiscale:
+Utente 5 non autorizzato per emittente fiscale 44 su pratiche.pratiche
+```
+
+Sostituito con `script.fn_pgtap_emittente_operatore()` → **5/5 verde**. E ora le
+sue 5 asserzioni lavorano su una pratica dell'emittente di chi agisce, non su una
+dell'emittente 44 che non è di nessuno: stesso numero, significato diverso.
+
+Cercato in tutta la suite: **non ne restano altre**. Le due occorrenze superstiti
+di `emittenti_fiscali … LIMIT 1` sono dentro `EXISTS(...)`, dove il `LIMIT` non
+sceglie niente.
+
+### 11.3 Il censimento del §10.4, fatto
+
+Analizzate tutte le occorrenze di `LIMIT 1` mascherando commenti, stringhe e
+dollar-quote, e risalendo all'inizio della query bilanciando le parentesi, così
+che `ORDER BY` sia cercato **allo stesso livello di annidamento** e non altrove
+nel file.
+
+| schema | `LIMIT 1` senza `ORDER BY` | di cui rischio ALTO | file |
+| --- | --- | --- | --- |
+| `vendite` | 385 | 79 | 98 |
+| `pratiche` | 91 | 33 | 28 |
+| `script` | 45 | 6 | 19 |
+| `anagrafiche` | 44 | 7 | 15 |
+| `rls` | 8 | 6 | 7 |
+| `config` + `ui` | 4 | 2 | 3 |
+| **totale** | **577** | **133** | **170 su 440** |
+
+«ALTO» = nessun `WHERE`, oppure un `WHERE` che filtra un insieme senza
+individuare una riga (`attivo = true`, `IS NOT NULL`). La tabella più pescata a
+caso è **`anagrafiche.soggetti`, 24 volte**: la forma esatta dell'emittente 44.
+E **82 file** hanno più di un `LIMIT 1` sulla stessa tabella — i candidati al
+difetto del test intermittente, due estrazioni indipendenti che possono dare
+soggetti diversi fra lo `skip` e l'asserzione.
+
+Il numero che il §10.4 chiedeva prima di ribaselinare adesso c'è. Non è una
+giornata di lavoro: è un cantiere a sé, e va aperto **prima** di
+`pgtap-baseline.sh --update`, altrimenti si registra come «noto» un pezzo di
+fortuna.
+
+### 11.4 Cosa resta
+
+1. **Misurare `pratiche` sotto `zeroerp_app`** con la riga rimessa: è la verifica
+   della diagnosi del §11.1, e serve la credenziale del ruolo applicativo (né
+   `titodb` né chi lancia i test la ha oggi — non è superuser, non è membro del
+   ruolo, non ha `CREATEROLE`).
+2. **La stessa passata sugli altri schemi** (`script`, `dbops`, `ui`,
+   `maintenance`), escludendo la famiglia `rls/` che il contesto se lo costruisce
+   da sé. Metodo confermato oggi: **rimettere la riga, misurare da owner, e
+   pretendere zero differenze** prima di guardare all'utente applicativo.
+3. **I 3 test su `workflow_definizioni`** (§11.1), da riscrivere passando da
+   `fn_pubblica_definizione`.
+4. **Il cantiere `LIMIT 1`** (§11.3), 133 siti a rischio ALTO.
+5. Solo dopo: **passi 3 e 4 del §8.3** — cambio utente al runner e
+   ribaselinatura.

@@ -29,6 +29,14 @@ AS $function$
 --   discendono enabled/reason/reason_key. + nessuna_azione_key
 --   dal meta dello stato, esposta quando nessuna azione e' abilitata
 --   (brief-db-vie-uscita-operatore §4 regola R3 e §6).
+--   rev 2026-08-06: + outlined dal meta della transizione (era
+--   l'unica insieme all'offerta a non emetterlo: il dato del seed
+--   non arrivava al pulsante) e + target_state_descrizione, la
+--   forma leggibile dello stato di destinazione. Serve alla frase
+--   di conferma «portare il documento nello stato X»: il
+--   codice_interno non basta a derivarla (DRAFT -> Bozza) e
+--   tradurla nel FE sarebbe una seconda copia del vocabolario
+--   degli stati. NULL sulle azioni che non cambiano stato.
 DECLARE
     v_stato_id          vendite.preventivi.stato_doc_preventivo_id%TYPE;
     v_stato_cod         config.stati_doc_preventivi.codice_interno%TYPE;
@@ -64,41 +72,49 @@ DECLARE
             'reason',     'DOCUMENTO_SENZA_RIGHE',
             'reason_key', 'common.azione_reason.senza_righe',
             'dettaglio',  0));
+    -- Azioni applicative: non sono transizioni, quindi
+    -- target_state e target_state_descrizione restano NULL.
     c_action_crea_revisione CONSTANT jsonb := jsonb_build_object(
-        'key',                  'crea_revisione',
-        'target_state',         NULL,
-        'label_key',            'vendite.preventivi.azione_crea_revisione',
-        'severity',             'info',
-        'icon',                 'pi pi-clone',
-        'requires_confirm',     true,
-        'requires_motivazione', false,
-        'enabled',              true,
-        'reason',               NULL,
-        'reason_key',           NULL
+        'key',                      'crea_revisione',
+        'target_state',             NULL,
+        'target_state_descrizione', NULL,
+        'label_key',                'vendite.preventivi.azione_crea_revisione',
+        'severity',                 'info',
+        'icon',                     'pi pi-clone',
+        'requires_confirm',         true,
+        'requires_motivazione',     false,
+        'outlined',                 false,
+        'enabled',                  true,
+        'reason',                   NULL,
+        'reason_key',               NULL
     );
     c_action_push_commessa CONSTANT jsonb := jsonb_build_object(
-        'key',                  'push_commessa',
-        'target_state',         NULL,
-        'label_key',            'vendite.preventivi.azione_push_commessa',
-        'severity',             'info',
-        'icon',                 'pi pi-arrow-right',
-        'requires_motivazione', false,
-        'requires_confirm',     true,
-        'enabled',              true,
-        'reason',               NULL,
-        'reason_key',           NULL
+        'key',                      'push_commessa',
+        'target_state',             NULL,
+        'target_state_descrizione', NULL,
+        'label_key',                'vendite.preventivi.azione_push_commessa',
+        'severity',                 'info',
+        'icon',                     'pi pi-arrow-right',
+        'requires_motivazione',     false,
+        'requires_confirm',         true,
+        'outlined',                 false,
+        'enabled',                  true,
+        'reason',                   NULL,
+        'reason_key',               NULL
     );
     c_action_genera_ordine CONSTANT jsonb := jsonb_build_object(
-        'key',                  'genera_ordine',
-        'target_state',         NULL,
-        'label_key',            'vendite.preventivi.azione_genera_ordine',
-        'severity',             'info',
-        'icon',                 'pi pi-shopping-cart',
-        'requires_confirm',     true,
-        'requires_motivazione', false,
-        'enabled',              true,
-        'reason',               NULL,
-        'reason_key',           NULL
+        'key',                      'genera_ordine',
+        'target_state',             NULL,
+        'target_state_descrizione', NULL,
+        'label_key',                'vendite.preventivi.azione_genera_ordine',
+        'severity',                 'info',
+        'icon',                     'pi pi-shopping-cart',
+        'requires_confirm',         true,
+        'requires_motivazione',     false,
+        'outlined',                 false,
+        'enabled',                  true,
+        'reason',                   NULL,
+        'reason_key',               NULL
     );
 BEGIN
     -- Stato corrente + testata + capability PDF (pdf_mode/allow_allegati)
@@ -137,10 +153,15 @@ BEGIN
             jsonb_build_object(
                 'key',              t.meta->>'action_key',
                 'target_state',     sa.codice_interno,
+                -- Forma leggibile della destinazione: la colonna
+                -- accanto, nello stesso JOIN. Il FE non puo'
+                -- derivarla dal codice.
+                'target_state_descrizione', sa.descrizione,
                 'label_key',        t.meta->>'label_key',
                 'severity',         t.meta->>'severity',
                 'icon',             t.meta->>'icon',
                 'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
+                'outlined',         COALESCE((t.meta->>'outlined')::boolean, false),
                 -- Tutto discende dall'array dei motivi: nessuna
                 -- regola puo' mascherarne un'altra.
                 'enabled',          jsonb_array_length(m.motivi) = 0,
@@ -250,7 +271,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_preventivo(p_preventivo_id bigint)
-IS 'Capability preventivo per detail API: available_actions + can_edit_* + push_commessa + genera_ordine + create_revisione + nessuna_azione_key + non_editable_fields + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_preventivi (bottone PDF data-driven via capabilities). rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il preventivo non ha righe attive -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard PREV_NESSUNA_RIGA_ATTIVA: SOLO presenza, nessun vincolo su quantita/prezzo/totale). rev 2026-07-19: le 3 label_key (crea_revisione/push_commessa/genera_ordine) e le 5 reason_key (push_commessa_reason.*, genera_ordine_reason.*) passano al namespace i18n vendite.preventivi.* — la radice preventivi.* e'' stata spostata sotto vendite.* dal FE nella migrazione radici i18n; brief-i18n-radici-uniformi §5. rev 2026-08-04: le azioni verso ANNULLATO espongono reasons da script.fn_check_preventivo_annullabile (stessa fn del guard trgfn_preventivi_guard_annullamento: UI e database non possono divergere); i motivi si sommano a quello di requires_righe in un array unico da cui discendono enabled/reason/reason_key. + nessuna_azione_key dal meta dello stato corrente, esposta solo quando nessuna azione risulta abilitata (brief-db-vie-uscita-operatore §4 regola R3, §6).';
+IS 'Capability preventivo per detail API: available_actions + can_edit_* + push_commessa + genera_ordine + create_revisione + nessuna_azione_key + non_editable_fields + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_preventivi (bottone PDF data-driven via capabilities). rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il preventivo non ha righe attive -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard PREV_NESSUNA_RIGA_ATTIVA: SOLO presenza, nessun vincolo su quantita/prezzo/totale). rev 2026-07-19: le 3 label_key (crea_revisione/push_commessa/genera_ordine) e le 5 reason_key (push_commessa_reason.*, genera_ordine_reason.*) passano al namespace i18n vendite.preventivi.* — la radice preventivi.* e'' stata spostata sotto vendite.* dal FE nella migrazione radici i18n; brief-i18n-radici-uniformi §5. rev 2026-08-04: le azioni verso ANNULLATO espongono reasons da script.fn_check_preventivo_annullabile (stessa fn del guard trgfn_preventivi_guard_annullamento: UI e database non possono divergere); i motivi si sommano a quello di requires_righe in un array unico da cui discendono enabled/reason/reason_key. + nessuna_azione_key dal meta dello stato corrente, esposta solo quando nessuna azione risulta abilitata (brief-db-vie-uscita-operatore §4 regola R3, §6). rev 2026-08-06: ogni azione espone outlined (dal meta della transizione, COALESCE a false) e target_state_descrizione (config.stati_doc_preventivi.descrizione della destinazione). outlined mancava qui e sull''offerta: il seed lo portava ma la funzione non lo emetteva, quindi il pulsante distruttivo restava rosso pieno mentre negli altri sei domini era outlined. target_state_descrizione serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile (DRAFT -> Bozza) e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati; NULL sulle azioni applicative (crea_revisione / push_commessa / genera_ordine), che non cambiano stato.';
 ```
 
 ---

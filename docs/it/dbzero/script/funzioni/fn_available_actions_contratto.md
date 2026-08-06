@@ -19,6 +19,11 @@ AS $function$
 --   rev 2026-07-16: + enabled/reason/reason_key da meta.requires_righe
 --   (documento vuoto non avanza di stato). "Vuoto" per il contratto:
 --   negoziato puro (listino_id NULL) senza AGGIUNTA attiva con prezzo.
+--   rev 2026-08-06: + target_state_descrizione, la forma leggibile
+--   dello stato di destinazione. Serve alla frase di conferma
+--   «portare il documento nello stato X»: il codice_interno non e'
+--   quella forma (DRAFT -> Bozza) e tradurlo nel FE sarebbe una
+--   seconda copia del vocabolario degli stati.
 DECLARE
     v_stato_id     vendite.contratti.stato_doc_contratto_id%TYPE;
     v_stato_cod    config.stati_doc_contratti.codice_interno%TYPE;
@@ -78,6 +83,10 @@ BEGIN
             jsonb_build_object(
                 'key',             t.meta->>'action_key',
                 'target_state',    sa.codice_interno,
+                -- Forma leggibile della destinazione: la colonna
+                -- accanto, nello stesso JOIN. Il FE non puo'
+                -- derivarla dal codice.
+                'target_state_descrizione', sa.descrizione,
                 'label_key',       t.meta->>'label_key',
                 'severity',        t.meta->>'severity',
                 'icon',            t.meta->>'icon',
@@ -106,6 +115,8 @@ BEGIN
       AND t.meta ? 'action_key'
       AND t.meta ? 'label_key';
 
+    -- Arricchimento delle sole azioni con data: somma chiavi,
+    -- non tocca quelle gia' presenti.
     IF jsonb_array_length(v_actions) > 0 THEN
         SELECT jsonb_agg(
             CASE WHEN (elem->>'requires_date')::boolean IS TRUE
@@ -142,7 +153,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_contratto(p_contratto_id bigint)
-IS 'Capability contratto per detail API: available_actions + can_change_state + can_edit_testata/righe + non_editable_fields + stato_codice_interno + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_contratti. rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il contratto e'' vuoto -> enabled=false + reason DOCUMENTO_SENZA_RIGHE. Vuoto per il contratto = negoziato puro (listino_id NULL) senza AGGIUNTA attiva con prezzo; con listino mai vuoto (predicato specchiato da trgfn_contratti_freeze_listino_versione).';
+IS 'Capability contratto per detail API: available_actions + can_change_state + can_edit_testata/righe + non_editable_fields + stato_codice_interno + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_contratti. rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il contratto e'' vuoto -> enabled=false + reason DOCUMENTO_SENZA_RIGHE. Vuoto per il contratto = negoziato puro (listino_id NULL) senza AGGIUNTA attiva con prezzo; con listino mai vuoto (predicato specchiato da trgfn_contratti_freeze_listino_versione). rev 2026-08-06: + target_state_descrizione accanto a target_state (config.stati_doc_contratti.descrizione della destinazione). Serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile (DRAFT -> Bozza) e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati. L''arricchimento requires_date a valle somma chiavi e non la tocca.';
 ```
 
 ---

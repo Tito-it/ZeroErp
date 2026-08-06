@@ -1,0 +1,302 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `target_state_descrizione` sul DDT. Quarto di otto changeset.
+#
+# ℹ️ E' il dominio da cui la frase di conferma e' nata («Portare il DDT
+#   nello STATO {x}?») e su cui si e' visto il difetto: il frontend poteva
+#   metterci solo il nome dell'azione, quindi si leggeva «nello stato
+#   Annulla DDT». Lo stato e' ANNULLATO e va detto «Annullato».
+#   `target_state` da' il codice_interno, che non e' la forma leggibile
+#   (DRAFT -> «Bozza»); tradurlo nel FE sarebbe una seconda copia del
+#   vocabolario degli stati.
+#
+# ℹ️ Costo zero: `sa` e' gia' nella query per `sa.codice_interno`.
+#
+# ℹ️ push_commessa non e' una transizione: descrizione NULL, come
+#   `target_state`.
+#
+# Nessun'altra modifica al corpo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260806-04-update-fn-available-actions-ddt-target-state-descrizione-mctit.yaml
+
+  - changeSet:
+      id: 20260806-04-update-fn-available-actions-ddt-target-state-descrizione
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_available_actions_ddt espone target_state_descrizione accanto a
+        target_state: la forma leggibile dello stato di destinazione.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: config
+                tableName: stati_doc_ddt
+                columnName: descrizione
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'script'
+                    AND p.proname = 'fn_check_ddt_emittibile'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_available_actions_ddt(p_ddt_id bigint)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: capability DDT per il detail API (data-driven,
+              --   config.transizioni_stati_ddt). Mirror di fn_available_actions_ordine.
+              --   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
+              --   config.stati_doc_ddt (bottone PDF data-driven via capabilities).
+              --   rev 2026-07-16: + enabled/reason/reason_key da meta.requires_righe
+              --   (documento vuoto non avanza di stato).
+              --   rev 2026-07-19: le transizioni verso EMESSO delegano a
+              --   script.fn_check_ddt_emittibile (TUTTE le condizioni di emissione,
+              --   non solo le righe): brief-db-guard-righe-avanzamento-stato §1a-bis.
+              --   rev 2026-07-19 (bis): reason push DDT_GIA_INVIATO/DDT_GIA_FATTURATO
+              --   via fn_get_stato_push_segment (brief-db-push-commessa-gia-inviato §4b).
+              --   rev 2026-07-19 (ter): catch-all DDT_NON_PUSHABILE decomposto
+              --   nelle 7 cause via vendite.fn_ddt_push_diagnosi (fonte unica) +
+              --   rami DDT_FATTURA_DA_ORDINE/SOLO_TRASPORTO/MERCE_IN_VIAGGIO +
+              --   precedenza a due livelli — brief-db-ddt-reason-push-catch-all §3.
+              --   rev 2026-08-04: + nessuna_azione_key dal meta dello stato,
+              --   esposta quando nessuna azione e' abilitata: sugli stati chiusi
+              --   CONSEGNATO e RESO dice all'operatore cosa fare invece
+              --   (brief-db-vie-uscita-operatore §4, regola R3).
+              --   rev 2026-08-06: + target_state_descrizione, la forma leggibile
+              --   dello stato di destinazione. E' il campo che mancava alla frase
+              --   «Portare il DDT nello stato {x}?», dove il FE poteva mettere
+              --   solo il nome dell'azione: il codice_interno non e' quella forma
+              --   (DRAFT -> Bozza) e tradurlo nel FE sarebbe una seconda copia
+              --   del vocabolario degli stati. NULL su cio' che non cambia stato.
+              DECLARE
+                  v_ddt        vendite.ddt%ROWTYPE;
+                  v_stato_cod  config.stati_doc_ddt.codice_interno%TYPE;
+                  v_pdf_mode   config.stati_doc_ddt.pdf_mode%TYPE;
+                  v_pdf_allow  config.stati_doc_ddt.pdf_allow_allegati%TYPE;
+                  v_nessuna_key    text;
+                  v_nessuna_azione boolean := false;
+                  v_actions    jsonb;
+                  v_can_change boolean := false;
+                  v_ha_righe   boolean := false;
+                  v_motivi     jsonb := '[]'::jsonb;
+                  v_emit_ok    boolean := true;
+                  v_emit_reason     text := NULL;
+                  v_emit_reason_key text := NULL;
+                  v_push_ok    boolean := false;
+                  v_push_reason     text := NULL;
+                  v_push_reason_key text := NULL;
+                  c_non_edit_draft CONSTANT jsonb :=
+                      '["numero","sorgente_tipo_id","sorgente_uid","billing_account_id"]'::jsonb;
+                  c_non_edit_tutti CONSTANT jsonb :=
+                      '["numero","sorgente_tipo_id","sorgente_uid","billing_account_id",'
+                      '"destinatario_soggetto_ruolo_id","mittente_soggetto_ruolo_id",'
+                      '"vettore_soggetto_ruolo_id","causale_trasporto_id","aspetto_bene_id",'
+                      '"modalita_addebito_trasporto_id","valuta_id","utility_id","data","meta"]'::jsonb;
+              BEGIN
+                  -- Riga completa: serve sia per lo stato sia per passarla alla
+                  -- fn_check (che valuta i valori della riga, non un id).
+                  SELECT d.* INTO v_ddt FROM vendite.ddt d WHERE d.id = p_ddt_id;
+
+                  IF NOT FOUND THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Stato corrente + capability PDF + la chiave "nessuna azione"
+                  -- dello stato (dato, non codice: si cambia il testo senza
+                  -- toccare questa funzione).
+                  SELECT sdd.codice_interno, sdd.pdf_mode, sdd.pdf_allow_allegati,
+                         sdd.meta->>'nessuna_azione_key'
+                    INTO v_stato_cod, v_pdf_mode, v_pdf_allow, v_nessuna_key
+                    FROM config.stati_doc_ddt sdd
+                   WHERE sdd.id = v_ddt.stato_doc_ddt_id;
+
+                  -- Precondizione "documento non vuoto" per le transizioni che la
+                  -- esigono (meta.requires_righe), diverse da EMESSO.
+                  v_ha_righe := EXISTS (
+                      SELECT 1 FROM vendite.ddt_righe r
+                       WHERE r.ddt_id = p_ddt_id
+                         AND r.attivo IS TRUE
+                  );
+
+                  -- Precondizioni COMPLETE dell'emissione: single source coi guard
+                  -- (righe, causale, prezzi, indirizzi, componenti). Il primo motivo
+                  -- e' quello mostrato all'utente.
+                  v_motivi := script.fn_check_ddt_emittibile(v_ddt);
+                  IF jsonb_array_length(v_motivi) > 0 THEN
+                      v_emit_ok         := false;
+                      v_emit_reason     := v_motivi -> 0 ->> 'reason';
+                      v_emit_reason_key := v_motivi -> 0 ->> 'reason_key';
+                  END IF;
+
+                  SELECT COALESCE(
+                      jsonb_agg(
+                          jsonb_build_object(
+                              'key',              t.meta->>'action_key',
+                              'target_state',     sa.codice_interno,
+                              -- Forma leggibile della destinazione: la colonna
+                              -- accanto, nello stesso JOIN. Il FE non puo'
+                              -- derivarla dal codice.
+                              'target_state_descrizione', sa.descrizione,
+                              'label_key',        t.meta->>'label_key',
+                              'severity',         t.meta->>'severity',
+                              'icon',             t.meta->>'icon',
+                              'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
+                              'outlined',         COALESCE((t.meta->>'outlined')::boolean, false),
+                              -- Verso EMESSO comandano i motivi della fn_check;
+                              -- altrove resta il predicato requires_righe.
+                              'enabled',          CASE WHEN sa.codice_interno = 'EMESSO'
+                                                       THEN v_emit_ok
+                                                       ELSE NOT (COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                                                 AND NOT v_ha_righe) END,
+                              'reason',           CASE WHEN sa.codice_interno = 'EMESSO'
+                                                       THEN v_emit_reason
+                                                       WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                                            AND NOT v_ha_righe
+                                                       THEN 'DOCUMENTO_SENZA_RIGHE' END,
+                              'reason_key',       CASE WHEN sa.codice_interno = 'EMESSO'
+                                                       THEN v_emit_reason_key
+                                                       WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                                            AND NOT v_ha_righe
+                                                       THEN 'common.azione_reason.senza_righe' END,
+                              -- Elenco completo dei motivi: il FE puo' mostrarli
+                              -- tutti nel tooltip invece del solo primo.
+                              'reasons',          CASE WHEN sa.codice_interno = 'EMESSO'
+                                                            AND jsonb_array_length(v_motivi) > 0
+                                                       THEN v_motivi END
+                          )
+                          ORDER BY sa.ordine
+                      ),
+                      '[]'::jsonb
+                  )
+                  INTO v_actions
+                  FROM config.transizioni_stati_ddt t
+                  JOIN config.stati_doc_ddt sa ON sa.id = t.stato_a_id
+                  WHERE t.stato_da_id = v_ddt.stato_doc_ddt_id
+                    AND t.attivo IS TRUE
+                    AND COALESCE((t.meta->>'manuale')::boolean, true) IS TRUE
+                    AND t.meta ? 'action_key'
+                    AND t.meta ? 'label_key';
+
+                  -- Conta anche le azioni disabilitate: la barra azioni deve
+                  -- comparire proprio per mostrare il pulsante grigio + tooltip.
+                  v_can_change := jsonb_array_length(v_actions) > 0;
+
+                  IF EXISTS (SELECT 1
+                               FROM vendite.fn_list_ddt_da_pushare(p_ddt_id := p_ddt_id)) THEN
+                      v_push_ok := true;
+                  -- Nessuna riga pushabile: distinguere il PERCHE' via
+                  -- classificatore condiviso (stesso predicato della push-list,
+                  -- vede anche i componenti #CMP).
+                  ELSIF EXISTS (SELECT 1
+                                  FROM vendite.ddt_righe r
+                                 WHERE r.ddt_id = p_ddt_id
+                                   AND script.fn_get_stato_push_segment(
+                                         'DDT:' || v_ddt.uid::text || ':R:' || r.id::text) = 'ALLOCATA') THEN
+                      -- pushato, in attesa di fatturazione
+                      v_push_reason     := 'DDT_GIA_INVIATO';
+                      v_push_reason_key := 'vendite.ddt.push_commessa_reason.gia_inviato';
+                  ELSIF EXISTS (SELECT 1
+                                  FROM vendite.ddt_righe r
+                                 WHERE r.ddt_id = p_ddt_id
+                                   AND script.fn_get_stato_push_segment(
+                                         'DDT:' || v_ddt.uid::text || ':R:' || r.id::text) = 'EMESSA') THEN
+                      v_push_reason     := 'DDT_GIA_FATTURATO';
+                      v_push_reason_key := 'vendite.ddt.push_commessa_reason.gia_fatturato';
+                  ELSE
+                      -- Catch-all DECOMPOSTO (brief-db-ddt-reason-push-catch-all §3):
+                      -- la diagnosi (fonte unica) da' IL motivo per riga; qui si prende
+                      -- il piu' forte (min rank = precedenza Decisione E) e lo si mappa a
+                      -- una reason. DDT_ROUTED escluso: gia' intercettato sopra.
+                      SELECT g.motivo INTO v_push_reason
+                        FROM vendite.fn_ddt_push_diagnosi(p_ddt_id) g
+                       WHERE g.motivo IS NOT NULL AND g.motivo <> 'DDT_ROUTED'
+                       ORDER BY g.motivo_rank
+                       LIMIT 1;
+
+                      -- Collasso: solo 3 cause hanno ramo proprio; le altre (senza-BA,
+                      -- contatore, annullato, reso) restano nel generico riscritto, che
+                      -- NON afferma piu' una condizione di stato (Decisione C).
+                      v_push_reason := CASE v_push_reason
+                          WHEN 'DDT_FATTURA_DA_ORDINE' THEN 'DDT_FATTURA_DA_ORDINE'
+                          WHEN 'DDT_SOLO_TRASPORTO'    THEN 'DDT_SOLO_TRASPORTO'
+                          WHEN 'DDT_MERCE_IN_VIAGGIO'  THEN 'DDT_MERCE_IN_VIAGGIO'
+                          ELSE 'DDT_NON_PUSHABILE'
+                      END;
+                      v_push_reason_key := 'vendite.ddt.push_commessa_reason.' || CASE v_push_reason
+                          WHEN 'DDT_FATTURA_DA_ORDINE' THEN 'fattura_da_ordine'
+                          WHEN 'DDT_SOLO_TRASPORTO'    THEN 'solo_trasporto'
+                          WHEN 'DDT_MERCE_IN_VIAGGIO'  THEN 'merce_in_viaggio'
+                          ELSE 'non_pushabile'
+                      END;
+                  END IF;
+
+                  IF v_push_ok THEN
+                      v_actions := v_actions || jsonb_build_array(
+                          jsonb_build_object(
+                              'key',              'push_commessa',
+                              'target_state',     NULL,
+                              -- Non e' un cambio di stato: nessuna destinazione
+                              -- da nominare.
+                              'target_state_descrizione', NULL,
+                              'label_key',        'vendite.ddt.azione_push_commessa',
+                              'severity',         'success',
+                              'icon',             'pi pi-arrow-right',
+                              'requires_confirm', true,
+                              'outlined',         false,
+                              'enabled',          true,
+                              'reason',           NULL,
+                              'reason_key',       NULL
+                          )
+                      );
+                  END IF;
+
+                  -- La nota "cosa fare invece" si mostra SOLO quando non resta
+                  -- nessun bottone vivo. NON si appoggia a v_can_change, che qui
+                  -- conta anche i disabilitati (vedi sopra): userebbe un conteggio
+                  -- pensato per l'opposto e la nota non comparirebbe mai.
+                  SELECT NOT EXISTS (
+                      SELECT 1
+                        FROM jsonb_array_elements(v_actions) AS a
+                       WHERE COALESCE((a->>'enabled')::boolean, true) IS TRUE
+                  ) INTO v_nessuna_azione;
+
+                  RETURN jsonb_build_object(
+                      'available_actions',            v_actions,
+                      'can_change_state',             v_can_change,
+                      'can_edit_testata',             (v_stato_cod = 'DRAFT'),
+                      'can_edit_righe',               (v_stato_cod = 'DRAFT'),
+                      'can_push_commessa',            v_push_ok,
+                      'can_push_commessa_reason',     v_push_reason,
+                      'can_push_commessa_reason_key', v_push_reason_key,
+                      'nessuna_azione_key',           CASE WHEN v_nessuna_azione THEN v_nessuna_key END,
+                      'non_editable_fields',          CASE WHEN v_stato_cod = 'DRAFT'
+                                                           THEN c_non_edit_draft
+                                                           ELSE c_non_edit_tutti END,
+                      'pdf',                          jsonb_build_object('mode', v_pdf_mode, 'allow_allegati', v_pdf_allow),
+                      'stato_codice',                 v_stato_cod
+                  );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_available_actions_ddt(p_ddt_id bigint)
+              IS 'Capability DDT per detail API: available_actions + push_commessa (fn_list_ddt_da_pushare) + can_change_state + can_edit_* + nessuna_azione_key + non_editable_fields + stato_codice. Mirror di fn_available_actions_ordine. rev 2026-07-19: transizioni verso EMESSO via fn_check_ddt_emittibile; reason push GIA_INVIATO/GIA_FATTURATO via fn_get_stato_push_segment. rev 2026-07-19 (ter): il catch-all DDT_NON_PUSHABILE e'' decomposto nelle 7 cause di esclusione via vendite.fn_ddt_push_diagnosi (fonte unica, equivalenza col lister blindata a pgTAP); rami propri DDT_FATTURA_DA_ORDINE (XOR, speculare di ORDINE_FATTURA_DA_DDT), DDT_SOLO_TRASPORTO (causale non fatturabile), DDT_MERCE_IN_VIAGGIO (stato pre-trigger); casi senza-BA/contatore/annullato/reso nel generico riscritto (non piu'' basato sullo stato); precedenza a due livelli (documento prima, poi riga azionabile) — brief-db-ddt-reason-push-catch-all §3. rev 2026-08-04: + nessuna_azione_key dal meta dello stato corrente (CONSEGNATO / RESO), esposta solo quando nessuna azione risulta abilitata — valutata a parte da can_change_state, che qui conta apposta anche le disabilitate (brief-db-vie-uscita-operatore §4 regola R3). rev 2026-08-06: + target_state_descrizione accanto a target_state (config.stati_doc_ddt.descrizione della destinazione). E'' il campo che mancava alla frase di conferma «Portare il DDT nello stato {x}?», dove il FE poteva mettere solo il nome dell''azione e si leggeva «nello stato Annulla DDT»: il codice_interno non e'' la forma leggibile e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati. NULL su push_commessa, che non e'' una transizione.';

@@ -27,6 +27,12 @@ AS $function$
 --   rev 2026-08-04: stessa cosa per l'ingresso in
 --   PRONTA_FATTURAZIONE, che da oggi e' un'azione manuale
 --   (brief-db-emittibilita-visibile-e-sbloccabile §3.3).
+--   rev 2026-08-06: + target_state_descrizione, la forma leggibile
+--   dello stato di destinazione. Serve alla frase di conferma
+--   «portare il documento nello stato X»: il codice_interno non e'
+--   quella forma — PRONTA_FATTURAZIONE ne e' l'esempio piu' netto
+--   — e tradurlo nel FE sarebbe una seconda copia del vocabolario
+--   degli stati.
 DECLARE
     v_stato_id      vendite.commesse.stato_commessa_id%TYPE;
     v_stato_cod     vendite.stati_commessa.codice_interno%TYPE;
@@ -64,6 +70,10 @@ BEGIN
             jsonb_build_object(
                 'key',              t.meta->>'action_key',
                 'target_state',     sa.codice_interno,
+                -- Forma leggibile della destinazione: la colonna
+                -- accanto, nello stesso JOIN. Il FE non puo'
+                -- derivarla dal codice (PRONTA_FATTURAZIONE).
+                'target_state_descrizione', sa.descrizione,
                 'label_key',        t.meta->>'label_key',
                 'severity',         t.meta->>'severity',
                 'icon',             t.meta->>'icon',
@@ -115,7 +125,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_commessa(p_commessa_id bigint)
-IS 'Capability della commessa per il detail/stato API: azioni manuali disponibili dallo stato corrente, con enabled/reasons dalle funzioni pure fn_check_commessa_pronta_fatturazione / _chiudibile / _annullabile — le stesse usate dal guard di transizione, cosi'' la UI non puo'' divergere. rev 2026-08-04: aggiunta la destinazione PRONTA_FATTURAZIONE, diventata azione manuale.';
+IS 'Capability della commessa per il detail/stato API: azioni manuali disponibili dallo stato corrente, con enabled/reasons dalle funzioni pure fn_check_commessa_pronta_fatturazione / _chiudibile / _annullabile — le stesse usate dal guard di transizione, cosi'' la UI non puo'' divergere. rev 2026-08-04: aggiunta la destinazione PRONTA_FATTURAZIONE, diventata azione manuale. rev 2026-08-06: + target_state_descrizione accanto a target_state (vendite.stati_commessa.descrizione della destinazione). Serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile — PRONTA_FATTURAZIONE e'' l''esempio piu'' netto della famiglia — e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati.';
 ```
 
 ---
