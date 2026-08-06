@@ -470,12 +470,23 @@ function onPush() {
 // Smista le azioni data-driven (`available_actions`) ai relativi handler.
 // emetti/push_commessa hanno flussi dedicati; le altre transizioni
 // (spedisci/consegna/reso/annulla) passano dal cambio stato generico.
+
+// Scopo: il nome dello STATO di destinazione per la frase di conferma («Portare
+//   il documento nello stato {stato}?»). La descrizione leggibile la sa solo il
+//   database (`DRAFT` -> «Bozza», `ALLOCATO` -> «Allocato a magazzino»: non e'
+//   derivabile dal codice), quindi arriva dalla capability come
+//   `target_state_descrizione`. Finche' il DB non la espone si ripiega sulla
+//   label dell'azione — comportamento invariato, nessun testo mancante.
+function statoDestinazione(action) {
+  return action.target_state_descrizione || t(action.label_key)
+}
+
 function onAction(action) {
   if (action.key === 'emetti') { onEmetti(); return }
   if (action.key === 'push_commessa') { onPush(); return }
   if (action.requires_confirm) {
     confirmAction({
-      message: t('vendite.ddt.conferma_cambio_stato', { stato: t(action.label_key) }),
+      message: t('vendite.ddt.conferma_cambio_stato', { stato: statoDestinazione(action) }),
       onAccept: () => eseguiCambioStato(action),
     })
   } else {
