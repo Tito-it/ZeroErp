@@ -26,6 +26,13 @@
 #   I CSV sono stati allineati nello stesso commit: quello sopra e' il delta che
 #   hanno ricevuto, non un elenco di cose da fare.
 #
+#   ⚠️ QUATTRO su sei stanno nei CSV di base. Gli ultimi due — l'esito
+#   MERCE_PRESENTE e la riga del binding post_smistamento — NO, e il motivo
+#   e' spiegato al punto 5-6 qui sotto: hanno un bersaglio FK che nasce dopo i
+#   loader di base, quindi vivono in due CSV delta caricati piu' avanti.
+#   Metterli nel CSV di base faceva fallire il migrate su una CI fresca
+#   (misurato: «violates foreign key constraint fk_tf_prereq_esito_richiesto»).
+#
 #   ⚠️ Il piu' pesante e' il quinto: il CSV dichiarava che INVIO_COMMESSA
 #   dipende da SMISTAMENTO, mentre la catena vera passa da CONFERMA_ORDINE.
 #   Chi apriva il seed per capire il workflow leggeva un grafo sbagliato.
@@ -51,11 +58,17 @@
 #   decisione di dominio, non deducibile dal codice: per questo quella tabella
 #   NON e' fra i mirror qui sotto.
 #
-# ⚠️ LACUNA DEL LOADER, segnalata a parte: `20260630-02` scrive
-#   `template_flussi.obsoleto_dal`, colonna che NON esiste nel CSV ne' nella
-#   lista del loader. Il mirror non puo' esprimerla, quindi quel changeSet
-#   resta l'unica sede di quel dato. Se `obsoleto_dal` e' configurazione, va
-#   aggiunta a CSV e loader.
+# ℹ️ LACUNA DEL LOADER, sanata qui (decisione di Tid, 2026-08-06). Il loader
+#   originale 20260608-08 non dichiarava due colonne:
+#     `obsoleto_dal`  non era nemmeno nel CSV, e il 20260630-02 era l'unica
+#                     sede del dato (ritiro dei tipi PREVENTIVI_IMMEDIATA e
+#                     _DIFFERITA). Aggiunta al CSV: 8 righe a 2026-06-30, 6
+#                     vuote. Cella vuota = NULL con `nullValue: ""` e
+#                     `type: DATE`, stessa convenzione di
+#                     pratiche.tipi_prestazione (20260422-05).
+#     `ripetibilita`  era nel CSV da sempre ma nessun loader la dichiarava,
+#                     quindi non veniva mai caricata.
+#   Entrambe sono nella lista colonne di questo mirror.
 #
 # ⚠️ La sede del workflow pratiche sono i CSV in `80_data/sql/pratiche/`:
 #   nessun UPDATE nuovo su queste quattro tabelle.
@@ -146,10 +159,12 @@ databaseChangeLog:
                   name: handler_params
                   type: JSON
                   defaultValue: "{}"
+              - column: { name: ripetibilita,        type: STRING }
               - column: { name: data_insert,         type: STRING }
               - column: { name: user_insert,         type: STRING }
               - column: { name: data_update,         type: STRING }
               - column: { name: user_update,         type: STRING }
+              - column: { name: obsoleto_dal,        type: DATE }
               # ⚠️ DUE COLONNE CHE IL LOADER ORIGINALE (20260608-08) NON DICHIARA,
               #   e che quindi non erano mai state caricate da CSV:
               #   - `ripetibilita` era gia' nel CSV ma il mirror la ignorava;
@@ -159,8 +174,6 @@ databaseChangeLog:
               #     convenzione di pratiche.tipi_prestazione: cella VUOTA = NULL,
               #     letta con `nullValue: ""` e `type: DATE` (precedente vivo,
               #     20260422-05).
-              - column: { name: ripetibilita,        type: STRING }
-              - column: { name: obsoleto_dal,        type: DATE }
 
         # 3) prerequisiti: FK doppia verso template_flussi (step e prerequisito)
         - loadUpdateData:
@@ -184,6 +197,77 @@ databaseChangeLog:
         - loadUpdateData:
             relativeToChangelogFile: true
             file: ../sql/pratiche/template_flussi_handler_eventi.csv
+            tableName: template_flussi_handler_eventi
+            schemaName: pratiche
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id,                 type: NUMERIC }
+              - column: { name: template_flusso_id, type: NUMERIC }
+              - column: { name: evento,             type: STRING }
+              - column: { name: esito_richiesto,    type: STRING }
+              - column: { name: handler_id,         type: NUMERIC }
+              - column:
+                  name: handler_params
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: sequenza,           type: NUMERIC }
+              - column: { name: attivo,             type: BOOLEAN }
+              - column: { name: data_insert,        type: STRING }
+              - column: { name: user_insert,        type: STRING }
+
+        # ── 5-6) I DUE DELTA DEL BIVIO MERCE ────────────────────────────────
+        #
+        # ⚠️ PERCHE' NON STANNO NEI CSV DI BASE, ed e' la lezione che questo
+        #   changeSet porta con se'. Un CSV mirror e' la verita' AL MOMENTO DEL
+        #   SUO LOADER, non la verita' di adesso. Questi due valori hanno un
+        #   bersaglio FK che nasce DOPO i loader di base:
+        #
+        #     esito MERCE_PRESENTE   -> config.esiti_flussi_pratiche, seminato
+        #                               dal 20260701-04, mentre il loader dei
+        #                               prerequisiti e' il 20260608-09
+        #     handler_id 9003        -> pratiche.handler_flussi, seminato dal
+        #                               20260630-07, mentre il loader degli
+        #                               handler_eventi e' il 20260615-09
+        #
+        #   Messi nei CSV di base facevano fallire il migrate su una CI fresca
+        #   con «violates foreign key constraint» — misurato il 2026-08-06.
+        #   E non c'era via d'uscita con un file solo: col valore finale il
+        #   loader iniziale schianta, col valore iniziale questo mirror
+        #   annullerebbe il cutover.
+        #
+        # ℹ️ La soluzione e' il pattern che il repo gia' usa per lo stesso
+        #   motivo (`handler_flussi_post_smistamento.csv`, 20260630-07): un CSV
+        #   separato, caricato piu' avanti nella timeline, che SOVRASCRIVE la
+        #   riga di base. Qui girano subito dopo i loader di base, quindi
+        #   l'ordine e' garantito dentro lo stesso changeSet.
+        #
+        # ⚠️ Conseguenza da sapere leggendo i seed: per la riga 9010 dei
+        #   prerequisiti il CSV di base dice ancora `POSITIVO`. Non e' un
+        #   errore — e' cio' che era vero fino al bivio; la verita' corrente e'
+        #   nel delta qui sotto.
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/pratiche/template_flussi_prerequisiti_bivio.csv
+            tableName: template_flussi_prerequisiti
+            schemaName: pratiche
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id,                 type: NUMERIC }
+              - column: { name: template_flusso_id, type: NUMERIC }
+              - column: { name: prerequisito_id,    type: NUMERIC }
+              - column: { name: esito_richiesto,    type: STRING }
+              - column: { name: data_insert,        type: STRING }
+              - column: { name: user_insert,        type: STRING }
+
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/pratiche/template_flussi_handler_eventi_post_smistamento.csv
             tableName: template_flussi_handler_eventi
             schemaName: pratiche
             separator: ","
