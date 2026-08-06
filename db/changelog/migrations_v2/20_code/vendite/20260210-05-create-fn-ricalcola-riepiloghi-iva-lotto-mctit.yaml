@@ -193,8 +193,10 @@ databaseChangeLog:
       id: 20260210-05-03-create-fn-ricalcola-riepiloghi-iva-lotto
       author: mctit
       comment: "Ricalcolo IVA con imponibile arrotondato"
-      runOnChange: true
-      validCheckSum:
+      # ⚠️ Era `true`: definisce vendite.fn_ricalcola_riepilogo_iva_fattura, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
         - ANY
       changes:
         - sql:

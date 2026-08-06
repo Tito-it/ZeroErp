@@ -22,8 +22,10 @@ databaseChangeLog:
   - changeSet:
       id: 20260713-36-create-fn-available-actions-reso
       author: mctit
-      runOnChange: true
-      validCheckSum:
+      # ⚠️ Era `true`: definisce script.fn_available_actions_reso, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
         - ANY
       changes:
         - sql:

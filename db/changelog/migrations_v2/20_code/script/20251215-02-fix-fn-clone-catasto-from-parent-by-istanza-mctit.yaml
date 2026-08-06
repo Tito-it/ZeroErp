@@ -13,8 +13,10 @@ databaseChangeLog:
   - changeSet:
       id: 20251215-02-fix-fn-clone-catasto-from-parent-by-istanza
       author: mctit
-      runOnChange: true
-      validCheckSum:
+      # ⚠️ Era `true`: definisce script.fn_clone_catasto_from_parent_by_istanza, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
         - ANY
       comment: >
         - Clona i dati da catasto_unita_immobiliari associati

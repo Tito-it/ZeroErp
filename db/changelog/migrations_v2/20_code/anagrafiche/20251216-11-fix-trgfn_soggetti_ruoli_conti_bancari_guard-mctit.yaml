@@ -12,8 +12,10 @@ databaseChangeLog:
   - changeSet:
       id: 20251216-11-fix-trgfn_soggetti_ruoli_conti_bancari_guard-mctit.yaml
       author: mctit
-      runOnChange: true
-      validCheckSum:
+      # ⚠️ Era `true`: definisce anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
         - ANY
       comment: >
         Guard-rail: impedisce uso di conti non attivi, 

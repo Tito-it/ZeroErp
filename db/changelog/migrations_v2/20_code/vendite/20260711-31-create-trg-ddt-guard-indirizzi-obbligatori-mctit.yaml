@@ -25,8 +25,10 @@ databaseChangeLog:
   - changeSet:
       id: 20260711-31-create-trg-ddt-guard-indirizzi-obbligatori
       author: mctit
-      runOnChange: true
-      validCheckSum:
+      # ⚠️ Era `true`: definisce vendite.trgfn_ddt_guard_indirizzi_obbligatori, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
         - ANY
       changes:
         - sql:

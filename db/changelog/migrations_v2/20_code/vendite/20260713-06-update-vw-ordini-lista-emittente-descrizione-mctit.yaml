@@ -16,8 +16,10 @@ databaseChangeLog:
   - changeSet:
       id: 20260713-06-update-vw-ordini-lista-emittente-descrizione
       author: mctit
-      runOnChange: true
-      validCheckSum:
+      # ⚠️ Era `true`: definisce vendite.vw_ordini_lista, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
         - ANY
       changes:
         - sql:

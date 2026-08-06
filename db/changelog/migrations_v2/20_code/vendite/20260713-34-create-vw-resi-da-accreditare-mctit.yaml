@@ -21,8 +21,10 @@ databaseChangeLog:
   - changeSet:
       id: 20260713-34-create-vw-resi-da-accreditare
       author: mctit
-      runOnChange: true
-      validCheckSum:
+      # ⚠️ Era `true`: definisce vendite.vw_resi_da_accreditare, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
         - ANY
       changes:
         - sql:

@@ -9,7 +9,11 @@ databaseChangeLog:
   - changeSet:
       id: 20260615-11-update-fn-list-commesse-emittibili-fatturazione-immediata
       author: mctit
-      runOnChange: true
+      # ⚠️ Era `true`: definisce vendite.fn_list_commesse_emittibili, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
+        - ANY
       comment: "Aggiunge filtro e colonna output p_fatturazione_immediata a fn_list_commesse_emittibili (corsie immediata/differita). DROP per cambio signature + RETURNS TABLE. Default NULL = indifferente (retro-compat)."
       changes:
         - sql:

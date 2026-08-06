@@ -13,8 +13,10 @@ databaseChangeLog:
   - changeSet:
       id: 20260224-63-trgfn_qta_from_operativa
       author: mctit
-      runOnChange: true
-      validCheckSum:
+      # ⚠️ Era `true`: definisce script.trgfn_qta_from_operativa, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
         - ANY
       comment: "Trigger function generica: calcola quantita (base) da qta_operativa * factor. TG_ARGV[2] = colonna target (default quantita, es. quantita_fissa per contratti_righe)."
       changes:

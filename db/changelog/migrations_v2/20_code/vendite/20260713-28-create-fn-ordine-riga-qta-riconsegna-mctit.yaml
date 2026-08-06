@@ -27,8 +27,10 @@ databaseChangeLog:
   - changeSet:
       id: 20260713-28-create-fn-ordine-riga-qta-riconsegna
       author: mctit
-      runOnChange: true
-      validCheckSum:
+      # ⚠️ Era `true`: definisce vendite.fn_ordine_riga_qta_riconsegna, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
         - ANY
       changes:
         - sql:

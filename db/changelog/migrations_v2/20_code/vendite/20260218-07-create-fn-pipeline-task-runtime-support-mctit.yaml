@@ -1115,8 +1115,10 @@ databaseChangeLog:
 
   - changeSet:
       id: 20260218-07-14-create-fn-runtime-overload-stato-doc-bigint
-      runOnChange: true
-      validCheckSum:
+      # ⚠️ Era `true`: definisce vendite.fn_list_lotto_task_runs, vendite.fn_start_lotto_task_run, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
         - ANY
       author: mctit
       comment: "Corregge firme bigint: fn_list_lotto_task_runs e fn_start_lotto_task_run"

@@ -13,8 +13,10 @@ databaseChangeLog:
   - changeSet:
       id: 20260225-05-create-fn-list-ddt-da-pushare
       author: mctit
-      runOnChange: true
-      validCheckSum:
+      # ⚠️ Era `true`: definisce vendite.fn_list_ddt_da_pushare, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
         - ANY
       comment: "Lista DDT eligible al push su commessa. Supporta DDT da ordine (fatturazione_trigger SPEDITO/CONSEGNATO) e DDT autonomi."
       changes:

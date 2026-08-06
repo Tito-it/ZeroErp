@@ -19,8 +19,10 @@ databaseChangeLog:
   - changeSet:
       id: 20260711-26-update-fn-genera-ddt-da-ordine-indirizzi
       author: mctit
-      runOnChange: true
-      validCheckSum:
+      # ⚠️ Era `true`: definisce vendite.fn_genera_ddt_da_ordine, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
         - ANY
       changes:
         - sql:

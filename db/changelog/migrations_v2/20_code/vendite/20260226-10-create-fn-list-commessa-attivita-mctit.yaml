@@ -9,7 +9,11 @@ databaseChangeLog:
   - changeSet:
       id: 20260226-10-create-fn-list-commessa-attivita
       author: mctit
-      runOnChange: true
+      # ⚠️ Era `true`: definisce vendite.fn_list_commessa_attivita, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
+        - ANY
       comment: "Funzione read-only: restituisce righe commesse_attivita con filtri opzionali e paginazione."
       changes:
         - sql:

@@ -106,8 +106,10 @@ databaseChangeLog:
   - changeSet:
       id: 20251009-03-create-trgfn_tipi_indirizzi_only_allowed
       author: mctit
-      runOnChange: true
-      validCheckSum:
+      # ⚠️ Era `true`: definisce vendite.trgfn_tipi_indirizzi_only_allowed, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
         - ANY
       changes:
         - sql:

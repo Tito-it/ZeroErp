@@ -9,7 +9,11 @@ databaseChangeLog:
   - changeSet:
       id: 20260226-08-update-fn-list-commesse-emittibili-emittente
       author: mctit
-      runOnChange: true
+      # ⚠️ Era `true`: definisce vendite.fn_list_commesse_emittibili, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
+        - ANY
       comment: "Aggiunge filtro p_emittente_soggetto_ruolo_id a fn_list_commesse_emittibili. Richiede DROP per cambio signature."
       changes:
         - sql:

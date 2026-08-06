@@ -9,8 +9,19 @@ databaseChangeLog:
   - changeSet:
       id: 20260110-12-fn-run-automations-lock-columns
       author: mctit
-      runOnChange: true
-      validCheckSum:
+      # ⚠️ Era `true`: questo changeSet ri-eseguiva nella SECONDA invocazione
+      #   di liquibase della CI (--contexts=ci_apply, dopo --contexts="!provision")
+      #   e rimetteva questo corpo SOPRA il 20260805-26, che rinomina
+      #   CODICE_NON_MODIFICABILE in E_CODICE_NON_MODIFICABILE ed e'
+      #   runOnChange:false. Su dev non si vedeva: una sola invocazione.
+      #   Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      # ⚠️ Era `validCheckSum` (SINGOLARE): chiave inesistente, quindi ignorata
+      #   da Liquibase — l'`ANY` non valeva niente. Finche' runOnChange era true
+      #   non si notava (il checksum si ricalcolava a ogni giro); con `false` il
+      #   checksum torna vincolante e senza questa correzione il migrate
+      #   fallirebbe qui. Il refuso e' in 433 file del repo: vedi il referto.
+      validCheckSums:
         - ANY
       comment: >
         Esegue l'automazione di provisioning dei trigger "LOCK_COLUMNS"

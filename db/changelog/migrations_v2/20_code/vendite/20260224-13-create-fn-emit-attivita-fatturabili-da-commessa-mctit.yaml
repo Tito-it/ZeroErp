@@ -10,8 +10,10 @@ databaseChangeLog:
       id: 20260224-13-create-fn-emit-attivita-fatturabili-da-commessa
 
       author: mctit
-      runOnChange: true
-      validCheckSum:
+      # ⚠️ Era `true`: definisce vendite.fn_emit_attivita_fatturabili_da_commessa, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
         - ANY
       comment: "Pull commessa -> attivita_fatturabili con idempotenza su sorgente COMMESSA + segment_key."
       changes:

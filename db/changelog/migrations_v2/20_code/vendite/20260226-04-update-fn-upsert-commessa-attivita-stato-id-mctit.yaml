@@ -9,7 +9,11 @@ databaseChangeLog:
   - changeSet:
       id: 20260226-04-update-fn-upsert-commessa-attivita-stato-id
       author: mctit
-      runOnChange: true
+      # ⚠️ Era `true`: definisce vendite.fn_upsert_commessa_attivita, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
+        - ANY
       comment: "Adatta fn_upsert_commessa_attivita a stato_commessa_id (FK stati_commessa). Usa modificabile=true per guard."
       changes:
         - sql:

@@ -25,7 +25,11 @@ databaseChangeLog:
   - changeSet:
       id: 20260616-03-create-fn-available-actions-commessa
       author: mctit
-      runOnChange: true
+      # ⚠️ Era `true`: definisce script.fn_available_actions_commessa, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
+        - ANY
       comment: >
         script.fn_available_actions_commessa(p_commessa_id): capability ciclo di
         vita commessa (available_actions data-driven dalle transizioni manuali,
