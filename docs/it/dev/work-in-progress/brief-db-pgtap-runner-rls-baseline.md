@@ -4,21 +4,28 @@
 > **Data**: 2026-07-29 · **Owner**: Tid · **Stato**: 🟡 **IN CORSO** —
 > il sintomo è rientrato per altra via (strada **(a)**), la decisione di passare
 > a **(b)** è presa il 2026-08-05 e il piano è al **§8**.
-> **Da leggere per primo: §11 → §15** — stato al 2026-08-06. La domanda aperta
-> del §10.3 è sciolta (§11); la riga di contesto è in **408 file su 426**, con 4
-> esclusi motivati (§12); il residuo sotto l'utente applicativo era **65 file, di
-> cui 38 con una causa sola** (§13), e quella causa è stata corretta: `pratiche`
-> passa da 38 a **10 file rossi** (§15). Due difetti di prodotto trovati e
-> chiusi: §13.3 e §15.1.
+> **Da leggere per primo: §23 → §24** — bilancio, divario misurato e priorità.
+> I §11 → §22 sono la storia di come ci si è arrivati.
+> In sintesi: la domanda aperta del §10.3 è sciolta (§11); la riga di contesto è
+> in **426 file su 426** (§12, §18); il residuo sotto l'utente applicativo era
+> **65 file, di cui 38 con una causa sola** (§13), quella causa è stata corretta
+> (§15) e **oggi il divario è di 36 file** (§23.2), **23 dopo il marcatore**
+> (§24). Tre difetti di prodotto trovati e chiusi: §13.3, §15.1, §18.2.
 > La suite è ora **transazionale al completo**, 426 file su 426 (§16, §17, §18),
 > le corse con utenti diversi non si contaminano più, e **tutti i file forzano i
-> vincoli differiti** tranne 15 che portano dentro la ragione (§19 → §22).
+> vincoli differiti** tranne **14** che portano dentro la ragione, più **3** in
+> cui il vincolo differito È il soggetto del test (§19 → §22).
 > ⚠️ Tre avvertenze prima di citare una cifra o di toccare un test: il **§14**
 > corregge il metro dei §8.2, §9.2, §12.2 e della prima stesura del §13.1; il
 > **§15.3** spiega perché due corse consecutive si sporcavano il database; il
 > **§18.3** raccoglie le **tre trappole** della transazionalizzazione — la prima
 > delle quali rende un test verde facendogli smettere di verificare.
-> Cosa resta: **§13.4**, più il debito del **§17.4** ·
+> 🔴 **Il brief NON è chiuso**: il default del runner è ancora `owner`. Ma il
+> **§24** ha chiuso la priorità 1 — il marcatore `-- pgtap-runner: owner` su 15
+> file, `PGTAP_RUNNER` in `testpgtap.sh`, e una baseline che ora **registra con
+> che utente è stata presa e rifiuta i confronti disomogenei** (il difetto del §1
+> chiuso alla radice). Divario **da 36 a 23 file**. Bilancio al **§23**, stato e
+> residuo al **§24.7** ·
 > **Priorità**: 🔴 **ALTA** — non per un difetto di prodotto, ma perché
 > **`scripts/pgtap-baseline.sh` oggi non può fare il suo mestiere**: distinguere
 > un rosso nuovo da uno noto. Finché non è risolto, ogni «zero regressioni»
@@ -1622,7 +1629,13 @@ soggetti: **coerenza fra lo stato fiscale del lotto e quello delle sue fatture**
 | **totale** | **328** | **14** | **4,3 %** |
 
 **Il debito del §17.4 è chiuso**: tutti i file transazionali della suite ora
-forzano i vincoli differiti, tranne 15 che portano dentro la ragione e il debito.
+forzano i vincoli differiti, tranne ~~15~~ **14** che portano dentro la ragione e
+il debito.
+
+> ⚠️ **Correzione (2026-08-07): erano 14, non 15.** Ricontato sul repo:
+> `426 = 409` file con la riga a colonna zero `+ 14` esclusi con nota `+ 3` in
+> cui il vincolo differito è il soggetto del test (§22.5). Il «15» nasceva dal
+> contare uno dei tre del §22.5 fra gli esclusi.
 
 Le 14 reazioni sono di **tre invarianti**, tutte di completezza o coerenza:
 
@@ -1673,3 +1686,310 @@ fixture, non un buco di collaudo su un vincolo di dominio.
 > ℹ️ E suggerisce la tecnica per completare i 14: non serve la riga in testa.
 > Basta un `SET CONSTRAINTS ALL IMMEDIATE` **nel punto in cui l'unità di lavoro
 > è completa**, come fanno già questi tre.
+
+---
+
+## 23. Il brief NON è chiuso: cosa manca, e cosa vale la pena (2026-08-07)
+
+> Bilancio richiesto a fine cantiere. Verificato, non ricordato.
+
+### 23.1 L'obiettivo del brief non è ancora raggiunto
+
+`scripts/testpgtap.sh` legge tuttora `db/internal.env` e si connette come
+**`titodb`, l'owner**. Quindi la frase del §1 è ancora vera: *nessuno dei 426
+test esercita una policy RLS*, e il giorno in cui si attiva `FORCE ROW LEVEL
+SECURITY` la suite si rompe tutta insieme.
+
+Tutto ciò che è stato fatto dal §11 al §22 è **preparazione**: la riga di
+contesto ovunque, la transazionalità, i vincoli differiti forzati, tre difetti di
+prodotto trovati e corretti. Ma i **passi 3 e 4 del §8.3** — cambio utente al
+runner e ribaselinatura — sono ancora da fare, ed è lì che il brief si chiude.
+
+### 23.2 Il divario, misurato oggi
+
+| | ok | ko | file rossi |
+| --- | --- | --- | --- |
+| owner (com'è il runner) | 3853 | 74 | 88 |
+| utente applicativo | 3584 | 69 | 123 |
+
+**Delta = 36 file** rossi solo sotto l'utente applicativo — erano **51** al §10.3
+e **65** al §13.1. Ripartiti: `vendite` 12, `pratiche` 9, `rls` 7, `dbops` 3,
+`ui` 2, `anagrafiche`/`script`/`maintenance` 1.
+
+### 23.3 I 36, in quattro famiglie
+
+**A — Richiedono l'owner per natura: 12 file.** `ALTER TABLE … FORCE ROW LEVEL
+SECURITY` ~~(6 in `rls/`, più `commesse`, `preventivi`, `promo_articoli`,
+`sospensioni`)~~ e `CREATE TABLE dbops.…` (3, strumenti DBA). **Non sono difetti
+e non lo diventeranno.**
+
+> ⚠️ **Correzione (2026-08-07): la composizione qui sopra è sbagliata**, il
+> totale 12 era giusto per caso. `commesse` e `preventivi` erano **già** dentro i
+> 6 di `rls/`, e mancava `vendite/test-annulla-commessa-attivita-v1`.
+> L'inventario verificato, con la causa misurata file per file, è al **§24.2**.
+
+**B — Il test scrive dove l'applicazione non scrive: 8 file.** Sei su
+`pratiche.workflow_definizioni`, due su
+`pratiche.template_flussi_avanzamento_proiezione`, entrambe `SELECT`-only per
+scelta. Cantiere definizioni versionate.
+
+**C — RLS in scrittura, finalmente esercitata: 7 file.** Cinque su
+`vendite.commesse`, due su `vendite.fatture_righe`. **Sono i più interessanti di
+tutti**: è l'unico posto dove una policy viene messa alla prova, cioè il motivo
+per cui questo brief esiste.
+
+**D — Permessi mirati e casi singoli: 9 file.** GRANT su `indirizzi_dettaglio`,
+`pratiche_sorgenti`, `dashboard_definizione`, `preventivi`; i 2 `ui` del §12.3;
+`test-vw-dash-aperto-v1` (già escluso e documentato); 3 che falliscono per
+asserzione o piano.
+
+### 23.4 Cosa vale la pena, in ordine
+
+1. **La famiglia A — la decisione di design.** È l'unico vero blocco al cambio di
+   runner: dodici file che devono girare da owner. Serve una **marcatura nel
+   file** e un runner che sappia leggerla. Piccolo, e sblocca tutto il resto.
+2. **La famiglia C — i 7 file con RLS in scrittura.** Massimo valore
+   informativo: è lì che si scopre se una policy è scritta bene. Ogni rosso lì è
+   una domanda vera, non un incidente di fixture.
+3. **Il cantiere `LIMIT 1`** (§11.3): **133 siti a rischio ALTO su 170 file**.
+   Va aperto **prima** della ribaselinatura, altrimenti si registra come «noto»
+   un pezzo di fortuna. È il debito più grande rimasto in assoluto.
+4. **Le 14 fixture incomplete** (§22.4) e le famiglie **B** e **D**: lavoro dei
+   cantieri di dominio, non di questo.
+5. **Poi, e solo poi**, i passi 3-4 del §8.3: una riga in
+   `scripts/testpgtap.sh` e `pgtap-baseline.sh --update`.
+
+⚠️ **Un rosso intermittente da guardare prima di ribaselinare**:
+`anagrafiche/test-istanza-cliente-chain.sql` oscilla fra 6 e 0 asserzioni a
+parità di codice (§21.3). Registrarlo com'è significherebbe fotografare un pezzo
+di fortuna.
+
+### 23.5 Cosa questo cantiere ha già restituito
+
+Vale la pena metterlo nero su bianco, perché non era l'obiettivo dichiarato:
+
+* **tre difetti di prodotto**, trovati e corretti — il guard che non diceva mai
+  la sua ragione (§13.3), il bootstrap che impediva al ruolo applicativo di
+  creare un tipo di prestazione (§15.1), la manutenzione che lasciava il bypass
+  acceso per tutta la transazione (§18.2);
+* **tre trappole documentate** (§18.3) e una quarta (§22.1);
+* **due errori di misura** riconosciuti e corretti (§14, §19.3), che è la ragione
+  per cui i numeri di adesso valgono qualcosa.
+
+---
+
+## 24. Riapertura: la famiglia A non era un ostacolo, era una tecnica (2026-08-07)
+
+> Cantiere riaperto sulla priorità 1 del §23.4. Tutto quello che segue è
+> **misurato oggi contro il DB**, non ripreso dal testo.
+
+### 24.1 Il divario si riconcilia esattamente
+
+I 36 file del §23.2 rieseguiti uno per uno come `zeroerp_app`, con
+`ON_ERROR_STOP=1`, catturando l'errore vero di ciascuno. Le quattro famiglie
+tornano al file: **12 + 7 + 8 + 9 = 36**, senza residui.
+
+| famiglia | messaggio che la identifica | file |
+| --- | --- | --- |
+| **A** richiede l'owner | `bisogna essere proprietari della tabella` (9) · `permesso negato per lo schema dbops` (3) | 12 |
+| **C** RLS in scrittura | `la nuova riga viola la regola di sicurezza per riga` | 7 |
+| **B** GRANT mancante di dominio | `permesso negato per la tabella` (`workflow_definizioni` 6, `template_flussi_avanzamento_proiezione` 2) | 8 |
+| **D** singoli | 4 GRANT mirati, 3 asserzioni, 1 GUC emittente, 1 binding AD_HOC | 9 |
+
+La famiglia **C** conferma il §23.3 alla lettera: 5 su `vendite.commesse`, 2 su
+`vendite.fatture_righe`.
+
+### 24.2 ⚠️ La composizione della famiglia A al §23.3 era sbagliata
+
+Il totale (12) era giusto; l'elenco no. `commesse` e `preventivi` erano **già**
+dentro i sei di `rls/`, e mancava `vendite/test-annulla-commessa-attivita-v1`.
+L'inventario verificato:
+
+| file | DDL che richiede l'owner |
+| --- | --- |
+| `rls/test-rls-commesse-ef-whitelist-write` | `ALTER TABLE vendite.commesse` + `commesse_attivita` |
+| `rls/test-rls-ddt-ef-whitelist-write` | `ALTER TABLE vendite.ddt` |
+| `rls/test-rls-resi-ef-whitelist-write` | `ALTER TABLE vendite.resi` |
+| `rls/test-rls-preventivi-ef-whitelist-write` | `ALTER TABLE vendite.preventivi` |
+| `rls/test-rls-fatture-satelliti-functional` | `ALTER TABLE` sui due satelliti |
+| `rls/test-rls-viste-fattura-invarianza` | `ALTER TABLE` sui due satelliti |
+| `pratiche/test-sospensioni-anti-overlap-data-futura` | `DROP CONSTRAINT` + `dbops.fn_apply_automazione_overlap()` |
+| `vendite/test-annulla-commessa-attivita-v1` | `ADD/DROP CONSTRAINT` temporaneo su `commesse_attivita_log` |
+| `vendite/test-promo-articoli-guard-data-driven-v1` | `DISABLE TRIGGER` del guard sotto test |
+| `dbops/test-cleanup-framework` | `CREATE TABLE dbops.tst_cleanup_framework` |
+| `dbops/…overlap-key-expressions-v1` | `CREATE TABLE dbops._test_overlap_kx` |
+| `dbops/…overlap-where-predicate-v1` | `CREATE TABLE dbops._test_overlap_wp` / `_tot` |
+
+### 24.3 E soprattutto: quei test **devono** girare da owner
+
+Non è una limitazione da aggirare, è la tecnica con cui sono scritti. Lo dice
+l'intestazione di `rls/test-rls-preventivi-ef-whitelist-write.sql`, da prima di
+questo cantiere:
+
+> *ENABLE + FORCE locale alla tx (owner titodb non-superuser → soggetto).*
+
+**È il `FORCE` a rendere l'owner soggetto alle policy**, e l'identità la simulano
+le GUC `app.ruolo_applicativo` / `app.current_user_id`, non il ruolo di
+connessione. Girarli come `zeroerp_app` non li renderebbe più severi: li
+romperebbe all'`ALTER TABLE`, prima della prima asserzione.
+
+Stesso ragionamento per gli altri: la fault injection di
+`test-annulla-commessa-attivita-v1` aggiunge un CHECK temporaneo per dimostrare
+che l'INSERT del log fallisce davvero — senza DDL quel ramo non è raggiungibile;
+i tre `dbops` registrano una tabella finta nel registry e l'automazione ci applica
+sopra un EXCLUDE **vero**, quindi una TEMP non è un'alternativa.
+
+⚠️ **Uno solo dei dodici è discutibile**:
+`vendite/test-promo-articoli-guard-data-driven-v1` fa `DISABLE TRIGGER` del guard
+che sta collaudando, per piantare le fixture nei tre stati che il guard vieta. Lì
+il DDL è una scorciatoia di fixture, non lo strumento del collaudo: si toglierebbe
+riscrivendo le fixture. È scritto nel marcatore del file, così non si perde.
+
+### 24.4 La decisione: marcatore nel file, e il runner che lo legge
+
+Fra marcatore nel file, manifesto centrale e convenzione di nome/cartella, si è
+scelto il **marcatore nel file**: la verità sta accanto al test, lo segue nelle
+rinomine, si legge dove serve e si vede in diff. Un manifesto separato diverge
+dai test; rinominare i file avrebbe fatto churn su baseline e storia, e rotto il
+perimetro per schema di `pgtap-baseline.sh`.
+
+```sql
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: ALTER TABLE vendite.ddt ENABLE + FORCE ROW LEVEL SECURITY,
+--   locale alla transazione: e' il FORCE a rendere l'owner soggetto alle policy.
+```
+
+**Il motivo è obbligatorio**: senza, il runner esce con codice 4 invece di
+concedere l'eccezione. È il presidio contro l'uso che ci si deve aspettare —
+mettere il marcatore per far sparire un permesso mancante.
+
+### 24.5 Cosa è stato applicato
+
+**`scripts/testpgtap.sh`** — nuova variabile `PGTAP_RUNNER`:
+
+* `owner` (**default, invariato**) — l'utente dell'env file, com'è sempre stato;
+* `app` — `PGTAP_APP_USER` (default `zeroerp_app`), password da `~/.pgpass`.
+  ⚠️ La `PGPASSWORD` dell'env file viene **tolta apposta**: senza l'`unset` si
+  tenterebbe la password dell'owner sull'utente applicativo.
+
+Un file marcato resta sull'owner anche con `PGTAP_RUNNER=app`, e il runner lo
+dichiara su `stderr` con la sua ragione — l'eccezione si vede a ogni corsa,
+non si dimentica.
+
+**`scripts/pgtap-baseline.sh`** — la baseline adesso **registra con che utente è
+stata presa**, prima riga `# pgtap-runner: <owner|app>`, e **rifiuta** sia il
+confronto sia l'aggiornamento parziale se la corsa gira con un utente diverso.
+
+> Vale la pena dirlo esplicitamente: **questo è il difetto del §1 chiuso alla
+> radice.** Il brief nasce perché runner e baseline giravano come utenti diversi
+> e nessuno se ne accorgeva. Da adesso non è più possibile: o i due metri
+> coincidono, o lo script si ferma e lo dice.
+
+Le baseline esistenti non hanno l'intestazione e vengono lette come `owner`, che
+era l'unico modo di girare la suite: nessuna rottura.
+
+**I 15 file marcati** — i 12 della famiglia A più tre che oggi non compaiono nel
+divario ma si romperebbero comunque alla commutazione:
+`rls/test-rls-ordini-multipolicy` e `rls/test-rls-fatture-ef-whitelist-functional`
+(rossi da entrambi gli utenti, quindi invisibili nel delta) e
+`vendite/test-vw-dash-aperto-v1` (rosso sotto app per la GUC emittente, che si
+ferma prima di arrivare al suo `ALTER TABLE`).
+
+> Il censimento è **esaustivo, non aneddotico**: cercati su tutti i 426 file
+> `ALTER TABLE`, `CREATE TABLE`, `CREATE/DROP INDEX`, `GRANT`, `REVOKE`,
+> `COMMENT ON`, `TRUNCATE`, `SET ROLE`, `SET SESSION AUTHORIZATION`,
+> `ALTER SYSTEM`, `CREATE EXTENSION`. I 40 candidati si riducono a 15: tutti i
+> `CREATE OR REPLACE FUNCTION` sono `pg_temp.*`, e gli `ALTER TABLE`/`TRUNCATE`
+> restanti sono su tabelle temporanee. Il ruolo applicativo li fa senza problemi.
+
+### 24.6 La verifica, col metodo di sempre
+
+Suite intera due volte, **passando dal runner ufficiale** perché il marcatore
+venisse onorato come in una corsa vera.
+
+| corsa | file rossi | atteso |
+| --- | --- | --- |
+| owner (default, com'è il runner oggi) | **92** | 88 + 4 (v. sotto) |
+| `PGTAP_RUNNER=app` | **114** | 123 − 13 marcati + 4 |
+
+**Divario: da 36 a 23 file.** I 13 che escono sono i 12 della famiglia A più
+`vendite/test-vw-dash-aperto-v1`. I 15 marcati danno **esito identico** con
+entrambi i runner, file per file: il marcatore funziona e non ha spostato nulla.
+
+I 23 che restano sono esattamente le famiglie **B (8) + C (7) + D (8)**: nessun
+residuo, nessuna sorpresa.
+
+> ⚠️ **I 4 rossi in più da owner NON sono di questo cantiere.** Sono
+> `vendite/test-{preventivi,ordini,ddt,contratti}-righe-componenti-v1`, e vengono
+> dal commit `75fd25ed8` («Quarto lato»): i tre codici nuovi hanno cambiato il
+> **testo** del messaggio, e quei test asseriscono sul testo con
+> `throws_like('%riga preventivo non trovata%')`. Il messaggio ora è
+> `Riga preventivo 2147483647 non trovata.` — non combacia né per la maiuscola né
+> perché l'id si infila in mezzo alla frase. Il nome del test cita ancora
+> `E_PARAMETRO_INVALIDO`, che non è più il codice sollevato.
+> Annotato qui perché senza questa riga i 92 di oggi contro gli 88 di ieri
+> sembrerebbero una regressione nostra.
+>
+> ✅ **Sanati il 2026-08-07 sera** — `scripts/pgtap-baseline.sh vendite`: 24
+> rossi su 175, tutti noti, nessuna regressione.
+>
+> ⚠️ **E qui va corretta un'ipotesi sbagliata fatta poche ore prima**: «la
+> riparazione giusta è asserire su SQLSTATE + codice». **In questo progetto non
+> funziona.** Tutti i raise di `script.fn_log_and_raise_error` condividono
+> `SQLSTATE P0001`, quindi il codice **non discrimina**: `throws_ok` con `P0001`
+> accetterebbe qualunque errore di dominio, compreso quello sbagliato. La
+> convenzione del repo — scritta in
+> `catalogo/test-guard-iva-reactivation-v1.sql:150` da giugno — è `throws_like`
+> sulla **frase stabile** del messaggio.
+>
+> La riparazione applicata è quindi il pattern nuovo, **con l'accortezza che
+> mancava**: saltare l'id interpolato. `'%Riga DDT %non trovata%'`, non
+> `'%riga DDT non trovata%'`. Il messaggio è `Riga DDT %s non trovata.`: il
+> pattern vecchio si spezzava sia sulla maiuscola sia sull'id in mezzo alla
+> frase. Ogni blocco porta ora la ragione scritta, così non si ripete.
+>
+> ✅ **Difetto adiacente, corretto**: le righe 899/900/901 di
+> `messaggi_errore.csv` descrivevano il guard come
+> `vendite.fn_fn_ddt_riga_componenti_init` — **`fn_fn_`**, una funzione che non
+> esiste (solo la 897 era scritta bene). Corretto nel CSV, che è la sede: il
+> mirror `20260614-08` è `runOnChange` + `validCheckSums: ANY`.
+>
+> ⚠️ **Restano due imprecisioni nello stesso testo, non corrette**: sono
+> decisioni del cantiere «Quarto lato», non di questo.
+>
+> 1. **Tre codici dicono tutti «Sesto e ultimo dei punti trovati dalla lente»** —
+>    `E_DDT_RIGA_NON_TROVATA` (899), `E_ORDINE_RIGA_NON_TROVATA` (900),
+>    `E_PREVENTIVO_RIGA_NON_TROVATA` (901). Al massimo uno può esserlo. I sei
+>    codici sono consecutivi (896 → 901), il che suggerisce
+>    `899 = quarto`, `900 = quinto`, `901 = sesto e ultimo` — ma è una deduzione
+>    dalla numerazione dei **codici**, e solo chi ha girato la lente sa come sono
+>    numerati i **punti**.
+> 2. **Sei codici rimandano a «Brief terzo lato §19.4», che non esiste in nessun
+>    documento** (896, 897, 898, 899, 900, 901). Il quarto lato è stato eseguito
+>    in tre commit — `75fd25ed8`, `390fb2107`, `384680493` — nessuno dei quali
+>    tocca una riga di brief. O si scrive la sezione, o il rimando va corretto in
+>    tutti e sei.
+
+### 24.7 Cosa resta, aggiornato
+
+Il §23.4 resta valido, meno il punto 1 che è chiuso:
+
+1. ~~Famiglia A — la decisione di design~~ ✅ **fatta** (§24.4, §24.5).
+2. **Famiglia C — i 7 file con RLS in scrittura.** Sono il motivo per cui il
+   brief esiste: l'unico posto dove una policy viene messa alla prova. Cinque si
+   fermano su `vendite.commesse`, due su `vendite.fatture_righe`, tutti con
+   `la nuova riga viola la regola di sicurezza per riga`. Ogni rosso lì è una
+   domanda vera: *la policy è scritta male, o la fixture scrive dove
+   l'applicazione non scriverebbe?*
+3. **Il cantiere `LIMIT 1`** (§11.3): 133 siti a rischio ALTO su 170 file.
+   Sempre **prima** della ribaselinatura.
+4. **Famiglia B (8)** e **D (8)**, più le **14 fixture** del §22.4: lavoro dei
+   cantieri di dominio.
+5. **Poi, e solo poi**, la commutazione: il default di `PGTAP_RUNNER` da `owner`
+   ad `app` — **una riga sola, adesso** — e
+   `PGTAP_RUNNER=app scripts/pgtap-baseline.sh --update` sull'intera suite.
+
+⚠️ Restano in piedi le due avvertenze del §23.4: il rosso intermittente di
+`anagrafiche/test-istanza-cliente-chain.sql` (§21.3) e il fatto che ribaselinare
+prima del cantiere `LIMIT 1` fotografa un pezzo di fortuna.

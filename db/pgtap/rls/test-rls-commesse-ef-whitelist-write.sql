@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: ALTER TABLE vendite.commesse / commesse_attivita ENABLE + FORCE ROW LEVEL
+--   SECURITY, locale alla transazione: e' il FORCE a rendere l'owner soggetto
+--   alle policy. L'identita' la simulano le GUC app.*, non il ruolo di connessione.
 -- pgTAP test FUNZIONALE scrittura/lettura RLS — vendite.commesse +
 --   vendite.commesse_attivita (ef_whitelist).
 --

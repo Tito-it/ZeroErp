@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: CREATE TABLE dbops.tst_cleanup_framework: il framework di cleanup si collauda
+--   su una tabella vera registrata nel registry, e dbops e' schema di strumenti
+--   DBA su cui il ruolo applicativo non ha (giustamente) CREATE.
 -- pgTAP test per Zero ERP
 -- Funzioni: dbops.fn_apply_cleanup_at, dbops.fn_purge_cleanup_expired,
 --           dbops.fn_run_automations_cleanup

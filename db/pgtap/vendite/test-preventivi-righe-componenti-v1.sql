@@ -270,10 +270,15 @@ SELECT throws_like(
 -- =========================================================
 -- 15) fn_preventivo_riga_componenti_init: riga inesistente
 -- =========================================================
+-- ⚠️ throws_like sulla frase, non throws_ok sul codice: tutti i raise di
+--    script.fn_log_and_raise_error condividono SQLSTATE P0001, quindi il codice
+--    non discrimina (stessa ragione di catalogo/test-guard-iva-reactivation-v1).
+--    Il pattern SALTA l'id interpolato — il messaggio 901 e'
+--    `Riga preventivo %s non trovata.` — altrimenti si rompe al primo id diverso.
 SELECT throws_like(
     $$ SELECT vendite.fn_preventivo_riga_componenti_init(2147483647::bigint, 1::bigint, CURRENT_DATE) $$,
-    '%riga preventivo non trovata%',
-    '15) fn_init: riga_id inesistente -> raise E_PARAMETRO_INVALIDO'
+    '%Riga preventivo %non trovata%',
+    '15) fn_init: riga_id inesistente -> raise E_PREVENTIVO_RIGA_NON_TROVATA'
 );
 
 -- =========================================================

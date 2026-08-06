@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: CREATE TABLE dbops._test_overlap_kx: l'automazione risolve schema.tabella dal
+--   registry e ci applica sopra un EXCLUDE reale, quindi una TEMP non serve.
 -- pgTAP test per Zero ERP
 --
 -- Test: fn_apply_automazione_overlap con key_expressions (chiavi su espressione)

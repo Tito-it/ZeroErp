@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: ALTER TABLE vendite.ddt ENABLE + FORCE ROW LEVEL SECURITY, locale alla
+--   transazione: e' il FORCE a rendere l'owner soggetto alle policy.
 -- pgTAP test FUNZIONALE scrittura/lettura RLS — vendite.ddt (ef_whitelist)
 --
 -- Addendum SCOPE §15: policy rls_ddt_ef_whitelist (FOR ALL, dry-run) su

@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: ALTER TABLE vendite.resi ENABLE + FORCE ROW LEVEL SECURITY, locale alla
+--   transazione: e' il FORCE a rendere l'owner soggetto alle policy.
 -- pgTAP test FUNZIONALE scrittura/lettura RLS — vendite.resi (ef_whitelist)
 --
 -- Policy rls_resi_ef_whitelist (FOR ALL) su vendite.resi. La RLS non e' attiva

@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: ALTER TABLE vendite.fatture_righe / fatture_riepiloghi_iva ENABLE + FORCE ROW
+--   LEVEL SECURITY, locale alla transazione: e' il FORCE a rendere l'owner
+--   soggetto alle policy.
 -- pgTAP test FUNZIONALE RLS — satelliti fattura
 --   vendite.fatture_righe + vendite.fatture_riepiloghi_iva
 --   (policy ef_whitelist e ba_ownership, changeset 20260729-01..05)

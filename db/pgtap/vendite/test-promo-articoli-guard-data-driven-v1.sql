@@ -1,5 +1,10 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: ALTER TABLE vendite.promo_articoli DISABLE TRIGGER del guard sotto test, per
+--   piantare le fixture nei tre stati pre-esistenti che il guard oggi vieta.
+--   ⚠️ E' l'unico dei marcati in cui il DDL e' una scorciatoia di fixture, non
+--   lo strumento del collaudo: si potrebbe togliere riscrivendo le fixture.
 -- pgTAP test per Zero ERP
 --
 -- Test: guard data-driven su vendite.promo_articoli (migration
