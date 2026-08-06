@@ -1318,3 +1318,70 @@ i 349 file che erano già transazionali non hanno mai avuto
 `SET CONSTRAINTS ALL IMMEDIATE`, quindi non esercitano i 365 trigger differiti né
 i 375 vincoli differiti. È materia a sé, e va deciso quanto scoperchiare in una
 volta.
+
+---
+
+## 19. Il debito del §17.4: provato su un file, poi su uno schema intero (2026-08-06)
+
+> Domanda posta: prima di aprire una passata su ~350 file, uno solo funziona? E
+> lo stesso schema di intervento regge?
+
+### 19.1 Un file, scelto perché dicesse qualcosa
+
+Un file a caso non misura niente: serviva uno **verde oggi** e che scrivesse su
+tabelle con trigger differiti, altrimenti la riga passa inosservata per
+costruzione. Incrociando i file verdi con le **164 tabelle** che hanno trigger
+`DEFERRABLE INITIALLY DEFERRED`, il candidato migliore è
+`vendite/test-vw-dash-backlog-v1.sql`: verde, scrive su **nove** di quelle
+tabelle, e `vendite` è lo schema con più differiti (150).
+
+Aggiunta la riga: **14/14, exit 0, stabile su due giri**. Nessun costo, e da
+adesso quei nove insiemi di controlli vengono davvero attraversati.
+
+### 19.2 Poi uno schema intero, per avere un tasso
+
+Un file solo non dice quanti diventeranno rossi. `config` è la prova giusta:
+**53 trigger differiti** (il secondo schema dopo `vendite`) su appena 26 file.
+
+Aggiunta a tutti quelli che ne erano privi — **19 file**:
+
+| `config`, da owner | ok | ko | file rossi |
+| --- | --- | --- | --- |
+| prima | 229 | 12 | 6 |
+| **dopo** | **229** | **12** | **6** |
+
+**Zero differenze.** Il tasso di rossi nuovi, su un campione con alta densità di
+differiti, è **zero su 19**.
+
+### 19.3 ⚠️ Una correzione al §18: «426 su 426» era gonfiato
+
+Il conteggio dei file transazionali usava `grep '^\s*BEGIN;'`, che accetta
+l'indentazione. Ma `BEGIN;` compare anche **dentro le stringhe** passate a
+`throws_ok`, indentato — e un file veniva contato come transazionale senza
+esserlo:
+`config/test-trgfn-prevent-deactivate-if-children-toponomastica.sql`.
+Sistemato; ora i file con un `BEGIN;` a colonna 1 sono **426 su 426** davvero.
+
+Il ricontrollo stretto ha anche mostrato **nove file con `BEGIN;` e senza
+`ROLLBACK` esplicito**. Non è un difetto: la chiusura della sessione annulla la
+transazione aperta, e diversi di essi lo dichiarano in testa («rollback implicito
+a fine file»). Restano meno espliciti degli altri, e basta saperlo.
+
+> ℹ️ È la stessa lezione del §14 su scala minore: **un conteggio vale quanto il
+> criterio con cui è fatto**, e un `grep` permissivo risponde sempre di sì.
+
+### 19.4 Il verdetto, e cosa resta
+
+Il pattern regge: **stessa riga, stessa posizione, zero costo** su 20 file di
+due schemi diversi, uno dei quali ad alta densità di vincoli differiti.
+
+Restano **308 file**: `vendite` 167, `script` 54, `anagrafiche` 22, `documenti`
+11, `rls` 11, `dbops` 11, `pratiche` 10, `ui` 8, `catalogo` 8, `pagamenti` 4,
+`maintenance` 1, `shop` 1.
+
+⚠️ **Zero su 19 non garantisce zero su 308.** Il campione è piccolo e `vendite` —
+da solo più della metà del residuo — ha 150 trigger differiti su 57 tabelle, cioè
+molte più occasioni di trovarne uno che oggi non viene esercitato. La passata va
+fatta **schema per schema, misurando ogni volta**, e ogni rosso nuovo va letto:
+sarà un difetto vero che la suite non stava vedendo, non un incidente da
+aggirare. Ed è esattamente ciò che si vuole da questo cantiere.
