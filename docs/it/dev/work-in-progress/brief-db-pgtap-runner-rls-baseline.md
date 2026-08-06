@@ -1955,21 +1955,20 @@ residuo, nessuna sorpresa.
 > esiste (solo la 897 era scritta bene). Corretto nel CSV, che è la sede: il
 > mirror `20260614-08` è `runOnChange` + `validCheckSums: ANY`.
 >
-> ⚠️ **Restano due imprecisioni nello stesso testo, non corrette**: sono
-> decisioni del cantiere «Quarto lato», non di questo.
+> ✅ **Chiusi anche gli altri due rilievi sullo stesso testo (2026-08-07 sera)**,
+> registrati al **§23.3 del brief terzo lato**, che è il loro cantiere.
 >
-> 1. **Tre codici dicono tutti «Sesto e ultimo dei punti trovati dalla lente»** —
->    `E_DDT_RIGA_NON_TROVATA` (899), `E_ORDINE_RIGA_NON_TROVATA` (900),
->    `E_PREVENTIVO_RIGA_NON_TROVATA` (901). Al massimo uno può esserlo. I sei
->    codici sono consecutivi (896 → 901), il che suggerisce
->    `899 = quarto`, `900 = quinto`, `901 = sesto e ultimo` — ma è una deduzione
->    dalla numerazione dei **codici**, e solo chi ha girato la lente sa come sono
->    numerati i **punti**.
-> 2. **Sei codici rimandano a «Brief terzo lato §19.4», che non esiste in nessun
->    documento** (896, 897, 898, 899, 900, 901). Il quarto lato è stato eseguito
->    in tre commit — `75fd25ed8`, `390fb2107`, `384680493` — nessuno dei quali
->    tocca una riga di brief. O si scrive la sezione, o il rimando va corretto in
->    tutti e sei.
+> 1. **Tre codici dicevano tutti «Sesto e ultimo dei punti trovati dalla
+>    lente»** — 899, 900, 901: una riga copiata su tre. La deduzione tentata qui
+>    (`899 = quarto`, `900 = quinto`) **era sbagliata**: leggendo il §23 del brief
+>    terzo lato, i tre non stanno in fila — sono **le gemelle trovate insieme
+>    nella seconda passata**, e «la prima passata ne aveva vista una» (§23.1).
+>    Il testo ora lo dice, e separa il rimando: §19.4 il difetto, §23 le gemelle.
+> 2. **Il rimando «Brief terzo lato §19.4» non era rotto: la mia copia era
+>    indietro.** La sezione è stata scritta dal BE con `e83d44412`, dopo i commit
+>    che avevano introdotto i codici — un rimando in avanti, non un errore.
+>    ⚠️ Vale come promemoria: prima di dichiarare morto un riferimento, guardare
+>    se il repo locale è aggiornato.
 
 ### 24.7 Cosa resta, aggiornato
 
