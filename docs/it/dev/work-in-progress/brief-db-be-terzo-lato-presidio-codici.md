@@ -3,9 +3,8 @@
 **Chi scrive:** DB (`dev/db-tid`), 2026-08-05.
 **Origine:** rilievo del team BE, §12.5 di
 [brief-db-codice-errore-strutturato](../work-done/brief-db-codice-errore-strutturato.md) (chiuso).
-**Stato:** 🟢 **percorso richiesta CHIUSO (§17): 91 codici decisi in 4 lotti, `da_trigger` senza policy 90 → 0** · **audit di coerenza degli status fatto (§21): 600 policy, 9 status, tutti RFC 9110**.
-🟢 **Quarto lato CHIUSO** (§18-§23): 8 codici nuovi dichiarati a 404, 3 `ui_action` corrette, handler `P0001` rimosso da tutte e quattro le gemelle. 608 policy, suite 3580/3580.
-⚠️ **Palla al DB: 3 righe da togliere dal registro (§23.2).** Poi resta solo il lotto 5 (i 51 non da trigger), senza fretta.
+**Stato:** 🟢 **CHIUSO (§24, 2026-08-07).** Cancello 4/4 · suite 3580/3580 · registro 141 → 51 · `da_trigger` senza policy **90 → 0** · 99 codici decisi · 3 lati su 3 presidiati, più una lente sul quarto.
+🟢 **Lotti 5A+5B fatti (§25-§26): 51 codici dichiarati, 659 policy, 150 decisioni in tre giorni.** ⚠️ **Al DB: togliere le 51 righe → il registro va a ZERO** (la tabella resta, §26.2).
 **Perimetro:** misura e cancello lato DB · assegnazione dei significati lato BE.
 
 > **Non è una regressione.** Questo difetto c'era anche prima; la slice del codice
@@ -1486,3 +1485,221 @@ nell'intervallo fra il loro push e questa dichiarazione.
 **608 policy, suite 3580/3580.** Il cancello segnala **3 righe da togliere** —
 le tre appena dichiarate. Registro **54 → 51** quando il DB riapplica il
 `20260805-37`, e con quello il quarto lato è chiuso davvero.
+
+---
+
+## 24. ✅ QUARTO LATO CHIUSO — 2026-08-07
+
+Il DB ha tolto le tre righe. Verificato sul database vivo, non dal CSV:
+
+| | atteso | trovato |
+|---|---|---|
+| voci del registro | 51 | **51** |
+| di cui `da_trigger` | 0 | **0** |
+| i tre codici ancora nel registro | 0 | **0** |
+| codici nella vista | — | **368** |
+
+**Cancello 4/4 verde. Suite 3580/3580 verde.** Nessuna voce del registro ha una
+policy, nessun codice fuori registro ne è privo, nessuna riga orfana.
+
+### 24.1 Il bilancio dei due giorni
+
+| | 2026-08-05 | 2026-08-07 |
+|---|---|---|
+| codici che il DB può nominare | 360 | **368** |
+| senza un tipo di risposta deciso | 141 | **51** |
+| **sul percorso di una richiesta** | **90** | **0** |
+| policy dichiarate | 511 | **608** |
+| lati presidiati | 2 su 3 | **3 su 3**, più una lente sul quarto |
+
+**Novantanove decisioni** — 91 nei quattro lotti, 8 sui codici nati dalle
+correzioni — tutte prese leggendo il punto che solleva.
+
+### 24.2 Cosa resta, e non ha fretta
+
+* **il lotto 5**: i 51 codici in funzioni non agganciate a un trigger, e
+  ⚠️ **non sono affatto codici che nessuno legge** — vedi §24.4, che corregge
+  questa riga come era stata scritta la prima volta;
+* **due codici a più significati**, segnati e consapevoli: `E_PARAMETER_NOT_FOUND`
+  (configurazione mancante **e** `override_id` nell'URL) e `E_SOGGETTI_RUOLI`
+  (tre condizioni). Si spezzano quando i significati chiederanno reazioni
+  diverse, non perché sono più d'uno;
+* **`E_PARAMETRO_INVALIDO` nel resolver di prezzo** (§22.4): oggi invisibile
+  perché il frontend non legge `ui_action`, materiale per il prossimo giro della
+  lente;
+* **la lente del quarto lato** (`scripts/sql/check_messaggio_vs_condizione.sql`)
+  da rilanciare all'apertura di ogni lotto: non è un cancello e non deve
+  diventarlo — 23% di precisione (§18.1).
+
+### 24.3 Le cinque cose che valgono oltre questo cantiere
+
+1. **Il nome del codice non decide lo status.** Su 99 decisioni il nome ha mentito
+   tre volte, e ogni volta in una direzione diversa.
+2. **Un codice si spezza quando i significati chiedono reazioni diverse**, non
+   perché sono più d'uno (`E_STATO_SCONOSCIUTO` sì, `E_SOGGETTI_RUOLI` no).
+3. **404 o 500 lo decide «chi può rimediare»**: l'operatore cambiando la
+   richiesta, oppure nessuno finché qualcuno non configura.
+4. **Un secondo difetto vive spesso dentro il primo** — tre volte qui, sempre nel
+   valore passato al messaggio, mai nel codice.
+5. **Anche la misura è un programma, e può avere il suo difetto**: 133/141/137, il
+   parser che leggeva 570 blocchi su 602, il `grep` che escludeva la propria
+   prova, l'assert che trovava `P0001` dentro il commento che ne spiegava la
+   rimozione. Quattro volte in due giorni, su tre persone diverse.
+
+### 24.4 ⚠️ Correzione — «tanto nessuno li legge» è falso per metà
+
+Domanda di Tid (2026-08-07): se i 51 stanno in funzioni che nessuno legge, non si
+chiudono in fretta proprio per quello?
+
+**La premessa non regge, ed è colpa di come è stata scritta la §24.2.** Il flag
+`da_trigger` dice *«non lo solleva un trigger»*, **non** *«non lo raggiunge
+nessuno»*: il §4 lo aveva messo per dare un **ordine alle decisioni** e diceva
+già, testualmente, «non è un criterio di esclusione». Nel riassumere il cantiere
+quella sfumatura si è persa, ed è diventata una frase più comoda e sbagliata.
+
+Misurato sui 51:
+
+| | quanti | cosa sono |
+|---:|---|---|
+| **26** | codice sollevato da una funzione **chiamata direttamente da Django** | user-facing esattamente come i 90 da trigger |
+| **23** | funzione chiamata **da altre funzioni SQL** | stanno su una catena che alla radice può benissimo essere una richiesta |
+| **2** | `script.fn_disdetta_cliente` e `fn_guard_fornitore_attivo`: il nome non compare né nel backend né in nessun altro corpo PL/pgSQL | da capire se sono **superate o non ancora agganciate** — la distinzione del §3.3 della guida, quella che va fatta **prima** di cancellare qualcosa |
+
+⭐ **La prova che chiude la questione era già in casa**: `E_STATO_WORKFLOW_NON_TROVATO`
+ha `da_trigger = false` **ed è uno degli otto che abbiamo appena dichiarato a
+404**, perché lo solleva `fn_cambia_stato_commessa` — che il backend chiama a ogni
+cambio di stato. Nello stesso registro, con lo stesso flag, c'è
+`E_COMMESSA_NON_TROVATA`: **stessa funzione**.
+
+**Conseguenza pratica.** Il lotto 5 non è una pulizia a basso valore da fare in
+fretta perché tanto non si vede: sono **26 codici che arrivano all'operatore
+quanto i precedenti**, più 23 su catene da risalire. Si fa con lo stesso metodo e
+costa quanto uno dei lotti già chiusi — non meno.
+
+> E la lezione di metodo: **un flag nato per dare un ordine non diventa un
+> criterio di esclusione** solo perché è comodo leggerlo così. Qui è successo in
+> due giorni, sulla stessa persona che aveva letto il §4.
+
+---
+
+## 25. Lotto 5A — i 26 che il backend raggiunge (2026-08-07)
+
+Scritti in `error_policies.py`, **non committati**. Sono i codici del §24.4 con
+`da_trigger = false` **ma sollevati da funzioni che Django chiama direttamente**:
+arrivano all'operatore quanto quelli da trigger.
+
+### 25.1 La ripartizione
+
+| Status | Quanti | Note |
+|---|---|---|
+| **404** | 6 | articolo, cliente, commessa, versione template, tipo ruolo (×2) |
+| **409** | 8 | già emessa, non modificabile, sorgente già collegata, stato non pubblicabile, fattura senza righe, i due del push preventivo, riconciliazione ambigua |
+| **422** | 1 | `E_DOC_COMPOSITO_BOM_VUOTA` |
+| **500** | 3 | `E_QUERY_FAILED` · `E_JOB_TYPE_NON_TROVATO` · `E_SOGGETTI_RUOLI_RACE` |
+| **501** | 1 | `E_JOB_TYPE_NON_ATTIVO` |
+| **400** | 7 | 6 con campo evidenziato, `E_VALIDAZIONE` con banner |
+
+### 25.2 Le quattro decisioni che non erano meccaniche
+
+**1. `E_COMMESSA_NON_TROVATA` → 404, e chiude il §24.4.** Lo solleva
+`fn_cambia_stato_commessa`: la **stessa funzione** di
+`E_STATO_WORKFLOW_NON_TROVATO`, che sta a 404 dal lotto precedente. Due codici
+della stessa funzione, stesso flag `da_trigger = false`, e uno solo era stato
+considerato «letto da qualcuno».
+
+**2. I due gemelli del registry job, separati.** `E_JOB_TYPE_NON_TROVATO` →
+**500**: il tipo non è registrato in `dbops.coda_lavori_tipi`, cioè un job che il
+backend accoda e nessuno ha seminato — gemello esatto di
+`E_PIPELINE_TASK_HANDLER_NOT_FOUND`. `E_JOB_TYPE_NON_ATTIVO` → **501**: il tipo
+**esiste** ed è stato disattivato di proposito, come `E_AI_DISABLED` e
+`E_SHOP_NON_DISPONIBILE`. Due righe adiacenti nella stessa funzione, due verità
+diverse: è il §19.1 che si ripete — *conta il ramo che solleva*.
+
+**3. `E_DOC_COMPOSITO_BOM_VUOTA` → 422**, non 404. L'articolo composito c'è; la
+sua distinta non ha componenti validi **alla data**. Stessa forma di
+`E_LISTINO_VERSIONE_NON_ATTIVA`, corretto ieri per la stessa ragione.
+
+**4. `E_COD_INT_RUOLO` → 404 e non 500.** Sembrava configurazione mancante, ma il
+codice ruolo arriva **dal chiamante** (`assign_ruolo(soggetto_id, codice_ruolo)`):
+è un riferimento che non risolve, non un seed dimenticato. Letto dal repository
+Python, non dedotto dal nome.
+
+### 25.3 ⚠️ Due codici che non arrivano a nessuno, e un secondo accumulatore
+
+* **`E_RECONCILE_AMBIGUO` non viene sollevato**: `fn_reconcile_sorgente` lo
+  **scrive** nella colonna `errcode` di `pratiche.reconcile_errori`, e nessun
+  codice Python legge quella tabella. È un **codice-dato**, come
+  `E_ATTIVO_BLOCK_REF_NULL` (§16.2): la policy esiste perché il cancello la
+  pretende, ed è giusto che la pretenda;
+* **`E_VALIDAZIONE` è nominato da 10 funzioni** con un messaggio passthrough
+  («Validazione fallita: %s»). È il secondo accumulatore dopo
+  `E_PARAMETRO_INVALIDO` (113 funzioni). Per questo **banner e non campo
+  evidenziato**: non sappiamo quale campo sarebbe. Materiale per la prossima
+  passata della lente.
+
+### 25.4 Stato
+
+**634 policy, suite 3580/3580.** Il cancello segnala **26 righe da togliere** —
+tutte quelle appena dichiarate. Registro **51 → 25** quando il DB riapplica il
+`20260805-37`; i 25 rimasti sono il lotto 5B (23 su catene SQL + le 2 funzioni
+che nessuno nomina, §24.4).
+
+---
+
+## 26. Lotto 5B — e il registro arriva a zero (2026-08-07)
+
+Fatto **subito dopo il 5A**, su decisione di Tid: «senza fare tanti giri con il
+DB, non c'è produzione». Dimezza i giri e il metodo non cambia.
+
+Gli ultimi **25**: quelli sollevati da funzioni che il backend non chiama
+direttamente, ma che stanno su catene SQL.
+
+| Status | Quanti | Chi |
+|---|---|---|
+| **500** | 9 | il **framework di automazione** (`fn_run_automations_*`, `fn_ensure_storico_table`) più `E_DEFAULT_ERRATO` e `E_SCADENZE_TERMINE_INVALIDO` |
+| **409** | 9 | fornitore non attivo/bloccato, cliente non attivo, le due guardie commessa, le tre scadenze, stato lotto incoerente |
+| **404** | 2 | fornitore e soggetto non trovati |
+| **400** | 5 | 4 con campo evidenziato, `E_AUTH_USER_SOGGETTO_SENZA_CF` con banner |
+
+### 26.1 Tre cose che si sono lette solo aprendo il codice
+
+**1. ⭐ `E_SCADENZE_TERMINE_INVALIDO` si autodenuncia.** Il commento nel DB dice
+che quel ramo «si raggiunge **solo aggirando il catalogo**», perché il `CHECK`
+ammette una sola ripartizione. È una guardia difensiva contro una configurazione
+corrotta — *«un piano rate calcolato con una regola che non esiste sarebbe peggio
+di un errore»* — quindi **500**, non un errore dell'operatore. Dal nome
+(`_INVALIDO`) si sarebbe scritto 400.
+
+**2. `E_STORICO_PARENT_PK_NOT_FOUND` finisce per `NOT_FOUND` e non è un 404.**
+Non manca un record richiesto: il provisioning dello storico non riesce a
+determinare la PK della tabella padre. È il terzo `*_NOT_FOUND` che non è un 404,
+dopo `E_SNAPSHOT_ID_NOT_FOUND` e `E_AI_TOOL_NOT_FOUND`.
+
+**3. `E_ADMIN_UO_NON_TROVATA` copre due casi in una riga**: il guard è
+`NOT EXISTS (... id = %s AND attivo = true)`, quindi scatta sia sull'unità
+inesistente sia su quella disattivata. Il 404 sarebbe giusto solo nel primo e
+mentirebbe nel secondo: **400 col campo evidenziato**, corretto in entrambi.
+
+### 26.2 ⭐ Il registro arriva a zero
+
+**659 policy. Suite 3580/3580.** Il cancello chiede di togliere **51 righe**:
+cioè **tutto il registro**.
+
+| | 2026-08-05 | ora |
+|---|---|---|
+| voci del registro | 141 | **51 → 0** (all'applicazione) |
+| di cui sul percorso di una richiesta | 90 | **0** |
+| policy dichiarate | 511 | **659** |
+
+**Centocinquanta decisioni** in tre giorni, tutte prese leggendo il punto che
+solleva.
+
+⚠️ **La tabella però non si droppa.** A differenza del registro dei codici
+legacy (guida §3.3, «a zero righe la tabella si toglie»), qui il registro vuoto
+**serve**: il cancello lo interroga a ogni PR — se sparisse, il guard sullo
+schema fallirebbe — ed è il posto dove atterrerà il prossimo codice che il DB
+crea prima che il BE lo classifichi. **Un registro vuoto non è un registro
+inutile: è un registro in pari.**
+
+Da qui in avanti il verso 1 del cancello diventa il presidio vero: **qualunque
+codice nuovo senza policy è rosso il giorno stesso.**
