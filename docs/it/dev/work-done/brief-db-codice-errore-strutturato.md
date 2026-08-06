@@ -1583,7 +1583,7 @@ aperto.
 
 | | Dove |
 |---|---|
-| **Terzo lato del presidio** — ~141 codici `E_*` sollevati dal DB senza una voce in `error_policies.py`, 90 da trigger sul percorso richiesta | 🔴 **brief proprio**: [brief-db-be-terzo-lato-presidio-codici](../work-in-progress/brief-db-be-terzo-lato-presidio-codici.md) |
+| **Terzo lato del presidio** — ~141 codici `E_*` sollevati dal DB senza una voce in `error_policies.py`, 90 da trigger sul percorso richiesta | 🔴 **brief proprio**: [brief-db-be-terzo-lato-presidio-codici](brief-db-be-terzo-lato-presidio-codici.md) |
 | `MESSAGGIO_NON_DEFINITO`: unica voce del registro. Rinominarlo `W_*` via changelog di provision (è di `postgres`), o lasciarlo | decisione, §15.17 |
 | Pulizia BE: togliere le voci vecchie da `_KNOWN_DB_ERROR_MARKERS` e `error_policies.py`. **La condizione non va toccata** | BE, senza fretta |
 

@@ -2,9 +2,9 @@
 
 **Chi scrive:** DB (`dev/db-tid`), 2026-08-05.
 **Origine:** rilievo del team BE, §12.5 di
-[brief-db-codice-errore-strutturato](../work-done/brief-db-codice-errore-strutturato.md) (chiuso).
-**Stato:** 🟢 **CHIUSO (§24, 2026-08-07).** Cancello 4/4 · suite 3580/3580 · registro 141 → 51 · `da_trigger` senza policy **90 → 0** · 99 codici decisi · 3 lati su 3 presidiati, più una lente sul quarto.
-🟢 **Lotti 5A+5B fatti (§25-§26): 51 codici dichiarati, 659 policy, 150 decisioni in tre giorni.** ⚠️ **Al DB: togliere le 51 righe → il registro va a ZERO** (la tabella resta, §26.2).
+[brief-db-codice-errore-strutturato](brief-db-codice-errore-strutturato.md) (chiuso).
+**Stato:** ✅ **CHIUSO — 2026-08-07 (§28).** Cancello 4/4 · suite 3580/3580 · **registro 141 → 0** · `da_trigger` senza policy **90 → 0** · **659 policy** · 150 decisioni in tre giorni · 3 lati su 3 presidiati, più una lente sul quarto.
+L'ultima richiesta al DB (§26.2) è **fatta e verificata** (§27): registro svuotato, misura canonica a **0 codici da dichiarare**. ⚠️ Resta il solo `make db-migrate` per portarlo sul DB di sviluppo, e la tabella **non si droppa**.
 **Perimetro:** misura e cancello lato DB · assegnazione dei significati lato BE.
 
 > **Non è una regressione.** Questo difetto c'era anche prima; la slice del codice
@@ -150,7 +150,7 @@ Ma è una decisione da prendere insieme, non da imporre.
 
 ## 6. Riferimenti
 
-* [brief-db-codice-errore-strutturato](../work-done/brief-db-codice-errore-strutturato.md)
+* [brief-db-codice-errore-strutturato](brief-db-codice-errore-strutturato.md)
   §12.5 (il rilievo originale) e §10 (la forma dei due presidi già in servizio)
 * [Presidi e registri del debito](../../guide/presidi-e-registri-del-debito.md) §3.3
 * `scripts/sql/guardrail_codice_errore_strutturato.sql` — i cinque controlli esistenti
@@ -1486,6 +1486,30 @@ nell'intervallo fra il loro push e questa dichiarazione.
 le tre appena dichiarate. Registro **54 → 51** quando il DB riapplica il
 `20260805-37`, e con quello il quarto lato è chiuso davvero.
 
+### 23.3 ✅ Il testo dei tre codici, corretto (2026-08-07)
+
+Emerso dal cantiere pgTAP runner/RLS, che era arrivato qui perché i tre codici
+avevano fatto diventare rossi quattro test. Due difetti nel campo `causa` di
+`messaggi_errore.csv` — testo che finisce sotto gli occhi di chi legge l'errore:
+
+1. **`vendite.fn_fn_ddt_riga_componenti_init`** — `fn_fn_`, una funzione che non
+   esiste. Su tutte e tre (899, 900, 901); la 897 era scritta bene.
+2. **Tutte e tre dicevano «Sesto e ultimo dei punti trovati dalla lente»** — una
+   riga copiata su tre, e al massimo una poteva esserlo. Ma **nessuna delle tre
+   lo è**: sono le gemelle trovate *insieme* nella seconda passata, come dice il
+   §23.1 («la prima passata della lente ne aveva vista una»). Il testo ora lo
+   descrive per quello che è, e rimanda a **§19.4 per il difetto** e a **§23 per
+   le gemelle**, che sono due cose diverse.
+
+Corretto **nel CSV**, che è la sede: il mirror `20260614-08` è
+`runOnChange: true` + `validCheckSums: ANY` e lo rilegge al prossimo migrate.
+Nessun changeSet nuovo.
+
+> ℹ️ Il rimando «Brief terzo lato §19.4» nei sei codici **oggi risolve**: la
+> sezione è stata scritta dal BE con `e83d44412`, dopo i commit che avevano
+> introdotto i codici. Chi guardasse il repo nell'intervallo la troverebbe
+> mancante — non era un errore, era un rimando in avanti.
+
 ---
 
 ## 24. ✅ QUARTO LATO CHIUSO — 2026-08-07
@@ -1703,3 +1727,146 @@ inutile: è un registro in pari.**
 
 Da qui in avanti il verso 1 del cancello diventa il presidio vero: **qualunque
 codice nuovo senza policy è rosso il giorno stesso.**
+
+---
+
+## 27. ✅ Il DB ha svuotato il registro — la premessa verificata prima (2026-08-07)
+
+La richiesta del §26.2 era «una cosa sola, meccanica». Lo è, ma la parte che vale
+è quella **prima** dell'edit: una richiesta di svuotare un registro va verificata,
+altrimenti si svuota un registro che aveva ancora ragione di esistere.
+
+### 27.1 Due controlli, non uno
+
+**a) I 51 hanno tutti una policy?** Confronto fra le righe del CSV e le chiavi di
+`backend/apps/core/services/error_policies.py`: **51 su 51 dichiarati, zero
+mancanti.** Dice che il registro *può* calare.
+
+**b) Ma il registro deve arrivare a ZERO, che è un'altra affermazione.** Non basta
+che i 51 siano coperti: serve che **nessun altro codice** sia rimasto fuori nel
+frattempo. Rilanciata la misura canonica citata nel changeset — la vista
+`dbops.vw_codici_errore_da_dichiarare` sul DB vivo, meno le chiavi Python:
+
+| | |
+|---|---|
+| codici nella vista canonica | **368** |
+| policy dichiarate in `error_policies.py` | **607** |
+| **ancora da dichiarare** | **0** |
+
+> Il secondo controllo è quello che conta. Il primo avrebbe detto «sì» anche se
+> nel frattempo fossero nati tre codici nuovi senza policy: avrebbe misurato
+> l'elenco da cancellare, non lo stato del mondo.
+
+ℹ️ Le 607 chiavi Python sono più dei 368 codici della vista, e va bene: la vista
+elenca ciò che una funzione plpgsql viva *può* nominare, mentre `error_policies`
+copre anche codici che nascono altrove. Il verso che presidia è uno solo — nessun
+codice della vista senza policy — ed è a zero.
+
+### 27.2 Cosa è stato fatto
+
+`db/changelog/migrations_v2/80_data/sql/dbops/codici_errore_senza_policy.csv`
+ridotto alla **sola intestazione**: 51 righe tolte, nessun changeSet nuovo. Il
+`20260805-37` è `runOnChange: true` + `validCheckSums: ANY` ed è **`DELETE` +
+`loadData`, non un upsert** — apposta perché il registro potesse calare: al
+prossimo migrate cancella tutto e ricarica zero righe.
+
+**La tabella `dbops.codici_errore_senza_policy` resta**, come chiede il §26.2.
+
+⚠️ **Non ancora applicato al DB di sviluppo**: il valore è nel repo, serve un
+`make db-migrate`. Finché non gira, la tabella contiene ancora le 51 righe e il
+cancello continuerà a segnalarle.
+
+⚠️ **Un rischio da guardare al primo migrate, non dopo.** Nessun altro
+`loadData` del repo punta oggi a un CSV di sole intestazioni: non c'è un
+precedente che dica come si comporta. Il changeSet ha `failOnError: true`, quindi
+un eventuale rifiuto è **rumoroso e senza danni** (il `DELETE` sta nella stessa
+transazione), ma va visto girare prima di chiamare chiuso il cantiere.
+
+✅ **Aggiornato anche il `20260805-37`**: intestazione e `comment:` dicevano
+ancora «Le 141 voci, fotografate il 2026-08-05». Ora raccontano il registro per
+quello che è — un mirror vivo azzerato il 2026-08-07 — e tengono dentro la
+storia del numero (`141 → 51 → 25 → 0`), che da solo non si spiegherebbe.
+
+> Toccare un changelog mergiato di norma non si fa. **Qui è sicuro per come è
+> fatto quel changeSet**: `runOnChange: true` + `validCheckSums: ANY` significa
+> che ri-esegue a ogni variazione e accetta qualunque checksum — non c'è
+> sequenza da rompere. La regola che protegge i changelog mergiati protegge la
+> catena dei checksum, e questo changeSet ne è fuori per progetto.
+
+### 27.3 Le tre cose «per la prossima volta» non sono state toccate
+
+Le due funzioni orfane (`script.fn_disdetta_cliente`,
+`anagrafiche.fn_guard_fornitore_attivo`), i due accumulatori
+(`E_PARAMETRO_INVALIDO`, `E_VALIDAZIONE`) e la lente da rilanciare a ogni lotto
+restano **aperte e non bloccanti**, come scritte dal BE. Nessuna richiede il DB
+adesso; la prima — *superate o non ancora agganciate?* — è una domanda per Tid,
+non una misura.
+
+---
+
+## 28. ✅ CANTIERE CHIUSO — 2026-08-07
+
+Il registro nasce il 2026-08-05 con **141 voci** e arriva a **zero** in tre
+giorni. Non svuotato: **in pari**, verificato sul DB vivo con la misura canonica
+(§27.1) — 368 codici nella vista, 659 policy, **0 da dichiarare**.
+
+| | 2026-08-05 | alla chiusura |
+|---|---|---|
+| voci del registro | 141 | **0** |
+| di cui sul percorso di una richiesta (`da_trigger`) | 90 | **0** |
+| policy dichiarate | 511 | **659** |
+| lati del presidio coperti | 2 su 4 | **4 su 4** |
+
+### 28.1 L'ultimo miglio, e cosa lo tiene aperto
+
+Tutto il contenuto è fatto. Resta **un solo gesto meccanico**: `make db-migrate`,
+che applica il `20260805-37` (`DELETE` + `loadData` su CSV di sole intestazioni)
+e porta la tabella a zero righe anche sul DB di sviluppo.
+
+⚠️ **Va visto girare.** Nessun altro `loadData` del repo punta oggi a un CSV di
+sole intestazioni: non c'è un precedente che dica come si comporta Liquibase 5.
+Il changeSet ha `failOnError: true` e il `DELETE` sta nella stessa transazione,
+quindi un rifiuto sarebbe rumoroso e senza danni — ma finché non gira, la
+chiusura è sulla carta.
+
+### 28.2 ⚠️ Cinque riferimenti che questo spostamento lascia indietro
+
+Spostando il brief in `work-done/`, cinque riferimenti **per path completo**
+puntano a una cartella che non esiste più. Aggiornati quelli che si potevano
+toccare (`docs/it/dev/api.md`, `scripts/sql/check_messaggio_vs_condizione.sql`,
+`brief-db-codice-errore-strutturato.md`, e il `20260805-37` che è
+`runOnChange` + `validCheckSums: ANY`). Restano:
+
+| dove | quanti | perché non si tocca |
+|---|---|---|
+| `backend/apps/core/services/error_policies.py` (§10, §14, §15) | 3 | **perimetro BE** — richiesta al team BE, sotto |
+| `20260805-35-create-vw-codici-errore-da-dichiarare` (`20_code`) | 1 | changelog mergiato, `runOnChange: false`: cambiare un commento ne cambia il checksum e rompe il migrate |
+| `20260805-36-create-codici-errore-senza-policy` (`00_schema`) | 1 | idem |
+
+**Richiesta al team BE** (una riga, quando capita): in
+`error_policies.py` sostituire `docs/it/dev/work-in-progress/` con
+`docs/it/dev/work-done/` nei tre commenti che citano questo brief. Non blocca
+niente — è un rimando che non risolve più.
+
+I due changelog restano com'erano **di proposito**: il costo di correggerli è un
+migrate rotto, il costo di lasciarli è un lettore che cerca il file un livello
+più in là. Chi arriva da lì lo trova in `docs/it/dev/work-done/`.
+
+### 28.3 Le tre cose «per la prossima volta», che restano aperte
+
+Non bloccano nulla, e sono scritte qui perché fra un mese nessuno le
+ricostruirebbe (§27.3):
+
+1. **Le due funzioni orfane** — `script.fn_disdetta_cliente` e
+   `anagrafiche.fn_guard_fornitore_attivo`: nessuno le nomina, né il backend né
+   altre funzioni SQL. I loro codici sono dichiarati perché il cancello li vuole,
+   ma la domanda vera — **superate o non ancora agganciate?** — non è una misura:
+   nessuna query la risponde. Sta nei commenti delle funzioni, o nella memoria di
+   chi le ha scritte.
+2. **I due accumulatori** — `E_PARAMETRO_INVALIDO` (113 funzioni, almeno 5 usi per
+   «non trovato») ed `E_VALIDAZIONE` (10 funzioni, messaggio passthrough). Non
+   sono difetti aperti: sono la stessa malattia già curata cinque volte, e si
+   vedono con la lente.
+3. **La lente** — `scripts/sql/check_messaggio_vs_condizione.sql`, da rilanciare
+   a ogni apertura di lotto. **Non è un cancello e non deve diventarlo**: 23% di
+   precisione (§18.1).

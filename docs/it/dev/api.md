@@ -926,7 +926,7 @@ cancello** finché il team DB non toglie la riga e riapplica il changeSet
 `20260805-37`. Le due metà vanno concordate insieme: è il presidio che fa il suo
 mestiere, non un incidente.
 
-> Storia completa, criteri e casi: `docs/it/dev/work-in-progress/brief-db-be-terzo-lato-presidio-codici.md`
+> Storia completa, criteri e casi: `docs/it/dev/work-done/brief-db-be-terzo-lato-presidio-codici.md`
 > e [Presidi e registri del debito §3.4](/guide/presidi-e-registri-del-debito).
 
 #### Come il codice arriva dal DB al backend (dal 2026-08-05)
