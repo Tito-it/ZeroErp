@@ -3,7 +3,7 @@
 **Chi scrive:** DB (`dev/db-tid`), 2026-08-05.
 **Origine:** rilievo del team BE, §12.5 di
 [brief-db-codice-errore-strutturato](../work-done/brief-db-codice-errore-strutturato.md) (chiuso).
-**Stato:** 🟡 **cancello acceso (§8) · lotto 1 `vendite` deciso e scritto (§10) — ⚠️ palla al DB (§11), cancello rosso finché non tocca le 28 righe.**
+**Stato:** 🟡 **cancello acceso (§8) · lotto 1 `vendite` chiuso, 30 codici decisi, registro 141 → 114 (§10-§12) — ⚠️ restano 2 righe al DB (§12.3) e la suite Django non gira (§12.2). Prossimo: lotto 2.**
 **Perimetro:** misura e cancello lato DB · assegnazione dei significati lato BE.
 
 > **Non è una regressione.** Questo difetto c'era anche prima; la slice del codice
@@ -336,6 +336,11 @@ niente per nessuno**: il lavoro utile è tutto sui codici la cui verità è
 
 ## 9. Il punto 4, dimensionato — le 141 non pesano uguale
 
+> ℹ️ **Fotografia di partenza.** I numeri di questo paragrafo sono quelli del
+> 2026-08-06 *prima* del lotto 1: servono a dimensionare il lavoro, non a dire
+> lo stato corrente. Per quello vale il §12.1 (registro a 114, 112 quando il DB
+> avrà tolto le ultime due righe).
+
 Misurato sui 141 codici del registro (2026-08-06). La classificazione qui sotto è
 **dal nome del codice**, quindi indicativa: serve a dare un ordine di grandezza,
 non a decidere al posto di nessuno.
@@ -415,7 +420,10 @@ niente per nessuno, serve solo a togliere la riga dal registro.
 Sono i 13 che **cambiano comportamento**: oggi la pagina evidenzia un campo
 (400) dove dovrebbe ricaricare e mostrare lo stato vero.
 
-### 10.4 `400` — resta com'è (13)
+### 10.4 `400` — resta com'è (12)
+
+> ⚠️ Erano 13 nella prima stesura: `E_STATO_SCONOSCIUTO` è uscito da questo
+> gruppo con la decisione del §10.5 punto 1 → §11.2 → §12.
 
 Nessun cambio di comportamento: si dichiarano solo per svuotare il registro.
 `highlight_form_fields` dove c'è davvero un campo da correggere,
@@ -423,7 +431,7 @@ Nessun cambio di comportamento: si dichiarano solo per svuotare il registro.
 
 | Codice | `ui_action` |
 |---|---|
-| `E_QTA_NON_POSITIVA` · `E_COERENZA_ID` · `E_SORG_FORMATO` · `E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE` · `E_LISTINO_TIPOLOGIA_UTILITY` · `E_STATO_SCONOSCIUTO` | `highlight_form_fields` |
+| `E_QTA_NON_POSITIVA` · `E_COERENZA_ID` · `E_SORG_FORMATO` · `E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE` · `E_LISTINO_TIPOLOGIA_UTILITY` | `highlight_form_fields` |
 | `E_ARTICOLO_TIPOLOGIA_MANCANTE` · `E_CONTRATTO_EMITTENTE_NON_RISOLTO` · `E_ORDINE_EMITTENTE_NON_RISOLTO` · `E_LISTINO_RIGA_COMPOSITO_VIETATO` · `E_SORG_CONF` · `E_SORG_KEYSEL` · `E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA` | `show_error_banner` |
 
 ### 10.5 ⚠️ Le tre righe su cui decide Tid, non il BE
@@ -435,6 +443,11 @@ esiste o non è attivo) **e** `config.trgfn_toponomastica_normalize` (il codice
 giusto; sul secondo farebbe **svuotare la pagina di un indirizzo** mentre
 l'operatore sta digitando. Proposta: **400**, il denominatore comune sicuro. La
 risposta precisa costa **spezzare il codice in due**, ed è lavoro DB.
+
+> ✅ **Deciso da Tid (2026-08-06): si spezza**, non si sceglie il denominatore
+> comune. Fatto dal DB lo stesso giorno (§11.2 → §12): i due codici esistono e
+> hanno preso 404 e 400. È la scelta più cara delle due ed è quella giusta —
+> il denominatore comune avrebbe reso *permanente* un difetto di modellazione.
 
 **2. `E_PARAMETRI_TABELLA` — il nome dice due cose.** «Parametro non valido *o*
 inesistente». Oggi l'unico punto che lo solleva è un `NOT FOUND` su un billing
@@ -546,6 +559,100 @@ Finché non è fatto, `E_STATO_SCONOSCIUTO` **resta nel registro del debito**, e
 non è una dimenticanza: è la riga che documenta questo lavoro. Appena i due
 codici esistono, il BE assegna 404 e 400 e la riga esce.
 
+> ✅ **Fatto dal DB il 2026-08-06** (`9c3f88856`, changeSet `20260806-09/10/11`),
+> e il BE ha assegnato i due status. Verifica e residuo nel §12.
+
 ⚠️ **La verifica va fatta dal percorso, non dal nome.** Che le tre funzioni
 sollevino il codice giusto si vede solo leggendo il punto che solleva: è così che
 questo doppio significato è saltato fuori, e il nome del codice non lo diceva.
+
+---
+
+## 12. ✅ Il giro DB è arrivato — verificato, e restano due righe
+
+**Chi scrive:** BE, 2026-08-06 (commit DB `9c3f88856`).
+
+### 12.1 Cosa risulta fatto, misurato sul DB vivo
+
+| | prima | dopo |
+|---|---|---|
+| voci del registro | 141 | **114** |
+| di cui `da_trigger` | 90 | **62** |
+| codici nella vista | 360 | **361** |
+| `E_STATO_SCONOSCIUTO` ancora sollevato | sì, da 3 funzioni | **0** |
+
+Il conto torna esattamente: −28 (§11.1) −1 (`E_STATO_SCONOSCIUTO`, che nessuna
+funzione viva nomina più, quindi esce anche dalla vista) **+2** (i due codici
+nuovi, messi nel registro perché ancora senza policy). `141 − 28 − 1 + 2 = 114`.
+
+**Le tre funzioni lette dal punto che solleva**, non dal nome del changeSet:
+`fn_cambia_stato_commessa` e `_preventivo` sollevano `E_STATO_WORKFLOW_NON_TROVATO`
+sul ramo `v_nuovo_stato_id IS NULL`, e `trgfn_toponomastica_normalize` solleva
+`E_NAZIONE_NON_TROVATA` quando né il chiamante né il default per parametro
+risolvono la nazione. Sono esattamente le due metà del §11.2.
+
+⭐ **Il ritiro è fatto meglio di come era stato chiesto:** `E_STATO_SCONOSCIUTO`
+resta a catalogo con `obsoleto_dal` **e** con scritto dentro perché ne conteneva
+due e da cosa è sostituito. Chi lo ritroverà fra un anno in un log non dovrà
+ricostruire niente.
+
+⭐ **E i due codici nuovi sono stati messi nel registro**, non lasciati fuori: è
+il gesto che ha tenuto il cancello verde nell'intervallo fra il giro DB e questo.
+È esattamente il protocollo per cui il registro esiste.
+
+### 12.2 ⚠️ Il cancello non è stato eseguito — l'ambiente è rotto, e non per noi
+
+`./manage-test.sh` non parte affatto: il venv ha **Django 6.1** (bump non
+committato in `backend/requirements.txt`) e **DRF 3.17.2** importa
+`django.utils.cache.cc_delim_re`, che Django 6.1 ha rimosso. L'intero backend non
+si importa — non è un rosso di questo lavoro, è la suite che non gira.
+
+I quattro versi sono stati verificati **per via equivalente**: stessa vista,
+stesso registro, chiavi di `error_policies.py` estratte per lettura testuale.
+Tutti e quattro verdi allo stato del giro DB. Resta da rieseguire il test vero
+appena l'ambiente torna:
+
+```bash
+ZEROERP_TEST_DB_E2E=1 ./manage-test.sh apps.core.tests.test_error_codes_db_policy_guardrail
+```
+
+**Una verifica per via equivalente non è la verifica.** Sta scritto qui perché
+non venga scambiata per un verde della CI.
+
+#### ✅ Risolto lo stesso giorno — e la causa non era un aggiornamento sbagliato
+
+**Django 6.1 ha rimosso `django.utils.cache.cc_delim_re`**, che
+`rest_framework/views.py` importa a livello di modulo. Non è un test rosso: è
+l'intero backend che non si importa. E **djangorestframework 3.17.2 è l'ultima
+release esistente** al 2026-08-06, con quell'import ancora dentro: non c'era una
+versione di DRF a cui aggiornare.
+
+Quindi l'unica leva era il **tetto**, e sta dove serve:
+`backend/requirements.in` passa da `Django>=6.0,<7.0` a `Django>=6.0,<6.1`, con
+scritto accanto perché e **come si toglie** (quando esce una DRF che dichiara
+6.1: verificare che `cc_delim_re` sia sparito da `rest_framework/`, poi
+rialzare). Un pin senza istruzioni di uscita è un pin che resta per anni.
+
+⚠️ Il `requirements.txt` ricompilato è risultato **identico** a quello
+committato: il tetto non cambia niente di risolto oggi (Django era già a 6.0.7),
+**impedisce il prossimo `pip-compile --upgrade`**. Era solo il venv locale ad
+avere 6.1 installato — la CI non era mai stata rotta, e non lo sarà.
+
+**Suite ripristinata: 3580 test, un solo rosso** — le due righe del §12.3.
+
+### 12.3 Ultima richiesta al DB — due righe
+
+Il BE ha dichiarato i due codici nuovi, ognuno con la verità che il taglio ha
+reso dicibile:
+
+| Codice | Status | `ui_action` | Perché |
+|---|---|---|---|
+| `E_STATO_WORKFLOW_NON_TROVATO` | **404** | `show_error_banner` | la destinazione indicata non esiste |
+| `E_NAZIONE_NON_TROVATA` | **400** | `highlight_form_fields` | è un errore di compilazione: c'è un campo da correggere e la pagina non deve svuotarsi |
+
+Quindi il verso 2 le segnala: **le due righe vanno tolte** dal CSV e il
+`20260805-37` riapplicato. Il registro va a **112**, i `da_trigger` a **61**.
+
+Con questo il §11 è chiuso in entrambi i sensi, e il punto 4 riparte dal lotto 2
+(prossimo dominio da scegliere con Tid: `anagrafiche` ha 22 `da_trigger`,
+`script` 31).

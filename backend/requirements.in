@@ -1,5 +1,16 @@
 # Core Django
-Django>=6.0,<7.0
+# ⚠️ TETTO A 6.1, NON A 7.0 — non e' prudenza generica, e' una rottura vera.
+#   Django 6.1 ha rimosso `django.utils.cache.cc_delim_re`, che
+#   `rest_framework/views.py` importa a livello di modulo: con 6.1 installato
+#   NON parte niente — non un test rosso, l'intero backend che non si importa
+#   (`ImportError: cannot import name 'cc_delim_re'`).
+#   Al 2026-08-06 djangorestframework 3.17.2 e' l'ULTIMA release esistente e ha
+#   ancora quell'import: non c'e' una versione di DRF a cui aggiornare, quindi
+#   l'unica leva e' il tetto qui.
+#   COME SI TOGLIE: quando esce una DRF che dichiara Django 6.1, verificare che
+#   `grep -r cc_delim_re .venv/.../rest_framework/` non trovi piu' nulla, poi
+#   rialzare a <7.0 e ricompilare. Senza quel controllo si ricasca subito.
+Django>=6.0,<6.1
 asgiref>=3.11
 sqlparse>=0.5
 
