@@ -4,8 +4,8 @@
 **Origine:** rilievo del team BE, §12.5 di
 [brief-db-codice-errore-strutturato](../work-done/brief-db-codice-errore-strutturato.md) (chiuso).
 **Stato:** 🟢 **percorso richiesta CHIUSO (§17): 91 codici decisi in 4 lotti, `da_trigger` senza policy 90 → 0** · **audit di coerenza degli status fatto (§21): 600 policy, 9 status, tutti RFC 9110**.
-🟡 In coda il **quarto lato** (§18-§20): 2 codici nuovi dichiarati, 3 `ui_action` corrette, e per il prezzo zero il codice giusto esisteva già.
-⚠️ **Palla al DB (§20.4): 2 righe dal registro + i 3 codici del §19.4 + l'handler `P0001`.** Poi resta solo il lotto 5 (i 51 non da trigger), senza fretta.
+🟢 **Quarto lato CHIUSO** (§18-§22): 5 codici nuovi dichiarati a 404, 3 `ui_action` corrette, handler `P0001` rimosso, e per il prezzo zero il codice giusto esisteva già. 605 policy, suite 3580/3580.
+⚠️ **Palla al DB: solo 5 righe da togliere dal registro (§22.5).** Poi resta solo il lotto 5 (i 51 non da trigger), senza fretta.
 **Perimetro:** misura e cancello lato DB · assegnazione dei significati lato BE.
 
 > **Non è una regressione.** Questo difetto c'era anche prima; la slice del codice
@@ -1361,3 +1361,88 @@ accanto **come si toglie** (quando esce una DRF che dichiara 6.1: verificare che
 ricompilato è risultato **identico**: il tetto non cambia niente oggi, impedisce
 il prossimo `pip-compile --upgrade`. La CI non era mai stata rotta — era solo il
 venv locale.
+
+---
+
+## 22. Il §20.4 è chiuso — DB e BE (2026-08-07)
+
+Il DB ha applicato tutti e quattro i punti (**collaudati prima di scrivere**:
+definizioni vive estratte con `pg_get_functiondef`, trasformazioni con un
+`assert` su ogni sostituzione, sei changeSet eseguiti interi in una transazione
+annullata). Verificato dal BE sul database vivo:
+
+| | atteso | trovato |
+|---|---|---|
+| voci del registro | 56 | **56** |
+| codici nella vista | — | **365** |
+| i tre codici nuovi a catalogo | 3 | **3** |
+| funzioni con l'handler `P0001` | 0 | **0** |
+
+### 22.1 I tre codici sono dichiarati
+
+`E_CONTRATTO_NON_TROVATO` (896), `E_CONTRATTO_RIGA_NON_TROVATA` (897),
+`E_OFFERTA_ECCEZIONE_NON_TROVATA` (898) → **404 · `show_error_banner`**. Banner
+e non empty-state: successione contratto e init componenti sono scritture che
+falliscono, non pagine da svuotare.
+
+### 22.2 ⭐ Due difetti dentro il primo, che il solo cambio di codice non avrebbe visto
+
+**Il valore variadico del prezzo zero.** Il messaggio è «Componente obbligatorio
+[%s]» ma arrivava **l'id del documento**: la frase nominava la riga contratto al
+posto del componente. Cambiare solo il codice avrebbe lasciato una frase che
+indica l'oggetto sbagliato — e sarebbe stato invisibile, perché il codice ormai
+era quello giusto.
+
+⚠️ È la terza volta in questo cantiere che **un secondo difetto vive dentro il
+primo**: era già successo con la `VARIADIC` senza `::text` (mismatch di UoM mai
+riportato) e con il valore ripetuto in `fn_push_offerta_a_contratto`. Chi corregge
+un codice errore deve guardare anche **cosa ci viene passato dentro**.
+
+### 22.3 ⭐ Il collaudo che morde due volte, e la seconda è la più istruttiva
+
+Il primo giro è fallito su un apostrofo non raddoppiato dentro un `COMMENT`: la
+correzione non è stata raddoppiarlo a mano — *«farlo a mano è precisamente
+l'errore che aveva appena rotto la verifica»* — ma far fare l'escape al
+generatore.
+
+Il secondo fallimento è più interessante: **è fallita l'assert, non la
+trasformazione.** Il controllo cercava `SQLSTATE 'P0001'` nel risultato e la
+trovava — **dentro il commento scritto per spiegarne la rimozione**. Ora il
+controllo guarda che non resti una riga *eseguibile*.
+
+> Una verifica che legge il testo non distingue il codice dalla spiegazione del
+> codice. È la stessa famiglia del §2 (l'apostrofo dentro un commento SQL che
+> inghiottiva le virgole) e del §21.3 (il `grep` che escludeva la propria prova):
+> **la misura va scritta sapendo che il documento parla anche di sé stesso.**
+
+### 22.4 La domanda aperta del §19.2: risposta
+
+Il DB chiede se la policy di `E_PARAMETRO_INVALIDO` vada bene ora che, tolto
+l'handler, quel codice può arrivare al client **dal resolver** — dove il
+parametro sbagliato lo riceve la funzione, non l'operatore, e
+`highlight_form_fields` evidenzierebbe un campo mai compilato.
+
+**Verificato: oggi non evidenzia niente.** `ui_action` viaggia nell'envelope JSON
+(i test lo asseriscono) ma **nessun file del frontend lo legge** — due ricerche
+indipendenti su tutto `frontend/`, zero occorrenze. Il comportamento a video lo
+decidono il codice errore e lo status; `ui_action` è oggi una **dichiarazione di
+intento**, non un'azione.
+
+Quindi:
+
+1. **nessun rischio immediato**, e non serve toccare la policy per proteggersi;
+2. **la leva resta al punto che solleva.** Se quel guard del resolver è davvero
+   un errore del chiamante — un parametro che l'operatore non ha mai visto — la
+   cura è la stessa dei cinque `IF NOT FOUND` appena chiusi: un codice suo. È
+   materiale per il prossimo giro della lente, non una modifica al dizionario che
+   113 funzioni condividono;
+3. ⚠️ **da sapere per il giorno in cui il frontend leggerà `ui_action`**: quel
+   giorno le differenze che abbiamo scritto (banner vs campo evidenziato vs stato
+   vuoto) diventano comportamento, e le imprecisioni rimaste si vedranno tutte
+   insieme. È un buon motivo per tenerle oneste adesso, che costa una riga.
+
+### 22.5 Stato
+
+**Suite 3580/3580.** Il cancello segnala **5 righe da togliere** dal registro —
+i due codici del §19.1 e i tre di questo giro, tutti dichiarati. Registro
+**56 → 51** quando il DB riapplica il `20260805-37`.
