@@ -4256,6 +4256,30 @@ class ErrorPolicyRegistry:
             # semantica, e da li' era arrivata fino allo status HTTP.
             user_message="Profilo di accesso non trovato.",
         ),
+        # ── §19.4: gli altri tre `IF NOT FOUND` travestiti da «parametro» ──
+        #   Stessa forma dei due sopra, trovati dalla lente
+        #   `scripts/sql/check_messaggio_vs_condizione.sql` dopo che i primi due
+        #   erano stati chiusi. Tutti e tre `show_error_banner`: sono scritture
+        #   che falliscono (successione contratto, init componenti di riga), non
+        #   pagine da svuotare.
+        "E_CONTRATTO_NON_TROVATO": ErrorPolicy(
+            code="E_CONTRATTO_NON_TROVATO",
+            http_status=404,
+            ui_action="show_error_banner",
+            user_message="Contratto non trovato.",
+        ),
+        "E_CONTRATTO_RIGA_NON_TROVATA": ErrorPolicy(
+            code="E_CONTRATTO_RIGA_NON_TROVATA",
+            http_status=404,
+            ui_action="show_error_banner",
+            user_message="Riga contratto non trovata.",
+        ),
+        "E_OFFERTA_ECCEZIONE_NON_TROVATA": ErrorPolicy(
+            code="E_OFFERTA_ECCEZIONE_NON_TROVATA",
+            http_status=404,
+            ui_action="show_error_banner",
+            user_message="Eccezione offerta non trovata.",
+        ),
         # ── Le due meta' di `E_STATO_SCONOSCIUTO`, ritirato il 2026-08-06 ──
         #   Quel codice ne conteneva due, e per questo era rimasto senza policy:
         #   con 404 la form indirizzi si sarebbe svuotata mentre l'operatore
