@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il nome fantasma nel diario degli errori.
+#   Brief: brief-db-be-terzo-lato-presidio-codici.md §15.4c (rilievo del BE
+#   mentre scriveva le policy del lotto 3).
+#
+# ⚠️ COSA SUCCEDEVA. `script.trgfn_prevent_modification_generic` passava a
+#   `script.fn_log_and_raise_error` il nome
+#     'trgfn_prevent_parameters_audit_modification'
+#   — una funzione che nel database NON ESISTE PIU' (verificato: nessuna
+#   funzione viva con quel nome). Ogni errore di questo guard finiva quindi in
+#   `dbops.error_log` sotto un pezzo di codice inesistente: chi indagasse su un
+#   E_TABELLA_OP_NON_CONSENTITA partirebbe cercando una funzione che non c'e',
+#   e il guard vero — questo — resterebbe invisibile.
+#
+# ℹ️ E' lo stesso residuo di rinomina della bonifica riferimenti morti: **un
+#   nome hardcoded sopravvive alla funzione che lo portava**. Nessun presidio lo
+#   vede, e non e' una svista dei presidi: per il DB quella e' una STRINGA, non
+#   un riferimento. Il guardrail dei riferimenti morti guarda gli oggetti
+#   referenziati; questo nome non referenzia niente, lo racconta soltanto.
+#
+# ℹ️ LA CORREZIONE e' usare `TG_NAME`, come fanno gli altri guard generici: il
+#   nome lo mette il trigger che sta scattando, quindi non puo' invecchiare.
+#   Un letterale in quella posizione e' sbagliato per costruzione — una
+#   funzione generica montata su N tabelle non ha UN nome da dichiarare.
+#
+# Unica modifica al corpo: il secondo argomento della chiamata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260806-19-fix-trgfn-prevent-modification-generic-nome-fantasma-mctit.yaml
+
+  - changeSet:
+      id: 20260806-19-fix-trgfn-prevent-modification-generic-nome-fantasma
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        trgfn_prevent_modification_generic registrava i propri errori sotto il
+        nome di una funzione che non esiste piu'
+        (trgfn_prevent_parameters_audit_modification): il diario di
+        dbops.error_log puntava a un pezzo fantasma. Ora usa TG_NAME, come gli
+        altri guard generici. Brief terzo lato §15.4c.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'script'
+                AND p.proname = 'trgfn_prevent_modification_generic'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_prevent_modification_generic()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: guard generico montato su piu' tabelle per vietare
+              --   UPDATE/DELETE. Solleva sempre: la sola presenza del trigger
+              --   e' la regola.
+              --   rev 2026-08-06: il nome passato al log era il letterale
+              --   'trgfn_prevent_parameters_audit_modification', funzione che
+              --   nel database non esiste piu'. Ogni errore di questo guard
+              --   finiva in dbops.error_log sotto un pezzo fantasma. Ora e'
+              --   TG_NAME: lo mette il trigger che scatta, quindi non puo'
+              --   invecchiare — ed e' anche piu' informativo, perche' dice
+              --   QUALE dei trigger montati ha rifiutato. Brief terzo lato
+              --   §15.4c.
+              BEGIN
+
+                PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    TG_NAME,
+                    'E_TABELLA_OP_NON_CONSENTITA',
+                    jsonb_build_object(
+                      'nome_tabella', TG_TABLE_NAME,
+                      'trigger_op',        TG_OP
+                    ),
+                    NULL::uuid,
+                    TG_TABLE_NAME::text,
+                    TG_OP::text
+                  );
+
+                -- rev 2026-08-04 (bonifica riferimenti morti, F6): manca(va) il RETURN.
+                --   Oggi la riga sopra solleva sempre, quindi il flusso non ci arriva —
+                --   ma «non ci arriva mai» e' una proprieta' di
+                --   script.fn_log_and_raise_error, non di questa funzione. Il giorno in
+                --   cui quella diventasse non-fatale in qualche ramo, una trigger
+                --   function che cade oltre il proprio END solleva 2F005 al posto
+                --   dell'errore di dominio. Il RETURN NULL e' anche la risposta giusta
+                --   nel merito: BEFORE ROW, l'operazione va annullata.
+                RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_prevent_modification_generic()
+              IS 'Segnala errore su attività non consentite sulle tabelle. rev 2026-08-06: il nome registrato in dbops.error_log e'' TG_NAME e non piu'' il letterale ''trgfn_prevent_parameters_audit_modification'', funzione che non esiste piu'' nel database — il diario degli errori puntava a un pezzo fantasma e chi indagava partiva da un nome inesistente. Una funzione generica montata su N tabelle non ha UN nome da dichiarare: TG_NAME dice quale trigger ha rifiutato. Brief brief-db-be-terzo-lato-presidio-codici §15.4c.';

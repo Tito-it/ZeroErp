@@ -20,10 +20,16 @@ BEGIN
     -- Trigger function: guard coerenza tipo_profilo <-> tipo_binding
     -- su config.profili_accesso_bindings (fase a10, BEFORE INSERT/UPDATE).
     --
-    -- Pre-condizioni:
-    --   - Il CHECK chk_profili_accesso_bindings_xor garantisce
-    --     che esattamente una tra (uo, identita, ruolo) sia NOT NULL
-    --     prima che il trigger venga eseguito.
+    -- ⚠️ IL COMMENTO PRECEDENTE QUI DICEVA IL FALSO, e va corretto
+    --   perche' ha gia' ingannato un test. Diceva: «il CHECK
+    --   chk_profili_accesso_bindings_xor garantisce che esattamente
+    --   una tra (uo, identita, ruolo) sia NOT NULL PRIMA che il
+    --   trigger venga eseguito». In PostgreSQL e' il contrario: i
+    --   trigger BEFORE ROW girano PRIMA che i vincoli CHECK siano
+    --   valutati. Quindi con zero colonne valorizzate e' QUESTO
+    --   guard a intercettare, e il CHECK non viene mai raggiunto.
+    --   Il guard non puo' dare per acquisito l'xor: se ne accorge da
+    --   solo, ed e' quello che fa.
     --
     -- Logica:
     --   1. Recupera tipo del profilo referenziato.
@@ -32,6 +38,13 @@ BEGIN
     --      PORTALE      => ruolo_applicativo
     --      AD_HOC       => identita_digitale_id
     --      SUPER_ADMIN  => identita_digitale_id (§4.6.A.3)
+    --
+    -- ⚠️ I VALORI VARIADICI DEVONO ESSERE TANTI QUANTI I SEGNAPOSTO.
+    --   Il messaggio di E_PROFILO_ACCESSO_BINDING_INCOERENTE e'
+    --   «Profilo %s (tipo %s): …»: servono DUE valori. Passandone uno
+    --   solo, fn_log_and_raise_error esplodeva in format() e il guard
+    --   non arrivava mai a dire la ragione.
+    --   Brief: brief-db-pgtap-runner-rls-baseline §13.
     -- ------------------------------------------------------------
 
     -- 1) Recupero tipo del profilo header.
@@ -42,6 +55,7 @@ BEGIN
 
     IF NOT FOUND THEN
         -- Caso limite: la FK lo impedirebbe, fail-fast esplicito.
+        -- E_PARAMETRO_INVALIDO ha UN segnaposto: un valore basta.
         PERFORM script.fn_log_and_raise_error(
             'database',
             TG_NAME,
@@ -71,7 +85,8 @@ BEGIN
                         'nota', 'Profilo REPARTO richiede unita_organizzativa_id'
                     ),
                     NULL::uuid,
-                    NEW.profilo_accesso_id::text
+                    NEW.profilo_accesso_id::text,
+                    v_tipo_profilo::text
                 );
             END IF;
 
@@ -88,7 +103,8 @@ BEGIN
                         'nota', 'Profilo PORTALE richiede ruolo_applicativo'
                     ),
                     NULL::uuid,
-                    NEW.profilo_accesso_id::text
+                    NEW.profilo_accesso_id::text,
+                    v_tipo_profilo::text
                 );
             END IF;
 
@@ -105,7 +121,8 @@ BEGIN
                         'nota', 'Profilo AD_HOC richiede identita_digitale_id'
                     ),
                     NULL::uuid,
-                    NEW.profilo_accesso_id::text
+                    NEW.profilo_accesso_id::text,
+                    v_tipo_profilo::text
                 );
             END IF;
 
@@ -126,13 +143,15 @@ BEGIN
                         'nota', 'Profilo SUPER_ADMIN richiede identita_digitale_id (privilegio personale)'
                     ),
                     NULL::uuid,
-                    NEW.profilo_accesso_id::text
+                    NEW.profilo_accesso_id::text,
+                    v_tipo_profilo::text
                 );
             END IF;
 
         ELSE
             -- Nuovo valore dell'enum tipo_profilo_accesso senza
             -- regola qui: fail-fast esplicito (anti-bypass).
+            -- E_PROFILO_ACCESSO_TIPO_NON_GESTITO ha UN segnaposto.
             PERFORM script.fn_log_and_raise_error(
                 'database',
                 TG_NAME,
@@ -153,7 +172,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION config.trgfn_profili_accesso_bindings_guard_coerenza()
-IS 'Guard a10 BEFORE INSERT/UPDATE su config.profili_accesso_bindings: verifica coerenza tra tipo del profilo e tipo del binding (REPARTO/PORTALE/AD_HOC/SUPER_ADMIN). Si somma al CHECK chk_profili_accesso_bindings_xor che impone una sola colonna NOT NULL.';
+IS 'Guard a10 BEFORE INSERT/UPDATE su config.profili_accesso_bindings: verifica coerenza tra tipo del profilo e tipo del binding (REPARTO/PORTALE/AD_HOC/SUPER_ADMIN). Si somma al CHECK chk_profili_accesso_bindings_xor che impone una sola colonna NOT NULL. Passa a fn_log_and_raise_error entrambi i valori che il messaggio di E_PROFILO_ACCESSO_BINDING_INCOERENTE richiede (id profilo e tipo): con uno solo il guard falliva in format() senza mai dire la ragione.';
 ```
 
 ---
