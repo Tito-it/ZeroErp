@@ -1,0 +1,195 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Quarto della serie (dopo -13 preventivi, -14 contratti, -15 ui.lista_colonna):
+#   ri-ancora i mirror del workflow pratiche DOPO i cutover di giugno-luglio.
+#
+# ⚠️ QUI IL CASO E' L'OPPOSTO DEGLI ALTRI TRE. Su preventivi, contratti e
+#   ui.lista_colonna il CSV era gia' la verita' e gli UPDATE erano ridondanti.
+#   Sul workflow pratiche no: il CONFRONTO del 2026-08-06 ha trovato SEI punti
+#   in cui il CSV diceva il falso, perche' i cutover hanno spostato la
+#   configurazione e il seed non ha mai ricevuto la notizia.
+#
+#     handler_flussi 9001 push_preventivo      attivo      t -> f   (20260702-01)
+#     template_flussi 9013 CONFERMA_ORDINE     obbligatorio f -> t  (20260701-05)
+#     template_flussi 9014 INVIO_COMMESSA      obbligatorio f -> t  (20260701-05)
+#     prerequisiti 9010 (9013<-9012)  esito  POSITIVO -> MERCE_PRESENTE (20260701-05)
+#     prerequisiti 9011 (9014<-9012)  prerequisito_id 9012 -> 9013   (20260630-06)
+#     handler_eventi  + riga 9004 (9012 SMISTAMENTO, handler 9003,
+#                       MERCE_PRESENTE, attivo=t)  (20260630-08 + -05 + 20260701-12)
+#
+#   I CSV sono stati allineati nello stesso commit: quello sopra e' il delta che
+#   hanno ricevuto, non un elenco di cose da fare.
+#
+#   ⚠️ Il piu' pesante e' il quinto: il CSV dichiarava che INVIO_COMMESSA
+#   dipende da SMISTAMENTO, mentre la catena vera passa da CONFERMA_ORDINE.
+#   Chi apriva il seed per capire il workflow leggeva un grafo sbagliato.
+#
+# ℹ️ PERCHE' SERVE ANCHE IL MIRROR, visto che i CSV ora sono giusti. Perche' i
+#   cutover, pur essendo `runOnChange: false`, su un database ricostruito da
+#   zero applicano comunque UNA volta, e nella timeline stanno DOPO i loader
+#   (20260608-07/-08/-09, 20260615-09). Senza un mirror piu' avanti il CSV
+#   verrebbe riscritto da loro anche adesso che dice la cosa giusta — e la
+#   prossima modifica al seed non arriverebbe mai in CI.
+#
+# ℹ️ ORDINE DEI LOADER: handler_flussi -> template_flussi -> prerequisiti ->
+#   handler_eventi. Non e' estetica: le ultime due hanno FK verso le prime due,
+#   e su un database vuoto l'ordine inverso fallirebbe.
+#
+# ⚠️ COSA NON E' STATO TOCCATO, e resta una decisione aperta.
+#   `20260706-24` fa `INSERT INTO template_flussi_avanzamento_proiezione
+#   (9011, 'POSITIVO')`, mentre il CSV di quella tabella dichiara `9011, NULL`.
+#   Con l'unique (template_flusso_id, esito_richiesto) NULLS NOT DISTINCT sono
+#   DUE righe diverse: una avanza su qualunque esito, l'altra solo sul positivo.
+#   Il pilota GUIDA usava `NULL` proprio per l'inversione piena accept+reject.
+#   Se la riga POSITIVO sia voluta in aggiunta o sia un residuo superato e' una
+#   decisione di dominio, non deducibile dal codice: per questo quella tabella
+#   NON e' fra i mirror qui sotto.
+#
+# ⚠️ LACUNA DEL LOADER, segnalata a parte: `20260630-02` scrive
+#   `template_flussi.obsoleto_dal`, colonna che NON esiste nel CSV ne' nella
+#   lista del loader. Il mirror non puo' esprimerla, quindi quel changeSet
+#   resta l'unica sede di quel dato. Se `obsoleto_dal` e' configurazione, va
+#   aggiunta a CSV e loader.
+#
+# ⚠️ La sede del workflow pratiche sono i CSV in `80_data/sql/pratiche/`:
+#   nessun UPDATE nuovo su queste quattro tabelle.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260806-17-riancora-mirror-pratiche-workflow-mctit.yaml
+
+  - changeSet:
+      id: 20260806-17-riancora-mirror-pratiche-workflow
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Ri-applica i CSV di handler_flussi, template_flussi,
+        template_flussi_prerequisiti e template_flussi_handler_eventi dopo i
+        cutover di giugno-luglio 2026, che nella timeline stanno dopo i loader.
+        I CSV sono stati allineati nello stesso commit sui sei punti in cui
+        dicevano il falso. Ordine dei loader vincolato dalle FK.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pratiche
+                tableName: handler_flussi
+            - tableExists:
+                schemaName: pratiche
+                tableName: template_flussi
+            - tableExists:
+                schemaName: pratiche
+                tableName: template_flussi_prerequisiti
+            - tableExists:
+                schemaName: pratiche
+                tableName: template_flussi_handler_eventi
+      changes:
+        # 1) handler: nessuna FK in ingresso, va per primo
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/pratiche/handler_flussi.csv
+            tableName: handler_flussi
+            schemaName: pratiche
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id,           type: NUMERIC }
+              - column: { name: handler_key,  type: STRING }
+              - column: { name: codice,       type: STRING }
+              - column: { name: descrizione,  type: STRING }
+              - column: { name: attivo,       type: BOOLEAN }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: data_insert,  type: STRING }
+              - column: { name: user_insert,  type: STRING }
+              - column: { name: data_update,  type: STRING }
+              - column: { name: user_update,  type: STRING }
+
+        # 2) gli step del flusso: referenziati dalle due tabelle successive
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/pratiche/template_flussi.csv
+            tableName: template_flussi
+            schemaName: pratiche
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id,                  type: NUMERIC }
+              - column: { name: tipo_prestazione_id, type: NUMERIC }
+              - column: { name: handler_id,          type: NUMERIC }
+              - column: { name: codice,              type: STRING }
+              - column: { name: descrizione,         type: STRING }
+              - column: { name: sequenza,            type: NUMERIC }
+              - column: { name: obbligatorio,        type: BOOLEAN }
+              - column: { name: direzione,           type: STRING }
+              - column: { name: attivo,              type: BOOLEAN }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column:
+                  name: handler_params
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: data_insert,         type: STRING }
+              - column: { name: user_insert,         type: STRING }
+              - column: { name: data_update,         type: STRING }
+              - column: { name: user_update,         type: STRING }
+
+        # 3) prerequisiti: FK doppia verso template_flussi (step e prerequisito)
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/pratiche/template_flussi_prerequisiti.csv
+            tableName: template_flussi_prerequisiti
+            schemaName: pratiche
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id,                 type: NUMERIC }
+              - column: { name: template_flusso_id, type: NUMERIC }
+              - column: { name: prerequisito_id,    type: NUMERIC }
+              - column: { name: esito_richiesto,    type: STRING }
+              - column: { name: data_insert,        type: STRING }
+              - column: { name: user_insert,        type: STRING }
+
+        # 4) binding handler-evento: FK verso template_flussi e handler_flussi
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/pratiche/template_flussi_handler_eventi.csv
+            tableName: template_flussi_handler_eventi
+            schemaName: pratiche
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id,                 type: NUMERIC }
+              - column: { name: template_flusso_id, type: NUMERIC }
+              - column: { name: evento,             type: STRING }
+              - column: { name: esito_richiesto,    type: STRING }
+              - column: { name: handler_id,         type: NUMERIC }
+              - column:
+                  name: handler_params
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: sequenza,           type: NUMERIC }
+              - column: { name: attivo,             type: BOOLEAN }
+              - column: { name: data_insert,        type: STRING }
+              - column: { name: user_insert,        type: STRING }

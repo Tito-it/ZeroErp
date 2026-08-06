@@ -1,0 +1,138 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il ruolo applicativo non puo' creare un tipo di prestazione. Da sempre.
+#   Brief: brief-db-pgtap-runner-rls-baseline.md §13.2.
+#
+# ⚠️ IL DIFETTO. Il trigger z90 su pratiche.tipi_prestazione crea il preset
+#   «v1 PUBBLICATA» della definizione — e' l'invariante di Fase 0: ogni tipo
+#   nasce con una definizione risolvibile. Ma la funzione e' SECURITY INVOKER,
+#   quindi l'INSERT su pratiche.workflow_definizioni gira coi privilegi del
+#   chiamante. E per `zeroerp_app` quella tabella e' in SOLA LETTURA per scelta
+#   (20260703-15): l'applicazione non ci scrive mai direttamente, ci passa da
+#   fn_pubblica_definizione. Risultato:
+#       ERRORE: permesso negato per la tabella workflow_definizioni
+#   su OGNI insert in tipi_prestazione fatto dal ruolo applicativo.
+#
+# ℹ️ OGGI NON SI VEDE, e questo e' il punto. Verificato: `backend/` non contiene
+#   nessun INSERT/UPDATE/DELETE su pratiche.tipi_prestazione — la tabella e' solo
+#   letta (lookup, liste). Il buco e' latente: si aprira' il giorno in cui nasce
+#   la schermata «nuovo tipo di prestazione», con un errore di permessi che non
+#   dice nulla di dove sia il problema vero (in un trigger, su un'altra tabella).
+#
+# ⚠️ COME E' EMERSO — e vale la pena scriverlo. Lanciando la suite pgTAP come
+#   utente applicativo invece che come owner: **37 dei 43 file di `pratiche` piu'
+#   uno di `dbops` si fermavano tutti su questa riga**, 38 dei 65 file del
+#   residuo. L'owner e' proprietario della tabella e non se n'era mai accorto in
+#   tre anni di suite verde. E' esattamente il limite che il §4 attribuiva alla
+#   strada (a).
+#
+# ℹ️ PERCHE' DEFINER E NON UN GRANT. Dare DML su workflow_definizioni al ruolo
+#   app riaprirebbe cio' che 20260703-15 ha chiuso apposta: la tabella si scrive
+#   solo attraverso le funzioni del dominio, che sanno mantenere l'invariante di
+#   versionamento. Qui il bootstrap non e' una scrittura che l'utente sceglie —
+#   e' il dominio che si prepara da se', a partire da NEW e da nient'altro. E'
+#   il caso da manuale del DEFINER, ed e' gia' la strada presa due volte nello
+#   stesso schema: 20260703-16 (fn_fork_nuova_versione) e 20260703-17
+#   (fn_pubblica_definizione), per la stessa identica ragione.
+#
+# ℹ️ search_path FISSO come nei due precedenti. L'INSERT scatena i trigger di
+#   workflow_definizioni (guard transizioni/immutabilita', audit, tx_id, lock),
+#   che ereditano questo search_path. Fissato sulle schema fidate + pg_catalog in
+#   testa e pg_temp per ultimo: nessuna injection, il path e' costante e il ruolo
+#   app non ha CREATE su quelle schema.
+#
+# Unica modifica: SECURITY DEFINER + SET search_path. Corpo invariato, firma
+# invariata -> CREATE OR REPLACE basta.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260806-16-alter-trgfn-tipi-prestazione-bootstrap-security-definer-mctit.yaml
+
+  - changeSet:
+      id: 20260806-16-alter-trgfn-tipi-prestazione-bootstrap-security-definer
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        trgfn_tipi_prestazione_bootstrap_definizione a SECURITY DEFINER +
+        search_path fisso: il preset v1 della definizione si crea come owner,
+        senza aprire DML su workflow_definizioni al ruolo applicativo. Sblocca
+        la creazione di un tipo di prestazione da parte di zeroerp_app.
+        Brief pgTAP runner/RLS §13.2.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pratiche
+                tableName: workflow_definizioni
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'pratiche'
+                    AND p.proname = 'trgfn_tipi_prestazione_bootstrap_definizione'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_tipi_prestazione_bootstrap_definizione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path = pg_catalog, pratiche, script, config, dbops, pg_temp
+              AS $function$
+              -- Scopo: garantire l'invariante "ogni tipo di prestazione ha il
+              --        suo preset v1 PUBBLICATA" fin dalla nascita del tipo.
+              --        Cosi' auto-pin/auto-default risolvono sempre e i seed
+              --        (o le fixture di test) non devono creare definizioni.
+              --
+              -- ⚠️ SECURITY DEFINER, e non e' una comodita'.
+              --   pratiche.workflow_definizioni e' in SOLA LETTURA per il ruolo
+              --   applicativo per scelta (20260703-15): ci si scrive solo
+              --   attraverso le funzioni del dominio. Da INVOKER questo INSERT
+              --   girava coi privilegi del chiamante e falliva con «permesso
+              --   negato», rendendo impossibile a zeroerp_app creare un tipo di
+              --   prestazione. Il bootstrap pero' non e' una scrittura che
+              --   l'utente sceglie: e' il dominio che si prepara da se', a
+              --   partire da NEW e da nient'altro.
+              --   Stessa strada di fn_fork_nuova_versione (20260703-16) e
+              --   fn_pubblica_definizione (20260703-17).
+              --   search_path fisso: l'INSERT scatena i trigger di
+              --   workflow_definizioni, che lo ereditano.
+              --   Brief: brief-db-pgtap-runner-rls-baseline §13.2.
+              BEGIN
+                INSERT INTO pratiche.workflow_definizioni
+                       (tipo_prestazione_id, emittente_fiscale_id, versione, stato,
+                        descrizione, tx_id)
+                VALUES (NEW.id, NULL, 1, 'PUBBLICATA',
+                        'v1 — preset iniziale del tipo ' || NEW.codice_interno,
+                        NEW.tx_id)
+                ON CONFLICT (tipo_prestazione_id, emittente_fiscale_id)
+                   WHERE stato = 'PUBBLICATA'
+                   DO NOTHING;
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_tipi_prestazione_bootstrap_definizione()
+              IS 'AFTER INSERT su pratiche.tipi_prestazione: crea il preset v1 PUBBLICATA della definizione workflow del nuovo tipo (idempotente). Invariante Fase 0: ogni tipo ha sempre un preset risolvibile da fn_risolvi_definizione. SECURITY DEFINER con search_path fisso: workflow_definizioni e'' in sola lettura per il ruolo applicativo (20260703-15), e da INVOKER questo bootstrap rendeva impossibile creare un tipo di prestazione. Stessa strada di fn_fork_nuova_versione e fn_pubblica_definizione.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: si tornerebbe a SECURITY INVOKER, cioe' al difetto.
+              -- Presente per completezza, non perche' abbia senso applicarlo.
+              SELECT 1;
