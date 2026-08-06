@@ -10,10 +10,14 @@
 > cui 38 con una causa sola** (§13), e quella causa è stata corretta: `pratiche`
 > passa da 38 a **10 file rossi** (§15). Due difetti di prodotto trovati e
 > chiusi: §13.3 e §15.1.
-> ⚠️ Due avvertenze prima di citare una cifra: il **§14** corregge il metro dei
-> §8.2, §9.2, §12.2 e della prima stesura del §13.1; il **§15.3** spiega perché
-> due corse consecutive con utenti diversi si sporcano il database a vicenda.
-> Cosa resta: **§13.4** più il §15.4 ·
+> La suite è ora **transazionale al completo**, 426 file su 426 (§16, §17, §18),
+> e le corse con utenti diversi non si contaminano più.
+> ⚠️ Tre avvertenze prima di citare una cifra o di toccare un test: il **§14**
+> corregge il metro dei §8.2, §9.2, §12.2 e della prima stesura del §13.1; il
+> **§15.3** spiega perché due corse consecutive si sporcavano il database; il
+> **§18.3** raccoglie le **tre trappole** della transazionalizzazione — la prima
+> delle quali rende un test verde facendogli smettere di verificare.
+> Cosa resta: **§13.4**, più il debito del **§17.4** ·
 > **Priorità**: 🔴 **ALTA** — non per un difetto di prodotto, ma perché
 > **`scripts/pgtap-baseline.sh` oggi non può fare il suo mestiere**: distinguere
 > un rosso nuovo da uno noto. Finché non è risolto, ogni «zero regressioni»
@@ -1225,3 +1229,159 @@ e va deciso quanto scoperchiare in una volta.
 
 **25 file non transazionali**: `catalogo` 7, `config` 5, `dbops` 5, `script` 4,
 `vendite` 4. Più il debito del §17.4, che è di natura diversa e più grande.
+
+---
+
+## 18. La suite è transazionale al completo — 426 file su 426 (2026-08-06)
+
+> Chiude il §15.4. Ultimo lotto: i 25 file rimasti su `catalogo` (7), `config`
+> (5), `dbops` (5), `script` (4), `vendite` (4), in una passata sola con misura
+> per schema, così ogni differenza resta attribuibile.
+
+### 18.1 Il risultato
+
+| schema, da owner | prima | dopo |
+| --- | --- | --- |
+| `catalogo` | 107 / 2 / 5 | **invariato** |
+| `dbops` | 160 / 1 / 1 | **invariato** |
+| `script` | 443 / 9 / 12 | **invariato** |
+| `vendite` | 1749 / 16 / 24 | **invariato** |
+| `config` | 229 / 12 / 6 | **invariato** (dopo il §18.2) |
+
+`scripts/pgtap-baseline.sh` sui quattro schemi puliti: **42 rossi su 264, nessuna
+regressione**. Contaminazione verificata su tutti: corsa applicativa → owner
+invariato → corsa applicativa **identica**.
+
+Due cose che il censimento ha corretto in corsa:
+
+* **Dodici file non hanno `finish()`.** È legittimo — dichiarano solo `plan(N)`
+  e pg_prove legge il flusso TAP. Il `ROLLBACK` va quindi ancorato alla fine del
+  file, non a `finish()`.
+* Nessun file dipendeva da un `COMMIT`: verificato prima di toccarli
+  (`COMMIT`, advisory lock non transazionali, `VACUUM`,
+  `CREATE INDEX CONCURRENTLY`).
+
+### 18.2 ⚠️ Terza classe di trappola: stato di sessione a vita transazionale
+
+Un solo file ha resistito, e aveva ragione lui.
+`config/test-stradario-riclassificazione-unico` perdeva l'asserzione 11 —
+«Guard attivo: cambio stradario_id senza manutenzione bloccato» — con:
+
+```
+caught: no exception, wanted: an exception
+```
+
+Il guard `trgfn_indirizzi_dettaglio_protect_update` lascia passare se è alzato il
+flag `zeroerp.maintenance_indirizzi_dettaglio`. Quel flag lo alza
+`maintenance.proc_bump_indirizzi_dettaglio` — e **non lo riabbassava mai**. Il
+commento nel corpo diceva «solo per la sessione corrente», ma
+`set_config(..., true)` vale per la **transazione**:
+
+> **Ogni transazione che chiama quella procedura resta senza quella protezione
+> per tutto ciò che segue.**
+
+Non faceva danni per un motivo fragile: nessuno la chiama dentro una transazione
+più grande — verificato, né `backend/` né altre funzioni del DB. Finché è una
+`CALL` isolata in autocommit, la transazione muore subito e il flag con lei. Il
+giorno in cui finisce dentro un'unità di lavoro più ampia — che è **esattamente
+ciò che la regola dell'atomicità incoraggia** — il bypass resta acceso in
+silenzio.
+
+**Corretto**: changeSet **`20260806-20`** spegne il flag prima di uscire, con un
+blocco `EXCEPTION` perché torni `off` anche se l'`UPDATE` fallisce — una porta
+che si richiude solo quando tutto va bene non è una porta chiusa. Applicato:
+`config` torna a **229/12/6, zero differenze**.
+
+### 18.3 Le tre trappole della transazionalizzazione, in un posto solo
+
+Chi affronterà il debito del §17.4 le incontrerà tutte e tre. In ordine di
+insidiosità:
+
+| | trappola | sintomo | rimedio |
+| --- | --- | --- | --- |
+| 1 | **Vincoli DIFFERITI** (§17.1) | il test diventa **verde**: ha smesso di verificare | `SET CONSTRAINTS ALL IMMEDIATE;` subito dopo `BEGIN;` |
+| 2 | **`now()` congelato** (§16.2) | `CHECK` stretti su `data_fine > data_inizio` falliscono | `clock_timestamp()` dove serve «un istante dopo» |
+| 3 | **Stato di sessione transazionale** (§18.2) | un guard smette di scattare | il codice che alza un flag deve riabbassarlo |
+
+La prima è la peggiore perché **premia**: dà un verde in più e sembra un
+progresso. Le altre due almeno rompono rumorosamente.
+
+⚠️ E la 2 e la 3 non si vedono guardando il file: arrivano dai **trigger e dalle
+procedure che il test attraversa**. Nel caso 2 il secondo colpo è arrivato da
+`calcoli_tempo`, due tabelle più in là; nel caso 3 da una procedura di
+manutenzione che il test chiama una volta sola.
+
+### 18.4 Stato del §15.4
+
+**Chiuso**: 426 file su 426 sono transazionali. Resta il debito del **§17.4** —
+i 349 file che erano già transazionali non hanno mai avuto
+`SET CONSTRAINTS ALL IMMEDIATE`, quindi non esercitano i 365 trigger differiti né
+i 375 vincoli differiti. È materia a sé, e va deciso quanto scoperchiare in una
+volta.
+
+---
+
+## 19. Il debito del §17.4: provato su un file, poi su uno schema intero (2026-08-06)
+
+> Domanda posta: prima di aprire una passata su ~350 file, uno solo funziona? E
+> lo stesso schema di intervento regge?
+
+### 19.1 Un file, scelto perché dicesse qualcosa
+
+Un file a caso non misura niente: serviva uno **verde oggi** e che scrivesse su
+tabelle con trigger differiti, altrimenti la riga passa inosservata per
+costruzione. Incrociando i file verdi con le **164 tabelle** che hanno trigger
+`DEFERRABLE INITIALLY DEFERRED`, il candidato migliore è
+`vendite/test-vw-dash-backlog-v1.sql`: verde, scrive su **nove** di quelle
+tabelle, e `vendite` è lo schema con più differiti (150).
+
+Aggiunta la riga: **14/14, exit 0, stabile su due giri**. Nessun costo, e da
+adesso quei nove insiemi di controlli vengono davvero attraversati.
+
+### 19.2 Poi uno schema intero, per avere un tasso
+
+Un file solo non dice quanti diventeranno rossi. `config` è la prova giusta:
+**53 trigger differiti** (il secondo schema dopo `vendite`) su appena 26 file.
+
+Aggiunta a tutti quelli che ne erano privi — **19 file**:
+
+| `config`, da owner | ok | ko | file rossi |
+| --- | --- | --- | --- |
+| prima | 229 | 12 | 6 |
+| **dopo** | **229** | **12** | **6** |
+
+**Zero differenze.** Il tasso di rossi nuovi, su un campione con alta densità di
+differiti, è **zero su 19**.
+
+### 19.3 ⚠️ Una correzione al §18: «426 su 426» era gonfiato
+
+Il conteggio dei file transazionali usava `grep '^\s*BEGIN;'`, che accetta
+l'indentazione. Ma `BEGIN;` compare anche **dentro le stringhe** passate a
+`throws_ok`, indentato — e un file veniva contato come transazionale senza
+esserlo:
+`config/test-trgfn-prevent-deactivate-if-children-toponomastica.sql`.
+Sistemato; ora i file con un `BEGIN;` a colonna 1 sono **426 su 426** davvero.
+
+Il ricontrollo stretto ha anche mostrato **nove file con `BEGIN;` e senza
+`ROLLBACK` esplicito**. Non è un difetto: la chiusura della sessione annulla la
+transazione aperta, e diversi di essi lo dichiarano in testa («rollback implicito
+a fine file»). Restano meno espliciti degli altri, e basta saperlo.
+
+> ℹ️ È la stessa lezione del §14 su scala minore: **un conteggio vale quanto il
+> criterio con cui è fatto**, e un `grep` permissivo risponde sempre di sì.
+
+### 19.4 Il verdetto, e cosa resta
+
+Il pattern regge: **stessa riga, stessa posizione, zero costo** su 20 file di
+due schemi diversi, uno dei quali ad alta densità di vincoli differiti.
+
+Restano **308 file**: `vendite` 167, `script` 54, `anagrafiche` 22, `documenti`
+11, `rls` 11, `dbops` 11, `pratiche` 10, `ui` 8, `catalogo` 8, `pagamenti` 4,
+`maintenance` 1, `shop` 1.
+
+⚠️ **Zero su 19 non garantisce zero su 308.** Il campione è piccolo e `vendite` —
+da solo più della metà del residuo — ha 150 trigger differiti su 57 tabelle, cioè
+molte più occasioni di trovarne uno che oggi non viene esercitato. La passata va
+fatta **schema per schema, misurando ogni volta**, e ogni rosso nuovo va letto:
+sarà un difetto vero che la suite non stava vedendo, non un incidente da
+aggirare. Ed è esattamente ciò che si vuole da questo cantiere.
