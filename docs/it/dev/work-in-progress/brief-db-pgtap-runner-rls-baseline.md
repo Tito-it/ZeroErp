@@ -1473,3 +1473,79 @@ Restano **254 file**: `vendite` 167, `anagrafiche` 22, `documenti` 11, `rls` 11,
 `dbops` 11, `pratiche` 10, `ui` 8, `catalogo` 8, `pagamenti` 4, `maintenance` 1,
 `shop` 1. ⚠️ `vendite` è due terzi del residuo e ha 150 trigger differiti su 57
 tabelle: è lì che ci si aspetta il grosso delle reazioni, e va tenuto per ultimo.
+
+---
+
+## 21. Tutti gli schemi tranne `vendite` — 87 file, e il limite si conferma (2026-08-06)
+
+> Terza tappa del §19, su richiesta: `anagrafiche`, `documenti`, `rls`, `dbops`,
+> `pratiche`, `ui`, `catalogo`, `pagamenti`, `maintenance`, `shop`. `vendite`
+> tenuto per ultimo perché da solo è due terzi del residuo.
+
+### 21.1 Il risultato
+
+| schema | file trattati | esito |
+| --- | --- | --- |
+| `documenti` · `dbops` · `pratiche` · `ui` · `catalogo` · `pagamenti` · `maintenance` · `shop` | 47 | **zero differenze** |
+| `anagrafiche` | 22 | **7 esclusi**, 15 tengono la riga |
+| `rls` | 11 | **3 esclusi**, 8 tengono la riga |
+
+**77 file su 87 tengono la riga a costo zero.** Le misure per schema tornano tutte
+identiche al prima, e `scripts/pgtap-baseline.sh` sui dieci schemi: **46 rossi su
+167, nessuna regressione**.
+
+### 21.2 I dieci esclusi sono una causa sola
+
+Nove su dieci falliscono per i **guard differiti di completezza** su
+`anagrafiche.soggetti` (indirizzi, contatti, dati societari) e su
+`anagrafiche.istanze_utilities` (almeno un riferimento fra billing account, dati
+precontrattuali, cliente).
+
+Il caso più limpido è `test-fn-crea-soggetto-pf`, la cui **prima asserzione** si
+chiama letteralmente *«fn_crea_soggetto_pf eseguita senza errori»* — e con
+`IMMEDIATE` fallisce. Non c'è dimostrazione migliore che lì la deferralità sia
+**di progetto**: la funzione del dominio restituisce un soggetto incompleto, e il
+chiamante lo completa prima di committare.
+
+Conferma il §20.2: **`IMMEDIATE` in testa vieta una deferralità voluta.** Non è
+un difetto del pattern, è il suo perimetro.
+
+Tutti e dieci portano dentro la ragione e il debito dichiarato: *senza la riga
+quei guard non vengono esercitati, e la fixture lascia un soggetto (o un'istanza)
+che l'applicazione non potrebbe committare; la correzione vera è completare la
+fixture, e allora la riga si rimette.*
+
+### 21.3 Un file instabile, segnalato
+
+`anagrafiche/test-istanza-cliente-chain.sql` oscilla fra **6 e 0 asserzioni** fra
+esecuzioni consecutive, a parità di codice. È rosso in baseline sia prima sia
+dopo, quindi non cambia il verdetto dello schema — ma è **un rosso intermittente**,
+cioè la cosa che il §6 indica come veleno per una baseline. Il file è
+regolarmente transazionale (`BEGIN` + `ROLLBACK`, non lascia residuo) e contiene
+**cinque `LIMIT 1`**: il sospetto è quello del §11.3, e va guardato quando si
+aprirà quel cantiere.
+
+### 21.4 Il tasso, aggiornato
+
+| tappa | file | reagiti | tasso |
+| --- | --- | --- | --- |
+| §19 `config` + 1 file `vendite` | 20 | 0 | 0% |
+| §20 `script` | 54 | 3 | 5,6% |
+| §21 dieci schemi | 87 | 10 | 11,5% |
+| **totale** | **161** | **13** | **8,1%** |
+
+E le 13 reazioni sono **tutte la stessa cosa**: guard differiti di completezza
+sui soggetti e sulle istanze. Nessuna ha rivelato un difetto di prodotto nuovo —
+il che, dopo il §13.3 e il §18.2, è di per sé un'informazione.
+
+### 21.5 Cosa resta
+
+**`vendite`, 167 file.** È l'ultimo, ed è quello con più esposizione: 150 trigger
+differiti su 57 tabelle. Il tasso dell'8% suggerirebbe una dozzina di reazioni,
+ma la densità di `vendite` è più alta di tutte le altre e le sue fixture creano
+soggetti e documenti in catena: è ragionevole aspettarsene di più.
+
+⚠️ E resta il debito vero, che non è la riga ma ciò che la riga rivela: **13
+fixture costruiscono dati che l'applicazione non potrebbe committare**. Completarle
+è il lavoro che rende quei guard finalmente esercitati — e appartiene ai cantieri
+di dominio, non a questo.
