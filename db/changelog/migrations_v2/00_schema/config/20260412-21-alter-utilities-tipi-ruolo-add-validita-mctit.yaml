@@ -12,7 +12,15 @@ databaseChangeLog:
   - changeSet:
       id: 20260412-21-alter-utilities-tipi-ruolo-add-validita
       author: mctit
-      runOnChange: true
+      # ⚠️ Era `true`. In CI Liquibase gira DUE volte (--contexts="!provision" poi
+      #   --contexts=ci_apply): un runOnChange ri-esegue nella seconda passata, FUORI
+      #   dall'ordine di timeline, e rimette questo corpo sopra le revisioni piu'
+      #   recenti. Regola dal 2026-08-06: in 00_schema e 20_code runOnChange e' VIETATO
+      #   (cancello scripts/guardrail_run_on_change.py). Per aggiornare un oggetto si
+      #   crea un file nuovo con numerazione successiva, non si rigira questo.
+      runOnChange: false
+      validCheckSums:
+        - ANY
       comment: >
         Migrazione daterange per config.utilities_tipi_ruolo.
       preConditions:

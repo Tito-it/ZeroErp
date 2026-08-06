@@ -12,8 +12,15 @@ databaseChangeLog:
   - changeSet:
       id: 20260601-31-create-policy-rls-pratiche-ef-whitelist
       author: mctit
-      runOnChange: true
-      validCheckSum: [ANY]
+      # ⚠️ Era `true`. In CI Liquibase gira DUE volte (--contexts="!provision" poi
+      #   --contexts=ci_apply): un runOnChange ri-esegue nella seconda passata, FUORI
+      #   dall'ordine di timeline, e rimette questo corpo sopra le revisioni piu'
+      #   recenti. Regola dal 2026-08-06: in 00_schema e 20_code runOnChange e' VIETATO
+      #   (cancello scripts/guardrail_run_on_change.py). Per aggiornare un oggetto si
+      #   crea un file nuovo con numerazione successiva, non si rigira questo.
+      runOnChange: false
+      validCheckSums:
+        - ANY
       comment: >
         Policy dry-run rls_pratiche_ef_whitelist: operatore vede solo
         pratiche con emittente_fiscale_id in whitelist (adapter PK).

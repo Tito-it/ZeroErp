@@ -114,7 +114,59 @@ Ogni app puo' contenere piu' repository e service. La regola di naming e' basata
 - Always set `logicalFilePath`
 - `00_schema` and `20_code` are included via `migrations_v2/changelog-autogen.yaml` (autogen script)
 - `80_data`, `85_pgagent`, `90_end` are included via `includeAll` in master
-- **MAI modificare changelog già mergiati/pushati su GitHub** — si rompe la sequenza Liquibase dei checksum. Per aggiornare funzioni/trigger con `runOnChange: true`, creare SEMPRE un nuovo file con numerazione successiva (es. `20260225-37-update-...`). Ripristinare (`git checkout --`) i file originali se modificati per errore.
+- **MAI modificare changelog già mergiati/pushati su GitHub** — si rompe la sequenza Liquibase dei checksum. Per aggiornare una funzione/trigger, creare SEMPRE un nuovo file con numerazione successiva (es. `20260225-37-update-...`). Ripristinare (`git checkout --`) i file originali se modificati per errore.
+
+### ⛔ `runOnChange: true` è VIETATO in `00_schema` e `20_code`
+
+Presidiato da `scripts/guardrail_run_on_change.py` (CI, `ci-validate.yaml`): un
+changeSet di schema o di codice che lo dichiara fa fallire la build.
+
+**Perché**, ed è una cosa che si vede solo in CI. La pipeline invoca Liquibase
+**due volte** sullo stesso changelog (`--contexts="!provision"`, poi
+`--contexts=ci_apply`). Un changeSet `runOnChange: true` ri-esegue nella seconda
+passata **fuori dall'ordine di timeline**, quindi riscrive il proprio corpo
+*sopra* le revisioni più recenti — che sono `runOnChange: false` e non
+ri-eseguono. Su un DB di sviluppo non si vede: l'invocazione è una sola.
+
+Il 2026-08-06 questo meccanismo riportava indietro **49 funzioni** a ogni build,
+fra cui `dbops.trgfn_tx_id_managed`, le sei `vendite.vw_*_lista` e i cinque
+`vendite.fn_list_*_da_pushare`. Il sintomo era un guardrail rosso su codici
+errore ritirati; le funzioni regredite in silenzio erano il vero danno.
+
+⚠️ **Il corollario è che un changeSet successivo NON supera automaticamente un
+`runOnChange: true` precedente.** Vale solo fra changeSet spenti.
+
+Dove resta **lecito**: mirror CSV di `80_data` (`loadData`/`loadUpdateData`), job
+`85_pgagent`, resync/grant di `90_end`. Lì la ri-esecuzione è il comportamento
+voluto.
+
+⚠️ **`validCheckSums` — al PLURALE.** `validCheckSum` (singolare) è una chiave
+che Liquibase ignora: l'`ANY` non vale niente. Il refuso è in centinaia di file
+e non si nota finché `runOnChange` è `true` (il checksum si ricalcola comunque);
+diventa un migrate fallito nel momento in cui lo si spegne. Chi spegne un
+`runOnChange` deve correggere anche la chiave.
+
+### ⛔ I dati di `80_data` si cambiano dal CSV, non con `UPDATE` diretti
+
+La sede di una tabella di configurazione è il suo CSV in `80_data/sql/...`, letto
+da un mirror `loadUpdateData`. Un `UPDATE`/`INSERT` SQL sulla stessa tabella crea
+una **seconda sorgente di verità**, e le due divergono fra dev e CI: il mirror è
+`runOnChange` e ri-esegue a ogni migrate, l'SQL spesso no, quindi su dev vince il
+CSV e su un DB ricostruito da zero vince l'SQL (che nella timeline sta dopo).
+
+Successo reale: `20260430-60` faceva `SET meta = '{...}'` sulla matrice dei
+preventivi e in CI cancellava `outlined`/icona dell'annullamento,
+`requires_righe` su DRAFT→EMESSO e il namespace i18n `vendite.preventivi.*`.
+
+- **Modifica di un valore esistente** → si edita il CSV. Il mirror è
+  `runOnChange` + `validCheckSums: ANY` apposta: ri-legge e riallinea.
+- **Riga nuova** → append al CSV. Mai un `INSERT` a parte.
+- **Cancellazione** → `loadUpdateData` non cancella: lì il `DELETE` SQL
+  forward-only è legittimo, ed è l'unica eccezione.
+- Se un SQL storico sovrascrive un CSV e non si può cancellare (mergiato):
+  spegnerlo **non basta** — su un DB nuovo applica comunque, e comunque dopo il
+  loader. Serve un mirror **ri-ancorato** più avanti nella timeline (esempi:
+  `20260806-13`, `20260806-14`).
 
 ## Regole Documentazione
 
@@ -165,9 +217,10 @@ Ogni app puo' contenere piu' repository e service. La regola di naming e' basata
   definizione corrente SEMPRE dalla documentazione auto-generata in
   `docs/it/dbzero/<schema>/tabelle/<nome>.md` e `docs/it/dbzero/<schema>/funzioni/<nome>.md`
   (riflette l'oggetto **vivo** nel DB). **NON** ricostruire il DDL/corpo da un file
-  YAML di migration: i changeSet `runOnChange: true` (funzioni/trigger) vengono
-  superati da changeSet successivi con numerazione più alta, quindi un singolo YAML
-  è spesso **stale**. Per un `CREATE OR REPLACE` di una funzione esistente: copiare
+  YAML di migration: una funzione viene riscritta da changeSet successivi con
+  numerazione più alta, quindi un singolo YAML è quasi sempre **stale** — spesso
+  ce ne sono cinque o sei che definiscono lo stesso oggetto, e solo l'ultimo
+  conta. Per un `CREATE OR REPLACE` di una funzione esistente: copiare
   il corpo dalla doc auto-gen, applicarvi sopra la modifica, e creare un nuovo file
   con numerazione successiva. Partire dallo YAML rischia di **regredire** silenziosamente
   le revisioni intermedie.
