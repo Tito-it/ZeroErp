@@ -11,7 +11,8 @@
 > passa da 38 a **10 file rossi** (§15). Due difetti di prodotto trovati e
 > chiusi: §13.3 e §15.1.
 > La suite è ora **transazionale al completo**, 426 file su 426 (§16, §17, §18),
-> e le corse con utenti diversi non si contaminano più.
+> le corse con utenti diversi non si contaminano più, e **tutti i file forzano i
+> vincoli differiti** tranne 15 che portano dentro la ragione (§19 → §22).
 > ⚠️ Tre avvertenze prima di citare una cifra o di toccare un test: il **§14**
 > corregge il metro dei §8.2, §9.2, §12.2 e della prima stesura del §13.1; il
 > **§15.3** spiega perché due corse consecutive si sporcavano il database; il
@@ -1415,6 +1416,10 @@ test-fn-is-super-admin           7/1 -> 4/1   Padre non attivo: figlio attivo no
 
 ### 20.2 ⚠️ Il limite: `IMMEDIATE` in testa vieta una deferralità VOLUTA
 
+> ⚠️ **Diagnosi corretta al §22.1**: non e' che `IMMEDIATE` scatti «troppo
+> presto». Misurato mettendo il controllo dove starebbe il `COMMIT`, quei file
+> falliscono **lo stesso**: le fixture lasciano davvero dati non committabili.
+
 `anagrafiche.soggetti` ha **tre guard `DEFERRABLE INITIALLY DEFERRED`** —
 indirizzi, contatti, dati societari. Lì la deferralità non è un dettaglio
 tecnico: è il **contratto del dominio**. Si crea il soggetto, poi il suo
@@ -1473,3 +1478,198 @@ Restano **254 file**: `vendite` 167, `anagrafiche` 22, `documenti` 11, `rls` 11,
 `dbops` 11, `pratiche` 10, `ui` 8, `catalogo` 8, `pagamenti` 4, `maintenance` 1,
 `shop` 1. ⚠️ `vendite` è due terzi del residuo e ha 150 trigger differiti su 57
 tabelle: è lì che ci si aspetta il grosso delle reazioni, e va tenuto per ultimo.
+
+---
+
+## 21. Tutti gli schemi tranne `vendite` — 87 file, e il limite si conferma (2026-08-06)
+
+> Terza tappa del §19, su richiesta: `anagrafiche`, `documenti`, `rls`, `dbops`,
+> `pratiche`, `ui`, `catalogo`, `pagamenti`, `maintenance`, `shop`. `vendite`
+> tenuto per ultimo perché da solo è due terzi del residuo.
+
+### 21.1 Il risultato
+
+| schema | file trattati | esito |
+| --- | --- | --- |
+| `documenti` · `dbops` · `pratiche` · `ui` · `catalogo` · `pagamenti` · `maintenance` · `shop` | 47 | **zero differenze** |
+| `anagrafiche` | 22 | **7 esclusi**, 15 tengono la riga |
+| `rls` | 11 | **3 esclusi**, 8 tengono la riga |
+
+**77 file su 87 tengono la riga a costo zero.** Le misure per schema tornano tutte
+identiche al prima, e `scripts/pgtap-baseline.sh` sui dieci schemi: **46 rossi su
+167, nessuna regressione**.
+
+### 21.2 I dieci esclusi sono una causa sola
+
+> ⚠️ **Diagnosi corretta al §22.1**: non e' che `IMMEDIATE` scatti «troppo
+> presto». Misurato mettendo il controllo dove starebbe il `COMMIT`, quei file
+> falliscono **lo stesso**: le fixture lasciano davvero dati non committabili.
+
+Nove su dieci falliscono per i **guard differiti di completezza** su
+`anagrafiche.soggetti` (indirizzi, contatti, dati societari) e su
+`anagrafiche.istanze_utilities` (almeno un riferimento fra billing account, dati
+precontrattuali, cliente).
+
+Il caso più limpido è `test-fn-crea-soggetto-pf`, la cui **prima asserzione** si
+chiama letteralmente *«fn_crea_soggetto_pf eseguita senza errori»* — e con
+`IMMEDIATE` fallisce. Non c'è dimostrazione migliore che lì la deferralità sia
+**di progetto**: la funzione del dominio restituisce un soggetto incompleto, e il
+chiamante lo completa prima di committare.
+
+Conferma il §20.2: **`IMMEDIATE` in testa vieta una deferralità voluta.** Non è
+un difetto del pattern, è il suo perimetro.
+
+Tutti e dieci portano dentro la ragione e il debito dichiarato: *senza la riga
+quei guard non vengono esercitati, e la fixture lascia un soggetto (o un'istanza)
+che l'applicazione non potrebbe committare; la correzione vera è completare la
+fixture, e allora la riga si rimette.*
+
+### 21.3 Un file instabile, segnalato
+
+`anagrafiche/test-istanza-cliente-chain.sql` oscilla fra **6 e 0 asserzioni** fra
+esecuzioni consecutive, a parità di codice. È rosso in baseline sia prima sia
+dopo, quindi non cambia il verdetto dello schema — ma è **un rosso intermittente**,
+cioè la cosa che il §6 indica come veleno per una baseline. Il file è
+regolarmente transazionale (`BEGIN` + `ROLLBACK`, non lascia residuo) e contiene
+**cinque `LIMIT 1`**: il sospetto è quello del §11.3, e va guardato quando si
+aprirà quel cantiere.
+
+### 21.4 Il tasso, aggiornato
+
+| tappa | file | reagiti | tasso |
+| --- | --- | --- | --- |
+| §19 `config` + 1 file `vendite` | 20 | 0 | 0% |
+| §20 `script` | 54 | 3 | 5,6% |
+| §21 dieci schemi | 87 | 10 | 11,5% |
+| **totale** | **161** | **13** | **8,1%** |
+
+E le 13 reazioni sono **tutte la stessa cosa**: guard differiti di completezza
+sui soggetti e sulle istanze. Nessuna ha rivelato un difetto di prodotto nuovo —
+il che, dopo il §13.3 e il §18.2, è di per sé un'informazione.
+
+### 21.5 Cosa resta
+
+**`vendite`, 167 file.** È l'ultimo, ed è quello con più esposizione: 150 trigger
+differiti su 57 tabelle. Il tasso dell'8% suggerirebbe una dozzina di reazioni,
+ma la densità di `vendite` è più alta di tutte le altre e le sue fixture creano
+soggetti e documenti in catena: è ragionevole aspettarsene di più.
+
+⚠️ E resta il debito vero, che non è la riga ma ciò che la riga rivela: **13
+fixture costruiscono dati che l'applicazione non potrebbe committare**. Completarle
+è il lavoro che rende quei guard finalmente esercitati — e appartiene ai cantieri
+di dominio, non a questo.
+
+---
+
+## 22. `vendite`: il tasso più basso di tutti — e la diagnosi va corretta (2026-08-06)
+
+> Ultimo schema. Era anche il più esposto: **133 file su 167 scrivono su tabelle
+> con trigger differiti**, e `vendite` ne ha 150 su 57 tabelle.
+
+### 22.1 ⚠️ Prima la correzione, perché cambia ciò che è scritto ai §20.2 e §21.2
+
+Lì avevo concluso che `SET CONSTRAINTS ALL IMMEDIATE` **in testa** fosse troppo
+severo: scattando a ogni istruzione, vieterebbe la costruzione in più passi che
+il dominio consente (crea il soggetto, poi il suo indirizzo). Vero sul *quando*,
+ma **sbagliato sul merito**.
+
+Misurato spostando il controllo **in coda**, cioè esattamente dove starebbe il
+`COMMIT`:
+
+```
+test-fn-crea-soggetto-pf         1..9   ok=9  ko=0   exit=3   Indirizzo obbligatorio mancante…
+test-genera-scadenze-lotto-v1    1..11  ok=11 ko=0   exit=3   Lotto 106: 2 fattura/e con stato…
+test-snapshot-indirizzi-lotto-v1 1..12  ok=12 ko=0   exit=3   Lotto 2900: 1 fattura/e…
+```
+
+Eseguono **tutto il piano** e poi falliscono lo stesso. Quindi non è una
+questione di anticipo: **quelle fixture lasciano dati che un `COMMIT` vero
+rifiuterebbe**. La deferralità serviva solo a non farlo vedere.
+
+Conseguenza pratica: i **14 file esclusi** (§20, §21, §22) non aspettano un
+aggiustamento del pattern. Aspettano che qualcuno **completi l'unità di lavoro**
+che hanno lasciato a metà — l'indirizzo del soggetto, il riferimento
+dell'istanza, l'allineamento fra lotto e fatture.
+
+### 22.2 Il risultato su `vendite`
+
+| `vendite`, da owner | ok | ko | file rossi |
+| --- | --- | --- | --- |
+| prima | 1749 | 16 | 24 |
+| dopo, tutti e 167 | 1727 | 16 | 26 |
+| **dopo, con 2 esclusi** | **1749** | **16** | **24** |
+
+**165 file su 167 tengono la riga a costo zero: il tasso più basso di tutta la
+passata (1,2%)**, con l'esposizione più alta. L'ipotesi era giusta: `vendite` è
+più recente, e le sue fixture completano quasi sempre ciò che iniziano.
+
+`scripts/pgtap-baseline.sh vendite`: **24 rossi su 175, nessuna regressione**.
+
+I due esclusi introducono un'invariante nuova, diversa dalla completezza dei
+soggetti: **coerenza fra lo stato fiscale del lotto e quello delle sue fatture**
+(`E_LOTTO_FATTURE_STATO_INCOERENTE`, guard
+`trg_fatturazione_lotti_def_guard_stato_fatture_coerente_upd` e
+`trg_fatture_def_guard_stato_lotto_coerente_ins_upd`).
+
+### 22.3 Il quadro completo della passata
+
+| tappa | file | reagiti | tasso |
+| --- | --- | --- | --- |
+| §19 `config` + 1 di `vendite` | 20 | 0 | 0 % |
+| §20 `script` | 54 | 3 | 5,6 % |
+| §21 dieci schemi | 87 | 10 | 11,5 % |
+| §22 `vendite` | 167 | 2 | **1,2 %** |
+| **totale** | **328** | **14** | **4,3 %** |
+
+**Il debito del §17.4 è chiuso**: tutti i file transazionali della suite ora
+forzano i vincoli differiti, tranne 15 che portano dentro la ragione e il debito.
+
+Le 14 reazioni sono di **tre invarianti**, tutte di completezza o coerenza:
+
+| invariante | file |
+| --- | --- |
+| `anagrafiche.soggetti`: indirizzi, contatti, dati societari | 10 |
+| `anagrafiche.istanze_utilities`: almeno un riferimento | 2 |
+| `vendite`: stato lotto ↔ stato fatture | 2 |
+
+### 22.4 Cosa resta
+
+**Completare le 14 fixture.** Non è lavoro di questo brief: ogni file appartiene
+al dominio che collauda, e il difetto è sempre lo stesso — *il test costruisce
+qualcosa che l'applicazione non potrebbe salvare*. Quando una viene completata,
+si toglie la nota e si rimette la riga: da quel momento il guard è esercitato.
+
+⚠️ **E questi 14 sono un campione, non l'inventario.** Dicono quante fixture
+*incontrano* un vincolo differito lasciandolo insoddisfatto; non dicono quante
+altre costruiscono dati incompleti su invarianti non presidiate da un differito.
+
+### 22.5 ✅ Le tre invarianti hanno già test dedicati — il debito è più piccolo di così
+
+Chiudendo il conto della copertura, **tre file non rientravano né fra i 409 con
+la riga né fra i 14 esclusi**:
+
+```
+anagrafiche/test-soggetti-indirizzi-required.sql
+anagrafiche/test-soggetti-ruoli-indirizzi-required.sql
+anagrafiche/test-trgfn-istanze-utilities-require-utility-dichiarata.sql
+```
+
+Contengono **quattro `SET CONSTRAINTS ALL IMMEDIATE` ciascuno**, ma dentro le
+stringhe di `throws_ok`: sono i test **il cui soggetto È il vincolo differito**.
+Lo fanno scattare nel punto scelto e asseriscono che respinga — che è la tecnica
+giusta, ed era già lì.
+
+| test dedicato | esito |
+| --- | --- |
+| `test-soggetti-ruoli-indirizzi-required` | **6/6 verde** |
+| `test-trgfn-istanze-utilities-require-utility-dichiarata` | 3/4 (1 rosso, in baseline) |
+| `test-soggetti-indirizzi-required` | muto (in baseline, `ERRORE_FIXTURE`) |
+
+Quindi **le invarianti non erano scoperte**: quello che mancava era che le
+*altre* fixture, quelle che le incontrano di passaggio, le rispettassero. È una
+distinzione che cambia la priorità del §22.4 — il debito è di igiene delle
+fixture, non un buco di collaudo su un vincolo di dominio.
+
+> ℹ️ E suggerisce la tecnica per completare i 14: non serve la riga in testa.
+> Basta un `SET CONSTRAINTS ALL IMMEDIATE` **nel punto in cui l'unità di lavoro
+> è completa**, come fanno già questi tre.
