@@ -434,22 +434,34 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Impossibile risolvere il prezzo listino.",
         ),
+        # ── I tre esiti del resolver di prezzo ──
+        #   ⚠️ `show_empty_state` -> `show_error_banner` il 2026-08-06.
+        #   Quella ui_action e' pensata per una LISTA che non trova nulla. Questi
+        #   tre li solleva solo `vendite.fn_resolve_prezzo_listino_v2`, cioe' la
+        #   risoluzione del prezzo di una riga: non c'e' nessuna lista da
+        #   svuotare, c'e' una scrittura che fallisce.
+        #   Il difetto non nasce dall'handler `P0001` del brief §19.2: e' gia'
+        #   vivo oggi sul percorso diretto dell'API pricing, dove questi codici
+        #   arrivano al client senza passare dall'handler. Toglierlo lo avrebbe
+        #   soltanto reso visibile anche altrove.
+        #   Lo status resta 404: la cosa cercata (mappa, prezzo, riga) davvero
+        #   non c'e'.
         "E_PREZZO_LISTINO_NON_TROVATO": ErrorPolicy(
             code="E_PREZZO_LISTINO_NON_TROVATO",
             http_status=404,
-            ui_action="show_empty_state",
+            ui_action="show_error_banner",
             user_message="Nessun prezzo listino risolto per l'articolo richiesto.",
         ),
         "E_PREZZO_LISTINO_RIGA_NON_TROVATA": ErrorPolicy(
             code="E_PREZZO_LISTINO_RIGA_NON_TROVATA",
             http_status=404,
-            ui_action="show_empty_state",
+            ui_action="show_error_banner",
             user_message="Riga listino non trovata per articolo/uom alla data.",
         ),
         "E_CATEGORIA_LISTINO_NON_MAPPATA": ErrorPolicy(
             code="E_CATEGORIA_LISTINO_NON_MAPPATA",
             http_status=404,
-            ui_action="show_empty_state",
+            ui_action="show_error_banner",
             user_message="Categoria cliente non mappata a listino per la quadrupla indicata.",
         ),
         "E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C": ErrorPolicy(
@@ -4217,6 +4229,32 @@ class ErrorPolicyRegistry:
             http_status=400,
             ui_action="show_error_banner",
             user_message="Articolo a servizio ricorrente: usare l'offerta commerciale, non il preventivo.",
+        ),
+        # ── §18.5a: i due `IF NOT FOUND` che dicevano «parametro non valido» ──
+        #   `E_PARAMETRO_INVALIDO` lo nominano 113 funzioni e per 111 il 400 e'
+        #   giusto: la correzione non poteva stare qui, doveva stare nel punto
+        #   che solleva. Il team DB ha creato i due codici (changeSet
+        #   20260806-22 e -23) e ha tolto anche il valore variadico «offerta non
+        #   trovata: ...», che ripeteva meta' della frase autocontraddittoria.
+        "E_OFFERTA_NON_TROVATA": ErrorPolicy(
+            code="E_OFFERTA_NON_TROVATA",
+            http_status=404,
+            ui_action="show_error_banner",
+            # vendite.fn_push_offerta_a_contratto, ramo `IF NOT FOUND`.
+            # Banner e non empty-state: e' una scrittura che fallisce (push
+            # verso contratto), non una pagina da svuotare.
+            user_message="Offerta non trovata: impossibile generare il contratto.",
+        ),
+        "E_PROFILO_ACCESSO_NON_TROVATO": ErrorPolicy(
+            code="E_PROFILO_ACCESSO_NON_TROVATO",
+            http_status=404,
+            ui_action="show_error_banner",
+            # config.trgfn_profili_accesso_bindings_guard_coerenza, ramo
+            # `IF NOT FOUND`. Era il punto in cui il codice **confessava nel
+            # commento** di essere stato scelto per quanti %s aveva il
+            # messaggio: la forma della stringa di formato aveva deciso la
+            # semantica, e da li' era arrivata fino allo status HTTP.
+            user_message="Profilo di accesso non trovato.",
         ),
         # ── Le due meta' di `E_STATO_SCONOSCIUTO`, ritirato il 2026-08-06 ──
         #   Quel codice ne conteneva due, e per questo era rimasto senza policy:
