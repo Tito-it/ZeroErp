@@ -3,7 +3,7 @@
 **Chi scrive:** DB (`dev/db-tid`), 2026-08-05.
 **Origine:** rilievo del team BE, §12.5 di
 [brief-db-codice-errore-strutturato](../work-done/brief-db-codice-errore-strutturato.md) (chiuso).
-**Stato:** 🟡 **cancello acceso (§8) · lotto 1 CHIUSO (§13) · lotti 2-3-4 scritti: 61 codici decisi, ⭐ i `da_trigger` senza policy sono ZERO (§16.3) — il percorso di una richiesta è coperto. ⚠️ Palla al DB in un giro solo (§16.4): 61 righe + 2 difetti trovati leggendo. Registro 112 → 51.**
+**Stato:** 🟢 **fronte del percorso richiesta CHIUSO (§17, 2026-08-06). Cancello 4/4 · suite 3580/3580 · registro 141 → 51 · `da_trigger` senza policy 90 → **0** · 91 codici decisi in quattro lotti. Resta il lotto 5 (i 51 non da trigger), senza fretta.**
 **Perimetro:** misura e cancello lato DB · assegnazione dei significati lato BE.
 
 > **Non è una regressione.** Questo difetto c'era anche prima; la slice del codice
@@ -953,3 +953,162 @@ ZEROERP_TEST_DB_E2E=1 ./manage-test.sh apps.core.tests.test_error_codes_db_polic
 Restano validi i due difetti da correggere: il **messaggio** di
 `E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO` (§14.5b) e il **nome fantasma** in
 `script.trgfn_prevent_modification_generic` (§15.4c).
+
+---
+
+## 17. ✅ CHIUSO il fronte del percorso richiesta — 2026-08-06
+
+Il DB ha applicato tutto (`9ed35504d`). Verificato sul database vivo, non dedotto
+dal CSV:
+
+| | atteso | trovato |
+|---|---|---|
+| voci del registro | 51 | **51** |
+| **`da_trigger` senza policy** | **0** | **0** |
+| codici nella vista | 361 | **361** |
+
+**Cancello 4/4 verde. Suite 3580/3580 verde.**
+
+I due difetti trovati leggendo sono corretti entrambi:
+
+* il messaggio di `E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO` dice ora «Soggetto %s
+  non trovato: impossibile validare i dati societari», cioè **la condizione che
+  solleva davvero**;
+* `script.trgfn_prevent_modification_generic` passa `TG_NAME` invece del nome
+  hardcoded: il diario non punta più a una funzione che non esiste. Il changeSet
+  porta scritto anche il perché, quindi il residuo non torna per inerzia.
+
+### 17.1 Il bilancio del terzo lato
+
+| | 2026-08-05 | 2026-08-06 |
+|---|---|---|
+| codici che il DB può nominare | 360 | 361 |
+| senza un tipo di risposta deciso | 141 | **51** |
+| **sul percorso di una richiesta** | **90** | **0** |
+| presidi sul codice errore | 2 lati su 3 | **3 su 3** |
+
+**Novantuno decisioni** prese in un giorno, tutte leggendo il punto che solleva.
+Tre volte il nome del codice diceva una cosa diversa dalla verità
+(`E_DELETE_NOT_ALLOWED` non era uno stato, `E_FULFILL_NOT_FOUND` era davvero un
+404, `E_SNAPSHOT_ID_NOT_FOUND` non lo era affatto), e due volte il codice ne
+conteneva due (`E_STATO_SCONOSCIUTO`, spezzato; `E_SOGGETTI_RUOLI`, tenuto
+insieme con la ragione scritta).
+
+### 17.2 Cosa resta
+
+**Il lotto 5: i 51 codici in funzioni non agganciate a trigger.** Possono non
+essere mai raggiunte dal web — è la ragione per cui il DB li aveva messi in coda
+fin dal §4 — e il loro tipo di risposta oggi non lo legge nessuno. Non hanno
+fretta, ma il registro deve continuare a calare: il cancello non li lascerà
+crescere e il verso 3 toglierà da solo quelli che il database smette di nominare.
+
+⚠️ **Il quarto lato, che nessuno presidia.** Il messaggio corretto oggi era
+sbagliato da sempre, ed è saltato fuori solo perché qualcuno stava leggendo il
+codice a mano. Nessun controllo verifica che **il messaggio descriva la
+condizione che solleva**: il guardrail DB controlla che il codice sia a catalogo,
+il cancello che abbia una policy. Se ne trovassimo un secondo, varrebbe la pena
+chiedersi come si presidia — un difetto isolato è un caso, due sono una
+direzione.
+
+---
+
+## 18. Il quarto lato — misurato dal DB, verificato dal BE (2026-08-06)
+
+Il DB ha girato la misura sul quarto lato: **998 punti di sollevamento, 349
+codici distinti**, ~31 candidati dall'euristica, **7 difetti reali**. Precisione
+~23%.
+
+### 18.1 Il risultato più utile è la precisione, non i sette
+
+**Con il 23% un cancello verrebbe spento in una settimana.** È la prima volta in
+questo cantiere che una classe di difetti risulta **non presidiabile
+automaticamente**, e va scritto accanto agli altri tre lati, non nascosto: gli
+altri tre hanno una regola meccanica («il codice è a catalogo?», «ha una
+policy?»), questo chiede di capire *cosa significa* la condizione. Nessuna
+euristica sul testo ci arriva.
+
+Concordo con il DB: **niente cancello.** La misura resta una **lente da
+rilanciare quando si apre un lotto**, e lo script va in `scripts/sql/` con il
+prefisso `check_` — la convenzione del progetto già distingue `check_*`
+(strumento a mano) da `guardrail_*` (passo CI), quindi il nome dice da solo che
+non è un cancello.
+
+### 18.2 ⚠️ `E_PARAMETRO_INVALIDO` — la leva non è del BE
+
+Il DB propone di correggere i 2 punti «subito, ma tocca il BE perché passerebbero
+da 400 a 404». **L'esito è giusto, la leva no**, e la differenza conta:
+
+> **113 funzioni** nominano `E_PARAMETRO_INVALIDO`. La sua policy — 400 con il
+> campo evidenziato — è **corretta in 111 di quei punti**. Portarla a 404 per
+> sistemarne due significherebbe rompere gli altri 111: un `IF NOT FOUND` che
+> deve dire «non trovato» non si aggiusta cambiando cosa significa la parola.
+
+La correzione è **lato DB**: sollevare un codice diverso in quei due punti. Non
+esiste a catalogo un «non trovato» generico né uno specifico per l'offerta
+(verificato: zero codici `E_OFFERTA_*_NON_TROVAT*`, zero `E_RECORD_*`), quindi
+servono codici nuovi — `E_OFFERTA_NON_TROVATA` starebbe nella famiglia
+`E_OFFERTA_*` che già esiste. Fatto quello, il BE dichiara i due codici con 404 e
+il registro se li riprende per il tempo di un giro.
+
+⭐ E vale la pena tenere la frase con cui il DB lo racconta: nel secondo punto il
+codice **confessa nel commento** di essere stato scelto per quanti `%s` ha il
+messaggio. *La forma della stringa di formato ha deciso la semantica*, ed è
+arrivata fino allo status HTTP.
+
+### 18.3 ⚠️ I 4 dell'handler `P0001` — la ragione è più forte di quella detta
+
+Il DB propone di lasciarli, perché la correzione vera non è rinominare ma **non
+catturare `P0001` genericamente**. Concordo, e c'è un argomento in più che rende
+la cosa meno rinviabile di come sembra:
+
+```sql
+EXCEPTION WHEN SQLSTATE 'P0001' THEN
+    GET STACKED DIAGNOSTICS v_err_msg = MESSAGE_TEXT;
+    PERFORM script.fn_log_and_raise_error(..., 'E_DOC_COMPONENTE_LISTINO_MANCANTE', ...)
+```
+
+Viene catturato **solo `MESSAGE_TEXT`**. Il codice strutturato dell'errore
+originale — quello che il cantiere del codice errore strutturato ha appena finito
+di far arrivare fino al backend — **non viene letto e va perso**: al suo posto
+parte un codice diverso. Questi quattro punti **disfano il meccanismo appena
+costruito**, e lo fanno in silenzio, perché il testo originale finisce in un
+campo del payload che l'operatore non legge.
+
+Effetto oggi: qualunque errore di dominio del resolver sottostante arriva al
+client come **422 «Listino non configurato per uno dei componenti»** — anche
+quando il listino c'entra nulla.
+
+Resta vero che è una **modifica di comportamento**, non di etichetta, e va
+decisa: lasciar passare l'errore del resolver significa che il chiamante vedrà
+codici che oggi non vede.
+
+### 18.4 Il terzo: la conferma che la lente funziona
+
+`E_SNAPSHOT_ID_NOT_FOUND` la misura lo ritrova **da sola**, partendo da
+un'euristica diversa da quella che ha usato il BE (lettura a mano, §15.1). Due
+strade indipendenti sullo stesso punto: è la prova che la lente vede quello che
+deve vedere, ed è già corretto (500).
+
+### 18.5 Richieste al team DB (decisioni di Tid, 2026-08-06)
+
+**a) Due codici nuovi per i punti di `E_PARAMETRO_INVALIDO`.** Non un generico
+riutilizzabile: **i codici generici sono esattamente quelli che accumulano
+significati**, ed `E_PARAMETRO_INVALIDO` è diventato così. Proposta:
+
+| Punto | Codice | Perché lì |
+|---|---|---|
+| `vendite.fn_push_offerta_a_contratto` | `E_OFFERTA_NON_TROVATA` | sta nella famiglia `E_OFFERTA_*` che già esiste |
+| `config.trgfn_profili_accesso_bindings_guard_coerenza` | gemello nella famiglia `E_PROFILO_ACCESSO_*` | idem, e il commento del codice dice già che è un fail-fast su caso limite |
+
+Appena esistono, il BE li dichiara a **404** e il registro se li riprende per il
+tempo di un giro — stesso schema di `E_STATO_SCONOSCIUTO`, già rodato.
+
+**b) I 4 punti dell'handler `P0001`: il rilievo con la verifica, la correzione da
+decidere insieme.** Non è solo un'etichetta imprecisa: **il codice strutturato
+originale va perso** perché si cattura solo `MESSAGE_TEXT` (§18.3). Non-catturare
+è una modifica di comportamento — i chiamanti vedranno codici che oggi non vedono
+— e l'impatto va misurato dal DB prima di muoversi.
+
+**c) Lo script della misura in `scripts/sql/`**, con prefisso `check_` (lente,
+non cancello). Sì, è utile: la lente serve a ogni apertura di lotto, e riscriverla
+ogni volta è il modo in cui sono nati i tre numeri diversi del §2.
