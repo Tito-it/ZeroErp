@@ -4172,13 +4172,32 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Articolo a servizio ricorrente: usare l'offerta commerciale, non il preventivo.",
         ),
-        # ⚠️ NON dichiarato qui, e non e' una dimenticanza: `E_STATO_SCONOSCIUTO`
-        # resta nel registro del debito finche' il team DB non lo spezza in due.
-        # Lo sollevano due domini diversi — il cambio stato di commessa/preventivo
-        # (stato di workflow inesistente: 404) e config.trgfn_toponomastica_normalize
-        # (codice nazione non risolto, dove un 404 svuoterebbe la form indirizzi
-        # mentre l'operatore digita). Un codice solo non puo' dire due cose:
-        # decisione Tid del 2026-08-06, brief §10.5.
+        # ── Le due meta' di `E_STATO_SCONOSCIUTO`, ritirato il 2026-08-06 ──
+        #   Quel codice ne conteneva due, e per questo era rimasto senza policy:
+        #   con 404 la form indirizzi si sarebbe svuotata mentre l'operatore
+        #   digita, con 400 il cambio stato avrebbe mentito. Spezzato dal team DB
+        #   (changeSet 20260806-09/10/11), ora ognuno puo' dire la sua verita'.
+        #   Brief §10.5 e §11.2. Il vecchio codice e' ritirato con `obsoleto_dal`,
+        #   non cancellato: regge il diario degli errori gia' accaduti.
+        "E_STATO_WORKFLOW_NON_TROVATO": ErrorPolicy(
+            code="E_STATO_WORKFLOW_NON_TROVATO",
+            http_status=404,
+            ui_action="show_error_banner",
+            # vendite.fn_cambia_stato_commessa / _preventivo: il codice_interno
+            # dello stato di destinazione non da' nessuna riga ATTIVA. La
+            # destinazione indicata non esiste.
+            user_message="Stato di destinazione non trovato o non attivo.",
+        ),
+        "E_NAZIONE_NON_TROVATA": ErrorPolicy(
+            code="E_NAZIONE_NON_TROVATA",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            # config.trgfn_toponomastica_normalize: NEW.stato_id e' NULL e
+            # nemmeno il default per parametro risolve. E' un errore di
+            # COMPILAZIONE: l'operatore ha un campo da correggere e la pagina
+            # non deve svuotarsi — la ragione per cui il codice andava spezzato.
+            user_message="Nazione non indicata e nessun default configurato.",
+        ),
     }
 
     # Scopo: Risolve la policy per un codice errore. Per codici applicativi
