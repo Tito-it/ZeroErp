@@ -212,6 +212,59 @@ qui le 57 voci sono **una sola decisione** presa una volta. Un motivo
 obbligatorio avrebbe prodotto 57 copie della stessa frase — rumore che somiglia
 al rigore. La ragione sta scritta una volta, sulla tabella.
 
+### 3.4 Il *tipo* di risposta — il terzo lato
+
+**Cosa sorveglia.** Il §3.3 garantisce che il codice **arrivi** al backend e che
+l'operatore legga la frase giusta. Ma sul codice deve andare d'accordo un terzo
+elenco: la tabella che dice, per ogni codice, **che tipo di risposta** dare —
+«non esiste», «non ti è permesso», «è in conflitto con lo stato attuale», «hai
+sbagliato a compilare» (`backend/apps/core/services/error_policies.py`).
+
+Su quelle parole gli elenchi sono tre, e fino al 2026-08-05 due direzioni erano
+presidiate e una no:
+
+| Direzione | Presidiata da |
+|---|---|
+| le parole usate dal codice applicativo sono dichiarate | `apps/core/tests/test_error_codes_declared_guardrail.py` |
+| le parole che dice il database sono a catalogo | guardrail SQL del §3.3 |
+| **le parole che dice il database hanno un tipo di risposta** | `apps/core/tests/test_error_codes_db_policy_guardrail.py` |
+
+**Cosa succedeva senza.** L'operatore leggeva comunque la frase giusta — quella
+viene dal catalogo — ma il *tipo* di risposta restava appiattito su «hai
+sbagliato a compilare» anche quando la verità era «non esiste» o «non ti è
+permesso». Chi ascolta capisce lo stesso; chi deve **reagire** — la pagina che
+decide se mostrare un avviso o riportarti indietro, un allarme, un tentativo
+automatico — no. Al primo giro erano **141 codici**, 90 dei quali sollevati da
+funzioni agganciate a un trigger, cioè sul percorso di una richiesta vera.
+
+| Pezzo | Dove |
+|---|---|
+| La misura | `dbops.vw_codici_errore_da_dichiarare` |
+| Il registro | `dbops.codici_errore_senza_policy` (+ CSV mirror `DELETE`/`loadData`) |
+| Cancello automatico | `apps/core/tests/test_error_codes_db_policy_guardrail.py` (suite Django, accesa in CI) |
+
+⚠️ **Il cancello sta lato backend, e non è un dettaglio organizzativo.** Il
+confronto è contro un dizionario Python: da SQL si potrebbe fare solo leggendo il
+*testo* di quel sorgente, legando un guardrail SQL alla forma di un file che non
+è suo. Il prezzo è che questo cancello, unico fra quelli qui elencati, ha bisogno
+di un **database provvisto** per girare — in CI ce l'ha; in locale si accende con
+`ZEROERP_TEST_DB_E2E=1`.
+
+⚠️ **La misura è volutamente larga**, e va saputo perché. Raccoglie ogni
+letterale `E_*` che compare in un corpo PL/pgSQL vivo, non solo quelli dentro la
+chiamata che solleva: restringere perderebbe i codici che arrivano da
+un'espressione, e la versione «raffinata» della misura aveva fatto esattamente
+questo — dichiarava conformi quattro codici che non lo erano. Fra i due errori
+possibili si sceglie quello che si corregge guardando i falsi positivi (una
+policy di troppo costa una riga), non quello che non si vede. È la stessa scelta
+del §3.1: **un setaccio, non una lista**.
+
+⚠️ **Tre numeri per lo stesso fatto** — 133, 141, 137 — sono costati una
+giornata di riconciliazione, perché ognuna delle due sponde si era scritta la
+propria query. Per questo la misura è **una vista sola**, e il cancello la
+interroga invece di riscrivere il regex. *Anche la misura di un difetto è un
+programma, e può avere il suo difetto.*
+
 ---
 
 ## 4. Perché alcuni girano da soli e uno no
@@ -221,8 +274,11 @@ messa in posti diversi — sono **controlli di natura diversa**, e questo paragr
 spiega perché ognuno sta dove sta.
 
 Il confronto qui sotto mette a fuoco i due estremi, il §3.1 (cancello in CI) e il
-§3.2 (baseline da lanciare): il §3.3 appartiene alla stessa famiglia del §3.1 e
-vale per lui tutto ciò che si dice del cancello automatico.
+§3.2 (baseline da lanciare): il §3.3 e il §3.4 appartengono alla stessa famiglia
+del §3.1 e vale per loro tutto ciò che si dice del cancello automatico. Il §3.4 è
+l'unico a vivere nella suite Django invece che in uno script SQL — perché
+confronta contro un dizionario Python — ma resta un passo della stessa CI, che
+blocca l'integrazione allo stesso modo.
 
 ### Cosa dà davvero il controllo automatico
 

@@ -237,11 +237,17 @@ I test Django devono funzionare in CI (GitHub Actions) **senza dipendere da un D
   **configurata**, cioe' un DB con lo schema Liquibase completo.
   Ci si appoggiano i 3 test end-to-end di
   `apps/core/tests/services/test_db_error_fields.py` (attivi con
-  `ZEROERP_TEST_DB_E2E=1`, accesi in CI), che interrogano funzioni PL/pgSQL vere.
+  `ZEROERP_TEST_DB_E2E=1`, accesi in CI), che interrogano funzioni PL/pgSQL vere,
+  e il cancello del terzo lato `apps/core/tests/test_error_codes_db_policy_guardrail.py`
+  (stessa opt-in), che legge `dbops.vw_codici_errore_da_dichiarare`.
   **Il primo test che dichiarera' un database fara' creare al runner un DB vuoto
   per TUTTA la suite**: li' `script.fn_log_and_raise_error` non esiste e quei tre
   falliranno con «la funzione non esiste», in una PR che non c'entra nulla. Non e'
   un divieto — e' che, se lo fai, quei tre vanno adeguati nello stesso commit.
+  ⚠️ Il cancello del terzo lato in quel caso **salta** (guard sullo schema in
+  `setUpClass`) invece di fallire — ma un cancello che salta non presidia niente:
+  se un giorno la suite creera' davvero un DB usa-e-getta, va riportato su un DB
+  provvisto da Liquibase, non lasciato skippato.
 - **Mockare ogni accesso DB**: se il codice sotto test usa `django.db.connection` (cursor, advisory lock, query dirette), mockare quei metodi nel test. Non fare affidamento sul DB di sviluppo.
 - **Pattern consigliato** per metodi che accedono al DB (es. advisory lock, cursor raw):
 

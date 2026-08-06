@@ -3957,6 +3957,228 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Transazione non registrata: anomalia tecnica di tracciamento.",
         ),
+        # ══════════════════════════════════════════════════════════════════
+        # TERZO LATO — lotto 1 `vendite` (2026-08-06)
+        #   Brief: docs/it/dev/work-in-progress/brief-db-be-terzo-lato-presidio-codici.md §10
+        #
+        #   Codici che una funzione PL/pgSQL viva puo' sollevare e che finora
+        #   non erano dichiarati: prendevano il ripiego 400 di `resolve()`
+        #   qualunque fosse la verita'. Ognuno e' stato deciso leggendo il
+        #   PUNTO CHE SOLLEVA, non il nome: `..._NON_AMMESSO` e' 409 quando e'
+        #   lo stato a non consentirlo e 403 quando manca un diritto, e la
+        #   differenza si vede solo nella funzione.
+        #
+        #   ⚠️ `user_message` qui e' solo il RIPIEGO: il messaggio che
+        #   l'operatore legge arriva dal catalogo `config.messaggi_errore` e
+        #   vince su questo (ErrorTranslator). Quello che cambia davvero, e per
+        #   cui sono stati dichiarati, sono `http_status` e `ui_action`.
+        # ══════════════════════════════════════════════════════════════════
+        # ── 404: la cosa indicata non esiste ──
+        "E_FULFILL_NOT_FOUND": ErrorPolicy(
+            code="E_FULFILL_NOT_FOUND",
+            http_status=404,
+            ui_action="show_error_banner",
+            # trgfn_ordini_ful_guard_consistenza: la riga ordine o la riga DDT
+            # indicate non danno nessun record. Banner e non empty-state: e' una
+            # scrittura che fallisce, non una pagina da svuotare.
+            user_message="Riga ordine o riga DDT non trovata: legame fulfillment inesistente.",
+        ),
+        "E_PARAMETRI_TABELLA": ErrorPolicy(
+            code="E_PARAMETRI_TABELLA",
+            http_status=404,
+            ui_action="show_error_banner",
+            # ⚠️ DECISIONE CONSAPEVOLE (Tid, 2026-08-06). Il nome dice due cose
+            # — «parametro non valido O inesistente» — ma l'unico punto che lo
+            # solleva oggi e' un NOT FOUND sul billing account indicato
+            # (vendite.trgfn_attivita_fatturabili_guard_ba_coerenza), quindi la
+            # verita' e' 404. Se un giorno lo si riusa per un parametro
+            # MALFORMATO questa policy diventa falsa in silenzio: in quel caso
+            # va spezzato in due codici, non corretto qui.
+            user_message="Il valore indicato non corrisponde a nessun record.",
+        ),
+        # ── 403: non e' un'azione dell'operatore, e non dipende dallo stato ──
+        "E_DELETE_NOT_ALLOWED": ErrorPolicy(
+            code="E_DELETE_NOT_ALLOWED",
+            http_status=403,
+            ui_action="show_error_banner",
+            # Tre punti, stessa sostanza: righe ordine/DDT e log non si
+            # cancellano MAI dall'applicazione (script.trgfn_delete_block_by_guc,
+            # vendite.trgfn_dlt_block_ordrig_ddtrig, vendite.trgfn_logs_guard_delete).
+            # Si sblocca solo con una GUC di sistema: e' un diritto che manca,
+            # non uno stato sfavorevole.
+            user_message="Cancellazione non permessa su questi dati.",
+        ),
+        # ── 409: in conflitto con lo stato attuale ──
+        #   Sono i codici che CAMBIANO comportamento: oggi la pagina evidenzia
+        #   un campo (400) dove invece deve ricaricare e mostrare lo stato vero.
+        "E_ARTICOLO_MISMATCH": ErrorPolicy(
+            code="E_ARTICOLO_MISMATCH",
+            http_status=409,
+            ui_action="show_error_banner",
+            # Le due righe esistono entrambe e non vanno d'accordo: non c'e' un
+            # campo da correggere, va scelto un altro abbinamento.
+            user_message="Riga ordine e riga DDT hanno articoli diversi.",
+        ),
+        "E_UOM_MISMATCH": ErrorPolicy(
+            code="E_UOM_MISMATCH",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Riga ordine e riga DDT hanno unita' di misura diverse.",
+        ),
+        "E_COMMESSA_CHIAVE_IMMUTABILE": ErrorPolicy(
+            code="E_COMMESSA_CHIAVE_IMMUTABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Commessa con attivita' collegate: la chiave non e' piu' modificabile.",
+        ),
+        "E_COMMESSA_STATO_TRANSIZIONE_INVALIDA": ErrorPolicy(
+            code="E_COMMESSA_STATO_TRANSIZIONE_INVALIDA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Transizione di stato della commessa non ammessa dallo stato attuale.",
+        ),
+        "E_CONTRATTO_CATEGORIA_SNAPSHOT_IMMUTABILE": ErrorPolicy(
+            code="E_CONTRATTO_CATEGORIA_SNAPSHOT_IMMUTABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Categoria cliente congelata alla creazione del contratto: non modificabile.",
+        ),
+        "E_DDT_EMISSIONE_SENZA_RIGHE": ErrorPolicy(
+            code="E_DDT_EMISSIONE_SENZA_RIGHE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="DDT senza righe attive: impossibile emettere.",
+        ),
+        "E_DELETE_BLOCKED_FUL": ErrorPolicy(
+            code="E_DELETE_BLOCKED_FUL",
+            http_status=409,
+            ui_action="show_error_banner",
+            # Gemello di E_DELETE_NOT_ALLOWED, ma qui il blocco DIPENDE dallo
+            # stato: esistono legami fulfillment. Tolti quelli, si cancella.
+            user_message="Cancellazione bloccata: esistono legami fulfillment.",
+        ),
+        "E_FATTURA_NON_ANNULLABILE": ErrorPolicy(
+            code="E_FATTURA_NON_ANNULLABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Fattura gia' numerata: l'annullamento non e' ammesso.",
+        ),
+        "E_FATTURA_RIGA_CONGELATA": ErrorPolicy(
+            code="E_FATTURA_RIGA_CONGELATA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Lo stato della fattura non consente piu' di modificare le righe.",
+        ),
+        "E_FATTURA_SATELLITE_CONGELATO": ErrorPolicy(
+            code="E_FATTURA_SATELLITE_CONGELATO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Lo stato della fattura non consente piu' di modificare questi dati.",
+        ),
+        "E_ORDINE_CONFERMA_SENZA_RIGHE": ErrorPolicy(
+            code="E_ORDINE_CONFERMA_SENZA_RIGHE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Ordine senza righe: impossibile confermare.",
+        ),
+        "E_ORDINE_TRANSIZIONE_NON_AMMESSA": ErrorPolicy(
+            code="E_ORDINE_TRANSIZIONE_NON_AMMESSA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Transizione di stato dell'ordine non ammessa dallo stato attuale.",
+        ),
+        "E_RIGA_LISTINO_PROPAGATA": ErrorPolicy(
+            code="E_RIGA_LISTINO_PROPAGATA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Riga listino gia' propagata a valle: operazione non ammessa.",
+        ),
+        # ── 400: nessun cambio di comportamento, dichiarati per uscire dal registro ──
+        #   `highlight_form_fields` dove c'e' davvero un campo da correggere,
+        #   `show_error_banner` dove il problema non e' un campo del form.
+        "E_QTA_NON_POSITIVA": ErrorPolicy(
+            code="E_QTA_NON_POSITIVA",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="La quantita' deve essere positiva.",
+        ),
+        "E_COERENZA_ID": ErrorPolicy(
+            code="E_COERENZA_ID",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Valore non coerente con il riferimento indicato.",
+        ),
+        "E_SORG_FORMATO": ErrorPolicy(
+            code="E_SORG_FORMATO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Chiave sorgente in formato non valido per il tipo indicato.",
+        ),
+        "E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE": ErrorPolicy(
+            code="E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Articolo incompatibile con la tipologia del listino.",
+        ),
+        "E_LISTINO_TIPOLOGIA_UTILITY": ErrorPolicy(
+            code="E_LISTINO_TIPOLOGIA_UTILITY",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Combinazione utility / tipologia non ammessa per questo listino.",
+        ),
+        "E_ARTICOLO_TIPOLOGIA_MANCANTE": ErrorPolicy(
+            code="E_ARTICOLO_TIPOLOGIA_MANCANTE",
+            http_status=400,
+            ui_action="show_error_banner",
+            # Il dato manca sull'ARTICOLO, non sul form che si sta compilando:
+            # evidenziare un campo manderebbe l'operatore a cercare dove non c'e'.
+            user_message="Articolo privo di tipologia listino: non ammesso in listino tipizzato.",
+        ),
+        "E_CONTRATTO_EMITTENTE_NON_RISOLTO": ErrorPolicy(
+            code="E_CONTRATTO_EMITTENTE_NON_RISOLTO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Nessun emittente fiscale attivo: selezionalo in alto o indicalo nella richiesta.",
+        ),
+        "E_ORDINE_EMITTENTE_NON_RISOLTO": ErrorPolicy(
+            code="E_ORDINE_EMITTENTE_NON_RISOLTO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Nessun emittente fiscale attivo: selezionalo in alto o indicalo nella richiesta.",
+        ),
+        "E_LISTINO_RIGA_COMPOSITO_VIETATO": ErrorPolicy(
+            code="E_LISTINO_RIGA_COMPOSITO_VIETATO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Articolo composito: il prezzo diretto non e' ammesso, usare i componenti.",
+        ),
+        "E_SORG_CONF": ErrorPolicy(
+            code="E_SORG_CONF",
+            http_status=400,
+            ui_action="show_error_banner",
+            # Configurazione di `config.sorgenti` mancante o disattivata: non e'
+            # colpa di chi compila, quindi banner e non campo evidenziato.
+            user_message="Configurazione sorgente mancante o non attiva.",
+        ),
+        "E_SORG_KEYSEL": ErrorPolicy(
+            code="E_SORG_KEYSEL",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Selettore di chiave sorgente non supportato.",
+        ),
+        "E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA": ErrorPolicy(
+            code="E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Articolo a servizio ricorrente: usare l'offerta commerciale, non il preventivo.",
+        ),
+        # ⚠️ NON dichiarato qui, e non e' una dimenticanza: `E_STATO_SCONOSCIUTO`
+        # resta nel registro del debito finche' il team DB non lo spezza in due.
+        # Lo sollevano due domini diversi — il cambio stato di commessa/preventivo
+        # (stato di workflow inesistente: 404) e config.trgfn_toponomastica_normalize
+        # (codice nazione non risolto, dove un 404 svuoterebbe la form indirizzi
+        # mentre l'operatore digita). Un codice solo non puo' dire due cose:
+        # decisione Tid del 2026-08-06, brief §10.5.
     }
 
     # Scopo: Risolve la policy per un codice errore. Per codici applicativi
