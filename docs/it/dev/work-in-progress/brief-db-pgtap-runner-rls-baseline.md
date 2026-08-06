@@ -1032,3 +1032,196 @@ asserzioni lasciate dove sono.
 
 `scripts/pgtap-baseline.sh` sull'intera suite dopo tutte le modifiche di oggi:
 **88 rossi su 426, tutti già noti — nessuna regressione.**
+
+---
+
+## 16. `pratiche` reso transazionale — 43 file su 43 (2026-08-06)
+
+> Primo lotto del §15.4, scelto perché è la concentrazione peggiore: 32 dei 77
+> file non transazionali della suite stavano qui. `pratiche` e `anagrafiche` sono
+> nati presto, quando il pattern non era ancora la norma.
+
+### 16.1 Cosa è stato fatto
+
+**32 file** hanno ricevuto `BEGIN;` in testa — prima della riga di contesto, cioè
+prima di qualunque scrittura — e `ROLLBACK;` in coda, dopo `finish()`. Le `DELETE`
+del cleanup esistente **sono rimaste dove sono**: dove sono un'asserzione (la
+cascata di `test-workflow-definizioni-fase0`) devono continuare a girare, e il
+`ROLLBACK` le annulla comunque.
+
+Tolta anche la riga di commento «⚠️ Questo file non apre una transazione propria»
+dove c'era: da adesso sarebbe falsa, e un commento sbagliato inganna chi legge —
+lezione già pagata al §13.3.
+
+Prima di toccarli, verificato che nessuno dipenda da un commit: nessun `COMMIT`,
+nessun `pg_advisory_lock` non transazionale, nessun `VACUUM`, nessun
+`CREATE INDEX CONCURRENTLY`.
+
+### 16.2 L'unico che ha resistito, e insegna qualcosa
+
+`test-sospensioni-tempi.sql` è passato da 22/0 a 12/3. Causa:
+
+```
+chk_sospensioni_data_fine:  CHECK (data_fine IS NULL OR data_fine > data_inizio)
+```
+
+⚠️ **Dentro una transazione `now()` è congelato all'apertura.** La sospensione
+veniva aperta e chiusa nella stessa transazione, quindi `data_fine` risultava
+**identica** a `data_inizio` e il `CHECK`, che è stretto, la respingeva.
+
+In esercizio non può succedere: una sospensione si apre in una richiesta e si
+chiude in un'altra, quindi i due `now()` sono diversi. È il **test** a comprimere
+in una transazione due momenti che la realtà separa da minuti o giorni.
+
+Corretto con **`clock_timestamp()`**, che legge l'orologio adesso invece che
+all'apertura della transazione — l'unico modo di dire «un istante dopo» dentro
+una transazione sola. Il vincolo resta esercitato: `data_fine > data_inizio` deve
+comunque valere.
+
+**Quattro occorrenze**, e le ultime due sono la parte istruttiva: la chiusura dei
+flussi alimenta `pratiche.calcoli_tempo` **via trigger**, e anche
+`chk_calcoli_tempo_data_fine` è stretto. Lì il problema non passava più dal test
+ma dal codice di produzione che il test attraversa — lo stesso `now()` congelato,
+due tabelle più in là.
+
+> ℹ️ **Regola che ne esce**: rendendo transazionale un test che misura *tempi*,
+> ogni `now()` usato come «istante successivo» va guardato. Non è un dettaglio di
+> stile: `now()` e `clock_timestamp()` sono la stessa cosa fuori da una
+> transazione e cose diverse dentro.
+
+### 16.3 Verifica
+
+| `pratiche` (43 file) | ok | ko | file rossi |
+| --- | --- | --- | --- |
+| owner, prima | 457 | 6 | 1 |
+| **owner, dopo** | **457** | **6** | **1** |
+
+**Zero differenze, file per file.** `scripts/pgtap-baseline.sh pratiche`: nessuna
+regressione.
+
+**La prova che conta — la contaminazione è chiusa:**
+
+```
+1) corsa sotto zeroerp_app   -> 353 ok, 10 file rossi
+2) subito dopo, da owner     -> 457 ok,  1 file rosso   (invariato)
+3) di nuovo sotto zeroerp_app-> 353 ok, 10 file rossi   (identica alla 1)
+```
+
+Prima la corsa (1) lasciava `TEST_WDF`/`TEST_WDF2` e la (2) crollava a 448/6/2.
+Adesso le due corse convivono, e la corsa applicativa è **riproducibile**: stesso
+numero due volte di fila. Residuo lasciato nel database dalle tre corse: **zero**.
+
+### 16.4 Cosa resta del §15.4
+
+**45 file non transazionali** su altri schemi: `anagrafiche` **20**, `catalogo` 7,
+`config` 5, `dbops` 5, `script` 4, `vendite` 4. `anagrafiche` è il prossimo lotto
+naturale — stessa età, stessa origine.
+
+---
+
+## 17. `anagrafiche` transazionale, e una trappola che stava per costarci cara (2026-08-06)
+
+> Secondo lotto del §15.4. Ma la parte che conta non è `anagrafiche`: è il
+> difetto che la sua misura ha rivelato, e che riguarda **anche il lotto
+> `pratiche` già chiuso al §16** — dove non si vedeva nei numeri.
+
+### 17.1 ⚠️ `BEGIN … ROLLBACK` spegne i vincoli DIFFERITI
+
+Transazionalizzati i 20 file di `anagrafiche`, uno risultava **rientrato**:
+`test-create-istanza-from-pdp` passava da 3 asserzioni su 9 a **9 su 9 verdi**,
+stabile su tre esecuzioni. Sembrava un guadagno.
+
+Non lo era. La versione precedente falliva in modo **riproducibile** con:
+
+```
+Istanza utility senza utility dichiarata: serve almeno un riferimento
+(billing_account, dati precontrattuali, cliente). istanza_utility_id=1277
+```
+
+Il guard che solleva è
+`trg_istanze_utilities_z90_require_utility_dichiarata_ins`, ed è un
+**constraint trigger `DEFERRABLE INITIALLY DEFERRED`**: scatta al `COMMIT`. Un
+file avvolto in `BEGIN … ROLLBACK` al `COMMIT` **non ci arriva mai**, quindi quel
+controllo non scatta più. Il test era diventato verde **per sottrazione**: aveva
+smesso di verificare, senza dirlo.
+
+**Quanto è grande il buco**, contato nel DB:
+
+| schema | trigger differiti | tabelle |
+| --- | --- | --- |
+| `vendite` | 150 | 57 |
+| `config` | 53 | 33 |
+| `pratiche` | 39 | 17 |
+| `anagrafiche` | 36 | 20 |
+| `magazzino` | 33 | 17 |
+| altri (`acquisti`, `catalogo`, `documenti`, `pagamenti`) | 54 | 20 |
+| **totale** | **365** | **164** |
+
+Più **375 vincoli FK/UNIQUE dichiarati `DEFERRABLE INITIALLY DEFERRED`**.
+
+⚠️ **Ed è la stessa lezione del §8.4 e del §13.3, in una veste nuova**: un test
+che diventa verde va spiegato prima di essere creduto. Qui l'etichetta diceva
+«rientrato» e la realtà era «ha smesso di guardare».
+
+### 17.2 La correzione, e perché la posizione conta
+
+`SET CONSTRAINTS ALL IMMEDIATE;` — ma **subito dopo `BEGIN;`**, non prima di
+`finish()`.
+
+Provate entrambe, e la differenza è netta:
+
+| posizione | esito |
+| --- | --- |
+| in coda, prima di `finish()` | **31 file di `pratiche` diventano rossi** pur avendo tutte le asserzioni verdi |
+| **in testa, dopo `BEGIN;`** | **zero differenze** rispetto a prima della transazionalizzazione |
+
+In coda i differiti si accumulano per tutta la transazione e scattano **tutti
+insieme dopo il cleanup**, su righe ormai cancellate: falliscono
+(`dbops.trgfn_child_requires_active_parent`, «Padre non attivo») per una ragione
+che non riguarda ciò che il test verifica.
+
+In testa invece li riporta a scattare **a fine di ogni istruzione** — che è
+esattamente come si comportavano prima, quando il file girava in autocommit e
+ogni istruzione era una transazione a sé. Non è un compromesso: è la
+riproduzione fedele del comportamento precedente.
+
+### 17.3 Verifica
+
+| schema, da owner | ok | ko | file rossi |
+| --- | --- | --- | --- |
+| `pratiche` prima → dopo | 457 → **457** | 6 → **6** | 1 → **1** |
+| `anagrafiche` prima → dopo | 300 → **306** | 16 → **16** | 28 → **28** |
+
+**Zero peggioramenti.** L'unico cambiamento in `anagrafiche` è
+`test-istanza-cliente-chain`, che passa da **muto (0 asserzioni)** a 6 prima di
+morire: resta rosso, ma adesso dice qualcosa.
+
+`scripts/pgtap-baseline.sh anagrafiche pratiche`: **29 rossi su 97, nessuna
+regressione**.
+
+**Contaminazione chiusa anche qui:**
+
+```
+1) anagrafiche sotto zeroerp_app -> 304 ok, 29 file rossi
+2) subito dopo, da owner         -> 306 ok, 28 file rossi   (invariato)
+3) di nuovo sotto zeroerp_app    -> 304 ok, 29 file rossi   (identica alla 1)
+```
+
+### 17.4 Il debito che resta scoperto
+
+⚠️ **I 349 file che erano GIÀ transazionali non hanno mai avuto questa riga.**
+Il difetto del §17.1 non l'ho introdotto io: c'era da sempre in ogni file con
+`BEGIN … ROLLBACK`, e i 53 che ho toccato oggi sono gli unici presidiati.
+
+Vuol dire che una parte della suite **non esercita i 365 trigger differiti né i
+375 vincoli differiti** — e non si sa quanta, perché aggiungere la riga potrebbe
+far emergere rossi veri. È una passata da fare con la stessa cautela usata qui:
+aggiungere, misurare, e leggere ogni differenza invece di accoglierla.
+
+Non è un lavoro da chiudere di corsa prima della ribaselinatura: è materia sua,
+e va deciso quanto scoperchiare in una volta.
+
+### 17.5 Cosa resta del §15.4
+
+**25 file non transazionali**: `catalogo` 7, `config` 5, `dbops` 5, `script` 4,
+`vendite` 4. Più il debito del §17.4, che è di natura diversa e più grande.

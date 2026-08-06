@@ -47,11 +47,17 @@ WHERE s.codice = ANY(l_codici);
 END;
 $$;
 
+-- ⚠️ Transazione, e non e' una formalita'. Il cleanup di questo file sta in
+--   coda: col runner vero (pg_prove gira con ON_ERROR_STOP) un fallimento a
+--   meta' non ci arriva mai, e i dati di prova restano nel database a rompere
+--   la corsa successiva — che vede un rosso non suo.
+--   Brief: brief-db-pgtap-runner-rls-baseline §15.3.
+BEGIN;
+
 -- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
--- ⚠️ Questo file non apre una transazione propria: la riga va prima di plan().
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(13);
@@ -647,3 +653,8 @@ $$,
 -- Fine test
 SELECT *
 FROM finish();
+
+-- Il ROLLBACK e' la garanzia: comunque vada — verde, rosso, o morto a meta' —
+-- questo file non lascia nulla dietro di se'. Le DELETE del cleanup restano
+-- perche' dove sono un'asserzione devono girare davvero.
+ROLLBACK;
