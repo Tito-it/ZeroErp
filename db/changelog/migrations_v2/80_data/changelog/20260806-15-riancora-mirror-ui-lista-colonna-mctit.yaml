@@ -1,0 +1,103 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Terzo della serie (dopo 20260806-13 preventivi e -14 contratti): ri-ancora il
+#   mirror di ui.lista_colonna DOPO gli UPDATE che ne scrivono `priorita`.
+#
+# ⚠️ PERCHE' SPEGNERE I SEI NON BASTAVA. Gli UPDATE della priorita
+#     20260602-16 contratti · 20260603-07 preventivi · 20260603-08 offerte
+#     20260603-15 ordini    · 20260709-17 ddt        · 20260718-20 resi
+#   sono stati messi a `runOnChange: false` lo stesso giorno, e questo li ferma
+#   sul ri-giro. Ma su un database ricostruito da zero — la CI — applicano
+#   comunque UNA volta, e nella timeline stanno DOPO il loader del CSV
+#   (20260507-07). Senza un mirror piu' avanti, su un DB nuovo la `priorita`
+#   resta quella scritta a giugno e il CSV non conta.
+#
+# ℹ️ PERCHE' E' SICURO, e non e' un'opinione: il 2026-08-06 il CSV e gli UPDATE
+#   sono stati confrontati riga per riga, dentro ciascuna delle sei liste
+#   (`vendite.contratti`, `.preventivi`, `.offerte`, `.ordini`, `.ddt`,
+#   `.resi`) — 119 righe, **zero divergenze**. Il CSV dichiara gia' esattamente
+#   quei valori: ri-applicarlo non cambia nulla oggi, e garantisce che domani
+#   una modifica al CSV non venga ridecisa da un UPDATE del giugno scorso.
+#
+# ⚠️ NESSUNA RESURREZIONE. `20260802-23` CANCELLA da ui.lista_colonna la colonna
+#   `descrizione` della lista `anagrafiche.emittenti_fiscali` (id 18).
+#   `loadUpdateData` non cancella, ma inserisce cio' che trova nel CSV: se la
+#   riga fosse ancora li', questo mirror la rimetterebbe in vita. Verificato —
+#   nel CSV non c'e' piu' (0 righe con lista_id 18 e codice `descrizione`).
+#   ⚠️ Chi in futuro cancella righe con un DELETE SQL deve toglierle ANCHE dal
+#   CSV, altrimenti questo mirror le fa tornare.
+#
+# ℹ️ Colonne identiche a quelle del 20260507-07: si copia la lista invariata,
+#   non la si rigenera dall'intestazione del CSV, cosi' una colonna nuova non
+#   entra nel mirror per sbaglio.
+#
+# ⚠️ La sede della configurazione delle liste e' il CSV
+#   `80_data/sql/ui/lista_colonna.csv`: nessun UPDATE nuovo su questa tabella.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260806-15-riancora-mirror-ui-lista-colonna-mctit.yaml
+
+  - changeSet:
+      id: 20260806-15-riancora-mirror-ui-lista-colonna
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Ri-applica il CSV di ui.lista_colonna dopo i sei UPDATE della priorita
+        (giugno-luglio 2026), che nella timeline stanno dopo il loader. Su un
+        database ricostruito da zero quegli UPDATE vincerebbero comunque, pur
+        essendo ora runOnChange:false. Confronto CSV/SQL eseguito il 2026-08-06
+        su 119 righe nelle sei liste: zero divergenze, quindi il mirror non
+        cambia nulla oggi e blinda il CSV domani.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: ui
+            tableName: lista_colonna
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/ui/lista_colonna.csv
+            tableName: lista_colonna
+            schemaName: ui
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id,               type: NUMERIC }
+              - column: { name: lista_id,          type: NUMERIC }
+              - column: { name: codice,            type: STRING }
+              - column: { name: etichetta,         type: STRING }
+              - column: { name: etichetta_estesa,  type: STRING }
+              - column: { name: campo_sorgente,    type: STRING }
+              - column: { name: tipo_colonna,      type: STRING }
+              - column: { name: tipo_dato,         type: STRING }
+              - column: { name: formato,           type: STRING }
+              - column: { name: larghezza_default, type: NUMERIC }
+              - column: { name: ordine_default,    type: NUMERIC }
+              - column: { name: allineamento,      type: STRING }
+              - column: { name: gruppo,            type: STRING }
+              - column: { name: gruppo_ordine,     type: NUMERIC }
+              - column: { name: filtrabile,        type: BOOLEAN }
+              - column: { name: ordinabile,        type: BOOLEAN }
+              - column: { name: esportabile,       type: BOOLEAN }
+              - column: { name: ricercabile_full,  type: BOOLEAN }
+              - column: { name: sensibile,         type: BOOLEAN }
+              - column: { name: attivo,            type: BOOLEAN }
+              - column: { name: data_insert,          type: STRING }
+              - column: { name: user_insert,          type: STRING }
+              - column: { name: etichetta_i18n_key,   type: STRING }
+              # Peso del ritiro dinamico colonne (consumato da
+              # ui.fn_resolve_lista_config): piu' alto = resiste piu' a lungo
+              # allo stringersi dello schermo. NOT NULL, mai cella vuota.
+              - column: { name: priorita,             type: NUMERIC }
