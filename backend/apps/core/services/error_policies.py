@@ -4280,6 +4280,31 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Eccezione offerta non trovata.",
         ),
+        # ── Le tre gemelle: stesso difetto, altre tre `*_riga_componenti_init` ──
+        #   `fn_contratto_riga_componenti_init` non era sola: ddt, ordine e
+        #   preventivo hanno la stessa funzione con lo stesso `IF NOT FOUND`
+        #   raccontato come «parametro non valido». Sfuggite alla prima passata
+        #   della lente e trovate al giro dopo (brief §23).
+        #   ⚠️ Lezione: quando un difetto sta in una funzione che ha delle
+        #   gemelle per dominio, il perimetro non e' la funzione — sono tutte.
+        "E_DDT_RIGA_NON_TROVATA": ErrorPolicy(
+            code="E_DDT_RIGA_NON_TROVATA",
+            http_status=404,
+            ui_action="show_error_banner",
+            user_message="Riga DDT non trovata.",
+        ),
+        "E_ORDINE_RIGA_NON_TROVATA": ErrorPolicy(
+            code="E_ORDINE_RIGA_NON_TROVATA",
+            http_status=404,
+            ui_action="show_error_banner",
+            user_message="Riga ordine non trovata.",
+        ),
+        "E_PREVENTIVO_RIGA_NON_TROVATA": ErrorPolicy(
+            code="E_PREVENTIVO_RIGA_NON_TROVATA",
+            http_status=404,
+            ui_action="show_error_banner",
+            user_message="Riga preventivo non trovata.",
+        ),
         # ── Le due meta' di `E_STATO_SCONOSCIUTO`, ritirato il 2026-08-06 ──
         #   Quel codice ne conteneva due, e per questo era rimasto senza policy:
         #   con 404 la form indirizzi si sarebbe svuotata mentre l'operatore

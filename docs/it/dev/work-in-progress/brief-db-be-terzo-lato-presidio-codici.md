@@ -4,8 +4,8 @@
 **Origine:** rilievo del team BE, §12.5 di
 [brief-db-codice-errore-strutturato](../work-done/brief-db-codice-errore-strutturato.md) (chiuso).
 **Stato:** 🟢 **percorso richiesta CHIUSO (§17): 91 codici decisi in 4 lotti, `da_trigger` senza policy 90 → 0** · **audit di coerenza degli status fatto (§21): 600 policy, 9 status, tutti RFC 9110**.
-🟢 **Quarto lato CHIUSO** (§18-§22): 5 codici nuovi dichiarati a 404, 3 `ui_action` corrette, handler `P0001` rimosso, e per il prezzo zero il codice giusto esisteva già. 605 policy, suite 3580/3580.
-⚠️ **Palla al DB: solo 5 righe da togliere dal registro (§22.5).** Poi resta solo il lotto 5 (i 51 non da trigger), senza fretta.
+🟢 **Quarto lato CHIUSO** (§18-§23): 8 codici nuovi dichiarati a 404, 3 `ui_action` corrette, handler `P0001` rimosso da tutte e quattro le gemelle. 608 policy, suite 3580/3580.
+⚠️ **Palla al DB: 3 righe da togliere dal registro (§23.2).** Poi resta solo il lotto 5 (i 51 non da trigger), senza fretta.
 **Perimetro:** misura e cancello lato DB · assegnazione dei significati lato BE.
 
 > **Non è una regressione.** Questo difetto c'era anche prima; la slice del codice
@@ -1446,3 +1446,43 @@ Quindi:
 **Suite 3580/3580.** Il cancello segnala **5 righe da togliere** dal registro —
 i due codici del §19.1 e i tre di questo giro, tutti dichiarati. Registro
 **56 → 51** quando il DB riapplica il `20260805-37`.
+
+---
+
+## 23. Le tre gemelle — il perimetro non era la funzione (2026-08-07)
+
+Il DB ha tolto le cinque righe del §22.5 **e ne ha aggiunte tre**: registro
+`56 − 5 + 3 = ` **54**, verificato sul DB vivo (vista 368).
+
+Le tre sono `E_DDT_RIGA_NON_TROVATA` (899), `E_ORDINE_RIGA_NON_TROVATA` (900),
+`E_PREVENTIVO_RIGA_NON_TROVATA` (901), da
+`fn_ddt_riga_componenti_init`, `fn_ordine_riga_componenti_init`,
+`fn_preventivo_riga_componenti_init`. **Dichiarate: 404 · `show_error_banner`.**
+
+### 23.1 ⚠️ Perché erano sfuggite, ed è la lezione che resta
+
+`fn_contratto_riga_componenti_init` **non è sola**: ha tre gemelle per dominio, e
+tutte e quattro avevano lo stesso `IF NOT FOUND` raccontato come «parametro non
+valido». La prima passata della lente ne aveva vista una.
+
+Il dettaglio che rende la cosa istruttiva: **le quattro gemelle erano già state
+riconosciute come gruppo** nel §19.2, quando si è misurato l'handler `P0001` — lì
+si dice testualmente «`fn_contratto_riga_componenti_init` e le tre gemelle (ddt,
+ordine, preventivo)», e l'handler è stato tolto **da tutte e quattro**. Sullo
+stesso file, nello stesso giro, il difetto del *codice* è stato corretto su una
+sola.
+
+> Due difetti nella stessa funzione, uno visto come famiglia e uno come caso
+> isolato. **Quando un difetto sta in una funzione che ha gemelle per dominio, il
+> perimetro non è la funzione: sono tutte** — e conviene verificarlo prima di
+> chiudere, non al giro dopo.
+
+Il registro ha fatto il suo mestiere anche qui: i tre codici nuovi sono entrati
+**nel registro** invece di restare fuori, quindi il cancello è rimasto verde
+nell'intervallo fra il loro push e questa dichiarazione.
+
+### 23.2 Stato
+
+**608 policy, suite 3580/3580.** Il cancello segnala **3 righe da togliere** —
+le tre appena dichiarate. Registro **54 → 51** quando il DB riapplica il
+`20260805-37`, e con quello il quarto lato è chiuso davvero.
