@@ -13,6 +13,10 @@
 #        seconda variante argument-free — servirebbe per 371 codici, non e'
 #        «spostare 659 stringhe» — questo file si CANCELLA. E' il motivo per cui
 #        sta da solo e non dentro gli override di interfaccia (brief §14.2).
+#        ⚠️ Gli apostrofi qui NON si raddoppiano: questo e' Python, non una cella
+#        di CSV letta da Liquibase. (E il team DB ha verificato il 2026-08-07 che
+#        non andavano raddoppiati nemmeno li': il raddoppio in
+#        `messaggi_errore.csv` e' un residuo, non una convenzione.)
 # ------------------------------------------------------------
 
 

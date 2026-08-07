@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: le `ui_action` che NON seguono il default della loro classe.
-#        Il default copre 480 codici su 654; qui stanno i 174 che se ne
+#        Il default copre 482 codici su 658; qui stanno i 176 che se ne
 #        discostano, ognuno con la ragione per cui lo fa.
 # Note: ⚠️ Questo file e' SCRITTO A MANO e non va generato. Le voci non sono
 #        dati, sono decisioni con una motivazione: un CSV non porta un paragrafo,
@@ -16,6 +16,10 @@
 #        la classe non porta e non puo' portare. Il default scelto e' il banner
 #        perche' e' il piu' prudente: promettere un campo da evidenziare che non
 #        esiste e' peggio del contrario.
+#        ⚠️ Lo stesso vale, con piu' forza, su `NON_AUTENTICATO`: due
+#        `redirect_login` contro due banner. Li' un default sbagliato butta
+#        l'operatore fuori dall'applicazione, quindi i due `redirect_login` sono
+#        override espliciti e il default resta il banner.
 # ------------------------------------------------------------
 
 
@@ -65,14 +69,11 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # giusto solo nel primo e mentirebbe nel secondo; il 400 col campo
     # evidenziato — «scegline un'altra» — e' corretto in entrambi.
     "E_ADMIN_UO_NON_TROVATA": "highlight_form_fields",  # classe DATO_ERRATO
-    # ── Amministrazione software ──
     "E_ADMIN_VALIDAZIONE": "highlight_form_fields",  # classe DATO_ERRATO
     "E_AI_QUERY_EMPTY": "highlight_form_fields",  # classe DATO_ERRATO
     "E_AI_QUERY_TOO_LONG": "highlight_form_fields",  # classe DATO_ERRATO
     "E_AMM_VALIDAZIONE": "highlight_form_fields",  # classe DATO_ERRATO
-    # ── Matrice categorie_clienti_listini (sviluppo-listini v5 §4.2) ──
     "E_ANAG_FK": "highlight_form_fields",  # classe DATO_ERRATO
-    # ── Anagrafiche / Gestione geografica ──
     "E_ANAG_VALIDAZIONE": "highlight_form_fields",  # classe DATO_ERRATO
     "E_ARTICOLO_NON_COMPOSITO": "highlight_form_fields",  # classe DATO_ERRATO
     # ══════════════════════════════════════════════════════════════════
@@ -97,7 +98,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA": "show_toast_error",  # classe TECNICO
     "E_BA_SOGGETTO_INCOERENTE_ISTANZA": "highlight_form_fields",  # classe DATO_ERRATO
     "E_BOM_VALIDO_AL_INVALIDO": "highlight_form_fields",  # classe DATO_ERRATO
-    # ── Conversioni UoM ──
     "E_CATALOGO_CONV_NOT_FOUND": "show_error_banner",  # classe NON_TROVATO
     "E_CATALOGO_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
     "E_CATEGORIA_LISTINO_NON_MAPPATA": "show_error_banner",  # classe NON_TROVATO
@@ -138,9 +138,7 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_COMMESSA_PUSH_PARZIALE_VIETATO": "show_toast_error",  # classe NON_ESEGUIBILE
     "E_COMMESSA_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
     "E_CONFIG_MATRICE_FK": "highlight_form_fields",  # classe DATO_ERRATO
-    # ── Config / Matrice utilities x tipi_ruolo ──
     "E_CONFIG_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
-    # ── Contatti inline (Fase 5 refactor anagrafiche, 2026-04-28) ──
     # Sollevato dal classify centralizzato apps/anagrafiche/services/
     # contatti_service.py::classify_contatto_payload quando il payload
     # contatto inline (in create cliente/fornitore/soggetto) e' parziale
@@ -163,7 +161,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # DRAFT. Per modifiche sostanziali post-DRAFT serve creare un
     # nuovo contratto (eventualmente con parent_contratto_id).
     "E_CONTRATTO_NON_MODIFICABILE": "show_toast_error",  # classe CONFLITTO_STATO
-    # ── §19.4: gli altri tre `IF NOT FOUND` travestiti da «parametro» ──
     #   Stessa forma dei due sopra, trovati dalla lente
     #   `scripts/sql/check_messaggio_vs_condizione.sql` dopo che i primi due
     #   erano stati chiusi. Tutti e tre `show_error_banner`: sono scritture
@@ -183,12 +180,10 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA": "show_toast_error",  # classe CONFLITTO_STATO
     "E_CONTRATTO_UTILITY_SENZA_DIMENSIONE_TIPO_CLASSE_VIETATI": "highlight_form_fields",  # classe DATO_ERRATO
     "E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI": "highlight_form_fields",  # classe DATO_ERRATO
-    # ── Profilo utente ──
     "E_CORE_PROFILE_NOT_FOUND": "show_error_banner",  # classe NON_TROVATO
     "E_CORE_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
     "E_DATABASE_RETRYABLE": "show_retry_dialog",  # classe CONFLITTO_STATO
     "E_DATA_AL_MINORE_DAL": "highlight_form_fields",  # classe DATO_ERRATO
-    # ── 400 · campo da correggere (`highlight_form_fields`) ──
     "E_DATA_APERTURA": "highlight_form_fields",  # classe DATO_ERRATO
     "E_DATA_CESSAZIONE_INVALIDA": "highlight_form_fields",  # classe DATO_ERRATO
     "E_DATA_CHIUSURA": "highlight_form_fields",  # classe DATO_ERRATO
@@ -215,7 +210,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # inequivocabilmente «il soggetto non esiste».
     "E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO": "show_error_banner",  # classe NON_TROVATO
     "E_DDT_EMITTENTE_BA_INCOERENTE": "highlight_form_fields",  # classe CONFLITTO_STATO
-    # ── Le tre gemelle: stesso difetto, altre tre `*_riga_componenti_init` ──
     #   `fn_contratto_riga_componenti_init` non era sola: ddt, ordine e
     #   preventivo hanno la stessa funzione con lo stesso `IF NOT FOUND`
     #   raccontato come «parametro non valido». Sfuggite alla prima passata
@@ -226,9 +220,7 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_DDT_VALIDAZIONE": "highlight_form_fields",  # classe DATO_ERRATO
     # <- DEFINIZIONE_NON_TROVATA  (vivo)
     "E_DEFINIZIONE_NON_TROVATA": "show_error_banner",  # classe NON_TROVATO
-    # ── 400 · campo da correggere ──
     "E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO": "highlight_form_fields",  # classe DATO_ERRATO
-    # ── Documenti — motore documentale parametrico ──
     # Decisioni 30/31/72/76. I codici 410-417 sono riservati agli errori
     # applicativi Fase A (template/asset/versioni); i codici 425-426
     # sono i guard append-only del trigger DB su documenti_generati_eventi.
@@ -244,11 +236,8 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_FLUSSO_ID_OBBLIGATORIO": "highlight_form_fields",  # classe DATO_ERRATO
     "E_FLUSSO_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
     "E_FORMA_GIURIDICA_PAESE": "highlight_form_fields",  # classe DATO_ERRATO
-    # ── 400 · dato da correggere ──
     "E_FORNITORE_ID_INVALIDO": "highlight_form_fields",  # classe DATO_ERRATO
-    # ── 404: la cosa indicata non esiste ──
     "E_FORNITORE_NON_TROVATO": "show_error_banner",  # classe NON_TROVATO
-    # ── Fornitori — normalize+guard payload pagamento/fiscali ──
     # Fase 2 refactor anagrafiche (landed 2026-04-27). Trigger DB:
     # anagrafiche.trgfn_fornitori_guard_normalize (raise se
     # ritenuta_acconto=true AND ritenuta_aliquota IS NULL/<=0). Codice
@@ -287,17 +276,16 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_GROUP_ATTIVITA_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
     "E_IDEMPOTENCY_IN_PROGRESS": "show_retry_dialog",  # classe CONFLITTO_STATO
     "E_IDEMPOTENCY_KEY_REQUIRED": "highlight_form_fields",  # classe DATO_ERRATO
-    "E_IDENTITA_NON_ATTIVA": "redirect_login",  # classe TECNICO
+    "E_IDENTITA_NON_ATTIVA": "redirect_login",  # classe NON_AUTENTICATO
     "E_ID_FISCALI_DIVERSI": "highlight_form_fields",  # classe DATO_ERRATO
     # Indirizzi documento (BB _indirizzi_documento_helpers, 5 domini):
     # sollevato da script.fn_snapshot_indirizzo (flusso picker) quando
     # origine_indirizzo_id non esiste piu' in anagrafiche.indirizzi.
     "E_INDIRIZZO_SNAPSHOT_NOT_FOUND": "show_error_banner",  # classe NON_TROVATO
     "E_INVALID_ID": "highlight_form_fields",  # classe DATO_ERRATO
-    # ── 400 · campo da correggere (`highlight_form_fields`) ──
     "E_IVA_CONTO_ACQ_ERR": "highlight_form_fields",  # classe DATO_ERRATO
     "E_IVA_CONTO_VEN_ERR": "highlight_form_fields",  # classe DATO_ERRATO
-    "E_JWT_SENZA_IDENTITA": "redirect_login",  # classe TECNICO
+    "E_JWT_SENZA_IDENTITA": "redirect_login",  # classe NON_AUTENTICATO
     "E_LISTINO_TIPOLOGIA_UTILITY": "highlight_form_fields",  # classe DATO_ERRATO
     # config.trgfn_toponomastica_normalize: NEW.stato_id e' NULL e
     # nemmeno il default per parametro risolve. E' un errore di
@@ -307,7 +295,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_NOTA_CHECK_VIOLATION": "highlight_form_fields",  # classe DATO_ERRATO
     "E_NOTA_FK": "highlight_form_fields",  # classe DATO_ERRATO
     "E_NOTA_RIGA_INCOERENTE": "highlight_form_fields",  # classe DATO_ERRATO
-    # ── Building block note partizionate (apps/core/services/partitioned_note_service.py) ──
     # Codici cross-area: il service in apps/core/ scrive su qualunque partizione
     # di vendite.note (PREVENTIVO/CONTRATTO/ORDINE/DDT/FATTURA/ATTIVITAFT) e in
     # prospettiva su tabelle note di altri schemi che adotteranno lo stesso pattern.
@@ -315,7 +302,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_NOTE_TARGET_ID": "highlight_form_fields",  # classe DATO_ERRATO
     "E_OFFERTA_ECCEZIONE_NON_TROVATA": "show_error_banner",  # classe NON_TROVATO
     "E_OFFERTA_EMITTENTE_BA_INCOERENTE": "highlight_form_fields",  # classe CONFLITTO_STATO
-    # ── §18.5a: i due `IF NOT FOUND` che dicevano «parametro non valido» ──
     #   `E_PARAMETRO_INVALIDO` lo nominano 113 funzioni e per 111 il 400 e'
     #   giusto: la correzione non poteva stare qui, doveva stare nel punto
     #   che solleva. Il team DB ha creato i due codici (changeSet
@@ -328,7 +314,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_ONERE_ARTICOLO_MANCANTE": "highlight_form_fields",  # classe DATO_ERRATO
     "E_ONERE_CAUSALE_NON_VALIDA": "highlight_form_fields",  # classe DATO_ERRATO
     "E_ONERE_IMPORTO_NON_VALIDO": "highlight_form_fields",  # classe DATO_ERRATO
-    # ── Guard coerenza emittente↔billing account (trigger DB, 5 domini) ──
     # Sollevati da trgfn_<dominio>_guard_emittente_ba quando
     # emittente_fiscale_id diverge da fn_get_emittente_fiscale_pk(BA)
     # (skip se BA NULL). Ordini/contratti esistevano gia' (mai registrati:
@@ -355,7 +340,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # MALFORMATO questa policy diventa falsa in silenzio: in quel caso
     # va spezzato in due codici, non corretto qui.
     "E_PARAMETRI_TABELLA": "show_error_banner",  # classe NON_TROVATO
-    # ── Codici cross-schema da refactor E_GENERICO (31 marzo 2026) ──
     # --- Validazione parametri (400) ---
     "E_PARAMETRO_INVALIDO": "highlight_form_fields",  # classe DATO_ERRATO
     "E_PARENT_SELF": "highlight_form_fields",  # classe DATO_ERRATO
@@ -367,11 +351,9 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_PRATICA_ID_INVALIDO": "highlight_form_fields",  # classe DATO_ERRATO
     # -- Vendite: parametri di collegamento pratica/flusso --------------
     "E_PRATICA_ID_OBBLIGATORIO": "highlight_form_fields",  # classe DATO_ERRATO
-    # ── Pratiche ──
     "E_PRATICA_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
     "E_PREVENTIVO_RIGA_NON_TROVATA": "show_error_banner",  # classe NON_TROVATO
     "E_PREV_EMITTENTE_BA_INCOERENTE": "highlight_form_fields",  # classe CONFLITTO_STATO
-    # ── Preventivi: istanza obbligatoria + emittente da operatore (rev2 brief DB) ──
     # Codici sollevati dai trigger DB landed su `vendite.preventivi`:
     #   _a10_default_emittente_ins: setta emittente_fiscale_id da GUC
     #     app.current_user_id; raise se utente senza EF e payload non
@@ -391,7 +373,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_PREV_STATO_CORRENTE_NON_TROVATO": "show_error_banner",  # classe NON_TROVATO
     "E_PREV_UTILITY_ISTANZA_INCOERENTE": "highlight_form_fields",  # classe CONFLITTO_STATO
     "E_PREV_VALIDAZIONE": "highlight_form_fields",  # classe DATO_ERRATO
-    # ── I tre esiti del resolver di prezzo ──
     #   ⚠️ `show_empty_state` -> `show_error_banner` il 2026-08-06.
     #   Quella ui_action e' pensata per una LISTA che non trova nulla. Questi
     #   tre li solleva solo `vendite.fn_resolve_prezzo_listino_v2`, cioe' la
@@ -422,9 +403,7 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_PROMO_SCADUTA_IMMUTABILE": "show_toast_error",  # classe CONFLITTO_STATO
     "E_PUSH_RIGHE_IDS_SENZA_PREVENTIVO": "highlight_form_fields",  # classe DATO_ERRATO
     "E_PUSH_SORGENTE_ID_INVALIDO": "highlight_form_fields",  # classe DATO_ERRATO
-    # ── 400 · campo da correggere (`highlight_form_fields`) ──
     "E_QTA_MISSING": "highlight_form_fields",  # classe DATO_ERRATO
-    # ── 400: nessun cambio di comportamento, dichiarati per uscire dal registro ──
     #   `highlight_form_fields` dove c'e' davvero un campo da correggere,
     #   `show_error_banner` dove il problema non e' un campo del form.
     "E_QTA_NON_POSITIVA": "highlight_form_fields",  # classe DATO_ERRATO
@@ -445,10 +424,8 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_RIGA_COMMESSA_GIA_ANNULLATA": "show_toast_error",  # classe CONFLITTO_STATO
     "E_RIGA_COMMESSA_MOTIVO_OBBLIGATORIO": "highlight_form_fields",  # classe DATO_ERRATO
     "E_RISORSA_UMANA_SOGGETTO_MISMATCH": "highlight_form_fields",  # classe DATO_ERRATO
-    # ── Ricerca universale ──
     "E_SEARCH_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
     "E_SESSIONE_NOT_FOUND": "show_error_banner",  # classe NON_TROVATO
-    # ── Shop B2C (stub PR-C) ──
     # §8.4.3/§8.4.4/§8.4.5: endpoint shop rispondono 501 finche' PR-C
     # non porta il MVP. Codice dedicato (non E_TASK_NOT_IMPLEMENTED
     # che e' del dominio pipeline fatturazione).
@@ -458,7 +435,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_SORG_FORMATO": "highlight_form_fields",  # classe DATO_ERRATO
     "E_SORG_KEY_MISSING": "highlight_form_fields",  # classe DATO_ERRATO
     "E_SORG_NORM_NON_RISOLTA": "highlight_form_fields",  # classe DATO_ERRATO
-    # ── 404 ──
     # Guard sorgente polimorfa: la riga referenziata non esiste nella
     # tabella target.
     "E_SORG_NOT_FOUND": "show_error_banner",  # classe NON_TROVATO
@@ -466,7 +442,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # entrambe si correggono nello stesso campo della configurazione.
     "E_STATO_DOC_ESITO_NON_VERDETTO": "highlight_form_fields",  # classe DATO_ERRATO
     "E_STATO_SORGENTE_PARAM_INVALIDO": "highlight_form_fields",  # classe DATO_ERRATO
-    # ── Le due meta' di `E_STATO_SCONOSCIUTO`, ritirato il 2026-08-06 ──
     #   Quel codice ne conteneva due, e per questo era rimasto senza policy:
     #   con 404 la form indirizzi si sarebbe svuotata mentre l'operatore
     #   digita, con 400 il cambio stato avrebbe mentito. Spezzato dal team DB
@@ -532,7 +507,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "FLUSSI_ESITO_NON_AMMESSO": "highlight_form_fields",  # classe DATO_ERRATO
     "PIVA_NON_VALIDA": "highlight_form_fields",  # classe DATO_ERRATO
     "PREV_STATO_CORRENTE_NON_TROVATO": "show_error_banner",  # classe NON_TROVATO
-    # ── Template di flusso: validazioni di progettazione dello step ──
     "TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA": "highlight_form_fields",  # classe DATO_ERRATO
     "TEMPLATE_FLUSSO_DOMINIO_ESITO_DEFAULT_VIETATO": "highlight_form_fields",  # classe DATO_ERRATO
     "TEMPLATE_FLUSSO_ESITO_DEFAULT_NON_VERDETTO": "highlight_form_fields",  # classe DATO_ERRATO

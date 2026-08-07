@@ -3,16 +3,24 @@
 **Chi:** team BE (`dev/backend-tid`).
 **Guida generale e ragioni di ogni scelta:** [brief-db-be-classe-codici-errore](brief-db-be-classe-codici-errore.md) — 18 decisioni, le misure, i perché. **Questo file non le ripete: le esegue.**
 **Piano gemello:** [piano-db-classe-codici-errore](piano-db-classe-codici-errore.md).
-**Stato:** 🟢 **B-1, B-2, B-3, B-4 FATTI** (2026-08-07) — i quattro passi senza prerequisiti DB. 🔴 **B-5, B-6, B-7 restano al cancello D-9.**
+**Stato:** 🟢 **B-1, B-2, B-3, B-4 FATTI** (2026-08-07) — i quattro passi senza prerequisiti DB, poi **riallineati al catalogo** la sera stessa (§8). 🔴 **B-5, B-6, B-7 restano al cancello D-9.**
 
-> **Verifica dell'equivalenza, prima di tutto il resto.** I **658** codici
-> superstiti risolvono **identici** a prima — stesso status, stessa `ui_action`,
-> stesso messaggio — confrontando `resolve()` vecchio e nuovo uno per uno; i due
-> ripieghi rispondono come prima. Suite Django: **3587 test verdi**, compreso il
-> cancello del terzo lato contro il DB vero (`ZEROERP_TEST_DB_E2E=1`).
-> L'unica differenza voluta è `PREV_STATO_NON_MODIFICABILE`, che non c'è più (B-1).
+> **Verifica dell'equivalenza, prima di tutto il resto.** I **656** codici che
+> restano una risposta HTTP risolvono **identici** a prima — stesso status,
+> stessa `ui_action`, stesso messaggio — confrontando `resolve()` di prima del
+> cantiere e di adesso uno per uno; i due ripieghi rispondono come prima. Suite
+> Django: **3589 test verdi**, compreso il cancello del terzo lato contro il DB
+> vero (`ZEROERP_TEST_DB_E2E=1`).
 >
-> ⚠️ **Tre cose sono emerse facendolo, e due cambiano il piano**: il §6.
+> **Le sole tre differenze sono volute, e ognuna è un difetto che se ne va:**
+>
+> | Codice | Prima | Ora |
+> |---|---|---|
+> | `PREV_STATO_NON_MODIFICABILE` | 409 | **non esiste più** — policy orfana (B-1) |
+> | `W_TXID_NOT_REGISTERED` + gemello `E_` | **500** col messaggio soppresso | **solleva** — è un avviso, non un guasto (B-2) |
+>
+> ⚠️ **Cinque cose sono emerse facendolo**: §6 (tre, scrivendo il B-3) e §8 (due,
+> dal riallineamento al catalogo — di cui una **toglie** un'eccezione al disegno).
 
 ---
 
@@ -248,9 +256,31 @@ lo fa skippare, va riportato su un DB provvisto, non lasciato skippato.
 Coda del lavoro, insieme al DB. La classe **non cura** gli accumulatori: assegna
 una classe ufficiale a un codice che ne vorrebbe cinque.
 
-* `E_VALIDAZIONE` lo spezza il DB **prima del seed** (D-3);
-* `E_PARAMETRO_INVALIDO` (112-114 funzioni) resta col **denominatore sicuro** e la
-  ragione in `note`: è un cantiere suo.
+> ⚠️ **Aggiornamento del 2026-08-07 sera: i due accumulatori erano uno, e forse
+> nessuno.** Il team DB, eseguendo il D-3, ha contato le **condizioni** invece
+> delle funzioni:
+>
+> | Codice | Punti | Guard di parametro | Altro |
+> |---|---:|---:|---:|
+> | `E_VALIDAZIONE` | 13 | **13** | **0** |
+> | `E_PARAMETRO_INVALIDO` | 177 | 160 (90%) | 17 |
+>
+> **`E_VALIDAZIONE` non si spezza: il D-3 è chiuso senza fare niente**, e con lui
+> sparisce l'unica scadenza del piano DB. ⚠️ E la cosa che ci riguarda: l'esempio
+> che reggeva l'argomento era **nostro** (annotazione A1 del brief) —
+> *«`fn_annulla_reso` che rifiuta un annullamento è `CONFLITTO_STATO`»* — e quel
+> punto non esiste: lì `E_VALIDAZIONE` scatta su `p_reso_id IS NULL OR <= 0`.
+>
+> ⭐ **La lezione è di metodo, ed è nostra:** *un codice è un accumulatore quando
+> copre **condizioni** diverse, non quando è usato in **domini** diversi.* «10
+> funzioni, 5 domini» era un numero vero che misurava la cosa sbagliata. La
+> regola è ora scritta in [api.md §Tassonomia](../api.md).
+
+* `E_VALIDAZIONE`: ~~lo spezza il DB prima del seed~~ → **non è un accumulatore**,
+  `DATO_ERRATO` è giusto per tutti e 13 i punti;
+* `E_PARAMETRO_INVALIDO` (177 punti) resta col **denominatore sicuro** e la
+  ragione in `note` — ma il cantiere non è più «114 funzioni»: sono **17 punti**
+  da guardare con la lente.
 
 La regola vieta i **nuovi**, come si è fatto per i codici fuori convenzione:
 rincorrere gli esistenti senza chiudere il rubinetto è la forma in cui questi
@@ -271,16 +301,39 @@ registri non calano mai.
 
 ## 4. Da sapere mentre il DB lavora
 
-⚠️ **I codici nuovi creati dal DB non hanno una policy finché il BE è fermo.**
-Lo split di `E_VALIDAZIONE` (D-3) crea codici che cadono sul ripiego 400 di
-`resolve()`. **Non è una regressione** — è il comportamento di oggi per ogni
-codice nuovo — ma significa che lo split **non cambia niente di visibile** finché
-il BE non riparte. Quando riparte, i nuovi codici arrivano gratis col generatore
-(B-5): non c'è da registrarli a mano.
+⚠️ **I codici nuovi creati dal DB non hanno una policy finché il generatore non
+c'è.** Cadono sul ripiego 400 di `resolve()`: **non è una regressione** — è il
+comportamento di oggi per ogni codice nuovo — ma va saputo. Quando il B-5 sarà
+in servizio arriveranno gratis col generatore: non c'è da registrarli a mano.
+
+Oggi sono **tre**, e sono i tre «progettati mai cablati» del push preventivo che
+il D-2 ha classificato: `E_VENDITA_PARAM_MODALITA_FATTURAZIONE_INVALIDA`,
+`E_VENDITA_COMPETENZA_RICHIESTA` (`DATO_ERRATO`) e
+`E_VENDITA_PREVENTIVO_GIA_PUSHATO` (`CONFLITTO_STATO`). ⚠️ Il ripiego dà a tutti
+e tre un **400**: sul terzo la verità è **409**. Nessuno li solleva, quindi oggi
+non fa danno — ma se qualcuno li caglia prima del B-5, quello è il momento di
+registrarli a mano.
+
+~~Lo split di `E_VALIDAZIONE` (D-3)~~ → non si fa: vedi il B-7.
 
 ---
 
-## 5. ⭐ Cosa il BE consegna al DB, adesso — e cosa il DB deve sapere
+## 5. ✅ Cosa il BE ha consegnato al DB — **consumato, il 2026-08-07**
+
+> **Chiuso in giornata.** Il DB ha eseguito D-1 e D-2 con questa consegna: le
+> **215 note sono a catalogo**, 213 dirette e 2 rimappate sui gemelli senza
+> prefisso, **zero perse, zero collisioni**. Il §6.2 si chiude.
+>
+> ⚠️ **Il nostro CSV non poteva essere il seed, e la ragione è istruttiva**: ha
+> l'universo delle **policy** (658), il seed vuole quello del **catalogo** (689).
+> Come seed avrebbe lasciato 33 codici senza padre — violazione di FK al primo
+> migrate su DB ricostruito — e aggiunto 2 righe inesistenti. Serviva la sua
+> **terza colonna**, e quella è arrivata intera.
+>
+> 🔴 **Conseguenza: `allegati/codici-errore-classe-note.csv` è servito e ora è un
+> secondo elenco.** Il suo contenuto vive a catalogo, che fa fede. Va **tolto dal
+> repo** — richiesta a Tid, non lo cancello da solo. Il seed vero è
+> `db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`.
 
 ### 5.1 🔴 **La sorgente del passo D-1 è cambiata sotto i piedi**
 
@@ -372,10 +425,20 @@ niente:
    generato lo ripete: *rigenerare senza aver seminato le note è una
    cancellazione silenziosa*.
 
-⚠️ **Quello che resta aperto è la sequenza**, e va deciso: se il DB semina le
-note al D-5 (usando il CSV), al B-5 il generatore le riemette come commenti e il
-giro si chiude. Se il seed parte **senza** la colonna `note`, il B-5 va fatto
-solo dopo averla riempita — o le 731 righe se ne vanno alla prima esecuzione.
+✅ **CHIUSO la sera stessa.** Il DB ha importato le 215 note al D-2-bis: 213
+dirette, 2 rimappate sui gemelli senza prefisso (`E_MESSAGGIO_NON_DEFINITO` ed
+`E_W_TXID_NOT_REGISTERED` puntavano a nomi che a catalogo non esistono), **zero
+perse, zero collisioni**. Il prerequisito 2 del B-5 è soddisfatto: quando il
+generatore partirà, le riemetterà dal catalogo.
+
+⚠️ **Un difetto del nostro estrattore, segnalato dal DB e corretto.** Prendeva il
+blocco di commento immediatamente sopra la policy — ma per il **primo codice di
+ogni sezione** quel blocco è il **titolo del gruppo**, non la motivazione del
+codice: 23 note avevano il titolo davanti, 22 erano *solo* il titolo. La regola
+che mancava, ora nell'estrattore: *un blocco che è solo `── … ──` appartiene alla
+sezione, non alla voce.* Rigenerando i moduli con la regola giusta, **39 blocchi
+si sono rivelati puri titoli** («── Pratiche ──», «── 400 · campo da correggere
+──») e sono spariti: erano raggruppamenti per status, e lo status ora è la classe.
 
 ### 6.3 Il default di `DATO_ERRATO`: scelto il **banner**, e la ragione è asimmetrica
 
@@ -404,3 +467,76 @@ che nessuno lo rilegga.
 * **i due ripieghi di `resolve()` non sono stati toccati**, come chiede il B-2:
   sono ciò che tiene in piedi i codici nuovi che il DB sta seminando mentre il
   generatore non c'è. Il momento di ridiscuterli è **dopo** il B-5.
+
+---
+
+## 8. ⭐ Il riallineamento al catalogo (2026-08-07 sera) — **e un'eccezione che sparisce**
+
+Il DB ha consegnato `codici_errore.csv` (**689 righe**, D-1 + D-2 chiusi). Da
+quel momento **fa fede il catalogo**, e il BE si è allineato: sei classi
+divergevano.
+
+### 8.1 ⭐ Il vocabolario va a **dieci**, e il BE ci guadagna una semplificazione
+
+Il brief dichiarava 401 e 502 *«fuori dal vocabolario di dominio, da mappare a
+mano nel backend»*, e il B-4 aveva fatto esattamente questo: una mappa
+`HTTP_PER_CODICE` di cinque righe, l'unica eccezione del disegno.
+
+**Era falso, e il DB l'ha mostrato dal lato giusto:** quei cinque sono righe del
+catalogo come tutte le altre, quindi con `classe NOT NULL` una classe la
+vogliono. Tid ha confermato `NON_AUTENTICATO` (401, 4 codici) ed `ERRORE_ESTERNO`
+(502, 1).
+
+⭐ **Conseguenza sul BE, ed è più di un allineamento: `HTTP_PER_CODICE` è stata
+cancellata.** Con le due classi a vocabolario non c'è più nessuna mappa per
+codice — si deriva *tutto* dalla classe. L'eccezione non è stata spostata: non
+esiste più. E il prossimo codice di autenticazione prenderà il suo 401 senza che
+nessuno lo scriva.
+
+⚠️ **Su `NON_AUTENTICATO` il default è di nuovo un pareggio** — due
+`redirect_login` contro due banner — e lì l'asimmetria del §6.3 morde più forte:
+un `redirect_login` sbagliato **butta l'operatore fuori dall'applicazione**.
+Default = banner, i due `redirect_login` sono override espliciti.
+
+### 8.2 ⭐ Il primo `AVVISO` vero: `W_TXID_NOT_REGISTERED` **ora solleva**
+
+A catalogo è `AVVISO`. Nel BE era registrato a **500** — perché nessuno l'aveva
+mai classificato, non perché qualcuno l'avesse deciso.
+
+È il **collaudo della garanzia del B-2**, sul codice per cui era stata scritta:
+`resolve()` ora solleva `ClasseErroreSenzaStatus` invece di restituire un guasto
+tecnico col messaggio soppresso. Nessun punto del backend lo nomina (verificato),
+il DB lo scrive nel diario con `fn_log_error_only` e non lo solleva mai, e il
+controllo (E) del guardrail SQL impedisce a chiunque di sollevarlo: **se quella
+eccezione scatta, è un errore di programma e si comporta come tale.**
+
+⚠️ Vale anche per il gemello `E_W_TXID_NOT_REGISTERED`, che a catalogo non
+esiste: la classe la prende dal fratello, perché è lo stesso codice sotto un
+altro nome.
+
+### 8.3 ⭐ Il ponte verso il B-6, che non aspetta il D-9
+
+Il controllo di divergenza vero (B-6) leggerà `vw_codici_errore_identita` e vuole
+il database. Ma **il CSV di seed sta nel repo**, e presidia lo stesso fatto senza
+DB: `test_nessuna_classe_diverge_dal_catalogo` confronta le 658 classi del BE con
+le 689 del catalogo.
+
+⚠️ **Fallisce solo su una classe diversa, mai su un codice in più o in meno**, e
+la ragione va scritta perché è la differenza fra un presidio che sopravvive e uno
+che viene spento: i due insiemi **non devono** coincidere. Il catalogo ha 33
+codici che il BE non conosce (30 ritirati + 3 progettati mai cablati), il BE ne
+ha 2 che il catalogo non ha (i gemelli col prefisso, la cintura della campagna di
+rinomina). Un test che pretendesse l'uguaglianza sarebbe rosso il giorno dopo.
+
+### 8.4 ⚠️ Due cose da guardare al B-5
+
+* **i due gemelli col prefisso `E_`** non hanno riga di catalogo: il generatore
+  non li produrrà e cadranno sul ripiego. Vanno tenuti a mano (una riga) o
+  lasciati cadere **consapevolmente** — non scoperti spariti;
+* **`E_PARAMETRO_INVALIDO` ha `highlight_form_fields`**, e la misura nuova del DB
+  dice che **160 dei suoi 177 punti sono guard di parametro**, cioè valori che
+  arrivano dal *chiamante* e non da un form dell'operatore. È esattamente
+  l'asimmetria del §6.3 al contrario: quella `ui_action` promette un campo da
+  evidenziare che nel 90% dei casi non esiste. ⚠️ **Non l'ho cambiata**: è una
+  decisione del cantiere precedente su un codice nominato da 177 punti, e la
+  chiamata è di Tid.

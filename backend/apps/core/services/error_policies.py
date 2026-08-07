@@ -15,10 +15,10 @@
 #        `docs/it/dev/work-in-progress/brief-db-be-classe-codici-errore.md`.
 #
 #        COM'E' ORA. Il significato («che cosa E' questo errore») e' un dato del
-#        database — `config.codici_errore.classe`, otto valori — e arriva qui
+#        database — `config.codici_errore.classe`, dieci valori — e arriva qui
 #        dentro `error_policies_generated.py`. Lo status e la ui_action si
-#        DERIVANO da quella classe con le due tabelle di questo file: otto righe
-#        invece di 659.
+#        DERIVANO da quella classe con le due tabelle di questo file: nove righe
+#        invece di 659, e **nessuna eccezione per codice**.
 #
 #        I QUATTRO MODULI, separati per QUANDO CAMBIANO e non per contenuto:
 #          error_policies_generated.py  codice -> classe (658)   a ogni seed DB
@@ -44,8 +44,17 @@ from apps.core.services.error_policies_generated import CLASSE_PER_CODICE
 from apps.core.services.error_ui_overrides import UI_ACTION_OVERRIDE
 
 # ── Il vocabolario delle classi ──────────────────────────────────────────────
-# Otto valori, gli stessi di `config.classi_errore`. Non sono inventati: vengono
-# dalle 659 decisioni gia' prese nel cantiere del terzo lato.
+# Dieci valori, gli stessi di `config.classi_errore`. Non sono inventati:
+# vengono dalle 659 decisioni gia' prese nel cantiere del terzo lato.
+#
+# ⭐ ERANO OTTO FINO AL 2026-08-07, e i due che mancavano raccontano qualcosa.
+# Il brief dichiarava i 401 e il 502 «fuori dal vocabolario di dominio, da
+# mappare a mano nel backend». Il team DB ha mostrato che era falso: sono righe
+# del catalogo come tutte le altre, quindi con `classe NOT NULL` una classe la
+# vogliono — ed e' lo stesso identico caso di `AVVISO`, la terza volta che si
+# presenta. Con `NON_AUTENTICATO` ed `ERRORE_ESTERNO` a vocabolario la
+# «eccezione dei 5 codici» **sparisce da questo file**: non c'e' piu' nessuna
+# mappa per codice, si deriva tutto dalla classe.
 CLASSI_ERRORE: frozenset[str] = frozenset(
     {
         "DATO_ERRATO",
@@ -55,6 +64,8 @@ CLASSI_ERRORE: frozenset[str] = frozenset(
         "NON_PERMESSO",
         "NON_ESEGUIBILE",
         "NON_DISPONIBILE",
+        "NON_AUTENTICATO",
+        "ERRORE_ESTERNO",
         "AVVISO",
     }
 )
@@ -78,6 +89,15 @@ HTTP_PER_CLASSE: dict[str, int] = {
     "NON_PERMESSO": 403,
     "NON_ESEGUIBILE": 422,
     "NON_DISPONIBILE": 501,
+    # I quattro 401 li costruisce `JwtAuditMiddleware` e non passano
+    # dall'exception handler: la classe non li governa, ma averla li' rende
+    # inutile una mappa per codice — ed e' meglio cosi', perche' il prossimo
+    # codice di autenticazione prendera' il suo 401 senza che nessuno lo scriva.
+    "NON_AUTENTICATO": 401,
+    # 502 e non 500: il backend ha chiamato un provider ESTERNO e ne ha ricevuto
+    # una risposta invalida, che e' letteralmente la definizione RFC del 502.
+    # Normalizzarlo a 500 perderebbe l'unica informazione utile leggendo i log.
+    "ERRORE_ESTERNO": 502,
 }
 
 # ── classe -> ui_action di default ───────────────────────────────────────────
@@ -96,23 +116,13 @@ UI_ACTION_PER_CLASSE: dict[str, str] = {
     "NON_PERMESSO": "show_error_banner",
     "NON_ESEGUIBILE": "show_error_banner",
     "NON_DISPONIBILE": "show_error_banner",
-}
-
-# ── I cinque codici fuori dal vocabolario di dominio ─────────────────────────
-# Non sono «senza classe»: sono fuori dal percorso che la classe governa. I
-# quattro 401 li costruisce `JwtAuditMiddleware` e non passano dall'exception
-# handler; il 502 e' l'unico caso in cui un provider ESTERNO risponde male, che
-# e' letteralmente la definizione RFC del 502 (normalizzarlo a 500 perderebbe
-# l'unica informazione utile leggendo i log).
-# A catalogo prendono `TECNICO` con la ragione in `note`; qui lo status resta
-# scritto a mano, quindi la classe che il DB assegnera' loro non cambia la
-# risposta.
-HTTP_PER_CODICE: dict[str, int] = {
-    "E_JWT_SENZA_IDENTITA": 401,
-    "E_IDENTITA_NON_ATTIVA": 401,
-    "E_AUTHENTICATION_FAILED": 401,
-    "E_NOT_AUTHENTICATED": 401,
-    "E_AI_PROVIDER_ERROR": 502,
+    # ⚠️ Su `NON_AUTENTICATO` il pareggio e' 2 a 2 (`redirect_login` contro
+    # banner) e l'asimmetria del danno e' molto piu' forte che su `DATO_ERRATO`:
+    # un `redirect_login` sbagliato butta l'operatore FUORI dall'applicazione.
+    # Quindi i due `redirect_login` sono override espliciti, il default e' il
+    # banner — e un codice di autenticazione nuovo non caccera' nessuno da solo.
+    "NON_AUTENTICATO": "show_error_banner",
+    "ERRORE_ESTERNO": "show_error_banner",
 }
 
 # Ripiego di ultima istanza sul messaggio: un codice registrato senza voce in
@@ -152,7 +162,7 @@ class ErrorPolicyRegistry:
     #        queste due righe: senza, non c'e'.
     @classmethod
     def _deriva(cls, code: str, classe: str) -> ErrorPolicy:
-        http_status = HTTP_PER_CODICE.get(code) or HTTP_PER_CLASSE.get(classe)
+        http_status = HTTP_PER_CLASSE.get(classe)
         ui_action = UI_ACTION_OVERRIDE.get(code) or UI_ACTION_PER_CLASSE.get(classe)
         if http_status is None or ui_action is None:
             raise ClasseErroreSenzaStatus(
