@@ -270,12 +270,71 @@ cantiere precedente, e la sua data resta quella.
   e **non li vede ritirati**. È voluto: nessun cambio di comportamento prima del
   punto di non ritorno. E semplifica il D-6, che non deve più copiare niente —
   i valori nascono già nel CSV nuovo.
-* 🔵 **Gli apostrofi nel CSV.** `messaggi_errore.csv` li scrive **raddoppiati**
-  (`e'' un componente`): o è una convenzione del loader, o è un residuo di quando
-  quel seed era fatto di `INSERT` SQL. Non l'ho risolto e **ho evitato gli
-  apostrofi nelle `note`**, così la domanda non si pone per questo file. Va
-  guardata al D-5, perché se è un residuo allora nel catalogo ci sono messaggi che
-  mostrano `''` a chi legge.
+* ✅ **Gli apostrofi: risolto, ed era un difetto.** Vedi D-2-bis.
+
+---
+
+### D-2-bis · ✅ Le `note` del BE importate, e due cose trovate importandole
+
+Il BE ha consegnato `docs/it/dev/work-in-progress/allegati/codici-errore-classe-note.csv`
+(658 righe, 215 note). **Importate tutte**, con due rimappature e una pulizia.
+
+| | |
+|---|---:|
+| note del BE | 215 |
+| atterrate direttamente | 213 |
+| **rimappate** — `E_MESSAGGIO_NON_DEFINITO` e `E_W_TXID_NOT_REGISTERED` puntano a nomi che a catalogo non esistono: la nota va sul gemello senza prefisso | 2 |
+| collisioni con le nostre 9 | **0** |
+| perse | **0** |
+
+⚠️ **Il CSV del BE non poteva essere il seed**, e non è un errore loro: ha
+l'universo delle **policy** (658), non del **catalogo** (689). Come seed
+lascerebbe **33 codici senza padre** — violazione di FK al primo migrate su DB
+ricostruito — e aggiungerebbe 2 righe che a catalogo non esistono. Serviva la sua
+terza colonna, e quella è arrivata intera.
+
+#### ⭐ Gli apostrofi: risolto, ed è un difetto preesistente
+
+La domanda lasciata aperta al D-2 non era più aggirabile: **105 delle 215 note
+hanno un apostrofo**. La prova sta nel repo:
+
+> Nei CSV di `80_data` ci sono **1353 celle con apostrofo singolo** (per esempio
+> `lista_colonna.csv`: «Fornitore soggetto a ritenuta d'acconto»), tutte caricate
+> senza problemi. Se Liquibase inlineasse i valori nell'SQL, una sola di quelle
+> celle romperebbe il migrate.
+
+**Liquibase lega i parametri: l'apostrofo singolo è la forma giusta.** Quindi le
+note vanno bene così come sono, e **il raddoppio in `messaggi_errore.csv` è un
+residuo**, non una convenzione.
+
+🔴 **Conseguenza fuori perimetro ma seria: 35 codici del catalogo mostrano `''` a
+chi legge.** 82 celle in `messaggi_errore.csv` più 4 in `email_template.csv`.
+⚠️ Non è verificato sul DB vivo (serve una query), ma la catena regge: il mirror
+`runOnChange` riscrive quelle celle a ogni migrate. È una slice sua, piccola —
+una passata sul CSV — e va aperta.
+
+#### ⚠️ 45 note su 224 non parlavano del loro codice
+
+L'estrattore del BE prende **il blocco di commento immediatamente sopra la
+policy**. Quel blocco però, per il primo codice di ogni sezione, è
+**l'intestazione del gruppo** — non la motivazione di quel codice:
+
+| | quante |
+|---|---:|
+| note pulite, motivazione del codice | 179 |
+| ✂️ con l'intestazione davanti, tolta | 23 |
+| 🔴 **solo** intestazione, zero contenuto sul codice — **azzerate** | 22 |
+| **note finali nel CSV** | **202** |
+
+Le 22 azzerate dicevano cose come «`── 409 ──`» su `E_CANALE_ORIGINE_IMMUTABILE`
+o «`── Commesse ──`» su `E_COMMESSA_SORGENTE_SCONOSCIUTA`: il titolo del gruppo
+appiccicato a chi capitava primo. Non si perde niente — quel testo resta nel
+modulo del BE, dove è al posto giusto.
+
+⭐ **La lezione vale oltre le 45**: *«il commento sopra una voce»* non è
+*«il commento di quella voce»*. In un file raggruppato per sezioni, il primo
+elemento di ogni gruppo eredita il titolo del gruppo — e un estrattore che non lo
+sa produce, per ogni sezione, una riga che sembra una motivazione e non lo è.
 
 ---
 
