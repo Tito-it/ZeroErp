@@ -767,11 +767,22 @@ dizionario di 659 voci. Ora si dichiara **che cosa è** l'errore — la sua
 | `NON_PERMESSO` | 403 | il diritto manca, e non dipende dallo stato |
 | `NON_ESEGUIBILE` | 422 | si capisce ma non si può eseguire |
 | `NON_DISPONIBILE` | 501 | funzione presente ma non servita (disattivata) |
+| `NON_AUTENTICATO` | 401 | non autenticato (≠ 403: autenticato ma senza diritto) |
+| `ERRORE_ESTERNO` | 502 | un provider esterno ha risposto male |
 | `AVVISO` | **nessuno** | non è un rifiuto: si scrive nel diario e non raggiunge mai il client |
 
 Il vocabolario è lo stesso di `config.classi_errore`. **La mappa classe → HTTP
 resta lato backend**, ed è una scelta: è *trasporto*, non dominio — il database
 non deve sapere cosa sia un 409.
+
+⭐ **Le classi erano otto fino al 2026-08-07, e le due arrivate dopo dicono
+qualcosa.** 401 e 502 erano dichiarati «fuori dal vocabolario di dominio, da
+mappare a mano nel backend». Non lo erano: sono righe del catalogo come tutte le
+altre, quindi con `classe NOT NULL` una classe la vogliono. Con
+`NON_AUTENTICATO` ed `ERRORE_ESTERNO` a vocabolario **l'eccezione dei cinque
+codici sparisce**: non c'è più nessuna mappa per codice nel backend, si deriva
+tutto dalla classe — e il prossimo codice di autenticazione prenderà il suo 401
+senza che nessuno lo scriva.
 
 **Dove si mette cosa** — quattro moduli in `apps/core/services/`, separati per
 **quando cambiano** e non per contenuto:
@@ -841,12 +852,34 @@ due cose si spezza a monte, non si rimappa a valle.
   stesso giorno, un altro difetto era già stato trattato **come famiglia**.
 
 ⚠️ **Non introdurre codici generici nuovi.** Un codice che serve a due punti
-diversi è due codici. I due accumulatori esistenti sono la prova di dove si
-finisce: `E_PARAMETRO_INVALIDO` è nominato da **113 funzioni** (almeno cinque lo
-usavano per «non trovato», due per una regola sul prezzo) ed `E_VALIDAZIONE` da
-**10**, con messaggio passthrough. Nessuno dei due è stato scelto per mancanza di
-alternative: erano **generici e a portata di mano**. In un caso il commento nel
+diversi è due codici. `E_PARAMETRO_INVALIDO` è nominato da **177 punti** ed
+`E_VALIDAZIONE` da **13**: nessuno dei due è stato scelto per mancanza di
+alternative, erano **generici e a portata di mano**, e in un caso il commento nel
 DB confessa di aver scelto il codice per il numero di `%s` del messaggio.
+
+> ⭐ **Ma «generico» e «accumulatore» non sono la stessa cosa, e questo documento
+> lo diceva sbagliato fino al 2026-08-07.** Diceva che i due erano *«la prova di
+> dove si finisce»*, contando le **funzioni** che li nominano — 113 e 10, «cinque
+> domini». Contate invece le **condizioni** che li sollevano (team DB, eseguendo
+> lo split che questa misura aveva reso urgente):
+>
+> | Codice | Punti | Guard di parametro (`IS NULL OR <= 0` e simili) | Altro |
+> |---|---:|---:|---:|
+> | `E_VALIDAZIONE` | 13 | **13** | **0** |
+> | `E_PARAMETRO_INVALIDO` | 177 | 160 (90%) | 17 |
+>
+> `E_VALIDAZIONE` **non è un accumulatore**: tutti e 13 i punti sono la guard di
+> parametro che [AGENTS.md](../../../.codex/AGENTS.md) prescrive. Lo split
+> programmato è stato chiuso **senza fare niente**. Il caso che sembrava
+> dimostrare il contrario — *«`fn_annulla_reso` che rifiuta un annullamento è un
+> conflitto di stato»* — non esiste: lì `E_VALIDAZIONE` scatta su
+> `p_reso_id IS NULL OR p_reso_id <= 0`, e non rifiuta nessun annullamento.
+>
+> **La regola che ne esce, e vale oltre questi due:** *un codice è un
+> accumulatore quando copre **condizioni** diverse, non quando è usato in
+> **domini** diversi.* «10 funzioni, 5 domini» era un numero vero che misurava la
+> cosa sbagliata — le funzioni erano eterogenee, la condizione no. Prima di
+> proporre uno split, contare le condizioni ai punti che sollevano.
 
 **Quando spezzare un codice e quando no.** Un codice a più significati si spezza
 quando i significati **portano a reazioni diverse della pagina**, non perché sono

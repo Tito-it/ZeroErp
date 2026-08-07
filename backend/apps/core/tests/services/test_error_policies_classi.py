@@ -31,7 +31,7 @@
  2) test_ogni_classe_del_vocabolario_ha_status_e_ui_tranne_avviso
  3) test_classe_senza_status_solleva            <- la garanzia del passo B-2
  4) test_avviso_non_ha_uno_status_per_progetto
- 5) test_i_cinque_fuori_vocabolario_tengono_il_loro_status
+ 5) test_i_cinque_ex_fuori_vocabolario_derivano_come_gli_altri
  6) test_nessun_override_orfano
  7) test_nessun_messaggio_orfano
  8) test_ogni_codice_registrato_ha_un_messaggio_di_ripiego
@@ -41,17 +41,20 @@
 12) test_ripiego_codice_senza_prefisso_non_registrato
 13) test_policy_morta_prev_stato_non_modificabile_rimossa   <- passo B-1
 14) test_resolve_e_has_dicono_la_stessa_cosa
+15) test_lavviso_vero_a_catalogo_solleva
+16) test_nessuna_classe_diverge_dal_catalogo   <- il ponte verso il B-6
 """
 
 from __future__ import annotations
 
+import csv
+from pathlib import Path
 from unittest import TestCase, mock
 
 from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
 from apps.core.services.error_policies import (
     CLASSI_ERRORE,
     HTTP_PER_CLASSE,
-    HTTP_PER_CODICE,
     UI_ACTION_PER_CLASSE,
     ClasseErroreSenzaStatus,
     ErrorPolicyRegistry,
@@ -62,6 +65,20 @@ from apps.core.services.error_ui_overrides import UI_ACTION_OVERRIDE
 # L'unica classe del vocabolario che non ha uno status, e non e' una lacuna:
 # un avviso non rifiuta niente e non raggiunge mai un client (brief §4.2).
 _CLASSE_SENZA_STATUS = "AVVISO"
+
+# Il CSV di seed del catalogo: .../backend/apps/core/tests/services/<file>
+# -> parents[5] = radice del repo (services, tests, core, apps, backend, root).
+_CSV_CATALOGO = (
+    Path(__file__).resolve().parents[5]
+    / "db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv"
+)
+
+
+# Scopo: `codice -> classe` dal CSV di seed del catalogo. Lettura del file e non
+#        del database: il confronto vale anche in CI, dove il DB non c'e'.
+def _classi_a_catalogo() -> dict[str, str]:
+    with _CSV_CATALOGO.open(encoding="utf-8") as f:
+        return {r["codice"]: r["classe"] for r in csv.DictReader(f)}
 
 
 class ErrorPoliciesClassiTest(TestCase):
@@ -111,15 +128,24 @@ class ErrorPoliciesClassiTest(TestCase):
         self.assertNotIn(_CLASSE_SENZA_STATUS, HTTP_PER_CLASSE)
         self.assertNotIn(_CLASSE_SENZA_STATUS, UI_ACTION_PER_CLASSE)
 
-    # Scopo: i cinque codici fuori dal vocabolario di dominio (401 x4, 502)
-    #        prendono lo status dalla mappa per codice e non dalla classe. Se
-    #        domani il DB cambiasse loro la classe, la risposta non deve
-    #        muoversi: e' quello che li tiene fuori dal percorso.
-    def test_i_cinque_fuori_vocabolario_tengono_il_loro_status(self):
-        for codice, status in HTTP_PER_CODICE.items():
+    # Scopo: i cinque codici che il brief dava «fuori dal vocabolario» (401 x4,
+    #        502) non hanno piu' niente di speciale: derivano come tutti gli
+    #        altri, da `NON_AUTENTICATO` ed `ERRORE_ESTERNO`. Il test presidia
+    #        che la mappa per codice non torni: era un'eccezione, ed e' sparita
+    #        il giorno in cui il catalogo ha dato una classe anche a loro.
+    def test_i_cinque_ex_fuori_vocabolario_derivano_come_gli_altri(self):
+        attesi = {
+            "E_JWT_SENZA_IDENTITA": (401, "redirect_login"),
+            "E_IDENTITA_NON_ATTIVA": (401, "redirect_login"),
+            "E_AUTHENTICATION_FAILED": (401, "show_error_banner"),
+            "E_NOT_AUTHENTICATED": (401, "show_error_banner"),
+            "E_AI_PROVIDER_ERROR": (502, "show_error_banner"),
+        }
+        for codice, (status, azione) in attesi.items():
             with self.subTest(codice=codice):
-                self.assertIn(codice, CLASSE_PER_CODICE, "codice non registrato")
-                self.assertEqual(ErrorPolicyRegistry.resolve(codice).http_status, status)
+                policy = ErrorPolicyRegistry.resolve(codice)
+                self.assertEqual(policy.http_status, status)
+                self.assertEqual(policy.ui_action, azione)
 
     # Scopo: un override per un codice che il generatore non produce piu' e'
     #        una decisione di interfaccia rimasta senza il suo errore. Non fa
@@ -186,9 +212,60 @@ class ErrorPoliciesClassiTest(TestCase):
     # Scopo: `has` e `resolve` devono guardare lo stesso registro. Se `has`
     #        dicesse di si' e `resolve` ripiegasse, il cancello del terzo lato
     #        sarebbe verde su un codice che risponde col ripiego.
+    #        ⚠️ Gli `AVVISO` sono esclusi apposta: per loro `has` dice si' —
+    #        hanno una classe — e `resolve` **solleva**, che e' il test 3.
     def test_resolve_e_has_dicono_la_stessa_cosa(self):
-        for codice in CLASSE_PER_CODICE:
+        for codice, classe in CLASSE_PER_CODICE.items():
             with self.subTest(codice=codice):
                 self.assertTrue(ErrorPolicyRegistry.has(codice))
-                self.assertEqual(ErrorPolicyRegistry.resolve(codice).code, codice)
                 self.assertIsNotNone(ErrorPolicyRegistry.classe_di(codice))
+                if classe == _CLASSE_SENZA_STATUS:
+                    continue
+                self.assertEqual(ErrorPolicyRegistry.resolve(codice).code, codice)
+
+    # Scopo: ⭐ L'AVVISO VERO, non quello finto del test 3. `W_TXID_NOT_REGISTERED`
+    #        e' l'unico avviso che il backend conosce: il DB lo scrive nel diario
+    #        con `fn_log_error_only` e non lo solleva mai. Fino al 2026-08-07
+    #        `resolve` gli dava **500**, cioe' un guasto tecnico col messaggio
+    #        soppresso — e il catalogo, dandogli la classe `AVVISO`, ha reso
+    #        quella bugia visibile. Ora chiedere una risposta HTTP per un avviso
+    #        e' un errore di programma, e si comporta come tale.
+    def test_lavviso_vero_a_catalogo_solleva(self):
+        for codice in ("W_TXID_NOT_REGISTERED", "E_W_TXID_NOT_REGISTERED"):
+            with self.subTest(codice=codice):
+                self.assertEqual(CLASSE_PER_CODICE.get(codice), _CLASSE_SENZA_STATUS)
+                with self.assertRaises(ClasseErroreSenzaStatus):
+                    ErrorPolicyRegistry.resolve(codice)
+
+    # Scopo: ⭐ IL PONTE VERSO IL B-6. Il controllo di divergenza vero leggera'
+    #        `config.vw_codici_errore_identita` e vuole il DB; questo confronta
+    #        il registro col **CSV di seed del catalogo**, che sta nel repo — non
+    #        serve un database, e presidia lo stesso fatto: che la classe di un
+    #        codice non dica due cose diverse ai due lati.
+    #
+    #        ⚠️ FALLISCE SOLO SU UNA CLASSE DIVERSA, mai su un codice in piu' o
+    #        in meno, e la ragione e' che i due insiemi NON devono coincidere:
+    #        il catalogo ne ha 31 che il backend non conosce (30 ritirati, 3
+    #        progettati e mai cablati) e il backend ne ha 2 che il catalogo non
+    #        ha (i gemelli col prefisso `E_`, la cintura della campagna di
+    #        rinomina). Un test che pretendesse l'uguaglianza sarebbe rosso il
+    #        giorno dopo, e verrebbe spento.
+    def test_nessuna_classe_diverge_dal_catalogo(self):
+        catalogo = _classi_a_catalogo()
+        self.assertGreater(len(catalogo), 600, "CSV del catalogo sospetto: misura degradata")
+        diverse = {
+            codice: (classe, catalogo[codice])
+            for codice, classe in CLASSE_PER_CODICE.items()
+            if codice in catalogo and classe != catalogo[codice]
+        }
+        if diverse:
+            righe = "\n".join(
+                f"  - {c}: backend dice {be}, catalogo dice {db}"
+                for c, (be, db) in sorted(diverse.items())
+            )
+            self.fail(
+                f"{len(diverse)} codici hanno una classe diversa fra "
+                f"error_policies_generated.py e {_CSV_CATALOGO.name}:\n{righe}\n\n"
+                "Fa fede il catalogo: il backend si allinea. (Dal passo B-5 non "
+                "succedera' piu', perche' il file sara' generato da li'.)"
+            )

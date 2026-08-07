@@ -7,25 +7,31 @@
 #        / guasto...), non come si risponde. Lo status HTTP e la ui_action si
 #        derivano dalla classe in `error_policies.py`.
 # Generato da: NESSUNO, ANCORA — scritto a mano al passo B-3 del
-#        `piano-be-classe-codici-errore.md`, estraendo la classe dallo
-#        `http_status` che ogni voce dichiarava. Diventa generato al B-5, quando
-#        il DB avra' consegnato `config.vw_codici_errore_identita` (DB D-9).
-# Note: ⚠️ QUANDO QUESTO FILE DIVENTERA' GENERATO, I COMMENTI QUI SOTTO SPARISCONO.
-#        Sono il perche' della classe — 214 blocchi, 731 righe, il residuo delle
-#        150 decisioni del cantiere del terzo lato — e la loro casa definitiva e'
-#        `config.codici_errore.note` (brief §14.3). Prima di accendere il
-#        generatore vanno seminati li': l'estratto pronto per il team DB e'
-#        `docs/it/dev/work-in-progress/allegati/codici-errore-classe-note.csv`.
-#        Rigenerare senza averlo fatto e' una cancellazione silenziosa.
+#        `piano-be-classe-codici-errore.md`. Le classi qui dentro sono state
+#        RIALLINEATE AL CATALOGO il 2026-08-07 sera
+#        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`,
+#        689 righe): da quel momento **fa fede il catalogo**, non piu' lo status
+#        che ogni policy dichiarava. Diventa generato al B-5, quando il DB avra'
+#        consegnato `config.vw_codici_errore_identita` (DB D-9).
+# Note: ⚠️ QUANDO QUESTO FILE DIVENTERA' GENERATO, I COMMENTI QUI SOTTO SPARISCONO
+#        — ed e' voluto: la loro casa definitiva e' `config.codici_errore.note`,
+#        dove il team DB li ha gia' importati tutti il 2026-08-07 (D-2-bis, 215
+#        note, zero perse). Il generatore del B-5 li riemettera' da li'.
 #        ⚠️ L'ordine e' alfabetico per codice, come sara' l'ORDER BY del
 #        generatore: serve a non produrre diff spurii da riordino.
+#        ⚠️ Le voci sono 658, il catalogo ne ha 689. La differenza NON e' un
+#        difetto: 30 sono codici ritirati che nessuno solleva piu', 3 sono
+#        progettati e mai cablati (push preventivo). Arriveranno col generatore.
+#        Nell'altro verso, `E_MESSAGGIO_NON_DEFINITO` e `E_W_TXID_NOT_REGISTERED`
+#        stanno qui e NON a catalogo: sono la cintura della campagna di rinomina
+#        (il nome vecchio resta risolvibile finche' il diario lo contiene) e al
+#        B-5 andranno tenuti a mano o lasciati cadere sul ripiego.
 # ------------------------------------------------------------
 
 
 # Una riga per codice. Il valore e' una classe di `config.classi_errore`.
 CLASSE_PER_CODICE: dict[str, str] = {
     "CF_NON_VALIDO": "DATO_ERRATO",
-    # ── Immutabilita' di colonne e snapshot ──
     "CODICE_NON_MODIFICABILE": "CONFLITTO_STATO",
     "DEFINIZIONE_BOZZA_ESISTENTE": "CONFLITTO_STATO",
     # Status rivisto il 2026-08-05 (rilettura DB del brief
@@ -36,7 +42,6 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "DEFINIZIONE_NO_PUBBLICATA": "CONFLITTO_STATO",
     "DEFINIZIONE_PUBBLICATA_IMMUTABILE": "CONFLITTO_STATO",
     "DEFINIZIONE_TRANSIZIONE_NON_AMMESSA": "CONFLITTO_STATO",
-    # ── Parametri di chiamata delle funzioni DB ──
     "ERRORE_PARAMETRI": "DATO_ERRATO",
     "ERRORE_PARAMETRI_TABELLA": "DATO_ERRATO",
     "E_ADMIN_CF_DUPLICATO": "CONFLITTO_STATO",
@@ -46,9 +51,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_ADMIN_UO_NON_TROVATA": "DATO_ERRATO",
     "E_ADMIN_USERNAME_DUPLICATO": "CONFLITTO_STATO",
     "E_ADMIN_VALIDAZIONE": "DATO_ERRATO",
-    # ── Assistente AI ──
     "E_AI_DISABLED": "NON_DISPONIBILE",
-    "E_AI_PROVIDER_ERROR": "TECNICO",
+    "E_AI_PROVIDER_ERROR": "ERRORE_ESTERNO",
     "E_AI_PROVIDER_UNKNOWN": "TECNICO",
     "E_AI_QUERY_EMPTY": "DATO_ERRATO",
     "E_AI_QUERY_TOO_LONG": "DATO_ERRATO",
@@ -80,7 +84,6 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # l'operatore.
     "E_ARGOMENTI_A_COPPIE": "TECNICO",
     "E_ARTICOLO_ESCLUSO_DA_CONTRATTO": "NON_ESEGUIBILE",
-    # ── 409: in conflitto con lo stato attuale ──
     #   Sono i codici che CAMBIANO comportamento: oggi la pagina evidenzia
     #   un campo (400) dove invece deve ricaricare e mostrare lo stato vero.
     # Le due righe esistono entrambe e non vanno d'accordo: non c'e' un
@@ -89,7 +92,6 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_ARTICOLO_NON_COMPOSITO": "DATO_ERRATO",
     "E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C": "DATO_ERRATO",
     "E_ARTICOLO_NOT_FOUND": "NON_TROVATO",
-    # ── 400 · il problema non e' un campo del form (`show_error_banner`) ──
     "E_ARTICOLO_SOLO_COMPONENTE": "DATO_ERRATO",
     "E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE": "DATO_ERRATO",
     # Il dato manca sull'ARTICOLO, non sul form che si sta compilando:
@@ -101,7 +103,6 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_ATTIVAZIONE_SHOP": "DATO_ERRATO",
     "E_ATTIVAZIONE_SHOP_CROSS": "DATO_ERRATO",
     "E_ATTIVITA_FATTURABILE_QUANTITA_IMMUTABILE": "CONFLITTO_STATO",
-    # ── Generazione righe fattura: kit (brief-fix-importi-riga-fattura-zero §4.7-bis) ──
     # Dati incoerenti a monte, non input dell'utente: 409 e banner, perche' la
     # correzione sta sul documento sorgente e non su questa schermata.
     "E_ATTIVITA_KIT_SENZA_PADRE": "CONFLITTO_STATO",
@@ -162,8 +163,7 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # ══════════════════════════════════════════════════════════════════
     # ── 500: il framework di automazione e le anomalie ──
     "E_AUDIT_UPDATE": "TECNICO",
-    # ── Autenticazione ──
-    "E_AUTHENTICATION_FAILED": "TECNICO",
+    "E_AUTHENTICATION_FAILED": "NON_AUTENTICATO",
     "E_AUTH_USER_SOGGETTO_CON_PIVA": "DATO_ERRATO",
     # Il dato manca sul SOGGETTO, non sul form in corso: evidenziare un
     # campo manderebbe a cercare dove non c'e'.
@@ -171,18 +171,15 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA": "TECNICO",
     # Difetto di programmazione, non condizione di dominio: 500.
     "E_BATCH_ARRAY_DISALLINEATI": "TECNICO",
-    # ── Refactor operatore-emittenti (Q6 + D3) ──
     "E_BA_ADMIN_GLOBALE_VIETATO": "NON_PERMESSO",
     "E_BA_SOGGETTO_INCOERENTE_ISTANZA": "DATO_ERRATO",
     "E_BILLING_ACCOUNT_UTILITY_NULL": "DATO_ERRATO",
     "E_BOM_IVA_DISCORDANTE": "DATO_ERRATO",
-    # ── Catalogo BoM — guard immutabilita' struttura ──
     # E_BOM_MODIFICA_VIETATA e E_BOM_VALIDO_AL_INVALIDO sono sollevati
     # dal trigger catalogo.trgfn_articoli_componenti_block_modifica_struttura
     # come defense-in-depth oltre lo schema (pattern chiudi+inserisci).
     "E_BOM_MODIFICA_VIETATA": "CONFLITTO_STATO",
     "E_BOM_VALIDO_AL_INVALIDO": "DATO_ERRATO",
-    # ── 409 ──
     "E_CANALE_ORIGINE_IMMUTABILE": "CONFLITTO_STATO",
     "E_CATALOGO_ARTICOLO_NOT_FOUND": "NON_TROVATO",
     "E_CATALOGO_COMPONENTE_NOT_FOUND": "NON_TROVATO",
@@ -215,7 +212,6 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_CODICE_NON_MODIFICABILE": "CONFLITTO_STATO",
     "E_COD_INT_RUOLO": "NON_TROVATO",
     "E_COERENZA_ID": "DATO_ERRATO",
-    # ── 409: in conflitto con lo stato attuale ──
     # Sette guard `*_protect_update` / `guard_immutabili` su
     # anagrafiche, config e pratiche: la colonna e' congelata. Stessa
     # famiglia (e stesso status) degli immutabili del lotto 1.
@@ -224,7 +220,6 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # transizione terminale IRREVERSIBILE bloccata → conflitto di stato (409),
     # come la famiglia immutabilita`. Banner: e` un blocco d'azione grave.
     "E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE": "CONFLITTO_STATO",
-    # ── 409: in conflitto con lo stato attuale ──
     "E_COMMESSA_ATTIVITA_GIA_EMESSA": "CONFLITTO_STATO",
     "E_COMMESSA_ATTIVITA_NON_COERENTE": "DATO_ERRATO",
     "E_COMMESSA_ATTIVITA_NOT_FOUND": "NON_TROVATO",
@@ -245,7 +240,6 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_COMMESSA_PUSH_PARZIALE_VIETATO": "NON_ESEGUIBILE",
     "E_COMMESSA_ROOT_CONFLITTO": "CONFLITTO_STATO",
     "E_COMMESSA_SORGENTE_ALTRA_COMMESSA": "CONFLITTO_STATO",
-    # ── Commesse ──
     "E_COMMESSA_SORGENTE_SCONOSCIUTA": "DATO_ERRATO",
     "E_COMMESSA_STATO_TRANSIZIONE_INVALIDA": "CONFLITTO_STATO",
     "E_COMMESSA_VALIDATION": "DATO_ERRATO",
@@ -293,7 +287,6 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # arriva PRIMA del save evitando il flag `listino_senza_versione_oggi`
     # come zona grigia.
     "E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA": "NON_ESEGUIBILE",
-    # ── Codici contratto refactor modalita 2026-05-15 ──
     # Sostituiscono i vecchi guard di "modalita C" rimossi col modello
     # unificato. Mappati dal team DB nel CSV `messaggi_errore` (450-454).
     "E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE": "NON_ESEGUIBILE",
@@ -325,7 +318,6 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DATA_FINE_NON_MAGGIORE_DI_INIZIO": "DATO_ERRATO",
     "E_DATI_SOCIETARI_REQUIRED_MANCANTI": "DATO_ERRATO",
     "E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO": "NON_TROVATO",
-    # ── 400 · il problema non e' un campo del form (`show_error_banner`) ──
     "E_DATI_SOCIETARI_TIPO_DETTAGLIO_NON_CONFIGURATO": "DATO_ERRATO",
     "E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO": "DATO_ERRATO",
     # Gate solo-trasporto all'emissione (trgfn_ddt_guard_causale_emissione,
@@ -381,7 +373,6 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Gemello di E_DELETE_NOT_ALLOWED, ma qui il blocco DIPENDE dallo
     # stato: esistono legami fulfillment. Tolti quelli, si cancella.
     "E_DELETE_BLOCKED_FUL": "CONFLITTO_STATO",
-    # ── 403: non e' un'azione dell'operatore, e non dipende dallo stato ──
     # Tre punti, stessa sostanza: righe ordine/DDT e log non si
     # cancellano MAI dall'applicazione (script.trgfn_delete_block_by_guc,
     # vendite.trgfn_dlt_block_ordrig_ddtrig, vendite.trgfn_logs_guard_delete).
@@ -389,7 +380,6 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # non uno stato sfavorevole.
     "E_DELETE_NOT_ALLOWED": "NON_PERMESSO",
     "E_DISSOCIAZIONE_PARENT_CON_ATTIVITA": "CONFLITTO_STATO",
-    # ── Documenti — guard asset (Tranche G) ──
     # Sollevati dai trigger DB Fase A
     # (trgfn_template_asset_block_delete, trgfn_template_asset_protect_file).
     "E_DOCUMENTI_ASSET_DELETE_BLOCKED": "CONFLITTO_STATO",
@@ -398,7 +388,6 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Coerenza referenziale del payload (template versione / tipo output /
     # sorgente / emittente discordanti): e' l'input a essere incoerente -> 400.
     "E_DOCUMENTI_GENERATO_COERENZA": "DATO_ERRATO",
-    # ── Documenti — guard su `documenti_generati` (append-only + snapshot) ──
     # Registrati il 2026-08-05. Le quattro guard che li sollevano esistevano
     # gia', ma chiamavano `fn_log_and_raise_error` senza valori variadici:
     # una funzione VARIADIC text[] non e' chiamabile con zero argomenti
@@ -422,13 +411,11 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # altri overlap (E_VENDITE_PROMO_OVERLAP / E_VENDITE_LISTINO_VERSIONE_OVERLAP):
     # codice 409 dedicato invece del generico E_DOCUMENTI_VALIDATION (400).
     "E_DOCUMENTI_VERSIONE_OVERLAP": "CONFLITTO_STATO",
-    # ── Documenti — guard ciclo vita versioni (Tranche F) ──
     # Sollevati dai trigger DB Fase A
     # (trgfn_template_documenti_versioni_protect_pubblicata,
     # trgfn_template_documenti_versioni_block_delete).
     "E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE": "CONFLITTO_STATO",
     "E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO": "CONFLITTO_STATO",
-    # ── 400 · il problema non e' un campo del form (`show_error_banner`) ──
     # La riga di distinta base esiste ma non e' valida alla data
     # documento: si sceglie un altro componente, non si corregge un campo.
     "E_DOC_COMPONENTE_BOM_NON_VALIDA": "DATO_ERRATO",
@@ -446,7 +433,6 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DOC_COMPONENTE_OBBLIGATORIO": "DATO_ERRATO",
     "E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO": "DATO_ERRATO",
     "E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE": "CONFLITTO_STATO",
-    # ── 422: la richiesta si capisce e non si puo' eseguire ──
     # Gemello di `E_LISTINO_VERSIONE_NON_ATTIVA`: l'articolo composito
     # c'e', la sua distinta non ha componenti validi ALLA DATA. Non e'
     # un «non trovato», e' una configurazione che non regge quel giorno.
@@ -480,7 +466,6 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_ERRORE_PARAMETRI": "DATO_ERRATO",
     # <- ERRORE_PARAMETRI_TABELLA  (vivo)
     "E_ERRORE_PARAMETRI_TABELLA": "DATO_ERRATO",
-    # ── Documenti — guard timeline append-only (Decisione 76) ──
     # Sollevati dai trigger DB trgfn_documenti_generati_eventi_a10_*.
     "E_EVENTO_DOCUMENTO_DELETE_VIETATA": "CONFLITTO_STATO",
     "E_EVENTO_DOCUMENTO_UPDATE_VIETATA": "CONFLITTO_STATO",
@@ -575,7 +560,6 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # l'ordine, non un diritto che manca all'operatore (403).
     "E_FORNITORE_BLOCCATO": "CONFLITTO_STATO",
     "E_FORNITORE_ID_INVALIDO": "DATO_ERRATO",
-    # ── 409: in conflitto con lo stato attuale ──
     "E_FORNITORE_NON_ATTIVO": "CONFLITTO_STATO",
     "E_FORNITORE_NON_TROVATO": "NON_TROVATO",
     "E_FORNITORI_RITENUTA_ALIQUOTA_OBBLIGATORIA": "DATO_ERRATO",
@@ -594,19 +578,17 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_HANDLER_NON_REGISTRATO": "TECNICO",
     "E_IDEMPOTENCY_IN_PROGRESS": "CONFLITTO_STATO",
     "E_IDEMPOTENCY_KEY_REQUIRED": "DATO_ERRATO",
-    "E_IDENTITA_NON_ATTIVA": "TECNICO",
+    "E_IDENTITA_NON_ATTIVA": "NON_AUTENTICATO",
     "E_ID_FISCALI_DIVERSI": "DATO_ERRATO",
     # Guard DB all'emissione DDT (tipi obbligatori dell'ambito mancanti):
     # il FE previene (Conferma disabilitata), il trigger resta la fonte
     # di verita'.
     "E_INDIRIZZO_DOC_OBBLIGATORIO": "NON_ESEGUIBILE",
-    # ── Satelliti fattura: esiti PARZIALI dei task per-fattura (D-Q) ──
     # Non sono errori di richiesta: viaggiano su `task_runs.error_code` e
     # arrivano all'utente dal cockpit. Registrarli serve al `user_message`:
     # senza policy il fallback li mostrerebbe tutti come «Errore di
     # validazione», che non dice ne' cosa e' successo ne' dove guardare.
     "E_INDIRIZZO_FATTURA_MANCANTE": "NON_ESEGUIBILE",
-    # ── Anagrafiche / Soggetti e trigger ──
     "E_INDIRIZZO_OBBLIGATORIO_MANCANTE": "DATO_ERRATO",
     "E_INDIRIZZO_SNAPSHOT_NOT_FOUND": "NON_TROVATO",
     "E_INVALID_ID": "DATO_ERRATO",
@@ -624,7 +606,6 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # C-3: polling di un giro (job coda) inesistente o non di proprieta`
     # dell'operatore → 404 (senza registrazione cadrebbe sul fallback 400).
     "E_JOB_NON_TROVATO": "NON_TROVATO",
-    # ── 501: disattivato di proposito ──
     # ⚠️ Distinto dal gemello NON_TROVATO: qui il tipo **esiste** ed e'
     # stato disattivato. Stessa famiglia di `E_AI_DISABLED` e
     # `E_SHOP_NON_DISPONIBILE`, gia' a 501: funzione presente ma non
@@ -636,7 +617,7 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # `E_PIPELINE_TASK_HANDLER_NOT_FOUND` — difetto di deploy, non
     # risorsa mancante.
     "E_JOB_TYPE_NON_TROVATO": "TECNICO",
-    "E_JWT_SENZA_IDENTITA": "TECNICO",
+    "E_JWT_SENZA_IDENTITA": "NON_AUTENTICATO",
     "E_KIT_QUANTITA_DISOMOGENEE": "CONFLITTO_STATO",
     "E_LISTINO_COMPONENTE_COERENZA_BOM": "DATO_ERRATO",
     "E_LISTINO_RIGA_COMPOSITO_VIETATO": "DATO_ERRATO",
@@ -659,7 +640,6 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # stessa cosa ed era gia' 422.
     "E_LISTINO_VERSIONE_NON_ATTIVA": "NON_ESEGUIBILE",
     "E_LOCK_COLUMNS": "TECNICO",
-    # ── Sessioni utente ──
     "E_LOGOUT_NO_TOKEN": "DATO_ERRATO",
     # Sollevato da dbops.fn_get_lookup_codici (migration 20260520-04+06)
     # quando la tabella passata non ha la struttura attesa
@@ -717,7 +697,7 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_NOTE_CONFIG": "TECNICO",
     "E_NOTE_RIGA_MISMATCH": "DATO_ERRATO",
     "E_NOTE_TARGET_ID": "DATO_ERRATO",
-    "E_NOT_AUTHENTICATED": "TECNICO",
+    "E_NOT_AUTHENTICATED": "NON_AUTENTICATO",
     # Mutua esclusività offerta → (contratto XOR ordine): la stessa offerta si
     # materializza in UNA sola forma. Famiglia "già materializzato" = conflitto
     # di stato → 409 uniforme (coerente con E_ORD_OFFERTA_GIA_CONVERTITA sopra).
@@ -824,7 +804,6 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PERMESSO_NEGATO": "NON_PERMESSO",
     "E_PERMISSION_DENIED": "NON_PERMESSO",
     "E_PIPELINE": "DATO_ERRATO",
-    # ── Vendite / Pipeline ──
     "E_PIPELINE_DOMINIO": "DATO_ERRATO",
     "E_PIPELINE_DOMINIO_NOT_FOUND": "NON_TROVATO",
     "E_PIPELINE_DRIVER_MAX_ITER": "TECNICO",
@@ -910,7 +889,6 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PREV_NESSUNA_RIGA": "DATO_ERRATO",
     # <- PREV_NESSUNA_RIGA_ATTIVA  (vivo)
     "E_PREV_NESSUNA_RIGA_ATTIVA": "CONFLITTO_STATO",
-    # ── Preventivi vendita ──
     "E_PREV_NOT_FOUND": "NON_TROVATO",
     # Vie d'uscita per l'operatore (brief-db-vie-uscita-operatore §5.1):
     # l'annullamento del preventivo torna disponibile da EMESSO/ACCETTATO, e
@@ -984,7 +962,6 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Sollevato dal guard fulfillment DB (trgfn_ordini_ful_guard_consistenza)
     # in evasione multi-DDT (brief DB C2).
     "E_QTA_SUPERA_RESIDUO": "CONFLITTO_STATO",
-    # ── 500: anomalie tecniche ──
     "E_QUERY_FAILED": "TECNICO",
     # Tre funzioni con SQL dinamico: la tabella non esiste o non ha le
     # colonne attese. E' un montaggio sbagliato, non un dato sbagliato.
@@ -1056,7 +1033,6 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_RIGA_LISTINO_VERSIONE_CHIUSA": "CONFLITTO_STATO",
     "E_RIGA_PREZZO_PENDENTE": "CONFLITTO_STATO",
     "E_RISORSA_UMANA_SOGGETTO_MISMATCH": "DATO_ERRATO",
-    # ── 500: l'unico dove l'operatore non puo' farci niente ──
     # anagrafiche.trgfn_identita_digitali_guard_coerenza, ramo ELSE:
     # qualcuno ha esteso l'enum dei ruoli applicativi senza scrivere la
     # regola, e il guard «non apre per omissione». Non e' un errore di
@@ -1078,7 +1054,6 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # che non esiste sarebbe peggio di un errore». Non e' l'operatore.
     "E_SCADENZE_TERMINE_INVALIDO": "TECNICO",
     "E_SCADENZE_TERMINE_MANCANTE": "CONFLITTO_STATO",
-    # ── 403: non permesso ──
     # script.trgfn_guard_emittente_scope: fn_check_user_emittente_scope
     # nega. E' il perimetro dell'operatore, non uno stato sfavorevole.
     "E_SCOPE_EMITTENTE": "NON_PERMESSO",
@@ -1236,7 +1211,6 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Fallback per DatabaseError non riconosciute dai marker noti
     # nello schema `ui` (allineato a E_VENDITE_PRICING_FAILED).
     "E_UI_GENERIC_FAILED": "DATO_ERRATO",
-    # ── UI — personalizzazioni liste (schema ui, sviluppo-personalizzazioni-liste.md) ──
     # E_UI_LISTA_NON_TROVATA: sollevato da fn_resolve_lista_config quando il codice
     # lista non esiste o e' attivo=false (seedato in messaggi_errore.csv id 427).
     # Gli E_UI_VISTA_SQL_NON_TROVATA / E_UI_CAMPO_SORGENTE_NON_TROVATO sono guard
@@ -1254,7 +1228,6 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_UI_VISTA_SQL_NON_TROVATA": "DATO_ERRATO",
     "E_UOM_MISMATCH": "CONFLITTO_STATO",
     "E_UOM_MISSING": "DATO_ERRATO",
-    # ── Permessi e autorizzazioni ──
     "E_USER_DISABILITATO": "NON_PERMESSO",
     "E_USER_EMITTENTE_DELETE_VIETATO": "DATO_ERRATO",
     # 423 -> 403 il 2026-08-06 (audit coerenza status). Il 423 e' il lock
@@ -1267,7 +1240,6 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # intercetta il 429 PRIMA di leggere il codice (e' il throttle per
     # IP) e il messaggio del DB coi minuti rimanenti andrebbe perso.
     "E_UTENTE_BLOCCATO": "NON_PERMESSO",
-    # ── Profilo utente / login guard ──
     "E_UTENTE_DISABILITATO": "NON_PERMESSO",
     "E_UTENTE_NON_ATTIVO": "NON_PERMESSO",
     "E_UTENTE_SCADUTO": "NON_PERMESSO",
@@ -1291,7 +1263,6 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # merce (nessun ordine, residuo merce). 422: lo step non e' processabile
     # finche' l'operatore non genera l'ordine dal Pannello Smistamento.
     "E_VENDITA_SMISTAMENTO_NON_ESEGUITO": "NON_ESEGUIBILE",
-    # ── Contratti v5 (F2-BE-05/06) ──
     # Codici sollevati dai trigger DB trgfn_contratti_guard_modalita_c_*
     # e trgfn_contratti_utilities_guard_tipo_classe.
     "E_VENDITE_CONTRATTO_OVERLAP": "CONFLITTO_STATO",
@@ -1320,9 +1291,7 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # blocca sovrapposizioni di versioni listino ATTIVE. La risoluzione richiede
     # chiusura della versione precedente (valido_al = nuova_valido_dal - 1).
     "E_VENDITE_LISTINO_VERSIONE_OVERLAP": "CONFLITTO_STATO",
-    # ── Vendite / promo articoli (F2-BE-03) ──
     "E_VENDITE_NOT_FOUND": "NON_TROVATO",
-    # ── Pricing v5 resolver (F2-BE-09/10) ──
     # Codici di dominio sollevati dal DB via script.fn_log_and_raise_error.
     # Policy UI: operatore/admin vede messaggio business-safe; detail tecnico
     # nel payload solo se DJANGO_API_EXPOSE_TECHNICAL_DETAILS=1.
@@ -1336,8 +1305,7 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_VERSIONE_STATO_TRANSIZIONE_INVALIDA": "CONFLITTO_STATO",
     "E_VESTE_NON_ATTIVA": "NON_PERMESSO",
     # <- W_TXID_NOT_REGISTERED  (vivo)
-    "E_W_TXID_NOT_REGISTERED": "TECNICO",
-    # ── Presa in carico flusso: eligibilita' reparto-first (20260618-05) ──
+    "E_W_TXID_NOT_REGISTERED": "AVVISO",
     # Casi A/D (skill-lock): l'operatore non ha competenza attiva per il tipo
     # di step. Caso B (reparto, no skill): l'operatore non appartiene al
     # reparto anagrafico instradato. Entrambi sollevati da
@@ -1352,7 +1320,6 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # compilato, non uno stato che impedisce l'azione. Era 409.
     "FLUSSI_ESITO_OBBLIGATORIO": "DATO_ERRATO",
     "FLUSSI_GIA_ASSEGNATO": "CONFLITTO_STATO",
-    # ── Flussi: presa in carico, esiti, coerenza del template ──
     "FLUSSI_PRESA_CARICO_STATO_ERRATO": "CONFLITTO_STATO",
     # Status rivisto il 2026-08-05 (rilettura DB del brief
     # codice-errore-strutturato, ok Tid): idem, autorizzazione: il flusso e'
@@ -1369,16 +1336,13 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "PRATICHE_CHIUSURA_FLUSSI_APERTI": "CONFLITTO_STATO",
     "PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI": "CONFLITTO_STATO",
     "PRATICHE_CHIUSURA_FLUSSO_PREMATURO": "CONFLITTO_STATO",
-    # ── Pratiche workflow v2 (D1/D3/D4, analisi-pratiche-workflow-v2) ──
     # Codici del catalogo DB (messaggi_errore 483/484/485) sollevati dai
     # guard via script.fn_log_and_raise_error; il service li intercetta
     # via marker e rilancia ServiceError con lo stesso codice del DB.
     "PRATICHE_FLUSSO_NON_RIPETIBILE": "CONFLITTO_STATO",
-    # ── Pratiche: coerenza del contesto ──
     "PRATICHE_ISTANZA_NON_COERENTE": "DATO_ERRATO",
     "PRATICHE_ISTANZA_SENZA_SOGGETTO": "DATO_ERRATO",
     "PRATICHE_LISTA_CONTESTO_PARAMETRI_ESCLUSIVI": "DATO_ERRATO",
-    # ── Pratiche: stato e ciclo di vita ──
     "PRATICHE_PIN_IMMUTABILE": "CONFLITTO_STATO",
     "PRATICHE_PREREQUISITI_NON_SODDISFATTI": "CONFLITTO_STATO",
     "PRATICHE_RUOLO_NON_COERENTE": "DATO_ERRATO",
@@ -1401,9 +1365,7 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "PREV_REVISIONE_BOZZA_ESISTENTE": "CONFLITTO_STATO",
     "PREV_REVISIONE_STATO_NON_AMMESSO": "CONFLITTO_STATO",
     "PREV_STATO_CORRENTE_NON_TROVATO": "NON_TROVATO",
-    # ── Preventivi: stato, revisione, precondizioni di emissione ──
     "PREV_TRANSIZIONE_NON_AMMESSA": "CONFLITTO_STATO",
-    # ── Configurazione di sistema: non e' l'utente a sbagliare ──
     "SEQUENZA_NON_CONFIGURATA": "TECNICO",
     "SOSPENSIONI_FLUSSO_NON_COERENTE": "DATO_ERRATO",
     "TEMPLATE_DEFINIZIONE_CONGELATA": "CONFLITTO_STATO",
@@ -1413,5 +1375,5 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO": "DATO_ERRATO",
     "TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER": "DATO_ERRATO",
     "TEMPLATE_FLUSSO_PROIEZIONE_STEP_DOMINIO": "DATO_ERRATO",
-    "W_TXID_NOT_REGISTERED": "TECNICO",
+    "W_TXID_NOT_REGISTERED": "AVVISO",
 }
