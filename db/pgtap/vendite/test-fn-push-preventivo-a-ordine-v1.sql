@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: CREATE TRIGGER su vendite.preventivi — fault injection sulla transizione a
+--   EVASO, per dimostrare che il push e' atomico. Il ruolo applicativo ha la
+--   DML ma non il privilegio TRIGGER, e non deve averlo.
 -- pgTAP test per Zero ERP
 --
 -- Test: vendite.fn_push_preventivo_a_ordine — ramo ORDINE dello split preventivo

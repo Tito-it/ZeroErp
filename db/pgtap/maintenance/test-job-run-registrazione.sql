@@ -52,8 +52,15 @@ SELECT ok(
 );
 
 -- ---- 7: CHECK rifiuta origine non valida ----
+-- ⚠️ Si passa dall'entry point, non da una INSERT diretta. maintenance.job_run_log
+--   la scrivono i job (maintenance.fn_run_and_log) e script.fn_job_run_start, che e'
+--   SECURITY DEFINER: il ruolo applicativo ha solo SELECT, ed e' corretto cosi'.
+--   La INSERT diretta falliva con «permesso negato» invece che col CHECK — e il test
+--   lo diceva forte perche' pretende lo SQLSTATE (23514), che e' esattamente il motivo
+--   per cui lo si pretende. Dall'entry point il CHECK scatta lo stesso, e il collaudo
+--   diventa piu' fedele: e' la porta da cui ci passa l'applicazione.
 SELECT throws_ok(
-    $$ INSERT INTO maintenance.job_run_log(jobname, origine) VALUES ('t_check','XXX') $$,
+    $$ SELECT script.fn_job_run_start('t_check','XXX') $$,
     '23514',
     NULL,
     'CHECK chk_job_run_log_origine rifiuta origine non valida'

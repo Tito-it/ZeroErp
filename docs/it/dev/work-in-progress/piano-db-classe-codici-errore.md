@@ -1,9 +1,10 @@
 # Piano DB — classe dei codici errore
 
 **Chi:** team DB (`dev/db-tid`).
-**Guida generale e ragioni di ogni scelta:** [brief-db-be-classe-codici-errore](brief-db-be-classe-codici-errore.md) — 18 decisioni, le trappole, i perché. **Questo file non le ripete: le esegue.**
+**Guida generale e ragioni di ogni scelta:** [brief-db-be-classe-codici-errore](brief-db-be-classe-codici-errore.md) — 20 decisioni, le trappole, i perché. **Questo file non le ripete: le esegue.**
 **Piano gemello:** [piano-be-classe-codici-errore](piano-be-classe-codici-errore.md).
-**Stato:** 🔵 da cominciare.
+**Stato:** 🟡 **in corso** — ✅ D-1 e D-2 fatti (2026-08-07). Prossimo: **D-3** (split `E_VALIDAZIONE`) o **D-4** (le tabelle).
+✅ **Vocabolario a 10 valori confermato da Tid** (2026-08-07): `NON_AUTENTICATO` e `ERRORE_ESTERNO` restano.
 
 ---
 
@@ -16,8 +17,9 @@ verifica ha tolto l'unica dipendenza che c'era:
 > Il piano originale aveva al punto 3 *«il BE genera il CSV `codice,classe` da
 > `error_policies.py`»*. **Non serve il BE**: la mappa status → classe è
 > deterministica e il file è nel repo. Misurato: **654 codici su 659** si
-> convertono automaticamente, e i 5 che restano sono esattamente i `401`×4 e il
-> `502`×1 **già esclusi dal vocabolario** (§4 del brief).
+> convertono automaticamente, e i 5 che restano sono i `401`×4 e il `502`×1.
+> ⚠️ Quei 5 il brief li dava «fuori dal vocabolario»: **non lo erano** — vedi il
+> risultato del D-1.
 
 Quindi: **nessun passo di questo piano attende il BE.** Il DB arriva fino in
 fondo da solo, e quando il BE riparte trova il catalogo pronto e la vista da cui
@@ -39,8 +41,8 @@ additivo e reversibile.
 
 | # | Passo | Dipende da | Perché lì |
 |---|---|---|---|
-| **D-1** | Estrarre il CSV `codice,classe` da `error_policies.py` | — | è la base di tutto e non costa niente: uno script, 654 righe automatiche |
-| **D-2** | Le **~32 decisioni residue**: classificare o ritirare | D-1 | il `NOT NULL` le bloccherebbe al primo seed |
+| ✅ **D-1** | ~~Estrarre il CSV~~ **fatto** — 689 righe, 656 classificate, 33 al D-2 | — | ⚠️ ne è uscito il vocabolario a **10 valori** |
+| ✅ **D-2** | ~~Le 33 decisioni residue~~ **fatto** — 33 classi, 29 ritiri, **zero righe senza classe** | D-1 | ⚠️ serviva un **terzo asse** al discriminante |
 | **D-3** | ⏱ **Spezzare `E_VALIDAZIONE`** — 10 funzioni, 5 domini | — | 🔴 **prima del seed**, o il dato certifica una classe falsa |
 | **D-4** | `config.classi_errore` + `config.codici_errore` (`00_schema`) | — | il DDL può nascere quando si vuole, ma serve prima del seed |
 | **D-5** | Seed dei due CSV, **dentro `20260614-08`** | D-1 · D-2 · D-3 · D-4 | ⚠️ il passo che rompe la CI se fatto nel modo ovvio |
@@ -58,46 +60,226 @@ generare.
 
 ## 2. I passi, in dettaglio
 
-### D-1 · Estrarre il CSV `codice,classe`
+### D-1 · ✅ **FATTO** — 2026-08-07
 
-Uno script che legge `backend/apps/core/services/error_policies.py` (in sola
-lettura: è perimetro BE) e produce `codice,classe`.
+**Consegnato:**
 
-**La mappa, deterministica:**
+* [`scripts/estrai_classi_codici_errore.py`](../../../../scripts/estrai_classi_codici_errore.py)
+  — bootstrap una tantum, con in testata il perché è una tantum e la trappola
+  del parser;
+* [`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`](../../../../db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv)
+  — **689 righe**, colonne `codice,classe,obsoleto_dal,note`.
 
-| `http_status` | `classe` | Quanti |
-|---|---|---|
-| 400 | `DATO_ERRATO` | 234 |
-| 409 | `CONFLITTO_STATO` | 224 |
-| 404 | `NON_TROVATO` | 84 |
-| 500 | `TECNICO` | 63 |
-| 403 | `NON_PERMESSO` | 23 |
-| 422 | `NON_ESEGUIBILE` | 22 |
-| 501 | `NON_DISPONIBILE` | 4 |
+⚠️ **Il CSV nasce completo, non solo `codice,classe`** — correzione al piano
+originale: `obsoleto_dal` va nel seed, perché i dati di `80_data` si cambiano
+**dal CSV** e mai con `UPDATE` diretti. Le 50 date di ritiro sono già dentro,
+prese dalla riga `it` del catalogo.
 
-⚠️ **Il parser va scritto delimitando ogni voce con la chiave successiva**, non
-con l'indentazione: **32 voci sono su una riga sola** e un parser che cerca
-`http_status=` a inizio riga le perde. È il difetto che ha già prodotto due
-misure sbagliate in questo cantiere (§4 del brief).
+**L'universo è il catalogo, non le policy.** Un codice esiste se il DB può
+nominarlo: 689 righe, e `PREV_STATO_NON_MODIFICABILE` (morto) resta fuori da solo,
+senza bisogno di una regola apposta.
 
-**Da decidere a mano, 5 codici** (fuori dal vocabolario di dominio):
+| Classe | Righe |
+|---|---:|
+| `DATO_ERRATO` | 234 |
+| `CONFLITTO_STATO` | 223 |
+| `NON_TROVATO` | 84 |
+| `TECNICO` | 60 |
+| **`NULL` — il lavoro del D-2** | **33** |
+| `NON_PERMESSO` | 23 |
+| `NON_ESEGUIBILE` | 22 |
+| `NON_DISPONIBILE` | 4 |
+| `NON_AUTENTICATO` | 4 |
+| `AVVISO` | 1 |
+| `ERRORE_ESTERNO` | 1 |
+| **totale** | **689** |
 
-* `E_JWT_SENZA_IDENTITA`, `E_IDENTITA_NON_ATTIVA`, `E_AUTHENTICATION_FAILED`,
-  `E_NOT_AUTHENTICATED` — 401, costruiti dal middleware;
-* `E_AI_PROVIDER_ERROR` — 502.
+#### ⚠️ I 5 «fuori vocabolario» non erano fuori — il vocabolario va a 10
 
-⚠️ **Non sono «senza classe»: sono fuori dal percorso che la classe governa.**
-Vanno comunque in `codici_errore` (D9 del brief: il catalogo è di tutti) — la
-classe più onesta per tutti e 5 è `TECNICO`, con la ragione in `note`. Da
-confermare con Tid al momento del seed.
+Il brief dichiarava 401 e 502 «fuori dal vocabolario di dominio, da mappare a
+mano nel backend». **Falso**: tutti e cinque sono righe del catalogo, quindi con
+la FK vogliono un padre e con `classe NOT NULL` vogliono una classe. È lo stesso
+identico caso di `AVVISO`, ed è la terza volta che si presenta.
 
-**Escludere** `PREV_STATO_NON_MODIFICABILE`: è morto (§7.2 del brief).
+✅ **Confermato da Tid (2026-08-07)**: `NON_AUTENTICATO` (401, 4 codici) e
+`ERRORE_ESTERNO` (502, 1). Ragionamento in §4.3 del brief.
 
-✅ **Verifica:** 659 voci lette, 654 mappate, 5 residue nominate.
+⚠️ **Il BE aveva messo quei 5 su `TECNICO`** nel proprio CSV, seguendo una
+versione precedente di questo piano. Non è un conflitto: il loro status è scritto
+a mano perché quei codici non passano dall'exception handler, quindi la classe a
+catalogo non cambia la risposta HTTP. Le due sorgenti restano diverse su 5 righe,
+e **fa fede il catalogo**.
+
+#### ✅ Gli scarti di distribuzione, riconciliati
+
+Le policy davano 224 `CONFLITTO_STATO` e 63 `TECNICO`, il CSV ne dà 223 e 60. **I
+tre scarti sono spiegati tutti**, e la verifica valeva la pena:
+
+| Scarto | Perché |
+|---|---|
+| `CONFLITTO_STATO` −1 | `PREV_STATO_NON_MODIFICABILE` (409) è morto e non è a catalogo |
+| `TECNICO` −2 | `W_TXID_NOT_REGISTERED` è registrato **due volte** in `error_policies.py` (col e senza prefisso `E_`), entrambe a 500; la sua riga di catalogo è una sola e va ad `AVVISO` |
+| `TECNICO` −1 | idem `MESSAGGIO_NON_DEFINITO`: due policy, una riga di catalogo |
+
+⭐ **Scoperta collaterale:** in `error_policies.py` ci sono **tre coppie**
+registrate sotto entrambi i nomi — `SEQUENZA_NON_CONFIGURATA`,
+`MESSAGGIO_NON_DEFINITO`, `W_TXID_NOT_REGISTERED`. **Non è un difetto**: è la
+cintura della campagna di rinomina, che tiene risolvibile il nome vecchio finché
+il diario lo contiene. Va saputo perché rende il §7.2 del brief più preciso — il
+BE non ha il codice «sotto un altro nome», ce l'ha **sotto tutti e due**.
 
 ---
 
-### D-2 · Le ~32 decisioni residue
+#### 🔴 Come è stato estratto — e perché non si può più rifare
+
+`python3 scripts/estrai_classi_codici_errore.py` legge il catalogo e
+`error_policies.py`, incrocia, riscrive il CSV.
+
+⚠️ **Non gira più, e non va riparato.** Poche ore dopo questa estrazione il BE ha
+eseguito il proprio B-3: `error_policies.py` è stato diviso in quattro moduli e
+**non contiene più nessun `http_status=` per codice**. La sorgente è sparita.
+
+**Conseguenza che vale la pena scrivere:** da questo momento
+`codici_errore.csv` **è** il portatore delle 659 decisioni su questo lato — non
+c'è più un posto da cui ri-dedurle. Lo script resta come reperto: la mappa
+`CLASSE_DA_STATUS` è l'unica forma in cui quella corrispondenza è ancora scritta
+qui.
+
+*(La finestra si è chiusa da sola, e per fortuna dopo. Se il D-1 fosse slittato
+di mezza giornata, le 659 classi si sarebbero dovute chiedere al BE invece che
+estrarle — che è esattamente la dipendenza che il §0 aveva appena tolto.)*
+
+La mappa `http_status → classe` vive nella costante `CLASSE_DA_STATUS` dello
+script, ed è la sola cosa da toccare se il vocabolario cambia.
+
+⚠️ **Tre trappole già pagate, tutte e tre nel codice con il commento accanto:**
+
+1. **il parser delimita ogni voce con la chiave successiva**, non con
+   l'indentazione — **32 voci sono su una riga sola**, e un parser che cerca
+   `http_status=` a inizio riga le perde. Ha già prodotto due misure sbagliate in
+   questo cantiere, una delle quali ribaltava una conclusione;
+2. **`W_TXID_NOT_REGISTERED` non prende la classe dalla sua policy**: dice 500
+   perché nessuno l'aveva mai classificato. È un avviso → `AVVISO`, forzato;
+3. **`MESSAGGIO_NON_DEFINITO` e `W_TXID_NOT_REGISTERED` hanno un gemello con
+   prefisso `E_`** nelle policy: lo script accetta entrambi i nomi, ma la riga di
+   catalogo — e quindi la verità — è una sola.
+
+✅ **Verifica fatta:** 659 policy lette, 689 righe scritte, 33 senza classe (il
+D-2), 50 ritirate, e i tre scarti di distribuzione riconciliati uno per uno.
+
+---
+
+### D-2 · 🟡 **Analisi fatta** — 30 ritiri e 3 classificazioni
+
+⚠️ **Il discriminante a due assi del §7.1 del brief NON basta, e ha sbagliato.**
+Applicandolo si concludeva che le famiglie `E_BOM_*`, `E_CONTRATTO_MODALITA_C_*`
+e `E_COMPETENZA*` fossero *«progettate, non ancora agganciate»* — perché hanno
+tracce nel repo e nessuna funzione viva che le solleva.
+
+**È il contrario:** erano agganciate, e sono state **staccate** nel cantiere
+«bonifica riferimenti morti» del 4-5 agosto. Le tracce non sono i resti di un
+disegno da costruire: sono i resti di un disegno **rimosso**.
+
+#### ⭐ Serve un terzo asse: *è mai stato cablato?*
+
+| Asse | Domanda | Dove si legge |
+|---|---|---|
+| 1. funzioni vive che lo sollevano | è agganciato **adesso**? | doc auto-gen ⚠️ (vedi sotto) |
+| 2. file del repo che lo nominano | qualcuno l'ha **pensato**? | tutto il repo |
+| **3. changeSet che l'hanno definito** | è mai stato **cablato**? | `20_code` / `migrations` v1 |
+
+Il terzo separa nettamente:
+
+* **asse 3 > 0 e asse 1 = 0** → era vivo, non lo è più → **superato, si ritira**;
+* **asse 3 = 0 e asse 2 > 0** → mai cablato → **progettato, si classifica**;
+* **asse 2 = 0 e asse 3 = 0** → mai esistito → **si ritira**.
+
+#### L'esito, 33 su 33
+
+| Verdetto | Quanti | Chi |
+|---|---:|---|
+| **superati** — erano in `20_code` v2, nessuna funzione viva li solleva più | 22 | `E_BOM_*` (4), `E_CONTRATTO_MODALITA_C_*` (3), `E_COMPETENZA*` (2), `E_TXID_DBLINK_*` (2), `E_ASSOGGETTAMENTO_NO_MOD`, `E_ATTIVO_CASCADE`, `E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI`, `E_DBLINK_LOG_CONN_MISSING`, `E_FONTE_QUANTITA_NON_VALIDA`, `E_PARAMETER_DEFAULT_TIPO_SOGGETTO_INVALID`, `E_PERC_IVA_NO_MOD`, `E_REFRESH_LOCK_TIMEOUT`, `E_REGOLA_FATTURAZIONE_MANCANTE`, `E_STATO_SCONOSCIUTO`, `E_TASK_RUNTIME` |
+| **superati** — solo nelle migrazioni **v1**, mai portati in v2 | 4 | `E_NUMERAZIONE_IMMUTABILE`, `E_STORICIZZAZIONE`, `E_STORICO_UPD`, `E_STORICO_DLT` |
+| **mai esistiti** — zero tracce ovunque | 3 | `E_INVALID_SNAPSHOT`, `E_DRYRUN_CREATE_TRIGGER`, `E_DATA_FINE_INFERIORE_DI_INIZIO` |
+| **già ritirato dal BE**, vivo solo a catalogo | 1 | `E_AI_CONFIRMATION_REQUIRED` |
+| ✅ **progettati mai cablati → si classificano** | 3 | i tre del push preventivo (sotto) |
+
+**→ 30 ritiri, 3 classificazioni.**
+
+#### I 3 che si classificano, e perché non si ritirano
+
+Sono descritti in `docs/it/backend/vendite/manual/push_preventivo_handler.md`,
+che è un documento di **disegno**: nessun Python li solleva, nessun changeSet li
+ha mai cablati. Cancellarli romperebbe il lavoro di qualcun altro — è esattamente
+il caso da cui mette in guardia la guida dei presidi §3.3.
+
+| Codice | Cosa dice il disegno | Classe |
+|---|---|---|
+| `E_VENDITA_PARAM_MODALITA_FATTURAZIONE_INVALIDA` | «valida `modalita_fatturazione`» — parametro non valido | `DATO_ERRATO` |
+| `E_VENDITA_COMPETENZA_RICHIESTA` | «`meta.competenza_fatturazione`, se assente» — dato obbligatorio mancante | `DATO_ERRATO` |
+| `E_VENDITA_PREVENTIVO_GIA_PUSHATO` | «già pushato» — in conflitto con lo stato attuale | `CONFLITTO_STATO` |
+
+#### ✅ **D-2 CHIUSO** — 33 classi assegnate, 29 ritiri, zero residui
+
+Le 30 letture del punto che sollevava sono fatte, sui changeSet che li
+definivano. **`codici_errore.csv`: 689 righe, zero senza classe.**
+
+| | prima | dopo |
+|---|---:|---:|
+| righe senza classe | 33 | **0** |
+| ritirati (`obsoleto_dal`) | 50 | **79** |
+
+⚠️ **29 nuovi ritiri e non 30**: `E_STATO_SCONOSCIUTO` era già ritirato dal
+cantiere precedente, e la sua data resta quella.
+
+##### Le sette decisioni che non erano meccaniche
+
+1. **`E_BOM_RIGA_NOT_FOUND` ha due punti** — `p_... IS NULL` e `IF NOT FOUND`,
+   che chiedono 400 e 404. **Denominatore sicuro: `NON_TROVATO`**, perché il ramo
+   NULL è un guard sul chiamante e non arriva da chi usa il programma: un 404 lì
+   non fa danno a nessuno. Scritto in `note`.
+2. **`E_FONTE_QUANTITA_NON_VALIDA` → `TECNICO`, non `DATO_ERRATO`**, e il nome
+   inganna: `v_fonte` **non arriva da chi compila**, esce da
+   `vendite.regole_fatturazione_articolo`. Nessuno rimedia finché qualcuno non
+   riconfigura. È la quarta volta che il nome mente in questo filone.
+3. **`E_REGOLA_FATTURAZIONE_MANCANTE` → `TECNICO`**: stessa lettura di
+   `E_PIPELINE_NOT_FOUND`, spostato 404 → 500 nel cantiere del terzo lato. Non è
+   una risorsa che manca, è un pezzo che nessuno ha configurato.
+4. ⭐ **Tre codici `E_*` che erano in realtà avvisi.** `E_TXID_DBLINK_ERROR`,
+   `E_TXID_DBLINK_NULL` e `E_DBLINK_LOG_CONN_MISSING` passavano da
+   `fn_log_error_only` **con fallback locale**: loggavano e non sollevavano mai,
+   quindi non raggiungevano nessuno. Classe **`AVVISO`**, come
+   `W_TXID_NOT_REGISTERED`. Il prefisso `E_` era storico e diceva il falso —
+   conferma che *la famiglia non si legge dal prefisso ma dalla funzione di log
+   che si usa*.
+5. **`E_ASSOGGETTAMENTO_NO_MOD` / `E_PERC_IVA_NO_MOD` / `E_NUMERAZIONE_IMMUTABILE`
+   → `CONFLITTO_STATO`**: famiglia «immutabilità», allineati ai 29 che il cantiere
+   precedente aveva già portato da 400 a 409.
+6. **I due dell'attivazione contratto modalità C → `NON_ESEGUIBILE`**, mentre il
+   trigger di riga (`_RIGA_SENZA_PREZZO`) resta `DATO_ERRATO`. La distinzione è
+   *dove* si rompe: sul campo che si sta compilando, o sulla configurazione che
+   non regge al momento di attivare.
+7. **`E_REFRESH_LOCK_TIMEOUT` → `CONFLITTO_STATO`**: un advisory lock non preso è
+   «qualcun altro ci sta lavorando», non un guasto. Coerente con
+   `E_PIPELINE_LOTTO_IN_ESECUZIONE`.
+
+##### ⚠️ Due cose da sapere, e la seconda va decisa al D-5
+
+* **I 29 ritiri stanno solo in `codici_errore.csv`**, non in `messaggi_errore.csv`.
+  Finché il D-6 non sposta la colonna, il guardrail continua a leggere la vecchia
+  e **non li vede ritirati**. È voluto: nessun cambio di comportamento prima del
+  punto di non ritorno. E semplifica il D-6, che non deve più copiare niente —
+  i valori nascono già nel CSV nuovo.
+* 🔵 **Gli apostrofi nel CSV.** `messaggi_errore.csv` li scrive **raddoppiati**
+  (`e'' un componente`): o è una convenzione del loader, o è un residuo di quando
+  quel seed era fatto di `INSERT` SQL. Non l'ho risolto e **ho evitato gli
+  apostrofi nelle `note`**, così la domanda non si pone per questo file. Va
+  guardata al D-5, perché se è un residuo allora nel catalogo ci sono messaggi che
+  mostrano `''` a chi legge.
+
+---
+
+### D-2 (materiale di riferimento)
 
 I codici a catalogo **senza** policy. Il discriminante è il §7.1 del brief —
 **due assi**, non uno:
@@ -182,7 +364,7 @@ Il changeSet è `runOnChange: true` + `validCheckSums: ANY` — un mirror vivo,
 progettato per essere esteso (l'ha già fatto `obsoleto_dal`).
 
 * un solo changeSet = una transazione = ordine garantito;
-* il vocabolario `classi_errore` (8 righe) nello stesso changeSet, per primo;
+* il vocabolario `classi_errore` (10 righe) nello stesso changeSet, per primo;
 * ⚠️ `nullValue: "NULL"` — **token letterale**, non la cella vuota: su una colonna
   `DATE` la stringa vuota è un errore di cast.
 

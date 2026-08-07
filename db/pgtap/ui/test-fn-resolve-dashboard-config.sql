@@ -1,5 +1,10 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture semina su ui.dashboard_definizione, che a runtime NON scrive nessuno:
+--   ne' una funzione DB ne' il backend. E' seed di migrazione, e il SELECT-only del
+--   ruolo applicativo e' corretto. Verificato cercando gli scrittori, non dedotto
+--   (brief §29.2).
 -- pgTAP test per Zero ERP
 --
 -- Test: ui.fn_resolve_dashboard_config

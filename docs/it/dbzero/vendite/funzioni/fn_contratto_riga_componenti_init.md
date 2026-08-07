@@ -33,7 +33,6 @@ DECLARE
     v_resolve          record;
     v_prezzo           vendite.listini_righe.prezzo%TYPE;
     v_origine          vendite.contratti_righe_componenti.origine_prezzo%TYPE;
-    v_err_msg          text;
     v_inserted         integer := 0;
 BEGIN
     IF p_riga_id IS NULL OR p_riga_id <= 0 THEN
@@ -61,9 +60,10 @@ BEGIN
     IF NOT FOUND THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'fn_contratto_riga_componenti_init',
-            'E_PARAMETRO_INVALIDO',
+            -- rev 2026-08-07: era E_PARAMETRO_INVALIDO, cioe' 400 su un 404.
+            'E_CONTRATTO_RIGA_NON_TROVATA',
             jsonb_build_object('p_riga_id', p_riga_id),
-            NULL::uuid, 'riga contratto non trovata');
+            NULL::uuid, p_riga_id::text);
     END IF;
     IF NOT COALESCE(v_is_composito, FALSE) THEN RETURN 0; END IF;
 
@@ -106,10 +106,16 @@ BEGIN
             IF v_prezzo = 0 AND COALESCE(v_comp.obbligatorio, TRUE) THEN
                 PERFORM script.fn_log_and_raise_error(
                     'vendite', 'fn_contratto_riga_componenti_init',
-                    'E_PARAMETRO_INVALIDO',
+                    -- rev 2026-08-07: era E_PARAMETRO_INVALIDO. Non e' un parametro
+                    --   malformato: e' una regola di dominio, e il codice giusto
+                    --   esisteva gia'. Il suo messaggio dice «Componente obbligatorio
+                    --   [%s]», quindi il valore variadico e' il COMPONENTE, non il
+                    --   documento. Brief terzo lato §19.4.
+                    'E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO',
                     jsonb_build_object('componente_id', v_comp.componente_id,
+                        'riga_id', p_riga_id,
                         'hint', 'prezzo override deve essere diverso da zero'),
-                    NULL::uuid, p_riga_id::text);
+                    NULL::uuid, v_comp.componente_id::text);
             END IF;
             INSERT INTO vendite.contratti_righe_componenti (
                 riga_contratto_id, articolo_componente_id, componente_id,
@@ -157,16 +163,16 @@ BEGIN
                         'contratto_id', v_resolve.contratto_id,
                         'origine', v_resolve.origine)
                 );
-            EXCEPTION WHEN SQLSTATE 'P0001' THEN
-                GET STACKED DIAGNOSTICS v_err_msg = MESSAGE_TEXT;
-                PERFORM script.fn_log_and_raise_error(
-                    'vendite', 'fn_contratto_riga_componenti_init',
-                    'E_DOC_COMPONENTE_LISTINO_MANCANTE',
-                    jsonb_build_object('p_riga_id', p_riga_id,
-                        'componente_id', v_comp.componente_id,
-                        'data_riferimento', p_data_riferimento,
-                        'dettaglio', v_err_msg),
-                    NULL::uuid, p_riga_id::text);
+            -- ⚠️ rev 2026-08-07: qui c'era `EXCEPTION WHEN SQLSTATE 'P0001'`,
+            --   che catturava QUALUNQUE errore di dominio del resolver e lo
+            --   ri-sollevava come E_DOC_COMPONENTE_LISTINO_MANCANTE tenendo solo
+            --   MESSAGE_TEXT: il codice strutturato originale andava perso, e con
+            --   lui il tipo di risposta. Sette codici diversi arrivavano al client
+            --   come 422 «listino non configurato» anche quando il listino non
+            --   c'entrava nulla. Ora l'errore del resolver passa col proprio codice.
+            --   Il blocco BEGIN..END resta: non serve piu' a nulla di funzionale,
+            --   ma toglierlo vorrebbe dire re-indentare venticinque righe per
+            --   niente. Brief terzo lato §18.3.
             END;
         END IF;
         v_inserted := v_inserted + 1;
@@ -190,7 +196,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_contratto_riga_componenti_init(p_riga_id bigint, p_emittente_sr_id bigint, p_data_riferimento date, p_componenti_overrides jsonb)
-IS 'Inizializza componenti BoM per riga contratto. Tutti i componenti attivi inseriti con attivo=TRUE (BoM = contratto immutabile). Guard prezzo=0 solo su obbligatori. No-op su quantita IS NULL. rev 2026-06-05: guard difensivo no-op su tipo_eccezione = ESCLUSIONE. Fix ?? -> ?.';
+IS 'Inizializza componenti BoM per riga contratto. rev 2026-08-07, tre correzioni dal quarto lato (brief §18.3/§19.4): (1) riga inesistente -> E_CONTRATTO_RIGA_NON_TROVATA (897) invece di E_PARAMETRO_INVALIDO, 400 su un 404; (2) componente obbligatorio con prezzo override zero -> E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO, che gia'' esisteva: e'' una regola di dominio, non un parametro malformato, e il suo messaggio nomina il COMPONENTE quindi cambia anche il valore variadico; (3) tolto l''handler EXCEPTION WHEN SQLSTATE P0001, che inghiottiva SETTE codici diversi del resolver listini e li ri-sollevava tutti come listino mancante, perdendo il codice strutturato originale.';
 ```
 
 ---

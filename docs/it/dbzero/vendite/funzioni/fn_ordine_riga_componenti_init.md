@@ -28,7 +28,6 @@ DECLARE
     v_resolve          record;
     v_prezzo           vendite.listini_righe.prezzo%TYPE;
     v_origine          vendite.ordini_righe_componenti.origine_prezzo%TYPE;
-    v_err_msg          text;
     v_inserted         integer := 0;
 BEGIN
     IF p_riga_id IS NULL OR p_riga_id <= 0 THEN
@@ -56,9 +55,12 @@ BEGIN
     IF NOT FOUND THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'fn_ordine_riga_componenti_init',
-            'E_PARAMETRO_INVALIDO',
+            -- rev 2026-08-07: era E_PARAMETRO_INVALIDO, cioe' 400 su un 404.
+            --   Gemello di fn_contratto_riga_componenti_init (20260807-02):
+            --   stessa forma, stesso difetto, trovato dalla stessa lente.
+            'E_ORDINE_RIGA_NON_TROVATA',
             jsonb_build_object('p_riga_id', p_riga_id),
-            NULL::uuid, 'riga ordine non trovata');
+            NULL::uuid, p_riga_id::text);
     END IF;
     IF NOT COALESCE(v_is_composito, FALSE) THEN RETURN 0; END IF;
 
@@ -140,16 +142,16 @@ BEGIN
                         'contratto_id', v_resolve.contratto_id,
                         'origine', v_resolve.origine)
                 );
-            EXCEPTION WHEN SQLSTATE 'P0001' THEN
-                GET STACKED DIAGNOSTICS v_err_msg = MESSAGE_TEXT;
-                PERFORM script.fn_log_and_raise_error(
-                    'vendite', 'fn_ordine_riga_componenti_init',
-                    'E_DOC_COMPONENTE_LISTINO_MANCANTE',
-                    jsonb_build_object('p_riga_id', p_riga_id,
-                        'componente_id', v_comp.componente_id,
-                        'data_riferimento', p_data_riferimento,
-                        'dettaglio', v_err_msg),
-                    NULL::uuid, p_riga_id::text);
+            -- ⚠️ rev 2026-08-07: qui c'era `EXCEPTION WHEN SQLSTATE 'P0001'`,
+            --   che catturava QUALUNQUE errore di dominio del resolver e lo
+            --   ri-sollevava come E_DOC_COMPONENTE_LISTINO_MANCANTE tenendo solo
+            --   MESSAGE_TEXT: il codice strutturato originale andava perso, e con
+            --   lui il tipo di risposta. Sette codici diversi arrivavano al client
+            --   come 422 «listino non configurato» anche quando il listino non
+            --   c'entrava nulla. Ora l'errore del resolver passa col proprio codice.
+            --   Il blocco BEGIN..END resta: non serve piu' a nulla di funzionale,
+            --   ma toglierlo vorrebbe dire re-indentare venticinque righe per
+            --   niente. Brief terzo lato §18.3.
             END;
         END IF;
         v_inserted := v_inserted + 1;
@@ -172,7 +174,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_ordine_riga_componenti_init(p_riga_id bigint, p_emittente_sr_id bigint, p_data_riferimento date, p_componenti_overrides jsonb)
-IS 'Inizializza componenti BoM per riga ordine. Tutti i componenti attivi inseriti con attivo=TRUE (BoM = contratto immutabile). Guard prezzo=0 solo su obbligatori. Fix ?? -> ?. Rev 2026-05-13.';
+IS 'Inizializza componenti BoM per riga ordine. rev 2026-08-07: tolto l''handler EXCEPTION WHEN SQLSTATE P0001 che catturava qualunque errore del resolver listini e lo ri-sollevava come E_DOC_COMPONENTE_LISTINO_MANCANTE tenendo solo MESSAGE_TEXT (brief terzo lato §18.3). rev 2026-08-07 (bis): la riga inesistente solleva E_ORDINE_RIGA_NON_TROVATA (900) invece di E_PARAMETRO_INVALIDO, che dava 400 su un 404 — sesto e ultimo dei punti trovati dalla lente del quarto lato (§19.4).';
 ```
 
 ---
