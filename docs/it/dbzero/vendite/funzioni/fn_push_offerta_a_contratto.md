@@ -43,13 +43,18 @@ BEGIN
      WHERE id = p_offerta_id;
 
     -- Guard: offerta non trovata.
+    -- ⚠️ rev 2026-08-06: qui c'era E_PARAMETRO_INVALIDO. L'operatore leggeva
+    --   «Parametro non valido: offerta non trovata: 42» — una frase che
+    --   contraddice se' stessa — e il backend rispondeva 400 su una condizione
+    --   che e' un 404. Il valore variadico non deve piu' ripetere la frase: il
+    --   messaggio di E_OFFERTA_NON_TROVATA la dice gia'. Brief §18.2/§18.5a.
     IF NOT FOUND THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'fn_push_offerta_a_contratto',
-            'E_PARAMETRO_INVALIDO',
+            'E_OFFERTA_NON_TROVATA',
             jsonb_build_object('offerta_id', p_offerta_id),
             NULL::uuid,
-            'offerta non trovata: ' || p_offerta_id::text
+            p_offerta_id::text
         );
     END IF;
 

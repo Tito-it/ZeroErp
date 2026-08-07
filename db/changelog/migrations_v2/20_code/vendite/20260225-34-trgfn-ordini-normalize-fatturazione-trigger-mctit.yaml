@@ -13,8 +13,10 @@ databaseChangeLog:
   - changeSet:
       id: 20260225-06-trgfn-ordini-normalize-fatturazione-trigger
       author: mctit
-      runOnChange: true
-      validCheckSum:
+      # ⚠️ Era `true`: definisce vendite.trgfn_ordini_normalize, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
         - ANY
       comment: "Estende trgfn_ordini_normalize: eredita fatturazione_trigger da billing_account.fatturazione_ordini su INSERT e su UPDATE di billing_account_id."
       changes:

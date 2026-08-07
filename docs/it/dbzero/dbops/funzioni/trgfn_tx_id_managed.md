@@ -56,7 +56,7 @@ BEGIN
             PERFORM script.fn_log_error_only(
                 'database',
                 'dbops.trgfn_tx_id_managed',
-                'ERRORE_PARAMETRI_TABELLA',
+                'E_ERRORE_PARAMETRI_TABELLA',
                 jsonb_build_object(
                     'codice_parametro', 'tx_id_bypass_enabled',
                     'nome_tabella',      'config.parameters',

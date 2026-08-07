@@ -108,8 +108,9 @@ BEGIN
                 'target_emittente_id',   v_target_emittente,
                 'detail', 'Cambio scope vietato sull''ultimo SUPER_ADMIN attivo'
             ),
-            NULL::uuid
-        );
+            NULL::uuid,
+            VARIADIC ARRAY[]::text[]
+          );
     END IF;
 
     -- Apply: DELETE (con override) + INSERT

@@ -34,7 +34,7 @@ BEGIN
     PERFORM script.fn_log_and_raise_error(
       'pratiche',
       'pratiche.trgfn_flussi_guard_definizione',
-      'FLUSSI_TEMPLATE_FUORI_DEFINIZIONE',
+      'E_FLUSSI_TEMPLATE_FUORI_DEFINIZIONE',
       jsonb_build_object(
         'flusso_pratica_id',       NEW.pratica_id,
         'template_flusso_id',      NEW.template_flusso_id,

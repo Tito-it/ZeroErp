@@ -14,6 +14,7 @@ from typing import Any
 
 from django.db import DatabaseError, IntegrityError, transaction
 
+from apps.core.services.db_error_fields import db_diag, structured_db_error_code
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import map_integrity_error
 from apps.core.services.service_errors import ServiceError
@@ -98,6 +99,11 @@ _KNOWN_DB_ERROR_MARKERS: tuple[tuple[str, str], ...] = (
     ("TEMPLATE_DEFINIZIONE_CONGELATA", "edizione per-emittente"),
     ("E_TEMPLATE_CODICE_DUPLICATO", "uq_template_flussi_definizione_codice"),
 )
+
+# Perimetro dei codici che questo dominio si aspetta. Insieme, non elenco di
+# stringhe esatte: vedi il confronto in `_raise_known_db_error`, che accetta
+# anche la forma col prefisso `E_` dei codici in via di rinomina.
+_CODICI_DICHIARATI: frozenset[str] = frozenset(c for c, _ in _KNOWN_DB_ERROR_MARKERS)
 
 # Mapping vincoli DB sospensioni -> codici errore applicativi.
 # L'EXCLUDE ex_sospensioni_no_overlap (framework dbops.automazione_overlap)
@@ -203,12 +209,49 @@ def require_completamento_operatore_ammesso(
 # ripropagano al middleware (mapping E_DATABASE generico).
 def _raise_known_db_error(exc: DatabaseError, *, function_name: str) -> None:
     msg = str(exc)
+    diag = db_diag(exc)
+
+    # 1) Campo strutturato (dal 2026-08-05): il codice arriva dal DB, non si
+    #    deduce dal testo. Qui vale piu' che altrove — i codici di questo
+    #    dominio non hanno prefisso `E_`, quindi la regex generale non li ha
+    #    mai visti e l'unico appiglio erano i frammenti di messaggio ITALIANO
+    #    di `_KNOWN_DB_ERROR_MARKERS`: bastava riformulare una frase nel seed,
+    #    o tradurla, e il match cadeva in silenzio (fallback E_DATABASE).
+    #    Filtro sui soli codici dichiarati: la lista e' anche il perimetro di
+    #    cio' che questo dominio si aspetta e ha registrato in error_policies.
+    #
+    #    ⚠️ Si accetta anche la forma col prefisso `E_`. Il DB sta rinominando i
+    #    codici di questo dominio anteponendolo, un lotto per volta
+    #    (brief-db-codice-errore-strutturato §15), e la rinomina tocca il CODICE
+    #    non il MESSAGGIO: senza questa clausola, dopo un lotto il campo
+    #    strutturato verrebbe scartato, vincerebbe il marker testuale — che
+    #    corrisponde ancora — e l'API restituirebbe il nome vecchio, ormai
+    #    ritirato a catalogo. Non fallirebbe niente: e' proprio per questo che
+    #    non se ne accorgerebbe nessuno.
+    #    Una condizione invece di 21 voci gemelle da aggiungere e poi ripulire:
+    #    copre ogni lotto futuro senza altre modifiche, e quando i codici vecchi
+    #    usciranno dalla lista resta corretta com'e'.
+    structured = structured_db_error_code(exc)
+    if structured is not None and (
+        structured in _CODICI_DICHIARATI
+        or structured.removeprefix("E_") in _CODICI_DICHIARATI
+    ):
+        ErrorManager.raise_error(
+            code=structured,
+            # message_primary = solo il RAISE, senza stack PL/pgSQL.
+            message=getattr(diag, "message_primary", None) or msg,
+            detail=getattr(diag, "message_detail", None),
+            hint=getattr(diag, "message_hint", None),
+            cause=exc,
+            function_name=function_name,
+        )
+
+    # 2) Ripiego sui marker testuali: serve ancora per i RAISE diretti che non
+    #    passano da `script.fn_log_and_raise_error` (il campo esce vuoto).
     for code, marker in _KNOWN_DB_ERROR_MARKERS:
         if marker in msg:
-            diag = getattr(getattr(exc, "__cause__", None), "diag", None)
             ErrorManager.raise_error(
                 code=code,
-                # message_primary = solo il RAISE, senza stack PL/pgSQL.
                 message=getattr(diag, "message_primary", None) or msg,
                 detail=getattr(diag, "message_detail", None),
                 hint=getattr(diag, "message_hint", None),

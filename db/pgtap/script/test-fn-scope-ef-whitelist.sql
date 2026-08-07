@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-differiti: escluso — la fixture non soddisfa un vincolo DIFFERITO e la
+--   ragione e' scritta per esteso piu' sotto. Debito noto (§22.4): quando la
+--   fixture viene completata, si toglie questa riga e si rimette il
+--   SET CONSTRAINTS ALL IMMEDIATE nel punto in cui l'unita' di lavoro e' completa.
 -- pgTAP test per Zero ERP
 --
 -- Test: script.fn_scope_ef_whitelist (PK) + fn_scope_ef_whitelist_via_sr (SR)
@@ -32,6 +36,29 @@
 -- ------------------------------------------------------------
 
 BEGIN;
+
+-- ⚠️ QUESTO FILE NON USA `SET CONSTRAINTS ALL IMMEDIATE`, a differenza degli
+--   altri, e non e' una dimenticanza.
+--   La fixture costruisce un soggetto con le funzioni del dominio
+--   (fn_crea_soggetto_pf e sorelle). Ma `anagrafiche.soggetti` ha TRE guard
+--   DEFERRABLE INITIALLY DEFERRED — indirizzi, contatti, dati societari — e la
+--   deferralita' li' e' VOLUTA: si crea il soggetto, poi il suo indirizzo, e la
+--   completezza si verifica al COMMIT. Forzare IMMEDIATE pretenderebbe
+--   l'indirizzo nell'istante stesso dell'INSERT del soggetto, cioe' vieterebbe
+--   il pattern che il dominio ha scelto — misurato: da 7 asserzioni verdi a 1,
+--   con «Indirizzo obbligatorio mancante per soggetto ...».
+--   ⚠️ Resta pero' un buco reale: senza la riga, quei tre guard non vengono
+--   esercitati da questo test, e la fixture lascia un soggetto che
+--   l'applicazione non potrebbe committare. La correzione vera e' completare la
+--   fixture (indirizzo + contatti) e allora la riga si puo' rimettere.
+--   Brief: brief-db-pgtap-runner-rls-baseline §20.
+
+-- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
+-- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
+-- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
+-- Brief: brief-db-pgtap-runner-rls-baseline §8.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
 SELECT plan(10);
 
 -- =========================================================

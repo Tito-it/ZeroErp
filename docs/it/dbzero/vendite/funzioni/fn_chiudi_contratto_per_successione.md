@@ -57,10 +57,11 @@ BEGIN
     IF NOT FOUND THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite', v_fn_name,
-            'E_PARAMETRO_INVALIDO',
+            -- rev 2026-08-07: era E_PARAMETRO_INVALIDO, cioe' 400 su un 404.
+            'E_CONTRATTO_NON_TROVATO',
             jsonb_build_object('contratto_id', p_contratto_esistente_id),
             NULL::uuid,
-            'contratto non trovato: ' || p_contratto_esistente_id::text
+            p_contratto_esistente_id::text
         );
     END IF;
 
@@ -96,7 +97,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_chiudi_contratto_per_successione(p_contratto_esistente_id bigint, p_nuovo_valido_dal date)
-IS 'Accorcia un contratto esistente per successione: valido_al = p_nuovo_valido_dal - 1, libera la finestra per il nuovo contratto. Guard data esplicita -> E_CONTRATTO_SUCCESSIONE_DATA_INVALIDA prima del CHECK chk_contratti_validita. NON cambia stato (cessazione via job chiusura_scadenze_daily). Meccanismo generico (brief 2026-05-31).';
+IS 'Accorcia un contratto esistente per successione: valido_al = p_nuovo_valido_dal - 1. rev 2026-08-07: il contratto inesistente solleva E_CONTRATTO_NON_TROVATO (896) invece di E_PARAMETRO_INVALIDO, che dava 400 su un 404. Trovato dalla lente del quarto lato; brief terzo lato §19.4.';
 ```
 
 ---

@@ -22,7 +22,7 @@ BEGIN
     PERFORM script.fn_log_and_raise_error(
       'pratiche',
       'pratiche.trgfn_pratiche_guard_pin_immutabile',
-      'PRATICHE_PIN_IMMUTABILE',
+      'E_PRATICHE_PIN_IMMUTABILE',
       jsonb_build_object(
         'pratica_id',      NEW.id,
         'definizione_da',  OLD.definizione_id,

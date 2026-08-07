@@ -1,5 +1,12 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: CREATE TRIGGER su anagrafiche.indirizzi_dettaglio — fault injection per
+--   dimostrare che l'INSERT del dettaglio fallisce davvero e che la creazione
+--   dell'indirizzo e' atomica. Il ruolo applicativo ha la DML completa sulla
+--   tabella ma NON il privilegio TRIGGER, e non deve averlo: creare trigger
+--   su una tabella di dominio non e' un'operazione dell'applicazione.
+--   Stessa natura di vendite/test-annulla-commessa-attivita-v1 (brief §24.3).
 -- pgTAP per Zero ERP
 -- Copyright (C) 2026 Tid (Michele Carlo Titini)
 --
@@ -20,6 +27,21 @@
 -- ------------------------------------------------------------
 
 BEGIN;
+
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
+--   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
+--   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio, e il
+--   file sarebbe verde per sottrazione. IMMEDIATE li riporta a scattare a fine
+--   di ogni istruzione. In testa e non in coda: in coda scatterebbero dopo il
+--   cleanup, su righe ormai cancellate.
+--   Brief: brief-db-pgtap-runner-rls-baseline §19.
+SET CONSTRAINTS ALL IMMEDIATE;
+
+-- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
+-- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
+-- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
+-- Brief: brief-db-pgtap-runner-rls-baseline §8.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(6);
 

@@ -199,8 +199,26 @@ serve scrivere `BEGIN/EXCEPTION` per l'all-or-nothing (i blocchi `EXCEPTION` ser
 
 **pgTAP obbligatorio.** Testare sia il caso felice sia il **rollback totale** su fallimento di uno
 step (pattern: trigger temporaneo che fa fallire l'ultima scrittura → verificare che nessun effetto
-delle scritture precedenti sopravviva). Il pgTAP gira come owner: attenzione ai **GRANT** e agli
-scope che nel percorso applicativo reale (`zeroerp_app`, INVOKER) potrebbero mancare.
+delle scritture precedenti sopravviva).
+
+> ⭐ **Dal 2026-08-07 il pgTAP gira come l'APPLICAZIONE**, non più come owner:
+> `scripts/testpgtap.sh` si connette come `zeroerp_app` con il contesto operatore,
+> e **le policy RLS vengono esercitate a ogni corsa**. La frase precedente («il
+> pgTAP gira come owner: attenzione ai GRANT che nel percorso reale potrebbero
+> mancare») era vera fino a quel giorno e ora direbbe il falso: i GRANT e la RLS
+> non sono più un rischio da immaginare, sono la condizione in cui i test girano.
+>
+> **Cosa cambia per chi scrive un test.** Un rosso può essere un **permesso** o
+> una **policy**, non solo una fixture. E una fixture che scrive dove
+> l'applicazione non scrive **non passa più**: è un difetto, non un dettaglio.
+>
+> I pochi test il cui **soggetto** non è raggiungibile dall'applicazione (fanno
+> DDL, o costruiscono dati che l'operatore non deve vedere) lo dichiarano nel
+> file con `-- pgtap-runner: owner` **e la ragione scritta**. Il criterio, con
+> l'elenco di cosa **esclude**, è nell'intestazione di `scripts/testpgtap.sh`.
+>
+> Guida operativa: [pgtap-come-si-scrive-un-test](/guide/pgtap-come-si-scrive-un-test) ·
+> storia e misure: `docs/it/dev/work-done/brief-db-pgtap-runner-rls-baseline.md`.
 
 > Caso di studio completo, catalogo dei finding e criterio esteso (madre DB *vs* `transaction.atomic()`
 > *vs* outbox): [analisi-fix-transazioni](/dev/work-done/analisi-fix-transazioni).
@@ -1179,6 +1197,71 @@ Prima di attivare RLS su una tabella esistente:
 * Ruolo `zeroerp_migration` ha `BYPASSRLS`
 * `FORCE ROW LEVEL SECURITY` se la tabella e' owned da `zeroerp_app`
 * Policy testata in staging con dati realistici prima del merge
+
+---
+
+## 11. Ciclo di vita di un changeSet — due divieti
+
+Queste due regole non riguardano l'SQL che scrivi, ma **quando viene eseguito**.
+Entrambe nascono da difetti reali che si vedevano solo in CI, mai su un database
+di sviluppo, e che hanno richiesto due bonifiche prima di essere scritte qui.
+
+### 11.1 ⛔ `runOnChange: true` è vietato in `00_schema` e `20_code`
+
+Presidiato da `scripts/guardrail_run_on_change.py` in CI: un changeSet di schema
+o di codice che lo dichiara fa fallire la build.
+
+**Il meccanismo.** La CI invoca Liquibase **due volte** sullo stesso changelog:
+prima `--contexts="!provision"`, poi `--contexts=ci_apply` per le automazioni. Un
+changeSet `runOnChange: true` ri-esegue anche nella seconda passata, e lì l'ordine
+di timeline non lo protegge più: riscrive il proprio corpo **sopra** le revisioni
+successive, che sono `runOnChange: false` e non ri-eseguono. Su dev l'invocazione
+è una sola, quindi vince l'ultimo della timeline e il difetto è invisibile.
+
+> Il 2026-08-06 questo riportava indietro **49 funzioni** a ogni build — fra cui
+> `dbops.trgfn_tx_id_managed`, le sei `vendite.vw_*_lista`, i cinque
+> `vendite.fn_list_*_da_pushare`. Il rosso che l'ha fatto scoprire riguardava dei
+> codici errore; le funzioni regredite in silenzio erano il danno vero.
+
+⚠️ **Corollario da tenere a mente leggendo gli YAML**: un changeSet successivo
+**non** supera automaticamente un `runOnChange: true` precedente. Vale solo fra
+changeSet spenti. È il motivo per cui il corpo di una funzione si legge dalla doc
+auto-gen (`docs/it/dbzero/`), mai dagli YAML.
+
+**Dove resta lecito**: mirror CSV di `80_data` (`loadData`/`loadUpdateData`), job
+`85_pgagent`, resync e grant di `90_end`. Lì la ri-esecuzione è voluta.
+
+⚠️ **`validCheckSums`, al PLURALE.** `validCheckSum` singolare è una chiave che
+Liquibase ignora: quell'`ANY` non vale niente. Finché `runOnChange` è `true` non
+si nota (il checksum si ricalcola comunque); diventa un migrate fallito nel
+momento esatto in cui lo spegni. Chi spegne un `runOnChange` corregge anche la
+chiave, nello stesso commit.
+
+### 11.2 ⛔ I dati di `80_data` si cambiano dal CSV, non con `UPDATE` diretti
+
+La sede di una tabella di configurazione è il suo CSV in `80_data/sql/…`, letto da
+un mirror `loadUpdateData`. Un `UPDATE`/`INSERT` SQL sulla stessa tabella crea una
+**seconda sorgente di verità** — e le due divergono fra dev e CI, perché il mirror
+è `runOnChange` e ri-legge a ogni migrate mentre l'SQL di solito no: su dev vince
+il CSV, su un database ricostruito da zero vince l'SQL, che nella timeline sta
+dopo il loader.
+
+> `20260430-60` faceva `SET meta = '{...}'` sulla matrice dei preventivi. In CI
+> cancellava `outlined` e l'icona dell'annullamento, `requires_righe` su
+> DRAFT→EMESSO e il namespace i18n `vendite.preventivi.*`. Su dev tutto a posto.
+
+| Cosa devi fare | Come |
+| --- | --- |
+| cambiare un valore | editi il CSV: il mirror riallinea |
+| aggiungere una riga | append al CSV, mai un `INSERT` a parte |
+| cancellare una riga | `loadUpdateData` non cancella → `DELETE` SQL forward-only. **Unica eccezione** |
+
+⚠️ Se un SQL storico sovrascrive un CSV e non si può cancellare perché mergiato,
+**spegnerlo non basta**: su un database nuovo applica comunque una volta, e
+comunque dopo il loader. Serve un mirror **ri-ancorato** più avanti nella
+timeline — stesso CSV, stesse colonne, numerazione nuova. Esempi:
+`20260806-13-riancora-mirror-transizioni-preventivi`,
+`20260806-14-riancora-mirror-stati-doc-contratti`.
 
 ---
 

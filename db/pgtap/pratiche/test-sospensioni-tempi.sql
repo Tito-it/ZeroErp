@@ -32,6 +32,32 @@
 -- 21) Sospensione singolo flusso (non propaga)
 -- 22) Cleanup
 -- ------------------------------------------------------------
+
+-- ⚠️ Transazione, e non e' una formalita'. Il cleanup di questo file sta in
+--   coda: col runner vero (pg_prove gira con ON_ERROR_STOP) un fallimento a
+--   meta' non ci arriva mai, e i dati di prova restano nel database a rompere
+--   la corsa successiva — che vede un rosso non suo.
+--   Brief: brief-db-pgtap-runner-rls-baseline §15.3.
+BEGIN;
+
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
+--   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
+--   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio, e il
+--   file diventerebbe verde per sottrazione. Nel DB ce ne sono 365.
+--   IMMEDIATE li riporta a scattare a fine di OGNI istruzione — cioe' esatta-
+--   mente come si comportavano prima, quando il file girava in autocommit e
+--   ogni istruzione era una transazione a se'. Messa in testa e non in coda
+--   apposta: in coda scatterebbero tutti insieme DOPO il cleanup, su righe
+--   ormai cancellate, e fallirebbero per un motivo che non riguarda il test.
+--   Brief: brief-db-pgtap-runner-rls-baseline §17.
+SET CONSTRAINTS ALL IMMEDIATE;
+
+-- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
+-- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
+-- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
+-- Brief: brief-db-pgtap-runner-rls-baseline §8.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
 SELECT plan(22);
 
 -- =========================================================
@@ -59,8 +85,8 @@ END $$;
 -- =========================================================
 CREATE TEMP TABLE tmp_st_refs AS
 SELECT
-  (SELECT id FROM anagrafiche.emittenti_fiscali WHERE attivo = true LIMIT 1) AS emittente_id,
-  (SELECT id FROM anagrafiche.soggetti LIMIT 1) AS soggetto_id,
+  script.fn_pgtap_emittente_operatore() AS emittente_id,
+  (SELECT id FROM anagrafiche.soggetti ORDER BY id LIMIT 1) AS soggetto_id,
   (SELECT id FROM config.stati_pratiche WHERE codice_interno = 'BOZZA') AS st_bozza,
   (SELECT id FROM config.stati_pratiche WHERE codice_interno = 'APERTA') AS st_aperta,
   (SELECT id FROM config.stati_pratiche WHERE codice_interno = 'SOSPESA') AS st_sospesa,
@@ -297,8 +323,19 @@ SELECT ok(
 -- =========================================================
 -- 10) Riattivazione: chiusura sospensione
 -- =========================================================
+-- ⚠️ clock_timestamp() e non now(), ed e' una differenza di sostanza.
+--   `chk_sospensioni_data_fine` pretende data_fine > data_inizio, STRETTO.
+--   Dentro una transazione now() e' congelato all'apertura: la sospensione e'
+--   stata aperta poche righe fa nella STESSA transazione, quindi data_fine
+--   verrebbe identica a data_inizio e il CHECK respingerebbe.
+--   In esercizio non succede mai — si apre in una richiesta e si chiude in
+--   un'altra — quindi comprimere i due momenti e' un artificio del test, non
+--   una condizione reale. clock_timestamp() legge l'orologio adesso e dice
+--   «un istante dopo»: e' l'unico modo di riprodurre nel piccolo cio' che
+--   nella realta' e' separato da minuti o giorni. Il vincolo resta esercitato.
+--   Brief: brief-db-pgtap-runner-rls-baseline §15.3.
 SELECT lives_ok(
-  format('UPDATE pratiche.sospensioni SET data_fine = now() WHERE id = %s',
+  format('UPDATE pratiche.sospensioni SET data_fine = clock_timestamp() WHERE id = %s',
     (SELECT sosp_id FROM tmp_st_sosp)),
   '10. Riattivazione: chiusura sospensione riuscita'
 );
@@ -387,9 +424,11 @@ SELECT lives_ok(
   '14. Guard coerenza: flusso della stessa pratica ammesso'
 );
 
--- Chiudi la sospensione flusso per non bloccare i test successivi
+-- Chiudi la sospensione flusso per non bloccare i test successivi.
+-- clock_timestamp() per la stessa ragione dell'asserzione 10: il CHECK vuole
+-- data_fine > data_inizio e in transazione now() non avanza.
 UPDATE pratiche.sospensioni
-SET data_fine = now()
+SET data_fine = clock_timestamp()
 WHERE pratica_id = (SELECT pratica_id FROM tmp_st_pratica)
   AND flusso_id = (SELECT flusso_id FROM tmp_st_flusso_da)
   AND data_fine IS NULL;
@@ -404,7 +443,10 @@ WHERE id = (SELECT flusso_id FROM tmp_st_flusso_da);
 
 SELECT lives_ok(
   format(
-    'UPDATE pratiche.flussi SET stato_id = %s, esito = ''POSITIVO'', data_fine = now() WHERE id = %s',
+    -- clock_timestamp(): la chiusura del flusso alimenta calcoli_tempo via
+    -- trigger, e chk_calcoli_tempo_data_fine vuole data_fine > data_inizio.
+    -- Con now() congelato in transazione i due istanti coinciderebbero.
+    'UPDATE pratiche.flussi SET stato_id = %s, esito = ''POSITIVO'', data_fine = clock_timestamp() WHERE id = %s',
     (SELECT sf_completato FROM tmp_st_refs),
     (SELECT flusso_id FROM tmp_st_flusso_da)),
   '15. Calcolo tempo: flusso_da COMPLETATO'
@@ -434,7 +476,10 @@ WHERE id = (SELECT flusso_id FROM tmp_st_flusso_a);
 
 SELECT lives_ok(
   format(
-    'UPDATE pratiche.flussi SET stato_id = %s, esito = ''POSITIVO'', data_fine = now() WHERE id = %s',
+    -- clock_timestamp(): la chiusura del flusso alimenta calcoli_tempo via
+    -- trigger, e chk_calcoli_tempo_data_fine vuole data_fine > data_inizio.
+    -- Con now() congelato in transazione i due istanti coinciderebbero.
+    'UPDATE pratiche.flussi SET stato_id = %s, esito = ''POSITIVO'', data_fine = clock_timestamp() WHERE id = %s',
     (SELECT sf_completato FROM tmp_st_refs),
     (SELECT flusso_id FROM tmp_st_flusso_a)),
   '17. Calcolo tempo: flusso_a COMPLETATO'
@@ -544,3 +589,8 @@ DELETE FROM pratiche.tipi_prestazione
 WHERE id = (SELECT tp_id FROM tmp_st_tp);
 
 SELECT * FROM finish();
+
+-- Il ROLLBACK e' la garanzia: comunque vada — verde, rosso, o morto a meta' —
+-- questo file non lascia nulla dietro di se'. Le DELETE del cleanup restano
+-- perche' dove sono un'asserzione devono girare davvero.
+ROLLBACK;

@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Toglie la riga vecchia lasciata dal rename `MESSAGGIO_NON_DEFINITO`
+#   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (coda, §3)
+#   Rename: 20260807-19 (funzione) + 20260614-08 (i due CSV)
+#
+# ── PERCHE' SERVE UN DELETE ────────────────────────────────────────────
+#   `loadUpdateData` fa quello che dice: inserisce e aggiorna, **non cancella**.
+#   Rinominare un codice nel CSV crea quindi la riga nuova e lascia in piedi
+#   quella vecchia — che dopo il rename non ha piu' nessun messaggio, nessuna
+#   funzione che la nomina, e nessun modo di sparire da sola.
+#
+#   E' l'unica eccezione prevista alla regola «i dati di 80_data si cambiano dal
+#   CSV, mai con SQL»: la cancellazione e' forward-only e legittima, perche' il
+#   mirror non sa cancellare.
+#
+# ── ⚠️ L'ORDINE E' OBBLIGATO ───────────────────────────────────────────
+#   Deve girare DOPO `20260614-08`, che carica i due CSV: fino a quel momento
+#   `config.messaggi_errore` punta ancora al codice vecchio e il DELETE
+#   violerebbe la FK. `includeAll` ordina per nome, e `20260807-20` viene dopo
+#   `20260614-08`: e' garantito.
+#
+#   ⚠️ Il `WHERE NOT EXISTS` non e' una cintura di troppo. Se per qualunque
+#   ragione il rename nel catalogo NON fosse andato a buon fine, questo DELETE
+#   fallirebbe con una violazione di FK — rumorosa, ma a meta' migrate. Con la
+#   guardia invece non cancella e basta, e il codice vecchio resta li' a farsi
+#   notare al prossimo giro del guardrail.
+#
+# ── COSA SI VERIFICA DOPO ──────────────────────────────────────────────
+#     SELECT count(*) FROM config.codici_errore
+#      WHERE codice = 'MESSAGGIO_NON_DEFINITO';               -- 0
+#     SELECT count(*) FROM dbops.messaggi_errore_codici_legacy; -- 0  ⭐
+#   Il secondo e' il registro dei codici fuori convenzione: nato a 57 il
+#   2026-08-05, arriva a ZERO con questo rename.
+#
+#   ⚠️ A zero righe api.md dice che la tabella si droppa. **Non si droppa qui**:
+#   il guardrail la legge nei controlli (B) e (C) e si ferma se non la trova
+#   (`Registro assente: i controlli (B) e (C) ...`). Droppare significa
+#   riscrivere il guardrail, ed e' una slice sua — non la coda di un rename.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260807-20-delete-codice-errore-orfano-rename-mctit.yaml
+
+  - changeSet:
+      id: 20260807-20-delete-codice-errore-orfano-rename
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+          Toglie config.codici_errore.MESSAGGIO_NON_DEFINITO, rimasta dopo il rename a
+          E_MESSAGGIO_NON_DEFINITO: loadUpdateData non cancella. Guardia NOT EXISTS: se
+          il rename del catalogo non fosse andato a buon fine, non cancella invece di
+          rompere la FK a meta' migrate.
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            schemaName: config
+            tableName: codici_errore
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM config.codici_errore c
+               WHERE c.codice = 'MESSAGGIO_NON_DEFINITO'
+                 AND NOT EXISTS (
+                       SELECT 1 FROM config.messaggi_errore m
+                        WHERE m.codice = c.codice);

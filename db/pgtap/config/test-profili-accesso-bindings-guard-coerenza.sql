@@ -12,8 +12,10 @@
 --    1. Precondizione: unita_organizzativa disponibile
 --    2. Setup: profilo test tipo REPARTO
 --    3. Setup: profilo test tipo PORTALE
---    4. CHECK xor: INSERT con 0 colonne -> throws
---    5. CHECK xor: INSERT con 2 colonne (uo + ruolo) -> throws
+--    4. Guard (NON il CHECK): INSERT con 0 colonne -> throws P0001
+--       ⚠️ i trigger BEFORE ROW girano prima dei CHECK: qui intercetta il guard
+--    5. CHECK xor: INSERT con 2 colonne (uo + ruolo) -> throws 23514
+--       (unica asserzione che raggiunge davvero chk_profili_accesso_bindings_xor)
 --    6. Guard: REPARTO + unita_organizzativa_id -> lives_ok
 --    7. Guard: REPARTO + ruolo_applicativo -> throws (tipo binding incoerente)
 --    8. Guard: PORTALE + ruolo_applicativo -> lives_ok
@@ -23,6 +25,22 @@
 -- ------------------------------------------------------------
 
 BEGIN;
+
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
+--   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
+--   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio, e il
+--   file sarebbe verde per sottrazione. IMMEDIATE li riporta a scattare a fine
+--   di ogni istruzione. In testa e non in coda: in coda scatterebbero dopo il
+--   cleanup, su righe ormai cancellate.
+--   Brief: brief-db-pgtap-runner-rls-baseline §19.
+SET CONSTRAINTS ALL IMMEDIATE;
+
+-- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
+-- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
+-- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
+-- Brief: brief-db-pgtap-runner-rls-baseline §8.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
 SELECT plan(9);
 
 -- =========================================================
@@ -107,8 +125,17 @@ SELECT throws_ok(
         VALUES (%s, NULL, NULL, NULL)
     $sql$,
     (SELECT profilo_id FROM _t_profilo_rep)),
-    NULL, NULL,
-    '4. CHECK xor: 0 colonne valorizzate -> throws (chk_profili_accesso_bindings_xor)'
+    -- ⚠️ QUESTA ASSERZIONE NON COLLAUDA IL CHECK, e non lo ha mai fatto: il
+    -- nome che portava era sbagliato. In PostgreSQL i trigger BEFORE ROW girano
+    -- PRIMA dei vincoli CHECK, quindi con zero colonne valorizzate su un profilo
+    -- REPARTO e' il guard a intercettare (manca unita_organizzativa_id), e
+    -- `chk_profili_accesso_bindings_xor` non viene mai raggiunto. Misurato:
+    -- SQLSTATE P0001, non 23514. Chi collauda davvero il CHECK e' l'asserzione 5.
+    -- Con `NULL` come atteso non si vedeva: prima del fix qui arrivava 22023,
+    -- il crash di format(), e passava lo stesso.
+    -- Brief: brief-db-pgtap-runner-rls-baseline §13.
+    'P0001', NULL,
+    '4. Guard (non il CHECK): 0 colonne valorizzate -> throws E_PROFILO_ACCESSO_BINDING_INCOERENTE'
 );
 
 -- =========================================================
@@ -121,9 +148,13 @@ SELECT throws_ok(
         VALUES (%s, %s, NULL, 'CLIENTE_PORTALE')
     $sql$,
     (SELECT profilo_id FROM _t_profilo_rep),
-    (SELECT uo_id FROM _t_uo LIMIT 1)),
-    NULL, NULL,
-    '5. CHECK xor: 2 colonne valorizzate -> throws'
+    (SELECT uo_id FROM _t_uo ORDER BY uo_id LIMIT 1)),
+    -- '23514' = violazione di CHECK. Questa e' l'UNICA asserzione che raggiunge
+    -- davvero `chk_profili_accesso_bindings_xor`, e il motivo e' preciso: con
+    -- unita_organizzativa_id valorizzato il guard REPARTO e' soddisfatto e lascia
+    -- passare, cosi' il CHECK sull'xor puo' finalmente scattare. Misurato.
+    '23514', NULL,
+    '5. CHECK xor: 2 colonne valorizzate -> throws (chk_profili_accesso_bindings_xor)'
 );
 
 -- =========================================================
@@ -150,7 +181,14 @@ SELECT throws_ok(
         VALUES (%s, NULL, NULL, 'CLIENTE_PORTALE', true)
     $sql$,
     (SELECT profilo_id FROM _t_profilo_rep)),
-    NULL, NULL,
+    -- ⚠️ 'P0001' e non NULL: e' lo SQLSTATE con cui script.fn_log_and_raise_error
+    -- solleva OGNI errore di dominio. Con NULL questa asserzione chiedeva solo
+    -- «solleva qualcosa», e per mesi si e' accontentata del crash interno
+    -- «numero di argomenti non sufficiente per format()» — il guard non e' MAI
+    -- arrivato a dire la sua ragione, e il test restava verde.
+    -- Corretto insieme al changeSet 20260806-12.
+    -- Brief: brief-db-pgtap-runner-rls-baseline §13.
+    'P0001', NULL,
     '7. Guard: REPARTO + ruolo_applicativo -> throws (E_PROFILO_ACCESSO_BINDING_INCOERENTE)'
 );
 
@@ -182,7 +220,8 @@ SELECT throws_ok(
     $sql$,
     (SELECT profilo_id FROM _t_profilo_por),
     (SELECT uo_id FROM _t_uo ORDER BY uo_id DESC LIMIT 1)),
-    NULL, NULL,
+    -- 'P0001' = errore di dominio, non un crash interno. Vedi la nota all'asserzione 7.
+    'P0001', NULL,
     '9. Guard: PORTALE + unita_organizzativa_id -> throws (tipo binding incoerente)'
 );
 

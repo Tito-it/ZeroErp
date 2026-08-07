@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # Bonifica riferimenti morti — F2, dove riparare il nome non basta
-#   Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md
+#   Brief: docs/it/dev/work-done/brief-db-bonifica-riferimenti-morti.md
 #
 # ── IL DIFETTO SEGNALATO ─────────────────────────────────────────────────
 #   «la colonna "id_comune_orig" della relazione "stradario_trasformazioni"

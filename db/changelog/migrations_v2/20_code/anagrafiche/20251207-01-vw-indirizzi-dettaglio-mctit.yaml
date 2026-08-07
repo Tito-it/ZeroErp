@@ -13,8 +13,10 @@ databaseChangeLog:
         - changeSet:
                   id: 20251207-01-vw-indirizzi-dettaglio
                   author: mctit
-                  runOnChange: true
-                  validCheckSum:
+                  # ⚠️ Era `true`: definisce anagrafiche.vw_indirizzi_dettaglio, che un changeSet PIU' RECENTE
+                  #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+                  runOnChange: false
+                  validCheckSums:
                           - ANY
 
                             # ------------------------------------------------------------

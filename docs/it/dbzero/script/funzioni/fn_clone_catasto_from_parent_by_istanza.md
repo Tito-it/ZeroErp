@@ -23,7 +23,7 @@ BEGIN
         PERFORM script.fn_log_and_raise_error(
             'database',
             'script.fn_clone_catasto_from_parent_by_istanza',
-            'ERRORE_PARAMETRI',
+            'E_ERRORE_PARAMETRI',
             jsonb_build_object('p_istanza_utilities_id', 'NULL'),
             NULL,
             'Parametro p_istanza_utilities_id non puo'' essere NULL'

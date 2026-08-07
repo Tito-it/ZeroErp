@@ -26,8 +26,11 @@ databaseChangeLog:
   - changeSet:
       id: 20260520-10-restore-stati-doc-contratti-meta-ui
       author: mctit
-      runOnChange: true
-      validCheckSum: [ANY]
+      # ⚠️ Era `true` (2026-08-06): come il 20260430-61: sovrascrittura piena del meta di config.stati_doc_contratti.
+#   Neutralizzato dal mirror ri-ancorato 20260806-13.
+      #   La matrice/gli stati si cambiano SOLO dal CSV.
+      runOnChange: false
+      validCheckSums: [ANY]
       failOnError: true
       comment: >
         Ripristina meta UI su stati_doc_contratti per DRAFT e ATTIVO.

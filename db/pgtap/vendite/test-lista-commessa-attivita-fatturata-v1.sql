@@ -33,6 +33,21 @@
 -- ------------------------------------------------------------
 
 BEGIN;
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
+--   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
+--   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio, e il
+--   file sarebbe verde per sottrazione. IMMEDIATE li riporta a scattare a fine
+--   di ogni istruzione. In testa e non in coda: in coda scatterebbero dopo il
+--   cleanup, su righe ormai cancellate.
+--   Brief: brief-db-pgtap-runner-rls-baseline §19.
+SET CONSTRAINTS ALL IMMEDIATE;
+
+-- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
+-- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
+-- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
+-- Brief: brief-db-pgtap-runner-rls-baseline §8.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
 SELECT plan(4);
 
 -- ============================================================
@@ -160,6 +175,15 @@ FROM tmp_refs_lcf r;
 --   quel puntatore diventa la struttura portante della fattura — e un puntatore
 --   pendente non sarebbe piu' un dettaglio.
 --   L'importo della riga lo calcola il trigger a20.
+-- ⚠️ 2026-08-07: testata e righe in DUE statement, non in una CTE sola.
+--   La policy rls_fatture_righe_ef_whitelist risolve l'emittente passando da
+--   vendite.fatture (script.fn_scope_ef_whitelist_via_fattura, STABLE). Dentro
+--   una CTE che scrive, tutti i rami condividono la stessa snapshot: la fattura
+--   appena inserita NON e' ancora visibile, l'SR risolve a NULL e il WITH CHECK
+--   nega fail-closed. Misurato: stessi dati, stesso operatore — in due statement
+--   passa, in una CTE no. L'applicazione scrive sempre in due tempi (il BE crea
+--   la fattura in uno step e le righe in quello dopo), quindi la forma qui sotto
+--   e' anche la piu' fedele.
 CREATE TEMP TABLE tmp_fattura_lcf AS
 WITH f AS (
   INSERT INTO vendite.fatture (registro_id, data, emittente_soggetto_ruolo_id,
@@ -170,15 +194,18 @@ WITH f AS (
          (SELECT billing_account_id FROM tmp_refs_lcf),
          jsonb_build_object('test_scope', 'pgtap_lista_commessa_attivita_fatturata')
   RETURNING id
-), r AS (
+)
+SELECT (SELECT id FROM f) AS fattura_id, NULL::bigint AS riga_id;
+
+WITH r AS (
   INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta,
                                      prezzo_unitario, meta)
-  SELECT f.id, 1, 'Riga di test', 1::numeric, 10::numeric,
+  SELECT (SELECT fattura_id FROM tmp_fattura_lcf), 1, 'Riga di test',
+         1::numeric, 10::numeric,
          jsonb_build_object('test_scope', 'pgtap_lista_commessa_attivita_fatturata')
-  FROM f
   RETURNING id
 )
-SELECT (SELECT id FROM f) AS fattura_id, (SELECT id FROM r) AS riga_id;
+UPDATE tmp_fattura_lcf SET riga_id = (SELECT id FROM r);
 
 -- AF per la riga 3: fattura_riga_id valorizzato con una riga esistente.
 INSERT INTO vendite.attivita_fatturabili (

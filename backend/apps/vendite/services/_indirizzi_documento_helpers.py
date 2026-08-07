@@ -49,6 +49,78 @@ _CONTACT_KEYS: frozenset[str] = frozenset({"email", "telefono", "note"})
 # Almeno una di queste chiavi deve essere valorizzata in un una-tantum.
 _SUBSTANTIVE_KEYS: frozenset[str] = frozenset({"via", "citta", "display"})
 
+# Nome dello slot nel context PDF per ogni tipo indirizzo (config.tipi_indirizzi).
+# Il template legge `indirizzi.consegna.*`, non `indirizzi.CON.*`: il codice e'
+# vocabolario di dominio, il nome dello slot e' cio' che si scrive in un
+# template. Mappa COMPLETA (tutti i tipi a catalogo, non i soli oggi ammessi):
+# se un ambito domani ne ammette uno nuovo, lo slot ha gia' un nome e nessuno
+# deve ricordarsi di aggiungerlo qui.
+INDIRIZZO_SLOT_BY_CODICE: dict[str, str] = {
+    "CON": "consegna",
+    "FATT": "fatturazione",
+    "FORNITURA": "fornitura",
+    "RES": "residenza",
+    "SPED": "spedizione",
+    "SEDELEG": "sede_legale",
+    "SEDEOP": "sede_operativa",
+    "DOMFISC": "domicilio_fiscale",
+    "POSTA": "corrispondenza",
+}
+
+
+# Scopo: Display compatto di uno snapshot ("intestazione — via, cap citta,
+#        prov"), mirror del FE `formatSnapshotDisplay`. Ripiega sui componenti
+#        quando `display` manca — cosa che sui dati reali accade spesso (26
+#        snapshot su 42 al 2026-08-04), mentre `via` c'e' sempre.
+def snapshot_display_compatto(s: dict[str, Any]) -> str:
+    geo = s.get("display") or ", ".join(
+        p for p in (
+            s.get("via"),
+            " ".join(x for x in (s.get("cap"), s.get("citta")) if x),
+            s.get("prov"),
+        ) if p
+    )
+    return " — ".join(p for p in (s.get("intestazione"), geo) if p)
+
+
+# Scopo: Proiezione degli indirizzi documento per il context PDF — sede unica
+#        della forma, condivisa da tutti i domini (estratta il 2026-08-05 alla
+#        2a occorrenza, ok Tid; prima viveva privata nel builder DDT).
+#
+#        Forma: uno slot per ciascun tipo AMMESSO nell'ambito, sempre presente
+#        (`None` se il documento non ha quell'indirizzo), e per gli slot pieni
+#        l'intero set `SNAPSHOT_KEYS_ORDERED` + `display_compatto`.
+#
+#        ⚠️ Le chiavi ci sono SEMPRE, ed e' il punto dell'esercizio: il render
+#        Jinja usa StrictUndefined, quindi il template puo' scrivere
+#        `indirizzi.consegna.via` senza difendersi con `.get()`. Un errore di
+#        nome fa fallire il render invece di produrre un indirizzo monco — che
+#        e' esattamente come il difetto del template Preventivo e' sopravvissuto
+#        fino al 2026-08-04 (brief-db-template-preventivo-indirizzi §2).
+#
+#        `codici_ammessi` e' dichiarato STATICAMENTE dal builder, non letto da
+#        `config.tipi_indirizzi_allowed`: il context deve essere deterministico
+#        a parita' di documento (il `context_hash` governa il dedup), e una
+#        modifica di configurazione non puo' cambiare la forma di un contesto
+#        gia' generato.
+def shape_indirizzi_context(
+    rows: list[dict[str, Any]],
+    *,
+    codici_ammessi: tuple[str, ...],
+) -> dict[str, Any]:
+    per_codice = {r.get("tipo_indirizzo_codice"): (r.get("snapshot") or {}) for r in rows}
+    out: dict[str, Any] = {}
+    for codice in codici_ammessi:
+        slot = INDIRIZZO_SLOT_BY_CODICE.get(codice, codice.lower())
+        snapshot = per_codice.get(codice)
+        if snapshot is None:
+            out[slot] = None
+            continue
+        shaped = {k: snapshot.get(k) for k in SNAPSHOT_KEYS_ORDERED}
+        shaped["display_compatto"] = snapshot_display_compatto(snapshot)
+        out[slot] = shaped
+    return out
+
 # Scopo: Configurazione per-dominio del BB. Dichiarata una volta a livello di
 #        modulo nel service del dominio (vedi ddt_service._INDIRIZZI_CFG).
 #        `get_stato` legge il solo codice stato (query leggera, mai il detail

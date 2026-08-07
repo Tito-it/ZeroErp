@@ -62,7 +62,7 @@
 >    è stato assorbito da un problema più grande: la baseline pgTAP non è
 >    confrontabile perché registrata con un utente diverso da quello con cui il
 >    runner esegue. Vedi
->    [brief-db-pgtap-runner-rls-baseline](../work-in-progress/brief-db-pgtap-runner-rls-baseline.md).
+>    [brief-db-pgtap-runner-rls-baseline](brief-db-pgtap-runner-rls-baseline.md).
 >
 ---
 

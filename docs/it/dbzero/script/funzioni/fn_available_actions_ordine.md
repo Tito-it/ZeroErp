@@ -27,6 +27,19 @@ AS $function$
 --   config.stati_doc_ordini (bottone PDF data-driven via capabilities).
 --   rev 2026-07-16: + enabled/reason/reason_key da meta.requires_righe
 --   (documento vuoto non avanza di stato).
+--   rev 2026-08-04: + reasons sull'annullamento, da
+--   script.fn_check_ordine_annullabile — la STESSA funzione che
+--   vendite.trgfn_ordini_guard_transizione usa per sollevare. I motivi
+--   si SOMMANO a quello di requires_righe in un array solo, da cui
+--   discendono enabled/reason/reason_key. + nessuna_azione_key dal
+--   meta dello stato, esposta quando nessuna azione e' abilitata
+--   (brief-db-vie-uscita-operatore §4 regola R3 e §6).
+--   rev 2026-08-06: + target_state_descrizione, la forma leggibile
+--   dello stato di destinazione. Serve alla frase di conferma
+--   «portare il documento nello stato X»: il codice_interno non e'
+--   quella forma (DRAFT -> Bozza, ALLOCATO -> Allocato a magazzino)
+--   e tradurlo nel FE sarebbe una seconda copia del vocabolario
+--   degli stati. NULL sulle azioni che non cambiano stato.
 DECLARE
     v_stato_id   vendite.ordini.stato_doc_ordine_id%TYPE;
     v_stato_cod  config.stati_doc_ordini.codice_interno%TYPE;
@@ -34,9 +47,12 @@ DECLARE
     v_fatt_trg   vendite.ordini.fatturazione_trigger%TYPE;
     v_pdf_mode   config.stati_doc_ordini.pdf_mode%TYPE;
     v_pdf_allow  config.stati_doc_ordini.pdf_allow_allegati%TYPE;
+    v_nessuna_key    text;
+    v_nessuna_azione boolean := false;
     v_actions    jsonb;
     v_can_change boolean := false;
     v_ha_righe   boolean := false;
+    v_mot_annulla jsonb := '[]'::jsonb;
     v_push_ok    boolean := false;
     v_push_reason     text := NULL;
     v_push_reason_key text := NULL;
@@ -46,13 +62,24 @@ DECLARE
         '["billing_account_id","soggetto_ruolo_id","utility_id",'
         '"valuta_id","modalita_pagamento_id","termine_pagamento_id",'
         '"fatturazione_trigger","agente_soggetto_ruolo_id","data","meta"]'::jsonb;
+    -- Motivo "documento vuoto" nella forma dei motivi delle fn_check_*,
+    -- cosi' i due mondi si concatenano. `codice` e' quello che il guard
+    -- solleva davvero (trgfn_ordini_guard_transizione, Regola 2).
+    c_motivo_senza_righe CONSTANT jsonb := jsonb_build_array(
+        jsonb_build_object(
+            'codice',     'E_ORDINE_CONFERMA_SENZA_RIGHE',
+            'reason',     'DOCUMENTO_SENZA_RIGHE',
+            'reason_key', 'common.azione_reason.senza_righe',
+            'dettaglio',  0));
 BEGIN
-    -- Stato corrente + trigger + uid + capability PDF.
+    -- Stato corrente + trigger + uid + capability PDF + la chiave
+    -- "nessuna azione" dello stato (dato, non codice).
     SELECT o.stato_doc_ordine_id, sdo.codice_interno,
            o.uid, o.fatturazione_trigger,
-           sdo.pdf_mode, sdo.pdf_allow_allegati
+           sdo.pdf_mode, sdo.pdf_allow_allegati,
+           sdo.meta->>'nessuna_azione_key'
       INTO v_stato_id, v_stato_cod, v_uid, v_fatt_trg,
-           v_pdf_mode, v_pdf_allow
+           v_pdf_mode, v_pdf_allow, v_nessuna_key
       FROM vendite.ordini o
       JOIN config.stati_doc_ordini sdo ON sdo.id = o.stato_doc_ordine_id
      WHERE o.id = p_ordine_id;
@@ -72,24 +99,30 @@ BEGIN
            AND r.attivo IS TRUE
     );
 
+    -- Motivi ostativi all'ANNULLAMENTO, calcolati UNA VOLTA SOLA.
+    -- Fn pura: [] quando e' lecito. E' la stessa che solleva nel guard.
+    v_mot_annulla := script.fn_check_ordine_annullabile(p_ordine_id);
+
     SELECT COALESCE(
         jsonb_agg(
             jsonb_build_object(
                 'key',              t.meta->>'action_key',
                 'target_state',     sa.codice_interno,
+                -- Forma leggibile della destinazione: la colonna
+                -- accanto, nello stesso JOIN. Il FE non puo'
+                -- derivarla dal codice.
+                'target_state_descrizione', sa.descrizione,
                 'label_key',        t.meta->>'label_key',
                 'severity',         t.meta->>'severity',
                 'icon',             t.meta->>'icon',
                 'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
                 'outlined',         COALESCE((t.meta->>'outlined')::boolean, false),
-                'enabled',          NOT (COALESCE((t.meta->>'requires_righe')::boolean, false)
-                                         AND NOT v_ha_righe),
-                'reason',           CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
-                                              AND NOT v_ha_righe
-                                         THEN 'DOCUMENTO_SENZA_RIGHE' END,
-                'reason_key',       CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
-                                              AND NOT v_ha_righe
-                                         THEN 'common.azione_reason.senza_righe' END
+                -- Tutto discende dall'array dei motivi: nessuna
+                -- regola puo' mascherarne un'altra.
+                'enabled',          jsonb_array_length(m.motivi) = 0,
+                'reason',           m.motivi -> 0 ->> 'reason',
+                'reason_key',       m.motivi -> 0 ->> 'reason_key',
+                'reasons',          m.motivi
             )
             ORDER BY sa.ordine
         ),
@@ -98,6 +131,15 @@ BEGIN
     INTO v_actions
     FROM config.transizioni_stati_ordini t
     JOIN config.stati_doc_ordini sa ON sa.id = t.stato_a_id
+    -- I motivi della destinazione, sommati in un array solo: prima
+    -- quelli specifici, poi il generico "documento vuoto".
+    CROSS JOIN LATERAL (
+        SELECT CASE WHEN sa.codice_interno = 'ANNULLATO'
+                    THEN v_mot_annulla ELSE '[]'::jsonb END
+            || CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                         AND NOT v_ha_righe
+                    THEN c_motivo_senza_righe ELSE '[]'::jsonb END AS motivi
+    ) m
     WHERE t.stato_da_id = v_stato_id
       AND t.attivo IS TRUE
       AND COALESCE((t.meta->>'manuale')::boolean, true) IS TRUE
@@ -149,6 +191,9 @@ BEGIN
             jsonb_build_object(
                 'key',              'push_commessa',
                 'target_state',     NULL,
+                -- Non e' un cambio di stato: nessuna destinazione
+                -- da nominare.
+                'target_state_descrizione', NULL,
                 'label_key',        'vendite.ordini.azione_push_commessa',
                 'severity',         'success',
                 'icon',             'pi pi-arrow-right',
@@ -161,6 +206,16 @@ BEGIN
         );
     END IF;
 
+    -- La nota "cosa fare invece" si mostra SOLO quando non resta
+    -- nessun bottone vivo. NON si appoggia a v_can_change, che qui
+    -- conta anche i disabilitati (vedi sopra): userebbe un conteggio
+    -- pensato per l'opposto e la nota non comparirebbe mai.
+    SELECT NOT EXISTS (
+        SELECT 1
+          FROM jsonb_array_elements(v_actions) AS a
+         WHERE COALESCE((a->>'enabled')::boolean, true) IS TRUE
+    ) INTO v_nessuna_azione;
+
     RETURN jsonb_build_object(
         'available_actions',           v_actions,
         'can_change_state',            v_can_change,
@@ -169,6 +224,7 @@ BEGIN
         'can_push_commessa',           v_push_ok,
         'can_push_commessa_reason',    v_push_reason,
         'can_push_commessa_reason_key', v_push_reason_key,
+        'nessuna_azione_key',          CASE WHEN v_nessuna_azione THEN v_nessuna_key END,
         'non_editable_fields',         CASE WHEN v_stato_cod = 'DRAFT'
                                             THEN c_non_edit_cliente
                                             ELSE c_non_edit_tutti END,
@@ -179,7 +235,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_ordine(p_ordine_id bigint)
-IS 'Capability ordine di vendita per detail API: available_actions + push_commessa (decoupling fatturazione/spedizione, fn_list_ordini_da_pushare fonte unica; reason ORDINE_NON_CONFERMATO/ORDINE_FATTURA_DA_DDT/ORDINE_GIA_FATTURATO/ORDINE_NESSUNA_RIGA_PUSHABILE) + can_change_state + can_edit_* + non_editable_fields + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_ordini. rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e l''ordine non ha righe -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard Regola 2, che non filtra su attivo). rev 2026-07-19: reason ORDINE_GIA_INVIATO (allocato, in attesa fatturazione) distinta da ORDINE_GIA_FATTURATO, entrambe via script.fn_get_stato_push_segment (vede anche componenti #CMP) — brief-db-push-commessa-gia-inviato §4b. rev 2026-07-19 (bis): le 5 reason_key del push passano al namespace i18n vendite.ordini.* (era ordini.*, radice inesistente nei locales FE) — brief-db-i18n-namespace-reason-ordini; convenzione in docs/it/dev/frontend/i18n-namespace-radici.md.';
+IS 'Capability ordine di vendita per detail API: available_actions + push_commessa (decoupling fatturazione/spedizione, fn_list_ordini_da_pushare fonte unica; reason ORDINE_NON_CONFERMATO/ORDINE_FATTURA_DA_DDT/ORDINE_GIA_FATTURATO/ORDINE_NESSUNA_RIGA_PUSHABILE) + can_change_state + can_edit_* + nessuna_azione_key + non_editable_fields + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_ordini. rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e l''ordine non ha righe -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard Regola 2, che non filtra su attivo). rev 2026-07-19: reason ORDINE_GIA_INVIATO (allocato, in attesa fatturazione) distinta da ORDINE_GIA_FATTURATO, entrambe via script.fn_get_stato_push_segment (vede anche componenti #CMP) — brief-db-push-commessa-gia-inviato §4b. rev 2026-07-19 (bis): le 5 reason_key del push passano al namespace i18n vendite.ordini.* (era ordini.*, radice inesistente nei locales FE) — brief-db-i18n-namespace-reason-ordini; convenzione in docs/it/dev/frontend/i18n-namespace-radici.md. rev 2026-08-04: le azioni verso ANNULLATO espongono reasons da script.fn_check_ordine_annullabile (stessa fn del guard di transizione); i motivi si sommano a quello di requires_righe in un array unico da cui discendono enabled/reason/reason_key. + nessuna_azione_key dal meta dello stato corrente (EVASO / PARZIALMENTE_EVASO), esposta solo quando nessuna azione risulta abilitata — valutata a parte da can_change_state, che qui conta apposta anche le disabilitate (brief-db-vie-uscita-operatore §4 regola R3, §6). rev 2026-08-06: + target_state_descrizione accanto a target_state (config.stati_doc_ordini.descrizione della destinazione). Serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile (DRAFT -> Bozza, ALLOCATO -> Allocato a magazzino) e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati. NULL su push_commessa, che non e'' una transizione.';
 ```
 
 ---

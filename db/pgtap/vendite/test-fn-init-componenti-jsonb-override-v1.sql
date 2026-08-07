@@ -17,6 +17,21 @@
 -- ------------------------------------------------------------
 
 BEGIN;
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
+--   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
+--   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio, e il
+--   file sarebbe verde per sottrazione. IMMEDIATE li riporta a scattare a fine
+--   di ogni istruzione. In testa e non in coda: in coda scatterebbero dopo il
+--   cleanup, su righe ormai cancellate.
+--   Brief: brief-db-pgtap-runner-rls-baseline §19.
+SET CONSTRAINTS ALL IMMEDIATE;
+
+-- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
+-- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
+-- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
+-- Brief: brief-db-pgtap-runner-rls-baseline §8.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
 SELECT plan(5);
 
 -- =========================================================
@@ -122,59 +137,72 @@ END;
 -- =========================================================
 -- 5) fn_preventivo_riga_componenti_init: override con prezzo=0
 --    su componente obbligatorio -> raise E_PARAMETRO_INVALIDO.
---    Questo test verifica che il path override venga EFFETTIVAMENTE
---    percorso (chiave trovata + guard prezzo) e che il ? abbia
---    funzionato correttamente restituendo TRUE.
---    Skip se nessun componente obbligatorio attivo su preventivo composito.
+--    Verifica che il ramo override venga EFFETTIVAMENTE percorso
+--    (chiave trovata dall'operatore ? + guard prezzo) e non che la
+--    funzione, semplicemente, sollevi qualcosa.
+--
+-- ⚠️ IL SOGGETTO NON SI PESCA A CASO, e prima si faceva (corretto il
+--    2026-08-05, dopo un rosso intermittente). Due difetti insieme:
+--
+--    1. MANCAVA LA CONDIZIONE CHE CONTA. La funzione ha una guardia di
+--       idempotenza in testa — «se la riga ha gia' componenti, RETURN 0» —
+--       e quindi su quelle righe non arriva MAI al guard del prezzo.
+--       Misurato: dei 44 candidati che il test accettava, **33 uscivano
+--       subito con RETURN 0** e solo 11 potevano far scattare il guard.
+--       Il test aveva quindi tre probabilita' su quattro di fallire, e
+--       quando era verde lo era per fortuna.
+--
+--    2. DUE `LIMIT 1` INDIPENDENTI, SENZA `ORDER BY`. Uno nell'EXISTS che
+--       decide lo skip, uno nella SELECT che sceglie il soggetto: potevano
+--       pescare righe diverse, e quale uscisse dipendeva dal piano del
+--       planner. Dimostrato: cambiando `enable_hashjoin` la stessa query
+--       restituiva la riga 163 oppure la 128.
+--
+--    Ora il soggetto si sceglie UNA VOLTA, con la condizione di
+--    idempotenza inclusa e un ORDER BY che rende la scelta ripetibile, e
+--    lo stesso soggetto serve sia allo skip sia all'asserzione.
 -- =========================================================
+CREATE TEMP TABLE _t_ovr AS
+SELECT pr.id AS riga_id, ac.componente_id
+  FROM vendite.preventivi_righe pr
+  JOIN catalogo.articoli a  ON a.id = pr.articolo_id
+  JOIN catalogo.articoli_componenti ac ON ac.prodotto_id = a.id
+ WHERE a.is_composito = TRUE
+   AND COALESCE(ac.obbligatorio, TRUE) = TRUE
+   AND COALESCE(ac.attivo, TRUE) = TRUE
+   AND ac.validita @> CURRENT_DATE
+   -- LA condizione che mancava: la funzione esce con RETURN 0 se la riga
+   -- ha gia' componenti, e non raggiunge mai il guard che si vuole provare.
+   AND NOT EXISTS (
+       SELECT 1 FROM vendite.preventivi_righe_componenti c
+        WHERE c.riga_preventivo_id = pr.id)
+ -- Scelta ripetibile: senza, il soggetto cambia col piano di esecuzione.
+ ORDER BY pr.id, ac.componente_id
+ LIMIT 1;
+
 SELECT CASE
-    WHEN NOT EXISTS (
-             SELECT 1 FROM vendite.preventivi_righe pr
-               JOIN catalogo.articoli a ON a.id = pr.articolo_id
-               JOIN catalogo.articoli_componenti ac ON ac.prodotto_id = a.id
-              WHERE a.is_composito = TRUE
-                AND COALESCE(ac.obbligatorio, TRUE) = TRUE
-                AND COALESCE(ac.attivo, TRUE) = TRUE
-                AND ac.validita @> CURRENT_DATE
-         )
-    THEN skip('5) nessun componente obbligatorio su preventivo composito: skip')
+    WHEN NOT EXISTS (SELECT 1 FROM _t_ovr)
+    THEN skip('5) nessuna riga composita SENZA componenti gia'' inizializzati: il guard non e'' raggiungibile, skip')
     ELSE throws_like(
-        $$
-        DO $inner$
-        DECLARE
-            v_riga_id   bigint;
-            v_comp_id   uuid;
-            v_overrides jsonb;
-        BEGIN
-            SELECT pr.id, ac.componente_id
-              INTO v_riga_id, v_comp_id
-              FROM vendite.preventivi_righe pr
-              JOIN catalogo.articoli a ON a.id = pr.articolo_id
-              JOIN catalogo.articoli_componenti ac ON ac.prodotto_id = a.id
-             WHERE a.is_composito = TRUE
-               AND COALESCE(ac.obbligatorio, TRUE) = TRUE
-               AND COALESCE(ac.attivo, TRUE) = TRUE
-               AND ac.validita @> CURRENT_DATE
-             LIMIT 1;
-
-            IF v_riga_id IS NULL THEN RETURN; END IF;
-
-            -- Override con prezzo=0 per componente obbligatorio:
-            -- il ? deve trovare la chiave (TRUE) e il guard deve bloccare
-            v_overrides := jsonb_build_object(v_comp_id::text, 0);
-
-            PERFORM vendite.fn_preventivo_riga_componenti_init(
-                v_riga_id,
-                1::bigint,
-                CURRENT_DATE,
-                v_overrides
-            );
-        END
-        $inner$
-        $$,
-        -- Il testo del messaggio proviene dai parametri VARIADIC di fn_log_and_raise_error
-        -- (qui: p_riga_id::text). L'hint 'prezzo override...' è nel context JSONB, non nel
-        -- messaggio. Matchiamo su 'Parametro non valido' che identifica E_PARAMETRO_INVALIDO.
+        format(
+            $$
+            DO $inner$
+            BEGIN
+                -- Override con prezzo=0 su un componente OBBLIGATORIO di una
+                -- riga non ancora inizializzata: l'operatore ? deve trovare la
+                -- chiave e il guard deve bloccare.
+                PERFORM vendite.fn_preventivo_riga_componenti_init(
+                    %L::bigint, 1::bigint, CURRENT_DATE, %L::jsonb);
+            END
+            $inner$
+            $$,
+            (SELECT riga_id FROM _t_ovr),
+            (SELECT jsonb_build_object(componente_id::text, 0) FROM _t_ovr)
+        ),
+        -- Il testo viene dai parametri VARIADIC di fn_log_and_raise_error
+        -- (qui p_riga_id::text); l'hint 'prezzo override...' sta nel context
+        -- JSONB, non nel messaggio. Si matcha su 'Parametro non valido', che
+        -- identifica E_PARAMETRO_INVALIDO.
         '%Parametro non valido%',
         '5) fn_init override prezzo=0 su obbligatorio -> raise E_PARAMETRO_INVALIDO'
     )

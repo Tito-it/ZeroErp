@@ -23,6 +23,21 @@
 -- ------------------------------------------------------------
 
 BEGIN;
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
+--   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
+--   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio, e il
+--   file sarebbe verde per sottrazione. IMMEDIATE li riporta a scattare a fine
+--   di ogni istruzione. In testa e non in coda: in coda scatterebbero dopo il
+--   cleanup, su righe ormai cancellate.
+--   Brief: brief-db-pgtap-runner-rls-baseline §19.
+SET CONSTRAINTS ALL IMMEDIATE;
+
+-- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
+-- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
+-- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
+-- Brief: brief-db-pgtap-runner-rls-baseline §8.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
 SELECT plan(9);
 
 -- ============================================================
@@ -128,9 +143,14 @@ SELECT vendite.fn_push_preventivo_a_ordine((SELECT id FROM tmp_vs_prev));
 -- Ramo commessa: servizio "emesso" (commessa + attivita EMESSA).
 CREATE TEMP TABLE tmp_vs_commessa AS
 WITH ins AS (
-  INSERT INTO vendite.commesse (codice, billing_account_id, utility_id, stato_commessa_id)
+  -- ⚠️ L'emittente NON si omette: vedi la nota in
+  -- test-drop-uq-commesse-attivita-src-uid-partial-v1 — con la RLS attiva
+  -- la policy rls_commesse_ef_whitelist respinge l'SR NULL (fail-closed).
+  INSERT INTO vendite.commesse (codice, billing_account_id, utility_id, stato_commessa_id,
+                                emittente_soggetto_ruolo_id)
   SELECT 'PGTAP-VS-CMD-' || substr(md5(clock_timestamp()::text), 1, 8),
-         r.billing_account_id, r.utility_id, r.stato_commessa_id
+         r.billing_account_id, r.utility_id, r.stato_commessa_id,
+         script.fn_pgtap_emittente_sr_operatore()
     FROM tmp_vs_refs r
   RETURNING id)
 SELECT id FROM ins;

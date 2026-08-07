@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il registro dei codici errore senza policy — mirror vivo del CSV
+#   Tabella: 20260805-36 · Misura: 20260805-35
+#   Brief: docs/it/dev/work-done/brief-db-be-terzo-lato-presidio-codici.md
+#
+#   ── ✅ AZZERATO IL 2026-08-07 (brief §26.2, §27) ──────────────────────
+#   Il CSV e' oggi la sola intestazione: **zero voci**. Non e' un registro
+#   svuotato, e' un registro **in pari** — la misura canonica sul DB vivo dice
+#   che nessun codice della vista e' rimasto senza policy (368 codici nella
+#   vista, 607 policy dichiarate, 0 da dichiarare).
+#
+#   ⚠️ **La tabella NON si droppa** (brief §26.2). A zero righe serve ancora:
+#   il cancello lato BE la interroga a ogni PR — se sparisse, il guard sullo
+#   schema fallirebbe — ed e' il posto dove atterrera' il prossimo codice che il
+#   DB crea prima che il BE lo classifichi.
+#
+#   ── La storia, perche' il numero da solo non si spiega ────────────────
+#   Nato il 2026-08-05 come fotografia del debito: **141 voci**, i codici che una
+#   funzione plpgsql viva puo' nominare e che non hanno una voce in
+#   error_policies.py. Novanta delle 141 stavano in funzioni agganciate a un
+#   trigger, quindi sul percorso di una richiesta vera: quelle da decidere per
+#   prime. Sceso a 51 col quarto lato, poi a 25 col lotto 5A, poi a **0** col 5B.
+#
+# ── ⚠️ `DELETE` + `loadData`, non un upsert ─────────────────────────────
+#   Stessa scelta del registro dei codici fuori convenzione, e per lo stesso
+#   motivo: questo registro deve poter **calare**. Con un upsert, togliere una
+#   riga dal CSV non la toglierebbe dal database, e il cancello continuerebbe a
+#   saltare un codice che nel frattempo ha ottenuto la sua policy.
+#   Con il mirror basta togliere la riga dal CSV. Lezione pagata sul
+#   20260805-16, dove un DELETE gia' applicato non pote' rimediare a un CSV
+#   tornato indietro.
+#
+#   ⚠️ La lista si rigenera in ogni momento dalla misura canonica:
+#     SELECT codice, da_trigger FROM dbops.vw_codici_errore_da_dichiarare
+#      WHERE codice NOT IN (...le chiavi di error_policies.py...)
+#   ma il confronto col dizionario Python **non si puo' fare da SQL**: e' il
+#   motivo per cui il cancello vivra' lato backend (brief §5).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260805-37-seed-codici-errore-senza-policy-mctit.yaml
+
+  - changeSet:
+      id: 20260805-37-seed-codici-errore-senza-policy
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Registro dei codici errore senza policy — mirror esatto del CSV
+        (DELETE + loadData, non upsert) perche' il registro deve poter calare:
+        togliere la riga dal CSV deve toglierla anche dal DB.
+        Nato il 2026-08-05 con 141 voci, AZZERATO il 2026-08-07 (141 -> 51 -> 25
+        -> 0): il CSV e' oggi la sola intestazione. La tabella resta, a zero
+        righe, perche' il cancello lato BE la interroga a ogni PR.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: codici_errore_senza_policy
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DELETE FROM dbops.codici_errore_senza_policy;
+        - loadData:
+            relativeToChangelogFile: true
+            file: ../sql/dbops/codici_errore_senza_policy.csv
+            tableName: codici_errore_senza_policy
+            schemaName: dbops
+            separator: ","
+            encoding: UTF-8
+            columns:
+              - column: { name: codice,             type: STRING }
+              - column: { name: da_trigger,         type: BOOLEAN }
+              - column: { name: data_registrazione, type: DATE }
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DELETE FROM dbops.codici_errore_senza_policy;

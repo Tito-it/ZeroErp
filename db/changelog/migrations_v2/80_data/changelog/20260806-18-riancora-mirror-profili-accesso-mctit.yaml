@@ -1,0 +1,92 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Ultimo della serie (dopo -13 preventivi, -14 contratti, -15 ui.lista_colonna,
+#   -17 workflow pratiche): ri-ancora il mirror di config.profili_accesso dopo
+#   il 20260419-04, che inseriva SUPER_ADMIN fuori dal CSV.
+#
+# ℹ️ IL CASO ERA PIU' MITE DEGLI ALTRI, e vale la pena dire perche'. L'INSERT
+#   del 20260419-04 e' `ON CONFLICT (id) DO NOTHING`: non poteva sovrascrivere
+#   niente, quindi nessuna divergenza di comportamento fra dev e CI. Il difetto
+#   era di LEGGIBILITA' del seed: il CSV dichiarava tre profili su quattro, e
+#   il mancante era proprio SUPER_ADMIN — bypass totale dei permessi. Chi
+#   apriva il file per sapere quali profili esistono leggeva una mezza verita'.
+#   La stessa famiglia del prerequisito sbagliato di pratiche (20260806-17): il
+#   file non rompe niente, mente a chi lo legge.
+#
+# ℹ️ Dal 2026-08-06 la riga 9100 e' nel CSV (decisione di Tid), il 20260419-04
+#   e' `runOnChange: false` e questo mirror lo segue nella timeline: da qui in
+#   avanti SUPER_ADMIN nasce dal seed dichiarativo in ogni ambiente
+#   ricostruito, come gli altri tre profili.
+#
+# ⚠️ FUORI PERIMETRO, e resta giustamente dov'e': il 20260419-95 semina
+#   l'identita' operatore per `auth_user_id = 1` (emittente 32, tipo ruolo 14,
+#   qualifica 1) dietro precondizioni che ne verificano l'esistenza. Non e'
+#   configurazione di prodotto ma bootstrap d'ambiente: portarlo in un CSV lo
+#   trasformerebbe in un seed che nasce ovunque, che e' peggio di dove sta.
+#
+# ⚠️ La sede dei profili di accesso e' il CSV
+#   `80_data/sql/config/profili_accesso.csv`: nessun INSERT nuovo qui.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260806-18-riancora-mirror-profili-accesso-mctit.yaml
+
+  - changeSet:
+      id: 20260806-18-riancora-mirror-profili-accesso
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Ri-applica il CSV di config.profili_accesso dopo il 20260419-04, che
+        inseriva SUPER_ADMIN (9100) fuori dal seed. La riga e' ora nel CSV: da
+        qui in avanti i quattro profili nascono tutti dallo stesso file.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: profili_accesso
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/profili_accesso.csv
+            tableName: profili_accesso
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: id
+            columns:
+              - column: { name: id,           type: NUMERIC }
+              - column: { name: tipo,         type: STRING }
+              - column: { name: codice,       type: STRING }
+              - column: { name: descrizione,  type: STRING }
+              - column: { name: attivo,       type: BOOLEAN }
+              - column: { name: meta,         type: STRING }
+              - column: { name: data_insert,  type: STRING }
+              - column: { name: user_insert,  type: STRING }
+              - column: { name: data_update,  type: STRING }
+              - column: { name: user_update,  type: STRING }
+
+        # ⚠️ La sequenza IDENTITY non avanza sui seed con id espliciti: senza
+        #   questo, il primo INSERT applicativo su config.profili_accesso
+        #   sceglierebbe un id gia' occupato e fallirebbe sulla PK. Stesso
+        #   accorgimento del 20260419-04, ripetuto qui perche' questo mirror
+        #   puo' inserire righe nuove a ogni giro.
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SELECT setval(
+                  pg_get_serial_sequence('config.profili_accesso', 'id'),
+                  GREATEST(COALESCE((SELECT MAX(id) FROM config.profili_accesso), 0), 1),
+                  true
+              );

@@ -16,6 +16,21 @@
 -- 10) anti-regressione: rename codice stati -> DRAFT->EMESSO risolta per codice_interno
 -- ------------------------------------------------------------
 BEGIN;
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
+--   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
+--   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio, e il
+--   file sarebbe verde per sottrazione. IMMEDIATE li riporta a scattare a fine
+--   di ogni istruzione. In testa e non in coda: in coda scatterebbero dopo il
+--   cleanup, su righe ormai cancellate.
+--   Brief: brief-db-pgtap-runner-rls-baseline §19.
+SET CONSTRAINTS ALL IMMEDIATE;
+
+-- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
+-- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
+-- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
+-- Brief: brief-db-pgtap-runner-rls-baseline §8.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
 SELECT plan(10);
 -- ============================================================
 -- Setup GUC app.current_user_id: il trigger trgfn_preventivi_default_emittente
@@ -118,7 +133,7 @@ SELECT (
     SELECT i.id
     FROM config.iva i
     WHERE i.attivo IS TRUE
-    LIMIT 1
+    ORDER BY i.id LIMIT 1
   ) AS iva_id;
 SELECT ok(
     (

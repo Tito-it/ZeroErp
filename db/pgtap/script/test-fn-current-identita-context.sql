@@ -1,5 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-contesto: escluso — la ragione e' scritta per esteso piu' sotto in
+--   questo stesso file. Dichiarazione leggibile dal cancello
+--   scripts/guardrail_pgtap_preambolo.py: distingue «escluso apposta» da
+--   «dimenticato», che una nota in prosa non fa.
+--   ⚠️ Da riguardare: le esclusioni `rls/` furono fatte IN BLOCCO, e almeno
+--   una non ne aveva diritto (brief pgtap-runner-rls-baseline §30.2).
 -- pgTAP test per Zero ERP
 --
 -- Test: script.fn_current_identita_context
@@ -26,6 +32,26 @@
 -- BEGIN; + rollback implicito a fine file.
 -- ------------------------------------------------------------
 BEGIN;
+
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
+--   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
+--   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio, e il
+--   file sarebbe verde per sottrazione. IMMEDIATE li riporta a scattare a fine
+--   di ogni istruzione. In testa e non in coda: in coda scatterebbero dopo il
+--   cleanup, su righe ormai cancellate.
+--   Brief: brief-db-pgtap-runner-rls-baseline §19.
+SET CONSTRAINTS ALL IMMEDIATE;
+
+-- ⚠️ QUESTO FILE NON USA script.fn_pgtap_set_contesto_operatore(), a differenza
+-- degli altri, e non e' una dimenticanza.
+-- Qui il contesto non e' lo sfondo: e' il soggetto. Il test imposta e azzera le
+-- GUC da se' (SET LOCAL piu' sotto) e verifica cosa la funzione legge in ogni
+-- combinazione — a partire dall'asserzione 1, «nessuna GUC settata -> tutte le
+-- colonne NULL». Impostare un contesto in testa distruggerebbe la premessa
+-- della prima asserzione prima ancora di cominciare.
+-- Misurato: con la riga, 7 asserzioni diventano 6 verdi + 1 rossa.
+-- Brief: brief-db-pgtap-runner-rls-baseline §11.
+
 SELECT plan(7);
 -- =========================================================
 -- 1) Nessun GUC settato -> 3 NULL

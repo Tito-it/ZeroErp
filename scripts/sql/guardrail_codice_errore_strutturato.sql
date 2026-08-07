@@ -1,0 +1,278 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- Guardrail CI — il contratto del codice errore strutturato
+--   Brief: docs/it/dev/work-done/brief-db-codice-errore-strutturato.md §10
+--   Funzione presidiata: script.fn_log_and_raise_error (20260805-05)
+--   Registro letto: dbops.messaggi_errore_codici_legacy (20260805-06/07)
+--
+-- IL CONTRATTO, in una riga:
+--   «SQLSTATE P0001 + campo CONSTRAINT valorizzato = errore di dominio, e il
+--    contenuto di CONSTRAINT e' il codice di config.messaggi_errore».
+--
+-- Su quella condizione il backend decide se un errore vale 409, 404, 403 o 400
+-- e quale messaggio legge l'operatore. Finche' resta un commento dentro a una
+-- funzione, e' una convenzione; qui diventa una regola.
+--
+-- FALLISCE (RAISE EXCEPTION) se trova:
+--   A) un `RAISE ... USING ... CONSTRAINT =` fuori da fn_log_and_raise_error
+--   B) un codice di config.messaggi_errore fuori convenzione e non registrato
+--      nel debito
+--   C) una voce del registro che non corrisponde piu' a nessun codice a seed
+--      (o il cui codice e' stato ritirato): il debito e' pagato, la riga va tolta
+--   D) una funzione viva che solleva un codice RITIRATO (`obsoleto_dal`)
+--
+-- ── ⚠️ `obsoleto_dal` HA CAMBIATO CASA il 2026-08-07 (changeSet 20260807-13) ──
+--   Nasceva su `config.messaggi_errore` (20260805-17), che pero' e' chiavata
+--   (codice, lingua): il ritiro era **per lingua**, cioe' si poteva ritirare un
+--   codice in italiano e lasciarlo vivo in inglese senza che nulla protestasse.
+--   Ora sta su `config.codici_errore`, che ha UNA riga per codice — il ritiro
+--   appartiene al codice, non alla frase. I controlli (B), (C), (D) e il
+--   riepilogo leggono da li'.
+--   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (D-6)
+--
+-- ── `obsoleto_dal`, dal 2026-08-05 (changeSet 20260805-17) ───────────────
+--   Un codice legacy spesso NON si puo' cancellare: `dbops.error_log` ha una FK
+--   NOT NULL verso `config.messaggi_errore(id)`, e 46 codici su 53 hanno righe
+--   di log. Si ritirano quindi valorizzando `obsoleto_dal` invece di
+--   cancellarli — la riga resta, i log restano agganciati, il runtime continua
+--   a risolvere il messaggio.
+--   ⚠️ Una data FUTURA e' un ritiro programmato: il codice e' ancora in
+--   servizio, quindi (B) continua a pretenderlo registrato e (D) non protesta.
+--   Tutti i controlli qui sotto guardano `obsoleto_dal <= CURRENT_DATE`.
+--
+-- Uso (read-only, nessuna scrittura):
+--   psql "$DB_URL" -v ON_ERROR_STOP=1 -f scripts/sql/guardrail_codice_errore_strutturato.sql
+--
+-- ── PERCHE' UNO SCRIPT E NON IL pgTAP ────────────────────────────────────
+--   Stessa ragione di `guardrail_riferimenti_morti.sql`: la suite pgTAP non
+--   gira in CI (girano Liquibase e i test Django). Un `DO` che solleva, e con
+--   `ON_ERROR_STOP=1` il passo della CI diventa rosso.
+--   I pgTAP di `db/pgtap/script/test-fn-log-and-raise-error-constraint-codice.sql`
+--   coprono l'altra meta': che il campo esca valorizzato e col contenuto
+--   giusto. Qui si copre che nessun altro lo scriva.
+-- ------------------------------------------------------------
+
+\set ON_ERROR_STOP on
+
+DO $guardrail$
+DECLARE
+    v_mittenti       text;
+    v_fuori          text;
+    v_pagati         text;
+    v_ritirati_vivi  text;
+    v_warning_sollevati text;
+    -- ⚠️ Deve restare IDENTICO al CHECK chk_messaggi_errore_codici_legacy_non_conforme
+    --    (20260805-06, allargato da 20260805-28). Se i due divergono, il registro
+    --    e il presidio finiscono per parlare di due insiemi diversi e nessuno se
+    --    ne accorge.
+    --
+    -- ⚠️ DUE FAMIGLIE, NON UNA: `E_` sono errori e si sollevano; `W_` sono
+    --    warning e si scrivono soltanto nel log (es. W_TXID_NOT_REGISTERED, il
+    --    cui messaggio comincia con «Warning - »). Allargare la convenzione ai
+    --    warning evita di rinominarli in `E_` per far tornare un conteggio,
+    --    facendogli dire una cosa falsa — ma apre un buco che il controllo (E)
+    --    chiude: un `W_` sollevato arriverebbe al backend, non troverebbe policy
+    --    (la scorciatoia di resolve() e' solo per `E_`) e darebbe **HTTP 500**.
+    c_convenzione CONSTANT text := '^[EW]_[A-Z0-9_]+$';
+BEGIN
+    -- ── (A) un solo mittente autorizzato sul canale CONSTRAINT ──────
+    --
+    -- Perche' serve: il backend si fida del campo quando SQLSTATE e' P0001.
+    -- Ma P0001 e' anche il default di QUALUNQUE `RAISE EXCEPTION` scritto a
+    -- mano, e nel DB ce ne sono 135 in 46 funzioni. Il giorno in cui uno di
+    -- quelli usasse `USING CONSTRAINT` per dire altro — il nome di un vincolo,
+    -- una nota di debug — il backend lo leggerebbe come un codice di dominio e
+    -- risolverebbe una policy che non c'entra. Non fallirebbe niente: darebbe
+    -- solo la risposta sbagliata.
+    --
+    -- La ricerca resta dentro allo stesso statement (`[^;]*` fra RAISE e
+    -- CONSTRAINT): senza, qualunque funzione che nomina un vincolo per altri
+    -- motivi (`EXECUTE format('ALTER TABLE ... ADD CONSTRAINT ...')`) sarebbe
+    -- un falso positivo. Verificato il 2026-08-05: 36 funzioni nominano
+    -- CONSTRAINT, nessuna di queste viene raccolta.
+    SELECT string_agg(n.nspname || '.' || p.proname, E'\n  ' ORDER BY n.nspname, p.proname)
+      INTO v_mittenti
+      FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+     WHERE p.prolang = (SELECT oid FROM pg_language WHERE lanname = 'plpgsql')
+       AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+       AND p.prosrc ~* 'RAISE[^;]*USING[^;]*CONSTRAINT\s*='
+       AND NOT (n.nspname = 'script' AND p.proname = 'fn_log_and_raise_error');
+
+    IF v_mittenti IS NOT NULL THEN
+        RAISE EXCEPTION
+          E'Il canale CONSTRAINT ha piu'' di un mittente:\n  %\n\n'
+          'Il campo CONSTRAINT dell''eccezione e'' riservato al CODICE di dominio, e '
+          'l''unica sede autorizzata a scriverlo e'' script.fn_log_and_raise_error '
+          '(changeSet 20260805-05). Il backend, su SQLSTATE P0001, lo legge come se '
+          'fosse un codice di config.messaggi_errore e ci risolve la policy HTTP: se '
+          'ci finisce dentro altro, non fallisce niente — risponde sbagliato, che e'' '
+          'peggio. Sollevare passando da fn_log_and_raise_error, che oltre al campo '
+          'porta anche il messaggio localizzato, causa, soluzione e la riga di log.', v_mittenti;
+    END IF;
+
+    -- ── il registro deve esserci: senza, (B) e (C) non misurano ─────
+    --
+    -- Stessa scelta del guardrail dei riferimenti morti sull'estensione
+    -- plpgsql_check: si FALLISCE, non si salta in silenzio. Un presidio che
+    -- passa perche' non ha misurato niente e' peggio di un presidio assente,
+    -- perche' da' la sensazione della copertura senza averla.
+    IF to_regclass('dbops.messaggi_errore_codici_legacy') IS NULL THEN
+        RAISE EXCEPTION
+          'Registro dbops.messaggi_errore_codici_legacy assente: i controlli (B) e (C) '
+          'non possono misurare. Applicare i changeSet 20260805-06 (tabella) e '
+          '20260805-07 (le 57 voci). NON si passa in silenzio.';
+    END IF;
+
+    -- ── (B) il rubinetto: nessun codice NUOVO fuori convenzione ─────
+    --
+    -- `docs/it/dev/api.md` dichiara `E_{MODULO}_{TIPO}`. Il presidio pero'
+    -- controlla solo il PREFISSO e l'alfabeto, non la forma piena, e la
+    -- differenza e' voluta: 13 codici conformi e in uso hanno un solo
+    -- underscore (E_DATABASE, E_GENERICO, E_TOKEN, E_PIPELINE...), diversi dei
+    -- quali registrati in error_policies.py. Stringere fino alla forma piena
+    -- vorrebbe dire un secondo registro da 13 voci per comprare niente:
+    -- quello che serve al backend e' il prefisso, perche' e' su quello che
+    -- `ErrorPolicyRegistry.resolve` decide 400 invece di 500.
+    --
+    -- ⚠️ I codici RITIRATI (`obsoleto_dal` gia' scaduta) escono da questo
+    -- controllo: non sono debito da registrare, sono debito **pagato** che non
+    -- si e' potuto cancellare per via della FK di error_log. Pretenderli nel
+    -- registro impedirebbe al registro di calare, che e' il suo unico scopo.
+    SELECT string_agg(ce.codice, E'\n  ' ORDER BY ce.codice)
+      INTO v_fuori
+      FROM config.codici_errore ce
+     WHERE ce.codice !~ c_convenzione
+       AND (ce.obsoleto_dal IS NULL OR ce.obsoleto_dal > CURRENT_DATE)
+       AND NOT EXISTS (
+             SELECT 1 FROM dbops.messaggi_errore_codici_legacy l
+              WHERE l.codice = ce.codice);
+
+    IF v_fuori IS NOT NULL THEN
+        RAISE EXCEPTION
+          E'Codici errore fuori convenzione e non registrati:\n  %\n\n'
+          'La convenzione e'' E_{MODULO}_{TIPO} (docs/it/dev/api.md). Un codice senza '
+          'prefisso E_ arriva al backend ma non trova policy, e la scorciatoia di '
+          'ErrorPolicyRegistry.resolve vale solo per i codici E_: tutto il resto cade '
+          'su E_GENERICO, cioe'' HTTP 500. Un operatore che tenta una transizione non '
+          'ammessa si vedrebbe un errore di server.\n'
+          'Due strade: rinominare il codice a E_* (seed CSV + call site + pgTAP che lo '
+          'asseriscono), oppure — se e'' un codice che esisteva gia'' prima del presidio — '
+          'registrarlo in dbops.messaggi_errore_codici_legacy. La seconda strada e'' per '
+          'il debito ereditato del 2026-08-05, NON per i codici nuovi: quelli nascono '
+          'giusti.', v_fuori;
+    END IF;
+
+    -- ── (C) il debito deve calare ───────────────────────────────────
+    --
+    -- Simmetrico al controllo (B) del guardrail dei riferimenti morti. Se un
+    -- codice registrato viene rinominato a E_* o eliminato, la sua riga nel
+    -- registro non serve piu' e va tolta dal CSV
+    -- (80_data/sql/dbops/messaggi_errore_codici_legacy.csv). Il seed e'
+    -- DELETE + loadData proprio per questo: e' un mirror, non un upsert.
+    -- Due modi di pagare il debito, ed entrambi contano: il codice non esiste
+    -- piu' (cancellato), oppure e' stato RITIRATO con `obsoleto_dal` perche' la
+    -- FK di error_log non ne permetteva la cancellazione.
+    SELECT string_agg(l.codice || (CASE WHEN ce.codice IS NULL
+                                        THEN ' (non piu'' a catalogo)'
+                                        ELSE ' (ritirato il ' || ce.obsoleto_dal || ')' END),
+                      E'\n  ' ORDER BY l.codice)
+      INTO v_pagati
+      FROM dbops.messaggi_errore_codici_legacy l
+      LEFT JOIN config.codici_errore ce
+             ON ce.codice = l.codice
+     WHERE ce.codice IS NULL
+        OR (ce.obsoleto_dal IS NOT NULL AND ce.obsoleto_dal <= CURRENT_DATE);
+
+    IF v_pagati IS NOT NULL THEN
+        RAISE EXCEPTION
+          E'Voci di troppo nel registro dei codici legacy:\n  %\n\n'
+          'Questi codici sono stati rinominati, eliminati o RITIRATI con obsoleto_dal: '
+          'in tutti e tre i casi il debito e'' pagato. La riga va TOLTA da '
+          'db/changelog/migrations_v2/80_data/sql/dbops/messaggi_errore_codici_legacy.csv '
+          '(il loader e'' un mirror: DELETE + loadData, quindi basta togliere la riga). '
+          'Non e'' pignoleria — un registro che si puo'' solo allungare smette di essere '
+          'un registro e diventa il posto dove i problemi vanno a sparire.', v_pagati;
+    END IF;
+
+    -- ── (D) nessuna funzione viva solleva un codice ritirato ────────
+    --
+    -- ⚠️ E' il controllo che rende `obsoleto_dal` una promessa mantenuta invece
+    -- di un'etichetta. Il ritiro si fa in due mosse — prima si tolgono i call
+    -- site, poi si valorizza la data — e senza (D) niente impedirebbe a qualcuno
+    -- di rimetterne uno: il codice tornerebbe a girare mentre il catalogo lo
+    -- dichiara ritirato, e nessuno se ne accorgerebbe. E' esattamente il punto
+    -- cieco del §4-bis della guida sui presidi: un'etichetta rassicurante e'
+    -- piu' pericolosa di un errore, perche' nessuno la ricontrolla.
+    --
+    -- ⚠️ LIMITE NOTO, da conoscere prima di fidarsi del verde: vede solo i
+    -- letterali nei corpi plpgsql. NON vede (a) i codici passati per
+    -- espressione — ma quelli escono dai `fn_check_*`, che ritornano codici
+    -- `E_*` e quindi non ritirabili per questa strada — e (b) i codici sollevati
+    -- dal **Python**: questo e' uno script SQL, `backend/` non lo puo' leggere.
+    -- Per quelli il presidio e' il test `test_error_codes_declared_guardrail`
+    -- lato BE.
+    SELECT string_agg(x.riga, E'\n  ' ORDER BY x.riga)
+      INTO v_ritirati_vivi
+      FROM (
+        SELECT DISTINCT ce.codice || '  <-  ' || n.nspname || '.' || p.proname AS riga
+          FROM config.codici_errore ce
+          JOIN pg_proc p
+            ON p.prosrc LIKE '%' || quote_literal(ce.codice) || '%'
+          JOIN pg_namespace n
+            ON n.oid = p.pronamespace
+         WHERE ce.obsoleto_dal IS NOT NULL
+           AND ce.obsoleto_dal <= CURRENT_DATE
+           AND p.prolang = (SELECT oid FROM pg_language WHERE lanname = 'plpgsql')
+           AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+      ) x;
+
+    IF v_ritirati_vivi IS NOT NULL THEN
+        RAISE EXCEPTION
+          E'Codici RITIRATI ancora sollevati da funzioni vive:\n  %\n\n'
+          'La colonna config.codici_errore.obsoleto_dal dichiara questi codici fuori '
+          'servizio, ma il DB li solleva ancora. Una delle due cose e'' falsa. '
+          'Il ritiro si fa in QUEST''ORDINE: prima si tolgono i call site (changeSet '
+          '20_code, sostituendo il codice con quello nuovo `E_*`), poi si valorizza '
+          'obsoleto_dal nel CSV config/codici_errore.csv. Se il codice serve ancora, va '
+          'rimessa a NULL la data: ritirarlo e continuare a usarlo e'' la forma peggiore '
+          'di debito, perche'' sembra pagato.', v_ritirati_vivi;
+    END IF;
+
+    -- ── (E) un codice di WARNING non si solleva, si logga ───────────
+    --
+    -- ⚠️ E' il prezzo di aver allargato la convenzione ai `W_`. La scorciatoia
+    -- di `ErrorPolicyRegistry.resolve` («codice non registrato che comincia per
+    -- E_ -> 400») vale SOLO per `E_`: un `W_` che arrivasse al backend cadrebbe
+    -- su `E_GENERICO` -> **HTTP 500**. Cioe' il difetto da cui nasce questa
+    -- slice, reintrodotto da una regola allentata.
+    --
+    -- La regola in una riga: **`E_` si solleva, `W_` si scrive nel log.**
+    -- `fn_log_error_only` resta lecito per entrambi; `fn_log_and_raise_error` no.
+    SELECT string_agg(DISTINCT n.nspname || '.' || p.proname || '  ->  ' || m[1],
+                      E'\n  ' ORDER BY n.nspname || '.' || p.proname || '  ->  ' || m[1])
+      INTO v_warning_sollevati
+      FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace,
+      LATERAL regexp_matches(p.prosrc, 'fn_log_and_raise_error[^;]*?''(W_[A-Z0-9_]+)''', 'g') AS m
+     WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+       AND p.prolang = (SELECT oid FROM pg_language WHERE lanname = 'plpgsql');
+
+    IF v_warning_sollevati IS NOT NULL THEN
+        RAISE EXCEPTION
+          E'Codici di WARNING sollevati come errori:\n  %\n\n'
+          'Un codice `W_` puo'' essere scritto nel log (script.fn_log_error_only) ma non '
+          'sollevato (script.fn_log_and_raise_error). Sollevato arriva al backend, dove '
+          'la scorciatoia di ErrorPolicyRegistry.resolve vale solo per i codici `E_`: '
+          'cadrebbe su E_GENERICO, cioe'' **HTTP 500** — un errore di server per quello '
+          'che doveva essere un avviso.\n'
+          'Due strade: usare fn_log_error_only se e'' davvero un avviso, oppure — se e'' '
+          'un errore — dargli un codice `E_` e registrarlo in error_policies.py.', v_warning_sollevati;
+    END IF;
+
+    RAISE NOTICE 'OK — un solo mittente sul canale CONSTRAINT, nessun codice fuori convenzione non registrato, nessuna voce di troppo nel registro (% attive), nessun codice ritirato ancora sollevato (% ritirati), nessun warning sollevato come errore.',
+        (SELECT count(*) FROM dbops.messaggi_errore_codici_legacy),
+        (SELECT count(*) FROM config.codici_errore
+          WHERE obsoleto_dal IS NOT NULL AND obsoleto_dal <= CURRENT_DATE);
+END
+$guardrail$;

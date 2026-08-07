@@ -1,5 +1,14 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-contesto: escluso — la ragione e' scritta per esteso piu' sotto in
+--   questo stesso file. Dichiarazione leggibile dal cancello
+--   scripts/guardrail_pgtap_preambolo.py: distingue «escluso apposta» da
+--   «dimenticato», che una nota in prosa non fa.
+--   ⚠️ Da riguardare: le esclusioni `rls/` furono fatte IN BLOCCO, e almeno
+--   una non ne aveva diritto (brief pgtap-runner-rls-baseline §30.2).
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: ALTER TABLE vendite.preventivi FORCE ROW LEVEL SECURITY: il test verifica che
+--   la vista di dashboard resti coerente con la RLS armata.
 -- pgTAP test per Zero ERP
 --
 -- Test: viste "Situazione aperta" v2 — SERBATOIO PRE-COMMESSA
@@ -49,6 +58,19 @@
 -- ------------------------------------------------------------
 
 BEGIN;
+-- ⚠️ QUESTO FILE NON USA script.fn_pgtap_set_contesto_operatore(), a differenza
+-- degli altri di vendite, e non e' una dimenticanza.
+-- Il test si costruisce il contesto DA SOLO (set_config piu' sotto, e
+-- perfino ALTER TABLE ... FORCE ROW LEVEL SECURITY in transazione) perche'
+-- cio' che verifica E' lo scope RLS: l'asserzione 13 pretende che il
+-- preventivo dell'emittente B risulti invisibile.
+-- Imporre un operatore in testa lo romperebbe prima di cominciare: la
+-- fixture crea documenti su un emittente derivato dal billing account, che
+-- non e' detto stia nella whitelist di quell'operatore — e il guard
+-- trgfn_guard_emittente_scope li rifiuterebbe, giustamente.
+-- Misurato: con la riga passa da 14 asserzioni a 4.
+-- Brief: brief-db-pgtap-runner-rls-baseline §8.
+
 SELECT plan(14);
 
 -- ============================================================

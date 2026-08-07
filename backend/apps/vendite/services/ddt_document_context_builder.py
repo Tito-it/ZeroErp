@@ -54,7 +54,7 @@ from apps.documenti.services.context_builders.base import (
 from apps.documenti.services.context_builders.registry import register_builder
 from apps.vendite.db.ddt_repository import DdtRepository
 from apps.vendite.services._indirizzi_documento_helpers import (
-    SNAPSHOT_KEYS_ORDERED,
+    shape_indirizzi_context,
 )
 
 E_VALIDATION = "E_DOCUMENTI_VALIDATION"
@@ -188,44 +188,23 @@ class DdtDocumentContextBuilder(DocumentContextBuilder):
             "ba_codice": testata.get("ba_codice"),
         }
 
-    # Chiavi stabili del blocco consegna nel context: il render Jinja usa
-    # StrictUndefined, quindi il builder garantisce SEMPRE l'intero set
-    # (None per gli assenti) — il template non deve difendersi chiave per
-    # chiave. Fonte unica: la whitelist snapshot del BB indirizzi (una
-    # chiave aggiunta li' arriva automaticamente anche al context PDF).
-    _CONSEGNA_KEYS: tuple[str, ...] = SNAPSHOT_KEYS_ORDERED
+    # Tipi indirizzo ammessi nell'ambito DDT (`config.tipi_indirizzi_allowed`,
+    # ambito DDT = solo `CON`, obbligatorio). Dichiarati qui e non letti a
+    # runtime: il context deve essere deterministico a parita' di documento.
+    _INDIRIZZI_CODICI: tuple[str, ...] = ("CON",)
 
-    # Scopo: Sotto-dict "indirizzi" dallo snapshot congelato `ddt_indirizzi`.
-    #        `consegna` = slot CON (unico tipo ammesso in ambito DDT), chiavi
-    #        fisse `_CONSEGNA_KEYS` + `display_compatto` pre-composto (mirror
-    #        del FE `formatSnapshotDisplay`). None se lo slot manca (anteprima
-    #        in DRAFT): il template omette il blocco. Ordine deterministico
-    #        garantito da `list_indirizzi` (ORDER BY tipo_indirizzo_id) ->
-    #        context_hash stabile.
+    # Scopo: Sotto-dict "indirizzi" dallo snapshot congelato `ddt_indirizzi`
+    #        (`consegna` = slot CON, chiavi fisse + `display_compatto`; None se
+    #        lo slot manca, es. anteprima in DRAFT).
+    #        Dal 2026-08-05 la forma vive nel BB condiviso
+    #        `shape_indirizzi_context`: era nata qui ed e' ora la forma di tutti
+    #        i domini. Output invariato — `context_hash` dei DDT gia' generati
+    #        resta quello di prima.
     def _shape_indirizzi(self, ddt_id: int) -> dict[str, Any]:
-        rows = self._repo.list_indirizzi(ddt_id)
-        consegna: dict[str, Any] | None = None
-        for r in rows:
-            if r.get("tipo_indirizzo_codice") == "CON":
-                snapshot = r.get("snapshot") or {}
-                consegna = {k: snapshot.get(k) for k in self._CONSEGNA_KEYS}
-                consegna["display_compatto"] = self._snapshot_display(snapshot)
-                break
-        return {"consegna": consegna}
-
-    # Scopo: Display compatto dello snapshot ("intestazione — via, cap citta,
-    #        prov"), mirror del FE `formatSnapshotDisplay` per il fallback
-    #        one-line nel template.
-    @staticmethod
-    def _snapshot_display(s: dict[str, Any]) -> str:
-        geo = s.get("display") or ", ".join(
-            p for p in (
-                s.get("via"),
-                " ".join(x for x in (s.get("cap"), s.get("citta")) if x),
-                s.get("prov"),
-            ) if p
+        return shape_indirizzi_context(
+            self._repo.list_indirizzi(ddt_id),
+            codici_ammessi=self._INDIRIZZI_CODICI,
         )
-        return " — ".join(p for p in (s.get("intestazione"), geo) if p)
 
     # Scopo: Sotto-dict "trasporto": il cuore dell'accompagnatorio. Causale,
     #        aspetto beni, porto (modalita addebito), logistica (colli, pesi,

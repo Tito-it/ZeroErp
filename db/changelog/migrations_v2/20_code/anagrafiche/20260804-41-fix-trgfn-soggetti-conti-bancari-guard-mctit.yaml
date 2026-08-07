@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # Bonifica riferimenti morti — F4 + F5, tre difetti nella stessa funzione
-#   Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md
+#   Brief: docs/it/dev/work-done/brief-db-bonifica-riferimenti-morti.md
 #
 # ── TRE, NON UNO ─────────────────────────────────────────────────────────
 #   Il brief conta questa funzione due volte (F4 per `sqlerrm`, F5 per

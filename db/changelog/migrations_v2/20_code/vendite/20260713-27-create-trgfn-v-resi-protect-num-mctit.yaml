@@ -20,8 +20,17 @@ databaseChangeLog:
   - changeSet:
       id: 20260713-27-create-trgfn-v-resi-protect-num
       author: mctit
-      runOnChange: true
-      validCheckSum:
+      # ⚠️ Era `true`: definisce vendite.trgfn_v_resi_protect_num con il codice
+      #   legacy CODICE_NON_MODIFICABILE, che il 20260805-26 rinomina in
+      #   E_CODICE_NON_MODIFICABILE. Finche' resta true, basta un'edizione di
+      #   questo file (anche solo un commento) per rimettere il corpo vecchio
+      #   sopra la rinomina, e il guardrail codice-errore-strutturato torna
+      #   rosso. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      # ⚠️ Era `validCheckSum` (SINGOLARE): chiave inesistente, ignorata da
+      #   Liquibase. Con runOnChange:false il checksum torna vincolante e senza
+      #   questa correzione il migrate fallirebbe qui.
+      validCheckSums:
         - ANY
       changes:
         - sql:

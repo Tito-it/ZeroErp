@@ -11,6 +11,7 @@ from typing import Any, NoReturn
 
 from django.db import connection
 
+from apps.core.services.db_error_fields import structured_db_error_code
 from apps.core.services.service_errors import ServiceError
 
 # Helper unico errori: validazione, raise strutturato e logging opzionale su DB.
@@ -113,7 +114,19 @@ class ErrorManager:
     ) -> NoReturn:
         msg = str(exc)
         matched_code: str | None = None
+        # Campo strutturato per primo, ma SOLO se il codice e' fra quelli che il
+        # chiamante ha dichiarato di conoscere: `message` vs `fallback_message`
+        # sotto dipendono da "riconosciuto o no", e un codice che il chiamante
+        # non ha in lista non e' riconosciuto — accettarlo qui gli farebbe usare
+        # il messaggio del caso riconosciuto per un errore che non aspettava.
+        # L'insieme degli esiti resta identico: cambia solo che il match non
+        # dipende piu' da come e' scritto il testo dell'eccezione.
+        structured = structured_db_error_code(exc)
+        if structured is not None and any(c == structured for c, _ in known_markers):
+            matched_code = structured
         for code_candidate, markers in known_markers:
+            if matched_code is not None:
+                break
             if all(marker in msg for marker in markers):
                 matched_code = code_candidate
                 break

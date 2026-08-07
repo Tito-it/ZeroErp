@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-differiti: escluso — la fixture non soddisfa un vincolo DIFFERITO e la
+--   ragione e' scritta per esteso piu' sotto. Debito noto (§22.4): quando la
+--   fixture viene completata, si toglie questa riga e si rimette il
+--   SET CONSTRAINTS ALL IMMEDIATE nel punto in cui l'unita' di lavoro e' completa.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_snapshot_fattura_lotto (Fase 2.2 + brief intestazione)
 --       comportamento D-Q: lo step si completa, la fattura difettosa resta
@@ -48,6 +52,28 @@
 -- fallback, non un secondo indirizzo per istanza.
 -- ------------------------------------------------------------
 BEGIN;
+-- ⚠️ QUESTO FILE NON USA `SET CONSTRAINTS ALL IMMEDIATE`, e la ragione e' un
+--   DEBITO, non una scelta di stile.
+--   vendite.fatturazione_lotti e vendite.fatture hanno due guard DEFERRABLE
+--   INITIALLY DEFERRED che pretendono la coerenza fra lo stato fiscale del
+--   lotto e quello delle sue fatture (E_LOTTO_FATTURE_STATO_INCOERENTE). Sono
+--   differiti apposta: si aggiornano lotto e fatture in qualsiasi ordine dentro
+--   la stessa transazione, e la coerenza si verifica al COMMIT.
+--   ⚠️ Ma qui non e' questione di «troppo presto»: MISURATO mettendo il
+--   controllo in coda, cioe' dove starebbe il COMMIT, il file esegue tutte le
+--   sue asserzioni e POI fallisce lo stesso — «Lotto N: fattura/e con stato
+--   fiscale diverso da quello del lotto». La fixture lascia davvero un lotto
+--   incoerente: e' uno stato che l'applicazione non potrebbe committare.
+--   La correzione vera e' allineare lo stato delle fatture a quello del lotto
+--   prima di chiudere; allora la riga si rimette e il guard viene esercitato.
+--   Brief: brief-db-pgtap-runner-rls-baseline §22.
+
+-- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
+-- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
+-- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
+-- Brief: brief-db-pgtap-runner-rls-baseline §8.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
 SELECT plan(12);
 
 -- ============================================================

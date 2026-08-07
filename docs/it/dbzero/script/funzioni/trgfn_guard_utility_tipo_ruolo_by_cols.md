@@ -26,7 +26,7 @@ BEGIN
         PERFORM script.fn_log_and_raise_error(
             'database',
             'script.trgfn_guard_utility_tipo_ruolo_by_cols',
-            'ERRORE_PARAMETRI',
+            'E_ERRORE_PARAMETRI',
             jsonb_build_object(
                 'detail', 'Sono richiesti 2 argomenti trigger: utility_col, soggetto_ruolo_col',
                 'tg_nargs', TG_NARGS,
@@ -58,7 +58,7 @@ BEGIN
             PERFORM script.fn_log_and_raise_error(
                 'database',
                 'script.trgfn_guard_utility_tipo_ruolo_by_cols',
-                'ERRORE_PARAMETRI',
+                'E_ERRORE_PARAMETRI',
                 jsonb_build_object(
                     'detail', 'Valori colonna non castabili a ID',
                     'utility_col', v_utility_col,

@@ -31,7 +31,14 @@ databaseChangeLog:
   - changeSet:
       id: 20260603-08-seed-ui-lista-colonna-priorita-offerte
       author: mctit
-      runOnChange: true
+      # ⚠️ Era `true`, spento il 2026-08-06. Questo UPDATE scrive `priorita` su
+      #   ui.lista_colonna, che e' una tabella con mirror CSV: due sorgenti per lo
+      #   stesso dato. Verificato riga per riga che il CSV dichiara GIA' gli stessi
+      #   valori (zero divergenze sulle sei liste), quindi qui non si decide piu'
+      #   niente. Restando `true` rigirava a ogni invocazione di liquibase, e in CI
+      #   sono due: la seconda passata riscriveva SOPRA il loader.
+      #   La priorita' delle colonne si cambia SOLO da 80_data/sql/ui/lista_colonna.csv.
+      runOnChange: false
       validCheckSums:
         - ANY
       failOnError: true

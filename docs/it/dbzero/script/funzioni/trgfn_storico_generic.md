@@ -20,7 +20,7 @@ AS $function$
         orig_table      TEXT          := TG_TABLE_NAME;   -- Nome tabella sorgente
         hist_table      TEXT          := orig_table;      -- Nome tabella storica (stesso nome)
         --v_current_date  CONSTANT DATE := CURRENT_DATE; -- Data corrente per chiusura snapshot
-        v_current_date  CONSTANT timestamptz := CURRENT_TIMESTAMP; -- Data corrente per chiusura snapshot                      
+        v_current_date  CONSTANT timestamptz := CURRENT_TIMESTAMP; -- Data corrente per chiusura snapshot
         v_fixed_date    CONSTANT DATE := '1950-01-01'; -- Data fissa per nuovi record storici
         v_rowcount      INTEGER;      -- Contatore righe per operazioni UPDATE
         v_snapshot_open BOOLEAN := FALSE; -- Flag snapshot aperti
@@ -30,18 +30,28 @@ AS $function$
         v_id_col_type  TEXT; -- Tipo della colonna ID nella tabella originale
         v_should_reset  BOOLEAN;  -- = NOT v_skip_reset, valorizzata in BEGIN
         v_skip_reset    BOOLEAN;
-  
+
       BEGIN
         -- 0) Controllo da tabella di configurazione
+        --
+        -- rev 2026-08-04: il confronto usa il nome QUALIFICATO
+        -- (schema.tabella). Prima si confrontava TG_TABLE_NAME, che
+        -- e' il nome NUDO, contro un registro che contiene solo nomi
+        -- qualificati: non ha mai matchato nulla, quindi l'esenzione
+        -- dal reset non ha mai funzionato per nessuna tabella e ogni
+        -- riga registrava una sola modifica nella vita. Il nome nudo
+        -- non e' comunque una chiave valida: `acquisti.ddt` e
+        -- `vendite.ddt` sono entrambi registrati e si
+        -- esenterebbero a vicenda.
           SELECT EXISTS (
-            SELECT 1 
+            SELECT 1
               FROM config.storico_set_storicizza s
-            WHERE s.table_name = TG_TABLE_NAME
+            WHERE s.table_name = TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME
           ) INTO v_skip_reset;
 
         -- Inizializziamo il flag una sola volta
         v_should_reset := NOT v_skip_reset;
-        
+
       -- 0.1) Trova il tipo della colonna PK (id) nella tabella origine
         SELECT format_type(a.atttypid, a.atttypmod)
           INTO v_id_col_type
@@ -51,15 +61,15 @@ AS $function$
         WHERE n.nspname = orig_schema
           AND c.relname = orig_table
           AND a.attname = id_col_orig
-          AND NOT a.attisdropped;	
-      
+          AND NOT a.attisdropped;
+
         --0) Se la colonna storicizza esiste e vale FALSE, non storicizzo
         IF TG_OP = 'UPDATE' AND NOT NEW.storicizza THEN
           RETURN NEW;
         ELSIF TG_OP = 'DELETE' AND NOT OLD.storicizza THEN
           RETURN OLD;
         END IF;
-        
+
         -- [Sezione 1] Recupero ID record originale ---------------------------------
         -- Ottiene l'ID del record dalla tabella sorgente (OLD per DELETE, NEW per UPDATE)
         -- Gestisce eventuali errori di colonna mancante
@@ -75,17 +85,17 @@ AS $function$
             'database', TG_NAME, 'E_SNAPSHOT_ID_NOT_FOUND',
             jsonb_build_object('error', SQLERRM, 'schema', hist_schema, 'table', hist_table),
             NULL::uuid, SQLERRM::text
-          );    
+          );
         END;
 
         -- [Sezione 2] Creazione snapshot -------------------------------------------
         -- Serializza i dati del record in formato JSONB
         -- Assegna il tipo di operazione (2=UPDATE, 3=DELETE)
         IF TG_OP = 'UPDATE' THEN
-          op_type := 2; 
+          op_type := 2;
           snapshot_data := to_jsonb(NEW); -- Snapshot dello stato nuovo
         ELSIF TG_OP = 'DELETE' THEN
-          op_type := 3; 
+          op_type := 3;
           snapshot_data := to_jsonb(OLD); -- Snapshot dello stato vecchio
         ELSE
           RETURN COALESCE(NEW,OLD); -- Caso non gestito (non dovrebbe verificarsi)
@@ -102,9 +112,9 @@ AS $function$
         hist_schema, hist_table, id_col_hist, v_id_col_type
       )
   USING v_current_date, v_id_value;
-  
+
   GET DIAGNOSTICS v_rowcount = ROW_COUNT; -- Controlla se ha chiuso record
-          v_snapshot_open := (v_rowcount > 0);    -- Imposta flag se trovati snapshot
+  v_snapshot_open := (v_rowcount > 0);    -- Imposta flag se trovati snapshot
         EXCEPTION WHEN OTHERS THEN
           -- Gestione errore chiusura snapshot
           PERFORM script.fn_log_and_raise_error(
@@ -121,7 +131,7 @@ AS $function$
           -- per mantenere traccia dello stato precedente all'operazione corrente
           IF NOT v_snapshot_open THEN
             BEGIN
-            
+
               EXECUTE format(
                 'INSERT INTO %I.%I (%I, valid_from, valid_to, data_insert, user_insert, snapshot, tipo_operazione)
                 VALUES ($1::%s, $2, $3, now(), current_user, $4, 1)',
@@ -143,14 +153,14 @@ AS $function$
           -- Crea un record storico con valid_from = CURRENT_DATE e valid_to = NULL
           -- per registrare il nuovo stato del record
           BEGIN
-          
+
           EXECUTE format(
         'INSERT INTO %I.%I (%I, valid_from, data_insert, user_insert, snapshot, tipo_operazione)
           VALUES ($1::%s, $2, now(), current_user, $3, $4)',
         hist_schema, hist_table, id_col_hist, v_id_col_type
       )
-      USING v_id_value, v_current_date, snapshot_data, op_type;    
-        
+      USING v_id_value, v_current_date, snapshot_data, op_type;
+
           EXCEPTION WHEN OTHERS THEN
             -- Gestione errore inserimento storico finale
             PERFORM script.fn_log_and_raise_error(
@@ -161,16 +171,18 @@ AS $function$
           END;
         END;
 
-        -- [Sezione 5] Gestione reset storico per tabelle specifiche vedi elenco in Array
+        -- [Sezione 5] Reset del flag per le tabelle NON registrate.
+        -- Le registrate in config.storico_set_storicizza tengono il
+        -- flag acceso e hanno memoria continua; le altre restano
+        -- "a richiesta": una modifica registrata, poi silenzio finche'
+        -- qualcuno non riaccende il flag.
         IF TG_OP = 'UPDATE' AND v_should_reset THEN
           NEW.storicizza := FALSE;
         END IF;
-        
+
         -- Restituisce il record appropriato (OLD per DELETE, NEW per UPDATE)
         RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
       END;
-      
-  
 $function$
 
 COMMENT ON FUNCTION script.trgfn_storico_generic()
@@ -181,14 +193,7 @@ IS 'Funzione generica per la gestione dello storico delle modifiche.
       3. Creazione snapshot finale con valid_from = CURRENT_DATE e valid_to NULL
       4. Logging degli errori tramite script.fn_log_and_raise_error
       5. Importante deve essere sempre definita la colonna "storicizza"
-      per la PK originale (in questo modo la funzione può identificare
-      il record originale e gestire la chiusura del snapshot corretto).
-      Parametri:
-      - TG_ARGV[0]: Nome della colonna FK nella tabella storica che riferisce alla PK originale
-      Utilizzo tipico:
-      CREATE TRIGGER trg_storico AFTER UPDATE OR DELETE ON tabella_origine
-      FOR EACH ROW EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic(''nome_colonna_fk'');
-      ';
+      6. rev 2026-08-05: il registro config.storico_set_storicizza si consulta col nome QUALIFICATO (schema.tabella). Prima si usava TG_TABLE_NAME, cioe'' il nome nudo, contro un registro che contiene solo nomi qualificati: nessuna riga matchava e l''esenzione dal reset del flag non ha mai funzionato per nessuna tabella — ognuna registrava una sola modifica nella vita (misurato: esattamente 2,00 righe di storico per documento su ordini e ddt). Il nome nudo non sarebbe comunque una chiave valida, perche'' acquisti.ddt e vendite.ddt sono entrambi registrati.';
 ```
 
 ---

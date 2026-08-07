@@ -1,0 +1,125 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Pubblica le tre BOZZE create da `20260805-09`, cosi' ordine, contratto e
+#   offerta stampano l'indirizzo di consegna che gia' congelavano
+#   (brief-db-indirizzi-su-ordini-contratti-offerte.md §7).
+#
+# ℹ️ `documenti.fn_pubblica_template_documento_versione` fa da sola il lavoro
+#   sporco: porta la versione a PUBBLICATA e manda a OBSOLETA quelle prima,
+#   rispettando il vincolo di non sovrapposizione sulla finestra di validita'.
+#   Le versioni obsolete restano ri-renderizzabili — la ristampa fedele usa la
+#   versione PINNATA sul documento generato, non la corrente.
+#
+# ℹ️ `valido_dal = current_date`: l'area indirizzi vale dai documenti generati da
+#   adesso. I PDF gia' emessi restano com'erano, ed e' il comportamento voluto —
+#   il §6 del brief lo chiede esplicitamente («nessuna bonifica dei PDF gia'
+#   generati»).
+#
+# ⚠️ SI PUBBLICA SOLO CIO' CHE PORTA DAVVERO L'AREA. Il ciclo filtra sul marker
+#   `meta->>'brief'` scritto dal changeSet precedente E verifica che l'HTML citi
+#   `indirizzi.consegna`: senza il secondo controllo, una bozza rimasta indietro
+#   verrebbe promossa a PUBBLICATA senza la modifica per cui la si pubblica, e
+#   il difetto tornerebbe identico a com'era — con una versione in piu' e la
+#   convinzione di averlo risolto.
+#
+# ⚠️ Se non trova nulla da pubblicare il changeSet FALLISCE invece di passare in
+#   silenzio. Non e' pignoleria: questo e' il passo che rende visibile il
+#   lavoro, e un no-op silenzioso qui significa un PDF che continua a non
+#   stampare l'indirizzo mentre il registro dice «fatto».
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260805-10-pubblica-template-area-consegna-mctit.yaml
+
+  - changeSet:
+      id: 20260805-10-pubblica-template-area-consegna
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Pubblica le tre versioni con l'area «Luogo di consegna» di ord-ven,
+        contratto e off-comm via documenti.fn_pubblica_template_documento_versione,
+        che porta a OBSOLETA le precedenti. Da qui i tre PDF stampano l'indirizzo
+        che il documento congelava e non mostrava.
+      # ⚠️ `CONTINUE` per lo stesso motivo del `20260805-09`: i template non
+      #   sono a seed, quindi su un database vergine (la CI) il changeSet
+      #   precedente non ha creato nessuna bozza e qui non c'e' niente da
+      #   pubblicare. Con `HALT` la migrazione si fermerebbe. Non marcato come
+      #   eseguito: il giorno in cui i template esistono, i due changeSet
+      #   ripartono insieme e nell'ordine giusto.
+      #
+      #   ⚠️ Il `RAISE EXCEPTION` dentro il DO resta, e non e' in contraddizione:
+      #   dice «se sono arrivato fin qui, le bozze DEVONO essere tre». La
+      #   preCondition decide se entrare, l'eccezione presidia cosa succede una
+      #   volta entrati — un no-op silenzioso qui significherebbe un PDF che
+      #   continua a non stampare l'indirizzo mentre il registro dice «fatto».
+      preConditions:
+        - onFail: CONTINUE
+        - onError: HALT
+        - sqlCheck:
+            expectedResult: 3
+            sql: >
+              SELECT count(*) FROM documenti.template_documenti_versioni v
+              WHERE v.stato = 'BOZZA' AND v.attivo IS TRUE
+                AND v.meta ->> 'brief' = 'brief-db-indirizzi-su-ordini-contratti-offerte.md'
+                AND v.html_template LIKE '%indirizzi.consegna%'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $pubblica$
+              DECLARE
+                  b        record;
+                  v_esito  record;
+                  v_conta  integer := 0;
+              BEGIN
+                  FOR b IN
+                      SELECT v.id, v.versione, v.template_documento_id,
+                             coalesce(t.codice_interno, t.codice, '?') AS codice
+                        FROM documenti.template_documenti_versioni v
+                        JOIN documenti.template_documenti t
+                          ON t.id = v.template_documento_id
+                       WHERE v.stato = 'BOZZA'
+                         AND v.attivo IS TRUE
+                         AND v.meta ->> 'brief' = 'brief-db-indirizzi-su-ordini-contratti-offerte.md'
+                         -- Il marker dice da quale cantiere nasce; questo dice
+                         -- che la modifica c'e' davvero.
+                         AND v.html_template LIKE '%indirizzi.consegna%'
+                       ORDER BY v.id
+                  LOOP
+                      SELECT * INTO v_esito
+                        FROM documenti.fn_pubblica_template_documento_versione(
+                               p_versione_id => b.id,
+                               p_valido_dal  => current_date,
+                               p_valido_al   => NULL);
+
+                      v_conta := v_conta + 1;
+
+                      RAISE NOTICE
+                        'template % : pubblicata versione % (id %), versioni rese obsolete: %',
+                        b.codice, b.versione, b.id, v_esito.versioni_obsolete;
+                  END LOOP;
+
+                  IF v_conta <> 3 THEN
+                      RAISE EXCEPTION
+                        'Pubblicate % versioni invece di 3: il changeSet precedente non ha prodotto quello che doveva.',
+                        v_conta;
+                  END IF;
+              END
+              $pubblica$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              SELECT 1;

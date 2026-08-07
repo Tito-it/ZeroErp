@@ -43,7 +43,7 @@ BEGIN
           AND wd.stato = 'BOZZA'
      ) THEN
     PERFORM script.fn_log_and_raise_error(
-      'pratiche', 'pratiche.fn_fork_definizione', 'DEFINIZIONE_BOZZA_ESISTENTE',
+      'pratiche', 'pratiche.fn_fork_definizione', 'E_DEFINIZIONE_BOZZA_ESISTENTE',
       jsonb_build_object('tipo_prestazione_id', v_tipo_id,
                          'emittente_fiscale_id', p_emittente_fiscale_id),
       NULL::uuid,

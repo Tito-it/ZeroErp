@@ -28,7 +28,7 @@ BEGIN
         PERFORM script.fn_log_and_raise_error(
             'pratiche',
             'pratiche.trgfn_sospensioni_guard_coerenza_flusso',
-            'SOSPENSIONI_FLUSSO_NON_COERENTE',
+            'E_SOSPENSIONI_FLUSSO_NON_COERENTE',
             jsonb_build_object(
                 'flusso_id', NEW.flusso_id,
                 'pratica_id', NEW.pratica_id

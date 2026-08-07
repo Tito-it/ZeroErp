@@ -28,7 +28,7 @@ BEGIN
   IF v_modalita = 'DOMINIO' THEN
     PERFORM script.fn_log_and_raise_error(
       'pratiche','pratiche.trgfn_tfap_guard_compatibilita',
-      'TEMPLATE_FLUSSO_PROIEZIONE_STEP_DOMINIO',
+      'E_TEMPLATE_FLUSSO_PROIEZIONE_STEP_DOMINIO',
       jsonb_build_object('template_flusso_id', NEW.template_flusso_id,
                          'template_codice', v_codice,
                          'modalita_esito', v_modalita),
@@ -47,7 +47,7 @@ BEGIN
   ) THEN
     PERFORM script.fn_log_and_raise_error(
       'pratiche','pratiche.trgfn_tfap_guard_compatibilita',
-      'TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER',
+      'E_TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER',
       jsonb_build_object('template_flusso_id', NEW.template_flusso_id,
                          'template_codice', v_codice,
                          'lato', 'binding_proiezione'),

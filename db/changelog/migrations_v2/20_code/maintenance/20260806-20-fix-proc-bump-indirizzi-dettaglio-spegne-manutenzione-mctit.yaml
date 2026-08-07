@@ -1,0 +1,116 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# La procedura di manutenzione accendeva un bypass e non lo spegneva.
+#   Brief: brief-db-pgtap-runner-rls-baseline.md §18.
+#
+# ⚠️ IL DIFETTO. `maintenance.proc_bump_indirizzi_dettaglio` alza il flag
+#   `zeroerp.maintenance_indirizzi_dettaglio` per poter riscrivere
+#   anagrafiche.indirizzi_dettaglio, che e' protetta da
+#   `trgfn_indirizzi_dettaglio_protect_update` (blocca il cambio di
+#   stradario_id fuori manutenzione). Ma non lo riabbassa mai, e
+#   `set_config(..., true)` vale per la TRANSAZIONE, non per l'istruzione:
+#   **ogni transazione che chiama questa procedura resta senza quella
+#   protezione per tutto cio' che segue**. Il commento nel corpo diceva
+#   «solo per la sessione corrente», che non e' quello che il codice fa.
+#
+# ℹ️ Oggi non fa danni per un motivo fragile: nessuno la chiama dentro una
+#   transazione piu' grande — verificato, ne' `backend/` ne' altre funzioni del
+#   DB la invocano. Finche' resta una CALL isolata in autocommit, la transazione
+#   finisce subito dopo e il flag muore con lei. Il giorno in cui finisce dentro
+#   un'unita' di lavoro piu' ampia — ed e' esattamente cio' che la regola
+#   dell'atomicita' incoraggia a fare — il bypass resta acceso in silenzio.
+#
+# ⚠️ COME E' EMERSO. Rendendo transazionali i test pgTAP: dentro un solo
+#   BEGIN…ROLLBACK il flag sopravviveva alla CALL, e l'asserzione che verifica
+#   «senza manutenzione il cambio e' bloccato» non vedeva piu' nessun errore —
+#   `caught: no exception, wanted: an exception`. Il test aveva ragione: era la
+#   procedura a lasciare la porta aperta.
+#
+# ℹ️ La correzione e' spegnere il flag prima di uscire, in modo che il bypass
+#   duri quanto la procedura e non un istante di piu'. Si usa un blocco con
+#   EXCEPTION cosi' il flag torna 'off' anche se l'UPDATE fallisce: una porta
+#   che si richiude solo quando tutto va bene non e' una porta chiusa.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20260806-20-fix-proc-bump-indirizzi-dettaglio-spegne-manutenzione-mctit.yaml
+
+  - changeSet:
+      id: 20260806-20-fix-proc-bump-indirizzi-dettaglio-spegne-manutenzione
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        proc_bump_indirizzi_dettaglio rimette a 'off' il flag di manutenzione
+        prima di uscire (anche in caso di errore): il bypass del guard su
+        indirizzi_dettaglio dura quanto la procedura invece che fino alla fine
+        della transazione chiamante. Brief pgTAP runner/RLS §18.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'maintenance'
+                AND p.proname = 'proc_bump_indirizzi_dettaglio'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE PROCEDURE maintenance.proc_bump_indirizzi_dettaglio(IN p_stradario_id integer)
+               LANGUAGE plpgsql
+              AS $procedure$
+              -- Scopo: rinormalizzare anagrafiche.indirizzi_dettaglio dopo un
+              --   cambio di via, attraversando il guard che in condizioni
+              --   normali blocca la modifica di stradario_id.
+              --
+              -- ⚠️ IL BYPASS DEVE DURARE QUANTO LA PROCEDURA, NON DI PIU'.
+              --   `set_config(..., true)` vale per la TRANSAZIONE: lasciandolo
+              --   acceso, ogni istruzione successiva della stessa transazione
+              --   girerebbe senza la protezione di
+              --   trgfn_indirizzi_dettaglio_protect_update, e nessuno se ne
+              --   accorgerebbe. Prima non veniva mai spento: funzionava solo
+              --   perche' la procedura veniva chiamata da sola, in autocommit,
+              --   e la transazione moriva subito dopo.
+              --   Il blocco EXCEPTION serve a spegnerlo anche quando l'UPDATE
+              --   fallisce: una porta che si richiude solo se tutto va bene non
+              --   e' una porta chiusa.
+              --   Brief: brief-db-pgtap-runner-rls-baseline §18.
+              BEGIN
+                PERFORM set_config('zeroerp.maintenance_indirizzi_dettaglio', 'on', true);
+
+                BEGIN
+                  UPDATE anagrafiche.indirizzi_dettaglio
+                  SET stradario_id = stradario_id
+                  WHERE stradario_id = p_stradario_id;
+                EXCEPTION WHEN OTHERS THEN
+                  PERFORM set_config('zeroerp.maintenance_indirizzi_dettaglio', 'off', true);
+                  RAISE;
+                END;
+
+                PERFORM set_config('zeroerp.maintenance_indirizzi_dettaglio', 'off', true);
+              END;
+              $procedure$;
+
+              COMMENT ON PROCEDURE maintenance.proc_bump_indirizzi_dettaglio(integer)
+              IS 'Rinormalizza anagrafiche.indirizzi_dettaglio per una via, attraversando trgfn_indirizzi_dettaglio_protect_update tramite il flag zeroerp.maintenance_indirizzi_dettaglio. Il flag viene rimesso a ''off'' prima di uscire, anche in caso di errore: altrimenti il bypass resterebbe attivo per tutta la transazione chiamante e ogni modifica successiva a indirizzi_dettaglio girerebbe senza protezione.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: si tornerebbe alla versione che lascia il bypass
+              -- acceso. Presente per completezza, non perche' abbia senso.
+              SELECT 1;

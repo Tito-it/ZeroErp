@@ -15,6 +15,22 @@
 -- ------------------------------------------------------------
 
 BEGIN;
+
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
+--   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
+--   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio, e il
+--   file sarebbe verde per sottrazione. IMMEDIATE li riporta a scattare a fine
+--   di ogni istruzione. In testa e non in coda: in coda scatterebbero dopo il
+--   cleanup, su righe ormai cancellate.
+--   Brief: brief-db-pgtap-runner-rls-baseline §19.
+SET CONSTRAINTS ALL IMMEDIATE;
+
+-- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
+-- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
+-- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
+-- Brief: brief-db-pgtap-runner-rls-baseline §8.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
 SELECT plan(21);
 
 -- ---- 1..6: colonne origine/meta ----
@@ -36,8 +52,15 @@ SELECT ok(
 );
 
 -- ---- 7: CHECK rifiuta origine non valida ----
+-- ⚠️ Si passa dall'entry point, non da una INSERT diretta. maintenance.job_run_log
+--   la scrivono i job (maintenance.fn_run_and_log) e script.fn_job_run_start, che e'
+--   SECURITY DEFINER: il ruolo applicativo ha solo SELECT, ed e' corretto cosi'.
+--   La INSERT diretta falliva con «permesso negato» invece che col CHECK — e il test
+--   lo diceva forte perche' pretende lo SQLSTATE (23514), che e' esattamente il motivo
+--   per cui lo si pretende. Dall'entry point il CHECK scatta lo stesso, e il collaudo
+--   diventa piu' fedele: e' la porta da cui ci passa l'applicazione.
 SELECT throws_ok(
-    $$ INSERT INTO maintenance.job_run_log(jobname, origine) VALUES ('t_check','XXX') $$,
+    $$ SELECT script.fn_job_run_start('t_check','XXX') $$,
     '23514',
     NULL,
     'CHECK chk_job_run_log_origine rifiuta origine non valida'

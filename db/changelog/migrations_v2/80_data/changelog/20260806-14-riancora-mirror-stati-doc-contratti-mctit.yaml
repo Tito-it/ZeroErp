@@ -1,0 +1,92 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Gemello del 20260806-13, su config.stati_doc_contratti.
+#
+# ⚠️ STESSA DIVERGENZA CI-vs-DEV. Due SQL scrivono il `meta` di questa
+#   tabella DOPO il mirror del CSV (20260520-08), e lo fanno con
+#   `SET meta = '{...}'`, cioe' sovrascrivendo:
+#     20260430-61-update-stati-doc-contratti-meta-ui
+#     20260520-10-restore-stati-doc-contratti-meta-ui
+#   Su dev il CSV vince perche' il suo loader e' un mirror vivo che ri-esegue
+#   a ogni migrate, mentre quei due portano il refuso `validCheckSum`
+#   singolare e non ri-eseguono. Su un database ricostruito da zero girano
+#   tutti una volta, in ordine di timeline, e vincono loro.
+#
+# ℹ️ COSA TORNAVA IN VITA IN CI: il blocco `outgoing_action` dentro il meta
+#   degli stati, con le chiavi i18n vecchie (`contratti.azione_*`). E' un
+#   campo MORTO — nel CSV non c'e' piu' (zero occorrenze) e nessuna funzione
+#   viva, nessun endpoint e nessun componente lo legge: sopravvive solo nelle
+#   guide, come racconto. Non faceva danno funzionale, ma teneva due macchine
+#   su due versioni della stessa tabella, ed e' il modo in cui una differenza
+#   innocua diventa un'ora di indagine il giorno in cui smette di esserlo.
+#
+# ℹ️ COLONNE: identiche a quelle del 20260520-08 — quattordici. `fase`,
+#   `terminale` ed `esito` NON sono nella lista e restano intoccate: le
+#   scrive il 20260702-12 (proiezione stato dominio) e non devono essere
+#   riportate indietro da questo mirror. E' il motivo per cui la lista si
+#   copia invariata invece di rigenerarla dall'intestazione del CSV.
+#
+# ⚠️ La sede degli stati del contratto e' il CSV
+#   `80_data/sql/config/stati_doc_contratti.csv`: nessun UPDATE nuovo qui.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260806-14-riancora-mirror-stati-doc-contratti-mctit.yaml
+
+  - changeSet:
+      id: 20260806-14-riancora-mirror-stati-doc-contratti
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Ri-applica il CSV di config.stati_doc_contratti dopo il 20260430-61 e
+        il 20260520-10, che ne sovrascrivono il meta. Senza, un database
+        ricostruito da zero (CI) si ritrova il blocco morto outgoing_action
+        con le chiavi i18n vecchie; dev non se ne accorge perche' li' il
+        loader ri-esegue a ogni migrate e quei due no (refuso validCheckSum).
+        fase/terminale/esito restano fuori dalle colonne: le governa il
+        20260702-12.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: stati_doc_contratti
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/stati_doc_contratti.csv
+            tableName: stati_doc_contratti
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id,             type: STRING }
+              - column: { name: codice_interno,  type: STRING }
+              - column: { name: codice,          type: STRING }
+              - column: { name: descrizione,     type: STRING }
+              - column: { name: attivo,          type: BOOLEAN }
+              - column: { name: ordine,          type: STRING }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: data_insert,     type: STRING }
+              - column: { name: user_insert,     type: STRING }
+              - column:
+                  name: data_update
+                  type: STRING
+                  defaultValue: "NOW()"
+              - column: { name: user_update,     type: STRING }
+              - column: { name: is_abortito,     type: BOOLEAN }
+              - column: { name: pdf_mode,           type: STRING }
+              - column: { name: pdf_allow_allegati, type: BOOLEAN }

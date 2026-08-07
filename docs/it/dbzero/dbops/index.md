@@ -16,11 +16,13 @@
 - [automazione_overlap](tabelle/automazione_overlap.md) — (latest review 19-01-26) La tabella **`dbops.automazione_overlap`** centralizza la configurazione del controllo **anti-overlap temporale** tramite vincoli `EXCLUDE USING gist` sulle tabelle versionate.
 - [coda_lavori](tabelle/coda_lavori.md) — (latest review 20-07-2026)
 - [coda_lavori_tipi](tabelle/coda_lavori_tipi.md) — (latest review 20-07-2026)
+- [codici_errore_senza_policy](tabelle/codici_errore_senza_policy.md)
 - [domini_task](tabelle/domini_task.md) — (latest review 08-02-2026) `dbops.domini_task` definisce i **domini logici** per i task pipeline (es. `FATTURAZIONE`, `ATTIVITA_FATTURABILI`, `PRATICHE`). Serve a stabilire un **perimetro chiaro** per il registry multi‑dominio e garantire univocita` dei task per dominio.
 - [error_log](tabelle/error_log.md) — * Raccogliere in un unico punto gli errori generati da funzioni, trigger o applicazioni, permettendo analisi e allineamento con il catalogo di messaggi di errore. * Consentire il **collegamento transazionale** tramite `tx_id`, per ricostruire l’intero flusso di operazioni (ad esempio un job batch) incrociando tabelle come `dbops.audit_log`.
 - [fk_index_policy](tabelle/fk_index_policy.md) — (latest review 27-07-26) La tabella **`dbops.fk_index_policy`** definisce una **policy centralizzata** per la gestione degli indici sulle foreign key: una riga per vincolo, un flag che dice se l'indice deve esistere, e il comando che lo crea.
 - [idempotency_keys](tabelle/idempotency_keys.md) — (latest review 06-02-26) * Prevenire doppie esecuzioni in caso di retry o chiamate duplicate. * Restituire **la stessa risposta** quando arriva la stessa `idempotency_key`. * Collegare operazioni applicative alla **tracciabilità transazionale** tramite `tx_id`.
 - [lock_columns_conditional](tabelle/lock_columns_conditional.md)
+- [messaggi_errore_codici_legacy](tabelle/messaggi_errore_codici_legacy.md)
 - [pipeline_task_registry](tabelle/pipeline_task_registry.md) — (latest review 08-02-2026) `dbops.pipeline_task_registry` e` il catalogo dei **task ammessi** per ciascun dominio pipeline. Impedisce l'esecuzione di task non registrati e centralizza la governance delle azioni eseguibili dal motore applicativo.
 - [pipeline_task_registry_impl](tabelle/pipeline_task_registry_impl.md) — (latest review 08-02-2026) `dbops.pipeline_task_registry_impl` definisce le **implementazioni consentite** per ciascun task. Serve a gestire in modo controllato le varianti (`default`, `v2`, `gas_v1`, ecc.) senza dispatch dinamico libero.
 - [request_log](tabelle/request_log.md) — (latest review 05-03-2026)
@@ -67,7 +69,6 @@
 - [fn_normalize_indirizzo](funzioni/fn_normalize_indirizzo.md)
 - [fn_populate_fk_index_policy](funzioni/fn_populate_fk_index_policy.md) — (latest review 27-07-26)
 - [fn_purge_cleanup_expired](funzioni/fn_purge_cleanup_expired.md) — (latest review 07-02-26) La funzione **`dbops.fn_purge_cleanup_expired`** elimina i record con **`cleanup_at` scaduto** usando una strategia a **batch**, per ridurre lock e impatti sulle tabelle più grandi.
-- [fn_refresh_mv_ddt_ordini](funzioni/fn_refresh_mv_ddt_ordini.md)
 - [fn_rename_triggers_by_order](funzioni/fn_rename_triggers_by_order.md)
 - [fn_resolve_scope](funzioni/fn_resolve_scope.md) — (latest review 10-01-26) La funzione **`dbops.fn_resolve_scope(p_schemas text[])`** restituisce la lista effettiva di schemi da considerare come *ambito* per l’esecuzione delle automazioni. Serve a normalizzare e centralizzare la logica di determinazione dell’ambito operativo, evitando duplicazioni e incoerenze.
 - [fn_run_automations](funzioni/fn_run_automations.md) — (latest review 07-02-26) La funzione **`dbops.fn_run_automations`** è l’**orchestratore principale** del framework di automazioni. Coordina l’applicazione delle regole di sistema (Tx ID, aggiornamento audit, storico, lock colonne, gestione flag attivo, cleanup) sugli schemi e tabelle nell'ambito.
@@ -101,6 +102,8 @@
 
 ## 🔍 Views
 - [vw_catalogo_oggetti](views/vw_catalogo_oggetti.md) — * Offrire una vista unificata degli oggetti PostgreSQL definiti nei due schemi principali di amministrazione. * Agevolare operazioni di discovery e auditing, bypassando query dirette sulle catalog tables.
+- [vw_codici_errore_da_dichiarare](views/vw_codici_errore_da_dichiarare.md)
+- [vw_codici_errore_forme_condizione](views/vw_codici_errore_forme_condizione.md)
 - [vw_diag_v_clienti_links](views/vw_diag_v_clienti_links.md) — (latest review 25-12-25) La vista **`dbops.vw_diag_v_clienti_links`** è una **vista diagnostica** che espone in modo “leggibile” i **legami strutturali** tra:
 - [vw_duplicate_indexes](views/vw_duplicate_indexes.md) — (latest review 27-07-26)
 - [vw_fk_con_indice_missing_policy](views/vw_fk_con_indice_missing_policy.md) — (latest review 27-07-26)

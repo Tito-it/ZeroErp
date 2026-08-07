@@ -25,6 +25,13 @@ AS $function$
 --   rev 2026-07-19 (bis): le 3 push_reason passano al namespace
 --   i18n vendite.offerte.* (era offerte.*, radice inesistente nei
 --   locales FE) — brief-db-i18n-reason-mancanti-offerte-preventivi.
+--   rev 2026-08-06: + outlined dal meta della transizione (era
+--   l'unica insieme al preventivo a non emetterlo: il dato del
+--   seed non arrivava al pulsante) e + target_state_descrizione,
+--   la forma leggibile dello stato di destinazione, che il
+--   codice_interno non permette di derivare (BOZZA -> Bozza vale
+--   per caso, ALLOCATO -> «Allocato a magazzino» no). NULL sulle
+--   azioni che non cambiano stato.
 DECLARE
     v_stato_id    vendite.offerte_commerciali.stato_doc_offerta_id%TYPE;
     v_stato_cod   config.stati_doc_offerte.codice_interno%TYPE;
@@ -56,41 +63,49 @@ DECLARE
         '"utility_id","listino_id","listino_versione_id",'
         '"valore_variazione_globale","tipo_variazione_globale",'
         '"validita_dal","validita_al","meta"]'::jsonb;
+    -- Azioni applicative: non sono transizioni, quindi
+    -- target_state e target_state_descrizione restano NULL.
     c_action_crea_revisione CONSTANT jsonb := jsonb_build_object(
-        'key',                'crea_revisione',
-        'target_state',       NULL,
-        'label_key',          'vendite.offerte.azione_crea_revisione',
-        'severity',           'info',
-        'icon',               'pi pi-clone',
-        'requires_confirm',   true,
-        'requires_motivazione', false,
-        'enabled',            true,
-        'reason',             NULL,
-        'reason_key',         NULL
+        'key',                      'crea_revisione',
+        'target_state',             NULL,
+        'target_state_descrizione', NULL,
+        'label_key',                'vendite.offerte.azione_crea_revisione',
+        'severity',                 'info',
+        'icon',                     'pi pi-clone',
+        'requires_confirm',         true,
+        'requires_motivazione',     false,
+        'outlined',                 false,
+        'enabled',                  true,
+        'reason',                   NULL,
+        'reason_key',               NULL
     );
     c_action_push_contratto CONSTANT jsonb := jsonb_build_object(
-        'key',                'push_contratto',
-        'target_state',       NULL,
-        'label_key',          'vendite.offerte.azione_push_contratto',
-        'severity',           'success',
-        'icon',               'pi pi-arrow-right',
-        'requires_confirm',   true,
-        'requires_motivazione', false,
-        'enabled',            true,
-        'reason',             NULL,
-        'reason_key',         NULL
+        'key',                      'push_contratto',
+        'target_state',             NULL,
+        'target_state_descrizione', NULL,
+        'label_key',                'vendite.offerte.azione_push_contratto',
+        'severity',                 'success',
+        'icon',                     'pi pi-arrow-right',
+        'requires_confirm',         true,
+        'requires_motivazione',     false,
+        'outlined',                 false,
+        'enabled',                  true,
+        'reason',                   NULL,
+        'reason_key',               NULL
     );
     c_action_genera_ordine CONSTANT jsonb := jsonb_build_object(
-        'key',                'genera_ordine',
-        'target_state',       NULL,
-        'label_key',          'vendite.offerte.azione_genera_ordine',
-        'severity',           'info',
-        'icon',               'pi pi-shopping-cart',
-        'requires_confirm',   true,
-        'requires_motivazione', false,
-        'enabled',            true,
-        'reason',             NULL,
-        'reason_key',         NULL
+        'key',                      'genera_ordine',
+        'target_state',             NULL,
+        'target_state_descrizione', NULL,
+        'label_key',                'vendite.offerte.azione_genera_ordine',
+        'severity',                 'info',
+        'icon',                     'pi pi-shopping-cart',
+        'requires_confirm',         true,
+        'requires_motivazione',     false,
+        'outlined',                 false,
+        'enabled',                  true,
+        'reason',                   NULL,
+        'reason_key',               NULL
     );
 BEGIN
     -- Stato corrente + versione listino + capability PDF.
@@ -131,11 +146,15 @@ BEGIN
             jsonb_build_object(
                 'key',                t.meta->>'action_key',
                 'target_state',       sa.codice_interno,
+                -- Forma leggibile della destinazione: la colonna
+                -- accanto, nello stesso JOIN.
+                'target_state_descrizione', sa.descrizione,
                 'label_key',          t.meta->>'label_key',
                 'severity',           t.meta->>'severity',
                 'icon',               t.meta->>'icon',
                 'requires_confirm',   COALESCE((t.meta->>'requires_confirm')::boolean, false),
                 'requires_motivazione', COALESCE((t.meta->>'requires_motivazione')::boolean, false),
+                'outlined',           COALESCE((t.meta->>'outlined')::boolean, false),
                 'enabled',            CASE WHEN sa.codice_interno = 'EMESSA'
                                            THEN v_emit_ok ELSE true END,
                 'reason',             CASE WHEN sa.codice_interno = 'EMESSA'
@@ -232,7 +251,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_offerta(p_offerta_id bigint)
-IS 'Capability offerta commerciale per detail API: available_actions + can_edit_* + push_contratto/genera_ordine (mutuamente esclusive) + create_revisione + non_editable_fields. rev 2026-07-11: + blocco pdf {mode, allow_allegati}. rev 2026-07-19: + enabled/reason/reason_key su ogni azione (uniformita'' 6 domini, brief-db-guard-righe-avanzamento-stato §1a) — la transizione verso EMESSA e'' disabled con reason LISTINO_VERSIONE_MANCANTE / LISTINO_VERSIONE_NON_ATTIVA, specchio del guard BOZZA->EMESSA (per le offerte il "vuoto" e'' la versione listino, non le righe: sono espanse dal listino). rev 2026-07-19 (bis): le 3 push_reason (gia_generato / ordine_gia_generato / non_accettata, usate sia da can_push_contratto_reason_key sia da can_genera_ordine_reason_key) passano al namespace i18n vendite.offerte.* — erano sotto offerte.*, radice inesistente nei locales, quindi il motivo non compariva mai in interfaccia; brief-db-i18n-reason-mancanti-offerte-preventivi.';
+IS 'Capability offerta commerciale per detail API: available_actions + can_edit_* + push_contratto/genera_ordine (mutuamente esclusive) + create_revisione + non_editable_fields. rev 2026-07-11: + blocco pdf {mode, allow_allegati}. rev 2026-07-19: + enabled/reason/reason_key su ogni azione (uniformita'' 6 domini, brief-db-guard-righe-avanzamento-stato §1a) — la transizione verso EMESSA e'' disabled con reason LISTINO_VERSIONE_MANCANTE / LISTINO_VERSIONE_NON_ATTIVA, specchio del guard BOZZA->EMESSA (per le offerte il "vuoto" e'' la versione listino, non le righe: sono espanse dal listino). rev 2026-07-19 (bis): le 3 push_reason (gia_generato / ordine_gia_generato / non_accettata, usate sia da can_push_contratto_reason_key sia da can_genera_ordine_reason_key) passano al namespace i18n vendite.offerte.* — erano sotto offerte.*, radice inesistente nei locales, quindi il motivo non compariva mai in interfaccia; brief-db-i18n-reason-mancanti-offerte-preventivi. rev 2026-08-06: ogni azione espone outlined (dal meta della transizione, COALESCE a false) e target_state_descrizione (config.stati_doc_offerte.descrizione della destinazione). outlined mancava qui e sul preventivo: il seed lo portava ma la funzione non lo emetteva, quindi il pulsante distruttivo restava rosso pieno mentre negli altri sei domini era outlined. target_state_descrizione serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati; NULL sulle azioni applicative (crea_revisione / push_contratto / genera_ordine), che non cambiano stato.';
 ```
 
 ---

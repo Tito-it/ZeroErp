@@ -9,8 +9,10 @@ databaseChangeLog:
   - changeSet:
       id: 20260217-04-01-update-fn-log-pipeline-fase
       author: mctit
-      runOnChange: true
-      validCheckSum:
+      # ⚠️ Era `true`: definisce vendite.fn_log_pipeline_fase, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
         - ANY
       comment: "Refactor contratto errori applicativi scope LOTTO"
       changes:
@@ -135,8 +137,10 @@ databaseChangeLog:
   - changeSet:
       id: 20260217-04-02-update-fn-log-lotto-esito-fatture
       author: mctit
-      runOnChange: true
-      validCheckSum:
+      # ⚠️ Era `true`: definisce vendite.fn_log_lotto_esito_fatture, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
         - ANY
 
       comment: "Refactor contratto errori applicativi scope LOTTO"
@@ -225,8 +229,10 @@ databaseChangeLog:
   - changeSet:
       id: 20260217-04-03-update-fn-list-fatturazione-pipeline-steps
       author: mctit
-      runOnChange: true
-      validCheckSum:
+      # ⚠️ Era `true`: definisce vendite.fn_list_fatturazione_pipeline_steps, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
         - ANY
 
       comment: "Refactor contratto errori applicativi scope LOTTO"
@@ -341,8 +347,10 @@ databaseChangeLog:
   - changeSet:
       id: 20260217-04-04-update-fn-resolve-fatturazione-pipeline-step
       author: mctit
-      runOnChange: true
-      validCheckSum:
+      # ⚠️ Era `true`: definisce vendite.fn_resolve_fatturazione_pipeline_step, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
         - ANY
 
       comment: "Refactor contratto errori applicativi scope LOTTO"

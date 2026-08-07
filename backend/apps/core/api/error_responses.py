@@ -101,16 +101,24 @@ def drf_exception_handler(exc: Exception, context: dict) -> Response | None:
         code = _DRF_ERROR_CODE_MAP.get(type(exc).__name__)
 
     if code:
-        # Usa il user_message della policy registrata quando disponibile:
-        # garantisce messaggi uniformi per lo stesso codice in qualsiasi
-        # punto del backend. Fallback al detail dell'eccezione altrimenti.
+        # Usa il user_message della policy: garantisce messaggi uniformi per lo
+        # stesso codice in qualsiasi punto del backend.
+        # ⚠️ Qui c'era un `if policy is not None` con un ramo di ripiego sul
+        # `detail` dell'eccezione: `resolve` non ha mai restituito None — per un
+        # codice non registrato ripiega, dal 2026-08-07 per una classe senza
+        # status solleva — quindi quel ramo non e' mai stato eseguito.
         policy = ErrorPolicyRegistry.resolve(code)
-        if policy is not None:
-            message = policy.user_message
-        else:
-            detail = getattr(exc, "detail", str(exc))
-            message = str(detail) if not isinstance(detail, str) else detail
-        payload: dict = {"error": {"code": code, "message": message}}
+        # ⚠️ `ui_action` va nell'envelope anche QUI. Fino al 2026-08-07 questo
+        # percorso la calcolava e la buttava via, mentre l'altro
+        # (`exception_to_error_response` -> `ApiError.to_dict`) la spediva: lo
+        # stesso codice usciva con due forme diverse a seconda di CHI aveva
+        # sollevato. Oggi non se ne accorge nessuno perche' il frontend non la
+        # legge ancora; il giorno in cui la leggera', un contratto che vale su
+        # un percorso e non sull'altro si manifesta come «a volte funziona»,
+        # che e' il modo peggiore in cui puo' presentarsi.
+        payload: dict = {
+            "error": {"code": code, "message": policy.user_message, "ui_action": policy.ui_action}
+        }
         meta = _build_meta()
         if meta:
             payload["meta"] = meta

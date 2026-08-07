@@ -59,11 +59,11 @@ BEGIN
     -- Validazioni minime parametri
     ----------------------------------------------------------------
     IF p_pdp_id IS NULL THEN
-        
+
          PERFORM script.fn_log_and_raise_error(
                           'database',
                           'script.fn_subentro_cliente',
-                          'ERRORE_PARAMETRI',
+                          'E_ERRORE_PARAMETRI',
                           jsonb_build_object(
                               'p_pdp_id non può essere NULL', 
                               'indicare un valore valido'  
@@ -77,7 +77,7 @@ BEGIN
         PERFORM script.fn_log_and_raise_error(
                           'database',
                           'script.fn_subentro_cliente',
-                          'ERRORE_PARAMETRI',
+                          'E_ERRORE_PARAMETRI',
                           jsonb_build_object(
                               'fn_subentro_cliente: p_data_attivazione non può essere NULL', 
                               'indicare un valore valido'  
@@ -100,7 +100,7 @@ BEGIN
         PERFORM script.fn_log_and_raise_error(
                           'database',
                           'script.fn_subentro_cliente',
-                          'ERRORE_PARAMETRI',
+                          'E_ERRORE_PARAMETRI',
                           jsonb_build_object(
                                   'codice id_cliente',
                                   v_codice_chiuso

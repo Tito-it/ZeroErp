@@ -668,6 +668,17 @@ async function confirmAcceptDialog(payload) {
   await eseguiCambioStato(STATO_PREVENTIVO.ACCETTATO, payload)
 }
 
+
+// Scopo: il nome dello STATO di destinazione per la frase di conferma («Portare
+//   il documento nello stato {stato}?»). La descrizione leggibile la sa solo il
+//   database (`DRAFT` -> «Bozza», `ALLOCATO` -> «Allocato a magazzino»: non e'
+//   derivabile dal codice), quindi arriva dalla capability come
+//   `target_state_descrizione`. Finche' il DB non la espone si ripiega sulla
+//   label dell'azione — comportamento invariato, nessun testo mancante.
+function statoDestinazione(action) {
+  return action.target_state_descrizione || t(action.label_key)
+}
+
 function onCambiaStato(action) {
   // Dispatch azioni speciali (target_state=null): post brief DB 2026-05-28 le
   // azioni `crea_revisione` e `push_commessa` arrivano da `available_actions`
@@ -700,7 +711,7 @@ function onCambiaStato(action) {
   }
   if (action.requires_confirm) {
     confirmAction({
-      message: t('vendite.preventivi.conferma_cambio_stato', { stato: t(action.label_key) }),
+      message: t('vendite.preventivi.conferma_cambio_stato', { stato: statoDestinazione(action) }),
       onAccept: () => eseguiCambioStato(action.target_state),
     })
   } else {

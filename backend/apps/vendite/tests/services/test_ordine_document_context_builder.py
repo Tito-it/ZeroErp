@@ -86,8 +86,13 @@ class BuildContextOrdineTests(SimpleTestCase):
 
         self.assertEqual(
             set(ctx.keys()),
-            {"ordine", "cliente", "righe", "riepilogo_iva", "_meta"},
+            {"ordine", "cliente", "indirizzi", "righe", "riepilogo_iva", "_meta"},
         )
+        # Slot indirizzi SEMPRE presenti anche senza righe (qui il repo mock non
+        # ne restituisce): è ciò che permette al template l'accesso diretto
+        # `indirizzi.consegna.via` sotto StrictUndefined invece del `.get()`
+        # difensivo che rese silenzioso il difetto del Preventivo.
+        self.assertEqual(ctx["indirizzi"], {"consegna": None, "fatturazione": None})
         ordine = ctx["ordine"]
         self.assertEqual(ordine["numero"], "ORD0000007")
         self.assertEqual(ordine["data"], "04-06-2026")
@@ -112,7 +117,8 @@ class BuildContextOrdineTests(SimpleTestCase):
         self.assertEqual(cliente["soggetto_ruolo_id"], 50)
 
         self.assertEqual(ctx["_meta"]["context_code"], "ORDINE_VENDITA")
-        self.assertEqual(ctx["_meta"]["context_version"], 1)
+        # v2 dal 2026-08-05: il context porta il blocco `indirizzi`.
+        self.assertEqual(ctx["_meta"]["context_version"], 2)
         self.assertEqual(ctx["_meta"]["auth_user_id"], 9)
         self.assertEqual(ctx["_meta"]["locale"], "it-IT")
 

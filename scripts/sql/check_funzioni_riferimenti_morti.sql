@@ -12,7 +12,7 @@
 -- Richiede l'estensione `plpgsql_check` (changeSet 20260804-36, contesto
 -- provision). Se manca, il file fallisce subito e in modo eloquente.
 --
--- Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md
+-- Brief: docs/it/dev/work-done/brief-db-bonifica-riferimenti-morti.md
 --
 -- v1 (2026-08-04) produsse 60 righe, di cui ~33 falsi positivi di DUE
 -- tipi soli. La v2 li classifica invece di nasconderli: nessuna riga

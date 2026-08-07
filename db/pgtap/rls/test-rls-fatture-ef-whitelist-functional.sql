@@ -1,5 +1,14 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-contesto: escluso — la ragione e' scritta per esteso piu' sotto in
+--   questo stesso file. Dichiarazione leggibile dal cancello
+--   scripts/guardrail_pgtap_preambolo.py: distingue «escluso apposta» da
+--   «dimenticato», che una nota in prosa non fa.
+--   ⚠️ Da riguardare: le esclusioni `rls/` furono fatte IN BLOCCO, e almeno
+--   una non ne aveva diritto (brief pgtap-runner-rls-baseline §30.2).
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: ALTER TABLE vendite.fatture ENABLE + FORCE ROW LEVEL SECURITY, locale alla
+--   transazione: e' il FORCE a rendere l'owner soggetto alle policy.
 -- pgTAP test FUNZIONALE RLS — vendite.fatture (policy EF_WHITELIST)
 --
 -- Brief RLS §11. A differenza di test-rls-policies-structure.sql (che
@@ -30,6 +39,15 @@
 -- ------------------------------------------------------------
 
 BEGIN;
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
+--   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
+--   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio, e il
+--   file sarebbe verde per sottrazione. IMMEDIATE li riporta a scattare a fine
+--   di ogni istruzione. In testa e non in coda: in coda scatterebbero dopo il
+--   cleanup, su righe ormai cancellate.
+--   Brief: brief-db-pgtap-runner-rls-baseline §19.
+SET CONSTRAINTS ALL IMMEDIATE;
+
 SELECT plan(7);
 
 -- =========================================================

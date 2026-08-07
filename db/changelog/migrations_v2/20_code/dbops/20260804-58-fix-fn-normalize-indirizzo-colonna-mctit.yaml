@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # Bonifica riferimenti morti — F2, famiglia stradario/contatti
-#   Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md
+#   Brief: docs/it/dev/work-done/brief-db-bonifica-riferimenti-morti.md
 #
 #   `config.codici_postali.codice_postale` non esiste: e' `codice` dal
 #   **2025-08-17** (`20250817-24-codici_postali-rename-codice_postale-to-codice`).

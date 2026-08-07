@@ -45,7 +45,7 @@ BEGIN
         PERFORM script.fn_log_and_raise_error(
             'pratiche',
             'pratiche.trgfn_pratiche_sorgenti_guard_coerenza_flusso',
-            'PRATICHE_SORGENTI_FLUSSO_PRATICA_INCOERENTE',
+            'E_PRATICHE_SORGENTI_FLUSSO_PRATICA_INCOERENTE',
             jsonb_build_object(
                 'pratica_id', NEW.pratica_id,
                 'flusso_id', NEW.flusso_id,

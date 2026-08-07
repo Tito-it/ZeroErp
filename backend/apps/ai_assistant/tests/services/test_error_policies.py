@@ -16,11 +16,23 @@
 # 6. test_ai_query_too_long_is_400
 # 7. test_ai_tool_not_found_is_500
 # 8. test_ai_tool_denied_is_403
-# 9. test_ai_confirmation_required_is_428
+# 9. test_conferma_non_e_un_errore_http
+#
+# ⚠️ Ritirato il 2026-08-06: `test_ai_confirmation_required_is_428`.
+#    `E_AI_CONFIRMATION_REQUIRED` non lo solleva nessuno — il flusso di conferma
+#    dei tool in scrittura restituisce **200 con `requires_confirmation` nel
+#    payload** (`ai_assistant_service`), che e' la scelta giusta: una conferma
+#    richiesta non e' un errore HTTP. E il 428 non c'entrava comunque (RFC 6585:
+#    «la richiesta deve essere condizionale», `If-Match`, non «l'utente deve
+#    confermare»). Codice e test ritirati insieme nell'audit di coerenza degli
+#    status: vedi docs/it/dev/api.md §Tassonomia errori.
+#    Se un giorno servira' un errore per questo caso, i presidi sui codici lo
+#    pretenderanno dichiarato — si riparte da li', con lo status giusto.
 
 import unittest
 
 from apps.core.services.error_policies import ErrorPolicyRegistry
+from apps.core.services.error_policies_generated import CODICI_RITIRATI
 
 
 class TestAIErrorPolicies(unittest.TestCase):
@@ -34,7 +46,6 @@ class TestAIErrorPolicies(unittest.TestCase):
         "E_AI_QUERY_TOO_LONG",
         "E_AI_TOOL_NOT_FOUND",
         "E_AI_TOOL_DENIED",
-        "E_AI_CONFIRMATION_REQUIRED",
     ]
 
     # Scopo: Verifica che tutti i codici E_AI_* siano registrati.
@@ -81,7 +92,21 @@ class TestAIErrorPolicies(unittest.TestCase):
         policy = ErrorPolicyRegistry.resolve("E_AI_TOOL_DENIED")
         self.assertEqual(policy.http_status, 403)
 
-    # Scopo: E_AI_CONFIRMATION_REQUIRED deve restituire 428.
-    def test_ai_confirmation_required_is_428(self):
-        policy = ErrorPolicyRegistry.resolve("E_AI_CONFIRMATION_REQUIRED")
-        self.assertEqual(policy.http_status, 428)
+    # Scopo: `E_AI_CONFIRMATION_REQUIRED` non deve tornare. La conferma di un
+    #        tool in scrittura si esprime con un 200 e `requires_confirmation`
+    #        nel payload, non con un errore HTTP: se qualcuno lo rimettesse in
+    #        circolo, questo test lo dice invece di lasciar tornare il 428.
+    #
+    #        ⚠️ LA DOMANDA E' CAMBIATA IL 2026-08-07, e il test lo aveva detto
+    #        diventando rosso. Chiedeva `has(...) is False` — «non e' registrato»
+    #        — e andava bene finche' il registro era scritto a mano: bastava non
+    #        scriverci il codice. Ora il registro e' GENERATO dal catalogo, e il
+    #        catalogo contiene TUTTI i codici, ritirati compresi (devono
+    #        continuare a risolvere per il diario). Quindi `has()` oggi risponde
+    #        «lo conosco», non «e' buono», ed e' vero anche per un codice morto.
+    #
+    #        La domanda giusta e' la stessa intenzione, detta piu' forte: **e'
+    #        ritirato a catalogo?** Non «l'abbiamo dimenticato», ma «l'abbiamo
+    #        deciso», e la decisione sta in un dato invece che in un'assenza.
+    def test_conferma_non_e_un_errore_http(self):
+        self.assertIn("E_AI_CONFIRMATION_REQUIRED", CODICI_RITIRATI)

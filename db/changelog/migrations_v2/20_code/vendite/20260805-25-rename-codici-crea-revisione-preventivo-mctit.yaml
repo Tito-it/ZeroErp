@@ -1,0 +1,948 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Rinomina a `E_*` dei 3 codici di fn_crea_revisione_preventivo — 3o lotto
+#   Brief: docs/it/dev/work-in-progress/brief-db-codice-errore-strutturato.md §15.11
+#   Lotti precedenti: 20260805-19 (4 codici), 20260805-20 (4 codici)
+#
+#     PREV_REVISIONE_STATO_NON_AMMESSO (354) -> E_... (850)
+#     PREV_REVISIONE_BOZZA_ESISTENTE   (355) -> E_... (851)
+#     PREV_STATO_CORRENTE_NON_TROVATO  (357) -> E_... (852)
+#
+#   Registro del debito: **42 -> 39**.
+#
+# ── ⚠️ PERCHE' QUESTO LOTTO E NON `fn_prendi_in_carico_flusso` ──────────
+#   Il piano diceva `pratiche.fn_prendi_in_carico_flusso` (4 codici). Misurando
+#   prima di scrivere e' emerso che i suoi quattro codici sono nominati **anche
+#   dal backend**, in `apps/pratiche/services/pratiche_service.py`: una lista
+#   `known_markers` che riconosce l'errore da una **substring del messaggio** e
+#   ne restituisce il codice.
+#
+#   Rinominare quei codici a DB senza toccare il Python non romperebbe niente in
+#   modo rumoroso — e questo e' il problema. Il messaggio non cambia, quindi il
+#   marker continua a corrispondere, e l'API restituirebbe il **vecchio nome
+#   ormai ritirato** mentre il DB solleva il nuovo. Due verita' diverse sullo
+#   stesso errore, e nessun test che protesti.
+#
+#   Censimento dei 42 codici rimasti: **20 in 15 funzioni sono DB-only**
+#   (rinominabili qui e basta), **gli altri sono accoppiati al backend** e vanno
+#   rilasciati insieme al Python. Questo lotto e' il piu' grosso fra i DB-only.
+#
+# ── IL pgTAP ────────────────────────────────────────────────────────────
+#   `db/pgtap/vendite/test-fn-crea-revisione-preventivo.sql` nomina
+#   `PREV_REVISIONE_STATO_NON_AMMESSO` in una **descrizione di test** e in un
+#   commento, non in un'asserzione: la rinomina non lo rompe. Le due stringhe
+#   vengono comunque aggiornate nello stesso commit — una descrizione che cita un
+#   codice che non esiste piu' e' un piccolo debito documentale che costa zero
+#   togliere adesso e confonde chi legge fra sei mesi.
+#
+# ── LE TRE MOSSE (stesso ordine dei lotti precedenti) ───────────────────
+#   1. i 3 codici nuovi a catalogo (CSV, id 850-852);
+#   2. questa funzione smette di sollevare i vecchi;
+#   3. i vecchi ritirati con `obsoleto_dal` e tolti dal registro (CSV).
+#   Il 3 dopo il 2, altrimenti il controllo (D) del guardrail fallisce.
+#
+#   ⚠️ I vecchi non si cancellano: hanno righe in dbops.error_log e la FK e'
+#   NOT NULL (20260805-17). ⚠️ Il `;` dopo `$function$` e' obbligatorio: la doc
+#   auto-gen non ce l'ha e senza il COMMENT successivo e' un errore di sintassi
+#   (lezione del 20260805-19).
+#
+# ── RICHIESTA AL BACKEND ────────────────────────────────────────────────
+#   I 3 vecchi codici hanno una voce in `error_policies.py`: vanno **rinominate**
+#   ai nuovi nomi, non duplicate. Status invariati.
+#
+#   Corpo dalla doc auto-gen. Cambiano solo i 3 letterali.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260805-25-rename-codici-crea-revisione-preventivo-mctit.yaml
+
+  - changeSet:
+      id: 20260805-25-rename-codici-crea-revisione-preventivo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Antepone il prefisso E_ ai 3 codici di vendite.fn_crea_revisione_preventivo.
+        Lotto DB-only: nessuno dei tre e' nominato dal backend, a differenza di
+        fn_prendi_in_carico_flusso che era il candidato del piano. I vecchi nomi
+        restano a catalogo ritirati con obsoleto_dal.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_crea_revisione_preventivo(p_preventivo_id bigint, p_user text)
+               RETURNS TABLE(nuovo_preventivo_id bigint, numero character varying, nuova_rev integer)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_stato_corrente_cod  config.stati_doc_preventivi.codice_interno%TYPE;
+                v_numero              vendite.preventivi.numero%TYPE;
+                v_max_rev             vendite.preventivi.rev%TYPE;
+                v_stato_draft_id      config.stati_doc_preventivi.id%TYPE;
+                v_new_id              vendite.preventivi.id%TYPE;
+                v_new_rev             vendite.preventivi.rev%TYPE;
+                v_has_draft           boolean;
+              BEGIN
+                -- ==========================================================
+                -- Scopo:
+                --   Creare una nuova revisione in DRAFT a partire da un
+                --   preventivo in stato EMESSO. Copia testata, righe attive,
+                --   indirizzi e componenti BoM (con FK remap). Non gestisce
+                --   is_revision_attiva: l'attivazione e' derivata in
+                --   vendite.vw_preventivi tramite is_abortito degli stati.
+                --
+                -- Regole (rev 2026-05-15):
+                --   - stato corrente DEVE essere EMESSO
+                --   - non deve esistere gia' una revisione DRAFT per lo stesso numero
+                --   - la nuova revisione ha rev = max(rev)+1, stato DRAFT
+                --   - righe copiate: solo attive con quantita > 0, ORDER BY ordine, id
+                --   - componenti BoM: copiati con FK remap old→new riga_id
+                --     via ROW_NUMBER su (ordine, id); solo attivi
+                --   - indirizzi: tutti copiati
+                --
+                -- Parametri:
+                --   p_preventivo_id : ID del preventivo da revisionare
+                --   p_user          : utente che esegue l'operazione
+                --
+                -- NOTE codice_interno (rev 2026-06-28, analisi-hardcoded-codice §3a #2):
+                --   stato corrente e risoluzione DRAFT per codice_interno (immutabile),
+                --   non per codice (mutabile). Literali EMESSO/DRAFT sono codice_interno.
+                -- ==========================================================
+
+                -- Guard: parametro obbligatorio
+                IF p_preventivo_id IS NULL OR p_preventivo_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_crea_revisione_preventivo',
+                    'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('param', 'p_preventivo_id', 'value', p_preventivo_id),
+                    NULL::uuid,
+                    'p_preventivo_id = ' || COALESCE(p_preventivo_id::text, 'NULL')
+                  );
+                END IF;
+
+                -- Recupera stato corrente e numero
+                SELECT sdp.codice_interno, p.numero
+                  INTO v_stato_corrente_cod, v_numero
+                  FROM vendite.preventivi p
+                  JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+                 WHERE p.id = p_preventivo_id;
+
+                IF v_stato_corrente_cod IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_crea_revisione_preventivo',
+                    'E_PREV_STATO_CORRENTE_NON_TROVATO',
+                    jsonb_build_object('preventivo_id', p_preventivo_id),
+                    NULL::uuid,
+                    p_preventivo_id::text
+                  );
+                END IF;
+
+                -- Guard: revisione ammessa SOLO da EMESSO
+                IF v_stato_corrente_cod NOT IN ('EMESSO') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_crea_revisione_preventivo',
+                    'E_PREV_REVISIONE_STATO_NON_AMMESSO',
+                    jsonb_build_object(
+                      'preventivo_id', p_preventivo_id,
+                      'stato_corrente', v_stato_corrente_cod
+                    ),
+                    NULL::uuid,
+                    p_preventivo_id::text, v_stato_corrente_cod
+                  );
+                END IF;
+
+                -- Guard: non deve esistere gia' una revisione DRAFT
+                SELECT EXISTS(
+                  SELECT 1
+                    FROM vendite.preventivi p2
+                    JOIN config.stati_doc_preventivi sdp2 ON sdp2.id = p2.stato_doc_preventivo_id
+                   WHERE p2.numero = v_numero
+                     AND sdp2.codice_interno = 'DRAFT'
+                ) INTO v_has_draft;
+
+                IF v_has_draft THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_crea_revisione_preventivo',
+                    'E_PREV_REVISIONE_BOZZA_ESISTENTE',
+                    jsonb_build_object('numero', v_numero),
+                    NULL::uuid,
+                    v_numero
+                  );
+                END IF;
+
+                -- Recupera stato DRAFT id
+                SELECT id INTO v_stato_draft_id
+                  FROM config.stati_doc_preventivi
+                 WHERE codice_interno = 'DRAFT' AND attivo IS TRUE;
+
+                IF v_stato_draft_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_crea_revisione_preventivo',
+                    'E_CONFIG_MANCANTE',
+                    jsonb_build_object('tabella', 'config.stati_doc_preventivi', 'codice', 'DRAFT'),
+                    NULL::uuid,
+                    'stato DRAFT non trovato o non attivo in config.stati_doc_preventivi'
+                  );
+                END IF;
+
+                -- Calcola nuova revisione
+                SELECT COALESCE(MAX(p.rev), 0) + 1
+                  INTO v_new_rev
+                  FROM vendite.preventivi p
+                 WHERE p.numero = v_numero;
+
+                -- Crea nuova testata (copia campi dal preventivo originale).
+                -- Totali a 0: il trigger STATEMENT su preventivi_righe li ricalcolera'
+                -- dopo l'INSERT bulk delle righe copiate (una sola invocazione).
+                INSERT INTO vendite.preventivi (
+                  numero, rev,
+                  billing_account_id, istanza_utility_id, utility_id,
+                  validita_dal, validita_al,
+                  totale_imponibile, totale_iva, totale_documento,
+                  valuta_id, competenza_mese, fatturazione_immediata,
+                  stato_doc_preventivo_id, data, termine_pagamento_id,
+                  storicizza, meta,
+                  user_insert, user_update
+                )
+                SELECT
+                  p.numero, v_new_rev,
+                  p.billing_account_id, p.istanza_utility_id, p.utility_id,
+                  p.validita_dal, p.validita_al,
+                  0, 0, 0,
+                  p.valuta_id, p.competenza_mese, p.fatturazione_immediata,
+                  v_stato_draft_id, CURRENT_DATE, p.termine_pagamento_id,
+                  p.storicizza, p.meta,
+                  COALESCE(p_user, CURRENT_USER), COALESCE(p_user, CURRENT_USER)
+                FROM vendite.preventivi p
+                WHERE p.id = p_preventivo_id
+                RETURNING id INTO v_new_id;
+
+                -- Copia righe attive.
+                -- ORDER BY ordine, id: ordine deterministico necessario per il
+                -- remap FK componenti tramite ROW_NUMBER (vedi blocco successivo).
+                INSERT INTO vendite.preventivi_righe (
+                  preventivo_id, articolo_id, descrizione,
+                  quantita, prezzo_unitario, sconto_percentuale,
+                  iva_id, ordine, attivo,
+                  qta_operativa, uom_operativa_id, factor_to_base,
+                  meta,
+                  user_insert, user_update
+                )
+                SELECT
+                  v_new_id, pr.articolo_id, pr.descrizione,
+                  pr.quantita, pr.prezzo_unitario, pr.sconto_percentuale,
+                  pr.iva_id, pr.ordine, pr.attivo,
+                  pr.qta_operativa, pr.uom_operativa_id, pr.factor_to_base,
+                  pr.meta,
+                  COALESCE(p_user, CURRENT_USER), COALESCE(p_user, CURRENT_USER)
+                FROM vendite.preventivi_righe pr
+                WHERE pr.preventivo_id = p_preventivo_id
+                  AND pr.attivo IS TRUE
+                  AND pr.quantita > 0
+                ORDER BY pr.ordine, pr.id;
+
+                -- Copia componenti BoM per le righe padre composite.
+                -- FK remap old_riga_id → new_riga_id via ROW_NUMBER su (ordine, id):
+                -- la SELECT righe usa ORDER BY ordine, id → i nuovi id (IDENTITY
+                -- sequenziale) sono assegnati nello stesso ordine → RN allineati 1:1.
+                -- Il trigger trgfn_componenti_calcola_quantita (BEFORE INSERT)
+                -- ricalcola quantita/qta_operativa da coeff_qta_snapshot: i valori
+                -- copiati vengono sovrascritti correttamente.
+                WITH old_righe AS (
+                    SELECT id AS old_riga_id,
+                           ROW_NUMBER() OVER (ORDER BY ordine, id) AS rn
+                      FROM vendite.preventivi_righe
+                     WHERE preventivo_id = p_preventivo_id
+                       AND attivo IS TRUE
+                       AND quantita > 0
+                ),
+                new_righe AS (
+                    SELECT id AS new_riga_id,
+                           ROW_NUMBER() OVER (ORDER BY ordine, id) AS rn
+                      FROM vendite.preventivi_righe
+                     WHERE preventivo_id = v_new_id
+                ),
+                riga_map AS (
+                    SELECT old_r.old_riga_id, new_r.new_riga_id
+                      FROM old_righe old_r
+                      JOIN new_righe new_r USING (rn)
+                )
+                INSERT INTO vendite.preventivi_righe_componenti (
+                    riga_preventivo_id, articolo_componente_id, componente_id,
+                    coeff_qta_snapshot, quantita, prezzo_unitario, iva_id,
+                    origine_prezzo, prezzo_resolver_context,
+                    stato_approvazione_prezzo, pratica_approvazione_prezzo_id,
+                    uom_operativa_id, factor_to_base, qta_operativa,
+                    ordine, attivo, meta,
+                    user_insert, user_update
+                )
+                SELECT
+                    rm.new_riga_id,
+                    prc.articolo_componente_id, prc.componente_id,
+                    prc.coeff_qta_snapshot, prc.quantita, prc.prezzo_unitario, prc.iva_id,
+                    prc.origine_prezzo, prc.prezzo_resolver_context,
+                    prc.stato_approvazione_prezzo, prc.pratica_approvazione_prezzo_id,
+                    prc.uom_operativa_id, prc.factor_to_base, prc.qta_operativa,
+                    prc.ordine, prc.attivo, prc.meta,
+                    COALESCE(p_user, CURRENT_USER), COALESCE(p_user, CURRENT_USER)
+                  FROM vendite.preventivi_righe_componenti prc
+                  JOIN riga_map rm ON rm.old_riga_id = prc.riga_preventivo_id
+                 WHERE prc.attivo IS TRUE;
+
+                -- Copia indirizzi
+                INSERT INTO vendite.preventivi_indirizzi (
+                  preventivo_id, tipo_indirizzo_id, snapshot,
+                  origine_indirizzo_id, origine_soggetto_ruolo_id,
+                  user_insert, user_update
+                )
+                SELECT
+                  v_new_id, pi.tipo_indirizzo_id, pi.snapshot,
+                  pi.origine_indirizzo_id, pi.origine_soggetto_ruolo_id,
+                  COALESCE(p_user, CURRENT_USER), COALESCE(p_user, CURRENT_USER)
+                FROM vendite.preventivi_indirizzi pi
+                WHERE pi.preventivo_id = p_preventivo_id;
+
+                -- Ritorna risultato
+                RETURN QUERY
+                SELECT v_new_id, v_numero, v_new_rev;
+              END
+              $function$;
+              COMMENT ON FUNCTION vendite.fn_crea_revisione_preventivo(p_preventivo_id bigint, p_user text)
+              IS 'Crea revisione DRAFT da preventivo EMESSO: copia testata, righe attive, componenti BoM (FK remap) e indirizzi. Stato corrente e risoluzione DRAFT per codice_interno (immutabile). rev 2026-06-28: analisi-hardcoded-codice §3a #2. rev 2026-08-05 (20260805-25): codici rinominati con prefisso E_ — E_PREV_REVISIONE_STATO_NON_AMMESSO (850), E_PREV_REVISIONE_BOZZA_ESISTENTE (851), E_PREV_STATO_CORRENTE_NON_TROVATO (852); i vecchi nomi restano a catalogo ritirati con obsoleto_dal.';
+
+              -- ── SECONDA FUNZIONE, STESSO CODICE ──────────────────────
+              -- ⚠️ `PREV_STATO_CORRENTE_NON_TROVATO` non e' esclusivo di
+              -- fn_crea_revisione_preventivo: lo solleva anche
+              -- fn_cambia_stato_preventivo. Rinominarlo in una sola delle due
+              -- lascerebbe l'altra a sollevare un codice ritirato — che e'
+              -- precisamente cio' che il controllo (D) del guardrail vieta, e
+              -- che infatti ha fatto fallire la prima simulazione di questo
+              -- lotto.
+              --
+              -- L'unita' del ritiro e' IL CODICE, non la funzione: il
+              -- raggruppamento per funzione serve solo a comporre i lotti.
+              -- Qui cambia un solo letterale; `PREV_NESSUNA_RIGA_ATTIVA`, che
+              -- vive nella stessa funzione, resta com'e' e uscira' col suo lotto.
+              CREATE OR REPLACE FUNCTION vendite.fn_cambia_stato_preventivo(p_preventivo_id bigint, p_nuovo_stato character varying, p_user text)
+               RETURNS TABLE(preventivo_id bigint, stato_precedente character varying, stato_nuovo character varying)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_stato_corrente_id   vendite.preventivi.stato_doc_preventivo_id%TYPE;
+                v_stato_corrente_cod  config.stati_doc_preventivi.codice_interno%TYPE;
+                v_nuovo_stato_id      config.stati_doc_preventivi.id%TYPE;
+                v_transizione_ok      boolean;
+                v_count_righe         bigint;
+                v_motivi              jsonb;
+                v_numero              vendite.preventivi.numero%TYPE;
+                v_uid                 vendite.preventivi.uid%TYPE;
+              BEGIN
+                -- ==========================================================
+                -- Scopo:
+                --   Eseguire la transizione di stato di un preventivo vendita,
+                --   validando la transizione tramite la matrice configurabile
+                --   config.transizioni_stati_preventivi.
+                --
+                -- Regole:
+                --   - La transizione deve essere presente e attiva nella matrice
+                --   - DRAFT → EMESSO: richiede almeno una riga attiva
+                --     (SOLO presenza: un totale pari a zero non blocca)
+                --   - Verso ANNULLATO: l'ammissibilita' NON e' decisa qui.
+                --     La chiede a script.fn_check_preventivo_annullabile, che e'
+                --     la sede unica della regola (rev 2026-08-04).
+                --
+                -- Parametri:
+                --   p_preventivo_id : ID del preventivo
+                --   p_nuovo_stato   : codice_interno dello stato destinazione
+                --   p_user          : utente che esegue la transizione
+                --
+                -- Ritorna:
+                --   preventivo_id, stato_precedente (codice_interno), stato_nuovo (codice_interno)
+                --
+                -- NOTE codice_interno (rev 2026-06-28, analisi-hardcoded-codice §3a #1):
+                --   stato corrente e destinazione risolti per codice_interno
+                --   (immutabile), non per codice (mutabile). Literali DRAFT/EMESSO/
+                --   ANNULLATO sono codice_interno.
+                --
+                -- NOTE rev 2026-07-16 (solo presenza righe):
+                --   rimossi il guard PREV_TOTALE_NON_POSITIVO e il filtro
+                --   quantita > 0. Per emettere basta che il documento ABBIA
+                --   righe: prezzo/totale 0 e' un caso legittimo. Regola valida
+                --   per tutti i domini documentali.
+                --
+                -- NOTE rev 2026-08-04 (brief-db-vie-uscita-operatore §7.3):
+                --   il guard verso ANNULLATO che stava qui — righe con
+                --   stato_emissione EMESSA in commessa — e' stato ASSORBITO da
+                --   script.fn_check_preventivo_annullabile, che lo espone come
+                --   MOTIVO 2 accanto agli altri due. Qui resta solo la chiamata.
+                --
+                -- NOTE rev 2026-08-05 (§7.4 punto 3):
+                --   la matrice e' ora vincolante anche per il database, via
+                --   vendite.trgfn_preventivi_guard_transizione. Il controllo resta
+                --   ANCHE qui, ed e' voluto: qui si intercetta prima di scrivere,
+                --   li' si copre chi non passa da questa porta. Il codice sollevato
+                --   e' lo STESSO nei due punti — E_PREV_TRANSIZIONE_NON_AMMESSA —
+                --   perche' la regola e' una sola. Il precedente
+                --   PREV_TRANSIZIONE_NON_AMMESSA, privo del prefisso E_ e iscritto
+                --   in dbops.messaggi_errore_codici_legacy, esce di scena.
+                -- ==========================================================
+
+                -- Guard: parametri obbligatori
+                IF p_preventivo_id IS NULL OR p_preventivo_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_preventivo',
+                    'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('param', 'p_preventivo_id', 'value', p_preventivo_id),
+                    NULL::uuid,
+                    'p_preventivo_id = ' || COALESCE(p_preventivo_id::text, 'NULL')
+                  );
+                END IF;
+
+                -- Recupera stato corrente, numero e uid in una sola query
+                SELECT p.stato_doc_preventivo_id, sdp.codice_interno, p.numero, p.uid
+                  INTO v_stato_corrente_id, v_stato_corrente_cod, v_numero, v_uid
+                  FROM vendite.preventivi p
+                  JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+                 WHERE p.id = p_preventivo_id;
+
+                IF v_stato_corrente_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_preventivo',
+                    'E_PREV_STATO_CORRENTE_NON_TROVATO',
+                    jsonb_build_object('preventivo_id', p_preventivo_id),
+                    NULL::uuid,
+                    p_preventivo_id::text
+                  );
+                END IF;
+
+                -- Recupera ID dello stato destinazione
+                SELECT id INTO v_nuovo_stato_id
+                  FROM config.stati_doc_preventivi
+                 WHERE codice_interno = p_nuovo_stato AND attivo IS TRUE;
+
+                IF v_nuovo_stato_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_preventivo',
+                    'E_STATO_SCONOSCIUTO',
+                    jsonb_build_object('codice', p_nuovo_stato),
+                    NULL::uuid,
+                    p_nuovo_stato
+                  );
+                END IF;
+
+                -- Valida transizione via matrice config
+                SELECT EXISTS(
+                  SELECT 1
+                    FROM config.transizioni_stati_preventivi t
+                   WHERE t.stato_da_id = v_stato_corrente_id
+                     AND t.stato_a_id  = v_nuovo_stato_id
+                     AND t.attivo IS TRUE
+                ) INTO v_transizione_ok;
+
+                IF NOT v_transizione_ok THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_preventivo',
+                    'E_PREV_TRANSIZIONE_NON_AMMESSA',
+                    jsonb_build_object(
+                      'preventivo_id', p_preventivo_id,
+                      'stato_da', v_stato_corrente_cod,
+                      'stato_a', p_nuovo_stato
+                    ),
+                    NULL::uuid,
+                    v_stato_corrente_cod, p_nuovo_stato
+                  );
+                END IF;
+
+                -- Guard DRAFT → EMESSO: SOLO presenza di righe attive.
+                -- Nessun vincolo su quantita/prezzo/totale: un documento
+                -- a totale zero deve poter essere emesso (rev 2026-07-16).
+                IF v_stato_corrente_cod = 'DRAFT' AND p_nuovo_stato = 'EMESSO' THEN
+                  SELECT COUNT(*)
+                    INTO v_count_righe
+                    FROM vendite.preventivi_righe pr
+                   WHERE pr.preventivo_id = p_preventivo_id
+                     AND pr.attivo IS TRUE;
+
+                  IF v_count_righe = 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite', 'fn_cambia_stato_preventivo',
+                      'PREV_NESSUNA_RIGA_ATTIVA',
+                      jsonb_build_object('preventivo_id', p_preventivo_id),
+                      NULL::uuid,
+                      v_numero
+                    );
+                  END IF;
+                END IF;
+
+                -- Verso ANNULLATO: la regola NON e' qui. La sede unica e'
+                -- script.fn_check_preventivo_annullabile, la stessa che legge il
+                -- trigger di guard e la stessa che accende il bottone nelle
+                -- capability. Qui si solleva il PRIMO motivo; il contesto porta
+                -- l'array intero, cosi' il log li conserva tutti.
+                IF p_nuovo_stato = 'ANNULLATO' THEN
+                  v_motivi := script.fn_check_preventivo_annullabile(p_preventivo_id);
+
+                  IF jsonb_array_length(v_motivi) > 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite', 'fn_cambia_stato_preventivo',
+                      v_motivi -> 0 ->> 'codice',
+                      jsonb_build_object(
+                        'preventivo_id', p_preventivo_id,
+                        'numero',        v_numero,
+                        'motivi',        v_motivi
+                      ),
+                      NULL::uuid,
+                      COALESCE(v_numero, p_preventivo_id::text)
+                    );
+                  END IF;
+                END IF;
+
+                -- Esecuzione: aggiorna stato
+                UPDATE vendite.preventivi
+                   SET stato_doc_preventivo_id = v_nuovo_stato_id,
+                       user_update = COALESCE(p_user, CURRENT_USER)
+                 WHERE id = p_preventivo_id;
+
+                -- Ritorna risultato
+                RETURN QUERY
+                SELECT p_preventivo_id, v_stato_corrente_cod, p_nuovo_stato;
+              END
+              $function$;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback ai 3 codici senza prefisso: restano a catalogo
+              -- (ritirati), quindi il messaggio si risolve comunque.
+              CREATE OR REPLACE FUNCTION vendite.fn_crea_revisione_preventivo(p_preventivo_id bigint, p_user text)
+               RETURNS TABLE(nuovo_preventivo_id bigint, numero character varying, nuova_rev integer)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_stato_corrente_cod  config.stati_doc_preventivi.codice_interno%TYPE;
+                v_numero              vendite.preventivi.numero%TYPE;
+                v_max_rev             vendite.preventivi.rev%TYPE;
+                v_stato_draft_id      config.stati_doc_preventivi.id%TYPE;
+                v_new_id              vendite.preventivi.id%TYPE;
+                v_new_rev             vendite.preventivi.rev%TYPE;
+                v_has_draft           boolean;
+              BEGIN
+                -- ==========================================================
+                -- Scopo:
+                --   Creare una nuova revisione in DRAFT a partire da un
+                --   preventivo in stato EMESSO. Copia testata, righe attive,
+                --   indirizzi e componenti BoM (con FK remap). Non gestisce
+                --   is_revision_attiva: l'attivazione e' derivata in
+                --   vendite.vw_preventivi tramite is_abortito degli stati.
+                --
+                -- Regole (rev 2026-05-15):
+                --   - stato corrente DEVE essere EMESSO
+                --   - non deve esistere gia' una revisione DRAFT per lo stesso numero
+                --   - la nuova revisione ha rev = max(rev)+1, stato DRAFT
+                --   - righe copiate: solo attive con quantita > 0, ORDER BY ordine, id
+                --   - componenti BoM: copiati con FK remap old→new riga_id
+                --     via ROW_NUMBER su (ordine, id); solo attivi
+                --   - indirizzi: tutti copiati
+                --
+                -- Parametri:
+                --   p_preventivo_id : ID del preventivo da revisionare
+                --   p_user          : utente che esegue l'operazione
+                --
+                -- NOTE codice_interno (rev 2026-06-28, analisi-hardcoded-codice §3a #2):
+                --   stato corrente e risoluzione DRAFT per codice_interno (immutabile),
+                --   non per codice (mutabile). Literali EMESSO/DRAFT sono codice_interno.
+                -- ==========================================================
+
+                -- Guard: parametro obbligatorio
+                IF p_preventivo_id IS NULL OR p_preventivo_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_crea_revisione_preventivo',
+                    'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('param', 'p_preventivo_id', 'value', p_preventivo_id),
+                    NULL::uuid,
+                    'p_preventivo_id = ' || COALESCE(p_preventivo_id::text, 'NULL')
+                  );
+                END IF;
+
+                -- Recupera stato corrente e numero
+                SELECT sdp.codice_interno, p.numero
+                  INTO v_stato_corrente_cod, v_numero
+                  FROM vendite.preventivi p
+                  JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+                 WHERE p.id = p_preventivo_id;
+
+                IF v_stato_corrente_cod IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_crea_revisione_preventivo',
+                    'PREV_STATO_CORRENTE_NON_TROVATO',
+                    jsonb_build_object('preventivo_id', p_preventivo_id),
+                    NULL::uuid,
+                    p_preventivo_id::text
+                  );
+                END IF;
+
+                -- Guard: revisione ammessa SOLO da EMESSO
+                IF v_stato_corrente_cod NOT IN ('EMESSO') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_crea_revisione_preventivo',
+                    'PREV_REVISIONE_STATO_NON_AMMESSO',
+                    jsonb_build_object(
+                      'preventivo_id', p_preventivo_id,
+                      'stato_corrente', v_stato_corrente_cod
+                    ),
+                    NULL::uuid,
+                    p_preventivo_id::text, v_stato_corrente_cod
+                  );
+                END IF;
+
+                -- Guard: non deve esistere gia' una revisione DRAFT
+                SELECT EXISTS(
+                  SELECT 1
+                    FROM vendite.preventivi p2
+                    JOIN config.stati_doc_preventivi sdp2 ON sdp2.id = p2.stato_doc_preventivo_id
+                   WHERE p2.numero = v_numero
+                     AND sdp2.codice_interno = 'DRAFT'
+                ) INTO v_has_draft;
+
+                IF v_has_draft THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_crea_revisione_preventivo',
+                    'PREV_REVISIONE_BOZZA_ESISTENTE',
+                    jsonb_build_object('numero', v_numero),
+                    NULL::uuid,
+                    v_numero
+                  );
+                END IF;
+
+                -- Recupera stato DRAFT id
+                SELECT id INTO v_stato_draft_id
+                  FROM config.stati_doc_preventivi
+                 WHERE codice_interno = 'DRAFT' AND attivo IS TRUE;
+
+                IF v_stato_draft_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_crea_revisione_preventivo',
+                    'E_CONFIG_MANCANTE',
+                    jsonb_build_object('tabella', 'config.stati_doc_preventivi', 'codice', 'DRAFT'),
+                    NULL::uuid,
+                    'stato DRAFT non trovato o non attivo in config.stati_doc_preventivi'
+                  );
+                END IF;
+
+                -- Calcola nuova revisione
+                SELECT COALESCE(MAX(p.rev), 0) + 1
+                  INTO v_new_rev
+                  FROM vendite.preventivi p
+                 WHERE p.numero = v_numero;
+
+                -- Crea nuova testata (copia campi dal preventivo originale).
+                -- Totali a 0: il trigger STATEMENT su preventivi_righe li ricalcolera'
+                -- dopo l'INSERT bulk delle righe copiate (una sola invocazione).
+                INSERT INTO vendite.preventivi (
+                  numero, rev,
+                  billing_account_id, istanza_utility_id, utility_id,
+                  validita_dal, validita_al,
+                  totale_imponibile, totale_iva, totale_documento,
+                  valuta_id, competenza_mese, fatturazione_immediata,
+                  stato_doc_preventivo_id, data, termine_pagamento_id,
+                  storicizza, meta,
+                  user_insert, user_update
+                )
+                SELECT
+                  p.numero, v_new_rev,
+                  p.billing_account_id, p.istanza_utility_id, p.utility_id,
+                  p.validita_dal, p.validita_al,
+                  0, 0, 0,
+                  p.valuta_id, p.competenza_mese, p.fatturazione_immediata,
+                  v_stato_draft_id, CURRENT_DATE, p.termine_pagamento_id,
+                  p.storicizza, p.meta,
+                  COALESCE(p_user, CURRENT_USER), COALESCE(p_user, CURRENT_USER)
+                FROM vendite.preventivi p
+                WHERE p.id = p_preventivo_id
+                RETURNING id INTO v_new_id;
+
+                -- Copia righe attive.
+                -- ORDER BY ordine, id: ordine deterministico necessario per il
+                -- remap FK componenti tramite ROW_NUMBER (vedi blocco successivo).
+                INSERT INTO vendite.preventivi_righe (
+                  preventivo_id, articolo_id, descrizione,
+                  quantita, prezzo_unitario, sconto_percentuale,
+                  iva_id, ordine, attivo,
+                  qta_operativa, uom_operativa_id, factor_to_base,
+                  meta,
+                  user_insert, user_update
+                )
+                SELECT
+                  v_new_id, pr.articolo_id, pr.descrizione,
+                  pr.quantita, pr.prezzo_unitario, pr.sconto_percentuale,
+                  pr.iva_id, pr.ordine, pr.attivo,
+                  pr.qta_operativa, pr.uom_operativa_id, pr.factor_to_base,
+                  pr.meta,
+                  COALESCE(p_user, CURRENT_USER), COALESCE(p_user, CURRENT_USER)
+                FROM vendite.preventivi_righe pr
+                WHERE pr.preventivo_id = p_preventivo_id
+                  AND pr.attivo IS TRUE
+                  AND pr.quantita > 0
+                ORDER BY pr.ordine, pr.id;
+
+                -- Copia componenti BoM per le righe padre composite.
+                -- FK remap old_riga_id → new_riga_id via ROW_NUMBER su (ordine, id):
+                -- la SELECT righe usa ORDER BY ordine, id → i nuovi id (IDENTITY
+                -- sequenziale) sono assegnati nello stesso ordine → RN allineati 1:1.
+                -- Il trigger trgfn_componenti_calcola_quantita (BEFORE INSERT)
+                -- ricalcola quantita/qta_operativa da coeff_qta_snapshot: i valori
+                -- copiati vengono sovrascritti correttamente.
+                WITH old_righe AS (
+                    SELECT id AS old_riga_id,
+                           ROW_NUMBER() OVER (ORDER BY ordine, id) AS rn
+                      FROM vendite.preventivi_righe
+                     WHERE preventivo_id = p_preventivo_id
+                       AND attivo IS TRUE
+                       AND quantita > 0
+                ),
+                new_righe AS (
+                    SELECT id AS new_riga_id,
+                           ROW_NUMBER() OVER (ORDER BY ordine, id) AS rn
+                      FROM vendite.preventivi_righe
+                     WHERE preventivo_id = v_new_id
+                ),
+                riga_map AS (
+                    SELECT old_r.old_riga_id, new_r.new_riga_id
+                      FROM old_righe old_r
+                      JOIN new_righe new_r USING (rn)
+                )
+                INSERT INTO vendite.preventivi_righe_componenti (
+                    riga_preventivo_id, articolo_componente_id, componente_id,
+                    coeff_qta_snapshot, quantita, prezzo_unitario, iva_id,
+                    origine_prezzo, prezzo_resolver_context,
+                    stato_approvazione_prezzo, pratica_approvazione_prezzo_id,
+                    uom_operativa_id, factor_to_base, qta_operativa,
+                    ordine, attivo, meta,
+                    user_insert, user_update
+                )
+                SELECT
+                    rm.new_riga_id,
+                    prc.articolo_componente_id, prc.componente_id,
+                    prc.coeff_qta_snapshot, prc.quantita, prc.prezzo_unitario, prc.iva_id,
+                    prc.origine_prezzo, prc.prezzo_resolver_context,
+                    prc.stato_approvazione_prezzo, prc.pratica_approvazione_prezzo_id,
+                    prc.uom_operativa_id, prc.factor_to_base, prc.qta_operativa,
+                    prc.ordine, prc.attivo, prc.meta,
+                    COALESCE(p_user, CURRENT_USER), COALESCE(p_user, CURRENT_USER)
+                  FROM vendite.preventivi_righe_componenti prc
+                  JOIN riga_map rm ON rm.old_riga_id = prc.riga_preventivo_id
+                 WHERE prc.attivo IS TRUE;
+
+                -- Copia indirizzi
+                INSERT INTO vendite.preventivi_indirizzi (
+                  preventivo_id, tipo_indirizzo_id, snapshot,
+                  origine_indirizzo_id, origine_soggetto_ruolo_id,
+                  user_insert, user_update
+                )
+                SELECT
+                  v_new_id, pi.tipo_indirizzo_id, pi.snapshot,
+                  pi.origine_indirizzo_id, pi.origine_soggetto_ruolo_id,
+                  COALESCE(p_user, CURRENT_USER), COALESCE(p_user, CURRENT_USER)
+                FROM vendite.preventivi_indirizzi pi
+                WHERE pi.preventivo_id = p_preventivo_id;
+
+                -- Ritorna risultato
+                RETURN QUERY
+                SELECT v_new_id, v_numero, v_new_rev;
+              END
+              $function$;
+              CREATE OR REPLACE FUNCTION vendite.fn_cambia_stato_preventivo(p_preventivo_id bigint, p_nuovo_stato character varying, p_user text)
+               RETURNS TABLE(preventivo_id bigint, stato_precedente character varying, stato_nuovo character varying)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_stato_corrente_id   vendite.preventivi.stato_doc_preventivo_id%TYPE;
+                v_stato_corrente_cod  config.stati_doc_preventivi.codice_interno%TYPE;
+                v_nuovo_stato_id      config.stati_doc_preventivi.id%TYPE;
+                v_transizione_ok      boolean;
+                v_count_righe         bigint;
+                v_motivi              jsonb;
+                v_numero              vendite.preventivi.numero%TYPE;
+                v_uid                 vendite.preventivi.uid%TYPE;
+              BEGIN
+                -- ==========================================================
+                -- Scopo:
+                --   Eseguire la transizione di stato di un preventivo vendita,
+                --   validando la transizione tramite la matrice configurabile
+                --   config.transizioni_stati_preventivi.
+                --
+                -- Regole:
+                --   - La transizione deve essere presente e attiva nella matrice
+                --   - DRAFT → EMESSO: richiede almeno una riga attiva
+                --     (SOLO presenza: un totale pari a zero non blocca)
+                --   - Verso ANNULLATO: l'ammissibilita' NON e' decisa qui.
+                --     La chiede a script.fn_check_preventivo_annullabile, che e'
+                --     la sede unica della regola (rev 2026-08-04).
+                --
+                -- Parametri:
+                --   p_preventivo_id : ID del preventivo
+                --   p_nuovo_stato   : codice_interno dello stato destinazione
+                --   p_user          : utente che esegue la transizione
+                --
+                -- Ritorna:
+                --   preventivo_id, stato_precedente (codice_interno), stato_nuovo (codice_interno)
+                --
+                -- NOTE codice_interno (rev 2026-06-28, analisi-hardcoded-codice §3a #1):
+                --   stato corrente e destinazione risolti per codice_interno
+                --   (immutabile), non per codice (mutabile). Literali DRAFT/EMESSO/
+                --   ANNULLATO sono codice_interno.
+                --
+                -- NOTE rev 2026-07-16 (solo presenza righe):
+                --   rimossi il guard PREV_TOTALE_NON_POSITIVO e il filtro
+                --   quantita > 0. Per emettere basta che il documento ABBIA
+                --   righe: prezzo/totale 0 e' un caso legittimo. Regola valida
+                --   per tutti i domini documentali.
+                --
+                -- NOTE rev 2026-08-04 (brief-db-vie-uscita-operatore §7.3):
+                --   il guard verso ANNULLATO che stava qui — righe con
+                --   stato_emissione EMESSA in commessa — e' stato ASSORBITO da
+                --   script.fn_check_preventivo_annullabile, che lo espone come
+                --   MOTIVO 2 accanto agli altri due. Qui resta solo la chiamata.
+                --
+                -- NOTE rev 2026-08-05 (§7.4 punto 3):
+                --   la matrice e' ora vincolante anche per il database, via
+                --   vendite.trgfn_preventivi_guard_transizione. Il controllo resta
+                --   ANCHE qui, ed e' voluto: qui si intercetta prima di scrivere,
+                --   li' si copre chi non passa da questa porta. Il codice sollevato
+                --   e' lo STESSO nei due punti — E_PREV_TRANSIZIONE_NON_AMMESSA —
+                --   perche' la regola e' una sola. Il precedente
+                --   PREV_TRANSIZIONE_NON_AMMESSA, privo del prefisso E_ e iscritto
+                --   in dbops.messaggi_errore_codici_legacy, esce di scena.
+                -- ==========================================================
+
+                -- Guard: parametri obbligatori
+                IF p_preventivo_id IS NULL OR p_preventivo_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_preventivo',
+                    'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('param', 'p_preventivo_id', 'value', p_preventivo_id),
+                    NULL::uuid,
+                    'p_preventivo_id = ' || COALESCE(p_preventivo_id::text, 'NULL')
+                  );
+                END IF;
+
+                -- Recupera stato corrente, numero e uid in una sola query
+                SELECT p.stato_doc_preventivo_id, sdp.codice_interno, p.numero, p.uid
+                  INTO v_stato_corrente_id, v_stato_corrente_cod, v_numero, v_uid
+                  FROM vendite.preventivi p
+                  JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+                 WHERE p.id = p_preventivo_id;
+
+                IF v_stato_corrente_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_preventivo',
+                    'PREV_STATO_CORRENTE_NON_TROVATO',
+                    jsonb_build_object('preventivo_id', p_preventivo_id),
+                    NULL::uuid,
+                    p_preventivo_id::text
+                  );
+                END IF;
+
+                -- Recupera ID dello stato destinazione
+                SELECT id INTO v_nuovo_stato_id
+                  FROM config.stati_doc_preventivi
+                 WHERE codice_interno = p_nuovo_stato AND attivo IS TRUE;
+
+                IF v_nuovo_stato_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_preventivo',
+                    'E_STATO_SCONOSCIUTO',
+                    jsonb_build_object('codice', p_nuovo_stato),
+                    NULL::uuid,
+                    p_nuovo_stato
+                  );
+                END IF;
+
+                -- Valida transizione via matrice config
+                SELECT EXISTS(
+                  SELECT 1
+                    FROM config.transizioni_stati_preventivi t
+                   WHERE t.stato_da_id = v_stato_corrente_id
+                     AND t.stato_a_id  = v_nuovo_stato_id
+                     AND t.attivo IS TRUE
+                ) INTO v_transizione_ok;
+
+                IF NOT v_transizione_ok THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_preventivo',
+                    'E_PREV_TRANSIZIONE_NON_AMMESSA',
+                    jsonb_build_object(
+                      'preventivo_id', p_preventivo_id,
+                      'stato_da', v_stato_corrente_cod,
+                      'stato_a', p_nuovo_stato
+                    ),
+                    NULL::uuid,
+                    v_stato_corrente_cod, p_nuovo_stato
+                  );
+                END IF;
+
+                -- Guard DRAFT → EMESSO: SOLO presenza di righe attive.
+                -- Nessun vincolo su quantita/prezzo/totale: un documento
+                -- a totale zero deve poter essere emesso (rev 2026-07-16).
+                IF v_stato_corrente_cod = 'DRAFT' AND p_nuovo_stato = 'EMESSO' THEN
+                  SELECT COUNT(*)
+                    INTO v_count_righe
+                    FROM vendite.preventivi_righe pr
+                   WHERE pr.preventivo_id = p_preventivo_id
+                     AND pr.attivo IS TRUE;
+
+                  IF v_count_righe = 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite', 'fn_cambia_stato_preventivo',
+                      'PREV_NESSUNA_RIGA_ATTIVA',
+                      jsonb_build_object('preventivo_id', p_preventivo_id),
+                      NULL::uuid,
+                      v_numero
+                    );
+                  END IF;
+                END IF;
+
+                -- Verso ANNULLATO: la regola NON e' qui. La sede unica e'
+                -- script.fn_check_preventivo_annullabile, la stessa che legge il
+                -- trigger di guard e la stessa che accende il bottone nelle
+                -- capability. Qui si solleva il PRIMO motivo; il contesto porta
+                -- l'array intero, cosi' il log li conserva tutti.
+                IF p_nuovo_stato = 'ANNULLATO' THEN
+                  v_motivi := script.fn_check_preventivo_annullabile(p_preventivo_id);
+
+                  IF jsonb_array_length(v_motivi) > 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite', 'fn_cambia_stato_preventivo',
+                      v_motivi -> 0 ->> 'codice',
+                      jsonb_build_object(
+                        'preventivo_id', p_preventivo_id,
+                        'numero',        v_numero,
+                        'motivi',        v_motivi
+                      ),
+                      NULL::uuid,
+                      COALESCE(v_numero, p_preventivo_id::text)
+                    );
+                  END IF;
+                END IF;
+
+                -- Esecuzione: aggiorna stato
+                UPDATE vendite.preventivi
+                   SET stato_doc_preventivo_id = v_nuovo_stato_id,
+                       user_update = COALESCE(p_user, CURRENT_USER)
+                 WHERE id = p_preventivo_id;
+
+                -- Ritorna risultato
+                RETURN QUERY
+                SELECT p_preventivo_id, v_stato_corrente_cod, p_nuovo_stato;
+              END
+              $function$;

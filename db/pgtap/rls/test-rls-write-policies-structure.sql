@@ -1,5 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-contesto: escluso — la ragione e' scritta per esteso piu' sotto in
+--   questo stesso file. Dichiarazione leggibile dal cancello
+--   scripts/guardrail_pgtap_preambolo.py: distingue «escluso apposta» da
+--   «dimenticato», che una nota in prosa non fa.
+--   ⚠️ Da riguardare: le esclusioni `rls/` furono fatte IN BLOCCO, e almeno
+--   una non ne aveva diritto (brief pgtap-runner-rls-baseline §30.2).
 -- pgTAP test STRUTTURALE — copertura scrittura policy RLS ef_whitelist
 --
 -- Brief RLS Ondata 2 ("insert bloccati"): dopo l'ENABLE (20260601-38..41)
@@ -28,6 +34,15 @@
 -- ------------------------------------------------------------
 
 BEGIN;
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
+--   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
+--   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio, e il
+--   file sarebbe verde per sottrazione. IMMEDIATE li riporta a scattare a fine
+--   di ogni istruzione. In testa e non in coda: in coda scatterebbero dopo il
+--   cleanup, su righe ormai cancellate.
+--   Brief: brief-db-pgtap-runner-rls-baseline §19.
+SET CONSTRAINTS ALL IMMEDIATE;
+
 SELECT plan(33);
 
 -- Elenco canonico delle 10 policy ef_whitelist con copertura scrittura.

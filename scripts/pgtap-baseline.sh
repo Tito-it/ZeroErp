@@ -24,11 +24,24 @@
 # debito, e deve calare. Ogni riga e' un file la cui copertura oggi vale ZERO
 # (se fallisce nel fixture non esegue nessuna asserzione), non "parziale".
 #
+# ⚠️ E VALE SOLO SE E' STATA REGISTRATA COL MEDESIMO UTENTE. Un rosso puo'
+# dipendere dal ruolo di connessione (permessi, RLS): confrontare una corsa da
+# utente applicativo con una baseline presa da owner produce decine di finte
+# regressioni. E' il difetto che ha originato il brief
+# `brief-db-pgtap-runner-rls-baseline.md`. Da qui la prima riga del file di
+# baseline, `# pgtap-runner: <owner|app>`, e il rifiuto di confrontare corse
+# disomogenee.
+#
 # USO
 #   scripts/pgtap-baseline.sh                  # confronta tutta la suite
 #   scripts/pgtap-baseline.sh vendite config   # solo alcuni schemi (piu' veloce)
 #   scripts/pgtap-baseline.sh --update         # rigenera la baseline
 #   scripts/pgtap-baseline.sh --update vendite # rigenera solo quegli schemi
+#
+#   PGTAP_RUNNER=app scripts/pgtap-baseline.sh vendite   # come gira l'applicazione
+#
+# La scelta dell'utente sta in scripts/testpgtap.sh (variabile PGTAP_RUNNER e
+# marcatore `-- pgtap-runner: owner` per i file che richiedono l'owner).
 #
 # EXIT CODE
 #   0 = nessuna regressione (eventuali rientri sono solo segnalati)
@@ -42,7 +55,13 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-BASELINE="$ROOT_DIR/db/pgtap/baseline-rossi.tsv"
+# ⚠️ Due baseline, e non e' un capriccio. Quella di default e' misurata sul DB
+#   di SVILUPPO, che ha dati veri; la CI ricostruisce il database da zero, quindi
+#   i test che dipendono da dati preesistenti falliscono la' e non qui. Sono due
+#   popolazioni diverse: confrontarle produrrebbe decine di finte regressioni,
+#   che e' lo stesso difetto — metro disomogeneo — che ha originato questo brief.
+#   Si sceglie con PGTAP_BASELINE.
+BASELINE="${PGTAP_BASELINE:-$ROOT_DIR/db/pgtap/baseline-rossi.tsv}"
 
 UPDATE=0
 SCHEMI=()
@@ -69,8 +88,48 @@ else
   FILES=$(echo "$FILES" | grep -v '^$')
 fi
 
+# ⚠️ Nessun default QUI: lo si chiede a testpgtap.sh, che e' l'unico posto
+#   in cui il default vive. Averne uno proprio significa che il giorno in
+#   cui si commuta il runner questo script etichetta la baseline con
+#   l'utente sbagliato — ed e' successo.
+RUNNER="${PGTAP_RUNNER:-$("$SCRIPT_DIR/testpgtap.sh" --print-runner)}"
+export PGTAP_RUNNER="$RUNNER"
+
+# Utente registrato nella baseline. Prima riga `# pgtap-runner: <x>`; le
+# baseline scritte prima dell'introduzione del marcatore non ce l'hanno e sono
+# tutte da owner, che era l'unico modo di girare la suite.
+baseline_runner() {
+  local r
+  r=$(grep -m1 -E '^# pgtap-runner:' "$BASELINE" 2>/dev/null | sed -E 's/^# pgtap-runner:[[:space:]]*//')
+  echo "${r:-owner}"
+}
+# Righe vere della baseline (senza intestazione).
+baseline_righe() { grep -v '^#' "$BASELINE" 2>/dev/null; }
+
+# Metro omogeneo, verificato PRIMA di eseguire: un confronto fra utenti diversi
+# non dice niente sulle regressioni, dice solo che i due utenti hanno permessi
+# diversi. Il controllo sta qui e non in fondo perche' scoprirlo dopo costerebbe
+# l'intera corsa (~7 minuti sulla suite).
+# L'unico caso in cui un metro nuovo e' legittimo e' la ribaselinatura INTERA.
+if [ -f "$BASELINE" ]; then
+  PRECED=$(baseline_runner)
+  RIBASE_INTERA=$([ "$UPDATE" -eq 1 ] && [ ${#SCHEMI[@]} -eq 0 ] && echo 1 || echo 0)
+  if [ "$PRECED" != "$RUNNER" ] && [ "$RIBASE_INTERA" -eq 0 ]; then
+    echo "❌ La baseline e' registrata con runner '$PRECED', questa corsa gira con '$RUNNER'." >&2
+    if [ "$UPDATE" -eq 1 ]; then
+      echo "   Un aggiornamento parziale mescolerebbe due metri nello stesso file." >&2
+    else
+      echo "   Un rosso puo' dipendere dal ruolo (permessi, RLS): il confronto" >&2
+      echo "   produrrebbe finte regressioni." >&2
+    fi
+    echo "   O si gira con PGTAP_RUNNER=$PRECED, o si ribaselina l'INTERA suite:" >&2
+    echo "      PGTAP_RUNNER=$RUNNER $0 --update" >&2
+    exit 2
+  fi
+fi
+
 TOT=$(echo "$FILES" | grep -c '' )
-echo "pgTAP baseline — $TOT file da eseguire (~$((TOT))s)"
+echo "pgTAP baseline — $TOT file da eseguire (~$((TOT))s) — runner: $RUNNER"
 echo
 
 CORRENTE=$(mktemp)
@@ -103,21 +162,24 @@ ROSSI=$(grep -c '' "$CORRENTE" || true)
 
 # --- modalita' aggiornamento -------------------------------------------------
 if [ "$UPDATE" -eq 1 ]; then
+  TMP=$(mktemp)
   if [ ${#SCHEMI[@]} -eq 0 ]; then
-    cp "$CORRENTE" "$BASELINE"
+    cp "$CORRENTE" "$TMP"
   else
     # Aggiornamento parziale: si sostituiscono SOLO le righe degli schemi
     # eseguiti, lasciando intatto il resto della baseline.
-    TMP=$(mktemp)
-    cp "$BASELINE" "$TMP" 2>/dev/null || : > "$TMP"
+    #
+    # L'omogeneita' del metro e' gia' stata verificata prima della corsa.
+    baseline_righe > "$TMP"
     for sc in "${SCHEMI[@]}"; do
       grep -v "^db/pgtap/$sc/" "$TMP" > "$TMP.f" && mv "$TMP.f" "$TMP"
     done
     cat "$CORRENTE" >> "$TMP"
     sort -o "$TMP" "$TMP"
-    mv "$TMP" "$BASELINE"
   fi
-  echo "Baseline aggiornata: $BASELINE ($(grep -c '' "$BASELINE") rossi noti)"
+  { echo "# pgtap-runner: $RUNNER"; cat "$TMP"; } > "$BASELINE"
+  rm -f "$TMP"
+  echo "Baseline aggiornata: $BASELINE ($(baseline_righe | grep -c '') rossi noti, runner: $RUNNER)"
   exit 0
 fi
 
@@ -133,10 +195,10 @@ fi
 NOTI=$(mktemp); ATTUALI=$(mktemp)
 trap 'rm -f "$CORRENTE" "$NOTI" "$ATTUALI"' EXIT
 if [ ${#SCHEMI[@]} -eq 0 ]; then
-  cut -f1 "$BASELINE" | sort > "$NOTI"
+  baseline_righe | cut -f1 | sort > "$NOTI"
 else
   pat=$(printf 'db/pgtap/%s/\n' "${SCHEMI[@]}" | paste -sd'|')
-  cut -f1 "$BASELINE" | grep -E "^($pat)" | sort > "$NOTI"
+  baseline_righe | cut -f1 | grep -E "^($pat)" | sort > "$NOTI"
 fi
 cut -f1 "$CORRENTE" | sort > "$ATTUALI"
 

@@ -32,7 +32,8 @@ BEGIN
       'uid', OLD.uid::text,
       'stato', OLD.stato
     ),
-    NULL::uuid
+    NULL::uuid,
+    VARIADIC ARRAY[]::text[]
   );
   RETURN OLD;
 END;

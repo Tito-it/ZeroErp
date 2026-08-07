@@ -51,6 +51,6 @@ vendita crea un **DDT** (testata `DRAFT` + righe + componenti) e il **fulfillmen
 
 * **Multi-DDT (A-1)**: un ordine può generare più DDT (consegne parziali). L'unicità del legame è
   sul fulfillment `(ordine_riga_id, ddt_riga_id)`, non sulla testata.
-* **Refresh MV** `mv_ddt_ordini`: fuori dalla funzione (job `dbops.fn_refresh_mv_ddt_ordini`).
+* **Legame testata↔testata**: si ricava da `vendite.ordini_righe_fulfillment` (riga↔riga) oppure da `vendite.ddt.sorgente_uid`. Fino al 2026-08-05 esisteva anche la vista materializzata `mv_ddt_ordini`, **ritirata** (changeSet `20260805-21/-22`) perché nessuno la leggeva e nessuno la aggiornava.
 * **DDT standalone** (senza ordine): non usa questa funzione, solo la CRUD BE (testata con
   `billing_account` proprio, senza `sorgente_uid`).

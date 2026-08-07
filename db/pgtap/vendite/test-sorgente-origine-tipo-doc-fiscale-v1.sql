@@ -17,6 +17,21 @@
 -- ------------------------------------------------------------
 
 BEGIN;
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
+--   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
+--   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio, e il
+--   file sarebbe verde per sottrazione. IMMEDIATE li riporta a scattare a fine
+--   di ogni istruzione. In testa e non in coda: in coda scatterebbero dopo il
+--   cleanup, su righe ormai cancellate.
+--   Brief: brief-db-pgtap-runner-rls-baseline §19.
+SET CONSTRAINTS ALL IMMEDIATE;
+
+-- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
+-- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
+-- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
+-- Brief: brief-db-pgtap-runner-rls-baseline §8.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
 SELECT plan(10);
 
 -- ============================================================
@@ -130,12 +145,16 @@ SELECT ok(
 -- 5) tipo_doc_fiscale_id coerente con config.sorgenti[PREVENTIVO]
 -- ============================================================
 -- Verifica che il valore restituito dalla fn_list coincida con config.sorgenti.
+-- ⚠️ bool_and su TUTTE le righe, non `p_limit := 1` + `LIMIT 1` su una a caso.
+--   Il terzo parametro della funzione E' un limite: chiedendone una sola si
+--   collaudava un preventivo qualsiasi, scelto dalla funzione e senza ordine.
+--   Cosi' l'asserzione diventa «nessuno di quelli elencati e' incoerente»,
+--   che e' quello che il nome dichiara. NULL (nessuna riga) resta ammesso.
 SELECT ok(
   (
-    SELECT p.tipo_doc_fiscale_id = r.expected_tipo_doc_id
-    FROM vendite.fn_list_preventivi_da_pushare(NULL, NULL, 1) p,
+    SELECT bool_and(p.tipo_doc_fiscale_id = r.expected_tipo_doc_id)
+    FROM vendite.fn_list_preventivi_da_pushare(NULL, NULL, NULL) p,
          tmp_refs_sot r
-    LIMIT 1
   )
   IS NOT FALSE,  -- NULL (nessuna riga) o TRUE sono entrambi ok
   'tipo_doc_fiscale_id coerente con config.sorgenti[PREVENTIVO]'

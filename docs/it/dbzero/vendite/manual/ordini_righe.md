@@ -7,7 +7,6 @@ Approfondimento tabelle:
 [vendite.ordini](/dbzero/vendite/tabelle/ordini)  
 > [vendite.ordini_righe_fulfillment](/dbzero/vendite/tabelle/ordini_righe_fulfillment)    
 > [vendite.ddt_righe](/dbzero/vendite/tabelle/ddt_righe)     
-> [vendite.mv_ddt_ordini](/dbzero/vendite/tabelle/mv_ddt_ordini)      
 > [config.stati_doc_ordini](/dbzero/config/tabelle/stati_doc_ordini)    
 
 ---

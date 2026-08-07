@@ -1,0 +1,175 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Riferimenti morti — F8: chiamata a fn_log_and_raise_error senza valori
+#   variadici in `script.fn_change_user_emittenti_scope`
+#   Regola corretta da: 20260805-01 · stesso difetto di 20260805-02
+#
+#   La chiamata passava 5 argomenti, cioe' nessun valore variadico: un
+#   `VARIADIC <tipo>[]` non lo ammette e la chiamata non si risolve.
+#
+#   ⚠️ Qui il guard e' `E_PROFILO_ULTIMO_SUPER_ADMIN`, cioe' quello che
+#   impedisce di restare **senza nessun SUPER_ADMIN attivo** nel sistema.
+#   Il blocco scattava comunque, ma con «la funzione non esiste» al posto
+#   della spiegazione — sul percorso amministrativo dove capire *perche'*
+#   l'operazione e' vietata conta piu' che altrove.
+#
+#   Il messaggio non ha segnaposto `%s` (verificato su config.messaggi_errore),
+#   quindi `VARIADIC ARRAY[]::text[]` e' la forma esatta.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260805-03-fix-variadic-log-change-user-emittenti-scope-mctit.yaml
+
+  - changeSet:
+      id: 20260805-03-fix-variadic-log-change-user-emittenti-scope
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        F8 — script.fn_change_user_emittenti_scope chiamava fn_log_and_raise_error
+        senza valori variadici: la chiamata non si risolve e il guard sull'ultimo
+        SUPER_ADMIN attivo falliva con «la funzione non esiste».
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_change_user_emittenti_scope(p_auth_user_id integer, p_emittente_ids bigint[])
+               RETURNS jsonb
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_count_input        integer
+                      := COALESCE(array_length(p_emittente_ids, 1), 0);
+                  v_current_emittente  config.user_emittenti_fiscali.emittente_fiscale_id%TYPE;
+                  v_target_emittente   config.user_emittenti_fiscali.emittente_fiscale_id%TYPE;
+                  v_new_scope_mode     text;
+              BEGIN
+                  -- =========================================================
+                  -- Update 2026-04-29: i guard parametri ora passano per
+                  -- script.fn_log_and_raise_error (codice 409
+                  -- E_OPERATORE_SCOPE_PARAM_NON_VALIDO). Body invariato.
+                  -- =========================================================
+
+                  -- Guard parametri principali
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'fn_change_user_emittenti_scope',
+                          'E_OPERATORE_SCOPE_PARAM_NON_VALIDO',
+                          jsonb_build_object(
+                              'param', 'p_auth_user_id',
+                              'value', p_auth_user_id
+                          ),
+                          NULL::uuid,
+                          'p_auth_user_id',
+                          coalesce(p_auth_user_id::text, 'NULL')
+                      );
+                  END IF;
+
+                  -- Guard MULTI applicativo
+                  IF v_count_input > 1 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'fn_change_user_emittenti_scope',
+                          'E_OPERATORE_SCOPE_MULTI_NON_AMMESSO',
+                          jsonb_build_object(
+                              'auth_user_id', p_auth_user_id,
+                              'emittente_ids', p_emittente_ids,
+                              'count', v_count_input
+                          ),
+                          NULL::uuid,
+                          v_count_input::text
+                      );
+                  END IF;
+
+                  -- Validazione singolo emittente
+                  IF v_count_input = 1 THEN
+                      IF p_emittente_ids[1] IS NULL OR p_emittente_ids[1] <= 0 THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'fn_change_user_emittenti_scope',
+                              'E_OPERATORE_SCOPE_PARAM_NON_VALIDO',
+                              jsonb_build_object(
+                                  'param', 'p_emittente_ids[1]',
+                                  'value', p_emittente_ids[1]
+                              ),
+                              NULL::uuid,
+                              'p_emittente_ids[1]',
+                              coalesce(p_emittente_ids[1]::text, 'NULL')
+                          );
+                      END IF;
+                      v_target_emittente := p_emittente_ids[1];
+                      v_new_scope_mode   := 'SINGLE';
+                  ELSE
+                      v_target_emittente := NULL;
+                      v_new_scope_mode   := 'GLOBAL';
+                  END IF;
+
+                  -- Stato corrente con FOR UPDATE
+                  SELECT uef.emittente_fiscale_id
+                    INTO v_current_emittente
+                    FROM config.user_emittenti_fiscali uef
+                   WHERE uef.auth_user_id = p_auth_user_id
+                     FOR UPDATE;
+
+                  -- No-op
+                  IF v_current_emittente IS NOT DISTINCT FROM v_target_emittente THEN
+                      RETURN jsonb_build_object(
+                          'changed',      false,
+                          'scope_mode',   v_new_scope_mode,
+                          'emittente_id', v_target_emittente
+                      );
+                  END IF;
+
+                  -- Guard ultimo SA (gia' su fn_log_and_raise_error nel file 04)
+                  IF script.fn_check_ultimo_super_admin_attivo(p_auth_user_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'fn_change_user_emittenti_scope',
+                          'E_PROFILO_ULTIMO_SUPER_ADMIN',
+                          jsonb_build_object(
+                              'auth_user_id',          p_auth_user_id,
+                              'current_emittente_id',  v_current_emittente,
+                              'target_emittente_id',   v_target_emittente,
+                              'detail', 'Cambio scope vietato sull''ultimo SUPER_ADMIN attivo'
+                          ),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]
+                        );
+                  END IF;
+
+                  -- Apply: DELETE (con override) + INSERT
+                  IF v_current_emittente IS NOT NULL THEN
+                      SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
+                      DELETE FROM config.user_emittenti_fiscali
+                       WHERE auth_user_id = p_auth_user_id;
+                      SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
+                  END IF;
+
+                  IF v_target_emittente IS NOT NULL THEN
+                      INSERT INTO config.user_emittenti_fiscali
+                          (auth_user_id, emittente_fiscale_id)
+                      VALUES (p_auth_user_id, v_target_emittente);
+                  END IF;
+
+                  RETURN jsonb_build_object(
+                      'changed',      true,
+                      'scope_mode',   v_new_scope_mode,
+                      'emittente_id', v_target_emittente
+                  );
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

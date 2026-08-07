@@ -1,0 +1,11 @@
+classe,descrizione,obsoleto_dal
+DATO_ERRATO,"La richiesta e' malformata o un valore e' sbagliato: chi l'ha fatta puo' correggerlo e riprovare.",NULL
+CONFLITTO_STATO,"In conflitto con lo stato attuale della risorsa: non c'e' un campo da correggere, e' la situazione che non lo consente.",NULL
+NON_TROVATO,La cosa indicata non esiste.,NULL
+TECNICO,"Guasto, oppure un pezzo che nessuno ha configurato: chi ha fatto la richiesta non puo' farci niente.",NULL
+NON_PERMESSO,"Il diritto manca, e non dipende dallo stato: non cambia riprovando piu' tardi.",NULL
+NON_ESEGUIBILE,"La richiesta si capisce ma non si puo' eseguire: una configurazione che non regge a quella data.",NULL
+NON_DISPONIBILE,"La funzione esiste ma non e' servita: e' spenta. Diverso da TECNICO, dove il pezzo manca del tutto.",NULL
+AVVISO,"Non e' un rifiuto: e' una nota nel diario, e non raggiunge mai chi ha fatto la richiesta. Non ha uno status HTTP, e non e' una lacuna.",NULL
+NON_AUTENTICATO,"Non manca il diritto, manca chi sei: ci si rimedia autenticandosi. Diverso da NON_PERMESSO, dove sappiamo chi sei e non ti basta.",NULL
+ERRORE_ESTERNO,"Un servizio di terzi ha risposto male: il guasto non e' nostro. Diverso da TECNICO, che e' roba nostra da riparare.",NULL

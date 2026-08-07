@@ -36,6 +36,26 @@
 -- ------------------------------------------------------------
 
 BEGIN;
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
+--   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
+--   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio, e il
+--   file sarebbe verde per sottrazione. IMMEDIATE li riporta a scattare a fine
+--   di ogni istruzione. In testa e non in coda: in coda scatterebbero dopo il
+--   cleanup, su righe ormai cancellate.
+--   Brief: brief-db-pgtap-runner-rls-baseline §19.
+SET CONSTRAINTS ALL IMMEDIATE;
+
+-- ⚠️ Contesto applicativo, e qui serve piu' che altrove. Questo file era stato
+--   escluso con tutta la famiglia `rls/`, «perche' il contesto se lo costruisce
+--   da se'» — ma non e' vero per questo: le GUC che imposta sono SUE
+--   (`zeroerp.test_id_*`) e la funzione la chiama con argomenti espliciti, quindi
+--   non tocca mai `app.ruolo_applicativo`. Senza contesto, sotto l'utente
+--   applicativo la RLS e' fail-closed e la fixture non vede NIENTE: _t_ctx resta
+--   vuota, l'asserzione 1 fallisce e — molto peggio — le 2-5 finiscono nel ramo
+--   `skip`. Verde per sottrazione, che e' la trappola del §17.1.
+--   Brief: brief-db-pgtap-runner-rls-baseline §29.7.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
 SELECT plan(5);
 
 -- =========================================================

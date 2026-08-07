@@ -22,8 +22,13 @@ databaseChangeLog:
   - changeSet:
       id: 20260528-03-update-stati-doc-offerte-transizioni-severity-emetti
       author: mctit
-      runOnChange: true
-      validCheckSum: [ANY]
+      # ⚠️ Era `true` (2026-08-06): scrive `meta || {"severity":"info"}` sulla riga id 1 di
+#   config.stati_doc_offerte_transizioni. E' un MERGE, non una sovrascrittura, e il
+#   CSV dichiara gia' `severity: info` su quella riga: e' un no-op, quindi NON serve
+#   un mirror ri-ancorato. Si toglie solo il `true` perche' non torni a decidere.
+      #   La matrice/gli stati si cambiano SOLO dal CSV.
+      runOnChange: false
+      validCheckSums: [ANY]
       failOnError: true
       comment: >
         Allinea severity transizione BOZZA→EMESSA (id=1) in

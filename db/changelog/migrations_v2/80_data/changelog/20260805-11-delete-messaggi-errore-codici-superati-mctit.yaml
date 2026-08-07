@@ -1,0 +1,125 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Quattro codici a seed che nessuno solleva piu': il registro del debito
+#   scende da 57 a 53 senza rinominare niente
+#   Brief: docs/it/dev/work-in-progress/brief-db-codice-errore-strutturato.md §7
+#   Registro: dbops.messaggi_errore_codici_legacy (20260805-06/07)
+#
+# ── COME SONO USCITI ALLO SCOPERTO ──────────────────────────────────────
+#   Costruendo il presidio si e' incrociato l'elenco dei 57 codici fuori
+#   convenzione con i call site veri. Otto non sono sollevati da nessuna
+#   funzione; di quegli otto, due li usa il backend (EMITTENTE_NON_MODIFICABILE,
+#   PREV_STATO_NON_MODIFICABILE), due sono solo loggati e mai sollevati
+#   (MESSAGGIO_NON_DEFINITO, W_TXID_NOT_REGISTERED). Restano questi quattro,
+#   che non hanno consumatori da nessuna parte: ne' DB, ne' Python, ne' FE.
+#
+# ── ⚠️ VERIFICATO CHE SIANO SUPERATI, NON «NON ANCORA AGGANCIATI» ───────
+#   E' la distinzione che conta: un codice a seed senza chiamanti puo' essere
+#   un residuo, oppure un pezzo di lavoro in corso a cui il call site deve
+#   ancora arrivare. Cancellare il secondo tipo rompe la slice di qualcun
+#   altro. Per tutti e quattro il DB stesso dice che sono residui:
+#
+#   PREV_TOTALE_NON_POSITIVO (id 353)
+#     Il corpo vivo di vendite.fn_cambia_stato_preventivo lo dichiara ritirato:
+#     «NOTE rev 2026-07-16 (solo presenza righe): rimossi il guard
+#      PREV_TOTALE_NON_POSITIVO e il filtro quantita > 0. Per emettere basta
+#      che il documento ABBIA righe: prezzo/totale 0 e' un caso legittimo.»
+#
+#   PREV_ANNULLAMENTO_COMMESSA_ATTIVA (id 356)
+#     Stesso corpo, nota dell'assorbimento in fn_check_preventivo_annullabile
+#     (20260804-74): «Con l'assorbimento esce di scena anche il codice
+#      PREV_ANNULLAMENTO_COMMESSA_ATTIVA, privo del prefisso `E_` e percio'
+#      invisibile sia al presidio del catalogo messaggi sia all'estrattore del
+#      backend (che lo degradava a E_DATABASE).»
+#     Il rimpiazzo e' E_PREV_ANNULLA_COMMESSA_EMESSA, che il prefisso ce l'ha.
+#
+#   PRATICHE_ISTANZA_SENZA_RUOLO (id 304)
+#     pratiche.trgfn_pratiche_guard_contesto oggi solleva quattro codici, e
+#     questo non e' fra loro: PRATICHE_ISTANZA_NON_COERENTE ·
+#     PRATICHE_RUOLO_NON_COERENTE · PRATICHE_ISTANZA_SENZA_SOGGETTO ·
+#     PRATICHE_RUOLO_SENZA_SOGGETTO. La variante «senza ruolo» non c'e' piu'.
+#
+#   CATASTO_SOURCE_NOT_FOUND (id 115)
+#     script.fn_clone_catasto_from_parent_by_istanza oggi solleva
+#     ERRORE_PARAMETRI. Introdotto da 20251215-04, sostituito dopo.
+#
+#   Nessuna delle quattro righe e' referenziata da dbops.error_log
+#   (FK fk_error_log_messaggio_errore_id): verificato, 0 riferimenti per
+#   ciascuna. Senza quel controllo il DELETE fallirebbe sulla FK.
+#
+# ── ⚠️ DUE MOSSE, COME PER LA RIGA CON L'APOSTROFO (20260805-08) ────────
+#   config.messaggi_errore e' caricata da un `loadUpdateData` runOnChange
+#   (20260614-08): e' un UPSERT, quindi togliere la riga dal CSV non la
+#   cancella dal DB, e lasciarla nel CSV la farebbe tornare. Servono
+#   entrambe: righe tolte dal CSV (stesso commit) + questo DELETE.
+#
+#   Il registro invece NON ha bisogno di un changeSet: il suo seed
+#   (20260805-07) e' `DELETE` + `loadData`, cioe' un mirror. Bastano le quattro
+#   righe tolte da 80_data/sql/dbops/messaggi_errore_codici_legacy.csv, che
+#   passa cosi' da 57 a 53 voci — ed e' esattamente il comportamento per cui il
+#   seed era stato scritto come mirror invece che come upsert.
+#
+#   ⚠️ Nota per il backend: se il blocco delle policy registra tutti e 57,
+#   queste quattro voci diventano codice morto in error_policies.py. Vanno
+#   tolte anche di li' — il conto giusto e' 53.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260805-11-delete-messaggi-errore-codici-superati-mctit.yaml
+
+  - changeSet:
+      id: 20260805-11-delete-messaggi-errore-codici-superati
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Elimina quattro codici di config.messaggi_errore che nessuna funzione
+        solleva piu' e che nessun consumatore Python o FE nomina: sono residui
+        di guard ritirati, non lavoro in corso (verificato sui corpi vivi). Le
+        righe sono state tolte anche dal CSV seed e dal CSV del registro del
+        debito, che scende da 57 a 53 voci.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Filtro su id E su codice: se un giorno uno di questi id fosse
+              -- riusato per altro, il changeSet non deve poter cancellare una
+              -- riga viva.
+              DELETE FROM config.messaggi_errore
+               WHERE (id, codice) IN (
+                       (115, 'CATASTO_SOURCE_NOT_FOUND'),
+                       (304, 'PRATICHE_ISTANZA_SENZA_RUOLO'),
+                       (353, 'PREV_TOTALE_NON_POSITIVO'),
+                       (356, 'PREV_ANNULLAMENTO_COMMESSA_ATTIVA')
+                     );
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              INSERT INTO config.messaggi_errore (id, codice, lingua, messaggio, causa, soluzione)
+              VALUES
+                (115, 'CATASTO_SOURCE_NOT_FOUND', 'it',
+                 'Clone catasto impossibile: parent_istanza_id (%s) nullo o parent senza catasto agganciato. Istanza_id %s',
+                 '', ''),
+                (304, 'PRATICHE_ISTANZA_SENZA_RUOLO', 'it',
+                 'istanza_utility_id richiede soggetto_ruolo_id. Istanza %s',
+                 'La pratica ha una istanza/utility assegnata ma manca il ruolo anagrafico del soggetto.',
+                 'Valorizzare soggetto_ruolo_id prima di assegnare istanza_utility_id.'),
+                (353, 'PREV_TOTALE_NON_POSITIVO', 'it',
+                 'Preventivo %s con totale documento non positivo (%s). Richiesto totale > 0 per emissione.',
+                 'Il totale documento deve essere maggiore di zero per poter emettere il preventivo.',
+                 'Verificare quantita e prezzi delle righe.'),
+                (356, 'PREV_ANNULLAMENTO_COMMESSA_ATTIVA', 'it',
+                 'Annullamento bloccato: preventivo %s ha righe in commessa attive.',
+                 'Il preventivo ha righe gia'' inviate in commessa. L''annullamento diretto non e'' consentito.',
+                 'Stornare prima le attivita'' in commessa e poi procedere con l''annullamento.')
+              ON CONFLICT (id) DO NOTHING;

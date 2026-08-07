@@ -17,7 +17,7 @@ BEGIN
     -- Guard parametri (AGENTS: ID numerici NOT NULL e > 0).
     IF p_tipo_id IS NULL OR p_tipo_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
-            'database', 'vendite.fn_documento_lineage', 'ERRORE_PARAMETRI',
+            'database', 'vendite.fn_documento_lineage', 'E_ERRORE_PARAMETRI',
             jsonb_build_object('detail', 'p_tipo_id obbligatorio e > 0',
                                'p_tipo_id', p_tipo_id),
             NULL::uuid,
@@ -26,7 +26,7 @@ BEGIN
 
     IF p_uid IS NULL OR btrim(p_uid) = '' THEN
         PERFORM script.fn_log_and_raise_error(
-            'database', 'vendite.fn_documento_lineage', 'ERRORE_PARAMETRI',
+            'database', 'vendite.fn_documento_lineage', 'E_ERRORE_PARAMETRI',
             jsonb_build_object('detail', 'p_uid obbligatorio (chiave nodo)'),
             NULL::uuid,
             'p_uid non valido (NULL o vuoto)');
@@ -34,7 +34,7 @@ BEGIN
 
     IF p_direzione IS NULL OR p_direzione NOT IN ('avanti', 'indietro') THEN
         PERFORM script.fn_log_and_raise_error(
-            'database', 'vendite.fn_documento_lineage', 'ERRORE_PARAMETRI',
+            'database', 'vendite.fn_documento_lineage', 'E_ERRORE_PARAMETRI',
             jsonb_build_object('detail', 'p_direzione deve essere avanti|indietro',
                                'p_direzione', p_direzione),
             NULL::uuid,

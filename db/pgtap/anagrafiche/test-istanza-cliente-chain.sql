@@ -51,6 +51,34 @@
 --          - 1 cliente per istanza (nel dataset di test)
 -- Autore: Tid (
 -- ------------------------------------------------------------
+
+-- ⚠️ Transazione, e non e' una formalita'. Il cleanup di questo file sta in
+--   coda: col runner vero (pg_prove gira con ON_ERROR_STOP) un fallimento a
+--   meta' non ci arriva mai, e i dati di prova restano nel database a rompere
+--   la corsa successiva — che vede un rosso non suo.
+--   Brief: brief-db-pgtap-runner-rls-baseline §15.3.
+BEGIN;
+
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
+--   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
+--   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio, e il
+--   file diventerebbe verde per sottrazione. Nel DB ce ne sono 365.
+--   IMMEDIATE li riporta a scattare a fine di OGNI istruzione — cioe' esatta-
+--   mente come si comportavano prima, quando il file girava in autocommit e
+--   ogni istruzione era una transazione a se'. Messa in testa e non in coda
+--   apposta: in coda scatterebbero tutti insieme DOPO il cleanup, su righe
+--   ormai cancellate, e fallirebbero per un motivo che non riguarda il test.
+--   Brief: brief-db-pgtap-runner-rls-baseline §17.
+--   ⚠️ NON e' qui: vedi il `SET CONSTRAINTS ALL IMMEDIATE` piu' sotto, dopo
+--   la quarta coppia istanza+billing_account. In testa scattava prima che
+--   l'unita' di lavoro fosse completa, e il file moriva sulla fixture.
+
+-- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
+-- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
+-- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
+-- Brief: brief-db-pgtap-runner-rls-baseline §8.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
 SELECT plan(26);
 -- =========================================================
 --  Setup chiavi test univoche (evita DELETE bloccate da policy ruoli)
@@ -76,6 +104,17 @@ SELECT suffix,
     ('TST-CLI-C3-' || suffix) AS cli_3_code,
     ('TST-CLI-C4-' || suffix) AS cli_4_code
 FROM s;
+
+-- ⚠️ anagrafiche.billing_account.categoria_cliente_id e' NOT NULL: la fixture
+--   era rimasta indietro rispetto alla colonna, e le quattro INSERT sotto
+--   morivano tutte sul vincolo. Si sceglie UNA volta e con ORDER BY, cosi' le
+--   quattro BA hanno per forza la stessa categoria e la scelta e' ripetibile
+--   fra le corse (cantiere LIMIT 1, §27 del brief).
+CREATE TEMP TABLE tmp_categoria_cliente AS
+SELECT id AS categoria_cliente_id
+  FROM anagrafiche.categorie_clienti
+ ORDER BY id
+ LIMIT 1;
 -- =========================================================
 -- 0) Precondizioni: PDP test dedicato, stati cliente, soggetti
 -- =========================================================
@@ -105,7 +144,14 @@ pdp_ins AS (
             indirizzo_dettaglio_id,
             cliente_id
         )
-    SELECT ('G-PDP-CH-' || substring(k.suffix, 1, 2)),
+    -- ⚠️ Il suffisso INTERO, non i primi 2 caratteri. `pdp` e' UNIQUE
+    --   (uq_pdp_codice) e 2 cifre esadecimali sono 256 codici possibili: con 64
+    --   righe residue in tabella la collisione arrivava al 25% delle corse, ed
+    --   e' l'oscillazione «6 o 0 asserzioni» che il file mostrava da mesi.
+    --   La colonna e' varchar(30) e qui siamo a 17: il troncamento non serviva
+    --   a niente, e tutte le altre chiavi di tmp_test_keys usano gia' il
+    --   suffisso intero.
+    SELECT ('G-PDP-CH-' || k.suffix),
         g.utility_id,
         a.id,
         NULL::bigint
@@ -245,11 +291,13 @@ CREATE TEMP TABLE tmp_ba_1 AS WITH ins_ba AS (
             istanza_utility_id,
             soggetto_ruolo_id,
             utility_id,
+            categoria_cliente_id,
             codice
         )
     SELECT iu.id,
         sr.soggetto_ruolo_id,
         p.utility_id,
+        (SELECT categoria_cliente_id FROM tmp_categoria_cliente),
         (
             SELECT ba_1_code
             FROM tmp_test_keys
@@ -365,11 +413,13 @@ CREATE TEMP TABLE tmp_ba_2 AS WITH ins_ba AS (
             istanza_utility_id,
             soggetto_ruolo_id,
             utility_id,
+            categoria_cliente_id,
             codice
         )
     SELECT iu.id,
         sr.soggetto_ruolo_id,
         p.utility_id,
+        (SELECT categoria_cliente_id FROM tmp_categoria_cliente),
         (
             SELECT ba_2_code
             FROM tmp_test_keys
@@ -535,11 +585,13 @@ CREATE TEMP TABLE tmp_ba_3 AS WITH ins_ba AS (
             istanza_utility_id,
             soggetto_ruolo_id,
             utility_id,
+            categoria_cliente_id,
             codice
         )
     SELECT iu.id,
         sr.soggetto_ruolo_id,
         p.utility_id,
+        (SELECT categoria_cliente_id FROM tmp_categoria_cliente),
         (
             SELECT ba_3_code
             FROM tmp_test_keys
@@ -702,11 +754,13 @@ CREATE TEMP TABLE tmp_ba_4 AS WITH ins_ba AS (
             istanza_utility_id,
             soggetto_ruolo_id,
             utility_id,
+            categoria_cliente_id,
             codice
         )
     SELECT iu.id,
         sr.soggetto_ruolo_id,
         p.utility_id,
+        (SELECT categoria_cliente_id FROM tmp_categoria_cliente),
         (
             SELECT ba_4_code
             FROM tmp_test_keys
@@ -720,6 +774,20 @@ CREATE TEMP TABLE tmp_ba_4 AS WITH ins_ba AS (
 )
 SELECT *
 FROM ins_ba;
+
+-- ⚠️ QUI, e non in testa al file: e' il punto in cui l'unita' di lavoro e'
+--   completa. Il trigger differito trg_istanze_utilities_z90_require_utility_
+--   dichiarata_ins pretende che ogni istanza abbia almeno un satellite, e in
+--   questo file istanza e satellite nascono in DUE istruzioni separate, per
+--   quattro coppie. Con IMMEDIATE in testa il vincolo scattava a fine della
+--   prima INSERT, quando il billing_account non c'era ancora: il file moriva
+--   sulla fixture senza arrivare alle asserzioni.
+--   Metterlo dopo la PRIMA coppia non basterebbe: da li' in poi ogni istruzione
+--   e' immediata, e le tre istanze successive fallirebbero allo stesso modo.
+--   Va dopo la QUARTA — e comunque prima del cleanup, altrimenti scatterebbe su
+--   righe gia' cancellate (§22.5 del brief pgtap-runner-rls-baseline).
+SET CONSTRAINTS ALL IMMEDIATE;
+
 -- 4.3) Subentro: chiude il cliente precedente sul PDP prima di creare il nuovo
 /*
  CREATE TEMP TABLE tmp_subentro AS
@@ -888,3 +956,8 @@ SELECT is(
 -- Fine test
 SELECT *
 FROM finish();
+
+-- Il ROLLBACK e' la garanzia: comunque vada — verde, rosso, o morto a meta' —
+-- questo file non lascia nulla dietro di se'. Le DELETE del cleanup restano
+-- perche' dove sono un'asserzione devono girare davvero.
+ROLLBACK;

@@ -1,5 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture semina su pratiche.template_flussi_avanzamento_proiezione, che a runtime
+--   scrive solo pratiche.fn_copia_definizione — e quella gira dentro
+--   fn_fork_definizione / fn_nuova_versione_definizione, entrambe SECURITY DEFINER.
+--   Il ruolo applicativo ha solo SELECT ed e' corretto cosi': il soggetto del test
+--   sta fuori dal percorso applicativo (brief §29.2).
 -- pgTAP test per Zero ERP
 -- Test: GUIDA (D4) — fn_reconcile_sorgente, tie-break flusso_id vs ancora
 --       d'ORIGINE (brief-db-reconcile-tie-break-flusso-origine.md §5-6).
@@ -33,6 +39,22 @@
 -- ------------------------------------------------------------
 
 BEGIN;
+
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
+--   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
+--   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio, e il
+--   file sarebbe verde per sottrazione. IMMEDIATE li riporta a scattare a fine
+--   di ogni istruzione. In testa e non in coda: in coda scatterebbero dopo il
+--   cleanup, su righe ormai cancellate.
+--   Brief: brief-db-pgtap-runner-rls-baseline §19.
+SET CONSTRAINTS ALL IMMEDIATE;
+
+-- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
+-- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
+-- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
+-- Brief: brief-db-pgtap-runner-rls-baseline §8.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
 SELECT plan(16);
 
 -- Stati flusso (idempotente).

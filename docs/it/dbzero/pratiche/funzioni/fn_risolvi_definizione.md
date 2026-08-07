@@ -25,7 +25,7 @@ BEGIN
     PERFORM script.fn_log_and_raise_error(
       'pratiche',
       'pratiche.fn_risolvi_definizione',
-      'DEFINIZIONE_NON_TROVATA',
+      'E_DEFINIZIONE_NON_TROVATA',
       jsonb_build_object(
         'motivo',               'parametro_tipo_invalido',
         'tipo_prestazione_id',  p_tipo_prestazione_id,
@@ -63,7 +63,7 @@ BEGIN
   PERFORM script.fn_log_and_raise_error(
     'pratiche',
     'pratiche.fn_risolvi_definizione',
-    'DEFINIZIONE_NON_TROVATA',
+    'E_DEFINIZIONE_NON_TROVATA',
     jsonb_build_object(
       'motivo',               'nessuna_pubblicata',
       'tipo_prestazione_id',  p_tipo_prestazione_id,

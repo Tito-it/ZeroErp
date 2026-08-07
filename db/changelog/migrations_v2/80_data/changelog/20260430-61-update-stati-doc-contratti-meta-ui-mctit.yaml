@@ -10,8 +10,13 @@ databaseChangeLog:
   - changeSet:
       id: 20260430-61-update-stati-doc-contratti-meta-ui
       author: mctit
-      runOnChange: true
-      validCheckSum: [ANY]
+      # ⚠️ Era `true` (2026-08-06): sovrascrive il meta di config.stati_doc_contratti (blocco outgoing_action, oggi
+#   MORTO: non e' piu' nel CSV e nessuna funzione/BE/FE lo legge). Il CSV torna a
+#   vincere grazie al mirror ri-ancorato 20260806-13; qui si toglie il `true` perche'
+#   una futura edizione del file non lo faccia rigirare fuori ordine.
+      #   La matrice/gli stati si cambiano SOLO dal CSV.
+      runOnChange: false
+      validCheckSums: [ANY]
       failOnError: true
       comment: >
         Popola il campo meta di config.stati_doc_contratti con i metadati UI

@@ -1,0 +1,178 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `vw_codici_errore_forme_condizione` — da 2 minuti e 25 a 349 ms
+#   Sostituisce la versione del 20260807-18 (stessa vista, stesse colonne).
+#   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (D-10)
+#
+# ── 🔴 IL PROBLEMA: UNA MISURA CHE COSTA 2'25" NON SI GUARDA ───────────
+#   La prima versione ci metteva **145 secondi**, misurati sul database di
+#   sviluppo. Nel suo changeSet c'era scritto «costosa: va bene per una misura
+#   che si guarda ogni tanto». ⚠️ **Non e' vero, e la frase era il difetto**: una
+#   misura che costa due minuti e mezzo si lancia una volta, si dice «interessante»
+#   e non si riapre piu'. E' lo stesso modo in cui muoiono i presidi, solo per
+#   un'altra strada — e questa vista nasce proprio per non farli morire.
+#
+# ── ⚠️ NON ERANO GLI INDICI ────────────────────────────────────────────
+#   La domanda naturale e' «mettiamo un indice». Non c'e' niente da indicizzare:
+#   la vista legge `pg_proc.prosrc`, un catalogo di sistema, e le righe le produce
+#   `regexp_split_to_table` al volo — non esistono su disco.
+#
+#   Il costo era nella FORMA della query: **due sottoquery correlate** su circa
+#   100.000 righe materializzate. Per ogni riga che nomina un codice, una scansione
+#   per cercare la chiamata entro 6 righe; per ognuna delle superstiti, un'altra
+#   per la guardia entro 25. Quadratico dentro ogni funzione.
+#
+# ── LA RIFORMULAZIONE: «isole», il pattern LOCF ────────────────────────
+#   Tutto in UNA passata, con window function:
+#
+#   · `count(*) FILTER (WHERE e_guardia) OVER (PARTITION BY oid ORDER BY n)`
+#     assegna a ogni riga il numero dell'ISOLA aperta dall'ultima riga-guardia.
+#     Dentro un'isola la PRIMA riga e' la guardia, quindi `first_value(riga)`
+#     la propaga a tutte le righe che seguono: e' il «last observed carried
+#     forward», scritto senza sottoquery.
+#     ⚠️ Non si puo' usare `last_value(...) IGNORE NULLS`: PostgreSQL non lo
+#     implementa. Le isole sono il modo che funziona.
+#
+#   · `bool_or(e_chiamata) OVER (... ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)`
+#     sostituisce l'`EXISTS` sulle 6 righe precedenti.
+#
+#   ⚠️ **L'ordine dei livelli non e' estetica.** Il `WHERE` viene applicato PRIMA
+#   delle window function dello stesso livello: filtrare le righe senza codice
+#   nello stesso SELECT in cui si calcola `first_value` toglierebbe dalla
+#   partizione proprio la riga-guardia, che un codice non ce l'ha. Per questo la
+#   propagazione sta in `propagata` e il filtro nel livello dopo.
+#
+# ── VERIFICA: STESSI NUMERI, ED E' IL PUNTO ────────────────────────────
+#   Sullo stesso database, stessa ora:
+#
+#     versione            tempo        codici / classificati / invisibili
+#     ------------------  -----------  ----------------------------------
+#     20260807-18          145.183 ms  344 / 75 / 269
+#     questa (window)          349 ms  344 / 75 / 269      <- identici
+#
+#   **415 volte piu' veloce a parita' di risultato.** Se i numeri fossero
+#   cambiati la riscrittura sarebbe stata sbagliata, non piu' veloce.
+#
+# ── NOTE ────────────────────────────────────────────────────────────────
+#   · `CREATE OR REPLACE VIEW` mantiene nomi, tipi e ordine delle colonne: e'
+#     un cambio di implementazione, non di contratto.
+#   · ⚠️ `security_invoker` va RI-SPECIFICATA: la reloption non e' visibile in
+#     `pg_get_viewdef` e un CREATE OR REPLACE che la omette la azzera in silenzio.
+#   · Il `COMMENT ON VIEW` va riscritto perche' `CREATE OR REPLACE` non lo tocca
+#     ma i numeri di copertura citati li' vanno tenuti veri.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/dbops/20260808-01-fix-vw-codici-errore-forme-condizione-window-mctit.yaml
+
+    - changeSet:
+          id: 20260808-01-fix-vw-codici-errore-forme-condizione-window
+          author: mctit
+          runOnChange: false
+          failOnError: true
+          comment: >
+              Riscrive la vista con window function (pattern a isole) al posto di due
+              sottoquery correlate: 145.183 ms -> 349 ms, stessi identici numeri. Una
+              misura che costa due minuti e mezzo si lancia una volta e non si riapre piu'.
+          preConditions:
+              - onFail: HALT
+              - viewExists:
+                    schemaName: dbops
+                    viewName: vw_codici_errore_forme_condizione
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE VIEW dbops.vw_codici_errore_forme_condizione
+                        WITH (security_invoker = true) AS
+                        WITH righe AS (
+                            -- prosrc spezzato in righe numerate, una volta sola.
+                            SELECT n.nspname::text AS sch,
+                                   p.proname::text AS fn,
+                                   p.oid,
+                                   l.riga,
+                                   l.n
+                              FROM pg_proc p
+                              JOIN pg_namespace n ON n.oid = p.pronamespace
+                              CROSS JOIN LATERAL regexp_split_to_table(p.prosrc, E'\n')
+                                   WITH ORDINALITY AS l(riga, n)
+                             WHERE p.prolang = (SELECT oid FROM pg_language WHERE lanname = 'plpgsql')
+                               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+                        ),
+                        marcata AS (
+                            -- Tre etichette per riga, calcolate una volta: e' una
+                            -- chiamata? e' una guardia? nomina un codice?
+                            -- Il codice si legge solo fuori dai commenti.
+                            SELECT r.*,
+                                   (r.riga ~* 'fn_log_and_raise_error') AS e_chiamata,
+                                   (r.riga ~* '^\s*(IF|ELSIF|ELSE|EXCEPTION\s+WHEN|WHEN\s+OTHERS|WHEN\s+SQLSTATE)\M') AS e_guardia,
+                                   CASE WHEN r.riga !~ '^\s*--'
+                                        THEN (regexp_match(r.riga, '''(E_[A-Z0-9_]+)'''))[1]
+                                   END AS codice
+                              FROM righe r
+                        ),
+                        isole AS (
+                            -- ⭐ Il pattern che sostituisce le sottoquery correlate.
+                            -- `isola` cambia numero a ogni riga-guardia: dentro
+                            -- un'isola la PRIMA riga e' la guardia.
+                            SELECT m.*,
+                                   count(*) FILTER (WHERE m.e_guardia)
+                                     OVER (PARTITION BY m.oid ORDER BY m.n) AS isola,
+                                   bool_or(m.e_chiamata)
+                                     OVER (PARTITION BY m.oid ORDER BY m.n
+                                           ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS chiamata_vicina
+                              FROM marcata m
+                        ),
+                        propagata AS (
+                            -- ⚠️ La propagazione DEVE stare in un livello dove le righe
+                            -- ci sono tutte: il WHERE viene applicato prima delle window
+                            -- function, e filtrare qui toglierebbe dalla partizione
+                            -- proprio la riga-guardia (che un codice non ce l'ha).
+                            SELECT i.*,
+                                   first_value(i.riga) OVER (PARTITION BY i.oid, i.isola ORDER BY i.n) AS guardia,
+                                   first_value(i.n)    OVER (PARTITION BY i.oid, i.isola ORDER BY i.n) AS n_guardia
+                              FROM isole i
+                        ),
+                        classificato AS (
+                            -- ⚠️ L'ordine dei CASE conta: un `EXCEPTION WHEN` che contiene
+                            -- anche un IS NULL e' prima di tutto un handler di eccezione.
+                            SELECT p.codice,
+                                   p.sch || '.' || p.fn AS funzione,
+                                   CASE
+                                     WHEN p.guardia ~* '(EXCEPTION\s+WHEN|WHEN\s+OTHERS|WHEN\s+SQLSTATE)'
+                                       THEN 'ECCEZIONE'
+                                     WHEN p.guardia ~* '^\s*IF\s+NOT\s+FOUND\M'
+                                       THEN 'NOT_FOUND'
+                                     WHEN p.guardia ~* '(\mIS\s+NULL\M|<=\s*0|<\s*0)' AND p.guardia ~* '\mp_\w+'
+                                       THEN 'PARAMETRO'
+                                     WHEN p.guardia ~* 'NOT\s+IN\s*\('
+                                       THEN 'ENUM'
+                                     ELSE 'IGNOTO'
+                                   END AS famiglia
+                              FROM propagata p
+                             WHERE p.codice IS NOT NULL
+                               AND p.chiamata_vicina
+                               AND p.isola > 0            -- prima della prima guardia non c'e' guardia
+                               AND p.n - p.n_guardia <= 25
+                        )
+                        SELECT codice,
+                               count(*)::int                                  AS n_punti,
+                               count(DISTINCT funzione)::int                  AS n_funzioni,
+                               array_agg(DISTINCT famiglia ORDER BY famiglia) AS famiglie,
+                               count(DISTINCT famiglia)::int                  AS n_famiglie,
+                               count(DISTINCT famiglia) FILTER (WHERE famiglia <> 'IGNOTO')::int
+                                                                              AS n_famiglie_note,
+                               bool_and(famiglia = 'IGNOTO')                  AS solo_ignoto
+                          FROM classificato
+                         GROUP BY codice;
+
+                        COMMENT ON VIEW dbops.vw_codici_errore_forme_condizione IS
+                          'Misura degli accumulatori sulla FORMA DELLA CONDIZIONE al punto che solleva (non sul dominio della funzione: quell''asse segnalava E_VALIDAZIONE, che e'' il caso su cui la risposta e'' no). NON filtra di proposito. Le due query canoniche, da usare INSIEME: (1) candidati — SELECT codice, n_punti, famiglie FROM dbops.vw_codici_errore_forme_condizione WHERE n_famiglie_note > 1 ORDER BY n_punti DESC; (2) copertura, senza cui la prima si legge come una verita'' — SELECT count(*) AS codici, count(*) FILTER (WHERE NOT solo_ignoto) AS classificati, count(*) FILTER (WHERE solo_ignoto) AS invisibili FROM dbops.vw_codici_errore_forme_condizione. Al 2026-08-08: 344 codici, 75 classificati, 269 invisibili. E'' una MISURA, non un cancello: un codice legittimamente trasversale esiste. Implementazione a window function (20260808-01): 349 ms, contro i 145 secondi della prima versione a sottoquery correlate.';

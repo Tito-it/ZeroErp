@@ -87,12 +87,19 @@ class BuildContextContrattoTests(SimpleTestCase):
             {
                 "contratto",
                 "cliente",
+                "indirizzi",
                 "utility",
                 "righe",
                 "righe_contratto",
                 "righe_preview",
                 "_meta",
             },
+        )
+        # Slot indirizzi SEMPRE presenti anche senza righe: garantisce al
+        # template l'accesso diretto sotto StrictUndefined.
+        self.assertEqual(
+            ctx["indirizzi"],
+            {"consegna": None, "fatturazione": None, "fornitura": None},
         )
         self.assertEqual(ctx["contratto"]["numero"], "CNT0000007")
         self.assertEqual(ctx["contratto"]["data"], "06-05-2026")

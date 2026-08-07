@@ -13,7 +13,11 @@ databaseChangeLog:
   - changeSet:
       id: 20260227-05-update-fn-get-valuta-id-emittente-aware
       author: mctit
-      runOnChange: true
+      # ⚠️ Era `true`: definisce vendite.fn_get_valuta_id, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
+        - ANY
       comment: "Refactor fn_get_valuta_id: nuova catena BA -> emittente fiscale -> gestore. Rimuove dipendenza da utility_id."
       changes:
         - sql:

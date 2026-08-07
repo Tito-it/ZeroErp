@@ -1,0 +1,177 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `target_state_descrizione` sulla commessa. Sesto di otto changeset.
+#
+# ℹ️ Qui la differenza fra codice e descrizione e' la piu' evidente della
+#   famiglia: PRONTA_FATTURAZIONE non ha nessuna trasformazione meccanica
+#   che lo porti alla forma leggibile della colonna `descrizione`. E' il
+#   motivo per cui il campo e' un dato del DB e non una regola del FE.
+#
+# ℹ️ La tabella di stato e' vendite.stati_commessa (non config.*): la
+#   colonna `descrizione` e' comunque li', accanto a `codice_interno`, nel
+#   JOIN che serve gia' per `target_state`.
+#
+# ℹ️ La commessa non ha azioni cablate a mano: sono tutte transizioni.
+#
+# Nessun'altra modifica al corpo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260806-06-update-fn-available-actions-commessa-target-state-descrizione-mctit.yaml
+
+  - changeSet:
+      id: 20260806-06-update-fn-available-actions-commessa-target-state-descrizione
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_available_actions_commessa espone target_state_descrizione
+        accanto a target_state: la forma leggibile dello stato di
+        destinazione (vendite.stati_commessa.descrizione).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: stati_commessa
+                columnName: descrizione
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'script'
+                    AND p.proname = 'fn_check_commessa_pronta_fatturazione'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_available_actions_commessa(p_commessa_id bigint)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo:
+              --   Capability della commessa per il detail/stato API. Mirror
+              --   data-driven di fn_available_actions_ordine, senza azioni
+              --   applicative (solo stato). Le transizioni utente
+              --   (meta.manuale=true + action_key/label_key) sono esposte come
+              --   bottoni; le automatiche no.
+              --   rev 2026-07-24: + enabled/reasons su chiudi/annulla, dalle
+              --   funzioni pure script.fn_check_commessa_chiudibile /
+              --   _annullabile — le STESSE che
+              --   vendite.trgfn_commesse_guard_transizione usa per sollevare
+              --   (sorgente unica: la UI non puo' divergere dal guard).
+              --   rev 2026-08-04: stessa cosa per l'ingresso in
+              --   PRONTA_FATTURAZIONE, che da oggi e' un'azione manuale
+              --   (brief-db-emittibilita-visibile-e-sbloccabile §3.3).
+              --   rev 2026-08-06: + target_state_descrizione, la forma leggibile
+              --   dello stato di destinazione. Serve alla frase di conferma
+              --   «portare il documento nello stato X»: il codice_interno non e'
+              --   quella forma — PRONTA_FATTURAZIONE ne e' l'esempio piu' netto
+              --   — e tradurlo nel FE sarebbe una seconda copia del vocabolario
+              --   degli stati.
+              DECLARE
+                  v_stato_id      vendite.commesse.stato_commessa_id%TYPE;
+                  v_stato_cod     vendite.stati_commessa.codice_interno%TYPE;
+                  v_modificabile  vendite.stati_commessa.modificabile%TYPE;
+                  v_emittibile    vendite.stati_commessa.emittibile%TYPE;
+                  v_actions       jsonb;
+                  v_can_change    boolean := false;
+                  v_mot_pronta    jsonb;
+                  v_mot_chiudi    jsonb;
+                  v_mot_annulla   jsonb;
+              BEGIN
+                  -- Stato corrente + flag governance (data-driven).
+                  SELECT c.stato_commessa_id, sc.codice_interno, sc.modificabile, sc.emittibile
+                    INTO v_stato_id, v_stato_cod, v_modificabile, v_emittibile
+                    FROM vendite.commesse c
+                    JOIN vendite.stati_commessa sc ON sc.id = c.stato_commessa_id
+                   WHERE c.id = p_commessa_id;
+
+                  IF NOT FOUND THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Motivi ostativi alle destinazioni con regola di dominio,
+                  -- calcolati UNA VOLTA SOLA e riusati sotto per enabled e
+                  -- reasons. Le fn sono pure: ritornano [] quando e' lecito.
+                  v_mot_pronta  := script.fn_check_commessa_pronta_fatturazione(p_commessa_id);
+                  v_mot_chiudi  := script.fn_check_commessa_chiudibile(p_commessa_id);
+                  v_mot_annulla := script.fn_check_commessa_annullabile(p_commessa_id);
+
+                  -- Transizioni manuali (utente) disponibili dallo stato corrente.
+                  -- Filtri: attivo, manuale=true, presenza action_key/label_key.
+                  -- Le automatiche (manuale=false, senza action_key) sono escluse.
+                  SELECT COALESCE(
+                      jsonb_agg(
+                          jsonb_build_object(
+                              'key',              t.meta->>'action_key',
+                              'target_state',     sa.codice_interno,
+                              -- Forma leggibile della destinazione: la colonna
+                              -- accanto, nello stesso JOIN. Il FE non puo'
+                              -- derivarla dal codice (PRONTA_FATTURAZIONE).
+                              'target_state_descrizione', sa.descrizione,
+                              'label_key',        t.meta->>'label_key',
+                              'severity',         t.meta->>'severity',
+                              'icon',             t.meta->>'icon',
+                              'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
+                              'outlined',         COALESCE((t.meta->>'outlined')::boolean, false),
+                              'enabled',          CASE sa.codice_interno
+                                                    WHEN 'PRONTA_FATTURAZIONE' THEN jsonb_array_length(v_mot_pronta)  = 0
+                                                    WHEN 'CHIUSA'              THEN jsonb_array_length(v_mot_chiudi)  = 0
+                                                    WHEN 'ANNULLATA'           THEN jsonb_array_length(v_mot_annulla) = 0
+                                                    ELSE true
+                                                  END,
+                              'reasons',          CASE sa.codice_interno
+                                                    WHEN 'PRONTA_FATTURAZIONE' THEN v_mot_pronta
+                                                    WHEN 'CHIUSA'              THEN v_mot_chiudi
+                                                    WHEN 'ANNULLATA'           THEN v_mot_annulla
+                                                    ELSE '[]'::jsonb
+                                                  END
+                          )
+                          ORDER BY sa.ordine
+                      ),
+                      '[]'::jsonb
+                  )
+                  INTO v_actions
+                  FROM vendite.transizioni_stati_commessa t
+                  JOIN vendite.stati_commessa sa ON sa.id = t.stato_a_id
+                  WHERE t.stato_da_id = v_stato_id
+                    AND t.attivo IS TRUE
+                    AND COALESCE((t.meta->>'manuale')::boolean, false) IS TRUE
+                    AND (t.meta->>'action_key') IS NOT NULL
+                    AND (t.meta->>'label_key') IS NOT NULL;
+
+                  -- can_change_state sulle sole azioni ABILITATE: con le azioni
+                  -- disabilitate presenti in lista, jsonb_array_length(v_actions) > 0
+                  -- sarebbe sempre true.
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM jsonb_array_elements(v_actions) AS a
+                       WHERE COALESCE((a->>'enabled')::boolean, true) IS TRUE
+                  ) INTO v_can_change;
+
+                  RETURN jsonb_build_object(
+                      'available_actions', v_actions,
+                      'can_change_state',  v_can_change,
+                      'can_edit_righe',    v_modificabile,
+                      'is_emittibile',     v_emittibile,
+                      'stato_codice',      v_stato_cod
+                  );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_available_actions_commessa(p_commessa_id bigint)
+              IS 'Capability della commessa per il detail/stato API: azioni manuali disponibili dallo stato corrente, con enabled/reasons dalle funzioni pure fn_check_commessa_pronta_fatturazione / _chiudibile / _annullabile — le stesse usate dal guard di transizione, cosi'' la UI non puo'' divergere. rev 2026-08-04: aggiunta la destinazione PRONTA_FATTURAZIONE, diventata azione manuale. rev 2026-08-06: + target_state_descrizione accanto a target_state (vendite.stati_commessa.descrizione della destinazione). Serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile — PRONTA_FATTURAZIONE e'' l''esempio piu'' netto della famiglia — e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati.';

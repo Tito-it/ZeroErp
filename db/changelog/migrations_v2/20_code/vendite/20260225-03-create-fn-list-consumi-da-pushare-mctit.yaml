@@ -13,8 +13,10 @@ databaseChangeLog:
   - changeSet:
       id: 20260225-03-create-fn-list-consumi-da-pushare
       author: mctit
-      runOnChange: true
-      validCheckSum:
+      # ⚠️ Era `true`: definisce vendite.fn_list_consumi_da_pushare, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
         - ANY
       comment: "Lista consumi eligible al push su commessa: stato_calcolo OK, non ancora fatturati, non gia` EMESSI in commessa."
       changes:

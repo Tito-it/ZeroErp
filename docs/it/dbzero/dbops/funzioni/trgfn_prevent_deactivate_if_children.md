@@ -122,16 +122,33 @@ BEGIN
     v_parent_ref_val_text := to_jsonb(OLD)->>v_ref_col;
 
     IF v_parent_ref_val_text IS NULL THEN
+      -- rev 2026-08-05: TRE difetti in questa sola chiamata.
+      --   1) mancavano i valori variadici -> `fn_log_error_only` non si
+      --      risolveva e SOLLEVAVA, in una funzione il cui contratto e'
+      --      «logga senza sollevare»: una disattivazione legittima
+      --      falliva. E' il piu' grave dei 16 perche' non sporca un
+      --      messaggio, cambia il comportamento — ed e' armato su 96
+      --      tabelle.
+      --   2) il codice era `E_ATTIVO_BLOCK`, il cui messaggio e'
+      --      «Errore generazione regola ATTIVO_block. Sqlerrm: %s»: parla
+      --      della GENERAZIONE della regola da parte del framework di
+      --      automazione, non di questo salto a runtime. Ora
+      --      `E_ATTIVO_BLOCK_REF_NULL` (id 840), coerente con la famiglia
+      --      `E_ATTIVO_BLOCK_*` che ha messaggio `%s` pass-through.
+      --   3) quel messaggio ha un segnaposto: un array vuoto avrebbe
+      --      stampato «%s» alla lettera. Si passa la nota vera.
       PERFORM script.fn_log_error_only(
         'database',
         'trgfn_prevent_deactivate_if_children',
-        'E_ATTIVO_BLOCK',
+        'E_ATTIVO_BLOCK_REF_NULL',
         jsonb_build_object(
           'parent_table', TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
           'ref_col',      v_ref_col,
           'note',         'Colonna referenziata NULL: controllo figli saltato'
         ),
-        NULL::uuid
+        NULL::uuid,
+        format('%s.%s: colonna referenziata %s NULL, controllo figli saltato',
+               TG_TABLE_SCHEMA, TG_TABLE_NAME, v_ref_col)
       );
       RETURN NEW;
     END IF;

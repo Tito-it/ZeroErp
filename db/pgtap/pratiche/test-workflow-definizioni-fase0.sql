@@ -1,5 +1,15 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: il test collauda i guard su pratiche.workflow_definizioni, che difendono da chi
+--   scrive DIRETTAMENTE sulla tabella. Il ruolo applicativo ha solo SELECT, e ha
+--   ragione di averlo: le scritture dell'applicazione passano tutte da entry point
+--   SECURITY DEFINER (fn_pubblica_definizione, fn_fork_definizione,
+--   fn_nuova_versione_definizione, trgfn_tipi_prestazione_bootstrap_definizione).
+--   E le transizioni che questi guard vietano — «PUBBLICATA -> BOZZA», cambio di
+--   versione su una pubblicata — nessun entry point le offre: l'applicazione non
+--   puo' nemmeno tentarle. Il soggetto del test sta fuori dal percorso applicativo
+--   (terza forma del criterio, brief §29.3-bis).
 -- pgTAP test per Zero ERP
 --
 -- Test: definizioni workflow versionate — Fase 0 (fondazione).
@@ -20,6 +30,56 @@
 -- 9) NOT NULL attivo su template_flussi.definizione_id e pratiche.definizione_id
 -- 10) Cleanup (tipi cancellabili: cascata definizioni)
 -- ------------------------------------------------------------
+
+-- =========================================================
+-- Pulizia d'ingresso — FUORI dalla transazione, ed e' il punto
+-- =========================================================
+-- ⚠️ Questo file lasciava detriti quando falliva a meta'. Il cleanup «vero» sta
+--   alla sezione 10, in fondo: se il test muore prima — e col runner reale,
+--   che gira con ON_ERROR_STOP, muore alla PRIMA istruzione che fallisce — non
+--   ci arriva mai, e i tipi TEST_WDF* restano nel database. La corsa successiva
+--   ci inciampa sopra («valore chiave duplicato su uq_template_flussi_definizione_codice»)
+--   e da li' in poi il rosso non e' piu' del codice, e' della corsa precedente.
+--   Osservato il 2026-08-06 fra una misura da utente applicativo e una da owner.
+--
+-- Questa pulizia sta PRIMA di BEGIN apposta: in autocommit, quindi rimuove
+--   davvero i detriti di una corsa morta a meta'. Dentro la transazione verrebbe
+--   annullata insieme al resto e non servirebbe a niente.
+-- Brief: brief-db-pgtap-runner-rls-baseline §15.
+DELETE FROM pratiche.giornale WHERE pratica_id IN (
+  SELECT p.id FROM pratiche.pratiche p JOIN pratiche.tipi_prestazione tp ON tp.id = p.tipo_prestazione_id
+   WHERE tp.codice_interno IN ('TEST_WDF','TEST_WDF2','TEST_WDF3'));
+DELETE FROM pratiche.flussi WHERE pratica_id IN (
+  SELECT p.id FROM pratiche.pratiche p JOIN pratiche.tipi_prestazione tp ON tp.id = p.tipo_prestazione_id
+   WHERE tp.codice_interno IN ('TEST_WDF','TEST_WDF2','TEST_WDF3'));
+DELETE FROM pratiche.pratiche WHERE tipo_prestazione_id IN (
+  SELECT id FROM pratiche.tipi_prestazione WHERE codice_interno IN ('TEST_WDF','TEST_WDF2','TEST_WDF3'));
+DELETE FROM pratiche.template_flussi WHERE tipo_prestazione_id IN (
+  SELECT id FROM pratiche.tipi_prestazione WHERE codice_interno IN ('TEST_WDF','TEST_WDF2','TEST_WDF3'));
+DELETE FROM pratiche.tipi_prestazione
+ WHERE codice_interno IN ('TEST_WDF','TEST_WDF2','TEST_WDF3');
+
+-- Da qui in poi tutto e' reversibile: ROLLBACK in fondo al file.
+BEGIN;
+
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
+--   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
+--   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio, e il
+--   file diventerebbe verde per sottrazione. Nel DB ce ne sono 365.
+--   IMMEDIATE li riporta a scattare a fine di OGNI istruzione — cioe' esatta-
+--   mente come si comportavano prima, quando il file girava in autocommit e
+--   ogni istruzione era una transazione a se'. Messa in testa e non in coda
+--   apposta: in coda scatterebbero tutti insieme DOPO il cleanup, su righe
+--   ormai cancellate, e fallirebbero per un motivo che non riguarda il test.
+--   Brief: brief-db-pgtap-runner-rls-baseline §17.
+SET CONSTRAINTS ALL IMMEDIATE;
+
+-- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
+-- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
+-- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
+-- Brief: brief-db-pgtap-runner-rls-baseline §8.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
 SELECT plan(11);
 
 -- =========================================================
@@ -33,7 +93,7 @@ VALUES ('NORMALE','NORMALE','Normale',20,true) ON CONFLICT (codice_interno) DO N
 
 CREATE TEMP TABLE tmp_wdf_refs AS
 SELECT
-  (SELECT id FROM anagrafiche.emittenti_fiscali WHERE attivo = true LIMIT 1) AS emittente_id,
+  script.fn_pgtap_emittente_operatore() AS emittente_id,
   (SELECT id FROM config.stati_pratiche WHERE codice_interno='APERTA') AS st_aperta,
   (SELECT id FROM config.priorita_pratiche WHERE codice_interno='NORMALE') AS priorita_id;
 
@@ -206,3 +266,10 @@ DELETE FROM pratiche.tipi_prestazione
 SELECT pass('10. Cleanup completato (delete tipo -> cascata definizioni ok)');
 
 SELECT * FROM finish();
+
+-- Le DELETE della sezione 10 restano: sono l'asserzione sulla cascata, e vanno
+-- eseguite. Ma non devono nemmeno loro lasciare traccia — il ROLLBACK annulla
+-- tutto quanto e' successo dopo BEGIN, compreso cio' che il test ha creato per
+-- misurarsi. Se il file muore prima di arrivare qui, la transazione viene
+-- comunque abbandonata alla chiusura della sessione: e' il senso della modifica.
+ROLLBACK;

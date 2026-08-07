@@ -22,6 +22,31 @@
 -- 9) Cleanup
 -- ------------------------------------------------------------
 
+-- ⚠️ Transazione, e non e' una formalita'. Il cleanup di questo file sta in
+--   coda: col runner vero (pg_prove gira con ON_ERROR_STOP) un fallimento a
+--   meta' non ci arriva mai, e i dati di prova restano nel database a rompere
+--   la corsa successiva — che vede un rosso non suo.
+--   Brief: brief-db-pgtap-runner-rls-baseline §15.3.
+BEGIN;
+
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
+--   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
+--   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio, e il
+--   file diventerebbe verde per sottrazione. Nel DB ce ne sono 365.
+--   IMMEDIATE li riporta a scattare a fine di OGNI istruzione — cioe' esatta-
+--   mente come si comportavano prima, quando il file girava in autocommit e
+--   ogni istruzione era una transazione a se'. Messa in testa e non in coda
+--   apposta: in coda scatterebbero tutti insieme DOPO il cleanup, su righe
+--   ormai cancellate, e fallirebbero per un motivo che non riguarda il test.
+--   Brief: brief-db-pgtap-runner-rls-baseline §17.
+SET CONSTRAINTS ALL IMMEDIATE;
+
+-- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
+-- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
+-- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
+-- Brief: brief-db-pgtap-runner-rls-baseline §8.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
 SELECT plan(7);
 
 -- =========================================================
@@ -45,8 +70,8 @@ ON CONFLICT (codice_interno) DO NOTHING;
 
 CREATE TEMP TABLE tmp_ea_refs AS
 SELECT
-  (SELECT id FROM anagrafiche.emittenti_fiscali WHERE attivo = true LIMIT 1) AS emittente_id,
-  (SELECT id FROM anagrafiche.soggetti LIMIT 1) AS soggetto_id,
+  script.fn_pgtap_emittente_operatore() AS emittente_id,
+  (SELECT id FROM anagrafiche.soggetti ORDER BY id LIMIT 1) AS soggetto_id,
   (SELECT id FROM config.stati_pratiche WHERE codice_interno = 'BOZZA' AND attivo = true LIMIT 1) AS stato_bozza_id,
   (SELECT id FROM config.stati_flussi_pratiche WHERE codice_interno = 'DA_ESEGUIRE' AND attivo = true LIMIT 1) AS sf_da_eseguire,
   (SELECT id FROM config.stati_flussi_pratiche WHERE codice_interno = 'IN_CORSO' AND attivo = true LIMIT 1) AS sf_in_corso,
@@ -141,7 +166,12 @@ SELECT is(
               (SELECT pratica_id FROM tmp_ea_pratica),
               (SELECT tfa_id FROM tmp_ea_tf)
             )
-     LIMIT 1),
+      -- ⚠️ Si dice QUALE prerequisito: la funzione ritorna una riga per
+      --   prerequisito, e questo file ne configura DUE coppie
+      --   (tfa->tfb con esito POSITIVO, tfc->tfd con esito NULL).
+      --   Un LIMIT 1 su una riga qualsiasi poteva leggere la coppia
+      --   sbagliata e asserire su un esito che non e' quello in prova.
+      WHERE prerequisito_id = (SELECT tfb_id FROM tmp_ea_tf)),
     false,
     '1. Prereq COMPLETATO con esito sbagliato (NEGATIVO vs POSITIVO): non soddisfatto'
 );
@@ -164,7 +194,12 @@ SELECT is(
               (SELECT pratica_id FROM tmp_ea_pratica),
               (SELECT tfa_id FROM tmp_ea_tf)
             )
-     LIMIT 1),
+      -- ⚠️ Si dice QUALE prerequisito: la funzione ritorna una riga per
+      --   prerequisito, e questo file ne configura DUE coppie
+      --   (tfa->tfb con esito POSITIVO, tfc->tfd con esito NULL).
+      --   Un LIMIT 1 su una riga qualsiasi poteva leggere la coppia
+      --   sbagliata e asserire su un esito che non e' quello in prova.
+      WHERE prerequisito_id = (SELECT tfb_id FROM tmp_ea_tf)),
     true,
     '2. Prereq COMPLETATO con esito POSITIVO: soddisfatto'
 );
@@ -188,7 +223,12 @@ SELECT is(
               (SELECT pratica_id FROM tmp_ea_pratica),
               (SELECT tfc_id FROM tmp_ea_tf)
             )
-     LIMIT 1),
+      -- ⚠️ Si dice QUALE prerequisito: la funzione ritorna una riga per
+      --   prerequisito, e questo file ne configura DUE coppie
+      --   (tfa->tfb con esito POSITIVO, tfc->tfd con esito NULL).
+      --   Un LIMIT 1 su una riga qualsiasi poteva leggere la coppia
+      --   sbagliata e asserire su un esito che non e' quello in prova.
+      WHERE prerequisito_id = (SELECT tfd_id FROM tmp_ea_tf)),
     true,
     '3. Retro-compat: esito_richiesto NULL soddisfatto con qualsiasi esito'
 );
@@ -269,3 +309,8 @@ DELETE FROM pratiche.template_flussi WHERE tipo_prestazione_id = (SELECT tp_id F
 DELETE FROM pratiche.tipi_prestazione WHERE id = (SELECT tp_id FROM tmp_ea_tp);
 
 SELECT * FROM finish();
+
+-- Il ROLLBACK e' la garanzia: comunque vada — verde, rosso, o morto a meta' —
+-- questo file non lascia nulla dietro di se'. Le DELETE del cleanup restano
+-- perche' dove sono un'asserzione devono girare davvero.
+ROLLBACK;

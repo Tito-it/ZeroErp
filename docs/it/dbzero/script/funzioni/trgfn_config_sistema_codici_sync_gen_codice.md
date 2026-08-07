@@ -107,7 +107,7 @@ BEGIN
     PERFORM script.fn_log_and_raise_error(
         'database',
         v_context_name,
-        'SEQUENZA_NON_CONFIGURATA',
+        'E_SEQUENZA_NON_CONFIGURATA',
         jsonb_build_object('codice_interno',v_codice_interno),
         NULL::uuid,
         v_codice_interno::TEXT

@@ -210,18 +210,93 @@ def gen_function_md_V1(schema, func, cur):
 
 
 # NUOVA: Genera Markdown per view
+def _matview_indexes_md(schema, view, cur):
+    """Indici di una materializzata.
+
+    Non e' un dettaglio da appassionati: senza almeno un indice UNIQUE su tutte
+    le righe, PostgreSQL rifiuta `REFRESH MATERIALIZED VIEW CONCURRENTLY` e
+    l'unico aggiornamento possibile prende un lock esclusivo, cioe' blocca chi
+    sta leggendo. Chi consulta questa pagina per capire come si aggiorna la
+    vista deve trovarci la risposta, non doverla cercare in pg_index.
+    """
+    cur.execute(
+        """
+        SELECT i.relname AS nome,
+               idx.indisunique AS unico,
+               pg_get_indexdef(idx.indexrelid) AS definizione
+        FROM pg_index idx
+        JOIN pg_class i ON i.oid = idx.indexrelid
+        JOIN pg_class c ON c.oid = idx.indrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = %s AND c.relname = %s
+        ORDER BY i.relname
+        """,
+        (schema, view)
+    )
+    rows = cur.fetchall()
+    out = ["## Indici\n"]
+    if not rows:
+        out.append(
+            "Nessun indice. ⚠️ Senza un indice **UNIQUE** su tutte le righe, "
+            "`REFRESH MATERIALIZED VIEW CONCURRENTLY` non e' utilizzabile: "
+            "l'aggiornamento prende un lock esclusivo e blocca le letture.\n"
+        )
+        return out
+
+    out.append("| Indice | Unico | Definizione |")
+    out.append("| --- | --- | --- |")
+    for r in rows:
+        out.append(f"| `{r['nome']}` | {'✅' if r['unico'] else '—'} | `{r['definizione']}` |")
+    out.append("")
+
+    if any(r['unico'] for r in rows):
+        unici = ", ".join(f"`{r['nome']}`" for r in rows if r['unico'])
+        out.append(
+            f"> ✅ L'indice unico ({unici}) abilita "
+            "`REFRESH MATERIALIZED VIEW CONCURRENTLY`, che aggiorna senza "
+            "bloccare chi legge. Toglierlo non romperebbe le query, ma "
+            "renderebbe ogni aggiornamento bloccante — un guasto che si "
+            "manifesta in esercizio e non in sviluppo.\n"
+        )
+    else:
+        out.append(
+            "> ⚠️ Nessuno degli indici e' UNIQUE, quindi "
+            "`REFRESH MATERIALIZED VIEW CONCURRENTLY` non e' utilizzabile e "
+            "l'aggiornamento blocca le letture.\n"
+        )
+    return out
+
+
 def gen_view_md(schema, view, cur):
     if DOCS_MINIMAL:
         return ""
-    # Ottiene la definizione della view
+    # ⚠️ La definizione si prende da pg_class/pg_get_viewdef e NON da pg_views.
+    #    pg_views contiene solo le viste normali: le MATERIALIZZATE stanno in
+    #    pg_matviews, quindi con la query precedente `mv_ddt_ordini` tornava
+    #    riga vuota e la sua pagina non veniva mai scritta. pg_get_viewdef
+    #    funziona per entrambe, e relkind ci dice quale DDL stampare.
     cur.execute(
-        "SELECT definition FROM pg_views WHERE schemaname=%s AND viewname=%s",
+        """
+        SELECT c.relkind,
+               -- Senza il flag "pretty": e' la forma che usa pg_views, quindi
+               -- le pagine delle 49 viste gia' esistenti restano identiche al
+               -- byte. Con pretty=true la definizione e' molto piu' leggibile
+               -- (spariscono i (((...))) annidati) ma cambierebbero 98 file in
+               -- un colpo: e' un miglioramento a se', non da infilare qui.
+               pg_get_viewdef(c.oid) AS definition,
+               c.relispopulated
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = %s AND c.relname = %s AND c.relkind IN ('v', 'm')
+        """,
         (schema, view)
     )
     row = cur.fetchone()
     if not row:
         return ""
     definition = row['definition']
+    is_matview = (row['relkind'] == 'm')
+    is_populated = row['relispopulated']
 
     # Reloptions della vista (security_invoker / security_barrier) NON compaiono
     # in pg_get_viewdef / pg_views.definition: sono opzioni dell'oggetto,
@@ -245,7 +320,7 @@ def gen_view_md(schema, view, cur):
     ]
     with_clause = f"\nWITH ({', '.join(sec_opts)})" if sec_opts else ""
 
-    lines = [f"# 🔍 View `{view}`\n"]
+    lines = [f"# 🔍 {'Materialized view' if is_matview else 'View'} `{view}`\n"]
     if sec_opts:
         lines.append(
             f"> 🔒 **Opzioni di sicurezza**: `{', '.join(sec_opts)}` — "
@@ -253,15 +328,71 @@ def gen_view_md(schema, view, cur):
             "esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE "
             "VIEW`, altrimenti PostgreSQL la azzera.\n"
         )
+
+    if is_matview:
+        # Una materializzata e' dato fermo: chi la legge deve sapere che il
+        # contenuto ha una data, e da cosa dipende il fatto che sia aggiornato.
+        lines.append(
+            "> 🧊 **Vista MATERIALIZZATA**: il contenuto e' una copia salvata su "
+            "disco, non una query eseguita al momento. Risponde veloce ma "
+            "risponde con quello che c'era all'ultimo `REFRESH`: se il dato "
+            "sottostante e' cambiato dopo, qui non si vede ancora. Non si "
+            "modifica con `CREATE OR REPLACE` — va cancellata e ricreata.\n"
+        )
+        if not is_populated:
+            lines.append(
+                "> ⚠️ **Attualmente NON popolata** (`WITH NO DATA`): ogni "
+                "interrogazione fallisce finche' non viene eseguito un "
+                "`REFRESH MATERIALIZED VIEW`.\n"
+            )
+
     lines.append("```sql")
-    lines.append(f"CREATE OR REPLACE VIEW {schema}.{view}{with_clause} AS")
+    if is_matview:
+        lines.append(f"CREATE MATERIALIZED VIEW {schema}.{view} AS")
+    else:
+        lines.append(f"CREATE OR REPLACE VIEW {schema}.{view}{with_clause} AS")
     lines.append(definition.strip())
     lines.append("```\n")
+
+    if is_matview:
+        lines.extend(_matview_indexes_md(schema, view, cur))
     # include manual se esiste
     #manual = include_manual(schema, 'views', view)
     #return manual + "\n".join(lines)
     return "\n".join(lines)
  
+# Scopo: Cancella dalla cartella auto-generata i .md che non corrispondono a
+#        nessun oggetto vivo — le "doc orfane" di oggetti droppati.
+#
+#   ⚠️ PERCHE' SERVE, ed e' costato una misura sbagliata il 2026-08-07.
+#   Fino a quel giorno questo generatore SCRIVEVA soltanto: un oggetto droppato
+#   lasciava la sua pagina in `docs/it/dbzero/<schema>/<tipo>/` per sempre. E
+#   siccome `.codex/AGENTS.md` dice — giustamente — di prendere le definizioni
+#   dalla doc auto-generata perche' «riflette l'oggetto VIVO nel DB», quelle
+#   pagine mentivano nel modo peggiore: erano corrette nel contenuto e false
+#   nell'esistenza. Dieci funzioni droppate fra il 4 e il 5 agosto avevano
+#   ancora la loro pagina, e leggendole si concludeva che i loro codici errore
+#   fossero ancora sollevati da qualcuno.
+#
+#   ⚠️ GUARDIA: si pota SOLO se l'insieme degli oggetti vivi non e' vuoto. Una
+#   query che fallisce o un permesso mancante producono zero righe, e senza
+#   questa guardia una cartella intera sparirebbe in silenzio. Meglio una doc
+#   orfana in piu' che l'intera documentazione di uno schema in meno.
+#
+#   ⚠️ NON tocca mai `manual/`: quella la scrivono le persone.
+def _pota_orfani(dir_path, vivi, etichetta):
+    if not vivi:
+        return  # guardia: vedi sopra
+    if not os.path.isdir(dir_path):
+        return
+    for nome_file in sorted(os.listdir(dir_path)):
+        if not nome_file.endswith(".md"):
+            continue
+        if nome_file[:-3] not in vivi:
+            os.remove(os.path.join(dir_path, nome_file))
+            print(f"  🗑️  doc orfana rimossa ({etichetta}): {nome_file}")
+
+
 def write_docs_for_schema(schema, cur):
     schema_dir = os.path.join(OUT_DIR, schema)
     os.makedirs(os.path.join(schema_dir, "tabelle"), exist_ok=True)
@@ -278,8 +409,10 @@ def write_docs_for_schema(schema, cur):
         "SELECT table_name FROM information_schema.tables WHERE table_schema=%s AND table_type='BASE TABLE'",
         (schema,)
     )
+    tabelle_vive = set()
     for r in cur.fetchall():
         tbl = r['table_name']
+        tabelle_vive.add(tbl)
         path = os.path.join(schema_dir, "tabelle", f"{tbl}.md")
         content = include_manual(schema, 'tabelle', tbl) + gen_table_md(schema, tbl, cur)
         # Aggiungi firma core in fondo
@@ -298,8 +431,10 @@ def write_docs_for_schema(schema, cur):
         """,
         (schema,)
     )
+    funzioni_vive = set()
     for r in cur.fetchall():
         fn = r['routine_name']
+        funzioni_vive.add(fn)
         path = os.path.join(schema_dir, "funzioni", f"{fn}.md")
         content = include_manual(schema, 'funzioni', fn) + gen_function_md(schema, fn, cur)
         content += FOOTER
@@ -319,6 +454,7 @@ def write_docs_for_schema(schema, cur):
 
     for r in cur.fetchall():
         proc = r["procedure_name"]
+        funzioni_vive.add(proc)  # procedure e funzioni condividono la cartella
         path = os.path.join(schema_dir, "funzioni", f"{proc}.md")
 
         # Manuale: rimane flat in /<schema>/manual, come per le funzioni
@@ -328,19 +464,40 @@ def write_docs_for_schema(schema, cur):
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
     # ☝️ FINE BLOCCO PROCEDURE
-    # Views
+    # Views — normali E materializzate.
+    # ⚠️ information_schema.views NON contiene le materializzate: non sono
+    #    nello standard SQL, sono un'estensione PostgreSQL. Con la query
+    #    precedente l'unica materializzata del database (vendite.mv_ddt_ordini)
+    #    non veniva mai scoperta e la sua pagina non e' mai esistita — senza
+    #    che nulla segnalasse la mancanza. Si interroga pg_class, dove
+    #    relkind 'v' = vista, 'm' = materializzata.
     cur.execute(
-        "SELECT table_name as view_name FROM information_schema.views WHERE table_schema=%s",
+        """
+        SELECT c.relname AS view_name
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = %s AND c.relkind IN ('v', 'm')
+        ORDER BY c.relname
+        """,
         (schema,)
     )
+    viste_vive = set()
     for r in cur.fetchall():
         vw = r['view_name']
+        viste_vive.add(vw)
         path = os.path.join(schema_dir, "views", f"{vw}.md")
         content = include_manual(schema, 'views', vw) + gen_view_md(schema, vw, cur)
         # Aggiungi firma core in fondo
         content += FOOTER
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
+    # Pota le doc di oggetti che non esistono piu'. DEVE stare qui, dopo tutte
+    # le scritture e PRIMA degli indici: l'indice si costruisce leggendo le
+    # cartelle, quindi potare dopo significherebbe indicizzare gli orfani.
+    _pota_orfani(os.path.join(schema_dir, "tabelle"), tabelle_vive, f"{schema}/tabelle")
+    _pota_orfani(os.path.join(schema_dir, "funzioni"), funzioni_vive, f"{schema}/funzioni")
+    _pota_orfani(os.path.join(schema_dir, "views"), viste_vive, f"{schema}/views")
+
     # Genera indice includendo tabelle, funzioni e view
     write_index(schema_dir, schema)
     # Genera indice CI con solo contenuti manuali

@@ -1,5 +1,16 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-contesto: escluso — la ragione e' scritta per esteso piu' sotto in
+--   questo stesso file. Dichiarazione leggibile dal cancello
+--   scripts/guardrail_pgtap_preambolo.py: distingue «escluso apposta» da
+--   «dimenticato», che una nota in prosa non fa.
+--   ⚠️ Da riguardare: le esclusioni `rls/` furono fatte IN BLOCCO, e almeno
+--   una non ne aveva diritto (brief pgtap-runner-rls-baseline §30.2).
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture semina su ui.dashboard_definizione, che a runtime NON scrive nessuno:
+--   ne' una funzione DB ne' il backend. E' seed di migrazione, e il SELECT-only del
+--   ruolo applicativo e' corretto. Verificato cercando gli scrittori, non dedotto
+--   (brief §29.2).
 -- pgTAP test per Zero ERP
 --
 -- Test: ui.fn_resolve_dashboard_config
@@ -39,6 +50,33 @@
 --   12. §3f: deep_link opaco restituito fedele
 -- ------------------------------------------------------------
 BEGIN;
+
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
+--   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
+--   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio, e il
+--   file sarebbe verde per sottrazione. IMMEDIATE li riporta a scattare a fine
+--   di ogni istruzione. In testa e non in coda: in coda scatterebbero dopo il
+--   cleanup, su righe ormai cancellate.
+--   Brief: brief-db-pgtap-runner-rls-baseline §19.
+SET CONSTRAINTS ALL IMMEDIATE;
+
+-- ⚠️ QUESTO FILE NON USA script.fn_pgtap_set_contesto_operatore(), a differenza
+-- degli altri, e non e' una dimenticanza — ma la ragione qui e' scomoda e vale
+-- la pena scriverla per esteso.
+-- La fixture costruisce un'identita' CLIENTE_PORTALE (riga ~136) e su quella
+-- verifica le precedenze fra preset. La funzione filtra i profili per la veste
+-- corrente (`app.ruolo_applicativo` -> fn_get_profili_accesso_applicabili):
+-- dichiarare OPERATORE in testa esclude — CORRETTAMENTE — il profilo di
+-- un'identita' portale, e le asserzioni 6 e 10 cadono. La funzione fa il suo
+-- mestiere; e' l'accoppiata «identita' portale + veste operatore» a non esistere.
+-- ⚠️ Ma senza GUC la veste e' NULL = «tutte», e questa e' una condizione che
+-- l'applicazione non produce MAI: il middleware la valorizza sempre. Quindi
+-- oggi queste asserzioni sono verdi in un mondo che non esiste. La correzione
+-- vera e' far dichiarare al test la veste coerente con la propria fixture
+-- (CLIENTE_PORTALE), non imporgliene una operatore: e' una decisione del
+-- cantiere `ui`, non di questo brief.
+-- Brief: brief-db-pgtap-runner-rls-baseline §11.
+
 SELECT plan(12);
 
 -- =========================================================

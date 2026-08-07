@@ -20,7 +20,7 @@ BEGIN
     IF OLD.numero IS NOT NULL
        AND NEW.numero IS DISTINCT FROM OLD.numero THEN
         PERFORM script.fn_log_and_raise_error(
-            'database', TG_NAME, 'CODICE_NON_MODIFICABILE',
+            'database', TG_NAME, 'E_CODICE_NON_MODIFICABILE',
             jsonb_build_object(
                 'column',    'numero',
                 'old_value', OLD.numero,

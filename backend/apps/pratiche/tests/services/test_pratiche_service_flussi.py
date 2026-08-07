@@ -35,13 +35,18 @@ Indice test eseguiti:
 24) PraticheServiceFlussiTests.test_prendi_in_carico_non_eligibile
 25) PraticheServiceFlussiTests.test_list_operatori_reparto_ok
 26) PraticheServiceFlussiTests.test_list_operatori_reparto_errore_id_zero
+27) PraticheServiceFlussiTests.test_workflow_guard_codes_hanno_lo_status_atteso
+28) PraticheServiceFlussiTests.test_codice_strutturato_accettato_in_entrambe_le_forme
+29) PraticheServiceFlussiTests.test_codice_strutturato_fuori_perimetro_non_accettato
 """
 
 from unittest.mock import MagicMock, patch
 
+from django.db import DatabaseError
 from django.test import SimpleTestCase
 
 from apps.core.services.service_errors import ServiceError
+from apps.core.tests.db_error_fakes import make_db_error
 from apps.pratiche.services import pratiche_service
 
 _SVC = "apps.pratiche.services.pratiche_service"
@@ -339,12 +344,13 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         from django.db import DatabaseError
 
         repo = MockRepo.return_value
-        repo.update_stato_flusso.side_effect = DatabaseError(
+        repo.update_stato_flusso.side_effect = make_db_error(
             "Esito POSITIVO non ammesso per lo step SMISTAMENTO: richiesto un esito di ramo (calcolato dal dominio).",
-        )
+            codice="E_FLUSSI_ESITO_NON_AMMESSO",
+ )
         with self.assertRaises(ServiceError) as ctx:
             pratiche_service.completa_flusso(1, esito="POSITIVO")
-        self.assertEqual(ctx.exception.code, "FLUSSI_ESITO_NON_AMMESSO")
+        self.assertEqual(ctx.exception.code, "E_FLUSSI_ESITO_NON_AMMESSO")
 
     # Scopo: Verifica transizione generica di stato flusso.
     @patch(f"{_SVC}.PraticheRepository")
@@ -406,13 +412,14 @@ class PraticheServiceFlussiTests(SimpleTestCase):
 
         repo = MockRepo.return_value
         repo.resolve_stato_flusso.return_value = 1
-        repo.create_flusso.side_effect = DatabaseError(
+        repo.create_flusso.side_effect = make_db_error(
             "Il flusso CONFERMA non e' ripetibile in questa pratica (regola MAI; ultima istanza: COMPLETATO).",
-        )
+            codice="E_PRATICHE_FLUSSO_NON_RIPETIBILE",
+ )
 
         with self.assertRaises(ServiceError) as ctx:
             pratiche_service.crea_flusso(pratica_id=1, template_flusso_id=9004)
-        self.assertEqual(ctx.exception.code, "PRATICHE_FLUSSO_NON_RIPETIBILE")
+        self.assertEqual(ctx.exception.code, "E_PRATICHE_FLUSSO_NON_RIPETIBILE")
 
     # Scopo: guard pratica terminale (490) sulla creazione flusso → ServiceError
     # parlante via marker.
@@ -422,13 +429,14 @@ class PraticheServiceFlussiTests(SimpleTestCase):
 
         repo = MockRepo.return_value
         repo.resolve_stato_flusso.return_value = 1
-        repo.create_flusso.side_effect = DatabaseError(
+        repo.create_flusso.side_effect = make_db_error(
             "Impossibile creare un flusso: la pratica e' in stato terminale (ANNULLATA).",
-        )
+            codice="E_PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO",
+ )
 
         with self.assertRaises(ServiceError) as ctx:
             pratiche_service.crea_flusso(pratica_id=1, template_flusso_id=10)
-        self.assertEqual(ctx.exception.code, "PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO")
+        self.assertEqual(ctx.exception.code, "E_PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO")
 
     # Scopo: guard prerequisiti (flusso non ancora eseguibile) sulla creazione
     # flusso → ServiceError parlante invece di E_DATABASE generico.
@@ -438,13 +446,14 @@ class PraticheServiceFlussiTests(SimpleTestCase):
 
         repo = MockRepo.return_value
         repo.resolve_stato_flusso.return_value = 1
-        repo.create_flusso.side_effect = DatabaseError(
+        repo.create_flusso.side_effect = make_db_error(
             "Prerequisiti non soddisfatti per il template flusso. Mancanti: APPROVAZIONE_CLIENTE.",
-        )
+            codice="E_PRATICHE_PREREQUISITI_NON_SODDISFATTI",
+ )
 
         with self.assertRaises(ServiceError) as ctx:
             pratiche_service.crea_flusso(pratica_id=1, template_flusso_id=10)
-        self.assertEqual(ctx.exception.code, "PRATICHE_PREREQUISITI_NON_SODDISFATTI")
+        self.assertEqual(ctx.exception.code, "E_PRATICHE_PREREQUISITI_NON_SODDISFATTI")
 
     # Scopo: guard pratica terminale (491) sul cambio stato flusso (avvia/
     # completa/cambia_stato) → ServiceError parlante via marker.
@@ -454,39 +463,42 @@ class PraticheServiceFlussiTests(SimpleTestCase):
 
         repo = MockRepo.return_value
         repo.get_flusso_esito_config.return_value = ("MANUALE", None)
-        repo.update_stato_flusso.side_effect = DatabaseError(
+        repo.update_stato_flusso.side_effect = make_db_error(
             "Impossibile modificare il flusso: la pratica e' in stato terminale (ANNULLATA).",
-        )
+            codice="E_PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE",
+ )
 
         with self.assertRaises(ServiceError) as ctx:
             pratiche_service.avvia_flusso(1)
-        self.assertEqual(ctx.exception.code, "PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE")
+        self.assertEqual(ctx.exception.code, "E_PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE")
 
     @patch(f"{_SVC}.PraticheRepository")
     def test_completa_flusso_pratica_terminale_491(self, MockRepo):
         from django.db import DatabaseError
 
         repo = MockRepo.return_value
-        repo.update_stato_flusso.side_effect = DatabaseError(
+        repo.update_stato_flusso.side_effect = make_db_error(
             "Impossibile modificare il flusso: la pratica e' in stato terminale (CHIUSA).",
-        )
+            codice="E_PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE",
+ )
 
         with self.assertRaises(ServiceError) as ctx:
             pratiche_service.completa_flusso(1, esito="POSITIVO")
-        self.assertEqual(ctx.exception.code, "PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE")
+        self.assertEqual(ctx.exception.code, "E_PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE")
 
     @patch(f"{_SVC}.PraticheRepository")
     def test_cambia_stato_flusso_pratica_terminale_491(self, MockRepo):
         from django.db import DatabaseError
 
         repo = MockRepo.return_value
-        repo.update_stato_flusso.side_effect = DatabaseError(
+        repo.update_stato_flusso.side_effect = make_db_error(
             "Impossibile modificare il flusso: la pratica e' in stato terminale (ANNULLATA).",
-        )
+            codice="E_PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE",
+ )
 
         with self.assertRaises(ServiceError) as ctx:
             pratiche_service.cambia_stato_flusso(1, "SOSPESO")
-        self.assertEqual(ctx.exception.code, "PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE")
+        self.assertEqual(ctx.exception.code, "E_PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE")
 
     # Scopo: guard chiusura workflow-driven — il flusso di chiusura non puo'
     # completarsi finche' restano obbligatori bloccanti → ServiceError parlante.
@@ -495,13 +507,14 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         from django.db import DatabaseError
 
         repo = MockRepo.return_value
-        repo.update_stato_flusso.side_effect = DatabaseError(
+        repo.update_stato_flusso.side_effect = make_db_error(
             "Impossibile completare il flusso di chiusura: restano altri flussi obbligatori da completare.",
-        )
+            codice="E_PRATICHE_CHIUSURA_FLUSSO_PREMATURO",
+ )
 
         with self.assertRaises(ServiceError) as ctx:
             pratiche_service.completa_flusso(1, esito="POSITIVO")
-        self.assertEqual(ctx.exception.code, "PRATICHE_CHIUSURA_FLUSSO_PREMATURO")
+        self.assertEqual(ctx.exception.code, "E_PRATICHE_CHIUSURA_FLUSSO_PREMATURO")
 
     # Scopo: guard transizione flusso (matrice config) → ServiceError parlante
     # invece di E_DATABASE 500 (gap ① allineamento marker+policy 2026-06-14).
@@ -510,13 +523,14 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         from django.db import DatabaseError
 
         repo = MockRepo.return_value
-        repo.update_stato_flusso.side_effect = DatabaseError(
+        repo.update_stato_flusso.side_effect = make_db_error(
             "Transizione flusso non ammessa: DA_ESEGUIRE -> COMPLETATO",
-        )
+            codice="E_FLUSSI_TRANSIZIONE_NON_AMMESSA",
+ )
 
         with self.assertRaises(ServiceError) as ctx:
             pratiche_service.cambia_stato_flusso(1, "COMPLETATO", esito="POSITIVO")
-        self.assertEqual(ctx.exception.code, "FLUSSI_TRANSIZIONE_NON_AMMESSA")
+        self.assertEqual(ctx.exception.code, "E_FLUSSI_TRANSIZIONE_NON_AMMESSA")
 
     # Scopo: guard esito-aware — COMPLETATO senza esito → ServiceError parlante.
     @patch(f"{_SVC}.PraticheRepository")
@@ -524,13 +538,14 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         from django.db import DatabaseError
 
         repo = MockRepo.return_value
-        repo.update_stato_flusso.side_effect = DatabaseError(
+        repo.update_stato_flusso.side_effect = make_db_error(
             "Esito obbligatorio per completare il flusso 42.",
-        )
+            codice="E_FLUSSI_ESITO_OBBLIGATORIO",
+ )
 
         with self.assertRaises(ServiceError) as ctx:
             pratiche_service.cambia_stato_flusso(1, "COMPLETATO")
-        self.assertEqual(ctx.exception.code, "FLUSSI_ESITO_OBBLIGATORIO")
+        self.assertEqual(ctx.exception.code, "E_FLUSSI_ESITO_OBBLIGATORIO")
 
     # Scopo: guard transizione pratica (matrice config) → ServiceError parlante.
     @patch(f"{_SVC}.PraticheRepository")
@@ -538,31 +553,108 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         from django.db import DatabaseError
 
         repo = MockRepo.return_value
-        repo.update_stato_pratica.side_effect = DatabaseError(
+        repo.update_stato_pratica.side_effect = make_db_error(
             "Transizione pratica non ammessa: CHIUSA -> APERTA",
-        )
+            codice="E_PRATICHE_TRANSIZIONE_NON_AMMESSA",
+ )
 
         with self.assertRaises(ServiceError) as ctx:
             pratiche_service.cambia_stato_pratica(1, "APERTA")
-        self.assertEqual(ctx.exception.code, "PRATICHE_TRANSIZIONE_NON_AMMESSA")
+        self.assertEqual(ctx.exception.code, "E_PRATICHE_TRANSIZIONE_NON_AMMESSA")
 
-    # Scopo: i codici workflow guard devono avere policy 409 (conflitto regola
-    # business), non finire nel default E_GENERICO (500). Regressione: codici
-    # mappati via marker ma non registrati in ErrorPolicyRegistry.
-    def test_workflow_guard_codes_hanno_policy_409(self):
+    # Scopo: i codici workflow guard devono essere registrati in
+    # ErrorPolicyRegistry (mai il default E_GENERICO = 500) e rispondere con lo
+    # status che gli compete. Regressione originale: codici mappati via marker ma
+    # non registrati.
+    #
+    # 2026-08-05 — status attesi per codice invece del 409 per tutti. Due motivi:
+    #  - la rilettura del brief codice-errore-strutturato ha separato il
+    #    conflitto-di-stato (409) dall'autorizzazione (403) e dall'input
+    #    mancante (400): erano tutti 409 per inerzia, non per scelta;
+    #  - un `assertEqual(..., 409)` uguale per tutti non si accorge se un codice
+    #    finisce sulla policy di un altro. E' successo davvero: registrare in
+    #    coda una chiave gia' presente la SOVRASCRIVE in silenzio (dict literal
+    #    Python, nessun errore ne' warning), ed e' stato questo test a prenderla.
+    def test_workflow_guard_codes_hanno_lo_status_atteso(self):
         from apps.core.services.error_policies import ErrorPolicyRegistry
 
-        for code in (
-            "PRATICHE_PREREQUISITI_NON_SODDISFATTI",
-            "PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO",
-            "PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE",
-            "PRATICHE_CHIUSURA_FLUSSO_PREMATURO",
-            "PRATICHE_TRANSIZIONE_NON_AMMESSA",
-            "FLUSSI_TRANSIZIONE_NON_AMMESSA",
-            "FLUSSI_ESITO_OBBLIGATORIO",
-        ):
+        attesi = {
+            # conflitto con lo stato corrente della pratica / del flusso
+            "PRATICHE_PREREQUISITI_NON_SODDISFATTI": 409,
+            "PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO": 409,
+            "PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE": 409,
+            "PRATICHE_CHIUSURA_FLUSSO_PREMATURO": 409,
+            "PRATICHE_TRANSIZIONE_NON_AMMESSA": 409,
+            "FLUSSI_TRANSIZIONE_NON_AMMESSA": 409,
+            "FLUSSI_PRESA_CARICO_STATO_ERRATO": 409,
+            "FLUSSI_GIA_ASSEGNATO": 409,
+            "DEFINIZIONE_NON_PUBBLICABILE": 409,
+            # il template non appartiene alla definizione pinnata: e' uno stato
+            # del percorso, non un campo compilato male (decisione Tid 2026-08-05)
+            "FLUSSI_TEMPLATE_FUORI_DEFINIZIONE": 409,
+            # autorizzazione: l'operatore non puo', non e' il momento a essere
+            # sbagliato
+            "FLUSSI_COMPETENZA_MANCANTE": 403,
+            "FLUSSI_PRESA_NON_ELIGIBILE": 403,
+            # input: manca un valore che l'operatore deve fornire
+            "FLUSSI_ESITO_OBBLIGATORIO": 400,
+            "FLUSSI_ESITO_NON_AMMESSO": 400,
+        }
+        for code, status in attesi.items():
             self.assertTrue(ErrorPolicyRegistry.has(code), f"{code} non registrato")
-            self.assertEqual(ErrorPolicyRegistry.resolve(code).http_status, 409, code)
+            self.assertEqual(
+                ErrorPolicyRegistry.resolve(code).http_status, status, code
+            )
+
+    # Scopo: ogni codice dichiarato dal dominio deve essere accettato dal campo
+    # strutturato in ENTRAMBE le forme — con e senza il prefisso `E_` — e il
+    # backend deve restituire **esattamente il nome che il DB ha mandato**.
+    #
+    # E' il presidio del cantiere di rinomina (brief-be-rinomina-codici-known-
+    # markers): il DB antepone `E_` un lotto per volta, e la rinomina tocca il
+    # CODICE non il MESSAGGIO. Se `_raise_known_db_error` scartasse la forma
+    # nuova, vincerebbe il marker testuale — che corrisponde ancora — e l'API
+    # risponderebbe col nome ritirato. Non fallirebbe niente: e' precisamente
+    # per questo che serve un test.
+    #
+    # Copre in un colpo tutti i codici dichiarati, e resta valido a rinomina
+    # finita senza che nessuno debba tornarci.
+    def test_codice_strutturato_accettato_in_entrambe_le_forme(self):
+        from apps.core.services.error_policies import ErrorPolicyRegistry
+        from apps.pratiche.services.pratiche_service import _KNOWN_DB_ERROR_MARKERS
+
+        for dichiarato, _marker in _KNOWN_DB_ERROR_MARKERS:
+            # Il dichiarato va sempre accettato. La forma col prefisso in piu'
+            # solo per i codici in via di rinomina (dichiarati SENZA `E_`): per
+            # gli altri nessuno manda la variante spogliata, e accettarla
+            # allargherebbe il perimetro senza motivo.
+            forme = [dichiarato]
+            if not dichiarato.startswith("E_"):
+                forme.append(f"E_{dichiarato}")
+            for inviato in forme:
+                exc = make_db_error("Messaggio di dominio.", codice=inviato)
+                with self.assertRaises(ServiceError) as ctx:
+                    pratiche_service._raise_known_db_error(
+                        exc, function_name="test_forme",
+                    )
+                self.assertEqual(
+                    ctx.exception.code, inviato,
+                    f"inviato {inviato}: il backend deve restituire quello, non altro",
+                )
+                self.assertTrue(
+                    ErrorPolicyRegistry.has(inviato),
+                    f"{inviato} arriva dal DB ma non ha una policy: cadrebbe sul "
+                    f"generico invece che sul suo status",
+                )
+
+    # Scopo: un codice che il dominio NON dichiara non viene accettato dal campo
+    # strutturato. Il filtro e' un perimetro, e un perimetro che accetta tutto
+    # non e' un perimetro: senza questo, il primo test passerebbe anche se la
+    # condizione fosse `if structured is not None`.
+    def test_codice_strutturato_fuori_perimetro_non_accettato(self):
+        exc = make_db_error("Messaggio senza marker noti.", codice="E_ALTRO_DOMINIO")
+        with self.assertRaises(DatabaseError):
+            pratiche_service._raise_known_db_error(exc, function_name="test_perimetro")
 
     # Scopo: Regressione bug smoke 2026-06-11 — psycopg puo' restituire i
     # jsonb come str: meta del flusso str deve arrivare all'handler come dict
@@ -709,13 +801,14 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         from django.db import DatabaseError
 
         repo = MockRepo.return_value
-        repo.prendi_in_carico_flusso.side_effect = DatabaseError(
+        repo.prendi_in_carico_flusso.side_effect = make_db_error(
             "Operatore 10 non abilitato per il flusso 5.",
-        )
+            codice="E_FLUSSI_COMPETENZA_MANCANTE",
+ )
 
         with self.assertRaises(ServiceError) as ctx:
             pratiche_service.prendi_in_carico(5, 10)
-        self.assertEqual(ctx.exception.code, "FLUSSI_COMPETENZA_MANCANTE")
+        self.assertEqual(ctx.exception.code, "E_FLUSSI_COMPETENZA_MANCANTE")
 
     # Scopo: prendi_in_carico — operatore fuori reparto (caso B) → 496 via marker.
     @patch(f"{_SVC}.PraticheRepository")
@@ -723,13 +816,14 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         from django.db import DatabaseError
 
         repo = MockRepo.return_value
-        repo.prendi_in_carico_flusso.side_effect = DatabaseError(
+        repo.prendi_in_carico_flusso.side_effect = make_db_error(
             "Presa in carico non consentita del flusso 5 per l'operatore 10.",
-        )
+            codice="E_FLUSSI_PRESA_NON_ELIGIBILE",
+ )
 
         with self.assertRaises(ServiceError) as ctx:
             pratiche_service.prendi_in_carico(5, 10)
-        self.assertEqual(ctx.exception.code, "FLUSSI_PRESA_NON_ELIGIBILE")
+        self.assertEqual(ctx.exception.code, "E_FLUSSI_PRESA_NON_ELIGIBILE")
 
     # Scopo: lista operatori del reparto delegata al repository.
     @patch(f"{_SVC}.PraticheRepository")

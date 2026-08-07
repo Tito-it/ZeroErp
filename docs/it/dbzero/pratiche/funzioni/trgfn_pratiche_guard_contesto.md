@@ -34,7 +34,7 @@ BEGIN
         PERFORM script.fn_log_and_raise_error(
             'pratiche',
             'pratiche.trgfn_pratiche_guard_contesto',
-            'PRATICHE_RUOLO_SENZA_SOGGETTO',
+            'E_PRATICHE_RUOLO_SENZA_SOGGETTO',
             jsonb_build_object(
                 'soggetto_ruolo_id', NEW.soggetto_ruolo_id
             ),
@@ -49,7 +49,7 @@ BEGIN
         PERFORM script.fn_log_and_raise_error(
             'pratiche',
             'pratiche.trgfn_pratiche_guard_contesto',
-            'PRATICHE_ISTANZA_SENZA_SOGGETTO',
+            'E_PRATICHE_ISTANZA_SENZA_SOGGETTO',
             jsonb_build_object(
                 'istanza_utility_id', NEW.istanza_utility_id
             ),
@@ -69,7 +69,7 @@ BEGIN
             PERFORM script.fn_log_and_raise_error(
                 'pratiche',
                 'pratiche.trgfn_pratiche_guard_contesto',
-                'PRATICHE_RUOLO_NON_COERENTE',
+                'E_PRATICHE_RUOLO_NON_COERENTE',
                 jsonb_build_object(
                     'soggetto_ruolo_id', NEW.soggetto_ruolo_id,
                     'soggetto_id', NEW.soggetto_id,
@@ -93,7 +93,7 @@ BEGIN
             PERFORM script.fn_log_and_raise_error(
                 'pratiche',
                 'pratiche.trgfn_pratiche_guard_contesto',
-                'PRATICHE_ISTANZA_NON_COERENTE',
+                'E_PRATICHE_ISTANZA_NON_COERENTE',
                 jsonb_build_object(
                     'istanza_utility_id', NEW.istanza_utility_id,
                     'soggetto_id', NEW.soggetto_id,
@@ -111,7 +111,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION pratiche.trgfn_pratiche_guard_contesto()
-IS 'Guard: coerenza contesto anagrafico su pratiche, modello a due rami (soggetto->ruolo, soggetto->istanza). L''istanza e'' agganciabile senza ruolo (prospect puro pre-contrattuale).';
+IS 'BEFORE INSERT OR UPDATE su pratiche.pratiche: coerenza del contesto anagrafico (soggetto / soggetto_ruolo / istanza_utility). Codici rinominati il 2026-08-05 (20260805-20): E_PRATICHE_RUOLO_SENZA_SOGGETTO (846), E_PRATICHE_RUOLO_NON_COERENTE (847), E_PRATICHE_ISTANZA_NON_COERENTE (848), E_PRATICHE_ISTANZA_SENZA_SOGGETTO (849). I vecchi nomi senza prefisso restano a catalogo, ritirati con obsoleto_dal.';
 ```
 
 ---

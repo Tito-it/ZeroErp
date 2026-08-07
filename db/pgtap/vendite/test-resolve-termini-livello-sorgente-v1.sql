@@ -33,6 +33,21 @@
 -- ------------------------------------------------------------
 
 BEGIN;
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
+--   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
+--   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio, e il
+--   file sarebbe verde per sottrazione. IMMEDIATE li riporta a scattare a fine
+--   di ogni istruzione. In testa e non in coda: in coda scatterebbero dopo il
+--   cleanup, su righe ormai cancellate.
+--   Brief: brief-db-pgtap-runner-rls-baseline §19.
+SET CONSTRAINTS ALL IMMEDIATE;
+
+-- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
+-- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
+-- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
+-- Brief: brief-db-pgtap-runner-rls-baseline §8.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
 SELECT plan(9);
 
 -- ============================================================
@@ -199,9 +214,15 @@ SELECT min(ordine_id) AS ordine_id
 UPDATE vendite.ordini SET termine_pagamento_id = 3, modalita_pagamento_id = 5
  WHERE id = (SELECT ordine_id FROM tmp_ord_push);
 
+-- ⚠️ DISTINCT e non LIMIT 1, e l'asserzione ci guadagna. La funzione ritorna
+--   una riga per riga d'ordine, ma termine_pagamento_id e' un valore di
+--   TESTATA: con DISTINCT la sotto-select esplode ("more than one row") se le
+--   righe dello stesso ordine portassero valori diversi. Cioe' asserisce anche
+--   l'invarianza, che e' proprio quello che il nome del test dichiara — mentre
+--   LIMIT 1 ne guardava una a caso e taceva sulle altre.
 SELECT is(
-    (SELECT termine_pagamento_id FROM vendite.fn_list_ordini_da_pushare(
-        NULL, NULL, NULL, (SELECT ordine_id FROM tmp_ord_push)) LIMIT 1),
+    (SELECT DISTINCT termine_pagamento_id FROM vendite.fn_list_ordini_da_pushare(
+        NULL, NULL, NULL, (SELECT ordine_id FROM tmp_ord_push))),
     3::bigint,
     '9) la colonna porta il valore del documento, non un NULL fisso');
 

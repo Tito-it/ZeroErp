@@ -116,6 +116,45 @@ jobs:
             https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.4/postgresql-42.7.4.jar
           liquibase --version
 
+      - name: Guardrail runOnChange (00_schema / 20_code)
+        # ⚠️ POSIZIONE: prima di Liquibase, e non e' un dettaglio. Questo
+        # controllo legge SOLO i file YAML — non gli serve un database — e
+        # quello che presidia e' proprio il modo in cui la pipeline applica i
+        # changeSet. Metterlo dopo il migrate significherebbe scoprire a valle
+        # un difetto che ha gia' riscritto meta' schema.
+        #
+        # Cosa presidia: un changeSet di schema o di codice si applica UNA
+        # volta, in ordine di timeline. Con `runOnChange: true` ri-esegue anche
+        # nella SECONDA invocazione di Liquibase di questo workflow
+        # (--contexts=ci_apply, piu' sotto), fuori ordine, e riscrive il proprio
+        # corpo SOPRA le revisioni piu' recenti — che sono spente e non
+        # ri-eseguono. Su un DB di sviluppo l'invocazione e' una sola: il
+        # difetto non si vede fino a qui. Il 2026-08-06 riportava indietro 49
+        # funzioni a ogni build, fra cui dbops.trgfn_tx_id_managed.
+        #
+        # Resta lecito in 80_data (mirror CSV), 85_pgagent, 90_end: la'
+        # ri-eseguire e' il comportamento voluto.
+        run: python scripts/guardrail_run_on_change.py
+
+      - name: Guardrail preambolo pgTAP
+        # Presidia le tre righe senza le quali un test pgTAP passa SMETTENDO di
+        # verificare — «verde per sottrazione»: la transazione, la riga di
+        # contesto applicativo (con la RLS attiva, senza veste la fixture legge
+        # zero righe e le asserzioni finiscono nei rami skip) e
+        # SET CONSTRAINTS ALL IMMEDIATE (i 365 vincoli DIFFERITI scattano al
+        # COMMIT, che in un test non arriva mai).
+        #
+        # Statico e senza database: gira qui, prima di tutto il resto, perche'
+        # e' un controllo di forma sui file e non ha bisogno che il DB esista.
+        #
+        # ⚠️ Presidia anche, A SOGLIA, il debito dei `throws_ok` che accettano
+        # qualunque errore: la soglia puo' solo CALARE. Il 2026-08-07 una sonda
+        # ha trovato tre test VERDI che collaudavano una cosa diversa da quella
+        # dichiarata, proprio per quel difetto.
+        #
+        # Guida: docs/it/guide/pgtap-come-si-scrive-un-test.md
+        run: python scripts/guardrail_pgtap_preambolo.py
+
       - name: Generate Liquibase autogen master (timeline)
         run: |
           python scripts/gen_master_autogen.py \
@@ -131,6 +170,20 @@ jobs:
             "CREATE ROLE zeroerp LOGIN CREATEDB PASSWORD 'secret';"
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
             "GRANT USAGE, CREATE ON SCHEMA public TO zeroerp; GRANT CREATE ON DATABASE zeroerp TO zeroerp;"
+          # ⚠️ Il ruolo applicativo va creato ORA, PRIMA di Liquibase, e non dopo.
+          # Molti changeSet di GRANT sono scritti «idempotenti e difensivi: skip
+          # se il ruolo manca» — e finora in CI il ruolo mancava sempre, quindi
+          # quei GRANT non sono MAI stati applicati ne' verificati. Creandolo
+          # qui, la CI comincia a collaudare anche la matrice dei permessi.
+          #
+          # La password e' un letterale come quella di `zeroerp` qui sopra, e non
+          # espone niente: questo database vive dentro il runner per la durata
+          # del job e non e' raggiungibile da fuori. NON e' la password di
+          # sviluppo — usare un ruolo con un NOME diverso sarebbe peggio, perche'
+          # ogni GRANT del repo e' scritto sul nome letterale `zeroerp_app` e la
+          # CI finirebbe per collaudare una matrice che non esiste altrove.
+          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
+            "CREATE ROLE zeroerp_app LOGIN PASSWORD 'secret-app';"
 
       - name: Installa plpgsql_check nel container Postgres
         # Serve al guardrail «riferimenti morti» in fondo a questo workflow.
@@ -154,8 +207,12 @@ jobs:
             echo "::error::container del service postgres non trovato"
             exit 1
           fi
+          # ⚠️ pgTAP si installa QUI, nello stesso apt-get: serve a far girare la
+          # suite pgTAP (passo in fondo al workflow). Nello stesso comando e non
+          # in uno step suo perche' `apt-get update` e' il pezzo lento, e farlo
+          # due volte raddoppierebbe il costo per niente.
           docker exec "$CID" bash -euo pipefail -c \
-            "apt-get update -qq && apt-get install -y -qq postgresql-18-plpgsql-check"
+            "apt-get update -qq && apt-get install -y -qq postgresql-18-plpgsql-check postgresql-18-pgtap"
           # Verifica che postgres lo veda davvero: senza, il changeSet -36
           # verrebbe saltato e il guardrail fallirebbe piu' tardi con un
           # messaggio meno chiaro di questo.
@@ -217,6 +274,21 @@ jobs:
             --changeLogFile=db/changelog/changelog-master-v2.yaml \
             update --contexts=ci_apply
 
+      - name: Privilegi del ruolo applicativo (provision_db_roles)
+        # DOPO Liquibase, e non prima: lo script fa GRANT ... ON ALL TABLES IN
+        # SCHEMA, quindi vuole gli schemi gia' popolati. Il ruolo invece esiste
+        # da prima (passo "DB bootstrap"), perche' i changeSet di GRANT
+        # difensivi lo cercano mentre girano.
+        #
+        # ⚠️ migrator_role=zeroerp e non titodb: in CI l'owner degli oggetti e'
+        # l'utente con cui gira Liquibase, non quello del server di sviluppo.
+        env:
+          PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+        run: |
+          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
+            -v app_role=zeroerp_app -v app_password=secret-app -v migrator_role=zeroerp \
+            -f scripts/sql/provision_db_roles.sql
+
       - name: Guardrail naming codice_interno/codice (definizioni live)
         env:
           PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
@@ -226,6 +298,50 @@ jobs:
           # brief-naming-stato-codice-interno.md. RAISE -> exit !=0 con ON_ERROR_STOP.
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
             -f scripts/sql/check_naming_stato_codice.sql
+
+      - name: Guardrail codice errore strutturato (canale CONSTRAINT + convenzione codici)
+        env:
+          PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+        run: |
+          # Presidia il contratto introdotto da 20260805-05: «SQLSTATE P0001 +
+          # campo CONSTRAINT valorizzato = errore di dominio». Su quella
+          # condizione il backend decide 409/404/403/400 e quale messaggio
+          # legge l'operatore.
+          #
+          # (A) un solo mittente sul canale: solo script.fn_log_and_raise_error
+          #     puo' scrivere CONSTRAINT in un RAISE. P0001 e' anche il default
+          #     di qualunque RAISE EXCEPTION scritto a mano, e nel DB ce ne
+          #     sono 135 in 46 funzioni: se uno di quelli usasse lo stesso
+          #     campo per dire altro, il backend non fallirebbe — risponderebbe
+          #     sbagliato, che e' peggio.
+          # (B) il rubinetto sulla convenzione E_{MODULO}_{TIPO}: un codice
+          #     senza prefisso E_ arriva al backend, non trova policy e cade su
+          #     E_GENERICO -> HTTP 500. I 57 ereditati stanno nel registro
+          #     dbops.messaggi_errore_codici_legacy; il 58esimo no.
+          # (C) e il registro deve CALARE: una voce che non corrisponde piu' a
+          #     nessun codice a seed va tolta.
+          #
+          # ⚠️ POSIZIONE: qui va bene prima del migrate di Django, al contrario
+          # del guardrail dei riferimenti morti. Quello compila i corpi plpgsql
+          # e ha bisogno dello schema `django`; questo legge solo pg_proc,
+          # config.messaggi_errore e il registro, che Liquibase ha gia' messo.
+          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
+            -f scripts/sql/guardrail_codice_errore_strutturato.sql
+
+      - name: Django check
+        working-directory: ./backend
+        run: |
+          source .venv/bin/activate
+          python manage.py check
+
+      - name: Django migrate (schema django)
+        working-directory: ./backend
+        run: |
+          source .venv/bin/activate
+          python manage.py migrate contenttypes --noinput
+          python manage.py migrate auth --noinput
+          python manage.py migrate token_blacklist --fake
+          python manage.py migrate --noinput
 
       - name: Guardrail riferimenti morti (funzioni plpgsql + dati di config)
         env:
@@ -245,23 +361,17 @@ jobs:
           #
           # Fallisce anche se una voce del registro non serve piu': il debito
           # deve calare, non solo non crescere.
+          #
+          # ⚠️ POSIZIONE: DOPO il migrate di Django, e non e' un dettaglio.
+          # Una decina di funzioni del DB leggono `django.auth_user` — lo
+          # schema `django` lo crea `manage.py migrate`, non Liquibase.
+          # Messo prima, il guardrail misurava un database a meta' e
+          # segnalava dieci falsi difetti «relation django.auth_user does not
+          # exist» (visto in CI il 2026-08-04). Il DB e' completo solo quando
+          # entrambi i migratori hanno finito: e' li' che ha senso compilarne
+          # i corpi.
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
             -f scripts/sql/guardrail_riferimenti_morti.sql
-
-      - name: Django check
-        working-directory: ./backend
-        run: |
-          source .venv/bin/activate
-          python manage.py check
-
-      - name: Django migrate (schema django)
-        working-directory: ./backend
-        run: |
-          source .venv/bin/activate
-          python manage.py migrate contenttypes --noinput
-          python manage.py migrate auth --noinput
-          python manage.py migrate token_blacklist --fake
-          python manage.py migrate --noinput
 
       - name: Django tests
         working-directory: ./backend
@@ -281,9 +391,136 @@ jobs:
           # escalata: le deprecation di terze parti (es. _UnionGenericAlias da
           # drf_spectacular) restano warning.
           DJANGO_DEPRECATION_GATE: "1"
+          # Accende i 3 test end-to-end di apps/core/tests/services/test_db_error_fields:
+          # RAISE nel DB -> psycopg -> django.db.DatabaseError -> ApiError -> HTTP status.
+          # Sono l'UNICO punto che verifica la GIUNTURA fra le due meta' del
+          # contratto del codice errore strutturato (20260805-05): che
+          # `diag.constraint_name` sopravviva davvero al giro libpq/psycopg. I
+          # pgTAP coprono il lato DB, i test unitari col diag finto coprono il
+          # lato Python, ma nessuno dei due vede il pezzo in mezzo. Spenti di
+          # default perche' richiedono un DB raggiungibile; qui c'e', ed e' stato
+          # appena provvisto da Liquibase + manage.py migrate.
+          #
+          # ⚠️ PERCHE' FUNZIONANO, e quando smetteranno. Django crea il database
+          # di test usa-e-getta SOLO se almeno un test dichiara di averne bisogno
+          # (`django.test.TestCase` / `TransactionTestCase` / `databases = [...]`).
+          # In questa suite NESSUNO lo fa — 114 `unittest.TestCase` e 86
+          # `SimpleTestCase`, per la regola «i test devono girare senza DB reale»
+          # di AGENTS.md — quindi il runner stampa «Skipping setup of unused
+          # database(s)» e la connessione resta quella configurata, cioe' il DB
+          # completo di schema Liquibase. Il giorno in cui un test dichiarera' un
+          # database, il runner ne creera' uno vuoto per TUTTA la suite: li'
+          # `script.fn_log_and_raise_error` non esiste e questi tre falliranno in
+          # una PR che non c'entra niente. E' una dipendenza implicita, scritta
+          # anche in .codex/AGENTS.md §Regole test Django.
+          ZEROERP_TEST_DB_E2E: "1"
         run: |
           source .venv/bin/activate
           python manage.py test
+
+      # ------------------------------------------------------------------
+      # Suite pgTAP — 426 test DB, che fino al 2026-08-07 non giravano MAI in CI
+      # ------------------------------------------------------------------
+      # QUANDO GIRA, e perche' proprio cosi'. La suite costa ~7 minuti: farla a
+      # ogni push sarebbe sproporzionato, farla solo verso `main` la farebbe
+      # arrivare troppo tardi (il rosso spunta mescolato a giorni di lavoro
+      # altrui, e bisecarlo costa piu' dei minuti risparmiati).
+      #
+      # Misurato sui 30 giorni al 2026-08-07, su Tito-dev: 656 commit, di cui
+      # 155 toccano `db/` e 107 toccano SOLO `backend/`. Tito-dev e' anche il
+      # ramo di scambio fra backend e DB, quindi buona parte del traffico non
+      # riguarda il database: li' la suite girerebbe per niente.
+      #
+      #   - PR verso main      -> SEMPRE. E' il cancello prima dell'integrazione
+      #   - push su Tito-dev   -> solo se la push tocca `db/` o `scripts/`
+      #   - PR verso Tito-dev  -> mai (basta il cancello statico sul preambolo)
+      - name: Il DB e' cambiato in questa push?
+        id: db_cambiato
+        run: |
+          set -uo pipefail
+          if [ "${{ github.event_name }}" != "push" ]; then
+            echo "esito=si" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          BEFORE='${{ github.event.before }}'
+          # ⚠️ Ramo appena creato o history non risolvibile: si sceglie di GIRARE.
+          #   Un controllo che salta in silenzio quando non sa e' peggio di uno
+          #   che gira di troppo — il costo e' 7 minuti, l'altro e' una
+          #   regressione che passa.
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] \
+             || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            echo "esito=si" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if git diff --name-only "$BEFORE" "${{ github.sha }}" -- db/ scripts/ | grep -q .; then
+            echo "esito=si" >> "$GITHUB_OUTPUT"
+          else
+            echo "esito=no" >> "$GITHUB_OUTPUT"
+            echo "::notice::push senza modifiche a db/ o scripts/: suite pgTAP saltata"
+          fi
+
+      - name: Suite pgTAP (PR verso main · push su Tito-dev che toccano il DB)
+        # ⚠️ `event_name == 'push'` esplicito: senza, una PR verso Tito-dev
+        #   passerebbe (il passo sopra risponde 'si' per ogni non-push).
+        #   Trovato provando la tabella dei quattro casi a tavolino, non
+        #   leggendo la condizione.
+        if: github.base_ref == 'main' || (github.event_name == 'push' && steps.db_cambiato.outputs.esito == 'si')
+        continue-on-error: true
+        env:
+          # ⚠️ Baseline SEPARATA da quella di sviluppo, e non e' pigrizia.
+          #   Quella committata (db/pgtap/baseline-rossi.tsv) e' misurata sul DB
+          #   di sviluppo, che ha dati veri; qui il database e' ricostruito da
+          #   zero, quindi i test che dipendono da dati preesistenti falliscono
+          #   qui e non la'. Sono due popolazioni diverse: confrontarle
+          #   produrrebbe decine di finte regressioni — lo stesso difetto di
+          #   metro disomogeneo che ha originato tutto il cantiere.
+          PGTAP_BASELINE: db/pgtap/baseline-rossi-ci.tsv
+        run: |
+          set -uo pipefail
+
+          # pg_prove gira sul RUNNER (non nel container): e' Perl e parla col DB
+          # via rete. L'estensione pgtap invece sta nel container, installata
+          # insieme a plpgsql_check.
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libtap-parser-sourcehandler-pgtap-perl
+
+          PGPASSWORD='${{ secrets.POSTGRES_ADMIN_PASSWORD }}' \
+          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
+            -c "CREATE EXTENSION IF NOT EXISTS pgtap;"
+
+          # scripts/testpgtap.sh pretende un env file (db/internal.env e'
+          # gitignored e in CI non esiste). Qui dentro l'OWNER degli oggetti e'
+          # `zeroerp`, l'utente con cui gira Liquibase — non `titodb`.
+          cat > db/internal.env <<'ENVEOF'
+          PGUSER=zeroerp
+          PGPASSWORD=secret
+          PGHOST=localhost
+          PGPORT=5432
+          PGDATABASE=zeroerp
+          ENVEOF
+          sed -i 's/^[[:space:]]*//' db/internal.env
+
+          # La password dell'utente applicativo il runner la vuole da ~/.pgpass:
+          # in modalita' `app` toglie apposta PGPASSWORD, altrimenti userebbe
+          # quella dell'owner sull'utente sbagliato.
+          echo 'localhost:5432:zeroerp:zeroerp_app:secret-app' > ~/.pgpass
+          chmod 600 ~/.pgpass
+
+          echo "runner risolto: $(scripts/testpgtap.sh --print-runner)"
+
+          if [ ! -f "$PGTAP_BASELINE" ]; then
+            # ⚠️ PRIMA CORSA: la baseline della CI non esiste ancora, e non si
+            #   puo' indovinare — dipende da quali test reggono su un database
+            #   ricostruito da zero, che e' esattamente cio' che su dev non si
+            #   puo' misurare. Questa corsa la GENERA e la stampa: va copiata,
+            #   committata, e poi si toglie `continue-on-error` qui sopra.
+            echo "::warning::baseline CI assente: questa corsa la genera. Copiala e committala."
+            scripts/pgtap-baseline.sh --update || true
+            echo "----- 8< ----- db/pgtap/baseline-rossi-ci.tsv ----- 8< -----"
+            cat "$PGTAP_BASELINE"
+            echo "----- >8 ----------------------------------------- >8 -----"
+            exit 0
+          fi
+
+          scripts/pgtap-baseline.sh
 
   # Validazione artefatti di deploy dei worker (systemd timer). Job leggero e
   # indipendente: NON esegue i timer (la CI non è un host di runtime), ne

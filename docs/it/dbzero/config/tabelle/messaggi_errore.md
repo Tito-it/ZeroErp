@@ -15,6 +15,7 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | FOREIGN KEY | fk_cfg_messaggi_errore_lingua | lingua |
+| FOREIGN KEY | fk_messaggi_errore_codici_errore | codice |
 | PRIMARY KEY | pk_messaggi_errore | id |
 | UNIQUE | uq_messaggi_errore_codice_lingua | codice, lingua |
 

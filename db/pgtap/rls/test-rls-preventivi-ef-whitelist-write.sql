@@ -1,5 +1,18 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-differiti: escluso — la fixture non soddisfa un vincolo DIFFERITO e la
+--   ragione e' scritta per esteso piu' sotto. Debito noto (§22.4): quando la
+--   fixture viene completata, si toglie questa riga e si rimette il
+--   SET CONSTRAINTS ALL IMMEDIATE nel punto in cui l'unita' di lavoro e' completa.
+-- pgtap-contesto: escluso — la ragione e' scritta per esteso piu' sotto in
+--   questo stesso file. Dichiarazione leggibile dal cancello
+--   scripts/guardrail_pgtap_preambolo.py: distingue «escluso apposta» da
+--   «dimenticato», che una nota in prosa non fa.
+--   ⚠️ Da riguardare: le esclusioni `rls/` furono fatte IN BLOCCO, e almeno
+--   una non ne aveva diritto (brief pgtap-runner-rls-baseline §30.2).
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: ALTER TABLE vendite.preventivi ENABLE + FORCE ROW LEVEL SECURITY, locale alla
+--   transazione: e' il FORCE a rendere l'owner soggetto alle policy.
 -- pgTAP test FUNZIONALE scrittura RLS — vendite.preventivi (ef_whitelist)
 --
 -- Brief RLS Ondata 2 ("insert bloccati"): la migration 20260603-16 estende
@@ -36,6 +49,21 @@
 -- ------------------------------------------------------------
 
 BEGIN;
+-- ⚠️ QUESTO FILE NON USA `SET CONSTRAINTS ALL IMMEDIATE`, a differenza degli
+--   altri, e non e' una dimenticanza.
+--   `anagrafiche.soggetti` ha TRE guard DEFERRABLE INITIALLY DEFERRED —
+--   indirizzi, contatti, dati societari — e li' la deferralita' e' il CONTRATTO
+--   DEL DOMINIO: si crea il soggetto, poi il suo indirizzo, e la completezza si
+--   verifica al COMMIT. E' per questo che anagrafiche.fn_crea_soggetto_pf puo'
+--   restituire un soggetto ancora incompleto, ed e' cosi' che la usa il backend.
+--   Forzare IMMEDIATE pretenderebbe l'indirizzo nell'istante stesso dell'INSERT
+--   del soggetto: vieterebbe il pattern che il dominio ha scelto.
+--   ⚠️ Resta un buco reale: senza la riga quei guard non vengono esercitati da
+--   questo test, e la fixture lascia un soggetto che l'applicazione non
+--   potrebbe committare. La correzione vera e' COMPLETARE LA FIXTURE
+--   (indirizzo + contatti): allora la riga si rimette e il test verifica sul
+--   serio. Brief: brief-db-pgtap-runner-rls-baseline §21.
+
 SELECT plan(4);
 
 -- Preventivo ESISTENTE con emittente risolvibile + un altro emittente.

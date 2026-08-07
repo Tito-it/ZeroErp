@@ -36,6 +36,41 @@
 --   13. DB-A: ogni colonna dell'output espone la chiave priorita
 -- ------------------------------------------------------------
 BEGIN;
+
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
+--   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
+--   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio, e il
+--   file sarebbe verde per sottrazione. IMMEDIATE li riporta a scattare a fine
+--   di ogni istruzione. In testa e non in coda: in coda scatterebbero dopo il
+--   cleanup, su righe ormai cancellate.
+--   Brief: brief-db-pgtap-runner-rls-baseline §19.
+SET CONSTRAINTS ALL IMMEDIATE;
+
+-- ⚠️ QUESTO FILE NON USA script.fn_pgtap_set_contesto_operatore(), a differenza
+-- degli altri, e non e' una dimenticanza. Stessa ragione del gemello
+-- test-fn-resolve-dashboard-config.sql, dove e' spiegata per esteso.
+-- In breve: la fixture costruisce un'identita' CLIENTE_PORTALE (riga ~192, per
+-- evitare il guard PF pura) e la funzione filtra i profili per la veste
+-- corrente. Dichiarare OPERATORE in testa esclude — correttamente — quel
+-- profilo, e cadono le asserzioni 5, 7 e 11.
+-- Qui c'e' un indizio in piu': l'asserzione 12 manipola gia' `app.ruolo_applicativo`
+-- da sola, per verificare proprio che la veste filtri. Il file conosce la GUC e
+-- sceglie di tenerla vuota altrove — ma «veste vuota» e' una condizione che
+-- l'applicazione non produce mai. Correzione vera: dichiarare CLIENTE_PORTALE,
+-- decisione del cantiere `ui`.
+-- Brief: brief-db-pgtap-runner-rls-baseline §11.
+
+-- ⚠️ Due vesti, in ordine, e l'ordine e' il punto.
+--   La fixture deve prima VEDERE (billing_account e' sotto RLS: senza una veste
+--   dichiarata l'utente applicativo legge zero righe, _t_sr resta vuota e cade
+--   tutto a valle). Poi, prima delle asserzioni, si indossa la veste che il test
+--   collauda davvero — CLIENTE_PORTALE, quella dell'identita' che la fixture ha
+--   appena creato.
+--   E' la «correzione vera» che il commento qui sopra nominava lasciandola al
+--   cantiere `ui`: «veste vuota» non e' una condizione che l'applicazione
+--   produca mai, quindi collaudarci sopra non misura l'applicazione.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
 SELECT plan(13);
 -- =========================================================
 -- 1. Setup: lista + colonne + auth_user + identita
@@ -200,6 +235,12 @@ CREATE TEMP TABLE _t_id AS WITH ins AS (
 )
 SELECT id AS identita_id
 FROM ins;
+
+-- Da qui in poi si agisce come l'identita' appena creata: e' la veste che il
+-- test collauda davvero, e senza la quale i profili PORTALE/AD_HOC verrebbero
+-- filtrati (asserzioni 5, 7 e 11).
+SELECT set_config('app.ruolo_applicativo', 'CLIENTE_PORTALE', true);
+SELECT set_config('app.current_identita_id', (SELECT identita_id::text FROM _t_id), true);
 -- Profilo AD_HOC per i test di permessi
 CREATE TEMP TABLE _t_profilo AS WITH ins AS (
     INSERT INTO config.profili_accesso (tipo, codice, descrizione, attivo)

@@ -1,5 +1,15 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-contesto: escluso — la ragione e' scritta per esteso piu' sotto in
+--   questo stesso file. Dichiarazione leggibile dal cancello
+--   scripts/guardrail_pgtap_preambolo.py: distingue «escluso apposta» da
+--   «dimenticato», che una nota in prosa non fa.
+--   ⚠️ Da riguardare: le esclusioni `rls/` furono fatte IN BLOCCO, e almeno
+--   una non ne aveva diritto (brief pgtap-runner-rls-baseline §30.2).
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: ALTER TABLE vendite.commesse / commesse_attivita ENABLE + FORCE ROW LEVEL
+--   SECURITY, locale alla transazione: e' il FORCE a rendere l'owner soggetto
+--   alle policy. L'identita' la simulano le GUC app.*, non il ruolo di connessione.
 -- pgTAP test FUNZIONALE scrittura/lettura RLS — vendite.commesse +
 --   vendite.commesse_attivita (ef_whitelist).
 --

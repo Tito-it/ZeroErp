@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from django.test import SimpleTestCase
 
+from apps.core.tests.db_error_fakes import make_db_error
 from apps.core.services.service_errors import ServiceError
 from apps.pratiche.services import definizioni_service
 
@@ -157,12 +158,13 @@ class DefinizioniServiceTests(SimpleTestCase):
     def test_pubblica_definizione_non_pubblicabile(self, MockRepo):
         from django.db import DatabaseError
 
-        MockRepo.return_value.pubblica_definizione.side_effect = DatabaseError(
+        MockRepo.return_value.pubblica_definizione.side_effect = make_db_error(
             "Definizione workflow 9 non pubblicabile: la BOZZA non ha modifiche.",
-        )
+            codice="E_DEFINIZIONE_NON_PUBBLICABILE",
+ )
         with self.assertRaises(ServiceError) as ctx:
             definizioni_service.pubblica_definizione(9)
-        self.assertEqual(ctx.exception.code, "DEFINIZIONE_NON_PUBBLICABILE")
+        self.assertEqual(ctx.exception.code, "E_DEFINIZIONE_NON_PUBBLICABILE")
 
     @patch(f"{_SVC}.DefinizioniRepository")
     def test_nuova_versione_ok(self, MockRepo):
@@ -175,25 +177,27 @@ class DefinizioniServiceTests(SimpleTestCase):
     def test_fork_bozza_esistente(self, MockRepo):
         from django.db import DatabaseError
 
-        MockRepo.return_value.fork_definizione.side_effect = DatabaseError(
+        MockRepo.return_value.fork_definizione.side_effect = make_db_error(
             "Esiste gia' una bozza di edizione workflow per lo scope "
             "(tipo prestazione 9004, emittente 44): completarla o scartarla.",
+            codice="E_DEFINIZIONE_BOZZA_ESISTENTE",
         )
         with self.assertRaises(ServiceError) as ctx:
             definizioni_service.fork_definizione(7, 44)
-        self.assertEqual(ctx.exception.code, "DEFINIZIONE_BOZZA_ESISTENTE")
+        self.assertEqual(ctx.exception.code, "E_DEFINIZIONE_BOZZA_ESISTENTE")
 
     # Scopo: nuova-versione da sorgente non PUBBLICATA → marker parlante.
     @patch(f"{_SVC}.DefinizioniRepository")
     def test_nuova_versione_no_pubblicata(self, MockRepo):
         from django.db import DatabaseError
 
-        MockRepo.return_value.nuova_versione_definizione.side_effect = DatabaseError(
+        MockRepo.return_value.nuova_versione_definizione.side_effect = make_db_error(
             "Nuova versione non ammessa: la definizione 419 non e' in stato PUBBLICATA.",
-        )
+            codice="E_DEFINIZIONE_NO_PUBBLICATA",
+ )
         with self.assertRaises(ServiceError) as ctx:
             definizioni_service.nuova_versione_definizione(419)
-        self.assertEqual(ctx.exception.code, "DEFINIZIONE_NO_PUBBLICATA")
+        self.assertEqual(ctx.exception.code, "E_DEFINIZIONE_NO_PUBBLICATA")
 
     # --- Write step su BOZZA (Slice 2 anello 3) ---
 
@@ -242,13 +246,14 @@ class DefinizioniServiceTests(SimpleTestCase):
         from django.db import DatabaseError
         repo = MockRepo.return_value
         repo.get_definizione.return_value = {"id": 418, "tipo_prestazione_id": 9004, "stato": "PUBBLICATA"}
-        repo.create_step.side_effect = DatabaseError(
+        repo.create_step.side_effect = make_db_error(
             "Struttura della definizione workflow 418 non modificabile: e' un'edizione "
             "per-emittente gia' emessa (pubblicata o ritirata), struttura congelata.",
+            codice="E_TEMPLATE_DEFINIZIONE_CONGELATA",
         )
         with self.assertRaises(ServiceError) as ctx:
             definizioni_service.create_step(418, {"codice": "X", "descrizione": "Y"})
-        self.assertEqual(ctx.exception.code, "TEMPLATE_DEFINIZIONE_CONGELATA")
+        self.assertEqual(ctx.exception.code, "E_TEMPLATE_DEFINIZIONE_CONGELATA")
 
     # Scopo: update tocca solo lo scope (id, definizione_id); rowcount 0 → 404.
     @patch(f"{_SVC}.DefinizioniRepository")
@@ -329,11 +334,13 @@ class DefinizioniServiceTests(SimpleTestCase):
         from django.db import DatabaseError
         repo = MockRepo.return_value
         repo.step_in_definizione.return_value = True
-        repo.create_child.side_effect = DatabaseError(
-            "… e' un'edizione per-emittente gia' emessa, struttura congelata.")
+        repo.create_child.side_effect = make_db_error(
+            "… e' un'edizione per-emittente gia' emessa, struttura congelata.",
+            codice="E_TEMPLATE_DEFINIZIONE_CONGELATA",
+        )
         with self.assertRaises(ServiceError) as ctx:
             definizioni_service.create_step_figlio(418, 9660, "canali", {"canale_id": 3})
-        self.assertEqual(ctx.exception.code, "TEMPLATE_DEFINIZIONE_CONGELATA")
+        self.assertEqual(ctx.exception.code, "E_TEMPLATE_DEFINIZIONE_CONGELATA")
 
     # Scopo: update fuori scope (riga/step/definizione) → rowcount 0 → 404.
     @patch(f"{_SVC}.DefinizioniRepository")
@@ -429,12 +436,14 @@ class DefinizioniServiceTests(SimpleTestCase):
         repo = MockRepo.return_value
         repo.get_definizione.return_value = {"id": 418, "tipo_prestazione_id": 9004}
         repo.step_in_definizione.return_value = True
-        repo.create_edge.side_effect = DatabaseError(
-            "… e' un'edizione per-emittente gia' emessa, struttura congelata.")
+        repo.create_edge.side_effect = make_db_error(
+            "… e' un'edizione per-emittente gia' emessa, struttura congelata.",
+            codice="E_TEMPLATE_DEFINIZIONE_CONGELATA",
+        )
         with self.assertRaises(ServiceError) as ctx:
             definizioni_service.create_arco(418, "prerequisiti", {
                 "template_flusso_id": 1, "prerequisito_id": 2})
-        self.assertEqual(ctx.exception.code, "TEMPLATE_DEFINIZIONE_CONGELATA")
+        self.assertEqual(ctx.exception.code, "E_TEMPLATE_DEFINIZIONE_CONGELATA")
 
     @patch(f"{_SVC}.DefinizioniRepository")
     def test_delete_arco_ok(self, MockRepo):

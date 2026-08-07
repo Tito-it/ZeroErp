@@ -33,7 +33,7 @@ BEGIN
         PERFORM script.fn_log_and_raise_error(
             'database',
             'fn_get_parameter_full',
-            'ERRORE_PARAMETRI_TABELLA',
+            'E_ERRORE_PARAMETRI_TABELLA',
             jsonb_build_object(
                 'codice_parametro', p_code,
                 'nome_tabella',      'config.parameters'

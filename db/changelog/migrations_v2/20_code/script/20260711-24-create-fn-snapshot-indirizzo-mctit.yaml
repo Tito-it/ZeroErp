@@ -30,8 +30,10 @@ databaseChangeLog:
   - changeSet:
       id: 20260711-24-create-fn-snapshot-indirizzo
       author: mctit
-      runOnChange: true
-      validCheckSum:
+      # ⚠️ Era `true`: definisce script.fn_snapshot_indirizzo, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
         - ANY
       changes:
         - sql:

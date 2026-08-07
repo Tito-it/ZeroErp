@@ -70,10 +70,11 @@ BEGIN
     IF NOT FOUND THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'fn_offerta_eccezione_componenti_init',
-            'E_PARAMETRO_INVALIDO',
+            -- rev 2026-08-07: era E_PARAMETRO_INVALIDO, cioe' 400 su un 404.
+            'E_OFFERTA_ECCEZIONE_NON_TROVATA',
             jsonb_build_object('p_eccezione_id', p_eccezione_id),
             NULL::uuid,
-            'eccezione offerta non trovata'
+            p_eccezione_id::text
         );
     END IF;
 
@@ -135,10 +136,16 @@ BEGIN
             IF v_prezzo = 0 AND COALESCE(v_comp.obbligatorio, TRUE) THEN
                 PERFORM script.fn_log_and_raise_error(
                     'vendite', 'fn_offerta_eccezione_componenti_init',
-                    'E_PARAMETRO_INVALIDO',
+                    -- rev 2026-08-07: era E_PARAMETRO_INVALIDO. Non e' un parametro
+                    --   malformato: e' una regola di dominio, e il codice giusto
+                    --   esisteva gia'. Il suo messaggio dice «Componente obbligatorio
+                    --   [%s]», quindi il valore variadico e' il COMPONENTE, non il
+                    --   documento. Brief terzo lato §19.4.
+                    'E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO',
                     jsonb_build_object('componente_id', v_comp.componente_id,
+                        'eccezione_id', p_eccezione_id,
                         'hint', 'prezzo override deve essere diverso da zero'),
-                    NULL::uuid, p_eccezione_id::text);
+                    NULL::uuid, v_comp.componente_id::text);
             END IF;
             INSERT INTO vendite.offerte_commerciali_eccezioni_componenti (
                 eccezione_offerta_id,
@@ -288,7 +295,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_offerta_eccezione_componenti_init(p_eccezione_id bigint, p_emittente_sr_id bigint, p_data_riferimento date, p_componenti_overrides jsonb)
-IS 'Inizializza componenti BoM CASO A per un''eccezione offerta composita. Modello unificato rev 2026-05-27: tutti i componenti attivi inseriti con attivo=TRUE (no filtro esposto_in_fattura). Chiave overrides: componente_id::text. Guard override=0 solo su obbligatori. Check BOM vuota post-loop. Fallback resolver P0001: prezzo=0/MANUALE (permissivo). rev 2026-06-05: guard difensivo no-op su tipo_eccezione = ESCLUSIONE. Idempotente. No-op su quantita IS NULL. Ritorna n. componenti inseriti.';
+IS 'Inizializza componenti BoM CASO A per un''eccezione offerta composita. rev 2026-08-07, due correzioni dal quarto lato (brief §19.4): eccezione inesistente -> E_OFFERTA_ECCEZIONE_NON_TROVATA (898) invece di E_PARAMETRO_INVALIDO (400 su un 404); componente obbligatorio con prezzo override zero -> E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO, codice che esisteva gia'' e che nessuno aveva collegato.';
 ```
 
 ---

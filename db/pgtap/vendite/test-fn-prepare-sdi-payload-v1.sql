@@ -3,7 +3,7 @@
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_prepare_sdi_payload — payload SDI del lotto
 -- ------------------------------------------------------------
--- Brief: docs/it/dev/work-in-progress/brief-db-bonifica-riferimenti-morti.md
+-- Brief: docs/it/dev/work-done/brief-db-bonifica-riferimenti-morti.md
 --        (F2, changeSet 20260804-39)
 --
 -- Indice test (1..10):
@@ -64,6 +64,21 @@
 -- ------------------------------------------------------------
 
 BEGIN;
+
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
+--   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
+--   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio, e il
+--   file sarebbe verde per sottrazione. IMMEDIATE li riporta a scattare a fine
+--   di ogni istruzione. In testa e non in coda: in coda scatterebbero dopo il
+--   cleanup, su righe ormai cancellate.
+--   Brief: brief-db-pgtap-runner-rls-baseline §19.
+SET CONSTRAINTS ALL IMMEDIATE;
+
+-- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
+-- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
+-- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
+-- Brief: brief-db-pgtap-runner-rls-baseline §8.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(10);
 

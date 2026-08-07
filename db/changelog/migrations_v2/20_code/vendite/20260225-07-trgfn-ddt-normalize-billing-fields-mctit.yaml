@@ -13,8 +13,10 @@ databaseChangeLog:
   - changeSet:
       id: 20260225-07-trgfn-ddt-normalize-billing-fields
       author: mctit
-      runOnChange: true
-      validCheckSum:
+      # ⚠️ Era `true`: definisce vendite.trgfn_ddt_normalize, che un changeSet PIU' RECENTE
+      #   ridefinisce. Rigirando riportava indietro quella revisione. Non rimetterlo a true (2026-08-06).
+      runOnChange: false
+      validCheckSums:
         - ANY
       comment: "Estende trgfn_ddt_normalize: eredita billing_account_id, utility_id, valuta_id da ordine sorgente su INSERT."
       changes:

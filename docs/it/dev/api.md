@@ -742,14 +742,459 @@ verificabile, non sostituisce la disciplina in review.
 ### Tassonomia errori
 
 Tutti i codici errore seguono `E_{MODULO}_{TIPO}` e DEVONO essere registrati
-in `error_policies.py` prima dell'uso. Il suffisso determina la categoria:
+prima dell'uso. Il suffisso **suggerisce** la categoria:
 
-| Suffisso | HTTP | Esempio |
+| Suffisso | HTTP tipico | Esempio |
 | --- | --- | --- |
 | `_VALIDATION` / `_VALIDAZIONE` | 400 | `E_ANAG_VALIDAZIONE` |
 | `_NOT_FOUND` | 404 | `E_PRATICA_NOT_FOUND` |
 | `_DUPLICATO` / `_IN_ESECUZIONE` | 409 | `E_ANAG_DUPLICATO` |
 | `_NEGATO` / `_DENIED` | 403 | `E_PERMESSO_NEGATO` |
+
+#### ⭐ Registrare un codice = dargli una **classe** (dal 2026-08-07)
+
+⚠️ **Non si scrive più lo status.** Fino al 2026-08-07 registrare un codice
+voleva dire aggiungere una riga con `http_status`, `ui_action` e messaggio a un
+dizionario di 659 voci. Ora si dichiara **che cosa è** l'errore — la sua
+`classe` — e status e `ui_action` si **derivano**.
+
+| classe | HTTP | Quando |
+| --- | --- | --- |
+| `DATO_ERRATO` | 400 | la richiesta è malformata o il valore è sbagliato |
+| `CONFLITTO_STATO` | 409 | in conflitto con lo stato attuale della risorsa |
+| `NON_TROVATO` | 404 | la cosa indicata non esiste |
+| `TECNICO` | 500 | guasto o pezzo non configurato: l'operatore non può farci niente |
+| `NON_PERMESSO` | 403 | il diritto manca, e non dipende dallo stato |
+| `NON_ESEGUIBILE` | 422 | si capisce ma non si può eseguire |
+| `NON_DISPONIBILE` | 501 | funzione presente ma non servita (disattivata) |
+| `NON_AUTENTICATO` | 401 | non autenticato (≠ 403: autenticato ma senza diritto) |
+| `ERRORE_ESTERNO` | 502 | un provider esterno ha risposto male |
+| `AVVISO` | **nessuno** | non è un rifiuto: si scrive nel diario e non raggiunge mai il client |
+
+Il vocabolario è lo stesso di `config.classi_errore`. **La mappa classe → HTTP
+resta lato backend**, ed è una scelta: è *trasporto*, non dominio — il database
+non deve sapere cosa sia un 409.
+
+⭐ **Le classi erano otto fino al 2026-08-07, e le due arrivate dopo dicono
+qualcosa.** 401 e 502 erano dichiarati «fuori dal vocabolario di dominio, da
+mappare a mano nel backend». Non lo erano: sono righe del catalogo come tutte le
+altre, quindi con `classe NOT NULL` una classe la vogliono. Con
+`NON_AUTENTICATO` ed `ERRORE_ESTERNO` a vocabolario **l'eccezione dei cinque
+codici sparisce**: non c'è più nessuna mappa per codice nel backend, si deriva
+tutto dalla classe — e il prossimo codice di autenticazione prenderà il suo 401
+senza che nessuno lo scriva.
+
+**Dove si mette cosa** — quattro moduli in `apps/core/services/`, separati per
+**quando cambiano** e non per contenuto:
+
+| Modulo | Cosa | Chi lo scrive |
+| --- | --- | --- |
+| `error_policies_generated.py` | `codice → classe`, **689 voci** (79 ritirate) | ⛔ **GENERATO** da `config.vw_codici_errore_identita` |
+| `error_policies.py` | `classe → (status, ui_action)` — 10 righe + la logica | a mano, quasi mai |
+| `error_ui_overrides.py` | le **176** `ui_action` fuori default, **coi loro perché** | a mano, quando cambia una scelta di UI |
+| `error_messages_fallback.py` | i messaggi **senza segnaposto** | a mano, per ora |
+
+⛔ **Il primo modulo non si modifica a mano.** Per dare una classe a un codice si
+cambia il **catalogo** e si rigenera:
+
+```bash
+# 1. il team DB semina il codice in codici_errore.csv con la sua classe
+# 2. lato backend:
+./manage-env.sh genera_error_policies          # riscrive il modulo
+./manage-env.sh genera_error_policies --check   # non scrive: dice se diverge
+```
+
+Il `--check` è quello che gira in CI (come test, `test_error_policies_divergenza_db`):
+un file generato che nessuno rigenera torna a essere scritto a mano senza che
+nessuno lo decida.
+
+⚠️ **I codici ritirati restano nel modulo e continuano a risolvere**, perché
+`dbops.error_log` contiene le loro righe e devono restare leggibili —
+`obsoleto_dal` non è `attivo = false`. Ma **nessun punto di chiamata nuovo deve
+nominarli**: lo presidia `test_error_codes_declared_guardrail`, e per la stessa
+ragione `ErrorPolicyRegistry.has()` oggi risponde *«lo conosco»*, non *«è
+buono»*. La domanda «questo codice si può usare?» si fa su `CODICI_RITIRATI`.
+
+⚠️ **`ui_action` non si deriva dalla classe, e il numero conta.** Restano 176
+override su 658, di cui **117 sulla sola `DATO_ERRATO`**: lì il default è un
+lancio di moneta — 117 contro 117 — perché il discriminante non è la classe ma
+**dove manca il dato**, sul form in corso (`highlight_form_fields`) o
+sull'entità collegata (`show_error_banner`). Il default scelto è il banner:
+promettere un campo da evidenziare che non esiste è peggio del contrario.
+
+⚠️ **Una classe senza status mappato solleva `ClasseErroreSenzaStatus`**, non
+ripiega. È la garanzia per `AVVISO`: prima `resolve()` non falliva mai e un
+avviso sfuggito al cancello sarebbe diventato un **500 col messaggio soppresso**.
+
+**Restano fuori 5 codici**, con lo status scritto a mano perché non passano
+dall'exception handler: `E_JWT_SENZA_IDENTITA`, `E_IDENTITA_NON_ATTIVA`,
+`E_AUTHENTICATION_FAILED`, `E_NOT_AUTHENTICATED` (401) e `E_AI_PROVIDER_ERROR`
+(502).
+
+> Perché tutto questo: `docs/it/dev/work-in-progress/brief-db-be-classe-codici-errore.md`.
+> In una riga: il significato di un errore viveva **solo** in un dizionario
+> Python, quindi il catalogo DB non aveva il campo dove la contraddizione si
+> sarebbe vista.
+
+#### ⚠️ Il suffisso NON decide lo status: decide il punto che solleva
+
+La tabella sopra è una **convenzione di naming**, non una regola di mapping. Usarla
+per assegnare uno status è il modo più rapido di sbagliare, e non è un'ipotesi:
+assegnando 91 policy in un giorno (2026-08-06) **il nome ha mentito tre volte**.
+
+| Codice | Cosa suggerisce il nome | Cosa fa davvero il punto che solleva | Status |
+| --- | --- | --- | --- |
+| `E_SNAPSHOT_ID_NOT_FOUND` | 404 | `EXCEPTION WHEN OTHERS` nella storicizzazione: non manca un record, fallisce la lettura della chiave | **500** |
+| `E_DELETE_NOT_ALLOWED` | 409 (stato sfavorevole) | blocca **sempre**, sbloccabile solo da una GUC di sistema: è un diritto che manca | **403** |
+| `E_FULFILL_NOT_FOUND` | «manca un legame» | la riga indicata non esiste (`SELECT INTO` → NULL) | **404** |
+
+E in senso opposto: `E_PARAMETRO_INVALIDO` viene sollevato in due punti su un
+`IF NOT FOUND`, dove la verità è 404 — ma **non si corregge cambiando la sua
+policy**: 113 funzioni lo nominano e per 111 il 400 è giusto. Un codice usato per
+due cose si spezza a monte, non si rimappa a valle.
+
+> **Regola operativa: leggere la funzione che solleva, non il nome del codice.**
+> Se il codice è sollevato da più punti con verità diverse, lo status giusto è il
+> **denominatore sicuro** (quello che non fa danno in nessuno dei punti), e il
+> codice va segnalato al team DB come candidato allo split.
+
+**Due corollari, pagati entrambi sul campo** (2026-08-07):
+
+* ⚠️ **conta il ramo, non la funzione.** Due `IF` adiacenti nella stessa funzione
+  possono avere verità opposte: in `dbops.fn_accoda_lavoro`,
+  `E_JOB_TYPE_NON_TROVATO` è **500** (tipo mai registrato: difetto di deploy) e
+  `E_JOB_TYPE_NON_ATTIVO` è **501** (tipo esistente, disattivato di proposito).
+  In `fn_push_offerta_a_contratto` due guardie quasi identiche hanno richiesto
+  codici diversi, e la prima misura le aveva confuse;
+* ⚠️ **se la funzione ha gemelle per dominio, il perimetro sono tutte.**
+  `fn_contratto_riga_componenti_init` ha tre gemelle (`ddt`, `ordine`,
+  `preventivo`): lo stesso difetto stava in tutte e quattro, ma è stato corretto
+  su una sola e le altre tre sono tornate al giro dopo. Nello stesso file, nello
+  stesso giorno, un altro difetto era già stato trattato **come famiglia**.
+
+⚠️ **Non introdurre codici generici nuovi.** Un codice che serve a due punti
+diversi è due codici. `E_PARAMETRO_INVALIDO` è nominato da **177 punti** ed
+`E_VALIDAZIONE` da **13**: nessuno dei due è stato scelto per mancanza di
+alternative, erano **generici e a portata di mano**, e in un caso il commento nel
+DB confessa di aver scelto il codice per il numero di `%s` del messaggio.
+
+> ⭐ **Ma «generico» e «accumulatore» non sono la stessa cosa, e questo documento
+> lo diceva sbagliato fino al 2026-08-07.** Diceva che i due erano *«la prova di
+> dove si finisce»*, contando le **funzioni** che li nominano — 113 e 10, «cinque
+> domini». Contate invece le **condizioni** che li sollevano (team DB, eseguendo
+> lo split che questa misura aveva reso urgente):
+>
+> | Codice | Punti | Guard di parametro (`IS NULL OR <= 0` e simili) | Altro |
+> |---|---:|---:|---:|
+> | `E_VALIDAZIONE` | 13 | **13** | **0** |
+> | `E_PARAMETRO_INVALIDO` | 177 | 160 (90%) | 17 |
+>
+> `E_VALIDAZIONE` **non è un accumulatore**: tutti e 13 i punti sono la guard di
+> parametro che [AGENTS.md](../../../.codex/AGENTS.md) prescrive. Lo split
+> programmato è stato chiuso **senza fare niente**. Il caso che sembrava
+> dimostrare il contrario — *«`fn_annulla_reso` che rifiuta un annullamento è un
+> conflitto di stato»* — non esiste: lì `E_VALIDAZIONE` scatta su
+> `p_reso_id IS NULL OR p_reso_id <= 0`, e non rifiuta nessun annullamento.
+>
+> **La regola che ne esce, e vale oltre questi due:** *un codice è un
+> accumulatore quando copre **condizioni** diverse, non quando è usato in
+> **domini** diversi.* «10 funzioni, 5 domini» era un numero vero che misurava la
+> cosa sbagliata — le funzioni erano eterogenee, la condizione no. Prima di
+> proporre uno split, contare le condizioni ai punti che sollevano.
+
+**Quando spezzare un codice e quando no.** Un codice a più significati si spezza
+quando i significati **portano a reazioni diverse della pagina**, non perché sono
+più d'uno: `E_STATO_SCONOSCIUTO` diceva «stato di workflow inesistente» (404, la
+pagina torna indietro) e «nazione dell'indirizzo non risolta» (400, si evidenzia
+il campo) — reazioni opposte, spezzato. `E_SOGGETTI_RUOLI` ne copre tre, ma tutte
+e tre chiedono un 400: tenuto insieme, con la ragione scritta nella policy.
+
+#### Gli status in uso, tutti — e cosa è standard e cosa è nostro
+
+⚠️ **Gli status HTTP non li abbiamo inventati noi.** Sono uno standard IETF:
+**RFC 9110 «HTTP Semantics»** (giugno 2022, che ha sostituito RFC 7231/7235), e
+il registro ufficiale dei codici è quello IANA. Quando questo documento dice
+«404 = non esiste» sta citando lo standard, non una convenzione di progetto.
+
+**Nostro** è invece tutto il resto, e conviene sapere dove passa il confine:
+
+| Cosa | Chi lo stabilisce |
+|---|---|
+| il significato di 400/403/404/409/500… | **RFC 9110** (standard) |
+| il nome dei codici (`E_MODULO_TIPO`) | noi |
+| quale codice mappa su quale status | **noi** — è la decisione di dominio |
+| il vocabolario `ui_action` | noi, non esiste nulla di standard |
+
+Censimento del dizionario al 2026-08-07, a registro del debito azzerato
+(**659 policy**):
+
+| Status | Quanti | Fonte | Quando |
+| --- | --- | --- | --- |
+| **400** Bad Request | 234 | RFC 9110 | la richiesta è malformata o il valore è sbagliato |
+| **409** Conflict | 224 | RFC 9110 | «conflitto con lo stato attuale della risorsa» — la definizione dello standard è **letteralmente** il nostro caso: transizioni non ammesse, immutabilità, duplicati |
+| **404** Not Found | 84 | RFC 9110 | la cosa indicata non esiste |
+| **500** | 63 | RFC 9110 | anomalia tecnica: l'operatore non può farci niente |
+| **403** Forbidden | 23 | RFC 9110 | il diritto manca, e non dipende dallo stato |
+| **422** Unprocessable Content | 22 | RFC 9110 §15.5.21 | sintassi valida, **semantica** no: il payload si capisce ma non si può eseguire |
+| **401** Unauthorized | 4 | RFC 9110 | non autenticato (≠ 403: autenticato ma senza diritto) |
+| **501** Not Implemented | 4 | RFC 9110 | funzione non implementata / disattivata |
+| **502** Bad Gateway | 1 | RFC 9110 | un provider esterno ha risposto male |
+
+**Tutti e nove vengono da RFC 9110**: dopo l'audit non resta in uso nessuno
+status fuori dal nucleo HTTP.
+
+> ⚠️ **Se si rifà questo censimento**, contare i blocchi delimitando ogni voce
+> con la **chiave successiva**, non con un terminatore di indentazione: la prima
+> versione di questa tabella si fermava a 570 policy su 602 perché l'ultima riga
+> di un blocco non è sempre indentata allo stesso modo, e il conteggio risultava
+> plausibile ma sbagliato. *Anche la misura è un programma, e può avere il suo
+> difetto.*
+
+**Audit di coerenza del 2026-08-06** — cercando famiglie che rispondono in due
+modi, su 601 policy è emersa **una sola divergenza vera**:
+`EMITTENTE_NON_MODIFICABILE` (409) contro `E_EMITTENTE_NON_MODIFICABILE` (400),
+unica fra le **53** coppie legacy/prefissato. La voce senza prefisso era orfana —
+il team DB aveva già tolto quel codice dal catalogo — ed è stata rimossa; i tre
+codici della famiglia «immutabilità» che stavano a 400 sono passati a **409**,
+allineandosi agli altri 29. `ui_action` invariata: a video non cambia nulla,
+cambia il contratto.
+
+**I tre status con un solo uso, esaminati uno per uno** (2026-08-06). «Usato una
+volta sola» non è di per sé un difetto: il difetto è usare uno status per una
+cosa che lo standard non dice. Esito diverso per tutti e tre:
+
+| Era | Codice | Esito |
+| --- | --- | --- |
+| **423** Locked | `E_UTENTE_BLOCCATO` | → **403**. Il 423 di RFC 4918 è il lock WebDAV di una **risorsa**, non di un account; il gemello `E_USER_DISABILITATO` è già 403. ⚠️ E **non** 429, che sembrerebbe ovvio: `LoginView.resolveLoginError` intercetta il 429 **prima** di leggere il codice (throttle per IP) e il messaggio coi minuti rimanenti andrebbe perso |
+| **428** Precondition Required | `E_AI_CONFIRMATION_REQUIRED` | **ritirato**. Non lo sollevava nessuno: il flusso di conferma dei tool in scrittura restituisce **200 con `requires_confirmation` nel payload** — una conferma richiesta non è un errore HTTP. E il 428 (RFC 6585) significa «la richiesta deve essere condizionale», non «l'utente deve confermare» |
+| **502** Bad Gateway | `E_AI_PROVIDER_ERROR` | **resta**. Il backend chiama un provider esterno e ne riceve una risposta invalida: è letteralmente la definizione RFC del 502. Normalizzarlo a 500 perderebbe l'unica informazione che serve leggendo i log |
+
+> La lezione non è «meno status è meglio». È che **l'uniformità non è un valore
+> in sé**: due dei tre sono stati cambiati perché dicevano una cosa falsa, il
+> terzo è rimasto perché dice quella vera.
+
+#### ⚠️ Il criterio che distingue un 404 da un 500: chi può rimediare
+
+Prima di scrivere 404 su un «non trovato», chiedersi **chi può fare qualcosa**:
+
+* **l'operatore, cambiando la richiesta** → 404 («quel documento non c'è»);
+* **nessuno, finché qualcuno non configura** → **500**. «Non trovato» detto a chi
+  non può trovarlo lo manda a cercare una cosa che per lui non esiste.
+
+L'audit del 2026-08-06 sui 404 ha spostato cinque codici per questa ragione:
+`E_PIPELINE_NOT_FOUND`, `E_PIPELINE_TASK_HANDLER_NOT_FOUND`,
+`E_TASK_IMPLEMENTATION_NOT_FOUND` ed `E_EMITTENTE_DEFAULT_MISSING` → **500**
+(pipeline, handler, implementazioni e default mai configurati; uno era già
+loggato internamente con `severity="C"` mentre l'HTTP diceva «non trovato»);
+`E_LISTINO_VERSIONE_NON_ATTIVA` → **422**, perché non era affatto un
+non-trovato — il listino c'è, manca una versione **valida alla data** — e il
+fratello `E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA` era già 422.
+
+⚠️ **Tre candidati sono stati risparmiati leggendo il codice**, e vale più dei
+cinque spostati: `E_PARAMETER_NOT_FOUND` sembrava configurazione mancante, ma è
+usato **anche** per l'`override_id` nell'URL di una DELETE, dove il 404 è
+corretto (semmai è da spezzare); `E_PREV_STATO_CORRENTE_NON_TROVATO` nasce da
+una JOIN che fallisce sia quando il preventivo non esiste (404 giusto) sia
+quando il suo stato è rotto; `E_INDIRIZZO_SNAPSHOT_NOT_FOUND` è un
+`IF NOT FOUND` su un id referenziato, cioè il 404 «largo» qui sotto.
+**Otto candidati dal messaggio, cinque veri dopo la lettura.**
+
+⚠️ **Il nostro 404 è più largo di quello dell'RFC.** Nello standard il 404
+riguarda la **risorsa indirizzata dall'URI**; noi lo usiamo anche quando l'URI
+esiste ma un'entità **referenziata nel payload** non c'è (`E_FULFILL_NOT_FOUND`,
+`E_GESTORE_SOGGETTO_RUOLO_MANCANTE`). È un'estensione diffusa e in questa app è
+innocua — nessun interceptor reagisce globalmente al 404 — ma è una scelta, non
+la lettura letterale dello standard. L'alternativa RFC-stretta sarebbe 422.
+
+#### Cosa cambia davvero lo status, lato client
+
+> 🔴 **CORREZIONE (2026-08-07): questo paragrafo diceva il contrario, e la cosa
+> va letta prima di usarlo per decidere.** Diceva: *«in questa app la maggior
+> parte del comportamento la decide `ui_action`, non lo status»*.
+>
+> **Misurato su tutto il repo: `ui_action` non la legge nessuno.** Né il nome
+> (`ui_action`, `uiAction`) né uno solo dei sette valori compare in
+> `frontend/src` — o altrove fuori da backend/docs/db. Il frontend legge
+> `error.message` (in `useApiHandler.extractErrorMessage`) e lo **status**:
+> `>= 500` → toast di sistema, 401 → refresh del token, 401/403 → il polling dei
+> contatori si ferma. **Sono tutti e tre gli effetti che esistono.**
+>
+> ⚠️ **Non vuol dire che `ui_action` sia da togliere**, e nemmeno che le 176
+> decisioni di override siano state inutili: è un contratto **emesso e non
+> ancora consumato**, e il costo di tenerlo è zero. Vuol dire tre cose pratiche:
+>
+> 1. discutere `show_error_banner` contro `highlight_form_fields` oggi **non
+>    cambia niente a video** — cambia cosa troverà il frontend il giorno in cui
+>    lo implementerà;
+> 2. quindi **lo status non è affatto la parte che conta meno**: al momento è
+>    l'unica che il client guarda davvero;
+> 3. il giorno in cui il frontend leggerà `ui_action`, quelle 176 righe vanno
+>    riguardate **prima** di accenderlo, non dopo.
+>
+> ⚠️ E c'era un difetto conseguente, corretto lo stesso giorno: dei due percorsi
+> che costruiscono l'envelope, `exception_to_error_response` spediva `ui_action`
+> e `drf_exception_handler` la **calcolava e la buttava via**. Lo stesso codice
+> usciva con due forme diverse a seconda di chi lo sollevava. Oggi non se ne
+> accorgeva nessuno proprio perché il campo non lo legge nessuno.
+
+Utile saperlo prima di discutere se un codice è 400 o 409. Gli unici
+status con un effetto globale sono:
+
+| Status | Effetto | Dove |
+| --- | --- | --- |
+| **401** | percorso di refresh del token | `src/core/api.js` |
+| **401 / 403** | il polling dei contatori si ferma | `useQueueCountsPolling` |
+| **>= 500** | toast «errore di sistema»: **stesso messaggio**, durata più lunga | `useApiHandler` + `useNotify.systemError` |
+
+Quindi un 500 **non nasconde** il messaggio del database — né lato backend
+(`is_technical_code` è una lista chiusa di tre codici, non dipende dallo status)
+né lato frontend. Dice «non è colpa tua» a chi legge i log, e lascia il toast più
+a lungo a video.
+
+#### Scegliere fra 409 e 400: chi ha scelto il valore in conflitto
+
+È il dubbio più frequente quando due entità «non vanno d'accordo». Il criterio:
+
+* **409 · `show_error_banner`** — l'operatore **non ha un campo da correggere**:
+  il conflitto è fra righe che non ha scelto lui (legami creati dal sistema,
+  stato del documento cambiato sotto). Il messaggio è «rileggi lo stato»;
+* **400 · `highlight_form_fields`** — il valore in conflitto **l'ha scelto lui**
+  in un form (un parent, un soggetto, un conto). Il messaggio è «correggi quel
+  campo».
+
+Stesso difetto apparente, status diverso: `E_ARTICOLO_MISMATCH` (riga ordine vs
+riga DDT, legami di sistema) è 409; `E_ID_FISCALI_DIVERSI` (parent account scelto
+a mano) è 400.
+
+#### Il cancello: ogni codice che il DB può nominare deve avere una policy
+
+`apps/core/tests/test_error_codes_db_policy_guardrail.py` — gira in CI a ogni PR
+(opt-in `ZEROERP_TEST_DB_E2E=1`, acceso in `ci-validate.yaml`) e confronta
+`dbops.vw_codici_errore_da_dichiarare` con il dizionario. Fallisce in tre versi:
+
+1. un codice che il DB può nominare, **senza policy e non nel registro** del
+   debito `dbops.codici_errore_senza_policy`;
+2. una voce del registro che **ha ottenuto** la sua policy (la riga va tolta dal
+   CSV: è debito pagato);
+3. una voce del registro che **nessuna funzione viva nomina più**.
+
+⚠️ Aggiungere una policy per un codice che è nel registro **fa diventare rosso il
+cancello** finché il team DB non toglie la riga e riapplica il changeSet
+`20260805-37`. Le due metà vanno concordate insieme: è il presidio che fa il suo
+mestiere, non un incidente.
+
+⭐ **Dal 2026-08-07 il registro è a zero** (141 → 0 in tre giorni, 150 decisioni).
+Due conseguenze pratiche:
+
+* **il verso 1 diventa il presidio vero**: qualunque codice nuovo che il database
+  può nominare senza una policy è **rosso il giorno stesso**. Non c'è più un
+  arretrato in cui nascondersi;
+* **la tabella del registro resta**, vuota. Non si droppa: il cancello la
+  interroga a ogni PR, ed è il posto dove atterra un codice nuovo nell'intervallo
+  fra il seed DB e la classificazione BE. *Un registro vuoto non è un registro
+  inutile: è un registro in pari.*
+
+> Storia completa, criteri e casi: `docs/it/dev/work-done/brief-db-be-terzo-lato-presidio-codici.md`
+> e [Presidi e registri del debito §3.4](/guide/presidi-e-registri-del-debito).
+
+#### Come il codice arriva dal DB al backend (dal 2026-08-05)
+
+Gli errori di dominio nascono in PostgreSQL, da `script.fn_log_and_raise_error`.
+Il contratto di trasporto è **uno solo**:
+
+> **SQLSTATE `P0001` + campo `CONSTRAINT` valorizzato = errore di dominio**,
+> e il contenuto di `CONSTRAINT` è il codice di `config.messaggi_errore`.
+
+Il codice viaggia quindi in un **campo strutturato** dell'eccezione
+(`diag.constraint_name` lato psycopg), non nel testo. Gli altri campi restano
+dove erano: `DETAIL` = causa, `HINT` = soluzione, e il messaggio è il testo
+localizzato per l'operatore. **Il codice non compare nel messaggio, ed è una
+scelta**: il messaggio è per l'utente.
+
+⚠️ **La condizione su `P0001` non è prudenza, è necessaria.** Su una violazione
+di vincolo vera (classe `23xxx`) `constraint_name` contiene il nome del vincolo
+DB (`uq_...`, `fk_...`): leggerlo come codice applicativo scavalcherebbe
+`map_integrity_error`, che quei vincoli li traduce già. E se il campo è vuoto va
+trattato come assente (`... or None`): quando il codice arriva da un'espressione
+che vale NULL, PostgreSQL lo consegna come **stringa vuota**, non NULL.
+
+⚠️ **Il fallback a regex sul testo resta.** Nel DB ci sono 135 `RAISE EXCEPTION`
+diretti in 46 funzioni PL/pgSQL che non passano dall'helper: per quelle il campo
+esce vuoto. Si potrà togliere il giorno in cui quel numero sarà zero — non prima.
+
+Presidio: `scripts/sql/guardrail_codice_errore_strutturato.sql` (in CI) verifica
+che **nessun altro** `RAISE` scriva `CONSTRAINT`. Un secondo mittente su quel
+canale non farebbe fallire niente: farebbe rispondere sbagliato.
+
+**Lato backend la lettura è una sola**, in `apps/core/services/db_error_fields.py`
+(`structured_db_error_code` → campo, `db_error_code` → campo con ripiego al
+testo). Non leggere `diag.constraint_name` a mano: prima del 2026-08-05 la stessa
+estrazione era riscritta in **quattro** punti, ognuno col suo modo, ed è così che
+si sono sfilati. I quattro delegano tutti al modulo:
+
+| Punto | Cosa fa col codice |
+| --- | --- |
+| `ErrorTranslator._from_database_error` | lo usa come `ApiError.code` (→ policy → status) |
+| `payload_helpers.translate_db_errors` | lo usa al posto del `fallback_code` di dominio |
+| `ErrorManager.raise_from_database_error` | lo accetta **solo se dichiarato** nei `known_markers` del chiamante (`message` vs `fallback_message` dipendono da «riconosciuto o no») |
+| `pratiche_service._raise_known_db_error` | idem, filtrato sui codici del dominio |
+
+Test: `apps/core/tests/services/test_db_error_fields.py` — 8 unitari sulla
+precedenza campo/testo e 3 end-to-end su DB reale (saltati se il DB non
+risponde), fra cui il caso in cui la regex **non** trova nulla e il campo sì.
+
+#### ⚠️ 57 codici ereditati fuori convenzione
+
+`ErrorPolicyRegistry.resolve` ha una scorciatoia — codice non registrato ma che
+comincia per `E_` → 400 «errore di validazione» — e **tutto il resto cade su
+`E_GENERICO`, cioè 500**. Nel DB ci sono 57 codici che il prefisso non ce
+l'hanno (`PRATICHE_TRANSIZIONE_NON_AMMESSA`, `PREV_*`, `FLUSSI_*`,
+`ERRORE_PARAMETRI`, `CF_NON_VALIDO`…), usati da 77 call site.
+
+Quattro di quei 57 sono usciti dal seed perché nessuno li sollevava più
+(`20260805-11`): **restano 53**. Di questi, **23 sono già registrati** col nome
+storto — per i loro 29 call site il campo strutturato è un guadagno secco: oggi
+sono mascherati da `E_DATABASE`, domani arrivano alla loro policy. **I 30 senza
+policy** (48 call site in 26 funzioni) sono quelli che passerebbero da 400 a 500,
+e vanno registrati **prima o insieme** all'adozione del campo.
+
+⚠️ **Registrare un codice che c'è già lo sovrascrive in silenzio**: in un dict
+literal Python l'ultima chiave vince, senza errore né warning, e nel progetto non
+gira nessun linter che lo intercetti. Prima di aggiungere un blocco di policy,
+verificare che `len(chiavi) == len(set(chiavi))`.
+
+Decisione del 2026-08-05: **si registrano così come sono** (oggi hanno la loro
+classe in `error_policies_generated.py` come tutti gli altri) — rinominarli
+costerebbe seed + call site + pgTAP senza comprare nulla —
+**e il rubinetto si chiude**: il controllo (B) del guardrail rifiuta ogni codice
+*nuovo* fuori convenzione. I 57 ereditati vivono in
+`dbops.messaggi_errore_codici_legacy`, che è un **registro del debito e deve
+calare**.
+
+⭐ **Dal 2026-08-07 è a zero righe** (l'ultima è uscita col rename
+`MESSAGGIO_NON_DEFINITO` → `E_MESSAGGIO_NON_DEFINITO`).
+
+⛔ **La tabella NON si droppa** — decisione di Tid, 2026-08-08. Questa riga
+diceva il contrario, ed è stata corretta: a zero righe droppare sarebbe
+*neutro* nel comportamento (il `NOT EXISTS` del controllo (B) non toglie nulla,
+il (C) è vero a vuoto), ma comprerebbe «meno codice» al prezzo di **mettere mano
+al controllo (B)**, cioè all'unica cosa che tiene la convenzione.
+
+La ragione che conta è però un'altra: la convenzione **è già stata allargata una
+volta**, da `^E_` a `^[EW]_` per far posto ai warning (`20260805-28`). Alla
+prossima eccezione legittima, con un registro c'è una riga datata che qualcuno
+legge; senza, l'unico posto è la regex — e allargare una regex è un diff di un
+carattere che non nota nessuno, applicato a tutti per sempre.
+
+⚠️ **Se e quando servirà davvero come valvola**, mancano due cose e vanno fatte
+allora, non prima: una colonna `motivo` (oggi la tabella registra *chi*, non
+*perché*) e la riscrittura del messaggio del controllo (B), che dichiara quella
+strada chiusa ai codici nuovi. Finché l'eccezione non arriva, la tabella vuota
+costa zero e il rubinetto resta chiuso.
+
+⚠️ Da non confondere con `dbops.codici_errore_senza_policy` (il registro del
+*terzo lato*, 141 → 0): è un'altra tabella, un altro mestiere, e anche quella
+resta.
 
 **Eccezione — codici middleware-level.** Alcune risposte sono costruite
 direttamente da `JwtAuditMiddleware` (helper `_json_error`, stesso envelope)
@@ -809,7 +1254,10 @@ Quando si crea o tocca un service, si scrivono/aggiornano i test corrispondenti.
 8. Registrare la route in `urls.py` con name `<dominio>-<risorsa>-list` / `<dominio>-<risorsa>-detail`
 9. Scrivere test service in `tests/services/` (validazione, dedup, not found)
 10. Se endpoint di ricerca: `is_search_endpoint = True`
-11. Registrare i codici errore in `error_policies.py` prima dell'uso
+11. Registrare i codici errore prima dell'uso: il codice nasce **a catalogo**
+    (`config.codici_errore`, con la sua classe — richiesta al team DB), poi
+    `./manage-env.sh genera_error_policies` lo porta nel backend. Status e
+    `ui_action` si derivano dalla classe; il modulo generato non si tocca a mano
 
 ---
 

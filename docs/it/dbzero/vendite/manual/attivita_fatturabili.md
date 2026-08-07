@@ -131,7 +131,7 @@ guard polimorfo di esistenza**. Storia:
   quella funzione è rimasta **orfana in silenzio** — il trigger col suo nome
   continuava a esistere, puntato a un'altra funzione. Nessuno se n'è accorto per
   nove mesi, finché non l'ha trovata `plpgsql_check`
-  ([brief-db-bonifica-riferimenti-morti](/dev/work-in-progress/brief-db-bonifica-riferimenti-morti) F1).
+  ([brief-db-bonifica-riferimenti-morti](/dev/work-done/brief-db-bonifica-riferimenti-morti) F1).
   Droppata da `20260804-48`: nominava anche una tabella e una colonna che non
   esistono più, quindi non avrebbe potuto girare nemmeno riagganciandola;
 * `20260225-45`: **rimosso deliberatamente** — nel flusso commessa-only la
