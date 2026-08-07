@@ -1,0 +1,311 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `MESSAGGIO_NON_DEFINITO` -> `E_MESSAGGIO_NON_DEFINITO` — l'ultimo fuori convenzione
+#   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (coda, §3)
+#   Seed del rename: 20260614-08 (i due CSV) · pulizia orfano: 20260807-20
+#   Precedente da cui e' copiata la forma: 20260803-11 (stessa funzione).
+#
+# ── COSA CHIUDE ────────────────────────────────────────────────────────
+#   Era l'ULTIMA riga del registro `dbops.messaggi_errore_codici_legacy`, che il
+#   cantiere del terzo lato aveva portato da 57 a 1. Con questo rename il
+#   registro arriva a ZERO.
+#
+# ── ⚠️ PERCHE' NON BASTAVA CAMBIARE IL CSV ─────────────────────────────
+#   `script.fn_log_error_only` cerca quel codice **per nome scritto a mano**:
+#
+#     SELECT id, messaggio || ' ' || p_error_code, causa, soluzione
+#       FROM config.messaggi_errore
+#      WHERE codice = 'MESSAGGIO_NON_DEFINITO'
+#
+#   E' il ripiego del ripiego: da' una frase quando il codice sollevato non e' a
+#   catalogo, e trova il `messaggio_errore_id` senza il quale `dbops.error_log`
+#   (FK NOT NULL) non si puo' scrivere.
+#
+#   ⚠️ Rinominare dal solo CSV avrebbe rotto quel ripiego **in silenzio**: la
+#   SELECT non trova piu' niente, `v_id` resta NULL, e il log esce come
+#   `RAISE WARNING ... log non persistito`. Si vedrebbe **solo il giorno in cui
+#   manca un messaggio a catalogo** — il momento peggiore per scoprire che il
+#   diario non scrive.
+#
+# ── 🔴 DUE TRAPPOLE PAGATE SCRIVENDO QUESTO CHANGESET ──────────────────
+#   1) **La doc auto-gen non e' incollabile cosi' com'e'.** Il blocco
+#      «Definizione completa» chiude con `$function$` **senza punto e virgola**
+#      (`pg_get_functiondef` non lo mette) e la doc ci attacca subito sotto il
+#      `COMMENT ON FUNCTION`. Con `splitStatements: false` Liquibase manda tutto
+#      come UNA istruzione e PostgreSQL risponde
+#      «errore di sintassi a o presso "COMMENT"». Serve il `;` dopo `$function$`.
+#
+#   2) **La funzione e' SECURITY DEFINER posseduta da `postgres`**, e un
+#      `CREATE OR REPLACE` del migratore viene rifiutato con «bisogna essere
+#      proprietari della funzione». La proprieta' si PRENDE IN PRESTITO e si
+#      RESTITUISCE, via `dbops.sec_functions_owner` +
+#      `dbops.fn_sync_functions_owner()` — che e' SECURITY DEFINER/postgres e
+#      quindi puo' fare l'`ALTER FUNCTION ... OWNER TO`.
+#      ⚠️ `fn_sync_functions_owner` **non solleva mai**: degrada a WARNING. Per
+#      questo il passo 1 verifica l'esito con un guard esplicito — un prestito
+#      fallito deve fermare il changeSet con un messaggio comprensibile, non con
+#      un generico «bisogna essere proprietari» trecento righe piu' in la'.
+#
+# ── ⚠️ ORDINE ──────────────────────────────────────────────────────────
+#   `20_code` gira PRIMA di `80_data`: quando la funzione viene sostituita il
+#   catalogo ha ancora il nome vecchio. Non e' un problema nello stesso migrate,
+#   ma se si applica questo changeSet DA SOLO il ripiego non risolve fino al seed.
+#
+# ── COSA NON CAMBIA ────────────────────────────────────────────────────
+#   · l'`id` della riga di catalogo resta **14**: `dbops.error_log` punta all'id,
+#     non al codice, e i log storici continuano a risolvere;
+#   · lato BE nessun intervento: `error_policies` registra gia' ENTRAMBI i nomi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/script/20260807-19-rename-messaggio-non-definito-mctit.yaml
+
+    - changeSet:
+          id: 20260807-19-rename-messaggio-non-definito
+          author: mctit
+          runOnChange: false
+          validCheckSums:
+              - ANY
+          failOnError: true
+          comment: >
+              fn_log_error_only cerca il codice di ripiego per nome scritto a mano: il
+              rename MESSAGGIO_NON_DEFINITO -> E_MESSAGGIO_NON_DEFINITO va fatto qui, nello
+              stesso commit dei CSV, o il ripiego del ripiego smette di risolvere in
+              silenzio. La sostituzione passa da dbops.fn_sync_functions_owner perche' la
+              funzione e' SECURITY DEFINER posseduta da postgres.
+          preConditions:
+              - onFail: HALT
+              - sqlCheck:
+                    expectedResult: 1
+                    sql: >
+                        SELECT count(*) FROM pg_proc p
+                        JOIN pg_namespace n ON n.oid = p.pronamespace
+                        WHERE n.nspname = 'script'
+                          AND p.proname = 'fn_log_error_only'
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    sql: |
+                        -- ==========================================================
+                        -- 1) Presa in prestito della proprieta'.
+                        --    La funzione e' posseduta da postgres (voce in
+                        --    dbops.sec_functions_owner): senza questo passaggio il
+                        --    CREATE OR REPLACE qui sotto viene rifiutato con
+                        --    «bisogna essere proprietari della funzione».
+                        -- ==========================================================
+                        UPDATE dbops.sec_functions_owner
+                           SET required_owner = current_user
+                         WHERE schema_name   = 'script'
+                           AND function_name = 'fn_log_error_only';
+
+                        SELECT dbops.fn_sync_functions_owner();
+
+                        DO $guard$
+                        DECLARE
+                          v_owner text;
+                        BEGIN
+                          -- fn_sync_functions_owner non solleva mai: degrada a WARNING.
+                          -- Qui si verifica l'esito, perche' un prestito fallito deve fermare
+                          -- il changeSet con un messaggio comprensibile e non con un generico
+                          -- "bisogna essere proprietari" trecento righe piu' in la'.
+                          SELECT pg_get_userbyid(p.proowner)
+                            INTO v_owner
+                            FROM pg_proc p
+                            JOIN pg_namespace n ON n.oid = p.pronamespace
+                           WHERE n.nspname = 'script'
+                             AND p.proname = 'fn_log_error_only';
+
+                          IF v_owner IS DISTINCT FROM current_user THEN
+                            RAISE EXCEPTION
+                              'fn_log_error_only e'' di %, non di % : il prestito della proprieta'' via dbops.fn_sync_functions_owner() non e'' riuscito. Verificare che dbops.fn_sync_functions_owner sia SECURITY DEFINER e posseduta da postgres, e che esista la voce in dbops.sec_functions_owner.',
+                              coalesce(v_owner, '(funzione assente)'), current_user;
+                          END IF;
+                        END
+                        $guard$;
+
+                        -- ==========================================================
+                        -- 2) Sostituzione della funzione.
+                        --    Unica differenza rispetto al corpo vivo: il letterale
+                        --    'MESSAGGIO_NON_DEFINITO' -> 'E_MESSAGGIO_NON_DEFINITO'.
+                        -- ==========================================================
+                        CREATE OR REPLACE FUNCTION script.fn_log_error_only(p_area text, p_function_name text, p_error_code text, p_context jsonb, p_tx_id uuid, VARIADIC p_valori text[])
+                         RETURNS void
+                         LANGUAGE plpgsql
+                         SECURITY DEFINER
+                         SET search_path TO 'public', 'pg_temp'
+                        AS $function$
+                        DECLARE
+                          v_id bigint;
+                          v_msg text;
+                          v_detail text;
+                          v_hint text;
+                          v_lang text := coalesce(current_setting('myapp.user_language', true), 'it');
+                          v_ctx jsonb := coalesce(p_context, '{}'::jsonb);
+                          v_sql text;
+                          v_dsn text;
+                          v_has_dblink boolean := false;
+                          v_has_logconn boolean := false;
+                          v_vals text[] := coalesce(p_valori, ARRAY[]::text[]);
+                        BEGIN
+                          -- =========================================================
+                          -- Scopo:
+                          --   Registrare errori in modo persistente anche quando la
+                          --   transazione chiamante viene rollbackata.
+                          --
+                          -- Regole:
+                          --   - usa solo connessione separata via dblink (out-of-tx)
+                          --   - non solleva eccezioni verso il chiamante
+                          --   - in caso di failure del canale di log emette WARNING
+                          --   - cascata lingua: preferisce v_lang, ripiega su 'it'
+                          --     (2026-08-03: prima era un lookup secco su v_lang e
+                          --     una sessione non italiana non loggava affatto)
+                          --   - se il codice non e' a catalogo, il codice originale
+                          --     viene conservato in context->>'codice_errore_originale'
+                          -- =========================================================
+
+                          IF p_tx_id IS NULL THEN
+                            p_tx_id := dbops.fn_get_or_create_session_tx_id();
+                          END IF;
+
+                          -- Riga nella lingua di sessione se esiste, altrimenti la
+                          -- riga italiana: ORDER BY booleano, TRUE prima in DESC.
+                          SELECT id, messaggio, causa, soluzione
+                            INTO v_id, v_msg, v_detail, v_hint
+                          FROM config.messaggi_errore
+                          WHERE codice = p_error_code
+                            AND lingua IN (v_lang, 'it')
+                          ORDER BY (lingua = v_lang) DESC
+                          LIMIT 1;
+
+                          IF NOT FOUND THEN
+                            -- Il codice originale sopravvive al ripiego: error_log
+                            -- conserva solo la FK messaggio_errore_id, quindi senza
+                            -- questa riga la registrazione resta ma il nome
+                            -- dell'errore si perde per sempre (brief §9.9).
+                            v_ctx := v_ctx || jsonb_build_object(
+                                       'codice_errore_originale', p_error_code);
+
+                            -- Fallback: recupera ANCHE id da E_MESSAGGIO_NON_DEFINITO
+                            -- (stessa cascata: la riga esiste solo in 'it').
+                            SELECT id, messaggio || ' ' || p_error_code, causa, soluzione
+                              INTO v_id, v_msg, v_detail, v_hint
+                            FROM config.messaggi_errore
+                            WHERE codice = 'E_MESSAGGIO_NON_DEFINITO'
+                              AND lingua IN (v_lang, 'it')
+                            ORDER BY (lingua = v_lang) DESC
+                            LIMIT 1;
+
+                            IF v_msg IS NULL THEN
+                              v_msg := '[MESSAGGIO NON DEFINITO: ' || p_error_code || ']';
+                              v_detail := 'Catalogo mancante=' || quote_literal(p_error_code);
+                              v_hint := 'Aggiungere record in config.messaggi_errore';
+                              v_id := NULL;
+                            END IF;
+                          END IF;
+
+                          BEGIN
+                            IF cardinality(v_vals) > 0 THEN
+                              v_msg := format(v_msg, VARIADIC v_vals);
+                            END IF;
+                          EXCEPTION WHEN OTHERS THEN
+                            NULL;
+                          END;
+
+                          -- Se non abbiamo un messaggio_errore_id valido, non possiamo
+                          -- inserire in error_log (colonna NOT NULL). Warn e return.
+                          IF v_id IS NULL THEN
+                            RAISE WARNING 'script.fn_log_error_only: messaggio_errore_id non trovato per code=%, log non persistito.',
+                              p_error_code;
+                            RETURN;
+                          END IF;
+
+                          v_sql := format(
+                            'INSERT INTO dbops.error_log(occurred_at, area, function_name, messaggio_errore_id, context, tx_id)
+                             VALUES (now(), %L, %L, %s, %L::jsonb, %L::uuid)',
+                            p_area,
+                            p_function_name,
+                            v_id::text,
+                            v_ctx::text,
+                            p_tx_id::text
+                          );
+
+                          SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'dblink')
+                            INTO v_has_dblink;
+
+                          IF NOT v_has_dblink THEN
+                            RAISE WARNING 'script.fn_log_error_only: estensione dblink non disponibile, log non persistito (code=%).',
+                              p_error_code;
+                            RETURN;
+                          END IF;
+
+                          v_dsn := coalesce(
+                            nullif(coalesce(current_setting('myapp.logconn', true), ''), ''),
+                            nullif(coalesce(current_setting('myapp.dblink_log_connection', true), ''), '')
+                          );
+
+                          IF v_dsn IS NOT NULL AND v_dsn <> '' THEN
+                            BEGIN
+                              PERFORM dblink_exec(v_dsn, v_sql, true);
+                              RETURN;
+                            EXCEPTION WHEN OTHERS THEN
+                              RAISE WARNING 'script.fn_log_error_only: dblink_exec DSN fallita (code=%): %',
+                                p_error_code, SQLERRM;
+                            END;
+                          END IF;
+
+                          BEGIN
+                            PERFORM script.fn_ensure_logconn();
+                          EXCEPTION WHEN OTHERS THEN
+                            NULL;
+                          END;
+
+                          BEGIN
+                            WITH conns AS (
+                              SELECT unnest(dblink_get_connections()) AS name
+                            )
+                            SELECT EXISTS (SELECT 1 FROM conns WHERE name = 'logconn')
+                              INTO v_has_logconn;
+                          EXCEPTION WHEN OTHERS THEN
+                            v_has_logconn := false;
+                          END;
+
+                          IF v_has_logconn THEN
+                            BEGIN
+                              PERFORM dblink_exec('logconn', v_sql, true);
+                              RETURN;
+                            EXCEPTION WHEN OTHERS THEN
+                              RAISE WARNING 'script.fn_log_error_only: dblink_exec logconn fallita (code=%): %',
+                                p_error_code, SQLERRM;
+                            END;
+                          END IF;
+
+                          RAISE WARNING 'script.fn_log_error_only: nessuna connessione dblink valida, log non persistito (code=%).',
+                            p_error_code;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION script.fn_log_error_only(p_area text, p_function_name text, p_error_code text, p_context jsonb, p_tx_id uuid, VARIADIC p_valori text[])
+                        IS 'Logga su dbops.error_log via connessione dblink separata (out-of-transaction), senza sollevare eccezioni. Post 2026-08-03: cascata lingua con ripiego su ''it'' (come fn_get_messaggio e fn_log_and_raise_error) e, se il codice non e'' a catalogo, conservazione del codice originale in context->>''codice_errore_originale''.';
+
+                        -- ==========================================================
+                        -- 3) Restituzione della proprieta' a postgres.
+                        --    Ridondante ma esplicito: il seed 80_data riscrive comunque
+                        --    required_owner='postgres' e 90_end/20251123-04 rilancia la sync a
+                        --    ogni update (runAlways). Farlo qui evita che il database resti
+                        --    anche solo per il tempo di una migration con una SECURITY DEFINER
+                        --    di proprieta' del migratore.
+                        -- ==========================================================
+                        UPDATE dbops.sec_functions_owner
+                           SET required_owner = 'postgres'
+                         WHERE schema_name   = 'script'
+                           AND function_name = 'fn_log_error_only';
+
+                        SELECT dbops.fn_sync_functions_owner();
+

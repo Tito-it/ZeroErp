@@ -65,12 +65,12 @@ BEGIN
     v_ctx := v_ctx || jsonb_build_object(
                'codice_errore_originale', p_error_code);
 
-    -- Fallback: recupera ANCHE id da MESSAGGIO_NON_DEFINITO
+    -- Fallback: recupera ANCHE id da E_MESSAGGIO_NON_DEFINITO
     -- (stessa cascata: la riga esiste solo in 'it').
     SELECT id, messaggio || ' ' || p_error_code, causa, soluzione
       INTO v_id, v_msg, v_detail, v_hint
     FROM config.messaggi_errore
-    WHERE codice = 'MESSAGGIO_NON_DEFINITO'
+    WHERE codice = 'E_MESSAGGIO_NON_DEFINITO'
       AND lingua IN (v_lang, 'it')
     ORDER BY (lingua = v_lang) DESC
     LIMIT 1;

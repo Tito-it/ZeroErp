@@ -3,7 +3,7 @@
 **Chi:** team DB (`dev/db-tid`).
 **Guida generale e ragioni di ogni scelta:** [brief-db-be-classe-codici-errore](brief-db-be-classe-codici-errore.md) — 20 decisioni, le trappole, i perché. **Questo file non le ripete: le esegue.**
 **Piano gemello:** [piano-be-classe-codici-errore](piano-be-classe-codici-errore.md).
-**Stato:** 🟡 **in corso** — ✅ D-1..D-8 applicati e verdi, **D-9 scritto** (2026-08-07). Applicato il D-9 **il BE è sbloccato**. Resta solo D-10, che non blocca nessuno.
+**Stato:** 🟢 **PIANO DB COMPLETO, code comprese** — D-1..D-9 applicati e verdi; D-10 e le due code del §3 scritti (2026-08-07). Il cancello del BE è aperto.
 ✅ **Vocabolario a 10 valori confermato da Tid** (2026-08-07): `NON_AUTENTICATO` e `ERRORE_ESTERNO` restano.
 
 ---
@@ -50,7 +50,7 @@ additivo e reversibile.
 | ✅ **D-7** | ~~FK + policy indici~~ **fatto** — `20260807-14` e `-15` | D-5 | ⚠️ **due** FK da registrare, non una |
 | ✅ **D-8** | ~~pgTAP~~ **scritto** — 3 adeguati, 1 riscritto e spostato, 1 nuovo | D-6 · D-7 | 🔴 **non eseguito**: serve il DB |
 | ✅ **D-9** | ~~Le due viste~~ **scritto** — `20260807-16` e `-17` | D-4 | 🔴 **è la consegna al BE**: applicato questo, B-5 è sbloccato |
-| **D-10** | Vista della **forma della condizione** — la misura | D-9 | ⚠️ **ri-specificata**: l'asse «multidominio» era smentito dal D-3 |
+| ✅ **D-10** | ~~La misura~~ **scritto** — `20260807-18` | D-9 | ⚠️ non filtra di proposito: il classificatore copre il 22% |
 
 **Consegna al BE:** dopo **D-9**. È il momento in cui `vw_codici_errore_identita`
 esiste, è popolata e ordinata — cioè quando il generatore del BE ha da cui
@@ -897,21 +897,99 @@ I sei forti, per chi arriva qui: `E_PARAMETRO_INVALIDO`, `E_GENERICO`,
 `E_ADMIN_VALIDAZIONE`, `E_ERRORE_PARAMETRI`, `E_ATTIVO_REQUIRE`,
 `E_SOGGETTI_RUOLI`.
 
-⚠️ **Se migliorare il classificatore costa più di quanto renda, la strada onesta
-è la seconda che indica il BE**: dichiarare cosa la misura non distingue, invece
-di lasciarla scritta su un asse che sappiamo falso.
+#### ✅ Scritta — `20260807-18`, e **non filtra**
+
+[`dbops.vw_codici_errore_forme_condizione`](../../../../db/changelog/migrations_v2/20_code/dbops/20260807-18-create-vw-codici-errore-forme-condizione-mctit.yaml)
+espone **tutti** i codici con la loro scomposizione in famiglie: `codice`,
+`n_punti`, `n_funzioni`, `famiglie[]`, `n_famiglie`, `n_famiglie_note`,
+`solo_ignoto`.
+
+⚠️ **La scelta di non filtrare è la risposta al problema della copertura**, e va
+spiegata perché sembra una mancanza. Una vista che restituisse solo i 22
+segnalati nasconderebbe il denominatore — e il denominatore è l'unica cosa che
+rende leggibile il numeratore. Il `COMMENT ON VIEW` porta **due query canoniche
+da usare insieme**:
+
+```sql
+-- 1) i candidati
+SELECT codice, n_punti, famiglie
+  FROM dbops.vw_codici_errore_forme_condizione
+ WHERE n_famiglie_note > 1 ORDER BY n_punti DESC;
+
+-- 2) la copertura, senza cui la prima si legge come una verità
+SELECT count(*) AS codici,
+       count(*) FILTER (WHERE NOT solo_ignoto) AS classificati,
+       count(*) FILTER (WHERE solo_ignoto)     AS invisibili
+  FROM dbops.vw_codici_errore_forme_condizione;
+```
+
+⭐ **`solo_ignoto` è la colonna che rende la misura onesta**: dice «su questo
+codice non so dire niente, né in un senso né nell'altro». Sono 267 su 342, e
+senza quella colonna sarebbero indistinguibili da 267 codici puliti.
+
+⚠️ **Costosa**: legge `pg_proc.prosrc` e lo spezza riga per riga. Va bene per una
+misura che si guarda all'apertura di un lotto, **non** per una query di runtime —
+ed è scritto nel commento della vista, non solo qui.
+
+⚠️ Stesso limite del controllo (D) del guardrail: vede solo i letterali `'E_…'`
+nei corpi plpgsql entro 6 righe da `fn_log_and_raise_error`. Non vede i codici
+passati per espressione né quelli sollevati dal Python.
 
 ---
 
-## 3. Fuori piano, ma da non perdere
+## 3. ✅ Le due code — **chiuse entrambe** il 2026-08-07
 
-* **`MESSAGGIO_NON_DEFINITO` → `E_MESSAGGIO_NON_DEFINITO`** — chiude il registro
-  `dbops.messaggi_errore_codici_legacy` (**1 → 0**, e a zero la tabella si
-  droppa). ⚠️ **Slice sua**: `script.fn_log_error_only` cerca quel codice **per
-  nome scritto a mano**, le funzioni vanno nello stesso changeSet. Rinominarlo dal
-  solo CSV rompe il ripiego del ripiego, e si vede solo il giorno in cui manca un
-  messaggio a catalogo — il peggiore per scoprire un guasto.
-* **La regola «niente nuovi codici generici»** — coda del lavoro, insieme al BE.
+### 3.1 ⭐ Gli apostrofi raddoppiati — 35 codici che mostravano `''` a chi legge
+
+**86 celle corrette**: 82 in `messaggi_errore.csv`, 4 in `email_template.csv`.
+Residuo in tutto `80_data`: **zero**.
+
+Era un residuo di quando quel seed era fatto di `INSERT` SQL. La prova che il
+singolo è la forma giusta sta nel repo: **1353 celle con apostrofo singolo** si
+caricano senza problemi, quindi Liquibase lega i parametri e non inlinea.
+
+⚠️ **Prima di toccare, il controllo che serviva davvero.** 28 dei 35 codici sono
+nominati in un pgTAP — ma nominare non è asserire il testo. Cercando i
+**frammenti** con l'apostrofo doppio dentro i test, ne uscivano 4: tutti e
+quattro sono **descrizioni di asserzioni** (`'... non puo'' essere ...'`), dove
+`''` è il corretto escape SQL e non c'entra col catalogo. Zero dipendenze reali.
+
+### 3.2 ⭐ `MESSAGGIO_NON_DEFINITO` → `E_MESSAGGIO_NON_DEFINITO` — il registro arriva a **zero**
+
+| ChangeSet | Cosa |
+|---|---|
+| [`20260807-19`](../../../../db/changelog/migrations_v2/20_code/script/20260807-19-rename-messaggio-non-definito-mctit.yaml) | `fn_log_error_only` riscritta |
+| `20260614-08` (CSV) | catalogo + identità rinominati |
+| `messaggi_errore_codici_legacy.csv` | **1 → 0 righe** |
+| [`20260807-20`](../../../../db/changelog/migrations_v2/80_data/changelog/20260807-20-delete-codice-errore-orfano-rename-mctit.yaml) | toglie la riga vecchia rimasta |
+
+⚠️ **Perché non bastava il CSV, ed è la ragione per cui era rimasto per ultimo.**
+`fn_log_error_only` cerca quel codice **per nome scritto a mano** — è il ripiego
+del ripiego, quello che dà una frase quando il codice sollevato non è a catalogo,
+e che trova il `messaggio_errore_id` senza il quale `dbops.error_log` (FK NOT
+NULL) non si scrive. Rinominare dal solo CSV avrebbe rotto quel ripiego **in
+silenzio**, e si sarebbe visto solo il giorno in cui manca un messaggio: il
+momento peggiore per scoprire che il diario non scrive.
+
+⚠️ **E serve un `DELETE`**: `loadUpdateData` non cancella, quindi il rename
+lascia in piedi la riga vecchia. È l'unica eccezione prevista alla regola «i dati
+di `80_data` si cambiano dal CSV». Con guardia `NOT EXISTS`: se il rename del
+catalogo non fosse andato a buon fine, non cancella invece di rompere la FK a
+metà migrate.
+
+#### Il risultato, misurato
+
+| | |
+|---:|---|
+| codici a catalogo | 689 |
+| frasi senza codice (orfane) | **0** |
+| codici fuori convenzione | 49 |
+| **di cui vivi** | **0** ⭐ |
+| registro `messaggi_errore_codici_legacy` | **0 righe** |
+
+⚠️ **A zero righe api.md dice che la tabella si droppa. Non l'ho droppata**: il
+guardrail la legge nei controlli (B) e (C) e si ferma se non la trova. Droppare
+significa riscrivere il guardrail — è una slice sua, non la coda di un rename.
 
 ---
 

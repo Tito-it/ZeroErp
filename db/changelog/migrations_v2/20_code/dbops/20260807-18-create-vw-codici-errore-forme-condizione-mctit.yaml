@@ -1,0 +1,177 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `dbops.vw_codici_errore_forme_condizione` — la misura degli accumulatori
+#   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (D-10)
+#   Guida: docs/it/dev/work-in-progress/brief-db-be-classe-codici-errore.md §9.2 (D24)
+#   Parente: dbops.vw_codici_errore_da_dichiarare · scripts/sql/check_messaggio_vs_condizione.sql
+#
+# ── COSA MISURA ────────────────────────────────────────────────────────
+#   Un codice errore e' un ACCUMULATORE quando copre CONDIZIONI diverse: un
+#   `IF NOT FOUND` e un `IF p_x IS NULL` chiedono reazioni opposte, e un codice
+#   solo le appiattisce entrambe.
+#
+#   La vista risale, per ogni punto che solleva un codice, alla guardia che lo
+#   precede, la classifica in una famiglia, e conta quante famiglie diverse ha
+#   ciascun codice. Piu' di una = candidato.
+#
+# ── 🔴 L'ASSE SBAGLIATO, E PERCHE' VA RACCONTATO ───────────────────────
+#   La prima versione di questa misura contava i DOMINI: «un codice sollevato da
+#   funzioni di piu' di un dominio e' un candidato accumulatore».
+#
+#   ⚠️ E' falso, e il caso che lo smentisce e' il piu' noto che abbiamo:
+#   `E_VALIDAZIONE` sta in **10 funzioni di 5 domini** — indirizzi, resi, DDT,
+#   residui d'ordine, push preventivo — e i suoi 13 punti sono TUTTI la stessa
+#   condizione, la guard di parametro NULL/<=0 che AGENTS.md prescrive. Sarebbe
+#   stato il primo falso positivo della vista.
+#
+#   Il rilievo e' del team BE, e la frase che ha fatto rifare il passo e' questa:
+#   «e' una misura e non un cancello, quindi un falso positivo non fa danno — ma
+#   una misura che sbaglia sul suo caso piu' noto viene guardata due volte e poi
+#   mai piu'». E' il modo in cui i presidi muoiono in silenzio.
+#
+#   ⭐ Le funzioni erano eterogenee, la condizione no. Un codice e' accumulatore
+#   quando copre CONDIZIONI diverse, non quando e' usato in DOMINI diversi.
+#
+# ── ⚠️ COSA QUESTA VISTA NON VEDE, E VA LETTO PRIMA DEI RISULTATI ──────
+#   Misurato il 2026-08-07, prima di prometterla:
+#
+#     codici con una guardia riconoscibile .............. 342
+#     classificati in una famiglia NOTA .................  75
+#     finiti tutti in `IGNOTO` — invisibili alla misura .. 267
+#     segnalati (piu' di una famiglia) ..................  22
+#       di cui per due famiglie NOTE (segnale forte) .....  6
+#       di cui «una nota + qualcosa che non so leggere» ..  16
+#
+#   **Il classificatore copre il 22%.** Un elenco di 6 letto senza questo numero
+#   si capisce come «gli accumulatori sono sei», che e' falso: gli altri 267
+#   potrebbero esserlo e la vista non lo sa.
+#
+#   Per questo la vista **NON filtra**: espone TUTTI i codici con la loro
+#   scomposizione, e il filtro lo mette chi legge. Una vista che restituisse solo
+#   i 22 nasconderebbe il denominatore — che e' l'unica cosa che rende il
+#   numeratore leggibile. Le due query canoniche sono nel COMMENT.
+#
+# ── ⚠️ E' UNA MISURA, NON UN CANCELLO ──────────────────────────────────
+#   Un codice legittimamente trasversale esiste (`E_PERMESSO_NEGATO` e' ovunque
+#   per costruzione), e un cancello che lo bocciasse verrebbe disattivato in una
+#   settimana. Si guarda all'apertura di un lotto di classificazione, come la
+#   lente — con la differenza che questa dice un fatto, non un'ipotesi.
+#
+# ── NOTE ────────────────────────────────────────────────────────────────
+#   · Legge `pg_proc.prosrc` e lo spezza in righe: e' costosa. Va bene per una
+#     misura che si guarda ogni tanto, NON per una query di runtime.
+#   · Vede solo i letterali `'E_...'` nei corpi plpgsql, entro 6 righe da una
+#     chiamata a `fn_log_and_raise_error`. Non vede i codici passati per
+#     espressione (escono dai `fn_check_*`) ne' quelli sollevati dal Python.
+#     Stesso limite del controllo (D) del guardrail, e per lo stesso motivo.
+#   · `security_invoker = true`: la reloption NON e' visibile in
+#     `pg_get_viewdef` e va ri-specificata a ogni CREATE OR REPLACE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/dbops/20260807-18-create-vw-codici-errore-forme-condizione-mctit.yaml
+
+    - changeSet:
+          id: 20260807-18-create-vw-codici-errore-forme-condizione
+          author: mctit
+          runOnChange: false
+          failOnError: true
+          comment: >
+              Misura degli accumulatori sull'asse della FORMA DELLA CONDIZIONE, non del
+              dominio: l'asse vecchio segnalava E_VALIDAZIONE, che e' il caso su cui la
+              risposta e' no. Non filtra di proposito — il classificatore copre il 22% dei
+              codici, e un elenco senza denominatore si legge come una verita'.
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE VIEW dbops.vw_codici_errore_forme_condizione
+                        WITH (security_invoker = true) AS
+                        WITH righe AS (
+                            -- prosrc spezzato in righe numerate: serve per risalire dalla
+                            -- riga che nomina il codice alla guardia che la precede.
+                            SELECT n.nspname::text AS sch,
+                                   p.proname::text AS fn,
+                                   p.oid,
+                                   l.riga,
+                                   l.n
+                              FROM pg_proc p
+                              JOIN pg_namespace n ON n.oid = p.pronamespace
+                              CROSS JOIN LATERAL regexp_split_to_table(p.prosrc, E'\n')
+                                   WITH ORDINALITY AS l(riga, n)
+                             WHERE p.prolang = (SELECT oid FROM pg_language WHERE lanname = 'plpgsql')
+                               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+                        ),
+                        punti AS (
+                            -- una riga che nomina un codice E_* ed e' preceduta (entro 6
+                            -- righe) da una chiamata a fn_log_and_raise_error: e' un
+                            -- argomento, non una menzione in un commento.
+                            SELECT r.sch, r.fn, r.oid, r.n,
+                                   (regexp_match(r.riga, '''(E_[A-Z0-9_]+)'''))[1] AS codice
+                              FROM righe r
+                             WHERE r.riga ~ '''E_[A-Z0-9_]+'''
+                               AND r.riga !~ '^\s*--'
+                               AND EXISTS (
+                                     SELECT 1 FROM righe p2
+                                      WHERE p2.oid = r.oid
+                                        AND p2.n BETWEEN r.n - 6 AND r.n
+                                        AND p2.riga ~* 'fn_log_and_raise_error')
+                        ),
+                        con_guardia AS (
+                            -- la guardia e' la piu' vicina fra le righe precedenti che apre
+                            -- un ramo. 25 righe di finestra: oltre, non e' piu' "la guardia
+                            -- di questo punto".
+                            SELECT pt.*,
+                                   (SELECT g.riga
+                                      FROM righe g
+                                     WHERE g.oid = pt.oid
+                                       AND g.n <= pt.n
+                                       AND g.n >= pt.n - 25
+                                       AND g.riga ~* '^\s*(IF|ELSIF|ELSE|EXCEPTION\s+WHEN|WHEN\s+OTHERS|WHEN\s+SQLSTATE)\M'
+                                     ORDER BY g.n DESC
+                                     LIMIT 1) AS guardia
+                              FROM punti pt
+                        ),
+                        classificato AS (
+                            -- ⚠️ L'ordine dei CASE conta: un `EXCEPTION WHEN` che contiene
+                            -- anche un IS NULL e' prima di tutto un handler di eccezione.
+                            SELECT c.codice,
+                                   c.sch || '.' || c.fn AS funzione,
+                                   CASE
+                                     WHEN c.guardia ~* '(EXCEPTION\s+WHEN|WHEN\s+OTHERS|WHEN\s+SQLSTATE)'
+                                       THEN 'ECCEZIONE'
+                                     WHEN c.guardia ~* '^\s*IF\s+NOT\s+FOUND\M'
+                                       THEN 'NOT_FOUND'
+                                     WHEN c.guardia ~* '(\mIS\s+NULL\M|<=\s*0|<\s*0)' AND c.guardia ~* '\mp_\w+'
+                                       THEN 'PARAMETRO'
+                                     WHEN c.guardia ~* 'NOT\s+IN\s*\('
+                                       THEN 'ENUM'
+                                     ELSE 'IGNOTO'
+                                   END AS famiglia
+                              FROM con_guardia c
+                             WHERE c.guardia IS NOT NULL
+                        )
+                        SELECT codice,
+                               count(*)::int                                     AS n_punti,
+                               count(DISTINCT funzione)::int                     AS n_funzioni,
+                               array_agg(DISTINCT famiglia ORDER BY famiglia)    AS famiglie,
+                               count(DISTINCT famiglia)::int                     AS n_famiglie,
+                               count(DISTINCT famiglia) FILTER (WHERE famiglia <> 'IGNOTO')::int
+                                                                                 AS n_famiglie_note,
+                               -- true = la misura non ha saputo leggere NESSUNA delle sue
+                               -- guardie: su questo codice non dice niente, ne' in un senso
+                               -- ne' nell'altro. Sono 267 su 342, e vanno contati.
+                               bool_and(famiglia = 'IGNOTO')                      AS solo_ignoto
+                          FROM classificato
+                         GROUP BY codice;
+
+                        COMMENT ON VIEW dbops.vw_codici_errore_forme_condizione IS
+                          'Misura degli accumulatori sulla FORMA DELLA CONDIZIONE al punto che solleva (non sul dominio della funzione: quell''asse segnalava E_VALIDAZIONE, che e'' il caso su cui la risposta e'' no). NON filtra di proposito. Le due query canoniche, da usare INSIEME: (1) candidati — SELECT codice, n_punti, famiglie FROM dbops.vw_codici_errore_forme_condizione WHERE n_famiglie_note > 1 ORDER BY n_punti DESC; (2) copertura, senza cui la prima si legge come una verita'' — SELECT count(*) AS codici, count(*) FILTER (WHERE NOT solo_ignoto) AS classificati, count(*) FILTER (WHERE solo_ignoto) AS invisibili FROM dbops.vw_codici_errore_forme_condizione. Al 2026-08-07: 342 codici, 75 classificati, 267 invisibili, 6 candidati forti. E'' una MISURA, non un cancello: un codice legittimamente trasversale esiste. Costosa (legge pg_proc.prosrc riga per riga): non usare a runtime.';
