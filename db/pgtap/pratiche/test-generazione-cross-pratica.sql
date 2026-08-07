@@ -90,7 +90,7 @@ WITH ruolo AS (
 SELECT
   COALESCE(
     (SELECT soggetto_id FROM ruolo),
-    (SELECT s.id FROM anagrafiche.soggetti s LIMIT 1)
+    (SELECT s.id FROM anagrafiche.soggetti s ORDER BY s.id LIMIT 1)
   ) AS soggetto_id,
   (SELECT ruolo_id FROM ruolo) AS ruolo_id;
 

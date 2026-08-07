@@ -79,6 +79,7 @@ SELECT script.fn_pgtap_emittente_operatore() AS emittente_id,
   (
     SELECT id
     FROM anagrafiche.soggetti
+    ORDER BY id
     LIMIT 1
   ) AS soggetto_id,
   (

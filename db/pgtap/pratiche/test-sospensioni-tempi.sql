@@ -86,7 +86,7 @@ END $$;
 CREATE TEMP TABLE tmp_st_refs AS
 SELECT
   script.fn_pgtap_emittente_operatore() AS emittente_id,
-  (SELECT id FROM anagrafiche.soggetti LIMIT 1) AS soggetto_id,
+  (SELECT id FROM anagrafiche.soggetti ORDER BY id LIMIT 1) AS soggetto_id,
   (SELECT id FROM config.stati_pratiche WHERE codice_interno = 'BOZZA') AS st_bozza,
   (SELECT id FROM config.stati_pratiche WHERE codice_interno = 'APERTA') AS st_aperta,
   (SELECT id FROM config.stati_pratiche WHERE codice_interno = 'SOSPESA') AS st_sospesa,

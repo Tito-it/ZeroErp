@@ -61,7 +61,7 @@ ON CONFLICT (codice_interno) DO NOTHING;
 CREATE TEMP TABLE tmp_gp_refs AS
 SELECT
   script.fn_pgtap_emittente_operatore() AS emittente_id,
-  (SELECT id FROM anagrafiche.soggetti LIMIT 1) AS soggetto_id,
+  (SELECT id FROM anagrafiche.soggetti ORDER BY id LIMIT 1) AS soggetto_id,
   (SELECT id FROM config.stati_pratiche WHERE codice_interno = 'BOZZA' LIMIT 1) AS stato_bozza_id,
   (SELECT id FROM config.stati_pratiche WHERE codice_interno = 'APERTA' LIMIT 1) AS stato_aperta_id,
   (SELECT id FROM config.priorita_pratiche WHERE codice_interno = 'NORMALE' LIMIT 1) AS priorita_normale_id,

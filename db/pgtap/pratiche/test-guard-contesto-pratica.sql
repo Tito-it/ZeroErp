@@ -85,6 +85,10 @@ SELECT s.id AS soggetto_id,
 FROM anagrafiche.soggetti s
   JOIN anagrafiche.soggetti_ruoli sr ON sr.soggetto_id = s.id
   JOIN anagrafiche.istanze_utilities iu ON iu.soggetto_id = s.id
+-- Ordine su tutte e tre le chiavi: il JOIN puo' produrre piu' righe per lo
+-- stesso soggetto (piu' ruoli, piu' istanze), quindi ordinare il solo
+-- soggetto lascerebbe ancora scegliere al planner ruolo e istanza.
+ORDER BY s.id, sr.id, iu.id
 LIMIT 1;
 -- Un soggetto diverso per test ruolo non coerente
 CREATE TEMP TABLE tmp_gc_altro_sogg AS

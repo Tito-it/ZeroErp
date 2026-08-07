@@ -133,7 +133,7 @@ SELECT (
     SELECT i.id
     FROM config.iva i
     WHERE i.attivo IS TRUE
-    LIMIT 1
+    ORDER BY i.id LIMIT 1
   ) AS iva_id;
 SELECT ok(
     (

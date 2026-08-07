@@ -53,7 +53,7 @@ SELECT
     ba.utility_id,
     (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'  LIMIT 1) AS id_draft,
     (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO' LIMIT 1) AS id_attivo,
-    (SELECT id FROM catalogo.unita_misura WHERE attivo = TRUE LIMIT 1) AS uom_id,
+    (SELECT id FROM catalogo.unita_misura WHERE attivo = TRUE ORDER BY id LIMIT 1) AS uom_id,
     1::bigint AS emittente_soggetto_ruolo_id
   FROM anagrafiche.billing_account ba
  ORDER BY ba.id

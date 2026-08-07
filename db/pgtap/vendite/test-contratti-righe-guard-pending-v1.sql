@@ -59,7 +59,7 @@ SELECT
     ba.utility_id,
     anagrafiche.fn_get_emittente_fiscale_pk(ba.id) AS emittente_fiscale_id,
     (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT' LIMIT 1) AS id_draft,
-    (SELECT id FROM catalogo.unita_misura WHERE attivo = TRUE LIMIT 1) AS uom_id
+    (SELECT id FROM catalogo.unita_misura WHERE attivo = TRUE ORDER BY id LIMIT 1) AS uom_id
   FROM anagrafiche.billing_account ba
  WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id)
  ORDER BY ba.id

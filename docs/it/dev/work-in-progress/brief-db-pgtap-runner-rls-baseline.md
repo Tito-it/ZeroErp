@@ -25,7 +25,7 @@
 > file, `PGTAP_RUNNER` in `testpgtap.sh`, e una baseline che ora **registra con
 > che utente è stata presa e rifiuta i confronti disomogenei** (il difetto del §1
 > chiuso alla radice). Divario **da 36 a 23 file**.
-> 👉 **Punto della situazione: §25** · **famiglia C CHIUSA: §26** — divario **da 23 a 16**. Bilancio storico al §23 ·
+> 👉 **Punto della situazione: §25** · **famiglia C CHIUSA: §26** — divario **da 23 a 16** · **cantiere `LIMIT 1` aperto: §27** — ALTO su tabelle vere **da 66 a 31**. Bilancio storico al §23 ·
 > **Priorità**: 🔴 **ALTA** — non per un difetto di prodotto, ma perché
 > **`scripts/pgtap-baseline.sh` oggi non può fare il suo mestiere**: distinguere
 > un rosso nuovo da uno noto. Finché non è risolto, ogni «zero regressioni»
@@ -2217,3 +2217,124 @@ I 16 che restano sono esattamente le famiglie **B (8) + D (8)**: nessun residuo.
 
 ⚠️ Prima del punto 3, `anagrafiche/test-istanza-cliente-chain.sql`: oscilla fra
 6 e 0 asserzioni a parità di codice (§21.3).
+
+---
+
+## 27. Cantiere `LIMIT 1` — aperto, e la prima metà è fatta (2026-08-07)
+
+> Il debito più grande rimasto, e l'unico che deve stare **prima** della
+> ribaselinatura: registrare come «noto» un rosso intermittente significa coprire
+> un rosso vero il giorno in cui torna verde per caso.
+
+### 27.1 L'analizzatore, ricostruito
+
+La passata di censimento del §11.3 era stata fatta in un'altra sessione e lo
+strumento non c'era più. Ricostruito, e va ricostruito bene perché il punto
+delicato è uno solo: **`ORDER BY` va cercato allo stesso livello di
+annidamento** del `LIMIT`. Un `ORDER BY` in una sottoquery, o nella query che
+contiene quella col `LIMIT`, non ordina la scelta che interessa.
+
+Come funziona: maschera commenti, stringhe e dollar-quote preservando gli
+offset; risale dal `LIMIT` bilanciando le parentesi fino alla `(` aperta più
+vicina o al `;`; cerca `ORDER BY` a profondità 0 in quel perimetro. Esclude i
+`LIMIT` dentro `EXISTS(...)`, dove non scelgono niente.
+
+Il controllo che dice che è sano: `anagrafiche.soggetti` esce **24 volte**,
+esattamente il numero misurato allora.
+
+### 27.2 ⚠️ Prima di tagliare: 116 «ALTO» non sono 116 problemi
+
+Il censimento grezzo dava **550 occorrenze / 116 ALTO / 163 file** (era
+577/133/170 su 440 file: nel frattempo la suite è passata a 426, e l'euristica
+non è la stessa). Ma separando il rumore dal segnale:
+
+| | |
+| --- | --- |
+| ALTO su **tabelle temporanee create dal test stesso** | 50 — il `LIMIT` non sceglie niente di rischioso |
+| ALTO su **tabelle vere del dominio** | **66** — il bersaglio |
+
+Tagliare a tappeto sui 116 avrebbe speso metà del lavoro su siti innocui.
+
+### 27.3 Le due tranche fatte
+
+**Tranche 1 — `anagrafiche.soggetti`, 24 siti.** Forma omogenea, e con
+un'ironia dentro:
+
+```sql
+CREATE TEMP TABLE tmp_xx_refs AS
+SELECT
+  script.fn_pgtap_emittente_operatore() AS emittente_id,   -- dal contesto ✅
+  (SELECT id FROM anagrafiche.soggetti LIMIT 1) AS soggetto_id,  -- a caso ❌
+```
+
+La riga sopra deriva l'emittente **dal contesto** (regola 4 di
+[[feedback_pgtap_limit1_senza_orderby]]); quella sotto pesca il soggetto a caso.
+È la forma esatta del difetto dell'emittente 44. Sistemati tutti con `ORDER BY`
+sulla PK. Il ventiquattresimo era diverso — un `JOIN` a tre tabelle — e ha avuto
+`ORDER BY s.id, sr.id, iu.id`: ordinare il solo soggetto avrebbe lasciato al
+planner la scelta di ruolo e istanza.
+
+**Tranche 2 — `catalogo.unita_misura` (6) e `config.iva` (6).**
+
+⭐ **E qui è saltato fuori un difetto vero, non stilistico.** In
+`test-fn-ricalcola-totali-preventivo` c'erano **due estrazioni indipendenti dallo
+stesso insieme**:
+
+```sql
+(SELECT i.id           FROM config.iva i WHERE attivo AND aliquota_iva > 0 LIMIT 1) AS iva_id,
+(SELECT i.aliquota_iva FROM config.iva i WHERE attivo AND aliquota_iva > 0 LIMIT 1) AS iva_aliquota;
+```
+
+Niente garantiva che pescassero la stessa riga: il test avrebbe calcolato i
+totali attesi con l'aliquota di un'IVA **diversa** da quella messa in riga.
+**Non è teorico: in catalogo ci sono 7 IVA attive con aliquota positiva.** E la
+riga appena sopra aveva già `ORDER BY ef.id` — qualcuno aveva sistemato
+l'emittente e lasciato l'IVA, che è il modo in cui questi difetti sopravvivono.
+
+Riparato con una **CTE che sceglie una volta sola** e proietta id e aliquota
+dalla stessa riga — la regola 3 della memoria, che l'`ORDER BY` da solo non
+avrebbe soddisfatto altrettanto bene.
+
+### 27.4 Il risultato, e la verifica
+
+| | inizio | dopo tranche 1 | dopo tranche 2 |
+| --- | --- | --- | --- |
+| occorrenze senza `ORDER BY` | 550 | 526 | **515** |
+| di cui ALTO | 116 | 92 | **81** |
+| **ALTO su tabelle vere** | **66** | 42 | **31** |
+| `anagrafiche.soggetti` ALTO | 24 | **0** | **0** |
+
+**Verificato dopo ogni tranche: 88 rossi da owner, zero differenze file per
+file.** Nessun test è cambiato di esito — il che è il punto: si è tolta la
+fortuna, non si è spostato il risultato.
+
+### 27.5 Cosa resta, e perché cambia natura
+
+I 31 ALTO rimasti su tabelle vere non si tagliano più a tappeto. In testa non ci
+sono più tabelle ma **funzioni**:
+
+| | |
+| --- | --- |
+| `pratiche.fn_check_prerequisiti_flusso` | 6 |
+| `vendite.fn_list_ddt_da_pushare` | 3 |
+| `vendite.fn_ricalcola_totali_fattura` | 2 |
+| `anagrafiche.pdp`, `config.unita_organizzative` | 2 + 2 |
+| altri, uno o due ciascuno | 16 |
+
+Un `LIMIT 1` su una funzione che ritorna un insieme è legittimo se la funzione
+ritorna una riga sola, ed è una scommessa se ne ritorna molte: **si decide
+leggendo la funzione**, non con una regex. Sono lavoro a giudizio, non una
+passata.
+
+⚠️ **E la passata va chiusa sul pattern, non sull'elenco dei file toccati** —
+la lezione del 34° file di [[feedback_pgtap_limit1_senza_orderby]]. Lo
+strumento per rifarla in ogni momento è
+`censimento_limit1.py`, il cui metodo è descritto al §27.1.
+
+### 27.6 ℹ️ Il file intermittente NON è un caso di `LIMIT 1`
+
+`anagrafiche/test-istanza-cliente-chain.sql` (§21.3), quello che oscilla fra 6 e
+0 asserzioni, ha due `LIMIT 1` su `anagrafiche.soggetti` — ma sono
+`WHERE partita_iva = '...'`, cioè **deterministici**. L'analizzatore li classifica
+correttamente «medio». **La causa dell'oscillazione è un'altra e resta da
+trovare**: va cercata prima della ribaselinatura, ma non in questo cantiere.
