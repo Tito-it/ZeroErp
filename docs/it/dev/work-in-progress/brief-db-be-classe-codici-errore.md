@@ -114,9 +114,9 @@ lo aveva valutato e respinto:
 
 ⚠️ **Quell'obiezione si dissolve con questo brief**, e va detto perché altrimenti
 qualcuno la riproporrà. Uccideva l'idea perché l'unità era il **codice**: 689
-voci da mappare. Con la classe l'unità diventa la **classe**: otto valori.
+voci da mappare. Con la classe l'unità diventa la **classe**: dieci valori.
 `script.fn_log_and_raise_error` legge già la riga di catalogo per comporre il
-messaggio — leggerne anche `classe` e sollevare con `ERRCODE = 'U0001'..'U0008'`
+messaggio — leggerne anche `classe` e sollevare con `ERRCODE = 'U0001'..'U0010'`
 costerebbe zero, e il backend riceverebbe la semantica **dentro l'eccezione**,
 senza nessun elenco da tenere allineato.
 
@@ -169,7 +169,7 @@ traduzioni.** La classe e il ritiro appartengono al codice, non alla frase.
 
 ### 3.2 `config.classi_errore` — un vocabolario, non un `CHECK`
 
-Otto valori stabili, referenziati da una colonna `NOT NULL`. Il progetto per
+Dieci valori stabili, referenziati da una colonna `NOT NULL`. Il progetto per
 questa forma usa **tabelle-vocabolario** (`config.iva_natura`,
 `config.esiti_flussi_pratiche`, `config.nature_vendita`), non `CHECK` con lista
 di letterali. Le ragioni, qui, sono tre:
@@ -187,7 +187,7 @@ avuta devono continuare a risolvere.
 ### 3.3 Lo schema, per intero
 
 ```
-config.classi_errore                        ← il vocabolario, 8 righe
+config.classi_errore                        ← il vocabolario, 10 righe
   classe        text PK                     ← DATO_ERRATO, CONFLITTO_STATO, …
   descrizione   text NOT NULL               ← la definizione che decide i casi dubbi
   obsoleto_dal  date                        ← una classe si ritira, non si disattiva
@@ -280,7 +280,7 @@ scritta: *«coperto dal prefisso di `uq_messaggi_errore_codice_lingua`»*.
 
 ---
 
-## 4. Il vocabolario — otto valori, e non sono inventati
+## 4. Il vocabolario — dieci valori, e non sono inventati
 
 Vengono dalle **659 decisioni già prese** nel cantiere del terzo/quarto lato, non
 da un disegno a priori:
@@ -295,6 +295,8 @@ da un disegno a priori:
 | `NON_ESEGUIBILE` | 422 | si capisce ma non si può eseguire (configurazione che non regge a quella data) | 22 |
 | `NON_DISPONIBILE` | 501 | funzione presente ma non servita (disattivata) | 4 |
 | `AVVISO` | — | **non è un rifiuto**: è una nota nel diario, non raggiunge mai chi ha fatto la richiesta (§4.2) | 1 |
+| `NON_AUTENTICATO` | 401 | non manca il diritto, manca **chi sei**: l'operatore rimedia autenticandosi (§4.3) | 4 |
+| `ERRORE_ESTERNO` | 502 | un servizio di terzi ha risposto male: **il guasto non è nostro** (§4.3) | 1 |
 
 ⚠️ **`AVVISO` è l'ottavo valore, ed è arrivato dopo** — non stava nella prima
 stesura, è emerso rispondendo alla domanda aperta del §7. La sua ragione sta nel
@@ -312,14 +314,39 @@ stesura, è emerso rispondendo alla domanda aperta del §7. La sua ragione sta n
 > ma la conclusione è stata scritta lo stesso — dichiarare l'incertezza non è
 > come toglierla.
 
-**Restano fuori due casi**, che non vanno nel vocabolario di dominio:
+### 4.3 ⚠️ «401 e 502 restano fuori» **non regge** — è di nuovo il caso `AVVISO`
 
-* **401** (autenticazione, 4 codici) — costruiti da `JwtAuditMiddleware`, non
-  passano dall'exception handler;
-* **502** (un provider esterno ha risposto male, 1 codice).
+La prima stesura diceva: *«restano fuori dal vocabolario di dominio il **401**
+(autenticazione, 4 codici) e il **502** (1 codice); vanno mappati a mano nel
+backend»*.
 
-Vanno mappati a mano nel backend, e va bene: non sono errori che una funzione
-PL/pgSQL solleva.
+**Emerso eseguendo il D-1 del piano DB (2026-08-07):** tutti e cinque **sono
+righe di `config.messaggi_errore`**, quindi con la FK vogliono un padre in
+`codici_errore` e con `classe NOT NULL` vogliono una classe. Verificato uno per
+uno: `E_JWT_SENZA_IDENTITA`, `E_IDENTITA_NON_ATTIVA`, `E_AUTHENTICATION_FAILED`,
+`E_NOT_AUTHENTICATED` (401) e `E_AI_PROVIDER_ERROR` (502).
+
+⚠️ **È esattamente il problema di `W_TXID_NOT_REGISTERED`** (§4.2), e si era
+mancato di vederlo perché «fuori dal vocabolario» suonava come «fuori dalla
+tabella». Non lo è: **il catalogo è di tutti i codici** (D9).
+
+Le stesse tre strade, e le stesse due scartate — forzarli su una classe esistente
+fa dire al dato una cosa falsa, `classe` nullable butta via il §5. Quindi:
+
+| Classe proposta | HTTP | Perché non basta una esistente |
+|---|---|---|
+| `NON_AUTENTICATO` | 401 | **non è `NON_PERMESSO`**: lì il diritto manca, qui manca *chi sei*. E l'operatore rimedia — autenticandosi — mentre su un 403 non può fare niente. Sono reazioni opposte della pagina |
+| `ERRORE_ESTERNO` | 502 | **non è `TECNICO`**: il guasto non è nostro. Per l'operatore cambia poco, per chi guarda il diario cambia tutto — è la differenza fra «da riparare» e «da aspettare», ed è il primo taglio utile dell'alerting (§12) |
+
+**Il vocabolario passa da 8 a 10 valori.** 🔵 **Decisione di Tid**: nel CSV del
+D-1 la proposta è **già applicata** (4 righe `NON_AUTENTICATO`, 1
+`ERRORE_ESTERNO`), quindi cambiarla costa una rigenerazione, non un rifacimento.
+
+> ⭐ **La lezione, ed è la terza volta in due giorni**: `AVVISO`, poi questi
+> cinque. Ogni volta la frase era *«questo caso sta fuori»* — e ogni volta il
+> caso stava **dentro la tabella**, perché il catalogo li contiene tutti. Con un
+> `NOT NULL` non esiste un «fuori»: esiste solo una classe che non abbiamo ancora
+> nominato.
 
 ### 4.1 Le classi si distinguono **anche fra due `IF` adiacenti**
 
@@ -497,7 +524,7 @@ sarebbe scoperto scrivendo il codice.
 3. **un controllo in CI** fallisce se il file generato diverge dal DB — è il
    cancello `test_error_codes_db_policy_guardrail` che cambia mestiere ancora una
    volta, e non un presidio nuovo;
-4. **la mappa classe → HTTP resta lato BE**, otto righe scritte a mano (sette
+4. **la mappa classe → HTTP resta lato BE**, dieci righe scritte a mano (nove
    status + `AVVISO`, che non ne ha uno). È
    trasporto, non dominio: il DB non deve sapere cosa sia un 409;
 5. `ui_action` e `user_message` restano scritti a mano nel file generato — e
@@ -575,6 +602,15 @@ davvero `0` ovunque — nessuna funzione viva, nessun file nel repo. E
 tracce **e zero funzioni che li sollevano**: è la firma esatta di *«progettato,
 non ancora cablato»*.
 
+> ⚠️ **CORREZIONE (2026-08-07, eseguendo il D-2): due assi non bastano, e questo
+> discriminante ha sbagliato.** Le famiglie `E_BOM_*`, `E_CONTRATTO_MODALITA_C_*`
+> e `E_COMPETENZA*` erano state date per «progettate, non ancora agganciate».
+> **Erano agganciate, e sono state staccate** nella bonifica dei riferimenti
+> morti del 4-5 agosto: le tracce non sono i resti di un disegno da costruire, ma
+> di uno **rimosso**. Serve un **terzo asse — *è mai stato cablato?*** — che si
+> legge nei changeSet di `20_code` e delle migrazioni v1. Dettaglio ed esito nel
+> [piano DB, D-2](piano-db-classe-codici-errore.md).
+>
 > ⭐ **Il metodo è la parte riusabile, più dei 33.** «Zero tracce» e «zero
 > sollevamenti» sembrano la stessa cosa e non lo sono: il secondo da solo dice
 > «nessuno lo usa **ora**», ed è ciò che ha lasciato aperte per un cantiere
@@ -983,7 +1019,7 @@ L'ordine è per **dipendenza**, non per dimensione.
 | 1 | ~~Decidere il perimetro dei 3 codici solo-Python~~ | ~~Tid~~ | ✅ **chiuso** (§7.2): il catalogo è di **tutti** i codici, e i tre non erano codici |
 | **1-bis** | ⏱ **Spezzare `E_VALIDAZIONE`** — 10 funzioni, 5 domini | **DB + BE** | 🔴 **la prima a scadere**: se il seed parte prima, `fn_annulla_reso` prende `DATO_ERRATO` dove la verità è `CONFLITTO_STATO` (§9.1) |
 | **1-ter** | 🔵 Decidere la forma di `error_policies.py` generato/a-mano | **BE** | §14.1 — non blocca il DB, blocca il generatore |
-| 2 | `config.classi_errore` (**8 valori**, `AVVISO` incluso) + `config.codici_errore` (`00_schema`) — `classe NOT NULL` **senza DEFAULT**, FK, audit, `note` | DB | |
+| 2 | `config.classi_errore` (**10 valori**) + `config.codici_errore` (`00_schema`) — `classe NOT NULL` **senza DEFAULT**, FK, audit, `note` | DB | |
 | 3 | Il BE genera il CSV `codice,classe` da `error_policies.py` | BE | 659 righe su 692; **escludendo `PREV_STATO_NON_MODIFICABILE`**, che è morto (§7.2); `E_PARAMETRO_INVALIDO` col denominatore sicuro e il perché in `note` |
 | 4 | **Le ~32 decisioni residue** — classificare o ritirare, **col discriminante del §7.1** | Tid + DB | i **3 a zero tracce** si ritirano subito; le famiglie `E_BOM_*` / `E_CONTRATTO_MODALITA_C_*` / `E_COMPETENZA*` si **classificano** (non agganciate ≠ superate). ⚠️ `E_AI_CONFIRMATION_REQUIRED` → ritiro anche a catalogo |
 | 5 | Seed: `classi_errore` + `codici_errore.csv`, **dentro `20260614-08` prima del catalogo** (§10.1) | DB | ⚠️ è il passo che rompe la CI se fatto nel modo ovvio |
@@ -1044,6 +1080,9 @@ risultano scritte:
 | D15 | **Quattro moduli** lato BE, separati per *quando cambiano*; override in codice e non in CSV (§14.2) | BE, 2026-08-07 sera |
 | D16 | ⚠️ **`user_message` NON è un duplicato del catalogo**: è la variante senza segnaposto — **0 su 656** contengono `%s`, contro 371 a catalogo (§11) | BE + DB, 2026-08-07 sera |
 | D17 | **Due viste, non una**: `vw_codici_errore` per la revisione (per lingua), `vw_codici_errore_identita` per il generatore (per codice), con `ORDER BY codice` dentro la vista (§14.4) | DB, 2026-08-07 sera |
+| D21 | ⚠️ **Il discriminante del §7.1 vuole un TERZO asse** — «è mai stato cablato?»: senza, «staccato ieri» e «mai attaccato» sono indistinguibili. Applicato: **30 ritiri, 3 classificazioni** | DB, 2026-08-07 sera |
+| D22 | ⚠️ **La doc auto-gen non dice se un oggetto ESISTE** — il generatore scriveva e basta, 10 pagine di funzioni droppate erano ancora lì. Corretto `gen_db_docs.py` con la potatura degli orfani | DB, 2026-08-07 sera |
+| D20 | ✅ **Due classi in più, `NON_AUTENTICATO` e `ERRORE_ESTERNO`**: i 5 codici «fuori vocabolario» sono righe di catalogo, quindi una classe la vogliono. Vocabolario **8 → 10** (§4.3) | **Tid, 2026-08-07 sera** |
 | D18 | **`note` su una riga sola**, senza a capo: le celle CSV multi-riga sono strada battuta poco (3 in tutto il repo) (§14.3) | DB, 2026-08-07 sera |
 | D19 | **Due piani separati, DB per primo**: il BE è fermo e — misurato — non era un prerequisito (654/659 estraibili dal DB). L'unico cancello è D-9 (§13.0) | Tid, 2026-08-07 sera |
 

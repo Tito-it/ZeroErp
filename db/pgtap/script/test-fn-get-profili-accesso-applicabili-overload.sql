@@ -67,13 +67,26 @@ SELECT is(
 -- =========================================================
 -- Verifica che la signature unica sia la 2-arg canonica (non la
 -- 1-arg ricomparsa per sbaglio).
+-- ⚠️ Si confrontano gli OID dei tipi, non la firma RESA come stringa.
+--   `pg_get_function_identity_arguments` qualifica il tipo con lo schema solo se
+--   quello schema NON e' nel search_path: l'owner legge
+--   «config.ruolo_applicativo», l'utente applicativo — che ha `config` nel
+--   search_path — legge «ruolo_applicativo». Stessa funzione, due stringhe:
+--   l'asserzione dipendeva dallo stato di sessione invece che dalla cosa da
+--   verificare. Gli OID non hanno questo problema, e il letterale a destra e'
+--   qualificato quindi risolve sempre allo stesso tipo.
+--   ⚠️ `::oidvector` e non `oid[]`: proargtypes e' a base ZERO e un ARRAY a base
+--   uno, e il confronto fra i due e' falso anche con gli stessi elementi.
+--   La sotto-select resta scalare apposta: se riapparisse un overload, PostgreSQL
+--   solleverebbe «more than one row» — che e' proprio cio' che il test presidia.
 SELECT is(
-    (SELECT pg_get_function_identity_arguments(p.oid)
+    (SELECT p.proargtypes
        FROM pg_proc p
        JOIN pg_namespace n ON n.oid = p.pronamespace
       WHERE n.nspname = 'script'
         AND p.proname = 'fn_get_profili_accesso_applicabili'),
-    'p_auth_user_id integer, p_ruolo_applicativo config.ruolo_applicativo',
+    ARRAY['integer'::regtype::oid,
+          'config.ruolo_applicativo'::regtype::oid]::oidvector,
     '2. Signature canonica: 2 arg (integer, config.ruolo_applicativo)'
 );
 

@@ -361,6 +361,38 @@ def gen_view_md(schema, view, cur):
     #return manual + "\n".join(lines)
     return "\n".join(lines)
  
+# Scopo: Cancella dalla cartella auto-generata i .md che non corrispondono a
+#        nessun oggetto vivo — le "doc orfane" di oggetti droppati.
+#
+#   ⚠️ PERCHE' SERVE, ed e' costato una misura sbagliata il 2026-08-07.
+#   Fino a quel giorno questo generatore SCRIVEVA soltanto: un oggetto droppato
+#   lasciava la sua pagina in `docs/it/dbzero/<schema>/<tipo>/` per sempre. E
+#   siccome `.codex/AGENTS.md` dice — giustamente — di prendere le definizioni
+#   dalla doc auto-generata perche' «riflette l'oggetto VIVO nel DB», quelle
+#   pagine mentivano nel modo peggiore: erano corrette nel contenuto e false
+#   nell'esistenza. Dieci funzioni droppate fra il 4 e il 5 agosto avevano
+#   ancora la loro pagina, e leggendole si concludeva che i loro codici errore
+#   fossero ancora sollevati da qualcuno.
+#
+#   ⚠️ GUARDIA: si pota SOLO se l'insieme degli oggetti vivi non e' vuoto. Una
+#   query che fallisce o un permesso mancante producono zero righe, e senza
+#   questa guardia una cartella intera sparirebbe in silenzio. Meglio una doc
+#   orfana in piu' che l'intera documentazione di uno schema in meno.
+#
+#   ⚠️ NON tocca mai `manual/`: quella la scrivono le persone.
+def _pota_orfani(dir_path, vivi, etichetta):
+    if not vivi:
+        return  # guardia: vedi sopra
+    if not os.path.isdir(dir_path):
+        return
+    for nome_file in sorted(os.listdir(dir_path)):
+        if not nome_file.endswith(".md"):
+            continue
+        if nome_file[:-3] not in vivi:
+            os.remove(os.path.join(dir_path, nome_file))
+            print(f"  🗑️  doc orfana rimossa ({etichetta}): {nome_file}")
+
+
 def write_docs_for_schema(schema, cur):
     schema_dir = os.path.join(OUT_DIR, schema)
     os.makedirs(os.path.join(schema_dir, "tabelle"), exist_ok=True)
@@ -377,8 +409,10 @@ def write_docs_for_schema(schema, cur):
         "SELECT table_name FROM information_schema.tables WHERE table_schema=%s AND table_type='BASE TABLE'",
         (schema,)
     )
+    tabelle_vive = set()
     for r in cur.fetchall():
         tbl = r['table_name']
+        tabelle_vive.add(tbl)
         path = os.path.join(schema_dir, "tabelle", f"{tbl}.md")
         content = include_manual(schema, 'tabelle', tbl) + gen_table_md(schema, tbl, cur)
         # Aggiungi firma core in fondo
@@ -397,8 +431,10 @@ def write_docs_for_schema(schema, cur):
         """,
         (schema,)
     )
+    funzioni_vive = set()
     for r in cur.fetchall():
         fn = r['routine_name']
+        funzioni_vive.add(fn)
         path = os.path.join(schema_dir, "funzioni", f"{fn}.md")
         content = include_manual(schema, 'funzioni', fn) + gen_function_md(schema, fn, cur)
         content += FOOTER
@@ -418,6 +454,7 @@ def write_docs_for_schema(schema, cur):
 
     for r in cur.fetchall():
         proc = r["procedure_name"]
+        funzioni_vive.add(proc)  # procedure e funzioni condividono la cartella
         path = os.path.join(schema_dir, "funzioni", f"{proc}.md")
 
         # Manuale: rimane flat in /<schema>/manual, come per le funzioni
@@ -444,14 +481,23 @@ def write_docs_for_schema(schema, cur):
         """,
         (schema,)
     )
+    viste_vive = set()
     for r in cur.fetchall():
         vw = r['view_name']
+        viste_vive.add(vw)
         path = os.path.join(schema_dir, "views", f"{vw}.md")
         content = include_manual(schema, 'views', vw) + gen_view_md(schema, vw, cur)
         # Aggiungi firma core in fondo
         content += FOOTER
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
+    # Pota le doc di oggetti che non esistono piu'. DEVE stare qui, dopo tutte
+    # le scritture e PRIMA degli indici: l'indice si costruisce leggendo le
+    # cartelle, quindi potare dopo significherebbe indicizzare gli orfani.
+    _pota_orfani(os.path.join(schema_dir, "tabelle"), tabelle_vive, f"{schema}/tabelle")
+    _pota_orfani(os.path.join(schema_dir, "funzioni"), funzioni_vive, f"{schema}/funzioni")
+    _pota_orfani(os.path.join(schema_dir, "views"), viste_vive, f"{schema}/views")
+
     # Genera indice includendo tabelle, funzioni e view
     write_index(schema_dir, schema)
     # Genera indice CI con solo contenuti manuali
