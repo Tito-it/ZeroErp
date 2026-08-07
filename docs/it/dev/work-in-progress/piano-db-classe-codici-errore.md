@@ -3,7 +3,7 @@
 **Chi:** team DB (`dev/db-tid`).
 **Guida generale e ragioni di ogni scelta:** [brief-db-be-classe-codici-errore](brief-db-be-classe-codici-errore.md) — 20 decisioni, le trappole, i perché. **Questo file non le ripete: le esegue.**
 **Piano gemello:** [piano-be-classe-codici-errore](piano-be-classe-codici-errore.md).
-**Stato:** 🟢 **PIANO DB COMPLETO, code comprese** — D-1..D-9 applicati e verdi; D-10 e le due code del §3 scritti (2026-08-07). Il cancello del BE è aperto.
+**Stato:** 🟢 **PIANO DB CHIUSO — tutto applicato, tutto verificato contro il database vero** (2026-08-08). D-1..D-10 e le due code del §3 applicati; il D-10 riscritto a window function (`20260808-01`, §2 D-10). Il BE ha consumato la consegna: `error_policies_generated.py` è **generato** e le 689 coppie `codice → classe` coincidono esattamente col catalogo (§5).
 ✅ **Vocabolario a 10 valori confermato da Tid** (2026-08-07): `NON_AUTENTICATO` e `ERRORE_ESTERNO` restano.
 
 ---
@@ -1065,3 +1065,142 @@ significa riscrivere il guardrail — è una slice sua, non la coda di un rename
 * **DDL e corpi dalla doc auto-gen** (`docs/it/dbzero/…`), mai dagli YAML: un
   singolo YAML è quasi sempre stale;
 * ⛔ **niente commit senza «procedi» esplicito**.
+
+---
+
+## 5. La verifica di chiusura — **2026-08-08**, contro il database vero
+
+Fatta dopo che il BE ha pushato il suo lato (commit `2f22c28ed`, B-1..B-6) e il
+DB il proprio (`08e471cf8`). Non è una rilettura dei documenti: ogni riga qui
+sotto è una misura eseguita, non una dichiarazione.
+
+### 5.1 Lo stato applicato
+
+| Cosa | Misurato | Atteso |
+|---|---:|---:|
+| changeSet `20260808-01` in `databasechangelog` | 1 | 1 |
+| `config.codici_errore` | 689 | 689 |
+| `config.classi_errore` | 10 | 10 |
+| `vw_codici_errore_identita` righe / distinti | 689 / 689 | uguali |
+| `MESSAGGIO_NON_DEFINITO` (nome vecchio) a catalogo | 0 | 0 |
+| `dbops.messaggi_errore_codici_legacy` | 0 | 0 |
+
+**Guardrail strutturato: verde.** *«Un solo mittente sul canale CONSTRAINT,
+nessun codice fuori convenzione non registrato, nessuna voce di troppo nel
+registro (0 attive), nessun codice ritirato ancora sollevato (79 ritirati),
+nessun warning sollevato come errore.»*
+
+**D-10 dopo la riscrittura:** 344 codici, 75 classificati, 269 invisibili, in
+**371 ms**. Stessi numeri della versione a sottoquery correlate, che ne metteva
+145 000. I 6 candidati non sono cambiati: `E_PARAMETRO_INVALIDO` (206 punti),
+`E_GENERICO` (68), `E_ADMIN_VALIDAZIONE` (50), `E_ERRORE_PARAMETRI` (13),
+`E_ATTIVO_REQUIRE` (6), `E_SOGGETTI_RUOLI` (3).
+
+### 5.2 ⭐ Il lato BE combacia — verificato coppia per coppia, non a occhio
+
+Il modo debole di verificarlo è contare le righe. Quello vero è confrontare le
+**coppie**: estratte le 689 `codice → classe` da `error_policies_generated.py` e
+messe a diff con le 689 di `config.vw_codici_errore_identita` presa adesso.
+
+> **Zero differenze.** Nessun codice in più, nessuno in meno, **nessuna classe
+> diversa**.
+
+E il generatore legge la vista giusta: `config.vw_codici_errore_identita`, con un
+`⛔ NON usare config.vw_codici_errore` scritto nel suo stesso codice. Era la sola
+cosa che il D-9 poteva sbagliare in silenzio — la vista di revisione ha una riga
+per *(codice, lingua)* e, essendo un `LEFT JOIN`, filtrarla per lingua avrebbe
+perso proprio i codici senza messaggio.
+
+### 5.3 🔴 Un rosso lasciato indietro **da noi**, non dal BE
+
+Rieseguendo i pgTAP è uscito rosso
+[`db/pgtap/script/test-catalogo-messaggi-errore-completo.sql`](../../../../db/pgtap/script/test-catalogo-messaggi-errore-completo.sql),
+test 1: il preflight cercava ancora `MESSAGGIO_NON_DEFINITO` col nome vecchio.
+**Non era in baseline** — quindi una regressione vera, introdotta dal rename del
+§3.2.
+
+⚠️ **Perché è sfuggito, ed è la parte che vale.** Il rename era stato cercato nei
+file che *definiscono* il codice (funzione, i due CSV) e in quelli che lo
+*sollevano*. Questo test non fa né l'una né l'altra cosa: **verifica che il
+ripiego esista**. È una terza categoria, e non c'era nella lista di chi guardare.
+
+⭐ **E il §9.6 del piano BE racconta lo stesso rename dall'altro lato: là i due
+presidi sono diventati rossi da soli, due ore dopo, e hanno tenuto.** Il rename è
+stato quindi collaudato tre volte — due volte con successo e una no, e proprio
+quella che ha mancato dice dov'era il buco. Il nome è scritto a mano in **tre
+posti** che non si derivano l'uno dall'altro (il corpo di `fn_log_error_only`, i
+CSV, il preflight): il commento che lo dice ora sta nel test, sopra
+l'asserzione — è il solo dei tre che può parlare.
+
+**Corretto e riverificato.** File verde, 4 asserzioni su 4.
+
+### 5.4 La suite, a confronto con la baseline
+
+`scripts/pgtap-baseline.sh script config` — 85 file, runner `app`:
+
+> **Rossi ora: 18 su 85 · noti in baseline: 18 · ✅ nessuna regressione.**
+
+I due file nuovi del cantiere sono verdi:
+`config/test-codici-errore-identita.sql` (8 su 8) e
+`config/test-codici-errore-obsoleto-dal.sql` (4 su 4).
+
+### 5.5 ⛔ Il registro legacy **non si droppa** — deciso (Tid, 2026-08-08)
+
+Il §9.6 del piano BE dice, di `dbops.messaggi_errore_codici_legacy`, «*che con
+quella va a zero e **si droppa***», e api.md diceva lo stesso. **Non è più una
+coda aperta: è una decisione presa.**
+
+⚠️ **Prima l'obiezione onesta, perché l'argomento regga.** A zero righe droppare
+è **neutro nel comportamento**: il `NOT EXISTS` del controllo (B) non toglie
+nulla, il (C) è vero a vuoto, e la guardia d'esistenza serve solo a proteggere
+quei due. Il drop comprerebbe davvero «meno codice». Il punto non è che serva a
+qualcosa adesso — è quanto costa toglierlo.
+
+E costa **mettere mano al controllo (B)**, l'unica cosa che tiene la convenzione
+`^[EW]_`, in un guardrail verde che il 2026-08-08 ha coperto un punto cieco
+altrui (leggeva `pg_proc` mentre le misure file-based non vedevano `shop`).
+*Non si riscrive un presidio verde per rimuovere un no-op.*
+
+⭐ **La ragione che conta è però un'altra, ed è storica di questo repo.** La
+convenzione **è già stata allargata una volta**, da `^E_` a `^[EW]_` per far
+posto ai warning (`20260805-28`, sta nel commento del guardrail). Alla prossima
+eccezione legittima, con un registro c'è una riga datata che qualcuno legge;
+senza, l'unico posto dove atterra è **la regex**.
+
+> Una riga in un registro è una dichiarazione. Un carattere in una regex è
+> un'erosione.
+
+⚠️ **Due cose le impediscono oggi di fare quel mestiere, e vanno fatte allora,
+non adesso:**
+
+* **non ha una colonna `motivo`** — registra `codice` e `data_registrazione`,
+  cioè *chi* e *quando*, non *perché*. Con 57 righe di debito omogeneo la ragione
+  era una sola e stava nel changeSet; per un'eccezione singola non lo sarebbe;
+* **il messaggio del controllo (B) dichiara quella strada chiusa**: «è per il
+  debito ereditato del 2026-08-05, NON per i codici nuovi».
+
+Costruirle adesso sarebbe anticipare un consumatore che non esiste — la stessa
+regola già applicata altrove nel progetto (generalizzazione rinviata al secondo
+consumatore). La tabella vuota costa zero manutenzione: il CHECK
+`chk_..._non_conforme` le impedisce perfino di riempirsi di codici conformi.
+
+✅ **api.md corretta** (§ *codici fuori convenzione*): la riga «a zero righe la
+tabella si droppa» è stata sostituita dalla decisione e dalle sue ragioni.
+
+⚠️ **Da non confondere con `dbops.codici_errore_senza_policy`** — il registro del
+*terzo lato* (141 → 0), di cui api.md diceva già «non si droppa». Sono due
+tabelle, due mestieri, e **restano entrambe**. Leggendo api.md di fretta i due
+passaggi sembrano contraddirsi: non lo fanno, parlano di registri diversi.
+
+### 5.6 Cosa resta aperto, e non è di questo piano
+
+Nessun passo D-* è aperto. Le cose viste passando, ognuna una slice sua:
+
+* **il lotto degli accumulatori** — i 6 candidati del §5.1, di cui
+  `E_GENERICO` (68 punti, 4 famiglie) e `E_ADMIN_VALIDAZIONE` (50 punti) sono i
+  due che il D-10 indica per primi. La classe **non li cura**: assegna una
+  reazione, non separa le condizioni;
+* ~~il drop del registro legacy~~ — **chiuso come decisione, non come lavoro**:
+  non si droppa (§5.5);
+* **B-7 lato BE, per metà** — l'altra metà l'hanno già chiusa e nasce in pari
+  (0 punti di chiamata su 213 nominano un codice ritirato).

@@ -1169,7 +1169,32 @@ costerebbe seed + call site + pgTAP senza comprare nulla —
 **e il rubinetto si chiude**: il controllo (B) del guardrail rifiuta ogni codice
 *nuovo* fuori convenzione. I 57 ereditati vivono in
 `dbops.messaggi_errore_codici_legacy`, che è un **registro del debito e deve
-calare**; a zero righe la tabella si droppa.
+calare**.
+
+⭐ **Dal 2026-08-07 è a zero righe** (l'ultima è uscita col rename
+`MESSAGGIO_NON_DEFINITO` → `E_MESSAGGIO_NON_DEFINITO`).
+
+⛔ **La tabella NON si droppa** — decisione di Tid, 2026-08-08. Questa riga
+diceva il contrario, ed è stata corretta: a zero righe droppare sarebbe
+*neutro* nel comportamento (il `NOT EXISTS` del controllo (B) non toglie nulla,
+il (C) è vero a vuoto), ma comprerebbe «meno codice» al prezzo di **mettere mano
+al controllo (B)**, cioè all'unica cosa che tiene la convenzione.
+
+La ragione che conta è però un'altra: la convenzione **è già stata allargata una
+volta**, da `^E_` a `^[EW]_` per far posto ai warning (`20260805-28`). Alla
+prossima eccezione legittima, con un registro c'è una riga datata che qualcuno
+legge; senza, l'unico posto è la regex — e allargare una regex è un diff di un
+carattere che non nota nessuno, applicato a tutti per sempre.
+
+⚠️ **Se e quando servirà davvero come valvola**, mancano due cose e vanno fatte
+allora, non prima: una colonna `motivo` (oggi la tabella registra *chi*, non
+*perché*) e la riscrittura del messaggio del controllo (B), che dichiara quella
+strada chiusa ai codici nuovi. Finché l'eccezione non arriva, la tabella vuota
+costa zero e il rubinetto resta chiuso.
+
+⚠️ Da non confondere con `dbops.codici_errore_senza_policy` (il registro del
+*terzo lato*, 141 → 0): è un'altra tabella, un altro mestiere, e anche quella
+resta.
 
 **Eccezione — codici middleware-level.** Alcune risposte sono costruite
 direttamente da `JwtAuditMiddleware` (helper `_json_error`, stesso envelope)
