@@ -256,6 +256,30 @@ preventivi e in CI cancellava `outlined`/icona dell'annullamento,
 - Esempio esecuzione test Django: `./manage-test.sh apps.core.tests.api -v 2`
 - Smoke test API docs/schema: vedi `apps/core/tests/api/test_diagnostics_api.py` (endpoint `/api/docs/` e `/api/schema/`).
 
+### ⭐ Prima di scrivere un test: il template e la guida
+
+```bash
+cp db/pgtap/_TEMPLATE.sql.txt db/pgtap/<schema>/test-<cosa>.sql
+```
+
+Guida: [pgtap-come-si-scrive-un-test](../docs/it/guide/pgtap-come-si-scrive-un-test.md).
+
+⚠️ **Dal 2026-08-07 i test girano come l'APPLICAZIONE** (`zeroerp_app` +
+contesto operatore), non piu` come owner: **le policy RLS sono attive a ogni
+corsa**. Un rosso puo` essere un **permesso** o una **policy**, non solo una
+fixture — e una fixture che scrive dove l'applicazione non scrive **non passa
+piu`**. Se trovi un documento che dice «il pgTAP gira come owner», e` vecchio.
+
+Tre righe di preambolo sono obbligatorie e presidiate da
+`scripts/guardrail_pgtap_preambolo.py` (CI): `BEGIN;`, la riga di contesto,
+`SET CONSTRAINTS ALL IMMEDIATE`. Senza, il file diventa **verde per
+sottrazione** — passa smettendo di verificare. Le esclusioni si **dichiarano**
+(`-- pgtap-contesto: escluso — …`), non si spiegano solo in prosa.
+
+⚠️ E `throws_ok(sql, NULL, NULL, …)` accetta **qualunque** errore: passare
+sempre lo SQLSTATE (`'P0001'` per un errore di dominio) o usare `throws_like`
+sulla frase. Il cancello presidia questo debito **a soglia**: puo` solo calare.
+
 ### ⚠️ La suite ha rossi preesistenti: usare la baseline
 
 Una parte dei pgTAP e` rossa da prima (fixture rimaste indietro rispetto a guard

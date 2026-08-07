@@ -136,6 +136,25 @@ jobs:
         # ri-eseguire e' il comportamento voluto.
         run: python scripts/guardrail_run_on_change.py
 
+      - name: Guardrail preambolo pgTAP
+        # Presidia le tre righe senza le quali un test pgTAP passa SMETTENDO di
+        # verificare — «verde per sottrazione»: la transazione, la riga di
+        # contesto applicativo (con la RLS attiva, senza veste la fixture legge
+        # zero righe e le asserzioni finiscono nei rami skip) e
+        # SET CONSTRAINTS ALL IMMEDIATE (i 365 vincoli DIFFERITI scattano al
+        # COMMIT, che in un test non arriva mai).
+        #
+        # Statico e senza database: gira qui, prima di tutto il resto, perche'
+        # e' un controllo di forma sui file e non ha bisogno che il DB esista.
+        #
+        # ⚠️ Presidia anche, A SOGLIA, il debito dei `throws_ok` che accettano
+        # qualunque errore: la soglia puo' solo CALARE. Il 2026-08-07 una sonda
+        # ha trovato tre test VERDI che collaudavano una cosa diversa da quella
+        # dichiarata, proprio per quel difetto.
+        #
+        # Guida: docs/it/guide/pgtap-come-si-scrive-un-test.md
+        run: python scripts/guardrail_pgtap_preambolo.py
+
       - name: Generate Liquibase autogen master (timeline)
         run: |
           python scripts/gen_master_autogen.py \
