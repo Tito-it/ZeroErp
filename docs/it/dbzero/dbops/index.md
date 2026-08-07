@@ -103,6 +103,7 @@
 ## 🔍 Views
 - [vw_catalogo_oggetti](views/vw_catalogo_oggetti.md) — * Offrire una vista unificata degli oggetti PostgreSQL definiti nei due schemi principali di amministrazione. * Agevolare operazioni di discovery e auditing, bypassando query dirette sulle catalog tables.
 - [vw_codici_errore_da_dichiarare](views/vw_codici_errore_da_dichiarare.md)
+- [vw_codici_errore_forme_condizione](views/vw_codici_errore_forme_condizione.md)
 - [vw_diag_v_clienti_links](views/vw_diag_v_clienti_links.md) — (latest review 25-12-25) La vista **`dbops.vw_diag_v_clienti_links`** è una **vista diagnostica** che espone in modo “leggibile” i **legami strutturali** tra:
 - [vw_duplicate_indexes](views/vw_duplicate_indexes.md) — (latest review 27-07-26)
 - [vw_fk_con_indice_missing_policy](views/vw_fk_con_indice_missing_policy.md) — (latest review 27-07-26)
