@@ -1,4 +1,4 @@
-# pgtap-runner: owner
+# pgtap-runner: app
 db/pgtap/anagrafiche/create-gestore-indirizzo-res-domfisc.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/create-gestore-indirizzo-res.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/create-soggetto-bank-branches.sql	ERRORE_FIXTURE
@@ -34,18 +34,17 @@ db/pgtap/catalogo/test-vw-articoli-componenti-note.sql	ERRORE_FIXTURE
 db/pgtap/config/test-fn-cleanup-token-scaduti.sql	ASSERZIONE
 db/pgtap/config/test-permessi-strutture-base.sql	ASSERZIONE
 db/pgtap/config/test-permessi-user-overrides.sql	ERRORE_FIXTURE
-db/pgtap/config/test-tipi-ruoli-nature-ammesse.sql	ASSERZIONE
+db/pgtap/config/test-tipi-ruoli-nature-ammesse.sql	ERRORE_FIXTURE
 db/pgtap/config/test-toponomastica-stradario-generale.sql	ERRORE_FIXTURE
 db/pgtap/config/test-user-emittenti-fiscali-immutable.sql	ERRORE_FIXTURE
-db/pgtap/dbops/test-automazione-guard-utility-tipo-ruolo.sql	ASSERZIONE
+db/pgtap/dbops/test-automazione-guard-utility-tipo-ruolo.sql	ERRORE_FIXTURE
 db/pgtap/documenti/test-documenti-template-documenti.sql	ERRORE_FIXTURE
 db/pgtap/pagamenti/test-compensazioni-contabili-model.sql	ERRORE_FIXTURE
 db/pgtap/pagamenti/test-enti-incasso-psp.sql	ERRORE_FIXTURE
-db/pgtap/pratiche/test-workflow-definizioni-fase2b.sql	ASSERZIONE
+db/pgtap/pratiche/test-workflow-definizioni-fase2b.sql	ERRORE_FIXTURE
 db/pgtap/rls/test-rls-fatture-ef-whitelist-functional.sql	ERRORE_FIXTURE
 db/pgtap/rls/test-rls-ordini-multipolicy.sql	ERRORE_FIXTURE
 db/pgtap/rls/test-rls-viste-security-invoker.sql	ASSERZIONE
-db/pgtap/rls/test-role-batch-fatturazione-postura.sql	ASSERZIONE
 db/pgtap/script/test-available-actions-requires-righe-v1.sql	ASSERZIONE
 db/pgtap/script/test-fn-available-actions-preventivo-genera-ordine-v1.sql	ASSERZIONE
 db/pgtap/script/test-fn-change-user-emittenti-scope.sql	ASSERZIONE
@@ -79,8 +78,8 @@ db/pgtap/vendite/test-fn-list-commesse-emittibili-fatturazione-immediata-v1.sql	
 db/pgtap/vendite/test-fn-list-contratti-da-pushare-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-list-ddt-da-pushare-orfano-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-list-preventivi-da-pushare-v1.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-fn-list-preventivi-da-pushare-v2.sql	ASSERZIONE
-db/pgtap/vendite/test-fn-preventivo-ha-residuo-commessa-v1.sql	ASSERZIONE
+db/pgtap/vendite/test-fn-list-preventivi-da-pushare-v2.sql	ERRORE_FIXTURE
+db/pgtap/vendite/test-fn-preventivo-ha-residuo-commessa-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-resolve-prezzo-composito-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-resolve-prezzo-listino-v2-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-listini-versioni-guard-transizione-stato-v1.sql	ERRORE_FIXTURE

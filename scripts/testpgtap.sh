@@ -17,14 +17,23 @@
 #
 # CON CHE UTENTE GIRA IL TEST — variabile PGTAP_RUNNER
 #
-#   PGTAP_RUNNER=owner   (default oggi) l'utente dell'env file, cioe' l'owner
-#                        degli oggetti. ⚠️ L'owner NON e' soggetto alla RLS
-#                        (salvo FORCE), quindi nessuna policy viene esercitata.
-#   PGTAP_RUNNER=app     l'utente applicativo (PGTAP_APP_USER, default
-#                        zeroerp_app): i test girano come gira l'applicazione,
-#                        RLS attiva. La password arriva da ~/.pgpass — la
-#                        PGPASSWORD dell'env file viene tolta apposta, altrimenti
-#                        si tenterebbe la password dell'owner sull'utente app.
+#   PGTAP_RUNNER=app     ⭐ **IL DEFAULT dal 2026-08-07.** L'utente applicativo
+#                        (PGTAP_APP_USER, default zeroerp_app): i test girano
+#                        come gira l'applicazione, con la RLS attiva. La password
+#                        arriva da ~/.pgpass — la PGPASSWORD dell'env file viene
+#                        tolta apposta, altrimenti si tenterebbe la password
+#                        dell'owner sull'utente app.
+#   PGTAP_RUNNER=owner   l'utente dell'env file, cioe' l'owner degli oggetti.
+#                        ⚠️ L'owner NON e' soggetto alla RLS (salvo FORCE):
+#                        girando cosi' NESSUNA policy viene esercitata. Serve per
+#                        confronti diagnostici — «questo rosso dipende dal ruolo
+#                        o no?» — non per validare una modifica.
+#
+# ⭐ La commutazione del default e' l'obiettivo per cui esiste
+#    brief-db-pgtap-runner-rls-baseline.md, ed e' arrivata quando il divario fra
+#    i due runner e' sceso a ZERO (§30): nessun file si comporta peggio come
+#    applicazione. Prima di allora girare come app avrebbe solo prodotto rossi
+#    che non erano difetti.
 #
 #   Esempi:
 #     PGTAP_RUNNER=app scripts/testpgtap.sh vendite/test-promo-articoli-v1.sql
@@ -111,6 +120,16 @@ Esempi:
   scripts/testpgtap.sh db/anagrafiche/test-sync-auth-user-is-active.sql
 EOF
   exit 1
+fi
+
+# --print-runner: stampa il runner che si risolverebbe e esce. Serve a
+# scripts/pgtap-baseline.sh per NON avere un default suo: il valore di
+# default deve stare in un posto solo, altrimenti i due divergono — ed e'
+# successo davvero il 2026-08-07, con la baseline etichettata "owner"
+# mentre la corsa andava come app.
+if [ "$1" = "--print-runner" ]; then
+  echo "${PGTAP_RUNNER:-app}"
+  exit 0
 fi
 
 TARGET="$1"
@@ -208,7 +227,7 @@ fi
 # --- scelta dell'utente di connessione ---------------------------------------
 # Default owner (comportamento storico). Con PGTAP_RUNNER=app si passa all'utente
 # applicativo, tranne per i file che dichiarano il marcatore in intestazione.
-PGTAP_RUNNER="${PGTAP_RUNNER:-owner}"
+PGTAP_RUNNER="${PGTAP_RUNNER:-app}"
 PGTAP_APP_USER="${PGTAP_APP_USER:-zeroerp_app}"
 
 case "$PGTAP_RUNNER" in

@@ -1,7 +1,7 @@
 # Brief DB — La suite pgTAP non è confrontabile con la sua baseline (utente ≠ utente)
 
 > **Tipo**: brief operativo per il **team DB** · **Target**: `dev/db-tid` ·
-> **Data**: 2026-07-29 · **Owner**: Tid · **Stato**: 🟡 **IN CORSO** —
+> **Data**: 2026-07-29 · **Owner**: Tid · **Stato**: ✅ **CHIUSO 2026-08-07** —
 > il sintomo è rientrato per altra via (strada **(a)**), la decisione di passare
 > a **(b)** è presa il 2026-08-05 e il piano è al **§8**.
 > **Da leggere per primo: §23 → §24** — bilancio, divario misurato e priorità.
@@ -20,12 +20,10 @@
 > **§15.3** spiega perché due corse consecutive si sporcavano il database; il
 > **§18.3** raccoglie le **tre trappole** della transazionalizzazione — la prima
 > delle quali rende un test verde facendogli smettere di verificare.
-> 🔴 **Il brief NON è chiuso**: il default del runner è ancora `owner`. Ma il
-> **§24** ha chiuso la priorità 1 — il marcatore `-- pgtap-runner: owner` su 15
-> file, `PGTAP_RUNNER` in `testpgtap.sh`, e una baseline che ora **registra con
-> che utente è stata presa e rifiuta i confronti disomogenei** (il difetto del §1
-> chiuso alla radice). Divario **da 36 a 23 file**.
-> 👉 **Punto della situazione: §25** · **famiglia C CHIUSA: §26** · **cantiere `LIMIT 1`: §27** — ALTO su tabelle vere **da 66 a 20**, di cui 4 già giudicati innocui · **✅ il file intermittente è sciolto: §28** · **famiglie B+D: §29** · ⭐⭐ **§30: DIVARIO ZERO** — non esiste più un file che si comporti peggio come applicazione. Manca **una riga**. Bilancio storico al §23 ·
+> ✅ **CHIUSO il 2026-08-07 (§31)**: la suite gira come `zeroerp_app` con il
+> contesto operatore — **le policy RLS vengono esercitate a ogni corsa**. Default
+> commutato, baseline ribaselinata (`# pgtap-runner: app`, 87 → **86** rossi noti).
+> Divario fra i due runner: **zero** (§30). Residuo non bloccante al **§31.2** ·
 > **Priorità**: 🔴 **ALTA** — non per un difetto di prodotto, ma perché
 > **`scripts/pgtap-baseline.sh` oggi non può fare il suo mestiere**: distinguere
 > un rosso nuovo da uno noto. Finché non è risolto, ogni «zero regressioni»
@@ -2751,3 +2749,79 @@ sull'intera suite — che registrerebbe **86 rossi noti invece di 87**.
 Le condizioni che il brief poneva sono soddisfatte: il file intermittente è
 sciolto (§28), il divario è zero, e la baseline sa dichiarare con che utente è
 stata presa (§24.5).
+
+---
+
+## 31. ✅ COMMUTATO — la suite gira come l'applicazione (2026-08-07)
+
+I passi 3 e 4 del §8.3, quelli su cui il brief si era fermato per otto giorni,
+sono fatti.
+
+| | prima | ora |
+| --- | --- | --- |
+| default di `scripts/testpgtap.sh` | `owner` | **`app`** |
+| baseline: utente registrato | `owner` | **`app`** |
+| baseline: rossi noti | 87 | **86** |
+
+**Il problema del §1 è chiuso.** La suite pgTAP gira come `zeroerp_app` con il
+contesto operatore: da adesso le policy RLS **vengono esercitate** a ogni corsa,
+e i 29 file marcati restano sull'owner dichiarando la loro ragione.
+
+Il registro del debito **cala** anche nel passaggio: 87 → 86.
+
+### 31.1 ⚠️ Un difetto introdotto durante la commutazione, e come si è visto
+
+La prima ribaselinatura ha prodotto una baseline etichettata **`runner: owner`**
+mentre la corsa era andata **come app** (86 rossi = la misura app, non gli 87
+dell'owner).
+
+**Causa: il default viveva in due posti.** `testpgtap.sh` lo aveva commutato,
+`pgtap-baseline.sh` aveva ancora il suo `${PGTAP_RUNNER:-owner}`. Lo script
+eseguiva i test tramite `testpgtap.sh` — quindi come app — ma scriveva
+l'intestazione col proprio default.
+
+> ⭐ È **esattamente** la trappola scritta poche ore prima nel brief
+> classe-codici-errore, a proposito dell'`ORDER BY` dentro la vista: *«un
+> requisito che vive in due posti si dimentica in uno dei due»*. Averla scritta
+> non è bastato a non commetterla.
+
+✅ **Corretto togliendo il secondo default, non allineandolo**: `testpgtap.sh`
+risponde a `--print-runner`, e `pgtap-baseline.sh` glielo chiede invece di
+avere un'opinione propria. Allineare due valori li fa divergere di nuovo al
+prossimo cambio; toglierne uno no.
+
+Poi baseline rigenerata da zero: `# pgtap-runner: app`, 86 voci, e un confronto
+di controllo su `vendite` — **24 rossi su 175, nessuna regressione**.
+
+### 31.2 Cosa resta, e non blocca più niente
+
+Nessuno di questi impedisce alla suite di fare il suo mestiere:
+
+| | |
+| --- | --- |
+| **`LIMIT 1`** | 16 siti ALTO su tabelle vere, sparsi 1-2 per tabella: lavoro a giudizio, quando si apre il dominio (§27.8) |
+| **14 fixture incomplete** | §22.4 — ogni file appartiene al dominio che collauda |
+| ⚠️ **le altre esclusioni `rls/`** | §30.2: quella famiglia fu esclusa **in blocco**. Almeno un file non ne aveva diritto e girava con 4 asserzioni su 5 in `skip`. Le altre vanno riguardate una per una |
+| **86 rossi in baseline** | il registro del debito, che ora è misurato col metro giusto e deve continuare a calare |
+| **residui non transazionali** | §28.5 — 64 PDP, più la domanda larga su cosa altro hanno lasciato sei mesi di corse che committavano |
+
+### 31.3 Cosa ha restituito questo cantiere, oltre all'obiettivo
+
+* **quattro difetti di prodotto** trovati e corretti — il guard che non diceva
+  mai la sua ragione (§13.3), il bootstrap che impediva al ruolo applicativo di
+  creare un tipo di prestazione (§15.1), la manutenzione che lasciava il bypass
+  acceso per tutta la transazione (§18.2), e il difetto di questa stessa
+  commutazione (§31.1);
+* **una mina documentata** che non era un difetto: la policy che risolve il
+  perimetro dal padre non è soddisfacibile se padre e figlio nascono nella
+  stessa CTE (§26.2);
+* **`pgtap-baseline.sh` che non può più mentire**: registra l'utente e rifiuta i
+  confronti disomogenei, *prima* di eseguire;
+* **un criterio, uno solo**, per quando un test ha diritto di girare da owner —
+  con l'elenco di cosa esclude (§29.6);
+* **tre asserzioni diventate più severe** invece che solo più stabili (§27.7), e
+  un file che è passato da «6 o 0 a caso» a 26 su 26 (§28).
+
+> **Stato: ✅ CHIUSO.** L'obiettivo — far girare i pgTAP come l'applicazione — è
+> raggiunto e verificato. Quello che resta è debito misurato, non lavoro
+> pendente di questo cantiere.
