@@ -25,7 +25,7 @@
 > file, `PGTAP_RUNNER` in `testpgtap.sh`, e una baseline che ora **registra con
 > che utente è stata presa e rifiuta i confronti disomogenei** (il difetto del §1
 > chiuso alla radice). Divario **da 36 a 23 file**.
-> 👉 **Punto della situazione: §25** · **famiglia C CHIUSA: §26** — divario **da 23 a 16** · **cantiere `LIMIT 1` aperto: §27** — ALTO su tabelle vere **da 66 a 31**. Bilancio storico al §23 ·
+> 👉 **Punto della situazione: §25** · **famiglia C CHIUSA: §26** · **cantiere `LIMIT 1`: §27** — ALTO su tabelle vere da 66 a 31 · **✅ il file intermittente è sciolto: §28** — 26/26, e non era `LIMIT 1`. Bilancio storico al §23 ·
 > **Priorità**: 🔴 **ALTA** — non per un difetto di prodotto, ma perché
 > **`scripts/pgtap-baseline.sh` oggi non può fare il suo mestiere**: distinguere
 > un rosso nuovo da uno noto. Finché non è risolto, ogni «zero regressioni»
@@ -2338,3 +2338,102 @@ strumento per rifarla in ogni momento è
 `WHERE partita_iva = '...'`, cioè **deterministici**. L'analizzatore li classifica
 correttamente «medio». **La causa dell'oscillazione è un'altra e resta da
 trovare**: va cercata prima della ribaselinatura, ma non in questo cantiere.
+
+---
+
+## 28. ✅ Il file intermittente, sciolto — e non era `LIMIT 1` (2026-08-07)
+
+`anagrafiche/test-istanza-cliente-chain.sql` oscillava fra **6 e 0 asserzioni a
+parità di codice** dal §21.3, ed era l'ultima cosa da capire prima della
+ribaselinatura. **Adesso è verde: 26 su 26.**
+
+### 28.1 ⚠️ Prima di tutto: «6 o 0» non era verde-o-rosso
+
+Venticinque corse consecutive. Il file **non passava mai**: la differenza era
+solo *quanto lontano arrivava*.
+
+| esito | dove moriva | perché |
+| --- | --- | --- |
+| **6 asserzioni** | riga 255 | vincolo differito `require_utility_dichiarata`: fixture incompleta |
+| **0 asserzioni** | riga 146 | `uq_pdp_codice` — chiave duplicata |
+
+Chi leggeva «oscilla fra 6 e 0» poteva credere che a volte funzionasse. Non è
+mai successo. **Erano due difetti diversi in fila**, e il secondo nascondeva il
+primo una volta su quattro.
+
+### 28.2 ⭐ La causa dell'oscillazione è aritmetica
+
+```sql
+SELECT ('G-PDP-CH-' || substring(k.suffix, 1, 2))   -- ← DUE caratteri esadecimali
+```
+
+**Due cifre esadecimali = 256 codici possibili**, su una colonna `UNIQUE`. E in
+`anagrafiche.pdp` ci sono **64 righe residue** con quel prefisso, la più vecchia
+del **2026-02-15**, la più recente del **2026-08-06**: sei mesi di corse
+*non transazionali* — fino al giorno in cui questo cantiere ha reso il file
+transazionale (§17).
+
+**64 su 256 = 25% di collisione per corsa.** È esattamente la frequenza
+osservata. Non c'era niente di misterioso: era un compleanno con un calendario
+da 256 giorni.
+
+⚠️ **Il troncamento non serviva a niente**: `pdp` è `varchar(30)` e la chiave
+intera sarebbe lunga 17. E **tutte le altre chiavi dello stesso
+`tmp_test_keys` usano già il suffisso intero** — solo il PDP era stato tagliato.
+Corretto: suffisso intero, 8 cifre esadecimali. Quindici corse consecutive, tutte
+allo stesso punto: l'oscillazione è sparita.
+
+> È la coda di [[feedback_pgtap_test_non_transazionali_contaminano]]: la
+> transazionalità ha fermato l'accumulo, ma **i residui di prima sono ancora
+> lì**, e continuano a far danno finché una chiave è abbastanza stretta da
+> incontrarli.
+
+### 28.3 Poi i due difetti veri, in fila
+
+**1. Il vincolo differito scattava troppo presto.** Il file ha
+`SET CONSTRAINTS ALL IMMEDIATE` **in testa** (§17), ma qui istanza e satellite
+nascono in **due istruzioni separate**, per quattro coppie: a fine della prima
+`INSERT` il `billing_account` non esiste ancora, e il guard respinge.
+
+È il caso esatto del §22.5 — la riga va **dove l'unità di lavoro è completa**.
+Spostata dopo la **quarta** coppia: dopo la prima non basterebbe, perché da lì in
+poi ogni istruzione è immediata e le tre istanze successive fallirebbero uguale.
+E comunque prima del cleanup, altrimenti scatterebbe su righe già cancellate.
+
+**2. `billing_account.categoria_cliente_id` è `NOT NULL`**, e la fixture era
+rimasta indietro rispetto alla colonna: tutte e quattro le `INSERT` la
+ignoravano. Aggiunta, scegliendo la categoria **una volta sola e con `ORDER BY`**
+— le regole del §27, applicate mentre si ripara.
+
+### 28.4 Il risultato
+
+| | |
+| --- | --- |
+| esito | **26/26 PASS**, 20 corse consecutive tutte a 26 |
+| da utente applicativo | **PASS** |
+| suite da owner | **88 → 87**, un rientrato e nessun rosso nuovo |
+| baseline | aggiornata: il file è uscito dal registro del debito |
+
+ℹ️ La baseline ha ora la sua prima riga `# pgtap-runner: owner` (§24.5): è il
+primo `--update` da quando il meccanismo esiste.
+
+### 28.5 ⚠️ Restano 64 righe di spazzatura in `anagrafiche.pdp`
+
+Le residue `G-PDP-CH-xx` **non fanno più danno** — la chiave nuova è lunga 8 e
+non può più incontrarle — ma restano lì, e sono dati di test in una tabella di
+dominio. Vanno cancellate a mano
+([[project_no_produzione_solo_sviluppo]]: dati sporchi si correggono a mano, non
+con codice):
+
+```sql
+DELETE FROM anagrafiche.pdp WHERE pdp LIKE 'G-PDP-CH-__';   -- 64 righe, esattamente 2 caratteri
+```
+
+⚠️ Il predicato con `__` e non `%` **apposta**: le chiavi nuove sono
+`G-PDP-CH-` + 8 caratteri, e un `%` cancellerebbe anche quelle di una corsa in
+volo. **Non eseguito**: è una cancellazione su una tabella di dominio, la decide
+Tid.
+
+E vale la domanda più larga, che non è di questo cantiere: **quanti altri
+residui di corse non transazionali ci sono in giro?** Sei mesi di accumulo non
+hanno lasciato solo dei PDP.

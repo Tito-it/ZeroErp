@@ -1,3 +1,4 @@
+# pgtap-runner: owner
 db/pgtap/anagrafiche/create-gestore-indirizzo-res-domfisc.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/create-gestore-indirizzo-res.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/create-soggetto-bank-branches.sql	ERRORE_FIXTURE
@@ -15,7 +16,6 @@ db/pgtap/anagrafiche/test-fn-get-or-create-indirizzo-dettaglio.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-indirizzi-fallback.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-indirizzi-istanza-cascata.sql	ASSERZIONE
 db/pgtap/anagrafiche/test_indirizzi_unique_res.sql	ERRORE_FIXTURE
-db/pgtap/anagrafiche/test-istanza-cliente-chain.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-istanze-dati-precontrattuali.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-risorse-umane-auth-user-view.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-risorse-umane.sql	ERRORE_FIXTURE
