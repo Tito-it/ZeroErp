@@ -42,7 +42,8 @@
 13) test_policy_morta_prev_stato_non_modificabile_rimossa   <- passo B-1
 14) test_resolve_e_has_dicono_la_stessa_cosa
 15) test_lavviso_vero_a_catalogo_solleva
-16) test_nessuna_classe_diverge_dal_catalogo   <- il ponte verso il B-6
+16) test_il_vocabolario_non_diverge_dal_catalogo
+17) test_nessuna_classe_diverge_dal_catalogo   <- i due ponti verso il B-6
 """
 
 from __future__ import annotations
@@ -66,12 +67,13 @@ from apps.core.services.error_ui_overrides import UI_ACTION_OVERRIDE
 # un avviso non rifiuta niente e non raggiunge mai un client (brief §4.2).
 _CLASSE_SENZA_STATUS = "AVVISO"
 
-# Il CSV di seed del catalogo: .../backend/apps/core/tests/services/<file>
+# I CSV di seed del catalogo: .../backend/apps/core/tests/services/<file>
 # -> parents[5] = radice del repo (services, tests, core, apps, backend, root).
-_CSV_CATALOGO = (
-    Path(__file__).resolve().parents[5]
-    / "db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv"
+_SEED = (
+    Path(__file__).resolve().parents[5] / "db/changelog/migrations_v2/80_data/sql/config"
 )
+_CSV_CATALOGO = _SEED / "codici_errore.csv"
+_CSV_VOCABOLARIO = _SEED / "classi_errore.csv"
 
 
 # Scopo: `codice -> classe` dal CSV di seed del catalogo. Lettura del file e non
@@ -79,6 +81,12 @@ _CSV_CATALOGO = (
 def _classi_a_catalogo() -> dict[str, str]:
     with _CSV_CATALOGO.open(encoding="utf-8") as f:
         return {r["codice"]: r["classe"] for r in csv.DictReader(f)}
+
+
+# Scopo: il vocabolario di `config.classi_errore`, dal suo CSV di seed.
+def _vocabolario_a_catalogo() -> set[str]:
+    with _CSV_VOCABOLARIO.open(encoding="utf-8") as f:
+        return {r["classe"] for r in csv.DictReader(f)}
 
 
 class ErrorPoliciesClassiTest(TestCase):
@@ -250,6 +258,36 @@ class ErrorPoliciesClassiTest(TestCase):
     #        ha (i gemelli col prefisso `E_`, la cintura della campagna di
     #        rinomina). Un test che pretendesse l'uguaglianza sarebbe rosso il
     #        giorno dopo, e verrebbe spento.
+    # Scopo: ⭐ IL VOCABOLARIO, non i codici. E' il verso che mancava, e la
+    #        differenza si vede sul calendario: senza questo test una classe
+    #        nuova a catalogo il backend la scopre il giorno in cui **un codice
+    #        la usa** — cioe' quando `resolve` non sa piu' che status dare e la
+    #        risposta e' gia' sbagliata. Con questo, la scopre il giorno del
+    #        seed, quando l'unica cosa da fare e' aggiungere due righe.
+    #
+    #        ⚠️ Il verso opposto conta quanto il primo: una classe che il
+    #        backend conosce e il catalogo no e' una regola che non governa piu'
+    #        niente — e resta li' a sembrare viva.
+    def test_il_vocabolario_non_diverge_dal_catalogo(self):
+        catalogo = _vocabolario_a_catalogo()
+        self.assertGreater(len(catalogo), 5, "CSV del vocabolario sospetto: misura degradata")
+        solo_catalogo = sorted(catalogo - CLASSI_ERRORE)
+        solo_backend = sorted(CLASSI_ERRORE - catalogo)
+        self.assertEqual(
+            solo_catalogo,
+            [],
+            "classi a catalogo che il backend non conosce: vanno aggiunte a "
+            "CLASSI_ERRORE e, se non sono avvisi, a HTTP_PER_CLASSE e "
+            "UI_ACTION_PER_CLASSE — altrimenti il primo codice che le usa "
+            "fara' sollevare ClasseErroreSenzaStatus",
+        )
+        self.assertEqual(
+            solo_backend,
+            [],
+            "classi che il backend conosce e il catalogo no: o il seed le ha "
+            "ritirate, o qui ne e' rimasta una inventata",
+        )
+
     def test_nessuna_classe_diverge_dal_catalogo(self):
         catalogo = _classi_a_catalogo()
         self.assertGreater(len(catalogo), 600, "CSV del catalogo sospetto: misura degradata")

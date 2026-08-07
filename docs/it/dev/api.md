@@ -987,8 +987,36 @@ la lettura letterale dello standard. L'alternativa RFC-stretta sarebbe 422.
 
 #### Cosa cambia davvero lo status, lato client
 
-Utile saperlo prima di discutere se un codice è 400 o 409: **in questa app la
-maggior parte del comportamento la decide `ui_action`, non lo status.** Gli unici
+> 🔴 **CORREZIONE (2026-08-07): questo paragrafo diceva il contrario, e la cosa
+> va letta prima di usarlo per decidere.** Diceva: *«in questa app la maggior
+> parte del comportamento la decide `ui_action`, non lo status»*.
+>
+> **Misurato su tutto il repo: `ui_action` non la legge nessuno.** Né il nome
+> (`ui_action`, `uiAction`) né uno solo dei sette valori compare in
+> `frontend/src` — o altrove fuori da backend/docs/db. Il frontend legge
+> `error.message` (in `useApiHandler.extractErrorMessage`) e lo **status**:
+> `>= 500` → toast di sistema, 401 → refresh del token, 401/403 → il polling dei
+> contatori si ferma. **Sono tutti e tre gli effetti che esistono.**
+>
+> ⚠️ **Non vuol dire che `ui_action` sia da togliere**, e nemmeno che le 176
+> decisioni di override siano state inutili: è un contratto **emesso e non
+> ancora consumato**, e il costo di tenerlo è zero. Vuol dire tre cose pratiche:
+>
+> 1. discutere `show_error_banner` contro `highlight_form_fields` oggi **non
+>    cambia niente a video** — cambia cosa troverà il frontend il giorno in cui
+>    lo implementerà;
+> 2. quindi **lo status non è affatto la parte che conta meno**: al momento è
+>    l'unica che il client guarda davvero;
+> 3. il giorno in cui il frontend leggerà `ui_action`, quelle 176 righe vanno
+>    riguardate **prima** di accenderlo, non dopo.
+>
+> ⚠️ E c'era un difetto conseguente, corretto lo stesso giorno: dei due percorsi
+> che costruiscono l'envelope, `exception_to_error_response` spediva `ui_action`
+> e `drf_exception_handler` la **calcolava e la buttava via**. Lo stesso codice
+> usciva con due forme diverse a seconda di chi lo sollevava. Oggi non se ne
+> accorgeva nessuno proprio perché il campo non lo legge nessuno.
+
+Utile saperlo prima di discutere se un codice è 400 o 409. Gli unici
 status con un effetto globale sono:
 
 | Status | Effetto | Dove |

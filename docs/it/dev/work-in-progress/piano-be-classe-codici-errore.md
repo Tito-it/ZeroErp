@@ -9,10 +9,10 @@
 > restano una risposta HTTP risolvono **identici** a prima — stesso status,
 > stessa `ui_action`, stesso messaggio — confrontando `resolve()` di prima del
 > cantiere e di adesso uno per uno; i due ripieghi rispondono come prima. Suite
-> Django: **3589 test verdi**, compreso il cancello del terzo lato contro il DB
+> Django: **3598 test verdi**, compreso il cancello del terzo lato contro il DB
 > vero (`ZEROERP_TEST_DB_E2E=1`).
 >
-> **Le sole tre differenze sono volute, e ognuna è un difetto che se ne va:**
+> **Le sole differenze sono volute, e ognuna è un difetto che se ne va:**
 >
 > | Codice | Prima | Ora |
 > |---|---|---|
@@ -64,11 +64,16 @@ consegna. Prima di quello il generatore non ha da cui generare.
 
 | File | Righe | Voci | Chi lo scriverà |
 |---|---|---|---|
-| `error_policies_generated.py` | 1417 | **658** `codice → classe` | il generatore, dal B-5 |
-| `error_policies.py` | 231 | le **8+7+7** righe di regole + la logica | a mano, quasi mai |
-| `error_ui_overrides.py` | 540 | **176** `ui_action` fuori default | a mano |
-| `error_messages_fallback.py` | 679 | **658** messaggi senza segnaposto | a mano, per ora |
-| `apps/core/tests/services/test_error_policies_classi.py` | — | **14 test**, uno per ogni modo nuovo di rompersi | — |
+| `error_policies_generated.py` | 1379 | **658** `codice → classe` | il generatore, dal B-5 |
+| `error_policies.py` | 255 | le **10 + 9 + 9** righe di regole + la logica | a mano, quasi mai |
+| `error_ui_overrides.py` | 514 | **176** `ui_action` fuori default | a mano |
+| `error_messages_fallback.py` | 683 | **658** messaggi senza segnaposto | a mano, per ora |
+| `apps/core/tests/services/test_error_policies_classi.py` | 309 | **17 test**, uno per ogni modo nuovo di rompersi | — |
+
+⚠️ **Le righe di regole sono 10 + 9 + 9 e non 8 + 7 + 7** come dice il §2 qui
+sotto: il vocabolario è andato a dieci valori (§8.1) e con lui è **sparita** la
+mappa per codice che il B-4 aveva scritto. Il §2 resta com'era perché è la
+prescrizione originale; dove i numeri divergono, valgono i §6 e §8.
 
 ---
 
@@ -514,12 +519,31 @@ eccezione scatta, è un errore di programma e si comporta come tale.**
 esiste: la classe la prende dal fratello, perché è lo stesso codice sotto un
 altro nome.
 
-### 8.3 ⭐ Il ponte verso il B-6, che non aspetta il D-9
+**Cosa succede davvero se scatta — verificato, non dedotto.** L'eccezione
+propaga fuori da `exception_to_error_response`, che la chiama *prima* di
+loggare: il client riceve un **500 non-JSON** e il traceback finisce in
+`django.request` nominando il codice e la ragione. Il frontend degrada pulito
+(messaggio di ripiego del chiamante + toast di sistema, essendo ≥ 500).
+⛔ **Da non "aggiustare" con un `except` che produca un envelope pulito**:
+sarebbe il ripiego silenzioso appena tolto, sotto un altro nome.
+
+### 8.3 ⭐ I due ponti verso il B-6, che non aspettano il D-9
 
 Il controllo di divergenza vero (B-6) leggerà `vw_codici_errore_identita` e vuole
-il database. Ma **il CSV di seed sta nel repo**, e presidia lo stesso fatto senza
-DB: `test_nessuna_classe_diverge_dal_catalogo` confronta le 658 classi del BE con
-le 689 del catalogo.
+il database. Ma **i CSV di seed stanno nel repo**, e presidiano lo stesso fatto
+senza DB, su due assi:
+
+* `test_nessuna_classe_diverge_dal_catalogo` — le 658 classi del BE contro le 689
+  del catalogo;
+* `test_il_vocabolario_non_diverge_dal_catalogo` — le 10 classi di `CLASSI_ERRORE`
+  contro `classi_errore.csv`, **nei due versi**.
+
+⭐ **Il secondo è quello che mancava, e la differenza si vede sul calendario.**
+Senza, una classe nuova a catalogo il BE la scopre il giorno in cui **un codice
+la usa** — cioè quando `resolve()` non sa più che status dare e solleva. Con,
+la scopre il giorno del seed, quando l'unica cosa da fare è aggiungere due righe.
+Nel verso opposto: una classe che il BE conosce e il catalogo no è una regola che
+non governa più niente, e resta lì a sembrare viva.
 
 ⚠️ **Fallisce solo su una classe diversa, mai su un codice in più o in meno**, e
 la ragione va scritta perché è la differenza fra un presidio che sopravvive e uno
@@ -528,7 +552,41 @@ codici che il BE non conosce (30 ritirati + 3 progettati mai cablati), il BE ne
 ha 2 che il catalogo non ha (i gemelli col prefisso, la cintura della campagna di
 rinomina). Un test che pretendesse l'uguaglianza sarebbe rosso il giorno dopo.
 
-### 8.4 ⚠️ Due cose da guardare al B-5
+### 8.4 🔴 **`ui_action` non la legge nessuno** — misurato su tutto il repo
+
+Cercata dopo aver scritto due volte che «il discriminante è dove manca il dato»:
+né `ui_action` né `uiAction` né **uno solo dei sette valori** compare in
+`frontend/src`, o altrove fuori da backend/docs/db. Il frontend legge
+`error.message` (`useApiHandler.extractErrorMessage`) e lo **status**: ≥ 500 →
+toast di sistema, 401 → refresh token, 401/403 → il polling si ferma.
+
+⚠️ **E [api.md](../api.md) diceva l'opposto**, in una frase usata per decidere:
+*«in questa app la maggior parte del comportamento la decide `ui_action`, non lo
+status»*. Corretta.
+
+**Cosa cambia, detto senza sconti:**
+
+* le **176** decisioni di override oggi **non cambiano niente a video**. Non sono
+  sprecate — sono un contratto **emesso e non ancora consumato**, e tenerlo costa
+  zero — ma il pareggio 117-117 su `DATO_ERRATO` decide cosa troverà il frontend
+  *il giorno in cui lo implementerà*, non cosa vede l'operatore adesso;
+* **lo status non è la parte che conta meno**: al momento è l'unica che il client
+  guarda davvero;
+* il giorno in cui il frontend leggerà `ui_action`, quelle 176 righe vanno
+  riguardate **prima** di accenderlo.
+
+⚠️ **E c'era un difetto conseguente, corretto.** Dei due percorsi che costruiscono
+l'envelope, `exception_to_error_response` spediva `ui_action` e
+`drf_exception_handler` la **calcolava e la buttava via**: lo stesso codice usciva
+con due forme diverse a seconda di chi l'aveva sollevato. Nessuno se n'era accorto
+proprio perché il campo non lo legge nessuno — ed è la ragione per cui il fix ha
+un test suo: *un contratto che nessuno consuma è precisamente quello che si sfila
+senza che un rosso lo dica*.
+
+*(Nello stesso punto c'era un ramo morto: `if policy is not None` dopo
+`resolve()`, che non ha mai restituito `None`. Tolto.)*
+
+### 8.5 ⚠️ Due cose da guardare al B-5
 
 * **i due gemelli col prefisso `E_`** non hanno riga di catalogo: il generatore
   non li produrrà e cadranno sul ripiego. Vanno tenuti a mano (una riga) o
