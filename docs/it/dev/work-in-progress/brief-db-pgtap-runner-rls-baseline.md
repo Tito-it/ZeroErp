@@ -25,7 +25,7 @@
 > file, `PGTAP_RUNNER` in `testpgtap.sh`, e una baseline che ora **registra con
 > che utente è stata presa e rifiuta i confronti disomogenei** (il difetto del §1
 > chiuso alla radice). Divario **da 36 a 23 file**.
-> 👉 **Punto della situazione: §25** · **famiglia C CHIUSA: §26** · **cantiere `LIMIT 1`: §27** — ALTO su tabelle vere da 66 a 31 · **✅ il file intermittente è sciolto: §28** — 26/26, e non era `LIMIT 1`. Bilancio storico al §23 ·
+> 👉 **Punto della situazione: §25** · **famiglia C CHIUSA: §26** · **cantiere `LIMIT 1`: §27** — ALTO su tabelle vere **da 66 a 20**, di cui 4 già giudicati innocui · **✅ il file intermittente è sciolto: §28** — 26/26, e non era `LIMIT 1`. Bilancio storico al §23 ·
 > **Priorità**: 🔴 **ALTA** — non per un difetto di prodotto, ma perché
 > **`scripts/pgtap-baseline.sh` oggi non può fare il suo mestiere**: distinguere
 > un rosso nuovo da uno noto. Finché non è risolto, ogni «zero regressioni»
@@ -2437,3 +2437,62 @@ Tid.
 E vale la domanda più larga, che non è di questo cantiere: **quanti altri
 residui di corse non transazionali ci sono in giro?** Sei mesi di accumulo non
 hanno lasciato solo dei PDP.
+
+### 27.7 La seconda metà: i 15 su funzioni, decisi uno per uno (2026-08-07)
+
+Il §27.5 diceva che qui la regex non serve più. Confermato: dei 15 siti su
+funzioni, **11 erano difetti** e **4 sono innocui** — ma solo dopo aver letto la
+`RETURNS TABLE` di ciascuna, che è l'unica cosa che dice la cardinalità.
+
+⭐ **E in tre casi la riparazione ha reso l'asserzione più FORTE, non solo più
+stabile.** È il guadagno che non ci si aspetta da un cantiere di igiene.
+
+| funzione | siti | cosa si è fatto |
+| --- | --- | --- |
+| `pratiche.fn_check_prerequisiti_flusso` | 6 | **si dice QUALE prerequisito**: `WHERE prerequisito_id = …` |
+| `vendite.fn_list_ddt_da_pushare` | 3 | **si filtra sulla RIGA**: `WHERE riga_id = …` |
+| `vendite.fn_list_ordini_da_pushare` | 1 | ⭐ `SELECT DISTINCT` |
+| `vendite.fn_list_preventivi_da_pushare` | 1 | ⭐ `bool_and` su tutte le righe |
+| `fn_ricalcola_totali_fattura` (2), `fn_search_stradario`, `fn_resolve_termini_pagamento` | 4 | **innocui, e ora si sa perché** |
+
+**I tre casi in cui l'asserzione ci ha guadagnato:**
+
+* `fn_check_prerequisiti_flusso` ritorna **una riga per prerequisito**, e in
+  produzione i template ne hanno **fino a 6**. La fixture ne crea uno, quindi
+  `LIMIT 1` tornava per forza quello — ma il codice del template è **fisso, non
+  randomizzato**: bastava un prerequisito in più su `TF_A_PGTAP` perché
+  l'asserzione cambiasse soggetto in silenzio. Ora dice quale;
+* `fn_list_ordini_da_pushare` ritorna una riga per riga d'ordine, ma
+  `termine_pagamento_id` è un valore **di testata**. Con `SELECT DISTINCT` la
+  sotto-select **esplode** se le righe dello stesso ordine portassero valori
+  diversi: asserisce anche l'**invarianza**, che è quello che il nome del test
+  dichiarava e che `LIMIT 1` taceva;
+* `fn_list_preventivi_da_pushare` veniva chiamata con `p_limit := 1` — il terzo
+  parametro **è** un limite — e poi `LIMIT 1`. Si collaudava un preventivo
+  qualsiasi, scelto dalla funzione e senza ordine. Con `bool_and` su tutte le
+  righe l'asserzione diventa «**nessuno** di quelli elencati è incoerente».
+  ([[feedback_verifica_dal_percorso_reale]]: asserire la copertura, non un
+  campione.)
+
+**I quattro innocui, con la ragione scritta**: due sono controlli di esistenza
+(`SELECT 1 … LIMIT 1 IS NOT NULL`, dove il `LIMIT` non sceglie niente);
+`fn_search_stradario` ha già `p_limit := 1` dentro la chiamata;
+`fn_resolve_termini_pagamento` è un resolver a riga singola.
+
+### 27.8 Il quadro, e cosa resta davvero
+
+| | inizio | tranche 1-2 | + funzioni |
+| --- | --- | --- | --- |
+| occorrenze senza `ORDER BY` | 550 | 515 | **504** |
+| di cui ALTO | 116 | 81 | **70** |
+| **ALTO su tabelle vere** | **66** | 31 | **20** |
+| di cui già giudicati innocui | — | — | **4** |
+| **→ residuo da guardare** | | | **16** |
+
+`pratiche` a rischio ALTO: da 31 a **1**. Verificato anche stavolta: **87 rossi
+da owner, zero differenze file per file.**
+
+I 16 residui sono sparsi 1-2 per tabella, senza pattern dominante
+(`anagrafiche.pdp` 2, `config.unita_organizzative` 2, poi uno ciascuno). Non c'è
+più una tranche da fare: è lavoro a giudizio, come i 15 appena chiusi, e conviene
+farlo quando si apre il dominio che li contiene.

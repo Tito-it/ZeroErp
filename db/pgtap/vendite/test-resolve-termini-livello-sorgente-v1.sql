@@ -214,9 +214,15 @@ SELECT min(ordine_id) AS ordine_id
 UPDATE vendite.ordini SET termine_pagamento_id = 3, modalita_pagamento_id = 5
  WHERE id = (SELECT ordine_id FROM tmp_ord_push);
 
+-- ⚠️ DISTINCT e non LIMIT 1, e l'asserzione ci guadagna. La funzione ritorna
+--   una riga per riga d'ordine, ma termine_pagamento_id e' un valore di
+--   TESTATA: con DISTINCT la sotto-select esplode ("more than one row") se le
+--   righe dello stesso ordine portassero valori diversi. Cioe' asserisce anche
+--   l'invarianza, che e' proprio quello che il nome del test dichiara — mentre
+--   LIMIT 1 ne guardava una a caso e taceva sulle altre.
 SELECT is(
-    (SELECT termine_pagamento_id FROM vendite.fn_list_ordini_da_pushare(
-        NULL, NULL, NULL, (SELECT ordine_id FROM tmp_ord_push)) LIMIT 1),
+    (SELECT DISTINCT termine_pagamento_id FROM vendite.fn_list_ordini_da_pushare(
+        NULL, NULL, NULL, (SELECT ordine_id FROM tmp_ord_push))),
     3::bigint,
     '9) la colonna porta il valore del documento, non un NULL fisso');
 
