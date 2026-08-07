@@ -199,8 +199,26 @@ serve scrivere `BEGIN/EXCEPTION` per l'all-or-nothing (i blocchi `EXCEPTION` ser
 
 **pgTAP obbligatorio.** Testare sia il caso felice sia il **rollback totale** su fallimento di uno
 step (pattern: trigger temporaneo che fa fallire l'ultima scrittura → verificare che nessun effetto
-delle scritture precedenti sopravviva). Il pgTAP gira come owner: attenzione ai **GRANT** e agli
-scope che nel percorso applicativo reale (`zeroerp_app`, INVOKER) potrebbero mancare.
+delle scritture precedenti sopravviva).
+
+> ⭐ **Dal 2026-08-07 il pgTAP gira come l'APPLICAZIONE**, non più come owner:
+> `scripts/testpgtap.sh` si connette come `zeroerp_app` con il contesto operatore,
+> e **le policy RLS vengono esercitate a ogni corsa**. La frase precedente («il
+> pgTAP gira come owner: attenzione ai GRANT che nel percorso reale potrebbero
+> mancare») era vera fino a quel giorno e ora direbbe il falso: i GRANT e la RLS
+> non sono più un rischio da immaginare, sono la condizione in cui i test girano.
+>
+> **Cosa cambia per chi scrive un test.** Un rosso può essere un **permesso** o
+> una **policy**, non solo una fixture. E una fixture che scrive dove
+> l'applicazione non scrive **non passa più**: è un difetto, non un dettaglio.
+>
+> I pochi test il cui **soggetto** non è raggiungibile dall'applicazione (fanno
+> DDL, o costruiscono dati che l'operatore non deve vedere) lo dichiarano nel
+> file con `-- pgtap-runner: owner` **e la ragione scritta**. Il criterio, con
+> l'elenco di cosa **esclude**, è nell'intestazione di `scripts/testpgtap.sh`.
+>
+> Guida operativa: [pgtap-come-si-scrive-un-test](/guide/pgtap-come-si-scrive-un-test) ·
+> storia e misure: `docs/it/dev/work-in-progress/brief-db-pgtap-runner-rls-baseline.md`.
 
 > Caso di studio completo, catalogo dei finding e criterio esteso (madre DB *vs* `transaction.atomic()`
 > *vs* outbox): [analisi-fix-transazioni](/dev/work-done/analisi-fix-transazioni).

@@ -82,7 +82,12 @@ else
   FILES=$(echo "$FILES" | grep -v '^$')
 fi
 
-RUNNER="${PGTAP_RUNNER:-owner}"
+# ⚠️ Nessun default QUI: lo si chiede a testpgtap.sh, che e' l'unico posto
+#   in cui il default vive. Averne uno proprio significa che il giorno in
+#   cui si commuta il runner questo script etichetta la baseline con
+#   l'utente sbagliato — ed e' successo.
+RUNNER="${PGTAP_RUNNER:-$("$SCRIPT_DIR/testpgtap.sh" --print-runner)}"
+export PGTAP_RUNNER="$RUNNER"
 
 # Utente registrato nella baseline. Prima riga `# pgtap-runner: <x>`; le
 # baseline scritte prima dell'introduzione del marcatore non ce l'hanno e sono

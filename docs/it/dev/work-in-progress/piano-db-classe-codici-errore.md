@@ -3,7 +3,7 @@
 **Chi:** team DB (`dev/db-tid`).
 **Guida generale e ragioni di ogni scelta:** [brief-db-be-classe-codici-errore](brief-db-be-classe-codici-errore.md) — 20 decisioni, le trappole, i perché. **Questo file non le ripete: le esegue.**
 **Piano gemello:** [piano-be-classe-codici-errore](piano-be-classe-codici-errore.md).
-**Stato:** 🟡 **in corso** — ✅ D-1 e D-2 fatti (2026-08-07). Prossimo: **D-3** (split `E_VALIDAZIONE`) o **D-4** (le tabelle).
+**Stato:** 🟡 **in corso** — ✅ **D-1..D-6 chiusi e APPLICATI** sul DB di sviluppo (2026-08-07). Il punto di non ritorno è passato. Prossimo: **D-7**, la FK.
 ✅ **Vocabolario a 10 valori confermato da Tid** (2026-08-07): `NON_AUTENTICATO` e `ERRORE_ESTERNO` restano.
 
 ---
@@ -43,10 +43,10 @@ additivo e reversibile.
 |---|---|---|---|
 | ✅ **D-1** | ~~Estrarre il CSV~~ **fatto** — 689 righe, 656 classificate, 33 al D-2 | — | ⚠️ ne è uscito il vocabolario a **10 valori** |
 | ✅ **D-2** | ~~Le 33 decisioni residue~~ **fatto** — 33 classi, 29 ritiri, **zero righe senza classe** | D-1 | ⚠️ serviva un **terzo asse** al discriminante |
-| **D-3** | ⏱ **Spezzare `E_VALIDAZIONE`** — 10 funzioni, 5 domini | — | 🔴 **prima del seed**, o il dato certifica una classe falsa |
-| **D-4** | `config.classi_errore` + `config.codici_errore` (`00_schema`) | — | il DDL può nascere quando si vuole, ma serve prima del seed |
-| **D-5** | Seed dei due CSV, **dentro `20260614-08`** | D-1 · D-2 · D-3 · D-4 | ⚠️ il passo che rompe la CI se fatto nel modo ovvio |
-| **D-6** | 🔴 Migrazione `obsoleto_dal` + riscrittura dei **5 lettori** | D-5 | **punto di non ritorno** |
+| ✅ **D-3** | ~~Spezzare `E_VALIDAZIONE`~~ **NON SI FA** — misurato: 13 punti, **una sola condizione** | — | ⚠️ la premessa era falsa, e la scadenza sul seed sparisce con lei |
+| ✅ **D-4** | ~~Le due tabelle~~ **fatto** — `20260807-11` e `-12` | — | ⚠️ PK **testuale**, deviazione deliberata (3 precedenti su 467) |
+| ✅ **D-5** | ~~Seed~~ **fatto** — 3 loader in `20260614-08`, in ordine | D-1 · D-2 · D-4 | ⚠️ la trappola era **al D-7**, non qui: vedi sotto |
+| ✅ **D-6** | ~~`obsoleto_dal` migra + i 5 lettori~~ **fatto** — `20260807-13` | D-5 | 🔴 punto di non ritorno **superato** |
 | **D-7** | FK `messaggi_errore.codice → codici_errore.codice` + seed `fk_index_policy` | D-5 | dopo che il seed regge |
 | **D-8** | pgTAP: **4 da adeguare** + i nuovi | D-6 · D-7 | |
 | **D-9** | Le **due viste** (`20_code`) | D-4 | ⚠️ numerazione più alta di chi dipende da loro |
@@ -359,98 +359,248 @@ continuare a risolvere: `obsoleto_dal` non è `attivo = false`.
 
 ---
 
-### D-3 · ⏱ Spezzare `E_VALIDAZIONE`
+### D-3 · ✅ **NON SI FA** — la premessa era falsa, e lo dice la misura
 
-🔴 **Prima del seed**, ed è il solo passo con una scadenza. Dieci funzioni, cinque
-domini, tutte sotto «Validazione fallita: %s»:
+Il piano diceva: *«10 funzioni, 5 domini, tutte sotto "Validazione fallita: %s";
+`DATO_ERRATO` è plausibile per alcuni e falso per altri: `fn_annulla_reso` che
+rifiuta un annullamento è `CONFLITTO_STATO`»*. Era il passo con la scadenza, da
+fare **prima del seed**.
 
-> `fn_resolve_indirizzo_documento` · `fn_snapshot_indirizzo` ·
-> `fn_snapshot_indirizzo_soggetto` · `fn_annulla_reso` · `fn_conferma_reso` ·
-> `fn_genera_ddt_da_ordine` · `fn_genera_ddt_riconsegna` ·
-> `fn_ordine_ha_residuo_evasione` · `fn_ordine_riga_qta_riconsegna` ·
-> `fn_push_preventivo_a_ordine`
+🔴 **Non regge.** Letti tutti e 13 i punti che lo sollevano, uno per uno:
 
-Il caso che dimostra il problema: **`fn_annulla_reso` che rifiuta un annullamento
-è `CONFLITTO_STATO`**, non un dato sbagliato. Con `E_VALIDAZIONE` classificato
-`DATO_ERRATO` quella bugia avrebbe un dato che la certifica.
+| Condizione | Punti |
+|---|---:|
+| `IF p_<id> IS NULL OR p_<id> <= 0` | 10 |
+| `IF p_<id> IS NULL` | 1 |
+| `IF p_<id> IS NOT NULL AND p_<id> <= 0` | 1 |
+| `IF p_tipo_codice IS NULL OR btrim(...) = ''` | 1 |
+| **qualunque altra cosa** | **0** |
 
-**Cosa fare:** un codice per famiglia di condizione, non uno per funzione — il
-criterio è *«i significati chiedono reazioni diverse della pagina?»*
-([api.md](../api.md)). I nuovi codici entrano nel catalogo con la loro classe;
-`E_VALIDAZIONE` resta per gli usi che sopravvivono, o si ritira.
+**Sono tutti e 13 la stessa condizione: un parametro obbligatorio mancante o non
+valido.** Ed è la guard che `.codex/AGENTS.md` **prescrive**: *«per parametri
+numerici di tipo ID applicare guard di validazione esplicita: errore se NULL o
+<= 0, non normalizzare silenziosamente»*. Il `causa` a catalogo lo dice già,
+parola per parola.
 
-⚠️ **`E_PARAMETRO_INVALIDO` NON entra qui**: 114 funzioni sono un cantiere suo.
-Va nel seed col **denominatore sicuro** e la ragione in `note`.
+⚠️ **In `fn_annulla_reso` `E_VALIDAZIONE` non rifiuta nessun annullamento**: è
+sollevato su `p_reso_id IS NULL OR p_reso_id <= 0`. Il rifiuto dell'annullamento,
+dove c'è, usa un altro codice.
 
-⚠️ **Leggere il punto che solleva, non il nome** — e verificare i pgTAP esistenti
-prima di cambiare il codice sollevato da una funzione: un `throws_ok` che
-asserisce il vecchio codice diventa rosso.
+**Quindi `E_VALIDAZIONE` non è un accumulatore: ha un significato solo, usato 13
+volte, e `DATO_ERRATO` è giusto per tutti.** Spezzarlo sarebbe stato riscrivere
+10 funzioni, adeguare i pgTAP e creare codici nuovi per non cambiare niente.
 
----
+#### ⭐ Perché la premessa sembrava vera — e la lezione vale oltre
 
-### D-4 · Le due tabelle (`00_schema`)
+L'eterogeneità era stata dedotta dall'**elenco dei nomi di funzione**: indirizzi,
+resi, DDT, residui d'ordine, push preventivo — cinque domini, sembra ovvio che
+dietro ci siano cinque condizioni diverse.
 
-```
-config.classi_errore    classe PK · descrizione NOT NULL · obsoleto_dal · audit
-config.codici_errore    codice PK · classe NOT NULL (FK) · obsoleto_dal · note · audit
-```
+> **Le funzioni erano eterogenee, la condizione no.** Un codice è un accumulatore
+> quando copre **condizioni** diverse, non quando è usato in **domini** diversi.
+> «10 funzioni, 5 domini» misurava la cosa sbagliata, e nessuno se n'è accorto
+> perché il numero era vero.
 
-⛔ **Nessun `DEFAULT` su `classe`**, e la ragione va scritta nel changeSet: un
-default è il meccanismo che ha prodotto il difetto (§5.1 del brief).
+#### ⚠️ E l'altro accumulatore è quasi uniforme anche lui
 
-* `classe` è una **FK a un vocabolario**, non un `CHECK`;
-* `classi_errore` nasce con **8 righe**, `AVVISO` incluso (§4.2 del brief);
-* `note` **su una riga sola**, senza a capo (D18);
-* audit standard: `data_insert`, `user_insert`, `data_update`, `user_update`, `tx_id`.
+Stessa lente su `E_PARAMETRO_INVALIDO`, **177 punti**:
 
-⚠️ **Le automazioni (audit/`tx_id`/storico) girano solo in contesto `ci_apply`**:
-sul migrate manuale le provvede il pgagent di fine giornata. Da sapere quando si
-controlla il risultato la sera stessa.
+| | punti |
+|---|---:|
+| guard di parametro (`IS NULL`, `<= 0`, `btrim = ''`) | **160** (90%) |
+| tutto il resto (`NOT IN (...)`, `v_x IS NULL` dopo un SELECT, …) | 17 |
 
----
-
-### D-5 · 🔴 Il seed — il passo che rompe la CI se fatto nel modo ovvio
-
-⚠️ **Leggere il §10.1 del brief prima di scrivere una riga.** In sintesi: tutto
-`00_schema` gira prima di tutto `80_data`, quindi la FK esiste già quando il
-mirror del catalogo (`20260614-08`) parte — e su un **DB ricostruito da zero** il
-catalogo si carica prima che `codici_errore` sia popolata. **Violazione di FK, e
-su dev non si vede.**
-
-**Rimedio:** estendere `20260614-08` **in place** con un secondo
-`loadUpdateData` su `codici_errore.csv` messo **prima** di quello del catalogo.
-Il changeSet è `runOnChange: true` + `validCheckSums: ANY` — un mirror vivo,
-progettato per essere esteso (l'ha già fatto `obsoleto_dal`).
-
-* un solo changeSet = una transazione = ordine garantito;
-* il vocabolario `classi_errore` (10 righe) nello stesso changeSet, per primo;
-* ⚠️ `nullValue: "NULL"` — **token letterale**, non la cella vuota: su una colonna
-  `DATE` la stringa vuota è un errore di cast.
-
-✅ **Verifica:** `make db-migrate` verde, e conteggio `codici_errore` = conteggio
-codici distinti del catalogo.
+**`DATO_ERRATO` non è il denominatore sicuro: è la risposta giusta per il 90%
+dei punti.** Restano una dozzina di siti da guardare con la lente — non il
+«cantiere a sé» che i documenti si erano immaginati. La nota nel CSV resta,
+riscritta su questa misura.
 
 ---
 
-### D-6 · 🔴 `obsoleto_dal` migra — punto di non ritorno
+### D-4 · ✅ **FATTO** — 2026-08-07
 
-Colonna nuova su `codici_errore` popolata dai valori attuali, poi `DROP` su
-`messaggi_errore`. Forward-only, breaking secco: non siamo in produzione.
-
-⚠️ **Nello stesso giro i 5 lettori**, o il presidio del ritiro smette di
-funzionare in silenzio — che è esattamente il difetto che stiamo curando:
-
-| File | Cosa |
+| ChangeSet | Cosa |
 |---|---|
-| `scripts/sql/guardrail_codice_errore_strutturato.sql` ~137 | controllo **C** |
-| idem ~165-185 | controllo **D** |
-| idem ~219-232 | controllo **E** + testo del messaggio |
-| idem ~271 | esclusione dei ritirati |
-| `scripts/sql/check_messaggio_vs_condizione.sql` ~100 | la lente |
+| [`20260807-11-create-classi-errore`](../../../../db/changelog/migrations_v2/00_schema/config/20260807-11-create-classi-errore-mctit.yaml) | il vocabolario: `classe` PK, `descrizione` NOT NULL, `obsoleto_dal`, audit |
+| [`20260807-12-create-codici-errore`](../../../../db/changelog/migrations_v2/00_schema/config/20260807-12-create-codici-errore-mctit.yaml) | l'identità: `codice` PK, `classe` **NOT NULL senza DEFAULT** (FK), `obsoleto_dal`, `note`, audit |
 
-**La migrazione è 1:1 e senza ambiguità**: le 50 righe ritirate sono tutte `it`,
-quindi non c'è nessun caso «ritirato in una lingua e non nell'altra» da
-risolvere. È il difetto che questo spostamento chiude per sempre.
+Entrambi `runOnChange: false`, `preConditions` con `onFail: HALT`, e il `-12`
+pretende che il `-11` esista. YAML validato. **Non applicati**: serve il tuo
+«procedi» per il migrate.
+
+#### ⚠️ PK testuale — deviazione deliberata, e misurata
+
+Le convenzioni vogliono `id` surrogato, e **464 tabelle su 467** ce l'hanno. Le
+tre eccezioni sono registri chiavati da una stringa naturale e stabile —
+`config.storico_set_storicizza(table_name)`, `dbops.idempotency_keys(idempotency_key)`,
+`config.tipi_soggetto(id varchar)` — ed è esattamente questo caso: **il codice
+È la sua identità**, ed è la frase su cui poggia tutto il §3.1 del brief.
+
+Un id surrogato qui costerebbe una colonna che nessuno legge e obbligherebbe
+`messaggi_errore` a portarsi dietro una FK numerica al posto del valore che si
+vuole leggere nella vista e nel CSV. La ragione è scritta nella testata di
+entrambi i changeSet, perché una deviazione non documentata a sei mesi sembra
+una distrazione.
+
+#### Due `CHECK` che non erano nel piano
+
+* **`codice = btrim(codice) AND codice <> ''`** (e lo stesso su `classe`): la
+  chiave è testuale, e due stringhe che differiscono per uno spazio ai bordi
+  sarebbero chiavi diverse che a occhio sono uguali. Verificato prima di
+  scriverlo: sul catalogo vivo zero spazi ai bordi e zero ambiguità di
+  maiuscole, quindi il vincolo nasce già soddisfatto;
+* **`note !~ '[\n\r]'`** — la D18 diceva «`note` su una riga sola» e restava una
+  raccomandazione. Con questo `CHECK` è un fatto: il seed passa da un CSV, e le
+  celle multi-riga in questo repo sono **3 in tutto**. Meglio un vincolo che una
+  sorpresa al primo `loadUpdateData`.
+
+#### Cosa non c'è, e di proposito
+
+Nessun `attivo` (una classe non si disattiva: si ritira), nessun `meta`, nessun
+`tx_id` — 23 tabelle `config` su 110 ce l'hanno, e le linee guida §7 elencano
+solo le quattro colonne di audit.
+
+⚠️ **Le automazioni arrivano dopo.** `config` è in `dbops.automation_scope` con
+`*all`, ma il framework gira solo in contesto `ci_apply`: su un migrate manuale
+le tabelle nascono **senza** trigger di audit e li ricevono dal pgagent di fine
+giornata. Non è un difetto, è da sapere se si controlla il risultato la sera
+stessa.
+
+---
+
+### D-5 · ✅ **FATTO** — 2026-08-07
+
+`20260614-08` carica ora **tre** tabelle, in quest'ordine e in **una
+transazione**:
+
+| # | Tabella | Righe | File |
+|---|---|---:|---|
+| 1 | `config.classi_errore` | 10 | `classi_errore.csv` (nuovo) |
+| 2 | `config.codici_errore` | 689 | `codici_errore.csv` (nuovo) |
+| 3 | `config.messaggi_errore` | 690 | invariato |
+
+Aggiunte anche le `preConditions` sulle due tabelle nuove: se qualcuno arriva
+qui senza il D-4 il changeSet si ferma invece di fallire a metà.
+
+#### ⚠️ La trappola c'era, ma era **al D-7** — e la cura è la stessa
+
+Il piano diceva che il seed è «il passo che rompe la CI se fatto nel modo ovvio».
+**Non è il seed: è la FK.** Al D-4 la FK verso `messaggi_errore` non è stata
+creata (arriva al D-7), quindi *oggi* l'ordine dei loader non vincola nulla.
+
+Ma la FK nascerà in `00_schema`, e lì **tutto `00_schema` gira prima di tutto
+`80_data`**. Su un DB ricostruito da zero la FK esisterà già quando parte
+`80_data`: se il catalogo dei messaggi si caricasse prima che `codici_errore` sia
+popolata, **ogni riga violerebbe la FK**.
+
+Un loader nuovo avrebbe la data di oggi e `includeAll` ordina per nome:
+girerebbe **dopo** questo. Da qui l'estensione in place — e va fatta **adesso**,
+non al D-7, perché al D-7 sarebbe già tardi per accorgersene.
+
+⚠️ **E su dev non si vedrebbe comunque**: il catalogo è popolato e la FK
+troverebbe i padri. Si scoprirebbe in CI.
+
+> ⭐ **Il precedente c'era ed è una regola di casa**: *«nuovi codici errore =
+> solo append al CSV, MAI un nuovo loader upsert — i loader `runOnChange`
+> esistenti ripescano il CSV»*. Vale identica per una tabella nuova che deve
+> caricarsi prima di una vecchia.
+
+#### Verifica post-migrate
+
+```sql
+SELECT count(*) FROM config.classi_errore;   -- 10
+SELECT count(*) FROM config.codici_errore;   -- 689
+-- precondizione della FK del D-7: ogni codice del catalogo ha il suo padre
+SELECT count(*) FROM config.messaggi_errore m
+  LEFT JOIN config.codici_errore c ON c.codice = m.codice
+ WHERE c.codice IS NULL;                     -- 0
+```
+
+⚠️ Il changeSet è `runOnChange: true`: al prossimo migrate **ri-esegue tutto**,
+compreso il caricamento del catalogo dei messaggi. È il comportamento voluto di
+un mirror, ma vuol dire che il migrate del D-5 tocca 1389 righe, non 699.
+
+---
+
+### D-6 · ✅ **FATTO E APPLICATO** — 2026-08-07 · il punto di non ritorno è passato
+
+**Quattro cose in un solo giro**, e non potevano andare separate:
+
+| # | Cosa | Dove |
+|---|---|---|
+| 1 | `DROP COLUMN config.messaggi_errore.obsoleto_dal` | [`20260807-13`](../../../../db/changelog/migrations_v2/00_schema/config/20260807-13-drop-obsoleto-dal-messaggi-errore-mctit.yaml) |
+| 2 | colonna tolta dal CSV del catalogo | `config/messaggi_errore.csv` |
+| 3 | colonna tolta dal terzo loader | `20260614-08` |
+| 4 | i **5 lettori** riscritti | guardrail (4) + lente (1) |
+
+⚠️ **Il DROP non si può applicare da solo.** Il mirror `20260614-08` dichiara
+`obsoleto_dal` fra le colonne del catalogo: se il DROP arriva senza la modifica
+al loader, il primo migrate fallisce perché il loader carica una colonna che non
+esiste più. La `preCondition` del changeSet **non protegge da questo** — protegge
+il verso opposto, che la nuova casa esista.
+
+#### La migrazione dei dati era già fatta, e verificata prima
+
+I valori non si copiano nel changeSet: erano già nella nuova casa, arrivati col
+seed del D-5. Confronto riga per riga **prima** di scrivere il DROP:
+
+| | |
+|---:|---|
+| ritirati in `messaggi_errore` | 50 |
+| ritirati in `codici_errore` | **79** (50 + 29 dal D-2) |
+| presenti in messaggi ma **non** in codici | **0** |
+| con data diversa | **0** |
+
+#### I cinque lettori — e nel piano erano etichettati male
+
+| Dove | Controllo | Cosa cambia |
+|---|---|---|
+| guardrail | **(B)** codici fuori convenzione | legge il ritiro da `codici_errore` |
+| guardrail | **(C)** il registro deve calare | il `LEFT JOIN` passa a `codici_errore`, e la condizione si semplifica: una riga per codice toglie l'`EXISTS` che serviva a scavalcare le lingue |
+| guardrail | **(D)** codici ritirati ancora sollevati | idem, più il testo dell'errore che ora indica il CSV giusto |
+| guardrail | riepilogo finale | conta i ritirati da `codici_errore` |
+| lente | join del messaggio | ⚠️ **due join, non uno** (sotto) |
+
+⚠️ Il piano li chiamava «C, D, E»: sono **B, C, D e il riepilogo**. Etichetta
+sbagliata, punti giusti — ma chi cercava (E) non l'avrebbe trovato.
+
+⭐ **Sulla lente la modifica non era meccanica.** Il filtro sul ritiro stava
+*dentro* il join della frase (`me.lingua = 'it' AND me.obsoleto_dal ...`).
+Spostarlo a `codici_errore` ha richiesto **due join separati**: la frase resta
+per lingua, il ritiro no. Tenerli insieme avrebbe rimesso il filtro su un asse
+per-lingua — cioè il difetto appena chiuso, ricreato nel codice che lo controlla.
+
+> ⚠️ **Un presidio che legge una colonna sparita non fallisce rumorosamente:
+> smette di vedere.** È il motivo per cui i lettori vanno nello stesso commit del
+> DROP, e non «subito dopo».
+
+#### ✅ Applicato — cosa resta da guardare
+
+Il migrate è passato. ⚠️ **Due verifiche che non ho potuto fare da qui** (non ho
+accesso al DB vivo) e che vale la pena chiudere prima del D-7:
+
+```sql
+-- la colonna non c'e' piu'
+SELECT count(*) FROM information_schema.columns
+ WHERE table_schema='config' AND table_name='messaggi_errore'
+   AND column_name='obsoleto_dal';                -- 0
+-- il ritiro e' nella nuova casa
+SELECT count(*) FROM config.codici_errore WHERE obsoleto_dal IS NOT NULL;  -- 79
+```
+
+🔴 **E il guardrail va rilanciato — è la prova che il D-2 era giusto.** Il
+controllo (D) dice che nessuna funzione viva solleva un codice ritirato, e al
+D-2 ne sono stati ritirati **29** proprio perché nessuna li solleva più:
+
+```bash
+psql -v ON_ERROR_STOP=1 -f scripts/sql/guardrail_codice_errore_strutturato.sql
+```
+
+Se (D) è verde, la lettura dei 29 era giusta e la loro classe è al posto suo. Se
+è rosso, uno di quei 29 è vivo — e il nome che stampa dice quale funzione lo
+solleva. **È l'unico controllo di questo cantiere che può ancora smentire una
+decisione già presa**, e conviene farlo adesso che il rimedio è una riga di CSV,
+non dopo la FK.
 
 ---
 

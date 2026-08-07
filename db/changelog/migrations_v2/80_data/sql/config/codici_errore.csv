@@ -387,7 +387,7 @@ E_PARAMETER_NOT_FOUND,NON_TROVATO,NULL,NULL
 E_PARAMETER_OVERRIDE_VALUE_INVALID,DATO_ERRATO,NULL,NULL
 E_PARAMETER_VALIDATION,DATO_ERRATO,NULL,NULL
 E_PARAMETRI_TABELLA,NON_TROVATO,NULL,NULL
-E_PARAMETRO_INVALIDO,DATO_ERRATO,NULL,NULL
+E_PARAMETRO_INVALIDO,DATO_ERRATO,NULL,"177 punti in 114 funzioni: 160 sono guard di parametro (NULL, <= 0, btrim vuoto), 17 altro. DATO_ERRATO copre il 90%. I 17 restanti vanno guardati con la lente messaggio-vs-condizione, non spezzati a priori."
 E_PARENT_SELF,DATO_ERRATO,NULL,NULL
 E_PDP_OBBLIGATORIO,DATO_ERRATO,NULL,--- Coerenza dati (400) ---
 E_PDP_UTILITY_MISMATCH,DATO_ERRATO,NULL,NULL
@@ -617,7 +617,7 @@ E_UTENTE_NON_ATTIVO,NON_PERMESSO,NULL,NULL
 E_UTENTE_SCADUTO,NON_PERMESSO,NULL,NULL
 E_UTILITY_RUOLO_NON_AMMESSO,DATO_ERRATO,NULL,NULL
 E_VALIDATION_INPUT,DATO_ERRATO,NULL,NULL
-E_VALIDAZIONE,DATO_ERRATO,NULL,⚠️ ACCUMULATORE: lo nominano **10 funzioni** e il messaggio e' un · passthrough («Validazione fallita: %s»). Banner e non campo · evidenziato proprio per questo: non sappiamo quale campo sarebbe. · Stessa famiglia di `E_PARAMETRO_INVALIDO` (113 funzioni) — da · tenere d'occhio alla prossima passata della lente.
+E_VALIDAZIONE,DATO_ERRATO,NULL,"13 punti di sollevamento, tutti la stessa condizione: parametro obbligatorio mancante o non valido (la guard prescritta da AGENTS.md). Non e un accumulatore, misurato il 2026-08-07."
 E_VALORE_MANCANTE,DATO_ERRATO,NULL,NULL
 E_VENDITA_COMPETENZA_RICHIESTA,DATO_ERRATO,NULL,"Progettato mai cablato: push_preventivo_handler.md. Classificato, non ritirato."
 E_VENDITA_PARAM_MODALITA_FATTURAZIONE_INVALIDA,DATO_ERRATO,NULL,"Progettato mai cablato: push_preventivo_handler.md. Classificato, non ritirato."

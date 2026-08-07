@@ -1,0 +1,111 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+--
+-- ⚠️ QUESTO E' IL TEMPLATE. Copialo, non modificarlo.
+--     cp db/pgtap/_TEMPLATE.sql.txt db/pgtap/<schema>/test-<cosa>.sql
+--
+--   Estensione `.txt` apposta: cosi' non finisce nella suite (che raccoglie
+--   `*/*.sql`) e non conta come test muto.
+--
+--   Il preambolo qui sotto NON e' burocrazia: ogni riga costa tre giorni di
+--   lavoro a qualcuno. Guida: docs/it/guide/pgtap-come-si-scrive-un-test.md
+--
+-- Elenco test (plan N):
+-- 1) ...
+-- 2) ...
+--
+-- Scopo:
+--  - ...
+-- ------------------------------------------------------------
+
+-- ⚠️ 1. TRANSAZIONE. Senza, un fallimento a meta' lascia i dati di prova nel
+--   database e rompe la corsa successiva, che vede un rosso non suo. Il runner
+--   gira con ON_ERROR_STOP: un cleanup in coda non viene raggiunto mai.
+BEGIN;
+
+-- ⚠️ 2. CONTESTO APPLICATIVO. I test girano come `zeroerp_app` con la RLS
+--   ATTIVA. Senza una veste dichiarata le policy sono fail-closed: le SELECT
+--   della fixture leggono ZERO righe, e il test diventa verde per sottrazione
+--   (le asserzioni finiscono nei rami `skip`, che non verificano niente).
+--
+--   Se il test ha bisogno di una veste DIVERSA da OPERATORE — per esempio
+--   CLIENTE_PORTALE — si fa in due tempi: prima questa riga, perche' la fixture
+--   deve VEDERE per costruire; poi, appena creata l'identita':
+--     SELECT set_config('app.ruolo_applicativo',  'CLIENTE_PORTALE', true);
+--     SELECT set_config('app.current_identita_id', <id>::text,       true);
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
+-- ⚠️ 3. VINCOLI DIFFERITI. Nel DB ce ne sono 365. Scattano al COMMIT, e qui il
+--   COMMIT non arriva mai (si chiude in ROLLBACK): senza questa riga NON
+--   VERREBBERO MAI ESERCITATI, e il file sarebbe verde per sottrazione.
+--
+--   ⚠️ E la posizione non e' «sempre in testa»: va DOVE L'UNITA' DI LAVORO E'
+--   COMPLETA. Se la fixture crea un padre in una istruzione e il suo satellite
+--   in quella dopo, metterla qui fa scattare il vincolo a meta' strada. In quel
+--   caso si sposta dopo l'ultima coppia — e comunque PRIMA di ogni cleanup,
+--   altrimenti scatta su righe gia' cancellate.
+SET CONSTRAINTS ALL IMMEDIATE;
+
+SELECT plan(0);   -- <-- il numero vero
+
+-- ============================================================
+-- Fixture
+-- ============================================================
+-- ⚠️ 4. NIENTE `LIMIT 1` SENZA `ORDER BY`. Senza ordine, quale riga esca
+--   dipende dal piano del planner, che cambia coi dati: il test passa a giorni
+--   alterni. E se servono DUE valori della stessa riga (id e aliquota, id e
+--   codice), si sceglie UNA volta in una CTE o in una temp table e si proietta
+--   da li' — due sotto-select indipendenti possono pescare righe diverse.
+--
+-- ⚠️ 5. L'EMITTENTE NON SI PESCA, SI DERIVA. Un documento appartiene
+--   all'emittente di chi agisce, e le policy `ef_whitelist` lo pretendono:
+--     emittente_fiscale_id        = script.fn_pgtap_emittente_operatore()
+--     emittente_soggetto_ruolo_id = script.fn_pgtap_emittente_sr_operatore()
+--
+-- ⚠️ 6. PADRE E FIGLIO IN DUE ISTRUZIONI, non in una CTE sola. Le CTE che
+--   scrivono condividono la stessa snapshot: una policy che risolve il
+--   perimetro dal padre non lo trova, e nega fail-closed. In `LANGUAGE sql` non
+--   si puo' separare: serve `plpgsql` con due INSERT e una variabile in mezzo.
+
+-- ============================================================
+-- Asserzioni
+-- ============================================================
+-- ⚠️ 7. UN ERRORE SI ASSERISCE, NON SI SPERA. `throws_ok(sql, NULL, NULL, ...)`
+--   accetta QUALUNQUE errore — compreso il crash del guard che voleva
+--   verificare, o un `permesso negato` che non c'entra niente. Sempre uno dei due:
+--     throws_ok  (sql, 'P0001', NULL, 'desc')   -- errore di dominio (fn_log_and_raise_error)
+--     throws_ok  (sql, '23514', NULL, 'desc')   -- CHECK      · '23505' unique · '23503' FK
+--     throws_like(sql, '%frase stabile%', 'desc')
+--   ⚠️ `P0001` dice «e' un errore di dominio», non QUALE: se serve distinguere
+--   fra due codici, il discriminante e' la frase (`throws_like`).
+--   ⚠️ E il pattern non deve attraversare un segnaposto: il messaggio
+--   «Riga DDT %s non trovata» si matcha con '%Riga DDT %non trovata%', mai con
+--   la frase intera.
+--
+-- ⚠️ 8. I TRIGGER `BEFORE ROW` GIRANO PRIMA DEI `CHECK`. Un'asserzione che crede
+--   di collaudare un CHECK spesso viene intercettata dal guard e non lo
+--   raggiunge mai. Per arrivare al CHECK serve un caso che il guard lascia passare.
+
+-- ============================================================
+-- Chiusura
+-- ============================================================
+-- ⚠️ 9. NIENTE cleanup in coda: ci pensa il ROLLBACK. Un DELETE finale non viene
+--   raggiunto in caso di errore, e se ci fosse un COMMIT lascerebbe residui.
+SELECT * FROM finish();
+ROLLBACK;
+
+-- ------------------------------------------------------------
+-- ⚠️ 10. SE IL TEST NON PUO' GIRARE COME L'APPLICAZIONE, prima di marcarlo
+--   chiediti se il difetto e' della fixture. Il marcatore serve a un caso solo:
+--   il SOGGETTO del test non e' raggiungibile dall'applicazione (fa DDL, oppure
+--   costruisce dati che l'operatore non deve vedere). Si dichiara in testa al
+--   file, subito dopo lo SPDX, e il motivo e' OBBLIGATORIO:
+--
+--     -- pgtap-runner: owner
+--     -- pgtap-runner-motivo: <perche', in chiaro>
+--
+--   Criterio completo, con l'elenco di cosa ESCLUDE: intestazione di
+--   scripts/testpgtap.sh. In una riga: se l'applicazione quella cosa la fa, il
+--   marcatore e' sbagliato.
+-- ------------------------------------------------------------

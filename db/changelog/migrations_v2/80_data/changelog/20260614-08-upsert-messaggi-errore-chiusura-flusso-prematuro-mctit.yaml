@@ -15,6 +15,9 @@
 # Pattern loadUpdateData simmetrico a 20260608-11.
 #
 # ── ESTESO IL 2026-08-05: colonna `obsoleto_dal` + `nullValue` ──────────
+#   ⚠️ SUPERATO IN PARTE: `obsoleto_dal` e' stata TOLTA da qui il 2026-08-07
+#   (vedi in fondo). La nota sul `nullValue` resta valida e vale per tutti e
+#   tre i loader.
 #   Brief: brief-db-codice-errore-strutturato.md §15 · colonna: 20260805-17
 #
 #   Questo changeSet e' `runOnChange: true` + `validCheckSums: ANY`, cioe' un
@@ -35,6 +38,44 @@
 #     SELECT count(*) FILTER (WHERE causa IS NULL)  -- deve restare 0
 #          , count(*) FILTER (WHERE causa = '')     -- deve restare 331
 #       FROM config.messaggi_errore;
+#
+# ── 🔴 ESTESO IL 2026-08-07: DUE LOADER PRIMA DEL CATALOGO ──────────────
+#   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (D-5)
+#   Tabelle: 20260807-11 (config.classi_errore), 20260807-12 (config.codici_errore)
+#
+#   Il changeSet carica ora TRE tabelle, in quest'ordine e in UNA transazione:
+#     1. config.classi_errore   (10 righe)  — il vocabolario
+#     2. config.codici_errore   (689 righe) — l'identita' dei codici
+#     3. config.messaggi_errore (690 righe) — la frase, invariato
+#
+#   ⚠️ L'ORDINE NON E' ESTETICA, ED E' IL MOTIVO PER CUI I LOADER STANNO QUI
+#   DENTRO invece che in un changeSet nuovo con la data di oggi.
+#
+#   `messaggi_errore.codice` prendera' una FK verso `codici_errore.codice` (D-7
+#   del piano). Quella FK nasce in `00_schema`, e in
+#   `changelog-master-v2.yaml` **tutto `00_schema` gira prima di tutto
+#   `80_data`**. Quindi su un database RICOSTRUITO DA ZERO la FK esiste gia'
+#   quando parte `80_data`: se il catalogo dei messaggi si caricasse prima che
+#   `codici_errore` sia popolata, ogni riga violerebbe la FK.
+#
+#   Un loader nuovo avrebbe la data di oggi (`20260807-xx`), e `includeAll`
+#   ordina per nome: girerebbe DOPO questo. Da qui la scelta di estendere in
+#   place — questo changeSet e' `runOnChange: true` + `validCheckSums: ANY`,
+#   cioe' un mirror vivo progettato per essere esteso (l'ha gia' fatto
+#   `obsoleto_dal` il 2026-08-05).
+#
+#   ⚠️ E su dev NON SI VEDREBBE: il catalogo e' gia' popolato e la FK trova i
+#   padri. Si scoprirebbe in CI, in una PR che sembrava pronta. E' la trappola
+#   «il DB di sviluppo NON e' un DB ricostruito da zero».
+#
+#   Verifica post-migrate:
+#     SELECT count(*) FROM config.classi_errore;    -- 10
+#     SELECT count(*) FROM config.codici_errore;    -- 689
+#     SELECT count(*) FROM config.codici_errore WHERE classe IS NULL;  -- 0 (NOT NULL)
+#     -- ogni codice del catalogo ha il suo padre (precondizione della FK del D-7):
+#     SELECT count(*) FROM config.messaggi_errore m
+#       LEFT JOIN config.codici_errore c ON c.codice = m.codice
+#      WHERE c.codice IS NULL;                      -- 0
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -52,7 +93,50 @@ databaseChangeLog:
         - tableExists:
             schemaName: config
             tableName: messaggi_errore
+        - tableExists:
+            schemaName: config
+            tableName: classi_errore
+        - tableExists:
+            schemaName: config
+            tableName: codici_errore
       changes:
+        # ── 1) IL VOCABOLARIO DELLE CLASSI ────────────────────────────────
+        #   Dieci righe. Va per primo: `codici_errore.classe` ha una FK verso
+        #   qui, e un loader che arriva dopo troverebbe la tabella vuota.
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/classi_errore.csv
+            tableName: classi_errore
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "classe"
+            columns:
+              - column: { name: classe,       type: STRING }
+              - column: { name: descrizione,  type: STRING }
+              - column: { name: obsoleto_dal, type: DATE }
+
+        # ── 2) L'IDENTITA' DEI CODICI ─────────────────────────────────────
+        #   689 righe. Va PRIMA del catalogo dei messaggi: vedi la testata.
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/codici_errore.csv
+            tableName: codici_errore
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "codice"
+            columns:
+              - column: { name: codice,       type: STRING }
+              - column: { name: classe,       type: STRING }
+              - column: { name: obsoleto_dal, type: DATE }
+              - column: { name: note,         type: STRING }
+
+        # ── 3) IL CATALOGO DEI MESSAGGI ───────────────────────────────────
+        #   ⚠️ Ha PERSO `obsoleto_dal` il 2026-08-07 (20260807-13): la colonna
+        #   e' migrata su codici_errore. Il resto e' invariato dal 2026-06-14.
         - loadUpdateData:
             relativeToChangelogFile: true
             file: ../sql/config/messaggi_errore.csv
@@ -70,6 +154,7 @@ databaseChangeLog:
               - column: { name: id,        type: NUMERIC }
               - column: { name: causa,     type: STRING }
               - column: { name: soluzione, type: STRING }
-              # Ritiro del codice: NULL = in servizio. Non e' `attivo` e non
-              # nasconde il messaggio — la legge solo il guardrail (20260805-17).
-              - column: { name: obsoleto_dal, type: DATE }
+              # ⚠️ `obsoleto_dal` NON e' piu' qui: dal 20260807-13 il ritiro sta
+              # su config.codici_errore (caricata al punto 2 qui sopra). Su
+              # messaggi_errore era per LINGUA, cioe' si poteva ritirare un
+              # codice in italiano e lasciarlo vivo in inglese.

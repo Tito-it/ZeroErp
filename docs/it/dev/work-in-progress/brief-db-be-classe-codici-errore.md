@@ -4,7 +4,7 @@
 **Origine:** domanda di Tid alla chiusura di
 [brief-db-be-terzo-lato-presidio-codici](../work-done/brief-db-be-terzo-lato-presidio-codici.md):
 *«come evitare che si ripeta? La messaggistica si era trasformata in un bugiardino.»*
-**Stato:** 🟢 **disegno chiuso** — 19 decisioni (§14), nessuna aperta. **L'esecuzione è in due piani separati** (§13): si comincia dal [piano DB](piano-db-classe-codici-errore.md).
+**Stato:** 🟢 disegno chiuso (23 decisioni, §14) · 🟡 **in costruzione**: DB a **D-6 su D-10**, BE a **B-4 su B-7**. Stato aggiornato nel §13.1; l'esecuzione vive nei [due piani](piano-db-classe-codici-errore.md).
 **Perimetro:** tabelle + vocabolario + seed lato DB · generatore di `error_policies.py` e mappa classe→HTTP lato BE.
 **Ruolo di questo file:** **guida generale** — le ragioni, le misure, le decisioni. L'esecuzione sta nei due piani operativi (§13).
 
@@ -187,14 +187,14 @@ avuta devono continuare a risolvere.
 ### 3.3 Lo schema, per intero
 
 ```
-config.classi_errore                        ← il vocabolario, 10 righe
+config.classi_errore              ✅ ESISTE   ← il vocabolario, 10 righe
   classe        text PK                     ← DATO_ERRATO, CONFLITTO_STATO, …
   descrizione   text NOT NULL               ← la definizione che decide i casi dubbi
   obsoleto_dal  date                        ← una classe si ritira, non si disattiva
   + audit (data_insert, user_insert, data_update, user_update, tx_id)
 
-config.codici_errore                        ← una riga per CODICE — l'identità
-  codice        text PK                     ← ~689 righe (vedi 3.5)
+config.codici_errore              ✅ ESISTE   ← una riga per CODICE — l'identità
+  codice        text PK                     ← 689 righe (vedi 3.5)
   classe        text NOT NULL               ← FK → config.classi_errore(classe)
                                               ⛔ NESSUN DEFAULT (§5)
   obsoleto_dal  date                        ← SPOSTATO qui da messaggi_errore
@@ -202,16 +202,16 @@ config.codici_errore                        ← una riga per CODICE — l'identi
   + audit
 
 config.messaggi_errore                      ← una riga per (codice, lingua) — la frase
-  codice        text  → FK verso config.codici_errore(codice)
+  codice        text  → FK verso codici_errore(codice)   ⏳ ARRIVA AL D-7
   lingua, messaggio, causa, soluzione
   id            bigint PK   (invariata — vedi 3.4)
-  ⛔ obsoleto_dal RIMOSSA (migra su codici_errore)
+  ✅ obsoleto_dal RIMOSSA il 2026-08-07 (20260807-13): il ritiro sta su codici_errore
 
-config.vw_codici_errore                     ← la superficie di REVISIONE (§5)
+config.vw_codici_errore           ⏳ AL D-9   ← la superficie di REVISIONE (§5)
   codice · classe · obsoleto_dal · lingua · messaggio · causa · soluzione
   ⚠️ una riga per (codice, lingua) — LEFT JOIN: un codice senza messaggio c'e'
 
-config.vw_codici_errore_identita            ← la sorgente del GENERATORE (§14.4)
+config.vw_codici_errore_identita  ⏳ AL D-9   ← la sorgente del GENERATORE (§14.4)
   codice · classe · obsoleto_dal · note
   una riga per codice, nessun join, ORDER BY codice stabile
 ```
@@ -744,8 +744,20 @@ push preventivo — tutti sotto «Validazione fallita: %s». `DATO_ERRATO` è
 plausibile per alcuni e **falso** per altri: `fn_annulla_reso` che rifiuta un
 annullamento è `CONFLITTO_STATO`, non un dato sbagliato.
 
-→ **Si spezza prima del seed.** Dieci funzioni sono un lotto piccolo, e la
-distinzione è già chiara.
+> 🔴 **CORREZIONE (2026-08-07, eseguendo il D-3): questa premessa è FALSA.**
+> Letti tutti e 13 i punti che sollevano `E_VALIDAZIONE`, sono **la stessa
+> condizione**: un parametro obbligatorio mancante o non valido — la guard che
+> `.codex/AGENTS.md` prescrive. ⚠️ In `fn_annulla_reso` `E_VALIDAZIONE` **non
+> rifiuta nessun annullamento**: scatta su `p_reso_id IS NULL OR <= 0`.
+>
+> **`E_VALIDAZIONE` non è un accumulatore**, e non si spezza: `DATO_ERRATO` è
+> giusto per tutti e 13. Dettaglio nel [piano DB, D-3](piano-db-classe-codici-errore.md).
+>
+> ⭐ **Perché sembrava vera, ed è la lezione:** l'eterogeneità era dedotta
+> dall'**elenco dei nomi di funzione** — indirizzi, resi, DDT, residui, push —
+> cinque domini. Ma **le funzioni erano eterogenee, la condizione no.** Un codice
+> è un accumulatore quando copre **condizioni** diverse, non quando è usato in
+> **domini** diversi.
 
 **`E_PARAMETRO_INVALIDO` — 112 secondo il BE, 114 file nella doc auto-gen.** La
 differenza non è stata inseguita: l'ordine di grandezza è quello, e la conclusione
@@ -754,9 +766,15 @@ funzioni sono un cantiere a sé, non il passo 3 di questo. E sappiamo già che
 almeno un uso non è `DATO_ERRATO` — nel resolver di prezzo il parametro sbagliato
 lo riceve la funzione dal chiamante, non l'operatore.
 
-→ **Denominatore sicuro + il perché nella colonna `note`.** La colonna del §3.3
-esiste per questo: un accumulatore va riconoscibile *come tale*, non solo
-classificato.
+> ⚠️ **Misurato anche questo (2026-08-07): 160 punti su 177 sono guard di
+> parametro** (90%); gli altri 17 sono `NOT IN (...)`, `v_x IS NULL` dopo un
+> SELECT e simili. **`DATO_ERRATO` non è il denominatore sicuro: è la risposta
+> giusta per il 90% dei punti.** Restano una dozzina di siti da guardare con la
+> lente — non il «cantiere a sé» che questi documenti si erano immaginati.
+
+→ **`DATO_ERRATO` + il perché nella colonna `note`.** La colonna del §3.3 esiste
+per questo: un codice usato in 114 funzioni va riconoscibile *come tale*, non
+solo classificato.
 
 > ⚠️ **Una correzione al costo, però.** Il BE scrive che se il seed parte prima
 > dello split «poi si riscrive il seed». **Non è così**: spezzare un codice crea
@@ -813,7 +831,16 @@ deve trovarlo scritto, non doverlo dedurre dal punto 5 del §9.
 
 ## 10. ⚠️ Trappole di applicazione — lato DB
 
-### 10.1 🔴 L'ordine Liquibase fa fallire questo disegno **in CI e non su dev**
+### 10.1 ✅ L'ordine Liquibase — cura applicata al D-5, **prima che servisse**
+
+> ⚠️ **Aggiornamento 2026-08-07: la trappola non era dove questo paragrafo la
+> metteva.** Non è il **seed** a romperla: è la **FK**, che arriva al D-7. Al D-5
+> la FK non esisteva ancora, quindi l'ordine dei loader non vincolava nulla — e
+> proprio per questo la cura andava messa **lì**, non al D-7, quando sarebbe
+> stato tardi per accorgersene. `20260614-08` carica ora tre tabelle in ordine,
+> in una transazione. Il resto del paragrafo resta valido e spiega il perché.
+
+#### Il meccanismo, come era stato scritto
 
 In [`changelog-master-v2.yaml`](../../../../db/changelog/changelog-master-v2.yaml)
 **tutto `00_schema` gira prima di tutto `80_data`** (l'autogen è incluso per
@@ -853,7 +880,14 @@ che cambia.
 > mirror. Funziona, ma sposta DDL fuori da `00_schema` per una ragione di
 > ordinamento, e la prossima persona non capirà perché.
 
-### 10.2 Lo spostamento di `obsoleto_dal` ha **cinque lettori**
+### 10.2 ✅ Lo spostamento di `obsoleto_dal` — fatto al D-6, cinque lettori riscritti
+
+> ⚠️ **Le etichette qui sotto erano sbagliate**: i controlli del guardrail sono
+> **(B), (C), (D) e il riepilogo**, non «C, D, E». Punti giusti, nomi sbagliati —
+> chi cercava un (E) non l'avrebbe trovato. E sulla lente non era una
+> sostituzione: il filtro sul ritiro stava *dentro* il join della frase, e
+> spostarlo ha richiesto **due join separati** — la frase resta per lingua, il
+> ritiro no.
 
 Tutti da riscrivere nello stesso giro, altrimenti il presidio del ritiro smette
 di funzionare in silenzio — che è il difetto che stiamo curando:
@@ -1010,38 +1044,37 @@ codici **nuovi** creati dal DB (lo split di `E_VALIDAZIONE`) cadono sul ripiego
 codice nuovo — ma **lo split non cambia niente di visibile finché il BE non
 riparte**.
 
-### 13.1 Vista d'insieme (superata dai due piani)
+### 13.1 Dove siamo — 2026-08-07 sera
 
-L'ordine è per **dipendenza**, non per dimensione.
+⚠️ **Qui c'era una «vista d'insieme» che ripeteva i due piani.** L'ho tolta: era
+un **secondo elenco che divergeva** dai piani veri — esattamente la malattia che
+questo cantiere cura. Resta uno **stato**, che è un'altra cosa da un piano.
 
-| # | Cosa | Chi | Note |
-|---|---|---|---|
-| 1 | ~~Decidere il perimetro dei 3 codici solo-Python~~ | ~~Tid~~ | ✅ **chiuso** (§7.2): il catalogo è di **tutti** i codici, e i tre non erano codici |
-| **1-bis** | ⏱ **Spezzare `E_VALIDAZIONE`** — 10 funzioni, 5 domini | **DB + BE** | 🔴 **la prima a scadere**: se il seed parte prima, `fn_annulla_reso` prende `DATO_ERRATO` dove la verità è `CONFLITTO_STATO` (§9.1) |
-| **1-ter** | 🔵 Decidere la forma di `error_policies.py` generato/a-mano | **BE** | §14.1 — non blocca il DB, blocca il generatore |
-| 2 | `config.classi_errore` (**10 valori**) + `config.codici_errore` (`00_schema`) — `classe NOT NULL` **senza DEFAULT**, FK, audit, `note` | DB | |
-| 3 | Il BE genera il CSV `codice,classe` da `error_policies.py` | BE | 659 righe su 692; **escludendo `PREV_STATO_NON_MODIFICABILE`**, che è morto (§7.2); `E_PARAMETRO_INVALIDO` col denominatore sicuro e il perché in `note` |
-| 4 | **Le ~32 decisioni residue** — classificare o ritirare, **col discriminante del §7.1** | Tid + DB | i **3 a zero tracce** si ritirano subito; le famiglie `E_BOM_*` / `E_CONTRATTO_MODALITA_C_*` / `E_COMPETENZA*` si **classificano** (non agganciate ≠ superate). ⚠️ `E_AI_CONFIRMATION_REQUIRED` → ritiro anche a catalogo |
-| 5 | Seed: `classi_errore` + `codici_errore.csv`, **dentro `20260614-08` prima del catalogo** (§10.1) | DB | ⚠️ è il passo che rompe la CI se fatto nel modo ovvio |
-| 6 | Migrazione `obsoleto_dal`: colonna nuova popolata, poi `DROP` sulla vecchia | DB | forward-only, breaking secco: non siamo in produzione |
-| 7 | FK `messaggi_errore.codice → codici_errore.codice` + seed `fk_index_policy` a **`consentito = false`** | DB | dopo che il seed regge; l'indice è ridondante (§3.6) |
-| 8 | Riscrivere i **5 lettori** di `obsoleto_dal` (§10.2) | DB | stesso giro del punto 6 |
-| 9 | Adeguare i **4 pgTAP** (§10.3) + nuovo test sul `NOT NULL` e sulla FK | DB | |
-| 10 | Vista `config.vw_codici_errore` (`20_code`) | DB | ⚠️ numerazione **più alta** di chi la dipende |
-| 10-bis | **Vista di sola identità** (`codice, classe, obsoleto_dal, note`) per il generatore | DB | §14.4 — `vw_codici_errore` ha una riga per (codice, lingua): non serve al generatore |
-| 11 | **Generatore** dei 4 moduli (§14.2) + controllo di divergenza in CI | BE | §6.1 — non più «lettura a runtime + snapshot»; sorgente e `ORDER BY` nel §14.4 |
-| 12 | `http_status` derivato dalla classe; `ui_action` a default+override; **`classe` senza status ⇒ eccezione** | BE | **174** override restano, di cui 117 sul solo `DATO_ERRATO` (§8) |
-| 13 | Vista dei **codici multidominio** — la misura del §9.2 | DB | misura, non cancello |
-| 14 | Regola «niente nuovi codici generici» | BE + DB | coda del lavoro |
+| Fronte | Stato |
+|---|---|
+| **DB** | ✅ **D-1 → D-6 chiusi e applicati** sul database di sviluppo. Restano D-7 (FK), D-8 (pgTAP), D-9 (le due viste = consegna al BE), D-10 (la misura multidominio) |
+| **BE** | ✅ **B-1 → B-4 fatti** (2026-08-07), suite verde. B-5, B-6, B-7 sono **al cancello D-9** |
 
-**Punto di non ritorno:** il 6. Fino al 5 tutto è additivo e reversibile; dal 6 il
-catalogo cambia forma e i lettori vanno con lui.
+**Cosa esiste adesso nel database:**
 
-⏱ **L'ordine del piano non è l'ordine di urgenza, ed è un rilievo del BE.**
-Le due cose che pesano di più scadono in punti lontani: il **1-bis** (accumulatori)
-è il primo a mordere, la **D6-bis** (generato invece che a runtime) è la più
-importante ma scade all'11. Chi legge il piano dall'alto le incontra nell'ordine
-sbagliato — per questo stanno entrambe qui in testa, fuori numerazione.
+* `config.classi_errore` — 10 righe, il vocabolario;
+* `config.codici_errore` — 689 righe, **zero senza classe**, 203 `note`, 79 ritirati;
+* `config.messaggi_errore` — **senza** `obsoleto_dal`: il ritiro ha cambiato casa.
+
+⚠️ **Tre cose che il piano dava per vere e non lo erano** — sono nei piani, ma
+chi legge solo questa guida deve saperle:
+
+1. **il D-3 non si è fatto**: `E_VALIDAZIONE` non è un accumulatore (13 punti,
+   una sola condizione). La premessa era dedotta dai nomi di funzione;
+2. **la trappola Liquibase non era al seed, era alla FK** — e per questo la cura
+   è stata applicata al D-5, prima che servisse;
+3. **il vocabolario è a 10 valori, non 8**: i 5 codici «fuori vocabolario» sono
+   righe di catalogo e una classe la volevano (§4.3).
+
+**Per l'esecuzione, i piani sono l'unica fonte:**
+▶️ [piano DB](piano-db-classe-codici-errore.md) · ⏸️ [piano BE](piano-be-classe-codici-errore.md).
+
+---
 
 ### 13.1 Fuori piano, ma nate qui — due code da non perdere
 
@@ -1080,6 +1113,7 @@ risultano scritte:
 | D15 | **Quattro moduli** lato BE, separati per *quando cambiano*; override in codice e non in CSV (§14.2) | BE, 2026-08-07 sera |
 | D16 | ⚠️ **`user_message` NON è un duplicato del catalogo**: è la variante senza segnaposto — **0 su 656** contengono `%s`, contro 371 a catalogo (§11) | BE + DB, 2026-08-07 sera |
 | D17 | **Due viste, non una**: `vw_codici_errore` per la revisione (per lingua), `vw_codici_errore_identita` per il generatore (per codice), con `ORDER BY codice` dentro la vista (§14.4) | DB, 2026-08-07 sera |
+| D23 | ⚠️ **`E_VALIDAZIONE` NON si spezza**: 13 punti, una sola condizione (guard di parametro). La premessa del D-3 era dedotta dai nomi di funzione, non dalle condizioni | DB, 2026-08-07 sera |
 | D21 | ⚠️ **Il discriminante del §7.1 vuole un TERZO asse** — «è mai stato cablato?»: senza, «staccato ieri» e «mai attaccato» sono indistinguibili. Applicato: **30 ritiri, 3 classificazioni** | DB, 2026-08-07 sera |
 | D22 | ⚠️ **La doc auto-gen non dice se un oggetto ESISTE** — il generatore scriveva e basta, 10 pagine di funzioni droppate erano ancora lì. Corretto `gen_db_docs.py` con la potatura degli orfani | DB, 2026-08-07 sera |
 | D20 | ✅ **Due classi in più, `NON_AUTENTICATO` e `ERRORE_ESTERNO`**: i 5 codici «fuori vocabolario» sono righe di catalogo, quindi una classe la vogliono. Vocabolario **8 → 10** (§4.3) | **Tid, 2026-08-07 sera** |

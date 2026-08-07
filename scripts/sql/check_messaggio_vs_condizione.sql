@@ -94,11 +94,18 @@ arricchito AS (
            -- la guardia e' un IF NOT FOUND netto?
            c.guardia ~* '^\s*IF\s+NOT\s+FOUND\M' AS if_not_found
       FROM con_guardia c
+      -- ⚠️ Due join, e non e' pignoleria: dal 2026-08-07 (changeSet 20260807-13)
+      -- il RITIRO sta su `config.codici_errore` — una riga per codice — mentre la
+      -- FRASE resta su `config.messaggi_errore`, chiavata (codice, lingua).
+      -- Tenere il filtro sul ritiro dentro il join della frase lo renderebbe di
+      -- nuovo per-lingua, che e' il difetto appena chiuso.
       LEFT JOIN config.messaggi_errore me
              ON me.codice = c.codice
             AND me.lingua = 'it'
-            AND (me.obsoleto_dal IS NULL OR me.obsoleto_dal > CURRENT_DATE)
+      LEFT JOIN config.codici_errore ce
+             ON ce.codice = c.codice
      WHERE c.guardia IS NOT NULL
+       AND (ce.obsoleto_dal IS NULL OR ce.obsoleto_dal > CURRENT_DATE)
 )
 SELECT gruppo, codice, funzione, dettaglio
   FROM (

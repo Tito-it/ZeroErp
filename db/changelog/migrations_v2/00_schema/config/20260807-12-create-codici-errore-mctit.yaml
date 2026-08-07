@@ -1,0 +1,134 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `config.codici_errore` — l'IDENTITA' di un codice errore
+#   Piano:  docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md  (D-4)
+#   Guida:  docs/it/dev/work-in-progress/brief-db-be-classe-codici-errore.md  §3, §5
+#   Richiede: 20260807-11 (config.classi_errore).
+#   Seguito da: seed (D-5), migrazione di `obsoleto_dal` (D-6), FK verso
+#               config.messaggi_errore (D-7), viste (D-9).
+#
+# ── PERCHE' UNA TABELLA SEPARATA E NON UNA COLONNA SU messaggi_errore ───
+#   `config.messaggi_errore` e' chiavata (codice, lingua): 690 righe per 689
+#   codici, e un codice ha gia' due righe (it + en). Mettere la classe li'
+#   significherebbe DUPLICARLA PER LINGUA — la traduzione inglese potrebbe
+#   dichiarare una classe diversa dall'italiana, e nessun controllo lo vedrebbe.
+#
+#   ⚠️ E non e' un rischio teorico: `obsoleto_dal` soffre gia' di questo. Sta su
+#   messaggi_errore, quindi e' per lingua: oggi si puo' ritirare un codice in
+#   italiano e lasciarlo vivo in inglese. Non e' ancora successo solo perche'
+#   l'inglese non e' popolato (50 righe ritirate, tutte 'it'). Il D-6 sposta
+#   quella colonna qui e chiude il buco per sempre.
+#
+#   **Il codice ha UNA identita'. Le traduzioni sono traduzioni.**
+#
+# ── ⛔ `classe NOT NULL` SENZA `DEFAULT`, ED E' TUTTO IL PUNTO ───────────
+#   Un DEFAULT significa «se non ci pensi ne metto uno io», ed e' LETTERALMENTE
+#   il meccanismo che ha prodotto il difetto che questa tabella cura:
+#   `ErrorPolicyRegistry.resolve` ha un ripiego a 400 per i codici non
+#   registrati, ed e' per quello che 659 codici avevano uno status che nessuno
+#   aveva deciso e nessuno vedeva. Un `DEFAULT 'DATO_ERRATO'` ricostruirebbe la
+#   stessa trappola dentro il rimedio.
+#
+#   Con NOT NULL senza default la decisione si sposta nel momento in cui si ha
+#   in testa il ramo che solleva — l'unico in cui e' facile. **Un codice senza
+#   semantica non puo' nascere**: e' il meccanismo anti-ricaduta, e non e'
+#   l'adiacenza col messaggio (che questa separazione toglie: si recupera in
+#   revisione, con la vista del D-9).
+#
+# ── ⚠️ COSA QUESTA TABELLA NON TOGLIE ───────────────────────────────────
+#   La classe e' una proprieta' del CODICE, non del punto che solleva. La
+#   garanzia che compra e' «ogni codice ha una semantica dichiarata», non «ogni
+#   sollevamento ha la semantica giusta». La seconda non e' ottenibile da una
+#   tabella: si ottiene leggendo la funzione.
+#   E niente presidia che la classe RESTI vera quando qualcuno riusa il codice
+#   altrove: e' successo con E_STATO_SCONOSCIUTO. La misura dei codici
+#   multidominio (D-10) e' un segnale, non un cancello.
+#
+# ── NOTE DI APPLICAZIONE ────────────────────────────────────────────────
+#   · PK testuale: stessa ragione del 20260807-11 — il codice E' la sua
+#     identita', e `messaggi_errore.codice` deve poterla referenziare per
+#     valore, non per un id surrogato che nessuno legge.
+#   · `note`: il PERCHE' di questa classe, sui casi non ovvi. ⚠️ Su UNA RIGA,
+#     senza a capo: le celle CSV multi-riga sono strada battuta pochissimo in
+#     questo repo (3 celle in tutto), e il seed passa da un CSV.
+#   · Nessuna FK da qui verso messaggi_errore: il verso e' l'opposto e arriva
+#     al D-7, quando il seed regge.
+#   · `dbops.error_log` NON si tocca: continua a puntare a
+#     messaggi_errore(id), cioe' alla riga TRADOTTA che l'operatore ha letto.
+#     La classe si raggiunge con un join.
+#   · Le 689 righe arrivano col seed (D-5).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/00_schema/config/20260807-12-create-codici-errore-mctit.yaml
+
+    - changeSet:
+          id: 20260807-12-create-codici-errore
+          author: mctit
+          runOnChange: false
+          failOnError: true
+          comment: >
+              Identita' del codice errore: una riga per CODICE, con la sua classe
+              (FK config.classi_errore) e il suo ritiro. Separata da messaggi_errore,
+              che resta la FRASE ed e' chiavata (codice, lingua). classe NOT NULL
+              SENZA default: un codice senza semantica non puo' nascere.
+          preConditions:
+              - onFail: HALT
+              - tableExists:
+                    schemaName: config
+                    tableName: classi_errore
+              - not:
+                    - tableExists:
+                          schemaName: config
+                          tableName: codici_errore
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE TABLE config.codici_errore (
+                            codice        text NOT NULL,
+                            classe        text NOT NULL,
+                            obsoleto_dal  date,
+                            note          text,
+                            data_insert   timestamptz NOT NULL DEFAULT now(),
+                            user_insert   text        NOT NULL DEFAULT CURRENT_USER,
+                            data_update   timestamptz NOT NULL DEFAULT now(),
+                            user_update   text        NOT NULL DEFAULT CURRENT_USER,
+                            CONSTRAINT pk_codici_errore PRIMARY KEY (codice),
+                            CONSTRAINT fk_codici_errore_classi_errore
+                                FOREIGN KEY (classe) REFERENCES config.classi_errore(classe)
+                                ON UPDATE NO ACTION ON DELETE NO ACTION
+                        );
+
+                        -- Il codice e' la chiave: niente stringhe vuote o con spazi ai
+                        -- bordi. Verificato sul catalogo vivo prima di scriverlo: 689
+                        -- codici, zero spazi ai bordi, zero ambiguita' di maiuscole.
+                        ALTER TABLE config.codici_errore
+                          ADD CONSTRAINT chk_codici_errore_codice_non_vuoto
+                          CHECK (codice = btrim(codice) AND codice <> '');
+
+                        -- `note` su UNA riga: il seed passa da un CSV e le celle
+                        -- multi-riga in questo repo sono 3 in tutto. Meglio un vincolo
+                        -- che una sorpresa al primo loadUpdateData.
+                        ALTER TABLE config.codici_errore
+                          ADD CONSTRAINT chk_codici_errore_note_una_riga
+                          CHECK (note IS NULL OR note !~ '[\n\r]');
+
+                        COMMENT ON TABLE config.codici_errore IS
+                          'Identita'' di un codice errore: che COSA e'' (classe) e se e'' ancora in servizio (obsoleto_dal). La FRASE che l''operatore legge sta in config.messaggi_errore, chiavata (codice, lingua). Popolata dal seed 80_data.';
+                        COMMENT ON COLUMN config.codici_errore.codice IS
+                          'Il codice, ed e'' la chiave: stessa identica stringa di config.messaggi_errore.codice, che la referenziera'' con la FK del passo D-7.';
+                        COMMENT ON COLUMN config.codici_errore.classe IS
+                          'Che cosa e'' questo errore, in lingua di dominio. NOT NULL e SENZA DEFAULT di proposito: un default e'' il meccanismo che ha prodotto il difetto (vedi testata del changeSet).';
+                        COMMENT ON COLUMN config.codici_errore.obsoleto_dal IS
+                          'Ritiro del codice: NULL = in servizio. Un codice ritirato TIENE la sua classe, quella che aveva da vivo — il diario deve continuare a risolvere.';
+                        COMMENT ON COLUMN config.codici_errore.note IS
+                          'Il PERCHE'' di questa classe, sui casi non ovvi: il ragionamento, non un''etichetta. Su UNA riga (il seed passa da un CSV). Il perche'' della ui_action sta invece lato backend.';
