@@ -295,6 +295,13 @@ Lo script distingue **regressioni** (rosso nuovo → exit 1) da **rossi gia` not
 (silenzio) e segnala i **rientrati** (ora verdi, da togliere dalla baseline).
 Registro: `db/pgtap/baseline-rossi.tsv`, con la causa classificata.
 
+⚠️ **In CI la suite gira solo su `Tito-dev` e `main`** (costa ~7 min; sui rami di
+lavoro gira il solo cancello statico). E usa una baseline **sua**,
+`db/pgtap/baseline-rossi-ci.tsv`: il database della CI e` ricostruito da zero,
+quello di sviluppo ha dati veri, quindi i rossi sono popolazioni diverse. **Un
+rosso in CI non e` automaticamente un rosso da te**: guarda quale baseline lo
+conosce prima di inseguirlo.
+
 ⚠️ La baseline e` un **registro di debito, non una lista di eccezioni**: deve
 calare. Un file che fallisce nel *fixture* non esegue **nessuna** asserzione — la
 sua copertura vale zero, non "parziale", ed e` un'area che *sembra* coperta.
