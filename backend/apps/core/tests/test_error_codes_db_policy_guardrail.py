@@ -204,7 +204,7 @@ class ErrorCodesDbPolicyGuardrail(TestCase):
             len(self.vista), 300, f"{_VISTA} sospetta: la misura sembra degradata"
         )
         self.assertGreater(
-            len(ErrorPolicyRegistry._POLICIES),
+            len(ErrorPolicyRegistry.codici_registrati()),
             400,
             "registro policy sospetto: estrazione o import falliti",
         )

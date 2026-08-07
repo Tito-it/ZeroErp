@@ -3,7 +3,16 @@
 **Chi:** team BE (`dev/backend-tid`).
 **Guida generale e ragioni di ogni scelta:** [brief-db-be-classe-codici-errore](brief-db-be-classe-codici-errore.md) — 18 decisioni, le misure, i perché. **Questo file non le ripete: le esegue.**
 **Piano gemello:** [piano-db-classe-codici-errore](piano-db-classe-codici-errore.md).
-**Stato:** ⏸️ **in attesa che il BE riparta** — ma vedi il §0: quasi tutto è già sbloccato.
+**Stato:** 🟢 **B-1, B-2, B-3, B-4 FATTI** (2026-08-07) — i quattro passi senza prerequisiti DB. 🔴 **B-5, B-6, B-7 restano al cancello D-9.**
+
+> **Verifica dell'equivalenza, prima di tutto il resto.** I **658** codici
+> superstiti risolvono **identici** a prima — stesso status, stessa `ui_action`,
+> stesso messaggio — confrontando `resolve()` vecchio e nuovo uno per uno; i due
+> ripieghi rispondono come prima. Suite Django: **3587 test verdi**, compreso il
+> cancello del terzo lato contro il DB vero (`ZEROERP_TEST_DB_E2E=1`).
+> L'unica differenza voluta è `PREV_STATO_NON_MODIFICABILE`, che non c'è più (B-1).
+>
+> ⚠️ **Tre cose sono emerse facendolo, e due cambiano il piano**: il §6.
 
 ---
 
@@ -33,15 +42,25 @@ consegna. Prima di quello il generatore non ha da cui generare.
 
 ## 1. La sequenza
 
-| # | Passo | Dipende da | Costo |
+| # | Passo | Dipende da | Costo | Stato |
+|---|---|---|---|---|
+| **B-1** | Togliere `PREV_STATO_NON_MODIFICABILE` | — | una riga | ✅ 2026-08-07 |
+| **B-2** | `classe` senza status ⇒ **eccezione, non ripiego** | — | poche righe + test | ✅ 2026-08-07 |
+| **B-3** | Riorganizzare `error_policies.py` in **4 moduli** | — | il grosso del lavoro a mano | ✅ 2026-08-07 |
+| **B-4** | La mappa **classe → HTTP** (8 righe) + derivazione dello status | B-3 | piccolo | ✅ 2026-08-07 |
+| **B-5** | Il **generatore** di `error_policies_generated.py` | 🔴 DB **D-9** | medio | 🔴 al cancello |
+| **B-6** | Il **controllo di divergenza** in CI | B-5 | piccolo | 🔴 |
+| **B-7** | La regola «niente nuovi codici generici» | B-6 | coda | 🔴 |
+
+**Cosa esiste ora, in quattro file** (`backend/apps/core/services/`):
+
+| File | Righe | Voci | Chi lo scriverà |
 |---|---|---|---|
-| **B-1** | Togliere `PREV_STATO_NON_MODIFICABILE` | — | una riga |
-| **B-2** | `classe` senza status ⇒ **eccezione, non ripiego** | — | poche righe + test |
-| **B-3** | Riorganizzare `error_policies.py` in **4 moduli** | — | il grosso del lavoro a mano |
-| **B-4** | La mappa **classe → HTTP** (8 righe) + derivazione dello status | B-3 | piccolo |
-| **B-5** | Il **generatore** di `error_policies_generated.py` | 🔴 DB **D-9** | medio |
-| **B-6** | Il **controllo di divergenza** in CI | B-5 | piccolo |
-| **B-7** | La regola «niente nuovi codici generici» | B-6 | coda |
+| `error_policies_generated.py` | 1417 | **658** `codice → classe` | il generatore, dal B-5 |
+| `error_policies.py` | 231 | le **8+7+7** righe di regole + la logica | a mano, quasi mai |
+| `error_ui_overrides.py` | 540 | **176** `ui_action` fuori default | a mano |
+| `error_messages_fallback.py` | 679 | **658** messaggi senza segnaposto | a mano, per ora |
+| `apps/core/tests/services/test_error_policies_classi.py` | — | **14 test**, uno per ogni modo nuovo di rompersi | — |
 
 ---
 
@@ -174,8 +193,17 @@ regole**, non «a otto».
 
 ### B-5 · Il generatore — 🔴 **qui serve il DB**
 
-**Prerequisito: DB D-9.** `config.vw_codici_errore_identita` esiste, è popolata e
+**Prerequisito 1: DB D-9.** `config.vw_codici_errore_identita` esiste, è popolata e
 ordinata.
+
+🔴 **Prerequisito 2, scoperto scrivendo il B-3 e più insidioso del primo: le
+`note` devono essere a catalogo PRIMA della prima rigenerazione.** Oggi
+`error_policies_generated.py` contiene **215 blocchi di commento, 731 righe** —
+il perché della classe di ogni codice che non ha un override di UI, cioè il
+residuo delle 150 decisioni del cantiere del terzo lato. Il generatore li
+**riscrive via**. L'estratto pronto per il seed è
+[`allegati/codici-errore-classe-note.csv`](allegati/codici-errore-classe-note.csv)
+(658 righe `codice,classe,note`, `note` valorizzata su 215). Vedi §6.2.
 
 ```sql
 -- Sorgente di error_policies_generated.py.
@@ -249,3 +277,130 @@ Lo split di `E_VALIDAZIONE` (D-3) crea codici che cadono sul ripiego 400 di
 codice nuovo — ma significa che lo split **non cambia niente di visibile** finché
 il BE non riparte. Quando riparte, i nuovi codici arrivano gratis col generatore
 (B-5): non c'è da registrarli a mano.
+
+---
+
+## 5. ⭐ Cosa il BE consegna al DB, adesso — e cosa il DB deve sapere
+
+### 5.1 🔴 **La sorgente del passo D-1 è cambiata sotto i piedi**
+
+Il piano DB al **D-1** dice: *«uno script che legge
+`backend/apps/core/services/error_policies.py` e produce `codice,classe`»*,
+mappando lo `http_status` di ogni voce, con l'avvertenza di *«delimitare ogni
+voce con la chiave successiva, perché 32 voci sono su una riga sola»*.
+
+⚠️ **Quello script ora non trova più niente**: in `error_policies.py` non c'è
+più nessun `http_status=` per codice — ci sono sette righe `classe → status`.
+
+**La buona notizia è che il passo diventa più corto, non più lungo.** La classe
+non va più dedotta: è scritta.
+
+```python
+# 658 voci, ordinate per codice, nessun parser da scrivere
+from apps.core.services.error_policies_generated import CLASSE_PER_CODICE
+```
+
+E per chi preferisce non importare Python, la stessa cosa è già un CSV pronto
+per `loadUpdateData`: **[`allegati/codici-errore-classe-note.csv`](allegati/codici-errore-classe-note.csv)**,
+tre colonne `codice,classe,note`.
+
+Con esso i tre avvertimenti del D-1 si sciolgono da soli:
+
+| Avvertimento del D-1 | Ora |
+|---|---|
+| «32 voci su una riga sola, il parser le perde» | ✅ non c'è più un parser |
+| «5 codici da decidere a mano» (401×4, 502) | ✅ già dentro, con classe `TECNICO` come proposto — ⚠️ resta da **confermare con Tid** |
+| «escludere `PREV_STATO_NON_MODIFICABILE`, è morto» | ✅ già escluso (B-1) |
+
+⚠️ **La `classe` dei 5 non cambia più la risposta HTTP**, qualunque sia: lo
+status di quei codici è scritto a mano in `HTTP_PER_CODICE` perché non passano
+dall'exception handler. Se al seed si preferisse un'altra classe, il BE non se
+ne accorge — ed è voluto.
+
+### 5.2 Le `note`: 215 righe già scritte, da seminare
+
+La terza colonna del CSV è la ragione della classe, presa **parola per parola**
+dai commenti che il cantiere del terzo lato aveva lasciato accanto a ogni
+policy. Sono conformi alla **D18**: una riga sola, gli a capo sono già collassati
+in ` · `.
+
+Sono valorizzate su **215 codici su 658** — quelli il cui commento spiega la
+*classe*. Gli altri 67 blocchi di commento spiegano una scelta di *interfaccia* e
+restano lato BE in `error_ui_overrides.py`: è la ripartizione della §14.3 del
+brief, e **nessun paragrafo sta in due posti**.
+
+---
+
+## 6. ⚠️ Tre cose emerse eseguendo B-1..B-4
+
+### 6.1 Gli override sono **176**, non 174 — e il conto quadra
+
+I due `redirect_login` di `E_JWT_SENZA_IDENTITA` e `E_IDENTITA_NON_ATTIVA`. La
+misura del brief (174) contava le sette classi di dominio su 654 codici, cioè
+**escludeva i 5 fuori vocabolario**; una volta che anche quei 5 prendono una
+classe (`TECNICO`, come chiede il seed), due di loro hanno una `ui_action` che
+non è il default della classe. Non è una scoperta, è la stessa misura su un
+perimetro di 658 invece che di 654 — va scritta perché il numero «174» compare
+in tre documenti e adesso ce n'è un quarto che dice 176.
+
+### 6.2 🔴 **I quattro moduli non hanno una casa per il perché della classe**
+
+È il rilievo che conta, e non si vede leggendo il brief: si vede contando.
+
+| | quanti |
+|---:|---|
+| voci con un commento | **282** |
+| di queste, con un **override** di UI → casa stabile in `error_ui_overrides.py` | 67 |
+| **senza** override → oggi stanno in `error_policies_generated.py` | **215** |
+| righe di ragionamento su quel percorso | **731** |
+
+Il §14.2 del brief sceglie i quattro moduli e ne dà la ragione più forte che ci
+sia — *«un CSV non porta un paragrafo, e quei paragrafi sono esattamente la cosa
+che questo cantiere è servito a non perdere»*. Ma la **destinazione** di quei
+paragrafi (§14.3: *il perché della classe va in `config.codici_errore.note`*)
+attraversa il modulo che **verrà riscritto da un generatore**. Non è una
+contraddizione del disegno: è un passo mancante nella sequenza.
+
+**Come è stato chiuso**, senza inventare un quinto modulo e senza duplicare
+niente:
+
+1. i 215 blocchi **restano dove sono**, in `_generated`, finché quel file è
+   scritto a mano — non si perde niente oggi;
+2. sono già estratti in `allegati/codici-errore-classe-note.csv`, colonna
+   `note`, pronti per il seed del D-5;
+3. il B-5 ha ora un **secondo prerequisito** scritto, e l'intestazione del file
+   generato lo ripete: *rigenerare senza aver seminato le note è una
+   cancellazione silenziosa*.
+
+⚠️ **Quello che resta aperto è la sequenza**, e va deciso: se il DB semina le
+note al D-5 (usando il CSV), al B-5 il generatore le riemette come commenti e il
+giro si chiude. Se il seed parte **senza** la colonna `note`, il B-5 va fatto
+solo dopo averla riempita — o le 731 righe se ne vanno alla prima esecuzione.
+
+### 6.3 Il default di `DATO_ERRATO`: scelto il **banner**, e la ragione è asimmetrica
+
+117 contro 117 non è una maggioranza da rispettare: è una scelta da fare. È stato
+scelto `show_error_banner`, e non per il pareggio — per l'asimmetria del danno:
+**promettere un campo da evidenziare che non esiste è peggio del contrario.** Un
+banner su un errore che aveva un campo da evidenziare è un'occasione persa; un
+`highlight_form_fields` su un errore che non ha un campo nel form è
+un'indicazione falsa.
+
+⚠️ **E vale anche per i codici che ancora non esistono**: il default è quello
+che prenderà ogni codice nuovo classificato `DATO_ERRATO` dal generatore, senza
+che nessuno lo rilegga.
+
+---
+
+## 7. Due cose verificate e **non** fatte, con la ragione
+
+* **nessun test sul prefisso dei codici.** Sembrava il presidio ovvio — «ogni
+  codice registrato comincia per `E_` o `W_`» — e sarebbe **rosso**: **51**
+  codici registrati non hanno il prefisso (`PRATICHE_*`, `FLUSSI_*`, `PREV_*`,
+  `CF_NON_VALIDO`…). Sono i codici ereditati fuori convenzione, e
+  [api.md](../api.md) li registra così **di proposito** dal 2026-08-05. Il
+  presidio giusto ce l'hanno già, lato DB: il controllo (B) del guardrail, che
+  rifiuta i **nuovi**;
+* **i due ripieghi di `resolve()` non sono stati toccati**, come chiede il B-2:
+  sono ciò che tiene in piedi i codici nuovi che il DB sta seminando mentre il
+  generatore non c'è. Il momento di ridiscuterli è **dopo** il B-5.

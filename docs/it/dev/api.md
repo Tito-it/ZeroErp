@@ -742,7 +742,7 @@ verificabile, non sostituisce la disciplina in review.
 ### Tassonomia errori
 
 Tutti i codici errore seguono `E_{MODULO}_{TIPO}` e DEVONO essere registrati
-in `error_policies.py` prima dell'uso. Il suffisso **suggerisce** la categoria:
+prima dell'uso. Il suffisso **suggerisce** la categoria:
 
 | Suffisso | HTTP tipico | Esempio |
 | --- | --- | --- |
@@ -750,6 +750,59 @@ in `error_policies.py` prima dell'uso. Il suffisso **suggerisce** la categoria:
 | `_NOT_FOUND` | 404 | `E_PRATICA_NOT_FOUND` |
 | `_DUPLICATO` / `_IN_ESECUZIONE` | 409 | `E_ANAG_DUPLICATO` |
 | `_NEGATO` / `_DENIED` | 403 | `E_PERMESSO_NEGATO` |
+
+#### ⭐ Registrare un codice = dargli una **classe** (dal 2026-08-07)
+
+⚠️ **Non si scrive più lo status.** Fino al 2026-08-07 registrare un codice
+voleva dire aggiungere una riga con `http_status`, `ui_action` e messaggio a un
+dizionario di 659 voci. Ora si dichiara **che cosa è** l'errore — la sua
+`classe` — e status e `ui_action` si **derivano**.
+
+| classe | HTTP | Quando |
+| --- | --- | --- |
+| `DATO_ERRATO` | 400 | la richiesta è malformata o il valore è sbagliato |
+| `CONFLITTO_STATO` | 409 | in conflitto con lo stato attuale della risorsa |
+| `NON_TROVATO` | 404 | la cosa indicata non esiste |
+| `TECNICO` | 500 | guasto o pezzo non configurato: l'operatore non può farci niente |
+| `NON_PERMESSO` | 403 | il diritto manca, e non dipende dallo stato |
+| `NON_ESEGUIBILE` | 422 | si capisce ma non si può eseguire |
+| `NON_DISPONIBILE` | 501 | funzione presente ma non servita (disattivata) |
+| `AVVISO` | **nessuno** | non è un rifiuto: si scrive nel diario e non raggiunge mai il client |
+
+Il vocabolario è lo stesso di `config.classi_errore`. **La mappa classe → HTTP
+resta lato backend**, ed è una scelta: è *trasporto*, non dominio — il database
+non deve sapere cosa sia un 409.
+
+**Dove si mette cosa** — quattro moduli in `apps/core/services/`, separati per
+**quando cambiano** e non per contenuto:
+
+| Modulo | Cosa | Chi lo scrive |
+| --- | --- | --- |
+| `error_policies_generated.py` | `codice → classe`, 658 voci | **destinato a essere generato** dal DB (oggi ancora a mano) |
+| `error_policies.py` | `classe → (status, ui_action)` — 8 righe + la logica | a mano, quasi mai |
+| `error_ui_overrides.py` | le **176** `ui_action` fuori default, **coi loro perché** | a mano, quando cambia una scelta di UI |
+| `error_messages_fallback.py` | i messaggi **senza segnaposto** | a mano, per ora |
+
+⚠️ **`ui_action` non si deriva dalla classe, e il numero conta.** Restano 176
+override su 658, di cui **117 sulla sola `DATO_ERRATO`**: lì il default è un
+lancio di moneta — 117 contro 117 — perché il discriminante non è la classe ma
+**dove manca il dato**, sul form in corso (`highlight_form_fields`) o
+sull'entità collegata (`show_error_banner`). Il default scelto è il banner:
+promettere un campo da evidenziare che non esiste è peggio del contrario.
+
+⚠️ **Una classe senza status mappato solleva `ClasseErroreSenzaStatus`**, non
+ripiega. È la garanzia per `AVVISO`: prima `resolve()` non falliva mai e un
+avviso sfuggito al cancello sarebbe diventato un **500 col messaggio soppresso**.
+
+**Restano fuori 5 codici**, con lo status scritto a mano perché non passano
+dall'exception handler: `E_JWT_SENZA_IDENTITA`, `E_IDENTITA_NON_ATTIVA`,
+`E_AUTHENTICATION_FAILED`, `E_NOT_AUTHENTICATED` (401) e `E_AI_PROVIDER_ERROR`
+(502).
+
+> Perché tutto questo: `docs/it/dev/work-in-progress/brief-db-be-classe-codici-errore.md`.
+> In una riga: il significato di un errore viveva **solo** in un dizionario
+> Python, quindi il catalogo DB non aveva il campo dove la contraddizione si
+> sarebbe vista.
 
 #### ⚠️ Il suffisso NON decide lo status: decide il punto che solleva
 
@@ -1028,8 +1081,9 @@ literal Python l'ultima chiave vince, senza errore né warning, e nel progetto n
 gira nessun linter che lo intercetti. Prima di aggiungere un blocco di policy,
 verificare che `len(chiavi) == len(set(chiavi))`.
 
-Decisione del 2026-08-05: **si registrano in `error_policies.py` così come
-sono** — rinominarli costerebbe seed + call site + pgTAP senza comprare nulla —
+Decisione del 2026-08-05: **si registrano così come sono** (oggi hanno la loro
+classe in `error_policies_generated.py` come tutti gli altri) — rinominarli
+costerebbe seed + call site + pgTAP senza comprare nulla —
 **e il rubinetto si chiude**: il controllo (B) del guardrail rifiuta ogni codice
 *nuovo* fuori convenzione. I 57 ereditati vivono in
 `dbops.messaggi_errore_codici_legacy`, che è un **registro del debito e deve
@@ -1093,7 +1147,10 @@ Quando si crea o tocca un service, si scrivono/aggiornano i test corrispondenti.
 8. Registrare la route in `urls.py` con name `<dominio>-<risorsa>-list` / `<dominio>-<risorsa>-detail`
 9. Scrivere test service in `tests/services/` (validazione, dedup, not found)
 10. Se endpoint di ricerca: `is_search_endpoint = True`
-11. Registrare i codici errore in `error_policies.py` prima dell'uso
+11. Registrare i codici errore prima dell'uso, dando a ciascuno la sua **classe**
+    in `error_policies_generated.py` (e chiedendo al team DB il seed in
+    `config.codici_errore` con la stessa classe): status e `ui_action` si
+    derivano da lì
 
 ---
 
