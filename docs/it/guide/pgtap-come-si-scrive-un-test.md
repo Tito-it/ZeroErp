@@ -193,6 +193,21 @@ cantiere è successo tre volte. E vale al contrario: «6 o 0 asserzioni» sembra
 un'oscillazione fra verde e rosso, ed erano **due difetti in fila** con il file
 sempre rosso.
 
+## Girano in CI?
+
+**Sì, ma solo su `Tito-dev` e su `main`** — la suite costa ~7 minuti, e su ogni
+PR di lavoro sarebbe sproporzionata. Sui rami di lavoro gira solo il cancello
+statico sul preambolo, che invece costa un secondo.
+
+⚠️ **In CI la baseline è un'altra**: `db/pgtap/baseline-rossi-ci.tsv`. Il
+database della CI è **ricostruito da zero**, quello di sviluppo ha dati veri: i
+test che dipendono da dati preesistenti falliscono là e non qui. Confrontare le
+due popolazioni produrrebbe decine di finte regressioni — lo stesso difetto di
+metro disomogeneo da cui è nato tutto.
+
+Quindi: **un rosso in CI non è automaticamente un rosso da te, e viceversa.**
+Prima di inseguirlo, guarda quale baseline lo conosce.
+
 ## Perché una guida non basta
 
 Chi ha scritto queste regole ne ha violata una **poche ore dopo averla

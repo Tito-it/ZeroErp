@@ -805,20 +805,49 @@ creazione. ⚠️ **E con la classe a catalogo sarebbe andata peggio**: quel riu
 avrebbe trovato `NON_TROVATO` già scritto, e non avrebbe protestato — la classe
 avrebbe dato al riuso una patente di legittimità.
 
-**Proposta DB — una misura, non un cancello.** Il segnale c'è ed è calcolabile
-dalla stessa sorgente della vista esistente:
+**Proposta DB — una misura, non un cancello.**
 
-> **un codice sollevato da funzioni di più di un dominio è un candidato
-> accumulatore.**
+> 🔴 **La prima versione di questa proposta era sbagliata, e l'ha vista il BE.**
+> Diceva: *«un codice sollevato da funzioni di più di un dominio è un candidato
+> accumulatore»*, e sosteneva che avrebbe intercettato `E_VALIDAZIONE` (cinque
+> domini). **Il D-3 ha dimostrato il contrario**: `E_VALIDAZIONE` è 10 funzioni
+> in 5 domini ed è il caso su cui la risposta è **no**. Sarebbe stato il primo
+> falso positivo della vista — e su una misura, come dice il BE, *«un falso
+> positivo non fa danno, ma una misura che sbaglia sul suo caso più noto viene
+> guardata due volte e poi mai più»*.
+>
+> ⚠️ **La contraddizione era interna a questo brief**: il §9.1 dice già che un
+> codice è accumulatore quando copre **condizioni** diverse, non **domini**
+> diversi — e il D14 restava scritto sull'asse smentito, a quaranta righe di
+> distanza.
 
-Avrebbe intercettato tutti e tre i casi noti: `E_STATO_SCONOSCIUTO` (vendite +
-toponomastica), `E_VALIDAZIONE` (cinque domini), `E_PARAMETRO_INVALIDO` (114
-funzioni sparse). Ed è **set-based**: una vista accanto a
-`dbops.vw_codici_errore_da_dichiarare`, che l'estrazione dei punti di
-sollevamento ce l'ha già.
+**L'asse giusto è la forma della condizione al punto che solleva**, e la
+macchina per estrarla **esiste già**: la CTE `con_guardia` della lente
+`check_messaggio_vs_condizione.sql` accoppia già `(codice, funzione, guardia)`.
+Si classifica ogni guardia in una famiglia — `PARAMETRO` (`IS NULL`, `<= 0`),
+`NOT_FOUND`, `ECCEZIONE`, `ENUM` — e si segnala chi ne ha più di una.
+
+**Provata sui casi noti** (2026-08-07):
+
+| Codice | Punti | Famiglie | Esito |
+|---|---:|---|---|
+| `E_VALIDAZIONE` | 13 | `PARAMETRO` | ✅ **pulito** — l'asse vecchio lo segnalava |
+| `E_PARAMETRO_INVALIDO` | 206 | `PARAMETRO` · `ENUM` · … | ✅ segnalato |
+| `E_SOGGETTI_RUOLI` | 3 | `PARAMETRO` · `NOT_FOUND` · … | ✅ segnalato (tre significati, tenuti insieme di proposito) |
+| `E_STATO_SCONOSCIUTO` | 0 | — | ⚠️ **non verificabile**: è ritirato, non ha più punti vivi |
+
+⚠️ **E la misura dichiara la propria copertura, perché da sola non basta.**
+Misurato: il classificatore riconosce una famiglia per **75 codici su 342** — gli
+altri **267 finiscono nel cestino `ALTRO`** e sono invisibili. Dei 22 segnalati,
+solo **6 lo sono per due famiglie NOTE**; gli altri 16 sono «una famiglia più
+qualcosa che non so leggere».
+
+**Quindi la vista deve aprire con una riga di copertura**, come fa già la lente:
+*«su 342 codici ne classifico 75; dei restanti 267 non so dire niente»*. Senza,
+un elenco di 6 si legge come «gli accumulatori sono sei», che è falso.
 
 ⚠️ **Misura, non cancello**, e per una ragione precisa: un codice legittimamente
-trasversale esiste (`E_PERMESSO_NEGATO` sarà multidominio per costruzione), e un
+trasversale esiste (`E_PERMESSO_NEGATO` è ovunque per costruzione), e un
 cancello che lo bocci verrebbe disattivato. Va guardata **all'apertura di un
 lotto**, come la lente — con la differenza che questa non ha il 23% di
 precisione: dice un fatto, non un'ipotesi.
@@ -1052,7 +1081,7 @@ questo cantiere cura. Resta uno **stato**, che è un'altra cosa da un piano.
 
 | Fronte | Stato |
 |---|---|
-| **DB** | ✅ **D-1 → D-6 chiusi e applicati** sul database di sviluppo. Restano D-7 (FK), D-8 (pgTAP), D-9 (le due viste = consegna al BE), D-10 (la misura multidominio) |
+| **DB** | ✅ **D-1 → D-6 chiusi e applicati** sul database di sviluppo. Restano D-7 (FK), D-8 (pgTAP), D-9 (le due viste = consegna al BE), D-10 (la misura sulla forma della condizione — ⚠️ **ri-specificata**, D24) |
 | **BE** | ✅ **B-1 → B-4 fatti** (2026-08-07), suite verde. B-5, B-6, B-7 sono **al cancello D-9** |
 
 **Cosa esiste adesso nel database:**
@@ -1109,7 +1138,8 @@ risultano scritte:
 | D11 | **`E_VALIDAZIONE` si spezza prima del seed** (10 funzioni, 5 domini); `E_PARAMETRO_INVALIDO` no — denominatore sicuro + `note`, e cantiere suo (§9.1) | BE + DB, 2026-08-07 pomeriggio |
 | D12 | **`classe` senza status ⇒ eccezione, non ripiego** — requisito lato BE, perché `resolve()` oggi non fallisce mai (§4.2) | BE, 2026-08-07 pomeriggio |
 | D13 | Il **discriminante superato/non-agganciato è il conteggio delle tracce**, su due assi (§7.1) | BE + DB, 2026-08-07 pomeriggio |
-| D14 | **Vista dei codici multidominio** come misura all'apertura di ogni lotto — non un cancello (§9.2) | DB, 2026-08-07 pomeriggio |
+| ~~D14~~ | ~~Vista dei codici **multidominio** come misura~~ | 🔴 **superata dalla D24**: misurava l'asse che il D-3 ha smentito |
+| **D24** | La misura del §9.2 sta sulla **forma della condizione**, non sul dominio, e **dichiara la propria copertura** — il classificatore riconosce **75 codici su 342** (§9.2) | BE + DB, 2026-08-07 sera |
 | D15 | **Quattro moduli** lato BE, separati per *quando cambiano*; override in codice e non in CSV (§14.2) | BE, 2026-08-07 sera |
 | D16 | ⚠️ **`user_message` NON è un duplicato del catalogo**: è la variante senza segnaposto — **0 su 656** contengono `%s`, contro 371 a catalogo (§11) | BE + DB, 2026-08-07 sera |
 | D17 | **Due viste, non una**: `vw_codici_errore` per la revisione (per lingua), `vw_codici_errore_identita` per il generatore (per codice), con `ORDER BY codice` dentro la vista (§14.4) | DB, 2026-08-07 sera |

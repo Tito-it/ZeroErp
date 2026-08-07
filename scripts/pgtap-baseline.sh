@@ -55,7 +55,13 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-BASELINE="$ROOT_DIR/db/pgtap/baseline-rossi.tsv"
+# ⚠️ Due baseline, e non e' un capriccio. Quella di default e' misurata sul DB
+#   di SVILUPPO, che ha dati veri; la CI ricostruisce il database da zero, quindi
+#   i test che dipendono da dati preesistenti falliscono la' e non qui. Sono due
+#   popolazioni diverse: confrontarle produrrebbe decine di finte regressioni,
+#   che e' lo stesso difetto — metro disomogeneo — che ha originato questo brief.
+#   Si sceglie con PGTAP_BASELINE.
+BASELINE="${PGTAP_BASELINE:-$ROOT_DIR/db/pgtap/baseline-rossi.tsv}"
 
 UPDATE=0
 SCHEMI=()

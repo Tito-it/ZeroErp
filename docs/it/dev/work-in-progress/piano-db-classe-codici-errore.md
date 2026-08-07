@@ -50,7 +50,7 @@ additivo e reversibile.
 | **D-7** | FK `messaggi_errore.codice → codici_errore.codice` + seed `fk_index_policy` | D-5 | dopo che il seed regge |
 | **D-8** | pgTAP: **4 da adeguare** + i nuovi | D-6 · D-7 | |
 | **D-9** | Le **due viste** (`20_code`) | D-4 | ⚠️ numerazione più alta di chi dipende da loro |
-| **D-10** | Vista dei **codici multidominio** — la misura | D-9 | può slittare: non blocca il BE |
+| **D-10** | Vista della **forma della condizione** — la misura | D-9 | ⚠️ **ri-specificata**: l'asse «multidominio» era smentito dal D-3 |
 
 **Consegna al BE:** dopo **D-9**. È il momento in cui `vw_codici_errore_identita`
 esiste, è popolata e ordinata — cioè quando il generatore del BE ha da cui
@@ -682,17 +682,70 @@ generatore (piano BE, **B-5**).
 
 ---
 
-### D-10 · La misura dei codici multidominio
+### D-10 · La misura — ⚠️ **ri-specificata**, l'asse era sbagliato
 
-Una vista accanto a `dbops.vw_codici_errore_da_dichiarare`:
+🔴 **Come era scritto, questo passo misurava l'asse che il D-3 ha smentito.**
+Diceva: *«un codice sollevato da funzioni di più di un dominio è candidato
+accumulatore»*. Ma `E_VALIDAZIONE` è **10 funzioni in 5 domini** ed è il caso su
+cui la risposta è **no** — sarebbe stato il primo falso positivo della vista.
 
-> **un codice sollevato da funzioni di più di un dominio è candidato accumulatore.**
+Rilievo del BE, e coglie una contraddizione interna ai nostri documenti: il D-3
+aveva già scritto *«un codice è accumulatore quando copre **condizioni** diverse,
+non **domini** diversi»*, e questo passo restava sull'asse vecchio.
 
-⚠️ **Misura, non cancello** (§9.2 del brief): un codice legittimamente trasversale
-esiste, e un cancello che lo bocci verrebbe disattivato. Si guarda all'apertura di
-un lotto.
+> ⚠️ È una misura, non un cancello, quindi un falso positivo non fa danno. **Ma
+> una misura che sbaglia sul suo caso più noto viene guardata due volte e poi mai
+> più** — che è il modo in cui i presidi muoiono in silenzio.
 
-Non blocca il BE: può slittare senza conseguenze.
+#### L'asse giusto, e la macchina esiste già
+
+`check_messaggio_vs_condizione.sql` ha la CTE **`con_guardia`**, che accoppia già
+`(codice, funzione, guardia)` risalendo dalla riga che nomina il codice al ramo
+che la precede. Si classifica la guardia in famiglie e si segnala chi ne ha più
+di una:
+
+| Famiglia | Riconosciuta da |
+|---|---|
+| `PARAMETRO` | `IS NULL`, `<= 0`, `< 0` su un `p_…` |
+| `NOT_FOUND` | `IF NOT FOUND` |
+| `ECCEZIONE` | `EXCEPTION WHEN`, `WHEN OTHERS`, `WHEN SQLSTATE` |
+| `ENUM` | `NOT IN (…)` |
+| `ALTRO` | tutto il resto |
+
+**Provato sui casi noti (2026-08-07):**
+
+| Codice | Punti | Famiglie | Esito |
+|---|---:|---|---|
+| `E_VALIDAZIONE` | 13 | `PARAMETRO` | ✅ **pulito** — l'asse vecchio lo segnalava |
+| `E_PARAMETRO_INVALIDO` | 206 | 3 famiglie | ✅ segnalato |
+| `E_SOGGETTI_RUOLI` | 3 | 3 famiglie | ✅ segnalato |
+| `E_STATO_SCONOSCIUTO` | 0 | — | ⚠️ **non verificabile**: è ritirato, non ha punti vivi |
+
+#### ⚠️ E la misura deve dichiarare quello che NON vede
+
+Misurato prima di prometterla:
+
+| | |
+|---:|---|
+| codici con una guardia riconoscibile | 342 |
+| **classificati in una famiglia nota** | **75** |
+| finiti tutti nel cestino `ALTRO` — invisibili alla misura | **267** |
+| segnalati (più di una famiglia) | 22 |
+| **di cui per due famiglie NOTE** — il segnale forte | **6** |
+| segnalati per «una nota + qualcosa che non so leggere» | 16 |
+
+**Quindi la vista apre con una riga di copertura**, come fa già la lente
+(*«se `punti` fosse zero, l'euristica è rotta, non il database sano»*): *su 342
+codici ne classifico 75; dei restanti 267 non so dire niente.* Senza quella riga,
+un elenco di 6 si legge come «gli accumulatori sono sei», che è falso.
+
+I sei forti, per chi arriva qui: `E_PARAMETRO_INVALIDO`, `E_GENERICO`,
+`E_ADMIN_VALIDAZIONE`, `E_ERRORE_PARAMETRI`, `E_ATTIVO_REQUIRE`,
+`E_SOGGETTI_RUOLI`.
+
+⚠️ **Se migliorare il classificatore costa più di quanto renda, la strada onesta
+è la seconda che indica il BE**: dichiarare cosa la misura non distingue, invece
+di lasciarla scritta su un asse che sappiamo falso.
 
 ---
 
