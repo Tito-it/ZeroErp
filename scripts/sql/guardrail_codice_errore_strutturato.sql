@@ -21,6 +21,15 @@
 --      (o il cui codice e' stato ritirato): il debito e' pagato, la riga va tolta
 --   D) una funzione viva che solleva un codice RITIRATO (`obsoleto_dal`)
 --
+-- ── ⚠️ `obsoleto_dal` HA CAMBIATO CASA il 2026-08-07 (changeSet 20260807-13) ──
+--   Nasceva su `config.messaggi_errore` (20260805-17), che pero' e' chiavata
+--   (codice, lingua): il ritiro era **per lingua**, cioe' si poteva ritirare un
+--   codice in italiano e lasciarlo vivo in inglese senza che nulla protestasse.
+--   Ora sta su `config.codici_errore`, che ha UNA riga per codice — il ritiro
+--   appartiene al codice, non alla frase. I controlli (B), (C), (D) e il
+--   riepilogo leggono da li'.
+--   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (D-6)
+--
 -- ── `obsoleto_dal`, dal 2026-08-05 (changeSet 20260805-17) ───────────────
 --   Un codice legacy spesso NON si puo' cancellare: `dbops.error_log` ha una FK
 --   NOT NULL verso `config.messaggi_errore(id)`, e 46 codici su 53 hanno righe
@@ -130,14 +139,14 @@ BEGIN
     -- controllo: non sono debito da registrare, sono debito **pagato** che non
     -- si e' potuto cancellare per via della FK di error_log. Pretenderli nel
     -- registro impedirebbe al registro di calare, che e' il suo unico scopo.
-    SELECT string_agg(DISTINCT me.codice, E'\n  ' ORDER BY me.codice)
+    SELECT string_agg(ce.codice, E'\n  ' ORDER BY ce.codice)
       INTO v_fuori
-      FROM config.messaggi_errore me
-     WHERE me.codice !~ c_convenzione
-       AND (me.obsoleto_dal IS NULL OR me.obsoleto_dal > CURRENT_DATE)
+      FROM config.codici_errore ce
+     WHERE ce.codice !~ c_convenzione
+       AND (ce.obsoleto_dal IS NULL OR ce.obsoleto_dal > CURRENT_DATE)
        AND NOT EXISTS (
              SELECT 1 FROM dbops.messaggi_errore_codici_legacy l
-              WHERE l.codice = me.codice);
+              WHERE l.codice = ce.codice);
 
     IF v_fuori IS NOT NULL THEN
         RAISE EXCEPTION
@@ -164,20 +173,16 @@ BEGIN
     -- Due modi di pagare il debito, ed entrambi contano: il codice non esiste
     -- piu' (cancellato), oppure e' stato RITIRATO con `obsoleto_dal` perche' la
     -- FK di error_log non ne permetteva la cancellazione.
-    SELECT string_agg(l.codice || (CASE WHEN me.codice IS NULL
+    SELECT string_agg(l.codice || (CASE WHEN ce.codice IS NULL
                                         THEN ' (non piu'' a catalogo)'
-                                        ELSE ' (ritirato il ' || me.obsoleto_dal || ')' END),
+                                        ELSE ' (ritirato il ' || ce.obsoleto_dal || ')' END),
                       E'\n  ' ORDER BY l.codice)
       INTO v_pagati
       FROM dbops.messaggi_errore_codici_legacy l
-      LEFT JOIN config.messaggi_errore me
-             ON me.codice = l.codice
-            AND (me.obsoleto_dal IS NULL OR me.obsoleto_dal > CURRENT_DATE)
-     WHERE me.codice IS NULL
-        OR EXISTS (SELECT 1 FROM config.messaggi_errore x
-                    WHERE x.codice = l.codice
-                      AND x.obsoleto_dal IS NOT NULL
-                      AND x.obsoleto_dal <= CURRENT_DATE);
+      LEFT JOIN config.codici_errore ce
+             ON ce.codice = l.codice
+     WHERE ce.codice IS NULL
+        OR (ce.obsoleto_dal IS NOT NULL AND ce.obsoleto_dal <= CURRENT_DATE);
 
     IF v_pagati IS NOT NULL THEN
         RAISE EXCEPTION
@@ -210,14 +215,14 @@ BEGIN
     SELECT string_agg(x.riga, E'\n  ' ORDER BY x.riga)
       INTO v_ritirati_vivi
       FROM (
-        SELECT DISTINCT me.codice || '  <-  ' || n.nspname || '.' || p.proname AS riga
-          FROM config.messaggi_errore me
+        SELECT DISTINCT ce.codice || '  <-  ' || n.nspname || '.' || p.proname AS riga
+          FROM config.codici_errore ce
           JOIN pg_proc p
-            ON p.prosrc LIKE '%' || quote_literal(me.codice) || '%'
+            ON p.prosrc LIKE '%' || quote_literal(ce.codice) || '%'
           JOIN pg_namespace n
             ON n.oid = p.pronamespace
-         WHERE me.obsoleto_dal IS NOT NULL
-           AND me.obsoleto_dal <= CURRENT_DATE
+         WHERE ce.obsoleto_dal IS NOT NULL
+           AND ce.obsoleto_dal <= CURRENT_DATE
            AND p.prolang = (SELECT oid FROM pg_language WHERE lanname = 'plpgsql')
            AND n.nspname NOT IN ('pg_catalog', 'information_schema')
       ) x;
@@ -225,11 +230,11 @@ BEGIN
     IF v_ritirati_vivi IS NOT NULL THEN
         RAISE EXCEPTION
           E'Codici RITIRATI ancora sollevati da funzioni vive:\n  %\n\n'
-          'La colonna config.messaggi_errore.obsoleto_dal dichiara questi codici fuori '
+          'La colonna config.codici_errore.obsoleto_dal dichiara questi codici fuori '
           'servizio, ma il DB li solleva ancora. Una delle due cose e'' falsa. '
           'Il ritiro si fa in QUEST''ORDINE: prima si tolgono i call site (changeSet '
           '20_code, sostituendo il codice con quello nuovo `E_*`), poi si valorizza '
-          'obsoleto_dal nel CSV del catalogo. Se invece il codice serve ancora, va '
+          'obsoleto_dal nel CSV config/codici_errore.csv. Se il codice serve ancora, va '
           'rimessa a NULL la data: ritirarlo e continuare a usarlo e'' la forma peggiore '
           'di debito, perche'' sembra pagato.', v_ritirati_vivi;
     END IF;
@@ -267,7 +272,7 @@ BEGIN
 
     RAISE NOTICE 'OK — un solo mittente sul canale CONSTRAINT, nessun codice fuori convenzione non registrato, nessuna voce di troppo nel registro (% attive), nessun codice ritirato ancora sollevato (% ritirati), nessun warning sollevato come errore.',
         (SELECT count(*) FROM dbops.messaggi_errore_codici_legacy),
-        (SELECT count(*) FROM config.messaggi_errore
+        (SELECT count(*) FROM config.codici_errore
           WHERE obsoleto_dal IS NOT NULL AND obsoleto_dal <= CURRENT_DATE);
 END
 $guardrail$;

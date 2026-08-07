@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-differiti: escluso — la fixture non soddisfa un vincolo DIFFERITO e la
+--   ragione e' scritta per esteso piu' sotto. Debito noto (§22.4): quando la
+--   fixture viene completata, si toglie questa riga e si rimette il
+--   SET CONSTRAINTS ALL IMMEDIATE nel punto in cui l'unita' di lavoro e' completa.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_snapshot_fattura_lotto (Fase 2.2 + brief intestazione)
 --       comportamento D-Q: lo step si completa, la fattura difettosa resta

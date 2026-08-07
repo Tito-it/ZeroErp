@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `config.classi_errore` — il vocabolario di CHE COSA E' un errore
+#   Piano:  docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md  (D-4)
+#   Guida:  docs/it/dev/work-in-progress/brief-db-be-classe-codici-errore.md  §3.2, §4
+#   Seguito da: 20260807-12 (config.codici_errore, che la referenzia).
+#
+# ── COSA RISOLVE ────────────────────────────────────────────────────────
+#   `config.messaggi_errore` dice COSA SCRIVERE all'operatore. Non dice CHE
+#   COSA E' l'errore — «non esiste», «e' in conflitto con lo stato», «non ti e'
+#   permesso», «hai sbagliato a compilare», «e' un guasto». Quel significato
+#   viveva solo in un dizionario Python (`error_policies.py`), cioe' in un
+#   secondo elenco tenuto allineato a mano.
+#
+# ── PERCHE' UN VOCABOLARIO E NON UN `CHECK` ─────────────────────────────
+#   Dieci valori stabili referenziati da una colonna NOT NULL. Il progetto per
+#   questa forma usa tabelle-vocabolario (config.iva_natura,
+#   config.esiti_flussi_pratiche, config.nature_vendita), e qui in piu':
+#     · la DESCRIZIONE della classe diventa un dato leggibile invece di un
+#       commento dentro un vincolo — ed e' la definizione che decide i casi
+#       dubbi, quindi deve stare dove la si va a cercare;
+#     · aggiungere o ritirare una classe e' una riga di CSV, non un
+#       ALTER TABLE ... DROP CONSTRAINT + ricreazione.
+#
+# ── ⚠️ PK TESTUALE: DEVIAZIONE DELIBERATA, NON DISTRAZIONE ──────────────
+#   Le convenzioni (linee-guida-sql §3) vogliono `id` surrogato, e 464 tabelle
+#   su 467 ce l'hanno. Le tre eccezioni sono registri chiavati da una stringa
+#   naturale e stabile — `config.storico_set_storicizza(table_name)`,
+#   `dbops.idempotency_keys(idempotency_key)`, `config.tipi_soggetto(id varchar)` —
+#   ed e' esattamente questo caso: **la classe E' il suo nome**. Un id
+#   surrogato qui sarebbe una colonna che nessuno legge, e obbligherebbe
+#   `codici_errore` a portarsi dietro una FK numerica al posto del valore che
+#   si vuole leggere nella vista e nel CSV.
+#
+# ── ⚠️ `obsoleto_dal` E NON `attivo` ────────────────────────────────────
+#   Una classe non si disattiva: i codici che l'hanno avuta devono continuare a
+#   risolvere, e il diario deve restare leggibile. `obsoleto_dal` e' l'asse
+#   «selezionabile per il nuovo», separato da «esiste». Stesso pattern di
+#   config.messaggi_errore.obsoleto_dal (20260805-17).
+#
+# ── NOTE DI APPLICAZIONE ────────────────────────────────────────────────
+#   · `config` e' in `dbops.automation_scope` con `*all`: audit trigger e
+#     storico li arma il framework di automazione, che gira SOLO in contesto
+#     `ci_apply`. Su un migrate manuale la tabella nasce senza trigger e li
+#     riceve dal pgagent di fine giornata: non e' un difetto, e' da sapere se
+#     si controlla il risultato la sera stessa.
+#   · Nessun `attivo`, nessun `meta`: non servono e una colonna che nessuno
+#     legge invecchia male.
+#   · Le 10 righe arrivano col seed (D-5), non da qui: il vocabolario e' un
+#     dato di `80_data`, e i dati di 80_data si cambiano dal CSV.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/00_schema/config/20260807-11-create-classi-errore-mctit.yaml
+
+    - changeSet:
+          id: 20260807-11-create-classi-errore
+          author: mctit
+          runOnChange: false
+          failOnError: true
+          comment: >
+              Vocabolario delle classi di errore: che COSA e' un errore, in lingua di
+              dominio. Dieci valori (DATO_ERRATO, CONFLITTO_STATO, NON_TROVATO, TECNICO,
+              NON_PERMESSO, NON_ESEGUIBILE, NON_DISPONIBILE, AVVISO, NON_AUTENTICATO,
+              ERRORE_ESTERNO). La mappa classe -> HTTP resta lato backend: e' trasporto,
+              non dominio. Referenziata da config.codici_errore (20260807-12).
+          preConditions:
+              - onFail: HALT
+              - not:
+                    - tableExists:
+                          schemaName: config
+                          tableName: classi_errore
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE TABLE config.classi_errore (
+                            classe        text NOT NULL,
+                            descrizione   text NOT NULL,
+                            obsoleto_dal  date,
+                            data_insert   timestamptz NOT NULL DEFAULT now(),
+                            user_insert   text        NOT NULL DEFAULT CURRENT_USER,
+                            data_update   timestamptz NOT NULL DEFAULT now(),
+                            user_update   text        NOT NULL DEFAULT CURRENT_USER,
+                            CONSTRAINT pk_classi_errore PRIMARY KEY (classe)
+                        );
+
+                        -- Il nome della classe e' la chiave: niente stringhe vuote o
+                        -- con spazi ai bordi, che sarebbero chiavi diverse a occhio uguali.
+                        ALTER TABLE config.classi_errore
+                          ADD CONSTRAINT chk_classi_errore_classe_non_vuota
+                          CHECK (classe = btrim(classe) AND classe <> '');
+
+                        COMMENT ON TABLE config.classi_errore IS
+                          'Vocabolario di CHE COSA e'' un errore, in lingua di dominio: il tipo di rifiuto, non il suo trasporto. La mappa classe -> HTTP status vive nel backend. Popolata dal seed 80_data.';
+                        COMMENT ON COLUMN config.classi_errore.classe IS
+                          'Nome della classe, ed e'' la chiave: la classe E'' il suo nome (PK testuale deliberata, vedi testata del changeSet).';
+                        COMMENT ON COLUMN config.classi_errore.descrizione IS
+                          'La definizione che decide i casi dubbi. Non e'' un'' etichetta: e'' il testo che si rilegge quando non si sa se un codice nuovo e'' DATO_ERRATO o CONFLITTO_STATO.';
+                        COMMENT ON COLUMN config.classi_errore.obsoleto_dal IS
+                          'Ritiro della classe: NULL = in servizio. NON e'' un ''attivo'' — i codici che l''hanno avuta continuano a risolvere, e il diario deve restare leggibile.';

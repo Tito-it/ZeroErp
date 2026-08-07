@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `obsoleto_dal` cambia casa: da `messaggi_errore` a `codici_errore`
+#   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (D-6)
+#   Guida: docs/it/dev/work-in-progress/brief-db-be-classe-codici-errore.md §3.1
+#   Aggiunta il 2026-08-05 dal 20260805-17. Nuova casa: 20260807-12.
+#
+# ── ⚠️ PERCHE' SI SPOSTA — UN DIFETTO LATENTE, NON UN RIORDINO ──────────
+#   `config.messaggi_errore` e' chiavata **(codice, lingua)**. Una colonna di
+#   ritiro li' dentro e' per lingua: oggi si puo' ritirare un codice in italiano
+#   e lasciarlo vivo in inglese, e nessun controllo se ne accorge.
+#
+#   Non e' ancora successo per un motivo che non e' un presidio: l'inglese non
+#   e' popolato. Misurato il 2026-08-07 — 690 righe di catalogo, di cui **una
+#   sola** in inglese; le 50 righe ritirate sono tutte 'it'. Il giorno in cui
+#   l'interfaccia inglese sara' davvero tradotta, il difetto diventa reale
+#   **senza che nessuno abbia toccato niente**.
+#
+#   `config.codici_errore` ha UNA riga per codice: il ritiro appartiene al
+#   CODICE, non alla frase. Le traduzioni sono quello che sono, traduzioni.
+#
+# ── ⚠️ NESSUN DATO SI PERDE, ED E' STATO VERIFICATO PRIMA ───────────────
+#   I valori non si copiano qui: sono gia' nella nuova casa, arrivati col seed
+#   (`80_data/sql/config/codici_errore.csv`, caricato dal 20260614-08). Prima di
+#   scrivere questo changeSet il confronto e' stato fatto riga per riga:
+#
+#     ritirati in messaggi_errore ...................... 50
+#     ritirati in codici_errore ....................... 79  (50 + 29 nuovi)
+#     presenti in messaggi ma NON in codici ............  0
+#     con data diversa .................................  0
+#
+#   I 29 in piu' sono i codici ritirati dal passo D-2: superati, non piu'
+#   sollevati da nessuna funzione viva.
+#
+# ── ⚠️ NON SI PUO' APPLICARE DA SOLO ────────────────────────────────────
+#   Il mirror `20260614-08` dichiara `obsoleto_dal` fra le colonne del catalogo:
+#   se questo DROP arriva senza la modifica al loader, il primo migrate fallisce
+#   perche' il loader carica una colonna che non esiste piu'. Le due cose
+#   viaggiano insieme, e la `preCondition` qui sotto NON basta a proteggerlo —
+#   protegge il verso opposto (che la nuova casa esista).
+#
+#   Nello stesso giro sono stati riscritti i lettori:
+#     · scripts/sql/guardrail_codice_errore_strutturato.sql — controlli B, C, D
+#       e il riepilogo finale;
+#     · scripts/sql/check_messaggio_vs_condizione.sql — la lente.
+#   Un presidio che legge una colonna sparita non fallisce rumorosamente: smette
+#   di vedere, ed e' il difetto che questo cantiere cura.
+#
+# ── FORWARD-ONLY, E VA BENE ─────────────────────────────────────────────
+#   Non siamo in produzione: il DROP e' secco, senza colonna di compatibilita' e
+#   senza periodo di doppia scrittura. Una colonna «di transizione» qui sarebbe
+#   una seconda sorgente di verita' — cioe' il difetto da cui nasce tutto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/00_schema/config/20260807-13-drop-obsoleto-dal-messaggi-errore-mctit.yaml
+
+    - changeSet:
+          id: 20260807-13-drop-obsoleto-dal-messaggi-errore
+          author: mctit
+          runOnChange: false
+          failOnError: true
+          comment: >
+              Toglie config.messaggi_errore.obsoleto_dal: il ritiro appartiene al CODICE
+              (config.codici_errore, una riga per codice) e non alla FRASE, che e' chiavata
+              (codice, lingua). Su messaggi_errore il ritiro era per lingua — un difetto
+              latente che l'inglese non popolato teneva nascosto. I valori sono gia' nella
+              nuova casa (seed 20260614-08), verificati 50 su 50 e nessuna data diversa.
+          preConditions:
+              - onFail: HALT
+              - tableExists:
+                    schemaName: config
+                    tableName: codici_errore
+              # La nuova casa deve avere la colonna: se non ce l'ha, il ritiro
+              # non ha dove stare e il DROP butterebbe via il dato.
+              - columnExists:
+                    schemaName: config
+                    tableName: codici_errore
+                    columnName: obsoleto_dal
+          changes:
+              - dropColumn:
+                    schemaName: config
+                    tableName: messaggi_errore
+                    columnName: obsoleto_dal

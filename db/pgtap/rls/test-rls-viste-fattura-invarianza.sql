@@ -1,5 +1,15 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-differiti: escluso — la fixture non soddisfa un vincolo DIFFERITO e la
+--   ragione e' scritta per esteso piu' sotto. Debito noto (§22.4): quando la
+--   fixture viene completata, si toglie questa riga e si rimette il
+--   SET CONSTRAINTS ALL IMMEDIATE nel punto in cui l'unita' di lavoro e' completa.
+-- pgtap-contesto: escluso — la ragione e' scritta per esteso piu' sotto in
+--   questo stesso file. Dichiarazione leggibile dal cancello
+--   scripts/guardrail_pgtap_preambolo.py: distingue «escluso apposta» da
+--   «dimenticato», che una nota in prosa non fa.
+--   ⚠️ Da riguardare: le esclusioni `rls/` furono fatte IN BLOCCO, e almeno
+--   una non ne aveva diritto (brief pgtap-runner-rls-baseline §30.2).
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: ALTER TABLE vendite.fatture_righe / fatture_riepiloghi_iva ENABLE + FORCE ROW
 --   LEVEL SECURITY: il test arma e disarma la RLS per misurare l'invarianza
