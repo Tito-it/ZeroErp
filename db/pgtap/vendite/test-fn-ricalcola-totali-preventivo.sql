@@ -70,6 +70,14 @@ SELECT ok(
 -- 3) Riferimenti minimi
 -- ============================================================
 CREATE TEMP TABLE tmp_rc_refs AS
+WITH iva_scelta AS (
+  -- Una sola estrazione: id e aliquota vengono per forza dalla stessa riga.
+  SELECT i.id, i.aliquota_iva
+    FROM config.iva i
+   WHERE i.attivo IS TRUE AND i.aliquota_iva > 0
+   ORDER BY i.id
+   LIMIT 1
+)
 SELECT
   (SELECT ba.id
      FROM anagrafiche.billing_account ba
@@ -105,14 +113,13 @@ SELECT
     WHERE ef.attivo IS TRUE
     ORDER BY ef.id LIMIT 1
   ) AS emittente_fiscale_id,
-  (SELECT i.id FROM config.iva i
-    WHERE i.attivo IS TRUE AND i.aliquota_iva > 0
-    LIMIT 1
-  ) AS iva_id,
-  (SELECT i.aliquota_iva FROM config.iva i
-    WHERE i.attivo IS TRUE AND i.aliquota_iva > 0
-    LIMIT 1
-  ) AS iva_aliquota;
+  -- ⚠️ L'IVA si sceglie UNA volta sola, e da li' si proiettano id e aliquota.
+  --   Prima erano due sotto-select indipendenti sullo stesso insieme: niente
+  --   garantiva che pescassero la stessa riga, e il test avrebbe calcolato i
+  --   totali attesi con l'aliquota di un'IVA diversa da quella messa in riga.
+  --   Con due aliquote positive in catalogo il difetto e' gia' possibile oggi.
+  (SELECT id           FROM iva_scelta) AS iva_id,
+  (SELECT aliquota_iva FROM iva_scelta) AS iva_aliquota;
 
 SELECT ok(
   (SELECT billing_account_id IS NOT NULL

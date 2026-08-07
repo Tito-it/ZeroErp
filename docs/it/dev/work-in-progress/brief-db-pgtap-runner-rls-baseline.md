@@ -24,8 +24,8 @@
 > **§24** ha chiuso la priorità 1 — il marcatore `-- pgtap-runner: owner` su 15
 > file, `PGTAP_RUNNER` in `testpgtap.sh`, e una baseline che ora **registra con
 > che utente è stata presa e rifiuta i confronti disomogenei** (il difetto del §1
-> chiuso alla radice). Divario **da 36 a 23 file**. Bilancio al **§23**, stato e
-> residuo al **§24.7** ·
+> chiuso alla radice). Divario **da 36 a 23 file**.
+> 👉 **Punto della situazione: §25** · **famiglia C CHIUSA: §26** · **cantiere `LIMIT 1`: §27** — ALTO su tabelle vere **da 66 a 20**, di cui 4 già giudicati innocui · **✅ il file intermittente è sciolto: §28** — 26/26, e non era `LIMIT 1`. Bilancio storico al §23 ·
 > **Priorità**: 🔴 **ALTA** — non per un difetto di prodotto, ma perché
 > **`scripts/pgtap-baseline.sh` oggi non può fare il suo mestiere**: distinguere
 > un rosso nuovo da uno noto. Finché non è risolto, ogni «zero regressioni»
@@ -1992,3 +1992,507 @@ Il §23.4 resta valido, meno il punto 1 che è chiuso:
 ⚠️ Restano in piedi le due avvertenze del §23.4: il rosso intermittente di
 `anagrafiche/test-istanza-cliente-chain.sql` (§21.3) e il fatto che ribaselinare
 prima del cantiere `LIMIT 1` fotografa un pezzo di fortuna.
+
+---
+
+## 25. Punto della situazione (2026-08-07, sera)
+
+> Verificato, non ricordato. Da qui riparte chi apre il brief domani.
+
+### 25.1 I numeri, corretti dopo la sanatoria dei 4
+
+I 4 `vendite/*-righe-componenti-v1` erano rossi con **entrambi** i runner
+(§24.6): sanandoli calano tutti e due i lati della stessa quantità, e il divario
+non si muove.
+
+| | alla misura del §24.6 | ora |
+| --- | --- | --- |
+| owner (default) | 92 | **88** |
+| `PGTAP_RUNNER=app` | 114 | **110** |
+| **divario** | **23** | **23** |
+
+Verificato file per file: i 4 sono verdi da owner **e** da utente applicativo.
+Gli 88 sono lo stesso numero da cui il cantiere era partito il 2026-08-06.
+
+### 25.2 Cosa c'è, e funziona
+
+* **Marcatore `-- pgtap-runner: owner` su 15 file**, con `-- pgtap-runner-motivo:`
+  obbligatorio (senza, il runner esce 4).
+* **`PGTAP_RUNNER=owner|app`** in `scripts/testpgtap.sh`. **Default ancora
+  `owner`**: nessun cambio di comportamento per chi lancia i test oggi.
+* **`scripts/pgtap-baseline.sh` registra l'utente** nella prima riga della
+  baseline e **rifiuta confronto e update parziale** se la corsa gira con un
+  altro utente — *prima* di eseguire, in 8 ms invece che dopo 7 minuti.
+* Tutto committato in `b3948da09`.
+
+ℹ️ `db/pgtap/baseline-rossi.tsv` **non ha ancora la riga `# pgtap-runner:`**, e
+va bene: si legge come `owner`, che è ciò che era. La scriverà il primo
+`--update`.
+
+### 25.3 Il residuo, in una riga ciascuno
+
+| # | cosa | dimensione | perché in quest'ordine |
+| --- | --- | --- | --- |
+| 1 | **Famiglia C — RLS in scrittura** | 7 file | è il motivo per cui il brief esiste: l'unico posto dove una policy viene messa alla prova |
+| 2 | **Cantiere `LIMIT 1`** | 133 siti ALTO su 170 file | va **prima** della ribaselinatura, o si registra come «noto» un pezzo di fortuna |
+| 3 | **Famiglia B (8) + D (8)** e le 14 fixture del §22.4 | 16 + 14 | lavoro dei cantieri di dominio, non di questo |
+| 4 | **La commutazione** | una riga | default `app` + `PGTAP_RUNNER=app pgtap-baseline.sh --update` sull'intera suite |
+
+⚠️ Prima del punto 4, guardare `anagrafiche/test-istanza-cliente-chain.sql`:
+oscilla fra 6 e 0 asserzioni a parità di codice (§21.3).
+
+### 25.4 La prossima mossa, concreta
+
+**Famiglia C, i 7 file.** Tutti si fermano su
+`la nuova riga viola la regola di sicurezza per riga`, cinque su
+`vendite.commesse` e due su `vendite.fatture_righe`:
+
+```
+vendite/test-drop-uq-commesse-attivita-src-uid-partial-v1.sql   commesse
+vendite/test-fn-list-preventivi-da-pushare-righe-ids-v1.sql     commesse
+vendite/test-guard-uscita-commessa-v1.sql                       commesse
+vendite/test-vw-dash-fatturazione-v1.sql                        commesse
+vendite/test-vw-preventivi-smistamento-v1.sql                   commesse
+vendite/test-lista-commessa-attivita-fatturata-v1.sql           fatture_righe
+vendite/test-numerazione-guard-coerenza-v1.sql                  fatture_righe
+```
+
+La domanda da farsi su ognuno è **una sola, e ha due risposte opposte**: *la
+policy è scritta male* (difetto di prodotto, come i tre già trovati) *oppure la
+fixture scrive dove l'applicazione non scriverebbe* (difetto di test)? Le due si
+distinguono guardando **chi** scrive quella riga nel percorso reale — non
+costruendo una fixture che confermi il ramo, che è la trappola di
+[[feedback_verifica_dal_percorso_reale]].
+
+Si aprono con:
+
+```bash
+PGTAP_RUNNER=app scripts/testpgtap.sh db/vendite/test-guard-uscita-commessa-v1.sql
+```
+
+---
+
+## 26. Famiglia C — la RLS in scrittura, finalmente esercitata (2026-08-07)
+
+> È il motivo per cui il brief esiste: i sette file dove una policy viene messa
+> alla prova. **Non erano una cosa sola: sono quattro cause distinte**, e solo
+> misurandole una per una si vede quali sono difetti di test e quali no.
+
+### 26.1 Il metodo, prima del risultato
+
+La domanda su ogni rosso era sempre la stessa e con due risposte opposte: *la
+policy è scritta male, oppure la fixture scrive dove l'applicazione non
+scriverebbe?* Si risponde **dal percorso reale**, mai dalla fixture
+([[feedback_verifica_dal_percorso_reale]]): chi scrive davvero quella riga, e con
+quali valori. Tre misure hanno deciso tutto:
+
+* **`vendite.commesse`: 58 righe in essere, ZERO senza emittente.** La colonna è
+  l'unica nullable fra tutti i documenti (preventivi, ordini, ddt, resi, fatture
+  la hanno `NOT NULL`), ma nessuna riga vive in quello stato.
+  ⚠️ Conteggio fatto **da owner**: su tabella con RLS lo zero da utente
+  applicativo sarebbe fail-closed, non un dato ([[feedback_conteggi_rls_zero_non_errore]]).
+* **L'unico scrittore reale è `vendite.fn_get_or_create_commessa`**, e l'emittente
+  lo risolve **sempre**: `COALESCE(p_emittente_soggetto_ruolo_id,
+  anagrafiche.fn_get_emittente_fiscale_id(p_billing_account_id))`. Non è
+  `SECURITY DEFINER`, quindi gira soggetta alla RLS come chiunque.
+* **Il BE non scrive mai testata e righe fattura insieme**: in
+  `pipeline_repository.py` ci sono 2 `INSERT INTO vendite.fatture_righe` e
+  **zero** `INSERT INTO vendite.fatture` — la fattura nasce in uno step della
+  pipeline, le righe in quello dopo.
+
+### 26.2 ⭐ Il rilievo che vale più di tutti: la CTE che non può passare
+
+Due file (`test-lista-commessa-attivita-fatturata-v1`,
+`test-numerazione-guard-coerenza-v1`) creavano fattura **e** righe dentro **una
+sola CTE**. Esperimento controllato, stessi dati e stesso operatore:
+
+| | esito |
+| --- | --- |
+| fattura, poi righe — **due statement** | ✅ passa |
+| fattura + righe — **una CTE** | ❌ `viola la regola di sicurezza per riga` |
+
+**La causa**: le CTE che scrivono condividono tutte la **stessa snapshot**.
+`script.fn_scope_ef_whitelist_via_fattura` è `STABLE` e cerca la fattura in
+`vendite.fatture`, dove la riga appena inserita **non è ancora visibile**: l'SR
+risolve a `NULL` e il `WITH CHECK` nega fail-closed.
+
+> ⚠️ **È una mina, non un difetto — ma va saputa.** La policy fa la cosa giusta
+> in ogni percorso che l'applicazione usa davvero. Ma chiunque scriva un giorno
+> un `INSERT` genitore+figlio in una CTE sola — pattern SQL del tutto
+> legittimo — otterrà una violazione RLS che **non parla della causa vera**.
+> Non si corregge la policy: la si documenta, e la si trova qui.
+
+Riparate spezzando in due statement, che è anche la forma più fedele al BE. Il
+secondo file è passato da `LANGUAGE sql` (una CTE) a `LANGUAGE plpgsql` (due
+`INSERT`), perché in SQL puro le due scritture non si possono separare.
+
+### 26.3 Le quattro cause, e cosa si è fatto
+
+| # | causa | file | verdetto |
+| --- | --- | --- | --- |
+| **C1** | la fixture **omette** l'emittente | 3 | **difetto di fixture** — l'applicazione lo valorizza sempre |
+| **C2** | la fixture **azzera** l'emittente di proposito | 1 | marcatore, e una domanda di prodotto (§26.4) |
+| **C3** | la fixture scrive su un **secondo emittente** di proposito | 1 | la policy fa il suo mestiere: marcatore |
+| **C4** | testata e righe nella **stessa CTE** | 2 | **difetto di fixture**, con la mina del §26.2 sotto |
+
+**C1** — nuovo helper `script.fn_pgtap_emittente_sr_operatore()`
+(`20260807-10`), terzo della famiglia dopo `20260805-27` e `-38`. Le tabelle
+documento usano **due convenzioni** per l'emittente (`emittente_fiscale_id` per
+preventivi/ordini/ddt/resi, `emittente_soggetto_ruolo_id` per
+commesse/fatture/lotti): la compagna risponde alla prima, questa alla seconda, e
+le fixture smettono di ripetere la sotto-select di traduzione.
+
+**C2 e C3** — marcatore `-- pgtap-runner: owner`, e con esso una **seconda
+categoria ammessa**, scritta nell'intestazione di `scripts/testpgtap.sh`:
+
+> 1. il test **fa DDL** che il ruolo applicativo non può e non deve fare;
+> 2. **la fixture costruisce un mondo che l'operatore non deve vedere.**
+
+Sono la stessa natura: il test allestisce la scena e poi la osserva sotto
+restrizione. ⚠️ Quello che **non** è un'eccezione resta scritto accanto: un
+permesso negato che l'applicazione non incontrerebbe mai è un difetto di fixture
+o di policy, e il marcatore lo nasconderebbe invece di risolverlo.
+
+I marcati passano da 15 a **17**.
+
+### 26.4 ⚠️ Una domanda di prodotto che resta aperta
+
+`vendite.commesse.emittente_soggetto_ruolo_id` è nullable, ma:
+
+* nessuna delle 58 righe in essere è `NULL`;
+* l'unico scrittore lo risolve sempre;
+* **con la RLS attiva nessun operatore può portarlo a `NULL`** né creare una riga
+  che ce l'abbia — la policy nega, e non ha un ramo per l'assenza.
+
+Quindi il ramo «emittente mancante» di
+`vendite.fn_check_commessa_pronta_fatturazione` è raggiungibile **solo da un
+ruolo `BYPASSRLS`** (batch, automazioni) o dall'owner, mai da un operatore. Non è
+un ramo morto — è un ramo che appartiene a un altro attore.
+
+Le due domande, per quando si aprirà il cantiere giusto:
+
+1. la colonna dovrebbe essere `NOT NULL`, come lo è su tutti gli altri documenti?
+   Attenzione: `fn_get_or_create_commessa` può ancora produrre `NULL` se il
+   billing account non risolve un emittente;
+2. se resta nullable, la policy dovrebbe avere un ramo esplicito per l'assenza —
+   e quale? Oggi una commessa senza emittente sarebbe **invisibile a tutti gli
+   operatori**, il che è coerente col fail-closed ma va deciso, non subìto.
+
+### 26.5 ✅ Il migrate del 2026-08-07 ha sciolto anche il dubbio del §28.1 dell'altro brief
+
+`make db-migrate` ha applicato l'helper, l'azzeramento del registro codici errore
+e il testo corretto dei tre messaggi. In particolare: **il `loadData` su un CSV di
+sole intestazioni ha funzionato** — `dbops.codici_errore_senza_policy` è a **0
+righe**. Il rischio segnalato (nessun precedente nel repo) non si è materializzato.
+
+### 26.6 La verifica, col metodo di sempre
+
+Suite intera due volte, dal runner ufficiale.
+
+| | prima della famiglia C | dopo |
+| --- | --- | --- |
+| owner (default) | 88 | **88** |
+| `PGTAP_RUNNER=app` | 110 | **103** |
+| **divario** | **23** | **16** |
+
+**Zero differenze da owner**: gli 88 sono identici, file per file — la famiglia C
+non ha spostato niente su chi la suite la lancia oggi. Sotto utente applicativo
+calano esattamente **7**, cioè i sette della famiglia. **Nessun file della
+famiglia C compare più nel divario.**
+
+I 16 che restano sono esattamente le famiglie **B (8) + D (8)**: nessun residuo.
+
+### 26.7 Cosa resta
+
+1. **Cantiere `LIMIT 1`** (§11.3): 133 siti a rischio ALTO su 170 file. Sempre
+   **prima** della ribaselinatura.
+2. **Famiglia B (8)** — `pratiche.workflow_definizioni` (6) e
+   `template_flussi_avanzamento_proiezione` (2): `SELECT`-only per scelta,
+   cantiere definizioni versionate.
+   **Famiglia D (8)** — 4 GRANT mirati (`indirizzi_dettaglio`,
+   `pratiche_sorgenti`, `dashboard_definizione`, `preventivi`), 3 asserzioni,
+   1 binding AD_HOC. Più le **14 fixture** del §22.4.
+3. **La commutazione**: default `PGTAP_RUNNER` da `owner` ad `app` — una riga —
+   e `PGTAP_RUNNER=app scripts/pgtap-baseline.sh --update` sull'intera suite.
+
+⚠️ Prima del punto 3, `anagrafiche/test-istanza-cliente-chain.sql`: oscilla fra
+6 e 0 asserzioni a parità di codice (§21.3).
+
+---
+
+## 27. Cantiere `LIMIT 1` — aperto, e la prima metà è fatta (2026-08-07)
+
+> Il debito più grande rimasto, e l'unico che deve stare **prima** della
+> ribaselinatura: registrare come «noto» un rosso intermittente significa coprire
+> un rosso vero il giorno in cui torna verde per caso.
+
+### 27.1 L'analizzatore, ricostruito
+
+La passata di censimento del §11.3 era stata fatta in un'altra sessione e lo
+strumento non c'era più. Ricostruito, e va ricostruito bene perché il punto
+delicato è uno solo: **`ORDER BY` va cercato allo stesso livello di
+annidamento** del `LIMIT`. Un `ORDER BY` in una sottoquery, o nella query che
+contiene quella col `LIMIT`, non ordina la scelta che interessa.
+
+Come funziona: maschera commenti, stringhe e dollar-quote preservando gli
+offset; risale dal `LIMIT` bilanciando le parentesi fino alla `(` aperta più
+vicina o al `;`; cerca `ORDER BY` a profondità 0 in quel perimetro. Esclude i
+`LIMIT` dentro `EXISTS(...)`, dove non scelgono niente.
+
+Il controllo che dice che è sano: `anagrafiche.soggetti` esce **24 volte**,
+esattamente il numero misurato allora.
+
+### 27.2 ⚠️ Prima di tagliare: 116 «ALTO» non sono 116 problemi
+
+Il censimento grezzo dava **550 occorrenze / 116 ALTO / 163 file** (era
+577/133/170 su 440 file: nel frattempo la suite è passata a 426, e l'euristica
+non è la stessa). Ma separando il rumore dal segnale:
+
+| | |
+| --- | --- |
+| ALTO su **tabelle temporanee create dal test stesso** | 50 — il `LIMIT` non sceglie niente di rischioso |
+| ALTO su **tabelle vere del dominio** | **66** — il bersaglio |
+
+Tagliare a tappeto sui 116 avrebbe speso metà del lavoro su siti innocui.
+
+### 27.3 Le due tranche fatte
+
+**Tranche 1 — `anagrafiche.soggetti`, 24 siti.** Forma omogenea, e con
+un'ironia dentro:
+
+```sql
+CREATE TEMP TABLE tmp_xx_refs AS
+SELECT
+  script.fn_pgtap_emittente_operatore() AS emittente_id,   -- dal contesto ✅
+  (SELECT id FROM anagrafiche.soggetti LIMIT 1) AS soggetto_id,  -- a caso ❌
+```
+
+La riga sopra deriva l'emittente **dal contesto** (regola 4 di
+[[feedback_pgtap_limit1_senza_orderby]]); quella sotto pesca il soggetto a caso.
+È la forma esatta del difetto dell'emittente 44. Sistemati tutti con `ORDER BY`
+sulla PK. Il ventiquattresimo era diverso — un `JOIN` a tre tabelle — e ha avuto
+`ORDER BY s.id, sr.id, iu.id`: ordinare il solo soggetto avrebbe lasciato al
+planner la scelta di ruolo e istanza.
+
+**Tranche 2 — `catalogo.unita_misura` (6) e `config.iva` (6).**
+
+⭐ **E qui è saltato fuori un difetto vero, non stilistico.** In
+`test-fn-ricalcola-totali-preventivo` c'erano **due estrazioni indipendenti dallo
+stesso insieme**:
+
+```sql
+(SELECT i.id           FROM config.iva i WHERE attivo AND aliquota_iva > 0 LIMIT 1) AS iva_id,
+(SELECT i.aliquota_iva FROM config.iva i WHERE attivo AND aliquota_iva > 0 LIMIT 1) AS iva_aliquota;
+```
+
+Niente garantiva che pescassero la stessa riga: il test avrebbe calcolato i
+totali attesi con l'aliquota di un'IVA **diversa** da quella messa in riga.
+**Non è teorico: in catalogo ci sono 7 IVA attive con aliquota positiva.** E la
+riga appena sopra aveva già `ORDER BY ef.id` — qualcuno aveva sistemato
+l'emittente e lasciato l'IVA, che è il modo in cui questi difetti sopravvivono.
+
+Riparato con una **CTE che sceglie una volta sola** e proietta id e aliquota
+dalla stessa riga — la regola 3 della memoria, che l'`ORDER BY` da solo non
+avrebbe soddisfatto altrettanto bene.
+
+### 27.4 Il risultato, e la verifica
+
+| | inizio | dopo tranche 1 | dopo tranche 2 |
+| --- | --- | --- | --- |
+| occorrenze senza `ORDER BY` | 550 | 526 | **515** |
+| di cui ALTO | 116 | 92 | **81** |
+| **ALTO su tabelle vere** | **66** | 42 | **31** |
+| `anagrafiche.soggetti` ALTO | 24 | **0** | **0** |
+
+**Verificato dopo ogni tranche: 88 rossi da owner, zero differenze file per
+file.** Nessun test è cambiato di esito — il che è il punto: si è tolta la
+fortuna, non si è spostato il risultato.
+
+### 27.5 Cosa resta, e perché cambia natura
+
+I 31 ALTO rimasti su tabelle vere non si tagliano più a tappeto. In testa non ci
+sono più tabelle ma **funzioni**:
+
+| | |
+| --- | --- |
+| `pratiche.fn_check_prerequisiti_flusso` | 6 |
+| `vendite.fn_list_ddt_da_pushare` | 3 |
+| `vendite.fn_ricalcola_totali_fattura` | 2 |
+| `anagrafiche.pdp`, `config.unita_organizzative` | 2 + 2 |
+| altri, uno o due ciascuno | 16 |
+
+Un `LIMIT 1` su una funzione che ritorna un insieme è legittimo se la funzione
+ritorna una riga sola, ed è una scommessa se ne ritorna molte: **si decide
+leggendo la funzione**, non con una regex. Sono lavoro a giudizio, non una
+passata.
+
+⚠️ **E la passata va chiusa sul pattern, non sull'elenco dei file toccati** —
+la lezione del 34° file di [[feedback_pgtap_limit1_senza_orderby]]. Lo
+strumento per rifarla in ogni momento è
+`censimento_limit1.py`, il cui metodo è descritto al §27.1.
+
+### 27.6 ℹ️ Il file intermittente NON è un caso di `LIMIT 1`
+
+`anagrafiche/test-istanza-cliente-chain.sql` (§21.3), quello che oscilla fra 6 e
+0 asserzioni, ha due `LIMIT 1` su `anagrafiche.soggetti` — ma sono
+`WHERE partita_iva = '...'`, cioè **deterministici**. L'analizzatore li classifica
+correttamente «medio». **La causa dell'oscillazione è un'altra e resta da
+trovare**: va cercata prima della ribaselinatura, ma non in questo cantiere.
+
+---
+
+## 28. ✅ Il file intermittente, sciolto — e non era `LIMIT 1` (2026-08-07)
+
+`anagrafiche/test-istanza-cliente-chain.sql` oscillava fra **6 e 0 asserzioni a
+parità di codice** dal §21.3, ed era l'ultima cosa da capire prima della
+ribaselinatura. **Adesso è verde: 26 su 26.**
+
+### 28.1 ⚠️ Prima di tutto: «6 o 0» non era verde-o-rosso
+
+Venticinque corse consecutive. Il file **non passava mai**: la differenza era
+solo *quanto lontano arrivava*.
+
+| esito | dove moriva | perché |
+| --- | --- | --- |
+| **6 asserzioni** | riga 255 | vincolo differito `require_utility_dichiarata`: fixture incompleta |
+| **0 asserzioni** | riga 146 | `uq_pdp_codice` — chiave duplicata |
+
+Chi leggeva «oscilla fra 6 e 0» poteva credere che a volte funzionasse. Non è
+mai successo. **Erano due difetti diversi in fila**, e il secondo nascondeva il
+primo una volta su quattro.
+
+### 28.2 ⭐ La causa dell'oscillazione è aritmetica
+
+```sql
+SELECT ('G-PDP-CH-' || substring(k.suffix, 1, 2))   -- ← DUE caratteri esadecimali
+```
+
+**Due cifre esadecimali = 256 codici possibili**, su una colonna `UNIQUE`. E in
+`anagrafiche.pdp` ci sono **64 righe residue** con quel prefisso, la più vecchia
+del **2026-02-15**, la più recente del **2026-08-06**: sei mesi di corse
+*non transazionali* — fino al giorno in cui questo cantiere ha reso il file
+transazionale (§17).
+
+**64 su 256 = 25% di collisione per corsa.** È esattamente la frequenza
+osservata. Non c'era niente di misterioso: era un compleanno con un calendario
+da 256 giorni.
+
+⚠️ **Il troncamento non serviva a niente**: `pdp` è `varchar(30)` e la chiave
+intera sarebbe lunga 17. E **tutte le altre chiavi dello stesso
+`tmp_test_keys` usano già il suffisso intero** — solo il PDP era stato tagliato.
+Corretto: suffisso intero, 8 cifre esadecimali. Quindici corse consecutive, tutte
+allo stesso punto: l'oscillazione è sparita.
+
+> È la coda di [[feedback_pgtap_test_non_transazionali_contaminano]]: la
+> transazionalità ha fermato l'accumulo, ma **i residui di prima sono ancora
+> lì**, e continuano a far danno finché una chiave è abbastanza stretta da
+> incontrarli.
+
+### 28.3 Poi i due difetti veri, in fila
+
+**1. Il vincolo differito scattava troppo presto.** Il file ha
+`SET CONSTRAINTS ALL IMMEDIATE` **in testa** (§17), ma qui istanza e satellite
+nascono in **due istruzioni separate**, per quattro coppie: a fine della prima
+`INSERT` il `billing_account` non esiste ancora, e il guard respinge.
+
+È il caso esatto del §22.5 — la riga va **dove l'unità di lavoro è completa**.
+Spostata dopo la **quarta** coppia: dopo la prima non basterebbe, perché da lì in
+poi ogni istruzione è immediata e le tre istanze successive fallirebbero uguale.
+E comunque prima del cleanup, altrimenti scatterebbe su righe già cancellate.
+
+**2. `billing_account.categoria_cliente_id` è `NOT NULL`**, e la fixture era
+rimasta indietro rispetto alla colonna: tutte e quattro le `INSERT` la
+ignoravano. Aggiunta, scegliendo la categoria **una volta sola e con `ORDER BY`**
+— le regole del §27, applicate mentre si ripara.
+
+### 28.4 Il risultato
+
+| | |
+| --- | --- |
+| esito | **26/26 PASS**, 20 corse consecutive tutte a 26 |
+| da utente applicativo | **PASS** |
+| suite da owner | **88 → 87**, un rientrato e nessun rosso nuovo |
+| baseline | aggiornata: il file è uscito dal registro del debito |
+
+ℹ️ La baseline ha ora la sua prima riga `# pgtap-runner: owner` (§24.5): è il
+primo `--update` da quando il meccanismo esiste.
+
+### 28.5 ⚠️ Restano 64 righe di spazzatura in `anagrafiche.pdp`
+
+Le residue `G-PDP-CH-xx` **non fanno più danno** — la chiave nuova è lunga 8 e
+non può più incontrarle — ma restano lì, e sono dati di test in una tabella di
+dominio. Vanno cancellate a mano
+([[project_no_produzione_solo_sviluppo]]: dati sporchi si correggono a mano, non
+con codice):
+
+```sql
+DELETE FROM anagrafiche.pdp WHERE pdp LIKE 'G-PDP-CH-__';   -- 64 righe, esattamente 2 caratteri
+```
+
+⚠️ Il predicato con `__` e non `%` **apposta**: le chiavi nuove sono
+`G-PDP-CH-` + 8 caratteri, e un `%` cancellerebbe anche quelle di una corsa in
+volo. **Non eseguito**: è una cancellazione su una tabella di dominio, la decide
+Tid.
+
+E vale la domanda più larga, che non è di questo cantiere: **quanti altri
+residui di corse non transazionali ci sono in giro?** Sei mesi di accumulo non
+hanno lasciato solo dei PDP.
+
+### 27.7 La seconda metà: i 15 su funzioni, decisi uno per uno (2026-08-07)
+
+Il §27.5 diceva che qui la regex non serve più. Confermato: dei 15 siti su
+funzioni, **11 erano difetti** e **4 sono innocui** — ma solo dopo aver letto la
+`RETURNS TABLE` di ciascuna, che è l'unica cosa che dice la cardinalità.
+
+⭐ **E in tre casi la riparazione ha reso l'asserzione più FORTE, non solo più
+stabile.** È il guadagno che non ci si aspetta da un cantiere di igiene.
+
+| funzione | siti | cosa si è fatto |
+| --- | --- | --- |
+| `pratiche.fn_check_prerequisiti_flusso` | 6 | **si dice QUALE prerequisito**: `WHERE prerequisito_id = …` |
+| `vendite.fn_list_ddt_da_pushare` | 3 | **si filtra sulla RIGA**: `WHERE riga_id = …` |
+| `vendite.fn_list_ordini_da_pushare` | 1 | ⭐ `SELECT DISTINCT` |
+| `vendite.fn_list_preventivi_da_pushare` | 1 | ⭐ `bool_and` su tutte le righe |
+| `fn_ricalcola_totali_fattura` (2), `fn_search_stradario`, `fn_resolve_termini_pagamento` | 4 | **innocui, e ora si sa perché** |
+
+**I tre casi in cui l'asserzione ci ha guadagnato:**
+
+* `fn_check_prerequisiti_flusso` ritorna **una riga per prerequisito**, e in
+  produzione i template ne hanno **fino a 6**. La fixture ne crea uno, quindi
+  `LIMIT 1` tornava per forza quello — ma il codice del template è **fisso, non
+  randomizzato**: bastava un prerequisito in più su `TF_A_PGTAP` perché
+  l'asserzione cambiasse soggetto in silenzio. Ora dice quale;
+* `fn_list_ordini_da_pushare` ritorna una riga per riga d'ordine, ma
+  `termine_pagamento_id` è un valore **di testata**. Con `SELECT DISTINCT` la
+  sotto-select **esplode** se le righe dello stesso ordine portassero valori
+  diversi: asserisce anche l'**invarianza**, che è quello che il nome del test
+  dichiarava e che `LIMIT 1` taceva;
+* `fn_list_preventivi_da_pushare` veniva chiamata con `p_limit := 1` — il terzo
+  parametro **è** un limite — e poi `LIMIT 1`. Si collaudava un preventivo
+  qualsiasi, scelto dalla funzione e senza ordine. Con `bool_and` su tutte le
+  righe l'asserzione diventa «**nessuno** di quelli elencati è incoerente».
+  ([[feedback_verifica_dal_percorso_reale]]: asserire la copertura, non un
+  campione.)
+
+**I quattro innocui, con la ragione scritta**: due sono controlli di esistenza
+(`SELECT 1 … LIMIT 1 IS NOT NULL`, dove il `LIMIT` non sceglie niente);
+`fn_search_stradario` ha già `p_limit := 1` dentro la chiamata;
+`fn_resolve_termini_pagamento` è un resolver a riga singola.
+
+### 27.8 Il quadro, e cosa resta davvero
+
+| | inizio | tranche 1-2 | + funzioni |
+| --- | --- | --- | --- |
+| occorrenze senza `ORDER BY` | 550 | 515 | **504** |
+| di cui ALTO | 116 | 81 | **70** |
+| **ALTO su tabelle vere** | **66** | 31 | **20** |
+| di cui già giudicati innocui | — | — | **4** |
+| **→ residuo da guardare** | | | **16** |
+
+`pratiche` a rischio ALTO: da 31 a **1**. Verificato anche stavolta: **87 rossi
+da owner, zero differenze file per file.**
+
+I 16 residui sono sparsi 1-2 per tabella, senza pattern dominante
+(`anagrafiche.pdp` 2, `config.unita_organizzative` 2, poi uno ciascuno). Non c'è
+più una tranche da fare: è lavoro a giudizio, come i 15 appena chiusi, e conviene
+farlo quando si apre il dominio che li contiene.

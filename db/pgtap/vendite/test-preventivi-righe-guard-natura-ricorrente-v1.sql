@@ -95,7 +95,7 @@ SELECT
     (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE
       ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
     (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE AND i.aliquota_iva > 0
-      LIMIT 1) AS iva_id,
+      ORDER BY i.id LIMIT 1) AS iva_id,
     (SELECT id FROM config.nature_vendita WHERE codice_interno='SERVIZIO_RICORRENTE') AS natura_ric_id,
     (SELECT id FROM config.nature_vendita WHERE codice_interno='MERCE') AS natura_merce_id;
 

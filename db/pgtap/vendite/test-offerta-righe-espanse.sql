@@ -43,7 +43,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- ============================================================
 CREATE TEMP TABLE tmp_ole_ctx AS
 SELECT
-    (SELECT id FROM catalogo.unita_misura WHERE attivo = TRUE LIMIT 1) AS uom_id
+    (SELECT id FROM catalogo.unita_misura WHERE attivo = TRUE ORDER BY id LIMIT 1) AS uom_id
 ;
 
 CREATE TEMP TABLE tmp_ole_art AS

@@ -75,7 +75,7 @@ SELECT iu.id AS istanza_id, iu.soggetto_id
  LIMIT 1;
 
 CREATE TEMP TABLE tmp_lc_sogg AS
-SELECT (SELECT id FROM anagrafiche.soggetti LIMIT 1) AS soggetto_id;
+SELECT (SELECT id FROM anagrafiche.soggetti ORDER BY id LIMIT 1) AS soggetto_id;
 
 SELECT ok(
     (SELECT emittente_id IS NOT NULL

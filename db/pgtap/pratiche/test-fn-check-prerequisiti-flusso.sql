@@ -65,7 +65,7 @@ ON CONFLICT (codice_interno) DO NOTHING;
 CREATE TEMP TABLE tmp_test_refs AS
 SELECT
   script.fn_pgtap_emittente_operatore() AS emittente_id,
-  (SELECT id FROM anagrafiche.soggetti LIMIT 1) AS soggetto_id,
+  (SELECT id FROM anagrafiche.soggetti ORDER BY id LIMIT 1) AS soggetto_id,
   (SELECT id FROM config.stati_pratiche WHERE codice_interno = 'BOZZA' AND attivo = true LIMIT 1) AS stato_bozza_id,
   (SELECT id FROM config.stati_flussi_pratiche WHERE codice_interno = 'DA_ESEGUIRE' AND attivo = true LIMIT 1) AS stato_da_eseguire_id,
   (SELECT id FROM config.stati_flussi_pratiche WHERE codice_interno = 'COMPLETATO' AND attivo = true LIMIT 1) AS stato_completato_id,
@@ -152,7 +152,13 @@ SELECT is(
               (SELECT pratica_id FROM tmp_test_pratica),
               (SELECT tfa_id FROM tmp_test_tfa)
             )
-     LIMIT 1),
+      -- ⚠️ Si dice QUALE prerequisito, invece di prenderne uno a caso: la
+      --   funzione ritorna una riga per prerequisito, e in produzione i
+      --   template ne hanno fino a 6. Oggi la fixture ne crea uno solo e il
+      --   LIMIT 1 tornava per forza quello — ma il codice del template e'
+      --   fisso, non randomizzato, quindi basta un prerequisito in piu' su
+      --   TF_A_PGTAP perche' l'asserzione cambi soggetto in silenzio.
+      WHERE prerequisito_id = (SELECT tfb_id FROM tmp_test_tfb)),
     false,
     '1. Prerequisito non soddisfatto (nessun flusso completato per template B)'
 );
@@ -181,7 +187,13 @@ SELECT is(
               (SELECT pratica_id FROM tmp_test_pratica),
               (SELECT tfa_id FROM tmp_test_tfa)
             )
-     LIMIT 1),
+      -- ⚠️ Si dice QUALE prerequisito, invece di prenderne uno a caso: la
+      --   funzione ritorna una riga per prerequisito, e in produzione i
+      --   template ne hanno fino a 6. Oggi la fixture ne crea uno solo e il
+      --   LIMIT 1 tornava per forza quello — ma il codice del template e'
+      --   fisso, non randomizzato, quindi basta un prerequisito in piu' su
+      --   TF_A_PGTAP perche' l'asserzione cambi soggetto in silenzio.
+      WHERE prerequisito_id = (SELECT tfb_id FROM tmp_test_tfb)),
     true,
     '2. Prerequisito soddisfatto (flusso B completato)'
 );
@@ -210,7 +222,13 @@ SELECT ok(
               (SELECT pratica_id FROM tmp_test_pratica),
               (SELECT tfa_id FROM tmp_test_tfa)
             )
-     LIMIT 1),
+      -- ⚠️ Si dice QUALE prerequisito, invece di prenderne uno a caso: la
+      --   funzione ritorna una riga per prerequisito, e in produzione i
+      --   template ne hanno fino a 6. Oggi la fixture ne crea uno solo e il
+      --   LIMIT 1 tornava per forza quello — ma il codice del template e'
+      --   fisso, non randomizzato, quindi basta un prerequisito in piu' su
+      --   TF_A_PGTAP perche' l'asserzione cambi soggetto in silenzio.
+      WHERE prerequisito_id = (SELECT tfb_id FROM tmp_test_tfb)),
     '4. fn_check restituisce prerequisito_id e codice nel risultato'
 );
 

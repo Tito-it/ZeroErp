@@ -71,7 +71,7 @@ ON CONFLICT (codice_interno) DO NOTHING;
 CREATE TEMP TABLE tmp_ea_refs AS
 SELECT
   script.fn_pgtap_emittente_operatore() AS emittente_id,
-  (SELECT id FROM anagrafiche.soggetti LIMIT 1) AS soggetto_id,
+  (SELECT id FROM anagrafiche.soggetti ORDER BY id LIMIT 1) AS soggetto_id,
   (SELECT id FROM config.stati_pratiche WHERE codice_interno = 'BOZZA' AND attivo = true LIMIT 1) AS stato_bozza_id,
   (SELECT id FROM config.stati_flussi_pratiche WHERE codice_interno = 'DA_ESEGUIRE' AND attivo = true LIMIT 1) AS sf_da_eseguire,
   (SELECT id FROM config.stati_flussi_pratiche WHERE codice_interno = 'IN_CORSO' AND attivo = true LIMIT 1) AS sf_in_corso,
@@ -166,7 +166,12 @@ SELECT is(
               (SELECT pratica_id FROM tmp_ea_pratica),
               (SELECT tfa_id FROM tmp_ea_tf)
             )
-     LIMIT 1),
+      -- ⚠️ Si dice QUALE prerequisito: la funzione ritorna una riga per
+      --   prerequisito, e questo file ne configura DUE coppie
+      --   (tfa->tfb con esito POSITIVO, tfc->tfd con esito NULL).
+      --   Un LIMIT 1 su una riga qualsiasi poteva leggere la coppia
+      --   sbagliata e asserire su un esito che non e' quello in prova.
+      WHERE prerequisito_id = (SELECT tfb_id FROM tmp_ea_tf)),
     false,
     '1. Prereq COMPLETATO con esito sbagliato (NEGATIVO vs POSITIVO): non soddisfatto'
 );
@@ -189,7 +194,12 @@ SELECT is(
               (SELECT pratica_id FROM tmp_ea_pratica),
               (SELECT tfa_id FROM tmp_ea_tf)
             )
-     LIMIT 1),
+      -- ⚠️ Si dice QUALE prerequisito: la funzione ritorna una riga per
+      --   prerequisito, e questo file ne configura DUE coppie
+      --   (tfa->tfb con esito POSITIVO, tfc->tfd con esito NULL).
+      --   Un LIMIT 1 su una riga qualsiasi poteva leggere la coppia
+      --   sbagliata e asserire su un esito che non e' quello in prova.
+      WHERE prerequisito_id = (SELECT tfb_id FROM tmp_ea_tf)),
     true,
     '2. Prereq COMPLETATO con esito POSITIVO: soddisfatto'
 );
@@ -213,7 +223,12 @@ SELECT is(
               (SELECT pratica_id FROM tmp_ea_pratica),
               (SELECT tfc_id FROM tmp_ea_tf)
             )
-     LIMIT 1),
+      -- ⚠️ Si dice QUALE prerequisito: la funzione ritorna una riga per
+      --   prerequisito, e questo file ne configura DUE coppie
+      --   (tfa->tfb con esito POSITIVO, tfc->tfd con esito NULL).
+      --   Un LIMIT 1 su una riga qualsiasi poteva leggere la coppia
+      --   sbagliata e asserire su un esito che non e' quello in prova.
+      WHERE prerequisito_id = (SELECT tfd_id FROM tmp_ea_tf)),
     true,
     '3. Retro-compat: esito_richiesto NULL soddisfatto con qualsiasi esito'
 );

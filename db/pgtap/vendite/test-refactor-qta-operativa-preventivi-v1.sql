@@ -135,7 +135,7 @@ SELECT
       ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
     -- iva > 0: il trigger z90 ricalcola_totali chiama fn_get_aliquota_iva(iva_id)
     (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE AND i.aliquota_iva > 0
-      LIMIT 1) AS iva_id;
+      ORDER BY i.id LIMIT 1) AS iva_id;
 
 INSERT INTO vendite.preventivi (
     numero, rev,

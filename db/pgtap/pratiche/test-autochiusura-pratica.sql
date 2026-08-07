@@ -73,7 +73,7 @@ VALUES ('NORMALE','NORMALE','Normale',20,true) ON CONFLICT (codice_interno) DO N
 CREATE TEMP TABLE tmp_ac_refs AS
 SELECT
   script.fn_pgtap_emittente_operatore() AS emittente_id,
-  (SELECT id FROM anagrafiche.soggetti LIMIT 1) AS soggetto_id,
+  (SELECT id FROM anagrafiche.soggetti ORDER BY id LIMIT 1) AS soggetto_id,
   (SELECT id FROM config.stati_pratiche WHERE codice_interno='APERTA') AS st_aperta,
   (SELECT id FROM config.stati_pratiche WHERE codice_interno='SOSPESA') AS st_sospesa,
   (SELECT id FROM config.stati_pratiche WHERE codice_interno='CHIUSA') AS st_chiusa,

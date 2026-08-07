@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_pgtap_emittente_sr_operatore() — terzo helper di contesto pgTAP
+#   Brief: docs/it/dev/work-in-progress/brief-db-pgtap-runner-rls-baseline.md §26
+#   Compagne: fn_pgtap_set_contesto_operatore (20260805-27),
+#             fn_pgtap_emittente_operatore    (20260805-38)
+#
+# ── Perche' serve ───────────────────────────────────────────────────────
+#   Le tabelle documento usano due convenzioni diverse per l'emittente:
+#     * emittente_fiscale_id       -> preventivi, ordini, ddt, resi
+#     * emittente_soggetto_ruolo_id -> commesse, fatture, fatturazione_lotti
+#   La compagna 20260805-38 risponde alla prima. Le policy che passano per
+#   script.fn_scope_ef_whitelist_via_sr vogliono la seconda, e le fixture
+#   finivano per ripetere ovunque la stessa sotto-select di traduzione.
+#
+#   Misurato il 2026-08-07: tre fixture di `vendite` inserivano in
+#   vendite.commesse SENZA emittente. Con la RLS attiva la policy
+#   rls_commesse_ef_whitelist le respinge — e ha ragione: l'unico scrittore
+#   reale, vendite.fn_get_or_create_commessa, l'emittente lo risolve SEMPRE
+#   (COALESCE fra il parametro e il fallback dal billing account), e infatti
+#   su 58 commesse in essere zero hanno la colonna a NULL.
+#
+# ── ⚠️ Non e' una scorciatoia per far passare la RLS ─────────────────────
+#   Rende scrivibile cio' che l'applicazione scriverebbe, cioe' un documento
+#   dell'emittente di chi agisce. Una fixture che ha bisogno di un emittente
+#   DIVERSO sta collaudando la separazione fra emittenti: quella non si
+#   aggira con questo helper, si costruisce cambiando il contesto operatore.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260807-10-create-fn-pgtap-emittente-sr-operatore-mctit.yaml
+
+  - changeSet:
+      id: 20260807-10-create-fn-pgtap-emittente-sr-operatore
+      author: mctit
+      failOnError: true
+      comment: >
+        Helper pgTAP: il soggetto_ruolo dell'emittente su cui l'operatore di
+        contesto puo' davvero scrivere. Traduce emittente_fiscale_id ->
+        soggetto_ruolo_id per le tabelle a convenzione SR (commesse, fatture),
+        cosi' le fixture non ripetono la sotto-select.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_pgtap_emittente_operatore';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_pgtap_emittente_sr_operatore()
+              RETURNS bigint
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  -- Scopo: dare a una fixture pgTAP il soggetto_ruolo
+                  --   dell'emittente su cui l'operatore corrente puo'
+                  --   davvero scrivere, per le tabelle che usano la
+                  --   convenzione SR invece di emittente_fiscale_id.
+                  --   Brief: brief-db-pgtap-runner-rls-baseline §26.
+                  -- Uso, al posto di lasciare la colonna a NULL:
+                  --   emittente_soggetto_ruolo_id =
+                  --     script.fn_pgtap_emittente_sr_operatore()
+                  --
+                  -- Si appoggia alla compagna invece di riscriverne la
+                  -- scelta: la logica di «quale emittente» sta in un posto
+                  -- solo, qui c'e' solo la traduzione 1:1 verso il
+                  -- soggetto_ruolo, la stessa che fa
+                  -- script.fn_scope_ef_whitelist_via_sr in senso inverso.
+                  SELECT ef.soggetto_ruolo_id
+                    FROM anagrafiche.emittenti_fiscali ef
+                   WHERE ef.id = script.fn_pgtap_emittente_operatore();
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_pgtap_emittente_sr_operatore()
+              IS 'Helper pgTAP: soggetto_ruolo dell''emittente dell''operatore di contesto, per le tabelle a convenzione SR (vendite.commesse, vendite.fatture). Compagna di script.fn_pgtap_emittente_operatore, che risponde per la convenzione emittente_fiscale_id. Rende scrivibile cio'' che l''applicazione scriverebbe: NON e'' una scorciatoia per aggirare la RLS, e una fixture che ha bisogno di un emittente diverso deve cambiare contesto operatore. Brief: brief-db-pgtap-runner-rls-baseline.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_pgtap_emittente_sr_operatore();

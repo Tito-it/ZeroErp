@@ -1,5 +1,13 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture deve creare una commessa sull'emittente 44 (EMI-TEST), che per
+--   progetto resta SENZA operatore assegnato — ed e' il soggetto del test:
+--   dimostrare che la dashboard non mescola i due emittenti. Nessun operatore
+--   puo' costruire quel dato, perche' la policy rls_commesse_ef_whitelist
+--   glielo vieta ed e' esattamente cio' che deve fare.
+--   ⚠️ Seconda categoria ammessa per il marcatore (brief §26): non DDL, ma
+--   «la fixture costruisce un mondo che l'operatore non deve vedere».
 -- pgTAP test per Zero ERP
 --
 -- Test: viste dashboard fatturazione (20260703-51..57, agg. 20260707-03/06

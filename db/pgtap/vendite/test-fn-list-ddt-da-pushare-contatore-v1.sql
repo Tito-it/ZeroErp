@@ -259,19 +259,27 @@ SELECT vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM
 -- ============================================================
 -- ASSERZIONI
 -- ============================================================
+-- ⚠️ Si filtra sulla RIGA, non si prende la prima che capita: la funzione
+--   ritorna una riga per riga-DDT (la RETURNS TABLE ha riga_id), e `quantita`
+--   e `qta_operativa` sono valori DI RIGA. Oggi mk_partita() ne crea una sola e
+--   il LIMIT 1 tornava per forza quella, ma il giorno in cui una partita avesse
+--   due righe l'asserzione cambierebbe soggetto senza dirlo.
 -- 1) A: nessun reso -> proietta 10
 SELECT is(
-  (SELECT quantita FROM vendite.fn_list_ddt_da_pushare(NULL,NULL,NULL,(SELECT ddt_id FROM tmp_a)) LIMIT 1),
+  (SELECT quantita FROM vendite.fn_list_ddt_da_pushare(NULL,NULL,NULL,(SELECT ddt_id FROM tmp_a))
+    WHERE riga_id = (SELECT ddt_riga_id FROM tmp_a)),
   10::numeric, '1) A senza reso: lister proietta la quantita piena (10)');
 
 -- 2) B: reso 3 -> proietta 7 (IL FIX)
 SELECT is(
-  (SELECT quantita FROM vendite.fn_list_ddt_da_pushare(NULL,NULL,NULL,(SELECT ddt_id FROM tmp_b)) LIMIT 1),
+  (SELECT quantita FROM vendite.fn_list_ddt_da_pushare(NULL,NULL,NULL,(SELECT ddt_id FROM tmp_b))
+    WHERE riga_id = (SELECT ddt_riga_id FROM tmp_b)),
   7::numeric, '2) B reso 3: lister proietta la DIFFERENZA (7), non dr.quantita (il fix)');
 
 -- 3) B: qta_operativa scalata a 7
 SELECT is(
-  (SELECT qta_operativa FROM vendite.fn_list_ddt_da_pushare(NULL,NULL,NULL,(SELECT ddt_id FROM tmp_b)) LIMIT 1),
+  (SELECT qta_operativa FROM vendite.fn_list_ddt_da_pushare(NULL,NULL,NULL,(SELECT ddt_id FROM tmp_b))
+    WHERE riga_id = (SELECT ddt_riga_id FROM tmp_b)),
   7::numeric, '3) B: qta_operativa scalata proporzionalmente (7)');
 
 -- 4) C: fatturato 7 -> riga DDT EMESSA -> esclusa

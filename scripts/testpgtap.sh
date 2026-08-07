@@ -32,11 +32,25 @@
 #
 # ECCEZIONE PER FILE — marcatore `-- pgtap-runner: owner`
 #
-# Una manciata di test richiede l'owner per natura: fanno DDL (ALTER TABLE …
-# FORCE ROW LEVEL SECURITY, CREATE TABLE dbops.…) che il ruolo applicativo non
-# puo' fare e non deve poter fare. Non sono difetti: nei test RLS e' proprio il
-# FORCE a rendere l'owner soggetto alle policy, e l'identita' la simulano le GUC
-# `app.*`, non il ruolo di connessione.
+# Due categorie di test, e solo due, hanno diritto all'eccezione.
+#
+#   1. **Fanno DDL** (ALTER TABLE … FORCE ROW LEVEL SECURITY, CREATE TABLE
+#      dbops.…) che il ruolo applicativo non puo' fare e non deve poter fare.
+#      Non sono difetti: nei test RLS e' proprio il FORCE a rendere l'owner
+#      soggetto alle policy, e l'identita' la simulano le GUC `app.*`, non il
+#      ruolo di connessione.
+#
+#   2. **La fixture costruisce un mondo che l'operatore non deve vedere.**
+#      Un test sulla separazione fra emittenti deve creare i documenti
+#      dell'emittente ALTRUI: nessun operatore puo' farlo, ed e' esattamente
+#      cio' che la policy deve impedirgli. Stessa natura della categoria 1 —
+#      il test allestisce la scena e poi la osserva sotto restrizione.
+#      (Aggiunta il 2026-08-07, brief §26.)
+#
+# ⚠️ Quello che NON e' un'eccezione: un `permesso negato` o una violazione di
+# policy che l'applicazione non incontrerebbe mai. Li' il difetto e' nella
+# fixture — scrive dove l'applicazione non scrive — oppure nella policy, e il
+# marcatore lo nasconderebbe invece di risolverlo.
 #
 # Quei file dichiarano in intestazione, entro le prime 80 righe:
 #

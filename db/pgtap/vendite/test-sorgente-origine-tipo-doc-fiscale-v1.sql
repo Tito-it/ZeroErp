@@ -145,12 +145,16 @@ SELECT ok(
 -- 5) tipo_doc_fiscale_id coerente con config.sorgenti[PREVENTIVO]
 -- ============================================================
 -- Verifica che il valore restituito dalla fn_list coincida con config.sorgenti.
+-- ⚠️ bool_and su TUTTE le righe, non `p_limit := 1` + `LIMIT 1` su una a caso.
+--   Il terzo parametro della funzione E' un limite: chiedendone una sola si
+--   collaudava un preventivo qualsiasi, scelto dalla funzione e senza ordine.
+--   Cosi' l'asserzione diventa «nessuno di quelli elencati e' incoerente»,
+--   che e' quello che il nome dichiara. NULL (nessuna riga) resta ammesso.
 SELECT ok(
   (
-    SELECT p.tipo_doc_fiscale_id = r.expected_tipo_doc_id
-    FROM vendite.fn_list_preventivi_da_pushare(NULL, NULL, 1) p,
+    SELECT bool_and(p.tipo_doc_fiscale_id = r.expected_tipo_doc_id)
+    FROM vendite.fn_list_preventivi_da_pushare(NULL, NULL, NULL) p,
          tmp_refs_sot r
-    LIMIT 1
   )
   IS NOT FALSE,  -- NULL (nessuna riga) o TRUE sono entrambi ok
   'tipo_doc_fiscale_id coerente con config.sorgenti[PREVENTIVO]'
