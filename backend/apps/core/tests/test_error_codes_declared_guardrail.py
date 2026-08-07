@@ -21,7 +21,8 @@
 #        due registri si sfilano per vie diverse e servono entrambi.
 #
 #        Se questo test fallisce su un codice NUOVO: dichiaralo in
-#        `error_policies.py` (e chiedi al team DB il seed a catalogo, altrimenti
+#        `error_policies_generated.py` dandogli la sua CLASSE (e chiedi al team
+#        DB il seed a catalogo con la stessa classe, altrimenti
 #        il log lo degrada a `MESSAGGIO_NON_DEFINITO`), oppure correggi il punto
 #        di chiamata se il codice e' un residuo. L'ALLOWLIST e' per i casi
 #        deliberati, con motivazione scritta.
@@ -39,7 +40,11 @@ from unittest import TestCase
 # Radice backend: .../backend/apps/core/tests/<file> -> parents[3] = backend.
 _BACKEND = Path(__file__).resolve().parents[3]
 _APPS = _BACKEND / "apps"
-_POLICIES = _APPS / "core" / "services" / "error_policies.py"
+# Dal 2026-08-07 i codici dichiarati non stanno piu' in `error_policies.py` (che
+# ora contiene le REGOLE: classe -> status, ui_action) ma nella mappa
+# `codice -> classe` del modulo destinato a essere generato dal DB. E' quello
+# l'elenco di cio' che il backend dichiara di conoscere.
+_POLICIES = _APPS / "core" / "services" / "error_policies_generated.py"
 
 # Keyword che veicolano un codice errore verso ErrorManager / ServiceError.
 _CODE_KWARGS = ("code", "error_code")
@@ -49,12 +54,12 @@ _CODE_KWARGS = ("code", "error_code")
 _ALLOWLIST: dict[str, str] = {}
 
 
-# Scopo: raccoglie i codici dichiarati come chiave del registro `_POLICIES`.
+# Scopo: raccoglie i codici dichiarati come chiave di `CLASSE_PER_CODICE`.
 #        Lettura testuale e non import del modulo: il guardrail deve poter
 #        girare anche se Django non e' configurato.
 def _codici_dichiarati() -> set[str]:
     testo = _POLICIES.read_text(encoding="utf-8")
-    return set(re.findall(r'"(E_[A-Z0-9_]+)":\s*ErrorPolicy\(', testo))
+    return set(re.findall(r'"(E_[A-Z0-9_]+)":\s*"[A-Z_]+",', testo))
 
 
 # Scopo: costanti di modulo che valorizzano un codice (`E_GIRO_PAYLOAD =
@@ -123,9 +128,10 @@ class ErrorCodesDeclaredGuardrail(TestCase):
             righe = "\n".join(f"  - {c}  ({p})" for c, p in sorted(mancanti.items()))
             self.fail(
                 f"{len(mancanti)} codici errore usati ma non dichiarati in "
-                f"error_policies.py:\n{righe}\n\n"
-                "Dichiarali (e chiedi al team DB il seed in config.messaggi_errore), "
-                "oppure correggi il punto di chiamata se sono residui."
+                f"error_policies_generated.py:\n{righe}\n\n"
+                "Dichiarali con la loro classe (e chiedi al team DB il seed in "
+                "config.codici_errore + config.messaggi_errore), oppure correggi "
+                "il punto di chiamata se sono residui."
             )
 
     # Scopo: l'allowlist non deve diventare la discarica del guardrail — ogni
