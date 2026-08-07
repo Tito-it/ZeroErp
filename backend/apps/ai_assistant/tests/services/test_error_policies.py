@@ -32,6 +32,7 @@
 import unittest
 
 from apps.core.services.error_policies import ErrorPolicyRegistry
+from apps.core.services.error_policies_generated import CODICI_RITIRATI
 
 
 class TestAIErrorPolicies(unittest.TestCase):
@@ -93,7 +94,19 @@ class TestAIErrorPolicies(unittest.TestCase):
 
     # Scopo: `E_AI_CONFIRMATION_REQUIRED` non deve tornare. La conferma di un
     #        tool in scrittura si esprime con un 200 e `requires_confirmation`
-    #        nel payload, non con un errore HTTP: se qualcuno ridichiarasse quel
-    #        codice, questo test lo dice invece di lasciar tornare il 428.
+    #        nel payload, non con un errore HTTP: se qualcuno lo rimettesse in
+    #        circolo, questo test lo dice invece di lasciar tornare il 428.
+    #
+    #        ⚠️ LA DOMANDA E' CAMBIATA IL 2026-08-07, e il test lo aveva detto
+    #        diventando rosso. Chiedeva `has(...) is False` — «non e' registrato»
+    #        — e andava bene finche' il registro era scritto a mano: bastava non
+    #        scriverci il codice. Ora il registro e' GENERATO dal catalogo, e il
+    #        catalogo contiene TUTTI i codici, ritirati compresi (devono
+    #        continuare a risolvere per il diario). Quindi `has()` oggi risponde
+    #        «lo conosco», non «e' buono», ed e' vero anche per un codice morto.
+    #
+    #        La domanda giusta e' la stessa intenzione, detta piu' forte: **e'
+    #        ritirato a catalogo?** Non «l'abbiamo dimenticato», ma «l'abbiamo
+    #        deciso», e la decisione sta in un dato invece che in un'assenza.
     def test_conferma_non_e_un_errore_http(self):
-        self.assertFalse(ErrorPolicyRegistry.has("E_AI_CONFIRMATION_REQUIRED"))
+        self.assertIn("E_AI_CONFIRMATION_REQUIRED", CODICI_RITIRATI)

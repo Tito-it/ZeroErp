@@ -27,6 +27,12 @@
 #        di chiamata se il codice e' un residuo. L'ALLOWLIST e' per i casi
 #        deliberati, con motivazione scritta.
 #
+#        DAL 2026-08-07 HA UN SECONDO VERSO. Il modulo generato porta anche i
+#        codici RITIRATI a catalogo (`CODICI_RITIRATI`), che prima il backend non
+#        poteva conoscere: quindi ora si controlla anche che nessun punto di
+#        chiamata ne usi uno. Un codice ritirato risolve ancora, ma solo perche'
+#        il diario deve restare leggibile — non perche' sia ancora buono.
+#
 #        Gira SENZA database (SimpleTestCase + AST): compatibile CI.
 # ------------------------------------------------------------
 
@@ -57,9 +63,20 @@ _ALLOWLIST: dict[str, str] = {}
 # Scopo: raccoglie i codici dichiarati come chiave di `CLASSE_PER_CODICE`.
 #        Lettura testuale e non import del modulo: il guardrail deve poter
 #        girare anche se Django non e' configurato.
+#        ⚠️ E non e' solo una preferenza: `error_policies_generated` sta dentro
+#        `apps.core.services`, e importarlo eseguirebbe l'`__init__` del
+#        pacchetto — che tira dentro il translator, quindi le settings Django.
 def _codici_dichiarati() -> set[str]:
     testo = _POLICIES.read_text(encoding="utf-8")
     return set(re.findall(r'"(E_[A-Z0-9_]+)":\s*"[A-Z_]+",', testo))
+
+
+# Scopo: i codici che il catalogo ha RITIRATO, dalla coda del modulo generato.
+#        Stessa lettura testuale, stessa ragione.
+def _codici_ritirati() -> set[str]:
+    testo = _POLICIES.read_text(encoding="utf-8")
+    _, _, coda = testo.partition("CODICI_RITIRATI")
+    return set(re.findall(r'"([A-Z0-9_]+)",', coda))
 
 
 # Scopo: costanti di modulo che valorizzano un codice (`E_GIRO_PAYLOAD =
@@ -132,6 +149,38 @@ class ErrorCodesDeclaredGuardrail(TestCase):
                 "Dichiarali con la loro classe (e chiedi al team DB il seed in "
                 "config.codici_errore + config.messaggi_errore), oppure correggi "
                 "il punto di chiamata se sono residui."
+            )
+
+    # Scopo: ⭐ IL VERSO NUOVO (2026-08-07, dopo la prima generazione). Un codice
+    #        che il catalogo ha RITIRATO non deve comparire in un punto di
+    #        chiamata: non e' un errore che «funziona lo stesso», e' un errore
+    #        che risolve ancora **solo perche' il diario deve restare leggibile**.
+    #        Chi lo usa oggi sta scrivendo righe nuove sotto un nome che il team
+    #        DB ha dichiarato superato — e le ritrovera' il giorno in cui quel
+    #        nome sparira' davvero.
+    #
+    #        ⚠️ Questo verso e' nato APPENA e' diventato calcolabile: prima del
+    #        B-5 il backend non sapeva quali codici fossero ritirati, perche'
+    #        `obsoleto_dal` stava lato DB e nel registro non arrivava. Misurato
+    #        alla nascita: **0 su 213** codici usati. Nasce in pari, e da qui puo'
+    #        solo restare tale.
+    def test_nessun_codice_usato_e_ritirato(self):
+        ritirati = _codici_ritirati()
+        self.assertGreater(len(ritirati), 50, "estrazione dei ritirati fallita: misura sospetta")
+
+        usati_ritirati = {
+            codice: posizione
+            for codice, posizione in _codici_usati().items()
+            if codice in ritirati and codice not in _ALLOWLIST
+        }
+        if usati_ritirati:
+            righe = "\n".join(f"  - {c}  ({p})" for c, p in sorted(usati_ritirati.items()))
+            self.fail(
+                f"{len(usati_ritirati)} codici errore RITIRATI a catalogo sono "
+                f"usati da un punto di chiamata:\n{righe}\n\n"
+                "Usare il codice che li ha sostituiti (o chiedere al team DB di "
+                "riattivarne uno, se il ritiro era sbagliato). Un codice ritirato "
+                "risolve ancora solo per non rompere il diario."
             )
 
     # Scopo: l'allowlist non deve diventare la discarica del guardrail — ogni

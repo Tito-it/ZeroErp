@@ -3,24 +3,27 @@
 **Chi:** team BE (`dev/backend-tid`).
 **Guida generale e ragioni di ogni scelta:** [brief-db-be-classe-codici-errore](brief-db-be-classe-codici-errore.md) — 18 decisioni, le misure, i perché. **Questo file non le ripete: le esegue.**
 **Piano gemello:** [piano-db-classe-codici-errore](piano-db-classe-codici-errore.md).
-**Stato:** 🟢 **B-1, B-2, B-3, B-4 FATTI** (2026-08-07) — i quattro passi senza prerequisiti DB, poi **riallineati al catalogo** la sera stessa (§8). 🔴 **B-5, B-6, B-7 restano al cancello D-9.**
+**Stato:** 🟢 **B-1 → B-6 FATTI** (2026-08-07). Il D-9 è arrivato in serata e il generatore è in servizio: `error_policies_generated.py` **non si scrive più a mano** (§9). 🟡 Resta il B-7, per metà (§9.4).
 
 > **Verifica dell'equivalenza, prima di tutto il resto.** I **656** codici che
 > restano una risposta HTTP risolvono **identici** a prima — stesso status,
 > stessa `ui_action`, stesso messaggio — confrontando `resolve()` di prima del
 > cantiere e di adesso uno per uno; i due ripieghi rispondono come prima. Suite
-> Django: **3598 test verdi**, compreso il cancello del terzo lato contro il DB
-> vero (`ZEROERP_TEST_DB_E2E=1`).
+> Django: **3601 test verdi**, compreso il cancello del terzo lato e il controllo
+> di divergenza, entrambi contro il DB vero (`ZEROERP_TEST_DB_E2E=1`).
 >
 > **Le sole differenze sono volute, e ognuna è un difetto che se ne va:**
 >
 > | Codice | Prima | Ora |
 > |---|---|---|
 > | `PREV_STATO_NON_MODIFICABILE` | 409 | **non esiste più** — policy orfana (B-1) |
-> | `W_TXID_NOT_REGISTERED` + gemello `E_` | **500** col messaggio soppresso | **solleva** — è un avviso, non un guasto (B-2) |
+> | `W_TXID_NOT_REGISTERED` | **500** col messaggio soppresso | **solleva** — è un avviso, non un guasto (B-2) |
+> | i 2 gemelli col prefisso `E_` | risolvevano | **non esistono più** — non erano a catalogo (§9.3) |
 >
-> ⚠️ **Cinque cose sono emerse facendolo**: §6 (tre, scrivendo il B-3) e §8 (due,
-> dal riallineamento al catalogo — di cui una **toglie** un'eccezione al disegno).
+> ⚠️ **Sette cose sono emerse facendolo**: §6 (tre, scrivendo il B-3), §8 (due,
+> dal riallineamento al catalogo — di cui una **toglie** un'eccezione al disegno)
+> e §9 (due, generando davvero: un generatore che si mura fuori, e `has()` che
+> cambia significato).
 
 ---
 
@@ -36,8 +39,8 @@ comodo, non un vincolo tecnico**:
 | **B-2** `classe` senza status ⇒ eccezione | — | ✅ **sì** |
 | **B-3** riorganizzare in 4 moduli | — (parziale, vedi sotto) | ✅ **sì, in gran parte** |
 | **B-4** la mappa classe → HTTP, 8 righe | il **vocabolario**, già deciso nel brief §4 | ✅ **sì** |
-| **B-5** il **generatore** | 🔴 `vw_codici_errore_identita` popolata — **D-9** | ❌ no |
-| **B-6** il controllo di divergenza in CI | B-5 | ❌ no |
+| **B-5** il **generatore** | `vw_codici_errore_identita` popolata — **D-9** | ✅ **arrivato in serata** |
+| **B-6** il controllo di divergenza in CI | B-5 | ✅ **sì, subito dopo** |
 
 **Quattro passi su sei non aspettano niente.** Quando il BE riparte può fare
 B-1..B-4 anche se il DB non ha ancora consegnato: sono tutte cose che vivono
@@ -56,19 +59,21 @@ consegna. Prima di quello il generatore non ha da cui generare.
 | **B-2** | `classe` senza status ⇒ **eccezione, non ripiego** | — | poche righe + test | ✅ 2026-08-07 |
 | **B-3** | Riorganizzare `error_policies.py` in **4 moduli** | — | il grosso del lavoro a mano | ✅ 2026-08-07 |
 | **B-4** | La mappa **classe → HTTP** (8 righe) + derivazione dello status | B-3 | piccolo | ✅ 2026-08-07 |
-| **B-5** | Il **generatore** di `error_policies_generated.py` | 🔴 DB **D-9** | medio | 🔴 al cancello |
-| **B-6** | Il **controllo di divergenza** in CI | B-5 | piccolo | 🔴 |
-| **B-7** | La regola «niente nuovi codici generici» | B-6 | coda | 🔴 |
+| **B-5** | Il **generatore** di `error_policies_generated.py` | ✅ DB **D-9** consegnato | medio | ✅ 2026-08-07 |
+| **B-6** | Il **controllo di divergenza** in CI | B-5 | piccolo | ✅ 2026-08-07 |
+| **B-7** | La regola «niente nuovi codici generici» | B-6 | coda | 🟡 metà fatta (§9.4) |
 
 **Cosa esiste ora, in quattro file** (`backend/apps/core/services/`):
 
 | File | Righe | Voci | Chi lo scriverà |
 |---|---|---|---|
-| `error_policies_generated.py` | 1379 | **658** `codice → classe` | il generatore, dal B-5 |
+| `error_policies_generated.py` | 1086 | **689** `codice → classe` (79 ritirate) | ⛔ **il generatore** |
 | `error_policies.py` | 255 | le **10 + 9 + 9** righe di regole + la logica | a mano, quasi mai |
 | `error_ui_overrides.py` | 514 | **176** `ui_action` fuori default | a mano |
-| `error_messages_fallback.py` | 683 | **658** messaggi senza segnaposto | a mano, per ora |
-| `apps/core/tests/services/test_error_policies_classi.py` | 309 | **17 test**, uno per ogni modo nuovo di rompersi | — |
+| `error_messages_fallback.py` | 703 | i messaggi senza segnaposto (solo i vivi) | a mano, per ora |
+| `management/commands/genera_error_policies.py` | 211 | il generatore + `--check` | a mano |
+| `tests/services/test_error_policies_classi.py` | 331 | **17 test** sui modi nuovi di rompersi | — |
+| `tests/test_error_policies_divergenza_db.py` | 117 | **2 test**: il B-6 | — |
 
 ⚠️ **Le righe di regole sono 10 + 9 + 9 e non 8 + 7 + 7** come dice il §2 qui
 sotto: il vocabolario è andato a dieci valori (§8.1) e con lui è **sparita** la
@@ -598,3 +603,138 @@ senza che un rosso lo dica*.
   evidenziare che nel 90% dei casi non esiste. ⚠️ **Non l'ho cambiata**: è una
   decisione del cantiere precedente su un codice nominato da 177 punti, e la
   chiamata è di Tid.
+
+---
+
+## 9. ⭐ B-5 e B-6 — il generatore, e la prima generazione vera (2026-08-07 sera)
+
+Il DB ha consegnato il **D-9**: `config.vw_codici_errore_identita` esiste, è
+popolata (689 righe, 79 ritirate, 203 note) e ordinata.
+
+### 9.1 Il generatore
+
+[`manage.py genera_error_policies`](../../../../backend/apps/core/management/commands/genera_error_policies.py)
+— management command e non script sciolto, per due ragioni: prende settings e
+connessione da Django senza reinventarle, ed è **importabile**, quindi il
+controllo di divergenza (B-6) può eseguire *la stessa funzione di rendering*
+invece di riscriverla. Un presidio che confronta con una seconda
+implementazione presidia le due implementazioni, non il fatto.
+
+```bash
+./manage-env.sh genera_error_policies           # riscrive il modulo
+./manage-env.sh genera_error_policies --check   # non scrive; esce 1 se diverge
+```
+
+⚠️ **La sorgente è la vista di identità e va detto perché**, perché l'errore è
+attraente: `config.vw_codici_errore` ha una riga per *(codice, lingua)* ed è un
+`LEFT JOIN`, quindi un codice senza messaggio ci compare con `lingua IS NULL`.
+Filtrarla per lingua non darebbe un errore: **toglierebbe righe in silenzio**.
+
+### 9.2 🔴 Il difetto trovato eseguendolo — un generatore può murarsi fuori
+
+Alla prima esecuzione il renderer ha prodotto `frozenset("A", "B", …)` invece di
+`frozenset({…})`: 79 argomenti a una funzione che ne accetta uno.
+
+Il file non si importava più — e siccome è `apps.core.services` a importarlo,
+**Django non partiva, quindi non partiva nemmeno il generatore.** Per rientrare
+serviva ripristinare il file a mano. È una classe di guasto che vale la pena
+avere in testa: *uno strumento che scrive un file necessario alla propria
+esecuzione può chiudersi fuori dalla stanza*.
+
+**Rimedio, ed è più forte di un `compile()`:** `verifica_prodotto` **esegue** il
+testo reso in uno spazio dei nomi isolato e controlla che i due dizionari ci
+siano coi conti giusti, **prima** di scrivere. Un `compile()` non sarebbe
+bastato: quello era un errore di *runtime*, non di sintassi.
+
+### 9.3 Cosa è cambiato con la prima generazione vera
+
+| | a mano | generato |
+|---|---:|---:|
+| voci | 658 | **689** |
+| di cui ritirate | — | **79** |
+| **classi cambiate** | | **0** |
+
+⭐ **Zero classi cambiate**: l'allineamento al catalogo dell'§8 era già completo,
+e la generazione lo ha confermato invece di scoprirlo.
+
+Le differenze sono tutte di **perimetro**, e ognuna era prevista:
+
+* **+33 dal catalogo** — 30 ritirati e i 3 «progettati mai cablati» del push
+  preventivo, che ora hanno anche il loro messaggio di ripiego (scritto adesso,
+  perché il giorno in cui qualcuno li caglierà non sia anche il giorno in cui si
+  scopre che non hanno una frase);
+* **−2**: `E_MESSAGGIO_NON_DEFINITO` ed `E_W_TXID_NOT_REGISTERED`, i gemelli col
+  prefisso `E_` di codici che a catalogo stanno senza. Erano irraggiungibili — il
+  codice arriva dal campo strutturato col nome esatto del catalogo, e il ripiego
+  a regex cerca `\bE_[A-Z]…`, quindi il nome senza prefisso da lì non passa
+  comunque e quello con prefisso non lo scrive nessuno.
+
+⛔ **E `W_TXID_NOT_REGISTERED` resta `W_`.** La `W` non è un prefisso sbagliato da
+uniformare: è un'**altra famiglia** — si scrive nel diario, non si solleva — e la
+regola di naming è `^[EW]_` proprio per questo. Il divieto è ora scritto in due
+punti del codice, perché è la «correzione» che qualcuno tenterà.
+
+### 9.4 ⚠️ `has()` ha cambiato significato, e l'ha detto un test diventando rosso
+
+`test_conferma_non_e_un_errore_http` chiedeva `has("E_AI_CONFIRMATION_REQUIRED")
+is False` — «non è registrato». Andava bene finché il registro era scritto a
+mano: bastava non scriverci il codice.
+
+Ora il registro è **generato dal catalogo**, e il catalogo contiene *tutti* i
+codici, ritirati compresi. Quindi:
+
+> **`has()` oggi risponde «lo conosco», non «è buono».**
+
+La domanda «questo codice si può usare?» si fa su **`CODICI_RITIRATI`** — ed è la
+stessa intenzione detta più forte: non «l'abbiamo dimenticato», ma «l'abbiamo
+deciso», con la decisione in un dato invece che in un'assenza.
+
+⭐ **Da lì è nato il verso nuovo del guardrail dei punti di chiamata** (metà del
+B-7, quella che si poteva chiudere): *nessun punto di chiamata deve nominare un
+codice ritirato*. È diventato calcolabile solo adesso — prima del B-5 il backend
+non sapeva quali codici fossero ritirati, perché `obsoleto_dal` viveva solo lato
+DB. **Misurato alla nascita: 0 su 213 codici usati.** Nasce in pari.
+
+### 9.5 I presidi, e cosa misura ciascuno
+
+| Presidio | Confronta | DB? |
+|---|---|---|
+| `test_error_policies_divergenza_db` (**B-6**) | il **testo** del modulo ↔ la vista, adesso | sì (opt-in CI) |
+| `test_error_codes_db_policy_guardrail` | i codici che le **funzioni vive** sollevano ↔ il registro | sì (opt-in CI) |
+| `test_nessuna_classe_diverge_dal_catalogo` | le classi ↔ il **CSV di seed** | no |
+| `test_il_vocabolario_non_diverge_dal_catalogo` | le 10 classi ↔ `classi_errore.csv` | no |
+| `test_error_codes_declared_guardrail` | i **punti di chiamata** ↔ registro **e ritirati** | no |
+
+⚠️ **Il B-6 non sostituisce il cancello del terzo lato**, e il piano diceva
+«cambia mestiere»: sono **due mestieri**. Il B-6 confronta il registro col
+*catalogo*; il terzo lato confronta le *funzioni vive* col registro. Un codice
+sollevato da una funzione e mai messo a catalogo passerebbe il primo e verrebbe
+preso dal secondo.
+
+✅ **Il rosso è stato provato, non supposto**: cambiando a mano una classe nel
+modulo, il test fallisce con il diff esatto e `--check` esce 1.
+
+### 9.6 ⭐ Il collaudo non l'ho scritto io: è arrivato da solo, due ore dopo
+
+A generazione fatta e suite verde, i due presidi sono diventati **rossi insieme**.
+Non per una mia modifica: il team DB aveva eseguito la rinomina
+`MESSAGGIO_NON_DEFINITO` → `E_MESSAGGIO_NON_DEFINITO` — l'ultima riga del registro
+dei codici fuori convenzione, che con quella va a **zero** e si droppa.
+
+I due l'hanno vista **da due lati diversi, e nessuno dei due da solo bastava**:
+
+| Presidio | Cosa ha detto |
+|---|---|
+| **B-6** divergenza | il diff esatto: una riga in meno col nome vecchio, una in più col nuovo |
+| **terzo lato** | `script.fn_log_error_only` nomina `E_MESSAGGIO_NON_DEFINITO`, che non ha una policy |
+
+**Il rimedio è stato una riga di comando** — `genera_error_policies` — più **una
+riga a mano**: il messaggio di ripiego, che vive nel modulo `fallback` e che il
+generatore non tocca.
+
+> È la prova che valeva più del test che l'aveva anticipata: prima del B-5 quella
+> rinomina sarebbe passata **silenziosa**, e `fn_log_error_only` — il *ripiego del
+> ripiego*, quello che parla quando manca un messaggio a catalogo — avrebbe
+> cominciato a nominare un codice che il backend non conosceva. Si sarebbe visto
+> il giorno in cui fosse mancato un messaggio: **il peggiore per scoprire un
+> guasto**, ed è esattamente il rischio che il brief §7.2 aveva scritto.

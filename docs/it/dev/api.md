@@ -789,10 +789,31 @@ senza che nessuno lo scriva.
 
 | Modulo | Cosa | Chi lo scrive |
 | --- | --- | --- |
-| `error_policies_generated.py` | `codice → classe`, 658 voci | **destinato a essere generato** dal DB (oggi ancora a mano) |
-| `error_policies.py` | `classe → (status, ui_action)` — 8 righe + la logica | a mano, quasi mai |
+| `error_policies_generated.py` | `codice → classe`, **689 voci** (79 ritirate) | ⛔ **GENERATO** da `config.vw_codici_errore_identita` |
+| `error_policies.py` | `classe → (status, ui_action)` — 10 righe + la logica | a mano, quasi mai |
 | `error_ui_overrides.py` | le **176** `ui_action` fuori default, **coi loro perché** | a mano, quando cambia una scelta di UI |
 | `error_messages_fallback.py` | i messaggi **senza segnaposto** | a mano, per ora |
+
+⛔ **Il primo modulo non si modifica a mano.** Per dare una classe a un codice si
+cambia il **catalogo** e si rigenera:
+
+```bash
+# 1. il team DB semina il codice in codici_errore.csv con la sua classe
+# 2. lato backend:
+./manage-env.sh genera_error_policies          # riscrive il modulo
+./manage-env.sh genera_error_policies --check   # non scrive: dice se diverge
+```
+
+Il `--check` è quello che gira in CI (come test, `test_error_policies_divergenza_db`):
+un file generato che nessuno rigenera torna a essere scritto a mano senza che
+nessuno lo decida.
+
+⚠️ **I codici ritirati restano nel modulo e continuano a risolvere**, perché
+`dbops.error_log` contiene le loro righe e devono restare leggibili —
+`obsoleto_dal` non è `attivo = false`. Ma **nessun punto di chiamata nuovo deve
+nominarli**: lo presidia `test_error_codes_declared_guardrail`, e per la stessa
+ragione `ErrorPolicyRegistry.has()` oggi risponde *«lo conosco»*, non *«è
+buono»*. La domanda «questo codice si può usare?» si fa su `CODICI_RITIRATI`.
 
 ⚠️ **`ui_action` non si deriva dalla classe, e il numero conta.** Restano 176
 override su 658, di cui **117 sulla sola `DATO_ERRATO`**: lì il default è un
@@ -1208,10 +1229,10 @@ Quando si crea o tocca un service, si scrivono/aggiornano i test corrispondenti.
 8. Registrare la route in `urls.py` con name `<dominio>-<risorsa>-list` / `<dominio>-<risorsa>-detail`
 9. Scrivere test service in `tests/services/` (validazione, dedup, not found)
 10. Se endpoint di ricerca: `is_search_endpoint = True`
-11. Registrare i codici errore prima dell'uso, dando a ciascuno la sua **classe**
-    in `error_policies_generated.py` (e chiedendo al team DB il seed in
-    `config.codici_errore` con la stessa classe): status e `ui_action` si
-    derivano da lì
+11. Registrare i codici errore prima dell'uso: il codice nasce **a catalogo**
+    (`config.codici_errore`, con la sua classe — richiesta al team DB), poi
+    `./manage-env.sh genera_error_policies` lo porta nel backend. Status e
+    `ui_action` si derivano dalla classe; il modulo generato non si tocca a mano
 
 ---
 
