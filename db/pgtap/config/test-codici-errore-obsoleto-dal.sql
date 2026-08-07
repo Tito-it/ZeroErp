@@ -2,9 +2,16 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
--- Test: config.messaggi_errore.obsoleto_dal — il ritiro di un codice errore
--- NON tocca il runtime. Riferimento: migration 20260805-17.
+-- Test: config.codici_errore.obsoleto_dal — il ritiro di un codice errore
+-- NON tocca il runtime. Riferimento: 20260805-17 (nascita), 20260807-13 (trasloco).
 -- Brief: docs/it/dev/work-done/brief-db-codice-errore-strutturato.md §15
+--
+-- ⚠️ LA COLONNA HA CAMBIATO CASA il 2026-08-07, e questo test con lei.
+--   Nasceva su `config.messaggi_errore`, che pero' e' chiavata (codice, lingua):
+--   il ritiro era **per lingua**, cioe' si poteva ritirare un codice in italiano
+--   e lasciarlo vivo in inglese. Ora sta su `config.codici_errore` — una riga per
+--   codice — e il difetto non e' piu' esprimibile.
+--   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (D-6/D-8)
 --
 -- Contesto: un codice legacy spesso non si puo' cancellare, perche'
 -- dbops.error_log ha una FK NOT NULL verso config.messaggi_errore(id) e 46
@@ -63,12 +70,19 @@ SELECT plan(4);
 -- =========================================================
 -- Id fissi range 9xxx: la sequenza di messaggi_errore e' disallineata rispetto
 -- ai valori inseriti a mano dai seed. Il ROLLBACK ripulisce.
-INSERT INTO config.messaggi_errore (id, codice, lingua, messaggio, causa, soluzione, obsoleto_dal)
+-- ⚠️ Prima il CODICE, poi la FRASE: la FK del 20260807-14 non ammette l'ordine
+--   inverso. Il ritiro sta sul codice, non sul messaggio.
+INSERT INTO config.codici_errore (codice, classe, obsoleto_dal)
+VALUES
+    ('TEST_OBS_RITIRATO',    'CONFLITTO_STATO', DATE '2026-01-01'),
+    ('TEST_OBS_IN_SERVIZIO', 'CONFLITTO_STATO', NULL);
+
+INSERT INTO config.messaggi_errore (id, codice, lingua, messaggio, causa, soluzione)
 VALUES
     (9931, 'TEST_OBS_RITIRATO',   'it', 'Operazione non ammessa.',
-     'La causa.', 'La soluzione.', DATE '2026-01-01'),
+     'La causa.', 'La soluzione.'),
     (9932, 'TEST_OBS_IN_SERVIZIO','it', 'Operazione non ammessa.',
-     'La causa.', 'La soluzione.', NULL);
+     'La causa.', 'La soluzione.');
 
 -- Helper: cattura messaggio e campi diagnostici di fn_log_and_raise_error.
 CREATE FUNCTION pg_temp.capture_obs(p_codice text)
@@ -98,16 +112,22 @@ $fn$;
 -- =========================================================
 -- 1) La colonna e' come dichiarata
 -- =========================================================
--- Nullable non e' un dettaglio: NULL e' il valore che significa «in servizio»,
--- e lo hanno 631 righe su 632. Un NOT NULL con default costringerebbe a
--- inventare una data per i codici vivi.
+-- Nullable non e' un dettaglio: NULL significa «in servizio», e lo hanno 610
+-- righe su 689. Un NOT NULL con default costringerebbe a inventare una data
+-- per i codici vivi.
+--
+-- ⚠️ E l'asserzione dice DUE cose: che la colonna c'e' nella casa nuova E che
+--   NON e' rimasta in quella vecchia. Un trasloco a meta' — colonna in
+--   entrambe — sarebbe la peggiore delle tre situazioni: due sorgenti di
+--   verita' che nessun vincolo tiene insieme.
 SELECT is(
-    (SELECT data_type || '/' || is_nullable
+    (SELECT string_agg(table_name || ':' || data_type || '/' || is_nullable, ' + ' ORDER BY table_name)
        FROM information_schema.columns
-      WHERE table_schema = 'config' AND table_name = 'messaggi_errore'
+      WHERE table_schema = 'config'
+        AND table_name IN ('messaggi_errore', 'codici_errore')
         AND column_name = 'obsoleto_dal'),
-    'date/YES',
-    '1. obsoleto_dal esiste, e'' DATE ed e'' nullable'
+    'codici_errore:date/YES',
+    '1. obsoleto_dal e'' su codici_errore (DATE, nullable) e NON e'' piu'' su messaggi_errore'
 );
 
 -- =========================================================

@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# La FK che chiude il disegno: ogni FRASE ha il suo CODICE
+#   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (D-7)
+#   Guida: docs/it/dev/work-in-progress/brief-db-be-classe-codici-errore.md §3
+#   Richiede: 20260807-12 (config.codici_errore) e il seed del 20260614-08.
+#   Policy indici: 20260807-15 (consentito = false, l'indice e' ridondante).
+#
+# ── COSA GARANTISCE ─────────────────────────────────────────────────────
+#   Da qui in avanti una riga di `config.messaggi_errore` non puo' esistere per
+#   un codice che non ha identita'. E siccome `codici_errore.classe` e' NOT NULL
+#   senza default, la catena e' completa: **una frase non puo' nascere senza che
+#   qualcuno abbia deciso che cosa e' l'errore che descrive**.
+#
+#   E' il meccanismo anti-ricaduta del §5 della guida, e questo changeSet e' il
+#   pezzo che lo chiude: senza la FK, `codici_errore` sarebbe un elenco parallelo
+#   che si puo' dimenticare di aggiornare — cioe' il difetto da cui nasce tutto.
+#
+# ── ⚠️ COSA CAMBIA NEL LAVORO DI TUTTI I GIORNI ────────────────────────
+#   Aggiungere un codice non e' piu' una riga in `messaggi_errore.csv`: sono DUE
+#   righe, e in due file. Prima `codici_errore.csv` (codice + classe), poi il
+#   messaggio. Stessa cosa per una RINOMINA — e in questo progetto le rinomine
+#   di codici sono frequenti.
+#
+#   Non serve un migrate in due tempi: il mirror `20260614-08` carica le due
+#   tabelle nell'ordine giusto, dentro la stessa transazione. Ma se si tocca solo
+#   il catalogo dei messaggi, il migrate **fallisce** — ed e' esattamente cio'
+#   che deve fare.
+#
+# ── ⚠️ PERCHE' L'ORDINE DEI LOADER ERA GIA' STATO SISTEMATO AL D-5 ─────
+#   Questa FK vive in `00_schema`, e in `changelog-master-v2.yaml` **tutto
+#   `00_schema` gira prima di tutto `80_data`**. Su un database ricostruito da
+#   zero la FK esiste gia' quando parte il seed: se il catalogo dei messaggi si
+#   caricasse prima di `codici_errore`, ogni riga la violerebbe.
+#
+#   Per questo il 2026-08-07 i due loader nuovi sono stati messi DENTRO
+#   `20260614-08`, prima del catalogo, invece che in un changeSet con la data di
+#   oggi (che `includeAll` avrebbe ordinato DOPO). ⚠️ Su dev non si sarebbe
+#   visto: il catalogo e' popolato e la FK trova i padri. Si sarebbe scoperto in
+#   CI, a cantiere finito.
+#
+# ── NOTE DI APPLICAZIONE ────────────────────────────────────────────────
+#   · Nome del vincolo secondo `linee-guida-sql` §2 (`fk_<base>_<ref>`). Sulla
+#     stessa tabella esiste `fk_cfg_messaggi_errore_lingua`, col prefisso di
+#     schema: e' un'eccezione locale — 3 nomi su 741 nel database — non la
+#     convenzione, e non va propagata.
+#   · `ON DELETE NO ACTION`: un codice non si cancella, si ritira
+#     (`obsoleto_dal`). Un CASCADE qui cancellerebbe le frasi di un codice
+#     rimosso per sbaglio, ed e' l'ultima cosa che si vuole su un catalogo a cui
+#     punta il diario degli errori.
+#   · Nessun `NOT VALID` + `VALIDATE` in due tempi: il catalogo e' piccolo e i
+#     dati sono gia' puliti — verificato al D-5, zero codici senza padre.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/00_schema/config/20260807-14-fk-messaggi-errore-codici-errore-mctit.yaml
+
+    - changeSet:
+          id: 20260807-14-fk-messaggi-errore-codici-errore
+          author: mctit
+          runOnChange: false
+          failOnError: true
+          comment: >
+              FK config.messaggi_errore.codice -> config.codici_errore.codice. Chiude la
+              catena: una frase non puo' esistere per un codice senza identita', e
+              codici_errore.classe e' NOT NULL senza default. Da qui aggiungere o
+              rinominare un codice tocca DUE CSV, nell'ordine gia' fissato dal mirror
+              20260614-08.
+          preConditions:
+              - onFail: HALT
+              - tableExists:
+                    schemaName: config
+                    tableName: codici_errore
+              - sqlCheck:
+                    expectedResult: 0
+                    sql: >
+                        SELECT count(*) FROM config.messaggi_errore m
+                          LEFT JOIN config.codici_errore c ON c.codice = m.codice
+                         WHERE c.codice IS NULL
+          changes:
+              - addForeignKeyConstraint:
+                    constraintName: fk_messaggi_errore_codici_errore
+                    baseTableSchemaName: config
+                    baseTableName: messaggi_errore
+                    baseColumnNames: codice
+                    referencedTableSchemaName: config
+                    referencedTableName: codici_errore
+                    referencedColumnNames: codice
+                    onDelete: NO ACTION
+                    onUpdate: NO ACTION

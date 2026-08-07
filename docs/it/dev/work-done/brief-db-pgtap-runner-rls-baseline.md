@@ -30,7 +30,7 @@
 > dichiarato dalla suite vale poco.
 >
 > **Origine**: verifica del 2026-07-29 sul residuo **P6** del
-> [brief-db-emissione-fattura-per-documento-sorgente](../work-done/brief-db-emissione-fattura-per-documento-sorgente.md).
+> [brief-db-emissione-fattura-per-documento-sorgente](brief-db-emissione-fattura-per-documento-sorgente.md).
 > Controllando se i 9 rossi `E_SORG_FORMATO` fossero rientrati è emerso che il
 > conto non torna: **105 rossi su 155 in `vendite`, di cui solo 38 in baseline**.
 >
@@ -113,7 +113,7 @@ vendite.ddt                   vendite.fatturazione_lotti
 
 ⚠️ **`fatture_righe` e `fatture_riepiloghi_iva` sono state protette da poco** —
 è l'applicazione di
-[brief-db-rls-satelliti-fattura-portale](../work-done/brief-db-rls-satelliti-fattura-portale.md),
+[brief-db-rls-satelliti-fattura-portale](brief-db-rls-satelliti-fattura-portale.md),
 che risulta ancora `⬜ DA FARE` nella sua intestazione: **da allineare**. Ogni
 tabella che entra nella RLS aggiunge fixture che smettono di funzionare, quindi
 il fenomeno è destinato a peggiorare a ogni ondata.
@@ -158,7 +158,7 @@ ciò che si collauda, invece di un incidente.
    `test-contratti-modalita-pricing-v1`, `test-contratti-schema-step21-v1`,
    `test-guard-esclusione-figlio-bundle-v1`.
 5. Allineare l'intestazione di
-   [brief-db-rls-satelliti-fattura-portale](../work-done/brief-db-rls-satelliti-fattura-portale.md),
+   [brief-db-rls-satelliti-fattura-portale](brief-db-rls-satelliti-fattura-portale.md),
    che si dichiara `DA FARE` mentre le due policy risultano applicate.
 
 ## 6. Fuori perimetro

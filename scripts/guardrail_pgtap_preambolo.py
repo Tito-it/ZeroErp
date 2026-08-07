@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # Scopo: presidiare le invarianti di PREAMBOLO dei test pgTAP.
 #   Guida: docs/it/guide/pgtap-come-si-scrive-un-test.md
-#   Storia: docs/it/dev/work-in-progress/brief-db-pgtap-runner-rls-baseline.md
+#   Storia: docs/it/dev/work-done/brief-db-pgtap-runner-rls-baseline.md
 #
 # COSA PRESIDIA, e perche' proprio queste. Sono le tre righe che costano tre
 # giorni quando mancano, e che si verificano con un grep — cioe' le uniche

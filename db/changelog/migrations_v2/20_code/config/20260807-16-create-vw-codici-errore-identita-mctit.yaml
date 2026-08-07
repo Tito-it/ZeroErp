@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `config.vw_codici_errore_identita` — la sorgente del generatore backend
+#   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (D-9)
+#   Guida: docs/it/dev/work-in-progress/brief-db-be-classe-codici-errore.md §14.4
+#   Consumatore: il generatore di `error_policies_generated.py` (passo B-5 del BE).
+#
+# ── ⚠️ PERCHE' DUE VISTE E NON UNA ──────────────────────────────────────
+#   La stessa tabella serve due mestieri con CARDINALITA' DIVERSE.
+#
+#   · la REVISIONE vuole vedere la frase accanto alla classe, quindi moltiplica
+#     per lingua: e' `config.vw_codici_errore` (20260807-17);
+#   · il GENERATORE vuole l'IDENTITA', cioe' una riga per codice, e le
+#     traduzioni non deve nemmeno vederle.
+#
+#   Riusare la vista di revisione per entrambi costringerebbe a un filtro
+#   `WHERE lingua = 'it'` — e quel filtro **toglierebbe i codici SENZA
+#   messaggio**, che sono proprio quelli che piu' servono vedere. Il filtro
+#   sbagliato qui non da' errore: leva righe in silenzio, che e' la forma di
+#   guasto contro cui e' costruito tutto questo cantiere.
+#
+# ── ⚠️ L'`ORDER BY` E' UN REQUISITO, NON UNA CORTESIA ───────────────────
+#   Senza, PostgreSQL non promette niente e l'ordine puo' cambiare fra due
+#   esecuzioni identiche (piano diverso, righe riscritte da un UPDATE). Un
+#   generatore che produce DIFF SPURII PER RIORDINO diventa un file che nessuno
+#   rilegge — e da li' a non accorgersi di una CLASSE CAMBIATA e' un passo solo.
+#
+#   ⚠️ Ma sia chiaro cosa garantisce e cosa no: l'`ORDER BY` dentro una vista
+#   PostgreSQL lo applica, **pero' non e' un contratto** — se la vista viene
+#   inlinata in una query piu' grande, o il chiamante aggiunge il proprio
+#   ordinamento, l'ordine della vista puo' non sopravvivere. Quindi:
+#     · qui e' la cintura — chi fa `SELECT * FROM ...` senza pensarci lo ha;
+#     · nel generatore ci va comunque `ORDER BY codice` esplicito, ed e' quello
+#       il contratto (§14.4 della guida).
+#   Un requisito che vive in due posti si dimentica in uno dei due: qui vive in
+#   entrambi apposta.
+#
+# ── NOTE ────────────────────────────────────────────────────────────────
+#   · `security_invoker = true`: la vista non deve MAI vedere piu' di chi la
+#     interroga. Oggi queste tabelle non hanno RLS, ma una vista che gira coi
+#     privilegi del proprietario e' un bypass che nessuno ricontrolla il giorno
+#     in cui la RLS arriva.
+#     ⚠️ La reloption NON e' visibile in `pg_get_viewdef`: va RI-SPECIFICATA in
+#     ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera in silenzio.
+#   · Numerazione piu' alta delle tabelle che legge (20260807-11 e -12): l'autogen
+#     mescola `00_schema` e `20_code` ordinando per NN.
+#   · GRANT: le viste nuove li ricevono dal `ci_apply`
+#     (20260205-41-apply-runtime-grants-ci), non dal migrate manuale.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/config/20260807-16-create-vw-codici-errore-identita-mctit.yaml
+
+    - changeSet:
+          id: 20260807-16-create-vw-codici-errore-identita
+          author: mctit
+          runOnChange: false
+          failOnError: true
+          comment: >
+              Vista di sola identita' dei codici errore: una riga per codice, nessun join,
+              ordinamento stabile. E' la sorgente del generatore backend di
+              error_policies_generated.py. Separata dalla vista di revisione perche' quella
+              moltiplica per lingua, e filtrarla perderebbe i codici senza messaggio.
+          preConditions:
+              - onFail: HALT
+              - tableExists:
+                    schemaName: config
+                    tableName: codici_errore
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE VIEW config.vw_codici_errore_identita
+                        WITH (security_invoker = true) AS
+                        SELECT c.codice,
+                               c.classe,
+                               c.obsoleto_dal,
+                               c.note
+                          FROM config.codici_errore c
+                         ORDER BY c.codice;
+
+                        COMMENT ON VIEW config.vw_codici_errore_identita IS
+                          'Identita'' dei codici errore: UNA riga per codice, nessun join con le traduzioni. Sorgente del generatore backend di error_policies_generated.py. L''ORDER BY e'' una cintura: il contratto e'' che il generatore metta il suo. Non usare vw_codici_errore al suo posto — quella moltiplica per lingua e filtrarla perde i codici senza messaggio.';

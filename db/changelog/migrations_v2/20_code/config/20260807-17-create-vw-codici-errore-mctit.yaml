@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `config.vw_codici_errore` — la superficie di REVISIONE
+#   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (D-9)
+#   Guida: docs/it/dev/work-in-progress/brief-db-be-classe-codici-errore.md §5.2
+#   Gemella: config.vw_codici_errore_identita (20260807-16), per il generatore.
+#
+# ── ⚠️ A COSA SERVE, E NON E' UN CANCELLO ───────────────────────────────
+#   Il meccanismo anti-ricaduta del cantiere e' `classe NOT NULL` senza default:
+#   un codice senza semantica non puo' NASCERE. Ma la separazione fra codice e
+#   frase — giusta, perche' toglie il ritiro e la classe dall'asse per-lingua —
+#   ha un costo: **si perde l'adiacenza**. Chi scrive un codice compila due file,
+#   e una contraddizione fra la classe e il testo non e' piu' in nessun campo
+#   visivo.
+#
+#   Questa vista la ricompone: `classe = NON_TROVATO` accanto a «Parametro non
+#   valido» e' una contraddizione che si vede a occhio nudo — ma **in revisione**,
+#   non in scrittura. Serve a chi rilegge un dominio o apre un lotto di
+#   classificazione, non alla CI.
+#
+# ── ⚠️ `LEFT JOIN`, E LA RAGIONE E' TUTTO IL PUNTO ──────────────────────
+#   Un codice PUO' esistere senza messaggio, ed e' uno dei difetti che serve
+#   VEDERE. Con un `JOIN` semplice quei codici sparirebbero dalla vista: chi la
+#   legge concluderebbe che sono a posto perche' non li ha visti.
+#   E' lo stesso errore per cui non si usa questa vista come sorgente del
+#   generatore (vedi 20260807-16): un filtro che leva righe in silenzio.
+#
+# ── ⚠️ CARDINALITA': UNA RIGA PER (codice, lingua) ──────────────────────
+#   `config.messaggi_errore` e' chiavata (codice, lingua): un codice tradotto
+#   compare qui piu' volte, uno senza traduzione compare una volta sola con i
+#   campi del messaggio a NULL. **Non contare i codici da questa vista**: per
+#   quello c'e' la gemella.
+#
+# ── NOTE ────────────────────────────────────────────────────────────────
+#   · `security_invoker = true` — vedi la testata del 20260807-16. La reloption
+#     non e' visibile in `pg_get_viewdef` e va ri-specificata a ogni
+#     CREATE OR REPLACE, altrimenti PostgreSQL la azzera.
+#   · Nessun `ORDER BY`: qui non c'e' un generatore da proteggere dai diff
+#     spurii, e chi legge ordina come gli serve.
+#   · GRANT: dal `ci_apply`, non dal migrate manuale.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/config/20260807-17-create-vw-codici-errore-mctit.yaml
+
+    - changeSet:
+          id: 20260807-17-create-vw-codici-errore
+          author: mctit
+          runOnChange: false
+          failOnError: true
+          comment: >
+              Vista di revisione dei codici errore: affianca la classe alla frase che
+              l'operatore legge, per far vedere a occhio nudo una classe che contraddice il
+              testo. LEFT JOIN, perche' un codice senza messaggio deve comparire. Una riga
+              per (codice, lingua): non contare i codici da qui.
+          preConditions:
+              - onFail: HALT
+              - tableExists:
+                    schemaName: config
+                    tableName: codici_errore
+              - tableExists:
+                    schemaName: config
+                    tableName: messaggi_errore
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE VIEW config.vw_codici_errore
+                        WITH (security_invoker = true) AS
+                        SELECT c.codice,
+                               c.classe,
+                               c.obsoleto_dal,
+                               c.note,
+                               m.lingua,
+                               m.messaggio,
+                               m.causa,
+                               m.soluzione
+                          FROM config.codici_errore c
+                          LEFT JOIN config.messaggi_errore m
+                                 ON m.codice = c.codice;
+
+                        COMMENT ON VIEW config.vw_codici_errore IS
+                          'Superficie di REVISIONE: la classe accanto alla frase, per vedere a occhio nudo una classe che contraddice il testo. LEFT JOIN di proposito — un codice senza messaggio deve comparire, e'' uno dei difetti da vedere. ⚠️ UNA RIGA PER (codice, lingua): per contare i codici usare vw_codici_errore_identita. Non e'' un cancello: il cancello e'' classe NOT NULL.';

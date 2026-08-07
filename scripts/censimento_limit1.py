@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # Scopo: censire i `LIMIT 1` senza `ORDER BY` nelle fixture pgTAP.
-#   Brief: docs/it/dev/work-in-progress/brief-db-pgtap-runner-rls-baseline.md §27
+#   Brief: docs/it/dev/work-done/brief-db-pgtap-runner-rls-baseline.md §27
 #   Regola: memoria `feedback_pgtap_limit1_senza_orderby`
 #
 # LENTE, NON CANCELLO — come `scripts/sql/check_*`. Non va in CI: un `LIMIT 1`

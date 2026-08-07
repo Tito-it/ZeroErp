@@ -46,6 +46,16 @@ SET CONSTRAINTS ALL IMMEDIATE;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(3);
+-- ⚠️ Dal 2026-08-07 `messaggi_errore.codice` ha una FK verso
+--   `config.codici_errore`: la FRASE non puo' esistere senza il CODICE. I
+--   codici di fixture vanno creati PRIMA, con la loro classe — `classe` e'
+--   NOT NULL e senza default, di proposito.
+--   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (D-7/D-8)
+INSERT INTO config.codici_errore (codice, classe) VALUES
+    ('TEST_LR_BOTH', 'DATO_ERRATO'),
+    ('TEST_LR_ONLYIT', 'DATO_ERRATO'),
+    ('TEST_LR_PARTIAL', 'DATO_ERRATO');
+
 
 -- =========================================================
 -- Setup fixture

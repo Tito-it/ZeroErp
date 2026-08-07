@@ -12,7 +12,9 @@
 - [categoria_accisa](tabelle/categoria_accisa.md)
 - [causali_onere](tabelle/causali_onere.md) — (rev 2026-07-21)
 - [causali_trasporto](tabelle/causali_trasporto.md) — * Fornire un **catalogo centralizzato** delle causali di trasporto utilizzabili nei DDT. * Supportare la **classificazione omogenea** dei flussi di movimentazione in base alla motivazione dell’invio/ritiro dei beni. * Costituire la base per **regole di processo** (es. fatturazione automatica, valorizzazione, contabilizzazione, statistiche) dipendenti dalla causale utilizzata.
+- [classi_errore](tabelle/classi_errore.md)
 - [classi_utenze](tabelle/classi_utenze.md)
+- [codici_errore](tabelle/codici_errore.md)
 - [codici_postali](tabelle/codici_postali.md) — * **Elenco dei codici postali**   Per ogni comune (city/municipality), memorizza tutti i codici postali (Postal Code o ZIP Code) validi per quell’area geografica.
 - [comuni](tabelle/comuni.md) — (last review 30-12-25) * **Censimento dei comuni**   Elenco dei comuni presenti in ciascuno stato, identificati da nome e collegamento gerarchico a provincia e stato. * **Attributi specifici per stato**   La colonna `extra_country` (JSONB) permette di memorizzare dati aggiuntivi specifici per ogni paese (per l’Italia: codice catastale, codice ISTAT, fascia climatica, ecc.). * **Integrazione con lo stradario**   L’associazione tra `config.stradario_generale` (prefissi e nomi delle vie) e `config.comuni` genera la tabella `config.stradario`, che contiene l’indirizzo completo con la localizzazione geografica sul comune di appartenenza.   Utilizzata per associare i record di **`config.stradario`** al comune di appartenenza, completa il percorso di indirizzamento. * **Storicizzazione**   Il campo `storicizza` se true attiva il trigger per la storicizzazione delle informazioni sulla tabella `storico.comuni`. Il front-end dovrà sempre impostare a true il valore, solo per funzioni administrator si potrà non gestire a true.
 - [conti_contabili](tabelle/conti_contabili.md) — * Mantenere il catalogo centralizzato dei **codici conto** con descrizioni e tipologia. * Supportare la validazione dei riferimenti contabili in altre tabelle (ad esempio `config.iva`).
@@ -138,3 +140,5 @@
 - [trgfn_user_emittenti_fiscali_guard_delete](funzioni/trgfn_user_emittenti_fiscali_guard_delete.md)
 
 ## 🔍 Views
+- [vw_codici_errore](views/vw_codici_errore.md)
+- [vw_codici_errore_identita](views/vw_codici_errore_identita.md)
