@@ -421,12 +421,48 @@ jobs:
       # ------------------------------------------------------------------
       # Suite pgTAP — 426 test DB, che fino al 2026-08-07 non giravano MAI in CI
       # ------------------------------------------------------------------
-      # ⚠️ SOLO su Tito-dev e su main, per decisione di Tid: la suite costa ~7
-      # minuti e su ogni PR di lavoro sarebbe sproporzionata.
-      #   - push          -> il workflow parte solo su Tito-dev (vedi `on:`)
-      #   - pull_request  -> solo se la base e' main
-      - name: Suite pgTAP (solo Tito-dev e main)
-        if: github.event_name == 'push' || github.base_ref == 'main'
+      # QUANDO GIRA, e perche' proprio cosi'. La suite costa ~7 minuti: farla a
+      # ogni push sarebbe sproporzionato, farla solo verso `main` la farebbe
+      # arrivare troppo tardi (il rosso spunta mescolato a giorni di lavoro
+      # altrui, e bisecarlo costa piu' dei minuti risparmiati).
+      #
+      # Misurato sui 30 giorni al 2026-08-07, su Tito-dev: 656 commit, di cui
+      # 155 toccano `db/` e 107 toccano SOLO `backend/`. Tito-dev e' anche il
+      # ramo di scambio fra backend e DB, quindi buona parte del traffico non
+      # riguarda il database: li' la suite girerebbe per niente.
+      #
+      #   - PR verso main      -> SEMPRE. E' il cancello prima dell'integrazione
+      #   - push su Tito-dev   -> solo se la push tocca `db/` o `scripts/`
+      #   - PR verso Tito-dev  -> mai (basta il cancello statico sul preambolo)
+      - name: Il DB e' cambiato in questa push?
+        id: db_cambiato
+        run: |
+          set -uo pipefail
+          if [ "${{ github.event_name }}" != "push" ]; then
+            echo "esito=si" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          BEFORE='${{ github.event.before }}'
+          # ⚠️ Ramo appena creato o history non risolvibile: si sceglie di GIRARE.
+          #   Un controllo che salta in silenzio quando non sa e' peggio di uno
+          #   che gira di troppo — il costo e' 7 minuti, l'altro e' una
+          #   regressione che passa.
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] \
+             || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            echo "esito=si" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if git diff --name-only "$BEFORE" "${{ github.sha }}" -- db/ scripts/ | grep -q .; then
+            echo "esito=si" >> "$GITHUB_OUTPUT"
+          else
+            echo "esito=no" >> "$GITHUB_OUTPUT"
+            echo "::notice::push senza modifiche a db/ o scripts/: suite pgTAP saltata"
+          fi
+
+      - name: Suite pgTAP (PR verso main · push su Tito-dev che toccano il DB)
+        # ⚠️ `event_name == 'push'` esplicito: senza, una PR verso Tito-dev
+        #   passerebbe (il passo sopra risponde 'si' per ogni non-push).
+        #   Trovato provando la tabella dei quattro casi a tavolino, non
+        #   leggendo la condizione.
+        if: github.base_ref == 'main' || (github.event_name == 'push' && steps.db_cambiato.outputs.esito == 'si')
         continue-on-error: true
         env:
           # ⚠️ Baseline SEPARATA da quella di sviluppo, e non e' pigrizia.

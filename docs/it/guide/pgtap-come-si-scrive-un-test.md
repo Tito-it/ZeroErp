@@ -195,9 +195,21 @@ sempre rosso.
 
 ## Girano in CI?
 
-**Sì, ma solo su `Tito-dev` e su `main`** — la suite costa ~7 minuti, e su ogni
-PR di lavoro sarebbe sproporzionata. Sui rami di lavoro gira solo il cancello
-statico sul preambolo, che invece costa un secondo.
+**Sì, ma non sempre.** La suite costa ~7 minuti:
+
+| quando | gira? |
+|---|---|
+| PR verso `main` | ✅ sempre — è il cancello prima dell'integrazione |
+| push su `Tito-dev` che tocca `db/` o `scripts/` | ✅ |
+| push su `Tito-dev` che **non** tocca il DB | ❌ |
+| PR verso `Tito-dev` | ❌ — basta il cancello statico sul preambolo |
+
+Il perché è misurato: sui 30 giorni al 2026-08-07 `Tito-dev` ha avuto **656
+commit**, di cui **155** toccano `db/` e **107 solo `backend/`**. È anche il ramo
+di scambio fra backend e DB, quindi buona parte del traffico non riguarda il
+database — e lì la suite girerebbe per niente. Farla solo verso `main`, invece,
+la farebbe arrivare troppo tardi: il rosso spunterebbe mescolato a giorni di
+lavoro altrui, e bisecarlo costa più dei minuti risparmiati.
 
 ⚠️ **In CI la baseline è un'altra**: `db/pgtap/baseline-rossi-ci.tsv`. Il
 database della CI è **ricostruito da zero**, quello di sviluppo ha dati veri: i
