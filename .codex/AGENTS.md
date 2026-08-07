@@ -295,8 +295,10 @@ Lo script distingue **regressioni** (rosso nuovo → exit 1) da **rossi gia` not
 (silenzio) e segnala i **rientrati** (ora verdi, da togliere dalla baseline).
 Registro: `db/pgtap/baseline-rossi.tsv`, con la causa classificata.
 
-⚠️ **In CI la suite gira solo su `Tito-dev` e `main`** (costa ~7 min; sui rami di
-lavoro gira il solo cancello statico). E usa una baseline **sua**,
+⚠️ **In CI la suite gira**: sempre sulle PR verso `main`, e sui push a
+`Tito-dev` **solo se toccano `db/` o `scripts/`** (costa ~7 min, e Tito-dev e'
+anche il ramo di scambio BE/DB: 107 commit su 656 negli ultimi 30gg toccano solo
+`backend/`). Sulle PR verso Tito-dev gira il solo cancello statico. E usa una baseline **sua**,
 `db/pgtap/baseline-rossi-ci.tsv`: il database della CI e` ricostruito da zero,
 quello di sviluppo ha dati veri, quindi i rossi sono popolazioni diverse. **Un
 rosso in CI non e` automaticamente un rosso da te**: guarda quale baseline lo

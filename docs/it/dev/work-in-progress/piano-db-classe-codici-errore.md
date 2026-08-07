@@ -3,7 +3,7 @@
 **Chi:** team DB (`dev/db-tid`).
 **Guida generale e ragioni di ogni scelta:** [brief-db-be-classe-codici-errore](brief-db-be-classe-codici-errore.md) — 20 decisioni, le trappole, i perché. **Questo file non le ripete: le esegue.**
 **Piano gemello:** [piano-be-classe-codici-errore](piano-be-classe-codici-errore.md).
-**Stato:** 🟡 **in corso** — ✅ **D-1..D-6 chiusi e APPLICATI** sul DB di sviluppo (2026-08-07). Il punto di non ritorno è passato. Prossimo: **D-7**, la FK.
+**Stato:** 🟡 **in corso** — ✅ D-1..D-6 applicati, **D-7 scritto** (2026-08-07). Prossimo: **D-8** (pgTAP) e **D-9** (le due viste = 🔴 il cancello del BE).
 ✅ **Vocabolario a 10 valori confermato da Tid** (2026-08-07): `NON_AUTENTICATO` e `ERRORE_ESTERNO` restano.
 
 ---
@@ -47,7 +47,7 @@ additivo e reversibile.
 | ✅ **D-4** | ~~Le due tabelle~~ **fatto** — `20260807-11` e `-12` | — | ⚠️ PK **testuale**, deviazione deliberata (3 precedenti su 467) |
 | ✅ **D-5** | ~~Seed~~ **fatto** — 3 loader in `20260614-08`, in ordine | D-1 · D-2 · D-4 | ⚠️ la trappola era **al D-7**, non qui: vedi sotto |
 | ✅ **D-6** | ~~`obsoleto_dal` migra + i 5 lettori~~ **fatto** — `20260807-13` | D-5 | 🔴 punto di non ritorno **superato** |
-| **D-7** | FK `messaggi_errore.codice → codici_errore.codice` + seed `fk_index_policy` | D-5 | dopo che il seed regge |
+| ✅ **D-7** | ~~FK + policy indici~~ **fatto** — `20260807-14` e `-15` | D-5 | ⚠️ **due** FK da registrare, non una |
 | **D-8** | pgTAP: **4 da adeguare** + i nuovi | D-6 · D-7 | |
 | **D-9** | Le **due viste** (`20_code`) | D-4 | ⚠️ numerazione più alta di chi dipende da loro |
 | **D-10** | Vista della **forma della condizione** — la misura | D-9 | ⚠️ **ri-specificata**: l'asse «multidominio» era smentito dal D-3 |
@@ -604,21 +604,71 @@ non dopo la FK.
 
 ---
 
-### D-7 · La FK + la policy indici
+### D-7 · ✅ **FATTO** — 2026-08-07 (da applicare)
 
-```sql
-ALTER TABLE config.messaggi_errore
-  ADD CONSTRAINT fk_cfg_messaggi_errore_codice
-  FOREIGN KEY (codice) REFERENCES config.codici_errore (codice);
+| ChangeSet | Cosa |
+|---|---|
+| [`20260807-14`](../../../../db/changelog/migrations_v2/00_schema/config/20260807-14-fk-messaggi-errore-codici-errore-mctit.yaml) | `FK messaggi_errore.codice → codici_errore.codice` |
+| [`20260807-15`](../../../../db/changelog/migrations_v2/80_data/changelog/20260807-15-upsert-fk-index-policy-codici-errore-mctit.yaml) + CSV | policy indici, **due righe** a `consentito = false` |
+
+#### ⭐ Cosa chiude davvero questa FK
+
+Non è un vincolo di igiene: è **il pezzo che rende vero il meccanismo del §5**.
+Con `codici_errore.classe` NOT NULL senza default *più* questa FK, la catena è
+completa —
+
+> **una frase non può nascere senza che qualcuno abbia deciso che cosa è
+> l'errore che descrive.**
+
+Senza la FK, `codici_errore` sarebbe un elenco parallelo che ci si può
+dimenticare di aggiornare: cioè il difetto da cui nasce tutto il cantiere,
+ricostruito dentro il rimedio.
+
+#### ⚠️ E cambia il lavoro di tutti i giorni
+
+Aggiungere un codice non è più una riga in `messaggi_errore.csv`: sono **due
+righe in due file**, prima `codici_errore.csv` poi il messaggio. **Vale anche per
+le rinomine**, che in questo progetto sono frequenti.
+
+Non serve un migrate in due tempi — il mirror `20260614-08` carica le due tabelle
+nell'ordine giusto, nella stessa transazione. Ma chi tocca solo il catalogo dei
+messaggi **vede fallire il migrate**, ed è esattamente quello che deve succedere.
+
+#### La `preCondition` che vale più del vincolo
+
+```yaml
+- sqlCheck:
+    expectedResult: 0
+    sql: SELECT count(*) FROM config.messaggi_errore m
+           LEFT JOIN config.codici_errore c ON c.codice = m.codice
+          WHERE c.codice IS NULL
 ```
 
-✅ **La stringa regge**: verificato (§3.5 del brief) — nessuno spazio, nessuna
-ambiguità di maiuscole, niente fuori da `[A-Z0-9_]`.
+Se il seed non ha coperto tutti i codici, il changeSet **si ferma prima** invece
+di far fallire l'`ALTER TABLE` a metà. È la stessa verifica del D-5, ma eseguita
+dal migrate invece che a mano.
 
-⚠️ **Seed `dbops.fk_index_policy` con `consentito = false`** e la ragione:
-*«coperto dal prefisso di `uq_messaggi_errore_codice_lingua`»*. Gli indici FK sono
-opt-in e non nascerebbe comunque, ma senza seed resta una riga che nessuno sa se
-è stata valutata o dimenticata.
+#### ⚠️ Le FK da registrare erano **due**, non una
+
+Il piano ne prevedeva una. Ma al D-4 ne è nata un'altra —
+`codici_errore.classe → classi_errore.classe` — e una FK senza riga di policy è
+**una decisione non presa**, che a sei mesi non si distingue da una dimenticata.
+
+| FK | `consentito` | Perché |
+|---|---|---|
+| `fk_messaggi_errore_codici_errore` | `false` | `codice` è già la **colonna di testa** di `uq_messaggi_errore_codice_lingua`: l'indice sarebbe una copia del suo prefisso |
+| `fk_codici_errore_classi_errore` | `false` | **10 valori distinti su 689 righe**: il planner non lo sceglierebbe mai |
+
+⚠️ Nessuna delle due è una FK su cui si fa `DELETE` del padre — l'operazione che
+di solito giustifica l'indice. I codici non si cancellano, si ritirano; le classi
+nemmeno.
+
+#### Una nota sul nome del vincolo
+
+`fk_messaggi_errore_codici_errore`, forma `fk_<base>_<ref>` delle linee guida.
+Sulla stessa tabella esiste `fk_cfg_messaggi_errore_lingua` col prefisso di
+schema: misurato, sono **3 nomi su 741** nel database — un'eccezione locale, non
+una convenzione, e non va propagata.
 
 ---
 
