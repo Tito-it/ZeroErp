@@ -2496,3 +2496,101 @@ I 16 residui sono sparsi 1-2 per tabella, senza pattern dominante
 (`anagrafiche.pdp` 2, `config.unita_organizzative` 2, poi uno ciascuno). Non c'è
 più una tranche da fare: è lavoro a giudizio, come i 15 appena chiusi, e conviene
 farlo quando si apre il dominio che li contiene.
+
+---
+
+## 29. Famiglie B e D insieme — perché sono la stessa domanda (2026-08-07)
+
+Dodici dei sedici file del divario falliscono con `permesso negato per la
+tabella`, e la domanda è **una sola**: il GRANT manca perché l'applicazione non
+scrive lì, o perché scrive e nessuno se n'è accorto? Si risponde guardando **chi
+scrive davvero**, mai la fixture.
+
+### 29.1 ⚠️ Il primo risultato smonta la diagnosi del §23.3
+
+Tre delle tabelle «senza permesso» **hanno già la DML completa** per
+`zeroerp_app`:
+
+| tabella | privilegi di `zeroerp_app` |
+| --- | --- |
+| `anagrafiche.indirizzi_dettaglio` | DELETE, INSERT, SELECT, UPDATE |
+| `pratiche.pratiche_sorgenti` | DELETE, INSERT, SELECT, UPDATE |
+| `vendite.preventivi` | DELETE, INSERT, SELECT, UPDATE |
+
+Quindi non era «GRANT mirati mancanti», come diceva il §23.3. Aperti gli
+statement, tutti e tre sono **`CREATE TRIGGER`**: fault injection, per dimostrare
+che una scrittura fallisce davvero e che l'operazione è atomica. Serve il
+privilegio **`TRIGGER`**, che il ruolo non ha — **e non deve avere**: creare
+trigger su una tabella di dominio non è un'operazione dell'applicazione.
+
+✅ **Risolti col marcatore, prima categoria** — stesso precedente di
+`vendite/test-annulla-commessa-attivita-v1` (§24.3), nessuna decisione nuova.
+I marcati passano da 17 a **20**, e il divario da 16 a **13**.
+
+### 29.2 La famiglia B: l'applicazione non scrive **mai** su quelle tabelle
+
+Verificato una per una, cercando gli scrittori fra le funzioni DB e nel backend:
+
+| tabella | chi ci scrive | conseguenza |
+| --- | --- | --- |
+| `pratiche.workflow_definizioni` | solo `fn_pubblica_definizione`, `fn_fork_definizione`, `fn_nuova_versione_definizione`, `trgfn_tipi_prestazione_bootstrap_definizione` — **tutte `SECURITY DEFINER`** | il `SELECT`-only è **corretto** |
+| `pratiche.template_flussi_avanzamento_proiezione` | solo `fn_copia_definizione`, che gira **dentro** fork/nuova-versione | idem |
+| `ui.dashboard_definizione` | **nessuno**: né una funzione DB né il BE. È seed di migrazione | idem |
+
+> ℹ️ **Un allarme rientrato, verificato invece che supposto**:
+> `fn_copia_definizione` **non** è `SECURITY DEFINER` e scrive su entrambe le
+> tabelle — sembrava un difetto di prodotto. Non lo è: la chiamano solo
+> `fn_fork_definizione` e `fn_nuova_versione_definizione`, entrambe
+> `SECURITY DEFINER`, quindi gira sempre nel loro contesto privilegiato.
+
+**Verdetto: difetto di fixture in tutti e nove.** I test scrivono definizioni a
+mano, dove l'applicazione passa da un entry point privilegiato o non passa
+affatto.
+
+### 29.3 ⚠️ Ma la riparazione non è ovvia, ed è una decisione
+
+Aperti i sei file di `workflow_definizioni`, le scritture sono di **tre nature
+diverse**, e solo la prima si sposta facilmente:
+
+1. **Pre-cleanup** (2 siti) — `UPDATE … SET stato='RITIRATA'` / `DELETE`, col
+   commento *«PRE-CLEANUP (pg_prove COMMITTA)»*. ⭐ **Sono relitti dell'era non
+   transazionale**: da quando la suite è `BEGIN`/`ROLLBACK` (§18) non c'è più
+   niente da ripulire in ingresso. Si **tolgono**, e il permesso non serve più;
+2. **Transizioni di stato** (~8 siti) — `UPDATE … SET stato=…` per portare una
+   definizione dove serve. Qui gli entry point **non bastano**: prendono tutti
+   `p_definizione_id` e agiscono su una definizione **esistente**; nessuno la
+   crea. La prima nasce dal trigger `SECURITY DEFINER` su `tipi_prestazione`;
+3. **Scritture dentro `throws_ok`** (~5 siti) — il test asserisce che un `UPDATE`
+   diretto venga **respinto da un guard**. ⚠️ Sotto l'utente applicativo viene
+   respinto da un **permesso**, non dal guard: l'asserzione passerebbe **per la
+   ragione sbagliata**, che è esattamente [[feedback_pgtap_throws_ok_senza_sqlstate]].
+   Questi non si «riparano»: vanno ripensati.
+
+**Non l'ho fatto**: è il cantiere «definizioni versionate», e il punto 3 richiede
+di decidere *cosa deve dimostrare* quel test quando chi agisce non ha nemmeno il
+permesso di provarci.
+
+### 29.4 I quattro che falliscono per asserzione, non per permesso
+
+Cambiano **esito** fra i due utenti, che è il caso più informativo:
+
+* `rls/test-fn-scope-ba-ownership-ruolo-aware` — la precondizione conta i
+  billing account: **42 da owner, 41 da app**. La RLS ne nasconde uno, e sta
+  facendo il suo mestiere: è la precondizione a essere scritta sulla vista
+  dell'owner. Va costruita la propria fixture invece di contare righe globali;
+* `ui/test-fn-resolve-lista-config` — errore di dominio
+  (`binding non coerente col tipo del profilo`), non un permesso;
+* `maintenance/test-job-run-registrazione` e
+  `script/test-fn-get-profili-accesso-applicabili-overload` — una asserzione
+  ciascuno, da guardare singolarmente.
+
+### 29.5 Stato
+
+| | |
+| --- | --- |
+| owner | **87** |
+| `PGTAP_RUNNER=app` | **102 → 99** |
+| **divario** | **16 → 13** |
+
+I 13 restanti: **9 di famiglia B** (definizioni, §29.3) e **4 di asserzione**
+(§29.4).
