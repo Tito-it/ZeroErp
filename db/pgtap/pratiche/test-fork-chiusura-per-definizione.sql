@@ -1,5 +1,15 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: il test collauda i guard su pratiche.workflow_definizioni, che difendono da chi
+--   scrive DIRETTAMENTE sulla tabella. Il ruolo applicativo ha solo SELECT, e ha
+--   ragione di averlo: le scritture dell'applicazione passano tutte da entry point
+--   SECURITY DEFINER (fn_pubblica_definizione, fn_fork_definizione,
+--   fn_nuova_versione_definizione, trgfn_tipi_prestazione_bootstrap_definizione).
+--   E le transizioni che questi guard vietano — «PUBBLICATA -> BOZZA», cambio di
+--   versione su una pubblicata — nessun entry point le offre: l'applicazione non
+--   puo' nemmeno tentarle. Il soggetto del test sta fuori dal percorso applicativo
+--   (terza forma del criterio, brief §29.3-bis).
 -- pgTAP test per Zero ERP
 --
 -- Test: isolamento fork-aware di chiusura e auto-chiusura pratica.

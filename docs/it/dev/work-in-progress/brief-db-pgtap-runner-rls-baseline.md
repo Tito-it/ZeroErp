@@ -25,7 +25,7 @@
 > file, `PGTAP_RUNNER` in `testpgtap.sh`, e una baseline che ora **registra con
 > che utente è stata presa e rifiuta i confronti disomogenei** (il difetto del §1
 > chiuso alla radice). Divario **da 36 a 23 file**.
-> 👉 **Punto della situazione: §25** · **famiglia C CHIUSA: §26** · **cantiere `LIMIT 1`: §27** — ALTO su tabelle vere **da 66 a 20**, di cui 4 già giudicati innocui · **✅ il file intermittente è sciolto: §28** — 26/26, e non era `LIMIT 1`. Bilancio storico al §23 ·
+> 👉 **Punto della situazione: §25** · **famiglia C CHIUSA: §26** · **cantiere `LIMIT 1`: §27** — ALTO su tabelle vere **da 66 a 20**, di cui 4 già giudicati innocui · **✅ il file intermittente è sciolto: §28** · **famiglie B+D: §29** — ⭐ **divario da 36 a 4**, marcatore ricondotto a un criterio solo. Bilancio storico al §23 ·
 > **Priorità**: 🔴 **ALTA** — non per un difetto di prodotto, ma perché
 > **`scripts/pgtap-baseline.sh` oggi non può fare il suo mestiere**: distinguere
 > un rosso nuovo da uno noto. Finché non è risolto, ogni «zero regressioni»
@@ -2560,15 +2560,44 @@ diverse**, e solo la prima si sposta facilmente:
    definizione dove serve. Qui gli entry point **non bastano**: prendono tutti
    `p_definizione_id` e agiscono su una definizione **esistente**; nessuno la
    crea. La prima nasce dal trigger `SECURITY DEFINER` su `tipi_prestazione`;
-3. **Scritture dentro `throws_ok`** (~5 siti) — il test asserisce che un `UPDATE`
-   diretto venga **respinto da un guard**. ⚠️ Sotto l'utente applicativo viene
-   respinto da un **permesso**, non dal guard: l'asserzione passerebbe **per la
-   ragione sbagliata**, che è esattamente [[feedback_pgtap_throws_ok_senza_sqlstate]].
-   Questi non si «riparano»: vanno ripensati.
+3. **Scritture dentro `throws_like` / `lives_ok`** (~19 siti nei sei file) — il
+   test asserisce che un `UPDATE` diretto venga **respinto da un guard**
+   (`throws_like`) oppure **ammesso** (`lives_ok`).
 
-**Non l'ho fatto**: è il cantiere «definizioni versionate», e il punto 3 richiede
-di decidere *cosa deve dimostrare* quel test quando chi agisce non ha nemmeno il
-permesso di provarci.
+> ⚠️ **Correzione a quanto scritto qui poche ore fa.** La prima stesura di questo
+> paragrafo diceva che sotto l'utente applicativo quelle asserzioni sarebbero
+> passate **«per la ragione sbagliata»**, citando
+> [[feedback_pgtap_throws_ok_senza_sqlstate]]. **È falso, e verificarlo costava
+> un `grep`**: tutti e 19 i `throws_*` dei sei file portano un **pattern di
+> messaggio**, e `permesso negato per la tabella …` non combacia con nessuno.
+> Falliscono rumorosamente, non in silenzio. La citazione della trappola era
+> a proposito nella forma e sbagliata nella sostanza — il difetto che quella
+> memoria descrive richiede un'asserzione **larga**, e qui non ce n'è nessuna.
+
+### 29.3-bis ⭐ La decisione, ridotta all'osso
+
+Sotto l'utente applicativo quei sei file **falliscono tutti e comunque**: i
+`lives_ok` perché l'`UPDATE` è negato, i `throws_like` perché l'errore è quello
+sbagliato. La domanda non è come farli passare — è **da chi difendono quei
+guard**:
+
+* `trg_workflow_definizioni_a10_guard_upd` è un **trigger di tabella**: scatta
+  per chiunque scriva, entry point `SECURITY DEFINER` compresi;
+* ma le transizioni che il test prova — `PUBBLICATA → BOZZA`, cambio di
+  `versione` su una pubblicata — **nessun entry point le offre**. L'applicazione
+  non può nemmeno tentarle.
+
+→ **Quei guard difendono da chi scrive DIRETTAMENTE**: una migrazione, un job,
+qualcuno con `psql`. Cioè da un attore che non è l'applicazione — e un test che
+collauda quel guard deve girare **come quell'attore**.
+
+È la stessa forma della famiglia A e del §26 punto C3, e suggerisce che le due
+categorie del marcatore siano istanze di una sola:
+**il soggetto del test non è raggiungibile dall'applicazione.**
+
+⚠️ Resta una decisione di Tid perché **allarga il marcatore una terza volta**, e
+un'eccezione che si allarga a ogni giro va guardata: la differenza fra un criterio
+e una scusa è che il criterio dice anche di **no**.
 
 ### 29.4 I quattro che falliscono per asserzione, non per permesso
 
@@ -2594,3 +2623,42 @@ Cambiano **esito** fra i due utenti, che è il caso più informativo:
 
 I 13 restanti: **9 di famiglia B** (definizioni, §29.3) e **4 di asserzione**
 (§29.4).
+
+### 29.6 ✅ Decisione A — i nove marcati, e il divario scende a QUATTRO
+
+**Decisione (Tid, 2026-08-07): marcare.** Il criterio del marcatore viene
+riscritto in `scripts/testpgtap.sh` come **uno solo**, di cui le tre forme
+incontrate sono istanze:
+
+> ⭐ **il SOGGETTO del test non è raggiungibile dall'applicazione.**
+
+Non «il test non passa come app» — quello è quasi sempre un difetto. È che la
+cosa collaudata **non sta sul percorso applicativo**, quindi fingere di essere
+l'applicazione non rende il test più fedele: lo rende **muto**.
+
+⛔ **E accanto, l'elenco di cosa il criterio ESCLUDE** — senza quello è una scusa,
+non un criterio. Tutti e tre i casi sono successi oggi e **nessuno è stato
+marcato**: un `permesso negato` dove l'applicazione scrive davvero; una
+violazione RLS su un documento dell'emittente di chi agisce (§26.3, C1); un
+errore che dipende da **come è scritta la query** e non da chi la esegue (§26.2,
+la CTE). In una riga: **se l'applicazione quella cosa la fa, il marcatore è
+sbagliato.**
+
+| | |
+| --- | --- |
+| marcati | 20 → **29** |
+| owner | **87** — invariato, zero differenze file per file |
+| `PGTAP_RUNNER=app` | 99 → **90** |
+| **divario** | 13 → **4** |
+
+**I quattro che restano**, tutti di asserzione e nessuno di permesso:
+
+```
+maintenance/test-job-run-registrazione.sql
+rls/test-fn-scope-ba-ownership-ruolo-aware.sql
+script/test-fn-get-profili-accesso-applicabili-overload.sql
+ui/test-fn-resolve-lista-config.sql
+```
+
+**Il divario è passato da 36 a 4 in una giornata.** Non più «una famiglia da
+sanare»: quattro file da guardare uno per uno.

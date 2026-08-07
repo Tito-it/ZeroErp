@@ -32,25 +32,51 @@
 #
 # ECCEZIONE PER FILE — marcatore `-- pgtap-runner: owner`
 #
-# Due categorie di test, e solo due, hanno diritto all'eccezione.
+# IL CRITERIO, UNO SOLO:
 #
-#   1. **Fanno DDL** (ALTER TABLE … FORCE ROW LEVEL SECURITY, CREATE TABLE
-#      dbops.…) che il ruolo applicativo non puo' fare e non deve poter fare.
-#      Non sono difetti: nei test RLS e' proprio il FORCE a rendere l'owner
-#      soggetto alle policy, e l'identita' la simulano le GUC `app.*`, non il
-#      ruolo di connessione.
+#     ⭐ il SOGGETTO del test non e' raggiungibile dall'applicazione.
+#
+# Non «il test non passa come app» — quello e' quasi sempre un difetto. È che
+# la cosa che il test collauda **non sta sul percorso applicativo**, quindi
+# fingere di essere l'applicazione non lo rende piu' fedele: lo rende muto.
+#
+# Le tre forme incontrate finora (brief §24.3, §26.3, §29.3-bis):
+#
+#   1. **Il test fa DDL.** ALTER TABLE … FORCE ROW LEVEL SECURITY, CREATE TABLE
+#      in dbops, CREATE TRIGGER per fault injection, ADD CONSTRAINT temporaneo.
+#      Nei test RLS e' proprio il FORCE a rendere l'owner soggetto alle policy,
+#      e l'identita' la simulano le GUC `app.*`, non il ruolo di connessione.
 #
 #   2. **La fixture costruisce un mondo che l'operatore non deve vedere.**
 #      Un test sulla separazione fra emittenti deve creare i documenti
 #      dell'emittente ALTRUI: nessun operatore puo' farlo, ed e' esattamente
-#      cio' che la policy deve impedirgli. Stessa natura della categoria 1 —
-#      il test allestisce la scena e poi la osserva sotto restrizione.
-#      (Aggiunta il 2026-08-07, brief §26.)
+#      cio' che la policy deve impedirgli.
 #
-# ⚠️ Quello che NON e' un'eccezione: un `permesso negato` o una violazione di
-# policy che l'applicazione non incontrerebbe mai. Li' il difetto e' nella
-# fixture — scrive dove l'applicazione non scrive — oppure nella policy, e il
-# marcatore lo nasconderebbe invece di risolverlo.
+#   3. **Il test collauda un guard che solo uno scrittore privilegiato puo' far
+#      scattare.** I guard su pratiche.workflow_definizioni difendono da chi
+#      scrive DIRETTAMENTE (una migrazione, un job, qualcuno con psql): le
+#      transizioni che vietano — «PUBBLICATA -> BOZZA», cambio di versione su
+#      una pubblicata — nessun entry point le offre, quindi l'applicazione non
+#      puo' nemmeno tentarle. Stessa forma per le tabelle che solo le
+#      migrazioni popolano (ui.dashboard_definizione: nessuno ci scrive a
+#      runtime, ne' una funzione DB ne' il backend).
+#
+# ⛔ COSA IL CRITERIO ESCLUDE — e senza questo elenco e' una scusa, non un
+#    criterio. Tutti e tre i casi sono successi davvero, e nessuno e' stato
+#    marcato:
+#
+#   * `permesso negato` su una tabella dove l'applicazione **scrive davvero**
+#     -> o manca un GRANT (difetto di prodotto) o la fixture scrive dove
+#     l'applicazione non scrive (difetto di test). Il marcatore lo nasconde;
+#   * **violazione di policy RLS** su un documento dell'emittente di chi agisce
+#     -> difetto di fixture: tre file omettevano l'emittente su
+#     vendite.commesse, e su 58 righe reali zero ce l'hanno a NULL (§26.3, C1);
+#   * un errore che dipende da **come e' scritta la query**, non da chi la
+#     esegue -> due file creavano fattura e righe nella stessa CTE, che la
+#     policy non puo' soddisfare per via della snapshot condivisa (§26.2).
+#     Si riscrive la query, non si cambia utente.
+#
+# In una riga: **se l'applicazione quella cosa la fa, il marcatore e' sbagliato.**
 #
 # Quei file dichiarano in intestazione, entro le prime 80 righe:
 #

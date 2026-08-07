@@ -1,5 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture semina su pratiche.template_flussi_avanzamento_proiezione, che a runtime
+--   scrive solo pratiche.fn_copia_definizione — e quella gira dentro
+--   fn_fork_definizione / fn_nuova_versione_definizione, entrambe SECURITY DEFINER.
+--   Il ruolo applicativo ha solo SELECT ed e' corretto cosi': il soggetto del test
+--   sta fuori dal percorso applicativo (brief §29.2).
 -- pgTAP test per Zero ERP
 -- Test: GUIDA (D4) — avanzamento milestone su esito proiettato
 --       (brief-db-guida-avanza-esito-proiettato.md)
