@@ -60,6 +60,17 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- decisione del cantiere `ui`.
 -- Brief: brief-db-pgtap-runner-rls-baseline §11.
 
+-- ⚠️ Due vesti, in ordine, e l'ordine e' il punto.
+--   La fixture deve prima VEDERE (billing_account e' sotto RLS: senza una veste
+--   dichiarata l'utente applicativo legge zero righe, _t_sr resta vuota e cade
+--   tutto a valle). Poi, prima delle asserzioni, si indossa la veste che il test
+--   collauda davvero — CLIENTE_PORTALE, quella dell'identita' che la fixture ha
+--   appena creato.
+--   E' la «correzione vera» che il commento qui sopra nominava lasciandola al
+--   cantiere `ui`: «veste vuota» non e' una condizione che l'applicazione
+--   produca mai, quindi collaudarci sopra non misura l'applicazione.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
 SELECT plan(13);
 -- =========================================================
 -- 1. Setup: lista + colonne + auth_user + identita
@@ -224,6 +235,12 @@ CREATE TEMP TABLE _t_id AS WITH ins AS (
 )
 SELECT id AS identita_id
 FROM ins;
+
+-- Da qui in poi si agisce come l'identita' appena creata: e' la veste che il
+-- test collauda davvero, e senza la quale i profili PORTALE/AD_HOC verrebbero
+-- filtrati (asserzioni 5, 7 e 11).
+SELECT set_config('app.ruolo_applicativo', 'CLIENTE_PORTALE', true);
+SELECT set_config('app.current_identita_id', (SELECT identita_id::text FROM _t_id), true);
 -- Profilo AD_HOC per i test di permessi
 CREATE TEMP TABLE _t_profilo AS WITH ins AS (
     INSERT INTO config.profili_accesso (tipo, codice, descrizione, attivo)

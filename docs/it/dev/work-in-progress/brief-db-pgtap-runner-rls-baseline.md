@@ -25,7 +25,7 @@
 > file, `PGTAP_RUNNER` in `testpgtap.sh`, e una baseline che ora **registra con
 > che utente è stata presa e rifiuta i confronti disomogenei** (il difetto del §1
 > chiuso alla radice). Divario **da 36 a 23 file**.
-> 👉 **Punto della situazione: §25** · **famiglia C CHIUSA: §26** · **cantiere `LIMIT 1`: §27** — ALTO su tabelle vere **da 66 a 20**, di cui 4 già giudicati innocui · **✅ il file intermittente è sciolto: §28** · **famiglie B+D: §29** — ⭐ **divario da 36 a 4**, marcatore ricondotto a un criterio solo. Bilancio storico al §23 ·
+> 👉 **Punto della situazione: §25** · **famiglia C CHIUSA: §26** · **cantiere `LIMIT 1`: §27** — ALTO su tabelle vere **da 66 a 20**, di cui 4 già giudicati innocui · **✅ il file intermittente è sciolto: §28** · **famiglie B+D: §29** · ⭐⭐ **§30: DIVARIO ZERO** — non esiste più un file che si comporti peggio come applicazione. Manca **una riga**. Bilancio storico al §23 ·
 > **Priorità**: 🔴 **ALTA** — non per un difetto di prodotto, ma perché
 > **`scripts/pgtap-baseline.sh` oggi non può fare il suo mestiere**: distinguere
 > un rosso nuovo da uno noto. Finché non è risolto, ogni «zero regressioni»
@@ -2662,3 +2662,92 @@ ui/test-fn-resolve-lista-config.sql
 
 **Il divario è passato da 36 a 4 in una giornata.** Non più «una famiglia da
 sanare»: quattro file da guardare uno per uno.
+
+---
+
+## 30. ⭐ DIVARIO ZERO — i quattro sciolti, e nessuno era un permesso (2026-08-07)
+
+| | |
+| --- | --- |
+| owner | **87** — invariato, zero differenze file per file |
+| `PGTAP_RUNNER=app` | **86** |
+| **divario** | 4 → **0** |
+
+Sotto l'utente applicativo la suite è rossa **una volta in meno** che da owner
+(`rls/test-role-batch-fatturazione-postura`, rosso solo da owner). **Non esiste
+più un file che si comporti peggio come applicazione.**
+
+⭐ **E nessuno dei quattro era un problema di permessi.** Erano quattro modi
+diversi in cui un test dipendeva da *chi lo lancia* senza dirlo:
+
+### 30.1 `maintenance/test-job-run-registrazione` — la porta sbagliata
+
+Venti asserzioni su ventuno passavano già: usano `script.fn_job_run_start`, che
+è `SECURITY DEFINER`. La ventunesima faceva una **`INSERT` diretta** su
+`maintenance.job_run_log` per far scattare un `CHECK` — e il ruolo applicativo
+lì ha solo `SELECT`, correttamente: quella tabella la scrivono i job.
+
+✅ Riscritta **passando dall'entry point**: `fn_job_run_start('t_check','XXX')`
+solleva lo **stesso `23514`**, e il collaudo diventa più fedele — è la porta da
+cui ci passa l'applicazione.
+
+> ℹ️ Il test falliva **rumorosamente** invece di passare per sbaglio perché
+> pretende lo SQLSTATE. È [[feedback_pgtap_throws_ok_senza_sqlstate]] che ripaga.
+
+### 30.2 `rls/test-fn-scope-ba-ownership-ruolo-aware` — ⚠️ verde per sottrazione
+
+Il file era stato escluso dalla riga di contesto **con tutta la famiglia
+`rls/`**, «perché il contesto se lo costruisce da sé». Per questo **non è vero**:
+le GUC che imposta sono sue (`zeroerp.test_id_*`) e la funzione la chiama con
+argomenti espliciti — `app.ruolo_applicativo` non la tocca mai.
+
+Senza contesto, sotto l'utente applicativo la RLS è fail-closed: `_t_ctx` resta
+vuota, l'asserzione 1 fallisce **e le 2-5 finiscono nel ramo `skip`**.
+
+✅ Aggiunta la riga di contesto. Il guadagno non è il verde:
+**da 4 skip a 0 — le cinque asserzioni ora girano davvero da entrambi.**
+
+> ⚠️ **Un'esclusione fatta per famiglia e non per lettura.** Le altre `rls/`
+> vanno riguardate una per una con la stessa domanda: *questo file le GUC `app.*`
+> le tocca davvero?*
+
+### 30.3 `script/…-overload` — l'asserzione dipendeva dal `search_path`
+
+Confrontava la firma **resa come stringa**:
+
+| utente | `search_path` | firma resa |
+| --- | --- | --- |
+| owner | `"$user", public, topology` | `… config.ruolo_applicativo` |
+| app | `django, public, config, …` | `… ruolo_applicativo` |
+
+`pg_get_function_identity_arguments` qualifica il tipo **solo se lo schema non è
+nel search_path**. Stessa funzione, due stringhe: l'asserzione misurava lo stato
+di sessione, non la firma.
+
+✅ Riscritta confrontando gli **OID** dei tipi. ⚠️ `::oidvector` e non `oid[]`:
+`proargtypes` è a base **zero** e un `ARRAY` a base uno, e il confronto fra i due
+è falso anche con gli stessi elementi — ci sono cascato, e il test l'ha detto.
+
+### 30.4 `ui/test-fn-resolve-lista-config` — la correzione era già scritta nel file
+
+Il file escludeva il contesto di proposito, e il commento diceva anche perché e
+come si sarebbe risolto: *«"veste vuota" è una condizione che l'applicazione non
+produce mai. Correzione vera: dichiarare CLIENTE_PORTALE, decisione del cantiere
+`ui`»*. Dichiarare `OPERATORE` fa cadere le asserzioni 5, 7 e 11 — provato, ed è
+esattamente quello che il commento prevedeva.
+
+✅ Fatta la correzione che era già nominata, con l'ordine che serviva: **due
+vesti**. Prima `OPERATORE`, perché la fixture deve *vedere* (`billing_account` è
+sotto RLS: senza veste legge zero righe e cade tutto a valle); poi, appena creata
+l'identità, si indossa `CLIENTE_PORTALE` — quella che il test collauda davvero.
+**13 su 13** da entrambi i runner.
+
+### 30.5 Cosa manca adesso
+
+**Una riga.** Il default di `PGTAP_RUNNER` da `owner` ad `app` in
+`scripts/testpgtap.sh`, e `PGTAP_RUNNER=app scripts/pgtap-baseline.sh --update`
+sull'intera suite — che registrerebbe **86 rossi noti invece di 87**.
+
+Le condizioni che il brief poneva sono soddisfatte: il file intermittente è
+sciolto (§28), il divario è zero, e la baseline sa dichiarare con che utente è
+stata presa (§24.5).
