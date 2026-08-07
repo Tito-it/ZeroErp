@@ -1,5 +1,15 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture azzera vendite.commesse.emittente_soggetto_ruolo_id per
+--   raggiungere il ramo «emittente mancante» di
+--   fn_check_commessa_pronta_fatturazione, che e' una condizione di TESTATA e
+--   l'unica via rimasta per lo scenario «tutte le azioni spente».
+--   Con la RLS attiva nessun operatore puo' portare quella colonna a NULL: il
+--   WITH CHECK valuta la riga NUOVA e l'SR NULL e' fail-closed.
+--   ⚠️ Seconda categoria ammessa per il marcatore (brief §26). E resta una
+--   domanda aperta di prodotto: quel ramo e' raggiungibile solo da un ruolo
+--   BYPASSRLS, mai da un operatore — vedi §26.4.
 -- pgTAP test per Zero ERP
 -- Test: guard di USCITA dalla commessa (->CHIUSA / ->ANNULLATA),
 --       arco IN_ESECUZIONE->CHIUSA e capabilities con enabled/reasons.

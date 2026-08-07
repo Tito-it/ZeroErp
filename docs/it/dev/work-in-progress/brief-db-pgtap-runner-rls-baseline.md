@@ -24,8 +24,8 @@
 > **§24** ha chiuso la priorità 1 — il marcatore `-- pgtap-runner: owner` su 15
 > file, `PGTAP_RUNNER` in `testpgtap.sh`, e una baseline che ora **registra con
 > che utente è stata presa e rifiuta i confronti disomogenei** (il difetto del §1
-> chiuso alla radice). Divario **da 36 a 23 file**. Bilancio al **§23**, stato e
-> residuo al **§24.7** ·
+> chiuso alla radice). Divario **da 36 a 23 file**.
+> 👉 **Punto della situazione: §25** · **famiglia C CHIUSA: §26** — divario **da 23 a 16**. Bilancio storico al §23 ·
 > **Priorità**: 🔴 **ALTA** — non per un difetto di prodotto, ma perché
 > **`scripts/pgtap-baseline.sh` oggi non può fare il suo mestiere**: distinguere
 > un rosso nuovo da uno noto. Finché non è risolto, ogni «zero regressioni»
@@ -1992,3 +1992,228 @@ Il §23.4 resta valido, meno il punto 1 che è chiuso:
 ⚠️ Restano in piedi le due avvertenze del §23.4: il rosso intermittente di
 `anagrafiche/test-istanza-cliente-chain.sql` (§21.3) e il fatto che ribaselinare
 prima del cantiere `LIMIT 1` fotografa un pezzo di fortuna.
+
+---
+
+## 25. Punto della situazione (2026-08-07, sera)
+
+> Verificato, non ricordato. Da qui riparte chi apre il brief domani.
+
+### 25.1 I numeri, corretti dopo la sanatoria dei 4
+
+I 4 `vendite/*-righe-componenti-v1` erano rossi con **entrambi** i runner
+(§24.6): sanandoli calano tutti e due i lati della stessa quantità, e il divario
+non si muove.
+
+| | alla misura del §24.6 | ora |
+| --- | --- | --- |
+| owner (default) | 92 | **88** |
+| `PGTAP_RUNNER=app` | 114 | **110** |
+| **divario** | **23** | **23** |
+
+Verificato file per file: i 4 sono verdi da owner **e** da utente applicativo.
+Gli 88 sono lo stesso numero da cui il cantiere era partito il 2026-08-06.
+
+### 25.2 Cosa c'è, e funziona
+
+* **Marcatore `-- pgtap-runner: owner` su 15 file**, con `-- pgtap-runner-motivo:`
+  obbligatorio (senza, il runner esce 4).
+* **`PGTAP_RUNNER=owner|app`** in `scripts/testpgtap.sh`. **Default ancora
+  `owner`**: nessun cambio di comportamento per chi lancia i test oggi.
+* **`scripts/pgtap-baseline.sh` registra l'utente** nella prima riga della
+  baseline e **rifiuta confronto e update parziale** se la corsa gira con un
+  altro utente — *prima* di eseguire, in 8 ms invece che dopo 7 minuti.
+* Tutto committato in `b3948da09`.
+
+ℹ️ `db/pgtap/baseline-rossi.tsv` **non ha ancora la riga `# pgtap-runner:`**, e
+va bene: si legge come `owner`, che è ciò che era. La scriverà il primo
+`--update`.
+
+### 25.3 Il residuo, in una riga ciascuno
+
+| # | cosa | dimensione | perché in quest'ordine |
+| --- | --- | --- | --- |
+| 1 | **Famiglia C — RLS in scrittura** | 7 file | è il motivo per cui il brief esiste: l'unico posto dove una policy viene messa alla prova |
+| 2 | **Cantiere `LIMIT 1`** | 133 siti ALTO su 170 file | va **prima** della ribaselinatura, o si registra come «noto» un pezzo di fortuna |
+| 3 | **Famiglia B (8) + D (8)** e le 14 fixture del §22.4 | 16 + 14 | lavoro dei cantieri di dominio, non di questo |
+| 4 | **La commutazione** | una riga | default `app` + `PGTAP_RUNNER=app pgtap-baseline.sh --update` sull'intera suite |
+
+⚠️ Prima del punto 4, guardare `anagrafiche/test-istanza-cliente-chain.sql`:
+oscilla fra 6 e 0 asserzioni a parità di codice (§21.3).
+
+### 25.4 La prossima mossa, concreta
+
+**Famiglia C, i 7 file.** Tutti si fermano su
+`la nuova riga viola la regola di sicurezza per riga`, cinque su
+`vendite.commesse` e due su `vendite.fatture_righe`:
+
+```
+vendite/test-drop-uq-commesse-attivita-src-uid-partial-v1.sql   commesse
+vendite/test-fn-list-preventivi-da-pushare-righe-ids-v1.sql     commesse
+vendite/test-guard-uscita-commessa-v1.sql                       commesse
+vendite/test-vw-dash-fatturazione-v1.sql                        commesse
+vendite/test-vw-preventivi-smistamento-v1.sql                   commesse
+vendite/test-lista-commessa-attivita-fatturata-v1.sql           fatture_righe
+vendite/test-numerazione-guard-coerenza-v1.sql                  fatture_righe
+```
+
+La domanda da farsi su ognuno è **una sola, e ha due risposte opposte**: *la
+policy è scritta male* (difetto di prodotto, come i tre già trovati) *oppure la
+fixture scrive dove l'applicazione non scriverebbe* (difetto di test)? Le due si
+distinguono guardando **chi** scrive quella riga nel percorso reale — non
+costruendo una fixture che confermi il ramo, che è la trappola di
+[[feedback_verifica_dal_percorso_reale]].
+
+Si aprono con:
+
+```bash
+PGTAP_RUNNER=app scripts/testpgtap.sh db/vendite/test-guard-uscita-commessa-v1.sql
+```
+
+---
+
+## 26. Famiglia C — la RLS in scrittura, finalmente esercitata (2026-08-07)
+
+> È il motivo per cui il brief esiste: i sette file dove una policy viene messa
+> alla prova. **Non erano una cosa sola: sono quattro cause distinte**, e solo
+> misurandole una per una si vede quali sono difetti di test e quali no.
+
+### 26.1 Il metodo, prima del risultato
+
+La domanda su ogni rosso era sempre la stessa e con due risposte opposte: *la
+policy è scritta male, oppure la fixture scrive dove l'applicazione non
+scriverebbe?* Si risponde **dal percorso reale**, mai dalla fixture
+([[feedback_verifica_dal_percorso_reale]]): chi scrive davvero quella riga, e con
+quali valori. Tre misure hanno deciso tutto:
+
+* **`vendite.commesse`: 58 righe in essere, ZERO senza emittente.** La colonna è
+  l'unica nullable fra tutti i documenti (preventivi, ordini, ddt, resi, fatture
+  la hanno `NOT NULL`), ma nessuna riga vive in quello stato.
+  ⚠️ Conteggio fatto **da owner**: su tabella con RLS lo zero da utente
+  applicativo sarebbe fail-closed, non un dato ([[feedback_conteggi_rls_zero_non_errore]]).
+* **L'unico scrittore reale è `vendite.fn_get_or_create_commessa`**, e l'emittente
+  lo risolve **sempre**: `COALESCE(p_emittente_soggetto_ruolo_id,
+  anagrafiche.fn_get_emittente_fiscale_id(p_billing_account_id))`. Non è
+  `SECURITY DEFINER`, quindi gira soggetta alla RLS come chiunque.
+* **Il BE non scrive mai testata e righe fattura insieme**: in
+  `pipeline_repository.py` ci sono 2 `INSERT INTO vendite.fatture_righe` e
+  **zero** `INSERT INTO vendite.fatture` — la fattura nasce in uno step della
+  pipeline, le righe in quello dopo.
+
+### 26.2 ⭐ Il rilievo che vale più di tutti: la CTE che non può passare
+
+Due file (`test-lista-commessa-attivita-fatturata-v1`,
+`test-numerazione-guard-coerenza-v1`) creavano fattura **e** righe dentro **una
+sola CTE**. Esperimento controllato, stessi dati e stesso operatore:
+
+| | esito |
+| --- | --- |
+| fattura, poi righe — **due statement** | ✅ passa |
+| fattura + righe — **una CTE** | ❌ `viola la regola di sicurezza per riga` |
+
+**La causa**: le CTE che scrivono condividono tutte la **stessa snapshot**.
+`script.fn_scope_ef_whitelist_via_fattura` è `STABLE` e cerca la fattura in
+`vendite.fatture`, dove la riga appena inserita **non è ancora visibile**: l'SR
+risolve a `NULL` e il `WITH CHECK` nega fail-closed.
+
+> ⚠️ **È una mina, non un difetto — ma va saputa.** La policy fa la cosa giusta
+> in ogni percorso che l'applicazione usa davvero. Ma chiunque scriva un giorno
+> un `INSERT` genitore+figlio in una CTE sola — pattern SQL del tutto
+> legittimo — otterrà una violazione RLS che **non parla della causa vera**.
+> Non si corregge la policy: la si documenta, e la si trova qui.
+
+Riparate spezzando in due statement, che è anche la forma più fedele al BE. Il
+secondo file è passato da `LANGUAGE sql` (una CTE) a `LANGUAGE plpgsql` (due
+`INSERT`), perché in SQL puro le due scritture non si possono separare.
+
+### 26.3 Le quattro cause, e cosa si è fatto
+
+| # | causa | file | verdetto |
+| --- | --- | --- | --- |
+| **C1** | la fixture **omette** l'emittente | 3 | **difetto di fixture** — l'applicazione lo valorizza sempre |
+| **C2** | la fixture **azzera** l'emittente di proposito | 1 | marcatore, e una domanda di prodotto (§26.4) |
+| **C3** | la fixture scrive su un **secondo emittente** di proposito | 1 | la policy fa il suo mestiere: marcatore |
+| **C4** | testata e righe nella **stessa CTE** | 2 | **difetto di fixture**, con la mina del §26.2 sotto |
+
+**C1** — nuovo helper `script.fn_pgtap_emittente_sr_operatore()`
+(`20260807-10`), terzo della famiglia dopo `20260805-27` e `-38`. Le tabelle
+documento usano **due convenzioni** per l'emittente (`emittente_fiscale_id` per
+preventivi/ordini/ddt/resi, `emittente_soggetto_ruolo_id` per
+commesse/fatture/lotti): la compagna risponde alla prima, questa alla seconda, e
+le fixture smettono di ripetere la sotto-select di traduzione.
+
+**C2 e C3** — marcatore `-- pgtap-runner: owner`, e con esso una **seconda
+categoria ammessa**, scritta nell'intestazione di `scripts/testpgtap.sh`:
+
+> 1. il test **fa DDL** che il ruolo applicativo non può e non deve fare;
+> 2. **la fixture costruisce un mondo che l'operatore non deve vedere.**
+
+Sono la stessa natura: il test allestisce la scena e poi la osserva sotto
+restrizione. ⚠️ Quello che **non** è un'eccezione resta scritto accanto: un
+permesso negato che l'applicazione non incontrerebbe mai è un difetto di fixture
+o di policy, e il marcatore lo nasconderebbe invece di risolverlo.
+
+I marcati passano da 15 a **17**.
+
+### 26.4 ⚠️ Una domanda di prodotto che resta aperta
+
+`vendite.commesse.emittente_soggetto_ruolo_id` è nullable, ma:
+
+* nessuna delle 58 righe in essere è `NULL`;
+* l'unico scrittore lo risolve sempre;
+* **con la RLS attiva nessun operatore può portarlo a `NULL`** né creare una riga
+  che ce l'abbia — la policy nega, e non ha un ramo per l'assenza.
+
+Quindi il ramo «emittente mancante» di
+`vendite.fn_check_commessa_pronta_fatturazione` è raggiungibile **solo da un
+ruolo `BYPASSRLS`** (batch, automazioni) o dall'owner, mai da un operatore. Non è
+un ramo morto — è un ramo che appartiene a un altro attore.
+
+Le due domande, per quando si aprirà il cantiere giusto:
+
+1. la colonna dovrebbe essere `NOT NULL`, come lo è su tutti gli altri documenti?
+   Attenzione: `fn_get_or_create_commessa` può ancora produrre `NULL` se il
+   billing account non risolve un emittente;
+2. se resta nullable, la policy dovrebbe avere un ramo esplicito per l'assenza —
+   e quale? Oggi una commessa senza emittente sarebbe **invisibile a tutti gli
+   operatori**, il che è coerente col fail-closed ma va deciso, non subìto.
+
+### 26.5 ✅ Il migrate del 2026-08-07 ha sciolto anche il dubbio del §28.1 dell'altro brief
+
+`make db-migrate` ha applicato l'helper, l'azzeramento del registro codici errore
+e il testo corretto dei tre messaggi. In particolare: **il `loadData` su un CSV di
+sole intestazioni ha funzionato** — `dbops.codici_errore_senza_policy` è a **0
+righe**. Il rischio segnalato (nessun precedente nel repo) non si è materializzato.
+
+### 26.6 La verifica, col metodo di sempre
+
+Suite intera due volte, dal runner ufficiale.
+
+| | prima della famiglia C | dopo |
+| --- | --- | --- |
+| owner (default) | 88 | **88** |
+| `PGTAP_RUNNER=app` | 110 | **103** |
+| **divario** | **23** | **16** |
+
+**Zero differenze da owner**: gli 88 sono identici, file per file — la famiglia C
+non ha spostato niente su chi la suite la lancia oggi. Sotto utente applicativo
+calano esattamente **7**, cioè i sette della famiglia. **Nessun file della
+famiglia C compare più nel divario.**
+
+I 16 che restano sono esattamente le famiglie **B (8) + D (8)**: nessun residuo.
+
+### 26.7 Cosa resta
+
+1. **Cantiere `LIMIT 1`** (§11.3): 133 siti a rischio ALTO su 170 file. Sempre
+   **prima** della ribaselinatura.
+2. **Famiglia B (8)** — `pratiche.workflow_definizioni` (6) e
+   `template_flussi_avanzamento_proiezione` (2): `SELECT`-only per scelta,
+   cantiere definizioni versionate.
+   **Famiglia D (8)** — 4 GRANT mirati (`indirizzi_dettaglio`,
+   `pratiche_sorgenti`, `dashboard_definizione`, `preventivi`), 3 asserzioni,
+   1 binding AD_HOC. Più le **14 fixture** del §22.4.
+3. **La commutazione**: default `PGTAP_RUNNER` da `owner` ad `app` — una riga —
+   e `PGTAP_RUNNER=app scripts/pgtap-baseline.sh --update` sull'intera suite.
+
+⚠️ Prima del punto 3, `anagrafiche/test-istanza-cliente-chain.sql`: oscilla fra
+6 e 0 asserzioni a parità di codice (§21.3).

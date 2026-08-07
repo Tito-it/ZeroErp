@@ -106,12 +106,19 @@ SELECT ok(
 -- ============================================================
 CREATE TEMP TABLE tmp_commessa_srcuid AS
 WITH ins AS (
+  -- ⚠️ L'emittente NON si omette. La colonna e' nullable, ma l'unico
+  -- scrittore reale (vendite.fn_get_or_create_commessa) la risolve sempre
+  -- e su 58 commesse in essere zero hanno NULL: una commessa senza
+  -- emittente non e' uno stato del dominio, e con la RLS attiva la policy
+  -- rls_commesse_ef_whitelist la respinge (fail-closed sull'SR NULL).
   INSERT INTO vendite.commesse (
-    codice, billing_account_id, utility_id, stato_commessa_id
+    codice, billing_account_id, utility_id, stato_commessa_id,
+    emittente_soggetto_ruolo_id
   )
   SELECT
     'PGTAP-SRCUID-' || substr(md5(clock_timestamp()::text), 1, 8),
-    r.billing_account_id, r.utility_id, r.stato_commessa_id
+    r.billing_account_id, r.utility_id, r.stato_commessa_id,
+    script.fn_pgtap_emittente_sr_operatore()
   FROM tmp_refs_srcuid r
   RETURNING id
 )

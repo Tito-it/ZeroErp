@@ -96,29 +96,40 @@ SELECT * FROM ins;
 
 -- Crea una fattura con UNA riga al prezzo richiesto. Nient'altro: i satelliti
 -- li aggiunge ogni caso, quel tanto che gli serve.
-CREATE FUNCTION pg_temp.fx_fattura_dk(p_prezzo numeric) RETURNS bigint LANGUAGE sql AS $fx$
-  WITH ins AS (
-    INSERT INTO vendite.fatture (registro_id, data, emittente_soggetto_ruolo_id,
-                                 billing_account_id, utility_id, stato_doc_fiscale_id,
-                                 tipo_doc_fiscale_id, valuta_id, termine_pagamento_id, meta)
-    SELECT (SELECT id FROM tmp_reg_dk), current_date,
-           r.emittente_soggetto_ruolo_id, r.billing_account_id, r.utility_id,
-           (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'DRAFT'),
-           (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1),
-           (SELECT id FROM config.valute ORDER BY (iso_code <> 'EUR'), id LIMIT 1),
-           (SELECT id FROM config.termini_pagamento
-             WHERE codice_interno = 'TP_1RATA' AND attivo IS TRUE),
-           jsonb_build_object('test_scope', 'pgtap_guard_dk')
-      FROM tmp_refs_dk r
-    RETURNING id),
-  riga AS (
-    INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta,
-                                       prezzo_unitario, iva_id, meta)
-    SELECT (SELECT id FROM ins), 1, 'Riga test guard D-K', 1::numeric, p_prezzo,
-           (SELECT id FROM config.iva WHERE attivo IS TRUE ORDER BY id LIMIT 1),
-           jsonb_build_object('test_scope', 'pgtap_guard_dk')
-    RETURNING fattura_id)
-  SELECT fattura_id FROM riga;
+-- ⚠️ 2026-08-07: `plpgsql` e due statement, non `sql` con una CTE sola.
+--   La policy rls_fatture_righe_ef_whitelist risolve l'emittente passando da
+--   vendite.fatture (script.fn_scope_ef_whitelist_via_fattura, STABLE). Dentro
+--   una CTE che scrive, tutti i rami condividono la stessa snapshot: la fattura
+--   appena inserita NON e' ancora visibile, l'SR risolve a NULL e il WITH CHECK
+--   nega fail-closed. Misurato: stessi dati, stesso operatore — in due statement
+--   passa, in una CTE no. E' anche la forma piu' fedele: il BE crea la fattura
+--   in uno step della pipeline e le righe in quello dopo, mai insieme.
+CREATE FUNCTION pg_temp.fx_fattura_dk(p_prezzo numeric) RETURNS bigint LANGUAGE plpgsql AS $fx$
+DECLARE
+  v_fattura_id bigint;
+BEGIN
+  INSERT INTO vendite.fatture (registro_id, data, emittente_soggetto_ruolo_id,
+                               billing_account_id, utility_id, stato_doc_fiscale_id,
+                               tipo_doc_fiscale_id, valuta_id, termine_pagamento_id, meta)
+  SELECT (SELECT id FROM tmp_reg_dk), current_date,
+         r.emittente_soggetto_ruolo_id, r.billing_account_id, r.utility_id,
+         (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'DRAFT'),
+         (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1),
+         (SELECT id FROM config.valute ORDER BY (iso_code <> 'EUR'), id LIMIT 1),
+         (SELECT id FROM config.termini_pagamento
+           WHERE codice_interno = 'TP_1RATA' AND attivo IS TRUE),
+         jsonb_build_object('test_scope', 'pgtap_guard_dk')
+    FROM tmp_refs_dk r
+  RETURNING id INTO v_fattura_id;
+
+  INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta,
+                                     prezzo_unitario, iva_id, meta)
+  VALUES (v_fattura_id, 1, 'Riga test guard D-K', 1::numeric, p_prezzo,
+          (SELECT id FROM config.iva WHERE attivo IS TRUE ORDER BY id LIMIT 1),
+          jsonb_build_object('test_scope', 'pgtap_guard_dk'));
+
+  RETURN v_fattura_id;
+END;
 $fx$;
 
 -- Porta la fattura allo stato COMPLETO E COERENTE, con le funzioni vere e

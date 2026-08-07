@@ -169,9 +169,14 @@ SELECT is(
 -- ============================================================
 CREATE TEMP TABLE tmp_ri_commessa AS
 WITH ins AS (
-  INSERT INTO vendite.commesse (codice, billing_account_id, utility_id, stato_commessa_id)
+  -- ⚠️ L'emittente NON si omette: vedi la nota in
+  -- test-drop-uq-commesse-attivita-src-uid-partial-v1 — con la RLS attiva
+  -- la policy rls_commesse_ef_whitelist respinge l'SR NULL (fail-closed).
+  INSERT INTO vendite.commesse (codice, billing_account_id, utility_id, stato_commessa_id,
+                                emittente_soggetto_ruolo_id)
   SELECT 'PGTAP-RI-CMD-' || substr(md5(clock_timestamp()::text), 1, 8),
-         r.billing_account_id, r.utility_id, r.stato_commessa_id
+         r.billing_account_id, r.utility_id, r.stato_commessa_id,
+         script.fn_pgtap_emittente_sr_operatore()
     FROM tmp_ri_refs r
   RETURNING id)
 SELECT id FROM ins;
