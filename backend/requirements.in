@@ -36,7 +36,10 @@ gunicorn>=25.0
 packaging>=26.0
 
 # Crittografia (Fernet per password SMTP, secret TOTP)
-cryptography>=44.0
+# Minimo alzato a 50.0.0 il 2026-08-08: le 49.x sono coperte da 3 alert
+# Dependabot. Il minimo NON e' il pin — quello vive in requirements.txt — ma
+# senza alzarlo qui un pip-compile futuro potrebbe risolvere di nuovo a una 49.x.
+cryptography>=50.0.0
 
 # Sanitizzazione HTML (preview template email — Fase 6 amm-software)
 bleach>=6.2

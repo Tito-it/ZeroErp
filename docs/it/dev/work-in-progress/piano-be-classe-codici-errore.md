@@ -738,3 +738,83 @@ generatore non tocca.
 > cominciato a nominare un codice che il backend non conosceva. Si sarebbe visto
 > il giorno in cui fosse mancato un messaggio: **il peggiore per scoprire un
 > guasto**, ed è esattamente il rischio che il brief §7.2 aveva scritto.
+
+---
+
+## 10. ⭐ La classe è **vera**? Prima misura — 2026-08-08
+
+Il brief chiude il §9.2 con una rinuncia: *«il disegno presidia la nascita di un
+codice, non la sua vita — nessuno presidia che la classe resti vera»*. Con la
+vista `dbops.vw_codici_errore_forme_condizione` (DB **D-10**) quella rinuncia si
+può finalmente misurare, perché esistono **due letture indipendenti** dello
+stesso codice:
+
+* la **classe** — cosa dovrebbe essere (catalogo);
+* la **famiglia della guardia** — cosa fa il punto che solleva.
+
+Incrociate, la matrice `famiglia × classe` sui codici vivi e classificabili:
+
+| famiglia | classe dominante | fuori dominante |
+|---|---|---|
+| `ECCEZIONE` | `TECNICO` 15 | 1 |
+| `NOT_FOUND` | `NON_TROVATO` 19 | 20 (10 `DATO_ERRATO`, 6 `TECNICO`, 4 `CONFLITTO_STATO`) |
+| `PARAMETRO` | `DATO_ERRATO` 14 | 3 |
+| `ENUM` | `CONFLITTO_STATO` 6 | 4 |
+
+**Il predicato più stretto — guardia di solo parametro e classe diversa da
+`DATO_ERRATO` — dà zero.** Allargando alle famiglie miste escono **4 codici**, e
+letti uno per uno **nessuno è un difetto**:
+
+| Codice | Perché è flaggato | Verdetto |
+|---|---|---|
+| `E_GENERICO` | 68 punti, 4 famiglie | **per costruzione**: è il pavimento del percorso d'errore, `TECNICO` è giusto. Una misura del genere lo flagga sempre |
+| `E_ARTICOLO_NOT_FOUND` | guardia `PARAMETRO`, classe `NON_TROVATO` | **decisione deliberata**, e sta scritta nella funzione: *«Guard parametro NULL: riconducibile a NOT FOUND»*. È lo stesso ragionamento che il DB ha applicato a `E_BOM_RIGA_NOT_FOUND` |
+| `E_DEFINIZIONE_NON_TROVATA` | idem | idem |
+| `E_ERRORE_PARAMETRI` | `ECCEZIONE`+`PARAMETRO`+`IGNOTO`, 7 funzioni in 2 schemi | 🔴 **difetto vero, letto punto per punto — §10.1** |
+
+⚠️ **Il denominatore va detto ogni volta che si cita il risultato**: 75 codici
+classificabili su 344, gli altri 269 sono `solo_ignoto` — la vista *dice* di non
+sapere, ed è la colonna che rende la misura onesta. **«Zero contraddizioni» vale
+sul quinto del perimetro che si riesce a leggere**, non su tutto.
+
+> ⭐ Ma nei limiti in cui è misurabile, la risposta alla domanda del §9.2 oggi è
+> **sì: la classe è vera**. Ed è la prima volta che quella domanda ha una
+> risposta che non sia «bisognerebbe rileggere 150 funzioni».
+
+### 10.1 🔴 `E_ERRORE_PARAMETRI` — **4 punti su 13 dicono il falso**
+
+L'incrocio l'aveva segnalato; leggendo i 13 punti che lo sollevano, uno per uno,
+il sospetto diventa una misura. **Non è il nome della funzione: è la condizione.**
+
+| Condizione al punto che solleva | Punti | Classe vera |
+|---|---:|---|
+| `p_<x> IS NULL` / `<= 0` / `btrim = ''` / `NOT IN (…)` — guardia di parametro | **9** | `DATO_ERRATO` ✅ |
+| `TG_NARGS < 1` e `TG_NARGS <> 2` — **il trigger è montato con gli argomenti sbagliati** | 2 | `TECNICO` |
+| `EXCEPTION WHEN OTHERS` in `trgfn_guard_utility_tipo_ruolo_by_cols` | 1 | `TECNICO` |
+| `v_stato_chiuso_id IS NULL` in `fn_subentro_cliente` — ma **non è un parametro**: esce da `SELECT … FROM config.stati_cliente WHERE codice_interno = …`, cioè da una **configurazione mancante** | 1 | `TECNICO` |
+
+⚠️ **E i tre precedenti sono già decisi in questo progetto**, il che rende il
+verdetto meccanico invece che opinabile:
+
+* *argomenti del trigger sbagliati* → `E_ATTIVO_REQUIRE` è **500** proprio per
+  questo («un montaggio sbagliato»);
+* *`EXCEPTION WHEN OTHERS`* → è la ragione per cui `E_SNAPSHOT_ID_NOT_FOUND` è
+  stato spostato a **500** nel cantiere del terzo lato;
+* *lookup di configurazione che non trova* → `E_REGOLA_FATTURAZIONE_MANCANTE` e
+  `E_PIPELINE_NOT_FOUND`, entrambi **500** col criterio «chi può rimediare».
+
+**Quindi non è un caso da riclassificare, è da spezzare**, e per il criterio già
+scritto in [api.md](../api.md): i significati chiedono **reazioni diverse** —
+*«correggi quel campo»* contro *«chiama chi ha configurato il sistema»*. Oggi su
+quei 4 punti l'operatore riceve un **400** che gli dice che ha sbagliato lui, e
+lo manda a cercare un campo che non esiste.
+
+⚠️ **Perimetro DB**: sono codici nuovi + quattro funzioni da toccare. Il BE non
+ha niente da cambiare — la classe la prende dal catalogo, e i codici nuovi
+arrivano col generatore.
+
+> ⭐ **La cosa che vale oltre questo codice**: `E_VALIDAZIONE` sembrava un
+> accumulatore e non lo era; `E_ERRORE_PARAMETRI` non era nella lista dei
+> sospetti e lo è. Entrambe le volte la risposta è venuta dal **contare le
+> condizioni**, non dal guardare i nomi — e la seconda volta l'ha trovata una
+> misura invece di una persona.
