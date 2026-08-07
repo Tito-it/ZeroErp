@@ -218,7 +218,7 @@ delle scritture precedenti sopravviva).
 > l'elenco di cosa **esclude**, è nell'intestazione di `scripts/testpgtap.sh`.
 >
 > Guida operativa: [pgtap-come-si-scrive-un-test](/guide/pgtap-come-si-scrive-un-test) ·
-> storia e misure: `docs/it/dev/work-in-progress/brief-db-pgtap-runner-rls-baseline.md`.
+> storia e misure: `docs/it/dev/work-done/brief-db-pgtap-runner-rls-baseline.md`.
 
 > Caso di studio completo, catalogo dei finding e criterio esteso (madre DB *vs* `transaction.atomic()`
 > *vs* outbox): [analisi-fix-transazioni](/dev/work-done/analisi-fix-transazioni).

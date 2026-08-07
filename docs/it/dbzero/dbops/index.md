@@ -69,7 +69,6 @@
 - [fn_normalize_indirizzo](funzioni/fn_normalize_indirizzo.md)
 - [fn_populate_fk_index_policy](funzioni/fn_populate_fk_index_policy.md) — (latest review 27-07-26)
 - [fn_purge_cleanup_expired](funzioni/fn_purge_cleanup_expired.md) — (latest review 07-02-26) La funzione **`dbops.fn_purge_cleanup_expired`** elimina i record con **`cleanup_at` scaduto** usando una strategia a **batch**, per ridurre lock e impatti sulle tabelle più grandi.
-- [fn_refresh_mv_ddt_ordini](funzioni/fn_refresh_mv_ddt_ordini.md)
 - [fn_rename_triggers_by_order](funzioni/fn_rename_triggers_by_order.md)
 - [fn_resolve_scope](funzioni/fn_resolve_scope.md) — (latest review 10-01-26) La funzione **`dbops.fn_resolve_scope(p_schemas text[])`** restituisce la lista effettiva di schemi da considerare come *ambito* per l’esecuzione delle automazioni. Serve a normalizzare e centralizzare la logica di determinazione dell’ambito operativo, evitando duplicazioni e incoerenze.
 - [fn_run_automations](funzioni/fn_run_automations.md) — (latest review 07-02-26) La funzione **`dbops.fn_run_automations`** è l’**orchestratore principale** del framework di automazioni. Coordina l’applicazione delle regole di sistema (Tx ID, aggiornamento audit, storico, lock colonne, gestione flag attivo, cleanup) sugli schemi e tabelle nell'ambito.

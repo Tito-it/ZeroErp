@@ -3,7 +3,7 @@
 **Chi:** team DB (`dev/db-tid`).
 **Guida generale e ragioni di ogni scelta:** [brief-db-be-classe-codici-errore](brief-db-be-classe-codici-errore.md) — 20 decisioni, le trappole, i perché. **Questo file non le ripete: le esegue.**
 **Piano gemello:** [piano-be-classe-codici-errore](piano-be-classe-codici-errore.md).
-**Stato:** 🟡 **in corso** — ✅ D-1..D-6 applicati, **D-7 scritto** (2026-08-07). Prossimo: **D-8** (pgTAP) e **D-9** (le due viste = 🔴 il cancello del BE).
+**Stato:** 🟡 **in corso** — ✅ D-1..D-8 applicati e verdi, **D-9 scritto** (2026-08-07). Applicato il D-9 **il BE è sbloccato**. Resta solo D-10, che non blocca nessuno.
 ✅ **Vocabolario a 10 valori confermato da Tid** (2026-08-07): `NON_AUTENTICATO` e `ERRORE_ESTERNO` restano.
 
 ---
@@ -48,8 +48,8 @@ additivo e reversibile.
 | ✅ **D-5** | ~~Seed~~ **fatto** — 3 loader in `20260614-08`, in ordine | D-1 · D-2 · D-4 | ⚠️ la trappola era **al D-7**, non qui: vedi sotto |
 | ✅ **D-6** | ~~`obsoleto_dal` migra + i 5 lettori~~ **fatto** — `20260807-13` | D-5 | 🔴 punto di non ritorno **superato** |
 | ✅ **D-7** | ~~FK + policy indici~~ **fatto** — `20260807-14` e `-15` | D-5 | ⚠️ **due** FK da registrare, non una |
-| **D-8** | pgTAP: **4 da adeguare** + i nuovi | D-6 · D-7 | |
-| **D-9** | Le **due viste** (`20_code`) | D-4 | ⚠️ numerazione più alta di chi dipende da loro |
+| ✅ **D-8** | ~~pgTAP~~ **scritto** — 3 adeguati, 1 riscritto e spostato, 1 nuovo | D-6 · D-7 | 🔴 **non eseguito**: serve il DB |
+| ✅ **D-9** | ~~Le due viste~~ **scritto** — `20260807-16` e `-17` | D-4 | 🔴 **è la consegna al BE**: applicato questo, B-5 è sbloccato |
 | **D-10** | Vista della **forma della condizione** — la misura | D-9 | ⚠️ **ri-specificata**: l'asse «multidominio» era smentito dal D-3 |
 
 **Consegna al BE:** dopo **D-9**. È il momento in cui `vw_codici_errore_identita`
@@ -672,63 +672,167 @@ una convenzione, e non va propagata.
 
 ---
 
-### D-8 · pgTAP
+### D-8 · ✅ **SCRITTO** — 2026-08-07 · 🔴 da eseguire
 
-**Quattro da adeguare** — inseriscono direttamente nel catalogo e con la FK
-vogliono un padre:
+⚠️ **Non ho potuto eseguirli**: da qui non ho accesso al database. Sotto c'è cosa
+lanciare e cosa deve venire fuori.
 
-* `test-messaggi-errore-obsoleto-dal.sql` — ⚠️ **da riscrivere**, non adattare:
-  verifica una colonna che cambia casa;
-* `test-fn-log-and-raise-error-fallback-lingua.sql`
-* `test-fn-log-and-raise-error-constraint-codice.sql`
-* `test-fn-get-messaggio-fallback-lingua.sql`
+| File | Cosa è cambiato |
+|---|---|
+| `script/test-fn-get-messaggio-fallback-lingua.sql` | 2 codici padre nella fixture |
+| `script/test-fn-log-and-raise-error-fallback-lingua.sql` | 3 codici padre |
+| `script/test-fn-log-and-raise-error-constraint-codice.sql` | 1 codice padre |
+| `script/test-messaggi-errore-obsoleto-dal.sql` → **`config/test-codici-errore-obsoleto-dal.sql`** | **riscritto e spostato** |
+| **`config/test-codici-errore-identita.sql`** | **nuovo**, 8 asserzioni |
 
-**Nuovi, e sono il collaudo del disegno:**
+#### I tre adeguati: una riga di fixture, non una riscrittura
 
-1. `INSERT` in `codici_errore` **senza classe** → deve fallire (il `NOT NULL` è il
-   meccanismo: se non è collaudato, non è un meccanismo);
-2. `INSERT` in `messaggi_errore` con un codice **senza padre** → deve fallire;
-3. un codice **ritirato** risolve ancora dal diario;
-4. `vw_codici_errore_identita` ha **una riga per codice**, compresi i codici
-   **senza** messaggio.
+Inseriscono in `config.messaggi_errore`, che ora ha la FK: serve il padre prima.
+Una `INSERT INTO config.codici_errore` sopra la loro, con la ragione accanto —
+**è la stessa cosa che il seed fa coi tre loader**, e chi legge il test impara
+l'ordine che dovrà rispettare anche nei CSV.
 
-⚠️ **`throws_ok` sempre con lo SQLSTATE**: senza, accetta qualunque errore —
-compreso il crash del vincolo che doveva verificare.
+#### Il quarto: riscritto **e** rinominato
 
-⚠️ **Baseline prima di attribuirsi un rosso**: `scripts/pgtap-baseline.sh script config`.
+Si chiamava `test-messaggi-errore-obsoleto-dal` e stava in `script/`. La colonna
+che verifica non è più lì: ora è `config/test-codici-errore-obsoleto-dal.sql`.
+
+⭐ **E la sua prima asserzione è diventata più severa.** Prima diceva «la colonna
+esiste su `messaggi_errore`, è DATE ed è nullable». Ora dice **due cose**:
+
+```sql
+-- attesa: 'codici_errore:date/YES'
+SELECT string_agg(table_name || ':' || data_type || '/' || is_nullable, ' + ' ORDER BY table_name)
+  FROM information_schema.columns
+ WHERE table_schema = 'config'
+   AND table_name IN ('messaggi_errore', 'codici_errore')
+   AND column_name = 'obsoleto_dal';
+```
+
+che c'è nella casa nuova **e che non è rimasta in quella vecchia**. Un trasloco a
+metà — colonna in entrambe — sarebbe la peggiore delle tre situazioni: due
+sorgenti di verità che nessun vincolo tiene insieme. Con l'asserzione vecchia
+sarebbe passato inosservato.
+
+#### Il nuovo: collauda il **meccanismo**, non i dati
+
+Il disegno promette una cosa sola — *una frase non può nascere senza che qualcuno
+abbia deciso che cosa è l'errore che descrive* — e quella promessa non sta in un
+documento: sta in **tre vincoli**. Le prime asserzioni sono quei tre, uno per uno.
+
+| # | Cosa | SQLSTATE |
+|---|---|---|
+| 1 | codice **senza classe** → rifiutato | `23502` |
+| 2 | **classe inventata** → rifiutata | `23503` |
+| 3 | **frase senza codice** → rifiutata | `23503` |
+| 4 | la stessa frase **passa** se il padre c'è | — |
+| 5 | un codice **ritirato risolve ancora** | — |
+| 6 | `note` con un a capo → rifiutata | `23514` |
+| 7 | codice con spazi ai bordi → rifiutato | `23514` |
+| 8 | **ogni codice del catalogo ha il suo padre** — sui dati veri | — |
+
+⚠️ **Il 4 esiste per non fidarsi del 3.** Senza, «la FK morde» non si distingue
+da «l'INSERT è rotto per un altro motivo»: il test sarebbe verde anche con una
+colonna sbagliata. È la trappola dei tre verdi che collaudavano altro, misurata
+nella guida.
+
+⚠️ **L'8 è l'unico che guarda i dati veri.** Gli altri sette passerebbero su un
+catalogo vuoto: usano righe inventate. L'8 chiede che l'invariante regga sui 689
+codici seminati, ed è l'unico che si accorgerà se un seed futuro dimentica un
+padre. `bool_and` e non `LIMIT 1`: dice «**nessuno** è orfano», non «uno a caso
+va bene».
+
+E ogni `throws_ok` ha il suo SQLSTATE: senza, accetterebbe anche il crash del
+vincolo che deve verificare. Il debito del guardrail resta a 137, invariato.
+
+#### Cosa lanciare
+
+```bash
+scripts/testpgtap.sh db/pgtap/config/test-codici-errore-identita.sql
+scripts/testpgtap.sh db/pgtap/config/test-codici-errore-obsoleto-dal.sql
+scripts/pgtap-baseline.sh config
+scripts/pgtap-baseline.sh script
+python3 scripts/guardrail_pgtap_preambolo.py     # ✅ già verde, 427 file
+```
+
+⚠️ **Un rosso possibile che non è un difetto del test: i GRANT.** Le due tabelle
+sono nuove, i test girano come `zeroerp_app`, e i permessi sulle tabelle nuove li
+dà il `ci_apply` (`20260205-41-apply-runtime-grants-ci`), non il migrate manuale
+— stessa tempistica dei trigger di audit. Se esce **«permesso negato»**, la cura
+è `make db-ci-apply`, non toccare il test.
+
+✅ Nessuno dei file toccati era nella baseline dei rossi noti: qualunque rosso qui
+è nuovo, e va guardato.
 
 ---
 
-### D-9 · Le due viste (`20_code`) — la consegna al BE
+### D-9 · ✅ **SCRITTO** — 2026-08-07 · 🔴 è la consegna al BE
+
+| ChangeSet | Vista | Per chi |
+|---|---|---|
+| [`20260807-16`](../../../../db/changelog/migrations_v2/20_code/config/20260807-16-create-vw-codici-errore-identita-mctit.yaml) | `config.vw_codici_errore_identita` | il **generatore** del BE (B-5) |
+| [`20260807-17`](../../../../db/changelog/migrations_v2/20_code/config/20260807-17-create-vw-codici-errore-mctit.yaml) | `config.vw_codici_errore` | la **revisione**, per gli umani |
+
+**Due file e non uno**, così una si può ricreare senza toccare l'altra: in
+`20_code` chi ricrea una dipendenza deve avere numero più alto di chi la usa, e
+tenerle insieme avrebbe legato il destino delle due per sempre.
+
+#### Perché due viste, ed è la cosa da non dimenticare
+
+La stessa tabella serve **due mestieri con cardinalità diverse**: la revisione
+vuole la frase accanto alla classe e quindi moltiplica per lingua; il generatore
+vuole l'identità, una riga per codice.
+
+⚠️ Riusare quella di revisione per entrambi costringerebbe a un
+`WHERE lingua = 'it'`, e **quel filtro toglierebbe i codici senza messaggio** —
+proprio quelli che più servono vedere. È scritto nel `COMMENT ON VIEW` di
+entrambe, perché è l'errore che qualcuno farà.
+
+#### ⚠️ Correzione su cosa garantisce l'`ORDER BY` nella vista
+
+Al D-5 avevo scritto che l'`ORDER BY` starebbe «anche dentro la vista, non solo
+nella query del generatore». È vero, ma va detto meglio: **PostgreSQL lo applica
+ma non è un contratto** — se la vista viene inlinata in una query più grande, o
+il chiamante aggiunge il proprio ordinamento, l'ordine della vista può non
+sopravvivere.
+
+Quindi: nella vista è la **cintura** (chi fa `SELECT *` senza pensarci ce l'ha),
+nel generatore è il **contratto**. Vivono in due posti apposta, e la ragione è
+scritta in entrambi.
+
+#### `LEFT JOIN` nella vista di revisione
+
+Un codice **può** esistere senza messaggio, ed è uno dei difetti che serve
+vedere. Con un `JOIN` semplice sparirebbe, e chi legge concluderebbe che va tutto
+bene perché non l'ha visto. Stessa famiglia del filtro sulla lingua: un errore
+che leva righe in silenzio.
+
+#### `security_invoker = true` su entrambe
+
+Una vista non deve mai vedere più di chi la interroga. Oggi queste tabelle non
+hanno RLS, ma una vista che gira coi privilegi del proprietario è un bypass che
+nessuno ricontrolla il giorno in cui la RLS arriva.
+
+⚠️ **La reloption non è visibile in `pg_get_viewdef`**: va ri-specificata a ogni
+`CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera in silenzio. Chi
+riscriverà queste viste deve saperlo, ed è scritto in testata a entrambi i
+changeSet.
+
+#### Dopo il migrate
 
 ```sql
--- Revisione: affianca la frase. Una riga per (codice, lingua).
-CREATE VIEW config.vw_codici_errore AS
-SELECT c.codice, c.classe, c.obsoleto_dal, c.note,
-       m.lingua, m.messaggio, m.causa, m.soluzione
-  FROM config.codici_errore c
-  LEFT JOIN config.messaggi_errore m ON m.codice = c.codice;
-
--- Identità: la sorgente del generatore BE. Una riga per codice.
-CREATE VIEW config.vw_codici_errore_identita AS
-SELECT codice, classe, obsoleto_dal, note
-  FROM config.codici_errore
- ORDER BY codice;
+SELECT count(*) FROM config.vw_codici_errore_identita;   -- 689, una per codice
+SELECT count(*) FROM config.vw_codici_errore;            -- 690, una per (codice, lingua)
+-- i codici senza messaggio ci sono, ed e' il punto del LEFT JOIN:
+SELECT count(*) FROM config.vw_codici_errore WHERE lingua IS NULL;
 ```
 
-⚠️ **`LEFT JOIN` nella prima**: un codice **può** esistere senza messaggio, e la
-vista deve mostrarlo — è uno dei difetti che serve vedere.
+⚠️ **I GRANT arrivano dal `ci_apply`**, non dal migrate manuale — stessa
+tempistica delle tabelle. Il generatore del BE legge con un ruolo applicativo: se
+prende «permesso negato», la cura è `make db-ci-apply`.
 
-⚠️ **`ORDER BY` dentro la seconda**, non solo nella query del generatore: un
-requisito che vive in due posti si dimentica in uno dei due. Senza, il generatore
-produce diff spurii per riordino, il file diventa illeggibile e da lì a non
-accorgersi di una classe cambiata è un passo.
-
-⚠️ **Numerazione più alta** di chiunque dipenda da loro: l'autogen mescola
-`00_schema` e `20_code` ordinando per NN.
-
-✅ **È qui che il DB consegna.** Da questo momento il BE può partire col
-generatore (piano BE, **B-5**).
+✅ **Applicato questo, il cancello del BE è aperto**: `vw_codici_errore_identita`
+esiste, è popolata e ordinata, e il B-5 può partire.
 
 ---
 

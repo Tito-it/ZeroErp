@@ -146,7 +146,6 @@
 - [fn_get_vendite_note](funzioni/fn_get_vendite_note.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_get_vendite_note()`** e` un wrapper su `script.fn_get_note('vendite.note')` per recuperare le note vendite da tabella partizionata in modo uniforme.
 - [fn_guard_lotto_fatture_stato_coerente](funzioni/fn_guard_lotto_fatture_stato_coerente.md)
 - [fn_link_commessa_sorgente](funzioni/fn_link_commessa_sorgente.md) — (latest review 24-02-2026) Collega la ROOT source a una commessa in modo idempotente e coerente.
-- [fn_list_attivita_sorgenti_abilitate](funzioni/fn_list_attivita_sorgenti_abilitate.md)
 - [fn_list_commessa_attivita](funzioni/fn_list_commessa_attivita.md) — (latest review 26-02-2026)   Restituisce il dettaglio righe di una commessa (`commesse_attivita`) con filtri opzionali e paginazione, per uso backend in consultazione e pre-validazione dei flussi di emissione.
 - [fn_list_commesse_emittibili](funzioni/fn_list_commesse_emittibili.md) — (latest review 26-02-2026)   Elenca le commesse candidate all'emissione verso `attivita_fatturabili`, applicando i criteri minimi di prontezza operativa.
 - [fn_list_consumi_da_pushare](funzioni/fn_list_consumi_da_pushare.md) — `vendite.fn_list_consumi_da_pushare(...)` seleziona i consumi utility pronti per il push verso `commesse_attivita`, restituendo un payload di base per l'handler di calcolo componenti.
@@ -178,7 +177,6 @@
 - [fn_push_preventivo_a_ordine](funzioni/fn_push_preventivo_a_ordine.md) — (latest review 08-07-2026)
 - [fn_reset_fondi_fattura](funzioni/fn_reset_fondi_fattura.md) — La funzione **`vendite.fn_reset_fondi_fattura()`** ripristina i fondi fattura applicati ad una **fattura figlia**:
 - [fn_resi_riga_residuo_riconsegna](funzioni/fn_resi_riga_residuo_riconsegna.md) — (rev 2026-07-26)
-- [fn_resolve_commessa_prezzi](funzioni/fn_resolve_commessa_prezzi.md)
 - [fn_resolve_fatturazione_pipeline_step](funzioni/fn_resolve_fatturazione_pipeline_step.md) — (latest review 08-02-2026)   La funzione risolve la configurazione pipeline per un singolo step (`stato_doc_fiscale_id`) applicando fallback su `utility_id` e `tipo_doc_fiscale_id`.
 - [fn_resolve_lotto_task_execution_mode](funzioni/fn_resolve_lotto_task_execution_mode.md) — Determina in modo deterministico la modalita` di esecuzione del task: `RUN`, `SKIP`, `RESUME`, `RESET_REQUIRED`.
 - [fn_resolve_lotto_utility_emittente](funzioni/fn_resolve_lotto_utility_emittente.md) — (latest review 22-02-2026) Helper condiviso per risolvere e validare `utility_id` ed `emittente_soggetto_ruolo_id` nei flussi lotto (`fatturazione_lotti` e `attivita_fatturabili_lotti`).
@@ -203,7 +201,6 @@
 - [fn_snapshot_indirizzi_fattura](funzioni/fn_snapshot_indirizzi_fattura.md) — (latest review 02-08-2026)
 - [fn_snapshot_intestazione_fattura](funzioni/fn_snapshot_intestazione_fattura.md) — (latest review 02-08-2026)
 - [fn_start_lotto_task_run](funzioni/fn_start_lotto_task_run.md) — Apre un nuovo record runtime task su lotto in stato `IN_ESECUZIONE`.
-- [fn_sync_attivita_stato_esecuzione](funzioni/fn_sync_attivita_stato_esecuzione.md)
 - [fn_sync_contabili_fondo_fattura](funzioni/fn_sync_contabili_fondo_fattura.md) — Sincronizzare i fondi fattura assegnati a una fattura figlia nel layer **contabile pre-posting** (`pagamenti.vendite_contabili` / `pagamenti.vendite_contabili_righe`), senza scrivere movimenti pagamenti diretti.
 - [fn_sync_fattura_critical](funzioni/fn_sync_fattura_critical.md) — (latest review 29-01-2026)   La funzione **`vendite.fn_sync_fattura_critical()`** aggiorna il flag `fatture.critical` in base ai log attivi della fattura.
 - [fn_sync_fatture_log_critical_lotto](funzioni/fn_sync_fatture_log_critical_lotto.md) — (latest review 20-02-2026)   La funzione **`vendite.fn_sync_fatture_log_critical_lotto()`** sincronizza in modo set-based:
@@ -213,9 +210,7 @@
 - [trgfn_attivita_fatturabili_guard_ba_coerenza](funzioni/trgfn_attivita_fatturabili_guard_ba_coerenza.md) — (latest review 29-01-2026)   La funzione **`vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()`** valida la coerenza tra `billing_account_id` e `istanza_utility_id` sulle righe di `attivita_fatturabili`.
 - [trgfn_attivita_fatturabili_guard_commessa](funzioni/trgfn_attivita_fatturabili_guard_commessa.md) — (latest review 24-02-2026)   La funzione trigger `vendite.trgfn_attivita_fatturabili_guard_commessa()` applica il guardrail anti-bypass sul dominio `attivita_fatturabili`, impedendo scritture senza collegamento commessa quando il flag è attivo.
 - [trgfn_attivita_fatturabili_guard_fatturato](funzioni/trgfn_attivita_fatturabili_guard_fatturato.md) — (latest review 26-01-2026) La funzione **`vendite.trgfn_attivita_fatturabili_guard_fatturato()`** blocca modifiche o cancellazioni di righe di `vendite.attivita_fatturabili` che risultano gia` agganciate a una riga di fattura.
-- [trgfn_attivita_fatturabili_guard_fonte](funzioni/trgfn_attivita_fatturabili_guard_fonte.md)
 - [trgfn_attivita_fatturabili_guard_quantita_immutabile](funzioni/trgfn_attivita_fatturabili_guard_quantita_immutabile.md)
-- [trgfn_attivita_fatturabili_lotti_gen_codice](funzioni/trgfn_attivita_fatturabili_lotti_gen_codice.md)
 - [trgfn_attivita_fatturabili_normalize](funzioni/trgfn_attivita_fatturabili_normalize.md) — (latest review 21/01/2026) La funzione `vendite.trgfn_attivita_fatturabili_normalize()` applica una **normalizzazione minima** su `vendite.attivita_fatturabili` per garantire coerenza **temporale** e **tecnica** dei dati prima della scrittura.
 - [trgfn_commesse_attivita_guard_quantita_immutabile](funzioni/trgfn_commesse_attivita_guard_quantita_immutabile.md)
 - [trgfn_commesse_attivita_guard_tipo_doc_emittibile](funzioni/trgfn_commesse_attivita_guard_tipo_doc_emittibile.md) — (rev 2026-06-19)
@@ -226,14 +221,11 @@
 - [trgfn_contratti_freeze_listino_versione](funzioni/trgfn_contratti_freeze_listino_versione.md) — Il modello unificato prevede che un contratto ATTIVO abbia una versione listino **fissa e immutabile**: dal momento dell'attivazione il resolver prezzi legge sempre quella versione, anche se il listino ha versioni successive. Questo garantisce stabilità del pricing per tutta la durata del contratto.
 - [trgfn_contratti_gen_codice](funzioni/trgfn_contratti_gen_codice.md) — La trigger function `vendite.trgfn_contratti_gen_codice()` genera automaticamente `numero` contratto quando il valore non viene fornito.
 - [trgfn_contratti_guard_emittente_ba](funzioni/trgfn_contratti_guard_emittente_ba.md) — (rev 2026-05-26)
-- [trgfn_contratti_guard_modalita_c_activation](funzioni/trgfn_contratti_guard_modalita_c_activation.md)
 - [trgfn_contratti_guard_transizione_stato](funzioni/trgfn_contratti_guard_transizione_stato.md) — (latest review 12-05-2026 — aggiunto check PENDING componenti BoM CASO A)
 - [trgfn_contratti_lock_post_attivazione](funzioni/trgfn_contratti_lock_post_attivazione.md) — Il pricing di un contratto attivo è **immutabile per design** (§3-bis-A del brief): né listino, né variazione globale, né versione fissata possono essere cambiati dopo l'attivazione. Questo garantisce stabilità del calcolo prezzi per tutta la durata del contratto e coerenza dell'audit trail.
 - [trgfn_contratti_normalize](funzioni/trgfn_contratti_normalize.md) — La trigger function `vendite.trgfn_contratti_normalize()` completa i dati minimi del contratto in insert quando il numero documento e` presente.
-- [trgfn_contratti_righe_componenti_guard_pending](funzioni/trgfn_contratti_righe_componenti_guard_pending.md)
 - [trgfn_contratti_righe_guard_aggiunta_fuori_listino](funzioni/trgfn_contratti_righe_guard_aggiunta_fuori_listino.md) — Un operatore che vuole modificare il prezzo di un articolo già in listino deve usare `OVERRIDE`, non `AGGIUNTA`. Questo guard è la **barriera DB-first** che rende impossibile la confusione tra i due tipi, anche da psql diretto o da chiamate API non validate.
 - [trgfn_contratti_righe_guard_esclusione_figlio_bundle](funzioni/trgfn_contratti_righe_guard_esclusione_figlio_bundle.md)
-- [trgfn_contratti_righe_guard_modalita_c](funzioni/trgfn_contratti_righe_guard_modalita_c.md)
 - [trgfn_contratti_righe_lock_post_attivazione](funzioni/trgfn_contratti_righe_lock_post_attivazione.md) — Le eccezioni di un contratto attivo (OVERRIDE, ESCLUSIONE, AGGIUNTA) sono **immutabili post-attivazione** (§3-bis-A). Questo enforcement avviene a livello DB per garantire il blocco anche da psql diretto, script di manutenzione o chiamate API non validate. Il lock è simmetrico a quello sulla testata (`trgfn_contratti_lock_post_attivazione`).
 - [trgfn_contratti_set_categoria_cliente_snapshot](funzioni/trgfn_contratti_set_categoria_cliente_snapshot.md)
 - [trgfn_contratti_snapshot_precontrattuali](funzioni/trgfn_contratti_snapshot_precontrattuali.md) — (latest review 20/01/26) La funzione `vendite.trgfn_contratti_snapshot_precontrattuali()` crea lo **snapshot** dei dati precontrattuali **solo alla creazione del contratto**.   La scelta progettuale e` deliberata: il contratto diventa la **fonte stabile** per i dati tecnici/commerciali e le eventuali correzioni richiedono **un nuovo contratto**.
