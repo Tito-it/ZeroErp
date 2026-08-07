@@ -2,48 +2,46 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: la mappa `codice errore -> classe`. E' l'identita' di ogni codice:
-#        che COSA e' l'errore (non esiste / conflitto di stato / dato sbagliato
-#        / guasto...), non come si risponde. Lo status HTTP e la ui_action si
+# Scopo: la mappa `codice errore -> classe`. E' l'identita' di ogni codice: che
+#        COSA e' l'errore (non esiste / conflitto di stato / dato sbagliato /
+#        guasto...), non come si risponde. Lo status HTTP e la ui_action si
 #        derivano dalla classe in `error_policies.py`.
-# Generato da: NESSUNO, ANCORA — scritto a mano al passo B-3 del
-#        `piano-be-classe-codici-errore.md`. Le classi qui dentro sono state
-#        RIALLINEATE AL CATALOGO il 2026-08-07 sera
-#        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`,
-#        689 righe): da quel momento **fa fede il catalogo**, non piu' lo status
-#        che ogni policy dichiarava. Diventa generato al B-5, quando il DB avra'
-#        consegnato `config.vw_codici_errore_identita` (DB D-9).
-# Note: ⚠️ QUANDO QUESTO FILE DIVENTERA' GENERATO, I COMMENTI QUI SOTTO SPARISCONO
-#        — ed e' voluto: la loro casa definitiva e' `config.codici_errore.note`,
-#        dove il team DB li ha gia' importati tutti il 2026-08-07 (D-2-bis, 215
-#        note, zero perse). Il generatore del B-5 li riemettera' da li'.
-#        ⚠️ L'ordine e' alfabetico per codice, come sara' l'ORDER BY del
-#        generatore: serve a non produrre diff spurii da riordino.
-#        ⚠️ Le voci sono 658, il catalogo ne ha 689. La differenza NON e' un
-#        difetto: 30 sono codici ritirati che nessuno solleva piu', 3 sono
-#        progettati e mai cablati (push preventivo). Arriveranno col generatore.
-#        Nell'altro verso, `E_MESSAGGIO_NON_DEFINITO` e `E_W_TXID_NOT_REGISTERED`
-#        stanno qui e NON a catalogo: sono la cintura della campagna di rinomina
-#        (il nome vecchio resta risolvibile finche' il diario lo contiene) e al
-#        B-5 andranno tenuti a mano o lasciati cadere sul ripiego.
+# Generato da: `manage.py genera_error_policies`, da
+#        `config.vw_codici_errore_identita`.
+#        ⛔ NON MODIFICARE A MANO: la prossima rigenerazione butta via tutto.
+#        Per cambiare la classe di un codice si cambia il CATALOGO
+#        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
+#        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
+# Note: ⚠️ Le voci sono 689, di cui 79 RITIRATE. Un codice
+#        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
+#        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
+#        `obsoleto_dal` non e' `attivo = false`.
+#        ⚠️ L'ordine e' alfabetico per codice — lo stesso `ORDER BY` della vista.
+#        Un riordino qui e' un diff spurio, e un file con diff spurii non lo
+#        rilegge piu' nessuno.
 # ------------------------------------------------------------
 
 
 # Una riga per codice. Il valore e' una classe di `config.classi_errore`.
 CLASSE_PER_CODICE: dict[str, str] = {
+
+    # ⚠️ RITIRATO il 2026-08-05
     "CF_NON_VALIDO": "DATO_ERRATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "CODICE_NON_MODIFICABILE": "CONFLITTO_STATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "DEFINIZIONE_BOZZA_ESISTENTE": "CONFLITTO_STATO",
-    # Status rivisto il 2026-08-05 (rilettura DB del brief
-    # codice-errore-strutturato, ok Tid): era l'unico 422 in una famiglia
-    # DEFINIZIONE_* tutta 409, e la semantica e' la stessa.
+    # Status rivisto il 2026-08-05 (rilettura DB del brief · codice-errore-strutturato, ok Tid): era l'unico 422 in una famiglia · DEFINIZIONE_* tutta 409, e la semantica e' la stessa.
+    # ⚠️ RITIRATO il 2026-08-05
     "DEFINIZIONE_NON_PUBBLICABILE": "CONFLITTO_STATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "DEFINIZIONE_NON_TROVATA": "NON_TROVATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "DEFINIZIONE_NO_PUBBLICATA": "CONFLITTO_STATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "DEFINIZIONE_PUBBLICATA_IMMUTABILE": "CONFLITTO_STATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "DEFINIZIONE_TRANSIZIONE_NON_AMMESSA": "CONFLITTO_STATO",
-    "ERRORE_PARAMETRI": "DATO_ERRATO",
-    "ERRORE_PARAMETRI_TABELLA": "DATO_ERRATO",
     "E_ADMIN_CF_DUPLICATO": "CONFLITTO_STATO",
     "E_ADMIN_EMAIL_DUPLICATA": "CONFLITTO_STATO",
     "E_ADMIN_PIVA_DUPLICATA": "CONFLITTO_STATO",
@@ -51,6 +49,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_ADMIN_UO_NON_TROVATA": "DATO_ERRATO",
     "E_ADMIN_USERNAME_DUPLICATO": "CONFLITTO_STATO",
     "E_ADMIN_VALIDAZIONE": "DATO_ERRATO",
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_AI_CONFIRMATION_REQUIRED": "NON_ESEGUIBILE",
     "E_AI_DISABLED": "NON_DISPONIBILE",
     "E_AI_PROVIDER_ERROR": "ERRORE_ESTERNO",
     "E_AI_PROVIDER_UNKNOWN": "TECNICO",
@@ -59,17 +59,11 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_AI_TOOL_DENIED": "NON_PERMESSO",
     "E_AI_TOOL_NOT_FOUND": "TECNICO",
     "E_ALLEGATO_INSERT": "TECNICO",
-    # Rimpiazzano il generico `E_NOT_FOUND` che quattro call-site
-    # sollevavano per entita' diverse: un 404 che non dice cosa manca non
-    # e' diagnosticabile a valle (le note usano E_NOTA_NOT_FOUND, gia'
-    # dichiarato).
+    # Rimpiazzano il generico `E_NOT_FOUND` che quattro call-site · sollevavano per entita' diverse: un 404 che non dice cosa manca non · e' diagnosticabile a valle (le note usano E_NOTA_NOT_FOUND, gia' · dichiarato).
     "E_ALLEGATO_NOT_FOUND": "NON_TROVATO",
     # -- Core / Amm. software ------------------------------------------
     "E_AMM_OPERATORE_NOT_FOUND": "NON_TROVATO",
-    # Fase 2 multi-face: payload `scope_mode` non ammesso per il
-    # contratto attuale (es. MULTI post Q2, oppure SINGLE con array
-    # vuoto/multi-elemento). Errore di validazione client-side, non
-    # di stato del sistema.
+    # Fase 2 multi-face: payload `scope_mode` non ammesso per il · contratto attuale (es. MULTI post Q2, oppure SINGLE con array · vuoto/multi-elemento). Errore di validazione client-side, non · di stato del sistema.
     "E_AMM_SCOPE_NON_AMMESSO": "DATO_ERRATO",
     "E_AMM_UTENTE_NOT_FOUND": "NON_TROVATO",
     "E_AMM_VALIDAZIONE": "DATO_ERRATO",
@@ -79,116 +73,79 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_ANAG_NOT_FOUND": "NON_TROVATO",
     "E_ANAG_VALIDAZIONE": "DATO_ERRATO",
     "E_APPROVAZIONE_PREZZO_NON_AMMESSA": "CONFLITTO_STATO",
-    # script.trgfn_lock_columns: il trigger e' stato dichiarato con un
-    # numero dispari di argomenti. Se ne accorge chi lo monta, mai
-    # l'operatore.
+    # script.trgfn_lock_columns: il trigger e' stato dichiarato con un · numero dispari di argomenti. Se ne accorge chi lo monta, mai · l'operatore.
     "E_ARGOMENTI_A_COPPIE": "TECNICO",
     "E_ARTICOLO_ESCLUSO_DA_CONTRATTO": "NON_ESEGUIBILE",
-    #   Sono i codici che CAMBIANO comportamento: oggi la pagina evidenzia
-    #   un campo (400) dove invece deve ricaricare e mostrare lo stato vero.
-    # Le due righe esistono entrambe e non vanno d'accordo: non c'e' un
-    # campo da correggere, va scelto un altro abbinamento.
+    # Sono i codici che CAMBIANO comportamento: oggi la pagina evidenzia · un campo (400) dove invece deve ricaricare e mostrare lo stato vero. · Le due righe esistono entrambe e non vanno d'accordo: non c'e' un · campo da correggere, va scelto un altro abbinamento.
     "E_ARTICOLO_MISMATCH": "CONFLITTO_STATO",
     "E_ARTICOLO_NON_COMPOSITO": "DATO_ERRATO",
     "E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C": "DATO_ERRATO",
     "E_ARTICOLO_NOT_FOUND": "NON_TROVATO",
+    # ── 400 · il problema non e' un campo del form (`show_error_banner`) ──
     "E_ARTICOLO_SOLO_COMPONENTE": "DATO_ERRATO",
     "E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE": "DATO_ERRATO",
-    # Il dato manca sull'ARTICOLO, non sul form che si sta compilando:
-    # evidenziare un campo manderebbe l'operatore a cercare dove non c'e'.
+    # Il dato manca sull'ARTICOLO, non sul form che si sta compilando: · evidenziare un campo manderebbe l'operatore a cercare dove non c'e'.
     "E_ARTICOLO_TIPOLOGIA_MANCANTE": "DATO_ERRATO",
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_ASSOGGETTAMENTO_NO_MOD": "CONFLITTO_STATO",
     "E_ATTIVAZIONE": "DATO_ERRATO",
     "E_ATTIVAZIONE_PORTALE": "DATO_ERRATO",
     # B1 §13.7: codici dedicati attivazione shop (simmetrici al portale).
     "E_ATTIVAZIONE_SHOP": "DATO_ERRATO",
     "E_ATTIVAZIONE_SHOP_CROSS": "DATO_ERRATO",
     "E_ATTIVITA_FATTURABILE_QUANTITA_IMMUTABILE": "CONFLITTO_STATO",
-    # Dati incoerenti a monte, non input dell'utente: 409 e banner, perche' la
-    # correzione sta sul documento sorgente e non su questa schermata.
+    # Dati incoerenti a monte, non input dell'utente: 409 e banner, perche' la · correzione sta sul documento sorgente e non su questa schermata.
     "E_ATTIVITA_KIT_SENZA_PADRE": "CONFLITTO_STATO",
     "E_ATTIVITA_LOTTO_NOT_FOUND": "NON_TROVATO",
     "E_ATTIVITA_PIPELINE": "DATO_ERRATO",
     "E_ATTIVITA_VALIDATION": "DATO_ERRATO",
-    # ══════════════════════════════════════════════════════════════════
-    # TERZO LATO — lotto 4, la coda: `catalogo` · `config` · `dbops` · `shop`
-    #   (2026-08-06) Brief §16. Sono i 14 codici da trigger rimasti dopo i
-    #   tre lotti per dominio: nessuno arriva a piu' di due funzioni, e non
-    #   c'e' un dominio che li tenga insieme — li tiene insieme il fatto di
-    #   essere gli ultimi. Con questi il percorso di una richiesta e' coperto.
-    # ══════════════════════════════════════════════════════════════════
-    # ── 500: anomalie tecniche ──
-    # Sollevato da dbops.fn_run_automations_attivo dentro
-    # `EXCEPTION WHEN others`: fallisce la GENERAZIONE della regola di
-    # automazione, cioe' il framework che arma i trigger. Non e' un
-    # errore di chi compila, e non passa nemmeno da una richiesta web.
+    # TERZO LATO — lotto 4, la coda: `catalogo` · `config` · `dbops` · `shop` · (2026-08-06) Brief §16. Sono i 14 codici da trigger rimasti dopo i · tre lotti per dominio: nessuno arriva a piu' di due funzioni, e non · c'e' un dominio che li tenga insieme — li tiene insieme il fatto di · essere gli ultimi. Con questi il percorso di una richiesta e' coperto. · Sollevato da dbops.fn_run_automations_attivo dentro · `EXCEPTION WHEN others`: fallisce la GENERAZIONE della regola di · automazione, cioe' il framework che arma i trigger. Non e' un · errore di chi compila, e non passa nemmeno da una richiesta web.
     "E_ATTIVO_BLOCK": "TECNICO",
-    # I due sotto sono errori di CONFIGURAZIONE del trigger generico
-    # `dbops.trgfn_prevent_deactivate_if_children` (TG_ARGV insufficienti,
-    # colonna FK dichiarata inesistente sul figlio): non dipendono da cosa
-    # fa l'utente, quindi 500 e non 4xx. Raggiungibili dal ciclo richiesta
-    # perche' il trigger e' armato su ~96 tabelle e scatta sull'UPDATE
-    # `attivo = false` che parte dalle API di disattivazione.
-    # Registrati il 2026-08-05: prima erano irraggiungibili perche' i loro
-    # call site chiamavano `fn_log_and_raise_error` senza valori variadici
-    # e morivano su 42883 (bonifica riferimenti morti F8, changeSet
-    # 20260805-02/03/04).
+    # I due sotto sono errori di CONFIGURAZIONE del trigger generico · `dbops.trgfn_prevent_deactivate_if_children` (TG_ARGV insufficienti, · colonna FK dichiarata inesistente sul figlio): non dipendono da cosa · fa l'utente, quindi 500 e non 4xx. Raggiungibili dal ciclo richiesta · perche' il trigger e' armato su ~96 tabelle e scatta sull'UPDATE · `attivo = false` che parte dalle API di disattivazione. · Registrati il 2026-08-05: prima erano irraggiungibili perche' i loro · call site chiamavano `fn_log_and_raise_error` senza valori variadici · e morivano su 42883 (bonifica riferimenti morti F8, changeSet · 20260805-02/03/04).
     "E_ATTIVO_BLOCK_ARGS": "TECNICO",
     "E_ATTIVO_BLOCK_CHILDREN_EXIST": "CONFLITTO_STATO",
     "E_ATTIVO_BLOCK_FKCOL_NOT_FOUND": "TECNICO",
-    # ⚠️ CODICE SOLO-LOG: l'unico punto che lo nomina usa
-    # `fn_log_error_only`, che scrive in dbops.error_log e NON solleva.
-    # Non arriva mai a un client, quindi questo status non lo legge
-    # nessuno: la policy esiste perche' il cancello lo pretende, ed e'
-    # giusto che lo pretenda — la misura e' volutamente larga e non puo'
-    # sapere se domani qualcuno lo fara' sollevare davvero. Vedi §16.2.
+    # ⚠️ CODICE SOLO-LOG: l'unico punto che lo nomina usa · `fn_log_error_only`, che scrive in dbops.error_log e NON solleva. · Non arriva mai a un client, quindi questo status non lo legge · nessuno: la policy esiste perche' il cancello lo pretende, ed e' · giusto che lo pretenda — la misura e' volutamente larga e non puo' · sapere se domani qualcuno lo fara' sollevare davvero. Vedi §16.2.
     "E_ATTIVO_BLOCK_REF_NULL": "TECNICO",
-    # Due punti, stessa natura: la generazione della regola (come sopra)
-    # e dbops.trgfn_child_requires_active_parent quando il trigger e'
-    # dichiarato con meno di 4 argomenti — un montaggio sbagliato.
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_ATTIVO_CASCADE": "TECNICO",
+    # Due punti, stessa natura: la generazione della regola (come sopra) · e dbops.trgfn_child_requires_active_parent quando il trigger e' · dichiarato con meno di 4 argomenti — un montaggio sbagliato.
     "E_ATTIVO_REQUIRE": "TECNICO",
     "E_AUDIT_SNAPSHOT_NON_TROVATO": "NON_TROVATO",
     "E_AUDIT_SOURCE_NON_TROVATO": "DATO_ERRATO",
-    # Fase 5 audit hardening — codici stabili dal team DB.
-    # I primi 3 sono per gli endpoint audit-summary/audit-sources/audit-log,
-    # il quarto e' il refactor del guard scope di Fase 2 (prima passava per
-    # RAISE EXCEPTION 22023 generico, ora ha codice stabile dal DB).
+    # Fase 5 audit hardening — codici stabili dal team DB. · I primi 3 sono per gli endpoint audit-summary/audit-sources/audit-log, · il quarto e' il refactor del guard scope di Fase 2 (prima passava per · RAISE EXCEPTION 22023 generico, ora ha codice stabile dal DB).
     "E_AUDIT_SUMMARY_PARAM_NON_VALIDO": "DATO_ERRATO",
-    # ══════════════════════════════════════════════════════════════════
-    # TERZO LATO — lotto 5B: i 25 su catene SQL (2026-08-07)
-    #   Brief §26. Non li chiama il backend direttamente: li chiamano altre
-    #   funzioni SQL. Nove su 25 sono il **framework di automazione**
-    #   (`fn_run_automations_*`, `fn_ensure_storico_table`), che genera
-    #   trigger e tabelle: stessa famiglia degli `E_ATTIVO_*` del lotto 4,
-    #   stesso 500. Con questi il registro arriva a zero.
-    # ══════════════════════════════════════════════════════════════════
-    # ── 500: il framework di automazione e le anomalie ──
+    # TERZO LATO — lotto 5B: i 25 su catene SQL (2026-08-07) · Brief §26. Non li chiama il backend direttamente: li chiamano altre · funzioni SQL. Nove su 25 sono il **framework di automazione** · (`fn_run_automations_*`, `fn_ensure_storico_table`), che genera · trigger e tabelle: stessa famiglia degli `E_ATTIVO_*` del lotto 4, · stesso 500. Con questi il registro arriva a zero.
     "E_AUDIT_UPDATE": "TECNICO",
     "E_AUTHENTICATION_FAILED": "NON_AUTENTICATO",
     "E_AUTH_USER_SOGGETTO_CON_PIVA": "DATO_ERRATO",
-    # Il dato manca sul SOGGETTO, non sul form in corso: evidenziare un
-    # campo manderebbe a cercare dove non c'e'.
+    # Il dato manca sul SOGGETTO, non sul form in corso: evidenziare un · campo manderebbe a cercare dove non c'e'.
     "E_AUTH_USER_SOGGETTO_SENZA_CF": "DATO_ERRATO",
     "E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA": "TECNICO",
-    # Difetto di programmazione, non condizione di dominio: 500.
-    "E_BATCH_ARRAY_DISALLINEATI": "TECNICO",
     "E_BA_ADMIN_GLOBALE_VIETATO": "NON_PERMESSO",
     "E_BA_SOGGETTO_INCOERENTE_ISTANZA": "DATO_ERRATO",
+    # Difetto di programmazione, non condizione di dominio: 500.
+    "E_BATCH_ARRAY_DISALLINEATI": "TECNICO",
     "E_BILLING_ACCOUNT_UTILITY_NULL": "DATO_ERRATO",
     "E_BOM_IVA_DISCORDANTE": "DATO_ERRATO",
-    # E_BOM_MODIFICA_VIETATA e E_BOM_VALIDO_AL_INVALIDO sono sollevati
-    # dal trigger catalogo.trgfn_articoli_componenti_block_modifica_struttura
-    # come defense-in-depth oltre lo schema (pattern chiudi+inserisci).
+    # E_BOM_MODIFICA_VIETATA e E_BOM_VALIDO_AL_INVALIDO sono sollevati · dal trigger catalogo.trgfn_articoli_componenti_block_modifica_struttura · come defense-in-depth oltre lo schema (pattern chiudi+inserisci).
     "E_BOM_MODIFICA_VIETATA": "CONFLITTO_STATO",
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_BOM_PRODOTTO_MISMATCH": "DATO_ERRATO",
+    # Due punti: parametro NULL e IF NOT FOUND. Denominatore sicuro NON_TROVATO: il ramo NULL e un guard sul chiamante, non arriva da chi usa il programma.
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_BOM_RIGA_NOT_FOUND": "NON_TROVATO",
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_BOM_SORGENTE_GIA_CHIUSA": "CONFLITTO_STATO",
     "E_BOM_VALIDO_AL_INVALIDO": "DATO_ERRATO",
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_BOM_VERSIONE_OVERLAP": "CONFLITTO_STATO",
     "E_CANALE_ORIGINE_IMMUTABILE": "CONFLITTO_STATO",
     "E_CATALOGO_ARTICOLO_NOT_FOUND": "NON_TROVATO",
     "E_CATALOGO_COMPONENTE_NOT_FOUND": "NON_TROVATO",
     "E_CATALOGO_CONV_NOT_FOUND": "NON_TROVATO",
     "E_CATALOGO_NOTA_NOT_FOUND": "NON_TROVATO",
-    # Guard catalogo obsoleto (dbops.trgfn_child_requires_non_obsolete_parent):
-    # tentata creazione/ri-aggancio di un'istanza su una voce di catalogo con
-    # obsoleto_dal <= oggi. Conflitto di stato del catalogo → 409 (come gli
-    # altri guard). Messaggio parlante dal DB (messaggi_errore id 500).
+    # Guard catalogo obsoleto (dbops.trgfn_child_requires_non_obsolete_parent): · tentata creazione/ri-aggancio di un'istanza su una voce di catalogo con · obsoleto_dal <= oggi. Conflitto di stato del catalogo → 409 (come gli · altri guard). Messaggio parlante dal DB (messaggi_errore id 500).
     "E_CATALOGO_OBSOLETO_NUOVA_ISTANZA": "CONFLITTO_STATO",
     "E_CATALOGO_UOM_NOT_FOUND": "NON_TROVATO",
     "E_CATALOGO_UOM_TIPO_NOT_FOUND": "NON_TROVATO",
@@ -201,31 +158,25 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_CLIENTE_NON_ATTIVO": "CONFLITTO_STATO",
     "E_CLIENTE_NON_TROVATO": "NON_TROVATO",
     "E_CLIENTE_UTILITY_MISMATCH_BA": "DATO_ERRATO",
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI": "DATO_ERRATO",
     "E_CODA_HANDLER_NON_REGISTRATO": "TECNICO",
     "E_CODA_IDENTITA_NON_ATTIVA": "CONFLITTO_STATO",
-    # Coda lavori generica (worker): codici sollevati durante il dispatch/
-    # esecuzione dei job. Non attraversano HTTP nel flusso normale (finiscono
-    # in `ultimo_errore` del job), ma la regola è: registrati prima dell'uso.
+    # Coda lavori generica (worker): codici sollevati durante il dispatch/ · esecuzione dei job. Non attraversano HTTP nel flusso normale (finiscono · in `ultimo_errore` del job), ma la regola è: registrati prima dell'uso.
     "E_CODA_SCOPE_OPERATORE_INVALIDO": "DATO_ERRATO",
     "E_CODICE": "DATO_ERRATO",
     # <- CODICE_NON_MODIFICABILE  (vivo)
     "E_CODICE_NON_MODIFICABILE": "CONFLITTO_STATO",
     "E_COD_INT_RUOLO": "NON_TROVATO",
     "E_COERENZA_ID": "DATO_ERRATO",
-    # Sette guard `*_protect_update` / `guard_immutabili` su
-    # anagrafiche, config e pratiche: la colonna e' congelata. Stessa
-    # famiglia (e stesso status) degli immutabili del lotto 1.
+    # Sette guard `*_protect_update` / `guard_immutabili` su · anagrafiche, config e pratiche: la colonna e' congelata. Stessa · famiglia (e stesso status) degli immutabili del lotto 1.
     "E_COLONNA_NON_MODIFICABILE": "CONFLITTO_STATO",
-    # Guard di uscita commessa (brief-db-guard-uscita-commessa 558/559):
-    # transizione terminale IRREVERSIBILE bloccata → conflitto di stato (409),
-    # come la famiglia immutabilita`. Banner: e` un blocco d'azione grave.
+    # Guard di uscita commessa (brief-db-guard-uscita-commessa 558/559): · transizione terminale IRREVERSIBILE bloccata → conflitto di stato (409), · come la famiglia immutabilita`. Banner: e` un blocco d'azione grave.
     "E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE": "CONFLITTO_STATO",
     "E_COMMESSA_ATTIVITA_GIA_EMESSA": "CONFLITTO_STATO",
     "E_COMMESSA_ATTIVITA_NON_COERENTE": "DATO_ERRATO",
     "E_COMMESSA_ATTIVITA_NOT_FOUND": "NON_TROVATO",
-    # --- Immutabilita' quantita' + porta oneri (guard DB 550-554) ---
-    # I due guard di immutabilita' sono 409: non e' un input da correggere,
-    # e' un fatto che non si modifica (si corregge con una riga nuova).
+    # --- Immutabilita' quantita' + porta oneri (guard DB 550-554) --- · I due guard di immutabilita' sono 409: non e' un input da correggere, · e' un fatto che non si modifica (si corregge con una riga nuova).
     "E_COMMESSA_ATTIVITA_QUANTITA_IMMUTABILE": "CONFLITTO_STATO",
     "E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO": "DATO_ERRATO",
     "E_COMMESSA_AZIONE_NON_AMMESSA": "CONFLITTO_STATO",
@@ -243,11 +194,11 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_COMMESSA_SORGENTE_SCONOSCIUTA": "DATO_ERRATO",
     "E_COMMESSA_STATO_TRANSIZIONE_INVALIDA": "CONFLITTO_STATO",
     "E_COMMESSA_VALIDATION": "DATO_ERRATO",
-    # Gate emissione documento (trigger guard approvazione componenti BoM,
-    # trgfn_*_guard_transizione_approvazione — DDT/ordini/preventivi):
-    # transizione a EMESSO/CONFERMATO bloccata da componenti CASO A con
-    # approvazione prezzo PENDING o prezzo non valorizzato. Conflitto di
-    # stato → 409 (coerente con E_STATO_DDT_TRANSIZIONE_NON_VALIDA).
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_COMPETENZA": "DATO_ERRATO",
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_COMPETENZA_SUPERATA": "DATO_ERRATO",
+    # Gate emissione documento (trigger guard approvazione componenti BoM, · trgfn_*_guard_transizione_approvazione — DDT/ordini/preventivi): · transizione a EMESSO/CONFERMATO bloccata da componenti CASO A con · approvazione prezzo PENDING o prezzo non valorizzato. Conflitto di · stato → 409 (coerente con E_STATO_DDT_TRANSIZIONE_NON_VALIDA).
     "E_COMPONENTE_PREZZO_PENDENTE": "CONFLITTO_STATO",
     "E_CONFIG_MANCANTE": "TECNICO",
     "E_CONFIG_MATRICE_DUPLICATA": "CONFLITTO_STATO",
@@ -257,19 +208,9 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_CONTATTO_INCOMPLETO": "DATO_ERRATO",
     "E_CONTO_BANCARIO": "DATO_ERRATO",
     "E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO": "NON_ESEGUIBILE",
-    # Refactor 2026-05-20: annullamento logico contratto (soft-delete via
-    # stato ANNULLATO). Transizione DRAFT → ANNULLATO sempre ammessa;
-    # ATTIVO → ANNULLATO bloccata se esistono attivita_fatturabili gia'
-    # fatturate (fattura_riga_id IS NOT NULL) — la traccia contabile e'
-    # immutabile, in quel caso l'unica via e' CESSATO con valido_al
-    # opportuna. Sollevato dal trigger DB (id errore DB 457) e
-    # intercettato lato BE via marker in `_KNOWN_DB_ERROR_MARKERS`.
+    # Refactor 2026-05-20: annullamento logico contratto (soft-delete via · stato ANNULLATO). Transizione DRAFT → ANNULLATO sempre ammessa; · ATTIVO → ANNULLATO bloccata se esistono attivita_fatturabili gia' · fatturate (fattura_riga_id IS NOT NULL) — la traccia contabile e' · immutabile, in quel caso l'unica via e' CESSATO con valido_al · opportuna. Sollevato dal trigger DB (id errore DB 457) e · intercettato lato BE via marker in `_KNOWN_DB_ERROR_MARKERS`.
     "E_CONTRATTO_ANNULLATO_CON_FATTURE": "CONFLITTO_STATO",
-    # Refactor 2026-05-20: lock cambio `listino_id` (aggiunta o
-    # sostituzione) su contratto DRAFT con righe persistite. Il listino
-    # definisce il contesto pricing — cambiarlo con righe gia' caricate
-    # causa drift semantico silente. La rimozione resta gestita dal
-    # check piu' fine `E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI`.
+    # Refactor 2026-05-20: lock cambio `listino_id` (aggiunta o · sostituzione) su contratto DRAFT con righe persistite. Il listino · definisce il contesto pricing — cambiarlo con righe gia' caricate · causa drift semantico silente. La rimozione resta gestita dal · check piu' fine `E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI`.
     "E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE": "NON_ESEGUIBILE",
     "E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE": "CONFLITTO_STATO",
     "E_CONTRATTO_CATEGORIA_SNAPSHOT_IMMUTABILE": "CONFLITTO_STATO",
@@ -278,71 +219,58 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_CONTRATTO_EMITTENTE_NON_RISOLTO": "DATO_ERRATO",
     "E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA": "NON_ESEGUIBILE",
     "E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI": "NON_ESEGUIBILE",
-    # Refactor 2026-05-18 (decisione §4.4 refactor-contratti-modalita):
-    # un listino senza versione ATTIVA non e' selezionabile come
-    # riferimento di un contratto. In assenza di una versione attiva non
-    # ci sono righe da applicare, quindi il contratto sarebbe formalmente
-    # "con listino" ma operativamente vuoto. Il vincolo si applica sia
-    # in CREATE che in UPDATE (PATCH `listino_id`): l'errore parlante
-    # arriva PRIMA del save evitando il flag `listino_senza_versione_oggi`
-    # come zona grigia.
+    # Refactor 2026-05-18 (decisione §4.4 refactor-contratti-modalita): · un listino senza versione ATTIVA non e' selezionabile come · riferimento di un contratto. In assenza di una versione attiva non · ci sono righe da applicare, quindi il contratto sarebbe formalmente · "con listino" ma operativamente vuoto. Il vincolo si applica sia · in CREATE che in UPDATE (PATCH `listino_id`): l'errore parlante · arriva PRIMA del save evitando il flag `listino_senza_versione_oggi` · come zona grigia.
     "E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA": "NON_ESEGUIBILE",
-    # Sostituiscono i vecchi guard di "modalita C" rimossi col modello
-    # unificato. Mappati dal team DB nel CSV `messaggi_errore` (450-454).
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_CONTRATTO_MODALITA_C_RIGA_SENZA_PREZZO": "DATO_ERRATO",
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_CONTRATTO_MODALITA_C_RIGHE_INCOMPLETE": "NON_ESEGUIBILE",
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_CONTRATTO_MODALITA_C_SENZA_RIGHE": "NON_ESEGUIBILE",
+    # Sostituiscono i vecchi guard di "modalita C" rimossi col modello · unificato. Mappati dal team DB nel CSV `messaggi_errore` (450-454).
     "E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE": "NON_ESEGUIBILE",
     "E_CONTRATTO_NON_MODIFICABILE": "CONFLITTO_STATO",
     "E_CONTRATTO_NON_TROVATO": "NON_TROVATO",
     "E_CONTRATTO_OVERLAP_ESISTENTE": "CONFLITTO_STATO",
     "E_CONTRATTO_RIGA_NON_TROVATA": "NON_TROVATO",
     "E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA": "CONFLITTO_STATO",
-    # Date di successione incoerenti: dato semanticamente non processabile
-    # (non un conflitto di stato) → 422.
+    # Date di successione incoerenti: dato semanticamente non processabile · (non un conflitto di stato) → 422.
     "E_CONTRATTO_SUCCESSIONE_DATA_INVALIDA": "NON_ESEGUIBILE",
     "E_CONTRATTO_UTILITY_SENZA_DIMENSIONE_TIPO_CLASSE_VIETATI": "DATO_ERRATO",
     "E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI": "DATO_ERRATO",
-    # Guard cessazione contratti (trgfn_contratti_guard_transizione_stato,
-    # rev 2026-05-14): la transizione manuale ATTIVO -> CESSATO non ammette
-    # valido_al retroattivo. Il job notturno pgAgent (`fn_apply_chiusura
-    # _scadenze` via GUC `app.cessazione_automatica`) e' invece autorizzato
-    # a cessare con valido_al passato.
+    # Guard cessazione contratti (trgfn_contratti_guard_transizione_stato, · rev 2026-05-14): la transizione manuale ATTIVO -> CESSATO non ammette · valido_al retroattivo. Il job notturno pgAgent (`fn_apply_chiusura · _scadenze` via GUC `app.cessazione_automatica`) e' invece autorizzato · a cessare con valido_al passato.
     "E_CONTRATTO_VALIDO_AL_RETROATTIVO": "CONFLITTO_STATO",
     "E_CORE_PROFILE_NOT_FOUND": "NON_TROVATO",
     "E_CORE_VALIDATION": "DATO_ERRATO",
-    "E_DATABASE": "DATO_ERRATO",
-    "E_DATABASE_RETRYABLE": "CONFLITTO_STATO",
     "E_DATA_AL_MINORE_DAL": "DATO_ERRATO",
     "E_DATA_APERTURA": "DATO_ERRATO",
+    "E_DATABASE": "DATO_ERRATO",
+    "E_DATABASE_RETRYABLE": "CONFLITTO_STATO",
     "E_DATA_CESSAZIONE_INVALIDA": "DATO_ERRATO",
     "E_DATA_CHIUSURA": "DATO_ERRATO",
     "E_DATA_ERRATA": "DATO_ERRATO",
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_DATA_FINE_INFERIORE_DI_INIZIO": "DATO_ERRATO",
     "E_DATA_FINE_NON_MAGGIORE_DI_INIZIO": "DATO_ERRATO",
     "E_DATI_SOCIETARI_REQUIRED_MANCANTI": "DATO_ERRATO",
     "E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO": "NON_TROVATO",
+    # ── 400 · il problema non e' un campo del form (`show_error_banner`) ──
     "E_DATI_SOCIETARI_TIPO_DETTAGLIO_NON_CONFIGURATO": "DATO_ERRATO",
     "E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO": "DATO_ERRATO",
-    # Gate solo-trasporto all'emissione (trgfn_ddt_guard_causale_emissione,
-    # DL-28): la causale di trasporto dichiara se la merce e' una vendita
-    # da fatturare; obbligatoria a DRAFT->EMESSO, e se fatturabile ogni
-    # riga attiva deve avere un prezzo risolvibile (proprio o ereditato
-    # dall'ordine via fulfillment).
+    # Configurazione mancante: logga ma non blocca, usa il fallback locale.
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_DBLINK_LOG_CONN_MISSING": "AVVISO",
+    # Gate solo-trasporto all'emissione (trgfn_ddt_guard_causale_emissione, · DL-28): la causale di trasporto dichiara se la merce e' una vendita · da fatturare; obbligatoria a DRAFT->EMESSO, e se fatturabile ogni · riga attiva deve avere un prezzo risolvibile (proprio o ereditato · dall'ordine via fulfillment).
     "E_DDT_CAUSALE_OBBLIGATORIA": "CONFLITTO_STATO",
-    # Cliente (billing_account_id/destinatario) immutabile post-create:
-    # cambiare cliente = nuovo DDT (mirror E_ORD_CLIENTE_IMMUTABILE).
-    # 400 -> 409 il 2026-08-06 (audit coerenza status), gemello di
-    # E_ORD_CLIENTE_IMMUTABILE. `ui_action` invariata.
+    # Cliente (billing_account_id/destinatario) immutabile post-create: · cambiare cliente = nuovo DDT (mirror E_ORD_CLIENTE_IMMUTABILE). · 400 -> 409 il 2026-08-06 (audit coerenza status), gemello di · E_ORD_CLIENTE_IMMUTABILE. `ui_action` invariata.
     "E_DDT_CLIENTE_IMMUTABILE": "CONFLITTO_STATO",
     "E_DDT_EMISSIONE_SENZA_RIGHE": "CONFLITTO_STATO",
     "E_DDT_EMITTENTE_BA_INCOERENTE": "CONFLITTO_STATO",
     "E_DDT_NESSUNA_RIGA": "CONFLITTO_STATO",
     "E_DDT_NIENTE_DA_EVADERE": "CONFLITTO_STATO",
-    # DDT di vendita (CRUD + emissione + macchina a stati + evasione da
-    # ordine + push singolo). Famiglia speculare a E_ORD_*. I codici trigger
-    # DB (E_STATO_DDT_*, E_COMPONENTE_PREZZO_PENDENTE, E_QTA_SUPERA_RESIDUO)
-    # passano invece via regex in ddt_service._db_errors: registrati qui per
-    # fissare lo status/ui_action lato FE.
+    # DDT di vendita (CRUD + emissione + macchina a stati + evasione da · ordine + push singolo). Famiglia speculare a E_ORD_*. I codici trigger · DB (E_STATO_DDT_*, E_COMPONENTE_PREZZO_PENDENTE, E_QTA_SUPERA_RESIDUO) · passano invece via regex in ddt_service._db_errors: registrati qui per · fissare lo status/ui_action lato FE.
     "E_DDT_NOT_FOUND": "NON_TROVATO",
-    # Evasione da ordine (fn_genera_ddt_da_ordine): l'ordine sorgente non
-    # esiste, non e' in uno stato evadibile, o non ha residuo da evadere.
+    # Evasione da ordine (fn_genera_ddt_da_ordine): l'ordine sorgente non · esiste, non e' in uno stato evadibile, o non ha residuo da evadere.
     "E_DDT_ORDINE_NOT_FOUND": "NON_TROVATO",
     "E_DDT_ORDINE_STATO_NON_EVADIBILE": "CONFLITTO_STATO",
     "E_DDT_PREZZO_NON_RISOLVIBILE": "CONFLITTO_STATO",
@@ -350,52 +278,46 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DDT_STATO_TRANSIZIONE": "CONFLITTO_STATO",
     "E_DDT_VALIDAZIONE": "DATO_ERRATO",
     "E_DEFAULT_CONTATTO_MISSING": "DATO_ERRATO",
-    # `script.fn_get_default_by_param`: il parametro non ha valori per
-    # quella tabella. E' un default mai configurato, non un dato
-    # sbagliato dall'operatore.
+    # `script.fn_get_default_by_param`: il parametro non ha valori per · quella tabella. E' un default mai configurato, non un dato · sbagliato dall'operatore.
     "E_DEFAULT_ERRATO": "TECNICO",
     # <- DEFINIZIONE_BOZZA_ESISTENTE  (vivo)
     "E_DEFINIZIONE_BOZZA_ESISTENTE": "CONFLITTO_STATO",
     # <- DEFINIZIONE_NON_PUBBLICABILE  (vivo)
     "E_DEFINIZIONE_NON_PUBBLICABILE": "CONFLITTO_STATO",
     "E_DEFINIZIONE_NON_TROVATA": "NON_TROVATO",
-    # Edizioni workflow versionate (Slice 2): definizione o step non trovato
-    # / fuori dallo scope della definizione (ownership) → 404 esplicito
-    # (il codice generico E_NOT_FOUND non è in policy → ricadrebbe in 400).
-    "E_DEFINIZIONE_NOT_FOUND": "NON_TROVATO",
     # <- DEFINIZIONE_NO_PUBBLICATA  (vivo)
     "E_DEFINIZIONE_NO_PUBBLICATA": "CONFLITTO_STATO",
+    # Edizioni workflow versionate (Slice 2): definizione o step non trovato · / fuori dallo scope della definizione (ownership) → 404 esplicito · (il codice generico E_NOT_FOUND non è in policy → ricadrebbe in 400).
+    "E_DEFINIZIONE_NOT_FOUND": "NON_TROVATO",
     # <- DEFINIZIONE_PUBBLICATA_IMMUTABILE  (vivo)
     "E_DEFINIZIONE_PUBBLICATA_IMMUTABILE": "CONFLITTO_STATO",
     # <- DEFINIZIONE_TRANSIZIONE_NON_AMMESSA  (vivo)
     "E_DEFINIZIONE_TRANSIZIONE_NON_AMMESSA": "CONFLITTO_STATO",
     "E_DELETE_BLOCK": "TECNICO",
-    # Gemello di E_DELETE_NOT_ALLOWED, ma qui il blocco DIPENDE dallo
-    # stato: esistono legami fulfillment. Tolti quelli, si cancella.
+    # Gemello di E_DELETE_NOT_ALLOWED, ma qui il blocco DIPENDE dallo · stato: esistono legami fulfillment. Tolti quelli, si cancella.
     "E_DELETE_BLOCKED_FUL": "CONFLITTO_STATO",
-    # Tre punti, stessa sostanza: righe ordine/DDT e log non si
-    # cancellano MAI dall'applicazione (script.trgfn_delete_block_by_guc,
-    # vendite.trgfn_dlt_block_ordrig_ddtrig, vendite.trgfn_logs_guard_delete).
-    # Si sblocca solo con una GUC di sistema: e' un diritto che manca,
-    # non uno stato sfavorevole.
+    # Tre punti, stessa sostanza: righe ordine/DDT e log non si · cancellano MAI dall'applicazione (script.trgfn_delete_block_by_guc, · vendite.trgfn_dlt_block_ordrig_ddtrig, vendite.trgfn_logs_guard_delete). · Si sblocca solo con una GUC di sistema: e' un diritto che manca, · non uno stato sfavorevole.
     "E_DELETE_NOT_ALLOWED": "NON_PERMESSO",
     "E_DISSOCIAZIONE_PARENT_CON_ATTIVITA": "CONFLITTO_STATO",
-    # Sollevati dai trigger DB Fase A
-    # (trgfn_template_asset_block_delete, trgfn_template_asset_protect_file).
+    # ── 400 · il problema non e' un campo del form (`show_error_banner`) ── · La riga di distinta base esiste ma non e' valida alla data · documento: si sceglie un altro componente, non si corregge un campo.
+    "E_DOC_COMPONENTE_BOM_NON_VALIDA": "DATO_ERRATO",
+    "E_DOC_COMPONENTE_ID_INCOERENTE": "DATO_ERRATO",
+    # Cross-dominio (script.fn_<sorgente>_riga_componenti_init): sollevato · quando il pricing resolver non trova un listino mappato per uno dei · componenti BoM CASO A. Decisione di dominio 2026-05-12 (opzione A): · blocco esplicito invece di fallback prezzo=0 (vincolo dominio · `chk_prevrighe_comp_prezzo_nonneg = <> 0`). L'operatore deve · configurare il listino del componente prima di creare la riga. · Detail context (jsonb) contiene `componente_codice` / `componente_id` · / `data_riferimento` + dettaglio dal resolver per il log.
+    "E_DOC_COMPONENTE_LISTINO_MANCANTE": "NON_ESEGUIBILE",
+    "E_DOC_COMPONENTE_NON_BOM": "DATO_ERRATO",
+    "E_DOC_COMPONENTE_OBBLIGATORIO": "DATO_ERRATO",
+    "E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO": "DATO_ERRATO",
+    "E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE": "CONFLITTO_STATO",
+    # Gemello di `E_LISTINO_VERSIONE_NON_ATTIVA`: l'articolo composito · c'e', la sua distinta non ha componenti validi ALLA DATA. Non e' · un «non trovato», e' una configurazione che non regge quel giorno.
+    "E_DOC_COMPOSITO_BOM_VUOTA": "NON_ESEGUIBILE",
+    "E_DOC_RIGA_NON_COMPOSITO": "DATO_ERRATO",
+    # Sollevati dai trigger DB Fase A · (trgfn_template_asset_block_delete, trgfn_template_asset_protect_file).
     "E_DOCUMENTI_ASSET_DELETE_BLOCKED": "CONFLITTO_STATO",
     "E_DOCUMENTI_ASSET_FILE_IMMUTABILE": "CONFLITTO_STATO",
     "E_DOCUMENTI_DENIED": "NON_PERMESSO",
-    # Coerenza referenziale del payload (template versione / tipo output /
-    # sorgente / emittente discordanti): e' l'input a essere incoerente -> 400.
+    # Coerenza referenziale del payload (template versione / tipo output / · sorgente / emittente discordanti): e' l'input a essere incoerente -> 400.
     "E_DOCUMENTI_GENERATO_COERENZA": "DATO_ERRATO",
-    # Registrati il 2026-08-05. Le quattro guard che li sollevano esistevano
-    # gia', ma chiamavano `fn_log_and_raise_error` senza valori variadici:
-    # una funzione VARIADIC text[] non e' chiamabile con zero argomenti
-    # variadici, quindi morivano su 42883 «la funzione non esiste» invece di
-    # sollevare il codice (bonifica riferimenti morti F8, changeSet
-    # 20260805-02). Il blocco c'era lo stesso — un errore qualunque blocca —
-    # ma il codice non arrivava mai qui: 409/400 al posto di un 400 generico.
-    # Stesso status dei fratelli su `template_asset`/`template_documenti_versioni`.
+    # Registrati il 2026-08-05. Le quattro guard che li sollevano esistevano · gia', ma chiamavano `fn_log_and_raise_error` senza valori variadici: · una funzione VARIADIC text[] non e' chiamabile con zero argomenti · variadici, quindi morivano su 42883 «la funzione non esiste» invece di · sollevare il codice (bonifica riferimenti morti F8, changeSet · 20260805-02). Il blocco c'era lo stesso — un errore qualunque blocca — · ma il codice non arrivava mai qui: 409/400 al posto di un 400 generico. · Stesso status dei fratelli su `template_asset`/`template_documenti_versioni`.
     "E_DOCUMENTI_GENERATO_DELETE_BLOCKED": "CONFLITTO_STATO",
     "E_DOCUMENTI_GENERATO_FILE_IMMUTABILE": "CONFLITTO_STATO",
     "E_DOCUMENTI_GENERATO_SNAPSHOT_IMMUTABILE": "CONFLITTO_STATO",
@@ -406,61 +328,25 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DOCUMENTI_VALIDATION": "DATO_ERRATO",
     "E_DOCUMENTI_VERSIONE_DELETE_BLOCKED": "CONFLITTO_STATO",
     "E_DOCUMENTI_VERSIONE_NOT_FOUND": "NON_TROVATO",
-    # EXCLUDE GIST parziale WHERE attivo+stato=PUBBLICATA (ripristino
-    # enforcement 2026-06-02, migration 20260602-05). Pattern simmetrico agli
-    # altri overlap (E_VENDITE_PROMO_OVERLAP / E_VENDITE_LISTINO_VERSIONE_OVERLAP):
-    # codice 409 dedicato invece del generico E_DOCUMENTI_VALIDATION (400).
+    # EXCLUDE GIST parziale WHERE attivo+stato=PUBBLICATA (ripristino · enforcement 2026-06-02, migration 20260602-05). Pattern simmetrico agli · altri overlap (E_VENDITE_PROMO_OVERLAP / E_VENDITE_LISTINO_VERSIONE_OVERLAP): · codice 409 dedicato invece del generico E_DOCUMENTI_VALIDATION (400).
     "E_DOCUMENTI_VERSIONE_OVERLAP": "CONFLITTO_STATO",
-    # Sollevati dai trigger DB Fase A
-    # (trgfn_template_documenti_versioni_protect_pubblicata,
-    # trgfn_template_documenti_versioni_block_delete).
-    "E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE": "CONFLITTO_STATO",
     "E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO": "CONFLITTO_STATO",
-    # La riga di distinta base esiste ma non e' valida alla data
-    # documento: si sceglie un altro componente, non si corregge un campo.
-    "E_DOC_COMPONENTE_BOM_NON_VALIDA": "DATO_ERRATO",
-    "E_DOC_COMPONENTE_ID_INCOERENTE": "DATO_ERRATO",
-    # Cross-dominio (script.fn_<sorgente>_riga_componenti_init): sollevato
-    # quando il pricing resolver non trova un listino mappato per uno dei
-    # componenti BoM CASO A. Decisione di dominio 2026-05-12 (opzione A):
-    # blocco esplicito invece di fallback prezzo=0 (vincolo dominio
-    # `chk_prevrighe_comp_prezzo_nonneg = <> 0`). L'operatore deve
-    # configurare il listino del componente prima di creare la riga.
-    # Detail context (jsonb) contiene `componente_codice` / `componente_id`
-    # / `data_riferimento` + dettaglio dal resolver per il log.
-    "E_DOC_COMPONENTE_LISTINO_MANCANTE": "NON_ESEGUIBILE",
-    "E_DOC_COMPONENTE_NON_BOM": "DATO_ERRATO",
-    "E_DOC_COMPONENTE_OBBLIGATORIO": "DATO_ERRATO",
-    "E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO": "DATO_ERRATO",
-    "E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE": "CONFLITTO_STATO",
-    # Gemello di `E_LISTINO_VERSIONE_NON_ATTIVA`: l'articolo composito
-    # c'e', la sua distinta non ha componenti validi ALLA DATA. Non e'
-    # un «non trovato», e' una configurazione che non regge quel giorno.
-    "E_DOC_COMPOSITO_BOM_VUOTA": "NON_ESEGUIBILE",
-    "E_DOC_RIGA_NON_COMPOSITO": "DATO_ERRATO",
+    # Sollevati dai trigger DB Fase A · (trgfn_template_documenti_versioni_protect_pubblicata, · trgfn_template_documenti_versioni_block_delete).
+    "E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE": "CONFLITTO_STATO",
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_DRYRUN_CREATE_TRIGGER": "TECNICO",
     "E_EMAIL": "DATO_ERRATO",
     "E_EMAIL_ADMIN": "DATO_ERRATO",
-    # ⚠️ Codici-modulo generici (validazione, not-found e accesso negato
-    # sotto la stessa etichetta): 400 come il gemello `E_EMAIL`. Andrebbero
-    # spacchettati per verbo — debito noto, non toccato qui per non
-    # cambiare gli status HTTP di endpoint gia' in uso.
+    # ⚠️ Codici-modulo generici (validazione, not-found e accesso negato · sotto la stessa etichetta): 400 come il gemello `E_EMAIL`. Andrebbero · spacchettati per verbo — debito noto, non toccato qui per non · cambiare gli status HTTP di endpoint gia' in uso.
     "E_EMAIL_OP": "DATO_ERRATO",
-    # Impersonazione di scope emittente per SUPER_ADMIN: la selezione e'
-    # solo restringente, quindi un valore non ammesso e' un tentativo di
-    # uscire dal proprio perimetro (403), non un campo mal compilato.
+    # Impersonazione di scope emittente per SUPER_ADMIN: la selezione e' · solo restringente, quindi un valore non ammesso e' un tentativo di · uscire dal proprio perimetro (403), non un campo mal compilato.
     "E_EMITTENTE_ATTIVO_NON_VALIDO": "NON_PERMESSO",
     "E_EMITTENTE_ATTIVO_TOKEN": "DATO_ERRATO",
-    # 404 -> 500 (audit 2026-08-06): nessuna riga con `is_default = true`
-    # in `emittenti_fiscali_billing_account`. E' un'installazione non
-    # configurata, e lo dice il messaggio stesso: «non configurato».
+    # 404 -> 500 (audit 2026-08-06): nessuna riga con `is_default = true` · in `emittenti_fiscali_billing_account`. E' un'installazione non · configurata, e lo dice il messaggio stesso: «non configurato».
     "E_EMITTENTE_DEFAULT_MISSING": "TECNICO",
     "E_EMITTENTE_DEFAULT_SINGLETON": "CONFLITTO_STATO",
     "E_EMITTENTE_DISATTIVAZIONE_BLOCCATA": "CONFLITTO_STATO",
-    # 400 -> 409 il 2026-08-06 (audit coerenza status, api.md
-    # §Tassonomia): «non si tocca piu' dopo la creazione» e' la
-    # definizione RFC 9110 del 409 — conflitto con lo stato attuale
-    # della risorsa — ed e' gia' lo status degli altri 29 codici della
-    # stessa famiglia. `ui_action` invariata: a video non cambia nulla.
+    # 400 -> 409 il 2026-08-06 (audit coerenza status, api.md · §Tassonomia): «non si tocca piu' dopo la creazione» e' la · definizione RFC 9110 del 409 — conflitto con lo stato attuale · della risorsa — ed e' gia' lo status degli altri 29 codici della · stessa famiglia. `ui_action` invariata: a video non cambia nulla.
     "E_EMITTENTE_NON_MODIFICABILE": "CONFLITTO_STATO",
     # <- ERRORE_PARAMETRI  (vivo)
     "E_ERRORE_PARAMETRI": "DATO_ERRATO",
@@ -469,68 +355,29 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Sollevati dai trigger DB trgfn_documenti_generati_eventi_a10_*.
     "E_EVENTO_DOCUMENTO_DELETE_VIETATA": "CONFLITTO_STATO",
     "E_EVENTO_DOCUMENTO_UPDATE_VIETATA": "CONFLITTO_STATO",
-    # Richiesta valida, esito nullo: nessun lotto nel perimetro chiesto.
-    "E_FATTURAZIONE_GIRO_NESSUN_LOTTO": "NON_ESEGUIBILE",
-    "E_FATTURAZIONE_GIRO_PAYLOAD": "DATO_ERRATO",
-    "E_FATTURAZIONE_NUMERA_PAYLOAD": "DATO_ERRATO",
-    # Worker di stampa: la FATTURA in coda non sa a quale emittente
-    # appartiene — dato incoerente, non input dell'operatore.
-    # ⚠️ Da non confondere con `E_ORDINE_/E_CONTRATTO_/E_PREV_EMITTENTE_NON_RISOLTO`,
-    # che dicono il contrario: là è CHI CREA a non avere un emittente da cui
-    # derivare il default, qui è il documento già esistente ad esserne privo.
-    # Il prefisso per documento (rinomina richiesta dal DB il 2026-08-04,
-    # brief seed round 2 §6.3) è ciò che tiene distinte le due famiglie in
-    # `error_log`, dove compaiono affiancate.
+    # Corsia di instradamento non piu' modificabile: il documento e' gia' · stato inviato in commessa, dove il flag entra nella chiave di dedup — · cambiarlo dopo non sposta nulla, sarebbe solo un campo che INGANNA. · Sollevato dal guard DB `trgfn_guard_fatturazione_immediata_immutabile` · su ordini/contratti/DDT/preventivi (codice DB messaggi_errore 561). · Trasversale ai 4 domini: il codice e' uno solo, come lo e' la regola.
+    "E_FATT_IMMEDIATA_NON_MODIFICABILE": "CONFLITTO_STATO",
+    # Worker di stampa: la FATTURA in coda non sa a quale emittente · appartiene — dato incoerente, non input dell'operatore. · ⚠️ Da non confondere con `E_ORDINE_/E_CONTRATTO_/E_PREV_EMITTENTE_NON_RISOLTO`, · che dicono il contrario: là è CHI CREA a non avere un emittente da cui · derivare il default, qui è il documento già esistente ad esserne privo. · Il prefisso per documento (rinomina richiesta dal DB il 2026-08-04, · brief seed round 2 §6.3) è ciò che tiene distinte le due famiglie in · `error_log`, dove compaiono affiancate.
     "E_FATTURA_EMITTENTE_NON_RISOLTO": "TECNICO",
     "E_FATTURA_GIA_FISCALE": "CONFLITTO_STATO",
-    # Ridondante rispetto al precedente per scelta del DB, e va tenuto:
-    # guarda il NUMERO, non lo stato che dovrebbe implicarlo.
+    # Ridondante rispetto al precedente per scelta del DB, e va tenuto: · guarda il NUMERO, non lo stato che dovrebbe implicarlo.
     "E_FATTURA_GIA_NUMERATA": "CONFLITTO_STATO",
     "E_FATTURA_NON_ANNULLABILE": "CONFLITTO_STATO",
-    # Legame lotto-fattura assente: tipicamente una lista stantia (la
-    # fattura e` gia` stata tolta da un'altra sessione). Conflitto di stato,
-    # non 404: il documento esiste, e` il legame che non c'e` piu`.
+    # Legame lotto-fattura assente: tipicamente una lista stantia (la · fattura e` gia` stata tolta da un'altra sessione). Conflitto di stato, · non 404: il documento esiste, e` il legame che non c'e` piu`.
     "E_FATTURA_NON_COLLEGATA_AL_LOTTO": "CONFLITTO_STATO",
-    # Guard DB all'uscita da DRAFT della FATTURA
-    # (trgfn_fatture_guard_uscita_draft, I.4 brief intestazione §10.9):
-    # criterio ALLARGATO rispetto al gemello DDT — indirizzi obbligatori
-    # dell'ambito FATTURE *e* intestazione fiscale congelata
-    # (emittente_snapshot/cliente_snapshot). UN codice solo: chi lo riceve
-    # fa la stessa cosa in entrambi i casi (rieseguire lo step DRAFT, che
-    # riscrive tutto ed e' idempotente); la diagnosi sta nel messaggio DB e
-    # nel payload (indirizzi_mancanti / intestazione_mancante), non nel
-    # ramo di codice. NON E_INDIRIZZO_DOC_OBBLIGATORIO: per una
-    # cliente_snapshot mancante direbbe una cosa falsa e manderebbe
-    # l'operatore a cercare un indirizzo che c'e'.
-    # 409 e non 400/422: lo stato attuale della risorsa non consente
-    # l'azione (documento incompleto), non input malformato — stessa
-    # famiglia di _DUPLICATO/_IN_ESECUZIONE (api.md §Tassonomia).
+    # Guard DB all'uscita da DRAFT della FATTURA · (trgfn_fatture_guard_uscita_draft, I.4 brief intestazione §10.9): · criterio ALLARGATO rispetto al gemello DDT — indirizzi obbligatori · dell'ambito FATTURE *e* intestazione fiscale congelata · (emittente_snapshot/cliente_snapshot). UN codice solo: chi lo riceve · fa la stessa cosa in entrambi i casi (rieseguire lo step DRAFT, che · riscrive tutto ed e' idempotente); la diagnosi sta nel messaggio DB e · nel payload (indirizzi_mancanti / intestazione_mancante), non nel · ramo di codice. NON E_INDIRIZZO_DOC_OBBLIGATORIO: per una · cliente_snapshot mancante direbbe una cosa falsa e manderebbe · l'operatore a cercare un indirizzo che c'e'. · 409 e non 400/422: lo stato attuale della risorsa non consente · l'azione (documento incompleto), non input malformato — stessa · famiglia di _DUPLICATO/_IN_ESECUZIONE (api.md §Tassonomia).
     "E_FATTURA_NON_EMETTIBILE_INCOMPLETA": "CONFLITTO_STATO",
-    # D-K (Fase 4b, changeSet `20260802-24`): `fn_assign_numero_fattura` non
-    # numera piu' un documento incoerente — sei condizioni sulla catena
-    # riepiloghi IVA -> totale_doc -> totale_a_pagare -> rate. Il codice era
-    # seedato in `config.messaggi_errore` dalla Fase 1.3 ma non qui, quindi
-    # il fallback lo mostrava come «Errore di validazione»: su un rifiuto di
-    # numerazione e' proprio il messaggio che non aiuta.
-    # ⚠️ NON confonderlo con `E_SCADENZE_BASE_NON_PRONTA` (571): quello dice
-    # «i totali non ci sono ancora» ed e' dello step EMESSA; questo dice «il
-    # documento non merita un numero fiscale» ed e' dello step DEFINITIVA.
-    # 422 e non 409: il documento e' incompleto, non in conflitto — e la
-    # riparazione e' rilanciare gli step a monte, non ritentare la stessa
-    # chiamata.
+    # D-K (Fase 4b, changeSet `20260802-24`): `fn_assign_numero_fattura` non · numera piu' un documento incoerente — sei condizioni sulla catena · riepiloghi IVA -> totale_doc -> totale_a_pagare -> rate. Il codice era · seedato in `config.messaggi_errore` dalla Fase 1.3 ma non qui, quindi · il fallback lo mostrava come «Errore di validazione»: su un rifiuto di · numerazione e' proprio il messaggio che non aiuta. · ⚠️ NON confonderlo con `E_SCADENZE_BASE_NON_PRONTA` (571): quello dice · «i totali non ci sono ancora» ed e' dello step EMESSA; questo dice «il · documento non merita un numero fiscale» ed e' dello step DEFINITIVA. · 422 e non 409: il documento e' incompleto, non in conflitto — e la · riparazione e' rilanciare gli step a monte, non ritentare la stessa · chiamata.
     "E_FATTURA_NON_NUMERABILE_INCOERENTE": "NON_ESEGUIBILE",
     # --- Not found (404) ---
     "E_FATTURA_NON_TROVATA": "NON_TROVATO",
     "E_FATTURA_RIGA_CONGELATA": "CONFLITTO_STATO",
     "E_FATTURA_SATELLITE_CONGELATO": "CONFLITTO_STATO",
     "E_FATTURA_SENZA_RIGHE": "CONFLITTO_STATO",
-    # Corsia di instradamento non piu' modificabile: il documento e' gia'
-    # stato inviato in commessa, dove il flag entra nella chiave di dedup —
-    # cambiarlo dopo non sposta nulla, sarebbe solo un campo che INGANNA.
-    # Sollevato dal guard DB `trgfn_guard_fatturazione_immediata_immutabile`
-    # su ordini/contratti/DDT/preventivi (codice DB messaggi_errore 561).
-    # Trasversale ai 4 domini: il codice e' uno solo, come lo e' la regola.
-    "E_FATT_IMMEDIATA_NON_MODIFICABILE": "CONFLITTO_STATO",
+    # Richiesta valida, esito nullo: nessun lotto nel perimetro chiesto.
+    "E_FATTURAZIONE_GIRO_NESSUN_LOTTO": "NON_ESEGUIBILE",
+    "E_FATTURAZIONE_GIRO_PAYLOAD": "DATO_ERRATO",
+    "E_FATTURAZIONE_NUMERA_PAYLOAD": "DATO_ERRATO",
     # <- FLUSSI_COMPETENZA_MANCANTE  (vivo)
     "E_FLUSSI_COMPETENZA_MANCANTE": "NON_PERMESSO",
     "E_FLUSSI_ESITO_NON_AMMESSO": "DATO_ERRATO",
@@ -555,9 +402,11 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_FLUSSO_OWNERSHIP": "DATO_ERRATO",
     "E_FLUSSO_PRESA_IN_CARICO": "TECNICO",
     "E_FLUSSO_VALIDATION": "DATO_ERRATO",
+    # Il valore viene da vendite.regole_fatturazione_articolo, non da chi usa il programma: nessuno rimedia finche qualcuno non riconfigura.
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_FONTE_QUANTITA_NON_VALIDA": "TECNICO",
     "E_FORMA_GIURIDICA_PAESE": "DATO_ERRATO",
-    # `v_blocca_ordini = true`: e' lo stato del fornitore a bloccare
-    # l'ordine, non un diritto che manca all'operatore (403).
+    # `v_blocca_ordini = true`: e' lo stato del fornitore a bloccare · l'ordine, non un diritto che manca all'operatore (403).
     "E_FORNITORE_BLOCCATO": "CONFLITTO_STATO",
     "E_FORNITORE_ID_INVALIDO": "DATO_ERRATO",
     "E_FORNITORE_NON_ATTIVO": "CONFLITTO_STATO",
@@ -580,108 +429,61 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_IDEMPOTENCY_KEY_REQUIRED": "DATO_ERRATO",
     "E_IDENTITA_NON_ATTIVA": "NON_AUTENTICATO",
     "E_ID_FISCALI_DIVERSI": "DATO_ERRATO",
-    # Guard DB all'emissione DDT (tipi obbligatori dell'ambito mancanti):
-    # il FE previene (Conferma disabilitata), il trigger resta la fonte
-    # di verita'.
+    # Guard DB all'emissione DDT (tipi obbligatori dell'ambito mancanti): · il FE previene (Conferma disabilitata), il trigger resta la fonte · di verita'.
     "E_INDIRIZZO_DOC_OBBLIGATORIO": "NON_ESEGUIBILE",
-    # Non sono errori di richiesta: viaggiano su `task_runs.error_code` e
-    # arrivano all'utente dal cockpit. Registrarli serve al `user_message`:
-    # senza policy il fallback li mostrerebbe tutti come «Errore di
-    # validazione», che non dice ne' cosa e' successo ne' dove guardare.
+    # Non sono errori di richiesta: viaggiano su `task_runs.error_code` e · arrivano all'utente dal cockpit. Registrarli serve al `user_message`: · senza policy il fallback li mostrerebbe tutti come «Errore di · validazione», che non dice ne' cosa e' successo ne' dove guardare.
     "E_INDIRIZZO_FATTURA_MANCANTE": "NON_ESEGUIBILE",
     "E_INDIRIZZO_OBBLIGATORIO_MANCANTE": "DATO_ERRATO",
     "E_INDIRIZZO_SNAPSHOT_NOT_FOUND": "NON_TROVATO",
     "E_INVALID_ID": "DATO_ERRATO",
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_INVALID_SNAPSHOT": "TECNICO",
     "E_INVITO_OPERATORE": "DATO_ERRATO",
     "E_INVITO_PORTALE": "DATO_ERRATO",
     "E_ISTANZA_UTILITY_SENZA_UTILITY": "CONFLITTO_STATO",
     "E_IVA_CONTO_ACQ_ERR": "DATO_ERRATO",
     "E_IVA_CONTO_VEN_ERR": "DATO_ERRATO",
-    # UI gestione code (BE-7): annullo di un job non piu` PENDING →
-    # conflitto di stato (il worker lo ha gia` preso, o e` terminato).
+    # UI gestione code (BE-7): annullo di un job non piu` PENDING → · conflitto di stato (il worker lo ha gia` preso, o e` terminato).
     "E_JOB_NON_ANNULLABILE": "CONFLITTO_STATO",
-    # UI gestione code (BE-7): requeue di un job non IN_CORSO/ERRORE →
-    # conflitto di stato (solo i bloccati/terminali si riaccodano).
+    # UI gestione code (BE-7): requeue di un job non IN_CORSO/ERRORE → · conflitto di stato (solo i bloccati/terminali si riaccodano).
     "E_JOB_NON_RIACCODABILE": "CONFLITTO_STATO",
-    # C-3: polling di un giro (job coda) inesistente o non di proprieta`
-    # dell'operatore → 404 (senza registrazione cadrebbe sul fallback 400).
+    # C-3: polling di un giro (job coda) inesistente o non di proprieta` · dell'operatore → 404 (senza registrazione cadrebbe sul fallback 400).
     "E_JOB_NON_TROVATO": "NON_TROVATO",
-    # ⚠️ Distinto dal gemello NON_TROVATO: qui il tipo **esiste** ed e'
-    # stato disattivato. Stessa famiglia di `E_AI_DISABLED` e
-    # `E_SHOP_NON_DISPONIBILE`, gia' a 501: funzione presente ma non
-    # servita. Il 503 sarebbe l'alternativa, ma introdurrebbe un
-    # dodicesimo status per un codice solo — vedi api.md sui one-off.
+    # ⚠️ Distinto dal gemello NON_TROVATO: qui il tipo **esiste** ed e' · stato disattivato. Stessa famiglia di `E_AI_DISABLED` e · `E_SHOP_NON_DISPONIBILE`, gia' a 501: funzione presente ma non · servita. Il 503 sarebbe l'alternativa, ma introdurrebbe un · dodicesimo status per un codice solo — vedi api.md sui one-off.
     "E_JOB_TYPE_NON_ATTIVO": "NON_DISPONIBILE",
-    # `dbops.coda_lavori_tipi` non ha quel codice: un tipo di job che il
-    # backend accoda ma nessuno ha registrato. E' il gemello esatto di
-    # `E_PIPELINE_TASK_HANDLER_NOT_FOUND` — difetto di deploy, non
-    # risorsa mancante.
+    # `dbops.coda_lavori_tipi` non ha quel codice: un tipo di job che il · backend accoda ma nessuno ha registrato. E' il gemello esatto di · `E_PIPELINE_TASK_HANDLER_NOT_FOUND` — difetto di deploy, non · risorsa mancante.
     "E_JOB_TYPE_NON_TROVATO": "TECNICO",
     "E_JWT_SENZA_IDENTITA": "NON_AUTENTICATO",
     "E_KIT_QUANTITA_DISOMOGENEE": "CONFLITTO_STATO",
     "E_LISTINO_COMPONENTE_COERENZA_BOM": "DATO_ERRATO",
-    "E_LISTINO_RIGA_COMPOSITO_VIETATO": "DATO_ERRATO",
-    # Trigger DB guard coerenza BoM su listini_righe_componenti: blocca
-    # prezzi bundle riferiti a componenti non presenti nella BoM corrente
-    # del padre composito (o fuori dal range di validita' della BoM).
+    # Trigger DB guard coerenza BoM su listini_righe_componenti: blocca · prezzi bundle riferiti a componenti non presenti nella BoM corrente · del padre composito (o fuori dal range di validita' della BoM).
     "E_LISTINO_RIGA_COMP_BOM_INCOERENTE": "DATO_ERRATO",
+    "E_LISTINO_RIGA_COMPOSITO_VIETATO": "DATO_ERRATO",
     "E_LISTINO_TIPOLOGIA_UTILITY": "DATO_ERRATO",
-    # Resolver pricing v5 (fn_resolve_prezzo_listino_v2, rev 2026-05-13
-    # bundle-prioritario): versione listino non trovata o non attiva
-    # alla data del documento. Indica un mismatch fra il listino eletto
-    # (contratto o categoria) e la disponibilita' di una versione
-    # operativa per quel periodo.
-    # 404 -> 422 (audit 2026-08-06). Non era un «non trovato»: il
-    # listino c'e', la query di `fn_resolve_prezzo_listino_v2` cerca una
-    # versione `attivo = TRUE AND stato IN (ATTIVA, CHIUSA)` valida ALLA
-    # DATA, e non ne trova. La richiesta si capisce e non si puo'
-    # eseguire: e' la definizione del 422. Allineato al fratello
-    # `E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA`, che dice quasi la
-    # stessa cosa ed era gia' 422.
+    # Resolver pricing v5 (fn_resolve_prezzo_listino_v2, rev 2026-05-13 · bundle-prioritario): versione listino non trovata o non attiva · alla data del documento. Indica un mismatch fra il listino eletto · (contratto o categoria) e la disponibilita' di una versione · operativa per quel periodo. · 404 -> 422 (audit 2026-08-06). Non era un «non trovato»: il · listino c'e', la query di `fn_resolve_prezzo_listino_v2` cerca una · versione `attivo = TRUE AND stato IN (ATTIVA, CHIUSA)` valida ALLA · DATA, e non ne trova. La richiesta si capisce e non si puo' · eseguire: e' la definizione del 422. Allineato al fratello · `E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA`, che dice quasi la · stessa cosa ed era gia' 422.
     "E_LISTINO_VERSIONE_NON_ATTIVA": "NON_ESEGUIBILE",
     "E_LOCK_COLUMNS": "TECNICO",
     "E_LOGOUT_NO_TOKEN": "DATO_ERRATO",
-    # Sollevato da dbops.fn_get_lookup_codici (migration 20260520-04+06)
-    # quando la tabella passata non ha la struttura attesa
-    # (id + codice/codice_interno + descrizione) e non esiste override
-    # dichiarativo in dbops.automation_overrides_cols (CODICE_COL/CODICE_INTERNO_COL).
-    # E' un errore di configurazione/sviluppo (rel whitelistato in dbops_repository
-    # senza colonne compatibili, o override mancante per tabella custom):
-    # utente finale non puo' rimediarlo, va corretto dal team.
+    # Sollevato da dbops.fn_get_lookup_codici (migration 20260520-04+06) · quando la tabella passata non ha la struttura attesa · (id + codice/codice_interno + descrizione) e non esiste override · dichiarativo in dbops.automation_overrides_cols (CODICE_COL/CODICE_INTERNO_COL). · E' un errore di configurazione/sviluppo (rel whitelistato in dbops_repository · senza colonne compatibili, o override mancante per tabella custom): · utente finale non puo' rimediarlo, va corretto dal team.
     "E_LOOKUP_STRUTTURA_TABELLA_INVALIDA": "TECNICO",
     "E_LOTTO_FATTURE_NON_PRE_FISCALI": "CONFLITTO_STATO",
-    # Ridondante rispetto al precedente per scelta del DB, e va tenuto:
-    # guarda il NUMERO della fattura, non lo stato che dovrebbe implicarlo.
-    # Cancellare una fattura numerata aprirebbe un buco nella numerazione.
+    # Ridondante rispetto al precedente per scelta del DB, e va tenuto: · guarda il NUMERO della fattura, non lo stato che dovrebbe implicarlo. · Cancellare una fattura numerata aprirebbe un buco nella numerazione.
     "E_LOTTO_FATTURE_NUMERATE": "CONFLITTO_STATO",
     "E_LOTTO_FATTURE_STATO_INCOERENTE": "CONFLITTO_STATO",
-    # Precondizioni dei due verbi distruttivi del lotto (DB 2026-08-04,
-    # changeSet 20260804-02..05): le due fn di mutazione sollevano ora il
-    # codice del PRIMO motivo restituito dalle fn_check pure, al posto dei
-    # generici E_PARAMETRO_INVALIDO / E_VALORE_MANCANTE. Sono le STESSE
-    # fn_check da cui `script.fn_available_actions_lotto` ricava
-    # `enabled`/`reasons`: se l'operatore vede l'errore, e` perche' ha
-    # forzato un'azione che il drawer mostrava gia` disabilitata col motivo
-    # — quindi conflitto di stato (409), non input malformato.
+    # Precondizioni dei due verbi distruttivi del lotto (DB 2026-08-04, · changeSet 20260804-02..05): le due fn di mutazione sollevano ora il · codice del PRIMO motivo restituito dalle fn_check pure, al posto dei · generici E_PARAMETRO_INVALIDO / E_VALORE_MANCANTE. Sono le STESSE · fn_check da cui `script.fn_available_actions_lotto` ricava · `enabled`/`reasons`: se l'operatore vede l'errore, e` perche' ha · forzato un'azione che il drawer mostrava gia` disabilitata col motivo · — quindi conflitto di stato (409), non input malformato.
     "E_LOTTO_NON_ANNULLABILE": "CONFLITTO_STATO",
-    # C-4: «Rendi definitive» su lotto non in EMESSA (gate fiscale I-7):
-    # conflitto di stato (409), non un semplice bad-request.
+    # C-4: «Rendi definitive» su lotto non in EMESSA (gate fiscale I-7): · conflitto di stato (409), non un semplice bad-request.
     "E_LOTTO_NON_NUMERABILE": "CONFLITTO_STATO",
-    # Precondizioni dell'eliminazione per-fattura dal lotto (DB 2026-08-04,
-    # slice 6-B, codici 831-834 da `script.fn_check_fattura_eliminabile_da_lotto`).
-    # Tutti 409 per la stessa ragione dei gemelli sul lotto intero: chi li
-    # vede ha chiesto un'operazione che lo stato corrente non consente, non
-    # ha compilato male un campo.
+    # Precondizioni dell'eliminazione per-fattura dal lotto (DB 2026-08-04, · slice 6-B, codici 831-834 da `script.fn_check_fattura_eliminabile_da_lotto`). · Tutti 409 per la stessa ragione dei gemelli sul lotto intero: chi li · vede ha chiesto un'operazione che lo stato corrente non consente, non · ha compilato male un campo.
     "E_LOTTO_NON_PRE_FISCALE": "CONFLITTO_STATO",
     "E_LOTTO_NON_RIPORTABILE_A_DRAFT": "CONFLITTO_STATO",
-    # C-8: ristampa massiva su lotto non DEFINITIVA (I-7: niente numerazione
-    # backdoor via ristampa): conflitto di stato (409).
+    # C-8: ristampa massiva su lotto non DEFINITIVA (I-7: niente numerazione · backdoor via ristampa): conflitto di stato (409).
     "E_LOTTO_NON_RISTAMPABILE": "CONFLITTO_STATO",
     # --- Conflitto / azione bloccata (409) ---
     "E_LOTTO_NON_RIUTILIZZABILE": "CONFLITTO_STATO",
     "E_LOTTO_NON_TROVATO": "NON_TROVATO",
     "E_LOTTO_PARAMETRO_NON_COERENTE": "DATO_ERRATO",
-    # <- MESSAGGIO_NON_DEFINITO  (vivo)
+    # Ripiego del ripiego di fn_log_error_only: la funzione lo cerca per nome scritto a mano. Rinominato da MESSAGGIO_NON_DEFINITO il 2026-08-07, ultima riga del registro dei codici fuori convenzione.
     "E_MESSAGGIO_NON_DEFINITO": "TECNICO",
     "E_NAZIONE_NON_TROVATA": "DATO_ERRATO",
     "E_NOTA_CHECK_VIOLATION": "DATO_ERRATO",
@@ -691,34 +493,18 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_NOTA_NOT_FOUND": "NON_TROVATO",
     "E_NOTA_PARENT_NOT_FOUND": "NON_TROVATO",
     "E_NOTA_RIGA_INCOERENTE": "DATO_ERRATO",
+    "E_NOT_AUTHENTICATED": "NON_AUTENTICATO",
     "E_NOTA_VALIDATION": "DATO_ERRATO",
-    # script.trgfn_note_validate_generic: `to_regclass` NULL, cioe' il
-    # trigger punta a una tabella che non esiste.
+    # script.trgfn_note_validate_generic: `to_regclass` NULL, cioe' il · trigger punta a una tabella che non esiste.
     "E_NOTE_CONFIG": "TECNICO",
     "E_NOTE_RIGA_MISMATCH": "DATO_ERRATO",
     "E_NOTE_TARGET_ID": "DATO_ERRATO",
-    "E_NOT_AUTHENTICATED": "NON_AUTENTICATO",
-    # Mutua esclusività offerta → (contratto XOR ordine): la stessa offerta si
-    # materializza in UNA sola forma. Famiglia "già materializzato" = conflitto
-    # di stato → 409 uniforme (coerente con E_ORD_OFFERTA_GIA_CONVERTITA sopra).
-    # Entrambi i codici sono sollevati sia da DB (fn_push_offerta_a_contratto)
-    # sia da BE (guard incrociati): la registrazione qui fissa lo status, che
-    # altrimenti cadrebbe sul fallback 400 dei codici E_* non registrati.
-    #  - CONTRATTO_GIA_GENERATO: blocca la generazione ordine se esiste già un
-    #    contratto (guard BE crea_ordine_da_offerta) ED è il codice idempotenza
-    #    del push duplicato (fn_push_offerta_a_contratto, UNIQUE offerta_id).
-    #  - ORDINE_GIA_GENERATO: blocca il push a contratto se esiste già un ordine
-    #    (guard DB fn_push_offerta_a_contratto, mutua esclusività).
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_NUMERAZIONE_IMMUTABILE": "CONFLITTO_STATO",
+    # Mutua esclusività offerta → (contratto XOR ordine): la stessa offerta si · materializza in UNA sola forma. Famiglia "già materializzato" = conflitto · di stato → 409 uniforme (coerente con E_ORD_OFFERTA_GIA_CONVERTITA sopra). · Entrambi i codici sono sollevati sia da DB (fn_push_offerta_a_contratto) · sia da BE (guard incrociati): la registrazione qui fissa lo status, che · altrimenti cadrebbe sul fallback 400 dei codici E_* non registrati. · - CONTRATTO_GIA_GENERATO: blocca la generazione ordine se esiste già un · contratto (guard BE crea_ordine_da_offerta) ED è il codice idempotenza · del push duplicato (fn_push_offerta_a_contratto, UNIQUE offerta_id). · - ORDINE_GIA_GENERATO: blocca il push a contratto se esiste già un ordine · (guard DB fn_push_offerta_a_contratto, mutua esclusività).
     "E_OFFERTA_CONTRATTO_GIA_GENERATO": "CONFLITTO_STATO",
     "E_OFFERTA_ECCEZIONE_NON_TROVATA": "NON_TROVATO",
-    # Codici DB del flusso offerta (emissione/transizione/push/revisione) e del
-    # push a contratto. Senza registrazione cadevano sul fallback 400, mentre
-    # la convenzione del progetto per "operazione non ammessa nello stato /
-    # precondizione di transizione / overlap" è 409 (gemelli già registrati:
-    # E_ORD_STATO_TRANSIZIONE, E_PREV_STATO_TRANSIZIONE,
-    # E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA, E_VENDITE_*_OVERLAP). Registrati
-    # qui per fissare lo status corretto (il messaggio parlante DB vince
-    # comunque su user_message). Pulizia 2026-06-08.
+    # Codici DB del flusso offerta (emissione/transizione/push/revisione) e del · push a contratto. Senza registrazione cadevano sul fallback 400, mentre · la convenzione del progetto per "operazione non ammessa nello stato / · precondizione di transizione / overlap" è 409 (gemelli già registrati: · E_ORD_STATO_TRANSIZIONE, E_PREV_STATO_TRANSIZIONE, · E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA, E_VENDITE_*_OVERLAP). Registrati · qui per fissare lo status corretto (il messaggio parlante DB vince · comunque su user_message). Pulizia 2026-06-08.
     "E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO": "CONFLITTO_STATO",
     "E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA": "CONFLITTO_STATO",
     "E_OFFERTA_EMITTENTE_BA_INCOERENTE": "CONFLITTO_STATO",
@@ -730,77 +516,47 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_ONERE_ARTICOLO_MANCANTE": "DATO_ERRATO",
     "E_ONERE_CAUSALE_NON_VALIDA": "DATO_ERRATO",
     "E_ONERE_IMPORTO_NON_VALIDO": "DATO_ERRATO",
-    # Race sul progressivo segment_key degli oneri (guard DB 557,
-    # brief-db-race-segment-key-onere §5): NON e' un input da correggere
-    # ma un conflitto di concorrenza ritentabile → 409 come la famiglia
-    # immutabilita', non 400. Nota: perche' questo codice ARRIVI qui e non
-    # cada sul fallback E_COMMESSA_VALIDATION, deve essere anche nei
-    # `_ONERE_DB_ERROR_MARKERS` del service (catena di traduzione).
+    # Race sul progressivo segment_key degli oneri (guard DB 557, · brief-db-race-segment-key-onere §5): NON e' un input da correggere · ma un conflitto di concorrenza ritentabile → 409 come la famiglia · immutabilita', non 400. Nota: perche' questo codice ARRIVI qui e non · cada sul fallback E_COMMESSA_VALIDATION, deve essere anche nei · `_ONERE_DB_ERROR_MARKERS` del service (catena di traduzione).
     "E_ONERE_SEGMENT_DUPLICATO": "CONFLITTO_STATO",
-    # Stessa fn DB del precedente (`script.fn_change_user_emittenti_scope`),
-    # stesso 400: e' l'input della richiesta a non essere ammesso (piu' di un
-    # emittente su un modello operatore-emittente 1-a-1). Raggiungibile solo
-    # dal 2026-08-05 (vedi nota su E_ATTIVO_BLOCK_ARGS: changeSet 20260805-03).
+    # Stessa fn DB del precedente (`script.fn_change_user_emittenti_scope`), · stesso 400: e' l'input della richiesta a non essere ammesso (piu' di un · emittente su un modello operatore-emittente 1-a-1). Raggiungibile solo · dal 2026-08-05 (vedi nota su E_ATTIVO_BLOCK_ARGS: changeSet 20260805-03).
     "E_OPERATORE_SCOPE_MULTI_NON_AMMESSO": "DATO_ERRATO",
     "E_OPERATORE_SCOPE_PARAM_NON_VALIDO": "DATO_ERRATO",
+    # Vie d'uscita per l'operatore (brief-db-vie-uscita-operatore §5.1): · l'annullamento dell'ordine torna disponibile da CONFERMATO, ma · `script.fn_check_ordine_annullabile` lo rifiuta se la merce e' gia' · uscita o il lavoro e' gia' andato in fatturazione. Codici sollevati dal · guard DB (`trgfn_ordini_guard_transizione`), tradotti dal regex di · `ordini_service._db_errors`: qui si dichiara la policy HTTP/UI.
+    "E_ORD_ANNULLA_CON_DDT": "CONFLITTO_STATO",
+    "E_ORD_ANNULLA_IN_COMMESSA": "CONFLITTO_STATO",
+    # Cliente (billing_account_id/soggetto_ruolo_id) immutabile post-create. · Sollevato sia dal guard BE (ordini_service.aggiorna_ordine) sia, come · difesa finale, dal lock-columns DB (automation_lock_columns, · DB-ORD-LOCK 2026-06-04, codice DB messaggi_errore id 469). · 400 -> 409 il 2026-08-06 (audit coerenza status): immutabilita' · post-creazione = conflitto con lo stato attuale (RFC 9110), come · gli altri 29 della famiglia. `ui_action` invariata.
+    "E_ORD_CLIENTE_IMMUTABILE": "CONFLITTO_STATO",
     "E_ORDINE_CONFERMA_SENZA_RIGHE": "CONFLITTO_STATO",
     "E_ORDINE_EMITTENTE_BA_INCOERENTE": "CONFLITTO_STATO",
     "E_ORDINE_EMITTENTE_NON_RISOLTO": "DATO_ERRATO",
     "E_ORDINE_RIGA_NON_TROVATA": "NON_TROVATO",
     "E_ORDINE_TRANSIZIONE_NON_AMMESSA": "CONFLITTO_STATO",
-    # Vie d'uscita per l'operatore (brief-db-vie-uscita-operatore §5.1):
-    # l'annullamento dell'ordine torna disponibile da CONFERMATO, ma
-    # `script.fn_check_ordine_annullabile` lo rifiuta se la merce e' gia'
-    # uscita o il lavoro e' gia' andato in fatturazione. Codici sollevati dal
-    # guard DB (`trgfn_ordini_guard_transizione`), tradotti dal regex di
-    # `ordini_service._db_errors`: qui si dichiara la policy HTTP/UI.
-    "E_ORD_ANNULLA_CON_DDT": "CONFLITTO_STATO",
-    "E_ORD_ANNULLA_IN_COMMESSA": "CONFLITTO_STATO",
-    # Cliente (billing_account_id/soggetto_ruolo_id) immutabile post-create.
-    # Sollevato sia dal guard BE (ordini_service.aggiorna_ordine) sia, come
-    # difesa finale, dal lock-columns DB (automation_lock_columns,
-    # DB-ORD-LOCK 2026-06-04, codice DB messaggi_errore id 469).
-    # 400 -> 409 il 2026-08-06 (audit coerenza status): immutabilita'
-    # post-creazione = conflitto con lo stato attuale (RFC 9110), come
-    # gli altri 29 della famiglia. `ui_action` invariata.
-    "E_ORD_CLIENTE_IMMUTABILE": "CONFLITTO_STATO",
     "E_ORD_NESSUNA_RIGA": "CONFLITTO_STATO",
-    # Ordini di vendita (scheletro CRUD + conferma + push singolo). Famiglia
-    # speculare a E_PREV_*. I codici trigger DB (E_ORDINE_*) passano invece
-    # via regex in ordini_service._db_errors.
+    # Ordini di vendita (scheletro CRUD + conferma + push singolo). Famiglia · speculare a E_PREV_*. I codici trigger DB (E_ORDINE_*) passano invece · via regex in ordini_service._db_errors.
     "E_ORD_NOT_FOUND": "NON_TROVATO",
-    # Univocità 1:1 offerta→ordine (reversal parziale di A1, solo OFFERTA):
-    # un'offerta genera al massimo un ordine. Sollevato dal guard BE
-    # (ordini_service.crea_ordine_da_offerta) e, come rete sulla race, dalla
-    # violazione dell'UNIQUE parziale uq_ordini_v_documento_origine_offerta.
-    # Specchio applicativo della guard data-driven can_genera_ordine in
-    # script.fn_available_actions_offerta (il bottone sparisce a conversione
-    # avvenuta; questo errore copre il click concorrente cross-tab).
+    # Univocità 1:1 offerta→ordine (reversal parziale di A1, solo OFFERTA): · un'offerta genera al massimo un ordine. Sollevato dal guard BE · (ordini_service.crea_ordine_da_offerta) e, come rete sulla race, dalla · violazione dell'UNIQUE parziale uq_ordini_v_documento_origine_offerta. · Specchio applicativo della guard data-driven can_genera_ordine in · script.fn_available_actions_offerta (il bottone sparisce a conversione · avvenuta; questo errore copre il click concorrente cross-tab).
     "E_ORD_OFFERTA_GIA_CONVERTITA": "CONFLITTO_STATO",
-    # Conversione upstream (preventivo/offerta → ordine, §7.4): il documento
-    # di origine non è in uno stato che ammette la generazione di un ordine
-    # (es. preventivo non ancora ACCETTATO).
+    # Conversione upstream (preventivo/offerta → ordine, §7.4): il documento · di origine non è in uno stato che ammette la generazione di un ordine · (es. preventivo non ancora ACCETTATO).
     "E_ORD_ORIGINE_NON_CONVERTIBILE": "CONFLITTO_STATO",
     "E_ORD_STATO_TRANSIZIONE": "CONFLITTO_STATO",
     "E_ORD_VALIDAZIONE": "DATO_ERRATO",
     "E_OUTBOX": "DATO_ERRATO",
-    # Framework FK-surrogata config.parameter_fk_surrogate (DB 2026-05-02):
-    # dispatcher su parameters/parameter_overrides che valida default_value
-    # contro la chiave naturale stabile (di norma codice_interno) della
-    # tabella di catalogo target. Sostituisce il guard ad-hoc deprecato
-    # E_PARAMETER_DEFAULT_TIPO_SOGGETTO_INVALID (mantenuto a livello DB
-    # per retro-compat ma non mappato qui: i nuovi inserimenti finiscono
-    # sempre sui codici 422/423 del framework).
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_PARAMETER_DEFAULT_TIPO_SOGGETTO_INVALID": "DATO_ERRATO",
+    # Framework FK-surrogata config.parameter_fk_surrogate (DB 2026-05-02): · dispatcher su parameters/parameter_overrides che valida default_value · contro la chiave naturale stabile (di norma codice_interno) della · tabella di catalogo target. Sostituisce il guard ad-hoc deprecato · E_PARAMETER_DEFAULT_TIPO_SOGGETTO_INVALID (mantenuto a livello DB · per retro-compat ma non mappato qui: i nuovi inserimenti finiscono · sempre sui codici 422/423 del framework).
     "E_PARAMETER_DEFAULT_VALUE_INVALID": "DATO_ERRATO",
     "E_PARAMETER_NOT_FOUND": "NON_TROVATO",
     "E_PARAMETER_OVERRIDE_VALUE_INVALID": "DATO_ERRATO",
     "E_PARAMETER_VALIDATION": "DATO_ERRATO",
     "E_PARAMETRI_TABELLA": "NON_TROVATO",
+    # 177 punti in 114 funzioni: 160 sono guard di parametro (NULL, <= 0, btrim vuoto), 17 altro. DATO_ERRATO copre il 90%. I 17 restanti vanno guardati con la lente messaggio-vs-condizione, non spezzati a priori.
     "E_PARAMETRO_INVALIDO": "DATO_ERRATO",
     "E_PARENT_SELF": "DATO_ERRATO",
     # --- Coerenza dati (400) ---
     "E_PDP_OBBLIGATORIO": "DATO_ERRATO",
     "E_PDP_UTILITY_MISMATCH": "DATO_ERRATO",
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_PERC_IVA_NO_MOD": "CONFLITTO_STATO",
     "E_PERMESSO_NEGATO": "NON_PERMESSO",
     "E_PERMISSION_DENIED": "NON_PERMESSO",
     "E_PIPELINE": "DATO_ERRATO",
@@ -811,19 +567,12 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PIPELINE_LOTTO_IN_ESECUZIONE": "CONFLITTO_STATO",
     "E_PIPELINE_LOTTO_NOT_FOUND": "NON_TROVATO",
     "E_PIPELINE_MARK_ERROR": "DATO_ERRATO",
-    # 404 -> 500 il 2026-08-06 (audit dei 404 «larghi», api.md).
-    # `pipeline_step_executor` lo solleva quando NON ESISTE una
-    # configurazione di pipeline per quello stato/tipo lotto: non e' una
-    # risorsa che l'operatore ha chiesto e non c'e', e' un pezzo che
-    # nessuno ha configurato. Il 404 gli diceva «non esiste», mandandolo
-    # a cercare una cosa che nessuno puo' trovare.
+    # 404 -> 500 il 2026-08-06 (audit dei 404 «larghi», api.md). · `pipeline_step_executor` lo solleva quando NON ESISTE una · configurazione di pipeline per quello stato/tipo lotto: non e' una · risorsa che l'operatore ha chiesto e non c'e', e' un pezzo che · nessuno ha configurato. Il 404 gli diceva «non esiste», mandandolo · a cercare una cosa che nessuno puo' trovare.
     "E_PIPELINE_NOT_FOUND": "TECNICO",
     "E_PIPELINE_SCOPE_INCOMPLETE": "DATO_ERRATO",
     "E_PIPELINE_STATO_LOTTO": "CONFLITTO_STATO",
     "E_PIPELINE_TASK": "DATO_ERRATO",
-    # 404 -> 500 (audit 2026-08-06): nessuna riga di registry per quel task,
-    # cioe' un handler mai registrato. Difetto di configurazione, non
-    # risorsa mancante.
+    # 404 -> 500 (audit 2026-08-06): nessuna riga di registry per quel task, · cioe' un handler mai registrato. Difetto di configurazione, non · risorsa mancante.
     "E_PIPELINE_TASK_HANDLER_NOT_FOUND": "TECNICO",
     "E_PIPELINE_VALIDATION": "DATO_ERRATO",
     "E_PIVA_NON_VALIDA": "DATO_ERRATO",
@@ -832,9 +581,7 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PRATICA_ID_OBBLIGATORIO": "DATO_ERRATO",
     "E_PRATICA_INSERT": "TECNICO",
     "E_PRATICA_NOT_FOUND": "NON_TROVATO",
-    # -- Pratiche: guasti tecnici di scrittura/lettura ------------------
-    # Sono fallimenti di query o INSERT senza RETURNING: non li causa
-    # l'operatore e non c'e' un campo da evidenziare — 500.
+    # -- Pratiche: guasti tecnici di scrittura/lettura ------------------ · Sono fallimenti di query o INSERT senza RETURNING: non li causa · l'operatore e non c'e' un campo da evidenziare — 500.
     "E_PRATICA_QUERY": "TECNICO",
     "E_PRATICA_SORGENTE_TIPO_INVALIDO": "DATO_ERRATO",
     "E_PRATICA_VALIDATION": "DATO_ERRATO",
@@ -868,34 +615,20 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO": "CONFLITTO_STATO",
     # <- PRATICHE_TRANSIZIONE_NON_AMMESSA  (vivo)
     "E_PRATICHE_TRANSIZIONE_NON_AMMESSA": "CONFLITTO_STATO",
-    "E_PREVENTIVO_RIGA_NON_TROVATA": "NON_TROVATO",
-    # L3 Sprint E (sviluppo-listini-v5 §14.6) — workflow approvazione
-    # prezzo out-of-policy. Codici sollevati da preventivi_service +
-    # approvazioni_prezzo_service e dai trigger DB DB-E-4/E-5.
-    "E_PREVENTIVO_RIGHE_PRICING_PENDENTI": "CONFLITTO_STATO",
-    # Il quarto motivo, arrivato col consolidamento §7.3 del brief: era la
-    # regola che viveva DENTRO `fn_cambia_stato_preventivo` (col codice senza
-    # prefisso `E_`, quindi invisibile all'estrattore e degradato a
-    # E_DATABASE), ora assorbita in `fn_check_preventivo_annullabile` come
-    # motivo a se'. Piu' preciso del fratello E_PREV_GIA_IN_COMMESSA: quello
-    # dice che esiste un collegamento a commessa, questo che a valle esiste
-    # gia' una FATTURA — e una fattura senza l'origine che la giustifica non
-    # si crea annullando il preventivo, si corregge dal lato fatturazione.
+    # Il quarto motivo, arrivato col consolidamento §7.3 del brief: era la · regola che viveva DENTRO `fn_cambia_stato_preventivo` (col codice senza · prefisso `E_`, quindi invisibile all'estrattore e degradato a · E_DATABASE), ora assorbita in `fn_check_preventivo_annullabile` come · motivo a se'. Piu' preciso del fratello E_PREV_GIA_IN_COMMESSA: quello · dice che esiste un collegamento a commessa, questo che a valle esiste · gia' una FATTURA — e una fattura senza l'origine che la giustifica non · si crea annullando il preventivo, si corregge dal lato fatturazione.
     "E_PREV_ANNULLA_COMMESSA_EMESSA": "CONFLITTO_STATO",
     "E_PREV_COMPONENTE_NOT_FOUND": "NON_TROVATO",
     "E_PREV_EMITTENTE_BA_INCOERENTE": "CONFLITTO_STATO",
     "E_PREV_EMITTENTE_NON_RISOLTO": "DATO_ERRATO",
+    "E_PREVENTIVO_RIGA_NON_TROVATA": "NON_TROVATO",
+    # L3 Sprint E (sviluppo-listini-v5 §14.6) — workflow approvazione · prezzo out-of-policy. Codici sollevati da preventivi_service + · approvazioni_prezzo_service e dai trigger DB DB-E-4/E-5.
+    "E_PREVENTIVO_RIGHE_PRICING_PENDENTI": "CONFLITTO_STATO",
     "E_PREV_GIA_IN_COMMESSA": "CONFLITTO_STATO",
     "E_PREV_NESSUNA_RIGA": "DATO_ERRATO",
     # <- PREV_NESSUNA_RIGA_ATTIVA  (vivo)
     "E_PREV_NESSUNA_RIGA_ATTIVA": "CONFLITTO_STATO",
     "E_PREV_NOT_FOUND": "NON_TROVATO",
-    # Vie d'uscita per l'operatore (brief-db-vie-uscita-operatore §5.1):
-    # l'annullamento del preventivo torna disponibile da EMESSO/ACCETTATO, e
-    # `script.fn_check_preventivo_annullabile` lo rifiuta quando il documento
-    # ha gia' prodotto qualcosa a valle. Il codice arriva dal DB (guard
-    # `trgfn_preventivi_guard_annullamento`): qui si dichiara solo la policy
-    # HTTP/UI, come per il gemello E_PREV_GIA_IN_COMMESSA sopra.
+    # Vie d'uscita per l'operatore (brief-db-vie-uscita-operatore §5.1): · l'annullamento del preventivo torna disponibile da EMESSO/ACCETTATO, e · `script.fn_check_preventivo_annullabile` lo rifiuta quando il documento · ha gia' prodotto qualcosa a valle. Il codice arriva dal DB (guard · `trgfn_preventivi_guard_annullamento`): qui si dichiara solo la policy · HTTP/UI, come per il gemello E_PREV_GIA_IN_COMMESSA sopra.
     "E_PREV_ORDINE_GIA_GENERATO": "CONFLITTO_STATO",
     "E_PREV_PRATICA_STATO": "CONFLITTO_STATO",
     "E_PREV_REVISIONE_ATTIVA": "CONFLITTO_STATO",
@@ -907,18 +640,7 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PREV_STATO_CORRENTE_NON_TROVATO": "NON_TROVATO",
     "E_PREV_STATO_NON_MODIFICABILE": "CONFLITTO_STATO",
     "E_PREV_STATO_TRANSIZIONE": "CONFLITTO_STATO",
-    # Matrice del preventivo, ora vincolante anche a DB (brief vie-uscita
-    # §11.1, changeSet 20260805-15): dal 2026-08-05 la transizione fuori
-    # matrice e' rifiutata dal guard `trgfn_preventivi_guard_transizione`,
-    # non piu' dalla sola porta `fn_cambia_stato_preventivo`.
-    # ⚠️ UNO solo per DUE sedi: porta e guard sollevano lo stesso codice.
-    # Il precedente `PREV_TRANSIZIONE_NON_AMMESSA` (senza prefisso `E_`,
-    # quindi non agganciato dall'estrattore e degradato a E_DATABASE) resta
-    # dichiarato piu' sotto e a catalogo — la sua riga non e' cancellabile,
-    # ha 109 righe in `dbops.error_log` che la trattengono — ma nessuna
-    # funzione viva lo solleva piu'.
-    # 409 e non 400: e' un rifiuto di PERCORSO (lo stato di partenza non
-    # ammette quell'arrivo), non un campo compilato male.
+    # Matrice del preventivo, ora vincolante anche a DB (brief vie-uscita · §11.1, changeSet 20260805-15): dal 2026-08-05 la transizione fuori · matrice e' rifiutata dal guard `trgfn_preventivi_guard_transizione`, · non piu' dalla sola porta `fn_cambia_stato_preventivo`. · ⚠️ UNO solo per DUE sedi: porta e guard sollevano lo stesso codice. · Il precedente `PREV_TRANSIZIONE_NON_AMMESSA` (senza prefisso `E_`, · quindi non agganciato dall'estrattore e degradato a E_DATABASE) resta · dichiarato piu' sotto e a catalogo — la sua riga non e' cancellabile, · ha 109 righe in `dbops.error_log` che la trattengono — ma nessuna · funzione viva lo solleva piu'. · 409 e non 400: e' un rifiuto di PERCORSO (lo stato di partenza non · ammette quell'arrivo), non un campo compilato male.
     "E_PREV_TRANSIZIONE_NON_AMMESSA": "CONFLITTO_STATO",
     "E_PREV_UTILITY_ISTANZA_INCOERENTE": "CONFLITTO_STATO",
     "E_PREV_VALIDAZIONE": "DATO_ERRATO",
@@ -927,25 +649,13 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PREZZO_LISTINO_RIGA_NON_TROVATA": "NON_TROVATO",
     "E_PRICING_MAGGIORAZIONE_ECCESSIVA": "NON_PERMESSO",
     "E_PRICING_OVERRIDE_NON_AUTORIZZATO": "NON_PERMESSO",
-    # Refactor 2026-05-20: user_message generico "Variazione prezzo" per
-    # entrambi i codici. La distinzione SCONTO/MAGGIORAZIONE resta nel
-    # codice errore + nel detail tecnico (segno della variazione) — utile
-    # per workflow approvazione, dashboard e log, ma non per l'utente.
-    # L'UX vede la direzione esplicita nel detail ("in diminuzione" /
-    # "in aumento") generato da `_raise_or_return_violazione_l2`.
+    # Refactor 2026-05-20: user_message generico "Variazione prezzo" per · entrambi i codici. La distinzione SCONTO/MAGGIORAZIONE resta nel · codice errore + nel detail tecnico (segno della variazione) — utile · per workflow approvazione, dashboard e log, ma non per l'utente. · L'UX vede la direzione esplicita nel detail ("in diminuzione" / · "in aumento") generato da `_raise_or_return_violazione_l2`.
     "E_PRICING_SCONTO_ECCESSIVO": "NON_PERMESSO",
     "E_PROFILO_ACCESSO_BINDING_INCOERENTE": "DATO_ERRATO",
     "E_PROFILO_ACCESSO_NON_TROVATO": "NON_TROVATO",
-    # Gemello esatto di E_RUOLO_APPLICATIVO_NON_GESTITO: ramo ELSE per un
-    # valore nuovo dell'enum senza regola. Il guard non apre per omissione.
+    # Gemello esatto di E_RUOLO_APPLICATIVO_NON_GESTITO: ramo ELSE per un · valore nuovo dell'enum senza regola. Il guard non apre per omissione.
     "E_PROFILO_ACCESSO_TIPO_NON_GESTITO": "TECNICO",
-    # Multi-face: code sollevato dal trigger DB
-    # `trgfn_profili_accesso_bindings_guard_ultimo_super_admin` quando
-    # un'operazione (disabilita identita, demote SUPER_ADMIN, delete
-    # binding) lascerebbe il sistema senza alcun super admin attivo.
-    # Sostituisce E_ADMIN_ULTIMO post-cutover (Fase 1 multi-face); il
-    # service preserva il code originale del DB anche quando il preview
-    # `can_disable` lato detail aveva valutato true (race tra sessioni).
+    # Multi-face: code sollevato dal trigger DB · `trgfn_profili_accesso_bindings_guard_ultimo_super_admin` quando · un'operazione (disabilita identita, demote SUPER_ADMIN, delete · binding) lascerebbe il sistema senza alcun super admin attivo. · Sostituisce E_ADMIN_ULTIMO post-cutover (Fase 1 multi-face); il · service preserva il code originale del DB anche quando il preview · `can_disable` lato detail aveva valutato true (race tra sessioni).
     "E_PROFILO_ULTIMO_SUPER_ADMIN": "CONFLITTO_STATO",
     "E_PROMO_INIZIATA_CAMPI_RISTRETTI": "CONFLITTO_STATO",
     "E_PROMO_RETROATTIVA": "DATO_ERRATO",
@@ -958,62 +668,43 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_QTA_NON_POSITIVA": "DATO_ERRATO",
     "E_QTA_OPERATIVA_NON_INTERA": "DATO_ERRATO",
     "E_QTA_OPER_STEP_INVALIDO": "DATO_ERRATO",
-    # Over-shipping: la quantita' da evadere supera il residuo dell'ordine.
-    # Sollevato dal guard fulfillment DB (trgfn_ordini_ful_guard_consistenza)
-    # in evasione multi-DDT (brief DB C2).
+    # Over-shipping: la quantita' da evadere supera il residuo dell'ordine. · Sollevato dal guard fulfillment DB (trgfn_ordini_ful_guard_consistenza) · in evasione multi-DDT (brief DB C2).
     "E_QTA_SUPERA_RESIDUO": "CONFLITTO_STATO",
     "E_QUERY_FAILED": "TECNICO",
-    # Tre funzioni con SQL dinamico: la tabella non esiste o non ha le
-    # colonne attese. E' un montaggio sbagliato, non un dato sbagliato.
+    # Tre funzioni con SQL dinamico: la tabella non esiste o non ha le · colonne attese. E' un montaggio sbagliato, non un dato sbagliato.
     "E_QUERY_FAILED_SCHEMA_TABLE": "TECNICO",
-    # ⚠️ CODICE-DATO: `pratiche.fn_reconcile_sorgente` non lo solleva —
-    # lo **scrive** nella colonna `errcode` di
-    # `pratiche.reconcile_errori` (best-effort, con RAISE WARNING come
-    # ripiego). Nessun codice Python legge quella tabella, quindi oggi
-    # non raggiunge nessun client: la policy c'e' perche' il cancello la
-    # pretende, come per `E_ATTIVO_BLOCK_REF_NULL` (§16.2).
+    # ⚠️ CODICE-DATO: `pratiche.fn_reconcile_sorgente` non lo solleva — · lo **scrive** nella colonna `errcode` di · `pratiche.reconcile_errori` (best-effort, con RAISE WARNING come · ripiego). Nessun codice Python legge quella tabella, quindi oggi · non raggiunge nessun client: la policy c'e' perche' il cancello la · pretende, come per `E_ATTIVO_BLOCK_REF_NULL` (§16.2).
     "E_RECONCILE_AMBIGUO": "CONFLITTO_STATO",
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_REFRESH_LOCK_TIMEOUT": "CONFLITTO_STATO",
+    # Pezzo non configurato, non risorsa mancante: stessa lettura di E_PIPELINE_NOT_FOUND (404 -> 500 nel cantiere del terzo lato).
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_REGOLA_FATTURAZIONE_MANCANTE": "TECNICO",
     "E_REPARTO_SENZA_PROFILO": "NON_PERMESSO",
     "E_RESELLER_DISATTIVAZIONE_BLOCCATA": "CONFLITTO_STATO",
     "E_RESET_LOTTO_FATTURA_VALIDATION": "DATO_ERRATO",
     "E_RESET_LOTTO_VALIDATION": "DATO_ERRATO",
     "E_RESET_PASSWORD": "DATO_ERRATO",
     "E_RESO_ANNULLO_CON_RICONSEGNE": "CONFLITTO_STATO",
-    # Guard DB sorgente reso (trgfn_resi_guard_ddt_consegnato, a10 INSERT):
-    # il reso richiede il DDT sorgente in CONSEGNATO. Il service ha il
-    # guard gemello parlante (crea_reso); questo copre le scritture non-BE.
+    # Guard DB sorgente reso (trgfn_resi_guard_ddt_consegnato, a10 INSERT): · il reso richiede il DDT sorgente in CONSEGNATO. Il service ha il · guard gemello parlante (crea_reso); questo copre le scritture non-BE.
     "E_RESO_DDT_NON_CONSEGNATO": "CONFLITTO_STATO",
     # Guard emittente<->BA sul reso (trgfn_resi_guard_emittente_ba, z10).
     "E_RESO_EMITTENTE_BA_INCOERENTE": "DATO_ERRATO",
     "E_RESO_NESSUNA_RICONSEGNA_PENDENTE": "CONFLITTO_STATO",
-    # fn_genera_ddt_riconsegna: reso non CONFERMATO / nessuna copertura
-    # residua da ri-spedire.
+    # fn_genera_ddt_riconsegna: reso non CONFERMATO / nessuna copertura · residua da ri-spedire.
     "E_RESO_NON_CONFERMATO": "CONFLITTO_STATO",
-    # Resi di vendita (motore resi su DDT: CRUD + conferma/annullo +
-    # ri-consegna). Famiglia speculare a E_DDT_*. I codici dei guard/fn DB
-    # (messaggi_errore 530-541) passano via regex in
-    # resi_service._db_errors: registrati qui per fissare status/ui_action
-    # lato FE (il messaggio parlante DB vince su user_message).
+    # Resi di vendita (motore resi su DDT: CRUD + conferma/annullo + · ri-consegna). Famiglia speculare a E_DDT_*. I codici dei guard/fn DB · (messaggi_errore 530-541) passano via regex in · resi_service._db_errors: registrati qui per fissare status/ui_action · lato FE (il messaggio parlante DB vince su user_message).
     "E_RESO_NOT_FOUND": "NON_TROVATO",
-    # Over-return: Σ qta rese (resi non annullati) sulla stessa riga DDT
-    # supererebbe il consegnato (trgfn_resi_righe_guard_quantita, lock).
+    # Over-return: Σ qta rese (resi non annullati) sulla stessa riga DDT · supererebbe il consegnato (trgfn_resi_righe_guard_quantita, lock).
     "E_RESO_QTA_SUPERA_CONSEGNATO": "CONFLITTO_STATO",
-    # Over-ri-spedizione: Σ qta ri-spedite sulla riga reso supererebbe la
-    # quantita' resa (guard ponte, lock FOR UPDATE).
+    # Over-ri-spedizione: Σ qta ri-spedite sulla riga reso supererebbe la · quantita' resa (guard ponte, lock FOR UPDATE).
     "E_RESO_RICONSEGNA_SUPERA_RESO": "CONFLITTO_STATO",
-    # Guard ponte ri-consegna (trgfn_resi_riconsegne_guard): aggancio
-    # ammesso solo su righe con tipo_reso.riapre_residuo = true.
+    # Guard ponte ri-consegna (trgfn_resi_riconsegne_guard): aggancio · ammesso solo su righe con tipo_reso.riapre_residuo = true.
     "E_RESO_RICONSEGNA_TIPO_NON_VALIDO": "CONFLITTO_STATO",
-    # Gemello del precedente sull'ALTRA uscita della stessa copertura
-    # (id 560): ri-spedizioni e rinunce condividono il residuo
-    # `quantita - Sigma ric - Sigma rin`, quindi anche la rinuncia puo'
-    # eccederlo. Causa tipica: due operatori sulla stessa riga reso, uno
-    # ri-spedisce e l'altro dichiara definitiva la quota -> 409, conflitto
-    # di stato, non errore di validazione del payload.
+    # Gemello del precedente sull'ALTRA uscita della stessa copertura · (id 560): ri-spedizioni e rinunce condividono il residuo · `quantita - Sigma ric - Sigma rin`, quindi anche la rinuncia puo' · eccederlo. Causa tipica: due operatori sulla stessa riga reso, uno · ri-spedisce e l'altro dichiara definitiva la quota -> 409, conflitto · di stato, non errore di validazione del payload.
     "E_RESO_RINUNCIA_SUPERA_RESO": "CONFLITTO_STATO",
     "E_RESO_SENZA_RIGHE": "CONFLITTO_STATO",
-    # fn_annulla_reso: annullo ammesso da DRAFT/CONFERMATO; bloccato se il
-    # reso e' gia' stato ri-spedito (storno ri-spedizione fuori perimetro).
+    # fn_annulla_reso: annullo ammesso da DRAFT/CONFERMATO; bloccato se il · reso e' gia' stato ri-spedito (storno ri-spedizione fuori perimetro).
     "E_RESO_STATO_NON_ANNULLABILE": "CONFLITTO_STATO",
     # fn_conferma_reso: conferma ammessa solo da DRAFT / con righe attive.
     "E_RESO_STATO_NON_CONFERMABILE": "CONFLITTO_STATO",
@@ -1025,21 +716,15 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_RIGA_COMMESSA_NON_MANUALE": "CONFLITTO_STATO",
     "E_RIGA_GIA_FATTURATA": "CONFLITTO_STATO",
     "E_RIGA_LISTINO_PROPAGATA": "CONFLITTO_STATO",
-    # Trigger DB immutabilita' v5 su listini_righe / listini_righe_componenti
-    # (script.fn_log_and_raise_error, P0001): blocca INS/UPD/DLT quando
-    # la versione listino non e' in BOZZA. Solleva il service
-    # `fn_save_bundle` quando l'admin tenta di modificare prezzi bundle
-    # su versione ATTIVA/CHIUSA.
+    # Trigger DB immutabilita' v5 su listini_righe / listini_righe_componenti · (script.fn_log_and_raise_error, P0001): blocca INS/UPD/DLT quando · la versione listino non e' in BOZZA. Solleva il service · `fn_save_bundle` quando l'admin tenta di modificare prezzi bundle · su versione ATTIVA/CHIUSA.
     "E_RIGA_LISTINO_VERSIONE_CHIUSA": "CONFLITTO_STATO",
     "E_RIGA_PREZZO_PENDENTE": "CONFLITTO_STATO",
     "E_RISORSA_UMANA_SOGGETTO_MISMATCH": "DATO_ERRATO",
-    # anagrafiche.trgfn_identita_digitali_guard_coerenza, ramo ELSE:
-    # qualcuno ha esteso l'enum dei ruoli applicativi senza scrivere la
-    # regola, e il guard «non apre per omissione». Non e' un errore di
-    # chi compila: manca una regola nel sistema, e il 500 lo dice a chi
-    # legge i log invece di nasconderlo fra i 400.
-    # ⚠️ Il 500 NON nasconde il messaggio del DB: `is_technical_code` e'
-    # una lista chiusa di tre codici, non dipende dallo status.
+    # ⚠️ RITIRATO il 2026-08-05
+    "ERRORE_PARAMETRI": "DATO_ERRATO",
+    # ⚠️ RITIRATO il 2026-08-05
+    "ERRORE_PARAMETRI_TABELLA": "DATO_ERRATO",
+    # anagrafiche.trgfn_identita_digitali_guard_coerenza, ramo ELSE: · qualcuno ha esteso l'enum dei ruoli applicativi senza scrivere la · regola, e il guard «non apre per omissione». Non e' un errore di · chi compila: manca una regola nel sistema, e il 500 lo dice a chi · legge i log invece di nasconderlo fra i 400. · ⚠️ Il 500 NON nasconde il messaggio del DB: `is_technical_code` e' · una lista chiusa di tre codici, non dipende dallo status.
     "E_RUOLO_APPLICATIVO_NON_GESTITO": "TECNICO",
     "E_RUOLO_NATURA_NON_AMMESSA": "DATO_ERRATO",
     "E_RUOLO_NATURA_TIPO_DET_NULL": "DATO_ERRATO",
@@ -1047,15 +732,10 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_SCADENZE_BASE_NON_PRONTA": "CONFLITTO_STATO",
     "E_SCADENZE_FATTURA_BLOCCATA": "CONFLITTO_STATO",
     "E_SCADENZE_LOTTO_PARZIALE": "NON_ESEGUIBILE",
-    # ⭐ Il codice si autodenuncia: il commento nel DB dice che questo
-    # ramo «si raggiunge solo aggirando il catalogo», perche' il CHECK
-    # ammette solo 'UGUALI'. E' una guardia difensiva contro una
-    # configurazione corrotta — «un piano rate calcolato con una regola
-    # che non esiste sarebbe peggio di un errore». Non e' l'operatore.
+    # ⭐ Il codice si autodenuncia: il commento nel DB dice che questo · ramo «si raggiunge solo aggirando il catalogo», perche' il CHECK · ammette solo 'UGUALI'. E' una guardia difensiva contro una · configurazione corrotta — «un piano rate calcolato con una regola · che non esiste sarebbe peggio di un errore». Non e' l'operatore.
     "E_SCADENZE_TERMINE_INVALIDO": "TECNICO",
     "E_SCADENZE_TERMINE_MANCANTE": "CONFLITTO_STATO",
-    # script.trgfn_guard_emittente_scope: fn_check_user_emittente_scope
-    # nega. E' il perimetro dell'operatore, non uno stato sfavorevole.
+    # script.trgfn_guard_emittente_scope: fn_check_user_emittente_scope · nega. E' il perimetro dell'operatore, non uno stato sfavorevole.
     "E_SCOPE_EMITTENTE": "NON_PERMESSO",
     "E_SEARCH_NOT_FOUND": "NON_TROVATO",
     "E_SEARCH_VALIDATION": "DATO_ERRATO",
@@ -1064,99 +744,67 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_SESSIONE_NOT_FOUND": "NON_TROVATO",
     "E_SESSIONE_REVOCA_CORRENTE": "DATO_ERRATO",
     "E_SHOP_NON_DISPONIBILE": "NON_DISPONIBILE",
-    # La guard e' `IS DISTINCT FROM 'SHOP'`, che prende anche il BA
-    # inesistente (valore NULL): il 400 e' corretto in entrambi i casi,
-    # un 404 solo nel secondo.
+    # La guard e' `IS DISTINCT FROM 'SHOP'`, che prende anche il BA · inesistente (valore NULL): il 400 e' corretto in entrambi i casi, · un 404 solo nel secondo.
     "E_SHOP_RICEVUTA_BA_CANALE_INVALIDO": "DATO_ERRATO",
     "E_SNAPSHOT_CLOSE_ERROR": "TECNICO",
     "E_SNAPSHOT_FINAL_INSERT_ERROR": "TECNICO",
-    # ══════════════════════════════════════════════════════════════════
-    # TERZO LATO — lotto 3 `script` (2026-08-06)
-    #   Brief: docs/it/dev/work-in-progress/brief-db-be-terzo-lato-presidio-codici.md §15
-    #
-    #   ⚠️ QUESTO LOTTO HA UNA FISIONOMIA DIVERSA DAI DUE PRECEDENTI.
-    #   `script` sono guard GENERICHE, montate a mano sui trigger di mezzo
-    #   database: sette codici su 25 non nascono da un dato sbagliato ma da
-    #   un PEZZO MONTATO MALE (trigger con argomenti dispari, tabella
-    #   inesistente, storicizzazione che fallisce). Prendono 500 — vedi il
-    #   blocco piu' sotto, e la ragione per cui e' importante.
-    # ══════════════════════════════════════════════════════════════════
-    # ── 500: anomalie tecniche, l'operatore non puo' farci niente ──
-    #   Fino a oggi prendevano il ripiego 400: un fallimento della
-    #   storicizzazione arrivava al client come «hai sbagliato a compilare».
-    #   ⚠️ Il 500 non nasconde il messaggio del DB (`is_technical_code` e'
-    #   una lista chiusa di tre codici), quindi il dettaglio arriva lo stesso.
-    # script.trgfn_storico_generic, `EXCEPTION WHEN OTHERS` sul
-    # ricavo dell'id: il nome dice NOT_FOUND ma non e' un 404 — e'
-    # la storicizzazione che non riesce a leggere la chiave.
+    # TERZO LATO — lotto 3 `script` (2026-08-06) · Brief: docs/it/dev/work-in-progress/brief-db-be-terzo-lato-presidio-codici.md §15 · ⚠️ QUESTO LOTTO HA UNA FISIONOMIA DIVERSA DAI DUE PRECEDENTI. · `script` sono guard GENERICHE, montate a mano sui trigger di mezzo · database: sette codici su 25 non nascono da un dato sbagliato ma da · un PEZZO MONTATO MALE (trigger con argomenti dispari, tabella · inesistente, storicizzazione che fallisce). Prendono 500 — vedi il · blocco piu' sotto, e la ragione per cui e' importante. · Fino a oggi prendevano il ripiego 400: un fallimento della · storicizzazione arrivava al client come «hai sbagliato a compilare». · ⚠️ Il 500 non nasconde il messaggio del DB (`is_technical_code` e' · una lista chiusa di tre codici), quindi il dettaglio arriva lo stesso. · script.trgfn_storico_generic, `EXCEPTION WHEN OTHERS` sul · ricavo dell'id: il nome dice NOT_FOUND ma non e' un 404 — e' · la storicizzazione che non riesce a leggere la chiave.
     "E_SNAPSHOT_ID_NOT_FOUND": "TECNICO",
     "E_SNAPSHOT_INIT_INSERT_ERROR": "TECNICO",
-    # ⚠️ CODICE A TRE CONDIZIONI, e il 400 e' il denominatore sicuro:
-    # parametro nullo o <= 0, soggetto_ruolo inesistente (NOT FOUND),
-    # ruolo non coerente col tipo atteso. Il NOT FOUND meriterebbe 404,
-    # ma nessuna delle tre chiede alla pagina una reazione diversa e il
-    # codice e' usato anche da `script.fn_guard_soggetto_ruolo`, quindi
-    # da altri domini: lo split costerebbe piu' di quanto renda.
-    # Decisione Tid 2026-08-06 — candidato allo split, non urgente.
+    # ⚠️ CODICE A TRE CONDIZIONI, e il 400 e' il denominatore sicuro: · parametro nullo o <= 0, soggetto_ruolo inesistente (NOT FOUND), · ruolo non coerente col tipo atteso. Il NOT FOUND meriterebbe 404, · ma nessuna delle tre chiede alla pagina una reazione diversa e il · codice e' usato anche da `script.fn_guard_soggetto_ruolo`, quindi · da altri domini: lo split costerebbe piu' di quanto renda. · Decisione Tid 2026-08-06 — candidato allo split, non urgente.
     "E_SOGGETTI_RUOLI": "DATO_ERRATO",
-    # Il commento nel DB lo chiama «caso anomalo»: unique_violation
-    # sull'insert e poi la SELECT non trova la riga. E' uno stato
-    # incoerente, non un errore dell'operatore.
+    # Il commento nel DB lo chiama «caso anomalo»: unique_violation · sull'insert e poi la SELECT non trova la riga. E' uno stato · incoerente, non un errore dell'operatore.
     "E_SOGGETTI_RUOLI_RACE": "TECNICO",
-    "E_SOGGETTO_NOT_FOUND": "NON_TROVATO",
     "E_SOGGETTO_NO_CONTATTI": "DATO_ERRATO",
+    "E_SOGGETTO_NOT_FOUND": "NON_TROVATO",
     "E_SOGGETTO_NULL": "DATO_ERRATO",
-    # Configurazione di `config.sorgenti` mancante o disattivata: non e'
-    # colpa di chi compila, quindi banner e non campo evidenziato.
+    # Configurazione di `config.sorgenti` mancante o disattivata: non e' · colpa di chi compila, quindi banner e non campo evidenziato.
     "E_SORG_CONF": "DATO_ERRATO",
     "E_SORG_FORMATO": "DATO_ERRATO",
-    "E_SORG_KEYSEL": "DATO_ERRATO",
     "E_SORG_KEY_MISSING": "DATO_ERRATO",
+    "E_SORG_KEYSEL": "DATO_ERRATO",
     "E_SORG_NORM_NON_RISOLTA": "DATO_ERRATO",
     "E_SORG_NOT_FOUND": "NON_TROVATO",
-    # CHECK chk_sospensioni_data_fine: data_fine di riattivazione anteriore
-    # all'inizio della sospensione (data manuale retroattiva incoerente).
+    # CHECK chk_sospensioni_data_fine: data_fine di riattivazione anteriore · all'inizio della sospensione (data manuale retroattiva incoerente).
     "E_SOSPENSIONE_DATA_FINE": "NON_ESEGUIBILE",
     "E_SOSPENSIONE_DATA_FUTURA": "NON_ESEGUIBILE",
     "E_SOSPENSIONE_INSERT": "TECNICO",
     "E_SOSPENSIONE_NOT_FOUND": "NON_TROVATO",
-    # Sospensioni con data manuale (catalogo DB id 498/499):
-    # EXCLUDE ex_sospensioni_no_overlap (23P01) e guard a10 data non futura.
+    # Sospensioni con data manuale (catalogo DB id 498/499): · EXCLUDE ex_sospensioni_no_overlap (23P01) e guard a10 data non futura.
     "E_SOSPENSIONE_OVERLAP": "CONFLITTO_STATO",
     "E_SOSPENSIONI_FLUSSO_NON_COERENTE": "DATO_ERRATO",
     # dbops.trgfn_tx_id_managed, `EXCEPTION WHEN OTHERS` sulla lettura.
     "E_SQL_READ_TABLE": "TECNICO",
-    # Codice sollevato dal trigger guard transizioni DDT
-    # (trgfn_ddt_guard_transizione): la coppia (stato_attuale, stato_target)
-    # non e' nella matrice config.transizioni_stati_ddt.
+    # Codice sollevato dal trigger guard transizioni DDT · (trgfn_ddt_guard_transizione): la coppia (stato_attuale, stato_target) · non e' nella matrice config.transizioni_stati_ddt.
     "E_STATO_DDT_TRANSIZIONE_NON_VALIDA": "CONFLITTO_STATO",
     "E_STATO_DOC_ESITO_NON_VERDETTO": "DATO_ERRATO",
-    # Guard trigger transizioni reso (trgfn_resi_guard_transizione): la
-    # coppia di stati non e' nella matrice config.transizioni_stati_reso.
+    # Guard trigger transizioni reso (trgfn_resi_guard_transizione): la · coppia di stati non e' nella matrice config.transizioni_stati_reso.
     "E_STATO_RESO_TRANSIZIONE_NON_VALIDA": "CONFLITTO_STATO",
+    # ⚠️ RITIRATO il 2026-08-06
+    "E_STATO_SCONOSCIUTO": "NON_TROVATO",
     "E_STATO_SORGENTE_PARAM_INVALIDO": "DATO_ERRATO",
     "E_STATO_WORKFLOW_NON_TROVATO": "NON_TROVATO",
-    # ⚠️ Finisce per NOT_FOUND e non e' un 404: non manca un record
-    # richiesto, il provisioning dello storico non riesce a determinare
-    # la PK della tabella padre. Stesso inganno di
-    # `E_SNAPSHOT_ID_NOT_FOUND` (§15.1).
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_STORICIZZAZIONE": "TECNICO",
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_STORICO_DLT": "TECNICO",
+    # ⚠️ Finisce per NOT_FOUND e non e' un 404: non manca un record · richiesto, il provisioning dello storico non riesce a determinare · la PK della tabella padre. Stesso inganno di · `E_SNAPSHOT_ID_NOT_FOUND` (§15.1).
     "E_STORICO_PARENT_PK_NOT_FOUND": "TECNICO",
     "E_STORICO_PROVISION": "TECNICO",
     "E_STORICO_UD": "TECNICO",
-    # script.trgfn_prevent_modification_generic: solleva sempre — oggi
-    # monta su transaction_ids per bloccare UPDATE/DELETE. L'operazione
-    # non e' dell'operatore in nessuno stato.
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_STORICO_UPD": "TECNICO",
+    # script.trgfn_prevent_modification_generic: solleva sempre — oggi · monta su transaction_ids per bloccare UPDATE/DELETE. L'operazione · non e' dell'operatore in nessuno stato.
     "E_TABELLA_OP_NON_CONSENTITA": "NON_PERMESSO",
     "E_TASK": "DATO_ERRATO",
     "E_TASK_FATTURA": "DATO_ERRATO",
-    # 404 -> 500 (audit 2026-08-06): `handler_registry.get(handler_code)`
-    # torna None — l'implementazione Python non e' registrata. Lo stesso
-    # punto lo logga gia' con severity="C": internamente e' trattato come
-    # anomalia di sistema, mentre l'HTTP diceva «non trovato».
+    # 404 -> 500 (audit 2026-08-06): `handler_registry.get(handler_code)` · torna None — l'implementazione Python non e' registrata. Lo stesso · punto lo logga gia' con severity="C": internamente e' trattato come · anomalia di sistema, mentre l'HTTP diceva «non trovato».
     "E_TASK_IMPLEMENTATION_NOT_FOUND": "TECNICO",
     "E_TASK_NOT_ALLOWED": "DATO_ERRATO",
     "E_TASK_NOT_IMPLEMENTED": "NON_DISPONIBILE",
     "E_TASK_RESET_REQUIRED": "CONFLITTO_STATO",
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_TASK_RUNTIME": "TECNICO",
     "E_TEMPLATE_CODICE_DUPLICATO": "CONFLITTO_STATO",
     # <- TEMPLATE_DEFINIZIONE_CONGELATA  (vivo)
     "E_TEMPLATE_DEFINIZIONE_CONGELATA": "CONFLITTO_STATO",
@@ -1170,57 +818,40 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_TEMPLATE_FLUSSO_PROIEZIONE_STEP_DOMINIO": "DATO_ERRATO",
     "E_TIPI_RUOLI_ENTITA_INVALIDA": "DATO_ERRATO",
     "E_TIPO_FONDO_NOT_FOUND": "NON_TROVATO",
-    # Trigger whitelist tipi indirizzo per ambito documento
-    # (trgfn_tipi_indirizzi_only_allowed, fail-closed): ri-sollevato da
-    # _db_errors del BB col codice originale del RAISE.
+    # Trigger whitelist tipi indirizzo per ambito documento · (trgfn_tipi_indirizzi_only_allowed, fail-closed): ri-sollevato da · _db_errors del BB col codice originale del RAISE.
     "E_TIPO_INDIRIZZO": "DATO_ERRATO",
     "E_TIPO_INDIRIZZO_NON_PERMESSO": "DATO_ERRATO",
     "E_TIPO_RUOLO_NON_TROVATO": "NON_TROVATO",
-    # <- E_AI_CONFIRMATION_REQUIRED RIMOSSO il 2026-08-06 (audit coerenza
-    #    status). Non lo sollevava nessuno — ne' Python, ne' Vue, ne' il
-    #    database — e il motivo e' che il flusso di conferma dei tool in
-    #    scrittura ha scelto un'altra strada, migliore: `ai_assistant_service`
-    #    restituisce **200 con `requires_confirmation` nel payload**. Una
-    #    conferma richiesta non e' un errore HTTP.
-    #    ⚠️ E il 428 non c'entrava comunque: RFC 6585 lo definisce come «la
-    #    richiesta deve essere condizionale» (`If-Match`, per non perdere
-    #    aggiornamenti concorrenti), non «l'utente deve confermare».
-    #    Se un giorno servisse davvero un errore per questo caso, i due
-    #    presidi lo pretenderanno dichiarato: si riparte da qui, non dal 428.
-    # --- Autenticazione: token, email, invito, cambio/reset password ---
+    # <- E_AI_CONFIRMATION_REQUIRED RIMOSSO il 2026-08-06 (audit coerenza · status). Non lo sollevava nessuno — ne' Python, ne' Vue, ne' il · database — e il motivo e' che il flusso di conferma dei tool in · scrittura ha scelto un'altra strada, migliore: `ai_assistant_service` · restituisce **200 con `requires_confirmation` nel payload**. Una · conferma richiesta non e' un errore HTTP. · ⚠️ E il 428 non c'entrava comunque: RFC 6585 lo definisce come «la · richiesta deve essere condizionale» (`If-Match`, per non perdere · aggiornamenti concorrenti), non «l'utente deve confermare». · Se un giorno servisse davvero un errore per questo caso, i due · presidi lo pretenderanno dichiarato: si riparte da qui, non dal 428. · --- Autenticazione: token, email, invito, cambio/reset password ---
     "E_TOKEN": "DATO_ERRATO",
-    "E_TXID_GENERATION": "TECNICO",
     "E_TX_ID": "TECNICO",
+    # Passava da fn_log_error_only con fallback locale: non raggiungeva mai il client. Prefisso E_ storico, non sollevava.
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_TXID_DBLINK_ERROR": "AVVISO",
+    # Come E_TXID_DBLINK_ERROR: log + fallback locale, nessun sollevamento.
+    # ⚠️ RITIRATO il 2026-08-07
+    "E_TXID_DBLINK_NULL": "AVVISO",
+    "E_TXID_GENERATION": "TECNICO",
     "E_UI_CAMPO_SORGENTE_NON_TROVATO": "DATO_ERRATO",
     "E_UI_COLONNA_IN_USO": "CONFLITTO_STATO",
     "E_UI_COLONNA_NON_TROVATA": "NON_TROVATO",
     "E_UI_COLONNA_VALIDAZIONE": "DATO_ERRATO",
-    # E_UI_DASHBOARD_NON_TROVATA: gemello del precedente per le
-    # dashboard configurabili — sollevato da fn_resolve_dashboard_config
-    # quando il codice dashboard non esiste o e' attivo=false.
+    # E_UI_DASHBOARD_NON_TROVATA: gemello del precedente per le · dashboard configurabili — sollevato da fn_resolve_dashboard_config · quando il codice dashboard non esiste o e' attivo=false.
     "E_UI_DASHBOARD_NON_TROVATA": "NON_TROVATO",
     "E_UI_DEFINIZIONE_IN_USO": "CONFLITTO_STATO",
     "E_UI_DEFINIZIONE_NON_TROVATA": "NON_TROVATO",
     "E_UI_DEFINIZIONE_VALIDAZIONE": "DATO_ERRATO",
     "E_UI_EXPORT_FAILED": "TECNICO",
     "E_UI_EXPORT_FORMAT_INVALID": "DATO_ERRATO",
-    # DEF-1: export CSV/Excel delle liste configurabili. Hard cap
-    # sincrono 10.000 righe (decisione 3) -> 422 con messaggio
-    # parlante "raffinare i filtri". Format invalido -> 400.
+    # DEF-1: export CSV/Excel delle liste configurabili. Hard cap · sincrono 10.000 righe (decisione 3) -> 422 con messaggio · parlante "raffinare i filtri". Format invalido -> 400.
     "E_UI_EXPORT_LIMIT_EXCEEDED": "NON_ESEGUIBILE",
-    # Fallback per DatabaseError non riconosciute dai marker noti
-    # nello schema `ui` (allineato a E_VENDITE_PRICING_FAILED).
+    # Fallback per DatabaseError non riconosciute dai marker noti · nello schema `ui` (allineato a E_VENDITE_PRICING_FAILED).
     "E_UI_GENERIC_FAILED": "DATO_ERRATO",
-    # E_UI_LISTA_NON_TROVATA: sollevato da fn_resolve_lista_config quando il codice
-    # lista non esiste o e' attivo=false (seedato in messaggi_errore.csv id 427).
-    # Gli E_UI_VISTA_SQL_NON_TROVATA / E_UI_CAMPO_SORGENTE_NON_TROVATO sono guard
-    # admin-only dei trigger B1/B2: l'utente finale non li vede in flussi normali.
+    # E_UI_LISTA_NON_TROVATA: sollevato da fn_resolve_lista_config quando il codice · lista non esiste o e' attivo=false (seedato in messaggi_errore.csv id 427). · Gli E_UI_VISTA_SQL_NON_TROVATA / E_UI_CAMPO_SORGENTE_NON_TROVATO sono guard · admin-only dei trigger B1/B2: l'utente finale non li vede in flussi normali.
     "E_UI_LISTA_NON_TROVATA": "NON_TROVATO",
     "E_UI_PERMESSO_NON_TROVATO": "NON_TROVATO",
     "E_UI_PERMESSO_VALIDAZIONE": "DATO_ERRATO",
-    # DEF-2 "preset aggiornato": l'endpoint POST /preferenza/ignore-preset-update/
-    # solleva quando l'utente non ha ancora una preferenza salvata sulla lista
-    # (banner non dovrebbe essere visibile, ma l'errore lato BE e' parlante).
+    # DEF-2 "preset aggiornato": l'endpoint POST /preferenza/ignore-preset-update/ · solleva quando l'utente non ha ancora una preferenza salvata sulla lista · (banner non dovrebbe essere visibile, ma l'errore lato BE e' parlante).
     "E_UI_PREFERENZA_NON_TROVATA": "NON_TROVATO",
     "E_UI_PREFERENZA_VALIDAZIONE": "DATO_ERRATO",
     "E_UI_PRESET_NON_TROVATO": "NON_TROVATO",
@@ -1230,71 +861,45 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_UOM_MISSING": "DATO_ERRATO",
     "E_USER_DISABILITATO": "NON_PERMESSO",
     "E_USER_EMITTENTE_DELETE_VIETATO": "DATO_ERRATO",
-    # 423 -> 403 il 2026-08-06 (audit coerenza status). Il 423 e' il lock
-    # WebDAV di una RISORSA (RFC 4918), non di un account: qui e' un
-    # blocco temporaneo dopo troppi tentativi, sollevato da
-    # script.fn_check_blocco_login. Il gemello E_USER_DISABILITATO e'
-    # gia' 403. Il frontend aggancia il CODICE, non lo status
-    # (LoginView.resolveLoginError), quindi a video non cambia nulla.
-    # ⚠️ E NON 429, che sembrerebbe il candidato ovvio: LoginView
-    # intercetta il 429 PRIMA di leggere il codice (e' il throttle per
-    # IP) e il messaggio del DB coi minuti rimanenti andrebbe perso.
+    # 423 -> 403 il 2026-08-06 (audit coerenza status). Il 423 e' il lock · WebDAV di una RISORSA (RFC 4918), non di un account: qui e' un · blocco temporaneo dopo troppi tentativi, sollevato da · script.fn_check_blocco_login. Il gemello E_USER_DISABILITATO e' · gia' 403. Il frontend aggancia il CODICE, non lo status · (LoginView.resolveLoginError), quindi a video non cambia nulla. · ⚠️ E NON 429, che sembrerebbe il candidato ovvio: LoginView · intercetta il 429 PRIMA di leggere il codice (e' il throttle per · IP) e il messaggio del DB coi minuti rimanenti andrebbe perso.
     "E_UTENTE_BLOCCATO": "NON_PERMESSO",
     "E_UTENTE_DISABILITATO": "NON_PERMESSO",
     "E_UTENTE_NON_ATTIVO": "NON_PERMESSO",
     "E_UTENTE_SCADUTO": "NON_PERMESSO",
     "E_UTILITY_RUOLO_NON_AMMESSO": "DATO_ERRATO",
     "E_VALIDATION_INPUT": "DATO_ERRATO",
-    # ⚠️ ACCUMULATORE: lo nominano **10 funzioni** e il messaggio e' un
-    # passthrough («Validazione fallita: %s»). Banner e non campo
-    # evidenziato proprio per questo: non sappiamo quale campo sarebbe.
-    # Stessa famiglia di `E_PARAMETRO_INVALIDO` (113 funzioni) — da
-    # tenere d'occhio alla prossima passata della lente.
+    # 13 punti di sollevamento, tutti la stessa condizione: parametro obbligatorio mancante o non valido (la guard prescritta da AGENTS.md). Non e un accumulatore, misurato il 2026-08-07.
     "E_VALIDAZIONE": "DATO_ERRATO",
     "E_VALORE_MANCANTE": "DATO_ERRATO",
+    # Progettato mai cablato: push_preventivo_handler.md. Classificato, non ritirato.
+    "E_VENDITA_COMPETENZA_RICHIESTA": "DATO_ERRATO",
+    # Progettato mai cablato: push_preventivo_handler.md. Classificato, non ritirato.
+    "E_VENDITA_PARAM_MODALITA_FATTURAZIONE_INVALIDA": "DATO_ERRATO",
+    # Progettato mai cablato: push_preventivo_handler.md. Classificato, non ritirato.
+    "E_VENDITA_PREVENTIVO_GIA_PUSHATO": "CONFLITTO_STATO",
     "E_VENDITA_PREVENTIVO_NESSUNA_RIGA_ORDINE": "CONFLITTO_STATO",
-    # Preventivo non agganciato a una pratica: azioni del percorso pratica
-    # (es. completa_smistamento) richiedono il legame pratiche_sorgenti ROOT.
-    # Gia' usato dagli handler di dominio (post_smistamento/accetta/push).
+    # Preventivo non agganciato a una pratica: azioni del percorso pratica · (es. completa_smistamento) richiedono il legame pratiche_sorgenti ROOT. · Gia' usato dagli handler di dominio (post_smistamento/accetta/push).
     "E_VENDITA_PREVENTIVO_NON_COLLEGATO": "NON_ESEGUIBILE",
     "E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO": "CONFLITTO_STATO",
     "E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA": "DATO_ERRATO",
-    # Pratica preventivi: completamento SMISTAMENTO senza aver smistato la
-    # merce (nessun ordine, residuo merce). 422: lo step non e' processabile
-    # finche' l'operatore non genera l'ordine dal Pannello Smistamento.
+    # Pratica preventivi: completamento SMISTAMENTO senza aver smistato la · merce (nessun ordine, residuo merce). 422: lo step non e' processabile · finche' l'operatore non genera l'ordine dal Pannello Smistamento.
     "E_VENDITA_SMISTAMENTO_NON_ESEGUITO": "NON_ESEGUIBILE",
-    # Codici sollevati dai trigger DB trgfn_contratti_guard_modalita_c_*
-    # e trgfn_contratti_utilities_guard_tipo_classe.
+    # Codici sollevati dai trigger DB trgfn_contratti_guard_modalita_c_* · e trgfn_contratti_utilities_guard_tipo_classe.
     "E_VENDITE_CONTRATTO_OVERLAP": "CONFLITTO_STATO",
-    # Diagnostico di sola TRACCIA (2026-08-03): registrato con
-    # `ErrorManager.log_error_only`, non sollevato mai — la previsione
-    # fatture della Lente 1 e' una misura secondaria e un suo guasto non
-    # deve far cadere il cruscotto. La policy esiste comunque perche' ogni
-    # codice va registrato prima dell'uso, e perche' se un domani questo
-    # diventasse sollevabile la risposta e' gia' definita: 200-with-warning
-    # non esiste, quindi 500 con banner (il numero manca per un guasto,
-    # non per progetto).
+    # Diagnostico di sola TRACCIA (2026-08-03): registrato con · `ErrorManager.log_error_only`, non sollevato mai — la previsione · fatture della Lente 1 e' una misura secondaria e un suo guasto non · deve far cadere il cruscotto. La policy esiste comunque perche' ogni · codice va registrato prima dell'uso, e perche' se un domani questo · diventasse sollevabile la risposta e' gia' definita: 200-with-warning · non esiste, quindi 500 con banner (il numero manca per un guasto, · non per progetto).
     "E_VENDITE_DASH_PREVISIONE_FATTURE_FALLITA": "TECNICO",
     "E_VENDITE_DUPLICATO": "CONFLITTO_STATO",
     "E_VENDITE_FK": "DATO_ERRATO",
     "E_VENDITE_LISTINO_ASSOCIAZIONE_NOT_FOUND": "NON_TROVATO",
     "E_VENDITE_LISTINO_NOT_FOUND": "NON_TROVATO",
-    # Ripristino enforcement EXCLUDE parziale su listini_righe_componenti
-    # (migration 20260602-01). Pattern simmetrico a E_VENDITE_PROMO_OVERLAP /
-    # E_VENDITE_LISTINO_VERSIONE_OVERLAP: due righe bundle ATTIVE sovrapposte
-    # sullo stesso (versione, padre, componente) nel periodo di validita'.
+    # Ripristino enforcement EXCLUDE parziale su listini_righe_componenti · (migration 20260602-01). Pattern simmetrico a E_VENDITE_PROMO_OVERLAP / · E_VENDITE_LISTINO_VERSIONE_OVERLAP: due righe bundle ATTIVE sovrapposte · sullo stesso (versione, padre, componente) nel periodo di validita'.
     "E_VENDITE_LISTINO_RIGA_COMP_OVERLAP": "CONFLITTO_STATO",
     "E_VENDITE_LISTINO_RIGA_NOT_FOUND": "NON_TROVATO",
     "E_VENDITE_LISTINO_VERSIONE_NOT_FOUND": "NON_TROVATO",
-    # Pattern simmetrico a `E_VENDITE_CONTRATTO_OVERLAP` / `E_VENDITE_PROMO_OVERLAP`:
-    # `ex_listini_versioni_no_overlap` (EXCLUDE GIST con WHERE attivo+stato=ATTIVA)
-    # blocca sovrapposizioni di versioni listino ATTIVE. La risoluzione richiede
-    # chiusura della versione precedente (valido_al = nuova_valido_dal - 1).
+    # Pattern simmetrico a `E_VENDITE_CONTRATTO_OVERLAP` / `E_VENDITE_PROMO_OVERLAP`: · `ex_listini_versioni_no_overlap` (EXCLUDE GIST con WHERE attivo+stato=ATTIVA) · blocca sovrapposizioni di versioni listino ATTIVE. La risoluzione richiede · chiusura della versione precedente (valido_al = nuova_valido_dal - 1).
     "E_VENDITE_LISTINO_VERSIONE_OVERLAP": "CONFLITTO_STATO",
     "E_VENDITE_NOT_FOUND": "NON_TROVATO",
-    # Codici di dominio sollevati dal DB via script.fn_log_and_raise_error.
-    # Policy UI: operatore/admin vede messaggio business-safe; detail tecnico
-    # nel payload solo se DJANGO_API_EXPOSE_TECHNICAL_DETAILS=1.
+    # Codici di dominio sollevati dal DB via script.fn_log_and_raise_error. · Policy UI: operatore/admin vede messaggio business-safe; detail tecnico · nel payload solo se DJANGO_API_EXPOSE_TECHNICAL_DETAILS=1.
     "E_VENDITE_PRICING_FAILED": "DATO_ERRATO",
     "E_VENDITE_PROMO_OVERLAP": "CONFLITTO_STATO",
     "E_VENDITE_RIALLINEAMENTO_VERSIONE_CAMBIATA": "CONFLITTO_STATO",
@@ -1304,76 +909,178 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_VENDITE_VARIAZIONE_PREZZO_NON_AMMESSA": "CONFLITTO_STATO",
     "E_VERSIONE_STATO_TRANSIZIONE_INVALIDA": "CONFLITTO_STATO",
     "E_VESTE_NON_ATTIVA": "NON_PERMESSO",
-    # <- W_TXID_NOT_REGISTERED  (vivo)
-    "E_W_TXID_NOT_REGISTERED": "AVVISO",
-    # Casi A/D (skill-lock): l'operatore non ha competenza attiva per il tipo
-    # di step. Caso B (reparto, no skill): l'operatore non appartiene al
-    # reparto anagrafico instradato. Entrambi sollevati da
-    # pratiche.fn_prendi_in_carico_flusso e tradotti via marker nel service.
-    # Status rivisto il 2026-08-05 (rilettura DB del brief
-    # codice-errore-strutturato, ok Tid): e' autorizzazione (l'operatore
-    # non ha la competenza), non conflitto con lo stato. Era 409.
+    # Casi A/D (skill-lock): l'operatore non ha competenza attiva per il tipo · di step. Caso B (reparto, no skill): l'operatore non appartiene al · reparto anagrafico instradato. Entrambi sollevati da · pratiche.fn_prendi_in_carico_flusso e tradotti via marker nel service. · Status rivisto il 2026-08-05 (rilettura DB del brief · codice-errore-strutturato, ok Tid): e' autorizzazione (l'operatore · non ha la competenza), non conflitto con lo stato. Era 409.
+    # ⚠️ RITIRATO il 2026-08-05
     "FLUSSI_COMPETENZA_MANCANTE": "NON_PERMESSO",
+    # ⚠️ RITIRATO il 2026-08-05
     "FLUSSI_ESITO_NON_AMMESSO": "DATO_ERRATO",
-    # Status rivisto il 2026-08-05 (rilettura DB del brief
-    # codice-errore-strutturato, ok Tid): e' un campo obbligatorio non
-    # compilato, non uno stato che impedisce l'azione. Era 409.
+    # Status rivisto il 2026-08-05 (rilettura DB del brief · codice-errore-strutturato, ok Tid): e' un campo obbligatorio non · compilato, non uno stato che impedisce l'azione. Era 409.
+    # ⚠️ RITIRATO il 2026-08-05
     "FLUSSI_ESITO_OBBLIGATORIO": "DATO_ERRATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "FLUSSI_GIA_ASSEGNATO": "CONFLITTO_STATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "FLUSSI_PRESA_CARICO_STATO_ERRATO": "CONFLITTO_STATO",
-    # Status rivisto il 2026-08-05 (rilettura DB del brief
-    # codice-errore-strutturato, ok Tid): idem, autorizzazione: il flusso e'
-    # instradato a un altro reparto. Era 409.
+    # Status rivisto il 2026-08-05 (rilettura DB del brief · codice-errore-strutturato, ok Tid): idem, autorizzazione: il flusso e' · instradato a un altro reparto. Era 409.
+    # ⚠️ RITIRATO il 2026-08-05
     "FLUSSI_PRESA_NON_ELIGIBILE": "NON_PERMESSO",
+    # ⚠️ RITIRATO il 2026-08-05
     "FLUSSI_TEMPLATE_FUORI_DEFINIZIONE": "CONFLITTO_STATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "FLUSSI_TRANSIZIONE_NON_AMMESSA": "CONFLITTO_STATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "GENERAZIONE_TEMPLATE_NON_IN_DEFINIZIONE": "DATO_ERRATO",
-    "MESSAGGIO_NON_DEFINITO": "TECNICO",
+    # ⚠️ RITIRATO il 2026-08-05
     "PIVA_NON_VALIDA": "DATO_ERRATO",
-    # D1 hardening (brief-db-chiusura-pratica-nessun-lavoro-pendente, errore
-    # catalogo 501): chiusura pratica con flussi ISTANZIATI ancora aperti (non
-    # terminali). Guard condiviso chiusura manuale + auto-chiusura.
+    # D1 hardening (brief-db-chiusura-pratica-nessun-lavoro-pendente, errore · catalogo 501): chiusura pratica con flussi ISTANZIATI ancora aperti (non · terminali). Guard condiviso chiusura manuale + auto-chiusura.
+    # ⚠️ RITIRATO il 2026-08-05
     "PRATICHE_CHIUSURA_FLUSSI_APERTI": "CONFLITTO_STATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI": "CONFLITTO_STATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "PRATICHE_CHIUSURA_FLUSSO_PREMATURO": "CONFLITTO_STATO",
-    # Codici del catalogo DB (messaggi_errore 483/484/485) sollevati dai
-    # guard via script.fn_log_and_raise_error; il service li intercetta
-    # via marker e rilancia ServiceError con lo stesso codice del DB.
+    # Codici del catalogo DB (messaggi_errore 483/484/485) sollevati dai · guard via script.fn_log_and_raise_error; il service li intercetta · via marker e rilancia ServiceError con lo stesso codice del DB.
+    # ⚠️ RITIRATO il 2026-08-05
     "PRATICHE_FLUSSO_NON_RIPETIBILE": "CONFLITTO_STATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "PRATICHE_ISTANZA_NON_COERENTE": "DATO_ERRATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "PRATICHE_ISTANZA_SENZA_SOGGETTO": "DATO_ERRATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "PRATICHE_LISTA_CONTESTO_PARAMETRI_ESCLUSIVI": "DATO_ERRATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "PRATICHE_PIN_IMMUTABILE": "CONFLITTO_STATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "PRATICHE_PREREQUISITI_NON_SODDISFATTI": "CONFLITTO_STATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "PRATICHE_RUOLO_NON_COERENTE": "DATO_ERRATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "PRATICHE_RUOLO_SENZA_SOGGETTO": "DATO_ERRATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "PRATICHE_SORGENTI_FLUSSO_PRATICA_INCOERENTE": "DATO_ERRATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE": "CONFLITTO_STATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO": "CONFLITTO_STATO",
-    # Guard transizione pratiche/flussi: codici del catalogo DB (301/302)
-    # sollevati dai trigger trgfn_pratiche/flussi_guard_transizione via
-    # script.fn_log_and_raise_error. Chiave SENZA prefisso E_ = codice DB
-    # verbatim (allineata al resto della famiglia pratiche workflow v2 sotto:
-    # il service li intercetta via marker e rilancia ServiceError con lo
-    # stesso codice). Con prefisso E_ ricadevano in E_GENERICO 500.
+    # Guard transizione pratiche/flussi: codici del catalogo DB (301/302) · sollevati dai trigger trgfn_pratiche/flussi_guard_transizione via · script.fn_log_and_raise_error. Chiave SENZA prefisso E_ = codice DB · verbatim (allineata al resto della famiglia pratiche workflow v2 sotto: · il service li intercetta via marker e rilancia ServiceError con lo · stesso codice). Con prefisso E_ ricadevano in E_GENERICO 500.
+    # ⚠️ RITIRATO il 2026-08-05
     "PRATICHE_TRANSIZIONE_NON_AMMESSA": "CONFLITTO_STATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "PREV_NESSUNA_RIGA_ATTIVA": "CONFLITTO_STATO",
-    # Codice sollevato da vendite.fn_crea_revisione_preventivo quando esiste
-    # gia' una revisione in DRAFT per lo stesso numero. Conflitto di stato:
-    # l'utente deve completare/annullare la DRAFT esistente prima di crearne
-    # un'altra. Senza questa policy il codice DB era mascherato in E_DATABASE.
+    # Codice sollevato da vendite.fn_crea_revisione_preventivo quando esiste · gia' una revisione in DRAFT per lo stesso numero. Conflitto di stato: · l'utente deve completare/annullare la DRAFT esistente prima di crearne · un'altra. Senza questa policy il codice DB era mascherato in E_DATABASE.
+    # ⚠️ RITIRATO il 2026-08-05
     "PREV_REVISIONE_BOZZA_ESISTENTE": "CONFLITTO_STATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "PREV_REVISIONE_STATO_NON_AMMESSO": "CONFLITTO_STATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "PREV_STATO_CORRENTE_NON_TROVATO": "NON_TROVATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "PREV_TRANSIZIONE_NON_AMMESSA": "CONFLITTO_STATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "SEQUENZA_NON_CONFIGURATA": "TECNICO",
+    # ⚠️ RITIRATO il 2026-08-05
     "SOSPENSIONI_FLUSSO_NON_COERENTE": "DATO_ERRATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "TEMPLATE_DEFINIZIONE_CONGELATA": "CONFLITTO_STATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA": "DATO_ERRATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "TEMPLATE_FLUSSO_DOMINIO_ESITO_DEFAULT_VIETATO": "DATO_ERRATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "TEMPLATE_FLUSSO_ESITO_DEFAULT_NON_VERDETTO": "DATO_ERRATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO": "DATO_ERRATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER": "DATO_ERRATO",
+    # ⚠️ RITIRATO il 2026-08-05
     "TEMPLATE_FLUSSO_PROIEZIONE_STEP_DOMINIO": "DATO_ERRATO",
+    # <- W_TXID_NOT_REGISTERED  (vivo)
     "W_TXID_NOT_REGISTERED": "AVVISO",
 }
+
+# I codici che il catalogo ha ritirato. Risolvono ancora — il diario li contiene
+# — ma NESSUN punto di chiamata nuovo deve nominarli: lo presidia
+# `test_error_codes_declared_guardrail`.
+CODICI_RITIRATI: frozenset[str] = frozenset(
+    {
+        "CF_NON_VALIDO",
+        "CODICE_NON_MODIFICABILE",
+        "DEFINIZIONE_BOZZA_ESISTENTE",
+        "DEFINIZIONE_NON_PUBBLICABILE",
+        "DEFINIZIONE_NON_TROVATA",
+        "DEFINIZIONE_NO_PUBBLICATA",
+        "DEFINIZIONE_PUBBLICATA_IMMUTABILE",
+        "DEFINIZIONE_TRANSIZIONE_NON_AMMESSA",
+        "E_AI_CONFIRMATION_REQUIRED",
+        "E_ASSOGGETTAMENTO_NO_MOD",
+        "E_ATTIVO_CASCADE",
+        "E_BOM_PRODOTTO_MISMATCH",
+        "E_BOM_RIGA_NOT_FOUND",
+        "E_BOM_SORGENTE_GIA_CHIUSA",
+        "E_BOM_VERSIONE_OVERLAP",
+        "E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI",
+        "E_COMPETENZA",
+        "E_COMPETENZA_SUPERATA",
+        "E_CONTRATTO_MODALITA_C_RIGA_SENZA_PREZZO",
+        "E_CONTRATTO_MODALITA_C_RIGHE_INCOMPLETE",
+        "E_CONTRATTO_MODALITA_C_SENZA_RIGHE",
+        "E_DATA_FINE_INFERIORE_DI_INIZIO",
+        "E_DBLINK_LOG_CONN_MISSING",
+        "E_DRYRUN_CREATE_TRIGGER",
+        "E_FONTE_QUANTITA_NON_VALIDA",
+        "E_INVALID_SNAPSHOT",
+        "E_NUMERAZIONE_IMMUTABILE",
+        "E_PARAMETER_DEFAULT_TIPO_SOGGETTO_INVALID",
+        "E_PERC_IVA_NO_MOD",
+        "E_REFRESH_LOCK_TIMEOUT",
+        "E_REGOLA_FATTURAZIONE_MANCANTE",
+        "ERRORE_PARAMETRI",
+        "ERRORE_PARAMETRI_TABELLA",
+        "E_STATO_SCONOSCIUTO",
+        "E_STORICIZZAZIONE",
+        "E_STORICO_DLT",
+        "E_STORICO_UPD",
+        "E_TASK_RUNTIME",
+        "E_TXID_DBLINK_ERROR",
+        "E_TXID_DBLINK_NULL",
+        "FLUSSI_COMPETENZA_MANCANTE",
+        "FLUSSI_ESITO_NON_AMMESSO",
+        "FLUSSI_ESITO_OBBLIGATORIO",
+        "FLUSSI_GIA_ASSEGNATO",
+        "FLUSSI_PRESA_CARICO_STATO_ERRATO",
+        "FLUSSI_PRESA_NON_ELIGIBILE",
+        "FLUSSI_TEMPLATE_FUORI_DEFINIZIONE",
+        "FLUSSI_TRANSIZIONE_NON_AMMESSA",
+        "GENERAZIONE_TEMPLATE_NON_IN_DEFINIZIONE",
+        "PIVA_NON_VALIDA",
+        "PRATICHE_CHIUSURA_FLUSSI_APERTI",
+        "PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI",
+        "PRATICHE_CHIUSURA_FLUSSO_PREMATURO",
+        "PRATICHE_FLUSSO_NON_RIPETIBILE",
+        "PRATICHE_ISTANZA_NON_COERENTE",
+        "PRATICHE_ISTANZA_SENZA_SOGGETTO",
+        "PRATICHE_LISTA_CONTESTO_PARAMETRI_ESCLUSIVI",
+        "PRATICHE_PIN_IMMUTABILE",
+        "PRATICHE_PREREQUISITI_NON_SODDISFATTI",
+        "PRATICHE_RUOLO_NON_COERENTE",
+        "PRATICHE_RUOLO_SENZA_SOGGETTO",
+        "PRATICHE_SORGENTI_FLUSSO_PRATICA_INCOERENTE",
+        "PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE",
+        "PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO",
+        "PRATICHE_TRANSIZIONE_NON_AMMESSA",
+        "PREV_NESSUNA_RIGA_ATTIVA",
+        "PREV_REVISIONE_BOZZA_ESISTENTE",
+        "PREV_REVISIONE_STATO_NON_AMMESSO",
+        "PREV_STATO_CORRENTE_NON_TROVATO",
+        "PREV_TRANSIZIONE_NON_AMMESSA",
+        "SEQUENZA_NON_CONFIGURATA",
+        "SOSPENSIONI_FLUSSO_NON_COERENTE",
+        "TEMPLATE_DEFINIZIONE_CONGELATA",
+        "TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA",
+        "TEMPLATE_FLUSSO_DOMINIO_ESITO_DEFAULT_VIETATO",
+        "TEMPLATE_FLUSSO_ESITO_DEFAULT_NON_VERDETTO",
+        "TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO",
+        "TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER",
+        "TEMPLATE_FLUSSO_PROIEZIONE_STEP_DOMINIO",
+    }
+)

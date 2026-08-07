@@ -34,7 +34,7 @@
  5) test_i_cinque_ex_fuori_vocabolario_derivano_come_gli_altri
  6) test_nessun_override_orfano
  7) test_nessun_messaggio_orfano
- 8) test_ogni_codice_registrato_ha_un_messaggio_di_ripiego
+ 8) test_ogni_codice_vivo_ha_un_messaggio_di_ripiego
  9) test_nessun_override_ripete_il_default_della_classe
 10) test_i_messaggi_di_ripiego_non_hanno_segnaposto
 11) test_ripiego_codice_e_non_registrato
@@ -60,7 +60,7 @@ from apps.core.services.error_policies import (
     ClasseErroreSenzaStatus,
     ErrorPolicyRegistry,
 )
-from apps.core.services.error_policies_generated import CLASSE_PER_CODICE
+from apps.core.services.error_policies_generated import CLASSE_PER_CODICE, CODICI_RITIRATI
 from apps.core.services.error_ui_overrides import UI_ACTION_OVERRIDE
 
 # L'unica classe del vocabolario che non ha uno status, e non e' una lacuna:
@@ -171,9 +171,22 @@ class ErrorPoliciesClassiTest(TestCase):
     # Scopo: il verso opposto. Un codice senza messaggio di ripiego non rompe
     #        niente (c'e' una frase neutra), ma mostra all'operatore una frase
     #        che non parla del suo problema: e' il degrado silenzioso.
-    def test_ogni_codice_registrato_ha_un_messaggio_di_ripiego(self):
-        senza = sorted(c for c in CLASSE_PER_CODICE if c not in USER_MESSAGE_FALLBACK)
-        self.assertEqual(senza, [], "codici registrati senza messaggio di ripiego")
+    #
+    #        ⚠️ SOLO I CODICI VIVI, e il perimetro e' la parte pensata. Dalla
+    #        prima generazione (B-5) il registro contiene anche i 79 codici
+    #        RITIRATI, che devono continuare a risolvere per il diario ma che
+    #        nessuna funzione solleva piu': il messaggio di ripiego serve quando
+    #        quello del database non arriva, e per un codice che nessuno alza non
+    #        arriva mai. Pretenderlo anche per loro significherebbe inventare 30
+    #        frasi che nessuno leggera' — e un presidio che chiede lavoro inutile
+    #        e' un presidio che viene spento.
+    def test_ogni_codice_vivo_ha_un_messaggio_di_ripiego(self):
+        senza = sorted(
+            c
+            for c in CLASSE_PER_CODICE
+            if c not in USER_MESSAGE_FALLBACK and c not in CODICI_RITIRATI
+        )
+        self.assertEqual(senza, [], "codici vivi senza messaggio di ripiego")
 
     # Scopo: un override che ripete il default e' una riga che non decide
     #        niente. Sono 176 righe da rileggere quando cambia una scelta di
@@ -239,11 +252,20 @@ class ErrorPoliciesClassiTest(TestCase):
     #        quella bugia visibile. Ora chiedere una risposta HTTP per un avviso
     #        e' un errore di programma, e si comporta come tale.
     def test_lavviso_vero_a_catalogo_solleva(self):
-        for codice in ("W_TXID_NOT_REGISTERED", "E_W_TXID_NOT_REGISTERED"):
-            with self.subTest(codice=codice):
-                self.assertEqual(CLASSE_PER_CODICE.get(codice), _CLASSE_SENZA_STATUS)
-                with self.assertRaises(ClasseErroreSenzaStatus):
-                    ErrorPolicyRegistry.resolve(codice)
+        codice = "W_TXID_NOT_REGISTERED"
+        self.assertEqual(CLASSE_PER_CODICE.get(codice), _CLASSE_SENZA_STATUS)
+        with self.assertRaises(ClasseErroreSenzaStatus):
+            ErrorPolicyRegistry.resolve(codice)
+        # ⛔ E NON DEVE TORNARE COL PREFISSO `E_`. Il gemello
+        # `E_W_TXID_NOT_REGISTERED` e' sparito con la prima generazione (a
+        # catalogo non esiste) e questa riga presidia che nessuno lo ricrei
+        # «per uniformare i prefissi». La `W` NON e' un codice storto: e'
+        # un'ALTRA FAMIGLIA — si scrive nel diario, non si solleva — e la regola
+        # di naming e' `^[EW]_` proprio perche' il cantiere precedente aveva gia'
+        # rifiutato questa rinomina. Chiamarlo `E_` farebbe dire al nome una cosa
+        # falsa per far tornare una convenzione.
+        self.assertFalse(ErrorPolicyRegistry.has("E_W_TXID_NOT_REGISTERED"))
+        self.assertTrue(codice.startswith("W_"), "l'avviso resta della famiglia W_")
 
     # Scopo: ⭐ IL PONTE VERSO IL B-6. Il controllo di divergenza vero leggera'
     #        `config.vw_codici_errore_identita` e vuole il DB; questo confronta

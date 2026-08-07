@@ -341,7 +341,40 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_LOTTO_NON_RIUTILIZZABILE": "Lotto non riutilizzabile.",
     "E_LOTTO_NON_TROVATO": "Lotto non trovato.",
     "E_LOTTO_PARAMETRO_NON_COERENTE": "Parametri lotto non coerenti.",
+    # ⭐ `E_MESSAGGIO_NON_DEFINITO` — RINOMINATO dal team DB il 2026-08-07 (era
+    # `MESSAGGIO_NON_DEFINITO`, senza prefisso). E' l'ULTIMA riga del registro dei
+    # codici fuori convenzione `dbops.messaggi_errore_codici_legacy`, che con
+    # questa va a zero e si droppa.
+    #
+    # ⚠️ La rinomina e' arrivata poche ore dopo la prima generazione, e i due
+    # presidi l'hanno vista lo stesso giorno: il controllo di divergenza ha
+    # mostrato il diff, il cancello del terzo lato ha detto che
+    # `script.fn_log_error_only` nominava un codice senza policy. Il rimedio e'
+    # stato **rigenerare** — cioe' esattamente il flusso per cui sono stati
+    # costruiti. Qui resta la sola riga a mano: il messaggio.
     "E_MESSAGGIO_NON_DEFINITO": "Messaggio di errore non definito a catalogo.",
+    # ⚠️ Tolto il 2026-08-07 con la prima generazione (B-5):
+    # `E_W_TXID_NOT_REGISTERED` era il gemello col prefisso `E_` di un codice che
+    # a catalogo sta SENZA. Era irraggiungibile: il codice arriva dal campo
+    # strutturato `CONSTRAINT`, che porta il nome esatto del catalogo, e il
+    # ripiego a regex sul testo cerca `\bE_[A-Z]...` — quindi il nome senza
+    # prefisso da li' non passa comunque, e quello CON prefisso non lo scrive
+    # nessuno.
+    #
+    # ⛔ E `W_TXID_NOT_REGISTERED` NON VA RINOMINATO IN `E_W_...` (ne' in `E_`).
+    # La `W` e' un'altra FAMIGLIA, non un prefisso sbagliato: quel codice si
+    # scrive nel diario (`fn_log_error_only`) e non si solleva mai. La regola di
+    # naming e' `^[EW]_` proprio per questo, e il cantiere precedente aveva gia'
+    # rifiutato la rinomina una volta.
+    # ⚠️ La rinomina di `MESSAGGIO_NON_DEFINITO` qui sopra NON e' un precedente:
+    # quello era un `E_` a cui mancava il prefisso, questo e' un `W_` a cui il
+    # prefisso spetta.
+    #
+    # ⛔ E `W_TXID_NOT_REGISTERED` NON VA RINOMINATO IN `E_W_...` (ne' in `E_`).
+    # La `W` e' un'altra FAMIGLIA, non un prefisso sbagliato: quel codice si
+    # scrive nel diario (`fn_log_error_only`) e non si solleva mai. La regola di
+    # naming e' `^[EW]_` proprio per questo, e il cantiere precedente aveva gia'
+    # rifiutato la rinomina una volta.
     "E_NAZIONE_NON_TROVATA": "Nazione non indicata e nessun default configurato.",
     "E_NOTA_CHECK_VIOLATION": "Valore non ammesso per anchor_tipo, posizione, seq o testo.",
     "E_NOTA_DUPLICATO": "Nota gia' esistente (violato vincolo di univocita').",
@@ -613,6 +646,15 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_VALIDATION_INPUT": "Parametro di input non valido.",
     "E_VALIDAZIONE": "Validazione fallita.",
     "E_VALORE_MANCANTE": "Valore obbligatorio mancante.",
+    # ── I tre «progettati mai cablati» del push preventivo, arrivati col
+    # catalogo alla prima generazione. Nessuna funzione li solleva ancora
+    # (`push_preventivo_handler.md` è un documento di disegno): il messaggio è la
+    # variante senza segnaposto di quello a catalogo, scritta ora perché il
+    # giorno in cui qualcuno li caglierà non sia anche il giorno in cui si scopre
+    # che non hanno una frase.
+    "E_VENDITA_COMPETENZA_RICHIESTA": "Competenza di fatturazione richiesta per la modalita' DIFFERITA.",
+    "E_VENDITA_PARAM_MODALITA_FATTURAZIONE_INVALIDA": "Modalita' di fatturazione non valida.",
+    "E_VENDITA_PREVENTIVO_GIA_PUSHATO": "Preventivo gia' pushato a commessa.",
     "E_VENDITA_PREVENTIVO_NESSUNA_RIGA_ORDINE": "Nessuna riga merce da portare a ordine.",
     "E_VENDITA_PREVENTIVO_NON_COLLEGATO": "Il preventivo non e' collegato a una pratica: azione non disponibile.",
     "E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO": "Il preventivo non e' in stato ACCETTATO: impossibile generare un ordine.",
@@ -638,7 +680,6 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_VENDITE_VARIAZIONE_PREZZO_NON_AMMESSA": "Operazione prezzo non ammessa sullo stato corrente.",
     "E_VERSIONE_STATO_TRANSIZIONE_INVALIDA": "Chiusura versione non consentita via cambio stato. Per chiudere impostare valido_al (PATCH); la chiusura avviene automaticamente a finestra scaduta.",
     "E_VESTE_NON_ATTIVA": "Non hai accesso a questo canale.",
-    "E_W_TXID_NOT_REGISTERED": "Transazione non registrata: anomalia tecnica di tracciamento.",
     "FLUSSI_COMPETENZA_MANCANTE": "Operatore non abilitato per questo tipo di flusso.",
     "FLUSSI_ESITO_NON_AMMESSO": "Esito non ammesso per questo step.",
     "FLUSSI_ESITO_OBBLIGATORIO": "Esito obbligatorio per completare il flusso.",
@@ -648,7 +689,6 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "FLUSSI_TEMPLATE_FUORI_DEFINIZIONE": "Lo step non appartiene alla definizione della pratica.",
     "FLUSSI_TRANSIZIONE_NON_AMMESSA": "Transizione di stato flusso non ammessa.",
     "GENERAZIONE_TEMPLATE_NON_IN_DEFINIZIONE": "Lo step dichiarato dalla regola non esiste nella definizione della pratica figlia.",
-    "MESSAGGIO_NON_DEFINITO": "Messaggio di errore non definito a catalogo.",
     "PIVA_NON_VALIDA": "Partita IVA non valida.",
     "PRATICHE_CHIUSURA_FLUSSI_APERTI": "Impossibile chiudere la pratica: ci sono flussi ancora aperti. Completali o annullali, poi riprova.",
     "PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI": "Impossibile chiudere la pratica: flussi obbligatori non completati.",
