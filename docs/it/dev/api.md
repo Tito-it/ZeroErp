@@ -773,6 +773,28 @@ due cose si spezza a monte, non si rimappa a valle.
 > **denominatore sicuro** (quello che non fa danno in nessuno dei punti), e il
 > codice va segnalato al team DB come candidato allo split.
 
+**Due corollari, pagati entrambi sul campo** (2026-08-07):
+
+* ⚠️ **conta il ramo, non la funzione.** Due `IF` adiacenti nella stessa funzione
+  possono avere verità opposte: in `dbops.fn_accoda_lavoro`,
+  `E_JOB_TYPE_NON_TROVATO` è **500** (tipo mai registrato: difetto di deploy) e
+  `E_JOB_TYPE_NON_ATTIVO` è **501** (tipo esistente, disattivato di proposito).
+  In `fn_push_offerta_a_contratto` due guardie quasi identiche hanno richiesto
+  codici diversi, e la prima misura le aveva confuse;
+* ⚠️ **se la funzione ha gemelle per dominio, il perimetro sono tutte.**
+  `fn_contratto_riga_componenti_init` ha tre gemelle (`ddt`, `ordine`,
+  `preventivo`): lo stesso difetto stava in tutte e quattro, ma è stato corretto
+  su una sola e le altre tre sono tornate al giro dopo. Nello stesso file, nello
+  stesso giorno, un altro difetto era già stato trattato **come famiglia**.
+
+⚠️ **Non introdurre codici generici nuovi.** Un codice che serve a due punti
+diversi è due codici. I due accumulatori esistenti sono la prova di dove si
+finisce: `E_PARAMETRO_INVALIDO` è nominato da **113 funzioni** (almeno cinque lo
+usavano per «non trovato», due per una regola sul prezzo) ed `E_VALIDAZIONE` da
+**10**, con messaggio passthrough. Nessuno dei due è stato scelto per mancanza di
+alternative: erano **generici e a portata di mano**. In un caso il commento nel
+DB confessa di aver scelto il codice per il numero di `%s` del messaggio.
+
 **Quando spezzare un codice e quando no.** Un codice a più significati si spezza
 quando i significati **portano a reazioni diverse della pagina**, non perché sono
 più d'uno: `E_STATO_SCONOSCIUTO` diceva «stato di workflow inesistente» (404, la
@@ -796,19 +818,19 @@ il registro ufficiale dei codici è quello IANA. Quando questo documento dice
 | quale codice mappa su quale status | **noi** — è la decisione di dominio |
 | il vocabolario `ui_action` | noi, non esiste nulla di standard |
 
-Censimento del dizionario al 2026-08-06, dopo l'audit di coerenza (**600
-policy**):
+Censimento del dizionario al 2026-08-07, a registro del debito azzerato
+(**659 policy**):
 
 | Status | Quanti | Fonte | Quando |
 | --- | --- | --- | --- |
-| **400** Bad Request | 222 | RFC 9110 | la richiesta è malformata o il valore è sbagliato |
-| **409** Conflict | 207 | RFC 9110 | «conflitto con lo stato attuale della risorsa» — la definizione dello standard è **letteralmente** il nostro caso: transizioni non ammesse, immutabilità, duplicati |
-| **404** Not Found | 68 | RFC 9110 | la cosa indicata non esiste |
-| **500** | 51 | RFC 9110 | anomalia tecnica: l'operatore non può farci niente |
+| **400** Bad Request | 234 | RFC 9110 | la richiesta è malformata o il valore è sbagliato |
+| **409** Conflict | 224 | RFC 9110 | «conflitto con lo stato attuale della risorsa» — la definizione dello standard è **letteralmente** il nostro caso: transizioni non ammesse, immutabilità, duplicati |
+| **404** Not Found | 84 | RFC 9110 | la cosa indicata non esiste |
+| **500** | 63 | RFC 9110 | anomalia tecnica: l'operatore non può farci niente |
 | **403** Forbidden | 23 | RFC 9110 | il diritto manca, e non dipende dallo stato |
-| **422** Unprocessable Content | 21 | RFC 9110 §15.5.21 | sintassi valida, **semantica** no: il payload si capisce ma non si può eseguire |
+| **422** Unprocessable Content | 22 | RFC 9110 §15.5.21 | sintassi valida, **semantica** no: il payload si capisce ma non si può eseguire |
 | **401** Unauthorized | 4 | RFC 9110 | non autenticato (≠ 403: autenticato ma senza diritto) |
-| **501** Not Implemented | 3 | RFC 9110 | funzione non implementata / disattivata |
+| **501** Not Implemented | 4 | RFC 9110 | funzione non implementata / disattivata |
 | **502** Bad Gateway | 1 | RFC 9110 | un provider esterno ha risposto male |
 
 **Tutti e nove vengono da RFC 9110**: dopo l'audit non resta in uso nessuno
@@ -925,6 +947,17 @@ a mano) è 400.
 cancello** finché il team DB non toglie la riga e riapplica il changeSet
 `20260805-37`. Le due metà vanno concordate insieme: è il presidio che fa il suo
 mestiere, non un incidente.
+
+⭐ **Dal 2026-08-07 il registro è a zero** (141 → 0 in tre giorni, 150 decisioni).
+Due conseguenze pratiche:
+
+* **il verso 1 diventa il presidio vero**: qualunque codice nuovo che il database
+  può nominare senza una policy è **rosso il giorno stesso**. Non c'è più un
+  arretrato in cui nascondersi;
+* **la tabella del registro resta**, vuota. Non si droppa: il cancello la
+  interroga a ogni PR, ed è il posto dove atterra un codice nuovo nell'intervallo
+  fra il seed DB e la classificazione BE. *Un registro vuoto non è un registro
+  inutile: è un registro in pari.*
 
 > Storia completa, criteri e casi: `docs/it/dev/work-done/brief-db-be-terzo-lato-presidio-codici.md`
 > e [Presidi e registri del debito §3.4](/guide/presidi-e-registri-del-debito).
