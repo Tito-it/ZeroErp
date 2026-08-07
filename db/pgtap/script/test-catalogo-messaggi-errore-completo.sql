@@ -6,13 +6,13 @@
 --       Ogni codice che una funzione VIVA passa a
 --       script.fn_log_and_raise_error / fn_log_error_only deve esistere a
 --       catalogo, altrimenti al primo guasto la riga in dbops.error_log
---       finisce sotto MESSAGGIO_NON_DEFINITO.
+--       finisce sotto E_MESSAGGIO_NON_DEFINITO.
 --
 -- Origine: brief-db-seed-messaggi-errore-mancanti.md §9.6 (il gemello lato DB
 --   del guardrail BE) e brief-db-seed-messaggi-errore-round-2.md §1.
 --
 -- Indice test (1..4):
---   1. Il catalogo e' popolato e MESSAGGIO_NON_DEFINITO esiste (preflight:
+--   1. Il catalogo e' popolato e E_MESSAGGIO_NON_DEFINITO esiste (preflight:
 --      senza, il ripiego stesso non funziona)
 --   2. ZERO codici sollevati da funzioni vive e assenti dal catalogo
 --      ** e' il test che presidia il disallineamento **
@@ -80,13 +80,22 @@ SELECT DISTINCT
 -- ============================================================
 -- 1) Preflight: catalogo popolato e ripiego disponibile
 -- ============================================================
+-- ⚠️ QUESTO NOME E' SCRITTO A MANO IN TRE POSTI, ed e' il motivo per cui il
+--   test 1 e' rimasto rosso dopo la rinomina del 2026-08-07:
+--     · il corpo di script.fn_log_error_only, che lo cerca per nome esatto;
+--     · db/changelog/migrations_v2/80_data/sql/config/messaggi_errore.csv
+--       (e, dal 2026-08-07, anche codici_errore.csv);
+--     · qui.
+--   Non e' derivabile: e' una costante di ripiego, e un ripiego che si risolve
+--   con una query avrebbe bisogno del ripiego. Rinominarlo vuol dire toccare
+--   tutti e tre — se ne tocchi due, questo test e' il terzo che te lo dice.
 SELECT ok(
     (SELECT count(*) FROM config.messaggi_errore) > 100
     AND EXISTS (
         SELECT 1 FROM config.messaggi_errore
-         WHERE codice = 'MESSAGGIO_NON_DEFINITO' AND lingua = 'it'
+         WHERE codice = 'E_MESSAGGIO_NON_DEFINITO' AND lingua = 'it'
     ),
-    '1. Catalogo popolato e MESSAGGIO_NON_DEFINITO presente (il ripiego funziona)'
+    '1. Catalogo popolato e E_MESSAGGIO_NON_DEFINITO presente (il ripiego funziona)'
 );
 
 -- ============================================================
