@@ -50,7 +50,7 @@ additivo e reversibile.
 | ✅ **D-7** | ~~FK + policy indici~~ **fatto** — `20260807-14` e `-15` | D-5 | ⚠️ **due** FK da registrare, non una |
 | ✅ **D-8** | ~~pgTAP~~ **scritto** — 3 adeguati, 1 riscritto e spostato, 1 nuovo | D-6 · D-7 | 🔴 **non eseguito**: serve il DB |
 | ✅ **D-9** | ~~Le due viste~~ **scritto** — `20260807-16` e `-17` | D-4 | 🔴 **è la consegna al BE**: applicato questo, B-5 è sbloccato |
-| ✅ **D-10** | ~~La misura~~ **scritto** — `20260807-18` | D-9 | ⚠️ non filtra di proposito: il classificatore copre il 22% |
+| ✅ **D-10** | ~~La misura~~ **fatto** — `20260807-18`, riscritta dal `20260808-01` | D-9 | ⚠️ non filtra; e la v1 costava **145 s**, la v2 **349 ms** |
 
 **Consegna al BE:** dopo **D-9**. È il momento in cui `vw_codici_errore_identita`
 esiste, è popolata e ordinata — cioè quando il generatore del BE ha da cui
@@ -927,9 +927,66 @@ SELECT count(*) AS codici,
 codice non so dire niente, né in un senso né nell'altro». Sono 267 su 342, e
 senza quella colonna sarebbero indistinguibili da 267 codici puliti.
 
-⚠️ **Costosa**: legge `pg_proc.prosrc` e lo spezza riga per riga. Va bene per una
-misura che si guarda all'apertura di un lotto, **non** per una query di runtime —
-ed è scritto nel commento della vista, non solo qui.
+#### 🔴 «Costosa ma va bene» era falso — 145 secondi, e la frase era il difetto
+
+Interrogata sul database vivo, la prima versione ci ha messo **145.183 ms**. Nel
+suo changeSet avevo scritto *«costosa: va bene per una misura che si guarda ogni
+tanto»*. ⚠️ **Non è vero.** Una misura che costa due minuti e mezzo si lancia una
+volta, si dice «interessante» e non si riapre più — ed è lo stesso modo in cui
+muoiono i presidi, solo per un'altra strada. Questa vista nasce per non farli
+morire.
+
+**Non erano gli indici**, ed è la prima cosa che verrebbe da provare: la vista
+legge `pg_proc.prosrc`, un catalogo di sistema, e le righe le produce
+`regexp_split_to_table` al volo — non esistono su disco. Il costo era la **forma**:
+due sottoquery correlate su ~100.000 righe, quadratiche dentro ogni funzione.
+
+✅ **Riscritta con window function** ([`20260808-01`](../../../../db/changelog/migrations_v2/20_code/dbops/20260808-01-fix-vw-codici-errore-forme-condizione-window-mctit.yaml)),
+col pattern a **isole**: `count(*) FILTER (WHERE e_guardia) OVER (...)` numera
+l'isola aperta da ogni riga-guardia, e `first_value` la propaga — il «last
+observed carried forward» senza sottoquery. (`last_value ... IGNORE NULLS` non
+esiste in PostgreSQL: le isole sono il modo che funziona.)
+
+| versione | tempo | codici / classificati / invisibili |
+|---|---:|---|
+| `20260807-18` (sottoquery correlate) | **145.183 ms** | 344 / 75 / 269 |
+| `20260808-01` (window function) | **349 ms** | 344 / 75 / 269 |
+
+**415× più veloce a parità di risultato.** Se i numeri fossero cambiati, la
+riscrittura sarebbe stata sbagliata — non più veloce.
+
+⚠️ **Una trappola nel riscriverla**: il `WHERE` viene applicato **prima** delle
+window function dello stesso livello. Filtrare le righe senza codice nello stesso
+`SELECT` in cui si calcola `first_value` toglierebbe dalla partizione proprio la
+riga-guardia, che un codice non ce l'ha. La propagazione sta in un livello, il
+filtro in quello dopo.
+
+#### ⭐ E interrogarla ha trovato uno schema intero fuori dalla documentazione
+
+I numeri della vista (**344**) non tornavano coi miei conteggi dai file (**342**).
+Inseguendo i due:
+
+* **+1 è `shop`**: `DB_DOC_SCHEMAS` in `git.env` elencava 16 schemi e **`shop` non
+  c'era**. La sua unica funzione plpgsql, `trgfn_ricevute_guard_ba_canale`, non ha
+  mai avuto una pagina di doc — e il codice che solleva,
+  `E_SHOP_RICEVUTA_BA_CANALE_INVALIDO`, ✅ è regolarmente a catalogo con classe
+  `DATO_ERRATO`. Aggiunto a `DB_DOC_SCHEMAS`;
+* **+1 è rumore di misura**: una differenza fra l'euristica Python e quella SQL su
+  quale riga sia «la guardia» di un punto.
+
+⚠️ **La conseguenza vale più dei due codici: tutte le misure fatte leggendo la doc
+auto-gen avevano `shop` come punto cieco** — i conteggi di `E_VALIDAZIONE`, di
+`E_PARAMETRO_INVALIDO`, e la verifica del D-2.
+
+⭐ **Ma il D-2 non era a rischio, e la ragione è il motivo per cui i presidi
+esistono.** Il controllo (D) del guardrail legge `pg_proc`, non i file — e ha
+confermato *«79 ritirati, nessuno ancora sollevato»*. **Il presidio ha coperto il
+punto cieco della misura.** Io ho misurato con lo strumento comodo, lui con
+quello vero.
+
+🔵 `public` resta fuori dalla documentazione: **deciso** (Tid, 2026-08-08). Gli
+altri sei — `pgagent`, `topology`, `django`, `data_conversion`, `internal`,
+`test` — sono infrastruttura ed è giusto che non ci siano.
 
 ⚠️ Stesso limite del controllo (D) del guardrail: vede solo i letterali `'E_…'`
 nei corpi plpgsql entro 6 righe da `fn_log_and_raise_error`. Non vede i codici
