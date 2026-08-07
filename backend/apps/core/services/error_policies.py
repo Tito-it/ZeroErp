@@ -132,7 +132,21 @@ _MESSAGGIO_MANCANTE = "Errore durante l'operazione."
 
 
 class ClasseErroreSenzaStatus(RuntimeError):
-    """La classe di un codice non ha uno status HTTP: non si ripiega, si solleva."""
+    """La classe di un codice non ha uno status HTTP: non si ripiega, si solleva.
+
+    ⚠️ COSA SUCCEDE DAVVERO SE SCATTA, verificato e non dedotto (2026-08-07):
+    l'eccezione **propaga fuori** da `exception_to_error_response`, che la chiama
+    prima ancora di loggare. Il client riceve un **500 non-JSON** (Django gestisce
+    l'eccezione non gestita) e il traceback finisce nel log `django.request`
+    nominando il codice e la ragione. Il frontend degrada in modo pulito:
+    `extractErrorMessage` non trova nulla, mostra il messaggio di ripiego del
+    chiamante e — essendo >= 500 — il toast «errore di sistema».
+
+    E' rumoroso di proposito, ed e' scritto qui perche' si sappia invece di
+    scoprirlo durante un incidente. ⛔ **Non aggiungere un `except` che lo
+    trasformi in un envelope pulito**: sarebbe il ripiego silenzioso che questo
+    passo e' servito a togliere, con un altro nome.
+    """
 
 
 # Registro centrale mapping errore -> comportamento API/UI.
