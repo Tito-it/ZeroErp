@@ -4,7 +4,7 @@
 **Origine:** domanda di Tid alla chiusura di
 [brief-db-be-terzo-lato-presidio-codici](../work-done/brief-db-be-terzo-lato-presidio-codici.md):
 *«come evitare che si ripeta? La messaggistica si era trasformata in un bugiardino.»*
-**Stato:** 🟢 disegno chiuso (23 decisioni, §14) · 🟡 **in costruzione**: DB a **D-6 su D-10**, BE a **B-4 su B-7**. Stato aggiornato nel §13.1; l'esecuzione vive nei [due piani](piano-db-classe-codici-errore.md).
+**Stato:** 🟢 **COSTRUITO** (2026-08-08) — disegno chiuso (27 decisioni, §14), **DB D-1→D-10 chiuso**, **BE B-1→B-6 chiuso**, resta metà del B-7. Il cantiere è in servizio: il catalogo ha 689 codici tutti con una classe, e `error_policies_generated.py` è generato dal database. Stato dettagliato nel §13.1; l'esecuzione vive nei [due piani](piano-db-classe-codici-errore.md).
 **Perimetro:** tabelle + vocabolario + seed lato DB · generatore di `error_policies.py` e mappa classe→HTTP lato BE.
 **Ruolo di questo file:** **guida generale** — le ragioni, le misure, le decisioni. L'esecuzione sta nei due piani operativi (§13).
 
@@ -39,6 +39,12 @@
 >   del seed (§9.1);
 > * il discriminante *superato / non-agganciato* diventa **misurabile** (§7.1);
 > * e resta scritto che **nessuno presidia che la classe resti vera** (§9.2).
+>
+> ⭐ **2026-08-08 — quest'ultima frase non è più vera, ed è la notizia migliore
+> del cantiere.** La misura del §9.2 esiste, è stata eseguita, e la domanda
+> «la classe è ancora vera?» ha per la prima volta una risposta che non sia
+> *«bisognerebbe rileggere 150 funzioni»*. Risposta: **sì**, con un'eccezione
+> vera trovata dalla misura e non da una persona — vedi §9.3.
 >
 > **Sera dello stesso giorno — il BE chiude l'ultima decisione, e ne corregge una
 > terza:** `user_message` **non duplica** il catalogo, è la variante senza
@@ -790,7 +796,11 @@ come si è fatto per i codici fuori convenzione — resta in coda al lavoro (pia
 punto 15): rincorrere gli esistenti senza chiudere il rubinetto è la forma in cui
 questi registri non calano mai.
 
-### 9.2 ⚠️ Chi controlla che la classe resti **vera**? Oggi nessuno
+### 9.2 ⚠️ Chi controlla che la classe resti **vera**? ~~Oggi nessuno~~ → **misurato, §9.3**
+
+> 🔔 **Il titolo diceva «oggi nessuno» e il 2026-08-08 ha smesso di essere vero.**
+> Il paragrafo resta com'era, perché è il ragionamento che ha *portato* alla
+> misura e va letto per primo. L'esito sta nel **§9.3**.
 
 Rilievo BE (**A6**), accolto e — a differenza degli altri — con una proposta.
 
@@ -855,6 +865,65 @@ precisione: dice un fatto, non un'ipotesi.
 **Resta comunque fuori dalla garanzia**, e va detto: il disegno presidia la
 *nascita* di un codice, non la sua *vita*. Chi legge questo brief fra un anno
 deve trovarlo scritto, non doverlo dedurre dal punto 5 del §9.
+
+---
+
+### 9.3 ⭐ **La rinuncia del §9.2 è stata riscossa** — prima misura, 2026-08-08
+
+Il §9.2 si chiude con *«nessuno presidia che la classe resti vera»*. **Non è più
+così.** Con la vista `dbops.vw_codici_errore_forme_condizione` in servizio
+esistono **due letture indipendenti dello stesso codice** — ed è l'indipendenza a
+rendere possibile il confronto:
+
+* la **classe**, cioè cosa quel codice *dovrebbe* essere (catalogo);
+* la **famiglia della guardia**, cioè cosa fa il punto che lo *solleva*.
+
+Incrociate (misura BE, §10 del loro piano), la matrice `famiglia × classe` sui
+codici vivi e classificabili:
+
+| famiglia della guardia | classe dominante | fuori dominante |
+|---|---|---|
+| `ECCEZIONE` | `TECNICO` 15 | 1 |
+| `NOT_FOUND` | `NON_TROVATO` 19 | 20 |
+| `PARAMETRO` | `DATO_ERRATO` 14 | 3 |
+| `ENUM` | `CONFLITTO_STATO` 6 | 4 |
+
+Il predicato più stretto — *guardia di solo parametro e classe diversa da
+`DATO_ERRATO`* — **dà zero**. Allargando alle famiglie miste escono 4 codici, e
+letti uno per uno tre non sono difetti: `E_GENERICO` è il pavimento del percorso
+d'errore e una misura così lo segnalerà sempre; `E_ARTICOLO_NOT_FOUND` e
+`E_DEFINIZIONE_NON_TROVATA` sono decisioni **scritte nella funzione** («guard
+parametro NULL: riconducibile a NOT FOUND»).
+
+> ⭐ **Nei limiti del misurabile, la risposta è sì: la classe è vera.**
+
+⚠️ **Col denominatore, sempre.** Sono **75 codici classificabili su 344**; gli
+altri **269 sono `solo_ignoto`** — la vista *dichiara di non sapere*, ed è la
+colonna che la rende onesta. «Zero contraddizioni» vale su **un quinto** del
+perimetro, non su tutto. È esattamente il motivo per cui il D24 ha imposto che la
+misura pubblichi la propria copertura.
+
+#### 🔴 E una l'ha trovata: `E_ERRORE_PARAMETRI`, 4 punti su 13 dicono il falso
+
+| Condizione al punto che solleva | Punti | Classe vera |
+|---|---:|---|
+| guardia di parametro (`IS NULL`, `<= 0`, `btrim = ''`, `NOT IN`) | 9 | `DATO_ERRATO` ✅ |
+| `TG_NARGS` sbagliato — **il trigger è montato male** | 2 | `TECNICO` |
+| `EXCEPTION WHEN OTHERS` | 1 | `TECNICO` |
+| lookup di configurazione che non trova — **non è un parametro** | 1 | `TECNICO` |
+
+Su quei 4 punti l'operatore prende oggi un **400** che gli dice che ha sbagliato
+lui, e lo manda a cercare un campo che non esiste. **Non si riclassifica, si
+spezza**, e i tre precedenti sono già decisi in casa (`E_ATTIVO_REQUIRE`,
+`E_SNAPSHOT_ID_NOT_FOUND`, `E_REGOLA_FATTURAZIONE_MANCANTE`) — il che rende il
+verdetto meccanico invece che opinabile. 🔴 Perimetro DB, **slice a sé**.
+
+⭐ **La lezione che vale oltre il singolo codice, ed è la stessa due volte:**
+`E_VALIDAZIONE` *sembrava* un accumulatore e non lo era; `E_ERRORE_PARAMETRI` non
+era fra i sospetti e lo è. Entrambe le volte la risposta è venuta dal **contare
+le condizioni**, non dal guardare i nomi — e la seconda volta l'ha trovata una
+misura invece di una persona. È il ritorno dell'investimento del D24, che era
+costato rifare un passo già scritto.
 
 ---
 
@@ -1073,7 +1142,7 @@ codici **nuovi** creati dal DB (lo split di `E_VALIDAZIONE`) cadono sul ripiego
 codice nuovo — ma **lo split non cambia niente di visibile finché il BE non
 riparte**.
 
-### 13.1 Dove siamo — 2026-08-07 sera
+### 13.1 Dove siamo — **2026-08-08**
 
 ⚠️ **Qui c'era una «vista d'insieme» che ripeteva i due piani.** L'ho tolta: era
 un **secondo elenco che divergeva** dai piani veri — esattamente la malattia che
@@ -1081,8 +1150,9 @@ questo cantiere cura. Resta uno **stato**, che è un'altra cosa da un piano.
 
 | Fronte | Stato |
 |---|---|
-| **DB** | ✅ **D-1 → D-6 chiusi e applicati** sul database di sviluppo. Restano D-7 (FK), D-8 (pgTAP), D-9 (le due viste = consegna al BE), D-10 (la misura sulla forma della condizione — ⚠️ **ri-specificata**, D24) |
-| **BE** | ✅ **B-1 → B-4 fatti** (2026-08-07), suite verde. B-5, B-6, B-7 sono **al cancello D-9** |
+| **DB** | ✅ **D-1 → D-10 chiusi, applicati e verificati** contro il database vero. Nessun passo aperto |
+| **BE** | ✅ **B-1 → B-6 chiusi** — `error_policies_generated.py` **non si scrive più a mano**. 🟡 resta metà del B-7 |
+| **Verifica incrociata** | ✅ le **689 coppie `codice → classe`** del file generato coincidono **esattamente** con `config.vw_codici_errore_identita`: zero differenze, confrontate una per una |
 
 **Cosa esiste adesso nel database:**
 
@@ -1105,18 +1175,35 @@ chi legge solo questa guida deve saperle:
 
 ---
 
-### 13.1 Fuori piano, ma nate qui — due code da non perdere
+### 13.2 ✅ Le due code nate qui — **chiuse entrambe**
 
-Non bloccano niente e non entrano nel piano, ma sono l'unico posto in cui
-risultano scritte:
+*(Era numerata 13.1 come la sezione sopra: due sezioni con lo stesso numero, in
+un documento che parla di elenchi che divergono. Corretto il 2026-08-08.)*
 
-* **`PREV_STATO_NON_MODIFICABILE` da togliere** da `error_policies.py`: è una
-  policy orfana di un codice che il DB ha cancellato il 2026-08-05 (§7.2).
-  ⚠️ *Perimetro BE* — richiesta al team BE, una riga;
-* **`MESSAGGIO_NON_DEFINITO` → `E_MESSAGGIO_NON_DEFINITO`**: chiude il registro
-  `dbops.messaggi_errore_codici_legacy` (**1 → 0**, e a zero la tabella si
-  droppa). Slice sua, perché `script.fn_log_error_only` cerca quel codice per
-  nome scritto a mano: le funzioni vanno nello stesso changeSet (§7.2).
+Non entravano nel piano, e questo era l'unico posto in cui risultavano scritte:
+
+* ✅ **`PREV_STATO_NON_MODIFICABILE` tolta** da `error_policies.py` — policy
+  orfana di un codice cancellato il 2026-08-05 (§7.2). Fatta dal BE come **B-1**;
+* ✅ **`MESSAGGIO_NON_DEFINITO` → `E_MESSAGGIO_NON_DEFINITO`** — changeSet
+  `20260807-19` (la funzione, con prestito di proprietà) + i due CSV +
+  `20260807-20` (il `DELETE` della riga vecchia, perché `loadUpdateData` non
+  cancella). Il registro `dbops.messaggi_errore_codici_legacy` arriva a **zero**.
+
+  ⛔ **Ma «a zero la tabella si droppa» — scritto qui sopra — è stato ribaltato**
+  (Tid, 2026-08-08): **non si droppa**. A zero righe il drop sarebbe *neutro* nel
+  comportamento, ma costerebbe mettere mano al controllo (B) del guardrail — in
+  un presidio verde — e toglierebbe il meccanismo pronto per la prossima eredità.
+  Ragioni per intero in [piano DB §5.5](piano-db-classe-codici-errore.md), la
+  decisione è nel `COMMENT` della tabella (`20260808-02`) perché è lì che guarda
+  chi la trova vuota.
+
+  ⭐ **E il rename ha collaudato il disegno per conto suo**: due ore dopo, i due
+  presidi BE sono diventati rossi **da soli** e hanno visto la stessa cosa da due
+  lati diversi. Un terzo — un pgTAP che verificava l'*esistenza* del ripiego, e
+  che non era in nessuna delle categorie che avevamo pensato di controllare — è
+  rimasto rosso ed è stato preso solo il giorno dopo, rieseguendo la suite.
+  **Tre collaudi, due riusciti: quello mancato è l'unico che ha detto dov'era il
+  buco.**
 
 ---
 
@@ -1149,6 +1236,10 @@ risultano scritte:
 | D20 | ✅ **Due classi in più, `NON_AUTENTICATO` e `ERRORE_ESTERNO`**: i 5 codici «fuori vocabolario» sono righe di catalogo, quindi una classe la vogliono. Vocabolario **8 → 10** (§4.3) | **Tid, 2026-08-07 sera** |
 | D18 | **`note` su una riga sola**, senza a capo: le celle CSV multi-riga sono strada battuta poco (3 in tutto il repo) (§14.3) | DB, 2026-08-07 sera |
 | D19 | **Due piani separati, DB per primo**: il BE è fermo e — misurato — non era un prerequisito (654/659 estraibili dal DB). L'unico cancello è D-9 (§13.0) | Tid, 2026-08-07 sera |
+| **D25** | ⛔ **Il registro `dbops.messaggi_errore_codici_legacy` NON si droppa** a zero righe, contro quanto diceva api.md. Il drop sarebbe neutro nel comportamento ma costerebbe toccare il controllo (B) in un presidio verde, e toglierebbe il meccanismo pronto per la prossima eredità (§13.2) | **Tid, 2026-08-08** |
+| **D26** | ⚠️ **Le tre strade sono distinte, e il registro è solo la seconda**: una *famiglia* nuova allarga la convenzione (come i `W_`, `20260805-28`), un codice *ereditato* va nel registro, un codice *nuovo* nato storto si corregge prima del merge. Da qui: **nessuna colonna `motivo`** — risponderebbe alla domanda della prima strada (§13.2) | DB, 2026-08-08 |
+| **D27** | ⚠️ **La giustificazione del controllo (B) era scaduta**: diceva «un codice fuori convenzione non trova policy → 500», ma dal B-5 il dizionario è generato dal catalogo e li contiene tutti. La regola resta, per **la finestra** fra migrate e rigenerazione e per la separazione `E_`/`W_`. Riscritta: *una regola che si spiega con un fatto scaduto insegna una cosa falsa a chi si fida* | DB, 2026-08-08 |
+| **D28** | ⭐ **La rinuncia del §9.2 è riscossa**: la classe è verificabile incrociando catalogo e forma della guardia. Esito: **vera**, su 75 codici classificabili su 344, con un difetto trovato dalla misura — `E_ERRORE_PARAMETRI`, 4 punti su 13 (§9.3) | BE + DB, 2026-08-08 |
 
 ### 14.1 ✅ ~~Cosa resta da decidere~~ — chiusa dal BE, 2026-08-07
 
