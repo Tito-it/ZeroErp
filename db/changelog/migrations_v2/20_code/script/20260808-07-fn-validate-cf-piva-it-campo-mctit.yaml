@@ -1,0 +1,207 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il CF/P.IVA MALFORMATI accendono il campo — lotto anagrafiche 2/N
+#   Canale: 20260808-04/-05 · Lotto 1: 20260808-06
+#   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md §5.8
+#
+# ── 🔴 TROVATO PROVANDO, NON LEGGENDO ──────────────────────────────────
+#   Applicato il 20260808-06, Tid ha scritto un codice fiscale formalmente
+#   errato nel drawer soggetti: e' arrivato il messaggio, ma **nessun bordo
+#   rosso**. La domanda giusta — «devo chiedere al BE?» — ha risposta NO: il
+#   buco era nostro, e in un posto che il piano non aveva guardato.
+#
+#   Il 20260808-06 copre il CF **mancante** (`trgfn_soggetti_guard_cf_piva_-
+#   obbligatori`, `NEW.codice_fiscale IS NULL`). Il CF **malformato** e' un'altra
+#   strada: `trgfn_soggetti_valida_cf_piva_dispatch` -> `script.fn_validate_cf_-
+#   piva_it`, che solleva `E_CF_NON_VALIDO` / `E_PIVA_NON_VALIDA`.
+#
+# ── ⭐ E LA LEZIONE VALE PIU' DELLE TRE RIGHE: AFFETTARE PER SCHEMA E' SBAGLIATO
+#   Quella funzione **non era nei 67 punti di `anagrafiche`**: vive in `script`.
+#   Il piano aveva affettato la campagna per SCHEMA, e cosi' facendo aveva
+#   diviso in due un'unica azione dell'operatore — «salvo un soggetto» attraversa
+#   `anagrafiche` e `script`, e coprirne uno solo lascia la schermata a meta'.
+#
+#   ⚠️ Il modo di affettare giusto e' **per schermata / per azione**, non per
+#   schema. Una fetta che non copre un'azione intera si vede subito da fuori: il
+#   campo si accende in un caso e non nel gemello, che e' peggio di non
+#   accendersi mai — insegna all'operatore che il bordo rosso non e' affidabile.
+#
+# ── ⚠️ TRE PUNTI, TRE CAMPI DIVERSI — E DUE HANNO LO STESSO CODICE ─────
+#     riga  codice                 campo
+#      ~29  E_PIVA_NON_VALIDA      partita_iva
+#      ~50  E_PIVA_NON_VALIDA      piva_gruppo_acquisto     <- stesso codice!
+#      ~86  E_CF_NON_VALIDO        codice_fiscale
+#
+#   ⚠️ La prima stesura di questo changeSet ancorava sul CODICE errore e metteva
+#   `partita_iva` su entrambi i punti `E_PIVA_NON_VALIDA` — cioe' avrebbe acceso
+#   il campo SBAGLIATO quando a essere malformata e' la P.IVA del gruppo
+#   d'acquisto. E' esattamente il difetto contro cui esiste il controllo (F),
+#   arrivato dalla porta di servizio.
+#
+#   ⭐ La correzione: ancorare sulle CHIAVI DEL CONTESTO, non sul codice. Il
+#   contesto di ogni punto nomina gia' il dato di cui parla
+#   (`'piva_gruppo_acquisto', p_piva_gruppo`), ed e' l'unica cosa che distingue
+#   due punti che condividono il codice. **Il codice dice cosa e' andato storto,
+#   il contesto dice dove.**
+#
+#   I tre nomi sono verificati contro `information_schema`: `partita_iva`,
+#   `piva_gruppo_acquisto`, `codice_fiscale` sono colonne vere di
+#   `anagrafiche.soggetti`, quindi chiavi che il form puo' avere davvero.
+#
+# ── ⚠️ UNA TRAPPOLA DA NON RIPETERE ────────────────────────────────────
+#   Il contesto contiene gia' `'codice_fiscale', p_codice_fiscale`: chiave col
+#   nome del campo, ma **valore = quello che l'operatore ha scritto**. La
+#   tentazione e' rinominare quella chiave in `campo`: NON si fa — manderebbe al
+#   client il VALORE come se fosse un nome di campo. Si aggiunge una chiave
+#   nuova con dentro un nome letterale.
+#
+# ── NOTE DI CASA ────────────────────────────────────────────────────────
+#   · Corpo da `pg_get_functiondef`, sostituzione applicata da script e **diff
+#     verificato: 3 righe aggiunte, 0 rimosse**. Nessuna trascrizione a mano.
+#   · `;` dopo `$function$` aggiunto.
+#   · Permessi: `script.fn_validate_cf_piva_it` e' di `titodb` (chi migra) e non
+#     e' SECURITY DEFINER — verificato, e non e' nel registro
+#     `dbops.sec_functions_owner`. Nessun prestito di proprieta', a differenza di
+#     `script.fn_log_error_only` che invece e' di `postgres`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/script/20260808-07-fn-validate-cf-piva-it-campo-mctit.yaml
+
+    - changeSet:
+          id: 20260808-07-fn-validate-cf-piva-it-campo
+          author: mctit
+          runOnChange: false
+          failOnError: true
+          comment: >
+              CF e P.IVA malformati accendono il campo giusto. Tre punti, tre campi diversi
+              (partita_iva, piva_gruppo_acquisto, codice_fiscale) e due condividono il codice
+              E_PIVA_NON_VALIDA: l'ancora e' la chiave del contesto, non il codice. Additivo:
+              3 righe, generato con diff verificato.
+          preConditions:
+              - onFail: HALT
+              - sqlCheck:
+                    expectedResult: 1
+                    sql: |
+                        SELECT count(*) FROM pg_proc p
+                          JOIN pg_namespace n ON n.oid = p.pronamespace
+                         WHERE n.nspname = 'script'
+                           AND p.proname = 'fn_validate_cf_piva_it'
+                           AND p.prosrc NOT LIKE '%''campo''%'
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE FUNCTION script.fn_validate_cf_piva_it(p_tipo_det_id bigint, p_partita_iva text, p_piva_gruppo text, p_codice_fiscale text)
+                         RETURNS void
+                         LANGUAGE plpgsql
+                        AS $function$
+                            DECLARE
+                                l_tipo_det RECORD;
+                                l_error_ctx JSONB;
+                                l_cf_valido BOOLEAN;
+                            BEGIN
+                                -- 0) Se tipo_soggetto_dettaglio non specificato, skip
+                                IF p_tipo_det_id IS NULL THEN
+                                    RETURN;
+                                END IF;
+
+                                -- 0b) Recupero il tipo di dettaglio del soggetto
+                                SELECT formato_cf, formato_piva
+                                INTO STRICT l_tipo_det
+                                FROM config.tipi_soggetto_dettaglio
+                                WHERE id = p_tipo_det_id;
+
+                                ----------------------------------------------------------------
+                                -- 2) Validazione Partita IVA principale (se prevista e valorizzata)
+                                ----------------------------------------------------------------
+                                IF l_tipo_det.formato_piva <> 'NON_APPLICABILE'
+                                AND p_partita_iva IS NOT NULL
+                                AND NOT script.fn_valida_partita_iva(p_partita_iva)
+                                THEN
+                                    l_error_ctx := jsonb_build_object(
+                                        'campo', 'partita_iva',
+                                        'tipo_det', p_tipo_det_id,
+                                        'partita_iva', p_partita_iva
+                                    );
+                                    PERFORM script.fn_log_and_raise_error(
+                                        'database',
+                                        'fn_validate_cf_piva_it',
+                                        'E_PIVA_NON_VALIDA',
+                                        l_error_ctx,
+                                        NULL::uuid,
+                                        p_partita_iva::text
+                                    );
+                                END IF;
+
+                                ----------------------------------------------------------------
+                                -- 3) Validazione Partita IVA Gruppo Acquisto (stesse regole)
+                                ----------------------------------------------------------------
+                                IF l_tipo_det.formato_piva <> 'NON_APPLICABILE'
+                                AND p_piva_gruppo IS NOT NULL
+                                AND NOT script.fn_valida_partita_iva(p_piva_gruppo)
+                                THEN
+                                    l_error_ctx := jsonb_build_object(
+                                        'campo', 'piva_gruppo_acquisto',
+                                        'tipo_det', p_tipo_det_id,
+                                        'piva_gruppo_acquisto', p_piva_gruppo
+                                    );
+                                    PERFORM script.fn_log_and_raise_error(
+                                        'database',
+                                        'fn_validate_cf_piva_it',
+                                        'E_PIVA_NON_VALIDA',
+                                        l_error_ctx,
+                                        NULL::uuid,
+                                        p_piva_gruppo::text
+                                    );
+                                END IF;
+
+                                ----------------------------------------------------------------
+                                -- 4) Validazione Codice Fiscale (se previsto e valorizzato)
+                                --    Dispatch in base a formato_cf:
+                                --    - ALFANUM_16: CF persona fisica (16 char, algoritmo tabella)
+                                --    - NUM_11:     CF persona giuridica (11 cifre, Luhn = P.IVA)
+                                ----------------------------------------------------------------
+                                IF l_tipo_det.formato_cf <> 'NON_APPLICABILE'
+                                AND p_codice_fiscale IS NOT NULL
+                                THEN
+                                    -- Selezione validatore in base al formato
+                                    IF l_tipo_det.formato_cf = 'ALFANUM_16' THEN
+                                        l_cf_valido := script.fn_valida_codice_fiscale(p_codice_fiscale);
+                                    ELSIF l_tipo_det.formato_cf = 'NUM_11' THEN
+                                        l_cf_valido := script.fn_valida_partita_iva(p_codice_fiscale);
+                                    ELSE
+                                        -- Formato non ancora supportato per validazione check digit:
+                                        -- accettiamo il valore (la lunghezza e' gia' verificata altrove)
+                                        l_cf_valido := TRUE;
+                                    END IF;
+
+                                    IF NOT l_cf_valido THEN
+                                        l_error_ctx := jsonb_build_object(
+                                            'campo', 'codice_fiscale',
+                                            'tipo_det', p_tipo_det_id,
+                                            'codice_fiscale', p_codice_fiscale,
+                                            'formato_cf', l_tipo_det.formato_cf
+                                        );
+                                        PERFORM script.fn_log_and_raise_error(
+                                            'database',
+                                            'fn_validate_cf_piva_it',
+                                            'E_CF_NON_VALIDO',
+                                            l_error_ctx,
+                                            NULL::uuid,
+                                            p_codice_fiscale::text
+                                        );
+                                    END IF;
+                                END IF;
+
+                                RETURN;
+                            END;
+                            $function$;

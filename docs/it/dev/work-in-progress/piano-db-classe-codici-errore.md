@@ -1392,7 +1392,33 @@ questo nasce a zero e non chiederà mai a nessuno di sanare un arretrato.
 non fa fallire niente, fa **evidenziare il campo sbagliato** — manda l'operatore
 a correggere un dato giusto, con la pagina che glielo indica come se fosse sicura.
 
-#### 🔴 Il lato che riceve **non** è in servizio — verificato, e va detto al BE
+#### ✅ ~~Il lato che riceve non è in servizio~~ — **chiuso dal BE in giornata**
+
+> **Aggiornato il 2026-08-08 sera.** Il rilievo qui sotto era giusto quando è
+> stato scritto e il BE l'ha chiuso subito (commit `23921bebb`):
+> `structured_db_error_field` legge `diag.column_name`, con 103 righe di test, e
+> `_from_database_error` lo passa a `fields=`. **Il canale è completo su
+> entrambe le metà**, e il consumatore nel frattempo è su **38 schermate**
+> invece che su una.
+>
+> ⭐ **E hanno trovato un secondo produttore che non avevo visto**, legittimo e
+> gratuito: su una violazione **NOT NULL** (SQLSTATE `23502`) è **PostgreSQL
+> stesso** a valorizzare `column_name` con la colonna mancante. Lì il campo è
+> vero senza che nessuno lo scriva — quindi una parte del guadagno arriva
+> **senza toccare un solo punto di chiamata**.
+>
+> ⚠️ **Non è in conflitto col controllo (F)**, e va detto perché sembra esserlo:
+> il (F) presidia chi scrive `RAISE ... USING COLUMN` in PL/pgSQL. Il `23502`
+> non è un `RAISE`, è il motore — e non può indicare il campo sbagliato, perché
+> la colonna mancante *è* il dato. Il controllo resta com'è.
+>
+> ⚠️ E un limite loro, da tenere presente quando si faranno i punti: il nome è
+> quello della **colonna**. Dove il service rinomina verso il payload, il client
+> non trova l'input e non evidenzia nulla — **inerte, non sbagliato**.
+
+Il rilievo originale, per la storia:
+
+#### ~~🔴 Il lato che riceve **non** è in servizio~~ — verificato, e detto al BE
 
 Il BE anticipa: *«il lato che riceve è già in servizio e testato: a loro resta
 solo aggiungere `USING COLUMN`»*. **Vale per il percorso Python, non per quello
@@ -1428,3 +1454,99 @@ Lato DB la chiave è `'campo'` (dentro `p_context` jsonb), lato BE è `"field"`
 lingua del suo lato, e il contratto condiviso è un altro: la chiave
 **`fields`** dell'envelope. Scritto qui perché è il genere di asimmetria che
 qualcuno «corregge» rompendo 114 punti di chiamata da una parte o 4 dall'altra.
+
+#### 📏 Il passo 4, misurato prima di accettarlo — **non sono 83**
+
+Il numero che circola nei documenti («83») conta i **codici**. Ma il nome del
+campo **non appartiene al codice: appartiene al punto che solleva** — lo stesso
+`E_PARAMETRO_INVALIDO` è sollevato in decine di posti, e in ognuno il campo è un
+altro. Quindi l'unità di lavoro è il punto, non il codice.
+
+Misurato incrociando i 125 codici `highlight_form_fields` del backend con i corpi
+PL/pgSQL vivi:
+
+| | |
+|---:|---|
+| codici `highlight` sollevati da PL/pgSQL | **71** |
+| **punti di chiamata da giudicare** | **380** |
+| funzioni coinvolte | **181** |
+| punti che già passano `campo` | **5** |
+
+> 🔴 **375 giudizi, non 83 modifiche meccaniche.** Non è «aggiungere
+> `USING COLUMN` dove il campo è vero»: per ogni punto bisogna leggere la
+> guardia e decidere *quale* campo è quello sbagliato. È una campagna, non una
+> coda.
+
+**Ripartizione, che è il modo per affettarla:**
+
+| schema | punti | funzioni |
+|---|---:|---:|
+| `vendite` | 213 | 101 |
+| `anagrafiche` | 67 | 25 |
+| `script` | 52 | 31 |
+| `pratiche` | 25 | 12 |
+| `config` | 11 | 7 |
+| `dbops` · `documenti` · `catalogo` | 12 | 5 |
+
+⭐ **E una parte del guadagno arriva senza toccare niente**: sulle violazioni
+NOT NULL (`23502`) è PostgreSQL a valorizzare `column_name`, e il BE ora lo
+legge. Quel pezzo è già attivo da stasera, a costo zero.
+
+**Raccomandazione:** *non* fare i 380. Procedere **per dominio, dietro alle
+schermate che esistono** — come dice il piano BE («solo quelli dei domini
+toccati»). `vendite` da solo è il 56% del lavoro e va guardato per ultimo, non
+per primo: è dove i punti stanno più spesso in trigger di stato, cioè dove non
+c'è un form da evidenziare. Il primo lotto ragionevole è `anagrafiche`, che è
+dove stanno i drawer del pilota.
+
+#### ⭐ La campagna da 375 giudizi non serve — `20260808-05`
+
+Tid apre il lotto `anagrafiche` (2026-08-08). Prima di cominciare, la domanda che
+non era stata fatta: **quei 380 punti, il nome del campo ce l'hanno già?**
+
+| chiave nel `p_context` | occorrenze | |
+|---|---:|---|
+| `'campo'` | 8 | quella che il `20260808-04` legge |
+| **`'parametro'`** | **225** in 111 funzioni | ⭐ la convenzione vera |
+
+E porta esattamente il dato che serve: `jsonb_build_object('parametro', 'p_cognome')`.
+
+⭐ **È la terza volta in questo cantiere che il dato c'era già e nessuno lo
+trasmetteva**: prima il `context` del backend (fermo un passo dall'uscita), poi i
+4 `'campo'` del database, ora i 225 `'parametro'`. Il difetto non è mai stato
+«manca l'informazione»: è sempre stato «manca l'ultimo passo».
+
+[`20260808-05`](../../../../db/changelog/migrations_v2/20_code/script/20260808-05-fn-log-and-raise-error-campo-da-parametro-mctit.yaml)
+deriva il campo da `parametro` togliendo il prefisso `p_`.
+
+**Copertura ottenuta senza toccare un solo punto di chiamata:**
+
+| schema | coperti | % |
+|---|---:|---:|
+| `vendite` | 150/213 | **70%** |
+| `anagrafiche` | 33/67 | 49% |
+| `script` | 24/52 | 46% |
+| `pratiche` | 6/25 | 24% |
+| altri | 4/23 | 17% |
+| **totale** | **217/380** | **57%** |
+
+⭐ **L'intuizione di Tid su `vendite` era giusta e si misura**: 70%, la copertura
+migliore di tutti gli schemi — sono le funzioni più recenti, e passano il
+parametro più spesso. Il lotto `anagrafiche` scende da 67 a **34 punti**.
+
+**Le tre scelte, con la ragione:**
+
+1. **`campo` ha la precedenza** — è l'override esplicito per quando il campo del
+   form non si chiama come il parametro. Se vincesse `parametro`, l'override non
+   servirebbe a niente;
+2. **il prefisso `p_` si toglie nel DB**, non nel backend: è una convenzione di
+   denominazione del plpgsql, e farla arrivare al frontend vorrebbe dire mettere
+   una regola del database dentro alla pagina. I 52 valori che il prefisso non
+   ce l'hanno (`commessa_id`, `quantita`, …) passano invariati;
+3. ⚠️ **si accetta l'inerte** — molti parametri sono `*_id` interni: il client
+   non trova l'input e non evidenzia nulla. È il prezzo per non fare 217 giudizi
+   a mano, ed è lo stesso che il BE ha già accettato per il caso «il service
+   rinomina»: *inerte, non sbagliato*.
+
+Verificato sulla logica isolata: `p_cognome`→`cognome`, `commessa_id`→invariato,
+`campo` batte `parametro`, testo sporco scartato, chiave assente → nessun campo.
