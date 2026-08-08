@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il COMMENT di `dbops.messaggi_errore_codici_legacy` dice ancora «Sono 57»
+#   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (§5.5)
+#   Decisione: Tid, 2026-08-08 — la tabella NON si droppa.
+#
+# ── 🔴 IL COMMENT DESCRIVE UNO STATO FINITO IERI ───────────────────────
+#   Testo attuale: «Sono 57, tutti a seed e in uso su 77 call site». Sono ZERO
+#   dal 2026-08-07 (l'ultima e' uscita col rename MESSAGGIO_NON_DEFINITO ->
+#   E_MESSAGGIO_NON_DEFINITO). Il debito e' pagato per intero.
+#
+#   ⚠️ Non e' un dettaglio cosmetico: il COMMENT e' **l'unico posto che parla a
+#   chi guarda la tabella**. La decisione di tenerla vive in api.md e nel piano —
+#   due documenti che chi apre `\d+ dbops.messaggi_errore_codici_legacy` non sta
+#   leggendo. Una tabella vuota, con un nome che dice «legacy» e un COMMENT che
+#   descrive un debito che non c'e' piu', e' esattamente la forma che invita a
+#   droppare per pulizia.
+#
+# ── ⛔ PERCHE' NON SI DROPPA — e la ragione vera non e' quella che sembra ──
+#   ⚠️ Onesta' prima di tutto: a zero righe droppare sarebbe **neutro nel
+#   comportamento**. Il `NOT EXISTS` del controllo (B) non toglie nulla, il (C)
+#   e' vero a vuoto, la guardia d'esistenza protegge solo quei due. Il drop
+#   comprerebbe davvero «meno codice».
+#
+#   Non si droppa per due ragioni che restano piu' pesanti:
+#     1. costerebbe **mettere mano al controllo (B)**, l'unica cosa che tiene la
+#        convenzione, in un guardrail verde. Non si riscrive un presidio che
+#        funziona per rimuovere un no-op;
+#     2. il meccanismo serve alla PROSSIMA eredita'. Il progetto ne ha gia'
+#        assorbita una (57 codici, 2026-08-05) e ne assorbira' altre; ricostruire
+#        tabella + CHECK + due controlli sotto la pressione di un'import e' il
+#        momento in cui li si costruisce male.
+#
+#   ⚠️ E NON e' una «valvola per le eccezioni». L'unica eccezione vera mai
+#   arrivata — la famiglia W_ dei warning — NON e' finita qui: e' stata allargata
+#   la convenzione (20260805-28), ed era la scelta giusta. Una FAMIGLIA con una
+#   semantica sua cambia la regola; un codice EREDITATO gia' storto e' debito e
+#   viene qui, con la sua data, per calare. Sono due strade diverse e confonderle
+#   trasformerebbe un registro di debito in una whitelist permanente.
+#
+#   Da qui anche la scelta di NON aggiungere una colonna `motivo`: risponderebbe
+#   a «perche' questa eccezione e' legittima», che e' la domanda del caso che non
+#   passa di qui. Per il debito la colonna che serve c'e' gia' ed e'
+#   `data_registrazione` — l'orologio che fa vedere se invecchia.
+#
+# ── NOTE ────────────────────────────────────────────────────────────────
+#   · Solo COMMENT: nessun cambio di struttura, dati o vincoli.
+#   · Il CHECK `chk_..._non_conforme` resta il guardiano dell'integrita' del
+#     registro: impedisce di registrarci un codice CONFORME, cioe' di usarlo per
+#     qualcosa che non e' il suo mestiere.
+#   · ⚠️ Da non confondere con `dbops.codici_errore_senza_policy` (il registro
+#     del *terzo lato*, 141 -> 0): altra tabella, altro mestiere, resta anche
+#     quella.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/00_schema/dbops/20260808-02-comment-messaggi-errore-codici-legacy-mctit.yaml
+
+    - changeSet:
+          id: 20260808-02-comment-messaggi-errore-codici-legacy
+          author: mctit
+          runOnChange: false
+          failOnError: true
+          comment: >
+              Riscrive il COMMENT: diceva «Sono 57, tutti a seed e in uso su 77 call site»
+              e sono zero dal 2026-08-07. Ci porta dentro la decisione del 2026-08-08 —
+              la tabella non si droppa — perche' il COMMENT e' l'unico posto che parla a
+              chi guarda la tabella, e una tabella vuota chiamata «legacy» senza quella
+              riga e' un invito a droppare per pulizia.
+          preConditions:
+              - onFail: HALT
+              - tableExists:
+                    schemaName: dbops
+                    tableName: messaggi_errore_codici_legacy
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        COMMENT ON TABLE dbops.messaggi_errore_codici_legacy IS
+                          'Registro del DEBITO EREDITATO sulla convenzione dei codici errore (E_{MODULO}_{TIPO}, W_ per i warning — docs/it/dev/api.md). Ci va un codice che arriva da fuori gia'' fuori convenzione e che non conviene rinominare; il CHECK chk_..._non_conforme impedisce di registrarci un codice conforme. ⭐ A ZERO RIGHE dal 2026-08-07: le 57 voci del 2026-08-05 sono state tutte smaltite, l''ultima col rename MESSAGGIO_NON_DEFINITO -> E_MESSAGGIO_NON_DEFINITO. ⛔ NON DROPPARE (decisione Tid 2026-08-08): a zero righe il drop sarebbe neutro nel comportamento, ma costerebbe mettere mano al controllo (B) di scripts/sql/guardrail_codice_errore_strutturato.sql — l''unica cosa che tiene la convenzione — in un presidio verde, e toglierebbe il meccanismo pronto per la prossima eredita'' di codici. Un registro vuoto non e'' un registro inutile: e'' un registro in pari. ⚠️ NON e'' una whitelist di eccezioni: una FAMIGLIA nuova con una semantica sua (com''e'' stato per i W_, changeSet 20260805-28) si risolve ALLARGANDO la convenzione, non registrandola qui — per questo non c''e'' una colonna «motivo», e l''orologio del debito e'' data_registrazione. ⚠️ Da non confondere con dbops.codici_errore_senza_policy, che e'' il registro del terzo lato (codici senza policy BE). Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md §5.5.';
