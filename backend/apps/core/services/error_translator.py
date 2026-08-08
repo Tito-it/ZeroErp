@@ -13,7 +13,11 @@ from typing import Any
 from django.conf import settings
 from django.db import DatabaseError
 
-from apps.core.services.db_error_fields import app_error_code_from_text, db_error_code
+from apps.core.services.db_error_fields import (
+    app_error_code_from_text,
+    db_error_code,
+    structured_db_error_field,
+)
 from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.request_context import get_request_id
 from apps.core.services.service_errors import ServiceError
@@ -27,6 +31,12 @@ from apps.core.services.service_errors import ServiceError
 # chiamante che passasse una chiave dinamica di far rimbalzare al client
 # qualcosa che l'utente ha scritto. Costa una regex e toglie la domanda.
 _FIELD_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_.\-]{0,63}$")
+
+
+# Scopo: un nome di campo in tupla, o None. Tiene fuori dal translator il
+#        `(x,) if x else None` ripetuto nei due punti che valorizzano `fields`.
+def _campi(nome: str | None) -> tuple[str, ...] | None:
+    return (nome,) if nome else None
 
 
 @dataclass(frozen=True)
@@ -122,7 +132,7 @@ class ErrorTranslator:
         nome = context.get("field")
         if not isinstance(nome, str) or not _FIELD_RE.match(nome):
             return None
-        return (nome,)
+        return _campi(nome)
 
     # Scopo: Applica policy error code -> status/retry/hint al payload errore.
     @staticmethod
@@ -209,6 +219,13 @@ class ErrorTranslator:
             detail=detail,
             hint=hint,
             retryable=retryable,
+            # Il campo da correggere, se il DB l'ha detto: `RAISE ... USING
+            # COLUMN` nelle funzioni PL/pgSQL, oppure PostgreSQL stesso su una
+            # violazione NOT NULL. Oggi quasi nessuna funzione lo valorizza —
+            # resta None e non cambia niente — ma il lato che riceve e' pronto:
+            # il giorno in cui il DB comincia a mandarlo, non serve toccare
+            # altro (piano BE §12, passo 4).
+            fields=_campi(structured_db_error_field(exc)),
         )
 
     # Scopo: Estrae un codice errore applicativo E_* dal messaggio di eccezione DB.

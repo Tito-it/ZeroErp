@@ -3,7 +3,10 @@
 **Chi:** team BE (`dev/backend-tid`).
 **Guida generale e ragioni di ogni scelta:** [brief-db-be-classe-codici-errore](brief-db-be-classe-codici-errore.md) — 18 decisioni, le misure, i perché. **Questo file non le ripete: le esegue.**
 **Piano gemello:** [piano-db-classe-codici-errore](piano-db-classe-codici-errore.md).
-**Stato:** 🟢 **B-1 → B-6 FATTI** (2026-08-07). Il D-9 è arrivato in serata e il generatore è in servizio: `error_policies_generated.py` **non si scrive più a mano** (§9). 🔴 Il **B-7 resta aperto per intero**, ed è quasi tutto DB (§11).
+**Stato:** 🟢 **B-1 → B-6 FATTI** (2026-08-07): il generatore è in servizio, `error_policies_generated.py` **non si scrive più a mano** (§9).
+🟢 **§12 passi 1-2 FATTI** (2026-08-08): l'envelope porta i **campi da correggere** e li legano **38 componenti** — ⚠️ i campi sì, la `ui_action` **no**, e il perché è misurato (§12.12).
+🔵 Resta il **passo 4** (il campo dagli errori PL/pgSQL, `USING COLUMN`) — ora ha senso chiederlo, perché il consumatore esiste su 38 schermate invece che su una.
+🔴 Il **B-7 resta aperto per intero**, ed è quasi tutto DB (§11).
 
 > **Verifica dell'equivalenza, prima di tutto il resto.** I **656** codici che
 > restano una risposta HTTP risolvono **identici** a prima — stesso status,
@@ -953,7 +956,7 @@ si misura, poi si costruisce.
 | # | Passo | Chi | Perché lì |
 |---|---|---|---|
 | ✅ **1** | ~~il `context` entra nell'envelope~~ **FATTO** 2026-08-08 — §12.7 | **BE** | il dato c'era già, non dipendeva da nessuno |
-| **2** | il frontend legge `ui_action` + i campi **su un dominio solo** | **FE** | è il pilota: dice se il guadagno si sente davvero |
+| ✅ **2** | ~~il frontend legge `ui_action` + i campi~~ → **legge i CAMPI**, esteso a 38 componenti | **FE** | ⚠️ la `ui_action` è rimasta fuori, e non per pigrizia: §12.12 |
 | **3** | ⏸️ decisione: si estende o ci si ferma | **Tid** | dopo il 2, con una cosa vista invece che immaginata |
 | **4** | `USING COLUMN` sui punti che servono | **DB** | 83 punti: si fanno **se** il 3 dice di sì, e solo quelli dei domini toccati |
 
@@ -1049,10 +1052,10 @@ cercarselo nel form.
   in più da mantenere;
 * il nome è quello del **payload API**, non del `v-model`.
 
-⚠️ **`azioneUi` è esposto ma non lo legge nessuno**, ed è voluto: dare un
-comportamento a `ui_action` richiede prima di rileggere le 176 scelte fatte
-quando nessuno poteva verificarle a video (§12.6). Esporlo ora evita di
-rimettere le mani nel composable domani.
+⚠️ **`azioneUi` è esposto ma non lo legge nessuno**, ed è voluto — la ragione
+piena, misurata, è nel §12.12: legare l'evidenziazione alla `ui_action`
+**romperebbe proprio il caso migliore**. Esporlo ora evita di rimettere le mani
+nel composable il giorno in cui servirà.
 
 **Cosa è verificato e cosa no**, per non far credere più di quanto è provato:
 
@@ -1174,3 +1177,78 @@ mano.
 Dopo il ripristino: **eslint pulito, build verde**, e i diff riletti a campione
 per verificare che l'attributo fosse sul tag giusto — cosa che il build non può
 dire.
+
+### 12.12 🔴 La `ui_action` NON entra, e il caso migliore lo dimostra
+
+Il passo 2 di questo piano diceva *«il frontend legge `ui_action` + i campi»*.
+**Legge solo i campi, ed è la scelta giusta.** Lo dice una misura, non una
+preferenza.
+
+| Codice | classe | `ui_action` | porta il campo? |
+|---|---|---|---|
+| **`E_ANAG_DUPLICATO`** | `CONFLITTO_STATO` | **`show_error_banner`** | ✅ sì, `codice` |
+| `E_ANAG_VALIDAZIONE` | `DATO_ERRATO` | `highlight_form_fields` | ✅ sì |
+
+⭐ **Il duplicato di categoria — il caso su cui il pattern è stato validato in
+app — ha `ui_action = show_error_banner`.** Se l'evidenziazione fosse
+condizionata a `ui_action === 'highlight_form_fields'`, quel caso **non
+funzionerebbe**: proprio il migliore dei due, quello in cui il form è compilato
+bene e la validazione client non ha niente da dire.
+
+**La ragione di fondo, che vale oltre questo codice:**
+
+> `fields` è un **fatto** — «so quale campo è».
+> `ui_action` è un **suggerimento** — «ecco come reagire».
+> Subordinare il fatto al suggerimento butta via il fatto.
+
+E il suggerimento, su quel codice, è stato scelto quando il campo **non esisteva
+nemmeno**: `show_error_banner` era la scelta giusta *allora*, perché non c'era
+niente da evidenziare.
+
+### 12.12.1 E leggerla oggi non aggiungerebbe niente
+
+| valore | codici | cosa cambierebbe |
+|---|---:|---|
+| `highlight_form_fields` | 125 | **già coperto** da `fields`, e in modo più preciso |
+| `show_toast_error` | 12 | è già quello che succede |
+| `redirect_login` | 2 | già fatto dall'interceptor sul 401 |
+| `show_error_banner` | 467 | banner al posto del toast: scelta di **design dell'interfaccia** |
+| `show_empty_state` | 50 | serve il contesto della lista — `useApiHandler` da solo non può |
+| `show_retry_dialog` | 2 | serve un componente che non esiste |
+
+Le prime tre non aggiungono nulla; le altre tre sono decisioni di interfaccia,
+non del catalogo degli errori.
+
+⚠️ **Conseguenza sul §12.6**, che va aggiornato nella sostanza: la regola
+«quando si accende `ui_action`, rileggere prima le 176 righe di override» non è
+più un'ipotesi prudente. **La prima che ho guardato era già sbagliata** per
+l'uso nuovo — non perché fosse una decisione cattiva, ma perché descriveva un
+mondo in cui il campo non arrivava.
+
+### 12.13 ✅ Il lato che RICEVE il `COLUMN` — pronto prima che serva (2026-08-08)
+
+Mentre il DB valuta il passo 4, il backend è stato messo in condizione di non
+avere lavoro da fare quando arriverà: `structured_db_error_field` legge
+`diag.column_name` e lo mette in `fields`, esattamente come
+`structured_db_error_code` legge `constraint_name` dal 2026-08-05.
+
+⭐ **E una metà è già viva senza che nessuno faccia niente.** Su una violazione
+**NOT NULL** (SQLSTATE `23502`) `column_name` lo valorizza **PostgreSQL da
+solo**, ed è già la colonna mancante: quel caso funziona da oggi, senza una riga
+di PL/pgSQL.
+
+⚠️ **Perché qui NON c'è il guard sullo SQLSTATE** che protegge la lettura del
+codice — l'asimmetria sorprende e va scritta: su un `23xxx` `constraint_name`
+contiene il nome del **vincolo**, e prenderlo per un codice applicativo
+produrrebbe un codice inesistente, quindi un 500 al posto di un 409 parlante.
+`column_name` invece contiene sempre e solo un nome di **colonna**: non esiste
+un secondo mittente da cui difendersi. Stesso meccanismo, rischio diverso.
+
+**6 test** su un'eccezione costruita a mano, senza database — compresa la
+trappola già pagata sul codice (*campo che nasce da un'espressione NULL: arriva
+come stringa vuota, non come None*) e il percorso intero fino all'envelope.
+
+> ⚠️ Resta un limite da dire adesso: il nome è quello della **colonna**. Dove il
+> service rinomina rispetto al payload, il client non trova l'input e non
+> evidenzia nulla — **inerte, non sbagliato**. Se capiterà spesso, la risposta
+> non è indovinare lato FE: è che la funzione dichiari il nome del campo API.

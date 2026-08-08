@@ -72,6 +72,48 @@ def structured_db_error_code(exc: BaseException) -> str | None:
     return getattr(diag, "constraint_name", None) or None
 
 
+# Un nome di colonna/campo plausibile. Non e' difesa da un attacco — il nome lo
+# scrive chi ha scritto la funzione PL/pgSQL — e' il guard che impedisce a un
+# valore inatteso di rimbalzare al client dentro l'envelope.
+_COLUMN_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
+
+
+# Scopo: ⭐ IL CAMPO CHE L'OPERATORE DEVE CORREGGERE, dal campo strutturato
+#        `COLUMN` dell'eccezione. E' il gemello di `structured_db_error_code`:
+#        stesso meccanismo, altro campo del protocollo.
+#
+#        DA DOVE ARRIVA, e sono due strade che convergono:
+#
+#        1. `RAISE ... USING COLUMN = 'partita_iva'` in PL/pgSQL — la strada
+#           deliberata (piano BE §12, passo 4). Non serve un parametro nuovo di
+#           `script.fn_log_and_raise_error`: l'opzione e' gia' nel protocollo,
+#           esattamente come `CONSTRAINT` porta gia' il codice dal 2026-08-05;
+#        2. PostgreSQL da solo, su una violazione **NOT NULL** (SQLSTATE 23502),
+#           dove `column_name` e' la colonna che manca. Li' il campo e' vero
+#           senza che nessuno lo scriva.
+#
+#        ⚠️ QUI NON SERVE IL GUARD SULLO SQLSTATE che `structured_db_error_code`
+#        ha su `constraint_name`, e la ragione va detta perche' l'asimmetria
+#        sorprende: `constraint_name` su un 23xxx contiene il nome del VINCOLO
+#        (`uq_...`), che scambiato per un codice applicativo produrrebbe un 500.
+#        `column_name` invece contiene sempre e solo un nome di colonna: su un
+#        23502 e' il campo mancante, che e' proprio cio' che serve. Non c'e'
+#        nessun secondo significato da cui difendersi.
+#
+#        ⚠️ Il nome e' quello della COLONNA. Nella quasi totalita' dei casi
+#        coincide con la chiave del payload; dove il service rinomina, il client
+#        non trovera' l'input e non evidenziera' nulla — inerte, non sbagliato.
+def structured_db_error_field(exc: BaseException) -> str | None:
+    cause = getattr(exc, "__cause__", None)
+    diag = getattr(cause, "diag", None)
+    # `or None`: come per il codice, un campo che nasce da un'espressione NULL
+    # arriva come stringa vuota.
+    nome = getattr(diag, "column_name", None) or None
+    if nome is None or not _COLUMN_RE.match(nome):
+        return None
+    return nome
+
+
 # Scopo: Cerca un codice applicativo `E_*` nel testo dell'eccezione (ripiego
 #        storico, valido per i RAISE diretti che non passano dall'helper).
 def app_error_code_from_text(message: str) -> str | None:
