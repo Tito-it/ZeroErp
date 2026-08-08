@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 689, di cui 79 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 690, di cui 79 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -824,6 +824,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_TIPO_RUOLO_NON_TROVATO": "NON_TROVATO",
     # <- E_AI_CONFIRMATION_REQUIRED RIMOSSO il 2026-08-06 (audit coerenza · status). Non lo sollevava nessuno — ne' Python, ne' Vue, ne' il · database — e il motivo e' che il flusso di conferma dei tool in · scrittura ha scelto un'altra strada, migliore: `ai_assistant_service` · restituisce **200 con `requires_confirmation` nel payload**. Una · conferma richiesta non e' un errore HTTP. · ⚠️ E il 428 non c'entrava comunque: RFC 6585 lo definisce come «la · richiesta deve essere condizionale» (`If-Match`, per non perdere · aggiornamenti concorrenti), non «l'utente deve confermare». · Se un giorno servisse davvero un errore per questo caso, i due · presidi lo pretenderanno dichiarato: si riparte da qui, non dal 428. · --- Autenticazione: token, email, invito, cambio/reset password ---
     "E_TOKEN": "DATO_ERRATO",
+    # Trigger montato con argomenti sbagliati (TG_NARGS, o TG_ARGV che nomina colonne non castabili). E' un difetto di MONTAGGIO: se ne accorge chi installa il trigger, mai l'operatore. Scorporato da E_ERRORE_PARAMETRI il 2026-08-08 (3 punti su 13 che dicevano 400 dove serve 500). Precedente: E_ATTIVO_REQUIRE.
+    "E_TRIGGER_ARGOMENTI_INVALIDI": "TECNICO",
     "E_TX_ID": "TECNICO",
     # Passava da fn_log_error_only con fallback locale: non raggiungeva mai il client. Prefisso E_ storico, non sollevava.
     # ⚠️ RITIRATO il 2026-08-07
