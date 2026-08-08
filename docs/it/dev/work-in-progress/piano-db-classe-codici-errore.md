@@ -1161,28 +1161,96 @@ E costa **mettere mano al controllo (B)**, l'unica cosa che tiene la convenzione
 altrui (leggeva `pg_proc` mentre le misure file-based non vedevano `shop`).
 *Non si riscrive un presidio verde per rimuovere un no-op.*
 
-⭐ **La ragione che conta è però un'altra, ed è storica di questo repo.** La
-convenzione **è già stata allargata una volta**, da `^E_` a `^[EW]_` per far
-posto ai warning (`20260805-28`, sta nel commento del guardrail). Alla prossima
-eccezione legittima, con un registro c'è una riga datata che qualcuno legge;
-senza, l'unico posto dove atterra è **la regex**.
+La seconda ragione è che il **meccanismo serve alla prossima eredità**. Il
+progetto ne ha già assorbita una — 57 codici il 2026-08-05 — e ne assorbirà
+altre; ricostruire tabella + CHECK + due controlli sotto la pressione di
+un'importazione è il momento in cui li si costruisce male.
 
-> Una riga in un registro è una dichiarazione. Un carattere in una regex è
-> un'erosione.
+#### 🔴 Correzione: la prima versione di questo paragrafo diceva una cosa falsa
 
-⚠️ **Due cose le impediscono oggi di fare quel mestiere, e vanno fatte allora,
-non adesso:**
+Qui c'era scritto che il registro serve come **valvola per le eccezioni
+legittime**, con la formula *«una riga in un registro è una dichiarazione, un
+carattere in una regex è un'erosione»*. **Suona bene ed è sbagliata**, e a
+smentirla è l'unico caso reale che questo repo abbia prodotto.
 
-* **non ha una colonna `motivo`** — registra `codice` e `data_registrazione`,
-  cioè *chi* e *quando*, non *perché*. Con 57 righe di debito omogeneo la ragione
-  era una sola e stava nel changeSet; per un'eccezione singola non lo sarebbe;
-* **il messaggio del controllo (B) dichiara quella strada chiusa**: «è per il
-  debito ereditato del 2026-08-05, NON per i codici nuovi».
+L'unica eccezione vera mai arrivata è la famiglia `W_` dei warning. **Non è stata
+registrata: è stata allargata la convenzione** (`20260805-28`), ed era la scelta
+giusta — la ragione sta nel guardrail stesso: *«allargare la convenzione ai
+warning evita di rinominarli in `E_` per far tornare un conteggio, facendogli
+dire una cosa falsa»*.
 
-Costruirle adesso sarebbe anticipare un consumatore che non esiste — la stessa
-regola già applicata altrove nel progetto (generalizzazione rinviata al secondo
-consumatore). La tabella vuota costa zero manutenzione: il CHECK
-`chk_..._non_conforme` le impedisce perfino di riempirsi di codici conformi.
+⭐ **Le tre strade sono distinte, e confonderle è il difetto:**
+
+| Cosa arriva | Dove va | Perché |
+|---|---|---|
+| una **famiglia** nuova con una semantica sua (`W_`) | si **allarga la regola** | una famiglia dentro un registro di eccezioni si perde |
+| un codice **ereditato** da fuori, già storto | **il registro** | è debito: ha una data e deve calare |
+| un codice **nuovo** nato storto | si **corregge prima del merge** | non è debito, è un difetto |
+
+Il registro è il **contenitore della seconda riga**, non della prima. Trattarlo
+da valvola lo trasformerebbe da registro di debito in whitelist permanente — cioè
+nel suo contrario.
+
+**Conseguenze dirette sui due dubbi che erano rimasti aperti:**
+
+* ⛔ **la colonna `motivo` non si fa**, e ora la ragione è più forte del semplice
+  «non anticipare»: risponderebbe a *«perché questa eccezione è legittima»*, che è
+  la domanda del caso che **non passa di qui**. Per il debito la colonna che serve
+  c'è già ed è `data_registrazione`, l'orologio che fa vedere se invecchia;
+* ✅ **il messaggio del controllo (B) è corretto** dove dice «per il debito
+  ereditato, NON per i codici nuovi». L'allarme che avevo sollevato era infondato.
+
+### 5.5-bis ⭐ Nel controllo (B) c'era però un difetto vero — la ragione era scaduta
+
+Non nella regola: nella **giustificazione**. Il messaggio spiegava perché la
+convenzione conta così:
+
+> *«Un codice senza prefisso `E_` arriva al backend ma non trova policy … tutto
+> il resto cade su `E_GENERICO`, cioè HTTP 500.»*
+
+⛔ **Dal 2026-08-07 non è più vero.** Letto `ErrorPolicyRegistry.resolve`: cerca
+**prima** il nome esatto in `CLASSE_PER_CODICE`, e dal passo B-5 quel dizionario è
+**generato dal catalogo** — tutti i 689 codici, non conformi compresi. Il ripiego
+`startswith("E_")` scatta **solo** per i codici che lì non ci sono. Un codice non
+conforme ma a catalogo oggi risolve correttamente.
+
+**La regola resta, con una ragione più stretta e più precisa** — riscritta nel
+guardrail:
+
+1. **la finestra** — fra il migrate che crea il codice e il commit con cui il BE
+   rigenera, il codice non è nel dizionario, e lì a decidere 400 invece di 500
+   resta il prefisso. È un intervallo reale, non teorico;
+2. **la separazione `E_`/`W_`** — i warning si scrivono nel diario e non si
+   sollevano; è il controllo (E).
+
+⚠️ **Ed è la stessa malattia contro cui è costruito tutto questo cantiere: la
+regola tiene, la ragione marcisce.** Chi domani verifica quella spiegazione la
+trova falsa e ne conclude che il presidio è sbagliato — poi lo disattiva, in
+buona fede. Una giustificazione scaduta dentro un presidio è pericolosa quanto
+un presidio assente, perché insegna una cosa falsa a chi si fida.
+
+Aggiunta anche **la terza strada** al messaggio, che prima non c'era: se quello
+che hai davanti è una *famiglia* e non un'eccezione, si allarga la convenzione.
+
+### 5.5-ter ✅ La decisione entra nella tabella — `20260808-02`
+
+⚠️ Il `COMMENT ON TABLE` diceva ancora **«Sono 57, tutti a seed e in uso su 77
+call site»**. Sono zero dal 2026-08-07.
+
+Non è cosmesi: il COMMENT è **l'unico posto che parla a chi guarda la tabella**.
+La decisione «non si droppa» viveva in api.md e in questo piano — due documenti
+che chi apre `\d+ dbops.messaggi_errore_codici_legacy` non sta leggendo. Una
+tabella vuota, con «legacy» nel nome e un COMMENT che descrive un debito
+inesistente, è esattamente la forma che invita a droppare per pulizia.
+
+[`20260808-02`](../../../../db/changelog/migrations_v2/00_schema/dbops/20260808-02-comment-messaggi-errore-codici-legacy-mctit.yaml)
+ci porta dentro lo stato vero, il divieto di drop con le sue ragioni, le tre
+strade e il perché non c'è una colonna `motivo`. Solo COMMENT: nessun cambio di
+struttura, dati o vincoli.
+
+La tabella vuota costa zero manutenzione, e il CHECK `chk_..._non_conforme` le
+impedisce perfino di riempirsi di codici conformi — cioè di essere usata per un
+mestiere che non è il suo.
 
 ✅ **api.md corretta** (§ *codici fuori convenzione*): la riga «a zero righe la
 tabella si droppa» è stata sostituita dalla decisione e dalle sue ragioni.
@@ -1204,3 +1272,44 @@ Nessun passo D-* è aperto. Le cose viste passando, ognuna una slice sua:
   non si droppa (§5.5);
 * **B-7 lato BE, per metà** — l'altra metà l'hanno già chiusa e nasce in pari
   (0 punti di chiamata su 213 nominano un codice ritirato).
+
+### 5.7 🔴 Arrivata dal BE: `E_ERRORE_PARAMETRI` — **perimetro DB**
+
+Push del 2026-08-08 (`9c54ca5fa`), §10 del piano BE. Hanno incrociato la
+**classe** (catalogo) con la **famiglia della guardia** (la vista D-10) — due
+letture indipendenti dello stesso codice — e il risultato è il primo presidio mai
+avuto sulla domanda *«la classe è ancora vera?»*.
+
+⭐ **Nei limiti del misurabile la risposta è sì**, con una sola eccezione, e va
+letta col denominatore: **75 codici classificabili su 344**, gli altri 269 sono
+`solo_ignoto` — la vista dice di non sapere. «Zero contraddizioni» vale su un
+quinto del perimetro.
+
+L'eccezione è **`E_ERRORE_PARAMETRI`: 4 punti su 13 dicono il falso.**
+
+| Condizione al punto che solleva | Punti | Classe vera |
+|---|---:|---|
+| guardia di parametro (`IS NULL`, `<= 0`, `btrim = ''`, `NOT IN`) | 9 | `DATO_ERRATO` ✅ |
+| `TG_NARGS` sbagliato — **il trigger è montato male** | 2 | `TECNICO` |
+| `EXCEPTION WHEN OTHERS` in `trgfn_guard_utility_tipo_ruolo_by_cols` | 1 | `TECNICO` |
+| `v_stato_chiuso_id IS NULL` in `fn_subentro_cliente` — **non è un parametro**, è una configurazione mancante | 1 | `TECNICO` |
+
+⚠️ Su quei 4 punti l'operatore riceve oggi un **400** che gli dice che ha
+sbagliato lui, e lo manda a cercare un campo che non esiste.
+
+**Non è da riclassificare, è da spezzare**, e i tre precedenti sono già decisi qui
+dentro — il che rende il verdetto meccanico invece che opinabile:
+`E_ATTIVO_REQUIRE` è 500 per «montaggio sbagliato»; `E_SNAPSHOT_ID_NOT_FOUND` è
+stato spostato a 500 proprio per l'`EXCEPTION WHEN OTHERS`;
+`E_REGOLA_FATTURAZIONE_MANCANTE` e `E_PIPELINE_NOT_FOUND` sono 500 col criterio
+«chi può rimediare».
+
+🔴 **È lavoro nostro**: codici nuovi a catalogo + quattro funzioni da toccare. Il
+BE non ha nulla da cambiare — prende la classe dal catalogo e i codici nuovi
+arrivano col generatore. **Slice a sé, non coda di questo piano.**
+
+⭐ La cosa che vale oltre il singolo codice: `E_VALIDAZIONE` *sembrava* un
+accumulatore e non lo era, `E_ERRORE_PARAMETRI` non era fra i sospetti e lo è.
+Entrambe le volte la risposta è venuta dal **contare le condizioni**, non dal
+guardare i nomi — ed è esattamente il mestiere per cui il D-10 è stato
+ri-specificato dopo che l'asse dei domini si era rivelato sbagliato.
