@@ -3,7 +3,7 @@
 **Chi:** team BE (`dev/backend-tid`).
 **Guida generale e ragioni di ogni scelta:** [brief-db-be-classe-codici-errore](brief-db-be-classe-codici-errore.md) — 18 decisioni, le misure, i perché. **Questo file non le ripete: le esegue.**
 **Piano gemello:** [piano-db-classe-codici-errore](piano-db-classe-codici-errore.md).
-**Stato:** 🟢 **B-1 → B-6 FATTI** (2026-08-07). Il D-9 è arrivato in serata e il generatore è in servizio: `error_policies_generated.py` **non si scrive più a mano** (§9). 🟡 Resta il B-7, per metà (§9.4).
+**Stato:** 🟢 **B-1 → B-6 FATTI** (2026-08-07). Il D-9 è arrivato in serata e il generatore è in servizio: `error_policies_generated.py` **non si scrive più a mano** (§9). 🔴 Il **B-7 resta aperto per intero**, ed è quasi tutto DB (§11).
 
 > **Verifica dell'equivalenza, prima di tutto il resto.** I **656** codici che
 > restano una risposta HTTP risolvono **identici** a prima — stesso status,
@@ -61,7 +61,7 @@ consegna. Prima di quello il generatore non ha da cui generare.
 | **B-4** | La mappa **classe → HTTP** (8 righe) + derivazione dello status | B-3 | piccolo | ✅ 2026-08-07 |
 | **B-5** | Il **generatore** di `error_policies_generated.py` | ✅ DB **D-9** consegnato | medio | ✅ 2026-08-07 |
 | **B-6** | Il **controllo di divergenza** in CI | B-5 | piccolo | ✅ 2026-08-07 |
-| **B-7** | La regola «niente nuovi codici generici» | B-6 | coda | 🟡 metà fatta (§9.4) |
+| **B-7** | La regola «niente nuovi codici generici» | B-6 | coda | 🔴 **aperto** — e quasi tutto DB (§11) |
 
 **Cosa esiste ora, in quattro file** (`backend/apps/core/services/`):
 
@@ -340,10 +340,21 @@ registrarli a mano.
 > migrate su DB ricostruito — e aggiunto 2 righe inesistenti. Serviva la sua
 > **terza colonna**, e quella è arrivata intera.
 >
-> 🔴 **Conseguenza: `allegati/codici-errore-classe-note.csv` è servito e ora è un
-> secondo elenco.** Il suo contenuto vive a catalogo, che fa fede. Va **tolto dal
-> repo** — richiesta a Tid, non lo cancello da solo. Il seed vero è
-> `db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`.
+> ✅ **`allegati/codici-errore-classe-note.csv` RESTA** — decisione di Tid,
+> 2026-08-08. Avevo proposto di toglierlo come «secondo elenco»: la proposta era
+> sbagliata, ed è utile sapere perché.
+>
+> **Non è un secondo elenco: è un allegato di consegna.** Un secondo elenco è
+> qualcosa da cui il software legge, e che quindi può divergere in silenzio —
+> questo non lo legge nessun programma. È la **prova di cosa è stato consegnato
+> al DB e in che forma**, e i due piani lo citano come tale (il piano DB al
+> D-2-bis, questo file qui e al §6.2).
+>
+> ⚠️ **La fonte di verità resta una sola e non è questa**:
+> `db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`, presidiata
+> dai due ponti del §8.3. L'allegato non entra in nessun confronto: se un domani
+> divergerà dal catalogo non sarà un difetto, sarà solo un documento che
+> fotografa il 2026-08-07.
 
 ### 5.1 🔴 **La sorgente del passo D-1 è cambiata sotto i piedi**
 
@@ -689,9 +700,10 @@ La domanda «questo codice si può usare?» si fa su **`CODICI_RITIRATI`** — e
 stessa intenzione detta più forte: non «l'abbiamo dimenticato», ma «l'abbiamo
 deciso», con la decisione in un dato invece che in un'assenza.
 
-⭐ **Da lì è nato il verso nuovo del guardrail dei punti di chiamata** (metà del
-B-7, quella che si poteva chiudere): *nessun punto di chiamata deve nominare un
-codice ritirato*. È diventato calcolabile solo adesso — prima del B-5 il backend
+⭐ **Da lì è nato un verso nuovo del guardrail dei punti di chiamata**: *nessun
+punto di chiamata deve nominare un codice ritirato*. ⚠️ **Non è il B-7 né una
+sua metà** — l'avevo scritto e non regge: il B-7 vieta i codici **generici**,
+questo presidia i codici **ritirati**, che è un'altra proprietà (§11). È diventato calcolabile solo adesso — prima del B-5 il backend
 non sapeva quali codici fossero ritirati, perché `obsoleto_dal` viveva solo lato
 DB. **Misurato alla nascita: 0 su 213 codici usati.** Nasce in pari.
 
@@ -818,3 +830,154 @@ arrivano col generatore.
 > sospetti e lo è. Entrambe le volte la risposta è venuta dal **contare le
 > condizioni**, non dal guardare i nomi — e la seconda volta l'ha trovata una
 > misura invece di una persona.
+
+---
+
+## 11. ⚠️ Il B-7, e una mia etichetta sbagliata (2026-08-08)
+
+Avevo scritto che il B-7 era «per metà fatto», e che la metà chiusa era il verso
+nuovo del guardrail — *nessun punto di chiamata usa un codice ritirato*, misurato
+**0 su 213**.
+
+**Il numero è vero, l'etichetta no.** Il B-7 vieta i codici **generici**; quel
+presidio riguarda i codici **ritirati**. Sono due proprietà diverse, e vietare
+l'uso dei ritirati non chiude il rubinetto dei generici: un codice appena nato
+può essere genericissimo e non è ritirato.
+
+**Quindi il B-7 è aperto per intero**, e il presidio sui ritirati è un presidio
+in più — buono, ma suo.
+
+### 11.1 E il B-7 lato BE è quasi vuoto — vale la pena dirlo
+
+La regola è *«un codice nuovo non deve coprire più condizioni»*. Il fatto che la
+decide è la **forma della guardia al punto che solleva**, e quei punti stanno in
+PL/pgSQL: il backend non li vede e non li crea. Il rubinetto si chiude **dove il
+codice nasce**, cioè al catalogo.
+
+Il contributo del BE al B-7 c'è, ma è **il criterio, non un cancello**: *si
+contano le condizioni, non i domini* — ora scritto in
+[api.md §Tassonomia](../api.md), dove lo legge chi sta per aggiungere un codice.
+Il cancello vero è la misura del DB (D-10), che quel criterio lo calcola.
+
+⚠️ **Quello che il BE può ancora fare, se si decide che serve**, è un verso in
+più sul guardrail dei punti di chiamata: *un codice nominato da più di N punti
+Python diversi è un candidato*. Ma sarebbe la misura debole — quella per
+**domini**, appena smentita — applicata al backend invece che al DB. **Meglio
+niente che una misura che sbaglia sul suo caso più noto.**
+
+---
+
+## 12. 🔵 `ui_action` — analisi per la decisione (2026-08-08)
+
+> **Stato: non è lavoro in corso, è un'analisi.** Serve a decidere se
+> `ui_action` si implementa o resta un contratto dormiente, e — se si fa — a non
+> cominciare dalla parte sbagliata. **Contiene anche la parte DB**, perché il
+> disegno non si può decidere per metà.
+
+### 12.1 Il fatto, in tre righe
+
+Il backend, con ogni errore, manda un suggerimento su come la pagina dovrebbe
+reagire: banner, campo evidenziato, stato vuoto, toast, ritorno al login.
+**Il frontend non lo legge** (§8.4): mostra il messaggio in un toast, sempre
+uguale per tutti i 689 codici. Le uniche differenze le fa lo **status** — ≥ 500
+toast più lungo, 401 rifare il login, 401/403 il polling si ferma.
+
+### 12.2 ⭐ Il buco vero non è il frontend: è che **non si dice quale campo**
+
+Il valore che porterebbe il guadagno è `highlight_form_fields` — *«evidenzia il
+campo sbagliato»* — e sono **125 codici**. Ma nell'envelope **non c'è il nome del
+campo**: ci sono `code`, `message`, `detail`, `hint`, `ui_action`, e basta.
+
+Quindi anche se il frontend leggesse `ui_action` **oggi non saprebbe cosa
+evidenziare**. Implementare `ui_action` senza chiudere questo buco non produce
+niente.
+
+⚠️ **E non è un buco solo: sono due, di dimensione molto diversa.**
+
+| Dove nasce l'errore | Codici `highlight_form_fields` | Il nome del campo… |
+|---|---:|---|
+| **codice Python** | **42** | ⭐ **c'è già** — e viene buttato via |
+| **funzione PL/pgSQL** | **83** | manca davvero |
+
+### 12.3 Lato backend: il dato **esiste già** e si perde nell'ultimo passo
+
+`ServiceError` porta un `context`, e **497 punti di chiamata lo valorizzano già**
+con `{campo: valore}` — i validator centralizzati lo fanno per costruzione
+(`guard_positive_int`, `guard_non_empty_string`, …). Il dato viaggia fino
+all'eccezione.
+
+Poi `ErrorTranslator.to_api_error` costruisce l'`ApiError` **senza `context`**:
+la dataclass quel campo non ce l'ha. Si perde a un passo dall'uscita.
+
+⚠️ **Una cautela, ed è l'unica cosa non meccanica di questo pezzo:** nel
+`context` ci sono anche i **valori** (`{"partita_iva": "12345678901"}`), che sono
+dati del cliente. Nell'envelope vanno le **chiavi**, non i valori — il valore
+l'operatore ce l'ha già davanti, è quello che ha scritto lui.
+
+### 12.4 Lato DB: il trasporto **esiste già nel protocollo**, e non lo usa nessuno
+
+`script.fn_log_and_raise_error` riceve **anche lei** un contesto `jsonb` (es.
+`jsonb_build_object('codice id_cliente', v_codice_chiuso)`) — ma quel contesto
+finisce in `dbops.error_log`, **non nell'eccezione**. Cioè: entrambi i lati
+raccolgono già il campo, nessuno dei due lo trasmette.
+
+⭐ **E non serve inventare un canale nuovo.** `RAISE` di PostgreSQL ha già le
+opzioni strutturate `COLUMN`, `TABLE`, `SCHEMA`, `DATATYPE`, `CONSTRAINT`, e
+psycopg le espone tutte (`diag.column_name`, `diag.table_name`, …). **Verificato
+su psycopg 3.3.4.**
+
+È esattamente il meccanismo che questo progetto **usa già**: dal 2026-08-05 il
+codice errore viaggia in `CONSTRAINT` e lo legge `db_error_fields.py`. Il nome
+del campo viaggerebbe in `COLUMN`, letto dallo **stesso modulo**, che resta il
+punto unico di lettura.
+
+```sql
+-- lato DB: una opzione in piu' sul RAISE, nessun parametro nuovo da inventare
+RAISE EXCEPTION '%', v_messaggio
+  USING ERRCODE = 'P0001', CONSTRAINT = p_error_code, COLUMN = 'partita_iva';
+```
+
+⚠️ **Il contratto va scritto prima di usarlo**, come si è fatto per `CONSTRAINT`:
+*«`P0001` + `COLUMN` valorizzato = il campo che l'operatore deve correggere»*, e
+un guardrail che verifichi che nessun altro `RAISE` scriva `COLUMN` per altro.
+Un secondo mittente sullo stesso canale non farebbe fallire niente: farebbe
+**evidenziare il campo sbagliato**, che è peggio di non evidenziarne nessuno.
+
+### 12.5 🔴 L'ordine — e **no, il DB non viene prima**
+
+La domanda naturale è «prima si aggiornano loro?». **No, e farlo sarebbe
+l'errore.** Toccare 83 punti PL/pgSQL *prima* di sapere se a video il guadagno si
+sente è esattamente il modo di lavorare che questo cantiere ha evitato tre volte:
+si misura, poi si costruisce.
+
+| # | Passo | Chi | Perché lì |
+|---|---|---|---|
+| **1** | il `context` (solo le **chiavi**) entra nell'envelope | **BE** | il dato c'è già, non dipende da nessuno, sblocca 42 codici |
+| **2** | il frontend legge `ui_action` + i campi **su un dominio solo** | **FE** | è il pilota: dice se il guadagno si sente davvero |
+| **3** | ⏸️ decisione: si estende o ci si ferma | **Tid** | dopo il 2, con una cosa vista invece che immaginata |
+| **4** | `USING COLUMN` sui punti che servono | **DB** | 83 punti: si fanno **se** il 3 dice di sì, e solo quelli dei domini toccati |
+
+⚠️ **Una cosa sola va decisa insieme e SUBITO, prima del passo 1**: la **forma
+del campo nell'envelope**. Se il BE sceglie una chiave e il DB un domani ne
+manda un'altra, il frontend deve leggere due formati — ed è il difetto di questo
+intero filone, in miniatura. La proposta: **una sola chiave**, valorizzata dai
+due lati con la stessa semantica.
+
+> Quindi il DB non è «prima»: è **secondo**, con **una decisione condivisa in
+> testa**. Ed è utile che sappiano da adesso che il loro pezzo, se si farà, è
+> `USING COLUMN` e non un parametro nuovo di `fn_log_and_raise_error`.
+
+### 12.6 Se invece resta dormiente
+
+Tenerlo costa **zero** — è già scritto e viaggia. Ma una regola va detta,
+perché è la parte che costa se la si dimentica:
+
+⛔ **Non spendere tempo a scegliere la `ui_action` dei codici nuovi.** Il default
+della classe va bene. Finché il frontend non la legge, ragionarci sopra è lavoro
+che non produce niente — ed è già successo: i **117 contro 117** su
+`DATO_ERRATO` sono stati discussi a lungo, misurati due volte e scritti in tre
+documenti, per un campo che nessuno guarda.
+
+⚠️ E il giorno in cui si accende, quelle **176 righe di override vanno rilette
+prima**, non dopo: sono decisioni prese quando nessuno poteva verificarle a
+video.
