@@ -68,7 +68,7 @@ const props = defineProps({
 
 const emit = defineEmits(['update:visible', 'saved'])
 const { t, te } = useI18n()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const notify = useNotify()
 const { confirmAction } = useConfirmAction()
 const onClose = useDrawerClose(emit)
@@ -829,6 +829,7 @@ const drawerActions = computed(() => [
           :min-fraction-digits="2"
           :max-fraction-digits="10"
           fluid
+          :invalid="campiErrati.includes('importo')"
         />
       </div>
       <div class="form-field">
@@ -852,7 +853,8 @@ const drawerActions = computed(() => [
       </div>
       <div class="form-field">
         <label>{{ t('vendite.commesse.onere_motivo') }}</label>
-        <Textarea v-model="onereForm.motivo" rows="2" fluid />
+        <Textarea v-model="onereForm.motivo" rows="2" fluid
+          :invalid="campiErrati.includes('motivo')" />
       </div>
     </AppDialog>
   </Drawer>

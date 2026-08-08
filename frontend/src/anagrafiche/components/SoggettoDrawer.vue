@@ -377,6 +377,7 @@ async function handleSave() {
           <h4>{{ t('anagrafiche.soggetti.section_contatto') }}</h4>
         </div>
         <ContattoForm
+          :campi-errati="campiErrati"
           :form="contatto.form"
           :tipi-contatto="contatto.tipiContatto"
           :unita-organizzative="contatto.unitaOrganizzative"

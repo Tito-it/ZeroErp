@@ -13,6 +13,9 @@ import { useStepFigliCollection } from '../composables/useStepFigliCollection'
 import CollectionEditorPanel from './CollectionEditorPanel.vue'
 
 const props = defineProps({
+  // Campi che il BACKEND indica come da correggere (envelope `error.fields`).
+  // Arrivano dal padre: questo componente non chiama le API da solo.
+  campiErrati: { type: Array, default: () => [] },
   definizioneId: { type: Number, required: true },
   stepId: { type: Number, required: true },
   rows: { type: Array, default: () => [] },
@@ -111,7 +114,8 @@ function onSave() {
       </div>
       <div class="form-field form-field--toggle">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_attivo') }}</label>
-        <ToggleSwitch v-model="form.attivo" />
+        <ToggleSwitch v-model="form.attivo"
+        :invalid="campiErrati.includes('attivo')" />
       </div>
     </template>
   </CollectionEditorPanel>

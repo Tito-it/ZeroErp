@@ -463,11 +463,13 @@ async function confirmPubblica() {
         </Message>
         <div class="form-field">
           <label>{{ t('config.modelli_documenti.versioni.field_valido_dal') }} *</label>
-          <DatePicker v-model="pubblicaForm.valido_dal" date-format="dd/mm/yy" />
+          <DatePicker v-model="pubblicaForm.valido_dal" date-format="dd/mm/yy"
+            :invalid="campiErrati.includes('valido_dal')" />
         </div>
         <div class="form-field">
           <label>{{ t('config.modelli_documenti.versioni.field_valido_al') }}</label>
-          <DatePicker v-model="pubblicaForm.valido_al" date-format="dd/mm/yy" show-icon />
+          <DatePicker v-model="pubblicaForm.valido_al" date-format="dd/mm/yy" show-icon
+            :invalid="campiErrati.includes('valido_al')" />
         </div>
       </div>
     </AppDialog>

@@ -53,7 +53,7 @@ import Divider from 'primevue/divider'
 
 const { t, te } = useI18n()
 const store = useDdtStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const notify = useNotify()
 const { confirmAction } = useConfirmAction()
 
@@ -610,7 +610,8 @@ const drawerActions = computed(() => {
       <Divider v-if="hasDetail" />
 
       <!-- Form testata: monta dopo l'animazione drawer per evitare rimbalzo lookup. -->
-      <DdtForm v-if="contentReady"
+      <DdtForm
+        :campi-errati="campiErrati" v-if="contentReady"
         :form="form" :is-modificabile="canEditTestataEffective && !isReadonly"
         :non-editable-fields="nonEditableFields"
         :record="detail"

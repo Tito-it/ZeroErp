@@ -14,6 +14,9 @@ const { t } = useI18n()
 const form = defineModel('form', { type: Object, required: true })
 
 defineProps({
+  // Campi che il BACKEND indica come da correggere (envelope `error.fields`).
+  // Arrivano dal padre: questo componente non chiama le API da solo.
+  campiErrati: { type: Array, default: () => [] },
   isModificabile: { type: Boolean, default: true },
   // Detail testata (vw_resi_lista) per i display denormalizzati.
   record: { type: Object, default: null },
@@ -34,7 +37,8 @@ defineProps({
       </div>
       <div class="form-field">
         <label>{{ t('vendite.resi.field_data') }}</label>
-        <DatePicker v-model="form.data" :date-format="DATE_FORMAT"
+        <DatePicker v-model="form.data"
+        :invalid="campiErrati.includes('data')" :date-format="DATE_FORMAT"
           show-icon show-button-bar :disabled="!isModificabile" />
       </div>
     </div>

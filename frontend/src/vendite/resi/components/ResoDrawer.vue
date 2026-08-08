@@ -38,7 +38,7 @@ import ResoRiconsegnaDialog from './dialogs/ResoRiconsegnaDialog.vue'
 
 const { t, te } = useI18n()
 const store = useResiStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const notify = useNotify()
 const { confirmAction } = useConfirmAction()
 
@@ -272,7 +272,8 @@ async function onCoperturaRiconsegnaCambiata() {
       <Divider v-if="hasDetail" />
 
       <!-- Form testata (data editabile in DRAFT, resto display). -->
-      <ResoForm v-if="contentReady && hasDetail"
+      <ResoForm
+        :campi-errati="campiErrati" v-if="contentReady && hasDetail"
         :form="form"
         :is-modificabile="canEditTestata && !isReadonly"
         :record="detail" />
