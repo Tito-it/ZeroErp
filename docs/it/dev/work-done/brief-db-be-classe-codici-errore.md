@@ -4,7 +4,7 @@
 **Origine:** domanda di Tid alla chiusura di
 [brief-db-be-terzo-lato-presidio-codici](../work-done/brief-db-be-terzo-lato-presidio-codici.md):
 *«come evitare che si ripeta? La messaggistica si era trasformata in un bugiardino.»*
-**Stato:** 🟢 **COSTRUITO E IN SERVIZIO** (2026-08-08) — disegno chiuso (35 decisioni, §14), **DB D-1→D-10 chiuso**, **BE B-1→B-6 chiuso**. In giornata è nato e si è chiuso un capitolo non previsto: `ui_action` non è più un contratto dormiente — il campo sbagliato si accende davvero (§8.5). ✅ **E il B-7 è chiuso** (D33): il rubinetto degli accumulatori esiste, gira in CI e il suo rosso è stato provato. Il cantiere è in servizio: il catalogo ha 689 codici tutti con una classe, e `error_policies_generated.py` è generato dal database. Stato dettagliato nel §13.1; l'esecuzione vive nei [due piani](piano-db-classe-codici-errore.md).
+**Stato:** 🟢 **COSTRUITO E IN SERVIZIO** (2026-08-08) — disegno chiuso (35 decisioni, §14), **DB D-1→D-10 chiuso**, **BE B-1→B-6 chiuso**. In giornata è nato e si è chiuso un capitolo non previsto: `ui_action` non è più un contratto dormiente — il campo sbagliato si accende davvero (§8.5). ✅ **E il B-7 è chiuso** (D33): il rubinetto degli accumulatori esiste, gira in CI e il suo rosso è stato provato. Il cantiere è in servizio: il catalogo ha tutti i suoi codici con una classe, e `error_policies_generated.py` è generato dal database. Stato dettagliato nel §13.1; l'esecuzione vive nei [due piani](piano-db-classe-codici-errore.md).
 **Perimetro:** tabelle + vocabolario + seed lato DB · generatore di `error_policies.py` e mappa classe→HTTP lato BE.
 **Ruolo di questo file:** **guida generale** — le ragioni, le misure, le decisioni. L'esecuzione sta nei due piani operativi (§13).
 
@@ -772,6 +772,51 @@ sostituzione ancorata applicata da script + **diff verificato additivo** prima d
 scrivere il changeSet. Sono guard di integrità: una svista non si vede in review,
 si vede su un dato sbagliato.
 
+### 8.6 ⭐ La classe dei sei `*_EMITTENTE_BA_INCOERENTE` — 2026-08-09
+
+Sei guardie identiche, **due combinazioni incrociate**: i cinque documenti
+principali erano `CONFLITTO_STATO` (409) con `ui_action = highlight_form_fields`,
+il reso `DATO_ERRATO` (400) con banner. api.md ne ammette solo due:
+
+| | |
+|---|---|
+| **409 · banner** | l'operatore non ha un campo da correggere |
+| **400 · highlight** | il valore l'ha scelto lui, in un form |
+
+**Decide la seconda**, e per una ragione che regge da sola: *«hai scelto un
+emittente che non corrisponde al billing account»* è **un valore sbagliato in un
+campo scelto dall'operatore**, non un conflitto di stato. `CONFLITTO_STATO`
+significa «non puoi farlo adesso», e non si ripara editando un campo.
+
+→ i cinque passano a `DATO_ERRATO` nel CSV di seed; il reso era già giusto e il
+BE ha allineato il suo `ui_action`.
+
+⚠️ **Una premessa del rilievo BE era falsa, e va detto perché la conclusione
+regge lo stesso.** Sostenevano che in update il servizio rifiuta prima
+(`_FORBIDDEN_TESTATA_UPDATE`), quindi il campo è editabile solo alla creazione.
+Verificato: quella costante esiste **solo in `contratti_service.py`**, e
+sull'**offerta** `emittente_fiscale_id` è esplicitamente in
+`_UPDATE_KEYS_OFFERTA`, cioè **aggiornabile**.
+
+⭐ Il che rende la conclusione **più forte**: se il campo è editabile anche in
+update, `400 + highlight` è giusto in *entrambi* i percorsi, non solo perché
+l'update sarebbe irraggiungibile. La strada era sbagliata, la destinazione no.
+
+⚠️ Nessun test asseriva 409 su quei codici: gli unici riscontri erano nel file
+generato, che si rigenera.
+
+#### ⚠️ E un difetto che ho introdotto io, nella stessa modifica
+
+La ragione l'avevo scritta per intero nella colonna `note` di tutte e sei le
+righe. Ma **il generatore emette la `note` come commento sopra ogni codice**:
+554 caratteri × 6 = **3324 caratteri di commento duplicato** in
+`error_policies_generated.py`.
+
+> La `note` di un codice non è il posto dove sta il ragionamento: è un
+> **puntatore**. Il ragionamento sta qui, dove si legge una volta sola.
+
+Accorciata a 209 caratteri con il rimando a questo paragrafo.
+
 ---
 
 ## 9. Cosa **NON** risolve — detto prima, non dopo
@@ -1080,7 +1125,7 @@ filtro `includi_obsoleti` dell'API di catalogo non la tocca. Verificato.
 Con la FK vogliono un padre in `config.codici_errore`. È l'unico rosso **certo**
 della slice, ed è meglio elencarlo che scoprirlo:
 
-* [`test-messaggi-errore-obsoleto-dal.sql`](../../../../db/pgtap/script/test-messaggi-errore-obsoleto-dal.sql)
+* [`test-messaggi-errore-obsoleto-dal.sql`](../../../../db/pgtap/config/test-codici-errore-obsoleto-dal.sql)
   — ⚠️ questo va **riscritto**, non adattato: verifica una colonna che cambia casa;
 * [`test-fn-log-and-raise-error-fallback-lingua.sql`](../../../../db/pgtap/script/test-fn-log-and-raise-error-fallback-lingua.sql)
 * [`test-fn-log-and-raise-error-constraint-codice.sql`](../../../../db/pgtap/script/test-fn-log-and-raise-error-constraint-codice.sql)
@@ -1161,7 +1206,7 @@ dal **rifiuto legittimo**. Oggi non può: un 500 tecnico e un «non puoi annulla
 un ordine con DDT» sono la stessa riga con testo diverso.
 
 Sono due buchi aperti di
-[analisi-osservabilita-log](analisi-osservabilita-log.md):
+[analisi-osservabilita-log](../work-in-progress/analisi-osservabilita-log.md):
 
 * **B1** — *«il 67% di `error_log` non è attribuibile: qualunque strumento di
   consultazione mostra soprattutto rumore»*. Filtrare per `classe = 'TECNICO'`
@@ -1433,7 +1478,7 @@ un requisito che vive in due posti si dimentica in uno dei due.
   §3 — le alternative già pesate, incluso lo SQLSTATE custom
 * [api.md](../api.md) — §Tassonomia errori, gli status in uso, il denominatore sicuro
 * [Presidi e registri del debito](../../guide/presidi-e-registri-del-debito.md) §3.3
-* [analisi-osservabilita-log](analisi-osservabilita-log.md) — B1 e B7, §12
+* [analisi-osservabilita-log](../work-in-progress/analisi-osservabilita-log.md) — B1 e B7, §12
 * [`scripts/sql/guardrail_codice_errore_strutturato.sql`](../../../../scripts/sql/guardrail_codice_errore_strutturato.sql)
   — i controlli in servizio
 * [`scripts/sql/check_messaggio_vs_condizione.sql`](../../../../scripts/sql/check_messaggio_vs_condizione.sql)

@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # Policy indici per le due FK del cantiere «classe dei codici errore»
-#   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (D-7)
+#   Piano: docs/it/dev/work-done/piano-db-classe-codici-errore.md (D-7)
 #   FK: 20260807-12 (codici_errore -> classi_errore), 20260807-14 (messaggi_errore -> codici_errore)
 #
 # ── PERCHE' ESISTE UNA RIGA PER UN INDICE CHE NON SI VUOLE ──────────────

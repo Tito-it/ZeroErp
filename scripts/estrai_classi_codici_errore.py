@@ -6,7 +6,7 @@
 # Scopo: Bootstrap UNA TANTUM del seed `config.codici_errore` — estrae la
 #        classe di ogni codice errore dallo `http_status` gia' deciso in
 #        `error_policies.py` e la unisce a `obsoleto_dal` del catalogo.
-# Note: passo D-1 di docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md
+# Note: passo D-1 di docs/it/dev/work-done/piano-db-classe-codici-errore.md
 #
 #   🔴 NON GIRA PIU', E NON VA RIPARATO. Il 2026-08-07, poche ore dopo questa
 #   estrazione, il backend ha eseguito il proprio passo B-3: `error_policies.py`

@@ -25,7 +25,7 @@
 --   `NOT NULL` sarebbe un'etichetta rassicurante — la cosa peggiore, perche'
 --   nessuno la ricontrolla.
 --
---   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (D-8)
+--   Piano: docs/it/dev/work-done/piano-db-classe-codici-errore.md (D-8)
 --   Tabelle: 20260807-11, -12 · FK: 20260807-14
 -- ------------------------------------------------------------
 

@@ -1283,35 +1283,12 @@ Nessun passo D-* è aperto. Le cose viste passando, ognuna una slice sua:
     e precisa, al posto di una campagna vaga;
 * ~~il drop del registro legacy~~ — **chiuso come decisione, non come lavoro**:
   non si droppa (§5.5);
-* 🔴 **B-7 — aperto per INTERO, e non ha una metà BE.** Correzione del team BE
-  (2026-08-08), accolta: qui c'era scritto «per metà», ma il presidio che
-  avevamo contato come mezzo B-7 riguarda i **codici ritirati**, mentre il B-7
-  vieta i codici **generici**. Sono due proprietà diverse, e vietare i ritirati
-  non chiude niente del rubinetto dei generici — un codice appena nato può
-  essere genericissimo e non è certo ritirato. Il numero resta buono e utile
-  (**0 punti di chiamata su 213** nominano un codice ritirato), ma è un altro
-  presidio.
-
-  ⭐ **Ed è nostro, per una ragione strutturale**: la regola è «un codice nuovo
-  non deve coprire più condizioni», e il fatto che lo decide è **la forma della
-  guardia al punto che solleva** — che vive in PL/pgSQL. Il backend quei punti
-  non li vede e non li crea. Il rubinetto si chiude **dove il codice nasce**,
-  cioè al catalogo. Il contributo BE è il *criterio* (si contano le condizioni,
-  non i domini — ora in api.md §Tassonomia), non un cancello.
-
-  ⚠️ **E una conseguenza che va tratta adesso: il B-7 come «cancello» non è
-  costruibile nella forma in cui è scritto.** L'unico strumento che sa dire se
-  un codice è generico è la misura del D-10, che copre **75 codici su 344** e
-  che per progetto **non è un cancello** — un codice legittimamente trasversale
-  esiste (`E_PERMESSO_NEGATO`), e un cancello che lo bocciasse verrebbe
-  disattivato in una settimana. Un rubinetto costruito su una misura al 22%
-  boccerebbe a caso e passerebbe a caso.
-
-  Quindi il B-7 **va ri-specificato**, non solo riaperto. La forma che regge è
-  quella che stiamo già usando senza chiamarla così: **il criterio in api.md +
-  la misura all'apertura di ogni lotto**. Presidio umano con strumento, non
-  cancello automatico. Chi lo riprende parta da qui invece di riprovare il
-  cancello.
+* ✅ ~~B-7 — aperto per intero~~ — **CHIUSO il 2026-08-08** (§5.6-ter): non un
+  cancello sullo stato, ma un presidio sul **cambiamento**. Baseline
+  `codice → famiglie note` committata (76 codici) e controllo in CI. ⚠️ La
+  correzione BE resta valida e va ricordata: il presidio sui codici *ritirati*
+  non era mezzo B-7 — sono proprietà diverse — e il B-7 **non ha una metà BE**,
+  perché la genericità si legge dalla forma della guardia, che è PL/pgSQL.
 
 ### 5.6-ter ✅ **B-7 CHIUSO** — 2026-08-08 · il rubinetto degli accumulatori
 
@@ -1404,11 +1381,12 @@ aggiorna **con la ragione nel messaggio di commit**.
 
 ### 5.6-bis Aperti nati oggi dal filone `ui_action` (2026-08-08)
 
-* 🔴 **`E_RESO_EMITTENTE_BA_INCOERENTE` è l'unico dei sei** `%_guard_emittente_ba`
-  che lato BE **non** ha `ui_action = highlight_form_fields`. Sei guardie
-  identiche, uno classificato diverso: o sbagliano i cinque, o sbaglia lui.
-  ⚠️ **Perimetro BE** — il campo il DB lo manda comunque (`20260808-10`), così
-  il giorno che allineano funziona senza un altro changeSet;
+* ✅ ~~`E_RESO_EMITTENTE_BA_INCOERENTE` è l'unico dei sei~~ — **CHIUSO il
+  2026-08-09**, e in meglio di come era posta. Non era il reso a sbagliare: le
+  combinazioni incrociate erano **due**, e i cinque documenti principali erano
+  `CONFLITTO_STATO` + highlight. Ora tutti e sei sono `DATO_ERRATO` +
+  `highlight_form_fields` — classe nel CSV di seed lato DB, `ui_action`
+  allineata dal BE. Ragioni: brief §8.6;
 * 🟡 **163 punti `highlight` senza nome del campo**, in 106 funzioni — e **145
   non hanno nemmeno un contesto**, quindi non c'è più niente da derivare gratis
   come col `-05`. **Raccomandazione: non farli in blocco.** Si fanno *reattivi*,

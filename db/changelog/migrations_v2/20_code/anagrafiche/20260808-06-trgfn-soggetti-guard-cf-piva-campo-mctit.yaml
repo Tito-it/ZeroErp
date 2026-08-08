@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # `partita_iva` e `codice_fiscale` si accendono nel form — lotto anagrafiche 1/N
 #   Canale: 20260808-04 (COLUMN) + 20260808-05 (ripiego su `parametro`)
-#   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md §5.8
+#   Piano: docs/it/dev/work-done/piano-db-classe-codici-errore.md §5.8
 #
 # ── PERCHE' PROPRIO QUESTI DUE ─────────────────────────────────────────
 #   Dopo il -05 restano 34 punti scoperti in `anagrafiche`, e non sono tutti

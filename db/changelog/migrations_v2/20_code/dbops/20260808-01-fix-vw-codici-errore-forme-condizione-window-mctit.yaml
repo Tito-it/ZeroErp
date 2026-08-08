@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # `vw_codici_errore_forme_condizione` — da 2 minuti e 25 a 349 ms
 #   Sostituisce la versione del 20260807-18 (stessa vista, stesse colonne).
-#   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (D-10)
+#   Piano: docs/it/dev/work-done/piano-db-classe-codici-errore.md (D-10)
 #
 # ── 🔴 IL PROBLEMA: UNA MISURA CHE COSTA 2'25" NON SI GUARDA ───────────
 #   La prima versione ci metteva **145 secondi**, misurati sul database di

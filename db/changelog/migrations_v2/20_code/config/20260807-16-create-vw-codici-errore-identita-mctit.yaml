@@ -7,8 +7,8 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # `config.vw_codici_errore_identita` — la sorgente del generatore backend
-#   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (D-9)
-#   Guida: docs/it/dev/work-in-progress/brief-db-be-classe-codici-errore.md §14.4
+#   Piano: docs/it/dev/work-done/piano-db-classe-codici-errore.md (D-9)
+#   Guida: docs/it/dev/work-done/brief-db-be-classe-codici-errore.md §14.4
 #   Consumatore: il generatore di `error_policies_generated.py` (passo B-5 del BE).
 #
 # ── ⚠️ PERCHE' DUE VISTE E NON UNA ──────────────────────────────────────

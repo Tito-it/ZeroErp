@@ -868,7 +868,7 @@ dall'exception handler: `E_JWT_SENZA_IDENTITA`, `E_IDENTITA_NON_ATTIVA`,
 `E_AUTHENTICATION_FAILED`, `E_NOT_AUTHENTICATED` (401) e `E_AI_PROVIDER_ERROR`
 (502).
 
-> Perché tutto questo: `docs/it/dev/work-in-progress/brief-db-be-classe-codici-errore.md`.
+> Perché tutto questo: `docs/it/dev/work-done/brief-db-be-classe-codici-errore.md`.
 > In una riga: il significato di un errore viveva **solo** in un dizionario
 > Python, quindi il catalogo DB non aveva il campo dove la contraddizione si
 > sarebbe vista.

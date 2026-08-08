@@ -7,8 +7,8 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # `obsoleto_dal` cambia casa: da `messaggi_errore` a `codici_errore`
-#   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (D-6)
-#   Guida: docs/it/dev/work-in-progress/brief-db-be-classe-codici-errore.md §3.1
+#   Piano: docs/it/dev/work-done/piano-db-classe-codici-errore.md (D-6)
+#   Guida: docs/it/dev/work-done/brief-db-be-classe-codici-errore.md §3.1
 #   Aggiunta il 2026-08-05 dal 20260805-17. Nuova casa: 20260807-12.
 #
 # ── ⚠️ PERCHE' SI SPOSTA — UN DIFETTO LATENTE, NON UN RIORDINO ──────────
