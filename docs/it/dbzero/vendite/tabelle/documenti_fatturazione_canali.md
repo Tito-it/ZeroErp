@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/documenti_fatturazione_canali.md" %}
 # 📚 Tabella `documenti_fatturazione_canali`
 
+> 📝 **Descrizione**
+>
+> Registro stato canali fatturabili per documento sorgente.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_fattura_righe_esposte.md" %}
 # 🔍 View `vw_fattura_righe_esposte`
 
+> 📝 **Descrizione**
+>
+> Rappresentazione del documento per OGNI uscita verso l'esterno: PDF, XML SDI, portale. ⚠️ NON e' «la vista di stampa»: se il PDF mostrasse il kit raggruppato e l'XML trasmettesse i componenti avremmo due uscite dello stesso documento con dettagli diversi. vendite.fatture_righe resta il DETTAGLIO (tutte le componenti, con articolo/quantita'/prezzo propri), questa vista produce la SINTESI — nessun secondo dato da tenere allineato. Tre regole, dal modello unificato componenti BoM del 2026-05-13: riga non-kit invariata; kit come UNA riga padre che porta il totale; componenti con esposto_in_fattura=TRUE come righe DESCRITTIVE senza importo (NULL, non zero). I componenti non esposti non compaiono: il loro valore e' gia' nel totale del padre, quindi il totale del documento non cambia mai al variare dell'esposizione. Convenzioni: quantita' del padre = MEDIA dei componenti (regge finche' coeff_qta_snapshot vale 1), riga_nr = il primo dei componenti, prezzo unitario derivato come totale/quantita'. La riga padre e' costruita per (fattura, kit, IVA, BA destinatario): un kit con aliquote diverse produce due righe padre, che e' l'esito corretto. Ordinamento: `ordinamento` + `livello` dispongono i componenti sotto il proprio padre. brief-fix-importi-riga-fattura-zero §4.7-bis (D5).
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

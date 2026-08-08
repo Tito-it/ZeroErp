@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/dbops/manual/idempotency_keys.md" %}
 # 📚 Tabella `idempotency_keys`
 
+> 📝 **Descrizione**
+>
+> Gestione idempotency key: stato, tx_id, risposta e cleanup programmato.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

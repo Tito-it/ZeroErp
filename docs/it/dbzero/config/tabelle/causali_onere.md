@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/causali_onere.md" %}
 # 📚 Tabella `causali_onere`
 
+> 📝 **Descrizione**
+>
+> Vocabolario causale della porta oneri (brief-db-immutabilita-quantita-e-porta-oneri §4c.3). Nomina il perche' dell'importo di una riga commesse_attivita tipo_movimento=ONERE (qta=1, valore). Mono-lingua: la descrizione e' il label (pattern tipi_reso, nessun IF hardcoded). rev 2026-07-21.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

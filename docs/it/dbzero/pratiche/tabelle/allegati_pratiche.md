@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pratiche/manual/allegati_pratiche.md" %}
 # 📚 Tabella `allegati_pratiche`
 
+> 📝 **Descrizione**
+>
+> Allegati associati a una pratica (immutabili, versionamento via allegato_padre_id).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_dash_aperto_riepilogo.md" %}
 # 🔍 View `vw_dash_aperto_riepilogo`
 
+> 📝 **Descrizione**
+>
+> Situazione aperta v2: card area x fase sullo stock aperti-non-conclusi (vw_dash_aperto_documenti v2). n_documenti = tutti aperti della cella; valore_totale NULL per OFFERTE/CONTRATTI (aree a conteggi, DL-11). Via n_aperti (=n_documenti nel perimetro v2) e valore_transitato (concetto transito eliminato, DL-14). Fasi presenti: APERTO/IN_ATTESA/IN_CORSO (CHIUSO escluso a monte). Nessun asse temporale. security_invoker=on.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

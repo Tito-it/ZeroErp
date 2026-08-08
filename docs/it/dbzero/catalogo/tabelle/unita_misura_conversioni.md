@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/catalogo/manual/unita_misura_conversioni.md" %}
 # 📚 Tabella `unita_misura_conversioni`
 
+> 📝 **Descrizione**
+>
+> Conversioni globali tra unita di misura con validita temporale.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

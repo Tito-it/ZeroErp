@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_dash_aperto_documenti.md" %}
 # 🔍 View `vw_dash_aperto_documenti`
 
+> 📝 **Descrizione**
+>
+> Situazione aperta v2 (serbatoio pre-commessa): stock dei documenti APERTI E NON CONCLUSI delle 4 aree (PREVENTIVI/ORDINI/OFFERTE/CONTRATTI — no COMMESSE, coperte dalla Lente 1), SENZA asse temporale. Perimetro (DL-15): area&lt;&gt;COMMESSE AND NOT is_abortito AND is_transitato IS DISTINCT FROM true AND fase&lt;&gt;CHIUSO. Eliminato il concetto "transitato" (DL-14): via is_transitato/is_aperto(col)/valore_transitato/unita_transitate dalla proiezione. Perimetro unico per vw_dash_aperto_riepilogo e per il drill-down BE (il filtro "aperti da oltre N giorni" e' BE-side su data_riferimento). security_invoker=on (scope emittente RLS).
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

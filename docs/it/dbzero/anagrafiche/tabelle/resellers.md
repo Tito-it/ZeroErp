@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/resellers.md" %}
 # 📚 Tabella `resellers`
 
+> 📝 **Descrizione**
+>
+> Ruolo RES (rivenditori/reseller). Metadati generici, FK 1:1 al soggetto_ruolo.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

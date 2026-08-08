@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/catalogo/manual/vw_articoli_componenti_note.md" %}
 # 🔍 View `vw_articoli_componenti_note`
 
+> 📝 **Descrizione**
+>
+> Vista note per componenti articolo con dati stile e lingua.
+
 ```sql
 CREATE OR REPLACE VIEW catalogo.vw_articoli_componenti_note AS
 SELECT ac.id AS articolo_componente_id,

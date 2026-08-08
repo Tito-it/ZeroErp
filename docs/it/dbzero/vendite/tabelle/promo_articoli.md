@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/promo_articoli.md" %}
 # 📚 Tabella `promo_articoli`
 
+> 📝 **Descrizione**
+>
+> Overlay promo temporale per (articolo, uom) - STADIO 0 del resolver prezzi v5.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

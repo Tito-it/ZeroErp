@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_ordini_lista.md" %}
 # 🔍 View `vw_ordini_lista`
 
+> 📝 **Descrizione**
+>
+> Vista canonica lista/dettaglio ordini vendita: testata + decodifiche denormalizzate (stato, cliente, billing/emittente/utility, pagamento, valuta, agente, documento origine) + pdf_mode (modalita' bottone PDF per-riga, data-driven). Sola denormalizzazione: nessuno scope/filtro. security_invoker=on (RLS-ready). rev 2026-07-11: +pdf_mode.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

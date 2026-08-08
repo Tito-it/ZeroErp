@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/catalogo/manual/articoli_uom_operativa.md" %}
 # 📚 Tabella `articoli_uom_operativa`
 
+> 📝 **Descrizione**
+>
+> Mappa le UoM operative ammesse per ciascun articolo e il fattore di conversione verso la UoM base (stock).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

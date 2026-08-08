@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/storico/manual/indirizzi.md" %}
 # 📚 Tabella `indirizzi`
 
+> 📝 **Descrizione**
+>
+> Storico degli indirizzi associati a soggetto/ruolo per tipo indirizzo
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

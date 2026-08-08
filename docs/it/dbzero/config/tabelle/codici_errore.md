@@ -1,5 +1,9 @@
 # 📚 Tabella `codici_errore`
 
+> 📝 **Descrizione**
+>
+> Identita' di un codice errore: che COSA e' (classe) e se e' ancora in servizio (obsoleto_dal). La FRASE che l'operatore legge sta in config.messaggi_errore, chiavata (codice, lingua). Popolata dal seed 80_data.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/istanze_utilities.md" %}
 # 📚 Tabella `istanze_utilities`
 
+> 📝 **Descrizione**
+>
+> Istanza di attivazione di una utility per un soggetto
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

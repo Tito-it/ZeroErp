@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/codici_postali.md" %}
 # 📚 Tabella `codici_postali`
 
+> 📝 **Descrizione**
+>
+> Codici di avviamento postale associati ai comuni (normalizzati)
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

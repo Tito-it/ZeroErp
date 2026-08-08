@@ -1,6 +1,14 @@
 {% include-markdown "it/dbzero/dbops/manual/vw_function_list.md" %}
 # 🔍 View `vw_function_list`
 
+> 📝 **Descrizione**
+>
+> Elenco completo delle funzioni negli schemi dbops e script. Include:
+> - OID per identificare overload
+> - Argomenti e tipo di ritorno
+> - Numero di argomenti
+> - Commenti/documentazione (se presenti)
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_function_list AS
 SELECT n.nspname AS schema,

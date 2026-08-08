@@ -1,6 +1,13 @@
 {% include-markdown "it/dbzero/config/manual/azioni_processo.md" %}
 # 📚 Tabella `azioni_processo`
 
+> 📝 **Descrizione**
+>
+> Registro azioni di processo gestibili nell'interfaccia permessi.
+>  permission_codename e' la chiave tecnica immutabile (riferimento
+>  al codename in django.auth_permission).
+>  Il flag pericolosa segnala azioni che richiedono conferma aggiuntiva.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

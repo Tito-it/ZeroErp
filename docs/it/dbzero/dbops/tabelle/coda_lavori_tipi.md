@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/dbops/manual/coda_lavori_tipi.md" %}
 # 📚 Tabella `coda_lavori_tipi`
 
+> 📝 **Descrizione**
+>
+> Registry dei tipi di job della coda lavori generica (dbops.coda_lavori). codice = job_type; handler_code = chiave di dispatch verso il handler_registry Python (no dynamic import); default per-tipo run_as/max_tentativi. Brief: brief-db-coda-lavori-generica §2.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

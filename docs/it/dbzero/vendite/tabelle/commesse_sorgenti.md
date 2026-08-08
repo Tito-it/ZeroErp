@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/commesse_sorgenti.md" %}
 # 📚 Tabella `commesse_sorgenti`
 
+> 📝 **Descrizione**
+>
+> Link sorgente ROOT della commessa.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

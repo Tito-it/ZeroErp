@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/stati_fornitore.md" %}
 # 📚 Tabella `stati_fornitore`
 
+> 📝 **Descrizione**
+>
+> Stati operativi dei fornitori. blocca_ordini impedisce nuovi ordini/DDT.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/tipi_indirizzi.md" %}
 # 📚 Tabella `tipi_indirizzi`
 
+> 📝 **Descrizione**
+>
+> Catalogo tipi indirizzo (residenza, domicilio fiscale, fornitura, ecc.).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

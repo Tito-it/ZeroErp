@@ -1,5 +1,9 @@
 # 🔍 View `vw_contratti_lista`
 
+> 📝 **Descrizione**
+>
+> Vista flat contratti per la lista UI configurabile (vendite.contratti). Pura denormalizzazione: nessuno scope/filtro/paginazione (restano nel repository consumer). security_invoker=on per rispettare la RLS della tabella base. stato_codice_interno = codice_interno (logica/severity), stato_codice = codice (display). Sorgente dati per ui.lista_definizione codice='vendite.contratti'.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

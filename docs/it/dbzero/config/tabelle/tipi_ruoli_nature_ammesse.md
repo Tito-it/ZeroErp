@@ -1,6 +1,12 @@
 {% include-markdown "it/dbzero/config/manual/tipi_ruoli_nature_ammesse.md" %}
 # 📚 Tabella `tipi_ruoli_nature_ammesse`
 
+> 📝 **Descrizione**
+>
+> Matrice di configurazione: quali nature soggetto (PF/PG/ENC) sono ammesse per ogni ruolo.
+>  Se non esistono righe per un tipo_ruolo, nessun vincolo viene applicato (natura libera).
+>  Se esistono righe, solo le nature attive e valide temporalmente sono ammesse.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

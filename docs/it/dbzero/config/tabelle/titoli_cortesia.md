@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/titoli_cortesia.md" %}
 # 📚 Tabella `titoli_cortesia`
 
+> 📝 **Descrizione**
+>
+> Titoli di cortesia per soggetti e contatti (es. Sig., Dott., Ing., ecc.)
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

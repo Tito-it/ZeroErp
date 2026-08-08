@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/fatturazione_pipeline_task_policy.md" %}
 # 📚 Tabella `fatturazione_pipeline_task_policy`
 
+> 📝 **Descrizione**
+>
+> Policy runtime per task pipeline fatturazione
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

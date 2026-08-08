@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/preventivi_indirizzi.md" %}
 # 📚 Tabella `preventivi_indirizzi`
 
+> 📝 **Descrizione**
+>
+> Snapshot indirizzi collegati alla preventivo; uno per tipo (preventivozione, spedizione, fornitura, residenza). Includere nello snapshot la mail.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

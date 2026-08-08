@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pagamenti/manual/centri_riscossione.md" %}
 # 📚 Tabella `centri_riscossione`
 
+> 📝 **Descrizione**
+>
+> Anagrafica centri di riscossione (banca, posta, cassa, compensazioni)
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

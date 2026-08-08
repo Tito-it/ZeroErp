@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/documenti/manual/template_documenti_versioni.md" %}
 # 📚 Tabella `template_documenti_versioni`
 
+> 📝 **Descrizione**
+>
+> Versioni renderizzabili del template documentale, con validita temporale e stato di pubblicazione.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

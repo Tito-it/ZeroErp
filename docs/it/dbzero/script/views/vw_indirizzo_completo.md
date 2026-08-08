@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/script/manual/vw_indirizzo_completo.md" %}
 # 🔍 View `vw_indirizzo_completo`
 
+> 📝 **Descrizione**
+>
+> Indirizzo completo: stradario + comune + provincia + CAP + via estesa.
+
 ```sql
 CREATE OR REPLACE VIEW script.vw_indirizzo_completo AS
 SELECT s.id AS id_stradario,

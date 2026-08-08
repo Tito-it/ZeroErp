@@ -1,5 +1,9 @@
 # 📚 Tabella `ddt_indirizzi`
 
+> 📝 **Descrizione**
+>
+> Snapshot indirizzi collegati al ddt; uno per tipo ( partenza, consegna). Includere nello snapshot la mail.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

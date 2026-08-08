@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pratiche/manual/template_flussi_canali.md" %}
 # 📚 Tabella `template_flussi_canali`
 
+> 📝 **Descrizione**
+>
+> M:N tra template flussi e canali di visibilita'.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

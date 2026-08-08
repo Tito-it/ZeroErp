@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/iva_assoggettamenti.md" %}
 # 📚 Tabella `iva_assoggettamenti`
 
+> 📝 **Descrizione**
+>
+> Dominio tipi assoggettamenti iva .
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/emittenti_fiscali.md" %}
 # 📚 Tabella `emittenti_fiscali`
 
+> 📝 **Descrizione**
+>
+> Ruoli che emettono fiscalmente (gestore/reseller/brand): preferenze di numerazione, IBAN predefinito, override fiscali e branding.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,12 @@
 {% include-markdown "it/dbzero/config/manual/user_emittenti_fiscali.md" %}
 # 📚 Tabella `user_emittenti_fiscali`
 
+> 📝 **Descrizione**
+>
+> Scope operativo: emittenti fiscali su cui l'utente puo' operare.
+>  Whitelist opzionale: se l'utente non ha righe puo' operare su TUTTI
+>  gli emittenti; se ha almeno una riga e' limitato a quelli elencati.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

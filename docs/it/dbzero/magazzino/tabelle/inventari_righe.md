@@ -1,5 +1,9 @@
 # 📚 Tabella `inventari_righe`
 
+> 📝 **Descrizione**
+>
+> Conteggi fisici di inventario
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

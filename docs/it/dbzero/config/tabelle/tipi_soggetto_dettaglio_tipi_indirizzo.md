@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/tipi_soggetto_dettaglio_tipi_indirizzo.md" %}
 # 📚 Tabella `tipi_soggetto_dettaglio_tipi_indirizzo`
 
+> 📝 **Descrizione**
+>
+> Matrice tipo soggetto dettaglio ↔ tipo indirizzo (ammissibilità e regole base).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

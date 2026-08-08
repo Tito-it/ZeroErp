@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/stati_cliente.md" %}
 # 📚 Tabella `stati_cliente`
 
+> 📝 **Descrizione**
+>
+> Stati cliente (AT=Attivo, IS=Istanza, CH=Chiuso, SM=Sosp.Morosita, AN=Annullato, CE=Cess.Amministrativa, LE=Legale)
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

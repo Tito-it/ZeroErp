@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/fatture_fondi_fattura.md" %}
 # 📚 Tabella `fatture_fondi_fattura`
 
+> 📝 **Descrizione**
+>
+> Fondi fattura collegati alla testata (es. addebiti/accrediti, canone RAI).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

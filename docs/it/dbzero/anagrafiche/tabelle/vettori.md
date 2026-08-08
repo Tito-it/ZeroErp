@@ -1,5 +1,9 @@
 # 📚 Tabella `vettori`
 
+> 📝 **Descrizione**
+>
+> Ruolo RES (rivenditori/vettore). Metadati generici, FK 1:1 al soggetto_ruolo.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pagamenti/manual/vendite_contabili.md" %}
 # 📚 Tabella `vendite_contabili`
 
+> 📝 **Descrizione**
+>
+> Testata contabile per movimenti vendite
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

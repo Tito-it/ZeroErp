@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/motivi_fermo.md" %}
 # 📚 Tabella `motivi_fermo`
 
+> 📝 **Descrizione**
+>
+> Vocabolario dei motivi di fermo della dashboard fatturazione (due lenti). Una riga per codice motivo_fermo emesso dai resolver vw_dash_fatturazione_* con la sua classe di azionabilita' (FISIOLOGICO=verde nessuna azione, RECUPERABILE=arancio lavoro interno, ANOMALIA=rosso da rivedere, SOLLECITO_CLIENTE=blu palla al cliente). Consumata da vendite.vw_dash_backlog_documenti (LEFT JOIN fail-visible: motivo non mappato -&gt; classe ANOMALIA) e dal FE per colore/filtro. Nuovo codice = append al CSV seed + mappatura classe PRIMA di emetterlo da una vista (pgTAP di coerenza in test-vw-dash-backlog-v1.sql).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

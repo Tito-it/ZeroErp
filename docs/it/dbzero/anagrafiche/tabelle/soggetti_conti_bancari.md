@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/soggetti_conti_bancari.md" %}
 # 📚 Tabella `soggetti_conti_bancari`
 
+> 📝 **Descrizione**
+>
+> Associazione conti_bancari a livello soggetto con uso, predefiniti e validità (fallback per ruoli).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

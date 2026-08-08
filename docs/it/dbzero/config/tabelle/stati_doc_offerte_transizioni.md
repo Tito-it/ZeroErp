@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/stati_doc_offerte_transizioni.md" %}
 # 📚 Tabella `stati_doc_offerte_transizioni`
 
+> 📝 **Descrizione**
+>
+> Matrice transizioni ammesse tra stati offerta commerciale. Consultata da vendite.trgfn_offerte_commerciali_guard_transizione. 5 transizioni (addendum A2): BOZZA-&gt;EMESSA|ANNULLATA, EMESSA-&gt;ACCETTATA|RIFIUTATA|SUPERATA. Nessuna transizione uscente da stati terminali. rev 2026-05-24.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

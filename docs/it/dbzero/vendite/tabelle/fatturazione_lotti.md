@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/fatturazione_lotti.md" %}
 # 📚 Tabella `fatturazione_lotti`
 
+> 📝 **Descrizione**
+>
+> Lotti di fatturazione con parametri, lock uuid e stati operativi.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

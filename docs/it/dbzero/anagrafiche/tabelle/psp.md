@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/psp.md" %}
 # 📚 Tabella `psp`
 
+> 📝 **Descrizione**
+>
+> Anagrafica PSP (Payment Service Provider)
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

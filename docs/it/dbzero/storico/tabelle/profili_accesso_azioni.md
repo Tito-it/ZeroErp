@@ -1,5 +1,9 @@
 # 📚 Tabella `profili_accesso_azioni`
 
+> 📝 **Descrizione**
+>
+> Storico di config.profili_accesso_azioni.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

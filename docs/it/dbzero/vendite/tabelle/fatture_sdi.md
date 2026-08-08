@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/fatture_sdi.md" %}
 # 📚 Tabella `fatture_sdi`
 
+> 📝 **Descrizione**
+>
+> Testata tentativi SDI per fattura con stato corrente e dati di invio/esito.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

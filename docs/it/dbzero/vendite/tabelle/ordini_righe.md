@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/ordini_righe.md" %}
 # 📚 Tabella `ordini_righe`
 
+> 📝 **Descrizione**
+>
+> Righe ordine di vendita, con snapshot (descrizione/UoM/IVA) e idempotenza sorgente.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

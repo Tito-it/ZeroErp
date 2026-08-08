@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/forme_giuridiche.md" %}
 # 📚 Tabella `forme_giuridiche`
 
+> 📝 **Descrizione**
+>
+> Dominio forme giuridiche per-paese. Policy REA e capitale sociale. (No SDI/PEC).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

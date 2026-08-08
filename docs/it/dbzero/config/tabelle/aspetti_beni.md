@@ -1,5 +1,9 @@
 # 📚 Tabella `aspetti_beni`
 
+> 📝 **Descrizione**
+>
+> Elenco aspetti beni (DDT).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

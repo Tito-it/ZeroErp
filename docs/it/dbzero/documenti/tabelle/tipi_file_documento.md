@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/documenti/manual/tipi_file_documento.md" %}
 # 📚 Tabella `tipi_file_documento`
 
+> 📝 **Descrizione**
+>
+> Lookup dei tipi file persistiti per un documento generato.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

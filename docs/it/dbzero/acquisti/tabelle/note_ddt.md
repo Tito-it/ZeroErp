@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/acquisti/manual/note_ddt.md" %}
 # 📚 Tabella `note_ddt`
 
+> 📝 **Descrizione**
+>
+> Partizione note per DDT/ricezioni fornitore.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

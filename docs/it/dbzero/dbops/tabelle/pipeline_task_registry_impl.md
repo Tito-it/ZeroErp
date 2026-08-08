@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/dbops/manual/pipeline_task_registry_impl.md" %}
 # 📚 Tabella `pipeline_task_registry_impl`
 
+> 📝 **Descrizione**
+>
+> Implementazioni consentite per task pipeline.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

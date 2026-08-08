@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/listini_tipologie.md" %}
 # 📚 Tabella `listini_tipologie`
 
+> 📝 **Descrizione**
+>
+> Tipologie voce di listino. Flag booleani esclusivi per pipeline fatturazione (e_consumo, e_quota_fissa, ecc.).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

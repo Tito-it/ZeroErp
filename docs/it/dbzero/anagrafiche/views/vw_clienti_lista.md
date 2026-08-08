@@ -1,5 +1,9 @@
 # 🔍 View `vw_clienti_lista`
 
+> 📝 **Descrizione**
+>
+> Vista flat clienti per la lista UI (anagrafiche.clienti). Espone anagrafica soggetto (incl. id_fiscale_univoco_cf_piva), codice BA, servizio, stato e date del ciclo di vita. stato_codice_interno = codice_interno (logica), stato_codice = codice (display). Sorgente dati per ui.lista_definizione codice='anagrafiche.clienti'.
+
 ```sql
 CREATE OR REPLACE VIEW anagrafiche.vw_clienti_lista AS
 SELECT cl.id,

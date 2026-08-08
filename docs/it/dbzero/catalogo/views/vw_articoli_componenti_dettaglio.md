@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/catalogo/manual/vw_articoli_componenti_dettaglio.md" %}
 # 🔍 View `vw_articoli_componenti_dettaglio`
 
+> 📝 **Descrizione**
+>
+> Vista dettaglio componenti articolo: codici/descrizioni di prodotto e componente + capability di riga (puo_chiudersi, data_min_chiusura, data_default_chiusura, motivo_non_chiudibile) per il dialog "Chiudi riga" del FE.
+
 ```sql
 CREATE OR REPLACE VIEW catalogo.vw_articoli_componenti_dettaglio AS
 SELECT ac.id,

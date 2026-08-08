@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pratiche/manual/template_flussi_avanzamento_proiezione.md" %}
 # 📚 Tabella `template_flussi_avanzamento_proiezione`
 
+> 📝 **Descrizione**
+>
+> GUIDA D4/G2: binding "avanza-su-proiezione". Una riga = "il milestone template_flusso_id avanza quando il documento atteso (template_flussi.attende_sorgente_tipo_id) proietta esito_richiesto (NULL=qualsiasi verdetto)". Il milestone si completa con il verdetto proiettato (mappatura 1:1). Ammesso solo su step non-DOMINIO e mutuamente esclusivo con handler_eventi COMPLETATO (guard config-time). Consumato da pratiche.fn_reconcile_sorgente; copiato da fn_copia_definizione.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

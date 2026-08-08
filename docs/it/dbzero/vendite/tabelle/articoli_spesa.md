@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/articoli_spesa.md" %}
 # 📚 Tabella `articoli_spesa`
 
+> 📝 **Descrizione**
+>
+> Collegamento articoli a voci di spesa, utile per riepiloghi di fattura (energia, gas, ecc.).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

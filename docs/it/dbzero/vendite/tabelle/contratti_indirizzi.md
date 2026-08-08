@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/contratti_indirizzi.md" %}
 # 📚 Tabella `contratti_indirizzi`
 
+> 📝 **Descrizione**
+>
+> Snapshot indirizzi collegati al contratto; uno per tipo (fatturazione, consegna, fornitura). Includere nello snapshot la mail.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

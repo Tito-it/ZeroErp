@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pratiche/manual/tipi_prestazione.md" %}
 # 📚 Tabella `tipi_prestazione`
 
+> 📝 **Descrizione**
+>
+> Catalogo tipi di prestazione per le pratiche.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/ui/manual/dashboard_widget.md" %}
 # 📚 Tabella `dashboard_widget`
 
+> 📝 **Descrizione**
+>
+> Composizione dashboard&lt;-&gt;widget: pool candidato per dashboard + ordine di default. Sorgente del catalogo grezzo e del merge widget nuovi nella risoluzione.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

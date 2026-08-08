@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pratiche/manual/competenze_flussi.md" %}
 # 📚 Tabella `competenze_flussi`
 
+> 📝 **Descrizione**
+>
+> Matrice competenze: per ogni tipo di flusso e reparto, quali operatori sono abilitati.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

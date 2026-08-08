@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pratiche/manual/template_flussi_prerequisiti.md" %}
 # 📚 Tabella `template_flussi_prerequisiti`
 
+> 📝 **Descrizione**
+>
+> DAG prerequisiti tra template flussi.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

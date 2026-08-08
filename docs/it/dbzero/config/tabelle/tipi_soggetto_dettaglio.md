@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/tipi_soggetto_dettaglio.md" %}
 # 📚 Tabella `tipi_soggetto_dettaglio`
 
+> 📝 **Descrizione**
+>
+> Tipologia dettagliata soggetto con formato CF e P.IVA per paese
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

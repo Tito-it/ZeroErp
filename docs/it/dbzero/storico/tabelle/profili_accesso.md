@@ -1,5 +1,9 @@
 # 📚 Tabella `profili_accesso`
 
+> 📝 **Descrizione**
+>
+> Storico di config.profili_accesso.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/profili_accesso.md" %}
 # 📚 Tabella `profili_accesso`
 
+> 📝 **Descrizione**
+>
+> Header di un profilo di accesso (§4.3 WIP multi-face-auth). Raggruppa le capability per area (profili_accesso_aree) e per azione (profili_accesso_azioni). Assegnato a reparti, ruoli applicativi o identita tramite profili_accesso_bindings.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

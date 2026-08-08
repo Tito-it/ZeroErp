@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_preventivi_lista.md" %}
 # 🔍 View `vw_preventivi_lista`
 
+> 📝 **Descrizione**
+>
+> Vista flat canonica preventivi per la lista UI configurabile (vendite.preventivi). Nomi canonici (ragione_sociale_completa, id_fiscale_univoco_cf_piva, ba_codice, is_attiva). Pura denormalizzazione: nessuno scope/filtro/paginazione (restano nel repository consumer). security_invoker=on (RLS-ready). Soggetto via istanze_utilities (1 join, valorizzato anche per prospect). Sostituisce vw_preventivi_list (deprecata, drop differito post-BE).
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

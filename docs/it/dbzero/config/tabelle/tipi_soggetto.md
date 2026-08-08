@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/tipi_soggetto.md" %}
 # 📚 Tabella `tipi_soggetto`
 
+> 📝 **Descrizione**
+>
+> Macro-tipologia soggetto: Persona fisica, Persona giuridica, Ente, ecc.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pagamenti/manual/vendite_contabili_stati.md" %}
 # 📚 Tabella `vendite_contabili_stati`
 
+> 📝 **Descrizione**
+>
+> Lookup stati contabili vendite
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

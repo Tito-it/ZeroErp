@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/note_offerte_commerciali.md" %}
 # 📚 Tabella `note_offerte_commerciali`
 
+> 📝 **Descrizione**
+>
+> Partizione note per vendite.offerte_commerciali. Supporta ancoraggio DOCUMENTO (nota testata offerta) e RIGA (nota su singola eccezione offerte_commerciali_eccezioni). Pattern identico a note_contratto. FK target_riga_id -&gt; offerte_commerciali_eccezioni aggiunta in 20260524-09. rev 2026-05-24.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

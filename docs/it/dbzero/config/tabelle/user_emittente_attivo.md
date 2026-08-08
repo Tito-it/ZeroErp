@@ -1,5 +1,9 @@
 # 📚 Tabella `user_emittente_attivo`
 
+> 📝 **Descrizione**
+>
+> Emittente fiscale di lavoro per utente. PREFERENZA, NON PERMESSO: non concede accesso a nulla, l'autorizzazione resta la whitelist config.user_emittenti_fiscali piu' il profilo SUPER_ADMIN. Serve a riproporre la scelta al login; il perimetro della sessione viaggia sulla GUC app.current_emittente_id, unica fonte letta dalle funzioni di scope. Storicizzata: storico.user_emittente_attivo e' il registro append-only degli switch (brief-db-impersonazione-scope-emittente SS8.8, 2026-08-04).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

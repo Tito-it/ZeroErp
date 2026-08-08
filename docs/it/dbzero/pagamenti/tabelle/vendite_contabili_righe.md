@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pagamenti/manual/vendite_contabili_righe.md" %}
 # 📚 Tabella `vendite_contabili_righe`
 
+> 📝 **Descrizione**
+>
+> Righe contabili vendite importate/abbinate
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

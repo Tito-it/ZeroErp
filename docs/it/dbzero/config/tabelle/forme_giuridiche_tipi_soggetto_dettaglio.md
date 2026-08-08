@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/forme_giuridiche_tipi_soggetto_dettaglio.md" %}
 # 📚 Tabella `forme_giuridiche_tipi_soggetto_dettaglio`
 
+> 📝 **Descrizione**
+>
+> Matrice compatibilità: forme_giuridiche ↔ tipi_soggetto_dettaglio (abilitazioni e validità).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

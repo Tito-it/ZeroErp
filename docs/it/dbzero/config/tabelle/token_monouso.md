@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/token_monouso.md" %}
 # 📚 Tabella `token_monouso`
 
+> 📝 **Descrizione**
+>
+> Token monouso generico con hash SHA-256, scadenza e tracciamento utilizzo.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/fatturazione_lotti_log.md" %}
 # 📚 Tabella `fatturazione_lotti_log`
 
+> 📝 **Descrizione**
+>
+> Log per processi lotto fatturazione (warning/critical).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

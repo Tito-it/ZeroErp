@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/dbops/manual/transaction_ids.md" %}
 # 📚 Tabella `transaction_ids`
 
+> 📝 **Descrizione**
+>
+> Tabella dei transaction_ids per identificare una stessa transazione attraverso tx_id
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

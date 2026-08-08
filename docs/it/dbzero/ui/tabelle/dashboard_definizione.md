@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/ui/manual/dashboard_definizione.md" %}
 # 📚 Tabella `dashboard_definizione`
 
+> 📝 **Descrizione**
+>
+> Catalogo delle dashboard configurabili. Una riga per dashboard personalizzabile (prima: home). Senza vista_sql: nessuna vista sorgente unica.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

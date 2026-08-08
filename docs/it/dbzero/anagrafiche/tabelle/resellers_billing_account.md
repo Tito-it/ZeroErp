@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/resellers_billing_account.md" %}
 # 📚 Tabella `resellers_billing_account`
 
+> 📝 **Descrizione**
+>
+> Associazione billing_account -&gt; reseller (ruolo), con validita' temporale.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

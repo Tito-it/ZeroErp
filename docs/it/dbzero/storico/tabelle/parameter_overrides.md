@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/storico/manual/parameter_overrides.md" %}
 # 📚 Tabella `parameter_overrides`
 
+> 📝 **Descrizione**
+>
+> Tabella storica per i parameter_overrides con snapshot JSONB e campi di audit
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

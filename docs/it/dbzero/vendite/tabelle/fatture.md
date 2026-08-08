@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/fatture.md" %}
 # 📚 Tabella `fatture`
 
+> 📝 **Descrizione**
+>
+> Fatture di vendita (testata). Un documento fiscale per registro/anno/serie/numero; stati e tipi non legati a sistemi nazionali.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,5 +1,9 @@
 # 📚 Tabella `comune_trasformazioni`
 
+> 📝 **Descrizione**
+>
+> Trasformazioni tra comuni: accorpamenti e scissioni
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

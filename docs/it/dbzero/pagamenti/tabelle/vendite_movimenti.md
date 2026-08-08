@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pagamenti/manual/vendite_movimenti.md" %}
 # 📚 Tabella `vendite_movimenti`
 
+> 📝 **Descrizione**
+>
+> Movimenti di incasso/rimborso su fatture di vendita.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

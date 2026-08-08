@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/dbops/manual/vw_fk_senza_indice.md" %}
 # 🔍 View `vw_fk_senza_indice`
 
+> 📝 **Descrizione**
+>
+> Foreign key SENZA copertura di indice negli schemi in dbops.automation_scope. La FK e' coperta se le sue colonne coincidono, come insieme, con le prime N colonne chiave di un btree valido, E il predicato dell'indice e' assente oppure e' una congiunzione di soli "&lt;colonna della FK&gt; IS NOT NULL". Quest'ultimo caso vale perche' il controllo referenziale cerca "fkcol = $1" con $1 mai NULL, condizione che implica "fkcol IS NOT NULL": su una FK nullabile un indice parziale cosi' e' migliore di uno totale, non peggiore. Ogni altro predicato viene rifiutato, anche quando di fatto coprirebbe: l'errore possibile e' segnalare come scoperta una FK coperta, mai il contrario. La copertura e' valutata per PREFISSO dal 2026-07-27: prima si pretendeva l'uguaglianza dell'intero array di colonne, ed e' da li' che nascevano 27 degli indici ridondanti censiti in dbops.vw_indici_ridondanti_prefisso. Letta da dbops.fn_populate_fk_index_policy() e, come guardia anti-ridondanza, da dbops.apply_fk_index_policy().
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_fk_senza_indice AS
 WITH fk_grouped AS (

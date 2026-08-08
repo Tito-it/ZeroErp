@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/dbops/manual/coda_lavori.md" %}
 # 📚 Tabella `coda_lavori`
 
+> 📝 **Descrizione**
+>
+> Coda di lavori generica DB-native (senza broker). Una riga = un job async (job_type + payload). Enqueue atomico via dbops.fn_accoda_lavoro (callable da trigger). Claim FOR UPDATE SKIP LOCKED, reaper e marca esito li fa il worker BE in SQL diretto. Brief: brief-db-coda-lavori-generica §1.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

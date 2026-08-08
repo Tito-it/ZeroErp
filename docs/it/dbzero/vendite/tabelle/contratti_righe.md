@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/contratti_righe.md" %}
 # 📚 Tabella `contratti_righe`
 
+> 📝 **Descrizione**
+>
+> Righe contratto: canoni, una tantum, orari, consumi con regole
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/email_outbox.md" %}
 # 📚 Tabella `email_outbox`
 
+> 📝 **Descrizione**
+>
+> Bozze email editabili. Flusso: template -&gt; DRAFT -&gt; anteprima/modifica -&gt; SENT o CANCELLED.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

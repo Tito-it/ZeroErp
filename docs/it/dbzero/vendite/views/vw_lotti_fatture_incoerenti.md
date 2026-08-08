@@ -1,5 +1,9 @@
 # 🔍 View `vw_lotti_fatture_incoerenti`
 
+> 📝 **Descrizione**
+>
+> Elenco delle fatture il cui stato fiscale non coincide con quello del lotto che le contiene: e' la lista di lavoro dell'invariante presidiato da fn_guard_lotto_fatture_stato_coerente. rev 2026-08-04 (D-M): via il predicato su lf.esclusa, flag eliminato perche' dormiente; resta la sola eccezione critical. ⚠️ security_invoker=on: da ri-specificare in ogni CREATE OR REPLACE, non e' visibile in pg_get_viewdef.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

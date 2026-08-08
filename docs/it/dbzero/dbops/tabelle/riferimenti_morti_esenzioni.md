@@ -1,5 +1,9 @@
 # 📚 Tabella `riferimenti_morti_esenzioni`
 
+> 📝 **Descrizione**
+>
+> Registro del debito sui riferimenti morti nelle funzioni plpgsql: voci REALE/ORFANA note e motivate. E' un debito, non un elenco di eccezioni: deve calare. Letto da db/pgtap/dbops/test-riferimenti-morti-v1.sql e da scripts/sql/guardrail_riferimenti_morti.sql.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

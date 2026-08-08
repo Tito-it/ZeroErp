@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pratiche/manual/flussi.md" %}
 # 📚 Tabella `flussi`
 
+> 📝 **Descrizione**
+>
+> Flussi operativi delle pratiche.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

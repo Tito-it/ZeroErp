@@ -1,5 +1,9 @@
 # 🔍 View `vw_riferimenti_morti_da_sanare`
 
+> 📝 **Descrizione**
+>
+> Riferimenti morti (REALE/ORFANA) non coperti dal registro del debito: e' la lista di lavoro. Deve essere vuota. ⚠️ Ogni SELECT ri-compila ~500 funzioni.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

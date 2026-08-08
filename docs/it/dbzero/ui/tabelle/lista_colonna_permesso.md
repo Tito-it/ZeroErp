@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/ui/manual/lista_colonna_permesso.md" %}
 # 📚 Tabella `lista_colonna_permesso`
 
+> 📝 **Descrizione**
+>
+> Permessi a livello colonna per profilo_accesso. deny-list per non sensibili, allow-list per sensibili.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

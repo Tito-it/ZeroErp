@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_preventivi_righe_dettaglio.md" %}
 # 🔍 View `vw_preventivi_righe_dettaglio`
 
+> 📝 **Descrizione**
+>
+> Righe preventivo con dati articolo, UoM, IVA (codice + descrizione + aliquota). Espone importo_riga ROUND(2) per display e imponibile_riga_full per aggregazioni precise. NESSUN campo IVA per riga: l'IVA aggregata e' in vendite.preventivi_riepiloghi_iva.
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_preventivi_righe_dettaglio AS
 SELECT pr.id,

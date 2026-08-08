@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/profili_accesso_bindings.md" %}
 # 📚 Tabella `profili_accesso_bindings`
 
+> 📝 **Descrizione**
+>
+> Associa un profilo di accesso a UNA entita di dominio (reparto / identita / ruolo applicativo). CHECK xor +3 indici parziali UNIQUE garantiscono esattamente un binding per entita. La coerenza tipo_profilo &lt;-&gt; tipo_binding e' delegata al guard trgfn_profili_accesso_bindings_guard_coerenza.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

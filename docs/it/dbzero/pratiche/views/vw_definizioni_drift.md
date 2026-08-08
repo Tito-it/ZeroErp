@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pratiche/manual/vw_definizioni_drift.md" %}
 # 🔍 View `vw_definizioni_drift`
 
+> 📝 **Descrizione**
+>
+> Edizioni forkate (emittente-scoped, vive) il cui preset d'origine ha una PUBBLICATA con versione &gt; versione_origine: sono "in drift" rispetto al preset. Alimenta il banner "preset aggiornato" (DEF-2). versioni_indietro = di quante versioni il fork e' rimasto indietro.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

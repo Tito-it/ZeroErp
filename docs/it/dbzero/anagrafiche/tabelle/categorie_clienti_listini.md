@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/categorie_clienti_listini.md" %}
 # 📚 Tabella `categorie_clienti_listini`
 
+> 📝 **Descrizione**
+>
+> Matrice categoria cliente x utility x emittente x classe_utenza -&gt; listino con variazione opzionale.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

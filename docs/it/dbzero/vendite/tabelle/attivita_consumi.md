@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/attivita_consumi.md" %}
 # 📚 Tabella `attivita_consumi`
 
+> 📝 **Descrizione**
+>
+> WIP: testata consumi per utilities (gas/acqua/energia).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

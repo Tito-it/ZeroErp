@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/tipi_ruolo_tipi_indirizzo.md" %}
 # 📚 Tabella `tipi_ruolo_tipi_indirizzo`
 
+> 📝 **Descrizione**
+>
+> Matrice di configurazione ruolo ↔ tipo indirizzo (ammissibilità e regole base)
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

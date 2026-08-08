@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/documenti/manual/template_asset.md" %}
 # 📚 Tabella `template_asset`
 
+> 📝 **Descrizione**
+>
+> Catalogo degli asset documentali riusabili per emittente fiscale.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

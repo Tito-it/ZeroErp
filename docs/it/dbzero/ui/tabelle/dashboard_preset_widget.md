@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/ui/manual/dashboard_preset_widget.md" %}
 # 📚 Tabella `dashboard_preset_widget`
 
+> 📝 **Descrizione**
+>
+> Widget di un preset dashboard: ordine e visibilita di default. Ricalca ui.lista_preset_colonna.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

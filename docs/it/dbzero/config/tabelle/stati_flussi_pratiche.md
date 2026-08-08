@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/stati_flussi_pratiche.md" %}
 # 📚 Tabella `stati_flussi_pratiche`
 
+> 📝 **Descrizione**
+>
+> Stati del ciclo di vita dei flussi operativi.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/indirizzi_soggetti.md" %}
 # 📚 Tabella `indirizzi_soggetti`
 
+> 📝 **Descrizione**
+>
+> Indirizzi associati direttamente ai soggetti (non ai ruoli).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

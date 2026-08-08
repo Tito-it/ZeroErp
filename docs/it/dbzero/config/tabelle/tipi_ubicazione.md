@@ -1,5 +1,9 @@
 # 📚 Tabella `tipi_ubicazione`
 
+> 📝 **Descrizione**
+>
+> Dominio tipi di ubicazione/bin per i magazzini.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

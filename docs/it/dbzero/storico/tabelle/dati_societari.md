@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/storico/manual/dati_societari.md" %}
 # 📚 Tabella `dati_societari`
 
+> 📝 **Descrizione**
+>
+> Tabella storica per i dati_societari con snapshot JSONB e campi di audit
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

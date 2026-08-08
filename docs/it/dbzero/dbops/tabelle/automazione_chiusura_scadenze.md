@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/dbops/manual/automazione_chiusura_scadenze.md" %}
 # 📚 Tabella `automazione_chiusura_scadenze`
 
+> 📝 **Descrizione**
+>
+> Configurazione del framework di chiusura automatica per scadenza. Ogni riga descrive una tabella target con ciclo stato + valido_al. Letta da dbops.fn_apply_chiusura_scadenze() chiamata dal job notturno chiusura_scadenze_daily (85_pgagent).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

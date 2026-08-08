@@ -1,5 +1,9 @@
 # 📚 Tabella `rettifiche`
 
+> 📝 **Descrizione**
+>
+> Documento interno di rettifica inventariale
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

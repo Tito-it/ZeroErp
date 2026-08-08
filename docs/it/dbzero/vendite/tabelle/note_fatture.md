@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/note_fatture.md" %}
 # 📚 Tabella `note_fatture`
 
+> 📝 **Descrizione**
+>
+> Partizione note per fatture (FK forti verso testata/righe FATTURA).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

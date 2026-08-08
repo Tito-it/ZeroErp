@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pratiche/manual/allegati_flussi.md" %}
 # 📚 Tabella `allegati_flussi`
 
+> 📝 **Descrizione**
+>
+> Allegati associati a un flusso (immutabili, versionamento via allegato_padre_id).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

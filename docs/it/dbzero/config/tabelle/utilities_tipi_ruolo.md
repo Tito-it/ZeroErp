@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/utilities_tipi_ruolo.md" %}
 # 📚 Tabella `utilities_tipi_ruolo`
 
+> 📝 **Descrizione**
+>
+> Matrice opzionale utility-&gt;tipo_ruolo: se assente per utility resta fail-open; se presente limita ai ruoli configurati.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

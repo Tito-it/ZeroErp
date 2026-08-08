@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/tipi_fondi_fattura.md" %}
 # 📚 Tabella `tipi_fondi_fattura`
 
+> 📝 **Descrizione**
+>
+> Tipologie di fondi fattura (addebiti/accrediti, canone RAI, ecc.).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

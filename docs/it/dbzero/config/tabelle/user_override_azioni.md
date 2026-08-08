@@ -1,6 +1,11 @@
 {% include-markdown "it/dbzero/config/manual/user_override_azioni.md" %}
 # 📚 Tabella `user_override_azioni`
 
+> 📝 **Descrizione**
+>
+> Override individuale su azione di processo.
+>  Sovrascrive l'abilitazione ereditata dal reparto.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

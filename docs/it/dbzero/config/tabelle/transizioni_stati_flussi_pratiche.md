@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/transizioni_stati_flussi_pratiche.md" %}
 # 📚 Tabella `transizioni_stati_flussi_pratiche`
 
+> 📝 **Descrizione**
+>
+> Transizioni ammesse tra stati flusso pratica.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

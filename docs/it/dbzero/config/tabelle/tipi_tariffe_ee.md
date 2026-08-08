@@ -1,5 +1,9 @@
 # 📚 Tabella `tipi_tariffe_ee`
 
+> 📝 **Descrizione**
+>
+> Tipologia Tariffa mercato elettrico
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

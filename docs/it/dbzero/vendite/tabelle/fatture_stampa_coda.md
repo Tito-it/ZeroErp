@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/fatture_stampa_coda.md" %}
 # 📚 Tabella `fatture_stampa_coda`
 
+> 📝 **Descrizione**
+>
+> Outbox della stampa massiva fatture: un work-item per fattura, accodato dal task pipeline stampa_documenti_lotto e drenato da worker esterno (backstop numerazione + render via documenti.DocumentGenerationService). Satellite di vendite.fatture.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

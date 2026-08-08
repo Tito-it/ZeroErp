@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/stati_pdp.md" %}
 # 📚 Tabella `stati_pdp`
 
+> 📝 **Descrizione**
+>
+> Stati tecnici dei punti di prelievo (PDP): disponibile, attivo, disattivo tecnico, dismesso.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/transizioni_stati_reso.md" %}
 # 📚 Tabella `transizioni_stati_reso`
 
+> 📝 **Descrizione**
+>
+> Matrice transizioni ammesse tra stati del reso di vendita (brief-db-resi-vendita §2.1). Fonte metadati UI per le azioni data-driven e grafo per vendite.trgfn_resi_guard_transizione. Mirror di config.transizioni_stati_ddt. Seed in 20260713-38. rev 2026-07-13.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/dbops/manual/vw_indici_ridondanti_prefisso.md" %}
 # 🔍 View `vw_indici_ridondanti_prefisso`
 
+> 📝 **Descrizione**
+>
+> Indici btree ridondanti PER PREFISSO negli schemi in dbops.automation_scope: le colonne chiave di indice_ridondante sono la testa di quelle di coperto_da, con stessi opclass, collation, ordinamento e stesso predicato. PostgreSQL usa gia' coperto_da per ogni ricerca sulle colonne di indice_ridondante, controllo referenziale delle FK compreso. Complementare a dbops.vw_duplicate_indexes, che vede solo i duplicati esatti e per costruzione non puo' vedere questi. Esclude PK, UNIQUE, REPLICA IDENTITY e indici a supporto di un constraint: sono candidati al DROP, non si suggerisce di rimuovere cio' che impone integrita'. origine dice COME si rimuove: AUTOMAZIONE_FK = agire su dbops.fk_index_policy (un DROP secco verrebbe rifatto dal job settimanale), MANUALE = DROP in changeSet.
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_indici_ridondanti_prefisso AS
 WITH idx AS (

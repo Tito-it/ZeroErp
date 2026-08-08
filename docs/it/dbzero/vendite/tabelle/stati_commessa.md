@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/stati_commessa.md" %}
 # 📚 Tabella `stati_commessa`
 
+> 📝 **Descrizione**
+>
+> Lookup stati commessa: governa ciclo di vita, emissione AF e modificabilita` attivita`.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

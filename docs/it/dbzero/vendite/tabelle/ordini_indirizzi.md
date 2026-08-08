@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/ordini_indirizzi.md" %}
 # 📚 Tabella `ordini_indirizzi`
 
+> 📝 **Descrizione**
+>
+> Snapshot indirizzi collegati alla ordine; uno per tipo (ordinezione, spedizione, fornitura, residenza). Includere nello snapshot la mail.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/identita_scope_bindings.md" %}
 # 📚 Tabella `identita_scope_bindings`
 
+> 📝 **Descrizione**
+>
+> Binding identita_digitale &lt;-&gt; scope_policy (§4.4 WIP multi-face-auth). Un'identita puo avere piu policy concorrenti. UNIQUE garantisce una sola riga per coppia (identita, policy). La logica di risoluzione e' nelle funzioni script.fn_scope_* puntate da scope_policy.funzione_db.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/dbops/manual/vw_fk_con_indice_missing_policy.md" %}
 # 🔍 View `vw_fk_con_indice_missing_policy`
 
+> 📝 **Descrizione**
+>
+> Foreign key che hanno gia' un indice DEDICATO ma nessuna riga in dbops.fk_index_policy: sono le candidate a passare sotto il governo dell'automazione. Letta da dbops.fn_seed_fk_index_policy(), che le inserisce con consentito=true. Dal 2026-07-27 create_index_suggestion usa il nome REALE dell'indice: prima ne sintetizzava uno con la vecchia convenzione ix_&lt;schema&gt;_&lt;tabella&gt;_&lt;colonne&gt;, e la policy finiva per creare un secondo indice gemello sotto quel nome — e' cosi' che era ricomparso ix_vendite_fatture_riepiloghi_iva_fattura_id dopo il drop del 2026-01-16. Si propongono SOLO indici dedicati alla FK (colonne chiave = colonne FK, non UNIQUE, non PK, non REPLICA IDENTITY, non a supporto di un constraint, totali, btree): il ramo consentito=false di apply_fk_index_policy() esegue DROP INDEX sul nome estratto dal comando, e deve poter togliere solo un acceleratore, mai un vincolo di integrita'. Le FK coperte da un indice piu' largo o da una UNIQUE non si propongono: non c'e' nulla da governare e un indice dedicato sarebbe ridondante (stessa nozione di copertura di dbops.vw_fk_senza_indice).
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_fk_con_indice_missing_policy AS
 WITH fk_grouped AS (

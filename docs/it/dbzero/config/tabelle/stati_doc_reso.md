@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/stati_doc_reso.md" %}
 # 📚 Tabella `stati_doc_reso`
 
+> 📝 **Descrizione**
+>
+> Stati documento reso di vendita (brief-db-resi-vendita §2.1). Mirror di config.stati_doc_ddt senza colonne pdf. fase in meta.fase. Seed in 20260713-37. rev 2026-07-13.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

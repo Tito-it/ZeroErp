@@ -1,6 +1,11 @@
 {% include-markdown "it/dbzero/config/manual/user_override_aree.md" %}
 # 📚 Tabella `user_override_aree`
 
+> 📝 **Descrizione**
+>
+> Override individuale su area funzionale. Sovrascrive il profilo del reparto.
+>  Supporta validita' temporale per deleghe o restrizioni temporanee.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

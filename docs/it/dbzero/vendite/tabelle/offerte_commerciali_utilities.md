@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/offerte_commerciali_utilities.md" %}
 # 📚 Tabella `offerte_commerciali_utilities`
 
+> 📝 **Descrizione**
+>
+> Snapshot precontrattuali utility dell'offerta commerciale (1:1). Mirror fedele di contratti_utilities: tutti i campi business inclusi (tipo_utenza_id, classe_utenza_id, param_1_num, param_2_txt, meta, istanza_dati_precontrattuali_id) per copia 1:1 in fn_push_offerta_a_contratto. La coerenza tipo/classe viene verificata solo su contratti_utilities (il guard si applica al momento del push, non sulla proposta). rev 2026-05-24.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

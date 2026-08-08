@@ -1,5 +1,9 @@
 # 📚 Tabella `magazzini`
 
+> 📝 **Descrizione**
+>
+> Anagrafica magazzini/depositi. Indirizzo legato a anagrafiche.indirizzi_dettaglio (magazzino non è un ruolo).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

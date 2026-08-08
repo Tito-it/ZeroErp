@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/articolo_regole_fatturazione.md" %}
 # 📚 Tabella `articolo_regole_fatturazione`
 
+> 📝 **Descrizione**
+>
+> Policy di visibilità/calcolo/arrotondamenti per articolo
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

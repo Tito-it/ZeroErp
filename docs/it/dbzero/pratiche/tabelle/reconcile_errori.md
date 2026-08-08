@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pratiche/manual/reconcile_errori.md" %}
 # 📚 Tabella `reconcile_errori`
 
+> 📝 **Descrizione**
+>
+> GUIDA D4/G5: log append-only dei fallimenti di pratiche.fn_reconcile_sorgente inghiottiti dal trigger best-effort G3b (documento sovrano -&gt; nessun rollback del cambio-stato) e degli skip deliberati (tie-break ambiguo). Rende diagnosticabile un avanzamento milestone mancato. Nessuna FK: log resiliente per definizione.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

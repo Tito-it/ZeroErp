@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pratiche/manual/pratiche.md" %}
 # 📚 Tabella `pratiche`
 
+> 📝 **Descrizione**
+>
+> Pratiche operative — entita' principale del workflow.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

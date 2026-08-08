@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/contratti.md" %}
 # 📚 Tabella `contratti`
 
+> 📝 **Descrizione**
+>
+> Contratti commerciali; versione attiva per BA/istanza/utility per ambito; numerazione dedicata
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

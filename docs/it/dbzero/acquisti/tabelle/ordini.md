@@ -1,5 +1,9 @@
 # 📚 Tabella `ordini`
 
+> 📝 **Descrizione**
+>
+> Ordini di acquisto (testata) con campi già utili alla ricezione e DDT fornitore.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

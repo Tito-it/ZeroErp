@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/fatture_rettifiche.md" %}
 # 📚 Tabella `fatture_rettifiche`
 
+> 📝 **Descrizione**
+>
+> Link fra documenti rettificanti e documenti rettificati (supporto N:N).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

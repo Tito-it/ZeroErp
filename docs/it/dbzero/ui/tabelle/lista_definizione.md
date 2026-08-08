@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/ui/manual/lista_definizione.md" %}
 # 📚 Tabella `lista_definizione`
 
+> 📝 **Descrizione**
+>
+> Catalogo delle liste configurabili. Una riga per lista personalizzabile.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

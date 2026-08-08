@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/dbops/manual/automation_delete_block.md" %}
 # 📚 Tabella `automation_delete_block`
 
+> 📝 **Descrizione**
+>
+> Configurazione trigger delete-block per tabelle sensibili (ruoli).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

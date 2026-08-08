@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_resi_da_riconsegnare.md" %}
 # 🔍 View `vw_resi_da_riconsegnare`
 
+> 📝 **Descrizione**
+>
+> Elenco operativo delle righe reso ancora da ri-spedire al cliente (resi CONFERMATI, tipo riapre_residuo, residuo &gt; 0). rev 2026-07-26 (brief-db-chiusura-riconsegna-reso-definitivo S4.2-bis): qta_residua viene dall'helper unico vendite.fn_resi_riga_residuo_riconsegna, che sottrae ANCHE le quote rinunciate - una riga dichiarata definitiva ha residuo 0 e sparisce da questo elenco, che era il punto del brief. Nuove: qta_rinunciata (consuntivo) e lo stato RINUNCIATA (residuo 0 con almeno una rinuncia, distinto da COMPLETATA = tutto ri-spedito).
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

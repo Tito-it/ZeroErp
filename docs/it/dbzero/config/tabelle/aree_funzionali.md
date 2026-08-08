@@ -1,6 +1,14 @@
 {% include-markdown "it/dbzero/config/manual/aree_funzionali.md" %}
 # 📚 Tabella `aree_funzionali`
 
+> 📝 **Descrizione**
+>
+> Catalogo aree funzionali del sistema permessi.
+>  Ogni area corrisponde a uno schema DB; il mapping area-&gt;schema
+>  e' automatico (Django risolve l'area dal db_table del model).
+>  schema_db separato da codice per consentire rinomina label
+>  senza impatto sullo schema fisico.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

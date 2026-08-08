@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_resi_lista.md" %}
 # 🔍 View `vw_resi_lista`
 
+> 📝 **Descrizione**
+>
+> Lista/dettaglio resi vendita (mirror vw_ddt_lista). security_invoker=on + RLS su base; espone emittente_fiscale_id/_codice/_descrizione. rev 2026-07-13.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

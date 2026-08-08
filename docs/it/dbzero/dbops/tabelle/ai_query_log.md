@@ -1,5 +1,9 @@
 # 📚 Tabella `ai_query_log`
 
+> 📝 **Descrizione**
+>
+> Log interazioni assistente AI: registra input utente, strumenti invocati, risposta LLM, metriche token/durata e provider. Append-only con retention via cleanup_at.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

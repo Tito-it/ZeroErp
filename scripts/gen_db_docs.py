@@ -65,11 +65,54 @@ def sql_literal(value):
         return "NULL"
     return "'" + str(value).replace("'", "''") + "'"
 
+
+def _descrizione_md(commento):
+    """Il COMMENT dell'oggetto, reso leggibile in cima alla sua pagina.
+
+    ⚠️ PERCHE' ESISTE (2026-08-08). Il generatore leggeva `obj_description`
+    soltanto per `pg_proc`. Le pagine di TABELLE e VISTE mostravano colonne,
+    vincoli e indici — e nemmeno una riga su *cosa sia* l'oggetto. Misurato
+    prima di scriverlo: **347 tabelle e 79 viste** hanno un COMMENT, per circa
+    **73.000 caratteri** di spiegazione gia' scritta, leggibile da psql (`\\d+`)
+    e da nessuna parte nella documentazione — che e' proprio il posto dove la
+    regola di casa manda a guardare per prima cosa («doc auto-gen first»).
+    La ragione c'era, ma non dove passa il lettore.
+
+    ⚠️ `<` e `>` vanno neutralizzati. Markdown lascia passare l'HTML grezzo, e
+    **29 commenti** contengono forme come `identita_digitale <-> scope`: senza
+    escape il renderer se le mangia come se fossero tag, e la frase arriva
+    monca senza che nulla protesti. Verificato che il resto non serve: nessun
+    commento contiene `&` (quindi non c'e' l'ordine di escape da rispettare),
+    nessuno ha `#` a inizio riga, nessuno ha righe vuote — i 9 con a-capo sono
+    un unico paragrafo, ed e' la resa giusta.
+
+    Blockquote e non sezione: la mediana e' 74 caratteri, cioe' quasi sempre una
+    riga sola, e segue la forma gia' usata in questa pagina per le note
+    sull'oggetto (`> 🔒 Opzioni di sicurezza`, `> 🧊 Vista materializzata`).
+    """
+    if not commento:
+        return []
+    testo = str(commento).replace("<", "&lt;").replace(">", "&gt;")
+    righe = [f"> {r}" if r.strip() else ">" for r in testo.splitlines()]
+    return ["> 📝 **Descrizione**", ">"] + righe + [""]
+
+
 # Genera Markdown tabella con colonne, vincoli, indici, trigger
 def gen_table_md(schema, table, cur):
     if DOCS_MINIMAL:
         return ""
     lines = [f"# 📚 Tabella `{table}`\n"]
+    # Il COMMENT della tabella: sta in pg_class, non in information_schema.
+    cur.execute(
+        """
+        SELECT obj_description(c.oid, 'pg_class') AS commento
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = %s AND c.relname = %s AND c.relkind = 'r'
+        """, (schema, table)
+    )
+    cmt_row = cur.fetchone()
+    lines += _descrizione_md(cmt_row["commento"] if cmt_row else None)
     # Colonne
     cur.execute(
         """
@@ -284,7 +327,11 @@ def gen_view_md(schema, view, cur):
                -- (spariscono i (((...))) annidati) ma cambierebbero 98 file in
                -- un colpo: e' un miglioramento a se', non da infilare qui.
                pg_get_viewdef(c.oid) AS definition,
-               c.relispopulated
+               c.relispopulated,
+               -- Il COMMENT della vista: spesso e' l'unico posto dove sta
+               -- scritto COME si usa (le query canoniche, i limiti della
+               -- misura). Fino al 2026-08-08 non arrivava in pagina.
+               obj_description(c.oid, 'pg_class') AS commento
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = %s AND c.relname = %s AND c.relkind IN ('v', 'm')
@@ -321,6 +368,9 @@ def gen_view_md(schema, view, cur):
     with_clause = f"\nWITH ({', '.join(sec_opts)})" if sec_opts else ""
 
     lines = [f"# 🔍 {'Materialized view' if is_matview else 'View'} `{view}`\n"]
+    # Prima cosa dopo il titolo: che cos'e'. Le note su sicurezza e
+    # materializzazione vengono dopo — sono qualificazioni, non l'identita'.
+    lines += _descrizione_md(row.get("commento"))
     if sec_opts:
         lines.append(
             f"> 🔒 **Opzioni di sicurezza**: `{', '.join(sec_opts)}` — "
@@ -683,10 +733,91 @@ def write_index_ci(schema_dir, schema):
 
 
     
+def verifica_visibilita(cur):
+    """Fallisce se l'utente collegato non vede tutto quello che deve scrivere.
+
+    ⚠️ IL DIFETTO CHE PRESIDIA, misurato il 2026-08-08. `information_schema` NON
+    e' il catalogo: e' una vista **filtrata dai permessi**. Le sue tabelle
+    `table_constraints`, `triggers` e `columns` mostrano solo cio' su cui
+    l'utente collegato ha un privilegio. Generando la doc con `zeroerp_app`
+    (che su alcune tabelle ha il solo SELECT) **11 tabelle perdevano l'INTERA
+    sezione «Vincoli»** — `maintenance.job_run_log` ha 8 vincoli in
+    `pg_constraint` e zero in `information_schema` — e il generatore usciva **0**,
+    scrivendo pagine mutilate senza dire niente.
+
+    ⚠️ E' la stessa forma di guasto contro cui e' costruito mezzo progetto: non
+    un errore, una **sottrazione silenziosa**. Peggio che altrove, perche' la
+    regola di casa dice di fidarsi di queste pagine invece che degli YAML: una
+    pagina a cui manca la sezione vincoli non si distingue da una tabella che
+    vincoli non ne ha.
+
+    Il confronto e' con `pg_constraint`, che e' il catalogo vero e NON e'
+    filtrato dai permessi. Se i due non concordano, la doc non si scrive.
+
+    ⚠️ Un secondo effetto dello stesso genere non e' un errore ma va conosciuto:
+    `information_schema.triggers.action_statement` qualifica il nome della
+    funzione secondo il **search_path** di chi interroga. Con `script` e `dbops`
+    nel path, `script.trgfn_audit_data_user_generic()` diventa
+    `trgfn_audit_data_user_generic()` e 3264 righe di doc cambiano senza che
+    nulla sia cambiato nel database. La doc committata e' fatta con
+    `search_path = public`: chi rigenera deve usare lo stesso, o produce un diff
+    enorme e finto.
+    """
+    cur.execute(
+        """
+        WITH t AS (
+            SELECT n.nspname AS sch, c.relname AS tab, c.oid
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relkind = 'r' AND n.nspname = ANY(%s)
+        )
+        SELECT t.sch, t.tab,
+               (SELECT count(*) FROM pg_constraint k WHERE k.conrelid = t.oid) AS reali
+        FROM t
+        WHERE EXISTS (SELECT 1 FROM pg_constraint k WHERE k.conrelid = t.oid)
+          AND NOT EXISTS (
+                SELECT 1 FROM information_schema.table_constraints tc
+                WHERE tc.table_schema = t.sch AND tc.table_name = t.tab)
+        ORDER BY 1, 2
+        """, (schemas,)
+    )
+    ciechi = cur.fetchall()
+    if not ciechi:
+        return
+    cur.execute("SELECT current_user, current_setting('search_path')")
+    utente, spath = cur.fetchone()
+    esempi = "\n  ".join(
+        f"{r['sch']}.{r['tab']} — {r['reali']} vincoli nel catalogo, 0 visibili"
+        for r in ciechi[:8]
+    )
+    raise SystemExit(
+        f"\n⛔ Documentazione NON generata: l'utente «{utente}» non vede tutto.\n\n"
+        f"{len(ciechi)} tabelle hanno vincoli in pg_constraint e ZERO in "
+        f"information_schema, che e' filtrato dai permessi. Le loro pagine "
+        f"nascerebbero senza la sezione «Vincoli», identiche a quelle di una "
+        f"tabella che vincoli non ne ha — una sottrazione silenziosa, non un "
+        f"errore.\n\n  {esempi}\n\n"
+        f"Rigenerare con l'utente proprietario del database.\n"
+        f"(Il search_path lo fissa gia' main() a «public», ora e' «{spath}»: "
+        f"quello non e' piu' un problema tuo.)\n"
+    )
+
+
 # Main
 def main():
     conn = psycopg2.connect(dsn=DB_DSN, cursor_factory=DictCursor)
     cur = conn.cursor()
+    # ⚠️ Il search_path NON puo' dipendere da chi lancia lo script.
+    #   `information_schema.triggers.action_statement` qualifica il nome della
+    #   funzione secondo il search_path di chi interroga: con `script` e `dbops`
+    #   nel path (come li ha zeroerp_app) `script.trgfn_audit_data_user_generic()`
+    #   diventa `trgfn_audit_data_user_generic()`, e 3264 righe di doc cambiano
+    #   senza che nel database sia cambiato niente. Un diff enorme e falso e' il
+    #   modo piu' rapido per far smettere di leggere i diff della doc.
+    #   Fissarlo qui rende l'output identico per chiunque lo esegua; `public`
+    #   perche' e' la forma con cui la doc committata e' stata scritta.
+    cur.execute("SET search_path = public")
+    verifica_visibilita(cur)
     for schema in schemas:
         write_docs_for_schema(schema, cur)
     cur.close()

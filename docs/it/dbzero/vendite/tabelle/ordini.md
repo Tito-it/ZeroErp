@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/ordini.md" %}
 # 📚 Tabella `ordini`
 
+> 📝 **Descrizione**
+>
+> Ordini di vendita (testata) con campi già utili alla futura emissione di DDT.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

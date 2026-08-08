@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/documenti/manual/tipi_asset_documento.md" %}
 # 📚 Tabella `tipi_asset_documento`
 
+> 📝 **Descrizione**
+>
+> Lookup dei tipi di asset documentale caricabili per emittente.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

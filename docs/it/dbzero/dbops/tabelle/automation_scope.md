@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/dbops/manual/automation_scope.md" %}
 # 📚 Tabella `automation_scope`
 
+> 📝 **Descrizione**
+>
+> Scope opzionale per rollout filtrato
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

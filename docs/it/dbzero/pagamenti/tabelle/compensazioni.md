@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pagamenti/manual/compensazioni.md" %}
 # 📚 Tabella `compensazioni`
 
+> 📝 **Descrizione**
+>
+> Testata processo compensazione
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

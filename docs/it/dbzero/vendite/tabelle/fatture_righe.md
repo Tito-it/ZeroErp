@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/fatture_righe.md" %}
 # 📚 Tabella `fatture_righe`
 
+> 📝 **Descrizione**
+>
+> Righe fattura: contenuti, IVA snapshot, attribuzione al child BA, importi congelati, sorgente.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

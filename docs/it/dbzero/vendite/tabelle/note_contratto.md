@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/note_contratto.md" %}
 # 📚 Tabella `note_contratto`
 
+> 📝 **Descrizione**
+>
+> Partizione note per contratti (FK forti verso testata/righe contratto).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

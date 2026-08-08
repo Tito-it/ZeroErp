@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/valute.md" %}
 # 📚 Tabella `valute`
 
+> 📝 **Descrizione**
+>
+> Definizione Valute
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

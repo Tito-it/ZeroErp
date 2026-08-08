@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_preventivi_pratiche.md" %}
 # 🔍 View `vw_preventivi_pratiche`
 
+> 📝 **Descrizione**
+>
+> Pratiche collegate ai preventivi vendita via pratiche_sorgenti. Include stato pratica, tipo prestazione, date.
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_preventivi_pratiche AS
 SELECT p.id AS preventivo_id,

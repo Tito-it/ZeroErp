@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/esiti_flussi_pratiche.md" %}
 # 📚 Tabella `esiti_flussi_pratiche`
 
+> 📝 **Descrizione**
+>
+> Vocabolario data-driven degli esiti dei flussi (pratiche.flussi.esito). Referenziato via codice_interno da flussi.esito, template_flussi.esito_default e template_flussi_prerequisiti.esito_richiesto (FK, 20260701-02). Base strutturale di motore (POSITIVO/NEGATIVO/PARZIALE/NON_APPLICABILE) seedata con lo schema; gli esiti di dominio (es. instradamento di un bivio) sono seedati dai domini in 80_data. Sostituisce l'enum cablato chk_flussi_esito.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
