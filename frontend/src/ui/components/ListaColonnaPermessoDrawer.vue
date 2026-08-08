@@ -33,7 +33,7 @@ const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 const { t } = useI18n()
 const presetStore = useUiPresetAdminStore()
 const permessoStore = useUiPermessoAdminStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const injectedReadonly = useInjectReadonly()
 const isReadonlyEffective = computed(
   () => props.readonly || injectedReadonly.value,
@@ -156,6 +156,7 @@ function onCancel() {
               :options="catalogo"
               option-value="id"
               :placeholder="t('ui.admin.permesso_seleziona_colonna')"
+              :invalid="campiErrati.includes('colonna_id')"
               :loading="loadingCatalogo"
               :filter="catalogo.length > 5"
             >
@@ -199,6 +200,7 @@ function onCancel() {
             :options="livelliOptions"
             option-label="label"
             option-value="value"
+            :invalid="campiErrati.includes('livello_accesso')"
           />
         </div>
       </div>

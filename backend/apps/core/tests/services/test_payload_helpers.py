@@ -499,6 +499,63 @@ class TestMapIntegrityError(TestCase):
         self.assertEqual(ctx.exception.message, "Codice duplicato.")
         self.assertEqual(ctx.exception.context, {"codice": "X"})
 
+    # Scopo: ⭐ Il terzo elemento della tupla — il CAMPO da accendere nel form.
+    #        Sul duplicato e' il caso in cui serve di piu': il form e' compilato
+    #        bene, la validazione client non ha niente da dire, e senza il campo
+    #        l'operatore legge «esiste gia'» e deve indovinare quale.
+    def test_map_integrity_error_porta_il_campo_del_vincolo(self):
+        exc = IntegrityError(
+            'duplicate key value violates unique constraint "uq_categorie_clienti_codice"'
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            map_integrity_error(
+                exc,
+                unique_constraints={
+                    "uq_categorie_clienti_codice": (
+                        "E_ANAG_DUPLICATO",
+                        "Codice duplicato.",
+                        "codice",
+                    ),
+                },
+                fallback_code="E_ANAG_VALIDAZIONE",
+                context={"codice": "X"},
+            )
+        self.assertEqual(ctx.exception.context, {"codice": "X", "field": "codice"})
+
+    # Scopo: ⚠️ IL CAMPO E' DELLA VOCE, NON DEL CONTESTO CONDIVISO, ed e' la
+    #        differenza che decide se il client accende l'input giusto. Una
+    #        mappa con due vincoli su campi diversi deve dare il campo di
+    #        QUELLO che ha fatto match: un `field` nel contesto comune si
+    #        applicherebbe a entrambi, e mandare l'operatore a correggere un
+    #        campo giusto e' peggio che non indicargliene nessuno.
+    def test_map_integrity_error_campo_del_vincolo_che_ha_fatto_match(self):
+        mappa = {
+            "uq_tab_codice": ("E_DUP", "Codice duplicato.", "codice"),
+            "uq_tab_email": ("E_DUP", "Email duplicata.", "email"),
+        }
+        for vincolo, campo_atteso in (("uq_tab_codice", "codice"), ("uq_tab_email", "email")):
+            with self.subTest(vincolo=vincolo):
+                exc = IntegrityError(f'duplicate key violates unique constraint "{vincolo}"')
+                with self.assertRaises(ServiceError) as ctx:
+                    map_integrity_error(
+                        exc, unique_constraints=mappa, fallback_code="E_FALLBACK"
+                    )
+                self.assertEqual(ctx.exception.context.get("field"), campo_atteso)
+
+    # Scopo: la tupla a due elementi resta valida e NON inventa un campo. E' la
+    #        forma giusta per i vincoli composti su piu' colonne che l'operatore
+    #        sceglie davvero: li' un campo solo direbbe il falso.
+    def test_map_integrity_error_senza_campo_non_lo_inventa(self):
+        exc = IntegrityError('duplicate key violates unique constraint "uq_coppia"')
+        with self.assertRaises(ServiceError) as ctx:
+            map_integrity_error(
+                exc,
+                unique_constraints={"uq_coppia": ("E_DUP", "Coppia duplicata.")},
+                fallback_code="E_FALLBACK",
+                context={"a": 1},
+            )
+        self.assertNotIn("field", ctx.exception.context)
+
     def test_map_integrity_error_fk_match(self):
         exc = IntegrityError('insert violates foreign key constraint "fk_figlio_padre"')
         with self.assertRaises(ServiceError) as ctx:

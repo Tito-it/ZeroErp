@@ -50,7 +50,7 @@ import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 
 const { t } = useI18n()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const { confirmDelete } = useConfirmAction()
 const isReadonly = useInjectReadonly()
 const store = useListiniRigheStore()
@@ -564,12 +564,16 @@ const onClose = useDrawerClose(emit)
               :disabled="!form.articolo_id || uomLoading"
               :loading="uomLoading"
               :empty-message="t('vendite.listini.uom_no_operative')"
-              class="w-full" />
+              class="w-full"
+              :invalid="campiErrati.includes('uom_id')"
+            />
           </div>
           <div class="form-field">
             <label>{{ t('vendite.listini.field_prezzo') }} *</label>
             <InputNumber v-model="form.prezzo" class="w-full"
-              :minFractionDigits="2" :maxFractionDigits="10" />
+              :minFractionDigits="2" :maxFractionDigits="10"
+              :invalid="campiErrati.includes('prezzo')"
+            />
           </div>
         </div>
 

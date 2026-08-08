@@ -84,10 +84,12 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
     "uq_template_documenti_emittente_sorgente_codice": (
         E_VALIDATION,
         "Esiste gia' un template con questo codice per emittente e sorgente.",
+        "codice",
     ),
     "uq_template_documenti_emittente_sorgente_codice_interno": (
         E_VALIDATION,
         "Esiste gia' un template con questo codice interno per emittente e sorgente.",
+        "codice_interno",
     ),
     "uq_template_documenti_default_attivo": (
         E_VALIDATION,

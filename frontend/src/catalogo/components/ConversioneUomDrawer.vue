@@ -25,7 +25,7 @@ const ALWAYS_VALID_FROM = '1900-01-01'
 
 const { t } = useI18n()
 const store = useConversioniUomStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const isReadonly = useInjectReadonly()
 const uomLookup = useGlobalLookup(
   'catalogo.unita_misura',
@@ -194,11 +194,14 @@ function close() {
               showIcon
               showButtonBar
               :disabled="!isEdit && form.valido_dal_sempre"
+              :invalid="campiErrati.includes('valido_dal')"
             />
           </div>
           <div class="form-field">
             <label>{{ t('common.data_a') }}</label>
-            <DatePicker v-model="form.valido_al" :dateFormat="DATE_FORMAT" showIcon showButtonBar />
+            <DatePicker v-model="form.valido_al" :dateFormat="DATE_FORMAT" showIcon showButtonBar
+              :invalid="campiErrati.includes('valido_al')"
+            />
           </div>
         </div>
         <div v-if="!isEdit" class="form-grid">
@@ -211,7 +214,9 @@ function close() {
         <div v-if="isEdit" class="form-grid">
           <div class="form-field">
             <label>{{ t('indirizzi.campo_attivo') }}</label>
-            <ToggleSwitch v-model="form.attivo" />
+            <ToggleSwitch v-model="form.attivo"
+              :invalid="campiErrati.includes('attivo')"
+            />
           </div>
         </div>
       </template>

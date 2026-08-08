@@ -32,7 +32,7 @@ import AttivoTag from '../../core/components/AttivoTag.vue'
 
 const { t } = useI18n()
 const store = useArticoliStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const { confirmAction } = useConfirmAction()
 const isReadonly = useInjectReadonly()
 
@@ -351,7 +351,9 @@ const drawerActions = computed(() => {
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('catalogo.field_codice') }} *</label>
-            <InputText v-model="form.codice" :disabled="isFieldLocked('codice')" />
+            <InputText v-model="form.codice" :disabled="isFieldLocked('codice')"
+              :invalid="campiErrati.includes('codice')"
+            />
           </div>
           <div class="form-field">
             <label>{{ t('catalogo.field_uom') }} *</label>
@@ -363,7 +365,9 @@ const drawerActions = computed(() => {
         <div class="form-grid">
           <div class="form-field">
             <label>{{ t('catalogo.field_descrizione') }} *</label>
-            <InputText v-model="form.descrizione" />
+            <InputText v-model="form.descrizione"
+              :invalid="campiErrati.includes('descrizione')"
+            />
           </div>
           <div class="form-field">
             <label>{{ t('catalogo.field_descrizione_breve') }}</label>

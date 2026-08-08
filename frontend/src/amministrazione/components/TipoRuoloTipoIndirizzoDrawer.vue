@@ -21,7 +21,7 @@ import InputText from 'primevue/inputtext'
 
 const { t } = useI18n()
 const store = useTipiRuoloTipiIndirizzoStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const isReadonly = useInjectReadonly()
 
 const props = defineProps({
@@ -182,7 +182,9 @@ function close() {
         </div>
         <div class="form-field">
           <label>{{ t('amministrazione.matrice_indirizzi_ruoli.field_obbligatorio') }}</label>
-          <ToggleSwitch v-model="form.obbligatorio" :disabled="isReadOnlyEffective" />
+          <ToggleSwitch v-model="form.obbligatorio" :disabled="isReadOnlyEffective"
+            :invalid="campiErrati.includes('obbligatorio')"
+          />
         </div>
         <div class="form-field">
           <label>{{ t('amministrazione.matrice_indirizzi_ruoli.field_fallback') }}</label>
@@ -195,14 +197,18 @@ function close() {
             option-label="descrizione"
             option-value="tipo_indirizzo_id"
             :placeholder="t('amministrazione.matrice_indirizzi_ruoli.field_fallback_placeholder')"
-            :disabled="isReadOnlyEffective" show-clear filter />
+            :disabled="isReadOnlyEffective" show-clear filter
+            :invalid="campiErrati.includes('fallback_tipo_indirizzo_id')"
+          />
           <LookupSelect v-else v-model="form.fallback_tipo_indirizzo_id" rel="config.tipi_indirizzi"
             :placeholder="t('amministrazione.matrice_indirizzi_ruoli.field_fallback_placeholder')"
             :disabled="isReadOnlyEffective" show-clear />
         </div>
         <div v-if="isEdit" class="form-field">
           <label>{{ t('indirizzi.campo_attivo') }}</label>
-          <ToggleSwitch v-model="form.attivo" :disabled="isReadOnlyEffective" />
+          <ToggleSwitch v-model="form.attivo" :disabled="isReadOnlyEffective"
+            :invalid="campiErrati.includes('attivo')"
+          />
         </div>
         <Message v-if="isEdit" severity="info" :closable="false" class="mt-2">
           {{ t('amministrazione.matrice_indirizzi_ruoli.fk_immutable_hint') }}

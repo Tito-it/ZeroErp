@@ -17,7 +17,7 @@ import InputNumber from 'primevue/inputnumber'
 
 const { t } = useI18n()
 const store = useContrattiStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const isReadonly = useInjectReadonly()
 
 const props = defineProps({
@@ -116,11 +116,15 @@ const onClose = useDrawerClose(emit)
         <div class="form-field">
           <label>{{ t('vendite.contratti.field_param_1_num') }}</label>
           <InputNumber v-model="form.param_1_num" class="w-full"
-            :min-fraction-digits="0" :max-fraction-digits="4" />
+            :min-fraction-digits="0" :max-fraction-digits="4"
+            :invalid="campiErrati.includes('param_1_num')"
+          />
         </div>
         <div class="form-field">
           <label>{{ t('vendite.contratti.field_param_2_txt') }}</label>
-          <InputText v-model="form.param_2_txt" class="w-full" />
+          <InputText v-model="form.param_2_txt" class="w-full"
+            :invalid="campiErrati.includes('param_2_txt')"
+          />
         </div>
       </div>
       <FormFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="onClose" />

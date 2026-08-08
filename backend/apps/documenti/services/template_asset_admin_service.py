@@ -119,10 +119,12 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
     "uq_template_asset_emittente_codice": (
         E_VALIDATION,
         "Esiste gia' un asset con questo codice per l'emittente.",
+        "codice",
     ),
     "uq_template_asset_emittente_codice_interno": (
         E_VALIDATION,
         "Esiste gia' un asset con questo codice interno per l'emittente.",
+        "codice_interno",
     ),
     "uq_template_asset_emittente_sha256": (
         E_VALIDATION,

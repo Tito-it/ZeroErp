@@ -24,7 +24,7 @@ import { DATE_FORMAT } from '../../core/constants'
 import { toDateString } from '../../core/utils/date'
 
 const { t } = useI18n()
-const { loading } = useApiHandler()
+const { loading, campiErrati } = useApiHandler()
 
 // Stesso default usato dal drawer nuovo listino: il parametro DEFAULT_UTILITY
 // salva codice_interno e viene risolto a id tramite lookup utilities-per-emittente.
@@ -204,6 +204,7 @@ function close() {
             ? t('vendite.promo_articoli.field_uom_articolo_first')
             : t('catalogo.select_uom')"
           :disabled="!form.articolo_obj?.id"
+          :invalid="campiErrati.includes('uom_id')"
         />
       </div>
       <div class="form-field">
@@ -233,7 +234,9 @@ function close() {
       </div>
       <div class="form-field">
         <label>{{ t('vendite.listini.field_data_riferimento') }} *</label>
-        <DatePicker v-model="form.data_riferimento" :dateFormat="DATE_FORMAT" showIcon showButtonBar />
+        <DatePicker v-model="form.data_riferimento" :dateFormat="DATE_FORMAT" showIcon showButtonBar
+          :invalid="campiErrati.includes('data_riferimento')"
+        />
       </div>
       <div class="form-field" style="grid-column: 1 / -1;">
         <label>{{ t('vendite.listini.field_articolo_padre_contesto') }}</label>

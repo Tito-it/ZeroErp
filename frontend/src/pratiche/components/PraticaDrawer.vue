@@ -44,7 +44,7 @@ import Button from 'primevue/button'
 
 const { t } = useI18n()
 const store = usePraticheStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const isReadonly = useInjectReadonly()
 const { confirmAction } = useConfirmAction()
 
@@ -468,7 +468,9 @@ const onClose = useDrawerClose(emit, 'cancelled')
           </div>
           <div class="form-field">
             <label>{{ t('pratiche.field_descrizione') }}</label>
-            <Textarea v-model="form.descrizione" class="w-full" rows="3" auto-resize />
+            <Textarea v-model="form.descrizione" class="w-full" rows="3" auto-resize
+              :invalid="campiErrati.includes('descrizione')"
+            />
           </div>
           <div class="form-field">
             <label>{{ t('pratiche.col_data_scadenza') }}</label>
@@ -548,7 +550,9 @@ const onClose = useDrawerClose(emit, 'cancelled')
               </div>
               <div class="form-field">
                 <label>{{ t('pratiche.field_descrizione') }}</label>
-                <Textarea v-model="form.descrizione" class="w-full" rows="3" auto-resize />
+                <Textarea v-model="form.descrizione" class="w-full" rows="3" auto-resize
+                  :invalid="campiErrati.includes('descrizione')"
+                />
               </div>
               <div class="form-grid-2col">
                 <div class="form-field">

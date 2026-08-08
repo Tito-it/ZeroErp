@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from datetime import date
 from typing import Any, NoReturn
@@ -749,10 +749,46 @@ class PayloadValidator:
 # =================================================================
 
 
+# Scopo: ⭐ IL RICONOSCIMENTO DEL VINCOLO VIOLATO — il pezzo che chiunque
+#        traduca un `IntegrityError` deve fare allo stesso modo.
+#
+#        Match con word boundary (`\b`) e non per sottostringa: senza,
+#        `fk_foo` matcha anche `fk_foo_bar`, e a decidere quale vince e'
+#        l'ordine di inserimento nella mappa — cioe' il caso.
+#
+#        ⚠️ ESISTE PERCHE' LO STESSO RICONOSCIMENTO ERA SCRITTO DUE VOLTE
+#        (2026-08-08). `map_integrity_error` lo faceva con la word boundary,
+#        `create_with_constraint_mapping` (anagrafiche) con un `in` nudo: la
+#        seconda aveva ancora il difetto che la prima aveva gia' corretto, e
+#        nessuno poteva accorgersene perche' erano due copie senza un legame.
+#        E' lo stesso genere di guasto del cantiere dei codici errore: due
+#        elenchi della stessa cosa che si sfilano in silenzio.
+def vincolo_violato(exc: Exception, nomi: Iterable[str]) -> str | None:
+    msg = str(exc).lower()
+    for nome in nomi:
+        if re.search(r"\b" + re.escape(nome.lower()) + r"\b", msg):
+            return nome
+    return None
+
+
 # Scopo: Traduce IntegrityError DB in ServiceError con codice parlante
 #        del dominio. Le mappe associano frammento di vincolo DB (UNIQUE
 #        UNIQUE, FK o CHECK) a una coppia (error_code, message). Il match e' case-insensitive
 #        sullo `str(exc)` ed e' lineare — la chiave piu' specifica va prima.
+#
+#        ⭐ TERZO ELEMENTO — IL CAMPO DA CORREGGERE (2026-08-08). Ogni voce puo'
+#        essere `(codice, messaggio)` oppure `(codice, messaggio, campo)`: il
+#        campo finisce nel `context` della SOLA voce che ha fatto match, arriva
+#        al client nell'envelope (`error.fields`) e gli accende l'input.
+#        E' il caso in cui serve di piu': su un duplicato il form e' compilato
+#        bene, la validazione client non ha niente da dire, e senza il campo
+#        l'operatore legge «esiste gia'» e deve indovinare quale.
+#
+#        ⚠️ Si dichiara il campo SOLO quando e' vero. Un vincolo composto su piu'
+#        colonne che l'operatore sceglie davvero (una coppia di select) non ha
+#        UN campo, e uno inventato accenderebbe l'input sbagliato — peggio che
+#        non accenderne nessuno: manda a correggere un campo giusto. In quei
+#        casi si lascia la tupla a due elementi.
 #
 #        Esempio d'uso:
 #
@@ -765,6 +801,7 @@ class PayloadValidator:
 #                        "uq_categorie_clienti_codice": (
 #                            E_ANAG_DUPLICATO,
 #                            "Esiste gia' una categoria con questo codice.",
+#                            "codice",   # <- il campo che si accende nel form
 #                        ),
 #                    },
 #                    fk_constraints={},
@@ -777,54 +814,49 @@ class PayloadValidator:
 def map_integrity_error(
     exc: IntegrityError,
     *,
-    unique_constraints: dict[str, tuple[str, str]] | None = None,
-    fk_constraints: dict[str, tuple[str, str]] | None = None,
-    check_constraints: dict[str, tuple[str, str]] | None = None,
+    unique_constraints: dict[str, tuple] | None = None,
+    fk_constraints: dict[str, tuple] | None = None,
+    check_constraints: dict[str, tuple] | None = None,
     fallback_code: str,
     fallback_message: str = "Violazione vincolo DB.",
     context: dict[str, Any] | None = None,
 ) -> NoReturn:
-    msg = str(exc).lower()
     ctx = context or {}
 
-    # Match con word boundary (`\b`) per evitare collisioni su sottostringhe:
-    # es. `fk_foo` non deve matchare `fk_foo_bar` se quest'ultimo ha una voce
-    # distinta nella mappa. Senza boundary, l'ordine di inserimento della
-    # mappa determinerebbe quale vince — fragile.
     def _match_exact(constraint_name: str) -> bool:
-        return re.search(
-            r"\b" + re.escape(constraint_name.lower()) + r"\b", msg
-        ) is not None
+        return vincolo_violato(exc, [constraint_name]) is not None
 
-    for constraint_name, (error_code, message) in (unique_constraints or {}).items():
-        if _match_exact(constraint_name):
-            ErrorManager.raise_error(
-                code=error_code,
-                message=message,
-                detail=str(exc),
-                context=ctx,
-                cause=exc,
-            )
+    # Scopo: solleva per il vincolo che ha fatto match, aggiungendo al contesto
+    #        il CAMPO dichiarato dalla mappa (terzo elemento della tupla).
+    #
+    #        ⚠️ IL CAMPO STA SULLA VOCE, NON SUL CONTESTO CONDIVISO, e la
+    #        differenza non e' stilistica: una mappa puo' avere piu' vincoli su
+    #        campi diversi, e un `field` messo nel `context` comune si
+    #        applicherebbe a QUALUNQUE di essi facesse match. Il client
+    #        accenderebbe l'input sbagliato — che e' peggio di non accenderne
+    #        nessuno, perche' manda l'operatore a correggere un campo giusto.
+    def _solleva(voce: tuple, campi_extra: dict[str, Any]) -> NoReturn:
+        error_code, message = voce[0], voce[1]
+        campo = voce[2] if len(voce) > 2 else None
+        ErrorManager.raise_error(
+            code=error_code,
+            message=message,
+            detail=str(exc),
+            context={**campi_extra, **({"field": campo} if campo else {})},
+            cause=exc,
+        )
 
-    for constraint_name, (error_code, message) in (fk_constraints or {}).items():
+    for constraint_name, voce in (unique_constraints or {}).items():
         if _match_exact(constraint_name):
-            ErrorManager.raise_error(
-                code=error_code,
-                message=message,
-                detail=str(exc),
-                context=ctx,
-                cause=exc,
-            )
+            _solleva(voce, ctx)
 
-    for constraint_name, (error_code, message) in (check_constraints or {}).items():
+    for constraint_name, voce in (fk_constraints or {}).items():
         if _match_exact(constraint_name):
-            ErrorManager.raise_error(
-                code=error_code,
-                message=message,
-                detail=str(exc),
-                context=ctx,
-                cause=exc,
-            )
+            _solleva(voce, ctx)
+
+    for constraint_name, voce in (check_constraints or {}).items():
+        if _match_exact(constraint_name):
+            _solleva(voce, ctx)
 
     # Fallback euristico per coppia UNIQUE/FK generica: solo se la mappa
     # non ha un match esatto e il codice fallback vale la pena distinguere,

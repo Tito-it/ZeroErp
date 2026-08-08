@@ -20,7 +20,7 @@ import { useResiStore } from '../stores/resi'
 
 const { t } = useI18n()
 const store = useResiStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 
 const props = defineProps({
   resoId: { type: Number, required: true },
@@ -155,7 +155,9 @@ async function handleSave() {
       </div>
       <div class="form-field">
         <label>{{ t('vendite.resi.riga_motivo') }}</label>
-        <InputText v-model="form.motivo" />
+        <InputText v-model="form.motivo"
+          :invalid="campiErrati.includes('motivo')"
+        />
       </div>
     </div>
 

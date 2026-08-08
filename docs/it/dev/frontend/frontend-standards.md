@@ -1941,6 +1941,57 @@ const result = await execute(
 const status = await execute(() => api.get('/status/'), { silent: true })
 ```
 
+### ⭐ Campi in errore dal backend — `campiErrati` (dal 2026-08-08)
+
+Quando il backend sa **quale campo** l'operatore deve correggere, lo dice:
+l'envelope d'errore porta `error.fields`, un array di **nomi** (mai i valori —
+vedi [api.md §Envelope risposte](../api.md)). `useApiHandler` li espone gia'
+pronti da legare agli input:
+
+```js
+const { execute, loading, campiErrati } = useApiHandler()
+```
+
+```vue
+<InputText v-model="form.codice" :invalid="campiErrati.includes('codice')" />
+```
+
+**Non sostituisce la validazione client**, la completa: `canSave` copre le
+regole che il frontend conosce (obbligatorieta', formato), `campiErrati` copre
+**quelle che stanno nel service** — unicita', coerenza fra entita', vincoli di
+stato. Prima l'operatore leggeva «Campo 'ordinamento' non valido» nel toast e
+doveva cercarselo da solo nel form.
+
+| Regola | Perche' |
+|---|---|
+| si azzera a ogni `execute` | descrive l'**ultimo** errore, non la storia del drawer. Il campo resta rosso finche' non si riprova a salvare |
+| si legge anche in `silent` | il chiamante puo' voler evidenziare senza toast |
+| nessun messaggio sotto il campo | il testo sta gia' nel toast; ripeterlo sotto l'input e' rumore. Il bordo rosso dice *dove*, il toast dice *cosa* |
+| il nome e' quello del **payload API**, non del `v-model` | se il form rinomina un campo, il legame va scritto a mano — `:invalid="campiErrati.includes('nome_api')"` |
+
+**È lo standard, non un caso isolato**: dal 2026-08-08 lo legano **38 componenti
+con 136 binding**. La regola per un drawer nuovo: se un campo del form ha lo
+stesso nome della chiave che mandi nel payload, legalo — costa una riga e il
+giorno in cui il service comincia a rifiutarlo l'operatore vede dove.
+
+⚠️ **Non si lega tutto**: la lista dei nomi che il backend può davvero mandare è
+finita (**122**, misurati sui `context={"field": …}` e sulle chiavi passate ai
+validator). Legare un campo fuori da quella lista non fa danno ma non fa niente:
+è una riga che non decide.
+
+⚠️ **Oggi lo popolano solo gli errori nati nel backend Python** (42 codici su
+125 con `ui_action = highlight_form_fields`). Per quelli sollevati dalle
+funzioni PL/pgSQL il canale esiste ma non e' ancora usato: finche' non lo sara',
+`campiErrati` su quegli errori resta vuoto e il comportamento e' quello di
+prima — nessuna regressione, solo nessun guadagno. Piano e misure:
+`docs/it/dev/work-in-progress/piano-be-classe-codici-errore.md` §12.
+
+⚠️ **`ui_action` non si usa ancora.** `useApiHandler` lo espone come `azioneUi`
+per chi vorra' costruirci sopra, ma **nessun componente lo legge**: la reazione
+della pagina la decidono il messaggio e lo status. Prima di dargli un
+comportamento vanno rilette le 176 scelte fatte quando nessuno poteva
+verificarle a video.
+
 ---
 
 ## Modalita' sola lettura e accesso — pattern "protect"

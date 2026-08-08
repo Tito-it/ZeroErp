@@ -31,7 +31,7 @@ import Button from 'primevue/button'
 
 const { t } = useI18n()
 const store = useEmittentiFiscaliStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const isReadonly = useInjectReadonly()
 
 const props = defineProps({
@@ -282,6 +282,7 @@ function close() {
                 :disabled="isEdit"
                 maxlength="40"
                 class="w-full"
+                :invalid="campiErrati.includes('codice')"
               />
             </div>
 
@@ -349,7 +350,9 @@ function close() {
             <!-- Attivo: ultimo elemento del form (richiesta UX) -->
             <div class="form-field mt-3">
               <label>{{ t('amministrazione.emittenti_fiscali.field_attivo') }}</label>
-              <ToggleSwitch v-model="form.attivo" />
+              <ToggleSwitch v-model="form.attivo"
+                :invalid="campiErrati.includes('attivo')"
+              />
             </div>
           </template>
         </div>

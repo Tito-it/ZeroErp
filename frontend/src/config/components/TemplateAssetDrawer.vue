@@ -32,7 +32,7 @@ import Message from 'primevue/message'
 
 const { t } = useI18n()
 const store = useTemplateAssetDocumentiStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const isReadonly = useInjectReadonly()
 const { defaultEmittenteId } = useEmittenteFiscaleField()
 
@@ -227,6 +227,7 @@ function close() {
               :disabled="isEdit || isReadOnlyEffective"
               maxlength="120"
               fluid
+              :invalid="campiErrati.includes('codice')"
             />
           </div>
           <div class="form-field">
@@ -236,6 +237,7 @@ function close() {
               :disabled="isEdit || isReadOnlyEffective"
               maxlength="120"
               fluid
+              :invalid="campiErrati.includes('codice_interno')"
             />
           </div>
         </div>
@@ -245,6 +247,7 @@ function close() {
             v-model="form.descrizione"
             :disabled="isReadOnlyEffective"
             maxlength="500"
+            :invalid="campiErrati.includes('descrizione')"
           />
         </div>
         <div class="form-field">
@@ -274,16 +277,22 @@ function close() {
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('config.modelli_documenti.asset.field_valido_dal') }}</label>
-            <DatePicker v-model="form.valido_dal" :disabled="isReadOnlyEffective" date-format="dd/mm/yy" fluid />
+            <DatePicker v-model="form.valido_dal" :disabled="isReadOnlyEffective" date-format="dd/mm/yy" fluid
+              :invalid="campiErrati.includes('valido_dal')"
+            />
           </div>
           <div class="form-field">
             <label>{{ t('config.modelli_documenti.asset.field_valido_al') }}</label>
-            <DatePicker v-model="form.valido_al" :disabled="isReadOnlyEffective" date-format="dd/mm/yy" fluid />
+            <DatePicker v-model="form.valido_al" :disabled="isReadOnlyEffective" date-format="dd/mm/yy" fluid
+              :invalid="campiErrati.includes('valido_al')"
+            />
           </div>
         </div>
         <div class="form-field">
           <label>{{ t('common.attivo') }}</label>
-          <ToggleSwitch v-model="form.attivo" :disabled="isReadOnlyEffective" />
+          <ToggleSwitch v-model="form.attivo" :disabled="isReadOnlyEffective"
+            :invalid="campiErrati.includes('attivo')"
+          />
         </div>
 
         <template v-if="!isEdit">

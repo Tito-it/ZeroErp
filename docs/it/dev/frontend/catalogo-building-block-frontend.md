@@ -12,7 +12,7 @@
 | Building Block | File | Descrizione |
 |---|---|---|
 | `useNotify` | [useNotify.js](../../../../frontend/src/core/composables/useNotify.js) | Toast notifiche (success, warn, error, systemError) |
-| `useApiHandler` | [useApiHandler.js](../../../../frontend/src/core/composables/useApiHandler.js) | Wrapper chiamate API con error handling automatico e stato loading |
+| `useApiHandler` | [useApiHandler.js](../../../../frontend/src/core/composables/useApiHandler.js) | Wrapper chiamate API con error handling automatico e stato loading. ⭐ **Dal 2026-08-08 espone anche `campiErrati`**: i NOMI dei campi che il backend indica come da correggere (envelope `error.fields`), pronti da legare a `:invalid="campiErrati.includes('codice')"`. Non sostituisce la validazione client — copre le regole che stanno nel **service** e che il frontend non conosce. ⚠️ Si azzera a ogni `execute` (descrive l'ultimo errore, non la storia del drawer) e si popola anche in `silent`. Espone anche `azioneUi` (`ui_action`), che pero' **nessun componente legge ancora**. Legato da **38 componenti / 136 binding** (2026-08-08). Vedi frontend-standards §Gestione errori API. |
 | `useLoading` | [useLoading.js](../../../../frontend/src/core/composables/useLoading.js) | Stato caricamento con distinzione first load (skeleton) vs successivi (progressbar) |
 | `usePagination` | [usePagination.js](../../../../frontend/src/core/composables/usePagination.js) | Paginazione server-side con integrazione PrimeVue DataTable |
 | `useSearchTable` | [useSearchTable.js](../../../../frontend/src/core/composables/useSearchTable.js) | Ricerca/paginazione/ordinamento unificato per DataTable con debounce |

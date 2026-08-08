@@ -78,6 +78,7 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
     "uq_ui_lista_definizione_codice": (
         E_DEFINIZIONE_VALIDATION,
         "Esiste gia' una definizione con questo codice.",
+        "codice",
     ),
 }
 

@@ -438,7 +438,9 @@ Generato da `success_response()` in `apps.core.api.success_responses`.
     "code": "E_PIPELINE_VALIDATION",
     "message": "Tipo documento fiscale non valido.",
     "detail": "tipo_doc_fiscale_id=42 non trovato",
-    "retryable": false
+    "retryable": false,
+    "ui_action": "highlight_form_fields",
+    "fields": ["tipo_doc_fiscale_id"]
   },
   "meta": { "request_id": "uuid-..." }
 }
@@ -451,6 +453,26 @@ Generato da `success_response()` in `apps.core.api.success_responses`.
 | `detail`            | no              | Dettaglio tecnico aggiuntivo                                        |
 | `technical_message` | no              | Solo se `DJANGO_API_EXPOSE_TECHNICAL_DETAILS=1` (mai in produzione) |
 | `retryable`         | no              | `true` se il client puo` riprovare la stessa richiesta              |
+| `ui_action`         | si`             | Come dovrebbe reagire la pagina. ⚠️ **Il frontend non lo legge ancora** |
+| `fields`            | no              | I **nomi** dei campi del form da correggere (`["partita_iva"]`)     |
+
+⭐ **`fields` — dal 2026-08-08.** È l'informazione senza la quale
+`ui_action: highlight_form_fields` non è azionabile: diceva *«evidenzia il
+campo»* senza dire quale. Arriva dal `context` del `ServiceError`, dalla
+convenzione `context={"field": <nome>}` già presente in **114 punti di
+chiamata** — non è una convenzione nuova, è una che si fermava al log.
+
+⚠️ **Escono solo i nomi, e solo dalla chiave `field`.** Il `context` è una borsa
+diagnostica destinata a `dbops.error_log`: contiene anche `lotto_id`,
+`contratto_id`, `order_dir`, che non sono campi di un form — mandarli direbbe al
+client di evidenziare cose che sullo schermo non esistono. E il **valore** non
+esce mai: è il dato che l'operatore ha appena scritto.
+
+⚠️ **Oggi lo popolano solo gli errori nati in Python** (42 codici su 125 con
+`highlight_form_fields`). Per gli 83 sollevati da PL/pgSQL il canale esiste ma
+non è ancora usato — `RAISE … USING COLUMN`, letto come `diag.column_name`,
+esattamente come `CONSTRAINT` porta già il codice. Analisi e ordine dei passi:
+`docs/it/dev/work-in-progress/piano-be-classe-codici-errore.md` §12.
 
 Gli errori sono generati da:
 

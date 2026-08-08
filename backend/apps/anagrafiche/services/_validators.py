@@ -10,6 +10,7 @@ from django.db import IntegrityError
 
 from apps.core.api.payload_validators import optional_bool, optional_int, optional_iso_date
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.payload_helpers import vincolo_violato
 from apps.core.services.service_errors import ServiceError
 from apps.anagrafiche.error_codes import E_ANAG_DUPLICATO, E_ANAG_NOT_FOUND, E_ANAG_VALIDAZIONE
 
@@ -97,25 +98,50 @@ def create_with_dedup(fn: Any, duplicate_message: str) -> dict:
 
 def create_with_constraint_mapping(
     fn: Any,
-    constraint_messages: dict[str, str],
+    constraint_messages: dict[str, str | tuple[str, str]],
     default_message: str | None = None,
 ) -> Any:
     """Esegue fn (create) mappando le violazioni UNIQUE su messaggi per-constraint.
 
     Per tabelle con piu' vincoli UNIQUE: evita il mascheramento di
     `create_with_dedup` (che riconduce qualsiasi IntegrityError a un unico
-    messaggio). Sul primo nome-constraint presente in `str(exc)` solleva
+    messaggio). Sul vincolo che fa match solleva
     ServiceError(E_ANAG_DUPLICATO, messaggio). Se nessun constraint matcha:
     se `default_message` e' dato lo solleva, altrimenti RILANCIA l'IntegrityError
     (no mascheramento; il middleware lo gestisce) — pattern coerente con clienti.
+
+    Il valore della mappa e' il messaggio, oppure `(messaggio, campo)`: il campo
+    e' quello che l'operatore deve correggere, arriva al client in
+    `error.fields` e gli accende l'input. Si dichiara **solo quando e' vero** —
+    dev'essere una chiave del payload, non solo una colonna del database.
+
+    ⚠️ IL RICONOSCIMENTO DEL VINCOLO NON E' PIU' SCRITTO QUI (2026-08-08): usa
+    `vincolo_violato` di `payload_helpers`, lo stesso di `map_integrity_error`.
+    Prima erano due copie, e non erano identiche — qui il match era un `in`
+    nudo, quindi `uq_foo` matchava anche `uq_foo_bar` e a decidere quale
+    vincesse era l'ordine del dizionario. Il difetto era gia' stato corretto
+    nell'altra copia con la word boundary, ma nessuno poteva accorgersi che
+    questa era rimasta indietro: e' esattamente il guasto da «due elenchi della
+    stessa cosa» che il cantiere dei codici errore ha inseguito per giorni.
+
+    ⚠️ Resta invece DIVERSA la politica di ripiego, e va tenuta: `map_integrity_error`
+    maschera sempre con un `fallback_code`, questa RILANCIA. Non sono due copie
+    della stessa decisione — sono due decisioni diverse, ed e' voluto.
     """
     try:
         return fn()
     except IntegrityError as exc:
         detail = str(exc)
-        for constraint, message in constraint_messages.items():
-            if constraint in detail:
-                raise ServiceError(code=E_ANAG_DUPLICATO, message=message, detail=detail) from exc
+        nome = vincolo_violato(exc, constraint_messages)
+        if nome is not None:
+            voce = constraint_messages[nome]
+            message, campo = voce if isinstance(voce, tuple) else (voce, None)
+            raise ServiceError(
+                code=E_ANAG_DUPLICATO,
+                message=message,
+                detail=detail,
+                context={"field": campo} if campo else None,
+            ) from exc
         if default_message is not None:
             raise ServiceError(code=E_ANAG_DUPLICATO, message=default_message, detail=detail) from exc
         raise

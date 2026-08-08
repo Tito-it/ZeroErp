@@ -869,7 +869,7 @@ niente che una misura che sbaglia sul suo caso più noto.**
 
 ## 12. 🔵 `ui_action` — analisi per la decisione (2026-08-08)
 
-> **Stato: non è lavoro in corso, è un'analisi.** Serve a decidere se
+> **Stato: 🟡 il passo 1 è FATTO** (§12.7), il resto è analisi. Serve a decidere se
 > `ui_action` si implementa o resta un contratto dormiente, e — se si fa — a non
 > cominciare dalla parte sbagliata. **Contiene anche la parte DB**, perché il
 > disegno non si può decidere per metà.
@@ -952,7 +952,7 @@ si misura, poi si costruisce.
 
 | # | Passo | Chi | Perché lì |
 |---|---|---|---|
-| **1** | il `context` (solo le **chiavi**) entra nell'envelope | **BE** | il dato c'è già, non dipende da nessuno, sblocca 42 codici |
+| ✅ **1** | ~~il `context` entra nell'envelope~~ **FATTO** 2026-08-08 — §12.7 | **BE** | il dato c'era già, non dipendeva da nessuno |
 | **2** | il frontend legge `ui_action` + i campi **su un dominio solo** | **FE** | è il pilota: dice se il guadagno si sente davvero |
 | **3** | ⏸️ decisione: si estende o ci si ferma | **Tid** | dopo il 2, con una cosa vista invece che immaginata |
 | **4** | `USING COLUMN` sui punti che servono | **DB** | 83 punti: si fanno **se** il 3 dice di sì, e solo quelli dei domini toccati |
@@ -981,3 +981,196 @@ documenti, per un campo che nessuno guarda.
 ⚠️ E il giorno in cui si accende, quelle **176 righe di override vanno rilette
 prima**, non dopo: sono decisioni prese quando nessuno poteva verificarle a
 video.
+
+### 12.7 ✅ Passo 1 fatto — 2026-08-08
+
+L'envelope d'errore porta `fields`: i **nomi** dei campi da correggere.
+
+```json
+{"code": "E_CORE_VALIDATION", "message": "Campo 'denominazione' obbligatorio.",
+ "ui_action": "highlight_form_fields", "fields": ["denominazione"]}
+```
+
+⭐ **Non è stato scritto niente di nuovo, è stato smesso di buttarlo via.** La
+riga sopra esce da una chiamata reale a `PayloadValidator.require_string` — non
+da un test costruito ad arte: quel nome il backend lo aveva già in mano, e si
+fermava un passo prima dell'uscita.
+
+**Le tre decisioni dentro le venti righe di codice**, che sono la parte che
+conta:
+
+1. **si legge solo `context["field"]`**, non tutte le chiavi. È la decisione che
+   separa il dato dal rumore: nel `context` ci sono anche `lotto_id`,
+   `contratto_id`, `order_dir`, che **non sono campi di un form**. Mandarli
+   direbbe al frontend di evidenziare cose che sullo schermo non esistono —
+   *un dato falso al posto di un dato mancante, che è un peggioramento*;
+2. **esce il nome, mai il valore**: nel context c'è anche quello che l'operatore
+   ha scritto, e non ha nessun motivo di tornare indietro. C'è un test che prova
+   che il valore non compare **da nessuna parte** nel JSON;
+3. **il nome deve sembrare un identificatore** (regex, max 64): i nomi li scrive
+   il service, ma un chiamante che passasse una chiave dinamica farebbe
+   rimbalzare al client testo altrui.
+
+⚠️ **Il punto dove si perdeva, e dove si riperderebbe:** `_apply_policy`
+costruisce un `ApiError` **nuovo**, e quello che non si nomina lì sparisce. Ha un
+test suo per questo, non per il caso dritto.
+
+**6 test** in `tests/services/test_error_translator_campi.py`, suite completa
+verde. Restano fuori gli **83 codici sollevati dal database**: lì il canale
+esiste (`USING COLUMN`) e non è ancora usato — passo 4, e solo se il pilota del
+passo 2 dice che ne vale la pena.
+
+### 12.8 ✅ Passo 2 fatto — il pilota, 2026-08-08
+
+`useApiHandler` espone **`campiErrati`** (da `error.fields`) e **`azioneUi`** (da
+`ui_action`). Pilota: [`CategoriaClienteDrawer`](../../../../frontend/src/amministrazione/components/CategoriaClienteDrawer.vue),
+i cui cinque campi legano `:invalid="campiErrati.includes('…')"`.
+
+⭐ **Il frontend aveva già la forma giusta, e questo ha deciso il disegno.** I
+form del progetto ricevono da sempre `errors: Array` di nomi campo e fanno
+`:invalid="errors.includes('nominativo')"` (`ContattoForm`, `ContoBancarioForm`,
+…). Il backend adesso manda **esattamente quella forma**: non è stata inventata
+nessuna convenzione nuova né lato server né lato client — le due metà si sono
+incontrate a metà strada perché la stessa idea era già scritta da entrambi i
+lati, e nessuna delle due la trasmetteva.
+
+**Dove sta il valore, detto senza gonfiarlo:** `canSave` copre le regole che il
+frontend conosce (obbligatorietà, formato); `campiErrati` copre **quelle che
+stanno nel service** — unicità, coerenza fra entità, vincoli di stato. Prima
+l'operatore leggeva «Campo 'ordinamento' non valido» in un toast e doveva
+cercarselo nel form.
+
+**Le regole scritte negli standard FE**, perché sono decisioni e non dettagli:
+
+* si azzera a ogni `execute` — descrive l'**ultimo** errore, non la storia del drawer;
+* si popola anche in `silent` — evidenziare senza toast è legittimo;
+* **nessun messaggio sotto il campo**: il testo è già nel toast. Il bordo rosso
+  dice *dove*, il toast dice *cosa*; ripeterlo sarebbe rumore e una stringa i18n
+  in più da mantenere;
+* il nome è quello del **payload API**, non del `v-model`.
+
+⚠️ **`azioneUi` è esposto ma non lo legge nessuno**, ed è voluto: dare un
+comportamento a `ui_action` richiede prima di rileggere le 176 scelte fatte
+quando nessuno poteva verificarle a video (§12.6). Esporlo ora evita di
+rimettere le mani nel composable domani.
+
+**Cosa è verificato e cosa no**, per non far credere più di quanto è provato:
+
+| | |
+|---|---|
+| ✅ il backend produce `fields` sul percorso reale (`PayloadValidator`) | provato |
+| ✅ l'errore arriva davvero a `execute` — lo store non lo ingoia, l'interceptor 401 non lo trasforma | letto nel codice |
+| ✅ `invalid` esiste su `InputText`, `InputNumber`, `ToggleSwitch` (PrimeVue 4) | verificato nei tipi |
+| ✅ eslint + `vite build` | verdi |
+| ⚠️ il rosso a video | **non provato**: nel progetto non c'è un test runner frontend. Serve un click di Tid |
+
+### 12.9 ✅ Tutti i duplicati — il campo lo porta il vincolo (2026-08-08)
+
+Su richiesta di Tid, il campo non si scrive più chiamata per chiamata: **lo
+dichiara la mappa dei vincoli**. Ogni voce di `unique_constraints` /
+`fk_constraints` / `check_constraints` può essere `(codice, messaggio)` oppure
+`(codice, messaggio, campo)`.
+
+⚠️ **Il campo sta sulla VOCE, non nel `context` condiviso**, ed è la ragione per
+cui la modifica è nel building block e non nei service: una mappa può avere due
+vincoli su campi diversi, e un `field` nel contesto comune si applicherebbe a
+qualunque dei due facesse match. Il client accenderebbe l'input sbagliato —
+**peggio che non accenderne nessuno, perché manda l'operatore a correggere un
+campo giusto.** Ha un test suo, con due vincoli nella stessa mappa.
+
+**Coperti: 12 vincoli.** Tutti quelli in cui il campo è **vero**, cioè una
+chiave del payload che l'operatore compila: i `codice` (categorie clienti,
+listini, offerte, promo, definizioni/colonne/preset lista, template documenti e
+asset), i `codice_interno`, `codice_versione`.
+
+⚠️ **E quelli che ho lasciato a due elementi, che è la parte che conta:**
+
+| Caso | Perché niente campo |
+|---|---|
+| `uq_contratti_numero` | ⭐ il numero **lo assegna il service** (`_FORBIDDEN_TESTATA_CREATE`): non è un campo del form, accenderlo indicherebbe qualcosa che l'operatore non può toccare |
+| `uq_fornitori_soggetto_ruolo_id`, `uq_emittenti_fiscali_ruolo` | `soggetto_ruolo_id` non è una chiave di payload: è derivato dal soggetto |
+| `uq_offerte_commerciali_uid`, `uq_template_asset_emittente_sha256` | uid e hash sono **generati**, non scritti |
+| coppie di FK (`offerta_id`+`articolo_id`, `utility_id`+`tipo_ruolo_id`, …) | il duplicato è la **combinazione**: sceglierne una sarebbe arbitrario |
+| `uq_ordini_v_anno_serie_numero`, `uq_documenti_generati_*` | numerazione e progressivi di sistema |
+
+⭐ **Il controllo che ha fatto la differenza:** i primi due casi li avevo dati
+per buoni leggendo il nome del vincolo — la colonna esiste, il nome è
+plausibile. Sono saltati fuori verificando che il nome fosse una **chiave del
+payload** e non solo una **colonna del database**. È la stessa lezione del §11 e
+del D-3, per la terza volta: *il nome non basta, si guarda il percorso reale.*
+
+⚠️ **Una cosa trovata e non fatta: esistono due meccanismi paralleli.**
+`create_with_constraint_mapping` (usato da fornitori e clienti) mappa
+`vincolo → messaggio`, senza codice errore e senza campo. È lo stesso fatto
+gestito in due posti, cioè il difetto che questo intero filone cura — ma
+unificarlo è un refactor da dichiarare, non da fare di nascosto.
+
+### 12.10 ✅ Il difetto segnalato al §12.9 — corretto, ed era peggio (2026-08-08)
+
+Avevo scritto: *«esistono due meccanismi paralleli per lo stesso fatto»*, e
+proposto di unificarli. Aprendoli, il difetto era più grosso di come l'avevo
+descritto.
+
+⚠️ **Le due copie non erano identiche.** `map_integrity_error` riconosce il
+vincolo con una **word boundary**, e il commento accanto spiega perché: senza,
+`uq_foo` matcha anche `uq_foo_bar` e a decidere quale voce vince è l'ordine del
+dizionario. `create_with_constraint_mapping` faceva la stessa cosa con un `in`
+nudo — **cioè aveva ancora il difetto che l'altra aveva già corretto**, e non
+c'era niente che legasse le due: nessuno poteva accorgersi che una era rimasta
+indietro.
+
+⭐ **È lo stesso guasto del cantiere dei codici errore, in miniatura**: due
+elenchi della stessa cosa, tenuti a mano, che si sfilano in silenzio. Con la
+differenza che qui non si è sfilato un dato — si è sfilata una **correzione**.
+
+**Cosa ho unificato e cosa no**, perché non sono la stessa domanda:
+
+| | |
+|---|---|
+| ✅ **unificato**: il *riconoscimento* | `vincolo_violato` in `payload_helpers`, usata da entrambe. Chi traduce un `IntegrityError` non riscrive più il match |
+| ⛔ **NON unificato**: la *politica di ripiego* | `map_integrity_error` maschera sempre con un `fallback_code`; `create_with_constraint_mapping` senza match e senza default **RILANCIA**. Non sono due copie della stessa decisione: sono due decisioni diverse, entrambe documentate. Fonderle avrebbe cambiato il comportamento di due domini per amore di simmetria |
+
+E con l'unificazione il campo arriva anche di là: la mappa accetta `messaggio`
+oppure `(messaggio, campo)`. Coperti `uq_fornitori_codice` → `codice` e
+`uq_clienti_istanza_utility` → `istanza_utility_id`.
+
+**5 test nuovi**, di cui uno è la rete sul difetto corretto: con due vincoli in
+cui un nome è prefisso dell'altro, deve vincere quello giusto — col vecchio `in`
+sarebbe rosso.
+
+### 12.11 ✅ Il pattern esteso — da 1 drawer a 38 (2026-08-08)
+
+Da pilota a comportamento dell'applicazione: **38 componenti, 136 binding**.
+
+⭐ **Non è stato un «lega tutto»**, ed è la parte che rende il numero onesto.
+Prima di toccare un file ho estratto **quali nomi il backend può davvero
+mandare** — dai `context={"field": …}` e dalle chiavi passate ai validator:
+**122 nomi**. Un input il cui campo non è in quella lista non è stato legato:
+sarebbe una riga che non decide niente, e 350 righe così avrebbero fatto
+sembrare coperto ciò che non lo è.
+
+Per questo dei 70 candidati ne sono stati toccati **36 in automatico + 2 a
+mano**: gli altri hanno campi su cui il backend non parla.
+
+| | |
+|---|---|
+| candidati (usano `useApiHandler` e hanno input) | 70 |
+| **legati** | **38** |
+| non legati: nessun campo nella lista dei 122 | 49 |
+| che solo *nominano* `useApiHandler` in un commento | 4 |
+
+⚠️ **Due file li ha rotti lo script, e vale la pena scrivere come.** Il regex che
+riconosce il tag si fermava al primo `>` — ma un `>` può stare **dentro un
+attributo** (`:filter="catalogo.length > 5"`, `righeCount > 0`). Su
+`ContrattoDrawer` e `ListaColonnaPermessoDrawer` l'attributo è finito in mezzo a
+un'espressione. **Li ha presi il build, non io**: `vite build` e `eslint` sono
+andati rossi con l'errore di parsing esatto. Ripristinati da git e rifatti a
+mano.
+
+> ⭐ La lezione non è «attento ai regex»: è che una modifica meccanica su decine
+> di file **ha bisogno di un cancello che non sia la lettura**. Qui il cancello
+> c'era già (build + lint) e ha fatto il suo mestiere in dieci secondi.
+
+Dopo il ripristino: **eslint pulito, build verde**, e i diff riletti a campione
+per verificare che l'attributo fosse sul tag giusto — cosa che il build non può
+dire.
