@@ -64,7 +64,7 @@ SELECT plan(5);
 --   `config.codici_errore`: la FRASE non puo' esistere senza il CODICE. I
 --   codici di fixture vanno creati PRIMA, con la loro classe — `classe` e'
 --   NOT NULL e senza default, di proposito.
---   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (D-7/D-8)
+--   Piano: docs/it/dev/work-done/piano-db-classe-codici-errore.md (D-7/D-8)
 INSERT INTO config.codici_errore (codice, classe) VALUES
     ('TEST_CN_SEEDED', 'DATO_ERRATO');
 

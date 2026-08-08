@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # `MESSAGGIO_NON_DEFINITO` -> `E_MESSAGGIO_NON_DEFINITO` — l'ultimo fuori convenzione
-#   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (coda, §3)
+#   Piano: docs/it/dev/work-done/piano-db-classe-codici-errore.md (coda, §3)
 #   Seed del rename: 20260614-08 (i due CSV) · pulizia orfano: 20260807-20
 #   Precedente da cui e' copiata la forma: 20260803-11 (stessa funzione).
 #

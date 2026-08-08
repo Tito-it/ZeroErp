@@ -40,7 +40,7 @@
 #       FROM config.messaggi_errore;
 #
 # ── 🔴 ESTESO IL 2026-08-07: DUE LOADER PRIMA DEL CATALOGO ──────────────
-#   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (D-5)
+#   Piano: docs/it/dev/work-done/piano-db-classe-codici-errore.md (D-5)
 #   Tabelle: 20260807-11 (config.classi_errore), 20260807-12 (config.codici_errore)
 #
 #   Il changeSet carica ora TRE tabelle, in quest'ordine e in UNA transazione:

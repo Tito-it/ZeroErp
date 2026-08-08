@@ -14,8 +14,8 @@
 > come è successo tre volte in due giorni.
 
 **Chi:** team BE (`dev/backend-tid`).
-**Guida generale e ragioni di ogni scelta:** [brief-db-be-classe-codici-errore](../work-in-progress/brief-db-be-classe-codici-errore.md) — le decisioni, le misure, i perché.
-**Piano gemello:** [piano-db-classe-codici-errore](../work-in-progress/piano-db-classe-codici-errore.md) — anch'esso chiuso (2026-08-08).
+**Guida generale e ragioni di ogni scelta:** [brief-db-be-classe-codici-errore](../work-done/brief-db-be-classe-codici-errore.md) — le decisioni, le misure, i perché.
+**Piano gemello:** [piano-db-classe-codici-errore](../work-done/piano-db-classe-codici-errore.md) — anch'esso chiuso (2026-08-08).
 
 ---
 

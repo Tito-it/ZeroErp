@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # Toglie la riga vecchia lasciata dal rename `MESSAGGIO_NON_DEFINITO`
-#   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (coda, §3)
+#   Piano: docs/it/dev/work-done/piano-db-classe-codici-errore.md (coda, §3)
 #   Rename: 20260807-19 (funzione) + 20260614-08 (i due CSV)
 #
 # ── PERCHE' SERVE UN DELETE ────────────────────────────────────────────

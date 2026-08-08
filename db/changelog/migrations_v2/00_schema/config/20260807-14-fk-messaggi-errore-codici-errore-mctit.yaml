@@ -7,8 +7,8 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # La FK che chiude il disegno: ogni FRASE ha il suo CODICE
-#   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (D-7)
-#   Guida: docs/it/dev/work-in-progress/brief-db-be-classe-codici-errore.md §3
+#   Piano: docs/it/dev/work-done/piano-db-classe-codici-errore.md (D-7)
+#   Guida: docs/it/dev/work-done/brief-db-be-classe-codici-errore.md §3
 #   Richiede: 20260807-12 (config.codici_errore) e il seed del 20260614-08.
 #   Policy indici: 20260807-15 (consentito = false, l'indice e' ridondante).
 #

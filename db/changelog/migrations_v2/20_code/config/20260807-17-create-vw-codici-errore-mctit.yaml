@@ -7,8 +7,8 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # `config.vw_codici_errore` — la superficie di REVISIONE
-#   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (D-9)
-#   Guida: docs/it/dev/work-in-progress/brief-db-be-classe-codici-errore.md §5.2
+#   Piano: docs/it/dev/work-done/piano-db-classe-codici-errore.md (D-9)
+#   Guida: docs/it/dev/work-done/brief-db-be-classe-codici-errore.md §5.2
 #   Gemella: config.vw_codici_errore_identita (20260807-16), per il generatore.
 #
 # ── ⚠️ A COSA SERVE, E NON E' UN CANCELLO ───────────────────────────────

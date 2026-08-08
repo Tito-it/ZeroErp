@@ -28,7 +28,7 @@
 --   Ora sta su `config.codici_errore`, che ha UNA riga per codice — il ritiro
 --   appartiene al codice, non alla frase. I controlli (B), (C), (D) e il
 --   riepilogo leggono da li'.
---   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (D-6)
+--   Piano: docs/it/dev/work-done/piano-db-classe-codici-errore.md (D-6)
 --
 -- ── `obsoleto_dal`, dal 2026-08-05 (changeSet 20260805-17) ───────────────
 --   Un codice legacy spesso NON si puo' cancellare: `dbops.error_log` ha una FK

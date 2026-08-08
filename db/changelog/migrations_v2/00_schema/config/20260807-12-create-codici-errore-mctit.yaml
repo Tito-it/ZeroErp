@@ -7,8 +7,8 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # `config.codici_errore` — l'IDENTITA' di un codice errore
-#   Piano:  docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md  (D-4)
-#   Guida:  docs/it/dev/work-in-progress/brief-db-be-classe-codici-errore.md  §3, §5
+#   Piano:  docs/it/dev/work-done/piano-db-classe-codici-errore.md  (D-4)
+#   Guida:  docs/it/dev/work-done/brief-db-be-classe-codici-errore.md  §3, §5
 #   Richiede: 20260807-11 (config.classi_errore).
 #   Seguito da: seed (D-5), migrazione di `obsoleto_dal` (D-6), FK verso
 #               config.messaggi_errore (D-7), viste (D-9).

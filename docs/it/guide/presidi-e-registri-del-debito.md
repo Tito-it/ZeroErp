@@ -155,13 +155,44 @@ Due modi di romperlo, e nessuno dei due fa rumore da solo:
   **errore di server**. Un operatore che tenta una transizione non ammessa si
   vedrebbe un 500 al posto di una spiegazione.
 
+  ⚠️ **Questa seconda ragione si è ristretta il 2026-08-07, e va detta com'è
+  adesso.** Da quando l'elenco delle policy è **generato dal catalogo**, un
+  codice a catalogo — anche fuori convenzione — la sua risposta ce l'ha. Il
+  rischio non è più permanente: è la **finestra** fra il migrate che crea il
+  codice e il commit con cui il backend rigenera, e in quell'intervallo a
+  decidere fra 400 e 500 resta il prefisso. La regola vale ancora, ma per un
+  motivo più stretto — e una regola che si spiega con un fatto scaduto insegna
+  una cosa falsa a chi si fida.
+
+* **il nome del campo sbagliato finisce nel canale di qualcun altro.** Dal
+  2026-08-08 l'eccezione porta anche **quale campo** l'operatore deve correggere,
+  e il frontend ci accende un bordo rosso. È un secondo canale con lo stesso
+  difetto possibile del primo — con un aggravante: un mittente abusivo non
+  farebbe fallire niente, farebbe **evidenziare il campo sbagliato**, mandando
+  l'operatore a correggere un dato che è giusto. È peggio di non evidenziarne
+  nessuno, ed è il motivo per cui il controllo (F) è nato **insieme al canale**,
+  quando i mittenti abusivi erano zero: il controllo (A) invece dovette
+  rincorrere, perché il suo canale era già in uso.
+
 | Pezzo | Dove |
 |---|---|
-| La sede unica che scrive il campo | `script.fn_log_and_raise_error` |
-| Il registro | `dbops.messaggi_errore_codici_legacy` |
-| Il ritiro di un nome vecchio | `config.messaggi_errore.obsoleto_dal` |
-| Cancello automatico | `scripts/sql/guardrail_codice_errore_strutturato.sql` (passo CI) |
-| Test della suite | `db/pgtap/script/test-fn-log-and-raise-error-constraint-codice.sql` · `db/pgtap/script/test-messaggi-errore-obsoleto-dal.sql` · `db/pgtap/vendite/test-ordini-guard-transizione-v1.sql` (test 8) |
+| La sede unica che scrive i campi | `script.fn_log_and_raise_error` |
+| Il codice viaggia in | `CONSTRAINT` (dal 2026-08-05) |
+| Il **nome del campo** viaggia in | `COLUMN` (dal 2026-08-08) — contratto gemello |
+| Il registro dei nomi ereditati | `dbops.messaggi_errore_codici_legacy` — **a zero, e non si droppa** |
+| Il ritiro di un nome vecchio | `config.codici_errore.obsoleto_dal` |
+| Cancello automatico | `scripts/sql/guardrail_codice_errore_strutturato.sql` (passo CI) — controlli (A)…(F) |
+| Test della suite | `db/pgtap/script/test-fn-log-and-raise-error-constraint-codice.sql` · `db/pgtap/config/test-codici-errore-obsoleto-dal.sql` · `db/pgtap/vendite/test-ordini-guard-transizione-v1.sql` (test 8) |
+
+> ⚠️ **Due righe di questa tabella erano vecchie fino al 2026-08-09**, e vale la
+> pena dire come: `obsoleto_dal` **ha cambiato casa** — stava su
+> `config.messaggi_errore`, che è chiavata *(codice, lingua)*, quindi si poteva
+> ritirare un codice in italiano e lasciarlo vivo in inglese senza che nulla
+> protestasse. Dal changeSet `20260807-13` vive su `config.codici_errore`, che ha
+> **una riga per codice**: il ritiro appartiene al codice, non alla frase.
+> E il file di test citato non esisteva più: era stato spostato in `config/` col
+> nome nuovo. Un riferimento morto in una guida sui presidi è il difetto che la
+> guida stessa descrive.
 
 **Il registro contiene i nomi fuori convenzione ereditati** dal periodo in cui la
 regola non era presidiata. Rinominarli costerebbe più di quanto renda, quindi si
@@ -194,7 +225,7 @@ sulle installazioni nuove e fallisce su quelle che hanno una storia** — la pro
 automatica direbbe che va tutto bene proprio dove non c'è niente da rompere.
 
 Perciò un nome non si cancella: si **ritira**, scrivendo la data del ritiro
-accanto alla voce (`config.messaggi_errore.obsoleto_dal`). La voce resta, il
+accanto alla voce (`config.codici_errore.obsoleto_dal`). La voce resta, il
 diario resta agganciato, e — punto essenziale — **chi dovesse ancora incontrare
 quell'errore continua a leggere la spiegazione di sempre**, non un messaggio
 vuoto. È una dichiarazione di intenti («non usatelo più»), non un interruttore.
@@ -275,6 +306,79 @@ propria query. Per questo la misura è **una vista sola**, e il cancello la
 interroga invece di riscrivere il regex. *Anche la misura di un difetto è un
 programma, e può avere il suo difetto.*
 
+### 3.5 Il significato di un codice, che si allarga da solo
+
+**Cosa sorveglia.** Un codice errore nasce per dire *una* cosa. Poi qualcuno lo
+usa «anche per questo caso qui», una volta, e sembra ragionevole. La
+sessantottesima volta è `E_GENERICO`: un'etichetta che copre problemi diversi,
+che chiedono reazioni diverse, e che a video diventano tutti lo stesso messaggio.
+
+⭐ **Nessuno crea un codice generico di proposito.** È il motivo per cui questo
+presidio non guarda lo stato, ma il **cambiamento**.
+
+#### Perché non è un cancello sullo stato
+
+La domanda «questo codice è generico?» ha bisogno di leggere, per ogni punto che
+lo solleva, la condizione che lo precede — e di capirla. La misura che lo fa
+(`dbops.vw_codici_errore_forme_condizione`) ci riesce per **75 codici su 344**:
+per gli altri **dichiara di non sapere**, ed è la cosa più onesta che fa.
+
+⚠️ Un cancello che capisce un caso su cinque **boccia a caso e passa a caso**. E
+boccerebbe anche i codici legittimamente trasversali — `E_PERMESSO_NEGATO` è
+ovunque per costruzione, e non è un difetto. Dopo due blocchi sbagliati qualcuno
+lo spegne, e **un presidio spento è peggio di uno assente**: nel frattempo ha
+convinto tutti di esserci.
+
+#### La forma che funziona
+
+> Non «questo codice è generico?» — che richiede copertura totale — ma **«questo
+> codice ha acquistato una condizione che non aveva?»**, che la misura sa dire
+> con certezza sui 75 che legge.
+
+È lo stesso schema della baseline dei test rossi (§3.2): un file committato con
+lo stato noto, e la CI che fallisce sul **delta**.
+
+| Situazione | Esito |
+|---|---|
+| un codice **acquista** una famiglia di condizione | 🔴 rosso, la CI si ferma |
+| un codice **nuovo** nasce già con due famiglie | 🔴 rosso — nasce storto |
+| un codice **perde** una famiglia (si restringe) | 🔵 non è un difetto, **ma la baseline va stretta subito** |
+| un codice sparisce dalla misura | 🔵 si allinea |
+
+| Pezzo | Dove |
+|---|---|
+| Lo scatto | `scripts/sql/codici_errore_famiglie_snapshot.sql` |
+| Il confronto e il `--update` | `scripts/codici-errore-baseline.sh` |
+| La baseline committata | `db/baseline-codici-errore-famiglie.tsv` |
+| Cancello automatico | passo CI, subito dopo il guardrail |
+
+⛔ **La regola che vale più dello script:** se diventa rosso, **non si rigenera
+la baseline per far passare la CI**. La riga rossa è la richiesta di una
+decisione — o serve un codice nuovo, o l'uso è legittimo e la baseline si
+aggiorna **con la ragione nel messaggio di commit**.
+
+#### ⚠️ Il buco che aveva alla nascita, trovato dal primo uso vero
+
+Guardava solo le famiglie **aggiunte**. Quando un codice si è ristretto per la
+prima volta — uno scorporo fatto un'ora dopo — il presidio **ha taciuto**.
+
+Un restringimento non è un difetto. Ma finché la baseline non viene stretta,
+**continua a dichiarare ammessa** la famiglia che il codice non ha più: il giorno
+in cui qualcuno ce la rimette, il confronto la trova già in baseline e tace.
+
+> ⭐ La baseline marciva **nel verso permissivo** — l'unico verso in cui un
+> presidio si degrada senza che nessuno se ne accorga.
+
+È il caso da tenere a mente ogni volta che si scrive un confronto con una
+baseline: **un presidio va guardato anche nel verso in cui le cose migliorano**,
+perché è lì che smette di sorvegliare senza diventare rosso.
+
+#### Il limite, detto qui e non scoperto dopo
+
+Presidia i **75 codici che la misura sa leggere**, non i 344. Non è copertura
+totale ed è inutile fingere il contrario: è il rubinetto sui codici vivi e
+*leggibili*, ed è molto più di quello che c'era prima, che era niente.
+
 ---
 
 ## 4. Perché alcuni girano da soli e uno no
@@ -285,7 +389,15 @@ spiega perché ognuno sta dove sta.
 
 Il confronto qui sotto mette a fuoco i due estremi, il §3.1 (cancello in CI) e il
 §3.2 (baseline da lanciare): il §3.3 e il §3.4 appartengono alla stessa famiglia
-del §3.1 e vale per loro tutto ciò che si dice del cancello automatico. Il §3.4 è
+del §3.1 e vale per loro tutto ciò che si dice del cancello automatico.
+
+⭐ **Il §3.5 è il primo che sta in mezzo, e non per caso**: è un cancello
+automatico *costruito su una baseline*. Ha la CI del §3.1 e il file committato
+del §3.2, e prende da entrambi la parte che serve — il rosso che ferma, e il
+delta invece dello stato assoluto. Quando un difetto non si sa misurare in
+assoluto ma si sa riconoscere quando **cambia**, è questa la forma da copiare.
+
+Il §3.4 è
 l'unico a vivere nella suite Django invece che in uno script SQL — perché
 confronta contro un dizionario Python — ma resta un passo della stessa CI, che
 blocca l'integrazione allo stesso modo.
@@ -454,6 +566,18 @@ trova: è esattamente ciò per cui esiste il registro, con il suo motivo scritto
 
 ### ⚠️ E c'è un difetto che non si presidia affatto
 
+**Il rubinetto degli accumulatori (§3.5) non vede:**
+
+* i **269 codici su 344** per cui la misura dichiara di non saper leggere la
+  guardia. Su quelli tace, ed è giusto che taccia: un presidio che tira a
+  indovinare si spegne da solo dopo il secondo falso allarme;
+* un codice che nasce generico **e resta l'unico del suo genere**: se le sue due
+  famiglie sono entrambe illeggibili, non c'è delta da vedere;
+* ⚠️ e la sua baseline è **misurata su un database**. Quello di sviluppo non è
+  ricostruito da zero: confrontare una corsa in CI con una baseline presa in
+  sviluppo produce finte regressioni. È lo stesso difetto delle due baseline
+  pgTAP, e la cura è la stessa (`CODICI_BASELINE`).
+
 I tre lati del §3.3 e §3.4 hanno tutti una regola **meccanica**: il codice è a
 catalogo? è dichiarato nel codice applicativo? ha un tipo di risposta? Sono
 domande a cui si risponde confrontando due elenchi.
@@ -484,3 +608,4 @@ automatizzarne un'altra**: evita di costruire un presidio che mente.
 * [Linee guida API](../dev/api.md) §Tassonomia errori — il contratto visto dal lato backend
 * [Automazione DB](automazione-db.md) — il framework che applica le regole strutturali
 * `.codex/AGENTS.md` §Test — l'uso quotidiano della baseline
+* [Gestione dei messaggi di errore e generazione log](Messaggi-di-Errore-e-Generazione-Log.md) — il catalogo, la classe di un codice e il canale del campo, visti dal lato del dominio

@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # `ritenuta_aliquota` si accende nel drawer fornitori — schermata fornitori
 #   Canale: 20260808-04/-05 · Lotti precedenti: -06 (soggetti), -07 (CF/P.IVA)
-#   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md §5.8
+#   Piano: docs/it/dev/work-done/piano-db-classe-codici-errore.md §5.8
 #
 # ── SI AFFETTA PER SCHERMATA, NON PER SCHEMA ───────────────────────────
 #   Lezione del lotto precedente: `fn_validate_cf_piva_it` non era nei 67 punti
