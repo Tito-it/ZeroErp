@@ -37,9 +37,30 @@ RUN apt-get update \
 # Copia solo requirements prima (per sfruttare cache Docker)
 COPY backend/requirements.txt ./requirements.txt
 
-# Upgrade pip + wheel (fix CVE) e install deps
+# Installazione delle dipendenze, e poi RIMOZIONE DI PIP dall'immagine finale.
+#
+# Perche' si toglie pip. Non e' solo igiene (un'immagine di runtime non ha
+# bisogno di un gestore di pacchetti): e' la correzione di due segnalazioni
+# HIGH che facevano fallire il gate Trivy della CI, `msgpack 1.1.2` e
+# `setuptools 70.3.0`. Nessuno dei due e' in `requirements.txt`: sono le copie
+# VENDORIZZATE dentro pip, elencate nel suo `_vendor/vendor.txt`. Verificato
+# scaricando l'ultimo pip pubblicato (26.2.1): vendorizza esattamente quelle due
+# versioni, quindi `pip install -U pip` NON le corregge e non esiste una
+# versione di pip che lo faccia. Sono codice del gestore di pacchetti, non
+# raggiungibile dall'applicazione — ma finche' pip resta nell'immagine, per uno
+# scanner sono pacchetti installati a tutti gli effetti, e ha ragione lui.
+#
+# Tutto in un solo RUN: se la rimozione stesse in un layer a parte, pip
+# resterebbe comunque dentro quello precedente e lo scanner lo troverebbe lo
+# stesso. `wheel` va disinstallato PRIMA di pip, altrimenti non c'e' piu' nessuno
+# che possa farlo.
+#
+# ℹ️ Se in un container serve pip per diagnosi: `python -m ensurepip` lo
+# ripristina — il modulo della standard library resta.
 RUN python -m pip install --no-cache-dir -U pip wheel \
-  && python -m pip install --no-cache-dir -r requirements.txt
+  && python -m pip install --no-cache-dir -r requirements.txt \
+  && python -m pip uninstall -y wheel \
+  && python -m pip uninstall -y pip
 
 # Ora copia il codice
 COPY backend/ .
