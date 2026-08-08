@@ -3,7 +3,9 @@
 **Chi:** team BE (`dev/backend-tid`).
 **Guida generale e ragioni di ogni scelta:** [brief-db-be-classe-codici-errore](brief-db-be-classe-codici-errore.md) — 18 decisioni, le misure, i perché. **Questo file non le ripete: le esegue.**
 **Piano gemello:** [piano-db-classe-codici-errore](piano-db-classe-codici-errore.md).
-**Stato:** 🟢 **B-1 → B-6 FATTI** · 🟢 **§12 (campi da correggere) FATTO end-to-end** · 🔴 **B-7 aperto**, e quasi tutto DB (§11).
+**Stato:** 🟢 **B-1 → B-7 CHIUSI** · 🟢 **§12 (campi da correggere) FATTO end-to-end**.
+Il **B-7 l'ha chiuso il DB** il 2026-08-08 (piano DB §5.6-ter) presidiando il **cambiamento** invece dello stato — «questo codice ha acquistato una condizione che non aveva?» — con baseline in CI. Il contributo BE era il criterio, ed è in [api.md](../api.md).
+🔵 **Aperto solo quello che è di altri o è una tua decisione**: vedi §13.
 
 ---
 
@@ -129,7 +131,7 @@ consegna. Prima di quello il generatore non ha da cui generare.
 | **B-4** | La mappa **classe → HTTP** (8 righe) + derivazione dello status | B-3 | piccolo | ✅ 2026-08-07 |
 | **B-5** | Il **generatore** di `error_policies_generated.py` | ✅ DB **D-9** consegnato | medio | ✅ 2026-08-07 |
 | **B-6** | Il **controllo di divergenza** in CI | B-5 | piccolo | ✅ 2026-08-07 |
-| **B-7** | La regola «niente nuovi codici generici» | B-6 | coda | 🔴 **aperto** — e quasi tutto DB (§11) |
+| **B-7** | La regola «niente nuovi codici generici» | B-6 | coda | ✅ **chiuso dal DB** 2026-08-08 (§11) |
 
 **Cosa esiste ora, in quattro file** (`backend/apps/core/services/`):
 
@@ -1483,3 +1485,72 @@ esattamente il suo mestiere.
 > **un asse solo** (`ui_action`) e su quell'asse la minoranza era uno. Guardando
 > anche la classe, la minoranza cambia lato. *Una famiglia si controlla su tutti
 > i suoi assi, o si allinea al torto.*
+
+#### La prova che mancava — *quando* può scattare la guardia (2026-08-09)
+
+Prima di chiedere al DB di muovere cinque classi ho verificato l'obiezione che
+la ribalterebbe: **se il campo fosse bloccato**, non ci sarebbe niente da
+evidenziare e la coppia giusta tornerebbe a essere 409 + banner.
+
+| Verifica | Esito |
+|---|---|
+| i sei trigger scattano su… | **INSERT e UPDATE** — quindi l'obiezione è viva |
+| ma in UPDATE l'emittente è modificabile? | ⛔ **no**: `contratti_service` lo tiene in `_FORBIDDEN_TESTATA_UPDATE` («l'emittente fiscale è immutabile in update»), e il servizio rifiuta **prima** del guard DB |
+| e a video? | `OrdiniForm` e `DdtForm` hanno `:disabled="isLocked('emittente_fiscale_id')"` |
+
+⭐ **Quindi nel punto in cui l'operatore può davvero provocare quell'errore — la
+creazione — il valore in conflitto è quello che ha appena scelto nel form.** In
+update non ci arriva nemmeno: lo ferma prima un errore applicativo parlante.
+
+La coppia giusta è **400 + `highlight_form_fields`** per tutti e sei, e resta
+vero che **la classe giusta ce l'ha il reso**.
+
+🔵 **Perimetro DB, una riga**: `E_PREV_`, `E_OFFERTA_`, `E_ORDINE_`,
+`E_CONTRATTO_`, `E_DDT_EMITTENTE_BA_INCOERENTE` da `CONFLITTO_STATO` a
+`DATO_ERRATO` in `codici_errore.csv`. ⛔ Non si tocca da qui: la classe è un dato
+del catalogo, e cambiarla nel modulo generato manderebbe rosso il controllo di
+divergenza — che è il suo mestiere.
+
+---
+
+## 13. Punti aperti — al 2026-08-09
+
+**Lato BE non resta lavoro tecnico.** Tutto ciò che segue è o **di un altro
+perimetro** o **una decisione di Tid**: nessuno di questi punti è un pezzo di
+codice che aspetta di essere scritto.
+
+### 13.1 Decisioni di Tid (2)
+
+| | Cosa | Perché è ferma |
+|---|---|---|
+| 🔵 | **`E_PARAMETRO_INVALIDO` ha `ui_action = highlight_form_fields`** | 160 dei suoi 177 punti sono guard su parametri del **chiamante**: promette un campo che nel 90% dei casi non esiste. Cambiarla è una riga; è ferma perché è una decisione presa nel cantiere precedente su un codice nominato da 206 punti |
+| 🔵 | **`ui_action` resta dormiente** | proposta e argomentata (§12.12): leggerla oggi **romperebbe** il caso migliore. Resta esposta come `azioneUi` per il giorno in cui si vorrà costruirci sopra — e quel giorno le 176 righe di override vanno rilette **prima** |
+
+### 13.2 Perimetro DB (2)
+
+| | Cosa | Stato |
+|---|---|---|
+| 🔵 | **la classe dei 5 `*_EMITTENTE_BA_INCOERENTE`** → `DATO_ERRATO` a catalogo | verificato su CSV **e** DB applicato: non ancora fatto. Prova completa in §12.17, `ui_action` del reso già allineata da noi |
+| 🔵 | **163 punti `highlight` senza nome del campo** (106 funzioni, 145 senza contesto) | loro raccomandazione, condivisa: **non in blocco, ma reattivi** — quando una schermata cablata mostra un errore senza bordo |
+
+### 13.3 Da dichiarare prima di farlo (1)
+
+🔵 **4 input non legati perché il padre non ha la fonte**: `DdtRigaForm`,
+`OrdiniRigaForm`, `PreventiviRigaForm`, `ContoBancarioForm`. I loro padri
+delegano il salvataggio a un composable/store che non espone `campiErrati`;
+cablarli vuol dire **cambiare il composable**, cioè un raggio più largo del
+drawer. Elenco completo e ragioni in §12.16.
+
+### 13.4 ⛔ Chiusi *decidendo di non farli* — da non riaprire per distrazione
+
+Sono la parte che si perde per prima, e ognuno ha la sua ragione scritta:
+
+* **9 input non legati** — filtri di ricerca, celle dentro un `v-for`, campi
+  disabilitati (§12.16). ⚠️ Il criterio: *un campo che l'operatore non può
+  toccare, o che non identifica una riga sola, non si accende*;
+* **5 vincoli senza campo** — `numero` lo assegna il service,
+  `soggetto_ruolo_id` non è del payload, uid e hash sono generati (§12.9);
+* **i due ripieghi di `resolve()`** — restano, e ora che il generatore c'è
+  reggono i codici nuovi nell'intervallo fra il seed DB e la rigenerazione;
+* **nessun test sul prefisso dei codici** — sarebbe rosso su 51 codici
+  ereditati, registrati così di proposito (§7).

@@ -607,6 +607,11 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER": "Conflitto sullo step: ammesso solo uno fra avanzamento su proiezione e handler eventi.",
     "E_TEMPLATE_FLUSSO_PROIEZIONE_STEP_DOMINIO": "Avanzamento su proiezione non ammesso su uno step DOMINIO.",
     "E_TIPI_RUOLI_ENTITA_INVALIDA": "Configurazione tipo ruolo non valida.",
+    # Scorporato da `E_ERRORE_PARAMETRI` dal team DB il 2026-08-08, dopo la
+    # misura del §10.1: 3 dei suoi punti dicevano 400 dove serve 500. E' un
+    # difetto di MONTAGGIO del trigger — se ne accorge chi lo installa, mai
+    # l'operatore — quindi il messaggio non gli chiede di correggere niente.
+    "E_TRIGGER_ARGOMENTI_INVALIDI": "Trigger montato con argomenti non validi.",
     "E_TIPO_FONDO_NOT_FOUND": "Tipo fondo non trovato.",
     "E_TIPO_INDIRIZZO": "Tipo indirizzo non ammesso per questo documento.",
     "E_TIPO_INDIRIZZO_NON_PERMESSO": "Tipo indirizzo non permesso per questo tipo di ruolo.",
