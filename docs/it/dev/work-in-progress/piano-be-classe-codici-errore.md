@@ -3,10 +3,75 @@
 **Chi:** team BE (`dev/backend-tid`).
 **Guida generale e ragioni di ogni scelta:** [brief-db-be-classe-codici-errore](brief-db-be-classe-codici-errore.md) — 18 decisioni, le misure, i perché. **Questo file non le ripete: le esegue.**
 **Piano gemello:** [piano-db-classe-codici-errore](piano-db-classe-codici-errore.md).
-**Stato:** 🟢 **B-1 → B-6 FATTI** (2026-08-07): il generatore è in servizio, `error_policies_generated.py` **non si scrive più a mano** (§9).
-🟢 **§12 passi 1-2 FATTI** (2026-08-08): l'envelope porta i **campi da correggere** e li legano **38 componenti** — ⚠️ i campi sì, la `ui_action` **no**, e il perché è misurato (§12.12).
-🔵 Resta il **passo 4** (il campo dagli errori PL/pgSQL, `USING COLUMN`) — ora ha senso chiederlo, perché il consumatore esiste su 38 schermate invece che su una.
-🔴 Il **B-7 resta aperto per intero**, ed è quasi tutto DB (§11).
+**Stato:** 🟢 **B-1 → B-6 FATTI** · 🟢 **§12 (campi da correggere) FATTO end-to-end** · 🔴 **B-7 aperto**, e quasi tutto DB (§11).
+
+---
+
+## Riepilogo dell'attività svolta
+
+> Il documento è cresciuto molto: questa è la **mappa**, non il racconto. Ogni
+> riga rimanda alla sezione che la spiega e alla misura che la sostiene.
+
+**In due giorni il cantiere ha fatto due cose diverse**, e conviene tenerle
+distinte perché la seconda non era nel piano:
+
+**1) I codici errore hanno una CLASSE, e il registro non si scrive più a mano.**
+
+| Passo | Cosa | Esito | Dove |
+|---|---|---|---|
+| B-1 | via la policy morta | 1 voce | §2 |
+| B-2 | classe senza status ⇒ **eccezione, non ripiego** | la garanzia esiste in una riga di codice | §2, §8.2 |
+| B-3 | quattro moduli, separati per *quando cambiano* | 5224 righe → 4 file | §2, §6 |
+| B-4 | `classe → HTTP` derivato | da 659 righe a **9 regole**, zero eccezioni per codice | §2, §8.1 |
+| B-5 | il **generatore** dal catalogo | 689 voci, `manage.py genera_error_policies` | §9 |
+| B-6 | il controllo di **divergenza** | fallisce sul diff esatto, provato in rosso | §9.5 |
+
+**2) L'errore dice ANCHE quale campo correggere** — non era nel piano, è nato
+dall'audit che ha scoperto che `ui_action` non la leggeva nessuno (§8.4).
+
+| Passo | Cosa | Esito | Dove |
+|---|---|---|---|
+| 1 | `fields` nell'envelope, dal `context` del `ServiceError` | il dato c'era già e si perdeva a un passo dall'uscita | §12.7 |
+| — | il campo sui **duplicati**, portato dalla mappa dei vincoli | 12 vincoli, e **5 lasciati apposta** | §12.9 |
+| — | unificato il riconoscimento del vincolo | due copie, e una aveva ancora il difetto che l'altra aveva corretto | §12.10 |
+| 2 | il frontend accende il campo | **57 componenti** | §12.11, §12.16 |
+| 4 (BE) | lettura del `COLUMN` dagli errori PL/pgSQL | pronta **prima** che servisse; il caso NOT NULL funziona già da solo | §12.13 |
+| — | catena DB → envelope → video, provata end-to-end | `E_CF_NON_VALIDO` + `codice_fiscale` | §12.14 |
+
+**Stato di verifica:** **3621 test backend verdi** (col cancello contro il DB
+vero), eslint e `vite build` puliti.
+
+### ⚠️ Le cose che NON si sono fatte, e la ragione
+
+Contano quanto le altre, perché ognuna era la scorciatoia disponibile:
+
+* **la `ui_action` resta dormiente** — leggerla *romperebbe* il caso migliore:
+  il duplicato ha `show_error_banner`, e subordinare il fatto (*so quale
+  campo*) al suggerimento (*come reagire*) butta via il fatto (§12.12);
+* **9 input non legati**, uno per uno con la loro ragione — filtri, celle dentro
+  un `v-for`, padri senza fonte (§12.16);
+* **5 vincoli senza campo**: `numero` lo assegna il service, `soggetto_ruolo_id`
+  non è del payload, uid e hash sono generati. Il nome del vincolo sembrava
+  buono; è saltato fuori verificando il **payload**, non la colonna (§12.9);
+* **il B-7 non ha una metà BE**, e l'avevo scritto sbagliato io (§11).
+
+### ⭐ Le lezioni che valgono oltre questo cantiere
+
+1. **si contano le condizioni, non i domini** — `E_VALIDAZIONE` sembrava un
+   accumulatore e non lo era; `E_ERRORE_PARAMETRI` non era fra i sospetti e lo è
+   (§B-7, §10.1);
+2. **il nome non basta**: si verifica il *percorso reale*. Tre volte in due
+   giorni — colonna vs chiave di payload, whitelist Python vs whitelist Python+DB,
+   vincolo dichiarato vs vincolo esistente;
+3. **una modifica meccanica su decine di file vuole un cancello che non sia la
+   rilettura**: due file rotti li ha presi il build in dieci secondi (§12.11), e
+   al secondo giro il punto d'inserimento è stato scelto perché *non può*
+   sbagliare (§12.16);
+4. **due elenchi della stessa cosa si sfilano in silenzio** — e non solo di dati:
+   fra le due copie del riconoscimento vincoli si era sfilata una **correzione**
+   (§12.10).
+
+---
 
 > **Verifica dell'equivalenza, prima di tutto il resto.** I **656** codici che
 > restano una risposta HTTP risolvono **identici** a prima — stesso status,
@@ -956,7 +1021,7 @@ si misura, poi si costruisce.
 | # | Passo | Chi | Perché lì |
 |---|---|---|---|
 | ✅ **1** | ~~il `context` entra nell'envelope~~ **FATTO** 2026-08-08 — §12.7 | **BE** | il dato c'era già, non dipendeva da nessuno |
-| ✅ **2** | ~~il frontend legge `ui_action` + i campi~~ → **legge i CAMPI**, esteso a 38 componenti | **FE** | ⚠️ la `ui_action` è rimasta fuori, e non per pigrizia: §12.12 |
+| ✅ **2** | ~~il frontend legge `ui_action` + i campi~~ → **legge i CAMPI**, esteso a **57 componenti** | **FE** | ⚠️ la `ui_action` è rimasta fuori, e non per pigrizia: §12.12 |
 | **3** | ⏸️ decisione: si estende o ci si ferma | **Tid** | dopo il 2, con una cosa vista invece che immaginata |
 | **4** | `USING COLUMN` sui punti che servono | **DB** | 83 punti: si fanno **se** il 3 dice di sì, e solo quelli dei domini toccati |
 
@@ -1300,3 +1365,121 @@ input con quel nome. Il canale è pronto dal lato DB e non ha un consumatore —
 si cabla il giorno in cui quel campo comparirà in un form.
 
 **Componenti che legano `campiErrati`: 40.**
+
+### 12.15 ⚠️ «Il messaggio c'è ma il campo non è rosso» — **né DB né BE: una terza sorgente**
+
+Segnalato provando il codice fiscale. La diagnosi conta più della correzione,
+perché la domanda posta era *«è un problema DB o BE?»* e la risposta è **nessuno
+dei due**.
+
+Su quel campo esistono **tre** sorgenti di errore, e solo due passano da dove
+tutto questo lavoro guarda:
+
+| # | Quando | Come arriva | `campiErrati` si popola? |
+|---|---|---|---|
+| 1 | al **salvataggio**, validator Python | `ServiceError.context["field"]` | ✅ |
+| 2 | al **salvataggio**, guard DB | `E_CF_NON_VALIDO` + `USING COLUMN` | ✅ |
+| 3 | al **blur**, `onValidaCF` | **HTTP 200** con `{errors, warnings}` nel payload | ❌ **mai** |
+
+⭐ **La terza è un REFERTO, non un errore**: l'endpoint risponde 200 e descrive
+cosa non va. `useApiHandler` non entra nel `catch` — non c'è niente da
+catturare — quindi `campiErrati` resta vuoto. Il messaggio compariva sotto il
+campo (`<Message>`) e l'input restava bianco: **esattamente il sintomo**.
+
+E non è una regressione introdotta ora: quel percorso esisteva da prima, e prima
+nessun campo si accendeva mai, quindi la differenza non si notava. È diventato
+visibile **perché adesso gli altri due si accendono** — il rosso mancante si
+vede solo dove il rosso è la norma.
+
+**Correzione, locale al form:** l'input è rosso se `campiErrati` lo nomina
+**oppure** se il referto contiene un errore.
+
+⚠️ **Solo `severity: 'error'`, mai i warning.** Un referto può dire «formalmente
+valido ma non corrisponde ai dati anagrafici»: accendere il campo per un avviso
+farebbe perdere al rosso il suo significato — *questo va corretto*.
+
+> ⭐ **La lezione, ed è generale:** un campo può avere più sorgenti di verità
+> sullo stesso fatto, e cablarne una non copre le altre. Cercato in tutto il
+> frontend: `SoggettoForm` è **l'unico** con un referto 200 di questo tipo.
+> Se ne nascerà un secondo, la regola è qui.
+
+### 12.16 ✅ Copertura completa — l'audit e i **9 che restano fuori apposta**
+
+Alla domanda «siamo sicuri che tutti i drawer siano cablati?» la risposta era
+**no**, e non si poteva saperlo senza rifare la misura: il primo script cercava
+solo `v-model="form.X"`, mentre nel progetto i form vivono anche come
+`soggetto.form.X`, `onereForm.X`, `liberoForm.X`.
+
+**Audit su qualunque oggetto**: 29 input scoperti in 20 componenti. Chiusi tutti
+quelli che vanno chiusi; **componenti che legano `campiErrati`: 57** (i 10 form
+condivisi e gli 8 padri che gli passano la prop).
+
+Il pattern per i form **condivisi** (che non chiamano le API) è quello di
+`SoggettoForm`: prop `campiErrati` nel figlio, `:campi-errati="campiErrati"` nel
+padre. Applicato a 10 figli + 8 padri.
+
+#### ⛔ I 9 input lasciati fuori, e ognuno per una ragione
+
+| Input | Perché no |
+|---|---|
+| `CodaFiltriToolbar` — `stato`, `ambito` | sono **filtri di ricerca**, non campi di un salvataggio |
+| `ListaPresetColonneDrawer` — `visibile`<br>`DashboardWidgetModal` — `visibile` | sono **celle di riga** dentro un `v-for`: `campiErrati` è per *chiamata*, non per riga — accenderebbe tutte le righe insieme |
+| `DdtRigaForm`, `OrdiniRigaForm`, `PreventiviRigaForm` — `descrizione`, `ordine`<br>`ContoBancarioForm` — `valido_dal` | il padre **non ha una fonte**: delega il salvataggio a un composable/store che non espone `campiErrati`. Cablarli richiede di cambiare il composable — **modifica da dichiarare**, non da fare di nascosto |
+
+⭐ **Due di questi sono la stessa trappola vista due volte**, e vale scriverla
+come regola: *un campo dentro un `v-for` non si lega a `campiErrati`*. Il
+contratto dice «il campo X è sbagliato», non «la riga N». Accendere tutte le
+righe è un rosso su campi giusti — peggio del rosso mancante.
+
+⚠️ **E i tre form di riga master-detail sono un caso limite**: lì si edita **una
+riga alla volta**, quindi il binding sarebbe corretto oggi. Restano fuori per
+l'altra ragione (il padre non ha la fonte), non per questa — se un domani
+diventassero una griglia inline, varrebbe anche la prima.
+
+#### La lezione dell'inserimento automatico, seconda parte
+
+Il primo giro aveva rotto due file perché il regex del tag si fermava al primo
+`>`, che può stare **dentro un attributo**. Il secondo giro non ha rotto niente
+perché l'attributo si inserisce **subito dopo il `v-model`** invece che a fine
+tag: un punto che è sempre dentro l'apertura, per costruzione. Stessa quantità di
+file, zero rossi.
+
+### 12.17 ⚠️ La famiglia `*_EMITTENTE_BA_INCOERENTE` — **sbagliano tutti e sei, in metà diverse**
+
+Segnalazione del team DB: sei guardie identiche, cinque con
+`highlight_form_fields` e il reso senza. La loro domanda era *«o sbagliano i
+cinque, o sbaglia lui»*. **Guardando anche la classe, la risposta è: né l'uno né
+l'altro.**
+
+| | classe | status | `ui_action` |
+|---|---|---|---|
+| i cinque (prev, offerte, ordini, contratti, DDT) | `CONFLITTO_STATO` | 409 | `highlight_form_fields` |
+| il reso | `DATO_ERRATO` | 400 | ~~default banner~~ → **allineato** |
+
+⭐ **Sono le due combinazioni incrociate**, e [api.md](../api.md) dice che le
+coppie sono due sole:
+
+> **409 · banner** — l'operatore **non ha un campo da correggere**: il conflitto
+> è fra righe che non ha scelto lui.
+> **400 · highlight** — il valore in conflitto **l'ha scelto lui in un form**.
+
+**Il fatto che decide, verificato:** `emittente_fiscale_id` è un campo del form
+in **tutti e sei** i documenti — `PreventiviForm`, `OffertaDrawer`,
+`OrdiniForm`, `ContrattoDrawer`, `DdtForm`, `ResoForm` — ed è nei payload.
+Quindi il valore in conflitto l'ha scelto l'operatore: la coppia giusta è
+**400 + highlight**, l'analogo esatto di `E_ID_FISCALI_DIVERSI` citato in api.md.
+
+⭐ **Quindi la classe giusta ce l'ha il RESO**, cioè quello segnalato come
+sospetto: i cinque hanno il `ui_action` giusto e la classe sbagliata, lui il
+contrario.
+
+**Fatto lato BE:** aggiunto l'override sul reso (una riga, §override).
+🔵 **Resta lato DB:** spostare i cinque da `CONFLITTO_STATO` a `DATO_ERRATO` **a
+catalogo**. ⚠️ Non si corregge qui: la classe è un dato del database, e toccarla
+nel modulo generato farebbe andare rosso il controllo di divergenza — che è
+esattamente il suo mestiere.
+
+> ⭐ **La lezione, e vale oltre questa famiglia:** l'anomalia era stata vista su
+> **un asse solo** (`ui_action`) e su quell'asse la minoranza era uno. Guardando
+> anche la classe, la minoranza cambia lato. *Una famiglia si controlla su tutti
+> i suoi assi, o si allinea al torto.*

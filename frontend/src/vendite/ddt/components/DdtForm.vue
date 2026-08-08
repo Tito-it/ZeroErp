@@ -31,6 +31,9 @@ const { t } = useI18n()
 const form = defineModel('form', { type: Object, required: true })
 
 const props = defineProps({
+  // Campi che il BACKEND indica come da correggere (envelope `error.fields`).
+  // Arrivano dal padre: questo componente non chiama le API da solo.
+  campiErrati: { type: Array, default: () => [] },
   isModificabile: { type: Boolean, default: true },
   nonEditableFields: { type: Array, default: () => [] },
   isEdit: { type: Boolean, default: false },
@@ -124,7 +127,8 @@ function onVettoreClear() {
       </div>
       <div class="form-field">
         <label>{{ t('vendite.ddt.field_data') }}</label>
-        <DatePicker v-model="form.data" :date-format="DATE_FORMAT"
+        <DatePicker v-model="form.data"
+        :invalid="campiErrati.includes('data')" :date-format="DATE_FORMAT"
           show-icon show-button-bar :disabled="isLocked('data')" />
       </div>
     </div>
@@ -146,6 +150,7 @@ function onVettoreClear() {
           <ToggleSwitch
             input-id="ddt-fatt-immediata"
             v-model="form.fatturazione_immediata"
+            :invalid="campiErrati.includes('fatturazione_immediata')"
             :disabled="isLocked('fatturazione_immediata')" />
           <small class="text-color-secondary">
             {{ t('vendite.ddt.fatturazione_immediata_hint') }}

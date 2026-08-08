@@ -41,7 +41,7 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const store = useDefinizioneEditorStore()
-const { execute } = useApiHandler()
+const { execute, campiErrati } = useApiHandler()
 const { confirmAction } = useConfirmAction()
 
 const defId = computed(() => Number(route.params.id))
@@ -389,6 +389,7 @@ watch(defId, loadDettaglio)
                  figlio eventualmente aperto (niente save mis-targeted sul nuovo step). -->
             <TabPanel value="canali">
               <StepCanaliTab
+                :campi-errati="campiErrati"
                 :key="selectedStep.id"
                 :definizione-id="defId"
                 :step-id="selectedStep.id"
@@ -398,6 +399,7 @@ watch(defId, loadDettaglio)
             </TabPanel>
             <TabPanel value="handler">
               <StepHandlerEventiTab
+                :campi-errati="campiErrati"
                 :key="selectedStep.id"
                 :definizione-id="defId"
                 :step-id="selectedStep.id"
@@ -407,6 +409,7 @@ watch(defId, loadDettaglio)
             </TabPanel>
             <TabPanel value="competenze">
               <StepCompetenzeTab
+                :campi-errati="campiErrati"
                 :key="selectedStep.id"
                 :definizione-id="defId"
                 :step-id="selectedStep.id"
@@ -441,6 +444,7 @@ watch(defId, loadDettaglio)
         <TabPanels>
           <TabPanel value="formule">
             <ArchiFormuleTab
+              :campi-errati="campiErrati"
               :definizione-id="defId"
               :rows="store.archi.formule_tempo"
               :steps="store.steps"
@@ -449,6 +453,7 @@ watch(defId, loadDettaglio)
           </TabPanel>
           <TabPanel value="regole">
             <ArchiRegoleTab
+              :campi-errati="campiErrati"
               :definizione-id="defId"
               :rows="store.archi.regole_generazione"
               :steps="store.steps"

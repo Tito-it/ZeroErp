@@ -411,6 +411,21 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_QTA_OPER_STEP_INVALIDO": "highlight_form_fields",  # classe DATO_ERRATO
     "E_RESET_LOTTO_FATTURA_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
     "E_RESET_LOTTO_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
+    # ⚠️ SESTA DI SEI GUARDIE IDENTICHE, e fino al 2026-08-08 era l'unica senza
+    # override — segnalato dal team DB collaudando il campo da correggere.
+    # `emittente_fiscale_id` e' un campo del form in tutti e sei i documenti
+    # (preventivi, offerte, ordini, contratti, DDT, resi): il valore in
+    # conflitto l'ha scelto l'operatore, quindi si evidenzia il campo. E' il
+    # criterio di api.md — «400 · highlight quando il valore l'ha scelto lui in
+    # un form», l'analogo di `E_ID_FISCALI_DIVERSI`.
+    #
+    # ⚠️ E LA FAMIGLIA RESTA DISALLINEATA SULL'ALTRA META', che non e' nostra:
+    # i cinque gemelli hanno classe `CONFLITTO_STATO` (409) mentre questo ha
+    # `DATO_ERRATO` (400). **Ha ragione questo**: il conflitto non e' fra righe
+    # che l'operatore non ha scelto — e' il valore che ha appena messo nel form.
+    # I cinque vanno spostati a `DATO_ERRATO` **a catalogo**: la classe e' un
+    # dato del DB, non si corregge qui (o il controllo di divergenza va rosso).
+    "E_RESO_EMITTENTE_BA_INCOERENTE": "highlight_form_fields",  # classe DATO_ERRATO
     "E_RESO_VALIDAZIONE": "highlight_form_fields",  # classe DATO_ERRATO
     # Annullamento riga MANUALE di commessa (guard DB 564-567,
     # brief-annullamento-righe-manuali-commessa §4d). Quattro codici
