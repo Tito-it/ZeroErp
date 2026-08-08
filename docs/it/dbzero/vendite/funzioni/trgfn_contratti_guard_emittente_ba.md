@@ -28,6 +28,7 @@ BEGIN
       'trgfn_contratti_guard_emittente_ba',
       'E_CONTRATTO_EMITTENTE_BA_INCOERENTE',
       jsonb_build_object(
+          'campo', 'emittente_fiscale_id',
         'billing_account_id',   NEW.billing_account_id,
         'emittente_fiscale_id', NEW.emittente_fiscale_id,
         'emittente_atteso_id',  v_ef_atteso_id,

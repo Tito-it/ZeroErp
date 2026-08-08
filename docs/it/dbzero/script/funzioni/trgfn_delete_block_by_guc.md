@@ -18,7 +18,7 @@ BEGIN
         PERFORM script.fn_log_and_raise_error(
             TG_TABLE_SCHEMA,
             TG_NAME,
-            'E_ERRORE_PARAMETRI',
+            'E_TRIGGER_ARGOMENTI_INVALIDI',
             jsonb_build_object(
                 'detail', 'Argomenti trigger mancanti',
                 'expected', 'guc_key',

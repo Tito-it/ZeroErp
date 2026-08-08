@@ -41,6 +41,7 @@ BEGIN
       'anagrafiche.trgfn_fornitori_guard_normalize',
       'E_FORNITORI_RITENUTA_ALIQUOTA_OBBLIGATORIA',
       jsonb_build_object(
+          'campo', 'ritenuta_aliquota',
         'detail', 'Se ritenuta_acconto = true, ritenuta_aliquota deve essere > 0',
         'ritenuta_acconto', NEW.ritenuta_acconto,
         'ritenuta_aliquota', NEW.ritenuta_aliquota

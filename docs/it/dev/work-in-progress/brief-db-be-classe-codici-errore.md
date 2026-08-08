@@ -4,7 +4,7 @@
 **Origine:** domanda di Tid alla chiusura di
 [brief-db-be-terzo-lato-presidio-codici](../work-done/brief-db-be-terzo-lato-presidio-codici.md):
 *«come evitare che si ripeta? La messaggistica si era trasformata in un bugiardino.»*
-**Stato:** 🟢 **COSTRUITO** (2026-08-08) — disegno chiuso (28 decisioni, §14), **DB D-1→D-10 chiuso**, **BE B-1→B-6 chiuso**. Resta il **B-7, aperto per intero e da ri-specificare** (D29). Il cantiere è in servizio: il catalogo ha 689 codici tutti con una classe, e `error_policies_generated.py` è generato dal database. Stato dettagliato nel §13.1; l'esecuzione vive nei [due piani](piano-db-classe-codici-errore.md).
+**Stato:** 🟢 **COSTRUITO E IN SERVIZIO** (2026-08-08) — disegno chiuso (35 decisioni, §14), **DB D-1→D-10 chiuso**, **BE B-1→B-6 chiuso**. In giornata è nato e si è chiuso un capitolo non previsto: `ui_action` non è più un contratto dormiente — il campo sbagliato si accende davvero (§8.5). ✅ **E il B-7 è chiuso** (D33): il rubinetto degli accumulatori esiste, gira in CI e il suo rosso è stato provato. Il cantiere è in servizio: il catalogo ha 689 codici tutti con una classe, e `error_policies_generated.py` è generato dal database. Stato dettagliato nel §13.1; l'esecuzione vive nei [due piani](piano-db-classe-codici-errore.md).
 **Perimetro:** tabelle + vocabolario + seed lato DB · generatore di `error_policies.py` e mappa classe→HTTP lato BE.
 **Ruolo di questo file:** **guida generale** — le ragioni, le misure, le decisioni. L'esecuzione sta nei due piani operativi (§13).
 
@@ -706,6 +706,74 @@ disallineamento di nome e un avviso.
 
 ---
 
+### 8.5 ⭐ `ui_action` è **uscita dal contratto dormiente** — 2026-08-08
+
+Il §8 diceva che `ui_action` resta per codice e che **il frontend non la legge**.
+La seconda metà non è più vera, ed è successo tutto in un giorno.
+
+⚠️ **Il buco vero non era il frontend: era che nessuno diceva QUALE campo.**
+`highlight_form_fields` sono 125 codici, ma nell'envelope non c'era il nome del
+campo — quindi anche leggendo `ui_action` la pagina non avrebbe saputo cosa
+accendere. Due buchi di dimensione diversa: 42 codici nascono in Python (il nome
+**c'era già** e si buttava a un passo dall'uscita) e 83 nel database (mancava
+davvero).
+
+**Cosa esiste ora, end-to-end:**
+
+| pezzo | stato |
+|---|---|
+| envelope `fields` (nomi dei campi, mai i valori) | ✅ BE |
+| `useApiHandler` → `campiErrati`, 38 componenti | ✅ FE |
+| canale DB: `RAISE … USING COLUMN`, contratto gemello di `CONSTRAINT` | ✅ `20260808-04` |
+| lettura `diag.column_name` lato BE | ✅ BE |
+| presidio: controllo **(F)** del guardrail, un solo mittente su `COLUMN` | ✅ DB |
+
+⭐ **E il grosso è arrivato senza toccare un punto di chiamata.** La convenzione
+`jsonb_build_object('parametro', 'p_cognome')` era già scritta in **225 punti su
+111 funzioni**: derivarla (togliendo il `p_`) copre **217 dei 380 punti** in cui
+il frontend potrebbe evidenziare qualcosa — `20260808-05`, una riga.
+
+> È la **terza volta** in questo cantiere che il dato c'era già e nessuno lo
+> trasmetteva: il `context` del backend, i 4 `'campo'` del database, i 225
+> `'parametro'`. Il difetto non è mai stato «manca l'informazione»: è sempre
+> stato «manca l'ultimo passo». Vale la pena scriverlo perché è il primo posto
+> dove guardare la prossima volta.
+
+**Poi cinque lotti a mano**, dove il nome del campo un giudizio lo vuole davvero:
+
+| | cosa | campi |
+|---|---|---|
+| `-06` | guard CF/P.IVA obbligatori | `partita_iva`, `codice_fiscale` |
+| `-07` | CF/P.IVA **malformati** | + `piva_gruppo_acquisto` |
+| `-08` | ritenuta d'acconto fornitore | `ritenuta_aliquota` |
+| `-09` | periodo cliente | `data_chiusura`, `data_attivazione` (⚠️ inerte: il drawer le mostra `disabled`) |
+| `-10` | emittente incoerente, **sei documenti** | `emittente_fiscale_id` |
+
+#### ⚠️ Le quattro trappole prese sul campo — valgono più dei changeSet
+
+1. **Affettare per SCHEMA è sbagliato.** Il CF malformato è validato in `script`,
+   non in `anagrafiche`: la fetta «anagrafiche» spezzava a metà un'unica azione
+   dell'operatore. **Si affetta per schermata**, o meglio per **concetto**;
+2. **la fetta si chiude sul concetto, e va cercata per FORMA DEL NOME.** Del
+   `_guard_emittente_ba` ne avevo trovate quattro cercando i domini; sono **sei**
+   (`%_guard_emittente_ba`). Due documenti sarebbero rimasti spenti;
+3. **ancorare sul CODICE errore è sbagliato**: due punti condividono
+   `E_PIVA_NON_VALIDA` ma sono campi diversi (`partita_iva` e
+   `piva_gruppo_acquisto`). ⭐ *Il codice dice cosa è andato storto, il contesto
+   dice dove* — si ancora sulle chiavi del contesto;
+4. **la prima riga della guardia non è la guardia.**
+   `IF NEW.ritenuta_acconto = true AND (NEW.ritenuta_aliquota IS NULL …)`: il
+   campo da correggere è sulla **seconda** riga. Una misura che legge la prima
+   manda l'operatore a togliere la spunta invece che a scrivere l'aliquota.
+
+⚠️ **E il metodo con cui sono stati prodotti conta quanto il risultato**: nessun
+corpo è stato ritrascritto. `pg_get_functiondef` della funzione viva +
+sostituzione ancorata applicata da script + **diff verificato additivo** prima di
+scrivere il changeSet. Sono guard di integrità: una svista non si vede in review,
+si vede su un dato sbagliato.
+
+---
+
 ## 9. Cosa **NON** risolve — detto prima, non dopo
 
 1. **Una classe sbagliata scelta alla creazione resta possibile.** Ma la scegli
@@ -903,7 +971,7 @@ colonna che la rende onesta. «Zero contraddizioni» vale su **un quinto** del
 perimetro, non su tutto. È esattamente il motivo per cui il D24 ha imposto che la
 misura pubblichi la propria copertura.
 
-#### 🔴 E una l'ha trovata: `E_ERRORE_PARAMETRI`, 4 punti su 13 dicono il falso
+#### ✅ E una l'ha trovata — `E_ERRORE_PARAMETRI`, **chiuso lo stesso giorno**
 
 | Condizione al punto che solleva | Punti | Classe vera |
 |---|---:|---|
@@ -912,11 +980,16 @@ misura pubblichi la propria copertura.
 | `EXCEPTION WHEN OTHERS` | 1 | `TECNICO` |
 | lookup di configurazione che non trova — **non è un parametro** | 1 | `TECNICO` |
 
-Su quei 4 punti l'operatore prende oggi un **400** che gli dice che ha sbagliato
-lui, e lo manda a cercare un campo che non esiste. **Non si riclassifica, si
-spezza**, e i tre precedenti sono già decisi in casa (`E_ATTIVO_REQUIRE`,
-`E_SNAPSHOT_ID_NOT_FOUND`, `E_REGOLA_FATTURAZIONE_MANCANTE`) — il che rende il
-verdetto meccanico invece che opinabile. 🔴 Perimetro DB, **slice a sé**.
+Su quei 4 punti l'operatore prendeva un **400** che gli diceva che aveva
+sbagliato lui, e lo mandava a cercare un campo che non esiste. **Non si
+riclassifica, si spezza** — i tre precedenti erano già decisi in casa
+(`E_ATTIVO_REQUIRE`, `E_SNAPSHOT_ID_NOT_FOUND`, `E_REGOLA_FATTURAZIONE_MANCANTE`),
+il che ha reso il verdetto meccanico invece che opinabile.
+
+✅ **Chiuso il 2026-08-08 con `20260808-11`**: tre punti a
+`E_TRIGGER_ARGOMENTI_INVALIDI` (TECNICO, nuovo), uno a `E_CONFIG_MANCANTE`
+(TECNICO, **esisteva già** — cercato prima di inventarne uno). I 9 punti giusti
+non sono stati toccati. Dettaglio e trappole nel [piano DB §5.7](piano-db-classe-codici-errore.md).
 
 ⭐ **La lezione che vale oltre il singolo codice, ed è la stessa due volte:**
 `E_VALIDAZIONE` *sembrava* un accumulatore e non lo era; `E_ERRORE_PARAMETRI` non
@@ -1152,7 +1225,7 @@ questo cantiere cura. Resta uno **stato**, che è un'altra cosa da un piano.
 |---|---|
 | **DB** | ✅ **D-1 → D-10 chiusi, applicati e verificati** contro il database vero. Nessun passo aperto |
 | **BE** | ✅ **B-1 → B-6 chiusi** — `error_policies_generated.py` **non si scrive più a mano**. Il cantiere BE è chiuso |
-| **B-7** | 🔴 **aperto per intero, e non ha una metà BE** — la genericità si decide dalla forma della guardia, che vive in PL/pgSQL: il rubinetto si chiude **dove il codice nasce**, al catalogo. ⚠️ Da **ri-specificare**, non solo riaprire (D29) |
+| **B-7** | ✅ **CHIUSO** (2026-08-08) — rubinetto degli accumulatori: baseline `codice → famiglie note` + controllo in CI. Presidia il **cambiamento**, non lo stato: 75 codici, rosso provato (D33) |
 | **Verifica incrociata** | ✅ le **689 coppie `codice → classe`** del file generato coincidono **esattamente** con `config.vw_codici_errore_identita`: zero differenze, confrontate una per una |
 
 **Cosa esiste adesso nel database:**
@@ -1241,6 +1314,13 @@ Non entravano nel piano, e questo era l'unico posto in cui risultavano scritte:
 | **D26** | ⚠️ **Le tre strade sono distinte, e il registro è solo la seconda**: una *famiglia* nuova allarga la convenzione (come i `W_`, `20260805-28`), un codice *ereditato* va nel registro, un codice *nuovo* nato storto si corregge prima del merge. Da qui: **nessuna colonna `motivo`** — risponderebbe alla domanda della prima strada (§13.2) | DB, 2026-08-08 |
 | **D27** | ⚠️ **La giustificazione del controllo (B) era scaduta**: diceva «un codice fuori convenzione non trova policy → 500», ma dal B-5 il dizionario è generato dal catalogo e li contiene tutti. La regola resta, per **la finestra** fra migrate e rigenerazione e per la separazione `E_`/`W_`. Riscritta: *una regola che si spiega con un fatto scaduto insegna una cosa falsa a chi si fida* | DB, 2026-08-08 |
 | **D28** | ⭐ **La rinuncia del §9.2 è riscossa**: la classe è verificabile incrociando catalogo e forma della guardia. Esito: **vera**, su 75 codici classificabili su 344, con un difetto trovato dalla misura — `E_ERRORE_PARAMETRI`, 4 punti su 13 (§9.3) | BE + DB, 2026-08-08 |
+| **D34** | ✅ **`E_ERRORE_PARAMETRI` scorporato**: 4 punti su 13 passano a TECNICO (3 → `E_TRIGGER_ARGOMENTI_INVALIDI` nuovo, 1 → `E_CONFIG_MANCANTE` già esistente). ⚠️ Il quarto punto **non era quello che diceva la misura**: la guardia più vicina non è la guardia del punto quando in mezzo c'è un `RETURN` anticipato | DB, 2026-08-08 |
+| **D35** | ⛔ **Il «lotto accumulatori» non si fa, e la misura lo scioglie.** `E_GENERICO` è il *pavimento* del percorso d'errore e spezzarlo vuol dire toglierlo; `E_ADMIN_VALIDAZIONE` è **36 punti su 50** della stessa guardia, cioè la forma di `E_PARAMETRO_INVALIDO` per cui la decisione «non si spezza a priori» è già scritta. ⭐ Quello che resta è un difetto **diverso e più piccolo**, che attraversa i due codici: ~6 letture di configurazione a vuoto raccontate come errore dell'operatore | DB, 2026-08-08 |
+| **D36** | 🔴 **Un presidio nato oggi marciva già, e nel verso peggiore.** La baseline B-7 non guardava le famiglie **perse**: un codice che si restringe lasciava in baseline una famiglia ormai ammessa per sempre, e il giorno del ritorno il confronto avrebbe taciuto. Trovato dal **primo uso vero**, un'ora dopo. Terza reazione 🔵 RISTRETTO, che non fallisce ma pretende l'allineamento | DB, 2026-08-08 |
+| **D33** | ✅ **B-7 CHIUSO, ed è sempre stato lavoro DB** — il nome ingannava (numerazione `B-*` del piano BE). ⭐ Non è un cancello sullo *stato* (servirebbe il 100% di copertura, la misura ne legge 75/344 e boccerebbe a caso) ma un presidio sul **cambiamento**: baseline `codice → famiglie note` committata, e la CI fallisce quando un codice **acquista** una famiglia o **nasce** con due. È il modo in cui gli accumulatori si formano davvero. Rosso provato su tutti e tre i modi | DB, 2026-08-08 |
+| **D30** | ⭐ **Il nome del campo viaggia in `COLUMN`**, contratto gemello di `CONSTRAINT` («P0001 + COLUMN = il campo da correggere»), presidiato dal controllo (F) nato **col canale**, a zero mittenti. Passa dal `p_context` e non da un parametro nuovo: la firma finisce con `VARIADIC`, e un parametro prima si mangerebbe in silenzio il primo valore di **973 chiamate** — provato eseguendolo (§8.5) | DB + BE, 2026-08-08 |
+| **D31** | ⭐ **La convenzione c'era già**: `'parametro'` in **225 punti su 111 funzioni**. Derivarla copre **217 dei 380 punti senza toccarne uno** (`20260808-05`), e la campagna a mano da 375 giudizi non si fa. ⚠️ `'campo'` mantiene la precedenza: è l'override per quando il campo del form non si chiama come il parametro | DB, 2026-08-08 |
+| **D32** | ⚠️ **Le fette si tagliano sul CONCETTO, non sullo schema né sul dominio**, e si cercano per **forma del nome**. Due prove nello stesso giorno: il CF malformato vive in `script` e non in `anagrafiche`; le guardie `%_guard_emittente_ba` sono **sei** e cercandole per dominio ne uscivano quattro. Una fetta che copre metà azione insegna all'operatore che il bordo rosso non è affidabile (§8.5) | DB, 2026-08-08 |
 | **D29** | 🔴 **Il B-7 è aperto per intero e va RI-SPECIFICATO.** Correzione BE: il presidio sui codici *ritirati* non è mezzo B-7 — il B-7 vieta i *generici*, e sono proprietà diverse. Non ha una metà BE: la genericità si legge dalla forma della guardia, che è PL/pgSQL. ⚠️ E come **cancello** non è costruibile: l'unico strumento che sa dirlo copre 75 codici su 344 e per progetto è una misura — un rubinetto al 22% boccerebbe a caso. La forma che regge è **criterio in api.md + misura all'apertura di ogni lotto** | BE + DB, 2026-08-08 |
 
 ### 14.1 ✅ ~~Cosa resta da decidere~~ — chiusa dal BE, 2026-08-07

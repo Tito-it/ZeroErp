@@ -328,6 +328,30 @@ jobs:
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
             -f scripts/sql/guardrail_codice_errore_strutturato.sql
 
+      - name: Codici errore — nessun codice allarga il proprio significato (B-7)
+        run: |
+          # IL RUBINETTO DEGLI ACCUMULATORI.
+          #
+          # Il guardrail qui sopra presidia la FORMA del codice (convenzione,
+          # canale, ritiro). Questo presidia il suo SIGNIFICATO: che un codice
+          # non venga riusato per un tipo di condizione che prima non copriva.
+          #
+          # ⚠️ Non giudica se un codice E' generico — servirebbe leggere tutte
+          # le guardie, e la misura ne legge 75 su 344. Giudica il CAMBIAMENTO,
+          # che sui 75 sa dire con certezza. E' il modo in cui gli accumulatori
+          # si formano davvero: nessuno crea un codice generico di proposito,
+          # si allarga un codice esistente una volta sola e sembra ragionevole.
+          #
+          # ⚠️ Se diventa rosso NON si rigenera la baseline per far passare la
+          # CI: la riga rossa e' la richiesta di una decisione (codice nuovo, o
+          # baseline aggiornata con la ragione nel commit).
+          #
+          # ⚠️ POSIZIONE: dopo il guardrail e prima del migrate Django, per la
+          # stessa ragione — legge solo pg_proc, config.codici_errore e la vista
+          # dbops.vw_codici_errore_forme_condizione, che Liquibase ha gia' messo.
+          PGHOST=localhost PGPORT=5432 PGUSER=postgres PGDATABASE=zeroerp \
+            scripts/codici-errore-baseline.sh
+
       - name: Django check
         working-directory: ./backend
         run: |
