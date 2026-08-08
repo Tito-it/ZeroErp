@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/ui/manual/lista_preset_colonna.md" %}
 # 📚 Tabella `lista_preset_colonna`
 
+> 📝 **Descrizione**
+>
+> Colonne di un preset: ordine, larghezza, visibilita di default e freeze.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

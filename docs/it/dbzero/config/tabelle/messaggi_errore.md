@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/messaggi_errore.md" %}
 # 📚 Tabella `messaggi_errore`
 
+> 📝 **Descrizione**
+>
+> Catalogo centralizzato dei messaggi (errori, avvisi, ecc.) con supporto i18n
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

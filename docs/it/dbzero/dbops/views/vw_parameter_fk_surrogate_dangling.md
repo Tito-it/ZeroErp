@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/dbops/manual/vw_parameter_fk_surrogate_dangling.md" %}
 # 🔍 View `vw_parameter_fk_surrogate_dangling`
 
+> 📝 **Descrizione**
+>
+> Diagnostica: parametri (default + override) il cui valore non esiste nel target del registry FK-surrogata. Output non vuoto = righe da risolvere manualmente. Sorgente: config.parameters + config.parameter_overrides.
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_parameter_fk_surrogate_dangling AS
 SELECT 'parameter'::text AS source,

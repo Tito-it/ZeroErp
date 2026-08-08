@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/transizioni_stati_contratti.md" %}
 # 📚 Tabella `transizioni_stati_contratti`
 
+> 📝 **Descrizione**
+>
+> Matrice transizioni ammesse tra stati contratto di fornitura. Fonte metadati UI per script.fn_available_actions_contratto. 3 transizioni: DRAFT-&gt;ATTIVO|ANNULLATO, ATTIVO-&gt;CESSATO. La regola di business resta in trgfn_contratti_guard_transizione_stato. rev 2026-05-28.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

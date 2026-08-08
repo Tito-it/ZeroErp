@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/transizioni_stati_commessa.md" %}
 # 📚 Tabella `transizioni_stati_commessa`
 
+> 📝 **Descrizione**
+>
+> Matrice transizioni ammesse tra stati commessa. Grafo per vendite.trgfn_commesse_guard_transizione (enforcement BEFORE UPDATE OF stato_commessa_id). Salti diretti BOZZA/APERTA-&gt; PRONTA_FATTURAZIONE per il percorso push (commessa nata confermata dal preventivo accettato). rev 2026-06-07.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

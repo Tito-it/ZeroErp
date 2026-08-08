@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/stati_assets.md" %}
 # 📚 Tabella `stati_assets`
 
+> 📝 **Descrizione**
+>
+> Dominio stati dell'asset (codici stabili; descrizioni multilingua via meta)
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pratiche/manual/giornale.md" %}
 # 📚 Tabella `giornale`
 
+> 📝 **Descrizione**
+>
+> Giornale di bordo — audit trail pratiche e flussi (append-only).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/stati_doc_offerte.md" %}
 # 📚 Tabella `stati_doc_offerte`
 
+> 📝 **Descrizione**
+>
+> Catalogo stati documento per vendite.offerte_commerciali. Cinque stati: BOZZA (editabile), EMESSA (proposta al cliente), ACCETTATA (terminale positivo), RIFIUTATA (terminale negativo), SUPERATA (terminale tecnico, set dal trigger trgfn_offerte_commerciali_revisione). codice_interno e' immutabile (lock via script.trgfn_lock_columns). Le transizioni ammesse sono configurate in config.stati_doc_offerte_transizioni (creata in Step 4). Pattern identico a config.stati_doc_contratti; senza is_abortito perche' le offerte non usano temporal-UNIQUE ne' is_abortito_snapshot. rev 2026-05-24.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

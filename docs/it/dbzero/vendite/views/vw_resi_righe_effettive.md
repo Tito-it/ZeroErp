@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_resi_righe_effettive.md" %}
 # 🔍 View `vw_resi_righe_effettive`
 
+> 📝 **Descrizione**
+>
+> Helper unico «merce tornata indietro» (brief-db-fatturazione-ddt-resi §3b, step 2): righe reso EFFETTIVE = stato reso CONFERMATO + resi_righe.attivo, tutti i tipi. Espone le due chiavi di partita (ordine_riga_id nullable / ddt_riga_id) + riapre_residuo, cosi' ogni consumatore applica il proprio filtro-tipo SOPRA. quantita = base. Fonte unica per fn_ordine_riga_qta_riconsegna, flip a RESO e contatore tenuti-fatturati. NON copre il guard over-return (trgfn_resi_righe_guard_quantita), che conta anche le bozze di proposito (prenotazione). security_invoker=on + RLS su resi. rev 2026-07-17.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

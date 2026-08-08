@@ -1,5 +1,9 @@
 # 🔍 View `vw_riferimenti_morti_rientrati`
 
+> 📝 **Descrizione**
+>
+> Voci del registro del debito che non corrispondono piu' a nessun difetto: righe da TOGLIERE. E' cio' che impedisce al registro di diventare un elenco di eccezioni permanenti.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

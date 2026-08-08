@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/contatti.md" %}
 # 📚 Tabella `contatti`
 
+> 📝 **Descrizione**
+>
+> Contatti generici e specifici (soggetto/ruolo/servizio)
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

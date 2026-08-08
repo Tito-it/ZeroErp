@@ -1,5 +1,9 @@
 # 📚 Tabella `inventari`
 
+> 📝 **Descrizione**
+>
+> Documento conteggio fisico inventario
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/ordini_righe_componenti.md" %}
 # 📚 Tabella `ordini_righe_componenti`
 
+> 📝 **Descrizione**
+>
+> Componenti BoM CASO A dell'ordine: una riga per ogni componente esposto_in_fattura=TRUE di un articolo composito. Prezzo proprio negoziabile (L1/L2/L3). Prezzo padre calcolato da trigger come SUM(prezzo_unitario * coeff_qta_snapshot). Snapshot pricing: al push su commessa i prezzi vengono propagati senza ri-chiamare il resolver.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/documenti/manual/documenti_generati_file.md" %}
 # 📚 Tabella `documenti_generati_file`
 
+> 📝 **Descrizione**
+>
+> File persistiti collegati a un documento generato. In Fase A: un solo PDF_FINALE per documento.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

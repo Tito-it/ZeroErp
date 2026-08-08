@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/causali_trasporto.md" %}
 # 📚 Tabella `causali_trasporto`
 
+> 📝 **Descrizione**
+>
+> Elenco causali di trasporto (DDT).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

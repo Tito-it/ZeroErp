@@ -1,5 +1,9 @@
 # 🔍 View `vw_codici_errore_forme_condizione`
 
+> 📝 **Descrizione**
+>
+> Misura degli accumulatori sulla FORMA DELLA CONDIZIONE al punto che solleva (non sul dominio della funzione: quell'asse segnalava E_VALIDAZIONE, che e' il caso su cui la risposta e' no). NON filtra di proposito. Le due query canoniche, da usare INSIEME: (1) candidati — SELECT codice, n_punti, famiglie FROM dbops.vw_codici_errore_forme_condizione WHERE n_famiglie_note &gt; 1 ORDER BY n_punti DESC; (2) copertura, senza cui la prima si legge come una verita' — SELECT count(*) AS codici, count(*) FILTER (WHERE NOT solo_ignoto) AS classificati, count(*) FILTER (WHERE solo_ignoto) AS invisibili FROM dbops.vw_codici_errore_forme_condizione. Al 2026-08-08: 344 codici, 75 classificati, 269 invisibili. E' una MISURA, non un cancello: un codice legittimamente trasversale esiste. Implementazione a window function (20260808-01): 349 ms, contro i 145 secondi della prima versione a sottoquery correlate.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

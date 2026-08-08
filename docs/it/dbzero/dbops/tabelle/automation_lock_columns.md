@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/dbops/manual/automation_lock_columns.md" %}
 # 📚 Tabella `automation_lock_columns`
 
+> 📝 **Descrizione**
+>
+> Configura colonne extra da bloccare (codice_interno e' implicito).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

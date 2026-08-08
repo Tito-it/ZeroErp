@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/gestori.md" %}
 # 📚 Tabella `gestori`
 
+> 📝 **Descrizione**
+>
+> Società gestore del Sistema Informativo. Referenziata esclusivamente tramite soggetto_ruolo_id (legame soggetto↔ruolo gestito in anagrafiche.soggetti_ruoli).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

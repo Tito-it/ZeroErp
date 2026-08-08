@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/iva_stati.md" %}
 # 📚 Tabella `iva_stati`
 
+> 📝 **Descrizione**
+>
+> Override di aliquota/assoggettamento IVA per specifico Paese
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/fatturazione_lotti_gruppi.md" %}
 # 📚 Tabella `fatturazione_lotti_gruppi`
 
+> 📝 **Descrizione**
+>
+> Perimetro di un lotto MIRATO: i gruppi fatturabili che quel lotto ha il permesso di lavorare (brief-db-emissione-fattura-per-documento-sorgente A2, decisione D-3). CONVENZIONE PORTANTE: nessuna riga per un lotto = NESSUNA restrizione = esattamente il comportamento odierno del giro schedulato (vincolo di retro-compatibilita', garanzia G1). Non esiste un flag "lotto mirato": l'assenza di criterio E' il criterio storico. Perche' una tabella e non un parametro di chiamata: gli step della pipeline ricevono solo lotto_id e ricostruiscono tutto dalla riga del lotto, quindi il perimetro DEVE essere persistito o non arriva agli step; in piu' i verbi Rerun/Avanza step del drawer ri-eseguono su un lotto esistente, e senza persistenza allargherebbero in silenzio il perimetro di un lotto mirato (garanzia G11). Scartato fatturazione_lotti.meta: e' gia' il canale di configurazione della pipeline, e il filtro serve dentro il SQL dinamico di fn_select_attivita_fatturabili. gruppo_key non e' una FK: e' una chiave di dominio calcolata da vendite.fn_build_gruppo_fatturabile_key. Popolata dal BE alla creazione del lotto, nella stessa transazione. rev 2026-07-27.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

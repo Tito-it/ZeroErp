@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/vw_conti_bancari_per_ruolo.md" %}
 # 🔍 View `vw_conti_bancari_per_ruolo`
 
+> 📝 **Descrizione**
+>
+> Vista flat conti bancari con istanza_utility_id. Tutte le candidate RUOLO + SOGGETTO. Selezione singola in fn_get_conto_bancario_predefinito.
+
 ```sql
 CREATE OR REPLACE VIEW anagrafiche.vw_conti_bancari_per_ruolo AS
 WITH role_cand AS (

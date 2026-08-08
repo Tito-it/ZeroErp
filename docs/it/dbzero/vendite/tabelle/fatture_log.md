@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/fatture_log.md" %}
 # 📚 Tabella `fatture_log`
 
+> 📝 **Descrizione**
+>
+> Log anomalie fattura (warning/critical) con disabilitazione.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

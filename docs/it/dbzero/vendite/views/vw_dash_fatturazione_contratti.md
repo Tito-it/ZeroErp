@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_dash_fatturazione_contratti.md" %}
 # 🔍 View `vw_dash_fatturazione_contratti`
 
+> 📝 **Descrizione**
+>
+> Resolver area CONTRATTI (famiglia dash fatturazione / situazione aperta): 1 riga per contratto vivo (esito &lt;&gt; NEGATIVO), DE-ESPLOSO (niente asse mese, DL-12). Giudizio di transito SOSPESO finche' non esiste il push ricorrente: is_transitato/unita_transitate/motivo_fermo = NULL (non "fermo": senza push ogni contratto sarebbe un falso-allarme perenne). data_riferimento = valido_dal ("in essere da"). Area a conteggi: valore_* NULL. Consumata da vw_dash_fatturazione_documenti (union) e da vw_dash_aperto_*; il Backlog non la vede (motivo_fermo NULL).
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

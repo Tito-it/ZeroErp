@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_documento_lineage_archi.md" %}
 # 🔍 View `vw_documento_lineage_archi`
 
+> 📝 **Descrizione**
+>
+> Lineage documenti vendite (Step 2): grafo archi normalizzato A-H + R (inverso). Chiave nodo polimorfa (tipo_id, uid::text). Nodo target decorato via vw_documento_lineage_nodi. security_invoker=on. Base di vw_documento_lineage e fn_documento_lineage.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

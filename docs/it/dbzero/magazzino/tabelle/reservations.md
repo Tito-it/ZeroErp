@@ -1,5 +1,9 @@
 # 📚 Tabella `reservations`
 
+> 📝 **Descrizione**
+>
+> Prenotazioni stock per ordini e ODL
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

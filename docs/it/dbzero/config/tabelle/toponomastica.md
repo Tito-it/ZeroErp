@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/toponomastica.md" %}
 # 📚 Tabella `toponomastica`
 
+> 📝 **Descrizione**
+>
+> Toponomastica: tipologie di vie, strade, piazze, ecc.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

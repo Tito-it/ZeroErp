@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/transizioni_stati_pratiche.md" %}
 # 📚 Tabella `transizioni_stati_pratiche`
 
+> 📝 **Descrizione**
+>
+> Transizioni ammesse tra stati pratica.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

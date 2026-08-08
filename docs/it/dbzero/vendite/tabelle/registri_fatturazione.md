@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/registri_fatturazione.md" %}
 # 📚 Tabella `registri_fatturazione`
 
+> 📝 **Descrizione**
+>
+> Registri/serie di numerazione per fatture di vendita (per emittente/brand).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

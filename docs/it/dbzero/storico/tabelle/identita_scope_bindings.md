@@ -1,5 +1,9 @@
 # 📚 Tabella `identita_scope_bindings`
 
+> 📝 **Descrizione**
+>
+> Storico di config.identita_scope_bindings.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

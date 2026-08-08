@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/documenti/manual/documenti_generati_eventi.md" %}
 # 📚 Tabella `documenti_generati_eventi`
 
+> 📝 **Descrizione**
+>
+> Timeline append-only degli eventi del ciclo vita documento (Decisioni 30/31/72). Eventi v1: GENERATO, SCARICATO, STORAGE_ORPHAN.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

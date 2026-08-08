@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/profili_accesso_azioni.md" %}
 # 📚 Tabella `profili_accesso_azioni`
 
+> 📝 **Descrizione**
+>
+> Dettaglio delle azioni di processo abilitate/disabilitate da un profilo di accesso. Rimpiazza concettualmente profili_reparto_azioni generalizzando il padre da reparto a profilo.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

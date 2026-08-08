@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/fornitori.md" %}
 # 📚 Tabella `fornitori`
 
+> 📝 **Descrizione**
+>
+> Master FORNITORE (1:1 con soggetti_ruoli): configurazione fiscale, operativa e qualità.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

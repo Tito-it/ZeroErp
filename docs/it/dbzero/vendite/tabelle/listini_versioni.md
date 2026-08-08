@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/listini_versioni.md" %}
 # 📚 Tabella `listini_versioni`
 
+> 📝 **Descrizione**
+>
+> Versioni temporali del listino.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

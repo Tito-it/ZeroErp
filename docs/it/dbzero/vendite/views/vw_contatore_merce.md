@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_contatore_merce.md" %}
 # 🔍 View `vw_contatore_merce`
 
+> 📝 **Descrizione**
+>
+> Il contatore (brief-db-fatturazione-ddt-resi §3a, step 1): per riga d'ordine (partita di merce ORDER-BACKED, non composita) espone tenuti (Σ ordini_righe_fulfillment.qta_evasa − Σ vw_resi_righe_effettive.quantita, tutti i tipi) e fatturati (Σ attivita_fatturabili.quantita NORMALE sui segmenti ORD:*:R:&lt;ordine_riga&gt; + DDT:*:R:&lt;ddt_riga&gt; attribuiti via fulfillment; l'esistenza della AF E' la frontiera EMESSA). differenza = tenuti − fatturati: &gt;0 fattura, &lt;0 accredita, =0 niente. Fonte unica per lister DDT / coda accrediti / resolver. STANDALONE e COMPOSITI esclusi (follow-up). security_invoker=on + RLS. rev 2026-07-17.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

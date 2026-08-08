@@ -1,5 +1,9 @@
 # 📚 Tabella `causali`
 
+> 📝 **Descrizione**
+>
+> Lookup e regole operative per i movimenti di magazzino
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

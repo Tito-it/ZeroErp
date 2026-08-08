@@ -1,5 +1,9 @@
 # 📚 Tabella `ubicazioni`
 
+> 📝 **Descrizione**
+>
+> Anagrafica ubicazioni/bin per magazzini (PICK/STORAGE/STAGING/IN_TRANSIT/…)
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

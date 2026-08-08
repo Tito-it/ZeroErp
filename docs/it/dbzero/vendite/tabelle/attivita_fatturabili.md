@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/attivita_fatturabili.md" %}
 # 📚 Tabella `attivita_fatturabili`
 
+> 📝 **Descrizione**
+>
+> Registro attività/prestazioni da fatturare (HH, una tantum, manuali). Se competenza_mese è valorizzato (YYYY-MM-01), non fatturare prima di quel mese.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

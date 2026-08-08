@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/documenti/manual/documenti_generati.md" %}
 # 📚 Tabella `documenti_generati`
 
+> 📝 **Descrizione**
+>
+> Registro storico delle generazioni persistite del motore documentale.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

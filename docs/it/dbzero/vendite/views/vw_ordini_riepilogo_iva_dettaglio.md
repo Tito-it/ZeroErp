@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_ordini_riepilogo_iva_dettaglio.md" %}
 # 🔍 View `vw_ordini_riepilogo_iva_dettaglio`
 
+> 📝 **Descrizione**
+>
+> Riepilogo IVA per ordine vendita derivato dalle righe ordine attive. Aggrega per ordine, iva_id e aliquota effettiva; arrotonda l'imponibile dopo la SUM e calcola l'imposta sull'imponibile aggregato arrotondato. Natura, esigibilita e split_payment sono NULL per ordini finche' non esiste uno snapshot dedicato.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

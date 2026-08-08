@@ -1,5 +1,9 @@
 # 📚 Tabella `profili_accesso_aree`
 
+> 📝 **Descrizione**
+>
+> Storico di config.profili_accesso_aree.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

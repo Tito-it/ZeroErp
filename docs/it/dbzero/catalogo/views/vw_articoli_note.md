@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/catalogo/manual/vw_articoli_note.md" %}
 # 🔍 View `vw_articoli_note`
 
+> 📝 **Descrizione**
+>
+> Vista note per articoli con dati stile e lingua.
+
 ```sql
 CREATE OR REPLACE VIEW catalogo.vw_articoli_note AS
 SELECT a.id AS articolo_id,

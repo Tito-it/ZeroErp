@@ -1,5 +1,9 @@
 # 📚 Tabella `identita_digitali`
 
+> 📝 **Descrizione**
+>
+> Storico di anagrafiche.identita_digitali. Riceve uno snapshot JSON del record ad ogni UPDATE/DELETE tramite script.trgfn_storico_generic.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/pdp.md" %}
 # 📚 Tabella `pdp`
 
+> 📝 **Descrizione**
+>
+> Punti di prelievo ancorati a indirizzo_dettaglio; codice univoco globale; utility tipizzata; cliente corrente opzionale. Storicizzazione obbligatoria.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

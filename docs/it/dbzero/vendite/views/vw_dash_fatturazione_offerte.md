@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_dash_fatturazione_offerte.md" %}
 # 🔍 View `vw_dash_fatturazione_offerte`
 
+> 📝 **Descrizione**
+>
+> Dashboard fatturazione: resolver area OFFERTE, a conteggi (D-2). Transitata = figlio vivo (contratto via offerta_id NOT is_abortito_snapshot, o ordine documento_origine OFFERTA esito != NEGATIVO). FIGLIO_ABORTITO = figlio annullato (XOR permanente). cliente_display=ragione sociale intestatario istanza (path vw_offerte_commerciali_lista). Consumata da vw_dash_fatturazione_documenti.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

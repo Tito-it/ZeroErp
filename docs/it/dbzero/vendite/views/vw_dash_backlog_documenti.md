@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_dash_backlog_documenti.md" %}
 # 🔍 View `vw_dash_backlog_documenti`
 
+> 📝 **Descrizione**
+>
+> Backlog fatturazione (lente 2). rev 2026-07-18 (step 9, DL-24): la vista E' una UNION — ramo documenti (da vw_dash_fatturazione_documenti, invariato) + DUE rami resi a grana (reso x motivo): RICONSEGNA_NON_ESEGUITA (RECUPERABILE) da vw_resi_da_riconsegnare e MERCE_RESA_GIA_FATTURATA (FISIOLOGICO oggi: nessuna azione esiste — niente NC, quantita' immutabile; diventa recuperabile promuovendo UNA cella di seed) da vw_resi_da_accreditare con etichetta DOVUTA (le facoltative sono opzione, non arretrato). I resi NON stanno nella union pre-commessa: REVERSE_FLOW. Misura a conteggi (DL-11): valore_fermo NULL, mai 0. Classe/azione risolte UNA volta a valle su config.motivi_fermo, filtro classe &lt;&gt; FISIOLOGICO per tutti i rami. Deroga dichiarata: unica area dove un documento (reso misto) puo' comparire due volte. security_invoker=on + RLS. rev 2026-07-06: forma originaria.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

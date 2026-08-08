@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/assets_ownership.md" %}
 # 📚 Tabella `assets_ownership`
 
+> 📝 **Descrizione**
+>
+> Dominio proprietario asset.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,5 +1,9 @@
 # 📚 Tabella `categoria_accisa`
 
+> 📝 **Descrizione**
+>
+> Categoria accisa per utility
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

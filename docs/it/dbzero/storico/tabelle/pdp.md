@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/storico/manual/pdp.md" %}
 # 📚 Tabella `pdp`
 
+> 📝 **Descrizione**
+>
+> Storico dei PDP: snapshot JSONB, tipo operazione (I/U/D), tx_id, periodo di validità (valid_from/valid_to).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/fatture_indirizzi.md" %}
 # 📚 Tabella `fatture_indirizzi`
 
+> 📝 **Descrizione**
+>
+> Snapshot indirizzi collegati alla fattura; uno per tipo (fatturazione, spedizione, fornitura, residenza). Includere nello snapshot la mail.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

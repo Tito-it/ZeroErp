@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_documento_lineage.md" %}
 # 🔍 View `vw_documento_lineage`
 
+> 📝 **Descrizione**
+>
+> Lineage documenti vendite (Step 3): summary per nodo per arricchire le liste. Espone pratica (1:1 difensiva + n_pratiche), fase propria, frontiera forward (piu' a valle attivo, esclude arco R), discendenti diretti/attivi, is_transitato, lato inverso (n_sorgenti + ROOT). security_invoker=on.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

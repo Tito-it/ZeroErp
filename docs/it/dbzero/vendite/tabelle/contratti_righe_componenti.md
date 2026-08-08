@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/contratti_righe_componenti.md" %}
 # 📚 Tabella `contratti_righe_componenti`
 
+> 📝 **Descrizione**
+>
+> Componenti BoM CASO A del contratto: una riga per ogni componente esposto_in_fattura=TRUE di un articolo composito. Prezzo proprio negoziabile (L1/L2/L3). Prezzo padre calcolato da trigger come SUM(prezzo_unitario * coeff_qta_snapshot). Snapshot pricing al push.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

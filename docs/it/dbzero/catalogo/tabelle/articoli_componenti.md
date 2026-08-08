@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/catalogo/manual/articoli_componenti.md" %}
 # 📚 Tabella `articoli_componenti`
 
+> 📝 **Descrizione**
+>
+> Distinta base (vendita) con versioning da/a
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

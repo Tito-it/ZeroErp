@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/conti_bancari.md" %}
 # 📚 Tabella `conti_bancari`
 
+> 📝 **Descrizione**
+>
+> Anagrafe unica dei conti_bancari (IBAN), deduplicata a livello globale.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

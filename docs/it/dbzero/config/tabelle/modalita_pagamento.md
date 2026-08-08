@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/modalita_pagamento.md" %}
 # 📚 Tabella `modalita_pagamento`
 
+> 📝 **Descrizione**
+>
+> Catalogo delle modalità di pagamento (es. RID, BONIFICO, CONTANTI)
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

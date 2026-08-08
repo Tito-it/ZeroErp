@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/dbops/manual/audit_sources.md" %}
 # 📚 Tabella `audit_sources`
 
+> 📝 **Descrizione**
+>
+> Lookup table audit-sources. Ogni riga descrive una storico.* navigabile dal drawer admin.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

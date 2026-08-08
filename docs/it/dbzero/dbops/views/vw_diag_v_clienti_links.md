@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/dbops/manual/vw_diag_v_clienti_links.md" %}
 # 🔍 View `vw_diag_v_clienti_links`
 
+> 📝 **Descrizione**
+>
+> Diagnostica relazioni cliente: verifica coerenza FK tra cliente, billing_account, soggetto, istanza, utility e IVA. tipo_ruolo_codice_interno = tr.codice_interno (fedele).
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

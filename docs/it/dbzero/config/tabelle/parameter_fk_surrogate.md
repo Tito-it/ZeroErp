@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/parameter_fk_surrogate.md" %}
 # 📚 Tabella `parameter_fk_surrogate`
 
+> 📝 **Descrizione**
+>
+> Registry pattern -&gt; tabella/colonna target per il framework FK-surrogata sui parametri. Letta dai dispatcher config.trgfn_parameters_fk_surrogate_dispatch e config.trgfn_parameter_overrides_fk_surrogate_dispatch.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

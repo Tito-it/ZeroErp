@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/tipi_reso.md" %}
 # 📚 Tabella `tipi_reso`
 
+> 📝 **Descrizione**
+>
+> Dominio tipo reso per riga (brief-db-resi-vendita §1). Il flag riapre_residuo pilota il motore (RESO_A_CREDITO=false, RESO_PER_RICONSEGNA=true), nessun IF hardcoded. rev 2026-07-13.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

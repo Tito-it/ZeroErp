@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/catasto_unita_immobiliari_indirizzi.md" %}
 # 📚 Tabella `catasto_unita_immobiliari_indirizzi`
 
+> 📝 **Descrizione**
+>
+> Tabella ponte tra unità catastali e indirizzi civici.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

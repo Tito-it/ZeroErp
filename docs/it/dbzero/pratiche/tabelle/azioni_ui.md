@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pratiche/manual/azioni_ui.md" %}
 # 📚 Tabella `azioni_ui`
 
+> 📝 **Descrizione**
+>
+> Catalogo attivita' UI lanciabili dal flusso pratica — chiavi per il registry FE.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

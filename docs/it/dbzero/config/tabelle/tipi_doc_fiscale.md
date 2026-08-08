@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/tipi_doc_fiscale.md" %}
 # 📚 Tabella `tipi_doc_fiscale`
 
+> 📝 **Descrizione**
+>
+> Dominio tipi di documento fiscale (codici stabili; descrizioni multilingua).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

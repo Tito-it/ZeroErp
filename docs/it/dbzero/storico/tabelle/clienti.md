@@ -1,5 +1,9 @@
 # 📚 Tabella `clienti`
 
+> 📝 **Descrizione**
+>
+> Tabella storica per i clienti con snapshot JSONB e campi di audit
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

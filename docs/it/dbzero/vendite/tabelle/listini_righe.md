@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/listini_righe.md" %}
 # 📚 Tabella `listini_righe`
 
+> 📝 **Descrizione**
+>
+> Prezzi per combinazione dimensionale e versione listino.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

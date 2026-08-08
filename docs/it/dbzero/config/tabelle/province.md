@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/province.md" %}
 # 📚 Tabella `province`
 
+> 📝 **Descrizione**
+>
+> Province con codici ISTAT, regione e collegamento a provincia di riferimento per accise
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,12 @@
 {% include-markdown "it/dbzero/config/manual/user_override_oggetti.md" %}
 # 📚 Tabella `user_override_oggetti`
 
+> 📝 **Descrizione**
+>
+> Override individuale su singolo model Django.
+>  Sovrascrive sia il profilo reparto che l'override area.
+>  Esempio: utente ha TUTTO su anagrafiche ma LETTURA su anagrafiche.clienti.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_preventivi_smistamento_righe.md" %}
 # 🔍 View `vw_preventivi_smistamento_righe`
 
+> 📝 **Descrizione**
+>
+> Fonte dati del Pannello Smistamento (una riga per riga attiva del preventivo): natura/destinazione effettiva (NULL = pregresso -&gt; COMMESSA), riferimenti ramo ordine, stato_smistamento autorevole (RESIDUA/A_ORDINE/IN_COMMESSA/EMESSA_AF/FATTURATA, "in commessa" = segment EMESSA). Sostituisce vw_preventivi_stato_fatturazione_righe (brief-db-smistamento-preventivi.md B).
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

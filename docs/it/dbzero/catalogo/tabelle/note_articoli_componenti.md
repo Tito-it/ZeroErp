@@ -1,5 +1,9 @@
 # 📚 Tabella `note_articoli_componenti`
 
+> 📝 **Descrizione**
+>
+> Partizione note per catalogo.articoli_componenti.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

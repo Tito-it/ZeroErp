@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/ddt.md" %}
 # 📚 Tabella `ddt`
 
+> 📝 **Descrizione**
+>
+> Documento di Trasporto (DDT) – vendita.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/vw_dati_societari.md" %}
 # 🔍 View `vw_dati_societari`
 
+> 📝 **Descrizione**
+>
+> Vista dati societari con decodifiche forma giuridica e provincia, include identificativi tecnici.
+
 ```sql
 CREATE OR REPLACE VIEW anagrafiche.vw_dati_societari AS
 SELECT ds.id AS dati_societari_id,

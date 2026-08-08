@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/identita_digitali.md" %}
 # 📚 Tabella `identita_digitali`
 
+> 📝 **Descrizione**
+>
+> Bridge generico soggetto_ruolo &lt;-&gt; auth_user per il modello multi-face auth. Un soggetto_ruolo puo avere piu identita nel tempo (una sola attiva); ogni auth_user e legato a una sola identita. Il ruolo_applicativo determina namespace API, scope dati e profilo capability.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

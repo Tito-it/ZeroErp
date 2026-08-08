@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/scope_policy.md" %}
 # 📚 Tabella `scope_policy`
 
+> 📝 **Descrizione**
+>
+> Registro delle policy di scope usate dal modello multi-face auth. funzione_db = schema.nome della funzione (firma fissa: p_identita_id BIGINT, p_target_id BIGINT) RETURNS BOOLEAN. L'associazione identita &lt;-&gt; policy e' in config.identita_scope_bindings.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

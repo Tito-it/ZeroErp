@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/gestori_utilities.md" %}
 # 📚 Tabella `gestori_utilities`
 
+> 📝 **Descrizione**
+>
+> Associazione tra gestore, servizio (utility) e ruolo funzionale
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

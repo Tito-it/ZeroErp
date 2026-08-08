@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/preventivi.md" %}
 # 📚 Tabella `preventivi`
 
+> 📝 **Descrizione**
+>
+> Preventivi/offerte con revisioni; una sola revisione attiva per numero
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

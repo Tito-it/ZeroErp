@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/tipi_allegato.md" %}
 # 📚 Tabella `tipi_allegato`
 
+> 📝 **Descrizione**
+>
+> Tipologie di allegato per pratiche e flussi.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

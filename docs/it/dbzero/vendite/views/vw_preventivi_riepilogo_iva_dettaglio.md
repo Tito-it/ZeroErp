@@ -1,5 +1,9 @@
 # 🔍 View `vw_preventivi_riepilogo_iva_dettaglio`
 
+> 📝 **Descrizione**
+>
+> Riepilogo IVA per preventivo arricchito con codice/descrizione/aliquota IVA e codice natura. Per UI riepilogo IVA del preventivo (simmetrico a quello fatture).
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_preventivi_riepilogo_iva_dettaglio AS
 SELECT ri.id,

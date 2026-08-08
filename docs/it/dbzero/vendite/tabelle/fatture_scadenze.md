@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/fatture_scadenze.md" %}
 # 📚 Tabella `fatture_scadenze`
 
+> 📝 **Descrizione**
+>
+> Rate/scadenze di pagamento per fattura (snapshot).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

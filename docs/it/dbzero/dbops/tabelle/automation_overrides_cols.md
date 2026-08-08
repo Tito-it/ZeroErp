@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/dbops/manual/automation_overrides_cols.md" %}
 # 📚 Tabella `automation_overrides_cols`
 
+> 📝 **Descrizione**
+>
+> Override colonne per tabella
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

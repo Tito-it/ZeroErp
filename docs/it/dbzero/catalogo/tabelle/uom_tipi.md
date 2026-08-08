@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/catalogo/manual/uom_tipi.md" %}
 # 📚 Tabella `uom_tipi`
 
+> 📝 **Descrizione**
+>
+> Tipologie/dimensioni fisiche delle unita di misura.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

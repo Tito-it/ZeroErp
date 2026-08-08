@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/dbops/manual/domini_task.md" %}
 # 📚 Tabella `domini_task`
 
+> 📝 **Descrizione**
+>
+> Catalogo domini task pipeline.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

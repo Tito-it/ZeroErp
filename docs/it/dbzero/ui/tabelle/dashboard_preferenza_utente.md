@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/ui/manual/dashboard_preferenza_utente.md" %}
 # 📚 Tabella `dashboard_preferenza_utente`
 
+> 📝 **Descrizione**
+>
+> Preferenza personale utente per dashboard. JSONB per resilienza ad evoluzioni. Ricalca ui.lista_preferenza_utente.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/script/manual/vw_pratica_doc_sorgente.md" %}
 # 🔍 View `vw_pratica_doc_sorgente`
 
+> 📝 **Descrizione**
+>
+> D3b (brief-db-proiezione-stato-dominio roll-out §5b): una riga per pratica col descrittore del documento PIU' VIVO tra i suoi link (ROOT+COLLEGATO). Regola d'ancora NULL-safe: risolto-first, poi vivo(non-terminale)-first, poi ROOT come tiebreak, poi link piu' recente (ps.id). Accende l'ordine COLLEGATO vivo su una pratica preventivo-&gt;ordine SENZA regredire preventivo-&gt;commessa (la commessa non risolta perde per risolto-first). Fallback come il BE odierno: link non risolto -&gt; risolto=false e stato_* NULL (non la sentinella UNKNOWN dello scalare fn_stato_sorgente). Promuove a DB la regola oggi inline in pratiche_repository._doc_sorgente_lateral; sede unica, riusabile da D4 (GUIDA).
+
 ```sql
 CREATE OR REPLACE VIEW script.vw_pratica_doc_sorgente AS
 SELECT DISTINCT ON (ps.pratica_id) ps.pratica_id,

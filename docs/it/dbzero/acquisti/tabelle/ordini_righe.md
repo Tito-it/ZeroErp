@@ -1,5 +1,9 @@
 # 📚 Tabella `ordini_righe`
 
+> 📝 **Descrizione**
+>
+> Righe ordine di acquisto, con snapshot descrizione/UoM/IVA e campi di idempotenza.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

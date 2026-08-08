@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/indirizzi.md" %}
 # 📚 Tabella `indirizzi`
 
+> 📝 **Descrizione**
+>
+> Associa a un soggetto/ruolo un indirizzo di un certo tipo, normalizzato o libero, con supporto internazionale
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

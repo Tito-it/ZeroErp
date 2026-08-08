@@ -1,6 +1,12 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/catasto_unita_immobiliari.md" %}
 # 📚 Tabella `catasto_unita_immobiliari`
 
+> 📝 **Descrizione**
+>
+> Dati catastali relativi a una singola unità immobiliare. 
+>   Il collegamento all'istanza avviene tramite anagrafiche.istanze_utilities.catasto_unita_immobiliare_id; 
+>   il collegamento agli indirizzi civici avviene tramite la tabella ponte anagrafiche.catasto_unita_immobiliari_indirizzi.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

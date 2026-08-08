@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pratiche/manual/template_flussi_handler_eventi.md" %}
 # 📚 Tabella `template_flussi_handler_eventi`
 
+> 📝 **Descrizione**
+>
+> Legame data-driven template di flusso -&gt; handler per evento (IN_CORSO/COMPLETATO) esito-aware. Esecutore = handler in HANDLER_MAP (riuso handler_flussi). Generalizza template_flussi.handler_id; predispone le azioni di completamento per preventivo/offerta/contratto/ordini/commesse a dati.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

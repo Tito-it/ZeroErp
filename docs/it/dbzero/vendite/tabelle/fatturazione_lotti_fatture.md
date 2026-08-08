@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/fatturazione_lotti_fatture.md" %}
 # 📚 Tabella `fatturazione_lotti_fatture`
 
+> 📝 **Descrizione**
+>
+> Relazione lotto-fattura con esclusione e stato SDI.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

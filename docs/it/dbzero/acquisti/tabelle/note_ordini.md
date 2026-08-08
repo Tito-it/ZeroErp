@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/acquisti/manual/note_ordini.md" %}
 # 📚 Tabella `note_ordini`
 
+> 📝 **Descrizione**
+>
+> Partizione note per ordini di acquisto.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

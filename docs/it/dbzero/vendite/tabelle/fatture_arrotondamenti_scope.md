@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/fatture_arrotondamenti_scope.md" %}
 # 📚 Tabella `fatture_arrotondamenti_scope`
 
+> 📝 **Descrizione**
+>
+> Saldo arrotondamenti per scope di fatturazione (BA, utility, tipo doc, emittente, valuta).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,5 +1,9 @@
 # 📚 Tabella `catasto_unita_immobiliari`
 
+> 📝 **Descrizione**
+>
+> Storico snapshot (JSONB) per anagrafiche.catasto_unita_immobiliari con campi di audit e tx_id.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

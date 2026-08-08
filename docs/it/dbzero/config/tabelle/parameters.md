@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/parameters.md" %}
 # 📚 Tabella `parameters`
 
+> 📝 **Descrizione**
+>
+> Catalogo dei parametri di sistema, con valore di default e descrizione
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

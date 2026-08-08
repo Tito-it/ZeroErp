@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/fatture_sdi_eventi.md" %}
 # 📚 Tabella `fatture_sdi_eventi`
 
+> 📝 **Descrizione**
+>
+> Storico eventi SDI per tentativo invio fattura.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

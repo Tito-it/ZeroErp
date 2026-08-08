@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pratiche/manual/regole_generazione.md" %}
 # 📚 Tabella `regole_generazione`
 
+> 📝 **Descrizione**
+>
+> Regole di generazione cross-pratica.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

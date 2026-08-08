@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/resi_righe_riconsegne.md" %}
 # 📚 Tabella `resi_righe_riconsegne`
 
+> 📝 **Descrizione**
+>
+> Ponte riga-reso &lt;-&gt; riga-DDT di ri-spedizione (brief §4b, mirror ordini_righe_fulfillment). Supporta ri-consegna parziale/multipla; lo stato ri-consegna e derivato dalla copertura. rev 2026-07-13.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

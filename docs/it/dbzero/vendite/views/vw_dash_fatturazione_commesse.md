@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_dash_fatturazione_commesse.md" %}
 # 🔍 View `vw_dash_fatturazione_commesse`
 
+> 📝 **Descrizione**
+>
+> Dashboard fatturazione: resolver area COMMESSE. Valore imponibile snapshot totale vs EMESSO. Denominatore = sole attivita' COMPUTABILI: esclude i void (stato_emissione ANNULLATA; stato_approvazione RIFIUTATA se non gia' EMESSA) simmetrico a orr.attivo degli ordini -&gt; is_transitato/totale/motivo_fermo non falsati dalle void. is_abortito=stato commessa ANNULLATA. SCOPE EMITTENTE nel resolver via fn_get_emittenti_scope_sr_ids(GUC): NULL=tutto, '{}'=niente (fail-closed), array=whitelist. cliente_display=ragione sociale intestatario BA. Consumata da vw_dash_fatturazione_documenti.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

@@ -1,5 +1,9 @@
 # 📚 Tabella `rettifiche_righe`
 
+> 📝 **Descrizione**
+>
+> Righe di rettifica (delta quantità)
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

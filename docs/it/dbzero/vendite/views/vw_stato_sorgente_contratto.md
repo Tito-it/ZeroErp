@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_stato_sorgente_contratto.md" %}
 # 🔍 View `vw_stato_sorgente_contratto`
 
+> 📝 **Descrizione**
+>
+> Resolver di dominio D2 (brief-db-proiezione-stato-dominio roll-out): descrittore normalizzato dello stato vivo di ogni contratto — stato nativo (alias fedeli) + fase/esito/terminale da config.stati_doc_contratti. Chiave (sorgente_tipo_id, sorgente_uid) con sorgente_uid=(id)::text (key_selector=id); al piu' una riga per chiave. Read-time. Consumata dal motore solo via script.vw_stato_sorgente.
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_stato_sorgente_contratto AS
 SELECT s.id AS sorgente_tipo_id,

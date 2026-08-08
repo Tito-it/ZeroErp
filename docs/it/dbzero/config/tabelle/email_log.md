@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/email_log.md" %}
 # 📚 Tabella `email_log`
 
+> 📝 **Descrizione**
+>
+> Log invio email con retry, corpo inviato e ambito visibilita'.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

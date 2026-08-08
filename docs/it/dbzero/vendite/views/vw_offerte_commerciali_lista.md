@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_offerte_commerciali_lista.md" %}
 # 🔍 View `vw_offerte_commerciali_lista`
 
+> 📝 **Descrizione**
+>
+> Vista flat canonica e self-contained offerte commerciali per la lista UI configurabile (vendite.offerte). Nomi canonici (ragione_sociale_completa, id_fiscale_univoco_cf_piva, ba_codice). Assorbe listino_codice/listino_versione_codice/valuta_codice (JOIN gia' nel repository) e materializza is_scaduta (validita_al scaduta; gating per stato lato FE). Pura denormalizzazione: nessuno scope/filtro. security_invoker=on (RLS-ready). is_attiva = non SUPERATA/ANNULLATA; has_next_revisione = EXISTS figlio. Sostituisce vw_offerte_commerciali_list (deprecata, drop differito post-BE).
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

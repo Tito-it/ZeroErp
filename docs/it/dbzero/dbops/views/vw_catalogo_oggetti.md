@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/dbops/manual/vw_catalogo_oggetti.md" %}
 # 🔍 View `vw_catalogo_oggetti`
 
+> 📝 **Descrizione**
+>
+> Vista degli oggetti presenti negli schemi dbops,script (tabelle, viste, sequenze, indici ecc.)
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_catalogo_oggetti AS
 SELECT n.nspname AS schema,

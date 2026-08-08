@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_preventivi.md" %}
 # 🔍 View `vw_preventivi`
 
+> 📝 **Descrizione**
+>
+> Wrapper di vendite.preventivi con is_attiva derivata: TRUE se lo stato proprio non e' abortito E non esiste rev superiore non-abortita per lo stesso numero. Esattamente una rev attiva per numero (unicita' ripristinata dal self-term, rev 2026-07-08). Sostituisce is_revision_attiva (flag persistito). Il BE usa questa vista per list/detail preventivi.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

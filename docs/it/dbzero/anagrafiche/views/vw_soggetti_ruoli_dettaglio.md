@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/vw_soggetti_ruoli_dettaglio.md" %}
 # 🔍 View `vw_soggetti_ruoli_dettaglio`
 
+> 📝 **Descrizione**
+>
+> Vista generale ruolo+soggetto: espone riferimenti fiscali/anagrafici del soggetto a partire da soggetto_ruolo_id, con decodifica tipo ruolo e titolo cortesia.
+
 ```sql
 CREATE OR REPLACE VIEW anagrafiche.vw_soggetti_ruoli_dettaglio AS
 SELECT sr.id AS soggetto_ruolo_id,

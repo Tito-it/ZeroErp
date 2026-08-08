@@ -1,5 +1,9 @@
 # 📚 Tabella `sepa_mandati`
 
+> 📝 **Descrizione**
+>
+> Mandati SEPA CORE/B2B; legati a conto di ruolo e perimetro BA/istanza utility.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

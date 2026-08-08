@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/transizioni_stati_ddt.md" %}
 # 📚 Tabella `transizioni_stati_ddt`
 
+> 📝 **Descrizione**
+>
+> Matrice transizioni ammesse tra stati DDT di vendita (A-3). Fonte metadati UI per le azioni data-driven e grafo per vendite.trgfn_ddt_guard_transizione. Mirror di config.transizioni_stati_ordini. Seed matrice in 20260709-10. rev 2026-07-09.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

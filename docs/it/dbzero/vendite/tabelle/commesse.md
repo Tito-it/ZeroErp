@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/commesse.md" %}
 # 📚 Tabella `commesse`
 
+> 📝 **Descrizione**
+>
+> Testata commessa (REALE/AUTO) con stato lifecycle e policy fatturazione.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/commesse_attivita_log.md" %}
 # 📚 Tabella `commesse_attivita_log`
 
+> 📝 **Descrizione**
+>
+> Audit eventi su commesse_attivita.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

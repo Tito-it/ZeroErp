@@ -1,5 +1,9 @@
 # 📚 Tabella `classi_utenze`
 
+> 📝 **Descrizione**
+>
+> Classi di utenza e parametri EE collegati a tipo_utenza/tariffa/categoria accisa
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

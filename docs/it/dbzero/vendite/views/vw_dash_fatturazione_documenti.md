@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_dash_fatturazione_documenti.md" %}
 # 🔍 View `vw_dash_fatturazione_documenti`
 
+> 📝 **Descrizione**
+>
+> Union dei resolver per la dashboard fatturazione: preventivi, ordini, offerte, contratti, commesse e — dal 2026-07-18 (step 6, brief-db-fatturazione-ddt-resi §4a) — DDT. Le due lenti derivano da qui senza modifiche: il serbatoio filtra fase &lt;&gt; CHIUSO, il backlog filtra classe &lt;&gt; FISIOLOGICO. security_invoker=on (ri-specificato a ogni REPLACE: la reloption non e' visibile in pg_get_viewdef e verrebbe azzerata in silenzio -&gt; bypass RLS).
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

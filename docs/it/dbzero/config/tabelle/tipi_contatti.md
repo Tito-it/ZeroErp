@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/tipi_contatti.md" %}
 # 📚 Tabella `tipi_contatti`
 
+> 📝 **Descrizione**
+>
+> Tipi di contatto anagrafico
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

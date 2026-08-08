@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pratiche/manual/sospensioni.md" %}
 # 📚 Tabella `sospensioni`
 
+> 📝 **Descrizione**
+>
+> Periodi di sospensione pratica/flusso.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

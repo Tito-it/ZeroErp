@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_preventivi_righe_smistabili_commessa.md" %}
 # 🔍 View `vw_preventivi_righe_smistabili_commessa`
 
+> 📝 **Descrizione**
+>
+> Righe preventivo eleggibili al push commessa (servizi una tantum): attive, qta&gt;0, prezzo&gt;=0, natura NULL/COMMESSA, non gia' instradate in commessa (esiste attivita sul segment_key di riga, inclusi componenti BoM #CMP, qualsiasi stato_emissione). Simmetrica a vw_preventivi_righe_smistabili_ordine (esclude su allocazione, non su fatturazione). Predicato di riga unico condiviso con fn_list_preventivi_da_pushare e fn_preventivo_ha_residuo_commessa; condizioni di testata a carico dei consumer. Fix gate EVASO (brief-db-gate-evaso-ramo-commessa-asimmetria.md).
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

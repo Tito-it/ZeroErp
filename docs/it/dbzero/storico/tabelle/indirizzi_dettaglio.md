@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/storico/manual/indirizzi_dettaglio.md" %}
 # 📚 Tabella `indirizzi_dettaglio`
 
+> 📝 **Descrizione**
+>
+> Tabella storica degli indirizzi con snapshot JSONB e campi di audit
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

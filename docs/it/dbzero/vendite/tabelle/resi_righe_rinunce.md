@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/resi_righe_rinunce.md" %}
 # 📚 Tabella `resi_righe_rinunce`
 
+> 📝 **Descrizione**
+>
+> Quota di una riga reso per ri-consegna dichiarata DEFINITIVA: la merce non tornera' al cliente (brief-db-chiusura-riconsegna-reso-definitivo S4.1). Gemella di resi_righe_riconsegne; rinunce parziali e ripetute, nessuna UNIQUE per costruzione (l'invariante quantita &gt;= Sigma riconsegnate + Sigma rinunciate lo tiene il guard). Non muove numeri: ne' il contatore merce ne' l'importo dell'accredito cambiano - cambia la NATURA della quota pendente, che chiude il residuo ordine e rende l'accredito DOVUTO. La merce resta materialmente al fornitore: senza modulo magazzino non c'e' nulla da movimentare (S5.4). rev 2026-07-26.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/soggetti_ruoli.md" %}
 # 📚 Tabella `soggetti_ruoli`
 
+> 📝 **Descrizione**
+>
+> Relazione tra soggetti e ruoli assegnati
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

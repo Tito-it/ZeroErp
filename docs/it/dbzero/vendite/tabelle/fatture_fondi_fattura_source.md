@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/fatture_fondi_fattura_source.md" %}
 # 📚 Tabella `fatture_fondi_fattura_source`
 
+> 📝 **Descrizione**
+>
+> Sorgente fondi fattura da fatture precedenti.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

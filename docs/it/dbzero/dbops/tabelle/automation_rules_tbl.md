@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/dbops/manual/automation_rules_tbl.md" %}
 # 📚 Tabella `automation_rules_tbl`
 
+> 📝 **Descrizione**
+>
+> Regole di automazione per tabella/ambito
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/emittenti_fiscali_utilities.md" %}
 # 📚 Tabella `emittenti_fiscali_utilities`
 
+> 📝 **Descrizione**
+>
+> Parametri emittente fiscale per utility
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

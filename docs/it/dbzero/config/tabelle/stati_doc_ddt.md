@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/stati_doc_ddt.md" %}
 # 📚 Tabella `stati_doc_ddt`
 
+> 📝 **Descrizione**
+>
+> Dominio stati del documento ddt (codici stabili; descrizioni multilingua).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

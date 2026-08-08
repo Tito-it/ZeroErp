@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/fatturazione_pipeline.md" %}
 # 📚 Tabella `fatturazione_pipeline`
 
+> 📝 **Descrizione**
+>
+> Configurazione pipeline fatturazione per step, processi e rollback.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

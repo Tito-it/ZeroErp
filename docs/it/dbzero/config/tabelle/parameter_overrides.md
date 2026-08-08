@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/parameter_overrides.md" %}
 # 📚 Tabella `parameter_overrides`
 
+> 📝 **Descrizione**
+>
+> Override dei parametri per ambiti (tenant, user, sessione, funzione)
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

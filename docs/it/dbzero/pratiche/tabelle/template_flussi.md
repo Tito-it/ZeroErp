@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pratiche/manual/template_flussi.md" %}
 # 📚 Tabella `template_flussi`
 
+> 📝 **Descrizione**
+>
+> Template step workflow per tipo prestazione.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

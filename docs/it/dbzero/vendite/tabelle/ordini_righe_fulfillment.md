@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/ordini_righe_fulfillment.md" %}
 # 📚 Tabella `ordini_righe_fulfillment`
 
+> 📝 **Descrizione**
+>
+> Fulfillment parziale/totale da righe ordine a righe DDT (vendita).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

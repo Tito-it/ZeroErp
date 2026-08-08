@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/storico/manual/soggetti.md" %}
 # 📚 Tabella `soggetti`
 
+> 📝 **Descrizione**
+>
+> Tabella storica per i soggetti con snapshot JSONB e campi di audit
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
