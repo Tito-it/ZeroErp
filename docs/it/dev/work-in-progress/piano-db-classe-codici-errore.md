@@ -1264,10 +1264,23 @@ passaggi sembrano contraddirsi: non lo fanno, parlano di registri diversi.
 
 Nessun passo D-* è aperto. Le cose viste passando, ognuna una slice sua:
 
-* **il lotto degli accumulatori** — i 6 candidati del §5.1, di cui
-  `E_GENERICO` (68 punti, 4 famiglie) e `E_ADMIN_VALIDAZIONE` (50 punti) sono i
-  due che il D-10 indica per primi. La classe **non li cura**: assegna una
-  reazione, non separa le condizioni;
+* ⭐ ~~il lotto degli accumulatori~~ — **si è sciolto misurandolo** (2026-08-08),
+  come era successo a `E_VALIDAZIONE`:
+  * ⛔ **`E_GENERICO` non si spezza**: è il *pavimento* del percorso d'errore, il
+    ripiego finale di `resolve()`. Una misura del genere lo segnalerà sempre, e
+    giustamente. Spezzarlo vuol dire togliere il pavimento;
+  * **`E_ADMIN_VALIDAZIONE`: 36 punti su 50 sono la stessa guardia di parametro**
+    (72%). È la forma di `E_PARAMETRO_INVALIDO`, per cui la decisione già scritta
+    a catalogo è «copre il 90%, i restanti si guardano con la lente, non si
+    spezzano a priori». Applicare due criteri diversi allo stesso caso sarebbe
+    incoerente;
+  * 🟡 **quello che resta davvero è un'altra cosa, e attraversa i due codici**:
+    *«una lettura di configurazione non trova nulla e viene detto all'operatore
+    che ha sbagliato lui»*. Sono ~6 punti in `E_ADMIN_VALIDAZIONE`
+    (`v_tipo_contatto_id IS NULL`, `v_dati_societari_policy IS NULL`,
+    `v_tipo_indirizzo_id IS NULL`…), **identici** al quarto punto chiuso col
+    `20260808-11`, e col rimedio già pronto: `E_CONFIG_MANCANTE`. Slice piccola
+    e precisa, al posto di una campagna vaga;
 * ~~il drop del registro legacy~~ — **chiuso come decisione, non come lavoro**:
   non si droppa (§5.5);
 * 🔴 **B-7 — aperto per INTERO, e non ha una metà BE.** Correzione del team BE
@@ -1300,7 +1313,114 @@ Nessun passo D-* è aperto. Le cose viste passando, ognuna una slice sua:
   cancello automatico. Chi lo riprende parta da qui invece di riprovare il
   cancello.
 
-### 5.7 🔴 Arrivata dal BE: `E_ERRORE_PARAMETRI` — **perimetro DB**
+### 5.6-ter ✅ **B-7 CHIUSO** — 2026-08-08 · il rubinetto degli accumulatori
+
+Era l'unico pezzo del disegno mai costruito, ed era fermo perché **il nome
+ingannava**: «B-7» sta nel piano BE perché la numerazione `B-*` è la loro, ma il
+lavoro è sempre stato del DB. Un codice nasce nel catalogo e la sua genericità si
+legge dalla forma della guardia in PL/pgSQL: il backend il codice lo riceve già
+fatto. Il loro contributo — il criterio, in api.md — l'avevano già dato.
+
+#### 🔴 E avevo detto «non è costruibile». Era sbagliato
+
+Non lo è **nella forma scritta**: un cancello che giudichi *se un codice è
+generico* ha bisogno di leggere tutte le guardie, e la misura ne legge 75 su 344.
+Boccerebbe a caso, e boccerebbe anche i trasversali legittimi
+(`E_PERMESSO_NEGATO`). Dopo due blocchi sbagliati qualcuno lo spegne.
+
+⭐ **La forma che funziona è l'idioma di casa: si presidia il CAMBIAMENTO.**
+
+> Non «questo codice è generico?» — che richiede copertura totale — ma «questo
+> codice ha acquistato una condizione che non aveva?», che la misura sa dire con
+> certezza sui 75 che legge.
+
+Ed è il modo in cui gli accumulatori si formano davvero: **nessuno crea un codice
+generico di proposito**. Si prende un codice che c'è già e lo si usa «anche per
+questo caso», una volta, e sembra ragionevole. La sessantottesima volta è
+`E_GENERICO`.
+
+#### Cosa esiste
+
+| pezzo | |
+|---|---|
+| [`scripts/sql/codici_errore_famiglie_snapshot.sql`](../../../../scripts/sql/codici_errore_famiglie_snapshot.sql) | lo scatto: `codice → famiglie note → n_punti` |
+| [`scripts/codici-errore-baseline.sh`](../../../../scripts/codici-errore-baseline.sh) | confronto e `--update` |
+| [`db/baseline-codici-errore-famiglie.tsv`](../../../../db/baseline-codici-errore-famiglie.tsv) | **75 codici** committati |
+| `ci-validate.yaml` | gira dopo il guardrail, prima del migrate Django |
+
+**Le tre reazioni:**
+
+| situazione | esito |
+|---|---|
+| un codice **acquista** una famiglia nota | 🔴 rosso, exit 1 |
+| un codice **nuovo** nasce con 2+ famiglie note | 🔴 rosso — nasce storto |
+| un codice **perde** una famiglia (si restringe) | 🔵 blu, ma la baseline va stretta **subito** |
+| un codice sparisce dallo scatto | 🔵 blu: si allinea |
+
+⚠️ **`IGNOTO` non entra mai nel confronto.** È la misura che dichiara di non
+sapere: se entrasse, un codice che passa da «non so» a «so» sembrerebbe un
+peggioramento, e il presidio comincerebbe a mentire dal primo giorno.
+
+#### 🔴 Il buco trovato dal **primo uso vero**, un'ora dopo
+
+Applicato il `20260808-11`, la prima corsa del presidio ha **taciuto**.
+`E_ERRORE_PARAMETRI` era passato da `ECCEZIONE,PARAMETRO` (13 punti) a
+`PARAMETRO` (9), e nessuno l'ha detto: il confronto guardava solo le famiglie
+**aggiunte**.
+
+⚠️ Un restringimento non è un rosso — è un miglioramento. Ma finché la baseline
+non viene stretta, **continua a dichiarare `ECCEZIONE` come ammessa**: il giorno
+che qualcuno rimette un `WHEN OTHERS` su quel codice, il confronto la trova già
+in baseline e **tace**.
+
+> ⭐ La baseline marciva **nel verso permissivo** — l'unico verso in cui un
+> presidio si degrada senza che nessuno se ne accorga.
+
+Aggiunta la terza reazione, 🔵 **RISTRETTO**: non fallisce, ma pretende
+l'allineamento e dice perché non è facoltativo. Baseline 75 → **76 codici**.
+
+#### ✅ Il rosso è **provato**, non supposto
+
+Collaudati tutti e tre i modi su baseline manipolate: accumulo (`E_ADMIN_VALIDAZIONE`
+che riacquista `NOT_FOUND`) → exit 1; nascita generica (`E_ATTIVO_REQUIRE` tolto
+dalla baseline, 2 famiglie) → exit 1; sparizione (`E_FANTASMA`) → blu, exit 0.
+
+#### ⚠️ I due limiti, detti qui e non scoperti dopo
+
+* **presidia 75 codici, non 344.** Non è copertura totale ed è inutile fingere:
+  è il rubinetto sui codici vivi e *leggibili*. È molto più di prima, che era
+  niente;
+* **la baseline è misurata su un database.** La misura legge `pg_proc`, e il DB
+  di sviluppo non è ricostruito da zero: confrontare una corsa CI con una
+  baseline presa in sviluppo produrrebbe finte regressioni. Stesso difetto delle
+  due baseline pgTAP, stessa cura: `CODICI_BASELINE`.
+
+⛔ **E la regola che vale più dello script:** se diventa rosso **non si rigenera
+la baseline per far passare la CI**. La riga rossa è la richiesta di una
+decisione — o serve un codice nuovo, o l'uso è legittimo e la baseline si
+aggiorna **con la ragione nel messaggio di commit**.
+
+---
+
+### 5.6-bis Aperti nati oggi dal filone `ui_action` (2026-08-08)
+
+* 🔴 **`E_RESO_EMITTENTE_BA_INCOERENTE` è l'unico dei sei** `%_guard_emittente_ba`
+  che lato BE **non** ha `ui_action = highlight_form_fields`. Sei guardie
+  identiche, uno classificato diverso: o sbagliano i cinque, o sbaglia lui.
+  ⚠️ **Perimetro BE** — il campo il DB lo manda comunque (`20260808-10`), così
+  il giorno che allineano funziona senza un altro changeSet;
+* 🟡 **163 punti `highlight` senza nome del campo**, in 106 funzioni — e **145
+  non hanno nemmeno un contesto**, quindi non c'è più niente da derivare gratis
+  come col `-05`. **Raccomandazione: non farli in blocco.** Si fanno *reattivi*,
+  quando una schermata cablata mostra un errore senza bordo: è così che sono
+  usciti i lotti `-07` e `-08`, e in venti minuti ognuno;
+* 🔵 **`ClienteDrawer` mostra `data_attivazione`/`data_chiusura` disabilitate**:
+  il `20260808-09` manda i nomi ma il bordo non si accende. Corretto e inerte,
+  scritto nel changeSet perché non venga aperto come difetto.
+
+---
+
+### 5.7 ✅ **CHIUSO** — `E_ERRORE_PARAMETRI` scorporato (`20260808-11`)
 
 Push del 2026-08-08 (`9c54ca5fa`), §10 del piano BE. Hanno incrociato la
 **classe** (catalogo) con la **famiglia della guardia** (la vista D-10) — due
@@ -1331,9 +1451,47 @@ stato spostato a 500 proprio per l'`EXCEPTION WHEN OTHERS`;
 `E_REGOLA_FATTURAZIONE_MANCANTE` e `E_PIPELINE_NOT_FOUND` sono 500 col criterio
 «chi può rimediare».
 
-🔴 **È lavoro nostro**: codici nuovi a catalogo + quattro funzioni da toccare. Il
-BE non ha nulla da cambiare — prende la classe dal catalogo e i codici nuovi
-arrivano col generatore. **Slice a sé, non coda di questo piano.**
+✅ **Fatto il 2026-08-08 con [`20260808-11`](../../../../db/changelog/migrations_v2/20_code/script/20260808-11-errore-parametri-scorpora-tecnici-mctit.yaml).**
+Il BE non ha dovuto cambiare niente: prende la classe dal catalogo e il codice
+nuovo arriva col generatore.
+
+| i 4 punti | ora |
+|---|---|
+| `TG_NARGS < 1` · `TG_NARGS <> 2` · `WHEN OTHERS` sul cast di `TG_ARGV` | **`E_TRIGGER_ARGOMENTI_INVALIDI`** (TECNICO, nuovo) |
+| `v_stato_chiuso_id IS NULL` — lookup su `config.stati_cliente` a vuoto | **`E_CONFIG_MANCANTE`** (TECNICO, id 205, **esisteva già**) |
+| gli altri 9 | intatti, `DATO_ERRATO` è giusto |
+
+⭐ **Un codice nuovo e uno riusato.** `E_CONFIG_MANCANTE` è stato cercato prima di
+inventarne uno: un codice nuovo dove ce n'è già uno buono è il modo in cui il
+catalogo torna a gonfiarsi.
+
+⚠️ **Il quarto punto non era quello che diceva la misura.** L'euristica delle
+isole gli aveva attribuito `IF v_utility_txt IS NULL …`, che però fa
+`RETURN NEW` e non solleva: la guardia più vicina **non è la guardia del punto**
+quando in mezzo c'è un ritorno anticipato. Il punto vero è il `WHEN OTHERS` sul
+cast, come diceva il BE. È il quinto limite noto di quella misura, dopo la prima
+riga della guardia.
+
+#### 🔴 La preCondition sbagliata — e la gemella che è passata per sbaglio
+
+Il primo migrate si è fermato: *«SQL Precondition failed. Expected '1' got '0'»*.
+Verificavo che `E_TRIGGER_ARGOMENTI_INVALIDI` fosse **a catalogo**, da un
+changeSet di `20_code` — e `00_schema`+`20_code` girano **per intero prima di
+`80_data`**, quindi i loader dei CSV non erano ancora passati. È la trappola del
+§10.1, presa una seconda volta dallo stesso cantiere.
+
+⚠️ **Ma la cosa che conta è l'altra**: la seconda preCondition
+(`E_CONFIG_MANCANTE` già a catalogo) era sbagliata **allo stesso identico modo**
+e **è passata** — perché il database di sviluppo non è ricostruito da zero e quel
+dato c'era da prima. **In CI sarebbe fallita anche quella.**
+
+> Un difetto che si vede solo sul database ricostruito è il peggiore da lasciare
+> in giro: passa qui, rompe là, e chi lo trova non ha il contesto per capirlo.
+
+Sostituite con due verifiche vere in `20_code`: le tre funzioni esistono, e il
+codice nuovo non c'è già (idempotenza). Nel merito non cambia nulla — il corpo di
+una funzione contiene il codice come **letterale**, non validato al `CREATE`:
+deve esistere quando la funzione *gira*, e lì `80_data` è passata.
 
 ⭐ La cosa che vale oltre il singolo codice: `E_VALIDAZIONE` *sembrava* un
 accumulatore e non lo era, `E_ERRORE_PARAMETRI` non era fra i sospetti e lo è.

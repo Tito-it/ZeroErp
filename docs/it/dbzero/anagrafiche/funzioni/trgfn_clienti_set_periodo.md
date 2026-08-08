@@ -27,7 +27,7 @@ BEGIN
 
 
 -- controlli di coerenza date in base allo stato cliente
-    
+
     -- in caso di annullamento, azzero date e periodo                   
     IF v_codice_stato = 'AN' THEN
         -- annullato: nessuna data, nessun periodo
@@ -41,12 +41,13 @@ BEGIN
     -- e >= data_attivazione
     IF v_codice_stato = 'CH' and NEW.data_attivazione IS NOT NULL THEN
         IF NEW.data_chiusura < NEW.data_attivazione THEN
-            
+
             PERFORM script.fn_log_and_raise_error(
                           'CLIENTI',
                           'anagrafiche.trgfn_clienti_set_periodo',
                           'E_DATA_CHIUSURA',
                           jsonb_build_object(
+                              'campo', 'data_chiusura',
                               'data_chiusura', NEW.data_chiusura,
                               'data_attivazione', NEW.data_attivazione,
                               'cliente_id', NEW.id
@@ -60,12 +61,13 @@ BEGIN
 
     -- in caso di attivazione, data_attivazione deve essere valorizzata
     IF v_codice_stato = 'AT' and NEW.data_attivazione IS NULL THEN
-            
+
         PERFORM script.fn_log_and_raise_error(
                           'CLIENTI',
                           'anagrafiche.trgfn_clienti_set_periodo',
                           'E_DATA_APERTURA',
                           jsonb_build_object(
+                              'campo', 'data_attivazione',
                               'cliente_id', NEW.id
                           ),
                           new.tx_id,

@@ -1,0 +1,127 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `ritenuta_aliquota` si accende nel drawer fornitori — schermata fornitori
+#   Canale: 20260808-04/-05 · Lotti precedenti: -06 (soggetti), -07 (CF/P.IVA)
+#   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md §5.8
+#
+# ── SI AFFETTA PER SCHERMATA, NON PER SCHEMA ───────────────────────────
+#   Lezione del lotto precedente: `fn_validate_cf_piva_it` non era nei 67 punti
+#   di `anagrafiche` perche' vive in `script`, e affettare per schema aveva
+#   spezzato in due un'unica azione dell'operatore. Da qui in avanti la fetta e'
+#   la SCHERMATA: si prendono tutte le guardie che scattano su quell'azione,
+#   ovunque vivano, e la fetta e' finita quando la schermata e' coperta.
+#
+# # ── ⚠️ IL CAMPO NON E' QUELLO DELLA PRIMA RIGA DELLA GUARDIA ───────────
+#   La guardia e' su due righe:
+#
+#       IF NEW.ritenuta_acconto = true                              <- prima riga
+#          AND (NEW.ritenuta_aliquota IS NULL OR ... <= 0)          <- il campo VERO
+#
+#   Una misura che legge solo la prima riga sceglie `ritenuta_acconto`, cioe'
+#   manda l'operatore a togliere la spunta invece che a scrivere l'aliquota.
+#   E' successo davvero nella tabella di scoping del piano, ed e' la ragione
+#   per cui i punti restanti si leggono uno per uno.
+#
+#   ✅ `ritenuta_aliquota` e' nel payload di `FornitoreDrawer.vue` (riga 136):
+#   il bordo rosso si accendera' davvero.
+#
+# ── ⚠️ COME E' STATO PRODOTTO ──────────────────────────────────────────
+#   `pg_get_functiondef` della funzione viva + sostituzione ancorata sulla
+#   PRIMA CHIAVE del contesto, applicata da script, diff verificato:
+#   **1 righe aggiunte, 0 rimosse.** Nessuna trascrizione a mano — sono guard
+#   di integrita', e una svista non si vedrebbe in review.
+#
+#   ⚠️ L'ancora e' la chiave del contesto e NON il codice errore: nel lotto -07
+#   due punti condividevano `E_PIVA_NON_VALIDA` ma erano campi diversi, e
+#   ancorare sul codice avrebbe acceso quello sbagliato. **Il codice dice cosa
+#   e' andato storto, il contesto dice dove.**
+#
+# ── NOTE DI CASA ────────────────────────────────────────────────────────
+#   · `;` dopo `$function$` aggiunto (`pg_get_functiondef` non ce l'ha).
+#   · Proprietario `titodb`, che e' chi migra; non SECURITY DEFINER, non nel
+#     registro `dbops.sec_functions_owner`. Nessun prestito di proprieta'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/anagrafiche/20260808-08-trgfn-fornitori-guard-normalize-campo-mctit.yaml
+
+    - changeSet:
+          id: 20260808-08-trgfn-fornitori-guard-normalize-campo
+          author: mctit
+          runOnChange: false
+          failOnError: true
+          comment: >
+              Il guard sulla ritenuta d'acconto manda il nome del campo: ritenuta_aliquota, non ritenuta_acconto. La guardia nomina il secondo sulla prima riga e il primo sulla riga dopo — il campo da correggere e' l'aliquota. Additivo: 1 riga, diff verificato.
+          preConditions:
+              - onFail: HALT
+              - sqlCheck:
+                    expectedResult: 1
+                    sql: |
+                        SELECT count(*) FROM pg_proc p
+                          JOIN pg_namespace n ON n.oid = p.pronamespace
+                         WHERE n.nspname = 'anagrafiche'
+                           AND p.proname = 'trgfn_fornitori_guard_normalize'
+                           AND p.prosrc NOT LIKE '%''campo''%'
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE FUNCTION anagrafiche.trgfn_fornitori_guard_normalize()
+                         RETURNS trigger
+                         LANGUAGE plpgsql
+                        AS $function$
+                        BEGIN
+                          -- ============================================================
+                          -- Scopo: normalizza e valida campi fornitori prima di INS/UPD.
+                          -- Regole:
+                          --   1) canale_fe → uppercase senza spazi (se valorizzato)
+                          --   2) pec_email → lowercase trimmed (se valorizzata)
+                          --   3) ritenuta: se acconto = true, aliquota obbligatoria > 0
+                          --   4) ritenuta: se acconto <> true, aliquota azzerata
+                          -- ============================================================
+
+                          -- 1) Normalizza canale_fe (uppercase, rimozione spazi)
+                          IF NEW.canale_fe IS NOT NULL THEN
+                            NEW.canale_fe := upper(regexp_replace(NEW.canale_fe, '\s+', '', 'g'));
+                          END IF;
+
+                          -- 2) Normalizza pec_email (lowercase, trim)
+                          IF NEW.pec_email IS NOT NULL THEN
+                            NEW.pec_email := lower(btrim(NEW.pec_email));
+                          END IF;
+
+                          -- 3) Guard: coerenza ritenuta d'acconto
+                          IF NEW.ritenuta_acconto = true
+                             AND (NEW.ritenuta_aliquota IS NULL OR NEW.ritenuta_aliquota <= 0)
+                          THEN
+                            PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'anagrafiche.trgfn_fornitori_guard_normalize',
+                              'E_FORNITORI_RITENUTA_ALIQUOTA_OBBLIGATORIA',
+                              jsonb_build_object(
+                                  'campo', 'ritenuta_aliquota',
+                                'detail', 'Se ritenuta_acconto = true, ritenuta_aliquota deve essere > 0',
+                                'ritenuta_acconto', NEW.ritenuta_acconto,
+                                'ritenuta_aliquota', NEW.ritenuta_aliquota
+                              ),
+                              NULL::uuid,
+                              'ritenuta_aliquota obbligatoria quando ritenuta_acconto = true'
+                            );
+                          END IF;
+
+                          -- 4) Pulizia: se ritenuta non attiva, azzera aliquota
+                          IF NEW.ritenuta_acconto IS DISTINCT FROM true THEN
+                            NEW.ritenuta_aliquota := NULL;
+                          END IF;
+
+                          RETURN NEW;
+                        END;
+                        $function$;

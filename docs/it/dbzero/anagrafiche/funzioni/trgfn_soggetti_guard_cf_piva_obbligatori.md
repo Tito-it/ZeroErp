@@ -34,6 +34,7 @@ BEGIN
     -- Guard partita_iva obbligatoria
     IF v_det.piva_obbligatoria = true AND NEW.partita_iva IS NULL THEN
         v_error_ctx := jsonb_build_object(
+            'campo', 'partita_iva',
             'soggetto_id', NEW.id,
             'tipo_soggetto_dettaglio_id', NEW.tipo_soggetto_dettaglio_id,
             'codice_interno', v_det.codice_interno
@@ -52,6 +53,7 @@ BEGIN
     -- Guard codice_fiscale obbligatorio
     IF v_det.cf_obbligatorio = true AND NEW.codice_fiscale IS NULL THEN
         v_error_ctx := jsonb_build_object(
+            'campo', 'codice_fiscale',
             'soggetto_id', NEW.id,
             'tipo_soggetto_dettaglio_id', NEW.tipo_soggetto_dettaglio_id,
             'codice_interno', v_det.codice_interno
