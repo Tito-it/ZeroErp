@@ -140,6 +140,7 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
     "uq_offerte_commerciali_codice": (
         E_VENDITE_DUPLICATO,
         "Codice offerta gia' esistente.",
+        "codice",
     ),
     "uq_offerte_commerciali_uid": (
         E_VENDITE_DUPLICATO,

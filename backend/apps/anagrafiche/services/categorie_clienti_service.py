@@ -68,10 +68,11 @@ _MAX_DESCRIZIONE_LEN = 255
 
 
 # Mapping vincoli DB -> codici errore applicativi.
-_UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_UNIQUE_CONSTRAINTS: dict[str, tuple] = {
     "uq_categorie_clienti_codice": (
         E_ANAG_DUPLICATO,
         "Esiste gia' una categoria cliente con questo codice.",
+        "codice",
     ),
 }
 
@@ -146,6 +147,9 @@ class CategorieClientiService:
                 unique_constraints=_UNIQUE_CONSTRAINTS,
                 fallback_code=E_ANAG_VALIDAZIONE,
                 fallback_message="Violazione vincolo DB su categoria cliente.",
+                # Il campo da accendere nel form NON sta qui: lo porta la mappa
+                # dei vincoli (terzo elemento della tupla), perche' dipende da
+                # QUALE vincolo ha fatto match e non dalla chiamata.
                 context={"codice": data.get("codice")},
             )
         return self.get_categoria(new_id)

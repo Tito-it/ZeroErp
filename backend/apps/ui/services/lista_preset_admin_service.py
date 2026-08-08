@@ -98,6 +98,7 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
     "uq_ui_lista_preset_lista_codice": (
         E_PRESET_VALIDATION,
         "Esiste gia' un preset con questo codice per la lista.",
+        "codice",
     ),
     "uq_ui_lista_preset_default": (
         E_PRESET_VALIDATION,

@@ -119,6 +119,7 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
     "uq_promo_articoli_codice": (
         E_VENDITE_DUPLICATO,
         "Esiste gia' una promo con questo codice.",
+        "codice",
     ),
     "ex_promo_articoli_no_overlap": (
         E_VENDITE_PROMO_OVERLAP,
