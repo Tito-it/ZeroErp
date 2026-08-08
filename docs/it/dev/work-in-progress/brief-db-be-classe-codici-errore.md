@@ -1182,7 +1182,7 @@ e non è una gentilezza fatta al backend.
 > misure, le 19 decisioni — e l'esecuzione vive in due piani operativi:
 >
 > * ▶️ [**piano-db-classe-codici-errore**](piano-db-classe-codici-errore.md) — D-1..D-10, si comincia da qui;
-> * ⏸️ [**piano-be-classe-codici-errore**](piano-be-classe-codici-errore.md) — B-1..B-7, coi prerequisiti marcati.
+> * ⏸️ [**piano-be-classe-codici-errore**](../work-done/piano-be-classe-codici-errore.md) — B-1..B-7, coi prerequisiti marcati.
 >
 > La tabella qui sotto **resta come vista d'insieme**, ma i piani sono la
 > versione viva: se divergono, valgono loro.
@@ -1245,7 +1245,7 @@ chi legge solo questa guida deve saperle:
    righe di catalogo e una classe la volevano (§4.3).
 
 **Per l'esecuzione, i piani sono l'unica fonte:**
-▶️ [piano DB](piano-db-classe-codici-errore.md) · ⏸️ [piano BE](piano-be-classe-codici-errore.md).
+▶️ [piano DB](piano-db-classe-codici-errore.md) · ⏸️ [piano BE](../work-done/piano-be-classe-codici-errore.md).
 
 ---
 

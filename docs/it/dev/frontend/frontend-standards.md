@@ -1984,7 +1984,7 @@ validator). Legare un campo fuori da quella lista non fa danno ma non fa niente:
 funzioni PL/pgSQL il canale esiste ma non e' ancora usato: finche' non lo sara',
 `campiErrati` su quegli errori resta vuoto e il comportamento e' quello di
 prima — nessuna regressione, solo nessun guadagno. Piano e misure:
-`docs/it/dev/work-in-progress/piano-be-classe-codici-errore.md` §12.
+`docs/it/dev/work-done/piano-be-classe-codici-errore.md` §12.
 
 ⚠️ **`ui_action` non si usa ancora.** `useApiHandler` lo espone come `azioneUi`
 per chi vorra' costruirci sopra, ma **nessun componente lo legge**: la reazione

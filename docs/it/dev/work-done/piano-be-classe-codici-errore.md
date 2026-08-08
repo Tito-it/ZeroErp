@@ -1,11 +1,21 @@
 # Piano BE — classe dei codici errore
 
+> ✅ **CHIUSO — spostato in `work-done` il 2026-08-09.** B-1 → B-7 fatti, e con
+> essi il filone nato per strada: l'errore adesso dice **anche quale campo**
+> correggere, dal database fino al bordo rosso dell'input.
+>
+> ⚠️ **Quello che resta non è lavoro BE**, ed è elencato nel §13: due decisioni
+> di Tid e due cose di perimetro DB. Se un domani si riaprono, si riparte da lì.
+>
+> ⚠️ **I presidi restano vivi anche adesso che il piano è chiuso**, ed è la
+> ragione per cui questo documento non è solo un racconto: il controllo di
+> divergenza, il cancello del terzo lato, i due ponti sul CSV e il guardrail dei
+> punti di chiamata girano a ogni PR. Se il catalogo cambia, il rosso arriva —
+> come è successo tre volte in due giorni.
+
 **Chi:** team BE (`dev/backend-tid`).
-**Guida generale e ragioni di ogni scelta:** [brief-db-be-classe-codici-errore](brief-db-be-classe-codici-errore.md) — 18 decisioni, le misure, i perché. **Questo file non le ripete: le esegue.**
-**Piano gemello:** [piano-db-classe-codici-errore](piano-db-classe-codici-errore.md).
-**Stato:** 🟢 **B-1 → B-7 CHIUSI** · 🟢 **§12 (campi da correggere) FATTO end-to-end**.
-Il **B-7 l'ha chiuso il DB** il 2026-08-08 (piano DB §5.6-ter) presidiando il **cambiamento** invece dello stato — «questo codice ha acquistato una condizione che non aveva?» — con baseline in CI. Il contributo BE era il criterio, ed è in [api.md](../api.md).
-🔵 **Aperto solo quello che è di altri o è una tua decisione**: vedi §13.
+**Guida generale e ragioni di ogni scelta:** [brief-db-be-classe-codici-errore](../work-in-progress/brief-db-be-classe-codici-errore.md) — le decisioni, le misure, i perché.
+**Piano gemello:** [piano-db-classe-codici-errore](../work-in-progress/piano-db-classe-codici-errore.md) — anch'esso chiuso (2026-08-08).
 
 ---
 
@@ -1530,7 +1540,7 @@ codice che aspetta di essere scritto.
 
 | | Cosa | Stato |
 |---|---|---|
-| 🔵 | **la classe dei 5 `*_EMITTENTE_BA_INCOERENTE`** → `DATO_ERRATO` a catalogo | verificato su CSV **e** DB applicato: non ancora fatto. Prova completa in §12.17, `ui_action` del reso già allineata da noi |
+| ✅ | ~~la classe dei 5 `*_EMITTENTE_BA_INCOERENTE`~~ | **fatta dal DB il 2026-08-09**: tutti e sei `DATO_ERRATO` (400). Rigenerato di conseguenza. ⚠️ I sei override **restano tutti**: vedi §12.17 |
 | 🔵 | **163 punti `highlight` senza nome del campo** (106 funzioni, 145 senza contesto) | loro raccomandazione, condivisa: **non in blocco, ma reattivi** — quando una schermata cablata mostra un errore senza bordo |
 
 ### 13.3 Da dichiarare prima di farlo (1)
@@ -1554,3 +1564,36 @@ Sono la parte che si perde per prima, e ognuno ha la sua ragione scritta:
   reggono i codici nuovi nell'intervallo fra il seed DB e la rigenerazione;
 * **nessun test sul prefisso dei codici** — sarebbe rosso su 51 codici
   ereditati, registrati così di proposito (§7).
+
+### 12.18 ✅ Famiglia allineata — e i sei override **non** sono ridondanti
+
+Il DB ha spostato i cinque a `DATO_ERRATO` (2026-08-09). Il controllo di
+divergenza è andato rosso come doveva, rigenerato: **tutti e sei rispondono 400
+con `highlight_form_fields`**, la famiglia è coerente su entrambi gli assi.
+
+⚠️ **Il team DB ha però aggiunto un'osservazione che non regge, e va corretta
+prima che qualcuno tolga sei righe:**
+
+> *«Se il default della classe è già `highlight_form_fields`, i cinque override
+> diventano ridondanti e il reso non serve più allinearlo a mano — sono righe
+> che possono sparire dai 176.»*
+
+**Il default di `DATO_ERRATO` NON è `highlight_form_fields`: è
+`show_error_banner`.** È la scelta del §6.3, e non è un caso: su quella classe il
+default era un pareggio esatto — **117 contro 117** — e si è scelto il banner per
+l'asimmetria del danno, *promettere un campo da evidenziare che non esiste è
+peggio dell'occasione persa*.
+
+Quindi i sei override **servono tutti e sei**, e togliendoli quei codici
+tornerebbero al banner: si spegnerebbe il bordo rosso proprio sulla famiglia
+appena sistemata. Il conteggio sale a **177**, non scende.
+
+⭐ **Il ragionamento però è quello giusto, ed esiste già un presidio che lo fa:**
+`test_nessun_override_ripete_il_default_della_classe` — un override uguale al
+default è una riga che non decide niente, e va rossa. Se i sei fossero davvero
+ridondanti, quel test lo direbbe **senza che nessuno debba guardare**. È verde.
+
+> ⚠️ La lezione è di lettura, non di merito: *«il default della classe»* non si
+> deduce dal nome della classe — `DATO_ERRATO` **suggerisce** un campo da
+> correggere — ma si legge in `UI_ACTION_PER_CLASSE`, dove è scritto, con
+> accanto la ragione per cui è quello e non l'altro.

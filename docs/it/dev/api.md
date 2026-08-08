@@ -487,7 +487,7 @@ un codice applicativo darebbe un 500; `column_name` contiene sempre e solo un
 nome di **colonna**. Non c'è un secondo significato da cui difendersi.
 
 Analisi e ordine dei passi:
-`docs/it/dev/work-in-progress/piano-be-classe-codici-errore.md` §12.
+`docs/it/dev/work-done/piano-be-classe-codici-errore.md` §12.
 
 Gli errori sono generati da:
 

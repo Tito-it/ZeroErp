@@ -2,7 +2,7 @@
 
 **Chi:** team DB (`dev/db-tid`).
 **Guida generale e ragioni di ogni scelta:** [brief-db-be-classe-codici-errore](brief-db-be-classe-codici-errore.md) — 20 decisioni, le trappole, i perché. **Questo file non le ripete: le esegue.**
-**Piano gemello:** [piano-be-classe-codici-errore](piano-be-classe-codici-errore.md).
+**Piano gemello:** [piano-be-classe-codici-errore](../work-done/piano-be-classe-codici-errore.md).
 **Stato:** 🟢 **PIANO DB CHIUSO — tutto applicato, tutto verificato contro il database vero** (2026-08-08). D-1..D-10 e le due code del §3 applicati; il D-10 riscritto a window function (`20260808-01`, §2 D-10). Il BE ha consumato la consegna: `error_policies_generated.py` è **generato** e le 689 coppie `codice → classe` coincidono esattamente col catalogo (§5).
 ✅ **Vocabolario a 10 valori confermato da Tid** (2026-08-07): `NON_AUTENTICATO` e `ERRORE_ESTERNO` restano.
 
