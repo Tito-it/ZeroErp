@@ -100,7 +100,7 @@ jobs:
           java-version: '17'
 
       - name: Setup Liquibase 5 (oss)
-        uses: liquibase/setup-liquibase@v2.1.1
+        uses: liquibase/setup-liquibase@v3.0.0
         with:
           version: '5.0.3'
           edition: 'oss'

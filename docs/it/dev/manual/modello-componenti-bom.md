@@ -362,7 +362,8 @@ Riferimento: [fn_contratto_righe_preview](/dbzero/vendite/manual/fn_contratto_ri
 ## 13. Riferimenti
 
 - Iterazioni storiche: [changelog-decisioni-componenti.md](changelog-decisioni-componenti.md)
-- Piano operativo corrente: `docs/it/dev/work-in-progress/refactor-componenti.md`
+- Piano operativo 2026-05 (⛔ **storico, superato** — non usarlo per stimare):
+  `docs/it/dev/work-done/refactor-componenti.md`
 - Brief DB: `docs/it/dev/work-done/brief-db-componenti-modello-unificato.md`
 - Modello tabelle: `docs/it/dbzero/catalogo/manual/articoli_componenti.md`
 - Resolver pricing v5: `docs/it/dbzero/vendite/manual/fn_resolve_prezzo_listino_v2.md`

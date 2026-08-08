@@ -332,5 +332,5 @@ Da rimuovere (deprecati):
 
 - Razionale e modello logico: [`manual/modello-componenti-bom.md`](../manual/modello-componenti-bom.md)
 - Storico decisioni: [`manual/changelog-decisioni-componenti.md`](../manual/changelog-decisioni-componenti.md)
-- Piano operativo BE/FE: [`refactor-componenti.md`](../work-in-progress/refactor-componenti.md)
+- Piano operativo BE/FE: [`refactor-componenti.md`](refactor-componenti.md)
 - Brief precedenti (atterrati, work-done): `brief-db-preventivi-righe-componenti-override.md`, `brief-db-componenti-relaxed-override.md`, `brief-db-componenti-form-atomic.md`
