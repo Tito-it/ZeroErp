@@ -1270,8 +1270,35 @@ Nessun passo D-* è aperto. Le cose viste passando, ognuna una slice sua:
   reazione, non separa le condizioni;
 * ~~il drop del registro legacy~~ — **chiuso come decisione, non come lavoro**:
   non si droppa (§5.5);
-* **B-7 lato BE, per metà** — l'altra metà l'hanno già chiusa e nasce in pari
-  (0 punti di chiamata su 213 nominano un codice ritirato).
+* 🔴 **B-7 — aperto per INTERO, e non ha una metà BE.** Correzione del team BE
+  (2026-08-08), accolta: qui c'era scritto «per metà», ma il presidio che
+  avevamo contato come mezzo B-7 riguarda i **codici ritirati**, mentre il B-7
+  vieta i codici **generici**. Sono due proprietà diverse, e vietare i ritirati
+  non chiude niente del rubinetto dei generici — un codice appena nato può
+  essere genericissimo e non è certo ritirato. Il numero resta buono e utile
+  (**0 punti di chiamata su 213** nominano un codice ritirato), ma è un altro
+  presidio.
+
+  ⭐ **Ed è nostro, per una ragione strutturale**: la regola è «un codice nuovo
+  non deve coprire più condizioni», e il fatto che lo decide è **la forma della
+  guardia al punto che solleva** — che vive in PL/pgSQL. Il backend quei punti
+  non li vede e non li crea. Il rubinetto si chiude **dove il codice nasce**,
+  cioè al catalogo. Il contributo BE è il *criterio* (si contano le condizioni,
+  non i domini — ora in api.md §Tassonomia), non un cancello.
+
+  ⚠️ **E una conseguenza che va tratta adesso: il B-7 come «cancello» non è
+  costruibile nella forma in cui è scritto.** L'unico strumento che sa dire se
+  un codice è generico è la misura del D-10, che copre **75 codici su 344** e
+  che per progetto **non è un cancello** — un codice legittimamente trasversale
+  esiste (`E_PERMESSO_NEGATO`), e un cancello che lo bocciasse verrebbe
+  disattivato in una settimana. Un rubinetto costruito su una misura al 22%
+  boccerebbe a caso e passerebbe a caso.
+
+  Quindi il B-7 **va ri-specificato**, non solo riaperto. La forma che regge è
+  quella che stiamo già usando senza chiamarla così: **il criterio in api.md +
+  la misura all'apertura di ogni lotto**. Presidio umano con strumento, non
+  cancello automatico. Chi lo riprende parta da qui invece di riprovare il
+  cancello.
 
 ### 5.7 🔴 Arrivata dal BE: `E_ERRORE_PARAMETRI` — **perimetro DB**
 

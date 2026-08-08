@@ -4,7 +4,7 @@
 **Origine:** domanda di Tid alla chiusura di
 [brief-db-be-terzo-lato-presidio-codici](../work-done/brief-db-be-terzo-lato-presidio-codici.md):
 *«come evitare che si ripeta? La messaggistica si era trasformata in un bugiardino.»*
-**Stato:** 🟢 **COSTRUITO** (2026-08-08) — disegno chiuso (27 decisioni, §14), **DB D-1→D-10 chiuso**, **BE B-1→B-6 chiuso**, resta metà del B-7. Il cantiere è in servizio: il catalogo ha 689 codici tutti con una classe, e `error_policies_generated.py` è generato dal database. Stato dettagliato nel §13.1; l'esecuzione vive nei [due piani](piano-db-classe-codici-errore.md).
+**Stato:** 🟢 **COSTRUITO** (2026-08-08) — disegno chiuso (28 decisioni, §14), **DB D-1→D-10 chiuso**, **BE B-1→B-6 chiuso**. Resta il **B-7, aperto per intero e da ri-specificare** (D29). Il cantiere è in servizio: il catalogo ha 689 codici tutti con una classe, e `error_policies_generated.py` è generato dal database. Stato dettagliato nel §13.1; l'esecuzione vive nei [due piani](piano-db-classe-codici-errore.md).
 **Perimetro:** tabelle + vocabolario + seed lato DB · generatore di `error_policies.py` e mappa classe→HTTP lato BE.
 **Ruolo di questo file:** **guida generale** — le ragioni, le misure, le decisioni. L'esecuzione sta nei due piani operativi (§13).
 
@@ -1151,7 +1151,8 @@ questo cantiere cura. Resta uno **stato**, che è un'altra cosa da un piano.
 | Fronte | Stato |
 |---|---|
 | **DB** | ✅ **D-1 → D-10 chiusi, applicati e verificati** contro il database vero. Nessun passo aperto |
-| **BE** | ✅ **B-1 → B-6 chiusi** — `error_policies_generated.py` **non si scrive più a mano**. 🟡 resta metà del B-7 |
+| **BE** | ✅ **B-1 → B-6 chiusi** — `error_policies_generated.py` **non si scrive più a mano**. Il cantiere BE è chiuso |
+| **B-7** | 🔴 **aperto per intero, e non ha una metà BE** — la genericità si decide dalla forma della guardia, che vive in PL/pgSQL: il rubinetto si chiude **dove il codice nasce**, al catalogo. ⚠️ Da **ri-specificare**, non solo riaprire (D29) |
 | **Verifica incrociata** | ✅ le **689 coppie `codice → classe`** del file generato coincidono **esattamente** con `config.vw_codici_errore_identita`: zero differenze, confrontate una per una |
 
 **Cosa esiste adesso nel database:**
@@ -1240,6 +1241,7 @@ Non entravano nel piano, e questo era l'unico posto in cui risultavano scritte:
 | **D26** | ⚠️ **Le tre strade sono distinte, e il registro è solo la seconda**: una *famiglia* nuova allarga la convenzione (come i `W_`, `20260805-28`), un codice *ereditato* va nel registro, un codice *nuovo* nato storto si corregge prima del merge. Da qui: **nessuna colonna `motivo`** — risponderebbe alla domanda della prima strada (§13.2) | DB, 2026-08-08 |
 | **D27** | ⚠️ **La giustificazione del controllo (B) era scaduta**: diceva «un codice fuori convenzione non trova policy → 500», ma dal B-5 il dizionario è generato dal catalogo e li contiene tutti. La regola resta, per **la finestra** fra migrate e rigenerazione e per la separazione `E_`/`W_`. Riscritta: *una regola che si spiega con un fatto scaduto insegna una cosa falsa a chi si fida* | DB, 2026-08-08 |
 | **D28** | ⭐ **La rinuncia del §9.2 è riscossa**: la classe è verificabile incrociando catalogo e forma della guardia. Esito: **vera**, su 75 codici classificabili su 344, con un difetto trovato dalla misura — `E_ERRORE_PARAMETRI`, 4 punti su 13 (§9.3) | BE + DB, 2026-08-08 |
+| **D29** | 🔴 **Il B-7 è aperto per intero e va RI-SPECIFICATO.** Correzione BE: il presidio sui codici *ritirati* non è mezzo B-7 — il B-7 vieta i *generici*, e sono proprietà diverse. Non ha una metà BE: la genericità si legge dalla forma della guardia, che è PL/pgSQL. ⚠️ E come **cancello** non è costruibile: l'unico strumento che sa dirlo copre 75 codici su 344 e per progetto è una misura — un rubinetto al 22% boccerebbe a caso. La forma che regge è **criterio in api.md + misura all'apertura di ogni lotto** | BE + DB, 2026-08-08 |
 
 ### 14.1 ✅ ~~Cosa resta da decidere~~ — chiusa dal BE, 2026-08-07
 
