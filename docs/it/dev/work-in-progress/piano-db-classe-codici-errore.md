@@ -1340,3 +1340,213 @@ accumulatore e non lo era, `E_ERRORE_PARAMETRI` non era fra i sospetti e lo è.
 Entrambe le volte la risposta è venuta dal **contare le condizioni**, non dal
 guardare i nomi — ed è esattamente il mestiere per cui il D-10 è stato
 ri-specificato dopo che l'asse dei domini si era rivelato sbagliato.
+
+---
+
+### 5.8 Il nome del campo esce dall'eccezione — `USING COLUMN` (passo 4 del BE)
+
+Richiesta del team BE (§12.4/§12.5 del loro piano). Il backend ha imparato a
+dire al frontend **quale campo** correggere e il frontend a evidenziarlo; ma quel
+nome ce l'hanno solo i **42 codici sollevati dal Python**. Gli **83 sollevati dal
+database** arrivano senza, e la pagina non sa cosa accendere.
+
+**Scritto:** [`20260808-04`](../../../../db/changelog/migrations_v2/20_code/script/20260808-04-fn-log-and-raise-error-column-campo-mctit.yaml)
+— il nome viaggia in `COLUMN`, letto da `p_context->>'campo'`.
+
+#### ⭐ Non si inventa niente: la convenzione c'era già
+
+Misurato prima di disegnare: **4 punti di chiamata mettono già `'campo'` nel
+contesto**, con esattamente questo significato. Quel contesto finiva solo in
+`dbops.error_log`. È la stessa cosa successa fra BE e FE — la stessa idea scritta
+da due parti, e nessuna che la trasmetteva.
+
+#### 🔴 Perché dal contesto e non da un parametro nuovo — provato, non dedotto
+
+La firma finisce con `VARIADIC p_valori text[]`, e questo chiude entrambe le
+strade:
+
+| | Esito |
+|---|---|
+| parametro **dopo** la `VARIADIC` | PostgreSQL lo **rifiuta** |
+| parametro **prima**, anche con `DEFAULT` | ⚠️ **si mangia in silenzio il primo valore**: `f2('area','valore1','valore2')` lega `b='valore1'` |
+
+Sono **973 punti di chiamata in 371 funzioni**. La seconda strada li avrebbe
+corrotti tutti senza un errore.
+
+#### ⚠️ `COLUMN` era stato scartato dal `20260805-05`, e va spiegato
+
+Quel changeSet elenca `COLUMN` fra le alternative respinte: *«funziona identico,
+ma dice una cosa falsa: non è una colonna»*. Era giusto — **per il codice
+errore**. Qui ci viaggia il **nome del campo**, che è ciò che quel campo
+significa nel protocollo. ⚠️ La seconda metà dell'obiezione resta ferma:
+`SCHEMA`/`TABLE`/`DATATYPE` restano off-limits perché psycopg e Django li leggono
+per comporre gli `IntegrityError`.
+
+#### ✅ Presidio: controllo (F), nato col canale
+
+Gemello del (A). Misurato: **0 mittenti su `COLUMN`** oggi, e **0 lettori** lato
+backend. Il (A) nacque quando `CONSTRAINT` era già in uso e dovette rincorrere;
+questo nasce a zero e non chiederà mai a nessuno di sanare un arretrato.
+
+⚠️ Il modo in cui questo canale rompe è peggio degli altri: un secondo mittente
+non fa fallire niente, fa **evidenziare il campo sbagliato** — manda l'operatore
+a correggere un dato giusto, con la pagina che glielo indica come se fosse sicura.
+
+#### ✅ ~~Il lato che riceve non è in servizio~~ — **chiuso dal BE in giornata**
+
+> **Aggiornato il 2026-08-08 sera.** Il rilievo qui sotto era giusto quando è
+> stato scritto e il BE l'ha chiuso subito (commit `23921bebb`):
+> `structured_db_error_field` legge `diag.column_name`, con 103 righe di test, e
+> `_from_database_error` lo passa a `fields=`. **Il canale è completo su
+> entrambe le metà**, e il consumatore nel frattempo è su **38 schermate**
+> invece che su una.
+>
+> ⭐ **E hanno trovato un secondo produttore che non avevo visto**, legittimo e
+> gratuito: su una violazione **NOT NULL** (SQLSTATE `23502`) è **PostgreSQL
+> stesso** a valorizzare `column_name` con la colonna mancante. Lì il campo è
+> vero senza che nessuno lo scriva — quindi una parte del guadagno arriva
+> **senza toccare un solo punto di chiamata**.
+>
+> ⚠️ **Non è in conflitto col controllo (F)**, e va detto perché sembra esserlo:
+> il (F) presidia chi scrive `RAISE ... USING COLUMN` in PL/pgSQL. Il `23502`
+> non è un `RAISE`, è il motore — e non può indicare il campo sbagliato, perché
+> la colonna mancante *è* il dato. Il controllo resta com'è.
+>
+> ⚠️ E un limite loro, da tenere presente quando si faranno i punti: il nome è
+> quello della **colonna**. Dove il service rinomina verso il payload, il client
+> non trova l'input e non evidenzia nulla — **inerte, non sbagliato**.
+
+Il rilievo originale, per la storia:
+
+#### ~~🔴 Il lato che riceve **non** è in servizio~~ — verificato, e detto al BE
+
+Il BE anticipa: *«il lato che riceve è già in servizio e testato: a loro resta
+solo aggiungere `USING COLUMN`»*. **Vale per il percorso Python, non per quello
+del database**, e sono due percorsi diversi:
+
+| Pezzo | Stato reale |
+|---|---|
+| frontend (`campiErrati`, il drawer pilota) | ✅ in servizio |
+| Python → envelope (`ServiceError.context["field"]`) | ✅ in servizio, 6 test |
+| **DB → envelope** | 🔴 **non esiste** |
+
+Le due righe che lo stabiliscono:
+
+* `db_error_fields.py` legge **solo** `constraint_name` — nessuna funzione
+  legge `column_name`, in tutto il backend;
+* `ErrorTranslator._from_database_error` costruisce l'`ApiError` **senza
+  `fields=`**.
+
+⭐ **È esattamente il difetto che il BE ha diagnosticato sul proprio lato**, con
+le loro parole: *«si perde a un passo dall'uscita»*. Se applicassimo il
+`20260808-04` da soli, il nome del campo arriverebbe fino al confine e verrebbe
+buttato — e non se ne accorgerebbe nessuno, perché non fallisce niente.
+
+**Richiesta al BE:** una lettura di `diag.column_name` in `db_error_fields.py`
+(stesso guard `P0001` e stesso `or None` già usati per `constraint_name`) e il
+passaggio a `fields=` nel ramo `_from_database_error`. È il gemello del loro
+passo 1, sull'altro percorso.
+
+#### ⚠️ Le chiavi interne sono diverse di proposito — non «uniformarle»
+
+Lato DB la chiave è `'campo'` (dentro `p_context` jsonb), lato BE è `"field"`
+(dentro `ServiceError.context`). **Sono due contenitori diversi**, ciascuno nella
+lingua del suo lato, e il contratto condiviso è un altro: la chiave
+**`fields`** dell'envelope. Scritto qui perché è il genere di asimmetria che
+qualcuno «corregge» rompendo 114 punti di chiamata da una parte o 4 dall'altra.
+
+#### 📏 Il passo 4, misurato prima di accettarlo — **non sono 83**
+
+Il numero che circola nei documenti («83») conta i **codici**. Ma il nome del
+campo **non appartiene al codice: appartiene al punto che solleva** — lo stesso
+`E_PARAMETRO_INVALIDO` è sollevato in decine di posti, e in ognuno il campo è un
+altro. Quindi l'unità di lavoro è il punto, non il codice.
+
+Misurato incrociando i 125 codici `highlight_form_fields` del backend con i corpi
+PL/pgSQL vivi:
+
+| | |
+|---:|---|
+| codici `highlight` sollevati da PL/pgSQL | **71** |
+| **punti di chiamata da giudicare** | **380** |
+| funzioni coinvolte | **181** |
+| punti che già passano `campo` | **5** |
+
+> 🔴 **375 giudizi, non 83 modifiche meccaniche.** Non è «aggiungere
+> `USING COLUMN` dove il campo è vero»: per ogni punto bisogna leggere la
+> guardia e decidere *quale* campo è quello sbagliato. È una campagna, non una
+> coda.
+
+**Ripartizione, che è il modo per affettarla:**
+
+| schema | punti | funzioni |
+|---|---:|---:|
+| `vendite` | 213 | 101 |
+| `anagrafiche` | 67 | 25 |
+| `script` | 52 | 31 |
+| `pratiche` | 25 | 12 |
+| `config` | 11 | 7 |
+| `dbops` · `documenti` · `catalogo` | 12 | 5 |
+
+⭐ **E una parte del guadagno arriva senza toccare niente**: sulle violazioni
+NOT NULL (`23502`) è PostgreSQL a valorizzare `column_name`, e il BE ora lo
+legge. Quel pezzo è già attivo da stasera, a costo zero.
+
+**Raccomandazione:** *non* fare i 380. Procedere **per dominio, dietro alle
+schermate che esistono** — come dice il piano BE («solo quelli dei domini
+toccati»). `vendite` da solo è il 56% del lavoro e va guardato per ultimo, non
+per primo: è dove i punti stanno più spesso in trigger di stato, cioè dove non
+c'è un form da evidenziare. Il primo lotto ragionevole è `anagrafiche`, che è
+dove stanno i drawer del pilota.
+
+#### ⭐ La campagna da 375 giudizi non serve — `20260808-05`
+
+Tid apre il lotto `anagrafiche` (2026-08-08). Prima di cominciare, la domanda che
+non era stata fatta: **quei 380 punti, il nome del campo ce l'hanno già?**
+
+| chiave nel `p_context` | occorrenze | |
+|---|---:|---|
+| `'campo'` | 8 | quella che il `20260808-04` legge |
+| **`'parametro'`** | **225** in 111 funzioni | ⭐ la convenzione vera |
+
+E porta esattamente il dato che serve: `jsonb_build_object('parametro', 'p_cognome')`.
+
+⭐ **È la terza volta in questo cantiere che il dato c'era già e nessuno lo
+trasmetteva**: prima il `context` del backend (fermo un passo dall'uscita), poi i
+4 `'campo'` del database, ora i 225 `'parametro'`. Il difetto non è mai stato
+«manca l'informazione»: è sempre stato «manca l'ultimo passo».
+
+[`20260808-05`](../../../../db/changelog/migrations_v2/20_code/script/20260808-05-fn-log-and-raise-error-campo-da-parametro-mctit.yaml)
+deriva il campo da `parametro` togliendo il prefisso `p_`.
+
+**Copertura ottenuta senza toccare un solo punto di chiamata:**
+
+| schema | coperti | % |
+|---|---:|---:|
+| `vendite` | 150/213 | **70%** |
+| `anagrafiche` | 33/67 | 49% |
+| `script` | 24/52 | 46% |
+| `pratiche` | 6/25 | 24% |
+| altri | 4/23 | 17% |
+| **totale** | **217/380** | **57%** |
+
+⭐ **L'intuizione di Tid su `vendite` era giusta e si misura**: 70%, la copertura
+migliore di tutti gli schemi — sono le funzioni più recenti, e passano il
+parametro più spesso. Il lotto `anagrafiche` scende da 67 a **34 punti**.
+
+**Le tre scelte, con la ragione:**
+
+1. **`campo` ha la precedenza** — è l'override esplicito per quando il campo del
+   form non si chiama come il parametro. Se vincesse `parametro`, l'override non
+   servirebbe a niente;
+2. **il prefisso `p_` si toglie nel DB**, non nel backend: è una convenzione di
+   denominazione del plpgsql, e farla arrivare al frontend vorrebbe dire mettere
+   una regola del database dentro alla pagina. I 52 valori che il prefisso non
+   ce l'hanno (`commessa_id`, `quantita`, …) passano invariati;
+3. ⚠️ **si accetta l'inerte** — molti parametri sono `*_id` interni: il client
+   non trova l'input e non evidenzia nulla. È il prezzo per non fare 217 giudizi
+   a mano, ed è lo stesso che il BE ha già accettato per il caso «il service
+   rinomina»: *inerte, non sbagliato*.
+
+Verificato sulla logica isolata: `p_cognome`→`cognome`, `commessa_id`→invariato,
+`campo` batte `parametro`, testo sporco scartato, chiave assente → nessun campo.

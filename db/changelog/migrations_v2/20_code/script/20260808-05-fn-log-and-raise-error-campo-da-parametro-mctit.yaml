@@ -1,0 +1,268 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il nome del campo si deriva anche da `parametro` — 217 punti coperti, zero toccati
+#   Segue: 20260808-04 (che ha aperto il canale COLUMN leggendo solo 'campo')
+#   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md §5.8
+#   Decisione: Tid, 2026-08-08 — «il pilota ha funzionato, procedi con anagrafiche»
+#
+# ── 🔴 LA CAMPAGNA DA 375 GIUDIZI NON SERVE ────────────────────────────
+#   Il piano diceva: 380 punti di chiamata dove il frontend potrebbe evidenziare
+#   un campo, e per ognuno un giudizio umano su QUALE campo sia. Prima di
+#   aprirla, una domanda che andava fatta e non era stata fatta: **quei punti,
+#   il nome del campo, ce l'hanno gia'?**
+#
+#   Misurato:
+#
+#     chiave 'campo'      ->    8 occorrenze     (quella che il -04 legge)
+#     chiave 'parametro'  ->  225 occorrenze, 111 funzioni   <- la convenzione vera
+#
+#   E porta esattamente il dato che serve:
+#     `jsonb_build_object('parametro', 'p_cognome')`
+#
+#   ⭐ E' la terza volta in questo cantiere che il dato c'era gia' e nessuno lo
+#   trasmetteva: prima il `context` del backend (fermo un passo dall'uscita),
+#   poi i 4 `'campo'` del database, ora i 225 `'parametro'`. Il difetto non e'
+#   mai stato «manca l'informazione»: e' sempre stato «manca l'ultimo passo».
+#
+# ── QUANTO COPRE, PER SCHEMA ───────────────────────────────────────────
+#   Punti evidenziabili che ricevono un campo SENZA essere toccati:
+#
+#     vendite       150/213   70%   <- il meglio, e non e' un caso: sono le
+#     anagrafiche    33/67    49%      funzioni piu' recenti (intuizione di Tid,
+#     script         24/52    46%      confermata dalla misura)
+#     pratiche        6/25    24%
+#     config          2/11 · dbops 2/7 · documenti 0/3 · catalogo 0/2
+#     ------------------------------------------------------------
+#     TOTALE        217/380   57%
+#
+#   Restano 163 punti che un giudizio lo vogliono davvero — ma sono la coda, non
+#   il lavoro. E per `anagrafiche`, il lotto che Tid ha aperto, la campagna
+#   scende da 67 a **34 punti**.
+#
+# ── ⚠️ TRE SCELTE, E LA RAGIONE DI CIASCUNA ────────────────────────────
+#   1. **`campo` ha la precedenza su `parametro`.** `campo` e' l'override
+#      esplicito per quando il campo del form non si chiama come il parametro.
+#      Se vincesse `parametro`, l'override non servirebbe a niente e chi lo
+#      scrive non capirebbe perche' non funziona.
+#   2. **Il prefisso `p_` si toglie QUI**, non lato backend. E' una convenzione
+#      di denominazione del plpgsql: farla arrivare al frontend vorrebbe dire
+#      mettere una regola del database dentro alla pagina. (I 52 valori che il
+#      prefisso non ce l'hanno — `commessa_id`, `quantita`, … — passano
+#      invariati: la regexp non trova niente da togliere.)
+#   3. **Si accetta l'inerte.** Molti parametri sono `*_id` interni
+#      (`p_billing_account_id`) e non campi di un form: il client non trova
+#      l'input e non evidenzia nulla. E' il prezzo per non fare 217 giudizi a
+#      mano, ed e' un prezzo basso — il BE ha gia' scritto la stessa cosa del
+#      caso «il service rinomina»: **inerte, non sbagliato**.
+#
+# ── ⚠️ COSA *NON* CAMBIA ───────────────────────────────────────────────
+#   · nessuna firma, nessun punto di chiamata, nessun `GRANT`;
+#   · chi non mette ne' `campo` ne' `parametro` si comporta identico a prima;
+#   · il valore continua a non uscire: si leggono due chiavi, entrambe di NOMI.
+#   · il controllo (F) del guardrail resta valido cosi' com'e'.
+#
+# ── NOTE DI CASA ────────────────────────────────────────────────────────
+#   · Corpo ripreso dal `20260808-04` gia' applicato: cambia solo il blocco
+#     4-bis. `;` dopo `$function$` presente (l'auto-gen non ce l'ha).
+#   · Permessi: come il `20260805-05` e il `20260808-04` su questa stessa
+#     funzione — proprietario `titodb`, che e' chi migra; nessun prestito di
+#     proprieta', e l'ACL esplicita sopravvive al `CREATE OR REPLACE`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/script/20260808-05-fn-log-and-raise-error-campo-da-parametro-mctit.yaml
+
+    - changeSet:
+          id: 20260808-05-fn-log-and-raise-error-campo-da-parametro
+          author: mctit
+          runOnChange: false
+          failOnError: true
+          comment: >
+              Il nome del campo si deriva anche dalla chiave 'parametro' (225 occorrenze in
+              111 funzioni) togliendo il prefisso p_. Copre 217 dei 380 punti evidenziabili
+              senza toccarne nessuno, e riduce la campagna su anagrafiche da 67 a 34 punti.
+              'campo' mantiene la precedenza: e' l'override esplicito.
+          preConditions:
+              - onFail: HALT
+              - sqlCheck:
+                    expectedResult: 1
+                    sql: |
+                        SELECT count(*) FROM pg_proc p
+                          JOIN pg_namespace n ON n.oid = p.pronamespace
+                         WHERE n.nspname = 'script'
+                           AND p.proname = 'fn_log_and_raise_error'
+                           AND p.prosrc LIKE '%COLUMN%'
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE FUNCTION script.fn_log_and_raise_error(p_area text, p_function_name text, p_error_code text, p_context jsonb, p_tx_id uuid, VARIADIC p_valori text[])
+                         RETURNS void
+                         LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_msg    text;
+                            v_detail text;
+                            v_hint   text;
+                            v_campo  text;
+                            v_lang   text := coalesce(
+                                current_setting('myapp.user_language', true),
+                                'it'
+                            );
+                        BEGIN
+                            -- =========================================================
+                            -- Scopo (post 23-04-2026, i18n incrementale):
+                            --   Logga l'errore nel sistema di logging e solleva
+                            --   RAISE EXCEPTION con messaggio, DETAIL e HINT
+                            --   localizzati secondo la lingua di sessione.
+                            --
+                            -- Cambiamento 23-04-2026: il recupero di causa/soluzione
+                            -- ora ricade su lingua='it' se la lingua richiesta non
+                            -- ha riga per il codice (stesso pattern di
+                            -- fn_get_messaggio). Il messaggio testuale era gia'
+                            -- context-aware perche' delegato a fn_get_messaggio.
+                            --
+                            -- Cambiamento 05-08-2026: il CODICE di dominio esce in un
+                            -- campo strutturato dell'eccezione (CONSTRAINT), non piu'
+                            -- solo dentro al testo dello statement chiamante. Vedi il
+                            -- blocco 5.
+                            --
+                            -- Cambiamento 08-08-2026: esce anche il NOME DEL CAMPO, sul
+                            -- canale COLUMN, letto da p_context->>'campo'. Vedi blocco 4-bis.
+                            -- =========================================================
+
+                            -- 1) Logging (non loc-sensitive).
+                            PERFORM script.fn_log_error_only(
+                                p_area, p_function_name, p_error_code,
+                                p_context, p_tx_id, VARIADIC p_valori
+                            );
+
+                            -- 2) Template messaggio (gia' gestisce fallback lingua
+                            -- internamente post 20260423-02-01).
+                            v_msg := script.fn_get_messaggio(
+                                p_error_code,
+                                NULL,
+                                v_lang
+                            );
+
+                            -- 3) Recupera causa e hint con fallback IT inline.
+                            -- Single-query: preferisci v_lang; se la riga esiste
+                            -- solo in 'it' vince quella per LIMIT 1.
+                            -- Semantica "riga intera vince": se la riga EN esiste
+                            -- ma ha causa/soluzione NULL, mantiene NULL (non mescola
+                            -- con IT -- ordering sceglie la riga della lingua
+                            -- richiesta come blocco atomico).
+                            SELECT causa, soluzione
+                              INTO v_detail, v_hint
+                              FROM config.messaggi_errore
+                             WHERE codice = p_error_code
+                               AND lingua IN (v_lang, 'it')
+                             ORDER BY (lingua = v_lang) DESC
+                             LIMIT 1;
+
+                            -- 4) Format placeholder con VARIADIC values, se presenti.
+                            IF array_length(p_valori, 1) IS NOT NULL THEN
+                                v_msg := format(v_msg, VARIADIC p_valori);
+                            END IF;
+
+                            -- 4-bis) Il NOME DEL CAMPO da correggere, se chi solleva
+                            --    l'ha messo nel contesto sotto la chiave 'campo'.
+                            --
+                            --    ⚠️ Passa dal context e NON da un parametro nuovo perche'
+                            --    la firma finisce con VARIADIC: un parametro dopo di
+                            --    essa PostgreSQL lo rifiuta, e uno PRIMA — anche con
+                            --    DEFAULT — si mangerebbe in silenzio il primo valore di
+                            --    973 punti di chiamata. Verificato eseguendolo.
+                            --
+                            --    ⚠️ Si legge SOLO 'campo', mai 'valore': nei context c'e'
+                            --    spesso anche quello che l'operatore ha scritto, e non ha
+                            --    motivo di tornare indietro.
+                            --
+                            --    ⚠️ E deve SEMBRARE un identificatore. I context li scrive
+                            --    chi solleva, ma una chiave costruita a runtime
+                            --    rimanderebbe al client testo altrui. E' la simmetrica
+                            --    della regex che il backend applica sul suo lato: le due
+                            --    meta' dello stesso canale vanno guardate uguale.
+                            --
+                            --    ⭐ 08-08-2026, RIPIEGO SU 'parametro'. Misurato: la chiave
+                            --    'campo' e' usata in 8 punti, ma **'parametro' in 225, su
+                            --    111 funzioni** — e porta il nome del parametro plpgsql
+                            --    (`jsonb_build_object('parametro','p_cognome')`). E' la
+                            --    convenzione vera di questa casa, gia' scritta ovunque e
+                            --    mai trasmessa. Derivarla qui copre **217 dei 380 punti**
+                            --    che il frontend potrebbe evidenziare, **senza toccarne
+                            --    nessuno**.
+                            --
+                            --    Il prefisso `p_` lo togliamo QUI e non lato backend: e'
+                            --    una convenzione di denominazione del plpgsql, non un dato
+                            --    del client. Farla arrivare al frontend vorrebbe dire
+                            --    mettere una regola del database dentro alla pagina.
+                            --
+                            --    ⚠️ Precedenza a 'campo': e' l'override esplicito per
+                            --    quando il campo del form NON si chiama come il parametro.
+                            --    Se vincesse 'parametro' l'override non servirebbe a niente.
+                            --
+                            --    ⚠️ Molti parametri sono `*_id` interni e non campi di un
+                            --    form: li' il client non trova l'input e non evidenzia
+                            --    nulla — **inerte, non sbagliato**. E' il prezzo accettato
+                            --    per non fare 217 giudizi a mano.
+                            v_campo := nullif(btrim(coalesce(p_context ->> 'campo', '')), '');
+                            IF v_campo IS NULL THEN
+                                v_campo := nullif(btrim(coalesce(p_context ->> 'parametro', '')), '');
+                                v_campo := nullif(regexp_replace(coalesce(v_campo, ''), '^p_', ''), '');
+                            END IF;
+                            IF v_campo IS NOT NULL AND v_campo !~ '^[a-z_][a-z0-9_]{0,63}$' THEN
+                                v_campo := NULL;
+                            END IF;
+
+                            -- 5) Sollevamento eccezione con DETAIL/HINT localizzati.
+                            --
+                            --    CONSTRAINT porta il CODICE di dominio: e' l'unico campo
+                            --    strutturato che il backend puo' leggere senza fare
+                            --    parsing del testo. Il codice NON compare nel messaggio,
+                            --    ed e' una scelta: il messaggio e' per l'utente.
+                            --
+                            --    COLUMN porta il NOME DEL CAMPO da correggere. Contratto
+                            --    gemello: «P0001 + COLUMN valorizzato = il campo che
+                            --    l'operatore deve correggere».
+                            --
+                            --    ⚠️ CONTRATTO — «P0001 + CONSTRAINT valorizzato = errore
+                            --    di dominio». ERRCODE e' gia' il default: e' esplicito
+                            --    per dichiararlo. Il backend NON puo' fidarsi del campo
+                            --    fuori da P0001, perche' su una violazione di vincolo
+                            --    vera (classe 23xxx) `constraint_name` contiene il nome
+                            --    del vincolo DB (`uq_...`, `fk_...`).
+                            --
+                            --    ⚠️ Questo e' l'UNICO posto autorizzato a scrivere
+                            --    CONSTRAINT e COLUMN in un RAISE. Presidiato in CI da
+                            --    scripts/sql/guardrail_codice_errore_strutturato.sql,
+                            --    controlli (A) e (F): se un altro RAISE usa gli stessi
+                            --    canali per altro, il backend si fiderebbe di un campo
+                            --    scritto da qualcun altro — e nel caso di COLUMN
+                            --    evidenzierebbe il campo SBAGLIATO, che e' peggio che
+                            --    non evidenziarne nessuno.
+                            --
+                            --    ⚠️ Se p_error_code (o il campo) e' NULL il canale esce
+                            --    come STRINGA VUOTA, non NULL (verificato). Succede nelle
+                            --    guard che passano `v_motivi -> 0 ->> 'codice'`: lato
+                            --    backend la lettura deve fare `... or None` per ricadere
+                            --    sulla regex invece di propagare un valore vuoto.
+                            RAISE EXCEPTION '%', v_msg
+                                USING ERRCODE    = 'P0001',
+                                      DETAIL     = coalesce(v_detail, ''),
+                                      HINT       = coalesce(v_hint, ''),
+                                      CONSTRAINT = p_error_code,
+                                      COLUMN     = coalesce(v_campo, '');
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION script.fn_log_and_raise_error(p_area text, p_function_name text, p_error_code text, p_context jsonb, p_tx_id uuid, VARIADIC p_valori text[])
+                        IS 'Logga e poi solleva exception con messaggio custom. Post 23-04-2026: causa/soluzione con fallback lingua=''it'' se la lingua richiesta (myapp.user_language) non ha riga per il codice. Messaggio delegato a fn_get_messaggio (gia'' context-aware). Post 05-08-2026: il CODICE di dominio esce nel campo strutturato CONSTRAINT dell''eccezione — contratto «P0001 + CONSTRAINT valorizzato = errore di dominio». Post 08-08-2026: esce anche il NOME DEL CAMPO da correggere, nel canale COLUMN, letto da p_context->>''campo'' e, in ripiego, da p_context->>''parametro'' col prefisso p_ tolto (convenzione gia'' in uso in 225 punti su 111 funzioni: copre 217 dei 380 punti evidenziabili senza toccarne nessuno) — contratto gemello «P0001 + COLUMN valorizzato = il campo che l''operatore deve correggere». Passa dal context e NON da un parametro nuovo perche'' la firma finisce con VARIADIC: un parametro dopo di essa e'' rifiutato, uno prima si mangerebbe in silenzio il primo valore di 973 chiamate. Si legge solo ''campo'' e mai ''valore'', e solo se sembra un identificatore. Unica sede autorizzata a scrivere CONSTRAINT e COLUMN (presidio: scripts/sql/guardrail_codice_errore_strutturato.sql, controlli A ed F). Il codice NON compare nel messaggio: quello e'' per l''utente.';
