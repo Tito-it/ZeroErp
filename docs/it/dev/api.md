@@ -468,10 +468,25 @@ diagnostica destinata a `dbops.error_log`: contiene anche `lotto_id`,
 client di evidenziare cose che sullo schermo non esistono. E il **valore** non
 esce mai: è il dato che l'operatore ha appena scritto.
 
-⚠️ **Oggi lo popolano solo gli errori nati in Python** (42 codici su 125 con
-`highlight_form_fields`). Per gli 83 sollevati da PL/pgSQL il canale esiste ma
-non è ancora usato — `RAISE … USING COLUMN`, letto come `diag.column_name`,
-esattamente come `CONSTRAINT` porta già il codice. Analisi e ordine dei passi:
+**Da dove arriva `fields`, due strade:**
+
+| Origine | Contratto | Stato |
+|---|---|---|
+| errori nati in **Python** | `context={"field": <nome>}` nel `ServiceError` | ✅ attivo (42 codici) |
+| errori nati in **PL/pgSQL** | `RAISE … USING COLUMN = '<colonna>'` → `diag.column_name` | 🔵 **il backend lo legge già**; le funzioni non lo mandano ancora |
+| **violazione NOT NULL** (23502) | `column_name` lo valorizza PostgreSQL da solo | ✅ attivo, senza che nessuno scriva niente |
+
+⭐ **Il canale del DB non è da inventare**: `COLUMN` è un campo strutturato del
+`RAISE`, come `CONSTRAINT` che dal 2026-08-05 porta già il codice errore. Non
+serve un parametro nuovo di `script.fn_log_and_raise_error`.
+
+⚠️ **Sul `COLUMN` non c'è il guard sullo SQLSTATE** che invece protegge la
+lettura del `CONSTRAINT`, e l'asimmetria è voluta: su un `23xxx`
+`constraint_name` contiene il nome del **vincolo** (`uq_…`), che scambiato per
+un codice applicativo darebbe un 500; `column_name` contiene sempre e solo un
+nome di **colonna**. Non c'è un secondo significato da cui difendersi.
+
+Analisi e ordine dei passi:
 `docs/it/dev/work-in-progress/piano-be-classe-codici-errore.md` §12.
 
 Gli errori sono generati da:
