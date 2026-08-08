@@ -139,6 +139,33 @@ BEGIN
     -- controllo: non sono debito da registrare, sono debito **pagato** che non
     -- si e' potuto cancellare per via della FK di error_log. Pretenderli nel
     -- registro impedirebbe al registro di calare, che e' il suo unico scopo.
+    --
+    -- ── ⚠️ PERCHE' LA CONVENZIONE CONTA — RISCRITTO IL 2026-08-08 ──────
+    --   Fino al 2026-08-07 la ragione era: «un codice fuori convenzione non
+    --   trova policy, e la scorciatoia di ErrorPolicyRegistry.resolve vale solo
+    --   per i codici E_, quindi cade su E_GENERICO = HTTP 500».
+    --
+    --   ⛔ **Quella ragione e' scaduta.** Dal passo B-5 del piano BE
+    --   `error_policies_generated.py` e' GENERATO da config.vw_codici_errore_-
+    --   identita e contiene TUTTI i codici a catalogo, non conformi compresi;
+    --   `resolve()` cerca prima il nome esatto nel dizionario, e il ripiego sul
+    --   prefisso scatta solo se il codice li' NON c'e'. Un codice non conforme
+    --   ma a catalogo oggi risolve correttamente.
+    --
+    --   ⭐ La regola resta, con una ragione piu' stretta e piu' precisa:
+    --     1. LA FINESTRA. Fra il seed di un codice nuovo lato DB e la
+    --        rigenerazione lato BE il codice non e' nel dizionario, e a decidere
+    --        400 invece di 500 resta il PREFISSO. E' una finestra reale: il
+    --        codice nasce in un migrate e vive fino al commit del BE.
+    --     2. LA SEPARAZIONE E_/W_. `E_` si solleva, `W_` si scrive soltanto nel
+    --        diario. Non e' stile: e' il controllo (E) qui sotto, e un `W_`
+    --        sollevato arriva all'operatore come un guasto.
+    --
+    --   La regola non e' cambiata, la sua giustificazione si'. Va tenuta vera:
+    --   un presidio che si spiega con un fatto scaduto insegna una cosa falsa, e
+    --   chi verifica la spiegazione e la trova sbagliata conclude che il
+    --   presidio e' sbagliato. E' lo stesso guasto — la regola tiene, la ragione
+    --   marcisce — contro cui e' costruito il cantiere della classe.
     SELECT string_agg(ce.codice, E'\n  ' ORDER BY ce.codice)
       INTO v_fuori
       FROM config.codici_errore ce
@@ -151,16 +178,27 @@ BEGIN
     IF v_fuori IS NOT NULL THEN
         RAISE EXCEPTION
           E'Codici errore fuori convenzione e non registrati:\n  %\n\n'
-          'La convenzione e'' E_{MODULO}_{TIPO} (docs/it/dev/api.md). Un codice senza '
-          'prefisso E_ arriva al backend ma non trova policy, e la scorciatoia di '
-          'ErrorPolicyRegistry.resolve vale solo per i codici E_: tutto il resto cade '
-          'su E_GENERICO, cioe'' HTTP 500. Un operatore che tenta una transizione non '
-          'ammessa si vedrebbe un errore di server.\n'
+          'La convenzione e'' E_{MODULO}_{TIPO} (docs/it/dev/api.md), con E_ per gli '
+          'errori e W_ per i warning.\n'
+          'Conta per due ragioni, e la prima e'' una FINESTRA: fra il migrate che crea '
+          'il codice e il commit con cui il backend rigenera error_policies_generated.py '
+          'il codice non e'' ancora nel dizionario, e in quell''intervallo a decidere 400 '
+          'invece di 500 resta il PREFISSO (ErrorPolicyRegistry.resolve ripiega su E_* '
+          'per i codici che non trova, e su E_GENERICO — cioe'' HTTP 500 — per tutti gli '
+          'altri). Un operatore che tenta una transizione non ammessa si vedrebbe un '
+          'errore di server. La seconda ragione e'' la separazione E_/W_: i W_ si '
+          'scrivono nel diario e non si sollevano — e'' il controllo (E) qui sotto.\n'
+          '⚠️ NON e'' piu'' vero che un codice fuori convenzione «non trova policy»: dal '
+          'passo B-5 il dizionario e'' generato dal catalogo e li contiene tutti. Il '
+          'rischio e'' la finestra, non lo stato a regime.\n'
           'Due strade: rinominare il codice a E_* (seed CSV + call site + pgTAP che lo '
           'asseriscono), oppure — se e'' un codice che esisteva gia'' prima del presidio — '
           'registrarlo in dbops.messaggi_errore_codici_legacy. La seconda strada e'' per '
-          'il debito ereditato del 2026-08-05, NON per i codici nuovi: quelli nascono '
-          'giusti.', v_fuori;
+          'il debito EREDITATO, NON per i codici nuovi: quelli nascono giusti. E se '
+          'quello che hai davanti non e'' un''eccezione ma una FAMIGLIA nuova con una '
+          'semantica sua — com''e'' stato per i W_ nel 20260805-28 — la strada giusta e'' '
+          'la terza: allargare la convenzione qui sopra, con la ragione nel changeSet. '
+          'Una famiglia dentro un registro di eccezioni si perde.', v_fuori;
     END IF;
 
     -- ── (C) il debito deve calare ───────────────────────────────────

@@ -1180,17 +1180,36 @@ diceva il contrario, ed è stata corretta: a zero righe droppare sarebbe
 il (C) è vero a vuoto), ma comprerebbe «meno codice» al prezzo di **mettere mano
 al controllo (B)**, cioè all'unica cosa che tiene la convenzione.
 
-La ragione che conta è però un'altra: la convenzione **è già stata allargata una
-volta**, da `^E_` a `^[EW]_` per far posto ai warning (`20260805-28`). Alla
-prossima eccezione legittima, con un registro c'è una riga datata che qualcuno
-legge; senza, l'unico posto è la regex — e allargare una regex è un diff di un
-carattere che non nota nessuno, applicato a tutti per sempre.
+La seconda ragione è che il meccanismo **serve alla prossima eredità**: il
+progetto ne ha già assorbita una (57 codici) e ne assorbirà altre. Ricostruire
+tabella, CHECK e due controlli sotto la pressione di un'importazione è il momento
+in cui li si costruisce male.
 
-⚠️ **Se e quando servirà davvero come valvola**, mancano due cose e vanno fatte
-allora, non prima: una colonna `motivo` (oggi la tabella registra *chi*, non
-*perché*) e la riscrittura del messaggio del controllo (B), che dichiara quella
-strada chiusa ai codici nuovi. Finché l'eccezione non arriva, la tabella vuota
-costa zero e il rubinetto resta chiuso.
+⛔ **Non è però una «valvola per le eccezioni», e la distinzione è operativa.**
+L'unica eccezione vera mai arrivata — la famiglia `W_` dei warning — **non è
+finita nel registro: è stata allargata la convenzione** (`20260805-28`), ed era
+la scelta giusta. Le tre strade sono diverse:
+
+| Cosa arriva | Dove va | Perché |
+| --- | --- | --- |
+| una **famiglia** nuova con una semantica sua (`W_`) | si **allarga la regola** | una famiglia dentro un registro di eccezioni si perde |
+| un codice **ereditato** da fuori, già storto | **il registro** | è debito: ha una data e deve calare |
+| un codice **nuovo** nato storto | si **corregge prima del merge** | non è debito, è un difetto |
+
+Per questo la tabella **non ha una colonna `motivo`** e non deve averla:
+risponderebbe a «perché questa eccezione è legittima», che è la domanda della
+prima riga — quella che non passa di qui. Per il debito l'orologio c'è già ed è
+`data_registrazione`.
+
+⚠️ **Nota sul perché la convenzione conta, corretta il 2026-08-08.** Fino al B-5
+la ragione era «un codice fuori convenzione non trova policy e cade su
+`E_GENERICO`, cioè 500». **Non è più così**: `error_policies_generated.py` è
+generato dal catalogo e li contiene tutti, e `resolve()` cerca prima il nome
+esatto. La regola resta per due ragioni più strette — la **finestra** fra il
+migrate che crea il codice e il commit che rigenera il dizionario (lì a decidere
+400 invece di 500 resta il prefisso), e la **separazione `E_`/`W_`**. Il
+messaggio del controllo (B) è stato riscritto di conseguenza: una regola che si
+spiega con un fatto scaduto insegna una cosa falsa a chi si fida.
 
 ⚠️ Da non confondere con `dbops.codici_errore_senza_policy` (il registro del
 *terzo lato*, 141 → 0): è un'altra tabella, un altro mestiere, e anche quella
