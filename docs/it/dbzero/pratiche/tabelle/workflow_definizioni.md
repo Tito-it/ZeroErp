@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pratiche/manual/workflow_definizioni.md" %}
 # 📚 Tabella `workflow_definizioni`
 
+> 📝 **Descrizione**
+>
+> Edizioni versionate delle definizioni di workflow (modello C «edizioni + fork»). Una riga = una edizione per (tipo_prestazione, scope); emittente_fiscale_id NULL = preset. Ciclo: BOZZA -&gt; PUBBLICATA (unica per scope, immutabile da Fase 1) -&gt; RITIRATA. Le pratiche pinnano la definizione alla creazione (pratiche.definizione_id) e la tengono per sempre.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

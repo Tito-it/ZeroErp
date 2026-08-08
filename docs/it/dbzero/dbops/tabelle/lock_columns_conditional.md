@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/dbops/manual/lock_columns_conditional.md" %}
 # 📚 Tabella `lock_columns_conditional`
 
+> 📝 **Descrizione**
+>
+> Registro lock condizionali: colonne immutabili SE condition_expr valutata sul record indicato da $1 (id come text) ritorna TRUE. Complementare a dbops.automation_lock_columns (lock statici). Scrivibile solo via migration. rev 2026-05-22.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/ui/manual/lista_colonna.md" %}
 # 📚 Tabella `lista_colonna`
 
+> 📝 **Descrizione**
+>
+> Catalogo colonne disponibili per ciascuna lista. Definisce tutto cio che la lista puo mostrare.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/indirizzi_dettaglio.md" %}
 # 📚 Tabella `indirizzi_dettaglio`
 
+> 📝 **Descrizione**
+>
+> Dettaglio degli indirizzi, collegate allo stradario
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

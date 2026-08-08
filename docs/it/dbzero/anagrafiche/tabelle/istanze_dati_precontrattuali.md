@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/istanze_dati_precontrattuali.md" %}
 # 📚 Tabella `istanze_dati_precontrattuali`
 
+> 📝 **Descrizione**
+>
+> Dati tecnici precontrattuali per istanze utilities: parametri di profilazione e condizioni preliminari (core + JSONB).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

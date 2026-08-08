@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/auth_totp_device.md" %}
 # 📚 Tabella `auth_totp_device`
 
+> 📝 **Descrizione**
+>
+> Device TOTP per autenticazione a due fattori. 1:1 con auth_user.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

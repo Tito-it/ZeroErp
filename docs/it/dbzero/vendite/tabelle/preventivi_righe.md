@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/preventivi_righe.md" %}
 # 📚 Tabella `preventivi_righe`
 
+> 📝 **Descrizione**
+>
+> Righe preventivo: articoli, quantità, prezzi fotografati
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

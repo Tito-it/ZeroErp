@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/fatture_riepiloghi_iva.md" %}
 # 📚 Tabella `fatture_riepiloghi_iva`
 
+> 📝 **Descrizione**
+>
+> Specchietto IVA per fattura (aliquota/natura/esigibilità/split).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

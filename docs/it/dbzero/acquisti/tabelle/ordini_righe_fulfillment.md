@@ -1,5 +1,9 @@
 # 📚 Tabella `ordini_righe_fulfillment`
 
+> 📝 **Descrizione**
+>
+> Fulfillment parziale/totale da righe ordine a righe DDT (acquisto).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/clienti.md" %}
 # 📚 Tabella `clienti`
 
+> 📝 **Descrizione**
+>
+> Tabella anagrafica generale clienti per tutte le utilities
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

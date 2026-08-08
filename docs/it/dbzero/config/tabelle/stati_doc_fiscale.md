@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/stati_doc_fiscale.md" %}
 # 📚 Tabella `stati_doc_fiscale`
 
+> 📝 **Descrizione**
+>
+> Dominio stati del documento fiscale (codici stabili; descrizioni multilingua).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

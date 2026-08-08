@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pratiche/manual/handler_flussi.md" %}
 # 📚 Tabella `handler_flussi`
 
+> 📝 **Descrizione**
+>
+> Registry handler flusso — chiavi per mapping Django.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

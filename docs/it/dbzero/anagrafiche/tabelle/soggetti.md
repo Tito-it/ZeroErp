@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/soggetti.md" %}
 # 📚 Tabella `soggetti`
 
+> 📝 **Descrizione**
+>
+> Anagrafica soggetti (persone fisiche e giuridiche)
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

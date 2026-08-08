@@ -1,5 +1,9 @@
 # 🔍 View `vw_clienti_codice_ba`
 
+> 📝 **Descrizione**
+>
+> Vista flat clienti con codice da billing_account, stato e date ciclo vita. Usata per ricerca codice universale (entita_tabella in tipi_ruoli) e come source dati per dettaglio entita' CL. stato_codice_interno = codice_interno (logica), stato_codice = codice (display).
+
 ```sql
 CREATE OR REPLACE VIEW anagrafiche.vw_clienti_codice_ba AS
 SELECT cl.soggetto_ruolo_id,

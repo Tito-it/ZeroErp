@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/script/manual/vw_stati_estesi.md" %}
 # 🔍 View `vw_stati_estesi`
 
+> 📝 **Descrizione**
+>
+> Estensione dei dati degli stati: include info ISTAT, catastale e contesto da jsonb.
+
 ```sql
 CREATE OR REPLACE VIEW script.vw_stati_estesi AS
 SELECT id,

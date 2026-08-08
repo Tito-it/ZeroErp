@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/emittenti_fiscali_billing_account.md" %}
 # 📚 Tabella `emittenti_fiscali_billing_account`
 
+> 📝 **Descrizione**
+>
+> Associazione billing_account -&gt; emittente fiscale (ruolo). Prevede un default globale.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

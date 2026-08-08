@@ -1,6 +1,12 @@
 {% include-markdown "it/dbzero/config/manual/area_model_overrides.md" %}
 # 📚 Tabella `area_model_overrides`
 
+> 📝 **Descrizione**
+>
+> Override opzionale: riassegna un model Django a un'area funzionale
+>  diversa dal suo schema DB. Eccezione rara — il caso standard
+>  e' area = schema (risoluzione automatica).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

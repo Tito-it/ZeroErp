@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/tipi_nota.md" %}
 # 📚 Tabella `tipi_nota`
 
+> 📝 **Descrizione**
+>
+> Tipologie di nota per pratiche e flussi.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

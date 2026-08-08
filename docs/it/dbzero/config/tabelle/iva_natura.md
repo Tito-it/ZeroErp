@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/iva_natura.md" %}
 # 📚 Tabella `iva_natura`
 
+> 📝 **Descrizione**
+>
+> Codici natura IVA per fatturazione elettronica
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

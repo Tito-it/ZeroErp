@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/email_account.md" %}
 # 📚 Tabella `email_account`
 
+> 📝 **Descrizione**
+>
+> Account SMTP per invio email. Ogni reparto puo' avere il proprio. NULL su unita_organizzativa_id = account di sistema/fallback.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

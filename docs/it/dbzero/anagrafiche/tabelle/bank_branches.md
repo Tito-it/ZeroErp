@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/bank_branches.md" %}
 # 📚 Tabella `bank_branches`
 
+> 📝 **Descrizione**
+>
+> Filiali di istituti di credito / bank branches collegate a soggetti_ruoli (ISTITUTO_CREDITO).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

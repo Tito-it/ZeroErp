@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/dbops/manual/automazione_overlap.md" %}
 # 📚 Tabella `automazione_overlap`
 
+> 📝 **Descrizione**
+>
+> Configura anti-overlap temporale per tabelle con valido_dal/valido_al o valid_from/valid_to.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

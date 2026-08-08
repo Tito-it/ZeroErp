@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/dbops/manual/request_log.md" %}
 # 📚 Tabella `request_log`
 
+> 📝 **Descrizione**
+>
+> Log request API: registra utente, endpoint, metodo, status e durata per ogni request /api/*.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

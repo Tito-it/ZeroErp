@@ -1,5 +1,9 @@
 # 📚 Tabella `scope_policy`
 
+> 📝 **Descrizione**
+>
+> Storico di config.scope_policy.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

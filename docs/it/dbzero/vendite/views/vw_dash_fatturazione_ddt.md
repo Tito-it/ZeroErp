@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_dash_fatturazione_ddt.md" %}
 # 🔍 View `vw_dash_fatturazione_ddt`
 
+> 📝 **Descrizione**
+>
+> Resolver DDT per la dashboard fatturazione (brief-db-fatturazione-ddt-resi §4a, step 6), sesta area di vw_dash_fatturazione_documenti: stesse 19 colonne dei gemelli. POPOLAZIONE = solo DDT con ruolo di fatturazione — fuori quelli di ordini con trigger CONFERMATO (fattura l'ordine: XOR; evita falso positivo PUSH_NON_ESEGUITO perpetuo e doppio conteggio del valore) e fuori le causali non fatturabili (solo trasporto, DL-28). Stesso discriminatore del lister, letto per la stessa strada (fulfillment). motivo_fermo TRIGGER-AWARE: DOC_BOZZA in DRAFT, IN_TRANSITO prima dello stato-trigger (viaggio in corso, non ritardo), PUSH_NON_ESEGUITO / PUSH_PARZIALE dal trigger in poi; soglia = rank del trigger, SPEDITO per lo standalone. Valore per riga con COALESCE(ddt_righe.prezzo_unitario, ordini_righe via fulfillment) — vw_ddt_righe_iva_base NON riusabile (filtra prezzo NOT NULL). data_riferimento = ddt.data (DL-17). fase/is_abortito dal catalogo. security_invoker=on + RLS. rev 2026-07-18.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

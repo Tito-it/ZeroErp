@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_dash_fatturazione_ordini.md" %}
 # 🔍 View `vw_dash_fatturazione_ordini`
 
+> 📝 **Descrizione**
+>
+> Resolver ordini per la dashboard fatturazione. rev 2026-07-18 (step 8, DL-23 EMENDATO): per trigger SPEDITO/CONSEGNATO valore_totale = RESIDUO DA SPEDIRE (per riga: GREATEST(0, quantita − Σ fulfillment.qta_evasa + fn_ordine_riga_qta_riconsegna) × prezzo scontato — reso-aware, formula single-source) perche' il valore spedito lo porta il DDT: chiude il doppio conteggio ordine-pieno + DDT. Con trigger CONFERMATO valore PIENO invariato (fattura l'ordine: col netto un ordine spedito-ma-non-pushato mostrerebbe 0 senza compensazione — buco cieco sulla configurazione di default). L'area Ordini e' l'unica a misura netta (accettato, §4c). rev 2026-07-18 (step 7, DL-20): trigger-aware, motivo IN_ATTESA_DDT (FISIOLOGICO) per trigger SPEDITO/CONSEGNATO. security_invoker=on + RLS.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

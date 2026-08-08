@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/preventivi_riepiloghi_iva.md" %}
 # 📚 Tabella `preventivi_riepiloghi_iva`
 
+> 📝 **Descrizione**
+>
+> Riepilogo IVA aggregato per preventivo, pattern coerente con fatture_riepiloghi_iva. Popolato da vendite.fn_ricalcola_riepilogo_iva_preventivo. Group by (iva_id, natura_id, esigibilita, split_payment), calcolo fiscalmente corretto (ROUND aggregato, non per riga).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

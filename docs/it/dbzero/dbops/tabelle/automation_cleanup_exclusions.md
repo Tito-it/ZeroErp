@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/dbops/manual/automation_cleanup_exclusions.md" %}
 # 📚 Tabella `automation_cleanup_exclusions`
 
+> 📝 **Descrizione**
+>
+> Esclusioni tabelle per il framework di cleanup basato su cleanup_at.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

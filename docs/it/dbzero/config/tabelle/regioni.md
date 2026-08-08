@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/regioni.md" %}
 # 📚 Tabella `regioni`
 
+> 📝 **Descrizione**
+>
+> Regioni (italiane o estere) con riferimento allo stato e codice ISTAT
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

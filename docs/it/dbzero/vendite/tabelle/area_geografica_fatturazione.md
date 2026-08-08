@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/area_geografica_fatturazione.md" %}
 # 📚 Tabella `area_geografica_fatturazione`
 
+> 📝 **Descrizione**
+>
+> Area geografica per raggruppamenti fatturazione (comuni).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/catalogo/manual/unita_misura.md" %}
 # 📚 Tabella `unita_misura`
 
+> 📝 **Descrizione**
+>
+> Unità di misura standard (interna + descrizione stampa)
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

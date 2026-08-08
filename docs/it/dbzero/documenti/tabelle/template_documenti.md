@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/documenti/manual/template_documenti.md" %}
 # 📚 Tabella `template_documenti`
 
+> 📝 **Descrizione**
+>
+> Contenitore logico dei template documentali per output, sorgente ed emittente.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

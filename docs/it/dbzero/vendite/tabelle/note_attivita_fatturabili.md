@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/note_attivita_fatturabili.md" %}
 # 📚 Tabella `note_attivita_fatturabili`
 
+> 📝 **Descrizione**
+>
+> Partizione note per vendite.attivita_fatturabili. Solo ancoraggio RIGA (target_riga_id obbligatoria).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

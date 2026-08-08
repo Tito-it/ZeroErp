@@ -1,5 +1,9 @@
 # 📚 Tabella `ddt`
 
+> 📝 **Descrizione**
+>
+> Documento di Trasporto (DDT) – acquisto (ricezione da fornitore).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

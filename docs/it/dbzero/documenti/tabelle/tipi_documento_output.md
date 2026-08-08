@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/documenti/manual/tipi_documento_output.md" %}
 # 📚 Tabella `tipi_documento_output`
 
+> 📝 **Descrizione**
+>
+> Lookup dei tipi di output producibili dal motore documentale.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

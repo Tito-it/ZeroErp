@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/listini_righe_componenti.md" %}
 # 📚 Tabella `listini_righe_componenti`
 
+> 📝 **Descrizione**
+>
+> Prezzi bundle per componenti BoM in contesto versione listino. Una riga = prezzo del componente X del padre Y nella versione V. Immutabile quando versione ATTIVA (guard 20260513-20). Prezzo padre composito = SUM(componenti). rev 2026-05-13.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

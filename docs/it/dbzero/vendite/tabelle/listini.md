@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/listini.md" %}
 # 📚 Tabella `listini`
 
+> 📝 **Descrizione**
+>
+> Anagrafica listini di vendita.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

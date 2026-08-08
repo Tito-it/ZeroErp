@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pratiche/manual/note_flussi.md" %}
 # 📚 Tabella `note_flussi`
 
+> 📝 **Descrizione**
+>
+> Note testuali associate a un flusso.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

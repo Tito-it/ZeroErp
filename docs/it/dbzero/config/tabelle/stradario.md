@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/stradario.md" %}
 # 📚 Tabella `stradario`
 
+> 📝 **Descrizione**
+>
+> Stradario con CAP obbligatorio esclusivamente sulle vie
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

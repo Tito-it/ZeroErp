@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/documenti/manual/render_engine_documento.md" %}
 # 📚 Tabella `render_engine_documento`
 
+> 📝 **Descrizione**
+>
+> Lookup dei render engine PDF ammessi dal backend documentale.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

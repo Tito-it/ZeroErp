@@ -1,5 +1,9 @@
 # 📚 Tabella `movimenti`
 
+> 📝 **Descrizione**
+>
+> Ledger ufficiale movimenti di magazzino
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

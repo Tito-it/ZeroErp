@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pratiche/manual/pratiche_sorgenti.md" %}
 # 📚 Tabella `pratiche_sorgenti`
 
+> 📝 **Descrizione**
+>
+> Tabella ponte: collega pratiche a sorgenti esterne (preventivi, ordini, contratti).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

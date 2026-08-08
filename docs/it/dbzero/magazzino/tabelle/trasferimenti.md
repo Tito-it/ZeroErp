@@ -1,5 +1,9 @@
 # 📚 Tabella `trasferimenti`
 
+> 📝 **Descrizione**
+>
+> Documento interno di trasferimento tra magazzini
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

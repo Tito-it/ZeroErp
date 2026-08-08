@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/offerte_commerciali_indirizzi.md" %}
 # 📚 Tabella `offerte_commerciali_indirizzi`
 
+> 📝 **Descrizione**
+>
+> Snapshot indirizzi collegati all'offerta commerciale; uno per tipo (fatturazione, consegna, fornitura, residenza). Includere nello snapshot la mail.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

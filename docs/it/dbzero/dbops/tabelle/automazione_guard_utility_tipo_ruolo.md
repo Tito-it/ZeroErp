@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/dbops/manual/automazione_guard_utility_tipo_ruolo.md" %}
 # 📚 Tabella `automazione_guard_utility_tipo_ruolo`
 
+> 📝 **Descrizione**
+>
+> Configurazione automazione trigger guard utility-&gt;tipo_ruolo su tabelle con contesto ruolo.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

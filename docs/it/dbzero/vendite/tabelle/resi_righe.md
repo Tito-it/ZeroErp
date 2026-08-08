@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/resi_righe.md" %}
 # 📚 Tabella `resi_righe`
 
+> 📝 **Descrizione**
+>
+> Righe documento reso di vendita (brief-db-resi-vendita §4). Riga DDT sorgente NOT NULL, ordine_riga nullable (standalone), unita operativa mirror ddt_righe, tipo_reso per riga. Aggancio ri-consegna via ponte resi_righe_riconsegne. rev 2026-07-13.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

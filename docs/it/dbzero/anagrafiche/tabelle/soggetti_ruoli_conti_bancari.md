@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/soggetti_ruoli_conti_bancari.md" %}
 # 📚 Tabella `soggetti_ruoli_conti_bancari`
 
+> 📝 **Descrizione**
+>
+> Associazione conti bancari a livello RUOLO (override).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

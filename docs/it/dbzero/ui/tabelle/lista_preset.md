@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/ui/manual/lista_preset.md" %}
 # 📚 Tabella `lista_preset`
 
+> 📝 **Descrizione**
+>
+> Configurazioni predefinite per le liste: sistema (globale), emittente_fiscale, ruolo (via profilo_accesso).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

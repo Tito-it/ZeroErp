@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/attivita_fatturabili_log.md" %}
 # 📚 Tabella `attivita_fatturabili_log`
 
+> 📝 **Descrizione**
+>
+> Log dedicato per processi di alimentazione attivita_fatturabili.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/script/manual/vw_ita_province_regioni.md" %}
 # 🔍 View `vw_ita_province_regioni`
 
+> 📝 **Descrizione**
+>
+> Estensione Italia: province con accisa, regioni e codici ISTAT/catastali via jsonb.
+
 ```sql
 CREATE OR REPLACE VIEW script.vw_ita_province_regioni AS
 SELECT p.id AS id_provincia,

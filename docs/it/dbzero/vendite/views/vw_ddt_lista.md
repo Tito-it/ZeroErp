@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_ddt_lista.md" %}
 # 🔍 View `vw_ddt_lista`
 
+> 📝 **Descrizione**
+>
+> Vista flat canonica e self-contained DDT per la lista UI. Nomi canonici. Destinatario via soggetto_ruolo diretto; mittente/vettore nullable. +emittente_fiscale_id/_codice (scope, §15). Campi trasporto per il PDF. Ordine di origine via sorgente_uid. security_invoker=on. Mirror vw_ordini_lista.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

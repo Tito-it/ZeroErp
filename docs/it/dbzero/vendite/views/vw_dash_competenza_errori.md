@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_dash_competenza_errori.md" %}
 # 🔍 View `vw_dash_competenza_errori`
 
+> 📝 **Descrizione**
+>
+> Lente 1 Competenza, blocco errori: eventi "vivi" della pipeline di fatturazione per mese di competenza. TASK_ERRORE = run in ERRORE (attivo) non superato da un COMPLETATO successivo sulla stessa chiave (lotto/step/task), competenza dal lotto. FATTURA_CRITICA = fatture.critical (sync da fatture_log), messaggio = ultimo log non disabilitato; competenza: lotto collegato -&gt; mesi distinti delle AF (una riga per mese) -&gt; fallback mese data fattura (DB-7). SCOPE EMITTENTE via fn_get_emittenti_scope_sr_ids(GUC): fail-closed. security_invoker=on.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

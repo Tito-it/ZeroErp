@@ -1,5 +1,9 @@
 # 📚 Tabella `tipi_utenze`
 
+> 📝 **Descrizione**
+>
+> Tipo utenza. Utilizzata per definire il tipo d’uso (Domestico, Altri usi, Condominio, Pubblico).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

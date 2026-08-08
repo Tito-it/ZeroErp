@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/categorie_clienti.md" %}
 # 📚 Tabella `categorie_clienti`
 
+> 📝 **Descrizione**
+>
+> Categorie commerciali cliente con flag partecipazione promo e ordinamento UI.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

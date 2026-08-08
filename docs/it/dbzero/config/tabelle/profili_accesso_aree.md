@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/profili_accesso_aree.md" %}
 # 📚 Tabella `profili_accesso_aree`
 
+> 📝 **Descrizione**
+>
+> Dettaglio delle aree funzionali coperte da un profilo di accesso con il rispettivo livello. Rimpiazza concettualmente profili_reparto_aree generalizzando il padre da reparto a profilo.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/priorita_pratiche.md" %}
 # 📚 Tabella `priorita_pratiche`
 
+> 📝 **Descrizione**
+>
+> Livelli di priorita' delle pratiche con ordinamento.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

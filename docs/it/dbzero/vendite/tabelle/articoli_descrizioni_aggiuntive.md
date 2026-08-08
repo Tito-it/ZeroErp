@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/articoli_descrizioni_aggiuntive.md" %}
 # 📚 Tabella `articoli_descrizioni_aggiuntive`
 
+> 📝 **Descrizione**
+>
+> Estensione degli articoli: descrizioni aggiuntive opzionali (cataloghi, documenti, ecc.)
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/ui/manual/widget.md" %}
 # 📚 Tabella `widget`
 
+> 📝 **Descrizione**
+>
+> Catalogo GLOBALE dei widget dashboard (card KPI). codice unico globale; il legame con le dashboard e in ui.dashboard_widget. Zero logica di business: deep_link/contatore_key/soglia sono opachi al DB.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

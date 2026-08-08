@@ -1,5 +1,9 @@
 # 📚 Tabella `eventi_assets`
 
+> 📝 **Descrizione**
+>
+> Eventi di vita asset: installazione, rientro, swap, manutenzione, ecc.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

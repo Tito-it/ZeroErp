@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/stradario_generale.md" %}
 # 📚 Tabella `stradario_generale`
 
+> 📝 **Descrizione**
+>
+> Stradario generale: vie, strade, piazze con riferimento alla toponomastica.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

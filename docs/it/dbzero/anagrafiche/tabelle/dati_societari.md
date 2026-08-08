@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/dati_societari.md" %}
 # 📚 Tabella `dati_societari`
 
+> 📝 **Descrizione**
+>
+> Dati societari estesi per i soggetti di tipo aziendali
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,5 +1,9 @@
 # 📚 Tabella `stradario_trasformazioni`
 
+> 📝 **Descrizione**
+>
+> Trasformazioni storiche delle vie (stradario)
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

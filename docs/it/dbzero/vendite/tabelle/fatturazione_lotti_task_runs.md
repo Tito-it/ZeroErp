@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/fatturazione_lotti_task_runs.md" %}
 # 📚 Tabella `fatturazione_lotti_task_runs`
 
+> 📝 **Descrizione**
+>
+> Storico runtime per task eseguiti su lotto fatturazione
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

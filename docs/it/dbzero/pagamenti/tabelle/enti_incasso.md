@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pagamenti/manual/enti_incasso.md" %}
 # 📚 Tabella `enti_incasso`
 
+> 📝 **Descrizione**
+>
+> Canali di provenienza flussi incasso (banca, poste, psp, altro)
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

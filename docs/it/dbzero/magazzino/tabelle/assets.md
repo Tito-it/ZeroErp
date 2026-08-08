@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/magazzino/manual/assets.md" %}
 # 📚 Tabella `assets`
 
+> 📝 **Descrizione**
+>
+> Istanza fisica di bene durevole (contatore/PC/stampante ecc.) serializzato
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

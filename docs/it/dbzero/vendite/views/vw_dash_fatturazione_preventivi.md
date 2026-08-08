@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_dash_fatturazione_preventivi.md" %}
 # 🔍 View `vw_dash_fatturazione_preventivi`
 
+> 📝 **Descrizione**
+>
+> Dashboard fatturazione: resolver area PREVENTIVI. Valore imponibile totale vs transitato (vw_preventivi_smistamento_righe, ramo commessa EMESSA). Competenza COALESCE(competenza_mese, mese validita_dal, mese data). is_abortito=esito NEGATIVO (null-safe). cliente_display=ragione sociale intestatario istanza (path vw_preventivi_lista). Consumata da vw_dash_fatturazione_documenti.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

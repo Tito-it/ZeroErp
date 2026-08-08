@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/email_allegato.md" %}
 # 📚 Tabella `email_allegato`
 
+> 📝 **Descrizione**
+>
+> Allegati email su filesystem. Associati a outbox (bozza) o log (storico invio). ON DELETE CASCADE su outbox.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

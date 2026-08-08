@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pratiche/manual/calcoli_tempo.md" %}
 # 📚 Tabella `calcoli_tempo`
 
+> 📝 **Descrizione**
+>
+> Calcolo persistente tempi da/a tra flussi.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

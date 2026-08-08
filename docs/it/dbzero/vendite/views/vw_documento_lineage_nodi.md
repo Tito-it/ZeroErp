@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_documento_lineage_nodi.md" %}
 # 🔍 View `vw_documento_lineage_nodi`
 
+> 📝 **Descrizione**
+>
+> Lineage documenti vendite: dimensione nodo condivisa (una riga per documento nodo, chiave polimorfa tipo_id+uid::text per key_selector, stato/fase/is_abortito normalizzati, pipeline_rank per il tie-break frontiera). Base di vw_documento_lineage_archi, vw_documento_lineage e fn_documento_lineage. security_invoker=on.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

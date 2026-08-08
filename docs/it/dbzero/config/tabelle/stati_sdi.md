@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/stati_sdi.md" %}
 # 📚 Tabella `stati_sdi`
 
+> 📝 **Descrizione**
+>
+> Stati esito SDI (canale di invio fatture).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

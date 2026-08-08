@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/commesse_push_log.md" %}
 # 📚 Tabella `commesse_push_log`
 
+> 📝 **Descrizione**
+>
+> Log append-only dei run orchestratore push commesse; nessuno stato inter-run.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

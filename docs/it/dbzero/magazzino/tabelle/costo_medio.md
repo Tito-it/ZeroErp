@@ -1,5 +1,9 @@
 # 📚 Tabella `costo_medio`
 
+> 📝 **Descrizione**
+>
+> Stato corrente CMP per Articolo × Magazzino
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/note_ddt.md" %}
 # 📚 Tabella `note_ddt`
 
+> 📝 **Descrizione**
+>
+> Partizione note per ddt (FK forti verso testata/righe ddt ). 
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

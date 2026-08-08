@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/ddt_indirizzi.md" %}
 # 📚 Tabella `ddt_indirizzi`
 
+> 📝 **Descrizione**
+>
+> Snapshot indirizzi collegati al ddt; uno per tipo ( spedizione, fornitura, residenza). Includere nello snapshot la mail.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

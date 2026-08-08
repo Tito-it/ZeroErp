@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/registri_fatturazione_progressivi.md" %}
 # 📚 Tabella `registri_fatturazione_progressivi`
 
+> 📝 **Descrizione**
+>
+> Progressivi per assegnazione numeri fattura (registro/anno[/mese]/serie).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/commesse_attivita.md" %}
 # 📚 Tabella `commesse_attivita`
 
+> 📝 **Descrizione**
+>
+> Righe operative/fatturabili commessa.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

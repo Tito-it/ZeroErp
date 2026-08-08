@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/ui/manual/lista_preferenza_utente.md" %}
 # 📚 Tabella `lista_preferenza_utente`
 
+> 📝 **Descrizione**
+>
+> Preferenza personale utente per lista. JSONB per resilienza ad evoluzioni future.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,5 +1,9 @@
 # 📚 Tabella `_legacy_risorse_umane_auth_user`
 
+> 📝 **Descrizione**
+>
+> Tabella legacy archiviata dal cutover §13.3.2 WIP multi-face-auth (2026-04-19). Sostituita dalla vista anagrafiche.risorse_umane_auth_user leggente da identita_digitali. Mantenuta per eventuale consultazione storica dei dati pre-cutover; non scrivere qui.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/script/manual/view_clienti_istanza_states.md" %}
 # 🔍 View `view_clienti_istanza_states`
 
+> 📝 **Descrizione**
+>
+> Stato cliente corrente per istanza utility, risolto tramite fn_get_stato_cliente_by_istanza.
+
 ```sql
 CREATE OR REPLACE VIEW script.view_clienti_istanza_states AS
 SELECT i.id AS istanza_id,

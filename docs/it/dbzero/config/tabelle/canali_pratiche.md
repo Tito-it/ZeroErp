@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/canali_pratiche.md" %}
 # 📚 Tabella `canali_pratiche`
 
+> 📝 **Descrizione**
+>
+> Canali di visibilita' per i flussi delle pratiche.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

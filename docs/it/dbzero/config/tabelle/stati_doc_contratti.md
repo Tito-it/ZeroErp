@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/stati_doc_contratti.md" %}
 # 📚 Tabella `stati_doc_contratti`
 
+> 📝 **Descrizione**
+>
+> Dominio stati del documento contratto (codici stabili; descrizioni multilingua).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

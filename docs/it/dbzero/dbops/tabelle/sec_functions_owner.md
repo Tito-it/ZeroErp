@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/dbops/manual/sec_functions_owner.md" %}
 # 📚 Tabella `sec_functions_owner`
 
+> 📝 **Descrizione**
+>
+> Mappa funzioni sensibili e owner richiesto per hardening permessi.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

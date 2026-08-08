@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/comuni.md" %}
 # 📚 Tabella `comuni`
 
+> 📝 **Descrizione**
+>
+> Comuni italiani ed esteri
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

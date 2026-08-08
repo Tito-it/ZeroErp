@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_resi_da_accreditare.md" %}
 # 🔍 View `vw_resi_da_accreditare`
 
+> 📝 **Descrizione**
+>
+> Coda degli accrediti dovuti al cliente, derivata dal contatore merce (vw_contatore_merce, differenza &lt; 0). rev 2026-07-26 (brief-db-chiusura-riconsegna-reso-definitivo S4.4): etichetta FACOLTATIVA solo se la merce puo' ANCORA tornare al cliente (riapre_residuo AND residuo ri-consegnabile &gt; 0); appena il residuo si esaurisce - tutto ri-spedito o dichiarato definitivo tramite resi_righe_rinunce - l'accredito diventa DOVUTA. L'IMPORTO accredito_dovuto NON cambia: viene dal contatore, che le rinunce non toccano (S4.2). Cambia la natura della quota, non il numero.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

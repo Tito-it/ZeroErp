@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pratiche/manual/formule_tempo.md" %}
 # 📚 Tabella `formule_tempo`
 
+> 📝 **Descrizione**
+>
+> Soglie temporali per tipo prestazione con coppia template flusso da/a.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

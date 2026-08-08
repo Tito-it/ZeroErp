@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/note_preventivo.md" %}
 # 📚 Tabella `note_preventivo`
 
+> 📝 **Descrizione**
+>
+> Partizione note per preventivi (FK forti verso testata/righe preventivo).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

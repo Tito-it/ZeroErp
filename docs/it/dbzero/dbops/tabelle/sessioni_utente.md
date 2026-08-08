@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/dbops/manual/sessioni_utente.md" %}
 # 📚 Tabella `sessioni_utente`
 
+> 📝 **Descrizione**
+>
+> Audit sessioni JWT: traccia login, refresh, logout, scadenza e revoca token.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

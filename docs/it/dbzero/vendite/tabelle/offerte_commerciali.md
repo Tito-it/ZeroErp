@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/offerte_commerciali.md" %}
 # 📚 Tabella `offerte_commerciali`
 
+> 📝 **Descrizione**
+>
+> Testata offerta commerciale: predecessore tracciato del contratto (offerta-&gt;contratto = condizioni quadro). Un'offerta propone al cliente condizioni quadro per una utility specifica (billing_account + istanza_utility), con listino di riferimento, variazione globale e offerte_commerciali_eccezioni per eccezioni puntuali. Stati: BOZZA (editabile) -&gt; EMESSA -&gt; ACCETTATA (push a contratto DRAFT) oppure RIFIUTATA. SUPERATA: terminale tecnico impostato dal trigger revisione quando viene creata una revisione successiva (fn_crea_revisione_offerta, Step 7). La versione listino viene fissata (congelata) al momento dell'emissione (§5.3). La numerazione OFC-* e' generata da config.sistema_codici (Step 5). La scadenza (validita_al) e' un avviso non bloccante (§5.6). Push idempotente tramite contratti.offerta_id UNIQUE (pattern A §6.9.3). rev 2026-05-24.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

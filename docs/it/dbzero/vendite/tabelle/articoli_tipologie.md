@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/articoli_tipologie.md" %}
 # 📚 Tabella `articoli_tipologie`
 
+> 📝 **Descrizione**
+>
+> Tipologie/categorie degli articoli, utili per riepiloghi e fatturazione
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

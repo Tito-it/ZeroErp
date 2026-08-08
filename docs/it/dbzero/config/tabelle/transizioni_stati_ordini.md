@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/transizioni_stati_ordini.md" %}
 # 📚 Tabella `transizioni_stati_ordini`
 
+> 📝 **Descrizione**
+>
+> Matrice transizioni ammesse tra stati ordine di vendita. Fonte metadati UI per script.fn_available_actions_ordine e grafo per vendite.trgfn_ordini_guard_transizione. Manuali attive: DRAFT-&gt;CONFERMATO, DRAFT-&gt;ANNULLATO. CONFERMATO-&gt;ANNULLATO presente ma attivo=false (riabilitabile). Stati a valle (ALLOCATO/SPEDITO/CONSEGNATO/FATTURATO) fuori matrice. rev 2026-06-05.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

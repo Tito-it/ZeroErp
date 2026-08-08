@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/billing_account.md" %}
 # 📚 Tabella `billing_account`
 
+> 📝 **Descrizione**
+>
+> Storico dei codici cliente definitivi per utility
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

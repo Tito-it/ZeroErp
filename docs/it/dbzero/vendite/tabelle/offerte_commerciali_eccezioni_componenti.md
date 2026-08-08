@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/offerte_commerciali_eccezioni_componenti.md" %}
 # 📚 Tabella `offerte_commerciali_eccezioni_componenti`
 
+> 📝 **Descrizione**
+>
+> Componenti BoM CASO A per eccezioni offerta commerciale. Mirror strutturale di contratti_righe_componenti: eccezione_offerta_id al posto di riga_contratto_id. Stato approvazione prezzo trasportato al push offerta→contratto. Trigger: guard_bom_coerenza, calcola_quantita, ricalcola_padre, propaga_qta (sul padre), guard_pending. Rev 2026-05-26.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

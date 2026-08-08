@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_stato_sorgente_ddt.md" %}
 # 🔍 View `vw_stato_sorgente_ddt`
 
+> 📝 **Descrizione**
+>
+> Quinto ramo della proiezione di stato (brief-db-fatturazione-ddt-resi §4a, step 6b): traduce lo stato del DDT nel vocabolario comune della sorgente polimorfa. Chiave = ddt.id::text, come dichiara config.sorgenti.key_selector per DDT_VENDITA (NON l'uid: quello e' la colonna tipizzata diretta resi.sorgente_uid, meccanismo diverso). esito e terminale sono DERIVATI, perche' config.stati_doc_ddt non li espone: is_abortito -&gt; NEGATIVO, fase CHIUSO non abortito -&gt; POSITIVO, altrimenti NULL; terminale = fase CHIUSO. Conseguenza voluta: lo stato RESO risulta POSITIVO/terminale, perche' il catalogo lo dichiara non abortito (merce tornata != documento annullato). Cambiare quella semantica e' materia di CATALOGO, non di questa vista. rev 2026-07-18.
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_stato_sorgente_ddt AS
 SELECT s.id AS sorgente_tipo_id,

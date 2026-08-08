@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/storico/manual/comuni.md" %}
 # 📚 Tabella `comuni`
 
+> 📝 **Descrizione**
+>
+> Storico dei comuni con dati anagrafici e JSONB
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

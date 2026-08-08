@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/shop/manual/ricevute.md" %}
 # 📚 Tabella `ricevute`
 
+> 📝 **Descrizione**
+>
+> Ricevute consumer emesse dal canale shop B2C. Documento fiscale leggero (no SdI, no XML, no partita IVA emittente sul doc). Decisione dominio 20-04-2026: shop e' canale B2C autonomo. BA collegato deve avere canale_origine=SHOP (verifica service-side). Numerazione dedicata, generata lato service shop.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,5 +1,9 @@
 # 📚 Tabella `nature_vendita`
 
+> 📝 **Descrizione**
+>
+> Natura commerciale di riga ai fini del routing post-accettazione del preventivo (anello3 §5.3.2). Proprieta' intrinseca dell'articolo (catalogo.articoli.natura_vendita_id), ereditata e congelata sulla riga di preventivo. destinazione_tipo guida lo split: ogni riga finisce nella destinazione operativa della sua natura.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

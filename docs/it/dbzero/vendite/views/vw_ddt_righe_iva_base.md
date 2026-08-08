@@ -1,5 +1,9 @@
 # 🔍 View `vw_ddt_righe_iva_base`
 
+> 📝 **Descrizione**
+>
+> Vista base righe IVA DDT vendita. Espone righe DDT attive con quantita &gt; 0 e prezzo_unitario valorizzato (le righe non valorizzate, DDT di solo trasporto, restano fuori dal riepilogo), imponibile lordo/sconto/imponibile netto a precisione piena e aliquota effettiva via config.fn_get_aliquota_iva (override stato emittente). Non somma direttamente i componenti BoM: il prezzo dei componenti confluisce nella riga padre tramite trigger, evitando doppio conteggio nel riepilogo IVA. Clone di vw_ordini_righe_iva_base.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

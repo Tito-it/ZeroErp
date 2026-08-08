@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/ui/manual/dashboard_preset.md" %}
 # 📚 Tabella `dashboard_preset`
 
+> 📝 **Descrizione**
+>
+> Preset di dashboard per ambito: sistema (globale), emittente_fiscale, ruolo (via profilo_accesso). Ricalca ui.lista_preset.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

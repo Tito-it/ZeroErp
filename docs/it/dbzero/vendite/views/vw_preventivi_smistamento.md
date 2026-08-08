@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_preventivi_smistamento.md" %}
 # 🔍 View `vw_preventivi_smistamento`
 
+> 📝 **Descrizione**
+>
+> Aggregata smistamento preventivo: contatori per ramo (merce/servizi, a ordine/in commessa/emesse/fatturate) + righe_residue complessivo per il progress "X/Y smistate -&gt; EVASO" (gate D6). Sostituisce vw_preventivi_stato_fatturazione.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

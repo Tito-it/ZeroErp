@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/conti_contabili.md" %}
 # 📚 Tabella `conti_contabili`
 
+> 📝 **Descrizione**
+>
+> Tabella dei conti contabili per IVA e scritture, con distinzione Acquisto/Vendita
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

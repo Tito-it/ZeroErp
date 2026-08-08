@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/dbops/manual/error_log.md" %}
 # 📚 Tabella `error_log`
 
+> 📝 **Descrizione**
+>
+> Log centralizzato di errori, con informazioni su area, funzione, colleggata a messaggi_errore e contesto
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

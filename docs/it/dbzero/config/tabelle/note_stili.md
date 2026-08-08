@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/note_stili.md" %}
 # 📚 Tabella `note_stili`
 
+> 📝 **Descrizione**
+>
+> Dominio degli stili per le note. Normalizza il campo "stile" (es. NORMALE, GRASSETTO, AVVISO, PICCOLO).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/catalogo/manual/articoli.md" %}
 # 📚 Tabella `articoli`
 
+> 📝 **Descrizione**
+>
+> Anagrafica articoli/voci (generica, per utilities e non).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pagamenti/manual/vendite_contabili_lotti.md" %}
 # 📚 Tabella `vendite_contabili_lotti`
 
+> 📝 **Descrizione**
+>
+> Relazione tra vendite.fatturazione_lotti e pagamenti.vendite_contabili
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

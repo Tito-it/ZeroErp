@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/event_log.md" %}
 # 📚 Tabella `event_log`
 
+> 📝 **Descrizione**
+>
+> Event log unificato append-only per timeline cross-dominio (pipeline, commesse, sdi, fatture).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

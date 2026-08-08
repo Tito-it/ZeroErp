@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/transizioni_stati_preventivi.md" %}
 # 📚 Tabella `transizioni_stati_preventivi`
 
+> 📝 **Descrizione**
+>
+> Transizioni ammesse tra stati preventivo vendita.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

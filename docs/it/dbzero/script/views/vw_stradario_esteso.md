@@ -1,6 +1,11 @@
 {% include-markdown "it/dbzero/script/manual/vw_stradario_esteso.md" %}
 # 🔍 View `vw_stradario_esteso`
 
+> 📝 **Descrizione**
+>
+> Stradario esteso: tipo toponimo + nome strada, 
+>         stato e indirizzo composito.
+
 ```sql
 CREATE OR REPLACE VIEW script.vw_stradario_esteso AS
 SELECT v.id AS id_via,

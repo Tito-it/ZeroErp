@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/sorgenti.md" %}
 # 📚 Tabella `sorgenti`
 
+> 📝 **Descrizione**
+>
+> Dizionario delle sorgenti applicative per collegamenti/idempotenza (ex source/sorgente_tipo).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

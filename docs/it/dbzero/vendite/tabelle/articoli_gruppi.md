@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/articoli_gruppi.md" %}
 # 📚 Tabella `articoli_gruppi`
 
+> 📝 **Descrizione**
+>
+> Gruppi degli articoli (classificazioni di livello superiore), utili per riepiloghi e fatturazione
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

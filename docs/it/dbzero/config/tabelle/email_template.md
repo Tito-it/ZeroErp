@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/email_template.md" %}
 # 📚 Tabella `email_template`
 
+> 📝 **Descrizione**
+>
+> Template email parametrizzabili con variabili {{...}}. Override per reparto, tipo prestazione e lingua.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

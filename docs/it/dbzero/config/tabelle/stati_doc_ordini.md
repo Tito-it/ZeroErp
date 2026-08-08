@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/stati_doc_ordini.md" %}
 # 📚 Tabella `stati_doc_ordini`
 
+> 📝 **Descrizione**
+>
+> Dominio stati del documento ordini (codici stabili; descrizioni multilingua) .
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

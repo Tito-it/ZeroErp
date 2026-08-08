@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/stati.md" %}
 # 📚 Tabella `stati`
 
+> 📝 **Descrizione**
+>
+> Stati (ex nazioni), inclusi codici catastali, ISO, telefonici e continente
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,5 +1,9 @@
 # 📚 Tabella `classi_errore`
 
+> 📝 **Descrizione**
+>
+> Vocabolario di CHE COSA e' un errore, in lingua di dominio: il tipo di rifiuto, non il suo trasporto. La mappa classe -&gt; HTTP status vive nel backend. Popolata dal seed 80_data.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

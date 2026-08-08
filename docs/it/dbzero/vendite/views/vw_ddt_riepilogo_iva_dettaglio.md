@@ -1,5 +1,9 @@
 # 🔍 View `vw_ddt_riepilogo_iva_dettaglio`
 
+> 📝 **Descrizione**
+>
+> Riepilogo IVA per DDT vendita derivato dalle righe DDT attive e valorizzate. Aggrega per ddt_id, iva_id e aliquota effettiva; arrotonda l'imponibile dopo la SUM e calcola l'imposta sull'imponibile aggregato arrotondato. Natura, esigibilita e split_payment sono NULL per DDT finche' non esiste uno snapshot dedicato. Clone di vw_ordini_riepilogo_iva_dettaglio.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

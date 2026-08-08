@@ -1,5 +1,9 @@
 # 📚 Tabella `profili_accesso_bindings`
 
+> 📝 **Descrizione**
+>
+> Storico di config.profili_accesso_bindings.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,5 +1,9 @@
 # 📚 Tabella `ddt_righe`
 
+> 📝 **Descrizione**
+>
+> Righe DDT di acquisto (merce ricevuta).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

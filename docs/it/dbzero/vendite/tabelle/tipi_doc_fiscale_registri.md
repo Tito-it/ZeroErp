@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/tipi_doc_fiscale_registri.md" %}
 # 📚 Tabella `tipi_doc_fiscale_registri`
 
+> 📝 **Descrizione**
+>
+> Associazione tipo documento fiscale -&gt; registro di fatturazione.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

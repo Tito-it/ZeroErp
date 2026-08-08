@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/pratiche/manual/note_pratiche.md" %}
 # 📚 Tabella `note_pratiche`
 
+> 📝 **Descrizione**
+>
+> Note testuali associate a una pratica.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

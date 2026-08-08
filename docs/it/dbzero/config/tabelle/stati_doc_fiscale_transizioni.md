@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/stati_doc_fiscale_transizioni.md" %}
 # 📚 Tabella `stati_doc_fiscale_transizioni`
 
+> 📝 **Descrizione**
+>
+> Transizioni ammesse tra stati documento (lotto/fattura).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/ddt_righe.md" %}
 # 📚 Tabella `ddt_righe`
 
+> 📝 **Descrizione**
+>
+> Righe DDT di vendita (merce/beni).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

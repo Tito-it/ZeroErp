@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/contratti_utilities.md" %}
 # 📚 Tabella `contratti_utilities`
 
+> 📝 **Descrizione**
+>
+> Snapshot precontrattuali per contratti utilities (1:1 con vendite.contratti).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

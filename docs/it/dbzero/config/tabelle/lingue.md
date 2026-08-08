@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/lingue.md" %}
 # 📚 Tabella `lingue`
 
+> 📝 **Descrizione**
+>
+> Dominio centralizzato delle lingue (ISO 639-1 / 3166-1). Usato per messaggi, note e localizzazioni di sistema.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

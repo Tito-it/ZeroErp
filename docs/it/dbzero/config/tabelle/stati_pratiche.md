@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/stati_pratiche.md" %}
 # 📚 Tabella `stati_pratiche`
 
+> 📝 **Descrizione**
+>
+> Stati del ciclo di vita della pratica.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

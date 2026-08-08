@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/resi.md" %}
 # 📚 Tabella `resi`
 
+> 📝 **Descrizione**
+>
+> Testata documento reso di vendita (brief-db-resi-vendita §3). Sorgente data-driven DDT_VENDITA; denormalizzati ereditati dal DDT origine (trgfn_resi_normalize); emittente NOT NULL; numero a CONFERMA. rev 2026-07-13.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

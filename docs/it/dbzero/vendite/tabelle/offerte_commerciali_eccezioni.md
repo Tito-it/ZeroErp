@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/offerte_commerciali_eccezioni.md" %}
 # 📚 Tabella `offerte_commerciali_eccezioni`
 
+> 📝 **Descrizione**
+>
+> Righe dell'offerta commerciale: eccezioni tipizzate rispetto al listino (OVERRIDE = prezzo alternativo, ESCLUSIONE = articolo escluso, AGGIUNTA = articolo fuori listino). Mirror fedele di contratti_righe senza stato_approvazione_prezzo / pratica_approvazione_prezzo_id. La simmetria strutturale garantisce copia 1:1 in fn_push_offerta_a_contratto. rev 2026-05-24.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

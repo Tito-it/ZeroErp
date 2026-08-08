@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/listini_tipologie_utilities.md" %}
 # 📚 Tabella `listini_tipologie_utilities`
 
+> 📝 **Descrizione**
+>
+> Matrice ammissibilita` utility x tipologia listino. La coppia (utility_id, tipologia_id) e` validata da trigger guard su vendite.listini.
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

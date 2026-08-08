@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/note_ordini.md" %}
 # 📚 Tabella `note_ordini`
 
+> 📝 **Descrizione**
+>
+> Partizione note per ordini (FK forti verso testata/righe ordine).
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

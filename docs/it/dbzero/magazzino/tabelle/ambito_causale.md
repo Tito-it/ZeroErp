@@ -1,5 +1,9 @@
 # 📚 Tabella `ambito_causale`
 
+> 📝 **Descrizione**
+>
+> Vocabolario degli ambiti delle causali di magazzino
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

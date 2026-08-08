@@ -1,5 +1,9 @@
 # 📚 Tabella `trasferimenti_righe`
 
+> 📝 **Descrizione**
+>
+> Righe del trasferimento
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

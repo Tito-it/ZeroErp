@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_ordini_righe_iva_base.md" %}
 # 🔍 View `vw_ordini_righe_iva_base`
 
+> 📝 **Descrizione**
+>
+> Vista base righe IVA ordini vendita. Espone righe ordine attive con quantita &gt; 0, imponibile lordo/sconto/imponibile netto a precisione piena e aliquota effettiva via config.fn_get_aliquota_iva (override stato emittente). Non somma direttamente i componenti BoM: il prezzo dei componenti confluisce nella riga padre tramite trigger, evitando doppio conteggio nel riepilogo IVA. Colonna sconto_percentuale (unificata 2026-06-05).
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql

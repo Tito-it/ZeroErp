@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/config/manual/tipi_evento_assets.md" %}
 # 📚 Tabella `tipi_evento_assets`
 
+> 📝 **Descrizione**
+>
+> Dominio tipi evento per asset (codici stabili; descrizioni multilingua via meta)
+
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|

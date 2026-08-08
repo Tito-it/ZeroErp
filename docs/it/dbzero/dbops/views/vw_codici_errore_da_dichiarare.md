@@ -1,5 +1,9 @@
 # 🔍 View `vw_codici_errore_da_dichiarare`
 
+> 📝 **Descrizione**
+>
+> Misura canonica del "terzo lato" del presidio sui codici errore: ogni codice E_* nominato da un corpo plpgsql vivo (commenti esclusi), con da_trigger = la funzione che lo nomina e' agganciata a un trigger, quindi sta sul percorso di una richiesta. ⚠️ VOLUTAMENTE LARGA: raccoglie ogni letterale, non solo quelli dentro una chiamata a fn_log_and_raise_error, perche' restringere perderebbe i codici che arrivano da espressione (gruppo C: v_motivi -&gt; 0 -&gt;&gt; 'codice') — 19 codici, 4 dei quali senza policy. Fra i due errori possibili si sceglie quello che si corregge guardando i falsi positivi, non quello che non si vede. Non vede: codici costruiti per concatenazione, e i RAISE EXCEPTION diretti che non passano dall'helper. Brief: brief-db-be-terzo-lato-presidio-codici.md.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql
