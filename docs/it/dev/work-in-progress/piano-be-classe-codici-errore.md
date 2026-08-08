@@ -1252,3 +1252,51 @@ come stringa vuota, non come None*) e il percorso intero fino all'envelope.
 > service rinomina rispetto al payload, il client non trova l'input e non
 > evidenzia nulla — **inerte, non sbagliato**. Se capiterà spesso, la risposta
 > non è indovinare lato FE: è che la funzione dichiari il nome del campo API.
+
+### 12.14 ⚠️ `SoggettoDrawer` mancava — e il buco era nel mio metodo (2026-08-08)
+
+Segnalato dal team DB collaudando: il drawer del soggetto non era cablato,
+mentre la loro metà era pronta (`fn_validate_cf_piva_it` emette
+`CONSTRAINT = E_CF_NON_VALIDO` + `COLUMN = codice_fiscale`, changeSet
+`20260808-07`).
+
+⭐ **La catena intera è stata provata contro il DB vero**, ed è la prima volta:
+
+```
+codice = E_CF_NON_VALIDO   campo = codice_fiscale
+envelope: {"code": "E_CF_NON_VALIDO", "fields": ["codice_fiscale"],
+           "ui_action": "highlight_form_fields"}
+```
+
+`fn_validate_cf_piva_it` → `fn_log_and_raise_error` (legge `p_context->>'campo'`,
+emette `USING COLUMN`) → `diag.column_name` → `structured_db_error_field` →
+envelope. **Nessun anello mancante.**
+
+#### Perché il mio script non l'aveva preso — due ragioni, e la seconda conta
+
+1. **la forma del binding**: in `SoggettoDrawer` il form è `soggetto.form.x`, non
+   `form.x` — e i campi CF/P.IVA non stanno nemmeno lì: stanno in
+   `core/components/SoggettoForm.vue`, un form **condiviso** che riceve il
+   modello dal padre. Cablarlo ha richiesto una prop (`campiErrati`), come fa già
+   `ContattoForm` con `errors`;
+2. 🔴 **la whitelist era solo del Python.** L'avevo costruita dai
+   `context={"field": …}` e dalle chiavi passate ai validator — cioè **una sola
+   delle due sorgenti**. I nomi che le funzioni PL/pgSQL emettono (chiave
+   `'campo'` nel contesto) non c'erano: `piva_gruppo_acquisto` era invisibile per
+   costruzione.
+
+> ⭐ **È lo stesso errore di misura del §11 e del D-3, in una forma nuova**: non
+> ho guardato il nome sbagliato, ho guardato **un solo percorso su due**. Il
+> numero «122 nomi» era vero e misurava metà del mondo.
+
+**Rifatta l'unione**: 121 dal Python + 9 dal DB = **126 nomi**. Ripassati tutti i
+drawer con la lista completa: **zero nuovi cablaggi** — nessuno degli altri
+quattro nomi del DB (`data_inizio`, `data_fine`, `cod_int_tipo_contatto`,
+`stato_doc_fiscale_id`) ha un input nel frontend. Il buco quindi era **uno solo**,
+ma non lo si poteva sapere senza rifare la misura.
+
+⚠️ **`piva_gruppo_acquisto` resta senza binding**: nel frontend non esiste un
+input con quel nome. Il canale è pronto dal lato DB e non ha un consumatore —
+si cabla il giorno in cui quel campo comparirà in un form.
+
+**Componenti che legano `campiErrati`: 40.**
