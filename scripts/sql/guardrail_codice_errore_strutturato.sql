@@ -308,7 +308,48 @@ BEGIN
           'un errore — dargli un codice `E_` e registrarlo in error_policies.py.', v_warning_sollevati;
     END IF;
 
-    RAISE NOTICE 'OK — un solo mittente sul canale CONSTRAINT, nessun codice fuori convenzione non registrato, nessuna voce di troppo nel registro (% attive), nessun codice ritirato ancora sollevato (% ritirati), nessun warning sollevato come errore.',
+    -- ── (F) un solo mittente anche sul canale COLUMN ────────────────
+    --
+    -- Gemello del controllo (A), e nasce insieme al canale (20260808-04).
+    -- Dal 2026-08-08 `COLUMN` porta il NOME DEL CAMPO che l'operatore deve
+    -- correggere, e il frontend ci accende un bordo rosso.
+    --
+    -- ⚠️ Perche' presidiarlo SUBITO, con zero violazioni. Il controllo (A) e'
+    -- nato quando CONSTRAINT era gia' in uso, e ha dovuto rincorrere. Qui il
+    -- canale e' libero — misurato: 0 mittenti — e un presidio che nasce a zero
+    -- non deve mai chiedere a nessuno di sanare un arretrato. E' la stessa
+    -- ragione per cui il rubinetto dei codici fuori convenzione fu chiuso
+    -- prima di smaltire i 57.
+    --
+    -- ⚠️ E il modo in cui questo canale rompe e' peggio degli altri: un secondo
+    -- mittente non fa fallire niente, fa **evidenziare il campo sbagliato**.
+    -- L'operatore viene mandato a correggere un dato che e' giusto, con la
+    -- pagina che gliela indica come se fosse sicura.
+    SELECT string_agg(n.nspname || '.' || p.proname, E'\n  ' ORDER BY n.nspname, p.proname)
+      INTO v_mittenti
+      FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+     WHERE p.prolang = (SELECT oid FROM pg_language WHERE lanname = 'plpgsql')
+       AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+       AND p.prosrc ~* 'RAISE[^;]*USING[^;]*\mCOLUMN\M\s*='
+       AND NOT (n.nspname = 'script' AND p.proname = 'fn_log_and_raise_error');
+
+    IF v_mittenti IS NOT NULL THEN
+        RAISE EXCEPTION
+          E'Il canale COLUMN ha piu'' di un mittente:\n  %\n\n'
+          'Dal 2026-08-08 il campo COLUMN dell''eccezione e'' riservato al NOME DEL CAMPO '
+          'che l''operatore deve correggere — contratto «P0001 + COLUMN valorizzato = il '
+          'campo da correggere» (changeSet 20260808-04) — e l''unica sede autorizzata a '
+          'scriverlo e'' script.fn_log_and_raise_error, che lo prende da '
+          'p_context->>''campo''.\n'
+          'Il frontend ci accende un bordo rosso sul campo: se ci finisce dentro altro, '
+          'non fallisce niente — evidenzia il campo SBAGLIATO, e manda l''operatore a '
+          'correggere un dato che e'' giusto. E'' peggio di non evidenziarne nessuno.\n'
+          'La strada e'' passare da fn_log_and_raise_error mettendo il nome del campo nel '
+          'contesto: jsonb_build_object(''campo'', ''nome_campo'', ...).', v_mittenti;
+    END IF;
+
+    RAISE NOTICE 'OK — un solo mittente sul canale CONSTRAINT e uno sul canale COLUMN, nessun codice fuori convenzione non registrato, nessuna voce di troppo nel registro (% attive), nessun codice ritirato ancora sollevato (% ritirati), nessun warning sollevato come errore.',
         (SELECT count(*) FROM dbops.messaggi_errore_codici_legacy),
         (SELECT count(*) FROM config.codici_errore
           WHERE obsoleto_dal IS NOT NULL AND obsoleto_dal <= CURRENT_DATE);

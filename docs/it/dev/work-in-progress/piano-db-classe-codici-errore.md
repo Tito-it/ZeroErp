@@ -1340,3 +1340,91 @@ accumulatore e non lo era, `E_ERRORE_PARAMETRI` non era fra i sospetti e lo è.
 Entrambe le volte la risposta è venuta dal **contare le condizioni**, non dal
 guardare i nomi — ed è esattamente il mestiere per cui il D-10 è stato
 ri-specificato dopo che l'asse dei domini si era rivelato sbagliato.
+
+---
+
+### 5.8 Il nome del campo esce dall'eccezione — `USING COLUMN` (passo 4 del BE)
+
+Richiesta del team BE (§12.4/§12.5 del loro piano). Il backend ha imparato a
+dire al frontend **quale campo** correggere e il frontend a evidenziarlo; ma quel
+nome ce l'hanno solo i **42 codici sollevati dal Python**. Gli **83 sollevati dal
+database** arrivano senza, e la pagina non sa cosa accendere.
+
+**Scritto:** [`20260808-04`](../../../../db/changelog/migrations_v2/20_code/script/20260808-04-fn-log-and-raise-error-column-campo-mctit.yaml)
+— il nome viaggia in `COLUMN`, letto da `p_context->>'campo'`.
+
+#### ⭐ Non si inventa niente: la convenzione c'era già
+
+Misurato prima di disegnare: **4 punti di chiamata mettono già `'campo'` nel
+contesto**, con esattamente questo significato. Quel contesto finiva solo in
+`dbops.error_log`. È la stessa cosa successa fra BE e FE — la stessa idea scritta
+da due parti, e nessuna che la trasmetteva.
+
+#### 🔴 Perché dal contesto e non da un parametro nuovo — provato, non dedotto
+
+La firma finisce con `VARIADIC p_valori text[]`, e questo chiude entrambe le
+strade:
+
+| | Esito |
+|---|---|
+| parametro **dopo** la `VARIADIC` | PostgreSQL lo **rifiuta** |
+| parametro **prima**, anche con `DEFAULT` | ⚠️ **si mangia in silenzio il primo valore**: `f2('area','valore1','valore2')` lega `b='valore1'` |
+
+Sono **973 punti di chiamata in 371 funzioni**. La seconda strada li avrebbe
+corrotti tutti senza un errore.
+
+#### ⚠️ `COLUMN` era stato scartato dal `20260805-05`, e va spiegato
+
+Quel changeSet elenca `COLUMN` fra le alternative respinte: *«funziona identico,
+ma dice una cosa falsa: non è una colonna»*. Era giusto — **per il codice
+errore**. Qui ci viaggia il **nome del campo**, che è ciò che quel campo
+significa nel protocollo. ⚠️ La seconda metà dell'obiezione resta ferma:
+`SCHEMA`/`TABLE`/`DATATYPE` restano off-limits perché psycopg e Django li leggono
+per comporre gli `IntegrityError`.
+
+#### ✅ Presidio: controllo (F), nato col canale
+
+Gemello del (A). Misurato: **0 mittenti su `COLUMN`** oggi, e **0 lettori** lato
+backend. Il (A) nacque quando `CONSTRAINT` era già in uso e dovette rincorrere;
+questo nasce a zero e non chiederà mai a nessuno di sanare un arretrato.
+
+⚠️ Il modo in cui questo canale rompe è peggio degli altri: un secondo mittente
+non fa fallire niente, fa **evidenziare il campo sbagliato** — manda l'operatore
+a correggere un dato giusto, con la pagina che glielo indica come se fosse sicura.
+
+#### 🔴 Il lato che riceve **non** è in servizio — verificato, e va detto al BE
+
+Il BE anticipa: *«il lato che riceve è già in servizio e testato: a loro resta
+solo aggiungere `USING COLUMN`»*. **Vale per il percorso Python, non per quello
+del database**, e sono due percorsi diversi:
+
+| Pezzo | Stato reale |
+|---|---|
+| frontend (`campiErrati`, il drawer pilota) | ✅ in servizio |
+| Python → envelope (`ServiceError.context["field"]`) | ✅ in servizio, 6 test |
+| **DB → envelope** | 🔴 **non esiste** |
+
+Le due righe che lo stabiliscono:
+
+* `db_error_fields.py` legge **solo** `constraint_name` — nessuna funzione
+  legge `column_name`, in tutto il backend;
+* `ErrorTranslator._from_database_error` costruisce l'`ApiError` **senza
+  `fields=`**.
+
+⭐ **È esattamente il difetto che il BE ha diagnosticato sul proprio lato**, con
+le loro parole: *«si perde a un passo dall'uscita»*. Se applicassimo il
+`20260808-04` da soli, il nome del campo arriverebbe fino al confine e verrebbe
+buttato — e non se ne accorgerebbe nessuno, perché non fallisce niente.
+
+**Richiesta al BE:** una lettura di `diag.column_name` in `db_error_fields.py`
+(stesso guard `P0001` e stesso `or None` già usati per `constraint_name`) e il
+passaggio a `fields=` nel ramo `_from_database_error`. È il gemello del loro
+passo 1, sull'altro percorso.
+
+#### ⚠️ Le chiavi interne sono diverse di proposito — non «uniformarle»
+
+Lato DB la chiave è `'campo'` (dentro `p_context` jsonb), lato BE è `"field"`
+(dentro `ServiceError.context`). **Sono due contenitori diversi**, ciascuno nella
+lingua del suo lato, e il contratto condiviso è un altro: la chiave
+**`fields`** dell'envelope. Scritto qui perché è il genere di asimmetria che
+qualcuno «corregge» rompendo 114 punti di chiamata da una parte o 4 dall'altra.
