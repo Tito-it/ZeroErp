@@ -329,6 +329,14 @@ jobs:
             -f scripts/sql/guardrail_codice_errore_strutturato.sql
 
       - name: Codici errore — nessun codice allarga il proprio significato (B-7)
+        env:
+          # ⚠️ Come ogni altro passo psql di questo workflow: senza, il runner
+          #   chiede la password in modo interattivo e muore con
+          #   «fe_sendauth: no password supplied». La prima stesura l'aveva
+          #   dimenticata perche' passava host/utente via PG* inline, e sembrava
+          #   che bastasse: PGHOST e PGUSER dicono DOVE e CHI, non con che
+          #   credenziale.
+          PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
         run: |
           # IL RUBINETTO DEGLI ACCUMULATORI.
           #
