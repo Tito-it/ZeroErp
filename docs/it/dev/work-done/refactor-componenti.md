@@ -1,7 +1,43 @@
 # Refactor Componenti BoM — Piano operativo BE/FE
 
-> **Scope**: piano operativo corrente. Nessuna decisione di dominio
-> qui — quelle stanno nel modello.
+> **⛔ DOCUMENTO STORICO — COMPLETAMENTE SUPERATO**
+>
+> **Non usarlo per decidere né per stimare. Nulla di quanto dichiara «aperto» lo
+> è ancora.** Archiviato il 2026-08-09 dopo verifica contro il codice e il
+> database vivi. Resta solo perché **nove documenti lo citano** — cancellarlo
+> romperebbe quei riferimenti — e perché la §«Com'è finita» qui sotto racconta
+> una cosa che vale la pena ricordare.
+>
+> Quello che il documento dice, e che **non è più vero**:
+>
+> | Dichiara | Realtà al 2026-08-09 |
+> | --- | --- |
+> | Fase G «parziale: preventivi+contratti; **ordini e ddt rinviati** perché *i moduli Python e Vue non esistono nel codebase*» | I moduli esistono e sono grossi (`ordini_service` 1275 righe, `ordini_repository` 765, `ddt_repository` 734, `OrdiniDrawer`/`DdtDrawer` ~690 ciascuno). I componenti BoM ci sono dentro: il `ComponentiRepositoryMixin` è usato da **ordini, ddt e offerte** oltre a preventivi e contratti, gli endpoint `preview-componenti` esistono su **cinque** sorgenti, il frontend ha `OrdiniRigaComponentiPanel` e `DdtRigaComponentiPanel`. **Fase G è completa, e con una sorgente in più di quelle previste** |
+> | Pendente #8 «DROP del path legacy — *bloccato da #7*» | Fatto: i metodi BE non esistono più e `vendite.fn_resolve_prezzo_composito` **è stata droppata dal database** (verificato su `pg_proc`, non sui commenti). Vedi [`brief-db-drop-fn-resolve-prezzo-composito.md`](brief-db-drop-fn-resolve-prezzo-composito.md) |
+> | Pendente #11 «estrarre `is_articolo_composito` / `get_emittente_sr_id_by_fiscale_id`» | Presenti in `catalogo_repository` e nei cinque repository di vendite |
+> | Pendente #12 «rimuovere ~20 alias `_normalize_*`» | Zero residui in preventivi e contratti |
+> | Stima «~7 sessioni di sotto-progetto autonomo» prima di poter toccare i componenti | Il lavoro è stato fatto lo stesso, ma **dentro altri cantieri** |
+>
+> L'unica voce su cui il codice non può rispondere è la **Fase F** (smoke UI dei 4
+> scenari): i due blocchi DB che la fermavano erano già chiusi il 2026-05-13, quindi
+> o è stata eseguita senza annotarlo, o è decaduta col resto.
+>
+> **Com'è finita, ed è la parte che vale**
+>
+> Fase G non si è chiusa perché qualcuno l'ha ripresa. Si è chiusa perché ordini e
+> DDT sono stati costruiti **per altre ragioni**, e i componenti sono arrivati con
+> loro quasi gratis — esattamente come questo documento aveva previsto («~30 min
+> repo + 1h service+API per sorgente grazie al mixin e ai BB di Fase H»).
+>
+> La stima delle «~7 sessioni» era corretta come *misura* e inutile come
+> *previsione*: sbagliava a trattare come sotto-progetto da schedulare una cosa
+> che sarebbe successa comunque. Quando un piano si blocca su un prerequisito che
+> appartiene a un altro cantiere, la domanda utile non è «quanto costa farlo qui»,
+> ma «quando lo farà qualcun altro».
+
+<!-- markdownlint-disable-next-line MD028 -->
+> **Scope** (testo originale del 2026-05-13, conservato): piano operativo corrente.
+> Nessuna decisione di dominio qui — quelle stanno nel modello.
 >
 > **Riferimenti obbligatori**:
 >

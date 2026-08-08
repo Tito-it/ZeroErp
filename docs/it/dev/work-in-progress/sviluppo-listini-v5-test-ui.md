@@ -317,7 +317,8 @@ Funziona quindi senza translator dedicato lato service.
 ### 3.4 Espansione compositi — modello unificato (riscritto 2026-05-13)
 
 > **Riferimenti**: [`manual/modello-componenti-bom.md`](../manual/modello-componenti-bom.md),
-> [refactor-componenti.md](refactor-componenti.md) §2 Fase F.
+> [refactor-componenti.md](../work-done/refactor-componenti.md) §2 Fase F
+> (⛔ documento storico superato: resta valido solo l'elenco dei 4 scenari).
 >
 > **Pre-requisito**: migration `20260513-01..32` applicate su `dev/db-tid`
 > (modello unificato + fix JSONB + default `attivo=TRUE` sempre); BE Fase
