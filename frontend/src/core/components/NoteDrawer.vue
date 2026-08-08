@@ -35,7 +35,7 @@ import PageActionsBar from './PageActionsBar.vue'
 
 const { t } = useI18n()
 const isReadonly = useInjectReadonly()
-const { execute, loading: saveLoading } = useApiHandler()
+const { execute, loading: saveLoading, campiErrati } = useApiHandler()
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -325,6 +325,7 @@ function rigaLabel(n) {
                 :placeholder="t('note.placeholder_riga_doc')"
                 :disabled="formMode === 'edit'"
                 show-clear class="w-full"
+                :invalid="campiErrati.includes('target_riga_id')"
               />
             </div>
             <div class="form-field">
@@ -353,16 +354,21 @@ function rigaLabel(n) {
             <Textarea
               v-model="form.testo_md" rows="6" auto-resize
               :placeholder="t('note.placeholder_testo')" class="w-full"
+              :invalid="campiErrati.includes('testo_md')"
             />
           </div>
           <div class="form-grid-2col">
             <div class="form-field form-field-inline">
               <label>{{ t('note.field_visibile') }}</label>
-              <ToggleSwitch v-model="form.visibile" />
+              <ToggleSwitch v-model="form.visibile"
+                :invalid="campiErrati.includes('visibile')"
+              />
             </div>
             <div class="form-field form-field-inline">
               <label>{{ t('note.field_solo_stampa') }}</label>
-              <ToggleSwitch v-model="form.solo_stampa" />
+              <ToggleSwitch v-model="form.solo_stampa"
+                :invalid="campiErrati.includes('solo_stampa')"
+              />
             </div>
           </div>
         </div>

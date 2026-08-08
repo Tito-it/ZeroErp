@@ -39,7 +39,7 @@ const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const { t } = useI18n()
 const presetStore = useUiPresetAdminStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 
 const injectedReadonly = useInjectReadonly()
 const isReadonlyEffective = computed(
@@ -186,7 +186,9 @@ function onCancel() {
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('ui.admin.preset_codice') }}</label>
-            <InputText v-model="form.codice" maxlength="80" />
+            <InputText v-model="form.codice" maxlength="80"
+              :invalid="campiErrati.includes('codice')"
+            />
           </div>
           <div class="form-field">
             <label>{{ t('ui.admin.preset_pagina_dimensione') }}</label>
@@ -195,13 +197,16 @@ function onCancel() {
               :min="1"
               :max="500"
               show-buttons
+              :invalid="campiErrati.includes('pagina_dimensione')"
             />
           </div>
         </div>
 
         <div class="form-field">
           <label>{{ t('ui.admin.preset_descrizione') }}</label>
-          <InputText v-model="form.descrizione" maxlength="200" />
+          <InputText v-model="form.descrizione" maxlength="200"
+            :invalid="campiErrati.includes('descrizione')"
+          />
         </div>
 
         <div class="form-field">
@@ -212,6 +217,7 @@ function onCancel() {
             option-label="label"
             option-value="value"
             :disabled="isEdit"
+            :invalid="campiErrati.includes('ambito')"
           />
           <Message
             v-if="isEdit"
@@ -249,6 +255,7 @@ function onCancel() {
             v-model="form.emittente_fiscale_id"
             :min="1"
             show-buttons
+            :invalid="campiErrati.includes('emittente_fiscale_id')"
           />
           <InputText
             v-else
@@ -259,11 +266,15 @@ function onCancel() {
 
         <div class="form-grid-2col">
           <div class="form-field form-field-inline">
-            <Checkbox v-model="form.is_default" binary input-id="ui-preset-default" />
+            <Checkbox v-model="form.is_default" binary input-id="ui-preset-default"
+              :invalid="campiErrati.includes('is_default')"
+            />
             <label for="ui-preset-default">{{ t('ui.admin.preset_is_default') }}</label>
           </div>
           <div class="form-field form-field-inline">
-            <Checkbox v-model="form.attivo" binary input-id="ui-preset-attivo" />
+            <Checkbox v-model="form.attivo" binary input-id="ui-preset-attivo"
+              :invalid="campiErrati.includes('attivo')"
+            />
             <label for="ui-preset-attivo">{{ t('common.active') }}</label>
           </div>
         </div>

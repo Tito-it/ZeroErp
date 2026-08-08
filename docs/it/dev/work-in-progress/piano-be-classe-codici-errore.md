@@ -1137,3 +1137,40 @@ oppure `(messaggio, campo)`. Coperti `uq_fornitori_codice` → `codice` e
 **5 test nuovi**, di cui uno è la rete sul difetto corretto: con due vincoli in
 cui un nome è prefisso dell'altro, deve vincere quello giusto — col vecchio `in`
 sarebbe rosso.
+
+### 12.11 ✅ Il pattern esteso — da 1 drawer a 38 (2026-08-08)
+
+Da pilota a comportamento dell'applicazione: **38 componenti, 136 binding**.
+
+⭐ **Non è stato un «lega tutto»**, ed è la parte che rende il numero onesto.
+Prima di toccare un file ho estratto **quali nomi il backend può davvero
+mandare** — dai `context={"field": …}` e dalle chiavi passate ai validator:
+**122 nomi**. Un input il cui campo non è in quella lista non è stato legato:
+sarebbe una riga che non decide niente, e 350 righe così avrebbero fatto
+sembrare coperto ciò che non lo è.
+
+Per questo dei 70 candidati ne sono stati toccati **36 in automatico + 2 a
+mano**: gli altri hanno campi su cui il backend non parla.
+
+| | |
+|---|---|
+| candidati (usano `useApiHandler` e hanno input) | 70 |
+| **legati** | **38** |
+| non legati: nessun campo nella lista dei 122 | 49 |
+| che solo *nominano* `useApiHandler` in un commento | 4 |
+
+⚠️ **Due file li ha rotti lo script, e vale la pena scrivere come.** Il regex che
+riconosce il tag si fermava al primo `>` — ma un `>` può stare **dentro un
+attributo** (`:filter="catalogo.length > 5"`, `righeCount > 0`). Su
+`ContrattoDrawer` e `ListaColonnaPermessoDrawer` l'attributo è finito in mezzo a
+un'espressione. **Li ha presi il build, non io**: `vite build` e `eslint` sono
+andati rossi con l'errore di parsing esatto. Ripristinati da git e rifatti a
+mano.
+
+> ⭐ La lezione non è «attento ai regex»: è che una modifica meccanica su decine
+> di file **ha bisogno di un cancello che non sia la lettura**. Qui il cancello
+> c'era già (build + lint) e ha fatto il suo mestiere in dieci secondi.
+
+Dopo il ripristino: **eslint pulito, build verde**, e i diff riletti a campione
+per verificare che l'attributo fosse sul tag giusto — cosa che il build non può
+dire.

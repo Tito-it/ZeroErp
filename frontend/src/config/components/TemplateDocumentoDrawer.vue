@@ -41,7 +41,7 @@ import Divider from 'primevue/divider'
 
 const { t } = useI18n()
 const store = useTemplateDocumentiStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const isReadonly = useInjectReadonly()
 const { defaultEmittenteId } = useEmittenteFiscaleField()
 
@@ -229,16 +229,22 @@ function close() {
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('config.modelli_documenti.field_codice') }} *</label>
-            <InputText v-model="form.codice" :disabled="isReadOnlyEffective" maxlength="120" fluid />
+            <InputText v-model="form.codice" :disabled="isReadOnlyEffective" maxlength="120" fluid
+              :invalid="campiErrati.includes('codice')"
+            />
           </div>
           <div class="form-field">
             <label>{{ t('config.modelli_documenti.field_codice_interno') }} *</label>
-            <InputText v-model="form.codice_interno" :disabled="isReadOnlyEffective" maxlength="120" fluid />
+            <InputText v-model="form.codice_interno" :disabled="isReadOnlyEffective" maxlength="120" fluid
+              :invalid="campiErrati.includes('codice_interno')"
+            />
           </div>
         </div>
         <div class="form-field">
           <label>{{ t('config.modelli_documenti.field_descrizione') }} *</label>
-          <InputText v-model="form.descrizione" :disabled="isReadOnlyEffective" maxlength="500" fluid />
+          <InputText v-model="form.descrizione" :disabled="isReadOnlyEffective" maxlength="500" fluid
+            :invalid="campiErrati.includes('descrizione')"
+          />
         </div>
 
         <div class="form-grid-2col">
@@ -288,6 +294,7 @@ function close() {
               :placeholder="t('config.modelli_documenti.field_context_builder_placeholder')"
               :disabled="isReadOnlyEffective"
               fluid
+              :invalid="campiErrati.includes('context_builder_code')"
             />
             <Message
               v-if="isSelectedBuilderUnregistered"
@@ -306,6 +313,7 @@ function close() {
               :placeholder="t('config.modelli_documenti.field_file_name_pattern_placeholder')"
               maxlength="255"
               fluid
+              :invalid="campiErrati.includes('file_name_pattern')"
             />
             <small class="text-color-secondary">
               {{ t('config.modelli_documenti.field_file_name_pattern_hint') }}
@@ -316,14 +324,18 @@ function close() {
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('config.modelli_documenti.field_is_default') }}</label>
-            <ToggleSwitch v-model="form.is_default" :disabled="isReadOnlyEffective" />
+            <ToggleSwitch v-model="form.is_default" :disabled="isReadOnlyEffective"
+              :invalid="campiErrati.includes('is_default')"
+            />
             <small class="text-color-secondary">
               {{ t('config.modelli_documenti.field_is_default_hint') }}
             </small>
           </div>
           <div class="form-field">
             <label>{{ t('common.attivo') }}</label>
-            <ToggleSwitch v-model="form.attivo" :disabled="isReadOnlyEffective" />
+            <ToggleSwitch v-model="form.attivo" :disabled="isReadOnlyEffective"
+              :invalid="campiErrati.includes('attivo')"
+            />
           </div>
         </div>
       </div>

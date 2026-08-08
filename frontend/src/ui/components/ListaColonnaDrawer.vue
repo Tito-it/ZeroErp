@@ -47,7 +47,7 @@ const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const { t } = useI18n()
 const colonnaStore = useUiColonnaAdminStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 
 const isEdit = computed(() => props.mode === 'edit')
 const activeTab = ref('generale')
@@ -249,11 +249,15 @@ function onCancel() {
               <div class="form-grid-2col">
                 <div class="form-field">
                   <label>{{ t('ui.admin.colonna_codice') }}</label>
-                  <InputText v-model="form.codice" maxlength="80" />
+                  <InputText v-model="form.codice" maxlength="80"
+                    :invalid="campiErrati.includes('codice')"
+                  />
                 </div>
                 <div class="form-field">
                   <label>{{ t('ui.admin.colonna_campo_sorgente') }}</label>
-                  <InputText v-model="form.campo_sorgente" maxlength="80" />
+                  <InputText v-model="form.campo_sorgente" maxlength="80"
+                    :invalid="campiErrati.includes('campo_sorgente')"
+                  />
                   <Message
                     severity="info"
                     :closable="false"
@@ -268,11 +272,15 @@ function onCancel() {
               <div class="form-grid-2col">
                 <div class="form-field">
                   <label>{{ t('ui.admin.colonna_etichetta') }}</label>
-                  <InputText v-model="form.etichetta" maxlength="120" />
+                  <InputText v-model="form.etichetta" maxlength="120"
+                    :invalid="campiErrati.includes('etichetta')"
+                  />
                 </div>
                 <div class="form-field">
                   <label>{{ t('ui.admin.colonna_etichetta_i18n_key') }}</label>
-                  <InputText v-model="form.etichetta_i18n_key" maxlength="120" />
+                  <InputText v-model="form.etichetta_i18n_key" maxlength="120"
+                    :invalid="campiErrati.includes('etichetta_i18n_key')"
+                  />
                   <Message
                     severity="info"
                     :closable="false"
@@ -286,7 +294,9 @@ function onCancel() {
 
               <div class="form-field">
                 <label>{{ t('ui.admin.colonna_etichetta_estesa') }}</label>
-                <InputText v-model="form.etichetta_estesa" maxlength="200" />
+                <InputText v-model="form.etichetta_estesa" maxlength="200"
+                  :invalid="campiErrati.includes('etichetta_estesa')"
+                />
               </div>
 
               <div class="form-grid-2col">
@@ -297,6 +307,7 @@ function onCancel() {
                     :options="tipoColonnaOptions"
                     option-label="label"
                     option-value="value"
+                    :invalid="campiErrati.includes('tipo_colonna')"
                   />
                 </div>
                 <div class="form-field">
@@ -306,6 +317,7 @@ function onCancel() {
                     :options="tipoDatoOptions"
                     option-label="label"
                     option-value="value"
+                    :invalid="campiErrati.includes('tipo_dato')"
                   />
                 </div>
               </div>
@@ -355,7 +367,9 @@ function onCancel() {
                   <label for="ui-col-sensibile">{{ t('ui.admin.colonna_sensibile') }}</label>
                 </div>
                 <div class="form-field form-field-inline">
-                  <Checkbox v-model="form.attivo" binary input-id="ui-col-attivo" />
+                  <Checkbox v-model="form.attivo" binary input-id="ui-col-attivo"
+                    :invalid="campiErrati.includes('attivo')"
+                  />
                   <label for="ui-col-attivo">{{ t('common.active') }}</label>
                 </div>
               </div>
@@ -367,7 +381,9 @@ function onCancel() {
               <div class="form-grid-3col">
                 <div class="form-field">
                   <label>{{ t('ui.admin.colonna_ordine_default') }}</label>
-                  <InputNumber v-model="form.ordine_default" :min="1" :max="100000" show-buttons />
+                  <InputNumber v-model="form.ordine_default" :min="1" :max="100000" show-buttons
+                    :invalid="campiErrati.includes('ordine_default')"
+                  />
                 </div>
                 <div class="form-field">
                   <label>{{ t('ui.admin.colonna_larghezza_default') }}</label>
@@ -380,6 +396,7 @@ function onCancel() {
                     :options="allineamentoOptions"
                     option-label="label"
                     option-value="value"
+                    :invalid="campiErrati.includes('allineamento')"
                   />
                 </div>
               </div>
@@ -387,7 +404,9 @@ function onCancel() {
               <div class="form-grid-2col">
                 <div class="form-field">
                   <label>{{ t('ui.admin.colonna_formato') }}</label>
-                  <InputText v-model="form.formato" maxlength="60" />
+                  <InputText v-model="form.formato" maxlength="60"
+                    :invalid="campiErrati.includes('formato')"
+                  />
                   <Message
                     severity="info"
                     :closable="false"
@@ -405,7 +424,9 @@ function onCancel() {
 
               <div class="form-field">
                 <label>{{ t('ui.admin.colonna_gruppo') }}</label>
-                <InputText v-model="form.gruppo" maxlength="60" />
+                <InputText v-model="form.gruppo" maxlength="60"
+                  :invalid="campiErrati.includes('gruppo')"
+                />
               </div>
             </div>
           </TabPanel>

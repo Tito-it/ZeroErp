@@ -31,7 +31,7 @@ const ALWAYS_VALID_FROM = '1900-01-01'
 
 const { t } = useI18n()
 const isReadonly = useInjectReadonly()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const uomLookup = useGlobalLookup(
   'catalogo.unita_misura',
   () => lookupCodici('catalogo.unita_misura', { page_size: 200 }),
@@ -287,6 +287,7 @@ const pageActions = computed(() => [
                   show-button-bar
                   class="w-full"
                   :disabled="form.valido_dal_sempre"
+                  :invalid="campiErrati.includes('valido_dal')"
                 />
               </div>
             </div>

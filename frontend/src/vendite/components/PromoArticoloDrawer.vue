@@ -40,7 +40,7 @@ import Message from 'primevue/message'
 
 const { t } = useI18n()
 const store = usePromoArticoliStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const notify = useNotify()
 const isReadonly = useInjectReadonly()
 
@@ -355,6 +355,7 @@ function close() {
             :disabled="isReadOnlyEffective || isLocked('codice')"
             :placeholder="t('vendite.promo_articoli.field_codice_placeholder')"
             maxlength="64"
+            :invalid="campiErrati.includes('codice')"
           />
         </div>
         <div class="form-field">
@@ -364,6 +365,7 @@ function close() {
             :disabled="isReadOnlyEffective || isLocked('descrizione')"
             :placeholder="t('vendite.promo_articoli.field_descrizione_placeholder')"
             maxlength="255"
+            :invalid="campiErrati.includes('descrizione')"
           />
         </div>
         <div class="form-field">
@@ -387,6 +389,7 @@ function close() {
               ? t('vendite.promo_articoli.field_uom_articolo_first')
               : t('vendite.promo_articoli.field_uom_placeholder')"
             :disabled="isReadOnlyEffective || isLocked('uom_id') || !form.articolo_obj?.id"
+            :invalid="campiErrati.includes('uom_id')"
           />
         </div>
 
@@ -413,6 +416,7 @@ function close() {
               :max-fraction-digits="4"
               :disabled="form.tipo_variazione == null || isReadOnlyEffective || isLocked('valore_variazione')"
               showButtons
+              :invalid="campiErrati.includes('valore_variazione')"
             />
             <small class="text-color-secondary">
               {{ form.tipo_variazione === 'PREZZO_FISSO'
@@ -432,6 +436,7 @@ function close() {
               show-icon
               :min-date="validoDalMinDate"
               :disabled="isReadOnlyEffective || isLocked('valido_dal')"
+              :invalid="campiErrati.includes('valido_dal')"
             />
           </div>
           <div class="form-field">
@@ -442,6 +447,7 @@ function close() {
               show-icon
               :min-date="validoAlMinDate"
               :disabled="isReadOnlyEffective || isLocked('valido_al')"
+              :invalid="campiErrati.includes('valido_al')"
             />
           </div>
         </div>
@@ -451,6 +457,7 @@ function close() {
           <ToggleSwitch
             v-model="form.attivo"
             :disabled="isReadOnlyEffective || isLocked('attivo')"
+            :invalid="campiErrati.includes('attivo')"
           />
         </div>
       </div>

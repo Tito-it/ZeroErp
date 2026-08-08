@@ -34,7 +34,7 @@ const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const { t } = useI18n()
 const definizioneStore = useUiDefinizioneAdminStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 
 const isEdit = computed(() => props.mode === 'edit')
 
@@ -141,22 +141,30 @@ function onCancel() {
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('ui.admin.definizione_codice') }}</label>
-            <InputText v-model="form.codice" maxlength="80" />
+            <InputText v-model="form.codice" maxlength="80"
+              :invalid="campiErrati.includes('codice')"
+            />
           </div>
           <div class="form-field">
             <label>{{ t('ui.admin.definizione_schema_dati') }}</label>
-            <InputText v-model="form.schema_dati" maxlength="80" />
+            <InputText v-model="form.schema_dati" maxlength="80"
+              :invalid="campiErrati.includes('schema_dati')"
+            />
           </div>
         </div>
 
         <div class="form-field">
           <label>{{ t('ui.admin.definizione_descrizione') }}</label>
-          <InputText v-model="form.descrizione" maxlength="200" />
+          <InputText v-model="form.descrizione" maxlength="200"
+            :invalid="campiErrati.includes('descrizione')"
+          />
         </div>
 
         <div class="form-field">
           <label>{{ t('ui.admin.definizione_vista_sql') }}</label>
-          <InputText v-model="form.vista_sql" maxlength="120" />
+          <InputText v-model="form.vista_sql" maxlength="120"
+            :invalid="campiErrati.includes('vista_sql')"
+          />
           <Message
             severity="info"
             :closable="false"
@@ -169,11 +177,15 @@ function onCancel() {
 
         <div class="form-field">
           <label>{{ t('ui.admin.definizione_note') }}</label>
-          <Textarea v-model="form.note" rows="3" auto-resize />
+          <Textarea v-model="form.note" rows="3" auto-resize
+            :invalid="campiErrati.includes('note')"
+          />
         </div>
 
         <div class="form-field form-field-inline">
-          <Checkbox v-model="form.attivo" binary input-id="ui-def-attivo" />
+          <Checkbox v-model="form.attivo" binary input-id="ui-def-attivo"
+            :invalid="campiErrati.includes('attivo')"
+          />
           <label for="ui-def-attivo">{{ t('common.active') }}</label>
         </div>
         <Message

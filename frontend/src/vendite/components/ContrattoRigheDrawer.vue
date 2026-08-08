@@ -56,7 +56,7 @@ import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 
 const { t } = useI18n()
 const store = useContrattiStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const { confirmDelete, confirmAction } = useConfirmAction()
 const isReadonly = useInjectReadonly()
 
@@ -1289,7 +1289,9 @@ function origineSeverity(origine) {
           </div>
           <div class="form-field">
             <label>{{ t('vendite.contratti.field_ordine') }}</label>
-            <InputNumber v-model="form.ordine" class="w-full" :min="0" />
+            <InputNumber v-model="form.ordine" class="w-full" :min="0"
+              :invalid="campiErrati.includes('ordine')"
+            />
           </div>
         </div>
 

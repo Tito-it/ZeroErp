@@ -1969,6 +1969,16 @@ doveva cercarselo da solo nel form.
 | nessun messaggio sotto il campo | il testo sta gia' nel toast; ripeterlo sotto l'input e' rumore. Il bordo rosso dice *dove*, il toast dice *cosa* |
 | il nome e' quello del **payload API**, non del `v-model` | se il form rinomina un campo, il legame va scritto a mano — `:invalid="campiErrati.includes('nome_api')"` |
 
+**È lo standard, non un caso isolato**: dal 2026-08-08 lo legano **38 componenti
+con 136 binding**. La regola per un drawer nuovo: se un campo del form ha lo
+stesso nome della chiave che mandi nel payload, legalo — costa una riga e il
+giorno in cui il service comincia a rifiutarlo l'operatore vede dove.
+
+⚠️ **Non si lega tutto**: la lista dei nomi che il backend può davvero mandare è
+finita (**122**, misurati sui `context={"field": …}` e sulle chiavi passate ai
+validator). Legare un campo fuori da quella lista non fa danno ma non fa niente:
+è una riga che non decide.
+
 ⚠️ **Oggi lo popolano solo gli errori nati nel backend Python** (42 codici su
 125 con `ui_action = highlight_form_fields`). Per quelli sollevati dalle
 funzioni PL/pgSQL il canale esiste ma non e' ancora usato: finche' non lo sara',

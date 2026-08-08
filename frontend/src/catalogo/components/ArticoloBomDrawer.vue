@@ -55,7 +55,7 @@ import Checkbox from 'primevue/checkbox'
 
 const { t } = useI18n()
 const isReadonly = useInjectReadonly()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -632,19 +632,25 @@ function buildRigaActions(row) {
               <div class="form-field">
                 <label>{{ t('catalogo.field_coeff_qta') }} *</label>
                 <InputNumber v-model="form.coeff_qta" :min="0" :min-fraction-digits="2"
-                  :max-fraction-digits="6" class="w-full" :disabled="isFormReadonly" />
+                  :max-fraction-digits="6" class="w-full" :disabled="isFormReadonly"
+                  :invalid="campiErrati.includes('coeff_qta')"
+                />
               </div>
             </div>
             <div class="form-grid-2col mt-05" :class="{ 'app-readonly': isFormReadonly }">
               <div class="form-field">
                 <label>{{ t('catalogo.field_valido_dal') }}</label>
                 <DatePicker v-model="form.valido_dal" :date-format="DATE_FORMAT"
-                  show-icon show-button-bar class="w-full" :disabled="isFormReadonly" />
+                  show-icon show-button-bar class="w-full" :disabled="isFormReadonly"
+                  :invalid="campiErrati.includes('valido_dal')"
+                />
               </div>
               <div class="form-field">
                 <label>{{ t('catalogo.field_valido_al') }}</label>
                 <DatePicker v-model="form.valido_al" :date-format="DATE_FORMAT"
-                  show-icon show-button-bar class="w-full" :disabled="isFormReadonly" />
+                  show-icon show-button-bar class="w-full" :disabled="isFormReadonly"
+                  :invalid="campiErrati.includes('valido_al')"
+                />
               </div>
             </div>
             <div class="form-grid-2col mt-05" :class="{ 'app-readonly': isFormReadonly }">
@@ -658,7 +664,9 @@ function buildRigaActions(row) {
                   <span class="bom-readonly-switch__knob" />
                   <span class="bom-readonly-switch__label">{{ form.obbligatorio ? t('common.yes') : t('common.no') }}</span>
                 </span>
-                <ToggleSwitch v-else v-model="form.obbligatorio" />
+                <ToggleSwitch v-else v-model="form.obbligatorio"
+                  :invalid="campiErrati.includes('obbligatorio')"
+                />
               </div>
               <div class="form-field">
                 <label>{{ t('catalogo.field_partecipa_qta') }}</label>

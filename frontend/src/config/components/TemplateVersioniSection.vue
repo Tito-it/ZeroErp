@@ -58,7 +58,7 @@ const emit = defineEmits(['form-aperto'])
 
 const { t } = useI18n()
 const store = useTemplateVersioniStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const { confirmAction } = useConfirmAction()
 
 const formatOptions = computed(() => PAGE_FORMATS.map(v => ({ label: v, value: v })))
@@ -343,7 +343,9 @@ async function confirmPubblica() {
       </Message>
       <div class="form-field">
         <label>{{ t('config.modelli_documenti.versioni.field_titolo') }} *</label>
-        <InputText v-model="form.titolo" :disabled="props.readonly" maxlength="255" />
+        <InputText v-model="form.titolo" :disabled="props.readonly" maxlength="255"
+          :invalid="campiErrati.includes('titolo')"
+        />
       </div>
       <div class="form-field">
         <label>{{ t('config.modelli_documenti.versioni.field_render_engine') }} *</label>
@@ -362,19 +364,26 @@ async function confirmPubblica() {
           option-label="label"
           option-value="value"
           :disabled="props.readonly"
+          :invalid="campiErrati.includes('formato_template')"
         />
       </div>
       <div class="form-field form-field-wide">
         <label>{{ t('config.modelli_documenti.versioni.field_html') }}</label>
-        <Textarea v-model="form.html_template" :disabled="props.readonly" rows="10" auto-resize />
+        <Textarea v-model="form.html_template" :disabled="props.readonly" rows="10" auto-resize
+          :invalid="campiErrati.includes('html_template')"
+        />
       </div>
       <div class="form-field form-field-wide">
         <label>{{ t('config.modelli_documenti.versioni.field_css') }}</label>
-        <Textarea v-model="form.css_template" :disabled="props.readonly" rows="6" auto-resize />
+        <Textarea v-model="form.css_template" :disabled="props.readonly" rows="6" auto-resize
+          :invalid="campiErrati.includes('css_template')"
+        />
       </div>
       <div class="form-field form-field-wide">
         <label>{{ t('config.modelli_documenti.versioni.field_markdown') }}</label>
-        <Textarea v-model="form.markdown_template" :disabled="props.readonly" rows="6" auto-resize />
+        <Textarea v-model="form.markdown_template" :disabled="props.readonly" rows="6" auto-resize
+          :invalid="campiErrati.includes('markdown_template')"
+        />
       </div>
 
       <div class="form-field">
@@ -385,6 +394,7 @@ async function confirmPubblica() {
           option-label="label"
           option-value="value"
           :disabled="props.readonly"
+          :invalid="campiErrati.includes('page_format')"
         />
       </div>
       <div class="form-field">
@@ -395,6 +405,7 @@ async function confirmPubblica() {
           option-label="label"
           option-value="value"
           :disabled="props.readonly"
+          :invalid="campiErrati.includes('page_orientation')"
         />
       </div>
       <div class="form-field">
@@ -415,7 +426,9 @@ async function confirmPubblica() {
       </div>
       <div class="form-field">
         <label>{{ t('common.attivo') }}</label>
-        <ToggleSwitch v-model="form.attivo" :disabled="props.readonly" />
+        <ToggleSwitch v-model="form.attivo" :disabled="props.readonly"
+          :invalid="campiErrati.includes('attivo')"
+        />
       </div>
 
       <div class="form-actions">

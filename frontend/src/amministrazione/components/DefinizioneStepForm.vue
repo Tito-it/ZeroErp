@@ -39,7 +39,7 @@ const props = defineProps({
 const emit = defineEmits(['saved', 'cancel'])
 
 const { t } = useI18n()
-const { execute } = useApiHandler()
+const { execute, campiErrati } = useApiHandler()
 
 const isEdit = computed(() => !!props.step?.id)
 const saving = ref(false)
@@ -144,7 +144,9 @@ async function handleSave() {
     <div class="step-form__grid">
       <div class="form-field">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_codice') }} *</label>
-        <InputText v-model="form.codice" :disabled="isEdit" class="w-full" />
+        <InputText v-model="form.codice" :disabled="isEdit" class="w-full"
+          :invalid="campiErrati.includes('codice')"
+        />
         <small v-if="isEdit" class="step-form__hint">{{ t('amministrazione.definizioni_workflow.ed_codice_immutabile') }}</small>
       </div>
       <div class="form-field">
@@ -159,7 +161,9 @@ async function handleSave() {
       </div>
       <div class="form-field step-form__full">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_descrizione') }} *</label>
-        <Textarea v-model="form.descrizione" rows="2" auto-resize class="w-full" />
+        <Textarea v-model="form.descrizione" rows="2" auto-resize class="w-full"
+          :invalid="campiErrati.includes('descrizione')"
+        />
       </div>
       <div class="form-field">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_modalita_esito') }}</label>
@@ -189,7 +193,9 @@ async function handleSave() {
       </div>
       <div class="form-field step-form__toggle">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_obbligatorio_full') }}</label>
-        <ToggleSwitch v-model="form.obbligatorio" />
+        <ToggleSwitch v-model="form.obbligatorio"
+          :invalid="campiErrati.includes('obbligatorio')"
+        />
       </div>
     </div>
 

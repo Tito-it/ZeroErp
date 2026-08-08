@@ -34,7 +34,7 @@ const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 const { t } = useI18n()
 const store = useEmailAccountsStore()
 const isReadonly = useInjectReadonly()
-const { execute, loading: saving } = useApiHandler()
+const { execute, loading: saving, campiErrati } = useApiHandler()
 const { success, error: notifyError } = useNotify()
 
 // Defaults form: estratti come costante per evitare duplicazione tra branch
@@ -179,17 +179,23 @@ async function handleTest() {
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('amministrazione.email_codice') }}</label>
-            <InputText v-model="form.codice" :disabled="isEdit || isReadonly" fluid />
+            <InputText v-model="form.codice" :disabled="isEdit || isReadonly" fluid
+              :invalid="campiErrati.includes('codice')"
+            />
           </div>
           <div class="form-field">
             <label>{{ t('amministrazione.email_attivo') }}</label>
-            <ToggleSwitch v-model="form.attivo" :disabled="isReadonly" />
+            <ToggleSwitch v-model="form.attivo" :disabled="isReadonly"
+              :invalid="campiErrati.includes('attivo')"
+            />
           </div>
         </div>
 
         <div class="form-field">
           <label>{{ t('amministrazione.email_descrizione') }}</label>
-          <InputText v-model="form.descrizione" :disabled="isReadonly" fluid />
+          <InputText v-model="form.descrizione" :disabled="isReadonly" fluid
+            :invalid="campiErrati.includes('descrizione')"
+          />
         </div>
 
         <div class="form-grid-2col">

@@ -40,7 +40,7 @@ import { useConfirmAction } from '../../core/composables/useConfirmAction'
 
 const { t } = useI18n()
 const store = useOperatoriStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const { confirmAction } = useConfirmAction()
 const notify = useNotify()
 const isReadonly = useInjectReadonly()
@@ -388,7 +388,9 @@ const onClose = useDrawerClose(emit, 'cancelled')
             </div>
             <div class="form-field">
               <div class="operatore-toggle-row">
-                <ToggleSwitch v-model="form.attivo" input-id="tg-attivo" />
+                <ToggleSwitch v-model="form.attivo" input-id="tg-attivo"
+                  :invalid="campiErrati.includes('attivo')"
+                />
                 <label for="tg-attivo" class="operatore-toggle-label">
                   <span>{{ t('amministrazione.accesso_attivo.label') }}</span>
                   <small class="operatore-toggle-help">{{ t('amministrazione.accesso_attivo.help') }}</small>
