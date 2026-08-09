@@ -10,6 +10,142 @@
 
 ---
 
+## 10 agosto 2026
+
+> Copre il periodo **27 luglio – 10 agosto**. Due settimane dominate da due
+> cantieri trasversali (**la classe dei codici errore** e **i satelliti della
+> fattura**) e da un cambio di regime nei test: da qui in poi il pgTAP gira come
+> l'applicazione.
+
+**Anello 0 + 1 — La classe dei codici errore: il significato dell'errore torna a
+catalogo.** Il cantiere più grande del periodo (05→09 agosto, DB + BE conclusi).
+Prima, il significato di un errore viveva **solo** in un dizionario Python di
+659 voci scritte a mano: il catalogo DB non aveva il campo in cui la
+contraddizione si sarebbe vista. Ora un codice si registra **a catalogo** in
+`config.codici_errore` (**690 voci**) dichiarando **che cosa è** — la sua
+`classe`, dal vocabolario di `config.classi_errore` (**10 valori**) — e status
+HTTP e `ui_action` si **derivano**. Il modulo Python `error_policies_generated.py`
+è **generato** dal catalogo e presidiato in CI (`--check`). Tre conseguenze che
+valgono oltre il cantiere:
+
+- **il codice viaggia in un campo strutturato**, non nel testo: `SQLSTATE
+  P0001` con `CONSTRAINT` valorizzato = errore di dominio, letto in un solo punto
+  (`db_error_fields.py`) invece dei quattro che lo riscrivevano ognuno a modo
+  suo;
+- **i due registri del debito sono a zero**: `dbops.codici_errore_senza_policy`
+  (141 → 0 in tre giorni, 150 decisioni) e `dbops.messaggi_errore_codici_legacy`
+  (57 → 0). Restano entrambi, vuoti: un registro in pari non è un registro
+  inutile, ed è il posto dove atterra il prossimo codice;
+- **l'envelope d'errore porta `fields`**, i nomi dei campi del form da
+  correggere — l'informazione senza la quale `ui_action: highlight_form_fields`
+  non era azionabile.
+
+Vedi [brief-db-be-classe-codici-errore.md](work-done/brief-db-be-classe-codici-errore.md),
+[piano-db-classe-codici-errore.md](work-done/piano-db-classe-codici-errore.md),
+[piano-be-classe-codici-errore.md](work-done/piano-be-classe-codici-errore.md),
+[brief-db-codice-errore-strutturato.md](work-done/brief-db-codice-errore-strutturato.md),
+[brief-db-be-terzo-lato-presidio-codici.md](work-done/brief-db-be-terzo-lato-presidio-codici.md).
+
+**Anello 0 — 🔴 Il pgTAP gira come l'applicazione, ed entra in CI.** Dal 7 agosto
+il runner di default è l'utente applicativo (`PGTAP_RUNNER=app`) e non più
+l'owner: **le policy RLS sono esercitate a ogni corsa**. Un rosso ora può essere
+un **permesso** o una **policy**, non solo una fixture, e una fixture che scrive
+dove l'applicazione non scrive non passa più. I 29 file che hanno davvero bisogno
+dell'owner sono marcati uno per uno **con la ragione scritta**. La suite entra
+anche in **CI** — sempre sulle PR verso `main`, sui push a `Tito-dev` solo se
+toccano `db/` o `scripts/` — con una baseline sua, perché il DB della CI è
+ricostruito da zero e quello di sviluppo ha dati veri: **i rossi sono popolazioni
+diverse**. Tre righe di preambolo diventano obbligatorie e presidiate da un
+cancello (`BEGIN`, contesto, `SET CONSTRAINTS ALL IMMEDIATE`): senza, un file
+diventa **verde per sottrazione**. Debito noto: **86 rossi** su **442 file**.
+Vedi [brief-db-pgtap-runner-rls-baseline.md](work-done/brief-db-pgtap-runner-rls-baseline.md)
+e la guida [pgtap-come-si-scrive-un-test](../guide/pgtap-come-si-scrive-un-test.md).
+
+**Anello 0 — Presidio dei riferimenti morti (04 agosto).** 34 difetti sanati e
+cancello in CI: un riferimento a un oggetto DB che non esiste più non arriva più
+al merge. ⚠️ Il guardrail gira **dopo** `manage.py migrate` — non spostarlo.
+Vedi [brief-db-bonifica-riferimenti-morti.md](work-done/brief-db-bonifica-riferimenti-morti.md),
+[brief-be-bonifica-riferimenti-morti.md](work-done/brief-be-bonifica-riferimenti-morti.md).
+
+**Anello 3 (vendite) — I satelliti della fattura: il documento si racconta per
+intero.** Cantiere chiuso su tutte le fasi (29 luglio – 3 agosto). La fattura
+acquista ciò che le mancava per essere consultabile e stampabile senza risalire
+altrove:
+
+- **piano rate** (`vendite.fatture_scadenze`): generato nello step EMESSA dopo il
+  ricalcolo IVA, idempotente per costruzione (DELETE + INSERT), con lo **snapshot
+  del termine** in testata perché il documento si spieghi da sé. ⚠️ Non è uno
+  scadenzario: non esiste stato di pagamento della rata;
+- **snapshot di intestazione e indirizzi** congelati sul documento;
+- **drawer di consultazione**: testata decodificata + righe con kit risolti +
+  riepilogo IVA + piano rate **in un round-trip**, orchestrando gli **stessi**
+  lettori che alimentano il PDF — video e stampa raccontano lo stesso documento
+  per costruzione;
+- **note fattura**: sesto dominio del building block note partizionate,
+  ~15 righe di sola configurazione, zero migration;
+- **ritiro del generatore di righe SQL** e fix degli importi di riga a zero.
+
+Vedi [piano-db-satelliti-fattura.md](work-in-progress/piano-db-satelliti-fattura.md),
+[piano-be-fe-satelliti-fattura.md](work-in-progress/piano-be-fe-satelliti-fattura.md),
+[brief-db-generazione-scadenze-fattura.md](work-done/brief-db-generazione-scadenze-fattura.md),
+[brief-be-fe-drawer-fattura.md](work-done/brief-be-fe-drawer-fattura.md).
+
+**Anello 3 (vendite) — Emissione mirata e ritorno del lotto a DRAFT.** Il giro di
+fatturazione accetta ora un perimetro ristretto ai **gruppi fatturabili** scelti
+(stesso verbo, stessa idempotenza: assente = giro di massa invariato), e il lotto
+può **tornare a DRAFT** (slice 6-A) per rifare un giro andato storto. Vedi
+[brief-db-emissione-fattura-per-documento-sorgente.md](work-done/brief-db-emissione-fattura-per-documento-sorgente.md),
+[brief-be-fe-emissione-fattura-mirata.md](work-done/brief-be-fe-emissione-fattura-mirata.md),
+[piano-db-ritorno-lotto-a-draft.md](work-done/piano-db-ritorno-lotto-a-draft.md).
+
+**Anello 2 (documenti) — Ristampa fedele: il terzo percorso.** Ri-renderizzare un
+documento **com'era** — versione di template pinnata, anche OBSOLETA, e
+`context_json` congelato — senza persistere nulla. È distinto dallo **scarica
+originale** (il file su storage) e dal **genera nuovo documento** (modello e dati
+di oggi, che fino ad allora si chiamava impropriamente «ristampa»). La fedeltà è
+dichiarata in header: byte diversi = fedele nel contenuto, non un errore. Vedi
+[brief-ristampa-fedele-documenti.md](work-done/brief-ristampa-fedele-documenti.md).
+
+**Anello 1 (`ui`) — Le liste: il rapporto si è invertito.** Il numero scomodo del
+piano — 14 liste sullo standard contro 71 con `DataTable` grezza — non c'è più:
+**40 file montano il building block**, il registro del presidio è a **43/43**, e
+il Gruppo A si è chiuso **30/34** il 3 agosto. I **4 file rimasti sono fermi per
+decisione** (cassetti senza endpoint paginato), non per debito.
+
+> 🚨 **Ma il piano non è più tecnico.** `primevue`, `@primeuix/themes` e
+> `primeicons` erano **MIT** e passano tutti e tre alla **licenza PrimeUI**
+> (community/commerciale, con chiave) dalla nuova major. ZeroErp è **GPL v3
+> pubblica**. Non è un rischio di migrazione: è una **decisione di licenza**, e
+> non la prende un piano operativo. Il lavoro tecnico resta valido e utile con
+> qualunque esito.
+
+Vedi [piano-migrazione-primevue-5.md](work-in-progress/piano-migrazione-primevue-5.md)
+§1-bis e [consuntivo-personalizzazioni-liste-def.md](work-done/consuntivo-personalizzazioni-liste-def.md).
+
+**Anello 3 (`pagamenti`) — Si apre il cantiere delle contabili di pagamento
+(9-10 agosto).** Rimisurato il terreno e prese le decisioni portanti. Due
+scoperte cambiano la scala del lavoro: **nessuna funzione, in tutto il database,
+scrive `pagamenti.vendite_movimenti`** — il *posting* è documentato ma non
+implementato, quindi `fn_get_saldo_fattura` restituisce per costruzione sempre
+l'intero totale — e **i cataloghi dello schema erano già seminati** (la macchina
+a stati dell'abbinamento `DA_ABBINARE → ABBINATA → POSTATA` esiste da sempre a
+catalogo). Decisioni: l'abbinamento vive **sulla riga contabile e arriva alla
+rata**; lo stato della rata è **derivato**; il posting è una madre DB per testata
+contabile; **lo storno non esiste come concetto** — è una contabile con importi
+negativi, e la sicurezza sta in un controllo simmetrico `0 ≤ Σ ≤ importo`; il
+perimetro dei soldi non ancora attribuiti si deriva **dal conto di incasso**.
+Vedi [brief-incassi-riconciliazione-rate-promemoria.md](work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md)
+e, per il meccanismo dei fondi fattura da ripensare,
+[brief-db-fondo-fattura-ricalcolo-e-governo.md](work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo.md).
+
+**Manutenzione.** Bonifica indici: corrette le viste `dbops`, aggiunte guardie
+sull'`apply`, rimossi **48 indici ridondanti** (27 luglio). Commesse: permesso di
+cambio stato, **annullamento delle righe manuali** (non cancella: porta a
+`ANNULLATA` con motivo obbligatorio), guard di uscita. Lato BE, fan-out isolato
+con esito parziale.
+
+---
+
 ## 26 luglio 2026
 
 **Anello 3 (vendite) — Resi di vendita: il documento di rientro merce.** Sesto

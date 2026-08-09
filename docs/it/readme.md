@@ -152,7 +152,7 @@ datata è nel suo [changelog](./dev/mappa-concentrica-changelog.md).
 - **Integrazione AI v1**: operativa (11 tool, widget conversazionale, glossario IT)
 - **In test UI / consolidamento**: motore documentale, contratti/offerte BE+FE, suite UI documenti
 
-> Lavori in corso e previsti: vedi la [Roadmap nella Mappa Concentrica](./mappa-concentrica.md#roadmap).
+> Lavori in corso e previsti: vedi la [Roadmap nella Mappa Concentrica](./mappa-concentrica.md#3-roadmap).
 
 ---
 
@@ -182,9 +182,11 @@ Struttura essenziale:
 
 ## Roadmap
 
-La roadmap (lavori in corso, breve/medio/lungo termine) è mantenuta in un'unica fonte
-nella [Mappa Concentrica → Roadmap](./mappa-concentrica.md#roadmap). Lì le voci sono
-solo quelle aperte; la storia di ciò che è stato completato vive nel
+La roadmap è mantenuta in un'unica fonte nella
+[Mappa Concentrica §3](./mappa-concentrica.md#3-roadmap), organizzata in **lavori
+in corso** (ciascuno con il suo documento vivo), **previsti**, **decisioni
+aperte** — che non sono lavori — e **debito dichiarato**. Lì le voci sono solo
+quelle aperte; la storia di ciò che è stato completato vive nel
 [changelog della mappa](./dev/mappa-concentrica-changelog.md).
 
 ---

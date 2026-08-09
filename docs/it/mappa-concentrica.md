@@ -4,11 +4,19 @@
 >
 > Riferimento metodologico: [sviluppo-concentrico.md](sviluppo-concentrico.md)
 
-*Ultimo aggiornamento: 26 luglio 2026 — **Anello 3 (vendite): resi di vendita + fatturazione a contatore + cockpit processi fatturazione.** I **resi** sono il 6° documento del ciclo attivo (nascita dal DDT, conferma/annullo/ri-consegna, rinuncia con reso DEFINITIVO, due code di lavoro); la fatturazione di DDT e resi è rifondata su un **contatore di merce** (chiusi due bug di doppia fatturazione); dalle tre lenti si **agisce** («Fattura adesso», «Rendi definitive», stampa/ristampa massiva) con la **stampa massiva fuori dal lock del registro fiscale** (task che accoda → worker che drena) — la fattura è il **6° dominio del motore documentale**. Sulla commessa: **quantità immutabili** dopo la fatturazione e **porta oneri** (articolo↔causale 1:1, ogni onere con la propria IVA). **Anello 0**: estratta la **coda lavori generica** `dbops.coda_lavori` (fondazione asincrona dell'ERP). **Anello 1 (`ui`)**: **dashboard home** a card KPI configurabili — secondo consumatore dello schema dopo le liste. Dettaglio datato e completo nel [changelog della mappa](dev/mappa-concentrica-changelog.md).*
+*Ultimo aggiornamento: **10 agosto 2026** — **Anello 0+1: la classe dei codici errore.** Il significato di un errore torna **a catalogo** (`config.codici_errore`, 690 voci, con la sua `classe` da un vocabolario di 10): status HTTP e `ui_action` si **derivano**, il dizionario Python è **generato**, il codice viaggia in un **campo strutturato** dell'eccezione, e i **due registri del debito sono a zero**. **Anello 0**: il **pgTAP gira come l'applicazione** — le policy RLS sono esercitate a ogni corsa — ed **entra in CI** con una baseline sua; presidio dei riferimenti morti in CI. **Anello 3 (vendite)**: chiusi i **satelliti della fattura** (piano rate, snapshot intestazione/indirizzi, drawer di consultazione, note), **emissione mirata** per gruppo fatturabile e **ritorno del lotto a DRAFT**. **Anello 2**: la **ristampa fedele** è il terzo percorso di stampa. **Anello 1 (`ui`)**: il rapporto delle liste è **invertito** (40 file sul building block, registro 43/43) — ma il piano PrimeVue 5 è ora una **decisione di licenza**, non tecnica. **Anello 3 (`pagamenti`)**: si apre il cantiere delle **contabili di pagamento**. Dettaglio datato e completo nel [changelog della mappa](dev/mappa-concentrica-changelog.md).*
 >
 > *Aggiornamenti precedenti: vedi [changelog della mappa](dev/mappa-concentrica-changelog.md).*
+>
+> **Come è fatto questo documento.** §1 la **forma** del sistema (anelli, natura,
+> dipendenze) — cambia di rado. §2 lo **stato corrente** per anello — cambia a
+> ogni milestone. §3 la **roadmap**: solo lavori in corso o previsti, mai storia.
+> §4 le **lezioni metodologiche**, che spiegano *perché* la mappa è fatta così.
+> La cronologia datata sta **solo** nel changelog.
 
 ---
+
+## 1 · La forma del sistema
 
 ## Visione d'insieme
 
@@ -49,7 +57,9 @@
 
 ## Cronologia aggiornamenti
 
-La storia datata degli aggiornamenti (cosa e' atterrato, quando, con quale impatto sulla mappa) e' in [mappa-concentrica-changelog.md](dev/mappa-concentrica-changelog.md). Questo documento mostra solo lo **stato corrente** per anello, piu' le sezioni "Evoluzione prevista" (in corso / breve / medio termine).
+La storia datata (cosa e' atterrato, quando, con quale impatto sulla mappa) vive **solo** in [mappa-concentrica-changelog.md](dev/mappa-concentrica-changelog.md). Qui c'e' lo **stato corrente** per anello (§2) e cio' che e' aperto (§3).
+
+⚠️ **Non aggiungere cronologia a questo documento.** E' la deriva che lo ha gonfiato in passato: ogni riga «fatto il giorno X» che entra nelle tabelle di stato le trasforma in un secondo changelog, meno curato del primo.
 
 ## Natura degli anelli (post-aggiornamento manifesto §III bis)
 
@@ -69,6 +79,8 @@ Ogni anello e' classificato come **autocontenuto** o **di servizio**. La distinz
 
 ---
 
+## 2 · Stato corrente per anello
+
 ## Anello 0 — Nucleo Infrastrutturale
 
 > **Natura: di servizio.** Il protocollo operativo del sistema. Si tocca solo per correggere limiti reali.
@@ -77,7 +89,7 @@ Ogni anello e' classificato come **autocontenuto** o **di servizio**. La distinz
 | ------------- | ---------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `core`        | App Django | Operativo | error_manager, middleware, permissions, endpoint_helpers, pagination, throttling, tracciamento processi/job, audit sessioni, request log                                                  |
 | `dbops`       | Schema DB  | Operativo | fn_run_automations, apply_fk_index_policy, registry task, vw_duplicate_indexes, audit_log, sessioni_utente, request_log, **automazione daterange**, **anti-overlap parametrico** (`automazione_overlap`: `where_predicate`/`key_expressions` + runner notturno auto-guarigione), **chiusura parametrica per scadenza**, **coda lavori generica** (`coda_lavori`: job queue DB-native transazionale, senza broker) |
-| `script`      | Schema DB  | Operativo | fn_log_and_raise_error, viste e funzioni riusabili, helpers generici trigger (guard coerenza BoM, immutabilita`)                                                                          |
+| `script`      | Schema DB  | Operativo | fn_log_and_raise_error (**il codice errore viaggia nel campo strutturato `CONSTRAINT` su `P0001`**, non nel testo), viste e funzioni riusabili, helpers generici trigger (guard coerenza BoM, immutabilità), `fn_get_conto_bancario_predefinito` |
 | `public`      | Schema DB  | Operativo | version_info                                                                                                                                                                              |
 | `maintenance` | Schema DB  | Operativo | Job schedulati pgAgent, job_run_log                                                                                                                                                       |
 
@@ -88,6 +100,8 @@ Ogni anello e' classificato come **autocontenuto** o **di servizio**. La distinz
 - Pattern uniformi: `handle_post_json`, paginazione, throttling, search validators
 - Automazioni DB: audit fields, tx_id, storicizzazione, lock colonne, protezione attivo, **`validita` STORED generated** (PG 18, nessun trigger), chiusura parametrica per scadenza (`dbops.fn_apply_chiusura_scadenze`)
 - **Coda lavori generica** (`dbops.coda_lavori`): esecuzione asincrona di job per qualsiasi dominio — accodamento transazionale nella stessa transazione che genera il lavoro, worker che drena, idempotenza. Fondazione async dell'ERP: primo consumatore il giro fatturazione on-demand. Guida: [gestione-code-di-lavoro.md](guide/gestione-code-di-lavoro.md)
+- **Errore di dominio come contratto** (agosto 2026): il codice viaggia in un **campo strutturato** dell'eccezione (`SQLSTATE P0001` + `CONSTRAINT`), letto in **un solo punto** lato backend. Il suo **significato** — la `classe` — sta a catalogo in Anello 1; status HTTP e `ui_action` si derivano. Due registri del debito (`dbops.codici_errore_senza_policy`, `dbops.messaggi_errore_codici_legacy`) restano **a zero righe**, come presidio di ciò che arriverà
+- **Presidio dei riferimenti morti** (agosto 2026): un riferimento a un oggetto DB che non esiste più non arriva al merge. ⚠️ Il guardrail gira **dopo** `manage.py migrate`
 - **Tracciamento processi e job**: API per audit log, task registry multi-dominio, job run log (6 endpoint REST, 27 test)
 - **Audit sessioni**: login/refresh JWT tracciati in `dbops.sessioni_utente` con IP, user_agent, request_id (19 test)
 - **Request logging**: ogni request `/api/*` registrata in `dbops.request_log` con metodo, path, status, durata
@@ -107,6 +121,19 @@ Implementato il 6 marzo 2026 (vedi `docs/it/dev/work-done/Audit-logging-sessioni
 
 Estensioni non-breaking: nuove tabelle in `dbops`, nuovo middleware in `core`, override view JWT. Nessun contratto esistente modificato. Gli anelli esterni ne beneficiano automaticamente senza alcuna modifica al proprio codice.
 
+### 🔴 I test girano come l'applicazione (dal 7 agosto 2026)
+
+Cambio di regime, non una rifinitura: il runner pgTAP di default è l'**utente
+applicativo**, non l'owner. **Le policy RLS sono esercitate a ogni corsa.**
+
+| | |
+| --- | --- |
+| Conseguenza | un rosso può essere un **permesso** o una **policy**, non solo una fixture; una fixture che scrive dove l'applicazione non scrive **non passa più** |
+| Eccezioni | 29 file marcati `owner`, ognuno **con la ragione scritta** |
+| In CI | sempre sulle PR verso `main`; sui push a `Tito-dev` solo se toccano `db/` o `scripts/`. Baseline **separata**: il DB della CI è ricostruito da zero, quello di sviluppo ha dati veri — i rossi sono **popolazioni diverse** |
+| Preambolo obbligatorio | `BEGIN`, riga di contesto, `SET CONSTRAINTS ALL IMMEDIATE` — presidiato da un cancello. Senza, un file diventa **verde per sottrazione** |
+| Debito noto | **86 rossi** su **442 file**. È un registro che deve calare, non una lista di eccezioni |
+
 ### Stabilita'
 
 Stabile. Modifiche solo per correzioni o estensioni non-breaking (nuove policy, nuovi middleware).
@@ -119,7 +146,7 @@ Stabile. Modifiche solo per correzioni o estensioni non-breaking (nuove policy, 
 
 | Componente     | Tipo       | DB        | Backend   | Frontend  | Descrizione                                                                                                                |
 | -------------- | ---------- | --------- | --------- | --------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `config`       | App Django | Operativo | Operativo | Operativo | Stati, nazioni, UO, termini pagamento, priorita', canali; policy operative trasversali; impostazioni parametri multi-scope |
+| `config`       | App Django | Operativo | Operativo | Operativo | Stati, nazioni, UO, termini pagamento, priorita', canali; policy operative trasversali; impostazioni parametri multi-scope; **catalogo dei codici errore** (`codici_errore` 690 voci + `classi_errore` 10) — il **significato** di un errore è un dato di riferimento, lo status HTTP no |
 | `anagrafiche`  | App Django | Operativo | Operativo | Operativo | Soggetti, indirizzi, contatti, risorse umane, emittenti fiscali, billing account                                           |
 | `catalogo`     | App Django | Operativo | Operativo | Operativo | Articoli (CRUD, UoM, BoM, note) — **completato e testato** (work-done/gestione-articoli.md)                                |
 | `amm-software` | App Django | Operativo | Operativo | Operativo | Gestione operatori, permessi riepilogo, profili reparto, audit log (solo ADMIN), drawer dedicato gestione permessi         |
@@ -146,7 +173,7 @@ Stabile. Modifiche solo per correzioni o estensioni non-breaking (nuove policy, 
 | Catalogo — Unita' di Misura     | Operativo  | Lista, drawer CRUD, conversioni UoM, lookup generico whitelist                                                                                                          |
 | Impostazioni Parametri          | Operativo  | Lista multi-scope (default/emittente/gruppo/utente), drawer override con selettore scope (Personale/Emittente) per admin, `PARAMETER_SCOPE` come unica fonte di verita' |
 | UI — Liste (DB/BE)              | Operativo  | Schema ui (changeset atterrati): catalogo colonne, preset sistema/profilo/EF, preferenze utente. App Django `ui` con repository, servizi (incl. admin + export) ed endpoint REST.                       |
-| UI — Liste (Frontend)           | Operativo  | `ListaConfigurabile.vue`, `ListaColonneModal.vue`, `useListaConfig` + viste admin (Gestione/Personalizzazioni liste). Primi consumatori: liste clienti/fornitori.                           |
+| UI — Liste (Frontend)           | Operativo  | `ListaConfigurabile.vue`, `ListaColonneModal.vue`, `useListaConfig` + viste admin. ⭐ **Il rapporto è invertito** (agosto 2026): da 14 liste sullo standard contro 71 con `DataTable` grezza a **40 file sul building block**, registro del presidio **43/43**. I **4 file rimasti sono fermi per decisione** (cassetti senza endpoint paginato), non per debito |
 | UI — Dashboard home             | Operativo  | Card KPI configurabili: catalogo widget + composizione per profilo/emittente + preferenza utente (`ui.fn_resolve_dashboard_config`), filtro sui permessi dell'operatore, drawer di personalizzazione. Validata in-app (luglio 2026). |
 
 ### Cosa fornisce agli anelli esterni
@@ -179,6 +206,14 @@ Con la **dashboard home** (luglio 2026) `ui` acquisisce la **seconda famiglia di
 
 Riferimento architetturale: `docs/it/dev/work-done/sviluppo-personalizzazioni-liste.md`. Sviluppi differiti: `docs/it/dev/work-in-progress/sviluppo-personalizzazioni-liste_def.md`.
 
+> 🚨 **Il piano PrimeVue 5 non è più una questione tecnica (agosto 2026).**
+> `primevue`, `@primeuix/themes` e `primeicons` erano **MIT** e passano tutti e
+> tre alla **licenza PrimeUI** (community/commerciale, con chiave) dalla nuova
+> major. ZeroErp è **GPL v3 pubblica**: è una **decisione di licenza**, e non la
+> prende un piano operativo. Il disaccoppiamento tecnico è chiuso e resta valido
+> con qualunque esito — è il motivo per cui conviene averlo fatto prima.
+> Vedi [piano-migrazione-primevue-5.md](dev/work-in-progress/piano-migrazione-primevue-5.md) §1-bis.
+
 ### Stabilita'
 
 Stabile. Cresce per aggiunta di nuove tabelle config (es. `config.canali_pratiche` aggiunta per pratiche) senza rompere quanto esistente.
@@ -196,7 +231,7 @@ Stabile. Cresce per aggiunta di nuove tabelle config (es. `config.canali_pratich
 | Componente  | Tipo       | DB        | Backend   | Frontend   | Descrizione                                                                                                                                                          |
 | ----------- | ---------- | --------- | --------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `pratiche`  | App Django | Operativo | Operativo | Operativo  | Workflow engine, giornale, generazione cross-pratica, handler dispatch, sospensioni, calcoli tempo, macchina a stati, note, allegati; **assegnazione flusso operatore/reparto + coda lavoro** (pannello "Le mie attività"), **esito configurabile flussi**, **aggancio documento↔flusso**, **audit utente reale** |
-| `documenti` | App Django | Operativo | Operativo | Operativo  | Motore documentale parametrico: template versionati, asset documentali, render PDF WeasyPrint, archivio documenti generati. **6 domini consumatori** (preventivi, offerte, contratti, ordini, DDT, **fatture**); con le fatture arriva anche la **stampa massiva via coda** (task che accoda → worker che drena, fuori dal lock del registro fiscale) |
+| `documenti` | App Django | Operativo | Operativo | Operativo  | Motore documentale parametrico: template versionati, asset documentali, render PDF WeasyPrint, archivio documenti generati. **6 domini consumatori** (preventivi, offerte, contratti, ordini, DDT, **fatture**); con le fatture arriva anche la **stampa massiva via coda** (task che accoda → worker che drena, fuori dal lock del registro fiscale). ⭐ **Tre percorsi di stampa distinti** (agosto 2026): *genera nuovo* (modello e dati di oggi), *scarica originale* (il file su storage), **ristampa fedele** (ri-renderizza com'era: versione di template pinnata anche OBSOLETA + contesto congelato, senza persistere nulla) |
 
 ### Cosa fornisce agli anelli esterni
 
@@ -224,41 +259,19 @@ Stabile. Cresce per aggiunta di nuove tabelle config (es. `config.canali_pratich
 
 Non e' un processo di business specifico (come vendite o acquisti). E' l'**infrastruttura di processo** che tutti i domini usano. E' al servizio dei processi, non un processo in se'.
 
-### Stato sviluppo dettagliato
+### Riferimenti
 
-**v1 (4-6 marzo 2026):**
+Documentazione: `docs/it/dev/work-done/gestione-pratiche-v2.md` — API:
+[api_pratiche_list](backend/pratiche/manual/api_pratiche_list) ·
+[api_pratiche_note](backend/pratiche/manual/api_pratiche_note) ·
+[api_pratiche_allegati](backend/pratiche/manual/api_pratiche_allegati).
+Piano v1 (storico): `docs/it/dev/work-done/piano-gestione-pratiche.md`.
 
-| Fase                       | Stato | Riferimento                                                   |
-| -------------------------- | ----- | ------------------------------------------------------------- |
-| DB-1..DB-7                 | FATTO | Tabelle, funzioni, trigger, seed, test pgTAP                  |
-| BE-1..BE-5                 | FATTO | App setup, repository, service, API (19 endpoint), 90 test    |
-| BE-6 Sospensioni + Calcoli | FATTO | Service, repository, API, 26 test unitari, 18 smoke test curl |
-| BE-7 Macchina a stati      | FATTO | Transizioni validate da trigger DB (config-driven)            |
-
-**v2 (28-29 marzo 2026):**
-
-| Fase                           | Stato | Riferimento                                                                       |
-| ------------------------------ | ----- | --------------------------------------------------------------------------------- |
-| DB: collegamento ruolo/istanza | FATTO | ALTER + trigger guard contesto + codice PRA via sistema_codici                    |
-| BE: JOIN display fields        | FATTO | list/get pratiche e flussi con 7 JOIN, named columns (no indici posizionali)      |
-| BE: contesto anagrafico        | FATTO | soggetto_id + soggetto_ruolo_id + istanza_utility_id, validazione coerenza        |
-| BE: guard pre/post-attivazione | FATTO | Verifica stato BA del soggetto per tipo prestazione                               |
-| BE: order_by + search          | FATTO | Ordinamento dinamico con whitelist, ricerca ILIKE su codice/descrizione/soggetto  |
-| BE: filtro data                | FATTO | data_da/data_a con default anno-1                                                 |
-| BE: note CRUD                  | FATTO | 4 endpoint (GET/POST/PATCH/DELETE), 6 test, giornale trigger                      |
-| BE: allegati CRUD              | FATTO | 3 endpoint (GET/POST/DELETE, immutabili), 4 test, giornale trigger                |
-| FE: lista pratiche             | FATTO | SearchTable con filtri (stato, priorita', data_da/data_a, search), display fields |
-| FE: drawer dettaglio           | FATTO | 5 tab (Dati, Flussi, Note, Allegati, Giornale), azioni stato, severity            |
-| FE: drawer creazione           | FATTO | Soggetto opzionale (SoggettoResolver), ruolo, tipo prestazione, priorita'         |
-| FE: tab flussi                 | FATTO | Lista compatta, crea/avvia/completa flusso inline                                 |
-| FE: tab note                   | FATTO | Form inline crea + lista con edit/delete                                          |
-| FE: tab allegati               | FATTO | Lista metadati con delete (upload posticipato)                                    |
-| FE: tab giornale               | FATTO | Timeline audit con icone/severity per tipo azione                                 |
-| Test totali                    | 115   | 105 Django (mock CI) + 25 smoke test bash                                         |
-
-Documentazione: `docs/it/dev/work-done/gestione-pratiche-v2.md` | API: [api_pratiche_list](backend/pratiche/manual/api_pratiche_list) | [api_pratiche_note](backend/pratiche/manual/api_pratiche_note) | [api_pratiche_allegati](backend/pratiche/manual/api_pratiche_allegati)
-
-Piano v1 (storico): `docs/it/dev/work-done/piano-gestione-pratiche.md`
+ℹ️ Il dettaglio fase-per-fase di v1 (marzo 2026) e v2 (marzo 2026) — 115 test,
+19 endpoint, le tabelle con le righe «FATTO» — è **storia** e vive nel
+[changelog](dev/mappa-concentrica-changelog.md). Qui resta lo stato: operativo su
+DB, backend e frontend, **validato dal primo consumatore**, in attesa del
+secondo.
 
 ---
 
@@ -271,7 +284,7 @@ Piano v1 (storico): `docs/it/dev/work-done/piano-gestione-pratiche.md`
 | `vendite`     | App Django | Operativo | Operativo | Ciclo attivo: preventivi rev2, offerte, contratti, **ordini operativi**, DDT, **resi**, fatture, pipeline fatturazione (**batch automatico a corsie + cockpit di azione dalle tre lenti**), lotti, commesse multi-sorgente (quantità immutabili + **porta oneri**), **listini v3**, **pratica PREVENTIVI** (primo consumatore del motore `pratiche`), stampa PDF di 6 domini via `documenti` (fatture con **stampa massiva a coda**) |
 | `acquisti`    | App Django | Operativo | Stub      | Ciclo passivo: richieste offerta, ordini, DDT, fatture                                                                                                                        |
 | `magazzino`   | App Django | Operativo | Stub      | Movimenti, giacenze, lotti, seriali                                                                                                                                           |
-| `pagamenti`   | App Django | Operativo | Stub      | Scadenze, riconciliazioni                                                                                                                                                     |
+| `pagamenti`   | App Django | Parziale  | Stub      | ⚠️ **Modello disegnato, non in esercizio** (rimisurato 10-08-2026): 10 tabelle con vincoli e trigger e **cataloghi già seminati** (stati contabile/riga, centri), ma **transazionali a 0 righe** e **nessuna funzione che scriva `vendite_movimenti`** — il *posting* è documentato e non implementato. Cantiere aperto con le decisioni portanti prese |
 | `contabilita` | App Django | Operativo | Stub      | Piano conti, registrazioni, partite                                                                                                                                           |
 | `storico`     | App Django | Operativo | Stub      | Audit temporale, storicizzazione                                                                                                                                              |
 
@@ -311,7 +324,9 @@ I processi **massivi** (lotto fatturazione, import batch) mantengono la propria 
 | Registry task DB multi-dominio          | Operativo                                                                     |
 | Dispatch task con implementation_key    | Operativo                                                                     |
 | Runtime task tracing                    | Operativo                                                                     |
-| Builder XML SDI                         | In corso (payload pronto, generazione XML da fare)                            |
+| Satelliti della fattura                 | Operativo — **cantiere chiuso su tutte le fasi** (agosto 2026): **piano rate** (`fatture_scadenze`, generato nello step EMESSA dopo il ricalcolo IVA, idempotente, con snapshot del termine in testata), snapshot di **intestazione** e **indirizzi**, **drawer di consultazione** in un round-trip sugli stessi lettori del PDF, **note fattura** (6° dominio del BB note), ritiro del generatore di righe SQL |
+| Emissione mirata + ritorno a DRAFT      | Operativo — il giro accetta un perimetro ristretto ai **gruppi fatturabili** (stesso verbo, assente = giro di massa invariato); il lotto può **tornare a DRAFT** per rifare un giro andato storto (agosto 2026) |
+| Builder XML SDI                         | In corso (payload pronto, generazione XML da fare). ⚠️ Il blocco **`2.4 DatiPagamento`** non è generato: `fn_prepare_sdi_payload` non nomina né le scadenze né il blocco |
 | Persistenza esito SDI                   | Da fare                                                                       |
 | Commesse (push, orchestrator, handlers) | Operativo — multi-sorgente (1 ROOT + N COLLEGATO), push idempotente, snapshot pricing v5 nel push, capability azioni stato **con motivo**, pull→`attivita_fatturabili` agganciata agli step DRAFT, **guard di uscita** (niente chiusura/annullo con righe ancora fatturabili), RLS scope emittente anche in scrittura |
 | Quantità immutabili + porta oneri       | Operativo — quantità già fatturate immutabili (guard `commesse_attivita`/`attivita_fatturabili`, cod. 550/551); oneri manuali via `config.causali_onere` + modello **articolo↔causale 1:1** (ogni onere porta la propria IVA), madre `fn_aggiungi_onere_commessa` con log (cod. 552-554, race `segment_key` chiusa a 557→409) (luglio 2026) |
@@ -357,6 +372,77 @@ Nessuna dipendenza inversa. Nessuna dipendenza laterale tra processi di anello 3
 Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — vendite usa `core` e `config` senza passare per `pratiche`. Questo non viola la direzione delle dipendenze, sempre dall'esterno verso l'interno: descrive semplicemente come certi tipi di informazione attraversano il tronco (la linfa, nella metafora del vocabolario).
 
 ---
+
+## 3 · Roadmap
+
+> **Regole di questa sezione**, per non farla tornare com'era:
+>
+> 1. solo lavori **in corso o previsti** — ciò che è finito esce e va nel
+>    [changelog](dev/mappa-concentrica-changelog.md);
+> 2. un'area **operativa con rifiniture aperte** non è un lavoro in corso: la
+>    rifinitura si annota nella tabella del suo anello, non qui;
+> 3. ogni voce di «In corso» ha un **documento vivo**. Senza documento non è in
+>    corso: è un'intenzione, e va sotto «Previsti».
+
+### 🔨 In corso — con cantiere aperto
+
+| Cosa | Dove sta | Stato |
+| --- | --- | --- |
+| **Incassi e contabili di pagamento** | [brief-incassi…](dev/work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md) | Decisioni portanti prese (10-08). Slice 1 = **posting + stati + correzione**. Ordine deciso: incassi → `2.4 DatiPagamento` → SDI |
+| **Fatturazione elettronica SDI** | payload pronto | Builder XML + persistenza esito. Dipende dal blocco `2.4`, che dipende dalle rate: ora esistono |
+| **Liste configurabili / PrimeVue** | [piano-migrazione-primevue-5.md](dev/work-in-progress/piano-migrazione-primevue-5.md) | Disaccoppiamento **chiuso**; l'upgrade è fermo su una **decisione di licenza** (vedi Anello 1) |
+| **Diagnostica di produzione senza accesso al DB** | [analisi-diagnostica…](dev/work-in-progress/analisi-diagnostica-produzione-senza-accesso-db.md) | Analisi aperta: comporre le fondamenta già esistenti, non fondarne di nuove |
+| **Integrazione AI v2** | [integrazione-ai-sviluppo-v2.md](dev/work-in-progress/integrazione-ai-sviluppo-v2.md) | Contesto dinamico e nuovi tool |
+
+### 🎯 Previsti — decisi ma non aperti
+
+- **Nota di credito**: il ramo economico dei resi. Il reso oggi porta quantità e
+  motivo, **nessun valore**; la NC attribuibile alla merce è la slice successiva
+- **Secondo consumatore di `pratiche`** (Fase F, candidata assistenza/CRM): è ciò
+  che promuove le sue astrazioni da *proposte* a *contratti* (manifesto §7)
+- **Rettifiche prezzi (DB-L4)**: motore delta + canali manuale/automatico
+- **Permessi v3** — sotto-oggetti padre/figlio (v2 a livello oggetto è operativa)
+- **Autenticazione 2FA + provider esterni**
+- **Fondo fattura — ripensare il meccanismo**:
+  [brief-db-fondo-fattura…](dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo.md).
+  Non urgente oggi, lo diventa col primo incasso reale
+- **Upload file allegati pratiche** (storage filesystem/object storage)
+
+### 🧭 Decisioni aperte — non sono lavori
+
+Stanno qui perché **bloccano** o **riorientano** dei lavori, e nessun piano
+operativo può prenderle al posto di una persona.
+
+| Decisione | Cosa blocca |
+| --- | --- |
+| 🚨 **Licenza PrimeVue** (MIT → PrimeUI su `primevue`, `@primeuix/themes`, `primeicons`) contro **GPL v3 pubblica** | l'upgrade a PrimeVue 5. Il lavoro tecnico è già fatto e vale con qualunque esito |
+| **API di dominio portale/shop** (fatture, ordini, catalogo B2C) | l'infrastruttura auth è pronta e le policy RLS sono in dry-run: si apre «quando il business lo richiederà» |
+| **Riconciliazione pratiche ↔ pipeline vendite** | i due motori di orchestrazione convivono per scope diversi; la decisione resta **rinviata**, non dimenticata |
+
+### 🧹 Debito dichiarato — deve calare, e si misura
+
+- **pgTAP**: **86 rossi noti** su 442 file. ⚠️ Un file che fallisce nel *fixture*
+  non esegue nessuna asserzione: la sua copertura vale **zero**, non «parziale»,
+  ed è un'area che *sembra* coperta
+- **Debito documentale**: le 8 guide dei satelliti fattura; `pagamenti.sepa_mandati`
+  senza `manual` e fuori dall'elenco della sua guida
+- **Test UI reali** su Articoli, UoM, Pratiche, Soggetti, Clienti, Fornitori
+- **Smoke UI end-to-end** del giro pratica PREVENTIVI (accettazione →
+  smistamento → ordine/commessa)
+- **Seed azioni di processo** per i domini ancora scoperti (vendite e pratiche
+  sono seedate)
+
+### 🌅 Lungo termine
+
+- Tutti i processi di anello 3 usano `pratiche` per tracciabilita' e orchestrazione
+- Il giornale di bordo diventa la vista unificata sulle attivita' dell'azienda
+- Canali esterni (portale clienti, app tecnica) operano tramite flussi con visibilita' controllata
+
+---
+## 4 · Lezioni metodologiche
+
+> Perché la mappa è fatta così. Non è stato: è l'**anticorpo** per chi
+> costruirà il prossimo anello. Si legge una volta, non a ogni consultazione.
 
 ## Caso di studio: pratiche prima di vendite
 
@@ -446,58 +532,29 @@ Riferimento implementazione: `docs/it/dev/work-done/automazione-chiusure-scadenz
 
 ---
 
-## Roadmap
 
-> Solo lavori **in corso o previsti**. La storia di ciò che è stato completato
-> (cronologia datata e sprint pregressi) vive nel [changelog](dev/mappa-concentrica-changelog.md).
+## 5 · Come aggiornare questo documento
 
-### In corso
-
-- **Gestione Soggetti**: backend + frontend completati — in fase di test UI
-- **Gestione Geografica**: operativo — UI da migliorare
-- **Gestione Clienti/Fornitori**: drawer end-to-end operativo, v2 (subentro/disdetta) pianificata
-- **Gestione Pratiche v2**: validata con il primo consumatore reale (pratica PREVENTIVI, giugno 2026) — secondo consumatore (Fase F: candidata assistenza/CRM) da avviare
-- **Nota di credito**: ramo economico dei resi — il reso oggi è senza valori (quantità e motivo); la NC attribuibile alla merce, con quantità, è la slice successiva
-- **Fatturazione elettronica SDI**: builder XML (payload pronto) + persistenza esito — l'invio non è ancora esposto dal cockpit
-- **Diagnostica di produzione senza accesso al DB**: analisi aperta (luglio 2026) — comporre e classificare le fondamenta già esistenti (storicizzazione, tracciabilità, genealogia, canale di sistema), non fondarne di nuove
-- **Integrazione AI v2**: evoluzione con contesto dinamico e nuovi tool — WIP
-- **Autenticazione 2FA + provider esterni**: pianificato, non ancora in sviluppo
-- **Permessi v3** (sotto-oggetti padre/figlio): in pianificazione (v2 a livello oggetto già operativa)
-- **Rettifiche prezzi (DB-L4)**: motore delta + canali manuale/automatico — pianificato in WIP dedicato
-
-### Breve termine
-
-- Test UI reali su Articoli, UoM, Pratiche, Soggetti, Clienti, Fornitori
-- Smoke UI end-to-end del giro pratica PREVENTIVI (accettazione → smistamento → ordine/commessa)
-- Seed azioni processo per gli altri domini + prop `action` sui componenti (vendite/pratiche gia' seedate)
-- Upload file allegati pratiche (storage filesystem/object storage)
-- Rientro del debito pgTAP: la baseline dei rossi noti deve calare (131 → 111 dopo la bonifica sorgente polimorfa; un file rosso nel fixture ha copertura **zero**, non parziale)
-
-### Medio termine
-
-- Secondo consumatore di `pratiche` (Fase F: candidata assistenza/CRM) — promozione delle astrazioni a contratti
-- Integrazione `anagrafiche` → `pratiche`: onboarding cliente/fornitore tracciato
-- Attivazione handler flusso per automazioni specifiche
-- pgAgent job riattivazione automatica sospensioni
-
-### Lungo termine
-
-- Tutti i processi di anello 3 usano `pratiche` per tracciabilita' e orchestrazione
-- Il giornale di bordo diventa la vista unificata sulle attivita' dell'azienda
-- Canali esterni (portale clienti, app tecnica) operano tramite flussi con visibilita' controllata
-
----
-
-## Come aggiornare questo documento
-
-1. **Nuovo componente**: aggiungere nella tabella dell'anello corretto, con stato DB e Backend
-2. **Cambio stato**: aggiornare la colonna Stato (Stub → DA FARE → Operativo)
-3. **Nuova dipendenza**: aggiungere nella matrice e verificare che rispetti la direzione degli anelli
+1. **Nuovo componente**: aggiungere nella tabella dell'anello corretto (§2), con stato DB e Backend
+2. **Cambio stato**: aggiornare la colonna Stato (Stub → Parziale → Operativo)
+3. **Nuova dipendenza**: aggiungere nella matrice (§2) e verificare che rispetti la direzione degli anelli
 4. **Nuovo anello**: se emerge un livello intermedio, inserirlo e ri-numerare
-5. **Milestone datata**: aggiornare il paragrafo "Ultimo aggiornamento" in testa, spostando il precedente nel [changelog](dev/mappa-concentrica-changelog.md) — la storia vive li', non qui
+5. **Milestone datata**: riscrivere «Ultimo aggiornamento» in testa e **spostare il precedente nel [changelog](dev/mappa-concentrica-changelog.md)** — la storia vive lì, non qui
 
-> La mappa deve riflettere la realta', non le intenzioni. Aggiornare solo quando qualcosa cambia concretamente.
+### ⚠️ Le tre derive che hanno gonfiato questo documento
+
+Sono già successe. Riconoscerle costa meno che disfarle.
+
+| Deriva | Come si riconosce | Dove va invece |
+| --- | --- | --- |
+| **Cronologia nelle tabelle di stato** | righe con una data e la parola «fatto» | nel changelog |
+| **Rifiniture spacciate per lavori in corso** | «operativo — UI da migliorare» dentro la roadmap | nella tabella del suo anello |
+| **Voci senza documento** | una riga di roadmap che nessun brief sostiene | sotto «Previsti», o via |
+
+> La mappa deve riflettere la **realtà**, non le intenzioni — e nemmeno il
+> **ricordo**. Se una voce non si può verificare oggi contro il codice o un
+> documento vivo, non è stato: è memoria.
 
 ---
 
-*Mappa Concentrica — ZeroERP (26 luglio 2026)*
+*Mappa Concentrica — ZeroERP (10 agosto 2026)*
