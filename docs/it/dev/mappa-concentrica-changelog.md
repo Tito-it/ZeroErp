@@ -141,7 +141,7 @@ CRUD (`/<dominio>/<id>/indirizzi/`) su **tutti e 5 i domini**
 (preventivi/offerte/contratti/ordini/DDT) e **auto-assegnazione** dell'indirizzo
 di default (indirizzo di ruolo `CON`, fallback `FATT`) in create + fallback
 post-push. Pilota sul DDT, poi rollout ai 4 drawer. Vedi
-[brief-design-indirizzi-documenti-vendita.md](work-in-progress/brief-design-indirizzi-documenti-vendita.md).
+[brief-design-indirizzi-documenti-vendita.md](work-done/brief-design-indirizzi-documenti-vendita.md).
 
 **Anello 3 (vendite) — Riepilogo IVA DDT + colonna Emittente lista.** Vista
 derivata `vw_ddt_riepilogo_iva_dettaglio` (una riga per aliquota, righe con prezzo

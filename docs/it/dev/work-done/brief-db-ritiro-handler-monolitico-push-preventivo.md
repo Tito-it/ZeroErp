@@ -15,7 +15,7 @@
 > aggiornato. **Tutti i criteri §4 soddisfatti.**
 >
 > **Origine**: residuo di [analisi-uniformita-pratica-preventivi.md](analisi-uniformita-pratica-preventivi.md)
-> §7.3 / tracker [piano-be-fe-uniformita-pratica-preventivi.md](../work-in-progress/piano-be-fe-uniformita-pratica-preventivi.md) (Fase 3).
+> §7.3 / tracker [piano-be-fe-uniformita-pratica-preventivi.md](piano-be-fe-uniformita-pratica-preventivi.md) (Fase 3).
 
 ## 1. Il problema reale (landmine, non "ritiro")
 

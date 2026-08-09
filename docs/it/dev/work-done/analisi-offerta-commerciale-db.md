@@ -64,7 +64,7 @@
 > - [analisi-offerta-commerciale.md](analisi-offerta-commerciale.md) §5
 >   (decisioni di modello tutte chiuse), in particolare §5.1 (1:1 mono-utility)
 >   e §5.1-bis (direzione FK, grana fine)
-> - [analisi-pratiche-domini-anello3.md](analisi-pratiche-domini-anello3.md)
+> - [analisi-pratiche-domini-anello3.md](../work-in-progress/analisi-pratiche-domini-anello3.md)
 >   §6.9 (convenzione idempotenza cross-dominio) e §11.2.4 (forma idempotenza
 >   `push_a_contratto`)
 > - `docs/it/linee-guida-sql.md`, `docs/it/linee-guida-trigger.md`,
@@ -720,12 +720,12 @@ AGENTS.md §Test).
 ### 6.1 Con il modello pratiche
 
 - Il dominio offerta è il prerequisito dell'asse `OFFERTA_QUADRO` descritto in
-  [analisi-pratiche-domini-anello3.md](analisi-pratiche-domini-anello3.md) §11.2.
+  [analisi-pratiche-domini-anello3.md](../work-in-progress/analisi-pratiche-domini-anello3.md) §11.2.
 - L'idempotenza pattern A di `fn_push_offerta_a_contratto` è **identica** al
   pattern descritto in §6.9.3 di quel documento e già usato per
   `fn_push_preventivo_a_ordine` (decisione §5.3.3).
 - Lo step 1 (seed `OFFERTA_COMMERCIALE` in `config.sorgenti`) è citato anche
-  in [analisi-pratiche-domini-anello3.md](analisi-pratiche-domini-anello3.md)
+  in [analisi-pratiche-domini-anello3.md](../work-in-progress/analisi-pratiche-domini-anello3.md)
   §11.2.4 come riserva di sorgente — coerente seedare qui in anticipo.
 
 ### 6.2 Con il modello contratti

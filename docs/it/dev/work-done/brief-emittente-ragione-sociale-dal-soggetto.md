@@ -26,7 +26,7 @@
 
 Non l'abbiamo cercata. È emersa il 2026-08-01 seedando il **sesto lotto** delle
 liste configurabili
-([piano-migrazione-primevue-5.md](piano-migrazione-primevue-5.md)): il controllo
+([piano-migrazione-primevue-5.md](../work-in-progress/piano-migrazione-primevue-5.md)): il controllo
 di consegna ha dato `NUCLEO rotto: ragione sociale` su
 `anagrafiche.categorie_clienti_listini`, perché la colonna
 `emittente_ragione_sociale` era visibile ma non ordinabile.

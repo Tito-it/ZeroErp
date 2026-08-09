@@ -1,11 +1,13 @@
 # Guida — Cruscotti fatturazione (le tre lenti)
 
-> **Ultima revisione**: 22 luglio 2026 — nuova **§7 «Gestire la fatturazione»**:
-> la Lente 1 non è più solo una fotografia, da lì si **agisce** (approva →
-> fattura → rendi definitive), con il perché la numerazione resta un passo
-> separato e cosa fa il sistema da solo. Revisione precedente (8 luglio):
-> Situazione aperta v2 (serbatoio pre-commessa), donut per fase, filtro "aperti
-> da oltre N giorni" solo-lista, via il concetto *transitato*.
+> **Ultima revisione**: 9 agosto 2026 — entrano **DDT e resi**: le aree del §2.1
+> passano da quattro a sette (⚠️ prima ne mancavano tre), nuova **§4.1** sui
+> motivi di fermo di DDT e resi, il **valore al residuo** degli ordini in §5.1 e
+> la nuova **§8 «La coda accrediti»**. Revisione precedente (22 luglio): §7
+> «Gestire la fatturazione» — dalla Lente 1 si **agisce** (approva → fattura →
+> rendi definitive), col perché la numerazione resta un passo separato. Prima
+> ancora (8 luglio): Situazione aperta v2 (serbatoio pre-commessa), donut per
+> fase, filtro "aperti da oltre N giorni" solo-lista.
 >
 > **Destinatari**: analisti funzionali, operatori vendite/amministrazione,
 > sviluppatori backend/frontend.
@@ -52,16 +54,28 @@ ora*, **Situazione aperta** guarda *dove siamo*.
 
 Tutte e tre partono dagli stessi mattoni.
 
-### 2.1 Le quattro aree documento
+### 2.1 Le aree documento
 
-Il "lavoro aperto" vive in quattro aree del ciclo vendite, nell'ordine del
+Il "lavoro aperto" vive in cinque aree del ciclo vendite, nell'ordine del
 funnel:
 
-`PREVENTIVI` → `ORDINI` → `OFFERTE` → `CONTRATTI`
+`PREVENTIVI` → `ORDINI` → `DDT` → `OFFERTE` → `CONTRATTI`
 
 Sono i documenti che, una volta conclusi, alimentano la **commessa** e quindi la
-**fatturazione**. Le commesse e le attività fatturabili stanno *a valle*: le
-guarda la Lente Competenza.
+**fatturazione**. Il **DDT** sta subito dopo gli ordini perché per una parte
+delle vendite è lui il veicolo della fattura: non si fattura alla conferma
+dell'ordine ma alla spedizione o alla consegna (vedi §4.1).
+
+A queste se ne aggiungono **due che compaiono solo nel Backlog**, perché non
+sono lavoro "in attesa" ma lavoro *fermo*:
+
+| Area | Dove compare | Perché |
+| --- | --- | --- |
+| `COMMESSE` | solo Backlog | la commessa è il **traguardo** del serbatoio, non un documento che lo aspetta. Se però si blocca (attività non approvate o non emesse) è arretrato, e va in coda di lavoro |
+| `RESI` | solo Backlog | il reso è un flusso **inverso**: non alimenta la commessa, la corregge. Metterlo nel serbatoio significherebbe contarlo due volte, perché il reso riapre da sé il residuo dell'ordine |
+
+Le attività fatturabili e le fatture stanno *a valle*: le guarda la Lente
+Competenza.
 
 ### 2.2 Le fasi normalizzate
 
@@ -81,11 +95,16 @@ sulla stessa scala.
 
 ### 2.3 Misura mista (euro vs conteggi)
 
-Non tutte le aree si misurano in euro in modo confrontabile: `PREVENTIVI` e
-`ORDINI` portano un **valore in euro** sensato; `OFFERTE` e `CONTRATTI` si
-leggono meglio a **conteggio di documenti**. La scelta della misura è **decisa
+Non tutte le aree si misurano in euro in modo confrontabile: `PREVENTIVI`,
+`ORDINI`, `DDT` e `COMMESSE` portano un **valore in euro** sensato; `OFFERTE` e
+`CONTRATTI` si leggono meglio a **conteggio di documenti**, e i `RESI` pure —
+oggi un reso non porta importi, solo quantità. La scelta della misura è **decisa
 dal backend** nel payload (valore assente = area a conteggi): il frontend legge,
 non ridecide.
+
+⚠️ Fra ordini e DDT il valore **non si somma**: quando è il DDT a fatturare, la
+merce già spedita è contata sul DDT e l'ordine mostra solo ciò che resta da
+spedire. È il punto che sorprende di più leggendo le card — spiegato in §5.1.
 
 ### 2.4 Revisione attiva
 
@@ -141,6 +160,33 @@ vecchio prima). Ogni voce porta:
 **Quando usarla**: come coda di lavoro quotidiana — cosa sbloccare adesso,
 partendo dalle situazioni più vecchie e dalle anomalie.
 
+### 4.1 DDT e resi: i motivi da saper leggere
+
+DDT e resi hanno motivi di fermo tutti loro, e alcuni sono **verdi**: compaiono
+nell'elenco ma non chiedono niente. Vale la pena sapere quali, perché la
+differenza fra «non c'è niente da fare» e «non c'è niente che *tu* possa fare»
+non è la stessa cosa.
+
+| Cosa leggi a schermo | Colore | Cosa significa davvero |
+| --- | --- | --- |
+| *Fatturazione a carico del DDT (spedizione/consegna)* | 🟢 | L'ordine **non è fermo**: per quella vendita non è lui a fatturare, ma il DDT. Nessuna azione |
+| *Merce in viaggio, fatturazione non ancora dovuta* | 🟢 | Il DDT è partito ma non ha ancora raggiunto lo stato che fa scattare la fattura. Si aspetta, e basta |
+| *Push a commessa non eseguito* / *parziale* | 🟠 | Il DDT **ha superato** quello stato e la fattura non è partita: è in ritardo. Da sbloccare |
+| *Ri-consegna da generare* | 🟠 | Il cliente ha reso della merce che va rispedita, e finché non la rispedisci la fatturazione resta bloccata. Azione tua |
+| *Merce resa già fatturata — accredito in attesa* | 🟢 | Il cliente ha reso merce **già fatturata**: gli è dovuto un accredito. È verde **perché oggi non esiste ancora l'azione** per emetterlo (vedi §8), non perché sia a posto |
+
+Due domande che nascono guardando l'elenco:
+
+- **Perché un DDT in ritardo sta qui e non nella Situazione aperta?** Perché un
+  DDT consegnato è, per il sistema, un documento **concluso**: non sta
+  aspettando niente, è in ritardo. La Situazione aperta raccoglie chi aspetta,
+  il Backlog chi è fermo.
+- **Perché certi DDT non compaiono da nessuna parte?** Perché non tutti i DDT
+  fatturano. Quelli emessi a fronte di un ordine che fattura **alla conferma**
+  seguono l'ordine — non fattureranno mai loro. E quelli con una causale di
+  trasporto non fatturabile (conto visione, riparazione, campionatura,
+  omaggio…) sono trasporti, non vendite: restano fuori per costruzione.
+
 ---
 
 ## 5. Situazione aperta — serbatoio pre-commessa
@@ -165,6 +211,29 @@ sono ancora arrivati — **senza asse temporale** e includendo anche gli aperti
 **Quando usarla**: per la visione d'insieme — quanti aperti ci sono, in che fase,
 quanto sono invecchiati — a prescindere dal mese e dall'urgenza di azione.
 
+### 5.1 L'ordine mostra quello che resta da spedire (non sempre)
+
+È la cosa che più spesso fa pensare a un errore, e non lo è.
+
+Quando una vendita fattura **alla spedizione o alla consegna**, la merce già
+partita è in carico al DDT. L'ordine, nel serbatoio, porta allora solo il
+**residuo da spedire**:
+
+> Ordine da **1.000 €**, spedita merce per **600 €**.
+> Il serbatoio mostra l'ordine a **400 €** — i 600 vivono sul DDT.
+> Se li sommassi vedresti 1.600 € per una vendita che ne vale 1.000.
+
+Quando invece la vendita fattura **alla conferma dell'ordine**, il DDT che ne
+nasce non fatturerà mai: lì il valore pieno resta sull'ordine.
+
+> Stesso ordine da **1.000 €**, stessa merce spedita.
+> Il serbatoio mostra l'ordine a **1.000 €**, e il DDT non compare.
+
+Quindi due card ordini possono comportarsi in modo opposto ed essere **entrambe
+giuste**: dipende da quando quella vendita fattura. La card lo ricorda con un
+suggerimento in linea; se un numero non torna, la prima cosa da guardare è
+questa.
+
 ---
 
 ## 6. Come si distinguono (e perché tre)
@@ -173,14 +242,18 @@ Le tre lenti condividono l'insieme (il lavoro aperto) ma lo tagliano in modo
 diverso, e coprono momenti diversi della pipeline:
 
 ```text
-   preventivi / ordini / offerte / contratti  -->  COMMESSA  -->  attivita fatturabili  -->  FATTURA
-   |__________________________________________|    |_______________________________________________|
+   preventivi / ordini / DDT / offerte / contratti -->  COMMESSA --> attivita fatturabili --> FATTURA
+   |_______________________________________________|    |______________________________________________|
                     |                                                    |
           SITUAZIONE APERTA                                        COMPETENZA
      (serbatoio pre-commessa, per fase)                     (funnel per mese di competenza)
 
           BACKLOG: attraversa tutta la pipeline, ma tiene solo il non-verde
                    (cio che e fermo e va sbloccato), per anzianita
+                   -- e in piu' COMMESSE e RESI, che nel serbatoio non ci sono
+
+          RESI: flusso inverso, correggono cio che e gia stato consegnato
+                --> la coda accrediti (§8) vive in Vendite > Resi
 ```
 
 - **Situazione aperta** sta **a monte**: il serbatoio da cui nasce la commessa,
@@ -288,7 +361,54 @@ gestito fuori da questa schermata. La dashboard copre il percorso
 
 ---
 
-## 8. Note tecniche
+## 8. La coda accrediti
+
+Non è una quarta lente: è una **coda di lavoro**, e vive dentro
+**Vendite → Resi**, accanto alla coda delle ri-consegne.
+
+### 8.1 Il principio in una riga
+
+**Si fattura la merce che il cliente tiene in mano alla fine.**
+
+Il sistema, per ogni partita di merce, tiene un conto solo: quanto il cliente ha
+**tenuto** (consegnato, meno reso, più ri-consegnato) contro quanto gli è stato
+**fatturato**. La differenza dice tutto:
+
+| Il conto | Cosa vuol dire |
+| --- | --- |
+| tenuto **più** di quanto fatturato | manca una fattura per la differenza |
+| tenuto **meno** di quanto fatturato | gli è dovuto un **accredito**: è ciò che finisce in questa coda |
+| pari | niente da fare |
+
+Non ci sono regole diverse per i diversi tipi di reso: c'è un conto, e il segno
+decide. Un reso conta solo da quando è **confermato** — finché è in bozza non
+sposta niente.
+
+### 8.2 Le due etichette
+
+| Etichetta | Quando compare |
+| --- | --- |
+| **Accredito dovuto** | la merce è tornata indietro e lì resta: il cliente ha pagato qualcosa che non ha. È arretrato vero |
+| **Accredito facoltativo — merce da ri-consegnare** | la merce tornerà al cliente. Puoi accreditare e poi rifatturare, oppure lasciar correre e rispedire: **il conto torna in entrambi i casi**. È una scelta, non un arretrato |
+
+La scelta sulla seconda non si congela al momento del reso: resta aperta fino
+alla ri-spedizione. Per questo le facoltative restano visibili in coda invece di
+sparire.
+
+### 8.3 Cosa si fa oggi da qui
+
+**Niente**, ed è voluto dirlo chiaramente: lo strumento per emettere l'accredito
+non è ancora stato realizzato. La coda serve a **non perdere i casi** mentre
+matura — si consulta, si apre il reso per capire di cosa si tratta, e si aspetta.
+
+È anche il motivo per cui in Backlog il motivo *«Merce resa già fatturata»* è
+**verde** (§4.1): non perché la situazione sia a posto, ma perché non esiste
+un'azione da chiedere all'operatore. Il giorno in cui esisterà, quel verde
+diventerà arancione e questa sezione cambierà.
+
+---
+
+## 9. Note tecniche
 
 - **Sorgenti**: ogni lente ha la sua famiglia di viste `vendite.vw_dash_*`
   (competenza / backlog / aperto), esposte da endpoint GET sottili
@@ -298,6 +418,11 @@ gestito fuori da questa schermata. La dashboard copre il percorso
   l'identità utente (vedi §2.5).
 - **Misura mista**: decisa dal backend nel payload (valore assente = area a
   conteggi, non una whitelist statica nel frontend) — vedi §2.3.
+- **DDT, resi e coda accrediti**: il disegno e le decisioni stanno nei brief di
+  sviluppo `brief-db-fatturazione-ddt-resi.md` e
+  `brief-be-fe-ddt-resi-dashboard.md` (work-done). In particolare: la
+  popolazione ristretta dei DDT (solo quelli con un ruolo di fatturazione), il
+  valore al residuo degli ordini e la forma a contatore della coda accrediti.
 - **Revisione attiva**: i cruscotti considerano solo la revisione attiva di
   preventivi e offerte (vedi §2.4).
 - **Fotografia vs azione**: le card della Situazione aperta non sono filtrate dal

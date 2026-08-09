@@ -192,8 +192,8 @@ commit successivi del backend agent.
 ## Riferimenti
 
 - Brief gemello (soggetti, atterrato 2026-05-11):
-  [brief-db-def8-soggetti-catalogo.md](brief-db-def8-soggetti-catalogo.md)
-  + [brief-db-def8-soggetti-fix-id-fiscale.md](brief-db-def8-soggetti-fix-id-fiscale.md).
+  `brief-db-def8-soggetti-catalogo.md` (⚠️ documento non presente nel repo)
+  + `brief-db-def8-soggetti-fix-id-fiscale.md` (⚠️ documento non presente nel repo).
 - Lezioni cross-DEF-8 (sensibile=false + campo GENERATED) documentate in
   [sviluppo-personalizzazioni-liste_def.md](../work-in-progress/sviluppo-personalizzazioni-liste_def.md)
   sezione DEF-8 "Lezioni dallo smoke soggetti".

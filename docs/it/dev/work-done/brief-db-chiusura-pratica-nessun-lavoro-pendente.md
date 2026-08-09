@@ -6,7 +6,7 @@
 > **Origine**: PRA-0000225 — la pratica si **auto-chiude a SMISTAMENTO**, prima che nascano i
 > flussi ordine condizionali (CONFERMA_ORDINE/INVIO_COMMESSA). Vedi
 > [analisi-uniformita-pratica-preventivi.md](analisi-uniformita-pratica-preventivi.md),
-> [piano-be-fe-uniformita-pratica-preventivi.md](../work-in-progress/piano-be-fe-uniformita-pratica-preventivi.md).
+> [piano-be-fe-uniformita-pratica-preventivi.md](piano-be-fe-uniformita-pratica-preventivi.md).
 >
 > **Nota di lettura**: i punti marcati **`⚠️ Δ`** differiscono dal brief iniziale (rev. 1).
 > La sintesi completa per il team BE è in **§9**.

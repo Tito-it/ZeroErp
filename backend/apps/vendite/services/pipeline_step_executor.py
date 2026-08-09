@@ -10,9 +10,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from django.db import transaction
-
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.fan_out import FanOutRunLogger, messaggio_eccezione, run_fan_out
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.value_normalizer import as_bool
 from apps.vendite.db.commesse_repository import CommesseRepository
@@ -40,6 +39,46 @@ class TaskEsitoParziale:
     error_code: str
     error_message: str
     meta: dict[str, Any] = field(default_factory=dict)
+
+
+# Scopo: Messaggio per-commessa del pull, con l'id davanti al tipo di errore.
+#        Sede unica: lo stesso testo va sui log di lotto (detail) e nel
+#        `context.errors` del raise all-fail — due copie che divergerebbero.
+#        La normalizzazione dell'eccezione NON e' rifatta qui: e' quella del BB
+#        (`messaggio_eccezione` / `FanOutItemErrore.messaggio`), cosi' detail e
+#        meta del task_run restano la stessa stringa per costruzione.
+def _messaggio_pull(commessa_id: Any, messaggio: str) -> str:
+    return f"Errore emit commessa_id={commessa_id}: {messaggio}"
+
+
+# Scopo: Diario per-commessa del pull da commessa — l'unica parte di DOMINIO del
+#        fan-out: scrive il motivo del singolo fallimento sui log di lotto, dove
+#        il cockpit lo legge. Il BB sa quando chiamarlo, questo sa dove scrivere:
+#        `apps.core` resta senza dipendenze verso `vendite`.
+#        Eredita i no-op di `FanOutRunLogger` e sovrascrive solo `item_failed`:
+#        inizio e fine giro sono gia' tracciati dal task_run della pipeline.
+@dataclass(frozen=True)
+class _PullCommesseRunLogger(FanOutRunLogger):
+    error_logger: PipelineErrorLogger
+    task: str
+    lotto_id: int
+    stato_doc_fiscale_id: int
+
+    # Scopo: Registra sui log di lotto la commessa che non e' passata.
+    def item_failed(self, *, item: Any, indice: int, exc: Exception) -> None:
+        messaggio = _messaggio_pull(item, messaggio_eccezione(exc))
+        self.error_logger.log_error(
+            scope="LOTTO",
+            severity="C",
+            code="E_PULL_COMMESSA",
+            message=f"Errore emissione commessa {item}",
+            detail=messaggio,
+            lotto_id=self.lotto_id,
+            stato_doc_fiscale_id=self.stato_doc_fiscale_id,
+            context={"commessa_id": item, "task": self.task},
+            function_name="vendite.pipeline_step_executor._handle_pull_attivita_da_commessa_task",
+        )
+
 
 class PipelineStepExecutor:
     """Controparte Django della funzione SQL vendite.fn_execute_pipeline_step."""
@@ -803,8 +842,23 @@ class PipelineStepExecutor:
         )
 
     # Scopo: Pull commesse → attivita fatturabili (step 0 pipeline fatturazione).
-    # Isola gli errori per commessa: un fallimento su una commessa non blocca le altre.
-    # In caso di errori parziali il task prosegue e logga; se tutte falliscono alza errore.
+    #        Isola gli errori per commessa (savepoint): un fallimento su una
+    #        commessa non blocca le altre.
+    #        Esito a TRE stati, non due (D-Q p.3, allineato a snapshot indirizzi
+    #        e genera scadenze):
+    #          - nessuna commessa fallita  → `None` → task_run COMPLETATO;
+    #          - alcune fallite, altre no  → `TaskEsitoParziale` → task_run
+    #            ERRORE **senza sollevare**: le commesse emesse restano, lo step
+    #            prosegue, e al rilancio il resolver da' RESUME invece di SKIP —
+    #            cioe' le commesse rimaste indietro vengono davvero ritentate.
+    #            ⚠️ Prima del 2026-08-09 questo caso chiudeva in COMPLETATO: il
+    #            rilancio le SALTAVA per sempre, in silenzio. Era il difetto che
+    #            questo handler condivideva coi due gemelli prima che loro lo
+    #            correggessero.
+    #          - tutte fallite             → solleva `E_PULL_COMMESSA_ALL_FAILED`
+    #            e ferma lo step: proseguire costruirebbe un lotto VUOTO, e li'
+    #            fermarsi e' la cosa giusta (a differenza dei gemelli, dove il DB
+    #            applica D-Q da solo e il caso «tutte rotte» non esiste).
     def _handle_pull_attivita_da_commessa_task(
         self,
         *,
@@ -815,7 +869,7 @@ class PipelineStepExecutor:
         context: LottoContext,
         params: dict[str, Any],
         dry_run: bool,
-    ) -> None:
+    ) -> TaskEsitoParziale | None:
         self._validate_task_function_name(
             task=task,
             fn_name=fn_name,
@@ -836,46 +890,68 @@ class PipelineStepExecutor:
             gruppi=context.gruppi,
         )
         if dry_run:
-            return
-        # Isolamento per commessa: savepoint per ogni emit; errore loggato ma non blocca le altre.
-        logger = logging.getLogger(__name__)
-        errors: list[str] = []
-        for commessa_id in commessa_ids:
-            try:
-                with transaction.atomic():
-                    self.commesse_repository.emit_attivita_fatturabili(
-                        commessa_id,
-                        dry_run=dry_run,
-                        # Stesso perimetro anche DENTRO la commessa: senza, le
-                        # righe degli altri gruppi passerebbero a EMESSA pur
-                        # non essendo state chieste (A2.3 del brief DB).
-                        gruppi=context.gruppi,
-                    )
-            except Exception as exc:
-                msg = f"Errore emit commessa_id={commessa_id}: {type(exc).__name__}: {exc}"
-                logger.exception(msg)
-                errors.append(msg)
-                self.error_logger.log_error(
-                    scope="LOTTO",
-                    severity="C",
-                    code="E_PULL_COMMESSA",
-                    message=f"Errore emissione commessa {commessa_id}",
-                    detail=msg,
-                    lotto_id=lotto_id,
-                    stato_doc_fiscale_id=stato_doc_fiscale_id,
-                    context={"commessa_id": commessa_id, "task": task},
-                    function_name="vendite.pipeline_step_executor._handle_pull_attivita_da_commessa_task",
-                )
+            # ⚠️ Il ritorno anticipato precede il giro: in dry-run non esiste
+            # ne' esito parziale ne' errore, perche' non e' stato tentato nulla.
+            # (Seconda cintura: `_run_task` esce gia' prima di invocare questo
+            # handler — vedi il test dedicato.)
+            return None
+
+        # Isolamento per commessa: il BB apre un savepoint per ogni emit, cattura
+        # l'errore e prosegue. Il diario per-commessa (log di lotto) e' l'unica
+        # parte di dominio, e sta nel run logger.
+        esito = run_fan_out(
+            commessa_ids,
+            lambda commessa_id: self.commesse_repository.emit_attivita_fatturabili(
+                commessa_id,
+                dry_run=dry_run,
+                # Stesso perimetro anche DENTRO la commessa: senza, le righe
+                # degli altri gruppi passerebbero a EMESSA pur non essendo
+                # state chieste (A2.3 del brief DB).
+                gruppi=context.gruppi,
+            ),
+            run_logger=_PullCommesseRunLogger(
+                error_logger=self.error_logger,
+                task=task,
+                lotto_id=lotto_id,
+                stato_doc_fiscale_id=stato_doc_fiscale_id,
+            ),
+        )
+
+        if not esito.errori:
+            return None
+
         # Se tutte le commesse falliscono, il task e` fallito.
-        if errors and len(errors) == len(commessa_ids):
+        if esito.tutti_falliti:
+            errors = [_messaggio_pull(e.item, e.messaggio) for e in esito.errori]
             ErrorManager.raise_error(
                 code="E_PULL_COMMESSA_ALL_FAILED",
                 message="Emissione commesse fallita per tutte le commesse.",
-                detail=f"Errori: {len(errors)}/{len(commessa_ids)}",
+                detail=f"Errori: {esito.falliti}/{esito.totale}",
                 context={"lotto_id": lotto_id, "errors": errors[:5]},
                 function_name="vendite.pipeline_step_executor._handle_pull_attivita_da_commessa_task",
                 log_to_db=True,
             )
+        # Rifiuto PARZIALE: il giro e' finito, alcune commesse no.
+        # Codice riusato e non sintetico: `E_PULL_COMMESSA` e' gia' il motivo
+        # per-commessa scritto qui sopra sui log di lotto — e' il criterio dello
+        # snapshot indirizzi, che riusa `E_INDIRIZZO_FATTURA_MANCANTE` invece di
+        # inventare un codice che nessuno saprebbe interpretare.
+        return TaskEsitoParziale(
+            error_code="E_PULL_COMMESSA",
+            error_message=(
+                f"Pull attivita' completato con {esito.falliti} commesse su "
+                f"{esito.totale} in errore (dettaglio sui log di lotto)."
+            ),
+            meta={
+                "task": task,
+                "totale": esito.totale,
+                "ok": esito.ok,
+                "falliti": esito.falliti,
+                # Troncata come nel raise all-fail: il meta e' una traccia per
+                # il cockpit, il dettaglio completo sta sui log di lotto.
+                "commesse_fallite": [e.item for e in esito.errori][:5],
+            },
+        )
 
     # Scopo: Task `snapshot_indirizzi_lotto` (step DRAFT, piano DB satelliti
     #        Fase 2): congela i satelliti di intestazione delle fatture del

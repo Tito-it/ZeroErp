@@ -6,7 +6,7 @@
 >
 > **Origine**: [analisi-emissione-fattura-ondemand.md](../work-in-progress/analisi-emissione-fattura-ondemand.md)
 > §8 punti 3-6 · contratto DB in
-> [brief-db-emissione-fattura-per-documento-sorgente.md](../work-in-progress/brief-db-emissione-fattura-per-documento-sorgente.md)
+> [brief-db-emissione-fattura-per-documento-sorgente.md](brief-db-emissione-fattura-per-documento-sorgente.md)
 > §8-bis.
 >
 > **Prerequisito DB**: ✅ **completo, applicato e testato** (Fase A + Fase B,

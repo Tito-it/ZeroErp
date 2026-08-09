@@ -5,7 +5,7 @@
 > DB applicato+committato (`545ae2d92`, [brief-db-coda-lavori-generica.md](brief-db-coda-lavori-generica.md)),
 > BE core + consumatore C-3 committati (`2895f9653`), 11+10 test verdi. Deploy worker
 > = template/installer systemd versionati + validazione CI
-> ([brief-deploy-worker-riproducibilita-ci.md](../work-in-progress/brief-deploy-worker-riproducibilita-ci.md));
+> ([brief-deploy-worker-riproducibilita-ci.md](brief-deploy-worker-riproducibilita-ci.md));
 > `sudo install` su host + validazione in-app = runtime di Tid (DB dev senza dati di
 > processo). Spostato in `work-done/` il 2026-07-21.
 > · **Target codice**: `dev/backend-tid` · **Target DB**: `dev/db-tid`
@@ -319,7 +319,7 @@ pattern «servizio always-on con NOTIFY» non è ipotetico (utile per Q-3).
 4. 🟢 **Deploy**: artefatti pronti e versionati — template systemd
    `zeroerp-coda-lavori.service|.timer` in `backend/deploy/systemd/` + installer
    `install-timers.sh` + validazione CI (`systemd-analyze verify`), vedi
-   [brief-deploy-worker-riproducibilita-ci.md](../work-in-progress/brief-deploy-worker-riproducibilita-ci.md).
+   [brief-deploy-worker-riproducibilita-ci.md](brief-deploy-worker-riproducibilita-ci.md).
    Restano runtime di Tid: `sudo install-timers.sh` su host + validazione in-app
    (DB dev senza dati di processo).
 

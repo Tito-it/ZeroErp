@@ -16,7 +16,7 @@
 > **design-of-record**: razionale, modello, **Fase 3** (UI admin V4/V5) e domande aperte.
 >
 > **Origine**: voce **V2** e §2.2 di
-> [analisi-pratiche-valutazione-stato.md](analisi-pratiche-valutazione-stato.md) — il
+> [analisi-pratiche-valutazione-stato.md](../work-in-progress/analisi-pratiche-valutazione-stato.md) — il
 > *vero buco architetturale*: le definizioni di workflow (`tipi_prestazione`,
 > `template_flussi` e figli) sono **globali**, solo l'istanza è per-emittente. Società
 > A e B non possono avere due workflow "preventivi" diversi senza clonare il tipo.
@@ -24,8 +24,8 @@
 >
 > **Documenti collegati**: [Guida Gestione Pratiche](../../guide/gestione-pratiche.md),
 > [Gestione Pratiche — Configurazione](../../guide/gestione-pratiche-configurazione.md),
-> [brief-design-proiezione-stato-dominio.md](brief-design-proiezione-stato-dominio.md) (V10, indipendente),
-> [gestione-pratiche-come-procedere.md](gestione-pratiche-come-procedere.md).
+> [brief-design-proiezione-stato-dominio.md](../work-in-progress/brief-design-proiezione-stato-dominio.md) (V10, indipendente),
+> [gestione-pratiche-come-procedere.md](../work-in-progress/gestione-pratiche-come-procedere.md).
 
 ---
 
@@ -178,5 +178,5 @@ il cross-pratica diventa emittente-aware gratis).
 ---
 
 *Brief vivo: aggiornare lo stato in testa e la riga V2 di
-[analisi-pratiche-valutazione-stato.md](analisi-pratiche-valutazione-stato.md) a chiusura.
+[analisi-pratiche-valutazione-stato.md](../work-in-progress/analisi-pratiche-valutazione-stato.md) a chiusura.
 Il cambio schema di Fase 0/1 sarà delegato al team DB con `brief-db-*` dedicato.*

@@ -7,7 +7,7 @@
 > il fix del bug `uom_id` (brief gemello).
 > **Trigger**: smoke test push singolo preventivo dal pulsante "Invia a
 > fatturazione" — dopo il deploy del fix `uom_id` (vedi
-> [brief-db-fn-list-pushare-uom-id-mancante.md](brief-db-fn-list-pushare-uom-id-mancante.md))
+> `brief-db-fn-list-pushare-uom-id-mancante.md` (⚠️ documento non presente nel repo))
 > emerge un secondo errore:
 >
 > ```text
@@ -166,7 +166,7 @@ nessun consumer che li leggesse. Il pulsante UI di push singolo (PR1
   corretto), `vendite.commesse_attivita` (righe commessa, vincolo
   corretto su `commessa_id+segment_key`).
 * Brief gemello (atterrato 2026-05-10):
-  [brief-db-fn-list-pushare-uom-id-mancante.md](brief-db-fn-list-pushare-uom-id-mancante.md).
+  `brief-db-fn-list-pushare-uom-id-mancante.md` (⚠️ documento non presente nel repo).
 * Brief gemello (atterrato 2026-05-10):
   [brief-db-fn-list-preventivi-push-singolo.md](brief-db-fn-list-preventivi-push-singolo.md).
 

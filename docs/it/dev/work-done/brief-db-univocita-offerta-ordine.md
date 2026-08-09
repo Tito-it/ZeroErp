@@ -39,7 +39,7 @@
 
 `vendite.ordini` traccia l'origine via `documento_origine_tipo`
 (`'PREVENTIVO'`/`'OFFERTA'`) + `documento_origine_id`, **senza UNIQUE** (scelta
-A1 in [analisi-ordini-vendita.md §1.bis](../work-in-progress/analisi-ordini-vendita.md)). Verificato
+A1 in [analisi-ordini-vendita.md §1.bis](analisi-ordini-vendita.md)). Verificato
 su [`vendite/tabelle/ordini.md`](../../dbzero/vendite/tabelle/ordini.md): gli
 unici CHECK sono `chk_ordini_documento_origine_tipo` (vocabolario) e
 `chk_ordini_documento_origine_copres` (co-presenza `(tipo IS NULL) = (id IS
@@ -191,7 +191,7 @@ L'offerta **resta `ACCETTATA`**. Il FE distingue l'azione dal `key`.
 L'offerta commerciale **non ha righe materializzate**: le sue righe "effettive"
 sono *calcolate al volo* da `fn_offerta_righe_espanse` (intero listino +
 variazione + eccezioni OVERRIDE/ESCLUSIONE/AGGIUNTA — vedi
-[analisi-ordini-vendita.md §7.4](../work-in-progress/analisi-ordini-vendita.md)). L'offerta non è un
+[analisi-ordini-vendita.md §7.4](analisi-ordini-vendita.md)). L'offerta non è un
 carrello di articoli da pescare uno alla volta: è **una proposta commerciale
 unica** ("ecco le condizioni che ti propongo, in blocco").
 
@@ -214,7 +214,7 @@ mai senso.
 **Reversal di A1 (solo OFFERTA)**: l'indice §2.1 inverte, per la sola origine
 `OFFERTA`, la scelta A1 "documento_origine senza UNIQUE". Voluto e ratificato
 (Tid, 2026-06-07). `PREVENTIVO` non è toccato qui (modello diverso → brief
-dedicato). L'agente BE aggiornerà [analisi-ordini-vendita.md §1.bis](../work-in-progress/analisi-ordini-vendita.md)
+dedicato). L'agente BE aggiornerà [analisi-ordini-vendita.md §1.bis](analisi-ordini-vendita.md)
 con l'addendum (non competenza del team DB).
 
 ## 5. Pulizia dati preesistenti (PRE-migration, obbligatoria)

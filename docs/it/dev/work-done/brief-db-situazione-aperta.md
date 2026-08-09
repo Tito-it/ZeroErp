@@ -1,7 +1,7 @@
 # Brief DB — Situazione aperta (Fase 3 due-lenti): stock documenti senza asse mese
 
 > **Tipo**: brief DB (spec dal BE al team DB, ramo `dev/db-tid`) · **Data**: 2026-07-07 · **Owner**: Tid
-> **Design-of-record**: [brief-design-fatturazione-due-lenti.md](../work-in-progress/brief-design-fatturazione-due-lenti.md)
+> **Design-of-record**: [brief-design-fatturazione-due-lenti.md](brief-design-fatturazione-due-lenti.md)
 > §6-bis (decisioni DL-9..13). **Contesto**: Fase 1 (Competenza) + Fase 2 (Backlog) BE+FE
 > mergiate (PR #932); questa è la **Fase 3**, ridefinita da *dismissione* a *trasformazione*
 > della dashboard 5-card nella vista **"Situazione aperta"**. Non in produzione: breaking

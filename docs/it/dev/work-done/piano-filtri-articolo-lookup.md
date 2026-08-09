@@ -313,7 +313,7 @@ futuro, casi minimi:
 
 - [ArticoloLookup.vue](../../../../frontend/src/core/components/ArticoloLookup.vue) — componente target
 - [lookup_articoli BE](../../../../backend/apps/catalogo/services/catalogo_service.py) `fn_lookup_articoli`
-- [modello-componenti-bom.md](../../backend/vendite/manual/modello-componenti-bom.md) — regole BoM, ruolo `is_solo_componente`
+- [modello-componenti-bom.md](../manual/modello-componenti-bom.md) — regole BoM, ruolo `is_solo_componente`
 - [catalogo-building-block-frontend.md](../frontend/catalogo-building-block-frontend.md) — catalogo BB FE
 - [gestione-listini.md §5.1](../../guide/gestione-listini.md) — tipologie articolo (futuro filtro `tipologiaId`)
 

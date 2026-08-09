@@ -459,6 +459,38 @@ class CommesseSourceHandlersTests(TestCase):
         repo.batch_upsert_attivita.assert_called_once()
         self.assertEqual(len(repo.batch_upsert_attivita.call_args[0][0]), 2)
 
+    # Scopo: ⚠️ LA CACHE NON SI AVVELENA — se una riga cade DOPO aver risolto la
+    #        commessa, il rollback del suo savepoint annulla la commessa nel
+    #        database ma non toccherebbe un dizionario Python. Se l'id restasse
+    #        in cache, la riga gemella successiva lo riuserebbe e fallirebbe
+    #        anch'essa su una commessa inesistente: un errore che si propaga da
+    #        solo. La registrazione avviene a savepoint rilasciato
+    #        (`run_fan_out(on_success=...)`), quindi la seconda riga torna al
+    #        database e atterra.
+    def test_cache_commessa_non_avvelenata_da_riga_caduta(self):
+        repo = _mock_repo(inserted=1)
+        # Stessa chiave commessa: senza la protezione, la 2a riuserebbe l'id
+        # della 1a (annullata dal rollback).
+        row1 = _make_row(segment_key="TEST:uid-001:R:1", sorgente_uid="uid-001")
+        row2 = _make_row(segment_key="TEST:uid-002:R:1", sorgente_uid="uid-002")
+        repo.fetch_pushable_rows.return_value = [row1, row2]
+        # La 1a riga cade DOPO get_or_create_commessa (che ha gia' popolato la
+        # cache nella vecchia forma); la 2a passa.
+        repo.link_sorgente.side_effect = [RuntimeError("link ko"), 1]
+        handler = HandlerPreventivi(repo)
+
+        result = handler.run()
+
+        # La 2a riga NON ha riusato la cache: e' tornata al database.
+        self.assertEqual(repo.get_or_create_commessa.call_count, 2)
+        # Ed e' atterrata: un solo errore (la prima), una sola riga nel batch.
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("uid-001", result.errors[0])
+        repo.batch_upsert_attivita.assert_called_once()
+        self.assertEqual(len(repo.batch_upsert_attivita.call_args[0][0]), 1)
+        # La commessa della riga caduta non e' tracciata (niente id fantasma).
+        self.assertEqual(result.created, 1)
+
     # Scopo: Verifica distinzione created vs updated da BatchUpsertResult.
     def test_process_rows_batch_created_vs_updated(self):
         repo = _mock_repo(inserted=1, updated=1)

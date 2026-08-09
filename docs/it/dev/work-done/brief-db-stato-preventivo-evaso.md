@@ -151,7 +151,7 @@ Da fare dopo l'atterraggio DB:
   cambio stato gia' tracciato da `data_update` audit).
 * Schema: `config.stati_doc_preventivi`, `config.transizioni_stati_preventivi`,
   `vendite.preventivi.stato_doc_preventivo_id`.
-* Test plan: [sviluppo-listini-v5-test-ui.md §3.4](sviluppo-listini-v5-test-ui.md).
+* Test plan: [sviluppo-listini-v5-test-ui.md §3.4](../work-in-progress/sviluppo-listini-v5-test-ui.md).
 
 ## Note di rollback
 

@@ -1652,8 +1652,8 @@
       "coda_search_accreditare": "Search (return no., recipient, item, DDT, account)",
       "coda_etichetta_tutte": "All credits",
       "coda_etichetta": {
-        "DOVUTA": "Credit note due",
-        "FACOLTATIVA": "Credit note optional"
+        "DOVUTA": "Credit due",
+        "FACOLTATIVA": "Credit optional — goods to be redelivered"
       },
       "coda_search_riconsegnare": "Search (return no., recipient, item, DDT)"
     },

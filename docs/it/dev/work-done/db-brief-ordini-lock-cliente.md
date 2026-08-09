@@ -8,7 +8,7 @@
 
 > **Branch**: `dev/db-tid`. **Destinatario**: team DB.
 > **Natura**: difesa DB autoritativa a complemento del fix BE «cliente immutabile»
-> (chiuso 2026-06-04, vedi [analisi-ordini-vendita.md](../work-in-progress/analisi-ordini-vendita.md)).
+> (chiuso 2026-06-04, vedi [analisi-ordini-vendita.md](analisi-ordini-vendita.md)).
 > Il BE è solo metà del pattern ZeroErp (guard applicativo + trigger DB come
 > difesa finale, api.md principio DB-first).
 > **Vincolo**: ZeroErp non in produzione → breaking ammessi, ma la consegna è
@@ -224,7 +224,7 @@ bypassa il service.
 
 ## 10. Riferimenti
 
-- Analisi + bug BE chiuso: [analisi-ordini-vendita.md](../work-in-progress/analisi-ordini-vendita.md).
+- Analisi + bug BE chiuso: [analisi-ordini-vendita.md](analisi-ordini-vendita.md).
 - Funzione lock: `script.trgfn_lock_columns` ([doc](../../dbzero/script/funzioni/trgfn_lock_columns.md)).
 - Registro + automazione: `dbops.automation_lock_columns`,
   `dbops.fn_run_automations_lock_columns`, `maintenance.proc_automations_lock_columns_job`.

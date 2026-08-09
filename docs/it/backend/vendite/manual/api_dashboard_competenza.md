@@ -10,7 +10,7 @@ errori vivi di fatturazione (blocco 4).
 ## Contesto
 
 Fase 1 BE del brief
-[brief-design-fatturazione-due-lenti](../../../dev/work-in-progress/brief-design-fatturazione-due-lenti.md)
+[brief-design-fatturazione-due-lenti](../../../dev/work-done/brief-design-fatturazione-due-lenti.md)
 (substrato DB in
 [brief-db-fatturazione-due-lenti](../../../dev/work-done/brief-db-fatturazione-due-lenti.md),
 migrations `20260706-01..15`): tre endpoint GET **sottili** sopra le proiezioni

@@ -13,8 +13,8 @@
 > **Origine**: primo giro del guard `scripts/check_i18n_keys.py`, scritto durante
 > il fix delle reason ordini. Ha trovato **7 chiavi emesse dal DB che nei locales
 > non esistono**: l'utente vede un pulsante disabilitato senza alcuna spiegazione.
-> **Famiglia**: [brief-db-i18n-namespace-reason-ordini.md](../work-in-progress/brief-db-i18n-namespace-reason-ordini.md)
-> (stesso difetto, ordini) · [brief-i18n-radici-uniformi.md](../work-in-progress/brief-i18n-radici-uniformi.md)
+> **Famiglia**: [brief-db-i18n-namespace-reason-ordini.md](brief-db-i18n-namespace-reason-ordini.md)
+> (stesso difetto, ordini) · [brief-i18n-radici-uniformi.md](brief-i18n-radici-uniformi.md)
 > (convenzione generale) · `work-done/addendum-db-stati-doc-offerte-transizioni-label-key.md`
 > (stesso difetto, offerte, già riparato una volta a maggio).
 
@@ -90,7 +90,7 @@ data-driven, i messaggi si accendono da soli appena la chiave è risolvibile.
 ## 4. Perché i preventivi restano su radice piatta (e non è una svista)
 
 `preventivi.*` è una radice piatta che
-[brief-i18n-radici-uniformi.md](../work-in-progress/brief-i18n-radici-uniformi.md) prevede di
+[brief-i18n-radici-uniformi.md](brief-i18n-radici-uniformi.md) prevede di
 spostare sotto `vendite.preventivi.*` insieme alle altre 20. **Le 4 chiavi nuove
 vanno scritte sotto la radice attuale**, non sotto quella futura: la migrazione
 sposta l'intero sottoalbero con uno script, quindi nasceranno nel posto vecchio e

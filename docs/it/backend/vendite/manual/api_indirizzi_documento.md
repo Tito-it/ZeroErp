@@ -10,7 +10,7 @@ sopra il BB service `_indirizzi_documento_helpers` e il mixin repository
 `IndirizziDocumentoRepositoryMixin`.
 
 Design-of-record:
-[brief-design-indirizzi-documenti-vendita.md](../../../dev/work-in-progress/brief-design-indirizzi-documenti-vendita.md)
+[brief-design-indirizzi-documenti-vendita.md](../../../dev/work-done/brief-design-indirizzi-documenti-vendita.md)
 (decisioni D-1..D-5). Modello DB:
 [brief-db-indirizzi-documenti-simmetria-e-cascata.md](../../../dev/work-done/brief-db-indirizzi-documenti-simmetria-e-cascata.md)
 — tabelle `vendite.<doc>_indirizzi` simmetriche (UNIQUE uno-per-tipo, trigger
