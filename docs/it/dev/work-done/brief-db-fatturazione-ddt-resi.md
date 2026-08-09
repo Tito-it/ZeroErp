@@ -14,7 +14,7 @@
 > emersi **due bug di fatturazione a monte** che le dashboard non possono vedere: mostrerebbero
 > la doppia fatturazione come transito legittimo. Si chiudono insieme — stessa funzione, stesso
 > apply.
-> **Design-of-record**: [brief-design-fatturazione-due-lenti.md](../work-in-progress/brief-design-fatturazione-due-lenti.md)
+> **Design-of-record**: [brief-design-fatturazione-due-lenti.md](brief-design-fatturazione-due-lenti.md)
 > §6-quater, decisioni **DL-19..28** (DL-27 = il contatore · DL-28 = solo trasporto via causale; DL-23/24/26 emendati 2026-07-17).
 > **Non si tocca la Lente 1 (Competenza)**: parte dalla commessa ed è sorgente-agnostica — il
 > DDT che pusha ci entra da solo. Decisione Tid.
@@ -692,7 +692,7 @@ istante la somma fa 1.000. Chiude anche il buco cieco del §1d.
   lavoro di DL-20 (rendere il resolver ordini trigger-aware), non un secondo.
 
   ✅ **Emendamento a DL-23 — FATTO (Tid, 2026-07-17)**: registrato nel §10 del
-  [brief di design](../work-in-progress/brief-design-fatturazione-due-lenti.md) — misura netta **solo** per
+  [brief di design](brief-design-fatturazione-due-lenti.md) — misura netta **solo** per
   `trigger ∈ {SPEDITO, CONSEGNATO}`, ordine CONFERMATO al valore pieno; barrata la
   giustificazione «somma sempre 1.000». Lo step 8 del §9 lo recepisce già.
 - ⚠️ **La giustificazione *«in ogni istante la somma fa 1.000»* NON regge** — e va tolta, perché

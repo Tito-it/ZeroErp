@@ -10,6 +10,15 @@
 #        dispatch-handler per la coda generica, render per la stampa). Nessun
 #        SQL qui: solo orchestrazione. Riusato sia da `dbops.coda_lavori` sia,
 #        a convergenza, da `fatture_stampa_coda`.
+#
+#        ⚠️ CONFINE con `apps/core/services/fan_out.py` (D-1 del brief fan-out,
+#        2026-08-09). I due motori si somigliano — «per ogni item isola l'errore
+#        e prosegui» — e la scelta di NON unificarli e' deliberata: qui l'item
+#        vive in una coda DUREVOLE, sopravvive al run e va riclamato, posseduto
+#        e ritentato con backoff; li' la lista e' EFFIMERA (scoperta, consumata
+#        una volta, e chi resta indietro si ritrova alla prossima scoperta).
+#        Regola pratica: se l'item deve essere ritrovato DOPO il run, e' roba di
+#        questo motore; se basta riscoprirlo, e' `run_fan_out`.
 # ------------------------------------------------------------
 
 from __future__ import annotations

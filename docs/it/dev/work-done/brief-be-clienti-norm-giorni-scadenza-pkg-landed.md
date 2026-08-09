@@ -55,7 +55,12 @@ Entrambi solo IT, coerenti con la convenzione del progetto (fallback EN→IT com
 
 ### 1.5 Doc concettuale
 
-[`docs/it/dbzero/anagrafiche/manual/trgfn_clienti_normalize_giorni_scadenza.md`](../../dbzero/anagrafiche/manual/trgfn_clienti_normalize_giorni_scadenza.md) creata. Doc autogen `funzioni/` rigenerata dal tool post-merge.
+`docs/it/dbzero/anagrafiche/manual/trgfn_clienti_normalize_giorni_scadenza.md` creata. Doc autogen `funzioni/` rigenerata dal tool post-merge.
+
+⚠️ **Superato**: il trigger **non esiste più** (riforma termini di pagamento, piano
+satelliti fattura §3a.5) e la pagina manuale è stata **ritirata** — per questo il
+riferimento qui sopra non è più un link. Vedi
+[piano-db-satelliti-fattura.md](../work-in-progress/piano-db-satelliti-fattura.md) §3a.9.
 
 ## 2. Regole dominio (riferimento BE)
 
@@ -120,7 +125,7 @@ Il DB agent attende:
 
 ## 6. Riferimenti
 
-* Doc concettuale: [`trgfn_clienti_normalize_giorni_scadenza`](../../dbzero/anagrafiche/manual/trgfn_clienti_normalize_giorni_scadenza.md)
+* Doc concettuale: `trgfn_clienti_normalize_giorni_scadenza` — ⚠️ **pagina ritirata insieme al trigger** (vedi §1.5)
 * Pattern gemella fornitori: [`trgfn_fornitori_guard_normalize`](../../dbzero/anagrafiche/funzioni/trgfn_fornitori_guard_normalize.md)
 * Tabella: [`anagrafiche.clienti`](../../dbzero/anagrafiche/tabelle/clienti.md)
 * Codici errore: [`config.messaggi_errore`](../../dbzero/config/tabelle/messaggi_errore.md)

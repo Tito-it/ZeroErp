@@ -190,6 +190,25 @@ Building block per i processi **headless** (management command / cron / systemd)
 
 ---
 
+## Fan-out isolato (`apps/core/services/fan_out.py`)
+
+Il telaio del giro *scopri → lavora ogni item isolando l'errore → aggrega l'esito*. Estratto il 2026-08-09 con la regola del 2 (ok Tid, [brief-be-fan-out-isolato-e-esito-parziale.md](../work-in-progress/brief-be-fan-out-isolato-e-esito-parziale.md)): il pattern era scritto a mano in due siti di `vendite` **con policy di aggregazione diverse**, e la divergenza era un difetto vero — il pull da commessa dichiarava COMPLETATO un giro con rifiuti parziali, quindi al rilancio dello step le commesse rimaste indietro venivano saltate in silenzio.
+
+| Building Block | File | Descrizione |
+|---|---|---|
+| `run_fan_out` | [fan_out.py](../../../../backend/apps/core/services/fan_out.py) | Esegue `process(item)` su ogni item con **un savepoint per item** (`isola_in_transazione`, default True), cattura le eccezioni, logga lo stack una volta per tutte e restituisce l'esito aggregato. La **discovery resta al chiamante** (conosce i propri filtri di perimetro); `process` fallisce **sollevando** (nessun valore di ritorno interpretato come esito); il BB **non decide** cosa fare dell'esito — sollevare, marcare un `task_run`, scrivere un report è del dominio. `items` è materializzato in lista (serve `totale` prima di partire). |
+| `on_success` (parametro di `run_fan_out`) | [fan_out.py](../../../../backend/apps/core/services/fan_out.py) | `on_success(item, risultato)` chiamato a **savepoint già rilasciato**: l'aggancio per gli effetti collaterali che valgono solo se l'item è atterrato, quando l'item **successivo** dipende da ciò che ha prodotto il precedente (caso reale: una cache di lookup condivisa). È la versione «durante il giro» di `esito.risultati`. ⚠️ **Non è protetto**: se solleva, il giro si interrompe — il lavoro dell'item è già committato e mascherare l'errore come «item fallito» direbbe una bugia. Ci si mettono registrazioni in memoria, non lavoro rischioso. Serve perché un rollback annulla le righe di database, **non** un `append` o una voce di dizionario: una cache popolata dentro il savepoint sopravvive al rollback e avvelena l'item gemello successivo (difetto reale corretto in `_process_rows`). |
+| `FanOutEsito` | [fan_out.py](../../../../backend/apps/core/services/fan_out.py) | Esito a **tre stati**: `COMPLETATO` / `PARZIALE` / `ERRORE` (`esito`, `parziale`, `tutti_falliti`, `ok`, `falliti`, `messaggi_errore()`). Le tre parole non sono nuove: `CommessaPushOrchestrator._compute_stato` le usa da sempre — il BB le rende disponibili a tutti invece di lasciare che ogni chiamante ne reinventi due. `risultati` porta ciò che `process` ha restituito per gli item **riusciti**: serve ad applicare gli effetti collaterali «solo se è atterrato» **fuori** dal savepoint, dove un rollback non annullerebbe un `append`. ⚠️ Lista vuota = **COMPLETATO** («niente da fare» è un successo). |
+| `FanOutRunLogger` | [fan_out.py](../../../../backend/apps/core/services/fan_out.py) | Diario del giro, opzionale e a metodi **tutti facoltativi**: `start(totale)` / `item_failed(item, indice, exc)` / `end(esito)`. Il BB sa *quando* chiamare, il chiamante sa *dove* scrivere (`event_log`, log di lotto, push log) — così `core` non prende dipendenze verso i domini. Un'eccezione **dentro** il logger non affonda il giro. |
+
+**Consumer**: `PipelineStepExecutor._handle_pull_attivita_da_commessa_task` (con `_PullCommesseRunLogger` che scrive i motivi per-commessa sui log di lotto) e `BaseSourceHandler._process_rows` (fan-out sulle righe sorgente; la **coda batch resta fuori dal BB**, è una fase successiva al giro).
+
+⚠️ **Chi NON lo usa, e perché**: `CommessaPushOrchestrator._run_locked` è stato valutato e **scartato** (§F5 del brief). È un livello sopra — itera su handler che sono *essi stessi* fan-out — e ha due semantiche incompatibili: lì «fallito» significa «il report contiene errori» e non «ha sollevato», e sulla lista vuota risponde ERRORE (nessun handler risolto = configurazione sbagliata) invece di COMPLETATO. La motivazione è scritta nel docstring di `_compute_stato`: **non appianare quelle differenze**.
+
+⚠️ **Confine con `QueueDrainEngine`** (sotto): se l'item deve essere ritrovato **dopo** il run è roba della coda (claim, ownership, backoff, retry); se basta **riscoprirlo**, è `run_fan_out`. Il confine è scritto in entrambi i file, ed è la ragione per cui i due motori restano distinti.
+
+---
+
 ## Coda lavori generica (`apps/core/services/coda_lavori/`)
 
 Motore della coda job DB-native `dbops.coda_lavori` (Fase C cockpit, brief design coda) + la UI di gestione code (brief `brief-be-fe-gestione-code-lavori-stampa`, 2026-07-21). Nessun broker: claim `FOR UPDATE SKIP LOCKED`, worker systemd `draina_coda_lavori`.

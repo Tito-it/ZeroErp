@@ -9,7 +9,7 @@ ordinata per anzianità (i più vecchi prima).
 ## Contesto
 
 Fase 2 BE del brief
-[brief-design-fatturazione-due-lenti](../../../dev/work-in-progress/brief-design-fatturazione-due-lenti.md)
+[brief-design-fatturazione-due-lenti](../../../dev/work-done/brief-design-fatturazione-due-lenti.md)
 §5 (substrato DB in
 [brief-db-fatturazione-due-lenti](../../../dev/work-done/brief-db-fatturazione-due-lenti.md)
 §5, migrations `20260706-01..15`): due endpoint GET **sottili** sopra le

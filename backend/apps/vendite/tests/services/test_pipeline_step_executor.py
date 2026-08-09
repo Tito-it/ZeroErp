@@ -1,3 +1,11 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Test di `PipelineStepExecutor` — dispatch task, tracing task_run,
+#        esiti parziali (D-Q p.3) e vincoli d'ordine fra task dello step.
+# ------------------------------------------------------------
+
 """
 Indice test eseguiti:
 1) PipelineStepExecutorUnitTests.test_execute_step_runs_generate_fatture_righe_task
@@ -23,6 +31,10 @@ Indice test eseguiti:
 21) PipelineStepExecutorUnitTests.test_execute_step_runs_pull_attivita_da_commessa_task
 22) PipelineStepExecutorUnitTests.test_pull_attivita_da_commessa_dry_run_skips_emit
 23) PipelineStepExecutorUnitTests.test_pull_attivita_da_commessa_empty_list_no_emit
+23a) PipelineStepExecutorUnitTests.test_pull_attivita_da_commessa_parziale_chiude_task_run_errore (D-Q p.3)
+23b) PipelineStepExecutorUnitTests.test_pull_attivita_da_commessa_tutte_ok_completa_task_run
+23c) PipelineStepExecutorUnitTests.test_pull_attivita_da_commessa_tutte_fallite_solleva
+23d) PipelineStepExecutorUnitTests.test_pull_attivita_da_commessa_dry_run_non_produce_parziale
 24) PipelineStepExecutorUnitTests.test_execute_step_runs_stampa_documenti_lotto_task (C-2c)
 25) PipelineStepExecutorUnitTests.test_execute_step_stampa_documenti_lotto_dry_run_skips (C-2c)
 26) PipelineStepExecutorUnitTests.test_execute_step_runs_snapshot_indirizzi_lotto_task (Fase 2 satelliti)
@@ -586,7 +598,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
     # --- Pull attivita da commessa (step 0) ---
 
     # Scopo: Verifica il caso `test_execute_step_runs_pull_attivita_da_commessa_task`.
-    @patch("apps.vendite.services.pipeline_step_executor.transaction")
+    @patch("apps.core.services.fan_out.transaction")
     def test_execute_step_runs_pull_attivita_da_commessa_task(self, _mock_txn):
         processi = [{"task": "pull_attivita_da_commessa", "fase": "Pull commesse", "params": {}}]
         executor, repo, _, _ = self._build_executor(processi)
@@ -656,6 +668,128 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
 
         commesse_repo.list_commesse_emittibili.assert_called_once()
         commesse_repo.emit_attivita_fatturabili.assert_not_called()
+
+    # Scopo: Gestisce `_build_executor_pull` nel flusso applicativo del modulo —
+    #        executor col task di pull, tracing ATTIVO (serve un task_run vero
+    #        per poter osservare COMPLETATO vs ERRORE) e repo commesse mockato
+    #        con la lista di commesse emittibili passata.
+    def _build_executor_pull(self, commesse_ids, task_run_id=555):
+        processi = [{"task": "pull_attivita_da_commessa", "fase": "Pull commesse", "params": {}}]
+        executor, repo, _, error_logger = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "pull_attivita_da_commessa_default"
+        repo.ALLOWED_TASK_FUNCTIONS["pull_attivita_da_commessa"] = (
+            "vendite.fn_emit_attivita_fatturabili_da_commessa"
+        )
+        repo.task_policy_exists.return_value = True
+        run_mode = MagicMock()
+        run_mode.execution_mode = "RUN"
+        repo.resolve_lotto_task_execution_mode.return_value = run_mode
+        task_run = MagicMock()
+        task_run.task_run_id = task_run_id
+        repo.start_lotto_task_run.return_value = task_run
+        commesse_repo = MagicMock()
+        commesse_repo.list_commesse_emittibili.return_value = list(commesse_ids)
+        executor.commesse_repository = commesse_repo
+        return executor, repo, commesse_repo, error_logger
+
+    # Scopo: ⚠️ IL TEST CHE CONTA sul pull (D-Q p.3) — con 1 commessa su 3 in
+    #        errore il task_run chiude in ERRORE (`fail_lotto_task_run`) e NON in
+    #        COMPLETATO, SENZA sollevare. Con COMPLETATO il resolver darebbe SKIP
+    #        al rilancio e la commessa rimasta indietro non verrebbe mai
+    #        ritentata — in silenzio, perche' l'errore vive solo sui log.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_attivita_da_commessa_parziale_chiude_task_run_errore(self, _mock_txn):
+        executor, repo, commesse_repo, error_logger = self._build_executor_pull([10, 20, 30])
+        commesse_repo.emit_attivita_fatturabili.side_effect = [
+            None, RuntimeError("emit ko"), None,
+        ]
+
+        # Nessuna eccezione: le due commesse sane restano emesse e lo step prosegue.
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        self.assertEqual(commesse_repo.emit_attivita_fatturabili.call_count, 3)
+        repo.fail_lotto_task_run.assert_called_once()
+        args, kwargs = repo.fail_lotto_task_run.call_args
+        self.assertEqual(args[0], 555)
+        # Codice riusato, non sintetico: e' lo stesso motivo per-commessa.
+        self.assertEqual(args[1], "E_PULL_COMMESSA")
+        self.assertEqual(kwargs["meta"]["totale"], 3)
+        self.assertEqual(kwargs["meta"]["ok"], 2)
+        self.assertEqual(kwargs["meta"]["falliti"], 1)
+        self.assertEqual(kwargs["meta"]["commesse_fallite"], [20])
+        repo.complete_lotto_task_run.assert_not_called()
+        # Il motivo per-commessa resta anche sui log di lotto.
+        error_logger.log_error.assert_called_once()
+
+    # Scopo: simmetrico — nessuna commessa fallita chiude il task_run in
+    #        COMPLETATO. Serve a provare che il parziale non e' diventato la
+    #        regola: un giro pulito deve restare pulito.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_attivita_da_commessa_tutte_ok_completa_task_run(self, _mock_txn):
+        executor, repo, commesse_repo, _ = self._build_executor_pull([10, 20], task_run_id=556)
+
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        repo.complete_lotto_task_run.assert_called_once_with(556)
+        repo.fail_lotto_task_run.assert_not_called()
+
+    # Scopo: il caso «tutte fallite» resta un RAISE e non un parziale — con zero
+    #        commesse emesse proseguire costruirebbe un lotto VUOTO. E' la sola
+    #        differenza di policy rispetto ai gemelli snapshot/scadenze, dove il
+    #        caso non esiste perche' D-Q lo applica il DB.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_attivita_da_commessa_tutte_fallite_solleva(self, _mock_txn):
+        executor, repo, commesse_repo, _ = self._build_executor_pull([10, 20], task_run_id=557)
+        commesse_repo.emit_attivita_fatturabili.side_effect = RuntimeError("emit ko")
+
+        with self.assertRaises(ServiceError) as ctx:
+            executor.execute_step(
+                lotto_id=1,
+                stato_doc_fiscale_id=2,
+                tipo_lotto="MASSIVO",
+                rollback=False,
+                dry_run=False,
+            )
+
+        self.assertEqual(ctx.exception.code, "E_PULL_COMMESSA_ALL_FAILED")
+        repo.complete_lotto_task_run.assert_not_called()
+
+    # Scopo: dry-run — nessun esito parziale puo' comparire, perche' non e'
+    #        stato tentato nulla.
+    #        ⚠️ Il gate che conta sta PRIMA dell'handler: `_run_task` esce in
+    #        dry-run subito dopo aver risolto l'handler_code, quindi non parte
+    #        nemmeno il task_run. Il `if dry_run: return None` dentro l'handler
+    #        e' una seconda cintura (l'handler resta corretto se un domani
+    #        venisse invocato fuori da `_run_task`), non il presidio primario:
+    #        questo test verifica il comportamento reale, non quel ramo.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_attivita_da_commessa_dry_run_non_produce_parziale(self, _mock_txn):
+        executor, repo, commesse_repo, _ = self._build_executor_pull([10, 20], task_run_id=558)
+
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=True,
+        )
+
+        commesse_repo.emit_attivita_fatturabili.assert_not_called()
+        repo.start_lotto_task_run.assert_not_called()
+        repo.fail_lotto_task_run.assert_not_called()
+        repo.complete_lotto_task_run.assert_not_called()
 
     # Scopo: task `snapshot_indirizzi_lotto` (Fase 2 satelliti fattura) — il
     #        run felice esegue il wrapper repo col batch di default e, senza

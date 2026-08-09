@@ -1,7 +1,7 @@
 # Brief DB — Situazione aperta v2: serbatoio pre-commessa (viste ridotte agli aperti-non-chiusi)
 
 > **Tipo**: brief DB (spec per il team DB, ramo `dev/db-tid`) · **Data**: 2026-07-08 · **Owner**: Tid
-> **Design-of-record**: [brief-design-fatturazione-due-lenti.md](../work-in-progress/brief-design-fatturazione-due-lenti.md)
+> **Design-of-record**: [brief-design-fatturazione-due-lenti.md](brief-design-fatturazione-due-lenti.md)
 > §6-ter (decisioni DL-14..18, 2026-07-08). **Contesto**: la Situazione aperta v1
 > (`20260707-03..06`, PR #938) è mergiata e validata in-app; alla validazione Tid ne ha
 > ridefinito la semantica. Questo brief modifica **solo le 2 viste** `vw_dash_aperto_*`.

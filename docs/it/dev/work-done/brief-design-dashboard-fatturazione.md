@@ -2,7 +2,7 @@
 
 > ⚠️ **Superato-in-corso dal ridisegno a due lenti (2026-07-04).** L'impostazione di questo
 > brief (5 card su un unico asse "competenza") è superata dal design-of-record
-> [brief-design-fatturazione-due-lenti.md](../work-in-progress/brief-design-fatturazione-due-lenti.md): la metà
+> [brief-design-fatturazione-due-lenti.md](brief-design-fatturazione-due-lenti.md): la metà
 > "transitato" confluisce nella **Lente Competenza** (a valle), la metà "fermo" nella **Lente
 > Backlog** (a monte). L'artefatto qui descritto (5 viste + BE/FE, commit `50347da0c`) resta
 > **VIVO e congelato** — spec ancora valida finché non arriva la Fase 3 del nuovo brief.
@@ -443,7 +443,7 @@ Diario Fase 2 BE + Fase 3 FE (2026-07-03, branch `dev/backend-tid`):
 
 > ✅ **Assorbito (2026-07-04).** Queste idee v2 non sono più un cantiere futuro separato:
 > sono confluite nella **Lente Competenza** del ridisegno a due lenti
-> ([brief-design-fatturazione-due-lenti.md](../work-in-progress/brief-design-fatturazione-due-lenti.md) §4). La
+> ([brief-design-fatturazione-due-lenti.md](brief-design-fatturazione-due-lenti.md) §4). La
 > "pagina dashboard fatturato dedicata" citata qui sotto **è** la Lente 1. Mappatura:
 > §12.1 riconciliazione commesse↔fatturato → blocchi "in commessa non emesso" / "emesso non
 > fatturato" / "fatturato"; §12.2 breakdown per stato fattura → blocco "fatturato" per

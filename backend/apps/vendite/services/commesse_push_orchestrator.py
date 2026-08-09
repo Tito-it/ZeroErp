@@ -99,6 +99,26 @@ class CommessaPushOrchestrator:
         COMPLETATO — tutti gli handler terminati senza errori.
         PARZIALE   — almeno un handler con errori, almeno uno senza.
         ERRORE     — nessun handler eseguito, o tutti con errori.
+
+        ⚠️ Perche' questo ciclo NON usa `apps.core.services.fan_out.run_fan_out`
+        (valutato e scartato, brief fan-out §F5 — 2026-08-09). Due ragioni, e
+        sono di semantica, non di comodita':
+
+        1. Qui «fallito» NON vuol dire «ha sollevato». Un handler che completa
+           il suo giro e restituisce un `HandlerResult` con 2 righe in errore e'
+           gia' contato come non-riuscito da `any(r.errors)`. Per il fan-out
+           quell'handler e' semplicemente riuscito: lui vede solo le eccezioni.
+           Sono due domande diverse sullo stesso ciclo.
+        2. Sulla lista VUOTA le risposte sono opposte, ed entrambe giuste: qui
+           «nessun handler risolto» e' una configurazione sbagliata → ERRORE;
+           per un fan-out «nessun item da lavorare» e' un giro riuscito →
+           COMPLETATO. Appianare la differenza cambierebbe lo stato scritto in
+           `commesse_push_log`.
+
+        Questo ciclo e' un livello sopra: itera su handler che sono ESSI STESSI
+        fan-out (`BaseSourceHandler._process_rows`, che il BB lo usa davvero).
+        E' un aggregatore di report, non un fan-out — infatti non isola in
+        transazione: lo fanno gli handler al loro interno.
         """
         if not results:
             return "ERRORE"

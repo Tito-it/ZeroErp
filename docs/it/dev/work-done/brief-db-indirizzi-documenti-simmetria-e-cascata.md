@@ -1,7 +1,7 @@
 # Brief DB — Indirizzi documento: simmetria, codici unificati, snapshot fn, cascata al push
 
 > **Tipo**: brief al team DB · **Target**: `dev/db-tid` · **Data**: 2026-07-11 · **Owner**: Tid
-> **Design-of-record**: [brief-design-indirizzi-documenti-vendita.md](../work-in-progress/brief-design-indirizzi-documenti-vendita.md)
+> **Design-of-record**: [brief-design-indirizzi-documenti-vendita.md](brief-design-indirizzi-documenti-vendita.md)
 > (decisioni D-1…D-5 chiuse). Non in produzione: breaking change ammessi, niente compatibilità.
 
 ---
@@ -102,7 +102,7 @@ copia degli indirizzi nelle funzioni di push della catena documentale.
   presente (il documento a valle può essere stato ritoccato).
 - ⚠️ **Coordinamento firme**: se toccate `fn_push_preventivo_a_ordine` & co., c'è già
   in coda la richiesta di aggiungere `flusso_id` alla firma
-  ([brief-design-guida-rollout-multidominio.md](brief-design-guida-rollout-multidominio.md) R1,
+  ([brief-design-guida-rollout-multidominio.md](../work-in-progress/brief-design-guida-rollout-multidominio.md) R1,
   coordinata con analisi-fix-transazioni): fate un solo giro di `DROP FUNCTION`.
 
 ### 5. Fix minori

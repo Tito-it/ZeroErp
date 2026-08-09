@@ -3,7 +3,7 @@
 > **Tipo**: analisi + design · **Data**: 2026-07-26/27 · **Owner**: Tid ·
 > **Stato**: 🟢 **ANALISI COMPLETA — design stabilito e confermato** (2026-07-27).
 > Tutte le decisioni chiuse (§5). Il
-> [brief DB](brief-db-emissione-fattura-per-documento-sorgente.md) è stato
+> [brief DB](../work-done/brief-db-emissione-fattura-per-documento-sorgente.md) è stato
 > consegnato, analizzato criticamente e **contiene ora il piano di sviluppo a
 > step + il piano pgTAP** (§9-§10 del brief). BE/FE attendono. **Nessun codice
 > scritto** per questa slice.
@@ -46,7 +46,7 @@
   Approva sempre visibili · verbo «Rendi definitive» sulla card sbagliata ·
   `Emesse non fatturate` è un secchio di residui, non un passaggio.
 - **Richiede lavoro DB** → brief dedicato
-  [brief-db-emissione-fattura-per-documento-sorgente.md](brief-db-emissione-fattura-per-documento-sorgente.md).
+  [brief-db-emissione-fattura-per-documento-sorgente.md](../work-done/brief-db-emissione-fattura-per-documento-sorgente.md).
   BE/FE **attendono** ([[feedback_be_fe_attende_prerequisiti_db]]).
 
 ---
@@ -508,7 +508,7 @@ Ordine proposto. I punti 1-2 sono **DB e vanno per primi**: BE/FE attendono
 
 1. **[DB, prerequisito]** asse **documento sorgente** lungo la catena +
    decisione sulla collisione identità lotto → brief
-   [brief-db-emissione-fattura-per-documento-sorgente.md](brief-db-emissione-fattura-per-documento-sorgente.md).
+   [brief-db-emissione-fattura-per-documento-sorgente.md](../work-done/brief-db-emissione-fattura-per-documento-sorgente.md).
 2. **[DB]** **simmetria del flag** `fatturazione_immediata`: colonna su
    ordini/contratti/DDT/consumi + `fn_list_*_da_pushare` che leggono il valore
    reale invece della costante `FALSE` (§5.3).

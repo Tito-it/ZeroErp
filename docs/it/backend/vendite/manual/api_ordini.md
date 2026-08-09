@@ -15,7 +15,7 @@ note via `PartitionedNoteRepository`, lista/export via `ListaExportService`.
 Rispetto a preventivi/offerte l'ordine **non ha revisioni** né listino in testata.
 
 > Stato: **scheletro BE** (analisi
-> [analisi-ordini-vendita.md](../../../dev/work-in-progress/analisi-ordini-vendita.md)
+> [analisi-ordini-vendita.md](../../../dev/work-done/analisi-ordini-vendita.md)
 > §5) + stampa PDF (§Documenti) + **conversione preventivo/offerta→ordine**
 > (2026-06-04, endpoint `genera-ordine` sui domini upstream — valorizza
 > `documento_origine` A1). Fulfillment/DDT: vedi [api_ddt.md](api_ddt.md) (evasione `genera-ddt`). Indirizzi documento: vedi [api_indirizzi_documento.md](api_indirizzi_documento.md).
@@ -445,7 +445,7 @@ preesistono; gli `E_ORD_*` aggiunti con questo scheletro).
 
 ## Riferimenti
 
-- Analisi BE/FE: [analisi-ordini-vendita.md](../../../dev/work-in-progress/analisi-ordini-vendita.md)
+- Analisi BE/FE: [analisi-ordini-vendita.md](../../../dev/work-done/analisi-ordini-vendita.md)
   (§12 stampa, §8 decisioni)
 - Brief DB: [db-brief-ordini-vendita.md](../../../dev/work-done/db-brief-ordini-vendita.md)
   e [db-brief-ordini-lock-cliente.md](../../../dev/work-done/db-brief-ordini-lock-cliente.md)

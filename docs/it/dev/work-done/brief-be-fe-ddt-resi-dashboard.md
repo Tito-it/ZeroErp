@@ -18,7 +18,7 @@
 > (`DdtResoDialog`) e «DDT ri-spedizione» del reso (`ResoRiconsegnaDialog`) — e
 > il pannello Passaggi è stato sostituito dai chip `DocumentoCollegamentiBar`.
 > Non cambia nulla di quanto consuntivato qui: è il contenitore, non la logica.
-> **Design-of-record**: [brief-design-fatturazione-due-lenti.md](../work-in-progress/brief-design-fatturazione-due-lenti.md)
+> **Design-of-record**: [brief-design-fatturazione-due-lenti.md](brief-design-fatturazione-due-lenti.md)
 > §6-quater, decisioni **DL-19..28**.
 > **Prerequisito DB**: [brief-db-fatturazione-ddt-resi.md](../work-done/brief-db-fatturazione-ddt-resi.md).
 > **Gate**: BE/FE partono a **oggetti DB applicati** ([[feedback_be_fe_attende_prerequisiti_db]]).

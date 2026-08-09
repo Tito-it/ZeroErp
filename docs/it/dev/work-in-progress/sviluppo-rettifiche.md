@@ -14,7 +14,7 @@
 >
 > Riferimenti:
 >
-> * [sviluppo-listini.md](sviluppo-listini.md) — architettura pricing, resolver, integrazione commessa (documento padre)
+> * [sviluppo-listini-v5.md](../work-done/sviluppo-listini-v5.md) — architettura pricing, resolver, integrazione commessa (documento padre; il vecchio `sviluppo-listini.md` non esiste più, la specifica è stata versionata in v1..v6 e la v5 è quella di riferimento — v6 ne raccoglie i debiti tecnici)
 > * [gestione-commesse-v2.md](../work-done/gestione-commesse-v2.md) — pipeline commesse e fatturazione
 > * [fatturazione-modello-utilities-gas-ee-idrico.md](fatturazione-modello-utilities-gas-ee-idrico.md) — modello pricing utilities
 

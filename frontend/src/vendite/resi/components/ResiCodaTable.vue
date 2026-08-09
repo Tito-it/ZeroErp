@@ -1,3 +1,7 @@
+<!--
+  SPDX-License-Identifier: GPL-3.0-or-later
+  Copyright (C) 2026 Tid (Michele Carlo Titini)
+-->
 <script setup>
 // Scopo: Coda di lavoro resi (righe reso CONFERMATE), promossa a lista
 //        configurabile standard. Due varianti via prop `coda`: 'accreditare'
@@ -87,10 +91,15 @@ const { bindDate, bindSelect } = useStoreFilterBindings(store, applyFilters)
 const { value: dataDaFilter, onChange: onDataDaChange } = bindDate('data_da')
 const { value: dataAlFilter, onChange: onDataAlChange } = bindDate('data_a')
 
-// Filtro etichetta NC (solo coda accrediti, forma contatore): DOVUTA =
+// Filtro etichetta accredito (solo coda accrediti, forma contatore): DOVUTA =
 // lavoro arretrato, FACOLTATIVA = opzione dell'operatore (DL-26 — la scelta
-// "emetto NC?" si esercita da qui, quindi le facoltative devono restare
+// "emetto una nota?" si esercita da qui, quindi le facoltative devono restare
 // visibili, non solo filtrate via).
+// ⚠️ Le ETICHETTE a schermo dicono «Accredito dovuto / facoltativo», non «NC»
+// (allineamento 2026-08-09): DL-24 impone di nominare il FATTO e non il
+// rimedio, perche' lo strumento — nota di credito o altro — non e' ancora
+// definito e l'etichetta non deve pre-deciderlo. I CODICI restano
+// DOVUTA/FACOLTATIVA: sono colonna della vista DB `vw_resi_da_accreditare`.
 const { value: etichettaFilter, onChange: onEtichettaChange } = bindSelect('etichetta')
 const etichettaOptions = computed(() => [
   { value: null, label: t('vendite.resi.coda_etichetta_tutte') },

@@ -1652,8 +1652,8 @@
       "coda_search_accreditare": "Cerca (n° reso, destinatario, articolo, DDT, account)",
       "coda_etichetta_tutte": "Tutti gli accrediti",
       "coda_etichetta": {
-        "DOVUTA": "NC dovuta",
-        "FACOLTATIVA": "NC facoltativa"
+        "DOVUTA": "Accredito dovuto",
+        "FACOLTATIVA": "Accredito facoltativo — merce da ri-consegnare"
       },
       "coda_search_riconsegnare": "Cerca (n° reso, destinatario, articolo, DDT)"
     },

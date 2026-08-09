@@ -318,7 +318,7 @@ WHERE s.codice_interno  = 'PREVENTIVO'   -- ✅ chiave immutabile
 0 righe, state-machine che non risolve, documento che non si genera, **in silenzio**. ⚠️ Il
 guardrail di §6c (sugli alias) **NON** intercetta questo pattern: serve un controllo a parte,
 necessariamente euristico (`codice_fiscale`/`codice_iva`/`codice_articolo`/`codice_ba`/… sono
-usi legittimi di `codice`). Caso di studio completo: [analisi-hardcoded-codice.md](dev/work-in-progress/analisi-hardcoded-codice.md)
+usi legittimi di `codice`). Caso di studio completo: [analisi-hardcoded-codice.md](dev/work-done/analisi-hardcoded-codice.md)
 (§3a 21 occorrenze BUG_DUAL bonificate).
 
 **Se la tabella NON espone `codice_interno`** (CANDIDATE_ADD_CI) — decisione, in quest'ordine:

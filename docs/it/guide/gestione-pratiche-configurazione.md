@@ -175,7 +175,7 @@ Riferimenti modello: [template_flussi](/dbzero/pratiche/tabelle/template_flussi)
 
 > 🟠 **Convenzione proposta / in adozione** col primo consumatore (pratica PREVENTIVI) —
 > non ancora a catalogo. Riferimento:
-> [brief-db-pratica-preventivi-tipo-unico-flussi.md](../dev/work-in-progress/brief-db-pratica-preventivi-tipo-unico-flussi.md).
+> [brief-db-pratica-preventivi-tipo-unico-flussi.md](../dev/work-done/brief-db-pratica-preventivi-tipo-unico-flussi.md).
 
 Quando una pratica usa un **documento di dominio versionato** (es. un preventivo, che a ogni
 revisione è una **nuova riga** con `uid`/`id` nuovi ma **stesso `numero`**), il legame ROOT in

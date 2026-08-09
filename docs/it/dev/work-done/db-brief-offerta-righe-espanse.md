@@ -8,7 +8,7 @@
 >
 > **Branch**: `dev/db-tid`. **Destinatario**: team DB.
 > **Natura**: prerequisito DB per la **conversione offerta → ordine** (§7.4
-> [analisi-ordini-vendita.md](../work-in-progress/analisi-ordini-vendita.md)). BE/FE attendono
+> [analisi-ordini-vendita.md](analisi-ordini-vendita.md)). BE/FE attendono
 > (`feedback_be_fe_attende_prerequisiti_db`). Consegna **additiva, sola lettura**.
 > ZeroErp non in produzione.
 >
@@ -171,7 +171,7 @@ espanse + componenti, `documento_origine = ('OFFERTA', offerta_id)`), endpoint
 
 ## 8. Riferimenti
 
-- Analisi: [analisi-ordini-vendita.md §7.4](../work-in-progress/analisi-ordini-vendita.md).
+- Analisi: [analisi-ordini-vendita.md §7.4](analisi-ordini-vendita.md).
 - Preview contratti (target riuso): `vendite.fn_contratto_righe_preview`
   ([migration](../../../../db/changelog/migrations_v2/20_code/vendite/20260519-07-update-fn-contratto-righe-preview-add-qta-tipo-fonte-mctit.yaml)),
   wrapper `ContrattiRepository.list_righe_preview`

@@ -12,7 +12,7 @@
 >
 > **Origine**: [brief-be-fe-emissione-fattura-mirata.md](brief-be-fe-emissione-fattura-mirata.md)
 > step BE-6 (deviazione 1) · Fase B di
-> [brief-db-emissione-fattura-per-documento-sorgente.md](../work-in-progress/brief-db-emissione-fattura-per-documento-sorgente.md).
+> [brief-db-emissione-fattura-per-documento-sorgente.md](brief-db-emissione-fattura-per-documento-sorgente.md).
 
 ---
 

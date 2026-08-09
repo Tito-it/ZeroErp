@@ -12,7 +12,7 @@ opzionale **"aperti da oltre N giorni"** sul solo drill-down.
 ## Contesto
 
 Fase 3 BE del brief
-[brief-design-fatturazione-due-lenti](../../../dev/work-in-progress/brief-design-fatturazione-due-lenti.md)
+[brief-design-fatturazione-due-lenti](../../../dev/work-done/brief-design-fatturazione-due-lenti.md)
 **§6-ter (DL-14..18)** (substrato DB v2 in
 [brief-db-situazione-aperta-v2](../../../dev/work-done/brief-db-situazione-aperta-v2.md),
 changeset `20260708-03/04`, PR #944): due endpoint GET **sottili** sopra le

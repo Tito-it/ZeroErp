@@ -66,7 +66,7 @@ Ma il codice attuale è un **tappabuchi** che *contraddice* il design:
   (rename `sconto_percentuale`→`sconto_perc`, componenti BoM re-init). Endpoint
   `POST /api/v1/vendite/preventivi/<id>/genera-ordine/`. Non passa per la
   pratica, non smista per natura, non registra `pratiche_sorgenti`. (Realizzato
-  2026-06-04, vedi [analisi-ordini-vendita.md §7.4](../work-in-progress/analisi-ordini-vendita.md).)
+  2026-06-04, vedi [analisi-ordini-vendita.md §7.4](analisi-ordini-vendita.md).)
 - Il bottone "Genera ordine" è **hardcoded** su `stato = ACCETTATO` in
   [`PreventiviDrawer.vue`](../../../../frontend/src/vendite/preventivi/components/PreventiviDrawer.vue).
 - `documento_origine` su `vendite.ordini` è **senza UNIQUE** (A1).

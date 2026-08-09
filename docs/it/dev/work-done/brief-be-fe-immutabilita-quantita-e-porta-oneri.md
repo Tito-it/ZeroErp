@@ -20,7 +20,7 @@
 > [brief-db-immutabilita-quantita-e-porta-oneri.md](../work-in-progress/brief-db-immutabilita-quantita-e-porta-oneri.md),
 > che copre anche gli step 2 (ponte approvazione) e 8 (permessi prezzo N5/N7)
 > lì dichiarati «fuori perimetro DB». Design a monte:
-> [brief-design-fatturazione-due-lenti.md](../work-in-progress/brief-design-fatturazione-due-lenti.md) DL-27.
+> [brief-design-fatturazione-due-lenti.md](brief-design-fatturazione-due-lenti.md) DL-27.
 
 ## 1. Scopo e confine
 

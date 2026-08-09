@@ -48,7 +48,7 @@
 > tali. Questo brief la costruisce.
 >
 > **Prerequisito worker**: i drainer `draina_coda_lavori`/`draina_coda_stampa` (systemd
-> timer, [brief-deploy-worker-riproducibilita-ci.md](../work-in-progress/brief-deploy-worker-riproducibilita-ci.md)).
+> timer, [brief-deploy-worker-riproducibilita-ci.md](brief-deploy-worker-riproducibilita-ci.md)).
 > **Non** siamo in produzione ([[project_no_produzione_solo_sviluppo]]).
 
 ---
@@ -166,7 +166,7 @@ dalla vista completa governa (annulla/requeue) **i propri** job; l'admin vede e 
 - **C-5/C-6/C-7/C-8** (esiti, verbi con polling, ristampa): già fatti, si riusano.
 - **RLS DB** su `dbops.coda_lavori` / attivazione su `fatture_stampa_coda`: enforcement resta
   applicativo (decisione §3). Eventuale ondata RLS = futura.
-- **Deploy worker** (systemd timer): [brief-deploy-worker-riproducibilita-ci.md](../work-in-progress/brief-deploy-worker-riproducibilita-ci.md).
+- **Deploy worker** (systemd timer): [brief-deploy-worker-riproducibilita-ci.md](brief-deploy-worker-riproducibilita-ci.md).
 - **Attivazione G2** stampa in pipeline: [brief-db-processi-fatturazione-cockpit.md](brief-db-processi-fatturazione-cockpit.md) §6 (C-10).
 - **LISTEN/NOTIFY** presa in carico istantanea del worker: futuro (design coda §7).
 - Nuovi `job_type` (PEC/report/export): si aggiungono con seed+handler, questa UI li mostra

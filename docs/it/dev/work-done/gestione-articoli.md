@@ -26,7 +26,7 @@ Il dominio `catalogo` copre articoli, unita' di misura operative, distinta base 
 
 Fuori scope (coperto altrove):
 
-1. Listini prezzo → vedi [sviluppo-listini.md](../work-in-progress/sviluppo-listini.md)
+1. Listini prezzo → vedi [sviluppo-listini-v5.md](sviluppo-listini-v5.md) (il vecchio `sviluppo-listini.md` non esiste più: la specifica è stata versionata in v1..v6, la v5 è quella di riferimento)
 2. Integrazione pricing commessa (DB-L3) → vedi commesse
 
 ---
