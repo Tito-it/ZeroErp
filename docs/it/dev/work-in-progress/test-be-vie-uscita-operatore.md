@@ -1,5 +1,23 @@
 # Test in-app — le vie d'uscita per l'operatore
 
+> ## ✅ GIRO ESEGUITO — 10/10, 2026-08-10 (Tid, in app)
+>
+> I dieci casi passano tutti. Il valore del giro però non sta lì: ha fatto
+> emergere **due difetti che nessuno dei dieci cercava** — §3, **A1** e **A2** —
+> entrambi sulla stessa lacuna, cioè che la logica delle capability conosce solo
+> il percorso felice e non modella gli stati **chiusi**.
+>
+> **Aperto, e per questo il documento resta qui e non in `work-done`:**
+>
+> 1. **A1 + A2** — brief passato al team DB il 2026-08-10; le stringhe i18n
+>    restano a carico del FE, in attesa dei nomi chiave.
+> 2. ✅ **La decisione del §5 è PRESA** (Tid, 2026-08-10): *«la nota spiega lo
+>    stato chiuso»*, quindi compare anche accanto a un pulsante vivo. Passata al
+>    team DB insieme ad A1/A2, con i **due effetti collaterali** che la
+>    formulazione non copriva — vedi §5.
+>
+> Quando il team DB rientra su A1, A2 e §5, questo documento va in `work-done`.
+
 > **Cosa si sta provando:** la metà a video di
 > [brief-db-vie-uscita-operatore.md](../work-done/brief-db-vie-uscita-operatore.md) +
 > [brief-be-fe-vie-uscita-operatore.md](../work-done/brief-be-fe-vie-uscita-operatore.md).
@@ -31,24 +49,28 @@
 
 ## 1. Elenco da spuntare (sintesi)
 
-| #   | Caso                                                    | Dove                    | ✔   | Esito |
-| --- | ------------------------------------------------------- | ----------------------- | --- | ----- |
-| T1  | «Annulla» **acceso** su preventivo ACCETTATO            | `PRV0000192`            | X   | OK    |
-| T2  | «Annulla» **acceso** su preventivo EMESSO               | `PRV0000189`            | ☐   | OK    |
-| T3  | «Annulla ordine» **acceso** su ordine CONFERMATO        | `ORD0000610`            | ☐   | OK    |
-| T4  | «Annulla» **spento col motivo** (tooltip)               | `PRV0000144`            | ☐   | OK    |
-| T5  | Nota «nessuna azione» — ordine EVASO                    | `ORD0005175`            | ☐   | OK    |
-| T6  | Nota «nessuna azione» — DDT CONSEGNATO                  | `DDT0000338`            | ☐   |       | consegnato reso permesso la ui lo mostra cosi credo giusto |
-| T7  | Nota «nessuna azione» — DDT RESO                        | `DDT0000062`            | ☐   |       |
-| T8  | Resa responsive della nota (sidebar / finestra stretta) | uno dei T5–T7           | ☐   |       |
-| T9  | Il 409 col messaggio di dominio (forzatura a due tab)   | `PRV0000192`            | ☐   |       |
-| T10 | L'annullamento **esegue davvero** (stato → ANNULLATO)   | un preventivo di scarto | ☐   |       |
+| #   | Caso                                                    | Dove                    | ✔ | Esito                                                                   |
+| --- | ------------------------------------------------------- | ----------------------- | - | ----------------------------------------------------------------------- |
+| T1  | «Annulla» **acceso** su preventivo ACCETTATO            | `PRV0000192`            | X | ✅ OK                                                                    |
+| T2  | «Annulla» **acceso** su preventivo EMESSO               | `PRV0000189`            | X | ✅ OK                                                                    |
+| T3  | «Annulla ordine» **acceso** su ordine CONFERMATO        | `ORD0000610`            | X | ✅ OK                                                                    |
+| T4  | «Annulla» **spento col motivo** (tooltip)               | `PRV0000144`            | X | ✅ OK                                                                    |
+| T5  | Nota «nessuna azione» — ordine EVASO                    | `ORD0005175`            | X | ✅ OK                                                                    |
+| T6  | Nota «nessuna azione» — DDT CONSEGNATO                  | `DDT0000338`            | X | ✅ OK — testo conforme al seed (`consegnato_usa_reso`)                   |
+| T7  | Nota «nessuna azione» — DDT RESO                        | `DDT0000062`            | X | ✅ OK — testo conforme al seed (`reso`)                                  |
+| T8  | Resa responsive della nota (sidebar / finestra stretta) | uno dei T5–T7           | X | ✅ OK                                                                    |
+| T9  | Il 409 col messaggio di dominio (forzatura a due tab)   | `PRV0000192`            | X | ✅ OK — ha parlato un guard **diverso** da quello atteso, vedi dettaglio |
+| T10 | L'annullamento **esegue davvero** (stato → ANNULLATO)   | un preventivo di scarto | X | ✅ OK — ma la coda del caso ha prodotto **A2**                           |
+
+**Esito del giro: 10/10 ✅.** Non è però un giro senza risultato: ha fatto emergere
+**due anomalie** (§3, A1 e A2) che nessuno dei dieci casi cercava, ed è
+esattamente quello per cui il documento chiedeva di annotare anche i ⚠️.
 
 ---
 
 ## 2. I casi, in dettaglio
 
-### T1 — «Annulla» acceso su preventivo ACCETTATO ☐
+### T1 ✅ — «Annulla» acceso su preventivo ACCETTATO
 
 **È il verbo che prima non esisteva**: un preventivo ACCETTATO offriva una sola
 azione (`push_commessa`) e nient'altro — non si annullava, non tornava indietro.
@@ -62,17 +84,17 @@ Smistamento). Non grigio, non assente.
 
 Alternativa equivalente: `PRV0000191` (id 1271).
 
-> Esito: _______________________________________________
+> **Esito ✅** — Annulla presente e acceso.
 
-### T2 — «Annulla» acceso su preventivo EMESSO ☐
+### T2 ✅ — «Annulla» acceso su preventivo EMESSO
 
 Stessa cosa dall'altro stato ripristinato. Cerca **`PRV0000189`** (id 535).
 Qui l'Annulla convive con Accetta / Rifiuta / Crea revisione: verifica che
 **non abbia spinto le altre fuori** dalla barra o sotto il fold.
 
-> Esito: _______________________________________________
+> **Esito ✅** — Annulla convive con Accetta / Rifiuta / Crea revisione senza spingerle fuori dalla barra.
 
-### T3 — «Annulla ordine» acceso su ordine CONFERMATO ☐
+### T3 ✅ — «Annulla ordine» acceso su ordine CONFERMATO
 
 Vendite → Ordini → **`ORD0000610`** (id 633). Deve comparire **Annulla ordine**
 accanto a «Invia a commessa».
@@ -80,9 +102,9 @@ accanto a «Invia a commessa».
 ⚠️ Nota: è **l'unico** ordine CONFERMATO annullabile in tutto il database
 (vedi §4). Se lo annulli in T10, questo caso non è più ripetibile.
 
-> Esito: _______________________________________________
+> **Esito ✅** — «Annulla ordine» presente accanto a «Invia a commessa».
 
-### T4 — Il bottone spento col motivo ☐
+### T4 ✅ — Il bottone spento col motivo
 
 **È la novità vera del cantiere**: fino a ieri qui il bottone era *acceso* e il
 rifiuto arrivava dopo il click.
@@ -103,9 +125,9 @@ Equivalenti: `PRV0000143` (301), `PRV0000141` (299), `PRV0000140` (298).
 risolta. Il guard automatico è verde, quindi non dovrebbe succedere — ma se
 succede, quello è il testo da copiare nell'annotazione.
 
-> Esito: _______________________________________________
+> **Esito ✅** — bottone grigio col tooltip di dominio. Nessuna chiave i18n grezza.
 
-### T5 — La nota sull'ordine EVASO ☐
+### T5 ✅ — La nota sull'ordine EVASO
 
 Vendite → Ordini → **`ORD0005175`** (id 5388). Equivalente: `ORD0005174` (5387).
 
@@ -117,9 +139,9 @@ con icona ℹ️:
 **Perché conta:** prima qui c'era **il vuoto** — nessun pulsante e nessuna
 spiegazione, indistinguibile da un caricamento fallito.
 
-> Esito: _______________________________________________
+> **Esito ✅** — la nota compare al posto dei pulsanti.
 
-### T6 — La nota sul DDT CONSEGNATO ☐
+### T6 ✅ — La nota sul DDT CONSEGNATO
 
 Vendite → DDT → **`DDT0000338`** (id 518). Equivalente: `DDT0000337` (517).
 
@@ -129,18 +151,22 @@ Questo è il caso in cui la nota non si limita a spiegare: **indica la strada**
 (il reso). Valuta se il testo ti sembra abbastanza esplicito per un operatore
 che non conosce il modello.
 
-> Esito: _______________________________________________
+> **Esito ✅** — a video: *«La merce è consegnata: per farla rientrare si registra
+> un reso, non si annulla il DDT.»* Corrisponde alla chiave
+> `vendite.ddt.stato_info.consegnato_usa_reso`, seminata in `stati_doc_ddt.csv`
+> (id 5). Testo giudicato **sufficientemente esplicito**: indica la strada, non
+> si limita a spiegare.
 
-### T7 — La nota sul DDT RESO ☐
+### T7 ✅ — La nota sul DDT RESO
 
 Vendite → DDT → **`DDT0000062`** (id 140). Equivalente: `DDT0000061` (139).
 
 > *Questo DDT è rientrato con un reso: lo stato segue il reso da solo.*
 
-<!-- markdownlint-disable-next-line MD028 -->
-> Esito: _______________________________________________
+> **Esito ✅** — a video: *«Questo DDT è rientrato con un reso: lo stato segue il
+> reso da solo.»* Corrisponde a `vendite.ddt.stato_info.reso` (id 7).
 
-### T8 — Resa responsive della nota ☐
+### T8 ✅ — Resa responsive della nota
 
 Su uno qualsiasi fra T5–T7:
 
@@ -153,9 +179,9 @@ Su uno qualsiasi fra T5–T7:
   muted, non un banner colorato). Se ti sembra troppo poco visibile, è un ⚠️ da
   annotare: è una scelta, non un vincolo.
 
-> Esito: _______________________________________________
+> **Esito ✅** — la nota va a capo da sola e resta leggibile in chiaro, fuori dal kebab.
 
-### T9 — Il 409 col messaggio di dominio (forzatura) ☐
+### T9 ✅ — Il 409 col messaggio di dominio (forzatura)
 
 Dopo T4 il messaggio d'errore **non è più raggiungibile dalla UI normale**: il
 bottone è spento prima. Resta la difesa in profondità, e per esercitarla serve
@@ -173,9 +199,19 @@ commessa…»*).
 validazione»*. Se leggi una di queste due, il sospetto numero uno è **P1 non
 fatto** (backend non ricaricato) — verificalo prima di segnalarlo come difetto.
 
-> Esito: _______________________________________________
+> **Esito ✅ — con una precisazione che vale la pena tenere.**
+>
+> A video: *«Transizione del preventivo non ammessa: da EVASO a ANNULLATO.»*
+>
+> È un messaggio **di dominio**, che è ciò che il caso doveva provare: nessuna
+> traccia di «Errore durante l'operazione database» o «Errore di validazione».
+> Ha però parlato un guard **diverso** da quello previsto qui sopra: lo
+> smistamento ha portato il preventivo da ACCETTATO a **EVASO**, quindi scatta
+> per primo il guard della matrice di transizione (EVASO→ANNULLATO non esiste),
+> non quello «già in commessa». Entrambi sono di dominio: ha risposto quello che
+> arriva prima. **Non è un difetto**, ma l'attesa scritta nel caso era imprecisa.
 
-### T10 — L'annullamento esegue davvero ☐
+### T10 ✅ — L'annullamento esegue davvero
 
 Finora abbiamo guardato i bottoni. Qui si preme.
 
@@ -198,7 +234,13 @@ esattamente il difetto che questo cantiere è nato per chiudere, su uno stato ch
 prima nessuno raggiungeva. **Annotalo: è il primo posto dove mi aspetto che
 qualcosa non torni.**
 
-> Esito: _______________________________________________
+> **Esito ✅ per l'annullamento** — toast, ricarica del drawer, Tag → ANNULLATO,
+> barra azioni aggiornata da sola.
+>
+> ⚠️ **La domanda in coda al caso ha trovato la risposta che si temeva**: dallo
+> stato ANNULLATO il drawer non offre nulla **e non spiega perché**. Registrata
+> come **A2**. Il caso previsto che «è il primo posto dove mi aspetto che
+> qualcosa non torni» — e infatti.
 
 ---
 
@@ -216,11 +258,64 @@ farti riprovare:
 
 ### Registro
 
-| #   | Caso | Documento | Cosa hai visto | Tipo  |
-| --- | ---- | --------- | -------------- | ----- |
-| A1  |      |           |                | ⚠️ / ❌ |
-| A2  |      |           |                | ⚠️ / ❌ |
-| A3  |      |           |                | ⚠️ / ❌ |
+| #  | Caso | Documento | Cosa si è visto | Tipo |
+| -- | ---- | --------- | --------------- | ---- |
+| A1 | coda di T9 | `PRV0000192` (1816), ora EVASO | Due motivi che promettono un passo **già avvenuto** | ❌ |
+| A2 | coda di T10 | qualunque preventivo chiuso | Stato chiuso **senza spiegazione**: barra vuota e muta | ❌ |
+
+### A1 — «sarà disponibile dopo l'accettazione» su un preventivo già accettato
+
+Su `PRV0000192`, portato in **EVASO** dallo smistamento di T9, il drawer mostra:
+
+> *«L'integrazione con la commessa sarà disponibile dopo l'accettazione del preventivo.»*
+> *«La generazione dell'ordine sarà disponibile dopo l'accettazione del preventivo.»*
+
+Il preventivo **è già stato accettato** — è evaso proprio per quello. La causa
+sono le due condizioni gemelle in `script.fn_available_actions_preventivo`:
+
+```sql
+ELSIF v_stato_cod <> 'ACCETTATO' THEN
+    v_push_reason_key   := '...push_commessa_reason.non_accettato'
+    v_ordine_reason_key := '...genera_ordine_reason.non_accettato'
+```
+
+`<> 'ACCETTATO'` mette nello stesso ramo due situazioni **opposte**: prima
+dell'accettazione (DRAFT, EMESSO) la frase è un'istruzione corretta; dopo o fuori
+(EVASO, ANNULLATO, RIFIUTATO, SCADUTO) è **falsa** — promette un passo già
+avvenuto, o che non avverrà mai. L'operatore conclude che gli manchi qualcosa da
+fare.
+
+⚠️ **Il pulsante Smistamento cliccabile su EVASO non è parte dell'anomalia**: è
+voluto (`showSmistamento` include EVASO, «EVASO = consuntivo») e la dialog blocca
+le azioni. Serve a guardare com'è andato lo smistamento, non ad agire.
+
+### A2 — gli stati chiusi dei preventivi non spiegano nulla
+
+`config.stati_doc_preventivi` ha `meta = {}` su **tutti e quattro** gli stati
+chiusi: `RIFIUTATO` (5), `SCADUTO` (7), `ANNULLATO` (9), `EVASO` (10). La
+funzione **legge già** `sdp.meta->>'nessuna_azione_key'` e la espone quando
+nessuna azione è abilitata: manca solo il **dato**, non il codice.
+
+Conseguenza: ANNULLATO — lo stato che *questo stesso cantiere* ha appena reso
+raggiungibile — mostra barra vuota e nessuna spiegazione. È esattamente il
+difetto che il cantiere è nato per chiudere, sullo stato che prima nessuno
+raggiungeva.
+
+⚠️ Verificato nella matrice `transizioni_stati_preventivi`: quei quattro stati
+**non hanno alcuna transizione in uscita**. Le note non devono quindi suggerire
+ripartenze (revisioni, riaperture) senza conferma che siano praticabili per
+altra via — altrimenti si ripete A1, cioè si promette un'azione inesistente.
+
+**Stessa lacuna, altri due domini**: `stati_doc_ordini` → ANNULLATO (6) e
+FATTURATO (7); `stati_doc_ddt` → ANNULLATO (6). Gli altri stati chiusi di ordini
+e DDT la nota ce l'hanno, e T5–T7 lo confermano in app.
+
+### Stato: brief inviato al team DB
+
+Entrambe passate al team DB il **2026-08-10** (una riga di seed per A2, un ramo
+`ELSIF` su `fase = 'CHIUSO'` per A1). Le stringhe i18n nuove
+(`push_commessa_reason.stato_chiuso`, `genera_ordine_reason.stato_chiuso` e le
+note degli stati chiusi) sono lato FE, in attesa dei nomi chiave definitivi.
 
 ### Sospetti tipici, per non perdere tempo
 
@@ -242,7 +337,7 @@ Scritto qui perché «non l'ho trovato» non diventi una segnalazione.
 | Caso                                                                        | Perché                                                                                                                                                                                                                                                                                                |
 | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Ordine con annullamento bloccato** (bottone spento + motivo, lato ordini) | Nel database **non esiste un solo ordine** in questa condizione: il ramo `reasons` dell'ordine non è mai passato per il video. È lo stesso codice del preventivo (che T4 esercita), ma resta non osservato. Se crei un ordine CONFERMATO con un DDT collegato, quello è il caso da guardare per primo |
-| **Nota su ordine PARZIALMENTE_EVASO**                                       | La chiave è seminata, ma nessun ordine in quello stato riceve la nota: hanno tutti ancora azioni vive. Coerente con la regola, vedi §5                                                                                                                                                                |
+| **Nota su ordine PARZIALMENTE_EVASO**                                       | ⚠️ **SUPERATO dalla decisione del §5 (2026-08-10).** Era vero finché la nota rispondeva alla lista vuota: la chiave è seminata ma non compariva mai, perché quegli ordini hanno sempre azioni vive. Con «la nota spiega lo stato» comparirà **su ogni** ordine parzialmente evaso — ed è un effetto su uno stato **aperto** che la decisione non copriva: segnalato al team DB |
 
 ## 5. La decisione lasciata aperta — guardala mentre provi
 
@@ -261,7 +356,44 @@ Lato frontend **non c'è alcun vincolo**: la nota si affianca già alle azioni v
 spiegazione accompagna sempre lo stato chiuso, costa **una riga in tre funzioni
 DB e zero righe di frontend**. È una scelta di dominio, ed è tua.
 
-> Decisione: _______________________________________________
+> ## ✅ **DECISIONE PRESA — Tid, 2026-08-10**
+>
+> > **«La nota spiega lo stato chiuso»**: comparirebbe sempre su un ordine evaso,
+> > anche accanto al pulsante ancora vivo. L'operatore leggerebbe «è evaso, lo
+> > stato si ricalcola dai DDT» e avrebbe comunque il suo bottone.
+>
+> Cioè: la nota **non è più la risposta a uno schermo vuoto**, è l'informazione di
+> stato. Il presupposto che la faceva sparire — `v_nessuna_azione`, il «nessun
+> bottone vivo» — decade.
+>
+> **Conseguenza tecnica**: nelle tre funzioni `fn_available_actions_*` (preventivo,
+> ordine, ddt) il campo si emette sempre che lo stato abbia una nota seminata:
+>
+> ```sql
+> -- da
+> 'nessuna_azione_key', CASE WHEN v_nessuna_azione THEN v_nessuna_key END
+> -- a
+> 'nessuna_azione_key', v_nessuna_key
+> ```
+>
+> e il calcolo di `v_nessuna_azione` diventa codice morto. Zero righe di frontend:
+> `DrawerActionsBar` rende già la nota accanto alle azioni vive.
+>
+> ⚠️ **Due effetti che la decisione, come formulata, non copriva** — passati al
+> team DB insieme alla decisione:
+>
+> 1. **`ORDINI / PARZIALMENTE_EVASO` si accende.** Ha già la nota seminata
+>    (*«Evasione in corso: lo stato si ricalcola a ogni DDT.»*) ma **non è uno
+>    stato chiuso** (`fase = IN_CORSO`), e finora non compariva mai proprio perché
+>    quegli ordini hanno sempre azioni vive — è il caso registrato in §4. Con la
+>    nuova regola comparirà su **ogni** ordine parzialmente evaso. Sembra un
+>    guadagno (dice che lo stato si muove da sé), ma è un cambiamento su uno stato
+>    **aperto**, non deciso qui.
+> 2. **Il nome del campo diventa falso.** `nessuna_azione_key` si mostrerà proprio
+>    quando le azioni **ci sono**. Il vocabolario giusto il frontend ce l'ha già:
+>    le chiavi i18n stanno sotto `vendite.<dominio>.stato_info.*`. Proposta di
+>    rinomina a `stato_info_key` — 3 funzioni DB + 8 drawer FE, il backend non lo
+>    tocca (passa il blob invariato).
 
 ---
 
