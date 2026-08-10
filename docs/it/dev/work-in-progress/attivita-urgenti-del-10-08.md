@@ -8,9 +8,10 @@
 > decisione di dominio già presa. Sono scritte qui perché si riparta da un documento
 > e non dalla memoria.
 >
-> **Stato:** **entrambi chiusi lato DB** lo stesso giorno — i blocchi in testa a
-> ciascuna sezione dicono cosa è stato fatto e cosa è stato misurato. Restano il
-> migrate dei tre changeSet del §2 e la metà a video, che è del FE.
+> **Stato:** **§1 e §2 chiusi, applicati e committati** — i blocchi in testa a
+> ciascuna sezione dicono cosa è stato fatto e cosa è stato misurato. Resta la metà a
+> video, che è del FE, e il **§3**: una slice nuova, misurata l'11-08 su conferma del
+> BE, che non era in questo documento quando è nato.
 >
 > ⚠️ **Il nome di questo file diceva `11-08` fino a poco fa, ed era sbagliato.**
 > Lo scrivo perché quella data ha già portato fuori strada una volta: il changeSet
@@ -19,30 +20,27 @@
 
 ---
 
-## 0. Da dove si riparte — tutto applicato al DB, niente committato
-
-Serve saperlo prima di toccare qualsiasi cosa, perché il database di sviluppo è
-già avanti rispetto a git.
+## 0. Consuntivo — applicato, verificato, committato
 
 | Cosa | Stato |
 | --- | --- |
-| `20260810-01` (capability preventivo: reason `stato_chiuso`) | **applicato** al DB (`EXECUTED`), file **non committato** |
-| `20260810-02` (capability ordine: reason `annullato`) | **applicato** al DB (`EXECUTED`), file **non committato** |
-| 7 celle `meta` nei tre CSV `stati_doc_*` | **applicate** (i loader hanno fatto `RERAN`), file **non committati** |
-| `test-capability-motivi-e-nessuna-azione-v1.sql` (9 → **12 test**) | riscritto, **12/12 verde** come applicazione, non committato |
-| `test-transizioni-uscita-manuale-v1.sql` | solo commenti (punto cieco dichiarato), non committato |
-| `20260810-03` (fix del §1) | **applicato** e registrato; baseline `vendite` rigirata dopo, verde |
-| `20260810-04` / `-05` / `-06` (§2: nota sempre esposta + `stato_info_key`) | scritti e **provati in transazione**, pgTAP 12/12 — 🔴 **migrate da fare** |
+| `20260810-01` / `-02` (§1 del rilievo: reason `stato_chiuso` e `annullato`) | ✅ `EXECUTED` |
+| 7 celle `meta` nei tre CSV `stati_doc_*` (§2 del rilievo) | ✅ applicate (loader `RERAN`) |
+| `20260810-03` (§1 di questo documento: MOTIVO 1 mai scattato) | ✅ `EXECUTED` |
+| `20260810-04` / `-05` / `-06` (§2: nota sempre esposta + `stato_info_key`) | ✅ `EXECUTED` |
+| `test-capability-motivi-e-nessuna-azione-v1.sql` | ✅ 9 → **12 test**, 12/12 come applicazione |
+| `test-transizioni-uscita-manuale-v1.sql` | ✅ punto cieco dichiarato (solo commenti) |
+| Baseline pgTAP dopo ogni passo | ✅ `script`, `config`, `vendite` — **nessuna regressione** |
+| Doc auto-gen | ✅ rigenerate: riflettono il vivo |
+| Commit | ✅ `114ba076b` (il lavoro), `6afc20993` (§12 al BE), `2d44dcb13` (§12.5-bis) |
 
-**Quindi restano due cose, in quest'ordine:**
+**Cosa resta**, e non è lavoro DB tranne il §3:
 
-1. il **migrate** dei tre changeSet del §2 (`-04`, `-05`, `-06`);
-2. il **commit**: nessuna delle righe qui sopra è in git.
-
-⚠️ Dopo il migrate del §2 va **rigirata la baseline** dei tre schemi: il campo del
-blob cambia nome, quindi ogni pgTAP che lo legge parla con la funzione nuova. Il
-solo file che lo legge è `test-capability-motivi-e-nessuna-azione-v1.sql`, ed è già
-aggiornato — ma la verifica va fatta, non dedotta.
+1. **la metà a video** — 10 chiavi i18n da tradurre e la prop da rinominare in 8
+   drawer + `DrawerActionsBar`, nello stesso rilascio. Finché non traducono, il guard
+   i18n è rosso, ed è voluto;
+2. **il §3 qui sotto**: i cinque domini muti. È lavoro DB e va deciso;
+3. le voci dichiarate aperte nel [§12.6 del brief](../work-done/brief-db-vie-uscita-operatore.md#126-cosa-resta-aperto-dichiarato).
 
 ---
 
@@ -335,7 +333,16 @@ la frequenza con cui l'API lo riceve, da mai a qualche volta.
 >    risponde vero per **tutti** i documenti. Va guardato il valore — vale ora per
 >    `stato_info_key` come valeva prima.
 
-### Il testo della richiesta, come la ha scritta il BE
+<!-- markdownlint-disable-next-line MD028 -->
+> ℹ️ **Da qui in avanti il testo è come fu scritto prima dell'esecuzione**, e va
+> letto per quello: §2.1–2.3 riportano la richiesta del BE e la decisione, §2.4–2.5
+> sono note del lato DB scritte **come cose da fare**. 🔴 In particolare il **§2.4 è
+> superato**: prevedeva di ribaltare il test 8 e di aggiornare i riferimenti al nome
+> del campo, e sono fatti — il blocco in testa alla sezione riporta l'esito (12/12).
+> Resta utile perché dice *perché* quel test andava ribaltato e non messo in
+> baseline.
+
+### 2.1–2.3 La richiesta del BE e la decisione, come furono scritte
 
 > Richiesta del BE del 2026-08-10, che nasce dalla **decisione §5 presa da Tid** lo
 > stesso giorno. Riportata qui integralmente perché non vada persa, con in coda le
@@ -417,7 +424,14 @@ La parte frontend la fanno loro nello stesso giro.
 > arriva più e la nota spariria senza errori. Da concordare il momento, non la
 > sostanza.
 
-### 2.4 Quello che solo il lato DB sa, e che va fatto nello stesso commit
+### 2.4 ~~Quello che solo il lato DB sa, e che va fatto nello stesso commit~~ — ESEGUITO
+
+> 🟢 **Superato: tutto quanto segue è stato fatto** nel commit `114ba076b` (test 8
+> ribaltato, popolazione allargata, riferimenti al nome del campo aggiornati; suite
+> **12/12**). La sezione resta perché spiega **perché** il test 8 andava ribaltato e
+> non messo in baseline — un ragionamento che serve la prossima volta che una
+> decisione cambia sotto un test verde. Il conto delle voci è nel blocco in testa
+> alla sezione.
 
 🔴 **Il pgTAP scritto oggi asserisce la regola VECCHIA, e con questa modifica
 diventa esattamente sbagliato.** In `test-capability-motivi-e-nessuna-azione-v1.sql`:
@@ -476,7 +490,76 @@ non compare.
 
 ---
 
-## 3. Cosa NON è in questo documento
+## 3. ⏳ DA DECIDERE — i cinque domini muti (slice, misurata l'11-08)
+
+> Il BE ha verificato nel codice, non nel documento, e conferma: **`offerta`,
+> `lotto`, `reso`, `contratto` e `commessa` non emettono affatto il campo**. Aggiunge
+> un dato che dal lato DB non si vedeva: **tutti e otto i drawer leggono già
+> `stato_info_key`**, quindi per cinque di loro il cablaggio è lì, pronto e inerte.
+>
+> E ha ragione sul fatto che la decisione §5 **peggiora** la cosa: ora che la nota
+> «spiega lo stato» invece di rispondere allo schermo vuoto, quei cinque domini
+> restano **gli unici in cui uno stato chiuso non dice niente** — un'incoerenza che
+> prima si confondeva col comportamento generale.
+
+### 4.1 La scansione, misurata
+
+| Dominio | Tabella di stato | Stati CHIUSI senza chiave | Documenti oggi |
+| --- | --- | --- | --- |
+| `contratto` | `config.stati_doc_contratti` | ANNULLATO (7), CESSATO (2) | **9** |
+| `reso` | `config.stati_doc_reso` | ANNULLATO (4), CONFERMATO (5) | **9** |
+| `offerta` | `config.stati_doc_offerte` | ANNULLATA (3), SUPERATA (3), RIFIUTATA (0) | **6** |
+| `commessa` | `vendite.stati_commessa` | CHIUSA (0), ANNULLATA (0) | 0 |
+| `lotto` | `config.stati_doc_fiscale` | ANNULLATA (0), REGISTRATA (0) | 0 |
+
+**11 stati, 24 documenti** che oggi mostrano una barra senza spiegazione. Tutte e
+cinque le tabelle hanno già `fase` e `meta`: la forma del seed è identica a quella
+appena fatta.
+
+### 4.2 Due cose che la stima «una riga + il seed» non copriva
+
+🟢 **La prima è a favore: la riga è davvero una riga.** Verificato: tutte e cinque
+le funzioni **raggiungono già** la propria tabella di stato con un JOIN (quattro
+leggono già `meta` o `pdf_mode` da lì, `lotto` fa un `LEFT JOIN` su
+`config.stati_doc_fiscale`). Non serve aggiungere un JOIN a nessuna: servono una
+variabile, una colonna nella `SELECT INTO` e un campo nel `jsonb_build_object` —
+esattamente i tre punti toccati su preventivo/ordine/DDT.
+
+🔴 **La seconda è un caso a parte, e va deciso prima di toccarlo. Il `lotto` non ha
+una tabella di stato propria: usa `config.stati_doc_fiscale`, che è CONDIVISA con
+`vendite.fatture`** (più le tabelle di log/pipeline: 8 FK in tutto). Seminare la nota
+su uno stato fiscale significa scrivere un testo che deve essere vero **sia per un
+lotto sia per una fattura** in quello stato — e una `fn_available_actions_fattura`
+oggi **non esiste**, quindi metà dei consumatori di quel testo non è ancora scritta.
+Nota a margine: sono anche i due stati con **zero documenti**, quindi è la parte a
+valore più basso della slice.
+
+Le tre strade, in ordine di quanto costano:
+
+1. **Escludere il lotto** e fare i quattro domini con tabella propria — 9 stati, 24
+   documenti, nessuna ambiguità. Il lotto resta dichiarato aperto;
+2. includerlo con un testo scritto per essere vero su entrambi i tipi di documento
+   («questo documento fiscale è annullato / registrato»), accettando che sia più
+   generico degli altri;
+3. rimandare tutta la slice e chiudere prima la `fn_available_actions_fattura`, che
+   è il vero buco di quella famiglia — il documento **fiscale** non ha capability.
+
+### 4.3 Costo, se si procede
+
+* **1 changeSet per dominio** (4 o 5), stessa forma di `20260810-04/-05/-06`;
+* **9 o 11 celle di seed** nei CSV degli stati — nessun changeSet, i loader sono
+  mirror `runOnChange`;
+* **9 o 11 chiavi i18n nuove**, testi del FE. ⚠️ Il guard `check_i18n_keys.py`
+  resta **rosso** finché non le traducono: le chiavi vanno seminate **insieme** alla
+  riga nella funzione, mai prima — una chiave che nessuna funzione legge è dato morto
+  che costa a loro senza dare niente all'operatore, ed è l'errore inverso di quello
+  del §2 del rilievo;
+* **pgTAP**: il test 1 di `test-capability-motivi-e-nessuna-azione-v1.sql` presidia
+  oggi i **tre** domini che espongono il campo. Va allargato ai nuovi, altrimenti la
+  regola «ogni stato in fase CHIUSO dichiara la chiave» continuerebbe a non vederli —
+  la stessa cecità per costruzione già pagata due volte (§2.4, §12.5 del brief).
+
+## 5. Cosa NON è in questo documento
 
 Per non farne una lista di cose che sembrano mie e non lo sono.
 
