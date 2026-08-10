@@ -24,6 +24,20 @@ AS $function$
 -- rev 2026-08-04 (§7.3): assorbito il criterio che viveva dentro
 --   la porta (righe gia' EMESSA in commessa) -> MOTIVO 2. Da qui
 --   la porta non ha piu' una regola propria: chiama questa.
+-- rev 2026-08-10: il MOTIVO 1 non era mai scattato. Cercava
+--   l'ordine figlio su ordini.sorgente_uid, che e' l'origine
+--   IMPORT (0 righe valorizzate su 90) e non il legame al
+--   documento a monte; quello vive su documento_origine_tipo/id
+--   (66 su 90). Scritto per simmetria col gemello sui DDT, dove
+--   la colonna omonima E' il legame ed E' popolata: la trappola
+--   §4a di docs/it/guide/sorgente-polimorfa.md, colonne che
+--   sembrano polimorfe e non lo sono (vendite.ordini non ha il
+--   guard, quindi non e' consumatrice del meccanismo).
+--   + esclusi gli ordini figli ANNULLATI via is_abortito:
+--   altrimenti un figlio morto bloccherebbe il padre per
+--   sempre. Decisione di Tid 2026-08-10: qualunque altro stato
+--   blocca, bozza compresa (la via d'uscita e' abbandonare
+--   prima la bozza dell'ordine).
 DECLARE
   v_motivi  jsonb := '[]'::jsonb;
   v_uid     vendite.preventivi.uid%TYPE;
@@ -47,13 +61,28 @@ BEGIN
   END IF;
 
   -- MOTIVO 1 — un ordine e' gia' nato da questo preventivo.
-  -- Catena diretta: ordini.sorgente_uid e' uuid e punta all'uid.
+  -- ⚠️ Il legame preventivo -> ordine e' la coppia
+  -- (documento_origine_tipo, documento_origine_id), non
+  -- ordini.sorgente_uid: quella e' l'ORIGINE IMPORT
+  -- (commento della colonna) e nessuno la valorizza per
+  -- questa catena. Fonti: guida sorgente-polimorfa §6, che
+  -- elenca ordini.documento_origine_id fra le colonne
+  -- dirette, e vw_documento_lineage_archi, che lega
+  -- preventivo e ordine con lo stesso predicato.
+  -- ⚠️ NON copiare qui la forma del gemello sui DDT
+  -- (ddt.sorgente_uid): la' la colonna omonima E' il legame
+  -- al padre ed E' popolata. E' la stessa parola per due
+  -- cose diverse, e la simmetria apparente e' cio' che ha
+  -- tenuto questo motivo spento senza che nessuno lo vedesse.
+  -- Gli ordini figli ANNULLATI non contano: un documento
+  -- morto non deve bloccare il padre per sempre.
   SELECT count(*)
     INTO v_ordini
     FROM vendite.ordini o
-   WHERE o.sorgente_uid = v_uid
-     AND o.sorgente_tipo_id = (SELECT s.id FROM config.sorgenti s
-                                WHERE s.codice_interno = 'PREVENTIVO');
+    JOIN config.stati_doc_ordini so ON so.id = o.stato_doc_ordine_id
+   WHERE o.documento_origine_tipo = 'PREVENTIVO'
+     AND o.documento_origine_id   = p_preventivo_id
+     AND so.is_abortito IS NOT TRUE;
 
   IF v_ordini > 0 THEN
     v_motivi := v_motivi || jsonb_build_object(
@@ -109,7 +138,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_preventivo_annullabile(p_preventivo_id bigint)
-IS 'Pure check: motivi che impediscono l''annullamento di un preventivo. [] = lecito. Sede UNICA della regola, condivisa da vendite.trgfn_preventivi_guard_annullamento, dalla porta vendite.fn_cambia_stato_preventivo e da script.fn_available_actions_preventivo. Motivi in ordine di gravita'' (chi consuma solleva il primo): 1) un ordine generato (vendite.ordini.sorgente_uid = preventivi.uid); 2) righe gia'' EMESSA in commessa (vendite.commesse_attivita, segment_key PREV:<uid>:R:) — a valle esiste una fattura; 3) una riga in vendite.commesse_sorgenti (chiave uid::text, per key_selector di config.sorgenti). Il 2 e il 3 NON sono ridondanti: il primo legge l''effetto scritto dalle funzioni di dominio, il secondo la registrazione scritta dal backend. rev 2026-08-04: assorbito il criterio della porta, che non ha piu'' regola propria (brief-db-vie-uscita-operatore §7.3).';
+IS 'Pure check: motivi che impediscono l''annullamento di un preventivo. [] = lecito. Sede UNICA della regola, condivisa da vendite.trgfn_preventivi_guard_annullamento, dalla porta vendite.fn_cambia_stato_preventivo e da script.fn_available_actions_preventivo. Motivi in ordine di gravita'' (chi consuma solleva il primo): 1) un ordine generato e non annullato (vendite.ordini.documento_origine_tipo = ''PREVENTIVO'' AND documento_origine_id = preventivo, con config.stati_doc_ordini.is_abortito NOT TRUE); 2) righe gia'' EMESSA in commessa (vendite.commesse_attivita, segment_key PREV:<uid>:R:) — a valle esiste una fattura; 3) una riga in vendite.commesse_sorgenti (chiave uid::text, per key_selector di config.sorgenti). Il 2 e il 3 NON sono ridondanti: il primo legge l''effetto scritto dalle funzioni di dominio, il secondo la registrazione scritta dal backend. rev 2026-08-04: assorbito il criterio della porta, che non ha piu'' regola propria (brief-db-vie-uscita-operatore §7.3). rev 2026-08-10: il MOTIVO 1 non era MAI scattato. Cercava l''ordine su vendite.ordini.sorgente_uid, che e'' l''origine IMPORT (commento della colonna) e non il legame al documento a monte: zero righe valorizzate su 90, mentre documento_origine_tipo/id lo e'' su 66. Era scritto per simmetria col gemello script.fn_check_ordine_annullabile, dove ddt.sorgente_uid E'' il legame al padre ed E'' popolata — la trappola §4a di docs/it/guide/sorgente-polimorfa.md: colonne omonime FUORI dal meccanismo polimorfo (vendite.ordini non ha il guard, quindi non ne e'' consumatrice). NESSUN backfill di sorgente_uid: sarebbe una seconda convenzione per lo stesso legame. + gli ordini figli annullati sono esclusi (is_abortito), unico punto in cui questa regola non copia il gemello: senza, un figlio morto bloccherebbe il padre per sempre e senza uscita. Decisione di dominio (Tid, 2026-08-10): qualunque altro stato del figlio blocca, bozza compresa — la via d''uscita e'' abbandonare prima la bozza dell''ordine. Effetto misurato: 13 preventivi ACCETTATO passano da annullabili a bloccati col motivo.';
 ```
 
 ---

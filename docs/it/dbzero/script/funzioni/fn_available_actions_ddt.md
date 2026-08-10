@@ -38,13 +38,31 @@ AS $function$
 --   solo il nome dell'azione: il codice_interno non e' quella forma
 --   (DRAFT -> Bozza) e tradurlo nel FE sarebbe una seconda copia
 --   del vocabolario degli stati. NULL su cio' che non cambia stato.
+--   rev 2026-08-10 (2): la nota di stato non e' piu' subordinata alla
+--   lista vuota, e cambia nome. Decisione §5 di Tid: «la nota spiega lo
+--   stato chiuso, e compare sempre» — anche accanto a un'azione ancora
+--   viva, dove l'operatore legge cos'e' successo E ha il suo bottone.
+--   Cade quindi il presupposto che la faceva sparire: via
+--   v_nessuna_azione e il suo NOT EXISTS, che erano diventati codice
+--   morto, e via il commento che spiegava perche' non si appoggiavano a
+--   v_can_change — era la motivazione di una regola che non esiste piu'.
+--   Il campo si chiama ora `stato_info_key`: `nessuna_azione_key`
+--   diventava falso proprio nel momento in cui inizia a mostrarsi
+--   quando le azioni ci sono, e il vocabolario giusto era gia' dall'altra
+--   parte (le chiavi i18n stanno sotto vendite.<dominio>.stato_info.*).
+--   ⚠️ La PROPRIETA' nel meta dello stato resta `nessuna_azione_key`, ed
+--   e' voluto: il presidio scripts/check_i18n_keys.py trova quelle chiavi
+--   proprio per quel nome (RE_SEED_KEY sui CSV, elenco _PROP_KEY), e
+--   rinominarla senza toccare il guard lo renderebbe verde per cecita' —
+--   il caso peggiore, gia' denunciato nel §8.3 del brief. Rinomina della
+--   proprieta' proposta come slice a se'.
+--   brief-db-vie-uscita-operatore §4; attivita-urgenti-del-10-08 §2.
 DECLARE
     v_ddt        vendite.ddt%ROWTYPE;
     v_stato_cod  config.stati_doc_ddt.codice_interno%TYPE;
     v_pdf_mode   config.stati_doc_ddt.pdf_mode%TYPE;
     v_pdf_allow  config.stati_doc_ddt.pdf_allow_allegati%TYPE;
-    v_nessuna_key    text;
-    v_nessuna_azione boolean := false;
+    v_stato_info_key    text;
     v_actions    jsonb;
     v_can_change boolean := false;
     v_ha_righe   boolean := false;
@@ -75,8 +93,12 @@ BEGIN
     -- dello stato (dato, non codice: si cambia il testo senza
     -- toccare questa funzione).
     SELECT sdd.codice_interno, sdd.pdf_mode, sdd.pdf_allow_allegati,
+           -- ⚠️ La PROPRIETA' nel meta resta `nessuna_azione_key` mentre il
+           -- campo del blob si chiama ora `stato_info_key`. L'asimmetria e'
+           -- voluta e la spiega la rev 2026-08-10 (2) in testa: il presidio
+           -- i18n si aggancia a QUESTO nome.
            sdd.meta->>'nessuna_azione_key'
-      INTO v_stato_cod, v_pdf_mode, v_pdf_allow, v_nessuna_key
+      INTO v_stato_cod, v_pdf_mode, v_pdf_allow, v_stato_info_key
       FROM config.stati_doc_ddt sdd
      WHERE sdd.id = v_ddt.stato_doc_ddt_id;
 
@@ -220,16 +242,6 @@ BEGIN
         );
     END IF;
 
-    -- La nota "cosa fare invece" si mostra SOLO quando non resta
-    -- nessun bottone vivo. NON si appoggia a v_can_change, che qui
-    -- conta anche i disabilitati (vedi sopra): userebbe un conteggio
-    -- pensato per l'opposto e la nota non comparirebbe mai.
-    SELECT NOT EXISTS (
-        SELECT 1
-          FROM jsonb_array_elements(v_actions) AS a
-         WHERE COALESCE((a->>'enabled')::boolean, true) IS TRUE
-    ) INTO v_nessuna_azione;
-
     RETURN jsonb_build_object(
         'available_actions',            v_actions,
         'can_change_state',             v_can_change,
@@ -238,7 +250,7 @@ BEGIN
         'can_push_commessa',            v_push_ok,
         'can_push_commessa_reason',     v_push_reason,
         'can_push_commessa_reason_key', v_push_reason_key,
-        'nessuna_azione_key',           CASE WHEN v_nessuna_azione THEN v_nessuna_key END,
+        'stato_info_key',           v_stato_info_key,
         'non_editable_fields',          CASE WHEN v_stato_cod = 'DRAFT'
                                              THEN c_non_edit_draft
                                              ELSE c_non_edit_tutti END,
@@ -249,7 +261,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_ddt(p_ddt_id bigint)
-IS 'Capability DDT per detail API: available_actions + push_commessa (fn_list_ddt_da_pushare) + can_change_state + can_edit_* + nessuna_azione_key + non_editable_fields + stato_codice. Mirror di fn_available_actions_ordine. rev 2026-07-19: transizioni verso EMESSO via fn_check_ddt_emittibile; reason push GIA_INVIATO/GIA_FATTURATO via fn_get_stato_push_segment. rev 2026-07-19 (ter): il catch-all DDT_NON_PUSHABILE e'' decomposto nelle 7 cause di esclusione via vendite.fn_ddt_push_diagnosi (fonte unica, equivalenza col lister blindata a pgTAP); rami propri DDT_FATTURA_DA_ORDINE (XOR, speculare di ORDINE_FATTURA_DA_DDT), DDT_SOLO_TRASPORTO (causale non fatturabile), DDT_MERCE_IN_VIAGGIO (stato pre-trigger); casi senza-BA/contatore/annullato/reso nel generico riscritto (non piu'' basato sullo stato); precedenza a due livelli (documento prima, poi riga azionabile) — brief-db-ddt-reason-push-catch-all §3. rev 2026-08-04: + nessuna_azione_key dal meta dello stato corrente (CONSEGNATO / RESO), esposta solo quando nessuna azione risulta abilitata — valutata a parte da can_change_state, che qui conta apposta anche le disabilitate (brief-db-vie-uscita-operatore §4 regola R3). rev 2026-08-06: + target_state_descrizione accanto a target_state (config.stati_doc_ddt.descrizione della destinazione). E'' il campo che mancava alla frase di conferma «Portare il DDT nello stato {x}?», dove il FE poteva mettere solo il nome dell''azione e si leggeva «nello stato Annulla DDT»: il codice_interno non e'' la forma leggibile e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati. NULL su push_commessa, che non e'' una transizione.';
+IS 'Capability DDT per detail API: available_actions + push_commessa (fn_list_ddt_da_pushare) + can_change_state + can_edit_* + nessuna_azione_key + non_editable_fields + stato_codice. Mirror di fn_available_actions_ordine. rev 2026-07-19: transizioni verso EMESSO via fn_check_ddt_emittibile; reason push GIA_INVIATO/GIA_FATTURATO via fn_get_stato_push_segment. rev 2026-07-19 (ter): il catch-all DDT_NON_PUSHABILE e'' decomposto nelle 7 cause di esclusione via vendite.fn_ddt_push_diagnosi (fonte unica, equivalenza col lister blindata a pgTAP); rami propri DDT_FATTURA_DA_ORDINE (XOR, speculare di ORDINE_FATTURA_DA_DDT), DDT_SOLO_TRASPORTO (causale non fatturabile), DDT_MERCE_IN_VIAGGIO (stato pre-trigger); casi senza-BA/contatore/annullato/reso nel generico riscritto (non piu'' basato sullo stato); precedenza a due livelli (documento prima, poi riga azionabile) — brief-db-ddt-reason-push-catch-all §3. rev 2026-08-04: + nessuna_azione_key dal meta dello stato corrente (CONSEGNATO / RESO), esposta solo quando nessuna azione risulta abilitata — valutata a parte da can_change_state, che qui conta apposta anche le disabilitate (brief-db-vie-uscita-operatore §4 regola R3). rev 2026-08-06: + target_state_descrizione accanto a target_state (config.stati_doc_ddt.descrizione della destinazione). E'' il campo che mancava alla frase di conferma «Portare il DDT nello stato {x}?», dove il FE poteva mettere solo il nome dell''azione e si leggeva «nello stato Annulla DDT»: il codice_interno non e'' la forma leggibile e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati. NULL su push_commessa, che non e'' una transizione. rev 2026-08-10 (2): il campo si chiama ora stato_info_key e NON e'' piu'' subordinato alla lista vuota: viene emesso sempre che lo stato lo dichiari nel proprio meta, anche accanto a un''azione ancora abilitata. Decisione §5 di Tid: la nota spiega lo STATO, e chi ha ancora un bottone deve comunque poter leggere cos''e'' successo; cade quindi il presupposto che la faceva sparire, e v_nessuna_azione con il suo NOT EXISTS escono come codice morto. Il nome vecchio nessuna_azione_key diventava falso proprio nel momento in cui il campo inizia a comparire QUANDO le azioni ci sono, e il vocabolario giusto era gia'' dall''altra parte: le chiavi i18n stanno sotto vendite.<dominio>.stato_info.*. ⚠️ La PROPRIETA'' nel meta dello stato resta nessuna_azione_key, ed e'' voluto: il presidio scripts/check_i18n_keys.py trova quelle chiavi proprio per quel nome (RE_SEED_KEY sui CSV, elenco _PROP_KEY), e rinominarla senza toccare il guard lo renderebbe verde per cecita'' — il caso peggiore, gia'' denunciato nel §8.3 del brief. Rinomina della proprieta'' proposta come slice a se''. ⚠️ Il campo e'' SEMPRE presente nel blob, col valore a null quando non si applica: filtrare con l''operatore di presenza risponde vero per TUTTI i documenti, va guardato il valore. Il FE rinomina la prop nello stesso rilascio (8 drawer + DrawerActionsBar). brief-db-vie-uscita-operatore §4; attivita-urgenti-del-10-08 §2.';
 ```
 
 ---

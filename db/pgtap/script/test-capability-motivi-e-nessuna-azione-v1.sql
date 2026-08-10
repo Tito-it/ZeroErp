@@ -26,20 +26,27 @@
 -- fa SKIP esplicito e lo dice: un verde per assenza di soggetti e' un verde
 -- che non ha misurato niente, e deve vedersi.
 --
--- Indice test (1..9):
---   1) Preflight: le 4 chiavi nessuna_azione_key sono a dato (senza, tutto
---      il resto sarebbe vacuo)
+-- Indice test (1..12):
+--   1) Preflight: OGNI stato in fase CHIUSO dei tre domini dichiara
+--      nessuna_azione_key (senza, tutto il resto sarebbe vacuo)
 --   2) Preventivo: enabled dell'azione «annulla» == verdetto della fn pura,
 --      su TUTTA la popolazione (la UI non puo' divergere dal guard)
 --   3) Preventivo: quando e' spento, `reasons` riporta i motivi della fn pura
 --      e `reason` e' il primo (contratto letto dal BB FE useDrawerActions)
 --   4) Ordine: come 2
 --   5) Ordine: come 3
---   6) Ordine EVASO / PARZIALMENTE_EVASO senza azioni vive -> nota esposta
---   7) DDT CONSEGNATO / RESO senza azioni vive -> nota esposta
---   8) Non-regressione: la nota NON compare dove resta un'azione abilitata
+--   6) Ordine: `stato_info_key` == quello che lo stato dichiara nel `meta`,
+--      su TUTTA la popolazione (null compreso)
+--   7) DDT: come 6
+--   8) La nota compare ANCHE accanto a un'azione abilitata (ribaltato il
+--      2026-08-10 (2): prima asseriva l'opposto)
 --   9) Non-regressione: il motivo `requires_righe` sopravvive alla somma dei
 --      motivi (era l'unico prima di questo cantiere)
+--  10) Preventivo: come 6
+--  11) Preventivo CHIUSO: i motivi di push_commessa / genera_ordine non
+--      promettono l'accettazione (rev 2026-08-10)
+--  12) Ordine ANNULLATO: il motivo del push non promette la conferma
+--      (rev 2026-08-10) — soggetto costruito dal percorso legittimo
 --
 -- ⚠️ SE IL TEST 2 O IL 4 DIVENTA ROSSO non e' un dettaglio di UI: significa
 -- che il bottone e il database non dicono piu' la stessa cosa, cioe' che
@@ -47,6 +54,60 @@
 -- qualcosa che sarebbe lecito). La sede della regola e' UNA — le
 -- script.fn_check_*_annullabile — e queste asserzioni sono cio' che impedisce
 -- che ne nasca una seconda dentro la capability.
+--
+-- ------------------------------------------------------------
+-- rev 2026-08-10 — DUE MODI IN CUI QUESTO FILE ERA VERDE SENZA PRESIDIARE.
+-- Li scrivo perche' sono la ragione per cui il difetto ② del rilievo in-app
+-- del 2026-08-10 (barra vuota e muta su ogni preventivo annullato) e'
+-- arrivato all'operatore con la suite tutta verde.
+--
+--   (a) Il preflight contava le chiavi: `= 4`. Un conteggio verifica il
+--       lavoro GIA' FATTO e non dice niente sul prossimo stato chiuso che
+--       nasce senza la sua chiave. Ora e' una REGOLA: zero stati in fase
+--       CHIUSO senza nessuna_azione_key. Resta verde quando una chiave
+--       nuova arriva insieme al suo stato, e diventa rosso esattamente
+--       quando qualcuno aggiunge uno stato chiuso e si dimentica la nota.
+--
+--   (b) La popolazione dei «documenti muti» era filtrata da
+--       `WHERE meta ? 'nessuna_azione_key'`, cioe' guardava SOLO gli stati
+--       che la chiave ce l'avevano gia'. Verificava che il dato seminato
+--       arrivasse — mai che ogni documento muto avesse un dato. I quattro
+--       stati chiusi del preventivo erano fuori dalla misura per
+--       costruzione: il test non poteva vederli. Ora la popolazione e'
+--       «tutti i documenti in fase CHIUSO senza azioni vive» e
+--       l'asserzione e' una COPERTURA: quanti ricevono la nota su quanti
+--       ne hanno diritto.
+--
+-- ⚠️ E PERCHE' IL PERIMETRO ERA `fase = 'CHIUSO'` E NON «tutti i documenti
+--   senza azioni vive», che sembrerebbe piu' severo. Misurato il 2026-08-10:
+--   10 preventivi ACCETTATO (fase IN_CORSO, gia' in commessa) non hanno
+--   nessuna azione ABILITATA — ma hanno il pulsante «Annulla» SPENTO CON IL
+--   MOTIVO, che e' la risposta prevista dalla R3. Pretendere la nota anche
+--   la' significherebbe chiedere due spiegazioni per la stessa cosa, e
+--   rendere rosso un comportamento corretto. La nota risponde allo stato;
+--   il tooltip risponde all'azione negata.
+--
+-- ------------------------------------------------------------
+-- rev 2026-08-10 (2) — LA REGOLA CHE QUESTO FILE PRESIDIAVA E' CAMBIATA.
+-- Decisione §5 di Tid: la nota di stato **compare sempre**, anche accanto a
+-- un'azione ancora viva; e il campo del blob si chiama ora `stato_info_key`
+-- (changeSet 20260810-04/-05/-06). Due conseguenze qui:
+--
+--   * il **test 8 e' stato RIBALTATO**, non messo in baseline: asseriva «la
+--     nota non compare accanto a un bottone vivo», che era il presupposto
+--     caduto. Un test che fotografa una scelta diventa rosso quando la
+--     scelta cambia — e la risposta giusta e' riscriverlo, perche' la
+--     baseline e' un registro di **debito** e qui non c'e' debito;
+--   * la popolazione dei test 6/7/10 non ritaglia piu' niente (ne' gli stati
+--     con la chiave, ne' i documenti muti): e' **tutta** e l'asserzione e'
+--     l'invariante «il valore nel blob e' quello che lo stato dichiara»,
+--     che copre nota-presente e nota-assente insieme.
+--
+-- ⚠️ Il campo del blob e la proprieta' del `meta` hanno da oggi nomi
+-- DIVERSI (`stato_info_key` vs `nessuna_azione_key`), e nel file compaiono
+-- entrambi: non e' un refuso. La proprieta' non e' stata rinominata perche'
+-- scripts/check_i18n_keys.py trova le chiavi seminate per quel nome, e
+-- cambiarlo senza toccare il guard lo renderebbe verde per cecita'.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -66,20 +127,41 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(9);
+SELECT plan(12);
 
 -- ============================================================
--- 1) Preflight: il dato su cui poggia tutto il resto.
---    4 chiavi: ordini EVASO / PARZIALMENTE_EVASO, ddt CONSEGNATO / RESO.
+-- 1) Preflight: il dato su cui poggia tutto il resto — scritto come
+--    REGOLA e non come conteggio (vedi rev 2026-08-10 (a) in testa).
+--    Uno stato in fase CHIUSO e' uno stato da cui il documento non
+--    riparte: se non dichiara la sua chiave, il giorno in cui un
+--    documento ci arriva senza azioni vive la barra resta muta.
+--    Il messaggio nomina gli stati inadempienti, cosi' il rosso dice
+--    da solo quale riga di quale CSV manca.
 -- ============================================================
 SELECT is(
-    (SELECT count(*)::int FROM (
-        SELECT 1 FROM config.stati_doc_ordini WHERE meta ? 'nessuna_azione_key'
-        UNION ALL
-        SELECT 1 FROM config.stati_doc_ddt    WHERE meta ? 'nessuna_azione_key'
-     ) q),
-    4,
-    '1) preflight: le 4 nessuna_azione_key sono a dato (2 ordini + 2 ddt)');
+    (SELECT coalesce(string_agg(dominio || '.' || codice_interno, ', ' ORDER BY dominio, codice_interno), '')
+       FROM (
+            SELECT 'preventivo'::text AS dominio, codice_interno::text
+              FROM config.stati_doc_preventivi
+             WHERE fase = 'CHIUSO' AND attivo IS TRUE
+               AND NOT (meta ? 'nessuna_azione_key')
+            UNION ALL
+            SELECT 'ordine', codice_interno::text
+              FROM config.stati_doc_ordini
+             WHERE fase = 'CHIUSO' AND attivo IS TRUE
+               AND NOT (meta ? 'nessuna_azione_key')
+            UNION ALL
+            SELECT 'ddt', codice_interno::text
+              FROM config.stati_doc_ddt
+             WHERE fase = 'CHIUSO' AND attivo IS TRUE
+               AND NOT (meta ? 'nessuna_azione_key')
+       ) x),
+    '',
+    format('1) preflight: ogni stato in fase CHIUSO dichiara nessuna_azione_key (%s stati chiusi nei tre domini)',
+           (SELECT count(*) FROM (
+                SELECT 1 FROM config.stati_doc_preventivi WHERE fase='CHIUSO' AND attivo IS TRUE
+                UNION ALL SELECT 1 FROM config.stati_doc_ordini WHERE fase='CHIUSO' AND attivo IS TRUE
+                UNION ALL SELECT 1 FROM config.stati_doc_ddt WHERE fase='CHIUSO' AND attivo IS TRUE) q)));
 
 -- ------------------------------------------------------------
 -- Popolazioni: si calcolano UNA volta, cosi' i conteggi delle asserzioni e
@@ -165,82 +247,130 @@ SELECT CASE WHEN (SELECT count(*) FROM _cap_ord WHERE NOT cap_enabled) = 0
 END;
 
 -- ------------------------------------------------------------
--- Stati chiusi: i documenti che NON hanno piu' nessuna azione abilitata sono
--- quelli a cui la nota deve arrivare. Chi ha ancora un bottone vivo non entra
--- nel conto — e' la regola del §4: la nota risponde alla lista vuota.
+-- La nota di stato: popolazione INTERA, nessun filtro.
+--
+-- ⚠️ DUE RESTRIZIONI SONO STATE TOLTE DA QUI, in due passaggi, e insieme
+--   raccontano come si costruisce un presidio che presidia davvero.
+--
+--   1. Fino al 2026-08-10 (mattina) il filtro era
+--      `WHERE meta ? 'nessuna_azione_key'`: la misura guardava SOLO gli stati
+--      che la chiave ce l'avevano gia'. Gli stati SENZA chiave — cioe'
+--      esattamente quelli da trovare — erano fuori dalla popolazione per
+--      costruzione, e il test non poteva accorgersene. Sostituito con un
+--      filtro sulla FASE dello stato.
+--   2. Dal 2026-08-10 (2) cade anche quello, e con esso il `NOT EXISTS` sulle
+--      azioni vive: la nota non e' piu' subordinata alla lista vuota
+--      (decisione §5 di Tid), quindi non c'e' piu' nessun sottoinsieme da
+--      ritagliare. La popolazione e' **tutti i documenti**, e l'asserzione e'
+--      l'invariante piu' forte che si possa scrivere qui:
+--
+--        il valore nel blob e' SEMPRE quello che lo stato dichiara nel `meta`.
+--
+--   Cosi' scritta copre entrambe le direzioni in una riga sola: la nota
+--   arriva dove e' dichiarata, ed e' assente (null) dove non lo e' — senza
+--   bisogno di due asserzioni che possono divergere. `IS NOT DISTINCT FROM`
+--   e non `=`: qui il null e' un valore atteso, non un dato mancante.
+--
+-- ⚠️ IL CAMPO DEL BLOB SI CHIAMA `stato_info_key`, LA PROPRIETA' NEL `meta`
+--   RESTA `nessuna_azione_key`. Non e' una dimenticanza: il presidio
+--   scripts/check_i18n_keys.py trova le chiavi seminate per QUEL nome
+--   (RE_SEED_KEY sui CSV, elenco _PROP_KEY), e rinominarla senza toccare il
+--   guard lo renderebbe verde per cecita'. Vedi 20260810-04/-05/-06.
 -- ------------------------------------------------------------
-CREATE TEMP TABLE _cap_muti AS
-SELECT 'ordine'::text AS doc, o.id,
-       script.fn_available_actions_ordine(o.id)->>'nessuna_azione_key' AS nota,
-       sdo.meta->>'nessuna_azione_key'                                 AS nota_attesa
+CREATE TEMP TABLE _cap_nota AS
+SELECT 'preventivo'::text AS doc, p.id, sdp.fase,
+       script.fn_available_actions_preventivo(p.id)->>'stato_info_key'      AS nota,
+       sdp.meta->>'nessuna_azione_key'                                      AS nota_attesa,
+       EXISTS (SELECT 1 FROM jsonb_array_elements(
+                     script.fn_available_actions_preventivo(p.id)->'available_actions') a
+                WHERE COALESCE((a->>'enabled')::boolean, true))              AS ha_azioni_vive
+  FROM vendite.preventivi p
+  JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+UNION ALL
+SELECT 'ordine', o.id, sdo.fase,
+       script.fn_available_actions_ordine(o.id)->>'stato_info_key',
+       sdo.meta->>'nessuna_azione_key',
+       EXISTS (SELECT 1 FROM jsonb_array_elements(
+                     script.fn_available_actions_ordine(o.id)->'available_actions') a
+                WHERE COALESCE((a->>'enabled')::boolean, true))
   FROM vendite.ordini o
   JOIN config.stati_doc_ordini sdo ON sdo.id = o.stato_doc_ordine_id
- WHERE sdo.meta ? 'nessuna_azione_key'
-   AND NOT EXISTS (
-        SELECT 1 FROM jsonb_array_elements(
-                        script.fn_available_actions_ordine(o.id)->'available_actions') a
-         WHERE COALESCE((a->>'enabled')::boolean, true))
 UNION ALL
-SELECT 'ddt', d.id,
-       script.fn_available_actions_ddt(d.id)->>'nessuna_azione_key',
-       sdd.meta->>'nessuna_azione_key'
+SELECT 'ddt', d.id, sdd.fase,
+       script.fn_available_actions_ddt(d.id)->>'stato_info_key',
+       sdd.meta->>'nessuna_azione_key',
+       EXISTS (SELECT 1 FROM jsonb_array_elements(
+                     script.fn_available_actions_ddt(d.id)->'available_actions') a
+                WHERE COALESCE((a->>'enabled')::boolean, true))
   FROM vendite.ddt d
-  JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
- WHERE sdd.meta ? 'nessuna_azione_key'
-   AND NOT EXISTS (
-        SELECT 1 FROM jsonb_array_elements(
-                        script.fn_available_actions_ddt(d.id)->'available_actions') a
-         WHERE COALESCE((a->>'enabled')::boolean, true));
+  JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id;
 
 -- ============================================================
--- 6) Ordine: la nota arriva, e con la chiave giusta.
+-- 6) Ordine: il valore nel blob e' SEMPRE quello dichiarato dallo stato.
+--    Popolazione intera, null compreso: copre in un colpo «la nota arriva
+--    dove e' dichiarata» e «non compare dove non lo e'».
 -- ============================================================
-SELECT CASE WHEN (SELECT count(*) FROM _cap_muti WHERE doc='ordine') = 0
-  THEN pass('6) SKIP: nessun ordine in stato chiuso senza azioni vive')
+SELECT CASE WHEN (SELECT count(*) FROM _cap_nota WHERE doc='ordine') = 0
+  THEN pass('6) SKIP: nessun ordine nella popolazione visibile')
   ELSE is(
-    (SELECT count(*)::int FROM _cap_muti
+    (SELECT count(*)::int FROM _cap_nota
       WHERE doc='ordine' AND nota IS DISTINCT FROM nota_attesa),
     0,
-    format('6) ordine: nessuna_azione_key esposta e pari al meta dello stato, su %s documenti muti',
-           (SELECT count(*) FROM _cap_muti WHERE doc='ordine')))
+    format('6) ordine: stato_info_key == meta dello stato su %s documenti (%s con la nota, %s senza — attesi)',
+           (SELECT count(*) FROM _cap_nota WHERE doc='ordine'),
+           (SELECT count(*) FROM _cap_nota WHERE doc='ordine' AND nota IS NOT NULL),
+           (SELECT count(*) FROM _cap_nota WHERE doc='ordine' AND nota IS NULL)))
 END;
 
 -- ============================================================
 -- 7) DDT: idem. E' la meta' del lavoro che il §6 del brief non nominava.
 -- ============================================================
-SELECT CASE WHEN (SELECT count(*) FROM _cap_muti WHERE doc='ddt') = 0
-  THEN pass('7) SKIP: nessun DDT in stato chiuso senza azioni vive')
+SELECT CASE WHEN (SELECT count(*) FROM _cap_nota WHERE doc='ddt') = 0
+  THEN pass('7) SKIP: nessun DDT nella popolazione visibile')
   ELSE is(
-    (SELECT count(*)::int FROM _cap_muti
+    (SELECT count(*)::int FROM _cap_nota
       WHERE doc='ddt' AND nota IS DISTINCT FROM nota_attesa),
     0,
-    format('7) ddt: nessuna_azione_key esposta e pari al meta dello stato, su %s documenti muti',
-           (SELECT count(*) FROM _cap_muti WHERE doc='ddt')))
+    format('7) ddt: stato_info_key == meta dello stato su %s documenti (%s con la nota, %s senza — attesi)',
+           (SELECT count(*) FROM _cap_nota WHERE doc='ddt'),
+           (SELECT count(*) FROM _cap_nota WHERE doc='ddt' AND nota IS NOT NULL),
+           (SELECT count(*) FROM _cap_nota WHERE doc='ddt' AND nota IS NULL)))
 END;
 
 -- ============================================================
--- 8) Non-regressione: la nota non deve comparire accanto a un bottone vivo.
---    Se comparisse, l'operatore leggerebbe «non c'e' niente da fare» sopra
---    un'azione che puo' fare — peggio del silenzio.
+-- 8) 🔄 RIBALTATO il 2026-08-10 (2) — e va detto perche', invece di
+--    riscriverlo in silenzio.
+--
+--    Questo test asseriva l'OPPOSTO: «la nota non deve comparire accanto a
+--    un bottone vivo», sul presupposto che dicesse «non c'e' niente da
+--    fare». Con la decisione §5 di Tid la nota non dice piu' quello: dice
+--    cos'e' successo allo stato, e questo serve anche a chi ha ancora
+--    un'azione da fare. Il test fotografava una scelta, la scelta e'
+--    cambiata, quindi il test diventa il suo contrario — NON un rosso da
+--    mettere in baseline: la baseline e' un registro di debito, e qui non
+--    c'e' debito, c'e' una decisione.
+--
+--    Ora presidia il verso nuovo, che e' l'unico osservabile: fra i
+--    documenti in fase CHIUSO che hanno ancora un'azione abilitata, TUTTI
+--    devono ricevere la nota. Erano i 5 ordini EVASO che il §9.2 del brief
+--    elencava come limite dichiarato — e sono esattamente cio' che la
+--    decisione ha voluto sbloccare. Se domani qualcuno rimettesse il
+--    `CASE WHEN v_nessuna_azione`, questo test lo prende; il 6/7/10 no,
+--    perche' quei 5 sono una minoranza dentro una popolazione che
+--    tornerebbe a tornare.
 -- ============================================================
-SELECT is(
-    (SELECT count(*)::int FROM (
-        SELECT 1
-          FROM vendite.ordini o
-         WHERE script.fn_available_actions_ordine(o.id)->>'nessuna_azione_key' IS NOT NULL
-           AND EXISTS (SELECT 1 FROM jsonb_array_elements(
-                              script.fn_available_actions_ordine(o.id)->'available_actions') a
-                        WHERE COALESCE((a->>'enabled')::boolean, true))
-        UNION ALL
-        SELECT 1
-          FROM vendite.ddt d
-         WHERE script.fn_available_actions_ddt(d.id)->>'nessuna_azione_key' IS NOT NULL
-           AND EXISTS (SELECT 1 FROM jsonb_array_elements(
-                              script.fn_available_actions_ddt(d.id)->'available_actions') a
-                        WHERE COALESCE((a->>'enabled')::boolean, true))
-     ) q),
+SELECT CASE WHEN (SELECT count(*) FROM _cap_nota
+                   WHERE fase = 'CHIUSO' AND ha_azioni_vive AND nota_attesa IS NOT NULL) = 0
+  THEN pass('8) SKIP: nessun documento in fase CHIUSO con un''azione ancora abilitata (il ramo nuovo non ha soggetti)')
+  ELSE is(
+    (SELECT count(*)::int FROM _cap_nota
+      WHERE fase = 'CHIUSO' AND ha_azioni_vive AND nota_attesa IS NOT NULL
+        AND nota IS NULL),
     0,
-    '8) non-regressione: la nota non compare su documenti con un''azione ancora abilitata');
+    format('8) la nota compare ANCHE accanto a un''azione abilitata: %s documenti in fase CHIUSO con azioni vive, tutti con la nota',
+           (SELECT count(*) FROM _cap_nota
+             WHERE fase = 'CHIUSO' AND ha_azioni_vive AND nota_attesa IS NOT NULL)))
+END;
 
 -- ============================================================
 -- 9) Non-regressione: il motivo «documento vuoto» non e' stato mangiato
@@ -271,6 +401,95 @@ SELECT CASE WHEN (SELECT count(*) FROM _cap_vuoti) = 0
     0,
     format('9) requires_righe sopravvive alla somma dei motivi, su %s ordini vuoti',
            (SELECT count(*) FROM _cap_vuoti)))
+END;
+
+-- ============================================================
+-- 10) Preventivo: copertura della nota sugli stati chiusi.
+--     E' il difetto ② del rilievo in-app del 2026-08-10: quattro stati
+--     chiusi con meta = {} e nessuna riga di codice da cambiare, solo il
+--     dato che mancava. Prima di allora questa asserzione non esisteva —
+--     ed era la sola cosa che avrebbe potuto trovarlo.
+-- ============================================================
+SELECT CASE WHEN (SELECT count(*) FROM _cap_nota WHERE doc='preventivo') = 0
+  THEN pass('10) SKIP: nessun preventivo nella popolazione visibile')
+  ELSE is(
+    (SELECT count(*)::int FROM _cap_nota
+      WHERE doc='preventivo' AND nota IS DISTINCT FROM nota_attesa),
+    0,
+    format('10) preventivo: stato_info_key == meta dello stato su %s documenti (%s con la nota, %s senza — attesi)',
+           (SELECT count(*) FROM _cap_nota WHERE doc='preventivo'),
+           (SELECT count(*) FROM _cap_nota WHERE doc='preventivo' AND nota IS NOT NULL),
+           (SELECT count(*) FROM _cap_nota WHERE doc='preventivo' AND nota IS NULL)))
+END;
+
+-- ============================================================
+-- 11) Preventivo CHIUSO: il motivo non promette l'accettazione.
+--     Difetto ① dello stesso rilievo. Su un preventivo EVASO il drawer
+--     diceva «sara' disponibile dopo l'accettazione del preventivo» —
+--     ed e' evaso PROPRIO perche' e' stato accettato. L'asserzione e' in
+--     forma negativa (nessuno stato chiuso espone la reason
+--     dell'attesa) perche' e' la bugia a dover essere impossibile: se
+--     domani nascesse una terza reason per gli stati chiusi il test
+--     resterebbe verde, com'e' giusto, ma `non_accettato` non potra' mai
+--     piu' tornare qui.
+-- ============================================================
+CREATE TEMP TABLE _cap_chiusi AS
+SELECT p.id, sdp.codice_interno AS stato,
+       c.blob->>'can_push_commessa_reason_key' AS push_key,
+       c.blob->>'can_genera_ordine_reason_key' AS ordine_key
+  FROM vendite.preventivi p
+  JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+  CROSS JOIN LATERAL (SELECT script.fn_available_actions_preventivo(p.id) AS blob) c
+ WHERE sdp.fase = 'CHIUSO';
+
+SELECT CASE WHEN (SELECT count(*) FROM _cap_chiusi) = 0
+  THEN pass('11) SKIP: nessun preventivo in fase CHIUSO (ramo non esercitato da nessun soggetto)')
+  ELSE is(
+    (SELECT count(*)::int FROM _cap_chiusi
+      WHERE push_key   LIKE '%.non_accettato'
+         OR ordine_key LIKE '%.non_accettato'
+         OR push_key   IS NULL
+         OR ordine_key IS NULL),
+    0,
+    format('11) preventivo CHIUSO: nessuno dei %s documenti promette l''accettazione, e nessuno resta senza motivo',
+           (SELECT count(*) FROM _cap_chiusi)))
+END;
+
+-- ============================================================
+-- 12) Ordine ANNULLATO: il motivo del push non promette la conferma.
+--     ⚠️ IL SOGGETTO SI COSTRUISCE, e va spiegato perche' qui e'
+--     legittimo mentre altrove e' una trappola. Misurato il 2026-08-10:
+--     nel database NON esiste un solo ordine ANNULLATO, quindi il ramo
+--     nuovo non ha nessun soggetto vivo — un'asserzione sulla
+--     popolazione andrebbe in SKIP e non misurerebbe niente. Il ramo
+--     non e' pero' morto: ANNULLATO e' raggiungibile, ed e' il cantiere
+--     «vie d'uscita» che l'ha reso tale. Quindi il soggetto si porta
+--     nello stato attraversando la transizione VERA della matrice
+--     (DRAFT -> ANNULLATO, riga attiva), non con un INSERT diretto: e'
+--     il percorso reale, e se un guard lo rifiuta il test lo dice
+--     invece di aggirarlo. Tutto dentro la transazione che finisce in
+--     ROLLBACK.
+-- ============================================================
+CREATE TEMP TABLE _ord_ann AS
+SELECT o.id FROM vendite.ordini o
+  JOIN config.stati_doc_ordini s ON s.id = o.stato_doc_ordine_id
+ WHERE s.codice_interno = 'DRAFT'
+   AND jsonb_array_length(script.fn_check_ordine_annullabile(o.id)) = 0
+ ORDER BY o.id
+ LIMIT 1;
+
+UPDATE vendite.ordini SET stato_doc_ordine_id =
+       (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'ANNULLATO')
+ WHERE id IN (SELECT id FROM _ord_ann);
+
+SELECT CASE WHEN (SELECT count(*) FROM _ord_ann) = 0
+  THEN pass('12) SKIP: nessun ordine DRAFT annullabile da cui costruire il soggetto')
+  ELSE is(
+    (SELECT c.blob->>'can_push_commessa_reason_key'
+       FROM _ord_ann x
+       CROSS JOIN LATERAL (SELECT script.fn_available_actions_ordine(x.id) AS blob) c),
+    'vendite.ordini.push_commessa_reason.annullato',
+    '12) ordine ANNULLATO: il motivo del push e'' annullato, non piu'' non_confermato')
 END;
 
 SELECT * FROM finish();
