@@ -32,14 +32,25 @@
 //   - voce menu danger:      .app-menu-item-danger (main.css)
 //
 // `infoKey` (2026-08-04, brief-db-vie-uscita-operatore §4 — regola R3): chiave
-// i18n emessa dal DB (`meta->>'nessuna_azione_key'` degli stati doc, esposta
-// dalle capability) che spiega all'operatore PERCHE' su questo stato non c'e'
-// nessuna azione da azionare, e cosa fare invece (es. DDT CONSEGNATO -> «per
-// rientrare si registra un reso»). Una lista di azioni vuota e' indistinguibile
-// da un errore di caricamento: la nota la rende una risposta. Il BB risolve la
+// i18n emessa dal DB (campo `stato_info_key` delle capability) che spiega
+// all'operatore in che stato si trova il documento e cosa fare invece (es. DDT
+// CONSEGNATO -> «per farla rientrare si registra un reso»). Il BB risolve la
 // chiave con `labelOrCode` (fail-visible: chiave assente -> la chiave grezza,
 // mai testo sparito) e la rende come nota discreta accanto alle azioni. Nessun
 // testo viene dal DB: viaggiano solo indirizzi i18n.
+//
+// ⚠️ La nota NON e' piu' subordinata alla lista di azioni vuota (decisione §5
+// del test in-app, Tid 2026-08-10, applicata da `20260810-04/-05/-06`): e'
+// **informazione di stato** e compare anche accanto a un pulsante vivo — es.
+// ordine EVASO col push ancora abilitato. Da qui il rinome del campo, che
+// prima si chiamava `nessuna_azione_key`: quel nome descriveva il presupposto
+// caduto, non il dato.
+// ⚠️ Il campo e' SEMPRE presente nel blob, col valore a `null` quando non si
+// applica: va guardato il VALORE, non la presenza della chiave.
+// ⚠️ Asimmetria VOLUTA lato DB: la proprieta' nel `meta` dello stato si chiama
+// ancora `nessuna_azione_key` — rinominarla e' una slice a se', perche'
+// `scripts/check_i18n_keys.py` trova le chiavi seminate proprio per quel nome
+// e cambiarlo senza toccare il guard lo renderebbe verde per cecita'.
 //
 // Uso tipico nel drawer:
 //   const drawerActions = computed(() => [

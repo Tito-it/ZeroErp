@@ -4,6 +4,7 @@
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
 import {
   listOperatori,
   getOperatore,
@@ -27,9 +28,6 @@ const { emitDataChanged } = useTabEvents()
 
 export const useOperatoriStore = defineStore('amm-operatori', () => {
   // Lista
-  const items = ref([])
-  const totalRecords = ref(0)
-  const loading = ref(false)
 
   // Dettaglio/corrente
   const currentOperatore = ref(null)
@@ -64,11 +62,14 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
     change_scope_reason: null,
   })
 
-  async function fetchList() {
-    loading.value = true
-    try {
+  // Lista via BB condiviso (migrazione 2026-08-10): la guardia di versione
+  // anti-race che qui mancava. `alwaysFetch` conserva il comportamento: questa
+  // lista si e' sempre caricata anche senza filtri.
+  const { items, totalRecords, loading, fetchList } = useListaEmptyStateFetch({
+    filters,
+    alwaysFetch: true,
+    buildParams: (f, searchTerm) => {
       const params = {}
-      const f = filters.value
       if (f.search) params.search = f.search
       if (f.is_super_admin != null) params.is_super_admin = f.is_super_admin
       if (f.unita_organizzativa_id != null) params.unita_organizzativa_id = f.unita_organizzativa_id
@@ -79,14 +80,10 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
         params.order_by = f.order_by
         params.order_dir = f.order_dir || 'ASC'
       }
-
-      const res = await listOperatori(params)
-      items.value = res.data.data.results
-      totalRecords.value = res.data.data.count
-    } finally {
-      loading.value = false
-    }
-  }
+      return params
+    },
+    fetchPage: listOperatori,
+  })
 
   async function fetchDetail(authUserId) {
     loadingDetail.value = true

@@ -1514,7 +1514,8 @@
       "azione_annulla": "Cancel DDT",
       "stato_info": {
         "consegnato_usa_reso": "The goods have been delivered: to bring them back you register a return, you do not cancel the DDT.",
-        "reso": "This DDT came back with a return: its status follows the return on its own."
+        "reso": "This DDT came back with a return: its status follows the return on its own.",
+        "annullato": "The delivery note is cancelled: this state is final."
       },
       "azione_push_commessa": "Send to job",
       "conferma_cambio_stato": "Move the DDT to status {stato}?",
@@ -1737,7 +1738,9 @@
       },
       "stato_info": {
         "evaso": "The order is fulfilled: its status is recalculated from the DDTs, it is not set by hand.",
-        "parzialmente_evaso": "Fulfilment in progress: the status is recalculated at every DDT."
+        "parzialmente_evaso": "Fulfilment in progress: the status is recalculated at every DDT.",
+        "annullato": "The order is cancelled: this state is final.",
+        "fatturato": "The order is invoiced: follow-up happens on the invoice."
       },
       "azione_push_commessa": "Send to job",
       "conferma_cambio_stato": "Move the order to status {stato}?",
@@ -1755,7 +1758,8 @@
         "fattura_da_ddt": "This order is invoiced from the DDT: it is sent to a job on shipping or delivery.",
         "gia_inviato": "Order already sent to a job: its lines are awaiting invoicing.",
         "gia_fatturato": "Order already sent to a job and invoiced.",
-        "nessuna_riga_pushabile": "No line can be sent to a job: check line quantities and prices."
+        "nessuna_riga_pushabile": "No line can be sent to a job: check line quantities and prices.",
+        "annullato": "The order is cancelled: it does not go to invoicing."
       },
       "evasione_titolo": "Generate DDT",
       "evasione_intro": "Select the lines to fulfil and generate the delivery note. The DDT is created as a draft.",
@@ -2459,11 +2463,13 @@
       "push_commessa_reason": {
         "non_accettato": "Project integration will be available once the quote is accepted.",
         "nessuna_riga": "No line to push to a job.",
-        "senza_billing_account": "The customer is missing: set it to push to a job."
+        "senza_billing_account": "The customer is missing: set it to push to a job.",
+        "stato_chiuso": "The quote is closed: it no longer feeds the job order."
       },
       "genera_ordine_reason": {
         "non_accettato": "Order generation will be available once the quote is accepted.",
-        "nessuna_riga": "No line: add at least one line to generate the order."
+        "nessuna_riga": "No line: add at least one line to generate the order.",
+        "stato_chiuso": "The quote is closed: it no longer generates orders."
       },
       "azione_reason": {
         "ordine_gia_generato": "The quote has already generated an order: cancel the linked order first.",
@@ -2516,6 +2522,12 @@
         "in_commessa": "In job",
         "emessa_af": "Issued",
         "fatturata": "Invoiced"
+      },
+      "stato_info": {
+        "evaso": "The quote is fully dispatched: follow-up happens on the generated documents.",
+        "rifiutato": "The quote was rejected: to propose it again, create a new quote.",
+        "scaduto": "The quote validity has passed and cannot be reopened: to propose it again, create a new quote.",
+        "annullato": "The quote is cancelled: this state is final."
       }
     },
     "listini": {

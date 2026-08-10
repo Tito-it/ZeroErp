@@ -2,6 +2,7 @@
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
 import {
   listEmailTemplates,
   getEmailTemplate,
@@ -13,9 +14,6 @@ import { TAB_ENTITIES } from '../../core/constants'
 export const useEmailTemplatesStore = defineStore('amm-email-templates', () => {
   const { emitDataChanged } = useTabEvents()
 
-  const items = ref([])
-  const totalRecords = ref(0)
-  const loading = ref(false)
   const currentTemplate = ref(null)
   const loadingDetail = ref(false)
 
@@ -27,11 +25,13 @@ export const useEmailTemplatesStore = defineStore('amm-email-templates', () => {
     order_dir: 'asc'
   })
 
-  async function fetchList() {
-    loading.value = true
-    try {
+  // Lista via BB condiviso (migrazione 2026-08-10): guardia di versione anti-race.
+  // `alwaysFetch`: questa lista si e' sempre caricata anche senza filtri.
+  const { items, totalRecords, loading, fetchList } = useListaEmptyStateFetch({
+    filters,
+    alwaysFetch: true,
+    buildParams: (f) => {
       const params = {}
-      const f = filters.value
       if (f.search) params.search = f.search
       params.limit = f.limit
       params.offset = f.offset
@@ -39,13 +39,10 @@ export const useEmailTemplatesStore = defineStore('amm-email-templates', () => {
         params.order_by = f.order_by
         params.order_dir = f.order_dir || 'asc'
       }
-      const res = await listEmailTemplates(params)
-      items.value = res.data.data.results
-      totalRecords.value = res.data.data.count
-    } finally {
-      loading.value = false
-    }
-  }
+      return params
+    },
+    fetchPage: listEmailTemplates,
+  })
 
   async function fetchDetail(id) {
     loadingDetail.value = true

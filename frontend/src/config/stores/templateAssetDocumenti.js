@@ -23,6 +23,7 @@ import {
   updateTemplateAssetDocumento,
   uploadTemplateAssetDocumento,
 } from '../api/templateAssetDocumenti'
+import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
 import { useTabEvents } from '../../core/composables/useTabEvents'
 import { ref } from 'vue'
 
@@ -32,10 +33,6 @@ const EMIT_KEY = 'template_asset_documenti'
 export const useTemplateAssetDocumentiStore = defineStore(STORE_NAME, () => {
   const { emitDataChanged } = useTabEvents()
 
-  const items = ref([])
-  const totalRecords = ref(0)
-  const loading = ref(false)
-  const hasSearched = ref(false)
 
   const filters = ref({
     search: '',
@@ -48,40 +45,28 @@ export const useTemplateAssetDocumentiStore = defineStore(STORE_NAME, () => {
     order_dir: 'asc',
   })
 
-  // Scopo: Lista paginata. Min 3 caratteri per la search (coerente con
-  //        la factory `createCrudStore`). Sotto soglia: clear silente.
-  async function fetchList() {
-    const f = filters.value
-    const term = (f.search || '').trim()
-    if (term.length > 0 && term.length < 3) {
-      if (hasSearched.value) {
-        items.value = []
-        totalRecords.value = 0
-        hasSearched.value = false
-      }
-      return
-    }
-
-    loading.value = true
-    try {
+  // Lista via BB condiviso (migrazione 2026-08-10): porta la guardia di versione
+  // anti-race che qui mancava. `ricercaCorta: 'svuota'` conserva ESATTAMENTE l'UX
+  // di prima — parte piena, ma una ricerca sotto i 3 caratteri svuota invece di
+  // lasciare a video righe che non c'entrano con quello che si sta scrivendo.
+  const { items, totalRecords, loading, hasSearched, fetchList } = useListaEmptyStateFetch({
+    filters,
+    alwaysFetch: true,
+    ricercaCorta: 'svuota',
+    buildParams: (f, searchTerm) => {
       const params = { limit: f.limit, offset: f.offset }
       if (f.order_by) {
         params.order_by = f.order_by
         params.order_dir = f.order_dir || 'asc'
       }
-      if (term.length >= 3) params.search = term
+      if (searchTerm.length >= 3) params.search = searchTerm
       if (f.attivo != null) params.attivo = f.attivo
       if (f.asset_tipo_id != null) params.asset_tipo_id = f.asset_tipo_id
       if (f.emittente_fiscale_id != null) params.emittente_fiscale_id = f.emittente_fiscale_id
-
-      const res = await listTemplateAssetDocumenti(params)
-      items.value = res.data.data.results
-      totalRecords.value = res.data.data.count
-      hasSearched.value = true
-    } finally {
-      loading.value = false
-    }
-  }
+      return params
+    },
+    fetchPage: listTemplateAssetDocumenti,
+  })
 
   async function fetchDetail(id) {
     const res = await getTemplateAssetDocumento(id)

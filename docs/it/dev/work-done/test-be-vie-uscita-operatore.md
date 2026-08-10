@@ -1,26 +1,36 @@
 # Test in-app — le vie d'uscita per l'operatore
 
-> ## ✅ GIRO ESEGUITO — 10/10, 2026-08-10 (Tid, in app)
+> ## ✅ CHIUSO — 2026-08-10
 >
-> I dieci casi passano tutti. Il valore del giro però non sta lì: ha fatto
-> emergere **due difetti che nessuno dei dieci cercava** — §3, **A1** e **A2** —
-> entrambi sulla stessa lacuna, cioè che la logica delle capability conosce solo
-> il percorso felice e non modella gli stati **chiusi**.
+> **10/10 i casi previsti**, e — cosa che vale di più — **due difetti che nessuno
+> dei dieci cercava**, entrambi trovati, corretti e **riverificati in app nella
+> stessa giornata**:
 >
-> **Aperto, e per questo il documento resta qui e non in `work-done`:**
+> | # | Difetto | Esito |
+> | --- | --- | --- |
+> | **A1** | I motivi promettevano un passo già avvenuto sugli stati oltre l'accettazione | ✅ DB `20260810-01` + 3 chiavi i18n · verificato su `PRV0000192` |
+> | **A2** | Gli stati chiusi non spiegavano nulla: barra vuota e muta | ✅ 7 celle di seed + `20260810-04/-05/-06` + 7 chiavi i18n · verificato su `PRV0000192` |
+> | **§5** | Decisione di dominio lasciata aperta dal disegno | ✅ presa da Tid: *«la nota spiega lo stato»* — applicata e verificata **nelle due direzioni** |
 >
-> 1. **A1 + A2** — brief passato al team DB il 2026-08-10; le stringhe i18n
->    restano a carico del FE, in attesa dei nomi chiave.
-> 2. ✅ **La decisione del §5 è PRESA** (Tid, 2026-08-10): *«la nota spiega lo
->    stato chiuso»*, quindi compare anche accanto a un pulsante vivo. Passata al
->    team DB insieme ad A1/A2, con i **due effetti collaterali** che la
->    formulazione non copriva — vedi §5.
+> **La decisione §5 è provata da entrambi i lati**, ed è la verifica che conta:
+> T5/T6/T7 mostrano la nota **da sola** su una barra vuota; `PRV0000192` la mostra
+> **accanto a due pulsanti**. Era esattamente il punto della decisione — la nota
+> non è la risposta a uno schermo vuoto, è l'informazione di stato.
 >
-> Quando il team DB rientra su A1, A2 e §5, questo documento va in `work-done`.
+> **Lato FE, nello stesso rilascio del DB**: rinomina `nessuna_azione_key` →
+> `stato_info_key` (8 drawer + `DrawerActionsBar`), 10 chiavi i18n it/en, due
+> documenti di standard allineati. Fra i due deploy la nota non compariva, ed è
+> stato il motivo per cui il FE non poteva slittare.
+>
+> ⚠️ **Un buco trovato mentre si verificava il guard**, e non chiuso qui:
+> `scripts/check_i18n_keys.py` va rosso se una chiave manca da **entrambi** i
+> locale, ma resta **verde** se manca dal solo italiano (la classifica come
+> disparità it/en). L'italiano è quello che l'operatore legge. Provato togliendo
+> e rimettendo una chiave. Da decidere se sistemarlo.
 
 > **Cosa si sta provando:** la metà a video di
-> [brief-db-vie-uscita-operatore.md](../work-done/brief-db-vie-uscita-operatore.md) +
-> [brief-be-fe-vie-uscita-operatore.md](../work-done/brief-be-fe-vie-uscita-operatore.md).
+> [brief-db-vie-uscita-operatore.md](brief-db-vie-uscita-operatore.md) +
+> [brief-be-fe-vie-uscita-operatore.md](brief-be-fe-vie-uscita-operatore.md).
 > **Chi prova:** Tid, in app.
 > **Preparato da:** BE/FE, 2026-08-05. Documento **vivo**: si spunta e si annota
 > mentre si prova.
@@ -260,8 +270,8 @@ farti riprovare:
 
 | #  | Caso | Documento | Cosa si è visto | Tipo |
 | -- | ---- | --------- | --------------- | ---- |
-| A1 | coda di T9 | `PRV0000192` (1816), ora EVASO | Due motivi che promettono un passo **già avvenuto** | ❌ |
-| A2 | coda di T10 | qualunque preventivo chiuso | Stato chiuso **senza spiegazione**: barra vuota e muta | ❌ |
+| A1 | coda di T9 | `PRV0000192` (1816), ora EVASO | Due motivi che promettono un passo **già avvenuto** | ❌ → ✅ **CHIUSA e verificata in app 2026-08-10** |
+| A2 | coda di T10 | qualunque preventivo chiuso | Stato chiuso **senza spiegazione**: barra vuota e muta | ❌ → ✅ **CHIUSA e verificata in app 2026-08-10** |
 
 ### A1 — «sarà disponibile dopo l'accettazione» su un preventivo già accettato
 
@@ -289,6 +299,21 @@ fare.
 voluto (`showSmistamento` include EVASO, «EVASO = consuntivo») e la dialog blocca
 le azioni. Serve a guardare com'è andato lo smistamento, non ad agire.
 
+> ✅ **CHIUSA — verificata in app da Tid il 2026-08-10.** Sullo stesso
+> `PRV0000192` ora si legge:
+>
+> > *«Il preventivo è chiuso: non genera più smistamenti verso la commessa.»*
+> > *«Il preventivo è chiuso: non genera più ordini.»*
+>
+> **Catena completa**: DB `20260810-01` (ramo `fase = 'CHIUSO'` prima di quello
+> `<> 'ACCETTATO'`, che ora non cattura più gli stati oltre l'accettazione) →
+> chiavi `push_commessa_reason.stato_chiuso` e `genera_ordine_reason.stato_chiuso`
+> → testi i18n it/en aggiunti dal FE il 2026-08-10.
+>
+> Nessuna frase nomina revisioni o riaperture: il vincolo posto nel rilievo
+> («quei quattro stati non hanno transizioni in uscita») è stato rispettato e
+> verificato dal team DB nel §12.2 del brief.
+
 ### A2 — gli stati chiusi dei preventivi non spiegano nulla
 
 `config.stati_doc_preventivi` ha `meta = {}` su **tutti e quattro** gli stati
@@ -310,12 +335,29 @@ altra via — altrimenti si ripete A1, cioè si promette un'azione inesistente.
 FATTURATO (7); `stati_doc_ddt` → ANNULLATO (6). Gli altri stati chiusi di ordini
 e DDT la nota ce l'hanno, e T5–T7 lo confermano in app.
 
-### Stato: brief inviato al team DB
+> ✅ **CHIUSA — verificata in app da Tid il 2026-08-10.** Su `PRV0000192` (EVASO)
+> compare ora la riga muted:
+>
+> > *«Il preventivo è interamente smistato: il seguito si gestisce sui documenti
+> > generati.»*
+>
+> **Catena completa**: 7 celle `meta` seminate nei tre CSV `stati_doc_*` →
+> `20260810-04/-05/-06` (nota non più subordinata alla lista vuota + campo del
+> blob rinominato in `stato_info_key`) → FE 2026-08-10 (rinomina in 8 drawer +
+> `DrawerActionsBar`, 10 chiavi i18n it/en).
+>
+> ⚠️ `ordini / FATTURATO` ha la sua cella ma **è uno stato irraggiungibile** oggi
+> (nessuna transizione attiva ci porta, il guard rifiuta l'UPDATE diretto — §12.1
+> del brief DB): la nota è corretta e va lasciata, ma non si vedrà a video. Non
+> cercare il difetto quando non compare.
 
-Entrambe passate al team DB il **2026-08-10** (una riga di seed per A2, un ramo
-`ELSIF` su `fase = 'CHIUSO'` per A1). Le stringhe i18n nuove
-(`push_commessa_reason.stato_chiuso`, `genera_ordine_reason.stato_chiuso` e le
-note degli stati chiusi) sono lato FE, in attesa dei nomi chiave definitivi.
+### Stato: ✅ entrambe chiuse in giornata
+
+Passate al team DB il **2026-08-10**, risolte lo stesso giorno (`20260810-01`
+per A1, i seed + `-04/-05/-06` per A2) e verificate in app da Tid. Il lato FE —
+10 chiavi i18n it/en e la rinomina `nessuna_azione_key` → `stato_info_key` su 8
+drawer + `DrawerActionsBar` + due documenti di standard — è stato fatto lo stesso
+giorno, come richiesto: fra i due deploy la nota non compariva.
 
 ### Sospetti tipici, per non perdere tempo
 

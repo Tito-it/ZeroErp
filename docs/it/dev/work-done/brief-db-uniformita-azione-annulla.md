@@ -8,7 +8,7 @@
 > **Chi scrive:** BE/FE (`dev/backend-tid`), 2026-08-06.
 > **A chi:** team DB.
 > **Da dove nasce:** validazione in-app di
-> [test-be-vie-uscita-operatore.md](../work-in-progress/test-be-vie-uscita-operatore.md). Tid, provando
+> [test-be-vie-uscita-operatore.md](test-be-vie-uscita-operatore.md). Tid, provando
 > il verbo «Annulla» tornato disponibile su preventivi e ordini, ha notato che **il
 > pulsante non è lo stesso nei due domini**.
 > **Decisione di Tid (2026-08-06):** l'aspetto resta un **dato**, dove è oggi. Non

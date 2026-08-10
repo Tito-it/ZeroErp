@@ -1204,7 +1204,7 @@ const drawerActions = computed(() => [
   `mapAvailableActionsToDrawerActions(...)`: niente loop manuale `v-for="action in availableActions"`
   nel template.
 
-### Quando non c'e' nessuna azione — prop `infoKey`
+### L'informazione di stato — prop `infoKey`
 
 > **Una lista di azioni vuota e' indistinguibile da un errore di caricamento.**
 > Se da uno stato non si puo' fare nulla, la barra deve dirlo — e dire cosa si fa
@@ -1213,15 +1213,28 @@ const drawerActions = computed(() => [
 E' la faccia a video della regola R3 del brief
 [vie d'uscita per l'operatore](../work-done/brief-db-vie-uscita-operatore.md):
 per ogni stato, **o la via d'uscita c'e', o c'e' scritto perche' non c'e'**. Il
-testo non e' una scelta del componente: e' un **dato**, la chiave i18n
-`meta->>'nessuna_azione_key'` della riga di `config.stati_doc_*`, che le
-capability `script.fn_available_actions_*` espongono quando nessuna azione e'
-abilitata. Cambiare il messaggio e' cambiare un seed, non toccare il frontend.
+testo non e' una scelta del componente: e' un **dato**, la chiave i18n seminata
+nel `meta` della riga di `config.stati_doc_*`, che le capability
+`script.fn_available_actions_*` espongono nel campo **`stato_info_key`**.
+Cambiare il messaggio e' cambiare un seed, non toccare il frontend.
+
+⚠️ **Dal 2026-08-10 la nota NON e' piu' subordinata alla lista vuota** (decisione
+§5 del test in-app, applicata da `20260810-04/-05/-06`): e' **informazione di
+stato** e compare anche accanto a un pulsante vivo — es. un ordine EVASO che ha
+ancora il push abilitato. Da qui il rinome del campo, che fino ad allora si
+chiamava `nessuna_azione_key`: quel nome descriveva il presupposto caduto, non il
+dato. ⚠️ Il campo e' **sempre presente** nel blob, col valore a `null` quando non
+si applica: va guardato il **valore**, non la presenza della chiave.
+
+⚠️ **Asimmetria voluta**: la proprieta' dentro il `meta` dello stato si chiama
+ancora `nessuna_azione_key`. Rinominarla e' una slice a se': il guard
+`scripts/check_i18n_keys.py` trova le chiavi seminate proprio per quel nome, e
+cambiarlo senza toccare il guard lo renderebbe **verde per cecita'**.
 
 ```vue
 <DrawerActionsBar
   :actions="drawerActions"
-  :info-key="detail?.nessuna_azione_key || ''"
+  :info-key="detail?.stato_info_key || ''"
 />
 ```
 
@@ -1229,13 +1242,14 @@ abilitata. Cambiare il messaggio e' cambiare un seed, non toccare il frontend.
 | --- | --- |
 | La chiave arriva **dal BE**, mai scritta nel componente | Il vocabolario degli stati vive a DB; un `v-if` su `stato_codice_interno` nel drawer sarebbe la stessa regola scritta due volte |
 | La barra **compare** anche con zero azioni se c'e' la nota | Altrimenti l'unica cosa che spiega lo stato sparisce proprio nel caso in cui serve. Attenzione ai `v-if="drawerActions.length"` dei singoli drawer: vanno estesi alla chiave |
+| La nota convive con le azioni vive | Non e' la risposta a uno schermo vuoto: e' lo stato del documento. Nessun `v-if` che la spenga quando ci sono pulsanti |
 | Risoluzione via `labelOrCode` (fail-visible) | Chiave assente dai locales → si vede la chiave grezza, non il vuoto: il difetto silenzioso torna rumoroso |
 | Il testo **non** arriva mai dal DB | Dal DB viaggiano solo indirizzi i18n (§Multilingua) |
 
 Distinta da `enabled: false` + `reasons` della **singola** azione (tooltip sul
 pulsante spento, vedi `mapAvailableActionsToDrawerActions`): quello spiega
-perche' *quel* pulsante non si puo' premere, questo perche' di pulsanti non ce
-n'e' nessuno.
+perche' *quel* pulsante non si puo' premere, questa dice in che stato si trova il
+documento.
 
 **Convenzioni centralizzate:**
 

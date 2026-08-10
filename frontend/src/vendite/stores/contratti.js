@@ -10,6 +10,7 @@ import {
   addRigaContratto, updateRigaContratto, deleteRigaContratto, listRighePreviewContratto,
   addUtilityContratto, updateUtilityContratto,
 } from '../api/contratti'
+import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
 import { useTabEvents } from '../../core/composables/useTabEvents'
 import { TAB_ENTITIES } from '../../core/constants'
 
@@ -17,11 +18,6 @@ const defaultDataDa = defaultFiltroDataDaString()
 
 export const useContrattiStore = defineStore('vendite-contratti', () => {
   const { emitDataChanged } = useTabEvents()
-
-  const items = ref([])
-  const totalRecords = ref(0)
-  const loading = ref(false)
-  const hasSearched = ref(false)
 
   const filters = ref({
     search: '',
@@ -39,12 +35,17 @@ export const useContrattiStore = defineStore('vendite-contratti', () => {
     order_dir: 'desc',
   })
 
-  async function fetchList() {
-    const f = filters.value
-    const searchTerm = (f.search || '').trim()
-
-    loading.value = true
-    try {
+  // Lista via BB condiviso (migrazione 2026-08-10): porta con se' la guardia di
+  // versione anti-race, che qui mancava — due fetch in volo e vinceva l'ultima
+  // ARRIVATA, non l'ultima chiesta.
+  // ⚠️ `alwaysFetch: true` conserva il comportamento di prima: questa lista si e'
+  // sempre caricata anche senza filtri (il `fetchList` originale non aveva
+  // guardie di empty-state). Il default `data_da` la popolerebbe comunque, ma
+  // dichiararlo evita che togliendo quel default la lista diventi muta.
+  const { items, totalRecords, loading, hasSearched, fetchList } = useListaEmptyStateFetch({
+    filters,
+    alwaysFetch: true,
+    buildParams: (f, searchTerm) => {
       const params = { limit: f.limit, offset: f.offset }
       if (searchTerm.length >= 3) params.search = searchTerm
       if (f.billing_account_id != null) params.billing_account_id = f.billing_account_id
@@ -59,14 +60,10 @@ export const useContrattiStore = defineStore('vendite-contratti', () => {
         params.order_by = f.order_by
         params.order_dir = f.order_dir || 'asc'
       }
-      const res = await listContratti(params)
-      items.value = res.data.data.results
-      totalRecords.value = res.data.data.count
-      hasSearched.value = true
-    } finally {
-      loading.value = false
-    }
-  }
+      return params
+    },
+    fetchPage: listContratti,
+  })
 
   async function fetchDetail(id) {
     const res = await getContratto(id)
