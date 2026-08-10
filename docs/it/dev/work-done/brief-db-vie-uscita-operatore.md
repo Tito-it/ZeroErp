@@ -112,8 +112,37 @@ dell'altra produce join che non tornano niente **senza errore**:
 
 | Percorso | Chiave | Perché |
 | --- | --- | --- |
-| Colonne dirette — `ordini.sorgente_uid`, `ddt.sorgente_uid` | **`uuid`**, sempre | la colonna è tipizzata `uuid`: si lega a `preventivi.uid` / `ordini.uid`, mai all'`id` |
+| Colonne dirette — ~~`ordini.sorgente_uid`~~, `ddt.sorgente_uid` | **`uuid`**, sempre | la colonna è tipizzata `uuid`: si lega a `preventivi.uid` / `ordini.uid`, mai all'`id` |
 | Tabella polimorfa — `commesse_sorgenti.sorgente_uid` | **`text`**, secondo `config.sorgenti.key_selector` | `PREVENTIVO` → `uid::text`; `ORDINE_VENDITA` → `id::text` |
+
+> 🔴 **CORREZIONE del 2026-08-10 — `ordini.sorgente_uid` in quella riga è
+> SBAGLIATO, e ha fatto danno.** Per `ddt.sorgente_uid` la riga è giusta: quella
+> colonna è il legame al padre ed è popolata (15 righe su 29). Per l'ordine **no**:
+> `vendite.ordini.sorgente_uid` è l'**origine di un import** (così dice il commento
+> della colonna, e `sorgente_tipo_id` dice «tipo sorgente *import*»), non il legame
+> al documento commerciale a monte. Su **90 ordini è valorizzata zero volte**. Il
+> legame preventivo → ordine vive su `documento_origine_tipo` + `documento_origine_id`
+> — come dice il §6 della guida [sorgente-polimorfa](../../guide/sorgente-polimorfa.md),
+> che fra le colonne dirette elenca `ordini.documento_origine_id`, e come fa
+> `vendite.vw_documento_lineage_archi`, che unisce i due documenti proprio con quel
+> predicato.
+>
+> **Il danno**: il MOTIVO 1 di `script.fn_check_preventivo_annullabile` (§3.1) è
+> stato scritto seguendo questa riga, quindi cercava l'ordine generato nella colonna
+> dell'import. Il conteggio valeva sempre zero e `E_PREV_ORDINE_GIA_GENERATO` **non
+> ha mai potuto scattare** — un motivo morto dentro la funzione che il §7.3 aveva
+> consolidato proprio per avere una regola sola. Corretto con `20260810-03`, che
+> esclude anche gli ordini figli annullati (un figlio morto non deve bloccare il
+> padre per sempre): decisione di Tid del 2026-08-10, dettagli in
+> [attivita-urgenti-del-10-08.md](../work-in-progress/attivita-urgenti-del-10-08.md) §1.
+>
+> ⚠️ **La lezione non è «una svista in tabella»**, ed è la ragione per cui la riga
+> resta barrata e non cancellata: la stessa parola `sorgente_uid` indica **due cose
+> diverse** su due tabelle vicine, e la simmetria apparente ha reso l'errore
+> invisibile per una settimana. È esattamente la trappola che il §4a della guida
+> descrive — «colonne che *sembrano* polimorfe ma non lo sono» — e il test che la
+> guida stessa prescrive (Query 1: `vendite.ordini` **non** ha il guard polimorfo,
+> quindi non è consumatrice del meccanismo) l'avrebbe smascherata in trenta secondi.
 
 Quindi, nella stessa funzione, il preventivo va cercato **per uid** nella catena
 diretta e **per uid::text** in commessa; l'ordine va cercato **per uid** nella catena

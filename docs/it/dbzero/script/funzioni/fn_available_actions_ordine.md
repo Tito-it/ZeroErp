@@ -40,6 +40,34 @@ AS $function$
 --   quella forma (DRAFT -> Bozza, ALLOCATO -> Allocato a magazzino)
 --   e tradurlo nel FE sarebbe una seconda copia del vocabolario
 --   degli stati. NULL sulle azioni che non cambiano stato.
+--   rev 2026-08-10: ANNULLATO esce dal ramo di DRAFT. Il motivo
+--   ORDINE_NON_CONFERMATO («disponibile dopo la conferma») e'
+--   un'istruzione corretta su DRAFT e una promessa falsa su
+--   ANNULLATO, da cui la matrice non ha uscite. NON si usa
+--   fase = 'CHIUSO' come sul preventivo: fra i CHIUSI c'e'
+--   EVASO, che puo' ancora avere il push abilitato (5 ordini
+--   misurati), e un ramo su fase lo intercetterebbe prima di
+--   v_push_ok. Gemello del 20260810-01, brief-db-vie-uscita-
+--   operatore §12.
+--   rev 2026-08-10 (2): la nota di stato non e' piu' subordinata alla
+--   lista vuota, e cambia nome. Decisione §5 di Tid: «la nota spiega lo
+--   stato chiuso, e compare sempre» — anche accanto a un'azione ancora
+--   viva, dove l'operatore legge cos'e' successo E ha il suo bottone.
+--   Cade quindi il presupposto che la faceva sparire: via
+--   v_nessuna_azione e il suo NOT EXISTS, che erano diventati codice
+--   morto, e via il commento che spiegava perche' non si appoggiavano a
+--   v_can_change — era la motivazione di una regola che non esiste piu'.
+--   Il campo si chiama ora `stato_info_key`: `nessuna_azione_key`
+--   diventava falso proprio nel momento in cui inizia a mostrarsi
+--   quando le azioni ci sono, e il vocabolario giusto era gia' dall'altra
+--   parte (le chiavi i18n stanno sotto vendite.<dominio>.stato_info.*).
+--   ⚠️ La PROPRIETA' nel meta dello stato resta `nessuna_azione_key`, ed
+--   e' voluto: il presidio scripts/check_i18n_keys.py trova quelle chiavi
+--   proprio per quel nome (RE_SEED_KEY sui CSV, elenco _PROP_KEY), e
+--   rinominarla senza toccare il guard lo renderebbe verde per cecita' —
+--   il caso peggiore, gia' denunciato nel §8.3 del brief. Rinomina della
+--   proprieta' proposta come slice a se'.
+--   brief-db-vie-uscita-operatore §4; attivita-urgenti-del-10-08 §2.
 DECLARE
     v_stato_id   vendite.ordini.stato_doc_ordine_id%TYPE;
     v_stato_cod  config.stati_doc_ordini.codice_interno%TYPE;
@@ -47,8 +75,7 @@ DECLARE
     v_fatt_trg   vendite.ordini.fatturazione_trigger%TYPE;
     v_pdf_mode   config.stati_doc_ordini.pdf_mode%TYPE;
     v_pdf_allow  config.stati_doc_ordini.pdf_allow_allegati%TYPE;
-    v_nessuna_key    text;
-    v_nessuna_azione boolean := false;
+    v_stato_info_key    text;
     v_actions    jsonb;
     v_can_change boolean := false;
     v_ha_righe   boolean := false;
@@ -77,9 +104,13 @@ BEGIN
     SELECT o.stato_doc_ordine_id, sdo.codice_interno,
            o.uid, o.fatturazione_trigger,
            sdo.pdf_mode, sdo.pdf_allow_allegati,
+           -- ⚠️ La PROPRIETA' nel meta resta `nessuna_azione_key` mentre il
+           -- campo del blob si chiama ora `stato_info_key`. L'asimmetria e'
+           -- voluta e la spiega la rev 2026-08-10 (2) in testa: il presidio
+           -- i18n si aggancia a QUESTO nome.
            sdo.meta->>'nessuna_azione_key'
       INTO v_stato_id, v_stato_cod, v_uid, v_fatt_trg,
-           v_pdf_mode, v_pdf_allow, v_nessuna_key
+           v_pdf_mode, v_pdf_allow, v_stato_info_key
       FROM vendite.ordini o
       JOIN config.stati_doc_ordini sdo ON sdo.id = o.stato_doc_ordine_id
      WHERE o.id = p_ordine_id;
@@ -154,9 +185,23 @@ BEGIN
     -- Namespace i18n: `vendite.ordini.*` — coerente con la label_key
     -- dell'azione push qui sotto e con le reason DDT. Il codice reason
     -- (ORDINE_*) NON e' una chiave i18n e non segue questa convenzione.
-    IF v_stato_cod IN ('DRAFT', 'ANNULLATO') THEN
+    --
+    -- ⚠️ DRAFT e ANNULLATO erano nello stesso ramo, e sono
+    -- l'opposto: su DRAFT «disponibile dopo la conferma»
+    -- istruisce, su ANNULLATO promette un passo che non
+    -- arrivera' mai (nessuna transizione in uscita dalla
+    -- matrice). Il predicato resta sui CODICI e non su
+    -- fase = 'CHIUSO': fra i CHIUSI dell'ordine c'e' anche
+    -- EVASO, che puo' avere il push ancora ABILITATO, e un
+    -- ramo su fase in testa alla catena lo spegnerebbe prima
+    -- che v_push_ok venga calcolato — un difetto di
+    -- comportamento al posto di uno di testo.
+    IF v_stato_cod = 'DRAFT' THEN
         v_push_reason     := 'ORDINE_NON_CONFERMATO';
         v_push_reason_key := 'vendite.ordini.push_commessa_reason.non_confermato';
+    ELSIF v_stato_cod = 'ANNULLATO' THEN
+        v_push_reason     := 'ORDINE_ANNULLATO';
+        v_push_reason_key := 'vendite.ordini.push_commessa_reason.annullato';
     ELSIF v_fatt_trg IS DISTINCT FROM 'CONFERMATO' THEN
         v_push_reason     := 'ORDINE_FATTURA_DA_DDT';
         v_push_reason_key := 'vendite.ordini.push_commessa_reason.fattura_da_ddt';
@@ -206,16 +251,6 @@ BEGIN
         );
     END IF;
 
-    -- La nota "cosa fare invece" si mostra SOLO quando non resta
-    -- nessun bottone vivo. NON si appoggia a v_can_change, che qui
-    -- conta anche i disabilitati (vedi sopra): userebbe un conteggio
-    -- pensato per l'opposto e la nota non comparirebbe mai.
-    SELECT NOT EXISTS (
-        SELECT 1
-          FROM jsonb_array_elements(v_actions) AS a
-         WHERE COALESCE((a->>'enabled')::boolean, true) IS TRUE
-    ) INTO v_nessuna_azione;
-
     RETURN jsonb_build_object(
         'available_actions',           v_actions,
         'can_change_state',            v_can_change,
@@ -224,7 +259,7 @@ BEGIN
         'can_push_commessa',           v_push_ok,
         'can_push_commessa_reason',    v_push_reason,
         'can_push_commessa_reason_key', v_push_reason_key,
-        'nessuna_azione_key',          CASE WHEN v_nessuna_azione THEN v_nessuna_key END,
+        'stato_info_key',          v_stato_info_key,
         'non_editable_fields',         CASE WHEN v_stato_cod = 'DRAFT'
                                             THEN c_non_edit_cliente
                                             ELSE c_non_edit_tutti END,
@@ -235,7 +270,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_ordine(p_ordine_id bigint)
-IS 'Capability ordine di vendita per detail API: available_actions + push_commessa (decoupling fatturazione/spedizione, fn_list_ordini_da_pushare fonte unica; reason ORDINE_NON_CONFERMATO/ORDINE_FATTURA_DA_DDT/ORDINE_GIA_FATTURATO/ORDINE_NESSUNA_RIGA_PUSHABILE) + can_change_state + can_edit_* + nessuna_azione_key + non_editable_fields + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_ordini. rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e l''ordine non ha righe -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard Regola 2, che non filtra su attivo). rev 2026-07-19: reason ORDINE_GIA_INVIATO (allocato, in attesa fatturazione) distinta da ORDINE_GIA_FATTURATO, entrambe via script.fn_get_stato_push_segment (vede anche componenti #CMP) — brief-db-push-commessa-gia-inviato §4b. rev 2026-07-19 (bis): le 5 reason_key del push passano al namespace i18n vendite.ordini.* (era ordini.*, radice inesistente nei locales FE) — brief-db-i18n-namespace-reason-ordini; convenzione in docs/it/dev/frontend/i18n-namespace-radici.md. rev 2026-08-04: le azioni verso ANNULLATO espongono reasons da script.fn_check_ordine_annullabile (stessa fn del guard di transizione); i motivi si sommano a quello di requires_righe in un array unico da cui discendono enabled/reason/reason_key. + nessuna_azione_key dal meta dello stato corrente (EVASO / PARZIALMENTE_EVASO), esposta solo quando nessuna azione risulta abilitata — valutata a parte da can_change_state, che qui conta apposta anche le disabilitate (brief-db-vie-uscita-operatore §4 regola R3, §6). rev 2026-08-06: + target_state_descrizione accanto a target_state (config.stati_doc_ordini.descrizione della destinazione). Serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile (DRAFT -> Bozza, ALLOCATO -> Allocato a magazzino) e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati. NULL su push_commessa, che non e'' una transizione.';
+IS 'Capability ordine di vendita per detail API: available_actions + push_commessa (decoupling fatturazione/spedizione, fn_list_ordini_da_pushare fonte unica; reason ORDINE_NON_CONFERMATO/ORDINE_FATTURA_DA_DDT/ORDINE_GIA_FATTURATO/ORDINE_NESSUNA_RIGA_PUSHABILE) + can_change_state + can_edit_* + nessuna_azione_key + non_editable_fields + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_ordini. rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e l''ordine non ha righe -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard Regola 2, che non filtra su attivo). rev 2026-07-19: reason ORDINE_GIA_INVIATO (allocato, in attesa fatturazione) distinta da ORDINE_GIA_FATTURATO, entrambe via script.fn_get_stato_push_segment (vede anche componenti #CMP) — brief-db-push-commessa-gia-inviato §4b. rev 2026-07-19 (bis): le 5 reason_key del push passano al namespace i18n vendite.ordini.* (era ordini.*, radice inesistente nei locales FE) — brief-db-i18n-namespace-reason-ordini; convenzione in docs/it/dev/frontend/i18n-namespace-radici.md. rev 2026-08-04: le azioni verso ANNULLATO espongono reasons da script.fn_check_ordine_annullabile (stessa fn del guard di transizione); i motivi si sommano a quello di requires_righe in un array unico da cui discendono enabled/reason/reason_key. + nessuna_azione_key dal meta dello stato corrente (EVASO / PARZIALMENTE_EVASO), esposta solo quando nessuna azione risulta abilitata — valutata a parte da can_change_state, che qui conta apposta anche le disabilitate (brief-db-vie-uscita-operatore §4 regola R3, §6). rev 2026-08-06: + target_state_descrizione accanto a target_state (config.stati_doc_ordini.descrizione della destinazione). Serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile (DRAFT -> Bozza, ALLOCATO -> Allocato a magazzino) e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati. NULL su push_commessa, che non e'' una transizione. rev 2026-08-10: ANNULLATO ha un ramo proprio nella catena delle reason del push. Stava insieme a DRAFT sotto ORDINE_NON_CONFERMATO, cioe'' «disponibile dopo la conferma dell''ordine»: su DRAFT e'' l''istruzione giusta, su ANNULLATO e'' una promessa falsa perche'' la matrice non ha nessuna transizione in uscita da quello stato. Reason nuova ORDINE_ANNULLATO, reason_key vendite.ordini.push_commessa_reason.annullato. ⚠️ Il predicato resta sui CODICI e NON su fase = ''CHIUSO'' (come invece fa il preventivo nel changeSet gemello 20260810-01): fra gli stati CHIUSI dell''ordine c''e'' anche EVASO, che puo'' avere il push ancora abilitato (5 ordini su 32, misurati nel §9.2 del brief), e un ramo su fase in testa alla catena li intercetterebbe prima che v_push_ok venga calcolato — spegnerebbe un''azione legittima. FATTURATO resta dov''era di proposito: la catena gli assegna gia'' il motivo piu'' preciso gia_fatturato. Rilievo in-app di Tid del 2026-08-10, brief-db-vie-uscita-operatore §12. rev 2026-08-10 (2): il campo si chiama ora stato_info_key e NON e'' piu'' subordinato alla lista vuota: viene emesso sempre che lo stato lo dichiari nel proprio meta, anche accanto a un''azione ancora abilitata. Decisione §5 di Tid: la nota spiega lo STATO, e chi ha ancora un bottone deve comunque poter leggere cos''e'' successo; cade quindi il presupposto che la faceva sparire, e v_nessuna_azione con il suo NOT EXISTS escono come codice morto. Il nome vecchio nessuna_azione_key diventava falso proprio nel momento in cui il campo inizia a comparire QUANDO le azioni ci sono, e il vocabolario giusto era gia'' dall''altra parte: le chiavi i18n stanno sotto vendite.<dominio>.stato_info.*. ⚠️ La PROPRIETA'' nel meta dello stato resta nessuna_azione_key, ed e'' voluto: il presidio scripts/check_i18n_keys.py trova quelle chiavi proprio per quel nome (RE_SEED_KEY sui CSV, elenco _PROP_KEY), e rinominarla senza toccare il guard lo renderebbe verde per cecita'' — il caso peggiore, gia'' denunciato nel §8.3 del brief. Rinomina della proprieta'' proposta come slice a se''. ⚠️ Il campo e'' SEMPRE presente nel blob, col valore a null quando non si applica: filtrare con l''operatore di presenza risponde vero per TUTTI i documenti, va guardato il valore. Il FE rinomina la prop nello stesso rilascio (8 drawer + DrawerActionsBar). brief-db-vie-uscita-operatore §4; attivita-urgenti-del-10-08 §2.';
 ```
 
 ---

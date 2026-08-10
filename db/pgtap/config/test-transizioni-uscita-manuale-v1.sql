@@ -40,6 +40,26 @@
 -- Quello che non e' legittimo e' lasciarlo implicito: un elenco di azioni
 -- vuoto e senza motivo e' indistinguibile da un errore di caricamento.
 --
+-- ⚠️ PUNTO CIECO DICHIARATO (2026-08-10): questo file NON vede uno stato
+-- SENZA NESSUNA uscita attiva. Il test 2 raggruppa le TRANSIZIONI per stato di
+-- partenza, quindi uno stato che non compare mai come `stato_da` non entra
+-- nella misura — non «passa»: non esiste per il test. La riga di commento al
+-- test 2 lo chiama «terminale per costruzione» e lo considera non
+-- problematico, e per la regola R1 e' corretto (non c'e' una via d'uscita che
+-- nessuno puo' imboccare: non ce n'e' nessuna). Ma NON e' corretto per la R3,
+-- che pretende una spiegazione: il 2026-08-10 i quattro stati chiusi del
+-- preventivo (RIFIUTATO, SCADUTO, ANNULLATO, EVASO) avevano meta = {} e
+-- mostravano una barra azioni vuota e muta, con questo file verde. Sono
+-- esattamente gli stati che non compaiono in nessuna riga della matrice.
+--
+-- Chi presidia quel lato e' script/test-capability-motivi-e-nessuna-azione-v1.sql,
+-- che dal 2026-08-10 asserisce «ogni stato in fase CHIUSO dichiara
+-- nessuna_azione_key» sui tre domini le cui fn_available_actions_* espongono
+-- il campo (preventivo, ordine, DDT). ⚠️ Gli altri quattro domini di questo
+-- file — commessa, contratto, reso, offerta — non lo espongono affatto, quindi
+-- per loro la R3 non e' presidiata da nessuna parte: e' un debito dichiarato,
+-- vedi brief-db-vie-uscita-operatore §12.4.
+--
 -- ⚠️ ELENCO ESPLICITO DELLE MATRICI. Le tabelle sono elencate a mano e non
 -- scoperte per convenzione di nome: se domani nasce un documento nuovo, questo
 -- test NON lo vede e resta verde. E' un compromesso consapevole — la scoperta
