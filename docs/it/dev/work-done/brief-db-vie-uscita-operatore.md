@@ -1115,6 +1115,51 @@ la suite tutta verde, e perché la seconda metà riguarda un vostro strumento.
   non compare mai come `stato_da` non entra nella misura. Sono esattamente i
   quattro stati del preventivo. Il punto cieco è ora **dichiarato nel file**.
 
+### 12.5-bis Il guard i18n: la segnalazione del BE, verificata e corretta
+
+> Il BE (2026-08-10) segnala che `check_i18n_keys.py` non discriminerebbe una
+> chiave mancante dal **solo** italiano: «la classifica come semplice disparità e
+> resta verde». **Misurato: non è così** — togliendo
+> `vendite.ordini.stato_info.evaso` dal solo `it.json` il guard fa **exit 1**, la
+> nomina e i problemi passano da 10 a 11. Il sospetto su come ci si arriva è
+> concreto e senza ironia, perché ci siamo cascati anche noi la stessa sera:
+> leggere `$?` attraverso una pipe (`… | tail`) restituisce l'exit code di `tail`.
+>
+> **Il rilievo però non è a vuoto: è sotto-dimensionato il MESSAGGIO, non
+> l'esito.** Il caso finisce sotto «PARITÀ it/en violata», che si legge come una
+> simmetria da sistemare, mentre il sintomo a video è una **chiave grezza**. E
+> l'asimmetria che il BE intuisce è reale, perché `fallbackLocale` è
+> `DEFAULT_LOCALE = 'it'` (`frontend/src/core/i18n.js`):
+>
+> | Dove manca | Cosa legge l'utente |
+> | --- | --- |
+> | solo in `en` | il testo **italiano** — degradato ma leggibile |
+> | solo in `it` | la **chiave grezza**: il fallback è l'italiano stesso, non c'è rete |
+>
+> Le due colonne del messaggio (`N solo in it, M solo in en`) sono quindi
+> simmetriche mentre le conseguenze non lo sono.
+>
+> 🔴 **E c'è un buco vero, della stessa famiglia ma di un altro meccanismo.**
+> `flatten()` registra una chiave per **presenza**, non per valore: una chiave
+> presente con stringa **vuota** è indistinguibile da una tradotta. Misurato —
+> messo `vendite.ordini.stato_info.evaso = ""` nel solo italiano, il guard stampa
+> «`[ok] parità it/en integra`» e non conta il problema. È esattamente ciò che il
+> BE temeva («sparirebbe senza che nessun cancello se ne accorga»), su una strada
+> che il loro esperimento non ha attraversato.
+>
+> ⚠️ **La regola non può però essere «vuoto = errore»**: oggi
+> `anagrafiche.soggetti.col_azioni` è vuota in **entrambi** i locales, e con ogni
+> probabilità di proposito (intestazione di una colonna azioni). Serve un
+> criterio, non un divieto: il candidato è «vuoto = errore per le chiavi **emesse
+> dal DB**» — lì il database promette un messaggio, e una stringa vuota è una
+> promessa non mantenuta — e avviso altrove.
+>
+> **Chi lo sistema: il BE**, come si è offerto. `scripts/` è territorio condiviso
+> e la CI lo tratta come lato DB, ma questa parte del guard l'hanno scritta loro
+> (§8.3) e entrambe le correzioni sono giudizi sul loro lato: come si formula il
+> messaggio all'utente del guard, e quali valori vuoti sono legittimi. Da qui
+> arriva la diagnosi, non la patch.
+
 > 🔄 Il **test 8 è stato ribaltato**, non messo in baseline: asseriva «la nota non
 > compare accanto a un bottone vivo», cioè il presupposto che la decisione §5 ha
 > rimosso. Una baseline è un registro di **debito**, e un test che fotografa una
