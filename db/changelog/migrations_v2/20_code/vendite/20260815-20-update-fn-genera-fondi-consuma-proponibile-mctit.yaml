@@ -1,0 +1,199 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# La generazione smette di avere una regola sua: chiede alla proposta.
+#   Coda del passo D-9 di brief-db-fondo-fattura-ricalcolo-e-governo.md §8.2.
+#
+# ── 🔴 PERCHE' QUESTO CHANGESET ESISTE ──────────────────────────────────
+#
+#   Il piano prevedeva D-9 come «la proposta, costruita su
+#   fn_saldo_sorgente_fondo, cosi' proposta e guard non possono divergere».
+#   Ma il guard non e' il solo posto da cui la proposta puo' divergere: c'e'
+#   l'INVILUPPO — DEFINITIVA, di minimo, atto unico, corrispondenza — che
+#   fino a ieri viveva nel WHERE di fn_genera_fondi_fattura_source.
+#
+#   Scrivere D-9 senza questo passo avrebbe creato la seconda copia di quella
+#   regola. Due copie della stessa domanda danno prima o poi due risposte
+#   diverse, e qui il divario avrebbe una forma precisa e silenziosa: un
+#   elenco che PROPONE un fondo che l'automatismo non crea, o che TACE su uno
+#   che crea. E' la «regola del 2» del progetto, applicata dove costa di piu'
+#   ignorarla.
+#
+# ── COSA CAMBIA, ESATTAMENTE ────────────────────────────────────────────
+#
+#   Il WHERE della CTE `base` perde cinque predicati — stato DEFINITIVA,
+#   `minimo IS TRUE`, importo diverso da zero, corrispondenza col totale,
+#   NOT EXISTS dell'atto — e guadagna una chiamata:
+#
+#       vendite.fn_fondo_fattura_proponibile(f.id, p_tipo_fondo_fattura_id)
+#
+#   Restano i CINQUE FILTRI DI SCOPE (billing account, utility, tipo doc
+#   fiscale, emittente, valuta), che non sono l'inviluppo: dicono QUALI
+#   fatture guarda questa chiamata, non se una fattura meriti un fondo.
+#
+# ── ⚠️ COMPORTAMENTO IDENTICO, DI PROPOSITO ─────────────────────────────
+#
+#   Questo changeSet e' un refactor e NON deve cambiare cosa succede: i due
+#   pgTAP (test-fondi-fattura 20/20, test-fondi-fattura-governo) sono la
+#   misura, e restano verdi senza toccarli. Un refactor che cambia anche il
+#   comportamento non e' verificabile — se il test si sposta, non si sa piu'
+#   quale delle due modifiche stia rispondendo.
+#
+#   ℹ️ Per questo NON e' stato aggiunto un filtro su `f.attivo`, che sarebbe
+#   sensato ma sarebbe un'altra modifica: va misurato e deciso a parte.
+#
+# ── ⚠️ IL PRE-FILTRO CHE NON C'E' ───────────────────────────────────────
+#
+#   Verrebbe da lasciare `f.minimo IS TRUE` nel WHERE «per non chiamare una
+#   funzione VOLATILE su ogni fattura». Non c'e', e la ragione e' che sarebbe
+#   di nuovo un pezzo di regola in due posti: il giorno in cui l'inviluppo
+#   cambiasse, il pre-filtro continuerebbe a tagliare in silenzio. Lo scope
+#   (BA + utility + tipo doc + emittente + valuta) riduce gia' i candidati a
+#   una manciata di documenti per chiamata.
+#
+#   ⚠️ La stessa scelta NON e' possibile nella vista (`20260815-21`), che non
+#   ha uno scope: li' il pre-filtro c'e', ed e' dichiarato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260815-20-update-fn-genera-fondi-consuma-proponibile-mctit.yaml
+
+  - changeSet:
+      id: 20260815-20-update-fn-genera-fondi-consuma-proponibile
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_genera_fondi_fattura_source consuma fn_fondo_fattura_proponibile
+        invece di riscrivere l'inviluppo nel proprio WHERE: una sola
+        definizione della domanda «questa fattura merita un fondo, e di
+        quanto». Refactor a comportamento invariato. Coda del D-9.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'vendite' AND p.proname = 'fn_fondo_fattura_proponibile'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_genera_fondi_fattura_source(
+                      p_billing_account_id          anagrafiche.billing_account.id%TYPE,
+                      p_utility_id                  config.utilities.id%TYPE,
+                      p_tipo_doc_fiscale_id         config.tipi_doc_fiscale.id%TYPE,
+                      p_emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE,
+                      p_valuta_id                   config.valute.id%TYPE,
+                      p_tipo_fondo_fattura_id       vendite.tipi_fondi_fattura.id%TYPE)
+               RETURNS INTEGER
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_inserted INTEGER := 0;
+              BEGIN
+                  -- Guard: tutti i parametri obbligatori e > 0
+                  IF p_billing_account_id IS NULL OR p_billing_account_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_genera_fondi_fattura_source', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_billing_account_id', 'valore', p_billing_account_id), NULL::uuid, 'p_billing_account_id obbligatorio e > 0');
+                  END IF;
+                  IF p_utility_id IS NULL OR p_utility_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_genera_fondi_fattura_source', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_utility_id', 'valore', p_utility_id), NULL::uuid, 'p_utility_id obbligatorio e > 0');
+                  END IF;
+                  IF p_tipo_doc_fiscale_id IS NULL OR p_tipo_doc_fiscale_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_genera_fondi_fattura_source', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_tipo_doc_fiscale_id', 'valore', p_tipo_doc_fiscale_id), NULL::uuid, 'p_tipo_doc_fiscale_id obbligatorio e > 0');
+                  END IF;
+                  IF p_emittente_soggetto_ruolo_id IS NULL OR p_emittente_soggetto_ruolo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_genera_fondi_fattura_source', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_emittente_soggetto_ruolo_id', 'valore', p_emittente_soggetto_ruolo_id), NULL::uuid, 'p_emittente_soggetto_ruolo_id obbligatorio e > 0');
+                  END IF;
+                  IF p_valuta_id IS NULL OR p_valuta_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_genera_fondi_fattura_source', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_valuta_id', 'valore', p_valuta_id), NULL::uuid, 'p_valuta_id obbligatorio e > 0');
+                  END IF;
+                  IF p_tipo_fondo_fattura_id IS NULL OR p_tipo_fondo_fattura_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_genera_fondi_fattura_source', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_tipo_fondo_fattura_id', 'valore', p_tipo_fondo_fattura_id), NULL::uuid, 'p_tipo_fondo_fattura_id obbligatorio e > 0');
+                  END IF;
+
+                  -- =========================================================
+                  -- CREAZIONE, e SOLO creazione.
+                  --
+                  -- Il fondo di una fattura DEFINITIVA e' un atto: si scrive
+                  -- una volta con l'importo letto in quel momento e non si
+                  -- ricalcola. Non c'e' un ramo di aggiornamento.
+                  --
+                  -- ⭐ E l'inviluppo NON e' scritto qui: lo dice
+                  -- fn_fondo_fattura_proponibile, che e' anche cio' che
+                  -- l'elenco «da decidere» mostra all'operatore. Una sola
+                  -- definizione, due lettori — altrimenti l'elenco e il giro
+                  -- notturno finirebbero per raccontare due cose diverse.
+                  --
+                  -- Restano qui i CINQUE FILTRI DI SCOPE: dicono quali
+                  -- fatture guarda questa chiamata, non se una fattura
+                  -- meriti un fondo.
+                  -- =========================================================
+                  WITH base AS (
+                      SELECT f.id AS fattura_sorgente_id,
+                             p.importo_proposto
+                        FROM vendite.fatture f
+                        CROSS JOIN LATERAL (
+                            SELECT vendite.fn_fondo_fattura_proponibile(f.id, p_tipo_fondo_fattura_id)
+                                   AS importo_proposto
+                        ) p
+                       WHERE f.billing_account_id = p_billing_account_id
+                         -- ⭐ utility nel FILTRO, non solo in scrittura: senza,
+                         --    su un BA con due utility la stessa riga veniva
+                         --    rimarcata a ogni giro e l'attribuzione del fondo
+                         --    dipendeva dall'ordine. `=` e non IS NOT DISTINCT
+                         --    FROM: una fattura senza utility e' un dato
+                         --    incompleto (BASE e' una utility vera), e
+                         --    un'attribuzione non si indovina. Quel caso lo
+                         --    mostra vw_fondi_fattura_da_decidere.
+                         AND f.utility_id                  = p_utility_id
+                         AND f.tipo_doc_fiscale_id         = p_tipo_doc_fiscale_id
+                         AND f.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+                         AND f.valuta_id                   = p_valuta_id
+                         -- NULL = l'automatismo non farebbe niente su questa
+                         -- fattura. Il perche' sta tutto nella funzione.
+                         AND p.importo_proposto IS NOT NULL
+                  ), ins AS (
+                      INSERT INTO vendite.fatture_fondi_fattura_source (
+                          fattura_sorgente_id, tipo_fondo_fattura_id, importo, stato, origine,
+                          fattura_figlia_id, data_assegnazione, user_assegnazione,
+                          billing_account_id, utility_id, tipo_doc_fiscale_id,
+                          emittente_soggetto_ruolo_id, valuta_id, meta, attivo,
+                          data_insert, user_insert, data_update, user_update
+                      )
+                      SELECT b.fattura_sorgente_id, p_tipo_fondo_fattura_id, b.importo_proposto,
+                             'DISPONIBILE', 'AUTOMATICA', NULL, NULL, NULL,
+                             p_billing_account_id, p_utility_id, p_tipo_doc_fiscale_id,
+                             p_emittente_soggetto_ruolo_id, p_valuta_id, '{}'::jsonb, TRUE,
+                             now(), current_user, now(), current_user
+                        FROM base b
+                      RETURNING id
+                  )
+                  SELECT COUNT(*)::INTEGER INTO v_inserted FROM ins;
+
+                  RETURN COALESCE(v_inserted, 0);
+              END;
+              $function$;
+
+              -- ⚠️ COMMENT con i tipi RISOLTI: il %TYPE vale nella firma del
+              --    CREATE, non nell'identificazione di una funzione esistente.
+              COMMENT ON FUNCTION vendite.fn_genera_fondi_fattura_source(BIGINT, INTEGER, BIGINT, BIGINT, INTEGER, BIGINT)
+              IS 'Crea le source dei fondi fattura per le fatture del perimetro indicato. E'' CREATE-ONLY dal 2026-08-15: il ramo UPDATE (che riallineava importo e stato a ogni giro) e'' stato rimosso, perche'' il fondo di una fattura DEFINITIVA e'' un atto e non si ricalcola — «una volta che la fattura e'' effettiva il fondo rimane lo stesso». ⭐ Dal 2026-08-15 (sera) l''INVILUPPO non e'' piu'' scritto qui: DEFINITIVA, di minimo, utility attribuita, atto unico, importo non nullo e CORRISPONDENZA col documento sono tutti dentro vendite.fn_fondo_fattura_proponibile, che questa funzione chiama in LATERAL e di cui inserisce il risultato. La ragione e'' che lo stesso inviluppo serve all''elenco vw_fondi_fattura_da_decidere: due copie della regola darebbero prima o poi due risposte diverse, e il divario si vedrebbe come un elenco che propone cio'' che il giro notturno non crea. Restano qui i CINQUE FILTRI DI SCOPE (billing account, utility, tipo doc fiscale, emittente, valuta), che dicono quali fatture guardare e non se una fattura meriti un fondo. ⚠️ Nessun pre-filtro su minimo: sarebbe un pezzo di regola in un secondo posto, e lo scope riduce gia'' i candidati a una manciata. Firma invariata di proposito: la chiave piena a nove elementi e la madre DB per lotto richiedono il backend, e sono scritte come richiesta nel brief. D-1 + D-4 + coda D-9 di brief-db-fondo-fattura-ricalcolo-e-governo §8.2.';

@@ -9,19 +9,35 @@
 > • [vendite.fatture_fondi_fattura](/dbzero/vendite/tabelle/fatture_fondi_fattura)  
 >
 ### 🎯 Scopo Principale
-(latest review 11-02-2026)  
+(latest review 15-08-2026)  
 `vendite.fatture_fondi_fattura_source` registra la **sorgente** dei fondi
 fattura derivati da documenti precedenti. Serve a garantire idempotenza e
 selezione deterministica dei fondi disponibili per l’addebito/accredito.
+
+> ⭐ **Dal 2026-08-15 una riga è un ATTO, non un valore.** Si compie una volta e
+> non si riscrive: l'importo, la sorgente, il tipo e l'origine sono immutabili
+> (`E_FONDO_ATTO_IMMUTABILE`), e ciò che non è più dovuto **si annulla con una
+> ragione** invece di essere aggiornato. Prima di allora ogni giro di
+> fatturazione riallineava l'importo delle source non assegnate — anche di
+> fatture già stampate.
 
 ---
 
 ### Campi chiave (semantica)
 
-* `fattura_sorgente_id`: fattura che genera il fondo.
-* `tipo_fondo_fattura_id`: tipologia fondo.
-* `importo`: valore del fondo.
-* `stato`: `DISPONIBILE` / `ASSEGNATO` / `ANNULLATO`.
+* `fattura_sorgente_id`: fattura che genera il fondo. **Immutabile.**
+* `tipo_fondo_fattura_id`: tipologia fondo. **Immutabile.**
+* `importo`: valore del fondo. **Immutabile**, e vincolato a *corrispondere* alla
+  sorgente (stesso segno del `totale_a_pagare`, non superiore in valore assoluto).
+* `stato`: `DISPONIBILE` / `ASSEGNATO` / `ANNULLATO` — vocabolario chiuso da
+  `CHECK` e cammino presidiato da un guard; `ANNULLATO` è **terminale**.
+* `origine`: `AUTOMATICA` / `MANUALE`. ⭐ Non dice *chi* ha creato il fondo: dice
+  **quale regola si applica**. L'atto automatico è *vincolato* dal guard di
+  corrispondenza, quello manuale è *governato* (motivo obbligatorio, e arriva dal
+  processo rimborsi di `pagamenti`). **Immutabile.**
+* `motivo`: la ragione dell'atto, **obbligatoria dove l'atto è straordinario** —
+  su `MANUALE` e su ogni `ANNULLATO`. È il posto dove la ragione smette di essere
+  un testo di diario in `fatture_log` e diventa un dato interrogabile.
 * `fattura_figlia_id`: fattura che utilizza il fondo (opzionale).
 * `data_assegnazione`, `user_assegnazione`: audit assegnazione.
 * Chiavi denormalizzate: `billing_account_id`, `utility_id`, `tipo_doc_fiscale_id`,
@@ -66,17 +82,29 @@ selezione deterministica dei fondi disponibili per l’addebito/accredito.
 > Un fondo esistente **resta com'è**; se non è più giustificato, semplicemente
 > **non viene applicato**.
 
-### 🟠 Che cosa cambia con il piano in corso
+### ✅ I presidi, e da dove vengono (applicati il 2026-08-15)
 
 Piano completo: [brief-db-fondo-fattura…](/dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo) §8.
 
-| Oggi | Diventerà |
-| --- | --- |
-| l'importo di una source non assegnata viene **riallineato** dai giri di fatturazione successivi | **si congela**: una fattura sorgente `DEFINITIVA` ha un fondo definitivo (lock di colonna su `importo`) |
-| la sorgente può essere in **qualunque** stato, `ANNULLATA` compresa | solo sorgenti **`DEFINITIVA`** |
-| nessun vincolo impedisce **due fondi vivi** sulla stessa sorgente | indice unico parziale sugli atti automatici |
-| `stato` è un `varchar` **senza CHECK**: il vocabolario vive solo nelle funzioni | CHECK sul vocabolario + guard di transizione |
-| l'`importo` non ha **nessun CHECK** | `importo <> 0` + guard di **corrispondenza con la sorgente** (stesso segno del totale, non superiore in valore assoluto) |
+| Prima | Adesso | Chi lo fa |
+| --- | --- | --- |
+| l'importo di una source non assegnata veniva **riallineato** dai giri successivi | **congelato**: la sorgente `DEFINITIVA` ha un fondo definitivo | `trg_..._a10_lock_atto_upd` |
+| la sorgente poteva essere in **qualunque** stato, `ANNULLATA` compresa | solo sorgenti **`DEFINITIVA`**, e la generazione **crea soltanto** | `fn_genera_fondi_fattura_source` |
+| nessun vincolo impediva **due fondi vivi** sulla stessa sorgente | un solo atto automatico vivo per (sorgente, tipo) | `uq_fondi_source_atto_vivo_automatico` |
+| `stato` era un `varchar` **senza CHECK**: il vocabolario viveva solo nelle funzioni | vocabolario chiuso **e** cammino presidiato | `chk_fondi_source_stato` + `trgfn_fondi_source_guard_transizione` |
+| l'`importo` non aveva **nessun CHECK** | `importo <> 0` + **corrispondenza con la sorgente** | `chk_fondi_source_importo_non_zero` + `trgfn_fondi_source_guard_importo` |
+| un annullamento non lasciava una ragione sul dato | `motivo` obbligatorio su `ANNULLATO` e su `MANUALE` | `chk_fondi_source_motivo_obbligatorio` |
+
+> ⚠️ **I due presidi sull'importo non sono in serie come sembra.** I trigger
+> `BEFORE ROW` girano **prima** dei `CHECK`: su una sorgente con totale diverso
+> da zero, un `importo = 0` lo intercetta il **guard**, e il `CHECK` non entra
+> mai in gioco. Conta quando si scrive un test.
+
+🔵 **Cosa non è ancora presidiato**: l'`ANNULLATO` che
+[fn_sync_contabili_fondo_fattura](/dbzero/vendite/funzioni/fn_sync_contabili_fondo_fattura)
+scrive da sé quando la sorgente non è più capiente. Ora almeno **dichiara la sua
+ragione**, ma resta uno stato cambiato senza una persona: si toglie quando
+`pagamenti` avrà il processo rimborsi.
 
 ---
 

@@ -1,0 +1,145 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Un fondo deve ASSOMIGLIARE alla fattura da cui nasce.
+#   Passo D-3(a) di brief-db-fondo-fattura-ricalcolo-e-governo.md §8.2.
+#
+# 🔴 IL CONTROLLO CHE MANCAVA, e non e' quello che sembrava. Fino al
+#   2026-08-09 si era concluso che il pericolo fosse «il fondo negativo», e
+#   il rimedio proposto era un limite `> 0` sulla generazione. E' SBAGLIATO:
+#   la banda delle soglie contiene lo zero, quindi un fondo negativo e' un
+#   credito riportato avanti — meta' del meccanismo.
+#
+#   Il pericolo vero e' un fondo che NON CORRISPONDE alla sua sorgente:
+#
+#     fattura sorgente:  +8,00
+#     riga contabile:   +40,00   (nessun guard di quadratura, e' la slice 2
+#                                 del cantiere incassi)
+#     importo_target = 8 - 40 = -32,00   -> fondo a CREDITO di 32 euro su un
+#                                           documento che vale 8 a DEBITO
+#
+#   Non e' «negativo»: e' un fondo che racconta un'altra fattura.
+#
+# ℹ️ LA REGOLA, in tre righe:
+#     l'importo non e' zero                       (CHECK, changeSet -04)
+#     ha lo stesso segno del totale della sorgente
+#     non lo supera in valore assoluto
+#
+# ⚠️ SCRITTA COSI', MAI come «compreso fra 0 e il totale». Su una sorgente a
+#   credito gli estremi si invertono e l'intervallo diventa VUOTO: il guard
+#   rifiuterebbe tutto presentandosi come un controllo che funziona. Il
+#   progetto ha gia' pagato questa trappola un livello piu' sotto (il filtro
+#   `totale_a_pagare > 0` nella quadratura rate/totale) — qui il caso non e'
+#   di bordo, e' META' DELLA BANDA.
+#
+# ⚠️ PERCHE' UN TRIGGER E NON UN CHECK. Il confronto deve leggere
+#   vendite.fatture, e un CHECK vede solo la propria riga. Non e' una scelta
+#   di stile: e' l'unica forma possibile.
+#
+# ⚠️ TOTALE NON CALCOLATO = RIFIUTO (fail-closed). `totale_a_pagare` e'
+#   nullable: su una fattura senza totali il confronto non e' decidibile, e
+#   un fondo che nasce da un documento non ancora calcolato non ha una base.
+#
+# ⚠️ PERIMETRO OGGI: il guard vale per TUTTE le righe. Con la Fase B arriva
+#   la colonna `origine` e il guard si restringe a `AUTOMATICA`, perche' la
+#   strada MANUALE ha per definizione il caso opposto — l'eccedenza di un
+#   sovra-incasso e' un fondo a credito su una fattura dal totale positivo.
+#   Oggi quella strada non esiste ancora, quindi non c'e' niente da esentare.
+#
+# ⚠️ Trigger `UPDATE OF importo, fattura_sorgente_id` e non UPDATE nudo: gli
+#   altri aggiornamenti sulla tabella (assegnazione, reset, annullamento) non
+#   toccano ne' l'importo ne' la sorgente, e rileggere la fattura a ogni giro
+#   sarebbe lavoro sprecato su un confronto che non puo' essere cambiato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260815-06-create-trgfn-fondi-source-guard-importo-mctit.yaml
+
+  - changeSet:
+      id: 20260815-06-create-trgfn-fondi-source-guard-importo
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Guard di corrispondenza fondo <-> fattura sorgente: stesso segno del
+        totale, non superiore in valore assoluto. NON un limite sul segno (un
+        fondo a credito e' legittimo), e non un CHECK (deve leggere
+        vendite.fatture). D-3(a) del piano fondo fattura.
+      # ⚠️ NESSUNA preCondition sul codice errore, ed e' voluto: `20_code` gira
+      #    PRIMA di `80_data`, quindi su un DB ricostruito da zero il seed di
+      #    E_FONDO_NON_CORRISPONDE_SORGENTE non c'e' ancora e il check
+      #    fallirebbe su una cosa che arriva due fasi dopo. Trappola gia'
+      #    pagata dal progetto: le preCondition di 20_code non possono
+      #    guardare i dati di 80_data.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture_fondi_fattura_source
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_fondi_source_guard_importo()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: un fondo deve assomigliare alla fattura da cui nasce —
+              --        stesso segno del totale, non superiore in valore
+              --        assoluto. Cio' che si vieta non e' il fondo NEGATIVO
+              --        (legittimo: e' il capo a credito della banda) ma il
+              --        fondo che racconta un'altra fattura.
+              -- Uso:   BEFORE INSERT OR UPDATE OF importo, fattura_sorgente_id
+              --        FOR EACH ROW
+              DECLARE
+                  v_totale vendite.fatture.totale_a_pagare%TYPE;
+              BEGIN
+                  SELECT f.totale_a_pagare INTO v_totale
+                    FROM vendite.fatture f
+                   WHERE f.id = NEW.fattura_sorgente_id;
+
+                  -- Fail-closed su totale non calcolato: senza una base il
+                  -- confronto non e' decidibile, e un fondo senza base non e'
+                  -- un fondo.
+                  IF v_totale IS NULL
+                     OR sign(NEW.importo) <> sign(v_totale)
+                     OR abs(NEW.importo) > abs(v_totale) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'trgfn_fondi_source_guard_importo',
+                          'E_FONDO_NON_CORRISPONDE_SORGENTE',
+                          jsonb_build_object(
+                              'fondo_source_id',     NEW.id,
+                              'fattura_sorgente_id', NEW.fattura_sorgente_id,
+                              'importo',             NEW.importo,
+                              'totale_a_pagare',     v_totale),
+                          NULL::uuid,
+                          NEW.importo::TEXT,
+                          COALESCE(v_totale::TEXT, 'non calcolato'));
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_fondi_source_guard_importo()
+              IS 'Guard di corrispondenza fra il fondo e la sua fattura sorgente: importo dello stesso segno del totale_a_pagare e non superiore in valore assoluto; totale non calcolato = rifiuto (fail-closed). ⚠️ NON vieta il fondo negativo, che e'' legittimo: le due soglie di anagrafiche.emittenti_fiscali_utilities formano una banda che contiene lo zero, e il capo inferiore serve a riportare avanti i CREDITI. Vieta il fondo che non assomiglia alla sorgente — 8 euro di fattura e -32 di fondo, prodotto da una riga contabile piu'' grande del documento (la quadratura sulle righe contabili e'' la slice 2 del cantiere incassi, oggi non esiste). ⚠️ La regola e'' scritta come segno + valore assoluto e MAI come «compreso fra 0 e il totale»: su una sorgente a credito gli estremi si invertono e l''intervallo diventa vuoto, cioe'' una porta chiusa travestita da controllo. ⚠️ E'' un trigger e non un CHECK perche'' deve leggere vendite.fatture. Con la Fase B si restringera'' a origine = AUTOMATICA: la strada manuale ha per definizione il caso opposto (l''eccedenza di un sovra-incasso e'' un credito su una fattura positiva). D-3(a) di brief-db-fondo-fattura-ricalcolo-e-governo §8.2.';
+
+              DROP TRIGGER IF EXISTS trg_fatture_fondi_fattura_source_a10_guard_importo_ins_upd
+                ON vendite.fatture_fondi_fattura_source;
+
+              CREATE TRIGGER trg_fatture_fondi_fattura_source_a10_guard_importo_ins_upd
+                BEFORE INSERT OR UPDATE OF importo, fattura_sorgente_id
+                ON vendite.fatture_fondi_fattura_source
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_fondi_source_guard_importo();

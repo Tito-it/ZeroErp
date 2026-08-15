@@ -1,0 +1,118 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il fondo diventa un ATTO: chi lo ha compiuto, e perche'.
+#   Passo D-5 di brief-db-fondo-fattura-ricalcolo-e-governo.md §8.2 (Fase B).
+#
+# ── DUE COLONNE ──────────────────────────────────────────────────────────
+#
+#   origine  AUTOMATICA | MANUALE   (NOT NULL, default AUTOMATICA)
+#   motivo   testo libero           (NULL ammesso)
+#
+# 🔴 `origine` NON dice «chi lo ha creato»: dice QUALE REGOLA SI APPLICA.
+#   E' la correzione di una risposta sbagliata. La prima stesura del piano
+#   voleva la colonna per vietare i fondi negativi all'automatismo — ma i
+#   fondi negativi sono META' DEL MECCANISMO (il capo a credito della banda
+#   delle soglie), quindi quel divieto era esso stesso il difetto.
+#
+#   La colonna serve invece a distinguere due presidi diversi:
+#
+#   | origine     | presidio                                                |
+#   |-------------|---------------------------------------------------------|
+#   | AUTOMATICA  | VINCOLATO: il guard di corrispondenza legge la sorgente  |
+#   |             | e rifiuta cio' che non le assomiglia                     |
+#   | MANUALE     | GOVERNATO: motivo obbligatorio, azione di processo, e    |
+#   |             | arriva dal processo rimborsi — che l'eccedenza la conosce |
+#
+#   ⚠️ Il caso che lo dimostra: l'eccedenza di un sovra-incasso e' un fondo
+#   A CREDITO su una fattura dal TOTALE POSITIVO, cioe' di segno opposto per
+#   costruzione. Un guard applicato a tutti rifiuterebbe proprio l'atto per
+#   cui la strada manuale esiste (F-3 del piano).
+#
+# ── PERCHE' `motivo` NON E' UN CAMPO DECORATIVO ──────────────────────────
+#
+#   Serve dove l'atto e' STRAORDINARIO: quando lo compie una persona, e
+#   quando qualcosa viene annullato. Oggi un fondo passa ad ANNULLATO in due
+#   punti e la ragione vive solo in un messaggio di log (fatture_log, «gia
+#   postato») o in nessun posto: la colonna e' dove quella ragione smette di
+#   essere un testo di diario e diventa un dato.
+#
+#   ℹ️ Il vincolo di coerenza (motivo obbligatorio su MANUALE e su ANNULLATO)
+#   NON e' in questo changeSet: arriva col 20260815-14, DOPO che i due
+#   scrittori automatici sono stati messi in grado di valorizzarlo
+#   (20260815-13). Aggiungerlo prima renderebbe il migrate un fallimento
+#   annunciato — o, peggio, il vincolo passerebbe su una tabella vuota e
+#   fallirebbe al primo reset vero.
+#
+# ── COSA NON C'E', E PERCHE' ────────────────────────────────────────────
+#
+# 🔴 `atto_precedente_id` e' stato TOLTO dal piano. Serviva al meccanismo di
+#   revoca + riemissione, che non esiste piu': con «il fondo non si
+#   ricalcola» non c'e' niente da riemettere. E la catena dei riporti resta
+#   leggibile — vendite.fatture_fondi_fattura.riferimento_fattura_id porta
+#   gia' la fattura di provenienza. Una colonna che esiste per un meccanismo
+#   che non c'e' e' debito al primo giorno.
+#
+# ⚠️ `%TYPE` NON e' utilizzabile in ALTER TABLE ADD COLUMN (DDL plain):
+#   i tipi sono scritti espliciti.
+#
+# ✅ SICUREZZA DELL'APPLY: tabella a ZERO righe (verificato 2026-08-15), e
+#   `origine` ha un default, quindi nessun backfill necessario.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260815-12-add-fondi-source-origine-e-motivo-mctit.yaml
+
+  - changeSet:
+      id: 20260815-12-add-fondi-source-origine-e-motivo
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fatture_fondi_fattura_source: colonne origine (AUTOMATICA|MANUALE) e
+        motivo. origine non dice chi ha creato il fondo ma QUALE REGOLA si
+        applica: l'atto automatico e' vincolato dal guard di corrispondenza,
+        quello manuale e' governato (motivo + azione di processo). D-5 del
+        piano fondo fattura.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture_fondi_fattura_source
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: fatture_fondi_fattura_source
+                    columnName: origine
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatture_fondi_fattura_source
+                ADD COLUMN origine VARCHAR(20) NOT NULL DEFAULT 'AUTOMATICA',
+                ADD COLUMN motivo  TEXT NULL;
+
+              ALTER TABLE vendite.fatture_fondi_fattura_source
+                ADD CONSTRAINT chk_fondi_source_origine
+                CHECK (origine IN ('AUTOMATICA', 'MANUALE'));
+
+              COMMENT ON COLUMN vendite.fatture_fondi_fattura_source.origine
+              IS 'Quale REGOLA si applica a questo atto, non chi lo ha creato. AUTOMATICA = fondo generato dal giro di fatturazione: e'' VINCOLATO dal guard di corrispondenza (stesso segno del totale della sorgente, non superiore in valore assoluto). MANUALE = atto compiuto da una persona attraverso il processo rimborsi di `pagamenti`: e'' GOVERNATO (motivo obbligatorio + azione di processo), non vincolato. ⚠️ La distinzione e'' necessaria e non estetica: l''eccedenza di un sovra-incasso e'' un fondo a CREDITO su una fattura dal totale POSITIVO — segno opposto per costruzione — quindi un guard applicato a tutti rifiuterebbe proprio l''atto per cui la strada manuale esiste. ⚠️ NON serve a vietare i fondi negativi all''automatismo: quelli sono meta'' del meccanismo (il capo a credito della banda delle soglie). D-5 di brief-db-fondo-fattura-ricalcolo-e-governo §8.2.';
+
+              COMMENT ON COLUMN vendite.fatture_fondi_fattura_source.motivo
+              IS 'La ragione dell''atto, obbligatoria dove l''atto e'' straordinario: quando lo compie una persona (origine = MANUALE) e quando un fondo viene ANNULLATO. E'' il posto dove la ragione smette di essere un testo di diario — oggi l''annullamento su contabile CHIUSA la scrive solo in vendite.fatture_log — e diventa un dato interrogabile. Il vincolo di coerenza arriva col changeSet 20260815-14, dopo che gli scrittori automatici sono in grado di valorizzarlo. D-5 di brief-db-fondo-fattura-ricalcolo-e-governo §8.2.';
+
+              COMMENT ON CONSTRAINT chk_fondi_source_origine
+                ON vendite.fatture_fondi_fattura_source
+              IS 'Vocabolario chiuso di origine. Due valori e non tre: non esiste una via di mezzo fra «lo ha deciso una regola» e «lo ha deciso una persona», ed e'' precisamente la distinzione che regge i due presidi diversi.';

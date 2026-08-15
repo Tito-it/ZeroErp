@@ -1,0 +1,92 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# «Il fondo non si ricalcola» smette di essere una promessa.
+#   Passo D-6 di brief-db-fondo-fattura-ricalcolo-e-governo.md §8.2 (Fase B).
+#
+# ⭐ IL PUNTO. Il changeSet 20260815-07 ha TOLTO il ramo che riscriveva
+#   l'importo. Questo changeSet rende la cosa IMPOSSIBILE invece che
+#   soltanto non-fatta: quattro colonne diventano immutabili dopo l'INSERT.
+#
+#     importo                l'atto, il numero che muove denaro
+#     fattura_sorgente_id    da quale documento nasce
+#     tipo_fondo_fattura_id  di che natura e'
+#     origine                quale regola lo governa
+#
+#   Fra una regola che qualcuno deve ricordare e una che il database non
+#   lascia infrangere si sceglie la seconda. E' la traduzione strutturale
+#   della decisione di Tid: «una volta che la fattura e' stata stampata e
+#   quindi effettiva, per quella fattura il fondo rimane lo stesso e mai
+#   ricalcolato».
+#
+# ⚠️ COSA RESTA MODIFICABILE, ed e' voluto: `stato`, `fattura_figlia_id`,
+#   `data_assegnazione`, `user_assegnazione`, `motivo`, `attivo`. Sono il
+#   CICLO DI VITA dell'atto — l'assegnazione a una figlia avviene dopo, il
+#   reset la disfa, l'annullamento lo chiude. Congelare la riga intera
+#   romperebbe il meccanismo; si congela il CONTENUTO dell'atto, non la sua
+#   storia.
+#
+# ⚠️ PERCHE' NON trgfn_fattura_satellite_guard_congelamento. Il fondo E' un
+#   satellite della fattura — anzi, e' l'unico che non era congelato — ma
+#   quel guard blocca la RIGA oltre DRAFT/EMESSA, e qui la riga deve poter
+#   cambiare stato per tutta la vita del fondo. Serve un lock di COLONNA, e
+#   il progetto ce l'ha gia': script.trgfn_lock_columns, argomenti a coppie
+#   (colonna, codice_messaggio).
+#
+# ⚠️ Esiste una via d'uscita per la manutenzione, ed e' la stessa di tutti
+#   gli altri lock: SET LOCAL zeroerp.allow_lock_columns_override = 'on'.
+#   Non e' una scappatoia da usare in un flusso applicativo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260815-15-create-trg-fondi-source-lock-atto-mctit.yaml
+
+  - changeSet:
+      id: 20260815-15-create-trg-fondi-source-lock-atto
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Lock di colonna su fatture_fondi_fattura_source: importo, sorgente,
+        tipo e origine immutabili dopo l'INSERT. Rende impossibile il
+        ricalcolo del fondo invece di lasciarlo soltanto non-fatto. Restano
+        modificabili le colonne del ciclo di vita (stato, assegnazione,
+        motivo). D-6 del piano fondo fattura.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_fondi_fattura_source
+                columnName: origine
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'script' AND p.proname = 'trgfn_lock_columns'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_fatture_fondi_fattura_source_a10_lock_atto_upd
+                ON vendite.fatture_fondi_fattura_source;
+
+              CREATE TRIGGER trg_fatture_fondi_fattura_source_a10_lock_atto_upd
+                BEFORE UPDATE ON vendite.fatture_fondi_fattura_source
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_lock_columns(
+                  'importo',               'E_FONDO_ATTO_IMMUTABILE',
+                  'fattura_sorgente_id',   'E_FONDO_ATTO_IMMUTABILE',
+                  'tipo_fondo_fattura_id', 'E_FONDO_ATTO_IMMUTABILE',
+                  'origine',               'E_FONDO_ATTO_IMMUTABILE');

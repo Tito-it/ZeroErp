@@ -1,0 +1,302 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'elenco dei casi che chiedono una PERSONA.
+#   Passo D-10 di brief-db-fondo-fattura-ricalcolo-e-governo.md §8.2 (Fase C).
+#
+# ── ⭐ LA REGOLA DI QUESTA VISTA: presenta, NON sana ─────────────────────
+#
+#   Nessuna riga di questo elenco deve avere un gemello automatico che la
+#   corregge da solo. E' la regola di §5.2 del piano, e qui e' dove si vede
+#   se e' stata rispettata: ogni motivo qui sotto e' una situazione che il
+#   database ha deciso di NON risolvere, perche' risolverla significherebbe
+#   muovere denaro senza che nessuno l'abbia deciso.
+#
+# ── I MOTIVI, e perche' sono QUATTRO e non quelli del piano ─────────────
+#
+#   | motivo                     | che cosa e' successo                     |
+#   |----------------------------|------------------------------------------|
+#   | PROPOSTA_SENZA_ATTO        | la fattura merita un fondo e non ce l'ha |
+#   | UTILITY_NON_ATTRIBUIBILE   | in banda ma senza utility: irraggiungibile|
+#   | IMPORTO_NON_CORRISPONDENTE | il numero c'e' ma non assomiglia al doc   |
+#   | NON_PIU_CAPIENTE           | l'atto esiste ma non e' piu' applicabile  |
+#
+#   🔴 `CONFIGURAZIONE_INCOMPLETA` — previsto dal piano — NON C'E', e la
+#   ragione e' scritta nel piano stesso: «ha una data di scadenza, dopo D-0
+#   quella riga non puo' piu' esistere». D-0 e' il CHECK
+#   `chk_emittenti_fiscali_utilities_soglie_coppia`, applicato il 2026-08-15
+#   (changeSet 20260815-03): una configurazione a meta' non e' piu'
+#   salvabile. Una riga di elenco che non puo' accadere insegna una cosa
+#   falsa a chi la legge.
+#
+#   ⭐ `IMPORTO_NON_CORRISPONDENTE` invece NON era nel piano, ed e' emerso
+#   scrivendo. La generazione, quando il numero non corrisponde al documento,
+#   NON FA NIENTE — ed e' giusto (un lotto intero non si ferma per un caso
+#   ordinario). Ma «non fare niente in silenzio» e' esattamente cio' che
+#   questa vista esiste per rendere visibile. Il caso e' quello gia'
+#   documentato nel manuale del guard: sorgente da +8, riga contabile da +40,
+#   fondo che verrebbe −32 — non «negativo», ma di un'altra fattura.
+#
+# ── ⚠️ IL VOCABOLARIO NON PUO' STARE IN UN CHECK ────────────────────────
+#
+#   Il piano diceva «il vocabolario dei motivi sta in un CHECK sulla colonna
+#   della vista». PostgreSQL non ha vincoli CHECK sulle colonne di una vista
+#   (il solo vincolo possibile e' WITH CHECK OPTION, che governa le
+#   scritture su viste aggiornabili — un'altra cosa).
+#
+#   Il vocabolario e' chiuso da COSTRUZIONE: i quattro valori sono letterali
+#   nei rami della UNION, nessun dato li produce. Il presidio contro
+#   l'aggiunta silenziosa di un quinto valore e' il pgTAP, che asserisce
+#   l'INSIEME dei motivi distinti — non che «esistono i quattro».
+#
+# ── ⚠️ security_invoker=on NON E' UNA RIFINITURA ────────────────────────
+#
+#   `vendite.fatture` ha la RLS operatori; `fatture_fondi_fattura_source` NO.
+#   Senza `security_invoker`, la vista girerebbe coi diritti del proprietario
+#   e mostrerebbe a ogni operatore i fondi di TUTTI gli emittenti. E' il
+#   difetto gia' pagato una volta (fix V-1 della fatturazione a due lenti).
+#
+#   🔴 E c'e' un dettaglio che vale piu' della reloption: il ramo
+#   NON_PIU_CAPIENTE parte dalla tabella SENZA RLS. E' protetto dal JOIN
+#   INNER con `vendite.fatture` — non da un filtro proprio. Chi un giorno
+#   trasformasse quel join in un LEFT JOIN, o lo togliesse perche' «i dati
+#   della fattura non servono», aprirebbe la vista a tutti senza accorgersene.
+#
+#   ⚠️ La reloption NON e' visibile in `pg_get_viewdef` e va ri-specificata a
+#   ogni CREATE OR REPLACE: senza, PostgreSQL la azzera in silenzio.
+#
+# ── ⚠️ IL PRE-FILTRO, che qui e' obbligatorio ───────────────────────────
+#
+#   `fn_fondo_fattura_proponibile` e' VOLATILE. Una vista senza scope che la
+#   chiamasse su ogni riga di `vendite.fatture` sarebbe inservibile. Il
+#   pre-filtro (DEFINITIVA + minimo) e' quindi qui, ed e' un pezzo
+#   dell'inviluppo scritto in un secondo posto: si dichiara invece di
+#   nasconderlo. ⚠️ RESTRINGE, non decide — se un giorno l'inviluppo si
+#   allargasse oltre `minimo`, questa vista mostrerebbe meno del vero.
+#
+#   ℹ️ Nella generazione lo stesso pre-filtro NON c'e' (changeSet -20): li'
+#   lo scope a cinque chiavi riduce gia' i candidati a una manciata.
+#
+# ── ℹ️ %TYPE E LE VISTE ─────────────────────────────────────────────────
+#
+#   `%TYPE` non e' utilizzabile in un cast dentro una vista. Ma il legame ai
+#   tipi delle colonne si ottiene lo stesso: i rami che non hanno un valore
+#   scrivono `NULL` NUDO, e PostgreSQL risolve il tipo della colonna della
+#   UNION dal ramo che il valore ce l'ha. Nessun tipo scritto a mano, quindi
+#   niente da riallineare se una colonna cambia.
+#
+#   ⚠️ Il prezzo e' che l'ORDINE DEI RAMI CONTA: PostgreSQL risolve la UNION
+#   a coppie, da sinistra. Il ramo che non porta nessuna colonna propria
+#   (UTILITY_NON_ATTRIBUIBILE) deve stare per ULTIMO, altrimenti i suoi NULL
+#   diventano `text` prima di incontrare le colonne vere. Chi li riordina se
+#   ne accorge subito: la CREATE VIEW fallisce.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260815-23-create-vw-fondi-fattura-da-decidere-mctit.yaml
+
+  - changeSet:
+      id: 20260815-23-create-vw-fondi-fattura-da-decidere
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Nuova vendite.vw_fondi_fattura_da_decidere (security_invoker=on):
+        l'elenco dei casi di fondo fattura che chiedono una persona. Quattro
+        motivi: PROPOSTA_SENZA_ATTO, UTILITY_NON_ATTRIBUIBILE,
+        IMPORTO_NON_CORRISPONDENTE, NON_PIU_CAPIENTE. La vista presenta e non
+        sana. D-10 del piano fondo fattura.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'vendite' AND p.proname = 'fn_fondo_fattura_proponibile'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'vendite' AND p.proname = 'fn_check_fondo_fattura_capiente'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_fondi_fattura_da_decidere
+              WITH (security_invoker=on) AS
+              WITH tipo AS (
+                  -- Il tipo del meccanismo di minimo. ⚠️ NON tutti i tipi:
+                  -- gli altri (es. RAI) sono addebiti di natura diversa, che
+                  -- non nascono da una banda di soglie e per i quali una
+                  -- «proposta» non vuol dire niente. E' lo stesso tipo che
+                  -- fn_reset_fondi_fattura e fn_sync_contabili_fondo_fattura
+                  -- filtrano per codice interno, ed e' il default del
+                  -- parametro di pipeline lato backend.
+                  SELECT t.id            AS tipo_fondo_fattura_id,
+                         t.codice_interno AS tipo_fondo_codice_interno
+                    FROM vendite.tipi_fondi_fattura t
+                   WHERE t.codice_interno = 'F_F_ADD_ACC'
+                     AND t.attivo IS TRUE
+              ), candidate AS (
+                  -- ⚠️ PRE-FILTRO: restringe, non decide. Serve perche' la
+                  -- vista non ha uno scope e fn_fondo_fattura_proponibile e'
+                  -- VOLATILE: senza, verrebbe chiamata su ogni fattura.
+                  SELECT f.id AS fattura_sorgente_id,
+                         f.anno, f.serie, f.numero, f.data,
+                         f.totale_a_pagare,
+                         f.billing_account_id, f.utility_id,
+                         f.tipo_doc_fiscale_id, f.emittente_soggetto_ruolo_id,
+                         f.valuta_id
+                    FROM vendite.fatture f
+                    JOIN config.stati_doc_fiscale sd
+                      ON sd.id = f.stato_doc_fiscale_id
+                     AND sd.codice_interno = 'DEFINITIVA'
+                   WHERE f.minimo IS TRUE
+                     -- Un totale non calcolato non e' una decisione sul
+                     -- fondo: e' un documento rotto, e ha altri presidi.
+                     AND f.totale_a_pagare IS NOT NULL
+              ), senza_atto AS (
+                  SELECT c.*, t.tipo_fondo_fattura_id, t.tipo_fondo_codice_interno
+                    FROM candidate c
+                    CROSS JOIN tipo t
+                   WHERE NOT EXISTS (
+                       SELECT 1
+                         FROM vendite.fatture_fondi_fattura_source s
+                        WHERE s.fattura_sorgente_id   = c.fattura_sorgente_id
+                          AND s.tipo_fondo_fattura_id = t.tipo_fondo_fattura_id
+                   )
+              )
+              -- =========================================================
+              -- 1) e 3) La fattura non ha un atto: o si propone, o si spiega
+              --         perche' l'automatismo tace.
+              -- =========================================================
+              SELECT CASE WHEN x.proposta IS NOT NULL
+                          THEN 'PROPOSTA_SENZA_ATTO'
+                          ELSE 'IMPORTO_NON_CORRISPONDENTE'
+                     END::TEXT                     AS motivo,
+                     sa.fattura_sorgente_id,
+                     sa.anno, sa.serie, sa.numero, sa.data,
+                     sa.totale_a_pagare,
+                     sa.billing_account_id, sa.utility_id,
+                     sa.tipo_doc_fiscale_id, sa.emittente_soggetto_ruolo_id,
+                     sa.valuta_id,
+                     sa.tipo_fondo_fattura_id, sa.tipo_fondo_codice_interno,
+                     NULL                          AS fondo_source_id,
+                     NULL                          AS origine,
+                     NULL                          AS stato_atto,
+                     NULL                          AS importo_atto,
+                     NULL                          AS atto_motivo,
+                     NULL                          AS atto_data,
+                     x.proposta                    AS importo_proposto,
+                     x.capienza                    AS capienza_attuale
+                FROM senza_atto sa
+                CROSS JOIN LATERAL (
+                    SELECT vendite.fn_fondo_fattura_proponibile(sa.fattura_sorgente_id, sa.tipo_fondo_fattura_id) AS proposta,
+                           vendite.fn_saldo_sorgente_fondo(sa.fattura_sorgente_id, NULL) AS capienza
+                ) x
+               WHERE sa.utility_id IS NOT NULL
+                 -- Se non c'e' proposta E non c'e' residuo, non c'e' niente
+                 -- da decidere: la sorgente e' gia' coperta.
+                 AND (x.proposta IS NOT NULL OR x.capienza <> 0)
+
+              UNION ALL
+
+              -- =========================================================
+              -- 2) L'atto c'e', ma la sorgente non lo regge piu': il giro lo
+              --    scarterebbe in silenzio a ogni corsa. Vale per QUALUNQUE
+              --    tipo di fondo e per entrambe le origini — anche un atto
+              --    MANUALE puo' nascere gia' non applicabile.
+              --
+              -- 🔴 Il JOIN con vendite.fatture NON e' decorativo: e' cio' che
+              --    applica la RLS a questo ramo, perche' la tabella dei fondi
+              --    non ne ha. Toglierlo o renderlo LEFT aprirebbe la vista a
+              --    tutti gli emittenti.
+              -- =========================================================
+              SELECT 'NON_PIU_CAPIENTE'::TEXT      AS motivo,
+                     f.id                          AS fattura_sorgente_id,
+                     f.anno, f.serie, f.numero, f.data,
+                     f.totale_a_pagare,
+                     f.billing_account_id, f.utility_id,
+                     f.tipo_doc_fiscale_id, f.emittente_soggetto_ruolo_id,
+                     f.valuta_id,
+                     s.tipo_fondo_fattura_id, tf.codice_interno,
+                     s.id                          AS fondo_source_id,
+                     s.origine,
+                     s.stato                       AS stato_atto,
+                     s.importo                     AS importo_atto,
+                     s.motivo                      AS atto_motivo,
+                     s.data_insert                 AS atto_data,
+                     NULL                          AS importo_proposto,
+                     x.capienza                    AS capienza_attuale
+                FROM vendite.fatture_fondi_fattura_source s
+                JOIN vendite.fatture f
+                  ON f.id = s.fattura_sorgente_id
+                JOIN vendite.tipi_fondi_fattura tf
+                  ON tf.id = s.tipo_fondo_fattura_id
+                CROSS JOIN LATERAL (
+                    SELECT vendite.fn_saldo_sorgente_fondo(s.fattura_sorgente_id, s.id) AS capienza
+                ) x
+               WHERE s.stato = 'DISPONIBILE'
+                 AND s.attivo IS TRUE
+                 -- La STESSA regola del guard di fn_applica_fondi_fattura,
+                 -- negata. ⚠️ La funzione torna FALSE (non NULL) sui NULL
+                 -- proprio perche' qui la si usa negata: un NULL avrebbe
+                 -- fatto sparire dall'elenco il caso piu' anomalo.
+                 AND NOT vendite.fn_check_fondo_fattura_capiente(x.capienza, s.importo)
+
+              UNION ALL
+
+              -- =========================================================
+              -- 3) In banda, definitiva, ma senza utility: nessun giro la
+              --    vedra' mai, perche' il filtro e' `=` e NULL non e' uguale
+              --    a niente. Non e' un caso da aspettare: e' un dato da
+              --    completare.
+              --
+              -- ⚠️ QUESTO RAMO STA PER ULTIMO PER FORZA, e non per gusto: e'
+              --    l'unico che non porta NESSUNA colonna «propria», quindi i
+              --    suoi NULL prendono il tipo dai rami precedenti. Messo per
+              --    primo, PostgreSQL risolverebbe quei NULL a `text` prima di
+              --    incontrare le colonne vere e la CREATE VIEW fallirebbe
+              --    («in UNION i tipi text e bigint non combaciano»).
+              --    E' un fallimento RUMOROSO, non un difetto silenzioso: se
+              --    qualcuno riordina i rami, la vista non si crea.
+              -- =========================================================
+              SELECT 'UTILITY_NON_ATTRIBUIBILE'::TEXT AS motivo,
+                     sa.fattura_sorgente_id,
+                     sa.anno, sa.serie, sa.numero, sa.data,
+                     sa.totale_a_pagare,
+                     sa.billing_account_id, sa.utility_id,
+                     sa.tipo_doc_fiscale_id, sa.emittente_soggetto_ruolo_id,
+                     sa.valuta_id,
+                     sa.tipo_fondo_fattura_id, sa.tipo_fondo_codice_interno,
+                     NULL, NULL, NULL, NULL, NULL, NULL,
+                     NULL                          AS importo_proposto,
+                     x.capienza                    AS capienza_attuale
+                FROM senza_atto sa
+                CROSS JOIN LATERAL (
+                    SELECT vendite.fn_saldo_sorgente_fondo(sa.fattura_sorgente_id, NULL) AS capienza
+                ) x
+               WHERE sa.utility_id IS NULL
+                 AND x.capienza <> 0;
+
+              COMMENT ON VIEW vendite.vw_fondi_fattura_da_decidere
+              IS 'I casi di fondo fattura che chiedono una PERSONA. Quattro motivi, vocabolario chiuso per costruzione (letterali nei rami della UNION, nessun dato li produce): PROPOSTA_SENZA_ATTO = la fattura merita un fondo e non ce l''ha; UTILITY_NON_ATTRIBUIBILE = e'' nella banda ma senza utility_id, quindi irraggiungibile da qualunque giro (il filtro e'' `=` e NULL non e'' uguale a niente); IMPORTO_NON_CORRISPONDENTE = il residuo esiste ma non assomiglia al documento (segno diverso dal totale o piu'' grande in valore assoluto) e l''automatismo tace; NON_PIU_CAPIENTE = l''atto esiste ma la sorgente non lo regge piu'', e il giro lo scarta a ogni corsa. ⭐ LA VISTA PRESENTA, NON SANA: nessuna di queste righe ha un gemello automatico che la corregge da solo — sanarle significherebbe muovere denaro senza che nessuno l''abbia deciso. ⭐ Non riscrive nessuna regola: la proposta la da'' fn_fondo_fattura_proponibile (la stessa che usa fn_genera_fondi_fattura_source) e la capienza fn_check_fondo_fattura_capiente (la stessa che usa fn_applica_fondi_fattura), cosi'' l''elenco non puo'' raccontare una cosa diversa da quello che il giro notturno fa. 🔴 CONFIGURAZIONE_INCOMPLETA, quinto motivo previsto dal piano, NON esiste: dopo il CHECK chk_emittenti_fiscali_utilities_soglie_coppia (D-0, 2026-08-15) una configurazione a meta'' non e'' piu'' salvabile, e una riga di elenco che non puo'' accadere insegna una cosa falsa. ⚠️ security_invoker=on: da ri-specificare a ogni CREATE OR REPLACE, non e'' visibile in pg_get_viewdef. ⚠️ E il ramo NON_PIU_CAPIENTE parte da fatture_fondi_fattura_source, che NON ha RLS: e'' protetto dal JOIN INNER con vendite.fatture, non da un filtro proprio — trasformarlo in LEFT JOIN aprirebbe l''elenco a tutti gli emittenti. ⚠️ Il pre-filtro DEFINITIVA + minimo e'' un pezzo di inviluppo scritto in un secondo posto: e'' obbligatorio (la vista non ha scope e la proposta e'' VOLATILE) e restringe, non decide. Le etichette dei motivi le mette il frontend con labelOrCode. D-10 di brief-db-fondo-fattura-ricalcolo-e-governo §8.2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_fondi_fattura_da_decidere;
