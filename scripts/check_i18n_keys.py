@@ -53,14 +53,24 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "frontend", "src")
 LOCALES = os.path.join(SRC, "locales")
 DBDOCS = os.path.join(ROOT, "docs", "it", "dbzero")
-# Seed delle transizioni di stato: il `meta` jsonb porta le label_key dei
-# pulsanti di cambio stato, che sono emesse verso l'utente esattamente come
-# quelle scritte nel corpo delle capability. I CSV vivono nella sottocartella
-# dello schema che possiede la tabella: quasi tutti sotto `config/`, ma quelli
-# di tabelle non-config (es. `vendite.transizioni_stati_commessa`) stanno sotto
-# la cartella dello schema. Si scandisce quindi l'intero albero `80_data/sql`,
-# non la sola `config/`, altrimenti le label_key di quei seed sfuggirebbero al
-# controllo e l'errore tornerebbe silenzioso (il caso commessa di luglio 2026).
+# Seed di stato: il `meta` jsonb porta le label_key dei pulsanti di cambio
+# stato e la `nessuna_azione_key` degli stati, emesse verso l'utente esattamente
+# come quelle scritte nel corpo delle capability. I CSV vivono nella
+# sottocartella dello schema che possiede la tabella: quasi tutti sotto
+# `config/`, ma quelli di tabelle non-config (es. `vendite.stati_commessa`)
+# stanno sotto la cartella dello schema. Si scandisce quindi l'intero albero
+# `80_data/sql`, non la sola `config/` (il caso commessa di luglio 2026).
+#
+# ⚠️ E si scandisce **ogni** CSV, senza filtrare per nome file. Il filtro
+# precedente ammetteva i soli `transizioni_stati_*` e `stati_doc_*`, e per il
+# secondo passaggio del caso commessa e' stato di nuovo cieco: la tabella degli
+# stati della commessa e' `vendite.stati_commessa`, che non ha il segmento
+# `doc`, quindi le sue due `nessuna_azione_key` non sono mai state guardate — un
+# verde per sottrazione, la stessa forma di difetto gia' pagata due volte su
+# questo stesso presidio. La convenzione di nome non e' una garanzia: il criterio
+# e' il **contenuto**, cioe' `RE_SEED_KEY`, che e' gia' abbastanza specifico
+# (nome della proprieta' + valore puntato). Scandire tutti i 206 CSV
+# dell'albero costa qualche decina di ms su mezzo secondo di guard.
 SEED = os.path.join(ROOT, "db", "changelog", "migrations_v2", "80_data", "sql")
 
 STRICT_ROOTS = "--strict-roots" in sys.argv
@@ -208,19 +218,19 @@ def main():
             for m in RE_DB_ASSIGN.finditer(testo):
                 db_keys.setdefault(m.group(1), set()).add(rel)
 
-    # Seconda sorgente: i seed di stato. Le label_key delle TRANSIZIONI vivono
-    # nel `meta` jsonb e finiscono all'utente come etichette dei pulsanti di
-    # cambio stato; la `nessuna_azione_key` degli STATI (`stati_doc_*.csv`) e'
-    # il testo che l'utente legge quando di pulsanti non ce n'e' nessuno.
-    # Entrambe valgono quanto quelle scritte nelle funzioni, e per un giorno
-    # solo le prime erano guardate: guardare i soli `transizioni_stati_*`
-    # lasciava fuori proprio il caso «nessuna azione», dove il testo mancante
-    # non lascia nemmeno un pulsante muto a segnalare che qualcosa c'era.
+    # Seconda sorgente: i seed. Le label_key delle TRANSIZIONI vivono nel `meta`
+    # jsonb e finiscono all'utente come etichette dei pulsanti di cambio stato;
+    # la `nessuna_azione_key` degli STATI e' il testo che spiega in che stato si
+    # trova il documento. Entrambe valgono quanto quelle scritte nelle funzioni,
+    # e per un giorno solo le prime erano guardate: guardare i soli
+    # `transizioni_stati_*` lasciava fuori proprio il caso «nessuna azione»,
+    # dove il testo mancante non lascia nemmeno un pulsante muto a segnalare che
+    # qualcosa c'era. Il filtro per nome file e' caduto del tutto (vedi SEED):
+    # decide `RE_SEED_KEY`, cioe' il contenuto.
     if os.path.isdir(SEED):
         for dirpath, _dirs, files in os.walk(SEED):
             for f in sorted(files):
-                if not (f.startswith(("transizioni_stati_", "stati_doc_"))
-                        and f.endswith(".csv")):
+                if not f.endswith(".csv"):
                     continue
                 path = os.path.join(dirpath, f)
                 with open(path, encoding="utf-8") as fh:

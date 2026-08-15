@@ -24,32 +24,6 @@
 
 | Cosa | Stato |
 | --- | --- |
-| `20260810-01` (capability preventivo: reason `stato_chiuso`) | **applicato** al DB (`EXECUTED`), file **non committato** |
-| `20260810-02` (capability ordine: reason `annullato`) | **applicato** al DB (`EXECUTED`), file **non committato** |
-| 7 celle `meta` nei tre CSV `stati_doc_*` | **applicate** (i loader hanno fatto `RERAN`), file **non committati** |
-| `test-capability-motivi-e-nessuna-azione-v1.sql` (9 → **12 test**) | riscritto, **12/12 verde** come applicazione, non committato |
-| `test-transizioni-uscita-manuale-v1.sql` | solo commenti (punto cieco dichiarato), non committato |
-| `20260810-03` (fix del §1) | **applicato** e registrato; baseline `vendite` rigirata dopo, verde |
-| `20260810-04` / `-05` / `-06` (§2: nota sempre esposta + `stato_info_key`) | ✅ **applicati** — migrate eseguito il 2026-08-10 alle 11:07 (`EXECUTED` in `databasechangelog`) |
-
-**Aggiornamento 2026-08-10 (BE/FE) — restava una cosa sola, ed è fatta:**
-
-1. ~~il **migrate** dei tre changeSet del §2~~ → ✅ eseguito alle 11:07.
-2. ✅ **La metà a video è allineata**: rinomina `nessuna_azione_key` →
-   `stato_info_key` su 8 drawer + `DrawerActionsBar`, **10 chiavi i18n** it/en
-   (le 3 dei motivi + le 7 delle note di stato), `frontend-standards.md` e
-   `catalogo-building-block-frontend.md` aggiornati. Build FE verde,
-   `check_i18n_keys.py` verde, suite backend 3644 verdi.
-3. ✅ **Verificato in app da Tid** su `PRV0000192` (EVASO): i due motivi non
-   mentono più, **e** compare la nota di stato accanto ai pulsanti — cioè la
-   decisione §5 provata nella direzione nuova. Entrambe le anomalie sono chiuse
-   nel [documento di test](../work-done/test-be-vie-uscita-operatore.md).
-4. 🔴 Resta il **commit**: né le righe DB qui sopra né il lavoro FE sono in git.
-
-⚠️ Dopo il migrate del §2 va **rigirata la baseline** dei tre schemi: il campo del
-blob cambia nome, quindi ogni pgTAP che lo legge parla con la funzione nuova. Il
-solo file che lo legge è `test-capability-motivi-e-nessuna-azione-v1.sql`, ed è già
-aggiornato — ma la verifica va fatta, non dedotta.
 | `20260810-01` / `-02` (§1 del rilievo: reason `stato_chiuso` e `annullato`) | ✅ `EXECUTED` |
 | 7 celle `meta` nei tre CSV `stati_doc_*` (§2 del rilievo) | ✅ applicate (loader `RERAN`) |
 | `20260810-03` (§1 di questo documento: MOTIVO 1 mai scattato) | ✅ `EXECUTED` |
@@ -60,13 +34,48 @@ aggiornato — ma la verifica va fatta, non dedotta.
 | Doc auto-gen | ✅ rigenerate: riflettono il vivo |
 | Commit | ✅ `114ba076b` (il lavoro), `6afc20993` (§12 al BE), `2d44dcb13` (§12.5-bis) |
 
-**Cosa resta**, e non è lavoro DB tranne il §3:
+✅ **La metà a video del §1-§2 è arrivata**, ed è fuori da questa tabella perché è
+lavoro FE: rinomina `nessuna_azione_key` → `stato_info_key` su 8 drawer +
+`DrawerActionsBar`, **10 chiavi i18n** it/en (le 3 dei motivi + le 7 delle note di
+stato), `frontend-standards.md` e `catalogo-building-block-frontend.md` aggiornati
+con la **semantica** nuova e non col solo nome. Build FE verde, `check_i18n_keys.py`
+verde, suite backend 3644 verdi. **Verificato in app da Tid** su `PRV0000192`
+(EVASO): i due motivi non mentono più **e** la nota di stato compare accanto ai
+pulsanti — le due anomalie sono chiuse nel
+[documento di test](../work-done/test-be-vie-uscita-operatore.md).
 
-1. **la metà a video** — 10 chiavi i18n da tradurre e la prop da rinominare in 8
-   drawer + `DrawerActionsBar`, nello stesso rilascio. Finché non traducono, il guard
-   i18n è rosso, ed è voluto;
-2. **il §3 qui sotto**: i cinque domini muti. È lavoro DB e va deciso;
-3. le voci dichiarate aperte nel [§12.6 del brief](../work-done/brief-db-vie-uscita-operatore.md#126-cosa-resta-aperto-dichiarato).
+✅ **La seconda tornata a video è arrivata** (2026-08-15): le **9 chiavi i18n** del
+§3 sono tradotte it/en, `check_i18n_keys.py` è verde, build FE verde, suite backend
+3635 verdi. Lato BE **non serviva nulla**: i `call_jsonb_fn` dei sei repository
+passano il blob intero, il campo viaggia opaco. Lato FE nemmeno il cablaggio: tutti
+e otto i drawer leggevano già `stato_info_key`, e la trappola del
+`v-if="drawerActions.length"` non c'era in nessuno dei quattro domini nuovi
+(`CommessaGestioneDrawer` la aveva già estesa alla chiave).
+
+⚠️ **Il presidio però era cieco su commessa, e per la terza volta nella stessa
+forma.** `check_i18n_keys.py` ammetteva i soli CSV `transizioni_stati_*` e
+`stati_doc_*`: la tabella degli stati della commessa è `vendite.stati_commessa`,
+senza il segmento `doc`, quindi le sue due chiavi non comparivano fra le mancanti —
+il guard segnalava **7 chiavi, non 9**, e sarebbe tornato verde lasciando due note
+mute a video. Il filtro per nome file è caduto: ora si scandisce ogni CSV di
+`80_data/sql` e decide il contenuto. Il guard vede **100 chiavi emesse dal DB**,
+erano 98.
+
+**Cosa resta**, ed è lavoro DB:
+
+1. **il migrate di `20260811-01`…`-04`**: il §3 è deciso e scritto, i changeSet sono
+   provati in transazione ma il migrate è dichiarato **da fare**. Finché non passa,
+   le nove note sono tradotte ma la funzione non le emette;
+2. le voci dichiarate aperte nel [§12.6 del brief](../work-done/brief-db-vie-uscita-operatore.md#126-cosa-resta-aperto-dichiarato).
+
+> ❓ **Da confermare al team DB.** La doc manuale di
+> [`config.stati_doc_contratti`](../../dbzero/config/manual/stati_doc_contratti.md)
+> dice che il `meta` di quella tabella è gestito **solo da UPDATE SQL dedicati**
+> (`20260430-61`, `20260520-10`) e **non** da `loadUpdateData`, «per evitare
+> sovrascritture». La chiave `vendite.contratti.stato_info.*` è però seminata nel
+> CSV. Se quel mirror davvero non carica `meta`, le due note del contratto restano
+> nel CSV e non arrivano mai al DB — e sarebbero invisibili al test in-app senza che
+> nulla diventi rosso. Va verificato sul vivo, non dedotto.
 
 ---
 

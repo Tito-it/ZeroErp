@@ -1660,7 +1660,11 @@
     },
     "reso": {
       "azione_conferma": "Conferma reso",
-      "azione_annulla": "Annulla reso"
+      "azione_annulla": "Annulla reso",
+      "stato_info": {
+        "confermato": "Il reso è confermato: la merce è rientrata e i movimenti di magazzino sono registrati.",
+        "annullato": "Il reso è annullato: il rientro è stato stornato e lo stato è definitivo."
+      }
     },
     "ordini": {
       "pdf": {
@@ -1895,6 +1899,11 @@
       }
     },
     "offerte": {
+      "stato_info": {
+        "rifiutata": "L'offerta è stata rifiutata: per riproporla si crea un'offerta nuova.",
+        "superata": "L'offerta è stata sostituita da una revisione successiva: il seguito si gestisce su quella.",
+        "annullata": "L'offerta è annullata: lo stato è definitivo."
+      },
       "titolo": "Offerte commerciali",
       "titolo_drawer": "Offerta commerciale",
       "nuova_offerta": "Nuova offerta",
@@ -2099,6 +2108,10 @@
       "col_stato_riconsegna": "Stato"
     },
     "contratti": {
+      "stato_info": {
+        "cessato": "Il contratto è cessato: la fornitura è chiusa e non riprende. Per continuarla serve un contratto nuovo.",
+        "annullato": "Il contratto è annullato prima dell'attivazione: non ha mai prodotto effetti e lo stato è definitivo."
+      },
       "note_titolo": "Note contratto",
       "gestisci_note": "Gestisci note",
       "contratto": "Contratto",
@@ -2949,6 +2962,10 @@
       "tipo_reso_vendita": "Reso"
     },
     "commesse": {
+      "stato_info": {
+        "chiusa": "La commessa è chiusa: non si modifica più e non genera altri documenti.",
+        "annullata": "La commessa è annullata: lo stato è definitivo."
+      },
       "gestione_titolo": "Gestione commessa",
       "tot_attivita": "Attività",
       "tot_da_approvare": "Da approvare",

@@ -1231,6 +1231,23 @@ ancora `nessuna_azione_key`. Rinominarla e' una slice a se': il guard
 `scripts/check_i18n_keys.py` trova le chiavi seminate proprio per quel nome, e
 cambiarlo senza toccare il guard lo renderebbe **verde per cecita'**.
 
+⚠️ **E il nome del file di seed non e' una garanzia** (2026-08-15). Il guard
+ammetteva i soli CSV `transizioni_stati_*` e `stati_doc_*`: la tabella degli
+stati della commessa e' `vendite.stati_commessa`, senza il segmento `doc`,
+quindi le sue due chiavi non sono mai state guardate — verde per sottrazione,
+sullo stesso presidio che aveva gia' pagato due volte la stessa forma di
+difetto. Il filtro per nome e' caduto: si scandisce **ogni** CSV di
+`80_data/sql` e decide il contenuto (`RE_SEED_KEY`). Chi aggiunge una tabella di
+stato non deve piu' ricordarsi di battezzarla in un certo modo perche' il guard
+la veda.
+
+**Copertura oggi**: tutti e otto i domini con `fn_available_actions_*`
+(preventivo, ordine, DDT, contratto, reso, offerta, commessa, lotto) leggono la
+prop nel drawer; i testi esistono per gli stati chiusi di sette di loro. Il
+`lotto` e' l'unico dichiarato aperto — la sua tabella di stato
+(`config.stati_doc_fiscale`) e' condivisa con le fatture, e una
+`fn_available_actions_fattura` non esiste ancora.
+
 ```vue
 <DrawerActionsBar
   :actions="drawerActions"
