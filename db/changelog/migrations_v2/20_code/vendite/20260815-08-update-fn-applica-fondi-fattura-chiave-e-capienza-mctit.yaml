@@ -1,0 +1,261 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'unico punto in cui il fondo MUOVE DENARO. Due presidi, entrambi qui.
+#   Passi D-3(b) e D-4 di brief-db-fondo-fattura-ricalcolo-e-governo.md §8.2.
+#
+# 🔴 PRESIDIO 1 — LA CHIAVE. Sorgente e figlia devono appartenere alla stessa
+#   chiave di generazione, quella con cui si accorpano le attivita' in
+#   fattura: vendite.fn_build_fattura_key, NOVE elementi.
+#
+#     billing_account · tipo_doc_fiscale · valuta · emittente · reseller
+#     utility · registro · termine_pagamento · modalita_pagamento
+#
+#   La funzione ne confrontava CINQUE, e per giunta sulle colonne
+#   denormalizzate della source invece che sulle fatture. Mancavano
+#   reseller, registro, TERMINE e MODALITA' di pagamento.
+#
+#   ⚠️ Conseguenza concreta: un fondo nato da una fattura a 30 giorni poteva
+#   finire su una figlia a 60 giorni — due documenti che il sistema ha
+#   DELIBERATAMENTE tenuto separati, visto che il termine sta nella chiave
+#   proprio per non accorparli.
+#
+#   ⭐ E non e' un difetto nuovo nella sua specie: il progetto lo ha gia'
+#   corretto un anello prima. Il COMMENT di fn_get_or_create_fattura_header
+#   dice «il WHERE del lookup confronta TUTTI e nove gli elementi della
+#   chiave — utility_id (che mancava da sempre) … chiave e lookup
+#   disallineati SI ANNULLANO A VICENDA». Il fondo era il terzo specchio, e
+#   nessuno l'aveva riallineato.
+#
+#   ℹ️ La correzione non ha bisogno di parametri nuovi — e questo e' il punto
+#   che la rende possibile senza toccare il backend: sorgente e figlia sono
+#   ENTRAMBE righe di vendite.fatture, e tutti e nove gli elementi sono
+#   colonne di quella tabella. Si confrontano riga contro riga, con
+#   IS NOT DISTINCT FROM sui quattro nullable — esattamente come fa
+#   fn_get_or_create_fattura_header, da cui la forma e' copiata per non
+#   creare una seconda definizione della stessa chiave.
+#
+# 🔴 PRESIDIO 2 — LA CAPIENZA, ED E' IL PEZZO CHE REGGE TUTTA LA FASE A.
+#   Il changeSet -07 ha tolto l'ANNULLATO automatico a saldo zero, perche'
+#   era uno stato cambiato da un pagamento. Senza contropartita, un fondo non
+#   piu' dovuto resterebbe DISPONIBILE e verrebbe applicato lo stesso.
+#
+#   La contropartita NON e' un altro automatismo che scrive: e' una LETTURA
+#   nell'istante in cui il denaro si muove. Prima di assegnare, si rilegge il
+#   residuo della sorgente (al netto del contributo del fondo stesso) e si
+#   verifica che regga ancora l'importo. Se non regge, il fondo NON viene
+#   applicato e resta dov'e' — comparira' nell'elenco della Fase C.
+#
+#   ⭐ E' il livello 2 del principio dei tre livelli (brief incassi §3-bis)
+#   applicato alla lettera: i saldi si LEGGONO, non si conservano. Invece di
+#   tenere aggiornato un numero perche' sia giusto quando servira', lo si
+#   rilegge quando serve — ed e' quello che rende inutile qualunque
+#   automatismo di allineamento sui fondi.
+#
+#   ⚠️ Il confronto e' su segno + valore assoluto, non `>=`: su una sorgente
+#   a credito il residuo e' negativo e un `>=` nudo direbbe sempre di no.
+#
+# ── COSA NON CAMBIA ──────────────────────────────────────────────────────
+#
+# ⚠️ FIRMA INVARIATA. I cinque parametri di scope non spariscono ma cambiano
+#   mestiere: da filtro sulla SOURCE a verifica sulla FIGLIA. Non e' un
+#   dettaglio — applicati alla source erano ridondanti e potevano far
+#   SALTARE IN SILENZIO un fondo la cui colonna denormalizzata fosse rimasta
+#   indietro; applicati alla figlia sono una sanity check del chiamante che
+#   non puo' nascondere niente.
+#
+# 🔗 Richiesta al BE (brief §8.3): la madre DB per lotto —
+#   fn_applica_fondi_lotto(p_lotto_id, p_tipo_fondo_id) — che toglie le N
+#   chiamate in autocommit del repository. Fuori dal perimetro DB.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260815-08-update-fn-applica-fondi-fattura-chiave-e-capienza-mctit.yaml
+
+  - changeSet:
+      id: 20260815-08-update-fn-applica-fondi-fattura-chiave-e-capienza
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_applica_fondi_fattura: sorgente e figlia si confrontano sui NOVE
+        elementi della chiave di generazione (ne usava cinque, e mancavano
+        termine e modalita' di pagamento), e prima di muovere denaro si
+        rilegge la capienza della sorgente. Il secondo presidio e' la
+        contropartita dell'ANNULLATO automatico rimosso dal changeSet -07:
+        i due vanno applicati insieme. D-3(b) + D-4 del piano fondo fattura.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'vendite' AND p.proname = 'fn_applica_fondi_fattura'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'vendite' AND p.proname = 'fn_saldo_sorgente_fondo'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_applica_fondi_fattura(
+                      p_billing_account_id          anagrafiche.billing_account.id%TYPE,
+                      p_utility_id                  config.utilities.id%TYPE,
+                      p_tipo_doc_fiscale_id         config.tipi_doc_fiscale.id%TYPE,
+                      p_emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE,
+                      p_valuta_id                   config.valute.id%TYPE,
+                      p_fattura_figlia_id           vendite.fatture.id%TYPE,
+                      p_tipo_fondo_fattura_id       vendite.tipi_fondi_fattura.id%TYPE DEFAULT NULL)
+               RETURNS INTEGER
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_inserted INTEGER := 0;
+              BEGIN
+                  -- Guard: parametri obbligatori
+                  IF p_billing_account_id IS NULL OR p_billing_account_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_applica_fondi_fattura', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_billing_account_id', 'valore', p_billing_account_id),
+                          NULL::uuid, 'p_billing_account_id obbligatorio e > 0');
+                  END IF;
+
+                  IF p_utility_id IS NULL OR p_utility_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_applica_fondi_fattura', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_utility_id', 'valore', p_utility_id),
+                          NULL::uuid, 'p_utility_id obbligatorio e > 0');
+                  END IF;
+
+                  IF p_tipo_doc_fiscale_id IS NULL OR p_tipo_doc_fiscale_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_applica_fondi_fattura', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_tipo_doc_fiscale_id', 'valore', p_tipo_doc_fiscale_id),
+                          NULL::uuid, 'p_tipo_doc_fiscale_id obbligatorio e > 0');
+                  END IF;
+
+                  IF p_emittente_soggetto_ruolo_id IS NULL OR p_emittente_soggetto_ruolo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_applica_fondi_fattura', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_emittente_soggetto_ruolo_id', 'valore', p_emittente_soggetto_ruolo_id),
+                          NULL::uuid, 'p_emittente_soggetto_ruolo_id obbligatorio e > 0');
+                  END IF;
+
+                  IF p_valuta_id IS NULL OR p_valuta_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_applica_fondi_fattura', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_valuta_id', 'valore', p_valuta_id),
+                          NULL::uuid, 'p_valuta_id obbligatorio e > 0');
+                  END IF;
+
+                  IF p_fattura_figlia_id IS NULL OR p_fattura_figlia_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_applica_fondi_fattura', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_fattura_figlia_id', 'valore', p_fattura_figlia_id),
+                          NULL::uuid, 'p_fattura_figlia_id obbligatorio e > 0');
+                  END IF;
+
+                  IF p_tipo_fondo_fattura_id IS NOT NULL AND p_tipo_fondo_fattura_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_applica_fondi_fattura', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_tipo_fondo_fattura_id', 'valore', p_tipo_fondo_fattura_id),
+                          NULL::uuid, 'p_tipo_fondo_fattura_id se fornito deve essere > 0');
+                  END IF;
+
+                  -- =========================================================
+                  -- Applica i fondi: lock delle sole source, update, insert righe.
+                  -- =========================================================
+                  WITH src AS (
+                      SELECT s.*
+                        FROM vendite.fatture_fondi_fattura_source s
+                        JOIN vendite.fatture fs ON fs.id = s.fattura_sorgente_id
+                        JOIN vendite.fatture g  ON g.id  = p_fattura_figlia_id
+                       WHERE s.stato = 'DISPONIBILE'
+                         AND s.fattura_figlia_id IS NULL
+                         AND s.attivo IS TRUE
+                         AND (p_tipo_fondo_fattura_id IS NULL OR s.tipo_fondo_fattura_id = p_tipo_fondo_fattura_id)
+
+                         -- Sanity check del chiamante: i cinque parametri di
+                         -- scope descrivono la FIGLIA, e qui si verifica che
+                         -- sia cosi'. ⚠️ Applicati alla source (com'era prima)
+                         -- erano ridondanti e potevano far saltare in silenzio
+                         -- un fondo la cui colonna denormalizzata fosse
+                         -- rimasta indietro.
+                         AND g.billing_account_id = p_billing_account_id
+                         AND g.utility_id IS NOT DISTINCT FROM p_utility_id
+                         AND g.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id
+                         AND g.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+                         AND g.valuta_id = p_valuta_id
+
+                         -- LA CHIAVE DI GENERAZIONE, tutti e nove gli elementi.
+                         -- Forma copiata da fn_get_or_create_fattura_header per
+                         -- non creare una seconda definizione della stessa
+                         -- chiave: `=` sui cinque non nullable, IS NOT DISTINCT
+                         -- FROM sui quattro nullable.
+                         AND fs.id <> g.id
+                         AND fs.billing_account_id          = g.billing_account_id
+                         AND fs.tipo_doc_fiscale_id         = g.tipo_doc_fiscale_id
+                         AND fs.valuta_id                   = g.valuta_id
+                         AND fs.emittente_soggetto_ruolo_id = g.emittente_soggetto_ruolo_id
+                         AND fs.registro_id                 = g.registro_id
+                         AND fs.reseller_soggetto_ruolo_id  IS NOT DISTINCT FROM g.reseller_soggetto_ruolo_id
+                         AND fs.utility_id                  IS NOT DISTINCT FROM g.utility_id
+                         AND fs.termine_pagamento_id        IS NOT DISTINCT FROM g.termine_pagamento_id
+                         AND fs.modalita_pagamento_id       IS NOT DISTINCT FROM g.modalita_pagamento_id
+
+                         -- CAPIENZA, riletta adesso. Non e' un ricalcolo del
+                         -- fondo (vietato): e' il controllo che la sorgente non
+                         -- sia stata pagata nel frattempo. Se non regge, il
+                         -- fondo NON si applica e resta dov'e'.
+                         -- ⚠️ segno + valore assoluto e non `>=`: su una
+                         -- sorgente a credito il residuo e' negativo, e un
+                         -- `>=` nudo direbbe sempre di no.
+                         AND sign(vendite.fn_saldo_sorgente_fondo(s.fattura_sorgente_id, s.id)) = sign(s.importo)
+                         AND abs(vendite.fn_saldo_sorgente_fondo(s.fattura_sorgente_id, s.id)) >= abs(s.importo)
+                         FOR UPDATE OF s SKIP LOCKED
+                  ), upd AS (
+                      UPDATE vendite.fatture_fondi_fattura_source s
+                         SET fattura_figlia_id = p_fattura_figlia_id,
+                             data_assegnazione = now(),
+                             user_assegnazione = current_user,
+                             stato = 'ASSEGNATO',
+                             data_update = now(),
+                             user_update = current_user
+                        FROM src
+                       WHERE s.id = src.id
+                      RETURNING s.*
+                  )
+                  INSERT INTO vendite.fatture_fondi_fattura (
+                      fattura_id, tipo_fondo_fattura_id, importo,
+                      riferimento_fattura_id, meta, attivo,
+                      data_insert, user_insert, data_update, user_update
+                  )
+                  SELECT
+                      p_fattura_figlia_id, u.tipo_fondo_fattura_id, u.importo,
+                      u.fattura_sorgente_id, u.meta, TRUE,
+                      now(), current_user, now(), current_user
+                    FROM upd u;
+
+                  GET DIAGNOSTICS v_inserted = ROW_COUNT;
+
+                  RETURN v_inserted;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_applica_fondi_fattura(bigint, integer, bigint, bigint, integer, bigint, bigint)
+              IS 'Applica i fondi DISPONIBILE alla fattura figlia, crea le righe fondi e marca le source come ASSEGNATO. E'' l''unico punto in cui il fondo MUOVE DENARO, e dal 2026-08-15 porta i due presidi che ne discendono. (1) CHIAVE: sorgente e figlia si confrontano sui NOVE elementi di vendite.fn_build_fattura_key (ne confrontava cinque, sulle colonne denormalizzate della source: mancavano reseller, registro, TERMINE e MODALITA'' di pagamento, quindi un fondo nato da una fattura a 30 giorni poteva finire su una figlia a 60 — due documenti che la chiave tiene separati apposta). Forma copiata da fn_get_or_create_fattura_header per non duplicare la definizione della chiave. I cinque parametri di scope restano ma cambiano mestiere: da filtro sulla source a sanity check sulla FIGLIA, perche'' sulla source potevano far saltare in silenzio un fondo con la colonna denormalizzata rimasta indietro. (2) CAPIENZA: prima di assegnare si RILEGGE il residuo della sorgente al netto del contributo del fondo stesso (fn_saldo_sorgente_fondo) e si verifica che regga ancora l''importo — segno e valore assoluto, non `>=`, perche'' su una sorgente a credito il residuo e'' negativo. E'' la contropartita dell''ANNULLATO automatico rimosso da fn_genera_fondi_fattura_source: non un altro automatismo che scrive, ma una lettura nell''istante in cui il denaro si muove. 🔴 I due changeSet vanno applicati insieme. D-3(b) + D-4 di brief-db-fondo-fattura-ricalcolo-e-governo §8.2.';

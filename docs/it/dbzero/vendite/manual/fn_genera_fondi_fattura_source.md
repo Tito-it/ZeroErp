@@ -60,52 +60,66 @@ con le due soglie. Qui si legge soltanto.
 ### Regole principali
 
 * Parametri obbligatori (ID > 0).
-* Seleziona le fatture con `minimo = true` la cui chiave combacia con quella
-  passata.
-* Inserisce nuove source in stato `DISPONIBILE` solo per saldo effettivo diverso
-  da `0`.
-* Se la source esiste già e non è assegnata, aggiorna importo e stato
-  (`saldo_effettivo = 0` → `ANNULLATO`, altrimenti `DISPONIBILE`).
-* `saldo_effettivo` è calcolato come:
-  * residuo della fattura (`totale_a_pagare` meno i movimenti);
-  * meno il saldo contabile postabile
-    (`vendite_contabili_righe_stati.is_postabile = true`).
+* ⭐ **CREATE-ONLY dal 2026-08-15**: non esiste più un ramo di aggiornamento. Il
+  fondo di una fattura `DEFINITIVA` è un **atto** — si scrive una volta con
+  l'importo letto in quel momento e non si ricalcola. Prima, ogni giro di
+  fatturazione riallineava l'importo delle source non assegnate, **anche di
+  fatture già stampate**.
+* Inserisce in stato `DISPONIBILE` e `origine = 'AUTOMATICA'`.
+* I **cinque filtri di scope** (billing account, **utility**, tipo doc fiscale,
+  emittente, valuta) dicono *quali* fatture guarda questa chiamata.
 
-#### 🔴 Il perimetro dichiarato non è quello applicato
+#### ⭐ La regola non è scritta qui: si chiede
 
-La funzione riceve **`p_utility_id` ma non lo usa come filtro**: lo *scrive* sulla
-riga generata. Il `WHERE` confronta soltanto `billing_account_id`,
-`tipo_doc_fiscale_id`, `emittente_soggetto_ruolo_id` e `valuta_id`.
+Dal 2026-08-15 (sera) l'**inviluppo** — sorgente `DEFINITIVA`, dentro la banda,
+utility attribuita, atto unico, importo non nullo e **corrispondenza** col
+documento — non sta nel `WHERE` di questa funzione ma dentro
+[fn_fondo_fattura_proponibile](/dbzero/vendite/funzioni/fn_fondo_fattura_proponibile),
+che viene chiamata in `LATERAL` e di cui si inserisce il risultato.
 
-**Conseguenza misurata** su un billing account con due utility: a ogni giro del
-lotto la stessa riga viene rimarcata con la utility dello scope corrente, e
-`fn_applica_fondi_fattura` filtra proprio su quella colonna. **A quale fattura
-figlia finisce il fondo dipende dall'ordine dei giri.**
+La ragione è che **lo stesso inviluppo serve all'elenco**
+[vw_fondi_fattura_da_decidere](/dbzero/vendite/views/vw_fondi_fattura_da_decidere):
+due copie della regola darebbero prima o poi due risposte diverse, e il divario
+si vedrebbe come un elenco che propone ciò che il giro notturno non crea.
 
-⚠️ Fino al 2026-08-15 questa pagina dichiarava un perimetro
-*«BA/utility/tipo_doc/emittente/valuta»* che il codice non applica. La correzione
-prevista è più larga della sola utility: il legame fra sorgente e figlia deve
-usare **la stessa chiave con cui si accorpano le attività in fattura**
-(`fn_build_fattura_key`, **nove** elementi — vi rientrano anche reseller,
-registro, termine e modalità di pagamento). Vedi
-[il piano](/dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo) §8.2 D-4.
+⚠️ **Non c'è un pre-filtro su `minimo`** in questa funzione, benché costerebbe
+poco: sarebbe di nuovo un pezzo di regola in un secondo posto, e il giorno in cui
+l'inviluppo cambiasse continuerebbe a tagliare in silenzio. Lo scope riduce già i
+candidati a una manciata di documenti per chiamata. *(Nella vista invece il
+pre-filtro c'è, perché lì non esiste uno scope: è dichiarato lì.)*
 
-#### 🟠 Che cosa cambia con il piano in corso
+#### ✅ Il perimetro dichiarato adesso è quello applicato
 
-Le tre regole qui sotto descrivono il **comportamento di oggi** e sono destinate
-a cadere. Sono segnalate perché chi legge non deve progettarci sopra:
+Fino al 2026-08-15 la funzione riceveva **`p_utility_id` senza usarlo come
+filtro**: lo *scriveva* soltanto sulla riga. Su un billing account con due
+utility, a ogni giro la stessa riga veniva rimarcata con la utility dello scope
+corrente — e siccome `fn_applica_fondi_fattura` filtra proprio su quella colonna,
+**a quale fattura figlia finisse il fondo dipendeva dall'ordine dei giri**.
 
-| Oggi | Diventerà | Passo |
-| --- | --- | --- |
-| non c'è **nessun filtro di stato** sulla sorgente: anche una fattura `DRAFT` o **`ANNULLATA`** con `minimo = true` genera un fondo | solo sorgenti **`DEFINITIVA`** | D-1 |
-| se la source esiste già, **l'importo viene riaggiornato** («idempotente: riallinea i dati») | il fondo si crea **una volta sola** e non si ricalcola più: una fattura definitiva ha un fondo definitivo | D-1 + D-6 |
-| a saldo zero la source passa ad **`ANNULLATO`** da sola | nessun automatismo cambia lo stato di un fondo: la non-capienza si verifica **al momento dell'applicazione** | D-1 + D-3 |
+Adesso `utility_id` è nel filtro, con `=` e non `IS NOT DISTINCT FROM`: una
+fattura senza utility è un **dato incompleto** (BASE è una utility vera) e
+un'attribuzione non si indovina. Quel caso non sparisce nel nulla — lo mostra
+l'elenco, con motivo `UTILITY_NON_ATTRIBUIBILE`.
+
+ℹ️ Il legame fra sorgente e figlia usa **la stessa chiave con cui si accorpano le
+attività in fattura** (`fn_build_fattura_key`, **nove** elementi: vi rientrano
+anche reseller, registro, termine e modalità di pagamento). Il confronto si
+chiude dentro `fn_applica_fondi_fattura`, che ha entrambe le fatture.
+
+#### ✅ Cosa è caduto, e cosa lo sostituisce
+
+| Prima | Adesso |
+| --- | --- |
+| nessun **filtro di stato**: anche una fattura `ANNULLATA` con `minimo = true` generava un fondo (`fn_get_saldo_fattura` non guarda lo stato) | solo sorgenti **`DEFINITIVA`** |
+| se la source esisteva, **l'importo veniva riaggiornato** | l'atto si scrive **una volta sola**, e il lock di colonna lo rende immutabile |
+| a saldo zero la source passava ad **`ANNULLATO`** da sola | 🔴 nessun automatismo la annulla più **qui**: la non-capienza si verifica **al momento dell'applicazione**, dove il denaro si muove davvero |
 
 ---
 
 ### Output
 
-Ritorna il numero totale di record modificati (`insert` + `update`).
+Ritorna il numero di source **create** (non più `insert` + `update`: gli update
+non esistono più).
 
 ---
 

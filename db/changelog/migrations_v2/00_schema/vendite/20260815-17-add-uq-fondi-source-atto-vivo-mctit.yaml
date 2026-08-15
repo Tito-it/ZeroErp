@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Un solo atto automatico vivo per fattura sorgente.
+#   Passo D-8 di brief-db-fondo-fattura-ricalcolo-e-governo.md §8.2 (Fase B).
+#
+# ℹ️ Oggi la regola c'e' gia', ma vive dentro un `NOT EXISTS` in fondo alla
+#   fn_genera_fondi_fattura_source. Cioe' e' una regola che vale finche' tutti
+#   passano da quella porta — non un vincolo.
+#
+# 🔴 NON E' PIGNOLERIA, ed e' il punto da non perdere: due fondi vivi sulla
+#   stessa sorgente producono DUE RIGHE CONTABILI su di lei, la cui somma
+#   supera il suo residuo. Ed e' esattamente il modo in cui `importo_target`
+#   va sotto zero SENZA che esista un solo movimento — la «seconda serratura»
+#   che §8.0-a del brief ha scoperto non essere una serratura.
+#
+#   Il vincolo chiude quella porta dall'interno, e non dipende da chi scrive.
+#
+# ⚠️ IL PREDICATO E' RISTRETTO a `origine = 'AUTOMATICA'`, di proposito: e'
+#   l'automatismo che non deve poterne creare due. Un secondo atto MANUALE
+#   sulla stessa sorgente — per esempio un accredito accanto a un addebito
+#   (F-3 del piano) — e' la scelta di una persona, tracciata dal suo motivo e
+#   visibile nell'elenco. Vietarlo qui significherebbe far dire a un indice
+#   una cosa che il dominio non dice.
+#
+# ⚠️ E gli stati vivi sono DISPONIBILE e ASSEGNATO: un fondo ANNULLATO non
+#   occupa piu' il posto. ⚠️ Nessun `NULLS NOT DISTINCT`: le due colonne della
+#   chiave sono NOT NULL — verificato, non dato per scontato, perche' e' il
+#   punto in cui una chiave con NULL fallisce in silenzio.
+#
+# ⚠️ Indice creato a mano e non dalla FK policy: non e' un indice di FK, e'
+#   un VINCOLO di unicita' parziale. dbops.apply_fk_index_policy non c'entra.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260815-17-add-uq-fondi-source-atto-vivo-mctit.yaml
+
+  - changeSet:
+      id: 20260815-17-add-uq-fondi-source-atto-vivo
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Indice unico parziale: un solo fondo AUTOMATICO vivo (DISPONIBILE o
+        ASSEGNATO) per coppia (fattura sorgente, tipo fondo). Due fondi vivi
+        sulla stessa sorgente producono due righe contabili la cui somma
+        supera il residuo: e' la via per cui il target va sotto zero senza
+        movimenti. D-8 del piano fondo fattura.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_fondi_fattura_source
+                columnName: origine
+            - sqlCheck:
+                expectedResult: 0
+                sql: >
+                  SELECT count(*) FROM (
+                    SELECT 1 FROM vendite.fatture_fondi_fattura_source
+                     WHERE stato IN ('DISPONIBILE', 'ASSEGNATO') AND origine = 'AUTOMATICA'
+                     GROUP BY fattura_sorgente_id, tipo_fondo_fattura_id
+                    HAVING count(*) > 1) d
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE UNIQUE INDEX uq_fondi_source_atto_vivo_automatico
+                ON vendite.fatture_fondi_fattura_source (fattura_sorgente_id, tipo_fondo_fattura_id)
+                WHERE stato IN ('DISPONIBILE', 'ASSEGNATO') AND origine = 'AUTOMATICA';
+
+              COMMENT ON INDEX vendite.uq_fondi_source_atto_vivo_automatico
+              IS 'Un solo atto AUTOMATICO vivo per coppia (fattura sorgente, tipo fondo). La regola esisteva gia'' dentro un NOT EXISTS di fn_genera_fondi_fattura_source, cioe'' valeva finche'' tutti passavano da quella porta: qui diventa un vincolo. 🔴 Non e'' pignoleria: due fondi vivi sulla stessa sorgente producono DUE righe contabili su di lei, la cui somma supera il residuo — ed e'' il modo in cui importo_target va sotto zero senza che esista un solo movimento. ⚠️ Ristretto a origine = AUTOMATICA di proposito: un secondo atto MANUALE sulla stessa sorgente (un accredito accanto a un addebito) e'' la scelta di una persona, tracciata dal motivo. ⚠️ Stati vivi = DISPONIBILE e ASSEGNATO: un fondo ANNULLATO non occupa piu'' il posto. D-8 di brief-db-fondo-fattura-ricalcolo-e-governo §8.2.';

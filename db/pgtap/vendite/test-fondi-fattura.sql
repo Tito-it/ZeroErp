@@ -20,9 +20,10 @@
 -- 14) Reset bloccato da contabile CHIUSA
 -- 15) Source ANNULLATA e warning log
 -- 16) Source ANNULLATA su reset bloccato
--- 17) Warning log su reset bloccato
--- 18) Cleanup completato
--- 19) Assert finale cleanup
+-- 17) Ragione dell'annullamento SUL DATO (motivo), non solo nel log
+-- 18) Warning log su reset bloccato
+-- 19) Cleanup completato
+-- 20) Assert finale cleanup
 -- ------------------------------------------------------------
 BEGIN;
 -- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
@@ -40,7 +41,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(19);
+SELECT plan(20);
 -- ============================================================
 -- 0) Riferimenti e costanti
 -- ============================================================
@@ -178,6 +179,8 @@ CREATE TEMP TABLE tmp_fattura_src AS WITH ins AS (
       billing_account_id,
       tipo_doc_fiscale_id,
       valuta_id,
+      utility_id,
+      stato_doc_fiscale_id,
       minimo,
       totale_a_pagare,
       meta
@@ -202,6 +205,21 @@ CREATE TEMP TABLE tmp_fattura_src AS WITH ins AS (
     (
       SELECT valuta_id
       FROM tmp_refs_ff
+    ),
+    -- ⚠️ utility_id e stato servono da 20260815-07: la generazione ora
+    --    FILTRA sull'utility (prima la scriveva soltanto, e su un BA con
+    --    due utility l'attribuzione dipendeva dall'ordine dei giri) e
+    --    accetta solo sorgenti DEFINITIVA (senza il filtro anche una
+    --    fattura ANNULLATA con minimo = true generava un fondo).
+    (
+      SELECT utility_id
+      FROM tmp_refs_ff
+    ),
+    (
+      SELECT id
+      FROM config.stati_doc_fiscale
+      WHERE codice_interno = 'DEFINITIVA'
+        AND attivo IS TRUE
     ),
     true,
     100.00,
@@ -267,6 +285,7 @@ CREATE TEMP TABLE tmp_fattura_dst AS WITH ins AS (
       billing_account_id,
       tipo_doc_fiscale_id,
       valuta_id,
+      utility_id,
       minimo,
       totale_a_pagare,
       meta
@@ -290,6 +309,13 @@ CREATE TEMP TABLE tmp_fattura_dst AS WITH ins AS (
     ),
     (
       SELECT valuta_id
+      FROM tmp_refs_ff
+    ),
+    -- ⚠️ Stessa utility della sorgente: da 20260815-08 il fondo passa solo
+    --    fra fatture che condividono tutti e NOVE gli elementi della chiave
+    --    di generazione, e l'utility e' uno di quelli.
+    (
+      SELECT utility_id
       FROM tmp_refs_ff
     ),
     false,
@@ -569,6 +595,25 @@ SELECT ok(
         AND s.stato = 'ANNULLATO'
     ),
     'Source ANNULLATA su reset bloccato'
+  );
+-- ⚠️ Questa asserzione dichiara una copertura che altrimenti resterebbe
+--    INCIDENTALE: `chk_fondi_source_motivo_obbligatorio` fa gia' fallire il
+--    reset se il motivo manca, quindi il verde del test precedente e' gia' una
+--    prova — ma e' una prova che nessuno ha scritto, e un verde per sottrazione
+--    non si distingue da un verde per merito quando il vincolo cambia.
+SELECT ok(
+    (
+      SELECT count(*) = 1
+      FROM vendite.fatture_fondi_fattura_source s
+      WHERE s.fattura_sorgente_id = (
+          SELECT id
+          FROM tmp_fattura_src
+        )
+        AND s.stato = 'ANNULLATO'
+        AND s.motivo IS NOT NULL
+        AND btrim(s.motivo) <> ''
+    ),
+    'Annullamento automatico: la ragione e'' sul dato (motivo), non solo in fatture_log'
   );
 SELECT ok(
     (

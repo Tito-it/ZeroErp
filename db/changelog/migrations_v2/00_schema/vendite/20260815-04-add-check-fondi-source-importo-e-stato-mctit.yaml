@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Due vincoli strutturali su fatture_fondi_fattura_source.
+#   Passo D-2 di brief-db-fondo-fattura-ricalcolo-e-governo.md §8.2 (Fase A).
+#
+# 🔴 LO STATO DI PARTENZA. La tabella regge un meccanismo che muove denaro —
+#   un fondo assegnato cambia il totale di una fattura vera — e ha, oggi,
+#   OTTO chiavi esterne, una PK, e NESSUN CHECK. Ne mancano due diversi:
+#
+#   1. `importo` puo' valere ZERO. Un fondo da zero non e' un atto: e'
+#      rumore, che pero' viaggia in pipeline e apre una riga contabile.
+#
+#   2. `stato` e' un `character varying` LIBERO. Il vocabolario
+#      DISPONIBILE / ASSEGNATO / ANNULLATO vive soltanto nelle stringhe
+#      letterali di quattro funzioni: un refuso in una di quelle scrive uno
+#      stato che non esiste, e nessuno se ne accorge finche' il fondo non
+#      smette di essere selezionato da nessuna query.
+#
+# ⚠️ QUELLO CHE QUESTI DUE CHECK NON FANNO, ed e' la parte che conta.
+#   NON limitano il SEGNO dell'importo, e non e' una dimenticanza: la banda
+#   delle soglie contiene lo zero, quindi UN FONDO NEGATIVO E' LEGITTIMO —
+#   e' un credito troppo piccolo per un rimborso, riportato sulla fattura
+#   successiva. Il tampone «genera solo importi positivi», scritto il
+#   2026-08-09 in due brief, avrebbe spento meta' del meccanismo.
+#
+#   Il pericolo vero non e' il segno: e' un fondo che NON ASSOMIGLIA alla sua
+#   sorgente (8 euro di fattura, -32 di fondo, perche' qualcuno ha scritto
+#   una riga contabile da 40). Quel controllo deve LEGGERE vendite.fatture,
+#   e un CHECK non puo': sta in un guard trigger, changeSet 20260815-06.
+#
+# ✅ SICUREZZA DELL'APPLY: la tabella e' a ZERO righe, quindi nessuno dei due
+#   vincoli puo' fallire in adozione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260815-04-add-check-fondi-source-importo-e-stato-mctit.yaml
+
+  - changeSet:
+      id: 20260815-04-add-check-fondi-source-importo-e-stato
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fatture_fondi_fattura_source: importo diverso da zero e vocabolario
+        di stato chiuso. Nessun limite sul SEGNO: la banda delle soglie
+        contiene lo zero, quindi un fondo a credito e' legittimo. La
+        corrispondenza con il totale della sorgente sta nel guard trigger
+        (deve leggere vendite.fatture, un CHECK non puo'). D-2 del piano.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture_fondi_fattura_source
+            - sqlCheck:
+                expectedResult: 0
+                sql: >
+                  SELECT count(*) FROM vendite.fatture_fondi_fattura_source
+                  WHERE importo = 0
+                     OR stato NOT IN ('DISPONIBILE', 'ASSEGNATO', 'ANNULLATO')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatture_fondi_fattura_source
+                ADD CONSTRAINT chk_fondi_source_importo_non_zero
+                CHECK (importo <> 0);
+
+              COMMENT ON CONSTRAINT chk_fondi_source_importo_non_zero
+                ON vendite.fatture_fondi_fattura_source
+              IS 'Un fondo da zero non e'' un atto: e'' rumore che viaggia in pipeline e apre una riga contabile. ⚠️ Il vincolo NON limita il segno, e la scelta e'' deliberata: le due soglie di anagrafiche.emittenti_fiscali_utilities formano una banda che CONTIENE LO ZERO, quindi un importo negativo e'' un credito riportato sulla fattura successiva — meta'' del meccanismo. Il controllo che conta e'' la CORRISPONDENZA con la sorgente (stesso segno del totale, non superiore in valore assoluto) e vive nel trigger trg_fatture_fondi_fattura_source_a10_guard_importo_ins_upd, perche'' deve leggere vendite.fatture e un CHECK non puo''. D-2 di brief-db-fondo-fattura-ricalcolo-e-governo §8.2.';
+
+              ALTER TABLE vendite.fatture_fondi_fattura_source
+                ADD CONSTRAINT chk_fondi_source_stato
+                CHECK (stato IN ('DISPONIBILE', 'ASSEGNATO', 'ANNULLATO'));
+
+              COMMENT ON CONSTRAINT chk_fondi_source_stato
+                ON vendite.fatture_fondi_fattura_source
+              IS 'Vocabolario chiuso degli stati del fondo. Fino al 2026-08-15 la colonna era un varchar libero e i tre valori vivevano solo nelle stringhe letterali di quattro funzioni: un refuso scriveva uno stato inesistente senza che niente lo fermasse, e il fondo spariva silenziosamente da ogni query. Tre valori e non quattro: REVOCATO e'' stato valutato e scartato insieme al meccanismo di revoca+riemissione, caduto quando si e'' deciso che il fondo non si ricalcola. Se un giorno servissero etichette o transizioni configurabili, il CHECK diventa una lookup — oggi sarebbe una tabella per un vocabolario che nessuno configura. D-2 di brief-db-fondo-fattura-ricalcolo-e-governo §8.2.';

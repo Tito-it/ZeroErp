@@ -23,11 +23,6 @@ DECLARE
     v_contabile_id pagamenti.vendite_contabili.id%TYPE;
     v_lotto_id     vendite.fatturazione_lotti.id%TYPE;
     v_data_valuta  pagamenti.vendite_contabili_righe.data_valuta%TYPE;
-    v_saldo NUMERIC;
-    v_has_movimenti BOOLEAN;
-    v_saldo_contabile_tot NUMERIC;
-    v_has_righe_postabili BOOLEAN;
-    v_saldo_contabile_source NUMERIC;
     v_saldo_effettivo NUMERIC;
     r RECORD;
 BEGIN
@@ -66,19 +61,19 @@ BEGIN
          WHERE s.fattura_figlia_id = p_fattura_figlia_id AND s.attivo IS TRUE AND s.stato = 'ASSEGNATO' AND t.codice_interno = 'F_F_ADD_ACC'
          ORDER BY s.id
     LOOP
-        SELECT sf.saldo, sf.has_movimenti INTO v_saldo, v_has_movimenti FROM pagamenti.fn_get_saldo_fattura(r.fattura_sorgente_id) sf;
-        SELECT sc.saldo_contabile, sc.has_righe_postabili INTO v_saldo_contabile_tot, v_has_righe_postabili FROM pagamenti.fn_get_saldo_fattura_contabili(r.fattura_sorgente_id) sc;
-
-        SELECT COALESCE(SUM(cr.importo), 0)::NUMERIC INTO v_saldo_contabile_source
-          FROM pagamenti.vendite_contabili_righe cr
-          JOIN pagamenti.vendite_contabili_righe_stati st ON st.id = cr.stato_id
-         WHERE cr.attivo IS TRUE AND st.is_postabile IS TRUE AND cr.fattura_id = r.fattura_sorgente_id
-           AND COALESCE(cr.meta->>'origine', '') = 'FONDO_FATTURA' AND COALESCE(cr.meta->>'fondo_source_id', '') = r.source_id::TEXT;
-
-        v_saldo_effettivo := COALESCE(v_saldo, 0) - (COALESCE(v_saldo_contabile_tot, 0) - COALESCE(v_saldo_contabile_source, 0));
+        -- Formula unica (changeSet 20260815-05): il residuo della
+        -- sorgente al netto del contributo di QUESTO fondo.
+        v_saldo_effettivo := vendite.fn_saldo_sorgente_fondo(r.fattura_sorgente_id, r.source_id);
 
         IF COALESCE(v_saldo_effettivo, 0) = 0 THEN
-            UPDATE vendite.fatture_fondi_fattura_source s SET stato = 'ANNULLATO', data_update = now(), user_update = current_user WHERE s.id = r.source_id AND s.stato IS DISTINCT FROM 'ANNULLATO';
+            -- ⭐ La ragione dell'annullamento sta ora SUL DATO, non
+            --    solo nel comportamento: chi guarda la riga sa
+            --    perche' e' finita li'.
+            UPDATE vendite.fatture_fondi_fattura_source s
+               SET stato = 'ANNULLATO',
+                   motivo = COALESCE(s.motivo, 'Sorgente gia coperta: saldo effettivo zero alla sincronizzazione contabile'),
+                   data_update = now(), user_update = current_user
+             WHERE s.id = r.source_id AND s.stato IS DISTINCT FROM 'ANNULLATO';
             IF FOUND THEN v_annullati := v_annullati + 1; END IF;
             CONTINUE;
         END IF;
@@ -109,7 +104,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_sync_contabili_fondo_fattura(p_fattura_figlia_id bigint)
-IS 'Sync righe contabili fondi fattura assegnati. Annulla source a saldo effettivo zero.';
+IS 'Sync righe contabili dei fondi fattura assegnati. Annulla le source a saldo effettivo zero, e dal 2026-08-15 ne SCRIVE LA RAGIONE nella colonna `motivo` invece di lasciarla implicita nel comportamento. Il saldo effettivo si legge da vendite.fn_saldo_sorgente_fondo: la stessa formula serve al guard di capienza di fn_applica_fondi_fattura, e due copie della regola che decide se un fondo e'' ancora dovuto darebbero prima o poi due risposte diverse alla stessa domanda. ⚠️ L''ANNULLATO automatico resta, ed e'' una scelta: e'' della stessa specie di quello rimosso da fn_genera_fondi_fattura_source, ma opera su fondi GIA'' ASSEGNATI — il denaro si e'' gia'' mosso, e toglierlo senza il processo rimborsi di `pagamenti` lascerebbe scoperto il doppio conteggio. ⚠️ Le righe contabili che crea sono ABBINATA, cioe'' POSTABILI: il giorno del posting diventeranno movimenti veri, ed e'' corretto (la sorgente e'' saldata per TRASFERIMENTO), ma ogni misura di «incassato» deve escludere i centri non-cassa. Coda del D-3 di brief-db-fondo-fattura-ricalcolo-e-governo §8.2.';
 ```
 
 ---

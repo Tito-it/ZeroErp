@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Un atto straordinario deve dire perche'.
+#   Coda del passo D-5 di brief-db-fondo-fattura-ricalcolo-e-governo.md §8.2.
+#
+# ℹ️ LA REGOLA: `motivo` e' obbligatorio in due casi, e in nessun altro.
+#
+#   origine = 'MANUALE'   -> lo ha deciso una persona: deve dire perche'
+#   stato   = 'ANNULLATO' -> qualcosa e' stato tolto di mezzo: deve dire perche'
+#
+#   Un fondo automatico DISPONIBILE o ASSEGNATO non ha bisogno di motivo: la
+#   sua ragione e' la regola, ed e' scritta nella configurazione delle soglie.
+#   Chiedere un testo anche li' produrrebbe una colonna piena di frasi fatte,
+#   che e' il modo piu' rapido di rendere inutile un campo obbligatorio.
+#
+# ⚠️ NON basta `IS NOT NULL`: si controlla anche che non sia una stringa di
+#   spazi. Un motivo vuoto passa il NOT NULL e non spiega niente.
+#
+# 🔴 ORDINE OBBLIGATO: questo changeSet DEVE venire dopo il 20260815-13, che
+#   mette i due scrittori automatici in grado di valorizzare `motivo` quando
+#   annullano. Applicato prima, il vincolo passerebbe sulla tabella vuota di
+#   oggi e fallirebbe al primo reset bloccato da una contabile CHIUSA — cioe'
+#   un migrate verde e un guasto rimandato a quando fara' piu' male.
+#
+# 🔗 Richiesta al BE (brief §8.3): mappare la violazione su
+#   E_FONDO_MOTIVO_OBBLIGATORIO con il campo `motivo` dichiarato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260815-14-add-check-fondi-source-motivo-obbligatorio-mctit.yaml
+
+  - changeSet:
+      id: 20260815-14-add-check-fondi-source-motivo-obbligatorio
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fatture_fondi_fattura_source: `motivo` obbligatorio quando l'atto e'
+        straordinario — origine MANUALE oppure stato ANNULLATO. Non sugli
+        atti automatici vivi, la cui ragione e' la regola. Coda di D-5.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_fondi_fattura_source
+                columnName: motivo
+            - sqlCheck:
+                expectedResult: 0
+                sql: >
+                  SELECT count(*) FROM vendite.fatture_fondi_fattura_source
+                  WHERE (origine = 'MANUALE' OR stato = 'ANNULLATO')
+                    AND (motivo IS NULL OR btrim(motivo) = '')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatture_fondi_fattura_source
+                ADD CONSTRAINT chk_fondi_source_motivo_obbligatorio
+                CHECK (
+                  (origine <> 'MANUALE' AND stato <> 'ANNULLATO')
+                  OR (motivo IS NOT NULL AND btrim(motivo) <> '')
+                );
+
+              COMMENT ON CONSTRAINT chk_fondi_source_motivo_obbligatorio
+                ON vendite.fatture_fondi_fattura_source
+              IS 'Il motivo e'' obbligatorio dove l''atto e'' STRAORDINARIO: quando lo compie una persona (origine = MANUALE) e quando qualcosa viene tolto di mezzo (stato = ANNULLATO). Non sugli atti automatici vivi: la loro ragione e'' la regola, scritta nella configurazione delle soglie, e chiedere un testo anche li'' riempirebbe la colonna di frasi fatte — il modo piu'' rapido di rendere inutile un campo obbligatorio. ⚠️ Il controllo va oltre il NOT NULL: una stringa di soli spazi passa il NOT NULL e non spiega niente. Coda di D-5 di brief-db-fondo-fattura-ricalcolo-e-governo §8.2.';

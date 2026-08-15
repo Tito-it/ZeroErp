@@ -1,7 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
--- Test: utilita fattura (critical, termini, fondi, wrapper sync)
+-- Test: utilita fattura (critical, termini, fondi)
 -- ------------------------------------------------------------
 -- Indice test
 -- 1) Riferimenti minimi presenti
@@ -14,8 +14,7 @@
 -- 8) Sync critical dopo disabilitazione log
 -- 9) Resolve termini fallback su TP_1RATA
 -- 10) Resolve termini errore su attivita_id non valido
--- 11) Sync pagamento fondo errore su fattura_id non valido
--- 12) Cleanup completato
+-- 11) Cleanup completato
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -35,7 +34,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(15);
+SELECT plan(14);
 
 -- ============================================================
 -- 0) Costanti e riferimenti minimi
@@ -349,21 +348,6 @@ SELECT throws_ok(
   'P0001',
   NULL,
   'Resolve termini errore su attivita_id non valido'
-);
-
--- ============================================================
--- 6) Wrapper sync pagamento fondo (guard)
--- ============================================================
-SELECT throws_ok(
-  $$
-    SELECT *
-    FROM vendite.fn_sync_pagamento_fondo_fattura(
-      p_fattura_figlia_id => 0
-    );
-  $$,
-  'P0001',
-  NULL,
-  'Sync pagamento fondo errore su fattura_id non valido'
 );
 
 -- ============================================================

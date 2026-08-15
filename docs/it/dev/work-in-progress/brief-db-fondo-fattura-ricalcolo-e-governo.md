@@ -11,6 +11,17 @@
 > **§8** — passi DB prima, logica BE poi, su richiesta di Tid. Le cinque domande
 > di §6 hanno una risposta proposta in §8.1.
 >
+> ✅ **Stato al 2026-08-15 (notte)**: **Fase A** (rete di sicurezza), **Fase B**
+> (registro degli atti) e la **coda della Fase E** (D-15…D-17) sono **applicate e
+> verdi** — 16 changeSet, cinque codici errore, baseline `vendite` senza
+> regressioni. Anche la **Fase C** (proposta + elenco) è **applicata e verde** —
+> cinque changeSet `-19`…`-23`, §8.2-quinquies. Restano **Fase D** (atto manuale,
+> e aspetta il processo rimborsi in `pagamenti`), **Fase F** (dichiarativa) e le
+> **richieste al BE** di §8.3 — **R-1 è la sola urgente**.
+>
+> 🔵 **Lato DB il cantiere è quasi chiuso**: senza il processo rimborsi in
+> `pagamenti` la Fase D costruirebbe una porta su una stanza che non c'è.
+>
 > ~~*«Qui non c'è un piano: c'è la diagnosi e ciò che è già stato deciso a
 > tampone altrove.»*~~ — vera fino al 2026-08-14, tenuta per storia.
 >
@@ -546,6 +557,12 @@ quattro funzioni.
 
 #### Fase A — La rete di sicurezza *(condivisa con la slice 1 del cantiere incassi)*
 
+> ✅ **APPLICATA E VERDE il 2026-08-15.** Sette changeSet (`20260815-03` … `-09`),
+> due codici errore a catalogo, un pgTAP nuovo (12/12) e la fixture di quello
+> esistente adeguata (19/19). **`pgtap-baseline.sh vendite`: nessuna
+> regressione** — 24 rossi, tutti già noti. Cronaca, residui e il difetto
+> trovato nel collaudo in **§8.2-bis**.
+>
 > 🔴 **Chi arriva prima la fa, e non si fa due volte.** Il cantiere incassi la
 > dichiara dentro la sua slice 1 (§2-bis D1-bis); §8.0-a dice che la finestra si
 > apre anche senza di lei. Se la slice 1 parte prima, questi quattro passi sono
@@ -693,6 +710,11 @@ utility c'è sempre e combacia per uguaglianza. Una riga di `vendite.fatture` co
 
 #### Fase B — Il registro degli atti
 
+> ✅ **APPLICATA E VERDE il 2026-08-15.** Sette changeSet (`20260815-12` … `-18`),
+> tre codici errore a catalogo, sette asserzioni pgTAP in più (sei sulla Fase B +
+> la ragione dell'annullamento **sul dato**). **`pgtap-baseline.sh vendite`:
+> nessuna regressione.** Elenco, cronaca e residui in **§8.2-quater**.
+
 | | Passo | Dove |
 | --- | --- | --- |
 | **D-5** | **Colonne dell'atto** su `fatture_fondi_fattura_source`: `origine` (`varchar` NOT NULL DEFAULT `'AUTOMATICA'`, CHECK `IN ('AUTOMATICA','MANUALE')`) e `motivo` (`text` NULL, obbligatorio per `origine = 'MANUALE'` e per `stato = 'ANNULLATO'`) | `00_schema/vendite/` |
@@ -793,6 +815,12 @@ il punto in cui una chiave con NULL fallisce in silenzio.
 
 #### Fase C — La proposta derivata e l'elenco da guardare
 
+> ✅ **APPLICATA E VERDE il 2026-08-15.** Cinque changeSet (`20260815-19` … `-23`),
+> pgTAP del governo da 18 a **29** asserzioni, baseline `vendite` senza
+> regressioni. Elenco, scoperte e residui in **§8.2-quinquies**. ⚠️ I passi sono
+> **due sulla carta e cinque nei file**: la ragione — la stessa regola non può
+> stare in due posti — è la scoperta principale della fase.
+
 | | Passo | Dove |
 | --- | --- | --- |
 | **D-9** | **`vendite.fn_fondo_fattura_proponibile(p_fattura_sorgente_id, p_tipo_fondo_fattura_id)`** `STABLE` — il numero, **mai conservato**. Costruita su `fn_saldo_sorgente_fondo` (D-3), così proposta e guard non possono divergere | `20_code/vendite/` |
@@ -805,7 +833,8 @@ il punto in cui una chiave con NULL fallisce in silenzio.
 | sorgente nella banda e definitiva, **nessun atto vivo** | `PROPOSTA_SENZA_ATTO` | emettere il fondo (o lasciarlo) |
 | sorgente nella banda **senza `utility_id`** (dato incompleto, esclusa da D-4) | `UTILITY_NON_ATTRIBUIBILE` | completare il dato sulla fattura |
 | atto `DISPONIBILE` non più capiente (rifiutato da D-3b) | `NON_PIU_CAPIENTE` | annullare l'atto, o gestire il pagamento ricevuto |
-| soglie configurate **a metà** sull'emittente × utility | `CONFIGURAZIONE_INCOMPLETA` | completare le due soglie (fino a D-0 è possibile, dopo no) |
+| ⭐ **aggiunto scrivendo**: residuo che **non corrisponde** al documento — l'automatismo tace in silenzio | `IMPORTO_NON_CORRISPONDENTE` | capire da dove viene la riga contabile che sfonda il documento |
+| ~~soglie configurate **a metà** sull'emittente × utility~~ | ~~`CONFIGURAZIONE_INCOMPLETA`~~ | 🔴 **non esiste**: D-0 è applicato dal 2026-08-15 e rende il caso irraggiungibile (vedi qui sotto — era previsto) |
 
 > 🔴 **Il caso «eccedenza da destinare» è uscito da questo elenco** (2026-08-15).
 > Un sovra-incasso è materia del **processo rimborsi**, che sta in `pagamenti` e
@@ -880,11 +909,15 @@ D-0 il campo dice **quale delle due soglie** manca, che è l'unica cosa utile.
 
 #### Fase E — Pulizia e verità documentale
 
+> ✅ **D-15, D-16 e D-17 FATTI** (D-17 in due giri: la bonifica il 2026-08-15, la
+> riscrittura al presente delle note 🟠 subito dopo l'apply della Fase B).
+> **D-18 è aperto per costruzione**: cresce con ogni fase.
+
 | | Passo |
 | --- | --- |
-| **D-15** | **`DROP FUNCTION vendite.fn_sync_pagamento_fondo_fattura(bigint)`** (F-4) + rimozione della §6 di `db/pgtap/vendite/test-fattura-utils-critical-termini.sql` e `plan(19)` → `plan(18)`. ⚠️ Le due metà nello **stesso lotto**: il presidio dei riferimenti morti gira dopo il `migrate` e un `DROP` senza il test diventa rosso in CI |
-| **D-16** | `COMMENT` su `fn_reset_fondi_fattura`: è il reset **tecnico della figlia**, non una reazione ai pagamenti (F-2) |
-| **D-17** | ✅ **Bonifica documentale — FATTA il 2026-08-15** (ordine di Tid: *«procedi alla correzione di tutti»*). Inventario e stato per documento qui sotto. ⚠️ Solo i `manual/`, le guide e i doc di lavoro: gli auto-gen si rigenerano. 🔁 **Resta un secondo giro**: le note 🟠 sono scritte al futuro («diventerà») e vanno riscritte **al presente** man mano che i passi vengono applicati |
+| **D-15** | ✅ **FATTO il 2026-08-15** — **`DROP FUNCTION vendite.fn_sync_pagamento_fondo_fattura(bigint)`** (F-4) + rimozione della §6 di `db/pgtap/vendite/test-fattura-utils-critical-termini.sql` e `plan(15)` → `plan(14)`. ⚠️ Le due metà nello **stesso lotto**: il presidio dei riferimenti morti gira dopo il `migrate` e un `DROP` senza il test diventa rosso in CI |
+| **D-16** | ✅ **FATTO il 2026-08-15** — `COMMENT` su `fn_reset_fondi_fattura`: è il reset **tecnico della figlia**, non una reazione ai pagamenti (F-2) |
+| **D-17** | ✅ **Bonifica documentale — FATTA il 2026-08-15** (ordine di Tid: *«procedi alla correzione di tutti»*). Inventario e stato per documento qui sotto. ⚠️ Solo i `manual/`, le guide e i doc di lavoro: gli auto-gen si rigenerano. ✅ **Secondo giro fatto** dopo l'apply di Fase A e Fase B: le note 🟠 sono state riscritte **al presente**. Resta la stessa regola per le fasi che verranno |
 | **D-18** | pgTAP — §8.5 |
 
 ##### D-17 — L'inventario, e ⚠️ la distinzione che conta
@@ -917,6 +950,18 @@ di Tid; **correzioni applicate lo stesso giorno**. ⭐ **La distinzione utile no
 | `manual/fn_applica_fondi_fattura.md` | la chiave a cinque elementi; nessun controllo di capienza | **D-3b**, **D-4** |
 | `manual/fatture_fondi_fattura_source.md` | *«In caso di storni, la policy di riapertura va gestita per tipologia fondo»* + *«Reset per tipologie non standard (WIP)»*; `ANNULLATO` = «documento sorgente già saldato» | **D-1**, e D3-d incassi |
 | `manual/fn_sync_pagamento_fondo_fattura.md` | **il file intero**: è il manuale di una funzione che si ritira | **D-15** |
+
+> ✅ **Secondo giro fatto il 2026-08-15**, applicate Fase A e Fase B: le quattro
+> note sono state **riscritte al presente**, non lasciate al futuro. Le prime due
+> con la Fase A; la terza (`manual/fatture_fondi_fattura_source.md`) con la Fase
+> B — la tabella *«oggi → diventerà»* è diventata *«prima → adesso, e chi lo fa»*,
+> con l'elenco degli otto presidi vivi; la quarta è sparita **col file**.
+> Aggiornati nello stesso giro `manual/fn_reset_fondi_fattura.md` e
+> `manual/fn_sync_contabili_fondo_fattura.md` (annullamento **con ragione sul
+> dato**, saldo letto da `fn_saldo_sorgente_fondo`) e la sezione «perimetro» di
+> `manual/trgfn_fondi_source_guard_importo.md`, che dava al futuro il ritiro dalla
+> strada manuale ormai applicato dal `-18`. ⭐ **Scritto il `manual/` nuovo** di
+> `trgfn_fondi_source_guard_transizione`.
 
 ###### ⭐ Due documenti che invece avevano ragione, e che avremmo dovuto leggere prima
 
@@ -982,6 +1027,365 @@ ciò che è solo stato spostato da una fattura a un'altra.
 
 ---
 
+### 8.2-bis Fase A — applicata il 2026-08-15
+
+> ✅ **Migrazione applicata, suite verde, doc rigenerata.** Resta il **commit**.
+>
+> | Verifica | Esito |
+> | --- | --- |
+> | `migrate` dei 7 changeSet | ✅ applicati (i due CHECK e il trigger risultano nell'auto-gen) |
+> | `test-fondi-fattura-governo.sql` | ✅ **12/12** (dopo la correzione di §8.2-ter) |
+> | `test-fondi-fattura.sql` (fixture adeguata) | ✅ **19/19** |
+> | `pgtap-baseline.sh vendite` | ✅ **nessuna regressione** — 24 rossi, tutti noti |
+> | guardrail statici CI (`runOnChange`, preambolo pgTAP) | ✅ verdi; il debito `throws_ok` resta a 137 su soglia 137 |
+> | doc `dbzero` | ✅ rigenerata: i due `manual/` nuovi sono agganciati alle pagine auto-gen |
+
+| File | Passo | Cosa fa |
+| --- | --- | --- |
+| `00_schema/anagrafiche/20260815-03-add-check-emittenti-fiscali-utilities-soglie-coppia` | **D-0** | CHECK «entrambe le soglie o nessuna». ✅ Applicabile senza sanatoria: le due righe esistenti hanno entrambe vuote (verificato con Tid) |
+| `00_schema/vendite/20260815-04-add-check-fondi-source-importo-e-stato` | **D-2** | `importo <> 0` + vocabolario chiuso di `stato`. Tabella a zero righe |
+| `20_code/vendite/20260815-05-create-fn-saldo-sorgente-fondo` | **D-3** | La formula unica «quanto regge ancora la sorgente», estratta dalla copia inline |
+| `20_code/vendite/20260815-06-create-trgfn-fondi-source-guard-importo` | **D-3a** | Guard di corrispondenza fondo ↔ sorgente (segno + valore assoluto) |
+| `20_code/vendite/20260815-07-update-fn-genera-fondi-fattura-source-atto-unico` | **D-1 + D-4** | Solo sorgenti `DEFINITIVA`; via il ramo `UPDATE` e l'`ANNULLATO` automatico; `utility_id` entra nel filtro |
+| `20_code/vendite/20260815-08-update-fn-applica-fondi-fattura-chiave-e-capienza` | **D-3b + D-4** | Chiave a nove elementi riga-contro-riga + rilettura della capienza |
+| `20_code/vendite/20260815-09-update-fn-sync-contabili-fondo-adotta-saldo-sorgente` | coda D-3 | La sync adotta la formula estratta (behavior-preserving) |
+| `80_data/sql/config/{codici_errore,messaggi_errore}.csv` | **D-14** parziale | `E_FONDO_NON_CORRISPONDE_SORGENTE`, `E_FONDO_SOGLIE_INCOMPLETE` — solo append, nessun loader nuovo |
+| `db/pgtap/vendite/test-fondi-fattura-governo.sql` | **D-18** | 12 asserzioni sulla Fase A |
+| `db/pgtap/vendite/test-fondi-fattura.sql` | — | ⚠️ **fixture adeguata**: la fattura sorgente nasceva senza stato e senza utility, e con i nuovi filtri non avrebbe più generato niente |
+| `dbzero/vendite/manual/fn_saldo_sorgente_fondo.md` · `trgfn_fondi_source_guard_importo.md` | — | Doc concettuale delle due funzioni nuove, nello standard dei `manual/` |
+
+#### ⚠️ Tre scelte fatte scrivendo, che vale la pena conoscere
+
+**1. Le firme non cambiano, e non è pigrizia.** La chiave a nove elementi si
+chiude **dentro** `fn_applica_fondi_fattura`, che ha già sotto mano entrambe le
+fatture: nessun parametro nuovo, nessun tocco a `backend/` — che è fuori dal
+perimetro DB. La madre DB per lotto resta una **richiesta al BE** (§8.3).
+
+**2. I cinque parametri di scope cambiano mestiere.** Da filtro sulla *source* a
+verifica sulla *figlia*. Applicati alla source erano ridondanti e potevano far
+**saltare in silenzio** un fondo la cui colonna denormalizzata fosse rimasta
+indietro; sulla figlia sono una sanity check che non può nascondere niente.
+
+**3. La preCondition sul codice errore è stata tolta dal changeSet -06.** `20_code`
+gira **prima** di `80_data`: su un DB ricostruito da zero avrebbe cercato un seed
+che arriva due fasi dopo. Trappola già registrata, e già pagata una volta.
+
+### 8.2-ter 🔴 Il difetto trovato nel collaudo: ho collaudato il guard credendo di collaudare il CHECK
+
+La prima corsa ha dato **una regressione**, e il rosso era del test — non del
+codice. Vale la pena scriverla per intero, perché è **la trappola che avevo
+appena finito di scrivere in §8.5**.
+
+```text
+# Failed test 3: "D-2: importo zero rifiutato dal CHECK"
+#       caught: P0001: Fondo fattura di importo 0 non coerente con la
+#               fattura di origine (totale 100.00).
+#       wanted: 23514
+```
+
+**Perché.** I trigger `BEFORE ROW` girano **prima** dei CHECK. Su una sorgente
+da 100, un `importo = 0` non arriva mai al vincolo: lo intercetta il guard di
+corrispondenza, perché `sign(0)` non è il segno di **nessun** totale diverso da
+zero. Il test chiedeva `23514` e otteneva `P0001` — cioè misurava il presidio
+sbagliato.
+
+**La correzione, ed è più di un cambio di SQLSTATE.** Il CHECK
+`importo <> 0` è raggiungibile **solo da una sorgente a totale zero**, dove il
+guard passa (0 e 0 hanno lo stesso segno e lo stesso valore assoluto). Il test
+ha quindi una quinta fixture, `SRC_ZERO`, e collauda il vincolo dove il vincolo
+esiste davvero. ⭐ Che è poi l'unico caso in cui serve: una fattura da zero non
+genera fondo, e se qualcuno lo inserisse a mano è lì che il CHECK lo ferma.
+
+> **La lezione, e non è «leggere meglio»**: avevo scritto l'avvertenza,
+> l'ho ripetuta nel `COMMENT` della funzione, e ci sono cascato lo stesso —
+> perché la trappola non sta nel *sapere* l'ordine di esecuzione, sta nel
+> **nominare l'asserzione**. «Rifiutato dal CHECK» descrive il *meccanismo* che
+> credo agisca; se avessi scritto «importo zero rifiutato» avrei asserito il
+> *fatto*, e il test sarebbe passato dicendo una cosa vera. *Un test che nomina
+> il meccanismo invece del comportamento verifica la propria ipotesi, non il
+> sistema.*
+
+#### 🔵 Cosa resta scoperto
+
+* **Il caso «sorgente non più capiente» non ha un test runtime.** Per costruirlo
+  serve una riga contabile `ABBINATA` sulla sorgente — cioè la fixture pesante
+  che `test-fondi-fattura.sql` costruisce già. È l'assenza più importante di
+  §8.5: il guard di capienza (D-3b) oggi è **collaudato solo per la via che
+  passa**, non per quella che deve fermare;
+* **l'`ANNULLATO` automatico dentro `fn_sync_contabili_fondo_fattura` resta.** È
+  della stessa specie di quello rimosso dalla generazione, ma opera su fondi
+  **già assegnati**: il denaro si è mosso, e toglierlo senza il processo rimborsi
+  di `pagamenti` lascerebbe scoperto il doppio conteggio. 🔵 Candidato Fase B;
+* **le tre richieste al BE** (§8.3) non sono state fatte: sono fuori perimetro.
+  ⚠️ **R-1 è la più urgente** — finché `error_policies_generated.py` non viene
+  rigenerato, i due codici nuovi sono a catalogo ma non hanno una classe lato
+  backend, e il cancello `test_error_codes_db_policy_guardrail` lo vedrà.
+
+ℹ️ Il dubbio sul test D-0 è risolto: il ruolo applicativo **ha** la scrittura su
+`anagrafiche.emittenti_fiscali_utilities`, e il CHECK scatta come previsto
+(`23514`). Nessun marcatore `-- pgtap-runner: owner` necessario.
+
+---
+
+### 8.2-quater Fase E (coda) e Fase B — **applicate** il 2026-08-15
+
+> ✅ **Applicate e verdi.** `migrate` dei 9 changeSet `20260815-10`…`-18` (tutti
+> `EXECUTED`), `test-fondi-fattura-governo` **18/18**, `test-fondi-fattura`
+> **20/20**, `test-fattura-utils-critical-termini` **14/14**,
+> `pgtap-baseline.sh vendite` **senza regressioni**. Dettaglio di cosa ha detto
+> l'applicazione: più sotto, in *«L'applicazione, e cosa ha detto»*.
+
+#### Coda della Fase E — i due passi facili
+
+| File | Passo | Cosa fa |
+| --- | --- | --- |
+| `20_code/vendite/20260815-10-drop-fn-sync-pagamento-fondo-fattura` | **D-15** | `DROP` del guscio. ⚠️ Nello **stesso commit**: sezione tolta da `test-fattura-utils-critical-termini.sql` (`plan(15)` → `plan(14)`, indice rinumerato) e `manual/` eliminato |
+| `20_code/vendite/20260815-11-comment-fn-reset-fondi-fattura-reset-tecnico` | **D-16** | Solo il `COMMENT`: il reset è **tecnico sulla figlia**, non una reazione ai pagamenti (F-2) |
+
+#### Fase B — il registro degli atti
+
+| File | Passo | Cosa fa |
+| --- | --- | --- |
+| `00_schema/vendite/20260815-12-add-fondi-source-origine-e-motivo` | **D-5** | Colonne `origine` (`AUTOMATICA`\|`MANUALE`) e `motivo` |
+| `20_code/vendite/20260815-13-update-fn-fondi-annullamento-con-motivo` | **D-5** | I due scrittori automatici **valorizzano `motivo`** quando annullano |
+| `00_schema/vendite/20260815-14-add-check-fondi-source-motivo-obbligatorio` | **D-5** | `motivo` obbligatorio su `MANUALE` e su `ANNULLATO` |
+| `20_code/vendite/20260815-15-create-trg-fondi-source-lock-atto` | **D-6** | Lock di colonna: `importo`, sorgente, tipo, `origine` immutabili |
+| `20_code/vendite/20260815-16-create-trgfn-fondi-source-guard-transizione` | **D-7** | Matrice degli stati, `ANNULLATO` terminale |
+| `00_schema/vendite/20260815-17-add-uq-fondi-source-atto-vivo` | **D-8** | Indice unico parziale: un solo atto automatico vivo per sorgente |
+| `20_code/vendite/20260815-18-update-trgfn-...-solo-automatica` | coda **D-5** | Il guard di corrispondenza si **ritira dalla strada manuale** |
+| `80_data/…/{codici_errore,messaggi_errore}.csv` | **D-14** parz. | `E_FONDO_ATTO_IMMUTABILE`, `E_FONDO_STATO_NON_AMMESSO`, `E_FONDO_MOTIVO_OBBLIGATORIO` |
+| `db/pgtap/vendite/test-fondi-fattura-governo.sql` | **D-18** | da 12 a **18** asserzioni |
+| `db/pgtap/vendite/test-fondi-fattura.sql` | **D-18** | da 19 a **20**: la ragione dell'annullamento verificata **sul dato** |
+| `docs/it/dbzero/vendite/manual/` | **D-17** | nuovo `trgfn_fondi_source_guard_transizione`; aggiornate la pagina della tabella, `trgfn_fondi_source_guard_importo`, `fn_reset_fondi_fattura`, `fn_sync_contabili_fondo_fattura` |
+
+#### ⚠️ Tre cose scoperte scrivendo la Fase B
+
+**1. `motivo` obbligatorio impone di toccare due funzioni che il piano non
+nominava.** Un fondo passa ad `ANNULLATO` in due punti automatici — la sync
+contabili e il reset bloccato — e nessuno dei due scriveva una ragione: nel
+secondo la ragione esisteva, ma **in un messaggio di `fatture_log`**, cioè in un
+diario invece che sul dato. Da qui il changeSet `-13`, e l'**ordine obbligato**
+`-12` → `-13` → `-14`: mettere il vincolo prima degli scrittori lo farebbe
+passare sulla tabella vuota di oggi e fallire al primo reset vero — un migrate
+verde e un guasto rimandato a quando fa più male.
+
+**2. `origine` senza il changeSet `-18` non governa niente.** Il piano diceva
+che il guard di corrispondenza «si restringerà a `AUTOMATICA` con la Fase B», ma
+non lo elencava fra i passi. Senza, la colonna esisterebbe e il guard
+continuerebbe a rifiutare **proprio** l'atto per cui la strada manuale esiste —
+l'eccedenza di un sovra-incasso, che è un credito su una fattura positiva.
+
+**3. `atto_precedente_id` è stato tolto per davvero.** Non c'è nel `-12`: serviva
+alla revoca+riemissione, e la catena dei riporti resta leggibile da
+`fatture_fondi_fattura.riferimento_fattura_id`.
+
+#### ✅ L'applicazione, e cosa ha detto
+
+Gli oggetti vivi sulla tabella dopo il migrate — verificati sul catalogo, non
+dedotti dai file:
+
+| Presidio | Oggetto |
+| --- | --- |
+| vocabolario `stato` · vocabolario `origine` · `importo <> 0` · `motivo` obbligatorio | `chk_fondi_source_stato`, `chk_fondi_source_origine`, `chk_fondi_source_importo_non_zero`, `chk_fondi_source_motivo_obbligatorio` |
+| corrispondenza · cammino degli stati · identità dell'atto | `..._a10_guard_importo_ins_upd`, `..._a10_guard_transizione_upd`, `..._a10_lock_atto_upd` |
+| un solo atto automatico vivo | `uq_fondi_source_atto_vivo_automatico` |
+| i cinque codici | tutti presenti in `config.codici_errore` con la loro classe |
+
+**⚠️ Ma il migrate verde non è una prova, e qui si vede bene.** La tabella
+`fatture_fondi_fattura_source` ha **zero righe**: i cinque presidi nuovi sono
+passati senza incontrare un solo dato. Se `motivo` fosse stato reso obbligatorio
+su una tabella popolata, il `-14` sarebbe fallito; con la tabella vuota
+sarebbe passato **comunque**, e il guasto si sarebbe visto al primo reset vero.
+L'unica prova che i presidi funzionano sono i pgTAP.
+
+**⭐ E la prova che l'ordine `-12` → `-13` → `-14` era necessario esisteva già,
+senza che nessuno l'avesse chiesta.** `test-fondi-fattura.sql` esercita da mesi
+il ramo «reset bloccato da contabile `CHIUSA`» — cioè **l'annullamento
+automatico**. Se il `-13` non avesse preceduto il `-14`, quella sezione sarebbe
+diventata rossa: il reset avrebbe scritto `ANNULLATO` senza `motivo` e il CHECK
+lo avrebbe respinto. Il test era verde **per merito**, ma non lo diceva.
+
+🔵 Da qui l'unica aggiunta di oggi: `test-fondi-fattura.sql` passa da 19 a **20**
+asserzioni, e la ventesima verifica che la ragione dell'annullamento stia **sul
+dato** (`motivo`) e non solo in `fatture_log`. Non aggiunge copertura — la
+aggiungeva già il vincolo — ma **la dichiara**: un verde per sottrazione e un
+verde per merito si somigliano troppo perché la differenza resti implicita.
+
+ℹ️ Verificato di conseguenza anche che il **lock di colonna non rompe i percorsi
+vivi**: applicazione, reset, sync e annullamento aggiornano `stato`,
+`fattura_figlia_id`, `data_assegnazione` e `motivo` — mai le quattro colonne
+bloccate. Non è un ragionamento: sono le funzioni che i due pgTAP chiamano
+davvero.
+
+#### 🔵 Cosa resta scoperto dopo la Fase B
+
+* il **caso «sorgente non più capiente»** continua a non avere un test runtime
+  (serve una riga contabile in fixture) — è il residuo più vecchio;
+* l'**`ANNULLATO` automatico** della sync resta: ora almeno **dichiara la sua
+  ragione**, ma è ancora uno stato cambiato senza una persona. Si toglie quando
+  `pagamenti` avrà il processo rimborsi;
+* le **richieste al BE** (§8.3) sono ora **cinque codici errore** da portare in
+  `error_policies_generated.py`, non due.
+
+---
+
+### 8.2-quinquies Fase C — **applicata** il 2026-08-15
+
+> ✅ **Applicata e verde.** `migrate` dei 5 changeSet `20260815-19`…`-23`,
+> `test-fondi-fattura-governo` **29/29**, `test-fondi-fattura` **20/20** (il
+> refactor di generazione e applicazione non sposta niente),
+> `test-fattura-utils-critical-termini` **14/14**, `pgtap-baseline.sh vendite`
+> **senza regressioni**. Doc `dbzero` rigenerata, tre `manual/` nuovi.
+> ⚠️ **Un incidente durante l'applicazione**, per colpa mia: in fondo alla sezione.
+
+| File | Passo | Cosa fa |
+| --- | --- | --- |
+| `20_code/vendite/20260815-19-create-fn-fondo-fattura-proponibile` | **D-9** | `fn_fondo_fattura_proponibile(sorgente, tipo)`: l'importo che l'automatismo scriverebbe **oggi**, o `NULL` se non farebbe niente |
+| `20_code/vendite/20260815-20-update-fn-genera-fondi-consuma-proponibile` | coda **D-9** | La generazione **consuma** la proposta invece di riscrivere l'inviluppo |
+| `20_code/vendite/20260815-21-create-fn-check-fondo-fattura-capiente` | serve **D-10** | La regola di capienza estratta in un predicato **puro e `IMMUTABLE`** |
+| `20_code/vendite/20260815-22-update-fn-applica-fondi-usa-check-capiente` | coda **D-10** | `fn_applica_fondi_fattura` lo consuma, e legge la capienza **una volta sola** |
+| `20_code/vendite/20260815-23-create-vw-fondi-fattura-da-decidere` | **D-10** | L'elenco, `security_invoker=on`, quattro motivi |
+| `db/pgtap/vendite/test-fondi-fattura-governo.sql` | **D-18** | da 18 a **29** asserzioni |
+
+#### ⭐ La scoperta della fase: «costruita su» non bastava
+
+Il piano diceva che D-9 andava costruita su `fn_saldo_sorgente_fondo` **«così
+proposta e guard non possono divergere»**. È vero e insufficiente: il guard non è
+l'unico posto da cui la proposta può divergere. L'**inviluppo** — sorgente
+`DEFINITIVA`, dentro la banda, utility attribuita, atto unico, corrispondenza col
+documento — viveva nel `WHERE` di `fn_genera_fondi_fattura_source`, e scrivere
+D-9 senza toccarlo avrebbe creato la **seconda copia** proprio della regola che
+D-9 esiste per condividere.
+
+Il divario avrebbe avuto una forma precisa e silenziosa: un elenco che **propone**
+un fondo che il giro notturno non crea, o che **tace** su uno che crea. Nessun
+errore, nessun log. Da qui il changeSet `-20`.
+
+**E la stessa cosa, una seconda volta, per la capienza.** Il caso
+`NON_PIU_CAPIENTE` dell'elenco è la regola del guard D-3b, negata: due copie
+avrebbero detto che un fondo è inapplicabile mentre il giro lo applica. Estratta
+in `fn_check_fondo_fattura_capiente` (`-21`) e consumata da entrambi (`-22`).
+
+> ⚠️ **E lì si è visto un difetto che nessuno cercava**: il guard chiamava
+> `fn_saldo_sorgente_fondo` **due volte sulla stessa riga** — una per il segno e
+> una per il valore assoluto. È una funzione `VOLATILE` che interroga
+> `pagamenti`: non è solo il doppio del lavoro, sono **due valutazioni
+> indipendenti** che in teoria possono rispondere numeri diversi, accettando
+> metà condizione e rifiutando l'altra. Ora si legge una volta, in `LATERAL`.
+
+#### ⚠️ Quattro motivi, e nessuno dei due elenchi è quello del piano
+
+| Motivo | Da dove viene |
+| --- | --- |
+| `PROPOSTA_SENZA_ATTO` | dal piano |
+| `UTILITY_NON_ATTRIBUIBILE` | dal piano |
+| `NON_PIU_CAPIENTE` | dal piano |
+| **`IMPORTO_NON_CORRISPONDENTE`** | ⭐ **nuovo** |
+| ~~`CONFIGURAZIONE_INCOMPLETA`~~ | 🔴 **morto alla nascita** |
+
+🔴 **`CONFIGURAZIONE_INCOMPLETA` non c'è**, e il piano lo aveva previsto: *«ha una
+data di scadenza, dopo D-0 quella riga non può più esistere»*. D-0 è stato
+applicato **questo pomeriggio** (`20260815-03`): una configurazione a metà non è
+più salvabile, quindi il caso è irraggiungibile. *Una riga di elenco che non può
+accadere insegna una cosa falsa a chi la legge.*
+
+⭐ **`IMPORTO_NON_CORRISPONDENTE` invece non era previsto.** Quando il residuo
+non assomiglia al documento — segno diverso, o più grande in valore assoluto —
+la generazione **non fa niente**, ed è giusto: un lotto intero non si ferma per
+un caso ordinario. Ma «non fare niente **in silenzio**» è esattamente ciò che
+questa vista esiste per rendere visibile. È il caso già disegnato nel manuale
+del guard: sorgente da +8, riga contabile da +40, fondo che verrebbe −32 — non
+«negativo», **di un'altra fattura**.
+
+#### ⚠️ Tre trappole trovate scrivendo la vista
+
+**1. Il `CHECK` sul vocabolario dei motivi non esiste.** Il piano diceva «sta in
+un CHECK sulla colonna della vista»: PostgreSQL **non ha** vincoli `CHECK` sulle
+colonne di una vista (`WITH CHECK OPTION` governa le scritture, è un'altra cosa).
+Il vocabolario è chiuso **per costruzione** — quattro letterali nei rami della
+`UNION`, nessun dato li produce — e il presidio contro un quinto valore aggiunto
+di nascosto è **il pgTAP**, che asserisce l'**insieme** dei motivi e non la
+presenza dei quattro.
+
+**2. 🔴 Il ramo `NON_PIU_CAPIENTE` parte da una tabella senza RLS.**
+`fatture_fondi_fattura_source` non ha politiche: quel ramo è protetto dal **JOIN
+`INNER` con `vendite.fatture`**, non da un filtro proprio. `security_invoker=on`
+è necessario ma non sufficiente — chi un giorno trasformasse quel join in `LEFT`,
+o lo togliesse perché «i dati della fattura non servono», aprirebbe l'elenco a
+tutti gli emittenti senza accorgersene. Sta scritto nel `COMMENT` della vista.
+
+**3. ⚠️ L'ordine dei rami della `UNION` non è libero.** Per non scrivere i tipi a
+mano, i rami senza valore usano `NULL` nudo e prendono il tipo da chi il valore
+ce l'ha; ma PostgreSQL risolve a coppie, da sinistra, e il ramo che **non porta
+nessuna colonna propria** deve stare per ultimo. Messo per primo, la `CREATE
+VIEW` fallisce — rumorosamente, ed è la ragione per cui la scelta è accettabile.
+
+#### ✅ Chiusa la lacuna più vecchia del cantiere
+
+Il caso **«sorgente non più capiente»** era scritto e mai percorso da Fase A,
+perché serviva una **riga contabile postabile** in fixture. Adesso c'è: il pgTAP
+crea una testata con `fn_get_or_create_vendite_contabile` e due righe `ABBINATA`,
+e da lì escono **due** collaudi che prima non esistevano — il motivo
+`NON_PIU_CAPIENTE` dell'elenco **e** il guard D-3b che rifiuta l'applicazione
+(test 27).
+
+⚠️ Il test 27 ha un **controllo**: accanto al fondo non capiente ne gira uno
+capiente che deve essere applicato. Da solo, «il fondo resta `DISPONIBILE`»
+sarebbe passato anche se l'applicazione non avesse fatto **niente**.
+
+#### 🔵 Cosa resta scoperto dopo la Fase C
+
+* nessun **indice** su `vendite.fatture (minimo)`: il pre-filtro della vista è un
+  `seq scan` su una tabella che oggi ha 12 righe e domani no. ⚠️ Non è stato
+  aggiunto perché su dev **non è misurabile** (zero fatture di minimo), e un
+  indice scelto senza una misura è una scommessa;
+* la vista non è ancora letta da nessuno: **BE-3** in §8.3;
+* restano **Fase D** (l'atto manuale, e aspetta il processo rimborsi in
+  `pagamenti`) e **Fase F** (dichiarativa).
+
+#### 🔴 L'incidente: ho droppato oggetti che il migrate aveva appena creato
+
+Va scritto perché la forma dell'errore è generale, e il danno era **peggiore di
+quello che sembrava**.
+
+**Cosa è successo.** Le prove del lotto sono state fatte eseguendo il SQL in una
+transazione poi annullata. Al termine gli oggetti della Fase C risultavano
+**presenti** nel database. Ho concluso che una mia prova avesse lasciato
+residui — e li ho tolti, ripristinando anche i corpi pre-Fase C di
+`fn_genera_fondi_fattura_source` e `fn_applica_fondi_fattura`.
+
+**Cosa era in realtà.** Il `migrate` di Tid era già girato, **in parallelo al mio
+lavoro**:
+
+```text
+16:56  scrivo il primo file di prova
+16:57  ⭐ il migrate applica -19 … -23   ← non lo sapevo
+16:59  eseguo le prove
+17:01  🔴 "ripulisco" i residui che residui non erano
+```
+
+**Perché era peggio di un DROP.** Le righe di `databasechangelog` restavano —
+`EXECUTED`, con la loro data — e gli oggetti no. Un `migrate` successivo **non
+li avrebbe ricreati**, perché per Liquibase erano già fatti: il database sarebbe
+rimasto senza la Fase C, e il changelog avrebbe giurato il contrario. Il difetto
+si sarebbe visto solo al primo test rosso, o al primo consumo della vista.
+
+**Come è stato rimediato.** Ri-applicando **il SQL dei cinque changeSet**, senza
+toccare `databasechangelog`: è ciò che Liquibase aveva fatto, quindi lo stato
+torna esattamente quello atteso invece di riscrivere la storia. Verificato dopo:
+oggetti presenti, `29/29` + `20/20` + `14/14`, `fn_genera` e `fn_applica` di
+nuovo sui corpi di Fase C.
+
+> ⭐ **La lezione, e vale oltre questo cantiere.** «I miei oggetti di prova hanno
+> lasciato residui» era **un'ipotesi**, non una misura — e c'era un modo
+> immediato di verificarla che non ho usato: `databasechangelog.dateexecuted`.
+> Su un database condiviso **un DROP non è mai una pulizia**: è la rimozione di
+> qualcosa che qualcun altro può avere messo lì un minuto fa. La verifica costa
+> una query, il danno costa un disallineamento silenzioso fra codice e
+> changelog.
+
+---
+
 ### 8.3 La logica BE
 
 > **Regola che vale per tutti i passi**: nessun ricalcolo del fondo in Python,
@@ -993,9 +1397,20 @@ ciò che è solo stato spostato da una fattura a un'altra.
 | --- | --- | --- |
 | **BE-1** | **La firma cambia, e si accorcia**: le due task passano da 6-7 parametri sciolti a **`(lotto_id, tipo_fondo_id)`**. Conseguenza di D-4 | `apps/vendite/db/pipeline_repository.py` |
 | **BE-2** | **Atomicità del giro fondi** — difetto esistente, che BE-1 chiude di conseguenza | idem |
-| **BE-3** | **L'elenco «fondi da decidere»** — lettura sola su D-10 | repo + service + view |
+| **BE-3** | **L'elenco «fondi da decidere»** — lettura sola su `vendite.vw_fondi_fattura_da_decidere` (scritta, §8.2-quinquies). ⚠️ La vista è `security_invoker`: va letta con la connessione dell'utente, **non** con un ruolo di servizio, o il perimetro emittente salta. Le etichette dei quattro motivi con `labelOrCode` (fail-visible) | repo + service + view |
 | **BE-4** | **La porta dell'atto manuale** — D-11 e D-12, chiamate dal processo rimborsi | repo + service + view |
 | **BE-5** | **Rigenerare le policy errore** dopo il seed di D-14: `./manage-env.sh genera_error_policies` | comando |
+
+#### 📮 Le tre richieste al BE dalla Fase A *(scritte, non eseguite — perimetro DB)*
+
+| | Richiesta | Perché |
+| --- | --- | --- |
+| **R-1** | 🔴 **URGENTE — Rigenerare `error_policies_generated.py`** (`./manage-env.sh genera_error_policies`): i codici nuovi a catalogo dal 2026-08-15 sono **cinque**, non due — `E_FONDO_NON_CORRISPONDE_SORGENTE`, `E_FONDO_SOGLIE_INCOMPLETE` (Fase A), `E_FONDO_ATTO_IMMUTABILE`, `E_FONDO_STATO_NON_AMMESSO`, `E_FONDO_MOTIVO_OBBLIGATORIO` (Fase B). Tutti già presenti in `config.codici_errore` sul DB | Senza, il cancello `test_error_codes_db_policy_guardrail` diventa rosso: **ogni codice che il DB può nominare deve avere la sua classe** |
+| **R-2** | **Mappare il vincolo `chk_emittenti_fiscali_utilities_soglie_coppia`** su `E_FONDO_SOGLIE_INCOMPLETE` via `map_integrity_error`, con il **campo** dichiarato nella voce. 🔵 Con la Fase B se ne aggiungono due, **non urgenti** perché raggiungibili solo dalla strada manuale che il BE non ha ancora: `chk_fondi_source_motivo_obbligatorio` (`23514`) → `E_FONDO_MOTIVO_OBBLIGATORIO` e `uq_fondi_source_atto_vivo_automatico` (`23505`) | Altrimenti chi configura le soglie a metà legge un messaggio di database invece di *quale* soglia manca. Il canale `error.fields` esiste già |
+| **R-3** | **Madre DB per lotto** — `fn_genera_fondi_fattura_lotto(p_lotto_id, p_tipo_fondo_id)` e `fn_applica_fondi_lotto(...)`, con il repository che torna a **una `SELECT` per task** | Oggi `run_genera_fondi_source_lotto_task` / `run_applica_fondi_lotto_task` fanno **N `cursor.execute` in autocommit**: se il quinto fallisce, i primi quattro restano committati. Il DB non può chiuderla da solo — la firma la decide il chiamante |
+
+⚠️ **R-1 e R-2 vanno nello stesso giro del migrate**, R-3 no: è un miglioramento
+strutturale che non blocca la Fase A (le firme attuali restano valide).
 
 #### BE-1 + BE-2 — 🔴 Il giro fondi non è una unità atomica, e la chiave lo risolve
 
@@ -1180,6 +1595,12 @@ l'adeguamento dei due esistenti.
 
 | Data | Cosa |
 | --- | --- |
+| 2026-08-15 (notte, 8) | ✅ **Fase C APPLICATA e verde.** Migrate dei 5 changeSet `20260815-19`…`-23`, `test-fondi-fattura-governo` **29/29**, `test-fondi-fattura` **20/20**, `test-fattura-utils-critical-termini` **14/14**, baseline `vendite` senza regressioni. Doc `dbzero` rigenerata e scritti i tre `manual/` nuovi (`fn_fondo_fattura_proponibile`, `fn_check_fondo_fattura_capiente`, `vw_fondi_fattura_da_decidere`), più la riscrittura al presente di `fn_genera_fondi_fattura_source` e `fn_applica_fondi_fattura` — la prima dichiarava ancora il difetto della utility come «di oggi», la seconda i due presidi come «previsti». 🔴 **Un incidente, mio**: il migrate di Tid è girato **in parallelo** al mio lavoro (16:57) e io alle 17:01 ho droppato gli oggetti credendoli residui di una mia prova, ripristinando anche i corpi pre-Fase C di `fn_genera` e `fn_applica`. ⚠️ **Il danno era peggiore di un DROP**: le righe di `databasechangelog` restavano `EXECUTED`, quindi un migrate successivo **non li avrebbe ricreati** — database senza Fase C e changelog che giura il contrario. Rimediato ri-applicando il SQL dei cinque changeSet senza toccare `databasechangelog`, e verificato. ⭐ La lezione in §8.2-quinquies: *«la mia prova ha lasciato residui» è un'ipotesi, non una misura — e `dateexecuted` costa una query. Su un DB condiviso un DROP non è mai una pulizia* |
+| 2026-08-15 (notte, 7) | ⭐ **Scritta la Fase C (D-9, D-10)** — cinque changeSet `20260815-19`…`-23`, pgTAP del governo da 18 a **29** asserzioni. ⚠️ **Da applicare**, ma **provata**: eseguita in transazione annullata dà 29/29, e `test-fondi-fattura` resta 20/20 col refactor. ⭐ **La scoperta della fase**: «costruita su `fn_saldo_sorgente_fondo`» non bastava — l'**inviluppo** (definitiva, banda, utility, atto unico, corrispondenza) viveva nel `WHERE` della generazione, e D-9 da sola ne avrebbe creato la seconda copia: un elenco che propone ciò che il giro non crea, senza nessun errore. Da qui il `-20`. **La stessa cosa una seconda volta per la capienza** (`-21` + `-22`), e lì è saltato fuori che il guard chiamava `fn_saldo_sorgente_fondo` **due volte per riga** — una funzione VOLATILE valutata due volte può accettare metà condizione e rifiutare l'altra. 🔴 **`CONFIGURAZIONE_INCOMPLETA` è morto alla nascita**: D-0, applicato oggi pomeriggio, rende quel caso irraggiungibile — e il piano lo aveva previsto. ⭐ **Motivo nuovo `IMPORTO_NON_CORRISPONDENTE`**: dove l'automatismo tace in silenzio, l'elenco parla. ⚠️ Tre trappole: il `CHECK` sul vocabolario di una vista **non esiste in PostgreSQL** (il presidio è il pgTAP che asserisce l'insieme dei motivi); il ramo `NON_PIU_CAPIENTE` parte da una tabella **senza RLS** ed è protetto dal JOIN, non dalla vista; l'**ordine dei rami** della UNION non è libero. ✅ **Chiusa la lacuna più vecchia**: la fixture con riga contabile esiste, e il guard di capienza D-3b ha finalmente un test runtime — con un controllo accanto, perché da solo sarebbe stato verde anche se l'applicazione non avesse fatto niente. ⚠️ Correzione di Tid in corso d'opera: le firme erano tornate ai tipi espliciti, `%TYPE` ripristinato su parametri e `DECLARE` |
+| 2026-08-15 (notte, 6) | ✅ **Coda della Fase E e Fase B APPLICATE e verdi.** Migrate dei 9 changeSet `20260815-10`…`-18`, `test-fondi-fattura-governo` **18/18**, `test-fondi-fattura` **20/20**, `test-fattura-utils-critical-termini` **14/14**, `pgtap-baseline.sh vendite` **senza regressioni**, guardrail statici verdi, doc `dbzero` rigenerata. Verificati sul catalogo gli **otto presidi vivi** sulla tabella e i **cinque codici** in `config.codici_errore`. ⚠️ **Il migrate verde non è una prova, e qui si vede**: `fatture_fondi_fattura_source` ha **zero righe**, quindi i cinque presidi nuovi sono passati senza incontrare un dato — su una tabella popolata il `-14` sarebbe fallito. L'unica prova sono i pgTAP. ⭐ **E la prova che l'ordine `-12` → `-13` → `-14` era necessario esisteva già, senza che nessuno l'avesse chiesta**: `test-fondi-fattura.sql` esercita da mesi il ramo «reset bloccato da contabile CHIUSA», cioè l'annullamento automatico — senza il `-13`, il `-14` avrebbe reso rossa quella sezione. Era verde **per merito** ma non lo diceva, e da qui l'unica aggiunta di oggi: **ventesima asserzione**, la ragione dell'annullamento verificata **sul dato** (`motivo`) e non solo in `fatture_log`. ℹ️ Verificato di conseguenza che il **lock di colonna non rompe i percorsi vivi** — applicazione, reset, sync e annullamento non toccano mai le quattro colonne bloccate, e non è un ragionamento: sono le funzioni che i pgTAP chiamano davvero. 📮 **R-1 al BE ora vale cinque codici** e non due |
+| 2026-08-15 (notte, 5) | ⭐ **Scritte la coda della Fase E (D-15, D-16) e la Fase B (D-5…D-8)** — 9 changeSet `20260815-10`…`-18`, tre codici errore, pgTAP da 12 a **18** asserzioni. ⚠️ **Da applicare**: nessun migrate, nessun test su questo lotto. Tre cose scoperte scrivendo: **(1)** `motivo` obbligatorio impone di toccare **due funzioni che il piano non nominava** — un fondo passa ad `ANNULLATO` in due punti automatici e la ragione, dove esisteva, viveva in un **messaggio di `fatture_log`** invece che sul dato; da qui l'ordine obbligato `-12` → `-13` → `-14`, perché il vincolo prima degli scrittori passerebbe sulla tabella vuota di oggi e fallirebbe al primo reset vero. **(2)** 🔴 **`origine` senza il changeSet `-18` non governa niente**: il piano diceva che il guard di corrispondenza «si restringerà ad AUTOMATICA» ma non lo elencava fra i passi, e senza quel passo la colonna esisterebbe mentre il guard continua a rifiutare **proprio** l'atto per cui la strada manuale esiste. **(3)** `atto_precedente_id` è stato tolto per davvero: la catena dei riporti si legge già da `riferimento_fattura_id` |
+| 2026-08-15 (notte, 4) | ✅ **Fase A APPLICATA e verde.** Migrate dei 7 changeSet, `test-fondi-fattura-governo` **12/12**, `test-fondi-fattura` **19/19**, `pgtap-baseline.sh vendite` **senza regressioni** (24 rossi, tutti noti), guardrail statici verdi, doc `dbzero` rigenerata. Scritti i due `manual/` delle funzioni nuove (`fn_saldo_sorgente_fondo`, `trgfn_fondi_source_guard_importo`) e agganciati alle pagine auto-gen. 🔴 **La prima corsa era rossa, e il difetto era del test**: chiedevo `23514` sul CHECK `importo <> 0` e ottenevo `P0001` — perché i trigger BEFORE ROW girano **prima** dei CHECK, quindi su una sorgente da 100 lo zero lo intercetta il guard di corrispondenza (`sign(0)` non è il segno di nessun totale non nullo) e il vincolo non entra mai in gioco. È **la trappola che avevo appena scritto in §8.5**. Corretto con una quinta fixture a **totale zero**, l'unico terreno da cui il CHECK è raggiungibile — e la lezione, in §8.2-ter, non è «leggere meglio»: *un test che nomina il MECCANISMO invece del COMPORTAMENTO verifica la propria ipotesi, non il sistema*. 🔵 Resta scoperto il caso «sorgente non più capiente» (serve una riga contabile in fixture) e restano da fare le tre richieste al BE — **R-1 è urgente**: senza rigenerare `error_policies_generated.py` i due codici nuovi non hanno classe lato backend |
+| 2026-08-15 (notte, 3) | ⭐ **Fase A scritta** (*«puoi procedere con lo sviluppo»*, con la conferma che le due righe di `emittenti_fiscali_utilities` hanno entrambe le soglie vuote e quindi il CHECK non fallisce all'apply). Sette changeSet `20260815-03`…`-09`, due codici errore in append ai CSV, un pgTAP nuovo da 12 asserzioni, e la **fixture del pgTAP esistente adeguata** — la sua fattura sorgente nasceva senza stato e senza utility, e con i nuovi filtri non avrebbe più generato niente. Dettaglio in **§8.2-bis**. ⚠️ **Nulla è stato applicato né eseguito**: né migrate né test né commit. Tre scelte da conoscere: le **firme non cambiano** (la chiave a nove elementi si chiude dentro `fn_applica_fondi_fattura`, che ha già entrambe le fatture — così il perimetro DB regge senza toccare `backend/`); i cinque parametri di scope passano da filtro sulla *source* a verifica sulla *figlia* (sulla source potevano far saltare un fondo **in silenzio**); e la preCondition sul codice errore è stata tolta dal changeSet -06 perché `20_code` gira **prima** di `80_data`. 🔵 Due assenze dichiarate: manca il test runtime del caso «sorgente non più capiente» (serve una riga contabile in fixture), e l'`ANNULLATO` automatico dentro `fn_sync_contabili_fondo_fattura` resta — è su fondi **già assegnati**, e toglierlo senza il processo rimborsi scoprirebbe il doppio conteggio |
 | 2026-08-15 (notte, 2) | ✅ **Bonifica documentale eseguita** (*«procedi alla correzione di tutti»*). **11 documenti** toccati: i tre sbagliati oggi riscritti (il manuale della generazione ha ora la **banda** e la dichiarazione del perimetro corretta; la sezione «Analisi fondi fattura (WIP)» di `fatturazione-attivita-progetto` è **marcata superata** con la tabella di ciò che è stato deciso diversamente; la guida dei pagamenti ha una sezione nuova sulle **due soglie** in linguaggio non tecnico, con lo schema della fascia e l'avvertenza sulla configurazione a metà). I quattro 🟠 **annotati, non riscritti**: la descrizione di oggi resta, accanto c'è «oggi → diventerà, con quale passo». Aggiunte la nota **non-cassa** su `centri_riscossione` (manual + guida) e l'avvertenza sul **fail-open** delle soglie su `fn_ricalcola_totali_fattura`, che è la pagina dove la banda era già detta bene. Corretta la motivazione «è config» su `fatture_fondi_fattura_source` in `analisi-attivazione-rls-operatori` (la conclusione regge, la ragione no) e la riga «non urgente» della mappa concentrica. ⚠️ **Difetto collaterale trovato e sanato**: in due manual la convenzione ASCII degli accenti (`e\``) produceva **code span accidentali** — due «e\`» sulla stessa riga si accoppiano e il testo in mezzo viene renderizzato come codice. Allineati agli accenti veri, come i manual recenti |
 | 2026-08-15 (notte) | 🔍 **Ricognizione documentale su richiesta di Tid** (tutta `docs/` + il codice): inventario in **D-17**. **Tre documenti sono sbagliati OGGI**, non domani — il manuale di `fn_genera_fondi_fattura_source` **dichiara un filtro su `utility` che il codice non applica**; `fatturazione-attivita-progetto.md` parcheggia in `work-done/` un design mai eseguito con una policy `riapribile` che è **un automatismo che scrive in reazione a un pagamento**; la guida dei pagamenti racconta **solo il capo superiore** della banda. Altri quattro lo diventeranno con l'implementazione, ognuno legato al suo passo. ⭐ E due avevano ragione: `fn_ricalcola_totali_fattura` è **l'unico posto dove la banda è detta bene**, e `tipi_fondi_fattura` dice «addebiti/**accrediti**» dall'origine — il tampone `> 0` contraddiceva il **catalogo**, non solo il dominio. Lezione: *chi documenta un consumatore non documenta la regola che lo governa* — la banda stava nella funzione che **scrive** `minimo`, non in quelle che leggono il flag. Nel codice BE/FE non c'è **nessuna** descrizione della logica: due sole occorrenze, entrambe etichette |
 | 2026-08-15 (sera) | 🔴 **Piano riscritto dopo le decisioni di Tid, e due parti erano sbagliate.** **(1)** Il limite `> 0` sulla generazione — scritto sia qui sia nel cantiere incassi — **spegneva metà del meccanismo**: le due soglie di `emittenti_fiscali_utilities` sono i **due capi di una banda che contiene lo zero** (esempio: `−500 / +10`), e il capo inferiore esiste **apposta** per riportare avanti i *crediti*. Il controllo giusto non è sul segno ma sulla **corrispondenza col documento** (stesso segno del totale della sorgente, non superiore in valore assoluto), e sta in un **guard trigger** perché un CHECK non può leggere `vendite.fatture`. Cadono con esso il CHECK «automatico ⇒ positivo», la revoca+riemissione (D-8 vecchio) e `atto_precedente_id`. **(2)** 🔴 «Soglia non impostata = meccanismo spento» **vale solo a metà**: manca il massimo e la condizione diventa vera per tutti — una configurazione incompleta **spalanca** invece di chiudere. Nuovo passo **D-0** (CHECK «entrambe o nessuna»), su decisione di Tid. ⭐ **Trovata la chiave che mancava**: `fn_build_fattura_key` ha **nove** elementi, il fondo ne usa 4-5 — mancano reseller, registro, termine e modalità di pagamento — e il progetto **ha già corretto lo stesso difetto un anello prima** (*«utility_id, che mancava da sempre… chiave e lookup disallineati si annullano a vicenda»*). Il confronto passa a **riga contro riga**, e con esso spariscono il ribaltamento dell'utility e le N chiamate in autocommit. ⭐ Chiarito che **BASE è una utility** (id 5) e `billing_account.utility_id` è NOT NULL: non esiste il caso «fattura senza utility». ⭐ Verificato che **da DEFINITIVA non si torna indietro** (unica transizione: → INVIATA), quindi è la soglia di congelamento giusta — e che il fondo è **l'unico satellite della fattura non congelato**: `trgfn_fattura_satellite_guard_congelamento` è montato su scadenze e indirizzi, non sui fondi. ✅ Confermato il perimetro del **processo rimborsi** (in `pagamenti`, tre uscite, passaggio **passivo**): l'elenco delle eccedenze esce da `vendite`, che espone **una porta** (Fase D) e non un secondo cruscotto |
