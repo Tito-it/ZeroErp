@@ -2,6 +2,7 @@
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
 import {
   listPratiche, getPratica, createPratica, updatePratica,
   cambiaStatoPratica, assegnaPratica,
@@ -16,10 +17,6 @@ import { useAuthStore } from '../../stores/auth'
 export const usePraticheStore = defineStore('pratiche', () => {
   const { emitDataChanged } = useTabEvents()
   const auth = useAuthStore()
-  const items = ref([])
-  const totalRecords = ref(0)
-  const loading = ref(false)
-  const hasSearched = ref(false)
 
   // Default data_da: primo giorno del mese precedente. Le pratiche sono una
   // coda di lavoro: l'orizzonte operativo e' recente, il pregresso si
@@ -56,27 +53,25 @@ export const usePraticheStore = defineStore('pratiche', () => {
   // precedente): carica sempre, senza richiedere una ricerca. La search
   // testuale si applica solo da 3 caratteri; con 1-2 caratteri non rifetcha
   // (i risultati correnti restano, niente flicker durante la digitazione).
-  async function fetchList() {
-    const f = filters.value
-    const searchTerm = (f.search || '').trim()
-    if (searchTerm.length > 0 && searchTerm.length < 3) {
-      return
-    }
-
-    loading.value = true
-    try {
+  // Lista via BB condiviso (migrazione 2026-08-10): guardia di versione anti-race
+  // + guardia della ricerca corta, che qui era scritta a mano.
+  // `alwaysFetch`: la lista si e' sempre caricata (con l'emittente corrente).
+  // `ricercaCorta: 'ignora'`: qui la ricerca corta e' sempre stata un no-op
+  // (la lista resta com'e', vedi sopra). Svuotare avrebbe anche effetti a
+  // cascata sulla dashboard: `selectedItem` si risolve da `items`, e una lista
+  // svuotata mentre si digita annulla il guard readonly della pratica
+  // terminale selezionata e il contesto cliente del percorso.
+  const { items, totalRecords, loading, hasSearched, fetchList: fetchListBase, svuota } = useListaEmptyStateFetch({
+    filters,
+    alwaysFetch: true,
+    ricercaCorta: 'ignora',
+    buildParams: (f, searchTerm) => {
       const params = {}
       // Refactor operatore-emittenti: usa emittenteCorrente (1-a-1
       // dell'operatore), NON `auth.user.emittente.emittente_fiscale_id`
       // che per admin globale ritornerebbe il "gestore globale" via
       // cascata 4b di fn_get_user_profile — semantica diversa.
-      const emittenteId = auth.emittenteCorrente?.id
-      if (!emittenteId) {
-        items.value = []
-        totalRecords.value = 0
-        return
-      }
-      params.emittente_fiscale_id = emittenteId
+      params.emittente_fiscale_id = auth.emittenteCorrente?.id
       if (searchTerm.length >= 3) params.search = searchTerm
       if (f.stato) params.stato = f.stato
       if (f.priorita_id != null) params.priorita_id = f.priorita_id
@@ -91,13 +86,22 @@ export const usePraticheStore = defineStore('pratiche', () => {
         params.order_by = f.order_by
         params.order_dir = f.order_dir || 'desc'
       }
-      const res = await listPratiche(params)
-      items.value = res.data.data.results
-      totalRecords.value = res.data.data.count
-      hasSearched.value = true
-    } finally {
-      loading.value = false
+      return params
+    },
+    fetchPage: listPratiche,
+  })
+
+  // Senza emittente corrente non c'e' perimetro: lista vuota, nessuna chiamata.
+  // E' stato del chiamante, non un filtro — resta fuori dal BB.
+  async function fetchList() {
+    if (!auth.emittenteCorrente?.id) {
+      // `svuota` del BB, non un clear a mano: invalida anche le fetch in volo
+      // (una risposta partita con l'emittente ancora impostato non deve
+      // ripopolare la lista appena azzerata).
+      svuota()
+      return
     }
+    await fetchListBase()
   }
 
   // Scopo: Dettaglio completo pratica.

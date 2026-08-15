@@ -24,6 +24,32 @@
 
 | Cosa | Stato |
 | --- | --- |
+| `20260810-01` (capability preventivo: reason `stato_chiuso`) | **applicato** al DB (`EXECUTED`), file **non committato** |
+| `20260810-02` (capability ordine: reason `annullato`) | **applicato** al DB (`EXECUTED`), file **non committato** |
+| 7 celle `meta` nei tre CSV `stati_doc_*` | **applicate** (i loader hanno fatto `RERAN`), file **non committati** |
+| `test-capability-motivi-e-nessuna-azione-v1.sql` (9 → **12 test**) | riscritto, **12/12 verde** come applicazione, non committato |
+| `test-transizioni-uscita-manuale-v1.sql` | solo commenti (punto cieco dichiarato), non committato |
+| `20260810-03` (fix del §1) | **applicato** e registrato; baseline `vendite` rigirata dopo, verde |
+| `20260810-04` / `-05` / `-06` (§2: nota sempre esposta + `stato_info_key`) | ✅ **applicati** — migrate eseguito il 2026-08-10 alle 11:07 (`EXECUTED` in `databasechangelog`) |
+
+**Aggiornamento 2026-08-10 (BE/FE) — restava una cosa sola, ed è fatta:**
+
+1. ~~il **migrate** dei tre changeSet del §2~~ → ✅ eseguito alle 11:07.
+2. ✅ **La metà a video è allineata**: rinomina `nessuna_azione_key` →
+   `stato_info_key` su 8 drawer + `DrawerActionsBar`, **10 chiavi i18n** it/en
+   (le 3 dei motivi + le 7 delle note di stato), `frontend-standards.md` e
+   `catalogo-building-block-frontend.md` aggiornati. Build FE verde,
+   `check_i18n_keys.py` verde, suite backend 3644 verdi.
+3. ✅ **Verificato in app da Tid** su `PRV0000192` (EVASO): i due motivi non
+   mentono più, **e** compare la nota di stato accanto ai pulsanti — cioè la
+   decisione §5 provata nella direzione nuova. Entrambe le anomalie sono chiuse
+   nel [documento di test](../work-done/test-be-vie-uscita-operatore.md).
+4. 🔴 Resta il **commit**: né le righe DB qui sopra né il lavoro FE sono in git.
+
+⚠️ Dopo il migrate del §2 va **rigirata la baseline** dei tre schemi: il campo del
+blob cambia nome, quindi ogni pgTAP che lo legge parla con la funzione nuova. Il
+solo file che lo legge è `test-capability-motivi-e-nessuna-azione-v1.sql`, ed è già
+aggiornato — ma la verifica va fatta, non dedotta.
 | `20260810-01` / `-02` (§1 del rilievo: reason `stato_chiuso` e `annullato`) | ✅ `EXECUTED` |
 | 7 celle `meta` nei tre CSV `stati_doc_*` (§2 del rilievo) | ✅ applicate (loader `RERAN`) |
 | `20260810-03` (§1 di questo documento: MOTIVO 1 mai scattato) | ✅ `EXECUTED` |
@@ -320,14 +346,16 @@ la frequenza con cui l'API lo riceve, da mai a qualche volta.
 > ⚠️ **Il test 3 passa da 12 a 25 bloccati**, e non è un effetto di questo lavoro: è
 > il §1 di stamattina, che ha fatto scattare il MOTIVO 1 su 13 preventivi in più.
 >
-> 🔴 **Cosa manca, e non è lavoro DB:**
+> ✅ **Cosa mancava, e non era lavoro DB — tutto fatto il 2026-08-10:**
 >
-> 1. il **migrate** dei tre changeSet;
-> 2. il **FE nello stesso rilascio** — 8 drawer + `DrawerActionsBar` passano da
+> 1. ✅ **fatto** — il migrate dei tre changeSet (11:07).
+> 2. ✅ **fatto** — il **FE nello stesso rilascio**: 8 drawer + `DrawerActionsBar` passano da
 >    `nessuna_azione_key` a `stato_info_key`. Fra i due deploy la nota non compare
->    (nessun errore: un campo che non arriva). Da aggiornare anche due documenti
->    frontend che citano il nome vecchio, `frontend-standards.md` e
->    `catalogo-building-block-frontend.md`;
+>    (nessun errore: un campo che non arriva) — ed è **successo davvero**: fra le
+>    11:07 e il rilascio FE la nota era invisibile in app. Aggiornati anche i due
+>    documenti che citavano il nome vecchio, `frontend-standards.md` e
+>    `catalogo-building-block-frontend.md`, con la **semantica** nuova e non solo
+>    col nome;
 > 3. ⚠️ **la trappola sopravvive al rinome**: il campo è **sempre presente** nel blob,
 >    col valore a `null` quando non si applica. Filtrare con l'operatore di presenza
 >    risponde vero per **tutti** i documenti. Va guardato il valore — vale ora per

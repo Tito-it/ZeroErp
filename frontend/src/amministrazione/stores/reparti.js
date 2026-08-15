@@ -2,6 +2,7 @@
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import {
   listReparti,
   getProfiloReparto,
@@ -13,18 +14,25 @@ import { TAB_ENTITIES } from '../../core/constants'
 const { emitDataChanged } = useTabEvents()
 
 export const useRepartiStore = defineStore('amm-reparti', () => {
+  const fv = useFetchVersion()
   const items = ref([])
   const loading = ref(false)
   const currentProfilo = ref(null)
   const loadingProfilo = ref(false)
 
+  // ⚠️ Guardia anti-race (2026-08-10). Non passa dal BB `useListaEmptyStateFetch`:
+  // non e' una lista filtrata/paginata ma un elenco di lookup, senza `count` da
+  // leggere nell'envelope. La guardia serve lo stesso, perche' due chiamanti
+  // possono ricaricare a distanza ravvicinata.
   async function fetchList() {
+    const tag = fv.tag()
     loading.value = true
     try {
       const res = await listReparti()
+      if (!fv.isCurrent(tag)) return
       items.value = res.data.data.results
     } finally {
-      loading.value = false
+      if (fv.isCurrent(tag)) loading.value = false
     }
   }
 

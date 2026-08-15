@@ -2,12 +2,10 @@
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
 import { listEmailLogs, getEmailLog } from '../api/amministrazione'
 
 export const useEmailLogsStore = defineStore('amm-email-logs', () => {
-  const items = ref([])
-  const totalRecords = ref(0)
-  const loading = ref(false)
   const currentLog = ref(null)
   const loadingDetail = ref(false)
 
@@ -27,11 +25,14 @@ export const useEmailLogsStore = defineStore('amm-email-logs', () => {
     order_dir: 'desc'
   })
 
-  async function fetchList() {
-    loading.value = true
-    try {
+  // Lista via BB condiviso (migrazione 2026-08-10): la guardia di versione
+  // anti-race che qui mancava. `alwaysFetch` conserva il comportamento: questa
+  // lista si e' sempre caricata anche senza filtri.
+  const { items, totalRecords, loading, fetchList } = useListaEmptyStateFetch({
+    filters,
+    alwaysFetch: true,
+    buildParams: (f, searchTerm) => {
       const params = {}
-      const f = filters.value
       if (f.search) params.search = f.search
       if (f.stato) params.stato = f.stato
       if (f.data_da) params.data_da = f.data_da
@@ -42,13 +43,10 @@ export const useEmailLogsStore = defineStore('amm-email-logs', () => {
         params.order_by = f.order_by
         params.order_dir = f.order_dir || 'desc'
       }
-      const res = await listEmailLogs(params)
-      items.value = res.data.data.results
-      totalRecords.value = res.data.data.count
-    } finally {
-      loading.value = false
-    }
-  }
+      return params
+    },
+    fetchPage: listEmailLogs,
+  })
 
   async function fetchDetail(id) {
     loadingDetail.value = true

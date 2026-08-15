@@ -584,12 +584,12 @@ const drawerActions = computed(() => [
         </DrawerEntityHeader>
 
         <!-- Porta oneri + azioni di stato utente (capabilities data-driven).
-             Il `v-if` include `nessuna_azione_key`: senza azioni ma con la
+             Il `v-if` include `stato_info_key`: senza azioni ma con la
              spiegazione, la barra deve comparire proprio per dirla (R3). -->
         <DrawerActionsBar
-          v-if="drawerActions.length || capabilities.nessuna_azione_key"
+          v-if="drawerActions.length || capabilities.stato_info_key"
           :actions="drawerActions"
-          :info-key="capabilities.nessuna_azione_key || ''"
+          :info-key="capabilities.stato_info_key || ''"
           :disabled="loading"
         />
 

@@ -9,9 +9,22 @@
 # testo mancante. E' cosi' che le reason del push ordini sono rimaste
 # invisibili per un mese e mezzo (brief-db-i18n-namespace-reason-ordini).
 #
-# Controlla quattro cose:
+# Controlla cinque cose:
+#   0) VUOTE       - chiavi PRESENTI ma senza testo. Erano il buco: il guard
+#                    registrava per presenza, quindi una stringa vuota passava
+#                    ogni controllo mentre a video il testo spariva lo stesso.
+#                    E' errore per le chiavi emesse dal DB (li' il database
+#                    promette un messaggio), avviso altrove: una cella vuota
+#                    puo' essere voluta, es. l'intestazione di una colonna
+#                    azioni. Trovato dal team DB il 2026-08-10 misurando un
+#                    rilievo BE (brief vie d'uscita §12.5-bis).
 #   1) ROTTE       - chiavi citate nel codice ma assenti dai locales
-#   2) PARITA'     - chiavi in it.json ma non in en.json (o viceversa)
+#   2) PARITA'     - chiavi in it.json ma non in en.json (o viceversa).
+#                    ⚠️ Le due direzioni NON sono simmetriche: il fallback e'
+#                    l'italiano, quindi manca-in-en degrada a testo italiano
+#                    leggibile, manca-in-it mostra la CHIAVE GREZZA. Il
+#                    messaggio lo dice, perche' «parita' violata» suonava come
+#                    una simmetria da sistemare con calma.
 #   3) RADICI      - radici di dominio in cima, che violano la convenzione
 #                    di docs/it/dev/frontend/frontend-standards.md (Multilingua)
 #   4) EMISSIONI DB - chiavi emesse dalle funzioni (label_key/reason_key)
@@ -98,16 +111,27 @@ RE_DB_ASSIGN = re.compile(
 RE_SEED_KEY = re.compile(rf'""(?:{_PROP_KEY})""\s*:\s*""(\w+(?:\.\w+)+)""')
 
 
-def flatten(obj, prefisso="", out=None):
-    """Appiattisce l'albero delle traduzioni in chiavi puntate."""
+def flatten_valori(obj, prefisso="", out=None):
+    """Appiattisce l'albero delle traduzioni in {chiave puntata: valore}.
+
+    Tenere il VALORE, non la sola presenza, e' il punto: distingue «tradotta»
+    da «presente e vuota». La versione storica (`flatten`) registrava per
+    presenza in un set: una chiave con stringa vuota era indistinguibile da
+    una tradotta, e passava ogni controllo — la parita' it/en la vedeva
+    integra, le rotte non la vedevano affatto. E' la stessa classe di difetto
+    che questo guard esiste per rendere rumorosa — testo che sparisce senza
+    errore — su una strada che i controlli non attraversavano. Misurato dal
+    team DB il 2026-08-10 (brief vie d'uscita §12.5-bis). I set di chiavi si
+    derivano da qui (`set(flatten_valori(...))`), una sola discesa.
+    """
     if out is None:
-        out = set()
+        out = {}
     for k, v in obj.items():
         key = f"{prefisso}.{k}" if prefisso else k
         if isinstance(v, dict):
-            flatten(v, key, out)
+            flatten_valori(v, key, out)
         else:
-            out.add(key)
+            out[key] = v
     return out
 
 
@@ -147,7 +171,8 @@ def main():
         it = json.load(fh)
     with open(os.path.join(LOCALES, "en.json"), encoding="utf-8") as fh:
         en = json.load(fh)
-    chiavi_it, chiavi_en = flatten(it), flatten(en)
+    valori_it, valori_en = flatten_valori(it), flatten_valori(en)
+    chiavi_it, chiavi_en = set(valori_it), set(valori_en)
     presenti = chiavi_it | chiavi_en
 
     citate, dinamiche = {}, []
@@ -244,12 +269,63 @@ def main():
         problemi += len(solo_it) + len(solo_en)
         print(f"\n[X] PARITA' it/en violata: {len(solo_it)} solo in it, "
               f"{len(solo_en)} solo in en")
-        for k in solo_it[:15]:
-            print(f"    solo it: {k}")
-        for k in solo_en[:15]:
-            print(f"    solo en: {k}")
+        # ⚠️ Le due colonne sono simmetriche, le CONSEGUENZE no: il
+        # `fallbackLocale` e' l'italiano (DEFAULT_LOCALE = 'it'), quindi una
+        # chiave che manca dall'inglese degrada a testo italiano — leggibile —
+        # mentre una che manca dall'italiano non ha rete e mostra la CHIAVE
+        # GREZZA all'operatore. Scriverlo qui perche' «parita' violata» si legge
+        # come una simmetria da sistemare con calma, e per meta' dei casi non lo
+        # e' (rilievo BE + misura team DB, 2026-08-10).
+        if solo_en:
+            print(f"\n    → {len(solo_en)} MANCANO DALL'ITALIANO ({len(solo_en)} "
+                  "solo in en): l'operatore vede la CHIAVE GREZZA.")
+            print("      Il fallback e' l'italiano stesso: qui non c'e' rete.")
+            for k in solo_en[:15]:
+                print(f"      {k}")
+        if solo_it:
+            print(f"\n    → {len(solo_it)} mancano dall'inglese ({len(solo_it)} "
+                  "solo in it): degradano al testo italiano, leggibile.")
+            for k in solo_it[:15]:
+                print(f"      {k}")
     else:
         print("[ok] parita' it/en integra")
+
+    # VUOTE - una chiave c'e' ma non dice niente. Vedi `flatten_valori`.
+    # Il criterio NON e' «vuoto = errore» ovunque: `anagrafiche.soggetti.col_azioni`
+    # e' vuota in entrambi i locales e con ogni probabilita' di proposito
+    # (intestazione di una colonna di azioni). E' errore dove il DATABASE
+    # promette un messaggio — le chiavi emesse dalle funzioni e dai seed: li'
+    # una stringa vuota e' una promessa non mantenuta, e l'operatore resta
+    # davanti al nulla esattamente come con la chiave mancante. Altrove e' un
+    # avviso, perche' il vuoto puo' essere una scelta.
+    def _vuota(valori, k):
+        return k in valori and isinstance(valori[k], str) and not valori[k].strip()
+
+    db_vuote = sorted(
+        k for k in db_keys
+        if _vuota(valori_it, k) or _vuota(valori_en, k)
+    )
+    altre_vuote = sorted(
+        k for k in presenti
+        if k not in db_keys and (_vuota(valori_it, k) and _vuota(valori_en, k))
+    )
+    if db_vuote:
+        problemi += len(db_vuote)
+        print(f"\n[X] {len(db_vuote)} CHIAVI EMESSE DAL DB con testo VUOTO")
+        print("    La chiave c'e', quindi nessun altro controllo la vede: ma il")
+        print("    database promette un messaggio e l'operatore non legge nulla.")
+        for k in db_vuote[:15]:
+            locali = [n for n, v in (("it", valori_it), ("en", valori_en)) if _vuota(v, k)]
+            print(f"    {k}  (vuota in: {'+'.join(locali)})")
+    else:
+        print("[ok] nessuna chiave emessa dal DB e' vuota")
+
+    if altre_vuote:
+        print(f"\n[!] {len(altre_vuote)} chiavi vuote in ENTRAMBI i locales "
+              "(non emesse dal DB): non bloccano.")
+        print("    Possono essere volute (es. intestazione di una colonna azioni).")
+        for k in altre_vuote[:10]:
+            print(f"    {k}")
 
     if radici_sospette:
         marc = "[X]" if STRICT_ROOTS else "[!]"

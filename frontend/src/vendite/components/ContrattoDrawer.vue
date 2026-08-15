@@ -730,7 +730,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
           </template>
         </DrawerEntityHeader>
 
-        <DrawerActionsBar :actions="drawerActions" :info-key="detail?.nessuna_azione_key || ''">
+        <DrawerActionsBar :actions="drawerActions" :info-key="detail?.stato_info_key || ''">
           <template #suffix>
             <EntityPdfButton
               :sorgente-code="SORGENTE_CODES.CONTRATTO"

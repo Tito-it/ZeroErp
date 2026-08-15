@@ -8,9 +8,11 @@
 > consuntivo lasciava aperto, è stato **chiuso in giornata** su richiesta di Tid — **§12**.
 >
 > 🟡 **Questo doc resta APERTO come raccoglitore dell'intera linea**: gli altri tre
-> documenti del cantiere sono chiusi e archiviati, e **le uniche cose che mancano — due
-> validazioni in-app, il commit e il build docs — vivono in §13**. Nessun altro documento
-> aperto: se cerchi «cosa resta», è lì.
+> documenti del cantiere sono chiusi e archiviati, e **cio' che manca vive in §13**.
+> Nessun altro documento aperto: se cerchi «cosa resta», è lì.
+>
+> **Stato al 2026-08-10**: ✅ commit fatto e pushato · 🔴 restano le **due validazioni
+> in-app** (V1 esito parziale del pull, V2 slice 3-ter) e il **build docs**.
 >
 > **Origine**: [piano-residui-orchestrazione-e-cruscotti-vendite.md](../work-done/piano-residui-orchestrazione-e-cruscotti-vendite.md) §1 (R-1)
 > ← [analisi-orchestrazione-vendite-simmetrie.md](../work-done/analisi-orchestrazione-vendite-simmetrie.md) §B/§B.1.
@@ -455,9 +457,14 @@ Checklist in ordine di rischio, derivata dalle decisioni DL-19..28:
   ⚠️ Le etichette ora dicono **«Accredito dovuto / facoltativo»**, non più «NC dovuta /
   facoltativa» (allineamento a DL-24: si nomina il fatto, non il rimedio).
 
-### 13.3 Le due cose non-validazione che restano
+### 13.3 Le due cose non-validazione — una chiusa, una aperta
 
-- **Commit**: tutto il lavoro delle tre linee è nel working tree, non committato.
-- **Build docs**: `python scripts/build_docs_zensical.py` non è eseguibile nell'ambiente in
-  cui la guida è stata scritta (`zensical` non installato). La coerenza delle tabelle e dei
-  riferimenti interni è stata verificata a mano, il build resta da fare al primo giro utile.
+- ✅ **Commit**: fatto e **pushato** il 2026-08-10. Il BB fan-out e il fix dell'esito
+  parziale sono in `388b7dfee`; il resto della linea (guida cruscotti, archiviazione dei
+  tre doc, bonifica link) nello stesso commit, più `4828258d6` per la rigenerazione di
+  `error_policies_generated.py`. Ramo `dev/backend-tid`, allineato con origin.
+- 🔴 **Build docs**: ancora da fare. `python scripts/build_docs_zensical.py` non è
+  eseguibile in questo ambiente (`zensical` non installato, `ModuleNotFoundError`). La
+  coerenza delle tabelle e dei riferimenti interni è stata verificata a mano — e la
+  verifica ha trovato e corretto un salto di numerazione (una §5.2 senza 5.1) — ma il
+  build resta da fare al primo giro utile.

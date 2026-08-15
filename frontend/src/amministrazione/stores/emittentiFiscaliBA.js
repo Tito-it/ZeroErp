@@ -4,6 +4,7 @@
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
 import {
   listEmittenteBillingAccount,
   createEmittenteBillingAccount,
@@ -12,9 +13,6 @@ import {
 } from '../api/emittentiFiscali'
 
 export const useEmittentiFiscaliBAStore = defineStore('amm-emittenti-fiscali-ba', () => {
-  const items = ref([])
-  const totalRecords = ref(0)
-  const loading = ref(false)
 
   // emittenteId corrente — settato dal tab quando cambia prop
   const emittenteId = ref(null)
@@ -33,11 +31,13 @@ export const useEmittentiFiscaliBAStore = defineStore('amm-emittenti-fiscali-ba'
     order_dir: 'asc'
   })
 
-  async function fetchList() {
-    if (!emittenteId.value) return
-    loading.value = true
-    try {
-      const f = filters.value
+  // Lista via BB condiviso (migrazione 2026-08-10): guardia di versione anti-race.
+  // La precondizione sul contesto (`emittenteId`) resta un wrapper sottile e NON
+  // e' un'opzione del BB: e' uno stato del chiamante, non un filtro della lista.
+  const { items, totalRecords, loading, fetchList: fetchListBase, svuota } = useListaEmptyStateFetch({
+    filters,
+    alwaysFetch: true,
+    buildParams: (f) => {
       const params = {}
       if (f.search) params.search = f.search
       params.limit = f.limit
@@ -46,12 +46,14 @@ export const useEmittentiFiscaliBAStore = defineStore('amm-emittenti-fiscali-ba'
         params.order_by = f.order_by
         params.order_dir = f.order_dir || 'asc'
       }
-      const res = await listEmittenteBillingAccount(emittenteId.value, params)
-      items.value = res.data.data.results
-      totalRecords.value = res.data.data.count
-    } finally {
-      loading.value = false
-    }
+      return params
+    },
+    fetchPage: (params) => listEmittenteBillingAccount(emittenteId.value, params),
+  })
+
+  async function fetchList() {
+    if (!emittenteId.value) return
+    await fetchListBase()
   }
 
   // Scopo: Carica il summary BA per l'emittente corrente. Best-effort:
@@ -87,8 +89,9 @@ export const useEmittentiFiscaliBAStore = defineStore('amm-emittenti-fiscali-ba'
   }
 
   function reset() {
-    items.value = []
-    totalRecords.value = 0
+    // `svuota` del BB, non un clear a mano: invalida anche le fetch in volo
+    // (una risposta dell'emittente precedente non deve ripopolare la lista).
+    svuota()
     emittenteId.value = null
     hasDefaultMapping.value = false
     countSpecifici.value = 0

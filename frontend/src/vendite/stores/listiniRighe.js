@@ -3,16 +3,14 @@
 // e reload post-operazione (create/delete riga, variazione %).
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
 import { listRighe } from '../api/listini'
 
 export const useListiniRigheStore = defineStore('vendite-listini-righe', () => {
-  const items = ref([])
-  const totalRecords = ref(0)
-  const loading = ref(false)
-  // true dopo il primo fetch riuscito nel contesto corrente: serve al
-  // refetch condizionale di onConfigLoaded (<ListaConfigurabile>) e agli
-  // empty-state onesti.
-  const hasSearched = ref(false)
+  // items / totalRecords / loading / hasSearched arrivano dal BB piu' sotto.
+  // `hasSearched`: true dopo il primo fetch riuscito nel contesto corrente —
+  // serve al refetch condizionale di onConfigLoaded (<ListaConfigurabile>) e
+  // agli empty-state onesti.
 
   // Contesto corrente: listino e versione. Impostati dal drawer padre.
   const listinoId = ref(null)
@@ -29,39 +27,20 @@ export const useListiniRigheStore = defineStore('vendite-listini-righe', () => {
     order_dir: 'asc'
   })
 
-  // Scopo: Imposta il contesto listino/versione e resetta filtri e dati.
-  function setContext(newListinoId, newVersioneId) {
-    listinoId.value = newListinoId
-    versioneId.value = newVersioneId
-    items.value = []
-    totalRecords.value = 0
-    hasSearched.value = false
-    filters.value.search = ''
-    filters.value.billing_account_id = null
-    filters.value.offset = 0
-  }
-
-  // Scopo: Svuota dati e contesto alla chiusura del drawer.
-  function clearContext() {
-    listinoId.value = null
-    versioneId.value = null
-    items.value = []
-    totalRecords.value = 0
-    hasSearched.value = false
-  }
-
   // Scopo: Carica la pagina corrente di righe dal backend con filtri attivi.
-  async function fetchList() {
-    if (!listinoId.value || !versioneId.value) return
-
-    const f = filters.value
-    const searchTerm = (f.search || '').trim()
-
-    // Ricerca con meno di 3 caratteri: ignora (a meno che il campo sia vuoto).
-    if (searchTerm.length > 0 && searchTerm.length < 3) return
-
-    loading.value = true
-    try {
+  // Lista via BB condiviso (migrazione 2026-08-10): guardia di versione anti-race
+  // + guardia della ricerca corta. La precondizione su listino/versione resta un
+  // wrapper: e' contesto del chiamante, non un filtro della lista.
+  // `ricercaCorta: 'ignora'`: la ricerca corta qui e' sempre stata un no-op
+  // (la lista resta com'e' mentre si digita, nessuna richiesta).
+  // La destructure sta PRIMA di setContext/clearContext che usano `svuota`:
+  // un domani un reset eager nel setup (watch immediate, initializer)
+  // incontrerebbe la TDZ del `const`.
+  const { items, totalRecords, loading, hasSearched, fetchList: fetchListBase, svuota } = useListaEmptyStateFetch({
+    filters,
+    alwaysFetch: true,
+    ricercaCorta: 'ignora',
+    buildParams: (f, searchTerm) => {
       const params = {
         limit: f.limit,
         offset: f.offset,
@@ -72,14 +51,33 @@ export const useListiniRigheStore = defineStore('vendite-listini-righe', () => {
       }
       if (searchTerm.length >= 3) params.search = searchTerm
       if (f.billing_account_id != null) params.billing_account_id = f.billing_account_id
+      return params
+    },
+    fetchPage: (params) => listRighe(listinoId.value, versioneId.value, params),
+  })
 
-      const res = await listRighe(listinoId.value, versioneId.value, params)
-      items.value = res.data.data.results
-      totalRecords.value = res.data.data.count
-      hasSearched.value = true
-    } finally {
-      loading.value = false
-    }
+  // Scopo: Imposta il contesto listino/versione e resetta filtri e dati.
+  // `svuota` del BB, non un clear a mano: invalida anche le fetch in volo (una
+  // risposta della versione precedente non deve ripopolare la lista azzerata).
+  function setContext(newListinoId, newVersioneId) {
+    listinoId.value = newListinoId
+    versioneId.value = newVersioneId
+    svuota()
+    filters.value.search = ''
+    filters.value.billing_account_id = null
+    filters.value.offset = 0
+  }
+
+  // Scopo: Svuota dati e contesto alla chiusura del drawer.
+  function clearContext() {
+    listinoId.value = null
+    versioneId.value = null
+    svuota()
+  }
+
+  async function fetchList() {
+    if (!listinoId.value || !versioneId.value) return
+    await fetchListBase()
   }
 
   return {
