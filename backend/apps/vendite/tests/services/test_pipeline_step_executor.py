@@ -79,8 +79,10 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             # Speculare alla mappa reale: None = task Python-only
             # (`FattureRigheService`), la fn SQL e' stata rimossa (20260728-21).
             "generate_fatture_righe": None,
-            "genera_fondi_source_lotto": "vendite.fn_genera_fondi_fattura_source",
-            "applica_fondi_lotto": "vendite.fn_applica_fondi_fattura",
+            # R-3: i due giri passano dalle MADRI per lotto, non piu' dalle
+            # funzioni per-scope (che restano, chiamate dalle madri).
+            "genera_fondi_source_lotto": "vendite.fn_genera_fondi_fattura_lotto",
+            "applica_fondi_lotto": "vendite.fn_applica_fondi_lotto",
             "ricalcola_iva_lotto": "vendite.fn_ricalcola_riepiloghi_iva_lotto",
             "prepare_sdi_payload_lotto": "vendite.fn_prepare_sdi_payload",
             "numera_fatture": "vendite.fn_numera_fattura_opz_emessa",
