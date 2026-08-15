@@ -138,30 +138,46 @@ SELECT plan(12);
 --    Il messaggio nomina gli stati inadempienti, cosi' il rosso dice
 --    da solo quale riga di quale CSV manca.
 -- ============================================================
+-- ⚠️ PERIMETRO: i SETTE domini le cui fn_available_actions_* espongono il
+--   campo. Erano tre fino al 2026-08-10; i quattro nuovi (contratto, reso,
+--   offerta, commessa) sono entrati con `20260811-01`…`-04`. Se questa lista
+--   non cresce insieme alle funzioni, la regola smette di vedere il dominio
+--   nuovo **restando verde** — la cecita' per costruzione gia' pagata due
+--   volte su questo stesso file.
+--   `lotto` NON e' qui, ed e' una decisione: usa `config.stati_doc_fiscale`,
+--   condivisa con `vendite.fatture`, e la capability della fattura non
+--   esiste ancora. Vedi attivita-urgenti-del-10-08 §3.
+CREATE TEMP VIEW _stati_chiusi AS
+  SELECT 'preventivo'::text AS dominio, codice_interno::text AS codice_interno,
+         (meta ? 'nessuna_azione_key') AS dichiara
+    FROM config.stati_doc_preventivi WHERE fase = 'CHIUSO' AND attivo IS TRUE
+  UNION ALL
+  SELECT 'ordine', codice_interno::text, (meta ? 'nessuna_azione_key')
+    FROM config.stati_doc_ordini WHERE fase = 'CHIUSO' AND attivo IS TRUE
+  UNION ALL
+  SELECT 'ddt', codice_interno::text, (meta ? 'nessuna_azione_key')
+    FROM config.stati_doc_ddt WHERE fase = 'CHIUSO' AND attivo IS TRUE
+  UNION ALL
+  SELECT 'contratto', codice_interno::text, (meta ? 'nessuna_azione_key')
+    FROM config.stati_doc_contratti WHERE fase = 'CHIUSO' AND attivo IS TRUE
+  UNION ALL
+  SELECT 'reso', codice_interno::text, (meta ? 'nessuna_azione_key')
+    FROM config.stati_doc_reso WHERE fase = 'CHIUSO' AND attivo IS TRUE
+  UNION ALL
+  SELECT 'offerta', codice_interno::text, (meta ? 'nessuna_azione_key')
+    FROM config.stati_doc_offerte WHERE fase = 'CHIUSO' AND attivo IS TRUE
+  UNION ALL
+  SELECT 'commessa', codice_interno::text, (meta ? 'nessuna_azione_key')
+    FROM vendite.stati_commessa WHERE fase = 'CHIUSO' AND attivo IS TRUE;
+
 SELECT is(
-    (SELECT coalesce(string_agg(dominio || '.' || codice_interno, ', ' ORDER BY dominio, codice_interno), '')
-       FROM (
-            SELECT 'preventivo'::text AS dominio, codice_interno::text
-              FROM config.stati_doc_preventivi
-             WHERE fase = 'CHIUSO' AND attivo IS TRUE
-               AND NOT (meta ? 'nessuna_azione_key')
-            UNION ALL
-            SELECT 'ordine', codice_interno::text
-              FROM config.stati_doc_ordini
-             WHERE fase = 'CHIUSO' AND attivo IS TRUE
-               AND NOT (meta ? 'nessuna_azione_key')
-            UNION ALL
-            SELECT 'ddt', codice_interno::text
-              FROM config.stati_doc_ddt
-             WHERE fase = 'CHIUSO' AND attivo IS TRUE
-               AND NOT (meta ? 'nessuna_azione_key')
-       ) x),
+    (SELECT coalesce(string_agg(dominio || '.' || codice_interno, ', '
+                                ORDER BY dominio, codice_interno), '')
+       FROM _stati_chiusi WHERE NOT dichiara),
     '',
-    format('1) preflight: ogni stato in fase CHIUSO dichiara nessuna_azione_key (%s stati chiusi nei tre domini)',
-           (SELECT count(*) FROM (
-                SELECT 1 FROM config.stati_doc_preventivi WHERE fase='CHIUSO' AND attivo IS TRUE
-                UNION ALL SELECT 1 FROM config.stati_doc_ordini WHERE fase='CHIUSO' AND attivo IS TRUE
-                UNION ALL SELECT 1 FROM config.stati_doc_ddt WHERE fase='CHIUSO' AND attivo IS TRUE) q)));
+    format('1) preflight: ogni stato in fase CHIUSO dichiara nessuna_azione_key (%s stati chiusi in %s domini)',
+           (SELECT count(*) FROM _stati_chiusi),
+           (SELECT count(DISTINCT dominio) FROM _stati_chiusi)));
 
 -- ------------------------------------------------------------
 -- Popolazioni: si calcolano UNA volta, cosi' i conteggi delle asserzioni e

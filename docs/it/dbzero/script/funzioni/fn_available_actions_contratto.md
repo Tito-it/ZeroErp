@@ -24,9 +24,27 @@ AS $function$
 --   «portare il documento nello stato X»: il codice_interno non e'
 --   quella forma (DRAFT -> Bozza) e tradurlo nel FE sarebbe una
 --   seconda copia del vocabolario degli stati.
+--   rev 2026-08-11: + stato_info_key, la nota che spiega cosa sta
+--   succedendo quando il documento e' in uno stato chiuso. Arriva dal
+--   `meta` dello stato, e viene emessa SEMPRE che lo stato la dichiari —
+--   anche accanto a un'azione ancora abilitata: la nota spiega lo STATO,
+--   non risponde a una barra vuota (decisione §5 di Tid, gia' applicata a
+--   preventivo/ordine/DDT con 20260810-04/-05/-06). Questo dominio era
+--   fra i cinque che non emettevano affatto il campo, mentre il drawer lo
+--   legge gia': il cablaggio c'era ed era inerte.
+--   ⚠️ La PROPRIETA' nel meta si chiama `nessuna_azione_key` mentre il
+--   campo del blob si chiama `stato_info_key`. L'asimmetria e' voluta:
+--   scripts/check_i18n_keys.py trova le chiavi seminate per QUEL nome
+--   (RE_SEED_KEY sui CSV, elenco _PROP_KEY), e rinominarla senza toccare
+--   il guard lo renderebbe verde per cecita'.
+--   ⚠️ Il campo e' SEMPRE presente nel blob, col valore a null quando non
+--   si applica: filtrare per presenza risponde vero per tutti i documenti,
+--   va guardato il valore.
+--   brief-db-vie-uscita-operatore §12.6; attivita-urgenti-del-10-08 §3.
 DECLARE
     v_stato_id     vendite.contratti.stato_doc_contratto_id%TYPE;
     v_stato_cod    config.stati_doc_contratti.codice_interno%TYPE;
+    v_stato_info_key text;
     v_stato_codice config.stati_doc_contratti.codice%TYPE;
     v_valido_dal   vendite.contratti.valido_dal%TYPE;
     v_listino_id   vendite.contratti.listino_id%TYPE;
@@ -50,9 +68,10 @@ DECLARE
 BEGIN
     -- Stato corrente: codice_interno + codice + valido_dal + listino + capability PDF.
     SELECT c.stato_doc_contratto_id, sdc.codice_interno, sdc.codice, c.valido_dal,
-           c.listino_id, sdc.pdf_mode, sdc.pdf_allow_allegati
+           c.listino_id, sdc.pdf_mode, sdc.pdf_allow_allegati,
+           sdc.meta->>'nessuna_azione_key'
       INTO v_stato_id, v_stato_cod, v_stato_codice, v_valido_dal,
-           v_listino_id, v_pdf_mode, v_pdf_allow
+           v_listino_id, v_pdf_mode, v_pdf_allow, v_stato_info_key
       FROM vendite.contratti c
       JOIN config.stati_doc_contratti sdc ON sdc.id = c.stato_doc_contratto_id
      WHERE c.id = p_contratto_id;
@@ -147,13 +166,14 @@ BEGIN
         'non_editable_fields', v_non_edit,
         'pdf',                 jsonb_build_object('mode', v_pdf_mode, 'allow_allegati', v_pdf_allow),
         'stato_codice_interno', v_stato_cod,
+        'stato_info_key',       v_stato_info_key,
         'stato_codice',         v_stato_codice
     );
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_contratto(p_contratto_id bigint)
-IS 'Capability contratto per detail API: available_actions + can_change_state + can_edit_testata/righe + non_editable_fields + stato_codice_interno + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_contratti. rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il contratto e'' vuoto -> enabled=false + reason DOCUMENTO_SENZA_RIGHE. Vuoto per il contratto = negoziato puro (listino_id NULL) senza AGGIUNTA attiva con prezzo; con listino mai vuoto (predicato specchiato da trgfn_contratti_freeze_listino_versione). rev 2026-08-06: + target_state_descrizione accanto a target_state (config.stati_doc_contratti.descrizione della destinazione). Serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile (DRAFT -> Bozza) e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati. L''arricchimento requires_date a valle somma chiavi e non la tocca.';
+IS 'Capability contratto per detail API: available_actions + can_change_state + can_edit_testata/righe + non_editable_fields + stato_codice_interno + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_contratti. rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il contratto e'' vuoto -> enabled=false + reason DOCUMENTO_SENZA_RIGHE. Vuoto per il contratto = negoziato puro (listino_id NULL) senza AGGIUNTA attiva con prezzo; con listino mai vuoto (predicato specchiato da trgfn_contratti_freeze_listino_versione). rev 2026-08-06: + target_state_descrizione accanto a target_state (config.stati_doc_contratti.descrizione della destinazione). Serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile (DRAFT -> Bozza) e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati. L''arricchimento requires_date a valle somma chiavi e non la tocca. rev 2026-08-11: + stato_info_key, la nota di stato letta dal meta dello stato corrente ed emessa SEMPRE che lo stato la dichiari, anche accanto a un''azione ancora abilitata: la nota spiega lo STATO e non risponde a una barra vuota (decisione §5 di Tid, gia'' applicata a preventivo/ordine/DDT con 20260810-04/-05/-06). Questo dominio era fra i cinque che non emettevano affatto il campo mentre il drawer lo legge gia'': il cablaggio c''era ed era inerte. ⚠️ La PROPRIETA'' nel meta resta nessuna_azione_key mentre il campo del blob si chiama stato_info_key: scripts/check_i18n_keys.py trova le chiavi seminate per quel nome, e rinominarla senza toccare il guard lo renderebbe verde per cecita''. ⚠️ Il campo e'' SEMPRE presente nel blob, col valore a null quando non si applica: filtrare per presenza risponde vero per tutti i documenti, va guardato il valore. brief-db-vie-uscita-operatore §12.6; attivita-urgenti-del-10-08 §3.';
 ```
 
 ---

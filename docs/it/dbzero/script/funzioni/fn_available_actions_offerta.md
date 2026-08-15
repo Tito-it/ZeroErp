@@ -32,9 +32,27 @@ AS $function$
 --   codice_interno non permette di derivare (BOZZA -> Bozza vale
 --   per caso, ALLOCATO -> «Allocato a magazzino» no). NULL sulle
 --   azioni che non cambiano stato.
+--   rev 2026-08-11: + stato_info_key, la nota che spiega cosa sta
+--   succedendo quando il documento e' in uno stato chiuso. Arriva dal
+--   `meta` dello stato, e viene emessa SEMPRE che lo stato la dichiari —
+--   anche accanto a un'azione ancora abilitata: la nota spiega lo STATO,
+--   non risponde a una barra vuota (decisione §5 di Tid, gia' applicata a
+--   preventivo/ordine/DDT con 20260810-04/-05/-06). Questo dominio era
+--   fra i cinque che non emettevano affatto il campo, mentre il drawer lo
+--   legge gia': il cablaggio c'era ed era inerte.
+--   ⚠️ La PROPRIETA' nel meta si chiama `nessuna_azione_key` mentre il
+--   campo del blob si chiama `stato_info_key`. L'asimmetria e' voluta:
+--   scripts/check_i18n_keys.py trova le chiavi seminate per QUEL nome
+--   (RE_SEED_KEY sui CSV, elenco _PROP_KEY), e rinominarla senza toccare
+--   il guard lo renderebbe verde per cecita'.
+--   ⚠️ Il campo e' SEMPRE presente nel blob, col valore a null quando non
+--   si applica: filtrare per presenza risponde vero per tutti i documenti,
+--   va guardato il valore.
+--   brief-db-vie-uscita-operatore §12.6; attivita-urgenti-del-10-08 §3.
 DECLARE
     v_stato_id    vendite.offerte_commerciali.stato_doc_offerta_id%TYPE;
     v_stato_cod   config.stati_doc_offerte.codice_interno%TYPE;
+    v_stato_info_key      text;
     v_pdf_mode    config.stati_doc_offerte.pdf_mode%TYPE;
     v_pdf_allow   config.stati_doc_offerte.pdf_allow_allegati%TYPE;
     v_listino_versione_id vendite.offerte_commerciali.listino_versione_id%TYPE;
@@ -111,9 +129,10 @@ BEGIN
     -- Stato corrente + versione listino + capability PDF.
     SELECT o.stato_doc_offerta_id, sdo.codice_interno,
            sdo.pdf_mode, sdo.pdf_allow_allegati,
-           o.listino_versione_id
+           o.listino_versione_id,
+           sdo.meta->>'nessuna_azione_key'
       INTO v_stato_id, v_stato_cod, v_pdf_mode, v_pdf_allow,
-           v_listino_versione_id
+           v_listino_versione_id, v_stato_info_key
       FROM vendite.offerte_commerciali o
       JOIN config.stati_doc_offerte sdo ON sdo.id = o.stato_doc_offerta_id
      WHERE o.id = p_offerta_id;
@@ -245,13 +264,14 @@ BEGIN
                                              THEN c_sempre_non_edit
                                              ELSE c_sempre_non_edit || c_non_edit_extra END,
         'pdf',                           jsonb_build_object('mode', v_pdf_mode, 'allow_allegati', v_pdf_allow),
+        'stato_info_key',                v_stato_info_key,
         'stato_codice',                  v_stato_cod
     );
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_offerta(p_offerta_id bigint)
-IS 'Capability offerta commerciale per detail API: available_actions + can_edit_* + push_contratto/genera_ordine (mutuamente esclusive) + create_revisione + non_editable_fields. rev 2026-07-11: + blocco pdf {mode, allow_allegati}. rev 2026-07-19: + enabled/reason/reason_key su ogni azione (uniformita'' 6 domini, brief-db-guard-righe-avanzamento-stato §1a) — la transizione verso EMESSA e'' disabled con reason LISTINO_VERSIONE_MANCANTE / LISTINO_VERSIONE_NON_ATTIVA, specchio del guard BOZZA->EMESSA (per le offerte il "vuoto" e'' la versione listino, non le righe: sono espanse dal listino). rev 2026-07-19 (bis): le 3 push_reason (gia_generato / ordine_gia_generato / non_accettata, usate sia da can_push_contratto_reason_key sia da can_genera_ordine_reason_key) passano al namespace i18n vendite.offerte.* — erano sotto offerte.*, radice inesistente nei locales, quindi il motivo non compariva mai in interfaccia; brief-db-i18n-reason-mancanti-offerte-preventivi. rev 2026-08-06: ogni azione espone outlined (dal meta della transizione, COALESCE a false) e target_state_descrizione (config.stati_doc_offerte.descrizione della destinazione). outlined mancava qui e sul preventivo: il seed lo portava ma la funzione non lo emetteva, quindi il pulsante distruttivo restava rosso pieno mentre negli altri sei domini era outlined. target_state_descrizione serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati; NULL sulle azioni applicative (crea_revisione / push_contratto / genera_ordine), che non cambiano stato.';
+IS 'Capability offerta commerciale per detail API: available_actions + can_edit_* + push_contratto/genera_ordine (mutuamente esclusive) + create_revisione + non_editable_fields. rev 2026-07-11: + blocco pdf {mode, allow_allegati}. rev 2026-07-19: + enabled/reason/reason_key su ogni azione (uniformita'' 6 domini, brief-db-guard-righe-avanzamento-stato §1a) — la transizione verso EMESSA e'' disabled con reason LISTINO_VERSIONE_MANCANTE / LISTINO_VERSIONE_NON_ATTIVA, specchio del guard BOZZA->EMESSA (per le offerte il "vuoto" e'' la versione listino, non le righe: sono espanse dal listino). rev 2026-07-19 (bis): le 3 push_reason (gia_generato / ordine_gia_generato / non_accettata, usate sia da can_push_contratto_reason_key sia da can_genera_ordine_reason_key) passano al namespace i18n vendite.offerte.* — erano sotto offerte.*, radice inesistente nei locales, quindi il motivo non compariva mai in interfaccia; brief-db-i18n-reason-mancanti-offerte-preventivi. rev 2026-08-06: ogni azione espone outlined (dal meta della transizione, COALESCE a false) e target_state_descrizione (config.stati_doc_offerte.descrizione della destinazione). outlined mancava qui e sul preventivo: il seed lo portava ma la funzione non lo emetteva, quindi il pulsante distruttivo restava rosso pieno mentre negli altri sei domini era outlined. target_state_descrizione serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati; NULL sulle azioni applicative (crea_revisione / push_contratto / genera_ordine), che non cambiano stato. rev 2026-08-11: + stato_info_key, la nota di stato letta dal meta dello stato corrente ed emessa SEMPRE che lo stato la dichiari, anche accanto a un''azione ancora abilitata: la nota spiega lo STATO e non risponde a una barra vuota (decisione §5 di Tid, gia'' applicata a preventivo/ordine/DDT con 20260810-04/-05/-06). Questo dominio era fra i cinque che non emettevano affatto il campo mentre il drawer lo legge gia'': il cablaggio c''era ed era inerte. ⚠️ La PROPRIETA'' nel meta resta nessuna_azione_key mentre il campo del blob si chiama stato_info_key: scripts/check_i18n_keys.py trova le chiavi seminate per quel nome, e rinominarla senza toccare il guard lo renderebbe verde per cecita''. ⚠️ Il campo e'' SEMPRE presente nel blob, col valore a null quando non si applica: filtrare per presenza risponde vero per tutti i documenti, va guardato il valore. brief-db-vie-uscita-operatore §12.6; attivita-urgenti-del-10-08 §3.';
 ```
 
 ---
