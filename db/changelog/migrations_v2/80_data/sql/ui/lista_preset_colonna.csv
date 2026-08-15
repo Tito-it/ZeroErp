@@ -416,7 +416,7 @@ preset_id,colonna_id,ordine,visibile,fissata
 44,463,50,t,f
 44,464,60,t,f
 44,465,70,t,f
-44,466,80,t,f
+44,466,80,f,f
 44,467,90,f,f
 44,468,100,f,f
 44,469,110,f,f

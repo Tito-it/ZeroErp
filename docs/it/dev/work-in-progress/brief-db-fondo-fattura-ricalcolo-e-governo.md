@@ -27,15 +27,14 @@
 > assorbito in R-3. Restano **BE-4** e il **frontend**, fermi entrambi su
 > prerequisiti DB e non su decisioni del backend — stato per passo in **§8.3**.
 >
-> 🔴 **Due cose aspettano il team DB** (erano tre): la **Fase D** (D-11…D-13), che
-> però aspetta a sua volta il processo rimborsi in `pagamenti`, e — non previsto
-> dal piano — il **seed del catalogo `ui.lista_*`**, che è ciò che **ferma la
-> pagina**: `<ListaConfigurabile>` si costruisce dal catalogo, e senza seed
-> risponde `E_UI_LISTA_NON_TROVATA`. ⭐ **È l'unico residuo DB che non aspetta
-> nessun altro**, quindi il prossimo candidato.
+> ✅ **R-3 chiusa lato DB** e ✅ **seed `ui.lista_*` fatto**, entrambi il
+> 2026-08-15 (§8.3-bis e il riquadro del catalogo liste): del primo restano le
+> due `SELECT` da sostituire nel repository, del secondo il `migrate` e la
+> pagina Vue — lavoro BE/FE.
 >
-> ✅ **R-3 è chiusa lato DB** il 2026-08-15 (§8.3-bis): restano le due `SELECT`
-> da sostituire nel repository, che sono lavoro BE.
+> 🔴 **Lato DB resta la sola Fase D** (D-11…D-13), che però aspetta a sua volta
+> il **processo rimborsi in `pagamenti`**: costruire la porta prima della stanza
+> è lecito, aprirla al pubblico no.
 >
 > 🔵 **Lato DB il cantiere è quasi chiuso**: senza il processo rimborsi in
 > `pagamenti` la Fase D costruirebbe una porta su una stanza che non c'è.
@@ -1429,7 +1428,7 @@ nuovo sui corpi di Fase C.
 | **BE-3** | **L'elenco «fondi da decidere»** — lettura sola su `vendite.vw_fondi_fattura_da_decidere` (scritta, §8.2-quinquies). ⚠️ La vista è `security_invoker`: va letta con la connessione dell'utente, **non** con un ruolo di servizio, o il perimetro emittente salta. Le etichette dei quattro motivi con `labelOrCode` (fail-visible) | repo + service + view | ✅ **fatto** — `GET /api/v1/vendite/fondi-fattura/da-decidere/`, doc [api_fondi_fattura.md](/backend/vendite/manual/api_fondi_fattura). Il divieto di canale di sistema è un **guard fail-closed** (`connection_role_bypasses_rls`), non un commento |
 | **BE-4** | **La porta dell'atto manuale** — D-11 e D-12, chiamate dal processo rimborsi | repo + service + view | 🔴 **fermo sulla Fase D**: `fn_crea_fondo_fattura_manuale` e `fn_annulla_fondo_fattura` non esistono e `governa_fondo_fattura` non è a catalogo. Ritardo **voluto** (aspetta `pagamenti`) |
 | **BE-5** | **Rigenerare le policy errore** dopo il seed di D-14: `./manage-env.sh genera_error_policies` | comando | ✅ **fatto** (= R-1) |
-| **FE** | La lista dentro il dominio vendite | `frontend/src/vendite/` | 🔴 **fermo sul seed `ui.lista_*`** — vedi il riquadro «il pezzo che il piano non aveva previsto» |
+| **FE** | La lista dentro il dominio vendite | `frontend/src/vendite/` | ✅ **sbloccato**: il seed `ui.lista_*` è stato fatto il 2026-08-15 (lista `id 44`, 16 colonne). Resta il `migrate` e la pagina Vue — vedi il riquadro «il pezzo che il piano non aveva previsto» |
 
 #### 📮 Le tre richieste al BE dalla Fase A *(scritte, non eseguite — perimetro DB)*
 
@@ -1727,6 +1726,41 @@ c'è, e negli altri tre l'atto **non esiste ancora** — che è esattamente il
 motivo per cui la riga è in elenco. Suggerimento: `visibile_default = false`
 sulle cinque, così la lista nasce leggibile e chi indaga le accende.
 
+##### ✅ Seed fatto il 2026-08-15 — 16 colonne, e due scelte da conoscere
+
+Append ai quattro CSV di `80_data/sql/ui/` (nessun loader nuovo: quelli
+esistenti sono `runOnChange` e ripescano il file). Lista `id 44`, preset
+`fondi_fattura_da_decidere_default`, `pagina_dimensione` **50** e ordinamento
+`data` DESC — cioè **i default veri dell'endpoint**, non valori scelti a occhio.
+
+🔴 **`filtrabile` e `ordinabile` rispecchiano le whitelist dell'API, non il
+desiderabile.** L'endpoint filtra solo su `motivo` e ordina solo su `data`,
+`motivo`, `anno`, `numero`, `totale_a_pagare`, `importo_proposto`,
+`capienza_attuale`; tutto il resto è `f`. *Una colonna dichiarata ordinabile che
+l'API rifiuta con un 400 è un controllo che esiste per rompersi* — e il catalogo
+è l'unico posto dove quel disallineamento non si vedrebbe finché non lo clicca
+qualcuno.
+
+⭐ **Quattro colonne dell'atto nascoste su cinque, non cinque.** `importo_atto`
+resta **visibile**: senza, una riga `NON_PIU_CAPIENTE` mostrerebbe la capienza e
+non l'importo che non ci sta più dentro — cioè tutto tranne il confronto che la
+mette in elenco. Le altre quattro sono spente, come suggerito.
+
+⚠️ **E `stato_atto` è spenta per una ragione diversa dalle altre**: sul ramo
+`NON_PIU_CAPIENTE` la vista filtra `s.stato = 'DISPONIBILE'`, quindi quella
+colonna vale **sempre lo stesso** su ogni riga dell'elenco. Non è mezza vuota:
+è costante. *Una colonna che ha sempre lo stesso valore non informa* — resta a
+catalogo (accendibile) perché il giorno in cui la vista mostrasse anche altri
+stati diventerebbe utile senza un seed nuovo.
+
+🔵 **Nessuna colonna `azioni`**: le due azioni dell'atto manuale (BE-4) non
+esistono ancora, e una colonna che apre un menu vuoto è la stessa cosa di una
+riga di elenco che non può accadere. Si aggiunge con la Fase D.
+
+📮 **Al frontend**: le 16 chiavi i18n sono `vendite.fondi_fattura_da_decidere.col_*`.
+Finché non ci sono, `labelOrCode` mostra l'etichetta del catalogo — che è già in
+italiano, quindi la lista è leggibile da subito e le traduzioni non bloccano.
+
 #### BE-1 + BE-2 — Il giro fondi e la chiave
 
 > ✅ **FATTO il 2026-08-15, ma non come è scritto qui sotto** — e la differenza
@@ -1928,6 +1962,7 @@ l'adeguamento dei due esistenti.
 
 | Data | Cosa |
 | --- | --- |
+| 2026-08-15 (notte, 15) | ✅ **Seed del catalogo liste fatto** — l'ultimo residuo DB che non aspettava nessun altro, e quello che teneva ferma la pagina (`E_UI_LISTA_NON_TROVATA`). Append ai quattro CSV di `80_data/sql/ui/`: lista `id 44` `vendite.fondi_fattura_da_decidere`, **16 colonne**, preset di sistema con i **default veri dell'endpoint** (50 per pagina, `data` DESC). ⚠️ **Da applicare.** 🔴 **`filtrabile`/`ordinabile` rispecchiano le whitelist dell'API e non il desiderabile**: l'endpoint filtra solo su `motivo` e ordina su sette colonne — *una colonna dichiarata ordinabile che l'API rifiuta con un 400 è un controllo che esiste per rompersi*, e il catalogo è l'unico posto dove quel disallineamento non si vede finché non lo clicca qualcuno. ⭐ Due scostamenti dal suggerimento del BE, entrambi motivati: **`importo_atto` resta visibile** (senza, una riga `NON_PIU_CAPIENTE` mostrerebbe la capienza e non l'importo che non ci sta più dentro — cioè tutto tranne il confronto che la mette in elenco), e **`stato_atto` è spenta per una ragione diversa dalle altre**: il ramo filtra `stato = 'DISPONIBILE'`, quindi quella colonna vale sempre lo stesso su ogni riga — *non è mezza vuota, è costante, e una colonna costante non informa*. 🔵 Nessuna colonna `azioni` finché la Fase D non esiste: un menu vuoto è la stessa cosa di una riga che non può accadere |
 | 2026-08-15 (notte, 14) | ✅ **R-3 parte DB APPLICATA e verde.** Migrate dei tre changeSet `20260815-33`…`-35` (ore 23:01), **test verdi e baseline `vendite` senza regressioni** — corsa fatta da Tid, non da me. Doc `dbzero` rigenerata e scritti i tre `manual/` nuovi (`fn_get_scope_fatture_lotto`, `fn_genera_fondi_fattura_lotto`, `fn_applica_fondi_lotto`). ⚠️ **Verificato prima di generare la doc che gli oggetti fossero davvero vivi**: è la lezione di §8.2-quinquies applicata al giro dopo — changelog e catalogo si controllano, non si danno per allineati. 📮 **Resta il consumo lato BE**: due `SELECT` al posto dei due statement set-based, e spariscono `get_tipo_fondo_fattura_id`, `_SCOPE_FATTURE_LOTTO_SQL` e `list_fatture_scope_by_lotto`. ⭐ Con questo **lato DB il cantiere è chiuso tranne la Fase D**, che non è rimandata per scelta ma perché costruirebbe una porta su una stanza che `pagamenti` non ha ancora |
 | 2026-08-15 (notte, 13) | ⭐ **R-3, parte DB: SCRITTA** (*«potremmo chiudere R-3, che dici?»*) — tre changeSet `20260815-33`…`-35` puramente additivi (`fn_get_scope_fatture_lotto`, `fn_genera_fondi_fattura_lotto`, `fn_applica_fondi_lotto`) e un pgTAP nuovo da **14** asserzioni, verde in transazione annullata. ⚠️ **Da applicare.** ✅ Verificato nel codice che il BE ha chiuso **R-1** e **R-2**. Seguita la specifica di §8.3, **codice interno compreso** — che era il suo punto centrale. 🔴 **Le due ragioni vere di R-3 sono emerse solo scrivendo, e nessuna delle due era nel piano**: **(1)** lo scope passa `COALESCE(lotto, billing account)` come utility mentre la generazione filtra su `f.utility_id` — una divergenza non produce un errore ma un **no-op muto**, e la validazione Python non può accorgersene perché controlla il valore *già* coalescizzato (`ba.utility_id` è NOT NULL: quel ramo non scatta mai); **(2)** il `SELECT DISTINCT` ha l'id della fattura in proiezione, quindi non deduplica: la generazione gira **una volta per fattura invece che per chiave**, e su un lotto di 500 fatture dello stesso emittente sono 500 scansioni identiche di cui 499 bloccate dall'atto unico. *Chi itera sulle fatture per passare una chiave sta iterando sull'oggetto sbagliato.* ⚠️ **Cambio di comportamento**: una fattura di lotto senza utility adesso **ferma il giro** invece di lasciarlo proseguire a vuoto. ⚠️ **Rinumerati da `-24`…`-26`**: il merge del branch backend ha portato changeSet `-24`…`-32` di un altro cantiere, già applicati — la numerazione NN è globale per data e va riverificata **dopo ogni merge**, non solo a inizio lavoro |
 | 2026-08-15 (notte, 12) | 📮 **Scritta la specifica di R-3 per il team DB** (§8.3), su richiesta di Tid. 🔴 **Due correzioni al piano emerse scrivendola.** **(1)** R-3 **non** cambia la firma delle funzioni esistenti: le due madri le **incapsulano** lasciandole intatte, quindi il passo DB e' **puramente additivo** e cade il vincolo «DB e repository nello stesso lotto» — che veniva da D-4/BE-1, dove a cambiare erano le firme *esistenti*, cosa che §8.2-bis ha poi deciso di non fare. Il DB puo' applicare da solo, il BE passa sopra dopo. **(2)** Le madri prendono il **codice interno** del tipo fondo, non l'id come diceva la riga R-3: il parametro che arriva dalla configurazione del task e' una **stringa**, quindi con l'id il backend dovrebbe comunque fare prima una query di lookup — e «una SELECT per task», che e' il senso di R-3, non si otterrebbe. ✅ Verificato che R-3 **non ha prerequisiti di seed**: `E_PARAMETRO_INVALIDO`, `E_PIPELINE_SCOPE_INCOMPLETE` e `E_TIPO_FONDO_NOT_FOUND` sono tutti e tre gia' a catalogo. Specificati corpo (guard → lookup → **validazione scope prima di scrivere** → applicazione set-based), ritorno, sei asserzioni pgTAP e il cambio BE che segue |
