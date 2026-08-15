@@ -1,0 +1,241 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'emissione parziale ora sa dire QUALE gruppo e' rimasto fuori.
+#   Chiude l'ultima voce DB di brief-db-emittibilita-visibile-e-sbloccabile §5,
+#   aperta dal BE il 2026-08-04 e li' dichiarata «non urgente».
+#
+# 🔴 IL PROBLEMA, in una riga. L'operatore chiede di fatturare TRE gruppi e
+#   ne escono DUE fatture: quale dei tre e' rimasto fuori, e perche'? Oggi il
+#   sistema non lo sa dire.
+#
+#   Non per una dimenticanza: l'informazione si perde per costruzione. La
+#   lane aggrega per TERNA (emittente, tipo_doc, utility), e in quel
+#   `GROUP BY` i gruppi di partenza smettono di esistere. Da li' in poi
+#   nessuno a valle puo' piu' ricostruirli. E' come versare tre sacchetti
+#   della spesa in un carrello: il totale e' giusto, la provenienza no.
+#
+# ⚠️ ED E' IL CASO PEGGIORE DEI TRE, perche' e' l'unico SILENZIOSO. Il caso
+#   «zero fatture su tre gruppi» il BE l'ha gia' chiuso ad agosto
+#   (E_FATTURAZIONE_GIRO_NESSUN_LOTTO, con il motivo per gruppo). «Zero»
+#   insospettisce; «2 su 3» sembra un successo, e il lavoro non fatturato
+#   resta fermo senza che nessuno lo vada a cercare.
+#
+# ℹ️ LA CORREZIONE. Una colonna in piu': `gruppi_coperti text[]`, l'elenco
+#   dei gruppi che quella terna ha effettivamente coperto. Con quello l'esito
+#   puo' dire «2 su 3; il terzo no perche' la sua commessa e' in BOZZA».
+#
+#   La chiave arriva da `vendite.fn_build_gruppo_fatturabile_key`, **unica
+#   fonte di verita'**, la stessa che filtra nel WHERE e che alimenta
+#   `vw_dash_competenza_gruppi`. Non e' ricostruita qui, e non deve esserlo:
+#   sarebbe una seconda copia della regola — l'errore che il §7.1 di quel
+#   brief ha gia' dovuto correggere una volta.
+#
+#   `ORDER BY` dentro l'aggregato perche' l'ordine dev'essere DETERMINISTICO:
+#   senza, due chiamate identiche danno array diversi e chi li confronta
+#   (l'esito, un test) vede differenze che non esistono.
+#
+# ⚠️ SI CALCOLA SEMPRE, anche nel giro di massa, ed e' una scelta. Costa una
+#   chiamata STABLE per riga candidata (la funzione fa una lookup su
+#   `config.sorgenti`, per questo non e' IMMUTABLE), e nel giro di massa quel
+#   costo oggi non si paga. L'alternativa era calcolarlo solo con
+#   `p_gruppi NOT NULL` e lasciare NULL altrove — scartata: un campo che a
+#   volte vale NULL perche' «non calcolato» e a volte perche' «nessun gruppo»
+#   e' esattamente il tipo di ambiguita' che si paga sei mesi dopo, in
+#   silenzio. Se un giorno il costo mordera' sul cron, la mitigazione e' nota
+#   e sta scritta qui.
+#
+# ── ⚠️ PERCHE' C'E' UN `DROP FUNCTION` ─────────────────────────────────
+#   Cambia il `RETURNS TABLE`, e `CREATE OR REPLACE` non lo puo' cambiare
+#   (PostgreSQL lo rifiuta). Verificato prima di scrivere, perche' un DROP
+#   ha conseguenze:
+#
+#   · **chiamanti DB: ZERO.** Le due funzioni che nominano la lane
+#     (`fn_check_commessa_pronta_fatturazione`,
+#     `trgfn_commesse_attivita_guard_tipo_doc_emittibile`) la citano solo in
+#     un **commento**, non la invocano;
+#   · **il BE non si rompe**: `commesse_repository.list_emittibili_lane`
+#     nomina le cinque colonne una per una nella SELECT, quindi la sesta non
+#     lo tocca. Chi vuole il campo nuovo lo aggiunge alla propria SELECT —
+#     e' opt-in;
+#   · **i GRANT tornano da soli.** Un DROP cancella l'ACL (`zeroerp_app`,
+#     `zeroerp_batch_fatturazione`), ma il meccanismo schema-wide li
+#     ripristina: verificato su `fn_list_ordini_da_pushare` e
+#     `fn_list_preventivi_da_pushare`, DROPpate il 2026-08-03 e ancora
+#     provviste dei grant espliciti;
+#   · **la firma NON cambia**: i cinque `%TYPE` risolvono ai tipi identici
+#     (date, bigint, integer, bigint, boolean — verificati colonna per
+#     colonna), quindi la chiamata a parametri nominati del BE continua a
+#     risolvere sulla stessa funzione.
+#
+# ℹ️ VERIFICATO IN TRANSAZIONE sul caso del brief: tre gruppi chiesti, due su
+#   commesse emittibili e uno su una commessa bloccata. La lane restituisce
+#   una terna con `gruppi_coperti` = i due, e il terzo si ricava per
+#   differenza. E' la domanda che prima non aveva risposta.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260815-02-update-fn-list-emittibili-lane-gruppi-coperti-mctit.yaml
+
+  - changeSet:
+      id: 20260815-02-update-fn-list-emittibili-lane-gruppi-coperti
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_list_emittibili_lane: + gruppi_coperti text[], l'elenco
+        deterministico dei gruppi fatturabili coperti da ciascuna terna.
+        Serve all'emissione parziale, che prima non sapeva dire quale
+        gruppo fosse rimasto fuori. DROP+CREATE: cambia il RETURNS TABLE.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'vendite'
+                    AND p.proname = 'fn_build_gruppo_fatturabile_key'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'vendite'
+                    AND p.proname = 'fn_list_emittibili_lane'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_list_emittibili_lane(date, bigint, integer, bigint, boolean, integer, text[]);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_list_emittibili_lane(
+                      p_competenza_mese             vendite.commesse_attivita.competenza_mese%TYPE      DEFAULT NULL,
+                      p_billing_account_id          vendite.commesse.billing_account_id%TYPE            DEFAULT NULL,
+                      p_utility_id                  vendite.commesse.utility_id%TYPE                    DEFAULT NULL,
+                      p_emittente_soggetto_ruolo_id vendite.commesse.emittente_soggetto_ruolo_id%TYPE   DEFAULT NULL,
+                      p_fatturazione_immediata      vendite.commesse.fatturazione_immediata%TYPE        DEFAULT NULL,
+                      p_limit                       integer                                             DEFAULT 1000,
+                      -- ⚠️ text[] esplicito: PostgreSQL non supporta `colonna%TYPE[]`.
+                      p_gruppi                      text[]                                              DEFAULT NULL)
+               RETURNS TABLE(emittente_soggetto_ruolo_id bigint, tipo_doc_fiscale_id bigint, utility_id integer, competenza_mese date, total_candidate bigint, gruppi_coperti text[])
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                v_competenza_mese vendite.commesse_attivita.competenza_mese%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo: rispondere al driver batch "quali TERNE distinte
+                --   (emittente, tipo_doc, utility) hanno lavoro pronto da
+                --   fatturare, e fino a quale competenza creare il lotto".
+                -- Criteri:
+                --   1. commessa in stato emittibile (stati_commessa.emittibile=true)
+                --   2. righe commesse_attivita APPROVATA + NON_EMESSA (allineato pull)
+                --   3. tipo_doc_fiscale_id NOT NULL (il lotto lo richiede)
+                --   4. competenza CUMULATIVA: competenza_mese <= p_competenza_mese
+                --      (coerente con fn_select_attivita_fatturabili); NULL = no limite
+                --   5. filtri perimetro BA/utility/emittente; corsia fatturazione_immediata
+                --   6. rev 2026-08-15: + gruppi_coperti text[] — QUALI gruppi
+                --      fatturabili sono finiti in questa terna. Senza, un'emissione
+                --      parziale (3 gruppi chiesti, 2 serviti) non sa dire quale sia
+                --      rimasto fuori: i gruppi si perdevano nel GROUP BY, e a valle
+                --      nessuno poteva piu' ricostruirli. E' il caso PEGGIORE dei tre,
+                --      perche' e' silenzioso — «zero fatture» insospettisce, «2 su 3»
+                --      sembra un successo e il lavoro non fatturato resta li'.
+                --      brief-db-emittibilita-visibile-e-sbloccabile §5.
+                --   7. rev 2026-07-27: p_gruppi restringe ai GRUPPI FATTURABILI
+                --      richiesti, cosi' l'emissione mirata non fa nascere un lotto
+                --      per ogni altra terna del perimetro (lotti vuoti = rumore).
+                --      NULL = nessuna restrizione (comportamento storico).
+                -- Grana: (emittente, tipo_doc, utility). utility_id e' NOT NULL a monte
+                --   (commesse.utility_id) -> in output mai NULL. La coerenza
+                --   c.utility_id = ba.utility_id (E_CLIENTE_UTILITY_MISMATCH_BA in
+                --   fn_get_or_create_commessa) garantisce che la terna scoperta qui sia
+                --   esattamente quella che fn_select_attivita_fatturabili filtra a valle.
+                -- Output per terna: competenza_mese = max(...), total_candidate = count(*).
+                -- Regole: p_limit max 10000/default 1000; competenza normalizzata al mese;
+                --   STABLE (read-only); LIMIT sulle TERNE.
+                -- =========================================================
+                IF p_limit IS NULL OR p_limit <= 0 THEN
+                  p_limit := 1000;
+                END IF;
+                IF p_limit > 10000 THEN
+                  p_limit := 10000;
+                END IF;
+
+                v_competenza_mese := CASE
+                  WHEN p_competenza_mese IS NOT NULL
+                  THEN date_trunc('month', p_competenza_mese)::date
+                  ELSE NULL
+                END;
+
+                RETURN QUERY
+                SELECT
+                  c.emittente_soggetto_ruolo_id,
+                  ca.tipo_doc_fiscale_id,
+                  c.utility_id,
+                  max(ca.competenza_mese)        AS competenza_mese,
+                  count(ca.id)::bigint           AS total_candidate,
+                  -- I gruppi fatturabili coperti da questa terna. La chiave viene
+                  -- dalla SOLA fonte di verita' (fn_build_gruppo_fatturabile_key),
+                  -- mai ricostruita qui: e' la stessa funzione che filtra nel WHERE
+                  -- e che alimenta vw_dash_competenza_gruppi. Ricostruirla sarebbe
+                  -- una seconda copia della regola.
+                  -- ORDER BY dentro l'aggregato: l'ordine dev'essere DETERMINISTICO,
+                  -- altrimenti due chiamate identiche danno array diversi e chi li
+                  -- confronta (esito, test) vede differenze che non esistono.
+                  array_agg(DISTINCT vendite.fn_build_gruppo_fatturabile_key(
+                                         ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id)
+                            ORDER BY vendite.fn_build_gruppo_fatturabile_key(
+                                         ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id)
+                           )                     AS gruppi_coperti
+                FROM vendite.commesse c
+                JOIN vendite.stati_commessa sc
+                  ON sc.id = c.stato_commessa_id
+                 AND sc.emittibile = true
+                INNER JOIN vendite.commesse_attivita ca
+                  ON ca.commessa_id = c.id
+                 AND ca.stato_emissione = 'NON_EMESSA'
+                 AND ca.stato_approvazione = 'APPROVATA'
+                 AND ca.tipo_doc_fiscale_id IS NOT NULL
+                 AND (v_competenza_mese IS NULL OR ca.competenza_mese <= v_competenza_mese)
+                WHERE true
+                  AND (p_billing_account_id IS NULL OR c.billing_account_id = p_billing_account_id)
+                  AND (p_utility_id IS NULL OR c.utility_id = p_utility_id)
+                  AND (p_emittente_soggetto_ruolo_id IS NULL OR c.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id)
+                  AND (p_fatturazione_immediata IS NULL OR c.fatturazione_immediata = p_fatturazione_immediata)
+                  -- EMISSIONE MIRATA (rev 2026-07-27): chiave dalla funzione A1,
+                  -- mai ricostruita qui. Un gruppo con righe di tipo doc diverso
+                  -- resta su piu' terne, e vengono restituite tutte (G15).
+                  AND (
+                       p_gruppi IS NULL
+                       OR vendite.fn_build_gruppo_fatturabile_key(
+                              ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id
+                          ) = ANY (p_gruppi)
+                      )
+                GROUP BY
+                  c.emittente_soggetto_ruolo_id,
+                  ca.tipo_doc_fiscale_id,
+                  c.utility_id
+                ORDER BY
+                  c.emittente_soggetto_ruolo_id,
+                  ca.tipo_doc_fiscale_id,
+                  c.utility_id
+                LIMIT p_limit;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_list_emittibili_lane(p_competenza_mese date, p_billing_account_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_fatturazione_immediata boolean, p_limit integer, p_gruppi text[])
+              IS 'Read-only/STABLE: discovery delle corsie (emittente, tipo_doc_fiscale, utility, competenza_mese) pronte da fatturare per il driver batch. Grana per-utility (il lotto e'' segregato per utility: fn_create pretende utility NOT NULL, fn_select filtra ba.utility_id). utility_id mai NULL (commesse.utility_id NOT NULL); coerenza c.utility_id=ba.utility_id garantita da fn_get_or_create_commessa. Criterio APPROVATA+NON_EMESSA, tipo_doc NOT NULL, competenza cumulativa (<=) con output competenza_mese=max. Filtri perimetro + corsia fatturazione_immediata. fn_list_commesse_emittibili resta separata e invariata. rev 2026-07-27 (brief emissione mirata A5): p_gruppi text[] restringe alle terne dei gruppi richiesti — NULL = nessuna restrizione (G1). Serve a non far nascere un lotto per ogni altra terna del perimetro durante un''emissione mirata: quei lotti sarebbero vuoti (pull e select ora filtrano) ma lascerebbero task run, log e segnalazioni da interpretare. Un gruppo con righe di tipo doc fiscale diverso resta su piu'' terne e vengono restituite TUTTE (G15): e'' il motivo per cui l''esito verso il BE e'' una lista di lotto_id. rev 2026-08-15 (brief emittibilita §5): + gruppi_coperti text[], l''elenco DETERMINISTICO dei gruppi fatturabili coperti da ciascuna terna. Serve al caso dell''emissione PARZIALE — 3 gruppi chiesti, 2 serviti — che prima era muto: i gruppi si perdevano nel GROUP BY per (emittente, tipo_doc, utility) e a valle nessuno poteva piu'' dire quale fosse rimasto fuori. E'' il caso peggiore dei tre perche'' e'' silenzioso: «zero fatture» insospettisce, «2 su 3» sembra un successo e il lavoro non fatturato resta fermo senza che nessuno lo cerchi. La chiave arriva da vendite.fn_build_gruppo_fatturabile_key, unica fonte di verita'', mai ricostruita qui. ⚠️ Il campo e'' calcolato SEMPRE, anche nel giro di massa: costa una chiamata STABLE per riga candidata, e la scelta e'' deliberata — un campo che a volte vale NULL perche'' «non calcolato» e a volte perche'' «nessun gruppo» e'' il tipo di ambiguita'' che si paga sei mesi dopo. ⚠️ Cambia il RETURNS TABLE, quindi e'' servito un DROP: i chiamanti nominano le colonne una per una e non si rompono, ma chi vuole il campo nuovo deve aggiungerlo alla propria SELECT.';

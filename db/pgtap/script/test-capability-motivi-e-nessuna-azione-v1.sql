@@ -26,9 +26,9 @@
 -- fa SKIP esplicito e lo dice: un verde per assenza di soggetti e' un verde
 -- che non ha misurato niente, e deve vedersi.
 --
--- Indice test (1..12):
---   1) Preflight: OGNI stato in fase CHIUSO dei tre domini dichiara
---      nessuna_azione_key (senza, tutto il resto sarebbe vacuo)
+-- Indice test (1..13):
+--   1) Preflight: OGNI stato in fase CHIUSO dei SETTE domini che espongono
+--      il campo dichiara nessuna_azione_key (senza, il resto sarebbe vacuo)
 --   2) Preventivo: enabled dell'azione «annulla» == verdetto della fn pura,
 --      su TUTTA la popolazione (la UI non puo' divergere dal guard)
 --   3) Preventivo: quando e' spento, `reasons` riporta i motivi della fn pura
@@ -47,6 +47,8 @@
 --      promettono l'accettazione (rev 2026-08-10)
 --  12) Ordine ANNULLATO: il motivo del push non promette la conferma
 --      (rev 2026-08-10) — soggetto costruito dal percorso legittimo
+--  13) Un DDT figlio ANNULLATO non blocca l'annullamento dell'ordine
+--      (rev 2026-08-15) — idem, soggetto scelto dalla matrice
 --
 -- ⚠️ SE IL TEST 2 O IL 4 DIVENTA ROSSO non e' un dettaglio di UI: significa
 -- che il bottone e il database non dicono piu' la stessa cosa, cioe' che
@@ -127,7 +129,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(12);
+SELECT plan(13);
 
 -- ============================================================
 -- 1) Preflight: il dato su cui poggia tutto il resto — scritto come
@@ -506,6 +508,54 @@ SELECT CASE WHEN (SELECT count(*) FROM _ord_ann) = 0
        CROSS JOIN LATERAL (SELECT script.fn_available_actions_ordine(x.id) AS blob) c),
     'vendite.ordini.push_commessa_reason.annullato',
     '12) ordine ANNULLATO: il motivo del push e'' annullato, non piu'' non_confermato')
+END;
+
+-- ============================================================
+-- 13) Un DDT figlio ANNULLATO non blocca l'annullamento dell'ordine.
+--     Regola simmetrica a quella del preventivo (`20260810-03`), chiusa
+--     sull'ordine con `20260815-01`: un documento morto non deve tenere
+--     bloccato il padre per sempre e senza uscita.
+--
+--     ⚠️ IL SOGGETTO SI COSTRUISCE, e si sceglie dalla MATRICE non dai
+--     dati. Nel database di sviluppo non esiste un DDT figlio annullato —
+--     ma e' una fotografia di dati di test, non un fatto sul dominio:
+--     in esercizio annullare un DDT e' ordinario. Il DDT si porta quindi
+--     ad ANNULLATO attraversando la transizione VERA, e va scelto fra
+--     quelli il cui stato la ammette: il primo tentativo di scrivere
+--     questa prova ha preso un DDT da uno stato non ammesso e il guard
+--     `trgfn_ddt_guard_transizione` l'ha rifiutato — correttamente.
+--
+--     L'asserzione e' sul CONTEGGIO che cala, non sulla sparizione del
+--     motivo: un ordine puo' avere piu' figli, e quelli vivi devono
+--     continuare a bloccare. E' il filtro a essere esercitato.
+-- ============================================================
+CREATE TEMP TABLE _ddt_ann AS
+SELECT o.id AS ordine_id, d.id AS ddt_id,
+       (script.fn_check_ordine_annullabile(o.id) -> 0 ->> 'dettaglio')::int AS bloccanti_prima
+  FROM vendite.ordini o
+  JOIN vendite.ddt d ON d.sorgente_uid = o.uid
+  JOIN config.stati_doc_ddt s ON s.id = d.stato_doc_ddt_id
+ WHERE EXISTS (SELECT 1 FROM config.transizioni_stati_ddt t
+                 JOIN config.stati_doc_ddt sa ON sa.id = t.stato_a_id
+                WHERE t.stato_da_id = s.id
+                  AND sa.codice_interno = 'ANNULLATO'
+                  AND t.attivo)
+ ORDER BY o.id, d.id
+ LIMIT 1;
+
+UPDATE vendite.ddt SET stato_doc_ddt_id =
+       (SELECT id FROM config.stati_doc_ddt WHERE codice_interno = 'ANNULLATO')
+ WHERE id IN (SELECT ddt_id FROM _ddt_ann);
+
+SELECT CASE WHEN (SELECT count(*) FROM _ddt_ann) = 0
+  THEN pass('13) SKIP: nessun DDT figlio in uno stato da cui la matrice ammette l''annullamento')
+  ELSE is(
+    (SELECT COALESCE((script.fn_check_ordine_annullabile(x.ordine_id) -> 0 ->> 'dettaglio')::int, 0)
+       FROM _ddt_ann x),
+    (SELECT bloccanti_prima - 1 FROM _ddt_ann),
+    format('13) il DDT annullato non blocca piu'': i DDT bloccanti scendono da %s a %s',
+           (SELECT bloccanti_prima FROM _ddt_ann),
+           (SELECT bloccanti_prima - 1 FROM _ddt_ann)))
 END;
 
 SELECT * FROM finish();

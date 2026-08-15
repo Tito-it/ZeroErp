@@ -15,6 +15,12 @@
 > solo `lotto`, **dichiarato** e non dimenticato (§4.2), e le voci del §12.6 del
 > brief. Il consuntivo del §0 è la fotografia buona.
 >
+> 📁 **Spostato in `work-done/` il 2026-08-15.** Le due voci del §0.3 restano aperte
+> ma **non sono di questo cantiere**: una è una decisione di dominio (il documento
+> fiscale) e una è una slice congiunta DB+BE (la rinomina). Vivono nel
+> [§12.6 del brief](brief-db-vie-uscita-operatore.md#126-cosa-resta-aperto-dichiarato),
+> che è la loro sede.
+>
 > ⚠️ **Il nome di questo file diceva `11-08` fino a poco fa, ed era sbagliato.**
 > Lo scrivo perché quella data ha già portato fuori strada una volta: il changeSet
 > del §1 era stato numerato `20260811-01` e ha dovuto essere rinumerato `20260810-03`
@@ -30,11 +36,13 @@
 | 7 celle `meta` nei tre CSV `stati_doc_*` (§2 del rilievo) | ✅ applicate (loader `RERAN`) |
 | `20260810-03` (§1 di questo documento: MOTIVO 1 mai scattato) | ✅ `EXECUTED` |
 | `20260810-04` / `-05` / `-06` (§2: nota sempre esposta + `stato_info_key`) | ✅ `EXECUTED` |
-| `test-capability-motivi-e-nessuna-azione-v1.sql` | ✅ 9 → **12 test**, 12/12 come applicazione |
+| `20260811-01` … `-04` (§3: i quattro domini muti) + 9 celle di seed | ✅ `EXECUTED` |
+| `20260815-01` (§1: il DDT annullato non blocca l'ordine) | ✅ `EXECUTED` |
+| `test-capability-motivi-e-nessuna-azione-v1.sql` | ✅ 9 → **13 test**, tutti verdi come applicazione. Test 1 esteso da 3 a **7 domini** (19 stati chiusi) |
 | `test-transizioni-uscita-manuale-v1.sql` | ✅ punto cieco dichiarato (solo commenti) |
 | Baseline pgTAP dopo ogni passo | ✅ `script`, `config`, `vendite` — **nessuna regressione** |
 | Doc auto-gen | ✅ rigenerate: riflettono il vivo |
-| Commit | ✅ `114ba076b` (il lavoro), `6afc20993` (§12 al BE), `2d44dcb13` (§12.5-bis) |
+| Commit | ✅ `114ba076b`, `6afc20993` (§12 al BE), `2d44dcb13` (§12.5-bis), `6e427423b` (§3 misurata), `b5d501088` (la slice). ⏳ Il §1 di oggi e questi aggiornamenti sono **da committare** |
 
 ✅ **La metà a video del §1-§2 è arrivata**, ed è fuori da questa tabella perché è
 lavoro FE: rinomina `nessuna_azione_key` → `stato_info_key` su 8 drawer +
@@ -44,7 +52,7 @@ con la **semantica** nuova e non col solo nome. Build FE verde, `check_i18n_keys
 verde, suite backend 3644 verdi. **Verificato in app da Tid** su `PRV0000192`
 (EVASO): i due motivi non mentono più **e** la nota di stato compare accanto ai
 pulsanti — le due anomalie sono chiuse nel
-[documento di test](../work-done/test-be-vie-uscita-operatore.md).
+[documento di test](test-be-vie-uscita-operatore.md).
 
 ✅ **La seconda tornata a video è arrivata** (2026-08-15): le **9 chiavi i18n** del
 §3 sono tradotte it/en, `check_i18n_keys.py` è verde, build FE verde, suite backend
@@ -67,9 +75,13 @@ erano 98.
 nove note sono tradotte **e** la funzione le emette — la catena è chiusa da capo a
 fondo su tutti e quattro i domini.
 
-**Cosa resta**: le voci dichiarate aperte nel
-[§12.6 del brief](../work-done/brief-db-vie-uscita-operatore.md#126-cosa-resta-aperto-dichiarato),
-più il `lotto` del §4.2, che è dichiarato fuori e non dimenticato.
+✅ **E il gemello sui DDT è chiuso** (2026-08-15, `20260815-01`, migrato e baseline
+verde): un DDT figlio annullato non blocca più l'annullamento dell'ordine. Era l'unica
+delle voci aperte che fosse già decisa nel merito — la regola era scritta da noi sul
+preventivo — e **zero lavoro BE**: nessun codice errore nuovo, nessuna chiave nuova.
+Dettaglio e presidio (test 13) nel §1.
+
+---
 
 ### 0.1 Il dubbio sul `meta` dei contratti — chiuso, e vale la pena sapere perché
 
@@ -115,6 +127,51 @@ quando i contratti non avevano una tabella di transizioni — nata quel giorno c
 > [`stati_doc_contratti.md`](../../dbzero/config/manual/stati_doc_contratti.md)
 > lasciando la frase vecchia citata e **barrata** col perché: il dubbio tornerà a
 > qualcun altro, e deve trovare la risposta invece della domanda.
+
+---
+
+### 0.2 🔴 Una correzione di METODO che riguarda tutto il documento
+
+Il 2026-08-15 Tid ha corretto un modo di ragionare che attraversa queste pagine:
+**i dati del database di sviluppo sono di TEST**, e contarli non dice niente su quanto
+un difetto valga in esercizio.
+
+Dove qui si legge «oggi non morde», «zero documenti», «parte a valore più basso», il
+**giudizio è da rifare**: erano affermazioni sul contenuto di una macchina, e hanno
+portato a declassare due difetti certi — il gemello DDT (chiuso oggi) e il documento
+fiscale (§4.2, ora la voce più pesante). La domanda giusta è **«può succedere?»**, non
+«è successo?».
+
+⚠️ Resta invece legittimo, e va tenuto, misurare **quale forma scrive chi scrive**
+(dice se un ramo è *strutturalmente* raggiungibile: è una proprietà del modello, non
+del volume) e **dichiarare cosa un test non ha coperto** («questo verde non ha misurato
+niente»). Quello che non si fa è dedurne una priorità. La distinzione, in tabella, è in
+testa al [§12.6 del brief](brief-db-vie-uscita-operatore.md#126-cosa-resta-aperto-dichiarato).
+
+⚠️ Le intestazioni dei changeSet `20260811-01`…`-04` portano ancora la formulazione
+vecchia sul `lotto`. **Non si correggono**: sono mergiati e pushati, e riscriverle
+romperebbe i checksum Liquibase. La correzione vive qui e nel brief.
+
+---
+
+### 0.3 Cosa resta
+
+| Voce | Chi decide / chi fa |
+| --- | --- |
+| Il **documento fiscale** non ha governo dello stato: nessuna `fn_available_actions_fattura`, tre transizioni manuali dichiarate nel seed che nessuno legge, e il `lotto` muto di conseguenza | decisione di dominio, poi cantiere DB (e BE/FE a valle). §4.2 e §13.3-bis del brief |
+| La rinomina di `meta.nessuna_azione_key` → `stato_info_key` | slice congiunta DB+BE: una riga di `_PROP_KEY` **nello stesso commit**, o il guard diventa verde per cecità |
+
+✅ **Il fix del guard i18n è arrivato** (§12.5-bis del brief): il BE ha chiuso
+**entrambe** le metà — la chiave presente con **valore vuoto** non passa più per
+tradotta, e il messaggio non tratta più le due lingue come simmetriche («una che manca
+dall'italiano non ha rete e mostra la CHIAVE GREZZA all'operatore»). Verificato
+leggendo lo script, non riferito.
+
+🟢 **Non resta nessuna attività BE aperta su questo cantiere.** Le due voci qui sopra
+sono una **slice congiunta** e una **decisione di dominio**: nessuna delle due è in
+attesa del BE. Anche il §1 di oggi non ne ha generate — la regola si allenta soltanto,
+e `E_ORD_ANNULLA_CON_DDT` è già a catalogo e già dichiarato in
+`error_policies_generated.py` (verificato).
 
 ---
 
@@ -188,10 +245,41 @@ quando i contratti non avevano una tabella di transizioni — nata quel giorno c
 > registra la riga. È lo stesso incidente del §7.2-ter di quel brief, stessa
 > risoluzione.
 >
-> ⚠️ **Resta aperto, dichiarato:** il gemello sui DDT ha la lacuna speculare — un DDT
-> figlio **annullato** blocca ancora l'annullamento dell'ordine. Oggi non morde
-> (nessuno dei 9 DDT bloccanti è annullato, misurato) e non è stato infilato qui:
-> è un'altra decisione, sulla stessa forma.
+> ✅ **Il gemello sui DDT è chiuso il 2026-08-15** con `20260815-01`: un DDT figlio
+> **annullato** non blocca più l'annullamento dell'ordine. `is_abortito IS NOT TRUE`,
+> lo stesso predicato del preventivo — una regola, due funzioni, stessa forma.
+>
+> ⚠️ **Ma va scritto perché era rimasto aperto, che è la parte istruttiva.** L'avevo
+> classificato «asimmetria latente, oggi non morde: nessuno dei 9 DDT bloccanti è
+> annullato, misurato». Quella misura è una **conta su dati di test**, e non dice
+> niente sull'esercizio: annullare un DDT è ordinario — destinatario sbagliato, merce
+> sbagliata, duplicato. Non era latente, era **certo**, e aspettava solo il primo
+> annullamento per lasciare un ordine bloccato per sempre e senza uscita: cioè il
+> difetto che questo cantiere è nato per chiudere, ricomparso sul gemello.
+>
+> **La domanda giusta è «può succedere?», non «è successo?».** Vale per tutto il
+> documento: dove si legge «oggi non morde» o «zero documenti», il giudizio è da
+> rifare. La correzione di metodo, con la distinzione fra le misure legittime e
+> quelle che non lo sono, è in testa al
+> [§12.6 del brief](brief-db-vie-uscita-operatore.md#126-cosa-resta-aperto-dichiarato).
+>
+> ℹ️ **Esclude solo l'annullato**: un DDT in stato `RESO` continua a bloccare, ed è
+> corretto — la merce è rientrata ma il documento è **vissuto**, e annullare l'ordine
+> cancellerebbe la storia di quel movimento. Chiusura positiva e annullamento non
+> sono la stessa cosa.
+>
+> **Verificato dal percorso**, non da una fixture: preso un ordine il cui DDT figlio è
+> in uno stato da cui la **matrice** ammette l'annullamento, e portato lì con la
+> transizione vera; i DDT che bloccano scendono da 3 a 2. ⚠️ Il primo tentativo aveva
+> scelto il soggetto dai dati invece che dalla matrice, e il guard di transizione l'ha
+> rifiutato — correttamente. Presidiato dal test **13** di
+> `test-capability-motivi-e-nessuna-azione-v1.sql`, che costruisce il soggetto allo
+> stesso modo e asserisce sul **conteggio che cala**, non sulla sparizione del motivo:
+> un ordine può avere più figli, e quelli vivi devono continuare a bloccare.
+>
+> 🟢 **Zero lavoro BE**: nessun codice errore nuovo, nessuna chiave i18n nuova. La
+> regola si allenta soltanto, e `E_ORD_ANNULLA_CON_DDT` è già a catalogo e già
+> dichiarato. Cambia solo la frequenza con cui l'API lo restituisce.
 
 <!-- markdownlint-disable-next-line MD028 -->
 > ℹ️ **Da qui in avanti il testo è il rilievo come fu scritto la prima volta**, prima
@@ -258,7 +346,7 @@ che nessun percorso vivo può produrre.
 
 ### 1.3 Perché è scomodo, e non solo sbagliato
 
-Il §7.3 del [brief-db-vie-uscita-operatore](../work-done/brief-db-vie-uscita-operatore.md)
+Il §7.3 del [brief-db-vie-uscita-operatore](brief-db-vie-uscita-operatore.md)
 ha consolidato le due regole di annullamento in **una** funzione, proprio per avere
 una regola in una sede sola. Quel consolidamento tiene ancora — ma **uno dei tre
 motivi che vivono dentro quella sede è morto**. La regola è una, e una sua terza
@@ -681,8 +769,28 @@ una tabella di stato propria: usa `config.stati_doc_fiscale`, che è CONDIVISA c
 su uno stato fiscale significa scrivere un testo che deve essere vero **sia per un
 lotto sia per una fattura** in quello stato — e una `fn_available_actions_fattura`
 oggi **non esiste**, quindi metà dei consumatori di quel testo non è ancora scritta.
-Nota a margine: sono anche i due stati con **zero documenti**, quindi è la parte a
-valore più basso della slice.
+~~Nota a margine: sono anche i due stati con **zero documenti**, quindi è la parte a
+valore più basso della slice.~~
+
+> 🔴 **Quella nota a margine è RITIRATA (2026-08-15), ed è l'errore di metodo di
+> tutto il documento in miniatura.** «Zero documenti» contava righe di un database di
+> **test**. In esercizio una fattura raggiunge gli stati chiusi nel suo normale ciclo
+> di vita, su ogni installazione, dal primo giorno: non è la parte a valore più basso,
+> **è la più alta delle tre voci aperte**, e riguarda il documento più importante del
+> ciclo.
+>
+> E verificando è emerso che il buco ha anche un'altra forma da come è raccontato qui
+> sopra: `FatturaDrawer.vue` **esiste**, monta `DrawerActionsBar`, e le sue azioni sono
+> **tre, hardcoded, tutte di servizio** (PDF, documenti, note). Intanto
+> `config.stati_doc_fiscale_transizioni` dichiara **tre transizioni manuali con
+> `action_key`** — `DRAFT → ANNULLATA`, `EMESSA → DRAFT`, `EMESSA → DEFINITIVA` — che
+> nessuna funzione legge. Cioè: **il seed descrive tre bottoni che l'operatore non
+> vede**, la stessa classe di ① e ②.
+>
+> Quindi non è «manca una nota al lotto»: manca il **governo dello stato sul documento
+> fiscale**. Il quadro completo, con la domanda di dominio da sciogliere prima di
+> costruire, è nel
+> [§13.3-bis del brief](brief-db-vie-uscita-operatore.md).
 
 Le tre strade, in ordine di quanto costano:
 

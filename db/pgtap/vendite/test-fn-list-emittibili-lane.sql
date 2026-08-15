@@ -46,7 +46,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(9);
+SELECT plan(11);
 
 -- ============================================================
 -- SETUP: riferimenti minimi + due tipi_doc distinti (X, Y)
@@ -349,6 +349,76 @@ SELECT ok(
   ),
   'utility_id in output mai NULL'
 );
+
+-- ============================================================
+-- TEST 10 e 11: `gruppi_coperti` — l'emissione PARZIALE sa dire chi e'
+--   rimasto fuori (rev 2026-08-15, brief emittibilita §5, `20260815-02`).
+--
+--   Il difetto che chiudono: la lane aggrega per terna, e in quel GROUP BY
+--   i gruppi richiesti sparivano. Chiesti 3, fatturati 2, e nessuno a valle
+--   poteva dire quale fosse il terzo — il caso peggiore, perche' «2 su 3»
+--   sembra un successo mentre il lavoro non fatturato resta fermo.
+--
+--   La fixture usa i gruppi VERI delle due commesse costruite sopra: la
+--   chiave si chiede alla sola fonte di verita'
+--   (fn_build_gruppo_fatturabile_key), non si scrive a mano — scriverla
+--   qui sarebbe una seconda copia della regola, cioe' il difetto stesso.
+-- ============================================================
+CREATE TEMP TABLE tmp_gruppi AS
+SELECT DISTINCT
+       vendite.fn_build_gruppo_fatturabile_key(
+           ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) AS k,
+       ca.commessa_id
+  FROM vendite.commesse_attivita ca
+ WHERE ca.commessa_id IN ((SELECT commessa_id FROM tmp_a),
+                          (SELECT commessa_id FROM tmp_b))
+   AND ca.stato_approvazione = 'APPROVATA'
+   AND ca.stato_emissione    = 'NON_EMESSA'
+   AND ca.tipo_doc_fiscale_id IS NOT NULL;
+
+-- TEST 10: chiedendo UN gruppo solo, la terna dichiara quel gruppo e
+--   nient'altro. E' l'invariante minima: cio' che esce e' cio' che si e'
+--   chiesto, non «tutto quello che c'era nella terna».
+SELECT CASE WHEN (SELECT count(*) FROM tmp_gruppi) = 0
+  THEN skip('nessun gruppo fatturabile nelle commesse della fixture', 1)
+  ELSE is(
+    (SELECT array_agg(DISTINCT g ORDER BY g)
+       FROM vendite.fn_list_emittibili_lane(
+              p_competenza_mese => DATE '2026-07-01',
+              p_emittente_soggetto_ruolo_id => (SELECT e FROM tmp_e),
+              p_gruppi => ARRAY[(SELECT k FROM tmp_gruppi ORDER BY k LIMIT 1)]) l,
+            unnest(l.gruppi_coperti) AS g),
+    ARRAY[(SELECT k FROM tmp_gruppi ORDER BY k LIMIT 1)],
+    'gruppi_coperti: chiesto un gruppo, la terna dichiara esattamente quello'
+  )
+END;
+
+-- TEST 11: il caso del brief. Si chiedono TUTTI i gruppi della fixture piu'
+--   uno INESISTENTE: i gruppi coperti sono quelli veri, e il fantasma si
+--   ricava per differenza — che e' esattamente la risposta che prima non
+--   c'era. ⚠️ Il gruppo assente si costruisce inesistente di proposito:
+--   usarne uno vero di un'altra commessa legherebbe il test a dati che
+--   possono cambiare.
+SELECT CASE WHEN (SELECT count(*) FROM tmp_gruppi) = 0
+  THEN skip('nessun gruppo fatturabile nelle commesse della fixture', 1)
+  ELSE is(
+    (SELECT array_agg(k ORDER BY k) FROM (
+       SELECT k FROM tmp_gruppi
+       UNION ALL SELECT 'PREVENTIVO:00000000-0000-0000-0000-000000000000'
+     ) q
+     WHERE NOT EXISTS (
+       SELECT 1
+         FROM vendite.fn_list_emittibili_lane(
+                p_competenza_mese => DATE '2026-07-01',
+                p_emittente_soggetto_ruolo_id => (SELECT e FROM tmp_e),
+                p_gruppi => (SELECT array_agg(k) FROM (
+                               SELECT k FROM tmp_gruppi
+                               UNION ALL SELECT 'PREVENTIVO:00000000-0000-0000-0000-000000000000') z)) l
+        WHERE q.k = ANY (l.gruppi_coperti))),
+    ARRAY['PREVENTIVO:00000000-0000-0000-0000-000000000000'],
+    'gruppi_coperti: il gruppo non servito si ricava per differenza (emissione parziale)'
+  )
+END;
 
 SELECT * FROM finish();
 

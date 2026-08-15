@@ -145,7 +145,7 @@ dell'altra produce join che non tornano niente **senza errore**:
 > consolidato proprio per avere una regola sola. Corretto con `20260810-03`, che
 > esclude anche gli ordini figli annullati (un figlio morto non deve bloccare il
 > padre per sempre): decisione di Tid del 2026-08-10, dettagli in
-> [attivita-urgenti-del-10-08.md](../work-in-progress/attivita-urgenti-del-10-08.md) §1.
+> [attivita-urgenti-del-10-08.md](attivita-urgenti-del-10-08.md) §1.
 >
 > ⚠️ **La lezione non è «una svista in tabella»**, ed è la ragione per cui la riga
 > resta barrata e non cancellata: la stessa parola `sorgente_uid` indica **due cose
@@ -967,7 +967,7 @@ sollevati da una funzione viva».
 > vi cambia la frequenza di un codice errore, l'altro è una rinomina che va nello
 > stesso vostro rilascio.
 >
-> Dettaglio completo, con le misure: [attivita-urgenti-del-10-08.md](../work-in-progress/attivita-urgenti-del-10-08.md).
+> Dettaglio completo, con le misure: [attivita-urgenti-del-10-08.md](attivita-urgenti-del-10-08.md).
 
 ### 12.1 I due difetti segnalati
 
@@ -1117,6 +1117,14 @@ la suite tutta verde, e perché la seconda metà riguarda un vostro strumento.
 
 ### 12.5-bis Il guard i18n: la segnalazione del BE, verificata e corretta
 
+> 🟢 **CHIUSO dal BE il 2026-08-15.** Sono state fatte **entrambe** le cose, e
+> verificate leggendo lo script: la chiave presente con **valore vuoto** non passa
+> più per tradotta («registrava per presenza, quindi una stringa vuota passava»), con
+> il criterio proposto — errore per le chiavi **emesse dal DB**, avviso altrove; e il
+> messaggio distingue le due direzioni, spiegando il perché nel codice: «le due
+> colonne sono simmetriche, le CONSEGUENZE no… una che manca dall'italiano non ha
+> rete e mostra la CHIAVE GREZZA all'operatore».
+
 > Il BE (2026-08-10) segnala che `check_i18n_keys.py` non discriminerebbe una
 > chiave mancante dal **solo** italiano: «la classifica come semplice disparità e
 > resta verde». **Misurato: non è così** — togliendo
@@ -1168,11 +1176,28 @@ la suite tutta verde, e perché la seconda metà riguarda un vostro strumento.
 
 ### 12.6 Cosa resta aperto, dichiarato
 
+> 🔴 **CORREZIONE DI METODO del 2026-08-15 — questa tabella classificava con il
+> metro sbagliato, e va letta con l'avvertenza.** Diceva «oggi non morde», «zero
+> documenti», «parte a valore più basso»: sono affermazioni sul **contenuto attuale
+> del database di sviluppo**, che è popolato di **dati di test**. Contarli non dice
+> niente su quanto un difetto valga in esercizio, e porta a rimandare proprio le
+> cose che nel funzionamento reale capitano sempre.
+>
+> La domanda giusta è **«può succedere?»**, non «è successo?». Con quel metro due
+> delle tre voci cambiano peso, e nella direzione opposta. Le righe sotto sono
+> riscritte; le motivazioni vecchie restano citate perché l'errore di metodo si
+> riconosca la prossima volta.
+>
+> ⚠️ Resta legittimo — e va tenuto — misurare **quale forma scrive chi scrive**
+> (dice se un ramo è *strutturalmente* raggiungibile, ed è una proprietà del
+> modello) e **dichiarare cosa un test non ha coperto** («questo verde non ha
+> misurato niente»). Quello che non si fa è dedurne una priorità.
+
 | Voce | Perché non è stata chiusa qui |
 | --- | --- |
-| Il gemello `fn_check_ordine_annullabile` ha la lacuna **speculare**: un DDT figlio **annullato** blocca ancora l'annullamento dell'ordine | Oggi non morde (nessuno dei 9 DDT bloccanti è annullato, misurato) ed è un'altra decisione, sulla stessa forma |
-| I cinque domini **offerta, lotto, reso, contratto, commessa** non emettono affatto `stato_info_key` | Hanno 9 stati chiusi con `meta = {}` (offerta RIFIUTATA/SUPERATA/ANNULLATA, commessa CHIUSA/ANNULLATA, contratto CESSATO/ANNULLATO, reso CONFERMATO/ANNULLATO; lotto non misurato). Per loro la R3 **non è presidiata da nessuna parte**, e servono due cose: la riga nella funzione **e** il seed. ⚠️ Il seed da solo sarebbe dato morto, e vi farebbe diventare rosso il guard i18n senza dare niente all'operatore — l'errore inverso di quello di ieri |
-| La rinomina della proprietà nel `meta` | §12.3, richiede `_PROP_KEY` |
+| Il gemello `fn_check_ordine_annullabile` ha la lacuna **speculare**: un DDT figlio **annullato** blocca ancora l'annullamento dell'ordine | 🔴 **Difetto certo, non latente.** In esercizio annullare un DDT è ordinario — destinatario sbagliato, merce sbagliata, duplicato — e l'ordine il cui figlio è stato annullato resta bloccato **per sempre e senza via d'uscita**. La ragione è già scritta da noi sul preventivo: «un figlio morto non deve bloccare il padre per sempre». *(Diceva: «oggi non morde, nessuno dei 9 DDT bloccanti è annullato». Era una conta su dati di test.)* |
+| ~~I cinque domini non emettono `stato_info_key`~~ → **quattro chiusi**, resta il **documento fiscale** | ✅ contratto, reso, offerta, commessa fatti (`20260811-01`…`-04`, §13). Resta la famiglia fiscale, e con la lente giusta è la voce **più pesante delle tre**, non la più leggera: vedi §13.3-bis |
+| La rinomina della proprietà nel `meta` | §12.3, richiede `_PROP_KEY`. È l'unica delle tre che non dipende dal dominio: naming e coordinamento |
 
 ---
 
@@ -1238,6 +1263,42 @@ anche i due soli stati con zero documenti, cioè la parte a valore più basso.
 > Il buco vero di quella famiglia non è il lotto: è che **il documento fiscale non ha
 > capability**. Chiuderlo renderebbe il lotto un caso normale invece che speciale, ed è
 > un cantiere a sé.
+
+### 13.3-bis 🔴 Il documento fiscale — misurato il 2026-08-15, ed è peggio
+
+Il §13.3 diceva che i due stati del lotto hanno «zero documenti, cioè la parte a
+valore più basso». **Quel giudizio è ritirato**: contava righe di un database di
+**test**, e in esercizio una fattura raggiunge gli stati chiusi nel suo normale ciclo
+di vita, su ogni installazione, dal primo giorno. Non è la voce più leggera: è la più
+pesante, e riguarda il documento più importante del ciclo.
+
+Verificata anche la forma del buco, che non è quella che avevamo raccontato:
+
+| Fatto | Misura |
+| --- | --- |
+| `FatturaDrawer.vue` **esiste** e monta `DrawerActionsBar` | la barra c'è |
+| Le sue azioni sono **tre, hardcoded, tutte di servizio** | anteprima PDF, documenti, note — nessuna transizione di stato, nessun `available_actions` |
+| `script.fn_available_actions_fattura` | **non esiste** |
+| `config.stati_doc_fiscale_transizioni` dichiara transizioni **manuali con bottone** | `DRAFT → ANNULLATA`, `EMESSA → DRAFT`, `EMESSA → DEFINITIVA`: `manuale = true` **e** `action_key` nel `meta` |
+
+Cioè: **il seed descrive tre bottoni che nessuna funzione legge e che l'operatore non
+vede.** È la stessa identica classe di difetto di ① e ② del rilievo di Tid, ed è
+riconoscibile nelle parole con cui questo brief l'aveva già descritta al §9:
+
+> «Il dato c'era; nessuna funzione lo leggeva.»
+
+Quindi non è «manca una nota al lotto»: **manca il governo dello stato sul documento
+fiscale**, e la nota mancante ne è il sintomo minore. La decisione da prendere è quella,
+e va aperta come cantiere proprio — non risolta di straforo dentro questo.
+
+⚠️ **Prima di costruire, una domanda di dominio da sciogliere**, perché cambia la
+forma della soluzione: la fattura è prodotta dalla pipeline di fatturazione, e il suo
+stato è in buona parte una **proiezione** di quel processo. Le tre transizioni manuali
+del seed vanno quindi confermate come volute — un operatore annulla davvero una fattura
+in bozza dal drawer? la riporta in DRAFT a mano? — oppure la risposta giusta è la
+simmetrica di quella data all'ordine EVASO: nessuna azione, **e la nota che spiega che
+lo stato si ricalcola dal lotto**. Le due strade costano in modo molto diverso, e la
+seconda è una riga.
 
 ### 13.4 Il presidio cresce coi domini, e adesso è scritto
 

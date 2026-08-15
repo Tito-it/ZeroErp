@@ -53,18 +53,52 @@ la discovery per-commessa dello step di pull): qui si raggruppa per corsia, non 
 | `p_emittente_soggetto_ruolo_id` | `vendite.commesse.emittente_soggetto_ruolo_id%TYPE`      | `NULL`  | Filtro perimetro emittente.                                       |
 | `p_fatturazione_immediata`      | `vendite.commesse.fatturazione_immediata%TYPE`           | `NULL`  | Corsia: true=immediata / false=differita / NULL=indifferente.     |
 | `p_limit`                       | `integer`                                                | `1000`  | Normalizzato (default 1000, max 10000); si applica alle **terne**. |
+| `p_gruppi`                      | `text[]`                                                 | `NULL`  | **Emissione mirata**: restringe alle terne dei GRUPPI FATTURABILI richiesti. NULL = nessuna restrizione. ⚠️ `text[]` esplicito — PostgreSQL non supporta `colonna%TYPE[]`. |
 
 ---
 
 ### Output
 
-`RETURNS TABLE(emittente_soggetto_ruolo_id, tipo_doc_fiscale_id, utility_id, competenza_mese, total_candidate)`:
+`RETURNS TABLE(emittente_soggetto_ruolo_id, tipo_doc_fiscale_id, utility_id, competenza_mese, total_candidate, gruppi_coperti)`:
 
 * **`utility_id`** = utility della terna. **Mai NULL** (`commesse.utility_id` è NOT NULL a
   monte): nessuna terna da escludere su questo asse.
 * **`competenza_mese`** = `max(competenza_mese)` fra le righe candidate della terna → la
   competenza con cui il driver crea il lotto.
 * **`total_candidate`** = numero di righe candidate (per dry-run/diagnostica).
+* **`gruppi_coperti`** `text[]` *(dal 2026-08-15, `20260815-02`)* = **quali gruppi
+  fatturabili** questa terna ha effettivamente coperto, in ordine **deterministico**.
+
+#### A cosa serve `gruppi_coperti`, e perché non c'era
+
+Risponde a una domanda che prima non aveva risposta: **l'operatore chiede tre gruppi e
+ne escono due fatture — quale è rimasto fuori?**
+
+L'informazione si perdeva **per costruzione**, non per dimenticanza: questa funzione
+aggrega per terna, e in quel `GROUP BY` i gruppi di partenza smettono di esistere. A
+valle nessuno poteva più ricostruirli. È come versare tre sacchetti della spesa in un
+carrello: il totale è giusto, la provenienza no.
+
+⚠️ Ed era il caso **peggiore** dei tre esiti possibili, perché l'unico silenzioso:
+«zero fatture» è un errore parlante dal 2026-08-04, e comunque insospettisce; «2 su 3»
+sembra un successo, e il lavoro non fatturato resta fermo senza che nessuno lo cerchi.
+Il gruppo non servito si ricava ora per **differenza** fra i richiesti e i coperti.
+
+Tre cose da sapere se ci si mette mano:
+
+* la chiave arriva da `vendite.fn_build_gruppo_fatturabile_key`, **unica fonte di
+  verità** — la stessa che filtra nel `WHERE` e che alimenta `vw_dash_competenza_gruppi`.
+  Non è ricostruita qui e non deve esserlo: sarebbe una seconda copia della regola;
+* l'ordine è **deterministico** (`ORDER BY` dentro l'aggregato): senza, due chiamate
+  identiche darebbero array diversi e chi li confronta vedrebbe differenze inesistenti;
+* si calcola **sempre**, anche nel giro di massa. Costa una chiamata `STABLE` per riga
+  candidata; l'alternativa — solo con `p_gruppi NOT NULL`, altrimenti `NULL` — è stata
+  scartata perché produrrebbe un campo che a volte vale `NULL` per «non calcolato» e a
+  volte per «nessun gruppo`. Quell'ambiguità si paga dopo, in silenzio.
+
+> ℹ️ **Per chi consuma la funzione**: il campo è **opt-in**. I chiamanti nominano le
+> colonne una per una, quindi la sesta non li tocca finché non la aggiungono alla
+> propria `SELECT`.
 
 ---
 
