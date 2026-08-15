@@ -143,19 +143,6 @@ def esegui_giro_fatturazione(
     terne = [lane for lane in lanes if lane["emittente_soggetto_ruolo_id"] is not None]
     senza_emittente = len(lanes) - len(terne)
 
-    # Emissione mirata: chi resta fuori si misura QUI, alla discovery, non a
-    # valle contando i lotti. `gruppi_coperti` della lane (rev DB 2026-08-15)
-    # elenca i gruppi che ogni terna copre; l'union sulle TERNE (con emittente:
-    # le lane senza non producono lotti) confrontata con i richiesti dà i non
-    # coperti in modo deterministico — il caso «3 chiesti, 2 serviti» che prima
-    # era muto perché i gruppi si perdevano nel GROUP BY per terna.
-    gruppi_non_coperti: list[str] | None = None
-    if gruppi_tuple:
-        coperti = {g for lane in terne for g in lane["gruppi_coperti"]}
-        # Ordine di richiesta preservato: e' l'ordine in cui l'operatore ha
-        # spuntato le righe, lo stesso usato dalla diagnostica a valle.
-        gruppi_non_coperti = [g for g in gruppi_tuple if g not in coperti]
-
     summary: dict[str, Any] = {
         "modalita": modalita,
         "tipo_lotto": tipo_lotto,
@@ -172,10 +159,6 @@ def esegui_giro_fatturazione(
         # perimetro leggibile a posteriori nel log/result del job, senza
         # doverlo ricostruire dalla tabella figlia dei lotti.
         "gruppi": list(gruppi_tuple) if gruppi_tuple else None,
-        # Richiesti ma fuori da ogni terna (solo mirata, None sul giro di
-        # massa): e' il dato dell'esito PARZIALE. L'handler di coda li
-        # diagnostica e li spiega; qui si misura soltanto.
-        "gruppi_non_coperti": gruppi_non_coperti,
         # Lotti prodotti dal giro, COMPATTI: e' il dato del «vai al lotto» del
         # FE. Un giro produce N lotti (un gruppo con righe di tipo doc fiscale
         # diverso finisce in terne diverse — fatto F5/G15 del brief DB), quindi

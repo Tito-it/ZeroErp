@@ -2814,6 +2814,7 @@
       "fattura_gruppi_esito_parziale": "Emissione completata con {falliti} errori su {lotti} lotti. Controlla il registro lotti.",
       "fattura_gruppi_esito_vuoto": "Nessun lotto prodotto: le attività dei gruppi selezionati non erano più fatturabili.",
       "fattura_gruppi_esito_non_serviti": "Emissione parziale: {lotti} lotti prodotti, {mancanti} gruppi rimasti fuori — {dettagli}",
+      "fattura_gruppi_esito_altrove": "Nota: {n} gruppi non erano più da fatturare — le loro attività risultano già fatturate da un altro giro ({gruppi}).",
       "gruppo_bloccato_tooltip": "La commessa è in stato {stato} e non ammette fatturazione: il gruppo non entra in nessun lotto. Aprila con «Sblocca commessa» per renderla pronta.",
       "azione_sblocca_commessa": "Sblocca commessa",
       "lotti_emessi": "Lotti prodotti ({n}):",

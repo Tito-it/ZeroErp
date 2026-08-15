@@ -43,7 +43,6 @@ from apps.vendite.services._fatturazione_job_helpers import (
     MOTIVO_RIGHE_ANNULLATE,
     MOTIVO_RIGHE_NON_APPROVATE,
     MOTIVO_RIGHE_RIFIUTATE,
-    MOTIVO_TIPO_DOC_MANCANTE,
     classifica_gruppo_non_servito,
     messaggio_gruppi_non_serviti,
     spiega_gruppi_non_serviti,
@@ -54,11 +53,16 @@ from apps.vendite.services._fatturazione_job_helpers import (
 def _foto(**kwargs) -> dict:
     base = {
         "gruppo_key": "ORDINE_VENDITA:abc",
+        "commessa_id": 108,
         "commessa_codice": "CMM-001",
-        "stato_commessa": "PRONTA_FATTURAZIONE",
+        # Forma di `fn_diagnostica_gruppi_fatturabili` (DB 2026-08-15): codice
+        # interno per la logica + descrizione per la frase. `n_senza_tipo_doc`
+        # non esiste piu' — il CHECK validato rende quel caso impossibile.
+        "commessa_stato_codice_interno": "PRONTA_FATTURAZIONE",
+        "commessa_stato_descrizione": "Pronta fatturazione",
         "commessa_emittibile": True,
         "n_righe": 0, "n_emesse": 0, "n_annullate": 0, "n_rifiutate": 0,
-        "n_non_approvate": 0, "n_senza_tipo_doc": 0, "n_fuori_competenza": 0,
+        "n_non_approvate": 0, "n_fuori_competenza": 0,
         "n_pronte": 0,
     }
     base.update(kwargs)
@@ -79,10 +83,15 @@ class ClassificaGruppoNonServitoTests(SimpleTestCase):
     def test_righe_pronte_e_testata_bloccata_dice_stato_e_lavoro_fermo(self) -> None:
         motivo, testo = classifica_gruppo_non_servito(_foto(
             n_righe=5, n_pronte=5, commessa_emittibile=False,
-            stato_commessa="BOZZA", commessa_codice="CMM-108",
+            commessa_stato_codice_interno="BOZZA",
+            commessa_stato_descrizione="Bozza",
+            commessa_codice="CMM-108",
         ))
         self.assertEqual(motivo, MOTIVO_COMMESSA_NON_EMITTIBILE)
-        self.assertIn("BOZZA", testo)
+        # ⚠️ A video va la DESCRIZIONE, non il codice interno: la frase dice
+        # «Bozza», e `BOZZA` non deve comparire (regola display-fields).
+        self.assertIn("Bozza", testo)
+        self.assertNotIn("BOZZA", testo)
         self.assertIn("5 attività pronte", testo)
         # Il codice commessa NON sta nel testo del motivo: lo antepone il
         # compositore del messaggio (altrimenti compare due volte di fila).
@@ -116,12 +125,12 @@ class ClassificaGruppoNonServitoTests(SimpleTestCase):
         ))
         self.assertIn("non è ancora approvata", testo_non_appr)
 
-    # 4. Approvate ma senza tipo documento fiscale (il lotto lo richiede).
-    def test_tipo_doc_mancante(self) -> None:
-        motivo, _ = classifica_gruppo_non_servito(_foto(
-            n_righe=2, n_senza_tipo_doc=2,
-        ))
-        self.assertEqual(motivo, MOTIVO_TIPO_DOC_MANCANTE)
+    # 4. ⚠️ Il caso «approvate ma senza tipo documento fiscale» NON ha piu' un
+    #    test perche' non ha piu' un ramo: dopo la validazione del CHECK
+    #    (`20260815-30`) una riga emittibile senza tipo documento non puo'
+    #    esistere, e `fn_diagnostica_gruppi_fatturabili` non espone il
+    #    conteggio. Il test che c'era accendeva un motivo irraggiungibile — cioe'
+    #    asseriva come funzionante un comportamento che il modello non produce.
 
     # 5. Competenza oltre il bound: il consiglio pratico (la selezione è
     #    cumulativa: si rilancia sul mese più recente) fa parte del messaggio.
@@ -186,8 +195,15 @@ class MessaggioGruppiNonServitiTests(SimpleTestCase):
     # 9. Molti gruppi: i primi tre per esteso, il resto contato (un toast non
     #    regge un elenco: il dettaglio resta nell'esito strutturato).
     def test_messaggio_molti_gruppi_tronca_e_conta(self) -> None:
+        # ⚠️ `gruppo_key` DIVERSA per ciascuno: «5 gruppi» dev'essere 5 gruppi.
+        # La fixture originale variava solo `commessa_codice` lasciando la
+        # chiave identica — cioe' era la forma multi-commessa (un gruppo su
+        # cinque commesse) e asseriva «5 gruppi». Con il conteggio per gruppi
+        # distinti quel numero sarebbe 1, ed e' il difetto che il conteggio
+        # nuovo previene.
         spiegazioni = spiega_gruppi_non_serviti([
-            _foto(commessa_codice=f"CMM-{i}", n_righe=1, n_emesse=1)
+            _foto(gruppo_key=f"ORDINE_VENDITA:{i}", commessa_codice=f"CMM-{i}",
+                  n_righe=1, n_emesse=1)
             for i in range(5)
         ])
         msg = messaggio_gruppi_non_serviti(spiegazioni, totale_richiesti=7)
@@ -195,3 +211,40 @@ class MessaggioGruppiNonServitiTests(SimpleTestCase):
         self.assertIn("e altri 2", msg)
         self.assertIn("CMM-0", msg)
         self.assertNotIn("CMM-4", msg)
+
+
+class MessaggioGruppiNonServitiGranaTests(SimpleTestCase):
+    """Il conteggio del messaggio deve reggere la grana `(gruppo_key, commessa_id)`.
+
+    Dal 2026-08-15 `fn_diagnostica_gruppi_fatturabili` ritorna una riga per
+    coppia gruppo/commessa: un documento che alimentasse due commesse produce
+    due righe per lo STESSO gruppo. Contare le righe direbbe «2 gruppi su 1»,
+    cioe' un numero piu' grande del richiesto proprio nella frase che deve
+    spiegare. E' il caso per cui il DB ha cambiato la grana.
+    """
+
+    def test_conta_gruppi_distinti_non_righe(self) -> None:
+        due_righe_stesso_gruppo = [
+            {"gruppo_key": "ORDINE_VENDITA:aa", "commessa_codice": "CMM-1",
+             "motivo": "COMMESSA_NON_EMITTIBILE", "dettaglio": "x"},
+            {"gruppo_key": "ORDINE_VENDITA:aa", "commessa_codice": "CMM-2",
+             "motivo": "COMMESSA_NON_EMITTIBILE", "dettaglio": "y"},
+        ]
+        msg = messaggio_gruppi_non_serviti(
+            due_righe_stesso_gruppo, totale_richiesti=1,
+        )
+        # Un gruppo solo: forma singolare, e mai «2 gruppi su 1».
+        self.assertIn("il gruppo richiesto non è fatturabile", msg)
+        self.assertNotIn("2 gruppi su 1", msg)
+
+    def test_due_gruppi_distinti_contano_due(self) -> None:
+        msg = messaggio_gruppi_non_serviti(
+            [
+                {"gruppo_key": "A", "commessa_codice": "CMM-1",
+                 "motivo": "M", "dettaglio": "x"},
+                {"gruppo_key": "B", "commessa_codice": "CMM-2",
+                 "motivo": "M", "dettaglio": "y"},
+            ],
+            totale_richiesti=3,
+        )
+        self.assertIn("2 gruppi su 3", msg)

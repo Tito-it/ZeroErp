@@ -42,7 +42,7 @@ Indice test eseguiti:
 20) DashCompetenzaGruppiServiceTests.test_gruppi_stadio_invalido
 21) DashCompetenzaGruppiServiceTests.test_gruppi_order_by_non_valido
 22) DashCompetenzaGruppiServiceTests.test_gruppi_competenza_normalizzata_al_primo
-23) DashCompetenzaGruppiRepositoryTests.test_query_risolve_id_documento_da_area_e_uid
+23) DashCompetenzaGruppiRepositoryTests.test_id_documento_dalla_vista_non_da_una_seconda_risoluzione
 24) DashCompetenzaGruppiRepositoryTests.test_mapping_espone_documento_id_e_ne_preserva_il_null
 24-bis) DashCompetenzaGruppiRepositoryTests.test_mapping_espone_emittibilita_testata_col_motivo
 25) DashCompetenzaFatturePerCellaTests.test_n_fatture_innestato_sulla_cella_di_quello_stadio
@@ -643,22 +643,22 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
             emittibile, stato, stato_descr,
         )]
 
-    # 23) La SELECT risolve l'id dalla stessa coppia (area, uid) da cui la vista
-    #     prende il codice: id e codice devono descrivere lo STESSO documento,
-    #     altrimenti il kebab aprirebbe un documento diverso da quello scritto
-    #     nella riga — il difetto peggiore possibile qui, perche' sembra
-    #     funzionare.
+    # 23) 🟢 L'id del documento viene dalla VISTA, non piu' da una LATERAL
+    #     scritta qui (DB `20260815-25`). Era una SECONDA risoluzione della
+    #     stessa regola — il commento la dichiarava «drift noto e accettato» —
+    #     e id e codice potevano descrivere documenti diversi. Il test ora
+    #     presidia il verso opposto: che quella risoluzione NON torni.
     @patch.object(VenditeRepository, "_query_paged_view")
-    def test_query_risolve_id_documento_da_area_e_uid(self, mock_query):
+    def test_id_documento_dalla_vista_non_da_una_seconda_risoluzione(self, mock_query):
         mock_query.return_value = (self._rows(5387), 1)
         VenditeRepository().list_dash_competenza_gruppi(
             competenza_mese=date(2026, 8, 1), stadio="DA_EMETTERE",
             limit=25, offset=0,
         )
         sql = mock_query.call_args.kwargs["select_sql"]
-        self.assertIn("vw_dash_fatturazione_documenti", sql)
-        self.assertIn("d.area = g.area_documento", sql)
-        self.assertIn("d.documento_uid = g.sorgente_uid", sql)
+        self.assertIn("g.documento_id", sql)
+        self.assertNotIn("vw_dash_fatturazione_documenti", sql)
+        self.assertNotIn("LATERAL", sql)
 
     # 24) Il mapping consegna l'id al FE. Il caso NULL non e' un dettaglio: i
     #     gruppi SOURCELESS (oneri di commessa) non hanno documento, e il FE
@@ -692,13 +692,15 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
         )
         self.assertIs(righe[0]["commessa_emittibile"], False)
         self.assertEqual(righe[0]["commessa_stato_codice_interno"], "BOZZA")
-        # A video va la DESCRIZIONE (decodifica via JOIN, mai lookup client-side).
+        # A video va la DESCRIZIONE, e dal 2026-08-15 la porta la VISTA
+        # (DB `20260815-24`/`-25`): il `LEFT JOIN vendite.stati_commessa` che
+        # stava qui era una seconda copia della stessa decodifica.
         self.assertEqual(righe[0]["commessa_stato_descrizione"], "Bozza")
-        # E la query le chiede alla vista/catalogo (non ricostruite altrove).
         sql = mock_query.call_args.kwargs["select_sql"]
         self.assertIn("g.commessa_emittibile", sql)
         self.assertIn("g.commessa_stato_codice_interno", sql)
-        self.assertIn("stc.descrizione", sql)
+        self.assertIn("g.commessa_stato_descrizione", sql)
+        self.assertNotIn("stati_commessa", sql)
 
 
 class DashCompetenzaFatturePerCellaTests(TestCase):

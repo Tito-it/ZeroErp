@@ -29,10 +29,12 @@
 #  14) driver: l'esito espone la LISTA dei lotti prodotti (non il primo)
 #  15) handler: payload con gruppi → corsia mirata; senza → differita
 #  16) handler: `lotti` sopravvive alla compattazione del result
-#  17) driver: `gruppi_non_coperti` = richiesti − union(gruppi_coperti delle
-#      terne), ordine di richiesta preservato (esito parziale, rev 2026-08-15)
-#  18) driver: lane SENZA emittente non copre nulla (i suoi gruppi nei non coperti)
-#  19) driver: giro di massa → `gruppi_non_coperti` None (misura solo mirata)
+#  ⚠️ I test 17-19 (`gruppi_non_coperti` misurato alla discovery) sono stati
+#     RIMOSSI il 2026-08-15: quella misura era una PREVISIONE e il driver non
+#     la fa piu'. Il «chi non e' stato servito» e' ora un CONSUNTIVO
+#     (`fn_esito_gruppi_giro` sui lotti prodotti) e vive nell'handler —
+#     presidiato in test_fatturazione_giro_handler. Togliere i test insieme
+#     alla funzione, non lasciarli a fotografare un meccanismo che non c'e'.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -62,6 +64,7 @@ from apps.vendite.tests._helpers.lane_fixture import lane as _lane
 _SVC = "apps.vendite.services.fatturazione_driver_service"
 _GIRO = f"{_SVC}.esegui_giro_fatturazione"
 _E = "E_TEST"
+_REPO = "apps.vendite.db.commesse_repository.CommesseRepository"
 
 
 
@@ -238,57 +241,6 @@ class DriverCorsiaMirataTests(TestCase):
         self.assertEqual(summary["falliti"], 1)
         self.assertEqual([l["lotto_id"] for l in summary["lotti"]], [12])
 
-    # 17) Emissione PARZIALE: chi resta fuori si misura alla DISCOVERY, non
-    #     contando i lotti. `gruppi_coperti` delle terne (rev DB 2026-08-15) −
-    #     richiesti = non coperti, nell'ordine in cui l'operatore ha spuntato.
-    #     Era il caso silenzioso: «2 su 3» sembrava un successo pieno.
-    def test_gruppi_non_coperti_misurati_alla_discovery(self):
-        with patch(f"{_SVC}.CommesseRepository") as RepoCls, \
-             patch(f"{_SVC}.run_lotto_pipeline_until_done") as mock_run:
-            RepoCls.return_value.list_emittibili_lane.return_value = [
-                _lane(1, tipo_doc=1, coperti=("MAN:42",)),
-                _lane(1, tipo_doc=2, coperti=("PREVENTIVO:a", "MAN:42")),
-            ]
-            mock_run.return_value = {"lotto_id": 5, "motivo_stop": "OK"}
-            summary = esegui_giro_fatturazione(
-                modalita="mirata", competenza=date(2026, 6, 1),
-                gruppi=("ORDINE_VENDITA:zz", "PREVENTIVO:a", "CONTRATTO:kk"),
-            )
-        self.assertEqual(
-            summary["gruppi_non_coperti"], ["ORDINE_VENDITA:zz", "CONTRATTO:kk"],
-        )
-
-    # 18) Una lane SENZA emittente non produce lotti: i suoi gruppi NON contano
-    #     come coperti — finiscono fra i non coperti e a valle la diagnosi
-    #     spieghera' perche' (emittente mancante), invece di sparire come
-    #     «coperti» da una terna che non fattura.
-    def test_lane_senza_emittente_non_copre(self):
-        with patch(f"{_SVC}.CommesseRepository") as RepoCls, \
-             patch(f"{_SVC}.run_lotto_pipeline_until_done") as mock_run:
-            RepoCls.return_value.list_emittibili_lane.return_value = [
-                _lane(None, coperti=("PREVENTIVO:a",)),
-            ]
-            mock_run.return_value = {"lotto_id": 5, "motivo_stop": "OK"}
-            summary = esegui_giro_fatturazione(
-                modalita="mirata", competenza=date(2026, 6, 1),
-                gruppi=("PREVENTIVO:a",),
-            )
-        self.assertEqual(summary["gruppi_non_coperti"], ["PREVENTIVO:a"])
-        self.assertEqual(summary["senza_emittente"], 1)
-
-    # 19) Giro di MASSA: nessun perimetro nominale → la misura non si applica
-    #     (None, non lista vuota: «niente fuori» e «non misurato» sono due
-    #     affermazioni diverse).
-    def test_massa_non_misura_gruppi_non_coperti(self):
-        with patch(f"{_SVC}.CommesseRepository") as RepoCls, \
-             patch(f"{_SVC}.run_lotto_pipeline_until_done") as mock_run:
-            RepoCls.return_value.list_emittibili_lane.return_value = [_lane()]
-            mock_run.return_value = {"lotto_id": 5, "motivo_stop": "OK"}
-            summary = esegui_giro_fatturazione(
-                modalita="differita", competenza=date(2026, 6, 1),
-            )
-        self.assertIsNone(summary["gruppi_non_coperti"])
-
 
 class GiroHandlerMirataTests(SimpleTestCase):
 
@@ -298,11 +250,16 @@ class GiroHandlerMirataTests(SimpleTestCase):
     #     produce lotti fallisce con la diagnosi del perimetro
     #     (E_FATTURAZIONE_GIRO_NESSUN_LOTTO, test in
     #     test_fatturazione_giro_handler) — qui si verifica solo l'instradamento.
+    # `_REPO` mockato: con `lotti` valorizzati l'handler chiede al DB il
+    # CONSUNTIVO per gruppo (fn_esito_gruppi_giro) — qui si verifica solo
+    # l'instradamento della corsia, non il consuntivo.
+    @patch(_REPO)
     @patch(_GIRO)
-    def test_payload_con_gruppi_usa_corsia_mirata(self, mock_giro):
+    def test_payload_con_gruppi_usa_corsia_mirata(self, mock_giro, mock_repo):
         mock_giro.return_value = {
             "lane": 1, "esiti": [], "lotti": [{"lotto_id": 7}],
         }
+        mock_repo.return_value.esito_gruppi_giro.return_value = []
         fatturazione_giro_handler(
             {"competenza_mese": "2026-06-15", "gruppi": ["PREVENTIVO:a"]},
         )
@@ -321,8 +278,10 @@ class GiroHandlerMirataTests(SimpleTestCase):
 
     # 16) La compattazione del result toglie `esiti` (gonfierebbe il jsonb) ma
     #     NON `lotti`: senza, il FE non saprebbe dove mandare l'operatore.
+    @patch(_REPO)
     @patch(_GIRO)
-    def test_result_compatto_conserva_i_lotti(self, mock_giro):
+    def test_result_compatto_conserva_i_lotti(self, mock_giro, mock_repo):
+        mock_repo.return_value.esito_gruppi_giro.return_value = []
         mock_giro.return_value = {
             "lane": 1,
             "esiti": [{"lotto_id": 11, "ok": True}],

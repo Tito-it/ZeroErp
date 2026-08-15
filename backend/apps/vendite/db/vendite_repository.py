@@ -1175,23 +1175,19 @@ class VenditeRepository:
         # nell'envelope e `usePagedDashFetch` la adotta. Senza, una pagina
         # stantia tornerebbe VUOTA con count > 0 e il FE ripiegherebbe sulla
         # PRIMA pagina — un secondo giro, e per giunta nel posto sbagliato.
-        # `documento_id`: il gruppo E' il documento sorgente, ma la vista ne
-        # espone solo `sorgente_uid` (uuid) e il `riferimento` (codice) — e i
-        # drawer di dominio si aprono per **id**. La LATERAL qui sotto risolve
-        # l'id dalla STESSA riga da cui la vista prende il codice (stessa
-        # coppia area+uid, stesso ORDER BY): id e codice non possono descrivere
-        # due documenti diversi.
-        # ⚠️ Drift noto e accettato: la regola di risoluzione e' scritta due
-        # volte — qui e dentro `vw_dash_competenza_gruppi` (che proietta
-        # `doc.codice`). Se il criterio cambiasse nella vista, va cambiato anche
-        # qui. La soluzione pulita e' che la vista esponga `documento_id`
-        # accanto al `riferimento`: e' una nota per il team DB, non un
-        # prerequisito (nessun DDL serve al FE per aprire il documento).
-        # Stesso schema — e stesso caveat dichiarato — di
-        # `ui_repository.fetch_preset_base_snapshot`.
-        # Gruppi SOURCELESS (oneri di commessa): `area_documento` NULL → la
-        # LATERAL non produce righe → `documento_id` NULL. E' corretto: quei
-        # gruppi un documento non ce l'hanno, e il FE offrira' la sola commessa.
+        # 🟢 `documento_id` e `commessa_stato_descrizione` arrivano ora dalla
+        # VISTA (changeSet DB `20260815-24`/`-25`, brief emittibilita' §9.3).
+        # Qui c'erano due risoluzioni scritte a mano — una LATERAL su
+        # `vw_dash_fatturazione_documenti` per l'id del documento e un
+        # `LEFT JOIN vendite.stati_commessa` per la descrizione dello stato —
+        # ed erano **due copie** di regole che la vista gia' applicava: il
+        # commento di allora dichiarava il drift come «noto e accettato».
+        # Toglierle non e' cosmetica: l'id del documento nasce ora dalla
+        # STESSA riga da cui viene il `riferimento`, quindi codice e id non
+        # possono piu' descrivere documenti diversi.
+        # Gruppi SOURCELESS (oneri di commessa): `documento_id` resta NULL —
+        # quei gruppi un documento non ce l'hanno, e il FE offre la sola
+        # commessa.
         rows, total_count = self._query_paged_view(
             select_sql=f"""
             SELECT
@@ -1208,25 +1204,11 @@ class VenditeRepository:
                 g.ha_oneri,
                 g.data_attivita_min,
                 g.data_attivita_max,
-                doc.documento_id,
+                g.documento_id,
                 g.commessa_emittibile,
                 g.commessa_stato_codice_interno,
-                stc.descrizione AS commessa_stato_descrizione
+                g.commessa_stato_descrizione
             FROM vendite.vw_dash_competenza_gruppi g
-            -- Decodifica display dello stato commessa (JOIN qui, mai lookup
-            -- client-side): a video va la descrizione, il codice_interno
-            -- resta per la logica. `codice_interno` e' UNIQUE sul catalogo.
-            LEFT JOIN vendite.stati_commessa stc
-                   ON stc.codice_interno = g.commessa_stato_codice_interno
-            LEFT JOIN LATERAL (
-                SELECT d.documento_id
-                  FROM vendite.vw_dash_fatturazione_documenti d
-                 WHERE g.area_documento IS NOT NULL
-                   AND d.area = g.area_documento
-                   AND d.documento_uid = g.sorgente_uid
-                 ORDER BY d.competenza_mese DESC NULLS LAST
-                 LIMIT 1
-            ) doc ON TRUE
             {where_clause}
             """,
             order_by=order_clause,

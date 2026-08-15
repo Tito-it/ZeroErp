@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 695, di cui 79 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 696, di cui 79 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -379,6 +379,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Richiesta valida, esito nullo: nessun lotto nel perimetro chiesto.
     "E_FATTURAZIONE_GIRO_NESSUN_LOTTO": "NON_ESEGUIBILE",
     "E_FATTURAZIONE_GIRO_PAYLOAD": "DATO_ERRATO",
+    # Emissione mirata la cui discovery tocca il tetto delle corsie: · la richiesta e' nominale, quindi un troncamento e' una richiesta · senza risposta, non un successo parziale.
+    "E_FATTURAZIONE_MIRATA_TRONCATA": "NON_ESEGUIBILE",
     "E_FATTURAZIONE_NUMERA_PAYLOAD": "DATO_ERRATO",
     # <- FLUSSI_COMPETENZA_MANCANTE  (vivo)
     "E_FLUSSI_COMPETENZA_MANCANTE": "NON_PERMESSO",
