@@ -25,8 +25,26 @@ per i movimenti vendite (banca, posta, cassa, compensazioni, fondo fattura, ecc.
 ### Regole principali
 
 * `codice` univoco.
-* Solo **un centro** puo` avere `is_compensazione = true`.
-* Un centro non puo` essere contemporaneamente `is_compensazione = true` e `is_fondo_fattura = true`.
+* Solo **un centro** può avere `is_compensazione = true`.
+* Un centro non può essere contemporaneamente `is_compensazione = true` e `is_fondo_fattura = true`.
+
+---
+
+### ⚠️ I due flag marcano i centri **non di cassa**
+
+Non tutti i movimenti sono denaro arrivato. Un movimento sul centro
+`is_fondo_fattura` o `is_compensazione` registra denaro **spostato** da un
+documento a un altro, non incassato da un canale.
+
+| Domanda | Che cosa si somma |
+| --- | --- |
+| «questa fattura è ancora da pagare?» | **tutti** i movimenti — il trasferimento la salda davvero |
+| «quanto è **entrato**?» | solo i centri di cassa: questi due vanno **esclusi** |
+
+🔴 La distinzione va messa nella **prima** misura che si scrive, non aggiunta
+dopo: un cruscotto di incassato che somma tutto conta come denaro arrivato
+qualcosa che è stato solo spostato, e l'errore non si vede — il numero è
+plausibile e cresce nel verso giusto. **I due flag esistono anche per questo.**
 
 ---
 

@@ -31,27 +31,52 @@ selezione deterministica dei fondi disponibili per l’addebito/accredito.
 
 ### Note operative
 
-* La generazione e` vincolata alla **fattura sorgente**.
+* La generazione è vincolata alla **fattura sorgente**, che deve rientrare nella
+  **banda** delle due soglie di `anagrafiche.emittenti_fiscali_utilities`
+  (`minimo_soglia_min` / `minimo_soglia_max`). La banda **contiene lo zero**:
+  ⭐ un `importo` **negativo** è quindi legittimo — è un credito riportato
+  avanti, non un difetto.
 * L’applicazione avviene solo per record `DISPONIBILE`.
-* In caso di storni, la policy di riapertura va gestita per tipologia fondo.
-* La tabella e` pensata anche per scenari di **compensazione** tra insoluti
+* La tabella è pensata anche per scenari di **compensazione** tra insoluti
   e crediti cliente (tipici nei processi utilities).
-* Stato `ANNULLATO`: usato quando la source non e` piu` eseguibile
-  (es. documento sorgente gia` saldato/compensato o reset bloccato da movimenti contabilizzati).
+* Stato `ANNULLATO`: usato quando la source non è più eseguibile
+  (es. documento sorgente già saldato/compensato o reset bloccato da movimenti contabilizzati).
 
 ### Reset e riapertura
 
 * In caso di reset tecnico della fattura figlia, i fondi applicati vengono
   **ripristinati** a stato `DISPONIBILE` e la relazione con la fattura figlia
   viene rimossa.
-* La logica di reset e` centralizzata in `vendite.fn_reset_fondi_fattura()`.
+* La logica di reset è centralizzata in `vendite.fn_reset_fondi_fattura()`.
+* ⚠️ È un'operazione **tecnica sulla figlia** (ritorno del lotto in bozza),
+  **non una reazione ai pagamenti**: nessun incasso riapre o chiude un fondo.
 
-### Reset per tipologie non standard (WIP)
+### 🔴 ~~Storni e riapertura per tipologia~~ — concetto ritirato (2026-08-15)
 
-* Alcune tipologie di fondo (es. canone RAI o altri addebiti esterni)
-  possono richiedere reset su **tabelle dedicate**.
-* Per queste tipologie saranno previste funzioni specifiche di ripristino,
-  richiamate dal reset tecnico della fattura solo se applicabili.
+> ~~«In caso di storni, la policy di riapertura va gestita per tipologia fondo»~~
+> e ~~«Reset per tipologie non standard (WIP): funzioni specifiche di
+> ripristino»~~ **non si faranno**, per due ragioni indipendenti:
+>
+> 1. **lo storno non esiste più come concetto**: una correzione è una
+>    contabile con importi negativi (cantiere incassi, decisione D3-d);
+> 2. una riapertura automatica sarebbe **un automatismo che riscrive uno stato
+>    in reazione a un pagamento**, e sono stati esclusi tutti: *i fatti si
+>    aggiungono, i saldi si leggono, le decisioni le prende una persona.*
+>
+> Un fondo esistente **resta com'è**; se non è più giustificato, semplicemente
+> **non viene applicato**.
+
+### 🟠 Che cosa cambia con il piano in corso
+
+Piano completo: [brief-db-fondo-fattura…](/dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo) §8.
+
+| Oggi | Diventerà |
+| --- | --- |
+| l'importo di una source non assegnata viene **riallineato** dai giri di fatturazione successivi | **si congela**: una fattura sorgente `DEFINITIVA` ha un fondo definitivo (lock di colonna su `importo`) |
+| la sorgente può essere in **qualunque** stato, `ANNULLATA` compresa | solo sorgenti **`DEFINITIVA`** |
+| nessun vincolo impedisce **due fondi vivi** sulla stessa sorgente | indice unico parziale sugli atti automatici |
+| `stato` è un `varchar` **senza CHECK**: il vocabolario vive solo nelle funzioni | CHECK sul vocabolario + guard di transizione |
+| l'`importo` non ha **nessun CHECK** | `importo <> 0` + guard di **corrispondenza con la sorgente** (stesso segno del totale, non superiore in valore assoluto) |
 
 ---
 
