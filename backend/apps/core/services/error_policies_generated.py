@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 690, di cui 79 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 695, di cui 79 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -404,6 +404,16 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_FLUSSO_OWNERSHIP": "DATO_ERRATO",
     "E_FLUSSO_PRESA_IN_CARICO": "TECNICO",
     "E_FLUSSO_VALIDATION": "DATO_ERRATO",
+    # Lock di colonna su vendite.fatture_fondi_fattura_source: importo, fattura_sorgente_id, tipo_fondo_fattura_id e origine sono immutabili dopo l'INSERT. E' la traduzione strutturale di «il fondo di una fattura definitiva non si ricalcola»: fra una regola da ricordare e una che il database non lascia infrangere si sceglie la seconda. Restano modificabili le colonne del ciclo di vita (stato, assegnazione, motivo). CONFLITTO_STATO e non NON_PERMESSO: non e' un diritto che manca, e' l'atto che e' gia' compiuto. Piano: brief-db-fondo-fattura-ricalcolo-e-governo D-6.
+    "E_FONDO_ATTO_IMMUTABILE": "CONFLITTO_STATO",
+    # Violazione di chk_fondi_source_motivo_obbligatorio: manca il motivo su un atto straordinario (origine MANUALE oppure stato ANNULLATO). Nasce da un vincolo di tabella, quindi lo solleva il BACKEND traducendo il constraint con map_integrity_error, non una funzione PL/pgSQL. Il campo da dichiarare al client e' `motivo`. Piano: brief-db-fondo-fattura-ricalcolo-e-governo D-5.
+    "E_FONDO_MOTIVO_OBBLIGATORIO": "DATO_ERRATO",
+    # Guard trgfn_fondi_source_guard_importo: il fondo non assomiglia alla fattura da cui nasce (segno opposto al totale della sorgente, oppure superiore in valore assoluto). NON vieta il fondo NEGATIVO, che e' legittimo: le due soglie del minimo formano una banda che contiene lo zero, e il capo inferiore serve a riportare avanti i CREDITI. Vieta il fondo che racconta un'altra fattura: 8 euro di documento e -32 di fondo, prodotti da una riga contabile piu' grande della fattura (la quadratura sulle righe contabili e' la slice 2 del cantiere incassi, oggi non esiste). DATO_ERRATO e non CONFLITTO_STATO: non e' lo stato a impedirlo, e' il valore a essere sbagliato. Piano: brief-db-fondo-fattura-ricalcolo-e-governo D-3(a).
+    "E_FONDO_NON_CORRISPONDE_SORGENTE": "DATO_ERRATO",
+    # Violazione di chk_emittenti_fiscali_utilities_soglie_coppia: una sola delle due soglie del minimo e' valorizzata. Entrambe vuote = meccanismo del fondo fattura spento (ammesso), entrambe piene = attivo sulla banda, una sola = errore. Nasce da un vincolo di tabella, quindi lo solleva il BACKEND traducendo il constraint con map_integrity_error, non una funzione PL/pgSQL. Piano: brief-db-fondo-fattura-ricalcolo-e-governo D-0.
+    "E_FONDO_SOGLIE_INCOMPLETE": "DATO_ERRATO",
+    # Guard trgfn_fondi_source_guard_transizione: transizione fuori dalla matrice degli stati del fondo (DISPONIBILE <-> ASSEGNATO, entrambi verso ANNULLATO, ANNULLATO terminale). ANNULLATO e' terminale di proposito: riaprire un fondo annullato rimetterebbe in gioco denaro che una persona o una regola aveva tolto dal tavolo. Piano: brief-db-fondo-fattura-ricalcolo-e-governo D-7.
+    "E_FONDO_STATO_NON_AMMESSO": "CONFLITTO_STATO",
     # Il valore viene da vendite.regole_fatturazione_articolo, non da chi usa il programma: nessuno rimedia finche qualcuno non riconfigura.
     # ⚠️ RITIRATO il 2026-08-07
     "E_FONTE_QUANTITA_NON_VALIDA": "TECNICO",

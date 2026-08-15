@@ -32,6 +32,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.non_editable_fields_helper import (
     compute_non_editable_fields,
 )
+from apps.core.services.payload_helpers import translate_db_errors
 
 
 # Gap rispetto al registro DB `dbops.vw_non_editable_fields` (Fase 4 — A9).
@@ -286,6 +287,44 @@ class EmittentiFiscaliBillingAccountService:
 # =================================================================
 
 
+# Vincoli di `anagrafiche.emittenti_fiscali_utilities`, tradotti in errori
+# parlanti (R-2 di brief-db-fondo-fattura-ricalcolo-e-governo §8.3).
+#
+# ⚠️ Prima di questa mappa OGNI IntegrityError della tabella passava da
+# `create_with_dedup` e usciva come «esiste gia' un record per questa coppia»:
+# non un messaggio povero, un messaggio FALSO — chi sbagliava le soglie leggeva
+# di un duplicato che non c'era. E sul percorso di UPDATE non c'era nessuna
+# traduzione, quindi la stessa violazione diventava un 500.
+#
+# ⚠️ Nessuna delle due voci sulle soglie dichiara un CAMPO, ed e' voluto: i due
+# vincoli guardano la COPPIA (min, max), che l'operatore compila per intero.
+# Accendere uno solo dei due input manderebbe a correggere meta' delle volte il
+# campo giusto — peggio che non accenderne nessuno (regola di `map_integrity_error`).
+_UTILITY_UNIQUE_CONSTRAINTS: dict[str, tuple] = {
+    "uq_emittenti_fiscali_utilities_emittente_utility": (
+        "E_ANAG_DUPLICATO",
+        "Esiste gia' un record utility per questa coppia (emittente, utility).",
+    ),
+}
+
+_UTILITY_CHECK_CONSTRAINTS: dict[str, tuple] = {
+    # D-0: le due soglie si dichiarano INSIEME. Entrambe vuote = meccanismo del
+    # fondo fattura spento; entrambe piene = attivo sulla banda; una sola =
+    # errore di configurazione, perche' non spegne il meccanismo ma lo spalanca.
+    "chk_emittenti_fiscali_utilities_soglie_coppia": (
+        "E_FONDO_SOGLIE_INCOMPLETE",
+        "Le due soglie del minimo si dichiarano insieme: valorizzare sia la "
+        "soglia minima sia la massima, oppure lasciarle entrambe vuote "
+        "(fondo fattura non attivo su questa utility).",
+    ),
+    # Vincolo storico e distinto: presidia l'ORDINE delle due soglie.
+    "chk_emittenti_fiscali_utilities_soglie": (
+        E_ANAG_VALIDAZIONE,
+        "Soglie del minimo incoerenti: la soglia minima non puo' superare la massima.",
+    ),
+}
+
+
 class EmittentiFiscaliUtilitiesService:
     """Service per la matrice emittente_fiscale x utility (parametri fatturazione).
 
@@ -352,8 +391,10 @@ class EmittentiFiscaliUtilitiesService:
 
         attivo = optional_bool(payload, "attivo") if payload.get("attivo") is not None else None
 
-        result = create_with_dedup(
-            lambda: {"id": self._repo.create_record(
+        # Non `create_with_dedup`: la tabella ha quattro CHECK oltre alla UNIQUE,
+        # e ricondurli tutti a «duplicato» diceva una cosa falsa (vedi la mappa).
+        with self._vincoli_tradotti(utility_id=utility_id):
+            record_id = self._repo.create_record(
                 emittente_soggetto_ruolo_id=soggetto_ruolo_id,
                 utility_id=utility_id,
                 arrotondamento_importi_dec=arrot_dec,
@@ -361,10 +402,25 @@ class EmittentiFiscaliUtilitiesService:
                 minimo_soglia_min=payload.get("minimo_soglia_min"),
                 minimo_soglia_max=payload.get("minimo_soglia_max"),
                 attivo=attivo,
-            )},
-            duplicate_message="Esiste gia' un record utility per questa coppia (emittente, utility).",
+            )
+        return {"id": record_id}
+
+    # Scopo: Traduce le violazioni DB della tabella in errori di dominio
+    #        parlanti, delegando al BB `translate_db_errors` (che oltre agli
+    #        IntegrityError copre anche i RAISE P0001 di trigger/fn — un ramo
+    #        che una copia locale perderebbe).
+    #        ⚠️ Vale su ENTRAMBI i percorsi (create e update): l'update e' un
+    #        delta, quindi la coppia di soglie effettiva nasce dall'unione del
+    #        payload con la riga gia' a database — solo il CHECK la conosce,
+    #        nessuna guard Python sul solo payload potrebbe deciderlo.
+    def _vincoli_tradotti(self, **context: Any):
+        return translate_db_errors(
+            context=context,
+            fallback_code=E_ANAG_VALIDAZIONE,
+            fallback_message="Dati del record utility non validi.",
+            unique_constraints=_UTILITY_UNIQUE_CONSTRAINTS,
+            check_constraints=_UTILITY_CHECK_CONSTRAINTS,
         )
-        return {"id": result["id"]}
 
     # Scopo: Aggiorna un record utility (delta update).
     def aggiorna_record(self, emittente_id: int, record_id: int, payload: dict[str, Any]) -> dict[str, Any]:
@@ -372,7 +428,8 @@ class EmittentiFiscaliUtilitiesService:
             self._parent, self._repo, emittente_id, record_id,
             "Record utility non trovato per l'emittente indicato.",
         )
-        updated = self._repo.update_record(record_id, dict(payload))
+        with self._vincoli_tradotti(record_id=record_id):
+            updated = self._repo.update_record(record_id, dict(payload))
         ErrorManager.require(
             updated,
             code=E_ANAG_NOT_FOUND,

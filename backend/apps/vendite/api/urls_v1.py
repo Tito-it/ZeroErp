@@ -61,6 +61,7 @@ from apps.vendite.api.views_dashboard_aperto import (
     ApiDashboardApertoDocumenti,
     ApiDashboardApertoDocumentiExport,
 )
+from apps.vendite.api.views_fondi_fattura import ApiFondiFatturaDaDecidere
 from apps.vendite.api.views_lookups import (
     ApiAmbitiContrattoLookup,
     ApiListiniSelezionabiliContrattoLookup,
@@ -221,6 +222,13 @@ urlpatterns = [
         "dashboard-backlog/documenti/export/",
         ApiDashboardBacklogDocumentiExport.as_view(),
         name="vendite-dashboard-backlog-documenti-export",
+    ),
+    # Fondi fattura — l'elenco dei casi che il giro automatico lascia a una
+    # persona (D-10). Sola lettura: presenta, non sana.
+    path(
+        "fondi-fattura/da-decidere/",
+        ApiFondiFatturaDaDecidere.as_view(),
+        name="vendite-fondi-fattura-da-decidere",
     ),
     path("lotti/", ApiLottiList.as_view(), name="vendite-lotti-list"),
     # Export CSV/XLSX della lista (colonne dal catalogo `vendite.lotti`).

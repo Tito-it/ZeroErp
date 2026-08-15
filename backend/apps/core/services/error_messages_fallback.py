@@ -283,6 +283,29 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_FLUSSO_OWNERSHIP": "Flusso non appartiene alla pratica indicata.",
     "E_FLUSSO_PRESA_IN_CARICO": "Errore durante la presa in carico del flusso.",
     "E_FLUSSO_VALIDATION": "Parametri flusso non validi.",
+    # Fondi fattura (brief-db-fondo-fattura-ricalcolo-e-governo). Il fondo e' un
+    # ATTO: si crea una volta e non si ricalcola. ⚠️ Nessuno di questi messaggi
+    # parla del SEGNO dell'importo: un fondo negativo e' legittimo — il capo
+    # inferiore della banda del minimo esiste apposta per riportare avanti i
+    # crediti — e cio' che si vieta e' la mancata corrispondenza col documento.
+    "E_FONDO_ATTO_IMMUTABILE": (
+        "Il fondo fattura e' gia' stato creato e non si puo' modificare: "
+        "importo, fattura di origine, tipo e origine sono definitivi."
+    ),
+    "E_FONDO_MOTIVO_OBBLIGATORIO": (
+        "Motivo obbligatorio: un fondo creato a mano o annullato deve dire perche'."
+    ),
+    "E_FONDO_NON_CORRISPONDE_SORGENTE": (
+        "Il fondo non corrisponde alla fattura da cui nasce: deve avere lo stesso "
+        "segno del totale del documento e non superarlo in valore assoluto."
+    ),
+    "E_FONDO_SOGLIE_INCOMPLETE": (
+        "Le due soglie del minimo si dichiarano insieme: valorizzarle entrambe "
+        "oppure lasciarle entrambe vuote."
+    ),
+    "E_FONDO_STATO_NON_AMMESSO": (
+        "Passaggio di stato del fondo non ammesso: un fondo annullato non si riapre."
+    ),
     "E_FORMA_GIURIDICA_PAESE": "Forma giuridica non coerente con il paese del soggetto.",
     "E_FORNITORE_BLOCCATO": "Fornitore bloccato: non e' possibile emettere ordini.",
     "E_FORNITORE_ID_INVALIDO": "Identificativo fornitore non valido.",

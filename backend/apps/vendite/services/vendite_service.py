@@ -17,7 +17,11 @@ from decimal import Decimal
 from django.db import DatabaseError
 
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.list_helpers import validate_enum_param, validate_pagination
+from apps.core.services.list_helpers import (
+    validate_enum_param,
+    validate_order_params,
+    validate_pagination,
+)
 from apps.core.services.partitioned_note_service import PartitionedNoteService
 from apps.vendite.db.note_repositories import NOTE_REPO_FATTURA
 from apps.vendite.db.vendite_repository import (
@@ -27,6 +31,7 @@ from apps.vendite.db.vendite_repository import (
     DASH_COMPETENZA_STADI,
     DASH_FATTURAZIONE_AREE,
     DASH_FATTURAZIONE_AREE_EURO,
+    FONDI_DA_DECIDERE_MOTIVI,
     VenditeRepository,
 )
 from apps.vendite.types import (
@@ -37,6 +42,7 @@ from apps.vendite.types import (
     DashCompetenzaCommessaRow,
     DashCompetenzaErroreRow,
     DashCompetenzaGruppoRow,
+    FondoFatturaDaDecidereRow,
     LottoFattureRow,
     LottoListRow,
 )
@@ -1384,3 +1390,65 @@ def get_fattura_dettaglio(
             ),
         },
     }
+
+
+# =====================================================================
+# Fondi fattura — elenco dei casi che chiedono una persona (BE-3)
+# =====================================================================
+
+_FN_FONDI_DA_DECIDERE = "vendite.vendite_service.fn_fondi_fattura_da_decidere"
+
+
+# Scopo: Restituisce l'elenco paginato dei fondi fattura «da decidere»
+#        (vendite.vw_fondi_fattura_da_decidere), filtrabile per motivo.
+# Obiettivo: dare una sede alle quattro situazioni in cui il giro automatico si
+#        FERMA e lascia la scelta a una persona. Non e' un cruscotto di
+#        controllo: e' la coda del lavoro che l'automatismo non puo' fare.
+# Perimetro: SOLA LETTURA. Nessun ricalcolo del fondo in Python e nessuna
+#        scrittura — la promessa di F-1 (il fondo e' un ATTO, scritto una volta
+#        e mai riscritto) cade nel momento in cui un secondo posto tocca un
+#        importo. Il BE chiama e legge.
+# Risultato: dict con count, page, page_size, total_pages, results.
+def fn_fondi_fattura_da_decidere(
+    *,
+    motivo: str | None = None,
+    auth_user_id: int | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+    page: int = 1,
+    page_size: int = 50,
+) -> dict[str, object]:
+    # Filtro motivo sulla whitelist ORDINATA dei quattro motivi della vista:
+    # fail-fast 400 invece di una lista vuota silenziosa, che su un vocabolario
+    # chiuso e' indistinguibile da «non c'e' niente da decidere».
+    _validate_enum(
+        motivo,
+        allowed=FONDI_DA_DECIDERE_MOTIVI,
+        param_name="motivo",
+        function_name=_FN_FONDI_DA_DECIDERE,
+    )
+    # Ordinamento: default risolti QUI (data, desc) e validati col BB condiviso
+    # `validate_order_params` — non un'altra copia inline del blocco
+    # order_by/order_dir (regola del 2: in questo file ce n'erano gia' sei).
+    order_by, order_dir = validate_order_params(
+        order_by or "data",
+        (order_dir or "desc").lower(),
+        allowed_columns=frozenset(VenditeRepository.FONDI_DA_DECIDERE_SORT_COLUMNS),
+        error_code="E_VENDITE_VALIDATION",
+        function_name=_FN_FONDI_DA_DECIDERE,
+    )
+    offset = _validate_pagination(page, page_size, _FN_FONDI_DA_DECIDERE)
+
+    repository = VenditeRepository()
+    results: list[FondoFatturaDaDecidereRow]
+    results, total_count = repository.list_fondi_fattura_da_decidere(
+        motivo=motivo,
+        auth_user_id=auth_user_id,
+        order_by=order_by,
+        order_dir=order_dir,
+        limit=page_size,
+        offset=offset,
+    )
+    return _build_list_response(
+        results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
+    )

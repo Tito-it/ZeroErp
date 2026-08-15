@@ -889,3 +889,38 @@ class LineagePassaggioRow(TypedDict):
     to_is_abortito: bool
     to_doc_id: int | None
     is_ramo_inverso: bool
+
+
+class FondoFatturaDaDecidereRow(TypedDict):
+    # Riga di vendite.vw_fondi_fattura_da_decidere: un caso di fondo fattura
+    # che chiede una PERSONA. Quattro motivi a vocabolario chiuso
+    # (PROPOSTA_SENZA_ATTO, IMPORTO_NON_CORRISPONDENTE, NON_PIU_CAPIENTE,
+    # UTILITY_NON_ATTRIBUIBILE): li decodifica il FE con `labelOrCode`.
+    #
+    # ⚠️ Le colonne dell'ATTO (`fondo_source_id`, `origine`, `stato_atto`,
+    # `importo_atto`, `atto_motivo`, `atto_data`) sono valorizzate SOLO sul ramo
+    # NON_PIU_CAPIENTE — negli altri tre l'atto non esiste ancora, ed e' il
+    # motivo per cui l'elenco lo segnala. Simmetricamente `importo_proposto`
+    # esiste solo dove una proposta c'e' (PROPOSTA_SENZA_ATTO).
+    motivo: str
+    fattura_sorgente_id: int
+    anno: int | None
+    serie: str | None
+    numero: str | None
+    data: str | None
+    totale_a_pagare: str | None
+    billing_account_id: int | None
+    utility_id: int | None
+    tipo_doc_fiscale_id: int | None
+    emittente_soggetto_ruolo_id: int | None
+    valuta_id: int | None
+    tipo_fondo_fattura_id: int | None
+    tipo_fondo_codice_interno: str | None
+    fondo_source_id: int | None
+    origine: str | None
+    stato_atto: str | None
+    importo_atto: str | None
+    atto_motivo: str | None
+    atto_data: str | None
+    importo_proposto: str | None
+    capienza_attuale: str | None
