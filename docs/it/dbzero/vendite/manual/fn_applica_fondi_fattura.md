@@ -32,6 +32,41 @@ in stato `DISPONIBILE` ad una **fattura figlia**, creando le righe in
 
 ---
 
+### 🟠 Due cose cambiano con il piano in corso
+
+Questa e **l'unica funzione del fondo che muove denaro**: assegnare una source a
+una fattura figlia ne cambia il totale. Le due modifiche previste stanno
+entrambe qui per quel motivo.
+Piano: [brief-db-fondo-fattura…](/dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo) §8.2.
+
+**1. La chiave sorgente ↔ figlia passa da cinque elementi a nove** (D-4).
+
+I cinque parametri di scope (`billing_account`, `utility`, `tipo_doc_fiscale`,
+`emittente`, `valuta`) sono un **sottoinsieme** della chiave con cui si
+accorpano le attivita in fattura
+([`fn_build_fattura_key`](/dbzero/vendite/funzioni/fn_build_fattura_key)):
+mancano **reseller, registro, termine e modalita di pagamento**.
+
+⚠️ Conseguenza concreta: un fondo nato da una fattura a 30 giorni puo finire su
+una figlia a 60 giorni — due documenti che il sistema ha **deliberatamente
+tenuto separati**, visto che il termine e nella chiave proprio per non
+accorparli. La correzione confronta le due righe di `vendite.fatture` su tutti e
+nove gli elementi, e la funzione smette di ricevere parametri di scope.
+
+**2. Si verifica che la sorgente sia ancora capiente** (D-3).
+
+Oggi la funzione assegna qualunque riga `DISPONIBILE` che combaci con lo scope,
+**senza guardare se la fattura sorgente sia stata pagata nel frattempo**. Il
+guard nuovo rilegge il residuo della sorgente **nell'istante in cui il fondo
+muove denaro**: se non copre piu l'importo, il fondo **non viene applicato** e
+resta dov'e.
+
+⭐ Non e un ricalcolo del fondo — quello e vietato: e una **lettura** al momento
+dell'atto. E il pezzo che rende inutile qualunque automatismo di allineamento
+sui fondi.
+
+---
+
 ### Output
 
 Ritorna il numero di righe applicate.

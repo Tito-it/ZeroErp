@@ -307,34 +307,49 @@ ma senza passare dalla pipeline lotto.
 
 ---
 
-## 📌 Analisi fondi fattura (WIP)
+## 📌 ~~Analisi fondi fattura (WIP)~~ — 🔴 SUPERATA (2026-08-15)
+
+> 🔴 **Questa sezione è un design del 2026-02 mai eseguito, e tre delle sue righe
+> sono state decise diversamente.** Resta scritta perché è la storia del
+> ragionamento, non perché sia ancora valida. **La versione viva è
+> [brief-db-fondo-fattura-ricalcolo-e-governo.md](../work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo.md) §8.**
+>
+> | Qui si diceva | Decisione presa |
+> |---|---|
+> | *«Storni / note credito: policy `riapribile` per tipologia fondo; se arriva uno storno la source torna `DISPONIBILE`»* | 🔴 **Cade due volte.** Lo **storno non esiste più come concetto** (una correzione è una contabile con importi negativi — cantiere incassi D3-d), e soprattutto sarebbe **un automatismo che riscrive uno stato in reazione a un pagamento**: sono stati esclusi tutti. Un fondo esistente **resta com'è**; la decisione la prende una persona |
+> | *«esclude fatture pagate (regola a definire su pagamenti)»* | La regola ora c'è, ed è una **lettura al momento dell'atto**, non un filtro anticipato: si verifica che la sorgente sia ancora capiente **quando** il fondo muove denaro |
+> | *«seleziona per chiave BA+utility+tipo_doc+emittente+valuta»* | La chiave è quella con cui si **accorpano le attività in fattura** (`fn_build_fattura_key`): **nove** elementi, non cinque. Ne mancavano reseller, registro, termine e modalità di pagamento |
+> | *«`SUM(importo) >= totale_a_pagare` come regola base di *pagata*»* | ⚠️ Su un documento a **credito** il confronto si inverte e la regola risponde sempre «pagata». Ogni soglia su `totale_a_pagare` va definita **sapendo che può essere negativo** |
+>
+> ⭐ Non tutto è caduto: la **banda** delle soglie, i tre stati e la struttura dei
+> due processi (genera → applica) sono rimasti quelli.
 
 ### Processo 1: Generazione source
 
 * seleziona fatture con `minimo = true`
 * esclude fatture gia` presenti in `source`
-* esclude fatture pagate (regola a definire su pagamenti)
+* ~~esclude fatture pagate (regola a definire su pagamenti)~~
 * inserisce record `DISPONIBILE`
 
 ### Processo 2: Applicazione su fattura
 
-* seleziona record `DISPONIBILE` per chiave BA+utility+tipo_doc+emittente+valuta
+* ~~seleziona record `DISPONIBILE` per chiave BA+utility+tipo_doc+emittente+valuta~~
 * crea record in `fatture_fondi_fattura`
 * aggiorna source `ASSEGNATO` e collega la `fattura_figlia_id`
 
-### Storni / note credito
+### ~~Storni / note credito~~ — 🔴 concetto ritirato
 
-Policy per tipologia fondo:
+~~Policy per tipologia fondo:~~
 
-* default `riapribile = false`
-* se `riapribile = true` e arriva storno, lo source torna `DISPONIBILE`
+* ~~default `riapribile = false`~~
+* ~~se `riapribile = true` e arriva storno, lo source torna `DISPONIBILE`~~
 
 ### Pagamenti
 
 Serve tabella movimenti:
 
 * `pagamenti.vendite_movimenti`
-* `SUM(importo) >= totale_a_pagare` come regola base di “pagata”
+* ~~`SUM(importo) >= totale_a_pagare` come regola base di “pagata”~~
 
 ### Totali fattura
 

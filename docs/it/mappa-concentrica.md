@@ -405,7 +405,11 @@ Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — ve
 - **Autenticazione 2FA + provider esterni**
 - **Fondo fattura — ripensare il meccanismo**:
   [brief-db-fondo-fattura…](dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo.md).
-  Non urgente oggi, lo diventa col primo incasso reale
+  ⚠️ ~~Non urgente oggi, lo diventa col primo incasso reale~~ — **rimisurato il
+  2026-08-15: la finestra non la apre il primo incasso**, la apre il primo che
+  scrive righe contabili (il fondo si genera sulla *differenza* fra due saldi, e
+  il secondo termine non dipende dai movimenti). Il brief ha ora il suo **piano
+  in §8**, e la Fase A va applicata prima di quel momento
 - **Upload file allegati pratiche** (storage filesystem/object storage)
 
 ### 🧭 Decisioni aperte — non sono lavori

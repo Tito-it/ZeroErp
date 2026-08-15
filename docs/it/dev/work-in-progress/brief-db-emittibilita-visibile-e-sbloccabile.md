@@ -9,6 +9,14 @@ dall'interfaccia non esiste modo di sbloccarla.
 **Decisione presa da Tid** (2026-08-04): i dati sporchi non sono il problema
 (siamo in test) — **è un buco di modello e va chiuso**. E le attività bloccate
 vanno **segnalate, non nascoste**: sono lavoro reale.
+
+> 📌 **Stato al 2026-08-15** (rimisurato, non riferito): delle quattro voci aperte ne
+> restano **due**, e nessuna è bloccante. Chiuse: le sei decisioni R1 del §7.3 (dal
+> cantiere vie d'uscita, test verde) e il verbo «Rendi pronta» (§6). Aperte: la
+> **segnalazione della riga bloccata in dashboard** — lavoro FE, il dato c'è da
+> giugno — e la prova in-app che il giro si chiude. **`gruppi_coperti` è stato fatto
+> il 2026-08-15** (`20260815-02`, §5): era l'ultima voce DB. Dettaglio nel §7.5.
+
 **Correlati:**
 [vw_dash_competenza_attivita](/dbzero/vendite/views/vw_dash_competenza_attivita) ·
 [vw_dash_competenza_gruppi](/dbzero/vendite/views/vw_dash_competenza_gruppi) ·
@@ -207,6 +215,39 @@ restituire anche `gruppi_coperti text[]`, l'esito potrebbe dire «2 su 3, il
 terzo no perché…». **Non è urgente** e non blocca nulla: valutatelo insieme al
 resto.
 
+> 🟢 **FATTO il 2026-08-15** con `20260815-02`, su decisione di Tid di chiudere
+> anche questa. La lane restituisce `gruppi_coperti text[]`: l'elenco
+> **deterministico** dei gruppi che ciascuna terna ha davvero coperto. Il gruppo
+> non servito si ricava per differenza, ed è la risposta che prima non esisteva.
+>
+> **Perché valeva la pena farla adesso, benché «non urgente».** Dei tre esiti
+> possibili è l'unico **silenzioso**: «zero fatture» il BE l'ha già reso un errore
+> parlante ad agosto, e insospettisce comunque; «2 su 3» sembra un successo, e il
+> lavoro non fatturato resta fermo senza che nessuno lo vada a cercare.
+>
+> **La chiave arriva dalla sola fonte di verità** — `fn_build_gruppo_fatturabile_key`,
+> la stessa che filtra nel `WHERE` e alimenta `vw_dash_competenza_gruppi` — e non è
+> ricostruita nella lane: sarebbe la seconda copia della regola, l'errore che il §7.1
+> ha già dovuto correggere una volta.
+>
+> ⚠️ **Il campo si calcola sempre, anche nel giro di massa**, ed è una scelta: costa
+> una chiamata `STABLE` per riga candidata. L'alternativa — calcolarlo solo con
+> `p_gruppi NOT NULL` — è stata scartata perché produrrebbe un campo che a volte vale
+> `NULL` per «non calcolato» e a volte per «nessun gruppo»: l'ambiguità si paga sei
+> mesi dopo, in silenzio. Se il costo mordesse sul cron, la mitigazione è scritta nel
+> changeSet.
+>
+> ⚠️ **Il `RETURNS TABLE` cambia, quindi è servito un `DROP FUNCTION`.** Verificato
+> prima: **zero** chiamanti DB (le due funzioni che nominano la lane la citano solo
+> in un commento), la firma resta identica (i cinque `%TYPE` risolvono agli stessi
+> tipi), i GRANT tornano dal meccanismo schema-wide, e il BE **non si rompe** perché
+> nomina le cinque colonne una per una — il campo nuovo è **opt-in**: lo si prende
+> aggiungendolo alla propria `SELECT`.
+>
+> **Presidio**: `test-fn-list-emittibili-lane.sql` passa da 9 a **11 test**. Il test
+> 11 è il caso di questo paragrafo — si chiedono i gruppi veri più uno inesistente, e
+> si verifica che il non servito si ricavi per differenza.
+
 ---
 
 ## 6. Definizione di «fatto»
@@ -215,10 +256,22 @@ resto.
 - [x] transizione `→ PRONTA_FATTURAZIONE` manuale con `meta` completo;
 - [x] `fn_check_commessa_pronta_fatturazione` come sede unica di capability+guard;
 - [x] pgTAP §3.4 verdi — 7/7, §7.4;
-- [ ] FE: riga bloccata segnalata in dashboard + verbo «Rendi pronta» sul drawer
-      commessa (nostra metà, parte a prerequisiti pronti);
-- [ ] le 5 commesse di giugno sbloccate dall'interfaccia da Tid, e le 15 attività
-      fatturate — è la prova che il giro si chiude.
+- [x] FE, **verbo «Rendi pronta»** — fatto, e senza codice: il seed emette
+      `action_key = rendi_pronta` da tutte e tre le origini (`BOZZA`, `APERTA`,
+      `IN_ESECUZIONE`), attivo, con `vendite.commesse.azione_rendi_pronta` tradotta.
+      Il drawer lo rende perché è data-driven (verificato sul DB il 2026-08-15);
+- [ ] 🔴 FE, **riga bloccata segnalata in dashboard** — **NON fatto.** La vista
+      `vw_dash_competenza_attivita` espone `commessa_emittibile` da giugno, e il
+      frontend **non lo legge**: zero occorrenze in `frontend/src` (misurato
+      2026-08-15). L'unica traccia è un commento su un messaggio di esito *dopo* il
+      click. È la metà del §2.1 ancora aperta — la lista continua a promettere un
+      lavoro che il motore non può fare, e il blocco si scopre premendo;
+- [ ] **La prova che il giro si chiude**: sbloccare una commessa dall'interfaccia e
+      fatturarne le attività, **una volta**.
+      ⚠️ *Riformulata il 2026-08-15.* Diceva «le 5 commesse di giugno e le 15
+      attività»: erano una fotografia di dati di **test** del 4 agosto, e a undici
+      giorni non descrivono più niente. Quello che conta è la **catena**, non quelle
+      righe — la si prova su una commessa qualsiasi. Non è una bonifica.
 
 ---
 
@@ -297,7 +350,25 @@ Ne è però uscita una regola generale che vale per ogni documento, presente e f
 
 R1 adesso è un test, non un'indagine da rifare a mano:
 [`test-transizioni-uscita-manuale-v1.sql`](../../../../db/pgtap/config/test-transizioni-uscita-manuale-v1.sql)
-scorre tutte e sette le matrici. **Oggi è rosso**, e nomina sei stati:
+scorre tutte e sette le matrici.
+
+> 🟢 **CHIUSO — aggiornamento del 2026-08-15.** Il test è **verde** e **fuori dalla
+> baseline** (verificato eseguendolo). I sei stati elencati qui sotto sono
+> esattamente quelli su cui Tid ha deciso il 2026-08-04, e il cantiere
+> [vie d'uscita per l'operatore](../work-done/brief-db-vie-uscita-operatore.md) li ha
+> chiusi tutti: due hanno riavuto l'annullamento, quattro dicono perché non ce
+> l'hanno. Il paragrafo resta perché è **il punto in cui la regola R1 è nata** — da
+> una domanda di questo brief, «gli altri documenti sono a posto?» — e quella genesi
+> vale più della lista.
+>
+> ⚠️ La R1 ha poi mostrato un **punto cieco** che questo paragrafo non poteva
+> prevedere: per costruzione non vede uno stato **senza nessuna uscita**, perché il
+> test raggruppa le transizioni per stato di partenza. Sono stati proprio quelli a
+> lasciare una barra muta a video. Il presidio dell'altro lato è
+> `script/test-capability-motivi-e-nessuna-azione-v1.sql`; il punto cieco è
+> dichiarato dentro il file stesso.
+
+Quando fu scritto era **rosso**, e nominava sei stati:
 
 ```text
 ddt.CONSEGNATO, ddt.RESO, ordine.CONFERMATO,
@@ -335,8 +406,15 @@ perché sono **la stessa** funzione.
 
 ### 7.5 Cosa resta
 
-- La palla FE del §6, invariata.
-- Le sei decisioni di R1 (§7.3), da prendere insieme.
-- Il `gruppi_coperti text[]` della lane (§5 del brief): non è stato fatto, il brief
-  stesso lo dichiara non urgente. Quando lo si affronta, la sede naturale è la lane,
-  non la diagnostica BE.
+> 🟢 **Rimisurato il 2026-08-15.** Delle tre voci qui sotto **una è chiusa e una si è
+> dimezzata**: le spunte del §6 e la nota nel §7.3 riportano la prova.
+
+- 🔴 **FE — la riga bloccata non è segnalata in dashboard.** È l'unica metà rimasta
+  del §2.1, ed è l'unica voce con un effetto visibile: il dato (`commessa_emittibile`)
+  il DB lo espone da giugno, nessuno lo legge. Il verbo «Rendi pronta» invece c'è.
+- ~~Le sei decisioni di R1 (§7.3), da prendere insieme.~~ ✅ **prese e chiuse** dal
+  cantiere vie d'uscita; il test R1 è verde e fuori baseline.
+- ~~Il `gruppi_coperti text[]` della lane (§5 del brief): non è stato fatto.~~
+  ✅ **Fatto il 2026-08-15**, `20260815-02` — e nella sede giusta, la lane, non la
+  diagnostica BE. Dettaglio e motivazioni in coda al §5; presidio ai test 10-11 di
+  `test-fn-list-emittibili-lane.sql`.

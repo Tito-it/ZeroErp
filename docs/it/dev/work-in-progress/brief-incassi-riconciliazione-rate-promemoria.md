@@ -115,6 +115,27 @@ posting.** Portare una riga a `POSTATA` e creare il movimento devono essere la
 nessuno mette righe in `POSTATA`: il giorno che qualcuno lo farà, si vedrà come
 fondi fattura duplicati, e sembrerà un problema di fondi fattura.
 
+#### ⭐ Verificato il 2026-08-15: con un posting **atomico** la bilancia regge da sé
+
+Il conto, fatto sui due termini nel passaggio `ABBINATA → POSTATA`:
+
+```text
+prima :  target = totale − 0          − importo    =  totale − importo
+dopo  :  target = (totale − importo)  − 0          =  totale − importo
+```
+
+I due termini **si scambiano lo stesso importo**. Quindi il rischio B-1 non è
+«il posting sposta la bilancia»: è tutto e solo nella **non-atomicità**, che
+D3-b risolve per costruzione. Non c'è un secondo lavoro da fare — c'è da **non**
+scrivere il posting in due pezzi.
+
+⚠️ **Ma il posting fa un'altra cosa, e va saputa adesso.** La riga contabile che
+il fondo fattura crea è `ABBINATA`, cioè **postabile**: il giorno del posting
+diventerà un `vendite_movimenti` vero. Ed è **giusto** — la fattura sorgente è
+davvero stata saldata, per **trasferimento** su un'altra fattura e non per
+cassa. Segue il limite di dominio scritto in §4: *ogni misura di «incassato»
+deve escludere i centri non-cassa*. Analisi: [brief-db-fondo-fattura…](brief-db-fondo-fattura-ricalcolo-e-governo.md) §8.2 Fase F.
+
 ### Conseguenza sull'ordine dei lavori
 
 L'ordine di Tid (incassi → `2.4 DatiPagamento` → SDI) **non cambia**. Cambia il
@@ -367,21 +388,82 @@ a una fattura figlia** dal task `applica_fondi_lotto`.
 
 **Cosa si fa quindi:**
 
-- l'automatismo prende un **limite inferiore**: genera un fondo solo per
+- ~~l'automatismo prende un **limite inferiore**: genera un fondo solo per
   `importo_target > 0`, che è il caso per cui è nato (minimo non raggiunto, somma
   da recuperare). Il **verso opposto non è un fondo**: è denaro in eccesso, cioè
-  un fatto di natura diversa;
+  un fatto di natura diversa;~~
 - l'eccedenza resta **visibile e in attesa di una persona**: saldo negativo sulla
   fattura + l'elenco delle rate sovra-incassate. La decisione — rimborsare,
   **compensare** (`pagamenti.compensazioni` esiste ed è il candidato naturale),
   applicare a una fattura futura — è un gesto **governato**, non un effetto
   collaterale di un batch notturno.
 
-⚠️ **Una domanda che questa scelta apre e che non chiudo io**: un fondo **già
+##### 🔴 Il primo punto era sbagliato — corretto il 2026-08-15 con Tid
+
+> **«Il verso opposto non è un fondo» è falso.** Il verso opposto **è** un fondo,
+> ed è metà del meccanismo.
+
+Le due soglie di `anagrafiche.emittenti_fiscali_utilities` non sono «un minimo e
+un tetto»: sono i **due capi di una banda che contiene lo zero**. Con l'esempio
+reale di Tid (`minimo_soglia_max = +10`, `minimo_soglia_min = −500`):
+
+```text
+                −500 €              0              +10 €
+    ────────────────┼───────────────┼───────────────┼──────────────
+     RIMBORSO       │      F O N D O   F A T T U R A     │  PAGAMENTO
+     (credito       │  a credito  ·  a debito            │  ordinario
+      troppo grande)│  si riporta sulla fattura dopo     │  del cliente
+```
+
+Una fattura fra −500 e 0 **deve** diventare di minimo e riportare avanti un
+**credito**: è esattamente a cosa serve il capo inferiore. Un filtro
+`importo_target > 0` avrebbe spento quella metà — e il difetto sarebbe stato
+invisibile, perché il meccanismo avrebbe continuato a funzionare *nell'altro
+verso*.
+
+**Il pericolo vero non era il segno: era la mancata corrispondenza col
+documento.** Una fattura da 8 € su cui qualcuno scrive una riga contabile da 40 €
+produce un fondo di −32 su un documento che vale +8. Il controllo giusto è:
+
+```text
+l'importo non è zero
+ha lo stesso segno del totale_a_pagare della fattura sorgente
+non lo supera in valore assoluto
+```
+
+⚠️ E **non** si scrive come «compreso fra 0 e il totale»: su una sorgente a
+credito gli estremi si invertono — la trappola già registrata in §5, che qui si
+presenterebbe come **caso ordinario** e non di bordo.
+
+⚠️ Va in un **guard trigger**, non in un CHECK: deve leggere `vendite.fatture`.
+
+Piano completo: [brief-db-fondo-fattura…](brief-db-fondo-fattura-ricalcolo-e-governo.md)
+§8.1 F-5 e §8.2 D-3.
+
+##### 🔴 E una seconda scoperta: «soglia non impostata = meccanismo spento» vale solo a metà
+
+| Configurazione | Dovrebbe | Fa oggi |
+| --- | --- | --- |
+| nessuna delle due | spento | ✅ spento |
+| entrambe | attivo sulla banda | ✅ corretto |
+| **solo il minimo** | ⛔ errore | 🔴 `soglia_max IS NULL` rende vera la condizione: **ogni** fattura sopra il minimo diventa «di minimo» |
+
+Chi imposta `−500` e dimentica `+10` non ottiene un meccanismo a metà: ottiene
+**tutto il fatturato trasformato in fondi riportati**. ✅ **Deciso da Tid il
+2026-08-15**: dev'essere un **errore di configurazione**, con un CHECK «entrambe
+o nessuna» (passo D-0 dell'altro brief).
+
+~~⚠️ **Una domanda che questa scelta apre e che non chiudo io**: un fondo **già
 esistente** il cui target diventa negativo — lo si lascia com'è, o lo si porta ad
-`ANNULLATO` come già accade a importo zero? Il secondo comportamento è coerente
-(il fondo non è più recuperabile) ma è **uno stato cambiato da un pagamento**,
-quindi va deciso, non dedotto.
+`ANNULLATO` come già accade a importo zero?~~
+
+✅ **Chiusa il 2026-08-15** ([brief-db-fondo-fattura…](brief-db-fondo-fattura-ricalcolo-e-governo.md)
+§8.1 F-2): **si lascia com'è**. Portarlo ad `ANNULLATO` sarebbe uno stato
+cambiato da un pagamento, cioè l'automatismo che scrive che §3-bis ha escluso —
+e la coerenza («il fondo non è più recuperabile») la dà la **rilettura al momento
+dell'atto** (D-3), non una scrittura anticipata. Il fondo non più giustificato
+non viene applicato e compare nell'elenco: nessuno lo cancella al posto di una
+persona.
 
 ###### 🔴 Quando va fatta: **nella slice 1**, e il motivo è di tempistica
 
@@ -394,19 +476,53 @@ che è chiuso da **due serrature indipendenti**:
 
 | Serratura | Stato oggi | Chi la apre |
 | --- | --- | --- |
-| `f.minimo IS TRUE` | **0 fatture a minimo** su 12 (e 0 fondi generati) | una configurazione, in qualunque momento |
-| saldo negativo | impossibile: **nessun movimento esiste** | 🔴 **la slice 1**, per definizione |
+| ~~`f.minimo IS TRUE`~~ | **0 fatture a minimo** su 12 (e 0 fondi generati) | ~~una configurazione, in qualunque momento~~ |
+| ~~saldo negativo~~ | ~~impossibile: **nessun movimento esiste**~~ | ~~🔴 **la slice 1**, per definizione~~ |
 
-🔴 **La slice 1 apre la seconda serratura.** Da quel momento basta la prima —
+~~🔴 **La slice 1 apre la seconda serratura.**~~ ~~Da quel momento basta la prima —
 una fattura a minimo, che è un dato di configurazione — perché un sovra-incasso
 generi un fondo negativo `DISPONIBILE` e lo faccia assegnare a una fattura
-figlia.
+figlia.~~
 
-**Quindi il limite inferiore va messo dentro la slice 1, non dopo.** Non è un
-lavoro di rifinitura da fare «quando si arriva ai fondi»: è la chiusura di una
-finestra che la slice 1 apre da sé. Farlo prima costa una riga di `WHERE`; farlo
-dopo significa aver avuto, per un tempo, un batch notturno che assegna fondi
-negativi.
+##### 🔴 Rimisurato il 2026-08-15: **la tabella qui sopra è sbagliata su entrambe le righe**
+
+**La conclusione operativa non cambia — il limite inferiore va fatto — ma cambia
+la scadenza, e in peggio.**
+
+**Seconda riga.** Il fondo non si genera su `saldo`: si genera sulla
+**differenza** `saldo − saldo_contabile`, e il **secondo** termine non ha niente
+a che vedere coi movimenti. Basta che la somma delle righe contabili
+`is_postabile` di una fattura superi il suo residuo perché il target vada sotto
+zero, **con zero movimenti nel database**. E niente lo impedisce: il guard di
+quadratura è la **slice 2**, non la 1.
+
+> ⭐ Quindi la seconda serratura **non è un vincolo: è l'assenza di scrittori**.
+> Oggi l'unica funzione che scrive `vendite_contabili_righe` è
+> `fn_sync_contabili_fondo_fattura`, che scrive un importo che per costruzione
+> non supera il residuo e che al giro dopo si scorpora da sé. La serratura si
+> apre col **primo altro scrittore**: l'import del flusso (D6), una correzione a
+> mano, o la slice 1 — quello che arriva prima, e non è detto sia il posting.
+
+**Prima riga.** `minimo` non è «una configurazione»: è **riscritto a ogni
+ricalcolo** da `fn_ricalcola_totali_fattura`, confrontando `totale_a_pagare` con
+le soglie di `anagrafiche.emittenti_fiscali_utilities`. Si apre **da sola**, al
+primo ricalcolo dopo che qualcuno ha valorizzato `minimo_soglia_min` — nessuno
+deve accendere niente su una fattura.
+
+**Quindi il limite inferiore resta dentro la slice 1** (è lì che qualcuno mette
+le mani sulle righe contabili), ma **la scadenza non è la slice 1**: è il primo
+scrittore di righe contabili, chiunque sia. Se un altro lavoro tocca prima quel
+terreno, il tampone va con lui.
+
+🔴 **E il limite inferiore da solo non basta**, cosa che il 2026-08-09 non era
+stata vista. Togliendo l'`ANNULLATO` automatico a target zero, un fondo non più
+giustificato **resta `DISPONIBILE`** e `applica_fondi_lotto` lo assegna comunque
+a una figlia. Serve nello stesso lotto di lavoro un **guard all'applicazione**
+che rilegga la capienza della sorgente **nell'istante in cui muove il denaro** —
+è il passo D-3 del piano: [brief-db-fondo-fattura…](brief-db-fondo-fattura-ricalcolo-e-governo.md) §8.2 Fase A.
+
+ℹ️ Misurato **leggendo** i corpi vivi (doc auto-generata) e la struttura delle
+tabelle, non eseguendo SQL.
 
 ℹ️ Regole di lavorazione, trattandosi di una funzione esistente: nuovo changeSet
 con numerazione successiva, e **corpo preso dalla doc auto-generata**, mai da un
@@ -1056,6 +1172,26 @@ Restano da scrivere le tre cose dell'elenco in §2-bis D5: la colonna del conto
 sull'ente di incasso, il vincolo di unicità conto → emittente, e la
 configurazione dei conti dei due emittenti.
 
+**⚠️ «Incassato» non è «postato»: le misure devono escludere i centri non-cassa.**
+(Nuovo, 2026-08-15.)
+
+Non tutti i movimenti sono denaro arrivato. Il fondo fattura produce già oggi
+righe contabili `ABBINATA` sul centro `FONDI_FATTURA`, e il giorno del posting
+diventeranno movimenti veri: la fattura sorgente **è** stata saldata, ma per
+**trasferimento** su un'altra fattura, non per cassa. Lo stesso vale per il
+centro `COMPENSAZIONI`.
+
+| Domanda | Che cosa si somma |
+| --- | --- |
+| «questa fattura è ancora da pagare?» | **tutti** i movimenti — il trasferimento la salda davvero |
+| «quanto è **entrato** in banca?» | solo i centri di cassa: `is_fondo_fattura` e `is_compensazione` vanno **esclusi** |
+
+🔴 **La distinzione va messa nella prima misura che si scrive, non aggiunta
+dopo.** Un cruscotto di incassato che somma tutto conta come denaro arrivato
+qualcosa che è stato solo spostato, e l'errore non si vede: il numero è
+plausibile e cresce nel verso giusto. `centri_riscossione` porta già le due
+colonne che servono — è la ragione per cui esistono.
+
 ---
 
 ## 4-bis. Le domande ancora aperte
@@ -1168,12 +1304,49 @@ esiste un movimento vero tutto il resto si progetta al buio.
   pagato la stessa trappola un livello più sotto — il filtro `totale_a_pagare >
   0` nella quadratura rate/totale. *Prima di replicare un controllo a un livello
   superiore, verificare che gli estremi non possano scambiarsi di posto.*
-- ⚠️ **Un automatismo tarato su un verso non va lasciato correre nell'altro**
-  (2026-08-09, da D1-bis). `fn_genera_fondi_fattura_source` è nata per recuperare
-  un minimo non raggiunto e filtra solo `<> 0`: sul verso opposto — denaro in
-  **eccesso** — produrrebbe un fondo negativo `DISPONIBILE` da assegnare a una
-  fattura figlia. Non è lo stesso fatto col segno cambiato, è **un altro fatto**,
-  e va gestito da una persona invece che dedotto da un batch.
+- ~~⚠️ **Un automatismo tarato su un verso non va lasciato correre nell'altro**
+  (2026-08-09, da D1-bis).~~ 🔴 **Trappola ritirata il 2026-08-15: era essa
+  stessa un errore.** Il verso «negativo» **non** era un altro fatto — era metà
+  del meccanismo (la banda `−500 / +10`, vedi D1-bis). La lezione che resta è
+  l'opposta, e vale di più:
+- 🔴 **Prima di dedurre l'intenzione di un automatismo dal suo comportamento,
+  leggere la configurazione che lo governa** (2026-08-15). Dal solo filtro
+  `<> 0` sembrava evidente che la funzione fosse «nata per un verso» e lasciata
+  correre nell'altro per distrazione. Le due soglie dicevano il contrario: il
+  verso opposto era **previsto**, e il tampone proposto lo avrebbe spento. *Il
+  codice mostra cosa fa, non cosa deve fare: quello sta nei parametri.*
+- ⚠️ **Un difetto e un comportamento voluto possono avere lo stesso sintomo**
+  (2026-08-15, stessa misura). Un fondo negativo può essere il credito riportato
+  dalla banda (corretto) oppure una riga contabile più grande della fattura
+  (difetto). Un guard — o un test — che guarda **il segno** non li distingue; a
+  distinguerli è la **corrispondenza con la sorgente**. *Prima di presidiare un
+  sintomo, contare quante cause diverse lo producono.*
+- 🔴 **Una serratura su un solo termine non chiude una differenza** (2026-08-15,
+  rimisurando §2-bis D1-bis). Il fondo negativo era dato per irraggiungibile
+  perché `fn_get_saldo_fattura` non può andare sotto zero senza movimenti: vero,
+  ma il fondo si genera su `saldo − saldo_contabile`, e il **secondo** termine
+  non c'entra coi movimenti. La finestra si apriva da un lato che nessuno stava
+  guardando. *Quando una condizione nasce da un'espressione, la serratura va
+  cercata sull'espressione — non sul termine che si è letto per primo.*
+- ⚠️ **Una serratura che non è un vincolo è solo l'assenza di scrittori**
+  (2026-08-15, stessa misura). «Nessuno lo fa» regge finché non arriva il primo
+  che lo fa, e non lascia traccia di essersi rotta: non c'è un errore, c'è un
+  dato sbagliato. *Prima di appendere una scadenza a un cantiere («lo apre la
+  slice 1»), verificare se la porta ha una serratura o soltanto nessuno che
+  passa di lì.*
+- ⚠️ **Un flag riscritto da un calcolo non è una configurazione** (2026-08-15).
+  `vendite.fatture.minimo` sembra un dato che qualcuno imposta: lo riscrive
+  `fn_ricalcola_totali_fattura` confrontando il totale con le soglie
+  dell'emittente. Si accende **da solo** al primo ricalcolo dopo il seed delle
+  soglie. *Prima di dire «lo apre una configurazione, quando vorremo», cercare
+  chi scrive quella colonna.*
+- 🔴 **Togliere un automatismo scopre ciò che l'automatismo copriva**
+  (2026-08-15). Il tampone «niente `ANNULLATO` automatico» è giusto — ma quel
+  ramo era anche l'unica cosa che impediva di **applicare** un fondo non più
+  dovuto. Toglierlo da solo peggiora la situazione invece di migliorarla: serve
+  contestualmente il guard che rilegge la capienza **al momento dell'atto**.
+  *Un automatismo sbagliato fa spesso due mestieri: prima di spegnerlo, chiedersi
+  quale dei due stava reggendo qualcosa.*
 - ⚠️ **Una forzatura senza un elenco a valle è un modo per nascondere, non per
   registrare** (2026-08-09, da D1-bis). Chi concede un override deve dire anche
   **dove si vede dopo**: un sovra-incasso è denaro da restituire o da applicare
@@ -1216,15 +1389,16 @@ esiste un movimento vero tutto il resto si progetta al buio.
 | Il residuo per fattura, già pronto (⚠️ §1-bis) | `pagamenti.fn_get_saldo_fattura` |
 | Il saldo in lavorazione | `pagamenti.fn_get_saldo_fattura_contabili` |
 | Il punto d'ingresso della testata | `pagamenti.fn_get_or_create_vendite_contabile` |
-| La bilancia dei due saldi (il buco logico) | `vendite.fn_genera_fondi_fattura_source` |
-| Chi crea davvero righe contabili oggi | `vendite.fn_ricalcola_totali_fattura` → `fn_sync_contabili_fondo_fattura` |
+| La bilancia dei due saldi (il buco logico) | `vendite.fn_genera_fondi_fattura_source` — ⚠️ la serratura sta sulla **differenza**, non su `saldo`: §2-bis D1-bis |
+| Chi crea davvero righe contabili oggi | `vendite.fn_ricalcola_totali_fattura` → `fn_sync_contabili_fondo_fattura` — ed è **l'unica** funzione del DB che scrive `vendite_contabili_righe` |
+| Dove `vendite.fatture.minimo` viene **scritto** | `vendite.fn_ricalcola_totali_fattura` (soglie su `anagrafiche.emittenti_fiscali_utilities`) |
 | L'anagrafica conti (uso `INCASSO`, predefinito unico) | `anagrafiche.soggetti_ruoli_conti_bancari` + `conti_bancari` |
 | Il risolutore azienda → conto | `script.fn_get_conto_bancario_predefinito` → `anagrafiche.vw_conti_bancari_per_ruolo` |
 | Il precedente che punta già al conto | `pagamenti.sepa_mandati.soggetto_ruolo_conto_id` |
 | Come sono nate le rate (cantiere chiuso) | `work-done/brief-db-generazione-scadenze-fattura.md` |
 | Atomicità: una azione = una unità di lavoro | [api.md §Atomicità](/dev/api) + `linee-guida-sql` §5b |
-| ⚠️ Il guscio vuoto che sembra il posting | `vendite.fn_sync_pagamento_fondo_fattura` — vedi §1-bis |
-| Il meccanismo dei fondi, cantiere a parte | [brief-db-fondo-fattura-ricalcolo-e-governo.md](brief-db-fondo-fattura-ricalcolo-e-governo.md) |
+| ⚠️ Il guscio vuoto che sembra il posting | `vendite.fn_sync_pagamento_fondo_fattura` — vedi §1-bis. ✅ **Deciso il 2026-08-15: si ritira** (`DROP`), il difetto è che esiste |
+| Il meccanismo dei fondi, cantiere a parte | [brief-db-fondo-fattura-ricalcolo-e-governo.md](brief-db-fondo-fattura-ricalcolo-e-governo.md) — dal 2026-08-15 ha il suo **piano** in §8: la Fase A è la metà «fondi» della slice 1 |
 
 ---
 
@@ -1235,9 +1409,16 @@ successiva dà per scontata.
 
 | | Slice | Contenuto | Chiude |
 | --- | --- | --- | --- |
-| **1** | **Posting, stati e correzione** | madre DB `ABBINATA → POSTATA` + movimento, atomica, per testata; **transizioni dichiarate** su testata e righe + guard stato ↔ nullità; `STORNATA` ritirato; annullamento solo in bozza; `stato_id` NOT NULL; **CSV + loader per `centri_riscossione`** (oggi inesistenti: le 2 righe sono state inserite a mano) con backfill delle esistenti e aggiunta dei centri reali; 🔴 **limite inferiore su `vendite.fn_genera_fondi_fattura_source`** (la slice apre la finestra, quindi la chiude lei); codici errore di dominio a catalogo con la loro classe | B-1, B-2, D3, D9, la metà «fondi» di D1-bis. Rende **vero** `fn_get_saldo_fattura`, che oggi risponde sempre `totale_a_pagare` |
+| **1** | **Posting, stati e correzione** | madre DB `ABBINATA → POSTATA` + movimento, atomica, per testata; **transizioni dichiarate** su testata e righe + guard stato ↔ nullità; `STORNATA` ritirato; annullamento solo in bozza; `stato_id` NOT NULL; **CSV + loader per `centri_riscossione`** (oggi inesistenti: le 2 righe sono state inserite a mano) con backfill delle esistenti e aggiunta dei centri reali; 🔴 **la Fase A del cantiere fondi** — ⚠️ **non** «limite inferiore `> 0`», che era sbagliato (D1-bis): CHECK «entrambe le soglie o nessuna», sorgente solo **DEFINITIVA**, guard di **corrispondenza col documento** e di capienza all'applicazione, chiave a nove elementi ([brief-db-fondo-fattura…](brief-db-fondo-fattura-ricalcolo-e-governo.md) §8.2); codici errore di dominio a catalogo con la loro classe | B-1, B-2, D3, D9, la metà «fondi» di D1-bis. Rende **vero** `fn_get_saldo_fattura`, che oggi risponde sempre `totale_a_pagare` |
 | **2** | **Abbinamento alla rata** | `scadenza_id` sulla riga + mirror sul movimento; guard di quadratura (**con forzatura motivata e gated sul limite superiore**, D1-bis) e di coerenza; `fn_get_saldo_rata`; elenco delle rate sovra-incassate | D1, D1-bis, D2. Rende derivabile «questa rata è pagata» — la domanda da cui dipendono 3.2, 3.3 e 3.4 |
 | **3** | **Perimetro e coda operativa** | conto sull'ente di incasso, vincolo di unicità conto → emittente, RLS in lettura; poi BE e FE | D5, B-3. Rende la coda «da abbinare» **visibile a chi deve** |
+
+🔴 **La scadenza della metà «fondi» non è la slice 1** (rimisurato il
+2026-08-15, §2-bis D1-bis). La finestra del fondo negativo la apre il **primo che
+scrive righe contabili** — l'import del flusso, una correzione a mano, o la
+slice 1: quello che arriva prima. La collocazione qui resta giusta perché è qui
+che si mette mano a quel terreno, ma se un altro lavoro ci arriva prima, il
+tampone va **con lui**, non aspetta il suo turno.
 
 ⚠️ **La slice 1 non tocca le rate**, e va bene così: è il gradino sotto tutto il
 resto, e si può collaudare senza aver deciso niente della 2.
@@ -1267,6 +1448,8 @@ stub vuoti.
 
 | Data | Cosa è cambiato |
 | --- | --- |
+| 2026-08-15 (sera) | 🔴 **Il tampone di D1-bis era sbagliato, e l'ha smontato Tid spiegando cosa sono davvero le due soglie.** *«Il verso opposto non è un fondo»* è **falso**: `minimo_soglia_min` e `minimo_soglia_max` sono i **due capi di una banda che contiene lo zero** (esempio reale: `−500 / +10`), e il capo inferiore esiste **apposta** per riportare avanti i **crediti**. Un filtro `importo_target > 0` avrebbe spento metà del meccanismo, in silenzio. Il controllo giusto è la **corrispondenza col documento** (stesso segno del totale della sorgente, non superiore in valore assoluto), in un **guard trigger** perché un CHECK non può leggere `vendite.fatture`. 🔴 Seconda scoperta: **«soglia non impostata = meccanismo spento» vale solo a metà** — se manca il *massimo* la condizione diventa vera per tutti e **ogni** fattura diventa di minimo: configurazione incompleta = meccanismo **spalancato**. Deciso da Tid: dev'essere un errore di configurazione (CHECK «entrambe o nessuna»). Ritirata la trappola *«un automatismo tarato su un verso»* di §5, che era essa stessa l'errore, e sostituita con le due lezioni vere: **leggere la configurazione prima di dedurre l'intenzione**, e **un difetto e un comportamento voluto possono avere lo stesso sintomo**. ✅ Confermato il perimetro del processo rimborsi (in `pagamenti`, tre uscite, passaggio **passivo**: se le va a cercare da sé) |
+| 2026-08-15 | 🔴 **Rimisurata la tabella delle «due serrature» di D1-bis: sbagliata su entrambe le righe.** Il fondo si genera sulla **differenza** `saldo − saldo_contabile` e il secondo termine non dipende dai movimenti: la seconda serratura **non è la slice 1**, è **l'assenza di scrittori di righe contabili** (il guard di quadratura è la slice **2**), e si apre col primo altro scrittore — import del flusso, correzione a mano, o slice 1. E `minimo` non è una configurazione: lo **riscrive** `fn_ricalcola_totali_fattura` dal confronto fra totale e soglie dell'emittente, quindi si accende da solo. La conclusione operativa non cambia (il limite inferiore resta nella slice 1), cambia la **scadenza**. 🔴 Aggiunto che **il limite inferiore da solo peggiora le cose**: senza l'`ANNULLATO` automatico un fondo non più dovuto resta `DISPONIBILE` e viene comunque **applicato** — serve nello stesso lotto il guard che rilegge la capienza al momento dell'atto. ✅ Chiusa la domanda lasciata aperta in D1-bis (fondo esistente con target negativo: **si lascia com'è**) e decisa F-4 (`fn_sync_pagamento_fondo_fattura` si **ritira**). ⭐ Verificato che con un posting **atomico** la bilancia di B-1 **regge da sé** (i due termini si scambiano lo stesso importo): il rischio è tutto nella non-atomicità. ⚠️ Nuovo limite di dominio in §4: «incassato» ≠ «postato» — le misure di cassa devono **escludere i centri non-cassa** (`is_fondo_fattura`, `is_compensazione`), perché il fondo diventerà un movimento vero ma per **trasferimento**. Quattro trappole nuove in §5. Fonte: il piano del cantiere fondi, [brief-db-fondo-fattura…](brief-db-fondo-fattura-ricalcolo-e-governo.md) §8 |
 | 2026-08-02 | Stesura originale alla chiusura del cantiere satelliti fattura |
 | 2026-08-09 (mattina) | Rimisurato il DB. Corrette 3 righe della tabella §2 (cataloghi seminati, non a zero); aggiunta §1-bis — **il posting non esiste**, più tre buchi logici misurati: B-1 bilancia dei due saldi, B-2 nullità riga↔movimento e stato slegato dai dati, B-3 scope emittente asimmetrico; aggiunte 3.0 (posting) e 3.5 (`sepa_mandati` orfana); riscritto il limite di scope in §4; due trappole nuove in §5 (`n_live_tup`, terreno vuoto) |
 | 2026-08-09 (notte, 6) | ⭐ Fissato con Tid il **principio di chiusura sul flusso di denaro** (§3-bis): **i fatti si aggiungono, i saldi si leggono, le decisioni le prende una persona**. Ne discende che la rincorsa degli incassi è **impossibile per costruzione**, non solo improbabile: un ciclo richiede un automatismo che riscriva un numero, e non ce ne sono. Regola pratica: nessun automatismo tocca il fondo in base agli incassi; l'attività pre-fatturazione **presenta, non sana**. Annotato che il **rimborso non è da costruire** (il movimento copre già «incasso o rimborso», e con D3-d è una contabile negativa). Trovato e segnalato `vendite.fn_sync_pagamento_fondo_fattura`: nome e colonne promettono movimenti, il corpo delega tutto a `fn_sync_contabili_fondo_fattura` e **nessuno la chiama** — probabile causa dell'equivoco «il posting esiste». Estratto il cantiere del meccanismo fondi in un **brief proprio**: `brief-db-fondo-fattura-ricalcolo-e-governo.md` |

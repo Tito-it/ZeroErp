@@ -34,6 +34,22 @@ applicando le regole di arrotondamento definite per **emittente/utility**.
 * Aggiorna il saldo tecnico con `fn_set_arrotondamento_scope()`.
 * Imposta `minimo = true` quando `totale_a_pagare` rientra nella soglia
   (`minimo_soglia_min`/`minimo_soglia_max`).
+
+  ⭐ **È qui che si decide se una fattura si riporta sulla successiva**, e questa
+  è l'unica pagina in cui la regola è scritta per intero: le due soglie sono i
+  due capi di una **banda che contiene lo zero** (es. `−500` / `+10`), quindi ci
+  rientrano sia le fatture troppo piccole da incassare sia i **crediti** troppo
+  piccoli da rimborsare. Chi legge solo la doc del
+  [fondo fattura](/dbzero/vendite/tabelle/fatture_fondi_fattura_source) non la
+  trova, e ne deduce che un fondo sia sempre a debito.
+
+  🔴 **Attenzione a una configurazione a metà.** La condizione è
+  `(soglia_min NON vuota E totale >= soglia_min) E (soglia_max vuota O totale <= soglia_max)`:
+  se manca **il minimo** il meccanismo è spento (corretto), ma se manca **il
+  massimo** la seconda condizione è vera per tutti e **ogni** fattura sopra il
+  minimo diventa «di minimo». Una configurazione incompleta oggi non chiude:
+  **spalanca**. È previsto un vincolo «entrambe o nessuna»
+  ([piano](/dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo) §8.2 D-0).
 * Esegue la sincronizzazione contabile dei fondi assegnati alla fattura
   (`fn_sync_contabili_fondo_fattura`).
 
