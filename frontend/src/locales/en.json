@@ -1660,7 +1660,11 @@
     },
     "reso": {
       "azione_conferma": "Confirm return",
-      "azione_annulla": "Cancel return"
+      "azione_annulla": "Cancel return",
+      "stato_info": {
+        "confermato": "The return is confirmed: the goods are back and the stock movements are recorded.",
+        "annullato": "The return is cancelled: the inbound movement was reversed and this state is final."
+      }
     },
     "ordini": {
       "pdf": {
@@ -1895,6 +1899,11 @@
       }
     },
     "offerte": {
+      "stato_info": {
+        "rifiutata": "The offer was rejected: to propose it again, create a new offer.",
+        "superata": "The offer was superseded by a later revision: follow-up happens on that one.",
+        "annullata": "The offer is cancelled: this state is final."
+      },
       "titolo": "Commercial offers",
       "titolo_drawer": "Commercial offer",
       "nuova_offerta": "New offer",
@@ -2099,6 +2108,10 @@
       "col_stato_riconsegna": "Status"
     },
     "contratti": {
+      "stato_info": {
+        "cessato": "The contract has ended: the supply is closed and does not resume. To continue it you need a new contract.",
+        "annullato": "The contract was cancelled before activation: it never took effect and this state is final."
+      },
       "note_titolo": "Contract notes",
       "gestisci_note": "Manage notes",
       "contratto": "Contract",
@@ -2949,6 +2962,10 @@
       "tipo_reso_vendita": "Return"
     },
     "commesse": {
+      "stato_info": {
+        "chiusa": "The job order is closed: it can no longer be changed and generates no further documents.",
+        "annullata": "The job order is cancelled: this state is final."
+      },
       "gestione_titolo": "Job order management",
       "tot_attivita": "Activities",
       "tot_da_approvare": "To approve",
