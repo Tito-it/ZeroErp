@@ -38,13 +38,45 @@ dell'attivazione). Gli stati con `is_abortito = true` hanno effetti speciali:
 
 #### Campo `meta`
 
-Contiene i metadati UI per `script.fn_available_actions_contratto`. Per gli
-stati con azione manuale in uscita, `meta.outgoing_action` descrive il bottone
-da mostrare nel drawer (chiave i18n, severity, icona, requires_confirm).
+**La sede e` il CSV** `80_data/sql/config/stati_doc_contratti.csv`, letto dal
+mirror `20260806-14` (`loadUpdateData`, `runOnChange`). Si modifica editando il
+CSV: nessun `UPDATE` SQL nuovo su questa colonna.
 
-Popolato da migration `20260430-61` + `20260520-10` tramite UPDATE SQL (non da
-`loadUpdateData` — il meta e` gestito solo da SQL dedicato per evitare
-sovrascritture).
+Contenuto oggi: `meta.nessuna_azione_key`, la chiave i18n che spiega
+all'operatore cosa sta succedendo quando il contratto e` in uno stato chiuso
+(`CESSATO`, `ANNULLATO`). La legge `script.fn_available_actions_contratto` e la
+espone nel blob come **`stato_info_key`** — il nome del campo e quello della
+proprieta` sono diversi di proposito, vedi `20260811-01`.
+
+> 🔴 **Correzione del 2026-08-11 — questo paragrafo diceva l'opposto, ed era
+> stale di due generazioni.** Diceva: «popolato da `20260430-61` + `20260520-10`
+> tramite UPDATE SQL (non da `loadUpdateData` — il meta e` gestito solo da SQL
+> dedicato per evitare sovrascritture)». Non e` piu` vero **e non va rimesso**.
+> Il testo resta qui perche` il dubbio che ha generato e` legittimo e tornera` a
+> qualcun altro.
+>
+> **Cosa e` cambiato, in due passaggi:**
+>
+> 1. **2026-05-28** — `meta.outgoing_action` era un ripiego: i contratti non
+>    avevano una tabella di transizioni, quindi il bottone si descriveva nel
+>    `meta` dello stato sorgente. Quel giorno la tabella e` nata
+>    (`20260528-04-create-transizioni-stati-contratti`) e la funzione e` passata
+>    a leggere quella (`20260528-05`). Da allora `outgoing_action` e` un **campo
+>    morto**: verificato sulla funzione viva, non lo legge piu`, e nel CSV non
+>    compare.
+> 2. **2026-08-06** — `20260806-14` ha **ri-ancorato il mirror** dopo i due
+>    `UPDATE`, che sono stati spenti (`runOnChange: false`). Il motivo e` la
+>    trappola descritta in `.codex/AGENTS.md`: quei due SQL scrivevano `meta`
+>    *dopo* il mirror originale `20260520-08`, quindi su sviluppo vinceva il CSV
+>    (il mirror ri-esegue a ogni migrate) e su un database **ricostruito da zero**
+>    vincevano loro, riportando in vita `outgoing_action` con le chiavi i18n
+>    vecchie. Due macchine su due versioni della stessa tabella.
+>
+> **Verificato l'11-08 su tre piani**, perche` sul solo DB di sviluppo si misura
+> una macchina e non la riproducibilita`: il valore vivo (le due
+> `nessuna_azione_key` sono in tabella), la funzione (non legge piu`
+> `outgoing_action`), e l'ordine in timeline (`20260806-14` e` l'ultimo dei
+> quattro e ha `runOnChange: true`, quindi vince anche su un DB da zero).
 
 ---
 
