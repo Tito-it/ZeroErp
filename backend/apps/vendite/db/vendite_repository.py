@@ -18,6 +18,7 @@ from django.db import DatabaseError, connection, transaction
 from apps.core.db._helpers import (
     LIST_MAX_LIMIT,
     call_jsonb_fn,
+    iso_or_none,
     jsonb_out,
     query_paged_view,
     row_to_dict,
@@ -25,6 +26,7 @@ from apps.core.db._helpers import (
     sql_order_direction,
     sql_tiebreak_direction,
 )
+from apps.core.services.system_context import connection_role_bypasses_rls
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.types import (
@@ -39,6 +41,7 @@ from apps.vendite.types import (
     DashCompetenzaGruppoRow,
     DashCompetenzaGruppoTipoRow,
     DashCompetenzaMensileRow,
+    FondoFatturaDaDecidereRow,
     LineageNodoRow,
     LineagePassaggioRow,
     LineageSorgenteRow,
@@ -141,6 +144,22 @@ DASH_BACKLOG_CLASSI: tuple[str, ...] = (
     "RECUPERABILE",
     "SOLLECITO_CLIENTE",
     "ANOMALIA",
+)
+
+# Motivi di `vendite.vw_fondi_fattura_da_decidere` (D-10 di
+# brief-db-fondo-fattura-ricalcolo-e-governo), nell'ordine in cui la vista li
+# produce. Il vocabolario e' chiuso PER COSTRUZIONE — sono letterali nei rami
+# della UNION, nessun dato li genera — quindi questa tupla e' un mirror: se la
+# vista guadagna un motivo, va aggiornata insieme.
+# ⚠️ In PostgreSQL non esiste un CHECK su una vista: il presidio del vocabolario
+# e' il pgTAP che asserisce l'insieme dei motivi, non un vincolo.
+# ⚠️ L'ordine entra nel `detail` dell'errore di validazione del filtro: e'
+# l'elenco che legge chi ha sbagliato a scriverlo.
+FONDI_DA_DECIDERE_MOTIVI: tuple[str, ...] = (
+    "PROPOSTA_SENZA_ATTO",
+    "IMPORTO_NON_CORRISPONDENTE",
+    "NON_PIU_CAPIENTE",
+    "UTILITY_NON_ATTRIBUIBILE",
 )
 
 
@@ -1614,6 +1633,192 @@ class VenditeRepository:
                     "fase": None if row[15] is None else str(row[15]),
                 }
             )
+        return result, total_count
+
+    # Colonne ordinabili dell'elenco «fondi da decidere»: chiave FE (field della
+    # colonna a video) -> colonna di output della vista. Whitelist: nell'ORDER BY
+    # entrano solo chiavi note + direzione ASC/DESC.
+    # ⚠️ `importo_proposto` e' NULL fuori dal ramo che lo produce
+    # (PROPOSTA_SENZA_ATTO): ordinarlo e' lecito e i vuoti finiscono dove
+    # `sql_order_direction` mette i NULL — in fondo ordinando DESC, che e'
+    # quello che serve a chi cerca gli importi. `capienza_attuale` invece e'
+    # calcolata su TUTTI i rami (fn_saldo_sorgente_fondo fa COALESCE): mai NULL.
+    FONDI_DA_DECIDERE_SORT_COLUMNS: dict[str, str] = {
+        "data": "data",
+        "motivo": "motivo",
+        "anno": "anno",
+        "numero": "numero",
+        "totale_a_pagare": "totale_a_pagare",
+        "importo_proposto": "importo_proposto",
+        "capienza_attuale": "capienza_attuale",
+    }
+
+    # Colonne dell'elenco, NELL'ORDINE: un'unica tupla costruisce sia il SELECT
+    # sia il dict di riga (zip), cosi' aggiungere/spostare una colonna non puo'
+    # disallineare indice e nome — con 22 colonne quasi tutte nullable e coercite
+    # (str/int), uno shift servirebbe dati SBAGLIATI senza nessuna eccezione.
+    _FONDI_DA_DECIDERE_COLONNE: tuple[str, ...] = (
+        "motivo",
+        "fattura_sorgente_id",
+        "anno",
+        "serie",
+        "numero",
+        "data",
+        "totale_a_pagare",
+        "billing_account_id",
+        "utility_id",
+        "tipo_doc_fiscale_id",
+        "emittente_soggetto_ruolo_id",
+        "valuta_id",
+        "tipo_fondo_fattura_id",
+        "tipo_fondo_codice_interno",
+        "fondo_source_id",
+        "origine",
+        "stato_atto",
+        "importo_atto",
+        "atto_motivo",
+        "atto_data",
+        "importo_proposto",
+        "capienza_attuale",
+    )
+
+    # Coercizioni per colonna (chi manca resta com'e'): interi per gli id,
+    # ISO per le date, str per i numeric (envelope JSON senza float).
+    _FONDI_DA_DECIDERE_COERCE: dict[str, Any] = {
+        "motivo": str,
+        "fattura_sorgente_id": int,
+        "anno": lambda v: None if v is None else int(v),
+        "serie": lambda v: None if v is None else str(v),
+        "numero": lambda v: None if v is None else str(v),
+        "data": iso_or_none,
+        "totale_a_pagare": lambda v: None if v is None else str(v),
+        "billing_account_id": lambda v: None if v is None else int(v),
+        "utility_id": lambda v: None if v is None else int(v),
+        "tipo_doc_fiscale_id": lambda v: None if v is None else int(v),
+        "emittente_soggetto_ruolo_id": lambda v: None if v is None else int(v),
+        "valuta_id": lambda v: None if v is None else int(v),
+        "tipo_fondo_fattura_id": lambda v: None if v is None else int(v),
+        "tipo_fondo_codice_interno": lambda v: None if v is None else str(v),
+        "fondo_source_id": lambda v: None if v is None else int(v),
+        "origine": lambda v: None if v is None else str(v),
+        "stato_atto": lambda v: None if v is None else str(v),
+        "importo_atto": lambda v: None if v is None else str(v),
+        "atto_motivo": lambda v: None if v is None else str(v),
+        "atto_data": iso_or_none,
+        "importo_proposto": lambda v: None if v is None else str(v),
+        "capienza_attuale": lambda v: None if v is None else str(v),
+    }
+
+    # Scopo: Restituisce l'elenco paginato dei casi di fondo fattura che
+    #        chiedono una persona (`vendite.vw_fondi_fattura_da_decidere`),
+    #        filtrabile per motivo.
+    # Obiettivo: sola lettura. L'elenco PRESENTA e non sana: nessuna riga qui ha
+    #        un gemello automatico che la corregge — sanarle vorrebbe dire
+    #        muovere denaro senza che nessuno l'abbia deciso.
+    # Perimetro: nessun side-effect, nessun ricalcolo in Python. La proposta la
+    #        da' `fn_fondo_fattura_proponibile` e la capienza
+    #        `fn_check_fondo_fattura_capiente` — le STESSE che usano il giro
+    #        notturno — quindi l'elenco non puo' raccontare una cosa diversa da
+    #        quello che la pipeline fa davvero.
+    # Risultato: tuple (lista FondoFatturaDaDecidereRow, conteggio totale).
+    #
+    # ⚠️ SCOPE. La vista e' `security_invoker=on`: il perimetro emittente lo
+    # applica la RLS di `vendite.fatture` con l'identita' dell'utente della
+    # richiesta. Il filtro applicativo qui sotto e' DEFENSE-IN-DEPTH e si somma,
+    # com'e' la convenzione del progetto. 🔴 Ne discende che questo metodo NON
+    # va chiamato da un canale di sistema (`system_process_context`, ruolo
+    # BYPASSRLS): li' la vista perderebbe il suo unico cancello e l'elenco
+    # mostrerebbe i fondi di tutti gli emittenti.
+    def list_fondi_fattura_da_decidere(
+        self,
+        *,
+        motivo: str | None = None,
+        auth_user_id: int | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[FondoFatturaDaDecidereRow], int]:
+        # 🔴 Guard strutturale, non un commento: su un ruolo BYPASSRLS il
+        # `security_invoker` della vista non filtra niente e il filtro
+        # applicativo sotto no-opa con auth_user_id=None (che e' anche il
+        # valore legittimo del superuser: non discrimina). Un futuro consumer
+        # headless dentro `system_process_context` leggerebbe i fondi di TUTTI
+        # gli emittenti senza che nulla fallisca. Stesso presidio (inverso) di
+        # `_guard_canale_sistema` nel motore documentale.
+        ErrorManager.require(
+            not connection_role_bypasses_rls(),
+            code="E_VENDITE_VALIDATION",
+            message="Elenco fondi da decidere non disponibile dal canale di sistema.",
+            detail=(
+                "La vista e' security_invoker: letta da un ruolo BYPASSRLS "
+                "perderebbe il perimetro emittente. Usare la connessione "
+                "dell'utente della richiesta."
+            ),
+            function_name="vendite.vendite_repository.list_fondi_fattura_da_decidere",
+        )
+        conditions: list[str] = []
+        params: list[Any] = []
+        if motivo is not None:
+            conditions.append("v.motivo = %s")
+            params.append(motivo)
+        # Convenzione SR: la vista espone `emittente_soggetto_ruolo_id`.
+        add_emittente_scope_condition(
+            conditions,
+            params,
+            auth_user_id=auth_user_id,
+            column="v.emittente_soggetto_ruolo_id",
+            convention="sr",
+        )
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        # SELECT costruito dalla STESSA tupla che fa da chiave al mapping di
+        # riga: colonne e nomi non possono disallinearsi.
+        select_cols = ",\n                ".join(
+            f"v.{col}" for col in self._FONDI_DA_DECIDERE_COLONNE
+        )
+        select_sql = f"""
+            SELECT
+                {select_cols}
+            FROM vendite.vw_fondi_fattura_da_decidere v
+            {where_clause}
+        """
+
+        # ORDER BY server-side (corretto su TUTTE le pagine). Default: le fatture
+        # piu' recenti prima — l'elenco non e' una coda per anzianita', e' la
+        # lista di cio' che il giro ha lasciato a una persona.
+        # ⚠️ Tiebreak DETERMINISTICO su (fattura_sorgente_id, fondo_source_id):
+        # la sola fattura non basta, perche' sul ramo NON_PIU_CAPIENTE una
+        # sorgente puo' portare piu' di un atto vivo (l'indice parziale
+        # `uq_fondi_source_atto_vivo_automatico` presidia i soli AUTOMATICI).
+        # `COALESCE(..., 0)` perche' negli altri tre rami l'atto non esiste.
+        sort_col = self.FONDI_DA_DECIDERE_SORT_COLUMNS.get(order_by or "")
+        direction = sql_order_direction(order_dir, default_desc=True)
+        tiebreak_dir = sql_tiebreak_direction(direction)
+        order_clause = (
+            f"ORDER BY {sort_col or 'data'} {direction}, "
+            f"fattura_sorgente_id {tiebreak_dir}, "
+            f"COALESCE(fondo_source_id, 0) {tiebreak_dir}"
+        )
+
+        rows, total_count = self._query_paged_view(
+            select_sql=select_sql,
+            order_by=order_clause,
+            params=params,
+            limit=limit,
+            offset=offset,
+        )
+
+        # Mapping per NOME via zip sulla tupla condivisa col SELECT (niente
+        # indici posizionali) + coercizioni dichiarate per colonna.
+        # `strict=False` e' voluto: `query_paged_view` appende una colonna in
+        # coda (`total_count`, gia' estratta nel totale) che qui si scarta.
+        result: list[FondoFatturaDaDecidereRow] = []
+        for row in rows:
+            record = dict(zip(self._FONDI_DA_DECIDERE_COLONNE, row, strict=False))
+            for campo, coerce in self._FONDI_DA_DECIDERE_COERCE.items():
+                record[campo] = coerce(record[campo])
+            result.append(record)  # type: ignore[arg-type]
         return result, total_count
 
     # Scopo: Restituisce elenco fatture di un lotto con decodifiche e filtri opzionali.
