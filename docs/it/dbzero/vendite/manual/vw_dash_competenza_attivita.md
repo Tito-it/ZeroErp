@@ -111,7 +111,7 @@ nessuna riga passa. Da tenere presente scrivendo test.
 ### 🆕 `commessa_stato_descrizione` (2026-08-15)
 
 Aggiunta con `20260815-24` su richiesta del backend
-([brief-db-emittibilita-visibile-e-sbloccabile](/dev/work-in-progress/brief-db-emittibilita-visibile-e-sbloccabile)
+([brief-db-emittibilita-visibile-e-sbloccabile](/dev/work-done/brief-db-emittibilita-visibile-e-sbloccabile)
 §8.3), e propagata sui gruppi dal `20260815-25`.
 
 La vista esponeva `commessa_stato_codice_interno` e nient'altro. A video va però

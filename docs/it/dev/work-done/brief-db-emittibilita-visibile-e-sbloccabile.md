@@ -10,6 +10,20 @@ dall'interfaccia non esiste modo di sbloccarla.
 (siamo in test) — **è un buco di modello e va chiuso**. E le attività bloccate
 vanno **segnalate, non nascoste**: sono lavoro reale.
 
+> ✅ **CANTIERE CHIUSO — 2026-08-16, dichiarato da Tid.** Documento spostato in
+> `work-done/`. Le richieste originali (§3), le due nuove del §8, le quattro
+> emerse lavorando e la domanda del §10.6 sono tutte chiuse: **dieci changeSet**
+> (`20260815-24` … `-32`, `-36`), migrati e verificati, pgTAP verdi, baseline
+> `vendite` senza regressioni, e il giro provato a video.
+>
+> ⚠️ **Una cosa esce dal cantiere ancora da fare, e va detta qui perché non si
+> perda**: il §11.4 — il BE deve **consumare `terne_pronte`** per smettere di
+> raccontare come problema di perimetro un gruppo che non è stato servito perché
+> la pipeline si è rotta. Il DB c'è, il consumatore no. Non riapre questo brief:
+> va portata dove il BE tiene la propria coda.
+>
+> ---
+>
 > 📌 **Stato al 2026-08-15, notte** (rimisurato, non riferito). Tutte le richieste
 > originali (§3) sono chiuse, DB e video. Chiuse in giornata, in ordine: le sei
 > decisioni R1 del §7.3 (cantiere vie d'uscita), il verbo «Rendi pronta» (§6),
@@ -34,13 +48,16 @@ vanno **segnalate, non nascoste**: sono lavoro reale.
 > diagnostica scesa a DB, docstring riallineata, policy del codice nuovo.
 > Piano e consuntivo nel **§10**.
 >
-> **Cosa resta:**
-> - 🔴 la **prova in app di Tid** (§8.4) — l'unica voce del §6 ancora senza
->   spunta, e l'unica che nessuno può fare al posto suo;
-> - 🟠 **una domanda al DB, aperta**: nel giro parziale una terna FALLITA viene
->   diagnosticata come problema di perimetro. Non l'abbiamo chiusa da soli
->   perché il rimedio ovvio rimetterebbe in gioco la previsione che il §9.7 ha
->   chiesto di togliere — **§10.6**.
+> **Cosa restava, e com'è finita:**
+>
+> - ~~🔴 la **prova in app di Tid** (§8.4)~~ ✅ **chiusa il 2026-08-16**;
+> - ~~🟠 **una domanda al DB, aperta**: nel giro parziale una terna FALLITA viene
+>   diagnosticata come problema di perimetro — **§10.6**.~~
+>   ✅ **RISPOSTA DATA il 2026-08-16, §11**: la corsia non si prevede, si
+>   **misura** — `terne_pronte` sulla diagnostica (`20260815-36`). Incrociata con
+>   le terne fallite, che avete già negli esiti come fatti, distingue «perimetro»
+>   da «esecuzione rotta» senza rimettere in gioco `gruppi_coperti`. Resta da
+>   **consumarla lato BE**: §11.4.
 
 **Correlati:**
 [vw_dash_competenza_attivita](/dbzero/vendite/views/vw_dash_competenza_attivita) ·
@@ -294,8 +311,9 @@ resto.
       **disabilitato** col motivo nel tooltip; (d) offre «Sblocca commessa» nel
       kebab, che apre il drawer di governo dove «Rendi pronta» è già esposto
       data-driven. «Segnalare, non nascondere»: la riga resta in lista;
-- [ ] **La prova che il giro si chiude**: sbloccare una commessa dall'interfaccia e
-      fatturarne le attività, **una volta**.
+- [x] **La prova che il giro si chiude**: sbloccare una commessa dall'interfaccia e
+      fatturarne le attività, **una volta**. ✅ **Dichiarata chiusa da Tid il
+      2026-08-16**, alla chiusura del cantiere.
       ⚠️ *Riformulata il 2026-08-15.* Diceva «le 5 commesse di giugno e le 15
       attività»: erano una fotografia di dati di **test** del 4 agosto, e a undici
       giorni non descrivono più niente. Quello che conta è la **catena**, non quelle
@@ -1066,3 +1084,97 @@ sopprime la diagnosi quando `falliti > 0` spegnerebbe il messaggio **anche** sui
 gruppi bloccati per davvero nello stesso giro — sostituendo un messaggio
 impreciso con un silenzio, che è il difetto che questo intero cantiere ha
 passato due settimane a togliere.
+
+---
+
+## 11. Risposta DB al §10.6 (2026-08-16)
+
+> **Chi scrive:** team DB (`dev/db-tid`). La domanda era posta bene, e la
+> reticenza a chiuderla da soli era la cosa giusta: il rimedio ovvio avrebbe
+> disfatto in silenzio una decisione presa insieme il giorno prima.
+
+### 11.1 La risposta breve: non serve una previsione, serve una misura
+
+La corsia di un gruppo **non va prevista**. Si misura adesso: le righe ancora
+pronte portano la terna con sé —
+
+```text
+commesse.emittente_soggetto_ruolo_id · commesse_attivita.tipo_doc_fiscale_id · commesse.utility_id
+```
+
+— e sono **esattamente** le tre colonne su cui `fn_list_emittibili_lane`
+raggruppa. Non è «quale corsia la discovery pensava»: è «in quale corsia questo
+lavoro **ricade**, in questo momento». `gruppi_coperti` resta dov'è, ritirato.
+
+Dall'altra parte il pezzo mancante ce l'avete già: le terne **fallite** stanno in
+`summary['esiti']` con `ok: false`, e sono fatti, non stime. Incrociando le due
+cose la distinzione che chiedevate esce da sé:
+
+| il gruppo è pronto e la sua corsia… | causa | cosa dire all'operatore |
+| --- | --- | --- |
+| **è fra le fallite** | l'esecuzione si è rotta, può essere transiente | «riprova» — e **niente** diagnosi di perimetro |
+| **non è fra le fallite** | è davvero perimetro | la diagnosi che già componete, che dice il vero |
+
+È la stessa distinzione che l'handler applica già sul giro **vuoto** («terne
+trovate ma pipeline fallita → niente diagnosi di perimetro»), portata dove finora
+non poteva arrivare.
+
+### 11.2 Cosa è entrato
+
+| ChangeSet | Cosa |
+| --- | --- |
+| `20260815-36` | `fn_diagnostica_gruppi_fatturabili` + **`terne_pronte jsonb`** — array di `{emittente_soggetto_ruolo_id, tipo_doc_fiscale_id, utility_id}` delle righe ancora pronte |
+
+⚠️ **Perché nella diagnostica e non nel consuntivo.** Sembrava più naturale
+metterlo in `fn_esito_gruppi_giro`, che i lotti del giro ce li ha già. Ma il
+consuntivo **non conosce** i criteri di «riga pronta»: il suo
+`n_attivita_residue` conta le sole `NON_EMESSA`, ed è deliberatamente ottuso
+proprio per non ricopiare i filtri della lane. Dire «in quale corsia» avrebbe
+richiesto `APPROVATA` + tipo documento + competenza, cioè importare lì quei
+criteri — la duplicazione che questo cantiere ha passato due settimane a
+togliere. Nella diagnostica ci sono già: sono quelli di `n_pronte`, il predicato
+è scritto **una volta sola** e condiviso fra il contatore e la corsia, e la
+corsia esce dalla stessa passata. Zero righe di regola in più.
+
+⚠️ **Array e non tre colonne scalari.** Un gruppo può stare su più corsie perché
+`tipo_doc_fiscale_id` sta sulla **riga**, non sulla testata (fatto G15 — è già il
+motivo per cui l'esito verso di voi è una *lista* di `lotto_id`). Tre colonne
+avrebbero dovuto sceglierne una arbitrariamente, o spaccare la grana in
+`(gruppo, commessa, tipo_doc)` rompendo un contratto che avevate adottato lo
+stesso giorno.
+
+⚠️ **`[]` e mai `NULL`** quando non c'è nulla di pronto: «nessuna corsia» e «non
+calcolato» devono restare distinguibili — la stessa ambiguità che il
+`20260815-02` aveva già scelto di non creare su `gruppi_coperti`.
+
+ℹ️ Cambia il `RETURNS TABLE`, quindi è servito un `DROP`. Chiamanti DB **zero**;
+il vostro repository nomina le colonne una per una, quindi **non si rompe**: il
+campo è **opt-in**, lo prendete aggiungendolo alla `SELECT`.
+
+### 11.3 Verifiche
+
+Provato in transazione sul DB vero, su gruppi reali: dove `n_pronte > 0` la
+corsia esce ed è quella della commessa/riga; dove è zero l'array è `[]`.
+Invariante controllata su **tutti** i gruppi del database più una chiave ignota:
+`terne_pronte IS NULL` → 0 casi, `n_pronte = 0` con array non vuoto → 0 casi,
+`n_pronte > 0` con array vuoto → 0 casi.
+
+pgTAP: `test-diagnostica-gruppi-fatturabili` 11 → **12**. Il caso 12 fallisce
+finché il changeSet non è applicato — è il rosso corretto.
+
+### 11.4 Cosa serve da voi
+
+1. **leggere `terne_pronte`** nella `SELECT` di `diagnostica_gruppi` e portarla
+   in `GruppoDiagnosi`;
+2. su un gruppo `NON_SERVITO` la cui corsia è fra le **terne fallite** del giro,
+   **sopprimere la diagnosi di perimetro** e dire che si riprova — esattamente
+   come già fate sul giro vuoto;
+3. ⚠️ e la soppressione va fatta **per gruppo**, non per giro: il vostro §10.6
+   lo dice già ed è il punto che rende la cosa non banale — un `if falliti > 0`
+   globale spegnerebbe il messaggio anche sui gruppi bloccati sul serio nello
+   stesso giro, sostituendo un messaggio impreciso con un silenzio.
+
+ℹ️ **Opzione 1 del vostro §10.6 — «niente, e lo si dichiara» — scartata**: il
+costo era una colonna in una funzione che quella passata la faceva già, e il
+messaggio sbagliato manda una persona a controllare emittente e utility che sono
+a posto. Fra dichiarare un difetto e toglierlo a quel prezzo, si toglie.

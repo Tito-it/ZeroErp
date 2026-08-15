@@ -12,7 +12,7 @@
 > • [vendite.fn_list_emittibili_lane](/dbzero/vendite/funzioni/fn_list_emittibili_lane) — `gruppi_coperti` resta la diagnosi **prima** dell'esecuzione
 > • [vendite.fn_diagnostica_gruppi_fatturabili](/dbzero/vendite/funzioni/fn_diagnostica_gruppi_fatturabili) — il **perché** un gruppo non è candidabile
 >
-> **Piano:** [brief-db-emittibilita-visibile-e-sbloccabile](/dev/work-in-progress/brief-db-emittibilita-visibile-e-sbloccabile) §8.2 / §9
+> **Piano:** [brief-db-emittibilita-visibile-e-sbloccabile](/dev/work-done/brief-db-emittibilita-visibile-e-sbloccabile) §8.2 / §9
 
 ---
 

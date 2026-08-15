@@ -46,7 +46,7 @@
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-08-04.
 > **A chi:** Tid (decisioni di dominio, già prese) e BE/FE (la metà a video).
 > **Da dove nasce:** il presidio `test-transizioni-uscita-manuale-v1.sql`, scritto
-> chiudendo [brief-db-emittibilita-visibile-e-sbloccabile.md](../work-in-progress/brief-db-emittibilita-visibile-e-sbloccabile.md) §7.3.
+> chiudendo [brief-db-emittibilita-visibile-e-sbloccabile.md](../work-done/brief-db-emittibilita-visibile-e-sbloccabile.md) §7.3.
 > Quel test ha trovato **sei stati** da cui un documento non ha nessuna uscita che
 > una persona possa azionare.
 > **Perché è un brief e non una riga di registro:** un documento fermo senza azioni
@@ -232,7 +232,7 @@ guardrail:
 | `E_ORD_ANNULLA_IN_COMMESSA` | l'ordine è già stato inviato a fatturazione | 409 |
 
 Il quarto, `E_COMMESSA_EMITTENTE_MANCANTE`, arriva dall'altro cantiere
-([emittibilità](../work-in-progress/brief-db-emittibilita-visibile-e-sbloccabile.md)).
+([emittibilità](../work-done/brief-db-emittibilita-visibile-e-sbloccabile.md)).
 
 **Chiavi i18n da tradurre lato FE** — nessun testo viene dal DB:
 
