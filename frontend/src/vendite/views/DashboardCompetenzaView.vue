@@ -482,6 +482,17 @@ function gruppoRiferimento(row) {
   return row.riferimento || row.commessa_codice || row.gruppo_key
 }
 
+// Scopo: etichetta leggibile di una `gruppo_key` NUDA — quella che l'esito del
+//        job riporta per i gruppi «fatturati altrove», dove il BE manda le sole
+//        chiavi. La chiave e' `<TIPO>:<uuid>`: scritta in un toast non dice
+//        niente a nessuno. La riga a video ce l'ha ancora (il lookup gira prima
+//        del reload post-azione), quindi si riusa la stessa etichetta della
+//        lista; se la riga non c'e' piu', la chiave e' comunque meglio del vuoto.
+function etichettaGruppoKey(key) {
+  const row = gruppi.value.find((g) => g.gruppo_key === key)
+  return row ? gruppoRiferimento(row) : key
+}
+
 // Scopo: etichetta del TIPO di gruppo con decodifica i18n fail-visible: un
 //        tipo nuovo introdotto DB-side si mostra col suo codice, non col path
 //        della chiave mancante.
@@ -794,6 +805,7 @@ const { avvia: avviaFatturaGruppi, polling: giroMirataInCorso } = useVerboFattur
     // Era il caso silenzioso — «2 su 3» sembrava un successo pieno e il
     // terzo restava fermo senza che nessuno lo cercasse.
     const nonServiti = Array.isArray(r.gruppi_non_serviti) ? r.gruppi_non_serviti : []
+    const altrove = Array.isArray(r.gruppi_fatturati_altrove) ? r.gruppi_fatturati_altrove : []
     // ⚠️ Non e' una catena else-if: falliti e non-serviti possono COESISTERE
     // (una terna fallita E un gruppo fuori perimetro nello stesso giro), e
     // subordinare il secondo al primo ricreerebbe proprio il silenzio che
@@ -811,10 +823,32 @@ const { avvia: avviaFatturaGruppi, polling: giroMirataInCorso } = useVerboFattur
       // resa cosi' com'e').
       notify.warn(t('vendite.dashboard_competenza.fattura_gruppi_esito_non_serviti', {
         lotti: lotti.length,
-        mancanti: nonServiti.length,
+        // Gruppi DISTINTI, non righe: la fotografia BE ha grana
+        // `(gruppo_key, commessa_id)` e un gruppo su due commesse darebbe due
+        // righe — «2 mancanti» per un solo gruppo non servito.
+        mancanti: new Set(nonServiti.map((s) => s.gruppo_key)).size,
         dettagli: elencoTroncato(nonServiti, (s) => `${s.commessa_codice || s.gruppo_key}: ${s.dettaglio}`, '; '),
       }))
     }
+    // Terzo esito del consuntivo (BE `gruppi_fatturati_altrove`): il gruppo non
+    // e' entrato in QUESTI lotti ma non resta nulla da emettere — le righe sono
+    // gia' su fatture di altri lotti. NON e' un problema: e' informazione, e
+    // raccontarlo come «non servito» manderebbe a cercare un guasto che non c'e'.
+    if (altrove.length > 0) {
+      notify.info(t('vendite.dashboard_competenza.fattura_gruppi_esito_altrove', {
+        n: altrove.length,
+        // Il BE manda le CHIAVI (`ORDINE_VENDITA:<uuid>`): a video va il
+        // riferimento leggibile della riga, come ovunque in questa lista. Il
+        // lookup gira PRIMA di `reloadDopoAzione`, quindi le righe del giro
+        // sono ancora quelle a video; fallback sulla chiave, mai una frase
+        // monca.
+        gruppi: elencoTroncato(altrove, etichettaGruppoKey, ', '),
+      }))
+    }
+    // ⚠️ `altrove` NON entra nel gate del successo: e' informazione, non un
+    // problema (lo dice il BE, lo dice il commento qui sopra). Togliere il
+    // «N lotti prodotti» perche' un gruppo era gia' fatturato altrove
+    // lascerebbe senza conferma un'emissione riuscita.
     if (falliti === 0 && nonServiti.length === 0) {
       if (lotti.length === 0) {
         // Zero lotti senza errori: nulla era davvero fatturabile (righe gia'

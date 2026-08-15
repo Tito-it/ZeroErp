@@ -167,16 +167,60 @@ class CommessaEmittibileLane(TypedDict):
     gruppi_coperti: list[str]
 
 
+class GruppoEsitoGiro(TypedDict):
+    # CONSUNTIVO di un giro di fatturazione, un gruppo fatturabile per riga
+    # (da `vendite.fn_esito_gruppi_giro`, DB 2026-08-15).
+    #
+    # ⚠️ È una MISURA, non una previsione: sostituisce `gruppi_non_coperti`,
+    # che era calcolato alla discovery e quindi poteva mentire su ciò che è
+    # successo dopo (righe prese da un giro concorrente fra discovery e
+    # pipeline). La funzione prende SOLO i lotti prodotti: i gruppi richiesti
+    # sono già persistiti su `fatturazione_lotti_gruppi`, quindi richiesti e
+    # serviti sono entrambi misurati e l'invarianza «richiesti = serviti +
+    # non serviti» regge per costruzione.
+    #
+    # `esito`, tre valori e non due:
+    #   SERVITO           almeno un'attività è finita su una fattura di questi lotti;
+    #   NON_SERVITO       no, e restano righe da emettere → è il caso su cui si agisce;
+    #   FATTURATO_ALTROVE no, ma non resta nulla da emettere: le righe risultano
+    #                     fatturate da lotti DIVERSI. Non è un errore — è il
+    #                     «lavoro preso da un altro giro» — e va detto diversamente,
+    #                     altrimenti viene raccontato come un problema.
+    #
+    # ⚠️ È una misura VIVA, non un log immutabile: se un lotto torna a DRAFT il
+    # consuntivo cambia. È corretto (la fattura non c'è più) ma non deve
+    # sorprendere fra sei mesi.
+    gruppo_key: str
+    # False sul giro di MASSA (nessun perimetro nominale persistito): lì la
+    # funzione restituisce i serviti, che è l'unico insieme di riferimento sensato.
+    richiesto: bool
+    esito: str
+    n_attivita_fatturate: int
+    n_attivita_residue: int
+    lotti_serventi: list[int]
+    lotti_altrui: list[int]
+
+
 class GruppoDiagnosi(TypedDict):
     # Fotografia di un GRUPPO FATTURABILE richiesto da un'emissione mirata che
-    # non ha prodotto lotti: serve a dire all'operatore PERCHE'. Sono fatti
+    # non è stato servito: serve a dire all'operatore PERCHE'. Sono fatti
     # misurati (stato della testata + conteggi righe per stato), non un verdetto:
     # l'ammissibilità resta di `fn_list_emittibili_lane`, unica sede del criterio.
-    # `commessa_codice`/`stato_commessa`/`commessa_emittibile` sono NULL quando il
-    # gruppo non ha nessuna riga (chiave sconosciuta o già ripulita).
+    # I campi della commessa sono NULL quando il gruppo non ha nessuna riga
+    # (chiave sconosciuta o già ripulita).
+    #
+    # Prodotto da `vendite.fn_diagnostica_gruppi_fatturabili` (DB 2026-08-15).
+    # ⚠️ La grana è `(gruppo_key, commessa_id)`, non `gruppo_key`: la chiave di
+    # un documento sorgente non contiene la commessa, e un documento che
+    # alimentasse due commesse dava prima UNA riga con i flag collassati da
+    # `bool_or` — cioè «emittibile» perché una delle due lo era.
     gruppo_key: str
+    commessa_id: int | None
     commessa_codice: str | None
-    stato_commessa: str | None
+    # Il codice interno è per la LOGICA, la descrizione è ciò che si scrive
+    # nella frase letta dall'operatore (mai il codice interno a video).
+    commessa_stato_codice_interno: str | None
+    commessa_stato_descrizione: str | None
     commessa_emittibile: bool | None
     n_righe: int
     n_emesse: int
@@ -189,7 +233,10 @@ class GruppoDiagnosi(TypedDict):
     n_annullate: int
     n_rifiutate: int
     n_non_approvate: int
-    n_senza_tipo_doc: int
+    # `n_senza_tipo_doc` e' uscito dal contratto il 2026-08-15: dopo la
+    # validazione del CHECK (`20260815-30`) una riga emittibile senza tipo
+    # documento non puo' esistere, quindi era un contatore sempre a zero — e
+    # un motivo che non puo' accendersi e' un ramo morto anche lato BE.
     n_fuori_competenza: int
     # Righe che soddisfano TUTTE le condizioni di candidatura (approvate, non
     # emesse, con tipo doc, entro il bound di competenza): se > 0 e il gruppo non

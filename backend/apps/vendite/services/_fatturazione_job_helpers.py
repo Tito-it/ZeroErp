@@ -121,7 +121,11 @@ MOTIVO_GRUPPO_SCONOSCIUTO = "GRUPPO_SCONOSCIUTO"
 MOTIVO_COMMESSA_NON_EMITTIBILE = "COMMESSA_NON_EMITTIBILE"
 MOTIVO_RIGHE_NON_APPROVATE = "RIGHE_NON_APPROVATE"
 MOTIVO_RIGHE_RIFIUTATE = "RIGHE_RIFIUTATE"
-MOTIVO_TIPO_DOC_MANCANTE = "TIPO_DOC_MANCANTE"
+# ⚠️ `MOTIVO_TIPO_DOC_MANCANTE` e' stato RITIRATO il 2026-08-15 e non va
+# rimesso: dopo la validazione del CHECK (`20260815-30`) una riga emittibile
+# senza tipo documento fiscale non puo' esistere, quindi `n_senza_tipo_doc` era
+# un contatore sempre a zero e il motivo un ramo irraggiungibile. La funzione
+# DB `fn_diagnostica_gruppi_fatturabili` non espone piu' quel conteggio.
 MOTIVO_FUORI_COMPETENZA = "FUORI_COMPETENZA"
 MOTIVO_GIA_EMESSE = "GIA_EMESSE"
 MOTIVO_RIGHE_ANNULLATE = "RIGHE_ANNULLATE"
@@ -167,7 +171,12 @@ def classifica_gruppo_non_servito(d: dict[str, Any]) -> tuple[str, str]:
         if d.get("commessa_emittibile") is False:
             return (
                 MOTIVO_COMMESSA_NON_EMITTIBILE,
-                f"la commessa è in stato {d.get('stato_commessa') or '?'}, che non "
+                # A video la DESCRIZIONE dello stato (regola display-fields):
+                # il codice interno resta per la logica. Fallback fail-visible
+                # sul codice, mai una frase monca.
+                f"la commessa è in stato "
+                f"{d.get('commessa_stato_descrizione') or d.get('commessa_stato_codice_interno') or '?'}"
+                f", che non "
                 f"ammette fatturazione ({d['n_pronte']} attività "
                 f"{_concorda(d['n_pronte'], 'pronta', 'pronte')} in attesa)",
             )
@@ -193,12 +202,6 @@ def classifica_gruppo_non_servito(d: dict[str, Any]) -> tuple[str, str]:
             f"{d['n_rifiutate']} attività "
             f"{_concorda(d['n_rifiutate'], 'è stata rifiutata', 'sono state rifiutate')} "
             "in approvazione",
-        )
-    if d.get("n_senza_tipo_doc"):
-        return (
-            MOTIVO_TIPO_DOC_MANCANTE,
-            f"{d['n_senza_tipo_doc']} attività non "
-            f"{_concorda(d['n_senza_tipo_doc'], 'ha', 'hanno')} il tipo documento fiscale",
         )
     if d.get("n_fuori_competenza"):
         return (
@@ -258,10 +261,19 @@ def spiega_gruppi_non_serviti(
 def messaggio_gruppi_non_serviti(
     spiegazioni: list[dict[str, Any]], *, totale_richiesti: int,
 ) -> str:
+    # ⚠️ Si contano i GRUPPI DISTINTI, non le righe. Dal 2026-08-15 la
+    # fotografia ha grana `(gruppo_key, commessa_id)`: un documento che
+    # alimentasse due commesse produce DUE righe per lo stesso gruppo, e
+    # contarle direbbe «4 gruppi su 3» — un numero piu' grande del totale
+    # richiesto, cioe' visibilmente sbagliato proprio nel messaggio che deve
+    # spiegare. E' lo stesso caso per cui il DB ha cambiato la grana: oggi non
+    # capita (zero gruppi multi-commessa), ma il conteggio non deve dipendere
+    # da quel fatto.
+    n_gruppi = len({s.get("gruppo_key") for s in spiegazioni})
     testa = (
-        f"Nessun lotto prodotto: {len(spiegazioni)} gruppi su {totale_richiesti} "
+        f"Nessun lotto prodotto: {n_gruppi} gruppi su {totale_richiesti} "
         "non sono fatturabili."
-        if len(spiegazioni) != 1
+        if n_gruppi != 1
         else "Nessun lotto prodotto: il gruppo richiesto non è fatturabile."
     )
     dettagli = [

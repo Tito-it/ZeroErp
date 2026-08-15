@@ -16,8 +16,12 @@
 #   5. mirata_senza_lotti_fallisce_con_motivo (E_FATTURAZIONE_GIRO_NESSUN_LOTTO)
 #   6. mirata_senza_lotti_e_terminale (niente retry su fallimento deterministico)
 #   7. mirata_con_lotti_non_diagnostica (la diagnosi non gira sul percorso felice)
-#   7-bis. mirata_parziale_spiega_i_non_coperti_senza_fallire (rev 2026-08-15:
-#      lotti prodotti + gruppi fuori → esito con `gruppi_non_serviti`, no raise)
+#   7-bis. mirata_parziale_spiega_i_non_serviti_senza_fallire (consuntivo
+#      `fn_esito_gruppi_giro` sui lotti: NON_SERVITO → diagnosi, no raise)
+#   7-ter. fatturato_altrove_non_e_un_non_servito (terzo esito, chiave sua,
+#      nessuna diagnosi: non c'e' ostacolo da spiegare)
+#   7-quater. consuntivo_rotto_non_affonda_il_giro_riuscito (la lettura a valle
+#      di fatture gia' emesse non solleva: `lotti` resta, il buco si dichiara)
 #   8. giro_di_massa_a_vuoto_resta_successo (perimetro non nominale)
 #   9. mirata_con_terne_fallite_riporta_errori_terna (no diagnosi di perimetro,
 #      non terminale: un errore pipeline puo' essere transiente)
@@ -47,11 +51,27 @@ _REPO = "apps.vendite.db.commesse_repository.CommesseRepository"
 _DIAGNOSI_COMMESSA_BOZZA = [{
     "gruppo_key": "ORDINE_VENDITA:019eb2ac",
     "commessa_codice": "CMM-20260610175449872-e059eb",
-    "stato_commessa": "BOZZA",
+    "commessa_id": 108,
+    "commessa_stato_codice_interno": "BOZZA",
+    "commessa_stato_descrizione": "Bozza",
     "commessa_emittibile": False,
     "n_righe": 5, "n_emesse": 0, "n_non_approvate": 0,
-    "n_senza_tipo_doc": 0, "n_fuori_competenza": 0, "n_pronte": 5,
+    "n_fuori_competenza": 0, "n_pronte": 5,
 }]
+
+
+# Scopo: riga di consuntivo come la ritorna `fn_esito_gruppi_giro`.
+def _esito(gruppo_key, esito, *, n_fatturate=0, n_residue=0,
+           lotti_serventi=(), lotti_altrui=()):
+    return {
+        "gruppo_key": gruppo_key,
+        "richiesto": True,
+        "esito": esito,
+        "n_attivita_fatturate": n_fatturate,
+        "n_attivita_residue": n_residue,
+        "lotti_serventi": list(lotti_serventi),
+        "lotti_altrui": list(lotti_altrui),
+    }
 
 
 class FatturazioneGiroHandlerTests(SimpleTestCase):
@@ -132,7 +152,9 @@ class FatturazioneGiroHandlerTests(SimpleTestCase):
         # Il messaggio nomina la commessa e lo stato che blocca: e' quello che
         # l'operatore legge nel toast (FE: `ultimo_errore.message`).
         self.assertIn("CMM-20260610175449872-e059eb", ctx.exception.message)
-        self.assertIn("BOZZA", ctx.exception.message)
+        # La DESCRIZIONE dello stato, non il codice interno (display-fields).
+        self.assertIn("Bozza", ctx.exception.message)
+        self.assertNotIn("BOZZA", ctx.exception.message)
         motivi = ctx.exception.context["gruppi_non_serviti"]
         self.assertEqual(motivi[0]["motivo"], "COMMESSA_NON_EMITTIBILE")
         # La diagnosi usa lo STESSO bound di competenza del giro.
@@ -161,8 +183,11 @@ class FatturazioneGiroHandlerTests(SimpleTestCase):
     def test_mirata_con_lotti_non_diagnostica(self, mock_giro, mock_repo) -> None:
         mock_giro.return_value = {
             "lane": 1, "lotti": [{"lotto_id": 1279}], "falliti": 0, "esiti": [{"x": 1}],
-            "gruppi_non_coperti": [],
         }
+        # Consuntivo tutto SERVITO: niente da spiegare.
+        mock_repo.return_value.esito_gruppi_giro.return_value = [
+            _esito("g1", "SERVITO", n_fatturate=1),
+        ]
         result = fatturazione_giro_handler(
             {"competenza_mese": "2026-06-01", "gruppi": ["g1"]}, scope=None,
         )
@@ -170,40 +195,105 @@ class FatturazioneGiroHandlerTests(SimpleTestCase):
         self.assertEqual(result["lotti"], [{"lotto_id": 1279}])
         self.assertNotIn("gruppi_non_serviti", result)
 
-    # 7-bis. Emissione mirata PARZIALE (rev 2026-08-15): lotti prodotti MA
-    #    gruppi rimasti fuori dalla discovery. NON solleva — i lotti sono
-    #    lavoro vero — ma l'esito porta la diagnosi per-gruppo, e la diagnosi
-    #    gira SOLO sui non coperti (non su chi e' stato servito). Era il caso
-    #    peggiore dei tre perche' l'unico silenzioso: «2 su 3» sembrava un
-    #    successo pieno e il terzo restava fermo senza che nessuno lo cercasse.
+    # 7-bis. Emissione mirata PARZIALE: lotti prodotti MA un gruppo NON servito.
+    #    NON solleva — i lotti sono lavoro vero — e l'esito porta la diagnosi.
+    #    ⚠️ Il «chi manca» viene dal CONSUNTIVO (`esito_gruppi_giro` sui lotti
+    #    prodotti), non piu' da una previsione fatta alla discovery: fra
+    #    discovery e pipeline un giro concorrente puo' prendersi le righe, e la
+    #    previsione dava quel gruppo per coperto.
     @patch(_REPO)
     @patch(_GIRO)
-    def test_mirata_parziale_spiega_i_non_coperti_senza_fallire(
+    def test_mirata_parziale_spiega_i_non_serviti_senza_fallire(
         self, mock_giro, mock_repo,
     ) -> None:
         mock_giro.return_value = {
             "lane": 2, "lotti": [{"lotto_id": 1279}, {"lotto_id": 1280}],
             "falliti": 0, "esiti": [{"x": 1}],
-            "gruppi_non_coperti": ["ORDINE_VENDITA:019eb2ac"],
         }
+        mock_repo.return_value.esito_gruppi_giro.return_value = [
+            _esito("PREVENTIVO:aa", "SERVITO", n_fatturate=3),
+            _esito("ORDINE_VENDITA:019eb2ac", "NON_SERVITO", n_residue=5),
+        ]
         mock_repo.return_value.diagnostica_gruppi.return_value = _DIAGNOSI_COMMESSA_BOZZA
 
         result = fatturazione_giro_handler(
             {"competenza_mese": "2026-06-15",
-             "gruppi": ["PREVENTIVO:aa", "MAN:42", "ORDINE_VENDITA:019eb2ac"]},
+             "gruppi": ["PREVENTIVO:aa", "ORDINE_VENDITA:019eb2ac"]},
             scope=None,
         )
 
-        # Diagnosi SOLO sui non coperti, con lo stesso bound di competenza.
-        diag_kwargs = mock_repo.return_value.diagnostica_gruppi.call_args.kwargs
-        self.assertEqual(list(diag_kwargs["gruppi"]), ["ORDINE_VENDITA:019eb2ac"])
-        self.assertEqual(diag_kwargs["competenza_mese"], date(2026, 6, 1))
-        # L'esito porta lotti E spiegazioni, classificate come il giro a vuoto.
+        # Il consuntivo si chiede sui LOTTI prodotti, non sui gruppi richiesti.
+        self.assertEqual(
+            mock_repo.return_value.esito_gruppi_giro.call_args.args[0], [1279, 1280],
+        )
+        # La diagnosi gira SOLO sul non servito: il servito non si spiega.
+        diag = mock_repo.return_value.diagnostica_gruppi.call_args.kwargs
+        self.assertEqual(list(diag["gruppi"]), ["ORDINE_VENDITA:019eb2ac"])
+        self.assertEqual(diag["competenza_mese"], date(2026, 6, 1))
         self.assertEqual(len(result["lotti"]), 2)
         self.assertEqual(
             result["gruppi_non_serviti"][0]["motivo"], "COMMESSA_NON_EMITTIBILE",
         )
-        self.assertNotIn("esiti", result)  # la compattazione resta
+        self.assertNotIn("gruppi_fatturati_altrove", result)
+        self.assertNotIn("esiti", result)
+
+    # 7-ter. FATTURATO_ALTROVE e' un esito a se': non resta nulla da emettere e
+    #    le righe stanno su fatture di ALTRI lotti. Non e' un problema — e'
+    #    lavoro preso da un altro giro — quindi NON si diagnostica (non c'e'
+    #    ostacolo da spiegare) e va su una chiave sua, altrimenti verrebbe
+    #    raccontato come «non servito».
+    @patch(_REPO)
+    @patch(_GIRO)
+    def test_fatturato_altrove_non_e_un_non_servito(self, mock_giro, mock_repo) -> None:
+        mock_giro.return_value = {
+            "lane": 1, "lotti": [{"lotto_id": 1279}], "falliti": 0, "esiti": [],
+        }
+        mock_repo.return_value.esito_gruppi_giro.return_value = [
+            _esito("PREVENTIVO:aa", "SERVITO", n_fatturate=2),
+            _esito("MAN:42", "FATTURATO_ALTROVE", lotti_altrui=[999]),
+        ]
+
+        result = fatturazione_giro_handler(
+            {"competenza_mese": "2026-06-01", "gruppi": ["PREVENTIVO:aa", "MAN:42"]},
+            scope=None,
+        )
+
+        self.assertEqual(result["gruppi_fatturati_altrove"], ["MAN:42"])
+        self.assertNotIn("gruppi_non_serviti", result)
+        # Nessun ostacolo da spiegare: la diagnostica non deve girare.
+        mock_repo.return_value.diagnostica_gruppi.assert_not_called()
+
+    # 7-quater. Il consuntivo e' una LETTURA a valle di fatture gia' emesse: se
+    #    fallisce (cancello RLS di `fn_esito_gruppi_giro` su un lotto fuori
+    #    scope, DB muto) NON deve portarsi via il giro riuscito. Senza questo
+    #    guard il job andrebbe in ERRORE perdendo `lotti` — il «vai al lotto»
+    #    del FE — e la coda rifarebbe il giro, che al secondo colpo non trova
+    #    piu' nulla e fallisce con «gia' emesse»: un'emissione riuscita
+    #    raccontata come fallita. Il buco pero' si DICHIARA, non si ingoia.
+    @patch(_REPO)
+    @patch(_GIRO)
+    def test_consuntivo_rotto_non_affonda_il_giro_riuscito(
+        self, mock_giro, mock_repo,
+    ) -> None:
+        mock_giro.return_value = {
+            "lane": 1, "lotti": [{"lotto_id": 1279}], "falliti": 0, "esiti": [],
+        }
+        mock_repo.return_value.esito_gruppi_giro.side_effect = ServiceError(
+            code="E_LOTTO_NON_TROVATO", message="1279",
+        )
+
+        result = fatturazione_giro_handler(
+            {"competenza_mese": "2026-06-01", "gruppi": ["PREVENTIVO:aa"]}, scope=None,
+        )
+
+        # I lotti prodotti restano nell'esito: sono lavoro vero e vanno raggiunti.
+        self.assertEqual(result["lotti"], [{"lotto_id": 1279}])
+        # E il consuntivo mancante e' dichiarato col suo codice, non taciuto.
+        self.assertEqual(
+            result["gruppi_esito_non_misurato"],
+            {"code": "E_LOTTO_NON_TROVATO", "lotti": [1279]},
+        )
+        self.assertNotIn("gruppi_non_serviti", result)
 
     # 8. Giro di MASSA a vuoto: resta un successo. Il perimetro non e' nominale —
     #    «questo mese non c'era nulla da fatturare» e' un esito legittimo, e il

@@ -253,6 +253,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_EVENTO_DOCUMENTO_UPDATE_VIETATA": "Modifica eventi documento non consentita: timeline append-only.",
     "E_FATTURAZIONE_GIRO_NESSUN_LOTTO": "Nessun lotto da fatturare nel perimetro indicato.",
     "E_FATTURAZIONE_GIRO_PAYLOAD": "Parametri del giro di fatturazione non validi.",
+    "E_FATTURAZIONE_MIRATA_TRONCATA": "Emissione mirata troppo ampia: nessun lotto è stato creato. Selezionare meno gruppi e rilanciare.",
     "E_FATTURAZIONE_NUMERA_PAYLOAD": "Parametri della numerazione non validi.",
     "E_FATTURA_EMITTENTE_NON_RISOLTO": "Emittente fiscale non risolvibile per la fattura in coda di stampa.",
     "E_FATTURA_GIA_FISCALE": "La fattura e` oltre lo stato pre-fiscale: non puo` essere tolta dal lotto.",

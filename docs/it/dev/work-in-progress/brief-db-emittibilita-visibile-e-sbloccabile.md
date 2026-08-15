@@ -29,9 +29,18 @@ vanno **segnalate, non nascoste**: sono lavoro reale.
 > validato, e il tetto della discovery che troncava una richiesta mirata in
 > silenzio. Nove changeSet in tutto (`20260815-24` … `-32`).
 >
-> **Cosa resta, e non è DB**: le richieste a BE/FE del **§9.7**, e la
-> **prova in app di Tid** (§8.4) — l'unica voce del §6 ancora senza spunta, e
-> l'unica che nessuno può fare al posto suo.
+> 🟢 **BE/FE CHIUSO** — le cinque richieste del §9.7 sono fatte e verificate:
+> consuntivo al posto della previsione, i due JOIN tolti dal repository,
+> diagnostica scesa a DB, docstring riallineata, policy del codice nuovo.
+> Piano e consuntivo nel **§10**.
+>
+> **Cosa resta:**
+> - 🔴 la **prova in app di Tid** (§8.4) — l'unica voce del §6 ancora senza
+>   spunta, e l'unica che nessuno può fare al posto suo;
+> - 🟠 **una domanda al DB, aperta**: nel giro parziale una terna FALLITA viene
+>   diagnosticata come problema di perimetro. Non l'abbiamo chiusa da soli
+>   perché il rimedio ovvio rimetterebbe in gioco la previsione che il §9.7 ha
+>   chiesto di togliere — **§10.6**.
 
 **Correlati:**
 [vw_dash_competenza_attivita](/dbzero/vendite/views/vw_dash_competenza_attivita) ·
@@ -889,3 +898,171 @@ precondizione dipenda da dati di `80_data`.
    corsie). È un caso che oggi non capita — le mirate sono da pochi gruppi — ma
    se capitasse, prima usciva una diagnosi **falsa** e adesso esce un errore. Sul
    giro di massa non cambia niente.
+
+---
+
+## 10. Piano BE/FE sulle richieste del §9.7 (2026-08-15, notte)
+
+> **Chi scrive:** BE/FE (`dev/backend-tid`). Le cinque voci del §9.7, prese come
+> sono, più quello che il §9.7 non poteva sapere: le ricadute a valle nel nostro
+> codice. Scritto **prima** di eseguire, aggiornato **mentre** si esegue.
+
+### 10.1 Verifica preliminare — gli oggetti ci sono davvero
+
+Controllati sulla doc auto-generata (mai dagli YAML), prima di scrivere una riga:
+
+| Oggetto | Esito |
+| --- | --- |
+| `vw_dash_competenza_attivita.commessa_stato_descrizione` | ✅ `COALESCE(sc.descrizione, sc.codice)` |
+| `vw_dash_competenza_gruppi.commessa_stato_descrizione` + `documento_id` | ✅ entrambe, `documento_id` dalla stessa LATERAL del `riferimento` |
+| `vw_lotti_gruppi_serviti` | ✅ |
+| `fn_esito_gruppi_giro(bigint[])` → `(gruppo_key, richiesto, esito, n_attivita_fatturate, n_attivita_residue, lotti_serventi, lotti_altrui)` | ✅ |
+| `fn_diagnostica_gruppi_fatturabili(text[], date)` → 13 colonne, grana `(gruppo_key, commessa_id)` | ✅ |
+| `E_FATTURAZIONE_MIRATA_TRONCATA` a catalogo, classe `NON_ESEGUIBILE` | ✅ |
+
+⚠️ **Una cosa il §9.7 non la nominava, ed era rossa.** Il codice errore nuovo era
+a catalogo ma **non nella mappa Python**: il guardrail del terzo lato
+(`test_error_codes_db_policy_guardrail`, opt-in `ZEROERP_TEST_DB_E2E=1`) falliva
+con «1 codici errore che il database può nominare non hanno una policy». Non si
+edita a mano — la classe la decide il catalogo — quindi rigenerato con
+`manage.py genera_error_policies`: diff di **una riga**, nessun riordino spurio.
+
+### 10.2 Le cinque voci, e cosa comportano da noi
+
+| # | Richiesta §9.7 | Ricaduta nel nostro codice | Stato |
+| --- | --- | --- | --- |
+| 1 | `fn_esito_gruppi_giro` al posto di `gruppi_non_coperti` | Il **consuntivo** sostituisce la previsione: sparisce la misura alla discovery nel driver, l'handler interroga i lotti prodotti. Il vocabolario passa da due stati a **tre** — `SERVITO` / `NON_SERVITO` / `FATTURATO_ALTROVE` — e il terzo va detto **diversamente**: non è un errore, è lavoro che un altro giro ha già fatturato | ✅ |
+| 2 | Via i due JOIN dal repository | `LEFT JOIN stati_commessa` (§8.3) **e** LATERAL `documento_id` (F3): entrambi diventano colonne. Sparisce il «drift noto e accettato» dichiarato nel commento | ✅ |
+| 3 | `fn_diagnostica_gruppi_fatturabili` al posto dell'SQL in `diagnostica_gruppi` | ~60 righe di SQL fuori dal BE. In Python resta **solo** la prosa di `classifica_gruppo_non_servito`. Contratto: grana `(gruppo_key, commessa_id)`, via `n_senza_tipo_doc` **e** `MOTIVO_TIPO_DOC_MANCANTE`, dentro `commessa_stato_descrizione` — che è il modo in cui la descrizione arriva **nella frase del toast** (il secondo punto del §8.3, quello lasciato in nota) | ✅ |
+| 4 | Docstring di `diagnostica_gruppi` (F6) | Dichiara «solo a giro vuoto» ma la chiamiamo anche nel parziale. Prosa da riallineare | ✅ |
+| 5 | ℹ️ `E_FATTURAZIONE_MIRATA_TRONCATA` | Nessuna azione oltre la policy del §10.1: il codice sale dal DB e il middleware lo mappa | ✅ |
+
+### 10.3 Quello che il §9.7 non poteva sapere — le ricadute a valle
+
+Sono nel nostro codice, quindi le nominiamo noi:
+
+1. **`n_senza_tipo_doc` è citato in tre punti**, non uno: la chiave in
+   `GruppoDiagnosi`, il ramo `MOTIVO_TIPO_DOC_MANCANTE` in
+   `classifica_gruppo_non_servito`, e le **fixture dei test**
+   (`test_fatturazione_job_helpers`). Togliere solo il primo lascerebbe un ramo
+   morto che i test continuano ad accendere: un motivo che non può più esistere
+   verrebbe ancora asserito come funzionante;
+2. **`stato_commessa` cambia nome e natura.** La funzione DB ritorna
+   `commessa_stato_codice_interno` **e** `commessa_stato_descrizione`. La prosa
+   deve usare la **descrizione** (regola display-fields), il codice resta per la
+   logica. È lo stesso difetto che avevamo corretto a mano nel tooltip della
+   lista: qui sparisce alla radice;
+3. **`gruppi_non_coperti` ha un consumatore FE.** Il toast dell'emissione
+   parziale legge `gruppi_non_serviti` dall'esito del job. Cambiando la sorgente
+   BE, il contratto verso il FE va tenuto **o cambiato con lui** — non lasciato
+   a metà;
+4. **Il caso `FATTURATO_ALTROVE` non ha un testo.** È un esito nuovo: senza una
+   frase sua verrebbe raccontato come «non servito», cioè come un problema,
+   mentre è lavoro fatturato. Serve una chiave i18n nuova.
+
+### 10.4 Consuntivo — fatto, misurato
+
+| # | Esito |
+| --- | --- |
+| 1 | ✅ Il driver **non misura più** nulla alla discovery: `gruppi_non_coperti` è sparito da `esegui_giro_fatturazione`. L'handler chiede `esito_gruppi_giro(lotti_prodotti)` e distingue i tre esiti. `NON_SERVITO` → diagnosi del perché (è il caso su cui si agisce); `FATTURATO_ALTROVE` → chiave sua e **nessuna diagnosi**, perché non c'è ostacolo da spiegare |
+| 2 | ✅ Via la LATERAL su `vw_dash_fatturazione_documenti` **e** il `LEFT JOIN stati_commessa`. I test ora presidiano il **verso opposto**: che quelle risoluzioni non tornino (`assertNotIn`) |
+| 3 | ✅ `diagnostica_gruppi` da ~90 righe di SQL a un wrapper: **−86 righe**. Ritirati `n_senza_tipo_doc` e `MOTIVO_TIPO_DOC_MANCANTE`; la prosa usa ora `commessa_stato_descrizione` |
+| 4 | ✅ Docstring riallineata: dice che la diagnosi gira sul giro vuoto **e** sui non serviti di un parziale |
+| 5 | ✅ Policy generata + **messaggio di ripiego** — vedi sotto |
+
+**Il §10.3 ha fatto il suo lavoro: tutte e quattro le ricadute erano reali.** In
+più ne è emersa una **quinta**, che nessuno aveva previsto: oltre alla policy,
+un codice vivo deve avere un **messaggio di ripiego**
+(`error_messages_fallback.py`), e un secondo presidio —
+`test_ogni_codice_vivo_ha_un_messaggio_di_ripiego` — lo pretende. Senza, il
+codice risolve ma l'operatore legge una frase neutra che non parla del suo
+problema: il degrado silenzioso che quel test esiste per impedire.
+
+**Tre test hanno cambiato aspettativa, e nessuno è stato messo in baseline** —
+fotografavano decisioni superate, non debito:
+
+- due asserivano `BOZZA` nel messaggio: ora c'è `Bozza`, ed è la regola
+  display-fields. Le asserzioni sono diventate `assertIn("Bozza")` **+
+  `assertNotIn("BOZZA")`**, che presidia la scelta invece di subirla;
+- il test del motivo «tipo documento mancante» è stato **rimosso**: accendeva un
+  ramo irraggiungibile, cioè asseriva come funzionante un comportamento che il
+  modello non produce più;
+- i tre test di `gruppi_non_coperti` sono stati **rimossi con la funzione**, non
+  lasciati a fotografare un meccanismo inesistente. Il consuntivo è coperto dove
+  ora vive: nell'handler (7-bis e 7-ter).
+
+**Verifiche eseguite** (misurate, non riferite):
+
+- suite backend **3663 verdi**; build FE verde; lint pulito; guard i18n verde;
+- **guardrail codici errore contro il DB reale** (`ZEROERP_TEST_DB_E2E=1`): da
+  rosso a **verde**;
+- le due funzioni nuove **provate sul DB vero** dal repository: la diagnostica
+  torna le 13 chiavi del contratto nuovo (con `commessa_id` e le due dello
+  stato); `fn_esito_gruppi_giro` su un lotto fuori scope **solleva**, che è il
+  fail-closed del §9.2/F2 — mai un falso «non servito».
+
+### 10.5 Cosa resta
+
+- 🔴 **La prova in app di Tid** (§8.4): sbloccare una commessa dall'interfaccia e
+  fatturarne le attività, una volta. È l'unica voce del §6 ancora senza spunta;
+- 🟠 **la domanda del §10.6**, aperta e non risolta di nostra iniziativa;
+- ℹ️ il caso `E_FATTURAZIONE_MIRATA_TRONCATA` non è mai stato visto in esercizio
+  (le mirate sono da pochi gruppi): la policy e il messaggio ci sono, la prova a
+  video no. È dichiarato, non dimenticato.
+
+### 10.6 🟠 Domanda al DB — una terna FALLITA finisce diagnosticata come problema di perimetro
+
+> **Trovato** dalla review critica del codice appena scritto (2026-08-15, sera).
+> **Non corretto di nostra iniziativa**, e il perché è il punto della domanda.
+
+**Il fatto.** In un giro mirato **parziale** con una terna andata in errore, i
+gruppi di quella terna hanno ancora righe da emettere: il consuntivo li
+classifica — correttamente — `NON_SERVITO`. Noi però su ogni `NON_SERVITO`
+facciamo girare la diagnosi di perimetro, che risponde con la causa più
+prossima che vede: *«N attività risultano pronte ma il gruppo non è entrato in
+nessun lotto: verificare emittente e utility della commessa»*.
+
+Emittente e utility sono a posto. Il giro è fallito per un **lock transiente**,
+o per un errore di pipeline. L'operatore viene mandato a controllare una cosa
+giusta, e nel frattempo non sa che basta riprovare.
+
+**Perché è la stessa regola che il codice già applica venti righe sopra.** Sul
+giro **VUOTO** la distinzione c'è, ed è dichiarata:
+
+> *terne trovate ma pipeline fallita (`falliti > 0`) → la causa vera è negli
+> esiti per terna, e può essere TRANSIENTE: niente diagnosi di perimetro
+> (racconterebbe la cosa sbagliata)*
+
+Sul giro **PARZIALE** quella distinzione non c'è. Non è una svista di oggi: nel
+parziale i lotti prodotti sono la prova che il perimetro era valido, quindi il
+caso non si era mai presentato finché il «chi manca» era una previsione della
+discovery. Con il consuntivo si presenta.
+
+**Perché non l'abbiamo chiuso.** L'unico modo di sapere *quali gruppi*
+appartenevano alla terna fallita è mappare `terna → gruppi`, e quella
+mappa è `gruppi_coperti` della discovery — cioè la **previsione** che il §9.7 ha
+chiesto di togliere, e che abbiamo tolto. Reintrodurla di nascosto per tappare
+un caso raro significherebbe disfare in silenzio una decisione presa insieme
+ieri. Preferiamo la domanda.
+
+**Cosa ci servirebbe** (il *cosa*, il *come* è vostro), in ordine di quanto
+costa:
+
+1. **niente, e lo si dichiara**: il caso è raro, il messaggio è impreciso ma non
+   dannoso, e si scrive nel codice perché il prossimo non lo scambi per un
+   difetto. È una decisione legittima, va solo presa;
+2. **poter distinguere, a consuntivo, «non servito perché il perimetro non lo
+   ammetteva» da «non servito perché l'esecuzione si è rotta»**. Il primo è
+   deterministico e si agisce sulla causa; il secondo è transitorio e si
+   riprova. Oggi il consuntivo dice `NON_SERVITO` a entrambi, ed è corretto
+   rispetto a ciò che misura — è la nostra prosa a valle che attribuisce una
+   causa che non ha verificato;
+3. se esistesse già un modo per legare un **fallimento di terna** ai gruppi che
+   quella terna avrebbe servito, ci basterebbe saperlo: sopprimeremmo la
+   diagnosi su quei gruppi, esattamente come già facciamo sul giro vuoto.
+
+⚠️ **Nel frattempo non abbiamo messo un ripiego**, ed è voluto: un `if` che
+sopprime la diagnosi quando `falliti > 0` spegnerebbe il messaggio **anche** sui
+gruppi bloccati per davvero nello stesso giro — sostituendo un messaggio
+impreciso con un silenzio, che è il difetto che questo intero cantiere ha
+passato due settimane a togliere.
