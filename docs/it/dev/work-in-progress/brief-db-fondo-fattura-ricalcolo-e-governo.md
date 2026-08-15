@@ -22,14 +22,16 @@
 > **Resta la sola Fase D** (atto manuale, e aspetta il processo rimborsi in
 > `pagamenti`).
 >
-> ✅ **Lato BE il giro è stato fatto lo stesso giorno**: **R-1**, **R-2**,
-> **BE-2**, **BE-3** e **BE-5** sono fatti e verdi (3666 test); **BE-1** è
-> assorbito in R-3. Restano **BE-4** e il **frontend**, fermi entrambi su
-> prerequisiti DB e non su decisioni del backend — stato per passo in **§8.3**.
+> ✅ **Lato BE**: **R-1**, **R-2**, **R-3**, **BE-2**, **BE-3** e **BE-5** sono
+> fatti e verdi (3676 test in env CI); **BE-1** è assorbito in R-3. Stato per
+> passo in **§8.3**, esito di R-3 in **§8.3-bis** (DB) e **§8.3-ter** (BE).
 >
-> ✅ **R-3 CHIUSA su entrambi i lati** il 2026-08-15 (§8.3-bis DB, §8.3-ter BE).
-> ✅ **Seed `ui.lista_*` fatto**: del frontend restano il `migrate` e la pagina
-> Vue — 🔵 **la lista non è più bloccata**.
+> ✅ **Seed `ui.lista_*` applicato e verificato** (lista `id 44`, 16 colonne,
+> attiva): 🔵 **la pagina Vue non è più bloccata da nulla** — è l'unico lavoro
+> rimasto che non aspetta un'altra squadra.
+>
+> 🔴 **Resta fermo il solo BE-4**, e non per un prerequisito mancante: aspetta la
+> **Fase D**, che a sua volta aspetta per scelta il processo rimborsi.
 >
 > 🔴 **Lato DB resta la sola Fase D** (D-11…D-13), che però aspetta a sua volta
 > il **processo rimborsi in `pagamenti`**: costruire la porta prima della stanza
@@ -1429,7 +1431,7 @@ nuovo sui corpi di Fase C.
 | **BE-5** | **Rigenerare le policy errore** dopo il seed di D-14: `./manage-env.sh genera_error_policies` | comando | ✅ **fatto** (= R-1) |
 | **FE** | La lista dentro il dominio vendite | `frontend/src/vendite/` | ✅ **sbloccato**: il seed `ui.lista_*` è stato fatto il 2026-08-15 (lista `id 44`, 16 colonne). Resta il `migrate` e la pagina Vue — vedi il riquadro «il pezzo che il piano non aveva previsto» |
 
-#### 📮 Le tre richieste al BE dalla Fase A *(scritte, non eseguite — perimetro DB)*
+#### 📮 Le tre richieste al BE dalla Fase A — ✅ **tutte e tre eseguite** (2026-08-15)
 
 | | Richiesta | Perché |
 | --- | --- | --- |
@@ -1440,8 +1442,8 @@ nuovo sui corpi di Fase C.
 **Stato**: ✅ **R-1**, ✅ **R-2** e ✅ **R-3** — quest'ultima chiusa su
 entrambi i lati il 2026-08-15 (DB in §8.3-bis, BE in §8.3-ter).
 
-⭐ **R-3 NON dipende dalla Fase D, ed è l'unico residuo che non aspetta
-`pagamenti`** (verificato il 2026-08-15): i due insiemi di oggetti sono
+⭐ **R-3 non dipendeva dalla Fase D** — la ragione per cui si è potuta chiudere
+subito, mentre BE-4 resta fermo (verificato il 2026-08-15): i due insiemi di oggetti sono
 disgiunti — R-3 incapsula `fn_genera_fondi_fattura_source` e
 `fn_applica_fondi_fattura`, che esistono già, mentre la Fase D crea le funzioni
 dell'atto manuale, che non esistono; i nomi delle madri proposte sono liberi; e
@@ -1697,7 +1699,7 @@ alimenta**: `<ListaConfigurabile>` non è una tabella, è un componente che si
 e la disegna da lì. Senza il seed la pagina non parte in modo degradato:
 risponde **`E_UI_LISTA_NON_TROVATA`**.
 
-Serve un append ai CSV di `80_data/sql/ui/` (perimetro DB):
+Serviva un append ai CSV di `80_data/sql/ui/` (perimetro DB) — ✅ **fatto**, il dettaglio di com'è stato seminato è nel riquadro in fondo a questa sezione:
 
 | File | Cosa |
 | --- | --- |
@@ -1928,6 +1930,12 @@ Fase E  ─── in qualunque momento, conviene con A
 Fase F  ─── dichiarativa: si scrive nel brief incassi
 ```
 
+> ✅ **Stato al 2026-08-16**: A, B, C, E, F applicate; **resta la sola Fase D**,
+> ferma per scelta finché `pagamenti` non ha un processo rimborsi.
+> Fuori dal grafo perché non sono fasi: **R-1/R-2/R-3 fatte**, **seed
+> `ui.lista_*` fatto**, **BE-2/BE-3/BE-5 fatti**; aperti **BE-4** (aspetta la
+> Fase D) e la **pagina Vue** (non più bloccata).
+
 | Dipendenza | Perché |
 | --- | --- |
 | **D-0 per primo** | finché una configurazione a metà spalanca il meccanismo, tutto il resto presidia un cancello con il muro aperto accanto |
@@ -2018,10 +2026,11 @@ l'adeguamento dei due esistenti.
 
 | Data | Cosa |
 | --- | --- |
+| 2026-08-16 | 🧹 **Riletto il brief dall'inizio per allinearlo allo stato reale**, dopo che R-3 e il seed liste sono atterrati a poche ore di distanza. Corretti **quattro** punti che parlavano al futuro di cose gia' fatte: la testata dava il **frontend** per fermo su prerequisiti DB (non lo e' piu' — seed applicato e **verificato sul database**: lista `id 44`, 16 colonne, attiva), §8.3 intitolava le tre richieste al BE *«scritte, non eseguite»* quando sono tutte e tre eseguite, il riquadro del catalogo liste diceva *«serve un append ai CSV»* con il seed gia' fatto due paragrafi sotto, e R-3 era ancora descritta come *«l'unico residuo che non aspetta pagamenti»*. Aggiunto al diagramma di §8.4 il quadro di sintesi, e sciolta una **collisione di numerazione** nel registro (due voci «notte, 13»). ⭐ E' la lezione della notte 10 ripetuta, con un'aggravante: li' a divergere erano due punti dello stesso documento, qui il documento e il **database** |
 | 2026-08-15 (notte, 15) | ✅ **Seed del catalogo liste fatto** — l'ultimo residuo DB che non aspettava nessun altro, e quello che teneva ferma la pagina (`E_UI_LISTA_NON_TROVATA`). Append ai quattro CSV di `80_data/sql/ui/`: lista `id 44` `vendite.fondi_fattura_da_decidere`, **16 colonne**, preset di sistema con i **default veri dell'endpoint** (50 per pagina, `data` DESC). ⚠️ **Da applicare.** 🔴 **`filtrabile`/`ordinabile` rispecchiano le whitelist dell'API e non il desiderabile**: l'endpoint filtra solo su `motivo` e ordina su sette colonne — *una colonna dichiarata ordinabile che l'API rifiuta con un 400 è un controllo che esiste per rompersi*, e il catalogo è l'unico posto dove quel disallineamento non si vede finché non lo clicca qualcuno. ⭐ Due scostamenti dal suggerimento del BE, entrambi motivati: **`importo_atto` resta visibile** (senza, una riga `NON_PIU_CAPIENTE` mostrerebbe la capienza e non l'importo che non ci sta più dentro — cioè tutto tranne il confronto che la mette in elenco), e **`stato_atto` è spenta per una ragione diversa dalle altre**: il ramo filtra `stato = 'DISPONIBILE'`, quindi quella colonna vale sempre lo stesso su ogni riga — *non è mezza vuota, è costante, e una colonna costante non informa*. 🔵 Nessuna colonna `azioni` finché la Fase D non esiste: un menu vuoto è la stessa cosa di una riga che non può accadere |
 | 2026-08-15 (notte, 14) | ✅ **R-3 parte DB APPLICATA e verde.** Migrate dei tre changeSet `20260815-33`…`-35` (ore 23:01), **test verdi e baseline `vendite` senza regressioni** — corsa fatta da Tid, non da me. Doc `dbzero` rigenerata e scritti i tre `manual/` nuovi (`fn_get_scope_fatture_lotto`, `fn_genera_fondi_fattura_lotto`, `fn_applica_fondi_lotto`). ⚠️ **Verificato prima di generare la doc che gli oggetti fossero davvero vivi**: è la lezione di §8.2-quinquies applicata al giro dopo — changelog e catalogo si controllano, non si danno per allineati. 📮 **Resta il consumo lato BE**: due `SELECT` al posto dei due statement set-based, e spariscono `get_tipo_fondo_fattura_id`, `_SCOPE_FATTURE_LOTTO_SQL` e `list_fatture_scope_by_lotto`. ⭐ Con questo **lato DB il cantiere è chiuso tranne la Fase D**, che non è rimandata per scelta ma perché costruirebbe una porta su una stanza che `pagamenti` non ha ancora |
 | 2026-08-15 (notte, 13) | ⭐ **R-3, parte DB: SCRITTA** (*«potremmo chiudere R-3, che dici?»*) — tre changeSet `20260815-33`…`-35` puramente additivi (`fn_get_scope_fatture_lotto`, `fn_genera_fondi_fattura_lotto`, `fn_applica_fondi_lotto`) e un pgTAP nuovo da **14** asserzioni, verde in transazione annullata. ⚠️ **Da applicare.** ✅ Verificato nel codice che il BE ha chiuso **R-1** e **R-2**. Seguita la specifica di §8.3, **codice interno compreso** — che era il suo punto centrale. 🔴 **Le due ragioni vere di R-3 sono emerse solo scrivendo, e nessuna delle due era nel piano**: **(1)** lo scope passa `COALESCE(lotto, billing account)` come utility mentre la generazione filtra su `f.utility_id` — una divergenza non produce un errore ma un **no-op muto**, e la validazione Python non può accorgersene perché controlla il valore *già* coalescizzato (`ba.utility_id` è NOT NULL: quel ramo non scatta mai); **(2)** il `SELECT DISTINCT` ha l'id della fattura in proiezione, quindi non deduplica: la generazione gira **una volta per fattura invece che per chiave**, e su un lotto di 500 fatture dello stesso emittente sono 500 scansioni identiche di cui 499 bloccate dall'atto unico. *Chi itera sulle fatture per passare una chiave sta iterando sull'oggetto sbagliato.* ⚠️ **Cambio di comportamento**: una fattura di lotto senza utility adesso **ferma il giro** invece di lasciarlo proseguire a vuoto. ⚠️ **Rinumerati da `-24`…`-26`**: il merge del branch backend ha portato changeSet `-24`…`-32` di un altro cantiere, già applicati — la numerazione NN è globale per data e va riverificata **dopo ogni merge**, non solo a inizio lavoro |
-| 2026-08-15 (notte, 13) | ✅ **R-3 chiusa lato BE** (§8.3-ter): il repository consuma le due madri con **una `SELECT` per task** e perde 94 righe — `get_tipo_fondo_fattura_id`, `_SCOPE_FATTURE_LOTTO_SQL`, `list_fatture_scope_by_lotto`, tutte diventate morte. Suite **3676 verdi** in env CI. 🔴 **Un effetto collaterale trovato e chiuso, che sarebbe passato inosservato perche' non rompe niente**: i tre errori del giro (`E_TIPO_FONDO_NOT_FOUND`, `E_PIPELINE_SCOPE_INCOMPLETE` e il nuovo `E_LOTTO_NON_TROVATO`) nascevano in **Python** come `ServiceError`, e `_fail_task_run_safely` ne registrava il codice esatto; passando al **database** arrivano come `DatabaseError`, che quel metodo appiattiva su `E_TASK` — R-3 avrebbe spostato la logica nel posto giusto rendendo **non attribuibili** i propri errori. Chiuso con `db_error_code`, e vale per **ogni** task che delega a una funzione DB: era un buco del telaio che R-3 ha solo reso visibile. ⚠️ Binding provato con **chiamate reali** e non coi mock (`test_pipeline_step_executor` mocka il repository e sarebbe rimasto verde anche con la firma sbagliata): lotto inesistente → `E_LOTTO_NON_TROVATO` dove prima c'era **silenzio**, lotto vuoto → zeri senza errore. Allineata `ALLOWED_TASK_FUNCTIONS` (inerte — i due task dichiarano `fn = NULL` — ma nominava funzioni non piu' chiamate) e aggiunto il `logger` di modulo che il repository non aveva |
+| 2026-08-15 (notte, 13-bis) | ✅ **R-3 chiusa lato BE** (§8.3-ter): il repository consuma le due madri con **una `SELECT` per task** e perde 94 righe — `get_tipo_fondo_fattura_id`, `_SCOPE_FATTURE_LOTTO_SQL`, `list_fatture_scope_by_lotto`, tutte diventate morte. Suite **3676 verdi** in env CI. 🔴 **Un effetto collaterale trovato e chiuso, che sarebbe passato inosservato perche' non rompe niente**: i tre errori del giro (`E_TIPO_FONDO_NOT_FOUND`, `E_PIPELINE_SCOPE_INCOMPLETE` e il nuovo `E_LOTTO_NON_TROVATO`) nascevano in **Python** come `ServiceError`, e `_fail_task_run_safely` ne registrava il codice esatto; passando al **database** arrivano come `DatabaseError`, che quel metodo appiattiva su `E_TASK` — R-3 avrebbe spostato la logica nel posto giusto rendendo **non attribuibili** i propri errori. Chiuso con `db_error_code`, e vale per **ogni** task che delega a una funzione DB: era un buco del telaio che R-3 ha solo reso visibile. ⚠️ Binding provato con **chiamate reali** e non coi mock (`test_pipeline_step_executor` mocka il repository e sarebbe rimasto verde anche con la firma sbagliata): lotto inesistente → `E_LOTTO_NON_TROVATO` dove prima c'era **silenzio**, lotto vuoto → zeri senza errore. Allineata `ALLOWED_TASK_FUNCTIONS` (inerte — i due task dichiarano `fn = NULL` — ma nominava funzioni non piu' chiamate) e aggiunto il `logger` di modulo che il repository non aveva |
 | 2026-08-15 (notte, 12) | 📮 **Scritta la specifica di R-3 per il team DB** (§8.3), su richiesta di Tid. 🔴 **Due correzioni al piano emerse scrivendola.** **(1)** R-3 **non** cambia la firma delle funzioni esistenti: le due madri le **incapsulano** lasciandole intatte, quindi il passo DB e' **puramente additivo** e cade il vincolo «DB e repository nello stesso lotto» — che veniva da D-4/BE-1, dove a cambiare erano le firme *esistenti*, cosa che §8.2-bis ha poi deciso di non fare. Il DB puo' applicare da solo, il BE passa sopra dopo. **(2)** Le madri prendono il **codice interno** del tipo fondo, non l'id come diceva la riga R-3: il parametro che arriva dalla configurazione del task e' una **stringa**, quindi con l'id il backend dovrebbe comunque fare prima una query di lookup — e «una SELECT per task», che e' il senso di R-3, non si otterrebbe. ✅ Verificato che R-3 **non ha prerequisiti di seed**: `E_PARAMETRO_INVALIDO`, `E_PIPELINE_SCOPE_INCOMPLETE` e `E_TIPO_FONDO_NOT_FOUND` sono tutti e tre gia' a catalogo. Specificati corpo (guard → lookup → **validazione scope prima di scrivere** → applicazione set-based), ritorno, sei asserzioni pgTAP e il cambio BE che segue |
 | 2026-08-15 (notte, 11) | 🧹 **Un secondo brief è stato scritto e poi CANCELLATO, su richiesta di Tid** (*«che senso ha averne 2 che ripetono quasi le stesse cose?»*) — e aveva ragione: `brief-db-fondo-fattura-prerequisiti-be-fe.md` teneva aperto un secondo documento sullo **stesso cantiere ancora aperto**, cioè due sedi destinate a divergere al primo aggiornamento. ⭐ La regola che ne esce: *un brief separato si giustifica quando cambia il **soggetto** (modello / changelog / piano), non quando cambia il **lato** che lavora — BE e FE non sono un altro cantiere, sono l'altra metà di questo.* Contenuto innestato qui dove viveva già il suo argomento: colonna **Stato** sulla tabella dei passi §8.3, riquadro sul **seed `ui.lista_*`** (il pezzo che il piano non aveva previsto), premessa di **R-3** corretta, due voci `map_integrity_error` in attesa della Fase D |
 | 2026-08-15 (notte, 10) | 🔴 **Due difetti del brief stesso, trovati rispondendo a «il cantiere e' chiuso?».** **(1)** Il punto 1 di **§5** dichiarava ancora **vivo** il tampone `importo_target > 0` — cioe' esattamente la frase che §8.1 F-5 e §8.6 additano come *l'errore piu' grave*, e che il cantiere incassi aveva gia' barrato. Il documento si contraddiceva su un dato che avrebbe spento **meta' del meccanismo**: chi fosse arrivato da §5 avrebbe implementato il filtro sbagliato leggendo un brief che altrove lo vieta. Barrato e annotato (non cancellato: e' il tampone su cui il piano ha lavorato sei giorni, e chi ritrova quella frase altrove deve poter risalire al perche' e' caduta). **(2)** La testata dava la **Fase F** per pendente: e' invece **fatta** — era dichiarativa, e le sue due meta' sono nel corpo del brief incassi (§1-bis «la bilancia regge da se'» e §4 «incassato ≠ postato», centri non-cassa esclusi). ⭐ La lezione e' quella di §8.5 applicata ai documenti: *un brief lungo va riletto dall'inizio quando lo si dichiara chiuso — le sezioni vecchie non si aggiornano da sole, e una decisione ritirata a valle resta viva a monte* |
