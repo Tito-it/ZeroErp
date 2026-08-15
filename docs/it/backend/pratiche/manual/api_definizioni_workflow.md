@@ -10,7 +10,7 @@ ed editing strutturale della BOZZA (CRUD degli step). Superficie **super-admin**
 ## Contesto
 
 Fase 2 del brief
-[brief-design-workflow-definizioni-versionate](../../../dev/work-in-progress/brief-design-workflow-definizioni-versionate.md).
+[brief-design-workflow-definizioni-versionate](../../../dev/work-done/brief-design-workflow-definizioni-versionate.md).
 Gate app-layer: **`AdminAPIView`** (solo super-admin). **DB-first**: tutta la logica
 di dominio (copia edizione, invarianti, immutabilità, validazione pubblicazione) vive
 nelle fn/guard DB `SECURITY DEFINER`; il BE è un wrapper sottile che fa solo guard di

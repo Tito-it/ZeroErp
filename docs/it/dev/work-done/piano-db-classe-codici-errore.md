@@ -1,0 +1,1688 @@
+# Piano DB — classe dei codici errore
+
+**Chi:** team DB (`dev/db-tid`).
+**Guida generale e ragioni di ogni scelta:** [brief-db-be-classe-codici-errore](brief-db-be-classe-codici-errore.md) — 20 decisioni, le trappole, i perché. **Questo file non le ripete: le esegue.**
+**Piano gemello:** [piano-be-classe-codici-errore](../work-done/piano-be-classe-codici-errore.md).
+**Stato:** 🟢 **PIANO DB CHIUSO — tutto applicato, tutto verificato contro il database vero** (2026-08-08). D-1..D-10 e le due code del §3 applicati; il D-10 riscritto a window function (`20260808-01`, §2 D-10). Il BE ha consumato la consegna: `error_policies_generated.py` è **generato** e le 689 coppie `codice → classe` coincidono esattamente col catalogo (§5).
+✅ **Vocabolario a 10 valori confermato da Tid** (2026-08-07): `NON_AUTENTICATO` e `ERRORE_ESTERNO` restano.
+
+---
+
+## 0. La premessa che rende possibile questo piano
+
+**Il BE è fermo, e non serve.** Decisione di Tid (2026-08-07): si sviluppa
+**tutto il DB per primo**, poi il BE. Verificato prima di accettarla — e la
+verifica ha tolto l'unica dipendenza che c'era:
+
+> Il piano originale aveva al punto 3 *«il BE genera il CSV `codice,classe` da
+> `error_policies.py`»*. **Non serve il BE**: la mappa status → classe è
+> deterministica e il file è nel repo. Misurato: **654 codici su 659** si
+> convertono automaticamente, e i 5 che restano sono i `401`×4 e il `502`×1.
+> ⚠️ Quei 5 il brief li dava «fuori dal vocabolario»: **non lo erano** — vedi il
+> risultato del D-1.
+
+Quindi: **nessun passo di questo piano attende il BE.** Il DB arriva fino in
+fondo da solo, e quando il BE riparte trova il catalogo pronto e la vista da cui
+generare.
+
+⚠️ **Una conseguenza da mettere in conto, e non è un difetto.** Finché il BE non
+ha il generatore, i codici **nuovi** creati qui (lo split di `E_VALIDAZIONE`, D-3)
+non hanno una policy e prendono il ripiego 400 di `ErrorPolicyRegistry.resolve`.
+Non è una regressione — è il comportamento di oggi per ogni codice nuovo — ma
+significa che **lo split non cambia niente di visibile finché il BE non riparte**.
+Va detto adesso, non scoperto collaudando.
+
+---
+
+## 1. La sequenza
+
+Ordine per **dipendenza**. Il punto di non ritorno è **D-6**: fino a lì tutto è
+additivo e reversibile.
+
+| # | Passo | Dipende da | Perché lì |
+|---|---|---|---|
+| ✅ **D-1** | ~~Estrarre il CSV~~ **fatto** — 689 righe, 656 classificate, 33 al D-2 | — | ⚠️ ne è uscito il vocabolario a **10 valori** |
+| ✅ **D-2** | ~~Le 33 decisioni residue~~ **fatto** — 33 classi, 29 ritiri, **zero righe senza classe** | D-1 | ⚠️ serviva un **terzo asse** al discriminante |
+| ✅ **D-3** | ~~Spezzare `E_VALIDAZIONE`~~ **NON SI FA** — misurato: 13 punti, **una sola condizione** | — | ⚠️ la premessa era falsa, e la scadenza sul seed sparisce con lei |
+| ✅ **D-4** | ~~Le due tabelle~~ **fatto** — `20260807-11` e `-12` | — | ⚠️ PK **testuale**, deviazione deliberata (3 precedenti su 467) |
+| ✅ **D-5** | ~~Seed~~ **fatto** — 3 loader in `20260614-08`, in ordine | D-1 · D-2 · D-4 | ⚠️ la trappola era **al D-7**, non qui: vedi sotto |
+| ✅ **D-6** | ~~`obsoleto_dal` migra + i 5 lettori~~ **fatto** — `20260807-13` | D-5 | 🔴 punto di non ritorno **superato** |
+| ✅ **D-7** | ~~FK + policy indici~~ **fatto** — `20260807-14` e `-15` | D-5 | ⚠️ **due** FK da registrare, non una |
+| ✅ **D-8** | ~~pgTAP~~ **scritto** — 3 adeguati, 1 riscritto e spostato, 1 nuovo | D-6 · D-7 | 🔴 **non eseguito**: serve il DB |
+| ✅ **D-9** | ~~Le due viste~~ **scritto** — `20260807-16` e `-17` | D-4 | 🔴 **è la consegna al BE**: applicato questo, B-5 è sbloccato |
+| ✅ **D-10** | ~~La misura~~ **fatto** — `20260807-18`, riscritta dal `20260808-01` | D-9 | ⚠️ non filtra; e la v1 costava **145 s**, la v2 **349 ms** |
+
+**Consegna al BE:** dopo **D-9**. È il momento in cui `vw_codici_errore_identita`
+esiste, è popolata e ordinata — cioè quando il generatore del BE ha da cui
+generare.
+
+---
+
+## 2. I passi, in dettaglio
+
+### D-1 · ✅ **FATTO** — 2026-08-07
+
+**Consegnato:**
+
+* [`scripts/estrai_classi_codici_errore.py`](../../../../scripts/estrai_classi_codici_errore.py)
+  — bootstrap una tantum, con in testata il perché è una tantum e la trappola
+  del parser;
+* [`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`](../../../../db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv)
+  — **689 righe**, colonne `codice,classe,obsoleto_dal,note`.
+
+⚠️ **Il CSV nasce completo, non solo `codice,classe`** — correzione al piano
+originale: `obsoleto_dal` va nel seed, perché i dati di `80_data` si cambiano
+**dal CSV** e mai con `UPDATE` diretti. Le 50 date di ritiro sono già dentro,
+prese dalla riga `it` del catalogo.
+
+**L'universo è il catalogo, non le policy.** Un codice esiste se il DB può
+nominarlo: 689 righe, e `PREV_STATO_NON_MODIFICABILE` (morto) resta fuori da solo,
+senza bisogno di una regola apposta.
+
+| Classe | Righe |
+|---|---:|
+| `DATO_ERRATO` | 234 |
+| `CONFLITTO_STATO` | 223 |
+| `NON_TROVATO` | 84 |
+| `TECNICO` | 60 |
+| **`NULL` — il lavoro del D-2** | **33** |
+| `NON_PERMESSO` | 23 |
+| `NON_ESEGUIBILE` | 22 |
+| `NON_DISPONIBILE` | 4 |
+| `NON_AUTENTICATO` | 4 |
+| `AVVISO` | 1 |
+| `ERRORE_ESTERNO` | 1 |
+| **totale** | **689** |
+
+#### ⚠️ I 5 «fuori vocabolario» non erano fuori — il vocabolario va a 10
+
+Il brief dichiarava 401 e 502 «fuori dal vocabolario di dominio, da mappare a
+mano nel backend». **Falso**: tutti e cinque sono righe del catalogo, quindi con
+la FK vogliono un padre e con `classe NOT NULL` vogliono una classe. È lo stesso
+identico caso di `AVVISO`, ed è la terza volta che si presenta.
+
+✅ **Confermato da Tid (2026-08-07)**: `NON_AUTENTICATO` (401, 4 codici) e
+`ERRORE_ESTERNO` (502, 1). Ragionamento in §4.3 del brief.
+
+⚠️ **Il BE aveva messo quei 5 su `TECNICO`** nel proprio CSV, seguendo una
+versione precedente di questo piano. Non è un conflitto: il loro status è scritto
+a mano perché quei codici non passano dall'exception handler, quindi la classe a
+catalogo non cambia la risposta HTTP. Le due sorgenti restano diverse su 5 righe,
+e **fa fede il catalogo**.
+
+#### ✅ Gli scarti di distribuzione, riconciliati
+
+Le policy davano 224 `CONFLITTO_STATO` e 63 `TECNICO`, il CSV ne dà 223 e 60. **I
+tre scarti sono spiegati tutti**, e la verifica valeva la pena:
+
+| Scarto | Perché |
+|---|---|
+| `CONFLITTO_STATO` −1 | `PREV_STATO_NON_MODIFICABILE` (409) è morto e non è a catalogo |
+| `TECNICO` −2 | `W_TXID_NOT_REGISTERED` è registrato **due volte** in `error_policies.py` (col e senza prefisso `E_`), entrambe a 500; la sua riga di catalogo è una sola e va ad `AVVISO` |
+| `TECNICO` −1 | idem `MESSAGGIO_NON_DEFINITO`: due policy, una riga di catalogo |
+
+⭐ **Scoperta collaterale:** in `error_policies.py` ci sono **tre coppie**
+registrate sotto entrambi i nomi — `SEQUENZA_NON_CONFIGURATA`,
+`MESSAGGIO_NON_DEFINITO`, `W_TXID_NOT_REGISTERED`. **Non è un difetto**: è la
+cintura della campagna di rinomina, che tiene risolvibile il nome vecchio finché
+il diario lo contiene. Va saputo perché rende il §7.2 del brief più preciso — il
+BE non ha il codice «sotto un altro nome», ce l'ha **sotto tutti e due**.
+
+---
+
+#### 🔴 Come è stato estratto — e perché non si può più rifare
+
+`python3 scripts/estrai_classi_codici_errore.py` legge il catalogo e
+`error_policies.py`, incrocia, riscrive il CSV.
+
+⚠️ **Non gira più, e non va riparato.** Poche ore dopo questa estrazione il BE ha
+eseguito il proprio B-3: `error_policies.py` è stato diviso in quattro moduli e
+**non contiene più nessun `http_status=` per codice**. La sorgente è sparita.
+
+**Conseguenza che vale la pena scrivere:** da questo momento
+`codici_errore.csv` **è** il portatore delle 659 decisioni su questo lato — non
+c'è più un posto da cui ri-dedurle. Lo script resta come reperto: la mappa
+`CLASSE_DA_STATUS` è l'unica forma in cui quella corrispondenza è ancora scritta
+qui.
+
+*(La finestra si è chiusa da sola, e per fortuna dopo. Se il D-1 fosse slittato
+di mezza giornata, le 659 classi si sarebbero dovute chiedere al BE invece che
+estrarle — che è esattamente la dipendenza che il §0 aveva appena tolto.)*
+
+La mappa `http_status → classe` vive nella costante `CLASSE_DA_STATUS` dello
+script, ed è la sola cosa da toccare se il vocabolario cambia.
+
+⚠️ **Tre trappole già pagate, tutte e tre nel codice con il commento accanto:**
+
+1. **il parser delimita ogni voce con la chiave successiva**, non con
+   l'indentazione — **32 voci sono su una riga sola**, e un parser che cerca
+   `http_status=` a inizio riga le perde. Ha già prodotto due misure sbagliate in
+   questo cantiere, una delle quali ribaltava una conclusione;
+2. **`W_TXID_NOT_REGISTERED` non prende la classe dalla sua policy**: dice 500
+   perché nessuno l'aveva mai classificato. È un avviso → `AVVISO`, forzato;
+3. **`MESSAGGIO_NON_DEFINITO` e `W_TXID_NOT_REGISTERED` hanno un gemello con
+   prefisso `E_`** nelle policy: lo script accetta entrambi i nomi, ma la riga di
+   catalogo — e quindi la verità — è una sola.
+
+✅ **Verifica fatta:** 659 policy lette, 689 righe scritte, 33 senza classe (il
+D-2), 50 ritirate, e i tre scarti di distribuzione riconciliati uno per uno.
+
+---
+
+### D-2 · 🟡 **Analisi fatta** — 30 ritiri e 3 classificazioni
+
+⚠️ **Il discriminante a due assi del §7.1 del brief NON basta, e ha sbagliato.**
+Applicandolo si concludeva che le famiglie `E_BOM_*`, `E_CONTRATTO_MODALITA_C_*`
+e `E_COMPETENZA*` fossero *«progettate, non ancora agganciate»* — perché hanno
+tracce nel repo e nessuna funzione viva che le solleva.
+
+**È il contrario:** erano agganciate, e sono state **staccate** nel cantiere
+«bonifica riferimenti morti» del 4-5 agosto. Le tracce non sono i resti di un
+disegno da costruire: sono i resti di un disegno **rimosso**.
+
+#### ⭐ Serve un terzo asse: *è mai stato cablato?*
+
+| Asse | Domanda | Dove si legge |
+|---|---|---|
+| 1. funzioni vive che lo sollevano | è agganciato **adesso**? | doc auto-gen ⚠️ (vedi sotto) |
+| 2. file del repo che lo nominano | qualcuno l'ha **pensato**? | tutto il repo |
+| **3. changeSet che l'hanno definito** | è mai stato **cablato**? | `20_code` / `migrations` v1 |
+
+Il terzo separa nettamente:
+
+* **asse 3 > 0 e asse 1 = 0** → era vivo, non lo è più → **superato, si ritira**;
+* **asse 3 = 0 e asse 2 > 0** → mai cablato → **progettato, si classifica**;
+* **asse 2 = 0 e asse 3 = 0** → mai esistito → **si ritira**.
+
+#### L'esito, 33 su 33
+
+| Verdetto | Quanti | Chi |
+|---|---:|---|
+| **superati** — erano in `20_code` v2, nessuna funzione viva li solleva più | 22 | `E_BOM_*` (4), `E_CONTRATTO_MODALITA_C_*` (3), `E_COMPETENZA*` (2), `E_TXID_DBLINK_*` (2), `E_ASSOGGETTAMENTO_NO_MOD`, `E_ATTIVO_CASCADE`, `E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI`, `E_DBLINK_LOG_CONN_MISSING`, `E_FONTE_QUANTITA_NON_VALIDA`, `E_PARAMETER_DEFAULT_TIPO_SOGGETTO_INVALID`, `E_PERC_IVA_NO_MOD`, `E_REFRESH_LOCK_TIMEOUT`, `E_REGOLA_FATTURAZIONE_MANCANTE`, `E_STATO_SCONOSCIUTO`, `E_TASK_RUNTIME` |
+| **superati** — solo nelle migrazioni **v1**, mai portati in v2 | 4 | `E_NUMERAZIONE_IMMUTABILE`, `E_STORICIZZAZIONE`, `E_STORICO_UPD`, `E_STORICO_DLT` |
+| **mai esistiti** — zero tracce ovunque | 3 | `E_INVALID_SNAPSHOT`, `E_DRYRUN_CREATE_TRIGGER`, `E_DATA_FINE_INFERIORE_DI_INIZIO` |
+| **già ritirato dal BE**, vivo solo a catalogo | 1 | `E_AI_CONFIRMATION_REQUIRED` |
+| ✅ **progettati mai cablati → si classificano** | 3 | i tre del push preventivo (sotto) |
+
+**→ 30 ritiri, 3 classificazioni.**
+
+#### I 3 che si classificano, e perché non si ritirano
+
+Sono descritti in `docs/it/backend/vendite/manual/push_preventivo_handler.md`,
+che è un documento di **disegno**: nessun Python li solleva, nessun changeSet li
+ha mai cablati. Cancellarli romperebbe il lavoro di qualcun altro — è esattamente
+il caso da cui mette in guardia la guida dei presidi §3.3.
+
+| Codice | Cosa dice il disegno | Classe |
+|---|---|---|
+| `E_VENDITA_PARAM_MODALITA_FATTURAZIONE_INVALIDA` | «valida `modalita_fatturazione`» — parametro non valido | `DATO_ERRATO` |
+| `E_VENDITA_COMPETENZA_RICHIESTA` | «`meta.competenza_fatturazione`, se assente» — dato obbligatorio mancante | `DATO_ERRATO` |
+| `E_VENDITA_PREVENTIVO_GIA_PUSHATO` | «già pushato» — in conflitto con lo stato attuale | `CONFLITTO_STATO` |
+
+#### ✅ **D-2 CHIUSO** — 33 classi assegnate, 29 ritiri, zero residui
+
+Le 30 letture del punto che sollevava sono fatte, sui changeSet che li
+definivano. **`codici_errore.csv`: 689 righe, zero senza classe.**
+
+| | prima | dopo |
+|---|---:|---:|
+| righe senza classe | 33 | **0** |
+| ritirati (`obsoleto_dal`) | 50 | **79** |
+
+⚠️ **29 nuovi ritiri e non 30**: `E_STATO_SCONOSCIUTO` era già ritirato dal
+cantiere precedente, e la sua data resta quella.
+
+##### Le sette decisioni che non erano meccaniche
+
+1. **`E_BOM_RIGA_NOT_FOUND` ha due punti** — `p_... IS NULL` e `IF NOT FOUND`,
+   che chiedono 400 e 404. **Denominatore sicuro: `NON_TROVATO`**, perché il ramo
+   NULL è un guard sul chiamante e non arriva da chi usa il programma: un 404 lì
+   non fa danno a nessuno. Scritto in `note`.
+2. **`E_FONTE_QUANTITA_NON_VALIDA` → `TECNICO`, non `DATO_ERRATO`**, e il nome
+   inganna: `v_fonte` **non arriva da chi compila**, esce da
+   `vendite.regole_fatturazione_articolo`. Nessuno rimedia finché qualcuno non
+   riconfigura. È la quarta volta che il nome mente in questo filone.
+3. **`E_REGOLA_FATTURAZIONE_MANCANTE` → `TECNICO`**: stessa lettura di
+   `E_PIPELINE_NOT_FOUND`, spostato 404 → 500 nel cantiere del terzo lato. Non è
+   una risorsa che manca, è un pezzo che nessuno ha configurato.
+4. ⭐ **Tre codici `E_*` che erano in realtà avvisi.** `E_TXID_DBLINK_ERROR`,
+   `E_TXID_DBLINK_NULL` e `E_DBLINK_LOG_CONN_MISSING` passavano da
+   `fn_log_error_only` **con fallback locale**: loggavano e non sollevavano mai,
+   quindi non raggiungevano nessuno. Classe **`AVVISO`**, come
+   `W_TXID_NOT_REGISTERED`. Il prefisso `E_` era storico e diceva il falso —
+   conferma che *la famiglia non si legge dal prefisso ma dalla funzione di log
+   che si usa*.
+5. **`E_ASSOGGETTAMENTO_NO_MOD` / `E_PERC_IVA_NO_MOD` / `E_NUMERAZIONE_IMMUTABILE`
+   → `CONFLITTO_STATO`**: famiglia «immutabilità», allineati ai 29 che il cantiere
+   precedente aveva già portato da 400 a 409.
+6. **I due dell'attivazione contratto modalità C → `NON_ESEGUIBILE`**, mentre il
+   trigger di riga (`_RIGA_SENZA_PREZZO`) resta `DATO_ERRATO`. La distinzione è
+   *dove* si rompe: sul campo che si sta compilando, o sulla configurazione che
+   non regge al momento di attivare.
+7. **`E_REFRESH_LOCK_TIMEOUT` → `CONFLITTO_STATO`**: un advisory lock non preso è
+   «qualcun altro ci sta lavorando», non un guasto. Coerente con
+   `E_PIPELINE_LOTTO_IN_ESECUZIONE`.
+
+##### ⚠️ Due cose da sapere, e la seconda va decisa al D-5
+
+* **I 29 ritiri stanno solo in `codici_errore.csv`**, non in `messaggi_errore.csv`.
+  Finché il D-6 non sposta la colonna, il guardrail continua a leggere la vecchia
+  e **non li vede ritirati**. È voluto: nessun cambio di comportamento prima del
+  punto di non ritorno. E semplifica il D-6, che non deve più copiare niente —
+  i valori nascono già nel CSV nuovo.
+* ✅ **Gli apostrofi: risolto, ed era un difetto.** Vedi D-2-bis.
+
+---
+
+### D-2-bis · ✅ Le `note` del BE importate, e due cose trovate importandole
+
+Il BE ha consegnato `docs/it/dev/work-in-progress/allegati/codici-errore-classe-note.csv`
+(658 righe, 215 note). **Importate tutte**, con due rimappature e una pulizia.
+
+| | |
+|---|---:|
+| note del BE | 215 |
+| atterrate direttamente | 213 |
+| **rimappate** — `E_MESSAGGIO_NON_DEFINITO` e `E_W_TXID_NOT_REGISTERED` puntano a nomi che a catalogo non esistono: la nota va sul gemello senza prefisso | 2 |
+| collisioni con le nostre 9 | **0** |
+| perse | **0** |
+
+⚠️ **Il CSV del BE non poteva essere il seed**, e non è un errore loro: ha
+l'universo delle **policy** (658), non del **catalogo** (689). Come seed
+lascerebbe **33 codici senza padre** — violazione di FK al primo migrate su DB
+ricostruito — e aggiungerebbe 2 righe che a catalogo non esistono. Serviva la sua
+terza colonna, e quella è arrivata intera.
+
+#### ⭐ Gli apostrofi: risolto, ed è un difetto preesistente
+
+La domanda lasciata aperta al D-2 non era più aggirabile: **105 delle 215 note
+hanno un apostrofo**. La prova sta nel repo:
+
+> Nei CSV di `80_data` ci sono **1353 celle con apostrofo singolo** (per esempio
+> `lista_colonna.csv`: «Fornitore soggetto a ritenuta d'acconto»), tutte caricate
+> senza problemi. Se Liquibase inlineasse i valori nell'SQL, una sola di quelle
+> celle romperebbe il migrate.
+
+**Liquibase lega i parametri: l'apostrofo singolo è la forma giusta.** Quindi le
+note vanno bene così come sono, e **il raddoppio in `messaggi_errore.csv` è un
+residuo**, non una convenzione.
+
+🔴 **Conseguenza fuori perimetro ma seria: 35 codici del catalogo mostrano `''` a
+chi legge.** 82 celle in `messaggi_errore.csv` più 4 in `email_template.csv`.
+⚠️ Non è verificato sul DB vivo (serve una query), ma la catena regge: il mirror
+`runOnChange` riscrive quelle celle a ogni migrate. È una slice sua, piccola —
+una passata sul CSV — e va aperta.
+
+#### ⚠️ 45 note su 224 non parlavano del loro codice
+
+L'estrattore del BE prende **il blocco di commento immediatamente sopra la
+policy**. Quel blocco però, per il primo codice di ogni sezione, è
+**l'intestazione del gruppo** — non la motivazione di quel codice:
+
+| | quante |
+|---|---:|
+| note pulite, motivazione del codice | 179 |
+| ✂️ con l'intestazione davanti, tolta | 23 |
+| 🔴 **solo** intestazione, zero contenuto sul codice — **azzerate** | 22 |
+| **note finali nel CSV** | **202** |
+
+Le 22 azzerate dicevano cose come «`── 409 ──`» su `E_CANALE_ORIGINE_IMMUTABILE`
+o «`── Commesse ──`» su `E_COMMESSA_SORGENTE_SCONOSCIUTA`: il titolo del gruppo
+appiccicato a chi capitava primo. Non si perde niente — quel testo resta nel
+modulo del BE, dove è al posto giusto.
+
+⭐ **La lezione vale oltre le 45**: *«il commento sopra una voce»* non è
+*«il commento di quella voce»*. In un file raggruppato per sezioni, il primo
+elemento di ogni gruppo eredita il titolo del gruppo — e un estrattore che non lo
+sa produce, per ogni sezione, una riga che sembra una motivazione e non lo è.
+
+---
+
+### D-2 (materiale di riferimento)
+
+I codici a catalogo **senza** policy. Il discriminante è il §7.1 del brief —
+**due assi**, non uno:
+
+| Tracce nel repo | Cosa fare |
+|---|---|
+| **0** (`E_INVALID_SNAPSHOT`, `E_DRYRUN_CREATE_TRIGGER`, `E_DATA_FINE_INFERIORE_DI_INIZIO`) | ✅ **ritiro** — `obsoleto_dal` |
+| **1-3** (`E_STORICO_*`, `E_TXID_DBLINK_*`, `E_ATTIVO_CASCADE`, `E_DBLINK_LOG_CONN_MISSING`) | verificare il singolo, plausibilmente ritiro |
+| **3-10** (famiglie `E_BOM_*`, `E_CONTRATTO_MODALITA_C_*`, `E_COMPETENZA*`) | ⚠️ **classificare**, non ritirare: sono progettate, non superate |
+
+⚠️ **`E_AI_CONFIRMATION_REQUIRED` → ritiro**, non classificazione: il BE l'ha già
+tolto dalle policy, a catalogo è rimasto vivo.
+
+⚠️ **Un codice ritirato tiene la classe che aveva da vivo.** Il diario deve
+continuare a risolvere: `obsoleto_dal` non è `attivo = false`.
+
+✅ **Verifica:** zero codici a catalogo senza una classe assegnata.
+
+---
+
+### D-3 · ✅ **NON SI FA** — la premessa era falsa, e lo dice la misura
+
+Il piano diceva: *«10 funzioni, 5 domini, tutte sotto "Validazione fallita: %s";
+`DATO_ERRATO` è plausibile per alcuni e falso per altri: `fn_annulla_reso` che
+rifiuta un annullamento è `CONFLITTO_STATO`»*. Era il passo con la scadenza, da
+fare **prima del seed**.
+
+🔴 **Non regge.** Letti tutti e 13 i punti che lo sollevano, uno per uno:
+
+| Condizione | Punti |
+|---|---:|
+| `IF p_<id> IS NULL OR p_<id> <= 0` | 10 |
+| `IF p_<id> IS NULL` | 1 |
+| `IF p_<id> IS NOT NULL AND p_<id> <= 0` | 1 |
+| `IF p_tipo_codice IS NULL OR btrim(...) = ''` | 1 |
+| **qualunque altra cosa** | **0** |
+
+**Sono tutti e 13 la stessa condizione: un parametro obbligatorio mancante o non
+valido.** Ed è la guard che `.codex/AGENTS.md` **prescrive**: *«per parametri
+numerici di tipo ID applicare guard di validazione esplicita: errore se NULL o
+<= 0, non normalizzare silenziosamente»*. Il `causa` a catalogo lo dice già,
+parola per parola.
+
+⚠️ **In `fn_annulla_reso` `E_VALIDAZIONE` non rifiuta nessun annullamento**: è
+sollevato su `p_reso_id IS NULL OR p_reso_id <= 0`. Il rifiuto dell'annullamento,
+dove c'è, usa un altro codice.
+
+**Quindi `E_VALIDAZIONE` non è un accumulatore: ha un significato solo, usato 13
+volte, e `DATO_ERRATO` è giusto per tutti.** Spezzarlo sarebbe stato riscrivere
+10 funzioni, adeguare i pgTAP e creare codici nuovi per non cambiare niente.
+
+#### ⭐ Perché la premessa sembrava vera — e la lezione vale oltre
+
+L'eterogeneità era stata dedotta dall'**elenco dei nomi di funzione**: indirizzi,
+resi, DDT, residui d'ordine, push preventivo — cinque domini, sembra ovvio che
+dietro ci siano cinque condizioni diverse.
+
+> **Le funzioni erano eterogenee, la condizione no.** Un codice è un accumulatore
+> quando copre **condizioni** diverse, non quando è usato in **domini** diversi.
+> «10 funzioni, 5 domini» misurava la cosa sbagliata, e nessuno se n'è accorto
+> perché il numero era vero.
+
+#### ⚠️ E l'altro accumulatore è quasi uniforme anche lui
+
+Stessa lente su `E_PARAMETRO_INVALIDO`, **177 punti**:
+
+| | punti |
+|---|---:|
+| guard di parametro (`IS NULL`, `<= 0`, `btrim = ''`) | **160** (90%) |
+| tutto il resto (`NOT IN (...)`, `v_x IS NULL` dopo un SELECT, …) | 17 |
+
+**`DATO_ERRATO` non è il denominatore sicuro: è la risposta giusta per il 90%
+dei punti.** Restano una dozzina di siti da guardare con la lente — non il
+«cantiere a sé» che i documenti si erano immaginati. La nota nel CSV resta,
+riscritta su questa misura.
+
+---
+
+### D-4 · ✅ **FATTO** — 2026-08-07
+
+| ChangeSet | Cosa |
+|---|---|
+| [`20260807-11-create-classi-errore`](../../../../db/changelog/migrations_v2/00_schema/config/20260807-11-create-classi-errore-mctit.yaml) | il vocabolario: `classe` PK, `descrizione` NOT NULL, `obsoleto_dal`, audit |
+| [`20260807-12-create-codici-errore`](../../../../db/changelog/migrations_v2/00_schema/config/20260807-12-create-codici-errore-mctit.yaml) | l'identità: `codice` PK, `classe` **NOT NULL senza DEFAULT** (FK), `obsoleto_dal`, `note`, audit |
+
+Entrambi `runOnChange: false`, `preConditions` con `onFail: HALT`, e il `-12`
+pretende che il `-11` esista. YAML validato. **Non applicati**: serve il tuo
+«procedi» per il migrate.
+
+#### ⚠️ PK testuale — deviazione deliberata, e misurata
+
+Le convenzioni vogliono `id` surrogato, e **464 tabelle su 467** ce l'hanno. Le
+tre eccezioni sono registri chiavati da una stringa naturale e stabile —
+`config.storico_set_storicizza(table_name)`, `dbops.idempotency_keys(idempotency_key)`,
+`config.tipi_soggetto(id varchar)` — ed è esattamente questo caso: **il codice
+È la sua identità**, ed è la frase su cui poggia tutto il §3.1 del brief.
+
+Un id surrogato qui costerebbe una colonna che nessuno legge e obbligherebbe
+`messaggi_errore` a portarsi dietro una FK numerica al posto del valore che si
+vuole leggere nella vista e nel CSV. La ragione è scritta nella testata di
+entrambi i changeSet, perché una deviazione non documentata a sei mesi sembra
+una distrazione.
+
+#### Due `CHECK` che non erano nel piano
+
+* **`codice = btrim(codice) AND codice <> ''`** (e lo stesso su `classe`): la
+  chiave è testuale, e due stringhe che differiscono per uno spazio ai bordi
+  sarebbero chiavi diverse che a occhio sono uguali. Verificato prima di
+  scriverlo: sul catalogo vivo zero spazi ai bordi e zero ambiguità di
+  maiuscole, quindi il vincolo nasce già soddisfatto;
+* **`note !~ '[\n\r]'`** — la D18 diceva «`note` su una riga sola» e restava una
+  raccomandazione. Con questo `CHECK` è un fatto: il seed passa da un CSV, e le
+  celle multi-riga in questo repo sono **3 in tutto**. Meglio un vincolo che una
+  sorpresa al primo `loadUpdateData`.
+
+#### Cosa non c'è, e di proposito
+
+Nessun `attivo` (una classe non si disattiva: si ritira), nessun `meta`, nessun
+`tx_id` — 23 tabelle `config` su 110 ce l'hanno, e le linee guida §7 elencano
+solo le quattro colonne di audit.
+
+⚠️ **Le automazioni arrivano dopo.** `config` è in `dbops.automation_scope` con
+`*all`, ma il framework gira solo in contesto `ci_apply`: su un migrate manuale
+le tabelle nascono **senza** trigger di audit e li ricevono dal pgagent di fine
+giornata. Non è un difetto, è da sapere se si controlla il risultato la sera
+stessa.
+
+---
+
+### D-5 · ✅ **FATTO** — 2026-08-07
+
+`20260614-08` carica ora **tre** tabelle, in quest'ordine e in **una
+transazione**:
+
+| # | Tabella | Righe | File |
+|---|---|---:|---|
+| 1 | `config.classi_errore` | 10 | `classi_errore.csv` (nuovo) |
+| 2 | `config.codici_errore` | 689 | `codici_errore.csv` (nuovo) |
+| 3 | `config.messaggi_errore` | 690 | invariato |
+
+Aggiunte anche le `preConditions` sulle due tabelle nuove: se qualcuno arriva
+qui senza il D-4 il changeSet si ferma invece di fallire a metà.
+
+#### ⚠️ La trappola c'era, ma era **al D-7** — e la cura è la stessa
+
+Il piano diceva che il seed è «il passo che rompe la CI se fatto nel modo ovvio».
+**Non è il seed: è la FK.** Al D-4 la FK verso `messaggi_errore` non è stata
+creata (arriva al D-7), quindi *oggi* l'ordine dei loader non vincola nulla.
+
+Ma la FK nascerà in `00_schema`, e lì **tutto `00_schema` gira prima di tutto
+`80_data`**. Su un DB ricostruito da zero la FK esisterà già quando parte
+`80_data`: se il catalogo dei messaggi si caricasse prima che `codici_errore` sia
+popolata, **ogni riga violerebbe la FK**.
+
+Un loader nuovo avrebbe la data di oggi e `includeAll` ordina per nome:
+girerebbe **dopo** questo. Da qui l'estensione in place — e va fatta **adesso**,
+non al D-7, perché al D-7 sarebbe già tardi per accorgersene.
+
+⚠️ **E su dev non si vedrebbe comunque**: il catalogo è popolato e la FK
+troverebbe i padri. Si scoprirebbe in CI.
+
+> ⭐ **Il precedente c'era ed è una regola di casa**: *«nuovi codici errore =
+> solo append al CSV, MAI un nuovo loader upsert — i loader `runOnChange`
+> esistenti ripescano il CSV»*. Vale identica per una tabella nuova che deve
+> caricarsi prima di una vecchia.
+
+#### Verifica post-migrate
+
+```sql
+SELECT count(*) FROM config.classi_errore;   -- 10
+SELECT count(*) FROM config.codici_errore;   -- 689
+-- precondizione della FK del D-7: ogni codice del catalogo ha il suo padre
+SELECT count(*) FROM config.messaggi_errore m
+  LEFT JOIN config.codici_errore c ON c.codice = m.codice
+ WHERE c.codice IS NULL;                     -- 0
+```
+
+⚠️ Il changeSet è `runOnChange: true`: al prossimo migrate **ri-esegue tutto**,
+compreso il caricamento del catalogo dei messaggi. È il comportamento voluto di
+un mirror, ma vuol dire che il migrate del D-5 tocca 1389 righe, non 699.
+
+---
+
+### D-6 · ✅ **FATTO E APPLICATO** — 2026-08-07 · il punto di non ritorno è passato
+
+**Quattro cose in un solo giro**, e non potevano andare separate:
+
+| # | Cosa | Dove |
+|---|---|---|
+| 1 | `DROP COLUMN config.messaggi_errore.obsoleto_dal` | [`20260807-13`](../../../../db/changelog/migrations_v2/00_schema/config/20260807-13-drop-obsoleto-dal-messaggi-errore-mctit.yaml) |
+| 2 | colonna tolta dal CSV del catalogo | `config/messaggi_errore.csv` |
+| 3 | colonna tolta dal terzo loader | `20260614-08` |
+| 4 | i **5 lettori** riscritti | guardrail (4) + lente (1) |
+
+⚠️ **Il DROP non si può applicare da solo.** Il mirror `20260614-08` dichiara
+`obsoleto_dal` fra le colonne del catalogo: se il DROP arriva senza la modifica
+al loader, il primo migrate fallisce perché il loader carica una colonna che non
+esiste più. La `preCondition` del changeSet **non protegge da questo** — protegge
+il verso opposto, che la nuova casa esista.
+
+#### La migrazione dei dati era già fatta, e verificata prima
+
+I valori non si copiano nel changeSet: erano già nella nuova casa, arrivati col
+seed del D-5. Confronto riga per riga **prima** di scrivere il DROP:
+
+| | |
+|---:|---|
+| ritirati in `messaggi_errore` | 50 |
+| ritirati in `codici_errore` | **79** (50 + 29 dal D-2) |
+| presenti in messaggi ma **non** in codici | **0** |
+| con data diversa | **0** |
+
+#### I cinque lettori — e nel piano erano etichettati male
+
+| Dove | Controllo | Cosa cambia |
+|---|---|---|
+| guardrail | **(B)** codici fuori convenzione | legge il ritiro da `codici_errore` |
+| guardrail | **(C)** il registro deve calare | il `LEFT JOIN` passa a `codici_errore`, e la condizione si semplifica: una riga per codice toglie l'`EXISTS` che serviva a scavalcare le lingue |
+| guardrail | **(D)** codici ritirati ancora sollevati | idem, più il testo dell'errore che ora indica il CSV giusto |
+| guardrail | riepilogo finale | conta i ritirati da `codici_errore` |
+| lente | join del messaggio | ⚠️ **due join, non uno** (sotto) |
+
+⚠️ Il piano li chiamava «C, D, E»: sono **B, C, D e il riepilogo**. Etichetta
+sbagliata, punti giusti — ma chi cercava (E) non l'avrebbe trovato.
+
+⭐ **Sulla lente la modifica non era meccanica.** Il filtro sul ritiro stava
+*dentro* il join della frase (`me.lingua = 'it' AND me.obsoleto_dal ...`).
+Spostarlo a `codici_errore` ha richiesto **due join separati**: la frase resta
+per lingua, il ritiro no. Tenerli insieme avrebbe rimesso il filtro su un asse
+per-lingua — cioè il difetto appena chiuso, ricreato nel codice che lo controlla.
+
+> ⚠️ **Un presidio che legge una colonna sparita non fallisce rumorosamente:
+> smette di vedere.** È il motivo per cui i lettori vanno nello stesso commit del
+> DROP, e non «subito dopo».
+
+#### ✅ Applicato — cosa resta da guardare
+
+Il migrate è passato. ⚠️ **Due verifiche che non ho potuto fare da qui** (non ho
+accesso al DB vivo) e che vale la pena chiudere prima del D-7:
+
+```sql
+-- la colonna non c'e' piu'
+SELECT count(*) FROM information_schema.columns
+ WHERE table_schema='config' AND table_name='messaggi_errore'
+   AND column_name='obsoleto_dal';                -- 0
+-- il ritiro e' nella nuova casa
+SELECT count(*) FROM config.codici_errore WHERE obsoleto_dal IS NOT NULL;  -- 79
+```
+
+🔴 **E il guardrail va rilanciato — è la prova che il D-2 era giusto.** Il
+controllo (D) dice che nessuna funzione viva solleva un codice ritirato, e al
+D-2 ne sono stati ritirati **29** proprio perché nessuna li solleva più:
+
+```bash
+psql -v ON_ERROR_STOP=1 -f scripts/sql/guardrail_codice_errore_strutturato.sql
+```
+
+Se (D) è verde, la lettura dei 29 era giusta e la loro classe è al posto suo. Se
+è rosso, uno di quei 29 è vivo — e il nome che stampa dice quale funzione lo
+solleva. **È l'unico controllo di questo cantiere che può ancora smentire una
+decisione già presa**, e conviene farlo adesso che il rimedio è una riga di CSV,
+non dopo la FK.
+
+---
+
+### D-7 · ✅ **FATTO** — 2026-08-07 (da applicare)
+
+| ChangeSet | Cosa |
+|---|---|
+| [`20260807-14`](../../../../db/changelog/migrations_v2/00_schema/config/20260807-14-fk-messaggi-errore-codici-errore-mctit.yaml) | `FK messaggi_errore.codice → codici_errore.codice` |
+| [`20260807-15`](../../../../db/changelog/migrations_v2/80_data/changelog/20260807-15-upsert-fk-index-policy-codici-errore-mctit.yaml) + CSV | policy indici, **due righe** a `consentito = false` |
+
+#### ⭐ Cosa chiude davvero questa FK
+
+Non è un vincolo di igiene: è **il pezzo che rende vero il meccanismo del §5**.
+Con `codici_errore.classe` NOT NULL senza default *più* questa FK, la catena è
+completa —
+
+> **una frase non può nascere senza che qualcuno abbia deciso che cosa è
+> l'errore che descrive.**
+
+Senza la FK, `codici_errore` sarebbe un elenco parallelo che ci si può
+dimenticare di aggiornare: cioè il difetto da cui nasce tutto il cantiere,
+ricostruito dentro il rimedio.
+
+#### ⚠️ E cambia il lavoro di tutti i giorni
+
+Aggiungere un codice non è più una riga in `messaggi_errore.csv`: sono **due
+righe in due file**, prima `codici_errore.csv` poi il messaggio. **Vale anche per
+le rinomine**, che in questo progetto sono frequenti.
+
+Non serve un migrate in due tempi — il mirror `20260614-08` carica le due tabelle
+nell'ordine giusto, nella stessa transazione. Ma chi tocca solo il catalogo dei
+messaggi **vede fallire il migrate**, ed è esattamente quello che deve succedere.
+
+#### La `preCondition` che vale più del vincolo
+
+```yaml
+- sqlCheck:
+    expectedResult: 0
+    sql: SELECT count(*) FROM config.messaggi_errore m
+           LEFT JOIN config.codici_errore c ON c.codice = m.codice
+          WHERE c.codice IS NULL
+```
+
+Se il seed non ha coperto tutti i codici, il changeSet **si ferma prima** invece
+di far fallire l'`ALTER TABLE` a metà. È la stessa verifica del D-5, ma eseguita
+dal migrate invece che a mano.
+
+#### ⚠️ Le FK da registrare erano **due**, non una
+
+Il piano ne prevedeva una. Ma al D-4 ne è nata un'altra —
+`codici_errore.classe → classi_errore.classe` — e una FK senza riga di policy è
+**una decisione non presa**, che a sei mesi non si distingue da una dimenticata.
+
+| FK | `consentito` | Perché |
+|---|---|---|
+| `fk_messaggi_errore_codici_errore` | `false` | `codice` è già la **colonna di testa** di `uq_messaggi_errore_codice_lingua`: l'indice sarebbe una copia del suo prefisso |
+| `fk_codici_errore_classi_errore` | `false` | **10 valori distinti su 689 righe**: il planner non lo sceglierebbe mai |
+
+⚠️ Nessuna delle due è una FK su cui si fa `DELETE` del padre — l'operazione che
+di solito giustifica l'indice. I codici non si cancellano, si ritirano; le classi
+nemmeno.
+
+#### Una nota sul nome del vincolo
+
+`fk_messaggi_errore_codici_errore`, forma `fk_<base>_<ref>` delle linee guida.
+Sulla stessa tabella esiste `fk_cfg_messaggi_errore_lingua` col prefisso di
+schema: misurato, sono **3 nomi su 741** nel database — un'eccezione locale, non
+una convenzione, e non va propagata.
+
+---
+
+### D-8 · ✅ **SCRITTO** — 2026-08-07 · 🔴 da eseguire
+
+⚠️ **Non ho potuto eseguirli**: da qui non ho accesso al database. Sotto c'è cosa
+lanciare e cosa deve venire fuori.
+
+| File | Cosa è cambiato |
+|---|---|
+| `script/test-fn-get-messaggio-fallback-lingua.sql` | 2 codici padre nella fixture |
+| `script/test-fn-log-and-raise-error-fallback-lingua.sql` | 3 codici padre |
+| `script/test-fn-log-and-raise-error-constraint-codice.sql` | 1 codice padre |
+| `script/test-messaggi-errore-obsoleto-dal.sql` → **`config/test-codici-errore-obsoleto-dal.sql`** | **riscritto e spostato** |
+| **`config/test-codici-errore-identita.sql`** | **nuovo**, 8 asserzioni |
+
+#### I tre adeguati: una riga di fixture, non una riscrittura
+
+Inseriscono in `config.messaggi_errore`, che ora ha la FK: serve il padre prima.
+Una `INSERT INTO config.codici_errore` sopra la loro, con la ragione accanto —
+**è la stessa cosa che il seed fa coi tre loader**, e chi legge il test impara
+l'ordine che dovrà rispettare anche nei CSV.
+
+#### Il quarto: riscritto **e** rinominato
+
+Si chiamava `test-messaggi-errore-obsoleto-dal` e stava in `script/`. La colonna
+che verifica non è più lì: ora è `config/test-codici-errore-obsoleto-dal.sql`.
+
+⭐ **E la sua prima asserzione è diventata più severa.** Prima diceva «la colonna
+esiste su `messaggi_errore`, è DATE ed è nullable». Ora dice **due cose**:
+
+```sql
+-- attesa: 'codici_errore:date/YES'
+SELECT string_agg(table_name || ':' || data_type || '/' || is_nullable, ' + ' ORDER BY table_name)
+  FROM information_schema.columns
+ WHERE table_schema = 'config'
+   AND table_name IN ('messaggi_errore', 'codici_errore')
+   AND column_name = 'obsoleto_dal';
+```
+
+che c'è nella casa nuova **e che non è rimasta in quella vecchia**. Un trasloco a
+metà — colonna in entrambe — sarebbe la peggiore delle tre situazioni: due
+sorgenti di verità che nessun vincolo tiene insieme. Con l'asserzione vecchia
+sarebbe passato inosservato.
+
+#### Il nuovo: collauda il **meccanismo**, non i dati
+
+Il disegno promette una cosa sola — *una frase non può nascere senza che qualcuno
+abbia deciso che cosa è l'errore che descrive* — e quella promessa non sta in un
+documento: sta in **tre vincoli**. Le prime asserzioni sono quei tre, uno per uno.
+
+| # | Cosa | SQLSTATE |
+|---|---|---|
+| 1 | codice **senza classe** → rifiutato | `23502` |
+| 2 | **classe inventata** → rifiutata | `23503` |
+| 3 | **frase senza codice** → rifiutata | `23503` |
+| 4 | la stessa frase **passa** se il padre c'è | — |
+| 5 | un codice **ritirato risolve ancora** | — |
+| 6 | `note` con un a capo → rifiutata | `23514` |
+| 7 | codice con spazi ai bordi → rifiutato | `23514` |
+| 8 | **ogni codice del catalogo ha il suo padre** — sui dati veri | — |
+
+⚠️ **Il 4 esiste per non fidarsi del 3.** Senza, «la FK morde» non si distingue
+da «l'INSERT è rotto per un altro motivo»: il test sarebbe verde anche con una
+colonna sbagliata. È la trappola dei tre verdi che collaudavano altro, misurata
+nella guida.
+
+⚠️ **L'8 è l'unico che guarda i dati veri.** Gli altri sette passerebbero su un
+catalogo vuoto: usano righe inventate. L'8 chiede che l'invariante regga sui 689
+codici seminati, ed è l'unico che si accorgerà se un seed futuro dimentica un
+padre. `bool_and` e non `LIMIT 1`: dice «**nessuno** è orfano», non «uno a caso
+va bene».
+
+E ogni `throws_ok` ha il suo SQLSTATE: senza, accetterebbe anche il crash del
+vincolo che deve verificare. Il debito del guardrail resta a 137, invariato.
+
+#### Cosa lanciare
+
+```bash
+scripts/testpgtap.sh db/pgtap/config/test-codici-errore-identita.sql
+scripts/testpgtap.sh db/pgtap/config/test-codici-errore-obsoleto-dal.sql
+scripts/pgtap-baseline.sh config
+scripts/pgtap-baseline.sh script
+python3 scripts/guardrail_pgtap_preambolo.py     # ✅ già verde, 427 file
+```
+
+⚠️ **Un rosso possibile che non è un difetto del test: i GRANT.** Le due tabelle
+sono nuove, i test girano come `zeroerp_app`, e i permessi sulle tabelle nuove li
+dà il `ci_apply` (`20260205-41-apply-runtime-grants-ci`), non il migrate manuale
+— stessa tempistica dei trigger di audit. Se esce **«permesso negato»**, la cura
+è `make db-ci-apply`, non toccare il test.
+
+✅ Nessuno dei file toccati era nella baseline dei rossi noti: qualunque rosso qui
+è nuovo, e va guardato.
+
+---
+
+### D-9 · ✅ **SCRITTO** — 2026-08-07 · 🔴 è la consegna al BE
+
+| ChangeSet | Vista | Per chi |
+|---|---|---|
+| [`20260807-16`](../../../../db/changelog/migrations_v2/20_code/config/20260807-16-create-vw-codici-errore-identita-mctit.yaml) | `config.vw_codici_errore_identita` | il **generatore** del BE (B-5) |
+| [`20260807-17`](../../../../db/changelog/migrations_v2/20_code/config/20260807-17-create-vw-codici-errore-mctit.yaml) | `config.vw_codici_errore` | la **revisione**, per gli umani |
+
+**Due file e non uno**, così una si può ricreare senza toccare l'altra: in
+`20_code` chi ricrea una dipendenza deve avere numero più alto di chi la usa, e
+tenerle insieme avrebbe legato il destino delle due per sempre.
+
+#### Perché due viste, ed è la cosa da non dimenticare
+
+La stessa tabella serve **due mestieri con cardinalità diverse**: la revisione
+vuole la frase accanto alla classe e quindi moltiplica per lingua; il generatore
+vuole l'identità, una riga per codice.
+
+⚠️ Riusare quella di revisione per entrambi costringerebbe a un
+`WHERE lingua = 'it'`, e **quel filtro toglierebbe i codici senza messaggio** —
+proprio quelli che più servono vedere. È scritto nel `COMMENT ON VIEW` di
+entrambe, perché è l'errore che qualcuno farà.
+
+#### ⚠️ Correzione su cosa garantisce l'`ORDER BY` nella vista
+
+Al D-5 avevo scritto che l'`ORDER BY` starebbe «anche dentro la vista, non solo
+nella query del generatore». È vero, ma va detto meglio: **PostgreSQL lo applica
+ma non è un contratto** — se la vista viene inlinata in una query più grande, o
+il chiamante aggiunge il proprio ordinamento, l'ordine della vista può non
+sopravvivere.
+
+Quindi: nella vista è la **cintura** (chi fa `SELECT *` senza pensarci ce l'ha),
+nel generatore è il **contratto**. Vivono in due posti apposta, e la ragione è
+scritta in entrambi.
+
+#### `LEFT JOIN` nella vista di revisione
+
+Un codice **può** esistere senza messaggio, ed è uno dei difetti che serve
+vedere. Con un `JOIN` semplice sparirebbe, e chi legge concluderebbe che va tutto
+bene perché non l'ha visto. Stessa famiglia del filtro sulla lingua: un errore
+che leva righe in silenzio.
+
+#### `security_invoker = true` su entrambe
+
+Una vista non deve mai vedere più di chi la interroga. Oggi queste tabelle non
+hanno RLS, ma una vista che gira coi privilegi del proprietario è un bypass che
+nessuno ricontrolla il giorno in cui la RLS arriva.
+
+⚠️ **La reloption non è visibile in `pg_get_viewdef`**: va ri-specificata a ogni
+`CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera in silenzio. Chi
+riscriverà queste viste deve saperlo, ed è scritto in testata a entrambi i
+changeSet.
+
+#### Dopo il migrate
+
+```sql
+SELECT count(*) FROM config.vw_codici_errore_identita;   -- 689, una per codice
+SELECT count(*) FROM config.vw_codici_errore;            -- 690, una per (codice, lingua)
+-- i codici senza messaggio ci sono, ed e' il punto del LEFT JOIN:
+SELECT count(*) FROM config.vw_codici_errore WHERE lingua IS NULL;
+```
+
+⚠️ **I GRANT arrivano dal `ci_apply`**, non dal migrate manuale — stessa
+tempistica delle tabelle. Il generatore del BE legge con un ruolo applicativo: se
+prende «permesso negato», la cura è `make db-ci-apply`.
+
+✅ **Applicato questo, il cancello del BE è aperto**: `vw_codici_errore_identita`
+esiste, è popolata e ordinata, e il B-5 può partire.
+
+---
+
+### D-10 · La misura — ⚠️ **ri-specificata**, l'asse era sbagliato
+
+🔴 **Come era scritto, questo passo misurava l'asse che il D-3 ha smentito.**
+Diceva: *«un codice sollevato da funzioni di più di un dominio è candidato
+accumulatore»*. Ma `E_VALIDAZIONE` è **10 funzioni in 5 domini** ed è il caso su
+cui la risposta è **no** — sarebbe stato il primo falso positivo della vista.
+
+Rilievo del BE, e coglie una contraddizione interna ai nostri documenti: il D-3
+aveva già scritto *«un codice è accumulatore quando copre **condizioni** diverse,
+non **domini** diversi»*, e questo passo restava sull'asse vecchio.
+
+> ⚠️ È una misura, non un cancello, quindi un falso positivo non fa danno. **Ma
+> una misura che sbaglia sul suo caso più noto viene guardata due volte e poi mai
+> più** — che è il modo in cui i presidi muoiono in silenzio.
+
+#### L'asse giusto, e la macchina esiste già
+
+`check_messaggio_vs_condizione.sql` ha la CTE **`con_guardia`**, che accoppia già
+`(codice, funzione, guardia)` risalendo dalla riga che nomina il codice al ramo
+che la precede. Si classifica la guardia in famiglie e si segnala chi ne ha più
+di una:
+
+| Famiglia | Riconosciuta da |
+|---|---|
+| `PARAMETRO` | `IS NULL`, `<= 0`, `< 0` su un `p_…` |
+| `NOT_FOUND` | `IF NOT FOUND` |
+| `ECCEZIONE` | `EXCEPTION WHEN`, `WHEN OTHERS`, `WHEN SQLSTATE` |
+| `ENUM` | `NOT IN (…)` |
+| `ALTRO` | tutto il resto |
+
+**Provato sui casi noti (2026-08-07):**
+
+| Codice | Punti | Famiglie | Esito |
+|---|---:|---|---|
+| `E_VALIDAZIONE` | 13 | `PARAMETRO` | ✅ **pulito** — l'asse vecchio lo segnalava |
+| `E_PARAMETRO_INVALIDO` | 206 | 3 famiglie | ✅ segnalato |
+| `E_SOGGETTI_RUOLI` | 3 | 3 famiglie | ✅ segnalato |
+| `E_STATO_SCONOSCIUTO` | 0 | — | ⚠️ **non verificabile**: è ritirato, non ha punti vivi |
+
+#### ⚠️ E la misura deve dichiarare quello che NON vede
+
+Misurato prima di prometterla:
+
+| | |
+|---:|---|
+| codici con una guardia riconoscibile | 342 |
+| **classificati in una famiglia nota** | **75** |
+| finiti tutti nel cestino `ALTRO` — invisibili alla misura | **267** |
+| segnalati (più di una famiglia) | 22 |
+| **di cui per due famiglie NOTE** — il segnale forte | **6** |
+| segnalati per «una nota + qualcosa che non so leggere» | 16 |
+
+**Quindi la vista apre con una riga di copertura**, come fa già la lente
+(*«se `punti` fosse zero, l'euristica è rotta, non il database sano»*): *su 342
+codici ne classifico 75; dei restanti 267 non so dire niente.* Senza quella riga,
+un elenco di 6 si legge come «gli accumulatori sono sei», che è falso.
+
+I sei forti, per chi arriva qui: `E_PARAMETRO_INVALIDO`, `E_GENERICO`,
+`E_ADMIN_VALIDAZIONE`, `E_ERRORE_PARAMETRI`, `E_ATTIVO_REQUIRE`,
+`E_SOGGETTI_RUOLI`.
+
+#### ✅ Scritta — `20260807-18`, e **non filtra**
+
+[`dbops.vw_codici_errore_forme_condizione`](../../../../db/changelog/migrations_v2/20_code/dbops/20260807-18-create-vw-codici-errore-forme-condizione-mctit.yaml)
+espone **tutti** i codici con la loro scomposizione in famiglie: `codice`,
+`n_punti`, `n_funzioni`, `famiglie[]`, `n_famiglie`, `n_famiglie_note`,
+`solo_ignoto`.
+
+⚠️ **La scelta di non filtrare è la risposta al problema della copertura**, e va
+spiegata perché sembra una mancanza. Una vista che restituisse solo i 22
+segnalati nasconderebbe il denominatore — e il denominatore è l'unica cosa che
+rende leggibile il numeratore. Il `COMMENT ON VIEW` porta **due query canoniche
+da usare insieme**:
+
+```sql
+-- 1) i candidati
+SELECT codice, n_punti, famiglie
+  FROM dbops.vw_codici_errore_forme_condizione
+ WHERE n_famiglie_note > 1 ORDER BY n_punti DESC;
+
+-- 2) la copertura, senza cui la prima si legge come una verità
+SELECT count(*) AS codici,
+       count(*) FILTER (WHERE NOT solo_ignoto) AS classificati,
+       count(*) FILTER (WHERE solo_ignoto)     AS invisibili
+  FROM dbops.vw_codici_errore_forme_condizione;
+```
+
+⭐ **`solo_ignoto` è la colonna che rende la misura onesta**: dice «su questo
+codice non so dire niente, né in un senso né nell'altro». Sono 267 su 342, e
+senza quella colonna sarebbero indistinguibili da 267 codici puliti.
+
+#### 🔴 «Costosa ma va bene» era falso — 145 secondi, e la frase era il difetto
+
+Interrogata sul database vivo, la prima versione ci ha messo **145.183 ms**. Nel
+suo changeSet avevo scritto *«costosa: va bene per una misura che si guarda ogni
+tanto»*. ⚠️ **Non è vero.** Una misura che costa due minuti e mezzo si lancia una
+volta, si dice «interessante» e non si riapre più — ed è lo stesso modo in cui
+muoiono i presidi, solo per un'altra strada. Questa vista nasce per non farli
+morire.
+
+**Non erano gli indici**, ed è la prima cosa che verrebbe da provare: la vista
+legge `pg_proc.prosrc`, un catalogo di sistema, e le righe le produce
+`regexp_split_to_table` al volo — non esistono su disco. Il costo era la **forma**:
+due sottoquery correlate su ~100.000 righe, quadratiche dentro ogni funzione.
+
+✅ **Riscritta con window function** ([`20260808-01`](../../../../db/changelog/migrations_v2/20_code/dbops/20260808-01-fix-vw-codici-errore-forme-condizione-window-mctit.yaml)),
+col pattern a **isole**: `count(*) FILTER (WHERE e_guardia) OVER (...)` numera
+l'isola aperta da ogni riga-guardia, e `first_value` la propaga — il «last
+observed carried forward» senza sottoquery. (`last_value ... IGNORE NULLS` non
+esiste in PostgreSQL: le isole sono il modo che funziona.)
+
+| versione | tempo | codici / classificati / invisibili |
+|---|---:|---|
+| `20260807-18` (sottoquery correlate) | **145.183 ms** | 344 / 75 / 269 |
+| `20260808-01` (window function) | **349 ms** | 344 / 75 / 269 |
+
+**415× più veloce a parità di risultato.** Se i numeri fossero cambiati, la
+riscrittura sarebbe stata sbagliata — non più veloce.
+
+⚠️ **Una trappola nel riscriverla**: il `WHERE` viene applicato **prima** delle
+window function dello stesso livello. Filtrare le righe senza codice nello stesso
+`SELECT` in cui si calcola `first_value` toglierebbe dalla partizione proprio la
+riga-guardia, che un codice non ce l'ha. La propagazione sta in un livello, il
+filtro in quello dopo.
+
+#### ⭐ E interrogarla ha trovato uno schema intero fuori dalla documentazione
+
+I numeri della vista (**344**) non tornavano coi miei conteggi dai file (**342**).
+Inseguendo i due:
+
+* **+1 è `shop`**: `DB_DOC_SCHEMAS` in `git.env` elencava 16 schemi e **`shop` non
+  c'era**. La sua unica funzione plpgsql, `trgfn_ricevute_guard_ba_canale`, non ha
+  mai avuto una pagina di doc — e il codice che solleva,
+  `E_SHOP_RICEVUTA_BA_CANALE_INVALIDO`, ✅ è regolarmente a catalogo con classe
+  `DATO_ERRATO`. Aggiunto a `DB_DOC_SCHEMAS`;
+* **+1 è rumore di misura**: una differenza fra l'euristica Python e quella SQL su
+  quale riga sia «la guardia» di un punto.
+
+⚠️ **La conseguenza vale più dei due codici: tutte le misure fatte leggendo la doc
+auto-gen avevano `shop` come punto cieco** — i conteggi di `E_VALIDAZIONE`, di
+`E_PARAMETRO_INVALIDO`, e la verifica del D-2.
+
+⭐ **Ma il D-2 non era a rischio, e la ragione è il motivo per cui i presidi
+esistono.** Il controllo (D) del guardrail legge `pg_proc`, non i file — e ha
+confermato *«79 ritirati, nessuno ancora sollevato»*. **Il presidio ha coperto il
+punto cieco della misura.** Io ho misurato con lo strumento comodo, lui con
+quello vero.
+
+🔵 `public` resta fuori dalla documentazione: **deciso** (Tid, 2026-08-08). Gli
+altri sei — `pgagent`, `topology`, `django`, `data_conversion`, `internal`,
+`test` — sono infrastruttura ed è giusto che non ci siano.
+
+⚠️ Stesso limite del controllo (D) del guardrail: vede solo i letterali `'E_…'`
+nei corpi plpgsql entro 6 righe da `fn_log_and_raise_error`. Non vede i codici
+passati per espressione né quelli sollevati dal Python.
+
+---
+
+## 3. ✅ Le due code — **chiuse entrambe** il 2026-08-07
+
+### 3.1 ⭐ Gli apostrofi raddoppiati — 35 codici che mostravano `''` a chi legge
+
+**86 celle corrette**: 82 in `messaggi_errore.csv`, 4 in `email_template.csv`.
+Residuo in tutto `80_data`: **zero**.
+
+Era un residuo di quando quel seed era fatto di `INSERT` SQL. La prova che il
+singolo è la forma giusta sta nel repo: **1353 celle con apostrofo singolo** si
+caricano senza problemi, quindi Liquibase lega i parametri e non inlinea.
+
+⚠️ **Prima di toccare, il controllo che serviva davvero.** 28 dei 35 codici sono
+nominati in un pgTAP — ma nominare non è asserire il testo. Cercando i
+**frammenti** con l'apostrofo doppio dentro i test, ne uscivano 4: tutti e
+quattro sono **descrizioni di asserzioni** (`'... non puo'' essere ...'`), dove
+`''` è il corretto escape SQL e non c'entra col catalogo. Zero dipendenze reali.
+
+### 3.2 ⭐ `MESSAGGIO_NON_DEFINITO` → `E_MESSAGGIO_NON_DEFINITO` — il registro arriva a **zero**
+
+| ChangeSet | Cosa |
+|---|---|
+| [`20260807-19`](../../../../db/changelog/migrations_v2/20_code/script/20260807-19-rename-messaggio-non-definito-mctit.yaml) | `fn_log_error_only` riscritta |
+| `20260614-08` (CSV) | catalogo + identità rinominati |
+| `messaggi_errore_codici_legacy.csv` | **1 → 0 righe** |
+| [`20260807-20`](../../../../db/changelog/migrations_v2/80_data/changelog/20260807-20-delete-codice-errore-orfano-rename-mctit.yaml) | toglie la riga vecchia rimasta |
+
+⚠️ **Perché non bastava il CSV, ed è la ragione per cui era rimasto per ultimo.**
+`fn_log_error_only` cerca quel codice **per nome scritto a mano** — è il ripiego
+del ripiego, quello che dà una frase quando il codice sollevato non è a catalogo,
+e che trova il `messaggio_errore_id` senza il quale `dbops.error_log` (FK NOT
+NULL) non si scrive. Rinominare dal solo CSV avrebbe rotto quel ripiego **in
+silenzio**, e si sarebbe visto solo il giorno in cui manca un messaggio: il
+momento peggiore per scoprire che il diario non scrive.
+
+⚠️ **E serve un `DELETE`**: `loadUpdateData` non cancella, quindi il rename
+lascia in piedi la riga vecchia. È l'unica eccezione prevista alla regola «i dati
+di `80_data` si cambiano dal CSV». Con guardia `NOT EXISTS`: se il rename del
+catalogo non fosse andato a buon fine, non cancella invece di rompere la FK a
+metà migrate.
+
+#### Il risultato, misurato
+
+| | |
+|---:|---|
+| codici a catalogo | 689 |
+| frasi senza codice (orfane) | **0** |
+| codici fuori convenzione | 49 |
+| **di cui vivi** | **0** ⭐ |
+| registro `messaggi_errore_codici_legacy` | **0 righe** |
+
+⚠️ **A zero righe api.md dice che la tabella si droppa. Non l'ho droppata**: il
+guardrail la legge nei controlli (B) e (C) e si ferma se non la trova. Droppare
+significa riscrivere il guardrail — è una slice sua, non la coda di un rename.
+
+---
+
+## 4. Convenzioni da rispettare, senza rileggere tutto
+
+* changeSet: `YYYYMMDD-NN-<tipo>-<descrizione>-mctit.yaml`, **uno per file**,
+  sempre `logicalFilePath`. **NN è una sequenza globale per data**, non per
+  cartella;
+* ⛔ **`runOnChange: true` è vietato** in `00_schema` e `20_code` (guardrail CI).
+  Lecito solo nei mirror di `80_data` — che è il caso di D-5;
+* ⛔ **mai modificare un changelog già mergiato**, salvo i mirror
+  `runOnChange` + `validCheckSums: ANY` (di nuovo: D-5, ed è per progetto);
+* ⛔ **`validCheckSums` al plurale** — il singolare è una chiave che Liquibase
+  ignora;
+* i dati di `80_data` si cambiano **dal CSV**, mai con `UPDATE` diretti;
+* **DDL e corpi dalla doc auto-gen** (`docs/it/dbzero/…`), mai dagli YAML: un
+  singolo YAML è quasi sempre stale;
+* ⛔ **niente commit senza «procedi» esplicito**.
+
+---
+
+## 5. La verifica di chiusura — **2026-08-08**, contro il database vero
+
+Fatta dopo che il BE ha pushato il suo lato (commit `2f22c28ed`, B-1..B-6) e il
+DB il proprio (`08e471cf8`). Non è una rilettura dei documenti: ogni riga qui
+sotto è una misura eseguita, non una dichiarazione.
+
+### 5.1 Lo stato applicato
+
+| Cosa | Misurato | Atteso |
+|---|---:|---:|
+| changeSet `20260808-01` in `databasechangelog` | 1 | 1 |
+| `config.codici_errore` | 689 | 689 |
+| `config.classi_errore` | 10 | 10 |
+| `vw_codici_errore_identita` righe / distinti | 689 / 689 | uguali |
+| `MESSAGGIO_NON_DEFINITO` (nome vecchio) a catalogo | 0 | 0 |
+| `dbops.messaggi_errore_codici_legacy` | 0 | 0 |
+
+**Guardrail strutturato: verde.** *«Un solo mittente sul canale CONSTRAINT,
+nessun codice fuori convenzione non registrato, nessuna voce di troppo nel
+registro (0 attive), nessun codice ritirato ancora sollevato (79 ritirati),
+nessun warning sollevato come errore.»*
+
+**D-10 dopo la riscrittura:** 344 codici, 75 classificati, 269 invisibili, in
+**371 ms**. Stessi numeri della versione a sottoquery correlate, che ne metteva
+145 000. I 6 candidati non sono cambiati: `E_PARAMETRO_INVALIDO` (206 punti),
+`E_GENERICO` (68), `E_ADMIN_VALIDAZIONE` (50), `E_ERRORE_PARAMETRI` (13),
+`E_ATTIVO_REQUIRE` (6), `E_SOGGETTI_RUOLI` (3).
+
+### 5.2 ⭐ Il lato BE combacia — verificato coppia per coppia, non a occhio
+
+Il modo debole di verificarlo è contare le righe. Quello vero è confrontare le
+**coppie**: estratte le 689 `codice → classe` da `error_policies_generated.py` e
+messe a diff con le 689 di `config.vw_codici_errore_identita` presa adesso.
+
+> **Zero differenze.** Nessun codice in più, nessuno in meno, **nessuna classe
+> diversa**.
+
+E il generatore legge la vista giusta: `config.vw_codici_errore_identita`, con un
+`⛔ NON usare config.vw_codici_errore` scritto nel suo stesso codice. Era la sola
+cosa che il D-9 poteva sbagliare in silenzio — la vista di revisione ha una riga
+per *(codice, lingua)* e, essendo un `LEFT JOIN`, filtrarla per lingua avrebbe
+perso proprio i codici senza messaggio.
+
+### 5.3 🔴 Un rosso lasciato indietro **da noi**, non dal BE
+
+Rieseguendo i pgTAP è uscito rosso
+[`db/pgtap/script/test-catalogo-messaggi-errore-completo.sql`](../../../../db/pgtap/script/test-catalogo-messaggi-errore-completo.sql),
+test 1: il preflight cercava ancora `MESSAGGIO_NON_DEFINITO` col nome vecchio.
+**Non era in baseline** — quindi una regressione vera, introdotta dal rename del
+§3.2.
+
+⚠️ **Perché è sfuggito, ed è la parte che vale.** Il rename era stato cercato nei
+file che *definiscono* il codice (funzione, i due CSV) e in quelli che lo
+*sollevano*. Questo test non fa né l'una né l'altra cosa: **verifica che il
+ripiego esista**. È una terza categoria, e non c'era nella lista di chi guardare.
+
+⭐ **E il §9.6 del piano BE racconta lo stesso rename dall'altro lato: là i due
+presidi sono diventati rossi da soli, due ore dopo, e hanno tenuto.** Il rename è
+stato quindi collaudato tre volte — due volte con successo e una no, e proprio
+quella che ha mancato dice dov'era il buco. Il nome è scritto a mano in **tre
+posti** che non si derivano l'uno dall'altro (il corpo di `fn_log_error_only`, i
+CSV, il preflight): il commento che lo dice ora sta nel test, sopra
+l'asserzione — è il solo dei tre che può parlare.
+
+**Corretto e riverificato.** File verde, 4 asserzioni su 4.
+
+### 5.4 La suite, a confronto con la baseline
+
+`scripts/pgtap-baseline.sh script config` — 85 file, runner `app`:
+
+> **Rossi ora: 18 su 85 · noti in baseline: 18 · ✅ nessuna regressione.**
+
+I due file nuovi del cantiere sono verdi:
+`config/test-codici-errore-identita.sql` (8 su 8) e
+`config/test-codici-errore-obsoleto-dal.sql` (4 su 4).
+
+### 5.5 ⛔ Il registro legacy **non si droppa** — deciso (Tid, 2026-08-08)
+
+Il §9.6 del piano BE dice, di `dbops.messaggi_errore_codici_legacy`, «*che con
+quella va a zero e **si droppa***», e api.md diceva lo stesso. **Non è più una
+coda aperta: è una decisione presa.**
+
+⚠️ **Prima l'obiezione onesta, perché l'argomento regga.** A zero righe droppare
+è **neutro nel comportamento**: il `NOT EXISTS` del controllo (B) non toglie
+nulla, il (C) è vero a vuoto, e la guardia d'esistenza serve solo a proteggere
+quei due. Il drop comprerebbe davvero «meno codice». Il punto non è che serva a
+qualcosa adesso — è quanto costa toglierlo.
+
+E costa **mettere mano al controllo (B)**, l'unica cosa che tiene la convenzione
+`^[EW]_`, in un guardrail verde che il 2026-08-08 ha coperto un punto cieco
+altrui (leggeva `pg_proc` mentre le misure file-based non vedevano `shop`).
+*Non si riscrive un presidio verde per rimuovere un no-op.*
+
+La seconda ragione è che il **meccanismo serve alla prossima eredità**. Il
+progetto ne ha già assorbita una — 57 codici il 2026-08-05 — e ne assorbirà
+altre; ricostruire tabella + CHECK + due controlli sotto la pressione di
+un'importazione è il momento in cui li si costruisce male.
+
+#### 🔴 Correzione: la prima versione di questo paragrafo diceva una cosa falsa
+
+Qui c'era scritto che il registro serve come **valvola per le eccezioni
+legittime**, con la formula *«una riga in un registro è una dichiarazione, un
+carattere in una regex è un'erosione»*. **Suona bene ed è sbagliata**, e a
+smentirla è l'unico caso reale che questo repo abbia prodotto.
+
+L'unica eccezione vera mai arrivata è la famiglia `W_` dei warning. **Non è stata
+registrata: è stata allargata la convenzione** (`20260805-28`), ed era la scelta
+giusta — la ragione sta nel guardrail stesso: *«allargare la convenzione ai
+warning evita di rinominarli in `E_` per far tornare un conteggio, facendogli
+dire una cosa falsa»*.
+
+⭐ **Le tre strade sono distinte, e confonderle è il difetto:**
+
+| Cosa arriva | Dove va | Perché |
+|---|---|---|
+| una **famiglia** nuova con una semantica sua (`W_`) | si **allarga la regola** | una famiglia dentro un registro di eccezioni si perde |
+| un codice **ereditato** da fuori, già storto | **il registro** | è debito: ha una data e deve calare |
+| un codice **nuovo** nato storto | si **corregge prima del merge** | non è debito, è un difetto |
+
+Il registro è il **contenitore della seconda riga**, non della prima. Trattarlo
+da valvola lo trasformerebbe da registro di debito in whitelist permanente — cioè
+nel suo contrario.
+
+**Conseguenze dirette sui due dubbi che erano rimasti aperti:**
+
+* ⛔ **la colonna `motivo` non si fa**, e ora la ragione è più forte del semplice
+  «non anticipare»: risponderebbe a *«perché questa eccezione è legittima»*, che è
+  la domanda del caso che **non passa di qui**. Per il debito la colonna che serve
+  c'è già ed è `data_registrazione`, l'orologio che fa vedere se invecchia;
+* ✅ **il messaggio del controllo (B) è corretto** dove dice «per il debito
+  ereditato, NON per i codici nuovi». L'allarme che avevo sollevato era infondato.
+
+### 5.5-bis ⭐ Nel controllo (B) c'era però un difetto vero — la ragione era scaduta
+
+Non nella regola: nella **giustificazione**. Il messaggio spiegava perché la
+convenzione conta così:
+
+> *«Un codice senza prefisso `E_` arriva al backend ma non trova policy … tutto
+> il resto cade su `E_GENERICO`, cioè HTTP 500.»*
+
+⛔ **Dal 2026-08-07 non è più vero.** Letto `ErrorPolicyRegistry.resolve`: cerca
+**prima** il nome esatto in `CLASSE_PER_CODICE`, e dal passo B-5 quel dizionario è
+**generato dal catalogo** — tutti i 689 codici, non conformi compresi. Il ripiego
+`startswith("E_")` scatta **solo** per i codici che lì non ci sono. Un codice non
+conforme ma a catalogo oggi risolve correttamente.
+
+**La regola resta, con una ragione più stretta e più precisa** — riscritta nel
+guardrail:
+
+1. **la finestra** — fra il migrate che crea il codice e il commit con cui il BE
+   rigenera, il codice non è nel dizionario, e lì a decidere 400 invece di 500
+   resta il prefisso. È un intervallo reale, non teorico;
+2. **la separazione `E_`/`W_`** — i warning si scrivono nel diario e non si
+   sollevano; è il controllo (E).
+
+⚠️ **Ed è la stessa malattia contro cui è costruito tutto questo cantiere: la
+regola tiene, la ragione marcisce.** Chi domani verifica quella spiegazione la
+trova falsa e ne conclude che il presidio è sbagliato — poi lo disattiva, in
+buona fede. Una giustificazione scaduta dentro un presidio è pericolosa quanto
+un presidio assente, perché insegna una cosa falsa a chi si fida.
+
+Aggiunta anche **la terza strada** al messaggio, che prima non c'era: se quello
+che hai davanti è una *famiglia* e non un'eccezione, si allarga la convenzione.
+
+### 5.5-ter ✅ La decisione entra nella tabella — `20260808-02`
+
+⚠️ Il `COMMENT ON TABLE` diceva ancora **«Sono 57, tutti a seed e in uso su 77
+call site»**. Sono zero dal 2026-08-07.
+
+Non è cosmesi: il COMMENT è **l'unico posto che parla a chi guarda la tabella**.
+La decisione «non si droppa» viveva in api.md e in questo piano — due documenti
+che chi apre `\d+ dbops.messaggi_errore_codici_legacy` non sta leggendo. Una
+tabella vuota, con «legacy» nel nome e un COMMENT che descrive un debito
+inesistente, è esattamente la forma che invita a droppare per pulizia.
+
+[`20260808-02`](../../../../db/changelog/migrations_v2/00_schema/dbops/20260808-02-comment-messaggi-errore-codici-legacy-mctit.yaml)
+ci porta dentro lo stato vero, il divieto di drop con le sue ragioni, le tre
+strade e il perché non c'è una colonna `motivo`. Solo COMMENT: nessun cambio di
+struttura, dati o vincoli.
+
+La tabella vuota costa zero manutenzione, e il CHECK `chk_..._non_conforme` le
+impedisce perfino di riempirsi di codici conformi — cioè di essere usata per un
+mestiere che non è il suo.
+
+✅ **api.md corretta** (§ *codici fuori convenzione*): la riga «a zero righe la
+tabella si droppa» è stata sostituita dalla decisione e dalle sue ragioni.
+
+⚠️ **Da non confondere con `dbops.codici_errore_senza_policy`** — il registro del
+*terzo lato* (141 → 0), di cui api.md diceva già «non si droppa». Sono due
+tabelle, due mestieri, e **restano entrambe**. Leggendo api.md di fretta i due
+passaggi sembrano contraddirsi: non lo fanno, parlano di registri diversi.
+
+### 5.6 Cosa resta aperto, e non è di questo piano
+
+Nessun passo D-* è aperto. Le cose viste passando, ognuna una slice sua:
+
+* ⭐ ~~il lotto degli accumulatori~~ — **si è sciolto misurandolo** (2026-08-08),
+  come era successo a `E_VALIDAZIONE`:
+  * ⛔ **`E_GENERICO` non si spezza**: è il *pavimento* del percorso d'errore, il
+    ripiego finale di `resolve()`. Una misura del genere lo segnalerà sempre, e
+    giustamente. Spezzarlo vuol dire togliere il pavimento;
+  * **`E_ADMIN_VALIDAZIONE`: 36 punti su 50 sono la stessa guardia di parametro**
+    (72%). È la forma di `E_PARAMETRO_INVALIDO`, per cui la decisione già scritta
+    a catalogo è «copre il 90%, i restanti si guardano con la lente, non si
+    spezzano a priori». Applicare due criteri diversi allo stesso caso sarebbe
+    incoerente;
+  * 🟡 **quello che resta davvero è un'altra cosa, e attraversa i due codici**:
+    *«una lettura di configurazione non trova nulla e viene detto all'operatore
+    che ha sbagliato lui»*. Sono ~6 punti in `E_ADMIN_VALIDAZIONE`
+    (`v_tipo_contatto_id IS NULL`, `v_dati_societari_policy IS NULL`,
+    `v_tipo_indirizzo_id IS NULL`…), **identici** al quarto punto chiuso col
+    `20260808-11`, e col rimedio già pronto: `E_CONFIG_MANCANTE`. Slice piccola
+    e precisa, al posto di una campagna vaga;
+* ~~il drop del registro legacy~~ — **chiuso come decisione, non come lavoro**:
+  non si droppa (§5.5);
+* ✅ ~~B-7 — aperto per intero~~ — **CHIUSO il 2026-08-08** (§5.6-ter): non un
+  cancello sullo stato, ma un presidio sul **cambiamento**. Baseline
+  `codice → famiglie note` committata (76 codici) e controllo in CI. ⚠️ La
+  correzione BE resta valida e va ricordata: il presidio sui codici *ritirati*
+  non era mezzo B-7 — sono proprietà diverse — e il B-7 **non ha una metà BE**,
+  perché la genericità si legge dalla forma della guardia, che è PL/pgSQL.
+
+### 5.6-ter ✅ **B-7 CHIUSO** — 2026-08-08 · il rubinetto degli accumulatori
+
+Era l'unico pezzo del disegno mai costruito, ed era fermo perché **il nome
+ingannava**: «B-7» sta nel piano BE perché la numerazione `B-*` è la loro, ma il
+lavoro è sempre stato del DB. Un codice nasce nel catalogo e la sua genericità si
+legge dalla forma della guardia in PL/pgSQL: il backend il codice lo riceve già
+fatto. Il loro contributo — il criterio, in api.md — l'avevano già dato.
+
+#### 🔴 E avevo detto «non è costruibile». Era sbagliato
+
+Non lo è **nella forma scritta**: un cancello che giudichi *se un codice è
+generico* ha bisogno di leggere tutte le guardie, e la misura ne legge 75 su 344.
+Boccerebbe a caso, e boccerebbe anche i trasversali legittimi
+(`E_PERMESSO_NEGATO`). Dopo due blocchi sbagliati qualcuno lo spegne.
+
+⭐ **La forma che funziona è l'idioma di casa: si presidia il CAMBIAMENTO.**
+
+> Non «questo codice è generico?» — che richiede copertura totale — ma «questo
+> codice ha acquistato una condizione che non aveva?», che la misura sa dire con
+> certezza sui 75 che legge.
+
+Ed è il modo in cui gli accumulatori si formano davvero: **nessuno crea un codice
+generico di proposito**. Si prende un codice che c'è già e lo si usa «anche per
+questo caso», una volta, e sembra ragionevole. La sessantottesima volta è
+`E_GENERICO`.
+
+#### Cosa esiste
+
+| pezzo | |
+|---|---|
+| [`scripts/sql/codici_errore_famiglie_snapshot.sql`](../../../../scripts/sql/codici_errore_famiglie_snapshot.sql) | lo scatto: `codice → famiglie note → n_punti` |
+| [`scripts/codici-errore-baseline.sh`](../../../../scripts/codici-errore-baseline.sh) | confronto e `--update` |
+| [`db/baseline-codici-errore-famiglie.tsv`](../../../../db/baseline-codici-errore-famiglie.tsv) | **75 codici** committati |
+| `ci-validate.yaml` | gira dopo il guardrail, prima del migrate Django |
+
+**Le tre reazioni:**
+
+| situazione | esito |
+|---|---|
+| un codice **acquista** una famiglia nota | 🔴 rosso, exit 1 |
+| un codice **nuovo** nasce con 2+ famiglie note | 🔴 rosso — nasce storto |
+| un codice **perde** una famiglia (si restringe) | 🔵 blu, ma la baseline va stretta **subito** |
+| un codice sparisce dallo scatto | 🔵 blu: si allinea |
+
+⚠️ **`IGNOTO` non entra mai nel confronto.** È la misura che dichiara di non
+sapere: se entrasse, un codice che passa da «non so» a «so» sembrerebbe un
+peggioramento, e il presidio comincerebbe a mentire dal primo giorno.
+
+#### 🔴 Il buco trovato dal **primo uso vero**, un'ora dopo
+
+Applicato il `20260808-11`, la prima corsa del presidio ha **taciuto**.
+`E_ERRORE_PARAMETRI` era passato da `ECCEZIONE,PARAMETRO` (13 punti) a
+`PARAMETRO` (9), e nessuno l'ha detto: il confronto guardava solo le famiglie
+**aggiunte**.
+
+⚠️ Un restringimento non è un rosso — è un miglioramento. Ma finché la baseline
+non viene stretta, **continua a dichiarare `ECCEZIONE` come ammessa**: il giorno
+che qualcuno rimette un `WHEN OTHERS` su quel codice, il confronto la trova già
+in baseline e **tace**.
+
+> ⭐ La baseline marciva **nel verso permissivo** — l'unico verso in cui un
+> presidio si degrada senza che nessuno se ne accorga.
+
+Aggiunta la terza reazione, 🔵 **RISTRETTO**: non fallisce, ma pretende
+l'allineamento e dice perché non è facoltativo. Baseline 75 → **76 codici**.
+
+#### ✅ Il rosso è **provato**, non supposto
+
+Collaudati tutti e tre i modi su baseline manipolate: accumulo (`E_ADMIN_VALIDAZIONE`
+che riacquista `NOT_FOUND`) → exit 1; nascita generica (`E_ATTIVO_REQUIRE` tolto
+dalla baseline, 2 famiglie) → exit 1; sparizione (`E_FANTASMA`) → blu, exit 0.
+
+#### ⚠️ I due limiti, detti qui e non scoperti dopo
+
+* **presidia 75 codici, non 344.** Non è copertura totale ed è inutile fingere:
+  è il rubinetto sui codici vivi e *leggibili*. È molto più di prima, che era
+  niente;
+* **la baseline è misurata su un database.** La misura legge `pg_proc`, e il DB
+  di sviluppo non è ricostruito da zero: confrontare una corsa CI con una
+  baseline presa in sviluppo produrrebbe finte regressioni. Stesso difetto delle
+  due baseline pgTAP, stessa cura: `CODICI_BASELINE`.
+
+⛔ **E la regola che vale più dello script:** se diventa rosso **non si rigenera
+la baseline per far passare la CI**. La riga rossa è la richiesta di una
+decisione — o serve un codice nuovo, o l'uso è legittimo e la baseline si
+aggiorna **con la ragione nel messaggio di commit**.
+
+---
+
+### 5.6-bis Aperti nati oggi dal filone `ui_action` (2026-08-08)
+
+* ✅ ~~`E_RESO_EMITTENTE_BA_INCOERENTE` è l'unico dei sei~~ — **CHIUSO il
+  2026-08-09**, e in meglio di come era posta. Non era il reso a sbagliare: le
+  combinazioni incrociate erano **due**, e i cinque documenti principali erano
+  `CONFLITTO_STATO` + highlight. Ora tutti e sei sono `DATO_ERRATO` +
+  `highlight_form_fields` — classe nel CSV di seed lato DB, `ui_action`
+  allineata dal BE. Ragioni: brief §8.6;
+* 🟡 **163 punti `highlight` senza nome del campo**, in 106 funzioni — e **145
+  non hanno nemmeno un contesto**, quindi non c'è più niente da derivare gratis
+  come col `-05`. **Raccomandazione: non farli in blocco.** Si fanno *reattivi*,
+  quando una schermata cablata mostra un errore senza bordo: è così che sono
+  usciti i lotti `-07` e `-08`, e in venti minuti ognuno;
+* 🔵 **`ClienteDrawer` mostra `data_attivazione`/`data_chiusura` disabilitate**:
+  il `20260808-09` manda i nomi ma il bordo non si accende. Corretto e inerte,
+  scritto nel changeSet perché non venga aperto come difetto.
+
+---
+
+### 5.7 ✅ **CHIUSO** — `E_ERRORE_PARAMETRI` scorporato (`20260808-11`)
+
+Push del 2026-08-08 (`9c54ca5fa`), §10 del piano BE. Hanno incrociato la
+**classe** (catalogo) con la **famiglia della guardia** (la vista D-10) — due
+letture indipendenti dello stesso codice — e il risultato è il primo presidio mai
+avuto sulla domanda *«la classe è ancora vera?»*.
+
+⭐ **Nei limiti del misurabile la risposta è sì**, con una sola eccezione, e va
+letta col denominatore: **75 codici classificabili su 344**, gli altri 269 sono
+`solo_ignoto` — la vista dice di non sapere. «Zero contraddizioni» vale su un
+quinto del perimetro.
+
+L'eccezione è **`E_ERRORE_PARAMETRI`: 4 punti su 13 dicono il falso.**
+
+| Condizione al punto che solleva | Punti | Classe vera |
+|---|---:|---|
+| guardia di parametro (`IS NULL`, `<= 0`, `btrim = ''`, `NOT IN`) | 9 | `DATO_ERRATO` ✅ |
+| `TG_NARGS` sbagliato — **il trigger è montato male** | 2 | `TECNICO` |
+| `EXCEPTION WHEN OTHERS` in `trgfn_guard_utility_tipo_ruolo_by_cols` | 1 | `TECNICO` |
+| `v_stato_chiuso_id IS NULL` in `fn_subentro_cliente` — **non è un parametro**, è una configurazione mancante | 1 | `TECNICO` |
+
+⚠️ Su quei 4 punti l'operatore riceve oggi un **400** che gli dice che ha
+sbagliato lui, e lo manda a cercare un campo che non esiste.
+
+**Non è da riclassificare, è da spezzare**, e i tre precedenti sono già decisi qui
+dentro — il che rende il verdetto meccanico invece che opinabile:
+`E_ATTIVO_REQUIRE` è 500 per «montaggio sbagliato»; `E_SNAPSHOT_ID_NOT_FOUND` è
+stato spostato a 500 proprio per l'`EXCEPTION WHEN OTHERS`;
+`E_REGOLA_FATTURAZIONE_MANCANTE` e `E_PIPELINE_NOT_FOUND` sono 500 col criterio
+«chi può rimediare».
+
+✅ **Fatto il 2026-08-08 con [`20260808-11`](../../../../db/changelog/migrations_v2/20_code/script/20260808-11-errore-parametri-scorpora-tecnici-mctit.yaml).**
+Il BE non ha dovuto cambiare niente: prende la classe dal catalogo e il codice
+nuovo arriva col generatore.
+
+| i 4 punti | ora |
+|---|---|
+| `TG_NARGS < 1` · `TG_NARGS <> 2` · `WHEN OTHERS` sul cast di `TG_ARGV` | **`E_TRIGGER_ARGOMENTI_INVALIDI`** (TECNICO, nuovo) |
+| `v_stato_chiuso_id IS NULL` — lookup su `config.stati_cliente` a vuoto | **`E_CONFIG_MANCANTE`** (TECNICO, id 205, **esisteva già**) |
+| gli altri 9 | intatti, `DATO_ERRATO` è giusto |
+
+⭐ **Un codice nuovo e uno riusato.** `E_CONFIG_MANCANTE` è stato cercato prima di
+inventarne uno: un codice nuovo dove ce n'è già uno buono è il modo in cui il
+catalogo torna a gonfiarsi.
+
+⚠️ **Il quarto punto non era quello che diceva la misura.** L'euristica delle
+isole gli aveva attribuito `IF v_utility_txt IS NULL …`, che però fa
+`RETURN NEW` e non solleva: la guardia più vicina **non è la guardia del punto**
+quando in mezzo c'è un ritorno anticipato. Il punto vero è il `WHEN OTHERS` sul
+cast, come diceva il BE. È il quinto limite noto di quella misura, dopo la prima
+riga della guardia.
+
+#### 🔴 La preCondition sbagliata — e la gemella che è passata per sbaglio
+
+Il primo migrate si è fermato: *«SQL Precondition failed. Expected '1' got '0'»*.
+Verificavo che `E_TRIGGER_ARGOMENTI_INVALIDI` fosse **a catalogo**, da un
+changeSet di `20_code` — e `00_schema`+`20_code` girano **per intero prima di
+`80_data`**, quindi i loader dei CSV non erano ancora passati. È la trappola del
+§10.1, presa una seconda volta dallo stesso cantiere.
+
+⚠️ **Ma la cosa che conta è l'altra**: la seconda preCondition
+(`E_CONFIG_MANCANTE` già a catalogo) era sbagliata **allo stesso identico modo**
+e **è passata** — perché il database di sviluppo non è ricostruito da zero e quel
+dato c'era da prima. **In CI sarebbe fallita anche quella.**
+
+> Un difetto che si vede solo sul database ricostruito è il peggiore da lasciare
+> in giro: passa qui, rompe là, e chi lo trova non ha il contesto per capirlo.
+
+Sostituite con due verifiche vere in `20_code`: le tre funzioni esistono, e il
+codice nuovo non c'è già (idempotenza). Nel merito non cambia nulla — il corpo di
+una funzione contiene il codice come **letterale**, non validato al `CREATE`:
+deve esistere quando la funzione *gira*, e lì `80_data` è passata.
+
+⭐ La cosa che vale oltre il singolo codice: `E_VALIDAZIONE` *sembrava* un
+accumulatore e non lo era, `E_ERRORE_PARAMETRI` non era fra i sospetti e lo è.
+Entrambe le volte la risposta è venuta dal **contare le condizioni**, non dal
+guardare i nomi — ed è esattamente il mestiere per cui il D-10 è stato
+ri-specificato dopo che l'asse dei domini si era rivelato sbagliato.
+
+---
+
+### 5.8 Il nome del campo esce dall'eccezione — `USING COLUMN` (passo 4 del BE)
+
+Richiesta del team BE (§12.4/§12.5 del loro piano). Il backend ha imparato a
+dire al frontend **quale campo** correggere e il frontend a evidenziarlo; ma quel
+nome ce l'hanno solo i **42 codici sollevati dal Python**. Gli **83 sollevati dal
+database** arrivano senza, e la pagina non sa cosa accendere.
+
+**Scritto:** [`20260808-04`](../../../../db/changelog/migrations_v2/20_code/script/20260808-04-fn-log-and-raise-error-column-campo-mctit.yaml)
+— il nome viaggia in `COLUMN`, letto da `p_context->>'campo'`.
+
+#### ⭐ Non si inventa niente: la convenzione c'era già
+
+Misurato prima di disegnare: **4 punti di chiamata mettono già `'campo'` nel
+contesto**, con esattamente questo significato. Quel contesto finiva solo in
+`dbops.error_log`. È la stessa cosa successa fra BE e FE — la stessa idea scritta
+da due parti, e nessuna che la trasmetteva.
+
+#### 🔴 Perché dal contesto e non da un parametro nuovo — provato, non dedotto
+
+La firma finisce con `VARIADIC p_valori text[]`, e questo chiude entrambe le
+strade:
+
+| | Esito |
+|---|---|
+| parametro **dopo** la `VARIADIC` | PostgreSQL lo **rifiuta** |
+| parametro **prima**, anche con `DEFAULT` | ⚠️ **si mangia in silenzio il primo valore**: `f2('area','valore1','valore2')` lega `b='valore1'` |
+
+Sono **973 punti di chiamata in 371 funzioni**. La seconda strada li avrebbe
+corrotti tutti senza un errore.
+
+#### ⚠️ `COLUMN` era stato scartato dal `20260805-05`, e va spiegato
+
+Quel changeSet elenca `COLUMN` fra le alternative respinte: *«funziona identico,
+ma dice una cosa falsa: non è una colonna»*. Era giusto — **per il codice
+errore**. Qui ci viaggia il **nome del campo**, che è ciò che quel campo
+significa nel protocollo. ⚠️ La seconda metà dell'obiezione resta ferma:
+`SCHEMA`/`TABLE`/`DATATYPE` restano off-limits perché psycopg e Django li leggono
+per comporre gli `IntegrityError`.
+
+#### ✅ Presidio: controllo (F), nato col canale
+
+Gemello del (A). Misurato: **0 mittenti su `COLUMN`** oggi, e **0 lettori** lato
+backend. Il (A) nacque quando `CONSTRAINT` era già in uso e dovette rincorrere;
+questo nasce a zero e non chiederà mai a nessuno di sanare un arretrato.
+
+⚠️ Il modo in cui questo canale rompe è peggio degli altri: un secondo mittente
+non fa fallire niente, fa **evidenziare il campo sbagliato** — manda l'operatore
+a correggere un dato giusto, con la pagina che glielo indica come se fosse sicura.
+
+#### ✅ ~~Il lato che riceve non è in servizio~~ — **chiuso dal BE in giornata**
+
+> **Aggiornato il 2026-08-08 sera.** Il rilievo qui sotto era giusto quando è
+> stato scritto e il BE l'ha chiuso subito (commit `23921bebb`):
+> `structured_db_error_field` legge `diag.column_name`, con 103 righe di test, e
+> `_from_database_error` lo passa a `fields=`. **Il canale è completo su
+> entrambe le metà**, e il consumatore nel frattempo è su **38 schermate**
+> invece che su una.
+>
+> ⭐ **E hanno trovato un secondo produttore che non avevo visto**, legittimo e
+> gratuito: su una violazione **NOT NULL** (SQLSTATE `23502`) è **PostgreSQL
+> stesso** a valorizzare `column_name` con la colonna mancante. Lì il campo è
+> vero senza che nessuno lo scriva — quindi una parte del guadagno arriva
+> **senza toccare un solo punto di chiamata**.
+>
+> ⚠️ **Non è in conflitto col controllo (F)**, e va detto perché sembra esserlo:
+> il (F) presidia chi scrive `RAISE ... USING COLUMN` in PL/pgSQL. Il `23502`
+> non è un `RAISE`, è il motore — e non può indicare il campo sbagliato, perché
+> la colonna mancante *è* il dato. Il controllo resta com'è.
+>
+> ⚠️ E un limite loro, da tenere presente quando si faranno i punti: il nome è
+> quello della **colonna**. Dove il service rinomina verso il payload, il client
+> non trova l'input e non evidenzia nulla — **inerte, non sbagliato**.
+
+Il rilievo originale, per la storia:
+
+#### ~~🔴 Il lato che riceve **non** è in servizio~~ — verificato, e detto al BE
+
+Il BE anticipa: *«il lato che riceve è già in servizio e testato: a loro resta
+solo aggiungere `USING COLUMN`»*. **Vale per il percorso Python, non per quello
+del database**, e sono due percorsi diversi:
+
+| Pezzo | Stato reale |
+|---|---|
+| frontend (`campiErrati`, il drawer pilota) | ✅ in servizio |
+| Python → envelope (`ServiceError.context["field"]`) | ✅ in servizio, 6 test |
+| **DB → envelope** | 🔴 **non esiste** |
+
+Le due righe che lo stabiliscono:
+
+* `db_error_fields.py` legge **solo** `constraint_name` — nessuna funzione
+  legge `column_name`, in tutto il backend;
+* `ErrorTranslator._from_database_error` costruisce l'`ApiError` **senza
+  `fields=`**.
+
+⭐ **È esattamente il difetto che il BE ha diagnosticato sul proprio lato**, con
+le loro parole: *«si perde a un passo dall'uscita»*. Se applicassimo il
+`20260808-04` da soli, il nome del campo arriverebbe fino al confine e verrebbe
+buttato — e non se ne accorgerebbe nessuno, perché non fallisce niente.
+
+**Richiesta al BE:** una lettura di `diag.column_name` in `db_error_fields.py`
+(stesso guard `P0001` e stesso `or None` già usati per `constraint_name`) e il
+passaggio a `fields=` nel ramo `_from_database_error`. È il gemello del loro
+passo 1, sull'altro percorso.
+
+#### ⚠️ Le chiavi interne sono diverse di proposito — non «uniformarle»
+
+Lato DB la chiave è `'campo'` (dentro `p_context` jsonb), lato BE è `"field"`
+(dentro `ServiceError.context`). **Sono due contenitori diversi**, ciascuno nella
+lingua del suo lato, e il contratto condiviso è un altro: la chiave
+**`fields`** dell'envelope. Scritto qui perché è il genere di asimmetria che
+qualcuno «corregge» rompendo 114 punti di chiamata da una parte o 4 dall'altra.
+
+#### 📏 Il passo 4, misurato prima di accettarlo — **non sono 83**
+
+Il numero che circola nei documenti («83») conta i **codici**. Ma il nome del
+campo **non appartiene al codice: appartiene al punto che solleva** — lo stesso
+`E_PARAMETRO_INVALIDO` è sollevato in decine di posti, e in ognuno il campo è un
+altro. Quindi l'unità di lavoro è il punto, non il codice.
+
+Misurato incrociando i 125 codici `highlight_form_fields` del backend con i corpi
+PL/pgSQL vivi:
+
+| | |
+|---:|---|
+| codici `highlight` sollevati da PL/pgSQL | **71** |
+| **punti di chiamata da giudicare** | **380** |
+| funzioni coinvolte | **181** |
+| punti che già passano `campo` | **5** |
+
+> 🔴 **375 giudizi, non 83 modifiche meccaniche.** Non è «aggiungere
+> `USING COLUMN` dove il campo è vero»: per ogni punto bisogna leggere la
+> guardia e decidere *quale* campo è quello sbagliato. È una campagna, non una
+> coda.
+
+**Ripartizione, che è il modo per affettarla:**
+
+| schema | punti | funzioni |
+|---|---:|---:|
+| `vendite` | 213 | 101 |
+| `anagrafiche` | 67 | 25 |
+| `script` | 52 | 31 |
+| `pratiche` | 25 | 12 |
+| `config` | 11 | 7 |
+| `dbops` · `documenti` · `catalogo` | 12 | 5 |
+
+⭐ **E una parte del guadagno arriva senza toccare niente**: sulle violazioni
+NOT NULL (`23502`) è PostgreSQL a valorizzare `column_name`, e il BE ora lo
+legge. Quel pezzo è già attivo da stasera, a costo zero.
+
+**Raccomandazione:** *non* fare i 380. Procedere **per dominio, dietro alle
+schermate che esistono** — come dice il piano BE («solo quelli dei domini
+toccati»). `vendite` da solo è il 56% del lavoro e va guardato per ultimo, non
+per primo: è dove i punti stanno più spesso in trigger di stato, cioè dove non
+c'è un form da evidenziare. Il primo lotto ragionevole è `anagrafiche`, che è
+dove stanno i drawer del pilota.
+
+#### ⭐ La campagna da 375 giudizi non serve — `20260808-05`
+
+Tid apre il lotto `anagrafiche` (2026-08-08). Prima di cominciare, la domanda che
+non era stata fatta: **quei 380 punti, il nome del campo ce l'hanno già?**
+
+| chiave nel `p_context` | occorrenze | |
+|---|---:|---|
+| `'campo'` | 8 | quella che il `20260808-04` legge |
+| **`'parametro'`** | **225** in 111 funzioni | ⭐ la convenzione vera |
+
+E porta esattamente il dato che serve: `jsonb_build_object('parametro', 'p_cognome')`.
+
+⭐ **È la terza volta in questo cantiere che il dato c'era già e nessuno lo
+trasmetteva**: prima il `context` del backend (fermo un passo dall'uscita), poi i
+4 `'campo'` del database, ora i 225 `'parametro'`. Il difetto non è mai stato
+«manca l'informazione»: è sempre stato «manca l'ultimo passo».
+
+[`20260808-05`](../../../../db/changelog/migrations_v2/20_code/script/20260808-05-fn-log-and-raise-error-campo-da-parametro-mctit.yaml)
+deriva il campo da `parametro` togliendo il prefisso `p_`.
+
+**Copertura ottenuta senza toccare un solo punto di chiamata:**
+
+| schema | coperti | % |
+|---|---:|---:|
+| `vendite` | 150/213 | **70%** |
+| `anagrafiche` | 33/67 | 49% |
+| `script` | 24/52 | 46% |
+| `pratiche` | 6/25 | 24% |
+| altri | 4/23 | 17% |
+| **totale** | **217/380** | **57%** |
+
+⭐ **L'intuizione di Tid su `vendite` era giusta e si misura**: 70%, la copertura
+migliore di tutti gli schemi — sono le funzioni più recenti, e passano il
+parametro più spesso. Il lotto `anagrafiche` scende da 67 a **34 punti**.
+
+**Le tre scelte, con la ragione:**
+
+1. **`campo` ha la precedenza** — è l'override esplicito per quando il campo del
+   form non si chiama come il parametro. Se vincesse `parametro`, l'override non
+   servirebbe a niente;
+2. **il prefisso `p_` si toglie nel DB**, non nel backend: è una convenzione di
+   denominazione del plpgsql, e farla arrivare al frontend vorrebbe dire mettere
+   una regola del database dentro alla pagina. I 52 valori che il prefisso non
+   ce l'hanno (`commessa_id`, `quantita`, …) passano invariati;
+3. ⚠️ **si accetta l'inerte** — molti parametri sono `*_id` interni: il client
+   non trova l'input e non evidenzia nulla. È il prezzo per non fare 217 giudizi
+   a mano, ed è lo stesso che il BE ha già accettato per il caso «il service
+   rinomina»: *inerte, non sbagliato*.
+
+Verificato sulla logica isolata: `p_cognome`→`cognome`, `commessa_id`→invariato,
+`campo` batte `parametro`, testo sporco scartato, chiave assente → nessun campo.

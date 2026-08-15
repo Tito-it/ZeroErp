@@ -7,6 +7,17 @@
 > nuovo — è stata aggiunta. Rendiconto della metà a video:
 > [brief-be-fe-vie-uscita-operatore.md](brief-be-fe-vie-uscita-operatore.md).
 >
+> ⭐ **CODA DEL 2026-08-10 — leggere il [§12](#12-coda-db--il-rilievo-in-app-del-2026-08-10-t9-e-coda-del-giro).**
+> La validazione in-app di Tid, che era l'ultima voce aperta del §10.5, è stata
+> fatta e ha trovato **due difetti veri** sugli stati chiusi del preventivo, più
+> uno che il rilievo non poteva vedere: il MOTIVO 1 di
+> `fn_check_preventivo_annullabile` **non era mai potuto scattare** (§12.4), e la
+> riga del [§3.3](#33-️-la-chiave-di-collegamento-è-la-trappola-di-questo-lavoro)
+> di questo brief è ciò che aveva sviato l'implementazione — è **corretta e
+> barrata** lì dove sta. Con la coda cambia anche una regola di dominio: la nota
+> di stato **compare sempre**, non solo a barra vuota (decisione §5, §12.3), e il
+> campo si chiama ora `stato_info_key`. changeSet `20260810-01` … `-06`.
+>
 > **Verifica BE del 2026-08-05**, misurata sul database dal canale di sistema e
 > non letta dai documenti:
 >
@@ -35,7 +46,7 @@
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-08-04.
 > **A chi:** Tid (decisioni di dominio, già prese) e BE/FE (la metà a video).
 > **Da dove nasce:** il presidio `test-transizioni-uscita-manuale-v1.sql`, scritto
-> chiudendo [brief-db-emittibilita-visibile-e-sbloccabile.md](../work-in-progress/brief-db-emittibilita-visibile-e-sbloccabile.md) §7.3.
+> chiudendo [brief-db-emittibilita-visibile-e-sbloccabile.md](../work-done/brief-db-emittibilita-visibile-e-sbloccabile.md) §7.3.
 > Quel test ha trovato **sei stati** da cui un documento non ha nessuna uscita che
 > una persona possa azionare.
 > **Perché è un brief e non una riga di registro:** un documento fermo senza azioni
@@ -112,8 +123,37 @@ dell'altra produce join che non tornano niente **senza errore**:
 
 | Percorso | Chiave | Perché |
 | --- | --- | --- |
-| Colonne dirette — `ordini.sorgente_uid`, `ddt.sorgente_uid` | **`uuid`**, sempre | la colonna è tipizzata `uuid`: si lega a `preventivi.uid` / `ordini.uid`, mai all'`id` |
+| Colonne dirette — ~~`ordini.sorgente_uid`~~, `ddt.sorgente_uid` | **`uuid`**, sempre | la colonna è tipizzata `uuid`: si lega a `preventivi.uid` / `ordini.uid`, mai all'`id` |
 | Tabella polimorfa — `commesse_sorgenti.sorgente_uid` | **`text`**, secondo `config.sorgenti.key_selector` | `PREVENTIVO` → `uid::text`; `ORDINE_VENDITA` → `id::text` |
+
+> 🔴 **CORREZIONE del 2026-08-10 — `ordini.sorgente_uid` in quella riga è
+> SBAGLIATO, e ha fatto danno.** Per `ddt.sorgente_uid` la riga è giusta: quella
+> colonna è il legame al padre ed è popolata (15 righe su 29). Per l'ordine **no**:
+> `vendite.ordini.sorgente_uid` è l'**origine di un import** (così dice il commento
+> della colonna, e `sorgente_tipo_id` dice «tipo sorgente *import*»), non il legame
+> al documento commerciale a monte. Su **90 ordini è valorizzata zero volte**. Il
+> legame preventivo → ordine vive su `documento_origine_tipo` + `documento_origine_id`
+> — come dice il §6 della guida [sorgente-polimorfa](../../guide/sorgente-polimorfa.md),
+> che fra le colonne dirette elenca `ordini.documento_origine_id`, e come fa
+> `vendite.vw_documento_lineage_archi`, che unisce i due documenti proprio con quel
+> predicato.
+>
+> **Il danno**: il MOTIVO 1 di `script.fn_check_preventivo_annullabile` (§3.1) è
+> stato scritto seguendo questa riga, quindi cercava l'ordine generato nella colonna
+> dell'import. Il conteggio valeva sempre zero e `E_PREV_ORDINE_GIA_GENERATO` **non
+> ha mai potuto scattare** — un motivo morto dentro la funzione che il §7.3 aveva
+> consolidato proprio per avere una regola sola. Corretto con `20260810-03`, che
+> esclude anche gli ordini figli annullati (un figlio morto non deve bloccare il
+> padre per sempre): decisione di Tid del 2026-08-10, dettagli in
+> [attivita-urgenti-del-10-08.md](attivita-urgenti-del-10-08.md) §1.
+>
+> ⚠️ **La lezione non è «una svista in tabella»**, ed è la ragione per cui la riga
+> resta barrata e non cancellata: la stessa parola `sorgente_uid` indica **due cose
+> diverse** su due tabelle vicine, e la simmetria apparente ha reso l'errore
+> invisibile per una settimana. È esattamente la trappola che il §4a della guida
+> descrive — «colonne che *sembrano* polimorfe ma non lo sono» — e il test che la
+> guida stessa prescrive (Query 1: `vendite.ordini` **non** ha il guard polimorfo,
+> quindi non è consumatrice del meccanismo) l'avrebbe smascherata in trenta secondi.
 
 Quindi, nella stessa funzione, il preventivo va cercato **per uid** nella catena
 diretta e **per uid::text** in commessa; l'ordine va cercato **per uid** nella catena
@@ -192,7 +232,7 @@ guardrail:
 | `E_ORD_ANNULLA_IN_COMMESSA` | l'ordine è già stato inviato a fatturazione | 409 |
 
 Il quarto, `E_COMMESSA_EMITTENTE_MANCANTE`, arriva dall'altro cantiere
-([emittibilità](../work-in-progress/brief-db-emittibilita-visibile-e-sbloccabile.md)).
+([emittibilità](../work-done/brief-db-emittibilita-visibile-e-sbloccabile.md)).
 
 **Chiavi i18n da tradurre lato FE** — nessun testo viene dal DB:
 
@@ -912,3 +952,371 @@ sollevati da una funzione viva».
   seconda, sul documento senza righe; per il preventivo quella vive ancora solo
   nella porta e un `UPDATE` diretto la aggira — esattamente come faceva la
   matrice fino a ieri. Non è stata infilata qui dentro: è un'altra decisione.
+
+---
+
+## 12. Coda DB — il rilievo in-app del 2026-08-10 (T9 e coda del giro)
+
+> Scritta dal team DB su `dev/db-tid` dopo la validazione in-app di Tid, che era
+> l'ultima voce aperta del §10.5. **Tutto quanto segue è già sul database** —
+> changeSet `20260810-01` … `-06` applicati, pgTAP 12/12, baseline `script` /
+> `config` / `vendite` senza regressioni.
+>
+> I due difetti segnalati sono chiusi. Sono usciti però **due fatti che il
+> rilievo non poteva contenere**, e sono la parte da leggere con attenzione: uno
+> vi cambia la frequenza di un codice errore, l'altro è una rinomina che va nello
+> stesso vostro rilascio.
+>
+> Dettaglio completo, con le misure: [attivita-urgenti-del-10-08.md](attivita-urgenti-del-10-08.md).
+
+### 12.1 I due difetti segnalati
+
+**① I motivi promettevano un futuro impossibile.** Diagnosi confermata: il ramo
+`v_stato_cod <> 'ACCETTATO'` copriva **per negazione due situazioni opposte** —
+prima dell'accettazione la frase istruisce, dopo o fuori mente. Aggiunto un ramo
+su `fase = 'CHIUSO'` davanti a quello vecchio, come proponevate. `fase` e non
+`terminale` né un elenco di codici: è la proiezione che dice «documento chiuso»,
+cioè ciò che il messaggio afferma, e non va allungata a mano dal prossimo che
+aggiunge uno stato.
+
+Abbiamo trovato **lo stesso difetto sull'ordine ANNULLATO**, che non avevate
+segnalato: stava nel ramo di DRAFT sotto `ORDINE_NON_CONFERMATO`, quindi chiedeva
+una conferma che da quello stato non arriverà mai. Corretto insieme, perché il
+seed del punto ② rendeva la contraddizione visibile nella stessa barra («l'ordine
+è annullato, è definitivo» + «disponibile dopo la conferma»).
+
+> ⚠️ **Sull'ordine NON abbiamo usato `fase = 'CHIUSO'`, e la ragione è
+> controintuitiva**: fra gli stati chiusi dell'ordine c'è anche **EVASO**, e 5
+> ordini EVASO hanno il push a fatturazione ancora **abilitato**. Un ramo su
+> `fase` in testa alla catena li avrebbe intercettati *prima* del calcolo, cioè
+> avrebbe spento un'azione legittima — un difetto di comportamento al posto di
+> uno di testo. Il predicato è quindi sul singolo codice. `FATTURATO` è rimasto
+> dov'era di proposito: la catena gli assegna già `gia_fatturato`, che è più
+> preciso di una reason generica.
+
+**② Il seed delle note.** Fatte tutte e sette le celle, preventivi + ordini +
+DDT. Misurato: **112 documenti su 112** in fase CHIUSO senza azioni vive
+ricevono la nota.
+
+> ⚠️ **`ordini / FATTURATO` è irraggiungibile**: nessuna transizione attiva della
+> matrice porta a quello stato e il guard rifiuta un `UPDATE` diretto. La cella è
+> corretta e va lasciata (la pretende la regola del presidio), ma **non
+> aspettatevi di vederla a video** e non cercate il difetto quando non compare.
+
+### 12.2 Le dieci chiavi i18n, e il senso delle frasi
+
+Come da vostra richiesta: le chiavi le mandiamo noi, i testi li scrivete voi.
+Dove abbiamo potuto **verificare** che la frase non promette una strada
+inesistente, lo diciamo.
+
+| Chiave | Senso proposto | Verificato |
+| --- | --- | --- |
+| `vendite.preventivi.push_commessa_reason.stato_chiuso` | «Il preventivo è chiuso: non genera più smistamenti verso la commessa» | — |
+| `vendite.preventivi.genera_ordine_reason.stato_chiuso` | «Il preventivo è chiuso: non genera più ordini» | — |
+| `vendite.ordini.push_commessa_reason.annullato` | «L'ordine è annullato: non va a fatturazione» | — |
+| `vendite.preventivi.stato_info.evaso` | «interamente smistato: il seguito si gestisce sui documenti generati» | ✅ 56/56 hanno almeno un figlio (44 ordine, 35 commessa, **0 orfani**) |
+| `vendite.preventivi.stato_info.rifiutato` | constatazione + «per riproporlo si crea un preventivo nuovo» | ✅ zero transizioni in uscita, e `crea_revisione` esiste **solo** da EMESSO |
+| `vendite.preventivi.stato_info.scaduto` | «la validità è passata e non si riapre» + come sopra | ✅ come sopra |
+| `vendite.preventivi.stato_info.annullato` | constatazione, stato definitivo | ✅ come sopra |
+| `vendite.ordini.stato_info.annullato` | constatazione, stato definitivo | ✅ nessuna uscita |
+| `vendite.ordini.stato_info.fatturato` | «il seguito si gestisce sulla fattura» | ⚠️ stato irraggiungibile oggi (§12.1) |
+| `vendite.ddt.stato_info.annullato` | constatazione, stato definitivo | ✅ nessuna uscita |
+
+**Il vostro avvertimento è stato preso alla lettera**: nessuna frase suggerisce
+revisioni o riaperture. L'unica strada nominata è «si crea un documento nuovo»,
+che non è una transizione e quindi non può mancare.
+
+⚠️ Finché non traducete, `check_i18n_keys.py` è **rosso** — ed è il
+comportamento voluto: è il modo in cui vi accorgete di una chiave nuova prima
+dell'operatore, come è già successo con la nona chiave.
+
+### 12.3 🔴 La decisione §5 è applicata, e vi tocca una rinomina
+
+La vostra proposta è accettata in pieno, compreso l'argomento: **una regola nel
+codice che spegne un dato seminato è la stessa classe di difetto del punto ①**.
+Quindi «se la nota è seminata, si vede».
+
+| Cosa | Stato |
+| --- | --- |
+| `nessuna_azione_key` non più subordinato alla lista vuota | ✅ `20260810-04/-05/-06`. `v_nessuna_azione` e il suo `NOT EXISTS` rimossi come codice morto, insieme al commento su `v_can_change` |
+| Rinomina del campo a **`stato_info_key`** | ✅ fatta lato DB |
+| Rinomina della prop nel FE (8 drawer + `DrawerActionsBar`) | ⏳ **tocca a voi, nello stesso rilascio** |
+
+**Effetto misurato**: gli ordini EVASO che ricevono la nota passano da **27 a
+32**. I 5 nuovi sono quelli col push ancora abilitato — cioè esattamente il
+limite dichiarato nel §9.2, che questa decisione rimuove.
+
+**Sul vostro punto (a), `PARZIALMENTE_EVASO`**: la preoccupazione è legittima ma
+oggi **teorica**, misurato — nel database non esiste un solo ordine in quello
+stato, quindi l'effetto è zero e la scelta guarda al futuro. Se quella nota a
+video non convincerà, la risposta è **togliere la cella dal CSV**, non rimettere
+una regola nel codice.
+
+> 🔴 **Sul vostro punto (b): abbiamo rinominato il campo del blob ma NON la
+> proprietà nel `meta` dello stato, e non è una dimenticanza.**
+> `scripts/check_i18n_keys.py` trova le chiavi seminate **proprio per quel nome**
+> (`RE_SEED_KEY` sui CSV, elenco `_PROP_KEY`): rinominarla senza toccare il guard
+> nello stesso commit lo renderebbe **verde per cecità** — non rosso, verde. È il
+> caso peggiore, ed è quello che voi stessi avete denunciato nel §8.3 di questo
+> brief. L'asimmetria (`meta.nessuna_azione_key` → campo `stato_info_key`) è
+> scritta due volte in ogni funzione. **Rinominare anche la proprietà è una slice
+> a sé**: costa una riga di `_PROP_KEY` più 11 celle nei tre CSV, e va fatta
+> insieme.
+
+⚠️ **Una trappola sopravvive al rinome**: il campo è **sempre presente** nel
+blob, col valore a `null` quando non si applica. Filtrare con l'operatore di
+presenza risponde vero per **tutti** i documenti — va guardato il valore. Vale
+ora per `stato_info_key` come valeva prima per `nessuna_azione_key`.
+
+### 12.4 🔴 Un codice errore che da oggi scatta davvero
+
+Questo non era nel rilievo e vi riguarda, anche se **non c'è niente da fare**.
+
+Misurando ci siamo accorti che il **MOTIVO 1** di
+`script.fn_check_preventivo_annullabile` — «un ordine è già nato da questo
+preventivo», che solleva `E_PREV_ORDINE_GIA_GENERATO` — **non era mai potuto
+scattare**. Cercava l'ordine su `vendite.ordini.sorgente_uid`, che è l'*origine
+di un import* (zero righe valorizzate su 90); il legame commerciale vive su
+`documento_origine_tipo` + `documento_origine_id` (66 su 90). Era scritto per
+simmetria col gemello sui DDT, dove la colonna omonima **è** il legame al padre
+ed **è** popolata: la stessa parola per due cose diverse su due tabelle vicine.
+
+Corretto con `20260810-03`, e con esso la riga del §3.3 che aveva sviato
+l'implementazione.
+
+| Cosa | Valore |
+| --- | --- |
+| Codice che passa da **mai** a **qualche volta** | `E_PREV_ORDINE_GIA_GENERATO` |
+| Policy da aggiungere | **nessuna**: verificato, `error_policies_generated.py` lo mappa già a `CONFLITTO_STATO` |
+| Documenti che cambiano verdetto | **13 preventivi ACCETTATO**, da annullabili a bloccati col motivo. Zero sbloccati |
+
+Decisione di dominio di Tid: blocca **qualunque ordine figlio non annullato**,
+bozza compresa — tutti e 20 i figli oggi sono in DRAFT, e la via d'uscita esiste
+ed è nominabile (si abbandona prima la bozza dell'ordine). L'esclusione del
+figlio annullato è l'unico punto in cui la regola non copia il gemello: senza,
+un figlio morto bloccherebbe il padre per sempre e senza uscita, cioè il difetto
+che questo cantiere è nato per chiudere.
+
+### 12.5 Il presidio era verde senza presidiare — due volte
+
+Lo scriviamo perché è la ragione per cui il difetto ② vi è arrivato in campo con
+la suite tutta verde, e perché la seconda metà riguarda un vostro strumento.
+
+* `script/test-capability-motivi-e-nessuna-azione-v1.sql` **contava** le chiavi
+  seminate (`= 4`) invece di asserire una regola, e la popolazione dei documenti
+  muti era filtrata da `meta ? 'nessuna_azione_key'` — guardava cioè **solo gli
+  stati che la chiave ce l'avevano già**. I quattro stati chiusi del preventivo
+  erano fuori dalla misura **per costruzione**. Ora: regola («ogni stato in fase
+  CHIUSO dichiara la chiave») e popolazione intera con l'invariante «il valore
+  nel blob è quello che lo stato dichiara». 9 → **12 test**.
+* `config/test-transizioni-uscita-manuale-v1.sql`, che dovrebbe essere il
+  guardiano della R1, **per costruzione non vede** uno stato senza *nessuna*
+  uscita: il test raggruppa le transizioni per stato di partenza, e uno stato che
+  non compare mai come `stato_da` non entra nella misura. Sono esattamente i
+  quattro stati del preventivo. Il punto cieco è ora **dichiarato nel file**.
+
+### 12.5-bis Il guard i18n: la segnalazione del BE, verificata e corretta
+
+> 🟢 **CHIUSO dal BE il 2026-08-15.** Sono state fatte **entrambe** le cose, e
+> verificate leggendo lo script: la chiave presente con **valore vuoto** non passa
+> più per tradotta («registrava per presenza, quindi una stringa vuota passava»), con
+> il criterio proposto — errore per le chiavi **emesse dal DB**, avviso altrove; e il
+> messaggio distingue le due direzioni, spiegando il perché nel codice: «le due
+> colonne sono simmetriche, le CONSEGUENZE no… una che manca dall'italiano non ha
+> rete e mostra la CHIAVE GREZZA all'operatore».
+
+> Il BE (2026-08-10) segnala che `check_i18n_keys.py` non discriminerebbe una
+> chiave mancante dal **solo** italiano: «la classifica come semplice disparità e
+> resta verde». **Misurato: non è così** — togliendo
+> `vendite.ordini.stato_info.evaso` dal solo `it.json` il guard fa **exit 1**, la
+> nomina e i problemi passano da 10 a 11. Il sospetto su come ci si arriva è
+> concreto e senza ironia, perché ci siamo cascati anche noi la stessa sera:
+> leggere `$?` attraverso una pipe (`… | tail`) restituisce l'exit code di `tail`.
+>
+> **Il rilievo però non è a vuoto: è sotto-dimensionato il MESSAGGIO, non
+> l'esito.** Il caso finisce sotto «PARITÀ it/en violata», che si legge come una
+> simmetria da sistemare, mentre il sintomo a video è una **chiave grezza**. E
+> l'asimmetria che il BE intuisce è reale, perché `fallbackLocale` è
+> `DEFAULT_LOCALE = 'it'` (`frontend/src/core/i18n.js`):
+>
+> | Dove manca | Cosa legge l'utente |
+> | --- | --- |
+> | solo in `en` | il testo **italiano** — degradato ma leggibile |
+> | solo in `it` | la **chiave grezza**: il fallback è l'italiano stesso, non c'è rete |
+>
+> Le due colonne del messaggio (`N solo in it, M solo in en`) sono quindi
+> simmetriche mentre le conseguenze non lo sono.
+>
+> 🔴 **E c'è un buco vero, della stessa famiglia ma di un altro meccanismo.**
+> `flatten()` registra una chiave per **presenza**, non per valore: una chiave
+> presente con stringa **vuota** è indistinguibile da una tradotta. Misurato —
+> messo `vendite.ordini.stato_info.evaso = ""` nel solo italiano, il guard stampa
+> «`[ok] parità it/en integra`» e non conta il problema. È esattamente ciò che il
+> BE temeva («sparirebbe senza che nessun cancello se ne accorga»), su una strada
+> che il loro esperimento non ha attraversato.
+>
+> ⚠️ **La regola non può però essere «vuoto = errore»**: oggi
+> `anagrafiche.soggetti.col_azioni` è vuota in **entrambi** i locales, e con ogni
+> probabilità di proposito (intestazione di una colonna azioni). Serve un
+> criterio, non un divieto: il candidato è «vuoto = errore per le chiavi **emesse
+> dal DB**» — lì il database promette un messaggio, e una stringa vuota è una
+> promessa non mantenuta — e avviso altrove.
+>
+> **Chi lo sistema: il BE**, come si è offerto. `scripts/` è territorio condiviso
+> e la CI lo tratta come lato DB, ma questa parte del guard l'hanno scritta loro
+> (§8.3) e entrambe le correzioni sono giudizi sul loro lato: come si formula il
+> messaggio all'utente del guard, e quali valori vuoti sono legittimi. Da qui
+> arriva la diagnosi, non la patch.
+
+> 🔄 Il **test 8 è stato ribaltato**, non messo in baseline: asseriva «la nota non
+> compare accanto a un bottone vivo», cioè il presupposto che la decisione §5 ha
+> rimosso. Una baseline è un registro di **debito**, e un test che fotografa una
+> scelta cambiata non è debito. Ora misura i 5 ordini EVASO ed è **l'unica**
+> asserzione che prenderebbe un ritorno del `CASE WHEN`.
+
+### 12.6 Cosa resta aperto, dichiarato
+
+> 🔴 **CORREZIONE DI METODO del 2026-08-15 — questa tabella classificava con il
+> metro sbagliato, e va letta con l'avvertenza.** Diceva «oggi non morde», «zero
+> documenti», «parte a valore più basso»: sono affermazioni sul **contenuto attuale
+> del database di sviluppo**, che è popolato di **dati di test**. Contarli non dice
+> niente su quanto un difetto valga in esercizio, e porta a rimandare proprio le
+> cose che nel funzionamento reale capitano sempre.
+>
+> La domanda giusta è **«può succedere?»**, non «è successo?». Con quel metro due
+> delle tre voci cambiano peso, e nella direzione opposta. Le righe sotto sono
+> riscritte; le motivazioni vecchie restano citate perché l'errore di metodo si
+> riconosca la prossima volta.
+>
+> ⚠️ Resta legittimo — e va tenuto — misurare **quale forma scrive chi scrive**
+> (dice se un ramo è *strutturalmente* raggiungibile, ed è una proprietà del
+> modello) e **dichiarare cosa un test non ha coperto** («questo verde non ha
+> misurato niente»). Quello che non si fa è dedurne una priorità.
+
+| Voce | Perché non è stata chiusa qui |
+| --- | --- |
+| Il gemello `fn_check_ordine_annullabile` ha la lacuna **speculare**: un DDT figlio **annullato** blocca ancora l'annullamento dell'ordine | 🔴 **Difetto certo, non latente.** In esercizio annullare un DDT è ordinario — destinatario sbagliato, merce sbagliata, duplicato — e l'ordine il cui figlio è stato annullato resta bloccato **per sempre e senza via d'uscita**. La ragione è già scritta da noi sul preventivo: «un figlio morto non deve bloccare il padre per sempre». *(Diceva: «oggi non morde, nessuno dei 9 DDT bloccanti è annullato». Era una conta su dati di test.)* |
+| ~~I cinque domini non emettono `stato_info_key`~~ → **quattro chiusi**, resta il **documento fiscale** | ✅ contratto, reso, offerta, commessa fatti (`20260811-01`…`-04`, §13). Resta la famiglia fiscale, e con la lente giusta è la voce **più pesante delle tre**, non la più leggera: vedi §13.3-bis |
+| La rinomina della proprietà nel `meta` | §12.3, richiede `_PROP_KEY`. È l'unica delle tre che non dipende dal dominio: naming e coordinamento |
+
+---
+
+## 13. Coda DB — i domini muti (2026-08-11)
+
+> Risposta alla vostra verifica del 2026-08-10: «offerta, lotto, reso, contratto e
+> commessa non emettono affatto il campo — le loro `fn_available_actions_*` non lo
+> espongono, mentre ddt, ordine e preventivo sì». **Confermato e chiuso su quattro
+> domini su cinque.** changeSet `20260811-01` … `-04`, applicati.
+>
+> Avevate ragione anche sul fatto che la decisione §5 **peggiora** la cosa: finché la
+> nota rispondeva alla barra vuota, quei domini si confondevano col comportamento
+> generale; da quando spiega lo stato e compare sempre, erano rimasti gli unici in cui
+> uno stato chiuso non dice niente.
+
+### 13.1 Fatto
+
+| Dominio | Stati seminati | Documenti che ricevono la nota |
+| --- | --- | --- |
+| `contratto` | ANNULLATO, CESSATO | **9** |
+| `reso` | ANNULLATO, CONFERMATO | **9** |
+| `offerta` | ANNULLATA, SUPERATA, RIFIUTATA | **6** |
+| `commessa` | CHIUSA, ANNULLATA | **0** |
+
+**24 documenti su 24** — tutta la popolazione misurata. Zero note sugli stati aperti.
+
+**La vostra stima era giusta**: è davvero una riga. Verificato prima di scrivere —
+tutte e quattro le funzioni **raggiungevano già** la propria tabella di stato con un
+JOIN, quindi nessun JOIN nuovo: una variabile, una colonna nella `SELECT` di testata,
+un campo nel `jsonb_build_object`, gli stessi tre punti dei changeSet di ieri.
+
+### 13.2 Le nove chiavi, e tre avvertenze che contano per i testi
+
+```text
+vendite.contratti.stato_info.cessato        vendite.contratti.stato_info.annullato
+vendite.reso.stato_info.confermato          vendite.reso.stato_info.annullato
+vendite.offerte.stato_info.rifiutata        vendite.offerte.stato_info.superata
+vendite.offerte.stato_info.annullata
+vendite.commesse.stato_info.chiusa          vendite.commesse.stato_info.annullata
+```
+
+Le radici sono quelle che **ciascun dominio già usa nei propri seed**, non scelte da
+noi. Tre cose da sapere prima di scrivere le frasi:
+
+* ⚠️ **`reso` usa `vendite.reso` al singolare**, non `vendite.resi`. Nei locales ci
+  sono entrambe le radici, ma è `vendite.reso` quella che il seed delle transizioni di
+  quel dominio già emette e che il guard già valida lì;
+* ⚠️ **`reso / CONFERMATO` è una chiusura POSITIVA** (fase CHIUSO, `is_abortito` false):
+  il testo non deve suonare come un fallimento. È l'unica delle nove in cui il tono
+  cambia il significato;
+* ⚠️ **`commessa` (entrambi gli stati) e `offerta / RIFIUTATA` non hanno soggetti vivi**:
+  zero documenti. Le celle sono corrette e le pretende la regola del presidio, ma non
+  aspettatevi di vederle a video, e non cercate il difetto quando non compaiono.
+
+### 13.3 🔴 `lotto` è rimasto fuori, ed è una decisione
+
+Non ha una tabella di stato propria: usa **`config.stati_doc_fiscale`, condivisa con
+`vendite.fatture`** (8 FK in tutto). Un testo seminato là dovrebbe essere vero **sia per
+un lotto sia per una fattura** nello stesso stato — e `fn_available_actions_fattura`
+**non esiste**, quindi metà dei consumatori di quel testo non è ancora scritta. Sono
+anche i due soli stati con zero documenti, cioè la parte a valore più basso.
+
+> Il buco vero di quella famiglia non è il lotto: è che **il documento fiscale non ha
+> capability**. Chiuderlo renderebbe il lotto un caso normale invece che speciale, ed è
+> un cantiere a sé.
+
+### 13.3-bis 🔴 Il documento fiscale — misurato il 2026-08-15, ed è peggio
+
+Il §13.3 diceva che i due stati del lotto hanno «zero documenti, cioè la parte a
+valore più basso». **Quel giudizio è ritirato**: contava righe di un database di
+**test**, e in esercizio una fattura raggiunge gli stati chiusi nel suo normale ciclo
+di vita, su ogni installazione, dal primo giorno. Non è la voce più leggera: è la più
+pesante, e riguarda il documento più importante del ciclo.
+
+Verificata anche la forma del buco, che non è quella che avevamo raccontato:
+
+| Fatto | Misura |
+| --- | --- |
+| `FatturaDrawer.vue` **esiste** e monta `DrawerActionsBar` | la barra c'è |
+| Le sue azioni sono **tre, hardcoded, tutte di servizio** | anteprima PDF, documenti, note — nessuna transizione di stato, nessun `available_actions` |
+| `script.fn_available_actions_fattura` | **non esiste** |
+| `config.stati_doc_fiscale_transizioni` dichiara transizioni **manuali con bottone** | `DRAFT → ANNULLATA`, `EMESSA → DRAFT`, `EMESSA → DEFINITIVA`: `manuale = true` **e** `action_key` nel `meta` |
+
+Cioè: **il seed descrive tre bottoni che nessuna funzione legge e che l'operatore non
+vede.** È la stessa identica classe di difetto di ① e ② del rilievo di Tid, ed è
+riconoscibile nelle parole con cui questo brief l'aveva già descritta al §9:
+
+> «Il dato c'era; nessuna funzione lo leggeva.»
+
+Quindi non è «manca una nota al lotto»: **manca il governo dello stato sul documento
+fiscale**, e la nota mancante ne è il sintomo minore. La decisione da prendere è quella,
+e va aperta come cantiere proprio — non risolta di straforo dentro questo.
+
+⚠️ **Prima di costruire, una domanda di dominio da sciogliere**, perché cambia la
+forma della soluzione: la fattura è prodotta dalla pipeline di fatturazione, e il suo
+stato è in buona parte una **proiezione** di quel processo. Le tre transizioni manuali
+del seed vanno quindi confermate come volute — un operatore annulla davvero una fattura
+in bozza dal drawer? la riporta in DRAFT a mano? — oppure la risposta giusta è la
+simmetrica di quella data all'ordine EVASO: nessuna azione, **e la nota che spiega che
+lo stato si ricalcola dal lotto**. Le due strade costano in modo molto diverso, e la
+seconda è una riga.
+
+### 13.4 Il presidio cresce coi domini, e adesso è scritto
+
+Il test 1 di `script/test-capability-motivi-e-nessuna-azione-v1.sql` — «ogni stato in
+fase CHIUSO dichiara la sua chiave» — copriva i **tre** domini che esponevano il campo.
+Ora ne copre **sette**: 19 stati chiusi invece di 10.
+
+⚠️ La lista dei domini è **esplicita nel file**, e accanto c'è scritto perché deve
+crescere insieme alle funzioni: se non cresce, la regola smette di vedere il dominio
+nuovo **restando verde**. È la stessa cecità per costruzione già pagata due volte su
+questo cantiere (§12.5), e la terza volta sarebbe imperdonabile.
+
+### 13.5 Cosa aspettiamo da voi
+
+1. **le nove chiavi** qui sopra, più le dieci del §12.2 se non sono ancora tradotte.
+   Finché mancano, `check_i18n_keys.py` è rosso — ed è voluto;
+2. la **rinomina della prop** negli 8 drawer + `DrawerActionsBar` (§12.3), che resta la
+   sola cosa che tiene il campo invisibile a video;
+3. il **fix del guard i18n** che vi siete offerti di fare (§12.5-bis): non l'esito, che
+   è corretto, ma il messaggio — e il buco vero, che è la chiave presente con **valore
+   vuoto**.

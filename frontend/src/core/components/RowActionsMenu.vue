@@ -27,6 +27,14 @@
 // Se `row` ha `attivo=false` o `is_active=false`, le azioni sono disabilitate
 // salvo `allowWhenInactive: true`.
 //
+// ⚠️ Il motivo di un'azione DISABILITATA non puo' vivere in un tooltip nella
+// variante kebab: il kebab e' la variante touch, e su touch non esiste hover —
+// l'azione appariva grigia senza che nulla dicesse perche' (rilievo 2026-08-15,
+// review della slice emittibilita'). Nel popup il motivo si RENDE, come riga
+// secondaria sotto la label, via il template `#item` del Menu. Compare solo
+// dove serve: azione disabilitata + motivo diverso dalla label. Senza motivo la
+// voce e' identica a prima, che e' cio' che tiene fermi gli altri consumer.
+//
 // Severity supportate (controllano colore inline + colore voce menu):
 //   undefined     -> blu    (app-manage-btn)  — default
 //   'primary'     -> verde  (app-action-btn)  — azione positiva / state transition
@@ -81,14 +89,30 @@ function actionTooltip(action) {
   return action.tooltip || action.label
 }
 
+// Scopo: motivo da RENDERE sotto la label nel popup kebab (dove il tooltip non
+//        arriva: niente hover su touch). Solo per azioni DISABILITATE — su
+//        un'azione viva il tooltip e' un'etichetta, non una spiegazione — e
+//        solo se dice qualcosa in piu' della label. Stringa vuota = nessuna
+//        riga aggiunta, voce identica a prima.
+function actionMotivo(action) {
+  if (!isActionDisabled(action)) return ''
+  if (isInactiveRow.value && action.allowWhenInactive !== true) {
+    return t('common.azione_non_disponibile_record_inattivo')
+  }
+  return action.tooltip && action.tooltip !== action.label ? action.tooltip : ''
+}
+
 // Scopo: mappa per il formato PrimeVue Menu (variante compact).
 // La classe della voce e' parallela al colore inline del bottone desktop:
 // default = manage (blu, come app-manage-btn) — coerente con inlineButtonClass.
+// `motivo` e' campo NOSTRO (PrimeVue ignora le chiavi che non conosce): lo
+// legge il template `#item` qui sotto.
 const menuItems = computed(() =>
   visibleActions.value.map(a => ({
     label: a.label,
     icon: a.icon,
     disabled: isActionDisabled(a),
+    motivo: actionMotivo(a),
     class: menuItemClass(a.severity, 'app-menu-item-manage'),
     command: () => {
       if (!isActionDisabled(a)) a.command?.()
@@ -172,6 +196,19 @@ function toggle(event) {
       aria-haspopup="true"
       @click="toggle"
     />
-    <Menu ref="menuRef" :model="menuItems" popup />
+    <!-- Template `#item`: replica il markup di default di PrimeVue (le classi
+         `p-menu-item-*` sono agganciate dal CSS `.app-menu-item-*`, non si
+         rinominano) e aggiunge la riga del motivo quando c'e'. -->
+    <Menu ref="menuRef" :model="menuItems" popup>
+      <template #item="{ item, props: itemProps }">
+        <a class="p-menu-item-link" v-bind="itemProps.action">
+          <span class="p-menu-item-icon" :class="item.icon" />
+          <span class="p-menu-item-label">
+            {{ item.label }}
+            <small v-if="item.motivo" class="app-menu-item-motivo">{{ item.motivo }}</small>
+          </span>
+        </a>
+      </template>
+    </Menu>
   </span>
 </template>

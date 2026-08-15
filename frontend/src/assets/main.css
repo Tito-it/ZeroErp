@@ -684,6 +684,20 @@ a {
  * porta `.app-menu-item-*`).
  */
 
+/* Motivo di un'azione DISABILITATA nel popup kebab di RowActionsMenu: il
+ * kebab e' la variante touch e su touch non c'e' hover, quindi il perche'
+ * si rende invece di stare in un tooltip. Riga secondaria sotto la label,
+ * a capo per esteso (i motivi sono frasi, non etichette). */
+.app-menu-item-motivo {
+  display: block;
+  margin-top: 0.15rem;
+  max-width: 22rem;
+  white-space: normal;
+  font-size: 0.78rem;
+  line-height: 1.25;
+  color: var(--app-text-muted);
+}
+
 /* Voce menu standard "gestisci" — blu, coerente con app-manage-btn. */
 .app-menu-item-manage .p-menu-item-link,
 .app-menu-item-manage .p-tieredmenu-item-link {
@@ -1955,6 +1969,28 @@ a {
 }
 
 /* Sezione drill-down fermi (in pagina, non drawer: confronto card↔dettaglio). */
+/* Blocco lista delle tre dashboard (situazione aperta, backlog, competenza).
+ *
+ * ⚠️ `min-height: 0` qui era un difetto, non una scelta, e va spiegato perche'
+ * il valore giusto NON e' zero (2026-08-15).
+ *
+ * La catena e': `.app-page` (overflow:hidden) > `.app-dash-main`
+ * (flex:1, overflow-y:auto) > `.app-dash-cards` + QUESTO blocco >
+ * `.lista-configurabile` (height:100%) > DataTable `scroll-height="flex"`.
+ *
+ * Essendo un flex item comprimibile (`flex-shrink:1` di default) con il
+ * pavimento a zero, quando le card occupano molte righe — schermo stretto, o
+ * semplicemente molte classi/aree — questo blocco veniva schiacciato a **0px**
+ * invece di far scorrere `.app-dash-main`. E poiche' la lista chiede
+ * `height:100%` e la tabella prende l'altezza dal flex, il corpo tabella
+ * calcolava 0: a video restavano header e paginatore, e **sotto il nulla** —
+ * una lista che sembra vuota mentre i dati ci sono.
+ *
+ * Il pavimento positivo lascia intatto il comportamento desktop (il blocco
+ * cresce e la lista riempie lo spazio) e, quando lo spazio non basta, sposta
+ * l'eccedenza sullo scroll di `.app-dash-main` invece di far sparire la lista.
+ * L'altezza resta DEFINITA, che e' cio' che serve a `scroll-height="flex"`.
+ */
 .app-dash-fermi {
   display: flex;
   flex-direction: column;
@@ -1962,10 +1998,27 @@ a {
   min-height: 0;
 }
 
+/* Il pavimento vale SOLO dove c'e' davvero una lista: un empty-state
+ * («nessun gruppo fatturabile») deve restare alto quanto il suo contenuto,
+ * non aprire un vuoto di 22rem. `:has()` e' gia' usato in questo foglio per
+ * le larghezze minime delle tabelle. */
+.app-dash-fermi:has(.lista-configurabile) {
+  min-height: var(--app-dash-lista-min-h);
+}
+
 .app-dash-fermi-title {
   margin: 0;
   font-size: 1rem;
   font-weight: 600;
+}
+
+/* Lucchetto «testata non emittibile» nella lista gruppi fatturabili: la riga
+ * resta in lista (segnalare, non nascondere — brief emittibilità §3.1), il
+ * lucchetto accanto al riferimento porta il motivo nel tooltip. */
+.app-dash-gruppo-bloccato {
+  margin-left: 0.4rem;
+  color: var(--app-warning-color);
+  font-size: 0.85rem;
 }
 
 /* Stepper compatto anno/mese — solo piccoli schermi. Sostituisce il pannello

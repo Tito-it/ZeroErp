@@ -97,10 +97,26 @@
       "Bash(bash -c 'source ~/.nvm/nvm.sh 2>/dev/null; ./node_modules/.bin/vite build 2>&1 | tail -25')",
       "Bash(.venv/bin/python -m py_compile apps/vendite/services/listini_service.py apps/vendite/db/listini_repository.py apps/vendite/api/views_listini.py)",
       "Bash(bash -c 'source ~/.nvm/nvm.sh 2>/dev/null; ./node_modules/.bin/vite build 2>&1 | tail -10')",
-      "Bash(bash -n /home/tid/apps/ZeroErp/backend/scripts/tests/smoke-test-listini.sh)"
+      "Bash(bash -n /home/tid/apps/ZeroErp/backend/scripts/tests/smoke-test-listini.sh)",
+      "Bash(./.venv/bin/python -c ' *)"
     ],
     "additionalDirectories": [
       "/home/tid/apps/ZeroErp/docs/it/dev/work-in-progress"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$CLAUDE_PROJECT_DIR/scripts/guardrail_no_db_migrate.py\"",
+            "statusMessage": "Guardrail migrazioni DB",
+            "timeout": 15
+          }
+        ]
+      }
     ]
   }
 }

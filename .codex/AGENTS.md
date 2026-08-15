@@ -242,6 +242,21 @@ preventivi e in CI cancellava `outlined`/icona dell'annullamento,
 ## Workflow Safety
 
 - Ask before running DB migrations locally
+- ⛔ **E dal 2026-08-15 non e' piu' una raccomandazione: e' un cancello.**
+  `scripts/guardrail_no_db_migrate.py`, agganciato come hook `PreToolUse` su
+  Bash in `.claude/settings.json`, **blocca** `liquibase update` /
+  `rollback` / `changelogSync` e `make db-migrate|db-ci-apply|db-setup`.
+  Restano liberi `status`, `validate`, `updateSQL` (che non applica) e i pgTAP,
+  che girano in transazione.
+  **Perche' esiste**: la regola qui sopra c'era gia', ed e' stata infranta lo
+  stesso — un «fai tutto il possibile lato DB» letto come autorizzazione a
+  migrare. Un'istruzione in un documento e' una raccomandazione; l'hook gira nel
+  harness e non dipende da come il modello interpreta una frase.
+  ⚠️ **«procedi», «vai avanti», «fai tutto il possibile» NON autorizzano una
+  migrazione**: autorizzano il lavoro, non l'applicazione. L'autorizzazione si
+  chiede per **quel** comando, e la da' l'utente a parole.
+  Non disattivare l'hook per far passare un comando: e' l'unica cosa che non
+  va fatta.
 - Avoid destructive commands without explicit approval
 - **Bug di dati in sviluppo**: prima di sviluppare fix software per correggere dati errati, chiedere all'utente se è più veloce correggere/cancellare i dati manualmente. I fix software per problemi di dati creano strati di codice inutili che poi vanno rimossi.
 

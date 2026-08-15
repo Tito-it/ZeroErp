@@ -14,7 +14,7 @@ import ToggleSwitch from 'primevue/toggleswitch'
 
 const { t } = useI18n()
 const store = useUomTipiStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const isReadonly = useInjectReadonly()
 
 const props = defineProps({
@@ -100,19 +100,27 @@ function close() {
       <div class="form-grid">
         <div class="form-field">
           <label>{{ t('catalogo.field_codice') }}</label>
-          <InputText v-model="form.codice" :disabled="isEdit || isReadonly" />
+          <InputText v-model="form.codice" :disabled="isEdit || isReadonly"
+            :invalid="campiErrati.includes('codice')"
+          />
         </div>
         <div class="form-field">
           <label>{{ t('catalogo.col_codice_interno') }}</label>
-          <InputText v-model="form.codice_interno" :disabled="isEdit || isReadonly" />
+          <InputText v-model="form.codice_interno" :disabled="isEdit || isReadonly"
+            :invalid="campiErrati.includes('codice_interno')"
+          />
         </div>
         <div class="form-field">
           <label>{{ t('catalogo.field_descrizione') }}</label>
-          <InputText v-model="form.descrizione" :disabled="isReadonly" />
+          <InputText v-model="form.descrizione" :disabled="isReadonly"
+            :invalid="campiErrati.includes('descrizione')"
+          />
         </div>
         <div v-if="isEdit" class="form-field">
           <label>{{ t('indirizzi.campo_attivo') }}</label>
-          <ToggleSwitch v-model="form.attivo" :disabled="isReadonly" />
+          <ToggleSwitch v-model="form.attivo" :disabled="isReadonly"
+            :invalid="campiErrati.includes('attivo')"
+          />
         </div>
       </div>
 

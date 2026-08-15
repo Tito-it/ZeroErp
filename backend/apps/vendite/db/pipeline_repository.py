@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 import json
+import logging
 from typing import Any
 
 from django.db import connection
@@ -33,6 +34,8 @@ from apps.vendite.types import (
     LottoTaskRunRow,
     RiportaLottoADraftResult,
 )
+
+logger = logging.getLogger(__name__)
 
 # Repository SQL: incapsula accesso DB per orchestrazione pipeline vendite.
 
@@ -195,8 +198,10 @@ class VenditePipelineRepository:
         # una funzione inesistente e' precisamente cio' che ha fatto scrivere
         # due requisiti di aggregazione su codice non eseguito.
         "generate_fatture_righe": None,
-        "genera_fondi_source_lotto": "vendite.fn_genera_fondi_fattura_source",
-        "applica_fondi_lotto": "vendite.fn_applica_fondi_fattura",
+        # R-3: i due giri passano dalle MADRI per lotto, non piu' dalle
+        # funzioni per-scope (che restano, chiamate dalle madri).
+        "genera_fondi_source_lotto": "vendite.fn_genera_fondi_fattura_lotto",
+        "applica_fondi_lotto": "vendite.fn_applica_fondi_lotto",
         "ricalcola_iva_lotto": "vendite.fn_ricalcola_riepiloghi_iva_lotto",
         "prepare_sdi_payload_lotto": "vendite.fn_prepare_sdi_payload",
         "numera_fatture": "vendite.fn_numera_fattura_opz_emessa",
@@ -1332,8 +1337,7 @@ class VenditePipelineRepository:
             )
             rows = cursor.fetchall()
         if len(rows) == safe_limit:
-            import logging
-            logging.getLogger(__name__).warning(
+            logger.warning(
                 "list_attivita_da_fatturare: risultato troncato al limit=%s per lotto_id=%s",
                 safe_limit, lotto_id,
             )
@@ -1375,157 +1379,91 @@ class VenditePipelineRepository:
             )
             rows = cursor.fetchall()
         if len(rows) == safe_limit:
-            import logging
-            logging.getLogger(__name__).warning(
+            logger.warning(
                 "list_fatture_by_lotto: risultato troncato al limit=%s per lotto_id=%s",
                 safe_limit, lotto_id,
             )
         return [int(row[0]) for row in rows]
 
-    # Scopo: Recupera `tipo_fondo_fattura_id` dal contesto applicativo o dal database.
-    def get_tipo_fondo_fattura_id(self, codice_interno: str = "F_F_ADD_ACC") -> int:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT id
-                FROM vendite.tipi_fondi_fattura
-                WHERE codice_interno = %s
-                  AND attivo IS TRUE
-                ORDER BY id
-                LIMIT 1
-                """,
-                [codice_interno],
-            )
-            row = cursor.fetchone()
-        if not row:
-            ErrorManager.raise_error(
-                code="E_TIPO_FONDO_NOT_FOUND",
-                message="Tipo fondo fattura non trovato.",
-                detail=f"Tipo fondo non trovato: {codice_interno}",
-                context={"codice_interno": codice_interno},
-                function_name="vendite.pipeline_repository.get_tipo_fondo_fattura_id",
-                log_to_db=True,
-            )
-        return int(row[0])
-
-    # Scopo: Restituisce lo scope minimo per fattura del lotto validando i campi obbligatori per task EMESSA.
-    def list_fatture_scope_by_lotto(self, lotto_id: int) -> list[dict[str, int]]:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT DISTINCT
-                  f.id AS fattura_id,
-                  f.billing_account_id,
-                  COALESCE(fl.utility_id, ba.utility_id) AS utility_id,
-                  f.tipo_doc_fiscale_id,
-                  f.emittente_soggetto_ruolo_id,
-                  f.valuta_id
-                FROM vendite.fatturazione_lotti_fatture lf
-                JOIN vendite.fatture f
-                  ON f.id = lf.fattura_id
-                JOIN vendite.fatturazione_lotti fl
-                  ON fl.id = lf.lotto_id
-                LEFT JOIN anagrafiche.billing_account ba
-                  ON ba.id = f.billing_account_id
-                WHERE lf.lotto_id = %s
-                ORDER BY f.id
-                """,
-                [lotto_id],
-            )
-            rows = cursor.fetchall()
-        scopes: list[dict[str, int]] = []
-        for row in rows:
-            if (
-                row[0] is None
-                or row[1] is None
-                or row[2] is None
-                or row[3] is None
-                or row[4] is None
-                or row[5] is None
-            ):
-                ErrorManager.raise_error(
-                    code="E_PIPELINE_SCOPE_INCOMPLETE",
-                    message="Scope fattura incompleto per task EMESSA.",
-                    detail=(
-                        "Dati mancanti su fattura lotto: utility/tipo_doc/"
-                        "emittente/valuta obbligatori"
-                    ),
-                    context={
-                        "lotto_id": lotto_id,
-                        "fattura_id": row[0],
-                        "billing_account_id": row[1],
-                        "utility_id": row[2],
-                        "tipo_doc_fiscale_id": row[3],
-                        "emittente_soggetto_ruolo_id": row[4],
-                        "valuta_id": row[5],
-                    },
-                    function_name="vendite.pipeline_repository.list_fatture_scope_by_lotto",
-                    log_to_db=True,
-                )
-            scopes.append(
-                {
-                    "fattura_id": int(row[0]),
-                    "billing_account_id": int(row[1]),
-                    "utility_id": int(row[2]),
-                    "tipo_doc_fiscale_id": int(row[3]),
-                    "emittente_soggetto_ruolo_id": int(row[4]),
-                    "valuta_id": int(row[5]),
-                }
-            )
-        return scopes
-
-    # Scopo: Gestisce generazione fondi source per ogni scope fattura del lotto
+    # Scopo: Genera i fondi source di tutto il lotto con UNA chiamata alla madre
+    #        DB `fn_genera_fondi_fattura_lotto`. Ritorna i conteggi del giro
+    #        (fatture nello scope, chiavi distinte, fondi creati) per il diario.
+    # ⭐ R-3 APPLICATO (brief fondo fattura §8.3, DB 2026-08-15): il repository
+    # non conosce piu' la pseudo-chiave a cinque parametri ne' l'SQL dello scope
+    # — erano due cose di DOMINIO che vivevano in un repository. Ora una
+    # `SELECT` sola: atomica per costruzione (una funzione = uno statement = una
+    # transazione), qualunque sia il chiamante.
+    # ⚠️ Il codice interno del tipo fondo si passa COSI' COM'E': la madre lo
+    # risolve da se'. Il lookup Python e' sparito, ed era il round-trip in piu'
+    # che impediva «una SELECT per task».
+    # 🔴 E la madre gira una volta per CHIAVE, non per fattura: la vecchia query
+    # Python faceva `SELECT DISTINCT` con l'id della fattura in proiezione,
+    # quindi il DISTINCT non deduplicava nulla e su un lotto di 500 fatture
+    # dello stesso emittente riscandiva le stesse sorgenti 500 volte per
+    # crearle una volta (l'atto unico bloccava le altre 499). Difetto trovato
+    # dal team DB scrivendo la madre: *chi itera sulle fatture per passare una
+    # chiave sta iterando sull'oggetto sbagliato.*
     def run_genera_fondi_source_lotto_task(
         self,
         *,
         lotto_id: int,
         tipo_fondo_codice_interno: str = "F_F_ADD_ACC",
-    ) -> None:
-        tipo_fondo_id = self.get_tipo_fondo_fattura_id(tipo_fondo_codice_interno)
-        for scope in self.list_fatture_scope_by_lotto(lotto_id):
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT vendite.fn_genera_fondi_fattura_source(
-                      %s, %s, %s, %s, %s, %s
-                    )
-                    """,
-                    [
-                        scope["billing_account_id"],
-                        scope["utility_id"],
-                        scope["tipo_doc_fiscale_id"],
-                        scope["emittente_soggetto_ruolo_id"],
-                        scope["valuta_id"],
-                        tipo_fondo_id,
-                    ],
-                )
+    ) -> dict[str, int]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT fatture_count, chiavi_count, fondi_creati
+                FROM vendite.fn_genera_fondi_fattura_lotto(%s, %s)
+                """,
+                [lotto_id, tipo_fondo_codice_interno],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        esito = {
+            "fatture_count": int(row[0]),
+            "chiavi_count": int(row[1]),
+            "fondi_creati": int(row[2]),
+        }
+        logger.info(
+            "genera_fondi_source_lotto: lotto_id=%s fatture=%s chiavi=%s creati=%s",
+            lotto_id, esito["fatture_count"], esito["chiavi_count"], esito["fondi_creati"],
+        )
+        return esito
 
-    # Scopo: Gestisce applicazione fondi per ogni scope fattura del lotto
+    # Scopo: Applica i fondi DISPONIBILE alle fatture del lotto con UNA chiamata
+    #        alla madre DB `fn_applica_fondi_lotto`. Ritorna i conteggi del giro
+    #        (fatture nello scope, fondi applicati).
+    # ⚠️ La madre itera per FATTURA e non per chiave come la sorella di
+    # generazione, e non e' un'asimmetria da correggere: le sorgenti si trovano
+    # per chiave e non appartengono al lotto, mentre ogni figlia riceve i SUOI
+    # fondi e cambia il proprio totale — deduplicare per chiave qui vorrebbe
+    # dire assegnare tutto a una figlia sola e lasciare le altre a secco.
+    # ⭐ Qui il parziale costava piu' che altrove: ogni chiamata riuscita ha gia'
+    # portato una source ad ASSEGNATO e cambiato il totale di una fattura, e un
+    # lotto in cui alcune figlie hanno il fondo e altre no non ha nessuna meta'
+    # sbagliata di per se' — quindi niente lo segnalerebbe.
     def run_applica_fondi_lotto_task(
         self,
         *,
         lotto_id: int,
         tipo_fondo_codice_interno: str = "F_F_ADD_ACC",
-    ) -> None:
-        tipo_fondo_id = self.get_tipo_fondo_fattura_id(tipo_fondo_codice_interno)
-        for scope in self.list_fatture_scope_by_lotto(lotto_id):
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT vendite.fn_applica_fondi_fattura(
-                      %s, %s, %s, %s, %s, %s, %s
-                    )
-                    """,
-                    [
-                        scope["billing_account_id"],
-                        scope["utility_id"],
-                        scope["tipo_doc_fiscale_id"],
-                        scope["emittente_soggetto_ruolo_id"],
-                        scope["valuta_id"],
-                        scope["fattura_id"],
-                        tipo_fondo_id,
-                    ],
-                )
+    ) -> dict[str, int]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT fatture_count, fondi_applicati
+                FROM vendite.fn_applica_fondi_lotto(%s, %s)
+                """,
+                [lotto_id, tipo_fondo_codice_interno],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        esito = {"fatture_count": int(row[0]), "fondi_applicati": int(row[1])}
+        logger.info(
+            "applica_fondi_lotto: lotto_id=%s fatture=%s applicati=%s",
+            lotto_id, esito["fatture_count"], esito["fondi_applicati"],
+        )
+        return esito
 
     # Scopo: Avvia il ricalcolo IVA del lotto con aggiornamento riepiloghi/totali via funzione SQL.
     def run_ricalcola_iva_lotto_task(

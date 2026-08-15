@@ -18,7 +18,7 @@
 > (piano a step, Fasi A→D; la stampa è worker-drainer, non render inline).
 >
 > **Documenti collegati**:
-> [brief-design-fatturazione-due-lenti.md](../work-in-progress/brief-design-fatturazione-due-lenti.md)
+> [brief-design-fatturazione-due-lenti.md](brief-design-fatturazione-due-lenti.md)
 > (design-of-record del read-side: le tre lenti; questo brief è il suo complemento
 > **write-side**) · [Guida fatturazione](../../guide/fatturazione.md) (pipeline end-to-end)
 > · [Guida gestione commesse](../../guide/gestione-commesse.md) ·

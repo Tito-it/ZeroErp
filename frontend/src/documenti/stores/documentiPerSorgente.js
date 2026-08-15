@@ -16,6 +16,7 @@
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { useTabEvents } from '../../core/composables/useTabEvents'
 import {
   contrattoDocumenti,
@@ -48,6 +49,7 @@ export const useDocumentiPerSorgenteStore = defineStore(STORE_NAME, () => {
 
   const sorgenteCode = ref(null)
   const sorgenteId = ref(null)
+  const fv = useFetchVersion()
   const items = ref([])
   const totalRecords = ref(0)
   const loading = ref(false)
@@ -68,31 +70,49 @@ export const useDocumentiPerSorgenteStore = defineStore(STORE_NAME, () => {
   //        sorgente residui.
   function setSorgente(code, id) {
     if (sorgenteCode.value !== code || sorgenteId.value !== id) {
+      // Invalidate PRIMA del clear: una fetch della sorgente precedente ancora
+      // in volo resterebbe "corrente" fino alla prossima fetchList e
+      // ripopolerebbe la lista appena azzerata. Spinner spento qui, perche' la
+      // fetch invalidata non lo spegne piu' (finally gated su isCurrent).
+      fv.invalidate()
       sorgenteCode.value = code
       sorgenteId.value = id
       items.value = []
       totalRecords.value = 0
       lastError.value = null
+      loading.value = false
     }
   }
 
   // Scopo: Lista documenti generati per la sorgente corrente.
+  // ⚠️ Guardia anti-race (2026-08-10). Questa lista NON passa dal BB
+  // `useListaEmptyStateFetch` — prende `params` dal chiamante e ha un envelope
+  // suo (`total_count`, non `paginated_envelope`) — ma soffre lo stesso difetto:
+  // otto chiamanti, e cambiando sorgente due fetch possono essere in volo
+  // insieme. Senza guardia vince l'ultima ARRIVATA, cioe' si vedono i documenti
+  // della sorgente sbagliata.
   async function fetchList(params = {}) {
     if (!sorgenteCode.value || !sorgenteId.value) return
+    const tag = fv.tag()
     loading.value = true
     lastError.value = null
     try {
       const res = await getClient().list(sorgenteId.value, params)
+      if (!fv.isCurrent(tag)) return
       // L'envelope di list (Tranche K view): `success_response({...result, page, page_size})`.
       // Il `result` contiene `results`, `total_count`. Niente `paginated_envelope`.
       const data = res.data.data
       items.value = data.results || []
       totalRecords.value = data.total_count ?? items.value.length
     } catch (err) {
+      // Stesso guard del ramo success: l'errore di una richiesta stantia non
+      // riguarda il contesto corrente — ne' il banner (`lastError`) ne' il
+      // toast del chiamante vecchio (niente re-throw).
+      if (!fv.isCurrent(tag)) return
       lastError.value = err
       throw err
     } finally {
-      loading.value = false
+      if (fv.isCurrent(tag)) loading.value = false
     }
   }
 

@@ -68,7 +68,7 @@ const props = defineProps({
 
 const emit = defineEmits(['update:visible', 'saved'])
 const { t, te } = useI18n()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const notify = useNotify()
 const { confirmAction } = useConfirmAction()
 const onClose = useDrawerClose(emit)
@@ -584,12 +584,12 @@ const drawerActions = computed(() => [
         </DrawerEntityHeader>
 
         <!-- Porta oneri + azioni di stato utente (capabilities data-driven).
-             Il `v-if` include `nessuna_azione_key`: senza azioni ma con la
+             Il `v-if` include `stato_info_key`: senza azioni ma con la
              spiegazione, la barra deve comparire proprio per dirla (R3). -->
         <DrawerActionsBar
-          v-if="drawerActions.length || capabilities.nessuna_azione_key"
+          v-if="drawerActions.length || capabilities.stato_info_key"
           :actions="drawerActions"
-          :info-key="capabilities.nessuna_azione_key || ''"
+          :info-key="capabilities.stato_info_key || ''"
           :disabled="loading"
         />
 
@@ -829,6 +829,7 @@ const drawerActions = computed(() => [
           :min-fraction-digits="2"
           :max-fraction-digits="10"
           fluid
+          :invalid="campiErrati.includes('importo')"
         />
       </div>
       <div class="form-field">
@@ -852,7 +853,8 @@ const drawerActions = computed(() => [
       </div>
       <div class="form-field">
         <label>{{ t('vendite.commesse.onere_motivo') }}</label>
-        <Textarea v-model="onereForm.motivo" rows="2" fluid />
+        <Textarea v-model="onereForm.motivo" rows="2" fluid
+          :invalid="campiErrati.includes('motivo')" />
       </div>
     </AppDialog>
   </Drawer>

@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # Il COMMENT di `dbops.messaggi_errore_codici_legacy` dice ancora «Sono 57»
-#   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (§5.5)
+#   Piano: docs/it/dev/work-done/piano-db-classe-codici-errore.md (§5.5)
 #   Decisione: Tid, 2026-08-08 — la tabella NON si droppa.
 #
 # ── 🔴 IL COMMENT DESCRIVE UNO STATO FINITO IERI ───────────────────────

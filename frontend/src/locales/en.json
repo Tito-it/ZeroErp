@@ -1514,7 +1514,8 @@
       "azione_annulla": "Cancel DDT",
       "stato_info": {
         "consegnato_usa_reso": "The goods have been delivered: to bring them back you register a return, you do not cancel the DDT.",
-        "reso": "This DDT came back with a return: its status follows the return on its own."
+        "reso": "This DDT came back with a return: its status follows the return on its own.",
+        "annullato": "The delivery note is cancelled: this state is final."
       },
       "azione_push_commessa": "Send to job",
       "conferma_cambio_stato": "Move the DDT to status {stato}?",
@@ -1652,14 +1653,18 @@
       "coda_search_accreditare": "Search (return no., recipient, item, DDT, account)",
       "coda_etichetta_tutte": "All credits",
       "coda_etichetta": {
-        "DOVUTA": "Credit note due",
-        "FACOLTATIVA": "Credit note optional"
+        "DOVUTA": "Credit due",
+        "FACOLTATIVA": "Credit optional — goods to be redelivered"
       },
       "coda_search_riconsegnare": "Search (return no., recipient, item, DDT)"
     },
     "reso": {
       "azione_conferma": "Confirm return",
-      "azione_annulla": "Cancel return"
+      "azione_annulla": "Cancel return",
+      "stato_info": {
+        "confermato": "The return is confirmed: the goods are back and the stock movements are recorded.",
+        "annullato": "The return is cancelled: the inbound movement was reversed and this state is final."
+      }
     },
     "ordini": {
       "pdf": {
@@ -1737,7 +1742,9 @@
       },
       "stato_info": {
         "evaso": "The order is fulfilled: its status is recalculated from the DDTs, it is not set by hand.",
-        "parzialmente_evaso": "Fulfilment in progress: the status is recalculated at every DDT."
+        "parzialmente_evaso": "Fulfilment in progress: the status is recalculated at every DDT.",
+        "annullato": "The order is cancelled: this state is final.",
+        "fatturato": "The order is invoiced: follow-up happens on the invoice."
       },
       "azione_push_commessa": "Send to job",
       "conferma_cambio_stato": "Move the order to status {stato}?",
@@ -1755,7 +1762,8 @@
         "fattura_da_ddt": "This order is invoiced from the DDT: it is sent to a job on shipping or delivery.",
         "gia_inviato": "Order already sent to a job: its lines are awaiting invoicing.",
         "gia_fatturato": "Order already sent to a job and invoiced.",
-        "nessuna_riga_pushabile": "No line can be sent to a job: check line quantities and prices."
+        "nessuna_riga_pushabile": "No line can be sent to a job: check line quantities and prices.",
+        "annullato": "The order is cancelled: it does not go to invoicing."
       },
       "evasione_titolo": "Generate DDT",
       "evasione_intro": "Select the lines to fulfil and generate the delivery note. The DDT is created as a draft.",
@@ -1891,6 +1899,11 @@
       }
     },
     "offerte": {
+      "stato_info": {
+        "rifiutata": "The offer was rejected: to propose it again, create a new offer.",
+        "superata": "The offer was superseded by a later revision: follow-up happens on that one.",
+        "annullata": "The offer is cancelled: this state is final."
+      },
       "titolo": "Commercial offers",
       "titolo_drawer": "Commercial offer",
       "nuova_offerta": "New offer",
@@ -2095,6 +2108,10 @@
       "col_stato_riconsegna": "Status"
     },
     "contratti": {
+      "stato_info": {
+        "cessato": "The contract has ended: the supply is closed and does not resume. To continue it you need a new contract.",
+        "annullato": "The contract was cancelled before activation: it never took effect and this state is final."
+      },
       "note_titolo": "Contract notes",
       "gestisci_note": "Manage notes",
       "contratto": "Contract",
@@ -2459,11 +2476,13 @@
       "push_commessa_reason": {
         "non_accettato": "Project integration will be available once the quote is accepted.",
         "nessuna_riga": "No line to push to a job.",
-        "senza_billing_account": "The customer is missing: set it to push to a job."
+        "senza_billing_account": "The customer is missing: set it to push to a job.",
+        "stato_chiuso": "The quote is closed: it no longer feeds the job order."
       },
       "genera_ordine_reason": {
         "non_accettato": "Order generation will be available once the quote is accepted.",
-        "nessuna_riga": "No line: add at least one line to generate the order."
+        "nessuna_riga": "No line: add at least one line to generate the order.",
+        "stato_chiuso": "The quote is closed: it no longer generates orders."
       },
       "azione_reason": {
         "ordine_gia_generato": "The quote has already generated an order: cancel the linked order first.",
@@ -2516,6 +2535,12 @@
         "in_commessa": "In job",
         "emessa_af": "Issued",
         "fatturata": "Invoiced"
+      },
+      "stato_info": {
+        "evaso": "The quote is fully dispatched: follow-up happens on the generated documents.",
+        "rifiutato": "The quote was rejected: to propose it again, create a new quote.",
+        "scaduto": "The quote validity has passed and cannot be reopened: to propose it again, create a new quote.",
+        "annullato": "The quote is cancelled: this state is final."
       }
     },
     "listini": {
@@ -2788,6 +2813,10 @@
       "fattura_gruppi_esito": "Issuing completed: {lotti} batches produced.",
       "fattura_gruppi_esito_parziale": "Issuing completed with {falliti} errors out of {lotti} batches. Check the batch register.",
       "fattura_gruppi_esito_vuoto": "No batch produced: the activities of the selected groups were no longer billable.",
+      "fattura_gruppi_esito_non_serviti": "Partial run: {lotti} batches produced, {mancanti} groups left out — {dettagli}",
+      "fattura_gruppi_esito_altrove": "Note: {n} groups were no longer to be invoiced — their activities are already invoiced by another run ({gruppi}).",
+      "gruppo_bloccato_tooltip": "The job order is in state {stato} and does not allow invoicing: the group cannot enter any batch. Open it with \"Unlock job order\" to make it ready.",
+      "azione_sblocca_commessa": "Unlock job order",
       "lotti_emessi": "Batches produced ({n}):",
       "vai_al_lotto": "Go to batch #{id}",
       "azione_approva": "Approve",
@@ -2937,6 +2966,10 @@
       "tipo_reso_vendita": "Return"
     },
     "commesse": {
+      "stato_info": {
+        "chiusa": "The job order is closed: it can no longer be changed and generates no further documents.",
+        "annullata": "The job order is cancelled: this state is final."
+      },
       "gestione_titolo": "Job order management",
       "tot_attivita": "Activities",
       "tot_da_approvare": "To approve",

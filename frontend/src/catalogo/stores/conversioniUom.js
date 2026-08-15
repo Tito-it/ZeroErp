@@ -4,6 +4,7 @@
 // mai inviarlo, quindi ordinare non faceva niente e il paginator era decorativo.
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
 import { listConversioniUom, getConversioneUom, createConversioneUom, updateConversioneUom } from '../api/catalogo'
 import { useTabEvents } from '../../core/composables/useTabEvents'
 import { TAB_ENTITIES } from '../../core/constants'
@@ -11,10 +12,6 @@ import { TAB_ENTITIES } from '../../core/constants'
 export const useConversioniUomStore = defineStore('catalogo-conversioni-uom', () => {
   const { emitDataChanged } = useTabEvents()
 
-  const items = ref([])
-  const totalRecords = ref(0)
-  const loading = ref(false)
-  const hasSearched = ref(false)
 
   const filters = ref({
     search: '',
@@ -35,13 +32,13 @@ export const useConversioniUomStore = defineStore('catalogo-conversioni-uom', ()
     order_dir: 'desc'
   })
 
-  // Scopo: Carica la pagina corrente delle conversioni (server-side).
-  async function fetchList() {
-    const f = filters.value
-    const searchTerm = (f.search || '').trim()
-
-    loading.value = true
-    try {
+  // Lista via BB condiviso (migrazione 2026-08-10): la guardia di versione
+  // anti-race che qui mancava. `alwaysFetch` conserva il comportamento: questa
+  // lista si e' sempre caricata anche senza filtri.
+  const { items, totalRecords, loading, hasSearched, fetchList } = useListaEmptyStateFetch({
+    filters,
+    alwaysFetch: true,
+    buildParams: (f, searchTerm) => {
       const params = {
         limit: f.limit,
         offset: f.offset,
@@ -52,15 +49,10 @@ export const useConversioniUomStore = defineStore('catalogo-conversioni-uom', ()
       }
       if (searchTerm) params.search = searchTerm
       if (f.attivo != null) params.attivo = f.attivo
-
-      const res = await listConversioniUom(params)
-      items.value = res.data.data.results
-      totalRecords.value = res.data.data.count
-      hasSearched.value = true
-    } finally {
-      loading.value = false
-    }
-  }
+      return params
+    },
+    fetchPage: listConversioniUom,
+  })
 
   async function fetchDetail(id) {
     const res = await getConversioneUom(id)

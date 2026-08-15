@@ -1,0 +1,315 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `emittente_fiscale_id` si accende su TUTTI SEI i documenti di vendita
+#   Canale: 20260808-04/-05 · Lotti: -06 -07 (soggetti) · -08 -09 (fornitori/clienti)
+#   Piano: docs/it/dev/work-done/piano-db-classe-codici-errore.md §5.8
+#
+# ── LA FETTA E' UN CONCETTO, NON UNO SCHEMA NE' UNA TABELLA ────────────
+#   «L'emittente fiscale non coerente col billing account» e' **una sola guardia,
+#   scritta sei volte** — una per documento. Sei funzioni gemelle, sei codici
+#   diversi, un campo solo: `emittente_fiscale_id`.
+#
+#   ⚠️ **Ne avevo trovate quattro.** Il filtro di ricerca era
+#   `preventiv|offert|contratt|commess|ordin`, cioe' i domini che stavamo
+#   guardando — e DDT e RESI sono rimasti fuori. Se ne fossero rimasti fuori
+#   davvero, il campo si sarebbe acceso su un preventivo e non su un DDT: la
+#   stessa incoerenza contro cui il -07 mette in guardia, arrivata dalla porta
+#   di servizio mentre la scrivevo.
+#
+#   ⭐ La regola che ne esce: **la fetta si chiude sul CONCETTO** (tutte le
+#   funzioni che sollevano quella stessa condizione), non sull'elenco di domini
+#   che si aveva in mente all'inizio. Il modo di trovarle e' cercare la FORMA
+#   del nome — qui `%_guard_emittente_ba` — non i domini.
+#
+# ── LE SEI, E UNA CHE NON TORNA ────────────────────────────────────────
+#     trgfn_preventivi_guard_emittente_ba           E_PREV_EMITTENTE_BA_INCOERENTE      highlight
+#     trgfn_offerte_commerciali_guard_emittente_ba  E_OFFERTA_EMITTENTE_BA_INCOERENTE   highlight
+#     trgfn_ordini_guard_emittente_ba               E_ORDINE_EMITTENTE_BA_INCOERENTE    highlight
+#     trgfn_contratti_guard_emittente_ba            E_CONTRATTO_EMITTENTE_BA_INCOERENTE highlight
+#     trgfn_ddt_guard_emittente_ba                  E_DDT_EMITTENTE_BA_INCOERENTE       highlight
+#     trgfn_resi_guard_emittente_ba                 E_RESO_EMITTENTE_BA_INCOERENTE      🔴 NO
+#
+#   🔴 **`E_RESO_EMITTENTE_BA_INCOERENTE` e' l'unico dei sei che lato backend non
+#   ha `ui_action = highlight_form_fields`.** Sei guardie identiche, sei codici,
+#   e uno classificato diversamente: o sbagliano i cinque, o sbaglia lui. E' una
+#   decisione di **perimetro BE** — segnalata, non toccata.
+#
+#   Il campo si manda **anche per il reso**, ed e' voluto: il database dichiara
+#   QUALE dato e' sbagliato, la pagina decide cosa farne. Se domani il BE
+#   allinea la classificazione, il reso funziona senza un altro changeSet.
+#
+# ── ⚠️ COME E' STATO PRODOTTO ──────────────────────────────────────────
+#   `pg_get_functiondef` di ognuna + inserimento della chiave nel contesto,
+#   applicato da script, diff verificato una per una: **+1 / -0 su tutte e sei**.
+#   Nessuna trascrizione a mano.
+#
+#   Un solo changeSet e non sei file: e' **un cambiamento solo**, e sei changeSet
+#   separati renderebbero possibile applicarne cinque — cioe' produrre proprio
+#   l'incoerenza che questa fetta esiste per evitare.
+#
+# ── VERIFICATO PRIMA ───────────────────────────────────────────────────
+#   · `emittente_fiscale_id` e' colonna vera di tutte e sei le tabelle;
+#   · il frontend la manda (PreventiviForm, ContrattoDrawer, OffertaDrawer,
+#     ResoForm, ...): il nome combacia col payload, non e' un nome interno;
+#   · proprietarie `titodb` (chi migra), nessuna SECURITY DEFINER, nessuna nel
+#     registro `dbops.sec_functions_owner`: nessun prestito di proprieta'.
+#   · `;` dopo ogni `$function$` aggiunto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/vendite/20260808-10-guard-emittente-ba-campo-sei-documenti-mctit.yaml
+
+    - changeSet:
+          id: 20260808-10-guard-emittente-ba-campo-sei-documenti
+          author: mctit
+          runOnChange: false
+          failOnError: true
+          comment: >
+              emittente_fiscale_id viaggia nel canale COLUMN su tutti e sei i documenti
+              (preventivi, offerte, ordini, contratti, DDT, resi). Una guardia sola scritta
+              sei volte: un changeSet solo, perche' applicarne cinque produrrebbe il campo
+              che si accende su un documento e non sul gemello. Additivo: +1 riga per funzione.
+          preConditions:
+              - onFail: HALT
+              - sqlCheck:
+                    expectedResult: 6
+                    sql: |
+                        SELECT count(*) FROM pg_proc p
+                          JOIN pg_namespace n ON n.oid = p.pronamespace
+                         WHERE n.nspname = 'vendite'
+                           AND p.proname LIKE '%_guard_emittente_ba'
+                           AND p.prosrc NOT LIKE '%''campo''%'
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE FUNCTION vendite.trgfn_preventivi_guard_emittente_ba()
+                         RETURNS trigger
+                         LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                          v_ef_atteso_id anagrafiche.emittenti_fiscali.id%TYPE;
+                        BEGIN
+                          IF NEW.billing_account_id IS NULL THEN
+                            RETURN NEW;
+                          END IF;
+
+                          v_ef_atteso_id := anagrafiche.fn_get_emittente_fiscale_pk(NEW.billing_account_id);
+
+                          IF NEW.emittente_fiscale_id IS DISTINCT FROM v_ef_atteso_id THEN
+                            PERFORM script.fn_log_and_raise_error(
+                              'vendite',
+                              'trgfn_preventivi_guard_emittente_ba',
+                              'E_PREV_EMITTENTE_BA_INCOERENTE',
+                              jsonb_build_object(
+                                  'campo', 'emittente_fiscale_id',
+                                'billing_account_id',   NEW.billing_account_id,
+                                'emittente_fiscale_id', NEW.emittente_fiscale_id,
+                                'emittente_atteso_id',  v_ef_atteso_id,
+                                'numero_preventivo',    NEW.numero
+                              ),
+                              NULL::uuid,
+                              concat('ba=', NEW.billing_account_id,
+                                     ', ef=', NEW.emittente_fiscale_id,
+                                     ', ef_atteso=', v_ef_atteso_id)
+                            );
+                          END IF;
+
+                          RETURN NEW;
+                        END
+                        $function$;
+
+                        CREATE OR REPLACE FUNCTION vendite.trgfn_offerte_commerciali_guard_emittente_ba()
+                         RETURNS trigger
+                         LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                          v_ef_atteso_id anagrafiche.emittenti_fiscali.id%TYPE;
+                        BEGIN
+                          IF NEW.billing_account_id IS NULL THEN
+                            RETURN NEW;
+                          END IF;
+
+                          v_ef_atteso_id := anagrafiche.fn_get_emittente_fiscale_pk(NEW.billing_account_id);
+
+                          IF NEW.emittente_fiscale_id IS DISTINCT FROM v_ef_atteso_id THEN
+                            PERFORM script.fn_log_and_raise_error(
+                              'vendite',
+                              'trgfn_offerte_commerciali_guard_emittente_ba',
+                              'E_OFFERTA_EMITTENTE_BA_INCOERENTE',
+                              jsonb_build_object(
+                                  'campo', 'emittente_fiscale_id',
+                                'billing_account_id',   NEW.billing_account_id,
+                                'emittente_fiscale_id', NEW.emittente_fiscale_id,
+                                'emittente_atteso_id',  v_ef_atteso_id,
+                                'codice_offerta',       NEW.codice
+                              ),
+                              NULL::uuid,
+                              concat('ba=', NEW.billing_account_id,
+                                     ', ef=', NEW.emittente_fiscale_id,
+                                     ', ef_atteso=', v_ef_atteso_id)
+                            );
+                          END IF;
+
+                          RETURN NEW;
+                        END
+                        $function$;
+
+                        CREATE OR REPLACE FUNCTION vendite.trgfn_ordini_guard_emittente_ba()
+                         RETURNS trigger
+                         LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                          v_ef_atteso_id anagrafiche.emittenti_fiscali.id%TYPE;
+                        BEGIN
+                          -- Skip: nessun BA su cui ancorare la coerenza.
+                          IF NEW.billing_account_id IS NULL THEN
+                            RETURN NEW;
+                          END IF;
+
+                          -- Emittente atteso per il BA dell'ordine.
+                          v_ef_atteso_id := anagrafiche.fn_get_emittente_fiscale_pk(NEW.billing_account_id);
+
+                          IF NEW.emittente_fiscale_id IS DISTINCT FROM v_ef_atteso_id THEN
+                            PERFORM script.fn_log_and_raise_error(
+                              'vendite',
+                              'trgfn_ordini_guard_emittente_ba',
+                              'E_ORDINE_EMITTENTE_BA_INCOERENTE',
+                              jsonb_build_object(
+                                  'campo', 'emittente_fiscale_id',
+                                'billing_account_id',   NEW.billing_account_id,
+                                'emittente_fiscale_id', NEW.emittente_fiscale_id,
+                                'emittente_atteso_id',  v_ef_atteso_id,
+                                'numero_ordine',        NEW.numero
+                              ),
+                              NULL::uuid,
+                              concat('ba=', NEW.billing_account_id,
+                                     ', ef=', NEW.emittente_fiscale_id,
+                                     ', ef_atteso=', v_ef_atteso_id)
+                            );
+                          END IF;
+
+                          RETURN NEW;
+                        END
+                        $function$;
+
+                        CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_guard_emittente_ba()
+                         RETURNS trigger
+                         LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                          v_ef_atteso_id anagrafiche.emittenti_fiscali.id%TYPE;
+                        BEGIN
+                          -- Risolve l'emittente atteso per il BA del contratto.
+                          -- fn_get_emittente_fiscale_pk solleva E_EMITTENTE_DEFAULT_MISSING
+                          -- se il BA non ha mapping EF (configurazione errata, non
+                          -- scenario atteso in produzione).
+                          v_ef_atteso_id := anagrafiche.fn_get_emittente_fiscale_pk(NEW.billing_account_id);
+
+                          -- Guard: l'emittente del contratto deve corrispondere a quello del BA.
+                          IF NEW.emittente_fiscale_id IS DISTINCT FROM v_ef_atteso_id THEN
+                            PERFORM script.fn_log_and_raise_error(
+                              'vendite',
+                              'trgfn_contratti_guard_emittente_ba',
+                              'E_CONTRATTO_EMITTENTE_BA_INCOERENTE',
+                              jsonb_build_object(
+                                  'campo', 'emittente_fiscale_id',
+                                'billing_account_id',   NEW.billing_account_id,
+                                'emittente_fiscale_id', NEW.emittente_fiscale_id,
+                                'emittente_atteso_id',  v_ef_atteso_id,
+                                'numero_contratto',     NEW.numero
+                              ),
+                              NULL::uuid,
+                              concat('ba=', NEW.billing_account_id,
+                                     ', ef=', NEW.emittente_fiscale_id,
+                                     ', ef_atteso=', v_ef_atteso_id)
+                            );
+                          END IF;
+
+                          RETURN NEW;
+                        END
+                        $function$;
+
+                        CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_guard_emittente_ba()
+                         RETURNS trigger
+                         LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                          v_ef_atteso_id anagrafiche.emittenti_fiscali.id%TYPE;
+                        BEGIN
+                          -- Skip: nessun BA su cui ancorare la coerenza.
+                          IF NEW.billing_account_id IS NULL THEN
+                            RETURN NEW;
+                          END IF;
+
+                          -- Emittente atteso per il BA del DDT.
+                          v_ef_atteso_id := anagrafiche.fn_get_emittente_fiscale_pk(NEW.billing_account_id);
+
+                          IF NEW.emittente_fiscale_id IS DISTINCT FROM v_ef_atteso_id THEN
+                            PERFORM script.fn_log_and_raise_error(
+                              'vendite',
+                              'trgfn_ddt_guard_emittente_ba',
+                              'E_DDT_EMITTENTE_BA_INCOERENTE',
+                              jsonb_build_object(
+                                  'campo', 'emittente_fiscale_id',
+                                'billing_account_id',   NEW.billing_account_id,
+                                'emittente_fiscale_id', NEW.emittente_fiscale_id,
+                                'emittente_atteso_id',  v_ef_atteso_id,
+                                'numero_ddt',           NEW.numero
+                              ),
+                              NULL::uuid,
+                              concat('ba=', NEW.billing_account_id,
+                                     ', ef=', NEW.emittente_fiscale_id,
+                                     ', ef_atteso=', v_ef_atteso_id)
+                            );
+                          END IF;
+
+                          RETURN NEW;
+                        END
+                        $function$;
+
+                        CREATE OR REPLACE FUNCTION vendite.trgfn_resi_guard_emittente_ba()
+                         RETURNS trigger
+                         LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                          v_ef_atteso_id anagrafiche.emittenti_fiscali.id%TYPE;
+                        BEGIN
+                          -- Skip: nessun BA su cui ancorare la coerenza.
+                          IF NEW.billing_account_id IS NULL THEN
+                            RETURN NEW;
+                          END IF;
+
+                          -- Emittente atteso per il BA del reso.
+                          v_ef_atteso_id := anagrafiche.fn_get_emittente_fiscale_pk(NEW.billing_account_id);
+
+                          IF NEW.emittente_fiscale_id IS DISTINCT FROM v_ef_atteso_id THEN
+                            PERFORM script.fn_log_and_raise_error(
+                              'vendite',
+                              'trgfn_resi_guard_emittente_ba',
+                              'E_RESO_EMITTENTE_BA_INCOERENTE',
+                              jsonb_build_object(
+                                  'campo', 'emittente_fiscale_id',
+                                'billing_account_id',   NEW.billing_account_id,
+                                'emittente_fiscale_id', NEW.emittente_fiscale_id,
+                                'emittente_atteso_id',  v_ef_atteso_id,
+                                'numero_reso',          NEW.numero
+                              ),
+                              NULL::uuid,
+                              concat('ba=', NEW.billing_account_id,
+                                     ', ef=', NEW.emittente_fiscale_id,
+                                     ', ef_atteso=', v_ef_atteso_id)
+                            );
+                          END IF;
+
+                          RETURN NEW;
+                        END
+                        $function$;

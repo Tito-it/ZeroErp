@@ -1,6 +1,7 @@
 // Store Pinia per la gestione listini vendite.
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
 import { listListini, getListino, createListino, updateListino, listVersioni } from '../api/listini'
 import { useTabEvents } from '../../core/composables/useTabEvents'
 import { TAB_ENTITIES } from '../../core/constants'
@@ -8,10 +9,6 @@ import { TAB_ENTITIES } from '../../core/constants'
 export const useListiniStore = defineStore('vendite-listini', () => {
   const { emitDataChanged } = useTabEvents()
 
-  const items = ref([])
-  const totalRecords = ref(0)
-  const loading = ref(false)
-  const hasSearched = ref(false)
 
   // Cache versioni per listino: { [listino_id]: [versione, ...] }.
   // Popolata dopo fetchList o on-expand riga; invalidata su create/update versione.
@@ -31,21 +28,13 @@ export const useListiniStore = defineStore('vendite-listini', () => {
     order_dir: 'asc'
   })
 
-  async function fetchList() {
-    const f = filters.value
-    const searchTerm = (f.search || '').trim()
-
-    if (searchTerm.length > 0 && searchTerm.length < 3) {
-      if (hasSearched.value) {
-        items.value = []
-        totalRecords.value = 0
-        hasSearched.value = false
-      }
-      return
-    }
-
-    loading.value = true
-    try {
+  // Lista via BB condiviso (migrazione 2026-08-10): guardia di versione anti-race
+  // + guardia della ricerca corta, che qui era scritta a mano.
+  const { items, totalRecords, loading, hasSearched, fetchList: fetchListBase } = useListaEmptyStateFetch({
+    filters,
+    alwaysFetch: true,
+    ricercaCorta: 'svuota',
+    buildParams: (f, searchTerm) => {
       const params = {}
       params.limit = f.limit
       params.offset = f.offset
@@ -57,18 +46,24 @@ export const useListiniStore = defineStore('vendite-listini', () => {
       if (f.utility_id != null) params.utility_id = f.utility_id
       if (f.tipologia_id != null) params.tipologia_id = f.tipologia_id
       if (f.attivo != null) params.attivo = f.attivo
+      return params
+    },
+    fetchPage: listListini,
+  })
 
-      const res = await listListini(params)
-      items.value = res.data.data.results
-      totalRecords.value = res.data.data.count
-      hasSearched.value = true
-      // Preload versioni per i listini correnti (expansion default-aperta).
-      // Esegue subito dopo l'aggiornamento di items, in parallelo. Eventuali
-      // errori del singolo listino sono gia' gestiti da fetchVersioniListino.
-      await preloadVersioniForCurrentItems()
-    } finally {
-      loading.value = false
-    }
+  // Preload versioni per i listini correnti (expansion default-aperta): resta
+  // FUORI dal BB perche' e' un secondo giro di fetch del dominio, non parte del
+  // ciclo di lista. ⚠️ Differenza dichiarata rispetto a prima: girava dentro la
+  // finestra di `loading`, ora subito dopo — lo spinner della lista si spegne un
+  // istante prima che le versioni siano in casa. Gli errori del singolo listino
+  // li gestisce gia' `fetchVersioniListino`.
+  // Il preload parte SOLO se la fetch ha davvero aggiornato `items`: una
+  // guardia (ricerca corta) o una risposta scartata dal guard di versione non
+  // devono potare la cache versioni a vuoto ne' rilanciare il preload sugli
+  // id di un'altra chiamata (doppioni di N richieste versioni).
+  async function fetchList() {
+    const landed = await fetchListBase()
+    if (landed) await preloadVersioniForCurrentItems()
   }
 
   async function fetchDetail(id) {

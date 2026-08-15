@@ -19,6 +19,7 @@
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import {
   clonaTemplateVersione,
   createTemplateVersione,
@@ -36,6 +37,7 @@ const EMIT_KEY = 'template_versioni'
 export const useTemplateVersioniStore = defineStore(STORE_NAME, () => {
   const { emitDataChanged } = useTabEvents()
 
+  const fv = useFetchVersion()
   const items = ref([])
   const loading = ref(false)
   const currentTemplateId = ref(null)
@@ -45,21 +47,33 @@ export const useTemplateVersioniStore = defineStore(STORE_NAME, () => {
   //        template diversi non fanno merge. La memoria
   //        feedback_componente_riusabile_watch suggerisce di richiamare
   //        questa fn quando cambia `template_id`.
+  // ⚠️ Guardia anti-race (2026-08-10). Non passa dal BB `useListaEmptyStateFetch`
+  // (prende `templateId` come argomento e ha un envelope suo, senza `count`), ma
+  // il rischio e' lo stesso: cambiando template due fetch possono accavallarsi e
+  // vincerebbe l'ultima ARRIVATA — cioe' le versioni del template sbagliato.
+  // `invalidate()` sul ramo senza template: azzera e impedisce a una risposta
+  // gia' in volo di ripopolare la lista che si sta svuotando.
   async function fetchList(templateId, params = {}) {
     if (!templateId) {
+      fv.invalidate()
       items.value = []
       currentTemplateId.value = null
+      // Lo spinner va spento qui: la fetch appena invalidata non lo fara'
+      // piu' (il suo `finally` e' gated su `isCurrent`).
+      loading.value = false
       return
     }
+    const tag = fv.tag()
     loading.value = true
     try {
       const res = await listTemplateVersioni(templateId, params)
+      if (!fv.isCurrent(tag)) return
       // L'endpoint versioni NON usa paginated_envelope: ritorna
       // direttamente {results: [...]}.
       items.value = res.data.data.results || []
       currentTemplateId.value = templateId
     } finally {
-      loading.value = false
+      if (fv.isCurrent(tag)) loading.value = false
     }
   }
 

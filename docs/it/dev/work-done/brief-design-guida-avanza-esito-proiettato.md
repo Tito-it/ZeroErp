@@ -10,7 +10,7 @@
 > **Origine**: §6 (le due direzioni) e §8-**D4** di
 > [brief-design-proiezione-stato-dominio.md](../work-in-progress/brief-design-proiezione-stato-dominio.md)
 > (MOSTRA già implementato: Fase 0 DB ✅ · Fase 1 BE ✅ · Fase 2 FE ✅). Salda il
-> **debito §5.3** di [gestione-pratiche-come-procedere.md](gestione-pratiche-come-procedere.md)
+> **debito §5.3** di [gestione-pratiche-come-procedere.md](../work-in-progress/gestione-pratiche-come-procedere.md)
 > (handler accetta/push oggi per-pratica PREVENTIVI → generalizzare prima del 2° dominio).
 > **Correlati**: editor definizioni versionate (config di questi binding) —
 > [brief-fe-fase3-editor-definizioni-workflow.md](brief-fe-fase3-editor-definizioni-workflow.md) (FE-3.3 handler-eventi).

@@ -64,7 +64,7 @@ import ToggleSwitch from 'primevue/toggleswitch'
 
 const { t, te } = useI18n()
 const store = useContrattiStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 // Readonly da permessi area (LETTURA/BLOCCATO). Si combina con isContractLocked
 // (stato post-DRAFT) per ottenere l'isReadonly effettivo del drawer.
 const parentReadonly = useInjectReadonly()
@@ -730,7 +730,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
           </template>
         </DrawerEntityHeader>
 
-        <DrawerActionsBar :actions="drawerActions" :info-key="detail?.nessuna_azione_key || ''">
+        <DrawerActionsBar :actions="drawerActions" :info-key="detail?.stato_info_key || ''">
           <template #suffix>
             <EntityPdfButton
               :sorgente-code="SORGENTE_CODES.CONTRATTO"
@@ -855,7 +855,8 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
             <ToggleSwitch
               input-id="ctr-fatt-immediata"
               v-model="form.fatturazione_immediata"
-              :disabled="(isEdit && isLocked('fatturazione_immediata')) || isReadonly" />
+              :disabled="(isEdit && isLocked('fatturazione_immediata')) || isReadonly"
+              :invalid="campiErrati.includes('fatturazione_immediata')" />
             <small class="text-color-secondary">
               {{ t('vendite.contratti.fatturazione_immediata_hint') }}
             </small>
@@ -937,6 +938,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
           :loading="listiniLookup.loading.value"
           class="w-full"
           :placeholder="t('vendite.contratti.select_listino_opzionale')"
+          :invalid="campiErrati.includes('listino_id')"
           show-clear
           filter
           @update:model-value="onListinoChange"
@@ -966,7 +968,8 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
             :min-fraction-digits="0" :max-fraction-digits="4" showButtons
             @update:model-value="onValoreVariazioneChange"
             :disabled="isEdit && isLocked('valore_variazione_globale')"
-            :suffix="form.tipo_variazione_globale === 'PERCENTUALE' ? ' %' : ''" />
+            :suffix="form.tipo_variazione_globale === 'PERCENTUALE' ? ' %' : ''"
+            :invalid="campiErrati.includes('valore_variazione_globale')" />
           <small class="text-color-secondary">{{ t('vendite.contratti.hint_valore_variazione') }}</small>
         </div>
       </div>

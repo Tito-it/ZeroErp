@@ -29,7 +29,7 @@ import Message from 'primevue/message'
 
 const { t } = useI18n()
 const store = useCategorieClientiListiniStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const notify = useNotify()
 const isReadonly = useInjectReadonly()
 const emittentiLookup = useLookup(listEmittentiFiscali, { immediate: true })
@@ -247,6 +247,7 @@ function close() {
             :placeholder="t('amministrazione.matrice_categorie_listini.field_emittente_placeholder')"
             filter
             :disabled="isFieldImmutable('emittente_soggetto_ruolo_id') || isReadOnlyEffective"
+            :invalid="campiErrati.includes('emittente_soggetto_ruolo_id')"
           />
         </div>
         <div class="form-grid-2col">
@@ -298,6 +299,7 @@ function close() {
               show-clear
               @change="onTipoVariazioneChange"
               :disabled="isReadOnlyEffective"
+              :invalid="campiErrati.includes('tipo_variazione')"
             />
           </div>
           <div class="form-field">
@@ -307,6 +309,7 @@ function close() {
               :max-fraction-digits="4"
               :disabled="form.tipo_variazione == null || isReadOnlyEffective"
               showButtons
+              :invalid="campiErrati.includes('valore_variazione')"
             />
             <small class="text-color-secondary">
               {{ t('amministrazione.matrice_categorie_listini.field_valore_variazione_hint') }}
@@ -323,6 +326,7 @@ function close() {
               date-format="dd/mm/yy"
               show-icon
               :disabled="isReadOnlyEffective"
+              :invalid="campiErrati.includes('valido_dal')"
             />
           </div>
           <div class="form-field">
@@ -333,6 +337,7 @@ function close() {
               show-icon
               show-button-bar
               :disabled="isReadOnlyEffective"
+              :invalid="campiErrati.includes('valido_al')"
             />
           </div>
         </div>
@@ -340,7 +345,9 @@ function close() {
         <!-- === Attivo === -->
         <div class="form-field">
           <label>{{ t('common.attivo') }}</label>
-          <ToggleSwitch v-model="form.attivo" :disabled="isReadOnlyEffective" />
+          <ToggleSwitch v-model="form.attivo" :disabled="isReadOnlyEffective"
+            :invalid="campiErrati.includes('attivo')"
+          />
         </div>
       </div>
 

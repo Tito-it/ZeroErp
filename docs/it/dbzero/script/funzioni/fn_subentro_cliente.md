@@ -100,7 +100,7 @@ BEGIN
         PERFORM script.fn_log_and_raise_error(
                           'database',
                           'script.fn_subentro_cliente',
-                          'E_ERRORE_PARAMETRI',
+                          'E_CONFIG_MANCANTE',
                           jsonb_build_object(
                                   'codice id_cliente',
                                   v_codice_chiuso

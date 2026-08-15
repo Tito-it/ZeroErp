@@ -16,7 +16,7 @@ import { CATALOGO_LOOKUP_RELS } from '../constants'
 
 const { t } = useI18n()
 const store = useUnitaMisuraStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const isReadonly = useInjectReadonly()
 
 const props = defineProps({
@@ -106,11 +106,15 @@ function close() {
       <div class="form-grid">
         <div class="form-field">
           <label>{{ t('catalogo.field_codice') }}</label>
-          <InputText v-model="form.codice" :disabled="isEdit || isReadonly" />
+          <InputText v-model="form.codice" :disabled="isEdit || isReadonly"
+            :invalid="campiErrati.includes('codice')"
+          />
         </div>
         <div class="form-field">
           <label>{{ t('catalogo.field_descrizione') }}</label>
-          <InputText v-model="form.descrizione" :disabled="isReadonly" />
+          <InputText v-model="form.descrizione" :disabled="isReadonly"
+            :invalid="campiErrati.includes('descrizione')"
+          />
         </div>
         <div class="form-field">
           <label>{{ t('catalogo.field_desc_fattura') }}</label>
@@ -128,7 +132,9 @@ function close() {
         </div>
         <div v-if="isEdit" class="form-field">
           <label>{{ t('indirizzi.campo_attivo') }}</label>
-          <ToggleSwitch v-model="form.attivo" :disabled="isReadonly" />
+          <ToggleSwitch v-model="form.attivo" :disabled="isReadonly"
+            :invalid="campiErrati.includes('attivo')"
+          />
         </div>
       </div>
 

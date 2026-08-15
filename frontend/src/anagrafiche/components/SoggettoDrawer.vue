@@ -36,7 +36,7 @@ import Tag from 'primevue/tag'
 const { t } = useI18n()
 const isReadonly = useInjectReadonly()
 const store = useSoggettiStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 
 // Building block composables
 const soggetto = useSoggettoForm()
@@ -359,6 +359,7 @@ async function handleSave() {
       <!-- Sezione: Dati soggetto -->
       <SoggettoForm
         :form="soggetto.form"
+        :campi-errati="campiErrati"
         :tipi-soggetto="soggetto.tipiSoggetto"
         :is-p-f="soggetto.isPF.value"
         :show-partita-iva="soggetto.showPartitaIva.value"
@@ -376,6 +377,7 @@ async function handleSave() {
           <h4>{{ t('anagrafiche.soggetti.section_contatto') }}</h4>
         </div>
         <ContattoForm
+          :campi-errati="campiErrati"
           :form="contatto.form"
           :tipi-contatto="contatto.tipiContatto"
           :unita-organizzative="contatto.unitaOrganizzative"

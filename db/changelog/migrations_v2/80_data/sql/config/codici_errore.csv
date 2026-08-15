@@ -144,7 +144,7 @@ E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE,NON_ESEGUIBILE,NULL,Refactor 2026-05-20: lo
 E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE,CONFLITTO_STATO,NULL,NULL
 E_CONTRATTO_CATEGORIA_SNAPSHOT_IMMUTABILE,CONFLITTO_STATO,NULL,NULL
 E_CONTRATTO_CLASSE_TIPO_INCOERENTE,DATO_ERRATO,NULL,NULL
-E_CONTRATTO_EMITTENTE_BA_INCOERENTE,CONFLITTO_STATO,NULL,NULL
+E_CONTRATTO_EMITTENTE_BA_INCOERENTE,DATO_ERRATO,NULL,"Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6."
 E_CONTRATTO_EMITTENTE_NON_RISOLTO,DATO_ERRATO,NULL,NULL
 E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA,NON_ESEGUIBILE,NULL,NULL
 E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI,NON_ESEGUIBILE,NULL,NULL
@@ -181,7 +181,7 @@ E_DBLINK_LOG_CONN_MISSING,AVVISO,2026-08-07,"Configurazione mancante: logga ma n
 E_DDT_CAUSALE_OBBLIGATORIA,CONFLITTO_STATO,NULL,"Gate solo-trasporto all'emissione (trgfn_ddt_guard_causale_emissione, · DL-28): la causale di trasporto dichiara se la merce e' una vendita · da fatturare; obbligatoria a DRAFT->EMESSO, e se fatturabile ogni · riga attiva deve avere un prezzo risolvibile (proprio o ereditato · dall'ordine via fulfillment)."
 E_DDT_CLIENTE_IMMUTABILE,CONFLITTO_STATO,NULL,"Cliente (billing_account_id/destinatario) immutabile post-create: · cambiare cliente = nuovo DDT (mirror E_ORD_CLIENTE_IMMUTABILE). · 400 -> 409 il 2026-08-06 (audit coerenza status), gemello di · E_ORD_CLIENTE_IMMUTABILE. `ui_action` invariata."
 E_DDT_EMISSIONE_SENZA_RIGHE,CONFLITTO_STATO,NULL,NULL
-E_DDT_EMITTENTE_BA_INCOERENTE,CONFLITTO_STATO,NULL,NULL
+E_DDT_EMITTENTE_BA_INCOERENTE,DATO_ERRATO,NULL,"Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6."
 E_DDT_NESSUNA_RIGA,CONFLITTO_STATO,NULL,NULL
 E_DDT_NIENTE_DA_EVADERE,CONFLITTO_STATO,NULL,NULL
 E_DDT_NOT_FOUND,NON_TROVATO,NULL,"DDT di vendita (CRUD + emissione + macchina a stati + evasione da · ordine + push singolo). Famiglia speculare a E_ORD_*. I codici trigger · DB (E_STATO_DDT_*, E_COMPONENTE_PREZZO_PENDENTE, E_QTA_SUPERA_RESIDUO) · passano invece via regex in ddt_service._db_errors: registrati qui per · fissare lo status/ui_action lato FE."
@@ -354,7 +354,7 @@ E_OFFERTA_CONTRATTO_GIA_GENERATO,CONFLITTO_STATO,NULL,"Mutua esclusività offert
 E_OFFERTA_ECCEZIONE_NON_TROVATA,NON_TROVATO,NULL,NULL
 E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO,CONFLITTO_STATO,NULL,"Codici DB del flusso offerta (emissione/transizione/push/revisione) e del · push a contratto. Senza registrazione cadevano sul fallback 400, mentre · la convenzione del progetto per ""operazione non ammessa nello stato / · precondizione di transizione / overlap"" è 409 (gemelli già registrati: · E_ORD_STATO_TRANSIZIONE, E_PREV_STATO_TRANSIZIONE, · E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA, E_VENDITE_*_OVERLAP). Registrati · qui per fissare lo status corretto (il messaggio parlante DB vince · comunque su user_message). Pulizia 2026-06-08."
 E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA,CONFLITTO_STATO,NULL,NULL
-E_OFFERTA_EMITTENTE_BA_INCOERENTE,CONFLITTO_STATO,NULL,NULL
+E_OFFERTA_EMITTENTE_BA_INCOERENTE,DATO_ERRATO,NULL,"Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6."
 E_OFFERTA_NON_TROVATA,NON_TROVATO,NULL,NULL
 E_OFFERTA_ORDINE_GIA_GENERATO,CONFLITTO_STATO,NULL,NULL
 E_OFFERTA_PUSH_STATO_NON_AMMESSO,CONFLITTO_STATO,NULL,NULL
@@ -367,7 +367,7 @@ E_ONERE_SEGMENT_DUPLICATO,CONFLITTO_STATO,NULL,"Race sul progressivo segment_key
 E_OPERATORE_SCOPE_MULTI_NON_AMMESSO,DATO_ERRATO,NULL,"Stessa fn DB del precedente (`script.fn_change_user_emittenti_scope`), · stesso 400: e' l'input della richiesta a non essere ammesso (piu' di un · emittente su un modello operatore-emittente 1-a-1). Raggiungibile solo · dal 2026-08-05 (vedi nota su E_ATTIVO_BLOCK_ARGS: changeSet 20260805-03)."
 E_OPERATORE_SCOPE_PARAM_NON_VALIDO,DATO_ERRATO,NULL,NULL
 E_ORDINE_CONFERMA_SENZA_RIGHE,CONFLITTO_STATO,NULL,NULL
-E_ORDINE_EMITTENTE_BA_INCOERENTE,CONFLITTO_STATO,NULL,NULL
+E_ORDINE_EMITTENTE_BA_INCOERENTE,DATO_ERRATO,NULL,"Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6."
 E_ORDINE_EMITTENTE_NON_RISOLTO,DATO_ERRATO,NULL,NULL
 E_ORDINE_RIGA_NON_TROVATA,NON_TROVATO,NULL,NULL
 E_ORDINE_TRANSIZIONE_NON_AMMESSA,CONFLITTO_STATO,NULL,NULL
@@ -436,7 +436,7 @@ E_PREVENTIVO_RIGA_NON_TROVATA,NON_TROVATO,NULL,NULL
 E_PREVENTIVO_RIGHE_PRICING_PENDENTI,CONFLITTO_STATO,NULL,L3 Sprint E (sviluppo-listini-v5 §14.6) — workflow approvazione · prezzo out-of-policy. Codici sollevati da preventivi_service + · approvazioni_prezzo_service e dai trigger DB DB-E-4/E-5.
 E_PREV_ANNULLA_COMMESSA_EMESSA,CONFLITTO_STATO,NULL,"Il quarto motivo, arrivato col consolidamento §7.3 del brief: era la · regola che viveva DENTRO `fn_cambia_stato_preventivo` (col codice senza · prefisso `E_`, quindi invisibile all'estrattore e degradato a · E_DATABASE), ora assorbita in `fn_check_preventivo_annullabile` come · motivo a se'. Piu' preciso del fratello E_PREV_GIA_IN_COMMESSA: quello · dice che esiste un collegamento a commessa, questo che a valle esiste · gia' una FATTURA — e una fattura senza l'origine che la giustifica non · si crea annullando il preventivo, si corregge dal lato fatturazione."
 E_PREV_COMPONENTE_NOT_FOUND,NON_TROVATO,NULL,NULL
-E_PREV_EMITTENTE_BA_INCOERENTE,CONFLITTO_STATO,NULL,NULL
+E_PREV_EMITTENTE_BA_INCOERENTE,DATO_ERRATO,NULL,"Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6."
 E_PREV_EMITTENTE_NON_RISOLTO,DATO_ERRATO,NULL,NULL
 E_PREV_GIA_IN_COMMESSA,CONFLITTO_STATO,NULL,NULL
 E_PREV_NESSUNA_RIGA,DATO_ERRATO,NULL,NULL
@@ -488,7 +488,7 @@ E_RESET_LOTTO_VALIDATION,DATO_ERRATO,NULL,NULL
 E_RESET_PASSWORD,DATO_ERRATO,NULL,NULL
 E_RESO_ANNULLO_CON_RICONSEGNE,CONFLITTO_STATO,NULL,NULL
 E_RESO_DDT_NON_CONSEGNATO,CONFLITTO_STATO,NULL,"Guard DB sorgente reso (trgfn_resi_guard_ddt_consegnato, a10 INSERT): · il reso richiede il DDT sorgente in CONSEGNATO. Il service ha il · guard gemello parlante (crea_reso); questo copre le scritture non-BE."
-E_RESO_EMITTENTE_BA_INCOERENTE,DATO_ERRATO,NULL,"Guard emittente<->BA sul reso (trgfn_resi_guard_emittente_ba, z10)."
+E_RESO_EMITTENTE_BA_INCOERENTE,DATO_ERRATO,NULL,"Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6."
 E_RESO_NESSUNA_RICONSEGNA_PENDENTE,CONFLITTO_STATO,NULL,NULL
 E_RESO_NON_CONFERMATO,CONFLITTO_STATO,NULL,fn_genera_ddt_riconsegna: reso non CONFERMATO / nessuna copertura · residua da ri-spedire.
 E_RESO_NOT_FOUND,NON_TROVATO,NULL,Resi di vendita (motore resi su DDT: CRUD + conferma/annullo + · ri-consegna). Famiglia speculare a E_DDT_*. I codici dei guard/fn DB · (messaggi_errore 530-541) passano via regex in · resi_service._db_errors: registrati qui per fissare status/ui_action · lato FE (il messaggio parlante DB vince su user_message).
@@ -688,3 +688,10 @@ TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO,DATO_ERRATO,2026-08-05,NULL
 TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER,DATO_ERRATO,2026-08-05,NULL
 TEMPLATE_FLUSSO_PROIEZIONE_STEP_DOMINIO,DATO_ERRATO,2026-08-05,NULL
 W_TXID_NOT_REGISTERED,AVVISO,NULL,<- W_TXID_NOT_REGISTERED  (vivo)
+E_TRIGGER_ARGOMENTI_INVALIDI,TECNICO,NULL,"Trigger montato con argomenti sbagliati (TG_NARGS, o TG_ARGV che nomina colonne non castabili). E' un difetto di MONTAGGIO: se ne accorge chi installa il trigger, mai l'operatore. Scorporato da E_ERRORE_PARAMETRI il 2026-08-08 (3 punti su 13 che dicevano 400 dove serve 500). Precedente: E_ATTIVO_REQUIRE."
+E_FONDO_NON_CORRISPONDE_SORGENTE,DATO_ERRATO,NULL,"Guard trgfn_fondi_source_guard_importo: il fondo non assomiglia alla fattura da cui nasce (segno opposto al totale della sorgente, oppure superiore in valore assoluto). NON vieta il fondo NEGATIVO, che e' legittimo: le due soglie del minimo formano una banda che contiene lo zero, e il capo inferiore serve a riportare avanti i CREDITI. Vieta il fondo che racconta un'altra fattura: 8 euro di documento e -32 di fondo, prodotti da una riga contabile piu' grande della fattura (la quadratura sulle righe contabili e' la slice 2 del cantiere incassi, oggi non esiste). DATO_ERRATO e non CONFLITTO_STATO: non e' lo stato a impedirlo, e' il valore a essere sbagliato. Piano: brief-db-fondo-fattura-ricalcolo-e-governo D-3(a)."
+E_FONDO_SOGLIE_INCOMPLETE,DATO_ERRATO,NULL,"Violazione di chk_emittenti_fiscali_utilities_soglie_coppia: una sola delle due soglie del minimo e' valorizzata. Entrambe vuote = meccanismo del fondo fattura spento (ammesso), entrambe piene = attivo sulla banda, una sola = errore. Nasce da un vincolo di tabella, quindi lo solleva il BACKEND traducendo il constraint con map_integrity_error, non una funzione PL/pgSQL. Piano: brief-db-fondo-fattura-ricalcolo-e-governo D-0."
+E_FONDO_ATTO_IMMUTABILE,CONFLITTO_STATO,NULL,"Lock di colonna su vendite.fatture_fondi_fattura_source: importo, fattura_sorgente_id, tipo_fondo_fattura_id e origine sono immutabili dopo l'INSERT. E' la traduzione strutturale di «il fondo di una fattura definitiva non si ricalcola»: fra una regola da ricordare e una che il database non lascia infrangere si sceglie la seconda. Restano modificabili le colonne del ciclo di vita (stato, assegnazione, motivo). CONFLITTO_STATO e non NON_PERMESSO: non e' un diritto che manca, e' l'atto che e' gia' compiuto. Piano: brief-db-fondo-fattura-ricalcolo-e-governo D-6."
+E_FONDO_STATO_NON_AMMESSO,CONFLITTO_STATO,NULL,"Guard trgfn_fondi_source_guard_transizione: transizione fuori dalla matrice degli stati del fondo (DISPONIBILE <-> ASSEGNATO, entrambi verso ANNULLATO, ANNULLATO terminale). ANNULLATO e' terminale di proposito: riaprire un fondo annullato rimetterebbe in gioco denaro che una persona o una regola aveva tolto dal tavolo. Piano: brief-db-fondo-fattura-ricalcolo-e-governo D-7."
+E_FONDO_MOTIVO_OBBLIGATORIO,DATO_ERRATO,NULL,"Violazione di chk_fondi_source_motivo_obbligatorio: manca il motivo su un atto straordinario (origine MANUALE oppure stato ANNULLATO). Nasce da un vincolo di tabella, quindi lo solleva il BACKEND traducendo il constraint con map_integrity_error, non una funzione PL/pgSQL. Il campo da dichiarare al client e' `motivo`. Piano: brief-db-fondo-fattura-ricalcolo-e-governo D-5."
+E_FATTURAZIONE_MIRATA_TRONCATA,NON_ESEGUIBILE,NULL,"Emissione mirata la cui discovery tocca il tetto delle corsie: · la richiesta e' nominale, quindi un troncamento e' una richiesta · senza risposta, non un successo parziale."

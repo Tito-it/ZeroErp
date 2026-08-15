@@ -28,7 +28,7 @@ import Message from 'primevue/message'
 
 const { t } = useI18n()
 const store = useUtilitiesTipiRuoloStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const isReadonly = useInjectReadonly()
 
 const props = defineProps({
@@ -199,7 +199,9 @@ function close() {
               </div>
               <div class="form-field">
                 <label>{{ t('common.attivo') }}</label>
-                <ToggleSwitch v-model="form.attivo" :disabled="isReadOnlyEffective" />
+                <ToggleSwitch v-model="form.attivo" :disabled="isReadOnlyEffective"
+                  :invalid="campiErrati.includes('attivo')"
+                />
               </div>
               <Message v-if="isEdit" severity="info" :closable="false">
                 {{ t('amministrazione.matrice_utilities_ruoli.fk_immutable_hint') }}

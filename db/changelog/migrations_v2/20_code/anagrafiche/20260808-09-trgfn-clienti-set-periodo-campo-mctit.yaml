@@ -1,0 +1,159 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Le date del periodo cliente portano il nome del campo — schermata clienti
+#   Canale: 20260808-04/-05 · Lotti precedenti: -06 (soggetti), -07 (CF/P.IVA)
+#   Piano: docs/it/dev/work-done/piano-db-classe-codici-errore.md §5.8
+#
+# ── SI AFFETTA PER SCHERMATA, NON PER SCHEMA ───────────────────────────
+#   Lezione del lotto precedente: `fn_validate_cf_piva_it` non era nei 67 punti
+#   di `anagrafiche` perche' vive in `script`, e affettare per schema aveva
+#   spezzato in due un'unica azione dell'operatore. Da qui in avanti la fetta e'
+#   la SCHERMATA: si prendono tutte le guardie che scattano su quell'azione,
+#   ovunque vivano, e la fetta e' finita quando la schermata e' coperta.
+#
+# # ── ⚠️ CORRETTO MA OGGI INERTE, E VA DETTO PRIMA ───────────────────────
+#   `data_attivazione` e `data_chiusura` sono colonne vere di
+#   `anagrafiche.clienti`, ma nel `ClienteDrawer.vue` sono mostrate con
+#   `<InputText ... disabled>`: non si compilano li'. Quindi **il bordo rosso
+#   NON si accendera'**, e non e' un difetto da segnalare.
+#
+#   Si fa lo stesso perche' l'informazione e' vera a prescindere da come e'
+#   fatta la pagina oggi, costa una riga, e il giorno in cui quelle date
+#   diventano modificabili funziona senza che nessuno se lo ricordi. E' la
+#   stessa regola che il BE ha scritto per il caso «il service rinomina»:
+#   **inerte, non sbagliato**.
+#
+#   ⚠️ Chi legge questo changeSet e prova ad accendere il campo NON trovi un
+#   bug: il pezzo che manca e' lato pagina, non qui.
+#
+# ── ⚠️ COME E' STATO PRODOTTO ──────────────────────────────────────────
+#   `pg_get_functiondef` della funzione viva + sostituzione ancorata sulla
+#   PRIMA CHIAVE del contesto, applicata da script, diff verificato:
+#   **2 righe aggiunte, 0 rimosse.** Nessuna trascrizione a mano — sono guard
+#   di integrita', e una svista non si vedrebbe in review.
+#
+#   ⚠️ L'ancora e' la chiave del contesto e NON il codice errore: nel lotto -07
+#   due punti condividevano `E_PIVA_NON_VALIDA` ma erano campi diversi, e
+#   ancorare sul codice avrebbe acceso quello sbagliato. **Il codice dice cosa
+#   e' andato storto, il contesto dice dove.**
+#
+# ── NOTE DI CASA ────────────────────────────────────────────────────────
+#   · `;` dopo `$function$` aggiunto (`pg_get_functiondef` non ce l'ha).
+#   · Proprietario `titodb`, che e' chi migra; non SECURITY DEFINER, non nel
+#     registro `dbops.sec_functions_owner`. Nessun prestito di proprieta'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/anagrafiche/20260808-09-trgfn-clienti-set-periodo-campo-mctit.yaml
+
+    - changeSet:
+          id: 20260808-09-trgfn-clienti-set-periodo-campo
+          author: mctit
+          runOnChange: false
+          failOnError: true
+          comment: >
+              data_chiusura e data_attivazione viaggiano nel canale COLUMN. ⚠️ Oggi il ClienteDrawer mostra quelle date disabilitate, quindi il bordo non si accende: informazione corretta ma inerte, voluta. Additivo: 2 righe, diff verificato.
+          preConditions:
+              - onFail: HALT
+              - sqlCheck:
+                    expectedResult: 1
+                    sql: |
+                        SELECT count(*) FROM pg_proc p
+                          JOIN pg_namespace n ON n.oid = p.pronamespace
+                         WHERE n.nspname = 'anagrafiche'
+                           AND p.proname = 'trgfn_clienti_set_periodo'
+                           AND p.prosrc NOT LIKE '%''campo''%'
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE FUNCTION anagrafiche.trgfn_clienti_set_periodo()
+                         RETURNS trigger
+                         LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                        fine_esclusiva DATE;
+                        v_codice_stato config.stati_cliente.codice_interno%TYPE;
+                        BEGIN
+                        -- Trigger function: normalizza "periodo" = [data_attivazione, data_chiusura)  
+                        -- Inclusività della data_chiusura: se valorizzata, usiamo come estremo esclusivo
+
+                        -- recupero codice interno stato cliente
+                            SELECT sc.codice_interno
+                            INTO v_codice_stato
+                            FROM config.stati_cliente sc
+                            WHERE sc.id = NEW.stato_cliente_id;
+
+
+                        -- controlli di coerenza date in base allo stato cliente
+
+                            -- in caso di annullamento, azzero date e periodo                   
+                            IF v_codice_stato = 'AN' THEN
+                                -- annullato: nessuna data, nessun periodo
+                                NEW.data_attivazione := NULL;
+                                NEW.data_chiusura    := NULL;
+                                NEW.periodo          := NULL;
+                                RETURN NEW;
+                            END IF;
+
+                            -- in caso di chiusura, data_chiusura deve essere valorizzata 
+                            -- e >= data_attivazione
+                            IF v_codice_stato = 'CH' and NEW.data_attivazione IS NOT NULL THEN
+                                IF NEW.data_chiusura < NEW.data_attivazione THEN
+
+                                    PERFORM script.fn_log_and_raise_error(
+                                                  'CLIENTI',
+                                                  'anagrafiche.trgfn_clienti_set_periodo',
+                                                  'E_DATA_CHIUSURA',
+                                                  jsonb_build_object(
+                                                      'campo', 'data_chiusura',
+                                                      'data_chiusura', NEW.data_chiusura,
+                                                      'data_attivazione', NEW.data_attivazione,
+                                                      'cliente_id', NEW.id
+                                                  ),
+                                                  new.tx_id,
+                                                  NEW.data_chiusura::text, NEW.data_attivazione::text, 
+                                                  NEW.id::text
+                                              );   
+                                END IF;
+                            END IF;
+
+                            -- in caso di attivazione, data_attivazione deve essere valorizzata
+                            IF v_codice_stato = 'AT' and NEW.data_attivazione IS NULL THEN
+
+                                PERFORM script.fn_log_and_raise_error(
+                                                  'CLIENTI',
+                                                  'anagrafiche.trgfn_clienti_set_periodo',
+                                                  'E_DATA_APERTURA',
+                                                  jsonb_build_object(
+                                                      'campo', 'data_attivazione',
+                                                      'cliente_id', NEW.id
+                                                  ),
+                                                  new.tx_id,
+                                                  NEW.id::text
+                                              );   
+                            END IF;
+
+                        -- calcolo periodo [data_attivazione, data_chiusura)
+                        fine_esclusiva := CASE
+                            WHEN NEW.data_chiusura IS NULL THEN 'infinity'::date
+                            ELSE NEW.data_chiusura 
+                        END;
+
+                        IF NEW.data_attivazione IS NOT NULL THEN
+                            NEW.periodo := daterange(NEW.data_attivazione, fine_esclusiva, '[)');
+                        ELSE
+                            NEW.periodo := NULL;
+                        END IF;
+
+                        RETURN NEW;
+                        END
+                        $function$;

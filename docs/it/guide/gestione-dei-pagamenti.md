@@ -157,6 +157,14 @@ Due flag booleani distinguono i centri speciali:
 
 Un centro non puo essere contemporaneamente di compensazione e di fondo fattura.
 
+> ⚠️ **Questi due centri non sono cassa, e chi misura gli incassi deve saperlo.**
+> Un movimento su `is_fondo_fattura` o `is_compensazione` non e denaro arrivato:
+> e denaro **spostato** da un documento a un altro. Per la domanda «questa
+> fattura e ancora da pagare?» valgono tutti i movimenti — il trasferimento la
+> salda davvero. Per la domanda «quanto e **entrato**?» quei centri vanno
+> **esclusi**, altrimenti si conta come incasso qualcosa che non e mai transitato
+> da una banca. E i due flag esistono anche per questo.
+
 Da un punto di vista tecnico:
 
 | Colonna            | Tipo            | Nullable | Descrizione                                                |
@@ -414,9 +422,41 @@ Da un punto di vista tecnico:
 
 ## Fondi fattura: `fatture_fondi_fattura_source`
 
-Il fondo fattura e un meccanismo automatico per gestire minimi e riaddebiti: quando una fattura genera un fondo (es. importo minimo non raggiunto), questo viene registrato come sorgente disponibile e poi applicato su una fattura figlia.
+Ci sono documenti che non conviene incassare da soli: una bolletta da pochi euro costa piu di quanto vale mandarla e riscuoterla, e un piccolo credito verso il cliente non giustifica un bonifico di rimborso. In questi casi l'importo non si perde e non si insegue: **si riporta sulla fattura successiva**. Quel riporto e il **fondo fattura**.
 
 La tabella vive nello schema `vendite` (non `pagamenti`) perche e strettamente legata al ciclo di fatturazione, ma il suo effetto si propaga nel dominio contabile tramite la sincronizzazione su testate e righe.
+
+### Quando una fattura diventa "di minimo": le due soglie
+
+A decidere quali documenti si riportano avanti sono **due soglie**, configurate
+per ogni coppia emittente x utility su
+[anagrafiche.emittenti_fiscali_utilities](/dbzero/anagrafiche/tabelle/emittenti_fiscali_utilities)
+(`minimo_soglia_max` e `minimo_soglia_min`). Non sono "un minimo e un massimo"
+nel senso comune: sono i due capi di una fascia **che passa per lo zero**.
+
+Con una configurazione da +10 e -500 euro:
+
+| Totale della fattura | Che cosa succede |
+| --- | --- |
+| **sopra +10 €** | il cliente paga normalmente. Nessun fondo |
+| **fra +10 € e 0** | troppo piccola per essere incassata da sola → si riporta come **addebito** sulla fattura dopo |
+| **fra 0 e -500 €** | credito troppo piccolo per un rimborso → si riporta come **accredito** sulla fattura dopo |
+| **sotto -500 €** | credito importante: entra nel processo di **rimborso**, non nel fondo |
+
+> ⚠️ **Un fondo puo quindi essere negativo, ed e normale.** Meta della fascia
+> serve proprio a riportare avanti dei crediti — e non e una possibilita
+> aggiunta dopo: il catalogo delle tipologie
+> ([tipi_fondi_fattura](/dbzero/vendite/tabelle/tipi_fondi_fattura)) parla di
+> "addebiti/**accrediti**" fin dall'inizio.
+>
+> ⚠️ **Se le soglie non sono configurate, il meccanismo e spento**: nessuna
+> fattura diventa di minimo e nessun fondo viene creato. E la configurazione va
+> messa **completa**: valorizzarne una sola e un errore, non una mezza
+> attivazione.
+
+Il flag `minimo` sulla fattura non lo imposta una persona: lo **ricalcola**
+`vendite.fn_ricalcola_totali_fattura` a ogni ricalcolo dei totali, confrontando
+il totale da pagare con le due soglie.
 
 Da un punto di vista tecnico:
 
@@ -447,7 +487,21 @@ Da un punto di vista tecnico:
 
 Il reset centralizzato in `vendite.fn_reset_fondi_fattura()` riporta i fondi `ASSEGNATO` a `DISPONIBILE` rimuovendo il `fattura_figlia_id`.
 
-> Documentazione dettagliata: [vendite.fatture_fondi_fattura_source](/dbzero/vendite/tabelle/fatture_fondi_fattura_source)
+> ⚠️ **Il reset e un'operazione tecnica sulla fattura figlia** (il ritorno di un
+> lotto in bozza), **non una reazione ai pagamenti**: nessun incasso riapre o
+> chiude un fondo da solo.
+>
+> 🟠 **Due cose stanno per cambiare** (piano in corso —
+> [brief-db-fondo-fattura…](/dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo) §8):
+>
+> * oggi il fondo di una fattura non ancora assegnato viene **riallineato** dai
+>   giri di fatturazione successivi. Diventera fisso: **una fattura definitiva ha
+>   un fondo definitivo**, che non si ricalcola piu;
+> * oggi il passaggio ad `ANNULLATO` per "documento sorgente gia saldato"
+>   avviene **da solo**. Sparira: se nel frattempo la fattura di origine e stata
+>   pagata, il fondo semplicemente **non viene applicato** e resta da guardare.
+
+Documentazione dettagliata: [vendite.fatture_fondi_fattura_source](/dbzero/vendite/tabelle/fatture_fondi_fattura_source)
 
 ---
 

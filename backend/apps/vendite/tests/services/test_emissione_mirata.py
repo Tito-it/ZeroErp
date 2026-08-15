@@ -29,6 +29,12 @@
 #  14) driver: l'esito espone la LISTA dei lotti prodotti (non il primo)
 #  15) handler: payload con gruppi → corsia mirata; senza → differita
 #  16) handler: `lotti` sopravvive alla compattazione del result
+#  ⚠️ I test 17-19 (`gruppi_non_coperti` misurato alla discovery) sono stati
+#     RIMOSSI il 2026-08-15: quella misura era una PREVISIONE e il driver non
+#     la fa piu'. Il «chi non e' stato servito» e' ora un CONSUNTIVO
+#     (`fn_esito_gruppi_giro` sui lotti prodotti) e vive nell'handler —
+#     presidiato in test_fatturazione_giro_handler. Togliere i test insieme
+#     alla funzione, non lasciarli a fotografare un meccanismo che non c'e'.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -51,21 +57,15 @@ from apps.vendite.services.fatturazione_driver_service import (
 )
 from apps.vendite.services.fatturazione_giro_handler import fatturazione_giro_handler
 from apps.vendite.services.pipeline_runner import LottoPipelineParams, LottoPipelineRunner
+# Fixture lane condiviso (regola del 2): una sede sola per la forma di
+# list_emittibili_lane.
+from apps.vendite.tests._helpers.lane_fixture import lane as _lane
 
 _SVC = "apps.vendite.services.fatturazione_driver_service"
 _GIRO = f"{_SVC}.esegui_giro_fatturazione"
 _E = "E_TEST"
+_REPO = "apps.vendite.db.commesse_repository.CommesseRepository"
 
-
-# Scopo: helper lane come da CommesseRepository.list_emittibili_lane.
-def _lane(em=1, *, tipo_doc=1, utility=9, comp=date(2026, 6, 1), tot=1):
-    return {
-        "emittente_soggetto_ruolo_id": em,
-        "tipo_doc_fiscale_id": tipo_doc,
-        "utility_id": utility,
-        "competenza_mese": comp,
-        "total_candidate": tot,
-    }
 
 
 class ParseGruppiTests(TestCase):
@@ -250,11 +250,16 @@ class GiroHandlerMirataTests(SimpleTestCase):
     #     produce lotti fallisce con la diagnosi del perimetro
     #     (E_FATTURAZIONE_GIRO_NESSUN_LOTTO, test in
     #     test_fatturazione_giro_handler) — qui si verifica solo l'instradamento.
+    # `_REPO` mockato: con `lotti` valorizzati l'handler chiede al DB il
+    # CONSUNTIVO per gruppo (fn_esito_gruppi_giro) — qui si verifica solo
+    # l'instradamento della corsia, non il consuntivo.
+    @patch(_REPO)
     @patch(_GIRO)
-    def test_payload_con_gruppi_usa_corsia_mirata(self, mock_giro):
+    def test_payload_con_gruppi_usa_corsia_mirata(self, mock_giro, mock_repo):
         mock_giro.return_value = {
             "lane": 1, "esiti": [], "lotti": [{"lotto_id": 7}],
         }
+        mock_repo.return_value.esito_gruppi_giro.return_value = []
         fatturazione_giro_handler(
             {"competenza_mese": "2026-06-15", "gruppi": ["PREVENTIVO:a"]},
         )
@@ -273,8 +278,10 @@ class GiroHandlerMirataTests(SimpleTestCase):
 
     # 16) La compattazione del result toglie `esiti` (gonfierebbe il jsonb) ma
     #     NON `lotti`: senza, il FE non saprebbe dove mandare l'operatore.
+    @patch(_REPO)
     @patch(_GIRO)
-    def test_result_compatto_conserva_i_lotti(self, mock_giro):
+    def test_result_compatto_conserva_i_lotti(self, mock_giro, mock_repo):
+        mock_repo.return_value.esito_gruppi_giro.return_value = []
         mock_giro.return_value = {
             "lane": 1,
             "esiti": [{"lotto_id": 11, "ok": True}],

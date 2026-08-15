@@ -7,8 +7,8 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # `dbops.vw_codici_errore_forme_condizione` — la misura degli accumulatori
-#   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (D-10)
-#   Guida: docs/it/dev/work-in-progress/brief-db-be-classe-codici-errore.md §9.2 (D24)
+#   Piano: docs/it/dev/work-done/piano-db-classe-codici-errore.md (D-10)
+#   Guida: docs/it/dev/work-done/brief-db-be-classe-codici-errore.md §9.2 (D24)
 #   Parente: dbops.vw_codici_errore_da_dichiarare · scripts/sql/check_messaggio_vs_condizione.sql
 #
 # ── COSA MISURA ────────────────────────────────────────────────────────

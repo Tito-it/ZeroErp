@@ -166,5 +166,5 @@ controllo minimo che rende l'errore rumoroso:
 
 - Standard frontend: [frontend-standards.md](frontend-standards.md)
 - Migrazione in corso verso questo standard:
-  [brief-i18n-radici-uniformi.md](../work-in-progress/brief-i18n-radici-uniformi.md)
+  [brief-i18n-radici-uniformi.md](../work-done/brief-i18n-radici-uniformi.md)
 - Locales: `frontend/src/locales/{it,en}.json`

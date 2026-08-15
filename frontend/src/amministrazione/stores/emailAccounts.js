@@ -2,6 +2,7 @@
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
 import {
   listEmailAccounts,
   getEmailAccount,
@@ -14,9 +15,6 @@ import { TAB_ENTITIES } from '../../core/constants'
 export const useEmailAccountsStore = defineStore('amm-email-accounts', () => {
   const { emitDataChanged } = useTabEvents()
 
-  const items = ref([])
-  const totalRecords = ref(0)
-  const loading = ref(false)
   const currentAccount = ref(null)
   const loadingDetail = ref(false)
 
@@ -28,11 +26,14 @@ export const useEmailAccountsStore = defineStore('amm-email-accounts', () => {
     order_dir: 'asc'
   })
 
-  async function fetchList() {
-    loading.value = true
-    try {
+  // Lista via BB condiviso (migrazione 2026-08-10): la guardia di versione
+  // anti-race che qui mancava. `alwaysFetch` conserva il comportamento: questa
+  // lista si e' sempre caricata anche senza filtri.
+  const { items, totalRecords, loading, fetchList } = useListaEmptyStateFetch({
+    filters,
+    alwaysFetch: true,
+    buildParams: (f, searchTerm) => {
       const params = {}
-      const f = filters.value
       if (f.search) params.search = f.search
       params.limit = f.limit
       params.offset = f.offset
@@ -40,13 +41,10 @@ export const useEmailAccountsStore = defineStore('amm-email-accounts', () => {
         params.order_by = f.order_by
         params.order_dir = f.order_dir || 'asc'
       }
-      const res = await listEmailAccounts(params)
-      items.value = res.data.data.results
-      totalRecords.value = res.data.data.count
-    } finally {
-      loading.value = false
-    }
-  }
+      return params
+    },
+    fetchPage: listEmailAccounts,
+  })
 
   async function fetchDetail(id) {
     loadingDetail.value = true

@@ -1,0 +1,428 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `E_ERRORE_PARAMETRI`: i 4 punti che dicevano il falso vanno via
+#   Rilievo: team BE, §10.1 del piano BE — trovato dalla misura, non da una persona
+#   Guida: brief-db-be-classe-codici-errore.md §9.3 · Piano: piano-db §5.7
+#   Codice nuovo: E_TRIGGER_ARGOMENTI_INVALIDI (seed CSV, stesso giorno)
+#
+# ── IL DIFETTO, IN UNA RIGA ────────────────────────────────────────────
+#   `E_ERRORE_PARAMETRI` e' `DATO_ERRATO`, cioe' **400: hai sbagliato tu**. Su 13
+#   punti che lo sollevano, **9 sono guardie di parametro** e la classe e' giusta.
+#   Gli altri **4 non c'entrano niente con quello che l'operatore ha scritto**:
+#
+#     trgfn_delete_block_by_guc              TG_NARGS < 1        trigger montato male
+#     trgfn_guard_utility_tipo_ruolo_by_cols TG_NARGS <> 2       trigger montato male
+#     trgfn_guard_utility_tipo_ruolo_by_cols WHEN OTHERS (cast)  TG_ARGV nomina colonne
+#                                                                che non sono ID
+#     fn_subentro_cliente                    v_stato_chiuso_id   manca una riga in
+#                                            IS NULL             config.stati_cliente
+#
+#   ⚠️ Su quei quattro l'operatore riceve **400 «hai sbagliato tu»** e viene
+#   mandato a cercare un campo che non esiste. Nei primi tre puo' rimediare solo
+#   chi ha installato il trigger; nel quarto solo chi configura il sistema.
+#
+# ── PERCHE' SI SPEZZA E NON SI RICLASSIFICA ────────────────────────────
+#   Riclassificare tutto `E_ERRORE_PARAMETRI` a TECNICO romperebbe i 9 punti
+#   giusti. I significati chiedono **reazioni diverse** — «correggi quel campo»
+#   contro «chiama chi ha configurato il sistema» — ed e' il criterio di
+#   api.md §Tassonomia.
+#
+#   ⭐ I tre precedenti erano gia' decisi in casa, il che rende il verdetto
+#   meccanico invece che opinabile:
+#     · argomenti del trigger sbagliati  -> `E_ATTIVO_REQUIRE` e' 500 per questo;
+#     · `EXCEPTION WHEN OTHERS`          -> `E_SNAPSHOT_ID_NOT_FOUND` e' stato
+#                                           spostato a 500 nel cantiere del terzo lato;
+#     · lookup di configurazione a vuoto -> `E_REGOLA_FATTURAZIONE_MANCANTE` e
+#                                           `E_PIPELINE_NOT_FOUND`, criterio
+#                                           «chi puo' rimediare».
+#
+# ── UN CODICE NUOVO E UNO RIUSATO ──────────────────────────────────────
+#   · **`E_TRIGGER_ARGOMENTI_INVALIDI`** (TECNICO) — nuovo, per i tre casi di
+#     montaggio. Aggiunto ai due CSV di seed (`codici_errore`, `messaggi_errore`
+#     id 902): **append al CSV, nessun loader nuovo** — i loader runOnChange di
+#     `20260614-08` ripescano i file;
+#   · **`E_CONFIG_MANCANTE`** (TECNICO, id 205, «Configurazione mancante: %s») —
+#     esisteva gia' ed e' esattamente il caso del quarto punto. ⚠️ Cercato prima
+#     di inventarne uno: un codice nuovo dove ce n'e' gia' uno buono e' il modo
+#     in cui il catalogo torna a gonfiarsi.
+#
+#   Entrambi hanno **un solo `%s`**, e tutti e quattro i punti passano un solo
+#   valore: verificato, altrimenti `format()` fuori da un EXCEPTION trasforma
+#   l'errore di dominio in «too few arguments for format()».
+#
+# ── ⚠️ COSA CAMBIA PER LA BASELINE B-7 ─────────────────────────────────
+#   Questo changeSet **sposta punti fra codici**, quindi le famiglie cambiano:
+#   `E_ERRORE_PARAMETRI` perde `ECCEZIONE` e resta con le sole guardie di
+#   parametro. La baseline `db/baseline-codici-errore-famiglie.tsv` va rigenerata
+#   **dopo** il migrate, ed e' il primo uso vero del presidio nato oggi: la riga
+#   che cambia e' la prova che il codice ha cambiato significato — qui in meglio.
+#
+# ── ⚠️ COME E' STATO PRODOTTO ──────────────────────────────────────────
+#   `pg_get_functiondef` delle tre funzioni + sostituzione del solo letterale del
+#   codice, ancorata su un marcatore **dentro al contesto di quel punto**
+#   (`'detail', 'Argomenti trigger mancanti'`, …) perche' due dei quattro
+#   stanno nella stessa funzione. Diff verificato: **4 righe cambiate in tutto,
+#   nessuna aggiunta o rimossa**. Nessuna trascrizione a mano.
+#
+#   Proprietarie `titodb` (chi migra), nessuna SECURITY DEFINER, nessuna nel
+#   registro `dbops.sec_functions_owner`: nessun prestito di proprieta'.
+#   `;` dopo ogni `$function$` aggiunto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/script/20260808-11-errore-parametri-scorpora-tecnici-mctit.yaml
+
+    - changeSet:
+          id: 20260808-11-errore-parametri-scorpora-tecnici
+          author: mctit
+          runOnChange: false
+          failOnError: true
+          comment: >
+              I 4 punti di E_ERRORE_PARAMETRI che non sono guardie di parametro passano a
+              TECNICO: tre a E_TRIGGER_ARGOMENTI_INVALIDI (nuovo) e uno a E_CONFIG_MANCANTE
+              (esistente). Prima l'operatore prendeva un 400 «hai sbagliato tu» per un
+              trigger montato male o una configurazione mancante. I 9 punti giusti non si toccano.
+          preConditions:
+              - onFail: HALT
+              # ⚠️ NON si puo' verificare qui che i codici siano a CATALOGO.
+              #   Questo changeSet sta in 20_code, e le fasi 00_schema + 20_code
+              #   girano PER INTERO prima di 80_data: al momento in cui gira, i
+              #   loader dei CSV non sono ancora passati e il codice nuovo non
+              #   c'e'. La prima stesura lo verificava e il migrate si e' fermato
+              #   con «Expected '1' got '0'».
+              #
+              #   ⚠️ E l'altra precondizione — E_CONFIG_MANCANTE gia' a catalogo —
+              #   era sbagliata allo stesso modo ma **e' passata**, perche' il DB
+              #   di sviluppo non e' ricostruito da zero e quel dato c'era da
+              #   prima. In CI, dove config.messaggi_errore nasce vuota, sarebbe
+              #   fallita anche quella. Un difetto che si vede solo sul database
+              #   ricostruito e' il peggiore da lasciare in giro.
+              #
+              #   Non e' un problema di sostanza: il corpo di una funzione
+              #   contiene il codice come LETTERALE, e non viene validato contro
+              #   il catalogo al CREATE. Deve esistere quando la funzione GIRA, e
+              #   a quel punto 80_data e' passata.
+              #
+              #   Si verifica quindi cio' che e' vero in 20_code: le tre funzioni
+              #   ci sono, e non hanno gia' il codice nuovo (idempotenza).
+              - sqlCheck:
+                    expectedResult: 3
+                    sql: |
+                        SELECT count(*) FROM pg_proc p
+                          JOIN pg_namespace n ON n.oid = p.pronamespace
+                         WHERE n.nspname = 'script'
+                           AND p.proname IN ('trgfn_delete_block_by_guc',
+                                             'trgfn_guard_utility_tipo_ruolo_by_cols',
+                                             'fn_subentro_cliente')
+              - sqlCheck:
+                    expectedResult: 0
+                    sql: |
+                        SELECT count(*) FROM pg_proc p
+                          JOIN pg_namespace n ON n.oid = p.pronamespace
+                         WHERE n.nspname = 'script'
+                           AND p.prosrc LIKE '%E_TRIGGER_ARGOMENTI_INVALIDI%'
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE FUNCTION script.trgfn_delete_block_by_guc()
+                         RETURNS trigger
+                         LANGUAGE plpgsql
+                        AS $function$
+                        BEGIN
+                            -- Guard: argomento trigger obbligatorio
+                            IF TG_NARGS < 1 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    TG_TABLE_SCHEMA,
+                                    TG_NAME,
+                                    'E_TRIGGER_ARGOMENTI_INVALIDI',
+                                    jsonb_build_object(
+                                        'detail', 'Argomenti trigger mancanti',
+                                        'expected', 'guc_key',
+                                        'found', TG_NARGS
+                                    ),
+                                    NULL::uuid,
+                                    concat('TG_ARGV[0] (guc_key) mancante per trigger ', TG_NAME)
+                                );
+                            END IF;
+
+                            -- Se la GUC e' abilitata → consente DELETE
+                            IF current_setting(TG_ARGV[0], true) = 'on' THEN
+                                RETURN OLD;
+                            END IF;
+
+                            -- Delete bloccata da policy
+                            PERFORM script.fn_log_and_raise_error(
+                                TG_TABLE_SCHEMA,
+                                TG_NAME,
+                                'E_DELETE_NOT_ALLOWED',
+                                jsonb_build_object(
+                                    'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                    'id', OLD.id
+                                ),
+                                NULL::uuid,
+                                TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                OLD.id::text
+                            );
+
+                            RETURN OLD;
+                        END;
+                        $function$;
+
+                        CREATE OR REPLACE FUNCTION script.trgfn_guard_utility_tipo_ruolo_by_cols()
+                         RETURNS trigger
+                         LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_utility_col        TEXT;
+                            v_soggetto_ruolo_col TEXT;
+                            v_utility_txt        TEXT;
+                            v_soggetto_ruolo_txt TEXT;
+                            v_utility_id         config.utilities.id%TYPE;
+                            v_soggetto_ruolo_id  anagrafiche.soggetti_ruoli.id%TYPE;
+                            v_tipo_ruolo_id      config.tipi_ruoli.id%TYPE;
+                        BEGIN
+                            -- Guard: argomenti trigger
+                            IF TG_NARGS <> 2 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'database',
+                                    'script.trgfn_guard_utility_tipo_ruolo_by_cols',
+                                    'E_TRIGGER_ARGOMENTI_INVALIDI',
+                                    jsonb_build_object(
+                                        'detail', 'Sono richiesti 2 argomenti trigger: utility_col, soggetto_ruolo_col',
+                                        'tg_nargs', TG_NARGS,
+                                        'trigger', TG_NAME
+                                    ),
+                                    NULL::uuid,
+                                    concat('Argomenti trigger non validi per ', TG_NAME, ': TG_NARGS=', TG_NARGS::text)
+                                );
+                            END IF;
+
+                            v_utility_col := TG_ARGV[0];
+                            v_soggetto_ruolo_col := TG_ARGV[1];
+
+                            -- Estrai valori dal record NEW via jsonb
+                            v_utility_txt := to_jsonb(NEW) ->> v_utility_col;
+                            v_soggetto_ruolo_txt := to_jsonb(NEW) ->> v_soggetto_ruolo_col;
+
+                            -- Se i valori non sono presenti non forziamo il controllo
+                            IF v_utility_txt IS NULL OR v_soggetto_ruolo_txt IS NULL THEN
+                                RETURN NEW;
+                            END IF;
+
+                            -- Cast a tipi numerici
+                            BEGIN
+                                v_utility_id := v_utility_txt::integer;
+                                v_soggetto_ruolo_id := v_soggetto_ruolo_txt::bigint;
+                            EXCEPTION
+                                WHEN OTHERS THEN
+                                    PERFORM script.fn_log_and_raise_error(
+                                        'database',
+                                        'script.trgfn_guard_utility_tipo_ruolo_by_cols',
+                                        'E_TRIGGER_ARGOMENTI_INVALIDI',
+                                        jsonb_build_object(
+                                            'detail', 'Valori colonna non castabili a ID',
+                                            'utility_col', v_utility_col,
+                                            'utility_value', v_utility_txt,
+                                            'soggetto_ruolo_col', v_soggetto_ruolo_col,
+                                            'soggetto_ruolo_value', v_soggetto_ruolo_txt
+                                        ),
+                                        NULL::uuid,
+                                        concat(
+                                            'Valori non validi per guard utility/tipo_ruolo: ',
+                                            v_utility_col, '=', coalesce(v_utility_txt, 'NULL'),
+                                            ', ',
+                                            v_soggetto_ruolo_col, '=', coalesce(v_soggetto_ruolo_txt, 'NULL')
+                                        )
+                                    );
+                            END;
+
+                            -- Recupera tipo_ruolo_id dal soggetto_ruolo
+                            SELECT sr.tipo_ruolo_id
+                              INTO v_tipo_ruolo_id
+                              FROM anagrafiche.soggetti_ruoli sr
+                             WHERE sr.id = v_soggetto_ruolo_id;
+
+                            IF v_tipo_ruolo_id IS NULL THEN
+                                -- Fix: E_GENERICO → E_CODICE
+                                PERFORM script.fn_log_and_raise_error(
+                                    'database',
+                                    'script.trgfn_guard_utility_tipo_ruolo_by_cols',
+                                    'E_CODICE',
+                                    jsonb_build_object(
+                                        'soggetto_ruolo_id', v_soggetto_ruolo_id,
+                                        'table', concat(TG_TABLE_SCHEMA, '.', TG_TABLE_NAME)
+                                    ),
+                                    NULL::uuid,
+                                    v_soggetto_ruolo_id::text, 'anagrafiche.soggetti_ruoli'
+                                );
+                            END IF;
+
+                            -- Delega validazione utility ↔ tipo_ruolo
+                            PERFORM script.fn_guard_utility_tipo_ruolo(
+                                p_utility_id    => v_utility_id,
+                                p_tipo_ruolo_id => v_tipo_ruolo_id,
+                                p_context       => concat(TG_TABLE_SCHEMA, '.', TG_TABLE_NAME, ' ', TG_OP)
+                            );
+
+                            RETURN NEW;
+                        END;
+                        $function$;
+
+                        CREATE OR REPLACE FUNCTION script.fn_subentro_cliente(p_pdp_id bigint, p_data_attivazione date)
+                         RETURNS bigint
+                         LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            --v_cliente_precedente_id bigint;
+                            --v_stato_chiuso_id       integer;
+                            --v_codice_chiuso         text := 'CH';
+                            v_cliente_precedente_id anagrafiche.clienti.id%TYPE;
+                            v_stato_chiuso_id       config.stati_cliente.id%TYPE;
+                            v_codice_chiuso         config.stati_cliente.codice_interno%TYPE := 'CH';  
+
+                        BEGIN
+                        -- ------------------------------------------------------------
+                        -- Funzione: script.fn_subentro_cliente
+                        --
+                        -- Scopo:
+                        --   - Dato un PDP e una data di attivazione del nuovo cliente,
+                        --     chiude (se esiste) il cliente precedente su quel PDP
+                        --     per evitare overlap del periodo commerciale.
+                        --
+                        --   - Logica:
+                        --       * Cerca il cliente più recente su p_pdp_id con:
+                        --           - stato_cliente.codice_interno <> 'AN'
+                        --           - data_attivazione NOT NULL
+                        --           - data_attivazione < p_data_attivazione
+                        --           - data_chiusura IS NULL oppure >= p_data_attivazione
+                        --       * Se trovato:
+                        --           - imposta data_chiusura = p_data_attivazione - 1 giorno
+                        --           - imposta stato_cliente a 'CH'
+                        --         (il trigger trg_clienti_set_periodo normalizzerà periodo)
+                        --
+                        --   - Ritorna:
+                        --       * id del cliente chiuso
+                        --       * NULL se nessun cliente da chiudere (primo cliente sul PDP)
+                        --
+                        -- NOTE:
+                        --   - Non crea la nuova istanza né il nuovo cliente: questo
+                        --     viene fatto dal frontend / servizio applicativo subito dopo.
+                        --   - Va tipicamente chiamata in transazione:
+                        --       1) SELECT script.fn_subentro_cliente(...)
+                        --       2) INSERT nuovo cliente sullo stesso PDP
+                        --     in modo da rispettare il vincolo ex_clienti_no_overlap_stesso_pdp.
+                        -- ------------------------------------------------------------
+
+
+
+                            ----------------------------------------------------------------
+                            -- Validazioni minime parametri
+                            ----------------------------------------------------------------
+                            IF p_pdp_id IS NULL THEN
+
+                                 PERFORM script.fn_log_and_raise_error(
+                                                  'database',
+                                                  'script.fn_subentro_cliente',
+                                                  'E_ERRORE_PARAMETRI',
+                                                  jsonb_build_object(
+                                                      'p_pdp_id non può essere NULL', 
+                                                      'indicare un valore valido'  
+                                                  ),
+                                                  NULL,
+                                                  'Non è stato fornito un valore per pdp_id'
+                                              );
+                            END IF;
+
+                            IF p_data_attivazione IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                                  'database',
+                                                  'script.fn_subentro_cliente',
+                                                  'E_ERRORE_PARAMETRI',
+                                                  jsonb_build_object(
+                                                      'fn_subentro_cliente: p_data_attivazione non può essere NULL', 
+                                                      'indicare un valore valido'  
+                                                  ),
+                                                  NULL,
+                                                  'Non è stato fornito un valore per data_attivazione'
+                                              );
+                            END IF;
+
+                            ----------------------------------------------------------------
+                            -- Recupero ID stato_cliente "CH" (Chiuso)
+                            ----------------------------------------------------------------
+                            SELECT sc.id
+                              INTO v_stato_chiuso_id
+                            FROM config.stati_cliente sc
+                            WHERE sc.codice_interno = v_codice_chiuso
+                            LIMIT 1;
+
+                            IF v_stato_chiuso_id IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                                  'database',
+                                                  'script.fn_subentro_cliente',
+                                                  'E_CONFIG_MANCANTE',
+                                                  jsonb_build_object(
+                                                          'codice id_cliente',
+                                                          v_codice_chiuso
+                                                  ),
+                                                  NULL,
+                                                  'stato_cliente con id_cliente' || v_codice_chiuso::text || ' non trovato'
+                                              );               
+                            END IF;
+
+                            ----------------------------------------------------------------
+                            -- Seleziono il cliente precedente da chiudere:
+                            --   - stesso PDP
+                            --   - non ANNULLATO
+                            --   - con data_attivazione < nuova data attivazione
+                            --   - con periodo ancora “aperto” rispetto alla nuova data
+                            --   - prendo il più recente (data_attivazione DESC, id DESC)
+                            ----------------------------------------------------------------
+                            SELECT c.id
+                              INTO v_cliente_precedente_id
+                            FROM anagrafiche.clienti c
+                            JOIN config.stati_cliente sc
+                                 ON sc.id = c.stato_cliente_id
+                            WHERE c.pdp_id = p_pdp_id
+                              AND sc.codice_interno <> 'AN'
+                              AND c.data_attivazione IS NOT NULL
+                              AND c.data_attivazione < p_data_attivazione
+                              AND (c.data_chiusura IS NULL OR c.data_chiusura >= p_data_attivazione)
+                            ORDER BY c.data_attivazione DESC,
+                                     c.id DESC
+                            FOR UPDATE
+                            LIMIT 1;
+
+                            ----------------------------------------------------------------
+                            -- Se non c'è nessun cliente da chiudere → primo cliente sul PDP
+                            ----------------------------------------------------------------
+                            IF v_cliente_precedente_id IS NULL THEN
+                                RETURN NULL;
+                            END IF;
+
+                            ----------------------------------------------------------------
+                            -- Chiusura del cliente precedente:
+                            --   - data_chiusura = p_data_attivazione - 1 giorno
+                            --   - stato_cliente  = CH
+                            --
+                            -- I trigger sulla tabella clienti si occupano di:
+                            --   - normalizzare periodo (trg_clienti_set_periodo)
+                            --   - aggiornare storico, stato PDP, ecc.
+                            ----------------------------------------------------------------
+                            UPDATE anagrafiche.clienti c
+                               SET data_chiusura   = p_data_attivazione - INTERVAL '1 day',
+                                   stato_cliente_id = v_stato_chiuso_id
+                             WHERE c.id = v_cliente_precedente_id;
+
+                            RETURN v_cliente_precedente_id;
+                        END;
+                        $function$;

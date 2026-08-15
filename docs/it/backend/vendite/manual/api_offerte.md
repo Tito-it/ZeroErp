@@ -28,7 +28,7 @@ conversioni semantiche.
   prezzo del contratto. Al push lo stato approvazione viene **copiato 1:1** sul
   contratto (non più NULL) — un override già autorizzato in offerta non va
   riapprovato. Vedi [API approvazioni prezzo](api_approvazioni_prezzo.md) e
-  [refactor-prezzi](../../dev/work-in-progress/refactor-prezzi.md).
+  [refactor-prezzi](../../../dev/work-done/refactor-prezzi.md).
 - **State machine asimmetrica** (decisione operativa): annullamento da noi
   solo prima dell'emissione; rifiuto cliente solo dopo l'emissione.
 

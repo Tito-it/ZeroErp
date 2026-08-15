@@ -82,7 +82,7 @@ import { SORGENTE_CODES } from '../../../documenti/constants'
 
 const { t, te } = useI18n()
 const store = useOfferteStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const { confirmAction } = useConfirmAction()
 const notify = useNotify()
 const parentReadonly = useInjectReadonly()
@@ -831,7 +831,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
             </template>
           </DrawerEntityHeader>
 
-          <DrawerActionsBar :actions="drawerActions" :info-key="detail?.nessuna_azione_key || ''">
+          <DrawerActionsBar :actions="drawerActions" :info-key="detail?.stato_info_key || ''">
             <template #suffix>
               <EntityPdfButton
                 :sorgente-code="SORGENTE_CODES.OFFERTA_COMMERCIALE"
@@ -982,6 +982,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
                   filter
                   :disabled="isReadonly"
                   @update:model-value="onListinoChange"
+                  :invalid="campiErrati.includes('listino_id')"
                 />
                 <small v-if="isEdit && detail?.listino_versione_codice"
                   class="text-color-secondary">
@@ -1011,6 +1012,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
                     :disabled="isReadonly"
                     :suffix="form.tipo_variazione_globale === 'PERCENTUALE' ? ' %' : ''"
                     @update:model-value="onValoreVariazioneChange"
+                    :invalid="campiErrati.includes('valore_variazione_globale')"
                   />
                 </div>
               </div>

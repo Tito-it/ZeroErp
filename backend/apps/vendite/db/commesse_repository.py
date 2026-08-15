@@ -22,6 +22,7 @@ from apps.vendite.types import (
     CommessaPushLogRow,
     CommessaStatoResult,
     GruppoDiagnosi,
+    GruppoEsitoGiro,
 )
 
 # Repository SQL: incapsula accesso DB per commesse, commesse_attivita e push log.
@@ -1142,12 +1143,17 @@ class CommesseRepository:
 
         `gruppi` (emissione mirata, A5): restituisce solo le terne dei gruppi
         richiesti. Senza, un giro mirato farebbe nascere un lotto VUOTO per ogni
-        altra terna del perimetro. None = nessuna restrizione."""
+        altra terna del perimetro. None = nessuna restrizione.
+
+        `gruppi_coperti` (rev DB 2026-08-15): per ogni terna, QUALI gruppi
+        fatturabili copre — chiavi da fn_build_gruppo_fatturabile_key, unica
+        fonte. Un gruppo multi-tipo-doc compare su più terne (G15)."""
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT emittente_soggetto_ruolo_id, tipo_doc_fiscale_id,
-                       utility_id, competenza_mese, total_candidate
+                       utility_id, competenza_mese, total_candidate,
+                       gruppi_coperti
                 FROM vendite.fn_list_emittibili_lane(
                     p_competenza_mese => %s,
                     p_billing_account_id => %s,
@@ -1169,25 +1175,45 @@ class CommesseRepository:
                     utility_id=int(row[2]),
                     competenza_mese=row[3],
                     total_candidate=int(row[4]),
+                    # text[] → list[str] (psycopg lo consegna gia' come str);
+                    # il NULL difensivo diventa lista vuota, mai None a valle.
+                    gruppi_coperti=list(row[5] or []),
                 )
                 for row in cursor.fetchall()
             ]
 
-    # Scopo: Spiega perche' i gruppi fatturabili richiesti NON sono entrati in
-    #        nessuna terna di `list_emittibili_lane`. Diagnostica, non decisione:
-    #        descrive i FATTI delle righe del gruppo (stato testata, conteggi per
-    #        stato riga, tipo doc, competenza) e lascia la classificazione al
-    #        service. L'ammissibilita' resta della sola `fn_list_emittibili_lane`
-    #        — qui non si riproduce il criterio, si racconta cosa c'e'.
+    # Scopo: Fotografia dei gruppi fatturabili richiesti — quante righe hanno,
+    #        in che stato sono, e in che stato e' la testata della commessa.
+    #        Diagnostica, non decisione: descrive i FATTI e lascia la
+    #        classificazione (la prosa) al service. L'ammissibilita' resta della
+    #        sola `fn_list_emittibili_lane`.
     #
     #        Nasce dal caso reale del 2026-08-03: un'emissione mirata su un
     #        ordine di giugno ha prodotto zero lotti in silenzio perche' la
     #        commessa era rimasta in BOZZA (non emittibile). L'operatore leggeva
     #        «nessun lotto prodotto» senza sapere che cosa lo bloccasse.
     #
-    #        Da chiamare SOLO quando il giro non ha emesso nulla: dopo
-    #        un'emissione riuscita le righe sono gia' EMESSA e la fotografia
-    #        descriverebbe lo stato di arrivo, non quello che ha impedito il giro.
+    #        🟢 Dal 2026-08-15 e' un WRAPPER su `vendite.fn_diagnostica_gruppi_fatturabili`
+    #        (changeSet `20260815-29`, brief emittibilita' §9.7 punto 3). Prima
+    #        erano ~90 righe di SQL qui dentro che riproducevano i filtri della
+    #        lane: era l'ultima copia della regola di emittibilita' fuori dal DB.
+    #
+    #        ⚠️ Due cambi di contratto, entrambi voluti (§9.7):
+    #        - la grana e' `(gruppo_key, commessa_id)`, non piu' `gruppo_key`.
+    #          La chiave di un documento sorgente NON contiene la commessa: se
+    #          lo stesso documento alimentasse due commesse, il vecchio
+    #          `bool_or(emittibile)` avrebbe detto «emittibile» perche' UNA lo
+    #          era, e la diagnosi sarebbe caduta in NON_DETERMINATO invece di
+    #          dire «commessa in BOZZA». Oggi quei casi sono zero: si chiude
+    #          perche' e' gratis a DB, non perche' e' successo;
+    #        - `n_senza_tipo_doc` non c'e' piu': dopo la validazione del CHECK
+    #          (`20260815-30`) una riga emittibile senza tipo documento non puo'
+    #          esistere, e un contatore che non puo' accendersi e' un ramo morto.
+    #
+    #        ⚠️ Chiamata dal giro VUOTO e dal giro PARZIALE (per i soli gruppi
+    #        non serviti). In entrambi i casi la fotografia regge; il vecchio
+    #        contratto diceva «solo a giro vuoto» ed era gia' infranto nello
+    #        stesso file (F6 del brief).
     #        `competenza_mese` e' lo stesso bound superiore passato alla discovery.
     def diagnostica_gruppi(
         self,
@@ -1199,92 +1225,81 @@ class CommesseRepository:
         if not chiavi:
             return []
         bound = None if competenza_mese is None else competenza_mese.replace(day=1)
-        # Parametri NOMINALI: `chiavi` e `bound` ricorrono piu' volte nella
-        # query, e una lista posizionale di ripetizioni e' il posto classico
-        # dove un riordino silenzioso scambia due filtri.
-        params = {"chiavi": chiavi, "bound": bound}
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                WITH richiesti AS (
-                    SELECT unnest(%(chiavi)s::text[]) AS gruppo_key
-                ), righe AS (
-                    SELECT vendite.fn_build_gruppo_fatturabile_key(
-                               ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id
-                           )                        AS gruppo_key,
-                           co.codice                AS commessa_codice,
-                           sc.codice_interno        AS stato_commessa,
-                           sc.emittibile            AS commessa_emittibile,
-                           ca.stato_emissione,
-                           ca.stato_approvazione,
-                           ca.tipo_doc_fiscale_id,
-                           ca.competenza_mese
-                      FROM vendite.commesse_attivita ca
-                      JOIN vendite.commesse co
-                        ON co.id = ca.commessa_id
-                      JOIN vendite.stati_commessa sc
-                        ON sc.id = co.stato_commessa_id
-                     WHERE vendite.fn_build_gruppo_fatturabile_key(
-                               ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id
-                           ) = ANY (%(chiavi)s::text[])
+                SELECT gruppo_key, commessa_id, commessa_codice,
+                       commessa_stato_codice_interno, commessa_stato_descrizione,
+                       commessa_emittibile,
+                       n_righe, n_emesse, n_annullate, n_rifiutate,
+                       n_non_approvate, n_fuori_competenza, n_pronte
+                FROM vendite.fn_diagnostica_gruppi_fatturabili(
+                    p_gruppi => %s::text[],
+                    p_competenza_mese => %s
                 )
-                SELECT r.gruppo_key,
-                       min(x.commessa_codice)                       AS commessa_codice,
-                       min(x.stato_commessa)                        AS stato_commessa,
-                       bool_or(x.commessa_emittibile)               AS commessa_emittibile,
-                       count(x.gruppo_key)                          AS n_righe,
-                       count(*) FILTER (
-                           WHERE x.stato_emissione = 'EMESSA')      AS n_emesse,
-                       count(*) FILTER (
-                           WHERE x.stato_emissione = 'ANNULLATA')   AS n_annullate,
-                       count(*) FILTER (
-                           WHERE x.stato_emissione = 'NON_EMESSA'
-                             AND x.stato_approvazione = 'RIFIUTATA')
-                                                                    AS n_rifiutate,
-                       count(*) FILTER (
-                           WHERE x.stato_emissione = 'NON_EMESSA'
-                             AND x.stato_approvazione NOT IN
-                                 ('APPROVATA', 'RIFIUTATA'))        AS n_non_approvate,
-                       count(*) FILTER (
-                           WHERE x.stato_emissione = 'NON_EMESSA'
-                             AND x.stato_approvazione = 'APPROVATA'
-                             AND x.tipo_doc_fiscale_id IS NULL)     AS n_senza_tipo_doc,
-                       count(*) FILTER (
-                           WHERE x.stato_emissione = 'NON_EMESSA'
-                             AND x.stato_approvazione = 'APPROVATA'
-                             AND x.tipo_doc_fiscale_id IS NOT NULL
-                             AND %(bound)s::date IS NOT NULL
-                             AND x.competenza_mese > %(bound)s::date)
-                                                                    AS n_fuori_competenza,
-                       count(*) FILTER (
-                           WHERE x.stato_emissione = 'NON_EMESSA'
-                             AND x.stato_approvazione = 'APPROVATA'
-                             AND x.tipo_doc_fiscale_id IS NOT NULL
-                             AND (%(bound)s::date IS NULL
-                                  OR x.competenza_mese <= %(bound)s::date))
-                                                                    AS n_pronte
-                  FROM richiesti r
-                  LEFT JOIN righe x
-                    ON x.gruppo_key = r.gruppo_key
-                 GROUP BY r.gruppo_key
-                 ORDER BY r.gruppo_key
                 """,
-                params,
+                [chiavi, bound],
             )
             return [
                 GruppoDiagnosi(
                     gruppo_key=row[0],
-                    commessa_codice=row[1],
-                    stato_commessa=row[2],
-                    commessa_emittibile=bool(row[3]) if row[3] is not None else None,
-                    n_righe=int(row[4]),
-                    n_emesse=int(row[5]),
-                    n_annullate=int(row[6]),
-                    n_rifiutate=int(row[7]),
-                    n_non_approvate=int(row[8]),
-                    n_senza_tipo_doc=int(row[9]),
-                    n_fuori_competenza=int(row[10]),
-                    n_pronte=int(row[11]),
+                    commessa_id=None if row[1] is None else int(row[1]),
+                    commessa_codice=row[2],
+                    commessa_stato_codice_interno=row[3],
+                    commessa_stato_descrizione=row[4],
+                    commessa_emittibile=bool(row[5]) if row[5] is not None else None,
+                    n_righe=int(row[6]),
+                    n_emesse=int(row[7]),
+                    n_annullate=int(row[8]),
+                    n_rifiutate=int(row[9]),
+                    n_non_approvate=int(row[10]),
+                    n_fuori_competenza=int(row[11]),
+                    n_pronte=int(row[12]),
+                )
+                for row in cursor.fetchall()
+            ]
+
+    # Scopo: CONSUNTIVO di un giro di fatturazione — quali gruppi fatturabili
+    #        hanno prodotto righe fatturate davvero, quali no, e quali sono
+    #        stati fatturati da un altro giro. Wrapper su
+    #        `vendite.fn_esito_gruppi_giro` (changeSet `20260815-27`, brief
+    #        emittibilita' §9.7 punto 1).
+    #
+    #        ⚠️ Prende SOLO i lotti prodotti, e non e' una svista: i gruppi
+    #        RICHIESTI sono gia' persistiti su `fatturazione_lotti_gruppi` (il
+    #        runner ci scrive l'intera tupla su ogni lotto del giro), quindi
+    #        richiesti e serviti sono ENTRAMBI misurati dalla stessa funzione.
+    #        Un parametro «gruppi richiesti» avrebbe riaperto la porta a
+    #        passare la PREVISIONE (`gruppi_coperti` della discovery) al posto
+    #        della misura — che e' esattamente il difetto che questo sostituisce.
+    #
+    #        🔒 Un lotto fuori scope RLS fa sollevare `E_LOTTO_NON_TROVATO` a
+    #        DB, invece di produrre un falso «non servito»: la catena e'
+    #        asimmetrica (il richiesto e' leggibile da chiunque, il servito no)
+    #        e zero non e' una misura.
+    def esito_gruppi_giro(self, lotto_ids: list[int]) -> list[GruppoEsitoGiro]:
+        ids = [int(i) for i in (lotto_ids or [])]
+        if not ids:
+            return []
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT gruppo_key, richiesto, esito,
+                       n_attivita_fatturate, n_attivita_residue,
+                       lotti_serventi, lotti_altrui
+                FROM vendite.fn_esito_gruppi_giro(%s::bigint[])
+                """,
+                [ids],
+            )
+            return [
+                GruppoEsitoGiro(
+                    gruppo_key=row[0],
+                    richiesto=bool(row[1]),
+                    esito=str(row[2]),
+                    n_attivita_fatturate=int(row[3]),
+                    n_attivita_residue=int(row[4]),
+                    lotti_serventi=[int(x) for x in (row[5] or [])],
+                    lotti_altrui=[int(x) for x in (row[6] or [])],
                 )
                 for row in cursor.fetchall()
             ]

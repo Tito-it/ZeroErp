@@ -498,10 +498,12 @@ def _translate_integrity_error(exc: IntegrityError, *, function_name: str, entit
             "uq_listini_codice": (
                 E_VENDITE_DUPLICATO,
                 "Codice listino duplicato: esiste gia' un listino con lo stesso codice.",
+                "codice",
             ),
             "uq_listini_versioni_listino_codice": (
                 E_VENDITE_DUPLICATO,
                 "Codice versione duplicato per questo listino.",
+                "codice_versione",
             ),
             "uq_listini_righe_key_attiva": (
                 E_VENDITE_DUPLICATO,

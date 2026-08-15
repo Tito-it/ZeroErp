@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il COMMENT punta a un documento che si e' spostato
+#   Segue: 20260808-02, che quel COMMENT l'ha scritto
+#   Piano: docs/it/dev/work-done/piano-db-classe-codici-errore.md §5.5
+#
+# ── PERCHE' UN CHANGESET PER UN PATH ───────────────────────────────────
+#   Il cantiere della classe dei codici errore e' chiuso, e i suoi due documenti
+#   sono passati da `work-in-progress/` a `work-done/`. Il COMMENT di questa
+#   tabella li citava, e ora punta a un file che non c'e' piu'.
+#
+#   ⚠️ Non e' pedanteria, ed e' il motivo per cui quel COMMENT esiste: la
+#   decisione «questa tabella NON si droppa» **vive li' dentro**, perche' e'
+#   l'unico posto che parla a chi apre `\d+ dbops.messaggi_errore_codici_legacy`.
+#   Un puntatore morto dentro l'unica spiegazione disponibile e' peggio che non
+#   averla: chi lo segue conclude che la spiegazione non esiste, e droppa.
+#
+#   Nei commenti `#` degli altri changeSet il path si e' potuto correggere in
+#   place — YAML li scarta, il checksum non li vede. Qui il path sta **dentro
+#   l'SQL**, cioe' dentro il changeSet: si corregge solo con uno nuovo.
+#
+# ── ⚠️ IL COSTO CHE QUESTA CASA HA GIA' ACCETTATO ──────────────────────
+#   Restano **78 riferimenti morti** in changeSet mergiati, su 15 documenti
+#   spostati prima di questo: quelli non si toccano, ed e' giusto cosi'.
+#   La differenza e' che li' il path sta in un commento che nessun programma
+#   legge, mentre qui sta in un dato che il database serve a chi lo interroga.
+#
+#   ⭐ La regola che se ne ricava, per la prossima volta: **in un COMMENT del
+#   database si cita il nome del documento, non il suo percorso** — il nome non
+#   cambia quando il cantiere chiude, la cartella si'.
+#
+# ── NOTE ────────────────────────────────────────────────────────────────
+#   · Testo ripreso da `obj_description` della tabella viva, con la sola stringa
+#     del percorso sostituita da uno script: nessuna ritrascrizione.
+#   · Solo COMMENT: nessun cambio di struttura, dati o vincoli.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/00_schema/dbops/20260809-01-fix-comment-legacy-path-work-done-mctit.yaml
+
+    - changeSet:
+          id: 20260809-01-fix-comment-legacy-path-work-done
+          author: mctit
+          runOnChange: false
+          failOnError: true
+          comment: >
+              Il COMMENT della tabella puntava al piano in work-in-progress, che a cantiere
+              chiuso e' passato in work-done. La decisione «non si droppa» vive dentro quel
+              COMMENT: un puntatore morto nell'unica spiegazione disponibile porta chi la
+              segue a concludere che la spiegazione non c'e'.
+          preConditions:
+              - onFail: HALT
+              - sqlCheck:
+                    expectedResult: 1
+                    sql: |
+                        SELECT count(*) FROM pg_class c
+                          JOIN pg_namespace n ON n.oid = c.relnamespace
+                         WHERE n.nspname = 'dbops'
+                           AND c.relname = 'messaggi_errore_codici_legacy'
+                           AND obj_description(c.oid, 'pg_class') LIKE '%work-in-progress%'
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        COMMENT ON TABLE dbops.messaggi_errore_codici_legacy IS
+                          'Registro del DEBITO EREDITATO sulla convenzione dei codici errore (E_{MODULO}_{TIPO}, W_ per i warning — docs/it/dev/api.md). Ci va un codice che arriva da fuori gia'' fuori convenzione e che non conviene rinominare; il CHECK chk_..._non_conforme impedisce di registrarci un codice conforme. ⭐ A ZERO RIGHE dal 2026-08-07: le 57 voci del 2026-08-05 sono state tutte smaltite, l''ultima col rename MESSAGGIO_NON_DEFINITO -> E_MESSAGGIO_NON_DEFINITO. ⛔ NON DROPPARE (decisione Tid 2026-08-08): a zero righe il drop sarebbe neutro nel comportamento, ma costerebbe mettere mano al controllo (B) di scripts/sql/guardrail_codice_errore_strutturato.sql — l''unica cosa che tiene la convenzione — in un presidio verde, e toglierebbe il meccanismo pronto per la prossima eredita'' di codici. Un registro vuoto non e'' un registro inutile: e'' un registro in pari. ⚠️ NON e'' una whitelist di eccezioni: una FAMIGLIA nuova con una semantica sua (com''e'' stato per i W_, changeSet 20260805-28) si risolve ALLARGANDO la convenzione, non registrandola qui — per questo non c''e'' una colonna «motivo», e l''orologio del debito e'' data_registrazione. ⚠️ Da non confondere con dbops.codici_errore_senza_policy, che e'' il registro del terzo lato (codici senza policy BE). Piano: docs/it/dev/work-done/piano-db-classe-codici-errore.md §5.5.';

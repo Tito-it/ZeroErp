@@ -52,7 +52,7 @@ const props = defineProps({
 const emit = defineEmits(['update:visible', 'changed'])
 
 const { t } = useI18n()
-const { execute } = useApiHandler()
+const { execute, campiErrati } = useApiHandler()
 const notify = useNotify()
 const { confirmAction } = useConfirmAction()
 
@@ -296,7 +296,8 @@ function removeSlot(row) {
         </div>
         <div class="form-field">
           <label>{{ t('vendite.indirizzi.field_stato') }}</label>
-          <InputText v-model="liberoForm.stato" />
+          <InputText v-model="liberoForm.stato"
+            :invalid="campiErrati.includes('stato')" />
         </div>
       </div>
       <div class="form-grid-2col">
@@ -311,7 +312,8 @@ function removeSlot(row) {
       </div>
       <div class="form-field">
         <label>{{ t('vendite.indirizzi.field_note') }}</label>
-        <InputText v-model="liberoForm.note" />
+        <InputText v-model="liberoForm.note"
+          :invalid="campiErrati.includes('note')" />
       </div>
     </div>
   </AppDialog>

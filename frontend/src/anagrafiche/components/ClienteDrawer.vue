@@ -43,7 +43,7 @@ import Message from 'primevue/message'
 const { t } = useI18n()
 const store = useClientiStore()
 const auth = useAuthStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const { warn } = useNotify()
 const isReadonly = useInjectReadonly()
 const contatto = useContattoForm()
@@ -424,7 +424,9 @@ const onClose = useDrawerClose(emit, 'cancelled')
             <label>{{ t('anagrafiche.clienti.field_utility') }} <span v-if="!isEdit">*</span></label>
             <Select v-model="form.utility_id" :options="utilityOptions" :loading="utilityLoading"
               option-label="descrizione" option-value="id" class="w-full" :placeholder="t('anagrafiche.clienti.select_utility')"
-              :disabled="isEdit" />
+              :disabled="isEdit"
+              :invalid="campiErrati.includes('utility_id')"
+            />
           </div>
           <div class="form-field" style="flex: 1;">
             <label>{{ t('anagrafiche.clienti.field_servizio_fatturare') }}</label>
@@ -549,6 +551,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
             <h4>{{ t('anagrafiche.soggetti.section_contatto') }}</h4>
           </div>
           <ContattoForm
+            :campi-errati="campiErrati"
             :form="contatto.form"
             :tipi-contatto="contatto.tipiContatto"
             :unita-organizzative="contatto.unitaOrganizzative"

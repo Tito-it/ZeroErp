@@ -42,3 +42,4 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert
 41,vendite.dash_competenza_errori,Competenza — errori vivi,vendite,NULL,t,2026-08-03 00:00:00,mctit
 42,vendite.dash_competenza_gruppi,Competenza — gruppi fatturabili,vendite,NULL,t,2026-08-03 00:00:00,mctit
 43,vendite.dash_competenza_commesse,Competenza — drill-down commesse,vendite,NULL,t,2026-08-03 00:00:00,mctit
+44,vendite.fondi_fattura_da_decidere,Fondi fattura — casi da decidere,vendite,NULL,t,2026-08-15 00:00:00,mctit

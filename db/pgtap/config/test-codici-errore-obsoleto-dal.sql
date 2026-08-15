@@ -11,7 +11,7 @@
 --   il ritiro era **per lingua**, cioe' si poteva ritirare un codice in italiano
 --   e lasciarlo vivo in inglese. Ora sta su `config.codici_errore` — una riga per
 --   codice — e il difetto non e' piu' esprimibile.
---   Piano: docs/it/dev/work-in-progress/piano-db-classe-codici-errore.md (D-6/D-8)
+--   Piano: docs/it/dev/work-done/piano-db-classe-codici-errore.md (D-6/D-8)
 --
 -- Contesto: un codice legacy spesso non si puo' cancellare, perche'
 -- dbops.error_log ha una FK NOT NULL verso config.messaggi_errore(id) e 46

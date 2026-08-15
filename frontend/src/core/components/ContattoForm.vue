@@ -35,6 +35,9 @@ function onPecInput() {
 }
 
 defineProps({
+  // Campi che il BACKEND indica come da correggere (envelope `error.fields`).
+  // Arrivano dal padre: questo componente non chiama le API da solo.
+  campiErrati: { type: Array, default: () => [] },
   tipiContatto: { type: Object, required: true },
   unitaOrganizzative: { type: Object, default: null },
   requireEmail: { type: Boolean, default: false },
@@ -124,7 +127,8 @@ defineProps({
 
     <div class="form-field">
       <label>{{ t('anagrafiche.contatto.note') }}</label>
-      <Textarea v-model="form.note" :disabled="disabled" rows="2" class="w-full" />
+      <Textarea v-model="form.note"
+      :invalid="campiErrati.includes('note')" :disabled="disabled" rows="2" class="w-full" />
     </div>
   </div>
 </template>

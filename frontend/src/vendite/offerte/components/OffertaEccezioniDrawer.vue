@@ -52,7 +52,7 @@ import { useOfferteStore } from '../stores/offerte'
 
 const { t } = useI18n()
 const store = useOfferteStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const { confirmAction } = useConfirmAction()
 const parentReadonly = useInjectReadonly()
 // Codici L2 centralizzati (mirror contratti): il banner inline + CTA
@@ -678,6 +678,7 @@ const onClose = useDrawerClose(emit)
                 option-value="value"
                 :disabled="formMode === 'edit'"
                 class="w-full"
+                :invalid="campiErrati.includes('tipo_eccezione')"
               />
             </div>
             <div class="form-field">
@@ -758,13 +759,17 @@ const onClose = useDrawerClose(emit)
             </div>
             <div class="form-field">
               <label>{{ t('vendite.offerte.field_ordine') }}</label>
-              <InputNumber v-model="form.ordine" class="w-full" :min="0" />
+              <InputNumber v-model="form.ordine" class="w-full" :min="0"
+                :invalid="campiErrati.includes('ordine')"
+              />
             </div>
           </div>
 
           <div class="form-field">
             <label style="display: inline-flex; gap: 0.5rem; align-items: center;">
-              <ToggleSwitch v-model="form.attivo" />
+              <ToggleSwitch v-model="form.attivo"
+                :invalid="campiErrati.includes('attivo')"
+              />
               {{ t('vendite.offerte.field_attivo') }}
             </label>
           </div>

@@ -240,7 +240,7 @@ Indice test:
 | `dbzero/vendite/funzioni/fn_contratto_righe_preview.md` | Nuovo manual per la funzione §2.3 (auto-generata, ma manual concettuale separato) |
 | [`modello-contratti.md`](../../backend/vendite/manual/modello-contratti.md) | Glossario §9: aggiornare "versione attiva del listino" → "versione operativa" (= ATTIVA o CHIUSA in range) |
 | [`api_contratti.md`](../../backend/vendite/manual/api_contratti.md) | Esempio response del preview righe con bundle annidato (shape JSONB) |
-| [`modello-componenti-bom.md`](../../backend/vendite/manual/modello-componenti-bom.md) | Riga "preview contratti = pattern uniforme con preventivi via `fn_contratto_righe_preview`" |
+| [`modello-componenti-bom.md`](../manual/modello-componenti-bom.md) | Riga "preview contratti = pattern uniforme con preventivi via `fn_contratto_righe_preview`" |
 
 ---
 
@@ -571,7 +571,7 @@ espansibili, padding sinistra sub-tabella, chevron down/right.
   — workflow clone+publish, regole stato
 * [Manual `modello-contratti`](../../backend/vendite/manual/modello-contratti.md)
   — modello unificato post-refactor 2026-05-15
-* [Manual `modello-componenti-bom`](../../backend/vendite/manual/modello-componenti-bom.md)
+* [Manual `modello-componenti-bom`](../manual/modello-componenti-bom.md)
   — pattern bundle padre+figli
 * [Brief DB refactor contratti completo](brief-db-refactor-contratti-completo.md)
   — brief precedente (Bug A vive su questo modello)

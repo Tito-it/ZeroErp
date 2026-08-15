@@ -1,0 +1,133 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Gli stati del fondo hanno una matrice, e adesso qualcuno la fa rispettare.
+#   Passo D-7 di brief-db-fondo-fattura-ricalcolo-e-governo.md §8.2 (Fase B).
+#
+# ── LE TRANSIZIONI AMMESSE ──────────────────────────────────────────────
+#
+#   DISPONIBILE  ->  ASSEGNATO | ANNULLATO
+#   ASSEGNATO    ->  DISPONIBILE | ANNULLATO
+#   ANNULLATO    ->  (nulla: terminale)
+#
+#   TRE stati e non quattro: REVOCATO e' caduto insieme al meccanismo di
+#   revoca + riemissione, che non serve piu' da quando il fondo non si
+#   ricalcola.
+#
+#   ⭐ ASSEGNATO -> DISPONIBILE resta ammesso ed e' il RESET TECNICO della
+#   fattura figlia (ritorno del lotto in bozza). Non e' una reazione ai
+#   pagamenti — la distinzione e' scritta nel COMMENT di
+#   fn_reset_fondi_fattura, changeSet 20260815-11.
+#
+# ⚠️ ANNULLATO E' TERMINALE, e non e' pigrizia. Riaprire un fondo annullato
+#   significherebbe rimettere in gioco denaro che qualcuno — o una regola —
+#   aveva tolto dal tavolo. Se serve di nuovo, si compie un ATTO NUOVO: e'
+#   la stessa logica per cui un atto non si modifica ma si annulla con un
+#   altro atto.
+#
+# 🔴 VERIFICATO CONTRO I TEST ESISTENTI prima di scrivere il guard, come
+#   prescrive la regola della casa. db/pgtap/vendite/test-fondi-fattura.sql
+#   percorre ASSEGNATO -> DISPONIBILE (reset, test 9-10) e -> ANNULLATO
+#   (reset bloccato, test 15-16): entrambe ammesse dalla matrice. Un guard
+#   restrittivo scritto senza guardare quel file lo avrebbe fatto diventare
+#   rosso, e il rosso sarebbe sembrato una regressione del fondo invece che
+#   una fixture da adeguare.
+#
+# ⚠️ `UPDATE OF stato` e non UPDATE nudo: l'assegnazione, il reset e la
+#   scrittura del motivo toccano altre colonne, e non c'e' ragione di
+#   rileggere la matrice quando lo stato non si muove.
+#
+# ⚠️ PERCHE' UN GUARD E NON UNA TABELLA DI TRANSIZIONI DICHIARATE (come
+#   config.stati_doc_fiscale_transizioni). Gli stati del fondo non sono un
+#   workflow che l'operatore vede: non hanno etichette, icone, azioni di UI.
+#   Sono tre valori interni. Una lookup con la sua matrice sarebbe una
+#   tabella costruita per un vocabolario che nessuno configura — e il giorno
+#   in cui servissero etichette o transizioni configurabili, si aggiunge
+#   allora.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260815-16-create-trgfn-fondi-source-guard-transizione-mctit.yaml
+
+  - changeSet:
+      id: 20260815-16-create-trgfn-fondi-source-guard-transizione
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Guard di transizione sugli stati del fondo: DISPONIBILE <-> ASSEGNATO,
+        entrambi verso ANNULLATO, ANNULLATO terminale. Verificato contro
+        test-fondi-fattura.sql, che percorre le due transizioni del reset.
+        D-7 del piano fondo fattura.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture_fondi_fattura_source
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_fondi_source_guard_transizione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: far rispettare la matrice degli stati del fondo.
+              --        ANNULLATO e' terminale: riaprirlo rimetterebbe in gioco
+              --        denaro che qualcuno aveva tolto dal tavolo. Se serve di
+              --        nuovo, si compie un atto NUOVO.
+              -- Uso:   BEFORE UPDATE OF stato FOR EACH ROW
+              DECLARE
+                  v_ammessa BOOLEAN;
+              BEGIN
+                  -- Nessun movimento di stato: niente da verificare.
+                  IF NEW.stato IS NOT DISTINCT FROM OLD.stato THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_ammessa := CASE OLD.stato
+                      WHEN 'DISPONIBILE' THEN NEW.stato IN ('ASSEGNATO', 'ANNULLATO')
+                      WHEN 'ASSEGNATO'   THEN NEW.stato IN ('DISPONIBILE', 'ANNULLATO')
+                      WHEN 'ANNULLATO'   THEN FALSE
+                      ELSE FALSE
+                  END;
+
+                  IF NOT v_ammessa THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'trgfn_fondi_source_guard_transizione',
+                          'E_FONDO_STATO_NON_AMMESSO',
+                          jsonb_build_object(
+                              'fondo_source_id',     NEW.id,
+                              'fattura_sorgente_id', NEW.fattura_sorgente_id,
+                              'stato_da',            OLD.stato,
+                              'stato_a',             NEW.stato),
+                          NULL::uuid,
+                          OLD.stato, NEW.stato);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_fondi_source_guard_transizione()
+              IS 'Matrice degli stati del fondo fattura: DISPONIBILE -> ASSEGNATO|ANNULLATO, ASSEGNATO -> DISPONIBILE|ANNULLATO, ANNULLATO terminale. Tre stati e non quattro: REVOCATO e'' caduto insieme al meccanismo di revoca+riemissione, inutile da quando il fondo non si ricalcola. ⚠️ ASSEGNATO -> DISPONIBILE resta ammesso ed e'' il RESET TECNICO della figlia (ritorno del lotto in bozza), non una reazione ai pagamenti. ⚠️ ANNULLATO e'' terminale di proposito: riaprire un fondo annullato rimetterebbe in gioco denaro che una persona o una regola aveva tolto dal tavolo — se serve di nuovo si compie un atto NUOVO, con la stessa logica per cui un atto non si modifica ma si annulla con un altro atto. Guard e non lookup di transizioni: sono tre valori interni senza etichette ne'' azioni di UI. D-7 di brief-db-fondo-fattura-ricalcolo-e-governo §8.2.';
+
+              DROP TRIGGER IF EXISTS trg_fatture_fondi_fattura_source_a10_guard_transizione_upd
+                ON vendite.fatture_fondi_fattura_source;
+
+              CREATE TRIGGER trg_fatture_fondi_fattura_source_a10_guard_transizione_upd
+                BEFORE UPDATE OF stato
+                ON vendite.fatture_fondi_fattura_source
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_fondi_source_guard_transizione();

@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# La TERZA query canonica entra nel COMMENT della vista
+#   Vista: dbops.vw_codici_errore_forme_condizione (20260807-18, 20260808-01)
+#   Rilievo: team BE, 2026-08-08
+#   Guida: brief-db-be-classe-codici-errore.md §9.3 · Piano: piano-db §5.1
+#
+# ── IL RILIEVO, ED E' GIUSTO ───────────────────────────────────────────
+#   Il COMMENT porta due query canoniche: i CANDIDATI e la COPERTURA, con la
+#   prescrizione di usarle insieme. Manca la terza — l'incrocio
+#   `famiglia x classe` — che e' quella che ha effettivamente trovato qualcosa:
+#   `E_ERRORE_PARAMETRI`, 4 punti su 13 che dicono il falso.
+#
+#   ⚠️ Viveva solo in due documenti. Le altre due si rilanciano perche' sono
+#   scritte sull'oggetto; questa, dov'era, alla prossima occasione andava
+#   riscoperta — e una query che va riscoperta non viene rilanciata.
+#
+# ── PERCHE' E' LA QUERY CHE VALE ───────────────────────────────────────
+#   Le prime due guardano la vista da sola. La terza la incrocia col catalogo, e
+#   cosi' facendo mette a confronto **due letture indipendenti** dello stesso
+#   codice: cosa DICE il catalogo (la classe) e cosa FA il punto che solleva (la
+#   famiglia della guardia). E' l'indipendenza a renderla capace di trovare un
+#   difetto — nessuna delle due, da sola, puo' contraddirsi.
+#
+#   Risponde alla domanda che il brief §9.2 aveva dichiarato senza risposta:
+#   «chi controlla che la classe resti VERA?».
+#
+# ── ⚠️ COME SI LEGGE IL RISULTATO — due avvertenze ─────────────────────
+#   1. **Le righe `IGNOTO` non sono una famiglia**: sono la misura che dichiara
+#      di non saper leggere quella guardia. Oggi sono 22 righe su 40. Vanno
+#      lasciate nel risultato (toglierle farebbe sembrare la copertura piena) ma
+#      NON vanno lette come un incrocio: non dicono niente, ne' in un senso ne'
+#      nell'altro.
+#   2. **Fuori dominante non vuol dire sbagliato.** `NOT_FOUND` ha 19 codici su
+#      `NON_TROVATO` e 20 altrove, e la maggioranza di quei 20 e' deliberata —
+#      «guard parametro NULL riconducibile a NOT FOUND» sta scritto dentro le
+#      funzioni. Si legge come una LISTA DA GUARDARE, mai come una lista di
+#      difetti: la vista resta una misura e non un cancello.
+#
+# ── NOTE ────────────────────────────────────────────────────────────────
+#   · Solo COMMENT: la vista non si tocca, la 20260808-01 resta la sua
+#     implementazione. Serve un changeSet nuovo perche' quella e' gia' mergiata.
+#   · La query e' riportata **identica** a come vive nei documenti BE. Una
+#     variante «migliorata» qui creerebbe due versioni della stessa query, che e'
+#     esattamente la malattia di cui parla tutto il cantiere.
+#     ⚠️ Una differenza nota e oggi innocua: il filtro dei vivi e'
+#     `obsoleto_dal IS NULL`, mentre il guardrail usa
+#     `(obsoleto_dal IS NULL OR obsoleto_dal > CURRENT_DATE)`. Sono equivalenti
+#     finche' nessun codice ha un ritiro PROGRAMMATO — misurato: **0 oggi**. Il
+#     giorno che ne esistesse uno, questa query lo escluderebbe in anticipo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/dbops/20260808-03-comment-vw-codici-errore-terza-query-mctit.yaml
+
+    - changeSet:
+          id: 20260808-03-comment-vw-codici-errore-terza-query
+          author: mctit
+          runOnChange: false
+          failOnError: true
+          comment: >
+              Aggiunge al COMMENT la terza query canonica — l'incrocio famiglia x classe,
+              quella che ha trovato E_ERRORE_PARAMETRI. Viveva solo in due documenti: le
+              altre due si rilanciano perche' sono scritte sull'oggetto, questa andava
+              riscoperta ogni volta. Rilievo del team BE.
+          preConditions:
+              - onFail: HALT
+              - viewExists:
+                    schemaName: dbops
+                    viewName: vw_codici_errore_forme_condizione
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        COMMENT ON VIEW dbops.vw_codici_errore_forme_condizione IS
+                          'Misura degli accumulatori sulla FORMA DELLA CONDIZIONE al punto che solleva (non sul dominio della funzione: quell''asse segnalava E_VALIDAZIONE, che e'' il caso su cui la risposta e'' no). NON filtra di proposito.
+                        TRE query canoniche, da usare INSIEME.
+                        (1) CANDIDATI — SELECT codice, n_punti, famiglie FROM dbops.vw_codici_errore_forme_condizione WHERE n_famiglie_note > 1 ORDER BY n_punti DESC;
+                        (2) COPERTURA, senza cui la (1) si legge come una verita'' — SELECT count(*) AS codici, count(*) FILTER (WHERE NOT solo_ignoto) AS classificati, count(*) FILTER (WHERE solo_ignoto) AS invisibili FROM dbops.vw_codici_errore_forme_condizione;
+                        (3) LA CLASSE E'' ANCORA VERA? incrocia le due letture indipendenti dello stesso codice — la guardia (cosa FA il punto) e la classe (cosa DICE il catalogo). E'' la query che ha trovato E_ERRORE_PARAMETRI, 4 punti su 13 che dicevano il falso:
+                            SELECT unnest(f.famiglie) AS famiglia, c.classe, count(*) AS codici
+                              FROM dbops.vw_codici_errore_forme_condizione f
+                              JOIN config.codici_errore c USING (codice)
+                             WHERE NOT f.solo_ignoto AND c.obsoleto_dal IS NULL
+                             GROUP BY 1,2 ORDER BY 1, 3 DESC;
+                        COME SI LEGGE LA (3): le righe famiglia = IGNOTO NON sono una famiglia, sono la misura che dichiara di non saper leggere quella guardia — vanno lasciate (toglierle farebbe sembrare piena la copertura) ma non lette come un incrocio. E "fuori dominante" non vuol dire sbagliato: NOT_FOUND ha 19 codici su NON_TROVATO e 20 altrove, e la maggioranza dei 20 e'' deliberata ("guard parametro NULL riconducibile a NOT FOUND", scritto dentro le funzioni). E'' una lista DA GUARDARE, non una lista di difetti.
+                        Al 2026-08-08: 344 codici, 75 classificati, 269 invisibili. E'' una MISURA, non un cancello: un codice legittimamente trasversale esiste. Implementazione a window function (20260808-01): 349 ms, contro i 145 secondi della prima versione a sottoquery correlate.';

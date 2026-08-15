@@ -1,7 +1,7 @@
 # Brief DB — Lista configurabile + estensione modello `vendite.ordini` (DB-ORD)
 
 > **Branch**: `dev/db-tid`. **Destinatario**: team DB.
-> **Natura**: brief DB derivato dall'analisi [analisi-ordini-vendita.md](../work-in-progress/analisi-ordini-vendita.md)
+> **Natura**: brief DB derivato dall'analisi [analisi-ordini-vendita.md](analisi-ordini-vendita.md)
 > (l'analisi è l'input; questo brief ne è il **changeset eseguibile** lato DB —
 > memoria `feedback_db_actions_passaggio_team`). Precede l'**analisi critica di
 > verifica** (§1, condotta sul DDL/trigger/seed reali il 2026-06-03): l'analisi è
@@ -440,4 +440,4 @@ sovraccaricherebbe lo `scope` di `config.sorgenti`. A1 entra in **questo** lotto
 | `vendite.contratti` | ✅ (`1cc906377`) | ✅ | [refactor-lista-contratti.md](./refactor-lista-contratti.md) |
 | `vendite.preventivi` | ✅ 2026-06-03 | ⏳ attende | [db-brief-lista-preventivi-offerte.md](./db-brief-lista-preventivi-offerte.md) |
 | `vendite.offerte` | ✅ 2026-06-03 | ⏳ attende | [db-brief-lista-preventivi-offerte.md](./db-brief-lista-preventivi-offerte.md) |
-| **`vendite.ordini`** | ✅ atterrato 2026-06-03 (`20260603-11..15`) | ⏳ attende (analisi §5/§6) | [analisi-ordini-vendita.md](../work-in-progress/analisi-ordini-vendita.md) |
+| **`vendite.ordini`** | ✅ atterrato 2026-06-03 (`20260603-11..15`) | ⏳ attende (analisi §5/§6) | [analisi-ordini-vendita.md](analisi-ordini-vendita.md) |

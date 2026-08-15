@@ -1,7 +1,7 @@
 # Brief DB — Fatturazione a due lenti: substrato dati (timestamp §7, lookup classi, viste Lente 1 e Lente 2)
 
 > **Per**: team DB (`dev/db-tid`). · **Da**: design-of-record
-> [brief-design-fatturazione-due-lenti.md](../work-in-progress/brief-design-fatturazione-due-lenti.md) (decisioni
+> [brief-design-fatturazione-due-lenti.md](brief-design-fatturazione-due-lenti.md) (decisioni
 > DL-1..8, Tid 2026-07-04). · **Data**: 2026-07-06 · **Stato**: 🟢 **DB APPLICATO +
 > pgTAP VERDI (2026-07-06)** — migrations `20260706-01..15` **EXECUTED** sul DB di
 > sviluppo (lookup+seed, data_riferimento su resolver/union, 3 viste Lente 1, 2 viste

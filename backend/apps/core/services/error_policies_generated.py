@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 689, di cui 79 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 696, di cui 79 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -215,7 +215,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE": "CONFLITTO_STATO",
     "E_CONTRATTO_CATEGORIA_SNAPSHOT_IMMUTABILE": "CONFLITTO_STATO",
     "E_CONTRATTO_CLASSE_TIPO_INCOERENTE": "DATO_ERRATO",
-    "E_CONTRATTO_EMITTENTE_BA_INCOERENTE": "CONFLITTO_STATO",
+    # Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6.
+    "E_CONTRATTO_EMITTENTE_BA_INCOERENTE": "DATO_ERRATO",
     "E_CONTRATTO_EMITTENTE_NON_RISOLTO": "DATO_ERRATO",
     "E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA": "NON_ESEGUIBILE",
     "E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI": "NON_ESEGUIBILE",
@@ -265,7 +266,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Cliente (billing_account_id/destinatario) immutabile post-create: · cambiare cliente = nuovo DDT (mirror E_ORD_CLIENTE_IMMUTABILE). · 400 -> 409 il 2026-08-06 (audit coerenza status), gemello di · E_ORD_CLIENTE_IMMUTABILE. `ui_action` invariata.
     "E_DDT_CLIENTE_IMMUTABILE": "CONFLITTO_STATO",
     "E_DDT_EMISSIONE_SENZA_RIGHE": "CONFLITTO_STATO",
-    "E_DDT_EMITTENTE_BA_INCOERENTE": "CONFLITTO_STATO",
+    # Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6.
+    "E_DDT_EMITTENTE_BA_INCOERENTE": "DATO_ERRATO",
     "E_DDT_NESSUNA_RIGA": "CONFLITTO_STATO",
     "E_DDT_NIENTE_DA_EVADERE": "CONFLITTO_STATO",
     # DDT di vendita (CRUD + emissione + macchina a stati + evasione da · ordine + push singolo). Famiglia speculare a E_ORD_*. I codici trigger · DB (E_STATO_DDT_*, E_COMPONENTE_PREZZO_PENDENTE, E_QTA_SUPERA_RESIDUO) · passano invece via regex in ddt_service._db_errors: registrati qui per · fissare lo status/ui_action lato FE.
@@ -377,6 +379,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Richiesta valida, esito nullo: nessun lotto nel perimetro chiesto.
     "E_FATTURAZIONE_GIRO_NESSUN_LOTTO": "NON_ESEGUIBILE",
     "E_FATTURAZIONE_GIRO_PAYLOAD": "DATO_ERRATO",
+    # Emissione mirata la cui discovery tocca il tetto delle corsie: · la richiesta e' nominale, quindi un troncamento e' una richiesta · senza risposta, non un successo parziale.
+    "E_FATTURAZIONE_MIRATA_TRONCATA": "NON_ESEGUIBILE",
     "E_FATTURAZIONE_NUMERA_PAYLOAD": "DATO_ERRATO",
     # <- FLUSSI_COMPETENZA_MANCANTE  (vivo)
     "E_FLUSSI_COMPETENZA_MANCANTE": "NON_PERMESSO",
@@ -402,6 +406,16 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_FLUSSO_OWNERSHIP": "DATO_ERRATO",
     "E_FLUSSO_PRESA_IN_CARICO": "TECNICO",
     "E_FLUSSO_VALIDATION": "DATO_ERRATO",
+    # Lock di colonna su vendite.fatture_fondi_fattura_source: importo, fattura_sorgente_id, tipo_fondo_fattura_id e origine sono immutabili dopo l'INSERT. E' la traduzione strutturale di «il fondo di una fattura definitiva non si ricalcola»: fra una regola da ricordare e una che il database non lascia infrangere si sceglie la seconda. Restano modificabili le colonne del ciclo di vita (stato, assegnazione, motivo). CONFLITTO_STATO e non NON_PERMESSO: non e' un diritto che manca, e' l'atto che e' gia' compiuto. Piano: brief-db-fondo-fattura-ricalcolo-e-governo D-6.
+    "E_FONDO_ATTO_IMMUTABILE": "CONFLITTO_STATO",
+    # Violazione di chk_fondi_source_motivo_obbligatorio: manca il motivo su un atto straordinario (origine MANUALE oppure stato ANNULLATO). Nasce da un vincolo di tabella, quindi lo solleva il BACKEND traducendo il constraint con map_integrity_error, non una funzione PL/pgSQL. Il campo da dichiarare al client e' `motivo`. Piano: brief-db-fondo-fattura-ricalcolo-e-governo D-5.
+    "E_FONDO_MOTIVO_OBBLIGATORIO": "DATO_ERRATO",
+    # Guard trgfn_fondi_source_guard_importo: il fondo non assomiglia alla fattura da cui nasce (segno opposto al totale della sorgente, oppure superiore in valore assoluto). NON vieta il fondo NEGATIVO, che e' legittimo: le due soglie del minimo formano una banda che contiene lo zero, e il capo inferiore serve a riportare avanti i CREDITI. Vieta il fondo che racconta un'altra fattura: 8 euro di documento e -32 di fondo, prodotti da una riga contabile piu' grande della fattura (la quadratura sulle righe contabili e' la slice 2 del cantiere incassi, oggi non esiste). DATO_ERRATO e non CONFLITTO_STATO: non e' lo stato a impedirlo, e' il valore a essere sbagliato. Piano: brief-db-fondo-fattura-ricalcolo-e-governo D-3(a).
+    "E_FONDO_NON_CORRISPONDE_SORGENTE": "DATO_ERRATO",
+    # Violazione di chk_emittenti_fiscali_utilities_soglie_coppia: una sola delle due soglie del minimo e' valorizzata. Entrambe vuote = meccanismo del fondo fattura spento (ammesso), entrambe piene = attivo sulla banda, una sola = errore. Nasce da un vincolo di tabella, quindi lo solleva il BACKEND traducendo il constraint con map_integrity_error, non una funzione PL/pgSQL. Piano: brief-db-fondo-fattura-ricalcolo-e-governo D-0.
+    "E_FONDO_SOGLIE_INCOMPLETE": "DATO_ERRATO",
+    # Guard trgfn_fondi_source_guard_transizione: transizione fuori dalla matrice degli stati del fondo (DISPONIBILE <-> ASSEGNATO, entrambi verso ANNULLATO, ANNULLATO terminale). ANNULLATO e' terminale di proposito: riaprire un fondo annullato rimetterebbe in gioco denaro che una persona o una regola aveva tolto dal tavolo. Piano: brief-db-fondo-fattura-ricalcolo-e-governo D-7.
+    "E_FONDO_STATO_NON_AMMESSO": "CONFLITTO_STATO",
     # Il valore viene da vendite.regole_fatturazione_articolo, non da chi usa il programma: nessuno rimedia finche qualcuno non riconfigura.
     # ⚠️ RITIRATO il 2026-08-07
     "E_FONTE_QUANTITA_NON_VALIDA": "TECNICO",
@@ -507,7 +521,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Codici DB del flusso offerta (emissione/transizione/push/revisione) e del · push a contratto. Senza registrazione cadevano sul fallback 400, mentre · la convenzione del progetto per "operazione non ammessa nello stato / · precondizione di transizione / overlap" è 409 (gemelli già registrati: · E_ORD_STATO_TRANSIZIONE, E_PREV_STATO_TRANSIZIONE, · E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA, E_VENDITE_*_OVERLAP). Registrati · qui per fissare lo status corretto (il messaggio parlante DB vince · comunque su user_message). Pulizia 2026-06-08.
     "E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO": "CONFLITTO_STATO",
     "E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA": "CONFLITTO_STATO",
-    "E_OFFERTA_EMITTENTE_BA_INCOERENTE": "CONFLITTO_STATO",
+    # Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6.
+    "E_OFFERTA_EMITTENTE_BA_INCOERENTE": "DATO_ERRATO",
     "E_OFFERTA_NON_TROVATA": "NON_TROVATO",
     "E_OFFERTA_ORDINE_GIA_GENERATO": "CONFLITTO_STATO",
     "E_OFFERTA_PUSH_STATO_NON_AMMESSO": "CONFLITTO_STATO",
@@ -527,7 +542,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Cliente (billing_account_id/soggetto_ruolo_id) immutabile post-create. · Sollevato sia dal guard BE (ordini_service.aggiorna_ordine) sia, come · difesa finale, dal lock-columns DB (automation_lock_columns, · DB-ORD-LOCK 2026-06-04, codice DB messaggi_errore id 469). · 400 -> 409 il 2026-08-06 (audit coerenza status): immutabilita' · post-creazione = conflitto con lo stato attuale (RFC 9110), come · gli altri 29 della famiglia. `ui_action` invariata.
     "E_ORD_CLIENTE_IMMUTABILE": "CONFLITTO_STATO",
     "E_ORDINE_CONFERMA_SENZA_RIGHE": "CONFLITTO_STATO",
-    "E_ORDINE_EMITTENTE_BA_INCOERENTE": "CONFLITTO_STATO",
+    # Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6.
+    "E_ORDINE_EMITTENTE_BA_INCOERENTE": "DATO_ERRATO",
     "E_ORDINE_EMITTENTE_NON_RISOLTO": "DATO_ERRATO",
     "E_ORDINE_RIGA_NON_TROVATA": "NON_TROVATO",
     "E_ORDINE_TRANSIZIONE_NON_AMMESSA": "CONFLITTO_STATO",
@@ -618,7 +634,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Il quarto motivo, arrivato col consolidamento §7.3 del brief: era la · regola che viveva DENTRO `fn_cambia_stato_preventivo` (col codice senza · prefisso `E_`, quindi invisibile all'estrattore e degradato a · E_DATABASE), ora assorbita in `fn_check_preventivo_annullabile` come · motivo a se'. Piu' preciso del fratello E_PREV_GIA_IN_COMMESSA: quello · dice che esiste un collegamento a commessa, questo che a valle esiste · gia' una FATTURA — e una fattura senza l'origine che la giustifica non · si crea annullando il preventivo, si corregge dal lato fatturazione.
     "E_PREV_ANNULLA_COMMESSA_EMESSA": "CONFLITTO_STATO",
     "E_PREV_COMPONENTE_NOT_FOUND": "NON_TROVATO",
-    "E_PREV_EMITTENTE_BA_INCOERENTE": "CONFLITTO_STATO",
+    # Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6.
+    "E_PREV_EMITTENTE_BA_INCOERENTE": "DATO_ERRATO",
     "E_PREV_EMITTENTE_NON_RISOLTO": "DATO_ERRATO",
     "E_PREVENTIVO_RIGA_NON_TROVATA": "NON_TROVATO",
     # L3 Sprint E (sviluppo-listini-v5 §14.6) — workflow approvazione · prezzo out-of-policy. Codici sollevati da preventivi_service + · approvazioni_prezzo_service e dai trigger DB DB-E-4/E-5.
@@ -688,7 +705,7 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_RESO_ANNULLO_CON_RICONSEGNE": "CONFLITTO_STATO",
     # Guard DB sorgente reso (trgfn_resi_guard_ddt_consegnato, a10 INSERT): · il reso richiede il DDT sorgente in CONSEGNATO. Il service ha il · guard gemello parlante (crea_reso); questo copre le scritture non-BE.
     "E_RESO_DDT_NON_CONSEGNATO": "CONFLITTO_STATO",
-    # Guard emittente<->BA sul reso (trgfn_resi_guard_emittente_ba, z10).
+    # Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6.
     "E_RESO_EMITTENTE_BA_INCOERENTE": "DATO_ERRATO",
     "E_RESO_NESSUNA_RICONSEGNA_PENDENTE": "CONFLITTO_STATO",
     # fn_genera_ddt_riconsegna: reso non CONFERMATO / nessuna copertura · residua da ri-spedire.
@@ -824,6 +841,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_TIPO_RUOLO_NON_TROVATO": "NON_TROVATO",
     # <- E_AI_CONFIRMATION_REQUIRED RIMOSSO il 2026-08-06 (audit coerenza · status). Non lo sollevava nessuno — ne' Python, ne' Vue, ne' il · database — e il motivo e' che il flusso di conferma dei tool in · scrittura ha scelto un'altra strada, migliore: `ai_assistant_service` · restituisce **200 con `requires_confirmation` nel payload**. Una · conferma richiesta non e' un errore HTTP. · ⚠️ E il 428 non c'entrava comunque: RFC 6585 lo definisce come «la · richiesta deve essere condizionale» (`If-Match`, per non perdere · aggiornamenti concorrenti), non «l'utente deve confermare». · Se un giorno servisse davvero un errore per questo caso, i due · presidi lo pretenderanno dichiarato: si riparte da qui, non dal 428. · --- Autenticazione: token, email, invito, cambio/reset password ---
     "E_TOKEN": "DATO_ERRATO",
+    # Trigger montato con argomenti sbagliati (TG_NARGS, o TG_ARGV che nomina colonne non castabili). E' un difetto di MONTAGGIO: se ne accorge chi installa il trigger, mai l'operatore. Scorporato da E_ERRORE_PARAMETRI il 2026-08-08 (3 punti su 13 che dicevano 400 dove serve 500). Precedente: E_ATTIVO_REQUIRE.
+    "E_TRIGGER_ARGOMENTI_INVALIDI": "TECNICO",
     "E_TX_ID": "TECNICO",
     # Passava da fn_log_error_only con fallback locale: non raggiungeva mai il client. Prefisso E_ storico, non sollevava.
     # ⚠️ RITIRATO il 2026-08-07

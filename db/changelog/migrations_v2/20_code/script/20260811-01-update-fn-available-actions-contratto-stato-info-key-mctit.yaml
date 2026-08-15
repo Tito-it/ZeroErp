@@ -1,0 +1,259 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I domini muti: la nota di stato arriva anche qui — contratto.
+#   Uno di quattro changeSet gemelli (20260811-01, 20260811-02, 20260811-03, 20260811-04):
+#   contratto, reso, offerta, commessa. Slice §3 di
+#   docs/it/dev/work-in-progress/attivita-urgenti-del-10-08.md, aperta dalla
+#   verifica del BE e decisa da Tid.
+#
+# 🔴 IL DIFETTO, e perche' e' peggiorato ieri. Questo dominio non emetteva
+#   AFFATTO `stato_info_key`: la sua fn_available_actions_* non lo esponeva,
+#   mentre il drawer del frontend lo legge gia' — il cablaggio c'era ed era
+#   inerte. Fino a ieri la cosa si confondeva col comportamento generale
+#   («la nota risponde alla barra vuota, e qui non compare mai»); da quando
+#   la nota **spiega lo stato** e compare sempre (decisione §5 di Tid,
+#   20260810-04/-05/-06), questi domini sono rimasti gli unici in cui uno
+#   stato chiuso non dice niente. Verificato nel codice dal BE, non dedotto.
+#
+# ℹ️ COSA CAMBIA — gli stessi tre punti dei changeSet di ieri: una variabile,
+#   una colonna nella SELECT di testata, un campo nel jsonb_build_object. La
+#   funzione **raggiungeva gia'** la propria tabella di stato con un JOIN,
+#   quindi non c'e' nessun JOIN nuovo da aggiungere.
+#
+# 🔴 LA PROPRIETA' NEL `meta` SI CHIAMA `nessuna_azione_key`, IL CAMPO DEL
+#   BLOB `stato_info_key`. L'asimmetria e' voluta e va conosciuta:
+#   `scripts/check_i18n_keys.py` trova le chiavi seminate **per quel nome**
+#   (`RE_SEED_KEY` sui CSV, elenco `_PROP_KEY`), e rinominarla senza toccare
+#   il guard nello stesso commit lo renderebbe **verde per cecita'** — non
+#   rosso, verde. Rinominare anche la proprieta' e' una slice a se'.
+#
+# ⚠️ Il campo e' **sempre presente** nel blob, col valore a `null` quando non
+#   si applica: filtrare con l'operatore di presenza risponde vero per TUTTI
+#   i documenti. Va guardato il valore.
+#
+# 🟢 EFFETTO MISURATO: **9 documenti** ricevono la nota — ANNULLATO (7) e
+#   CESSATO (2). E' il dominio con piu' soggetti vivi della slice.
+#
+# ⚠️ IL `lotto` NON E' IN QUESTA SLICE, ed e' una decisione: non ha una
+#   tabella di stato propria, usa `config.stati_doc_fiscale` CONDIVISA con
+#   `vendite.fatture` (8 FK). Il testo dovrebbe essere vero sia per un lotto
+#   sia per una fattura, e `fn_available_actions_fattura` non esiste: meta'
+#   dei consumatori non e' scritta. Restano dichiarati aperti.
+#
+# 🔴 CHIAVI i18n PER IL FE (dal seed di config/stati_doc_contratti.csv), da tradurre: senza,
+#   il guard `check_i18n_keys.py` resta rosso — ed e' voluto.
+#
+# Nessun'altra modifica al corpo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260811-01-update-fn-available-actions-contratto-stato-info-key-mctit.yaml
+
+  - changeSet:
+      id: 20260811-01-update-fn-available-actions-contratto-stato-info-key
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_available_actions_contratto: espone stato_info_key dal meta dello
+        stato corrente, emesso sempre che lo stato lo dichiari. Il dominio
+        era fra i cinque muti mentre il drawer leggeva gia' il campo.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: config
+                tableName: stati_doc_contratti
+                columnName: meta
+            - columnExists:
+                schemaName: config
+                tableName: stati_doc_contratti
+                columnName: fase
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'script'
+                    AND p.proname = 'fn_available_actions_contratto'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_available_actions_contratto(p_contratto_id vendite.contratti.id%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: capability del contratto per il detail API (pattern data-driven).
+              --   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
+              --   config.stati_doc_contratti (bottone PDF data-driven via capabilities).
+              --   rev 2026-07-16: + enabled/reason/reason_key da meta.requires_righe
+              --   (documento vuoto non avanza di stato). "Vuoto" per il contratto:
+              --   negoziato puro (listino_id NULL) senza AGGIUNTA attiva con prezzo.
+              --   rev 2026-08-06: + target_state_descrizione, la forma leggibile
+              --   dello stato di destinazione. Serve alla frase di conferma
+              --   «portare il documento nello stato X»: il codice_interno non e'
+              --   quella forma (DRAFT -> Bozza) e tradurlo nel FE sarebbe una
+              --   seconda copia del vocabolario degli stati.
+              --   rev 2026-08-11: + stato_info_key, la nota che spiega cosa sta
+              --   succedendo quando il documento e' in uno stato chiuso. Arriva dal
+              --   `meta` dello stato, e viene emessa SEMPRE che lo stato la dichiari —
+              --   anche accanto a un'azione ancora abilitata: la nota spiega lo STATO,
+              --   non risponde a una barra vuota (decisione §5 di Tid, gia' applicata a
+              --   preventivo/ordine/DDT con 20260810-04/-05/-06). Questo dominio era
+              --   fra i cinque che non emettevano affatto il campo, mentre il drawer lo
+              --   legge gia': il cablaggio c'era ed era inerte.
+              --   ⚠️ La PROPRIETA' nel meta si chiama `nessuna_azione_key` mentre il
+              --   campo del blob si chiama `stato_info_key`. L'asimmetria e' voluta:
+              --   scripts/check_i18n_keys.py trova le chiavi seminate per QUEL nome
+              --   (RE_SEED_KEY sui CSV, elenco _PROP_KEY), e rinominarla senza toccare
+              --   il guard lo renderebbe verde per cecita'.
+              --   ⚠️ Il campo e' SEMPRE presente nel blob, col valore a null quando non
+              --   si applica: filtrare per presenza risponde vero per tutti i documenti,
+              --   va guardato il valore.
+              --   brief-db-vie-uscita-operatore §12.6; attivita-urgenti-del-10-08 §3.
+              DECLARE
+                  v_stato_id     vendite.contratti.stato_doc_contratto_id%TYPE;
+                  v_stato_cod    config.stati_doc_contratti.codice_interno%TYPE;
+                  v_stato_info_key text;
+                  v_stato_codice config.stati_doc_contratti.codice%TYPE;
+                  v_valido_dal   vendite.contratti.valido_dal%TYPE;
+                  v_listino_id   vendite.contratti.listino_id%TYPE;
+                  v_pdf_mode     config.stati_doc_contratti.pdf_mode%TYPE;
+                  v_pdf_allow    config.stati_doc_contratti.pdf_allow_allegati%TYPE;
+                  v_actions      jsonb;
+                  v_ha_righe     boolean := false;
+                  v_can_edit     boolean;
+                  v_can_righe    boolean;
+                  v_non_edit     jsonb;
+                  c_non_edit_attivo CONSTANT jsonb :=
+                      '["billing_account_id","istanza_utility_id","utility_id","ambito",'
+                      '"valido_dal","parent_contratto_id","data","listino_id",'
+                      '"tipo_variazione_globale","valore_variazione_globale",'
+                      '"categoria_cliente_id_snapshot"]'::jsonb;
+                  c_non_edit_tutti CONSTANT jsonb :=
+                      '["billing_account_id","istanza_utility_id","utility_id","ambito",'
+                      '"valido_dal","valido_al","parent_contratto_id","data","listino_id",'
+                      '"tipo_variazione_globale","valore_variazione_globale",'
+                      '"categoria_cliente_id_snapshot","meta"]'::jsonb;
+              BEGIN
+                  -- Stato corrente: codice_interno + codice + valido_dal + listino + capability PDF.
+                  SELECT c.stato_doc_contratto_id, sdc.codice_interno, sdc.codice, c.valido_dal,
+                         c.listino_id, sdc.pdf_mode, sdc.pdf_allow_allegati,
+                         sdc.meta->>'nessuna_azione_key'
+                    INTO v_stato_id, v_stato_cod, v_stato_codice, v_valido_dal,
+                         v_listino_id, v_pdf_mode, v_pdf_allow, v_stato_info_key
+                    FROM vendite.contratti c
+                    JOIN config.stati_doc_contratti sdc ON sdc.id = c.stato_doc_contratto_id
+                   WHERE c.id = p_contratto_id;
+
+                  IF NOT FOUND THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Precondizione "documento non vuoto" per le transizioni che la
+                  -- esigono (meta.requires_righe). Per il contratto NON e' un
+                  -- semplice conteggio: con listino non e' mai vuoto di sostanza
+                  -- (le righe arrivano dal listino); negoziato puro (listino_id
+                  -- NULL) e' vuoto senza almeno una AGGIUNTA attiva con prezzo.
+                  -- Specchia trgfn_contratti_freeze_listino_versione
+                  -- (E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE).
+                  v_ha_righe := (v_listino_id IS NOT NULL)
+                      OR EXISTS (
+                          SELECT 1
+                            FROM vendite.contratti_righe cr
+                           WHERE cr.contratto_id = p_contratto_id
+                             AND cr.tipo_eccezione = 'AGGIUNTA'::vendite.tipo_eccezione_contratto
+                             AND cr.prezzo_unitario IS NOT NULL
+                             AND cr.attivo = TRUE
+                      );
+
+                  SELECT COALESCE(
+                      jsonb_agg(
+                          jsonb_build_object(
+                              'key',             t.meta->>'action_key',
+                              'target_state',    sa.codice_interno,
+                              -- Forma leggibile della destinazione: la colonna
+                              -- accanto, nello stesso JOIN. Il FE non puo'
+                              -- derivarla dal codice.
+                              'target_state_descrizione', sa.descrizione,
+                              'label_key',       t.meta->>'label_key',
+                              'severity',        t.meta->>'severity',
+                              'icon',            t.meta->>'icon',
+                              'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
+                              'requires_date',   COALESCE((t.meta->>'requires_date')::boolean, false),
+                              'outlined',        COALESCE((t.meta->>'outlined')::boolean, false),
+                              'enabled',         NOT (COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                                      AND NOT v_ha_righe),
+                              'reason',          CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                                           AND NOT v_ha_righe
+                                                      THEN 'DOCUMENTO_SENZA_RIGHE' END,
+                              'reason_key',      CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                                           AND NOT v_ha_righe
+                                                      THEN 'common.azione_reason.senza_righe' END
+                          )
+                          ORDER BY sa.ordine
+                      ),
+                      '[]'::jsonb
+                  )
+                  INTO v_actions
+                  FROM config.transizioni_stati_contratti t
+                  JOIN config.stati_doc_contratti sa ON sa.id = t.stato_a_id
+                  WHERE t.stato_da_id = v_stato_id
+                    AND t.attivo IS TRUE
+                    AND COALESCE((t.meta->>'manuale')::boolean, true) IS TRUE
+                    AND t.meta ? 'action_key'
+                    AND t.meta ? 'label_key';
+
+                  -- Arricchimento delle sole azioni con data: somma chiavi,
+                  -- non tocca quelle gia' presenti.
+                  IF jsonb_array_length(v_actions) > 0 THEN
+                      SELECT jsonb_agg(
+                          CASE WHEN (elem->>'requires_date')::boolean IS TRUE
+                               THEN elem || jsonb_build_object(
+                                        'default_date', CURRENT_DATE::text,
+                                        'min_date',     v_valido_dal::text
+                                    )
+                               ELSE elem
+                          END
+                      )
+                      INTO v_actions
+                      FROM jsonb_array_elements(v_actions) AS elem;
+                  END IF;
+
+                  v_can_edit  := (v_stato_cod IN ('DRAFT', 'ATTIVO'));
+                  v_can_righe := (v_stato_cod = 'DRAFT');
+                  v_non_edit  := CASE v_stato_cod
+                                     WHEN 'DRAFT'  THEN '[]'::jsonb
+                                     WHEN 'ATTIVO' THEN c_non_edit_attivo
+                                     ELSE               c_non_edit_tutti
+                                 END;
+
+                  RETURN jsonb_build_object(
+                      'available_actions',   v_actions,
+                      'can_change_state',    jsonb_array_length(v_actions) > 0,
+                      'can_edit_testata',    v_can_edit,
+                      'can_edit_righe',      v_can_righe,
+                      'non_editable_fields', v_non_edit,
+                      'pdf',                 jsonb_build_object('mode', v_pdf_mode, 'allow_allegati', v_pdf_allow),
+                      'stato_codice_interno', v_stato_cod,
+                      'stato_info_key',       v_stato_info_key,
+                      'stato_codice',         v_stato_codice
+                  );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_available_actions_contratto(p_contratto_id bigint)
+              IS 'Capability contratto per detail API: available_actions + can_change_state + can_edit_testata/righe + non_editable_fields + stato_codice_interno + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_contratti. rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il contratto e'' vuoto -> enabled=false + reason DOCUMENTO_SENZA_RIGHE. Vuoto per il contratto = negoziato puro (listino_id NULL) senza AGGIUNTA attiva con prezzo; con listino mai vuoto (predicato specchiato da trgfn_contratti_freeze_listino_versione). rev 2026-08-06: + target_state_descrizione accanto a target_state (config.stati_doc_contratti.descrizione della destinazione). Serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile (DRAFT -> Bozza) e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati. L''arricchimento requires_date a valle somma chiavi e non la tocca. rev 2026-08-11: + stato_info_key, la nota di stato letta dal meta dello stato corrente ed emessa SEMPRE che lo stato la dichiari, anche accanto a un''azione ancora abilitata: la nota spiega lo STATO e non risponde a una barra vuota (decisione §5 di Tid, gia'' applicata a preventivo/ordine/DDT con 20260810-04/-05/-06). Questo dominio era fra i cinque che non emettevano affatto il campo mentre il drawer lo legge gia'': il cablaggio c''era ed era inerte. ⚠️ La PROPRIETA'' nel meta resta nessuna_azione_key mentre il campo del blob si chiama stato_info_key: scripts/check_i18n_keys.py trova le chiavi seminate per quel nome, e rinominarla senza toccare il guard lo renderebbe verde per cecita''. ⚠️ Il campo e'' SEMPRE presente nel blob, col valore a null quando non si applica: filtrare per presenza risponde vero per tutti i documenti, va guardato il valore. brief-db-vie-uscita-operatore §12.6; attivita-urgenti-del-10-08 §3.';

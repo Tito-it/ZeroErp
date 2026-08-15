@@ -1,0 +1,245 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il fondo si crea UNA VOLTA, da una fattura DEFINITIVA, e non si ricalcola.
+#   Passi D-1 e D-4 di brief-db-fondo-fattura-ricalcolo-e-governo.md §8.2.
+#
+# 🔴 LA TESI DA CUI NASCE TUTTO. Il fondo fattura era «un numero che viene
+#   ricalcolato, e che muove denaro». Le due cose insieme non stanno in
+#   piedi: un numero derivato si puo' rifare quante volte si vuole, un numero
+#   che muove denaro e' un ATTO, e un atto non si ricalcola.
+#
+#   Regola fissata da Tid il 2026-08-15: «una volta che la fattura e' stata
+#   stampata e quindi effettiva, per quella fattura il fondo rimane lo stesso
+#   e mai ricalcolato».
+#
+# ── TRE MODIFICHE ────────────────────────────────────────────────────────
+#
+# 1️⃣  SORGENTE SOLO `DEFINITIVA`.
+#   Oggi la selezione NON filtra alcuno stato. E non e' teorico:
+#   pagamenti.fn_get_saldo_fattura non guarda lo stato e restituisce il
+#   totale intero anche su una fattura ANNULLATA — che quindi, se ha
+#   `minimo = true`, GENERA UN FONDO addebitato su un altro documento.
+#   Non e' mai successo solo perche' di fondi non ne e' mai stato generato
+#   nessuno (0 fatture a minimo su 12 al 2026-08-09).
+#
+#   ⭐ DEFINITIVA e' la soglia giusta perche' NON SI TORNA INDIETRO:
+#   misurato su config.stati_doc_fiscale_transizioni, da DEFINITIVA si va
+#   solo a INVIATA, e l'unico ritorno a DRAFT parte da EMESSA. «Congelato
+#   quando la sorgente e' definitiva» non ha eccezioni da gestire.
+#
+#   ℹ️ Effetto collaterale utile: le fatture del lotto in corso (DRAFT/EMESSA)
+#   restano fuori da se', quindi una figlia non puo' essere sorgente di se'
+#   stessa nello stesso giro.
+#
+# 2️⃣  IL RAMO `UPDATE` SPARISCE.
+#   Era il ricalcolo: riallineava importo e stato di ogni source non ancora
+#   assegnata, a ogni giro. Cioe' il giro di fatturazione di agosto
+#   riscriveva il fondo di una fattura di giugno gia' emessa.
+#
+#   ⚠️ Con lui sparisce anche l'`ANNULLATO` automatico a saldo zero, che era
+#   «uno stato cambiato da un pagamento» — e sono stati esclusi tutti
+#   (principio dei tre livelli, brief incassi §3-bis). Il buco che questo
+#   apre — un fondo non piu' dovuto che resta DISPONIBILE — lo chiude il
+#   guard di capienza in fn_applica_fondi_fattura (changeSet -08), NON un
+#   altro automatismo. 🔴 Questo changeSet da solo, senza il -08, e' peggio
+#   di non fare niente: vanno applicati insieme.
+#
+# 3️⃣  `utility_id` ENTRA NEL FILTRO. 🔴 Difetto misurato.
+#   La funzione riceve p_utility_id, lo SCRIVE sulla riga generata e non lo
+#   usa come filtro. Il ramo UPDATE aveva `s.utility_id IS DISTINCT FROM
+#   p_utility_id` fra le condizioni di scatto, e il BE chiama la funzione una
+#   volta per ogni scope di fattura del lotto:
+#
+#     BA con due utility -> giro utility 1: fondo.utility_id := 1
+#                        -> giro utility 2: fondo.utility_id := 2  (stessa riga)
+#
+#   e fn_applica_fondi_fattura filtra proprio su quella colonna: a quale
+#   figlia finisce il fondo dipendeva dall'ORDINE DEI GIRI.
+#
+#   ⚠️ Il filtro e' `=` e non `IS NOT DISTINCT FROM`: una fattura senza
+#   utility (la colonna e' nullable su vendite.fatture) e' un dato
+#   INCOMPLETO, non una fattura «BASE» — BASE e' una utility vera
+#   (config.utilities id 5). Un'attribuzione non si indovina: resta fuori.
+#
+# ── COSA NON CAMBIA ──────────────────────────────────────────────────────
+#
+# ⚠️ LA FIRMA RESTA IDENTICA, e la scelta e' deliberata. La correzione piena
+#   della chiave (nove elementi di fn_build_fattura_key) e la madre DB per
+#   lotto richiedono di toccare `backend/`, che e' fuori dal perimetro DB: la
+#   richiesta e' scritta nel brief §8.3. Qui la chiave si chiude dove si puo'
+#   farlo senza il BE — sull'utility in generazione (questo changeSet) e sul
+#   confronto riga-contro-riga in applicazione (changeSet -08), che ha
+#   entrambe le fatture sotto mano e non ha bisogno di parametri nuovi.
+#
+# ⚠️ Il `NOT EXISTS` resta su TUTTI gli stati: una source gia' esistente per
+#   la coppia (sorgente, tipo) blocca la creazione anche se ANNULLATA. E'
+#   corretto — se qualcuno l'ha annullata, ricrearla sarebbe l'automatismo
+#   che scavalca la persona.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260815-07-update-fn-genera-fondi-fattura-source-atto-unico-mctit.yaml
+
+  - changeSet:
+      id: 20260815-07-update-fn-genera-fondi-fattura-source-atto-unico
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_genera_fondi_fattura_source: il fondo si crea una volta sola, solo
+        da sorgenti DEFINITIVA, e non si ricalcola piu' (via il ramo UPDATE e
+        l'ANNULLATO automatico). Aggiunto il filtro su utility_id, che la
+        funzione scriveva senza usarlo. D-1 + D-4 del piano fondo fattura.
+        🔴 Da applicare insieme al changeSet -08 (guard di capienza).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'vendite' AND p.proname = 'fn_genera_fondi_fattura_source'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM information_schema.columns
+                  WHERE table_schema = 'vendite' AND table_name = 'fatture'
+                    AND column_name = 'stato_doc_fiscale_id'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_genera_fondi_fattura_source(
+                      p_billing_account_id          anagrafiche.billing_account.id%TYPE,
+                      p_utility_id                  config.utilities.id%TYPE,
+                      p_tipo_doc_fiscale_id         config.tipi_doc_fiscale.id%TYPE,
+                      p_emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE,
+                      p_valuta_id                   config.valute.id%TYPE,
+                      p_tipo_fondo_fattura_id       vendite.tipi_fondi_fattura.id%TYPE)
+               RETURNS INTEGER
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_inserted INTEGER := 0;
+              BEGIN
+                  -- Guard: tutti i parametri obbligatori e > 0
+                  IF p_billing_account_id IS NULL OR p_billing_account_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_genera_fondi_fattura_source', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_billing_account_id', 'valore', p_billing_account_id), NULL::uuid, 'p_billing_account_id obbligatorio e > 0');
+                  END IF;
+                  IF p_utility_id IS NULL OR p_utility_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_genera_fondi_fattura_source', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_utility_id', 'valore', p_utility_id), NULL::uuid, 'p_utility_id obbligatorio e > 0');
+                  END IF;
+                  IF p_tipo_doc_fiscale_id IS NULL OR p_tipo_doc_fiscale_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_genera_fondi_fattura_source', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_tipo_doc_fiscale_id', 'valore', p_tipo_doc_fiscale_id), NULL::uuid, 'p_tipo_doc_fiscale_id obbligatorio e > 0');
+                  END IF;
+                  IF p_emittente_soggetto_ruolo_id IS NULL OR p_emittente_soggetto_ruolo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_genera_fondi_fattura_source', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_emittente_soggetto_ruolo_id', 'valore', p_emittente_soggetto_ruolo_id), NULL::uuid, 'p_emittente_soggetto_ruolo_id obbligatorio e > 0');
+                  END IF;
+                  IF p_valuta_id IS NULL OR p_valuta_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_genera_fondi_fattura_source', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_valuta_id', 'valore', p_valuta_id), NULL::uuid, 'p_valuta_id obbligatorio e > 0');
+                  END IF;
+                  IF p_tipo_fondo_fattura_id IS NULL OR p_tipo_fondo_fattura_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_genera_fondi_fattura_source', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_tipo_fondo_fattura_id', 'valore', p_tipo_fondo_fattura_id), NULL::uuid, 'p_tipo_fondo_fattura_id obbligatorio e > 0');
+                  END IF;
+
+                  -- =========================================================
+                  -- CREAZIONE, e SOLO creazione.
+                  --
+                  -- Non c'e' piu' un ramo di aggiornamento: il fondo di una
+                  -- fattura DEFINITIVA e' un atto, si scrive una volta con
+                  -- l'importo letto in quel momento e non si ricalcola. Il
+                  -- giro successivo non lo tocca — e' il punto della regola.
+                  -- =========================================================
+                  WITH base AS (
+                      SELECT f.id AS fattura_sorgente_id,
+                             f.totale_a_pagare,
+                             (COALESCE(sf.saldo, 0) - COALESCE(sc.saldo_contabile, 0))::NUMERIC AS importo_target
+                        FROM vendite.fatture f
+                        -- Solo sorgenti EFFETTIVE. Uno stato nullo non entra
+                        -- (fail-closed), e ANNULLATA nemmeno: senza questo
+                        -- filtro una fattura annullata con minimo = true
+                        -- genererebbe un fondo, perche' fn_get_saldo_fattura
+                        -- non guarda lo stato e restituisce il totale intero.
+                        JOIN config.stati_doc_fiscale sd
+                          ON sd.id = f.stato_doc_fiscale_id
+                         AND sd.codice_interno = 'DEFINITIVA'
+                        CROSS JOIN LATERAL pagamenti.fn_get_saldo_fattura(f.id) sf
+                        CROSS JOIN LATERAL pagamenti.fn_get_saldo_fattura_contabili(f.id) sc
+                       WHERE f.minimo IS TRUE
+                         AND f.billing_account_id = p_billing_account_id
+                         -- ⭐ utility nel FILTRO, non solo in scrittura: senza,
+                         --    su un BA con due utility la stessa riga veniva
+                         --    rimarcata a ogni giro e l'attribuzione del fondo
+                         --    dipendeva dall'ordine. `=` e non IS NOT DISTINCT
+                         --    FROM: una fattura senza utility e' un dato
+                         --    incompleto (BASE e' una utility vera), e
+                         --    un'attribuzione non si indovina.
+                         AND f.utility_id = p_utility_id
+                         AND f.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id
+                         AND f.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+                         AND f.valuta_id = p_valuta_id
+                  ), ins AS (
+                      INSERT INTO vendite.fatture_fondi_fattura_source (
+                          fattura_sorgente_id, tipo_fondo_fattura_id, importo, stato,
+                          fattura_figlia_id, data_assegnazione, user_assegnazione,
+                          billing_account_id, utility_id, tipo_doc_fiscale_id,
+                          emittente_soggetto_ruolo_id, valuta_id, meta, attivo,
+                          data_insert, user_insert, data_update, user_update
+                      )
+                      SELECT b.fattura_sorgente_id, p_tipo_fondo_fattura_id, b.importo_target,
+                             'DISPONIBILE', NULL, NULL, NULL,
+                             p_billing_account_id, p_utility_id, p_tipo_doc_fiscale_id,
+                             p_emittente_soggetto_ruolo_id, p_valuta_id, '{}'::jsonb, TRUE,
+                             now(), current_user, now(), current_user
+                        FROM base b
+                       WHERE b.importo_target <> 0
+                         -- L'INVILUPPO DELL'AUTOMATISMO: il fondo deve
+                         -- assomigliare alla sua sorgente. ⚠️ Scritto come
+                         -- segno + valore assoluto e MAI come «fra 0 e il
+                         -- totale»: su una sorgente a credito gli estremi si
+                         -- invertirebbero e l'intervallo sarebbe vuoto.
+                         -- ⚠️ E' la stessa regola del guard trigger, ma qui e'
+                         -- un WHERE: il caso e' ORDINARIO e va NON FATTO, non
+                         -- rifiutato con un'eccezione che ferma il giro di un
+                         -- lotto intero. Il trigger e' la garanzia
+                         -- strutturale, questo e' cio' che l'automatismo
+                         -- decide di non fare.
+                         AND b.totale_a_pagare IS NOT NULL
+                         AND sign(b.importo_target) = sign(b.totale_a_pagare)
+                         AND abs(b.importo_target) <= abs(b.totale_a_pagare)
+                         -- Una sola source per (sorgente, tipo), in QUALUNQUE
+                         -- stato: se e' stata annullata da una persona,
+                         -- ricrearla sarebbe l'automatismo che la scavalca.
+                         AND NOT EXISTS (
+                             SELECT 1 FROM vendite.fatture_fondi_fattura_source s
+                              WHERE s.fattura_sorgente_id = b.fattura_sorgente_id
+                                AND s.tipo_fondo_fattura_id = p_tipo_fondo_fattura_id
+                         )
+                      RETURNING id
+                  )
+                  SELECT COUNT(*)::INTEGER INTO v_inserted FROM ins;
+
+                  RETURN COALESCE(v_inserted, 0);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_genera_fondi_fattura_source(bigint, integer, bigint, bigint, integer, bigint)
+              IS 'Crea le source dei fondi fattura per le fatture «di minimo» del perimetro indicato. Dal 2026-08-15 e'' CREATE-ONLY: il ramo UPDATE (che riallineava importo e stato a ogni giro) e'' stato rimosso, perche'' un fondo di una fattura DEFINITIVA e'' un atto e non si ricalcola — decisione di Tid, «una volta che la fattura e'' effettiva il fondo rimane lo stesso». Con lui sparisce l''ANNULLATO automatico a saldo zero, che era uno stato cambiato da un pagamento; 🔴 il buco che apre lo chiude il guard di capienza in fn_applica_fondi_fattura, non un altro automatismo: i due changeSet vanno insieme. Aggiunto il filtro sullo STATO della sorgente (solo DEFINITIVA: fn_get_saldo_fattura non guarda lo stato, quindi senza filtro anche una fattura ANNULLATA con minimo = true generava un fondo) e il filtro su utility_id, che la funzione riceveva, scriveva sulla riga e non usava — su un BA con due utility l''attribuzione del fondo dipendeva dall''ordine dei giri. L''inviluppo sull''importo NON e'' un limite di segno (un fondo a credito e'' legittimo: la banda delle soglie contiene lo zero) ma di CORRISPONDENZA con il totale della sorgente. Firma invariata di proposito: la chiave piena a nove elementi e la madre DB per lotto richiedono il backend, e sono scritte come richiesta nel brief. D-1 + D-4 di brief-db-fondo-fattura-ricalcolo-e-governo §8.2.';

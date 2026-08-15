@@ -53,18 +53,52 @@ la discovery per-commessa dello step di pull): qui si raggruppa per corsia, non 
 | `p_emittente_soggetto_ruolo_id` | `vendite.commesse.emittente_soggetto_ruolo_id%TYPE`      | `NULL`  | Filtro perimetro emittente.                                       |
 | `p_fatturazione_immediata`      | `vendite.commesse.fatturazione_immediata%TYPE`           | `NULL`  | Corsia: true=immediata / false=differita / NULL=indifferente.     |
 | `p_limit`                       | `integer`                                                | `1000`  | Normalizzato (default 1000, max 10000); si applica alle **terne**. |
+| `p_gruppi`                      | `text[]`                                                 | `NULL`  | **Emissione mirata**: restringe alle terne dei GRUPPI FATTURABILI richiesti. NULL = nessuna restrizione. ⚠️ `text[]` esplicito — PostgreSQL non supporta `colonna%TYPE[]`. |
 
 ---
 
 ### Output
 
-`RETURNS TABLE(emittente_soggetto_ruolo_id, tipo_doc_fiscale_id, utility_id, competenza_mese, total_candidate)`:
+`RETURNS TABLE(emittente_soggetto_ruolo_id, tipo_doc_fiscale_id, utility_id, competenza_mese, total_candidate, gruppi_coperti)`:
 
 * **`utility_id`** = utility della terna. **Mai NULL** (`commesse.utility_id` è NOT NULL a
   monte): nessuna terna da escludere su questo asse.
 * **`competenza_mese`** = `max(competenza_mese)` fra le righe candidate della terna → la
   competenza con cui il driver crea il lotto.
 * **`total_candidate`** = numero di righe candidate (per dry-run/diagnostica).
+* **`gruppi_coperti`** `text[]` *(dal 2026-08-15, `20260815-02`)* = **quali gruppi
+  fatturabili** questa terna ha effettivamente coperto, in ordine **deterministico**.
+
+#### A cosa serve `gruppi_coperti`, e perché non c'era
+
+Risponde a una domanda che prima non aveva risposta: **l'operatore chiede tre gruppi e
+ne escono due fatture — quale è rimasto fuori?**
+
+L'informazione si perdeva **per costruzione**, non per dimenticanza: questa funzione
+aggrega per terna, e in quel `GROUP BY` i gruppi di partenza smettono di esistere. A
+valle nessuno poteva più ricostruirli. È come versare tre sacchetti della spesa in un
+carrello: il totale è giusto, la provenienza no.
+
+⚠️ Ed era il caso **peggiore** dei tre esiti possibili, perché l'unico silenzioso:
+«zero fatture» è un errore parlante dal 2026-08-04, e comunque insospettisce; «2 su 3»
+sembra un successo, e il lavoro non fatturato resta fermo senza che nessuno lo cerchi.
+Il gruppo non servito si ricava ora per **differenza** fra i richiesti e i coperti.
+
+Tre cose da sapere se ci si mette mano:
+
+* la chiave arriva da `vendite.fn_build_gruppo_fatturabile_key`, **unica fonte di
+  verità** — la stessa che filtra nel `WHERE` e che alimenta `vw_dash_competenza_gruppi`.
+  Non è ricostruita qui e non deve esserlo: sarebbe una seconda copia della regola;
+* l'ordine è **deterministico** (`ORDER BY` dentro l'aggregato): senza, due chiamate
+  identiche darebbero array diversi e chi li confronta vedrebbe differenze inesistenti;
+* si calcola **sempre**, anche nel giro di massa. Costa una chiamata `STABLE` per riga
+  candidata; l'alternativa — solo con `p_gruppi NOT NULL`, altrimenti `NULL` — è stata
+  scartata perché produrrebbe un campo che a volte vale `NULL` per «non calcolato» e a
+  volte per «nessun gruppo`. Quell'ambiguità si paga dopo, in silenzio.
+
+> ℹ️ **Per chi consuma la funzione**: il campo è **opt-in**. I chiamanti nominano le
+> colonne una per una, quindi la sesta non li tocca finché non la aggiungono alla
+> propria `SELECT`.
 
 ---
 
@@ -131,5 +165,46 @@ sulla **riga** (`commesse_attivita`), non sulla testata del documento, quindi un
 gruppo con righe di tipo diverso produce N lotti. La funzione le restituisce
 tutte — ed è il motivo per cui l'esito verso il backend è una **lista** di
 `lotto_id`, non uno solo.
+
+---
+
+### ⚠️ `gruppi_coperti` è una previsione, non un consuntivo (rev 2026-08-15)
+
+Dice quali gruppi la discovery **si aspetta** di coprire. Fra quel momento e
+l'esecuzione della pipeline le righe di un gruppo possono essere prese da un
+altro giro: la pipeline esce senza errore e senza lotto, e l'esito legge pieno
+successo mentre quel gruppo non è stato fatturato.
+
+Per sapere cosa un giro ha fatturato **davvero** c'è
+[`fn_esito_gruppi_giro(lotti)`](/dbzero/vendite/funzioni/fn_esito_gruppi_giro),
+che misura a consuntivo. Le due cose convivono: questa serve *prima*, quella
+serve *dopo*.
+
+⚠️ Il campo si calcola **sempre**, anche nel giro di massa. Costo misurato: la
+chiave vale ~5 µs a chiamata, cioè ~0,5 s ogni 100.000 righe candidate. E la
+mitigazione «ovvia» — calcolare la chiave una volta sola in una `LATERAL` invece
+che due volte fra argomento e `ORDER BY` — **non esiste**: il parser deduplica
+già le due espressioni quando sono identiche, e le due forme misurano uguale.
+Scritto perché è controintuitivo e qualcuno la riproverà.
+
+---
+
+### ⚠️ Il tetto `p_limit`, e le due risposte opposte (rev 2026-08-15)
+
+`p_limit` (default 1000, massimo 10000) limita le **corsie**, non le righe. Se
+ne taglia una, i gruppi che stavano dentro spariscono dal risultato — e a valle,
+dove il non servito si ricava per differenza, diventerebbero *«questo gruppo non
+è fatturabile»*: una diagnosi falsa su un gruppo che era solo oltre il taglio.
+
+Il rimedio è **asimmetrico**, ed è il punto:
+
+| | tetto toccato |
+|---|---|
+| giro di **massa** (`p_gruppi` `NULL`) | tronca in silenzio — lì è una valvola di sicurezza, e «cosa c'è da fare» ammette una risposta parziale |
+| giro **mirato** (`p_gruppi` valorizzato) | **solleva** `E_FATTURAZIONE_MIRATA_TRONCATA` — il perimetro è nominale, e troncarlo significa non aver risposto |
+
+È la stessa distinzione che il backend applica dal 2026-08 a «zero lotti su N
+gruppi chiesti». ⚠️ Sollevando, il chiamante non riceve **nessuna** riga: non
+esiste lo stato «mezza risposta più un errore».
 
 {% include-markdown "signature-core.md" %}

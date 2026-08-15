@@ -1514,7 +1514,8 @@
       "azione_annulla": "Annulla DDT",
       "stato_info": {
         "consegnato_usa_reso": "La merce è consegnata: per farla rientrare si registra un reso, non si annulla il DDT.",
-        "reso": "Questo DDT è rientrato con un reso: lo stato segue il reso da solo."
+        "reso": "Questo DDT è rientrato con un reso: lo stato segue il reso da solo.",
+        "annullato": "Il DDT è annullato: lo stato è definitivo."
       },
       "azione_push_commessa": "Invia a commessa",
       "conferma_cambio_stato": "Portare il DDT nello stato {stato}?",
@@ -1652,14 +1653,18 @@
       "coda_search_accreditare": "Cerca (n° reso, destinatario, articolo, DDT, account)",
       "coda_etichetta_tutte": "Tutti gli accrediti",
       "coda_etichetta": {
-        "DOVUTA": "NC dovuta",
-        "FACOLTATIVA": "NC facoltativa"
+        "DOVUTA": "Accredito dovuto",
+        "FACOLTATIVA": "Accredito facoltativo — merce da ri-consegnare"
       },
       "coda_search_riconsegnare": "Cerca (n° reso, destinatario, articolo, DDT)"
     },
     "reso": {
       "azione_conferma": "Conferma reso",
-      "azione_annulla": "Annulla reso"
+      "azione_annulla": "Annulla reso",
+      "stato_info": {
+        "confermato": "Il reso è confermato: la merce è rientrata e i movimenti di magazzino sono registrati.",
+        "annullato": "Il reso è annullato: il rientro è stato stornato e lo stato è definitivo."
+      }
     },
     "ordini": {
       "pdf": {
@@ -1737,7 +1742,9 @@
       },
       "stato_info": {
         "evaso": "L'ordine è evaso: lo stato si ricalcola dai DDT, non si imposta a mano.",
-        "parzialmente_evaso": "Evasione in corso: lo stato si ricalcola a ogni DDT."
+        "parzialmente_evaso": "Evasione in corso: lo stato si ricalcola a ogni DDT.",
+        "annullato": "L'ordine è annullato: lo stato è definitivo.",
+        "fatturato": "L'ordine è fatturato: il seguito si gestisce sulla fattura."
       },
       "azione_push_commessa": "Invia a commessa",
       "conferma_cambio_stato": "Portare l'ordine nello stato {stato}?",
@@ -1755,7 +1762,8 @@
         "fattura_da_ddt": "Questo ordine si fattura dal DDT: l'invio a commessa avviene alla spedizione o alla consegna.",
         "gia_inviato": "Ordine già inviato a commessa: le righe sono in attesa di fatturazione.",
         "gia_fatturato": "Ordine già inviato a commessa e fatturato.",
-        "nessuna_riga_pushabile": "Nessuna riga inviabile a commessa: verifica quantità e prezzi delle righe."
+        "nessuna_riga_pushabile": "Nessuna riga inviabile a commessa: verifica quantità e prezzi delle righe.",
+        "annullato": "L'ordine è annullato: non va a fatturazione."
       },
       "evasione_titolo": "Genera DDT",
       "evasione_intro": "Seleziona le righe da evadere e genera il documento di trasporto. Il DDT nasce in bozza.",
@@ -1891,6 +1899,11 @@
       }
     },
     "offerte": {
+      "stato_info": {
+        "rifiutata": "L'offerta è stata rifiutata: per riproporla si crea un'offerta nuova.",
+        "superata": "L'offerta è stata sostituita da una revisione successiva: il seguito si gestisce su quella.",
+        "annullata": "L'offerta è annullata: lo stato è definitivo."
+      },
       "titolo": "Offerte commerciali",
       "titolo_drawer": "Offerta commerciale",
       "nuova_offerta": "Nuova offerta",
@@ -2095,6 +2108,10 @@
       "col_stato_riconsegna": "Stato"
     },
     "contratti": {
+      "stato_info": {
+        "cessato": "Il contratto è cessato: la fornitura è chiusa e non riprende. Per continuarla serve un contratto nuovo.",
+        "annullato": "Il contratto è annullato prima dell'attivazione: non ha mai prodotto effetti e lo stato è definitivo."
+      },
       "note_titolo": "Note contratto",
       "gestisci_note": "Gestisci note",
       "contratto": "Contratto",
@@ -2459,11 +2476,13 @@
       "push_commessa_reason": {
         "non_accettato": "L'integrazione con la commessa sara' disponibile dopo l'accettazione del preventivo.",
         "nessuna_riga": "Nessuna riga da inviare a commessa.",
-        "senza_billing_account": "Manca il cliente: impostalo per inviare a commessa."
+        "senza_billing_account": "Manca il cliente: impostalo per inviare a commessa.",
+        "stato_chiuso": "Il preventivo è chiuso: non genera più smistamenti verso la commessa."
       },
       "genera_ordine_reason": {
         "non_accettato": "La generazione dell'ordine sara' disponibile dopo l'accettazione del preventivo.",
-        "nessuna_riga": "Nessuna riga: aggiungi almeno una riga per generare l'ordine."
+        "nessuna_riga": "Nessuna riga: aggiungi almeno una riga per generare l'ordine.",
+        "stato_chiuso": "Il preventivo è chiuso: non genera più ordini."
       },
       "azione_reason": {
         "ordine_gia_generato": "Il preventivo ha già generato un ordine: annulla prima l'ordine collegato.",
@@ -2516,6 +2535,12 @@
         "in_commessa": "In commessa",
         "emessa_af": "Emessa",
         "fatturata": "Fatturata"
+      },
+      "stato_info": {
+        "evaso": "Il preventivo è interamente smistato: il seguito si gestisce sui documenti generati.",
+        "rifiutato": "Il preventivo è stato rifiutato: per riproporlo si crea un preventivo nuovo.",
+        "scaduto": "La validità del preventivo è passata e non si riapre: per riproporlo si crea un preventivo nuovo.",
+        "annullato": "Il preventivo è annullato: lo stato è definitivo."
       }
     },
     "listini": {
@@ -2788,6 +2813,10 @@
       "fattura_gruppi_esito": "Emissione completata: {lotti} lotti prodotti.",
       "fattura_gruppi_esito_parziale": "Emissione completata con {falliti} errori su {lotti} lotti. Controlla il registro lotti.",
       "fattura_gruppi_esito_vuoto": "Nessun lotto prodotto: le attività dei gruppi selezionati non erano più fatturabili.",
+      "fattura_gruppi_esito_non_serviti": "Emissione parziale: {lotti} lotti prodotti, {mancanti} gruppi rimasti fuori — {dettagli}",
+      "fattura_gruppi_esito_altrove": "Nota: {n} gruppi non erano più da fatturare — le loro attività risultano già fatturate da un altro giro ({gruppi}).",
+      "gruppo_bloccato_tooltip": "La commessa è in stato {stato} e non ammette fatturazione: il gruppo non entra in nessun lotto. Aprila con «Sblocca commessa» per renderla pronta.",
+      "azione_sblocca_commessa": "Sblocca commessa",
       "lotti_emessi": "Lotti prodotti ({n}):",
       "vai_al_lotto": "Vai al lotto #{id}",
       "azione_approva": "Approva",
@@ -2937,6 +2966,10 @@
       "tipo_reso_vendita": "Reso"
     },
     "commesse": {
+      "stato_info": {
+        "chiusa": "La commessa è chiusa: non si modifica più e non genera altri documenti.",
+        "annullata": "La commessa è annullata: lo stato è definitivo."
+      },
       "gestione_titolo": "Gestione commessa",
       "tot_attivita": "Attività",
       "tot_da_approvare": "Da approvare",

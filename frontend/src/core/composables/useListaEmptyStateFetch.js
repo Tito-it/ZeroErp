@@ -28,53 +28,120 @@
 // Lo store espone questi ref nel proprio `return` insieme a `filters` e alle
 // azioni CRUD.
 
+// ⚠️ GUARD DI VERSIONE (2026-08-10) — `fetchList` puo' essere in volo PIU' VOLTE
+// contemporaneamente, e le risposte non tornano nell'ordine in cui sono partite.
+// Senza guard vince l'ULTIMA ARRIVATA, non l'ultima chiesta.
+//
+// Difetto reale, segnalato da Tid sui preventivi: cerchi `0000192`, compare la
+// riga giusta, e un istante dopo la lista si ripopola con TUTTO. Alla seconda
+// ricerca funziona. La spiegazione del «solo la prima volta» e' che al primo
+// ingresso c'e' una fetch concorrente che dopo non c'e' piu': il caricamento di
+// `onMounted` (che parte davvero, perche' il default `data_da` conta come filtro
+// attivo e supera la guardia empty-state) — piu', quando presenti, il riallineo
+// di `onConfigLoaded` e `useTabFreshness`. La fetch senza search e' la piu'
+// lenta perche' non filtra nulla: parte prima e atterra dopo.
+//
+// Non e' cosmetico: la lista mostra un risultato che NON corrisponde a quello
+// che si legge nella casella di ricerca. Si riusa `useFetchVersion`, la stessa
+// primitiva di `usePagedDashFetch` — anche `loading` si spegne solo sulla fetch
+// corrente, altrimenti una risposta scartata toglierebbe lo spinner a una
+// chiamata ancora in corso.
 import { ref } from 'vue'
+import { useFetchVersion } from './useFetchVersion'
 
-export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => false, buildParams, fetchPage, alwaysFetch = false }) {
+// `ricercaCorta` (2026-08-10, migrazione delle 19 store che avevano il ciclo a
+// mano): cosa fa una lista `alwaysFetch` quando nel campo search ci sono 1-2
+// caratteri. Le TRE UX convivono nel prodotto e l'opzione esiste per migrare
+// gli store SENZA CAMBIARE cio' che l'operatore vede:
+//  - 'fetch' (default): si fetcha comunque; `buildParams` ignora il termine
+//    corto, quindi la lista resta piena mentre si digita («intanto ti lascio
+//    quello che c'era»). E' il comportamento della factory `createCrudStore`.
+//  - 'svuota': la ricerca corta SVUOTA la lista («quello che vedi non c'entra
+//    piu' con quello che leggi nella casella»). Usato da catalogo (unita' di
+//    misura, tipi UoM), listini e template documenti.
+//  - 'ignora': no-op totale — niente richiesta, la lista resta com'e'. Usato
+//    dove la lista alimenta anche una selezione a lato (pratiche: svuotarla
+//    annullerebbe `selectedItem` e i guard che ne derivano) o dove il refetch
+//    del default sarebbe solo traffico inutile (righe listino).
+// Ignorato quando `alwaysFetch` e' false: li' la guardia empty-state fa gia'
+// questo e altro.
+export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => false, buildParams, fetchPage, alwaysFetch = false, ricercaCorta = 'fetch' }) {
   const items = ref([])
   const totalRecords = ref(0)
   const loading = ref(false)
   const hasSearched = ref(false)
+  const fv = useFetchVersion()
+
+  // Scopo: riporta la lista allo stato vuoto E scarta le risposte in volo.
+  // L'invalidate e' la parte che non si puo' omettere: senza, una fetch gia'
+  // partita atterra con tag ancora corrente e ripopola la lista appena
+  // svuotata (lo stesso difetto dei preventivi, rientrato dai rami di
+  // guardia). Lo spinner va spento qui: la fetch invalidata non lo spegne
+  // piu', perche' il suo `finally` e' gated su `isCurrent`.
+  // Esposto ai caller per i reset di contesto esterni al BB (es. pratiche
+  // senza emittente corrente).
+  function svuota() {
+    fv.invalidate()
+    items.value = []
+    totalRecords.value = 0
+    hasSearched.value = false
+    loading.value = false
+  }
 
   async function fetchList() {
     const f = filters.value
     const searchTerm = (f.search || '').trim()
 
+    // Liste che partono piene: comportamento della ricerca corta secondo
+    // `ricercaCorta` (vedi sopra). Il default 'fetch' prosegue e basta.
+    if (alwaysFetch && searchTerm.length > 0 && searchTerm.length < 3) {
+      if (ricercaCorta === 'svuota') {
+        svuota()
+        return false
+      }
+      if (ricercaCorta === 'ignora') return false
+    }
+
     // Guard empty-state: SOLO in modo "starts-empty" (default). In `alwaysFetch`
     // (liste che partono piene) si salta tutto e si carica sempre.
     if (!alwaysFetch) {
       const hasFilters = hasActiveFilters(f)
-      // Search con meno di 3 caratteri e nessun filtro attivo → ignora (ed
-      // eventualmente svuota se prima c'era un risultato).
+      // Search con meno di 3 caratteri e nessun filtro attivo → stato vuoto.
       if (searchTerm.length > 0 && searchTerm.length < 3 && !hasFilters) {
-        if (hasSearched.value) {
-          items.value = []
-          totalRecords.value = 0
-          hasSearched.value = false
-        }
-        return
+        svuota()
+        return false
       }
-      // Primo caricamento senza filtri → resta vuoto.
-      if (!searchTerm && !hasFilters && !hasSearched.value) return
-      // Search svuotata senza filtri → torna a stato vuoto.
+      // Nessuna search e nessun filtro → stato vuoto (copre sia il primo
+      // caricamento sia la search svuotata: la distinzione su `hasSearched`
+      // serviva solo a risparmiare i reset, che ora vivono in `svuota`).
       if (!searchTerm && !hasFilters) {
-        items.value = []
-        totalRecords.value = 0
-        hasSearched.value = false
-        return
+        svuota()
+        return false
       }
     }
 
+    // Marca QUESTA chiamata prima di partire: al ritorno si scrive solo se nel
+    // frattempo non ne e' partita una piu' recente.
+    const tag = fv.tag()
     loading.value = true
     try {
       const res = await fetchPage(buildParams(f, searchTerm))
+      if (!fv.isCurrent(tag)) return false   // risposta stantia: la lista NON si tocca
       items.value = res.data.data.results
       totalRecords.value = res.data.data.count
       hasSearched.value = true
+      // `true` SOLO quando questa chiamata ha davvero scritto `items`: i
+      // caller con lavoro derivato (es. listini → preload versioni) devono
+      // poter distinguere «lista aggiornata» da «guardia/risposta scartata»,
+      // altrimenti il secondo giro parte sui dati di un'altra chiamata.
+      return true
     } finally {
-      loading.value = false
+      // Lo spinner lo spegne solo la fetch corrente: una risposta scartata che
+      // lo spegnesse lascerebbe la lista senza indicazione mentre una chiamata
+      // piu' recente e' ancora in volo.
+      if (fv.isCurrent(tag)) loading.value = false
     }
   }
 
-  return { items, totalRecords, loading, hasSearched, fetchList }
+  return { items, totalRecords, loading, hasSearched, fetchList, svuota }
 }

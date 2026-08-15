@@ -487,7 +487,11 @@ parallelizzabili dopo che la prima (preventivi + helper) e' merged.
 - Tabelle correlate:
   - [vendite.preventivi_righe](../../dbzero/vendite/tabelle/preventivi_righe.md)
   - [catalogo.articoli_componenti](../../dbzero/catalogo/tabelle/articoli_componenti.md)
-- Resolver: [vendite.fn_resolve_prezzo_composito](../../dbzero/vendite/funzioni/fn_resolve_prezzo_composito.md)
+- Resolver: `vendite.fn_resolve_prezzo_composito` — ⚠️ **funzione RITIRATA**, la pagina di
+  documentazione non esiste più. Vedi
+  [brief-db-drop-fn-resolve-prezzo-composito.md](brief-db-drop-fn-resolve-prezzo-composito.md):
+  il path legacy è stato rimosso col cleanup del 2026-05-14, oggi i componenti negoziati si
+  leggono dallo snapshot al documento sorgente.
 
 ## Note di rollback
 

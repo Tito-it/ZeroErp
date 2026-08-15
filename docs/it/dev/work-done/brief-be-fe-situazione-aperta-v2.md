@@ -1,7 +1,7 @@
 # Brief BE/FE — Situazione aperta v2: serbatoio pre-commessa (donut per fase + filtro ritardo)
 
 > **Tipo**: brief operativo BE/FE (`dev/backend-tid`) · **Data**: 2026-07-08 · **Owner**: Tid
-> **Design-of-record**: [brief-design-fatturazione-due-lenti.md](../work-in-progress/brief-design-fatturazione-due-lenti.md)
+> **Design-of-record**: [brief-design-fatturazione-due-lenti.md](brief-design-fatturazione-due-lenti.md)
 > §6-ter (DL-14..18). **Prerequisito DB**:
 > [brief-db-situazione-aperta-v2.md](brief-db-situazione-aperta-v2.md) — viste ristrette agli
 > aperti-non-chiusi + drop colonne transitato. **Gate**: BE/FE partono a **viste v2 applicate**

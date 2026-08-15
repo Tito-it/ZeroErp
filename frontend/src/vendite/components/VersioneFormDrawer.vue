@@ -22,7 +22,7 @@ import Message from 'primevue/message'
 
 const { t } = useI18n()
 const isReadonly = useInjectReadonly()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const listiniStore = useListiniStore()
 
 const props = defineProps({
@@ -128,16 +128,22 @@ function close() {
 
       <div class="form-field">
         <label>{{ t('vendite.listini.field_codice_versione') }} *</label>
-        <InputText v-model="form.codice_versione" />
+        <InputText v-model="form.codice_versione"
+          :invalid="campiErrati.includes('codice_versione')"
+        />
       </div>
       <div class="form-grid-2col">
         <div class="form-field">
           <label>{{ t('vendite.listini.field_valido_dal') }} *</label>
-          <DatePicker v-model="form.valido_dal" :dateFormat="DATE_FORMAT" showIcon />
+          <DatePicker v-model="form.valido_dal" :dateFormat="DATE_FORMAT" showIcon
+            :invalid="campiErrati.includes('valido_dal')"
+          />
         </div>
         <div class="form-field">
           <label>{{ t('vendite.listini.field_valido_al') }}</label>
-          <DatePicker v-model="form.valido_al" :dateFormat="DATE_FORMAT" showIcon showButtonBar />
+          <DatePicker v-model="form.valido_al" :dateFormat="DATE_FORMAT" showIcon showButtonBar
+            :invalid="campiErrati.includes('valido_al')"
+          />
         </div>
       </div>
 

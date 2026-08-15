@@ -13,7 +13,8 @@
 
 from datetime import date
 
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter,
     extend_schema,
@@ -31,6 +32,7 @@ from apps.core.api.payload_validators import (
     qp_str_upper,
 )
 from apps.core.api.success_responses import success_response
+from apps.vendite.api.dash_export_helpers import build_dash_export_response
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services.vendite_service import (
     fn_dash_competenza_attivita,
@@ -558,3 +560,155 @@ class ApiDashboardCompetenzaErrori(DomainAPIView):
             page_size=page_size,
         )
         return success_response(data)
+
+
+# Scopo: Guard comune delle tre export di competenza per il mese obbligatorio.
+#        Le liste gruppi/commesse non hanno senso senza perimetro: senza mese
+#        esporterebbero «tutto», che non e' cio' che l'operatore ha a video.
+def _competenza_mese_obbligatoria(request: Request, *, function_name: str) -> date:
+    competenza_mese = qp_iso_date_optional(
+        request.query_params.get("competenza_mese"), "competenza_mese",
+    )
+    ErrorManager.require(
+        competenza_mese is not None,
+        code="E_VENDITE_VALIDATION",
+        message="Parametro competenza_mese obbligatorio.",
+        function_name=function_name,
+    )
+    assert competenza_mese is not None
+    return competenza_mese
+
+
+class ApiDashboardCompetenzaGruppiExport(DomainAPIView):
+    """GET /api/v1/vendite/dashboard-competenza/gruppi/export/?formato=csv|xlsx
+
+    Esporta la STESSA lista dei gruppi fatturabili, con gli stessi filtri.
+    Colonne e ordine dal catalogo `vendite.dash_competenza_gruppi` risolto
+    sulla configurazione dell'operatore. Hard cap 10.000 righe.
+
+    NB: il parametro si chiama `formato` (italiano) NON `format` — magic
+    parameter DRF (content-negotiation) che intercetterebbe la chiamata.
+    """
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+
+    @extend_schema(
+        operation_id="vendite_dashboard_competenza_gruppi_export",
+        parameters=[
+            OpenApiParameter(name="formato", type=str, required=False,
+                             description="csv (default) | xlsx"),
+            OpenApiParameter(name="competenza_mese", type=str, required=True),
+            OpenApiParameter(name="stadio", type=str, required=False),
+            OpenApiParameter(name="tipo_gruppo", type=str, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False),
+            OpenApiParameter(name="order_dir", type=str, required=False),
+        ],
+        responses={(200, "text/csv"): OpenApiTypes.BINARY},
+    )
+    # Scopo: Genera il file (CSV/XLSX) dei gruppi fatturabili del mese.
+    def get(self, request: Request) -> HttpResponse:
+        qp = request.query_params
+        competenza_mese = _competenza_mese_obbligatoria(
+            request,
+            function_name="vendite.api.views_dashboard_competenza.gruppi_export",
+        )
+        return build_dash_export_response(
+            request,
+            lista_codice="vendite.dash_competenza_gruppi",
+            fetch=fn_dash_competenza_gruppi,
+            filtri={
+                "competenza_mese": competenza_mese,
+                "stadio": qp_str_upper(qp.get("stadio")),
+                "tipo_gruppo": qp_str_upper(qp.get("tipo_gruppo")),
+                "order_by": qp_str(qp.get("order_by")),
+                "order_dir": qp_str(qp.get("order_dir")),
+            },
+        )
+
+
+class ApiDashboardCompetenzaCommesseExport(DomainAPIView):
+    """GET /api/v1/vendite/dashboard-competenza/commesse/export/?formato=csv|xlsx
+
+    Esporta la STESSA lista aggregata per commessa, con gli stessi filtri.
+    Colonne e ordine dal catalogo `vendite.dash_competenza_commesse`.
+    Hard cap 10.000 righe. Parametro `formato`, non `format`.
+    """
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+
+    @extend_schema(
+        operation_id="vendite_dashboard_competenza_commesse_export",
+        parameters=[
+            OpenApiParameter(name="formato", type=str, required=False,
+                             description="csv (default) | xlsx"),
+            OpenApiParameter(name="competenza_mese", type=str, required=True),
+            OpenApiParameter(name="stadio", type=str, required=False),
+            OpenApiParameter(name="solo_ritardo", type=bool, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False),
+            OpenApiParameter(name="order_dir", type=str, required=False),
+        ],
+        responses={(200, "text/csv"): OpenApiTypes.BINARY},
+    )
+    # Scopo: Genera il file (CSV/XLSX) del drill-down per commessa del mese.
+    def get(self, request: Request) -> HttpResponse:
+        qp = request.query_params
+        competenza_mese = _competenza_mese_obbligatoria(
+            request,
+            function_name="vendite.api.views_dashboard_competenza.commesse_export",
+        )
+        return build_dash_export_response(
+            request,
+            lista_codice="vendite.dash_competenza_commesse",
+            fetch=fn_dash_competenza_commesse,
+            filtri={
+                "competenza_mese": competenza_mese,
+                "stadio": qp_str_upper(qp.get("stadio")),
+                "solo_ritardo": bool(
+                    qp_bool_optional(qp.get("solo_ritardo"), "solo_ritardo"),
+                ),
+                "order_by": qp_str(qp.get("order_by")),
+                "order_dir": qp_str(qp.get("order_dir")),
+            },
+        )
+
+
+class ApiDashboardCompetenzaErroriExport(DomainAPIView):
+    """GET /api/v1/vendite/dashboard-competenza/errori/export/?formato=csv|xlsx
+
+    Esporta la STESSA lista degli errori del mese. Colonne e ordine dal
+    catalogo `vendite.dash_competenza_errori`. Hard cap 10.000 righe.
+    `competenza_mese` e' OPZIONALE qui, come nel GET di lista gemello.
+    Parametro `formato`, non `format`.
+    """
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+
+    @extend_schema(
+        operation_id="vendite_dashboard_competenza_errori_export",
+        parameters=[
+            OpenApiParameter(name="formato", type=str, required=False,
+                             description="csv (default) | xlsx"),
+            OpenApiParameter(name="competenza_mese", type=str, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False),
+            OpenApiParameter(name="order_dir", type=str, required=False),
+        ],
+        responses={(200, "text/csv"): OpenApiTypes.BINARY},
+    )
+    # Scopo: Genera il file (CSV/XLSX) della lista errori del mese.
+    def get(self, request: Request) -> HttpResponse:
+        qp = request.query_params
+        return build_dash_export_response(
+            request,
+            lista_codice="vendite.dash_competenza_errori",
+            fetch=fn_dash_competenza_errori,
+            filtri={
+                "competenza_mese": qp_iso_date_optional(
+                    qp.get("competenza_mese"), "competenza_mese",
+                ),
+                "order_by": qp_str(qp.get("order_by")),
+                "order_dir": qp_str(qp.get("order_dir")),
+            },
+        )

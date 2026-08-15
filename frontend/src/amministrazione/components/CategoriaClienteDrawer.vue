@@ -19,7 +19,11 @@ import Message from 'primevue/message'
 
 const { t } = useI18n()
 const store = useCategorieClientiStore()
-const { execute, loading } = useApiHandler()
+// `campiErrati`: i campi che il BACKEND indica come da correggere (envelope
+// `error.fields`). ⭐ PILOTA del §12 del piano-be-classe-codici-errore: e' il
+// primo drawer che li usa. Non sostituisce la validazione client (`canSave`) —
+// copre le regole che il frontend NON conosce, quelle che stanno nel service.
+const { execute, loading, campiErrati } = useApiHandler()
 const isReadonly = useInjectReadonly()
 
 const props = defineProps({
@@ -139,6 +143,7 @@ function close() {
             :disabled="isEdit || isReadOnlyEffective"
             :placeholder="t('amministrazione.categorie_clienti.field_codice_placeholder')"
             maxlength="32"
+            :invalid="campiErrati.includes('codice')"
           />
         </div>
         <div class="form-field">
@@ -148,6 +153,7 @@ function close() {
             :disabled="isReadOnlyEffective"
             :placeholder="t('amministrazione.categorie_clienti.field_descrizione_placeholder')"
             maxlength="255"
+            :invalid="campiErrati.includes('descrizione')"
           />
         </div>
         <div class="form-field">
@@ -157,18 +163,21 @@ function close() {
             :disabled="isReadOnlyEffective"
             :min="0"
             showButtons
+            :invalid="campiErrati.includes('ordinamento')"
           />
         </div>
         <div class="form-field">
           <label>{{ t('amministrazione.categorie_clienti.field_partecipa_promo') }}</label>
-          <ToggleSwitch v-model="form.partecipa_promo" :disabled="isReadOnlyEffective" />
+          <ToggleSwitch v-model="form.partecipa_promo" :disabled="isReadOnlyEffective"
+            :invalid="campiErrati.includes('partecipa_promo')" />
           <small class="text-color-secondary">
             {{ t('amministrazione.categorie_clienti.field_partecipa_promo_hint') }}
           </small>
         </div>
         <div class="form-field">
           <label>{{ t('common.attivo') }}</label>
-          <ToggleSwitch v-model="form.attivo" :disabled="isReadOnlyEffective" />
+          <ToggleSwitch v-model="form.attivo" :disabled="isReadOnlyEffective"
+            :invalid="campiErrati.includes('attivo')" />
         </div>
 
         <Message v-if="isEdit" severity="info" :closable="false">

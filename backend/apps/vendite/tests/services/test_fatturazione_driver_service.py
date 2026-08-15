@@ -27,19 +27,12 @@ from apps.vendite.services.fatturazione_driver_service import (
     esegui_giro_fatturazione,
     modalita_disponibili,
 )
+# Fixture lane condiviso (regola del 2): una sede sola per la forma di
+# list_emittibili_lane.
+from apps.vendite.tests._helpers.lane_fixture import lane as _lane
 
 _SVC = "apps.vendite.services.fatturazione_driver_service"
 
-
-# Scopo: helper lane come da CommesseRepository.list_emittibili_lane.
-def _lane(em, *, tipo_doc=1, utility=9, comp=date(2026, 6, 1), tot=1):
-    return {
-        "emittente_soggetto_ruolo_id": em,
-        "tipo_doc_fiscale_id": tipo_doc,
-        "utility_id": utility,
-        "competenza_mese": comp,
-        "total_candidate": tot,
-    }
 
 
 _ESITO_OK = {"lotto_id": 100, "motivo_stop": "FERMATO_A_STATO", "step_eseguiti": 2}

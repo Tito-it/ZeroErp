@@ -253,6 +253,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_EVENTO_DOCUMENTO_UPDATE_VIETATA": "Modifica eventi documento non consentita: timeline append-only.",
     "E_FATTURAZIONE_GIRO_NESSUN_LOTTO": "Nessun lotto da fatturare nel perimetro indicato.",
     "E_FATTURAZIONE_GIRO_PAYLOAD": "Parametri del giro di fatturazione non validi.",
+    "E_FATTURAZIONE_MIRATA_TRONCATA": "Emissione mirata troppo ampia: nessun lotto è stato creato. Selezionare meno gruppi e rilanciare.",
     "E_FATTURAZIONE_NUMERA_PAYLOAD": "Parametri della numerazione non validi.",
     "E_FATTURA_EMITTENTE_NON_RISOLTO": "Emittente fiscale non risolvibile per la fattura in coda di stampa.",
     "E_FATTURA_GIA_FISCALE": "La fattura e` oltre lo stato pre-fiscale: non puo` essere tolta dal lotto.",
@@ -283,6 +284,29 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_FLUSSO_OWNERSHIP": "Flusso non appartiene alla pratica indicata.",
     "E_FLUSSO_PRESA_IN_CARICO": "Errore durante la presa in carico del flusso.",
     "E_FLUSSO_VALIDATION": "Parametri flusso non validi.",
+    # Fondi fattura (brief-db-fondo-fattura-ricalcolo-e-governo). Il fondo e' un
+    # ATTO: si crea una volta e non si ricalcola. ⚠️ Nessuno di questi messaggi
+    # parla del SEGNO dell'importo: un fondo negativo e' legittimo — il capo
+    # inferiore della banda del minimo esiste apposta per riportare avanti i
+    # crediti — e cio' che si vieta e' la mancata corrispondenza col documento.
+    "E_FONDO_ATTO_IMMUTABILE": (
+        "Il fondo fattura e' gia' stato creato e non si puo' modificare: "
+        "importo, fattura di origine, tipo e origine sono definitivi."
+    ),
+    "E_FONDO_MOTIVO_OBBLIGATORIO": (
+        "Motivo obbligatorio: un fondo creato a mano o annullato deve dire perche'."
+    ),
+    "E_FONDO_NON_CORRISPONDE_SORGENTE": (
+        "Il fondo non corrisponde alla fattura da cui nasce: deve avere lo stesso "
+        "segno del totale del documento e non superarlo in valore assoluto."
+    ),
+    "E_FONDO_SOGLIE_INCOMPLETE": (
+        "Le due soglie del minimo si dichiarano insieme: valorizzarle entrambe "
+        "oppure lasciarle entrambe vuote."
+    ),
+    "E_FONDO_STATO_NON_AMMESSO": (
+        "Passaggio di stato del fondo non ammesso: un fondo annullato non si riapre."
+    ),
     "E_FORMA_GIURIDICA_PAESE": "Forma giuridica non coerente con il paese del soggetto.",
     "E_FORNITORE_BLOCCATO": "Fornitore bloccato: non e' possibile emettere ordini.",
     "E_FORNITORE_ID_INVALIDO": "Identificativo fornitore non valido.",
@@ -607,6 +631,11 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER": "Conflitto sullo step: ammesso solo uno fra avanzamento su proiezione e handler eventi.",
     "E_TEMPLATE_FLUSSO_PROIEZIONE_STEP_DOMINIO": "Avanzamento su proiezione non ammesso su uno step DOMINIO.",
     "E_TIPI_RUOLI_ENTITA_INVALIDA": "Configurazione tipo ruolo non valida.",
+    # Scorporato da `E_ERRORE_PARAMETRI` dal team DB il 2026-08-08, dopo la
+    # misura del §10.1: 3 dei suoi punti dicevano 400 dove serve 500. E' un
+    # difetto di MONTAGGIO del trigger — se ne accorge chi lo installa, mai
+    # l'operatore — quindi il messaggio non gli chiede di correggere niente.
+    "E_TRIGGER_ARGOMENTI_INVALIDI": "Trigger montato con argomenti non validi.",
     "E_TIPO_FONDO_NOT_FOUND": "Tipo fondo non trovato.",
     "E_TIPO_INDIRIZZO": "Tipo indirizzo non ammesso per questo documento.",
     "E_TIPO_INDIRIZZO_NON_PERMESSO": "Tipo indirizzo non permesso per questo tipo di ruolo.",

@@ -3,16 +3,12 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { listIndirizzi, createIndirizzo, updateIndirizzo } from '../api/anagrafiche'
+import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
 import { useTabEvents } from '../../core/composables/useTabEvents'
 import { TAB_ENTITIES } from '../../core/constants'
 
 export const useIndirizziStore = defineStore('anagrafiche-indirizzi', () => {
   const { emitDataChanged } = useTabEvents()
-  const items = ref([])
-  const totalRecords = ref(0)
-  const loading = ref(false)
-  const hasSearched = ref(false)
-
   const filters = ref({
     search: '',
     comune_id: null,
@@ -23,35 +19,13 @@ export const useIndirizziStore = defineStore('anagrafiche-indirizzi', () => {
   })
 
   // Scopo: Carica lista paginata indirizzi con filtri.
-  // La lista parte vuota: richiede search (min 3 car) o filtro attivo.
-  async function fetchList() {
-    const f = filters.value
-    const searchTerm = (f.search || '').trim()
-    const hasFilters = f.comune_id != null
-
-    // Search con meno di 3 caratteri e nessun filtro attivo → svuota i
-    // risultati precedenti (coerenza UX: niente dati obsoleti visibili).
-    if (searchTerm.length > 0 && searchTerm.length < 3 && !hasFilters) {
-      if (hasSearched.value) {
-        items.value = []
-        totalRecords.value = 0
-        hasSearched.value = false
-      }
-      return
-    }
-    if (!searchTerm && !hasFilters && !hasSearched.value) {
-      return
-    }
-    // Search svuotata senza filtri → torna a stato vuoto
-    if (!searchTerm && !hasFilters) {
-      items.value = []
-      totalRecords.value = 0
-      hasSearched.value = false
-      return
-    }
-
-    loading.value = true
-    try {
+  // La lista parte vuota: richiede search (min 3 car) o filtro attivo — le tre
+  // guardie di empty-state le porta il BB, che aggiunge anche la guardia di
+  // versione anti-race che qui mancava (migrazione 2026-08-10).
+  const { items, totalRecords, loading, hasSearched, fetchList } = useListaEmptyStateFetch({
+    filters,
+    hasActiveFilters: (f) => f.comune_id != null,
+    buildParams: (f, searchTerm) => {
       const params = {}
       if (searchTerm.length >= 3) params.search = searchTerm
       if (f.comune_id != null) params.comune_id = f.comune_id
@@ -61,15 +35,10 @@ export const useIndirizziStore = defineStore('anagrafiche-indirizzi', () => {
         params.order_by = f.order_by
         params.order_dir = f.order_dir || 'asc'
       }
-
-      const res = await listIndirizzi(params)
-      items.value = res.data.data.results
-      totalRecords.value = res.data.data.count
-      hasSearched.value = true
-    } finally {
-      loading.value = false
-    }
-  }
+      return params
+    },
+    fetchPage: listIndirizzi,
+  })
 
   async function create(payload) {
     const res = await createIndirizzo(payload)

@@ -125,7 +125,10 @@ class FornitoriService:
                 )},
                 {
                     "uq_fornitori_soggetto_ruolo_id": "Esiste gia' un fornitore per questo soggetto.",
-                    "uq_fornitori_codice": "Esiste gia' un fornitore con questo codice.",
+                    "uq_fornitori_codice": (
+                        "Esiste gia' un fornitore con questo codice.",
+                        "codice",
+                    ),
                 },
             )
 

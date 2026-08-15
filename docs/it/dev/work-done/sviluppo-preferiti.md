@@ -30,7 +30,7 @@ clicca l'icona del dominio in sidebar HOME.
   [`SidebarHome.vue`](../../../../frontend/src/core/components/SidebarHome.vue)
   consuma `getDefaultRoute` per l'atterraggio dominio.
 - Doc: una riga in
-  [`frontend-standards.md`](frontend/frontend-standards.md) ("voci L2 +
+  [`frontend-standards.md`](../frontend/frontend-standards.md) ("voci L2 +
   preferiti"), nessuna sezione dedicata.
 
 **Gap funzionali**:
@@ -493,7 +493,7 @@ L'MVP si considera **completato** quando:
 - Navigation config: [`core/navigation.js`](../../../../frontend/src/core/navigation.js)
   (`DOMAINS`, `DOMAIN_MENUS`, `resolveNavigationLabel`, `HOME_ITEM`)
 - Doc standard esistente:
-  [`frontend-standards.md`](frontend/frontend-standards.md) §"Catalogo
+  [`frontend-standards.md`](../frontend/frontend-standards.md) §"Catalogo
   componenti" (`SidebarDomain` cita "voci L2 + preferiti" — da espandere).
 
 ---

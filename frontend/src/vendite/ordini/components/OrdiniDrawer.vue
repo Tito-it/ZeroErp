@@ -51,7 +51,7 @@ import Divider from 'primevue/divider'
 
 const { t, te } = useI18n()
 const store = useOrdiniStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const notify = useNotify()
 const { confirmAction } = useConfirmAction()
 
@@ -591,7 +591,7 @@ const drawerActions = computed(() => {
           </template>
         </DrawerEntityHeader>
 
-        <DrawerActionsBar :actions="drawerActions" :info-key="detail?.nessuna_azione_key || ''">
+        <DrawerActionsBar :actions="drawerActions" :info-key="detail?.stato_info_key || ''">
           <template #suffix>
             <!-- Stampa conferma d'ordine: anteprima PDF on-demand
                  (ristampabile, §12.4(a)). BB EntityPdfButton riusato 1:1. -->
@@ -620,7 +620,8 @@ const drawerActions = computed(() => {
       <Divider v-if="hasDetail" />
 
       <!-- Form testata: monta dopo l'animazione drawer per evitare rimbalzo lookup. -->
-      <OrdiniForm v-if="contentReady"
+      <OrdiniForm
+        :campi-errati="campiErrati" v-if="contentReady"
         :form="form" :is-modificabile="canEditTestataEffective && !isReadonly"
         :non-editable-fields="nonEditableFields"
         :is-edit="isEdit || createdId !== null"

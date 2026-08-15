@@ -323,4 +323,4 @@ che passano al seed BE/FE restano quelle di §3.bis e delle note qui sotto:
   `frontend/src/stores/navigation.js`,
   `frontend/src/core/composables/useNavigationFavorites.js`
 - Dashboard esistenti (candidate a fornire i KPI):
-  `docs/it/dev/work-in-progress/brief-design-fatturazione-due-lenti.md`
+  `docs/it/dev/work-done/brief-design-fatturazione-due-lenti.md`

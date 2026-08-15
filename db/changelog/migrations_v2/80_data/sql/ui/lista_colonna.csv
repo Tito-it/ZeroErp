@@ -456,3 +456,19 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 456,43,data_attivita_max,Periodo,,data_attivita_max,informazione,date,date_short,,60,left,,,t,t,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_periodo,65
 457,43,n_in_ritardo,In ritardo,,n_in_ritardo,informazione,numeric,,,70,right,,,t,f,t,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_ritardo,55
 458,43,azioni,Azioni,,,azione,string,,,999,center,,,f,f,f,f,f,t,2026-08-03 00:00:00,mctit,vendite.dashboard_competenza.col_azioni,100
+459,44,motivo,Motivo,Perche' il giro automatico si e' fermato su questa riga,motivo,identificatore,string,,210,10,left,,,t,t,t,f,f,t,2026-08-15 00:00:00,mctit,vendite.fondi_fattura_da_decidere.col_motivo,100
+460,44,numero,Numero,,numero,identificatore,numeric,,110,20,right,,,f,t,t,f,f,t,2026-08-15 00:00:00,mctit,vendite.fondi_fattura_da_decidere.col_numero,95
+461,44,data,Data,,data,informazione,date,date_short,110,30,center,,,f,t,t,f,f,t,2026-08-15 00:00:00,mctit,vendite.fondi_fattura_da_decidere.col_data,60
+462,44,totale_a_pagare,Totale a pagare,,totale_a_pagare,informazione,numeric,currency_eur,140,40,right,,,f,t,t,f,f,t,2026-08-15 00:00:00,mctit,vendite.fondi_fattura_da_decidere.col_totale_a_pagare,70
+463,44,importo_proposto,Fondo proposto,Quanto varrebbe il fondo se lo si emettesse adesso: valorizzato solo dove una proposta c'e',importo_proposto,informazione,numeric,currency_eur,140,50,right,,,f,t,t,f,f,t,2026-08-15 00:00:00,mctit,vendite.fondi_fattura_da_decidere.col_importo_proposto,90
+464,44,capienza_attuale,Capienza attuale,Quanto resta da incassare sulla fattura sorgente in questo momento,capienza_attuale,informazione,numeric,currency_eur,140,60,right,,,f,t,t,f,f,t,2026-08-15 00:00:00,mctit,vendite.fondi_fattura_da_decidere.col_capienza_attuale,80
+465,44,importo_atto,Importo atto,Valorizzato solo dove un atto esiste gia' (motivo NON_PIU_CAPIENTE),importo_atto,informazione,numeric,currency_eur,130,70,right,,,f,f,t,f,f,t,2026-08-15 00:00:00,mctit,vendite.fondi_fattura_da_decidere.col_importo_atto,50
+466,44,stato_atto,Stato atto,"Sempre DISPONIBILE: la vista mostra solo atti vivi non applicabili",stato_atto,informazione,string,,120,80,left,,,f,f,t,f,f,t,2026-08-15 00:00:00,mctit,vendite.fondi_fattura_da_decidere.col_stato_atto,45
+467,44,anno,Anno,,anno,informazione,numeric,,80,90,right,,,f,t,t,f,f,t,2026-08-15 00:00:00,mctit,vendite.fondi_fattura_da_decidere.col_anno,30
+468,44,serie,Serie,,serie,informazione,string,,80,100,left,,,f,f,t,f,f,t,2026-08-15 00:00:00,mctit,vendite.fondi_fattura_da_decidere.col_serie,20
+469,44,origine,Origine atto,"AUTOMATICA se lo ha scritto il giro, MANUALE se una persona",origine,informazione,string,,120,110,left,,,f,f,t,f,f,t,2026-08-15 00:00:00,mctit,vendite.fondi_fattura_da_decidere.col_origine,25
+470,44,atto_motivo,Ragione dell'atto,,atto_motivo,informazione,string,,260,120,left,,,f,f,t,f,f,t,2026-08-15 00:00:00,mctit,vendite.fondi_fattura_da_decidere.col_atto_motivo,20
+471,44,atto_data,Data atto,,atto_data,informazione,datetime,datetime_short,150,130,center,,,f,f,t,f,f,t,2026-08-15 00:00:00,mctit,vendite.fondi_fattura_da_decidere.col_atto_data,15
+472,44,tipo_fondo_codice_interno,Tipo fondo,,tipo_fondo_codice_interno,informazione,string,,130,140,left,,,f,f,t,f,f,t,2026-08-15 00:00:00,mctit,vendite.fondi_fattura_da_decidere.col_tipo_fondo_codice_interno,15
+473,44,fattura_sorgente_id,Id fattura,Serve al frontend per aprire il documento,fattura_sorgente_id,informazione,numeric,,100,150,right,,,f,f,f,f,f,t,2026-08-15 00:00:00,mctit,vendite.fondi_fattura_da_decidere.col_fattura_sorgente_id,10
+474,44,fondo_source_id,Id atto,,fondo_source_id,informazione,numeric,,100,160,right,,,f,f,f,f,f,t,2026-08-15 00:00:00,mctit,vendite.fondi_fattura_da_decidere.col_fondo_source_id,10

@@ -409,7 +409,7 @@ function fatturaNumero(row) {
              chiama. In sola lettura la barra resta vuota. -->
         <DrawerActionsBar
           :actions="drawerActions"
-          :info-key="lotto?.nessuna_azione_key || ''"
+          :info-key="lotto?.stato_info_key || ''"
           :disabled="loading || azioniLoading"
         />
 

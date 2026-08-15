@@ -438,7 +438,9 @@ Generato da `success_response()` in `apps.core.api.success_responses`.
     "code": "E_PIPELINE_VALIDATION",
     "message": "Tipo documento fiscale non valido.",
     "detail": "tipo_doc_fiscale_id=42 non trovato",
-    "retryable": false
+    "retryable": false,
+    "ui_action": "highlight_form_fields",
+    "fields": ["tipo_doc_fiscale_id"]
   },
   "meta": { "request_id": "uuid-..." }
 }
@@ -451,6 +453,41 @@ Generato da `success_response()` in `apps.core.api.success_responses`.
 | `detail`            | no              | Dettaglio tecnico aggiuntivo                                        |
 | `technical_message` | no              | Solo se `DJANGO_API_EXPOSE_TECHNICAL_DETAILS=1` (mai in produzione) |
 | `retryable`         | no              | `true` se il client puo` riprovare la stessa richiesta              |
+| `ui_action`         | si`             | Come dovrebbe reagire la pagina. ⚠️ **Il frontend non lo legge ancora** |
+| `fields`            | no              | I **nomi** dei campi del form da correggere (`["partita_iva"]`)     |
+
+⭐ **`fields` — dal 2026-08-08.** È l'informazione senza la quale
+`ui_action: highlight_form_fields` non è azionabile: diceva *«evidenzia il
+campo»* senza dire quale. Arriva dal `context` del `ServiceError`, dalla
+convenzione `context={"field": <nome>}` già presente in **114 punti di
+chiamata** — non è una convenzione nuova, è una che si fermava al log.
+
+⚠️ **Escono solo i nomi, e solo dalla chiave `field`.** Il `context` è una borsa
+diagnostica destinata a `dbops.error_log`: contiene anche `lotto_id`,
+`contratto_id`, `order_dir`, che non sono campi di un form — mandarli direbbe al
+client di evidenziare cose che sullo schermo non esistono. E il **valore** non
+esce mai: è il dato che l'operatore ha appena scritto.
+
+**Da dove arriva `fields`, due strade:**
+
+| Origine | Contratto | Stato |
+|---|---|---|
+| errori nati in **Python** | `context={"field": <nome>}` nel `ServiceError` | ✅ attivo (42 codici) |
+| errori nati in **PL/pgSQL** | `RAISE … USING COLUMN = '<colonna>'` → `diag.column_name` | 🔵 **il backend lo legge già**; le funzioni non lo mandano ancora |
+| **violazione NOT NULL** (23502) | `column_name` lo valorizza PostgreSQL da solo | ✅ attivo, senza che nessuno scriva niente |
+
+⭐ **Il canale del DB non è da inventare**: `COLUMN` è un campo strutturato del
+`RAISE`, come `CONSTRAINT` che dal 2026-08-05 porta già il codice errore. Non
+serve un parametro nuovo di `script.fn_log_and_raise_error`.
+
+⚠️ **Sul `COLUMN` non c'è il guard sullo SQLSTATE** che invece protegge la
+lettura del `CONSTRAINT`, e l'asimmetria è voluta: su un `23xxx`
+`constraint_name` contiene il nome del **vincolo** (`uq_…`), che scambiato per
+un codice applicativo darebbe un 500; `column_name` contiene sempre e solo un
+nome di **colonna**. Non c'è un secondo significato da cui difendersi.
+
+Analisi e ordine dei passi:
+`docs/it/dev/work-done/piano-be-classe-codici-errore.md` §12.
 
 Gli errori sono generati da:
 
@@ -543,6 +580,7 @@ Per l'inventario completo degli endpoint attivi per dominio, consultare la docum
 * **Vendite — Cockpit fatturazione (Fase C)**: [api_fatturazione.md](/backend/vendite/manual/api_fatturazione) — endpoint di comando del cockpit: giro «Fattura competenza» (`POST fatturazione/run/`, non bloccante via coda lavori `dbops.coda_lavori`) + polling `run/<job_id>/`, «Rendi definitive» perimetro (`POST fatturazione/numera/`) e singolo lotto (`lotti/<id>/numera/`), ristampa massiva (`lotti/<id>/ristampa/`), esiti giri + stato coda stampa (`fatturazione/esiti/`). Dal 2026-07-27 `fatturazione/run/` accetta `gruppi[]` = **emissione mirata** (stesso verbo, perimetro ristretto ai gruppi fatturabili scelti; assente = giro di massa invariato). Idempotenza 2-layer, identità operatore catturata (RLS come nel web), gate fiscale I-7
 * **Vendite — Commesse (governo operativo)**: [api_commessa_stato.md](/backend/vendite/manual/api_commessa_stato) | [api_commessa_attivita.md](/backend/vendite/manual/api_commessa_attivita) — lista righe + azioni APPROVA (riga/mese) e, dal 2026-07-28, **ANNULLA riga manuale** (`POST /commesse/<id>/attivita/<att_id>/annulla/`): non cancella, porta `stato_emissione` ad `ANNULLATA` (valore già filtrato da tutte le porte verso fattura e cockpit) con motivo obbligatorio tracciato; gate `carica_voce_manuale`, perimetro = righe sourceless non emesse su commessa modificabile | [api_commesse_pricing.md](/backend/vendite/manual/api_commesse_pricing) — azioni prezzo N5/N7/sblocco, dal 2026-07-23 gated su azione di processo **`prezzo_override_manuale`** (stesso codename dei gate prezzo di preventivi/contratti/DDT) | [api_commessa_oneri.md](/backend/vendite/manual/api_commessa_oneri) — **porta oneri**: `POST /commesse/<id>/oneri/` crea la riga di puro valore (qta=1, `tipo_movimento=ONERE`, già APPROVATA, sourceless), causale/UoM/IVA derivate dall'articolo-onere dalla madre DB; gate `carica_voce_manuale`, presidio all'ingresso senza approvazione a due passi
 * **Vendite — Fattura (consultazione)**: [api_fattura_dettaglio.md](/backend/vendite/manual/api_fattura_dettaglio) — `GET /vendite/fatture/<id>/` restituisce il **documento completo** (testata decodificata + righe da `vw_fattura_righe_esposte` con kit risolti + riepilogo IVA + piano rate) in un round-trip, per il drawer di consultazione. Orchestra gli **stessi** lettori che alimentano il contesto del PDF → video e stampa raccontano lo stesso documento per costruzione (regola R17). Sola lettura: oltre EMESSA le righe sono congelate a DB. ⚠️ **Ordine di lettura vincolante**: la testata è l'unico cancello di scope — `vendite.fatture` ha la RLS, `fatture_righe`/`fatture_riepiloghi_iva` **no**. Include le note fattura (`<id>/note/`, sesto dominio del BB partizionato) e i `contatori` dei badge (oggi `note`) — dict e non scalare per reggere i prossimi senza cambiare shape; il conteggio sta **dopo** il cancello di testata perché `note_fatture` non ha RLS
+* **Vendite — Fondi fattura (governo)**: [api_fondi_fattura.md](/backend/vendite/manual/api_fondi_fattura) — `GET /vendite/fondi-fattura/da-decidere/`: l'elenco dei casi in cui il giro automatico **si ferma** e la scelta resta a una persona (4 motivi a vocabolario chiuso). Read-only su `vw_fondi_fattura_da_decidere`, `security_invoker` → **va letta con la connessione dell'utente, mai da un canale di sistema**. ⭐ L'elenco **presenta, non sana**: nessuna riga ha un gemello automatico che la corregge, perché sanarla vorrebbe dire muovere denaro senza che nessuno l'abbia deciso
 * **Vendite — Lineage/genealogia documenti**: [api_lineage_passaggi.md](/backend/vendite/manual/api_lineage_passaggi) — `GET /<dominio>/<id>/passaggi/` sui 7 domini (6 documenti + commessa — factory `build_passaggi_view`): pratica collegata + frontiera + catena transiti avanti/indietro (read-only su `vw_documento_lineage`/`fn_documento_lineage`, RLS invoker)
 * **Vendite — Situazione aperta**: [api_dashboard_aperto.md](/backend/vendite/manual/api_dashboard_aperto) — stock documenti per `area × fase` senza asse temporale + drill-down (read-only su `vw_dash_aperto_*`; sostituisce la dashboard 5-card, Fase 3 due-lenti)
 * **Vendite — Dashboard competenza (Lente 1)**: [api_dashboard_competenza.md](/backend/vendite/manual/api_dashboard_competenza) — funnel commessa→fattura per mese di competenza: aggregata 12 mesi × 4 stadi + breakdown stato fattura, drill-down attività, drill-down per commessa, **gruppi fatturabili** (`gruppi/` — l'unità dell'emissione mirata: documento sorgente oppure oneri di commessa, con riepilogo di perimetro nell'envelope; la `gruppo_key` è la stessa accettata da `fatturazione/run/`), errori vivi (read-only su `vw_dash_competenza_*`)
@@ -831,7 +869,7 @@ dall'exception handler: `E_JWT_SENZA_IDENTITA`, `E_IDENTITA_NON_ATTIVA`,
 `E_AUTHENTICATION_FAILED`, `E_NOT_AUTHENTICATED` (401) e `E_AI_PROVIDER_ERROR`
 (502).
 
-> Perché tutto questo: `docs/it/dev/work-in-progress/brief-db-be-classe-codici-errore.md`.
+> Perché tutto questo: `docs/it/dev/work-done/brief-db-be-classe-codici-errore.md`.
 > In una riga: il significato di un errore viveva **solo** in un dizionario
 > Python, quindi il catalogo DB non aveva il campo dove la contraddizione si
 > sarebbe vista.

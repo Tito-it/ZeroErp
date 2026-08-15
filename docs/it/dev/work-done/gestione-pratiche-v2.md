@@ -1073,8 +1073,8 @@ Fase E (test)
 >
 > * [Analisi Pratiche / Domini Anello 3](../work-in-progress/analisi-pratiche-domini-anello3.md) — §4 (4 livelli di configurabilità), §6.5 (soglia `meta` → `ext`), §6.8 (chiavi `meta`), §6.9 (idempotenza), §2.2 (Pattern B handler)
 > * [Gestione Pratiche v2](gestione-pratiche-v2.md) — motore Anello 2
-> * [Guida Gestione Pratiche](../guide/gestione-pratiche.md) — Contratto handler
-> * [sviluppo-concentrico.md](../sviluppo-concentrico.md) — §7 (l'astrazione si decanta dal dominio, non si decide a priori)
+> * [Guida Gestione Pratiche](../../guide/gestione-pratiche.md) — Contratto handler
+> * [sviluppo-concentrico.md](../../sviluppo-concentrico.md) — §7 (l'astrazione si decanta dal dominio, non si decide a priori)
 
 ---
 

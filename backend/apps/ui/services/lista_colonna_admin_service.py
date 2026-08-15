@@ -114,6 +114,7 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
     "uq_ui_lista_colonna_lista_codice": (
         E_COLONNA_VALIDATION,
         "Esiste gia' una colonna con questo codice nella lista.",
+        "codice",
     ),
 }
 

@@ -25,6 +25,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 from typing import Any
 
@@ -36,6 +37,8 @@ from apps.vendite.services._fatturazione_job_helpers import (
     parse_gruppi,
     spiega_gruppi_non_serviti,
 )
+
+logger = logging.getLogger(__name__)
 
 # handler_code seedato in dbops.coda_lavori_tipi per il tipo FATTURAZIONE_GIRO.
 HANDLER_CODE = "fatturazione_giro_default"
@@ -112,13 +115,31 @@ def fatturazione_giro_handler(
     #     marca terminale (i retry della coda hanno senso);
     #   - nessuna terna → la diagnosi di perimetro spiega perche', ed e'
     #     deterministica (una commessa in BOZZA resta in BOZZA al 5° tentativo).
-    # La diagnosi gira SOLO a valle di un giro vuoto: dopo un'emissione
-    # riuscita le righe sono gia' EMESSA e la fotografia racconterebbe
-    # l'arrivo, non l'ostacolo.
+    # ⚠️ Questo ramo e' quello del giro VUOTO. Dal 2026-08-15 la diagnosi gira
+    # anche a valle di un giro PARZIALE — ma sui soli gruppi che il consuntivo
+    # dichiara NON serviti, dove la fotografia regge esattamente come qui.
+    # (Prima il contratto diceva «solo a giro vuoto» ed era gia' infranto nello
+    # stesso file: rilievo F6 del brief emittibilita'.)
     if gruppi and not summary.get("lotti"):
         if summary.get("falliti"):
             _fallisci_giro_mirato_per_errori_terna(gruppi, summary)
         _fallisci_giro_mirato(gruppi, competenza, summary)
+
+    # Emissione mirata PARZIALE: lotti prodotti, ma qualche gruppo richiesto
+    # non e' stato servito. Era il caso PEGGIORE dei tre perche' l'unico
+    # silenzioso: «zero fatture» solleva ed e' un errore parlante, «2 su 3»
+    # sembrava un successo pieno e il lavoro non fatturato restava fermo senza
+    # che nessuno lo cercasse. NON si solleva — i lotti prodotti sono lavoro
+    # vero e il job e' riuscito per la sua parte — ma l'esito porta il
+    # consuntivo, cosi' il FE puo' dire «2 su 3, il terzo no perche'…».
+    #
+    # ⚠️ Il «chi manca» e' MISURATO a consuntivo (`fn_esito_gruppi_giro` sui
+    # lotti prodotti), non piu' previsto alla discovery: fra discovery e
+    # pipeline le righe di un gruppo possono essere prese da un giro
+    # concorrente, e la previsione lo dava per coperto — pieno successo su un
+    # gruppo non fatturato (§8.2/§9.7 del brief).
+    if gruppi and summary.get("lotti"):
+        _annota_esito_gruppi(summary, competenza)
 
     # Compatta per il `result` del job (la lista per-terna gonfierebbe il jsonb;
     # il dettaglio vive nei log/task_runs, correlati via job_run). La chiave
@@ -126,6 +147,88 @@ def fatturazione_giro_handler(
     # lotto» del FE, e senza di essa l'operatore dovrebbe cercare a mano nella
     # lista lotti il contenitore appena prodotto.
     return {k: v for k, v in summary.items() if k != "esiti"}
+
+
+# Scopo: Annota sull'esito del job il CONSUNTIVO per gruppo di un giro mirato
+#        che ha prodotto lotti. Distingue i tre esiti del DB, e la distinzione
+#        e' il punto:
+#          - SERVITO           → nulla da dire, e' il lavoro fatto;
+#          - NON_SERVITO       → restano righe da emettere: e' il caso su cui
+#                                l'operatore agisce, quindi si DIAGNOSTICA il
+#                                perche' (stessa fotografia del giro a vuoto);
+#          - FATTURATO_ALTROVE → non resta nulla da emettere, le righe sono su
+#                                fatture di ALTRI lotti. Non e' un errore: e' il
+#                                lavoro preso da un altro giro. Raccontarlo come
+#                                «non servito» manderebbe l'operatore a cercare
+#                                un problema che non c'e'.
+#        Nessuna chiave aggiunta se non c'e' niente da dire: un esito che
+#        elenca liste vuote e' rumore.
+#
+#        ⚠️ Consuntivo e diagnosi sono LETTURE a valle di lavoro gia'
+#        COMMITTATO: le fatture ci sono. Se una delle due fallisce (il cancello
+#        RLS di `fn_esito_gruppi_giro` solleva `E_LOTTO_NON_TROVATO` su un lotto
+#        fuori scope, o il DB non risponde) l'eccezione NON deve salire:
+#        manderebbe in ERRORE un job riuscito, perdendo `lotti` — cioe' il «vai
+#        al lotto» del FE, unico aggancio ai contenitori appena prodotti — e la
+#        coda rifarebbe il giro, che al secondo colpo non trova piu' nulla e
+#        fallisce con «gia' emesse»: un'emissione riuscita raccontata come
+#        fallita. Stesso principio della resilienza per-lotto di
+#        `fatturazione_numera_handler`. Il buco NON si ingoia: un consuntivo non
+#        misurato e' un fatto, e va nell'esito con il suo codice.
+def _annota_esito_gruppi(summary: dict[str, Any], competenza: date) -> None:
+    lotto_ids = [
+        int(l["lotto_id"]) for l in (summary.get("lotti") or []) if l.get("lotto_id")
+    ]
+    if not lotto_ids:
+        return
+    try:
+        _misura_esito_gruppi(summary, competenza, lotto_ids)
+    except Exception as exc:  # noqa: BLE001 — il giro e' gia' riuscito
+        code = getattr(exc, "code", type(exc).__name__)
+        logger.warning(
+            "fatturazione_giro.consuntivo_non_misurato lotti=%s code=%s",
+            lotto_ids, code,
+        )
+        summary["gruppi_esito_non_misurato"] = {"code": code, "lotti": lotto_ids}
+
+
+# Scopo: la misura vera e propria di `_annota_esito_gruppi` — separata perche' il
+#        guard di quella non deve poter nascondere per sbaglio altro codice.
+def _misura_esito_gruppi(
+    summary: dict[str, Any], competenza: date, lotto_ids: list[int],
+) -> None:
+    from apps.vendite.db.commesse_repository import CommesseRepository
+
+    esiti = CommesseRepository().esito_gruppi_giro(lotto_ids)
+
+    non_serviti = [e["gruppo_key"] for e in esiti if e["esito"] == "NON_SERVITO"]
+    altrove = [e["gruppo_key"] for e in esiti if e["esito"] == "FATTURATO_ALTROVE"]
+
+    if non_serviti:
+        # Il PERCHE' resta della diagnostica: il consuntivo dice CHE non e'
+        # stato servito, non per quale ostacolo.
+        summary["gruppi_non_serviti"] = _diagnostica_e_spiega(non_serviti, competenza)
+    if altrove:
+        summary["gruppi_fatturati_altrove"] = altrove
+
+
+# Scopo: Diagnostica e classifica un elenco di gruppi non serviti — la STESSA
+#        fotografia e la STESSA classificazione per entrambi gli esiti che la
+#        usano: il giro a vuoto (che poi solleva) e il giro parziale (che
+#        arricchisce l'esito). Sede unica di proposito: se la catena cambia
+#        (un kwarg nuovo, un filtro), i due percorsi non possono divergere.
+def _diagnostica_e_spiega(
+    gruppi_non_serviti: tuple[str, ...] | list[str],
+    competenza: date,
+) -> list[dict[str, Any]]:
+    # Import locale come il core: l'handler e' importato in `ready()` e non deve
+    # tirarsi dietro il repository al boot.
+    from apps.vendite.db.commesse_repository import CommesseRepository
+
+    diagnosi = CommesseRepository().diagnostica_gruppi(
+        gruppi=gruppi_non_serviti, competenza_mese=competenza,
+    )
+    return spiega_gruppi_non_serviti(diagnosi)
 
 
 # Scopo: SOLLEVA per il giro mirato in cui le terne c'erano ma OGNI pipeline e'
@@ -176,14 +279,7 @@ def _fallisci_giro_mirato(
     competenza: date,
     summary: dict[str, Any],
 ) -> None:
-    # Import locale come il core: l'handler e' importato in `ready()` e non deve
-    # tirarsi dietro il repository al boot.
-    from apps.vendite.db.commesse_repository import CommesseRepository
-
-    diagnosi = CommesseRepository().diagnostica_gruppi(
-        gruppi=gruppi, competenza_mese=competenza,
-    )
-    spiegazioni = spiega_gruppi_non_serviti(list(diagnosi))
+    spiegazioni = _diagnostica_e_spiega(gruppi, competenza)
     raise ServiceError(
         code=E_GIRO_NESSUN_LOTTO,
         message=messaggio_gruppi_non_serviti(

@@ -1,0 +1,151 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `partita_iva` e `codice_fiscale` si accendono nel form — lotto anagrafiche 1/N
+#   Canale: 20260808-04 (COLUMN) + 20260808-05 (ripiego su `parametro`)
+#   Piano: docs/it/dev/work-done/piano-db-classe-codici-errore.md §5.8
+#
+# ── PERCHE' PROPRIO QUESTI DUE ─────────────────────────────────────────
+#   Dopo il -05 restano 34 punti scoperti in `anagrafiche`, e non sono tutti
+#   uguali. Questi due sono i migliori del lotto:
+#     · il campo e' NON AMBIGUO — la guardia nomina una sola colonna
+#       (`NEW.partita_iva IS NULL`, `NEW.codice_fiscale IS NULL`);
+#     · e sono campi che l'operatore COMPILA OGNI GIORNO nel drawer soggetti,
+#       non identificativi interni. E' li' che il bordo rosso si vede.
+#
+#   Il contesto e' costruito in `v_error_ctx` poco sopra la chiamata: basta
+#   aggiungere la chiave `campo`, che `fn_log_and_raise_error` gia' sa leggere.
+#
+# ── ⚠️ COME E' STATO PRODOTTO — e perche' conta ────────────────────────
+#   Il corpo NON e' stato ritrascritto a mano. E' `pg_get_functiondef` della
+#   funzione viva, con una sostituzione ancorata applicata da uno script, e il
+#   diff verificato prima di scrivere il changeSet:
+#
+#       righe aggiunte: 2 · righe rimosse: 0
+#
+#   ⚠️ Sono guard di INTEGRITA': una svista di trascrizione qui non si vede in
+#   una code review e si vede su un dato sbagliato in produzione. Un cambiamento
+#   puramente additivo, dimostrato tale, e' l'unico modo onesto di toccarle.
+#
+#   ⚠️ I due blocchi `jsonb_build_object` sono IDENTICI fra loro (stesse tre
+#   chiavi): una sostituzione non ancorata li avrebbe presi entrambi con lo
+#   stesso campo. Lo script ancora sul codice errore che segue e verifica di
+#   averlo trovato, invece di fidarsi dell'ordine.
+#
+# ── ⚠️ QUELLO CHE HO SBAGLIATO MISURANDO, E VALE PER I 32 CHE RESTANO ──
+#   La tabella di scoping leggeva **la prima riga della guardia**. Su una guardia
+#   multi-riga sbaglia campo: `E_FORNITORI_RITENUTA_ALIQUOTA_OBBLIGATORIA` ha
+#   `IF NEW.ritenuta_acconto = true` sulla prima riga, ma il campo da correggere
+#   e' `NEW.ritenuta_aliquota`, che sta sulla riga dopo.
+#
+#   Quindi i punti restanti **vanno letti uno per uno**, non derivati dalla
+#   tabella. E' una misura che serve a ordinare il lavoro, non a farlo.
+#
+# ── NOTE DI CASA ────────────────────────────────────────────────────────
+#   · `;` dopo `$function$` aggiunto (ne' l'auto-gen ne' `pg_get_functiondef`
+#     ce l'hanno).
+#   · Permessi: come le altre funzioni di `anagrafiche`, proprietario `titodb`
+#     che e' chi migra; nessun prestito di proprieta', ACL conservata dal
+#     `CREATE OR REPLACE`.
+#   · Nessun `COMMENT ON FUNCTION`: la funzione non ne aveva uno e questo
+#     changeSet non e' la sede per dargliene uno.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/anagrafiche/20260808-06-trgfn-soggetti-guard-cf-piva-campo-mctit.yaml
+
+    - changeSet:
+          id: 20260808-06-trgfn-soggetti-guard-cf-piva-campo
+          author: mctit
+          runOnChange: false
+          failOnError: true
+          comment: >
+              Aggiunge la chiave 'campo' ai due contesti di errore del guard CF/P.IVA, cosi'
+              che il frontend evidenzi partita_iva o codice_fiscale invece di mostrare solo
+              il messaggio. Cambiamento puramente additivo: 2 righe, generato da
+              pg_get_functiondef con diff verificato, non ritrascritto.
+          preConditions:
+              - onFail: HALT
+              - sqlCheck:
+                    expectedResult: 1
+                    sql: |
+                        SELECT count(*) FROM pg_proc p
+                          JOIN pg_namespace n ON n.oid = p.pronamespace
+                         WHERE n.nspname = 'anagrafiche'
+                           AND p.proname = 'trgfn_soggetti_guard_cf_piva_obbligatori'
+                           AND p.prosrc NOT LIKE '%''campo''%'
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori()
+                         RETURNS trigger
+                         LANGUAGE plpgsql
+                        AS $function$
+                        -- Guard: verifica la presenza obbligatoria di partita_iva e/o codice_fiscale
+                        -- in base alla configurazione di config.tipi_soggetto_dettaglio.
+                        -- Complementare a trgfn_soggetti_valida_cf_piva_dispatch che valida il FORMATO.
+                        -- Questa funzione valida la PRESENZA.
+                        DECLARE
+                            v_det RECORD;
+                            v_error_ctx jsonb;
+                        BEGIN
+                            -- Se tipo_soggetto_dettaglio_id e' NULL, non possiamo imporre nulla
+                            IF NEW.tipo_soggetto_dettaglio_id IS NULL THEN
+                                RETURN NEW;
+                            END IF;
+
+                            -- Recupero configurazione obbligatorieta' dal tipo di dettaglio
+                            SELECT tsd.piva_obbligatoria, tsd.cf_obbligatorio, tsd.codice_interno
+                              INTO v_det
+                              FROM config.tipi_soggetto_dettaglio tsd
+                             WHERE tsd.id = NEW.tipo_soggetto_dettaglio_id;
+
+                            -- Guard partita_iva obbligatoria
+                            IF v_det.piva_obbligatoria = true AND NEW.partita_iva IS NULL THEN
+                                v_error_ctx := jsonb_build_object(
+                                    'campo', 'partita_iva',
+                                    'soggetto_id', NEW.id,
+                                    'tipo_soggetto_dettaglio_id', NEW.tipo_soggetto_dettaglio_id,
+                                    'codice_interno', v_det.codice_interno
+                                );
+                                PERFORM script.fn_log_and_raise_error(
+                                    'database',
+                                    'trgfn_soggetti_guard_cf_piva_obbligatori',
+                                    'E_PIVA_OBBLIGATORIA',
+                                    v_error_ctx,
+                                    NEW.tx_id,
+                                    v_det.codice_interno::text,
+                                    NEW.id::text
+                                );
+                            END IF;
+
+                            -- Guard codice_fiscale obbligatorio
+                            IF v_det.cf_obbligatorio = true AND NEW.codice_fiscale IS NULL THEN
+                                v_error_ctx := jsonb_build_object(
+                                    'campo', 'codice_fiscale',
+                                    'soggetto_id', NEW.id,
+                                    'tipo_soggetto_dettaglio_id', NEW.tipo_soggetto_dettaglio_id,
+                                    'codice_interno', v_det.codice_interno
+                                );
+                                PERFORM script.fn_log_and_raise_error(
+                                    'database',
+                                    'trgfn_soggetti_guard_cf_piva_obbligatori',
+                                    'E_CF_OBBLIGATORIO',
+                                    v_error_ctx,
+                                    NEW.tx_id,
+                                    v_det.codice_interno::text,
+                                    NEW.id::text
+                                );
+                            END IF;
+
+                            RETURN NEW;
+                        END;
+                        $function$;

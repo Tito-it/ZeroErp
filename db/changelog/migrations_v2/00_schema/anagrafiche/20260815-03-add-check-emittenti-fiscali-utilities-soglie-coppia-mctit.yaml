@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Le due soglie del minimo: entrambe o nessuna. Mai una sola.
+#   Passo D-0 di brief-db-fondo-fattura-ricalcolo-e-governo.md §8.2 (Fase A).
+#
+# 🔴 IL PROBLEMA. `minimo_soglia_min` e `minimo_soglia_max` sono i due capi
+#   della banda che decide quali fatture si riportano sulla successiva (il
+#   fondo fattura). La banda CONTIENE LO ZERO: sopra il massimo il cliente
+#   paga normalmente, sotto il minimo si va in rimborso, e in mezzo — sia a
+#   debito sia a credito — l'importo si riporta avanti.
+#
+#   La condizione che imposta il flag, in fn_ricalcola_totali_fattura, e':
+#
+#     minimo = (soglia_min NON vuota E totale >= soglia_min)
+#          AND (soglia_max vuota     O totale <= soglia_max)
+#
+#   Manca il MINIMO  -> la prima condizione e' falsa -> meccanismo spento. Ok.
+#   Manca il MASSIMO -> la seconda condizione e' VERA PER TUTTI -> ogni
+#                       fattura sopra il minimo diventa «di minimo».
+#
+# ⚠️ Una configurazione a meta' quindi non chiude: SPALANCA. Chi imposta
+#   -500 e dimentica +10 non ottiene mezzo meccanismo, ottiene l'intero
+#   fatturato trasformato in fondi riportati — e il difetto non si vede,
+#   perche' il sistema continua a produrre numeri plausibili.
+#
+# ℹ️ LA CORREZIONE, decisa da Tid il 2026-08-15: dev'essere un ERRORE DI
+#   CONFIGURAZIONE, non un comportamento. Entrambe vuote = meccanismo spento
+#   (resta ammesso, ed e' il default); entrambe valorizzate = attivo; una
+#   sola = non si salva.
+#
+# ⚠️ NON e' un doppione di chk_emittenti_fiscali_utilities_soglie, che
+#   presidia `min <= max` e la coppia incompleta la AMMETTE per costruzione
+#   (`min IS NULL OR max IS NULL OR min <= max`). I due vincoli rispondono a
+#   due domande diverse: quello sull'ordine, questo sulla completezza.
+#
+# ✅ SICUREZZA DELL'APPLY: verificato con Tid il 2026-08-15 — le due righe
+#   esistenti hanno ENTRAMBE le soglie vuote, quindi nessuna viola il nuovo
+#   vincolo e il migrate non fallisce.
+#
+# 🔗 Richiesta al BE (scritta nel brief §8.3): mappare la violazione di
+#   questo vincolo su E_FONDO_SOGLIE_INCOMPLETE via map_integrity_error, con
+#   il campo dichiarato, cosi' l'operatore legge QUALE soglia manca invece
+#   di un messaggio di database.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260815-03-add-check-emittenti-fiscali-utilities-soglie-coppia-mctit.yaml
+
+  - changeSet:
+      id: 20260815-03-add-check-emittenti-fiscali-utilities-soglie-coppia
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        emittenti_fiscali_utilities: le due soglie del minimo si configurano
+        insieme o non si configurano. Una sola valorizzata oggi non spegne il
+        meccanismo del fondo fattura, lo spalanca (soglia_max vuota rende vera
+        la condizione per ogni fattura). D-0 del piano fondo fattura.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: emittenti_fiscali_utilities
+            - sqlCheck:
+                expectedResult: 0
+                sql: >
+                  SELECT count(*) FROM anagrafiche.emittenti_fiscali_utilities
+                  WHERE (minimo_soglia_min IS NULL) <> (minimo_soglia_max IS NULL)
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.emittenti_fiscali_utilities
+                ADD CONSTRAINT chk_emittenti_fiscali_utilities_soglie_coppia
+                CHECK ((minimo_soglia_min IS NULL) = (minimo_soglia_max IS NULL));
+
+              COMMENT ON CONSTRAINT chk_emittenti_fiscali_utilities_soglie_coppia
+                ON anagrafiche.emittenti_fiscali_utilities
+              IS 'Le due soglie del minimo si dichiarano insieme: entrambe vuote = meccanismo del fondo fattura SPENTO (default), entrambe valorizzate = attivo sulla banda [min, max], una sola = errore di configurazione. Senza questo vincolo una configurazione incompleta non spegne il meccanismo ma lo SPALANCA: la condizione di fn_ricalcola_totali_fattura ha la forma (min NON NULL AND totale >= min) AND (max IS NULL OR totale <= max), quindi con il solo minimo valorizzato la seconda meta'' e'' vera per ogni fattura e l''intero fatturato diventa «di minimo». Distinto da chk_emittenti_fiscali_utilities_soglie, che presidia l''ordine (min <= max) e la coppia incompleta la ammette. D-0 di brief-db-fondo-fattura-ricalcolo-e-governo §8.2.';

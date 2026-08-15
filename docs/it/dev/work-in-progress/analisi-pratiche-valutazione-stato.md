@@ -125,7 +125,7 @@ Non è greenfield: esiste già l'infrastruttura di scope multi-company
 > **sostituisce l'intero set** (copia assistita, non patch); (b) le pratiche in volo
 > **restano stabili** (pin → **V6 risolta strutturalmente**); (c) il preset **È** la
 > definizione con `emittente = NULL`. Brief:
-> [brief-design-workflow-definizioni-versionate.md](brief-design-workflow-definizioni-versionate.md).
+> [brief-design-workflow-definizioni-versionate.md](../work-done/brief-design-workflow-definizioni-versionate.md).
 
 ### 2.3 Problema 3 — Gli strumenti di configurazione, e l'analogia con l'AI da correggere (governo)
 

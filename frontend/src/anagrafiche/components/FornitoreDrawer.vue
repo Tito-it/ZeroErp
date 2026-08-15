@@ -34,7 +34,7 @@ import Button from 'primevue/button'
 
 const { t } = useI18n()
 const store = useFornitoriStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const isReadonly = useInjectReadonly()
 const contatto = useContattoForm()
 const contattoErrors = ref([])
@@ -247,7 +247,9 @@ const onClose = useDrawerClose(emit, 'cancelled')
         <!-- === Codice manuale (solo create, se non auto-generato) === -->
         <div v-if="!isEdit && codiceField.isEditable.value" class="form-field">
           <label>{{ t('anagrafiche.fornitori.col_codice') }}</label>
-          <InputText v-model="form.codice" class="w-full" :placeholder="t('anagrafiche.fornitori.placeholder_codice')" />
+          <InputText v-model="form.codice" class="w-full" :placeholder="t('anagrafiche.fornitori.placeholder_codice')"
+            :invalid="campiErrati.includes('codice')"
+          />
         </div>
 
         <!-- === Identificativo (solo edit) === -->
@@ -358,7 +360,9 @@ const onClose = useDrawerClose(emit, 'cancelled')
         <!-- === Note === -->
         <h4 class="mt-3">{{ t('anagrafiche.fornitori.section_note') }}</h4>
         <div class="form-field">
-          <Textarea v-model="form.note" class="w-full" rows="3" auto-resize />
+          <Textarea v-model="form.note" class="w-full" rows="3" auto-resize
+            :invalid="campiErrati.includes('note')"
+          />
         </div>
 
         <!-- === Contatto inline (solo creazione) === -->
@@ -367,6 +371,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
             <h4>{{ t('anagrafiche.soggetti.section_contatto') }}</h4>
           </div>
           <ContattoForm
+            :campi-errati="campiErrati"
             :form="contatto.form"
             :tipi-contatto="contatto.tipiContatto"
             :unita-organizzative="contatto.unitaOrganizzative"

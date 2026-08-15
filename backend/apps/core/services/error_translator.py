@@ -6,18 +6,37 @@
 # ------------------------------------------------------------
 
 
+import re
 from dataclasses import asdict, dataclass
 from typing import Any
 
 from django.conf import settings
 from django.db import DatabaseError
 
-from apps.core.services.db_error_fields import app_error_code_from_text, db_error_code
+from apps.core.services.db_error_fields import (
+    app_error_code_from_text,
+    db_error_code,
+    structured_db_error_field,
+)
 from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.request_context import get_request_id
 from apps.core.services.service_errors import ServiceError
 
 # Translator centralizzato: converte errori Python/DB in payload API uniforme.
+
+
+# Il nome di un campo e' un identificatore scritto nel codice del service
+# (`require_string(payload, "nome")`), non un dato dell'utente. Il filtro qui
+# sotto non e' quindi una difesa da un attacco: e' il guard che impedisce a un
+# chiamante che passasse una chiave dinamica di far rimbalzare al client
+# qualcosa che l'utente ha scritto. Costa una regex e toglie la domanda.
+_FIELD_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_.\-]{0,63}$")
+
+
+# Scopo: un nome di campo in tupla, o None. Tiene fuori dal translator il
+#        `(x,) if x else None` ripetuto nei due punti che valorizzano `fields`.
+def _campi(nome: str | None) -> tuple[str, ...] | None:
+    return (nome,) if nome else None
 
 
 @dataclass(frozen=True)
@@ -30,10 +49,17 @@ class ApiError:
     tx_id: str | None = None
     retryable: bool = False
     ui_action: str | None = None
+    # I campi del form che l'operatore deve correggere. E' l'informazione senza
+    # la quale `ui_action = highlight_form_fields` non e' azionabile: dice
+    # «evidenzia il campo» senza dire quale. Vedi §12 del piano.
+    fields: tuple[str, ...] | None = None
 
     # Scopo: Converte ServiceError in struttura dict serializzabile per envelope API.
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
+        # `fields` come lista: un JSON non ha le tuple, e il client legge un array.
+        if data.get("fields") is not None:
+            data["fields"] = list(data["fields"])
         return {k: v for k, v in data.items() if v is not None}
 
 
@@ -53,6 +79,7 @@ class ErrorTranslator:
                 hint=exc.hint,
                 tx_id=exc.tx_id,
                 retryable=exc.retryable,
+                fields=ErrorTranslator._campi_da_correggere(exc.context),
                 )
             )
 
@@ -83,6 +110,30 @@ class ErrorTranslator:
     def get_http_status(api_error: ApiError) -> int:
         return ErrorPolicyRegistry.resolve(api_error.code).http_status
 
+    # Scopo: ⭐ I campi del form che l'operatore deve correggere, presi dal
+    #        `context` del ServiceError. Passo 1 del §12 del piano BE.
+    #
+    #        ⚠️ SI LEGGE SOLO LA CHIAVE `field`, e non tutte le chiavi del
+    #        context. La differenza decide se il dato e' vero o rumore: il
+    #        `context` e' una borsa diagnostica che finisce in `dbops.error_log`
+    #        — dentro ci sono anche `lotto_id`, `contratto_id`, `order_dir`, che
+    #        NON sono campi di un form. Mandarli tutti direbbe al frontend di
+    #        evidenziare cose che sull'ecran non esistono.
+    #        La convenzione `context={"field": <nome>}` esiste gia' in **114
+    #        punti di chiamata**, validator centralizzati compresi: qui non se ne
+    #        inventa una, se ne trasmette una che c'era e si fermava al log.
+    #
+    #        ⚠️ E si manda il NOME, mai il valore: nel context c'e' anche il dato
+    #        che l'utente ha scritto, e non ha nessun motivo di tornare indietro.
+    @staticmethod
+    def _campi_da_correggere(context: dict[str, Any] | None) -> tuple[str, ...] | None:
+        if not context:
+            return None
+        nome = context.get("field")
+        if not isinstance(nome, str) or not _FIELD_RE.match(nome):
+            return None
+        return _campi(nome)
+
     # Scopo: Applica policy error code -> status/retry/hint al payload errore.
     @staticmethod
     def _apply_policy(api_error: ApiError) -> ApiError:
@@ -107,6 +158,10 @@ class ErrorTranslator:
             tx_id=api_error.tx_id,
             retryable=api_error.retryable,
             ui_action=policy.ui_action,
+            # ⚠️ Va ricopiato: questo metodo COSTRUISCE UN ApiError NUOVO, e
+            # quello che non si nomina qui sparisce. E' il punto in cui il campo
+            # si perdeva prima ed e' il punto in cui si perderebbe di nuovo.
+            fields=api_error.fields,
         )
 
     # Scopo: Sanitizza i dettagli tecnici non esponibili in risposta pubblica.
@@ -164,6 +219,13 @@ class ErrorTranslator:
             detail=detail,
             hint=hint,
             retryable=retryable,
+            # Il campo da correggere, se il DB l'ha detto: `RAISE ... USING
+            # COLUMN` nelle funzioni PL/pgSQL, oppure PostgreSQL stesso su una
+            # violazione NOT NULL. Oggi quasi nessuna funzione lo valorizza —
+            # resta None e non cambia niente — ma il lato che riceve e' pronto:
+            # il giorno in cui il DB comincia a mandarlo, non serve toccare
+            # altro (piano BE §12, passo 4).
+            fields=_campi(structured_db_error_field(exc)),
         )
 
     # Scopo: Estrae un codice errore applicativo E_* dal messaggio di eccezione DB.

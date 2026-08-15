@@ -20,6 +20,9 @@ import { toDateString } from '../../../../core/utils/date'
 import { DATE_FORMAT } from '../../../../core/constants'
 
 const props = defineProps({
+  // Campi che il BACKEND indica come da correggere (envelope `error.fields`).
+  // Arrivano dal padre: questo componente non chiama le API da solo.
+  campiErrati: { type: Array, default: () => [] },
   visible: Boolean,
   readonly: Boolean,
 })
@@ -82,7 +85,8 @@ function onSave() {
     </p>
     <div class="form-grid">
       <div class="form-field" style="display: flex; align-items: center; gap: 0.75rem;">
-        <ToggleSwitch v-model="form.fatturazione_immediata" inputId="accept-immediata" />
+        <ToggleSwitch v-model="form.fatturazione_immediata"
+        :invalid="campiErrati.includes('fatturazione_immediata')" inputId="accept-immediata" />
         <label for="accept-immediata">{{ t('vendite.preventivi.accetta_fatturazione_immediata') }}</label>
       </div>
       <div class="form-field">

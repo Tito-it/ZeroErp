@@ -60,7 +60,7 @@ import Column from 'primevue/column'
 
 const { t, te } = useI18n()
 const store = usePreventiviStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const { confirmAction } = useConfirmAction()
 const { emitDataChanged } = useTabEvents()
 
@@ -902,7 +902,7 @@ const drawerActions = computed(() => {
                - ACCETTATO/EVASO/RIFIUTATO/SCADUTO/ANNULLATO -> Scarica (apre lista)
              Resta componente dedicato dentro #suffix (stateful), non rappresentabile
              come azione `command: () => void`. -->
-        <DrawerActionsBar :actions="drawerActions" :info-key="detail?.nessuna_azione_key || ''">
+        <DrawerActionsBar :actions="drawerActions" :info-key="detail?.stato_info_key || ''">
           <template #suffix>
             <EntityPdfButton
               :sorgente-code="SORGENTE_CODES.PREVENTIVO"
@@ -1104,6 +1104,7 @@ const drawerActions = computed(() => {
        col percorso pratica. Emette il payload {fatturazione_immediata,
        competenza_mese} gia' BE-ready. -->
   <PreventivoAccettazioneDialog
+    :campi-errati="campiErrati"
     v-model:visible="acceptDialogVisible"
     :readonly="props.readonly || parentReadonly"
     @confirm="confirmAcceptDialog"

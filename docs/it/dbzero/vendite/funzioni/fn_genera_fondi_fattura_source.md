@@ -13,7 +13,6 @@ CREATE OR REPLACE FUNCTION vendite.fn_genera_fondi_fattura_source(p_billing_acco
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-    v_updated INTEGER := 0;
     v_inserted INTEGER := 0;
 BEGIN
     -- Guard: tutti i parametri obbligatori e > 0
@@ -42,77 +41,71 @@ BEGIN
             jsonb_build_object('parametro', 'p_tipo_fondo_fattura_id', 'valore', p_tipo_fondo_fattura_id), NULL::uuid, 'p_tipo_fondo_fattura_id obbligatorio e > 0');
     END IF;
 
-    -- 1) Update source esistenti non assegnate
+    -- =========================================================
+    -- CREAZIONE, e SOLO creazione.
+    --
+    -- Il fondo di una fattura DEFINITIVA e' un atto: si scrive
+    -- una volta con l'importo letto in quel momento e non si
+    -- ricalcola. Non c'e' un ramo di aggiornamento.
+    --
+    -- ⭐ E l'inviluppo NON e' scritto qui: lo dice
+    -- fn_fondo_fattura_proponibile, che e' anche cio' che
+    -- l'elenco «da decidere» mostra all'operatore. Una sola
+    -- definizione, due lettori — altrimenti l'elenco e il giro
+    -- notturno finirebbero per raccontare due cose diverse.
+    --
+    -- Restano qui i CINQUE FILTRI DI SCOPE: dicono quali
+    -- fatture guarda questa chiamata, non se una fattura
+    -- meriti un fondo.
+    -- =========================================================
     WITH base AS (
         SELECT f.id AS fattura_sorgente_id,
-               (COALESCE(sf.saldo, 0) - COALESCE(sc.saldo_contabile, 0))::NUMERIC AS importo_target
+               p.importo_proposto
           FROM vendite.fatture f
-          CROSS JOIN LATERAL pagamenti.fn_get_saldo_fattura(f.id) sf
-          CROSS JOIN LATERAL pagamenti.fn_get_saldo_fattura_contabili(f.id) sc
-         WHERE f.minimo IS TRUE
-           AND f.billing_account_id = p_billing_account_id
-           AND f.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id
+          CROSS JOIN LATERAL (
+              SELECT vendite.fn_fondo_fattura_proponibile(f.id, p_tipo_fondo_fattura_id)
+                     AS importo_proposto
+          ) p
+         WHERE f.billing_account_id = p_billing_account_id
+           -- ⭐ utility nel FILTRO, non solo in scrittura: senza,
+           --    su un BA con due utility la stessa riga veniva
+           --    rimarcata a ogni giro e l'attribuzione del fondo
+           --    dipendeva dall'ordine. `=` e non IS NOT DISTINCT
+           --    FROM: una fattura senza utility e' un dato
+           --    incompleto (BASE e' una utility vera), e
+           --    un'attribuzione non si indovina. Quel caso lo
+           --    mostra vw_fondi_fattura_da_decidere.
+           AND f.utility_id                  = p_utility_id
+           AND f.tipo_doc_fiscale_id         = p_tipo_doc_fiscale_id
            AND f.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
-           AND f.valuta_id = p_valuta_id
-    ), upd AS (
-        UPDATE vendite.fatture_fondi_fattura_source s
-           SET importo = b.importo_target,
-               stato = CASE WHEN COALESCE(b.importo_target, 0) = 0 THEN 'ANNULLATO' ELSE 'DISPONIBILE' END,
-               utility_id = p_utility_id,
-               data_update = now(), user_update = current_user
-          FROM base b
-         WHERE s.fattura_sorgente_id = b.fattura_sorgente_id
-           AND s.tipo_fondo_fattura_id = p_tipo_fondo_fattura_id
-           AND s.fattura_figlia_id IS NULL
-           AND (s.importo IS DISTINCT FROM b.importo_target
-                OR s.stato IS DISTINCT FROM (CASE WHEN COALESCE(b.importo_target, 0) = 0 THEN 'ANNULLATO' ELSE 'DISPONIBILE' END)
-                OR s.utility_id IS DISTINCT FROM p_utility_id)
-        RETURNING s.id
-    )
-    SELECT COUNT(*)::INTEGER INTO v_updated FROM upd;
-
-    -- 2) Insert nuove source DISPONIBILE
-    WITH base AS (
-        SELECT f.id AS fattura_sorgente_id,
-               (COALESCE(sf.saldo, 0) - COALESCE(sc.saldo_contabile, 0))::NUMERIC AS importo_target
-          FROM vendite.fatture f
-          CROSS JOIN LATERAL pagamenti.fn_get_saldo_fattura(f.id) sf
-          CROSS JOIN LATERAL pagamenti.fn_get_saldo_fattura_contabili(f.id) sc
-         WHERE f.minimo IS TRUE
-           AND f.billing_account_id = p_billing_account_id
-           AND f.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id
-           AND f.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
-           AND f.valuta_id = p_valuta_id
-           AND (COALESCE(sf.saldo, 0) - COALESCE(sc.saldo_contabile, 0)) <> 0
+           AND f.valuta_id                   = p_valuta_id
+           -- NULL = l'automatismo non farebbe niente su questa
+           -- fattura. Il perche' sta tutto nella funzione.
+           AND p.importo_proposto IS NOT NULL
     ), ins AS (
         INSERT INTO vendite.fatture_fondi_fattura_source (
-            fattura_sorgente_id, tipo_fondo_fattura_id, importo, stato,
+            fattura_sorgente_id, tipo_fondo_fattura_id, importo, stato, origine,
             fattura_figlia_id, data_assegnazione, user_assegnazione,
             billing_account_id, utility_id, tipo_doc_fiscale_id,
             emittente_soggetto_ruolo_id, valuta_id, meta, attivo,
             data_insert, user_insert, data_update, user_update
         )
-        SELECT b.fattura_sorgente_id, p_tipo_fondo_fattura_id, b.importo_target,
-               'DISPONIBILE', NULL, NULL, NULL,
+        SELECT b.fattura_sorgente_id, p_tipo_fondo_fattura_id, b.importo_proposto,
+               'DISPONIBILE', 'AUTOMATICA', NULL, NULL, NULL,
                p_billing_account_id, p_utility_id, p_tipo_doc_fiscale_id,
                p_emittente_soggetto_ruolo_id, p_valuta_id, '{}'::jsonb, TRUE,
                now(), current_user, now(), current_user
           FROM base b
-         WHERE NOT EXISTS (
-             SELECT 1 FROM vendite.fatture_fondi_fattura_source s
-              WHERE s.fattura_sorgente_id = b.fattura_sorgente_id
-                AND s.tipo_fondo_fattura_id = p_tipo_fondo_fattura_id
-         )
         RETURNING id
     )
     SELECT COUNT(*)::INTEGER INTO v_inserted FROM ins;
 
-    RETURN COALESCE(v_updated, 0) + COALESCE(v_inserted, 0);
+    RETURN COALESCE(v_inserted, 0);
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_genera_fondi_fattura_source(p_billing_account_id bigint, p_utility_id integer, p_tipo_doc_fiscale_id bigint, p_emittente_soggetto_ruolo_id bigint, p_valuta_id integer, p_tipo_fondo_fattura_id bigint)
-IS 'Sincronizza source fondi fattura sul saldo effettivo (saldo fattura - saldo contabile postabile).';
+IS 'Crea le source dei fondi fattura per le fatture del perimetro indicato. E'' CREATE-ONLY dal 2026-08-15: il ramo UPDATE (che riallineava importo e stato a ogni giro) e'' stato rimosso, perche'' il fondo di una fattura DEFINITIVA e'' un atto e non si ricalcola — «una volta che la fattura e'' effettiva il fondo rimane lo stesso». ⭐ Dal 2026-08-15 (sera) l''INVILUPPO non e'' piu'' scritto qui: DEFINITIVA, di minimo, utility attribuita, atto unico, importo non nullo e CORRISPONDENZA col documento sono tutti dentro vendite.fn_fondo_fattura_proponibile, che questa funzione chiama in LATERAL e di cui inserisce il risultato. La ragione e'' che lo stesso inviluppo serve all''elenco vw_fondi_fattura_da_decidere: due copie della regola darebbero prima o poi due risposte diverse, e il divario si vedrebbe come un elenco che propone cio'' che il giro notturno non crea. Restano qui i CINQUE FILTRI DI SCOPE (billing account, utility, tipo doc fiscale, emittente, valuta), che dicono quali fatture guardare e non se una fattura meriti un fondo. ⚠️ Nessun pre-filtro su minimo: sarebbe un pezzo di regola in un secondo posto, e lo scope riduce gia'' i candidati a una manciata. Firma invariata di proposito: la chiave piena a nove elementi e la madre DB per lotto richiedono il backend, e sono scritte come richiesta nel brief. D-1 + D-4 + coda D-9 di brief-db-fondo-fattura-ricalcolo-e-governo §8.2.';
 ```
 
 ---

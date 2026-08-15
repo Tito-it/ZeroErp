@@ -28,10 +28,16 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
+| origine | character varying | NO | 'AUTOMATICA'::character varying |
+| motivo | text | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_fondi_source_importo_non_zero |  |
+| CHECK | chk_fondi_source_motivo_obbligatorio |  |
+| CHECK | chk_fondi_source_origine |  |
+| CHECK | chk_fondi_source_stato |  |
 | FOREIGN KEY | fk_fondi_source_ba | billing_account_id |
 | FOREIGN KEY | fk_fondi_source_emittente | emittente_soggetto_ruolo_id |
 | FOREIGN KEY | fk_fondi_source_fattura_figlia | fattura_figlia_id |
@@ -46,12 +52,17 @@
 | Nome | Definizione |
 |------|-------------|
 | pk_fatture_fondi_fattura_source | `CREATE UNIQUE INDEX pk_fatture_fondi_fattura_source ON vendite.fatture_fondi_fattura_source USING btree (id)` |
+| uq_fondi_source_atto_vivo_automatico | `CREATE UNIQUE INDEX uq_fondi_source_atto_vivo_automatico ON vendite.fatture_fondi_fattura_source USING btree (fattura_sorgente_id, tipo_fondo_fattura_id) WHERE (((stato)::text = ANY ((ARRAY['DISPONIBILE'::character varying, 'ASSEGNATO'::character varying])::text[])) AND ((origine)::text = 'AUTOMATICA'::text))` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_fatture_fondi_fattura_source_a10_tipi_doc_fiscale_re_d53a63 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id', 'id')` |
+| trg_fatture_fondi_fattura_source_a10_guard_importo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_fondi_source_guard_importo()` |
+| trg_fatture_fondi_fattura_source_a10_guard_importo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_fondi_source_guard_importo()` |
+| trg_fatture_fondi_fattura_source_a10_guard_transizione_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_fondi_source_guard_transizione()` |
+| trg_fatture_fondi_fattura_source_a10_lock_atto_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('importo', 'E_FONDO_ATTO_IMMUTABILE', 'fattura_sorgente_id', 'E_FONDO_ATTO_IMMUTABILE', 'tipo_fondo_fattura_id', 'E_FONDO_ATTO_IMMUTABILE', 'origine', 'E_FONDO_ATTO_IMMUTABILE')` |
 | trg_fatture_fondi_fattura_source_a10_tipi_doc_fiscale_re_d53a63 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id', 'id')` |
+| trg_fatture_fondi_fattura_source_a10_tipi_doc_fiscale_re_d53a63 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id', 'id')` |
 | trg_fatture_fondi_fattura_source_a10_tipi_fondi_fattura__fcf6c8 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'tipi_fondi_fattura', 'attivo', 'tipo_fondo_fattura_id', 'id')` |
 | trg_fatture_fondi_fattura_source_a10_tipi_fondi_fattura__fcf6c8 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'tipi_fondi_fattura', 'attivo', 'tipo_fondo_fattura_id', 'id')` |
 | trg_fatture_fondi_fattura_source_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |

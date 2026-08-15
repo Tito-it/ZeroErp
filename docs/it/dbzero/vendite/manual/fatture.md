@@ -24,7 +24,13 @@ Obiettivi principali:
 * Garantire **numerazione univoca** per *(registro, anno, serie, numero)* quando la fattura è numerata.
 * Tracciare **stato e tipo fiscale** senza vincoli di specifico ordinamento nazionale (modello neutro, estendibile).
 * Gestire **multi‑valuta** e **termini di pagamento**.
-* Conservare **totali** e **correzioni** (bollo, arrotondamenti), con opzione **"fattura di minimo"** (utilities).
+* Conservare **totali** e **correzioni** (bollo, arrotondamenti), incluso il flag **"fattura di minimo"** (utilities).
+  ⚠️ Non è un'opzione che qualcuno accende: `minimo` è **calcolato** da
+  `fn_ricalcola_totali_fattura` confrontando `totale_a_pagare` con le due soglie
+  di `anagrafiche.emittenti_fiscali_utilities`. È la banda che decide quali
+  documenti si riportano sulla fattura successiva
+  ([fondo fattura](/dbzero/vendite/tabelle/fatture_fondi_fattura_source)) — e
+  contiene lo zero, quindi ci rientrano **anche i piccoli crediti**.
 * Consentire **idempotenza** d’import (**`uid`** e/o *(sorgente_tipo_id, sorgente_uid)*).
 * Segnalare **anomalie bloccanti** tramite `critical`.
 

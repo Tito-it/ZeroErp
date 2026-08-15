@@ -1,0 +1,1485 @@
+# Brief BE ↔ DB — dare al catalogo degli errori la cosa che gli manca: **cosa sono**
+
+**Chi scrive:** proposta BE (`dev/backend-tid`, 2026-08-07), **rivista e integrata dal DB** (`dev/db-tid`, 2026-08-07).
+**Origine:** domanda di Tid alla chiusura di
+[brief-db-be-terzo-lato-presidio-codici](../work-done/brief-db-be-terzo-lato-presidio-codici.md):
+*«come evitare che si ripeta? La messaggistica si era trasformata in un bugiardino.»*
+**Stato:** 🟢 **COSTRUITO E IN SERVIZIO** (2026-08-08) — disegno chiuso (35 decisioni, §14), **DB D-1→D-10 chiuso**, **BE B-1→B-6 chiuso**. In giornata è nato e si è chiuso un capitolo non previsto: `ui_action` non è più un contratto dormiente — il campo sbagliato si accende davvero (§8.5). ✅ **E il B-7 è chiuso** (D33): il rubinetto degli accumulatori esiste, gira in CI e il suo rosso è stato provato. Il cantiere è in servizio: il catalogo ha tutti i suoi codici con una classe, e `error_policies_generated.py` è generato dal database. Stato dettagliato nel §13.1; l'esecuzione vive nei [due piani](piano-db-classe-codici-errore.md).
+**Perimetro:** tabelle + vocabolario + seed lato DB · generatore di `error_policies.py` e mappa classe→HTTP lato BE.
+**Ruolo di questo file:** **guida generale** — le ragioni, le misure, le decisioni. L'esecuzione sta nei due piani operativi (§13).
+
+> **Cosa è cambiato rispetto alla prima stesura (BE, mattina del 2026-08-07).**
+> Il disegno regge, ma tre cose sono state riscritte dopo la revisione DB:
+>
+> 1. il **meccanismo anti-ricaduta dichiarato era sbagliato** — il brief prometteva
+>    l'adiacenza fra classe e messaggio e poi le separava in due tabelle (§5);
+> 2. mancava la domanda che decide se il secondo elenco sparisce davvero o cambia
+>    solo indirizzo: **dove legge la classe il backend, a runtime** (§6);
+> 3. il backfill **non è completo**: 659 classi su **692 codici**. Misurato (§7).
+>
+> Ed è emerso che l'idea **c'era già, due volte** — con esiti documentati che
+> vanno letti prima di ricominciare (§2).
+>
+> **Aggiunto nel pomeriggio, rispondendo all'ultima domanda aperta (§7.2):** i
+> tre codici «solo Python» non erano codici — un morto, un disallineamento di
+> nome e un **avviso**. Il terzo ha aperto un buco nel vocabolario, chiuso con
+> l'ottavo valore `AVVISO` (§4.2).
+>
+> **E sei annotazioni del BE (A1-A6), tutte accolte**, di cui due hanno corretto
+> il DB su cose **già scritte come verificate**:
+>
+> * ⚠️ **la decisione del §6 è ribaltata**: non lettura a runtime, ma
+>   `error_policies.py` **generato** — la (a) era la (b) con tre pezzi in più, e
+>   il registro DB-dipendente violava «i test girano senza DB» (§6.1);
+> * ⚠️ **la tabella `ui_action` del §8 era sbagliata e ribaltava la conclusione**:
+>   su `DATO_ERRATO` non è «quasi a metà», è **117 contro 117** (§8);
+> * ⚠️ **`AVVISO` non «fallisce rumorosamente»**: `resolve()` non fallisce mai, e
+>   per un `W_` ripiega su **500** (§4.2);
+> * gli **accumulatori** salgono nel piano: `E_VALIDAZIONE` si spezza **prima**
+>   del seed (§9.1);
+> * il discriminante *superato / non-agganciato* diventa **misurabile** (§7.1);
+> * e resta scritto che **nessuno presidia che la classe resti vera** (§9.2).
+>
+> ⭐ **2026-08-08 — quest'ultima frase non è più vera, ed è la notizia migliore
+> del cantiere.** La misura del §9.2 esiste, è stata eseguita, e la domanda
+> «la classe è ancora vera?» ha per la prima volta una risposta che non sia
+> *«bisognerebbe rileggere 150 funzioni»*. Risposta: **sì**, con un'eccezione
+> vera trovata dalla misura e non da una persona — vedi §9.3.
+>
+> **Sera dello stesso giorno — il BE chiude l'ultima decisione, e ne corregge una
+> terza:** `user_message` **non duplica** il catalogo, è la variante senza
+> segnaposto (**0 su 656** contengono `%s`, contro 371 a catalogo). Il §11 diceva
+> il contrario. La forma scelta è a **quattro moduli**, separati per *quando
+> cambiano* (§14.2), e il contratto del generatore è nel §14.4.
+
+---
+
+## 1. Il problema, in una riga
+
+`config.messaggi_errore` dice **cosa scrivere** all'operatore (`messaggio`,
+`causa`, `soluzione`). Non dice **che cosa è** l'errore.
+
+Quel significato — «non esiste», «è in conflitto con lo stato», «non ti è
+permesso», «hai sbagliato a compilare», «è un guasto» — oggi vive **soltanto** in
+un dizionario Python
+([`backend/apps/core/services/error_policies.py`](../../../../backend/apps/core/services/error_policies.py),
+659 voci). Due elenchi separati che parlano della stessa cosa, tenuti allineati
+da un presidio. Il presidio funziona; la domanda è perché ci siano due elenchi.
+
+**Cosa è costato non averlo.** Tre giorni, 150 decisioni, e un difetto per ogni
+famiglia: codici che dicevano «parametro non valido» su un `IF NOT FOUND`, un
+`E_SNAPSHOT_ID_NOT_FOUND` che è un 500, un `E_STATO_SCONOSCIUTO` che conteneva
+due errori diversi. Nessuno di questi era visibile guardando il catalogo, perché
+**il catalogo non ha il campo dove la contraddizione si sarebbe vista**.
+
+---
+
+## 2. ⭐ Cosa c'era già — tre precedenti, e perché questo non è un doppione
+
+Prima di costruire: la stessa intuizione è già stata tentata **due volte**, in
+forme diverse, e in entrambi i casi c'è una ragione documentata per cui non ha
+retto. Questa è la terza incarnazione, ed è quella giusta — ma solo se si sa
+perché le prime due non lo erano.
+
+### 2.1 La classe **dentro il nome del codice** — [api.md §Tassonomia errori](../api.md)
+
+Era già lì, ed è viva ancora oggi:
+
+| Suffisso | HTTP tipico |
+|---|---|
+| `_VALIDATION` / `_VALIDAZIONE` | 400 |
+| `_NOT_FOUND` | 404 |
+| `_DUPLICATO` / `_IN_ESECUZIONE` | 409 |
+| `_NEGATO` / `_DENIED` | 403 |
+
+Cioè esattamente *«il codice dichiara che cosa è»*, affidato alla convenzione di
+naming. ⚠️ **Ed è già stato misurato come fallito**, dentro il cantiere che ha
+generato questo brief: *«Il suffisso NON decide lo status: decide il punto che
+solleva»*. Su 91 decisioni **il nome ha mentito tre volte**, in tre direzioni
+diverse:
+
+| Codice | Cosa suggerisce il nome | Cosa fa davvero | Status |
+|---|---|---|---|
+| `E_SNAPSHOT_ID_NOT_FOUND` | 404 | `EXCEPTION WHEN OTHERS` nella storicizzazione | **500** |
+| `E_DELETE_NOT_ALLOWED` | 409 | blocca sempre, sbloccabile solo da GUC di sistema | **403** |
+| `E_FULFILL_NOT_FOUND` | «manca un legame» | la riga indicata non esiste | **404** |
+
+> **È l'argomento più forte di questo brief, ed è bene che sia il primo.** Non
+> stiamo inventando una classificazione: stiamo togliendo quella che **esiste
+> già** da dove non regge (una convenzione di naming, che mente il 3% delle
+> volte e in silenzio) e mettendola dove regge (un dato, con un vincolo).
+
+### 2.2 Lo **SQLSTATE custom** (classe `U0`) — scartato per un motivo che qui cade
+
+[brief-db-codice-errore-strutturato §3 «Le alternative, e perché no»](../work-done/brief-db-codice-errore-strutturato.md)
+lo aveva valutato e respinto:
+
+> *«pulita, ma SQLSTATE è di 5 caratteri: servirebbe una mappa `codice →
+> sqlstate` da mantenere allineata al seed. Un secondo posto da tenere in bolla,
+> cioè il difetto da cui nasce tutto»*
+
+⚠️ **Quell'obiezione si dissolve con questo brief**, e va detto perché altrimenti
+qualcuno la riproporrà. Uccideva l'idea perché l'unità era il **codice**: 689
+voci da mappare. Con la classe l'unità diventa la **classe**: dieci valori.
+`script.fn_log_and_raise_error` legge già la riga di catalogo per comporre il
+messaggio — leggerne anche `classe` e sollevare con `ERRCODE = 'U0001'..'U0010'`
+costerebbe zero, e il backend riceverebbe la semantica **dentro l'eccezione**,
+senza nessun elenco da tenere allineato.
+
+**Non si fa adesso**, e il raggio è misurato:
+
+| Cosa attende `P0001` | Quanti |
+|---|---|
+| asserzioni pgTAP | **311**, in **108 file** |
+| punti nel backend che citano `P0001` | ~20 |
+| contratto in essere | *«`P0001` + `CONSTRAINT` valorizzato = errore di dominio»* — è la condizione su cui il BE decide se fidarsi del campo strutturato |
+
+È un cantiere a sé, e forse non si farà mai. Resta scritto qui perché è la
+risposta naturale alla domanda del §6, e perché il costo di riscoprirla da capo
+è una settimana.
+
+### 2.3 La regola del **denominatore sicuro** — già scritta, da citare e non riscrivere
+
+[api.md](../api.md) contiene già la regola operativa per i codici a più
+significati: *«lo status giusto è il denominatore sicuro, e il codice va
+segnalato al team DB come candidato allo split»*, con il criterio di quando
+spezzare (`E_STATO_SCONOSCIUTO` sì, `E_SOGGETTI_RUOLI` no). Il punto 3 del §9 di questo
+brief **non la riformula**: la richiama.
+
+---
+
+## 3. La forma: due tabelle e un vocabolario
+
+⚠️ **Non è «aggiungere una colonna a `messaggi_errore`»**, ed è il punto che va
+capito per primo.
+
+### 3.1 Perché non una colonna sul catalogo dei messaggi
+
+`config.messaggi_errore` è chiavata **`(codice, lingua)`**. Misurato sul CSV vivo
+il 2026-08-07: **690 righe per 689 codici**, e già oggi un codice ha due righe
+(`E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA`, `it` + `en`). Mettere la classe
+lì significherebbe **duplicarla per lingua**: la traduzione inglese potrebbe
+dichiarare una classe diversa da quella italiana. Sarebbe la stessa voragine
+appena chiusa, riaperta in un posto nuovo.
+
+> ⚠️ **E non è un rischio teorico: c'è già una colonna che soffre di questo, ed è
+> `obsoleto_dal`.** Sta su `messaggi_errore`, quindi è **per lingua**: oggi è
+> possibile ritirare un codice in italiano e lasciarlo vivo in inglese.
+> Misurato: **50 righe ritirate, tutte `it`**, e il codice bilingue non è fra
+> loro. Non è ancora successo — ma la tabella lo consente, e il giorno in cui
+> l'interfaccia inglese sarà davvero popolata succederà senza che nessuno se ne
+> accorga.
+
+**Il codice deve avere una sola identità. Le traduzioni sono quello che sono:
+traduzioni.** La classe e il ritiro appartengono al codice, non alla frase.
+
+### 3.2 `config.classi_errore` — un vocabolario, non un `CHECK`
+
+Dieci valori stabili, referenziati da una colonna `NOT NULL`. Il progetto per
+questa forma usa **tabelle-vocabolario** (`config.iva_natura`,
+`config.esiti_flussi_pratiche`, `config.nature_vendita`), non `CHECK` con lista
+di letterali. Le ragioni, qui, sono tre:
+
+1. la **descrizione della classe diventa un dato leggibile**, non un commento
+   dentro un vincolo — ed è la definizione che decide le prossime classificazioni;
+2. quando il BE leggerà le classi a runtime (§6) trova già dove leggerle;
+3. aggiungere o ritirare una classe è un `INSERT` in un CSV, non un
+   `ALTER TABLE ... DROP CONSTRAINT` + ricreazione.
+
+⚠️ Non è un `attivo`: una classe non si disattiva. Se una classe va in disuso si
+usa lo stesso asse del catalogo — `obsoleto_dal` — perché i codici che l'hanno
+avuta devono continuare a risolvere.
+
+### 3.3 Lo schema, per intero
+
+```
+config.classi_errore              ✅ ESISTE   ← il vocabolario, 10 righe
+  classe        text PK                     ← DATO_ERRATO, CONFLITTO_STATO, …
+  descrizione   text NOT NULL               ← la definizione che decide i casi dubbi
+  obsoleto_dal  date                        ← una classe si ritira, non si disattiva
+  + audit (data_insert, user_insert, data_update, user_update, tx_id)
+
+config.codici_errore              ✅ ESISTE   ← una riga per CODICE — l'identità
+  codice        text PK                     ← 689 righe (vedi 3.5)
+  classe        text NOT NULL               ← FK → config.classi_errore(classe)
+                                              ⛔ NESSUN DEFAULT (§5)
+  obsoleto_dal  date                        ← SPOSTATO qui da messaggi_errore
+  note          text                        ← perché questa classe, sui casi non ovvi
+  + audit
+
+config.messaggi_errore                      ← una riga per (codice, lingua) — la frase
+  codice        text  → FK verso codici_errore(codice)   ⏳ ARRIVA AL D-7
+  lingua, messaggio, causa, soluzione
+  id            bigint PK   (invariata — vedi 3.4)
+  ✅ obsoleto_dal RIMOSSA il 2026-08-07 (20260807-13): il ritiro sta su codici_errore
+
+config.vw_codici_errore           ⏳ AL D-9   ← la superficie di REVISIONE (§5)
+  codice · classe · obsoleto_dal · lingua · messaggio · causa · soluzione
+  ⚠️ una riga per (codice, lingua) — LEFT JOIN: un codice senza messaggio c'e'
+
+config.vw_codici_errore_identita  ⏳ AL D-9   ← la sorgente del GENERATORE (§14.4)
+  codice · classe · obsoleto_dal · note
+  una riga per codice, nessun join, ORDER BY codice stabile
+```
+
+⚠️ **Due viste e non una, e la ragione è nel numero di righe.** Quella di
+revisione affianca la frase, quindi moltiplica per lingua; il generatore vuole
+**una riga per codice** e non deve vedere le traduzioni. Usare la prima per
+entrambi significa filtrare per lingua — e il filtro perderebbe proprio i codici
+**senza** messaggio, che sono quelli che più servono vedere.
+
+### 3.4 ⚠️ Cosa **non** si tocca
+
+`dbops.error_log` ha una FK verso `config.messaggi_errore(id)`. **Non va
+toccata**, e la PK surrogata `id` resta dov'è: il diario continua a puntare alla
+**riga tradotta** che l'operatore ha effettivamente letto, che è l'informazione
+giusta da conservare. La classe si raggiunge con un join, non serve denormalizzarla.
+
+Non si tocca nemmeno `script.fn_get_messaggio`: la risoluzione lingua con
+fallback su `it` resta identica.
+
+### 3.5 ✅ La chiave è **lo stesso codice**, e la stringa regge il vincolo
+
+Domanda di Tid (2026-08-07): *il `codice` di `messaggi_errore` è lo stesso che
+useremo nella tabella nuova?* **Sì** — stessa identica stringa, nessuna
+traduzione, nessuna chiave nuova, nessun id in mezzo.
+
+Verificato prima di prometterlo, perché una FK su testo non perdona:
+
+| Controllo sul CSV vivo | Esito |
+|---|---|
+| spazi in testa/coda | **nessuno** |
+| codici che differiscono solo per maiuscole | **nessuno** |
+| caratteri fuori da `[A-Z0-9_]` | **nessuno** |
+| codici distinti su 690 righe | **689** — l'unico doppio è la coppia `it`/`en` |
+
+**La FK atterra pulita: nessuna bonifica preliminare.**
+
+⭐ **E il controllo ha tirato fuori un numero che serviva.** Nel catalogo ci sono
+**50 codici senza prefisso `E_`/`W_`**, che a prima vista sembrano un problema.
+Incrociati con `obsoleto_dal`, i 50 senza prefisso **sono esattamente i 50
+ritirati**: sono i vecchi nomi che la campagna di rinomina ha sostituito e che
+non si sono potuti cancellare per via della FK di `dbops.error_log`.
+
+L'unico codice **vivo** fuori convenzione è `MESSAGGIO_NON_DEFINITO` — cioè
+esattamente l'unica riga rimasta in `dbops.messaggi_errore_codici_legacy`
+(57 → 1). Conferma indipendente della storia del §7.2.
+
+**Conseguenza sul dimensionamento:** `config.codici_errore` nasce con **~689
+righe, di cui 50 sono nomi ritirati** che convivono coi loro gemelli `E_*` vivi.
+È corretto e voluto — ma vuol dire che anche quei 50 vogliono la loro `classe`,
+che è quella che avevano da vivi (§7).
+
+### 3.6 ⚠️ L'indice di FK va deciso, e la risposta è **no**
+
+`messaggi_errore.codice` è già la **colonna di testa** dell'unico
+`uq_messaggi_errore_codice_lingua`: un indice dedicato alla FK sarebbe
+**ridondante**.
+
+Gli indici FK in questo progetto sono **opt-in** — `dbops.apply_fk_index_policy()`
+crea solo i `consentito = true` e DROPpa i `false` — quindi non nascerebbe
+comunque. Ma senza seed esplicito resta una riga **non decisa**, e la prossima
+persona che guarda la policy non sa se è stata valutata o dimenticata.
+
+→ Seed in `dbops.fk_index_policy` con **`consentito = false`** e la ragione
+scritta: *«coperto dal prefisso di `uq_messaggi_errore_codice_lingua`»*.
+
+---
+
+## 4. Il vocabolario — dieci valori, e non sono inventati
+
+Vengono dalle **659 decisioni già prese** nel cantiere del terzo/quarto lato, non
+da un disegno a priori:
+
+| `classe` | HTTP | Quando | Quanti oggi |
+|---|---|---|---|
+| `DATO_ERRATO` | 400 | la richiesta è malformata o il valore è sbagliato | 234 |
+| `CONFLITTO_STATO` | 409 | in conflitto con lo stato attuale della risorsa | 224 |
+| `NON_TROVATO` | 404 | la cosa indicata non esiste | 84 |
+| `TECNICO` | 500 | guasto o pezzo non configurato: l'operatore non può farci niente | 63 |
+| `NON_PERMESSO` | 403 | il diritto manca, e non dipende dallo stato | 23 |
+| `NON_ESEGUIBILE` | 422 | si capisce ma non si può eseguire (configurazione che non regge a quella data) | 22 |
+| `NON_DISPONIBILE` | 501 | funzione presente ma non servita (disattivata) | 4 |
+| `AVVISO` | — | **non è un rifiuto**: è una nota nel diario, non raggiunge mai chi ha fatto la richiesta (§4.2) | 1 |
+| `NON_AUTENTICATO` | 401 | non manca il diritto, manca **chi sei**: l'operatore rimedia autenticandosi (§4.3) | 4 |
+| `ERRORE_ESTERNO` | 502 | un servizio di terzi ha risposto male: **il guasto non è nostro** (§4.3) | 1 |
+
+⚠️ **`AVVISO` è l'ottavo valore, ed è arrivato dopo** — non stava nella prima
+stesura, è emerso rispondendo alla domanda aperta del §7. La sua ragione sta nel
+§4.2 e va letta prima di considerarlo un riempitivo.
+
+> ✅ **Conteggi confermati in modo indipendente lato DB (2026-08-07, pomeriggio):
+> 659 voci su 659**, e i sette numeri tornano esatti. La prima verifica DB ne
+> leggeva 627 e li dichiarava tali; ne mancavano **32 scritte su una riga sola**
+> (`ErrorPolicy(code=..., http_status=..., ...)` senza a capo), che il parser
+> cercava a inizio riga. La correzione ha sistemato anche il §8, dove il numero
+> sbagliato **ribaltava una conclusione** (A3).
+>
+> È la quinta volta in questo filone: *anche la misura è un programma, e può
+> avere il suo difetto*. E stavolta il difetto era **dichiarato** («627 su 659»)
+> ma la conclusione è stata scritta lo stesso — dichiarare l'incertezza non è
+> come toglierla.
+
+### 4.3 ⚠️ «401 e 502 restano fuori» **non regge** — è di nuovo il caso `AVVISO`
+
+La prima stesura diceva: *«restano fuori dal vocabolario di dominio il **401**
+(autenticazione, 4 codici) e il **502** (1 codice); vanno mappati a mano nel
+backend»*.
+
+**Emerso eseguendo il D-1 del piano DB (2026-08-07):** tutti e cinque **sono
+righe di `config.messaggi_errore`**, quindi con la FK vogliono un padre in
+`codici_errore` e con `classe NOT NULL` vogliono una classe. Verificato uno per
+uno: `E_JWT_SENZA_IDENTITA`, `E_IDENTITA_NON_ATTIVA`, `E_AUTHENTICATION_FAILED`,
+`E_NOT_AUTHENTICATED` (401) e `E_AI_PROVIDER_ERROR` (502).
+
+⚠️ **È esattamente il problema di `W_TXID_NOT_REGISTERED`** (§4.2), e si era
+mancato di vederlo perché «fuori dal vocabolario» suonava come «fuori dalla
+tabella». Non lo è: **il catalogo è di tutti i codici** (D9).
+
+Le stesse tre strade, e le stesse due scartate — forzarli su una classe esistente
+fa dire al dato una cosa falsa, `classe` nullable butta via il §5. Quindi:
+
+| Classe proposta | HTTP | Perché non basta una esistente |
+|---|---|---|
+| `NON_AUTENTICATO` | 401 | **non è `NON_PERMESSO`**: lì il diritto manca, qui manca *chi sei*. E l'operatore rimedia — autenticandosi — mentre su un 403 non può fare niente. Sono reazioni opposte della pagina |
+| `ERRORE_ESTERNO` | 502 | **non è `TECNICO`**: il guasto non è nostro. Per l'operatore cambia poco, per chi guarda il diario cambia tutto — è la differenza fra «da riparare» e «da aspettare», ed è il primo taglio utile dell'alerting (§12) |
+
+**Il vocabolario passa da 8 a 10 valori.** 🔵 **Decisione di Tid**: nel CSV del
+D-1 la proposta è **già applicata** (4 righe `NON_AUTENTICATO`, 1
+`ERRORE_ESTERNO`), quindi cambiarla costa una rigenerazione, non un rifacimento.
+
+> ⭐ **La lezione, ed è la terza volta in due giorni**: `AVVISO`, poi questi
+> cinque. Ogni volta la frase era *«questo caso sta fuori»* — e ogni volta il
+> caso stava **dentro la tabella**, perché il catalogo li contiene tutti. Con un
+> `NOT NULL` non esiste un «fuori»: esiste solo una classe che non abbiamo ancora
+> nominato.
+
+### 4.1 Le classi si distinguono **anche fra due `IF` adiacenti**
+
+In `dbops.fn_accoda_lavoro`, `E_JOB_TYPE_NON_TROVATO` è `TECNICO` (nessuno può
+rimediare finché qualcuno non configura) e `E_JOB_TYPE_NON_ATTIVO` è
+`NON_DISPONIBILE` (il pezzo c'è, è spento). Il vocabolario deve reggere questa
+distinzione, **e la regge**: è la prova che i valori non sono sinonimi mascherati.
+
+### 4.2 ⭐ `AVVISO` — perché sette non bastavano, e non è un riempitivo
+
+Le altre sette classi rispondono tutte alla **stessa domanda**: *«perché ti sto
+rifiutando l'operazione?»*. Cambia solo il motivo del rifiuto.
+
+Esiste però una famiglia che non rifiuta niente: i **warning**. Oggi ce n'è uno,
+`W_TXID_NOT_REGISTERED`. La `W` è deliberata — il messaggio comincia con
+«Warning - », `dbops.trgfn_tx_id_managed` lo passa a `fn_log_error_only`, cioè lo
+**scrive nel diario e basta**, non lo solleva mai — e il **controllo (E)** del
+guardrail è un cancello di CI che impedisce a chiunque di sollevarlo
+(*«`E_` si solleva, `W_` si scrive nel log»*). La regola di naming è già
+`^[EW]_`, allargata apposta nel cantiere precedente: *«la `W` non era un codice
+storto, era un'altra famiglia»*.
+
+⚠️ **E non lo si può lasciare fuori dalla tabella.** `W_TXID_NOT_REGISTERED` è
+una riga di `config.messaggi_errore`; con la FK del §3.3 vuole per forza il suo
+padre in `codici_errore`, e lì `classe NOT NULL` pretende un valore. Le strade
+erano tre e due sono peggiori:
+
+| Strada | Perché no |
+|---|---|
+| forzarlo su `TECNICO` | fa dire al dato una cosa falsa — che è un errore — **per far tornare un vincolo**. È esattamente ciò che il cantiere precedente si era rifiutato di fare rinominandolo `E_` |
+| `classe` nullable per i warning | butta via il §5, che è tutto il brief |
+| **una colonna `natura` (ERRORE/AVVISO) separata** | due assi dove ne basta uno: `AVVISO` non è un *tipo di rifiuto*, è l'assenza di rifiuto — sta bene sullo stesso asse |
+
+`AVVISO` **non ha uno status HTTP**, e non è una lacuna della mappa del §6: un
+avviso non raggiunge mai il client, e questo non è una speranza — è il controllo
+(E) che lo garantisce.
+
+> ⚠️ **Correzione (A3/A4, BE 2026-08-07): «fallisce in modo rumoroso» oggi è
+> falso**, e la frase originale di questo paragrafo lo dava per acquisito.
+> Verificato leggendo `ErrorPolicyRegistry.resolve`: **non fallisce mai**. Ha due
+> ripieghi, e per un `W_` scatta il peggiore dei due —
+>
+> | Codice non registrato | Cosa restituisce `resolve` |
+> |---|---|
+> | comincia per `E_` | ripiego **400** «Errore di validazione» |
+> | **tutto il resto**, quindi ogni `W_` | `E_GENERICO` → **500** |
+>
+> Cioè un avviso che sfuggisse al controllo (E) non farebbe rumore: diventerebbe
+> un **500 tecnico** con il messaggio soppresso — esattamente il difetto
+> `E_DATABASE` da cui è nato tutto il filone.
+>
+> **Requisito, non proprietà attesa** (entra nel piano al punto 12): lato BE,
+> *classe senza status ⇒ eccezione, non ripiego*. La garanzia va scritta in una
+> riga di codice, altrimenti non c'è.
+
+---
+
+## 5. ⭐ Il meccanismo anti-ricaduta: **non è l'adiacenza, è il `NOT NULL`**
+
+⚠️ **Questa sezione corregge la prima stesura del brief**, che si contraddiceva —
+e la contraddizione vale più della correzione, perché è lo stesso genere di
+errore che il cantiere ha inseguito per tre giorni.
+
+La prima stesura dichiarava come meccanismo l'**adiacenza**:
+
+> *«la scrivi sulla stessa riga del messaggio: `classe = NON_TROVATO` accanto a
+> "Parametro non valido" è una contraddizione che si vede a occhio nudo»*
+
+Ma il §3 mette la classe in **un'altra tabella e in un altro CSV**. L'adiacenza
+sparisce esattamente dove sarebbe servita: nel momento in cui si scrive. Chi
+aggiunge un codice compila due file, e la contraddizione che «si vede a occhio
+nudo» non è più in nessun campo visivo.
+
+**Decisione (Tid, 2026-08-07): si tiene la separazione, e si cambia il
+meccanismo dichiarato.** Sono due cose, e la seconda è quella che porta il peso.
+
+### 5.1 Il meccanismo vero: un codice senza semantica **non può nascere**
+
+`classe NOT NULL`, **senza `DEFAULT`**. È tutto qui, ed è più di quanto sembri.
+
+⛔ **Niente `DEFAULT`, e la ragione va scritta nel changeSet.** Un default
+significa *«se non ci pensi ne metto uno io»*, ed è **letteralmente il meccanismo
+che ha prodotto il difetto**: `ErrorPolicyRegistry.resolve` ha un ripiego a 400
+per i codici non registrati, ed è per quello che 659 codici avevano un 400 che
+nessuno aveva deciso e nessuno vedeva. Un `DEFAULT 'DATO_ERRATO'` ricostruirebbe
+la stessa trappola dentro il rimedio.
+
+Con `NOT NULL` senza default, la sequenza cambia forma: oggi si può aggiungere un
+codice al catalogo e **rimandare** la semantica (e rimandare significa che il
+ripiego decide al posto tuo, in silenzio); domani l'`INSERT` non passa. La
+decisione si sposta **nel momento in cui si ha in testa il ramo che solleva** —
+che è l'unico momento in cui è facile.
+
+### 5.2 La superficie di lettura: `config.vw_codici_errore`
+
+L'adiacenza si perde in scrittura, **si recupera in revisione**. Una vista che
+affianca classe, ritiro e testo:
+
+```sql
+SELECT c.codice, c.classe, c.obsoleto_dal, c.note,
+       m.lingua, m.messaggio, m.causa, m.soluzione
+  FROM config.codici_errore c
+  LEFT JOIN config.messaggi_errore m ON m.codice = c.codice;
+```
+
+`LEFT JOIN` e non `JOIN`: un codice **può** esistere senza messaggio (§7), e la
+vista deve mostrarlo, non nasconderlo — è anzi uno dei difetti che serve vedere.
+
+⚠️ **La vista è per gli umani e per il BE, non è un cancello.** Serve a chi
+rilegge un dominio, a chi apre un lotto di classificazione, e come sorgente della
+lettura a runtime del §6. Chi cerca un cancello lo trova nel `NOT NULL`.
+
+### 5.3 La lente resta una lente
+
+[`scripts/sql/check_messaggio_vs_condizione.sql`](../../../../scripts/sql/check_messaggio_vs_condizione.sql)
+può guadagnare un secondo verso — *la classe contraddice il testo del
+messaggio?* — ora che ha una classe da confrontare. Ma resta quello che è:
+**23% di precisione**, misurato. Utile all'apertura di un lotto, **mai** un
+cancello. Chi la promuove a cancello la fa disattivare in una settimana, che è il
+modo in cui i presidi muoiono.
+
+---
+
+## 6. ⭐ Da dove il backend prende la classe — **decisione ribaltata: file generato**
+
+La prima stesura affermava: *«non c'è più un secondo elenco da cui divergere,
+perché non c'è più un secondo elenco»*. ⚠️ **Vero solo per lo `http_status`.**
+Resta la mappa **codice → classe**, 689 voci, e il BE deve poterla leggere quando
+traduce un'eccezione. Se quella mappa resta in Python, il secondo elenco non è
+sparito: ha cambiato contenuto.
+
+Le tre strade, con le loro conseguenze:
+
+| | Dove sta la mappa codice→classe | Il secondo elenco… |
+|---|---|---|
+| ~~**a**~~ | il BE la legge da `config.codici_errore` a runtime | ~~sparisce davvero~~ → ⚠️ **falso, e la riga è lasciata com'era scritta**: col suo snapshot di ripiego la (a) *è* la (b), più una dipendenza DB sul percorso d'errore (§6.1) |
+| ✅ **b** | modulo Python **generato** dal DB, allineamento presidiato in CI | resta, ma **meccanico** — ed è il massimo ottenibile senza toccare gli SQLSTATE |
+| **c** | la classe viaggia **nell'eccezione** (SQLSTATE per classe, §2.2) | sparisce **davvero**, e non serve né cache né file — ma 311 pgTAP da toccare |
+
+⭐ **La (c) è l'unica in cui il secondo elenco sparisce per davvero**, e questa
+revisione lo rende più chiaro di prima: fra (a) e (b) la scelta è *dove tenere lo
+stesso elenco*, non *se averlo*.
+
+### 6.1 ⚠️ **Decisione ribaltata il 2026-08-07 (pomeriggio): è la (b), non la (a)**
+
+La prima decisione era la **(a)**, su raccomandazione DB. Il BE l'ha contestata
+(annotazione **A2**) e **ha ragione**. L'argomento, in una riga:
+
+> lo snapshot di ripiego dev'essere **generato dal DB, committato e presidiato in
+> CI perché non diverga**. Quello è, parola per parola, il modulo generato della
+> strada (b).
+
+Il conto vero: **(a) = (b) + una query all'avvio + una cache + un ramo di
+fallback + un log rumoroso da presidiare.** E il vantaggio che avrebbe giustificato
+la complessità — *«cambio una classe e ha effetto senza deploy»* — **non esiste**:
+la cache si invalida al reload del processo, quindi cambiare una classe richiede
+comunque un riavvio, esattamente come il deploy di un file generato.
+
+⭐ **E c'è un secondo argomento, che nessuno dei due aveva pesato e che da solo
+chiuderebbe la questione: la suite di test.** `.codex/AGENTS.md` §Regole test
+Django impone che i test funzionino **senza dipendere da un DB reale**, e oggi
+**9 file di test** usano `ErrorPolicyRegistry` — fra cui
+`test_drf_exception_handler.py`, che è `unittest.TestCase` puro, senza database.
+Caricare il registro dal DB renderebbe DB-dipendente il registro, e con lui una
+fetta larga della suite: è **contro una regola esplicita del progetto**, e si
+sarebbe scoperto scrivendo il codice.
+
+**Decisione (2026-08-07): strada (b).** Il disegno:
+
+1. **`error_policies.py` diventa generato** — non si aggiunge un artefatto, se ne
+   toglie la manutenzione a mano a uno che esiste già. Oggi contiene 659 voci
+   scritte a mano; domani le stesse voci escono dal DB;
+2. **la generazione legge `config.vw_codici_errore`** e produce `codice → classe`;
+   lo `http_status` non compare più nel file: si deriva;
+3. **un controllo in CI** fallisce se il file generato diverge dal DB — è il
+   cancello `test_error_codes_db_policy_guardrail` che cambia mestiere ancora una
+   volta, e non un presidio nuovo;
+4. **la mappa classe → HTTP resta lato BE**, dieci righe scritte a mano (nove
+   status + `AVVISO`, che non ne ha uno). È
+   trasporto, non dominio: il DB non deve sapere cosa sia un 409;
+5. `ui_action` e `user_message` restano scritti a mano nel file generato — e
+   **questo è il pezzo scomodo**: un file in parte generato e in parte a mano è
+   una forma fragile. Va deciso lato BE se separarli in due moduli (generato +
+   override) o se generare anche gli override da una seconda sorgente. **Non è
+   una domanda per il DB**, ma va risolta prima di scrivere il generatore.
+
+> ⚠️ **Va detto senza girarci intorno: il secondo elenco NON sparisce, in
+> nessuna delle due strade.** Quello che sparisce è la sua **scrittura a mano** —
+> che è il punto da cui nascono le divergenze, e quindi è già il guadagno vero.
+> La frase del §8 *«non c'è più un secondo elenco»* era sbagliata due volte: la
+> prima stesura la diceva dello status, questa revisione la diceva della classe.
+> È corretta nel §8.
+
+---
+
+## 7. ⚠️ Il backfill **non** è completo — misurato, non dedotto
+
+La prima stesura diceva: *«le 659 classi esistono già … nessuna decisione da
+rifare»*. Confronto fra il CSV del catalogo e `error_policies.py`, 2026-08-07:
+
+| | quanti |
+|---:|---|
+| codici a catalogo (`messaggi_errore.csv`) | **689** |
+| policy dichiarate (`error_policies.py`) | **659** |
+| **a catalogo ma SENZA policy** | **33** |
+| di questi, già ritirati (`obsoleto_dal`) | **1** |
+| **→ vivi, senza classe, che il `NOT NULL` bloccherà** | **32** |
+| policy **senza** riga di catalogo (solo Python) | **3** |
+| **universo reale dei codici** | **692** |
+
+I 32 sono codici che **nessuna funzione viva solleva** — altrimenti sarebbero
+nella vista `dbops.vw_codici_errore_da_dichiarare`, che il cantiere ha portato a
+zero. Esempi: `E_STORICO_UPD`, `E_STORICO_DLT`, `E_TXID_DBLINK_ERROR`,
+`E_TXID_DBLINK_NULL`, `E_BOM_VERSIONE_OVERLAP`, `E_COMPETENZA`,
+`E_REFRESH_LOCK_TIMEOUT`, `E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI` (quest'ultimo
+già ritirato lato policy nel cantiere satelliti fattura, ma vivo a catalogo).
+
+⭐ **Questo è un argomento a favore, non contro.** Sono 32 codici che oggi non
+guarda nessuno da nessun lato: non hanno una policy perché non li solleva
+nessuno, e non risultano morti perché il catalogo non ha un campo che lo dica. Il
+`NOT NULL` li fa emergere il primo giorno. Ma vanno messi in conto come **32
+decisioni residue**, non scoperti a lavoro iniziato.
+
+⚠️ **E «per la maggior parte sarà ritiro» era una scorciatoia** (rilievo BE, A5).
+La [guida dei presidi §3.3](../../guide/presidi-e-registri-del-debito.md) chiede
+il contrario: *«prima di togliere un codice del genere va distinto se è
+**superato** o **non ancora agganciato**: cancellare il secondo tipo rompe il
+lavoro di qualcun altro»*. È la stessa domanda rimasta aperta sulle due funzioni
+orfane del cantiere precedente.
+
+### 7.1 ⭐ Il discriminante è misurabile — il metodo, che vale oltre questi 33
+
+La guida chiede di distinguere ma non dice **come**. Il BE ha proposto un
+criterio e il DB l'ha verificato: **contare le tracce**, su due assi invece che
+su uno.
+
+| Asse | Cosa misura |
+|---|---|
+| **funzioni vive che lo sollevano** | è agganciato *adesso*? (per questi 33 è **0** per costruzione) |
+| **file del repo che lo nominano**, escluso il CSV del catalogo | qualcuno l'ha **progettato**? (doc, brief, YAML, test) |
+
+Incrociati, separano i 33 da soli:
+
+| Tracce | Quanti | Cosa sono | Cosa farne |
+|---|---|---|---|
+| **0** | 3 — `E_INVALID_SNAPSHOT` · `E_DRYRUN_CREATE_TRIGGER` · `E_DATA_FINE_INFERIORE_DI_INIZIO` | esistono **solo** come riga di catalogo: mai sollevati, mai documentati, mai nominati da nessuno | ✅ **ritiro**, sono i candidati veri |
+| **1-3** | 6 — `E_STORICO_UPD` · `E_STORICO_DLT` · `E_TXID_DBLINK_ERROR` · `E_TXID_DBLINK_NULL` · `E_ATTIVO_CASCADE` · `E_DBLINK_LOG_CONN_MISSING` | traccia sottile | plausibilmente **superati** — verificare il singolo |
+| **3-10** | ~10 — famiglie `E_BOM_*` (4) · `E_CONTRATTO_MODALITA_C_*` (3) · `E_COMPETENZA*` + `E_VENDITA_COMPETENZA_RICHIESTA` (3) | ⚠️ **famiglie coerenti, progettate**: `E_VENDITA_COMPETENZA_RICHIESTA` ha 10 tracce e zero funzioni che lo sollevano | **non ancora agganciate** — si classificano, non si ritirano |
+
+✅ **Verificato lato DB sui casi limite** (2026-08-07): i tre a zero tracce hanno
+davvero `0` ovunque — nessuna funzione viva, nessun file nel repo. E
+`E_BOM_VERSIONE_OVERLAP` (5 tracce) / `E_VENDITA_COMPETENZA_RICHIESTA` (10) hanno
+tracce **e zero funzioni che li sollevano**: è la firma esatta di *«progettato,
+non ancora cablato»*.
+
+> ⚠️ **CORREZIONE (2026-08-07, eseguendo il D-2): due assi non bastano, e questo
+> discriminante ha sbagliato.** Le famiglie `E_BOM_*`, `E_CONTRATTO_MODALITA_C_*`
+> e `E_COMPETENZA*` erano state date per «progettate, non ancora agganciate».
+> **Erano agganciate, e sono state staccate** nella bonifica dei riferimenti
+> morti del 4-5 agosto: le tracce non sono i resti di un disegno da costruire, ma
+> di uno **rimosso**. Serve un **terzo asse — *è mai stato cablato?*** — che si
+> legge nei changeSet di `20_code` e delle migrazioni v1. Dettaglio ed esito nel
+> [piano DB, D-2](piano-db-classe-codici-errore.md).
+>
+> ⭐ **Il metodo è la parte riusabile, più dei 33.** «Zero tracce» e «zero
+> sollevamenti» sembrano la stessa cosa e non lo sono: il secondo da solo dice
+> «nessuno lo usa **ora**», ed è ciò che ha lasciato aperte per un cantiere
+> intero le due funzioni orfane. Il primo dice «nessuno l'ha mai **pensato**», ed
+> è quello che autorizza a cancellare.
+
+⚠️ **Uno si è mosso da ieri:** `E_AI_CONFIRMATION_REQUIRED` è nei 33, ma il BE
+l'ha **ritirato** nell'audit degli status (nessuno lo sollevava: il flusso di
+conferma AI risponde 200 con `requires_confirmation` nel payload). A catalogo è
+ancora vivo → **va ritirato anche lì, non classificato**.
+
+**In tutti i casi**: la classe di un codice ritirato è **quella che aveva quando
+era vivo**. Il diario deve continuare a risolvere.
+
+### 7.2 ✅ I «3 solo-Python» — la domanda di perimetro si scioglie da sola
+
+Era l'unica decisione rimasta aperta: *«`config.codici_errore` è il catalogo dei
+codici che il DB può nominare, o di **tutti** i codici dell'applicazione?»*
+
+**Risposta (verificata sui tre, 2026-08-07): è già il catalogo di tutti.** Dei
+**659** codici che il backend dichiara, **656 hanno già la loro riga nel catalogo
+DB**. Nessuno l'ha mai deciso: è successo, perché chi aggiungeva un codice lo
+scriveva in tutti e due i posti. Non stiamo scegliendo fra due strade — stiamo
+mettendo per iscritto quella che percorriamo già da sempre.
+
+⭐ **E i tre «solo-Python» non sono tre codici: sono tre residui, uno per tipo.**
+Aperti uno per uno, nessuno è un codice che vive soltanto in Python:
+
+| Codice in `error_policies.py` | Cos'è davvero | Cosa serve |
+|---|---|---|
+| `PREV_STATO_NON_MODIFICABILE` | **un morto**. Il gemello vivo `E_PREV_STATO_NON_MODIFICABILE` è a catalogo (id 714); quello senza prefisso il DB l'ha **cancellato il 2026-08-05** (`20260805-16`, «doppione superato»). La riga Python è rimasta orfana | **BE**: togliere la voce. Una riga |
+| `MESSAGGIO_NON_DEFINITO` | **un codice con due nomi**: a catalogo senza prefisso (id 14), in Python con la `E_`. È il segnaposto che il DB usa quando un messaggio manca. ⭐ È **l'ultima riga rimasta** del registro dei codici fuori convenzione (57 → 1, `dbops.messaggi_errore_codici_legacy`): debito **già noto e già tracciato** | **DB**: coda di quel registro, non di questo cantiere. ⚠️ non è gratis (sotto) |
+| `W_TXID_NOT_REGISTERED` | **non è un errore, è un avviso** — la `W` è deliberata, il DB lo scrive nel diario e non lo solleva mai (§4.2) | **DB**: gli serve la classe `AVVISO`, l'ottavo valore |
+
+⚠️ **`MESSAGGIO_NON_DEFINITO` non si rinomina con una riga di CSV.** Due funzioni
+lo cercano **per nome scritto a mano** — `script.fn_log_error_only` fa
+`WHERE codice = 'MESSAGGIO_NON_DEFINITO'` per recuperare l'`id` di ripiego
+(`20260304-18`, `20260803-11`). Rinominarlo senza toccarle significa che il
+ripiego del ripiego smette di risolvere, **e si vede solo quando serve** — cioè
+il giorno in cui manca un messaggio a catalogo, che è il peggiore per scoprire un
+guasto. Va fatto come slice sua, con le funzioni nello stesso changeSet.
+
+**Conseguenza sul perimetro:** `config.codici_errore` accoglie **tutti** i codici,
+e la domanda del §13 punto 1 è chiusa. Non serve nessuna eccezione per il
+backend, perché non c'era nessun codice solo-suo: c'erano un morto, un
+disallineamento di nome e un avviso.
+
+---
+
+## 8. Cosa cambia lato BE
+
+* lo **`http_status` si deriva dalla classe**: da 659 righe scritte a mano a
+  **sette**. ⚠️ **Non** «non c'è più un secondo elenco»: la mappa codice → classe
+  resta, e con la strada (b) del §6 resta in un file. Quello che sparisce è la
+  sua **scrittura a mano**, che è da dove nascono le divergenze;
+* **`ui_action` resta per codice** — non è derivabile. ⚠️ La tabella qui sotto è
+  la **seconda versione**: la prima veniva da una lettura parziale (627 su 659) e
+  **ribaltava la conclusione**. Ricontato 659/659, confermato dal BE (A3):
+
+  | classe (status) | totale | valore dominante | override che restano |
+  |---|---|---|---|
+  | `DATO_ERRATO` (400) | 234 | `show_error_banner` — **117** | **117** |
+  | `CONFLITTO_STATO` (409) | 224 | `show_error_banner` — 205 | 19 |
+  | `NON_TROVATO` (404) | 84 | `show_empty_state` — 50 | **34** |
+  | `TECNICO` (500) | 63 | `show_error_banner` — 62 | 1 |
+  | `NON_PERMESSO` (403) | 23 | `show_error_banner` — 23 | 0 |
+  | `NON_ESEGUIBILE` (422) | 22 | `show_error_banner` — 20 | 2 |
+  | `NON_DISPONIBILE` (501) | 4 | `show_error_banner` — 3 | 1 |
+  | | | **totale** | **174** |
+
+  ⚠️ **Sulla classe più numerosa il default non esiste: è un lancio di moneta.**
+  Non «quasi a metà» — **esattamente** a metà, 117 contro 117, e con la dominanza
+  **invertita** rispetto alla prima tabella (banner, non campo evidenziato). Su
+  `DATO_ERRATO` un default per classe indovina il 50% delle volte, che è come non
+  averlo.
+
+  Il discriminante non è la classe ma **dove manca il dato**: sul form che
+  l'operatore sta compilando (campo evidenziato) o sull'entità collegata
+  (banner). È un'informazione che la classe non porta e non può portare — da
+  sapere **prima** di progettare «default per classe con override», non dopo.
+
+  Restano comunque **174 override su 659**: il guadagno c'è, ma è «da 659 voci a
+  174 + 7 regole», non «a sette»;
+* il cancello `test_error_codes_db_policy_guardrail` **resta**, e cambia mestiere
+  per la seconda volta: da unico presidio, a rete di sicurezza, a **controllo di
+  divergenza fra il file generato e il DB** (§6.1 punto 3).
+
+---
+
+### 8.5 ⭐ `ui_action` è **uscita dal contratto dormiente** — 2026-08-08
+
+Il §8 diceva che `ui_action` resta per codice e che **il frontend non la legge**.
+La seconda metà non è più vera, ed è successo tutto in un giorno.
+
+⚠️ **Il buco vero non era il frontend: era che nessuno diceva QUALE campo.**
+`highlight_form_fields` sono 125 codici, ma nell'envelope non c'era il nome del
+campo — quindi anche leggendo `ui_action` la pagina non avrebbe saputo cosa
+accendere. Due buchi di dimensione diversa: 42 codici nascono in Python (il nome
+**c'era già** e si buttava a un passo dall'uscita) e 83 nel database (mancava
+davvero).
+
+**Cosa esiste ora, end-to-end:**
+
+| pezzo | stato |
+|---|---|
+| envelope `fields` (nomi dei campi, mai i valori) | ✅ BE |
+| `useApiHandler` → `campiErrati`, 38 componenti | ✅ FE |
+| canale DB: `RAISE … USING COLUMN`, contratto gemello di `CONSTRAINT` | ✅ `20260808-04` |
+| lettura `diag.column_name` lato BE | ✅ BE |
+| presidio: controllo **(F)** del guardrail, un solo mittente su `COLUMN` | ✅ DB |
+
+⭐ **E il grosso è arrivato senza toccare un punto di chiamata.** La convenzione
+`jsonb_build_object('parametro', 'p_cognome')` era già scritta in **225 punti su
+111 funzioni**: derivarla (togliendo il `p_`) copre **217 dei 380 punti** in cui
+il frontend potrebbe evidenziare qualcosa — `20260808-05`, una riga.
+
+> È la **terza volta** in questo cantiere che il dato c'era già e nessuno lo
+> trasmetteva: il `context` del backend, i 4 `'campo'` del database, i 225
+> `'parametro'`. Il difetto non è mai stato «manca l'informazione»: è sempre
+> stato «manca l'ultimo passo». Vale la pena scriverlo perché è il primo posto
+> dove guardare la prossima volta.
+
+**Poi cinque lotti a mano**, dove il nome del campo un giudizio lo vuole davvero:
+
+| | cosa | campi |
+|---|---|---|
+| `-06` | guard CF/P.IVA obbligatori | `partita_iva`, `codice_fiscale` |
+| `-07` | CF/P.IVA **malformati** | + `piva_gruppo_acquisto` |
+| `-08` | ritenuta d'acconto fornitore | `ritenuta_aliquota` |
+| `-09` | periodo cliente | `data_chiusura`, `data_attivazione` (⚠️ inerte: il drawer le mostra `disabled`) |
+| `-10` | emittente incoerente, **sei documenti** | `emittente_fiscale_id` |
+
+#### ⚠️ Le quattro trappole prese sul campo — valgono più dei changeSet
+
+1. **Affettare per SCHEMA è sbagliato.** Il CF malformato è validato in `script`,
+   non in `anagrafiche`: la fetta «anagrafiche» spezzava a metà un'unica azione
+   dell'operatore. **Si affetta per schermata**, o meglio per **concetto**;
+2. **la fetta si chiude sul concetto, e va cercata per FORMA DEL NOME.** Del
+   `_guard_emittente_ba` ne avevo trovate quattro cercando i domini; sono **sei**
+   (`%_guard_emittente_ba`). Due documenti sarebbero rimasti spenti;
+3. **ancorare sul CODICE errore è sbagliato**: due punti condividono
+   `E_PIVA_NON_VALIDA` ma sono campi diversi (`partita_iva` e
+   `piva_gruppo_acquisto`). ⭐ *Il codice dice cosa è andato storto, il contesto
+   dice dove* — si ancora sulle chiavi del contesto;
+4. **la prima riga della guardia non è la guardia.**
+   `IF NEW.ritenuta_acconto = true AND (NEW.ritenuta_aliquota IS NULL …)`: il
+   campo da correggere è sulla **seconda** riga. Una misura che legge la prima
+   manda l'operatore a togliere la spunta invece che a scrivere l'aliquota.
+
+⚠️ **E il metodo con cui sono stati prodotti conta quanto il risultato**: nessun
+corpo è stato ritrascritto. `pg_get_functiondef` della funzione viva +
+sostituzione ancorata applicata da script + **diff verificato additivo** prima di
+scrivere il changeSet. Sono guard di integrità: una svista non si vede in review,
+si vede su un dato sbagliato.
+
+### 8.6 ⭐ La classe dei sei `*_EMITTENTE_BA_INCOERENTE` — 2026-08-09
+
+Sei guardie identiche, **due combinazioni incrociate**: i cinque documenti
+principali erano `CONFLITTO_STATO` (409) con `ui_action = highlight_form_fields`,
+il reso `DATO_ERRATO` (400) con banner. api.md ne ammette solo due:
+
+| | |
+|---|---|
+| **409 · banner** | l'operatore non ha un campo da correggere |
+| **400 · highlight** | il valore l'ha scelto lui, in un form |
+
+**Decide la seconda**, e per una ragione che regge da sola: *«hai scelto un
+emittente che non corrisponde al billing account»* è **un valore sbagliato in un
+campo scelto dall'operatore**, non un conflitto di stato. `CONFLITTO_STATO`
+significa «non puoi farlo adesso», e non si ripara editando un campo.
+
+→ i cinque passano a `DATO_ERRATO` nel CSV di seed; il reso era già giusto e il
+BE ha allineato il suo `ui_action`.
+
+⚠️ **Una premessa del rilievo BE era falsa, e va detto perché la conclusione
+regge lo stesso.** Sostenevano che in update il servizio rifiuta prima
+(`_FORBIDDEN_TESTATA_UPDATE`), quindi il campo è editabile solo alla creazione.
+Verificato: quella costante esiste **solo in `contratti_service.py`**, e
+sull'**offerta** `emittente_fiscale_id` è esplicitamente in
+`_UPDATE_KEYS_OFFERTA`, cioè **aggiornabile**.
+
+⭐ Il che rende la conclusione **più forte**: se il campo è editabile anche in
+update, `400 + highlight` è giusto in *entrambi* i percorsi, non solo perché
+l'update sarebbe irraggiungibile. La strada era sbagliata, la destinazione no.
+
+⚠️ Nessun test asseriva 409 su quei codici: gli unici riscontri erano nel file
+generato, che si rigenera.
+
+#### ⚠️ E un difetto che ho introdotto io, nella stessa modifica
+
+La ragione l'avevo scritta per intero nella colonna `note` di tutte e sei le
+righe. Ma **il generatore emette la `note` come commento sopra ogni codice**:
+554 caratteri × 6 = **3324 caratteri di commento duplicato** in
+`error_policies_generated.py`.
+
+> La `note` di un codice non è il posto dove sta il ragionamento: è un
+> **puntatore**. Il ragionamento sta qui, dove si legge una volta sola.
+
+Accorciata a 209 caratteri con il rimando a questo paragrafo.
+
+---
+
+## 9. Cosa **NON** risolve — detto prima, non dopo
+
+1. **Una classe sbagliata scelta alla creazione resta possibile.** Ma la scegli
+   **una volta**, nel momento in cui hai in testa il ramo che solleva, e la
+   sbagli in modo *visibile*: `classe = NON_TROVATO` su un codice il cui
+   messaggio dice «Parametro non valido» è una contraddizione che la vista del
+   §5.2 mostra a chiunque rilegga il dominio. Prima non era sbagliabile in modo
+   visibile: era **non decidibile affatto**.
+2. **Il legame messaggio ↔ condizione resta umano.** Misurato: la migliore
+   euristica dà **23% di precisione**, inservibile come cancello. La classe lo
+   *riduce* dando alla lente un secondo termine di confronto, non lo elimina.
+3. **I codici a più significati vanno comunque decisi.** `classe NOT NULL` ti
+   obbliga a scegliere il **denominatore sicuro** — che è ciò che si è fatto per
+   `E_SOGGETTI_RUOLI` — e rende la scelta **visibile** invece che implicita. Il
+   criterio è già scritto in [api.md](../api.md) (§2.3): non va riformulato.
+4. ⚠️ **I due accumulatori non si curano con una classe** — e il `NOT NULL` li
+   **peggiora**. Vedi §9.1: non è più una nota in coda, è un passo del piano.
+5. **La classe è una proprietà del codice, non del punto che solleva.** È il
+   limite strutturale del disegno, ed è accettato: la garanzia che compra è
+   *«ogni codice ha una semantica dichiarata»*, non *«ogni sollevamento ha la
+   semantica giusta»*. La seconda non è ottenibile da una tabella — si ottiene
+   leggendo la funzione, che è quello che il cantiere ha fatto 150 volte.
+6. ⚠️ **Nessuno presidia che la classe resti vera** — §9.2.
+
+### 9.1 ⚠️ Gli accumulatori: il `NOT NULL` non è neutro, li **certifica**
+
+Rilievo BE (**A1**), accolto. Il punto non è che la classe non li cura — è che
+assegna una classe **ufficiale** a un codice che ne vorrebbe cinque, e da quel
+momento la bugia ha un dato che la certifica.
+
+**`E_VALIDAZIONE` — 10 funzioni, cinque domini.** Verificato sulla doc auto-gen,
+la lista del BE è esatta:
+
+> `fn_resolve_indirizzo_documento` · `fn_snapshot_indirizzo` ·
+> `fn_snapshot_indirizzo_soggetto` · `fn_annulla_reso` · `fn_conferma_reso` ·
+> `fn_genera_ddt_da_ordine` · `fn_genera_ddt_riconsegna` ·
+> `fn_ordine_ha_residuo_evasione` · `fn_ordine_riga_qta_riconsegna` ·
+> `fn_push_preventivo_a_ordine`
+
+Risoluzione indirizzi, annullamento resi, generazione DDT, residui d'ordine,
+push preventivo — tutti sotto «Validazione fallita: %s». `DATO_ERRATO` è
+plausibile per alcuni e **falso** per altri: `fn_annulla_reso` che rifiuta un
+annullamento è `CONFLITTO_STATO`, non un dato sbagliato.
+
+> 🔴 **CORREZIONE (2026-08-07, eseguendo il D-3): questa premessa è FALSA.**
+> Letti tutti e 13 i punti che sollevano `E_VALIDAZIONE`, sono **la stessa
+> condizione**: un parametro obbligatorio mancante o non valido — la guard che
+> `.codex/AGENTS.md` prescrive. ⚠️ In `fn_annulla_reso` `E_VALIDAZIONE` **non
+> rifiuta nessun annullamento**: scatta su `p_reso_id IS NULL OR <= 0`.
+>
+> **`E_VALIDAZIONE` non è un accumulatore**, e non si spezza: `DATO_ERRATO` è
+> giusto per tutti e 13. Dettaglio nel [piano DB, D-3](piano-db-classe-codici-errore.md).
+>
+> ⭐ **Perché sembrava vera, ed è la lezione:** l'eterogeneità era dedotta
+> dall'**elenco dei nomi di funzione** — indirizzi, resi, DDT, residui, push —
+> cinque domini. Ma **le funzioni erano eterogenee, la condizione no.** Un codice
+> è un accumulatore quando copre **condizioni** diverse, non quando è usato in
+> **domini** diversi.
+
+**`E_PARAMETRO_INVALIDO` — 112 secondo il BE, 114 file nella doc auto-gen.** La
+differenza non è stata inseguita: l'ordine di grandezza è quello, e la conclusione
+non cambia. ⚠️ **Qui bloccare il piano non è praticabile**: centoquattordici
+funzioni sono un cantiere a sé, non il passo 3 di questo. E sappiamo già che
+almeno un uso non è `DATO_ERRATO` — nel resolver di prezzo il parametro sbagliato
+lo riceve la funzione dal chiamante, non l'operatore.
+
+> ⚠️ **Misurato anche questo (2026-08-07): 160 punti su 177 sono guard di
+> parametro** (90%); gli altri 17 sono `NOT IN (...)`, `v_x IS NULL` dopo un
+> SELECT e simili. **`DATO_ERRATO` non è il denominatore sicuro: è la risposta
+> giusta per il 90% dei punti.** Restano una dozzina di siti da guardare con la
+> lente — non il «cantiere a sé» che questi documenti si erano immaginati.
+
+→ **`DATO_ERRATO` + il perché nella colonna `note`.** La colonna del §3.3 esiste
+per questo: un codice usato in 114 funzioni va riconoscibile *come tale*, non
+solo classificato.
+
+> ⚠️ **Una correzione al costo, però.** Il BE scrive che se il seed parte prima
+> dello split «poi si riscrive il seed». **Non è così**: spezzare un codice crea
+> codici **nuovi** (righe nuove); la riga dell'accumulatore non si riscrive — o
+> resta per gli usi che sopravvivono, o si **ritira**. Il costo di «seed prima,
+> split poi» è che per un po' una riga porta una classe di compromesso, con la
+> ragione scritta accanto. È un costo di **verità**, non di rilavorazione — che
+> resta un buon motivo per fare `E_VALIDAZIONE` prima, ma non per bloccare
+> `E_PARAMETRO_INVALIDO`.
+
+**E la regola che chiude il rubinetto** — vietare **nuovi** codici generici,
+come si è fatto per i codici fuori convenzione — resta in coda al lavoro (piano,
+punto 15): rincorrere gli esistenti senza chiudere il rubinetto è la forma in cui
+questi registri non calano mai.
+
+### 9.2 ⚠️ Chi controlla che la classe resti **vera**? ~~Oggi nessuno~~ → **misurato, §9.3**
+
+> 🔔 **Il titolo diceva «oggi nessuno» e il 2026-08-08 ha smesso di essere vero.**
+> Il paragrafo resta com'era, perché è il ragionamento che ha *portato* alla
+> misura e va letto per primo. L'esito sta nel **§9.3**.
+
+Rilievo BE (**A6**), accolto e — a differenza degli altri — con una proposta.
+
+Il disegno ha un `NOT NULL` che impedisce a un codice di **nascere** senza
+classe. Non ha niente che impedisca a una classe di **diventare falsa dopo**,
+quando la funzione che solleva cambia ramo o quando qualcuno riusa il codice
+altrove.
+
+**È successo davvero:** `E_STATO_SCONOSCIUTO` è diventato ambiguo il giorno in
+cui è stato riusato in `trgfn_toponomastica_normalize`, molto dopo la sua
+creazione. ⚠️ **E con la classe a catalogo sarebbe andata peggio**: quel riuso
+avrebbe trovato `NON_TROVATO` già scritto, e non avrebbe protestato — la classe
+avrebbe dato al riuso una patente di legittimità.
+
+**Proposta DB — una misura, non un cancello.**
+
+> 🔴 **La prima versione di questa proposta era sbagliata, e l'ha vista il BE.**
+> Diceva: *«un codice sollevato da funzioni di più di un dominio è un candidato
+> accumulatore»*, e sosteneva che avrebbe intercettato `E_VALIDAZIONE` (cinque
+> domini). **Il D-3 ha dimostrato il contrario**: `E_VALIDAZIONE` è 10 funzioni
+> in 5 domini ed è il caso su cui la risposta è **no**. Sarebbe stato il primo
+> falso positivo della vista — e su una misura, come dice il BE, *«un falso
+> positivo non fa danno, ma una misura che sbaglia sul suo caso più noto viene
+> guardata due volte e poi mai più»*.
+>
+> ⚠️ **La contraddizione era interna a questo brief**: il §9.1 dice già che un
+> codice è accumulatore quando copre **condizioni** diverse, non **domini**
+> diversi — e il D14 restava scritto sull'asse smentito, a quaranta righe di
+> distanza.
+
+**L'asse giusto è la forma della condizione al punto che solleva**, e la
+macchina per estrarla **esiste già**: la CTE `con_guardia` della lente
+`check_messaggio_vs_condizione.sql` accoppia già `(codice, funzione, guardia)`.
+Si classifica ogni guardia in una famiglia — `PARAMETRO` (`IS NULL`, `<= 0`),
+`NOT_FOUND`, `ECCEZIONE`, `ENUM` — e si segnala chi ne ha più di una.
+
+**Provata sui casi noti** (2026-08-07):
+
+| Codice | Punti | Famiglie | Esito |
+|---|---:|---|---|
+| `E_VALIDAZIONE` | 13 | `PARAMETRO` | ✅ **pulito** — l'asse vecchio lo segnalava |
+| `E_PARAMETRO_INVALIDO` | 206 | `PARAMETRO` · `ENUM` · … | ✅ segnalato |
+| `E_SOGGETTI_RUOLI` | 3 | `PARAMETRO` · `NOT_FOUND` · … | ✅ segnalato (tre significati, tenuti insieme di proposito) |
+| `E_STATO_SCONOSCIUTO` | 0 | — | ⚠️ **non verificabile**: è ritirato, non ha più punti vivi |
+
+⚠️ **E la misura dichiara la propria copertura, perché da sola non basta.**
+Misurato: il classificatore riconosce una famiglia per **75 codici su 342** — gli
+altri **267 finiscono nel cestino `ALTRO`** e sono invisibili. Dei 22 segnalati,
+solo **6 lo sono per due famiglie NOTE**; gli altri 16 sono «una famiglia più
+qualcosa che non so leggere».
+
+**Quindi la vista deve aprire con una riga di copertura**, come fa già la lente:
+*«su 342 codici ne classifico 75; dei restanti 267 non so dire niente»*. Senza,
+un elenco di 6 si legge come «gli accumulatori sono sei», che è falso.
+
+⚠️ **Misura, non cancello**, e per una ragione precisa: un codice legittimamente
+trasversale esiste (`E_PERMESSO_NEGATO` è ovunque per costruzione), e un
+cancello che lo bocci verrebbe disattivato. Va guardata **all'apertura di un
+lotto**, come la lente — con la differenza che questa non ha il 23% di
+precisione: dice un fatto, non un'ipotesi.
+
+**Resta comunque fuori dalla garanzia**, e va detto: il disegno presidia la
+*nascita* di un codice, non la sua *vita*. Chi legge questo brief fra un anno
+deve trovarlo scritto, non doverlo dedurre dal punto 5 del §9.
+
+---
+
+### 9.3 ⭐ **La rinuncia del §9.2 è stata riscossa** — prima misura, 2026-08-08
+
+Il §9.2 si chiude con *«nessuno presidia che la classe resti vera»*. **Non è più
+così.** Con la vista `dbops.vw_codici_errore_forme_condizione` in servizio
+esistono **due letture indipendenti dello stesso codice** — ed è l'indipendenza a
+rendere possibile il confronto:
+
+* la **classe**, cioè cosa quel codice *dovrebbe* essere (catalogo);
+* la **famiglia della guardia**, cioè cosa fa il punto che lo *solleva*.
+
+Incrociate (misura BE, §10 del loro piano), la matrice `famiglia × classe` sui
+codici vivi e classificabili:
+
+| famiglia della guardia | classe dominante | fuori dominante |
+|---|---|---|
+| `ECCEZIONE` | `TECNICO` 15 | 1 |
+| `NOT_FOUND` | `NON_TROVATO` 19 | 20 |
+| `PARAMETRO` | `DATO_ERRATO` 14 | 3 |
+| `ENUM` | `CONFLITTO_STATO` 6 | 4 |
+
+Il predicato più stretto — *guardia di solo parametro e classe diversa da
+`DATO_ERRATO`* — **dà zero**. Allargando alle famiglie miste escono 4 codici, e
+letti uno per uno tre non sono difetti: `E_GENERICO` è il pavimento del percorso
+d'errore e una misura così lo segnalerà sempre; `E_ARTICOLO_NOT_FOUND` e
+`E_DEFINIZIONE_NON_TROVATA` sono decisioni **scritte nella funzione** («guard
+parametro NULL: riconducibile a NOT FOUND»).
+
+> ⭐ **Nei limiti del misurabile, la risposta è sì: la classe è vera.**
+
+⚠️ **Col denominatore, sempre.** Sono **75 codici classificabili su 344**; gli
+altri **269 sono `solo_ignoto`** — la vista *dichiara di non sapere*, ed è la
+colonna che la rende onesta. «Zero contraddizioni» vale su **un quinto** del
+perimetro, non su tutto. È esattamente il motivo per cui il D24 ha imposto che la
+misura pubblichi la propria copertura.
+
+#### ✅ E una l'ha trovata — `E_ERRORE_PARAMETRI`, **chiuso lo stesso giorno**
+
+| Condizione al punto che solleva | Punti | Classe vera |
+|---|---:|---|
+| guardia di parametro (`IS NULL`, `<= 0`, `btrim = ''`, `NOT IN`) | 9 | `DATO_ERRATO` ✅ |
+| `TG_NARGS` sbagliato — **il trigger è montato male** | 2 | `TECNICO` |
+| `EXCEPTION WHEN OTHERS` | 1 | `TECNICO` |
+| lookup di configurazione che non trova — **non è un parametro** | 1 | `TECNICO` |
+
+Su quei 4 punti l'operatore prendeva un **400** che gli diceva che aveva
+sbagliato lui, e lo mandava a cercare un campo che non esiste. **Non si
+riclassifica, si spezza** — i tre precedenti erano già decisi in casa
+(`E_ATTIVO_REQUIRE`, `E_SNAPSHOT_ID_NOT_FOUND`, `E_REGOLA_FATTURAZIONE_MANCANTE`),
+il che ha reso il verdetto meccanico invece che opinabile.
+
+✅ **Chiuso il 2026-08-08 con `20260808-11`**: tre punti a
+`E_TRIGGER_ARGOMENTI_INVALIDI` (TECNICO, nuovo), uno a `E_CONFIG_MANCANTE`
+(TECNICO, **esisteva già** — cercato prima di inventarne uno). I 9 punti giusti
+non sono stati toccati. Dettaglio e trappole nel [piano DB §5.7](piano-db-classe-codici-errore.md).
+
+⭐ **La lezione che vale oltre il singolo codice, ed è la stessa due volte:**
+`E_VALIDAZIONE` *sembrava* un accumulatore e non lo era; `E_ERRORE_PARAMETRI` non
+era fra i sospetti e lo è. Entrambe le volte la risposta è venuta dal **contare
+le condizioni**, non dal guardare i nomi — e la seconda volta l'ha trovata una
+misura invece di una persona. È il ritorno dell'investimento del D24, che era
+costato rifare un passo già scritto.
+
+---
+
+## 10. ⚠️ Trappole di applicazione — lato DB
+
+### 10.1 ✅ L'ordine Liquibase — cura applicata al D-5, **prima che servisse**
+
+> ⚠️ **Aggiornamento 2026-08-07: la trappola non era dove questo paragrafo la
+> metteva.** Non è il **seed** a romperla: è la **FK**, che arriva al D-7. Al D-5
+> la FK non esisteva ancora, quindi l'ordine dei loader non vincolava nulla — e
+> proprio per questo la cura andava messa **lì**, non al D-7, quando sarebbe
+> stato tardi per accorgersene. `20260614-08` carica ora tre tabelle in ordine,
+> in una transazione. Il resto del paragrafo resta valido e spiega il perché.
+
+#### Il meccanismo, come era stato scritto
+
+In [`changelog-master-v2.yaml`](../../../../db/changelog/changelog-master-v2.yaml)
+**tutto `00_schema` gira prima di tutto `80_data`** (l'autogen è incluso per
+primo, poi gli `includeAll` di `80_data`/`85_pgagent`/`90_end`).
+
+Conseguenza, se si procede nel modo ovvio:
+
+1. la FK `messaggi_errore.codice → codici_errore.codice` nasce in `00_schema`;
+2. il mirror del catalogo è
+   [`20260614-08`](../../../../db/changelog/migrations_v2/80_data/changelog/20260614-08-upsert-messaggi-errore-chiusura-flusso-prematuro-mctit.yaml),
+   e un loader nuovo avrà data `2026-08-xx`, quindi gira **dopo**;
+3. su un DB **ricostruito da zero** il catalogo si carica prima che
+   `codici_errore` esista popolata → **violazione di FK**.
+
+⚠️ **Su dev non si vede**: il catalogo è già popolato e la FK trova i padri. È
+esattamente la trappola *«il DB di sviluppo NON è un DB ricostruito da zero»*: si
+scopre in CI, in una PR che sembrava pronta.
+
+**Rimedio pulito — estendere `20260614-08` in place**, aggiungendo un secondo
+`loadUpdateData` su `codici_errore.csv` **prima** di quello del catalogo, nello
+stesso changeSet:
+
+* il changeSet è `runOnChange: true` + `validCheckSums: ANY`, cioè un **mirror
+  vivo**: estenderlo in place è lecito e previsto, e il file stesso lo documenta
+  («una colonna non elencata in `columns:` non verrebbe mai toccata dal loader,
+  quindi va aggiunta qui, non gestita con changeSet SQL paralleli») — è già
+  successo per `obsoleto_dal`;
+* un solo changeSet = una sola transazione = ordine garantito, senza
+  ri-ancoraggi;
+* il DDL delle tabelle resta dove deve stare, in `00_schema`.
+
+Il vocabolario `classi_errore` (7 righe) può stare nello stesso changeSet, prima
+di tutto, oppure in un `insertData` dentro `00_schema` — è un enum, non un seed
+che cambia.
+
+> **Alternativa scartata:** creare la FK in un changeSet successivo ai due
+> mirror. Funziona, ma sposta DDL fuori da `00_schema` per una ragione di
+> ordinamento, e la prossima persona non capirà perché.
+
+### 10.2 ✅ Lo spostamento di `obsoleto_dal` — fatto al D-6, cinque lettori riscritti
+
+> ⚠️ **Le etichette qui sotto erano sbagliate**: i controlli del guardrail sono
+> **(B), (C), (D) e il riepilogo**, non «C, D, E». Punti giusti, nomi sbagliati —
+> chi cercava un (E) non l'avrebbe trovato. E sulla lente non era una
+> sostituzione: il filtro sul ritiro stava *dentro* il join della frase, e
+> spostarlo ha richiesto **due join separati** — la frase resta per lingua, il
+> ritiro no.
+
+Tutti da riscrivere nello stesso giro, altrimenti il presidio del ritiro smette
+di funzionare in silenzio — che è il difetto che stiamo curando:
+
+| Dove | Cosa |
+|---|---|
+| [`guardrail_codice_errore_strutturato.sql`](../../../../scripts/sql/guardrail_codice_errore_strutturato.sql) riga ~137 | controllo **C** |
+| idem, righe ~165-185 | controllo **D** (codice ritirato ancora sollevato) |
+| idem, righe ~219-232 | controllo **E** + testo del messaggio d'errore |
+| idem, riga ~271 | esclusione dei ritirati |
+| [`check_messaggio_vs_condizione.sql`](../../../../scripts/sql/check_messaggio_vs_condizione.sql) riga ~100 | la lente |
+
+✅ **Lato BE nessun impatto su questo fronte**: `config.messaggi_errore` non è fra
+le lookup generiche di `dbops_repository` (`_LOOKUP_SPECIALIZZATE`), quindi il
+filtro `includi_obsoleti` dell'API di catalogo non la tocca. Verificato.
+
+### 10.3 Quattro file pgTAP inseriscono direttamente nel catalogo
+
+Con la FK vogliono un padre in `config.codici_errore`. È l'unico rosso **certo**
+della slice, ed è meglio elencarlo che scoprirlo:
+
+* [`test-messaggi-errore-obsoleto-dal.sql`](../../../../db/pgtap/config/test-codici-errore-obsoleto-dal.sql)
+  — ⚠️ questo va **riscritto**, non adattato: verifica una colonna che cambia casa;
+* [`test-fn-log-and-raise-error-fallback-lingua.sql`](../../../../db/pgtap/script/test-fn-log-and-raise-error-fallback-lingua.sql)
+* [`test-fn-log-and-raise-error-constraint-codice.sql`](../../../../db/pgtap/script/test-fn-log-and-raise-error-constraint-codice.sql)
+* [`test-fn-get-messaggio-fallback-lingua.sql`](../../../../db/pgtap/script/test-fn-get-messaggio-fallback-lingua.sql)
+
+### 10.4 Le automazioni non arrivano subito
+
+Tabelle nuove: audit/`tx_id`/storico li provvedono le automazioni, che girano
+solo in contesto `ci_apply` (sul migrate manuale arrivano col pgagent di fine
+giornata). Non è un problema, è da sapere quando si controlla il risultato la
+sera stessa.
+
+---
+
+## 11. ⚠️ ~~L'altro elenco duplicato~~ — **NON è un duplicato**, ed era un errore del DB
+
+> ⚠️ **Questa sezione diceva il contrario, e sbagliava.** Va letta come
+> correzione, non come aggiornamento: è il terzo errore del DB in questo brief, e
+> come gli altri due stava in una frase scritta con la sicurezza di un fatto.
+
+**Come era scritta:** *«`user_message` — 659 stringhe italiane dentro
+`error_policies.py`. **Duplicano** `config.messaggi_errore.messaggio`»*, con la
+malattia rovesciata di `obsoleto_dal` (monolingui contro un catalogo
+multilingua), e un cantiere futuro per spostarle.
+
+**Cosa sono davvero** (rilievo BE, verificato lato DB): sono la **variante senza
+segnaposto**. Il messaggio a catalogo ha i buchi che
+`script.fn_log_and_raise_error` riempie a runtime; il `user_message` è quello che
+si mostra **quando quegli argomenti non ci sono** — cioè quando il messaggio del
+DB non è arrivato. Non è un duplicato: è il ripiego per il caso in cui il
+catalogo non ha parlato.
+
+### 11.1 La prova non è la somiglianza dei testi, è il segnaposto
+
+Il BE l'ha misurata per **somiglianza** (338 «uguale o contenuto» contro 318
+diversi); il DB rifacendola ne ha ottenuti altri (226 contro 430). ⚠️ **La
+differenza non conta, e la ragione è più utile del numero**: un confronto per
+somiglianza dipende da come si normalizza il testo, quindi due misure oneste
+danno due risposte. Il segnale vero è un altro, ed è **binario**:
+
+| Misurato su 656 codici confrontabili | |
+|---|---|
+| messaggi **a catalogo** che contengono `%s` | **371** (56%) |
+| `user_message` che contengono `%s` | **0** |
+| fra i 430 divergenti, quanti hanno `%s` a catalogo | **368** (86% della divergenza) |
+
+**Zero contro 371.** Non è un'euristica, è un fatto: la divergenza non è
+disordine, è **il segnaposto**. La tesi del BE regge, e regge più solidamente di
+come l'aveva argomentata.
+
+> ⭐ **La lezione di metodo, che vale oltre `user_message`:** quando due elenchi
+> sembrano duplicati, la somiglianza dei testi è una misura fragile — il
+> **contratto** di ciascuno (qui: «accetta argomenti / non li accetta») è una
+> misura netta. Cercare la seconda prima della prima.
+
+### 11.2 Conseguenza: spostarli è più caro di come sembrava
+
+Il vincolo che il DB aveva scritto — *«la separazione scelta ora non deve rendere
+più difficile spostarle un domani»* — resta valido ma va **riprezzato**: non è
+muovere 659 stringhe. Richiederebbe che il catalogo porti una **seconda variante
+argument-free** di ogni messaggio, per **371 codici** (tutti quelli con `%s`).
+Cioè una colonna in più su `messaggi_errore`, o una riga in più per codice: un
+cantiere suo, e più grosso di quanto il paragrafo originale lasciasse credere.
+
+✅ **La forma scelta dal BE lo tiene aperto senza pagarlo adesso**: i
+`user_message` vanno in un modulo **loro**, che si chiama `fallback` (§14.2).
+Spostarli un domani sarà cancellare un file, non estrarli da un file che contiene
+anche decisioni di UI.
+
+---
+
+## 12. ⭐ Il consumatore in più: l'osservabilità
+
+Argomento **lato DB** per una colonna **DB**, che la prima stesura non faceva.
+
+Con `classe` a catalogo, `dbops.error_log` può finalmente distinguere il **guasto**
+dal **rifiuto legittimo**. Oggi non può: un 500 tecnico e un «non puoi annullare
+un ordine con DDT» sono la stessa riga con testo diverso.
+
+Sono due buchi aperti di
+[analisi-osservabilita-log](../work-in-progress/analisi-osservabilita-log.md):
+
+* **B1** — *«il 67% di `error_log` non è attribuibile: qualunque strumento di
+  consultazione mostra soprattutto rumore»*. Filtrare per `classe = 'TECNICO'`
+  toglie il rumore alla radice, perché il rumore **sono** i rifiuti legittimi;
+* **B7** — *«un lotto fermo in errore resta invisibile finché qualcuno non
+  guarda»*. Un alert ha bisogno di un predicato: `classe = 'TECNICO'` è il primo
+  predicato sensato che questo progetto possa scrivere.
+
+Non è lavoro di questo brief. È la ragione per cui la classe **appartiene al DB**
+e non è una gentilezza fatta al backend.
+
+---
+
+## 13. Il piano — ⚠️ **spostato in due documenti separati**
+
+> **Decisione (Tid, 2026-08-07 sera): il BE è fermo, si sviluppa tutto il DB per
+> primo.** Da qui in avanti **questo brief è la guida generale** — le ragioni, le
+> misure, le 19 decisioni — e l'esecuzione vive in due piani operativi:
+>
+> * ▶️ [**piano-db-classe-codici-errore**](piano-db-classe-codici-errore.md) — D-1..D-10, si comincia da qui;
+> * ⏸️ [**piano-be-classe-codici-errore**](../work-done/piano-be-classe-codici-errore.md) — B-1..B-7, coi prerequisiti marcati.
+>
+> La tabella qui sotto **resta come vista d'insieme**, ma i piani sono la
+> versione viva: se divergono, valgono loro.
+
+### 13.0 ⭐ Il BE non era un prerequisito del DB — misurato
+
+Il piano unico aveva al punto 3 *«il BE genera il CSV `codice,classe` da
+`error_policies.py`»*, e sembrava il punto in cui il DB avrebbe dovuto aspettare.
+
+**Non è così.** La mappa status → classe è deterministica e il file è nel repo:
+il DB se lo estrae da solo. Misurato il 2026-08-07:
+
+| | |
+|---:|---|
+| **654** su 659 | convertiti automaticamente dallo status |
+| **5** | restano — `E_JWT_SENZA_IDENTITA`, `E_IDENTITA_NON_ATTIVA`, `E_AUTHENTICATION_FAILED`, `E_NOT_AUTHENTICATED` (401) e `E_AI_PROVIDER_ERROR` (502) |
+| | e sono **esattamente** i codici già esclusi dal vocabolario di dominio (§4) |
+
+⭐ **E vale anche al contrario**: dei sette passi del BE, **quattro non hanno
+nessun prerequisito DB** (togliere la policy morta, l'eccezione su classe senza
+status, i quattro moduli, la mappa classe → HTTP). L'unico vero cancello è
+**D-9** — le due viste — che è il passo di consegna del piano DB.
+
+Quindi *«prima il DB, poi il BE»* è una **scelta di comodo, non un vincolo
+tecnico**. Va scritto perché fra sei mesi sembrerà una dipendenza, e non lo era.
+
+⚠️ **Una conseguenza da mettere in conto:** finché il BE non ha il generatore, i
+codici **nuovi** creati dal DB (lo split di `E_VALIDAZIONE`) cadono sul ripiego
+400 di `resolve()`. Non è una regressione — è il comportamento di oggi per ogni
+codice nuovo — ma **lo split non cambia niente di visibile finché il BE non
+riparte**.
+
+### 13.1 Dove siamo — **2026-08-08**
+
+⚠️ **Qui c'era una «vista d'insieme» che ripeteva i due piani.** L'ho tolta: era
+un **secondo elenco che divergeva** dai piani veri — esattamente la malattia che
+questo cantiere cura. Resta uno **stato**, che è un'altra cosa da un piano.
+
+| Fronte | Stato |
+|---|---|
+| **DB** | ✅ **D-1 → D-10 chiusi, applicati e verificati** contro il database vero. Nessun passo aperto |
+| **BE** | ✅ **B-1 → B-6 chiusi** — `error_policies_generated.py` **non si scrive più a mano**. Il cantiere BE è chiuso |
+| **B-7** | ✅ **CHIUSO** (2026-08-08) — rubinetto degli accumulatori: baseline `codice → famiglie note` + controllo in CI. Presidia il **cambiamento**, non lo stato: 75 codici, rosso provato (D33) |
+| **Verifica incrociata** | ✅ le **689 coppie `codice → classe`** del file generato coincidono **esattamente** con `config.vw_codici_errore_identita`: zero differenze, confrontate una per una |
+
+**Cosa esiste adesso nel database:**
+
+* `config.classi_errore` — 10 righe, il vocabolario;
+* `config.codici_errore` — 689 righe, **zero senza classe**, 203 `note`, 79 ritirati;
+* `config.messaggi_errore` — **senza** `obsoleto_dal`: il ritiro ha cambiato casa.
+
+⚠️ **Tre cose che il piano dava per vere e non lo erano** — sono nei piani, ma
+chi legge solo questa guida deve saperle:
+
+1. **il D-3 non si è fatto**: `E_VALIDAZIONE` non è un accumulatore (13 punti,
+   una sola condizione). La premessa era dedotta dai nomi di funzione;
+2. **la trappola Liquibase non era al seed, era alla FK** — e per questo la cura
+   è stata applicata al D-5, prima che servisse;
+3. **il vocabolario è a 10 valori, non 8**: i 5 codici «fuori vocabolario» sono
+   righe di catalogo e una classe la volevano (§4.3).
+
+**Per l'esecuzione, i piani sono l'unica fonte:**
+▶️ [piano DB](piano-db-classe-codici-errore.md) · ⏸️ [piano BE](../work-done/piano-be-classe-codici-errore.md).
+
+---
+
+### 13.2 ✅ Le due code nate qui — **chiuse entrambe**
+
+*(Era numerata 13.1 come la sezione sopra: due sezioni con lo stesso numero, in
+un documento che parla di elenchi che divergono. Corretto il 2026-08-08.)*
+
+Non entravano nel piano, e questo era l'unico posto in cui risultavano scritte:
+
+* ✅ **`PREV_STATO_NON_MODIFICABILE` tolta** da `error_policies.py` — policy
+  orfana di un codice cancellato il 2026-08-05 (§7.2). Fatta dal BE come **B-1**;
+* ✅ **`MESSAGGIO_NON_DEFINITO` → `E_MESSAGGIO_NON_DEFINITO`** — changeSet
+  `20260807-19` (la funzione, con prestito di proprietà) + i due CSV +
+  `20260807-20` (il `DELETE` della riga vecchia, perché `loadUpdateData` non
+  cancella). Il registro `dbops.messaggi_errore_codici_legacy` arriva a **zero**.
+
+  ⛔ **Ma «a zero la tabella si droppa» — scritto qui sopra — è stato ribaltato**
+  (Tid, 2026-08-08): **non si droppa**. A zero righe il drop sarebbe *neutro* nel
+  comportamento, ma costerebbe mettere mano al controllo (B) del guardrail — in
+  un presidio verde — e toglierebbe il meccanismo pronto per la prossima eredità.
+  Ragioni per intero in [piano DB §5.5](piano-db-classe-codici-errore.md), la
+  decisione è nel `COMMENT` della tabella (`20260808-02`) perché è lì che guarda
+  chi la trova vuota.
+
+  ⭐ **E il rename ha collaudato il disegno per conto suo**: due ore dopo, i due
+  presidi BE sono diventati rossi **da soli** e hanno visto la stessa cosa da due
+  lati diversi. Un terzo — un pgTAP che verificava l'*esistenza* del ripiego, e
+  che non era in nessuna delle categorie che avevamo pensato di controllare — è
+  rimasto rosso ed è stato preso solo il giorno dopo, rieseguendo la suite.
+  **Tre collaudi, due riusciti: quello mancato è l'unico che ha detto dov'era il
+  buco.**
+
+---
+
+## 14. Decisioni prese, con data
+
+| # | Decisione | Chi, quando |
+|---|---|---|
+| D1 | **Tabella separata** `config.codici_errore`, non una colonna su `messaggi_errore` | Tid, 2026-08-07 |
+| D2 | `classe` con **FK a un vocabolario** `config.classi_errore`, non un `CHECK` | DB, 2026-08-07 |
+| D3 | Il **vocabolario del §4** si adotta così com'è | Tid, 2026-08-07 |
+| D4 | La mappa **classe → HTTP resta lato BE**: è trasporto, non dominio | Tid, 2026-08-07 |
+| D5 | Il meccanismo anti-ricaduta è il **`NOT NULL` senza `DEFAULT`**, con la **vista** come superficie di revisione — **non** l'adiacenza | Tid, 2026-08-07 (§5) |
+| ~~D6~~ | ~~Il BE legge la classe dal DB a runtime (strada *a*)~~ | **superata dalla D6-bis** |
+| **D6-bis** | **Strada (b)**: `error_policies.py` diventa **generato** dal DB, con controllo di divergenza in CI. La (a) era la (b) con una query, una cache e un fallback in più — e il registro DB-dipendente violava la regola «i test girano senza DB» (§6.1) | BE + DB, 2026-08-07 pomeriggio |
+| D7 | `obsoleto_dal` **migra** su `codici_errore`: il ritiro appartiene al codice, non alla frase | Tid, 2026-08-07 |
+| D8 | Lo **SQLSTATE per classe** (§2.2) non si fa ora — 311 pgTAP — ma resta scritto | DB, 2026-08-07 |
+| D9 | `config.codici_errore` è il catalogo di **tutti** i codici — non serviva scegliere: **656 su 659** ci sono già (§7.2) | Tid, 2026-08-07 |
+| D10 | **Ottavo valore `AVVISO`** per la famiglia `W_`: un avviso non è un rifiuto, e senza di lui la FK non ha padre (§4.2) | DB, 2026-08-07 |
+| D11 | **`E_VALIDAZIONE` si spezza prima del seed** (10 funzioni, 5 domini); `E_PARAMETRO_INVALIDO` no — denominatore sicuro + `note`, e cantiere suo (§9.1) | BE + DB, 2026-08-07 pomeriggio |
+| D12 | **`classe` senza status ⇒ eccezione, non ripiego** — requisito lato BE, perché `resolve()` oggi non fallisce mai (§4.2) | BE, 2026-08-07 pomeriggio |
+| D13 | Il **discriminante superato/non-agganciato è il conteggio delle tracce**, su due assi (§7.1) | BE + DB, 2026-08-07 pomeriggio |
+| ~~D14~~ | ~~Vista dei codici **multidominio** come misura~~ | 🔴 **superata dalla D24**: misurava l'asse che il D-3 ha smentito |
+| **D24** | La misura del §9.2 sta sulla **forma della condizione**, non sul dominio, e **dichiara la propria copertura** — il classificatore riconosce **75 codici su 342** (§9.2) | BE + DB, 2026-08-07 sera |
+| D15 | **Quattro moduli** lato BE, separati per *quando cambiano*; override in codice e non in CSV (§14.2) | BE, 2026-08-07 sera |
+| D16 | ⚠️ **`user_message` NON è un duplicato del catalogo**: è la variante senza segnaposto — **0 su 656** contengono `%s`, contro 371 a catalogo (§11) | BE + DB, 2026-08-07 sera |
+| D17 | **Due viste, non una**: `vw_codici_errore` per la revisione (per lingua), `vw_codici_errore_identita` per il generatore (per codice), con `ORDER BY codice` dentro la vista (§14.4) | DB, 2026-08-07 sera |
+| D23 | ⚠️ **`E_VALIDAZIONE` NON si spezza**: 13 punti, una sola condizione (guard di parametro). La premessa del D-3 era dedotta dai nomi di funzione, non dalle condizioni | DB, 2026-08-07 sera |
+| D21 | ⚠️ **Il discriminante del §7.1 vuole un TERZO asse** — «è mai stato cablato?»: senza, «staccato ieri» e «mai attaccato» sono indistinguibili. Applicato: **30 ritiri, 3 classificazioni** | DB, 2026-08-07 sera |
+| D22 | ⚠️ **La doc auto-gen non dice se un oggetto ESISTE** — il generatore scriveva e basta, 10 pagine di funzioni droppate erano ancora lì. Corretto `gen_db_docs.py` con la potatura degli orfani | DB, 2026-08-07 sera |
+| D20 | ✅ **Due classi in più, `NON_AUTENTICATO` e `ERRORE_ESTERNO`**: i 5 codici «fuori vocabolario» sono righe di catalogo, quindi una classe la vogliono. Vocabolario **8 → 10** (§4.3) | **Tid, 2026-08-07 sera** |
+| D18 | **`note` su una riga sola**, senza a capo: le celle CSV multi-riga sono strada battuta poco (3 in tutto il repo) (§14.3) | DB, 2026-08-07 sera |
+| D19 | **Due piani separati, DB per primo**: il BE è fermo e — misurato — non era un prerequisito (654/659 estraibili dal DB). L'unico cancello è D-9 (§13.0) | Tid, 2026-08-07 sera |
+| **D25** | ⛔ **Il registro `dbops.messaggi_errore_codici_legacy` NON si droppa** a zero righe, contro quanto diceva api.md. Il drop sarebbe neutro nel comportamento ma costerebbe toccare il controllo (B) in un presidio verde, e toglierebbe il meccanismo pronto per la prossima eredità (§13.2) | **Tid, 2026-08-08** |
+| **D26** | ⚠️ **Le tre strade sono distinte, e il registro è solo la seconda**: una *famiglia* nuova allarga la convenzione (come i `W_`, `20260805-28`), un codice *ereditato* va nel registro, un codice *nuovo* nato storto si corregge prima del merge. Da qui: **nessuna colonna `motivo`** — risponderebbe alla domanda della prima strada (§13.2) | DB, 2026-08-08 |
+| **D27** | ⚠️ **La giustificazione del controllo (B) era scaduta**: diceva «un codice fuori convenzione non trova policy → 500», ma dal B-5 il dizionario è generato dal catalogo e li contiene tutti. La regola resta, per **la finestra** fra migrate e rigenerazione e per la separazione `E_`/`W_`. Riscritta: *una regola che si spiega con un fatto scaduto insegna una cosa falsa a chi si fida* | DB, 2026-08-08 |
+| **D28** | ⭐ **La rinuncia del §9.2 è riscossa**: la classe è verificabile incrociando catalogo e forma della guardia. Esito: **vera**, su 75 codici classificabili su 344, con un difetto trovato dalla misura — `E_ERRORE_PARAMETRI`, 4 punti su 13 (§9.3) | BE + DB, 2026-08-08 |
+| **D34** | ✅ **`E_ERRORE_PARAMETRI` scorporato**: 4 punti su 13 passano a TECNICO (3 → `E_TRIGGER_ARGOMENTI_INVALIDI` nuovo, 1 → `E_CONFIG_MANCANTE` già esistente). ⚠️ Il quarto punto **non era quello che diceva la misura**: la guardia più vicina non è la guardia del punto quando in mezzo c'è un `RETURN` anticipato | DB, 2026-08-08 |
+| **D35** | ⛔ **Il «lotto accumulatori» non si fa, e la misura lo scioglie.** `E_GENERICO` è il *pavimento* del percorso d'errore e spezzarlo vuol dire toglierlo; `E_ADMIN_VALIDAZIONE` è **36 punti su 50** della stessa guardia, cioè la forma di `E_PARAMETRO_INVALIDO` per cui la decisione «non si spezza a priori» è già scritta. ⭐ Quello che resta è un difetto **diverso e più piccolo**, che attraversa i due codici: ~6 letture di configurazione a vuoto raccontate come errore dell'operatore | DB, 2026-08-08 |
+| **D36** | 🔴 **Un presidio nato oggi marciva già, e nel verso peggiore.** La baseline B-7 non guardava le famiglie **perse**: un codice che si restringe lasciava in baseline una famiglia ormai ammessa per sempre, e il giorno del ritorno il confronto avrebbe taciuto. Trovato dal **primo uso vero**, un'ora dopo. Terza reazione 🔵 RISTRETTO, che non fallisce ma pretende l'allineamento | DB, 2026-08-08 |
+| **D33** | ✅ **B-7 CHIUSO, ed è sempre stato lavoro DB** — il nome ingannava (numerazione `B-*` del piano BE). ⭐ Non è un cancello sullo *stato* (servirebbe il 100% di copertura, la misura ne legge 75/344 e boccerebbe a caso) ma un presidio sul **cambiamento**: baseline `codice → famiglie note` committata, e la CI fallisce quando un codice **acquista** una famiglia o **nasce** con due. È il modo in cui gli accumulatori si formano davvero. Rosso provato su tutti e tre i modi | DB, 2026-08-08 |
+| **D30** | ⭐ **Il nome del campo viaggia in `COLUMN`**, contratto gemello di `CONSTRAINT` («P0001 + COLUMN = il campo da correggere»), presidiato dal controllo (F) nato **col canale**, a zero mittenti. Passa dal `p_context` e non da un parametro nuovo: la firma finisce con `VARIADIC`, e un parametro prima si mangerebbe in silenzio il primo valore di **973 chiamate** — provato eseguendolo (§8.5) | DB + BE, 2026-08-08 |
+| **D31** | ⭐ **La convenzione c'era già**: `'parametro'` in **225 punti su 111 funzioni**. Derivarla copre **217 dei 380 punti senza toccarne uno** (`20260808-05`), e la campagna a mano da 375 giudizi non si fa. ⚠️ `'campo'` mantiene la precedenza: è l'override per quando il campo del form non si chiama come il parametro | DB, 2026-08-08 |
+| **D32** | ⚠️ **Le fette si tagliano sul CONCETTO, non sullo schema né sul dominio**, e si cercano per **forma del nome**. Due prove nello stesso giorno: il CF malformato vive in `script` e non in `anagrafiche`; le guardie `%_guard_emittente_ba` sono **sei** e cercandole per dominio ne uscivano quattro. Una fetta che copre metà azione insegna all'operatore che il bordo rosso non è affidabile (§8.5) | DB, 2026-08-08 |
+| **D29** | 🔴 **Il B-7 è aperto per intero e va RI-SPECIFICATO.** Correzione BE: il presidio sui codici *ritirati* non è mezzo B-7 — il B-7 vieta i *generici*, e sono proprietà diverse. Non ha una metà BE: la genericità si legge dalla forma della guardia, che è PL/pgSQL. ⚠️ E come **cancello** non è costruibile: l'unico strumento che sa dirlo copre 75 codici su 344 e per progetto è una misura — un rubinetto al 22% boccerebbe a caso. La forma che regge è **criterio in api.md + misura all'apertura di ogni lotto** | BE + DB, 2026-08-08 |
+
+### 14.1 ✅ ~~Cosa resta da decidere~~ — chiusa dal BE, 2026-08-07
+
+L'ultima decisione aperta (la forma di `error_policies.py` generato/a-mano) è
+**chiusa**: strada 1, ma con **quattro moduli** invece di due. Dettaglio nel
+§14.2. **Nessuna decisione aperta.**
+
+### 14.2 ⭐ La forma scelta: quattro moduli, separati per **destino**
+
+Non per contenuto — per **quando cambiano**. È il criterio che rende facile la
+mossa futura sui `user_message` (§11.2):
+
+| Modulo | Cosa | Chi lo scrive | Quando cambia |
+|---|---|---|---|
+| `error_policies_generated.py` | `codice → classe`, 659 voci | **generato dal DB** | a ogni seed |
+| `error_policies.py` (registry) | `classe → (status, ui_action di default)` — 8 righe + la logica | a mano | quasi mai |
+| `error_ui_overrides.py` | i **174** `ui_action` fuori default, coi loro commenti | a mano | quando cambia una scelta di UI |
+| `error_messages_fallback.py` | i `user_message` | a mano, **per ora** | quando si spostano al catalogo |
+
+⭐ **Il quarto modulo è la risposta al vincolo del §11.2, e il valore sta nel
+nome.** Dentro il modulo degli override, spostare i `user_message` domani sarebbe
+un refactor di un file che contiene anche decisioni di UI; da soli in un file che
+si chiama `fallback`, spostarli è **cancellare un file** — e nel frattempo il
+nome dice la verità su cosa sono.
+
+**Perché non la strada 2 (override in un CSV).** Perché gli override non sono
+dati: sono **decisioni con una motivazione**, e un CSV non porta un paragrafo.
+**194 blocchi di commento** in `error_policies.py` sono il ragionamento delle 150
+decisioni del cantiere precedente — per esempio, su `E_CONTO_BANCARIO`:
+
+> *«la guard è `attivo IS NOT TRUE`, che copre DUE casi: conto disattivato e
+> conto inesistente. Il 400 col campo evidenziato è corretto in entrambi; un 404
+> sarebbe giusto solo nel secondo e svuoterebbe la pagina nel primo.»*
+
+Metterlo in un CSV lo cancella, ed è **esattamente la cosa che questo cantiere è
+servito a non perdere**.
+
+### 14.3 La regola su dove finisce ciascun commento
+
+| Il perché di… | Va in |
+|---|---|
+| **la classe** | `config.codici_errore.note` — lato DB |
+| **la `ui_action`** | il modulo `error_ui_overrides.py` — lato BE |
+| **un ritiro, una storia** | il brief che l'ha deciso |
+
+⚠️ **Una trappola DB su `note`**, da verificare prima del seed: quei paragrafi
+finiscono in una **cella di CSV**. Precedenti nel repo ce ne sono — `messaggi_errore.csv`
+ha già celle da **872 caratteri**, e due CSV hanno celle con **a capo dentro**
+(`stradario_generale`, `sec_functions_owner`) — quindi Liquibase regge. Ma sono
+tre celle in tutto il repo: se le `note` diventano paragrafi multi-riga, quella
+è una strada battuta **poco**. Prudenza: `note` su **una riga sola**, senza a
+capo, finché non serve davvero il contrario.
+
+### 14.4 Il contratto del generatore — quello che il BE chiede al DB
+
+Il BE ha chiesto due cose, entrambe dovute: **la query di sorgente** e
+**l'ordinamento stabile**. Sulla prima il DB corregge la richiesta.
+
+⚠️ **`config.vw_codici_errore` NON è la sorgente giusta**, ed è una svista
+nostra: è la vista di *revisione* (§5.2), affianca la frase al codice, quindi ha
+**una riga per (codice, lingua)**; e siccome è un `LEFT JOIN`, un codice **senza**
+messaggio ci compare con `lingua IS NULL`. Filtrarla per `lingua = 'it'`
+perderebbe proprio quei codici — che sono fra quelli che più servono vedere.
+
+→ **Sorgente = la seconda vista, di sola identità** (§3.3, piano punto 10-bis):
+
+```sql
+-- Sorgente del generatore di error_policies_generated.py.
+-- Una riga per codice, nessun join, nessun filtro lingua da sbagliare.
+-- ORDER BY codice: l'ordine NON e' un dettaglio estetico (vedi sotto).
+SELECT codice, classe, obsoleto_dal, note
+  FROM config.vw_codici_errore_identita
+ ORDER BY codice;
+```
+
+L'`ORDER BY` sta **anche dentro la vista**, non solo nella query del generatore:
+un requisito che vive in due posti si dimentica in uno dei due.
+
+> ⚠️ **Perché l'ordinamento è un requisito e non una cortesia.** Senza `ORDER BY`
+> PostgreSQL non promette niente, e l'ordine può cambiare fra due esecuzioni
+> identiche (piano diverso, righe riscritte da un `UPDATE`). Un generatore che
+> produce **diff spurii per riordino** diventa un file che nessuno rilegge — e da
+> lì a non accorgersi di una **classe cambiata** è un passo solo. È la stessa
+> famiglia del difetto che questo cantiere cura: non un guasto, una cosa che
+> smette di essere guardata.
+>
+> ⭐ **E la ragione per cui le viste sono due merita di restare scritta**: la
+> stessa tabella serve due mestieri con **cardinalità diverse**. La revisione
+> vuole vedere la frase, quindi moltiplica per lingua; il generatore vuole
+> l'identità, quindi una riga per codice. Riusare una vista per entrambi
+> costringe a un filtro — e il filtro sbagliato qui non dà errore: **toglie
+> righe in silenzio**, che è la forma di guasto contro cui è costruito tutto
+> questo brief.
+
+> ⚠️ **Le altre annotazioni del BE (A1, A3, A4, A5, A6) sono tutte accolte e
+> incorporate**, e due di esse hanno corretto un errore del DB: la tabella
+> `ui_action` del §8 veniva da una lettura parziale che **ribaltava una
+> conclusione** (A3), e la garanzia «`AVVISO` fallisce rumorosamente» era falsa
+> (A4). Il valore del giro non è che il BE avesse ragione: è che entrambi gli
+> errori erano in cose **già scritte come verificate**.
+
+---
+
+## 15. Riferimenti
+
+* [brief-db-be-terzo-lato-presidio-codici](../work-done/brief-db-be-terzo-lato-presidio-codici.md)
+  — il cantiere da cui nasce la domanda; §24.3 e §28.3 per le lezioni residue
+* [brief-db-codice-errore-strutturato](../work-done/brief-db-codice-errore-strutturato.md)
+  §3 — le alternative già pesate, incluso lo SQLSTATE custom
+* [api.md](../api.md) — §Tassonomia errori, gli status in uso, il denominatore sicuro
+* [Presidi e registri del debito](../../guide/presidi-e-registri-del-debito.md) §3.3
+* [analisi-osservabilita-log](../work-in-progress/analisi-osservabilita-log.md) — B1 e B7, §12
+* [`scripts/sql/guardrail_codice_errore_strutturato.sql`](../../../../scripts/sql/guardrail_codice_errore_strutturato.sql)
+  — i controlli in servizio
+* [`scripts/sql/check_messaggio_vs_condizione.sql`](../../../../scripts/sql/check_messaggio_vs_condizione.sql)
+  — la lente del quarto lato

@@ -33,6 +33,7 @@ from typing import Any
 
 from django.db import connection, transaction
 
+from apps.core.services.fan_out import run_fan_out
 from apps.vendite.db.commesse_repository import (
     POLICY_FATTURAZIONE_DA_DOCUMENTO,
     TIPO_COMMESSA_AUTO,
@@ -422,76 +423,99 @@ class BaseSourceHandler(ABC):
         commessa_cache: dict[tuple, int] = {}
         pending_inputs: list[CommessaAttivitaInput] = []
 
-        for row in rows:
-            try:
-                # Savepoint: se fallisce la riga, rollback di get_or_create + link
-                # senza corrompere lo stato delle righe precedenti.
-                with transaction.atomic():
-                    # Punto d'innesto (scaffolding §6): una futura FASE DI
-                    # LAVORAZIONE precederebbe qui la creazione commessa. Oggi
-                    # identity (no-op): non altera comportamento ne' performance.
-                    row = self._pre_commessa_hook(row)
-                    expanded = self._expand_rows(row)
-                    tipo_commessa = self._extract_tipo_commessa(row)
-                    policy_fatturazione = self._extract_policy_fatturazione(row)
+        # Scopo: Lavora UNA riga sorgente — hook, espansione BoM, risoluzione o
+        #        creazione della commessa, link della sorgente — e restituisce
+        #        cio' che va registrato SOLO SE la riga e' atterrata: chiave di
+        #        cache, id commessa e input attivita' da accodare al batch.
+        #        Gira dentro il savepoint aperto dal fan-out, quindi NON tocca
+        #        nessuna struttura Python condivisa: le registra `_registra_riga`
+        #        a savepoint rilasciato, perche' un rollback annulla le righe di
+        #        database ma non un `append`.
+        def _lavora_riga(row: PushableRow) -> tuple[tuple, int, list[CommessaAttivitaInput]]:
+            # Punto d'innesto (scaffolding §6): una futura FASE DI
+            # LAVORAZIONE precederebbe qui la creazione commessa. Oggi
+            # identity (no-op): non altera comportamento ne' performance.
+            row = self._pre_commessa_hook(row)
+            expanded = self._expand_rows(row)
+            tipo_commessa = self._extract_tipo_commessa(row)
+            policy_fatturazione = self._extract_policy_fatturazione(row)
 
-                    # ⚠️ Le condizioni di pagamento SONO dimensioni di questa
-                    # chiave, non decorazione: D-R le mette nella chiave della
-                    # commessa. Ometterle qui farebbe collassare in UNA sola
-                    # commessa due ordini dello stesso cliente con termini
-                    # DIVERSI — la cache locale restituirebbe l'id della prima
-                    # e la seconda erediterebbe il termine sbagliato. E'
-                    # l'errore che si commette fixando solo la propagazione:
-                    # produce un difetto piu' difficile da vedere di quello
-                    # che si voleva togliere.
-                    cache_key = (
-                        row.billing_account_id,
-                        row.utility_id,
-                        tipo_commessa,
-                        policy_fatturazione,
-                        row.fatturazione_immediata,
-                        row.emittente_soggetto_ruolo_id,
-                        row.competenza_dal,
-                        row.competenza_al,
-                        row.termine_pagamento_id,
-                        row.modalita_pagamento_id,
-                    )
+            # ⚠️ Le condizioni di pagamento SONO dimensioni di questa
+            # chiave, non decorazione: D-R le mette nella chiave della
+            # commessa. Ometterle qui farebbe collassare in UNA sola
+            # commessa due ordini dello stesso cliente con termini
+            # DIVERSI — la cache locale restituirebbe l'id della prima
+            # e la seconda erediterebbe il termine sbagliato. E'
+            # l'errore che si commette fixando solo la propagazione:
+            # produce un difetto piu' difficile da vedere di quello
+            # che si voleva togliere.
+            cache_key = (
+                row.billing_account_id,
+                row.utility_id,
+                tipo_commessa,
+                policy_fatturazione,
+                row.fatturazione_immediata,
+                row.emittente_soggetto_ruolo_id,
+                row.competenza_dal,
+                row.competenza_al,
+                row.termine_pagamento_id,
+                row.modalita_pagamento_id,
+            )
 
-                    if cache_key in commessa_cache:
-                        commessa_id = commessa_cache[cache_key]
-                    else:
-                        commessa_id = self._repo.get_or_create_commessa(
-                            billing_account_id=row.billing_account_id,
-                            utility_id=row.utility_id,
-                            tipo_commessa=tipo_commessa,
-                            policy_fatturazione=policy_fatturazione,
-                            fatturazione_immediata=row.fatturazione_immediata,
-                            emittente_soggetto_ruolo_id=row.emittente_soggetto_ruolo_id,
-                            competenza_dal=row.competenza_dal,
-                            competenza_al=row.competenza_al,
-                            termine_pagamento_id=row.termine_pagamento_id,
-                            modalita_pagamento_id=row.modalita_pagamento_id,
-                        )
-                        commessa_cache[cache_key] = commessa_id
+            if cache_key in commessa_cache:
+                commessa_id = commessa_cache[cache_key]
+            else:
+                commessa_id = self._repo.get_or_create_commessa(
+                    billing_account_id=row.billing_account_id,
+                    utility_id=row.utility_id,
+                    tipo_commessa=tipo_commessa,
+                    policy_fatturazione=policy_fatturazione,
+                    fatturazione_immediata=row.fatturazione_immediata,
+                    emittente_soggetto_ruolo_id=row.emittente_soggetto_ruolo_id,
+                    competenza_dal=row.competenza_dal,
+                    competenza_al=row.competenza_al,
+                    termine_pagamento_id=row.termine_pagamento_id,
+                    modalita_pagamento_id=row.modalita_pagamento_id,
+                )
 
-                    self._repo.link_sorgente(
-                        commessa_id=commessa_id,
-                        sorgente_tipo_id=row.sorgente_tipo_id,
-                        sorgente_uid=row.sorgente_uid,
-                    )
+            self._repo.link_sorgente(
+                commessa_id=commessa_id,
+                sorgente_tipo_id=row.sorgente_tipo_id,
+                sorgente_uid=row.sorgente_uid,
+            )
 
-                    for exp in expanded:
-                        pending_inputs.append(self._build_attivita_input(commessa_id, exp))
+            return cache_key, commessa_id, [
+                self._build_attivita_input(commessa_id, exp) for exp in expanded
+            ]
 
-                # Fuori dal savepoint: la commessa e` tracciata solo se la riga
-                # e` atterrata (un rollback non deve produrre id fantasma).
-                result.commesse_ids.add(commessa_id)
+        # Scopo: Registra gli effetti della riga ATTERRATA — cache di lookup,
+        #        commesse toccate, input in coda al batch. Il BB lo chiama a
+        #        savepoint gia' rilasciato: e' il punto in cui il lavoro della
+        #        riga e' definitivo, quindi l'unico in cui e' lecito scrivere
+        #        strutture Python, che un rollback non saprebbe annullare.
+        #        ⚠️ La cache DEVE stare qui e non dentro il savepoint: una riga
+        #        che cadesse dopo averla popolata lascerebbe l'id di una commessa
+        #        annullata, e la riga gemella successiva fallirebbe anch'essa —
+        #        un errore che si propaga da solo. E deve stare qui e non a fine
+        #        giro: serve alla riga SUCCESSIVA, che e' l'unica ragione per cui
+        #        la cache esiste.
+        #        La regola era gia' scritta per `commesse_ids` («un rollback non
+        #        deve produrre id fantasma»); ora vale per tutte e tre.
+        def _registra_riga(_row: PushableRow, prodotto: tuple) -> None:
+            cache_key, commessa_id, inputs = prodotto
+            commessa_cache[cache_key] = commessa_id
+            result.commesse_ids.add(commessa_id)
+            pending_inputs.extend(inputs)
 
-            except Exception as exc:
-                msg = f"Errore riga segment_key={row.segment_key}: {type(exc).__name__}: {exc}"
-                logger.exception(msg)
-                result.errors.append(msg)
-                result.skipped += 1
+        # Fan-out isolato: un savepoint per riga, errore catturato, giro che
+        # prosegue. Lo stack dell'eccezione lo logga il BB.
+        esito = run_fan_out(rows, _lavora_riga, on_success=_registra_riga)
+
+        for errore in esito.errori:
+            result.errors.append(
+                f"Errore riga segment_key={errore.item.segment_key}: {errore.messaggio}"
+            )
+            result.skipped += 1
 
         # Batch upsert in una sola chiamata DB (N round-trip → 1).
         if pending_inputs and not dry_run:

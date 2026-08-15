@@ -23,6 +23,13 @@ const { t } = useI18n()
 const form = defineModel('form', { type: Object, required: true })
 
 const props = defineProps({
+  // Campi che il BACKEND indica come da correggere (envelope `error.fields`).
+  // Arrivano dal padre, che li prende da `useApiHandler().campiErrati`: questo
+  // e' un form condiviso e non chiama le API da solo.
+  // ⚠️ Qui il caso vive sul percorso DB: `script.fn_validate_cf_piva_it`
+  // solleva `E_CF_NON_VALIDO` con `COLUMN = codice_fiscale`, e il nome arriva
+  // fino a qui senza che nessuno lo scriva in Python.
+  campiErrati: { type: Array, default: () => [] },
   tipiSoggetto: { type: Object, required: true },
   isPF: { type: Boolean, default: true },
   showPartitaIva: { type: Boolean, default: false },
@@ -125,6 +132,19 @@ async function onGeneraCF() {
 const cfMessages = ref([])
 const pivaMessages = ref([])
 
+// ⚠️ TERZA SORGENTE DI ERRORE SU QUESTO CAMPO, e non passa da `useApiHandler`.
+// `onValidaCF` chiama un endpoint che risponde **200** con
+// `{errors, warnings}` nel payload: e' un REFERTO, non un errore HTTP. Quindi
+// il `catch` non scatta mai e `campiErrati` resta vuoto — il messaggio
+// compariva sotto il campo, ma l'input non si accendeva.
+// Le due sorgenti sono complementari e servono entrambe:
+//   - qui (al `blur`): il referto, prima di salvare;
+//   - `campiErrati` (al salvataggio): il guard del database
+//     (`fn_validate_cf_piva_it` -> `E_CF_NON_VALIDO` + `COLUMN`).
+// ⚠️ Solo `severity: 'error'`: un warning non deve accendere il campo, o il
+// rosso smette di voler dire «questo va corretto».
+const cfHaErrore = computed(() => cfMessages.value.some(m => m.severity === 'error'))
+
 async function onValidaCF() {
   const cf = (form.value.codice_fiscale || '').trim()
   if (cf.length < 16) { cfMessages.value = []; return }
@@ -224,6 +244,7 @@ async function onValidaPIVA() {
         <label>{{ t('common.codice_fiscale') }} *</label>
         <div class="app-input-with-action">
           <InputText v-model="form.codice_fiscale" :disabled="disabled || cfDisabled" class="w-full"
+            :invalid="campiErrati.includes('codice_fiscale') || cfHaErrore"
             @blur="onValidaCF"
             @keypress="blockNonAlphanumeric"
             @input="normalizeUpperNoSpaces(form, 'codice_fiscale')" />
@@ -248,6 +269,7 @@ async function onValidaPIVA() {
       <div v-if="showPartitaIva" class="form-field">
         <label>{{ t('common.partita_iva') }} *</label>
         <InputText v-model="form.partita_iva" :disabled="disabled || pivaDisabled" class="w-full"
+          :invalid="campiErrati.includes('partita_iva')"
           @blur="onValidaPIVA" />
         <Message v-for="(msg, i) in pivaMessages" :key="i" :severity="msg.severity" size="small" class="mt-1">
           {{ msg.text }}

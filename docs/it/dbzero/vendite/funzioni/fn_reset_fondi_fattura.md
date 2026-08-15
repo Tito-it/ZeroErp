@@ -52,7 +52,16 @@ BEGIN
                'W', FALSE, jsonb_build_object('source_id', b.source_id, 'fattura_sorgente_id', b.fattura_sorgente_id, 'cause', 'CONTABILE_CHIUSA'), now(), current_user, now(), current_user
           FROM bloccate b RETURNING id
     ), ann AS (
-        UPDATE vendite.fatture_fondi_fattura_source s SET stato = 'ANNULLATO', data_update = now(), user_update = current_user FROM bloccate b WHERE s.id = b.source_id RETURNING s.id
+        -- ⭐ La stessa frase che finiva solo nel diario ora sta anche
+        --    sul dato: chi legge la riga del fondo sa perche' e'
+        --    ANNULLATO senza dover cercare in fatture_log.
+        UPDATE vendite.fatture_fondi_fattura_source s
+           SET stato = 'ANNULLATO',
+               motivo = format('Minimo non ripristinabile: contabile gia CHIUSA (fattura %s del %s)',
+                               COALESCE(b.fattura_sorgente_numero::text, 'N/D'),
+                               COALESCE(to_char(b.fattura_sorgente_data, 'YYYY-MM-DD'), 'N/D')),
+               data_update = now(), user_update = current_user
+          FROM bloccate b WHERE s.id = b.source_id RETURNING s.id
     ), resettabili AS (
         SELECT s.* FROM src s WHERE NOT EXISTS (SELECT 1 FROM bloccate b WHERE b.source_id = s.source_id)
     ), del_righe AS (
@@ -70,7 +79,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_reset_fondi_fattura(p_fattura_id bigint)
-IS 'Reset fondi applicati alla fattura con blocco su contabili CHIUSA e warning.';
+IS 'Reset dei fondi applicati a una fattura FIGLIA: riporta le source da ASSEGNATO a DISPONIBILE, cancella le righe fondi e le righe contabili generate, con blocco sulle contabili gia'' CHIUSA — quelle passano ad ANNULLATO e dal 2026-08-15 portano la ragione nella colonna `motivo`, non piu'' soltanto in un messaggio di vendite.fatture_log. ⚠️ E'' un''operazione TECNICA sul ciclo di vita della figlia (il ritorno di un lotto in bozza) e NON una reazione ai pagamenti: nessun incasso la chiama e nessun incasso deve chiamarla. E'' la risposta alla domanda F-2 del piano — un fondo assegnato non si tocca; l''eventuale doppio pagamento diventa un credito sulla sorgente e si governa nel processo rimborsi, in `pagamenti`. D-16 + D-5 di brief-db-fondo-fattura-ricalcolo-e-governo §8.2.';
 ```
 
 ---

@@ -105,5 +105,5 @@ unificato (es. P.IVA per azienda) invece di restare vuota.
 
 - Brief originale: [brief-db-def8-fornitori-catalogo.md](brief-db-def8-fornitori-catalogo.md)
   (gia' aggiornato per coerenza documentale).
-- Pattern gemello soggetti: [brief-db-def8-soggetti-fix-id-fiscale.md](brief-db-def8-soggetti-fix-id-fiscale.md)
+- Pattern gemello soggetti: `brief-db-def8-soggetti-fix-id-fiscale.md` (⚠️ documento non presente nel repo)
   (stesso errore di seed sul `campo_sorgente`, simmetrico).

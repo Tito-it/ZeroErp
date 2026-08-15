@@ -37,15 +37,46 @@ AS $function$
 --   codice_interno non basta a derivarla (DRAFT -> Bozza) e
 --   tradurla nel FE sarebbe una seconda copia del vocabolario
 --   degli stati. NULL sulle azioni che non cambiano stato.
+--   rev 2026-08-10: i motivi di push_commessa / genera_ordine non
+--   promettono piu' l'accettazione sugli stati CHIUSI. Il ramo
+--   `v_stato_cod <> 'ACCETTATO'` copriva per negazione due
+--   situazioni opposte — prima dell'accettazione (istruzione
+--   corretta) e dopo o fuori (promessa falsa: l'EVASO e' evaso
+--   PERCHE' accettato). Ramo nuovo su fase = 'CHIUSO' davanti a
+--   quello vecchio; reason PREVENTIVO_STATO_CHIUSO. Rilievo in-app
+--   di Tid su PRV0000192 (brief-db-vie-uscita-operatore §12).
+--   rev 2026-08-10 (2): la nota di stato non e' piu' subordinata alla
+--   lista vuota, e cambia nome. Decisione §5 di Tid: «la nota spiega lo
+--   stato chiuso, e compare sempre» — anche accanto a un'azione ancora
+--   viva, dove l'operatore legge cos'e' successo E ha il suo bottone.
+--   Cade quindi il presupposto che la faceva sparire: via
+--   v_nessuna_azione e il suo NOT EXISTS, che erano diventati codice
+--   morto, e via il commento che spiegava perche' non si appoggiavano a
+--   v_can_change — era la motivazione di una regola che non esiste piu'.
+--   Il campo si chiama ora `stato_info_key`: `nessuna_azione_key`
+--   diventava falso proprio nel momento in cui inizia a mostrarsi
+--   quando le azioni ci sono, e il vocabolario giusto era gia' dall'altra
+--   parte (le chiavi i18n stanno sotto vendite.<dominio>.stato_info.*).
+--   ⚠️ La PROPRIETA' nel meta dello stato resta `nessuna_azione_key`, ed
+--   e' voluto: il presidio scripts/check_i18n_keys.py trova quelle chiavi
+--   proprio per quel nome (RE_SEED_KEY sui CSV, elenco _PROP_KEY), e
+--   rinominarla senza toccare il guard lo renderebbe verde per cecita' —
+--   il caso peggiore, gia' denunciato nel §8.3 del brief. Rinomina della
+--   proprieta' proposta come slice a se'.
+--   brief-db-vie-uscita-operatore §4; attivita-urgenti-del-10-08 §2.
 DECLARE
     v_stato_id          vendite.preventivi.stato_doc_preventivo_id%TYPE;
     v_stato_cod         config.stati_doc_preventivi.codice_interno%TYPE;
+    -- Proiezione normalizzata dello stato: APERTO | IN_CORSO |
+    -- IN_ATTESA | CHIUSO. Serve a distinguere "non ancora
+    -- accettato" da "chiuso", che il solo codice_interno
+    -- confondeva in un unico ramo per negazione.
+    v_fase              config.stati_doc_preventivi.fase%TYPE;
     v_ba_id             vendite.preventivi.billing_account_id%TYPE;
     v_utility_id        vendite.preventivi.utility_id%TYPE;
     v_pdf_mode          config.stati_doc_preventivi.pdf_mode%TYPE;
     v_pdf_allow         config.stati_doc_preventivi.pdf_allow_allegati%TYPE;
-    v_nessuna_key       text;
-    v_nessuna_azione    boolean := false;
+    v_stato_info_key       text;
     v_actions           jsonb;
     v_ha_righe          boolean := false;
     v_mot_annulla       jsonb := '[]'::jsonb;
@@ -117,14 +148,19 @@ DECLARE
         'reason_key',               NULL
     );
 BEGIN
-    -- Stato corrente + testata + capability PDF (pdf_mode/allow_allegati)
-    -- + la chiave "nessuna azione" dello stato (dato, non codice).
-    SELECT p.stato_doc_preventivo_id, sdp.codice_interno,
+    -- Stato corrente + fase + testata + capability PDF
+    -- (pdf_mode/allow_allegati) + la chiave "nessuna azione"
+    -- dello stato (dato, non codice).
+    SELECT p.stato_doc_preventivo_id, sdp.codice_interno, sdp.fase,
            p.billing_account_id, p.utility_id,
            sdp.pdf_mode, sdp.pdf_allow_allegati,
+           -- ⚠️ La PROPRIETA' nel meta resta `nessuna_azione_key` mentre il
+           -- campo del blob si chiama ora `stato_info_key`. L'asimmetria e'
+           -- voluta e la spiega la rev 2026-08-10 (2) in testa: il presidio
+           -- i18n si aggancia a QUESTO nome.
            sdp.meta->>'nessuna_azione_key'
-      INTO v_stato_id, v_stato_cod, v_ba_id, v_utility_id,
-           v_pdf_mode, v_pdf_allow, v_nessuna_key
+      INTO v_stato_id, v_stato_cod, v_fase, v_ba_id, v_utility_id,
+           v_pdf_mode, v_pdf_allow, v_stato_info_key
       FROM vendite.preventivi p
       JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
      WHERE p.id = p_preventivo_id;
@@ -214,9 +250,21 @@ BEGIN
         v_actions := v_actions || jsonb_build_array(c_action_genera_ordine);
     END IF;
 
+    -- Motivo del push a commessa. ⚠️ L'ORDINE DEI RAMI E'
+    -- PORTANTE: "chiuso" viene prima di "non accettato".
+    -- `v_stato_cod <> 'ACCETTATO'` copre per negazione due
+    -- situazioni opposte — prima dell'accettazione la frase
+    -- «sara' disponibile dopo l'accettazione» istruisce, dopo o
+    -- fuori mente (l'EVASO e' evaso PERCHE' e' stato accettato e
+    -- smistato; ANNULLATO/RIFIUTATO/SCADUTO non ci arriveranno
+    -- mai). Il ramo su `fase` scioglie la negazione nei suoi due
+    -- versi. Rilievo in-app 2026-08-10 su PRV0000192.
     IF v_can_push THEN
         v_push_reason     := NULL;
         v_push_reason_key := NULL;
+    ELSIF v_fase = 'CHIUSO' THEN
+        v_push_reason     := 'PREVENTIVO_STATO_CHIUSO';
+        v_push_reason_key := 'vendite.preventivi.push_commessa_reason.stato_chiuso';
     ELSIF v_stato_cod <> 'ACCETTATO' THEN
         v_push_reason     := 'PREVENTIVO_NON_ACCETTATO';
         v_push_reason_key := 'vendite.preventivi.push_commessa_reason.non_accettato';
@@ -228,9 +276,14 @@ BEGIN
         v_push_reason_key := 'vendite.preventivi.push_commessa_reason.nessuna_riga';
     END IF;
 
+    -- Ramo gemello per la generazione dell'ordine: stessa
+    -- correzione, stesso ordine dei rami.
     IF v_can_ordine THEN
         v_ordine_reason     := NULL;
         v_ordine_reason_key := NULL;
+    ELSIF v_fase = 'CHIUSO' THEN
+        v_ordine_reason     := 'PREVENTIVO_STATO_CHIUSO';
+        v_ordine_reason_key := 'vendite.preventivi.genera_ordine_reason.stato_chiuso';
     ELSIF v_stato_cod <> 'ACCETTATO' THEN
         v_ordine_reason     := 'PREVENTIVO_NON_ACCETTATO';
         v_ordine_reason_key := 'vendite.preventivi.genera_ordine_reason.non_accettato';
@@ -238,16 +291,6 @@ BEGIN
         v_ordine_reason     := 'PREVENTIVO_NESSUNA_RIGA_ORDINE';
         v_ordine_reason_key := 'vendite.preventivi.genera_ordine_reason.nessuna_riga';
     END IF;
-
-    -- La nota "cosa fare invece" si mostra SOLO quando non resta
-    -- nessun bottone vivo: e' una risposta alla lista vuota, non un
-    -- commento permanente allo stato. Valutata DOPO gli append, che
-    -- aggiungono azioni sempre abilitate.
-    SELECT NOT EXISTS (
-        SELECT 1
-          FROM jsonb_array_elements(v_actions) AS a
-         WHERE COALESCE((a->>'enabled')::boolean, true) IS TRUE
-    ) INTO v_nessuna_azione;
 
     RETURN jsonb_build_object(
         'available_actions',            v_actions,
@@ -260,7 +303,7 @@ BEGIN
         'can_genera_ordine_reason',     v_ordine_reason,
         'can_genera_ordine_reason_key', v_ordine_reason_key,
         'can_create_revisione',         v_can_rev,
-        'nessuna_azione_key',           CASE WHEN v_nessuna_azione THEN v_nessuna_key END,
+        'stato_info_key',           v_stato_info_key,
         'non_editable_fields',          CASE WHEN v_can_edit
                                             THEN c_sempre_non_edit
                                             ELSE c_sempre_non_edit || c_non_edit_extra END,
@@ -271,7 +314,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_preventivo(p_preventivo_id bigint)
-IS 'Capability preventivo per detail API: available_actions + can_edit_* + push_commessa + genera_ordine + create_revisione + nessuna_azione_key + non_editable_fields + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_preventivi (bottone PDF data-driven via capabilities). rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il preventivo non ha righe attive -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard PREV_NESSUNA_RIGA_ATTIVA: SOLO presenza, nessun vincolo su quantita/prezzo/totale). rev 2026-07-19: le 3 label_key (crea_revisione/push_commessa/genera_ordine) e le 5 reason_key (push_commessa_reason.*, genera_ordine_reason.*) passano al namespace i18n vendite.preventivi.* — la radice preventivi.* e'' stata spostata sotto vendite.* dal FE nella migrazione radici i18n; brief-i18n-radici-uniformi §5. rev 2026-08-04: le azioni verso ANNULLATO espongono reasons da script.fn_check_preventivo_annullabile (stessa fn del guard trgfn_preventivi_guard_annullamento: UI e database non possono divergere); i motivi si sommano a quello di requires_righe in un array unico da cui discendono enabled/reason/reason_key. + nessuna_azione_key dal meta dello stato corrente, esposta solo quando nessuna azione risulta abilitata (brief-db-vie-uscita-operatore §4 regola R3, §6). rev 2026-08-06: ogni azione espone outlined (dal meta della transizione, COALESCE a false) e target_state_descrizione (config.stati_doc_preventivi.descrizione della destinazione). outlined mancava qui e sull''offerta: il seed lo portava ma la funzione non lo emetteva, quindi il pulsante distruttivo restava rosso pieno mentre negli altri sei domini era outlined. target_state_descrizione serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile (DRAFT -> Bozza) e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati; NULL sulle azioni applicative (crea_revisione / push_commessa / genera_ordine), che non cambiano stato.';
+IS 'Capability preventivo per detail API: available_actions + can_edit_* + push_commessa + genera_ordine + create_revisione + nessuna_azione_key + non_editable_fields + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_preventivi (bottone PDF data-driven via capabilities). rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il preventivo non ha righe attive -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard PREV_NESSUNA_RIGA_ATTIVA: SOLO presenza, nessun vincolo su quantita/prezzo/totale). rev 2026-07-19: le 3 label_key (crea_revisione/push_commessa/genera_ordine) e le 5 reason_key (push_commessa_reason.*, genera_ordine_reason.*) passano al namespace i18n vendite.preventivi.* — la radice preventivi.* e'' stata spostata sotto vendite.* dal FE nella migrazione radici i18n; brief-i18n-radici-uniformi §5. rev 2026-08-04: le azioni verso ANNULLATO espongono reasons da script.fn_check_preventivo_annullabile (stessa fn del guard trgfn_preventivi_guard_annullamento: UI e database non possono divergere); i motivi si sommano a quello di requires_righe in un array unico da cui discendono enabled/reason/reason_key. + nessuna_azione_key dal meta dello stato corrente, esposta solo quando nessuna azione risulta abilitata (brief-db-vie-uscita-operatore §4 regola R3, §6). rev 2026-08-06: ogni azione espone outlined (dal meta della transizione, COALESCE a false) e target_state_descrizione (config.stati_doc_preventivi.descrizione della destinazione). outlined mancava qui e sull''offerta: il seed lo portava ma la funzione non lo emetteva, quindi il pulsante distruttivo restava rosso pieno mentre negli altri sei domini era outlined. target_state_descrizione serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile (DRAFT -> Bozza) e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati; NULL sulle azioni applicative (crea_revisione / push_commessa / genera_ordine), che non cambiano stato. rev 2026-08-10: can_push_commessa_reason(_key) e can_genera_ordine_reason(_key) non promettono piu'' l''accettazione sugli stati CHIUSI. Il ramo `v_stato_cod <> ''ACCETTATO''` copriva per negazione due situazioni opposte: prima dell''accettazione (DRAFT/EMESSO) la frase «sara'' disponibile dopo l''accettazione» e'' un''istruzione corretta, dopo o fuori (EVASO/ANNULLATO/RIFIUTATO/SCADUTO) promette un passo gia'' avvenuto o impossibile — l''EVASO e'' evaso PERCHE'' accettato e smistato. Ramo nuovo su config.stati_doc_preventivi.fase = ''CHIUSO'' davanti a quello vecchio, reason PREVENTIVO_STATO_CHIUSO, reason_key push_commessa_reason.stato_chiuso / genera_ordine_reason.stato_chiuso. NON NULL di proposito: la nota nessuna_azione_key viaggia su un canale distinto (riga in coda alla barra) mentre questi campi alimentano il tooltip di due pulsanti che il FE rende comunque nel pannello Smistamento, visibile anche in EVASO; spento e muto violerebbe la R1/R3 del brief vie-d''uscita. `fase` e non `terminale` ne'' un elenco di codici: e'' la proiezione che dice «documento chiuso», cioe'' cio'' che il messaggio afferma. Rilievo in-app di Tid su PRV0000192, brief-db-vie-uscita-operatore §12. rev 2026-08-10 (2): il campo si chiama ora stato_info_key e NON e'' piu'' subordinato alla lista vuota: viene emesso sempre che lo stato lo dichiari nel proprio meta, anche accanto a un''azione ancora abilitata. Decisione §5 di Tid: la nota spiega lo STATO, e chi ha ancora un bottone deve comunque poter leggere cos''e'' successo; cade quindi il presupposto che la faceva sparire, e v_nessuna_azione con il suo NOT EXISTS escono come codice morto. Il nome vecchio nessuna_azione_key diventava falso proprio nel momento in cui il campo inizia a comparire QUANDO le azioni ci sono, e il vocabolario giusto era gia'' dall''altra parte: le chiavi i18n stanno sotto vendite.<dominio>.stato_info.*. ⚠️ La PROPRIETA'' nel meta dello stato resta nessuna_azione_key, ed e'' voluto: il presidio scripts/check_i18n_keys.py trova quelle chiavi proprio per quel nome (RE_SEED_KEY sui CSV, elenco _PROP_KEY), e rinominarla senza toccare il guard lo renderebbe verde per cecita'' — il caso peggiore, gia'' denunciato nel §8.3 del brief. Rinomina della proprieta'' proposta come slice a se''. ⚠️ Il campo e'' SEMPRE presente nel blob, col valore a null quando non si applica: filtrare con l''operatore di presenza risponde vero per TUTTI i documenti, va guardato il valore. Il FE rinomina la prop nello stesso rilascio (8 drawer + DrawerActionsBar). brief-db-vie-uscita-operatore §4; attivita-urgenti-del-10-08 §2.';
 ```
 
 ---

@@ -494,11 +494,13 @@ class CommesseRepositoryUnitTests(TestCase):
     # competenza, conteggio), incluso il gruppo emittente NULL, passando il filtro corsia.
     @patch("apps.vendite.db.commesse_repository.connection.cursor")
     def test_list_emittibili_lane(self, mock_cursor_factory):
-        # Colonne nell'ordine della RETURNS TABLE: (emittente, tipo_doc, utility, competenza, total)
+        # Colonne nell'ordine della RETURNS TABLE (rev 2026-08-15):
+        # (emittente, tipo_doc, utility, competenza, total, gruppi_coperti)
         mock_cursor_factory.return_value = _mock_cursor(fetchall=[
-            (5, 3, 9, date(2026, 6, 1), 4),
-            (5, 7, 9, date(2026, 5, 1), 1),
-            (None, 3, 9, date(2026, 6, 1), 2),
+            (5, 3, 9, date(2026, 6, 1), 4, ["PREVENTIVO:aa", "MAN:42"]),
+            (5, 7, 9, date(2026, 5, 1), 1, ["ORDINE_VENDITA:bb"]),
+            # NULL difensivo sull'array → lista vuota, mai None a valle.
+            (None, 3, 9, date(2026, 6, 1), 2, None),
         ])
         repo = CommesseRepository()
         result = repo.list_emittibili_lane(
@@ -508,13 +510,17 @@ class CommesseRepositoryUnitTests(TestCase):
         )
         self.assertEqual(result, [
             {"emittente_soggetto_ruolo_id": 5, "tipo_doc_fiscale_id": 3, "utility_id": 9,
-             "competenza_mese": date(2026, 6, 1), "total_candidate": 4},
+             "competenza_mese": date(2026, 6, 1), "total_candidate": 4,
+             "gruppi_coperti": ["PREVENTIVO:aa", "MAN:42"]},
             {"emittente_soggetto_ruolo_id": 5, "tipo_doc_fiscale_id": 7, "utility_id": 9,
-             "competenza_mese": date(2026, 5, 1), "total_candidate": 1},
+             "competenza_mese": date(2026, 5, 1), "total_candidate": 1,
+             "gruppi_coperti": ["ORDINE_VENDITA:bb"]},
             {"emittente_soggetto_ruolo_id": None, "tipo_doc_fiscale_id": 3, "utility_id": 9,
-             "competenza_mese": date(2026, 6, 1), "total_candidate": 2},
+             "competenza_mese": date(2026, 6, 1), "total_candidate": 2,
+             "gruppi_coperti": []},
         ])
         sql = mock_cursor_factory.return_value.execute.call_args[0][0]
+        self.assertIn("gruppi_coperti", sql)
         self.assertIn("fn_list_emittibili_lane", sql)
         self.assertIn("utility_id", sql)
         self.assertIn("p_fatturazione_immediata", sql)

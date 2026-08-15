@@ -1,0 +1,142 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# «Quanto regge ancora questa fattura sorgente?» — una formula, un posto solo.
+#   Passo D-3 di brief-db-fondo-fattura-ricalcolo-e-governo.md §8.2 (Fase A).
+#
+# ℹ️ COS'E'. Il residuo di una fattura sorgente AL NETTO del contributo che il
+#   fondo indicato le ha gia' dato:
+#
+#     saldo(movimenti)  -  ( saldo contabile postabile  -  quota di QUESTO fondo )
+#
+#   Il termine sottratto per ultimo e' il punto: se il fondo e' gia' passato
+#   di li', la riga contabile che ha creato sulla sorgente e' dentro il saldo
+#   contabile — e confrontarci il fondo stesso significherebbe chiedergli di
+#   coprire una cosa che copre lui. Si scorpora, e la domanda torna sensata.
+#
+# 🔴 PERCHE' UNA FUNZIONE E NON TRE COPIE. La formula esisteva gia', scritta
+#   inline dentro fn_sync_contabili_fondo_fattura (v_saldo_contabile_source).
+#   Serve ora al guard di capienza di fn_applica_fondi_fattura, e servira'
+#   alla proposta derivata della Fase C: tre chiamanti. Regola del 2 —
+#   estratta prima che le copie divergano, non dopo.
+#
+# ⚠️ NON E' DICHIARATA STABLE, benche' non scriva niente. Chiama
+#   pagamenti.fn_get_saldo_fattura e fn_get_saldo_fattura_contabili, che sono
+#   entrambe VOLATILE (plpgsql senza marcatore): dichiarare STABLE una
+#   funzione che ne chiama di volatili e' una promessa che il planner
+#   potrebbe prendere sul serio — cache o inline — su un valore che non e'
+#   stabile davvero. Il costo e' un piano meno aggressivo; il beneficio e'
+#   non mentire.
+#
+# ⚠️ p_source_id e' OPZIONALE: assente significa «nessun contributo proprio da
+#   scorporare», ed e' il caso della PRIMA applicazione — il fondo non ha
+#   ancora scritto niente sulla sorgente. Non e' un ripiego: e' la domanda
+#   posta prima che il fondo esista come riga contabile.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260815-05-create-fn-saldo-sorgente-fondo-mctit.yaml
+
+  - changeSet:
+      id: 20260815-05-create-fn-saldo-sorgente-fondo
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.fn_saldo_sorgente_fondo: residuo della fattura sorgente al
+        netto del contributo del fondo indicato. Formula unica per il guard
+        di capienza (fn_applica_fondi_fattura), la sync contabili e la
+        proposta derivata. Regola del 2 sulla copia inline esistente.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'pagamenti' AND p.proname = 'fn_get_saldo_fattura'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'pagamenti' AND p.proname = 'fn_get_saldo_fattura_contabili'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_saldo_sorgente_fondo(
+                      p_fattura_sorgente_id vendite.fatture.id%TYPE,
+                      p_source_id           vendite.fatture_fondi_fattura_source.id%TYPE DEFAULT NULL)
+               RETURNS NUMERIC
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_saldo               NUMERIC;
+                  v_saldo_contabile_tot NUMERIC;
+                  v_saldo_contabile_own NUMERIC;
+              BEGIN
+                  -- Guard di parametro: id nullo o non positivo e' un errore
+                  -- del chiamante, non un caso da normalizzare in silenzio.
+                  IF p_fattura_sorgente_id IS NULL OR p_fattura_sorgente_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_saldo_sorgente_fondo', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_fattura_sorgente_id', 'valore', p_fattura_sorgente_id),
+                          NULL::uuid, 'p_fattura_sorgente_id obbligatorio e > 0');
+                  END IF;
+
+                  IF p_source_id IS NOT NULL AND p_source_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_saldo_sorgente_fondo', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_source_id', 'valore', p_source_id),
+                          NULL::uuid, 'p_source_id se fornito deve essere > 0');
+                  END IF;
+
+                  -- Primo termine: il residuo per MOVIMENTI.
+                  -- ⚠️ Oggi nessuna funzione del database scrive
+                  --    pagamenti.vendite_movimenti, quindi questo termine vale
+                  --    per costruzione totale_a_pagare. Diventera' vero con il
+                  --    posting (slice 1 del cantiere incassi): la formula e'
+                  --    scritta per quel giorno, non per oggi.
+                  SELECT sf.saldo INTO v_saldo
+                    FROM pagamenti.fn_get_saldo_fattura(p_fattura_sorgente_id) sf;
+
+                  -- Secondo termine: quanto e' gia' in lavorazione sulla sorgente.
+                  SELECT sc.saldo_contabile INTO v_saldo_contabile_tot
+                    FROM pagamenti.fn_get_saldo_fattura_contabili(p_fattura_sorgente_id) sc;
+
+                  -- Quota del secondo termine che appartiene a QUESTO fondo, e
+                  -- che va restituita: e' cio' che il fondo ha gia' scritto sulla
+                  -- sorgente, non un'altra copertura di cui tenere conto.
+                  -- Senza p_source_id la somma e' su zero righe, cioe' zero.
+                  SELECT COALESCE(SUM(cr.importo), 0)::NUMERIC INTO v_saldo_contabile_own
+                    FROM pagamenti.vendite_contabili_righe cr
+                    JOIN pagamenti.vendite_contabili_righe_stati st ON st.id = cr.stato_id
+                   WHERE cr.attivo IS TRUE
+                     AND st.is_postabile IS TRUE
+                     AND cr.fattura_id = p_fattura_sorgente_id
+                     AND p_source_id IS NOT NULL
+                     AND COALESCE(cr.meta ->> 'origine', '') = 'FONDO_FATTURA'
+                     AND COALESCE(cr.meta ->> 'fondo_source_id', '') = p_source_id::TEXT;
+
+                  RETURN COALESCE(v_saldo, 0)
+                       - (COALESCE(v_saldo_contabile_tot, 0) - COALESCE(v_saldo_contabile_own, 0));
+              END;
+              $function$;
+
+              -- ⚠️ COMMENT con i tipi RISOLTI (bigint, bigint): il %TYPE vale
+              --    nella firma del CREATE, non nell'identificazione di una
+              --    funzione gia' creata.
+              COMMENT ON FUNCTION vendite.fn_saldo_sorgente_fondo(bigint, bigint)
+              IS 'Residuo della fattura sorgente al netto del contributo gia'' dato dal fondo indicato: saldo(movimenti) - (saldo contabile postabile - quota di questo fondo). Lo scorporo dell''ultimo termine e'' il punto: se il fondo e'' gia'' passato di li'', la riga contabile che ha creato sulla sorgente e'' dentro il saldo contabile, e confrontarci il fondo stesso significherebbe chiedergli di coprire cio'' che copre lui. p_source_id assente = nessun contributo proprio (prima applicazione). ⚠️ Deliberatamente NON STABLE: chiama due funzioni pagamenti.* dichiarate VOLATILE, e promettere stabilita'' su un valore che non lo e'' autorizza il planner a cache/inline sbagliati. Estratta il 2026-08-15 dalla copia inline di fn_sync_contabili_fondo_fattura (regola del 2, tre chiamanti previsti). D-3 di brief-db-fondo-fattura-ricalcolo-e-governo §8.2.';

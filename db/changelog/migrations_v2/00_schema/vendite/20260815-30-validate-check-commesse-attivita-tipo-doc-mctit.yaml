@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il CHECK sul tipo documento smette di essere una promessa a meta'.
+#   brief-db-emittibilita-visibile-e-sbloccabile §9.
+#
+# ── LA SITUAZIONE ────────────────────────────────────────────────────────
+#   `chk_commesse_attivita_tipo_doc_emittibile` impone che una riga APPROVATA
+#   + NON_EMESSA abbia il tipo documento fiscale: senza, la discovery non la
+#   vede e il lavoro non verrebbe mai fatturato, in silenzio.
+#
+#   Il vincolo pero' e' `NOT VALID`: PostgreSQL controlla ogni riga nuova o
+#   modificata, ma le righe **gia' presenti** al momento in cui e' stato
+#   installato non le ha mai lette. Garantito sul nuovo, ignoto sul vecchio.
+#
+# ── PERCHE' SI CHIUDE ADESSO ─────────────────────────────────────────────
+#   Perche' quell'ignoto si era gia' propagato al codice. La diagnostica
+#   (`fn_diagnostica_gruppi_fatturabili`, `20260815-29`) porta un contatore
+#   `n_senza_tipo_doc` che sui dati nuovi non puo' che valere zero — il guard
+#   di riga li rifiuta — ma non si poteva dichiarare morto proprio perche'
+#   il vecchio non era mai stato guardato. Un ramo che «forse» esiste e' un
+#   ramo che nessuno tocca e nessuno cancella.
+#
+#   `VALIDATE CONSTRAINT` legge la tabella e decide: o passa, e allora la
+#   garanzia vale per TUTTE le righe (e il contatore si puo' togliere — lo fa
+#   il `20260815-31`), oppure fallisce e mostra le righe sporche, che si
+#   sistemano a mano. Siamo in sviluppo: i dati sono di test e la seconda
+#   strada e' un'informazione, non un problema.
+#
+# ── ℹ️ COSTO ─────────────────────────────────────────────────────────────
+#   `VALIDATE CONSTRAINT` prende un lock SHARE UPDATE EXCLUSIVE: la tabella
+#   resta leggibile E scrivibile mentre gira. E' una scansione singola, e su
+#   `commesse_attivita` non si nota.
+#
+# ⚠️ Se fallisce non si aggira: la riga che lo fa fallire e' esattamente il
+#   lavoro che sarebbe rimasto invisibile alla fatturazione. Si corregge il
+#   dato, non il vincolo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260815-30-validate-check-commesse-attivita-tipo-doc-mctit.yaml
+
+  - changeSet:
+      id: 20260815-30-validate-check-commesse-attivita-tipo-doc
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Valida chk_commesse_attivita_tipo_doc_emittibile, finora NOT VALID: le
+        righe preesistenti non erano mai state controllate. Chiude l'ignoto che
+        teneva in vita il contatore n_senza_tipo_doc nella diagnostica. Lock
+        SHARE UPDATE EXCLUSIVE: la tabella resta leggibile e scrivibile.
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_constraint
+              WHERE conname = 'chk_commesse_attivita_tipo_doc_emittibile'
+                AND conrelid = 'vendite.commesse_attivita'::regclass
+                AND convalidated IS FALSE
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.commesse_attivita
+                VALIDATE CONSTRAINT chk_commesse_attivita_tipo_doc_emittibile;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

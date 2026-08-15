@@ -31,7 +31,7 @@
 import { computed, ref, unref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSearchTable } from './useSearchTable'
-import { useFileDownload } from './useFileDownload'
+import { useListaAzioni } from './useListaAzioni'
 import { MANAGE_ICONS } from '../constants'
 
 export function useListaConfigurabilePage(
@@ -49,24 +49,15 @@ export function useListaConfigurabilePage(
   const { t } = useI18n()
   const search = useSearchTable(store, searchTableOptions)
 
-  // Stato della lista configurabile (defineExpose auto-unwrappato dal parent:
-  // niente `.value` extra sui ref esposti).
+  // Stato della lista configurabile + le due azioni di utility
+  // (personalizza/export): vivono in `useListaAzioni`, sede unica condivisa
+  // coi cruscotti, che non possono usare questo scaffolding (store diverso).
   const listaRef = ref(null)
-  const dirty = computed(() => listaRef.value?.dirty ?? false)
-  const colonneNuove = computed(() => listaRef.value?.colonneNuove ?? 0)
-  const configReady = computed(() => listaRef.value?.config != null)
-
-  // Export DEF-1: scarica CSV/Excel con i filtri attualmente applicati.
-  const { download, loading: exportLoading } = useFileDownload()
-  const exportDialogVisible = ref(false)
-  async function onExportConfirm(format) {
-    if (typeof exportFn !== 'function') return
-    const result = await download(
-      () => exportFn(getExportParams(format)),
-      { successMessage: t('lista_config.export_success') },
-    )
-    if (result !== null) exportDialogVisible.value = false
-  }
+  const {
+    dirty, colonneNuove, configReady,
+    exportDialogVisible, exportLoading, onExportConfirm,
+    azioniLista,
+  } = useListaAzioni(() => listaRef.value, { exportFn, getExportParams })
 
   // Allinea store.filters.limit alla pagina_dimensione risolta dal BE (una volta).
   const configAligned = ref(false)
@@ -86,14 +77,13 @@ export function useListaConfigurabilePage(
         ? extraActions()
         : (extraActions?.value ?? extraActions ?? [])
     const extras = Array.isArray(rawExtras) ? rawExtras : []
-    const personalizzaLabel = t('lista_config.personalizza_colonne')
     // `export` e `new` sono CONDIZIONATE al proprio handler: senza `exportFn`
     // il dialog si aprirebbe e `onExportConfirm` uscirebbe subito (pulsante
     // che non fa nulla), e senza `onNew` il comando sarebbe `undefined`.
     // Prima erano incondizionate e i caller senza "Nuovo" filtravano a mano —
     // stesso `filter(a => a.key !== 'new')` ripetuto in 3 file: la condizione
-    // vive qui una volta sola (2026-07-31).
-    const conExport = typeof exportFn === 'function'
+    // vive qui una volta sola (2026-07-31). La condizione su `exportFn` e' ora
+    // dentro `useListaAzioni`, che produce le due azioni di lista.
     const conNew = typeof onNew === 'function'
     return [
       {
@@ -108,28 +98,7 @@ export function useListaConfigurabilePage(
         // richiama `reload` (esposto qui sotto) dentro il proprio handler.
         command: onReload ?? search.reload,
       },
-      {
-        key: 'personalizza-colonne',
-        kind: 'utility',
-        label: colonneNuove.value > 0
-          ? `${personalizzaLabel} (${colonneNuove.value})`
-          : personalizzaLabel,
-        tooltip: colonneNuove.value > 0
-          ? t('lista_config.colonne_nuove_disponibili', { n: colonneNuove.value })
-          : personalizzaLabel,
-        icon: MANAGE_ICONS.PERSONALIZZA,
-        disabled: !configReady.value,
-        command: () => listaRef.value?.openModal?.(),
-      },
-      ...(conExport ? [{
-        key: 'export',
-        kind: 'utility',
-        label: t('lista_config.export'),
-        tooltip: t('lista_config.export_tooltip'),
-        icon: MANAGE_ICONS.DOWNLOAD,
-        disabled: exportLoading.value,
-        command: () => { exportDialogVisible.value = true },
-      }] : []),
+      ...azioniLista.value,
       ...extras,
       ...(conNew ? [{
         key: 'new',

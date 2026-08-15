@@ -1,0 +1,138 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il guard di corrispondenza si ritira dalla strada manuale.
+#   Coda del passo D-5 di brief-db-fondo-fattura-ricalcolo-e-governo.md §8.2:
+#   e' il momento in cui la colonna `origine` comincia a servire davvero.
+#
+# ℹ️ COSA CAMBIA: una riga. Il guard di corrispondenza — importo dello stesso
+#   segno del totale della sorgente e non superiore in valore assoluto —
+#   smette di applicarsi quando `origine = 'MANUALE'`.
+#
+# 🔴 PERCHE' NON E' UN INDEBOLIMENTO. Il caso che lo impone e' il principale
+#   della strada manuale: l'eccedenza di un SOVRA-INCASSO e' un fondo
+#   A CREDITO su una fattura dal TOTALE POSITIVO.
+#
+#     fattura:  +100,00  (regolare, pagata due volte)
+#     fondo:     -30,00  (l'eccedenza, riportata sulla prossima)
+#
+#   Segno opposto per costruzione. Un guard applicato a tutti rifiuterebbe
+#   proprio l'atto per cui la strada manuale esiste (F-3 del piano).
+#
+# ⚠️ E LA STRADA MANUALE NON RESTA SCOPERTA — cambia il TIPO di presidio,
+#   ed e' la distinzione che regge tutta la Fase B:
+#
+#   | origine    | presidio    | chi lo esercita                            |
+#   |------------|-------------|--------------------------------------------|
+#   | AUTOMATICA | VINCOLATO   | il database: legge la sorgente e confronta  |
+#   | MANUALE    | GOVERNATO   | motivo obbligatorio (CHECK 20260815-14),    |
+#   |            |             | azione di processo, e il processo rimborsi  |
+#   |            |             | di `pagamenti` — che l'eccedenza la conosce |
+#
+#   Il database non puo' verificare un'eccedenza: non sa quanto e' stato
+#   incassato in piu' finche' il posting non esiste. Chiedergli di farlo
+#   comunque significherebbe scrivere un controllo che indovina.
+#
+# ⚠️ OGGI NON CAMBIA NIENTE IN PRATICA: nessuna riga ha origine MANUALE,
+#   perche' la porta che le crea (fn_crea_fondo_fattura_manuale, Fase D) non
+#   esiste ancora. Il changeSet prepara il terreno e va nella Fase B perche'
+#   e' qui che nasce la colonna: separarli lascerebbe per un tempo una
+#   colonna che non governa niente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260815-18-update-trgfn-fondi-source-guard-importo-solo-automatica-mctit.yaml
+
+  - changeSet:
+      id: 20260815-18-update-trgfn-fondi-source-guard-importo-solo-automatica
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Il guard di corrispondenza si applica solo agli atti AUTOMATICI. Sulla
+        strada manuale il caso principale ha segno opposto per costruzione
+        (l'eccedenza di un sovra-incasso su una fattura positiva): li' il
+        presidio non e' un vincolo ma il governo — motivo, azione di processo,
+        processo rimborsi. Coda di D-5 del piano fondo fattura.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_fondi_fattura_source
+                columnName: origine
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_fondi_source_guard_importo'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_fondi_source_guard_importo()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: un fondo AUTOMATICO deve assomigliare alla fattura da cui
+              --        nasce — stesso segno del totale, non superiore in valore
+              --        assoluto. Cio' che si vieta non e' il fondo NEGATIVO
+              --        (legittimo: e' il capo a credito della banda) ma il
+              --        fondo che racconta un'altra fattura.
+              -- Uso:   BEFORE INSERT OR UPDATE OF importo, fattura_sorgente_id
+              --        FOR EACH ROW
+              DECLARE
+                  v_totale vendite.fatture.totale_a_pagare%TYPE;
+              BEGIN
+                  -- La strada MANUALE ha per definizione il caso opposto:
+                  -- l'eccedenza di un sovra-incasso e' un credito su una
+                  -- fattura positiva. Li' il presidio non e' un vincolo di
+                  -- corrispondenza ma il governo — motivo obbligatorio, azione
+                  -- di processo, e un processo (in `pagamenti`) che l'eccedenza
+                  -- la conosce. Il database no: non puo' verificarla finche'
+                  -- il posting non esiste.
+                  IF NEW.origine = 'MANUALE' THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT f.totale_a_pagare INTO v_totale
+                    FROM vendite.fatture f
+                   WHERE f.id = NEW.fattura_sorgente_id;
+
+                  -- Fail-closed su totale non calcolato: senza una base il
+                  -- confronto non e' decidibile, e un fondo senza base non e'
+                  -- un fondo.
+                  IF v_totale IS NULL
+                     OR sign(NEW.importo) <> sign(v_totale)
+                     OR abs(NEW.importo) > abs(v_totale) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'trgfn_fondi_source_guard_importo',
+                          'E_FONDO_NON_CORRISPONDE_SORGENTE',
+                          jsonb_build_object(
+                              'fondo_source_id',     NEW.id,
+                              'fattura_sorgente_id', NEW.fattura_sorgente_id,
+                              'importo',             NEW.importo,
+                              'totale_a_pagare',     v_totale,
+                              'origine',             NEW.origine),
+                          NULL::uuid,
+                          NEW.importo::TEXT,
+                          COALESCE(v_totale::TEXT, 'non calcolato'));
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_fondi_source_guard_importo()
+              IS 'Guard di corrispondenza fra il fondo e la sua fattura sorgente: importo dello stesso segno del totale_a_pagare e non superiore in valore assoluto; totale non calcolato = rifiuto (fail-closed). ⚠️ Si applica ai soli atti con origine = AUTOMATICA: sulla strada MANUALE il caso principale ha segno opposto per costruzione — l''eccedenza di un sovra-incasso e'' un credito su una fattura dal totale positivo — e un guard applicato a tutti rifiuterebbe proprio l''atto per cui quella strada esiste. Li'' il presidio non e'' un vincolo ma il GOVERNO: motivo obbligatorio, azione di processo, e il processo rimborsi di `pagamenti`, che l''eccedenza la conosce mentre il database no (il posting non esiste ancora). ⚠️ NON vieta il fondo negativo, che e'' legittimo: le due soglie del minimo formano una banda che contiene lo zero e il capo inferiore serve a riportare avanti i CREDITI. Vieta il fondo che racconta un''altra fattura — 8 euro di documento e -32 di fondo, prodotti da una riga contabile piu'' grande della fattura. ⚠️ La regola e'' scritta come segno + valore assoluto e MAI come «compreso fra 0 e il totale»: su una sorgente a credito gli estremi si invertono. ⚠️ E'' un trigger e non un CHECK perche'' deve leggere vendite.fatture — e i trigger BEFORE ROW girano PRIMA dei CHECK, quindi su una sorgente non nulla intercetta lui anche l''importo zero. D-3(a) + coda D-5 di brief-db-fondo-fattura-ricalcolo-e-governo §8.2.';

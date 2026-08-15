@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il reset dei fondi e' TECNICO. Non e' una reazione ai pagamenti.
+#   Passo D-16 di brief-db-fondo-fattura-ricalcolo-e-governo.md §8.2 (F-2).
+#
+# ℹ️ COSA CAMBIA: solo il COMMENT. Nessuna riga di codice, nessun
+#   comportamento. Il corpo della funzione non viene toccato.
+#
+# 🔴 PERCHE' NON E' COSMESI. La domanda F-2 del brief era: «che cosa succede a
+#   un fondo ASSEGNATO se la fattura sorgente riceve poi un incasso?». La
+#   risposta e' NIENTE — l'eventuale doppio pagamento diventa un credito sulla
+#   sorgente e si governa nel processo rimborsi, in `pagamenti`.
+#
+#   Ma chi cerca quella risposta trova `fn_reset_fondi_fattura`, che sa
+#   riportare un fondo da ASSEGNATO a DISPONIBILE, e il COMMENT di oggi —
+#   «Reset fondi applicati alla fattura con blocco su contabili CHIUSA e
+#   warning» — non dice a quale domanda risponde. E' il tipo di funzione che
+#   al prossimo giro qualcuno chiama pensando di aver trovato il pezzo
+#   mancante.
+#
+#   ⚠️ E' esattamente lo stesso difetto di fn_sync_pagamento_fondo_fattura
+#   (changeSet -10), in forma piu' mite: li' il nome prometteva movimenti, qui
+#   il nome tace sul perimetro. La differenza e' che quella funzione era un
+#   guscio e si ritira, questa serve e resta — quindi si dichiara.
+#
+# ⭐ IL CONFINE, in una riga: il reset appartiene al ciclo di vita della
+#   fattura FIGLIA (il ritorno di un lotto in bozza), non al ciclo del denaro.
+#   Nessun incasso lo chiama, nessun incasso deve chiamarlo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260815-11-comment-fn-reset-fondi-fattura-reset-tecnico-mctit.yaml
+
+  - changeSet:
+      id: 20260815-11-comment-fn-reset-fondi-fattura-reset-tecnico
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        COMMENT su fn_reset_fondi_fattura: dichiara che e' il reset TECNICO
+        della fattura figlia (ritorno del lotto in bozza) e non una reazione
+        ai pagamenti. Solo documentazione: nessun cambio di comportamento.
+        D-16 / F-2 del piano fondo fattura.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'vendite' AND p.proname = 'fn_reset_fondi_fattura'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ COMMENT con i tipi RISOLTI (bigint): il %TYPE vale nella
+              --    firma del CREATE, non nell'identificazione di una funzione
+              --    gia' creata.
+              COMMENT ON FUNCTION vendite.fn_reset_fondi_fattura(bigint)
+              IS 'Reset dei fondi applicati a una fattura FIGLIA: riporta le source da ASSEGNATO a DISPONIBILE, cancella le righe fondi e le righe contabili generate, con blocco e warning sulle contabili gia'' CHIUSA (quelle passano ad ANNULLATO e restano tracciate in vendite.fatture_log). ⚠️ E'' un''operazione TECNICA sul ciclo di vita della figlia — il ritorno di un lotto in bozza — e NON una reazione ai pagamenti: nessun incasso la chiama e nessun incasso deve chiamarla. La precisazione e'' la risposta alla domanda F-2 del piano («che cosa succede a un fondo ASSEGNATO se la sorgente riceve poi un incasso?»): niente. Un fondo assegnato non si tocca; l''eventuale doppio pagamento diventa un credito sulla sorgente e si governa nel processo rimborsi, in `pagamenti`. Senza questa riga la funzione e'' il tipo di oggetto che al giro dopo qualcuno chiama credendo di aver trovato il pezzo mancante — lo stesso equivoco che ha reso necessario ritirare fn_sync_pagamento_fondo_fattura. D-16 di brief-db-fondo-fattura-ricalcolo-e-governo §8.2.';

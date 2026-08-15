@@ -40,7 +40,9 @@ Il risultato: ogni errore nel sistema ha un codice stabile, un messaggio leggibi
 
 **Configurazione:**
 
-* [config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore) — catalogo multilingua dei messaggi di errore
+* [config.codici_errore](/dbzero/config/tabelle/codici_errore) — **l'identità di un codice**: una riga per codice, la sua classe, il suo eventuale ritiro
+* [config.classi_errore](/dbzero/config/tabelle/classi_errore) — il vocabolario delle **dieci classi**: cosa *è* un errore, prima ancora di cosa dice
+* [config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore) — catalogo multilingua delle **frasi**: una riga per *(codice, lingua)*
 
 **Operazioni:**
 
@@ -57,7 +59,15 @@ Il risultato: ogni errore nel sistema ha un codice stabile, un messaggio leggibi
 ## Il modello in sintesi
 
 ```text
-config.messaggi_errore (catalogo messaggi)
+config.classi_errore (vocabolario: 10 classi)
+    │
+    │  DATO_ERRATO · CONFLITTO_STATO · NON_TROVATO · TECNICO · …
+    │
+config.codici_errore (identità: 1 riga per codice)
+    │
+    │  codice → classe (NOT NULL) , obsoleto_dal , note
+    │
+config.messaggi_errore (frasi: 1 riga per codice+lingua)
     │
     │  codice + lingua → messaggio, causa, soluzione
     │
@@ -78,9 +88,71 @@ config.messaggi_errore (catalogo messaggi)
                     vendite.fatture_log            (scope FATTURA)
 ```
 
+* **Identità** = *cosa è* quel codice (la classe), da cui il backend deriva la risposta HTTP
 * **Catalogo** = i template dei messaggi, mantenuti in tabella e mai hard-coded nel codice
 * **Registro** = il log tecnico immutabile, scritto fuori transazione per sopravvivere ai rollback
 * **Routing** = i log di dominio specifici per processo, che si affiancano al registro tecnico
+
+---
+
+## La classe di un codice — *cosa è* un errore, prima di cosa dice
+
+Fino al 2026-08-07 un codice errore aveva solo una **frase**. Chi lo leggeva
+capiva il testo, ma nessun programma sapeva dire se quell'errore fosse un dato
+sbagliato, un conflitto di stato o un guasto tecnico: quella conoscenza viveva
+**solo nel backend**, in un secondo elenco scritto a mano, che poteva
+disallinearsi dal catalogo senza che nulla protestasse.
+
+Oggi ogni codice ha una **classe**, e la classe è `NOT NULL`.
+
+> ⭐ **È questo il meccanismo, non l'adiacenza fra tabelle.** Un codice senza
+> semantica **non può nascere**: la colonna è obbligatoria, e chi crea un codice
+> è obbligato a decidere *cosa sia* nel momento in cui ha in testa il ramo che lo
+> solleva — che è l'unico momento in cui lo sa davvero.
+
+### Le dieci classi
+
+| Classe | Risposta | Quando |
+|---|---|---|
+| `DATO_ERRATO` | 400 | il valore che l'operatore ha scritto o scelto non va bene |
+| `CONFLITTO_STATO` | 409 | l'operazione non è ammessa **adesso**, per com'è il documento |
+| `NON_TROVATO` | 404 | la cosa indicata non esiste |
+| `NON_PERMESSO` | 403 | il diritto manca, e non dipende dallo stato |
+| `NON_AUTENTICATO` | 401 | non manca il diritto: manca **chi sei** |
+| `NON_ESEGUIBILE` | 422 | la richiesta è comprensibile ma non si può portare a termine |
+| `NON_DISPONIBILE` | 501 | previsto dal disegno, non ancora costruito |
+| `ERRORE_ESTERNO` | 502 | ha fallito un sistema di terzi |
+| `TECNICO` | 500 | un guasto: l'operatore non può rimediare |
+| `AVVISO` | *nessuna* | si scrive nel diario e non si solleva (i codici `W_`) |
+
+⚠️ **La differenza che si sbaglia più spesso** è fra `DATO_ERRATO` e
+`CONFLITTO_STATO`, e il criterio è pratico: *l'operatore può rimediare
+correggendo un campo?* Se sì è `DATO_ERRATO`, e la pagina può evidenziare quel
+campo. Se no è `CONFLITTO_STATO`, e l'unica cosa sensata è un messaggio.
+
+### Da dove la prende il backend
+
+**Da un file generato dal database.** L'elenco `codice → classe` non si scrive
+più a mano: lo produce un comando che legge `config.vw_codici_errore_identita`, e
+un controllo in CI fallisce se il file committato non è più quello che il
+database produrrebbe adesso.
+
+⚠️ Il secondo elenco **non è sparito** — ha cambiato natura: da elenco *scritto*
+a elenco *generato*, cioè da qualcosa che può divergere in silenzio a qualcosa
+che diverge **rumorosamente**. È il massimo ottenibile senza spostare tutto sugli
+SQLSTATE, e la ragione sta nel brief del cantiere.
+
+### Ritirare un codice, non cancellarlo
+
+`config.codici_errore.obsoleto_dal` è la data dalla quale un codice **non si
+usa più per il nuovo**. La riga resta, perché `dbops.error_log` ci punta e le
+occorrenze storiche devono continuare a leggersi.
+
+⚠️ La colonna **stava su `config.messaggi_errore`** fino al 2026-08-07, e lì era
+sbagliata: quella tabella è chiavata *(codice, lingua)*, quindi si poteva
+ritirare un codice in italiano e lasciarlo vivo in inglese. Ora vive
+sull'identità, che ha una riga per codice — **il ritiro appartiene al codice, non
+alla frase**.
 
 ---
 
@@ -163,7 +235,9 @@ Da un punto di vista tecnico:
 | `p_tx_id` | UUID | — | Transazione correlata |
 | `VARIADIC p_valori` | TEXT[] | — | Valori per i placeholder |
 
-Se il codice errore non esiste nel catalogo, la funzione usa il codice fallback `MESSAGGIO_NON_DEFINITO`. Se anche questo manca, il log viene saltato con WARNING.
+Se il codice errore non esiste nel catalogo, la funzione usa il codice di ripiego `E_MESSAGGIO_NON_DEFINITO`. Se anche questo manca, il log viene saltato con WARNING.
+
+> ⚠️ Si chiamava `MESSAGGIO_NON_DEFINITO`, senza prefisso, fino al 2026-08-07. Il nome è scritto a mano **in tre posti che non si derivano l'uno dall'altro** — il corpo di `fn_log_error_only`, i CSV di seed e il pgTAP che verifica che il ripiego esista: rinominarlo vuol dire toccarli tutti e tre.
 
 > Documentazione dettagliata: [script.fn_log_error_only](/dbzero/script/funzioni/fn_log_error_only)
 
@@ -219,6 +293,73 @@ Trigger / Funzione PL/pgSQL
 
 ---
 
+## Cosa esce dall'eccezione, oltre al testo
+
+`RAISE` di PostgreSQL ha campi strutturati oltre al messaggio, e il progetto ne
+usa **due**. Non sono decorazioni: sono l'unico modo che il backend ha di sapere
+cosa è successo **senza fare parsing del testo**.
+
+| Campo | Porta | Dal |
+|---|---|---|
+| `CONSTRAINT` | il **codice** di dominio | 2026-08-05 |
+| `COLUMN` | il **nome del campo** che l'operatore deve correggere | 2026-08-08 |
+
+```sql
+RAISE EXCEPTION '%', v_messaggio
+  USING ERRCODE = 'P0001', CONSTRAINT = p_error_code, COLUMN = 'partita_iva';
+```
+
+⚠️ **Il contratto vale solo su `P0001`**, ed è essenziale: su una violazione di
+vincolo vera (classe `23xxx`) `constraint_name` contiene il nome del vincolo del
+database (`uq_…`, `fk_…`). Leggerlo come codice applicativo produrrebbe un codice
+inesistente, cioè un 500 al posto di un 409 parlante.
+
+### Il nome del campo: non si scrive, si dichiara
+
+Chi solleva **non tocca il `RAISE`**: mette il nome nel contesto, e
+`fn_log_and_raise_error` fa il resto.
+
+```sql
+PERFORM script.fn_log_and_raise_error(
+    'database', 'anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori',
+    'E_CF_OBBLIGATORIO',
+    jsonb_build_object('campo', 'codice_fiscale', 'soggetto_id', NEW.id),
+    NEW.tx_id
+);
+```
+
+* **`campo`** — il nome esplicito, ed è la strada da usare quando si sa;
+* **`parametro`** — se `campo` manca si ripiega qui, togliendo il prefisso `p_`.
+  ⭐ È una convenzione che **esisteva già in 225 punti** (`'parametro','p_cognome'`)
+  e non veniva trasmessa: derivarla copre **217 dei 380 punti** in cui il
+  frontend potrebbe accendere un campo, **senza toccarne nessuno**.
+
+⚠️ **Esce il nome, mai il valore.** Nei contesti c'è spesso anche quello che
+l'operatore ha scritto: non ha nessun motivo di tornare indietro, ce l'ha già
+davanti. E il nome deve **sembrare un identificatore**, altrimenti viene scartato.
+
+### ⚠️ Le tre trappole, prese sul campo
+
+1. **Il codice dice *cosa* è andato storto, il contesto dice *dove*.** Due punti
+   possono condividere il codice ed essere campi diversi — `E_PIVA_NON_VALIDA`
+   vale sia per `partita_iva` sia per `piva_gruppo_acquisto`. Chi assegna il nome
+   guardando il codice sbaglia campo;
+2. **la prima riga della guardia non è la guardia.** In
+   `IF NEW.ritenuta_acconto = true AND (NEW.ritenuta_aliquota IS NULL …)` il campo
+   da correggere è sulla **seconda** riga: mandare il primo direbbe all'operatore
+   di togliere la spunta invece che di scrivere l'aliquota;
+3. **si ragiona per schermata, non per schema.** Il CF *mancante* è validato in
+   `anagrafiche`, il CF *malformato* in `script`: coprire uno solo dei due lascia
+   la stessa pagina che si accende in un caso e non nel gemello — e insegna
+   all'operatore che il bordo rosso non è affidabile.
+
+⛔ **Un solo mittente per canale**, presidiato dai controlli (A) e (F) del
+guardrail. Un secondo mittente su `COLUMN` non farebbe fallire niente: farebbe
+**evidenziare il campo sbagliato**, che è peggio di non evidenziarne nessuno.
+Vedi [Presidi e registri del debito](presidi-e-registri-del-debito.md) §3.3.
+
+---
+
 ## Routing errori di dominio
 
 ### Il concetto
@@ -265,7 +406,8 @@ La severita segue una gerarchia a tre livelli: se almeno un errore critico (`C`)
 
 * **Centralizzare tutti i messaggi** in `config.messaggi_errore` — mai hard-codare testi nelle funzioni
 * **Usare nomi descrittivi** che rendano il codice autoesplicativo senza consultare il catalogo
-* Ogni codice deve essere registrato nel catalogo **prima** di essere usato nel codice — se manca, `fn_log_error_only` ricade su `MESSAGGIO_NON_DEFINITO`
+* Ogni codice deve essere registrato **prima** di essere usato: dal 2026-08-07 una riga in `config.codici_errore` (identità + classe) è **obbligatoria**, perché `config.messaggi_errore.codice` ha una chiave esterna verso di essa. Una frase senza identità non entra più: non è una raccomandazione, è un vincolo
+* Se il codice manca del tutto, `fn_log_error_only` ricade su `E_MESSAGGIO_NON_DEFINITO`
 
 #### Il prefisso dice se blocca: `E_` e `W_`
 
@@ -288,9 +430,18 @@ fuori strada la diagnosi (vedi `brief-db-coerenza-tx-id-non-registrato.md`).
 
 **Nel dubbio, guarda il chiamante, non il nome.** Quando si aggiunge o si modifica
 un codice, la verifica è una sola riga: se passa per `fn_log_and_raise_error` deve
-iniziare per `E_`, se passa per `fn_log_error_only` per `W_`. I codici storici
-senza prefisso (es. `ERRORE_PARAMETRI_TABELLA`) vanno allineati quando si tocca il
-punto in cui sono usati, non con una migrazione di massa.
+iniziare per `E_`, se passa per `fn_log_error_only` per `W_`.
+
+✅ **Il debito dei nomi storici è chiuso.** Erano 57 il 2026-08-05, sono **zero**:
+oggi **nessun codice vivo è fuori convenzione**. L'esempio che questa guida citava
+(`ERRORE_PARAMETRI_TABELLA`) è stato ritirato e sostituito da
+`E_ERRORE_PARAMETRI_TABELLA`. Il registro `dbops.messaggi_errore_codici_legacy`
+resta vuoto e **non si droppa**: è il meccanismo pronto per la prossima eredità,
+e un registro vuoto non è un registro inutile — è un registro in pari.
+
+⛔ **Ma il rubinetto è chiuso**: il controllo (B) del guardrail rifiuta ogni
+codice *nuovo* fuori convenzione. Il registro è per il debito **ereditato**, non
+per i codici nuovi: quelli nascono giusti.
 
 ### Logging
 

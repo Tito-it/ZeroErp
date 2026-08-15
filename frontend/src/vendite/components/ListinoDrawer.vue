@@ -23,7 +23,7 @@ import Message from 'primevue/message'
 
 const { t } = useI18n()
 const store = useListiniStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const isReadonly = useInjectReadonly()
 const auth = useAuthStore()
 
@@ -190,7 +190,9 @@ function close() {
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('vendite.listini.field_codice') }} *</label>
-            <InputText v-model="form.codice" :disabled="isEdit" />
+            <InputText v-model="form.codice" :disabled="isEdit"
+              :invalid="campiErrati.includes('codice')"
+            />
           </div>
           <div class="form-field">
             <label>{{ t('vendite.listini.field_utility') }} *</label>
@@ -207,14 +209,18 @@ function close() {
           </div>
           <div class="form-field">
             <label>{{ t('vendite.listini.field_descrizione') }} *</label>
-            <InputText v-model="form.descrizione" />
+            <InputText v-model="form.descrizione"
+              :invalid="campiErrati.includes('descrizione')"
+            />
           </div>
         </div>
 
         <div v-if="isEdit" class="form-grid">
           <div class="form-field">
             <label>{{ t('indirizzi.campo_attivo') }}</label>
-            <ToggleSwitch v-model="form.attivo" />
+            <ToggleSwitch v-model="form.attivo"
+              :invalid="campiErrati.includes('attivo')"
+            />
           </div>
         </div>
 

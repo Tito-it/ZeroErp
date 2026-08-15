@@ -24,22 +24,14 @@ from unittest.mock import MagicMock, patch
 from django.core.management import call_command
 
 from apps.core.services.service_errors import ServiceError
+# Fixture lane condiviso (regola del 2): una sede sola per la forma di
+# list_emittibili_lane.
+from apps.vendite.tests._helpers.lane_fixture import lane as _lane
 
 _CMD = "apps.vendite.management.commands.run_fatturazione_batch"
 # Core estratto (C-1): repository e pipeline vivono nel service condiviso.
 _SVC = "apps.vendite.services.fatturazione_driver_service"
 
-
-# Scopo: helper che costruisce una lane (terna emittente, tipo_doc, utility) come la
-#        ritorna CommesseRepository.list_emittibili_lane.
-def _lane(em, *, tipo_doc=1, utility=9, comp=date(2026, 6, 1), tot=1):
-    return {
-        "emittente_soggetto_ruolo_id": em,
-        "tipo_doc_fiscale_id": tipo_doc,
-        "utility_id": utility,
-        "competenza_mese": comp,
-        "total_candidate": tot,
-    }
 
 
 # Scopo: helper che costruisce un patch di registered_job con un handle controllabile

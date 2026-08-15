@@ -329,7 +329,12 @@ class ClientiService:
                 soggetto_ruolo_id=soggetto_ruolo_id,
                 **cliente_data,
             ),
-            {"uq_clienti_istanza_utility": "Esiste gia' un cliente per questa istanza."},
+            {
+                "uq_clienti_istanza_utility": (
+                    "Esiste gia' un cliente per questa istanza.",
+                    "istanza_utility_id",
+                ),
+            },
         )
 
         # Step 5: Contatto ruolo inline opzionale (EMPTY→skip, PARTIAL→errore, VALID→crea).

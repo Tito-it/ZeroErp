@@ -36,6 +36,7 @@ AS $function$
         AND NOT script.fn_valida_partita_iva(p_partita_iva)
         THEN
             l_error_ctx := jsonb_build_object(
+                'campo', 'partita_iva',
                 'tipo_det', p_tipo_det_id,
                 'partita_iva', p_partita_iva
             );
@@ -57,6 +58,7 @@ AS $function$
         AND NOT script.fn_valida_partita_iva(p_piva_gruppo)
         THEN
             l_error_ctx := jsonb_build_object(
+                'campo', 'piva_gruppo_acquisto',
                 'tipo_det', p_tipo_det_id,
                 'piva_gruppo_acquisto', p_piva_gruppo
             );
@@ -92,6 +94,7 @@ AS $function$
 
             IF NOT l_cf_valido THEN
                 l_error_ctx := jsonb_build_object(
+                    'campo', 'codice_fiscale',
                     'tipo_det', p_tipo_det_id,
                     'codice_fiscale', p_codice_fiscale,
                     'formato_cf', l_tipo_det.formato_cf

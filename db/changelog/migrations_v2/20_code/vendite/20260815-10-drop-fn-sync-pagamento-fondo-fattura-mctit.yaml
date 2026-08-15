@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Si ritira il guscio che prometteva il posting e non lo faceva.
+#   Passo D-15 di brief-db-fondo-fattura-ricalcolo-e-governo.md §8.2 (F-4).
+#
+# 🔴 IL PROBLEMA E' CHE ESISTE, non come si chiama.
+#   vendite.fn_sync_pagamento_fondo_fattura(bigint) restituisce
+#   TABLE(inserted_movimenti, updated_movimenti, annullati_source): nome e
+#   colonne dicono MOVIMENTI. Il corpo, letto per intero, e' un guscio —
+#   delega tutto a fn_sync_contabili_fondo_fattura e si limita a rinominare
+#   `inserted_righe` in `inserted_movimenti`. Non crea nessun movimento.
+#
+#   ⚠️ E' probabilmente la ragione per cui in giro si legge che il posting
+#   esista: chi lo cerca trova questa firma e si ferma. Nel database non c'e'
+#   ancora NESSUNA funzione che scriva pagamenti.vendite_movimenti (slice 1
+#   del cantiere incassi).
+#
+# ✅ MISURATO IL 2026-08-15, prima di droppare:
+#   - chiamanti fra le funzioni del DB:  ZERO
+#     (dal 2026-02 fn_ricalcola_totali_fattura chiama direttamente
+#      fn_sync_contabili_fondo_fattura)
+#   - chiamanti dal backend Python:      ZERO
+#   - riferimenti nei test:              UNO, la sezione 6 di
+#     db/pgtap/vendite/test-fattura-utils-critical-termini.sql, che collauda
+#     il guard di parametro DI UN GUSCIO
+#
+# ⚠️ PERCHE' RITIRARE E NON RINOMINARE. Un nome onesto lascerebbe in piedi un
+#   oggetto che nessuno chiama: una cosa in piu' da mantenere, da spiegare e
+#   da ritrovare al prossimo giro. Il difetto non e' l'etichetta, e' la
+#   presenza.
+#
+# 🔴 LE DUE META' VANNO NELLO STESSO LOTTO. Il presidio dei riferimenti morti
+#   gira DOPO `manage.py migrate`: un DROP senza il taglio del pgTAP fa
+#   diventare rosso il cancello. Nello stesso commit di questo changeSet:
+#   - db/pgtap/vendite/test-fattura-utils-critical-termini.sql
+#       sezione rimossa, plan(15) -> plan(14), indice rinumerato
+#   - docs/it/dbzero/vendite/manual/fn_sync_pagamento_fondo_fattura.md
+#       eliminato (la pagina auto-gen sparisce da se' alla rigenerazione)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260815-10-drop-fn-sync-pagamento-fondo-fattura-mctit.yaml
+
+  - changeSet:
+      id: 20260815-10-drop-fn-sync-pagamento-fondo-fattura
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        DROP di vendite.fn_sync_pagamento_fondo_fattura: guscio che promette
+        movimenti e delega tutto a fn_sync_contabili_fondo_fattura. Zero
+        chiamanti nel DB, zero dal backend, un solo riferimento in un pgTAP
+        (rimosso nello stesso commit). D-15 / F-4 del piano fondo fattura.
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'vendite'
+                    AND p.proname = 'fn_sync_pagamento_fondo_fattura'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Mai CASCADE: se qualcosa dipendesse da questa funzione
+              --    dev'essere il DROP a dirlo, non un effetto collaterale
+              --    silenzioso. La misura del 2026-08-15 dice zero dipendenti.
+              DROP FUNCTION IF EXISTS vendite.fn_sync_pagamento_fondo_fattura(bigint);
