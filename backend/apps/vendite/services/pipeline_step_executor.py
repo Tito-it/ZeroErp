@@ -10,6 +10,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from apps.core.services.db_error_fields import db_error_code
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.fan_out import FanOutRunLogger, messaggio_eccezione, run_fan_out
 from apps.core.services.service_errors import ServiceError
@@ -413,11 +414,28 @@ class PipelineStepExecutor:
                 self.repository.complete_lotto_task_run(task_run_id)
 
     # Scopo: Tenta di marcare il task run in errore senza mascherare l'eccezione originale.
+    # ⚠️ Il codice si legge da DUE sorgenti, e la seconda non e' un di piu':
+    # `ServiceError` copre gli errori nati in Python, ma un task che delega a una
+    # funzione madre DB solleva un `DatabaseError` che porta il suo codice nel
+    # campo strutturato (`diag.constraint_name` su P0001). Senza leggerlo, il
+    # diario registra `E_TASK` su un errore che il database aveva gia' nominato.
+    # 🔴 Difetto reale, comparso con R-3 (2026-08-15): i tre errori del giro
+    # fondi (`E_LOTTO_NON_TROVATO`, `E_PIPELINE_SCOPE_INCOMPLETE`,
+    # `E_TIPO_FONDO_NOT_FOUND`) nascevano in Python e sono passati al DB quando
+    # scope e lookup sono entrati nella madre — e con loro sarebbe sparita la
+    # loro attribuzione. Vale per ogni task che chiama una funzione DB, non solo
+    # per i fondi.
     def _fail_task_run_safely(self, task_run_id: int | None, exc: BaseException) -> None:
         if task_run_id is None:
             return
         try:
-            error_code = exc.code if isinstance(exc, ServiceError) else "E_TASK"
+            error_code = (
+                exc.code
+                if isinstance(exc, ServiceError)
+                # Lettura unica del codice di dominio da un'eccezione DB: mai
+                # `diag.constraint_name` a mano (apps/core/services/db_error_fields).
+                else db_error_code(exc) or "E_TASK"
+            )
             self.repository.fail_lotto_task_run(
                 task_run_id,
                 error_code,
