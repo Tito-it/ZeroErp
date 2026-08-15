@@ -1,0 +1,160 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# La madre DB del giro di applicazione: qui il denaro si muove davvero.
+#   Passo R-3 di brief-db-fondo-fattura-ricalcolo-e-governo.md §8.3.
+#
+# ── ⚠️ PERCHE' QUESTA ITERA SULLE FATTURE E LA SORELLA NO ───────────────
+#
+#   Non e' una svista di simmetria. Le due madri chiamano funzioni che
+#   lavorano su oggetti diversi:
+#
+#     generazione   → per CHIAVE   (le sorgenti si trovano per chiave,
+#                                   non appartengono al lotto)
+#     applicazione  → per FATTURA  (ogni figlia riceve i SUOI fondi, e
+#                                   l'importo cambia documento per documento)
+#
+#   Deduplicare per chiave qui vorrebbe dire assegnare i fondi a una sola
+#   figlia e lasciare le altre senza: il contrario di quello che serve.
+#
+# ── ⭐ QUI IL PARZIALE COSTA PIU' CHE ALTROVE ───────────────────────────
+#
+#   Ogni chiamata riuscita ha gia' portato una source ad ASSEGNATO, creato la
+#   riga in fatture_fondi_fattura e cambiato il totale di una fattura. Un giro
+#   interrotto a meta' lascia un lotto in cui alcune figlie hanno il fondo e
+#   altre no — e nessuna delle due meta' e' sbagliata di per se', quindi
+#   niente lo segnala. Una funzione = uno statement = una transazione chiude
+#   il caso per costruzione, indipendentemente da come il chiamante scrive la
+#   query.
+#
+# ── COSA NON CAMBIA ─────────────────────────────────────────────────────
+#
+#   La chiave a nove elementi, il guard di capienza, il `FOR UPDATE ... SKIP
+#   LOCKED`: tutto dentro fn_applica_fondi_fattura, che resta l'unico posto
+#   in cui il fondo muove denaro. Questa e' orchestrazione.
+#
+#   ℹ️ I cinque parametri di scope restano nella firma della funzione
+#   figlia perche' li' fanno da *sanity check* sulla figlia — e qui arrivano
+#   dalle colonne della figlia stessa, quindi il controllo e' tautologico e
+#   costa niente. Toglierli e' un'altra modifica, con un'altra misura.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260815-35-create-fn-applica-fondi-lotto-mctit.yaml
+
+  - changeSet:
+      id: 20260815-35-create-fn-applica-fondi-lotto
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Nuova vendite.fn_applica_fondi_lotto(lotto, tipo): madre DB del giro
+        di applicazione. Itera sulle FATTURE (ogni figlia riceve i suoi fondi)
+        e non sulle chiavi come la sorella di generazione. R-3 §8.3.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'vendite' AND p.proname = 'fn_get_scope_fatture_lotto'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_applica_fondi_lotto(
+                      p_lotto_id                  vendite.fatturazione_lotti.id%TYPE,
+                      p_tipo_fondo_codice_interno vendite.tipi_fondi_fattura.codice_interno%TYPE)
+               RETURNS TABLE (
+                      fatture_count   INTEGER,
+                      fondi_applicati INTEGER)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_tipo_id   vendite.tipi_fondi_fattura.id%TYPE;
+                  v_fatture   INTEGER := 0;
+                  v_applicati INTEGER := 0;
+              BEGIN
+                  -- ===== Guard parametri =====
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_applica_fondi_lotto', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id),
+                          NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                  END IF;
+
+                  IF p_tipo_fondo_codice_interno IS NULL OR btrim(p_tipo_fondo_codice_interno) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_applica_fondi_lotto', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_tipo_fondo_codice_interno', 'valore', p_tipo_fondo_codice_interno),
+                          NULL::uuid, 'p_tipo_fondo_codice_interno obbligatorio e non vuoto');
+                  END IF;
+
+                  -- ===== Il tipo di fondo: stessa risoluzione della sorella =====
+                  -- ⚠️ Due copie di questo lookup sarebbero due copie di una
+                  --    regola banale ma vera («attivo, il primo per id»): sono
+                  --    quattro righe e la duplicazione e' accettata di
+                  --    proposito, perche' estrarla creerebbe una funzione che
+                  --    esiste solo per essere chiamata due volte. Se diventano
+                  --    tre, si estrae.
+                  SELECT t.id INTO v_tipo_id
+                    FROM vendite.tipi_fondi_fattura t
+                   WHERE t.codice_interno = p_tipo_fondo_codice_interno
+                     AND t.attivo IS TRUE
+                   ORDER BY t.id
+                   LIMIT 1;
+
+                  IF v_tipo_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_applica_fondi_lotto', 'E_TIPO_FONDO_NOT_FOUND',
+                          jsonb_build_object('codice_interno', p_tipo_fondo_codice_interno),
+                          NULL::uuid, p_tipo_fondo_codice_interno);
+                  END IF;
+
+                  -- =========================================================
+                  -- Una riga per FATTURA: ogni figlia riceve i suoi fondi.
+                  -- ⚠️ Nessun DISTINCT sulla chiave qui — sarebbe assegnare
+                  --    tutto a una figlia sola e lasciare le altre a secco.
+                  -- =========================================================
+                  WITH scope AS (
+                      SELECT * FROM vendite.fn_get_scope_fatture_lotto(p_lotto_id)
+                  ), giro AS (
+                      SELECT vendite.fn_applica_fondi_fattura(
+                                 s.billing_account_id,
+                                 s.utility_id,
+                                 s.tipo_doc_fiscale_id,
+                                 s.emittente_soggetto_ruolo_id,
+                                 s.valuta_id,
+                                 s.fattura_id,
+                                 v_tipo_id) AS applicati
+                        FROM scope s
+                  )
+                  SELECT (SELECT count(*)::INTEGER FROM scope),
+                         COALESCE((SELECT SUM(g.applicati)::INTEGER FROM giro g), 0)
+                    INTO v_fatture, v_applicati;
+
+                  RETURN QUERY SELECT v_fatture, v_applicati;
+              END;
+              $function$;
+
+              -- ⚠️ COMMENT con i tipi RISOLTI (bigint, character varying).
+              COMMENT ON FUNCTION vendite.fn_applica_fondi_lotto(BIGINT, CHARACTER VARYING)
+              IS 'Madre DB del giro di applicazione dei fondi per un lotto: legge lo scope da vendite.fn_get_scope_fatture_lotto e chiama fn_applica_fondi_fattura una volta per FATTURA. Ritorna fatture_count e fondi_applicati. ⚠️ Itera sulle fatture e non sulle chiavi come la sorella di generazione, e non e'' un''asimmetria da correggere: le sorgenti si trovano per chiave e non appartengono al lotto, mentre ogni figlia riceve i SUOI fondi e cambia il proprio totale — deduplicare per chiave qui vorrebbe dire assegnare tutto a una figlia sola e lasciare le altre senza. ⭐ Qui il parziale costa piu'' che altrove: ogni chiamata riuscita ha gia'' portato una source ad ASSEGNATO e cambiato il totale di una fattura, e un lotto in cui alcune figlie hanno il fondo e altre no non ha nessuna meta'' sbagliata di per se'', quindi niente lo segnala. Una funzione = uno statement = una transazione chiude il caso per costruzione, comunque il chiamante scriva la query. ℹ️ Chiave a nove elementi, guard di capienza e FOR UPDATE SKIP LOCKED restano dentro fn_applica_fondi_fattura, che e'' l''unico posto in cui il fondo muove denaro: questa e'' orchestrazione. R-3 di brief-db-fondo-fattura-ricalcolo-e-governo §8.3.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_applica_fondi_lotto(BIGINT, CHARACTER VARYING);

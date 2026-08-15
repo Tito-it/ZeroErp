@@ -27,11 +27,15 @@
 > assorbito in R-3. Restano **BE-4** e il **frontend**, fermi entrambi su
 > prerequisiti DB e non su decisioni del backend — stato per passo in **§8.3**.
 >
-> 🔴 **Tre cose aspettano il team DB**, tutte in §8.3: la **Fase D** (D-11…D-13),
-> **R-3** (madre DB per lotto, che non blocca) e — non previsto dal piano — il
-> **seed del catalogo `ui.lista_*`**, che è ciò che ferma la pagina:
-> `<ListaConfigurabile>` si costruisce dal catalogo, e senza seed risponde
-> `E_UI_LISTA_NON_TROVATA`.
+> 🔴 **Due cose aspettano il team DB** (erano tre): la **Fase D** (D-11…D-13), che
+> però aspetta a sua volta il processo rimborsi in `pagamenti`, e — non previsto
+> dal piano — il **seed del catalogo `ui.lista_*`**, che è ciò che **ferma la
+> pagina**: `<ListaConfigurabile>` si costruisce dal catalogo, e senza seed
+> risponde `E_UI_LISTA_NON_TROVATA`. ⭐ **È l'unico residuo DB che non aspetta
+> nessun altro**, quindi il prossimo candidato.
+>
+> ✅ **R-3 è chiusa lato DB** il 2026-08-15 (§8.3-bis): restano le due `SELECT`
+> da sostituire nel repository, che sono lavoro BE.
 >
 > 🔵 **Lato DB il cantiere è quasi chiuso**: senza il processo rimborsi in
 > `pagamenti` la Fase D costruirebbe una porta su una stanza che non c'è.
@@ -1431,13 +1435,13 @@ nuovo sui corpi di Fase C.
 
 | | Richiesta | Perché |
 | --- | --- | --- |
-| **R-1** | 🔴 **URGENTE — Rigenerare `error_policies_generated.py`** (`./manage-env.sh genera_error_policies`): i codici nuovi a catalogo dal 2026-08-15 sono **cinque**, non due — `E_FONDO_NON_CORRISPONDE_SORGENTE`, `E_FONDO_SOGLIE_INCOMPLETE` (Fase A), `E_FONDO_ATTO_IMMUTABILE`, `E_FONDO_STATO_NON_AMMESSO`, `E_FONDO_MOTIVO_OBBLIGATORIO` (Fase B). Tutti già presenti in `config.codici_errore` sul DB | Senza, il cancello `test_error_codes_db_policy_guardrail` diventa rosso: **ogni codice che il DB può nominare deve avere la sua classe** |
-| **R-2** | **Mappare il vincolo `chk_emittenti_fiscali_utilities_soglie_coppia`** su `E_FONDO_SOGLIE_INCOMPLETE` via `map_integrity_error`, con il **campo** dichiarato nella voce. 🔵 Con la Fase B se ne aggiungono due, **non urgenti** perché raggiungibili solo dalla strada manuale che il BE non ha ancora: `chk_fondi_source_motivo_obbligatorio` (`23514`) → `E_FONDO_MOTIVO_OBBLIGATORIO` e `uq_fondi_source_atto_vivo_automatico` (`23505`) | Altrimenti chi configura le soglie a metà legge un messaggio di database invece di *quale* soglia manca. Il canale `error.fields` esiste già |
-| **R-3** | **Madre DB per lotto** — `fn_genera_fondi_fattura_lotto(p_lotto_id, p_tipo_fondo_id)` e `fn_applica_fondi_lotto(...)`, con il repository che torna a **una `SELECT` per task** | ~~Oggi le due task fanno **N `cursor.execute` in autocommit**: se il quinto fallisce, i primi quattro restano committati.~~ 🔴 **La motivazione era sbagliata: vedi sotto.** Il DB non può chiuderla da solo — la firma la decide il chiamante |
+| **R-1** | ✅ **FATTO dal BE il 2026-08-15** (verificato: i cinque codici sono in `error_policies_generated.py` con la loro classe, e in `error_messages_fallback.py`). ~~URGENTE — Rigenerare `error_policies_generated.py`~~ (`./manage-env.sh genera_error_policies`): i codici nuovi a catalogo dal 2026-08-15 sono **cinque**, non due — `E_FONDO_NON_CORRISPONDE_SORGENTE`, `E_FONDO_SOGLIE_INCOMPLETE` (Fase A), `E_FONDO_ATTO_IMMUTABILE`, `E_FONDO_STATO_NON_AMMESSO`, `E_FONDO_MOTIVO_OBBLIGATORIO` (Fase B). Tutti già presenti in `config.codici_errore` sul DB | Senza, il cancello `test_error_codes_db_policy_guardrail` diventa rosso: **ogni codice che il DB può nominare deve avere la sua classe** |
+| **R-2** | ✅ **FATTO dal BE il 2026-08-15** (`emittenti_fiscali_service.py`, con i test). ~~Mappare il vincolo `chk_emittenti_fiscali_utilities_soglie_coppia`~~ su `E_FONDO_SOGLIE_INCOMPLETE` via `map_integrity_error`, con il **campo** dichiarato nella voce. 🔵 Con la Fase B se ne aggiungono due, **non urgenti** perché raggiungibili solo dalla strada manuale che il BE non ha ancora: `chk_fondi_source_motivo_obbligatorio` (`23514`) → `E_FONDO_MOTIVO_OBBLIGATORIO` e `uq_fondi_source_atto_vivo_automatico` (`23505`) | Altrimenti chi configura le soglie a metà legge un messaggio di database invece di *quale* soglia manca. Il canale `error.fields` esiste già |
+| **R-3** | ✅ **Madre DB per lotto — parte DB APPLICATA il 2026-08-15** (`20260815-33`…`-35`): `fn_get_scope_fatture_lotto`, `fn_genera_fondi_fattura_lotto(lotto, **codice interno**)`, `fn_applica_fondi_lotto(lotto, **codice interno**)`. 📮 **Resta il consumo lato BE**: il repository torna a **una `SELECT` per task**. Contratto e cosa si cancella: **§8.3-bis** | ~~Oggi le due task fanno **N `cursor.execute` in autocommit**: se il quinto fallisce, i primi quattro restano committati.~~ 🔴 **La motivazione era sbagliata** (il parziale non era possibile sul giro di pipeline). Le due ragioni vere sono altre, e sono emerse scrivendo: la **utility passata non è quella filtrata**, e il giro gira **una volta per fattura invece che per chiave** |
 
-**Stato**: ✅ **R-1** e ✅ **R-2** fatti nello stesso giro del migrate. 🔵 **R-3**
-aperto: è un miglioramento strutturale che non blocca nulla (le firme attuali
-restano valide).
+**Stato**: ✅ **R-1**, ✅ **R-2** (BE, 2026-08-15, verificati nel codice) e ✅
+**R-3 parte DB** (applicata e verde, §8.3-bis). 📮 Resta il **consumo lato
+backend** di R-3 — una sostituzione di due query, non un lavoro.
 
 ⭐ **R-3 NON dipende dalla Fase D, ed è l'unico residuo che non aspetta
 `pagamenti`** (verificato il 2026-08-15): i due insiemi di oggetti sono
@@ -1447,6 +1451,124 @@ dell'atto manuale, che non esistono; i nomi delle madri proposte sono liberi; e
 `E_PIPELINE_SCOPE_INCOMPLETE` è **già a catalogo**, quindi la validazione dello
 scope può spostarsi dentro la funzione DB senza seed aggiuntivi. Si può fare in
 qualunque momento.
+
+---
+
+### 8.3-bis R-3 — la parte DB, **applicata** il 2026-08-15
+
+> ✅ **Applicata** (`migrate` dei tre changeSet `20260815-33` … `-35`, ore 23:01),
+> **puramente additiva**: le funzioni per-scope non sono state toccate, come
+> chiede la specifica. Doc `dbzero` rigenerata e tre `manual/` nuovi.
+>
+> ✅ **Test verdi e `pgtap-baseline.sh vendite` senza regressioni** — corsa fatta
+> da Tid, non da me: qui è riportato l'esito che mi ha dato. La mia unica misura
+> diretta è la prova in transazione annullata **prima** dell'apply
+> (`test-fondi-fattura-lotto.sql` **14/14**).
+
+| File | Oggetto |
+| --- | --- |
+| `20_code/vendite/20260815-33-create-fn-get-scope-fatture-lotto` | `fn_get_scope_fatture_lotto(lotto)` — la **definizione unica** dello scope, guard compresi |
+| `20_code/vendite/20260815-34-create-fn-genera-fondi-fattura-lotto` | `fn_genera_fondi_fattura_lotto(lotto, **codice interno**)` → `(fatture_count, chiavi_count, fondi_creati)` |
+| `20_code/vendite/20260815-35-create-fn-applica-fondi-lotto` | `fn_applica_fondi_lotto(lotto, **codice interno**)` → `(fatture_count, fondi_applicati)` |
+| `db/pgtap/vendite/test-fondi-fattura-lotto.sql` | 14 asserzioni |
+
+#### ⚠️ Tre scostamenti dalla specifica, e perché
+
+La specifica di §8.3 è stata seguita su tutto il resto — firma col **codice
+interno** (il punto centrale: con l'id il backend farebbe comunque una query di
+lookup), nessun `DEFAULT`, lookup + validazione **prima** di scrivere, funzioni
+per-scope intatte. Tre cose sono diverse:
+
+**1. Il ritorno è una tabella, non un `integer`.** La specifica chiedeva la sola
+somma. Le madri tornano anche `fatture_count` e — la generazione — `chiavi_count`,
+che è **la prova osservabile** del guadagno vero di R-3 (vedi sotto): senza quel
+numero, «una volta per chiave» non è verificabile da un test. Per il chiamante
+non cambia niente — `SELECT * FROM …` resta una query sola — e i contatori
+servono al log della task run.
+
+**2. Lo scope legge `f.utility_id`, non `COALESCE(fl.utility_id, ba.utility_id)`.**
+🔴 La specifica chiede di conservare il `COALESCE` **e** di validare
+`utility_id IS NULL` → le due cose non stanno insieme: `ba.utility_id` è `NOT
+NULL`, quindi dopo il `COALESCE` quel campo non è mai nullo e **la validazione
+non può scattare**. È esattamente ciò che succede oggi in Python
+(`list_fatture_scope_by_lotto` controlla il valore già coalescizzato). Data la
+validazione, `COALESCE(f.utility_id, …)` ≡ `f.utility_id`: toglierlo non cambia
+il comportamento, lo rende **onesto** — e allinea il valore passato alla colonna
+che le funzioni filtrano davvero.
+
+**3. Il pgTAP è un file nuovo** (`test-fondi-fattura-lotto.sql`) e non una
+sezione di `test-fondi-fattura.sql`: le fixture del lotto sono cinque tabelle in
+più e il file esistente ne ha già venti asserzioni. Stessa scelta fatta per
+`test-fondi-fattura-governo.sql`. Coperti tutti e sei i casi chiesti dalla
+specifica, più tre che ne discendono.
+
+#### 🔴 La motivazione di R-3 non era l'atomicità: sono altre due, e sono peggiori
+
+L'atomicità era già chiusa dal BE con lo statement set-based. Scrivendo la madre
+sono emerse **due ragioni vere**, entrambe invisibili da fuori.
+
+**1. La utility passata non è la utility filtrata.** Lo scope Python la ricava da
+`COALESCE(fl.utility_id, ba.utility_id)` — dal **lotto** o dal **billing
+account** — mentre `fn_genera_fondi_fattura_source` filtra su `f.utility_id`, la
+colonna **della fattura**. Se divergono, la funzione non trova niente e **non fa
+niente**: nessun errore, nessun log, nessun fondo.
+
+> ✅ Misurato su dev il 2026-08-15: 12 fatture in lotto, **zero** divergenze e
+> zero utility mancanti. La correzione è per «può succedere» —
+> `vendite.fatture.utility_id` è nullable, ed è esattamente il motivo per cui il
+> Python faceva `COALESCE`.
+
+**2. Il giro gira una volta per FATTURA invece che per CHIAVE.** La query Python
+fa `SELECT DISTINCT f.id, …`: con l'id in proiezione il `DISTINCT` non deduplica
+niente. Ma la generazione **non riceve una fattura, riceve una chiave**, e ogni
+chiamata riesamina tutte le sorgenti di quella chiave. Su un lotto di 500 fatture
+dello stesso emittente sono **500 scansioni identiche**, di cui 499 non creano
+nulla perché l'atto unico le blocca.
+
+⭐ Non è un'ottimizzazione: è la conseguenza di aver messo la chiave nel posto
+giusto. *Chi itera sulle fatture per passare una chiave sta iterando
+sull'oggetto sbagliato.* Il pgTAP lo asserisce con tre fatture e **due** chiavi.
+
+#### ⚠️ Un cambio di comportamento da conoscere
+
+Una fattura di lotto **senza `utility_id`** adesso **ferma il giro**
+(`E_PIPELINE_SCOPE_INCOMPLETE`), mentre prima il `COALESCE` la riempiva e il giro
+proseguiva senza fare niente. È la scelta fail-closed, e per il fondo è quella
+giusta: *una fattura emessa senza il fondo che le spettava non se ne accorge
+nessuno, un task rosso sì.*
+
+#### 📮 Cosa deve fare il BE (perimetro `backend/`)
+
+```python
+# run_genera_fondi_source_lotto_task  →  lotto_id, tipo_fondo_codice_interno
+SELECT * FROM vendite.fn_genera_fondi_fattura_lotto(%s, %s)
+
+# run_applica_fondi_lotto_task
+SELECT * FROM vendite.fn_applica_fondi_lotto(%s, %s)
+```
+
+* **si cancellano** `get_tipo_fondo_fattura_id`, `_SCOPE_FATTURE_LOTTO_SQL`
+  (venti righe di SQL di dominio in un repository) e la validazione Python
+  `list_fatture_scope_by_lotto` — stesso codice errore, stesso momento, ma una
+  regola sola;
+* ⚠️ **la validazione Python non è equivalente a quella nuova**: controlla la
+  utility **già coalescizzata**, che non può essere nulla. Cancellandola non si
+  perde un controllo, se ne guadagna uno che scatta davvero;
+* ⚠️ **il registry non cambia**: `pipeline_task_registry_impl` continua a puntare
+  a `genera_fondi_source_lotto_default` / `applica_fondi_lotto_default`;
+* 🔵 i contatori di ritorno (`fatture_count`, `chiavi_count`, `fondi_creati` /
+  `fondi_applicati`) sono utili nel log della task run: oggi il BE ignora il
+  valore di ritorno;
+* ⚠️ va adeguato `apps/vendite/tests/services/test_pipeline_step_executor.py`,
+  che nomina le funzioni con la firma vecchia.
+
+#### ⚠️ Nota di numerazione, e vale per il prossimo giro
+
+I tre changeSet erano nati `-24`/`-25`/`-26` e sono stati **rinumerati a
+`-33`/`-34`/`-35`**: il merge del branch backend ha portato nel repository i
+changeSet `-24` … `-32` di un altro cantiere, **già applicati** su questo
+database. La numerazione `NN` è **globale per data fra tutte le cartelle**, e va
+riverificata **dopo ogni merge**, non solo all'inizio del lavoro.
 
 #### 📮 R-3 — la specifica per il team DB *(scritta il 2026-08-15, sera)*
 
@@ -1806,6 +1928,8 @@ l'adeguamento dei due esistenti.
 
 | Data | Cosa |
 | --- | --- |
+| 2026-08-15 (notte, 14) | ✅ **R-3 parte DB APPLICATA e verde.** Migrate dei tre changeSet `20260815-33`…`-35` (ore 23:01), **test verdi e baseline `vendite` senza regressioni** — corsa fatta da Tid, non da me. Doc `dbzero` rigenerata e scritti i tre `manual/` nuovi (`fn_get_scope_fatture_lotto`, `fn_genera_fondi_fattura_lotto`, `fn_applica_fondi_lotto`). ⚠️ **Verificato prima di generare la doc che gli oggetti fossero davvero vivi**: è la lezione di §8.2-quinquies applicata al giro dopo — changelog e catalogo si controllano, non si danno per allineati. 📮 **Resta il consumo lato BE**: due `SELECT` al posto dei due statement set-based, e spariscono `get_tipo_fondo_fattura_id`, `_SCOPE_FATTURE_LOTTO_SQL` e `list_fatture_scope_by_lotto`. ⭐ Con questo **lato DB il cantiere è chiuso tranne la Fase D**, che non è rimandata per scelta ma perché costruirebbe una porta su una stanza che `pagamenti` non ha ancora |
+| 2026-08-15 (notte, 13) | ⭐ **R-3, parte DB: SCRITTA** (*«potremmo chiudere R-3, che dici?»*) — tre changeSet `20260815-33`…`-35` puramente additivi (`fn_get_scope_fatture_lotto`, `fn_genera_fondi_fattura_lotto`, `fn_applica_fondi_lotto`) e un pgTAP nuovo da **14** asserzioni, verde in transazione annullata. ⚠️ **Da applicare.** ✅ Verificato nel codice che il BE ha chiuso **R-1** e **R-2**. Seguita la specifica di §8.3, **codice interno compreso** — che era il suo punto centrale. 🔴 **Le due ragioni vere di R-3 sono emerse solo scrivendo, e nessuna delle due era nel piano**: **(1)** lo scope passa `COALESCE(lotto, billing account)` come utility mentre la generazione filtra su `f.utility_id` — una divergenza non produce un errore ma un **no-op muto**, e la validazione Python non può accorgersene perché controlla il valore *già* coalescizzato (`ba.utility_id` è NOT NULL: quel ramo non scatta mai); **(2)** il `SELECT DISTINCT` ha l'id della fattura in proiezione, quindi non deduplica: la generazione gira **una volta per fattura invece che per chiave**, e su un lotto di 500 fatture dello stesso emittente sono 500 scansioni identiche di cui 499 bloccate dall'atto unico. *Chi itera sulle fatture per passare una chiave sta iterando sull'oggetto sbagliato.* ⚠️ **Cambio di comportamento**: una fattura di lotto senza utility adesso **ferma il giro** invece di lasciarlo proseguire a vuoto. ⚠️ **Rinumerati da `-24`…`-26`**: il merge del branch backend ha portato changeSet `-24`…`-32` di un altro cantiere, già applicati — la numerazione NN è globale per data e va riverificata **dopo ogni merge**, non solo a inizio lavoro |
 | 2026-08-15 (notte, 12) | 📮 **Scritta la specifica di R-3 per il team DB** (§8.3), su richiesta di Tid. 🔴 **Due correzioni al piano emerse scrivendola.** **(1)** R-3 **non** cambia la firma delle funzioni esistenti: le due madri le **incapsulano** lasciandole intatte, quindi il passo DB e' **puramente additivo** e cade il vincolo «DB e repository nello stesso lotto» — che veniva da D-4/BE-1, dove a cambiare erano le firme *esistenti*, cosa che §8.2-bis ha poi deciso di non fare. Il DB puo' applicare da solo, il BE passa sopra dopo. **(2)** Le madri prendono il **codice interno** del tipo fondo, non l'id come diceva la riga R-3: il parametro che arriva dalla configurazione del task e' una **stringa**, quindi con l'id il backend dovrebbe comunque fare prima una query di lookup — e «una SELECT per task», che e' il senso di R-3, non si otterrebbe. ✅ Verificato che R-3 **non ha prerequisiti di seed**: `E_PARAMETRO_INVALIDO`, `E_PIPELINE_SCOPE_INCOMPLETE` e `E_TIPO_FONDO_NOT_FOUND` sono tutti e tre gia' a catalogo. Specificati corpo (guard → lookup → **validazione scope prima di scrivere** → applicazione set-based), ritorno, sei asserzioni pgTAP e il cambio BE che segue |
 | 2026-08-15 (notte, 11) | 🧹 **Un secondo brief è stato scritto e poi CANCELLATO, su richiesta di Tid** (*«che senso ha averne 2 che ripetono quasi le stesse cose?»*) — e aveva ragione: `brief-db-fondo-fattura-prerequisiti-be-fe.md` teneva aperto un secondo documento sullo **stesso cantiere ancora aperto**, cioè due sedi destinate a divergere al primo aggiornamento. ⭐ La regola che ne esce: *un brief separato si giustifica quando cambia il **soggetto** (modello / changelog / piano), non quando cambia il **lato** che lavora — BE e FE non sono un altro cantiere, sono l'altra metà di questo.* Contenuto innestato qui dove viveva già il suo argomento: colonna **Stato** sulla tabella dei passi §8.3, riquadro sul **seed `ui.lista_*`** (il pezzo che il piano non aveva previsto), premessa di **R-3** corretta, due voci `map_integrity_error` in attesa della Fase D |
 | 2026-08-15 (notte, 10) | 🔴 **Due difetti del brief stesso, trovati rispondendo a «il cantiere e' chiuso?».** **(1)** Il punto 1 di **§5** dichiarava ancora **vivo** il tampone `importo_target > 0` — cioe' esattamente la frase che §8.1 F-5 e §8.6 additano come *l'errore piu' grave*, e che il cantiere incassi aveva gia' barrato. Il documento si contraddiceva su un dato che avrebbe spento **meta' del meccanismo**: chi fosse arrivato da §5 avrebbe implementato il filtro sbagliato leggendo un brief che altrove lo vieta. Barrato e annotato (non cancellato: e' il tampone su cui il piano ha lavorato sei giorni, e chi ritrova quella frase altrove deve poter risalire al perche' e' caduta). **(2)** La testata dava la **Fase F** per pendente: e' invece **fatta** — era dichiarativa, e le sue due meta' sono nel corpo del brief incassi (§1-bis «la bilancia regge da se'» e §4 «incassato ≠ postato», centri non-cassa esclusi). ⭐ La lezione e' quella di §8.5 applicata ai documenti: *un brief lungo va riletto dall'inizio quando lo si dichiara chiuso — le sezioni vecchie non si aggiornano da sole, e una decisione ritirata a valle resta viva a monte* |
