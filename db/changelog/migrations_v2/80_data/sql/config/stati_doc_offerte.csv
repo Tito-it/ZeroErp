@@ -2,6 +2,6 @@ id,codice_interno,codice,descrizione,attivo,ordine,meta,data_insert,user_insert,
 1,BOZZA,BOZZA,Bozza,t,10,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,APERTO,f,PREVIEW,f,f
 2,EMESSA,EMESSA,Emessa,t,20,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,IN_ATTESA,f,ARCHIVE,t,f
 3,ACCETTATA,ACCETTATA,Accettata,t,30,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,IN_CORSO,f,ARCHIVE,f,f
-4,RIFIUTATA,RIFIUTATA,Rifiutata,t,40,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,CHIUSO,t,ARCHIVE,f,f
-5,SUPERATA,SUPERATA,Superata,t,50,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,CHIUSO,t,ARCHIVE,f,f
-6,ANNULLATA,ANNULLATA,Annullata,t,60,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,CHIUSO,t,ARCHIVE,f,t
+4,RIFIUTATA,RIFIUTATA,Rifiutata,t,40,"{""nessuna_azione_key"":""vendite.offerte.stato_info.rifiutata""}",2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,CHIUSO,t,ARCHIVE,f,f
+5,SUPERATA,SUPERATA,Superata,t,50,"{""nessuna_azione_key"":""vendite.offerte.stato_info.superata""}",2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,CHIUSO,t,ARCHIVE,f,f
+6,ANNULLATA,ANNULLATA,Annullata,t,60,"{""nessuna_azione_key"":""vendite.offerte.stato_info.annullata""}",2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,CHIUSO,t,ARCHIVE,f,t
