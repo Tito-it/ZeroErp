@@ -20,10 +20,18 @@
 -- Assert DINAMICO: copre qualunque vista `vendite.vw_dash_%` presente ORA nel
 -- DB, quindi si estende da solo alle viste future della famiglia.
 --
+-- ⚠️ E LE VISTE FUORI DAL PREFISSO? Il `LIKE` e' comodo ma non e' un criterio:
+-- il criterio vero e' «legge tabelle in RLS». Una vista che lo fa senza
+-- chiamarsi vw_dash_* resta fuori dalla rete, e il buco non si vedrebbe. Per
+-- questo l'elenco ha una coda ESPLICITA, che va allungata quando ne nasce una:
+--   · vw_lotti_gruppi_serviti (20260815-26) — legge fatture, fatture_righe e
+--     commesse_attivita, tutte con RLS, ed e' il cancello di scope del
+--     consuntivo dei giri (fn_esito_gruppi_giro).
+--
 -- Indice test (1..2):
---   1) La famiglia vw_dash_* e' presente (guard: senza, "0 trasgressori"
---      passerebbe a vuoto se il LIKE non matchasse nulla)
---   2) Nessuna vista vw_dash_* e' priva di security_invoker=on
+--   1) La famiglia presidiata e' presente (guard: senza, "0 trasgressori"
+--      passerebbe a vuoto se il filtro non matchasse nulla)
+--   2) Nessuna vista presidiata e' priva di security_invoker=on
 --      (in fallimento il messaggio NOMINA le viste trasgressori)
 -- ------------------------------------------------------------
 
@@ -47,6 +55,9 @@ SELECT plan(2);
 
 -- ============================================================
 -- 1) Guard: la famiglia esiste
+--    ⚠️ La soglia sale da 12 a 13 con la coda esplicita: se un giorno
+--    vw_lotti_gruppi_serviti sparisse, il conteggio lo direbbe invece di
+--    lasciare la rete piu' larga del pescato.
 -- ============================================================
 SELECT cmp_ok(
   (SELECT count(*)::integer
@@ -54,9 +65,10 @@ SELECT cmp_ok(
      JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = 'vendite'
       AND c.relkind = 'v'
-      AND c.relname LIKE 'vw_dash\_%'),
-  '>=', 12,
-  '1. Famiglia vendite.vw_dash_* presente nel DB (>= 12 viste)'
+      AND (c.relname LIKE 'vw_dash\_%'
+           OR c.relname IN ('vw_lotti_gruppi_serviti'))),
+  '>=', 13,
+  '1. Famiglia presidiata presente nel DB (vw_dash_* + coda esplicita, >= 13 viste)'
 );
 
 -- ============================================================
@@ -75,10 +87,11 @@ SELECT is(
        ON ot.option_name = 'security_invoker'
     WHERE n.nspname = 'vendite'
       AND c.relkind = 'v'
-      AND c.relname LIKE 'vw_dash\_%'
+      AND (c.relname LIKE 'vw_dash\_%'
+           OR c.relname IN ('vw_lotti_gruppi_serviti'))
       AND COALESCE(ot.option_value::boolean, false) = false),
   NULL,
-  '2. Tutte le viste vendite.vw_dash_* hanno security_invoker=on'
+  '2. Tutte le viste presidiate (vw_dash_* + coda esplicita) hanno security_invoker=on'
 );
 
 SELECT * FROM finish();

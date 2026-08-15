@@ -1,0 +1,173 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# La dashboard riceve anche la DESCRIZIONE dello stato commessa, non solo il
+#   codice interno. Richiesta BE §8.3 di
+#   brief-db-emittibilita-visibile-e-sbloccabile (2026-08-15).
+#
+# 🟠 IL PROBLEMA, in una riga. La vista espone `commessa_stato_codice_interno`
+#   (`BOZZA`, `PRONTA_FATTURAZIONE`) e nient'altro. A video pero' va la
+#   descrizione, e un codice interno dentro un'interfaccia inglese — «The job
+#   order is in state BOZZA» — e' il sintomo che la decodifica e' finita nel
+#   posto sbagliato.
+#
+# ℹ️ PERCHE' LA FA IL DB E NON IL BACKEND. Il BE si e' messo un
+#   `LEFT JOIN vendite.stati_commessa` nel repository per cavarsela: funziona,
+#   e infatti la richiesta era arancione e non rossa. Ma quel JOIN **la vista
+#   lo fa gia'** — e' da li' che arrivano `emittibile` e `codice_interno` — e
+#   una seconda risoluzione della stessa cosa e' la forma di duplicazione che
+#   il §7.1 di quel brief ha gia' dovuto estrarre una volta, sul guard di
+#   transizione. Costo aggiuntivo: **zero colonne di JOIN**, la tabella e' gia'
+#   nella FROM.
+#
+# ⚠️ `COALESCE(descrizione, codice)` E NON `descrizione` NUDA. La colonna e'
+#   nullable a DDL (`stati_commessa.descrizione`), anche se il seed la valorizza
+#   su tutte e sei le righe. Un campo di **display** che puo' tornare NULL
+#   produce una cella vuota a video, che l'operatore legge come «non lo so»
+#   invece che come «manca il dato di catalogo». `codice` e' NOT NULL ed e' la
+#   forma leggibile del mutabile: e' il ripiego giusto.
+#
+# ⚠️ `WITH (security_invoker = on)` VA RI-SPECIFICATO. La reloption non compare
+#   in `pg_get_viewdef`, quindi un `CREATE OR REPLACE` che la omette la **azzera
+#   in silenzio** — e questa famiglia di viste la usa per il filtro di scope
+#   emittente (fix V-1). Sarebbe una regressione di sicurezza invisibile.
+#
+# ℹ️ Nessun DROP: `CREATE OR REPLACE VIEW` sa **aggiungere** colonne, purche'
+#   in coda e senza toccare le esistenti. La nuova va infatti per ultima, dopo
+#   `commessa_stato_codice_interno`. I tre dipendenti
+#   (`vw_dash_competenza_gruppi`, `_mensile`, `_gruppi_riepilogo`) nominano le
+#   colonne una per una e non si accorgono di nulla.
+#
+# ⚠️ ORDINE DI NUMERAZIONE. Il changeSet successivo (`20260815-25`) propaga la
+#   colonna su `vw_dash_competenza_gruppi`, che legge QUESTA vista: deve avere
+#   numero piu' alto, perche' l'autogen ordina per NN.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260815-24-update-vw-dash-competenza-attivita-stato-descrizione-mctit.yaml
+
+  - changeSet:
+      id: 20260815-24-update-vw-dash-competenza-attivita-stato-descrizione
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vw_dash_competenza_attivita: + commessa_stato_descrizione, la decodifica
+        di display dello stato commessa accanto al codice interno che gia'
+        esponeva. Richiesta BE §8.3: a video va la descrizione, e il JOIN su
+        stati_commessa la vista lo fa gia'. COALESCE su codice perche'
+        descrizione e' nullable e un campo di display non deve mai essere vuoto.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_views
+                  WHERE schemaname = 'vendite'
+                    AND viewname = 'vw_dash_competenza_attivita'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM information_schema.columns
+                  WHERE table_schema = 'vendite'
+                    AND table_name = 'stati_commessa'
+                    AND column_name = 'descrizione'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_attivita
+              WITH (security_invoker = on) AS
+               SELECT ca.competenza_mese,
+                  co.id AS commessa_id,
+                  co.codice::text AS commessa_codice,
+                  ca.id AS commessa_attivita_id,
+                  co.emittente_soggetto_ruolo_id,
+                  s.ragione_sociale_completa AS cliente_display,
+                  ca.articolo_id,
+                  ca.data_attivita,
+                  ca.quantita,
+                  ca.stato_approvazione,
+                  ca.stato_emissione,
+                      CASE
+                          WHEN ca.stato_emissione::text <> 'EMESSA'::text AND ca.stato_approvazione::text <> 'APPROVATA'::text THEN 'DA_APPROVARE'::text
+                          WHEN ca.stato_emissione::text <> 'EMESSA'::text THEN 'DA_EMETTERE'::text
+                          WHEN af.fattura_riga_id IS NULL THEN 'EMESSA_NON_FATTURATA'::text
+                          ELSE 'FATTURATA'::text
+                      END::character varying AS stadio,
+                  COALESCE(ca.prezzo_snapshot, 0::numeric) * ca.quantita AS valore,
+                  af.data_insert AS data_emissione,
+                      CASE
+                          WHEN af.id IS NULL THEN NULL::boolean
+                          ELSE date_trunc('month'::text, af.data_insert)::date > ca.competenza_mese
+                      END AS emessa_in_ritardo,
+                  af.sospesa,
+                  af.posticipa_al,
+                  f.id AS fattura_id,
+                  af.fattura_riga_id,
+                  f.anno AS fattura_anno,
+                  f.serie AS fattura_serie,
+                  f.numero AS fattura_numero,
+                  sdf.codice_interno AS stato_fattura_codice_interno,
+                  sdf.codice AS stato_fattura_codice,
+                      CASE
+                          WHEN fr.id IS NULL THEN NULL::numeric
+                          WHEN COALESCE(fr.qta, 0::numeric) = 0::numeric THEN 0::numeric
+                          ELSE fr.imponibile_riga * af.quantita / fr.qta
+                      END::numeric(18,6) AS valore_fatturato,
+                  COALESCE(f.critical, false) AS fattura_critical,
+                  lf.lotto_id,
+                  ca.sorgente_tipo_id,
+                  ca.sorgente_uid,
+                  ca.tipo_movimento,
+                  vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) AS gruppo_key,
+                  sc.emittibile AS commessa_emittibile,
+                  sc.codice_interno AS commessa_stato_codice_interno,
+                  -- Decodifica di DISPLAY dello stato commessa (BE §8.3). Il
+                  -- JOIN su stati_commessa c'era gia' — e' quello che alimenta
+                  -- le due colonne qui sopra — quindi la colonna e' gratis, e
+                  -- il repository puo' smettere di rifare la stessa risoluzione.
+                  -- COALESCE: descrizione e' nullable, codice e' NOT NULL. Un
+                  -- campo di display vuoto si legge come «non lo so».
+                  COALESCE(sc.descrizione, sc.codice) AS commessa_stato_descrizione
+                 FROM vendite.commesse co
+                   JOIN vendite.stati_commessa sc ON sc.id = co.stato_commessa_id
+                   JOIN vendite.commesse_attivita ca ON ca.commessa_id = co.id
+                   LEFT JOIN vendite.attivita_fatturabili af ON af.commessa_attivita_id = ca.id
+                   LEFT JOIN vendite.fatture_righe fr ON fr.id = af.fattura_riga_id
+                   LEFT JOIN vendite.fatture f ON f.id = fr.fattura_id
+                   LEFT JOIN config.stati_doc_fiscale sdf ON sdf.id = f.stato_doc_fiscale_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = co.billing_account_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                   LEFT JOIN LATERAL ( SELECT flf.lotto_id
+                         FROM vendite.fatturazione_lotti_fatture flf
+                        WHERE flf.fattura_id = f.id
+                        ORDER BY flf.lotto_id DESC
+                       LIMIT 1) lf ON true
+                   CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids(NULLIF(current_setting('app.current_user_id'::text, true), ''::text)::integer) AS sr_ids) escope
+                WHERE (escope.sr_ids IS NULL OR (co.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))) AND sc.codice_interno::text <> 'ANNULLATA'::text AND ca.stato_emissione::text <> 'ANNULLATA'::text AND (ca.stato_approvazione::text <> 'RIFIUTATA'::text OR ca.stato_emissione::text = 'EMESSA'::text);
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN vendite.vw_dash_competenza_attivita.commessa_stato_descrizione IS
+              'Descrizione di DISPLAY dello stato della commessa (COALESCE su codice: descrizione e'' nullable a catalogo, e un campo di display vuoto si legge come «non lo so»). Aggiunta 2026-08-15 su richiesta BE §8.3 di brief-db-emittibilita-visibile-e-sbloccabile: la lista mostra la descrizione, mentre commessa_stato_codice_interno resta la chiave su cui si scrivono le condizioni. La convenzione del progetto e'' che le liste ricevano i campi di display gia'' decodificati dal DB, mai risolti lato client; il JOIN su stati_commessa la vista lo faceva gia'' per emittibile e codice_interno, quindi questa colonna non costa nulla e toglie dal repository una seconda risoluzione della stessa cosa.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

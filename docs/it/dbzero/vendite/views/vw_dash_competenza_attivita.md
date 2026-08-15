@@ -52,7 +52,8 @@ SELECT ca.competenza_mese,
     ca.tipo_movimento,
     vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) AS gruppo_key,
     sc.emittibile AS commessa_emittibile,
-    sc.codice_interno AS commessa_stato_codice_interno
+    sc.codice_interno AS commessa_stato_codice_interno,
+    COALESCE(sc.descrizione, sc.codice) AS commessa_stato_descrizione
    FROM (((((((((((vendite.commesse co
      JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
      JOIN vendite.commesse_attivita ca ON ((ca.commessa_id = co.id)))

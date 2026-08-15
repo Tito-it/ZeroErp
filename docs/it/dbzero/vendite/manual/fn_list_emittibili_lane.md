@@ -166,4 +166,45 @@ gruppo con righe di tipo diverso produce N lotti. La funzione le restituisce
 tutte — ed è il motivo per cui l'esito verso il backend è una **lista** di
 `lotto_id`, non uno solo.
 
+---
+
+### ⚠️ `gruppi_coperti` è una previsione, non un consuntivo (rev 2026-08-15)
+
+Dice quali gruppi la discovery **si aspetta** di coprire. Fra quel momento e
+l'esecuzione della pipeline le righe di un gruppo possono essere prese da un
+altro giro: la pipeline esce senza errore e senza lotto, e l'esito legge pieno
+successo mentre quel gruppo non è stato fatturato.
+
+Per sapere cosa un giro ha fatturato **davvero** c'è
+[`fn_esito_gruppi_giro(lotti)`](/dbzero/vendite/funzioni/fn_esito_gruppi_giro),
+che misura a consuntivo. Le due cose convivono: questa serve *prima*, quella
+serve *dopo*.
+
+⚠️ Il campo si calcola **sempre**, anche nel giro di massa. Costo misurato: la
+chiave vale ~5 µs a chiamata, cioè ~0,5 s ogni 100.000 righe candidate. E la
+mitigazione «ovvia» — calcolare la chiave una volta sola in una `LATERAL` invece
+che due volte fra argomento e `ORDER BY` — **non esiste**: il parser deduplica
+già le due espressioni quando sono identiche, e le due forme misurano uguale.
+Scritto perché è controintuitivo e qualcuno la riproverà.
+
+---
+
+### ⚠️ Il tetto `p_limit`, e le due risposte opposte (rev 2026-08-15)
+
+`p_limit` (default 1000, massimo 10000) limita le **corsie**, non le righe. Se
+ne taglia una, i gruppi che stavano dentro spariscono dal risultato — e a valle,
+dove il non servito si ricava per differenza, diventerebbero *«questo gruppo non
+è fatturabile»*: una diagnosi falsa su un gruppo che era solo oltre il taglio.
+
+Il rimedio è **asimmetrico**, ed è il punto:
+
+| | tetto toccato |
+|---|---|
+| giro di **massa** (`p_gruppi` `NULL`) | tronca in silenzio — lì è una valvola di sicurezza, e «cosa c'è da fare» ammette una risposta parziale |
+| giro **mirato** (`p_gruppi` valorizzato) | **solleva** `E_FATTURAZIONE_MIRATA_TRONCATA` — il perimetro è nominale, e troncarlo significa non aver risposto |
+
+È la stessa distinzione che il backend applica dal 2026-08 a «zero lotti su N
+gruppi chiesti». ⚠️ Sollevando, il chiamante non riceve **nessuna** riga: non
+esiste lo stato «mezza risposta più un errore».
+
 {% include-markdown "signature-core.md" %}

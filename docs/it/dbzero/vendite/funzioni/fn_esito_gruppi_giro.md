@@ -1,0 +1,184 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_esito_gruppi_giro.md" %}
+# ⚙️ Funzione `fn_esito_gruppi_giro`
+
+```sql
+CREATE FUNCTION fn_esito_gruppi_giro(p_lotto_ids bigint[])
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION vendite.fn_esito_gruppi_giro(p_lotto_ids bigint[])
+ RETURNS TABLE(gruppo_key text, richiesto boolean, esito text, n_attivita_fatturate bigint, n_attivita_residue bigint, lotti_serventi bigint[], lotti_altrui bigint[])
+ LANGUAGE plpgsql
+ STABLE
+AS $function$
+DECLARE
+  v_lotti    bigint[];
+  v_mancanti bigint[];
+BEGIN
+  -- =========================================================
+  -- Scopo: dire, a CONSUNTIVO di un giro di fatturazione, quali
+  --   gruppi fatturabili hanno prodotto righe fatturate davvero,
+  --   quali no, e quali sono stati fatturati altrove.
+  --   L'ancoraggio sono i LOTTI del giro: sopravvivono al giro,
+  --   quindi la domanda si puo' rifare il giorno dopo.
+  -- brief-db-emittibilita-visibile-e-sbloccabile §8.2.
+  --
+  -- Perche' non basta gruppi_coperti della lane: quello e' una
+  --   PREVISIONE fatta alla discovery. Fra la previsione e
+  --   l'esecuzione le righe di un gruppo possono essere prese da
+  --   un altro giro; la pipeline esce senza errore e senza lotto,
+  --   e l'esito legge pieno successo mentre un gruppo e' rimasto
+  --   fuori. E' il difetto silenzioso, il peggiore dei tre.
+  -- =========================================================
+
+  -- Guard parametro: id assente o non valido e' errore di
+  -- programmazione, non condizione di dominio (AGENTS.md).
+  IF p_lotto_ids IS NULL OR cardinality(p_lotto_ids) = 0 THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite', 'fn_esito_gruppi_giro', 'E_PARAMETRO_INVALIDO',
+      jsonb_build_object('parametro', 'p_lotto_ids'),
+      NULL::uuid,
+      'p_lotto_ids obbligatorio e non vuoto: i lotti del giro sono l''ancoraggio del consuntivo');
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM unnest(p_lotto_ids) x WHERE x IS NULL OR x <= 0) THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite', 'fn_esito_gruppi_giro', 'E_PARAMETRO_INVALIDO',
+      jsonb_build_object('parametro', 'p_lotto_ids', 'valore', to_jsonb(p_lotto_ids)),
+      NULL::uuid,
+      'p_lotto_ids: ogni id deve essere > 0');
+  END IF;
+
+  -- 🔒 CANCELLO DI SCOPE. fatturazione_lotti ha la RLS,
+  -- fatturazione_lotti_gruppi no: se si rispondesse su un
+  -- perimetro dimezzato, un lotto invisibile diventerebbe un
+  -- «gruppo non servito» — un falso allarme con l'aria di un
+  -- dato. Si pretende che i lotti siano TUTTI visibili.
+  -- «Non esiste» e «non lo puoi vedere» rispondono uguale di
+  -- proposito: distinguerli sarebbe una fuga di informazione.
+  SELECT array_agg(l.id ORDER BY l.id)
+    INTO v_lotti
+    FROM vendite.fatturazione_lotti l
+   WHERE l.id = ANY (p_lotto_ids);
+
+  SELECT array_agg(x ORDER BY x)
+    INTO v_mancanti
+    FROM unnest(p_lotto_ids) x
+   WHERE NOT (x = ANY (COALESCE(v_lotti, ARRAY[]::bigint[])));
+
+  IF v_mancanti IS NOT NULL THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite', 'fn_esito_gruppi_giro', 'E_LOTTO_NON_TROVATO',
+      jsonb_build_object('lotti_mancanti', to_jsonb(v_mancanti),
+                         'lotti_richiesti', to_jsonb(p_lotto_ids)),
+      NULL::uuid,
+      array_to_string(v_mancanti, ', '));
+  END IF;
+
+  RETURN QUERY
+  WITH richiesti AS (
+    -- Il PERIMETRO del giro. set_lotto_gruppi scrive l'intera
+    -- tupla richiesta su OGNI lotto, quindi basta leggerla:
+    -- il richiesto e' un dato persistito, non un parametro che
+    -- il chiamante ci ripassa (e che potrebbe essere la
+    -- previsione al posto della misura).
+    -- ⚠️ JOIN su fatturazione_lotti = stesso cancello RLS del
+    -- servito: la tabella dei gruppi non ne ha.
+    SELECT DISTINCT g.gruppo_key
+      FROM vendite.fatturazione_lotti_gruppi g
+      JOIN vendite.fatturazione_lotti l ON l.id = g.lotto_id
+     WHERE g.lotto_id = ANY (v_lotti)
+  ),
+  serviti AS (
+    -- Il FATTO, dalla vista che lo misura. Sede unica: se un
+    -- giorno cambia cosa vuol dire «servito», cambia li'.
+    SELECT s.gruppo_key,
+           sum(s.n_attivita_fatturate)::bigint                AS n_attivita_fatturate,
+           array_agg(DISTINCT s.lotto_id ORDER BY s.lotto_id) AS lotti_serventi
+      FROM vendite.vw_lotti_gruppi_serviti s
+     WHERE s.lotto_id = ANY (v_lotti)
+     GROUP BY s.gruppo_key
+  ),
+  universo AS (
+    -- Richiesti UNION serviti: su un giro mirato il servito e'
+    -- contenuto nel richiesto, ma su un giro di MASSA il
+    -- perimetro non esiste e l'unico insieme di riferimento
+    -- sensato e' quello che il giro ha fatto.
+    SELECT r.gruppo_key FROM richiesti r
+    UNION
+    SELECT s.gruppo_key FROM serviti s
+  ),
+  righe AS (
+    -- Contesto delle righe dei gruppi in gioco: quante restano
+    -- non emesse, e su quali ALTRI lotti risultano fatturate.
+    -- Una passata sola su commesse_attivita, con i salti in
+    -- avanti in LEFT JOIN: la chiave costa ~5 µs a riga e non
+    -- va pagata due volte.
+    SELECT vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) AS gruppo_key,
+           ca.id AS commessa_attivita_id,
+           ca.stato_emissione,
+           -- ⚠️ L'id arriva da fatturazione_lotti, NON da
+           -- fatturazione_lotti_fatture: quella tabella la RLS
+           -- non ce l'ha, e un id restituito da li' sarebbe
+           -- fuori dal cancello che questa funzione dichiara
+           -- di applicare. Il LEFT JOIN conserva la semantica —
+           -- una riga senza fattura resta e conta nel residuo —
+           -- ma un lotto non visibile esce come NULL invece che
+           -- come identificativo.
+           l.id AS lotto_id
+      FROM vendite.commesse_attivita ca
+      LEFT JOIN vendite.attivita_fatturabili af       ON af.commessa_attivita_id = ca.id
+      LEFT JOIN vendite.fatture_righe fr              ON fr.id = af.fattura_riga_id
+      LEFT JOIN vendite.fatturazione_lotti_fatture flf ON flf.fattura_id = fr.fattura_id
+      LEFT JOIN vendite.fatturazione_lotti l           ON l.id = flf.lotto_id
+     WHERE vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id)
+           IN (SELECT u.gruppo_key FROM universo u)
+  ),
+  contesto AS (
+    SELECT x.gruppo_key,
+           -- Solo NON_EMESSA, senza riapplicare i criteri della
+           -- lane: il PERCHE' una riga non e' candidata lo dice
+           -- fn_diagnostica_gruppi_fatturabili. Qui serve sapere
+           -- se e' rimasto qualcosa, non perche'.
+           count(DISTINCT x.commessa_attivita_id)
+             FILTER (WHERE (x.stato_emissione)::text = 'NON_EMESSA')::bigint AS n_attivita_residue,
+           array_agg(DISTINCT x.lotto_id ORDER BY x.lotto_id)
+             FILTER (WHERE x.lotto_id IS NOT NULL
+                       AND NOT (x.lotto_id = ANY (v_lotti)))                 AS lotti_altrui
+      FROM righe x
+     GROUP BY x.gruppo_key
+  )
+  SELECT u.gruppo_key,
+         (r.gruppo_key IS NOT NULL)                                          AS richiesto,
+         CASE
+           -- L'ordine dei rami E' la regola, e non e' commutabile:
+           -- il residuo viene PRIMA di «fatturato altrove», o un
+           -- gruppo con vecchie fatture e nuovo lavoro fermo
+           -- verrebbe archiviato come gia' sistemato.
+           WHEN COALESCE(s.n_attivita_fatturate, 0) > 0 THEN 'SERVITO'
+           WHEN COALESCE(c.n_attivita_residue, 0)   > 0 THEN 'NON_SERVITO'
+           WHEN c.lotti_altrui IS NOT NULL             THEN 'FATTURATO_ALTROVE'
+           ELSE 'NON_SERVITO'
+         END::text                                                           AS esito,
+         COALESCE(s.n_attivita_fatturate, 0)::bigint                         AS n_attivita_fatturate,
+         COALESCE(c.n_attivita_residue, 0)::bigint                           AS n_attivita_residue,
+         s.lotti_serventi,
+         c.lotti_altrui
+    FROM universo u
+    LEFT JOIN richiesti r ON r.gruppo_key = u.gruppo_key
+    LEFT JOIN serviti   s ON s.gruppo_key = u.gruppo_key
+    LEFT JOIN contesto  c ON c.gruppo_key = u.gruppo_key
+   -- Ordine DETERMINISTICO: chi confronta due esiti (il FE, un
+   -- test) non deve vedere differenze che non esistono.
+   ORDER BY u.gruppo_key;
+END;
+$function$
+
+COMMENT ON FUNCTION vendite.fn_esito_gruppi_giro(p_lotto_ids bigint[])
+IS 'CONSUNTIVO di un giro di fatturazione, un gruppo fatturabile per riga: SERVITO (almeno un''attivita'' finita su una fattura di questi lotti), NON_SERVITO (no, e restano righe non emesse: e'' il caso su cui si agisce), FATTURATO_ALTROVE (no, non resta nulla da emettere, e le righe risultano fatturate da lotti diversi da questi — il «lavoro rubato da un altro giro», che non e'' un errore ma andava potuto nominare). Risponde alla richiesta §8.2 di brief-db-emittibilita-visibile-e-sbloccabile. ⭐ Prende SOLO i lotti: i gruppi richiesti sono gia'' persistiti su vendite.fatturazione_lotti_gruppi (set_lotto_gruppi scrive l''intera tupla su OGNI lotto del giro), quindi richiesti e serviti sono ENTRAMBI misurati e l''invarianza «richiesti = serviti + non serviti» regge per costruzione. Un parametro p_gruppi_richiesti avrebbe riaperto la porta a passare la previsione (gruppi_coperti) al posto della misura. 🔒 Cancello RLS: la catena e'' asimmetrica (fatturazione_lotti_gruppi e fatturazione_lotti_fatture non hanno RLS, fatturazione_lotti / fatture / fatture_righe / commesse_attivita si''), quindi i lotti sono validati PRIMA — uno non visibile solleva E_LOTTO_NON_TROVATO invece di produrre un falso «non servito» — e il richiesto si legge attraverso fatturazione_lotti. «Non esiste» e «non lo puoi vedere» rispondono uguale di proposito. ⚠️ n_attivita_residue non e'' decorativo: senza, un gruppo con vecchie righe fatturate altrove e nuovo lavoro fermo verrebbe classificato FATTURATO_ALTROVE, cioe'' archiviato come sistemato; l''ordine dei rami del CASE e'' la regola. Conta le sole righe NON_EMESSA, senza riapplicare i criteri della lane: il PERCHE'' una riga non sia candidata lo dice vendite.fn_diagnostica_gruppi_fatturabili. Giro di MASSA (nessun perimetro persistito): restituisce i serviti con richiesto=false, perche'' l''unico insieme di riferimento sensato e'' quello che il giro ha fatto. STABLE, sola lettura. Costo: la chiave vale ~5 µs a riga candidata (misurato), ed e'' una lettura su richiesta.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

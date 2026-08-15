@@ -103,5 +103,20 @@
     "additionalDirectories": [
       "/home/tid/apps/ZeroErp/docs/it/dev/work-in-progress"
     ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$CLAUDE_PROJECT_DIR/scripts/guardrail_no_db_migrate.py\"",
+            "statusMessage": "Guardrail migrazioni DB",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
   }
 }

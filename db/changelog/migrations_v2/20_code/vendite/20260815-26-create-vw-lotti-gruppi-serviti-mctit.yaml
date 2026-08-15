@@ -1,0 +1,164 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Quali gruppi fatturabili un lotto ha SERVITO davvero. Il FATTO, misurato a
+#   consuntivo. Prima meta' della richiesta BE §8.2 di
+#   brief-db-emittibilita-visibile-e-sbloccabile.
+#
+# 🔴 IL PROBLEMA, in una riga. `gruppi_coperti` (20260815-02) e' una
+#   **previsione**: dice quali gruppi la discovery *pensa* che una terna
+#   coprira'. Fra la previsione e il fatto c'e' una finestra in cui il lavoro
+#   puo' sparire — le righe di un gruppo vengono prese da un altro giro, o
+#   smettono di essere candidate — e la pipeline esce **senza errore e senza
+#   lotto** per quel gruppo. Risultato: `falliti = 0`,
+#   `gruppi_non_coperti = []`, e l'esito legge pieno successo mentre un gruppo
+#   non e' stato fatturato.
+#
+#   E' la stessa forma di difetto che `20260815-02` e' nato per togliere —
+#   silenziosa, e quindi peggiore di un errore — solo spostata di un passo piu'
+#   in la'.
+#
+# ⭐ COSA HA RESO LA CURA SEMPLICE: il dato c'e' gia'.
+#   `attivita_fatturabili.commessa_attivita_id` e' **UNIQUE** (1:1 con
+#   `commesse_attivita`) e `fattura_riga_id` chiude la catena
+#   `lotto -> fatture -> fatture_righe -> attivita -> gruppo_key`. Non serve
+#   nessuna tabella nuova, nessun write path nella pipeline, nessun lock — e
+#   infatti il §8.2 il lock non lo chiedeva.
+#
+# ⚠️ `fatturazione_lotti_gruppi` NON risponde, e il BE lo aveva gia' scritto:
+#   registra il **permesso** («questo lotto puo' lavorare questi gruppi»), non
+#   il servito. Un gruppo nel perimetro che non produce nulla lascia la riga
+#   esattamente com'era. Quella tabella e' l'insieme dei *richiesti*, e serve
+#   nel changeSet successivo per il confronto — non qui.
+#
+# ── ⚠️ LA CHIAVE VIENE DA `commesse_attivita`, NON DA `attivita_fatturabili` ─
+#   Le due tabelle hanno **entrambe** le colonne `sorgente_tipo_id`,
+#   `sorgente_uid`, `commessa_id`: sarebbe stato piu' corto costruire la chiave
+#   dalle gemelle di `attivita_fatturabili`, che sono gia' nel join. E' proprio
+#   per questo che non si fa. La chiave della lane, quella di
+#   `vw_dash_competenza_gruppi` e quella dei filtri di emissione mirata si
+#   calcolano tutte su `commesse_attivita`: costruirla altrove significherebbe
+#   che un giorno due copie potranno dare risposte diverse, e il confronto
+#   «servito vs richiesto» smetterebbe di essere confrontabile.
+#
+# ── ℹ️ PERCHE' NON C'E' L'IMPORTO ────────────────────────────────────────
+#   Il valore pro-quota di una riga di attivita' — `imponibile_riga * qta_af /
+#   qta_riga`, perche' N attivita' possono finire su UNA riga di fattura — e'
+#   una formula che vive gia' in `vw_dash_competenza_attivita.valore_fatturato`.
+#   Riportarla qui sarebbe la terza copia di una regola di calcolo per una
+#   colonna che nessuno ha chiesto. La domanda del §8.2 e' «quali gruppi hanno
+#   prodotto righe fatturate», non «per quanto»: si risponde a quella.
+#
+# ── ℹ️ GRANA `(lotto_id, gruppo_key, commessa_id)` ───────────────────────
+#   La commessa c'e' perche' `gruppo_key`, per una riga con documento sorgente,
+#   vale `<codice_interno>:<uid>` e **non contiene la commessa**: nulla vieta in
+#   linea di principio che lo stesso documento alimenti righe su due commesse.
+#   Oggi non succede — `commesse_sorgenti` ha `UNIQUE (sorgente_tipo_id,
+#   sorgente_uid)` e sul DB di sviluppo i gruppi multi-commessa sono zero — ma
+#   nessun vincolo lo impedisce su `commesse_attivita`, e
+#   `vw_dash_competenza_gruppi` la commessa la tiene gia' nel proprio GROUP BY.
+#   Tenerla costa nulla e toglie di mezzo un collasso silenzioso.
+#
+# ── ⚠️ E' UNA MISURA VIVA, NON UN LOG IMMUTABILE ─────────────────────────
+#   Se un lotto torna a DRAFT e le fatture spariscono, questa vista smette di
+#   vedere quel gruppo come servito. **E' corretto** — la fattura non c'e' piu'
+#   — ma va saputo: non e' il registro di cosa un giro fece quel giorno, e' la
+#   risposta odierna alla domanda «di questo perimetro, cosa risulta fatturato».
+#   Il §8.2 chiedeva proprio la seconda: «l'operatore apre l'esito anche il
+#   giorno dopo».
+#
+# ── 🔒 SCOPE ─────────────────────────────────────────────────────────────
+#   `security_invoker = on`. `fatturazione_lotti_fatture` e
+#   `attivita_fatturabili` non hanno RLS, ma `fatture`, `fatture_righe`,
+#   `commesse_attivita` e `commesse` si': il JOIN su quelle e' il cancello, e
+#   passa per `vendite.fatture` di proposito (e' la RLS di testata del ciclo
+#   fatture). ⚠️ Chi consuma questa vista deve sapere che il **richiesto** —
+#   `fatturazione_lotti_gruppi` — RLS non ne ha: confrontare i due insiemi senza
+#   mettere un cancello anche sul richiesto produce falsi «non servito». Il
+#   cancello e' scritto nel changeSet successivo, dove il confronto avviene.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260815-26-create-vw-lotti-gruppi-serviti-mctit.yaml
+
+  - changeSet:
+      id: 20260815-26-create-vw-lotti-gruppi-serviti
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vw_lotti_gruppi_serviti: quali gruppi fatturabili ogni lotto ha davvero
+        servito, misurato dalla catena lotto->fatture->righe->attivita. E' il
+        consuntivo che il §8.2 chiedeva, contrapposto a gruppi_coperti che e'
+        una previsione. Chiave da fn_build_gruppo_fatturabile_key su
+        commesse_attivita, unica fonte. Misura viva, non log immutabile.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'vendite'
+                    AND p.proname = 'fn_build_gruppo_fatturabile_key'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_indexes
+                  WHERE schemaname = 'vendite'
+                    AND indexname = 'uq_attivita_fatturabili_commessa_attivita'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_lotti_gruppi_serviti
+              WITH (security_invoker = on) AS
+               SELECT flf.lotto_id,
+                  -- ⚠️ Chiave costruita su commesse_attivita, MAI sulle colonne
+                  -- gemelle di attivita_fatturabili: e' la stessa fonte che usano
+                  -- la lane, vw_dash_competenza_gruppi e i filtri di emissione
+                  -- mirata. Due copie della chiave renderebbero incomparabili il
+                  -- servito e il richiesto, che e' l'unica cosa che qui serve.
+                  vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) AS gruppo_key,
+                  ca.commessa_id,
+                  count(DISTINCT ca.id)::bigint AS n_attivita_fatturate,
+                  count(DISTINCT f.id)::bigint AS n_fatture
+                 FROM vendite.fatturazione_lotti_fatture flf
+                   -- Il JOIN su fatture non serve solo al conteggio: e' il
+                   -- cancello RLS (fatturazione_lotti_fatture non ne ha).
+                   JOIN vendite.fatture f ON f.id = flf.fattura_id
+                   JOIN vendite.fatture_righe fr ON fr.fattura_id = f.id
+                   -- fattura_riga_id valorizzato = la riga E' stata fatturata.
+                   -- N attivita' possono condividere UNA riga di fattura.
+                   JOIN vendite.attivita_fatturabili af ON af.fattura_riga_id = fr.id
+                   JOIN vendite.commesse_attivita ca ON ca.id = af.commessa_attivita_id
+                GROUP BY flf.lotto_id,
+                  vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id),
+                  ca.commessa_id;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON VIEW vendite.vw_lotti_gruppi_serviti IS
+              'CONSUNTIVO: quali gruppi fatturabili ciascun lotto ha davvero servito, cioe'' per quali gruppi esiste almeno un''attivita'' con fattura_riga_id valorizzato su una fattura del lotto. Grana (lotto_id, gruppo_key, commessa_id). Risponde alla richiesta §8.2 di brief-db-emittibilita-visibile-e-sbloccabile: vendite.fn_list_emittibili_lane.gruppi_coperti e'' una PREVISIONE fatta alla discovery, e fra quella e l''esecuzione il lavoro puo'' sparire (righe prese da un altro giro) senza che nessuno lo dica — la pipeline esce senza errore e senza lotto, e l''esito legge pieno successo. ⚠️ vendite.fatturazione_lotti_gruppi NON risponde a questa domanda: registra il PERMESSO (quali gruppi un lotto puo'' lavorare), non il servito. ⚠️ La chiave arriva da vendite.fn_build_gruppo_fatturabile_key calcolata su commesse_attivita, mai sulle colonne gemelle di attivita_fatturabili: e'' la stessa fonte della lane e di vw_dash_competenza_gruppi, e senza quella identita'' il confronto servito/richiesto non sarebbe un confronto. ⚠️ E'' una MISURA VIVA, non un log immutabile: se un lotto torna a DRAFT e le fatture spariscono, il gruppo smette di risultare servito — corretto, ma non e'' il registro storico di cosa fece quel giro. Nessun importo per scelta: il valore pro-quota di una riga e'' una formula che vive gia'' in vw_dash_competenza_attivita.valore_fatturato, e la domanda del §8.2 e'' quali gruppi, non per quanto. security_invoker=on: il cancello di scope e'' il JOIN su vendite.fatture / fatture_righe / commesse_attivita, che la RLS ce l''hanno.';
+
+              COMMENT ON COLUMN vendite.vw_lotti_gruppi_serviti.commessa_id IS
+              'La commessa e'' nella grana perche'' gruppo_key, per una riga con documento sorgente, vale ''<codice_interno>:<uid>'' e NON contiene la commessa: nulla vieta in linea di principio che lo stesso documento alimenti righe su due commesse. Oggi non accade (commesse_sorgenti ha UNIQUE su (sorgente_tipo_id, sorgente_uid) e in sviluppo i gruppi multi-commessa sono zero) ma nessun vincolo lo impedisce su commesse_attivita, e vw_dash_competenza_gruppi la commessa la tiene gia'' nel proprio GROUP BY.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_lotti_gruppi_serviti;

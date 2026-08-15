@@ -118,9 +118,11 @@
 - [fn_ddt_push_diagnosi](manual/fn_ddt_push_diagnosi.md) — `vendite.fn_ddt_push_diagnosi(...)` risponde a **una sola domanda**, per ogni riga di un DDT: *perché questa riga non è inviabile a commessa?* Restituisce `motivo = NULL` se la riga è eleggibile, altrimenti **il** motivo di esclusione fra sette possibili.
 - [fn_ddt_riga_componenti_init](manual/fn_ddt_riga_componenti_init.md)
 - [fn_ddt_riga_componenti_preview](manual/fn_ddt_riga_componenti_preview.md)
+- [fn_diagnostica_gruppi_fatturabili](manual/fn_diagnostica_gruppi_fatturabili.md) — (latest review 15-08-2026)
 - [fn_documento_lineage](manual/fn_documento_lineage.md) — `vendite.fn_documento_lineage(p_tipo_id, p_uid, p_direzione)` è il **traversal ricorsivo** del grafo di genealogia, pensato per il pannello **"Passaggi"** del dettaglio documento: ritorna la **catena completa** degli archi attraversati, con lo stato di ogni tappa e `livello`/`ordine` per il rendering a timeline/albero.
 - [fn_elimina_fattura_da_lotto](manual/fn_elimina_fattura_da_lotto.md) — (latest review 04-08-2026)   Toglie **una sola fattura** da un lotto **cancellandola**, senza toccare il lotto né le altre fatture. È il verbo per il caso in cui un documento è sbagliato e va rifatto, mentre il resto del giro è sano.
 - [fn_emit_attivita_fatturabili_da_commessa](manual/fn_emit_attivita_fatturabili_da_commessa.md) — (latest review 16-06-2026) Esegue il pull da `commesse_attivita` verso `attivita_fatturabili` (step 0 pipeline attività fatturabili).
+- [fn_esito_gruppi_giro](manual/fn_esito_gruppi_giro.md) — (latest review 15-08-2026)
 - [fn_espandi_listino_versione](manual/fn_espandi_listino_versione.md)
 - [fn_fail_lotto_task_run](manual/fn_fail_lotto_task_run.md) — Chiude un task run in errore impostando `task_stato = ERRORE`, codice e messaggio.
 - [fn_fondo_fattura_proponibile](manual/fn_fondo_fattura_proponibile.md) — (latest review 15-08-2026)
@@ -312,6 +314,7 @@
 - [vw_documento_lineage_nodi](manual/vw_documento_lineage_nodi.md) — `vendite.vw_documento_lineage_nodi` è la **dimensione nodo** del grafo di genealogia dei documenti vendite (brief-db-lineage-documenti-vendite): **una riga per documento** delle 8 testate-nodo (preventivo, offerta, ordine, contratto, DDT, fattura, commessa, reso), con la **chiave nativa polimorfa** e lo **stato/fase normalizzati**.
 - [vw_fattura_righe_esposte](manual/vw_fattura_righe_esposte.md) — Produce **come il documento va rappresentato**, a partire dalle righe che lo compongono.
 - [vw_fondi_fattura_da_decidere](manual/vw_fondi_fattura_da_decidere.md) — (latest review 15-08-2026)
+- [vw_lotti_gruppi_serviti](manual/vw_lotti_gruppi_serviti.md) — (latest review 15-08-2026)
 - [vw_offerte_commerciali_lista](manual/vw_offerte_commerciali_lista.md) — (rev 2026-06-03 — rev1)
 - [vw_ordini_lista](manual/vw_ordini_lista.md) — (rev 2026-06-03 — rev1)
 - [vw_ordini_riepilogo_iva_dettaglio](manual/vw_ordini_riepilogo_iva_dettaglio.md) — (latest review 05-06-2026)
