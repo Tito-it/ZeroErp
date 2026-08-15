@@ -1173,3 +1173,89 @@ la suite tutta verde, e perché la seconda metà riguarda un vostro strumento.
 | Il gemello `fn_check_ordine_annullabile` ha la lacuna **speculare**: un DDT figlio **annullato** blocca ancora l'annullamento dell'ordine | Oggi non morde (nessuno dei 9 DDT bloccanti è annullato, misurato) ed è un'altra decisione, sulla stessa forma |
 | I cinque domini **offerta, lotto, reso, contratto, commessa** non emettono affatto `stato_info_key` | Hanno 9 stati chiusi con `meta = {}` (offerta RIFIUTATA/SUPERATA/ANNULLATA, commessa CHIUSA/ANNULLATA, contratto CESSATO/ANNULLATO, reso CONFERMATO/ANNULLATO; lotto non misurato). Per loro la R3 **non è presidiata da nessuna parte**, e servono due cose: la riga nella funzione **e** il seed. ⚠️ Il seed da solo sarebbe dato morto, e vi farebbe diventare rosso il guard i18n senza dare niente all'operatore — l'errore inverso di quello di ieri |
 | La rinomina della proprietà nel `meta` | §12.3, richiede `_PROP_KEY` |
+
+---
+
+## 13. Coda DB — i domini muti (2026-08-11)
+
+> Risposta alla vostra verifica del 2026-08-10: «offerta, lotto, reso, contratto e
+> commessa non emettono affatto il campo — le loro `fn_available_actions_*` non lo
+> espongono, mentre ddt, ordine e preventivo sì». **Confermato e chiuso su quattro
+> domini su cinque.** changeSet `20260811-01` … `-04`, applicati.
+>
+> Avevate ragione anche sul fatto che la decisione §5 **peggiora** la cosa: finché la
+> nota rispondeva alla barra vuota, quei domini si confondevano col comportamento
+> generale; da quando spiega lo stato e compare sempre, erano rimasti gli unici in cui
+> uno stato chiuso non dice niente.
+
+### 13.1 Fatto
+
+| Dominio | Stati seminati | Documenti che ricevono la nota |
+| --- | --- | --- |
+| `contratto` | ANNULLATO, CESSATO | **9** |
+| `reso` | ANNULLATO, CONFERMATO | **9** |
+| `offerta` | ANNULLATA, SUPERATA, RIFIUTATA | **6** |
+| `commessa` | CHIUSA, ANNULLATA | **0** |
+
+**24 documenti su 24** — tutta la popolazione misurata. Zero note sugli stati aperti.
+
+**La vostra stima era giusta**: è davvero una riga. Verificato prima di scrivere —
+tutte e quattro le funzioni **raggiungevano già** la propria tabella di stato con un
+JOIN, quindi nessun JOIN nuovo: una variabile, una colonna nella `SELECT` di testata,
+un campo nel `jsonb_build_object`, gli stessi tre punti dei changeSet di ieri.
+
+### 13.2 Le nove chiavi, e tre avvertenze che contano per i testi
+
+```text
+vendite.contratti.stato_info.cessato        vendite.contratti.stato_info.annullato
+vendite.reso.stato_info.confermato          vendite.reso.stato_info.annullato
+vendite.offerte.stato_info.rifiutata        vendite.offerte.stato_info.superata
+vendite.offerte.stato_info.annullata
+vendite.commesse.stato_info.chiusa          vendite.commesse.stato_info.annullata
+```
+
+Le radici sono quelle che **ciascun dominio già usa nei propri seed**, non scelte da
+noi. Tre cose da sapere prima di scrivere le frasi:
+
+* ⚠️ **`reso` usa `vendite.reso` al singolare**, non `vendite.resi`. Nei locales ci
+  sono entrambe le radici, ma è `vendite.reso` quella che il seed delle transizioni di
+  quel dominio già emette e che il guard già valida lì;
+* ⚠️ **`reso / CONFERMATO` è una chiusura POSITIVA** (fase CHIUSO, `is_abortito` false):
+  il testo non deve suonare come un fallimento. È l'unica delle nove in cui il tono
+  cambia il significato;
+* ⚠️ **`commessa` (entrambi gli stati) e `offerta / RIFIUTATA` non hanno soggetti vivi**:
+  zero documenti. Le celle sono corrette e le pretende la regola del presidio, ma non
+  aspettatevi di vederle a video, e non cercate il difetto quando non compaiono.
+
+### 13.3 🔴 `lotto` è rimasto fuori, ed è una decisione
+
+Non ha una tabella di stato propria: usa **`config.stati_doc_fiscale`, condivisa con
+`vendite.fatture`** (8 FK in tutto). Un testo seminato là dovrebbe essere vero **sia per
+un lotto sia per una fattura** nello stesso stato — e `fn_available_actions_fattura`
+**non esiste**, quindi metà dei consumatori di quel testo non è ancora scritta. Sono
+anche i due soli stati con zero documenti, cioè la parte a valore più basso.
+
+> Il buco vero di quella famiglia non è il lotto: è che **il documento fiscale non ha
+> capability**. Chiuderlo renderebbe il lotto un caso normale invece che speciale, ed è
+> un cantiere a sé.
+
+### 13.4 Il presidio cresce coi domini, e adesso è scritto
+
+Il test 1 di `script/test-capability-motivi-e-nessuna-azione-v1.sql` — «ogni stato in
+fase CHIUSO dichiara la sua chiave» — copriva i **tre** domini che esponevano il campo.
+Ora ne copre **sette**: 19 stati chiusi invece di 10.
+
+⚠️ La lista dei domini è **esplicita nel file**, e accanto c'è scritto perché deve
+crescere insieme alle funzioni: se non cresce, la regola smette di vedere il dominio
+nuovo **restando verde**. È la stessa cecità per costruzione già pagata due volte su
+questo cantiere (§12.5), e la terza volta sarebbe imperdonabile.
+
+### 13.5 Cosa aspettiamo da voi
+
+1. **le nove chiavi** qui sopra, più le dieci del §12.2 se non sono ancora tradotte.
+   Finché mancano, `check_i18n_keys.py` è rosso — ed è voluto;
+2. la **rinomina della prop** negli 8 drawer + `DrawerActionsBar` (§12.3), che resta la
+   sola cosa che tiene il campo invisibile a video;
+3. il **fix del guard i18n** che vi siete offerti di fare (§12.5-bis): non l'esito, che
+   è corretto, ma il messaggio — e il buco vero, che è la chiave presente con **valore
+   vuoto**.

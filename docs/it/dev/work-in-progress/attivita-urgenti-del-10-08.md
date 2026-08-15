@@ -490,7 +490,52 @@ non compare.
 
 ---
 
-## 3. ⏳ DA DECIDERE — i cinque domini muti (slice, misurata l'11-08)
+## 3. ✅ FATTO lato DB (4 domini su 5) — i domini muti
+
+> 🟢 **Deciso e scritto l'11-08.** Scelta di Tid: **i quattro domini con tabella di
+> stato propria**, lasciando `lotto` fuori e dichiarato (§3.2). changeSet
+> `20260811-01` (contratto), `-02` (reso), `-03` (offerta), `-04` (commessa),
+> **provati in transazione, migrate da fare**.
+>
+> | Dominio | Stati seminati | Documenti che ricevono la nota |
+> | --- | --- | --- |
+> | `contratto` | ANNULLATO, CESSATO | **9** |
+> | `reso` | ANNULLATO, CONFERMATO | **9** |
+> | `offerta` | ANNULLATA, SUPERATA, RIFIUTATA | **6** *(RIFIUTATA senza soggetti)* |
+> | `commessa` | CHIUSA, ANNULLATA | **0** ⚠️ nessun soggetto vivo |
+>
+> **24 documenti su 24**: la slice copre tutta la popolazione misurata al §3.1.
+> Zero note sugli stati aperti, verificato.
+>
+> ⚠️ **Su `commessa` il verde non ha misurato niente**: nessuna commessa è oggi in
+> CHIUSA o ANNULLATA. Va fatto lo stesso — la regola del presidio pretende che ogni
+> stato in fase CHIUSO dichiari la chiave, e il giorno in cui la prima commessa si
+> chiude la nota c'è già — ma non aspettarsi di vederlo a video. Stessa cosa per
+> `offerta / RIFIUTATA`.
+>
+> ⚠️ **`reso / CONFERMATO` è una chiusura POSITIVA** (fase CHIUSO, non abortito): il
+> testo non deve suonare come un fallimento. È l'unico dei nove in cui la frase deve
+> stare attenta al tono.
+>
+> **Le nove chiavi i18n**, dalle radici che ciascun dominio già usa nei propri seed
+> (`reso` usa `vendite.reso` al singolare, non `vendite.resi`: sono entrambe nei
+> locales, ma è quella che il guard già valida su quel dominio):
+>
+> ```text
+> vendite.contratti.stato_info.cessato        vendite.contratti.stato_info.annullato
+> vendite.reso.stato_info.confermato          vendite.reso.stato_info.annullato
+> vendite.offerte.stato_info.rifiutata        vendite.offerte.stato_info.superata
+> vendite.offerte.stato_info.annullata
+> vendite.commesse.stato_info.chiusa          vendite.commesse.stato_info.annullata
+> ```
+>
+> **pgTAP**: il test 1 del presidio è stato allargato ai domini nuovi e ora copre
+> **19 stati chiusi in 7 domini** (erano 10 in 3). La lista dei domini è esplicita e
+> il file dice perché deve crescere insieme alle funzioni: se non cresce, la regola
+> smette di vedere il dominio nuovo **restando verde**, che è la cecità per
+> costruzione già pagata due volte su quello stesso file. Suite **12/12**.
+
+### 3.0 Il rilievo che ha aperto la slice
 
 > Il BE ha verificato nel codice, non nel documento, e conferma: **`offerta`,
 > `lotto`, `reso`, `contratto` e `commessa` non emettono affatto il campo**. Aggiunge
