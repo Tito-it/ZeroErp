@@ -8,10 +8,12 @@
 > decisione di dominio già presa. Sono scritte qui perché si riparta da un documento
 > e non dalla memoria.
 >
-> **Stato:** **§1 e §2 chiusi, applicati e committati** — i blocchi in testa a
-> ciascuna sezione dicono cosa è stato fatto e cosa è stato misurato. Resta la metà a
-> video, che è del FE, e il **§3**: una slice nuova, misurata l'11-08 su conferma del
-> BE, che non era in questo documento quando è nato.
+> **Stato:** ✅ **tutto chiuso al 2026-08-15 — §1, §2 e §3, DB e video.** I blocchi
+> in testa a ciascuna sezione dicono cosa è stato fatto e cosa è stato misurato. Il
+> §3 era una slice nuova, misurata l'11-08 su conferma del BE, che non era in questo
+> documento quando è nato: ora è migrata e tradotta come le altre. Resta fuori il
+> solo `lotto`, **dichiarato** e non dimenticato (§4.2), e le voci del §12.6 del
+> brief. Il consuntivo del §0 è la fotografia buona.
 >
 > ⚠️ **Il nome di questo file diceva `11-08` fino a poco fa, ed era sbagliato.**
 > Lo scrivo perché quella data ha già portato fuori strada una volta: il changeSet
@@ -61,21 +63,58 @@ mute a video. Il filtro per nome file è caduto: ora si scandisce ogni CSV di
 `80_data/sql` e decide il contenuto. Il guard vede **100 chiavi emesse dal DB**,
 erano 98.
 
-**Cosa resta**, ed è lavoro DB:
+✅ **E il migrate di `20260811-01`…`-04` è passato**: la slice del §3 è viva. Le
+nove note sono tradotte **e** la funzione le emette — la catena è chiusa da capo a
+fondo su tutti e quattro i domini.
 
-1. **il migrate di `20260811-01`…`-04`**: il §3 è deciso e scritto, i changeSet sono
-   provati in transazione ma il migrate è dichiarato **da fare**. Finché non passa,
-   le nove note sono tradotte ma la funzione non le emette;
-2. le voci dichiarate aperte nel [§12.6 del brief](../work-done/brief-db-vie-uscita-operatore.md#126-cosa-resta-aperto-dichiarato).
+**Cosa resta**: le voci dichiarate aperte nel
+[§12.6 del brief](../work-done/brief-db-vie-uscita-operatore.md#126-cosa-resta-aperto-dichiarato),
+più il `lotto` del §4.2, che è dichiarato fuori e non dimenticato.
 
-> ❓ **Da confermare al team DB.** La doc manuale di
-> [`config.stati_doc_contratti`](../../dbzero/config/manual/stati_doc_contratti.md)
-> dice che il `meta` di quella tabella è gestito **solo da UPDATE SQL dedicati**
-> (`20260430-61`, `20260520-10`) e **non** da `loadUpdateData`, «per evitare
-> sovrascritture». La chiave `vendite.contratti.stato_info.*` è però seminata nel
-> CSV. Se quel mirror davvero non carica `meta`, le due note del contratto restano
-> nel CSV e non arrivano mai al DB — e sarebbero invisibili al test in-app senza che
-> nulla diventi rosso. Va verificato sul vivo, non dedotto.
+### 0.1 Il dubbio sul `meta` dei contratti — chiuso, e vale la pena sapere perché
+
+Sviluppando la parte FE il BE ha sollevato un dubbio: la doc manuale di
+`config.stati_doc_contratti` diceva che il `meta` di quella tabella è gestito **solo
+da UPDATE SQL dedicati** (`20260430-61`, `20260520-10`) e **non** da
+`loadUpdateData`, «per evitare sovrascritture» — quindi le due note del contratto
+sarebbero rimaste nel CSV senza arrivare mai al DB, invisibili al test in-app senza
+che nulla diventasse rosso.
+
+🟢 **Verificato dal DB, e la risposta è no: il mirror carica `meta`.** Misurato su
+tre piani, non dedotto — perché sul solo DB di sviluppo si misura una macchina e non
+la riproducibilità:
+
+| Piano | Esito |
+| --- | --- |
+| Il valore **vivo** | `config.stati_doc_contratti` ha le due note in tabella: CESSATO → `vendite.contratti.stato_info.cessato`, ANNULLATO → `…annullato` |
+| La **funzione** | `fn_available_actions_contratto` non legge più `outgoing_action` |
+| L'**ordine in timeline** | i quattro attori, uno per uno (sotto) |
+
+| changeSet | `runOnChange` | carica `meta` |
+| --- | --- | --- |
+| `20260430-61` (UPDATE SQL) | `false` | no |
+| `20260520-08` (mirror originale) | `true` | **sì** |
+| `20260520-10` (UPDATE SQL) | `false` | no |
+| `20260806-14` (mirror ri-ancorato) | `true` | **sì** |
+
+`20260806-14` è l'ultimo e ri-esegue a ogni migrate: **il CSV vince sia su dev sia
+su un database ricostruito da zero.**
+
+⚠️ **Il timore era fondato come classe di rischio, e non a caso: quella tabella ha
+avuto esattamente quel difetto.** I due UPDATE scrivevano `meta` *dopo* il mirror,
+quindi su dev vinceva il CSV (il mirror ri-esegue) e su un DB da zero vincevano loro
+— due macchine su due versioni della stessa tabella. Chiuso il **2026-08-06** con
+`20260806-14`, cinque giorni prima di questo cantiere, e i due SQL sono stati spenti.
+Quello che tornava in vita in CI era il blocco `meta.outgoing_action` con le chiavi
+i18n **vecchie** (`contratti.azione_*`): un campo morto dal 2026-05-28, ripiego di
+quando i contratti non avevano una tabella di transizioni — nata quel giorno con
+`20260528-04`, e la funzione è passata a leggere quella con `20260528-05`.
+
+> **La cosa utile non è stato il dubbio, è che a farlo venire è stata la doc.**
+> Era stale di due generazioni. Corretta in
+> [`stati_doc_contratti.md`](../../dbzero/config/manual/stati_doc_contratti.md)
+> lasciando la frase vecchia citata e **barrata** col perché: il dubbio tornerà a
+> qualcun altro, e deve trovare la risposta invece della domanda.
 
 ---
 
@@ -303,8 +342,9 @@ la frequenza con cui l'API lo riceve, da mai a qualche volta.
 ## 2. ✅ FATTO lato DB — la nota di stato diventa informazione di stato
 
 > 🟢 **Chiuso lato DB il 2026-08-10** con tre changeSet gemelli:
-> `20260810-04` (preventivo), `-05` (ordine), `-06` (DDT). **Scritti e provati in
-> transazione, NON ancora applicati**: manca il migrate.
+> `20260810-04` (preventivo), `-05` (ordine), `-06` (DDT). **Migrate eseguito lo
+> stesso giorno alle 11:07** (`EXECUTED` in `databasechangelog`, vedi punto 1 in
+> fondo a questo blocco e la tabella del §0).
 >
 > **Cosa fanno**, identico in tutte e tre: la nota non è più subordinata alla lista
 > vuota (`v_nessuna_azione` e il suo `NOT EXISTS` escono come codice morto, insieme
@@ -337,7 +377,11 @@ la frequenza con cui l'API lo riceve, da mai a qualche volta.
 > L'asimmetria (`meta.nessuna_azione_key` → campo `stato_info_key`) è scritta due
 > volte in ogni funzione: nel commento di revisione e accanto alla `SELECT` che legge
 > la proprietà. **Rinominarla è una slice a sé**, e costa una riga di `_PROP_KEY` più
-> le 11 celle dei tre CSV.
+> le celle dei CSV. ⚠️ **Il preventivo è cresciuto**: quando fu scritto erano 11
+> celle su 3 CSV, dopo la slice del §3 sono **20 celle su 7 CSV** (`preventivi` 4,
+> `ordini` 4, `ddt` 3, `offerte` 3, `contratti` 2, `reso` 2, `stati_commessa` 2).
+> Chi la prende in mano conti quelle, non queste — e noti che il settimo file **non**
+> si chiama `stati_doc_*`.
 >
 > **pgTAP: 12/12 verde** con le funzioni nuove. Due cose sono cambiate nel presidio,
 > e non in silenzio:
@@ -496,6 +540,10 @@ scrivono «la chiave è seminata solo su ordini (2) e DDT (2)». Da ieri sera è
 Quindi il punto ② del rilievo di ieri **è già chiuso** per questi tre domini: non
 va rifatto. Restano gli altri.
 
+🟢 **Chiuso il 2026-08-15 per quattro dei cinque — vedi §3.** Quanto segue è la
+diagnosi che ha aperto la slice, tenuta com'era perché dice *perché* servivano due
+cose e non una. Il `lotto` resta l'unico muto, dichiarato al §4.2.
+
 🔴 **I cinque domini che non emettono affatto il campo.** `offerta`, `lotto`,
 `reso`, `contratto`, `commessa`: le loro `fn_available_actions_*` non espongono
 `nessuna_azione_key` per niente. Con la nuova regola resteranno **muti**, e per
@@ -527,12 +575,19 @@ non compare.
 
 ---
 
-## 3. ✅ FATTO lato DB (4 domini su 5) — i domini muti
+## 3. ✅ FATTO — DB migrato e note a video (4 domini su 5) — i domini muti
 
-> 🟢 **Deciso e scritto l'11-08.** Scelta di Tid: **i quattro domini con tabella di
-> stato propria**, lasciando `lotto` fuori e dichiarato (§3.2). changeSet
-> `20260811-01` (contratto), `-02` (reso), `-03` (offerta), `-04` (commessa),
-> **provati in transazione, migrate da fare**.
+> 🟢 **Deciso e scritto l'11-08, migrato e tradotto il 15-08.** Scelta di Tid: **i
+> quattro domini con tabella di stato propria**, lasciando `lotto` fuori e dichiarato
+> (§3.2). changeSet `20260811-01` (contratto), `-02` (reso), `-03` (offerta), `-04`
+> (commessa): **migrate eseguito**. Le nove chiavi i18n sono tradotte it/en, quindi i
+> quattro domini non sono più muti — la catena seed → funzione → drawer è chiusa.
+>
+> ⚠️ Il presidio `check_i18n_keys.py` **non vedeva** i due stati della commessa:
+> ammetteva i soli CSV `transizioni_stati_*` e `stati_doc_*`, e la tabella è
+> `vendite.stati_commessa`, senza il segmento `doc`. Segnalava **7 chiavi su 9** e
+> sarebbe tornato verde lasciando due note mute. Il filtro per nome file è stato
+> tolto: decide il contenuto, non la convenzione di battesimo (§0).
 >
 > | Dominio | Stati seminati | Documenti che ricevono la nota |
 > | --- | --- | --- |
@@ -583,6 +638,19 @@ non compare.
 > «spiega lo stato» invece di rispondere allo schermo vuoto, quei cinque domini
 > restano **gli unici in cui uno stato chiuso non dice niente** — un'incoerenza che
 > prima si confondeva col comportamento generale.
+
+---
+
+## 4. L'analisi che ha preceduto il §3 — scansione, costo, il caso `lotto`
+
+> ℹ️ **Questa sezione è l'istruttoria, non lavoro aperto.** È come fu scritta prima
+> della decisione: misura i cinque domini muti, stima il costo e isola il `lotto`
+> come caso a parte. Il §3 è l'esito, il §0 il consuntivo. Si legge qui *perché* la
+> slice ha la forma che ha — in particolare perché il `lotto` è rimasto fuori.
+>
+> ⚠️ Fino al 2026-08-15 questa sezione non aveva un titolo: i §4.1–4.3 pendevano
+> sotto il §3 e sembravano suoi. È il motivo per cui il caso `lotto` (§4.2) era
+> facile da leggere come già risolto dalla slice.
 
 ### 4.1 La scansione, misurata
 
@@ -640,6 +708,19 @@ Le tre strade, in ordine di quanto costano:
   oggi i **tre** domini che espongono il campo. Va allargato ai nuovi, altrimenti la
   regola «ogni stato in fase CHIUSO dichiara la chiave» continuerebbe a non vederli —
   la stessa cecità per costruzione già pagata due volte (§2.4, §12.5 del brief).
+
+🟢 **Consuntivo della stima (2026-08-15).** Pagata com'era scritta: 4 changeSet, 9
+celle di seed, 9 chiavi i18n, test 1 allargato a **19 stati in 7 domini**. **Lato BE
+e cablaggio FE il costo è stato zero** — i `call_jsonb_fn` passano il blob intero e
+tutti e otto i drawer leggevano già la prop.
+
+⚠️ **La stima mancava una voce, ed è quella che è costata.** L'ultimo punto qui
+sopra prevedeva la cecità del **pgTAP** e ha fatto centro, ma nessuno ha previsto la
+cecità dell'**altro** presidio: `check_i18n_keys.py` filtrava i seed per nome file
+(`stati_doc_*`) e la tabella della commessa è `vendite.stati_commessa`. Due chiavi su
+nove non sono mai comparse fra le mancanti. La lezione non è «allargare anche quella
+lista»: è che **un presidio che seleziona per convenzione di nome è cieco per
+costruzione**, e va fatto decidere dal contenuto (§0).
 
 ## 5. Cosa NON è in questo documento
 
