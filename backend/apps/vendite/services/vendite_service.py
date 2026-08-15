@@ -55,6 +55,34 @@ def _validate_pagination(page: int, page_size: int, function_name: str) -> int:
     )
 
 
+# Scopo: Risolve (limit, offset) per le liste dei cruscotti, distinguendo il
+#        giro PAGINATO da quello di EXPORT.
+#
+#        `max_rows` valorizzato = export: si vuole l'intero perimetro in una
+#        volta, quindi limit=max_rows e offset=0. La validazione di
+#        paginazione va SALTATA, non allargata: il tetto di 200 righe per
+#        pagina e' un guard di interfaccia (nessuna DataTable ne chiede di
+#        piu') e allentarlo nel validatore condiviso lo indebolirebbe per
+#        tutte le liste del progetto. Il tetto dell'export e' un altro
+#        (`EXPORT_MAX_ROWS`) e lo presidia il building block di export.
+#
+#        Senza `max_rows` il comportamento e' identico a prima.
+def _paging_o_export(
+    *, page: int, page_size: int, max_rows: int | None, function_name: str,
+) -> tuple[int, int]:
+    if max_rows is not None:
+        ErrorManager.require(
+            max_rows > 0,
+            code="E_VENDITE_VALIDATION",
+            message="Parametro max_rows non valido.",
+            detail="max_rows deve essere un intero positivo.",
+            context={"max_rows": max_rows},
+            function_name=function_name,
+        )
+        return max_rows, 0
+    return page_size, _validate_pagination(page, page_size, function_name)
+
+
 # Scopo: Valida un parametro enum con E_VENDITE_VALIDATION (whitelist del
 # chiamante). Riutilizzabile da tutte le funzioni di lista dello schema vendite.
 def _validate_enum(
@@ -433,6 +461,9 @@ def fn_dash_aperto_documenti(
     order_dir: str | None = None,
     page: int = 1,
     page_size: int = 50,
+    # Export (BB `build_dash_export_response`): valorizzato = perimetro intero
+    # in una volta, paginazione saltata. Assente = lista paginata di sempre.
+    max_rows: int | None = None,
 ) -> dict[str, object]:
     # Filtro ritardo opzionale: se presente deve essere un intero > 0 (una
     # soglia di giorni non-positiva non ha senso; niente normalizzazione
@@ -468,8 +499,9 @@ def fn_dash_aperto_documenti(
         context={"order_dir": order_dir},
         function_name="vendite.vendite_service.fn_dash_aperto_documenti",
     )
-    offset = _validate_pagination(
-        page, page_size, "vendite.vendite_service.fn_dash_aperto_documenti"
+    limit, offset = _paging_o_export(
+        page=page, page_size=page_size, max_rows=max_rows,
+        function_name="vendite.vendite_service.fn_dash_aperto_documenti",
     )
     repository = VenditeRepository()
     results: list[DashApertoDocumentoRow]
@@ -479,7 +511,7 @@ def fn_dash_aperto_documenti(
         ritardo_giorni=ritardo_giorni,
         order_by=order_by,
         order_dir=order_dir,
-        limit=page_size,
+        limit=limit,
         offset=offset,
     )
     return _build_list_response(
@@ -774,6 +806,9 @@ def fn_dash_competenza_commesse(
     order_dir: str | None = None,
     page: int = 1,
     page_size: int = 50,
+    # Export (BB `build_dash_export_response`): valorizzato = perimetro intero
+    # in una volta, paginazione saltata. Assente = lista paginata di sempre.
+    max_rows: int | None = None,
 ) -> dict[str, object]:
     _validate_enum(
         stadio,
@@ -801,8 +836,9 @@ def fn_dash_competenza_commesse(
         context={"order_dir": order_dir},
         function_name="vendite.vendite_service.fn_dash_competenza_commesse",
     )
-    offset = _validate_pagination(
-        page, page_size, "vendite.vendite_service.fn_dash_competenza_commesse"
+    limit, offset = _paging_o_export(
+        page=page, page_size=page_size, max_rows=max_rows,
+        function_name="vendite.vendite_service.fn_dash_competenza_commesse",
     )
     repository = VenditeRepository()
     results: list[DashCompetenzaCommessaRow]
@@ -812,7 +848,7 @@ def fn_dash_competenza_commesse(
         solo_ritardo=solo_ritardo,
         order_by=order_by,
         order_dir=order_dir,
-        limit=page_size,
+        limit=limit,
         offset=offset,
     )
     return _build_list_response(
@@ -838,6 +874,9 @@ def fn_dash_competenza_gruppi(
     order_dir: str | None = None,
     page: int = 1,
     page_size: int = 50,
+    # Export (BB `build_dash_export_response`): valorizzato = perimetro intero
+    # in una volta, paginazione saltata. Assente = lista paginata di sempre.
+    max_rows: int | None = None,
 ) -> dict[str, object]:
     _validate_enum(
         stadio,
@@ -865,8 +904,9 @@ def fn_dash_competenza_gruppi(
         context={"order_dir": order_dir},
         function_name="vendite.vendite_service.fn_dash_competenza_gruppi",
     )
-    offset = _validate_pagination(
-        page, page_size, "vendite.vendite_service.fn_dash_competenza_gruppi"
+    limit, offset = _paging_o_export(
+        page=page, page_size=page_size, max_rows=max_rows,
+        function_name="vendite.vendite_service.fn_dash_competenza_gruppi",
     )
     repository = VenditeRepository()
     competenza = competenza_mese.replace(day=1)
@@ -877,7 +917,7 @@ def fn_dash_competenza_gruppi(
         tipo_gruppo=tipo_gruppo,
         order_by=order_by,
         order_dir=order_dir,
-        limit=page_size,
+        limit=limit,
         offset=offset,
     )
     payload = _build_list_response(
@@ -992,6 +1032,9 @@ def fn_dash_backlog_documenti(
     order_dir: str | None = None,
     page: int = 1,
     page_size: int = 50,
+    # Export (BB `build_dash_export_response`): valorizzato = perimetro intero
+    # in una volta, paginazione saltata. Assente = lista paginata di sempre.
+    max_rows: int | None = None,
 ) -> dict[str, object]:
     _validate_enum(
         area,
@@ -1033,8 +1076,9 @@ def fn_dash_backlog_documenti(
         context={"order_dir": order_dir},
         function_name="vendite.vendite_service.fn_dash_backlog_documenti",
     )
-    offset = _validate_pagination(
-        page, page_size, "vendite.vendite_service.fn_dash_backlog_documenti"
+    limit, offset = _paging_o_export(
+        page=page, page_size=page_size, max_rows=max_rows,
+        function_name="vendite.vendite_service.fn_dash_backlog_documenti",
     )
     repository = VenditeRepository()
     results: list[DashBacklogDocumentoRow]
@@ -1044,7 +1088,7 @@ def fn_dash_backlog_documenti(
         ritardo_giorni=ritardo_giorni,
         order_by=order_by,
         order_dir=order_dir,
-        limit=page_size,
+        limit=limit,
         offset=offset,
     )
     return _build_list_response(
@@ -1065,6 +1109,9 @@ def fn_dash_competenza_errori(
     order_dir: str | None = None,
     page: int = 1,
     page_size: int = 50,
+    # Export (BB `build_dash_export_response`): valorizzato = perimetro intero
+    # in una volta, paginazione saltata. Assente = lista paginata di sempre.
+    max_rows: int | None = None,
 ) -> dict[str, object]:
     # Ordinamento server-side (8° lotto liste, 2026-08-03): whitelist +
     # direzione validate qui, fail-fast 400 — stessa forma delle altre liste
@@ -1089,8 +1136,9 @@ def fn_dash_competenza_errori(
         context={"order_dir": order_dir},
         function_name="vendite.vendite_service.fn_dash_competenza_errori",
     )
-    offset = _validate_pagination(
-        page, page_size, "vendite.vendite_service.fn_dash_competenza_errori"
+    limit, offset = _paging_o_export(
+        page=page, page_size=page_size, max_rows=max_rows,
+        function_name="vendite.vendite_service.fn_dash_competenza_errori",
     )
     repository = VenditeRepository()
     results: list[DashCompetenzaErroreRow]
@@ -1100,7 +1148,7 @@ def fn_dash_competenza_errori(
         ),
         order_by=order_by,
         order_dir=order_dir,
-        limit=page_size,
+        limit=limit,
         offset=offset,
     )
     return _build_list_response(

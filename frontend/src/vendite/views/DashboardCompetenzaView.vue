@@ -14,6 +14,14 @@ import Checkbox from 'primevue/checkbox'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
+import ExportDialog from '../../core/components/ExportDialog.vue'
+import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
+import { useListaAzioni } from '../../core/composables/useListaAzioni'
+import {
+  exportDashboardCompetenzaCommesse,
+  exportDashboardCompetenzaErrori,
+  exportDashboardCompetenzaGruppi,
+} from '../api/dashboardCompetenza'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import DashMesiSidebar from '../../core/components/dash/DashMesiSidebar.vue'
 import DashMeseStepper from '../../core/components/dash/DashMeseStepper.vue'
@@ -326,10 +334,25 @@ function onCommesseSort(event) {
 }
 
 // ------------------------------------------------------- gruppi fatturabili (emissione mirata)
-// Selezione multipla dei gruppi da fatturare. Tutti i gruppi elencati sono
-// lavorabili (la vista espone solo lo stadio richiesto), quindi `selezionabili`
-// coincide con le righe a video: il BB serve per la Column checkbox custom
-// (PrimeVue 4 non ha piu' il predicato per-riga) e per il toggle di riga.
+// Selezione multipla dei gruppi da fatturare. Le righe con TESTATA bloccata
+// (`commessa_emittibile === false`, brief emittibilita' §3.1) restano in lista
+// — «segnalare, non nascondere», decisione Tid — ma NON sono selezionabili:
+// il motore non le fatturerebbe, e spuntarle prometterebbe un lotto che non
+// nasce. Il BB fa il resto: `isSelectable` alimenta il :disabled della
+// checkbox e il guard di toggleRow tiene la selezione coerente comunque.
+function isGruppoEmittibile(row) {
+  // NULL (gruppo senza commessa) non e' un blocco: decide il motore a valle.
+  return row.commessa_emittibile !== false
+}
+const gruppiSelezionabili = computed(() => gruppi.value.filter(isGruppoEmittibile))
+
+// Scopo: elenco leggibile in un toast/conferma — primi 3 per esteso, il resto
+//        riassunto da «…». Stessa soglia del compositore BE
+//        (_MAX_GRUPPI_NEL_MESSAGGIO): un toast non regge un elenco puntato.
+function elencoTroncato(items, fmt, sep = ', ') {
+  return items.slice(0, 3).map(fmt).join(sep) + (items.length > 3 ? '…' : '')
+}
+
 const selezioneGruppi = ref([])
 const {
   isSelected: isGruppoSelezionato,
@@ -337,8 +360,25 @@ const {
   allSelected: tuttiGruppiSelezionati,
 } = useSelezioneToggle({
   selected: selezioneGruppi,
-  selezionabili: gruppi,
+  selezionabili: gruppiSelezionabili,
   rowKey: 'gruppo_key',
+})
+
+// La selezione sopravvive alle pagine e ai reload DI PROPOSITO — ma una riga
+// selezionata da emittibile puo' tornare BLOCCATA a un refresh (un collega
+// riporta la commessa in BOZZA). Senza questo prune resterebbe spuntata con la
+// checkbox disabilitata — il guard del BB rende il de-toggle un no-op — quindi
+// non rimovibile, contata nel pulsante e ri-sottomessa a ogni giro. Il prune
+// toglie dalla selezione le chiavi che la pagina fresca dichiara bloccate: la
+// checkbox si spegne a video, che e' la comunicazione onesta.
+watch(gruppi, (rows) => {
+  const bloccate = new Set(
+    (rows ?? []).filter((r) => !isGruppoEmittibile(r)).map((r) => r.gruppo_key),
+  )
+  if (!bloccate.size) return
+  selezioneGruppi.value = selezioneGruppi.value.filter(
+    (r) => !bloccate.has(r.gruppo_key),
+  )
 })
 
 // ⚠️ `toggleAll`/`anySelected` del BB NON sono riusabili qui, ed e' il punto
@@ -350,14 +390,16 @@ const {
 // pulsante. Qui la selezione e' per chiave di dominio e vive attraverso le
 // pagine, quindi il seleziona-tutto opera SOLO sulla pagina corrente,
 // aggiungendo o togliendo e lasciando intatto il resto.
-const chiaviPagina = computed(() => gruppi.value.map((r) => r.gruppo_key))
+const chiaviPagina = computed(() => gruppiSelezionabili.value.map((r) => r.gruppo_key))
 
 // Selezione parziale DELLA PAGINA (stato indeterminate della checkbox header).
 const alcuniGruppiSelezionati = computed(
   () => !tuttiGruppiSelezionati.value
-    && gruppi.value.some((r) => isGruppoSelezionato(r)),
+    && gruppiSelezionabili.value.some((r) => isGruppoSelezionato(r)),
 )
 
+// Il seleziona-tutto di pagina opera sulle sole righe SELEZIONABILI: le
+// bloccate non entrano nemmeno dal toggle di massa.
 function toggleTuttiGruppi() {
   if (tuttiGruppiSelezionati.value) {
     const daTogliere = new Set(chiaviPagina.value)
@@ -369,7 +411,7 @@ function toggleTuttiGruppi() {
   const gia = new Set(selezioneGruppi.value.map((r) => r.gruppo_key))
   selezioneGruppi.value = [
     ...selezioneGruppi.value,
-    ...gruppi.value.filter((r) => !gia.has(r.gruppo_key)),
+    ...gruppiSelezionabili.value.filter((r) => !gia.has(r.gruppo_key)),
   ]
 }
 
@@ -512,6 +554,72 @@ function fatturaDisplay(row) {
   return `${serie}${numero}/${row.fattura_anno ?? '—'}`
 }
 
+// Azioni di lista (personalizza colonne + esporta). ⚠️ Questa pagina ha TRE
+// liste configurabili e una toolbar sola: le azioni devono agire su quella che
+// l'operatore sta davvero guardando, altrimenti personalizzerebbe o
+// esporterebbe una lista che non ha davanti.
+//
+// La precedenza NON e' «il drill-down, se c'e'»: il pannello ERRORI vive di
+// vita propria (`v-if="nErroriMese > 0"`) e senza stadio selezionato e'
+// l'unica lista a video. Legare le azioni al solo `stadioSelezionato` le
+// faceva sparire proprio li' — difetto misurato in app il 2026-08-15.
+//
+// Ordine: il drill-down quando c'e' (e' cio' su cui l'operatore sta
+// lavorando), altrimenti gli errori se sono a video, altrimenti nessuna lista
+// e nessuna azione.
+const contestoLista = computed(() => {
+  if (stadioSelezionato.value === STADIO_GRUPPI) {
+    return {
+      lista: listaGruppiRef.value,
+      exportFn: exportDashboardCompetenzaGruppi,
+      params: (formato) => ({
+        formato,
+        competenza_mese: competenzaCorrente.value,
+        stadio: STADIO_GRUPPI,
+        tipo_gruppo: gruppiTipo.value,
+        order_by: gruppiOrderBy.value,
+        order_dir: gruppiOrderDir.value,
+      }),
+    }
+  }
+  if (stadioSelezionato.value) {
+    return {
+      lista: listaCommesseRef.value,
+      exportFn: exportDashboardCompetenzaCommesse,
+      params: (formato) => ({
+        formato,
+        competenza_mese: competenzaCorrente.value,
+        stadio: stadioSelezionato.value,
+        solo_ritardo: soloRitardo.value,
+        order_by: commesseOrderBy.value,
+        order_dir: commesseOrderDir.value,
+      }),
+    }
+  }
+  if (nErroriMese.value > 0) {
+    return {
+      lista: listaErroriRef.value,
+      exportFn: exportDashboardCompetenzaErrori,
+      params: (formato) => ({
+        formato,
+        competenza_mese: competenzaCorrente.value,
+        order_by: erroriOrderBy.value,
+        order_dir: erroriOrderDir.value,
+      }),
+    }
+  }
+  return null
+})
+
+const {
+  dirty, exportDialogVisible, exportLoading, onExportConfirm, azioniLista,
+} = useListaAzioni(() => contestoLista.value?.lista, {
+  // Dispatcher: fn e parametri seguono la lista attiva. L'export riceve gli
+  // STESSI filtri e ordinamento della lista a video.
+  exportFn: (params) => contestoLista.value?.exportFn?.(params),
+  getExportParams: (formato) => contestoLista.value?.params?.(formato) ?? { formato },
+})
+
 const pageActions = computed(() => [
   {
     key: 'reload',
@@ -524,6 +632,9 @@ const pageActions = computed(() => [
       if (stadioSelezionato.value) loadDrillDown()
     },
   },
+  // Le due azioni compaiono se c'e' una lista a video su cui agire — drill-down
+  // OPPURE pannello errori (vedi `contestoLista`).
+  ...(contestoLista.value ? azioniLista.value : []),
 ])
 
 // ------------------------------------------------------------------ azioni (Fase A cockpit)
@@ -678,19 +789,43 @@ const { avvia: avviaFatturaGruppi, polling: giroMirataInCorso } = useVerboFattur
     lottiEmessi.value = lotti
     selezioneGruppi.value = []
     const falliti = Number(r.falliti ?? 0)
+    // Gruppi richiesti ma rimasti FUORI dal giro (BE `gruppi_non_serviti`,
+    // rev 2026-08-15): ognuno porta il motivo classificato dalla diagnosi.
+    // Era il caso silenzioso — «2 su 3» sembrava un successo pieno e il
+    // terzo restava fermo senza che nessuno lo cercasse.
+    const nonServiti = Array.isArray(r.gruppi_non_serviti) ? r.gruppi_non_serviti : []
+    // ⚠️ Non e' una catena else-if: falliti e non-serviti possono COESISTERE
+    // (una terna fallita E un gruppo fuori perimetro nello stesso giro), e
+    // subordinare il secondo al primo ricreerebbe proprio il silenzio che
+    // questo esito e' nato per togliere — l'operatore ripara la terna e il
+    // gruppo bloccato torna a sparire senza che nessuno lo nomini.
     if (falliti > 0) {
       notify.warn(t('vendite.dashboard_competenza.fattura_gruppi_esito_parziale', {
         lotti: lotti.length, falliti,
       }))
-    } else if (lotti.length === 0) {
-      // Zero lotti senza errori: nulla era davvero fatturabile (righe gia'
-      // prese da un altro giro, o commessa non piu' emittibile). Va detto —
-      // un «fatto» muto farebbe pensare a una fattura che non esiste.
-      notify.warn(t('vendite.dashboard_competenza.fattura_gruppi_esito_vuoto'))
-    } else {
-      notify.success(t('vendite.dashboard_competenza.fattura_gruppi_esito', {
+    }
+    if (nonServiti.length > 0) {
+      // «N su M, chi manca e perche'»: primi 3 per esteso (un toast non regge
+      // un elenco), il resto riassunto. Il dettaglio pieno resta nell'esito
+      // del job. `dettaglio` e' prosa del BE (come `ultimo_errore.message`,
+      // resa cosi' com'e').
+      notify.warn(t('vendite.dashboard_competenza.fattura_gruppi_esito_non_serviti', {
         lotti: lotti.length,
+        mancanti: nonServiti.length,
+        dettagli: elencoTroncato(nonServiti, (s) => `${s.commessa_codice || s.gruppo_key}: ${s.dettaglio}`, '; '),
       }))
+    }
+    if (falliti === 0 && nonServiti.length === 0) {
+      if (lotti.length === 0) {
+        // Zero lotti senza errori: nulla era davvero fatturabile (righe gia'
+        // prese da un altro giro, o commessa non piu' emittibile). Va detto —
+        // un «fatto» muto farebbe pensare a una fattura che non esiste.
+        notify.warn(t('vendite.dashboard_competenza.fattura_gruppi_esito_vuoto'))
+      } else {
+        notify.success(t('vendite.dashboard_competenza.fattura_gruppi_esito', {
+          lotti: lotti.length,
+        }))
+      }
     }
   },
 })
@@ -706,8 +841,7 @@ function fatturaGruppi(righe) {
     messageParams: {
       n: righe.length,
       attivita: nAttivita,
-      riferimenti: righe.slice(0, 3).map(gruppoRiferimento).join(', ')
-        + (righe.length > 3 ? '…' : ''),
+      riferimenti: elencoTroncato(righe, gruppoRiferimento),
     },
     apiOptions: { gruppi: righe.map((r) => r.gruppo_key) },
   })
@@ -731,14 +865,32 @@ function fatturaGruppi(righe) {
 // sola commessa, che per loro E' il riferimento (il `riferimento` di quelle
 // righe e' infatti il codice commessa).
 function buildGruppoRowActions(row) {
+  // Testata bloccata: «Fattura questo» nasce DISABILITATO col motivo (brief
+  // emittibilita' §3.1 — partiva e non faceva nulla), e compare «Sblocca
+  // commessa»: apre il drawer di governo, dove il verbo «Rendi pronta» e' gia'
+  // esposto data-driven dalle capability (fn_available_actions_commessa,
+  // enabled+reasons dalla stessa funzione pura del guard).
+  const bloccato = !isGruppoEmittibile(row)
   return [
     {
       key: 'fattura_gruppo',
       label: t('vendite.dashboard_competenza.azione_fattura_gruppo'),
       icon: 'pi pi-file-export',
       visible: canFatturare.value,
-      disabled: azioneLoading.value || giroMirataInCorso.value,
+      disabled: azioneLoading.value || giroMirataInCorso.value || bloccato,
+      tooltip: bloccato
+        ? t('vendite.dashboard_competenza.gruppo_bloccato_tooltip', {
+            stato: row.commessa_stato_descrizione ?? row.commessa_stato_codice_interno ?? '?',
+          })
+        : '',
       command: () => fatturaGruppi([row]),
+    },
+    {
+      key: 'sblocca_commessa',
+      label: t('vendite.dashboard_competenza.azione_sblocca_commessa'),
+      icon: 'pi pi-unlock',
+      visible: bloccato && !!row.commessa_id && canFatturare.value,
+      command: () => apriCommessa(row),
     },
     buildApriDocumentoAction({
       area: row.area_documento,
@@ -860,6 +1012,7 @@ onActivated(() => {
       </div>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
+          <ListaConfigStatusTag :dirty="dirty" />
           <ReadonlyBadge />
         </template>
       </PageActionsBar>
@@ -1247,23 +1400,40 @@ onActivated(() => {
                    il predicato per-riga sul selectionMode: la checkbox e'
                    custom (BB useSelezioneToggle). -->
               <template v-if="canFatturare" #selection-header>
+                <!-- Pagina senza righe selezionabili (tutte bloccate): il
+                     toggle sarebbe un no-op silenzioso — meglio spento che
+                     un click che «sembra non fare nulla». -->
                 <Checkbox
                   binary
                   :model-value="tuttiGruppiSelezionati"
                   :indeterminate="alcuniGruppiSelezionati"
+                  :disabled="!gruppiSelezionabili.length"
                   @update:model-value="toggleTuttiGruppi"
                 />
               </template>
               <template v-if="canFatturare" #selection="{ data }">
+                <!-- Riga a testata bloccata: non spuntabile (il guard del BB
+                     la tiene comunque fuori dalla selezione). -->
                 <Checkbox
                   binary
                   :model-value="isGruppoSelezionato(data)"
+                  :disabled="!isGruppoEmittibile(data)"
                   @update:model-value="toggleGruppo(data)"
                 />
               </template>
 
               <template #cell-riferimento="{ data }">
                 <strong>{{ gruppoRiferimento(data) }}</strong>
+                <!-- Segnalare, non nascondere (brief emittibilita' §3.1): la
+                     testata non ammette fatturazione — lucchetto col motivo,
+                     accanto al nome che l'operatore sta gia' leggendo. -->
+                <i
+                  v-if="!isGruppoEmittibile(data)"
+                  class="pi pi-lock app-dash-gruppo-bloccato"
+                  v-tooltip.bottom="t('vendite.dashboard_competenza.gruppo_bloccato_tooltip', {
+                    stato: data.commessa_stato_descrizione ?? data.commessa_stato_codice_interno ?? '?',
+                  })"
+                />
               </template>
               <template #cell-tipo_gruppo="{ data }">
                 <Tag
@@ -1397,5 +1567,13 @@ onActivated(() => {
       :tipo-codice="docDrawerTipo"
       :doc-id="docDrawerId"
       @update:visible="onDocDrawerVisible" />
+
+    <!-- Scelta formato export (CSV/XLSX) del drill-down VISIBILE: il file
+         copia la lista a video, filtri e ordinamento compresi. -->
+    <ExportDialog
+      v-model:visible="exportDialogVisible"
+      :loading="exportLoading"
+      @export="onExportConfirm"
+    />
   </div>
 </template>

@@ -1189,8 +1189,16 @@ class VenditeRepository:
                 g.ha_oneri,
                 g.data_attivita_min,
                 g.data_attivita_max,
-                doc.documento_id
+                doc.documento_id,
+                g.commessa_emittibile,
+                g.commessa_stato_codice_interno,
+                stc.descrizione AS commessa_stato_descrizione
             FROM vendite.vw_dash_competenza_gruppi g
+            -- Decodifica display dello stato commessa (JOIN qui, mai lookup
+            -- client-side): a video va la descrizione, il codice_interno
+            -- resta per la logica. `codice_interno` e' UNIQUE sul catalogo.
+            LEFT JOIN vendite.stati_commessa stc
+                   ON stc.codice_interno = g.commessa_stato_codice_interno
             LEFT JOIN LATERAL (
                 SELECT d.documento_id
                   FROM vendite.vw_dash_fatturazione_documenti d
@@ -1226,6 +1234,9 @@ class VenditeRepository:
                     "data_attivita_min": row[11].isoformat() if row[11] is not None else None,
                     "data_attivita_max": row[12].isoformat() if row[12] is not None else None,
                     "documento_id": None if row[13] is None else int(row[13]),
+                    "commessa_emittibile": None if row[14] is None else bool(row[14]),
+                    "commessa_stato_codice_interno": None if row[15] is None else str(row[15]),
+                    "commessa_stato_descrizione": None if row[16] is None else str(row[16]),
                 }
             )
         return result, total_count

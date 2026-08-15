@@ -159,6 +159,12 @@ class CommessaEmittibileLane(TypedDict):
     utility_id: int
     competenza_mese: date
     total_candidate: int
+    # QUALI gruppi fatturabili la terna copre (rev DB 2026-08-15, brief
+    # emittibilità §5): chiavi da fn_build_gruppo_fatturabile_key, calcolate
+    # SEMPRE dalla funzione (mai NULL «perché non calcolato»). È il dato che
+    # rende parlante l'emissione PARZIALE: richiesti − union(coperti) = chi
+    # resta fuori, senza ricostruire la chiave a valle.
+    gruppi_coperti: list[str]
 
 
 class GruppoDiagnosi(TypedDict):
@@ -736,6 +742,16 @@ class DashCompetenzaGruppoRow(TypedDict):
     # aprono per id). NULL sui gruppi SOURCELESS (oneri di commessa), che un
     # documento non ce l'hanno, e sui documenti fuori scope RLS.
     documento_id: int | None
+    # Emittibilita' della TESTATA (stati_commessa.emittibile via vista, rev DB
+    # 2026-08-04 — brief emittibilita' §3.1): False = la card mostra lavoro che
+    # il motore non fatturerebbe. «Segnalare, non nascondere» (decisione Tid):
+    # la riga resta in lista, marcata, e il verbo nasce disabilitato col
+    # motivo. `commessa_stato_codice_interno` e' il PERCHE' per la LOGICA;
+    # `commessa_stato_descrizione` (JOIN sul catalogo) e' il perche' A VIDEO —
+    # mai il codice interno nell'interfaccia. Tutti NULL senza commessa.
+    commessa_emittibile: bool | None
+    commessa_stato_codice_interno: str | None
+    commessa_stato_descrizione: str | None
 
 
 class DashCompetenzaGruppoTipoRow(TypedDict):

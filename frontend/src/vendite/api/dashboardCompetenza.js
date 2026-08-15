@@ -45,3 +45,28 @@ export function listDashboardCompetenzaGruppi(params = {}) {
 export function listDashboardCompetenzaErrori(params = {}) {
   return api.get('/vendite/dashboard-competenza/errori/', { params })
 }
+
+// Export delle tre liste del cruscotto competenza. Ognuna copia la lista
+// gemella qui sopra: stessi filtri, e colonne/ordine dalla configurazione
+// lista dell'operatore (cataloghi `vendite.dash_competenza_*`).
+// ⚠️ `formato`, non `format`: quest'ultimo e' magic per DRF.
+export function exportDashboardCompetenzaGruppi(params = {}) {
+  return api.get('/vendite/dashboard-competenza/gruppi/export/', {
+    params,
+    responseType: 'blob',
+  })
+}
+
+export function exportDashboardCompetenzaCommesse(params = {}) {
+  return api.get('/vendite/dashboard-competenza/commesse/export/', {
+    params,
+    responseType: 'blob',
+  })
+}
+
+export function exportDashboardCompetenzaErrori(params = {}) {
+  return api.get('/vendite/dashboard-competenza/errori/export/', {
+    params,
+    responseType: 'blob',
+  })
+}

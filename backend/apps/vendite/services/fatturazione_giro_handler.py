@@ -120,12 +120,46 @@ def fatturazione_giro_handler(
             _fallisci_giro_mirato_per_errori_terna(gruppi, summary)
         _fallisci_giro_mirato(gruppi, competenza, summary)
 
+    # Emissione mirata PARZIALE: lotti prodotti, ma qualche gruppo richiesto
+    # non e' entrato in nessuna terna (`gruppi_non_coperti`, misurato alla
+    # discovery — rev DB 2026-08-15). Era il caso PEGGIORE dei tre perche'
+    # l'unico silenzioso: «zero fatture» solleva ed e' un errore parlante,
+    # «2 su 3» sembrava un successo e il lavoro non fatturato restava fermo
+    # senza che nessuno lo cercasse. NON si solleva — i lotti prodotti sono
+    # lavoro vero e il job e' riuscito per la sua parte — ma l'esito porta la
+    # diagnosi per-gruppo (stessa classificazione del giro a vuoto), cosi' il
+    # FE puo' dire «2 su 3, il terzo no perche'…» e l'operatore agisce sulla
+    # causa invece di riprovare al buio.
+    if gruppi and summary.get("lotti") and summary.get("gruppi_non_coperti"):
+        summary["gruppi_non_serviti"] = _diagnostica_e_spiega(
+            summary["gruppi_non_coperti"], competenza,
+        )
+
     # Compatta per il `result` del job (la lista per-terna gonfierebbe il jsonb;
     # il dettaglio vive nei log/task_runs, correlati via job_run). La chiave
     # `lotti` NON si potata: e' l'estratto compatto che alimenta il «vai al
     # lotto» del FE, e senza di essa l'operatore dovrebbe cercare a mano nella
     # lista lotti il contenitore appena prodotto.
     return {k: v for k, v in summary.items() if k != "esiti"}
+
+
+# Scopo: Diagnostica e classifica un elenco di gruppi non serviti — la STESSA
+#        fotografia e la STESSA classificazione per entrambi gli esiti che la
+#        usano: il giro a vuoto (che poi solleva) e il giro parziale (che
+#        arricchisce l'esito). Sede unica di proposito: se la catena cambia
+#        (un kwarg nuovo, un filtro), i due percorsi non possono divergere.
+def _diagnostica_e_spiega(
+    gruppi_non_serviti: tuple[str, ...] | list[str],
+    competenza: date,
+) -> list[dict[str, Any]]:
+    # Import locale come il core: l'handler e' importato in `ready()` e non deve
+    # tirarsi dietro il repository al boot.
+    from apps.vendite.db.commesse_repository import CommesseRepository
+
+    diagnosi = CommesseRepository().diagnostica_gruppi(
+        gruppi=gruppi_non_serviti, competenza_mese=competenza,
+    )
+    return spiega_gruppi_non_serviti(diagnosi)
 
 
 # Scopo: SOLLEVA per il giro mirato in cui le terne c'erano ma OGNI pipeline e'
@@ -176,14 +210,7 @@ def _fallisci_giro_mirato(
     competenza: date,
     summary: dict[str, Any],
 ) -> None:
-    # Import locale come il core: l'handler e' importato in `ready()` e non deve
-    # tirarsi dietro il repository al boot.
-    from apps.vendite.db.commesse_repository import CommesseRepository
-
-    diagnosi = CommesseRepository().diagnostica_gruppi(
-        gruppi=gruppi, competenza_mese=competenza,
-    )
-    spiegazioni = spiega_gruppi_non_serviti(list(diagnosi))
+    spiegazioni = _diagnostica_e_spiega(gruppi, competenza)
     raise ServiceError(
         code=E_GIRO_NESSUN_LOTTO,
         message=messaggio_gruppi_non_serviti(

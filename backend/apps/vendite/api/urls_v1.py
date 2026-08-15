@@ -44,17 +44,22 @@ from apps.vendite.api.views_approvazioni_prezzo import (
 from apps.vendite.api.views_dashboard_backlog import (
     ApiDashboardBacklog,
     ApiDashboardBacklogDocumenti,
+    ApiDashboardBacklogDocumentiExport,
 )
 from apps.vendite.api.views_dashboard_competenza import (
     ApiDashboardCompetenza,
     ApiDashboardCompetenzaAttivita,
     ApiDashboardCompetenzaCommesse,
+    ApiDashboardCompetenzaCommesseExport,
     ApiDashboardCompetenzaErrori,
+    ApiDashboardCompetenzaErroriExport,
     ApiDashboardCompetenzaGruppi,
+    ApiDashboardCompetenzaGruppiExport,
 )
 from apps.vendite.api.views_dashboard_aperto import (
     ApiDashboardAperto,
     ApiDashboardApertoDocumenti,
+    ApiDashboardApertoDocumentiExport,
 )
 from apps.vendite.api.views_lookups import (
     ApiAmbitiContrattoLookup,
@@ -150,6 +155,11 @@ urlpatterns = [
         ApiDashboardApertoDocumenti.as_view(),
         name="vendite-dashboard-aperto-documenti",
     ),
+    path(
+        "dashboard-aperto/documenti/export/",
+        ApiDashboardApertoDocumentiExport.as_view(),
+        name="vendite-dashboard-aperto-documenti-export",
+    ),
     # Lente 1 Competenza — funnel commessa → fattura per mese di competenza
     # (brief-design-fatturazione-due-lenti §4): aggregata + drill-down + errori.
     path(
@@ -167,6 +177,11 @@ urlpatterns = [
         ApiDashboardCompetenzaCommesse.as_view(),
         name="vendite-dashboard-competenza-commesse",
     ),
+    path(
+        "dashboard-competenza/commesse/export/",
+        ApiDashboardCompetenzaCommesseExport.as_view(),
+        name="vendite-dashboard-competenza-commesse-export",
+    ),
     # Emissione mirata: l'unita' su cui l'operatore decide nella card «Da
     # emettere» (documento sorgente oppure oneri di commessa). La gruppo_key
     # esposta qui e' quella accettata da fatturazione/run/ (campo `gruppi`).
@@ -176,9 +191,19 @@ urlpatterns = [
         name="vendite-dashboard-competenza-gruppi",
     ),
     path(
+        "dashboard-competenza/gruppi/export/",
+        ApiDashboardCompetenzaGruppiExport.as_view(),
+        name="vendite-dashboard-competenza-gruppi-export",
+    ),
+    path(
         "dashboard-competenza/errori/",
         ApiDashboardCompetenzaErrori.as_view(),
         name="vendite-dashboard-competenza-errori",
+    ),
+    path(
+        "dashboard-competenza/errori/export/",
+        ApiDashboardCompetenzaErroriExport.as_view(),
+        name="vendite-dashboard-competenza-errori-export",
     ),
     # Lente 2 Backlog — non-collegati per anzianita' + classe azionabilita'
     # (brief-design-fatturazione-due-lenti §5): contatori + lista.
@@ -191,6 +216,11 @@ urlpatterns = [
         "dashboard-backlog/documenti/",
         ApiDashboardBacklogDocumenti.as_view(),
         name="vendite-dashboard-backlog-documenti",
+    ),
+    path(
+        "dashboard-backlog/documenti/export/",
+        ApiDashboardBacklogDocumentiExport.as_view(),
+        name="vendite-dashboard-backlog-documenti-export",
     ),
     path("lotti/", ApiLottiList.as_view(), name="vendite-lotti-list"),
     # Export CSV/XLSX della lista (colonne dal catalogo `vendite.lotti`).
