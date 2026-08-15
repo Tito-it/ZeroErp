@@ -18,7 +18,7 @@
 --   CA (stato NON emittibile) -> gruppo GA con sei righe, una per classe
 --   CA + CB (stato emittibile) -> gruppo GB condiviso: e' il caso multi-commessa
 --
--- Indice test (0..10):
+-- Indice test (0..11):
 --   0) Precondizioni (riferimenti minimi risolti, due stati contrapposti)
 --   1) La funzione esiste
 --   2) GA: i contatori per classe di stato
@@ -30,6 +30,7 @@
 --   8) Input vuoto e NULL: zero righe, nessun errore
 --   9) ⚠️ Il guard di riga rifiuta la riga senza tipo documento (il percorso)
 --  10) ⚠️ Il CHECK e' VALIDATO e n_senza_tipo_doc non e' piu' fra le colonne
+--  11) ⚠️ terne_pronte: la corsia del lavoro pronto, misurata e mai NULL
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -44,7 +45,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- fixture non vedrebbe nulla e le asserzioni passerebbero per sottrazione.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(11);
+SELECT plan(12);
 
 -- ============================================================
 -- 0) Riferimenti minimi
@@ -300,6 +301,43 @@ SELECT ok(
       AND p.proname = 'fn_diagnostica_gruppi_fatturabili'
       AND 'n_senza_tipo_doc' = ANY (p.proargnames)),
   '10. Il CHECK e'' VALIDATO e n_senza_tipo_doc non e'' piu'' fra le colonne: la garanzia vale su tutte le righe, il ramo morto e'' sparito'
+);
+
+-- ============================================================
+-- 11) ⚠️ `terne_pronte` — la corsia del lavoro ancora pronto.
+--    Risposta al §10.6: in un giro parziale con una terna FALLITA, i gruppi di
+--    quella terna sono NON_SERVITO e la diagnosi di perimetro attribuirebbe
+--    loro una causa sbagliata («verificare emittente e utility»). La corsia non
+--    si prevede, si MISURA: sono le tre colonne su cui la lane raggruppa.
+--    ⚠️ Due invarianti, e la seconda vale quanto la prima:
+--      · `n_pronte > 0` -> la corsia c'e', ed e' quella della commessa/riga;
+--      · `n_pronte = 0` -> `[]` e MAI `NULL`: «nessuna corsia» e «non
+--        calcolato» devono restare distinguibili.
+-- ============================================================
+SELECT ok(
+  -- GA ha una sola riga pronta entro il bound: una corsia sola, e coincide con
+  -- (emittente della commessa, tipo doc della riga, utility della commessa).
+  (SELECT f.n_pronte = 1
+      AND jsonb_array_length(f.terne_pronte) = 1
+      AND f.terne_pronte -> 0 = jsonb_build_object(
+            'emittente_soggetto_ruolo_id', (SELECT ef_sr FROM tmp_dg_refs),
+            'tipo_doc_fiscale_id',         (SELECT tipo_doc_fiscale_id FROM tmp_dg_refs),
+            'utility_id',                  (SELECT utility_id FROM tmp_dg_refs))
+     FROM tmp_dg_foto f
+    WHERE f.gruppo_key = (SELECT gruppo_key FROM tmp_dg_key WHERE slot = 'GA'))
+  AND
+  -- Il gruppo sconosciuto non ha niente di pronto: array VUOTO, non NULL.
+  (SELECT f.terne_pronte = '[]'::jsonb
+     FROM tmp_dg_foto f
+    WHERE f.gruppo_key = 'PGTAP_GRUPPO_INESISTENTE:0000')
+  AND
+  -- Invariante generale sulla fotografia: n_pronte e terne_pronte guardano lo
+  -- stesso predicato, quindi non possono contraddirsi.
+  (SELECT bool_and(
+            f.terne_pronte IS NOT NULL
+            AND (f.n_pronte = 0) = (jsonb_array_length(f.terne_pronte) = 0))
+     FROM tmp_dg_foto f),
+  '11. terne_pronte: la corsia delle righe pronte e'' misurata (non prevista), vuota e mai NULL quando non c''e'' nulla di pronto, e sempre coerente con n_pronte'
 );
 
 SELECT * FROM finish();

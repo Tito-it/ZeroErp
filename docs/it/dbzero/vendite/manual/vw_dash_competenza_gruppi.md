@@ -112,7 +112,7 @@ verifica (`test-vw-dash-competenza-gruppi-v1.sql`, caso 9).
 ### 🆕 Le colonne del 2026-08-15: display già decodificato
 
 Due colonne aggiunte con `20260815-25`, su richiesta del backend
-([brief-db-emittibilita-visibile-e-sbloccabile](/dev/work-in-progress/brief-db-emittibilita-visibile-e-sbloccabile)
+([brief-db-emittibilita-visibile-e-sbloccabile](/dev/work-done/brief-db-emittibilita-visibile-e-sbloccabile)
 §8.3 e §9 F3). Entrambe tolgono al repository una **seconda risoluzione della
 stessa cosa**, e nessuna delle due costa un JOIN nuovo.
 

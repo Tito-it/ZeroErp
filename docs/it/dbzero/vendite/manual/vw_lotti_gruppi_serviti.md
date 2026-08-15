@@ -15,7 +15,7 @@
 >
 > • [vendite.fn_build_gruppo_fatturabile_key](/dbzero/vendite/funzioni/fn_build_gruppo_fatturabile_key) — unica fonte della chiave di gruppo
 >
-> **Piano:** [brief-db-emittibilita-visibile-e-sbloccabile](/dev/work-in-progress/brief-db-emittibilita-visibile-e-sbloccabile) §8.2 / §9
+> **Piano:** [brief-db-emittibilita-visibile-e-sbloccabile](/dev/work-done/brief-db-emittibilita-visibile-e-sbloccabile) §8.2 / §9
 
 ---
 
