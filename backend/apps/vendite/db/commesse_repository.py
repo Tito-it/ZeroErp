@@ -1142,12 +1142,17 @@ class CommesseRepository:
 
         `gruppi` (emissione mirata, A5): restituisce solo le terne dei gruppi
         richiesti. Senza, un giro mirato farebbe nascere un lotto VUOTO per ogni
-        altra terna del perimetro. None = nessuna restrizione."""
+        altra terna del perimetro. None = nessuna restrizione.
+
+        `gruppi_coperti` (rev DB 2026-08-15): per ogni terna, QUALI gruppi
+        fatturabili copre — chiavi da fn_build_gruppo_fatturabile_key, unica
+        fonte. Un gruppo multi-tipo-doc compare su più terne (G15)."""
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT emittente_soggetto_ruolo_id, tipo_doc_fiscale_id,
-                       utility_id, competenza_mese, total_candidate
+                       utility_id, competenza_mese, total_candidate,
+                       gruppi_coperti
                 FROM vendite.fn_list_emittibili_lane(
                     p_competenza_mese => %s,
                     p_billing_account_id => %s,
@@ -1169,6 +1174,9 @@ class CommesseRepository:
                     utility_id=int(row[2]),
                     competenza_mese=row[3],
                     total_candidate=int(row[4]),
+                    # text[] → list[str] (psycopg lo consegna gia' come str);
+                    # il NULL difensivo diventa lista vuota, mai None a valle.
+                    gruppi_coperti=list(row[5] or []),
                 )
                 for row in cursor.fetchall()
             ]

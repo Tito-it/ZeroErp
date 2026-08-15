@@ -12,7 +12,8 @@
 # brief-db-situazione-aperta-v2). Livello LETTURA sufficiente; lo scope
 # emittente e' interamente DB-side (RLS invoker sulle 5 aree documento).
 
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter,
     extend_schema,
@@ -29,6 +30,7 @@ from apps.core.api.payload_validators import (
     qp_str_upper,
 )
 from apps.core.api.success_responses import success_response
+from apps.vendite.api.dash_export_helpers import build_dash_export_response
 from apps.vendite.services.vendite_service import (
     fn_dash_aperto_documenti,
     fn_dash_aperto_riepilogo,
@@ -201,3 +203,50 @@ class ApiDashboardApertoDocumenti(DomainAPIView):
             page_size=page_size,
         )
         return success_response(data)
+
+
+class ApiDashboardApertoDocumentiExport(DomainAPIView):
+    """GET /api/v1/vendite/dashboard-aperto/documenti/export/?formato=csv|xlsx
+
+    Esporta la STESSA lista del drill-down situazione aperta, con gli stessi
+    filtri. Colonne e ordine dal catalogo `vendite.dash_aperto_documenti`
+    risolto sulla configurazione dell'operatore. Hard cap 10.000 righe.
+
+    NB: il parametro si chiama `formato` (italiano) NON `format` — magic
+    parameter DRF (content-negotiation) che intercetterebbe la chiamata.
+    """
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+
+    @extend_schema(
+        operation_id="vendite_dashboard_aperto_documenti_export",
+        parameters=[
+            OpenApiParameter(name="formato", type=str, required=False,
+                             description="csv (default) | xlsx"),
+            OpenApiParameter(name="area", type=str, required=False),
+            OpenApiParameter(name="fase", type=str, required=False),
+            OpenApiParameter(name="ritardo_giorni", type=int, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False),
+            OpenApiParameter(name="order_dir", type=str, required=False),
+        ],
+        responses={(200, "text/csv"): OpenApiTypes.BINARY},
+    )
+    # Scopo: Genera il file (CSV/XLSX) del drill-down situazione aperta.
+    #        Stessi filtri e stesso ordinamento del GET di lista.
+    def get(self, request: Request) -> HttpResponse:
+        qp = request.query_params
+        return build_dash_export_response(
+            request,
+            lista_codice="vendite.dash_aperto_documenti",
+            fetch=fn_dash_aperto_documenti,
+            filtri={
+                "area": qp_str_upper(qp.get("area")),
+                "fase": qp_str_upper(qp.get("fase")),
+                "ritardo_giorni": qp_int_optional(
+                    qp.get("ritardo_giorni"), "ritardo_giorni",
+                ),
+                "order_by": qp_str(qp.get("order_by")),
+                "order_dir": qp_str(qp.get("order_dir")),
+            },
+        )

@@ -14,6 +14,10 @@ import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import DashEmptyState from '../../core/components/DashEmptyState.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
+import ExportDialog from '../../core/components/ExportDialog.vue'
+import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
+import { useListaAzioni } from '../../core/composables/useListaAzioni'
+import { exportDashboardBacklogDocumenti } from '../api/dashboardBacklog'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
@@ -229,6 +233,23 @@ function buildRowActions(data) {
   ]
 }
 
+// Azioni di lista (personalizza colonne + esporta): BB condiviso con le altre
+// liste configurabili. L'export riceve gli STESSI filtri e lo STESSO
+// ordinamento della lista a video — il file e' la lista, non una seconda query.
+const {
+  dirty, exportDialogVisible, exportLoading, onExportConfirm, azioniLista,
+} = useListaAzioni(() => listaRef.value, {
+  exportFn: exportDashboardBacklogDocumenti,
+  getExportParams: (formato) => ({
+    formato,
+    classe: classeSelezionata.value,
+    area: areaSelezionata.value,
+    ritardo_giorni: ritardoGiorni.value,
+    order_by: orderBy.value,
+    order_dir: orderDir.value,
+  }),
+})
+
 const pageActions = computed(() => [
   {
     key: 'reload',
@@ -240,6 +261,7 @@ const pageActions = computed(() => [
       loadDocumenti()
     },
   },
+  ...azioniLista.value,
 ])
 
 // KeepAlive (ContentTabs): onActivated scatta anche al primo mount e a ogni
@@ -260,6 +282,7 @@ onActivated(() => {
       </div>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
+          <ListaConfigStatusTag :dirty="dirty" />
           <ReadonlyBadge />
         </template>
       </PageActionsBar>
@@ -420,5 +443,13 @@ onActivated(() => {
       :tipo-codice="docDrawerTipo"
       :doc-id="docDrawerId"
       @update:visible="onDocDrawerVisible" />
+
+    <!-- Scelta formato export (CSV/XLSX): il file copia la lista a video,
+         filtri e ordinamento compresi. -->
+    <ExportDialog
+      v-model:visible="exportDialogVisible"
+      :loading="exportLoading"
+      @export="onExportConfirm"
+    />
   </div>
 </template>

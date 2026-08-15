@@ -15,3 +15,14 @@ export function getDashboardBacklog() {
 export function listDashboardBacklogDocumenti(params = {}) {
   return api.get('/vendite/dashboard-backlog/documenti/', { params })
 }
+
+// GET /vendite/dashboard-backlog/documenti/export/?formato=csv|xlsx&<stessi filtri>
+// Export della STESSA lista: colonne/ordine dalla configurazione lista
+// dell'operatore (catalogo `vendite.dash_backlog_documenti`).
+// ⚠️ `formato`, non `format`: quest'ultimo e' magic per DRF.
+export function exportDashboardBacklogDocumenti(params = {}) {
+  return api.get('/vendite/dashboard-backlog/documenti/export/', {
+    params,
+    responseType: 'blob',
+  })
+}

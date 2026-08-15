@@ -10,12 +10,20 @@ dall'interfaccia non esiste modo di sbloccarla.
 (siamo in test) — **è un buco di modello e va chiuso**. E le attività bloccate
 vanno **segnalate, non nascoste**: sono lavoro reale.
 
-> 📌 **Stato al 2026-08-15** (rimisurato, non riferito): delle quattro voci aperte ne
-> restano **due**, e nessuna è bloccante. Chiuse: le sei decisioni R1 del §7.3 (dal
-> cantiere vie d'uscita, test verde) e il verbo «Rendi pronta» (§6). Aperte: la
-> **segnalazione della riga bloccata in dashboard** — lavoro FE, il dato c'è da
-> giugno — e la prova in-app che il giro si chiude. **`gruppi_coperti` è stato fatto
-> il 2026-08-15** (`20260815-02`, §5): era l'ultima voce DB. Dettaglio nel §7.5.
+> 📌 **Stato al 2026-08-15, sera** (rimisurato, non riferito). Tutte le richieste
+> originali (§3) sono chiuse, DB e video. Chiuse oggi, in ordine: le sei decisioni
+> R1 del §7.3 (cantiere vie d'uscita), il verbo «Rendi pronta» (§6),
+> **`gruppi_coperti`** (`20260815-02`, §5 — ultima voce DB), e nel pomeriggio la
+> **segnalazione della riga bloccata in dashboard** più l'**adozione BE/FE di
+> `gruppi_coperti`**: lucchetto+sblocco in lista, emissione parziale parlante
+> (§6, §7.5, consuntivo nel **§8.1**).
+>
+> **Il brief però non è chiuso**, e la coda è cambiata di natura: da «cosa manca
+> del piano» a «cosa il piano ha scoperto». Restano **la prova in app di Tid**
+> (§8.4, l'unica che nessuno può fare al posto suo) e **due richieste nuove al
+> DB** nate lavorando: `gruppi_coperti` è una *previsione* e serve un
+> **consuntivo** del servito (**§8.2**, 🔴), e la descrizione dello stato commessa
+> nelle due viste (**§8.3**, 🟠, non bloccante).
 
 **Correlati:**
 [vw_dash_competenza_attivita](/dbzero/vendite/views/vw_dash_competenza_attivita) ·
@@ -260,18 +268,24 @@ resto.
       `action_key = rendi_pronta` da tutte e tre le origini (`BOZZA`, `APERTA`,
       `IN_ESECUZIONE`), attivo, con `vendite.commesse.azione_rendi_pronta` tradotta.
       Il drawer lo rende perché è data-driven (verificato sul DB il 2026-08-15);
-- [ ] 🔴 FE, **riga bloccata segnalata in dashboard** — **NON fatto.** La vista
-      `vw_dash_competenza_attivita` espone `commessa_emittibile` da giugno, e il
-      frontend **non lo legge**: zero occorrenze in `frontend/src` (misurato
-      2026-08-15). L'unica traccia è un commento su un messaggio di esito *dopo* il
-      click. È la metà del §2.1 ancora aperta — la lista continua a promettere un
-      lavoro che il motore non può fare, e il blocco si scopre premendo;
+- [x] FE, **riga bloccata segnalata in dashboard** — ✅ **fatto il 2026-08-15**
+      (BE/FE, stesso rilascio del `gruppi_coperti`). La lista gruppi legge
+      `commessa_emittibile` + `commessa_stato_codice_interno` dalla vista
+      (repository → `DashCompetenzaGruppoRow` → FE) e la riga bloccata: (a) porta
+      un lucchetto col motivo accanto al riferimento; (b) non è selezionabile
+      (BB `useSelezioneToggle`, nato per questo); (c) ha «Fattura questo»
+      **disabilitato** col motivo nel tooltip; (d) offre «Sblocca commessa» nel
+      kebab, che apre il drawer di governo dove «Rendi pronta» è già esposto
+      data-driven. «Segnalare, non nascondere»: la riga resta in lista;
 - [ ] **La prova che il giro si chiude**: sbloccare una commessa dall'interfaccia e
       fatturarne le attività, **una volta**.
       ⚠️ *Riformulata il 2026-08-15.* Diceva «le 5 commesse di giugno e le 15
       attività»: erano una fotografia di dati di **test** del 4 agosto, e a undici
       giorni non descrivono più niente. Quello che conta è la **catena**, non quelle
       righe — la si prova su una commessa qualsiasi. Non è una bonifica.
+      *Ora la catena è tutta a video*: lucchetto → «Sblocca commessa» →
+      «Rendi pronta» → riga selezionabile → «Fattura questo» → lotto. Resta la
+      **prova in app di Tid**, che è l'unica voce aperta di questo brief.
 
 ---
 
@@ -409,12 +423,121 @@ perché sono **la stessa** funzione.
 > 🟢 **Rimisurato il 2026-08-15.** Delle tre voci qui sotto **una è chiusa e una si è
 > dimezzata**: le spunte del §6 e la nota nel §7.3 riportano la prova.
 
-- 🔴 **FE — la riga bloccata non è segnalata in dashboard.** È l'unica metà rimasta
-  del §2.1, ed è l'unica voce con un effetto visibile: il dato (`commessa_emittibile`)
-  il DB lo espone da giugno, nessuno lo legge. Il verbo «Rendi pronta» invece c'è.
+- ~~🔴 FE — la riga bloccata non è segnalata in dashboard.~~ ✅ **Fatto il
+  2026-08-15**: la lista gruppi legge il flag e lo stato, marca la riga, spegne il
+  verbo col motivo e offre lo sblocco dal kebab — dettaglio nella spunta del §6.
+  Nello stesso rilascio il BE ha adottato `gruppi_coperti` (la SELECT della lane +
+  `gruppi_non_coperti` nel summary del giro) e l'emissione parziale ora dice «2 su
+  3, il terzo no perché…» — la diagnosi per-gruppo entra nell'esito del job senza
+  fallirlo, e il toast FE la riporta. Resta la **prova in app** (voce sotto).
 - ~~Le sei decisioni di R1 (§7.3), da prendere insieme.~~ ✅ **prese e chiuse** dal
   cantiere vie d'uscita; il test R1 è verde e fuori baseline.
 - ~~Il `gruppi_coperti text[]` della lane (§5 del brief): non è stato fatto.~~
   ✅ **Fatto il 2026-08-15**, `20260815-02` — e nella sede giusta, la lane, non la
   diagnostica BE. Dettaglio e motivazioni in coda al §5; presidio ai test 10-11 di
   `test-fn-list-emittibili-lane.sql`.
+
+---
+
+## 8. Risposta BE/FE (2026-08-15) — cosa è stato fatto, e cosa serve ancora dal DB
+
+> **Chi scrive:** BE/FE (`dev/backend-tid`). Chiude le due voci che il DB ci ha
+> passato il 2026-08-15 e apre **due richieste**, scritte come *cosa serve* — il
+> *come* è vostro.
+
+### 8.1 Fatto, in questo rilascio
+
+| # | Cosa | Dove |
+| --- | --- | --- |
+| 1 | La lista gruppi legge `commessa_emittibile` + `commessa_stato_codice_interno` dalla vista | `vendite_repository.list_dash_competenza_gruppi`, `DashCompetenzaGruppoRow` |
+| 2 | Riga bloccata: **lucchetto col motivo**, **non selezionabile**, «Fattura questo» **disabilitato** col perché, «Sblocca commessa» nel kebab | `DashboardCompetenzaView` |
+| 3 | `gruppi_coperti` adottato: la SELECT della lane lo porta, il core misura `gruppi_non_coperti` = richiesti − union(coperti) | `commesse_repository.list_emittibili_lane`, `fatturazione_driver_service` |
+| 4 | Emissione **parziale** parlante: la diagnosi per-gruppo entra nell'esito **senza far fallire il job** — i lotti prodotti sono lavoro vero | `fatturazione_giro_handler` |
+
+**Costo reale: zero sul cablaggio.** Il campo `stato_info_key` viaggia opaco nei
+`call_jsonb_fn` e tutti e otto i drawer leggevano già la prop; le due colonne
+nuove la vista le espone da giugno e il JOIN c'era già. Il lavoro è stato tutto
+nel *dire le cose*, non nel trasportarle.
+
+**Una cosa che la review ha trovato e che vale la pena sapere.** La prima
+stesura del FE metteva l'avviso dei non-serviti in `else if` dopo quello degli
+errori di terna: con **una terna fallita e un gruppo fuori perimetro nello
+stesso giro**, la diagnosi che voi calcolate veniva scartata a video. Era di
+nuovo il silenzio del «2 su 3», entrato dalla porta di servizio. Corretto: i due
+avvisi coesistono. Lo scriviamo perché è la stessa classe di difetto che il
+vostro `20260815-02` è nato per togliere, e si è ripresentata **a valle**.
+
+### 8.2 🔴 Richiesta 1 — sapere quali gruppi un giro ha **davvero** fatturato
+
+**Il problema, in una riga:** `gruppi_coperti` è una **previsione**, non un
+consuntivo, e fra la previsione e il fatto c'è una finestra in cui il lavoro può
+sparire senza che nessuno lo dica.
+
+La discovery dichiara che una terna copre i gruppi A, B, C. Fra quel momento e
+l'esecuzione della pipeline, le righe di C possono essere prese da un altro giro
+(o smettere di essere candidate per qualunque motivo). La pipeline esce **senza
+errore** e senza lotto per C. Il risultato: `falliti = 0`,
+`gruppi_non_coperti = []`, e l'esito legge **pieno successo** mentre C non è
+stato fatturato. È esattamente la forma di difetto del §5 — silenziosa, e quindi
+peggiore di un errore — solo spostata di un passo più in là.
+
+**Cosa ci serve:** poter dire, **a consuntivo di un giro**, quali gruppi
+fatturabili hanno prodotto righe fatturate davvero. Non una previsione fatta
+prima: una misura fatta dopo.
+
+Vincoli che ci interessano, e nient'altro:
+
+1. la risposta deve essere **per `gruppo_key`**, dalla stessa unica fonte
+   (`fn_build_gruppo_fatturabile_key`): deve poter essere confrontata senza
+   traduzioni con ciò che l'operatore ha spuntato a video;
+2. deve essere **interrogabile dopo**, non solo durante il giro: l'operatore
+   apre l'esito anche il giorno dopo, e la coda ripete i job;
+3. deve valere l'invarianza **richiesti = serviti + non serviti**, sempre, con
+   entrambi i termini *misurati* e nessuno dei due dedotto per differenza da una
+   previsione.
+
+⚠️ **`fatturazione_lotti_gruppi` non risponde**, e va detto per non farvi
+guardare lì: registra il **permesso** («questo lotto può lavorare questi
+gruppi»), non il servito. Un gruppo nel perimetro che non produce nulla lascia
+la riga esattamente com'è.
+
+**Quello che NON chiediamo:** non chiediamo di chiudere la finestra con un lock,
+né di rendere transazionale discovery+pipeline. La concorrenza fra giri è
+legittima e il lavoro «rubato» da un altro giro **è comunque stato fatturato**:
+non è un errore, è solo una cosa che oggi non sappiamo raccontare. Ci basta
+poterla nominare.
+
+### 8.3 🟠 Richiesta 2 — la descrizione dello stato commessa nelle due viste
+
+**Il problema:** `vw_dash_competenza_gruppi` espone `commessa_stato_codice_interno`
+(`BOZZA`, `PRONTA_FATTURAZIONE`) ma non la **descrizione**. A video va la
+descrizione: la convenzione del progetto è che le liste ricevono i campi di
+display già decodificati dal DB, mai risolti lato client — e un codice interno
+in un'interfaccia inglese («The job order is in state BOZZA») è il sintomo.
+
+**Cosa abbiamo fatto intanto:** il repository fa un `LEFT JOIN` su
+`vendite.stati_commessa` per prendersi `descrizione`. Funziona, ed è la ragione
+per cui questa richiesta è **arancione e non rossa**: non siamo bloccati.
+
+**Cosa ci serve:** che le due viste espongano anche la descrizione dello stato,
+accanto al codice interno che già portano. Il motivo per cui la chiediamo a voi
+invece di tenerci il JOIN: **le viste quel JOIN lo fanno già** (è da lì che
+arrivano `emittibile` e `codice_interno`), quindi il nostro è una seconda copia
+della stessa risoluzione — la stessa forma di duplicazione che il §7.1 vi ha
+fatto estrarre sul guard. Se la prendete, togliamo il JOIN dal repository nello
+stesso rilascio.
+
+> ℹ️ Stessa osservazione, più in piccolo, per la diagnostica: anche
+> `diagnostica_gruppi` restituisce il codice interno come `stato_commessa`, e
+> quel valore finisce **nella frase** che l'operatore legge nel toast. Se la
+> descrizione arriva, la prendiamo anche lì.
+
+### 8.4 Cosa resta aperto, dichiarato
+
+- 🔴 **La prova in app di Tid** — sbloccare una commessa dall'interfaccia e
+  fatturarne le attività, una volta. È l'unica voce del §6 ancora senza spunta,
+  ed è l'unica che nessuno può fare al posto suo;
+- 🟠 le due richieste qui sopra;
+- ℹ️ il **dettaglio dei motivi è prosa italiana del BE** anche in locale EN
+  (stesso trade-off già accettato per `ultimo_errore.message`): non lo tocchiamo
+  in questa slice, ma è scritto perché non venga scambiato per una svista.

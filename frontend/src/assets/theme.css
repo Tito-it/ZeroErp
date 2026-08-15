@@ -11,6 +11,16 @@
 
 :root {
 
+  /* ===== Dashboard ===== */
+  /* Pavimento di altezza del blocco lista delle tre dashboard
+   * (`.app-dash-fermi`: situazione aperta, backlog, competenza). Sotto questa
+   * soglia la lista non si comprime piu': l'eccedenza va sullo scroll di
+   * `.app-dash-main`. Serve perche' il blocco e' un flex item comprimibile e
+   * con pavimento a zero spariva del tutto su schermi stretti, lasciando a
+   * video il solo paginatore (vedi commento esteso in main.css).
+   * ~22rem = intestazione + paginatore + qualche riga leggibile. */
+  --app-dash-lista-min-h: 22rem;
+
   /* ===== Sidebar ===== */
   --app-sidebar-width: 220px;
   --app-sidebar-width-collapsed: 60px;

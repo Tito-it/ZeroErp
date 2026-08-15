@@ -16,6 +16,8 @@
 #   5. mirata_senza_lotti_fallisce_con_motivo (E_FATTURAZIONE_GIRO_NESSUN_LOTTO)
 #   6. mirata_senza_lotti_e_terminale (niente retry su fallimento deterministico)
 #   7. mirata_con_lotti_non_diagnostica (la diagnosi non gira sul percorso felice)
+#   7-bis. mirata_parziale_spiega_i_non_coperti_senza_fallire (rev 2026-08-15:
+#      lotti prodotti + gruppi fuori → esito con `gruppi_non_serviti`, no raise)
 #   8. giro_di_massa_a_vuoto_resta_successo (perimetro non nominale)
 #   9. mirata_con_terne_fallite_riporta_errori_terna (no diagnosi di perimetro,
 #      non terminale: un errore pipeline puo' essere transiente)
@@ -159,12 +161,49 @@ class FatturazioneGiroHandlerTests(SimpleTestCase):
     def test_mirata_con_lotti_non_diagnostica(self, mock_giro, mock_repo) -> None:
         mock_giro.return_value = {
             "lane": 1, "lotti": [{"lotto_id": 1279}], "falliti": 0, "esiti": [{"x": 1}],
+            "gruppi_non_coperti": [],
         }
         result = fatturazione_giro_handler(
             {"competenza_mese": "2026-06-01", "gruppi": ["g1"]}, scope=None,
         )
         mock_repo.return_value.diagnostica_gruppi.assert_not_called()
         self.assertEqual(result["lotti"], [{"lotto_id": 1279}])
+        self.assertNotIn("gruppi_non_serviti", result)
+
+    # 7-bis. Emissione mirata PARZIALE (rev 2026-08-15): lotti prodotti MA
+    #    gruppi rimasti fuori dalla discovery. NON solleva — i lotti sono
+    #    lavoro vero — ma l'esito porta la diagnosi per-gruppo, e la diagnosi
+    #    gira SOLO sui non coperti (non su chi e' stato servito). Era il caso
+    #    peggiore dei tre perche' l'unico silenzioso: «2 su 3» sembrava un
+    #    successo pieno e il terzo restava fermo senza che nessuno lo cercasse.
+    @patch(_REPO)
+    @patch(_GIRO)
+    def test_mirata_parziale_spiega_i_non_coperti_senza_fallire(
+        self, mock_giro, mock_repo,
+    ) -> None:
+        mock_giro.return_value = {
+            "lane": 2, "lotti": [{"lotto_id": 1279}, {"lotto_id": 1280}],
+            "falliti": 0, "esiti": [{"x": 1}],
+            "gruppi_non_coperti": ["ORDINE_VENDITA:019eb2ac"],
+        }
+        mock_repo.return_value.diagnostica_gruppi.return_value = _DIAGNOSI_COMMESSA_BOZZA
+
+        result = fatturazione_giro_handler(
+            {"competenza_mese": "2026-06-15",
+             "gruppi": ["PREVENTIVO:aa", "MAN:42", "ORDINE_VENDITA:019eb2ac"]},
+            scope=None,
+        )
+
+        # Diagnosi SOLO sui non coperti, con lo stesso bound di competenza.
+        diag_kwargs = mock_repo.return_value.diagnostica_gruppi.call_args.kwargs
+        self.assertEqual(list(diag_kwargs["gruppi"]), ["ORDINE_VENDITA:019eb2ac"])
+        self.assertEqual(diag_kwargs["competenza_mese"], date(2026, 6, 1))
+        # L'esito porta lotti E spiegazioni, classificate come il giro a vuoto.
+        self.assertEqual(len(result["lotti"]), 2)
+        self.assertEqual(
+            result["gruppi_non_serviti"][0]["motivo"], "COMMESSA_NON_EMITTIBILE",
+        )
+        self.assertNotIn("esiti", result)  # la compattazione resta
 
     # 8. Giro di MASSA a vuoto: resta un successo. Il perimetro non e' nominale —
     #    «questo mese non c'era nulla da fatturare» e' un esito legittimo, e il

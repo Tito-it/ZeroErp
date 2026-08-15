@@ -44,6 +44,7 @@ Indice test eseguiti:
 22) DashCompetenzaGruppiServiceTests.test_gruppi_competenza_normalizzata_al_primo
 23) DashCompetenzaGruppiRepositoryTests.test_query_risolve_id_documento_da_area_e_uid
 24) DashCompetenzaGruppiRepositoryTests.test_mapping_espone_documento_id_e_ne_preserva_il_null
+24-bis) DashCompetenzaGruppiRepositoryTests.test_mapping_espone_emittibilita_testata_col_motivo
 25) DashCompetenzaFatturePerCellaTests.test_n_fatture_innestato_sulla_cella_di_quello_stadio
 26) DashCompetenzaFatturePerCellaTests.test_stadio_non_calcolabile_e_non_applicabile
 27) DashCompetenzaFatturePerCellaTests.test_calcolo_fallito_e_errore_non_silenzio
@@ -631,12 +632,15 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
     colonna sfasato da un inserimento a meta' proiezione).
     """
 
-    # Scopo: righe finte con le 14 colonne della proiezione, ultima = documento_id.
-    def _rows(self, documento_id):
+    # Scopo: righe finte con le 17 colonne della proiezione (rev 2026-08-15:
+    # + commessa_emittibile, commessa_stato_codice_interno, stato_descrizione).
+    def _rows(self, documento_id, *, emittibile=True,
+              stato="PRONTA_FATTURAZIONE", stato_descr="Pronta fatturazione"):
         return [(
             "ORDINE_VENDITA:uid-1", "ORDINE_VENDITA", "ORDINI", "ORD0005174",
             4277, "CMM-2026…", "Rossi SRL", "DA_EMETTERE", 3, Decimal("731.00"),
             False, date(2026, 8, 3), date(2026, 8, 3), documento_id,
+            emittibile, stato, stato_descr,
         )]
 
     # 23) La SELECT risolve l'id dalla stessa coppia (area, uid) da cui la vista
@@ -672,6 +676,29 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
             competenza_mese=date(2026, 8, 1), stadio=None, limit=25, offset=0,
         )
         self.assertIsNone(righe[0]["documento_id"])
+
+    # 24-bis) L'emittibilita' della TESTATA arriva al FE (brief emittibilita' §3.1,
+    #     rev 2026-08-15): e' il dato che la vista espone da giugno e che
+    #     nessuno leggeva — l'operatore vedeva lavoro promesso e scopriva il
+    #     blocco solo cliccando. Col PERCHE' accanto (stato commessa), non solo
+    #     il CHE: «segnalare, non nascondere» pretende il motivo.
+    @patch.object(VenditeRepository, "_query_paged_view")
+    def test_mapping_espone_emittibilita_testata_col_motivo(self, mock_query):
+        mock_query.return_value = (
+            self._rows(5387, emittibile=False, stato="BOZZA", stato_descr="Bozza"), 1,
+        )
+        righe, _ = VenditeRepository().list_dash_competenza_gruppi(
+            competenza_mese=date(2026, 8, 1), stadio=None, limit=25, offset=0,
+        )
+        self.assertIs(righe[0]["commessa_emittibile"], False)
+        self.assertEqual(righe[0]["commessa_stato_codice_interno"], "BOZZA")
+        # A video va la DESCRIZIONE (decodifica via JOIN, mai lookup client-side).
+        self.assertEqual(righe[0]["commessa_stato_descrizione"], "Bozza")
+        # E la query le chiede alla vista/catalogo (non ricostruite altrove).
+        sql = mock_query.call_args.kwargs["select_sql"]
+        self.assertIn("g.commessa_emittibile", sql)
+        self.assertIn("g.commessa_stato_codice_interno", sql)
+        self.assertIn("stc.descrizione", sql)
 
 
 class DashCompetenzaFatturePerCellaTests(TestCase):
