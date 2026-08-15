@@ -10,20 +10,28 @@ dall'interfaccia non esiste modo di sbloccarla.
 (siamo in test) — **è un buco di modello e va chiuso**. E le attività bloccate
 vanno **segnalate, non nascoste**: sono lavoro reale.
 
-> 📌 **Stato al 2026-08-15, sera** (rimisurato, non riferito). Tutte le richieste
-> originali (§3) sono chiuse, DB e video. Chiuse oggi, in ordine: le sei decisioni
-> R1 del §7.3 (cantiere vie d'uscita), il verbo «Rendi pronta» (§6),
-> **`gruppi_coperti`** (`20260815-02`, §5 — ultima voce DB), e nel pomeriggio la
-> **segnalazione della riga bloccata in dashboard** più l'**adozione BE/FE di
-> `gruppi_coperti`**: lucchetto+sblocco in lista, emissione parziale parlante
-> (§6, §7.5, consuntivo nel **§8.1**).
+> 📌 **Stato al 2026-08-15, notte** (rimisurato, non riferito). Tutte le richieste
+> originali (§3) sono chiuse, DB e video. Chiuse in giornata, in ordine: le sei
+> decisioni R1 del §7.3 (cantiere vie d'uscita), il verbo «Rendi pronta» (§6),
+> **`gruppi_coperti`** (`20260815-02`, §5), e nel pomeriggio la **segnalazione
+> della riga bloccata in dashboard** più l'**adozione BE/FE di `gruppi_coperti`**:
+> lucchetto+sblocco in lista, emissione parziale parlante (§6, §7.5, consuntivo
+> nel **§8.1**).
 >
-> **Il brief però non è chiuso**, e la coda è cambiata di natura: da «cosa manca
-> del piano» a «cosa il piano ha scoperto». Restano **la prova in app di Tid**
-> (§8.4, l'unica che nessuno può fare al posto suo) e **due richieste nuove al
-> DB** nate lavorando: `gruppi_coperti` è una *previsione* e serve un
-> **consuntivo** del servito (**§8.2**, 🔴), e la descrizione dello stato commessa
-> nelle due viste (**§8.3**, 🟠, non bloccante).
+> 🟢 **DB CHIUSO** — le due richieste nuove del §8 sono fatte, migrate e
+> verificate: il **consuntivo** del servito (§8.2) e la **descrizione** dello
+> stato commessa nelle due viste (§8.3). La risposta DB, con l'analisi critica,
+> il piano e le misure, è il **§9**.
+>
+> Lavorando sono emerse **quattro cose che il §8 non nominava**, tutte chiuse
+> nello stesso giro: `documento_id` risolto due volte, `diagnostica_gruppi` come
+> ultima copia della regola di emittibilità fuori dal DB, un `CHECK` mai
+> validato, e il tetto della discovery che troncava una richiesta mirata in
+> silenzio. Nove changeSet in tutto (`20260815-24` … `-32`).
+>
+> **Cosa resta, e non è DB**: le richieste a BE/FE del **§9.7**, e la
+> **prova in app di Tid** (§8.4) — l'unica voce del §6 ancora senza spunta, e
+> l'unica che nessuno può fare al posto suo.
 
 **Correlati:**
 [vw_dash_competenza_attivita](/dbzero/vendite/views/vw_dash_competenza_attivita) ·
@@ -541,3 +549,343 @@ stesso rilascio.
 - ℹ️ il **dettaglio dei motivi è prosa italiana del BE** anche in locale EN
   (stesso trade-off già accettato per `ultimo_errore.message`): non lo tocchiamo
   in questa slice, ma è scritto perché non venga scambiato per una svista.
+
+---
+
+## 9. Risposta DB (2026-08-15, sera) — verifica, analisi critica, piano
+
+> **Chi scrive:** team DB (`dev/db-tid`). Risponde al §8 e apre il lavoro.
+> Ogni numero qui sotto è **misurato**, non riferito: le viste dal catalogo vivo
+> (`pg_attribute`), i test eseguiti, i tempi cronometrati.
+
+### 9.1 Verifica di quanto il §7 dichiarava chiuso
+
+Rifatta contro il DB, non contro gli YAML. **Nessun residuo.**
+
+| Voce | Verifica |
+| --- | --- |
+| `commessa_emittibile` + `commessa_stato_codice_interno` | presenti **live** in entrambe le viste (19 colonne su `vw_dash_competenza_gruppi`, le due in coda) |
+| `gruppi_coperti text[]` | presente nella lane, chiave da `fn_build_gruppo_fatturabile_key`, ordine deterministico |
+| Transizione manuale | CSV `transizioni_stati_commessa.csv`, righe 2/5/7, `meta` completo con `action_key: rendi_pronta` |
+| `fn_check_commessa_pronta_fatturazione` | esiste, pura, sede unica di guard + capability |
+| `E_COMMESSA_EMITTENTE_MANCANTE` | a catalogo in `codici_errore.csv` **e** `messaggi_errore.csv`, con causa e soluzione |
+
+pgTAP **eseguiti** (non riferiti): `test-commessa-pronta-fatturazione-v1.sql` **7/7**,
+`test-fn-list-emittibili-lane.sql` **11/11**, `config/test-transizioni-uscita-manuale-v1.sql`
+(R1) **3/3** — tutti verdi e fuori baseline.
+
+### 9.2 Analisi critica del §8
+
+#### F1 🔴 Il consuntivo del §8.2 **esiste già come dato**: non serve persistere nulla
+
+`attivita_fatturabili.commessa_attivita_id` è **UNIQUE** — 1:1 con `commesse_attivita` —
+e `fattura_riga_id` chiude la catena `lotto → fatture → fatture_righe → attività →
+gruppo_key`. Prototipo **eseguito sui dati veri**:
+
+```text
+gruppo_key                                          | esito       | lotti_serventi
+ORDINE_VENDITA:019fc4ba-79db-759c-967b-53744acca606 | SERVITO     | {1278}
+ORDINE_VENDITA:019fc723-71ef-725a-a9b3-8b27c6994bab | NON_SERVITO |
+```
+
+Il lotto 1279 ha un perimetro richiesto e **zero righe fatturate**: è il caso del
+§8.2, ed è già misurabile.
+
+⭐ **Il pezzo che il §8.2 non ha visto: anche i «richiesti» sono già a DB.**
+`set_lotto_gruppi` scrive l'**intera** tupla richiesta su **ogni** lotto del giro.
+Quindi dai soli `lotto_id` il DB ricava richiesti *e* serviti, entrambi **misurati**,
+e l'invarianza del vincolo 3 regge per costruzione dentro una sola funzione — senza
+tabelle nuove, senza write path, senza il lock che il §8.2 giustamente non chiedeva.
+
+⚠️ Va **dichiarato** che è una misura **viva**, non un log immutabile: se un lotto
+torna a DRAFT il consuntivo cambia. È corretto (la fattura non c'è più) ma non deve
+sorprendere fra sei mesi.
+
+#### F2 🔴 La trappola vera: la RLS è **asimmetrica** fra richiesti e serviti
+
+Misurato:
+
+| RLS attiva | RLS assente |
+| --- | --- |
+| `commesse`, `commesse_attivita`, `fatture`, `fatture_righe`, `fatturazione_lotti` | `attivita_fatturabili`, `fatturazione_lotti_fatture`, **`fatturazione_lotti_gruppi`** |
+
+Il perimetro **richiesto** è leggibile da chiunque, il **servito** no. Scritta in modo
+ingenuo, la funzione direbbe `NON_SERVITO` a un operatore fuori scope su un gruppo
+fatturato benissimo: un falso allarme con l'aria di un dato. È la regola del
+fail-closed — zero non è una misura. **Il cancello dev'essere `fatturazione_lotti`**
+(che la RLS ce l'ha): lotto fuori scope → **nessuna riga**, mai un «non servito».
+
+#### F3 🟠 Il §8.3 arriva incompleto: c'è una **seconda** duplicazione, e non è nel brief
+
+In `vendite_repository.list_dash_competenza_gruppi`, trenta righe sopra il JOIN della
+§8.3, sta scritto:
+
+> ⚠️ *Drift noto e accettato: la regola di risoluzione è scritta due volte — qui e
+> dentro `vw_dash_competenza_gruppi`. La soluzione pulita è che la vista esponga
+> `documento_id` accanto al `riferimento`: è una nota per il team DB.*
+
+È **identica** alla §8.3 per forma e per causa, e la vista fa già la LATERAL da cui
+`riferimento` arriva: aggiungere `d.documento_id` costa **una colonna nella stessa
+subselect**. È rimasta in un commento di codice invece che nel brief. Le due vanno
+nello stesso changeSet, o fra un mese se ne discute una terza.
+
+#### F4 🟠 L'ultima copia della regola fuori dal DB è `diagnostica_gruppi`
+
+Il BE l'ha offerta il 2026-08-04 (§5.2: *«Se ritenete che debba scendere a DB come
+funzione, siamo d'accordo: ditecelo»*). **Non abbiamo risposto**, e nel frattempo è
+cresciuta: ~60 righe di SQL in Python che riproducono i filtri della lane
+(`APPROVATA` + `NON_EMESSA` + `tipo_doc NOT NULL` + competenza `<=`). Stessa forma che
+il §7.1 ci ha fatto estrarre sul guard.
+
+E ha già un difetto latente. Aggrega con `min(commessa_codice)`, `min(stato_commessa)`,
+`bool_or(commessa_emittibile)` su `gruppo_key`. Ma `gruppo_key`, per una riga con
+documento sorgente, è `<codice_interno>:<uid>` e **non contiene la commessa**. Se lo
+stesso documento alimentasse due commesse, `bool_or` direbbe «emittibile» perché *una*
+lo è, e la diagnosi cadrebbe in `NON_DETERMINATO` invece di dire «commessa in BOZZA».
+⚠️ `vw_dash_competenza_gruppi` raggruppa **anche per `commessa_id`**: la vista ammette
+già il caso, il BE lo collassa.
+
+**Calibrazione onesta**: sul DB di sviluppo i gruppi multi-commessa sono **0**, e
+`commesse_sorgenti` ha `UNIQUE (sorgente_tipo_id, sorgente_uid)` che rende il caso
+improbabile. Ma **nessun vincolo** lega `commesse_attivita.commessa_id` a quel link:
+non è «è successo», è «può succedere» — e in DB si evita gratis aggregando per
+`(gruppo_key, commessa_id)`.
+
+Portandola a DB, la descrizione dello stato del §8.3 arriva **anche nella frase del
+toast**, che è il secondo punto della richiesta, quello lasciato in nota.
+
+#### F5 🟢 Il costo di `gruppi_coperti`: misurato. E una promessa non mantenuta
+
+`20260815-02` scrive: *«Se un giorno il costo mordera' sul cron, la mitigazione e'
+nota e sta scritta qui»*. **Non c'è**: il paragrafo dopo passa al `DROP FUNCTION`.
+Misurata quindi adesso, su 100.000 righe sintetiche:
+
+| forma | tempo |
+| --- | --- |
+| `fn_build_gruppo_fatturabile_key` × 100k, scalare | 475 ms → **≈ 5 µs/chiamata** |
+| lane attuale (`array_agg DISTINCT … ORDER BY <stessa espressione>`) | 540–637 ms |
+| variante con chiave calcolata una volta in `LATERAL` | 527–537 ms |
+
+⭐ **Le due forme sono equivalenti**: il parser deduplica l'espressione dell'`ORDER BY`
+con quella dell'argomento, quindi la valutazione è **una sola per riga**. La
+micro-ottimizzazione che sembrava ovvia **non esiste**, ed è bene che sia scritto:
+qualcuno la rifarà. Il costo reale è ~0,5 s ogni 100k righe candidate (in dev oggi ne
+risultano **38**). La scelta di calcolarlo sempre era giusta; va solo sostituita la
+promessa a vuoto col numero.
+
+#### F6 🟢 `diagnostica_gruppi` è usata fuori dal contratto che si è data — *nota al BE*
+
+La sua docstring dice: *«Da chiamare SOLO quando il giro non ha emesso nulla»*. Il nuovo
+`_diagnostica_e_spiega` la chiama anche nel caso **parziale**, cioè dopo un'emissione
+riuscita. Per i gruppi non coperti la fotografia regge — **non è un difetto** — ma è un
+contratto dichiarato e poi infranto nello stesso file. Da riallineare in prosa quando
+la funzione scenderà a DB (F4).
+
+#### F7 ℹ️ `LIMIT p_limit` può travestire un troncamento da «gruppo non coperto»
+
+`fn_list_emittibili_lane` limita le **terne** (default 1000). Se un'emissione mirata ne
+generasse di più, i gruppi delle terne tagliate risulterebbero «non coperti» senza
+esserlo. Irrilevante oggi (le mirate sono da pochi gruppi), ma è **silenzioso**: merita
+una riga di commento, non un fix.
+
+### 9.3 Piano di esecuzione — decisioni di Tid del 2026-08-15
+
+Tid ha deciso: **F4 si fa**; **vista + funzione** per il §8.2; **tutto il possibile lato
+DB**, BE/FE a seguire. Numerazione `20260815-24` in avanti (sequenza **globale per
+data**).
+
+| # | Slice | ChangeSet | Stato |
+| --- | --- | --- | --- |
+| 1 | §8.3 — `commessa_stato_descrizione` su `vw_dash_competenza_attivita` | `20260815-24` | ✅ |
+| 2 | §8.3 + F3 — `commessa_stato_descrizione` **e** `documento_id` su `vw_dash_competenza_gruppi` | `20260815-25` | ✅ |
+| 3 | §8.2 — `vw_lotti_gruppi_serviti`, il **fatto** per `(lotto_id, gruppo_key)` | `20260815-26` | ✅ |
+| 4 | §8.2 — `fn_esito_gruppi_giro(p_lotto_ids)`, il **verdetto** per giro | `20260815-27` | ✅ |
+| 5 | F5 + F7 — `COMMENT` sulla lane: il numero misurato al posto della promessa | `20260815-28` | ✅ |
+| 6 | F4 — `fn_diagnostica_gruppi_fatturabili`, grana `(gruppo_key, commessa_id)` | `20260815-29` | ✅ |
+
+**Vincoli che il piano si dà**, perché è dove si sbaglia:
+
+- ⚠️ ogni `CREATE OR REPLACE VIEW` **ri-specifica `WITH (security_invoker=on)`**: la
+  reloption non è nel `pg_get_viewdef` e PostgreSQL la azzera in silenzio;
+- ⚠️ le colonne nuove vanno **in coda**: `CREATE OR REPLACE VIEW` non riordina;
+- ⚠️ ordine NN **vincolante**: la vista base (`-24`) prima della dipendente (`-25`),
+  perché l'autogen mescola `00_schema` e `20_code` ordinando per numero;
+- la chiave di gruppo si calcola **sempre** con `fn_build_gruppo_fatturabile_key` su
+  `commesse_attivita`, **mai** sulle colonne gemelle di `attivita_fatturabili`: unica
+  fonte, come per la lane;
+- il verdetto legge `fatturazione_lotti_gruppi` **attraverso** `fatturazione_lotti`
+  (F2), così un lotto fuori scope produce **zero righe** e non un falso «non servito»;
+- `descrizione` è nullable a DDL ma popolata su tutte e 6 le righe di seed →
+  `COALESCE(descrizione, codice)`, perché un campo di display non deve mai essere vuoto.
+
+**Presidio pgTAP — eseguito, non previsto:**
+
+| File | Casi | Esito |
+| --- | --- | --- |
+| `vendite/test-esito-gruppi-giro-v1.sql` (nuovo) | servito · non servito con residuo · **fatturato altrove** · invarianza · guard parametri · giro di massa · ⚠️ **lotto fuori scope → SOLLEVA** | **12/12** |
+| `vendite/test-diagnostica-gruppi-fatturabili-v1.sql` (nuovo) | contatori per classe · bound competenza · gruppo ignoto · descrizione decodificata · ⚠️ **multi-commessa** · normalizzazione chiavi · input degeneri · ⚠️ **`n_senza_tipo_doc` è sentinella** | **10/10** |
+| `vendite/test-vw-dash-competenza-v1.sql` (esteso, 15 → 17) | le due colonne nuove decodificano; `documento_id` NULL sul gruppo sourceless | **17/17** |
+| `vendite/test-vw-dash-security-invoker.sql` (esteso) | la rete `vw_dash_*` non copriva `vw_lotti_gruppi_serviti`: coda esplicita | **2/2** |
+
+### 9.4 Verifiche eseguite
+
+> Tutto **misurato**, non riferito.
+
+- **Migrazioni applicate** su dev (`liquibase update`): i sei changeSet passano,
+  i pendenti residui sono i soli mirror `runOnChange` di sempre;
+- **`vw_lotti_gruppi_serviti` + `fn_esito_gruppi_giro` provate sui dati veri**
+  prima ancora dei test: sul lotto 1279 — perimetro richiesto, zero righe
+  fatturate — l'esito dice `NON_SERVITO`. È il caso del §8.2, e prima non aveva
+  risposta;
+- ⭐ **`fn_diagnostica_gruppi_fatturabili` confrontata con la query Python del
+  BE su tutti i 73 gruppi del database: zero differenze.** Il cambio di grana
+  non altera i risultati odierni (nessun gruppo multi-commessa esiste oggi), che
+  è esattamente ciò che rende la migrazione sicura;
+- **baseline pgTAP `vendite`**: 178 file, 24 rossi, **tutti già noti — nessuna
+  regressione**;
+- **cancelli statici della CI**: guardrail `runOnChange` verde, guardrail
+  preambolo pgTAP verde (430 file), guardrail naming `codice_interno`/`codice`
+  verde. Il debito `throws_ok` senza discriminante **non è salito** (137 su
+  soglia 137): i test nuovi passano sempre lo SQLSTATE;
+- **doc auto-generata rigenerata** (`gen_db_docs.py`) e doc **manuale** scritta
+  per i tre oggetti nuovi, più la nota sulle due colonne nelle viste.
+
+⚠️ **Tre cose emerse verificando, che valgono più del verde:**
+
+1. **Svuotare `app.current_user_id` NON è fail-closed.** Il primo tentativo di
+   test sullo scope passava senza sollevare: misurato,
+   `script.fn_scope_ef_whitelist_via_sr(NULL, …)` risponde **TRUE** — «nessuna
+   restrizione», non «nessun accesso». Il cancello vero è il primo congiunto
+   della policy (`ruolo_applicativo = 'OPERATORE'`). Chi scrive un test di scope
+   su questa famiglia deve cambiare **veste**, non svuotare l'utente;
+2. **`n_senza_tipo_doc` è un ramo che non si può percorrere.** La riga che lo
+   alimenterebbe è rifiutata da `trgfn_commesse_attivita_guard_tipo_doc_emittibile`
+   e da un `CHECK`. Il contatore resta — quel `CHECK` è `NOT VALID`, quindi le
+   righe **legacy** non sono mai state verificate — ma è una **sentinella**, non
+   un caso vivo: il test lo verifica dal *percorso* (il guard rifiuta), non
+   fabbricando una riga che il database non ammette. Vale anche per il BE:
+   `MOTIVO_TIPO_DOC_MANCANTE` non si accenderà su dati nuovi;
+3. **Il cancello che si dichiara va applicato a tutte le uscite, non solo
+   all'ingresso.** Rileggendo `fn_esito_gruppi_giro` prima di chiudere:
+   `lotti_altrui` prendeva gli id da `fatturazione_lotti_fatture`, che RLS non
+   ne ha. Poco — chi legge vede comunque solo fatture del proprio perimetro — ma
+   avrebbe potuto restituire l'identificativo di un lotto non suo, in
+   contraddizione col cancello che il changeSet stesso dichiara. Corretto: gli
+   id passano da `fatturazione_lotti`, e un lotto non visibile esce come `NULL`
+   invece che come numero. Il `LEFT JOIN` conserva la semantica del residuo.
+
+Anche la **documentazione** è stata misurata, non supposta: build Zensical
+eseguita due volte, sul ramo e su `HEAD` in un worktree separato — **5 warning
+prima, 5 dopo, `include_warnings=0`**. Nessuna introdotta.
+
+### 9.5 Coda chiusa: i due residui che il §9.4 aveva lasciato aperti
+
+> Scritto dopo, il 2026-08-15 sera. Le due voci erano state presentate come
+> «decisioni per Tid». **Non lo erano**, e la risposta è stata secca: *non siamo
+> in produzione, i dati sono di test, si fanno gli aggiornamenti necessari e
+> quello che si rompe per dati sporchi si sistema sul momento.* La regola
+> esisteva già; il difetto era averla riaperta come domanda.
+
+| # | Cosa | ChangeSet | Stato |
+| --- | --- | --- | --- |
+| 7 | `chk_commesse_attivita_tipo_doc_emittibile` da `NOT VALID` a **validato** | `20260815-30` | ✅ |
+| 8 | Via `n_senza_tipo_doc` dalla diagnostica: ora è un ramo irraggiungibile | `20260815-31` | ✅ |
+| 9 | F7 — il tetto `p_limit` **solleva** sul giro mirato invece di troncare | `20260815-32` | ✅ |
+| — | `E_FATTURAZIONE_MIRATA_TRONCATA` a catalogo (append ai CSV, id 908) | CSV | ✅ |
+
+**7 e 8 sono una cosa sola.** Il vincolo era `NOT VALID`: le righe preesistenti
+non erano mai state lette, quindi il contatore `n_senza_tipo_doc` restava in vita
+come «spia che non dovrebbe accendersi». Validato il vincolo, la garanzia vale su
+**tutte** le righe e il ramo diventa irraggiungibile — e un ramo che sembra
+coperto e non lo è vale meno di zero. ⚠️ Ordine vincolante: `-30` (schema) prima
+di `-31` (codice), perché l'autogen ordina per NN. ⚠️ Ricaduta BE:
+`MOTIVO_TIPO_DOC_MANCANTE` diventa morto anche in `classifica_gruppo_non_servito`.
+
+**9 chiude il difetto F7.** Il tetto limita le *corsie*: tagliarne una fa sparire
+i suoi gruppi, che a valle — dove il non servito si ricava per differenza —
+diventano «non fatturabili». Una diagnosi **falsa** al posto di un errore: la
+stessa classe di difetto di tutto il cantiere, spostata di un passo. Il rimedio è
+asimmetrico e deliberato: sul giro di **massa** il tetto resta una valvola e
+tronca in silenzio; sul giro **mirato** il perimetro è nominale e troncarlo
+significa non aver risposto → si solleva.
+⚠️ Il conteggio si fa leggendo **una corsia in più del tetto** e scorrendo il
+risultato una volta sola: un secondo `SELECT count(*)` di controllo sarebbe stato
+una seconda copia dei filtri di discovery dentro la stessa funzione — l'errore
+che il §7.1 ha già dovuto correggere.
+
+**Verifiche.** Tutti e tre provati prima in transazione (`BEGIN … ROLLBACK`), poi
+**migrati** e rimisurati sul DB vero: `chk_commesse_attivita_tipo_doc_emittibile`
+risulta `convalidated = true`, `n_senza_tipo_doc` non è più fra le colonne della
+diagnostica, la lane porta il guard sul tetto, e
+`E_FATTURAZIONE_MIRATA_TRONCATA` è a catalogo con il suo messaggio (arrivato dal
+mirror CSV `runOnChange`, come da regola: solo append, nessun loader nuovo).
+
+pgTAP estesi e **tutti verdi** dopo la migrazione:
+`test-fn-list-emittibili-lane` 11 → **13**,
+`test-diagnostica-gruppi-fatturabili` 10 → **11**, più i tre file già toccati
+dal §9.5 e `test-guard-tipo-doc-emittibile` (che presidia il guard su cui poggia
+la validazione del vincolo). Baseline `vendite`: **nessuna regressione**.
+Guardrail riferimenti morti e codici errore strutturati: verdi. Doc auto-generata
+rigenerata dal database vivo.
+
+### 9.6 ⚠️ Un errore fatto qui, e la trappola che ha scoperto
+
+**Il migrate si è fermato** sul `20260815-32`:
+
+```text
+SQL Precondition failed. Expected '1' got '0'
+```
+
+La precondizione chiedeva *«il codice errore che sollevo esiste a catalogo?»*.
+Sembra la verifica ovvia, ed è **sbagliata**: i codici arrivano dai CSV di
+`80_data`, che nel master gira **dopo** `20_code`. Al momento del controllo quel
+codice non poteva esserci. Il codice serve a **runtime**, non al `CREATE`.
+
+⚠️ **La parte che conta non è l'errore, è il gemello che ha svelato.** La stessa
+precondizione era anche sul `20260815-27`, su `E_LOTTO_NON_TROVATO` — e lì era
+**passata**, ma solo perché quel codice esisteva già da migrazioni precedenti. Su
+un database ricostruito da zero — **la CI** — `config.codici_errore` a quel punto
+è vuota e il migrate si sarebbe fermato uguale, in una pipeline che non c'entrava
+niente. È esattamente la trappola d'ordine fra le fasi che su un DB di sviluppo
+non si vede: qui si è vista solo perché il codice del `-32` era **nuovo**.
+
+Entrambe rimosse, con il motivo scritto dentro i due file perché non tornino.
+Verificato poi su tutti e nove i changeSet del cantiere che nessun'altra
+precondizione dipenda da dati di `80_data`.
+
+### 9.7 Richieste a BE/FE — il DB ha chiuso, tocca a voi
+
+> Numerata in coda e non al posto della §9.4 perché è l'ultima cosa scritta: quando è stata redatta
+> la prima volta il DB non aveva ancora finito, e il titolo diceva «quando il DB
+> avrà chiuso». Adesso ha chiuso.
+
+1. **sostituire `gruppi_non_coperti` con `fn_esito_gruppi_giro(lotti)`**:
+   `gruppi_coperti` resta la diagnosi *prima* dell'esecuzione, il consuntivo è
+   quello che dice cosa il giro ha fatturato davvero. Prende **solo i lotti**: i
+   gruppi richiesti sono già persistiti, e passarglieli riaprirebbe la porta a
+   passare la previsione al posto della misura;
+2. **togliere dal repository due JOIN**: il `LEFT JOIN vendite.stati_commessa`
+   (§8.3) **e** la LATERAL di `documento_id` (F3). Entrambi sono ora colonne di
+   `vw_dash_competenza_gruppi`, e l'id del documento arriva dalla stessa riga del
+   `riferimento` — non più due risoluzioni che possono divergere;
+3. **adottare `fn_diagnostica_gruppi_fatturabili`** al posto dell'SQL in
+   `CommesseRepository.diagnostica_gruppi`, tenendo in Python **solo** la prosa di
+   `classifica_gruppo_non_servito` — quella è presentazione, non regola.
+   ⚠️ Due cose cambiano nel contratto, ed entrambe sono deliberate:
+   - la grana diventa **`(gruppo_key, commessa_id)`** (F4): un gruppo su due
+     commesse dà due righe, ed è il caso che `min()`/`bool_or()` collassava;
+   - **`n_senza_tipo_doc` non esiste più**, quindi
+     `MOTIVO_TIPO_DOC_MANCANTE` in `classifica_gruppo_non_servito` va tolto
+     insieme alla chiave in `GruppoDiagnosi`: dopo la validazione del `CHECK`
+     (`20260815-30`) quella riga non può esistere, e un motivo che non può
+     accendersi è un ramo morto anche lato BE;
+4. **riallineare la docstring** di `diagnostica_gruppi` (F6): dice «da chiamare
+   solo quando il giro non ha emesso nulla», ma `_diagnostica_e_spiega` la chiama
+   anche nel caso parziale. Non è un difetto — per i gruppi non coperti la
+   fotografia regge — ma è un contratto dichiarato e poi infranto nello stesso
+   file;
+5. ℹ️ **novità da sapere, non un'azione**: su un giro **mirato** la discovery ora
+   può sollevare `E_FATTURAZIONE_MIRATA_TRONCATA` (perimetro oltre il tetto delle
+   corsie). È un caso che oggi non capita — le mirate sono da pochi gruppi — ma
+   se capitasse, prima usciva una diagnosi **falsa** e adesso esce un errore. Sul
+   giro di massa non cambia niente.

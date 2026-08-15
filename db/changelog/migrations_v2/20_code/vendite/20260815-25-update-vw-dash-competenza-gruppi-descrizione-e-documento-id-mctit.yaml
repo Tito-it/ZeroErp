@@ -1,0 +1,182 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'elenco gruppi espone la DESCRIZIONE dello stato commessa e l'ID del
+#   documento sorgente. Due duplicazioni tolte dal repository con lo stesso
+#   changeSet, perche' hanno la stessa causa.
+#   brief-db-emittibilita-visibile-e-sbloccabile §8.3 (richiesta scritta) e §9
+#   F3 (richiesta che stava solo in un commento di codice).
+#
+# ── 1. `commessa_stato_descrizione` — la richiesta §8.3 ──────────────────
+#   Propaga la colonna che `20260815-24` ha aggiunto sulla vista base. Entra
+#   anche nel GROUP BY della CTE `aggregato`: e' funzionalmente dipendente da
+#   `commessa_id`, che c'e' gia', ma PostgreSQL non lo deduce da una vista e
+#   pretende di vederla elencata.
+#
+# ── 2. `documento_id` — la richiesta che nessuno aveva scritto nel brief ─
+# ⚠️ Il repository del BE porta questo commento, trenta righe sopra il JOIN
+#   della §8.3:
+#
+#     «Drift noto e accettato: la regola di risoluzione e' scritta due volte —
+#      qui e dentro vw_dash_competenza_gruppi. La soluzione pulita e' che la
+#      vista esponga documento_id accanto al riferimento: e' una nota per il
+#      team DB, non un prerequisito.»
+#
+#   E' la §8.3 identica: stessa forma (una risoluzione fatta due volte), stessa
+#   causa (la vista ne espone meta'), stessa cura. La differenza e' che questa
+#   e' rimasta in un commento di codice invece che nel brief, dove nessuno la
+#   sarebbe andata a leggere. Si chiudono insieme perche' toccano **la stessa
+#   LATERAL**: la subselect che oggi prende `d.codice` prende anche
+#   `d.documento_id`, stesso `WHERE`, stesso `ORDER BY`, stesso `LIMIT 1`.
+#   Costo: una colonna in piu' in una subselect gia' eseguita.
+#
+# ⭐ IL PUNTO CHE RENDE LA COSA NON COSMETICA. Finche' l'id lo risolveva il
+#   repository con la propria LATERAL, `riferimento` (il codice, dalla vista) e
+#   `documento_id` (l'id, dal repository) potevano in linea di principio
+#   descrivere **due documenti diversi**, se un giorno l'`ORDER BY` fosse
+#   cambiato da una parte sola. Ora arrivano dalla **stessa riga**, per
+#   costruzione: non e' piu' una convenzione da mantenere a mano.
+#
+# ── Note di forma ────────────────────────────────────────────────────────
+# ⚠️ `WITH (security_invoker = on)` ri-specificato: la reloption non e' in
+#   `pg_get_viewdef` e un `CREATE OR REPLACE` che la omette la azzera in
+#   silenzio. Qui e' il filtro di scope emittente ereditato dalla vista base.
+# ⚠️ Colonne nuove **in coda**: `CREATE OR REPLACE VIEW` aggiunge, non riordina.
+#   `vw_dash_competenza_gruppi_riepilogo` legge questa vista nominando le
+#   colonne una per una e non si accorge di nulla.
+# ℹ️ `documento_id` e' NULL per i gruppi **sourceless** (oneri di commessa,
+#   `area_documento` NULL -> la LATERAL non produce righe). E' corretto: quei
+#   gruppi un documento non ce l'hanno, e il FE offre la sola commessa.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260815-25-update-vw-dash-competenza-gruppi-descrizione-e-documento-id-mctit.yaml
+
+  - changeSet:
+      id: 20260815-25-update-vw-dash-competenza-gruppi-descrizione-e-documento-id
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vw_dash_competenza_gruppi: + commessa_stato_descrizione (propagata dalla
+        vista base, richiesta BE §8.3) e + documento_id (dalla LATERAL che gia'
+        risolve il riferimento, richiesta F3 che stava solo in un commento del
+        repository). Entrambe tolgono al BE una risoluzione duplicata; l'id e il
+        codice del documento ora arrivano dalla stessa riga per costruzione.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_views
+                  WHERE schemaname = 'vendite'
+                    AND viewname = 'vw_dash_competenza_gruppi'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM information_schema.columns
+                  WHERE table_schema = 'vendite'
+                    AND table_name = 'vw_dash_competenza_attivita'
+                    AND column_name = 'commessa_stato_descrizione'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM information_schema.columns
+                  WHERE table_schema = 'vendite'
+                    AND table_name = 'vw_dash_fatturazione_documenti'
+                    AND column_name = 'documento_id'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_gruppi
+              WITH (security_invoker = on) AS
+               WITH aggregato AS (
+                       SELECT a.competenza_mese,
+                          a.gruppo_key,
+                          a.sorgente_tipo_id,
+                          a.sorgente_uid,
+                          a.commessa_id,
+                          a.commessa_codice,
+                          a.emittente_soggetto_ruolo_id,
+                          a.cliente_display,
+                          a.stadio,
+                          a.commessa_emittibile,
+                          a.commessa_stato_codice_interno,
+                          a.commessa_stato_descrizione,
+                          count(*) AS n_attivita,
+                          COALESCE(sum(a.valore), 0::numeric) AS valore,
+                          min(a.data_attivita) AS data_attivita_min,
+                          max(a.data_attivita) AS data_attivita_max,
+                          bool_or(a.tipo_movimento::text = 'ONERE'::text) AS ha_oneri
+                         FROM vendite.vw_dash_competenza_attivita a
+                        -- commessa_stato_descrizione entra nel GROUP BY accanto al
+                        -- codice interno: e' funzionalmente dipendente da
+                        -- commessa_id (gia' presente), ma la dipendenza attraverso
+                        -- una vista PostgreSQL non la deduce e pretende la colonna.
+                        GROUP BY a.competenza_mese, a.gruppo_key, a.sorgente_tipo_id, a.sorgente_uid, a.commessa_id, a.commessa_codice, a.emittente_soggetto_ruolo_id, a.cliente_display, a.stadio, a.commessa_emittibile, a.commessa_stato_codice_interno, a.commessa_stato_descrizione
+                      )
+               SELECT g.competenza_mese,
+                  g.gruppo_key,
+                  COALESCE(s.codice_interno, 'ONERI_COMMESSA'::character varying) AS tipo_gruppo,
+                  s.area AS area_documento,
+                  COALESCE(doc.codice, g.commessa_codice, g.gruppo_key) AS riferimento,
+                  g.commessa_id,
+                  g.commessa_codice,
+                  g.emittente_soggetto_ruolo_id,
+                  g.cliente_display,
+                  g.stadio,
+                  g.n_attivita,
+                  g.valore,
+                  g.data_attivita_min,
+                  g.data_attivita_max,
+                  g.ha_oneri,
+                  g.sorgente_tipo_id,
+                  g.sorgente_uid,
+                  g.commessa_emittibile,
+                  g.commessa_stato_codice_interno,
+                  g.commessa_stato_descrizione,
+                  -- L'ID del documento sorgente, dalla STESSA riga da cui esce il
+                  -- `riferimento` qui sopra: i drawer di dominio si aprono per id,
+                  -- la vista esponeva solo il codice e l'uid. Finche' l'id lo
+                  -- risolveva il repository con una LATERAL sua, id e codice
+                  -- potevano descrivere due documenti diversi se l'ORDER BY fosse
+                  -- cambiato da una parte sola. NULL sui gruppi sourceless (oneri):
+                  -- area_documento NULL -> la LATERAL non produce righe, ed e'
+                  -- corretto, quei gruppi un documento non ce l'hanno.
+                  doc.documento_id
+                 FROM aggregato g
+                   LEFT JOIN config.sorgenti s ON s.id = g.sorgente_tipo_id
+                   LEFT JOIN LATERAL ( SELECT d.codice,
+                                              d.documento_id
+                         FROM vendite.vw_dash_fatturazione_documenti d
+                        WHERE s.area IS NOT NULL AND d.area::text = s.area::text AND d.documento_uid = g.sorgente_uid
+                        ORDER BY d.competenza_mese DESC NULLS LAST
+                       LIMIT 1) doc ON true;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN vendite.vw_dash_competenza_gruppi.commessa_stato_descrizione IS
+              'Descrizione di DISPLAY dello stato della commessa, propagata da vw_dash_competenza_attivita. Richiesta BE §8.3 di brief-db-emittibilita-visibile-e-sbloccabile: a video va la descrizione, commessa_stato_codice_interno resta la chiave logica.';
+
+              COMMENT ON COLUMN vendite.vw_dash_competenza_gruppi.documento_id IS
+              'ID del documento sorgente del gruppo, risolto dalla STESSA riga di vw_dash_fatturazione_documenti da cui esce il riferimento (stesso WHERE, stesso ORDER BY, stesso LIMIT 1): id e codice non possono descrivere due documenti diversi. Serve ai drawer di dominio, che si aprono per id mentre la vista esponeva solo codice e uid. NULL per i gruppi sourceless (oneri di commessa): area_documento NULL -> nessuna riga dalla LATERAL, ed e'' corretto perche'' quei gruppi un documento non ce l''hanno. Aggiunta 2026-08-15 (brief emittibilita §9 F3): toglie dal repository BE una seconda copia della regola di risoluzione, dichiarata li'' come «drift noto e accettato».';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

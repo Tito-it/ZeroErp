@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il costo di `gruppi_coperti`, misurato — al posto di una mitigazione che era
+#   stata promessa e mai scritta. Solo `COMMENT`: il corpo della funzione non
+#   si tocca. brief-db-emittibilita-visibile-e-sbloccabile §9 F5 e F7.
+#
+# ── ⚠️ COSA DICEVA `20260815-02` ─────────────────────────────────────────
+#     «Se un giorno il costo mordera' sul cron, la mitigazione e' nota e sta
+#      scritta qui.»
+#
+#   Non c'e'. Il paragrafo successivo passa al `DROP FUNCTION`. Una promessa a
+#   vuoto e' peggio del silenzio: chi la legge fra sei mesi cerca una cosa che
+#   non esiste, e nel frattempo si fida di una rassicurazione che nessuno ha
+#   verificato. Non si modifica quel changeSet — e' mergiato, e riscriverlo
+#   romperebbe la sequenza dei checksum. Si corregge in avanti.
+#
+# ── ℹ️ IL NUMERO, MISURATO ───────────────────────────────────────────────
+#   Su 100.000 righe sintetiche, sullo stesso database:
+#
+#     fn_build_gruppo_fatturabile_key x 100k, scalare .... 475 ms  (~5 µs/riga)
+#     lane attuale (array_agg DISTINCT ... ORDER BY) ..... 540-637 ms
+#     variante con chiave calcolata una volta in LATERAL . 527-537 ms
+#
+#   Cioe': **~0,5 s ogni 100.000 righe candidate**. Sul giro di massa non morde,
+#   e la scelta di calcolare sempre il campo era giusta.
+#
+# ⭐ E LA MITIGAZIONE "OVVIA" NON ESISTE. Sembrava che l'`ORDER BY` dentro
+#   l'aggregato valutasse la funzione una seconda volta, e che bastasse una
+#   `LATERAL` per dimezzare. **Non e' cosi'**: il parser deduplica l'espressione
+#   dell'`ORDER BY` con quella dell'argomento quando sono identiche, quindi la
+#   valutazione e' gia' una sola per riga — e infatti le due forme misurano
+#   uguale. Va scritto proprio perche' e' controintuitivo: qualcuno la
+#   riproverebbe.
+#
+# ── ℹ️ F7 — IL `LIMIT` PUO' TRAVESTIRE UN TRONCAMENTO ────────────────────
+#   `p_limit` (default 1000) limita le TERNE. Se un'emissione mirata ne
+#   generasse di piu', i gruppi delle terne tagliate uscirebbero dal
+#   `gruppi_coperti` e a valle risulterebbero «non coperti» pur essendo solo
+#   troncati. Oggi e' irrilevante — le mirate sono da pochi gruppi — ma e'
+#   silenzioso, ed e' la ragione per cui va scritto invece che corretto.
+#   ℹ️ Il consuntivo (`vendite.fn_esito_gruppi_giro`, `20260815-27`) non ha
+#   questo problema: misura sui lotti, non sulla discovery.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260815-28-comment-fn-list-emittibili-lane-costo-misurato-mctit.yaml
+
+  - changeSet:
+      id: 20260815-28-comment-fn-list-emittibili-lane-costo-misurato
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_list_emittibili_lane: solo COMMENT. Sostituisce la mitigazione
+        promessa e mai scritta da 20260815-02 col costo misurato (~5 µs per riga
+        candidata, ~0,5 s ogni 100k) e con la constatazione che la variante
+        LATERAL non guadagna nulla, perche' l'ORDER BY dell'aggregato e' gia'
+        deduplicato dal parser. Aggiunge la nota sul LIMIT delle terne.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'vendite'
+                AND p.proname = 'fn_list_emittibili_lane'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_list_emittibili_lane(p_competenza_mese date, p_billing_account_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_fatturazione_immediata boolean, p_limit integer, p_gruppi text[])
+              IS 'Read-only/STABLE: discovery delle corsie (emittente, tipo_doc_fiscale, utility, competenza_mese) pronte da fatturare per il driver batch. Grana per-utility (il lotto e'' segregato per utility: fn_create pretende utility NOT NULL, fn_select filtra ba.utility_id). utility_id mai NULL (commesse.utility_id NOT NULL); coerenza c.utility_id=ba.utility_id garantita da fn_get_or_create_commessa. Criterio APPROVATA+NON_EMESSA, tipo_doc NOT NULL, competenza cumulativa (<=) con output competenza_mese=max. Filtri perimetro + corsia fatturazione_immediata. fn_list_commesse_emittibili resta separata e invariata. rev 2026-07-27 (brief emissione mirata A5): p_gruppi text[] restringe alle terne dei gruppi richiesti — NULL = nessuna restrizione (G1). Serve a non far nascere un lotto per ogni altra terna del perimetro durante un''emissione mirata: quei lotti sarebbero vuoti (pull e select ora filtrano) ma lascerebbero task run, log e segnalazioni da interpretare. Un gruppo con righe di tipo doc fiscale diverso resta su piu'' terne e vengono restituite TUTTE (G15): e'' il motivo per cui l''esito verso il BE e'' una lista di lotto_id. rev 2026-08-15 (brief emittibilita §5): + gruppi_coperti text[], l''elenco DETERMINISTICO dei gruppi fatturabili coperti da ciascuna terna. Serve al caso dell''emissione PARZIALE — 3 gruppi chiesti, 2 serviti — che prima era muto: i gruppi si perdevano nel GROUP BY per (emittente, tipo_doc, utility) e a valle nessuno poteva piu'' dire quale fosse rimasto fuori. La chiave arriva da vendite.fn_build_gruppo_fatturabile_key, unica fonte di verita'', mai ricostruita qui. ⚠️ gruppi_coperti e'' una PREVISIONE, non un consuntivo: dice quali gruppi la discovery si aspetta di coprire, e fra quel momento e l''esecuzione le righe possono essere prese da un altro giro. Per sapere cosa un giro ha fatturato DAVVERO usare vendite.fn_esito_gruppi_giro(lotti) — brief emittibilita §8.2, rev 2026-08-15. ⚠️ Il campo si calcola SEMPRE, anche nel giro di massa, ed e'' deliberato: un campo che a volte vale NULL perche'' «non calcolato» e a volte perche'' «nessun gruppo» e'' il tipo di ambiguita'' che si paga sei mesi dopo. COSTO MISURATO (2026-08-15, 100k righe sintetiche): la chiave vale ~5 µs a chiamata, cioe'' ~0,5 s ogni 100.000 righe candidate — sul cron non morde. ⭐ E la mitigazione «ovvia» NON esiste: sembra che l''ORDER BY dentro l''aggregato valuti la funzione una seconda volta e che basti una LATERAL per dimezzare, ma il parser deduplica l''espressione dell''ORDER BY con quella dell''argomento quando sono identiche — la valutazione e'' gia'' una sola per riga, e le due forme misurano uguale (540-637 ms contro 527-537 ms). Scritto perche'' e'' controintuitivo e qualcuno lo riproverebbe. ⚠️ p_limit (default 1000) limita le TERNE: se un''emissione mirata ne generasse di piu'', i gruppi delle terne tagliate uscirebbero da gruppi_coperti e a valle sembrerebbero «non coperti» pur essendo solo troncati. Irrilevante oggi (le mirate sono da pochi gruppi) ma silenzioso; fn_esito_gruppi_giro non ne soffre perche'' misura sui lotti. ⚠️ Cambia il RETURNS TABLE rispetto a prima del 2026-08-15, quindi e'' servito un DROP: i chiamanti nominano le colonne una per una e non si rompono, ma chi vuole il campo nuovo deve aggiungerlo alla propria SELECT.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

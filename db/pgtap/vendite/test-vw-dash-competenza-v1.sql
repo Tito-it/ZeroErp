@@ -12,7 +12,7 @@
 --       (10/20/30/40) + 1 void ANNULLATA; fattura BOZZA collegata; lotto
 --       2080-04 con task run in ERRORE.
 --
--- Indice test (0..14):
+-- Indice test (0..16):
 --   0)  Precondizioni (refs: BA, articoli, stati, registro, emittente A)
 --   1)  Le 3 viste vw_dash_competenza_* esistono
 --   2)  Setup: operatore OPERATORE non-super trovato (scope fail-closed)
@@ -29,7 +29,9 @@
 --   12) ERRORI: critical=false spegne la FATTURA_CRITICA
 --   13) SENTINELLA C1/reset (DL-5): dopo unlink stile fn_cleanup_fatture_by_ids
 --       data_insert INVARIATA, stadio torna EMESSA_NON_FATTURATA, ritardo resta
---   14) FAIL-CLOSED: GUC vuota -> 0 righe in dettaglio e mensile
+--   14) commessa_stato_descrizione sul dettaglio (20260815-24)
+--   15) commessa_stato_descrizione e documento_id sui gruppi (20260815-25)
+--   16) FAIL-CLOSED: GUC vuota -> 0 righe in dettaglio e mensile
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -48,7 +50,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(15);
+SELECT plan(17);
 
 -- ============================================================
 -- 0) Riferimenti minimi
@@ -482,7 +484,45 @@ SELECT ok(
 );
 
 -- ============================================================
--- 14) FAIL-CLOSED: GUC vuota -> 0 righe (dettaglio e mensile)
+-- 14-15) Decodifica di display dello stato commessa e id del documento
+--        sorgente (20260815-24 / -25, richieste BE §8.3 e §9 F3 di
+--        brief-db-emittibilita-visibile-e-sbloccabile). La convenzione del
+--        progetto e' che le liste ricevano i campi di display gia' decodificati
+--        dal DB: un codice interno a video e' il sintomo che la decodifica e'
+--        finita lato client.
+-- ============================================================
+SELECT ok(
+  (SELECT v.commessa_stato_descrizione
+          = (SELECT COALESCE(sc.descrizione, sc.codice)
+               FROM vendite.stati_commessa sc, tmp_dc_refs r
+              WHERE sc.id = r.stato_commessa_id)
+     FROM vendite.vw_dash_competenza_attivita v
+    WHERE v.commessa_attivita_id = (SELECT attivita_id FROM tmp_dc_att WHERE slot = 'A2_DA_EMETTERE')),
+  '14. Dettaglio: commessa_stato_descrizione decodificata accanto al codice interno'
+);
+
+-- ⚠️ Il gruppo della fixture e' SOURCELESS (le attivita' hanno sorgente NULL ->
+--   chiave 'MAN:<commessa>'), quindi `documento_id` e' NULL, ed e' il
+--   comportamento voluto: quei gruppi un documento non ce l'hanno e il FE
+--   offre la sola commessa. Il ramo con documento valorizzato ha bisogno di un
+--   documento sorgente vero nella vista dei documenti: si verifica quando c'e',
+--   e si dichiara skippato quando manca — un ok incondizionato qui sarebbe una
+--   copertura solo apparente.
+SELECT ok(
+  (SELECT g.commessa_stato_descrizione
+          = (SELECT COALESCE(sc.descrizione, sc.codice)
+               FROM vendite.stati_commessa sc, tmp_dc_refs r
+              WHERE sc.id = r.stato_commessa_id)
+      AND g.documento_id IS NULL
+      AND g.riferimento = g.commessa_codice
+     FROM vendite.vw_dash_competenza_gruppi g
+    WHERE g.commessa_id = (SELECT id FROM tmp_dc_commessa)
+      AND g.stadio = 'DA_EMETTERE'),
+  '15. Gruppi: commessa_stato_descrizione decodificata; documento_id NULL sul gruppo sourceless (oneri), col riferimento che ripiega sulla commessa'
+);
+
+-- ============================================================
+-- 16) FAIL-CLOSED: GUC vuota -> 0 righe (dettaglio e mensile)
 -- ============================================================
 SELECT set_config('app.current_user_id', '', true);
 
@@ -492,7 +532,7 @@ SELECT ok(
   AND
   (SELECT count(*) = 0 FROM vendite.vw_dash_competenza_mensile m
     WHERE m.competenza_mese = DATE '2080-01-01'),
-  '14. Fail-closed: senza GUC operatore le viste Lente 1 non espongono righe'
+  '16. Fail-closed: senza GUC operatore le viste Lente 1 non espongono righe'
 );
 
 SELECT * FROM finish();

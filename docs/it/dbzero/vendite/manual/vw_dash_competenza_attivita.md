@@ -106,4 +106,31 @@ che da qui eredita **scope emittente** e **coerenza dei conteggi con la card**.
 restituisce l'array **vuoto**, non `NULL`, quindi senza `app.current_user_id`
 nessuna riga passa. Da tenere presente scrivendo test.
 
+---
+
+### 🆕 `commessa_stato_descrizione` (2026-08-15)
+
+Aggiunta con `20260815-24` su richiesta del backend
+([brief-db-emittibilita-visibile-e-sbloccabile](/dev/work-in-progress/brief-db-emittibilita-visibile-e-sbloccabile)
+§8.3), e propagata sui gruppi dal `20260815-25`.
+
+La vista esponeva `commessa_stato_codice_interno` e nient'altro. A video va però
+la **descrizione**: la convenzione del progetto è che le liste ricevano i campi
+di display già decodificati dal DB, mai risolti lato client, e un codice interno
+dentro un'interfaccia inglese — *«The job order is in state BOZZA»* — è il
+sintomo che quella convenzione è stata aggirata.
+
+Il backend si era messo un `LEFT JOIN` sul repository per cavarsela. Funzionava,
+ed è la ragione per cui la richiesta era arancione e non rossa: ma quel JOIN **la
+vista lo faceva già** — è da lì che arrivano `emittibile` e `codice_interno` — e
+una seconda risoluzione della stessa cosa è la duplicazione che il §7.1 di quel
+brief aveva già dovuto estrarre una volta, sul guard di transizione.
+
+ℹ️ `COALESCE(descrizione, codice)` e non `descrizione` nuda: la colonna è
+nullable a catalogo (il seed la valorizza su tutte e sei le righe, ma il DDL non
+lo impone), e un campo di **display** che torna `NULL` produce una cella vuota,
+che l'operatore legge come «non lo so» invece che come «manca il dato di
+catalogo». `codice` è `NOT NULL` ed è la forma leggibile del mutabile: è il
+ripiego giusto.
+
 {% include-markdown "signature-core.md" %}

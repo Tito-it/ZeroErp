@@ -17,7 +17,7 @@
 -- DELTA su (E,X) restano per-terna (E,X,U1). Gli helper sono utility-aware (filtrano U1)
 -- per non incappare nello scalar-subquery >1 row in DB con piu' utility per emittente.
 --
--- Indice test (1..9):
+-- Indice test (1..13):
 --   1) terna (E,X,U1) presente con competenza_mese = max cappato (2026-07-01)
 --   2) DELTA (E,X,U1) = 3 -> include l'ARRETRATO di giugno (filtro <= cumulativo)
 --   3) DELTA (E,Y,U1) = 1 -> riga BOZZA (non approvata) ESCLUSA
@@ -27,6 +27,9 @@
 --   7) fn_list_commesse_emittibili NON toccata (continua a restituire la commessa A)
 --   8) multi-utility: stesso (E,X) su U2 -> terna (E,X,U2) distinta (skip se manca 2o BA)
 --   9) utility_id in output mai NULL (commesse.utility_id NOT NULL a monte)
+--  10-11) gruppi_coperti: elenco per terna, e il non servito per differenza
+--  12) tetto p_limit sul giro di MASSA: tronca in silenzio (storico)
+--  13) tetto p_limit sul giro MIRATO: SOLLEVA (perimetro nominale)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -46,7 +49,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(11);
+SELECT plan(13);
 
 -- ============================================================
 -- SETUP: riferimenti minimi + due tipi_doc distinti (X, Y)
@@ -417,6 +420,47 @@ SELECT CASE WHEN (SELECT count(*) FROM tmp_gruppi) = 0
         WHERE q.k = ANY (l.gruppi_coperti))),
     ARRAY['PREVENTIVO:00000000-0000-0000-0000-000000000000'],
     'gruppi_coperti: il gruppo non servito si ricava per differenza (emissione parziale)'
+  )
+END;
+
+-- ============================================================
+-- TEST 12-13: il TETTO (p_limit) e le due risposte opposte.
+--   Il tetto limita le CORSIE. Se ne taglia una, i gruppi che stavano
+--   dentro spariscono dal risultato, e a valle il conto per differenza li
+--   marchia «non fatturabili»: una diagnosi FALSA su un gruppo che era solo
+--   oltre il taglio. Il rimedio non e' simmetrico, ed e' il punto:
+--     · giro di MASSA -> il tetto e' una valvola, tronca in silenzio
+--     · giro MIRATO   -> il perimetro e' nominale, e troncare significa non
+--                        aver risposto: solleva.
+--   brief-db-emittibilita-visibile-e-sbloccabile §9 F7, changeSet 20260815-32.
+-- ============================================================
+SELECT is(
+  (SELECT count(*)::integer FROM vendite.fn_list_emittibili_lane(
+     p_competenza_mese => DATE '2026-07-01',
+     p_emittente_soggetto_ruolo_id => (SELECT e FROM tmp_e),
+     p_limit => 1)),
+  1,
+  '12. Giro di MASSA col tetto a 1: tronca in silenzio, comportamento storico invariato'
+);
+
+-- ⚠️ Il caso vale solo se le corsie della fixture sono piu' d'una: con una
+--   sola non c'e' niente da troncare e il test misurerebbe il nulla.
+SELECT CASE WHEN (
+    SELECT count(*) FROM vendite.fn_list_emittibili_lane(
+      p_competenza_mese => DATE '2026-07-01',
+      p_emittente_soggetto_ruolo_id => (SELECT e FROM tmp_e),
+      p_gruppi => (SELECT array_agg(k) FROM tmp_gruppi))) < 2
+  THEN skip('la fixture produce meno di 2 corsie: niente da troncare', 1)
+  ELSE throws_ok(
+    format($$ SELECT * FROM vendite.fn_list_emittibili_lane(
+                p_competenza_mese => DATE '2026-07-01',
+                p_emittente_soggetto_ruolo_id => %s,
+                p_gruppi => %L::text[],
+                p_limit  => 1) $$,
+           (SELECT e FROM tmp_e),
+           (SELECT array_agg(k) FROM tmp_gruppi)),
+    'P0001', NULL,
+    '13. Giro MIRATO troncato dal tetto: SOLLEVA, non restituisce una risposta parziale che a valle diventa una diagnosi falsa'
   )
 END;
 
