@@ -75,7 +75,7 @@ BEGIN
       FROM config.stati_doc_ordini
      WHERE codice_interno = 'DRAFT' AND attivo IS TRUE;
 
-    v_fatt_trigger := COALESCE(p_fatturazione_trigger, 'CONFERMATO');
+    v_fatt_trigger := p_fatturazione_trigger;   -- NULL = «non scelto» -> eredita dal BA (trgfn_ordini_normalize)
 
     -- 3) Conta le righe RESIDUE da smistare a ORDINE leggendo la
     --    vista-predicato unica (MERCE + ATTIVA + non gia' allocata),
@@ -225,7 +225,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_push_preventivo_a_ordine(p_preventivo_id bigint, p_righe_ids bigint[], p_pratica_id bigint, p_fatturazione_trigger character varying, p_flusso_id bigint)
-IS 'Push preventivo ACCETTATO -> ordine DRAFT (testata + righe + BoM). Aggancio pratica opzionale (ROOT preventivo + COLLEGATO ordine con flusso_id, D-B). Sezione 8: gate EVASO bi-ramo atomico (finding #10 analisi-fix-transazioni): niente piu'' ordine creato + preventivo bloccato in ACCETTATO. p_flusso_id DEFAULT NULL retro-compatibile.';
+IS 'Push preventivo ACCETTATO -> ordine DRAFT (testata + righe + BoM). Aggancio pratica opzionale (ROOT preventivo + COLLEGATO ordine con flusso_id, D-B). Sezione 8: gate EVASO bi-ramo atomico (finding #10 analisi-fix-transazioni): niente piu'' ordine creato + preventivo bloccato in ACCETTATO. p_flusso_id DEFAULT NULL retro-compatibile. rev 2026-08-17: p_fatturazione_trigger NON viene piu'' portato a ''CONFERMATO'' con un COALESCE locale — passa in testata cosi'' com''e'', NULL compreso, e la risoluzione (testata -> billing_account -> CONFERMATO) sta in un posto solo, vendite.trgfn_ordini_normalize. Prima questa funzione raccoglieva il parametro e quel trigger lo sovrascriveva un istante dopo: il parametro era inerte (segnalazione BE 2026-08-16; brief-be-fan-out-isolato-e-esito-parziale.md §13.2, brief-design-fatturazione-due-lenti.md §6-quater DL-19).';
 ```
 
 ---

@@ -73,7 +73,15 @@ SELECT (SELECT a.id FROM vendite.attivita_fatturabili a
          WHERE a.commessa_id IS NOT NULL ORDER BY a.id LIMIT 1)  AS attivita_id,
        (SELECT a.commessa_id FROM vendite.attivita_fatturabili a
          WHERE a.commessa_id IS NOT NULL ORDER BY a.id LIMIT 1)  AS commessa_id,
+       -- ⚠️ Solo lotti in DRAFT: `fn_get_or_create_fattura_header` crea la
+       --    fattura in DRAFT e il guard DEFERRED di coerenza vuole lo stesso
+       --    stato sul lotto. Con `ORDER BY id DESC` nudo bastava che
+       --    l'applicazione creasse un lotto EMESSA — successo il 2026-08-16 —
+       --    perche' la fixture fallisse senza che il codice collaudato fosse
+       --    cambiato di una riga.
        (SELECT fl.id FROM vendite.fatturazione_lotti fl
+          JOIN config.stati_doc_fiscale s ON s.id = fl.stato_doc_fiscale_id
+         WHERE s.codice_interno = 'DRAFT'
          ORDER BY fl.id DESC LIMIT 1)                            AS lotto_id;
 
 CREATE TEMP TABLE tmp_f1_arr AS

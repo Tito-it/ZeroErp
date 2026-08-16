@@ -7,7 +7,7 @@
 > è avvenuta su `dev/backend-tid` ([brief BE/FE](brief-be-fe-ddt-resi-dashboard.md),
 > realizzato 2026-07-18 + review 8-finder). Reperti fuori slice tracciati nei brief dedicati
 > ([guard sorgente polimorfa](brief-db-guard-sorgente-polimorfa.md) ·
-> [immutabilità quantità](../work-in-progress/brief-db-immutabilita-quantita-e-porta-oneri.md)); alla slice NC
+> [immutabilità quantità](brief-db-immutabilita-quantita-e-porta-oneri.md)); alla slice NC
 > resta il **contratto del §7** (NC attribuibile alla merce, con quantità).
 > **Origine**: analisi 2026-07-16 con Tid. Le due lenti a monte (Situazione aperta, Backlog)
 > sono state disegnate prima che esistessero DDT e resi e non li conoscono. Nell'analisi sono
@@ -414,7 +414,7 @@ fatturati = Σ attivita_fatturabili.quantita  delle righe AF della partita
   (stabilità di `data_insert`); il reset demolisce le **fatture**, non le AF. Due letture della
   parola «emissione», entrambe vere — registrarlo evita che la prossima persona legga DL-5 come
   «il reset non esiste».
-- Con [brief-db-immutabilita-quantita-e-porta-oneri.md](../work-in-progress/brief-db-immutabilita-quantita-e-porta-oneri.md)
+- Con [brief-db-immutabilita-quantita-e-porta-oneri.md](brief-db-immutabilita-quantita-e-porta-oneri.md)
   vale inoltre **AF.quantita = CA.quantita sempre** → la misura è stabile per costruzione, e le
   righe manuali (segmenti `MAN:`, `tipo_movimento` non-NORMALE) non entrano mai nel conto.
 
@@ -729,7 +729,7 @@ Backlog**, con un ramo dedicato:
   il rimedio scelto fosse un altro.
 - È 🟢 oggi con una motivazione **verificata**: non esiste alcuna azione che un operatore possa
   compiere — la NC non c'è, e la correzione manuale della quantità è **vietata dal principio di
-  immutabilità** ([brief-db-immutabilita-quantita-e-porta-oneri.md](../work-in-progress/brief-db-immutabilita-quantita-e-porta-oneri.md)).
+  immutabilità** ([brief-db-immutabilita-quantita-e-porta-oneri.md](brief-db-immutabilita-quantita-e-porta-oneri.md)).
   Con la slice NC diventa 🟠 cambiando **una riga di seed**. ⚠️ Il precedente citato dalla
   stesura precedente (*«stessa forma di `CANONE_NON_GENERATO`»*) è **falso**: verificato,
   `CANONE_NON_GENERATO` non è emesso da nessuna vista (`vw_dash_fatturazione_contratti` ha
@@ -847,7 +847,7 @@ il modello non la impedisca — cioè la coda etichetta dovuta/facoltativa (§3c
   le correzioni sono **righe nuove** attraverso porte dedicate, e le correzioni di **merce**
   restano interamente su questo brief (reso → contatore → NC). **La misura del contatore non ne
   dipende** (misura AF in ogni caso, e con l'immutabilità AF = CA sempre) → brief a sé:
-  [brief-db-immutabilita-quantita-e-porta-oneri.md](../work-in-progress/brief-db-immutabilita-quantita-e-porta-oneri.md).
+  [brief-db-immutabilita-quantita-e-porta-oneri.md](brief-db-immutabilita-quantita-e-porta-oneri.md).
 - **Segnalazione collaterale (fix a parte, non di questa slice)**: i trigger anti-disattivazione
   `dbops.trgfn_prevent_deactivate_if_children` su `config.causali_trasporto` **e** su
   `config.stati_doc_ddt` proteggono solo i figli in **`acquisti`** (`acquisti.ddt/ordini`), non

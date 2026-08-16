@@ -81,6 +81,12 @@ BEGIN
     -- parametro: i valori restano parametri veri (USING).
     -- Tiebreak ca.id: senza, righe con la stessa chiave possono
     -- scambiarsi fra una pagina e l'altra.
+    -- ⚠️ NULLS LAST ESPLICITO, e non solo sul DESC: chi ordina per
+    -- una colonna vuole vedere per prime le righe che quel valore
+    -- ce l'hanno. Su ASC e' gia' il default di PostgreSQL, su DESC
+    -- e' l'opposto — scriverlo per entrambi i versi evita che
+    -- l'ordinamento si comporti in due modi diversi a seconda
+    -- della freccia.
     RETURN QUERY EXECUTE format($q$
         SELECT ca.id, ca.commessa_id, ca.segment_key, ca.articolo_id, ca.istanza_utility_id,
                ca.data_attivita, ca.uom_id, ca.quantita, ca.competenza_mese, ca.competenza_dal,
@@ -129,7 +135,7 @@ BEGIN
            AND ($2 IS NULL OR ca.stato_emissione = $2)
            AND ($3 IS NULL OR ca.stato_approvazione = $3)
            AND ($4 IS NULL OR ca.competenza_mese = $4)
-         ORDER BY %s %s, ca.id
+         ORDER BY %s %s NULLS LAST, ca.id
          LIMIT $5 OFFSET $6
     $q$, v_order_col, v_order_dir)
     USING p_commessa_id, p_stato_emissione, p_stato_approvazione,
@@ -138,7 +144,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_commessa_attivita(p_commessa_id bigint, p_stato_emissione character varying, p_stato_approvazione character varying, p_competenza_mese date, p_limit integer, p_offset integer, p_order_by text, p_order_dir text)
-IS 'Elenco paginato delle attivita'' di una commessa, con whitelist chiusa di ordinamento e fail-loud sul nome fuori whitelist. Rev 2026-08-16 (richiesta BE): porta a valle tre informazioni che si fermavano al database. (1) `fatturata_il` = vendite.fatture_righe.data_insert, cioe'' quando la riga e'' stata PORTATA in fattura — NON `data_update`, che e'' «ultimo aggiornamento» e oggi coincide solo per coincidenza: misurato il 2026-08-16, 10 righe su 37 gia'' divergono, e basta un riallineamento di prezzo dopo la fatturazione perche'' l''etichetta menta. (2) `fattura_id`, `fattura_numero`, `fattura_stato`: il documento su cui navigare, preso con un LATERAL ordinato + LIMIT 1 e non con una join nuda, perche'' il rapporto 1:1 fra attivita'' e riga di fattura e'' una fotografia e non un vincolo — con una join, una fatturazione parziale raddoppierebbe le righe della lista. (3) `sorgente_uid`, `sorgente_area` e `sorgente_documento_id` per l''azione «apri documento sorgente»: l''id numerico lo risolve vendite.fn_get_sorgente_documento_id, perche'' la chiave della sorgente e'' polimorfa e nel dato reale sorgente_uid contiene un UUID su 88 righe su 88, ordini e DDT compresi. ⚠️ Il booleano `fatturata` resta calcolato sull''EXISTS in vendite.attivita_fatturabili, che NON ha RLS, e non deriva dalla join: vendite.fatture ce l''ha, e chi non vede la fattura leggerebbe «da fatturare» una riga gia'' fatturata. Cosi'' invece legge fatturata = true con le colonne del documento a NULL: sa che e'' fatturata e sa di non poterci navigare. Richiesta BE del 2026-08-16.';
+IS 'Elenco paginato delle attivita'' di una commessa, con whitelist chiusa di ordinamento e fail-loud sul nome fuori whitelist. Rev 2026-08-16 (richiesta BE): porta a valle tre informazioni che si fermavano al database. (1) `fatturata_il` = vendite.fatture_righe.data_insert, cioe'' quando la riga e'' stata PORTATA in fattura — NON `data_update`, che e'' «ultimo aggiornamento» e oggi coincide solo per coincidenza: misurato il 2026-08-16, 10 righe su 37 gia'' divergono, e basta un riallineamento di prezzo dopo la fatturazione perche'' l''etichetta menta. (2) `fattura_id`, `fattura_numero`, `fattura_stato`: il documento su cui navigare, preso con un LATERAL ordinato + LIMIT 1 e non con una join nuda, perche'' il rapporto 1:1 fra attivita'' e riga di fattura e'' una fotografia e non un vincolo — con una join, una fatturazione parziale raddoppierebbe le righe della lista. (3) `sorgente_uid`, `sorgente_area` e `sorgente_documento_id` per l''azione «apri documento sorgente»: l''id numerico lo risolve vendite.fn_get_sorgente_documento_id, perche'' la chiave della sorgente e'' polimorfa e nel dato reale sorgente_uid contiene un UUID su 88 righe su 88, ordini e DDT compresi. ⚠️ Il booleano `fatturata` resta calcolato sull''EXISTS in vendite.attivita_fatturabili, che NON ha RLS, e non deriva dalla join: vendite.fatture ce l''ha, e chi non vede la fattura leggerebbe «da fatturare» una riga gia'' fatturata. Cosi'' invece legge fatturata = true con le colonne del documento a NULL: sa che e'' fatturata e sa di non poterci navigare. Rev 2026-08-16 (sera): ORDER BY con NULLS LAST esplicito in ENTRAMBI i versi. Il default di PostgreSQL mette i NULL in TESTA sul DESC, quindi ordinando per `fatturata_il` decrescente le righe MAI fatturate finivano prime e le fatturate in fondo — su una commessa con cento righe e dieci fatturate l''ordinamento diventa inutile proprio dove serve. Segnalato dal BE dopo l''apply. Richiesta BE del 2026-08-16.';
 ```
 
 ---
