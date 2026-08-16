@@ -22,9 +22,13 @@
 #      nessuna diagnosi: non c'e' ostacolo da spiegare)
 #   7-quater. consuntivo_rotto_non_affonda_il_giro_riuscito (la lettura a valle
 #      di fatture gia' emesse non solleva: `lotti` resta, il buco si dichiara)
+#   7-quinquies. corsia_rotta_e_testata_bloccata_convivono_nello_stesso_giro
+#      (soppressione PER GRUPPO: §11.4 punto 3)
 #   8. giro_di_massa_a_vuoto_resta_successo (perimetro non nominale)
-#   9. mirata_con_terne_fallite_riporta_errori_terna (no diagnosi di perimetro,
-#      non terminale: un errore pipeline puo' essere transiente)
+#   9. mirata_con_terne_fallite_riporta_errori_terna (errori terna primari,
+#      non terminale; dal 2026-08-16 la diagnosi gira anche qui, col contesto)
+#   9-bis. giro_a_vuoto_misto_nomina_anche_la_causa_non_di_corsia (la BOZZA
+#      dietro la corsia rotta non e' piu' muta)
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -57,6 +61,8 @@ _DIAGNOSI_COMMESSA_BOZZA = [{
     "commessa_emittibile": False,
     "n_righe": 5, "n_emesse": 0, "n_non_approvate": 0,
     "n_fuori_competenza": 0, "n_pronte": 5,
+    "terne_pronte": [{"emittente_soggetto_ruolo_id": 3,
+                      "tipo_doc_fiscale_id": 1, "utility_id": 9}],
 }]
 
 
@@ -295,6 +301,66 @@ class FatturazioneGiroHandlerTests(SimpleTestCase):
         )
         self.assertNotIn("gruppi_non_serviti", result)
 
+    # 7-quinquies. ⭐ Il punto del §11.4: la soppressione della diagnosi di
+    #    perimetro e' PER GRUPPO, non per giro. Stesso giro parziale, due
+    #    gruppi non serviti per motivi DIVERSI:
+    #      - uno la cui corsia si e' rotta  → «riprova»;
+    #      - uno con la commessa in BOZZA   → «la testata blocca», che resta.
+    #    Un `if falliti > 0` globale avrebbe spento anche il secondo,
+    #    sostituendo un messaggio impreciso con un silenzio.
+    @patch(_REPO)
+    @patch(_GIRO)
+    def test_corsia_rotta_e_testata_bloccata_convivono_nello_stesso_giro(
+        self, mock_giro, mock_repo,
+    ) -> None:
+        corsia_rotta = {"emittente_soggetto_ruolo_id": 7,
+                        "tipo_doc_fiscale_id": 1, "utility_id": 9}
+        corsia_bozza = {"emittente_soggetto_ruolo_id": 3,
+                        "tipo_doc_fiscale_id": 1, "utility_id": 9}
+        mock_giro.return_value = {
+            "lane": 3, "lotti": [{"lotto_id": 1279}], "falliti": 1,
+            # Il FATTO da cui si ricavano le terne fallite: un esito per terna.
+            "esiti": [
+                {**corsia_rotta, "ok": False, "errore_code": "E_LOCK_LOTTO"},
+                {"emittente_soggetto_ruolo_id": 5, "tipo_doc_fiscale_id": 1,
+                 "utility_id": 9, "ok": True, "lotto_id": 1279},
+            ],
+        }
+        mock_repo.return_value.esito_gruppi_giro.return_value = [
+            _esito("ROTTO:aa", "NON_SERVITO", n_residue=3),
+            _esito("BOZZA:bb", "NON_SERVITO", n_residue=5),
+        ]
+        mock_repo.return_value.diagnostica_gruppi.return_value = [
+            {"gruppo_key": "ROTTO:aa", "commessa_id": 1, "commessa_codice": "CMM-1",
+             "commessa_stato_codice_interno": "PRONTA_FATTURAZIONE",
+             "commessa_stato_descrizione": "Pronta fatturazione",
+             "commessa_emittibile": True,
+             "n_righe": 3, "n_emesse": 0, "n_annullate": 0, "n_rifiutate": 0,
+             "n_non_approvate": 0, "n_fuori_competenza": 0, "n_pronte": 3,
+             "terne_pronte": [corsia_rotta]},
+            {"gruppo_key": "BOZZA:bb", "commessa_id": 2, "commessa_codice": "CMM-2",
+             "commessa_stato_codice_interno": "BOZZA",
+             "commessa_stato_descrizione": "Bozza",
+             "commessa_emittibile": False,
+             "n_righe": 5, "n_emesse": 0, "n_annullate": 0, "n_rifiutate": 0,
+             "n_non_approvate": 0, "n_fuori_competenza": 0, "n_pronte": 5,
+             "terne_pronte": [corsia_bozza]},
+        ]
+
+        result = fatturazione_giro_handler(
+            {"competenza_mese": "2026-06-01", "gruppi": ["ROTTO:aa", "BOZZA:bb"]},
+            scope=None,
+        )
+
+        motivi = {s["gruppo_key"]: s["motivo"] for s in result["gruppi_non_serviti"]}
+        self.assertEqual(motivi["ROTTO:aa"], "ESECUZIONE_FALLITA")
+        self.assertEqual(motivi["BOZZA:bb"], "COMMESSA_NON_EMITTIBILE")
+        # Il gruppo bloccato per davvero NON e' stato zittito dal fallimento
+        # dell'altra corsia: e' l'invariante che questo test presidia.
+        testi = {s["gruppo_key"]: s["dettaglio"] for s in result["gruppi_non_serviti"]}
+        self.assertIn("Bozza", testi["BOZZA:bb"])
+        self.assertIn("rilanciare", testi["ROTTO:aa"])
+
     # 8. Giro di MASSA a vuoto: resta un successo. Il perimetro non e' nominale —
     #    «questo mese non c'era nulla da fatturare» e' un esito legittimo, e il
     #    cron lo produce di routine.
@@ -306,21 +372,36 @@ class FatturazioneGiroHandlerTests(SimpleTestCase):
         mock_repo.return_value.diagnostica_gruppi.assert_not_called()
         self.assertEqual(result["lotti"], [])
 
-    # 9. Terne trovate ma pipeline fallita: la causa vera e' negli esiti per
-    #    terna — la diagnosi di perimetro racconterebbe la cosa sbagliata
-    #    (NON_DETERMINATO su un perimetro perfettamente valido). E NON e'
-    #    terminale: un errore pipeline puo' essere transiente, i retry della
-    #    coda sono il rimedio giusto.
+    # 9. Terne trovate ma pipeline fallita: la causa PRIMARIA e' negli esiti
+    #    per terna, e NON e' terminale (un errore pipeline puo' essere
+    #    transiente, i retry della coda sono il rimedio giusto).
+    #    ⚠️ Riscritto il 2026-08-16: prima asseriva `diagnostica_gruppi
+    #    .assert_not_called()` — la soppressione PER GIRO. La motivazione
+    #    («la diagnosi racconterebbe la cosa sbagliata») e' caduta con
+    #    `terne_pronte`: ora la diagnosi gira col contesto e per il gruppo
+    #    della corsia rotta risponde ESECUZIONE_FALLITA, non piu'
+    #    NON_DETERMINATO. Il messaggio primario resta quello degli errori.
     @patch(_REPO)
     @patch(_GIRO)
     def test_mirata_con_terne_fallite_riporta_errori_terna(
         self, mock_giro, mock_repo,
     ) -> None:
+        corsia = {"emittente_soggetto_ruolo_id": 3,
+                  "tipo_doc_fiscale_id": 1, "utility_id": 9}
         mock_giro.return_value = {
             "lane": 1, "lotti": [], "falliti": 1,
-            "esiti": [{"ok": False, "errore_code": "E_LOCK_LOTTO",
+            "esiti": [{**corsia, "ok": False, "errore_code": "E_LOCK_LOTTO",
                        "errore_detail": "lotto in lavorazione"}],
         }
+        mock_repo.return_value.diagnostica_gruppi.return_value = [
+            {"gruppo_key": "g1", "commessa_id": 1, "commessa_codice": "CMM-1",
+             "commessa_stato_codice_interno": "PRONTA_FATTURAZIONE",
+             "commessa_stato_descrizione": "Pronta fatturazione",
+             "commessa_emittibile": True,
+             "n_righe": 2, "n_emesse": 0, "n_annullate": 0, "n_rifiutate": 0,
+             "n_non_approvate": 0, "n_fuori_competenza": 0, "n_pronte": 2,
+             "terne_pronte": [corsia]},
+        ]
 
         with self.assertRaises(ServiceError) as ctx:
             fatturazione_giro_handler(
@@ -330,4 +411,62 @@ class FatturazioneGiroHandlerTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_FATTURAZIONE_GIRO_NESSUN_LOTTO")
         self.assertIn("E_LOCK_LOTTO", ctx.exception.message)
         self.assertFalse(ctx.exception.context.get(CONTEXT_KEY_TERMINALE))
-        mock_repo.return_value.diagnostica_gruppi.assert_not_called()
+        # La diagnosi ORA gira, col contesto: il gruppo della corsia rotta e'
+        # classificato dall'esecuzione, e la causa inventata non compare.
+        motivi = ctx.exception.context["gruppi_non_serviti"]
+        self.assertEqual(motivi[0]["motivo"], "ESECUZIONE_FALLITA")
+        self.assertNotIn("verificare emittente e utility", ctx.exception.message)
+
+    # 9-bis. ⭐ Giro a VUOTO misto: una corsia rotta E una commessa in BOZZA
+    #    (la cui corsia non e' nemmeno partita). Prima la BOZZA restava MUTA
+    #    dietro l'errore dell'altra corsia — la stessa classe di silenzio del
+    #    §11.4 punto 3, sull'altro ramo. Ora il messaggio la nomina
+    #    («Inoltre: …») e il context porta entrambe le cause.
+    @patch(_REPO)
+    @patch(_GIRO)
+    def test_giro_a_vuoto_misto_nomina_anche_la_causa_non_di_corsia(
+        self, mock_giro, mock_repo,
+    ) -> None:
+        corsia_rotta = {"emittente_soggetto_ruolo_id": 7,
+                        "tipo_doc_fiscale_id": 1, "utility_id": 9}
+        corsia_bozza = {"emittente_soggetto_ruolo_id": 3,
+                        "tipo_doc_fiscale_id": 1, "utility_id": 9}
+        mock_giro.return_value = {
+            "lane": 1, "lotti": [], "falliti": 1,
+            "esiti": [{**corsia_rotta, "ok": False,
+                       "errore_code": "E_LOCK_LOTTO", "errore_detail": "lock"}],
+        }
+        mock_repo.return_value.diagnostica_gruppi.return_value = [
+            {"gruppo_key": "ROTTO:aa", "commessa_id": 1, "commessa_codice": "CMM-1",
+             "commessa_stato_codice_interno": "PRONTA_FATTURAZIONE",
+             "commessa_stato_descrizione": "Pronta fatturazione",
+             "commessa_emittibile": True,
+             "n_righe": 2, "n_emesse": 0, "n_annullate": 0, "n_rifiutate": 0,
+             "n_non_approvate": 0, "n_fuori_competenza": 0, "n_pronte": 2,
+             "terne_pronte": [corsia_rotta]},
+            {"gruppo_key": "BOZZA:bb", "commessa_id": 2, "commessa_codice": "CMM-2",
+             "commessa_stato_codice_interno": "BOZZA",
+             "commessa_stato_descrizione": "Bozza",
+             "commessa_emittibile": False,
+             "n_righe": 5, "n_emesse": 0, "n_annullate": 0, "n_rifiutate": 0,
+             "n_non_approvate": 0, "n_fuori_competenza": 0, "n_pronte": 5,
+             "terne_pronte": [corsia_bozza]},
+        ]
+
+        with self.assertRaises(ServiceError) as ctx:
+            fatturazione_giro_handler(
+                {"competenza_mese": "2026-06-01",
+                 "gruppi": ["ROTTO:aa", "BOZZA:bb"]},
+                scope=None,
+            )
+
+        # La BOZZA non e' piu' muta: sta nel MESSAGGIO che l'operatore legge…
+        self.assertIn("Bozza", ctx.exception.message)
+        self.assertIn("E_LOCK_LOTTO", ctx.exception.message)
+        # …e il context porta entrambe le cause, distinte per gruppo.
+        motivi = {m["gruppo_key"]: m["motivo"]
+                  for m in ctx.exception.context["gruppi_non_serviti"]}
+        self.assertEqual(motivi["ROTTO:aa"], "ESECUZIONE_FALLITA")
+        self.assertEqual(motivi["BOZZA:bb"], "COMMESSA_NON_EMITTIBILE")
+        # Resta NON terminale: la parte transiente rende sensato il retry.
+        self.assertFalse(ctx.exception.context.get(CONTEXT_KEY_TERMINALE))

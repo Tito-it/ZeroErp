@@ -2816,6 +2816,7 @@
       "fattura_gruppi_esito_non_serviti": "Emissione parziale: {lotti} lotti prodotti, {mancanti} gruppi rimasti fuori — {dettagli}",
       "fattura_gruppi_esito_altrove": "Nota: {n} gruppi non erano più da fatturare — le loro attività risultano già fatturate da un altro giro ({gruppi}).",
       "gruppo_bloccato_tooltip": "La commessa è in stato {stato} e non ammette fatturazione: il gruppo non entra in nessun lotto. Aprila con «Sblocca commessa» per renderla pronta.",
+      "gruppo_bloccato_tooltip_senza_permesso": "La commessa è in stato {stato} e non ammette fatturazione: il gruppo non entra in nessun lotto. Per sbloccarla serve il permesso di cambio stato commessa: chiedi a un amministratore.",
       "azione_sblocca_commessa": "Sblocca commessa",
       "lotti_emessi": "Lotti prodotti ({n}):",
       "vai_al_lotto": "Vai al lotto #{id}",

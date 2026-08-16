@@ -32,10 +32,13 @@ from typing import Any
 from apps.core.services.coda_lavori.drain_engine import contesto_terminale
 from apps.core.services.error_manager import ServiceError
 from apps.vendite.services._fatturazione_job_helpers import (
+    MOTIVO_ESECUZIONE_FALLITA,
+    TernaKey,
     messaggio_gruppi_non_serviti,
     parse_competenza_mese,
     parse_gruppi,
     spiega_gruppi_non_serviti,
+    terna_key,
 )
 
 logger = logging.getLogger(__name__)
@@ -109,20 +112,20 @@ def fatturazione_giro_handler(
     # Emissione mirata a vuoto: si fallisce, invece di restituire un successo
     # muto (difetto misurato il 2026-08-03, job 141). DUE cause distinte, e
     # vanno tenute separate:
-    #   - terne trovate ma pipeline fallita (`falliti` > 0) → la causa vera e'
-    #     negli esiti per terna, e puo' essere TRANSIENTE (lock, DB): niente
-    #     diagnosi di perimetro (racconterebbe la cosa sbagliata) e niente
-    #     marca terminale (i retry della coda hanno senso);
+    #   - terne trovate ma pipeline fallita (`falliti` > 0) → la causa PRIMARIA
+    #     e' negli esiti per terna, e puo' essere TRANSIENTE (lock, DB): niente
+    #     marca terminale (i retry della coda hanno senso). ⚠️ Dal 2026-08-16
+    #     la diagnosi gira ANCHE qui: prima veniva soppressa per l'intero giro
+    #     («racconterebbe la cosa sbagliata»), ma quella motivazione e' caduta
+    #     con `terne_pronte` — ora la diagnosi sa distinguere per gruppo, e la
+    #     soppressione per-giro lasciava muta una commessa in BOZZA che stava
+    #     nello stesso giro della corsia rotta: la stessa classe di silenzio
+    #     del §11.4 punto 3, sull'altro ramo;
     #   - nessuna terna → la diagnosi di perimetro spiega perche', ed e'
     #     deterministica (una commessa in BOZZA resta in BOZZA al 5° tentativo).
-    # ⚠️ Questo ramo e' quello del giro VUOTO. Dal 2026-08-15 la diagnosi gira
-    # anche a valle di un giro PARZIALE — ma sui soli gruppi che il consuntivo
-    # dichiara NON serviti, dove la fotografia regge esattamente come qui.
-    # (Prima il contratto diceva «solo a giro vuoto» ed era gia' infranto nello
-    # stesso file: rilievo F6 del brief emittibilita'.)
     if gruppi and not summary.get("lotti"):
         if summary.get("falliti"):
-            _fallisci_giro_mirato_per_errori_terna(gruppi, summary)
+            _fallisci_giro_mirato_per_errori_terna(gruppi, competenza, summary)
         _fallisci_giro_mirato(gruppi, competenza, summary)
 
     # Emissione mirata PARZIALE: lotti prodotti, ma qualche gruppo richiesto
@@ -207,9 +210,41 @@ def _misura_esito_gruppi(
     if non_serviti:
         # Il PERCHE' resta della diagnostica: il consuntivo dice CHE non e'
         # stato servito, non per quale ostacolo.
-        summary["gruppi_non_serviti"] = _diagnostica_e_spiega(non_serviti, competenza)
+        #
+        # ⚠️ Le terne FALLITE del giro entrano nella diagnosi come CONTESTO, e
+        # sono un fatto gia' in mano nostra (gli esiti per terna del core). Un
+        # gruppo il cui lavoro pronto ricade in una corsia rotta non e' bloccato
+        # dal perimetro: l'esecuzione si e' interrotta e si rilancia. Senza
+        # questo incrocio quel gruppo si prendeva «verificare emittente e
+        # utility della commessa» — una causa inesistente, su cose che sono a
+        # posto (§10.6 → §11 del brief emittibilita').
+        #
+        # La distinzione e' PER GRUPPO, non per giro: un `if falliti > 0`
+        # globale avrebbe spento il messaggio anche sui gruppi bloccati sul
+        # serio nello stesso giro, sostituendo un messaggio impreciso con un
+        # silenzio — che e' il difetto peggiore dei due.
+        summary["gruppi_non_serviti"] = _diagnostica_e_spiega(
+            non_serviti, competenza, terne_fallite=_terne_fallite(summary),
+        )
     if altrove:
         summary["gruppi_fatturati_altrove"] = altrove
+
+
+# Scopo: Le corsie del giro la cui pipeline e' FALLITA, come tuple confrontabili.
+#        Sono un FATTO gia' misurato dal core (un esito per terna, con `ok`
+#        False), non una nuova query: si legge cio' che il giro ha appena
+#        registrato.
+#        ⚠️ Va chiamata sul `summary` del DRIVER, che porta `esiti`: i result
+#        compattati (i dict NUOVI costruiti dalle `{k: v ...}` ai punti di
+#        uscita — la compattazione non muta `summary`) non li hanno piu'.
+def _terne_fallite(summary: dict[str, Any]) -> frozenset[TernaKey]:
+    # `is False`, non `not e.get("ok")`: un esito SENZA la chiave (il dry-run
+    # del driver ne produce cosi') non e' una terna fallita — e' un esito che
+    # non ha girato. Col falsy-check ogni corsia del giro sarebbe risultata
+    # «rotta», e ogni gruppo non servito si sarebbe sentito dire «rilancia».
+    return frozenset(
+        terna_key(e) for e in (summary.get("esiti") or []) if e.get("ok") is False
+    )
 
 
 # Scopo: Diagnostica e classifica un elenco di gruppi non serviti — la STESSA
@@ -220,6 +255,8 @@ def _misura_esito_gruppi(
 def _diagnostica_e_spiega(
     gruppi_non_serviti: tuple[str, ...] | list[str],
     competenza: date,
+    *,
+    terne_fallite: frozenset[TernaKey] = frozenset(),
 ) -> list[dict[str, Any]]:
     # Import locale come il core: l'handler e' importato in `ready()` e non deve
     # tirarsi dietro il repository al boot.
@@ -228,33 +265,56 @@ def _diagnostica_e_spiega(
     diagnosi = CommesseRepository().diagnostica_gruppi(
         gruppi=gruppi_non_serviti, competenza_mese=competenza,
     )
-    return spiega_gruppi_non_serviti(diagnosi)
+    return spiega_gruppi_non_serviti(diagnosi, terne_fallite=terne_fallite)
 
 
 # Scopo: SOLLEVA per il giro mirato in cui le terne c'erano ma OGNI pipeline e'
-#        fallita. Il messaggio riporta gli errori per terna (dagli `esiti` del
-#        core), non la fotografia del perimetro: il perimetro era valido, e'
-#        l'esecuzione che si e' rotta. NON terminale: un errore pipeline puo'
-#        essere transiente e i retry con backoff della coda sono il rimedio
-#        giusto — al contrario del fallimento di perimetro qui sotto.
+#        fallita. Il messaggio parte dagli errori per terna (dagli `esiti` del
+#        core), che sono la causa primaria. NON terminale: un errore pipeline
+#        puo' essere transiente e i retry con backoff della coda sono il
+#        rimedio giusto — al contrario del fallimento di perimetro qui sotto.
+#
+#        ⚠️ La diagnosi gira ANCHE qui (2026-08-16), col contesto delle terne
+#        fallite: i gruppi delle corsie rotte sono gia' raccontati dagli errori
+#        di terna, ma un gruppo fermo per un'ALTRA causa nello stesso giro —
+#        una commessa in BOZZA la cui corsia non e' nemmeno partita — prima
+#        restava muto dietro l'errore dell'altra corsia, e il job non-terminale
+#        veniva ritentato 5 volte senza che nessuno lo dicesse. Nel messaggio
+#        entrano le sole cause NON di corsia (le altre sarebbero ridondanti);
+#        il dettaglio completo va nel context, che la coda persiste.
 def _fallisci_giro_mirato_per_errori_terna(
     gruppi: tuple[str, ...],
+    competenza: date,
     summary: dict[str, Any],
 ) -> None:
     errori = [
         f"{e.get('errore_code') or '?'}: {e.get('errore_detail') or ''}".strip(": ")
         for e in summary.get("esiti") or []
-        if not e.get("ok")
+        if e.get("ok") is False
     ]
+    spiegazioni = _diagnostica_e_spiega(
+        gruppi, competenza, terne_fallite=_terne_fallite(summary),
+    )
+    altre_cause = [
+        s for s in spiegazioni if s["motivo"] != MOTIVO_ESECUZIONE_FALLITA
+    ]
+    message = (
+        "Nessun lotto prodotto: il giro sui gruppi selezionati è fallito "
+        f"({'; '.join(errori) or 'nessun dettaglio dalle terne'})."
+    )
+    if altre_cause:
+        dettagli = "; ".join(
+            f"{s.get('commessa_codice') or s.get('gruppo_key')}: {s['dettaglio']}"
+            for s in altre_cause[:3]
+        )
+        message += f" Inoltre: {dettagli}."
     raise ServiceError(
         code=E_GIRO_NESSUN_LOTTO,
-        message=(
-            "Nessun lotto prodotto: il giro sui gruppi selezionati è fallito "
-            f"({'; '.join(errori) or 'nessun dettaglio dalle terne'})."
-        ),
+        message=message,
         detail=f"gruppi richiesti: {len(gruppi)}, terne fallite: {summary['falliti']}",
         context={
             "errori_terna": errori,
+            "gruppi_non_serviti": spiegazioni,
             "summary": {k: v for k, v in summary.items() if k != "esiti"},
         },
     )
@@ -279,7 +339,13 @@ def _fallisci_giro_mirato(
     competenza: date,
     summary: dict[str, Any],
 ) -> None:
-    spiegazioni = _diagnostica_e_spiega(gruppi, competenza)
+    # `terne_fallite` passa anche da qui (oggi e' sempre vuoto per costruzione:
+    # con `falliti > 0` solleva prima il ramo per-errori-terna) cosi' il
+    # contratto «stessa fotografia, stessa classificazione» resta VERO per
+    # firma e non per coincidenza di ordinamento dei rami.
+    spiegazioni = _diagnostica_e_spiega(
+        gruppi, competenza, terne_fallite=_terne_fallite(summary),
+    )
     raise ServiceError(
         code=E_GIRO_NESSUN_LOTTO,
         message=messaggio_gruppi_non_serviti(

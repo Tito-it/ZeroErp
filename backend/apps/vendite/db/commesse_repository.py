@@ -1232,7 +1232,8 @@ class CommesseRepository:
                        commessa_stato_codice_interno, commessa_stato_descrizione,
                        commessa_emittibile,
                        n_righe, n_emesse, n_annullate, n_rifiutate,
-                       n_non_approvate, n_fuori_competenza, n_pronte
+                       n_non_approvate, n_fuori_competenza, n_pronte,
+                       terne_pronte
                 FROM vendite.fn_diagnostica_gruppi_fatturabili(
                     p_gruppi => %s::text[],
                     p_competenza_mese => %s
@@ -1255,6 +1256,15 @@ class CommesseRepository:
                     n_non_approvate=int(row[10]),
                     n_fuori_competenza=int(row[11]),
                     n_pronte=int(row[12]),
+                    # ⚠️ jsonb: su questa connessione psycopg lo consegna come
+                    # STRINGA (misurato sul DB vero il 2026-08-16: scritto
+                    # `list(valore or [])`, `'[]'` diventava `['[', ']']` — e i
+                    # mock non potevano vederlo, consegnano gia' una lista).
+                    # Si decodifica con `_decode_jsonb`, l'«unico punto di
+                    # decodifica» che questo file gia' dichiara: fail-soft a
+                    # `[]` su payload malformato, che su un campo diagnostico
+                    # e' meglio di un raise che scavalca il messaggio parlante.
+                    terne_pronte=_decode_jsonb(row[13], []),
                 )
                 for row in cursor.fetchall()
             ]

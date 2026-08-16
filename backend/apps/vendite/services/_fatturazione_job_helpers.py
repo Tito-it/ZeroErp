@@ -130,11 +130,35 @@ MOTIVO_FUORI_COMPETENZA = "FUORI_COMPETENZA"
 MOTIVO_GIA_EMESSE = "GIA_EMESSE"
 MOTIVO_RIGHE_ANNULLATE = "RIGHE_ANNULLATE"
 MOTIVO_NESSUNA_RIGA_CANDIDATA = "NESSUNA_RIGA_CANDIDATA"
+# La corsia del gruppo si e' ROTTA durante il giro: il perimetro era valido, e'
+# l'esecuzione ad essere fallita. Distinzione che vale un'azione diversa — il
+# perimetro si corregge, un'esecuzione rotta si riprova.
+MOTIVO_ESECUZIONE_FALLITA = "ESECUZIONE_FALLITA"
 MOTIVO_NON_DETERMINATO = "NON_DETERMINATO"
 
 # Quanti gruppi elencare per esteso nel messaggio all'operatore: oltre, il testo
 # diventa illeggibile in un toast e il dettaglio resta nell'esito strutturato.
 _MAX_GRUPPI_NEL_MESSAGGIO = 3
+
+
+# La chiave-corsia come tupla: UNA spelling della forma, non cinque annotazioni
+# sparse. Se la corsia guadagna un campo, si tocca qui e `terna_key` — e il
+# type checker segue.
+TernaKey = tuple[Any, Any, Any]
+
+
+# Scopo: Riduce una corsia (dict con le tre chiavi) alla tupla confrontabile
+#        `(emittente, tipo_doc_fiscale, utility)`. Serve a incrociare le
+#        `terne_pronte` della fotografia — che vengono dal DB — con le terne
+#        FALLITE del giro, che il BE ha negli esiti. Le due sorgenti usano gli
+#        stessi tre campi: la tupla e' il minimo comune, e non introduce una
+#        terza rappresentazione della corsia.
+def terna_key(d: dict[str, Any]) -> TernaKey:
+    return (
+        d.get("emittente_soggetto_ruolo_id"),
+        d.get("tipo_doc_fiscale_id"),
+        d.get("utility_id"),
+    )
 
 
 # Scopo: Concordanza singolare/plurale nei testi all'operatore. Banale, ma i
@@ -161,7 +185,11 @@ def _concorda(n: int, singolare: str, plurale: str) -> str:
 #        `NON_DETERMINATO` non e' una resa: e' l'unico esito onesto quando la
 #        fotografia non spiega l'esclusione (es. commessa senza emittente). Meglio
 #        dichiarare che non lo sappiamo che inventare una causa plausibile.
-def classifica_gruppo_non_servito(d: dict[str, Any]) -> tuple[str, str]:
+def classifica_gruppo_non_servito(
+    d: dict[str, Any],
+    *,
+    terne_fallite: frozenset[TernaKey] = frozenset(),
+) -> tuple[str, str]:
     if not d.get("n_righe"):
         return (
             MOTIVO_GRUPPO_SCONOSCIUTO,
@@ -179,6 +207,33 @@ def classifica_gruppo_non_servito(d: dict[str, Any]) -> tuple[str, str]:
                 f", che non "
                 f"ammette fatturazione ({d['n_pronte']} attività "
                 f"{_concorda(d['n_pronte'], 'pronta', 'pronte')} in attesa)",
+            )
+        # ⚠️ DOPO la testata bloccata e PRIMA del fallback, e l'ordine e' la
+        # regola. Una commessa non emittibile e' una causa CERTA e vale
+        # comunque; la corsia rotta spiega il caso che restava — e che prima
+        # cadeva nel fallback qui sotto, cioe' si prendeva una causa di
+        # perimetro inventata («verificare emittente e utility», che sono a
+        # posto) al posto di «riprova».
+        # (niente prefisso `terne_fallite and`: con il set vuoto l'`any` e'
+        # gia' False — un secondo guard sulla stessa condizione suggerirebbe
+        # una distinzione semantica che non esiste.)
+        if any(
+            terna_key(t) in terne_fallite for t in (d.get("terne_pronte") or [])
+        ):
+            # ⚠️ Il testo NON afferma «il perimetro e' valido»: la corsia e'
+            # condivisa da piu' commesse e il codice d'errore della terna non
+            # viene ispezionato qui — un guasto deterministico (es. emittente
+            # incoerente col billing account) sarebbe raccontato da un claim
+            # troppo sicuro. Si dice cio' che E' misurato: la lavorazione si e'
+            # interrotta, e il rilancio e' il primo passo — con l'uscita onesta
+            # se l'errore si ripete.
+            return (
+                MOTIVO_ESECUZIONE_FALLITA,
+                f"{d['n_pronte']} attività "
+                f"{_concorda(d['n_pronte'], 'è pronta', 'sono pronte')} "
+                "ma la lavorazione della corsia si è interrotta durante il "
+                "giro: si può rilanciare l'emissione su questo gruppo (se "
+                "l'errore si ripete, verificare l'esito del giro)",
             )
         return (
             MOTIVO_NON_DETERMINATO,
@@ -242,10 +297,12 @@ def classifica_gruppo_non_servito(d: dict[str, Any]) -> tuple[str, str]:
 #        cui l'operatore ha spuntato le righe.
 def spiega_gruppi_non_serviti(
     diagnosi: list[dict[str, Any]],
+    *,
+    terne_fallite: frozenset[TernaKey] = frozenset(),
 ) -> list[dict[str, Any]]:
     esiti: list[dict[str, Any]] = []
     for d in diagnosi:
-        motivo, testo = classifica_gruppo_non_servito(d)
+        motivo, testo = classifica_gruppo_non_servito(d, terne_fallite=terne_fallite)
         esiti.append({
             "gruppo_key": d.get("gruppo_key"),
             "commessa_codice": d.get("commessa_codice"),
