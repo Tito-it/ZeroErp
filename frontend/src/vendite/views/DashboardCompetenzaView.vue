@@ -40,6 +40,7 @@ import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useActionPermission } from '../../core/composables/useActionPermission'
 import { useJobPolling } from '../../core/composables/useJobPolling'
 import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS } from '../../core/constants'
+import { STATO_EMISSIONE_ATTIVITA } from '../constants'
 import { extractApiError } from '../../core/utils/apiError'
 import { displayDate } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
@@ -993,6 +994,23 @@ function onApprovaCommessa(row) {
 const commessaDrawerVisible = ref(false)
 const commessaDrawerId = ref(null)
 
+// Filtro stato emissione con cui aprire il drawer: lo STESSO stato della card
+// da cui si arriva, cosi' il numero della card e le righe della lista
+// raccontano la stessa cosa. Senza, «Fatturate» mostrava 1.089,00 e la
+// commessa apriva 4 righe di cui 3 estranee a quel valore, senza che nulla
+// spiegasse la differenza (rilievo di Tid, 2026-08-16).
+// ⚠️ Solo i due stadi che vivono sull'asse EMISSIONE: `DA_APPROVARE` sta
+// sull'asse approvazione e non ha una corrispondenza — li' non si filtra e la
+// lista si apre completa, come prima. Il filtro resta comunque visibile e
+// azzerabile nel drawer: e' un default, non un vincolo.
+const FILTRO_EMISSIONE_PER_STADIO = Object.freeze({
+  FATTURATA: STATO_EMISSIONE_ATTIVITA.EMESSA,
+  [STADIO_GRUPPI]: STATO_EMISSIONE_ATTIVITA.NON_EMESSA,
+})
+const commessaDrawerStatoEmissione = computed(
+  () => FILTRO_EMISSIONE_PER_STADIO[stadioSelezionato.value] ?? null,
+)
+
 function apriCommessa(row) {
   commessaDrawerId.value = row.commessa_id
   commessaDrawerVisible.value = true
@@ -1602,6 +1620,7 @@ onActivated(() => {
     <CommessaGestioneDrawer
       v-model:visible="commessaDrawerVisible"
       :commessa-id="commessaDrawerId"
+      :stato-emissione="commessaDrawerStatoEmissione"
       @saved="reloadDopoAzione"
     />
 
