@@ -72,6 +72,14 @@ const canFatturare = computed(() => canGenerareFatture.value && !areaReadonly.va
 // Gate del verbo RENDI DEFINITIVE (C-7, atto fiscale I-7): permesso dedicato
 // dell'endpoint C-4 (numera_fatture_lotti) + readonly d'area.
 const { isAllowed: canNumerareFatture } = useActionPermission('numera_fatture_lotti')
+
+// Permesso del verbo che sblocca DAVVERO la commessa («Rendi pronta», dentro il
+// drawer di governo). Serve qui, non solo là: senza, «Sblocca commessa»
+// porterebbe in un drawer dove il verbo non compare — il gate FE lo NASCONDE a
+// chi non ha l'azione — e il lucchetto prometterebbe una via d'uscita che non
+// esiste. Misurato in app il 2026-08-16: peggio di non offrire niente, perche'
+// il vicolo cieco lo si scopre solo dopo averlo imboccato.
+const { isAllowed: canCambiareStatoCommessa } = useActionPermission('cambia_stato_commessa')
 const canNumerare = computed(() => canNumerareFatture.value && !areaReadonly.value)
 const { execute, loading: azioneLoading } = useApiHandler()
 const { confirmAction } = useConfirmAction()
@@ -898,6 +906,18 @@ function fatturaGruppi(righe) {
 // e `area_documento` sono NULL e il BB nasconde da se' la voce — lasciando la
 // sola commessa, che per loro E' il riferimento (il `riferimento` di quelle
 // righe e' infatti il codice commessa).
+// Scopo: il motivo del blocco, con la via d'uscita SOLO a chi puo' percorrerla.
+//        Chi non ha `cambia_stato_commessa` non vedrebbe «Rendi pronta» nel
+//        drawer: indicargliela sarebbe una promessa falsa, e il rimedio giusto
+//        per lui e' sapere a chi chiedere.
+function tooltipBloccato(row) {
+  const stato = row.commessa_stato_descrizione
+    ?? row.commessa_stato_codice_interno ?? '?'
+  return canCambiareStatoCommessa.value
+    ? t('vendite.dashboard_competenza.gruppo_bloccato_tooltip', { stato })
+    : t('vendite.dashboard_competenza.gruppo_bloccato_tooltip_senza_permesso', { stato })
+}
+
 function buildGruppoRowActions(row) {
   // Testata bloccata: «Fattura questo» nasce DISABILITATO col motivo (brief
   // emittibilita' §3.1 — partiva e non faceva nulla), e compare «Sblocca
@@ -912,18 +932,19 @@ function buildGruppoRowActions(row) {
       icon: 'pi pi-file-export',
       visible: canFatturare.value,
       disabled: azioneLoading.value || giroMirataInCorso.value || bloccato,
-      tooltip: bloccato
-        ? t('vendite.dashboard_competenza.gruppo_bloccato_tooltip', {
-            stato: row.commessa_stato_descrizione ?? row.commessa_stato_codice_interno ?? '?',
-          })
-        : '',
+      tooltip: bloccato ? tooltipBloccato(row) : '',
       command: () => fatturaGruppi([row]),
     },
     {
       key: 'sblocca_commessa',
       label: t('vendite.dashboard_competenza.azione_sblocca_commessa'),
       icon: 'pi pi-unlock',
-      visible: bloccato && !!row.commessa_id && canFatturare.value,
+      // ⚠️ Gate sul permesso del verbo di DESTINAZIONE, non su quello di
+      // fatturazione: chi non puo' cambiare stato non troverebbe «Rendi
+      // pronta» nel drawer. Meglio nessuna scorciatoia che una che non porta
+      // da nessuna parte.
+      visible: bloccato && !!row.commessa_id
+        && canFatturare.value && canCambiareStatoCommessa.value,
       command: () => apriCommessa(row),
     },
     buildApriDocumentoAction({
@@ -1464,9 +1485,7 @@ onActivated(() => {
                 <i
                   v-if="!isGruppoEmittibile(data)"
                   class="pi pi-lock app-dash-gruppo-bloccato"
-                  v-tooltip.bottom="t('vendite.dashboard_competenza.gruppo_bloccato_tooltip', {
-                    stato: data.commessa_stato_descrizione ?? data.commessa_stato_codice_interno ?? '?',
-                  })"
+                  v-tooltip.bottom="tooltipBloccato(data)"
                 />
               </template>
               <template #cell-tipo_gruppo="{ data }">

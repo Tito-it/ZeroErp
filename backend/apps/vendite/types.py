@@ -243,6 +243,22 @@ class GruppoDiagnosi(TypedDict):
     # è entrato in nessuna terna, il blocco è sulla TESTATA (commessa non
     # emittibile) — il caso del 2026-08-03.
     n_pronte: int
+    # Le CORSIE (emittente, tipo_doc_fiscale, utility) in cui ricade il lavoro
+    # ancora pronto — stesso predicato di `n_pronte`, quindi conteggio ed elenco
+    # non possono raccontare due cose diverse (DB rev 2026-08-15b, §11 del brief
+    # emittibilità). Lista di dict con le tre chiavi; `[]` — mai None — quando
+    # non c'è nulla di pronto: «nessuna corsia» e «non calcolato» devono restare
+    # distinguibili.
+    #
+    # ⚠️ Serve INCROCIATA con le terne FALLITE del giro (che il BE ha negli
+    # esiti come fatti): un gruppo la cui corsia si è rotta non è bloccato dal
+    # perimetro, si riprova. Senza questo incrocio la diagnosi attribuiva a quel
+    # gruppo una causa di perimetro inesistente («verificare emittente e
+    # utility», che sono a posto).
+    #
+    # ⚠️ È un array e non tre campi: `tipo_doc_fiscale_id` sta sulla RIGA, quindi
+    # lo stesso gruppo può ricadere su più corsie.
+    terne_pronte: list[dict[str, Any]]
 
 
 class CommessaStatoResult(TypedDict):
