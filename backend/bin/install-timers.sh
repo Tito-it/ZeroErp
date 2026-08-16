@@ -1,7 +1,18 @@
 #!/usr/bin/env bash
-# Installa gli unit systemd dei worker DRAINER (Fase C cockpit fatturazione):
-#   - zeroerp-coda-lavori  (coda generica dbops.coda_lavori)          → ABILITATO
-#   - zeroerp-coda-stampa  (coda stampa vendite.fatture_stampa_coda)  → ABILITATO
+# Installa gli unit systemd dei worker headless:
+#   - zeroerp-coda-lavori             (drainer dbops.coda_lavori)          → ABILITATO
+#   - zeroerp-coda-stampa             (drainer vendite.fatture_stampa_coda) → ABILITATO
+#   - zeroerp-fatturazione-immediata  (batch, corsia GIORNALIERO)          → scritto, SPENTO
+#   - zeroerp-fatturazione-differita  (batch, corsia MASSIVO)              → scritto, SPENTO
+#
+# ⚠️ PERCHE' LE DUE CORSIE SI SCRIVONO MA NON SI ACCENDONO (decisione di Tid,
+# 2026-08-16). Non e' una dimenticanza ne' un gate in attesa di un prerequisito:
+# e' una differenza di NATURA. I drainer processano una coda — a coda vuota non
+# fanno niente, e accenderli su un host nuovo e' senza conseguenze. Il batch
+# invece EMETTE DOCUMENTI: accenderlo di riflesso, come effetto collaterale di
+# un `sudo install-timers.sh`, vorrebbe dire iniziare a fatturare su un host che
+# nessuno ha dichiarato pronto. Lo script li scrive e stampa il comando per
+# accenderli, cosi' la decisione resta di chi installa.
 #
 # Fino al 2026-08-04 la coda stampa veniva scritta ma NON abilitata, in attesa
 # dei GRANT del ruolo batch. Quei GRANT sono applicati (brief archiviato in
@@ -83,6 +94,11 @@ echo "Rendering unit dai template ($TEMPLATE_DIR)..."
 render_unit "zeroerp-coda-lavori" "*:0/1"
 # Coda stampa: ogni 2 min (tunable, P-5).
 render_unit "zeroerp-coda-stampa" "*:0/2"
+# Batch fatturazione, corsia immediata: ogni 2 min (near-real-time; il giro
+# frequente fa anche da catch-up dei run falliti).
+render_unit "zeroerp-fatturazione-immediata" "*:0/2"
+# Batch fatturazione, corsia differita: il 1° del mese alle 02:00.
+render_unit "zeroerp-fatturazione-differita" "*-*-01 02:00"
 
 # In render-only (CI) ci si ferma qui: niente daemon-reload né enable.
 if [ "$RENDER_ONLY" -eq 1 ]; then
@@ -100,4 +116,13 @@ systemctl enable --now zeroerp-coda-stampa.timer
 echo
 echo "OK: zeroerp-coda-lavori.timer e zeroerp-coda-stampa.timer abilitati."
 echo
-systemctl list-timers 'zeroerp-coda-*' --no-pager || true
+# Le corsie del batch sono state SCRITTE ma non abilitate (vedi testata): qui si
+# dice come accenderle, invece di lasciarle scoperte in un file che nessuno apre.
+echo "Batch fatturazione: unit installate ma NON attive (emettono documenti)."
+echo "Per accenderle, quando l'host e' dichiarato pronto:"
+echo "  systemctl enable --now zeroerp-fatturazione-immediata.timer   # ogni 2 min"
+echo "  systemctl enable --now zeroerp-fatturazione-differita.timer   # 1o del mese 02:00"
+echo "Prerequisito: DB_SYSTEM_FATTURAZIONE_* in ${ENV_FILE} (senza, il run"
+echo "fallisce rumorosamente: nessun ripiego su zeroerp_app)."
+echo
+systemctl list-timers 'zeroerp-*' --all --no-pager || true

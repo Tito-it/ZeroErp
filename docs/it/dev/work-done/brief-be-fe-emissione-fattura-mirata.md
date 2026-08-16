@@ -4,7 +4,7 @@
 > **Data**: 2026-07-27 → **chiuso 2026-07-28** · **Owner**: Tid · **Stato**: ✅ **CHIUSO** — codice completo, validato a schermo da Tid
 > · **Priorità**: 🟠 MEDIA
 >
-> **Origine**: [analisi-emissione-fattura-ondemand.md](../work-in-progress/analisi-emissione-fattura-ondemand.md)
+> **Origine**: [analisi-emissione-fattura-ondemand.md](analisi-emissione-fattura-ondemand.md)
 > §8 punti 3-6 · contratto DB in
 > [brief-db-emissione-fattura-per-documento-sorgente.md](brief-db-emissione-fattura-per-documento-sorgente.md)
 > §8-bis.

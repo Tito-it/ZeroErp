@@ -240,73 +240,37 @@ chown root:$APP_USER /etc/zeroerp/zeroerp-batch.env && chmod 640 /etc/zeroerp/ze
 > Senza `DB_SYSTEM_FATTURAZIONE_PASSWORD` la connessione di sistema **fallisce
 > rumorosamente** (nessun fallback silente a `zeroerp_app`): è voluto.
 
-### 15.2) Service + timer (corsia immediata, near-real-time)
+### 15.2) Service + timer — ⭐ **versionati nel repo dal 2026-08-16**
+
+⛔ **Gli heredoc che stavano qui sono stati rimossi**: erano l'unica sede delle
+due corsie, e una procedura copiata a mano su ogni host non è un deploy
+riproducibile — è il punto 7 di `analisi-emissione-fattura-ondemand.md`, ora
+chiuso. Le unit sono template versionati:
+
+| File | Corsia | Cadenza |
+| --- | --- | --- |
+| `backend/deploy/systemd/zeroerp-fatturazione-immediata.{service,timer}` | GIORNALIERO, si ferma a **DEFINITIVA** | `*:0/2` (ogni 2 min) |
+| `backend/deploy/systemd/zeroerp-fatturazione-differita.{service,timer}` | MASSIVO, si ferma a **EMESSA** | `*-*-01 02:00` (1° del mese) |
+
+Si installano con l'installer, come i drainer:
 
 ```bash
-cat > /etc/systemd/system/zeroerp-fatturazione-immediata.service <<EOF
-[Unit]
-Description=ZeroERP fatturazione batch — corsia immediata (GIORNALIERO)
-After=network.target
-
-[Service]
-Type=oneshot
-User=${APP_USER}
-Group=${APP_USER}
-WorkingDirectory=/home/${APP_USER}/apps/zeroerp/backend
-Environment="PATH=/home/${APP_USER}/apps/zeroerp/.venv/bin"
-EnvironmentFile=/etc/zeroerp/zeroerp.env
-EnvironmentFile=/etc/zeroerp/zeroerp-batch.env
-ExecStart=/home/${APP_USER}/apps/zeroerp/.venv/bin/python manage.py run_fatturazione_batch --modalita immediata
-EOF
-
-cat > /etc/systemd/system/zeroerp-fatturazione-immediata.timer <<EOF
-[Unit]
-Description=Timer corsia immediata fatturazione (near-real-time)
-
-[Timer]
-OnCalendar=*:0/2
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-EOF
+sudo backend/bin/install-timers.sh
 ```
 
-> `OnCalendar=*:0/2` = ogni 2 min (cadenza **tunable**, da concordare). Il giro frequente fa
-> anche da **catch-up**: una commessa immediata il cui run fallisce viene ripresa al tick
-> successivo (la differita, a filtro stretto, **non** la riprende).
+⚠️ **L'installer le scrive ma NON le abilita**, e i due drainer sì. Non è una
+dimenticanza: un drainer a coda vuota non fa nulla, il batch **emette
+documenti** — accenderlo di riflesso vorrebbe dire iniziare a fatturare su un
+host che nessuno ha dichiarato pronto. Lo script stampa il comando per
+accenderle; vedi §15.4.
 
-### 15.3) Service + timer (corsia differita, mensile su competenza)
+⚠️ **Modifiche alle unit si fanno sui template**, non qui e non in
+`/etc/systemd/system`: l'installer è idempotente e riscrive tutto a ogni run,
+quindi una modifica fatta a valle sparisce al primo re-install.
 
-```bash
-cat > /etc/systemd/system/zeroerp-fatturazione-differita.service <<EOF
-[Unit]
-Description=ZeroERP fatturazione batch — corsia differita (MASSIVO)
-After=network.target
-
-[Service]
-Type=oneshot
-User=${APP_USER}
-Group=${APP_USER}
-WorkingDirectory=/home/${APP_USER}/apps/zeroerp/backend
-Environment="PATH=/home/${APP_USER}/apps/zeroerp/.venv/bin"
-EnvironmentFile=/etc/zeroerp/zeroerp.env
-EnvironmentFile=/etc/zeroerp/zeroerp-batch.env
-ExecStart=/home/${APP_USER}/apps/zeroerp/.venv/bin/python manage.py run_fatturazione_batch --modalita differita
-EOF
-
-cat > /etc/systemd/system/zeroerp-fatturazione-differita.timer <<EOF
-[Unit]
-Description=Timer corsia differita fatturazione (mensile)
-
-[Timer]
-OnCalendar=*-*-01 02:00
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-EOF
-```
+ℹ️ **Le credenziali del ruolo batch stanno in `.env.systemd`** (§15.1), lo
+stesso EnvironmentFile del drainer della coda stampa che usa lo stesso ruolo —
+non nei due file separati che questa sezione mostrava prima.
 
 ### 15.4) Attiva e verifica
 

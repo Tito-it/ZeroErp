@@ -1,0 +1,19 @@
+# Template systemd — timer della corsia IMMEDIATA (near-real-time).
+# Placeholder per-host: __ONCALENDAR__ (cadenza, default installer *:0/2 = ogni
+# 2 minuti; tunable). Vedi il .service gemello.
+#
+# ⭐ Il giro frequente fa anche da CATCH-UP: una commessa immediata il cui run
+# fallisce viene ripresa al tick successivo. La corsia differita, che ha un
+# filtro stretto sul flag, NON la riprenderebbe.
+#
+# ⚠️ `Persistent=true`: dopo un'interruzione (riavvio, host spento) il run
+# perso parte una volta al riaggancio, invece di aspettare il tick successivo.
+[Unit]
+Description=Timer corsia immediata fatturazione (near-real-time)
+
+[Timer]
+OnCalendar=__ONCALENDAR__
+Persistent=true
+
+[Install]
+WantedBy=timers.target
