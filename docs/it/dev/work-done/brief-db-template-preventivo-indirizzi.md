@@ -37,8 +37,13 @@
 > contratti (e offerte, per simmetria). La metà BE è **fatta** — i tre context
 > builder espongono `indirizzi` nella forma unica estratta a BB — e il resto è
 > passato al DB con
-> [brief-db-indirizzi-su-ordini-contratti-offerte.md](../work-in-progress/brief-db-indirizzi-su-ordini-contratti-offerte.md),
+> [brief-db-indirizzi-su-ordini-contratti-offerte.md](brief-db-indirizzi-su-ordini-contratti-offerte.md),
 > che porta anche la rinomina `test` → `preventivo`.
+>
+> **Chiuso a sua volta il 2026-08-16** (prova su `ORD0018247`, indirizzo
+> corretto). Due esiti di quel brief riguardano anche questo: la rinomina
+> `test` → `preventivo` **non si fa** — il lock su `codice_interno` è una policy,
+> non una dipendenza — e il Preventivo resta con `.get()`, come previsto dal §6.
 >
 > ---
 

@@ -1,5 +1,23 @@
 # Brief BE → DB — l'indirizzo c'è, ma tre PDF su sei non lo stampano
 
+> 🟢 **CHIUSO — 2026-08-16.** L'ultima voce aperta era guardare un PDF, e Tid
+> l'ha guardato: anteprima dell'ordine **ORD0018247** (creato lo stesso giorno,
+> indirizzo di consegna completo), **indirizzo corretto a video**. Prima di
+> quella prova il blocco era già stato renderizzato qui su tutti e 17 i
+> documenti con un indirizzo congelato — 17 su 17, zero render falliti, zero
+> righe vuote (§10.2) — quindi la conferma visiva chiude una verifica, non un
+> dubbio. Dettaglio della chiusura in §10.4.
+>
+> **Due residui restano, entrambi del BE e nessuno bloccante:**
+>
+> * §10.5 — i tre context builder dichiarano ancora slot che nessun template
+>   stampa, e la misura del §9.3 su cui poggiava la richiesta di restringerli
+>   **era su un perimetro troppo stretto**: le fatture usano `FATT` e `RES` dal
+>   2026-07-31;
+> * §10.6 — 4 snapshot congelati prima del 2026-07-31 hanno la provincia
+>   riempita a spazi (`(AV        )`). Dato vecchio, non difetto vivo: aspetta
+>   una decisione di Tid, non una riga di codice.
+
 **Chi scrive:** BE (`dev/backend-tid`), 2026-08-05.
 **A chi:** team DB (`dev/db-tid`).
 **Cos'è:** ordini, contratti e offerte **congelano** l'indirizzo del documento e
@@ -7,7 +25,7 @@ poi non lo stampano. Il contesto PDF ora glielo passa (fatto, lato BE): mancano
 le versioni di template che lo rendano. Più la rinomina del template Preventivo,
 che si chiama ancora `test`.
 **Nasce da:** vostra risposta del 2026-08-04 al brief
-[template Preventivo / chiavi snapshot](../work-done/brief-db-template-preventivo-indirizzi.md),
+[template Preventivo / chiavi snapshot](brief-db-template-preventivo-indirizzi.md),
 §7. Le due domande che ci avete rimandato hanno risposta lì; questo è il seguito
 operativo, deciso da Tid il 2026-08-05.
 
@@ -296,11 +314,146 @@ byte per byte resta vostra, non l'abbiamo riverificata.
       **applicato** con `20260805-09` e `-10`, verificato sul database (§9.1);
 * [x] i tre blocchi usano l'accesso diretto, **con guardia per campo** e non
       solo sullo slot (§9.2);
-* [ ] un ordine con indirizzo di consegna, rigenerato, lo mostra sul PDF —
-      **tocca a voi**: il DB non renderizza, e questa è la verifica che chiude
-      davvero il cantiere. I 14 ordini con snapshot di consegna sono i soggetti
-      su cui provarlo; **9 di quei 14 non hanno `intestazione`** ed è proprio il
-      caso in cui il blocco del §3, così com'era, avrebbe stampato una riga
-      vuota: conviene rigenerare uno di quelli, non uno dei 5 completi;
+* [x] un ordine con indirizzo di consegna, rigenerato, lo mostra sul PDF —
+      **fatto il 2026-08-16** da Tid, sull'ordine `ORD0018247`: indirizzo
+      corretto a video (§10.4). Il render del blocco era già stato provato qui
+      su tutti e 17 i documenti con indirizzo congelato (§10.2);
 * [ ] ~~`template_documenti.codice_interno` del Preventivo = `preventivo`~~
       **non si fa**, §9.4.
+
+---
+
+## 10. Ricontrollo di chiusura (DB, 2026-08-16)
+
+> Undici giorni dopo l'apply, per rispondere a una domanda semplice: che cosa
+> resta davvero aperto. Tutto quanto segue è letto oggi dal database di
+> sviluppo, non ricordato dal §9.
+
+### 10.1 Lo stato a DB non si è mosso
+
+| Template | Versione pubblicata | `valido_dal` | Cita `indirizzi.consegna` | Precedente |
+| --- | --- | --- | --- | --- |
+| `ord-ven` | v4 (id 264) | 2026-08-05 | sì | v3 OBSOLETA, ancora attiva |
+| `contratto` | v3 (id 43) | 2026-08-05 | sì | v2 OBSOLETA, ancora attiva |
+| `off-comm` | v3 (id 265) | 2026-08-05 | sì | v2 OBSOLETA, ancora attiva |
+
+I tre template che il §6 chiedeva di non toccare (`test`, `ddt-ven`, `fattura`)
+sono fermi dove erano: stessa versione pubblicata, stesso `valido_dal`.
+
+### 10.2 Il blocco è stato renderizzato davvero, su tutti i documenti veri
+
+Il §9.6 lasciava la prova del render al BE perché «il DB non renderizza». Vero
+per il PDF; **non** per il blocco Jinja, che si può provare da qui. Fatto oggi,
+in sola lettura, senza toccare nulla:
+
+* il template è quello **pubblicato a DB** (`html_template` delle versioni 264,
+  43, 265), non una copia;
+* il contesto è costruito con la funzione **vera del BE**
+  (`shape_indirizzi_context`, importata dal sorgente) sugli **snapshot reali**
+  letti dalle tabelle `vendite.*_indirizzi`;
+* il motore è Jinja con `StrictUndefined`, cioè lo stesso presidio del §4: una
+  chiave sbagliata avrebbe fatto fallire il render invece di stampare vuoto.
+
+| Dominio | Documenti con indirizzo | Render riusciti | Righe vuote |
+| --- | --- | --- | --- |
+| `ord-ven` | 15 | **15** | 0 |
+| `contratto` | 1 | **1** | 0 |
+| `off-comm` | 1 | **1** | 0 |
+
+Esempi di ciò che esce, presi ai due estremi del §9.2 — l'ordine completo e
+quello senza `intestazione`, che era il caso a rischio:
+
+```text
+ORD0005174  Luogo di consegna: | Azienda PG Test Natura | PIAZZA PRIMO MAGGIO 77 | 75025 POLICORO (MT) | IT
+ORD0000608  Luogo di consegna: | PIAZZA PRIMO MAGGIO, 77/A | 75025 POLICORO (MT) | IT
+```
+
+La scelta del §9.2 — guardia **per campo** e non solo sullo slot — regge sui
+dati: i 9 ordini senza `intestazione` non stampano nessuna riga vuota, e con lo
+snippet del §3 così com'era ne avrebbero stampata una.
+
+### 10.3 Le tre versioni nuove non portano altra superficie
+
+Confrontate riga per riga con la versione che sostituiscono: la differenza è
+**solo** il blocco aggiunto, una pura inserzione, e il `css_template` è
+identico byte per byte (stesso md5). Non c'è nient'altro di nuovo da provare
+oltre a ciò che il §10.2 ha già provato.
+
+### 10.4 L'ultima voce: guardare un PDF — fatta, e il PDF è giusto
+
+Alla misura di stamattina **nessun documento risultava generato in tutto il
+database dal 2026-08-03**: le tre versioni nuove — e neppure il Preventivo v3
+del brief precedente, né il DDT v3 — avevano prodotto un solo documento
+persistito.
+
+⚠️ **E il database non poteva dire se qualcuno avesse già guardato.**
+L'anteprima (`anteprima_documento`) renderizza e **non persiste**: niente riga,
+niente evento. La misura diceva «nessuno ha *generato*», non «nessuno ha
+*visto*» — due cose diverse, e questa distinzione è il motivo per cui la voce è
+rimasta aperta undici giorni senza che si potesse dire se lo fosse davvero.
+
+**Esito (2026-08-16).** Tid ha aperto l'anteprima dell'ordine `ORD0018247` e
+l'indirizzo è corretto. L'ordine è nato lo stesso giorno, in DRAFT, con uno
+snapshot di consegna completo e pulito:
+
+```json
+{"intestazione": "Azienda ConTutto", "via": "VIA CAVALIERE ANTONIO OLIVIERI 4",
+ "cap": "62014", "citta": "CORRIDONIA", "prov": "MC", "stato": "IT",
+ "display": "VIA CAVALIERE ANTONIO OLIVIERI, 4/C"}
+```
+
+> ℹ️ **Perché l'anteprima basta come prova, e cosa non prova.** Ripercorre gli
+> stessi passi della generazione tranne l'ultimo: risolve la **versione
+> pubblicata** (quindi la v4, non un template a mano), costruisce il contesto
+> con lo **stesso builder**, e renderizza con lo **stesso motore**. Quello che
+> non esercita è la sola persistenza — riga in `documenti_generati`, scrittura
+> su storage, evento — che non è materia di questo brief. Coerentemente, in
+> `documenti_generati` **non c'è traccia** di questa prova, ed è atteso.
+
+Restano i due soggetti buoni se un giorno serve rifare il giro sui casi
+scomodi, che questo ordine non copre: `ORD0000608` (senza `intestazione`, il
+caso che il §9.2 ha risolto) e `ORD0000046` (con la provincia riempita a
+spazi, §10.6).
+
+### 10.5 Residuo BE — il §9.3 non è stato applicato
+
+I tre context builder dichiarano ancora gli stessi slot del 2026-08-05:
+`ord-ven` due (`CON`, `FATT`), `contratto` tre, `off-comm` quattro. I template
+ne stampano **uno solo**, `consegna`.
+
+> ⚠️ **E la misura del §9.3 va corretta: non era «tutto il database».** Contava
+> le sole quattro tabelle di questo cantiere. Rifatta oggi su tutte e sei:
+
+| Dominio | CON | FATT | RES |
+| --- | --- | --- | --- |
+| `ddt` | 16 | — | — |
+| `ordini` | 15 | — | — |
+| `preventivi` | 12 | — | — |
+| `contratti` | 1 | — | — |
+| `offerte` | 1 | — | — |
+| **`fatture`** | 4 | **6** | **2** |
+
+Le righe `FATT` e `RES` delle fatture esistono dal **2026-07-31**, cioè erano
+già lì quando il §9.3 ha scritto «un solo slot è mai stato popolato». La frase
+era falsa già allora, per un perimetro di misura troppo stretto. Resta vero che
+nei **quattro domini di questo brief** l'unico slot mai popolato è `consegna`:
+la raccomandazione «restringete» non è sbagliata per loro, ma non poggia più su
+«nessuno usa gli altri slot», perché le fatture li usano.
+
+### 10.6 Trovato per strada, fuori perimetro: 4 provincie riempite a spazi
+
+Quattro snapshot congelano `prov` con il riempimento a spazi di un
+`character(10)` — sul PDF uscirebbe `(AV        )` invece di `(AV)`:
+
+| Tabella | Documento | Congelato il |
+| --- | --- | --- |
+| `ddt_indirizzi` | ddt 91, 92 | 2026-07-12 |
+| `ddt_indirizzi` | ddt 521 | 2026-07-25 |
+| `ordini_indirizzi` | ordine 55 (`ORD0000046`) | 2026-07-26 |
+
+Sono **tutti anteriori al 2026-07-31**, quando `fn_snapshot_indirizzo` ha
+adottato `NULLIF(btrim(...))` su ogni valore proprio per questo. Non è un
+difetto vivo: è dato vecchio, congelato prima del rimedio, e riguarda anche il
+DDT che stampa l'indirizzo da luglio. Si corregge a mano con un `UPDATE` di
+`btrim` su quattro righe, oppure si lascia — **non è stato toccato**, serve una
+decisione di Tid.
