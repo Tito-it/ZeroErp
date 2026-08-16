@@ -3010,6 +3010,7 @@
       "col_prezzo": "Prezzo",
       "col_approvazione": "Approvazione",
       "col_emissione": "Emissione",
+      "col_fatturata_il": "Fatturata il",
       "col_azioni": "Azioni",
       "prezzo_bloccato": "Prezzo bloccato da variazione eccezionale",
       "prezzo_da_riallineare": "Prezzo da riallineare (documento sorgente modificato)",

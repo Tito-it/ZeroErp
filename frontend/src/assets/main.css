@@ -499,6 +499,25 @@ a {
   min-height: 2.5rem;
 }
 
+/* ⚠️ Il controllo NON si comprime, la nota sì. Senza queste due regole il
+   ToggleSwitch — che è un flex item come gli altri, quindi `flex-shrink: 1`
+   di default — veniva schiacciato dalla nota accanto fino a diventare
+   parzialmente visibile e NON cliccabile (rilevato da Tid sul drawer DDT,
+   2026-08-16: sembrava «coperto dal messaggio», in realtà era compresso).
+   La nota è testo e può andare a capo; il toggle è l'unico elemento
+   interattivo della riga e deve restare intero a qualsiasi larghezza. */
+.app-form-inline-toggle > * {
+  flex-shrink: 0;
+}
+
+/* `min-width: 0` è indispensabile: senza, la larghezza minima automatica del
+   contenuto impedisce al testo di andare a capo e la compressione ricadrebbe
+   comunque sul toggle. */
+.app-form-inline-toggle > small {
+  flex-shrink: 1;
+  min-width: 0;
+}
+
 .app-form-select.p-select .p-select-label {
   display: flex;
   align-items: center;

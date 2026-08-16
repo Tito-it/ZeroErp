@@ -3010,6 +3010,7 @@
       "col_prezzo": "Price",
       "col_approvazione": "Approval",
       "col_emissione": "Issue",
+      "col_fatturata_il": "Invoiced on",
       "col_azioni": "Actions",
       "prezzo_bloccato": "Price locked by exceptional override",
       "prezzo_da_riallineare": "Price to realign (source document changed)",
