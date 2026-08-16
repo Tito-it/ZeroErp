@@ -128,10 +128,14 @@ class PreventivoDocumentContextBuilder(DocumentContextBuilder):
             # siamo in produzione (decisione di Tid 2026-08-16, §11.3 di
             # brief-db-indirizzi-su-ordini-contratti-offerte).
             #
-            # ⚠️ Richiede la versione nuova del template Preventivo che legge
-            # `indirizzi.consegna.*`: la v3 pubblicata itera `indirizzi` come
-            # lista e con questa forma fallisce il render (StrictUndefined).
-            # Rumoroso e voluto — vedi brief-db-template-preventivo-slot.
+            # Il template che legge questa forma e' la **v4** del Preventivo,
+            # pubblicata dal DB lo stesso giorno (changeSet 20260816-01/-02) e
+            # provata da Tid sulla stampa: la v3 iterava `indirizzi` come lista
+            # e con un dict avrebbe fatto fallire il render (StrictUndefined).
+            # Il template stampa il solo slot `consegna`, dentro il riquadro
+            # Cliente come gli altri cinque: e' il template a scegliere cosa
+            # stampare, il contesto espone tutti i tipi ammessi dall'ambito.
+            # Cantiere: brief-db-template-preventivo-slot (work-done).
             "indirizzi": shape_indirizzi_context(
                 self._repo.list_indirizzi(sorgente_id),
                 codici_ammessi=self._INDIRIZZI_CODICI,

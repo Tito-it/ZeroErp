@@ -7,14 +7,42 @@
 contratti e offerte. Serve una versione nuova del template Preventivo che la
 legga. Era l'ultimo dominio a slot rimasto fuori.
 **Nasce da:** §11.3 di
-[brief-db-indirizzi-su-ordini-contratti-offerte.md](../work-done/brief-db-indirizzi-su-ordini-contratti-offerte.md),
+[brief-db-indirizzi-su-ordini-contratti-offerte.md](brief-db-indirizzi-su-ordini-contratti-offerte.md),
 chiuso lo stesso giorno. Decisione di Tid del 2026-08-16.
-**Correlati:** [brief-db-template-preventivo-indirizzi.md](../work-done/brief-db-template-preventivo-indirizzi.md)
+**Correlati:** [brief-db-template-preventivo-indirizzi.md](brief-db-template-preventivo-indirizzi.md)
 (§2 sul `.get()`, §7.2 sulla forma unica).
 
-> 🔴 **C'è una finestra rotta, ed è voluta.** Fra il merge del BE e la
-> pubblicazione della vostra versione nuova, **l'anteprima e la generazione del
-> Preventivo falliscono il render**. Non è una svista: vedi §4.
+> 🟢 **CHIUSO — 2026-08-16.** Cantiere completo in giornata, sui due lati.
+> **BE**: il context builder del Preventivo è passato alla forma unica
+> (`context_version` 2), 1771 test verdi. **DB**: due changeSet `20260816-01`
+> (bozza v4) e `-02` (pubblicazione), applicati; blocco renderizzato con
+> `StrictUndefined` su sei casi presi dai **valori reali** dei 12 snapshot dei
+> preventivi. **Verifica finale: Tid ha testato la stampa preventivi** — è
+> l'ultima voce della checklist del §6, e la sua riuscita conferma anche che il
+> `migrate` è passato, perché con la v3 il render sarebbe fallito.
+>
+> **La «finestra rotta» del §4 è chiusa**: è durata dal merge BE al `migrate`,
+> poche ore dello stesso giorno.
+>
+> 🔴 **Una frase di questo brief era falsa, ed è corretta nel testo.** «Il
+> Preventivo è l'ultimo template a leggere con `.get()`» vale per il **solo
+> blocco indirizzi**: il `.get()` resta su righe e IVA in tutti i template
+> (`off-comm` 37, `ord-ven` 29, `contratto` 21, `ddt-ven` 11). Rilievo del DB,
+> accolto — §3 punto 1 e §6 riscritti, e §8.2 sul perché quella frase era più
+> pericolosa dell'errore che conteneva. Corretta anche alla fonte, nel §11.3 di
+> [brief-db-indirizzi-su-ordini-contratti-offerte.md](brief-db-indirizzi-su-ordini-contratti-offerte.md).
+>
+> 📌 **Documento unico dei due lati**, come chiesto dal DB: qui cambiava il lato
+> che lavorava, non il soggetto. Il §8 porta la sede DB per intero; il file
+> separato `brief-db-template-preventivo-slot-indirizzi.md` è stato ritirato
+> dopo il travaso (§8.4).
+>
+> 🔎 **Se cercavi quel nome perché l'hai letto nel database, sei nel posto
+> giusto.** I due changeSet marcano la riga della versione template con
+> `meta->>'brief' = 'brief-db-template-preventivo-slot-indirizzi.md'`: il
+> marcatore resta quello, perché sono già applicati e un changeSet eseguito non
+> si riscrive (il checksum Liquibase). **Quel marcatore punta a questo
+> documento.**
 
 ---
 
@@ -116,12 +144,19 @@ l'accesso diretto:
 
 Tre cose da notare, tutte volute:
 
-1. **Niente `.get()`, mai.** È il presidio del §2 del primo brief, l'unica voce
-   di quel cantiere rimasta aperta: il Preventivo è **l'ultimo template** a
-   leggere in modo che un nome sbagliato stampi vuoto invece di far fallire il
-   render. Questa riscrittura la chiude. Se preferite `display_compatto` per la
-   riga geografica, va benissimo — è pensato per questo — purché resti accesso
-   diretto.
+1. **Niente `.get()` in questo blocco.** È il presidio del §2 del primo brief
+   applicato **all'area indirizzi**, che è il perimetro di quel rilievo: il
+   Preventivo è l'ultimo dei sei a leggere l'indirizzo in modo che un nome
+   sbagliato stampi vuoto invece di far fallire il render. Se preferite
+   `display_compatto` per la riga geografica, va benissimo — è pensato per
+   questo — purché resti accesso diretto.
+
+   > 🔴 **Correzione (2026-08-16, rilievo del DB).** La prima stesura diceva «il
+   > Preventivo è **l'ultimo template** a leggere con `.get()`» e chiudeva il §2
+   > per intero. **Falso**: il `.get()` resta su righe e IVA ovunque —
+   > `off-comm` 37, `ord-ven` 29, `contratto` 21, `ddt-ven` 11, e sul Preventivo
+   > stesso ~20 che questo blocco non tocca. Il perimetro di questo cantiere è
+   > l'area indirizzi, e solo quella si chiude qui. Vedi §8.2.
 2. **L'etichetta non è più `tipo_indirizzo_descrizione`.** Con gli slot il nome
    lo sceglie il template, non il dato: quelle quattro stringhe sono una
    proposta, cambiatele se avete una convenzione migliore.
@@ -189,19 +224,155 @@ sincronizziamo il merge.
 
 ## 6. Definizione di «fatto»
 
-* [ ] template Preventivo **v4 PUBBLICATA** con il blocco del §3, v3 → OBSOLETA
-      e ancora ri-renderizzabile;
-* [ ] il blocco usa **accesso diretto** su ogni campo, con guardia per campo
-      (§2) — chiude anche il §2 del brief di agosto;
-* [ ] un preventivo con indirizzo di consegna, rigenerato, lo mostra sul PDF;
-* [ ] un preventivo **senza** indirizzi non stampa la sezione (guardia esterna).
+* [x] template Preventivo **v4** con il blocco a slot, v3 → OBSOLETA e ancora
+      ri-renderizzabile — ⚠️ **scritto, si avvera col `migrate`**;
+* [x] il blocco usa **accesso diretto** su ogni campo, con guardia **per campo**
+      — chiude il §2 del brief di agosto **limitatamente all'area indirizzi**
+      (vedi la correzione al §3 punto 1: righe e IVA restano su `.get()`);
+* [x] un preventivo **senza** indirizzi non stampa la sezione (guardia esterna);
+* [x] un preventivo **con** indirizzo di consegna, rigenerato, lo mostra sul PDF
+      — **stampa preventivi testata da Tid il 2026-08-16**, dopo l'apply.
 
-## 7. Una domanda per voi
+## 7. Una domanda per voi — risposta ricevuta: **un solo slot**
 
-Il Preventivo è l'unico dei quattro domini a slot che ne ammette **quattro** e a
-poterne stampare più di uno nello stesso PDF (gli altri tre stampano solo
-`consegna`). Le quattro etichette del §3 sono una proposta scritta da chi non
-compila preventivi: se sul documento reale «Punto di fornitura» e «Residenza»
-non hanno senso accanto agli altri due, ditelo e le togliamo dal template —
-resterebbero comunque negli slot del contesto, che seguono la whitelist
-dell'ambito e non ciò che il template sceglie di stampare (§11.1).
+La domanda era se stampare tutti e quattro gli slot ammessi dall'ambito. Tid ha
+deciso: *«la stampa è identica agli altri documenti»*, quindi **solo
+`consegna`**, e il dato conferma — 46 snapshot indirizzo in tutto il database,
+**46 su 46 di tipo `CON`**; sui preventivi 12 su 12.
+
+⚠️ **Quindi il blocco del §3 è superato**: il `for` sulle quattro etichette non
+si fa, e la posizione non è una sezione a sé ma il **riquadro «Cliente»**, dove
+stanno gli altri cinque template. Il §3 resta qui come storia della richiesta,
+non come cosa da implementare — chi ci mette mano guardi i changeSet.
+
+Il contesto continua a esporre tutti e quattro gli slot: seguono la whitelist
+dell'ambito, ed è il template a scegliere cosa stampare (§11.1 del brief
+precedente). Nessuna modifica BE.
+
+## 8. Risposta del DB (2026-08-16) e chiusura
+
+> Scritta dal team DB su `dev/db-tid` e **fusa qui il 2026-08-16**, come loro
+> stessi avevano chiesto: in questo cantiere cambiava il lato che lavorava, non
+> il soggetto. Il documento DB separato è stato ritirato dopo la fusione — il
+> record dell'implementazione sono i due changeSet in
+> `db/changelog/migrations_v2/80_data/changelog/20260816-01…` e `-02…`.
+
+### 8.1 Cosa è stato scritto
+
+`20260816-01` crea la **bozza v4** dalla v3 pubblicata, `20260816-02` la
+pubblica (`valido_dal = current_date`, v3 → OBSOLETA e ri-renderizzabile). Due
+modifiche e non una: **entra** il blocco `indirizzi.consegna` nel riquadro
+Cliente, **esce** la sezione «Indirizzi documento» della forma v1 — lasciarla
+non solo pianterebbe il render (è lei a iterare il dict) ma, convertita,
+stamperebbe l'indirizzo **due volte**. Sostituzioni ancorate a testo che deve
+comparire esattamente una volta: se qualcuno ha ritoccato il template il
+`migrate` si ferma invece di pubblicare una versione identica alla vecchia.
+
+**Diff v3 → v4: `+20` righe e `−20`, nient'altro.** Provato in transazione poi
+annullata: bozza creata, pubblicazione eseguita, v3 → `OBSOLETA`, v4
+`PUBBLICATA dal 2026-08-16`.
+
+Blocco renderizzato con `StrictUndefined` su sei casi scelti **sui valori reali
+dei 12 snapshot dei preventivi**, non su casi inventati — ed è la verifica più
+forte della mia (§3):
+
+| Caso | Esito |
+| --- | --- |
+| completo | `Luogo di consegna: · Azienda PG Test Natura · PIAZZA PRIMO MAGGIO 77 · 75025 POLICORO (MT) · IT` |
+| senza `intestazione` (3 su 12) | nessuna riga vuota |
+| senza `cap`/`citta`/`prov` (5 su 12) | riga geografica non stampata |
+| solo `display` | ramo `elif` esercitato |
+| `cap` mancante e `citta` presente | `ROMA (RM)` — **non** `None ROMA` |
+| nessun indirizzo | sezione non stampata |
+
+⭐ **Perché la guardia è per campo e non per slot**, misurato: sui 12 snapshot
+`intestazione` è valorizzata su **9**, `cap`/`citta`/`prov` su **7**, `via` e
+`stato` su 12. Con la sola guardia sullo slot, **3 preventivi avrebbero stampato
+una riga vuota e 5 una riga tronca**.
+
+### 8.2 🔴 Il rilievo sul `.get()`: accolto, ed era il più utile dei due
+
+La frase «il Preventivo è l'ultimo template a leggere con `.get()`» era falsa, e
+il modo in cui era falsa è peggio del contenuto: **dichiarava chiusa una cosa
+aperta**. Chi l'avesse riletta fra un anno avrebbe creduto che il presidio del
+§2 di agosto fosse applicato ovunque, mentre vale per la sola area indirizzi.
+Corretta al §3 e al §6, e anche nel §11.3 del brief precedente da cui era
+partita.
+
+Se il `.get()` su righe e IVA va tolto è un **cantiere suo**, con la sua misura:
+lì un nome sbagliato non stampa un indirizzo monco ma una riga d'ordine vuota,
+che su un documento con importi è un difetto di un'altra categoria. Non lo
+apriamo qui e non lo lasciamo implicito: è annotato, non pianificato.
+
+### 8.3 Il guard troppo largo: la lezione vale anche per me
+
+Il DB aveva messo nel dry-run un presidio «nessun `.get()` nell'HTML
+risultante», che è fallito sul `r.get("ordine")` delle righe — fuori perimetro
+per il §5 di questo brief — e l'ha sostituito con due asserzioni precise (la
+forma nuova c'è, la vecchia non c'è più). ⭐ *Un presidio che verifica più di
+quanto il cantiere promette non è più sicuro: è solo più fragile.*
+
+È lo stesso errore della frase di §8.2, in un'altra veste: **un guard che
+sconfina e una frase che sopravvaluta dicono entrambi «ho chiuso più di quanto
+ho chiuso»**. Il primo lo scopri subito perché il dry-run si pianta, la seconda
+resta scritta per un anno — motivo in più per correggerla invece di sfumarla.
+
+### 8.4 Fusione dei due brief — fatta
+
+Il DB chiedeva giustamente di **fondere i due documenti in uno**: qui cambiava
+il lato che lavorava, non il soggetto. Rimandata a cantiere chiuso apposta, così
+il documento unico nascesse completo invece di essere fuso due volte — ed è
+questo file.
+
+`brief-db-template-preventivo-slot-indirizzi.md` è stato **ritirato** dopo il
+travaso (ok di Tid, 2026-08-16): tutto ciò che conteneva vive qui — i due
+changeSet e cosa fanno (§8.1), le ancore fail-loud, il diff, la tabella dei sei
+casi di render, i due rilievi al BE (§8.2, §8.3). Il record vero
+dell'implementazione restano i changeSet YAML in repo, e la storia del file è
+nel git log.
+
+⚠️ **Una coda che il ritiro non può togliere, ed è giusto sapere.** I due
+changeSet scrivono il nome del file ritirato **dentro il dato**:
+
+```text
+20260816-01: c_brief CONSTANT text := 'brief-db-template-preventivo-slot-indirizzi.md';
+             → finisce in template_documenti_versioni.meta->>'brief'
+20260816-02: lo rilegge per trovare la bozza da pubblicare
+```
+
+Sono **già applicati**, quindi il marcatore resta quello: un changeSet eseguito
+non si riscrive senza rompere il checksum Liquibase, e non vale una migrazione
+nuova per allineare una stringa descrittiva. Chi interroghi la riga della v4 e
+cerchi quel documento **non lo trova**: per questo il redirect è scritto nel
+banner in testa a questo file. Se un domani si preferisce il puntamento esatto,
+la strada onesta è un changeSet che aggiorna `meta`, non la modifica di uno
+applicato.
+
+---
+
+## 9. Chiusura (2026-08-16)
+
+Cantiere aperto e chiuso in giornata, dai due lati.
+
+| Lato | Cosa | Esito |
+| --- | --- | --- |
+| BE | builder Preventivo sulla forma unica, `context_version` 2, test | ✅ 1771 verdi |
+| DB | changeSet `20260816-01` + `-02`, v4 pubblicata, v3 → OBSOLETA | ✅ applicati |
+| Tid | **stampa preventivi testata** | ✅ |
+
+**Cosa lascia dietro, oltre al PDF giusto:**
+
+* la **forma unica** degli indirizzi vale ora su **5 builder su 6**. Fuori resta
+  la sola `fattura`, con la sua stringa già composta: scelta consapevole
+  (indirizzo fiscale unico), annotata in §11.3 del brief precedente e **non** un
+  debito di questo cantiere;
+* il presidio del `.get()` è applicato **all'area indirizzi di tutti e sei** i
+  template. Su **righe e IVA** resta ovunque: cantiere a sé, annotato e non
+  pianificato — lì un nome sbagliato non stampa un indirizzo monco ma una riga
+  d'ordine vuota, che su un documento con importi è un'altra categoria di
+  difetto (§8.2);
+* due lezioni gemelle, che è la ragione per cui questo documento è più lungo
+  della modifica che descrive: **un guard che sconfina** (§8.3) e **una frase
+  che sopravvaluta** (§8.2) dicono la stessa cosa — «ho chiuso più di quanto ho
+  chiuso». Il primo si pianta nel dry-run entro un minuto, la seconda resta
+  scritta per un anno.

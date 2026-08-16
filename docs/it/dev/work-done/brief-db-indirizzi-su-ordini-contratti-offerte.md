@@ -559,9 +559,20 @@ due ragioni scritte nel codice per non averle mosse **non sono la stessa cosa**:
   test e non siamo in produzione (decisione di Tid, 2026-08-16). **Si allinea** —
   arriva un brief dedicato, perché serve una versione nuova del template
   Preventivo: la lista diventa slot, non è una rinomina di chiavi. In quella
-  riscrittura si chiude anche l'ultima voce del brief precedente, il `.get()`
-  del §2: il Preventivo è oggi l'unico template rimasto a leggere in modo che
-  un nome sbagliato stampi vuoto invece di far fallire il render;
+  riscrittura si chiude anche il `.get()` del §2 **sull'area indirizzi**: il
+  Preventivo è l'ultimo dei sei a leggere l'indirizzo in modo che un nome
+  sbagliato stampi vuoto invece di far fallire il render;
+
+  > 🔴 **Correzione (2026-08-16, rilievo del DB).** Questa riga diceva che con
+  > il Preventivo si chiudeva «l'ultima voce» del §2 e che era «l'unico template
+  > rimasto» a leggere con `.get()`. **Falso, e falso in modo pericoloso**:
+  > dichiarava chiusa una cosa aperta. Il `.get()` resta su **righe e IVA** in
+  > tutti i template — `off-comm` 37, `ord-ven` 29, `contratto` 21, `ddt-ven` 11
+  > (misurato il 2026-08-16) — e sul Preventivo stesso ne restano ~20 fuori dal
+  > blocco indirizzi. Il §2 si chiude qui **solo per l'area indirizzi**; il
+  > resto è un cantiere a sé, con la sua misura, perché lì un nome sbagliato non
+  > stampa un indirizzo monco ma una riga d'ordine vuota. Annotato, non
+  > pianificato.
 * la **fattura** non è un residuo bloccato da dati. Non ha slot da stampare: ha
   **un** indirizzo che conta, quello fiscale, e il template lo rende già
   composto su una riga. Uniformarla significa ridecidere come si compone quella
