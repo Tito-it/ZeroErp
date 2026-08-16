@@ -1,0 +1,34 @@
+# Template systemd — batch fatturazione, corsia IMMEDIATA (lotti GIORNALIERO).
+# Fonte di verità versionata: si edita QUI e si ri-renderizza con
+# `sudo backend/bin/install-timers.sh`. Placeholder per-host sostituiti
+# dall'installer: __APP_DIR__ (cartella backend), __APP_USER__ (owner app).
+#
+# Gira headless nel CANALE DI SISTEMA (RLS Path A): il command apre la
+# connessione col ruolo `zeroerp_batch_fatturazione` (BYPASSRLS) via l'alias
+# `system_fatturazione`, quindi in `.env.systemd` devono esserci le
+# DB_SYSTEM_FATTURAZIONE_* — le stesse che usa già il drainer della coda stampa.
+# ⚠️ Senza `DB_SYSTEM_FATTURAZIONE_PASSWORD` la connessione fallisce
+# RUMOROSAMENTE: nessun ripiego silenzioso su `zeroerp_app`, ed è voluto.
+#
+# ⚠️ ANTI-OVERLAP: lo garantisce il command (advisory-lock di sessione via
+# `registered_job`, chiave per-corsia), non il timer. Due fire ravvicinati sono
+# sicuri: il secondo salta con una riga «skip» già scritta in
+# `maintenance.job_run_log`. Per questo non serve `RemainAfterExit` né un lock
+# di systemd, e immediata/differita non si bloccano a vicenda.
+#
+# ⚠️ NON abilitato dall'installer, a differenza dei due drainer — decisione di
+# Tid, 2026-08-16. I drainer processano una coda (a coda vuota non fanno nulla);
+# questo EMETTE DOCUMENTI. Accenderlo di riflesso con un `sudo install-timers.sh`
+# vorrebbe dire iniziare a fatturare su un host che nessuno ha dichiarato pronto.
+# L'installer lo scrive e stampa il comando per accenderlo.
+[Unit]
+Description=ZeroERP fatturazione batch — corsia immediata (GIORNALIERO)
+After=network.target
+
+[Service]
+Type=oneshot
+User=__APP_USER__
+Group=www-data
+WorkingDirectory=__APP_DIR__
+EnvironmentFile=__APP_DIR__/.env.systemd
+ExecStart=__APP_DIR__/bin/run-command.sh run_fatturazione_batch --modalita immediata

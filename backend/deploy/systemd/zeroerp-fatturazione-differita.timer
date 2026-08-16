@@ -1,0 +1,16 @@
+# Template systemd — timer della corsia DIFFERITA (mensile su competenza).
+# Placeholder per-host: __ONCALENDAR__ (cadenza, default installer
+# `*-*-01 02:00` = il 1° di ogni mese alle 02:00). Vedi il .service gemello.
+#
+# ⚠️ `Persistent=true` conta QUI più che altrove: il tick è mensile, quindi un
+# host spento la notte del 1° perderebbe il giro per un mese intero. Col flag,
+# il run parte al primo riaggancio.
+[Unit]
+Description=Timer corsia differita fatturazione (mensile su competenza)
+
+[Timer]
+OnCalendar=__ONCALENDAR__
+Persistent=true
+
+[Install]
+WantedBy=timers.target

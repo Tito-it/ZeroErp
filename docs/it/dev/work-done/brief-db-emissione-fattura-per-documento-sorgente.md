@@ -9,7 +9,7 @@
 > nessun dato a rischio).
 >
 > **Conseguenza per BE/FE**: il prerequisito DB **non è più bloccante**. I punti
-> 3-6 del perimetro in [analisi-emissione-fattura-ondemand.md](../work-in-progress/analisi-emissione-fattura-ondemand.md)
+> 3-6 del perimetro in [analisi-emissione-fattura-ondemand.md](analisi-emissione-fattura-ondemand.md)
 > §8 possono partire, con il contratto di **§8-bis** di questo brief.
 >
 > **Come leggere questo brief**: §1-§5 descrivono **cosa serve**. §6 riporta le
@@ -19,7 +19,7 @@
 > stato fatto** — con il consuntivo in testa. §4 «Fatti verificati» è il
 > contesto rilevato sul codice/DB vivo.
 >
-> **Origine**: [analisi-emissione-fattura-ondemand.md](../work-in-progress/analisi-emissione-fattura-ondemand.md),
+> **Origine**: [analisi-emissione-fattura-ondemand.md](analisi-emissione-fattura-ondemand.md),
 > decisioni Tid 2026-07-26/27.
 >
 > **Contesto**: non siamo in produzione ([[project_no_produzione_solo_sviluppo]])
@@ -546,7 +546,7 @@ un flag creerebbe due luoghi dove decidere la stessa cosa. In
 `fn_list_consumi_da_pushare` la costante `FALSE` resta, ma va **commentata come
 scelta di dominio**, non lasciata sembrare una dimenticanza.
 
-> Questa decisione si discostava da [analisi-emissione-fattura-ondemand.md](../work-in-progress/analisi-emissione-fattura-ondemand.md)
+> Questa decisione si discostava da [analisi-emissione-fattura-ondemand.md](analisi-emissione-fattura-ondemand.md)
 > §5.3, che diceva «tutte le sorgenti (… consumi)». ✅ **Confermata da Tid il
 > 2026-07-27: sui consumi NO.** Il perimetro della Fase B è quindi definitivo:
 > ordini, contratti, DDT. Reversibile a costo basso: se domani servisse, la
@@ -786,7 +786,7 @@ A7-ter e A9 sono rifiniture a valle, fuori dal cammino critico.
 - **Colonna `gruppo_key` su `attivita_fatturabili`**: scartata in D-2, da
   riaprire solo su evidenza di `EXPLAIN`.
 - **BE e FE**: fuori perimetro DB. Riprendono dai punti 3-6 di
-  [analisi-emissione-fattura-ondemand.md](../work-in-progress/analisi-emissione-fattura-ondemand.md) §8.
+  [analisi-emissione-fattura-ondemand.md](analisi-emissione-fattura-ondemand.md) §8.
 
 ---
 
@@ -984,7 +984,7 @@ DB): `commesse_repository.py`, `pipeline_repository.py`, `commesse_service.py`,
 - Garanzie da 10 a **18** (G11-G18), ognuna con il fatto d'origine.
 - Decisioni **D-1…D-9** chiuse (§6); punti aperti **P1-P5** tutti chiusi.
 - Allineata l'analisi committente
-  [analisi-emissione-fattura-ondemand.md](../work-in-progress/analisi-emissione-fattura-ondemand.md)
+  [analisi-emissione-fattura-ondemand.md](analisi-emissione-fattura-ondemand.md)
   sui due punti superati (§6.1 e §5.3).
 
 ### 2026-07-27 · Bonifica documentale «sorgente polimorfa»
@@ -1145,14 +1145,14 @@ Chiusa la Fase A **con le rifiniture**, il perimetro DB del brief è
 
 1. **P6** — rientro sui pgTAP rossi della sorgente polimorfa (concordato);
 2. **BE/FE** — punti 3-6 del perimetro in
-   [analisi-emissione-fattura-ondemand.md](../work-in-progress/analisi-emissione-fattura-ondemand.md) §8,
+   [analisi-emissione-fattura-ondemand.md](analisi-emissione-fattura-ondemand.md) §8,
    con il contratto di §8-bis di questo brief.
 
 ---
 
 ## 12. Riferimenti
 
-- Analisi committente: [analisi-emissione-fattura-ondemand.md](../work-in-progress/analisi-emissione-fattura-ondemand.md)
+- Analisi committente: [analisi-emissione-fattura-ondemand.md](analisi-emissione-fattura-ondemand.md)
   (§5.1-bis commessa≠documento · §5.3 flag · §5.5 design UI e gruppo fatturabile)
 - Porta oneri (righe sourceless): [brief-db-immutabilita-quantita-e-porta-oneri.md](../work-in-progress/brief-db-immutabilita-quantita-e-porta-oneri.md)
 - Commessa multi-sorgente: [brief-db-commesse-multi-sorgente.md](../work-done/brief-db-commesse-multi-sorgente.md)
