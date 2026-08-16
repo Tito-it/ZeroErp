@@ -5,8 +5,15 @@
 > Tutte le decisioni chiuse (§5). Il
 > [brief DB](../work-done/brief-db-emissione-fattura-per-documento-sorgente.md) è stato
 > consegnato, analizzato criticamente e **contiene ora il piano di sviluppo a
-> step + il piano pgTAP** (§9-§10 del brief). BE/FE attendono. **Nessun codice
-> scritto** per questa slice.
+> step + il piano pgTAP** (§9-§10 del brief). ~~BE/FE attendono. **Nessun codice
+> scritto** per questa slice.~~
+>
+> ⚠️ **Ricognizione del 2026-08-16 — quella riga è superata: il codice c'è, quasi
+> tutto.** Verificati uno per uno gli 11 punti del perimetro §8 contro il codice e
+> il database: **10 sono fatti**, incluse le due voci marcate «opzionale» e i tre
+> difetti del cockpit del §6-bis. **Resta aperto il solo punto 7 — il deploy**: i
+> timer `immediata`/`differita` non sono versionati nel repo. Tabella di riscontro
+> in **§9**, con le prove.
 >
 > ⚠️ Due punti di questa analisi sono stati **superati** dall'analisi critica DB
 > del 2026-07-27: §6.1 (chiuso: nessun conflitto di identità lotto) e §5.3
@@ -546,3 +553,57 @@ Ordine proposto. I punti 1-2 sono **DB e vanno per primi**: BE/FE attendono
 
 I punti 3-6 sono **riuso/esposizione** di capacità esistenti; la sostanza nuova
 è tutta nei punti 1-2.
+
+---
+
+## 9. Ricognizione del 2026-08-16 — che cosa resta davvero
+
+> Ogni riga è stata verificata sul codice o interrogando il database, non letta
+> da un consuntivo.
+
+| # | Punto del §8 | Esito | Prova |
+|---|---|---|---|
+| 1 | **[DB]** asse documento sorgente | ✅ | il [brief DB](../work-done/brief-db-emissione-fattura-per-documento-sorgente.md) è chiuso; a database ci sono `fn_build_gruppo_fatturabile_key`, `fn_diagnostica_gruppi_fatturabili`, `fn_esito_gruppi_giro`, `vw_dash_competenza_gruppi`, `vw_dash_competenza_gruppi_riepilogo`, `vw_lotti_gruppi_serviti` |
+| 2 | **[DB]** simmetria `fatturazione_immediata` | ✅ | colonna reale su `ordini`, `contratti`, `ddt` (oltre a `preventivi` e `commesse`); **consumi esclusi**, com'era deciso in D-6 |
+| 3 | **[BE]** endpoint di emissione mirata | ✅ | `ApiFatturazioneRun` accetta `gruppi[]` — «senza `gruppi` è il giro di massa, con `gruppi` è l'emissione mirata» — e `GET /vendite/dashboard-competenza/gruppi/` espone le chiavi da passargli |
+| 4 | **[FE]** liste differenziate per stadio | ✅ | il drill-down di «Da emettere» scende sui **gruppi fatturabili** (store `dashboardCompetenza.js`, view `DashboardCompetenzaView.vue`) |
+| 4-bis | **[FE]** aggancio «vai al lotto» | ✅ | `apriLotto(data.lotto_id)` sulla riga dell'esito |
+| 4-ter | **[FE/BE]** riga di totali | ✅ | `gruppiRiepilogo` nel FE, alimentato da `vw_dash_competenza_gruppi_riepilogo` |
+| 4-quater | **[FE]** i 3 difetti del cockpit | ✅ | **D1** la visibilità dei verbi Approva è ora gated su `total_non_approvate > 0`; **D2** corretto il 2026-07-27, con la ragione scritta nel file; **D3** «Emesse non fatturate» ha ora l'hint + tooltip che la presentano come **residui** |
+| 5 | **[FE]** flag in creazione/accettazione documenti | ✅ | esposto su preventivi, ordini, contratti e DDT (form e drawer) |
+| 6 | **[FE]** verbi di avanzamento in lista lotti *(opzionale)* | ✅ | fatti: `LottiListView.vue` ha le azioni di governo senza passare dal drawer |
+| **7** | **[Deploy]** timer batch versionati + coda-stampa | 🔴 **APERTO** | vedi sotto |
+
+### 9.1 Il punto 7, in dettaglio — due cose, una sola aperta
+
+* 🔴 **I timer del batch non sono nel repo.** In `backend/deploy/systemd/` ci
+  sono soltanto `zeroerp-coda-lavori.{service,timer}` e
+  `zeroerp-coda-stampa.{service,timer}`: delle due corsie di
+  `run_fatturazione_batch` (`immediata` ogni 2 minuti, `differita` il 1° del
+  mese) **non esiste alcuna unità versionata**. Vivono solo come esempio nella
+  play-book, cioè il §2.3 di questa analisi è ancora vero — ed è l'unica cosa
+  che questo documento lascia indietro.
+* ✅ **Il prerequisito della coda-stampa non è più un blocco.** Il §6.2 diceva
+  «attende i GRANT del ruolo batch»: il ruolo `zeroerp_batch_fatturazione`
+  esiste, è `BYPASSRLS`, e ha `SELECT`+`UPDATE` su `vendite.fatture_stampa_coda`
+  più `SELECT` su `dbops.coda_lavori`/`coda_lavori_tipi`. Se l'unità systemd sia
+  **abilitata** sul server backend non è visibile da qui (questa ricognizione
+  gira sul server DB), ma la coda dice che qualcuno l'ha drenata: **10 righe
+  `FATTO`**, nessuna in attesa.
+
+### 9.2 Trovato per strada: 3 righe morte nella coda di stampa
+
+`vendite.fatture_stampa_coda` ha **3 righe in `ERRORE` ferme a 5 tentativi**
+(esauriti), del 2026-07-21 e 2026-07-28:
+
+| id | Lotto | Errore |
+| --- | --- | --- |
+| 1 | 117 | `E_DOCUMENTI_RENDER_FAILED` — «'dict object' has no attribute 'denominazione'» |
+| 26, 27 | 245, 278 | «la colonna `r.imposta_riga` non esiste» |
+
+⚠️ **Sono residui di difetti già corretti**, non difetti vivi: `imposta_riga` non
+compare più nel codice come colonna — `vendite_repository.py` dichiara
+esplicitamente che «`imposta_riga`/`totale_riga` NON esistono più» e un test lo
+presidia. Ma avendo esaurito i tentativi **non si ridrenano da sole**: o si
+azzerano a mano, o restano lì a far sembrare rotta la stampa. Decisione di Tid,
+non c'è codice da scrivere.
