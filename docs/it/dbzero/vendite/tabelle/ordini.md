@@ -34,7 +34,7 @@
 | sorgente_tipo_id | bigint | YES |  |
 | sorgente_uid | uuid | YES |  |
 | termine_pagamento_id | bigint | YES |  |
-| fatturazione_trigger | character varying | NO | 'CONFERMATO'::character varying |
+| fatturazione_trigger | character varying | NO |  |
 | canale_origine | USER-DEFINED | NO | 'ADMIN'::config.canale_origine |
 | utility_id | integer | YES |  |
 | emittente_fiscale_id | bigint | NO |  |

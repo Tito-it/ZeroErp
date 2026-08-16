@@ -1,0 +1,118 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `vendite.ordini.fatturazione_trigger`: via il DEFAULT, resta il NOT NULL.
+#   Seconda meta' della correzione aperta dal changeSet 20260817-01: i due si
+#   leggono insieme, nessuno dei due funziona da solo.
+#
+# ── PERCHE' TOGLIERE UN DEFAULT ─────────────────────────────────────────
+#
+#   Il -01 insegna al trigger a rispettare un valore gia' scelto in testata:
+#
+#       NEW.fatturazione_trigger := COALESCE(NEW.fatturazione_trigger,
+#                                            <billing account>, 'CONFERMATO')
+#
+#   Ma finche' la colonna ha `DEFAULT 'CONFERMATO'`, in `NEW` non arriva MAI un
+#   NULL: PostgreSQL applica il default prima dei BEFORE ROW, quindi il trigger
+#   vede sempre un valore e non puo' distinguere «l'operatore non ha scelto» da
+#   «l'operatore ha scelto CONFERMATO».
+#
+#   ⚠️ Il risultato sarebbe il difetto capovolto: la testata vincerebbe sempre
+#   e a morire sarebbe l'eredita' dal billing account — invisibile finche'
+#   tutti i BA dicono CONFERMATO, cioe' esattamente oggi. Sarebbe la stessa
+#   trappola di partenza, con i ruoli scambiati.
+#
+#   Tolto il default, «campo non valorizzato» torna a essere NULL, ed e' il
+#   modo in cui il chiamante DICE di non aver scelto.
+#
+# ── IL NOT NULL RESTA, E RESTA SODDISFATTO ──────────────────────────────
+#
+#   Non e' una svista: i vincoli (NOT NULL e CHECK) si valutano DOPO i BEFORE
+#   ROW trigger, quindi il -01 fa in tempo a riempire la colonna. E chiude
+#   comunque su 'CONFERMATO' — lo stesso valore che metteva questo default —
+#   percio' «nessuno ha detto niente e il BA tace» continua a produrre cio' che
+#   produceva prima.
+#
+#   ⚠️ Conseguenza da conoscere: da qui in avanti un INSERT su vendite.ordini
+#   che ometta la colonna dipende dal trigger per essere valido. Il trigger
+#   `trg_ordini_*_normalize` c'e' da sempre ed e' su INSERT; ma chi un domani
+#   lo disabilitasse (o inserisse con `session_replication_role = replica`) si
+#   troverebbe un NOT NULL violato invece di un default silenzioso — ed e'
+#   preferibile: e' un errore che si vede.
+#
+# ── ORDINE DEI CHANGESET ────────────────────────────────────────────────
+#
+#   -01 (funzione) PRIMA, -02 (questo) DOPO, e non l'inverso: ogni stato
+#   intermedio deve reggere. Funzione nuova + default ancora vivo = non si
+#   rompe niente, si perde solo l'eredita' per il tempo di un changeSet.
+#   Default tolto + funzione vecchia = un INSERT senza la colonna su un ordine
+#   senza billing account lascerebbe NULL e violerebbe il NOT NULL.
+#
+#   ⚠️ L'autogen include 00_schema e 20_code ordinando per NUMERO, non per
+#   cartella: il 01 gira prima del 02 anche stando in cartelle diverse. E'
+#   proprio il motivo per cui i numeri sono questi.
+#
+# ── COSA NON CAMBIA ─────────────────────────────────────────────────────
+#
+#   Il CHECK `chk_ordini_fatturazione_trigger` (CONFERMATO/SPEDITO/CONSEGNATO)
+#   resta come e' — il dominio non si tocca. Le 92 righe esistenti non si
+#   toccano: un default non si applica retroattivamente, e infatti nessuna
+#   riga cambia valore.
+#
+#   Riferimenti: brief-be-fan-out-isolato-e-esito-parziale.md §13.2 ·
+#   brief-design-fatturazione-due-lenti.md §6-quater, DL-19.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260817-02-drop-default-ordini-fatturazione-trigger-mctit.yaml
+
+  - changeSet:
+      id: 20260817-02-drop-default-ordini-fatturazione-trigger
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.ordini.fatturazione_trigger: DROP DEFAULT ('CONFERMATO'),
+        NOT NULL e CHECK invariati. Senza, il COALESCE del changeSet -01 non
+        potrebbe distinguere «non scelto» da «scelto CONFERMATO» (il default e'
+        applicato prima dei BEFORE ROW) e a morire sarebbe l'eredita' dal
+        billing account: lo stesso difetto capovolto. Il NOT NULL resta
+        soddisfatto perche' i vincoli si valutano dopo i BEFORE ROW e il -01
+        chiude su 'CONFERMATO'.
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_attrdef d
+                  JOIN pg_attribute a ON a.attrelid = d.adrelid AND a.attnum = d.adnum
+                  WHERE d.adrelid = 'vendite.ordini'::regclass
+                    AND a.attname = 'fatturazione_trigger'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'vendite'
+                    AND p.proname = 'trgfn_ordini_normalize'
+                    AND pg_get_functiondef(p.oid) LIKE '%COALESCE(NEW.fatturazione_trigger%'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.ordini
+                ALTER COLUMN fatturazione_trigger DROP DEFAULT;
+
+              COMMENT ON COLUMN vendite.ordini.fatturazione_trigger
+              IS 'Evento che rende la merce dell''ordine fatturabile: CONFERMATO | SPEDITO | CONSEGNATO (chk_ordini_fatturazione_trigger). Senza DEFAULT dal 2026-08-17: NULL in INSERT significa «la testata non ha scelto» e vendite.trgfn_ordini_normalize eredita da anagrafiche.billing_account.fatturazione_ordini, con ultimo ripiego CONFERMATO. Il NOT NULL resta e resta soddisfatto perche'' i vincoli si valutano dopo i BEFORE ROW. Prima di questa data il default rendeva l''eredita'' indistinguibile da una scelta esplicita e il trigger sovrascriveva sempre la testata: nessun ordine poteva nascere SPEDITO/CONSEGNATO (brief-be-fan-out-isolato-e-esito-parziale.md §13.2, brief-design-fatturazione-due-lenti.md §6-quater DL-19).';

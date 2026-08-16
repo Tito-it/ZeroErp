@@ -11,7 +11,7 @@ Caricare su una commessa una **voce di puro valore** (onere): una riga
 È l'unica porta d'ingresso per le righe non nate dal push. Nasce dal principio
 «la commessa è un libro giornale»: una riga esistente non si modifica mai, si
 **aggiunge** un fatto nuovo (brief
-[brief-db-immutabilita-quantita-e-porta-oneri](../../../dev/work-in-progress/brief-db-immutabilita-quantita-e-porta-oneri.md)
+[brief-db-immutabilita-quantita-e-porta-oneri](../../../dev/work-done/brief-db-immutabilita-quantita-e-porta-oneri.md)
 §1-§2). Poiché la riga manuale porta **valore e non quantità**, una nota di
 credito travestita da quantità negativa è impossibile per costruzione, e la
 riconciliazione con il documento d'origine non si rompe mai.

@@ -1154,6 +1154,6 @@ Chiusa la Fase A **con le rifiniture**, il perimetro DB del brief è
 
 - Analisi committente: [analisi-emissione-fattura-ondemand.md](analisi-emissione-fattura-ondemand.md)
   (§5.1-bis commessa≠documento · §5.3 flag · §5.5 design UI e gruppo fatturabile)
-- Porta oneri (righe sourceless): [brief-db-immutabilita-quantita-e-porta-oneri.md](../work-in-progress/brief-db-immutabilita-quantita-e-porta-oneri.md)
+- Porta oneri (righe sourceless): [brief-db-immutabilita-quantita-e-porta-oneri.md](brief-db-immutabilita-quantita-e-porta-oneri.md)
 - Commessa multi-sorgente: [brief-db-commesse-multi-sorgente.md](../work-done/brief-db-commesse-multi-sorgente.md)
 - Guida processo: [fatturazione.md](../../guide/fatturazione.md)

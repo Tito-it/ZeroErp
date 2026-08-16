@@ -1,0 +1,211 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `trgfn_ordini_normalize`: l'eredita' del trigger di fatturazione dal billing
+#   account vale SOLO quando la testata non ha scelto.
+#   Segnalazione del BE del 2026-08-16, emersa provando la validazione DL-19.
+#
+# ── IL FATTO ────────────────────────────────────────────────────────────
+#
+#   Sul form ordine c'e' il campo «Trigger di fatturazione» con tre valori
+#   (CONFERMATO / SPEDITO / CONSEGNATO). L'operatore sceglie, il BE passa il
+#   valore, e questo trigger su INSERT lo sovrascriveva con
+#   `billing_account.fatturazione_ordini` — non in mancanza del valore:
+#   SEMPRE.
+#
+#       IF v_fatturazione_ordini IS NOT NULL THEN
+#         NEW.fatturazione_trigger := v_fatturazione_ordini;   -- incondizionato
+#
+#   L'intenzione documentata era l'opposta, ed e' scritta sia nel COMMENT
+#   della funzione sia nel frontend: «ereditato dal billing account,
+#   sovrascrivibile in testata».
+#
+#   ⚠️ La seconda vittima e' DENTRO il database. `fn_push_preventivo_a_ordine`
+#   accetta `p_fatturazione_trigger`, lo prepara e lo INSERTa in testata — e un
+#   istante dopo questo trigger lo buttava via. Un parametro che la funzione si
+#   prende la briga di raccogliere e che un trigger sulla stessa tabella
+#   cancella: si corregge nel changeSet -03, in coppia con questo.
+#
+# ── PERCHE' NON E' UN DETTAGLIO ─────────────────────────────────────────
+#
+#   Misurato sul database di sviluppo il 2026-08-16: tutti e 42 i billing
+#   account hanno CONFERMATO, quindi 92 ordini su 92 ce l'hanno uguale e
+#   NESSUN ordine poteva nascere con SPEDITO o CONSEGNATO.
+#
+#   Ne discende che il ramo order-backed di `fn_list_ddt_da_pushare` — quello
+#   che richiede `src_fatturazione_trigger != 'CONFERMATO'` (la «cintura XOR»)
+#   — non e' mai stato percorso da un solo dato, e la fatturazione da DDT su
+#   merce order-backed non era raggiungibile dall'applicazione.
+#
+#   Riferimenti: brief-be-fan-out-isolato-e-esito-parziale.md §13.2 (contesto
+#   in cui e' emerso) · brief-design-fatturazione-due-lenti.md §6-quater,
+#   DL-19 (la decisione di riferimento).
+#
+# ── LA CORREZIONE, E PERCHE' NON BASTA UN COALESCE ──────────────────────
+#
+#   `NEW.fatturazione_trigger := COALESCE(NEW.fatturazione_trigger,
+#                                         v_fatturazione_ordini,
+#                                         'CONFERMATO')`
+#
+#   ⚠️ Da sola questa riga non basta, e messa da sola INVERTIREBBE il difetto.
+#   La colonna era `NOT NULL DEFAULT 'CONFERMATO'`: un BEFORE INSERT vede il
+#   default GIA' applicato, quindi non puo' distinguere «l'operatore non ha
+#   scelto» da «l'operatore ha scelto CONFERMATO». Con il default in piedi, la
+#   testata vincerebbe sempre e a morire sarebbe l'eredita' dal BA — lo stesso
+#   difetto capovolto, e invisibile finche' tutti i BA dicono CONFERMATO.
+#
+#   Per questo la correzione e' una COPPIA, e l'ordine dei numeri e' portante:
+#
+#     -01 (questo)  la funzione impara a rispettare un valore gia' presente
+#     -02           `ALTER ... DROP DEFAULT` sulla colonna, cosi' «campo non
+#                   valorizzato» torna a essere NULL e diventa distinguibile
+#
+#   ⚠️ L'ordine e' questo e non l'inverso perche' ogni stato intermedio deve
+#   reggere: con la funzione nuova e il default ancora in piedi non si rompe
+#   niente (si perde solo l'eredita', per il tempo di un changeSet). Al
+#   contrario — default tolto e funzione vecchia — un INSERT senza la colonna
+#   su un ordine senza billing account lascerebbe NULL e violerebbe il NOT
+#   NULL. Il `NOT NULL` resta, e resta valido: i vincoli si valutano DOPO i
+#   BEFORE ROW, quindi il trigger fa in tempo a riempire.
+#
+#   Il terzo argomento del COALESCE ('CONFERMATO') e' l'ultima rete: e' il
+#   valore che prima metteva il DEFAULT, quindi «nessuno ha detto niente e il
+#   BA tace» continua a produrre esattamente cio' che produceva prima.
+#
+#   ⚠️ Ma va detto per quello che e': quel terzo ramo e' una RETE, non un
+#   percorso. `anagrafiche.billing_account.fatturazione_ordini` e' NOT NULL con
+#   default 'CONFERMATO', quindi un BA non tace mai: l'unico modo di arrivare
+#   al terzo argomento e' un ordine SENZA billing account — di cui oggi ce ne
+#   sono zero su 92. Sta li' perche' la colonna e' NOT NULL e una rete che non
+#   c'e' si scopre solo quando serve, non perche' qualcuno la percorra. Per
+#   questo il pgTAP non lo asserisce: costruirgli una fixture apposta
+#   confermerebbe un ramo morto invece di verificarne uno vivo.
+#
+# ── IL CONTRATTO COL BE (accettato il 2026-08-17) ───────────────────────
+#
+#   Questa correzione vale solo se chi scrive la testata manda NULL / omette
+#   il campo quando l'operatore non ha scelto. Se il BE mandasse sempre un
+#   valore — per esempio il default del form — l'eredita' dal BA resterebbe
+#   morta lo stesso, e questo lavoro non servirebbe a niente. Il `Select` del
+#   form ordine ha gia' `show-clear`, quindi il campo vuoto e' rappresentabile
+#   senza toccare la UI.
+#
+# ── COSA NON CAMBIA ─────────────────────────────────────────────────────
+#
+#   Il ramo anno/data, il perimetro «solo INSERT», il fatto che su UPDATE non
+#   si erediti nulla (billing_account_id e' immutabile, DB-ORD-LOCK). Gli
+#   ordini gia' esistenti non si toccano: nessun backfill, nessuna bonifica.
+#
+#   ⚠️ Il primo ordine con SPEDITO fara' girare per la prima volta in assoluto
+#   il ramo order-backed del push DDT. La prova di DL-19 sara' anche il suo
+#   collaudo iniziale, non la conferma di qualcosa gia' rodato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260817-01-update-trgfn-ordini-normalize-eredita-solo-se-vuoto-mctit.yaml
+
+  - changeSet:
+      id: 20260817-01-update-trgfn-ordini-normalize-eredita-solo-se-vuoto
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        trgfn_ordini_normalize: fatturazione_trigger ereditato dal billing
+        account SOLO se la testata non lo valorizza (COALESCE testata -> BA ->
+        CONFERMATO). Prima la sovrascrittura era incondizionata e la scelta
+        dell'operatore veniva scartata: con tutti i 42 BA a CONFERMATO nessun
+        ordine poteva nascere con SPEDITO/CONSEGNATO e il ramo order-backed di
+        fn_list_ddt_da_pushare era irraggiungibile. Va in coppia col -02 (DROP
+        DEFAULT sulla colonna), senza il quale il COALESCE non distingue
+        «non scelto» da «scelto CONFERMATO».
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_ordini_normalize'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ordini_normalize()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_fatturazione_ordini anagrafiche.billing_account.fatturazione_ordini%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Normalizzazione campi ordine su INSERT.
+                --
+                -- Regole:
+                --   1. Imposta anno/data se numero presente e valori mancanti.
+                --   2. fatturazione_trigger: la TESTATA ha la precedenza; il
+                --      billing_account e' il ripiego. SOLO su INSERT.
+                --
+                -- Nota (DB-ORD-LOCK 2026-06-04): billing_account_id e'
+                --   immutabile su UPDATE (automation_lock_columns ->
+                --   script.trgfn_lock_columns, codice E_ORD_CLIENTE_IMMUTABILE).
+                --   Non esiste piu' un "cambio BA su UPDATE" da propagare, quindi
+                --   il vecchio ramo UPDATE e' stato rimosso (era irraggiungibile:
+                --   il lock in fase a10 scatta prima di questo trigger).
+                -- =========================================================
+
+                IF TG_OP = 'INSERT' THEN
+                  ----------------------------------------------------------------
+                  -- 1. Imposta anno/data se numero e' presente e anno/data mancanti
+                  IF NEW.numero IS NOT NULL AND btrim(NEW.numero) <> '' THEN
+                    IF NEW.anno IS NULL OR NEW.anno = 0 THEN
+                      NEW.anno := EXTRACT(YEAR FROM CURRENT_DATE)::smallint;
+                    END IF;
+                    IF NEW.data IS NULL THEN
+                      NEW.data := CURRENT_DATE;
+                    END IF;
+                  END IF;
+
+                  ----------------------------------------------------------------
+                  -- 2. fatturazione_trigger (rev 2026-08-17): eredita dal billing
+                  --    account SOLO se la testata non ha scelto.
+                  --
+                  --    ⚠️ Il NULL qui e' portante e non e' un caso da difendere: e'
+                  --    il modo in cui il chiamante DICE «non ho scelto». Regge
+                  --    perche' il changeSet -02 toglie il DEFAULT dalla colonna —
+                  --    con il default in piedi qui non arriverebbe mai un NULL e
+                  --    l'eredita' dal BA non scatterebbe mai.
+                  --
+                  --    Il NOT NULL della colonna resta soddisfatto: i vincoli si
+                  --    valutano dopo i BEFORE ROW, e il COALESCE chiude comunque
+                  --    su 'CONFERMATO' (il valore che prima metteva il DEFAULT).
+                  IF NEW.fatturazione_trigger IS NULL
+                     AND NEW.billing_account_id IS NOT NULL THEN
+                    SELECT ba.fatturazione_ordini
+                      INTO v_fatturazione_ordini
+                      FROM anagrafiche.billing_account ba
+                     WHERE ba.id = NEW.billing_account_id;
+                  END IF;
+
+                  NEW.fatturazione_trigger := COALESCE(NEW.fatturazione_trigger,
+                                                       v_fatturazione_ordini,
+                                                       'CONFERMATO');
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ordini_normalize()
+              IS 'Normalize: imposta anno/data se numero presente; fatturazione_trigger risolto per precedenza TESTATA -> billing_account.fatturazione_ordini -> CONFERMATO, entrambe SOLO su INSERT. rev 2026-08-17: prima l''eredita'' dal BA era una SOVRASCRITTURA incondizionata e la scelta in testata veniva scartata — con tutti i BA a CONFERMATO nessun ordine poteva nascere SPEDITO/CONSEGNATO e il ramo order-backed di fn_list_ddt_da_pushare era irraggiungibile (segnalazione BE 2026-08-16; brief-be-fan-out-isolato-e-esito-parziale.md §13.2, brief-design-fatturazione-due-lenti.md §6-quater DL-19). Il NULL in NEW e'' il modo in cui il chiamante dice «non ho scelto» e funziona solo perche'' il changeSet 20260817-02 toglie il DEFAULT dalla colonna: i due vanno letti insieme. Il cambio BA su UPDATE non e'' supportato (billing_account_id immutabile - DB-ORD-LOCK).';

@@ -186,7 +186,7 @@ causale collegata, così **ogni onere porta la propria IVA** — e madre
 (codici 552-554). Corretta anche una **race** sul progressivo `segment_key`
 degli oneri manuali: due operatori concorrenti ricevevano entrambi 200 OK e un
 dato spariva in silenzio (codice 557 → 409). Vedi
-[brief-db-immutabilita-quantita-e-porta-oneri.md](work-in-progress/brief-db-immutabilita-quantita-e-porta-oneri.md),
+[brief-db-immutabilita-quantita-e-porta-oneri.md](work-done/brief-db-immutabilita-quantita-e-porta-oneri.md),
 [brief-be-fe-immutabilita-quantita-e-porta-oneri.md](work-done/brief-be-fe-immutabilita-quantita-e-porta-oneri.md),
 [brief-db-race-segment-key-onere.md](work-done/brief-db-race-segment-key-onere.md).
 

@@ -65,7 +65,18 @@ SELECT (SELECT a.id FROM vendite.attivita_fatturabili a
          WHERE a.commessa_id IS NOT NULL ORDER BY a.id LIMIT 1)      AS attivita_id,
        (SELECT a.commessa_id FROM vendite.attivita_fatturabili a
          WHERE a.commessa_id IS NOT NULL ORDER BY a.id LIMIT 1)      AS commessa_id,
+       -- ⚠️ Il lotto dev'essere in DRAFT, e la condizione non e' un dettaglio.
+       --    `fn_get_or_create_fattura_header` crea la fattura in DRAFT, e un
+       --    CONSTRAINT TRIGGER DEFERRED pretende che ogni fattura di un lotto
+       --    abbia lo stesso stato del lotto: attaccarla a un lotto EMESSA fa
+       --    fallire la FIXTURE, non l'asserzione.
+       --    🔴 Successo il 2026-08-16: l'applicazione ha creato un lotto
+       --    EMESSA, `ORDER BY id DESC` lo ha pescato e tre file pgTAP sono
+       --    diventati rossi insieme senza che nessuno avesse toccato il codice
+       --    che collaudano.
        (SELECT fl.id FROM vendite.fatturazione_lotti fl
+          JOIN config.stati_doc_fiscale s ON s.id = fl.stato_doc_fiscale_id
+         WHERE s.codice_interno = 'DRAFT'
          ORDER BY fl.id DESC LIMIT 1)                                AS lotto_id;
 
 CREATE TEMP TABLE tmp_chiave_tsp AS

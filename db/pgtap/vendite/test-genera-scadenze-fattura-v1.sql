@@ -60,7 +60,15 @@ SELECT plan(14);
 -- una riga a mano.
 CREATE TEMP TABLE tmp_refs_gsf AS
 SELECT (SELECT a.id FROM vendite.attivita_fatturabili a ORDER BY a.id LIMIT 1)      AS attivita_id,
-       (SELECT fl.id FROM vendite.fatturazione_lotti fl ORDER BY fl.id DESC LIMIT 1) AS lotto_id,
+       -- ⚠️ Solo lotti in DRAFT: la fattura nasce in DRAFT (vedi sopra) e il
+       --    guard DEFERRED di coerenza pretende che il lotto sia nello stesso
+       --    stato. Il 2026-08-16 un lotto EMESSA creato dall'applicazione ha
+       --    fatto fallire questa fixture — e altre due — senza che il codice
+       --    collaudato fosse cambiato.
+       (SELECT fl.id FROM vendite.fatturazione_lotti fl
+          JOIN config.stati_doc_fiscale s ON s.id = fl.stato_doc_fiscale_id
+         WHERE s.codice_interno = 'DRAFT'
+         ORDER BY fl.id DESC LIMIT 1)                                                AS lotto_id,
        (SELECT f.id FROM vendite.fatture f
           JOIN config.stati_doc_fiscale s ON s.id = f.stato_doc_fiscale_id
          WHERE s.codice_interno NOT IN ('DRAFT','EMESSA')
