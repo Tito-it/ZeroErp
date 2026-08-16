@@ -544,6 +544,15 @@ class CommesseRepositoryUnitTests(TestCase):
             "APPROVATA", "NON_EMESSA", 3,
             "PREVENTIVO", {"note": "test"}, datetime(2026, 2, 26, 10, 0, 0),
             True,  # fatturata (in coda, changeset 20260724-07)
+            # Sette colonne del changeSet 20260816-04, nell'ordine della
+            # RETURNS TABLE. ⚠️ `fatturata_il` e' un istante DIVERSO dal
+            # `data_update` qui sopra, ed e' il punto della colonna: e'
+            # `fatture_righe.data_insert`, che nessuna modifica successiva
+            # all'attivita' puo' spostare.
+            datetime(2026, 3, 2, 9, 30, 0),      # fatturata_il
+            77, 210, "DEFINITIVA",               # fattura_id, _numero, _stato
+            "019fc716-7386-7b0d-9c26-0a4d30f3a022",  # sorgente_uid
+            "ORDINI", 100,                       # sorgente_area, _documento_id
         )
         # Due execute: 1) COUNT → fetchone, 2) data → fetchall.
         mock_cursor_factory.return_value = _mock_cursor(
@@ -562,6 +571,17 @@ class CommesseRepositoryUnitTests(TestCase):
         self.assertEqual(row["stato_emissione"], "NON_EMESSA")
         self.assertEqual(row["meta"], {"note": "test"})
         self.assertIs(row["fatturata"], True)  # colonna in coda (20260724-07)
+        # Sette colonne del 20260816-04: quando, quale fattura, quale sorgente.
+        # `fatturata_il` serializzata come le altre date (isoformat) e DISTINTA
+        # da `data_update`: se un giorno qualcuno la ricablasse su quest'ultima
+        # il test lo direbbe, che e' l'unico modo di accorgersene.
+        self.assertEqual(row["fatturata_il"], "2026-03-02T09:30:00")
+        self.assertNotEqual(row["fatturata_il"], row["data_update"])
+        self.assertEqual(row["fattura_id"], 77)
+        self.assertEqual(row["fattura_numero"], 210)
+        self.assertEqual(row["fattura_stato"], "DEFINITIVA")
+        self.assertEqual(row["sorgente_area"], "ORDINI")
+        self.assertEqual(row["sorgente_documento_id"], 100)
         # Seconda execute (data query) contiene fn_list_commessa_attivita.
         sql = mock_cursor_factory.return_value.execute.call_args[0][0]
         self.assertIn("fn_list_commessa_attivita", sql)

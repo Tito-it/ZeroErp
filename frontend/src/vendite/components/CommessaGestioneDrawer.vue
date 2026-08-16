@@ -37,6 +37,11 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { mapAvailableActionsToDrawerActions } from '../../core/composables/useDrawerActions'
 import { useSelezioneToggle } from '../_shared/righe/useSelezioneToggle'
 import { DRAWER_WIDTH, PAGINATION } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
+import DocumentoDrawerHost from '../_shared/documenti/DocumentoDrawerHost.vue'
+import { DOCUMENTO_DRAWER_TIPI } from '../_shared/documenti/documentoDrawers'
+import { useDocumentoDrawer } from '../_shared/documenti/useDocumentoDrawer'
+import { buildApriDocumentoAction } from '../dashboardAree'
 import { STATO_APPROVAZIONE_ATTIVITA, STATO_EMISSIONE_ATTIVITA } from '../constants'
 import { toDateString } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
@@ -214,6 +219,18 @@ watch(
   },
   { immediate: true },
 )
+
+// Host del drawer documento (origine o fattura) aperto dal kebab di riga.
+// ⚠️ Alla chiusura si ricarica: dal drawer della fattura o dell'ordine
+// l'operatore può aver fatto avanzare il documento, e la riga che lo ha
+// aperto sarebbe stantia.
+const {
+  visible: docDrawerVisible,
+  tipo: docDrawerTipo,
+  id: docDrawerId,
+  apri: apriDocumentoDrawer,
+  onVisibleChange: onDocDrawerVisible,
+} = useDocumentoDrawer(() => reloadAll())
 
 // Ref alla lista configurabile (per il modale «personalizza», raggiungibile
 // dal drawer tramite l'azione dedicata sotto).
@@ -422,8 +439,49 @@ const sbloccaMotivo = ref('')
 // funzione: due permessi diversi non possono condividere una sola porta.
 // Restano condizioni comuni solo quelle che valgono per QUALUNQUE azione di
 // riga: ispezione pura e commessa non piu' modificabile.
+// Scopo: le due azioni di NAVIGAZIONE della riga — «apri il documento da cui
+//        arriva» e «apri la fattura in cui è finita». Separate da
+//        `buildRowActions` perché non sono azioni di modifica: valgono anche
+//        in sola lettura e su riga già fatturata, dove tutte le azioni prezzo
+//        sono legittimamente spente. Guardare un documento non è un'azione di
+//        governo.
+//        Le tre colonne che le alimentano (`sorgente_area`,
+//        `sorgente_documento_id`, `fattura_id`) arrivano dalla lista dal
+//        2026-08-16 (changeSet 20260816-04): prima si fermavano al database.
+function buildRowNavActions(row) {
+  return [
+    // Documento di ORIGINE: stesso BB del Backlog fatturazione, stessa
+    // meccanica area → drawer. L'azione si nasconde da sé quando l'id è
+    // nullo, che copre due casi diversi e ugualmente corretti: la voce
+    // manuale (nessun documento a monte) e il documento non visibile a chi
+    // guarda (RLS) — in entrambi non c'è nulla da aprire.
+    buildApriDocumentoAction({
+      area: row.sorgente_area,
+      documentoId: row.sorgente_documento_id,
+      label: t('vendite.commesse.azione_apri_sorgente'),
+      onApri: apriDocumentoDrawer,
+    }),
+    {
+      key: 'apri_fattura',
+      // L'etichetta porta il NUMERO quando c'è: una fattura non ancora
+      // numerata non ne ha, e inventarne uno sarebbe peggio che ometterlo.
+      label: row.fattura_numero
+        ? t('vendite.commesse.azione_apri_fattura_numerata', { numero: row.fattura_numero })
+        : t('vendite.commesse.azione_apri_fattura'),
+      // Icona di NAVIGAZIONE delle fatture, la stessa del menu: chi la vede
+      // sa già dove sta per andare. Non se ne inventa una nuova qui.
+      icon: NAV_ICONS.FATTURE,
+      // ⚠️ `fattura_id`, non `fatturata`: il flag resta true anche per chi non
+      // vede la fattura (è calcolato su una tabella senza RLS), e proporre
+      // un'apertura che non può funzionare è peggio che non proporla.
+      visible: row.fattura_id != null,
+      command: () => apriDocumentoDrawer(DOCUMENTO_DRAWER_TIPI.FATTURA, row.fattura_id),
+    },
+  ]
+}
+
 function buildRowActions(row) {
-  if (isReadonly.value || !canEditRighe.value) return []
+  if (isReadonly.value || !canEditRighe.value) return buildRowNavActions(row)
   // Riga fatturata: nessuna azione prezzo (le tre sono tutte rifiutate dal
   // guard BE `_assert_non_fatturata`). `fatturata` = EXISTS di un'AF con
   // fattura_riga_id valorizzato, esposta dalla lista (changeset 20260724-07):
@@ -480,6 +538,9 @@ function buildRowActions(row) {
         && row.stato_emissione === STATO_EMISSIONE_ATTIVITA.NON_EMESSA,
       command: () => apriAnnullaRiga(row),
     },
+    // Navigazione in coda: prima si governa la riga, poi si va a vedere da
+    // dove viene e dove è finita.
+    ...buildRowNavActions(row),
   ]
 }
 
@@ -764,7 +825,12 @@ const drawerActions = computed(() => [
             <Tag :value="data.stato_emissione" :severity="statoEmissioneAttivitaSeverity(data.stato_emissione)" />
           </template>
 
-          <template v-if="!isReadonly" #actions="{ data, compact }">
+          <!-- La colonna azioni resta anche in sola lettura: dal 2026-08-16 il
+               kebab porta due voci di NAVIGAZIONE (documento di origine,
+               fattura) che non modificano nulla. Nasconderla in readonly
+               toglierebbe la sola strada per arrivare al documento proprio a
+               chi sta ispezionando. -->
+          <template #actions="{ data, compact }">
             <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
           </template>
         </ListaConfigurabile>
@@ -919,6 +985,15 @@ const drawerActions = computed(() => [
           :invalid="campiErrati.includes('motivo')" />
       </div>
     </AppDialog>
+
+    <!-- Host del drawer documento aperto dal kebab di riga: documento di
+         ORIGINE (tipo dal registry via `sorgente_area`) o FATTURA in cui la
+         riga è finita. Stesso BB dei drill-down dei cruscotti. -->
+    <DocumentoDrawerHost
+      :visible="docDrawerVisible"
+      :tipo-codice="docDrawerTipo"
+      :doc-id="docDrawerId"
+      @update:visible="onDocDrawerVisible" />
   </Drawer>
 </template>
 
