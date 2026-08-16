@@ -6,8 +6,18 @@
 > Tutte e tre nascono da `vendite.fn_list_commessa_attivita`, quindi un
 > intervento solo — come chiedeva la richiesta.
 >
-> **Stato**: ⚠️ **scritto, da applicare** — due changeSet `20260816-03` e `-04`.
-> Provato in transazione annullata.
+> 🟢 **CHIUSO — 2026-08-16.** Applicato e **validato in app da Tid**: nella
+> commessa `CMM-20260803100729415-ee7090` si vedono la colonna «Fatturata il»,
+> l'azione verso l'ordine di origine e quella verso la fattura.
+>
+> **Cinque changeSet, in due giri.** Primo: `20260816-03` (risoluzione della
+> sorgente polimorfa) e `-04` (le sette colonne). Secondo, dopo i due rilievi
+> del BE al §7: `-05` (`NULLS LAST`) più il seed della colonna a catalogo
+> (`ui.lista_colonna` + `lista_preset_colonna`).
+>
+> 📌 **Documento unico dei due lati**, come da regola già pagata su questo
+> progetto: qui cambiava il lato che lavorava, non il soggetto. Il §8 porta la
+> parte BE/FE, il §7 i due rilievi che hanno generato il secondo giro.
 
 ---
 
@@ -136,8 +146,97 @@ ORDER BY fatturata_il: ammesso
 
 ---
 
-## 7. Registro
+## 7. Il secondo giro — due cose che il dato giusto non bastava a dare
+
+Collegando il backend è emerso che le sette colonne erano corrette **e
+comunque invisibili all'operatore**. Due difetti diversi, entrambi fuori dal
+perimetro del §1 e nessuno dei due visibile guardando il risultato della
+funzione.
+
+### 7.1 La colonna non era a catalogo — il dato c'era, a video no
+
+La lista attività è **catalogo-driven**: `<ListaConfigurabile>` disegna le
+colonne dichiarate in `ui.lista_colonna`, e per la lista 38 erano otto, senza
+`fatturata_il`. La colonna usciva quindi dall'API a ogni chiamata e non
+compariva da nessuna parte.
+
+⚠️ **È il caso peggiore da diagnosticare**: nessun errore, nessuna colonna
+vuota — semplicemente una colonna che non esiste. Chi avesse controllato la
+risposta dell'endpoint l'avrebbe trovata al suo posto e avrebbe concluso che
+funzionava.
+
+✅ Chiuso con il seed (`ui.lista_colonna` id 475 + `lista_preset_colonna`):
+ottava posizione, formato `datetime_short`, e una descrizione che mette in
+chiaro il merito — *«la nascita della riga di fattura, non l'ultimo
+aggiornamento»*.
+
+### 7.2 `ORDER BY fatturata_il` metteva in cima le righe mai fatturate
+
+`NULLS FIRST` è il default di PostgreSQL sul `DESC`, quindi ordinando per data
+decrescente arrivavano prima tutte le righe **senza** data. Misurato sulla
+commessa di prova:
+
+```text
+prima:   desc → 7304 None · 7305 None · 7306 None · 7307 2026-08-16
+adesso:  desc → 7307 2026-08-16 · 7304 None · 7305 None · 7306 None
+```
+
+Su quattro righe si nota appena; su una commessa con cento righe di cui dieci
+fatturate, le dieci che interessano finiscono in fondo e l'ordinamento diventa
+inservibile — proprio sulla domanda da cui è nata la colonna, «fatturata ieri o
+tre mesi fa».
+
+✅ Chiuso con `20260816-05` (`NULLS LAST`).
+
+⭐ **La lezione delle due**: una colonna nuova non è finita quando il dato è
+giusto. Deve anche **arrivare a chi guarda** e **ordinare nel verso in cui la
+domanda è posta**. Nessuno dei due difetti si vedeva dal risultato della
+funzione, ed entrambi sono emersi solo collegando il consumatore.
+
+---
+
+## 8. Lato BE/FE (2026-08-16)
+
+**Backend.** Le sette colonne passano dalla lista (`_ATTIVITA_COLS` in
+`commesse_repository`), `fatturata_il` serializzata come le altre date, e
+`fatturata_il`/`fattura_numero` aggiunte alla whitelist di ordinamento —
+specchio di quella chiusa dentro la funzione.
+
+⚠️ **Provato contro il database vero, non solo coi mock**: il test a mock aveva
+la tupla della vecchia forma e falliva con `IndexError`, che è il modo giusto
+di accorgersene; ma un nome di colonna sbagliato i mock non l'avrebbero visto.
+La chiamata reale su `CMM-20260803100729415-ee7090` restituisce
+`fatturata_il = 2026-08-16T15:39:49` — l'istante esatto del giro di
+fatturazione — `fattura_id` 9691, `fattura_numero` NULL perché non ancora
+numerata, e i due ordini di origine (5387 per le tre righe non emesse, 5388 per
+quella emessa).
+
+**Frontend.** Due voci di navigazione nel kebab di riga: «Apri documento di
+origine» (stesso BB dei cruscotti, tipo di drawer derivato da `sorgente_area`)
+e «Apri la fattura», con il numero nell'etichetta quando c'è.
+
+Tre scelte che non si leggono dal codice:
+
+* le due azioni valgono **anche in sola lettura** e su riga già fatturata:
+  guardare un documento non è un'azione di governo, e nasconderle in readonly
+  toglieva la strada al documento proprio a chi sta ispezionando;
+* l'apertura della fattura è condizionata a `fattura_id`, **non** al flag
+  `fatturata` — che come dice il §4 resta `true` anche per chi la fattura non
+  la vede. Proporre un'apertura che non può funzionare è peggio che non
+  proporla;
+* la colonna «Fatturata il» **non ha uno slot**: `datetime_short` è già gestito
+  dal formatter di serie e i valori nulli rendono stringa vuota. Aggiunte le
+  sole chiavi i18n (it/en), altrimenti in inglese sarebbe rimasta l'etichetta
+  italiana del catalogo.
+
+**Validazione in app (Tid, 2026-08-16)**: colonna, filtro di stato e le due
+azioni funzionano sulla commessa reale.
+
+---
+
+## 9. Registro
 
 | Data | Cosa |
 | --- | --- |
+| 2026-08-16 (2° giro) | ⭐ **Chiuso**, con `-05` e il seed di catalogo dopo i due rilievi del BE (§7): il dato c'era ma **non si vedeva** (colonna non a catalogo) e **non si ordinava utilmente** (`NULLS FIRST` metteva in cima le righe mai fatturate). Poi BE/FE collegati e **validato in app da Tid** (§8) |
 | 2026-08-16 | ⭐ **Scritti i due changeSet** (`-03` la risoluzione della sorgente polimorfa, `-04` la lista). **«Fatturata il» ha un dato vero** — `fatture_righe.data_insert` — e non è `data_update`: 10 righe su 37 già divergono. 🔴 **La misura ha smentito l'ipotesi sul documento di origine**: non «metà delle righe non ha un id» ma **nessuna** — 88 su 88 hanno un UUID, ordini e DDT compresi, perché la normalizzazione a `id::text` vale per `commesse_sorgenti` e non per `commesse_attivita`. La prima stesura sarebbe tornata NULL su tutto senza dare errore. ⚠️ Due scelte non visibili dal risultato: `fatturata` resta calcolato sulla tabella **senza RLS** (altrimenti chi non vede la fattura leggerebbe «da fatturare» una riga fatturata) e il legame passa da un `LATERAL` ordinato, perché l'1:1 di oggi è una fotografia |
