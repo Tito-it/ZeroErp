@@ -147,6 +147,7 @@
 - [fn_get_pipeline_task_policy](funzioni/fn_get_pipeline_task_policy.md) — Restituisce la policy runtime attiva di un task pipeline (`annullabile`, `resume_mode`, `meta`).
 - [fn_get_registro_id](funzioni/fn_get_registro_id.md) — (latest review 27-01-2026) La funzione **`vendite.fn_get_registro_id`** risolve il registro di fatturazione in base al mapping **tipo documento → registro**, considerando utility/emittente se presenti.
 - [fn_get_scope_fatture_lotto](funzioni/fn_get_scope_fatture_lotto.md) — (latest review 15-08-2026)
+- [fn_get_sorgente_documento_id](funzioni/fn_get_sorgente_documento_id.md)
 - [fn_get_tipo_doc_fiscale_id](funzioni/fn_get_tipo_doc_fiscale_id.md) — (latest review 27-01-2026) La funzione **`vendite.fn_get_tipo_doc_fiscale_id`** risolve il tipo documento fiscale a partire dalla sorgente o dalla utility.
 - [fn_get_totale_fondi_fattura](funzioni/fn_get_totale_fondi_fattura.md) — La funzione **`vendite.fn_get_totale_fondi_fattura()`** restituisce il totale dei fondi fattura **attivi** associati alla testata.
 - [fn_get_valuta_id](funzioni/fn_get_valuta_id.md) — (latest review 26-01-2026) La funzione **`vendite.fn_get_valuta_id`** risolve la valuta con fallback al **gestore** quando non esistono valori specifici su BA/utility.
