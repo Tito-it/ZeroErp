@@ -14,6 +14,12 @@
 > **Stato al 2026-08-10**: ✅ commit fatto e pushato · 🔴 restano le **due validazioni
 > in-app** (V1 esito parziale del pull, V2 slice 3-ter) e il **build docs**.
 >
+> **Stato al 2026-08-16**: ✅ **build docs fatto e verde** (§13.3 — `zensical` nel
+> frattempo è installato) · 🔴 restano **solo le due validazioni in-app**. Misurato
+> oggi: il pull **non è mai stato lanciato dopo il fix** — nessun task run in tutta
+> la pipeline dal 2026-08-03 — quindi V1 è aperta nei fatti, non solo sulla carta
+> (§13.1). Per V2 mancano dei soggetti su cui provare: dettaglio in §13.2.
+>
 > **Origine**: [piano-residui-orchestrazione-e-cruscotti-vendite.md](../work-done/piano-residui-orchestrazione-e-cruscotti-vendite.md) §1 (R-1)
 > ← [analisi-orchestrazione-vendite-simmetrie.md](../work-done/analisi-orchestrazione-vendite-simmetrie.md) §B/§B.1.
 >
@@ -435,6 +441,14 @@ senza il segnale in-app gira ancora il codice vecchio.
   l'eccezione, il problema non è la segnalazione — sono i dati, e si apre un'altra analisi.
   Non si "abbassa" la segnalazione per far tornare il verde.
 
+> **Misura del 2026-08-16 — il ramo nuovo non è mai stato percorso.** In
+> `vendite.fatturazione_lotti_task_runs` **non c'è un solo run dal 2026-08-03**, e i
+> 13 run storici di `pull_attivita_da_commessa` sono **tutti `COMPLETATO`**, tutti
+> precedenti al fix (pushato il 2026-08-10). Non è che la validazione sia andata e
+> non sia stata annotata: la pipeline non è proprio stata lanciata da allora. Resta
+> valido il prerequisito in testa a questa sezione — senza `kill -HUP` sul master
+> gunicorn il backend gira ancora col codice vecchio, e la prova direbbe il falso.
+
 ### 13.2 V2 — Slice 3-ter: DDT e resi nelle lenti (dal brief due-lenti)
 
 Checklist in ordine di rischio, derivata dalle decisioni DL-19..28:
@@ -457,14 +471,51 @@ Checklist in ordine di rischio, derivata dalle decisioni DL-19..28:
   ⚠️ Le etichette ora dicono **«Accredito dovuto / facoltativo»**, non più «NC dovuta /
   facoltativa» (allineamento a DL-24: si nomina il fatto, non il rimedio).
 
+> **Misura del 2026-08-16 — due dei sei punti oggi non hanno un soggetto su cui
+> girare.** Letto dal database:
+>
+> | Punto | Soggetti disponibili |
+> | --- | --- |
+> | DL-19 (DDT oltre lo stato-trigger, ancora eleggibile) | `fn_list_ddt_da_pushare()` → **1 riga**: un soggetto c'è, ed è l'unico |
+> | Card DDT | `vw_dash_fatturazione_ddt` → **7 righe**: l'area si può guardare |
+> | DL-27 (reso confermato su merce già fatturata → coda accrediti) | `vw_resi_da_accreditare` → **vuota**, pur con **5 resi CONFERMATO** su 10 |
+>
+> Il caso di DL-27 **va costruito** prima di poterlo provare: nessuno dei resi
+> confermati oggi presenti alimenta la coda accrediti. Non è un difetto — è che il
+> dato non c'è — ma è la ragione per cui quel punto non si spunta guardando l'app
+> così com'è. (La misura non è un falso zero da RLS: le tabelle `resi` e `ddt` hanno
+> RLS senza `FORCE` e l'interrogazione gira come proprietario.)
+
 ### 13.3 Le due cose non-validazione — una chiusa, una aperta
 
 - ✅ **Commit**: fatto e **pushato** il 2026-08-10. Il BB fan-out e il fix dell'esito
   parziale sono in `388b7dfee`; il resto della linea (guida cruscotti, archiviazione dei
   tre doc, bonifica link) nello stesso commit, più `4828258d6` per la rigenerazione di
   `error_policies_generated.py`. Ramo `dev/backend-tid`, allineato con origin.
-- 🔴 **Build docs**: ancora da fare. `python scripts/build_docs_zensical.py` non è
-  eseguibile in questo ambiente (`zensical` non installato, `ModuleNotFoundError`). La
-  coerenza delle tabelle e dei riferimenti interni è stata verificata a mano — e la
-  verifica ha trovato e corretto un salto di numerazione (una §5.2 senza 5.1) — ma il
-  build resta da fare al primo giro utile.
+- ✅ **Build docs**: **fatto il 2026-08-16**, verde. `zensical` nel frattempo è
+  installato nel `.venv` di radice, quindi `python scripts/build_docs_zensical.py`
+  gira: **exit 0**, 14 secondi, 2575 pagine preprocessate, 3455 include espansi,
+  9348 link riscritti, **zero warning di include**.
+
+  Restano **5 warning, tutti preesistenti e nessuno di questo cantiere**:
+
+  | Dove | Cosa |
+  | --- | --- |
+  | `docs/it/dbzero/pratiche/index.md` e il gemello `index.ci.md` | 4 link morti: `vw_definizioni_drift.md` e `fn_pubblica_definizione.md` |
+  | `docs/it/dev/frontend/i18n-namespace-radici.md` | 1 àncora morta verso `frontend-standards.md#struttura-chiavi--radici-dei-namespace` |
+
+  > ℹ️ **I 4 link morti non sono un contenuto sbagliato: è il generatore.**
+  > L'index di schema è **auto-generato** (`scripts/gen_db_docs.py`) e ricopia la
+  > prima frase delle pagine `manual/`. Dentro `manual/` un link
+  > `[fn_pubblica_definizione](fn_pubblica_definizione.md)` è **corretto** — le due
+  > pagine sono sorelle — ma issato di un livello nell'index punta a una cartella
+  > dove quel file non c'è. Il generatore non riscrive i link relativi quando li
+  > sposta di cartella. Si corregge lì, una volta per tutti gli schemi.
+
+  ⚠️ **E una cosa che va saputa a proposito di questo residuo: non poteva
+  validare nulla di questo cantiere.** `work-done/` e `work-in-progress/` sono
+  **esclusi** dal build (`exclude_docs` in `mkdocs.yml` e pruning del preprocess:
+  `excluded_dirs_removed=2`). I brief non entrano nel sito: il build vale come
+  controllo **globale** della documentazione pubblicata, non come verifica dei
+  testi di questa linea. La coerenza interna dei brief resta quella verificata a
+  mano il 2026-08-10.
