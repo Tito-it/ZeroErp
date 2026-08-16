@@ -9,7 +9,7 @@ CREATE FUNCTION fn_list_commessa_attivita(p_commessa_id bigint, p_stato_emission
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_list_commessa_attivita(p_commessa_id bigint, p_stato_emissione character varying DEFAULT NULL::character varying, p_stato_approvazione character varying DEFAULT NULL::character varying, p_competenza_mese date DEFAULT NULL::date, p_limit integer DEFAULT 1000, p_offset integer DEFAULT 0, p_order_by text DEFAULT NULL::text, p_order_dir text DEFAULT 'asc'::text)
- RETURNS TABLE(id bigint, commessa_id bigint, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, competenza_mese date, competenza_dal date, competenza_al date, prezzo_snapshot numeric, prezzo_bloccato boolean, prezzo_da_riallineare boolean, stato_approvazione character varying, stato_emissione character varying, sorgente_tipo_id bigint, sorgente_codice character varying, meta jsonb, data_update timestamp with time zone, fatturata boolean)
+ RETURNS TABLE(id bigint, commessa_id bigint, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, competenza_mese date, competenza_dal date, competenza_al date, prezzo_snapshot numeric, prezzo_bloccato boolean, prezzo_da_riallineare boolean, stato_approvazione character varying, stato_emissione character varying, sorgente_tipo_id bigint, sorgente_codice character varying, meta jsonb, data_update timestamp with time zone, fatturata boolean, fatturata_il timestamp with time zone, fattura_id bigint, fattura_numero bigint, fattura_stato character varying, sorgente_uid text, sorgente_area character varying, sorgente_documento_id bigint)
  LANGUAGE plpgsql
  STABLE
 AS $function$
@@ -43,6 +43,11 @@ BEGIN
         WHEN 'prezzo_snapshot'    THEN 'ca.prezzo_snapshot'
         WHEN 'stato_approvazione' THEN 'ca.stato_approvazione'
         WHEN 'stato_emissione'    THEN 'ca.stato_emissione'
+        -- Nuove dal 2026-08-16. `fatturata_il` e' quella che serve
+        -- alla domanda che ha originato la richiesta: distinguere
+        -- una riga fatturata ieri da una di tre mesi fa.
+        WHEN 'fatturata_il'       THEN 'fatt.fatturata_il'
+        WHEN 'fattura_numero'     THEN 'fatt.fattura_numero'
         ELSE NULL
     END;
 
@@ -83,13 +88,43 @@ BEGIN
                ca.stato_approvazione, ca.stato_emissione, ca.sorgente_tipo_id,
                s.codice AS sorgente_codice, ca.meta, ca.data_update,
                -- fatturata: specchio del guard BE _assert_non_fatturata.
+               -- ⚠️ Resta l'EXISTS su attivita_fatturabili, che NON ha
+               -- RLS, e non diventa `fatt.fattura_id IS NOT NULL`:
+               -- vendite.fatture ce l'ha, e chi non vede la fattura
+               -- leggerebbe «da fatturare» una riga gia' fatturata.
                EXISTS (
                    SELECT 1 FROM vendite.attivita_fatturabili af
                     WHERE af.commessa_attivita_id = ca.id
                       AND af.fattura_riga_id IS NOT NULL
-               ) AS fatturata
+               ) AS fatturata,
+               -- Il momento in cui la riga e' stata PORTATA in
+               -- fattura: la nascita della riga di fattura, non
+               -- l'ultimo aggiornamento dell'attivita'.
+               fatt.fatturata_il,
+               fatt.fattura_id, fatt.fattura_numero, fatt.fattura_stato,
+               ca.sorgente_uid, s.area AS sorgente_area,
+               vendite.fn_get_sorgente_documento_id(ca.sorgente_tipo_id, ca.sorgente_uid)
+                   AS sorgente_documento_id
           FROM vendite.commesse_attivita ca
           LEFT JOIN config.sorgenti s ON s.id = ca.sorgente_tipo_id
+          -- ⚠️ LATERAL ordinato e non join nuda: oggi il rapporto
+          -- attivita' -> riga di fattura e' 1:1, ma e' una
+          -- fotografia e non un vincolo. Con una join diretta, il
+          -- giorno di una fatturazione parziale la lista
+          -- raddoppierebbe le righe — dati sbagliati, non un errore.
+          LEFT JOIN LATERAL (
+              SELECT fr.data_insert AS fatturata_il,
+                     f.id           AS fattura_id,
+                     f.numero       AS fattura_numero,
+                     sdf.codice_interno AS fattura_stato
+                FROM vendite.attivita_fatturabili af
+                JOIN vendite.fatture_righe fr ON fr.id = af.fattura_riga_id
+                JOIN vendite.fatture f        ON f.id  = fr.fattura_id
+                LEFT JOIN config.stati_doc_fiscale sdf ON sdf.id = f.stato_doc_fiscale_id
+               WHERE af.commessa_attivita_id = ca.id
+               ORDER BY fr.data_insert DESC, fr.id DESC
+               LIMIT 1
+          ) fatt ON TRUE
          WHERE ca.commessa_id = $1
            AND ($2 IS NULL OR ca.stato_emissione = $2)
            AND ($3 IS NULL OR ca.stato_approvazione = $3)
@@ -103,7 +138,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_commessa_attivita(p_commessa_id bigint, p_stato_emissione character varying, p_stato_approvazione character varying, p_competenza_mese date, p_limit integer, p_offset integer, p_order_by text, p_order_dir text)
-IS 'Read-only: righe commesse_attivita con filtri opzionali, paginazione e ORDINAMENTO. JOIN sorgenti per codice. rev 2026-07-24: colonna fatturata BOOLEAN = EXISTS di un''attivita_fatturabili della riga con fattura_riga_id valorizzato -- specchio esatto del guard BE commesse_service._assert_non_fatturata. rev 2026-08-02 (7o lotto liste configurabili, consegna 2 del BE): p_order_by/p_order_dir con whitelist CHIUSA di 7 colonne + tiebreak ca.id; ordine e paginazione vivono qui, quindi ordinare a valle ordinerebbe la sola pagina estratta. p_order_by NULL = ordine storico ca.id: nessuna chiamata esistente cambia risultato. Un nome fuori whitelist solleva E_PARAMETRO_INVALIDO invece di ripiegare in silenzio. STABLE preservato.';
+IS 'Elenco paginato delle attivita'' di una commessa, con whitelist chiusa di ordinamento e fail-loud sul nome fuori whitelist. Rev 2026-08-16 (richiesta BE): porta a valle tre informazioni che si fermavano al database. (1) `fatturata_il` = vendite.fatture_righe.data_insert, cioe'' quando la riga e'' stata PORTATA in fattura — NON `data_update`, che e'' «ultimo aggiornamento» e oggi coincide solo per coincidenza: misurato il 2026-08-16, 10 righe su 37 gia'' divergono, e basta un riallineamento di prezzo dopo la fatturazione perche'' l''etichetta menta. (2) `fattura_id`, `fattura_numero`, `fattura_stato`: il documento su cui navigare, preso con un LATERAL ordinato + LIMIT 1 e non con una join nuda, perche'' il rapporto 1:1 fra attivita'' e riga di fattura e'' una fotografia e non un vincolo — con una join, una fatturazione parziale raddoppierebbe le righe della lista. (3) `sorgente_uid`, `sorgente_area` e `sorgente_documento_id` per l''azione «apri documento sorgente»: l''id numerico lo risolve vendite.fn_get_sorgente_documento_id, perche'' la chiave della sorgente e'' polimorfa e nel dato reale sorgente_uid contiene un UUID su 88 righe su 88, ordini e DDT compresi. ⚠️ Il booleano `fatturata` resta calcolato sull''EXISTS in vendite.attivita_fatturabili, che NON ha RLS, e non deriva dalla join: vendite.fatture ce l''ha, e chi non vede la fattura leggerebbe «da fatturare» una riga gia'' fatturata. Cosi'' invece legge fatturata = true con le colonne del documento a NULL: sa che e'' fatturata e sa di non poterci navigare. Richiesta BE del 2026-08-16.';
 ```
 
 ---
