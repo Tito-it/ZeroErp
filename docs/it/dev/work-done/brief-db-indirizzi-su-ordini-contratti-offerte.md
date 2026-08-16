@@ -8,15 +8,20 @@
 > righe vuote (§10.2) — quindi la conferma visiva chiude una verifica, non un
 > dubbio. Dettaglio della chiusura in §10.4.
 >
-> **Due residui restano, entrambi del BE e nessuno bloccante:**
+> **I due residui del §10.5 e §10.6 sono chiusi il 2026-08-16 senza scrivere
+> codice**, entrambi con decisione di Tid — motivazioni in **§11**:
 >
-> * §10.5 — i tre context builder dichiarano ancora slot che nessun template
->   stampa, e la misura del §9.3 su cui poggiava la richiesta di restringerli
->   **era su un perimetro troppo stretto**: le fatture usano `FATT` e `RES` dal
->   2026-07-31;
-> * §10.6 — 4 snapshot congelati prima del 2026-07-31 hanno la provincia
->   riempita a spazi (`(AV        )`). Dato vecchio, non difetto vivo: aspetta
->   una decisione di Tid, non una riga di codice.
+> * §10.5 — **non si restringe.** Gli slot seguono `config.tipi_indirizzi_allowed`,
+>   cioè il pannello che l'operatore vede: toglierli reintrodurrebbe il difetto
+>   di partenza su una casella invece che su un documento (§11.1);
+> * §10.6 — **non si bonifica.** Le 4 righe sono dati di test e le tre strade di
+>   scrittura ripuliscono tutte gli spazi dal 2026-07-31: un documento nuovo ha
+>   la provincia giusta (§11.2).
+>
+> ⚠️ **Resta aperto un residuo che né §10.5 né §10.6 nominavano**: la forma unica
+> promessa dal §7.2 del brief precedente vale su **4 builder su 6** — preventivo
+> e fattura hanno ancora la loro. Il preventivo si allinea (§11.3), la fattura è
+> una scelta a sé.
 
 **Chi scrive:** BE (`dev/backend-tid`), 2026-08-05.
 **A chi:** team DB (`dev/db-tid`).
@@ -440,6 +445,10 @@ nei **quattro domini di questo brief** l'unico slot mai popolato è `consegna`:
 la raccomandazione «restringete» non è sbagliata per loro, ma non poggia più su
 «nessuno usa gli altri slot», perché le fatture li usano.
 
+> ✅ **Deciso (Tid, 2026-08-16): non si restringe.** Gli slot seguono la
+> whitelist che il pannello FE legge a runtime — toglierli farebbe sparire in
+> silenzio un indirizzo che l'operatore può già inserire. Motivazione in §11.1.
+
 ### 10.6 Trovato per strada, fuori perimetro: 4 provincie riempite a spazi
 
 Quattro snapshot congelano `prov` con il riempimento a spazi di un
@@ -457,3 +466,104 @@ difetto vivo: è dato vecchio, congelato prima del rimedio, e riguarda anche il
 DDT che stampa l'indirizzo da luglio. Si corregge a mano con un `UPDATE` di
 `btrim` su quattro righe, oppure si lascia — **non è stato toccato**, serve una
 decisione di Tid.
+
+> ✅ **Deciso (Tid, 2026-08-16): si lascia.** Motivazione e verifica in §11.2 —
+> grazie per l'offerta di preparare l'`UPDATE`, non serve.
+
+---
+
+## 11. Chiusura BE dei due residui (2026-08-16)
+
+> Risposta al §10.5 e al §10.6. Nessuno dei due si chiude scrivendo codice, e in
+> un caso la ragione è che il codice **non va** scritto: vale la pena metterla
+> per iscritto qui, perché è l'unica difesa contro qualcuno che fra sei mesi
+> rilegge il §9.3 e lo applica.
+
+### 11.1 §10.5 — non si restringe, e la ragione non è la pigrizia
+
+Confermato lo stato che avete letto: `ord-ven` dichiara `("CON", "FATT")`,
+`contratto` `("CON", "FATT", "FORNITURA")`, `off-comm` tutti e quattro. I
+template ne stampano uno, `consegna`.
+
+**Restringere reintrodurrebbe il difetto da cui è nato il cantiere.** Quei
+codici non sono un elenco arbitrario: sono il mirror statico di
+`config.tipi_indirizzi_allowed` per ambito — la stessa whitelist che il
+**pannello FE legge a runtime** (`IndirizziDocumentoRepositoryMixin.list_tipi_indirizzo_ammessi`).
+Oggi un operatore apre un ordine e può congelare un indirizzo `FATT`, perché
+l'app glielo offre. Con il builder ristretto a `CON` quel dato verrebbe salvato
+e poi **lasciato cadere in silenzio** prima della stampa: è alla lettera la
+diagnosi del §1 di questo brief — dato raccolto e mai consegnato a valle —
+applicata a uno slot invece che a un dominio. Il difetto sarebbe anche più
+difficile da vedere del primo, perché riguarderebbe un solo campo.
+
+**La vostra correzione del §10.5 toglie anche la base empirica.** «Un solo slot
+mai popolato» era falsa già quando è stata scritta. Quel che resta della misura
+— «in questi quattro domini nessuno li ha ancora usati» — è un'osservazione
+sull'**anzianità del dato**, non un argomento sulla forma: i quattro domini
+hanno gli indirizzi da luglio, le fatture li hanno da fine luglio e usano già
+tre slot su quattro.
+
+**Il risparmio sarebbe nullo, il costo no.** Uno slot vuoto è `None` nel
+contesto e un `{% if %}` che non scatta nel template. Toglierlo cambia la forma
+del contesto → cambia il `context_hash` → tocca il dedup dei documenti già
+generati, per zero beneficio. Va anche contro il disegno esplicito del BB:
+`INDIRIZZO_SLOT_BY_CODICE` è dichiarata mappa **completa** apposta, con il
+commento «se un ambito domani ne ammette uno nuovo, lo slot ha già un nome e
+nessuno deve ricordarsi di aggiungerlo qui».
+
+Resta vero e prezioso il vostro allarme di fondo — superficie che nessuno
+verifica invecchia. Qui però la superficie non è dichiarata a caso: è verificata
+da chi la può verificare davvero, cioè la configurazione.
+
+### 11.2 §10.6 — si lascia, e un documento nuovo è già corretto
+
+Verificate tutte e tre le strade da cui uno snapshot può nascere: **puliscono
+tutte**, quindi il difetto non può ricomparire.
+
+| Strada | Ripulisce |
+| --- | --- |
+| Picker su indirizzo di **ruolo** (`script.fn_snapshot_indirizzo`) | ✅ `NULLIF(btrim(...))` su ogni valore, dal 2026-07-31 |
+| Picker su indirizzo di **soggetto** (`fn_snapshot_indirizzo_soggetto`) | ✅ identica alla gemella, stesso fix |
+| **Una-tantum** digitato (BE, `_clean_snapshot`) | ✅ `strip()` per valore, con scarto delle stringhe vuote |
+
+Le 4 righe restano sbagliate e l'unico effetto visibile è che ristampando
+proprio quei documenti (DDT 91, 92, 521 e `ORD0000046`) esce `(AV        )`.
+Sono dati di test, il progetto non è in produzione: si accetta sapendolo.
+
+⚠️ **Non abbiamo aggiunto un `btrim` difensivo nel BE**, che pure sarebbe una
+riga in `shape_indirizzi_context`. Maschererebbe la qualità del dato su un
+difetto **già chiuso alla sorgente**, e renderebbe invisibile la prossima
+colonna `character(n)` che dovesse entrare nello snapshot senza `btrim`. Il
+posto giusto per quel presidio è dove già sta.
+
+> ℹ️ Nota per il §10.4: `ORD0000046` resta uno dei due «soggetti buoni» per
+> rifare il giro sui casi scomodi, e ora si sa **perché** è scomodo — lo è
+> ancora, per scelta.
+
+### 11.3 Il residuo che nessuno dei due paragrafi nominava
+
+Il §7.2 del brief precedente prometteva **una** forma per l'indirizzo, chiamata
+da tutti e sei i builder. Oggi la chiamano in quattro:
+
+| Builder | Forma nel contesto |
+| --- | --- |
+| ordine, contratto, offerta, ddt | `indirizzi.consegna.via` — slot con nome, chiavi fisse ✅ |
+| **preventivo** | `indirizzi` è una **lista da scorrere**: `{% for ind in indirizzi %}`, poi `ind.snapshot.via` |
+| **fattura** | `cliente.indirizzo` — **stringa già composta**, non i componenti |
+
+Le tre forme che vi preoccupavano esistono ancora, e la promessa è a metà. Le
+due ragioni scritte nel codice per non averle mosse **non sono la stessa cosa**:
+
+* il **preventivo** non si è mosso per stabilità del `context_hash` dei
+  documenti già generati. Questa ragione **si scioglie**: sono documenti di
+  test e non siamo in produzione (decisione di Tid, 2026-08-16). **Si allinea** —
+  arriva un brief dedicato, perché serve una versione nuova del template
+  Preventivo: la lista diventa slot, non è una rinomina di chiavi. In quella
+  riscrittura si chiude anche l'ultima voce del brief precedente, il `.get()`
+  del §2: il Preventivo è oggi l'unico template rimasto a leggere in modo che
+  un nome sbagliato stampi vuoto invece di far fallire il render;
+* la **fattura** non è un residuo bloccato da dati. Non ha slot da stampare: ha
+  **un** indirizzo che conta, quello fiscale, e il template lo rende già
+  composto su una riga. Uniformarla significa ridecidere come si compone quella
+  riga su un documento fiscale — si può fare ed è più coerente, ma è una scelta
+  a sé, non un debito di questo cantiere. Annotata, non pianificata.

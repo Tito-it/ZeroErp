@@ -43,6 +43,9 @@ from apps.documenti.services.context_builders.base import (
 )
 from apps.documenti.services.context_builders.registry import register_builder
 from apps.vendite.db.preventivi_repository import PreventiviRepository
+from apps.vendite.services._indirizzi_documento_helpers import (
+    shape_indirizzi_context,
+)
 
 E_VALIDATION = "E_DOCUMENTI_VALIDATION"
 E_NOT_FOUND = "E_DOCUMENTI_NOT_FOUND"
@@ -53,14 +56,13 @@ class PreventivoDocumentContextBuilder(DocumentContextBuilder):
 
     CODE = "PREVENTIVO"
 
-    # Chiavi degli indirizzi documento nel context (shape v1 pre-mixin):
-    # solo dati del documento/snapshot congelato, niente decodifiche
-    # live-JOIN del drawer FE (vedi commento in build_context).
-    _INDIRIZZI_CONTEXT_KEYS: tuple[str, ...] = (
-        "id", "preventivo_id", "tipo_indirizzo_id",
-        "tipo_indirizzo_descrizione", "snapshot",
-        "origine_indirizzo_id", "origine_soggetto_ruolo_id",
-    )
+    # Tipi indirizzo ammessi nell'ambito PREVENTIVI
+    # (`config.tipi_indirizzi_allowed`: FATT, CON, FORNITURA, RES — stesso
+    # insieme di OFFERTE). Dichiarati qui e non letti a runtime: il context
+    # deve essere deterministico a parita' di documento (il `context_hash`
+    # governa il dedup), e una modifica di configurazione non puo' cambiare la
+    # forma di un contesto gia' generato.
+    _INDIRIZZI_CODICI: tuple[str, ...] = ("CON", "FATT", "FORNITURA", "RES")
 
     # Scopo: Iniezione opzionale del repository per testabilita' (mock).
     #        In runtime il default va benissimo: l'istanza e' singleton di
@@ -74,7 +76,7 @@ class PreventivoDocumentContextBuilder(DocumentContextBuilder):
     #         1. guard id positivo;
     #         2. testata via `get_preventivo` (None -> NOT_FOUND);
     #         3. righe + riepilogo IVA + indirizzi;
-    #         4. compone shape stabile (versione 1) usata dai template HTML.
+    #         4. compone shape stabile (versione 2) usata dai template HTML.
     def build_context(
         self,
         sorgente_id: int,
@@ -113,22 +115,27 @@ class PreventivoDocumentContextBuilder(DocumentContextBuilder):
             )
             for r in self._repo.list_riepilogo_iva(sorgente_id)
         ]
-        # Proiezione STABILE degli indirizzi documento: il mixin condiviso
-        # aggiunge chiavi per il drawer FE (tipo_indirizzo_codice,
-        # origine_tipo_indirizzo_*) derivate da JOIN LIVE su dati mutabili
-        # (anagrafiche.indirizzi, FK SET NULL) — fuori dal context PDF, che
-        # dipende solo dallo snapshot congelato. La whitelist replica la
-        # shape v1 pre-mixin: il context_hash resta stabile per i documenti
-        # gia' generati.
-        indirizzi = [
-            {k: r.get(k) for k in self._INDIRIZZI_CONTEXT_KEYS}
-            for r in self._repo.list_indirizzi(sorgente_id)
-        ]
-
         return {
             "preventivo": self._shape_preventivo(testata),
             "cliente": self._shape_cliente(testata),
-            "indirizzi": indirizzi,
+            # Indirizzi congelati del documento. Dal 2026-08-16 (context v2)
+            # nella forma unica cross-dominio `shape_indirizzi_context`: slot
+            # con nome e chiavi fisse, non piu' la lista da scorrere della v1.
+            # Era l'ultimo dominio a slot rimasto fuori dal BB — la promessa
+            # di «una forma sola» (brief-db-template-preventivo-indirizzi
+            # §7.2) valeva su 4 builder su 6. Il context_hash dei preventivi
+            # gia' generati cambia: e' ammesso, sono documenti di test e non
+            # siamo in produzione (decisione di Tid 2026-08-16, §11.3 di
+            # brief-db-indirizzi-su-ordini-contratti-offerte).
+            #
+            # ⚠️ Richiede la versione nuova del template Preventivo che legge
+            # `indirizzi.consegna.*`: la v3 pubblicata itera `indirizzi` come
+            # lista e con questa forma fallisce il render (StrictUndefined).
+            # Rumoroso e voluto — vedi brief-db-template-preventivo-slot.
+            "indirizzi": shape_indirizzi_context(
+                self._repo.list_indirizzi(sorgente_id),
+                codici_ammessi=self._INDIRIZZI_CODICI,
+            ),
             "righe": righe,
             "riepilogo_iva": riepilogo_iva,
             # `_meta` qui e' una sezione del context (non confondere con
@@ -141,7 +148,9 @@ class PreventivoDocumentContextBuilder(DocumentContextBuilder):
             "_meta": {
                 "locale": locale,
                 "auth_user_id": auth_user_id,
-                "context_version": 1,
+                # v2 (2026-08-16): `indirizzi` passa da lista a slot con nome
+                # (forma unica cross-dominio).
+                "context_version": 2,
                 "context_code": self.CODE,
             },
         }
