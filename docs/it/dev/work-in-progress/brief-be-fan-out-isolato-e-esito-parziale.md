@@ -20,6 +20,12 @@
 > la pipeline dal 2026-08-03 — quindi V1 è aperta nei fatti, non solo sulla carta
 > (§13.1). Per V2 mancano dei soggetti su cui provare: dettaglio in §13.2.
 >
+> ℹ️ **Il §14 non sposta questa riga.** È la ricognizione dei residui BE che il
+> team DB aveva consegnato «fuori da questa linea»: riverificati contro il
+> codice, **nessuno dei quattro richiede lavoro BE**. Non toglie né aggiunge
+> nulla a «cosa resta», che è e rimane il §13. Quel che il §14 lascia sono due
+> voci di *registro*, non di sviluppo (§14.4).
+>
 > **Origine**: [piano-residui-orchestrazione-e-cruscotti-vendite.md](../work-done/piano-residui-orchestrazione-e-cruscotti-vendite.md) §1 (R-1)
 > ← [analisi-orchestrazione-vendite-simmetrie.md](../work-done/analisi-orchestrazione-vendite-simmetrie.md) §B/§B.1.
 >
@@ -441,13 +447,43 @@ senza il segnale in-app gira ancora il codice vecchio.
   l'eccezione, il problema non è la segnalazione — sono i dati, e si apre un'altra analisi.
   Non si "abbassa" la segnalazione per far tornare il verde.
 
-> **Misura del 2026-08-16 — il ramo nuovo non è mai stato percorso.** In
+> **Misura del 2026-08-16 (mattina) — il ramo nuovo non è mai stato percorso.** In
 > `vendite.fatturazione_lotti_task_runs` **non c'è un solo run dal 2026-08-03**, e i
 > 13 run storici di `pull_attivita_da_commessa` sono **tutti `COMPLETATO`**, tutti
 > precedenti al fix (pushato il 2026-08-10). Non è che la validazione sia andata e
 > non sia stata annotata: la pipeline non è proprio stata lanciata da allora. Resta
 > valido il prerequisito in testa a questa sezione — senza `kill -HUP` sul master
 > gunicorn il backend gira ancora col codice vecchio, e la prova direbbe il falso.
+
+---
+
+> ✅ **Caso normale: PASSATO (2026-08-16, 15:39 UTC).** Tid ha fatturato un gruppo
+> da «Competenza fatturazione / Da emettere». Letto dal database (canale di
+> sistema, non dall'app):
+>
+> | | |
+> | --- | --- |
+> | Lotto | **4135 `LTF-0003953`**, MASSIVO, competenza 2026-08-01, `stato_lotto` COMPLETATO, `riaperto_il` NULL |
+> | Task run | **8 su 8 `COMPLETATO`**, tentativo 1, `pull_attivita_da_commessa` in testa |
+> | Fattura | **9691** EMESSA, `numero` NULL, 1 riga, imponibile 1.089,00 → totale 1.328,58 |
+>
+> È il **primo run della pipeline dal 2026-08-03**, quindi la prima volta che il
+> fan-out estratto a BB gira davvero in applicazione. Il prerequisito `kill -HUP`
+> era soddisfatto (gunicorn riavviato più volte nel frattempo).
+>
+> **Cosa prova e cosa no.** Prova che l'estrazione del BB **non ha rotto il caso
+> sano** — che era il rischio concreto di un ciclo riscritto e mai eseguito.
+> **Non** prova il fix: per quello serve il caso parziale (una commessa che
+> fallisce mentre le altre passano) e il rilancio che la ritenta invece di
+> saltarla. Restano quindi aperti i punti 2 e 3 della lista qui sopra, e servirà
+> costruire una commessa che fallisca l'emit dopo aver superato la scoperta.
+>
+> ⚠️ **Trovato guardando i dati, e non riguarda questo cantiere.** Le tre
+> attività di agosto sono legate a **tre fatture diverse, tutte EMESSA e tutte
+> senza numero**: 2263, 2457 e la 9691 appena creata. Il verbo «Rendi
+> definitive» numera **tutte** le fatture del mese in stato EMESSA — e la
+> **2263 non va numerata**. Prima di provare la numerazione va deciso come
+> escluderla, altrimenti la prova la trascina dentro.
 
 ### 13.2 V2 — Slice 3-ter: DDT e resi nelle lenti (dal brief due-lenti)
 
@@ -519,3 +555,85 @@ Checklist in ordine di rischio, derivata dalle decisioni DL-19..28:
   controllo **globale** della documentazione pubblicata, non come verifica dei
   testi di questa linea. La coerenza interna dei brief resta quella verificata a
   mano il 2026-08-10.
+
+---
+
+## 14. Ricognizione dei residui BE consegnati dal DB (2026-08-16)
+
+> Il team DB ha ricontrollato contro il codice i residui che il lato DB aveva
+> consegnato al BE «fuori da questa linea», e ne ha segnati **quattro**: due
+> chiusi, due aperti. Riverificati qui uno per uno, con le righe di codice.
+> **Esito: dei due segnati 🔴 aperti, nessuno lo è**; il terzo 🔴 era già stato
+> deciso lo stesso giorno. Le due ✅ sono confermate.
+>
+> ⚠️ Il DB ha dichiarato di aver **corretto la propria memoria di progetto** su
+> questa base. Va rettificata, altrimenti alla prossima sessione tornano a galla
+> due residui inesistenti — lo stesso danno del registro sbagliato, col segno
+> rovesciato.
+
+| Voce | Segnata | Verificata | Dove |
+| --- | --- | --- | --- |
+| `terne_pronte` | 🔴 aperta | ✅ **consumata** | `commesse_repository.py:1267` → `GruppoDiagnosi` → `_fatturazione_job_helpers.py:221` |
+| `riaperto_il` | 🔴 aperta | ✅ **consumata** | `pipeline_repository.py:2132/2144` → `pipeline_runner.py:392/546` |
+| Slot indirizzi (§10.5) | 🔴 aperta | ✅ **decisa** «non si restringe» | §11.1 di `brief-db-indirizzi-su-ordini-contratti-offerte.md` |
+| Pricing v5 F2-BE | ✅ fatta | ✅ confermata | `pricing_repository.py:90` chiama `fn_resolve_prezzo_listino_v2` |
+| Documenti Fase A | ✅ fatta | ✅ confermata | `_REL_CONSENTITE` in `core/db/dbops_repository.py:26`, usata come guard in 2 punti |
+
+### 14.1 `riaperto_il` — non è «girante ma inutile», governa il giro
+
+Il rilievo diceva «compare solo in `smoke-ritorno-lotto-a-draft.py`, niente in
+`backend/apps/`». Non regge: `is_lotto_riaperto()` lo legge
+(`pipeline_repository.py:2132`), `azzera_riaperto_il()` lo spegne (`:2144`), e
+`pipeline_runner.py:392` lo usa come **terzo motivo per rifare lo step corrente**
+invece di avanzare — con l'azzeramento a `:546` quando il giro l'ha onorato,
+senza il quale il lotto rifarebbe lo stesso step all'infinito.
+
+⏱️ **E non è codice di oggi**: è entrato il **2026-08-03** (`6728e58cb`), quasi
+due settimane prima della misura. Qui non c'è una spiegazione di tempistica: la
+verifica ha guardato nel posto sbagliato.
+
+**Cosa sopravvive del rilievo, in forma molto più stretta**: il segnale non
+risale all'API e **il FE non mostra da nessuna parte che un lotto è stato
+riaperto**. È una richiesta di *visibilità*, non un residuo di consumo — e come
+tale va valutata a sé, non ereditata come «funzione DB inutile».
+
+### 14.2 `terne_pronte` — misura scattata 49 minuti troppo presto
+
+Anche qui il consumo c'è: `commesse_repository.py:1267` lo decodifica con
+`_decode_jsonb` (col commento sul jsonb che su questa connessione arriva come
+stringa), finisce in `GruppoDiagnosi` e `_fatturazione_job_helpers.py:221` lo
+usa per distinguere i gruppi le cui terne sono fallite da quelli fermi per
+un'altra causa. Tre test lo coprono.
+
+⏱️ **Ma qui la spiegazione c'è, ed è onesta**: quel codice è entrato alle
+**15:13** del 2026-08-16 (`4129f5a22`), il commit della verifica è delle
+**16:02**. Su un checkout precedente il grep torna vuoto legittimamente. Non è
+un errore di metodo — è una fotografia scattata prima del fatto.
+
+### 14.3 Slot indirizzi — decisa, non aperta
+
+«contratto ne dichiara 3, off-comm 4, i template ne stampano 1» è vero come
+descrizione dello stato, ma la voce **non è aperta**: il 2026-08-16 è stato
+deciso di **non restringere**, perché gli slot seguono
+`config.tipi_indirizzi_allowed` — la stessa whitelist che il pannello FE legge a
+runtime — e toglierli farebbe sparire in silenzio un indirizzo che l'operatore
+può già inserire. Motivazione estesa in §11.1 del brief citato. Anche qui è
+questione di minuti: la nota è delle 16:02, la chiusura è stata pushata alle
+16:04.
+
+### 14.4 Cosa lascia questa ricognizione
+
+Nessun lavoro BE nuovo: **zero** delle quattro voci richiede codice. Restano due
+cose da fare, entrambe di registro e non di sviluppo:
+
+- la **memoria del DB va rettificata** sulle due voci `terne_pronte` e
+  `riaperto_il`, altrimenti si autoconfermano alla prossima sessione;
+- se la **visibilità FE del lotto riaperto** interessa davvero (§14.1), va
+  aperta come richiesta sua, con il suo perimetro — non lasciata implicita
+  dentro un residuo che nel merito è chiuso.
+
+⭐ **La lezione, che è la stessa di due volte oggi**: una misura contro il codice
+vale quanto il momento in cui è scattata e il posto in cui ha guardato. Una
+frase che dichiara *chiuso* ciò che è aperto e una che dichiara *aperto* ciò che
+è chiuso costano uguale — restano scritte, e la sessione dopo nessuno le
+rimette in discussione.

@@ -64,6 +64,16 @@ const props = defineProps({
   commessaId: { type: [Number, null], default: null },
   // Ispezione pura (feedback_drawer_readonly): nasconde ogni azione.
   readonly: { type: Boolean, default: false },
+  // Filtro stato emissione PREIMPOSTATO dal chiamante: la lista si apre sullo
+  // stesso stato della card da cui si arriva (Fatturate → EMESSA, Da emettere
+  // → NON_EMESSA), cosi' il valore mostrato dalla card e il contenuto della
+  // lista raccontano la stessa cosa. Chi apre la commessa dalla lista generica
+  // non lo passa e vede tutte le righe.
+  // ⚠️ E' un DEFAULT, non un vincolo: il filtro resta visibile e azzerabile
+  // (vedi il Select in toolbar). Nasconderlo produrrebbe una lista di una riga
+  // senza spiegazione — la stessa confusione che questo filtro esiste per
+  // togliere, solo piu' difficile da diagnosticare.
+  statoEmissione: { type: [String, null], default: null },
 })
 
 const emit = defineEmits(['update:visible', 'saved'])
@@ -109,6 +119,14 @@ const selected = ref([])
 // null = ordine storico per id (removable-sort riporta qui).
 const righeSortBy = ref(null)
 const righeSortDir = ref(1)
+// Filtro stato emissione applicato alla lista: parte dalla prop (card di
+// provenienza) ed e' modificabile a video. null = tutte.
+const filtroStatoEmissione = ref(props.statoEmissione)
+// Totale FILTRATO, dal `count` della risposta lista. Non si usa
+// `stato.total_attivita` (contatore di testata, sempre su TUTTE le righe):
+// con un filtro attivo il paginator direbbe 4 righe mostrandone 1, e la
+// seconda pagina sarebbe vuota.
+const righeTotale = ref(0)
 
 const capabilities = computed(() => stato.value?.capabilities ?? {})
 
@@ -156,8 +174,13 @@ async function loadRighe() {
       params.order_by = righeSortBy.value
       params.order_dir = righeSortDir.value === -1 ? 'desc' : 'asc'
     }
+    if (filtroStatoEmissione.value) {
+      params.stato_emissione = filtroStatoEmissione.value
+    }
     const res = await listCommessaAttivita(props.commessaId, params)
     righe.value = res.data?.data?.rows ?? []
+    // `count` e' il totale gia' filtrato (stessa WHERE della pagina).
+    righeTotale.value = res.data?.data?.count ?? 0
   } catch (err) {
     // Fail-visible: una tabella vuota per errore non deve sembrare "no righe".
     notify.error(extractApiError(err, t('common.error')))
@@ -178,9 +201,14 @@ watch(
     if (!visible || !props.commessaId) return
     stato.value = null
     righe.value = []
+    righeTotale.value = 0
     righePage.value = 1
     righeSortBy.value = null
     righeSortDir.value = 1
+    // Il filtro torna al default del chiamante a ogni apertura: riaprendo la
+    // stessa commessa da una card diversa deve valere la card nuova, non
+    // quella di prima.
+    filtroStatoEmissione.value = props.statoEmissione
     selected.value = []
     await reloadAll()
   },
@@ -194,7 +222,7 @@ const listaRef = ref(null)
 // Prop paginator per il BB: qui non c'e' useSearchTable (il drawer non e' una
 // pagina lista), quindi la compone il drawer con lo stato che gia' possiede.
 const righePaginatorOptions = computed(() => ({
-  totalRecords: stato.value?.total_attivita ?? 0,
+  totalRecords: righeTotale.value,
   rows: righePageSize.value,
   first: (righePage.value - 1) * righePageSize.value,
   rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
@@ -216,6 +244,25 @@ function onConfigLoaded(config) {
 function onRighePage(event) {
   righePage.value = Math.floor(event.first / event.rows) + 1
   righePageSize.value = event.rows
+  loadRighe()
+}
+
+// Opzioni del filtro stato emissione: i tre valori del dominio + «tutte»
+// (null). Derivate dalla costante, non riscritte a mano.
+const opzioniStatoEmissione = computed(() => [
+  { value: null, label: t('vendite.commesse.filtro_stato_tutte') },
+  ...Object.values(STATO_EMISSIONE_ATTIVITA).map((v) => ({
+    value: v,
+    label: t(`vendite.commesse.stato_emissione_${v.toLowerCase()}`),
+  })),
+])
+
+// Scopo: cambio filtro stato → si riparte da pagina 1 (l'offset corrente
+//        apparterrebbe a un insieme di righe diverso) e si azzera la
+//        selezione, che potrebbe contenere righe ora fuori filtro.
+function onFiltroStatoChange() {
+  righePage.value = 1
+  selected.value = []
   loadRighe()
 }
 
@@ -613,6 +660,21 @@ const drawerActions = computed(() => [
         <!-- Righe attivita' + approvazione (A-1). -->
         <div class="app-page-toolbar" style="margin-top: 1rem;">
           <h4 style="margin: 0;">{{ t('vendite.commesse.righe_titolo') }}</h4>
+          <!-- Filtro stato emissione: SEMPRE a video, anche quando arriva
+               preimpostato dalla card di provenienza. E' il punto della
+               funzione — l'utente deve vedere perche' la lista mostra meno
+               righe del contatore di testata, e poterlo togliere. -->
+          <Select
+            v-model="filtroStatoEmissione"
+            :options="opzioniStatoEmissione"
+            option-label="label"
+            option-value="value"
+            size="small"
+            :aria-label="t('vendite.commesse.filtro_stato_label')"
+            v-tooltip.bottom="t('vendite.commesse.filtro_stato_label')"
+            style="min-width: 12rem;"
+            @change="onFiltroStatoChange"
+          />
           <!-- Difetto D1 (§6-bis, corretto 2026-07-27): la visibilita' era sul
                SOLO permesso, quindi su una commessa gia' PRONTA_FATTURAZIONE i
                due verbi restavano a video disabilitati — rumore che suggerisce
@@ -643,7 +705,7 @@ const drawerActions = computed(() => [
           codice="vendite.commesse_attivita"
           data-key="id"
           :rows="righe"
-          :total="stato?.total_attivita ?? 0"
+          :total="righeTotale"
           :loading="righeLoading"
           :paginator-options="righePaginatorOptions"
           :page="righePage"
