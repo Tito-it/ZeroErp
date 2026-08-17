@@ -32,6 +32,7 @@ from apps.vendite.db.vendite_repository import (
     DASH_FATTURAZIONE_AREE,
     DASH_FATTURAZIONE_AREE_EURO,
     FONDI_DA_DECIDERE_MOTIVI,
+    SEARCH_MIN_LEN,
     VenditeRepository,
 )
 from apps.vendite.types import (
@@ -876,6 +877,14 @@ def fn_dash_competenza_gruppi(
     competenza_mese: date,
     stadio: str | None = None,
     tipo_gruppo: str | None = None,
+    # Filtro CLIENTE (D-3): l'asse e' il BA di FATTURAZIONE, cioe' lo stesso
+    # elemento che `fn_build_fattura_key` mette in chiave. `ba_non_determinabile`
+    # e' la voce «cliente non determinabile» (D-5) — l'ASSENZA di quel valore, non
+    # un id sentinella: un 0 o un -1 in un campo che porta chiavi vere prima o poi
+    # finisce confrontato con una PK.
+    ba_fatturazione_id: int | None = None,
+    ba_non_determinabile: bool = False,
+    search: str | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
     page: int = 1,
@@ -910,6 +919,15 @@ def fn_dash_competenza_gruppi(
         context={"order_dir": order_dir},
         function_name="vendite.vendite_service.fn_dash_competenza_gruppi",
     )
+    # ⚠️ Ricerca sotto la soglia: si IGNORA, non si solleva e non si svuota la
+    # lista. Il termine arriva mentre l'operatore sta ancora digitando — un 400
+    # al secondo carattere sarebbe un errore per un'azione legittima, e una
+    # lista vuota gli direbbe «non c'e' niente» quando la verita' e' «non ti ho
+    # ancora cercato». Il filtro entra al terzo carattere (SEARCH_MIN_LEN, la
+    # soglia sta nel repository perche' vale anche per l'export).
+    termine = (search or "").strip()
+    search_attiva = len(termine) >= SEARCH_MIN_LEN
+    search_param = termine if search_attiva else None
     limit, offset = _paging_o_export(
         page=page, page_size=page_size, max_rows=max_rows,
         function_name="vendite.vendite_service.fn_dash_competenza_gruppi",
@@ -921,6 +939,9 @@ def fn_dash_competenza_gruppi(
         competenza_mese=competenza,
         stadio=stadio,
         tipo_gruppo=tipo_gruppo,
+        ba_fatturazione_id=ba_fatturazione_id,
+        ba_non_determinabile=ba_non_determinabile,
+        search=search_param,
         order_by=order_by,
         order_dir=order_dir,
         limit=limit,
@@ -930,18 +951,31 @@ def fn_dash_competenza_gruppi(
         results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
     )
     # Due perimetri DIVERSI nella stessa risposta, ed e' voluto:
-    #  - `riepilogo` SEGUE il filtro tipo: e' la riconciliazione della lista che
-    #    l'utente sta guardando;
-    #  - `tipi` (facet del filtro) NON lo segue: deve mostrare tutte le voci
-    #    disponibili anche quando una e' selezionata, altrimenti scegliendo
-    #    «Preventivi» le altre sparirebbero dalla tendina e non si potrebbe piu'
-    #    cambiare idea senza azzerare il filtro alla cieca.
+    #  - `riepilogo` SEGUE tutti i filtri (tipo, cliente, ricerca): e' la
+    #    riconciliazione della lista che l'utente sta guardando, e un totale che
+    #    descrive un perimetro diverso dalle righe sopra di se' e' peggio di
+    #    nessun totale;
+    #  - `tipi` e `clienti` (le due facet) NON li seguono: devono mostrare tutte
+    #    le voci disponibili anche quando una e' selezionata, altrimenti
+    #    scegliendo «Preventivi» le altre sparirebbero dalla tendina e non si
+    #    potrebbe piu' cambiare idea senza azzerare il filtro alla cieca.
+    #    ⚠️ Entrambe sul perimetro BASE (competenza+stadio) e non una sull'altra:
+    #    se `clienti` seguisse il tipo e `tipi` no, le due tendine
+    #    racconterebbero perimetri diversi e il conteggio cambierebbe a seconda
+    #    dell'ORDINE in cui l'operatore sceglie i filtri.
     payload["riepilogo"] = repository.get_dash_competenza_gruppi_riepilogo(
         competenza_mese=competenza,
         stadio=stadio,
         tipo_gruppo=tipo_gruppo,
+        ba_fatturazione_id=ba_fatturazione_id,
+        ba_non_determinabile=ba_non_determinabile,
+        search=search_param,
     )
     payload["tipi"] = repository.list_dash_competenza_gruppi_tipi(
+        competenza_mese=competenza,
+        stadio=stadio,
+    )
+    payload["clienti"] = repository.list_dash_competenza_gruppi_clienti(
         competenza_mese=competenza,
         stadio=stadio,
     )

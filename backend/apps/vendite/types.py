@@ -815,6 +815,32 @@ class DashCompetenzaGruppoRow(TypedDict):
     commessa_emittibile: bool | None
     commessa_stato_codice_interno: str | None
     commessa_stato_descrizione: str | None
+    # Cliente di FATTURAZIONE (padre se c'e', altrimenti se stesso): e' il BA che
+    # `fn_build_fattura_key` mette in chiave, non quello della commessa. Colonne
+    # di catalogo «disponibili e spente» (D-4): il merge di
+    # `ui.fn_resolve_lista_config` le aggiunge al preset con `visibile = FALSE`,
+    # chi ne ha bisogno le accende. NULL quando il padre e' fuori scope RLS —
+    # il gruppo resta comunque in lista, marcato «non determinabile» (D-5).
+    ba_codice_fatturazione: str | None
+    id_fiscale: str | None
+
+
+class DashCompetenzaGruppoClienteRow(TypedDict):
+    # Voce del filtro CLIENTE della lista gruppi (facet). L'asse e'
+    # `ba_fatturazione_id`, non la ragione sociale: lo stesso soggetto puo' avere
+    # piu' alberi di billing account — anche sotto emittenti diversi — con nome e
+    # codice fiscale identici, e quegli alberi finiscono su fatture DIVERSE.
+    # Per questo il `ba_codice_fatturazione` sta nell'etichetta a video: e'
+    # l'unico dato che li distingue (nome e id fiscale sono uguali per
+    # costruzione, lo garantisce il guard padre/figlio).
+    # `ba_fatturazione_id` NULL = voce «cliente non determinabile» (padre fuori
+    # scope): si mostra, non si nasconde.
+    ba_fatturazione_id: int | None
+    cliente_display: str | None
+    ba_codice_fatturazione: str | None
+    id_fiscale: str | None
+    n_gruppi: int
+    n_attivita: int
 
 
 class DashCompetenzaGruppoTipoRow(TypedDict):

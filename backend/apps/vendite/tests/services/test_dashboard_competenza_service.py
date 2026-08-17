@@ -632,15 +632,22 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
     colonna sfasato da un inserimento a meta' proiezione).
     """
 
-    # Scopo: righe finte con le 17 colonne della proiezione (rev 2026-08-15:
-    # + commessa_emittibile, commessa_stato_codice_interno, stato_descrizione).
+    # Scopo: righe finte con le 19 colonne della proiezione (rev 2026-08-15:
+    # + commessa_emittibile, commessa_stato_codice_interno, stato_descrizione;
+    # rev 2026-08-17: + ba_codice_fatturazione, id_fiscale — cliente di
+    # fatturazione, brief-db-dash-competenza-gruppi §D-4).
+    # ⚠️ La fixture deve avere ESATTAMENTE la forma della proiezione reale: una
+    # riga finta piu' corta non fa fallire il mapping in modo parlante, lo fa
+    # esplodere su un indice — e una piu' lunga lo farebbe passare leggendo la
+    # colonna sbagliata, che e' il modo silenzioso di sbagliare.
     def _rows(self, documento_id, *, emittibile=True,
-              stato="PRONTA_FATTURAZIONE", stato_descr="Pronta fatturazione"):
+              stato="PRONTA_FATTURAZIONE", stato_descr="Pronta fatturazione",
+              ba_codice="BA-0001", id_fiscale="12345678901"):
         return [(
             "ORDINE_VENDITA:uid-1", "ORDINE_VENDITA", "ORDINI", "ORD0005174",
             4277, "CMM-2026…", "Rossi SRL", "DA_EMETTERE", 3, Decimal("731.00"),
             False, date(2026, 8, 3), date(2026, 8, 3), documento_id,
-            emittibile, stato, stato_descr,
+            emittibile, stato, stato_descr, ba_codice, id_fiscale,
         )]
 
     # 23) 🟢 L'id del documento viene dalla VISTA, non piu' da una LATERAL
@@ -701,6 +708,70 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
         self.assertIn("g.commessa_stato_codice_interno", sql)
         self.assertIn("g.commessa_stato_descrizione", sql)
         self.assertNotIn("stati_commessa", sql)
+
+    # 24-ter) Il cliente di FATTURAZIONE arriva al FE (D-4). ⚠️ Il caso NULL non
+    #     e' un dettaglio ne' un errore: e' il gruppo il cui BA padre sta fuori
+    #     dallo scope dell'operatore, che resta in lista e finisce nella voce
+    #     «cliente non determinabile» (D-5). Coercerlo a stringa vuota lo
+    #     renderebbe indistinguibile da un codice mancante a monte.
+    @patch.object(VenditeRepository, "_query_paged_view")
+    def test_mapping_espone_cliente_di_fatturazione_e_ne_preserva_il_null(self, mock_query):
+        mock_query.return_value = (self._rows(5387), 1)
+        righe, _ = VenditeRepository().list_dash_competenza_gruppi(
+            competenza_mese=date(2026, 8, 1), stadio=None, limit=25, offset=0,
+        )
+        self.assertEqual(righe[0]["ba_codice_fatturazione"], "BA-0001")
+        self.assertEqual(righe[0]["id_fiscale"], "12345678901")
+
+        mock_query.return_value = (
+            self._rows(5387, ba_codice=None, id_fiscale=None), 1,
+        )
+        righe, _ = VenditeRepository().list_dash_competenza_gruppi(
+            competenza_mese=date(2026, 8, 1), stadio=None, limit=25, offset=0,
+        )
+        self.assertIsNone(righe[0]["ba_codice_fatturazione"])
+        self.assertIsNone(righe[0]["id_fiscale"])
+
+        sql = mock_query.call_args.kwargs["select_sql"]
+        self.assertIn("g.ba_codice_fatturazione", sql)
+        self.assertIn("g.id_fiscale", sql)
+
+    # 24-quater) Il filtro cliente e la ricerca vivono in `_where_gruppi`, cioe'
+    #     nel predicato CONDIVISO da lista e riepilogo: e' cio' che impedisce ai
+    #     totali di descrivere un perimetro diverso dalle righe sopra di se'.
+    #     ⚠️ «non determinabile» e' un IS NULL, non un id sentinella, e VINCE
+    #     sull'id: sono alternativi, non sommabili.
+    def test_where_gruppi_filtro_cliente_e_ricerca(self) -> None:
+        cond, params = VenditeRepository._where_gruppi(
+            competenza_mese=date(2026, 8, 1), stadio=None, ba_fatturazione_id=77,
+        )
+        self.assertIn("g.ba_fatturazione_id = %s", cond)
+        self.assertIn(77, params)
+
+        cond, params = VenditeRepository._where_gruppi(
+            competenza_mese=date(2026, 8, 1), stadio=None,
+            ba_fatturazione_id=77, ba_non_determinabile=True,
+        )
+        self.assertIn("g.ba_fatturazione_id IS NULL", cond)
+        self.assertNotIn(77, params)
+
+        # Sotto soglia: ignorata, non solleva e non svuota la lista.
+        cond, _ = VenditeRepository._where_gruppi(
+            competenza_mese=date(2026, 8, 1), stadio=None, search="OR",
+        )
+        self.assertTrue(all("ILIKE" not in c for c in cond))
+
+        cond, params = VenditeRepository._where_gruppi(
+            competenza_mese=date(2026, 8, 1), stadio=None, search="ORD0005174",
+        )
+        ramo = [c for c in cond if "ILIKE" in c]
+        self.assertEqual(len(ramo), 1)
+        # ⚠️ Un solo gruppo parentesizzato: senza le parentesi l'OR si legherebbe
+        # all'ultima AND e il filtro mese/stadio smetterebbe di valere per i rami
+        # successivi — una ricerca che ALLARGA il perimetro invece di stringerlo.
+        self.assertTrue(ramo[0].startswith("(") and ramo[0].endswith(")"))
+        self.assertEqual(ramo[0].count("ILIKE"), 5)
+        self.assertEqual(params.count("%ORD0005174%"), 5)
 
 
 class DashCompetenzaFatturePerCellaTests(TestCase):

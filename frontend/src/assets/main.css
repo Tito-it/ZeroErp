@@ -1977,6 +1977,23 @@ a {
   flex-wrap: wrap;
 }
 
+/* Filtro cliente e ricerca della lista gruppi fatturabili. Larghezze massime e
+ * non fisse: la toolbar è flex-wrap e su schermi stretti i due controlli devono
+ * poter stringersi invece di spingere fuori il pulsante «Fattura selezionati».
+ * Il filtro cliente è il più largo dei due perché la sua etichetta porta
+ * ragione sociale + codice BA, e troncarla a metà toglierebbe proprio il pezzo
+ * che distingue due alberi omonimi. */
+.app-dash-filtro-cliente {
+  max-width: 22rem;
+  min-width: 0;
+}
+
+.app-dash-ricerca-gruppi {
+  max-width: 16rem;
+  min-width: 0;
+  font-size: 0.85rem;
+}
+
 /* Aggancio ai lotti prodotti da una emissione mirata: sono N, non uno. */
 .app-dash-lotti-emessi {
   display: flex;
