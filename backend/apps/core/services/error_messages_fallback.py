@@ -550,6 +550,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_RESO_NESSUNA_RICONSEGNA_PENDENTE": "Nessuna riga di ri-consegna pendente da ri-spedire per questo reso.",
     "E_RESO_NON_CONFERMATO": "Confermare il reso prima di generare la ri-spedizione.",
     "E_RESO_NOT_FOUND": "Reso non trovato.",
+    "E_RESO_ORIGINE_INCOERENTE": "Il riferimento all'ordine sul reso non corrisponde a quello della riga DDT resa.",
     "E_RESO_QTA_SUPERA_CONSEGNATO": "La quantita' resa supera la quantita' consegnata residua della riga DDT.",
     "E_RESO_RICONSEGNA_SUPERA_RESO": "La quantita' ri-spedita supera la quantita' resa da ri-consegnare.",
     "E_RESO_RICONSEGNA_TIPO_NON_VALIDO": "Ri-spedizione ammessa solo su righe reso di tipo ri-consegna.",
