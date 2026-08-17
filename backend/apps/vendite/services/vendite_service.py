@@ -1486,3 +1486,93 @@ def fn_fondi_fattura_da_decidere(
     return _build_list_response(
         results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
     )
+
+
+# ══════════════════════════════════════════════════════════════════
+#  Situazione merce (pannello ordine/DDT)
+#  brief-design-situazione-merce-ordine + brief-design-partita-merce-
+#  generalizzata §21.2. Sola lettura: nessun verbo, nessun side-effect.
+# ══════════════════════════════════════════════════════════════════
+
+_FN_SITUAZIONE_MERCE = "vendite.vendite_service.get_situazione_merce"
+
+
+# Scopo: Compone la «situazione della merce» di UN documento — ordine o DDT —
+#        in un round-trip solo.
+# Contesto: e' il pannello del cantiere 2. Le fonti sono quattro viste DB della
+#        partita generalizzata, tutte `security_invoker=on`: la RLS del
+#        chiamante si applica da sola e NON si passa `auth_user_id`.
+# Input: esattamente uno fra `ordine_id` e `ddt_id`.
+# Output: dict con `righe_ordine` (livello 1, solo lato ordine), `partite`
+#        (livello 2), `accrediti` e `riconsegne` (le due code di lavoro).
+# Regole:
+#  - il cancello di perimetro e' la TESTATA (`vendite.ordini` / `vendite.ddt`
+#    hanno la RLS, le righe no): documento invisibile → 404, indistinguibile da
+#    inesistente, come il dettaglio fattura;
+#  - ⛔ NON si ri-traduce il verso del saldo: `stato` arriva gia' tradotto dalle
+#    viste (sei valori sull'ordine, sei sulla partita) — due traduzioni
+#    divergono e diventano due frasi per lo stesso numero;
+#  - ⛔ NON si trasforma `differenza = NULL` in `0`: NULL significa «il conto non
+#    si applica» (riga mai spedita, causale non fatturabile, conto non
+#    calcolabile). Un `COALESCE` qui rimetterebbe dentro i falsi allarmi che il
+#    cantiere della partita ha appena tolto.
+# Dipendenze DB: `vw_situazione_merce_ordine`, `vw_partite_merce`,
+#        `vw_resi_da_accreditare`, `vw_resi_da_riconsegnare`.
+def get_situazione_merce(
+    *,
+    ordine_id: int | None = None,
+    ddt_id: int | None = None,
+) -> dict[str, object]:
+    # Guard di programmazione, non di input utente: le due view di dominio
+    # passano sempre e solo il proprio id.
+    ErrorManager.require(
+        (ordine_id is None) != (ddt_id is None),
+        code="E_VENDITE_VALIDATION",
+        message="Situazione merce: indicare un ordine oppure un DDT.",
+        detail=f"ordine_id={ordine_id} ddt_id={ddt_id}",
+        function_name=_FN_SITUAZIONE_MERCE,
+    )
+
+    repository = VenditeRepository()
+
+    # Cancello di perimetro PRIMA di qualunque lettura di dettaglio: le viste
+    # sotto leggono righe che la RLS non protegge da sole, e senza questo passo
+    # un documento fuori scope tornerebbe un pannello VUOTO invece di un 404 —
+    # cioe' «non ho il permesso di saperlo» presentato come «non c'e' nulla».
+    if ordine_id is not None:
+        ErrorManager.require(
+            repository.exists_ordine(ordine_id),
+            code="E_VENDITE_NOT_FOUND",
+            message="Ordine non trovato.",
+            detail=f"ordine_id={ordine_id}",
+            function_name=_FN_SITUAZIONE_MERCE,
+        )
+    else:
+        ErrorManager.require(
+            repository.exists_ddt(ddt_id),
+            code="E_VENDITE_NOT_FOUND",
+            message="DDT non trovato.",
+            detail=f"ddt_id={ddt_id}",
+            function_name=_FN_SITUAZIONE_MERCE,
+        )
+
+    # Livello 1 — il riassunto per riga d'ordine. Esiste SOLO sul lato ordine:
+    # sul DDT la domanda e' «cosa e' successo a QUESTA spedizione» (§5.1 del
+    # brief pannello), e le righe d'ordine che il DDT non ha toccato non
+    # c'entrano. Lista vuota e non `None`: il frontend itera sempre.
+    righe_ordine: list[dict[str, object]] = []
+    if ordine_id is not None:
+        righe_ordine = repository.list_situazione_merce_ordine(ordine_id)
+
+    return {
+        "righe_ordine": righe_ordine,
+        "partite": repository.list_partite_merce(
+            ordine_id=ordine_id, ddt_id=ddt_id
+        ),
+        "accrediti": repository.list_situazione_merce_accrediti(
+            ordine_id=ordine_id, ddt_id=ddt_id
+        ),
+        "riconsegne": repository.list_situazione_merce_riconsegne(
+            ordine_id=ordine_id, ddt_id=ddt_id
+        ),
+    }

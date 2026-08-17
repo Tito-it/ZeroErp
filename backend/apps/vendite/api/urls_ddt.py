@@ -20,6 +20,7 @@ from apps.vendite.api.ddt_documenti_views import (
 )
 from apps.vendite.api.lineage_views import ApiDdtPassaggi
 from apps.vendite.api.note_views import ApiDdtNoteDetail, ApiDdtNoteList
+from apps.vendite.api.situazione_merce_views import ApiDdtSituazioneMerce
 from apps.vendite.api.views_ddt import (
     ApiDdtCambiaStato,
     ApiDdtDetail,
@@ -53,6 +54,10 @@ urlpatterns = [
     # Genealogia/lineage (pannello "Passaggi", brief-be-fe-lineage).
     path("<int:ddt_id>/passaggi/", ApiDdtPassaggi.as_view(),
          name="vendite-ddt-passaggi"),
+    # Situazione merce (pannello cantiere 2): «cosa e' successo a QUESTA
+    # spedizione» — partite del DDT + le due code. Sola lettura.
+    path("<int:ddt_id>/situazione-merce/", ApiDdtSituazioneMerce.as_view(),
+         name="vendite-ddt-situazione-merce"),
     path("<int:ddt_id>/indirizzi/", ApiDdtIndirizzi.as_view(),
          name="vendite-ddt-indirizzi"),
     path("<int:ddt_id>/indirizzi/<int:indirizzo_id>/",

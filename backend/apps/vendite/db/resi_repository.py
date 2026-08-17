@@ -445,8 +445,14 @@ class ResiRepository:
     #        fatturati - tenuti > 0`), QUALUNQUE tipo di reso — il tipo e'
     #        degradato a `etichetta` DOVUTA (a credito) | FACOLTATIVA (per
     #        ri-consegna, scelta DL-26). Espone il conto (tenuti/fatturati/
-    #        accredito_dovuto); `ddt_numero`/`ddt_id` possono essere NULL
-    #        (aggancio partita via ordine_riga_id, join DDT diventato LEFT).
+    #        accredito_dovuto).
+    #        ⚠️ Dal 2026-08-17 (partita merce generalizzata, S4) la chiave della
+    #        vista e' `ddt_riga_id`, NOT NULL: i join a `ddt_righe`/`ddt` sono
+    #        INNER, quindi `ddt_id`/`ddt_numero` ci sono SEMPRE. A poter mancare
+    #        e' `ordine_riga_id`, che resta esposto ma non e' piu' la chiave —
+    #        e' NULL sulla merce senza origine ordine (riga di DDT aggiunta a
+    #        mano, DDT standalone), che prima usciva dal conto senza errore e
+    #        ora entra. Nessun consumatore lo usi come chiave.
     #        Filtri + scope emittente + paginazione. Slice NC ci si appoggia.
     def list_da_accreditare(
         self,
