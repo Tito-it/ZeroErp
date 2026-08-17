@@ -1,0 +1,177 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `vw_dash_competenza_attivita`: esporre `billing_account_id` della commessa.
+#   Primo dei due passi DB del brief
+#   docs/it/dev/work-in-progress/brief-db-dash-competenza-gruppi-cliente-e-ricerca.md
+#   (§5.1). Il secondo e' il changeSet -05, che lo consuma.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────────
+#
+#   La lista dei gruppi fatturabili deve poter essere filtrata per CLIENTE, e
+#   il cliente rilevante e' quello su cui il motore aggrega la fattura:
+#   `vendite.fn_build_fattura_key` usa
+#
+#       COALESCE(ba.parent_account_id, a.billing_account_id)
+#
+#   cioe' il billing account PADRE quando c'e'. Oggi da questa vista esce solo
+#   `cliente_display` — una stringa — e il BA non esce affatto: non c'e' modo
+#   di risalire ne' al padre ne' al codice.
+#
+#   Questa vista e' la sorgente di `vw_dash_competenza_gruppi`: il BA deve
+#   passare di qui, o il -05 non ha da dove prenderlo.
+#
+# ── COSA CAMBIA ─────────────────────────────────────────────────────────
+#
+#   Una colonna, IN CODA:
+#
+#       co.billing_account_id
+#
+#   E' una proprieta' della COMMESSA, quindi e' costante dentro un gruppo
+#   fatturabile (che e' `(sorgente, commessa)`). Questo e' cio' che permette
+#   al -05 di metterla nel GROUP BY senza moltiplicare righe.
+#
+#   ⚠️ In coda e non in mezzo, e non e' estetica: `CREATE OR REPLACE VIEW` sa
+#   solo AGGIUNGERE colonne alla fine. Inserirla accanto a `cliente_display`,
+#   dove starebbe bene, richiederebbe un DROP — e questa vista ha dipendenti
+#   (`vw_dash_competenza_gruppi`, e da li' il riepilogo), quindi il DROP
+#   diventerebbe una catena.
+#
+#   ⚠️ `security_invoker=on` e' RI-SPECIFICATO. La reloption non compare in
+#   `pg_get_viewdef`: chi copia la definizione dalla doc auto-generata e non la
+#   riscrive la AZZERA, e la vista comincia a girare con i diritti del
+#   proprietario — cioe' bypassa la RLS, in silenzio, senza che nessun test
+#   fallisca.
+#
+#   Nessun'altra riga toccata: stessi join, stesso WHERE, stesso scope
+#   emittente via `script.fn_get_emittenti_scope_sr_ids`.
+#
+# ── NOTA SU CIO' CHE NON CAMBIA ─────────────────────────────────────────
+#
+#   `cliente_display` resta esattamente com'e' — ragione sociale del soggetto
+#   raggiunto dal BA della commessa (il FIGLIO). Non e' una svista: il guard
+#   `anagrafiche.trgfn_billing_account_guard_normalize` §2.2 impone che padre e
+#   figlio condividano `id_fiscale_univoco_cf_piva`, e
+#   `anagrafiche.soggetti` ha UNIQUE(stato_id, id_fiscale_univoco_cf_piva).
+#   Stesso codice fiscale ⇒ stesso soggetto ⇒ stessa ragione sociale, per
+#   costruzione. Fra figlio e padre cambia SOLO il codice del BA.
+#   (Brief §3.3, decisione D-2.)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260817-04-update-vw-dash-competenza-attivita-billing-account-mctit.yaml
+
+  - changeSet:
+      id: 20260817-04-update-vw-dash-competenza-attivita-billing-account
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vw_dash_competenza_attivita espone billing_account_id della commessa
+        (colonna in coda). Serve a vw_dash_competenza_gruppi (-05) per
+        risolvere il BA di fatturazione COALESCE(parent_account_id, id), che e'
+        l'elemento su cui fn_build_fattura_key aggrega. security_invoker=on
+        ri-specificato. Nessun'altra modifica. Brief dash-competenza §5.1.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - viewExists:
+              schemaName: vendite
+              viewName: vw_dash_competenza_attivita
+          - tableExists:
+              schemaName: anagrafiche
+              tableName: billing_account
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_attivita
+              WITH (security_invoker=on) AS
+              SELECT ca.competenza_mese,
+                  co.id AS commessa_id,
+                  (co.codice)::text AS commessa_codice,
+                  ca.id AS commessa_attivita_id,
+                  co.emittente_soggetto_ruolo_id,
+                  s.ragione_sociale_completa AS cliente_display,
+                  ca.articolo_id,
+                  ca.data_attivita,
+                  ca.quantita,
+                  ca.stato_approvazione,
+                  ca.stato_emissione,
+                  (
+                      CASE
+                          WHEN (((ca.stato_emissione)::text <> 'EMESSA'::text) AND ((ca.stato_approvazione)::text <> 'APPROVATA'::text)) THEN 'DA_APPROVARE'::text
+                          WHEN ((ca.stato_emissione)::text <> 'EMESSA'::text) THEN 'DA_EMETTERE'::text
+                          WHEN (af.fattura_riga_id IS NULL) THEN 'EMESSA_NON_FATTURATA'::text
+                          ELSE 'FATTURATA'::text
+                      END)::character varying AS stadio,
+                  (COALESCE(ca.prezzo_snapshot, (0)::numeric) * ca.quantita) AS valore,
+                  af.data_insert AS data_emissione,
+                      CASE
+                          WHEN (af.id IS NULL) THEN NULL::boolean
+                          ELSE ((date_trunc('month'::text, af.data_insert))::date > ca.competenza_mese)
+                      END AS emessa_in_ritardo,
+                  af.sospesa,
+                  af.posticipa_al,
+                  f.id AS fattura_id,
+                  af.fattura_riga_id,
+                  f.anno AS fattura_anno,
+                  f.serie AS fattura_serie,
+                  f.numero AS fattura_numero,
+                  sdf.codice_interno AS stato_fattura_codice_interno,
+                  sdf.codice AS stato_fattura_codice,
+                  (
+                      CASE
+                          WHEN (fr.id IS NULL) THEN NULL::numeric
+                          WHEN (COALESCE(fr.qta, (0)::numeric) = (0)::numeric) THEN (0)::numeric
+                          ELSE ((fr.imponibile_riga * af.quantita) / fr.qta)
+                      END)::numeric(18,6) AS valore_fatturato,
+                  COALESCE(f.critical, false) AS fattura_critical,
+                  lf.lotto_id,
+                  ca.sorgente_tipo_id,
+                  ca.sorgente_uid,
+                  ca.tipo_movimento,
+                  vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) AS gruppo_key,
+                  sc.emittibile AS commessa_emittibile,
+                  sc.codice_interno AS commessa_stato_codice_interno,
+                  COALESCE(sc.descrizione, sc.codice) AS commessa_stato_descrizione,
+                  -- ⬇️ NUOVA (in coda): BA della commessa. Costante dentro un
+                  --    gruppo fatturabile, quindi il -05 puo' metterla nel
+                  --    GROUP BY senza moltiplicare righe.
+                  co.billing_account_id
+                 FROM (((((((((((vendite.commesse co
+                   JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
+                   JOIN vendite.commesse_attivita ca ON ((ca.commessa_id = co.id)))
+                   LEFT JOIN vendite.attivita_fatturabili af ON ((af.commessa_attivita_id = ca.id)))
+                   LEFT JOIN vendite.fatture_righe fr ON ((fr.id = af.fattura_riga_id)))
+                   LEFT JOIN vendite.fatture f ON ((f.id = fr.fattura_id)))
+                   LEFT JOIN config.stati_doc_fiscale sdf ON ((sdf.id = f.stato_doc_fiscale_id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = co.billing_account_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+                   LEFT JOIN LATERAL ( SELECT flf.lotto_id
+                         FROM vendite.fatturazione_lotti_fatture flf
+                        WHERE (flf.fattura_id = f.id)
+                        ORDER BY flf.lotto_id DESC
+                       LIMIT 1) lf ON (true))
+                   CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids) escope)
+                WHERE (((escope.sr_ids IS NULL) OR (co.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))) AND ((sc.codice_interno)::text <> 'ANNULLATA'::text) AND ((ca.stato_emissione)::text <> 'ANNULLATA'::text) AND (((ca.stato_approvazione)::text <> 'RIFIUTATA'::text) OR ((ca.stato_emissione)::text = 'EMESSA'::text)));
+
+              COMMENT ON COLUMN vendite.vw_dash_competenza_attivita.billing_account_id IS
+                  'Billing account della COMMESSA (il figlio, mai risolto al padre). Costante dentro un gruppo fatturabile. Serve a vw_dash_competenza_gruppi per derivare il BA di fatturazione COALESCE(parent_account_id, id), che e'' l''elemento su cui fn_build_fattura_key aggrega. NON usarlo come chiave di aggregazione della fattura: quella e'' il padre.';
+      rollback:
+        - sql:
+            sql: |
+              -- Rollback non supportato: CREATE OR REPLACE VIEW non sa togliere
+              -- una colonna. Il ripristino richiede DROP + ricreazione della
+              -- versione precedente e di tutti i dipendenti
+              -- (vw_dash_competenza_gruppi, vw_dash_competenza_gruppi_riepilogo).
+              SELECT 1;
