@@ -774,6 +774,88 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
         self.assertEqual(params.count("%ORD0005174%"), 5)
 
 
+class DashCompetenzaGruppiExportParitaTests(TestCase):
+    """L'export deve portare gli STESSI filtri della lista (D-7).
+
+    Un export che non corrisponde a cio' che si vede a video e' peggio di nessun
+    export: chi lo apre crede di avere quel perimetro e non ha modo di
+    accorgersi che non e' cosi'. E il modo in cui si rompe non e' un errore —
+    e' un filtro aggiunto alla lista e dimenticato nell'export, che continua a
+    funzionare esportando piu' righe.
+
+    Il test legge la sorgente invece di eseguire la view: la view richiede
+    request/auth/scope, e cio' che va presidiato e' un fatto statico — quali
+    chiavi il chiamante passa a `fn_dash_competenza_gruppi`.
+    """
+
+    # Parametri del service che NON sono filtri di perimetro: l'export li governa
+    # per conto suo (niente paginazione, cap righe dal BB di export).
+    _NON_FILTRI = {"page", "page_size", "max_rows"}
+
+    # Scopo: chiavi del dict `filtri={...}` passato da ApiDashboardCompetenzaGruppiExport.
+    def _chiavi_export(self) -> set[str]:
+        import ast
+        import inspect
+
+        from apps.vendite.api import views_dashboard_competenza as mod
+
+        albero = ast.parse(inspect.getsource(mod))
+        for nodo in ast.walk(albero):
+            if (
+                isinstance(nodo, ast.ClassDef)
+                and nodo.name == "ApiDashboardCompetenzaGruppiExport"
+            ):
+                for chiamata in ast.walk(nodo):
+                    if not isinstance(chiamata, ast.Call):
+                        continue
+                    for kw in chiamata.keywords:
+                        if kw.arg == "filtri" and isinstance(kw.value, ast.Dict):
+                            return {
+                                k.value for k in kw.value.keys
+                                if isinstance(k, ast.Constant)
+                            }
+        raise AssertionError(
+            "dict `filtri` non trovato in ApiDashboardCompetenzaGruppiExport"
+        )
+
+    def test_export_passa_tutti_i_filtri_della_lista(self) -> None:
+        import inspect
+
+        parametri = set(inspect.signature(fn_dash_competenza_gruppi).parameters)
+        attesi = parametri - self._NON_FILTRI
+        dimenticati = attesi - self._chiavi_export()
+        self.assertEqual(
+            dimenticati, set(),
+            f"filtri presenti nella lista e assenti nell'export: {dimenticati}. "
+            "L'export continuerebbe a funzionare, esportando un perimetro piu' "
+            "largo di quello a video (D-7).",
+        )
+
+
+class DashCompetenzaGruppiOrdinamentoTests(TestCase):
+    """Ordinare per una colonna nuova non deve rompere la paginazione.
+
+    La vista mette lo STESSO gruppo su piu' righe (una per stadio), quindi senza
+    il tiebreaker `(gruppo_key, stadio)` l'ordine fra quelle righe e' indefinito:
+    a offset alti PostgreSQL puo' restituire righe gia' viste. Il difetto non da'
+    errore — da' pagine con doppioni e righe che non compaiono mai.
+    """
+
+    @patch.object(VenditeRepository, "_query_paged_view")
+    def test_colonne_nuove_ordinano_col_tiebreaker(self, mock_query) -> None:
+        mock_query.return_value = ([], 0)
+        for colonna in ("ba_codice_fatturazione", "id_fiscale"):
+            with self.subTest(colonna=colonna):
+                VenditeRepository().list_dash_competenza_gruppi(
+                    competenza_mese=date(2026, 8, 1), stadio=None,
+                    order_by=colonna, order_dir="asc", limit=25, offset=0,
+                )
+                order = mock_query.call_args.kwargs["order_by"]
+                self.assertIn(colonna, order)
+                self.assertIn("gruppo_key ASC", order)
+                self.assertIn("stadio", order)
+
+
 class DashCompetenzaFatturePerCellaTests(TestCase):
     """La seconda misura delle card: quante FATTURE, non quante attivita'.
 

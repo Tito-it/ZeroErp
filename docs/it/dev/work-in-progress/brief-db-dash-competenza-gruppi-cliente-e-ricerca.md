@@ -18,8 +18,8 @@
 >   — le quattro colonne del cliente di fatturazione (§5.2);
 > - ✅ `db/pgtap/vendite/test-vw-dash-competenza-gruppi-cliente-v1.sql` —
 >   **8 asserzioni, 8 eseguite, nessuno skip** (§5-bis);
-> - ⛔ **seed `ui.lista_colonna` NON scritto**: è accoppiato a BE-5 e deve
->   viaggiare nel suo stesso PR (§5.4). Provato e rimosso, con la ragione.
+> - ✅ **seed `ui.lista_colonna` scritto e applicato** (ids 476/477): è
+>   accoppiato a BE-5 ed è viaggiato nel suo stesso PR (§5.4), come previsto.
 >
 > **Migrazione applicata da Tid**, e i test lo confermano sul dato: `has_column`
 > passa, quindi le colonne esistono davvero nel database.
@@ -30,8 +30,9 @@
 > `test-vw-dash-security-invoker`, `test-emissione-mirata-gruppi-fatturabili-v1`,
 > `test-diagnostica-gruppi-fatturabili-v1`) passano tutti.
 >
-> 🔵 **Da qui in poi il lavoro è fuori dal DB**: BE-1…BE-6 (§6) e FE-1…FE-4
-> (§7). Il seed viaggia con BE-5.
+> ✅ **BE-1…BE-6 e FE-1…FE-4 REALIZZATI e mergiati** il 2026-08-17 (PR #1280),
+> seed compreso. Consuntivo, scelte prese dove il brief lasciava aperto, e
+> presidi automatici: **§13**. Restano tre verifiche in app e i due DL (§8, §10).
 >
 > ⛔ **Correzione del 2026-08-17 (rilievo BE)**: **§4 D-4 diceva il falso su
 > `sensibile`**, e ha prodotto una colonna invisibile a tutti. La correzione e
@@ -441,6 +442,22 @@ aveva mai seminata una.
 **Stato**: con la correzione di §4-bis il difetto torna **non attivabile** (non
 esiste più alcuna colonna `sensibile = t`). Resta da correggere.
 
+⭐ **E dal 2026-08-17 non è più «non attivabile per fortuna»: c'è un cancello.**
+`apps/core/tests/test_liste_configurabili_seed.py` →
+`test_colonna_sensibile_ha_sempre_un_grant` fallisce se una colonna attiva ha
+`sensibile = t` **senza** una riga di grant in `ui.lista_colonna_permesso` (il
+cui seed oggi **non esiste affatto** nella cartella `ui`, quindi l'insieme dei
+grant è vuoto per costruzione). Chi proverà a seminare una colonna sensibile
+troverà la CI rossa **prima** di applicarla, con scritto nel messaggio perché —
+ed è esattamente il momento in cui questo §4-ter va corretto.
+
+⚠️ Il cancello **non corregge il contatore**: rende impossibile arrivarci per
+distrazione. Il giorno in cui una colonna andrà protetta davvero, servono i
+grant **e** la correzione di `colonne_nuove`, nello stesso passo. Il test si
+stringe da sé sulla singola colonna appena il seed dei grant esisterà, senza
+modifiche. *Provato rompendolo: riportando `id_fiscale` a `sensibile = t` il
+test fallisce nominando la colonna.*
+
 **Direzione proposta**: `colonne_nuove` va calcolato **dopo** il filtro dei
 permessi — deve contare ciò che l'utente può davvero trovare, non ciò che è
 stato mergiato. In pratica: registrare al §3 i codici mergiati, e al §5
@@ -574,14 +591,14 @@ dati, e allora `cliente_display` va ridefinito sul BA di fatturazione.
 
 ## 6. Richieste al Backend
 
-| # | Cosa | Dove |
-| --- | --- | --- |
-| **BE-1** | Parametro `ba_fatturazione_id` (filtro cliente) in `_where_gruppi` — così lista **e** totali lo seguono insieme (§3.8) | `vendite_repository.py` |
-| **BE-2** | Parametro di ricerca libera, stessi cinque campi di D-6, anch'esso in `_where_gruppi`; min 3 caratteri | idem |
-| **BE-3** | Nuova facet «clienti» — voci con conteggio, calcolate **senza** applicare il filtro cliente né la ricerca, come già fa la facet dei tipi. Etichetta `«Ragione sociale — CODICE_BA»` (D-3). Include la voce «cliente non determinabile» (D-5) | idem, gemella di `list_dash_competenza_gruppi_tipi` |
-| **BE-4** | `ba_codice_fatturazione` e `id_fiscale` nel payload di riga | idem |
-| **BE-5** | ⛔ Le due colonne in `DASH_COMPETENZA_GRUPPI_SORT_COLUMNS` — **stesso PR del seed CSV**, §5.4: i test del seed le legano nei due versi. **Con** il tiebreaker `(gruppo_key, stadio)` già in uso, o la paginazione smette di essere deterministica | idem |
-| **BE-6** | Stessi filtri sull'endpoint di **export** (D-7) | `views_dashboard_competenza.py` |
+| # | Cosa | Dove | Stato |
+| --- | --- | --- | --- |
+| **BE-1** | Parametro `ba_fatturazione_id` (filtro cliente) in `_where_gruppi` — così lista **e** totali lo seguono insieme (§3.8) | `vendite_repository.py` | ✅ |
+| **BE-2** | Parametro di ricerca libera, stessi cinque campi di D-6, anch'esso in `_where_gruppi`; min 3 caratteri | idem | ✅ |
+| **BE-3** | Nuova facet «clienti» — voci con conteggio, calcolate **senza** applicare il filtro cliente né la ricerca, come già fa la facet dei tipi. Etichetta `«Ragione sociale — CODICE_BA»` (D-3). Include la voce «cliente non determinabile» (D-5) | idem, gemella di `list_dash_competenza_gruppi_tipi` | ✅ |
+| **BE-4** | `ba_codice_fatturazione` e `id_fiscale` nel payload di riga | idem | ✅ |
+| **BE-5** | ⛔ Le due colonne in `DASH_COMPETENZA_GRUPPI_SORT_COLUMNS` — **stesso PR del seed CSV**, §5.4: i test del seed le legano nei due versi. **Con** il tiebreaker `(gruppo_key, stadio)` già in uso, o la paginazione smette di essere deterministica | idem | ✅ |
+| **BE-6** | Stessi filtri sull'endpoint di **export** (D-7) | `views_dashboard_competenza.py` | ✅ |
 
 ⚠️ **BE-5 non è una formalità.** Il tiebreaker esiste perché la vista mette lo
 stesso gruppo su più righe (§2): senza, ordinando per una colonna nuova le
@@ -591,12 +608,12 @@ righe si ripetono o si saltano cambiando pagina.
 
 ## 7. Richieste al Frontend
 
-| # | Cosa |
-| --- | --- |
-| **FE-1** | Filtro cliente come scelta strutturata (non testo libero): valore = `ba_fatturazione_id`, etichetta = `«Ragione sociale — CODICE_BA»` |
-| **FE-2** | Ricerca libera separata dal filtro. Sono **due bisogni diversi**: «dov'è finito questo documento» e «dammi tutto di questo cliente» |
-| **FE-3** | **Ogni** cambio di filtro o di ricerca azzera la selezione in corso e torna a pagina 1 — come già fa `onGruppiTipoChange` |
-| **FE-4** | Le due colonne nuove non richiedono lavoro FE: arrivano spente dal merge automatico (§3.9) |
+| # | Cosa | Stato |
+| --- | --- | --- |
+| **FE-1** | Filtro cliente come scelta strutturata (non testo libero): valore = `ba_fatturazione_id`, etichetta = `«Ragione sociale — CODICE_BA»` | ✅ `<Select filter>` in `DashboardCompetenzaView` |
+| **FE-2** | Ricerca libera separata dal filtro. Sono **due bisogni diversi**: «dov'è finito questo documento» e «dammi tutto di questo cliente» | ✅ `<InputText>` con debounce (BB `useDebouncedAction`) |
+| **FE-3** | **Ogni** cambio di filtro o di ricerca azzera la selezione in corso e torna a pagina 1 — come già fa `onGruppiTipoChange` | ✅ `applicaFiltroGruppi`, **una sede per tutti e tre** i filtri |
+| **FE-4** | Le due colonne nuove non richiedono lavoro FE: arrivano spente dal merge automatico (§3.9) | ✅ confermato: nessuna riga di FE |
 
 **FE-3 è la regola che regge tutto il resto.** Fatturare righe che non si hanno
 davanti è l'incidente che questo brief esiste per evitare, e la selezione
@@ -607,29 +624,63 @@ riga): al cambio di **perimetro**, no.
 
 ## 8. Definizione di fatto
 
-- [ ] scelto un cliente, la lista mostra **tutti** i suoi gruppi del mese, e solo
-      quelli — su qualunque pagina si trovino · *aspetta BE-1*;
+> ⭐ **Stato al 2026-08-17 (notte).** BE-1…BE-6 e FE-1…FE-4 sono **implementati e
+> mergiati** (PR #1280); il seed è applicato, `sensibile = f` compreso. Le
+> caselle qui sotto non aspettano più codice: aspettano di essere **guardate in
+> app**. Tre sono state chiuse da presidi automatici — dove un test può dire il
+> vero, vale più di un click, perché resta vero anche domani.
+
+- [x] ✅ scelto un cliente, la lista mostra **tutti** i suoi gruppi del mese, e
+      solo quelli — su qualunque pagina si trovino · *verificato in app da Tid,
+      2026-08-17*;
 - [x] ✅ il cliente su cui si filtra è **lo stesso elemento** che
       `fn_build_fattura_key` mette in chiave (`COALESCE(parent_account_id, id)`)
       · *pgTAP test 5, con padre costruito*;
-- [ ] un gruppo il cui cliente di fatturazione non è determinabile **si vede**,
-      in una voce sua, contato nei totali (D-5) — verificato con un caso
-      costruito apposta, non per assenza di casi · *invariante coperta dal test
-      8; la voce di filtro aspetta BE-3*;
-- [ ] la riga può mostrare codice BA e identificativo fiscale, ed entrambi sono
-      **disponibili e spenti** di default · *aspetta il seed, che viaggia con
-      BE-5*;
-- [ ] cercando riferimento documento, codice commessa, identificativo fiscale,
-      codice BA o ragione sociale si trova la riga attesa;
-- [ ] numero di righe e totali di riepilogo restano coerenti fra loro e con
-      filtro **e** ricerca;
-- [ ] paginazione e ordinamento restano deterministici anche ordinando per le
-      colonne nuove;
-- [ ] l'export produce esattamente le righe che si vedono a video;
+- [⏸️] un gruppo il cui cliente di fatturazione non è determinabile **si vede**,
+      in una voce sua, contato nei totali (D-5) · **RINVIATA (Tid, 2026-08-17)**.
+      L'invariante è coperta dal pgTAP test 8 e la voce di filtro esiste (BE-3),
+      ma **non c'è un caso su cui mostrarsi**: servirebbe un albero BA che
+      attraversa due emittenti — cioè la configurazione che il cantiere
+      [perimetro emittente](brief-db-perimetro-emittente-liste-e-gerarchia-ba.md)
+      sta rendendo **impossibile** proprio ora. Costruirla apposta significherebbe
+      seminare il difetto per collaudare la rete (§5-bis, «Limiti dichiarati»).
+      ⭐ Si chiude **da sé** quando quel cantiere finisce: se la causa a monte
+      sparisce, la voce resta come rete e non ha più occasioni di comparire —
+      che è l'esito voluto, non una verifica mancata.
+      ⭐ **Confermato da DL-1 (§10)**: oggi **nessun billing account ha un
+      padre**, quindi il caso non ha proprio soggetti su cui mostrarsi — non era
+      una prova saltata, era una prova impossibile;
+- [x] ✅ la riga può mostrare codice BA e identificativo fiscale, ed entrambi sono
+      **disponibili e spenti** di default · *verificato in app da Tid dopo la
+      migrazione: «Id fiscale» compare, quindi la correzione `sensibile = f`
+      (§4-bis) è arrivata a destinazione sul dato*;
+- [x] ✅ cercando riferimento documento, codice commessa, identificativo fiscale,
+      codice BA o ragione sociale si trova la riga attesa · *verificato in app da
+      Tid, 2026-08-17*;
+- [x] ✅ numero di righe e totali di riepilogo restano coerenti fra loro e con
+      filtro **e** ricerca · *per costruzione: filtro cliente e ricerca vivono in
+      `_where_gruppi`, il predicato che lista e riepilogo condividono — non due
+      scritture che possono divergere. Coperto da
+      `test_where_gruppi_filtro_cliente_e_ricerca`*;
+- [x] ✅ paginazione e ordinamento restano deterministici anche ordinando per le
+      colonne nuove · *`DashCompetenzaGruppiOrdinamentoTests`: ordinando per
+      `ba_codice_fatturazione` e `id_fiscale` il tiebreaker `(gruppo_key, stadio)`
+      resta nell'ORDER BY*;
+- [x] ✅ l'export produce esattamente le righe che si vedono a video · *cancello
+      `DashCompetenzaGruppiExportParitaTests`: confronta i parametri-filtro di
+      `fn_dash_competenza_gruppi` con le chiavi del dict `filtri` dell'endpoint di
+      export. Un filtro aggiunto alla lista e dimenticato nell'export fa rosso —
+      ed è l'unico modo in cui questo si rompe, perché l'export continuerebbe a
+      funzionare esportando un perimetro più largo. **Provato rompendolo**:
+      tolto `search` dall'export, il test fallisce nominando il filtro*;
 - [x] ✅ **il conteggio delle righe non cambia** rispetto a prima delle
       modifiche, a parità di filtri (controllo anti-fan-out, §5.2 punto 2)
       · *pgTAP test 3, su tutto il perimetro visibile*;
-- [ ] **DL-2** misurato e dichiarato (§10).
+- [x] ✅ **DL-2 misurato** (2026-08-18) · e ha trovato un costo **che la ricerca
+      non c'entra**: 166 ms per 45 righe **senza filtri**, di cui il 78% per
+      risolvere `riferimento`. Misura, causa e conseguenze in §10; il lavoro è
+      passato al DB in un brief suo. Il rimedio previsto da D-6 («ancorare la
+      ricerca alla sorgente») **decade**: risolverebbe un decimo del problema.
 
 ⚠️ **Il terzultimo e il penultimo sono i due che si dimenticano**, e sono quelli
 che rompono il «seleziona tutto».
@@ -666,8 +717,87 @@ anche senza: sono la rete, non la cura.
 
 | # | Cosa | Perché |
 | --- | --- | --- |
-| **DL-1** | Quante commesse hanno `emittente_soggetto_ruolo_id` diverso da `fn_get_emittente_fiscale_id(BA di fatturazione)` | §3.5. Se ci sono, il filtro cliente resta corretto ma può ancora produrre due fatture per emittente diverso |
-| **DL-2** | Tempo di risposta di lista + totali + facet con ricerca attiva su un mese pieno | §3.7, D-6 |
+| **DL-1** | Quante commesse hanno `emittente_soggetto_ruolo_id` diverso da `fn_get_emittente_fiscale_id(BA di fatturazione)` | §3.5. Se ci sono, il filtro cliente resta corretto ma può ancora produrre due fatture per emittente diverso · ✅ **misurato 2026-08-18 — sotto** |
+
+### ✅ DL-1 misurato (2026-08-18) — zero divergenze, ma il dato che conta è un altro
+
+```text
+commesse esaminate ....................... 59
+divergenti (emittente commessa ≠ fattura) . 0
+emittente di fatturazione non risolto ..... 0
+billing account CON PADRE ................. 0   ← il numero che conta
+```
+
+**Zero divergenze è vero e non chiude niente.** Il §3.5 elencava due strade per
+divergere: emittente **forzato a mano** alla creazione della commessa, e albero
+BA che **attraversa due emittenti**. La prima è genuinamente a zero: nessuno ha
+mai forzato un emittente, ed è un'informazione. La seconda **non poteva
+risultare**, perché *nessun billing account ha un padre*.
+
+⚠️ **Con zero padri, `COALESCE(parent_account_id, id)` è sempre `id`.** Cioè:
+
+- la divergenza padre/figlio non ha **soggetti** su cui manifestarsi — non è
+  prevenuta, è che la popolazione che potrebbe esibirla è vuota;
+- il filtro cliente di **D-3** oggi è **indistinguibile** da un filtro sul BA
+  della riga. È corretto, ma i dati non lo esercitano: l'unica cosa che ha mai
+  verificato la risalita al padre è il **pgTAP test 5/6, col padre costruito
+  apposta**. Il brief lo aveva scelto per prudenza (§5-bis, *«il padre è
+  COSTRUITO, non cercato»*) — ora si vede che era l'unica strada possibile;
+- **D-5** («cliente non determinabile») non ha soggetti per la stessa ragione, e
+  questo conferma il rinvio della sua casella in §8: il padre fuori scope
+  richiede un padre.
+
+⭐ **Il giorno in cui nascerà il primo billing account con padre**, tre cose di
+questo brief passano dall'essere corrette all'essere *esercitate*: la risalita di
+D-3, la voce di D-5 e il test 7 (che verifica la premessa di D-2 sui dati veri —
+ed è quello **da non silenziare** se un giorno diventa rosso).
+
+⚠️ **Nota di metodo confermata**: un DL a zero non chiude il punto. Qui il numero
+utile non era `divergenti` ma `con_padre`, cioè **il denominatore** — senza, lo
+zero sembrava una rassicurazione mentre era un'assenza di casi.
+| **DL-2** | Tempo di risposta di lista + totali + facet con ricerca attiva su un mese pieno | §3.7, D-6 · ⚠️ **misurato 2026-08-17, e la misura va letta bene — sotto** |
+
+### ✅ DL-2 misurato (2026-08-18) — e ha trovato tutt'altro
+
+**La domanda era sbagliata.** DL-2 doveva misurare *il costo della ricerca*;
+l'`EXPLAIN (ANALYZE, BUFFERS)` col contesto operatore ha trovato un costo che
+**la ricerca non c'entra**, perché si paga **a ogni apertura della lista**.
+
+Misura su competenza giugno 2026, **nessun filtro, nessuna ricerca**:
+
+| Nodo | Tempo | Buffer |
+| --- | --- | --- |
+| **Totale (45 righe)** | **166 ms** | 35.057 |
+| Aggregato base — i 45 gruppi | 11 ms | 2.424 |
+| **`LATERAL` documenti** — `loops=45` | **~130 ms** | **28.058** |
+| ↳ `Seq Scan on preventivi` — `loops=34` | **~105 ms** | **22.951** |
+
+La risoluzione di `riferimento` è il **78% del tempo e l'80% dei buffer**. Per
+ogni gruppo scandisce l'intera tabella dei preventivi, scarta 164 righe e ne
+tiene 1 — e ogni riga scartata paga il predicato RLS, **~5.600 chiamate a
+funzione** per una lista di 45 righe. L'indice che eviterebbe tutto questo
+(`ix_preventivi_uid_text`) **esiste e non viene usato**; sugli altri cinque rami
+della union non esiste affatto.
+
+⚠️ **Tre conseguenze che cambiano le decisioni prese qui:**
+
+1. **il rimedio di D-6 non serve più.** «Ancorare la ricerca alla sorgente»
+   risolverebbe un decimo del problema, e solo quando si cerca;
+2. **non è lavoro BE.** Il costo è dentro la vista: nessuna strategia di query
+   del repository lo aggira;
+3. **scala con i gruppi, non con la pagina.** `loops=45` è il perimetro, non le
+   righe mostrate: a 450 gruppi sono ~1,3 s, e la paginazione non contiene nulla
+   perché la `LATERAL` gira prima di poter impaginare.
+
+→ Aperto **[brief-db-riferimento-gruppi-lateral-costosa.md](brief-db-riferimento-gruppi-lateral-costosa.md)**
+(perimetro DB), con la misura, la causa dal piano e il metodo per riprodurla.
+Il beneficio va oltre questa lista: `vw_dash_fatturazione_documenti` la leggono
+anche altri consumatori.
+
+⚠️ **Nota di metodo, pagata sul campo**: la prima esecuzione del 2026-08-17 aveva
+`app.ruolo_applicativo` vuoto. La vista è fail-closed: **zero righe in 0,1 ms**,
+con l'aria di essere velocissima. Un `EXPLAIN` senza il contesto operatore non
+misura l'applicazione — misura il cancello che si chiude.
 
 ⚠️ **Nota di metodo.** I dati di sviluppo sono di test: un DL che torna «zero
 casi» **non chiude** il punto — dice solo che oggi non è capitato. La domanda è
@@ -703,3 +833,88 @@ se può succedere, e per §3.5 la risposta è sì finché non c'è il guard.
 | Regola colonne sempre ordinabili | `scripts/gen_seed_lista.py` — `NUCLEO_ORDINABILE` |
 | Policy ricerca e paginazione | `docs/it/dev/Policy-ricerca-e-paginazione(API-DB).md` |
 | Cantiere perimetro emittente | [brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](brief-db-perimetro-emittente-liste-e-gerarchia-ba.md) |
+
+---
+
+## 13. Consuntivo BE/FE (2026-08-17, PR #1280)
+
+> Cosa è stato costruito, **le scelte prese dove il brief lasciava aperto**, e i
+> presidi che tengono chiuso ciò che un test può tenere chiuso. Il perimetro DB è
+> §5; qui c'è tutto il resto.
+
+### 13.1 Le tre scelte che il brief non fissava
+
+Non sono dettagli d'implementazione: cambiano il comportamento, e chi rilegge il
+brief senza questo paragrafo non le troverebbe scritte da nessuna parte.
+
+**a) Entrambe le facet sul perimetro BASE (competenza + stadio).** BE-3 chiedeva
+la facet clienti «senza filtro cliente né ricerca, come già fa la facet dei
+tipi», ma non diceva se dovesse seguire `tipo_gruppo`. Sceglierlo cambia le
+cose: se `clienti` seguisse il tipo e `tipi` no, le due tendine
+descriverebbero **perimetri diversi**, e i conteggi cambierebbero a seconda
+dell'**ordine** in cui l'operatore sceglie i filtri. Quindi nessuna delle due
+segue l'altra — è anche l'unica lettura che lascia invariata la facet esistente.
+
+**b) «Cliente non determinabile» è un parametro suo, non un id sentinella.**
+D-5 chiede una voce di filtro per i gruppi senza BA di fatturazione risolvibile.
+Rappresentarla con un id finto (`0`, `-1`) avrebbe messo un valore inventato in
+un campo che trasporta chiavi vere, e prima o poi qualcuno lo confronta con una
+PK. L'API espone quindi `ba_non_determinabile` (booleano) **alternativo** a
+`ba_fatturazione_id`. Il sentinella esiste solo nel frontend — una `<Select>` ha
+un valore solo — e lo store lo traduce: `GRUPPI_CLIENTE_NON_DETERMINABILE`,
+stringa e non numero, così non può collidere con nessun id.
+
+**c) Ricerca sotto i 3 caratteri: ignorata.** Non un 400 e non una lista
+svuotata. Il termine arriva mentre l'operatore sta ancora digitando: un errore
+sarebbe un errore su un'azione legittima, e una lista vuota gli direbbe «non
+c'è niente» quando la verità è «non ti ho ancora cercato». La soglia
+(`SEARCH_MIN_LEN`) vive nel repository e non nel service, perché vale **anche per
+l'export**, che non passa dalla validazione della view.
+
+### 13.2 Due trappole trovate implementando
+
+**`qp_bool` ha `default=True` sul parametro assente.** Usandolo per
+`ba_non_determinabile`, aprire la lista **senza** quel parametro avrebbe
+significato «true»: si sarebbero visti i soli gruppi senza cliente
+determinabile — quasi nulla — senza che alcun filtro risultasse attivo a video.
+Usato `qp_bool_optional`, che è anche rigoroso sui valori non riconosciuti.
+
+**Tre test rossi con `IndexError`.** Le fixture di
+`DashCompetenzaGruppiRepositoryTests` costruivano righe a **17** colonne mentre
+la proiezione ne ha **19**. Allineate, con la ragione scritta accanto: una riga
+finta più corta esplode su un indice, ma una più **lunga** farebbe **passare** il
+test leggendo la colonna sbagliata — il modo silenzioso di sbagliare.
+
+### 13.3 I presidi automatici
+
+Tre caselle della §8 sono chiuse da test, non da un click: dove un test può dire
+il vero, vale di più, perché resta vero anche domani. **Tutti e tre provati
+rompendoli** — un test che non si è mai visto fallire non presidia nulla.
+
+| Presidio | Dove | Cosa impedisce |
+| --- | --- | --- |
+| `test_colonna_sensibile_ha_sempre_un_grant` | `apps/core/tests/test_liste_configurabili_seed.py` | Che qualcuno semini `sensibile = t` senza grant, cioè la condizione che attiva il difetto §4-ter. ⚠️ Il seed di `ui.lista_colonna_permesso` **non esiste** nella cartella `ui`: oggi l'insieme dei grant è vuoto per costruzione |
+| `DashCompetenzaGruppiExportParitaTests` | `apps/vendite/tests/services/test_dashboard_competenza_service.py` | Che un filtro aggiunto alla lista venga dimenticato nell'export (D-7). È l'unico modo in cui si rompe: nessun errore, l'export continua a funzionare esportando **più righe** di quelle a video |
+| `DashCompetenzaGruppiOrdinamentoTests` | idem | Che ordinando per le colonne nuove sparisca il tiebreaker `(gruppo_key, stadio)`. Senza, a offset alti tornano righe già viste — e neanche questo dà errore |
+
+A cui si aggiunge `test_where_gruppi_filtro_cliente_e_ricerca`, che pinna il
+predicato condiviso: i cinque rami della ricerca in **un solo gruppo
+parentesizzato** (senza le parentesi l'OR si legherebbe all'ultima AND e la
+ricerca **allargherebbe** il perimetro invece di stringerlo), e «non
+determinabile» che vince sull'id invece di sommarsi.
+
+### 13.4 Fuori tabella
+
+- **BB estratto**: `core/composables/useDebouncedAction.js` (regola del 2, ok
+  Tid), con `SEARCH_DEBOUNCE_MS = 400` che ora **`useSearchTable` importa** — il
+  valore non vive più in due posti. Il pezzo che il BB porta non è il timer, sono
+  sei righe: è il **cleanup** su unmount/deactivate, che fa `cancel` e non
+  `flush` (un'azione ritardata va abbandonata quando esci, non eseguita in
+  fretta: se è una fetch riscriverebbe una lista che l'operatore ha lasciato).
+- **i18n**: due chiavi colonna (emesse dal seed, quindi verificate da
+  `check_i18n_keys.py`) più sette di interfaccia, in `it` **e** `en`.
+- **CSS**: `.app-dash-filtro-cliente` e `.app-dash-ricerca-gruppi` in `main.css`,
+  con larghezze **massime e non fisse** — la toolbar è flex-wrap e i due
+  controlli devono stringersi invece di spingere fuori «Fattura selezionati».
+- **Suite**: 3683 test Django verdi sul perimetro toccato, build ed eslint puliti,
+  `check_i18n_keys.py` pulito.
