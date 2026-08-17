@@ -1,0 +1,243 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `vw_dash_competenza_gruppi`: esporre il CLIENTE DI FATTURAZIONE.
+#   Secondo dei due passi DB del brief
+#   docs/it/dev/work-in-progress/brief-db-dash-competenza-gruppi-cliente-e-ricerca.md
+#   (§5.2, decisioni D-2/D-3/D-4/D-5). Consuma la colonna aggiunta dal -04.
+#
+# ── IL BISOGNO, IN UNA RIGA ─────────────────────────────────────────────
+#
+#   Sulla dashboard Competenza si spuntano gruppi e si preme «Fattura
+#   selezionati». Per non dimenticare righe di uno stesso cliente serve poterlo
+#   ISOLARE — e oggi del cliente esce solo una stringa da mostrare.
+#
+# ⚠️ COSA QUESTA VISTA NON PROMETTE. Filtrare per cliente NON garantisce una
+#   fattura sola. `fn_get_or_create_fattura_header` lo scrive: «Chiave documento
+#   dall'attivita': NOVE elementi, e da qui in giu' vanno usati tutti e nove».
+#   Il cliente e' UNO dei nove. Stesso cliente + tipo documento diverso, o
+#   valuta diversa, o termini di pagamento diversi ⇒ fatture diverse.
+#   E tipo/valuta/termini stanno sulla singola ATTIVITA', mentre il gruppo e'
+#   `(sorgente, commessa)`: una riga di questa lista puo' gia' spezzarsi su piu'
+#   fatture. Il filtro serve a NON DIMENTICARE RIGHE, non a garantire un
+#   documento unico (brief §3.1, decisione D-1). Non scrivere altrove che lo
+#   garantisce.
+#
+# ── LE QUATTRO COLONNE NUOVE (in coda) ──────────────────────────────────
+#
+#   ba_fatturazione_id            COALESCE(ba_riga.parent_account_id, ba_riga.id)
+#   ba_codice_fatturazione        codice del BA di fatturazione
+#   cliente_fatturazione_display  ragione sociale del BA di fatturazione
+#   id_fiscale                    id_fiscale_univoco_cf_piva del soggetto
+#
+#   `ba_fatturazione_id` e' L'ASSE DEL FILTRO, ed e' letteralmente lo stesso
+#   elemento che `fn_build_fattura_key` mette in chiave. Non un valore
+#   equivalente: lo stesso.
+#
+# ⚠️ MAI filtrare per ragione sociale o per soggetto. Un soggetto puo' avere
+#   PIU' ALBERI di billing account — anche sotto emittenti diversi (soggetto
+#   Tid, quattro BA sotto l'emittente Tito e quattro sotto Pippo: tutti con la
+#   stessa P.IVA e la stessa ragione sociale). Filtrare per nome raccoglierebbe
+#   alberi che finiscono su fatture diverse, perche' `utility_id` ed
+#   `emittente` sono altri due dei nove elementi. E' anche il motivo per cui
+#   l'etichetta del filtro deve portare il codice BA: senza, due alberi dello
+#   stesso cliente sono indistinguibili (brief §3.4, D-3).
+#
+# ── PERCHE' `cliente_display` NON SI TOCCA ──────────────────────────────
+#
+#   Resta la ragione sociale del BA della commessa (il FIGLIO), e non e' un
+#   difetto: `trgfn_billing_account_guard_normalize` §2.2 impone che padre e
+#   figlio condividano `id_fiscale_univoco_cf_piva`, e `anagrafiche.soggetti` ha
+#   UNIQUE(stato_id, id_fiscale_univoco_cf_piva) ⇒ stesso soggetto ⇒ stessa
+#   ragione sociale, per costruzione. Fra figlio e padre cambia SOLO il codice
+#   del BA — che infatti e' una delle colonne nuove (brief §3.3, D-2).
+#   `cliente_fatturazione_display` esiste per rendere la cosa verificabile a
+#   video, non perche' ci si aspetti che diverga.
+#
+# ── QUANDO IL CLIENTE NON SI RISOLVE (decisione D-5) ────────────────────
+#
+#   `anagrafiche.billing_account` ha RLS attiva (`rls_billing_account_ef_whitelist`)
+#   e questa vista e' `security_invoker=on`: i join ai BA passano dalla policy.
+#   Due casi, entrambi VOLUTI e distinguibili:
+#
+#     a) BA della riga non visibile  -> ba_fatturazione_id NULL, e con esso le
+#        altre tre. La riga RESTA IN LISTA e finisce nella voce «cliente non
+#        determinabile».
+#     b) BA della riga visibile ma PADRE no -> ba_fatturazione_id valorizzato
+#        (viene da `ba_riga.parent_account_id`, che si legge senza vedere il
+#        padre), display/codice/id_fiscale NULL.
+#
+# ⚠️ Nel caso (b) NON si ripiega sui dati del figlio. Sarebbe tecnicamente
+#   lecito — il guard garantisce lo stesso codice fiscale — ma produrrebbe una
+#   riga con l'id fiscale valorizzato e il codice BA vuoto: mostrerebbe come
+#   risolto un cliente che non lo e'. Le tre colonne descrittive vivono e
+#   muoiono INSIEME, e descrivono sempre e solo il BA di fatturazione.
+#   La riga non sparisce mai: sparire in silenzio e' esattamente la riga
+#   dimenticata da cui nasce il brief.
+#
+# ── PERCHE' IL NUMERO DI RIGHE NON CAMBIA ───────────────────────────────
+#
+#   E' il vincolo piu' importante: se l'aggiunta moltiplicasse le righe
+#   cambierebbero conteggio e totali, e il «seleziona tutto» della pagina
+#   manderebbe DOPPIONI a fatturare.
+#
+#   1. `billing_account_id` entra nel GROUP BY della CTE ma e' FUNZIONALMENTE
+#      DIPENDENTE da `commessa_id`, che c'e' gia': non spacca nessun gruppo.
+#   2. Tutti e quattro i join nuovi sono su CHIAVE PRIMARIA
+#      (`billing_account.id` due volte, `soggetti_ruoli.id`, `soggetti.id`):
+#      al piu' una riga ciascuno. Fan-out impossibile.
+#
+# ⚠️ E' anche il motivo per cui qui NON si tocca
+#   `anagrafiche.resellers_billing_account`: quella e' 1-N per billing account
+#   (`fn_build_fattura_key` fa `ORDER BY rb.id LIMIT 1` proprio per questo) e un
+#   join ingenuo moltiplicherebbe le righe. Stessa prudenza per qualunque
+#   aggiunta futura: join solo su PK, o si passa da una LATERAL con LIMIT 1.
+#
+#   ⚠️ La grana della vista resta `(competenza_mese, gruppo_key, …, stadio)`:
+#   lo STESSO gruppo compare gia' su piu' righe quando ha attivita' in stadi
+#   diversi. Non e' un difetto e non si «sistema»: il repository lo sa e ci
+#   mette il tiebreaker `(gruppo_key ASC, stadio …)`.
+#
+# ── NOTE DI FORMA ───────────────────────────────────────────────────────
+#
+#   ⚠️ `security_invoker=on` RI-SPECIFICATO: non compare in `pg_get_viewdef` e
+#   chi copia dalla doc auto-generata la azzera in silenzio -> bypass RLS.
+#
+#   ⚠️ Colonne IN CODA: `CREATE OR REPLACE VIEW` sa solo aggiungere in fondo.
+#   Cosi' i dipendenti (`vw_dash_competenza_gruppi_riepilogo`, che seleziona
+#   colonne per nome) continuano a funzionare senza DROP.
+#
+#   Nessun cambio al motore di fatturazione: ne' a `fn_build_fattura_key`, ne'
+#   ai lotti, ne' alla pipeline. Questo changeSet riguarda solo COME SI LEGGE
+#   la lista.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260817-05-update-vw-dash-competenza-gruppi-cliente-fatturazione-mctit.yaml
+
+  - changeSet:
+      id: 20260817-05-update-vw-dash-competenza-gruppi-cliente-fatturazione
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vw_dash_competenza_gruppi espone il cliente di FATTURAZIONE:
+        ba_fatturazione_id (= COALESCE(parent_account_id, id), lo stesso
+        elemento che fn_build_fattura_key mette in chiave), piu' codice BA,
+        ragione sociale e id fiscale. Quattro colonne in coda, quattro join su
+        PK: il numero di righe non cambia. Le tre descrittive sono NULL insieme
+        quando il BA di fatturazione non e' visibile (RLS) — la riga resta in
+        lista, decisione D-5. security_invoker=on ri-specificato. Brief
+        dash-competenza §5.2.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - viewExists:
+              schemaName: vendite
+              viewName: vw_dash_competenza_gruppi
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM information_schema.columns
+                 WHERE table_schema = 'vendite'
+                   AND table_name   = 'vw_dash_competenza_attivita'
+                   AND column_name  = 'billing_account_id';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_gruppi
+              WITH (security_invoker=on) AS
+              WITH aggregato AS (
+                       SELECT a.competenza_mese,
+                          a.gruppo_key,
+                          a.sorgente_tipo_id,
+                          a.sorgente_uid,
+                          a.commessa_id,
+                          a.commessa_codice,
+                          a.emittente_soggetto_ruolo_id,
+                          a.cliente_display,
+                          a.stadio,
+                          a.commessa_emittibile,
+                          a.commessa_stato_codice_interno,
+                          a.commessa_stato_descrizione,
+                          -- Funzionalmente dipendente da commessa_id (gia' nel
+                          -- GROUP BY): non spacca nessun gruppo.
+                          a.billing_account_id,
+                          count(*) AS n_attivita,
+                          COALESCE(sum(a.valore), (0)::numeric) AS valore,
+                          min(a.data_attivita) AS data_attivita_min,
+                          max(a.data_attivita) AS data_attivita_max,
+                          bool_or(((a.tipo_movimento)::text = 'ONERE'::text)) AS ha_oneri
+                         FROM vendite.vw_dash_competenza_attivita a
+                        GROUP BY a.competenza_mese, a.gruppo_key, a.sorgente_tipo_id, a.sorgente_uid, a.commessa_id, a.commessa_codice, a.emittente_soggetto_ruolo_id, a.cliente_display, a.stadio, a.commessa_emittibile, a.commessa_stato_codice_interno, a.commessa_stato_descrizione, a.billing_account_id
+                      )
+               SELECT g.competenza_mese,
+                  g.gruppo_key,
+                  COALESCE(s.codice_interno, 'ONERI_COMMESSA'::character varying) AS tipo_gruppo,
+                  s.area AS area_documento,
+                  COALESCE(doc.codice, g.commessa_codice, g.gruppo_key) AS riferimento,
+                  g.commessa_id,
+                  g.commessa_codice,
+                  g.emittente_soggetto_ruolo_id,
+                  g.cliente_display,
+                  g.stadio,
+                  g.n_attivita,
+                  g.valore,
+                  g.data_attivita_min,
+                  g.data_attivita_max,
+                  g.ha_oneri,
+                  g.sorgente_tipo_id,
+                  g.sorgente_uid,
+                  g.commessa_emittibile,
+                  g.commessa_stato_codice_interno,
+                  g.commessa_stato_descrizione,
+                  doc.documento_id,
+                  -- ⬇️ NUOVE (in coda). L'id si legge da ba_riga senza vedere il
+                  --    padre; le tre descrittive vengono dal BA di fatturazione
+                  --    e sono NULL INSIEME se quello non e' visibile (RLS).
+                  COALESCE(ba_riga.parent_account_id, ba_riga.id) AS ba_fatturazione_id,
+                  ba_fatt.codice AS ba_codice_fatturazione,
+                  sog.ragione_sociale_completa AS cliente_fatturazione_display,
+                  sog.id_fiscale_univoco_cf_piva AS id_fiscale
+                 FROM aggregato g
+                   LEFT JOIN config.sorgenti s ON ((s.id = g.sorgente_tipo_id))
+                   LEFT JOIN LATERAL ( SELECT d.codice,
+                          d.documento_id
+                         FROM vendite.vw_dash_fatturazione_documenti d
+                        WHERE ((s.area IS NOT NULL) AND ((d.area)::text = (s.area)::text) AND (d.documento_uid = g.sorgente_uid))
+                        ORDER BY d.competenza_mese DESC NULLS LAST
+                       LIMIT 1) doc ON (true)
+                   -- Join su PK: al piu' una riga ciascuno, nessun fan-out.
+                   LEFT JOIN anagrafiche.billing_account ba_riga ON ((ba_riga.id = g.billing_account_id))
+                   LEFT JOIN anagrafiche.billing_account ba_fatt ON ((ba_fatt.id = COALESCE(ba_riga.parent_account_id, ba_riga.id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_fatt ON ((sr_fatt.id = ba_fatt.soggetto_ruolo_id))
+                   LEFT JOIN anagrafiche.soggetti sog ON ((sog.id = sr_fatt.soggetto_id));
+
+              COMMENT ON COLUMN vendite.vw_dash_competenza_gruppi.ba_fatturazione_id IS
+                  'Billing account su cui la fattura AGGREGA: COALESCE(parent_account_id, id) del BA della commessa. E'' lo stesso elemento che vendite.fn_build_fattura_key mette in chiave, non un equivalente. ASSE DEL FILTRO CLIENTE della lista. NULL quando il BA della riga non e'' visibile all''operatore (RLS): in quel caso la riga resta in lista sotto «cliente non determinabile», non sparisce. ⚠️ Filtrare per questo id, MAI per ragione sociale o soggetto: un soggetto puo'' avere piu'' alberi di BA, anche sotto emittenti diversi, e finiscono su fatture diverse.';
+
+              COMMENT ON COLUMN vendite.vw_dash_competenza_gruppi.ba_codice_fatturazione IS
+                  'Codice del billing account di fatturazione (il padre se c''e''). E'' l''UNICO dato che differisce fra figlio e padre: ragione sociale e id fiscale coincidono per costruzione (guard trgfn_billing_account_guard_normalize §2.2 + UNIQUE su soggetti). Obbligatorio nell''etichetta del filtro cliente: senza, due alberi dello stesso soggetto sono indistinguibili. NULL se il BA di fatturazione non e'' visibile.';
+
+              COMMENT ON COLUMN vendite.vw_dash_competenza_gruppi.cliente_fatturazione_display IS
+                  'Ragione sociale del soggetto raggiunto dal BA di FATTURAZIONE. Coincide con cliente_display per costruzione (stesso codice fiscale ⇒ stesso soggetto): esiste per rendere la coincidenza verificabile a video, non perche'' ci si aspetti che diverga. NULL se il BA di fatturazione non e'' visibile.';
+
+              COMMENT ON COLUMN vendite.vw_dash_competenza_gruppi.id_fiscale IS
+                  'Codice fiscale / partita IVA (anagrafiche.soggetti.id_fiscale_univoco_cf_piva) del cliente di fatturazione. Serve a distinguere due omonimi PRIMA di emettere, non dopo. Colonna del catalogo lista marcata sensibile. NULL se il BA di fatturazione non e'' visibile — mai ripiegata sui dati del figlio: le tre colonne descrittive vivono e muoiono insieme.';
+      rollback:
+        - sql:
+            sql: |
+              -- Rollback non supportato: CREATE OR REPLACE VIEW non sa togliere
+              -- colonne. Il ripristino richiede DROP + ricreazione della versione
+              -- precedente e del dipendente vw_dash_competenza_gruppi_riepilogo.
+              SELECT 1;
