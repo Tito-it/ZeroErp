@@ -2040,6 +2040,15 @@ a {
   font-size: 0.85rem;
 }
 
+/* Spinner «fatturazione in corso su questa riga»: il verbo accoda un job e la
+ * riga resta a video per tutta la durata. Colore d'accento e non di allarme —
+ * è un'attività normale in corso, non un problema. */
+.app-dash-gruppo-in-corso {
+  margin-left: 0.4rem;
+  color: var(--app-in-corso-color);
+  font-size: 0.85rem;
+}
+
 /* Stepper compatto anno/mese — solo piccoli schermi. Sostituisce il pannello
  * 12 mesi: ◀ Mese Anno + semaforo ▶, le card restano sempre visibili sotto.
  * Il passo mese scavalca l'anno (dic ▶ = gennaio anno successivo). */
@@ -2082,4 +2091,58 @@ a {
   .app-dash-header {
     display: none;
   }
+}
+
+/* Wrapper del pulsante «Fattura selezionati»: esiste solo per ospitare il
+ * tooltip quando il bottone è DISABILITATO — un bottone spento non riceve
+ * eventi del mouse, quindi il tooltip appeso a lui non comparirebbe proprio
+ * quando il motivo serve. `display: inline-flex` per non alterare la toolbar. */
+.app-dash-fattura-wrap {
+  display: inline-flex;
+}
+
+/* «N fatturazioni in corso» in testata della lista gruppi. Le emissioni mirate
+ * concorrenti non hanno un tetto: le marcature per riga da sole non bastano a
+ * dire quanto si ha in volo, perché stanno sulle righe e quelle scorrono di
+ * pagina a ogni ricarica post-esito. Questo conteggio non dipende da cosa si ha
+ * davanti. Colore d'accento e non di allarme: è attività normale in corso. */
+.app-dash-giri-in-corso {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  color: var(--app-in-corso-color);
+}
+
+/* Ripartizione per AREA sotto le card di classe (Backlog fatturazione): chip
+ * cliccabili che dicono di cosa sono i documenti contati dalla card. Stessa
+ * grammatica visiva delle card — bordo che si accende sulla selezione — ma
+ * peso minore: è una lettura di dettaglio, non il livello principale. */
+.app-dash-aree-riepilogo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.6rem 0 0;
+}
+
+.app-dash-area-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--app-card-border);
+  border-radius: 999px;
+  background: var(--app-card-bg);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color var(--app-transition-fast, 0.15s);
+}
+
+.app-dash-area-chip:hover {
+  border-color: var(--app-card-hover-border);
+}
+
+.app-dash-area-chip.is-selected {
+  border-color: var(--app-in-corso-color);
+  box-shadow: 0 0 0 1px var(--app-in-corso-color);
 }

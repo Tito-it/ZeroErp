@@ -21,7 +21,17 @@
 //   </Column>
 //
 // Formato azione:
-//   { key, label, icon, severity?, visible?: bool, disabled?: bool, tooltip?: string, allowWhenInactive?: bool, command: () => void }
+//   { key, label, icon, severity?, visible?: bool, disabled?: bool, tooltip?: string, allowWhenInactive?: bool, action?: string, command: () => void }
+//
+// ⚠️ `action` = codename del permesso di processo (`auth.isActionAllowed`):
+// senza quel permesso la voce NON viene renderizzata, come gia' fanno
+// `PageActionsBar` e `DrawerActionsBar` via `useActionBar`. Fino al 2026-08-17
+// questo componente IGNORAVA il campo: chi lo passava — `useLottoAzioni`
+// («Riporta in lavorazione», «Annulla», «Numera») e `CommessaGestioneDrawer` —
+// credeva di aver messo un cancello che non esisteva, e un operatore senza
+// permesso vedeva l'azione nel kebab (rilievo di Tid). Il difetto era peggiore
+// dell'assenza del campo: sembrava presidiato. Il gate vero resta il BE — questo
+// e' solo il non-proporre.
 // Quando `tooltip` e' valorizzato sostituisce `label` come tooltip del bottone
 // inline (utile per spiegare il motivo di un disabled, es. capability di riga).
 // Se `row` ha `attivo=false` o `is_active=false`, le azioni sono disabilitate
@@ -46,6 +56,7 @@ import Menu from 'primevue/menu'
 import Button from 'primevue/button'
 import { MANAGE_ICONS } from '../constants'
 import { menuItemClass } from '../utils/rowActions'
+import { useAuthStore } from '../../stores/auth'
 
 const props = defineProps({
   actions: { type: Array, required: true },
@@ -61,11 +72,23 @@ const props = defineProps({
 })
 
 const { t } = useI18n()
+const auth = useAuthStore()
 const menuRef = ref(null)
 
-// Scopo: azioni filtrate da usare in entrambe le varianti.
+// Scopo: azioni filtrate da usare in entrambe le varianti. Stesso predicato di
+//        `useActionBar` (PageActionsBar/DrawerActionsBar): un solo meccanismo di
+//        gate per tutte e tre le barre, altrimenti la stessa azione compare o
+//        sparisce a seconda di dove la si guarda.
+//        ⚠️ Il permesso NASCONDE, non disabilita: un'azione grigia che non si
+//        potra' mai premere e' una promessa che non si mantiene, e il motivo
+//        («non hai il permesso») non e' qualcosa che l'operatore possa risolvere
+//        da li'. Per cio' che invece dipende dallo STATO — e che quindi puo'
+//        cambiare — resta `disabled` + `tooltip`, che spiega e resta a video.
 const visibleActions = computed(() =>
-  props.actions.filter(a => a.visible !== false),
+  props.actions.filter(
+    a => a.visible !== false
+      && !(a.action && !auth.isActionAllowed(a.action)),
+  ),
 )
 
 // Scopo: riconosce lo stato inattivo standard delle righe lista.

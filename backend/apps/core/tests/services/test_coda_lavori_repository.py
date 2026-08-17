@@ -14,6 +14,8 @@
 #   2. claim_scope_null_resta_none
 #   3. get_stato_decodifica_result_e_ultimo_errore
 #   4. get_dettaglio_decodifica_payload_result_errore
+#   5. claim_riordina_per_priorita_e_id
+#   6. claim_priorita_vince_sull_id
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -49,7 +51,7 @@ class CodaLavoriRepositoryJsonbTests(SimpleTestCase):
             '{"competenza_mese": "2026-06-01"}',  # payload jsonb come str
             "OPERATORE",
             '{"auth_user_id": 1, "scope_key": "ALL"}',  # scope jsonb come str
-            0, 5, "handler_x",
+            0, 5, "handler_x", 100,  # ultima colonna: priorita (riordino)
         )
         conn.cursor.return_value = _cursor_with([row], many=True)
 
@@ -64,13 +66,52 @@ class CodaLavoriRepositoryJsonbTests(SimpleTestCase):
     # 2. claim: job SISTEMA ha scope NULL → resta None (mai coercizzato a {}).
     @patch(f"{_MOD}.connection")
     def test_claim_scope_null_resta_none(self, conn) -> None:
-        row = (6, "JOB_SISTEMA", "{}", "SISTEMA", None, 0, 5, "handler_y")
+        row = (6, "JOB_SISTEMA", "{}", "SISTEMA", None, 0, 5, "handler_y", 100)
         conn.cursor.return_value = _cursor_with([row], many=True)
 
         items = CodaLavoriRepository().claim(limit=1)
 
         self.assertIsNone(items[0].scope)
         self.assertEqual(items[0].payload, {})
+
+    # 5. claim: l'ordine di ESECUZIONE e' FIFO (priorita, id) anche se il driver
+    #    restituisce le righe in ordine sparso. `UPDATE ... RETURNING` non
+    #    garantisce l'ordine della CTE: senza il riordino esplicito, due giri di
+    #    fatturazione lanciati di seguito si eseguivano al contrario e il
+    #    secondo vinceva la contesa sulle righe (misurato in app 2026-08-17).
+    @patch(f"{_MOD}.connection")
+    def test_claim_riordina_per_priorita_e_id(self, conn) -> None:
+        def _riga(job_id: int, priorita: int = 100) -> tuple:
+            return (
+                job_id, "FATTURAZIONE_GIRO", "{}", "OPERATORE", None,
+                0, 5, "handler_x", priorita,
+            )
+
+        # Il driver le restituisce al contrario dell'ordine di accodamento.
+        conn.cursor.return_value = _cursor_with(
+            [_riga(31), _riga(12), _riga(27)], many=True,
+        )
+
+        items = CodaLavoriRepository().claim(limit=10)
+
+        self.assertEqual([i.id for i in items], [12, 27, 31])
+
+    # 6. claim: a parita' di nulla, la priorita' viene PRIMA dell'id — e' la
+    #    stessa chiave della CTE, non una FIFO pura (un tipo lungo non deve
+    #    affamare gli altri).
+    @patch(f"{_MOD}.connection")
+    def test_claim_priorita_vince_sull_id(self, conn) -> None:
+        conn.cursor.return_value = _cursor_with(
+            [
+                (10, "T", "{}", "SISTEMA", None, 0, 5, "h", 100),
+                (99, "T", "{}", "SISTEMA", None, 0, 5, "h", 10),
+            ],
+            many=True,
+        )
+
+        items = CodaLavoriRepository().claim(limit=10)
+
+        self.assertEqual([i.id for i in items], [99, 10])
 
     # 3. get_stato: result/ultimo_errore str → dict (o None se NULL).
     @patch(f"{_MOD}.connection")

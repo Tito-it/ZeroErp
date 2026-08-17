@@ -69,6 +69,21 @@ _FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
     "fk_ordini_v_cliente_ruolo": (E_VENDITE_FK, "Cliente non valido."),
 }
 
+# CHECK di dominio. `chk_ordini_fatturazione_trigger` diventa raggiungibile solo
+# con i changeSet del 2026-08-17: finora `trgfn_ordini_normalize` sovrascriveva
+# il valore PRIMA che il CHECK guardasse, quindi la colonna accettava qualunque
+# stringa e la riciclava in un valore valido — una difesa che sembrava esserci
+# e non c'era (rilievo del team DB, scoperto dal loro pgTAP: «caught: no
+# exception»). Da quell'apply un valore fuori dominio solleva davvero: senza
+# questa riga arriverebbe al FE il messaggio generico di fallback, che non dice
+# quale campo è sbagliato né quali valori sono ammessi.
+_CHECK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+    "chk_ordini_fatturazione_trigger": (
+        E_VENDITE_VALIDATION,
+        "Trigger di fatturazione non valido: ammessi CONFERMATO, SPEDITO, CONSEGNATO.",
+    ),
+}
+
 # ── Costanti di dominio ──
 _FN = "vendite.ordini_service"
 _STATO_BOZZA = "DRAFT"
@@ -1159,6 +1174,7 @@ _db_errors = make_db_errors_translator(
     fallback_message="Violazione vincolo DB su ordine.",
     unique_constraints=_UNIQUE_CONSTRAINTS,
     fk_constraints=_FK_CONSTRAINTS,
+    check_constraints=_CHECK_CONSTRAINTS,
 )
 
 

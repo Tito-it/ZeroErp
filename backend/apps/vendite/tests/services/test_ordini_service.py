@@ -300,6 +300,24 @@ class OrdiniDbErrorsTests(SimpleTestCase):
                 raise IntegrityError("vincolo sconosciuto xyz")
         self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
 
+    # Scopo: il CHECK di dominio sul trigger di fatturazione produce un
+    #        messaggio PARLANTE, non il fallback generico. Diventa raggiungibile
+    #        con i changeSet del 2026-08-17 (prima `trgfn_ordini_normalize`
+    #        sovrascriveva il valore prima che il CHECK guardasse, quindi la
+    #        colonna accettava qualunque stringa): senza la mappatura, dall'apply
+    #        in poi il FE riceverebbe «Violazione vincolo DB su ordine» senza
+    #        sapere quale campo né quali valori sono ammessi.
+    def test_integrity_error_check_trigger_mappato(self) -> None:
+        with self.assertRaises(ServiceError) as cm:
+            with _db_errors("test"):
+                raise IntegrityError(
+                    'new row for relation "ordini" violates check constraint '
+                    '"chk_ordini_fatturazione_trigger"',
+                )
+        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("CONFERMATO", cm.exception.message)
+        self.assertIn("SPEDITO", cm.exception.message)
+
     def test_database_error_trigger_code_estratto(self) -> None:
         with self.assertRaises(ServiceError) as cm:
             with _db_errors("test"):
