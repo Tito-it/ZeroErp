@@ -1,0 +1,193 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+-- Test: vendite.trgfn_resi_righe_guard_origine_coerente — il riferimento
+--       all'ordine sul reso deve combaciare con la riga di merce resa.
+--       (brief-design-partita-merce-generalizzata §8.5, slice S6a,
+--        changeSet 20260817-13)
+--
+-- Elenco test (plan 6):
+--   1) la funzione guard esiste
+--   2) il trigger e' agganciato in fase _a20_ su resi_righe
+--   3) merce ORDINATA + riferimento a una riga d'ordine SBAGLIATA -> P0001
+--   4) merce ORDINATA + riferimento VUOTO -> P0001
+--   5) merce SENZA ordine + riferimento valorizzato -> P0001
+--   6) il caso corretto passa (il guard non blocca cio' che va bene)
+--
+-- Scopo:
+--  - `resi_righe.ordine_riga_id` e' una denormalizzazione ricavabile dal
+--    fulfillment, e la legge `fn_ordine_riga_qta_riconsegna` per riaprire il
+--    residuo dell'ordine. Sbagliata o vuota, la merce torna indietro e
+--    l'ordine non se ne accorge.
+--  - I test 3-4-5 sono le TRE facce dello stesso errore, e servono tutte:
+--    presidiare solo il valore sbagliato lascerebbe passare il vuoto, che e'
+--    il caso piu' probabile perche' non richiede di sbagliare nulla — basta
+--    non compilare.
+--
+-- ⚠️ Lo SQLSTATE nei `throws_ok` NON e' pedanteria. Scrivendo questo guard il
+--    primo tentativo bloccava con `42883 la funzione non esiste` — mancava
+--    l'argomento VARIADIC di `fn_log_and_raise_error` — cioe' il guard
+--    falliva per una ragione che non c'entrava nulla col dominio. Un
+--    `throws_ok` senza discriminante avrebbe dato quel rosso per verde.
+-- ------------------------------------------------------------
+
+-- ⚠️ 1. TRANSAZIONE. Senza, un fallimento a meta' lascia i dati di prova nel
+--   database e rompe la corsa successiva, che vede un rosso non suo.
+BEGIN;
+
+-- ⚠️ 2. VINCOLI DIFFERITI. Scattano al COMMIT, e qui il COMMIT non arriva mai:
+--   senza questa riga il file sarebbe verde per sottrazione.
+SET CONSTRAINTS ALL IMMEDIATE;
+
+-- ⚠️ 3. CONTESTO APPLICATIVO. Il test gira come `zeroerp_app` con la RLS attiva.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
+SELECT plan(6);
+
+SET LOCAL app.ruolo_applicativo = 'OPERATORE';
+SET LOCAL app.current_user_id = '1';
+
+-- ============================================================
+-- 1-2) Il guard esiste ed e' agganciato dove deve
+-- ============================================================
+SELECT has_function('vendite', 'trgfn_resi_righe_guard_origine_coerente',
+  '1) la funzione guard esiste');
+
+SELECT ok(
+  (SELECT COUNT(*) = 1 FROM pg_trigger t
+     JOIN pg_class c ON c.oid = t.tgrelid
+     JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'vendite' AND c.relname = 'resi_righe'
+      AND t.tgname = 'trg_resi_righe_a20_guard_origine_coerente_ins_upd'
+      AND NOT t.tgisinternal),
+  '2) il trigger e'' agganciato in fase _a20_ su resi_righe');
+
+-- ============================================================
+-- Fixture: due righe di merce sullo STESSO DDT — una che evade l'ordine,
+-- una aggiunta a mano. E' la spedizione mista, cioe' il documento su cui il
+-- riferimento all'ordine si puo' sbagliare in tutti e tre i modi.
+-- ============================================================
+CREATE TEMP TABLE tmp_refs AS
+SELECT
+  (SELECT ba.id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1)                                              AS billing_account_id,
+  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id LIMIT 1) AS soggetto_ruolo_id,
+  (SELECT a.id FROM catalogo.articoli a
+    WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
+    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)                      AS articolo_id,
+  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)               AS valuta_id,
+  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
+  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef ORDER BY ef.id LIMIT 1)  AS emittente_fiscale_id,
+  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO' AND s.attivo LIMIT 1) AS stato_ord_conf_id,
+  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='EMESSO' AND s.attivo LIMIT 1)     AS stato_ddt_emesso_id,
+  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='SPEDITO' AND s.attivo LIMIT 1)    AS stato_ddt_spedito_id,
+  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='CONSEGNATO' AND s.attivo LIMIT 1) AS stato_ddt_consegnato_id,
+  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='DDT_VENDITA' AND s.attivo LIMIT 1)     AS sorgente_ddt_id,
+  (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='DRAFT' AND s.attivo LIMIT 1)     AS stato_reso_draft_id,
+  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_A_CREDITO' AND t.attivo LIMIT 1) AS tipo_credito_id,
+  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' LIMIT 1) AS causale_vendita_id,
+  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')      AS tipo_ind_con_id;
+
+CREATE TEMP TABLE tmp_doc AS
+WITH o AS (
+  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
+    valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
+  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_conf_id, r.valuta_id,
+         DATE '2026-08-15', 'SPEDITO', r.emittente_fiscale_id, false,
+         jsonb_build_object('test_scope','pgtap_guard_origine')
+  FROM tmp_refs r RETURNING id
+), orr AS (
+  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
+    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
+  SELECT o.id, 1, r.articolo_id, 'Riga guard origine', 10, 10, 25, r.iva_id, true, false,
+         jsonb_build_object('test_scope','pgtap_guard_origine')
+  FROM o, tmp_refs r RETURNING id, ordine_id
+)
+SELECT orr.ordine_id, orr.id AS ordine_riga_id,
+       vendite.fn_genera_ddt_da_ordine(orr.ordine_id) AS ddt_id
+FROM orr;
+
+INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
+SELECT (SELECT ddt_id FROM tmp_doc), (SELECT tipo_ind_con_id FROM tmp_refs),
+       '{"display":"CON"}'::jsonb ON CONFLICT DO NOTHING;
+UPDATE vendite.ddt SET causale_trasporto_id=(SELECT causale_vendita_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_doc);
+UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_emesso_id FROM tmp_refs)     WHERE id=(SELECT ddt_id FROM tmp_doc);
+UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_spedito_id FROM tmp_refs)    WHERE id=(SELECT ddt_id FROM tmp_doc);
+UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_consegnato_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_doc);
+
+-- La riga che evade l'ordine (ha un fulfillment) e quella aggiunta a mano.
+-- ⚠️ In due passi e non in uno: un `INSERT ... RETURNING` non sta dentro una
+-- sottoquery scalare, va incapsulato in una CTE che modifica i dati.
+CREATE TEMP TABLE tmp_righe AS
+SELECT dr.id AS riga_ordinata, NULL::bigint AS riga_manuale
+  FROM vendite.ddt_righe dr
+ WHERE dr.ddt_id = (SELECT ddt_id FROM tmp_doc)
+ ORDER BY dr.id LIMIT 1;
+
+WITH m AS (
+  INSERT INTO vendite.ddt_righe (ddt_id, riga_nr, articolo_id, descrizione,
+    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
+  SELECT (SELECT ddt_id FROM tmp_doc), 900, r.articolo_id, 'Riga a mano', 4, 4, 25,
+         r.iva_id, true, false, jsonb_build_object('test_scope','pgtap_guard_origine')
+  FROM tmp_refs r RETURNING id
+)
+UPDATE tmp_righe SET riga_manuale = (SELECT id FROM m);
+
+-- La testata di reso su cui si tenteranno gli inserimenti.
+CREATE TEMP TABLE tmp_reso AS
+WITH t AS (
+  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
+  SELECT r.stato_reso_draft_id, r.sorgente_ddt_id,
+         (SELECT d.uid FROM vendite.ddt d WHERE d.id = (SELECT ddt_id FROM tmp_doc)),
+         false, jsonb_build_object('test_scope','pgtap_guard_origine')
+  FROM tmp_refs r RETURNING id
+)
+SELECT id FROM t;
+
+-- ============================================================
+-- 3-5) Le tre facce dello stesso errore
+-- ============================================================
+SELECT throws_ok(
+  format($f$INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
+              articolo_id, descrizione, qta_operativa, tipo_reso_id, storicizza)
+            VALUES (%s, 1, %s, 999999999, '%s', 'x', 2, %s, false)$f$,
+    (SELECT id FROM tmp_reso), (SELECT riga_ordinata FROM tmp_righe),
+    (SELECT articolo_id FROM tmp_refs), (SELECT tipo_credito_id FROM tmp_refs)),
+  'P0001', NULL,
+  '3) merce ordinata + riga d''ordine SBAGLIATA -> errore di dominio');
+
+SELECT throws_ok(
+  format($f$INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
+              articolo_id, descrizione, qta_operativa, tipo_reso_id, storicizza)
+            VALUES (%s, 2, %s, NULL, '%s', 'x', 2, %s, false)$f$,
+    (SELECT id FROM tmp_reso), (SELECT riga_ordinata FROM tmp_righe),
+    (SELECT articolo_id FROM tmp_refs), (SELECT tipo_credito_id FROM tmp_refs)),
+  'P0001', NULL,
+  '4) merce ordinata + riferimento VUOTO -> errore di dominio (il caso piu'' probabile)');
+
+SELECT throws_ok(
+  format($f$INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
+              articolo_id, descrizione, qta_operativa, tipo_reso_id, storicizza)
+            VALUES (%s, 3, %s, %s, '%s', 'x', 2, %s, false)$f$,
+    (SELECT id FROM tmp_reso), (SELECT riga_manuale FROM tmp_righe),
+    (SELECT ordine_riga_id FROM tmp_doc),
+    (SELECT articolo_id FROM tmp_refs), (SELECT tipo_credito_id FROM tmp_refs)),
+  'P0001', NULL,
+  '5) merce SENZA ordine + riferimento valorizzato -> errore di dominio');
+
+-- ============================================================
+-- 6) E il caso corretto passa. Un guard che blocca tutto non e' un guard.
+-- ============================================================
+SELECT lives_ok(
+  format($f$INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
+              articolo_id, descrizione, qta_operativa, tipo_reso_id, storicizza)
+            VALUES (%s, 4, %s, %s, '%s', 'x', 2, %s, false)$f$,
+    (SELECT id FROM tmp_reso), (SELECT riga_ordinata FROM tmp_righe),
+    (SELECT ordine_riga_id FROM tmp_doc),
+    (SELECT articolo_id FROM tmp_refs), (SELECT tipo_credito_id FROM tmp_refs)),
+  '6) riferimento corretto: il guard lascia passare');
+
+SELECT * FROM finish();
+ROLLBACK;

@@ -33,6 +33,12 @@
 > 🔵 **Da qui in poi il lavoro è fuori dal DB**: BE-1…BE-6 (§6) e FE-1…FE-4
 > (§7). Il seed viaggia con BE-5.
 >
+> ⛔ **Correzione del 2026-08-17 (rilievo BE)**: **§4 D-4 diceva il falso su
+> `sensibile`**, e ha prodotto una colonna invisibile a tutti. La correzione e
+> il perché sono in **§4-bis**; il difetto del contatore che ne rendeva il
+> sintomo incomprensibile è in **§4-ter**. Chi legge D-4 senza §4-bis riparte
+> dalla premessa sbagliata.
+>
 > ⚠️ **La cosa più importante da leggere prima di tutto è §3.1**: il §1 del brief
 > originario prometteva che «i gruppi dello stesso cliente confluiscono sulla
 > stessa fattura». **Non è vero**, e non lo diventa con nessun filtro. Chi
@@ -280,7 +286,7 @@ padre, e il guard lo garantisce. L'unica cosa che cambia è il **codice BA**, ch
 | Codice | Etichetta | Contenuto | Note |
 | --- | --- | --- | --- |
 | `ba_codice_fatturazione` | Codice BA | `codice` del **BA di fatturazione** (padre se c'è, altrimenti sé stesso) | `ordinabile = t`, `sensibile = f` |
-| `id_fiscale` | Id fiscale | `soggetti.id_fiscale_univoco_cf_piva` | `ordinabile = t`, **`sensibile = t`** |
+| `id_fiscale` | Id fiscale | `soggetti.id_fiscale_univoco_cf_piva` | `ordinabile = t`, **`sensibile = f`** — ⚠️ corretto il 2026-08-17, vedi sotto |
 
 - **Perché il codice del padre e non del figlio**: la domanda a cui la colonna
   risponde è «a chi va la fattura», ed è la stessa cosa su cui filtra D-3. Il
@@ -291,10 +297,10 @@ padre, e il guard lo garantisce. L'unica cosa che cambia è il **codice BA**, ch
   `ba_codice`) e «id fiscale» (`id_fiscale`, `partita_iva`) **devono** ordinare
   quando la lista li ha. I due codici scelti contengono le sottostringhe
   riconosciute: cambiarli rompe il controllo del generatore.
-- **`sensibile = t` sull'id fiscale**: il flag alimenta il tag nel pannello di
-  personalizzazione (`ListaColonneModal.vue`). Non nasconde nulla — **etichetta,
-  non protezione**. Se un giorno servisse restringere davvero, la sede è
-  `ui.lista_colonna_permesso`, non questo flag.
+- ⛔ **`sensibile` NON è un'etichetta: è un cancello.** ~~Il flag alimenta il tag
+  nel pannello di personalizzazione. Non nasconde nulla — etichetta, non
+  protezione.~~ **Falso, e ha prodotto un difetto vero.** Corretto il
+  2026-08-17 su rilievo del team BE; il dettaglio è in §4-bis.
 - **Ids liberi in `ui.lista_colonna`**: prossimi disponibili **476** e **477**
   (l'ultimo usato è 475). `lista_id = 42`.
 - **`ui.lista_preset_colonna` non si tocca** (§3.9).
@@ -349,6 +355,102 @@ Nessuna restrizione implicita per stadio o per emittibilità. «Tutti i gruppi d
 questo cliente» significa tutti: il già fatturato, i non emittibili, tutto.
 Restringere è compito degli **altri** filtri, che esistono già. Un filtro che
 nasconde in silenzio è la stessa classe di difetto di D-5.
+
+---
+
+## 4-bis. ⛔ Correzione: `sensibile` è un cancello, non un'etichetta
+
+> **Rilievo del team BE, 2026-08-17.** Segnalato perché la colonna «Id fiscale»
+> non compariva. Non era un difetto di applicazione: era una **premessa
+> sbagliata di questo brief**.
+
+### Il fatto
+
+`ui.fn_resolve_lista_config` §5:
+
+```sql
+COALESCE(v_permessi ->> (elem ->> 'codice'),
+         CASE WHEN lc.sensibile THEN 'BLOCCATO' ELSE 'TUTTO' END) AS livello_eff
+...
+WHERE livello_eff <> 'BLOCCATO'
+```
+
+`sensibile = t` **senza una riga in `ui.lista_colonna_permesso`** non aggiunge un
+tag: **toglie la colonna dalla configurazione risolta, per chiunque.** Non è
+nascosta all'utente sbagliato — è invisibile a tutti finché qualcuno non semina
+i grant. L'esatto contrario di «disponibile e spenta», che era l'obiettivo di
+D-4.
+
+Ecco perché «Codice BA» (`sensibile = f`) si vedeva e «Id fiscale» no.
+
+### Perché l'errore è stato fatto, così non si ripete
+
+Il flag era stato verificato **solo nel frontend**: `sensibile` compare in
+`ListaColonneModal.vue` come tag nel pannello di personalizzazione, e da lì si
+era concluso «è un'etichetta». Il tag c'è davvero — ma è **ciò che resta dopo il
+cancello**, non il cancello.
+
+⚠️ **La lezione riusabile**: un flag di configurazione va verificato **dove viene
+letto per decidere**, non dove viene renderizzato. Il punto di decisione era in
+`fn_resolve_lista_config`, cioè nello schema `ui` — a un passo, e non guardato.
+
+### La decisione presa
+
+**`sensibile = f`.** L'argomento non è che il codice fiscale sia un dato banale:
+è che **compare sulla fattura che quella schermata sta per emettere**. Bloccarlo
+nella lista dove si decide *se emettere*, mentre resta stampato sul documento
+*emesso*, non protegge nessuno — toglie il controllo e lascia l'esposizione.
+E il controllo è precisamente lo scopo per cui la colonna esiste (§3.2:
+distinguere due omonimi **prima** di emettere).
+
+La colonna resta comunque **fuori dallo schermo** finché qualcuno non l'accende:
+lo fa il merge automatico del catalogo (§3.9), che è il meccanismo giusto per
+«disponibile e spenta».
+
+### Se un giorno la si volesse davvero proteggere
+
+La strada è l'**opposta e completa**: `sensibile = t` **più** i grant in
+`ui.lista_colonna_permesso` per i profili che devono vederla. Quello che non si
+può lasciare è lo stato intermedio — `t` senza grant — che non è «protetto», è
+**rotto per tutti**.
+
+⚠️ E quel giorno va fatto insieme al difetto del contatore (§4-ter), perché è
+esattamente la condizione che lo rende visibile.
+
+## 4-ter. 🔴 Difetto latente nel contatore `colonne_nuove` (perimetro DB)
+
+Secondo rilievo BE, e questo è **un difetto vero nella funzione**, non una
+premessa sbagliata.
+
+In `ui.fn_resolve_lista_config`:
+
+- **§3** conta le colonne nuove mergiate dal catalogo → `v_colonne_nuove`;
+- **§5** rimuove le colonne `BLOCCATO` dall'array — **senza decrementare il
+  contatore**;
+- **§6** restituisce `colonne_nuove` così com'è.
+
+Risultato: il badge annuncia una colonna nuova che la funzione **ha appena
+tolto**. Chi guarda vede «c'è una personalizzazione» e non trova nulla, senza
+modo di distinguere fra «cerco male», «è rotto» ed «esiste ma non mi è
+concessa». È esattamente il sintomo incomprensibile che ha portato al rilievo.
+
+⚠️ **È latente su OGNI lista**, non solo questa: si manifesta ovunque ci sia una
+colonna `sensibile = t` senza grant. Non si era mai visto perché nessuno ne
+aveva mai seminata una.
+
+**Stato**: con la correzione di §4-bis il difetto torna **non attivabile** (non
+esiste più alcuna colonna `sensibile = t`). Resta da correggere.
+
+**Direzione proposta**: `colonne_nuove` va calcolato **dopo** il filtro dei
+permessi — deve contare ciò che l'utente può davvero trovare, non ciò che è
+stato mergiato. In pratica: registrare al §3 i codici mergiati, e al §5
+ricontarli sull'array sopravvissuto.
+
+⚠️ **Perché non è stato corretto subito**: il rimedio è un `CREATE OR REPLACE` di
+una funzione da ~350 righe da cui dipende **ogni lista del prodotto**, per
+sistemare un contatore che oggi non può sbagliare. Il momento giusto è quello in
+cui qualcuno userà davvero `sensibile = t` con i grant — la stessa modifica che
+lo rende visibile. Va fatto **prima** di quel seed, non dopo.
 
 ---
 

@@ -3,8 +3,10 @@
 > **Cos'è.** Il brief di **due buchi distinti** nello stesso presidio: il
 > perimetro dell'emittente fiscale. Uno sta nell'**accesso alle liste**, l'altro
 > nella **gerarchia dei billing account**. Sono separati per causa e per
-> soluzione, ma stanno insieme perché **si coprono a vicenda**: finché uno è
-> aperto, chiudere l'altro non basta.
+> soluzione, ma stanno insieme perché **uno tiene aperto l'altro**: finché il
+> primo è aperto, il secondo è raggiungibile — e chiuderne uno solo non basta.
+> *(La prima stesura diceva «si coprono a vicenda», simmetrico. Non lo è: la
+> misura è in §11.1.)*
 >
 > **Origine.** Emersi il **2026-08-17** analizzando la richiesta «filtrare i
 > gruppi fatturabili per cliente»
@@ -13,8 +15,28 @@
 > l'accesso, non la dashboard.
 >
 > **Stato al 2026-08-17: nulla eseguito.** Nessun changeSet, nessuna migrazione,
-> nessun seed. Diagnosi verificata contro il codice, **decisioni prese**, piano
-> di applicazione in **§7-bis**.
+> nessun seed. Diagnosi verificata contro il codice, **decisioni prese**, ordine
+> di applicazione in **§7-bis**, piano eseguibile in **§12**.
+>
+> 🔬 **Revisione critica del 2026-08-17 (§11).** Tutte le sei decisioni reggono e
+> non ne cambia nessuna. Cambiano invece **quattro cose di attuazione**, e una è
+> un blocco vero:
+>
+> | | Cosa è emerso | Effetto |
+> | --- | --- | --- |
+> | 🔴 | Lo **Strato 1 di P-2b** (permesso a livello di colonna) **non regge**: un changeSet `runOnChange` ri-concede `UPDATE` di tabella su tutto lo schema `ui` a ogni passata | Il permesso va sostituito da un **trigger** (§11.5) |
+> | 🟠 | La **ricerca universale è fail-open sullo scope vuoto**, lato backend, e P-2a lo trasforma da latente a sistematico | Richiesta al BE **prima** di P-2a (§11.6, §13) |
+> | 🟠 | «L'emittente di un BA» **non è la riga di mapping**: è una risoluzione *specifico ∨ default globale* | P-1 confronta il **valore risolto**, e il movimento 2 ha **tre** eventi, non uno (§11.2, §11.3) |
+> | 🟢 | **P-4 esiste già su 6 liste**: c'è un pattern da copiare, non da inventare | Il costo vero è nelle **viste**, non nel seed (§11.4) |
+>
+> E una correzione di merito: il §5 sbaglia il meccanismo con cui A e B si
+> coprono. Non si coprono a vicenda — **B è raggiungibile quasi solo dove A è
+> aperto**, più il super admin (§11.1). La conclusione operativa non cambia; il
+> motivo sì, e il motivo è quello che si usa per scrivere i test.
+>
+> ❓ **Cinque domande aperte per Tid, in §7 in fondo.** Nessuna riapre una
+> decisione presa: **Q1** (lo Strato 1 diventa un trigger — e perde le colonne
+> future) e **Q2** (P-2a aspetta una correzione BE) **bloccano**; Q3, Q4, Q5 no.
 >
 > ⭐ **Le decisioni prese** — sei, con Tid il 2026-08-17, registrate in **§7**:
 >
@@ -34,12 +56,16 @@
 >    scrivono senza eccezioni per il pregresso** (P-1, P-3), e sono loro a far
 >    emergere i casi uno alla volta;
 > 6. **l'interruttore in interfaccia va impedito, non sconsigliato**: tre strati
->    in P-2b — permesso a livello di colonna, test in CI, motivo nel file.
+>    in P-2b — ~~permesso a livello di colonna~~ → **trigger** (§11.5), test in
+>    CI, motivo nel file. *La decisione non cambia: cambia l'attrezzo, perché
+>    quello scelto si spegneva da solo ogni notte.*
 >
 > 🔴 **Il buco B (§3) resta aperto come lavoro**, e produce una fattura emessa da
 > un emittente che l'operatore non può vedere. È il più grave dei due, ed è
 > anche il più facile da chiudere: quello che resta in §7 è attuazione, non
-> forma.
+> forma. ⚠️ **Ma il bersaglio è più stretto di come sembrava**: dopo §11.1 l'unico
+> attore che oggi può costruirlo *senza* passare dal buco A è il **super
+> admin** — e dopo P-2a sarà l'unico e basta.
 
 ---
 
@@ -172,6 +198,13 @@ codice fiscale**. Con otto BA che condividono la stessa P.IVA, quel guard
 Non è che manca un guard: è che quello che c'è **dice «ok» proprio nel caso in
 cui servirebbe un «no»**.
 
+> ⚠️ **Rettifica del 2026-08-17 (§11.1): «passa sempre» è vero solo per chi vede
+> entrambi i rami.** Quella lettura del padre gira **sotto RLS**, quindi a un
+> operatore di *Tito* il BA di *Pippo* risulta invisibile e il guard solleva —
+> con il messaggio sbagliato, ma solleva. Il caso passa davvero per il **super
+> admin**, per l'**operatore senza riga** (buco A) e per la coppia con **entrambi
+> i CF NULL** (buco C). Dettaglio e conseguenze sui test in §11.1.
+
 Gli altri trigger di `billing_account` non coprono il caso: auto-riferimento,
 `valido_dal` obbligatorio, coerenza CF, guard dissociazione, coerenza
 soggetto↔istanza, normalizzazione, audit, storico. **Nessuno guarda l'emittente
@@ -232,9 +265,16 @@ codice fiscale sono pochi.
 Si coprono a vicenda, e questo è il motivo per cui chiuderne uno solo lascia il
 problema in piedi:
 
-- **Se l'accesso fosse davvero mono-emittente (A chiuso)**, un albero misto
+> 🔴 **Il primo dei due punti qui sotto è sbagliato, e la correzione è in §11.1.**
+> Resta scritto perché è il ragionamento che ha portato a tenere i due buchi
+> insieme — conclusione giusta, meccanismo no.
+
+- ~~**Se l'accesso fosse davvero mono-emittente (A chiuso)**, un albero misto
   resterebbe costruibile ma l'operatore vedrebbe solo la sua metà: la fattura
-  sbagliata nascerebbe lo stesso, semplicemente nessuno la vedrebbe nascere.
+  sbagliata nascerebbe lo stesso, semplicemente nessuno la vedrebbe nascere.~~
+  → **Falso**: con A chiuso l'operatore non riesce nemmeno a impostare quel
+  padre, perché il guard §2.2 legge il padre sotto RLS e non lo trova (§11.1).
+  Restano scoperti il **super admin** e la coppia con **entrambi i CF NULL**.
 - **Se l'albero fosse omogeneo (B chiuso)**, un operatore multi-emittente per
   sbaglio continuerebbe a lavorare su emittenti misti in liste che non lo
   dichiarano.
@@ -262,6 +302,11 @@ dimentica sempre, e da solo rende inutile il primo:
 2. **si cambia l'emittente di un BA** (riga in
    `anagrafiche.emittenti_fiscali_billing_account`) → non deve spaccare un
    albero esistente, né verso il padre né verso i figli.
+
+> ⚠️ **Revisione del 2026-08-17.** I movimenti **non sono due, sono quattro**, e
+> «lo stesso emittente» **non è la stessa riga di mapping**: è un valore
+> *risolto* (mapping specifico ∨ gestore globale). Entrambe le cose in §11.2 e
+> §11.3 — leggerle prima di scrivere il guard, perché cambiano cosa confronta.
 
 Note di costruzione:
 
@@ -426,6 +471,11 @@ a livello di tabella su `ui.lista_definizione` (in quella cartella ci sono già
 diversi `grant-*-app`). Un grant di resync più avanti nella timeline
 annullerebbe la revoca **in silenzio**, e su dev non si vedrebbe.
 
+> 🔴 **Verificato il 2026-08-17: uno c'è, ed è quello centrale.** Non è un
+> problema di ordine — è un `runOnChange` che ri-esegue a ogni passata, quindi
+> non esiste un numero abbastanza alto. **Lo Strato 1 va cambiato di forma**: non
+> un permesso, un **trigger**. Prova e rimedio in **§11.5**.
+
 **Strato 2 — il test che lo blocca in CI**
 
 Un test che asserisce che `multi_emittente` **non** compare in `_CREATE_KEYS`
@@ -557,6 +607,13 @@ Le liste devono poter **mostrare** l'emittente: oggi nessuna riga dichiara da
 dove viene, ed è il motivo per cui nessuna può onestamente dichiararsi
 multi-emittente.
 
+> ⚠️ **Rettifica del 2026-08-17 (§11.4): «nessuna riga» è falso, e la differenza
+> è utile.** Sei liste documento (contratti, preventivi, offerte, ordini, DDT,
+> resi) hanno **già** la colonna emittente a catalogo. A non averla sono
+> esattamente le sei del perimetro. Quindi P-4 non si inventa: **si copia**. Il
+> costo vero non è la riga di CSV — è che le viste del perimetro espongono l'`id`
+> dell'emittente ma **non la ragione sociale**.
+
 Con P-2a l'operatore è mono-emittente e la colonna gli dice poco — arriverebbe
 **spenta**, come da merge automatico del catalogo. Serve **al super admin**, che
 è l'unico a poter vedere righe di emittenti diversi affiancate, cioè
@@ -625,27 +682,102 @@ tenerle separate era il modo per non farne mai nessuna delle due.
 > momento in cui qualcuno li tocca.
 >
 > ✅ **Chiusa il 2026-08-17 (6)** — *l'interruttore in interfaccia*: non basta
-> scriverlo, va **impedito**. Tre strati in P-2b — permesso a livello di
-> colonna, test in CI sulla whitelist, motivo scritto nel file.
+> scriverlo, va **impedito**. Tre strati in P-2b — ~~permesso a livello di
+> colonna~~ **trigger** (rettifica del 2026-08-17, §11.5: il permesso viene
+> ri-concesso a ogni passata di `ci_apply`), test in CI sulla whitelist, motivo
+> scritto nel file.
 
 **Il buco A (§2) è chiuso come decisioni.** Quelle che restano sono di
 attuazione, non di forma:
 
-1. **Ordine di applicazione**: vedi §7-bis. Da confermare come sequenza.
-2. **Verifica sui grant di `90_end`**: che nessun changeSet ri-conceda `UPDATE`
-   a livello di tabella su `ui.lista_definizione`, annullando lo strato 1 di
-   P-2b in silenzio.
+1. ~~**Ordine di applicazione**: vedi §7-bis. Da confermare come sequenza.~~
+   → riscritto come piano eseguibile in **§12**; da confermare lì.
+2. ~~**Verifica sui grant di `90_end`**~~ → ✅ **fatta il 2026-08-17, ed è
+   negativa**: un changeSet ri-concede eccome (§11.5). Ne è nata **Q1**.
 
 ⚠️ **DL-B e DL-C non spariscono, cambiano scopo.** Non servono più a dimensionare
 una bonifica che non si fa: servono a sapere **quanti guard scatteranno** una
 volta applicato P-1, cioè quanto rumore aspettarsi. Restano utili, **non
 bloccano**.
 
+### ❓ Aperte dalla revisione del 2026-08-17 — cinque, due bloccano
+
+> Nessuna riapre una decisione già presa. Sono tutte **nate dalla verifica**
+> (§11), e due di esse cambiano cosa si scrive, non solo quando.
+
+#### Q1 ⛔ *blocca il passo 7* — Lo Strato 1 diventa un trigger. Si accetta il baratto?
+
+Il permesso a livello di colonna **non tiene** (§11.5). Il rimedio proposto è un
+trigger. Ma **non è lo stesso presidio con un altro attrezzo**, e la differenza va
+detta prima e non dopo:
+
+| | Permesso (com'era deciso) | Trigger (come si può fare) |
+| --- | --- | --- |
+| Tiene? | ❌ ri-concesso a ogni `ci_apply` | ✅ sì |
+| Copre le colonne **future** | ✅ sì — una colonna nuova nasce non scrivibile | ❌ no: nomina **una** colonna |
+| Dove vive | file di infrastruttura condiviso da 14 schemi | accanto alla colonna che protegge |
+
+Si perde la proprietà più elegante della proposta originale — *fail-closed nella
+direzione giusta anche per ciò che non esiste ancora*. Si perde però una
+proprietà che **oggi non c'è**, perché il presidio che la offriva si spegne ogni
+notte.
+
+> ⭐ **Proposta**: trigger. Un presidio che tiene su una colonna vale più di un
+> presidio che si spegne su tutte.
+
+#### Q2 ⛔ *blocca il passo 2* — P-2a aspetta una correzione che non è nel perimetro DB
+
+`search_repository.py` è fail-open sullo scope vuoto (§11.6, BE-1). Applicare
+P-2a prima di quella correzione **allarga** la visibilità sulla ricerca
+universale invece di restringerla. Ma la correzione sta in `backend/`, cioè su un
+altro branch e in un'altra testa.
+
+Due strade, e la seconda non è irragionevole:
+
+| | Cosa comporta |
+| --- | --- |
+| ⭐ **Bloccare P-2a** finché BE-1 non è a `dev/backend-tid` | Il cantiere DB si ferma su una dipendenza che non controlla |
+| Applicare P-2a comunque, e accettare la finestra | Per la durata della finestra, l'operatore non configurato **non vede niente ovunque tranne la ricerca universale, dove vede tutto**. È il difetto peggiore dei due che stiamo chiudendo, in miniatura |
+
+> ⭐ **Proposta**: bloccare. La finestra è esattamente il difetto del brief.
+
+#### Q3 — Il quarto movimento di P-1 rende il gestore globale quasi immutabile
+
+Spostare `is_default` cambia in blocco l'emittente di **tutti** i BA non mappati
+(§11.3). Un guard che lo impedisce quando spaccherebbe un albero è coerente con
+P-1 — ma di fatto **congela il gestore globale** appena esiste un albero appeso
+al default, e per rimuovere il blocco bisogna mappare esplicitamente i BA
+coinvolti.
+
+Serve `DL-D` per sapere se il caso è teorico o quotidiano. Ma la domanda di
+principio è: **il gestore globale è una configurazione che si cambia, o un dato
+d'impianto che si sceglie una volta?** Se è la seconda, il guard non costa
+niente.
+
+> ⭐ **Proposta**: guard anche lì, e si misura `DL-D` prima di scriverlo. Un
+> cambio a raggio N che nessuno vede è la definizione del difetto che P-1 chiude.
+
+#### Q4 — Lista pilota per P-4 + P-2b
+
+Proposta `vendite.dash_competenza_gruppi` (42): è dove l'operatore **sceglie cosa
+fatturare**, quindi il posto in cui l'ambiguità di emittente si paga subito.
+Alternativa naturale: `vendite.lotti` (12), più semplice ma meno esposta.
+
+#### Q5 — Il messaggio sbagliato di oggi si corregge o si aspetta?
+
+Fino a P-1, l'albero misto tentato da un operatore configurato viene rifiutato
+con `E_ID_FISCALI_DIVERSI` **su due BA che hanno il CF identico** (§11.1). Con
+P-1 il messaggio giusto arriva e questo sparisce da sé.
+
+> ⭐ **Proposta**: non si tocca. È rumore che dura quanto il cantiere, e ogni
+> correzione intermedia è codice da togliere.
+
 ### Da misurare prima di applicare
 
 | # | Cosa | Blocca |
 | --- | --- | --- |
 | **DL-A** | Utenti con identità OPERATORE, **non** super admin, **senza** riga in `config.user_emittenti_fiscali` | ⛔ **Blocca P-2a**: dopo la correzione non vedono più nulla |
+| **DL-D** ⭐ | Billing account **senza** riga in `anagrafiche.emittenti_fiscali_billing_account` (quindi appesi al gestore globale) | 🔵 Informativo ma pesante: sono i BA che **cambiano padrone** se cambia il default, e i falsi positivi del guard P-1 se lo si scrive sulla riga invece che sul valore risolto (§11.2) |
 | **DL-B** | Alberi BA che attraversano due emittenti | 🔵 Informativo: quanti guard scatteranno dopo P-1 |
 | **DL-C** | BA con `parent_account_id` valorizzato e `id_fiscale_univoco_cf_piva` NULL su uno dei due lati | 🔵 Informativo: quanti guard scatteranno dopo P-3 |
 
@@ -658,6 +790,12 @@ aggiunte **prima**, e costano un `INSERT` a testa.
 ---
 
 ## 7-bis. Ordine di applicazione proposto
+
+> ⚠️ **Superata in parte dal 2026-08-17 — resta come motivazione, non come
+> istruzione.** Il *perché* di ogni posizione è ancora valido ed è il motivo per
+> cui questa tabella non si cancella. Ma la sequenza eseguibile è in **§12**, che
+> ne aggiunge due passi che qui mancavano (una richiesta al BE che **precede**
+> P-2a, e una misura in più) e cambia la forma di un passo (§11.5).
 
 Le proposte sono in gran parte indipendenti, ma **la sequenza non è indifferente**:
 alcune riducono il danno delle altre, e una sola ha un prerequisito duro.
@@ -701,6 +839,13 @@ configurato a metà vede tutti gli emittenti e non lo sa né lui né nessun altr
 
 ## 9. Note per chi scriverà i test
 
+- 🔴 **La trappola più costosa è in §11.1, e va letta prima di scrivere il test
+  di P-1.** Con un contesto operatore ristretto, il guard **già esistente**
+  solleva sull'albero misto — perché legge il padre sotto RLS e non lo trova, non
+  perché lo giudichi. Un test scritto così **passa senza aver mai eseguito il
+  codice nuovo**: è la forma più subdola del verde per sottrazione, perché il
+  rosso c'è, arriva, e ha persino l'aria giusta. Asserire **il codice errore
+  nuovo**, e costruire il caso sul percorso che attraversa davvero il ramo;
 - ⚠️ **Svuotare `app.current_user_id` NON è fail-closed** in un test di scope:
   `fn_scope_ef_whitelist_via_sr(NULL)` risponde TRUE. Il cancello vero è
   `app.ruolo_applicativo`. Un test che «verifica il fail-closed» azzerando lo
@@ -715,7 +860,632 @@ configurato a metà vede tutti gli emittenti e non lo sa né lui né nessun altr
 
 ---
 
-## 10. Riferimenti
+## 11. Analisi critica — cosa regge, cosa no · *revisione 2026-08-17*
+
+> **Metodo.** Ogni affermazione qui sotto è stata verificata leggendo la
+> definizione **viva** degli oggetti (doc auto-generata in `docs/it/dbzero/`), il
+> seed, i changeSet e il codice Python — mai uno YAML di migration preso da solo.
+> Dove il brief e il codice divergono, il codice ha ragione e il brief è stato
+> marcato sul posto.
+>
+> **Esito in una riga:** la diagnosi regge tutta, le sei decisioni non si toccano,
+> **l'attuazione cambia in quattro punti**. Uno dei quattro è un blocco (§11.5).
+
+### 11.1 🔴 Il §5 sbaglia il meccanismo: B è raggiungibile quasi solo dove A è aperto
+
+Il guard §2.2 legge l'anagrafica del padre così:
+
+```sql
+SELECT s2.id_fiscale_univoco_cf_piva
+  FROM anagrafiche.billing_account ba
+  JOIN anagrafiche.istanze_utilities iu2 ON iu2.id = ba.istanza_utility_id
+  JOIN anagrafiche.soggetti s2          ON s2.id  = iu2.soggetto_id
+ WHERE ba.id = NEW.parent_account_id;
+```
+
+Quella `SELECT` **non è privilegiata**. `trgfn_billing_account_guard_normalize`
+non è `SECURITY DEFINER`, quindi gira con l'identità di chi ha fatto la scrittura
+— l'applicazione — e su `anagrafiche.billing_account` la Row Level Security è
+**attiva** (`20260601-40-enable-rls-ondata2-billing-account`, `ENABLE`, no
+`FORCE`). La policy di lettura è `rls_billing_account_ef_whitelist`, che passa da
+`fn_scope_ef_whitelist_via_efba`.
+
+Conseguenza, ed è l'opposto di quanto scritto in §3.2/§5:
+
+| Chi scrive | Vede il padre di *Pippo*? | Cosa fa il guard oggi |
+| --- | --- | --- |
+| Operatore **con** riga (scope = 1 emittente) | ❌ no | `v_cf_parent` resta NULL → `v_cf_child IS DISTINCT FROM NULL` è **vero** → **solleva** `E_ID_FISCALI_DIVERSI` |
+| Operatore **senza** riga (buco A) | ✅ sì (vede tutto) | stesso CF → **passa**: albero misto creato |
+| **Super admin** | ✅ sì | stesso CF → **passa**: albero misto creato |
+| Chiunque, ma **entrambi i CF NULL** (buco C) | irrilevante | `NULL IS DISTINCT FROM NULL` è falso → **passa** |
+
+**Tre cose cambiano, e nessuna indebolisce il cantiere:**
+
+1. **Il difetto non si è mai visto perché è quasi irraggiungibile dal basso.**
+   Chi è configurato bene viene già fermato — da un errore che nomina la causa
+   sbagliata («id fiscali diversi» quando sono identici), ma viene fermato. È
+   fermato *per effetto collaterale della cecità*, non perché qualcuno abbia
+   deciso di fermarlo: è la definizione di un presidio che non c'è.
+2. **P-1 non serve meno: serve su un bersaglio diverso.** Il bersaglio vero è il
+   **super admin**, che è l'unico attore che resta legittimamente in grado di
+   vedere due alberi e unirli. E dopo P-2a è anche l'**unico**.
+3. ⛔ **Il guard di P-1 non deve leggere il padre sotto RLS.** Se lo fa, eredita
+   la stessa ambiguità: un padre invisibile e un padre di un altro emittente
+   producono la **stessa** risposta (niente), e il guard non sa distinguere «non
+   posso vederlo» da «è di un altro». La lettura dell'emittente del padre va
+   fatta da una funzione **`SECURITY DEFINER`** che risponde sempre, e la
+   decisione di rifiutare va presa sul **valore**, non sull'assenza.
+
+> ⚠️ **Per chi scriverà i test.** Un pgTAP che tenta l'albero misto **con un
+> contesto operatore ristretto** vedrà il guard sollevare **anche senza P-1**, e
+> passerà per la ragione sbagliata. Il test di P-1 va scritto sul percorso che
+> attraversa davvero il ramo — super admin, oppure scope che copre entrambi gli
+> emittenti — e deve asserire il **codice errore nuovo**, non un generico rosso.
+> (È la stessa trappola di `feedback_verifica_dal_percorso_reale`: una fixture
+> può *confermare* un ramo morto.)
+
+### 11.2 🟠 «L'emittente di un BA» non è la riga di mapping: è un valore risolto
+
+Due funzioni, indipendenti fra loro, risolvono l'emittente di un billing account
+con la **stessa** catena a due livelli:
+
+| Funzione | Livello 1 | Livello 2 |
+| --- | --- | --- |
+| `anagrafiche.fn_get_emittente_fiscale_id` (usata da `fn_build_fattura_key`) | mapping specifico su `billing_account_id` | fallback alla riga `is_default = true` |
+| `script.fn_check_ba_visible_for_emittenti` (usata dalla RLS) | mapping specifico | fallback al default **se e solo se** il BA non ha alcun mapping |
+
+Quindi **un BA senza riga in `emittenti_fiscali_billing_account` non è «senza
+emittente»: è del gestore globale.** E i BA senza riga esistono per costruzione,
+non per incidente: `trgfn_billing_account_link_ef` esce in testa quando
+`app.current_user_id` è vuota — cioè su ogni creazione da seed, da batch o da
+qualunque canale che non sia una richiesta web autenticata.
+
+**Tre conseguenze operative per P-1:**
+
+1. il guard confronta il **valore risolto** dei due lati, mai la presenza della
+   riga. Un guard scritto sulle righe giudicherebbe sul NULL, cioè
+   riprodurrebbe il difetto che P-3 sta chiudendo (§4) su un'altra colonna;
+2. la risoluzione deve essere **la stessa** che usa `fn_build_fattura_key`, cioè
+   `anagrafiche.fn_get_emittente_fiscale_id`. Un secondo risolutore che dice una
+   cosa diversa produrrebbe l'esito peggiore possibile: un albero **dichiarato
+   omogeneo** che la fatturazione spacca comunque. Meglio nessun guard che un
+   guard che mente;
+3. ⚠️ **attenzione al tipo.** Il `COMMENT` di quella funzione lo dice in
+   maiuscolo: *«nonostante il nome, restituisce `soggetto_ruolo_id`, NON
+   `emittenti_fiscali.id`»*. Il confronto va fatto su SR **da entrambi i lati**.
+   È esattamente la coppia PK/SR su cui il progetto è già inciampato una volta.
+
+### 11.3 🟠 Il movimento 2 di P-1 ha tre eventi, non uno
+
+`anagrafiche.emittenti_fiscali_billing_account` ha `billing_account_id`
+**nullable**, e la UNIQUE è su quella colonna: la riga del gestore globale ha
+`billing_account_id` NULL e `is_default = true` (presidiata a sua volta da un
+indice parziale unico). Ne segue che l'emittente di un BA può cambiare in **tre**
+modi, e il brief ne prevede uno:
+
+| Evento sulla tabella di mapping | Effetto | Nel brief? |
+| --- | --- | --- |
+| `UPDATE` di `emittente_soggetto_ruolo_id` | il BA cambia emittente | ✅ sì |
+| `DELETE` della riga specifica | il BA **ricade sul gestore globale** → cambia emittente senza che nessuno abbia scritto un emittente | ❌ no |
+| `UPDATE`/`INSERT` che sposta `is_default` | cambia in blocco l'emittente di **tutti** i BA non mappati | ❌ no |
+
+Il terzo è il più pericoloso perché ha **raggio N**: una riga sola può spaccare
+un numero arbitrario di alberi. È anche l'unico caso in cui un guard riga-per-riga
+non basta e serve una verifica d'insieme.
+
+⚠️ **E il movimento 2 gira in condizioni diverse dal movimento 1.** Quella tabella
+**non ha RLS** — nessuna policy, nessun `ENABLE` — quindi il guard vede tutto e
+non ha la cecità descritta in §11.1. Due guard con due visibilità diverse
+producono due messaggi diversi per lo stesso difetto: è una cosa da decidere
+scrivendoli, non da scoprire in collaudo.
+
+⚠️ Nota di contorno: quella tabella non ha nemmeno `tx_id` né storico. **Un cambio
+di emittente oggi non lascia traccia.** Non è in perimetro qui, ma è il genere di
+cosa che si vorrà aver saputo il giorno in cui si chiederà «da quando questa
+fattura esce da Pippo?».
+
+### 11.4 🟢 P-4 è già stata fatta sei volte: il costo vero sta nelle viste
+
+Misurato sul seed (`80_data/sql/ui/lista_colonna.csv`, 476 righe, 44 liste):
+
+| | Liste | Colonna emittente a catalogo |
+| --- | --- | --- |
+| Documenti vendite | contratti (4), preventivi (5), offerte (6), ordini (7), DDT (8), resi (9) | ✅ presente — `campo_sorgente = emittente_ragione_sociale`, `tipo_colonna = informazione`, `attivo = t` |
+| **Perimetro di questo brief** | lotti (12), dash aperto (39), dash backlog (40), competenza errori (41), gruppi (42), commesse (43) | ❌ **zero colonne emittente**, su 57 colonne totali |
+
+C'è quindi un **pattern in esercizio da copiare**, non una forma da inventare — ed
+è una buona notizia per il «prezzo del biglietto» di P-2b: il biglietto ha già un
+listino.
+
+Ma la misura dice anche dove sta il lavoro vero, e **non è il CSV**:
+
+- le viste del perimetro espongono già `emittente_fiscale_id` /
+  `emittente_soggetto_ruolo_id` (verificato su `vw_dash_aperto_documenti`,
+  `vw_dash_backlog_documenti`, `vw_dash_competenza_errori`,
+  `vw_dash_competenza_gruppi`) — **ma non la ragione sociale**, che è ciò che la
+  colonna deve mostrare. Un id a video non è «dichiarare l'emittente»: è
+  spostare l'ambiguità di un passo;
+- ⚠️ le sei liste del perimetro hanno `vista_sql = NULL`: i dati non arrivano da
+  una vista di catalogo ma dal repository di dominio, quindi la colonna
+  `campo_sorgente` deve corrispondere a una chiave che **il backend produce**.
+  Aggiungerla al CSV senza il campo a monte crea una colonna che si può spuntare
+  e resta vuota — che è peggio di non averla, perché *sembra* la garanzia che il
+  flag pretende;
+- ✅ il controllo automatico chiesto in §7 (decisione 3) resta però **facile e
+  onesto**, perché è puro catalogo: `multi_emittente = true` senza una riga
+  emittente in `ui.lista_colonna` è una query di due join, e non ha bisogno di
+  sapere niente delle viste.
+
+### 11.5 🔴 Lo Strato 1 di P-2b non regge — e il modo in cui cede è invisibile su dev
+
+Il brief chiedeva di verificare *«che nessun changeSet di `90_end` ri-conceda
+`UPDATE` a livello di tabella su `ui.lista_definizione`»*. **Uno lo fa, ed è
+quello che concede i permessi a tutta l'applicazione:**
+
+`db/changelog/migrations_v2/90_end/ci_apply/20260205-41-apply-runtime-grants-ci-mctit.yaml`
+
+```yaml
+context: ci_apply
+runOnChange: true
+validCheckSums: [ANY]
+```
+
+Il suo corpo cicla su 14 schemi — **`ui` compreso** — e per ogni tabella posseduta
+esegue:
+
+```sql
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE <tabella> TO zeroerp_app;
+```
+
+In PostgreSQL l'`UPDATE` concesso a livello di **tabella** copre **tutte** le
+colonne, presenti e future: una `REVOKE` seguita da `GRANT UPDATE (col, col, …)`
+viene **annullata** dal giro successivo.
+
+⛔ **E non è un problema d'ordine, quindi non si risolve numerando più avanti.**
+Essendo `runOnChange: true` in contesto `ci_apply`, quel changeSet ri-esegue **a
+ogni passata**: in CI a ogni build (la pipeline invoca Liquibase due volte, la
+seconda proprio con `--contexts=ci_apply`), su sviluppo col giro serale del
+pgagent. La revoca applicata a mano **funzionerebbe fino alle 21:00** e poi
+morirebbe in silenzio — e chi la controllasse il giorno dopo troverebbe la
+colonna scrivibile senza che nessuno abbia toccato niente.
+
+> Vale la pena fermarsi un attimo su questo, perché è il caso di scuola: la
+> difesa più forte fra le tre proposte è anche l'**unica** che si disattiva da
+> sola, di notte, senza log e senza rosso. Una difesa che si spegne è peggio di
+> una difesa che non c'è, perché la prima la dai per buona.
+
+**Le tre strade, e quale si sceglie:**
+
+| | Come | Costo | Tiene? |
+| --- | --- | --- | --- |
+| ⭐ **Trigger** | `BEFORE UPDATE OF multi_emittente` su `ui.lista_definizione` che solleva se `current_user` è il ruolo applicativo | un oggetto, ~15 righe | ✅ **sì** — i trigger non li tocca il giro dei grant |
+| Grant per colonna nel loop | mettere mano a `20260205-41` perché su quella tabella conceda per colonna | permanente, su un file condiviso da 14 schemi; ogni colonna nuova diventa un intervento lì | ✅ sì, ma il presidio finisce lontano dalla cosa che presidia |
+| Rinuncia | Strati 2+3 soltanto, dichiarandolo | zero | ❌ no |
+
+**Si sceglie il trigger**, e non è un ripiego: è più piccolo, sta **accanto** alla
+colonna che protegge invece che in un file di infrastruttura condiviso da 14
+schemi, e non introduce una lista di colonne da mantenere allineata a mano.
+
+⚠️ **Senza GUC di override, e per la stessa ragione di P-1.** Il seed passa perché
+il migrate gira come *owner*, non perché qualcuno accende un interruttore: la
+condizione è `current_user`, e non c'è niente da accendere. Un invariante con
+l'interruttore non è un invariante — vale qui come vale là.
+
+⚠️ **Lo Strato 1 così cambia natura, e va detto.** Non è più «l'applicazione non
+ha il diritto», è «il database rifiuta la scrittura». Si perde la proprietà
+buona che il brief citava — *una colonna nuova nasce non scrivibile* — perché il
+trigger nomina **una** colonna. È un prezzo reale: si compra un presidio che
+tiene, si vende un presidio che si estendeva da solo. Dato che il secondo non
+teneva, il baratto è a favore.
+
+### 11.6 🟠 P-2a ha una superficie di rottura in più, e sta nel backend
+
+`backend/apps/core/db/search_repository.py`, righe **42** e **98**, identiche:
+
+```python
+pg_emittente_ids = emittente_ids if emittente_ids else None
+```
+
+In Python **la lista vuota è falsa**. Quindi `[]` — che nella convenzione dello
+scope significa *«nessun accesso»* — diventa `None`. E a valle,
+`script.fn_search_soggetti_universale` applica il filtro con:
+
+```sql
+IF v_tipo_ruolo_codice = 'CL' AND p_emittente_ids IS NOT NULL THEN …
+```
+
+cioè `NULL` significa *«nessuna restrizione»*. **I due estremi opposti della
+convenzione collassano sullo stesso valore, e collassano dalla parte che apre.**
+
+- **Oggi** è già un difetto vivo, indipendente da questo cantiere: chi non ha
+  identità OPERATORE attiva riceve `{}` dal database e la ricerca universale gli
+  risponde **come se vedesse tutto**;
+- **dopo P-2a** lo scope vuoto diventa lo stato **normale** dell'operatore non
+  configurato. Il difetto passa da latente a sistematico, e per giunta proprio
+  sulla superficie a cui P-2c assegna «etichetta, non cancello» — cioè la meno
+  presidiata.
+
+⚠️ **Questo è un difetto BE e va corretto PRIMA di P-2a**, non dopo: applicare
+P-2a per primo trasformerebbe una correzione fail-closed in un **allargamento di
+visibilità** su quella superficie. La richiesta è in **§13**.
+
+Gli altri consumatori sono stati controllati e sono corretti (`apps/core/mixins.py`,
+`billing_account_repository.py`, `istanze_utility_repository.py`: tutti su
+`is not None`). ⚠️ La regola generale, che vale per il prossimo consumatore:
+**questa convenzione a tre stati non si legge mai con un test di verità.**
+
+### 11.7 Due imprecisioni minori, da correggere per non far perdere tempo in collaudo
+
+- **§2.5, riga «scrittura».** `fn_check_user_can_create_ba` **non consulta
+  `fn_is_super_admin`**: anche un super admin senza riga e senza emittente attivo
+  riceve `false`, e passa solo se l'istanza ha zero emittenti attivi. L'asimmetria
+  lettura/scrittura che il brief usa come prova **regge, anzi è più netta** — ma
+  la tabella di §2.5 non ha la riga «super admin», e in collaudo quel caso salta
+  fuori subito. (È anche il motivo per cui il super admin, in pratica, un
+  billing account lo crea **scegliendo un emittente attivo**: la GUC è il suo
+  primo ramo.)
+- **§3.3, terzo punto.** *«Il vincolo referenziale su `parent_account_id` non
+  applica le policy RLS»* è corretto ed è comportamento documentato di
+  PostgreSQL. Ma il pgTAP che il brief propone per confermarlo **misurerebbe
+  PostgreSQL, non noi**: il fatto che serve verificare è un altro, ed è §11.1 —
+  *che cosa vede il guard quando legge il padre*. Quello sì va scritto, ed è il
+  test che oggi non c'è.
+
+### 11.8 Cosa il brief prende giusto — verificato riga per riga
+
+Non è una formalità: sono i punti su cui **non serve tornare**.
+
+| Affermazione | Esito |
+| --- | --- |
+| `UNIQUE(auth_user_id)` su `config.user_emittenti_fiscali` | ✅ `uq_user_emittenti_fiscali_auth_user` |
+| La descrizione della tabella dichiara il fail-open | ✅ testuale: *«se l'utente non ha righe può operare su TUTTI gli emittenti»* |
+| I tre esiti di `fn_get_emittenti_scope_pk_ids` + il quarto caso | ✅ il ramo `ELSE` fa `array_agg` su zero righe → `NULL` |
+| `fn_check_user_emittente_scope` → `true` su whitelist vuota | ✅ ramo 5, col commento *«nessuna restrizione»* |
+| Il precedente di `fn_get_emittenti_scope_sr_ids` (2026-08-04, fail-closed) | ✅ testuale nel `coalesce(…, '{}')`, col commento che spiega perché |
+| Gli adapter ereditano la correzione senza modifiche | ✅ `via_efba` → `_sr_ids` → `_pk_ids`, e tratta già `cardinality = 0` come `false` |
+| Il motore dell'emittente attivo è completo (GUC, endpoint, intersezione) | ✅ tutti e tre |
+| `fn_build_fattura_key` prende l'emittente dal padre | ✅ `fn_get_emittente_fiscale_id(COALESCE(parent_account_id, billing_account_id))` |
+| La RLS di INSERT su `billing_account` è gate-only, e il perché | ✅ ed è **scritto nel changeSet stesso**, con la stessa motivazione del brief |
+| Le sei liste del perimetro sono tutte a catalogo, su 44 | ✅ id 12, 39, 40, 41, 42, 43 |
+| Esiste una sola dashboard (`home`) con quattro widget | ✅ e tre dei quattro sono sulle aree in questione |
+| Il CRUD admin su `ui.lista_definizione` ha una whitelist che protegge | ✅ `_UPDATE_KEYS = _CREATE_KEYS`, sei chiavi, `multi_emittente` non ci sarebbe |
+| Il commento «Tutti i campi sono mutabili (nessun immutabile per design)» | ✅ riga 192 del service — la trappola è reale |
+| Il loader del CSV è `loadUpdateData` + `runOnChange` + `validCheckSums: ANY` | ✅ estendibile in place, come previsto |
+| `ui.fn_resolve_lista_config` restituisce un envelope JSON estendibile | ✅ e **accetta già `p_emittente_fiscale_id`** come parametro |
+
+---
+
+## 12. Piano di sviluppo
+
+> **Come leggerlo.** Otto passi in quattro fasi. Ogni passo dichiara **cosa
+> produce**, **come si verifica** e **quando è finito**. I passi con ⛔ hanno un
+> prerequisito duro: iniziarli prima è lavoro che va rifatto.
+>
+> ⚠️ **Numerazione Liquibase**: gli `NN` indicati sono segnaposto. Il numero vero
+> è il **prossimo libero della giornata di applicazione**, in sequenza **globale
+> fra tutte le cartelle** — il 2026-08-17 la giornata è già a `-14`.
+>
+> ⛔ **Nessun passo di questo piano applica migrazioni.** Si scrive, si valida
+> (`liquibase validate` / `updateSQL`, che non applicano), si consegna. L'apply
+> lo autorizza Tid a voce, per quel comando.
+
+### Fase 0 — Misure e prerequisiti · *non produce changeSet*
+
+| # | Cosa | Blocca |
+| --- | --- | --- |
+| **0.1** | **DL-A** — operatori con identità OPERATORE, non super admin, senza riga in `config.user_emittenti_fiscali`. **Aggiungere le righe mancanti.** | ⛔ P-2a (passo 2) |
+| **0.2** | **DL-D** — billing account senza riga in `emittenti_fiscali_billing_account` (§11.2). Non si bonifica: serve a dimensionare il rumore e a scegliere le fixture | 🔵 informa P-1 |
+| **0.3** | **DL-B / DL-C** — alberi che attraversano due emittenti; coppie padre/figlio con un CF NULL | 🔵 informa P-1 e P-3 |
+| **0.4** | **Grep pgTAP** su `anagrafiche.billing_account`: **14 file** scrivono su quella tabella, 3 sono specificamente sui suoi guard (`test-billing-account-guard-parent`, `test-billing-account-auto-link-ef`, `test-trgfn-billing-account-guard-soggetto-coerenza-istanza-v1`). È il raggio d'urto di P-1 | ⛔ P-1 (passo 4) |
+| **0.5** | `scripts/pgtap-baseline.sh anagrafiche` **prima** di toccare qualsiasi cosa | ⛔ tutto: senza, un rosso preesistente sembrerà una regressione propria |
+
+> ⚠️ **DL-A non è «dato sporco che si tollera».** La decisione 5 («niente
+> bonifica») riguarda i dati; questa è **configurazione mancante**, e la
+> differenza è che un guard si annuncia mentre una schermata vuota no. Le righe
+> costano un `INSERT` a testa e vanno messe **prima**.
+
+### Fase 1 — Chiudere il perimetro di lettura
+
+#### Passo 1 · Richiesta al BE: la lista vuota non è «nessun filtro» ⛔ *precede il passo 2*
+
+Correzione di `search_repository.py` (§11.6, dettaglio in §13). **Fuori perimetro
+DB**: qui si scrive la richiesta, non il codice.
+
+**Fatto quando**: la richiesta è in §13, comunicata, e la correzione è a
+`dev/backend-tid`. Applicare P-2a prima significherebbe **allargare** la
+visibilità sulla ricerca universale invece di restringerla.
+
+#### Passo 2 · P-2a — fail-closed nella catena canonica ⛔ *dopo 0.1 e 1*
+
+| File (indicativo) | Cartella | Cosa |
+| --- | --- | --- |
+| `AAAAMMGG-NN-update-fn-get-emittenti-scope-pk-ids-fail-closed-mctit.yaml` | `20_code/script` | ramo `ELSE`: `array_agg` a vuoto → `'{}'` invece di `NULL` |
+| `AAAAMMGG-NN-update-fn-check-user-emittente-scope-fail-closed-mctit.yaml` | `20_code/script` | ramo 5: `v_cnt = 0` → `false` invece di `true` |
+| `AAAAMMGG-NN-comment-user-emittenti-fiscali-fail-closed-mctit.yaml` | `20_code/config` | riscrive il `COMMENT ON TABLE` (oggi dichiara il contrario) |
+| `AAAAMMGG-NN-create-vw-operatori-senza-emittente-mctit.yaml` | `20_code/dbops` | vista di diagnostica: chi è configurato a metà |
+
+**Regole di costruzione**
+
+- corpo **dalla doc auto-generata**, firma e `RETURNS` **dall'ultimo YAML** — la
+  auto-gen scioglie i `%TYPE`;
+- `runOnChange: false` (è `20_code`: obbligatorio, presidiato in CI);
+- il ramo super admin **non si tocca**;
+- `fn_get_emittenti_scope_sr_ids` e i due `fn_scope_ef_whitelist_via_*` **non si
+  toccano**: ereditano (§11.8).
+
+**Verifica** — pgTAP `db/pgtap/script/test-scope-emittenti-fail-closed-v1.sql`:
+
+1. operatore **con** riga → array di 1 (invariato);
+2. operatore **senza** riga → `'{}'` **e** `fn_check_user_emittente_scope` false;
+3. super admin → `NULL` (invariato);
+4. super admin **con emittente attivo** → array di 1 (l'intersezione regge);
+5. `fn_scope_ef_whitelist_via_efba` per l'operatore senza riga → **false**
+   (l'eredità è verificata, non assunta).
+
+> ⚠️ **Non azzerare `app.current_user_id` per «verificare il fail-closed»**:
+> `fn_scope_ef_whitelist_via_sr(NULL)` risponde **TRUE**. Il cancello vero è
+> `app.ruolo_applicativo`. Un test che azzera lo user id è **verde per
+> sottrazione**.
+
+**Fatto quando**: i cinque casi sono verdi, la baseline `script` non ha
+regressioni, e il `COMMENT` non dice più una cosa falsa.
+
+### Fase 2 — Chiudere il perimetro di scrittura
+
+#### Passo 3 · P-3 — il fail-open del NULL nel guard CF
+
+Un solo changeSet in `20_code/anagrafiche`: nel §2.2 di
+`trgfn_billing_account_guard_normalize`, un CF non confrontabile (NULL su uno dei
+due lati) **rifiuta** invece di passare. Codice errore **registrato** — se ne
+serve uno nuovo, **solo append** a `codici_errore.csv` con la sua `classe`, mai
+un loader upsert nuovo.
+
+**Verifica**: `throws_ok` **con SQLSTATE `'P0001'`** su padre CF NULL, figlio CF
+valorizzato, e viceversa, e su entrambi NULL. Senza SQLSTATE il test accetta
+anche il crash del guard.
+
+**Fatto quando**: i tre casi sono verdi e la baseline `anagrafiche` non peggiora
+oltre quanto previsto da 0.4.
+
+#### Passo 4 · P-1 — l'albero omogeneo, in **quattro** movimenti
+
+Il pezzo grosso. Si costruisce dal basso.
+
+**4a — il risolutore che non è cieco.** Una `SECURITY DEFINER` che risponde
+«qual è l'emittente di questo BA» **sempre**, anche quando chi chiede non lo
+vedrebbe (§11.1), delegando la catena a `anagrafiche.fn_get_emittente_fiscale_id`
+per non diventare un secondo risolutore (§11.2).
+
+- `AAAAMMGG-NN-create-fn-get-emittente-ba-privilegiato-mctit.yaml` → `20_code/anagrafiche`
+- ⚠️ `SECURITY DEFINER` di proprietà di `postgres` ⇒ serve
+  `dbops.fn_sync_functions_owner`;
+- ⚠️ restituisce **SR id**, e il nome deve dirlo — la funzione da cui deriva ha
+  già pagato quell'ambiguità con un `COMMENT` in maiuscolo.
+
+**4b — il check puro.** `fn_check_albero_ba_omogeneo(p_ba_id, p_parent_id)`:
+boolean, nessun raise, confronta i due valori risolti da 4a.
+
+**4c — i due guard.**
+
+| Trigger | Tabella | Eventi | Copre |
+| --- | --- | --- | --- |
+| `trg_billing_account_a10_guard_albero_emittente_ins_upd` | `anagrafiche.billing_account` | `INSERT`, `UPDATE OF parent_account_id` | movimento 1 |
+| `trg_emittenti_fiscali_ba_a10_guard_albero_emittente_ins_upd_dlt` | `anagrafiche.emittenti_fiscali_billing_account` | `INSERT`, `UPDATE`, **`DELETE`** | movimenti 2, 3, 4 (§11.3) |
+
+Il secondo verifica, per il BA toccato, **padre e figli**. Sul cambio di
+`is_default` la verifica è d'insieme: sono i BA **senza** mapping specifico a
+cambiare padrone, ed è l'unico caso a raggio N.
+
+**4d — il codice errore.** Nuovo, registrato, con la sua `classe` — mai
+`E_GENERICO`. Il messaggio deve nominare **i due emittenti**: è ciò che
+trasforma il blocco in un'istruzione. E l'errore di §11.1 (`E_ID_FISCALI_DIVERSI`
+sollevato quando i CF sono identici) **sparisce da solo**, perché il nuovo guard
+risponde prima e per la ragione giusta.
+
+⛔ **Nessuna eccezione per il pregresso, nessuna GUC di override** — decisione
+già presa e non si riapre. Il guard afferma l'invariante e basta.
+
+**Verifica** — `db/pgtap/anagrafiche/test-guard-albero-ba-omogeneo-v1.sql`:
+
+| # | Caso | Atteso |
+| --- | --- | --- |
+| 1 | padre e figlio stesso emittente | ✅ passa |
+| 2 | padre e figlio emittenti diversi, **contesto che vede entrambi** | ❌ `P0001`, codice nuovo |
+| 3 | padre **senza mapping** (default globale) uguale all'emittente del figlio | ✅ passa — è il caso che un guard scritto sulle righe sbaglierebbe |
+| 4 | padre senza mapping, default globale **diverso** | ❌ rifiuta |
+| 5 | `UPDATE` del mapping che spacca un albero esistente | ❌ rifiuta |
+| 6 | **`DELETE`** del mapping che fa ricadere il figlio su un default diverso | ❌ rifiuta |
+| 7 | spostamento di `is_default` con BA non mappati appesi | ❌ rifiuta |
+
+> ⚠️ **Il caso 2 è quello che si sbaglia.** Con un contesto operatore ristretto
+> il guard **vecchio** solleva già, e il test passerebbe senza che il codice
+> nuovo sia mai stato eseguito. Va scritto sul percorso che attraversa davvero il
+> ramo, e deve asserire il **codice nuovo** — non un rosso qualunque.
+
+**Fatto quando**: sette casi verdi, la baseline `anagrafiche` aggiornata con
+motivazione per gli eventuali file di 0.4 che il guard rende rossi, e i rossi
+nuovi **classificati** (fixture da adeguare ≠ regressione).
+
+### Fase 3 — Rendere leggibile quello che resta
+
+#### Passo 5 · P-2c — le etichette di perimetro
+
+Indipendente da tutto: **si può anticipare in qualunque momento**, non blocca né
+è bloccato. Etichetta sui contatori della `home` e sulle voci di ricerca; il
+dettaglio del singolo documento resta fuori **con la ragione scritta**, che è la
+metà che si dimentica.
+
+⚠️ Con §11.6 ancora aperto, l'etichetta sulla ricerca direbbe «tutti gli
+emittenti» a chi **non dovrebbe vederne nessuno**. Onesta rispetto a ciò che
+succede, sbagliata rispetto a ciò che dovrebbe succedere: è un motivo in più per
+mettere il passo 1 davanti.
+
+#### Passo 6 · P-4 su una lista pilota
+
+**Pilota consigliata: `vendite.dash_competenza_gruppi` (42).** È l'unità
+dell'emissione mirata, cioè il posto dove l'operatore **sceglie cosa fatturare**:
+se c'è una lista in cui l'ambiguità di emittente si paga subito, è quella.
+
+1. estendere la proiezione della vista con la **ragione sociale** (oggi c'è solo
+   l'id — §11.4) → `20_code/vendite`;
+2. **append** a `lista_colonna.csv`, copiando il pattern delle sei liste
+   documento (`campo_sorgente = emittente_ragione_sociale`, `tipo_colonna =
+   informazione`);
+3. ⚠️ verificare che il **backend** produca davvero quella chiave: `vista_sql` è
+   NULL, i dati passano dal repository di dominio. Una colonna a catalogo senza
+   il campo a monte è una colonna che si spunta e resta vuota — cioè
+   esattamente la garanzia che il flag pretende, non mantenuta.
+
+**Fatto quando**: la colonna si spunta e **mostra un nome**.
+
+#### Passo 7 · P-2b — il flag, e il cancello che lo protegge
+
+**Solo su una lista che ha passato il passo 6. Mai prima.**
+
+| File (indicativo) | Cartella | Nota |
+| --- | --- | --- |
+| `…-alter-ui-lista-definizione-add-multi-emittente-mctit.yaml` | `00_schema/ui` | `boolean NOT NULL DEFAULT false` |
+| `…-create-trgfn-lista-definizione-guard-multi-emittente-mctit.yaml` | `20_code/ui` | **Strato 1, nella forma nuova** (§11.5) |
+| `…-update-fn-resolve-lista-config-multi-emittente-mctit.yaml` | `20_code/ui` | additivo sull'envelope |
+| `…-create-vw-liste-multi-emittente-non-certificate-mctit.yaml` | `20_code/dbops` | il controllo automatico della decisione 3 |
+| — | `80_data` | colonna nuova nel CSV **e** nel `columns:` del loader, **backfill prima** |
+
+⚠️ **Ordine Liquibase**: l'`ALTER TABLE` sta in `00_schema`, la funzione che legge
+la colonna in `20_code`, e `changelog-autogen.yaml` **mescola le due cartelle
+ordinando per numero**. Chi legge deve avere numero **più alto** di chi crea, o
+l'apply su un DB ricostruito fallisce e su dev no.
+
+⚠️ **`scripts/gen_seed_lista.py`**: `CAMPI_DEF` (riga 297) va esteso, o il
+generatore riscriverà il CSV **senza** la colonna nuova. È un rigeneratore, non
+un lettore: la dimenticanza non dà errore, toglie il campo.
+
+🚫 **`multi_emittente` NON entra in `_CREATE_KEYS` né in `_UPDATE_KEYS`**
+(`lista_definizione_admin_service.py`), e il perché va scritto **accanto alla
+whitelist** — è l'unica eccezione a una convenzione dichiarata sulla riga 192, e
+un'eccezione senza motivo scritto viene tolta dal primo che passa convinto di
+star sistemando una svista. Strato 2: test in CI su quelle due `frozenset`.
+
+**Fatto quando**: il flag esiste, è `false` su 43 liste su 44, l'unica a `true`
+mostra l'emittente, il trigger rifiuta la scrittura dal ruolo applicativo, il
+test CI è verde e la vista di controllo restituisce **zero righe**.
+
+#### Passo 8 · Le liste restanti — una alla volta, e non tutte
+
+Ogni lista rifà i passi 6 e 7. Il flag resta `false` sulle altre, **ed è giusto
+così**: è un registro di debito che cala. Il giorno in cui lo si volesse
+accendere in blocco vorrebbe dire che ha smesso di significare qualcosa.
+
+### Quadro d'insieme
+
+| Passo | Perimetro | Prerequisito | Reversibile |
+| --- | --- | --- | --- |
+| 0.1–0.5 | misure | — | n/a |
+| 1 — richiesta BE | **backend** | — | sì |
+| 2 — P-2a | `20_code/script`, `config`, `dbops` | ⛔ 0.1, 1 | sì (`CREATE OR REPLACE` inverso) |
+| 3 — P-3 | `20_code/anagrafiche` | 0.5 | sì |
+| 4 — P-1 | `20_code/anagrafiche` | ⛔ 0.4, 0.5; **dopo** 3 | sì (drop dei due trigger) |
+| 5 — P-2c | FE/BE | — | sì |
+| 6 — P-4 pilota | `20_code/vendite`, `80_data` | — | sì |
+| 7 — P-2b | `00_schema/ui`, `20_code/ui`, `80_data`, BE | ⛔ 6 sulla stessa lista | ⚠️ l'`ALTER TABLE` **no** |
+| 8 — le altre | come 6+7 | 7 | sì |
+
+⚠️ **L'unico passo non reversibile a costo zero è l'`ALTER TABLE` del passo 7**, e
+sta apposta in fondo: si aggiunge una colonna solo quando c'è già una lista che
+può metterla a `true`.
+
+⚠️ **Il passo 2 è quello che si è tentati di rimandare**, perché «tanto oggi
+funziona». Funziona nel senso che nessuno se ne lamenta: un operatore configurato
+a metà vede tutti gli emittenti e non lo sa né lui né nessun altro.
+
+---
+
+## 13. Richieste al backend
+
+> Perimetro DB: qui si scrive la richiesta, il codice lo scrive il BE.
+
+### BE-1 🟠 `search_repository`: la lista vuota non è «nessun filtro» ⛔ *precede P-2a*
+
+**Dove**: `backend/apps/core/db/search_repository.py`, righe **42** e **98**.
+
+```python
+# oggi — [] è falsy e diventa None, cioè "nessuna restrizione"
+pg_emittente_ids = emittente_ids if emittente_ids else None
+```
+
+**Cosa serve**: distinguere i **tre** stati della convenzione, non due.
+
+| Valore | Significato | Oggi | Deve |
+| --- | --- | --- | --- |
+| `None` | nessuna restrizione | nessun filtro ✅ | invariato |
+| `[]` | **nessun accesso** | ⚠️ nessun filtro | **zero risultati** |
+| lista | whitelist | filtro ✅ | invariato |
+
+Il passaggio `[] → None` va rimosso (`if emittente_ids is not None`). Poiché
+`fn_search_soggetti_universale` interpreta `NULL` come «tutto», l'array vuoto
+deve **arrivare come array vuoto** — e se la funzione SQL su `'{}'` non
+restituisce zero righe, la seconda metà è una richiesta al team DB e va aperta
+qui.
+
+**Perché prima e non dopo**: P-2a rende `[]` lo stato normale dell'operatore non
+configurato. Applicata per prima, una correzione pensata per **chiudere** si
+tradurrebbe in un **allargamento** su quella superficie.
+
+**Come si verifica**: un test con `emittenti = []` che asserisce **zero
+risultati**, non «nessun errore».
+
+⚠️ La regola generale, che vale per il prossimo consumatore di questa convenzione:
+**non si legge mai con un test di verità.** `if ids:` e `ids or []` collassano i
+due estremi opposti sullo stesso valore, e lo fanno dalla parte che apre.
+
+### BE-2 🟢 `dash_competenza_gruppi`: la ragione sociale dell'emittente nella riga
+
+Dipende dal passo 6. Quando la vista esporrà `emittente_ragione_sociale`, il
+repository/serializer della lista gruppi fatturabili deve **portarla nella riga**
+con quella chiave: `vendite.dash_competenza_gruppi` ha `vista_sql = NULL`, quindi
+è il backend a decidere cosa arriva a video. Senza, la colonna a catalogo si
+spunta e resta vuota.
+
+### BE-3 🔵 `multi_emittente`: cancello e non raccomandazione
+
+Dipende dal passo 7. Tre cose, in ordine di forza:
+
+1. **`multi_emittente` NON entra** in `_CREATE_KEYS` né `_UPDATE_KEYS` di
+   `apps/ui/services/lista_definizione_admin_service.py`;
+2. un test in CI che lo **asserisce** — tre righe, gira a ogni PR, ed è lo strato
+   che serve il giorno del refactor, quando qualcuno riallinea le whitelist «per
+   coerenza»;
+3. il **perché scritto accanto alla whitelist**, non solo nel brief: la riga 192
+   dichiara *«Tutti i campi sono mutabili (nessun immutabile per design)»*, quindi
+   questa è l'unica eccezione a una convenzione esplicita.
+
+Il rifiuto lato DB (§11.5) diventerà un errore con **codice registrato**, da
+mappare in `error_policies.py` come tutti gli altri.
+
+---
+
+## 14. Riferimenti
+
+> ℹ️ Questa sezione era numerata **§10**. È stata spostata in fondo il 2026-08-17
+> per far posto ad analisi (§11), piano (§12) e richieste al BE (§13): un elenco
+> di link non deve stare in mezzo a cose che si eseguono.
+
+### Verificati nella revisione del 2026-08-17 (§11)
+
+| Cosa | Dove | Serve a |
+| --- | --- | --- |
+| **Il giro dei grant che annulla lo Strato 1** | `db/changelog/migrations_v2/90_end/ci_apply/20260205-41-apply-runtime-grants-ci-mctit.yaml` | §11.5 |
+| RLS attiva su `billing_account` (`ENABLE`, no `FORCE`) | `00_schema/anagrafiche/20260601-40-enable-rls-ondata2-billing-account-mctit.yaml` | §11.1 |
+| Risoluzione emittente *specifico ∨ default* | `docs/it/dbzero/script/funzioni/fn_check_ba_visible_for_emittenti.md` · `anagrafiche/funzioni/fn_get_emittente_fiscale_id.md` | §11.2 |
+| `billing_account_id` nullable + default globale | `docs/it/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account.md` | §11.3 |
+| Le colonne emittente già a catalogo (6 liste) | `db/changelog/migrations_v2/80_data/sql/ui/lista_colonna.csv` | §11.4 |
+| Le viste del perimetro: id sì, ragione sociale no | `docs/it/dbzero/vendite/views/vw_dash_*.md` | §11.4 |
+| **Il fail-open sullo scope vuoto** | `backend/apps/core/db/search_repository.py` righe 42, 98 | §11.6 · §13 |
+| Il filtro che applica solo su `IS NOT NULL` | `docs/it/dbzero/script/funzioni/fn_search_soggetti_universale.md` | §11.6 |
+| Whitelist CRUD + commento «tutti mutabili» | `backend/apps/ui/services/lista_definizione_admin_service.py` righe 51–65, 192 | §11.8 · §13 |
+| `CAMPI_DEF` del generatore di seed | `scripts/gen_seed_lista.py` riga 297 | passo 7 |
+| Loader `loadUpdateData` del catalogo liste | `80_data/changelog/20260507-06-seed-ui-lista-definizione-mctit.yaml` | passo 7 |
+
+### Già citati nella prima stesura
 
 | Cosa | Dove |
 | --- | --- |

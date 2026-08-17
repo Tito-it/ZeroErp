@@ -1,0 +1,347 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+-- Test: vendite.vw_partite_merce — la partita di merce
+--       (brief-design-partita-merce-generalizzata, slice S2, changeSet 20260817-07).
+--
+-- Elenco test (plan 11):
+--   1) la vista esiste
+--   2) e' security_invoker=on (RLS su vendite.ddt e, via S1, commesse_attivita)
+--   3) espone le colonne del contratto (21: + e_riconsegna, + sospetto_duplicato_ordine)
+--   4) ⭐ una riga di DDT SENZA ordine a monte ha una partita, origine NESSUNA
+--   5) ⭐ un reso su quella merce senza origine produce DA_ACCREDITARE
+--   6) un DDT in BOZZA non ha partite (decisione D1)
+--   7) `in_riconsegna`: la merce resa e gia' impegnata su un DDT non emesso
+--      si legge, invece di sparire
+--   8) causale NON fatturabile e nessun fatturato -> NON_FATTURABILE con
+--      differenza NULL, non zero
+--   9) causale NON fatturabile MA con fatturato -> il conto si applica lo stesso
+--  10) ⭐ corsia ORD: la capienza dell'allocazione e' il CONSEGNATO, non i
+--      tenuti — un reso NON riassorbe l'accredito
+--  11) ⭐ `sospetto_duplicato_ordine`: la riga a mano con un articolo GIA'
+--      nell'ordine e' segnalata; quella che l'ordine lo evade davvero no
+--
+-- Scopo:
+--  - il 4) e il 5) sono il cantiere in due righe: fino a oggi la merce senza
+--    riga d'ordine non compariva a conto zero, NON ESISTEVA, e un reso su di
+--    essa si registrava senza produrre alcun accredito.
+--  - il 10) presidia la decisione piu' facile da rovinare. Se la capienza
+--    diventasse `tenuti`, un reso libererebbe capienza, l'accredito verrebbe
+--    riassorbito e la coda accrediti resterebbe VUOTA — cioe' il difetto
+--    contro cui mette in guardia il §2 del brief nota di credito. Il test
+--    fallisce con `differenza = 0` invece di −4: un valore innocuo all'occhio,
+--    ed e' proprio per questo che serve un test a dirlo.
+--  - l' 8) e il 9) sono la stessa colonna letta nei due versi: la causale dice
+--    cosa ci si aspetta dal VIAGGIO, non se la merce e' stata fatturata.
+-- ------------------------------------------------------------
+
+-- ⚠️ 1. TRANSAZIONE. Senza, un fallimento a meta' lascia i dati di prova nel
+--   database e rompe la corsa successiva, che vede un rosso non suo.
+BEGIN;
+
+-- ⚠️ 2. VINCOLI DIFFERITI. Scattano al COMMIT, e qui il COMMIT non arriva mai:
+--   senza questa riga il file sarebbe verde per sottrazione.
+SET CONSTRAINTS ALL IMMEDIATE;
+
+-- ⚠️ 3. CONTESTO APPLICATIVO. Il test gira come `zeroerp_app` con la RLS
+--   ATTIVA (vendite.ddt e vendite.ordini hanno policy sull'emittente).
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
+SELECT plan(11);
+
+SET LOCAL app.ruolo_applicativo = 'OPERATORE';
+SET LOCAL app.current_user_id = '1';
+
+-- ============================================================
+-- 1-3) Struttura della vista
+-- ============================================================
+SELECT has_view('vendite', 'vw_partite_merce', '1) la vista esiste');
+
+SELECT ok(
+  (SELECT 'security_invoker=on' = ANY(c.reloptions)
+     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'vendite' AND c.relname = 'vw_partite_merce'),
+  '2) vw_partite_merce e'' security_invoker=on');
+
+SELECT columns_are('vendite', 'vw_partite_merce',
+  ARRAY['ddt_riga_id','ddt_id','ddt_uid','articolo_id','is_composito',
+        'ordine_riga_id','ordine_id','origine','fatturabile','consegnato',
+        'reso','in_riconsegna','tenuti','fatturato_merce','fatturato_da_ordine',
+        'fatturato','misurabile','differenza','stato','e_riconsegna',
+        'sospetto_duplicato_ordine'],
+  '3) espone le 21 colonne del contratto della partita');
+
+-- ============================================================
+-- Riferimenti minimi
+-- ============================================================
+CREATE TEMP TABLE tmp_refs AS
+SELECT
+  (SELECT ba.id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1)                                              AS billing_account_id,
+  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1)                                              AS utility_id,
+  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1)                                              AS istanza_utility_id,
+  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id LIMIT 1) AS soggetto_ruolo_id,
+  (SELECT a.id FROM catalogo.articoli a
+    WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
+    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)                      AS articolo_id,
+  (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1) AS uom_id,
+  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)               AS valuta_id,
+  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
+  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef ORDER BY ef.id LIMIT 1)  AS emittente_fiscale_id,
+  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO' AND s.attivo LIMIT 1) AS stato_ord_conf_id,
+  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='EMESSO' AND s.attivo LIMIT 1)     AS stato_ddt_emesso_id,
+  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='SPEDITO' AND s.attivo LIMIT 1)    AS stato_ddt_spedito_id,
+  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='CONSEGNATO' AND s.attivo LIMIT 1) AS stato_ddt_consegnato_id,
+  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='DDT_VENDITA' AND s.attivo LIMIT 1)     AS sorgente_ddt_id,
+  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='COMMESSA' AND s.attivo LIMIT 1)        AS sorgente_root_id,
+  (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='DRAFT' AND s.attivo LIMIT 1)     AS stato_reso_draft_id,
+  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_A_CREDITO' AND t.attivo LIMIT 1) AS tipo_credito_id,
+  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_PER_RICONSEGNA' AND t.attivo LIMIT 1) AS tipo_riconsegna_id,
+  (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1) AS tipo_doc_fiscale_id,
+  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' LIMIT 1)        AS causale_vendita_id,
+  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='CONTO_VISIONE' LIMIT 1)  AS causale_non_fatt_id,
+  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')      AS tipo_ind_con_id;
+
+-- Helper: ordine -> DDT. `p_consegna` false lascia il DDT in BOZZA (serve al 6).
+CREATE OR REPLACE FUNCTION pg_temp.mk_partita(p_qta numeric, p_causale bigint, p_consegna boolean)
+RETURNS TABLE(ordine_id bigint, ordine_uid uuid, ordine_riga_id bigint,
+              ddt_id bigint, ddt_uid uuid, ddt_riga_id bigint) AS $$
+DECLARE r RECORD; v_ord bigint; v_ord_uid uuid; v_orr bigint; v_ddt bigint; v_ddt_uid uuid; v_ddtr bigint;
+BEGIN
+  SELECT * INTO r FROM tmp_refs;
+  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
+    valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
+  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_conf_id, r.valuta_id,
+          DATE '2026-08-15', 'SPEDITO', r.emittente_fiscale_id, false,
+          jsonb_build_object('test_scope','pgtap_partite'))
+  RETURNING id, uid INTO v_ord, v_ord_uid;
+  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
+    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
+  VALUES (v_ord, 1, r.articolo_id, 'Riga partita', p_qta, p_qta, 25, r.iva_id, true, false,
+          jsonb_build_object('test_scope','pgtap_partite'))
+  RETURNING id INTO v_orr;
+  v_ddt := vendite.fn_genera_ddt_da_ordine(v_ord);
+  INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
+  VALUES (v_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
+  UPDATE vendite.ddt SET causale_trasporto_id = p_causale WHERE id = v_ddt;
+  IF p_consegna THEN
+    -- Le transizioni si fanno una alla volta: il guard sulle transizioni
+    -- ammette solo passi contigui.
+    UPDATE vendite.ddt SET stato_doc_ddt_id = r.stato_ddt_emesso_id     WHERE id = v_ddt;
+    UPDATE vendite.ddt SET stato_doc_ddt_id = r.stato_ddt_spedito_id    WHERE id = v_ddt;
+    UPDATE vendite.ddt SET stato_doc_ddt_id = r.stato_ddt_consegnato_id WHERE id = v_ddt;
+  END IF;
+  SELECT d.uid INTO v_ddt_uid FROM vendite.ddt d WHERE d.id = v_ddt;
+  SELECT dr.id INTO v_ddtr FROM vendite.ddt_righe dr WHERE dr.ddt_id = v_ddt ORDER BY dr.id LIMIT 1;
+  RETURN QUERY SELECT v_ord, v_ord_uid, v_orr, v_ddt, v_ddt_uid, v_ddtr;
+END $$ LANGUAGE plpgsql;
+
+-- Helper: aggiunge una riga A MANO a un DDT esistente. Nessun fulfillment:
+-- e' esattamente la riga che oggi non appartiene a nessuna partita.
+CREATE OR REPLACE FUNCTION pg_temp.mk_riga_manuale(p_ddt bigint, p_qta numeric)
+RETURNS bigint AS $$
+DECLARE r RECORD; v_id bigint;
+BEGIN
+  SELECT * INTO r FROM tmp_refs;
+  INSERT INTO vendite.ddt_righe (ddt_id, riga_nr, articolo_id, descrizione,
+    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
+  VALUES (p_ddt, 900, r.articolo_id, 'Riga aggiunta a mano', p_qta, p_qta, 25, r.iva_id,
+          true, false, jsonb_build_object('test_scope','pgtap_partite'))
+  RETURNING id INTO v_id;
+  RETURN v_id;
+END $$ LANGUAGE plpgsql;
+
+-- Helper: reso confermato su una riga di DDT. `ordine_riga_id` si ricava dal
+-- fulfillment se c'e' — sulla riga manuale resta NULL, ed e' il punto.
+CREATE OR REPLACE FUNCTION pg_temp.mk_reso(p_ddt_riga bigint, p_ddt_uid uuid,
+                                           p_qta numeric, p_tipo bigint)
+RETURNS void AS $$
+DECLARE r RECORD; v_reso bigint;
+BEGIN
+  SELECT * INTO r FROM tmp_refs;
+  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
+  VALUES (r.stato_reso_draft_id, r.sorgente_ddt_id, p_ddt_uid, false,
+          jsonb_build_object('test_scope','pgtap_partite'))
+  RETURNING id INTO v_reso;
+  INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
+    articolo_id, descrizione, qta_operativa, uom_operativa_id, factor_to_base, tipo_reso_id, storicizza)
+  SELECT v_reso, 1, dr.id,
+         (SELECT f.ordine_riga_id FROM vendite.ordini_righe_fulfillment f WHERE f.ddt_riga_id = dr.id LIMIT 1),
+         dr.articolo_id, dr.descrizione, p_qta, dr.uom_operativa_id, dr.factor_to_base,
+         p_tipo, false
+  FROM vendite.ddt_righe dr WHERE dr.id = p_ddt_riga;
+  PERFORM vendite.fn_conferma_reso(v_reso);
+END $$ LANGUAGE plpgsql;
+
+-- Commessa + ROOT per gli AF.
+CREATE TEMP TABLE tmp_com AS
+SELECT vendite.fn_get_or_create_commessa(
+  p_billing_account_id => (SELECT billing_account_id FROM tmp_refs),
+  p_utility_id => (SELECT utility_id FROM tmp_refs),
+  p_tipo_commessa => 'AUTO', p_policy_fatturazione => 'DA_DOCUMENTO',
+  p_fatturazione_immediata => false, p_priorita_operativa => 'NORMALE',
+  p_competenza_dal => DATE '2026-08-01', p_competenza_al => DATE '2026-08-31',
+  p_meta => jsonb_build_object('test_scope','pgtap_partite'), p_force_new => true
+) AS commessa_id;
+SELECT vendite.fn_link_commessa_sorgente(
+  p_commessa_id => (SELECT commessa_id FROM tmp_com),
+  p_sorgente_tipo_id => (SELECT sorgente_root_id FROM tmp_refs),
+  p_sorgente_uid => (SELECT commessa_id FROM tmp_com)::text,
+  p_sorgente_riga => 1, p_meta => '{}'::jsonb);
+
+CREATE OR REPLACE FUNCTION pg_temp.mk_af(p_segment varchar, p_qta numeric)
+RETURNS void AS $$
+DECLARE r RECORD;
+BEGIN
+  SELECT * INTO r FROM tmp_refs;
+  PERFORM vendite.fn_upsert_commessa_attivita(
+    p_commessa_id => (SELECT commessa_id FROM tmp_com),
+    p_segment_key => p_segment, p_articolo_id => r.articolo_id,
+    p_istanza_utility_id => r.istanza_utility_id, p_data_attivita => DATE '2026-08-15',
+    p_uom_id => r.uom_id, p_quantita => p_qta,
+    p_competenza_mese => DATE '2026-08-01',
+    p_competenza_dal => DATE '2026-08-01', p_competenza_al => DATE '2026-08-31',
+    p_prezzo_snapshot => 10.0, p_prezzo_base_snapshot => NULL, p_origine_prezzo => NULL,
+    p_tipo_variazione_applicata => NULL, p_valore_variazione_applicata => NULL,
+    p_promo_id => NULL, p_contratto_id => NULL,
+    p_categoria_cliente_id_snapshot => NULL, p_classe_utenza_id_snapshot => NULL,
+    p_tipo_doc_fiscale_id => r.tipo_doc_fiscale_id,
+    p_stato_approvazione => 'APPROVATA', p_stato_emissione => 'NON_EMESSA',
+    p_tipo_movimento => 'NORMALE', p_tipo_consumo => 'CONGUAGLIO', p_meta => '{}'::jsonb,
+    p_causale_onere_id => NULL);
+END $$ LANGUAGE plpgsql;
+
+-- ============================================================
+-- Le partite del test
+-- ============================================================
+
+-- P1 — ordine 10, consegnato, fatturato sulla CORSIA ORD, poi reso 4.
+--      Serve al 10): la capienza dell'allocazione.
+CREATE TEMP TABLE tmp_p1 AS SELECT * FROM pg_temp.mk_partita(10, (SELECT causale_vendita_id FROM tmp_refs), true);
+
+-- P2 — riga aggiunta A MANO sul DDT di P1 (spedizione mista), fatturata sulla
+--      corsia DDT, poi resa 2. Serve al 4) e al 5).
+CREATE TEMP TABLE tmp_p2 AS SELECT pg_temp.mk_riga_manuale((SELECT ddt_id FROM tmp_p1), 6) AS ddt_riga_id;
+
+-- P3 — ordine 5, DDT lasciato in BOZZA. Serve al 6) e, come destinazione della
+--      ri-consegna, al 7).
+CREATE TEMP TABLE tmp_p3 AS SELECT * FROM pg_temp.mk_partita(5, (SELECT causale_vendita_id FROM tmp_refs), false);
+
+-- P4 — causale NON fatturabile, nessun fatturato. Serve all' 8).
+CREATE TEMP TABLE tmp_p4 AS SELECT * FROM pg_temp.mk_partita(4, (SELECT causale_non_fatt_id FROM tmp_refs), true);
+
+-- P5 — causale NON fatturabile, ma l'ordine e' stato fatturato lo stesso
+--      (corsia ORD, trigger CONFERMATO). Serve al 9).
+CREATE TEMP TABLE tmp_p5 AS SELECT * FROM pg_temp.mk_partita(3, (SELECT causale_non_fatt_id FROM tmp_refs), true);
+
+-- Le attivita': P1 sulla corsia ORD, P2 sulla corsia DDT, P5 sulla corsia ORD.
+SELECT pg_temp.mk_af('ORD:' || (SELECT ordine_uid FROM tmp_p1)::text || ':R:' || (SELECT ordine_riga_id FROM tmp_p1)::text, 10);
+SELECT pg_temp.mk_af('DDT:' || (SELECT ddt_uid FROM tmp_p1)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_p2)::text, 6);
+SELECT pg_temp.mk_af('ORD:' || (SELECT ordine_uid FROM tmp_p5)::text || ':R:' || (SELECT ordine_riga_id FROM tmp_p5)::text, 3);
+
+SELECT vendite.fn_cambia_stato_commessa((SELECT commessa_id FROM tmp_com), 'PRONTA_FATTURAZIONE');
+SELECT vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM tmp_com));
+
+-- I resi: 4 su P1 (a credito), 2 sulla riga manuale P2 (a credito).
+SELECT pg_temp.mk_reso((SELECT ddt_riga_id FROM tmp_p1), (SELECT ddt_uid FROM tmp_p1), 4,
+                       (SELECT tipo_credito_id FROM tmp_refs));
+SELECT pg_temp.mk_reso((SELECT ddt_riga_id FROM tmp_p2), (SELECT ddt_uid FROM tmp_p1), 2,
+                       (SELECT tipo_credito_id FROM tmp_refs));
+
+-- ============================================================
+-- 4-5) La merce senza origine: il buco che questo cantiere chiude
+-- ============================================================
+SELECT is(
+  (SELECT origine::text FROM vendite.vw_partite_merce
+    WHERE ddt_riga_id = (SELECT ddt_riga_id FROM tmp_p2)),
+  'NESSUNA',
+  '4) una riga di DDT aggiunta a mano HA una partita, con origine NESSUNA');
+
+SELECT is(
+  (SELECT differenza FROM vendite.vw_partite_merce
+    WHERE ddt_riga_id = (SELECT ddt_riga_id FROM tmp_p2)),
+  -2::numeric,
+  '5) reso 2 su merce senza origine, fatturata 6 di 6: differenza −2 (accredito calcolabile)');
+
+-- ============================================================
+-- 6) La bozza non e' merce uscita (decisione D1)
+-- ============================================================
+SELECT is(
+  (SELECT COUNT(*)::int FROM vendite.vw_partite_merce
+    WHERE ddt_id = (SELECT ddt_id FROM tmp_p3)),
+  0,
+  '6) un DDT in BOZZA non produce partite: la merce non e'' uscita dal magazzino');
+
+-- ============================================================
+-- 7) in_riconsegna: la merce impegnata su un DDT non emesso si LEGGE
+--    Reso per ri-consegna su P4, agganciato alla riga del DDT in bozza di P3.
+--    Senza questa colonna quei pezzi non sarebbero ne' dal cliente ne' in coda.
+-- ============================================================
+SELECT pg_temp.mk_reso((SELECT ddt_riga_id FROM tmp_p4), (SELECT ddt_uid FROM tmp_p4), 2,
+                       (SELECT tipo_riconsegna_id FROM tmp_refs));
+INSERT INTO vendite.resi_righe_riconsegne (resi_riga_id, ddt_riga_id, qta, storicizza)
+SELECT rr.id, (SELECT ddt_riga_id FROM tmp_p3), 2, false
+  FROM vendite.resi_righe rr
+ WHERE rr.ddt_riga_id = (SELECT ddt_riga_id FROM tmp_p4)
+ ORDER BY rr.id DESC LIMIT 1;
+
+SELECT is(
+  (SELECT in_riconsegna FROM vendite.vw_partite_merce
+    WHERE ddt_riga_id = (SELECT ddt_riga_id FROM tmp_p4)),
+  2::numeric,
+  '7) in_riconsegna = 2: merce resa e gia'' impegnata su un DDT non emesso');
+
+-- ============================================================
+-- 8-9) La causale non fatturabile, letta nei due versi
+-- ============================================================
+SELECT ok(
+  (SELECT stato = 'NON_FATTURABILE' AND differenza IS NULL
+     FROM vendite.vw_partite_merce WHERE ddt_riga_id = (SELECT ddt_riga_id FROM tmp_p4)),
+  '8) causale non fatturabile e nessun fatturato: NON_FATTURABILE, differenza NULL (non 0)');
+
+SELECT ok(
+  (SELECT stato <> 'NON_FATTURABILE' AND differenza IS NOT NULL
+     FROM vendite.vw_partite_merce WHERE ddt_riga_id = (SELECT ddt_riga_id FROM tmp_p5)),
+  '9) causale non fatturabile MA fatturato dall''ordine: il conto si applica lo stesso');
+
+-- ============================================================
+-- 10) ⭐ La capienza dell'allocazione e' il CONSEGNATO, non i tenuti.
+--     P1: consegnato 10, fatturato ORD 10, reso 4 -> tenuti 6, differenza −4.
+--     Con capienza = tenuti si allocherebbe 6 e la differenza sarebbe 0:
+--     l'accredito sparirebbe, e la coda accrediti resterebbe vuota.
+-- ============================================================
+SELECT is(
+  (SELECT differenza FROM vendite.vw_partite_merce
+    WHERE ddt_riga_id = (SELECT ddt_riga_id FROM tmp_p1)),
+  -4::numeric,
+  '10) capienza = consegnato: reso 4 su 10 fatturati -> differenza −4, l''accredito RESTA');
+
+-- ============================================================
+-- 11) ⭐ L'avviso sulla riga manuale sospetta (S6b).
+--     P2 è una riga aggiunta a mano sul DDT di P1, con lo STESSO articolo che
+--     l'ordine di P1 sta evadendo: è il caso che l'operatore non distingue da
+--     una svista. P1 evade l'ordine davvero e non va segnalata.
+--
+--     ⚠️ È una LETTURA, non un divieto: la riga si è inserita senza ostacoli
+--     (l'ha fatto la fixture). Il caso legittimo esiste — merce extra dello
+--     stesso codice — e vietarlo costerebbe due documenti di trasporto per un
+--     solo viaggio.
+-- ============================================================
+SELECT results_eq(
+  $q$SELECT (SELECT sospetto_duplicato_ordine FROM vendite.vw_partite_merce
+               WHERE ddt_riga_id = (SELECT ddt_riga_id FROM tmp_p2)),
+            (SELECT sospetto_duplicato_ordine FROM vendite.vw_partite_merce
+               WHERE ddt_riga_id = (SELECT ddt_riga_id FROM tmp_p1))$q$,
+  $q$VALUES (true, false)$q$,
+  '11) la riga a mano con articolo gia'' nell''ordine e'' segnalata, quella che lo evade no');
+
+SELECT * FROM finish();
+ROLLBACK;

@@ -2,15 +2,20 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: vendite.vw_contatore_merce — il contatore (brief-db-fatturazione-ddt-resi
---       §3a, step 1). Per riga d'ordine (partita order-backed, non composita):
---       tenuti (Σ evaso − Σ reso) e fatturati (Σ AF NORMALE sui segmenti ORD+DDT),
---       differenza = tenuti − fatturati.
--- (changeset 20260717-11)
+--       §3a, step 1). Per riga d'ordine: tenuti (Σ evaso − Σ reso) e fatturati
+--       (Σ AF NORMALE sui segmenti ORD+DDT), differenza = tenuti − fatturati.
+-- (changeset 20260717-11, riscritta come AGGREGATO dal 20260817-08)
+--
+-- ⚠️ Dal 2026-08-17 la vista non calcola piu': e' la lettura per riga d'ordine
+--    delle partite di merce (vw_partite_merce). Le sei colonne storiche restano
+--    invariate nella semantica — questo file e' anche il loro presidio di
+--    parita' — e i test 1..9 non sono stati toccati proprio per questo.
+--    Brief: docs/it/dev/work-in-progress/brief-design-partita-merce-generalizzata.md
 -- ------------------------------------------------------------
--- Indice test (1..10):
+-- Indice test (1..11):
 --   1) la vista esiste
 --   2) e' security_invoker=on (RLS — regressione V-1)
---   3) espone le colonne del contratto
+--   3) espone le colonne del contratto (6 storiche + 8 nuove in coda)
 --   4) P1 prima del push: tenuti 7, nessuna AF -> differenza +7 (capitolato §3a #1)
 --   5) P1 dopo push DDT (AF DDT=10) + un ONERE sullo stesso ordine: fatturati=10
 --      (l'ONERE NON conta: filtro tipo_movimento='NORMALE')
@@ -18,7 +23,15 @@
 --   7) P2: AF su segmento ORD (trigger CONFERMATO) attribuita alla riga d'ordine
 --   8) P2: differenza −3 (capitolato #10, misura sull'ordine)
 --   9) P3: reso TOTALE -> tenuti 0, nessuna AF -> differenza 0 (capitolato #4)
---  10) P4: articolo COMPOSITO -> riga d'ordine ESCLUSA dalla vista (follow-up)
+--  10) ⭐ P4: articolo COMPOSITO -> ora la riga d'ordine C'E' (era esclusa), e il
+--      suo conto e' in unita' del PADRE
+--  11) ⭐ P5: fatturato_anticipato — spedito 4 di 10 ma fatturato 10 sull'ordine:
+--      6 pezzi fatturati e non ancora usciti
+--
+-- ⚠️ Il test 10 verificava l'ESCLUSIONE dei compositi, cioe' la toppa che il
+--    changeSet 20260717-11 dichiarava «follow-up a se'». Il follow-up e' stato
+--    fatto: qui si verifica l'opposto. Un test che presidia una rinuncia va
+--    riscritto quando la rinuncia finisce, altrimenti difende il difetto.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -37,7 +50,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(10);
+SELECT plan(11);
 
 -- Le madri sono SECURITY INVOKER: il pgTAP gira come owner.
 SET LOCAL app.ruolo_applicativo = 'OPERATORE';
@@ -54,9 +67,14 @@ SELECT ok(
     WHERE n.nspname = 'vendite' AND c.relname = 'vw_contatore_merce'),
   '2) vw_contatore_merce e'' security_invoker=on');
 
+-- ⚠️ Le sei storiche restano PRIME e nello stesso ordine: le nuove si aggiungono
+--    solo in coda, ed e' la ragione per cui il 20260817-08 se la cava con un
+--    CREATE OR REPLACE senza dover droppare vw_resi_da_accreditare.
 SELECT columns_are('vendite', 'vw_contatore_merce',
-  ARRAY['ordine_riga_id','ordine_id','articolo_id','tenuti','fatturati','differenza'],
-  '3) espone ordine_riga_id/ordine_id/articolo_id/tenuti/fatturati/differenza');
+  ARRAY['ordine_riga_id','ordine_id','articolo_id','tenuti','fatturati','differenza',
+        'consegnato','reso','in_riconsegna','fatturato_su_merce','fatturato_su_ordine',
+        'fatturato_anticipato','partite_merce','misurabile'],
+  '3) espone le 6 colonne storiche + le 8 nuove in coda');
 
 -- ============================================================
 -- Riferimenti minimi
@@ -129,6 +147,42 @@ BEGIN
   UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_consegnato_id WHERE id=v_ddt;
   SELECT d.uid INTO v_ddt_uid FROM vendite.ddt d WHERE d.id=v_ddt;
   SELECT dr.id INTO v_ddtr FROM vendite.ddt_righe dr WHERE dr.ddt_id=v_ddt LIMIT 1;
+  RETURN QUERY SELECT v_ord, v_ord_uid, v_orr, v_ddt, v_ddt_uid, v_ddtr;
+END $$ LANGUAGE plpgsql;
+
+-- Helper: come mk_partita, ma spedisce solo una PARTE dell'ordine (p_qta_evasa
+-- su 10) passando p_righe a fn_genera_ddt_da_ordine. Serve al test 11: senza
+-- una spedizione parziale, `fatturato_anticipato` non ha modo di essere > 0 —
+-- ed e' un ramo che i dati di sviluppo non contengono.
+CREATE OR REPLACE FUNCTION pg_temp.mk_partita_parziale(p_articolo uuid, p_qta_evasa numeric)
+RETURNS TABLE(ordine_id bigint, ordine_uid uuid, ordine_riga_id bigint,
+              ddt_id bigint, ddt_uid uuid, ddt_riga_id bigint) AS $$
+DECLARE r RECORD; v_ord bigint; v_ord_uid uuid; v_orr bigint; v_ddt bigint; v_ddt_uid uuid; v_ddtr bigint;
+BEGIN
+  SELECT * INTO r FROM tmp_refs;
+  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
+    valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
+  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_conf_id, r.valuta_id,
+          DATE '2026-07-15', 'SPEDITO', r.emittente_fiscale_id, false,
+          jsonb_build_object('test_scope','pgtap_contatore'))
+  RETURNING id, uid INTO v_ord, v_ord_uid;
+  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
+    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
+  VALUES (v_ord, 1, p_articolo, 'Riga contatore parziale', 10, 10, 25, r.iva_id, true, false,
+          jsonb_build_object('test_scope','pgtap_contatore'))
+  RETURNING id INTO v_orr;
+  v_ddt := vendite.fn_genera_ddt_da_ordine(
+             v_ord,
+             jsonb_build_array(jsonb_build_object('ordine_riga_id', v_orr,
+                                                  'qta_da_evadere', p_qta_evasa)));
+  INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
+  VALUES (v_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
+  UPDATE vendite.ddt SET causale_trasporto_id=r.causale_vendita_id  WHERE id=v_ddt;
+  UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_emesso_id     WHERE id=v_ddt;
+  UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_spedito_id    WHERE id=v_ddt;
+  UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_consegnato_id WHERE id=v_ddt;
+  SELECT d.uid INTO v_ddt_uid FROM vendite.ddt d WHERE d.id=v_ddt;
+  SELECT dr.id INTO v_ddtr FROM vendite.ddt_righe dr WHERE dr.ddt_id=v_ddt ORDER BY dr.id LIMIT 1;
   RETURN QUERY SELECT v_ord, v_ord_uid, v_orr, v_ddt, v_ddt_uid, v_ddtr;
 END $$ LANGUAGE plpgsql;
 
@@ -233,6 +287,12 @@ SELECT pg_temp.mk_af('DDT:' || (SELECT ddt_uid FROM tmp_p1)::text || ':R:' || (S
 SELECT pg_temp.mk_af('ORD:' || (SELECT ordine_uid FROM tmp_p1)::text || ':R:' || (SELECT ordine_riga_id FROM tmp_p1)::text, 5, 'ONERE');
 SELECT pg_temp.mk_af('ORD:' || (SELECT ordine_uid FROM tmp_p2)::text || ':R:' || (SELECT ordine_riga_id FROM tmp_p2)::text, 10, 'NORMALE');
 
+-- P5 (test 11): spedito 4 di 10, fatturato 10 sull'ORDINE.
+-- ⚠️ Fixture e AF vanno create QUI, prima dell'emissione: dopo, la commessa
+-- non e' piu' modificabile e l'upsert dell'attivita' verrebbe respinto.
+CREATE TEMP TABLE tmp_p5 AS SELECT * FROM pg_temp.mk_partita_parziale((SELECT articolo_id FROM tmp_refs), 4);
+SELECT pg_temp.mk_af('ORD:' || (SELECT ordine_uid FROM tmp_p5)::text || ':R:' || (SELECT ordine_riga_id FROM tmp_p5)::text, 10, 'NORMALE');
+
 -- Emissione: PRONTA_FATTURAZIONE + pull -> crea le AF.
 SELECT vendite.fn_cambia_stato_commessa((SELECT commessa_id FROM tmp_com), 'PRONTA_FATTURAZIONE');
 SELECT vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM tmp_com));
@@ -268,7 +328,14 @@ SELECT is(
   '9) P3 reso totale -> tenuti 0, differenza 0 (capitolato #4, chiude 1b)');
 
 -- ============================================================
--- 10) P4: articolo COMPOSITO -> riga d'ordine ESCLUSA dalla vista.
+-- 10) ⭐ P4: articolo COMPOSITO -> la riga d'ordine ORA C'E'.
+--     Fino al 2026-08-17 era esclusa da `WHERE NOT is_composito`, perche' le
+--     attivita' di un kit sono in unita'-COMPONENTE mentre consegnato e reso
+--     sono in unita'-PADRE: sommarle dava un numero senza senso. Ora S1
+--     normalizza in unita' del padre e l'esclusione non serve piu'.
+--     Qui il kit e' consegnato 10 e non fatturato -> differenza +10, cioe' il
+--     conto del PADRE (se contasse i componenti sarebbe un multiplo).
+--
 --     Conditional skip se nel DB dev non esiste un articolo composito.
 --     tmp_p4 creata SEMPRE (vuota se manca il composito), cosi' la CASE
 --     finale referenzia una tabella esistente anche nel ramo skip.
@@ -288,11 +355,32 @@ SELECT CASE
   WHEN (SELECT articolo_composito_id FROM tmp_refs) IS NULL
     THEN skip('nessun articolo composito nel DB dev', 1)
   ELSE is(
-    (SELECT COUNT(*)::int FROM vendite.vw_contatore_merce
+    (SELECT differenza FROM vendite.vw_contatore_merce
       WHERE ordine_riga_id=(SELECT ordine_riga_id FROM tmp_p4)),
-    0,
-    '10) riga d''ordine con articolo COMPOSITO esclusa dalla vista (follow-up)')
+    10::numeric,
+    '10) riga d''ordine COMPOSITA: ora e'' nella vista, e conta in unita'' del PADRE (+10)')
   END;
+
+-- ============================================================
+-- 11) ⭐ fatturato_anticipato: il fatturato che non ha ancora una merce.
+--     P5 spedisce 4 di 10 e fattura 10 sull'ORDINE (trigger CONFERMATO, che e'
+--     la configurazione di 93 ordini su 95). Allora:
+--       allocato sulla merce ....  4   (capienza = consegnato)
+--       anticipato .............   6   ← fatturato, non ancora uscito
+--       differenza .............  −6   ← INVARIATA rispetto a prima
+--
+--     ⚠️ Le due asserzioni insieme sono il punto. `differenza` resta negativa
+--     perche' la parita' viene prima: questa vista dosa la fatturazione e non
+--     puo' cambiare di un pezzo. Ma un −6 SENZA reso non e' un accredito
+--     dovuto: e' merce da spedire. `fatturato_anticipato` e' la colonna che lo
+--     dice, ed e' il motivo per cui il pannello del cantiere 2 legge le
+--     partite e non questo contatore.
+-- ============================================================
+SELECT results_eq(
+  $q$SELECT differenza, fatturato_anticipato FROM vendite.vw_contatore_merce
+      WHERE ordine_riga_id = (SELECT ordine_riga_id FROM tmp_p5)$q$,
+  $q$VALUES (-6::numeric, 6::numeric)$q$,
+  '11) spedito 4 di 10, fatturato 10 sull''ordine: differenza −6 (parita'') e fatturato_anticipato 6');
 
 SELECT * FROM finish();
 ROLLBACK;

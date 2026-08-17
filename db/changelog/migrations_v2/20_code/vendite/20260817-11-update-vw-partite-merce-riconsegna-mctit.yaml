@@ -1,0 +1,296 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# 🔴 CORREZIONE — la ri-consegna non e' merce nuova
+#   vw_partite_merce, seguito del 20260817-07 (slice S2).
+#   Brief: docs/it/dev/work-in-progress/brief-design-partita-merce-generalizzata.md
+#
+# ── IL DIFETTO, TROVATO SCRIVENDO S5 ────────────────────────────────────
+#
+#   La versione del 20260817-07 tratta OGNI riga di DDT come una partita. Ma la
+#   ri-consegna di merce resa crea una riga di DDT **nuova** per merce che e'
+#   **gia' stata consegnata e gia' contata** sulla partita d'origine.
+#
+#   Risultato: quella riga nasceva con `consegnato = N`, `fatturato = 0`, quindi
+#   `differenza = N` e stato `DA_FATTURARE`. Cioe' **merce da fatturare una
+#   seconda volta**.
+#
+#   Non e' un caso di scuola. Sul DB di sviluppo, il 2026-08-17:
+#
+#       riga di DDT 524 · 6 pezzi · DA_FATTURARE   ← ri-consegna della riga 521
+#       riga di DDT 525 · 2 pezzi · DA_FATTURARE   ← ri-consegna della riga 521
+#
+#   ⚠️ **Ed e' esattamente il difetto che la slice di luglio aveva chiuso** — il
+#   «bug 1a» — con la distribuzione della differenza d'ordine. Il test che lo
+#   presidia esiste da allora (`test-fn-list-ddt-da-pushare-contatore-v1`, caso
+#   D): e' stato lui a fermare la slice S5. Un test scritto per un modello
+#   precedente ha intercettato una regressione del modello nuovo, ed e' la
+#   ragione per cui i test che presidiano un COMPORTAMENTO non si riscrivono
+#   quando cambia l'implementazione sotto.
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────────
+#
+#   La ri-consegna **torna nella partita d'origine**, e la riga nuova non ne
+#   apre una propria:
+#
+#       ri-consegna su DDT EMESSO   ->  si somma al `consegnato` dell'ORIGINE
+#       ri-consegna su DDT in bozza ->  `in_riconsegna` dell'ORIGINE (invariato)
+#
+#   ⭐ Le due cose diventano **simmetriche**, e sono lo stesso fatto in due
+#   momenti: finche' il documento e' fermo, la merce e' sul banco
+#   (`in_riconsegna`); quando parte, e' di nuovo dal cliente (`consegnato`).
+#   Prima erano scritte in due posti che non si parlavano.
+#
+#   Verifica sul caso reale, riga 521 (9 consegnati, 8 resi, 8 ri-consegnati):
+#       prima:  521 -> tenuti 1  +  524 -> 6  +  525 -> 2      (tre partite)
+#       dopo:   521 -> consegnato 17, reso 8, tenuti 9         (una partita)
+#   Il totale per riga d'ordine resta **9** in entrambi i casi: la parita' del
+#   contatore (slice S3) non si muove. Cambia **dove** sta il conto, che e'
+#   precisamente cio' che decide se la merce viene rifatturata.
+#
+# ── LA RIGA DI RI-CONSEGNA RESTA VISIBILE, E DICHIARATA ─────────────────
+#
+#   Non si toglie dalla vista: sparirebbe dal pannello del DDT di ri-consegna,
+#   che mostrerebbe un documento con righe sotto e nessun conto sopra. Resta,
+#   con `e_riconsegna = true`, `differenza` **NULL** e `stato = 'RICONSEGNA'`:
+#   «questa merce ha un conto, ma non e' qui».
+#
+#   ⚠️ Assunzione, verificata sui 6 ponti di ri-consegna esistenti: la quantita'
+#   del ponte copre **tutta** la riga di DDT (`rc.qta = dr.quantita`), come la
+#   produce `fn_genera_ddt_riconsegna`. Se un giorno una riga fosse in parte
+#   ri-consegna e in parte merce nuova, quella parte nuova resterebbe fuori dal
+#   conto: e' il caso da presidiare per primo se la generazione cambia.
+#
+# ── COLONNA NUOVA, IN CODA ──────────────────────────────────────────────
+#
+#   `e_riconsegna` boolean. In coda, quindi CREATE OR REPLACE basta e non si
+#   tocca nulla a valle.
+#
+# ── SENZA `rollback:`, e stavolta e' una scelta di merito ───────────────
+#
+#   La definizione precedente **rifattura la merce ri-consegnata**. Un rollback
+#   che la ripristinasse rimetterebbe in circolo un difetto che produce
+#   documenti fiscali sbagliati, e lo farebbe con l'aria di un'operazione
+#   sicura. Senza il blocco, Liquibase fallisce in modo esplicito: se davvero
+#   serve tornare indietro, lo si dichiara in avanti con un changeSet che dice
+#   cosa si vuole al posto di questo.
+#
+# Dipendenze: vendite.vw_af_merce_per_riga (20260817-06),
+#   vendite.vw_partite_merce (20260817-07), vendite.resi_righe_riconsegne.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260817-11-update-vw-partite-merce-riconsegna-mctit.yaml
+
+  - changeSet:
+      id: 20260817-11-update-vw-partite-merce-riconsegna
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        Correzione della partita di merce: la ri-consegna di merce resa non apre
+        una partita nuova (sarebbe merce da fatturare due volte — il «bug 1a»
+        chiuso a luglio e riaperto dalla slice S2), ma rientra nel consegnato
+        della partita d'ORIGINE quando il documento e' emesso, e resta
+        in_riconsegna finche' e' in bozza. La riga di ri-consegna resta visibile
+        con e_riconsegna=true, differenza NULL e stato RICONSEGNA.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_partite_merce
+            - tableExists:
+                schemaName: vendite
+                tableName: resi_righe_riconsegne
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_partite_merce
+              WITH (security_invoker=on) AS
+              WITH soglia AS (
+                  -- La merce esiste da quando il documento esce dalla bozza.
+                  -- Per codice_interno (immutabile), non per numero.
+                  SELECT s.ordine AS ordine_emesso
+                    FROM config.stati_doc_ddt s
+                   WHERE s.codice_interno = 'EMESSO'
+              ),
+              ponte AS (
+                  -- Il ponte della ri-consegna, letto DALL'ORIGINE: quanta merce
+                  -- resa da questa riga e' stata rimessa su un documento, e se
+                  -- quel documento e' partito oppure e' ancora fermo.
+                  -- ⭐ Le due colonne sono lo stesso fatto in due momenti.
+                  SELECT rr.ddt_riga_id AS ddt_riga_origine,
+                         COALESCE(SUM(rc.qta) FILTER (WHERE sdd_n.ordine >= sg.ordine_emesso), 0) AS riconsegnato,
+                         COALESCE(SUM(rc.qta) FILTER (WHERE sdd_n.ordine <  sg.ordine_emesso), 0) AS in_riconsegna
+                    FROM vendite.resi_righe_riconsegne rc
+                    JOIN vendite.resi_righe rr      ON rr.id = rc.resi_riga_id
+                    JOIN vendite.ddt_righe dr_new   ON dr_new.id = rc.ddt_riga_id
+                    JOIN vendite.ddt d_new          ON d_new.id = dr_new.ddt_id
+                    JOIN config.stati_doc_ddt sdd_n ON sdd_n.id = d_new.stato_doc_ddt_id
+                   CROSS JOIN soglia sg
+                   GROUP BY rr.ddt_riga_id
+              ),
+              riga AS (
+                  -- L'universo delle partite: una riga di DDT attiva, su un
+                  -- documento non abortito e almeno EMESSO (decisione D1).
+                  SELECT dr.id                                  AS ddt_riga_id,
+                         dr.ddt_id                              AS ddt_id,
+                         d.uid                                  AS ddt_uid,
+                         d.data                                 AS ddt_data,
+                         dr.articolo_id                         AS articolo_id,
+                         COALESCE(art.is_composito, false)      AS is_composito,
+                         -- ⚠️ Una riga di RI-CONSEGNA non conta come merce
+                         -- nuova: quei pezzi sono gia' contati sulla partita da
+                         -- cui il reso e' venuto. Se contassero due volte,
+                         -- verrebbero fatturati due volte.
+                         (EXISTS (SELECT 1 FROM vendite.resi_righe_riconsegne rc
+                                   WHERE rc.ddt_riga_id = dr.id)) AS e_riconsegna,
+                         -- Merce USCITA con questa riga, piu' quella resa e poi
+                         -- RI-SPEDITA con un documento gia' emesso: e' tornata
+                         -- dal cliente, quindi torna nel conto dell'origine.
+                         -- ⚠️ Il cast NON e' cosmetico. `CREATE OR REPLACE VIEW`
+                         -- non puo' cambiare il TIPO di una colonna esistente, e
+                         -- la somma allarga numeric(18,6) a numeric senza
+                         -- vincoli: senza il cast il changeSet fallisce con
+                         -- «non e' possibile cambiare tipo di dato della colonna
+                         -- di vista consegnato». Il tipo e' quello che la
+                         -- 20260817-07 ha fissato leggendo dr.quantita.
+                         (dr.quantita + COALESCE(pt.riconsegnato, 0))::numeric(18,6) AS consegnato,
+                         COALESCE(pt.in_riconsegna, 0)          AS in_riconsegna,
+                         COALESCE(caus.fatturabile, false)      AS fatturabile
+                    FROM vendite.ddt_righe dr
+                    JOIN vendite.ddt d              ON d.id = dr.ddt_id
+                    JOIN config.stati_doc_ddt sdd   ON sdd.id = d.stato_doc_ddt_id
+                    JOIN catalogo.articoli art      ON art.id = dr.articolo_id
+                    LEFT JOIN config.causali_trasporto caus ON caus.id = d.causale_trasporto_id
+                    LEFT JOIN ponte pt              ON pt.ddt_riga_origine = dr.id
+                   CROSS JOIN soglia sg
+                   WHERE dr.attivo IS TRUE
+                     AND NOT sdd.is_abortito
+                     AND sdd.ordine >= sg.ordine_emesso
+              ),
+              orig AS (
+                  -- L'origine della merce, quando c'e'. L'unicita' e' sulla
+                  -- COPPIA: una riga di DDT POTREBBE evadere due righe d'ordine.
+                  SELECT f.ddt_riga_id,
+                         COUNT(DISTINCT f.ordine_riga_id)  AS n_origini,
+                         MIN(f.ordine_riga_id)             AS ordine_riga_id
+                    FROM vendite.ordini_righe_fulfillment f
+                   GROUP BY f.ddt_riga_id
+              ),
+              res AS (
+                  -- Merce tornata indietro, PER RIGA DI MERCE.
+                  SELECT e.ddt_riga_id, SUM(e.quantita) AS reso
+                    FROM vendite.vw_resi_righe_effettive e
+                   GROUP BY e.ddt_riga_id
+              ),
+              alloc AS (
+                  -- Allocazione della corsia ORD sulle righe di merce, greedy
+                  -- dalla piu' vecchia, capienza = consegnato.
+                  -- Le righe di ri-consegna non partecipano: non sono merce
+                  -- nuova, quindi non hanno capienza da offrire.
+                  SELECT r.ddt_riga_id,
+                         GREATEST(0::numeric, LEAST(
+                           r.consegnato,
+                           COALESCE(fo.quantita, 0)
+                           - COALESCE(SUM(r.consegnato) OVER (
+                                 PARTITION BY o.ordine_riga_id
+                                 ORDER BY r.ddt_data, r.ddt_riga_id
+                                 ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0)
+                         ))                                        AS fatturato_da_ordine,
+                         COALESCE(fo.misurabile, true)              AS ord_misurabile
+                    FROM riga r
+                    JOIN orig o ON o.ddt_riga_id = r.ddt_riga_id
+                    LEFT JOIN vendite.vw_af_merce_per_riga fo
+                           ON fo.corsia = 'ORD'
+                          AND fo.riga_id = o.ordine_riga_id
+                          AND fo.tipo_movimento = 'NORMALE'
+                   WHERE NOT r.e_riconsegna
+              )
+              SELECT r.ddt_riga_id,
+                     r.ddt_id,
+                     r.ddt_uid,
+                     r.articolo_id,
+                     r.is_composito,
+                     o.ordine_riga_id,
+                     orr.ordine_id,
+                     (CASE
+                        WHEN o.ddt_riga_id IS NULL   THEN 'NESSUNA'
+                        WHEN o.n_origini > 1         THEN 'MULTIPLA'
+                        ELSE 'ORDINE'
+                      END)::varchar                                        AS origine,
+                     r.fatturabile,
+                     r.consegnato,
+                     COALESCE(res.reso, 0)                                 AS reso,
+                     r.in_riconsegna,
+                     v.tenuti,
+                     COALESCE(fd.quantita, 0)                              AS fatturato_merce,
+                     COALESCE(al.fatturato_da_ordine, 0)                   AS fatturato_da_ordine,
+                     v.fatturato,
+                     v.misurabile,
+                     -- differenza: NULL = «non si applica», e non e' zero.
+                     (CASE WHEN w.conta_fatturazione AND v.misurabile AND NOT r.e_riconsegna
+                           THEN w.saldo
+                      END)                                                 AS differenza,
+                     -- La traduzione del verso del saldo, UNA VOLTA SOLA.
+                     (CASE
+                        WHEN r.e_riconsegna           THEN 'RICONSEGNA'
+                        WHEN NOT w.conta_fatturazione THEN 'NON_FATTURABILE'
+                        WHEN NOT v.misurabile         THEN 'NON_MISURABILE'
+                        WHEN w.saldo > 0              THEN 'DA_FATTURARE'
+                        WHEN w.saldo < 0              THEN 'DA_ACCREDITARE'
+                        ELSE 'PAREGGIATA'
+                      END)::varchar                                        AS stato,
+                     -- ── colonna NUOVA, in coda ──
+                     r.e_riconsegna
+                FROM riga r
+                LEFT JOIN orig o        ON o.ddt_riga_id = r.ddt_riga_id
+                LEFT JOIN vendite.ordini_righe orr ON orr.id = o.ordine_riga_id
+                LEFT JOIN res           ON res.ddt_riga_id = r.ddt_riga_id
+                LEFT JOIN alloc al      ON al.ddt_riga_id = r.ddt_riga_id
+                LEFT JOIN vendite.vw_af_merce_per_riga fd
+                       ON fd.corsia = 'DDT'
+                      AND fd.riga_id = r.ddt_riga_id
+                      AND fd.tipo_movimento = 'NORMALE'
+                CROSS JOIN LATERAL (
+                    SELECT r.consegnato - COALESCE(res.reso, 0)              AS tenuti,
+                           COALESCE(fd.quantita, 0)
+                             + COALESCE(al.fatturato_da_ordine, 0)          AS fatturato,
+                           COALESCE(fd.misurabile, true)
+                             AND COALESCE(al.ord_misurabile, true)          AS misurabile
+                ) v
+                CROSS JOIN LATERAL (
+                    -- ⚠️ `fatturabile` non basta a spegnere il conto: esiste
+                    -- merce partita su causale non fatturabile il cui ordine e'
+                    -- stato fatturato lo stesso. La causale dice cosa ci si
+                    -- aspetta dal VIAGGIO, non se la merce e' stata fatturata.
+                    SELECT (r.fatturabile OR v.fatturato > 0) AS conta_fatturazione,
+                           v.tenuti - v.fatturato             AS saldo
+                ) w;
+
+              COMMENT ON VIEW vendite.vw_partite_merce IS
+                'La partita di merce (brief-design-partita-merce-generalizzata S2, rev 2026-08-17 '
+                'correzione ri-consegna): UNA riga per riga di DDT attiva su documento non abortito e '
+                'almeno EMESSO (decisione D1). La riga d''ordine e'' l''ORIGINE, nullable: righe '
+                'manuali e DDT standalone hanno una partita come le altre. ⚠️ Una riga di RI-CONSEGNA '
+                'NON e'' una partita nuova — quei pezzi sono gia'' contati sulla partita da cui il '
+                'reso e'' venuto, e contarli due volte li farebbe FATTURARE due volte (il «bug 1a» '
+                'chiuso a luglio). La ri-consegna rientra nel `consegnato` dell''ORIGINE quando il '
+                'documento e'' emesso, e resta `in_riconsegna` finche'' e'' in bozza: lo stesso fatto '
+                'in due momenti. La riga di ri-consegna resta visibile con e_riconsegna=true, '
+                'differenza NULL e stato RICONSEGNA, cosi'' il pannello del suo DDT non e'' vuoto. '
+                'fatturato = corsia DDT + quota allocata della corsia ORD (greedy oldest-first, '
+                'capienza = CONSEGNATO e non tenuti). ⚠️ differenza e'' NULL (non zero) se la causale '
+                'non e'' fatturabile senza alcun fatturato, se il conto non e'' misurabile, o se la '
+                'riga e'' una ri-consegna. `stato` traduce il verso del saldo UNA VOLTA SOLA: i '
+                'consumatori NON devono ri-tradurlo. security_invoker=on.';
