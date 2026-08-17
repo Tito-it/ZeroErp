@@ -2594,3 +2594,209 @@ class VenditeRepository:
                 }
             )
         return result
+
+    # ------------------------------------------------------------------
+    # Situazione merce (pannello ordine/DDT — brief-design-situazione-merce-ordine)
+    # Letture sulle viste della partita generalizzata. Tutte
+    # `security_invoker=on`: la RLS del chiamante si applica da sola, quindi
+    # NIENTE `auth_user_id` e niente filtro applicativo di scope.
+    # ⚠️ E vale il §8.6 del brief partita: su una vista con RLS uno zero non e'
+    # un dato, e' fail-closed. Il cancello di perimetro sono le due `exists_*`
+    # qui sotto, che interrogano la TESTATA (l'unica tabella con la policy).
+    # ------------------------------------------------------------------
+
+    # Scopo: Esistenza (e visibilita' nello scope) di un ordine. `vendite.ordini`
+    #        ha la RLS, `ordini_righe` NO: e' la testata a fare da cancello, ed
+    #        e' lo stesso ordine di lettura del dettaglio fattura (api.md).
+    #        False = inesistente OPPURE fuori scope, indistinguibili di proposito.
+    def exists_ordine(self, ordine_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT 1 FROM vendite.ordini WHERE id = %s", [int(ordine_id)]
+            )
+            return cursor.fetchone() is not None
+
+    # Scopo: Gemella della precedente per il DDT (`vendite.ddt` ha la RLS,
+    #        `ddt_righe` no).
+    def exists_ddt(self, ddt_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT 1 FROM vendite.ddt WHERE id = %s", [int(ddt_id)]
+            )
+            return cursor.fetchone() is not None
+
+    # Scopo: Il riassunto PER RIGA D'ORDINE (livello 1 del pannello), da
+    #        `vw_situazione_merce_ordine`. E' l'aggregato PARLANTE: `differenza`
+    #        NULL dove il conto non si applica e `stato` gia' tradotto.
+    # Risultato: una riga per riga d'ordine ATTIVA, comprese quelle mai spedite
+    #        (`stato = 'NON_SPEDITA'`, 89 su 107 in sviluppo) — che nel contatore
+    #        non ci sono affatto.
+    # ⚠️ NON e' `vw_contatore_merce`: quello e' il contatore GREZZO che dosa la
+    #        fatturazione, non ha `stato` e appiattisce i NULL a un numero.
+    def list_situazione_merce_ordine(self, ordine_id: int) -> list[dict[str, Any]]:
+        sql = """
+            SELECT
+                s.ordine_riga_id,
+                s.ordine_id,
+                s.riga_nr,
+                s.articolo_id,
+                a.codice            AS articolo_codice,
+                orr.descrizione,
+                s.ordinato,
+                s.consegnato,
+                s.reso,
+                s.in_riconsegna,
+                s.tenuti,
+                s.fatturato_merce,
+                s.fatturato_da_ordine,
+                s.fatturato,
+                s.fatturato_anticipato,
+                s.da_spedire,
+                s.partite_merce,
+                s.misurabile,
+                s.differenza,
+                s.stato,
+                orr.uom_operativa_id,
+                um.codice           AS uom_codice
+              FROM vendite.vw_situazione_merce_ordine s
+              JOIN vendite.ordini_righe orr      ON orr.id = s.ordine_riga_id
+              LEFT JOIN catalogo.articoli a      ON a.id   = s.articolo_id
+              LEFT JOIN catalogo.unita_misura um ON um.id  = orr.uom_operativa_id
+             WHERE s.ordine_id = %s
+             ORDER BY s.riga_nr, s.ordine_riga_id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(ordine_id)])
+            return rows_to_list(cursor)
+
+    # Scopo: Le PARTITE DI MERCE (livello 2 del pannello), da
+    #        `vw_partite_merce`. Grana = riga di DDT. Due filtri, una lettura
+    #        (richiesta BE-1): per DDT = «la situazione di QUESTA spedizione»,
+    #        per ordine = tutte le spedizioni di quell'ordine.
+    # ⚠️ Esattamente uno dei due parametri va valorizzato: il chiamante e' il
+    #        service, e un filtro assente restituirebbe TUTTE le partite del
+    #        database — errore di programmazione, non input utente.
+    def list_partite_merce(
+        self,
+        *,
+        ddt_id: int | None = None,
+        ordine_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        if (ddt_id is None) == (ordine_id is None):
+            raise ValueError(
+                "list_partite_merce: passare ESATTAMENTE uno fra ddt_id e ordine_id"
+            )
+        if ddt_id is not None:
+            condizione, param = "p.ddt_id = %s", int(ddt_id)
+        else:
+            assert ordine_id is not None
+            condizione, param = "p.ordine_id = %s", int(ordine_id)
+        sql = f"""
+            SELECT
+                p.ddt_riga_id,
+                p.ddt_id,
+                d.numero            AS ddt_numero,
+                d.data              AS ddt_data,
+                p.articolo_id,
+                a.codice            AS articolo_codice,
+                dr.descrizione,
+                dr.riga_nr,
+                dr.uom_operativa_id,
+                um.codice           AS uom_codice,
+                p.is_composito,
+                p.ordine_riga_id,
+                p.ordine_id,
+                o.numero            AS ordine_numero,
+                p.origine,
+                p.fatturabile,
+                p.consegnato,
+                p.reso,
+                p.in_riconsegna,
+                p.tenuti,
+                p.fatturato_merce,
+                p.fatturato_da_ordine,
+                p.fatturato,
+                p.misurabile,
+                p.differenza,
+                p.stato,
+                p.e_riconsegna,
+                p.sospetto_duplicato_ordine
+              FROM vendite.vw_partite_merce p
+              JOIN vendite.ddt d                 ON d.id   = p.ddt_id
+              JOIN vendite.ddt_righe dr          ON dr.id  = p.ddt_riga_id
+              LEFT JOIN vendite.ordini o         ON o.id   = p.ordine_id
+              LEFT JOIN catalogo.articoli a      ON a.id   = p.articolo_id
+              LEFT JOIN catalogo.unita_misura um ON um.id  = dr.uom_operativa_id
+             WHERE {condizione}
+             ORDER BY d.data, p.ddt_id, dr.riga_nr, p.ddt_riga_id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [param])
+            return rows_to_list(cursor)
+
+    # Scopo: Le due code di lavoro del documento (D-4: un round-trip solo, cosi'
+    #        il pannello NON PUO' contraddire le code — e' l'ultima voce della
+    #        definizione di fatto del cantiere 2).
+    # ⭐ L'aggancio e' `ddt_riga_id`, MAI `ordine_riga_id`: quest'ultimo e'
+    #        nullable e sulla merce senza origine ordine e' vuoto — usarlo come
+    #        chiave farebbe uscire quelle righe dal conto SENZA ERRORE, che e'
+    #        il difetto §8.5 che questo cantiere ha chiuso. Le partite del
+    #        documento sono il ponte.
+    def _list_coda_su_partite(
+        self,
+        vista: str,
+        colonne: str,
+        *,
+        ddt_id: int | None,
+        ordine_id: int | None,
+    ) -> list[dict[str, Any]]:
+        # `vista` e `colonne` arrivano SOLO dai due wrapper qui sotto
+        # (letterali statici, nessun input utente).
+        if ddt_id is not None:
+            condizione, param = "p.ddt_id = %s", int(ddt_id)
+        else:
+            assert ordine_id is not None
+            condizione, param = "p.ordine_id = %s", int(ordine_id)
+        sql = f"""
+            SELECT {colonne}
+              FROM {vista} v
+             WHERE EXISTS (
+                    SELECT 1
+                      FROM vendite.vw_partite_merce p
+                     WHERE p.ddt_riga_id = v.ddt_riga_id
+                       AND {condizione}
+             )
+             ORDER BY v.reso_id, v.resi_riga_id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [param])
+            return rows_to_list(cursor)
+
+    # Scopo: Coda «da accreditare» del documento. `etichetta` DOVUTA|FACOLTATIVA
+    #        arriva dalla vista: il pannello mostra la STESSA parola della coda.
+    def list_situazione_merce_accrediti(
+        self, *, ddt_id: int | None = None, ordine_id: int | None = None
+    ) -> list[dict[str, Any]]:
+        return self._list_coda_su_partite(
+            "vendite.vw_resi_da_accreditare",
+            "v.resi_riga_id, v.reso_id, v.reso_numero, v.data, v.articolo_id, "
+            "v.descrizione, v.quantita, v.qta_operativa, v.ddt_riga_id, "
+            "v.ddt_id, v.ddt_numero, v.ordine_riga_id, v.tenuti, v.fatturati, "
+            "v.accredito_dovuto, v.etichetta, v.motivo",
+            ddt_id=ddt_id,
+            ordine_id=ordine_id,
+        )
+
+    # Scopo: Coda «da ri-consegnare» del documento (residuo aperto).
+    def list_situazione_merce_riconsegne(
+        self, *, ddt_id: int | None = None, ordine_id: int | None = None
+    ) -> list[dict[str, Any]]:
+        return self._list_coda_su_partite(
+            "vendite.vw_resi_da_riconsegnare",
+            "v.resi_riga_id, v.reso_id, v.reso_numero, v.data, v.articolo_id, "
+            "v.descrizione, v.ddt_riga_id, v.ddt_id, v.ddt_numero, "
+            "v.ordine_riga_id, v.qta_resa, v.qta_riconsegnata, "
+            "v.qta_rinunciata, v.qta_residua, v.stato_riconsegna",
+            ddt_id=ddt_id,
+            ordine_id=ordine_id,
+        )

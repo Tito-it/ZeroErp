@@ -1766,3 +1766,429 @@ allarme è entrato insieme alla generalizzazione.
    is_composito` era una rinuncia scritta a luglio con la sua data e il suo
    motivo; il test che la presidiava andava riscritto, non aggiustato. Un test
    che difende una rinuncia, quando la rinuncia finisce, difende il difetto.
+
+---
+
+## 21. 📌 Perimetro BE/FE — cosa è già fatto e cosa resta da decidere
+
+> Scritto il **2026-08-17**, dopo il push del DB. Questa parte non tocca il
+> modello: raccoglie l'esecuzione delle otto richieste del §19 e le domande che
+> non si possono chiudere senza Tid.
+
+### 21.1 ✅ Fatto subito — e una delle tre cose era **rossa adesso**
+
+| # | Cosa | Esito |
+| --- | --- | --- |
+| **BE-0** | policy + messaggio di ripiego del codice errore nuovo | 🔴 **tre cancelli erano rossi**, vedi sotto — ora verdi |
+| **BE-4** | commento di `resi_repository.list_da_accreditare` | ✅ corretto: diceva l'opposto del vero |
+| **BE-5** | `ordine_riga_id` usato come **chiave** sulla coda accrediti | ✅ **zero occorrenze**, misurato — nessuna modifica |
+| **§12 BE-4** | `_kit_meta` scrive ancora `coeff_qta` | ✅ sì, e la sede è quella che S1 legge |
+
+#### 🔴 BE-0 — la «conferma» del §19.1 aveva una risposta, ed era «no»
+
+Il §19.1 chiudeva con *«Da verificare (non una richiesta, una conferma): va
+confermato che il cancello del terzo lato resti verde senza aggiunte a
+`error_policies.py`»*. **La domanda era ben posta e la risposta misurata è che il
+cancello non era affatto verde**:
+
+```text
+test_error_codes_db_policy_guardrail            →  FAIL (verso 1)
+  E_RESO_ORIGINE_INCOERENTE  [da trigger]  (vendite.trgfn_resi_righe_guard_origine_coerente)
+test_error_policies_divergenza_db               →  FAIL (--check: il modulo DIVERGE dal catalogo)
+test_ogni_codice_vivo_ha_un_messaggio_di_ripiego →  FAIL (codice vivo senza fallback)
+```
+
+⭐ **E non perché mancasse una decisione: la decisione c'era già, nel CSV.** Il
+codice è seminato con `classe = DATO_ERRATO`; ciò che mancava era la **seconda
+metà del gesto** — `error_policies_generated.py` è generato dal catalogo, e
+nessuno lo aveva rigenerato dopo il seed. Rimedio:
+
+```bash
+./manage-env.sh genera_error_policies      # 696 → 697 voci, una riga + il suo commento
+```
+
+`error_policies.py` **non è stato toccato**, ed è esattamente ciò che il §19.1 si
+aspettava: la classe viene dal catalogo, status e `ui_action` si derivano.
+
+⚠️ **Il terzo cancello non era prevedibile leggendo il §19.1, ed è il più
+interessante.** `USER_MESSAGE_FALLBACK` (`error_messages_fallback.py`) pretende
+un messaggio **senza segnaposto** per ogni codice **vivo**: è ciò che l'operatore
+legge quando il messaggio del database non arriva. Il codice nuovo non ce
+l'aveva. Aggiunto a mano — quel modulo *non* è generato, ed è voluto: il catalogo
+ha i buchi che `fn_log_and_raise_error` riempie a runtime, questi sono quelli che
+si mostrano quando gli argomenti non ci sono. **Una riga.**
+
+⚠️ **La regola che ne esce, e vale oltre questo cantiere**: *un codice errore
+nuovo seminato dal DB lascia il repository rosso finché il backend non fa le sue
+due mosse* — rigenerare le policy **e** scrivere il messaggio di ripiego. Le metà
+stanno in perimetri e commit diversi, quindi il rosso non compare a chi applica
+la migrazione: compare al primo che manda una PR. Va nella lista di consegna del
+team DB, accanto al changeSet.
+
+#### BE-4 — il commento diceva l'opposto, verificato contro la definizione viva
+
+```text
+prima:  «ddt_numero/ddt_id possono essere NULL (aggancio partita via
+         ordine_riga_id, join DDT diventato LEFT)»
+oggi:   i join a ddt_righe e ddt sono INNER  →  ddt_id/ddt_numero ci sono SEMPRE
+        a poter mancare è ordine_riga_id, che non è più la chiave
+```
+
+Il commento nuovo dice anche **perché** può mancare (merce senza origine ordine:
+riga aggiunta a mano, DDT standalone) e che **nessun consumatore lo usi come
+chiave** — così BE-5 resta presidiato da qualcosa che si legge, non solo da una
+misura fatta una volta.
+
+#### BE-5 — la misura, in quattro punti
+
+| Dove | `ordine_riga_id` usato come chiave? |
+| --- | --- |
+| `_CODA_META` (`order_cols` / `search_cols`) | ❌ assente |
+| `resi_service.list_da_accreditare` | ❌ assente (filtra etichetta/BA/date/search) |
+| FE — `resiCoda.js`, `ResiCodaTable.vue`, `constants.js` | ❌ assente |
+| seed `ui.lista_colonna` della lista `vendite.resi_da_accreditare` (id 10) | ❌ assente |
+
+Viaggia solo come campo passante nel `SELECT v.*`. **Niente da correggere**, ed è
+il modello che ha funzionato: la merce senza ordine entra nella coda senza che
+nessun consumatore se ne accorga.
+
+#### §12 BE-4 — il `coeff_qta` è ancora scritto, e nella sede giusta
+
+`BoMComponentExpander` scrive `meta['coeff_qta']` su **`commesse_attivita`**
+(`commesse_source_handlers.py`), col contratto centralizzato in `_kit_meta.py`
+(`META_KEY_COEFF_QTA`). `vw_af_merce_per_riga` legge `ca.meta ->> 'coeff_qta'`
+sulla **stessa tabella**: la catena si chiude. ⭐ Il §8.2 lo aveva anticipato —
+la vista è ora il **terzo consumatore** di quel contratto e il primo che lo
+verifica su ogni riga.
+
+### 21.2 ✅ BE-1 — FATTO (2026-08-17)
+
+**Cosa**: due letture read-only della stessa fonte.
+
+```text
+GET /api/v1/vendite/ordini/<ordine_id>/situazione-merce/
+GET /api/v1/vendite/ddt/<ddt_id>/situazione-merce/
+```
+
+✅ **Realizzato come descritto qui sotto**, con in piu' le decisioni D-2/D-3/D-4:
+quattro sezioni in un round-trip (`righe_ordine` · `partite` · `accrediti` ·
+`riconsegne`). Doc:
+[api_situazione_merce.md](../../backend/vendite/manual/api_situazione_merce.md).
+9 test service verdi + prova con chiamata REALE al DB (i mock non vedono il
+binding SQL). ⚠️ **Non mergiabile prima del push di `20260817-15`.**
+
+⭐ **La prova che vale piu' dei test**: l'ordine del §3 del brief pannello — le
+cinque schermate — torna in **una chiamata sola**.
+
+```text
+righe_ordine  riga 1 · ordinato 21 · tenuti 13 · fatturato 21
+                     · differenza -8 · da_spedire 3 · DA_ACCREDITARE
+partite       DDT0010839 · origine ORDINE · consegnato 21 · -8 · DA_ACCREDITARE
+accrediti     RESO0005122 · 5 · DOVUTA     RESO0005123 · 3 · FACOLTATIVA
+riconsegne    RESO0005123 · residua 3 · DA_RICONSEGNARE
+```
+
+| Scelta | Perché |
+| --- | --- |
+| **Un factory**, sul modello di `build_riepilogo_iva_view` e `build_passaggi_view` | due domini dal primo giorno, e il §5.1 del brief pannello ne dichiara due **per costruzione**. ⚠️ È la **regola del 2**: dichiarata qui, in attesa dell'ok di Tid |
+| **Due filtri, una lettura** (`ddt_id` / `ordine_id` su `vw_partite_merce`) | è testualmente la richiesta BE-1: *«sono due filtri, non due letture»* |
+| **Display fields via JOIN** | la vista porta il solo `articolo_id`: servono codice/descrizione/UoM (e sul lato ordine numero e `riga_nr`). JOIN nella lettura, mai lookup client-side |
+| **`stato` passa così com'è** (BE-2) | nessun `if differenza > 0` in Python: la traduzione del verso del saldo è **una sola**, e sta nella vista |
+| **`differenza = NULL` viaggia come `null`** (BE-3) | nessun `COALESCE`, né in Python né **in SQL nel repository** — la vista lo mette NULL apposta, e `0` rimetterebbe dentro i falsi allarmi del §8.4 e del §8.6 |
+| **Nessun filtro applicativo di scope** | `security_invoker=on`: il cancello è la RLS su `ddt`/`commesse_attivita`. Si legge con la connessione dell'utente, **mai da un canale di sistema** (stessa regola di `vw_fondi_fattura_da_decidere`) |
+| **Nessuna paginazione** | le partite di un documento sono decine. Come `ApiDdtRighe`: `success_response` con la lista |
+| `DomainAPIView`, `area_funzionale = "vendite"`, LETTURA, `@extend_schema` | checklist nuovo endpoint di `api.md` |
+
+⚠️ **E vale il §8.6 anche a video**: `misurabile = false` non è uno zero. Il
+backend lo trasporta, il frontend lo distingue (FE-1).
+
+**Dove**: lettura in `vendite_repository.py` (perimetro «generico schema»,
+convenzione di naming di `AGENTS.md`), orchestrazione in `vendite_service.py`,
+view dal factory in `apps/vendite/api/`. Test service con repository mockato
+(`unittest.TestCase`, niente DB — regola CI).
+
+### 21.3 ⏳ FE-1 / FE-2 / FE-3 — non hanno ancora una casa
+
+Le tre richieste frontend del §19.2 sono **requisiti sul pannello del cantiere
+2**, che non esiste: `NON_MISURABILE` contro `PAREGGIATA` (FE-1),
+`sospetto_duplicato_ordine` (FE-2), `fatturato_anticipato` che non è un
+accredito (FE-3) sono tutte cose che *un pannello* deve fare.
+
+⚠️ **Anche i due stati nuovi da mettere in tavolozza** (`RICONSEGNA`,
+`NON_MISURABILE` in `core/utils/severity.js`) **non vanno anticipati**: una mappa
+di severity che nessun componente consuma è codice morto, e la scelta dei colori
+si fa guardando il pannello, non il vocabolario.
+
+⭐ **Le tre richieste non si perdono**: sono già scritte in §19.2 e vanno
+riprese come **definizione di fatto** del cantiere 2 — la loro sede è quel brief,
+non questo.
+
+### 21.4 ❓ Domande aperte — servono a Tid, non le decido io
+
+**D-1 · Il perimetro di «procedi allo sviluppo».** Il cantiere 2 (pannello
+situazione merce su ordine e DDT) è **dentro** questo giro o è il passo
+successivo?
+→ **Raccomandazione: fuori.** BE-1 adesso, perché è la richiesta scritta ed è il
+prerequisito; il pannello come cantiere a sé, che ha le sue cinque decisioni di
+forma già prese nel §5 del suo brief e una definizione di fatto propria.
+⚠️ Il costo dichiarato di questa scelta: BE-1 nasce **senza consumatore**, e un
+endpoint che nessuno chiama è esattamente ciò che il §8.7 di questo brief
+descrive come pericoloso — *«non è mai stato mostrato a una persona»*.
+
+**D-2 · La forma della lettura sull'ordine.** La partita è per **riga di DDT**:
+un ordine da 3 righe evase con 2 DDT dà fino a 6 partite, e il §5.2 del brief
+pannello vuole un **riassunto in testata**. Due strade:
+
+| | Cosa restituisce l'endpoint |
+| --- | --- |
+| **(a)** | le partite grezze; il riassunto lo somma il frontend |
+| **(b)** ⭐ | **due livelli**: righe d'ordine da `vw_contatore_merce` (che *è già* l'aggregato per riga d'ordine e porta `fatturato_anticipato`, cioè FE-3) + le partite sotto |
+
+→ **Raccomandazione: (b).** L'aggregato esiste già a DB: ri-sommarlo in Python
+sarebbe la **terza** copia della stessa somma, ed è la stessa ragione per cui
+BE-2 vieta di ri-tradurre `stato`.
+
+**D-3 · Le righe d'ordine mai spedite** — ed è la domanda che tocca il modello.
+Il §15.4 dichiara che una riga fatturata sull'ordine e **mai spedita** non sta in
+nessuna delle due viste: né partita, né contatore. Sul pannello dell'ordine
+quella riga **non compare affatto** — l'operatore vedrebbe 3 righe su 4. Sono le
+**12 righe** del rilievo A.
+
+| | Cosa si vede |
+| --- | --- |
+| **(a)** | solo ciò che si è mosso, **dichiarando** quante righe non sono ancora partite |
+| **(b)** ⭐ | l'endpoint fa `LEFT JOIN` da `ordini_righe`: la riga compare con `consegnato 0` e **`differenza` NULL** |
+| **(c)** | niente: si vedono solo le partite (è il comportamento di oggi) |
+
+→ **Raccomandazione: (b), ma solo con `differenza` NULL.** Un pannello d'ordine
+che non nomina una riga ordinata mente per omissione — è lo stesso difetto del
+§8.3-bis, la merce che sparisce dalla lettura. ⚠️ **Con `differenza` valorizzata
+sarebbe invece la riapertura del rilievo A**: 12 righe con saldo negativo su
+merce che deve solo partire, cioè il falso allarme che questo cantiere ha appena
+tolto.
+⚠️ E (b) porta con sé una coda: quella riga vorrebbe uno **stato** che oggi non
+è nel vocabolario del §9.3 (`DA_SPEDIRE`?). Nascerebbe nel frontend o come
+colonna a DB — e la prima strada è quella che BE-2 vieta.
+
+**D-4 · Le due code dentro lo stesso endpoint?** Il §4 del brief pannello chiede
+anche *«da accreditare»* con l'etichetta dovuto/facoltativo e *«da
+riconsegnare»* col residuo: stanno in `vw_resi_da_accreditare` e
+`vw_resi_da_riconsegnare`, **non** nella partita.
+→ **Raccomandazione: dentro**, un round-trip solo, sul modello di
+`GET /vendite/fatture/<id>/` che restituisce il documento completo. Il costo è
+due letture in più nel service; il guadagno è che il pannello **non può**
+contraddire le code, che è l'ultima voce della definizione di fatto del cantiere 2.
+
+**D-5 · L'ok alla regola del 2.** Chiedo l'autorizzazione a estrarre
+`build_situazione_merce_view` come **factory** invece di scrivere due view
+gemelle: due domini dal primo giorno, e i due precedenti in casa
+(`build_riepilogo_iva_view`, `build_passaggi_view`) hanno la stessa forma.
+
+### 21.5 ✅ Decisioni di Tid (2026-08-17) e risposta a D-1
+
+| # | Esito |
+| --- | --- |
+| **D-2** | ✅ due livelli — ⚠️ **con una correzione sulla fonte del livello 1**, vedi §21.6 |
+| **D-3** | ✅ `LEFT JOIN` da `ordini_righe`, `differenza` NULL sulle righe mai spedite |
+| **D-4** | ✅ le due code dentro lo stesso endpoint, un round-trip solo |
+| **D-5** | ✅ estrazione del BB autorizzata (`build_situazione_merce_view`) |
+| **D-1** | ❓ *«il pannello del cantiere 2 ha bisogno di attività DB?»* → **sì, ed è UNA sola cosa**, §21.6 |
+
+#### La risposta a D-1, voce per voce
+
+| Cosa serve al pannello | Da dove | DB? |
+| --- | --- | --- |
+| situazione **della spedizione** (lato DDT) | `vw_partite_merce` filtrata per `ddt_id` | ✅ **c'è** |
+| dettaglio per partita sull'ordine | `vw_partite_merce` filtrata per `ordine_id` | ✅ **c'è** |
+| `sospetto_duplicato_ordine` (FE-2), `NON_MISURABILE` (FE-1) | colonne della partita | ✅ **c'è** |
+| «da accreditare» con etichetta dovuto/facoltativo (D-4) | `vw_resi_da_accreditare` | ✅ **c'è** |
+| «da riconsegnare» col residuo (D-4) | `vw_resi_da_riconsegnare` | ✅ **c'è** |
+| codice/descrizione/UoM articolo, numero ordine, `riga_nr` | JOIN nella lettura del repository | ✅ nessun oggetto nuovo |
+| tabella del pannello | DataTable annidata `app-datatable--inner` in un drawer, **non** una `<ListaConfigurabile>` | ✅ **nessun seed** `ui.lista_definizione` |
+| testi | `it.json` / `en.json` | ✅ solo FE |
+| scope | la **testata** è il cancello (`vendite.ordini` / `vendite.ddt` hanno la RLS, le righe no) | ✅ pattern BE già in uso sulla fattura |
+| **riassunto per riga d'ordine** (livello 1, D-2 + D-3) | ⛔ **non esiste un oggetto che lo dia con la semantica giusta** | 🔴 **una vista nuova** |
+
+### 21.6 🔴 Il rilievo che corregge D-2 — misurato, non dedotto
+
+**Avevo raccomandato `vw_contatore_merce` come livello 1. È la fonte sbagliata**,
+e lo dice la documentazione della vista stessa, scritta da questo cantiere:
+
+> *«Questa resta il contatore **GREZZO** che dosa le macchine; chi vuole la
+> semantica parlante (`stato`, NULL = "non si applica") legge
+> `vw_partite_merce`.»*
+
+Due difetti concreti, non stilistici.
+
+**1. Il contatore appiattisce i NULL, e il pannello mostrerebbe un falso allarme.**
+`vw_contatore_merce.differenza` **non è mai NULL** — è deliberato, perché
+`fn_list_ddt_da_pushare` fa `COALESCE(differenza, 0)` e un NULL smetterebbe di
+fatturare una riga in silenzio. Ma la formula è `tenuti − fatturato` e non guarda
+né `fatturabile` né `misurabile`. Quindi su una riga d'ordine le cui partite sono
+tutte `NON_FATTURABILE`:
+
+```text
+livello 2 (partite):    differenza NULL   →  «non si applica»
+livello 1 (contatore):  differenza = tenuti − 0 > 0  →  «N da fatturare»
+```
+
+⚠️ **È esattamente il falso allarme che il §8.4 ha tolto**, rientrato dalla porta
+del livello 1.
+
+**Zero occorrenze oggi — e nulla lo impedisce**, che è la distinzione del
+preambolo della PARTE II:
+
+```text
+partite NON_FATTURABILE ......................... 3, tutte SENZA ordine  → oggi salvo
+righe di DDT order-backed su causale NON fatturabile ................ 5  → la porta è aperta
+```
+
+⭐ **E una di quelle cinque è il caso dell'§8.4-bis**: riga di DDT 47,
+`CONTO_VISIONE`, riga d'ordine 172. Non si contraddice **solo perché** la corsia
+ORD l'aveva già fatturata (`PAREGGIATA`, 1 e 1). Con `fatturazione_trigger =
+'SPEDITO'` (2 ordini su 95) o col push non ancora passato, quella riga darebbe
+`NULL` al livello 2 e **«1 da fatturare» al livello 1**, su un conto visione.
+
+**2. Il contatore non ha `stato`, e D-3 ne chiede un sesto valore.**
+Le sue colonne sono numeri grezzi. La traduzione del verso del saldo — che BE-2
+vieta di rifare in Python — sul livello 1 **non esiste**. E la riga mai spedita
+di D-3 vuole un valore che il vocabolario del §9.3 non ha.
+
+**3. E il livello 1 non può nemmeno partire dal contatore**, per D-3: il
+contatore è `FROM pm JOIN ordini_righe`, quindi le righe mai spedite non ci sono.
+Misurato:
+
+```text
+righe d'ordine attive ......................... 107
+di cui SENZA alcuna partita (mai spedite) ...... 89   ← l'83%
+di cui gia' fatturate sulla corsia ORD ......... 12   ← il rilievo A
+```
+
+⭐ **Con l'opzione (c) il pannello dell'ordine sarebbe vuoto su 89 righe su
+107.** D-3 non era una raffinatezza: senza, il pannello non si vede quasi mai.
+
+#### ✅ Cosa ne discende: una vista sola, e la sede giusta
+
+Il **principio** di D-2 resta intero — due livelli, e il livello 1 non si somma
+in Python. Cambia la **fonte**: non `vw_contatore_merce`, ma una vista nuova che
+sia l'aggregato **parlante** per riga d'ordine.
+
+```text
+vendite.vw_situazione_merce_ordine     (nome di lavoro)
+  FROM ordini_righe  LEFT JOIN  (aggregato di vw_partite_merce)   ← D-3
+  + ordinato, consegnato, reso, tenuti, fatturato, in_riconsegna
+  + fatturato_anticipato                                          ← FE-3
+  + differenza con la propagazione dei NULL                       ← il difetto 1
+  + stato, col sesto valore per la riga mai spedita               ← D-3
+```
+
+⚠️ **`vw_contatore_merce` non si tocca**: dosa la fatturazione (§8.7). La vista
+nuova è **accanto**, non al posto — la stessa forma della raccomandazione del
+§9.4 per l'eventuale materializzata.
+
+✅ **FATTA dal team DB il 2026-08-17** — `20260817-15`, pgTAP 11/11, con tre
+cambi rispetto alla richiesta. Brief chiuso e archiviato:
+[work-done/brief-db-situazione-merce-ordine.md](../work-done/brief-db-situazione-merce-ordine.md).
+
+⚠️ **Applicata al DB di sviluppo, non ancora pushata**: il backend ci costruisce
+sopra introspezionando la vista viva, ma **non è mergiabile prima del push**.
+
+🔴 **E due cose le ho sbagliate io, scritte lì**: la formula di `da_spedire`
+(divergeva proprio sulla riga da 21 pezzi che ha generato il cantiere) e la
+misura «5 righe su causale non fatturabile», che erano **1** — le altre 4 le
+contava un `COALESCE(fatturabile, false)` che tratta *«causale assente»* come
+*«non fatturabile»*, cioè esattamente l'errore che questo brief descrive due
+volte.
+
+**Perché a DB e non nel repository backend**: il vocabolario di `stato` e la
+regola *«se tutte le partite dicono non-si-applica, il livello 1 dice
+non-si-applica»* sono **la stessa nozione del §9.3**. Scriverle in Python
+significherebbe una **seconda sede** del vocabolario — cioè precisamente ciò che
+BE-2 vieta — presidiata da nessun pgTAP. È il motivo per cui il §9.3 dice *«qui
+è il DB a garantirlo, così il FE non deve inventarselo»*: vale identico per il BE.
+
+#### Cosa può partire subito, senza aspettare
+
+| Pezzo | Dipende dalla vista nuova? |
+| --- | --- |
+| il factory `build_situazione_merce_view` (D-5) | ❌ no |
+| lato **DDT**: partite filtrate per `ddt_id` | ❌ no — è completo oggi |
+| lato **ordine**, livello 2: partite filtrate per `ordine_id` | ❌ no |
+| le due code nell'envelope (D-4) | ❌ no |
+| lato **ordine**, livello 1: il riassunto per riga d'ordine | ✅ **sì** |
+
+---
+
+## 22. ✅ Stato del perimetro BACKEND al 2026-08-18 — chiuso
+
+> Speculare al §20, che chiude il perimetro DB. Qui c'è cosa il backend ha
+> fatto delle otto richieste del §19, e cosa resta.
+
+### 22.1 Le richieste del §19, una per una
+
+| # | Richiesta | Stato |
+| --- | --- | --- |
+| **BE-1** | esporre `vw_partite_merce` filtrata per DDT e per ordine | ✅ **fatto**, e cresciuto in un pannello a 4 sezioni (D-2/D-3/D-4) |
+| **BE-2** | non ri-tradurre il verso del saldo in Python | ✅ `stato` passa così com'è — presidiato da un test |
+| **BE-3** | `differenza = NULL` è «non si applica», mai 0 | ✅ nessun `COALESCE`, né in Python né in SQL — presidiato da un test |
+| **BE-4** | correggere il commento di `resi_repository.py` | ✅ diceva l'opposto del vero |
+| **BE-5** | nulla usi `ordine_riga_id` come chiave sulla coda accrediti | ✅ **zero occorrenze**, misurato in 4 punti |
+| **§12 BE-4** | `_kit_meta` scrive ancora `coeff_qta` | ✅ sì, e nella tabella che S1 legge |
+| *(la «conferma» del §19.1)* | il cancello del terzo lato resta verde? | 🔴 **no, era rosso** — §21.1 |
+| **FE-1/2/3** | tavolozza, avviso, anticipo | ⏳ **non hanno ancora una casa**: sono la definizione di fatto del cantiere 2 |
+
+### 22.2 Cosa è stato scritto
+
+| File | Cosa |
+| --- | --- |
+| `core/services/error_policies_generated.py` | rigenerato dal catalogo (696 → 697) |
+| `core/services/error_messages_fallback.py` | il messaggio di ripiego del codice nuovo |
+| `vendite/db/vendite_repository.py` | 6 letture: le due `exists_*` di perimetro, il livello 1, le partite, le due code |
+| `vendite/services/vendite_service.py` | `get_situazione_merce` — orchestrazione e cancello di scope |
+| `vendite/api/situazione_merce_views.py` | **nuovo**: il factory + le due view di dominio |
+| `vendite/api/urls_ordini.py`, `urls_ddt.py` | le due rotte |
+| `vendite/db/resi_repository.py` | BE-4, il commento corretto |
+| `vendite/tests/services/test_situazione_merce_service.py` | **nuovo**: 9 test |
+| `docs/it/backend/vendite/manual/api_situazione_merce.md` | **nuovo**: il manuale |
+| `docs/it/dev/api.md` | la riga nell'inventario endpoint |
+
+### 22.3 Il collaudo
+
+```text
+suite Django ............ 3702 test verdi (9 nuovi)
+schema OpenAPI .......... due rotte registrate, nessun warning proprio
+check_i18n_keys ......... pulito
+chiamata REALE al DB .... il caso del §3 in un round-trip, 404 no-leak su entrambe
+```
+
+⭐ **La prova che conta non è un test**: è la chiamata vera. I mock non vedono il
+binding SQL — è la lezione di `feedback_rinomina_db_binding_mockato`, e qui le
+letture attraversano **quattro viste** e la RLS.
+
+### 22.4 ⚠️ Cosa resta, e il vincolo di merge
+
+🔴 **Il backend NON è mergiabile prima del push di `20260817-15`**: in CI
+`vw_situazione_merce_ordine` non esiste. Il resto — lato DDT, partite
+sull'ordine, le due code — poggia su oggetti già in repository.
+
+⏳ **Il frontend**: il pannello del cantiere 2 non esiste. Le tre richieste FE
+restano scritte nel §19.2 e vanno riprese **come definizione di fatto di quel
+cantiere**, non anticipate qui: una tavolozza di severity che nessun componente
+consuma è codice morto, e i colori si scelgono guardando il pannello.
+
+### 22.5 Le tre cose imparate, dal lato backend
+
+1. 🔴 **Un codice errore seminato dal DB lascia il repository rosso.** Servono
+   **due** mosse lato backend — rigenerare le policy *e* scrivere il messaggio
+   di ripiego — e stanno in perimetri e commit diversi. Il rosso non lo vede chi
+   applica la migrazione: lo vede il primo che manda una PR. Va nella lista di
+   consegna del team DB, accanto al changeSet.
+2. ⚠️ **Una grandezza che il sistema già calcola non si ri-deriva con una
+   formula «equivalente».** La mia `da_spedire` divergeva proprio sulla riga da
+   21 pezzi che ha generato il cantiere. Le due formule non si scoprono diverse
+   in revisione: si scoprono su un caso reale.
+3. ⚠️ **Un `COALESCE` in una MISURA falsifica la misura.** Contando le righe su
+   causale non fatturabile avevo scritto `COALESCE(fatturabile, false)`, che
+   tratta «causale assente» come «non fatturabile»: 5 invece di 1. È lo stesso
+   errore che questo brief vieta ai consumatori — commesso nello strumento con
+   cui lo si dimostrava.

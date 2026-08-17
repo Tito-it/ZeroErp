@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 696, di cui 79 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 697, di cui 79 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -712,6 +712,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_RESO_NON_CONFERMATO": "CONFLITTO_STATO",
     # Resi di vendita (motore resi su DDT: CRUD + conferma/annullo + · ri-consegna). Famiglia speculare a E_DDT_*. I codici dei guard/fn DB · (messaggi_errore 530-541) passano via regex in · resi_service._db_errors: registrati qui per fissare status/ui_action · lato FE (il messaggio parlante DB vince su user_message).
     "E_RESO_NOT_FOUND": "NON_TROVATO",
+    # Guard DB coerenza origine reso (trgfn_resi_righe_guard_origine_coerente, · a20): ordine_riga_id deve combaciare col fulfillment della riga DDT — · valorizzato E coincidente se la riga e order-backed, vuoto se e · standalone. Valore sbagliato in un campo derivato, non conflitto di · stato -> DATO_ERRATO. Partita merce generalizzata S6a.
+    "E_RESO_ORIGINE_INCOERENTE": "DATO_ERRATO",
     # Over-return: Σ qta rese (resi non annullati) sulla stessa riga DDT · supererebbe il consegnato (trgfn_resi_righe_guard_quantita, lock).
     "E_RESO_QTA_SUPERA_CONSEGNATO": "CONFLITTO_STATO",
     # Over-ri-spedizione: Σ qta ri-spedite sulla riga reso supererebbe la · quantita' resa (guard ponte, lock FOR UPDATE).
