@@ -98,6 +98,12 @@
    * CVD+contrasto su entrambe le superfici -> nessun override light. */
   --app-warning-color: var(--p-orange-600);
 
+  /* Attività IN CORSO (spinner di riga): il colore primario del tema, non un
+   * colore d'allarme — un lavoro che sta girando è normale, non un problema.
+   * Primo consumer: lo spinner «fatturazione in corso» nella lista gruppi
+   * fatturabili, dove la riga resta a video mentre il job viene lavorato. */
+  --app-in-corso-color: var(--p-primary-color);
+
   /* ===== Grafici (dashboard) ===== */
   /* Coppia stato transitato/fermo dei donut dashboard fatturazione.
    * green-600 + orange-600 validata CVD+contrasto su ENTRAMBE le superfici

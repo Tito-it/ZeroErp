@@ -24,6 +24,9 @@
 //   buildDraftPayload async () => payload (può fare preamboli, es. applyBaDefaults)
 //   tabEntity        TAB_ENTITIES.X (notifica cross-tab del nuovo documento)
 //   fetchDetail      (id) => Promise (loadDetail del drawer)
+//   form             ref del form del drawer — OPZIONALE ma raccomandato: senza,
+//                    le modifiche fatte MENTRE la POST di creazione viaggia
+//                    vengono perse (vedi `autoSaveBozza`)
 //   deleteDraft      (id) => Promise axios (store.elimina)
 //   righeCountGetter () => number (per hasOrphanedDraft)
 //   messages         { bozzaCreata, abbandonoTitolo, abbandonoMessage, abbandonoConferma, bozzaEliminata }
@@ -47,6 +50,7 @@ export function useDrawerAutosaveBozza({
   buildDraftPayload,
   tabEntity,
   fetchDetail,
+  form = null,
   deleteDraft,
   righeCountGetter,
   messages,
@@ -56,8 +60,38 @@ export function useDrawerAutosaveBozza({
 
   // Crea la bozza e passa a "edit-evolved": NON emette 'saved' (transizione
   // interna; il prossimo 'saved' parte da handleSave manuale del drawer).
+  // ⚠️ La FINESTRA fra l'invio e la ricarica è il punto delicato di tutto il
+  // pattern. L'auto-save scatta sui soli campi-trigger (tipicamente il cliente),
+  // e la POST fotografa il form in quell'istante; l'operatore però continua a
+  // compilare mentre la chiamata viaggia. Al ritorno `fetchDetail` fa
+  // `form.value = {...dati dal server}` — una SOSTITUZIONE, non una fusione — e
+  // riscriveva i campi appena digitati coi NULL salvati un attimo prima.
+  //
+  // Effetto per l'operatore: creazione e modifica si comportano in modo
+  // diverso, e in creazione i campi di testata «non si salvano» senza che nulla
+  // lo segnali (rilievo di Tid sul drawer DDT, 2026-08-17: causale di
+  // trasporto, aspetto beni, addebito — riaprendo e risalvando funzionava).
+  // ⚠️ Il difetto era di QUESTO building block, quindi valeva su tutti e tre i
+  // drawer che lo usano (DDT, ordini, preventivi), non solo dove è emerso.
+  //
+  // Rimedio: si confronta il form com'era all'invio con com'è al ritorno, e i
+  // campi toccati nel frattempo vengono riapplicati DOPO la ricarica. Gli altri
+  // restano quelli del server, che è il motivo per cui la ricarica esiste
+  // (valuta ed emittente risolti dai trigger DB, numero assegnato).
+  function _campiToccatiDurante(snapshot) {
+    if (!form || !snapshot) return null
+    const toccati = {}
+    for (const [k, v] of Object.entries(form.value)) {
+      if (v !== snapshot[k]) toccati[k] = v
+    }
+    return Object.keys(toccati).length ? toccati : null
+  }
+
   async function autoSaveBozza() {
     const payload = await buildDraftPayload()
+    // Snapshot DOPO `buildDraftPayload`: quella può modificare il form da sé
+    // (preamboli tipo applyBaDefaults), e quelle modifiche sono già nel payload.
+    const snapshot = form ? { ...form.value } : null
     const result = await execute(
       () => createDraftApi(payload),
       { successMessage: messages.bozzaCreata },
@@ -65,7 +99,9 @@ export function useDrawerAutosaveBozza({
     if (result && result.id) {
       createdId.value = result.id
       emitDataChanged(tabEntity, result.id)
+      const toccati = _campiToccatiDurante(snapshot)
       await fetchDetail(result.id)
+      if (toccati) Object.assign(form.value, toccati)
     }
   }
 

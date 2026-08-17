@@ -35,6 +35,7 @@ import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
 import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
 import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve } from '../../../core/composables/useDrawerFormPreserve'
 import PreventiviForm from './PreventiviForm.vue'
 import PreventiviRigheTable from './PreventiviRigheTable.vue'
 import PreventiviSmistamentoDialog from './dialogs/PreventiviSmistamentoDialog.vue'
@@ -141,6 +142,11 @@ const isReadonlyPuro = computed(
 
 const isEdit = computed(() => props.mode === 'edit')
 const form = ref({})
+// Preserva le modifiche non salvate quando `loadDetail` sostituisce il form:
+// senza, compilare la testata e poi salvare una RIGA (`@changed` → loadDetail)
+// la riportava com'era sul server, in silenzio. BB condiviso coi drawer
+// gemelli (difetto trovato sul DDT, 2026-08-17, identico qui).
+const { preserva: preservaForm, reset: resetFormPreserve } = useDrawerFormPreserve(form)
 const detail = ref(null)
 // Riepilogo IVA aggregato per aliquota (lettura da `vw_preventivi_riepilogo_iva_dettaglio`).
 // Auto-popolato a ogni loadDetail e ogni `@changed` delle righe (regola fiscale
@@ -333,6 +339,7 @@ const contestoFv = useFetchVersion()
 
 function resetForm() {
   form.value = defaultForm()
+  resetFormPreserve()
   detail.value = null
   createdId.value = null
   contestoPricing.value = null
@@ -341,6 +348,7 @@ function resetForm() {
 async function loadDetail(id = null) {
   const targetId = id ?? effectivePreventivoId.value
   if (!targetId) return
+  const applicaModifiche = preservaForm()
   // Fuori scope (RLS) / inesistente → loadDetailOrClose avvisa, chiude e
   // ritorna null; `if (!data) return` sotto salta il populate.
   const data = await loadDetailOrClose(() => store.fetchDetail(targetId))
@@ -384,6 +392,9 @@ async function loadDetail(id = null) {
     competenza_mese: data.competenza_mese ? new Date(data.competenza_mese + 'T00:00:00') : null,
     fatturazione_immediata: data.fatturazione_immediata || false,
   }
+  // Fissa la baseline e ripristina il non-salvato che la sostituzione
+  // avrebbe cancellato (BB useDrawerFormPreserve).
+  applicaModifiche()
   await nextTick()
   _suspendDateRecalc.value = false
   // Restore BillingAccountLookup _obj per visualizzazione ricca (codice, ragione
@@ -531,6 +542,10 @@ const { close, onVisibleChange } = useDrawerAutosaveBozza({
   },
   tabEntity: TAB_ENTITIES.PREVENTIVO,
   fetchDetail: (id) => loadDetail(id),
+  // Il BB preserva i campi compilati MENTRE la POST di creazione viaggia:
+  // senza il form li perderebbe, perche' `loadDetail` sostituisce il form
+  // coi dati del server (fix 2026-08-17).
+  form,
   deleteDraft: (id) => store.elimina(id),
   righeCountGetter: () => detail.value?.righe_count ?? 0,
   messages: {

@@ -183,6 +183,18 @@ class CodaLavoriRepository:
     #        `claimed_at`/`started_at` nella stessa istruzione. JOIN al registry
     #        per l'`handler_code` (autoritativo dal DB config). Il lavoro
     #        avviene FUORI da qui (nessun lock tenuto durante l'esecuzione).
+    #        ⚠️ L'`ORDER BY priorita, id` della CTE decide QUALI item entrano nel
+    #        batch, NON in che ordine si eseguono: le righe tornano da un
+    #        `UPDATE ... RETURNING`, e PostgreSQL non ne specifica l'ordine (qui
+    #        c'e' pure un join al registry, che il planner puo' materializzare
+    #        come vuole). Il chiamante cicla la lista cosi' com'e', quindi senza
+    #        il riordino finale l'intenzione FIFO sarebbe dichiarata e persa una
+    #        riga dopo. Misurato in app il 2026-08-17: due giri di fatturazione
+    #        lanciati a pochi secondi l'uno dall'altro sono stati eseguiti al
+    #        contrario, e il lotto del secondo ha preso il codice piu' basso.
+    #        Non e' una questione estetica: con due giri che si contendono le
+    #        stesse righe e' l'ordine di esecuzione a decidere CHI VINCE, e il
+    #        giro lanciato per primo tornava con «gia' fatturato altrove».
     def claim(self, *, limit: int) -> list[QueueItem]:
         safe_limit = max(1, int(limit))
         sql = """
@@ -202,12 +214,15 @@ class CodaLavoriRepository:
              WHERE c.id = claimed.id
                AND t.codice = c.job_type
             RETURNING c.id, c.job_type, c.payload, c.run_as, c.scope,
-                      c.tentativi, c.max_tentativi, t.handler_code
+                      c.tentativi, c.max_tentativi, t.handler_code, c.priorita
         """
         with connection.cursor() as cursor:
             # Param order: LIMIT (nella CTE) poi job_run_id (nella SET).
             cursor.execute(sql, [safe_limit, self._job_run_id])
             rows = cursor.fetchall()
+        # Riordino esplicito con la STESSA chiave della CTE (priorita, id): e'
+        # l'unico punto in cui l'ordine di esecuzione diventa deterministico.
+        rows = sorted(rows, key=lambda r: (int(r[8]), int(r[0])))
         return [
             QueueItem(
                 id=int(r[0]),
