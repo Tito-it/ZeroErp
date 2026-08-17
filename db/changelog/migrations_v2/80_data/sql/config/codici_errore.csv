@@ -492,6 +492,7 @@ E_RESO_EMITTENTE_BA_INCOERENTE,DATO_ERRATO,NULL,"Guard emittente<->BA: valore sb
 E_RESO_NESSUNA_RICONSEGNA_PENDENTE,CONFLITTO_STATO,NULL,NULL
 E_RESO_NON_CONFERMATO,CONFLITTO_STATO,NULL,fn_genera_ddt_riconsegna: reso non CONFERMATO / nessuna copertura · residua da ri-spedire.
 E_RESO_NOT_FOUND,NON_TROVATO,NULL,Resi di vendita (motore resi su DDT: CRUD + conferma/annullo + · ri-consegna). Famiglia speculare a E_DDT_*. I codici dei guard/fn DB · (messaggi_errore 530-541) passano via regex in · resi_service._db_errors: registrati qui per fissare status/ui_action · lato FE (il messaggio parlante DB vince su user_message).
+E_RESO_ORIGINE_INCOERENTE,DATO_ERRATO,NULL,"Guard DB coerenza origine reso (trgfn_resi_righe_guard_origine_coerente, · a20): ordine_riga_id deve combaciare col fulfillment della riga DDT — · valorizzato E coincidente se la riga e order-backed, vuoto se e · standalone. Valore sbagliato in un campo derivato, non conflitto di · stato -> DATO_ERRATO. Partita merce generalizzata S6a."
 E_RESO_QTA_SUPERA_CONSEGNATO,CONFLITTO_STATO,NULL,"Over-return: Σ qta rese (resi non annullati) sulla stessa riga DDT · supererebbe il consegnato (trgfn_resi_righe_guard_quantita, lock)."
 E_RESO_RICONSEGNA_SUPERA_RESO,CONFLITTO_STATO,NULL,"Over-ri-spedizione: Σ qta ri-spedite sulla riga reso supererebbe la · quantita' resa (guard ponte, lock FOR UPDATE)."
 E_RESO_RICONSEGNA_TIPO_NON_VALIDO,CONFLITTO_STATO,NULL,Guard ponte ri-consegna (trgfn_resi_riconsegne_guard): aggancio · ammesso solo su righe con tipo_reso.riapre_residuo = true.

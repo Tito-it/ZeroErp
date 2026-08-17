@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Coda degli accrediti dovuti al cliente, derivata dal contatore merce (vw_contatore_merce, differenza &lt; 0). rev 2026-07-26 (brief-db-chiusura-riconsegna-reso-definitivo S4.4): etichetta FACOLTATIVA solo se la merce puo' ANCORA tornare al cliente (riapre_residuo AND residuo ri-consegnabile &gt; 0); appena il residuo si esaurisce - tutto ri-spedito o dichiarato definitivo tramite resi_righe_rinunce - l'accredito diventa DOVUTA. L'IMPORTO accredito_dovuto NON cambia: viene dal contatore, che le rinunce non toccano (S4.2). Cambia la natura della quota, non il numero.
+> Coda degli accrediti dovuti al cliente, derivata dalla PARTITA DI MERCE (vw_partite_merce, differenza &lt; 0). rev 2026-08-17 (partita generalizzata S4): la chiave passa da ordine_riga_id (NULLABLE) a ddt_riga_id (NOT NULL) — un reso su merce senza origine ordine produce finalmente un accredito calcolabile, mentre prima usciva dal conto senza errore. La finestra che scala i resi gia' serviti partiziona per RIGA DI DDT: un reso appartiene alla spedizione da cui la merce e' tornata. ⚠️ ordine_riga_id resta esposto ma PUO' ESSERE NULL: non e' piu' la chiave. ⚠️ Il filtro differenza &lt; 0 scarta i NULL per costruzione: un conto che non si applica (causale non fatturabile, kit non misurabile) non genera accrediti. rev 2026-07-26 INVARIATA: etichetta FACOLTATIVA solo se la merce puo' ANCORA tornare al cliente; l'importo viene dal conto della merce, che le rinunce non toccano — cambia la natura della quota, non il numero. security_invoker=on.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -11,12 +11,12 @@
 CREATE OR REPLACE VIEW vendite.vw_resi_da_accreditare
 WITH (security_invoker=on) AS
 WITH acc AS (
-         SELECT ct.ordine_riga_id,
-            ct.tenuti,
-            ct.fatturati,
-            (- ct.differenza) AS accredito_partita
-           FROM vendite.vw_contatore_merce ct
-          WHERE (ct.differenza < (0)::numeric)
+         SELECT p.ddt_riga_id,
+            p.tenuti,
+            p.fatturato AS fatturati,
+            (- p.differenza) AS accredito_partita
+           FROM vendite.vw_partite_merce p
+          WHERE (p.differenza < (0)::numeric)
         ), dist AS (
          SELECT e.resi_riga_id,
             e.reso_id,
@@ -26,9 +26,9 @@ WITH acc AS (
             e.quantita AS qta_resa,
             a.tenuti,
             a.fatturati,
-            GREATEST((0)::numeric, LEAST(e.quantita, (a.accredito_partita - COALESCE(sum(e.quantita) OVER (PARTITION BY e.ordine_riga_id ORDER BY e.resi_riga_id ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), (0)::numeric)))) AS accredito_dovuto
+            GREATEST((0)::numeric, LEAST(e.quantita, (a.accredito_partita - COALESCE(sum(e.quantita) OVER (PARTITION BY e.ddt_riga_id ORDER BY e.resi_riga_id ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), (0)::numeric)))) AS accredito_dovuto
            FROM (vendite.vw_resi_righe_effettive e
-             JOIN acc a ON ((a.ordine_riga_id = e.ordine_riga_id)))
+             JOIN acc a ON ((a.ddt_riga_id = e.ddt_riga_id)))
         )
  SELECT x.resi_riga_id,
     r.id AS reso_id,
@@ -64,8 +64,8 @@ WITH acc AS (
      JOIN anagrafiche.soggetti_ruoli sr_dest ON ((sr_dest.id = r.destinatario_soggetto_ruolo_id)))
      JOIN anagrafiche.soggetti s_dest ON ((s_dest.id = sr_dest.soggetto_id)))
      LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = r.billing_account_id)))
-     LEFT JOIN vendite.ddt_righe dr ON ((dr.id = x.ddt_riga_id)))
-     LEFT JOIN vendite.ddt d ON ((d.id = dr.ddt_id)))
+     JOIN vendite.ddt_righe dr ON ((dr.id = x.ddt_riga_id)))
+     JOIN vendite.ddt d ON ((d.id = dr.ddt_id)))
   WHERE (x.accredito_dovuto > (0)::numeric);
 ```
 

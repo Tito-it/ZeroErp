@@ -4,9 +4,9 @@
 -- Test: vw_resi_da_accreditare nella forma §3c — popolata dalla differenza
 --       NEGATIVA del contatore, tipo reso degradato a etichetta — step 4,
 --       brief-db-fatturazione-ddt-resi §3c/§9-4.
--- (changeset 20260718-01)
+-- (changeset 20260718-01; riancorata alla PARTITA dal 20260817-09)
 -- ------------------------------------------------------------
--- Indice test (1..8):
+-- Indice test (1..10):
 --   1) security_invoker=on sulla vista (regressione V-1: reloption azzerata in
 --      silenzio da un CREATE OR REPLACE senza WITH -> bypass RLS)
 --   2) P1 reso MAI fatturato -> conto in pari o a credito -> ESCE (chiude 1b:
@@ -19,6 +19,10 @@
 --      (oggi invisibile: riapre_residuo=false la tagliava)
 --   7-8) P4 distribuzione greedy tra due righe di reso della stessa partita:
 --      accredito 1 -> la prima lo prende tutto, alla seconda non resta nulla
+--   9) ⭐ P5 reso su merce SENZA origine ordine -> accredito calcolabile e
+--      ordine_riga_id NULL (il buco che la slice S4 chiude)
+--  10) ⭐ P6 una riga d'ordine, DUE spedizioni: la finestra partiziona per
+--      spedizione, non per riga d'ordine — 4 e 0, non 1 e 0
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -37,7 +41,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(8);
+SELECT plan(10);
 
 SET LOCAL app.ruolo_applicativo = 'OPERATORE';
 SET LOCAL app.current_user_id = '1';
@@ -114,6 +118,67 @@ BEGIN
   SELECT d.uid INTO v_ddt_uid FROM vendite.ddt d WHERE d.id=v_ddt;
   SELECT dr.id INTO v_ddtr FROM vendite.ddt_righe dr WHERE dr.ddt_id=v_ddt LIMIT 1;
   RETURN QUERY SELECT v_ord, v_ord_uid, v_orr, v_ddt, v_ddt_uid, v_ddtr;
+END $$ LANGUAGE plpgsql;
+
+-- Helper (test 10): una riga d'ordine da 10 evasa da DUE spedizioni, 4 e 6.
+-- E' il caso in cui la partizione per riga di DDT e quella per riga d'ordine
+-- danno risposte diverse, e nel DB di sviluppo non esiste: 3 righe d'ordine
+-- sono evase da 3 DDT, ma nessuna ha resi da piu' di un DDT.
+CREATE OR REPLACE FUNCTION pg_temp.mk_partita_due_ddt()
+RETURNS TABLE(ordine_riga_id bigint,
+              ddt_a_uid uuid, ddt_a_riga bigint,
+              ddt_b_uid uuid, ddt_b_riga bigint) AS $$
+DECLARE r RECORD; v_ord bigint; v_orr bigint; v_a bigint; v_b bigint;
+        v_a_uid uuid; v_b_uid uuid; v_a_riga bigint; v_b_riga bigint;
+BEGIN
+  SELECT * INTO r FROM tmp_refs;
+  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
+    valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
+  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_conf_id, r.valuta_id,
+          DATE '2026-07-15', 'CONSEGNATO', r.emittente_fiscale_id, false,
+          jsonb_build_object('test_scope','pgtap_accrediti'))
+  RETURNING id INTO v_ord;
+  UPDATE vendite.ordini SET fatturazione_trigger = 'CONSEGNATO' WHERE id = v_ord;
+  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
+    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
+  VALUES (v_ord, 1, r.articolo_id, 'Riga due spedizioni', 10, 10, 25, r.iva_id, true, false,
+          jsonb_build_object('test_scope','pgtap_accrediti'))
+  RETURNING id INTO v_orr;
+
+  -- Spedizione A: 4 pezzi. Spedizione B: i 6 che restano.
+  v_a := vendite.fn_genera_ddt_da_ordine(v_ord,
+           jsonb_build_array(jsonb_build_object('ordine_riga_id', v_orr, 'qta_da_evadere', 4)));
+  v_b := vendite.fn_genera_ddt_da_ordine(v_ord,
+           jsonb_build_array(jsonb_build_object('ordine_riga_id', v_orr, 'qta_da_evadere', 6)));
+
+  INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
+  VALUES (v_a, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb),
+         (v_b, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
+  UPDATE vendite.ddt SET causale_trasporto_id=r.causale_vendita_id  WHERE id IN (v_a, v_b);
+  UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_emesso_id     WHERE id IN (v_a, v_b);
+  UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_spedito_id    WHERE id IN (v_a, v_b);
+  UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_consegnato_id WHERE id IN (v_a, v_b);
+
+  SELECT d.uid INTO v_a_uid FROM vendite.ddt d WHERE d.id=v_a;
+  SELECT d.uid INTO v_b_uid FROM vendite.ddt d WHERE d.id=v_b;
+  SELECT dr.id INTO v_a_riga FROM vendite.ddt_righe dr WHERE dr.ddt_id=v_a ORDER BY dr.id LIMIT 1;
+  SELECT dr.id INTO v_b_riga FROM vendite.ddt_righe dr WHERE dr.ddt_id=v_b ORDER BY dr.id LIMIT 1;
+  RETURN QUERY SELECT v_orr, v_a_uid, v_a_riga, v_b_uid, v_b_riga;
+END $$ LANGUAGE plpgsql;
+
+-- Helper (test 9): riga aggiunta A MANO a un DDT, senza fulfillment. E' merce
+-- che esce e che, fino al 2026-08-17, non apparteneva a nessuna partita.
+CREATE OR REPLACE FUNCTION pg_temp.mk_riga_manuale(p_ddt bigint, p_qta numeric)
+RETURNS bigint AS $$
+DECLARE r RECORD; v_id bigint;
+BEGIN
+  SELECT * INTO r FROM tmp_refs;
+  INSERT INTO vendite.ddt_righe (ddt_id, riga_nr, articolo_id, descrizione,
+    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
+  VALUES (p_ddt, 900, r.articolo_id, 'Riga aggiunta a mano', p_qta, p_qta, 25, r.iva_id,
+          true, false, jsonb_build_object('test_scope','pgtap_accrediti'))
+  RETURNING id INTO v_id;
+  RETURN v_id;
 END $$ LANGUAGE plpgsql;
 
 -- Ritorna la RIGA di reso creata (la coda ha grana riga-di-reso).
@@ -204,10 +269,37 @@ CREATE TEMP TABLE tmp_p4_riga2 AS
 SELECT pg_temp.mk_reso((SELECT ddt_riga_id FROM tmp_p4), (SELECT ddt_uid FROM tmp_p4), 2,
                        (SELECT tipo_credito_id FROM tmp_refs)) AS resi_riga_id;
 
+-- P5 (test 9) — MERCE SENZA ORIGINE ORDINE.
+--   Una riga aggiunta a mano sul DDT di P1 (spedizione mista): 6 pezzi che
+--   escono, vengono fatturati e in parte tornano indietro. Fino al 2026-08-17
+--   quel reso si registrava e NON produceva alcun accredito, perche' la coda
+--   si agganciava a ordine_riga_id — che qui e' NULL.
+CREATE TEMP TABLE tmp_p5_riga_ddt AS
+SELECT pg_temp.mk_riga_manuale((SELECT ddt_id FROM tmp_p1), 6) AS ddt_riga_id;
+CREATE TEMP TABLE tmp_p5_riga AS
+SELECT pg_temp.mk_reso((SELECT ddt_riga_id FROM tmp_p5_riga_ddt), (SELECT ddt_uid FROM tmp_p1), 2,
+                       (SELECT tipo_credito_id FROM tmp_refs)) AS resi_riga_id;
+
+-- P6 (test 10) — UNA RIGA D'ORDINE, DUE SPEDIZIONI.
+--   Spedizione A: 4 pezzi, fatturati tutti e 4, tornati tutti e 4.
+--   Spedizione B: 6 pezzi, MAI fatturati, 3 tornati indietro.
+--   Le due partizioni danno risposte diverse, ed e' il punto del test.
+CREATE TEMP TABLE tmp_p6 AS SELECT * FROM pg_temp.mk_partita_due_ddt();
+CREATE TEMP TABLE tmp_p6_riga_a AS
+SELECT pg_temp.mk_reso((SELECT ddt_a_riga FROM tmp_p6), (SELECT ddt_a_uid FROM tmp_p6), 4,
+                       (SELECT tipo_credito_id FROM tmp_refs)) AS resi_riga_id;
+CREATE TEMP TABLE tmp_p6_riga_b AS
+SELECT pg_temp.mk_reso((SELECT ddt_b_riga FROM tmp_p6), (SELECT ddt_b_uid FROM tmp_p6), 3,
+                       (SELECT tipo_credito_id FROM tmp_refs)) AS resi_riga_id;
+
 -- Fatturazione: P2 e P3 per 10 (tutto), P4 per 7 (parziale). P1 nessuna.
 SELECT pg_temp.mk_af('DDT:' || (SELECT ddt_uid FROM tmp_p2)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_p2)::text, 10);
 SELECT pg_temp.mk_af('DDT:' || (SELECT ddt_uid FROM tmp_p3)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_p3)::text, 10);
 SELECT pg_temp.mk_af('DDT:' || (SELECT ddt_uid FROM tmp_p4)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_p4)::text, 7);
+-- P5: la riga manuale e' fatturata per intero, sul segmento della SUA riga di DDT.
+SELECT pg_temp.mk_af('DDT:' || (SELECT ddt_uid FROM tmp_p1)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_p5_riga_ddt)::text, 6);
+-- P6: solo la spedizione A e' fatturata. La B no, di proposito.
+SELECT pg_temp.mk_af('DDT:' || (SELECT ddt_a_uid FROM tmp_p6)::text || ':R:' || (SELECT ddt_a_riga FROM tmp_p6)::text, 4);
 SELECT vendite.fn_cambia_stato_commessa((SELECT commessa_id FROM tmp_com), 'PRONTA_FATTURAZIONE');
 SELECT vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM tmp_com));
 
@@ -260,6 +352,42 @@ SELECT is(
   (SELECT COUNT(*)::int FROM vendite.vw_resi_da_accreditare
     WHERE resi_riga_id=(SELECT resi_riga_id FROM tmp_p4_riga2)),
   0, '8) P4 greedy: alla 2a riga non resta accredito -> fuori dalla coda');
+
+-- ============================================================
+-- 9) ⭐ MERCE SENZA ORIGINE ORDINE: il buco che la slice S4 chiude.
+--    Riga aggiunta a mano, 6 pezzi usciti e fatturati, 2 tornati indietro.
+--    `ordine_riga_id` e' NULL, e prima del 2026-08-17 era la chiave con cui la
+--    coda si agganciava: il reso si registrava e l'accredito non esisteva.
+--    Le due asserzioni in una: c'e' l'accredito, ED e' senza riga d'ordine.
+-- ============================================================
+SELECT results_eq(
+  $q$SELECT accredito_dovuto, ordine_riga_id FROM vendite.vw_resi_da_accreditare
+      WHERE resi_riga_id = (SELECT resi_riga_id FROM tmp_p5_riga)$q$,
+  $q$VALUES (2::numeric, NULL::bigint)$q$,
+  '9) reso su merce SENZA origine ordine: accredito 2 e ordine_riga_id NULL');
+
+-- ============================================================
+-- 10) ⭐ LA FINESTRA PARTIZIONA PER SPEDIZIONE, NON PER RIGA D'ORDINE.
+--     Una riga d'ordine da 10, due spedizioni:
+--       A: 4 usciti, 4 fatturati, 4 tornati  -> accredito 4  (tutto il fatturato torna)
+--       B: 6 usciti, 0 fatturati, 3 tornati  -> accredito 0  (non era stato fatturato)
+--
+--     ⚠️ Con la partizione VECCHIA (per riga d'ordine) il conto si mescolava:
+--     tenuti 3, fatturati 4 -> accredito di partita 1, e la prima riga di reso
+--     ne prendeva 1 invece di 4. Il reso NON fatturato della spedizione B
+--     diluiva l'accredito dovuto sulla A.
+--
+--     Il caso non esiste nei dati di sviluppo — 3 righe d'ordine sono evase da
+--     3 DDT, ma nessuna ha resi da piu' di un DDT — quindi la fixture lo
+--     costruisce. E' l'unico posto in cui questa differenza si vede.
+-- ============================================================
+SELECT results_eq(
+  $q$SELECT COALESCE((SELECT accredito_dovuto FROM vendite.vw_resi_da_accreditare
+                       WHERE resi_riga_id = (SELECT resi_riga_id FROM tmp_p6_riga_a)), 0),
+            COALESCE((SELECT accredito_dovuto FROM vendite.vw_resi_da_accreditare
+                       WHERE resi_riga_id = (SELECT resi_riga_id FROM tmp_p6_riga_b)), 0)$q$,
+  $q$VALUES (4::numeric, 0::numeric)$q$,
+  '10) due spedizioni della stessa riga d''ordine: A accredita 4 (non 1), B nulla');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -1,0 +1,163 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# 🔴 SEGUITO OBBLIGATORIO del 20260817-11 — l'aggregato non deve contare
+#    la ri-consegna due volte. vw_contatore_merce.
+#
+# ── PERCHE' SERVE, E PERCHE' NON POTEVA STARE NEL -11 ───────────────────
+#
+#   Il -11 ha corretto la partita: la ri-consegna rientra nel `consegnato`
+#   della riga d'ORIGINE, e la riga di ri-consegna resta visibile ma senza un
+#   conto proprio (`e_riconsegna = true`, `differenza` NULL).
+#
+#   ⚠️ Ma `vw_contatore_merce` aggrega **tutte** le partite che hanno una riga
+#   d'ordine — e una riga di ri-consegna ce l'ha, perche' `fn_genera_ddt_riconsegna`
+#   le crea un fulfillment. Quindi i suoi pezzi venivano sommati DUE volte:
+#   una nel consegnato dell'origine, una come partita a se'.
+#
+#   Misurato sulla riga d'ordine 610 (9 consegnati, 8 resi, 8 ri-consegnati):
+#
+#       corretto ............ tenuti  9
+#       col -11 da solo ..... tenuti 17    (9 + 6 + 2)
+#
+#   ⭐ Questo changeSet e' la seconda meta' della stessa correzione. Applicare
+#   il -11 senza il -12 lascia il contatore **peggiore di prima**: e' il motivo
+#   per cui i due vanno insieme, e per cui la parita' si misura DOPO entrambi.
+#
+# ── LA CORREZIONE: una riga ─────────────────────────────────────────────
+#
+#       AND NOT p.e_riconsegna
+#
+#   Esplicita, e non affidata al fatto che `SUM` ignora i NULL. La differenza
+#   non e' di stile: un filtro si legge e si cerca, un effetto collaterale no.
+#
+# ── PARITA', misurata DOPO -11 e -12 insieme ────────────────────────────
+#
+#       18 righe su 18 .......... IDENTICHE alla fotografia S0 post-D1
+#
+#   Nessun valore si muove: la ri-consegna era gia' contata correttamente dal
+#   modello di luglio (che sommava i fulfillment per riga d'ordine, e quello
+#   della ri-consegna era uno di essi). Il cantiere doveva solo non perderlo.
+#
+# ── ⚠️ UN LIMITE, DICHIARATO ────────────────────────────────────────────
+#
+#   Se una riga di ri-consegna venisse fatturata sul suo segmento `DDT:`, il
+#   suo `fatturato_merce` resterebbe fuori da questo aggregato. Non puo'
+#   succedere per la strada normale — `fn_list_ddt_da_pushare` non spinge piu'
+#   le righe con `differenza` NULL (20260817-10) — ma se un giorno una AF
+#   arrivasse per altra via, il contatore non la vedrebbe. E' il caso da
+#   presidiare per primo se si aprisse una seconda porta al push.
+#
+# Dipendenze: vendite.vw_partite_merce (20260817-11, colonna e_riconsegna),
+#   vendite.vw_af_merce_per_riga (20260817-06), vendite.ordini_righe.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260817-12-update-vw-contatore-merce-esclude-riconsegna-mctit.yaml
+
+  - changeSet:
+      id: 20260817-12-update-vw-contatore-merce-esclude-riconsegna
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        Seguito obbligatorio del 20260817-11: l'aggregato per riga d'ordine
+        esclude le righe di RI-CONSEGNA, i cui pezzi sono gia' contati nel
+        consegnato della partita d'origine. Senza, la riga d'ordine 610
+        passerebbe da tenuti 9 a tenuti 17. Parita' 18/18 con i due changeSet
+        applicati insieme.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_partite_merce
+            - columnExists:
+                schemaName: vendite
+                tableName: vw_partite_merce
+                columnName: e_riconsegna
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_contatore_merce
+              WITH (security_invoker=on) AS
+              WITH pm AS (
+                  -- Le partite di merce che hanno un'origine ordine, raccolte
+                  -- per riga d'ordine.
+                  -- ⚠️ Le righe di RI-CONSEGNA restano fuori: i loro pezzi sono
+                  -- gia' dentro il `consegnato` della partita d'origine, e
+                  -- contarli anche qui li conterebbe due volte. Hanno una riga
+                  -- d'ordine (fn_genera_ddt_riconsegna crea un fulfillment),
+                  -- quindi senza questo filtro entrerebbero.
+                  SELECT p.ordine_riga_id,
+                         SUM(p.consegnato)          AS consegnato,
+                         SUM(p.reso)                AS reso,
+                         SUM(p.in_riconsegna)       AS in_riconsegna,
+                         SUM(p.tenuti)              AS tenuti,
+                         SUM(p.fatturato_merce)     AS fatturato_su_merce,
+                         SUM(p.fatturato_da_ordine) AS allocato,
+                         COUNT(*)::integer          AS partite_merce,
+                         bool_and(p.misurabile)     AS misurabile
+                    FROM vendite.vw_partite_merce p
+                   WHERE p.ordine_riga_id IS NOT NULL
+                     AND NOT p.e_riconsegna
+                   GROUP BY p.ordine_riga_id
+              ),
+              ord AS (
+                  -- Il fatturato nato sull'ORDINE (trigger CONFERMATO), gia'
+                  -- normalizzato in unita' del padre da S1.
+                  SELECT f.riga_id AS ordine_riga_id,
+                         f.quantita,
+                         f.misurabile
+                    FROM vendite.vw_af_merce_per_riga f
+                   WHERE f.corsia = 'ORD'
+                     AND f.tipo_movimento = 'NORMALE'
+              )
+              SELECT orr.id                                            AS ordine_riga_id,
+                     orr.ordine_id,
+                     orr.articolo_id,
+                     pm.tenuti                                         AS tenuti,
+                     (COALESCE(pm.fatturato_su_merce, 0)
+                      + COALESCE(o.quantita, 0))                       AS fatturati,
+                     (pm.tenuti - (COALESCE(pm.fatturato_su_merce, 0)
+                                   + COALESCE(o.quantita, 0)))         AS differenza,
+                     pm.consegnato,
+                     pm.reso,
+                     pm.in_riconsegna,
+                     COALESCE(pm.fatturato_su_merce, 0)                AS fatturato_su_merce,
+                     COALESCE(o.quantita, 0)                           AS fatturato_su_ordine,
+                     GREATEST(0::numeric,
+                              COALESCE(o.quantita, 0)
+                              - COALESCE(pm.allocato, 0))              AS fatturato_anticipato,
+                     pm.partite_merce,
+                     (pm.misurabile AND COALESCE(o.misurabile, true))  AS misurabile
+                FROM pm
+                JOIN vendite.ordini_righe orr ON orr.id = pm.ordine_riga_id
+                LEFT JOIN ord o               ON o.ordine_riga_id = pm.ordine_riga_id;
+
+              COMMENT ON VIEW vendite.vw_contatore_merce IS
+                'Il contatore, come AGGREGATO per riga d''ordine delle partite di merce '
+                '(brief-design-partita-merce-generalizzata S3, rev 2026-08-17). Non calcola piu'': '
+                'somma vw_partite_merce (grana = riga di DDT) e ci aggiunge il fatturato nato sulla '
+                'corsia ORD. ⚠️ Le righe di RI-CONSEGNA sono ESCLUSE (e_riconsegna): i loro pezzi '
+                'sono gia'' nel consegnato della partita d''origine, e senza il filtro verrebbero '
+                'contati due volte — hanno una riga d''ordine, perche'' fn_genera_ddt_riconsegna crea '
+                'un fulfillment. Le sei colonne storiche sono INVARIATE nella semantica: parita'' '
+                '18/18 contro la fotografia S0 post-decisione D1. Sparisce WHERE NOT is_composito: i '
+                'kit entrano, contati in unita'' del PADRE (S1). Colonne in coda: consegnato, reso, '
+                'in_riconsegna, fatturato_su_merce, fatturato_su_ordine, fatturato_anticipato '
+                '(fatturato di merce NON ancora uscita — non e'' un accredito dovuto), partite_merce, '
+                'misurabile. ⚠️ Qui `differenza` NON e'' mai NULL, a differenza di vw_partite_merce: '
+                'fn_list_ddt_da_pushare fa COALESCE(differenza,0) e un NULL smetterebbe di fatturare '
+                'una riga in silenzio. Questa resta il contatore GREZZO che dosa le macchine; chi '
+                'vuole la semantica parlante (stato, NULL = «non si applica») legge vw_partite_merce. '
+                'security_invoker=on + RLS.';

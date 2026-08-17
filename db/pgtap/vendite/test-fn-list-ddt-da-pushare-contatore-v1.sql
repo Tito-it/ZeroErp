@@ -13,9 +13,11 @@
 --   4) C: reso 3 + fatturato 7 -> riga DDT EMESSA -> esclusa (frontiera, 0 righe)
 --   5) D (caso 8 §3a): ri-consegna di merce GIA' fatturata -> il DDT nuovo
 --      proietta 0 -> NON pushato -> niente doppia fattura (chiude bug 1a)
---   6-7) F (§3d): partita 10 spezzata in DUE DDT parziali (6+4) con reso 5 ->
---      differenza 5 distribuita greedy: 1o DDT 5 (cappato), 2o DDT 0.
---      Unico caso che esercita la window del greedy con precedente non vuoto.
+--   6-7) F (§3d): partita 10 spezzata in DUE DDT parziali (6+4) con reso 5.
+--      6) INVARIANTE: il totale spinto resta 5 — e' quello che finisce in fattura.
+--      7) ⭐ riscritto 2026-08-17: ogni spedizione porta il SUO residuo (1 e 4),
+--         non piu' 5 e 0. Il greedy d'ordine non sapeva da quale spedizione la
+--         merce fosse tornata e la scaricava sulla piu' vecchia.
 -- Nota: standalone (dr.quantita grezza invariata) coperto da
 --       test-fn-list-ddt-da-pushare-v1 casi 7-8.
 -- ------------------------------------------------------------
@@ -293,23 +295,39 @@ SELECT is(
   0, '5) D caso 8: ri-consegna di merce gia'' fatturata -> DDT nuovo proietta 0, non pushato (chiude bug 1a)');
 
 -- 6-7) F (§3d): distribuzione greedy su DUE righe DDT della STESSA partita.
--- Differenza 5 (10 consegnati − 5 resi) contro DDT1=6 e DDT2=4: il 1o e' cappato
--- dalla differenza (5), al 2o non resta nulla (0 -> non listato).
--- IN BATCH (p_ddt_id NULL): e' l'unica modalita' in cui la window vede piu' di un
--- candidato per partita. Col push MIRATO (p_ddt_id valorizzato) il filtro e' dentro
--- la CTE cand, quindi il DDT2 da solo proietta min(4, differenza)=4 — corretto e
--- convergente (la AF creata abbassa la differenza per il giro dopo), non e' una
--- doppia fatturazione. Vedi §CONVERGENZA del changeset 20260717-12.
+-- ⭐ RISCRITTI il 2026-08-17 (partita generalizzata, slice S5). NON perche' il
+-- comportamento fosse sbagliato, ma perche' e' diventato PIU' PRECISO.
+--
+--   Fixture: riga d'ordine da 10 spezzata in DDT1=6 e DDT2=4, reso 5 SUL PRIMO.
+--
+--   PRIMA la differenza era della riga d'ORDINE (5 = 10 consegnati − 5 resi) e
+--   veniva ridistribuita greedy: il 1o DDT la assorbiva tutta (5, cappato a 6) e
+--   al 2o non restava nulla. Il totale era giusto, la ripartizione arbitraria —
+--   il greedy non sapeva DA QUALE spedizione la merce fosse tornata, e la
+--   scaricava sulla piu' vecchia.
+--
+--   ORA ogni spedizione ha il suo conto:
+--       DDT1: 6 usciti − 5 tornati  ->  1 ancora fuori  ->  push 1
+--       DDT2: 4 usciti − 0 tornati  ->  4 ancora fuori  ->  push 4
+--
+--   ⚠️ **Il totale non cambia: 5 in entrambi i casi.** Ed e' la cosa che va
+--   presidiata per prima, perche' e' quella che finisce in fattura — la
+--   ripartizione decide solo su quale documento compare la riga. Per questo il
+--   test 6 asserisce l'INVARIANTE (il totale) e il 7 la ripartizione nuova:
+--   se un domani cambiasse il totale, il 6 lo direbbe subito.
 CREATE TEMP TABLE tmp_batch AS
 SELECT ddt_id, riga_id, quantita FROM vendite.fn_list_ddt_da_pushare(NULL,NULL,NULL,NULL);
 
 SELECT is(
-  (SELECT quantita FROM tmp_batch WHERE ddt_id=(SELECT ddt1_id FROM tmp_f)),
-  5::numeric, '6) F batch: il 1o DDT della partita assorbe la differenza, cappato (5 di 6)');
+  (SELECT COALESCE(SUM(quantita), 0) FROM tmp_batch
+    WHERE ddt_id IN ((SELECT ddt1_id FROM tmp_f), (SELECT ddt2_id FROM tmp_f))),
+  5::numeric, '6) F batch: INVARIANTE — il totale spinto per la riga d''ordine resta 5');
 
-SELECT is(
-  (SELECT COUNT(*)::int FROM tmp_batch WHERE ddt_id=(SELECT ddt2_id FROM tmp_f)),
-  0, '7) F batch: al 2o DDT non resta differenza -> 0, non pushato (la window del greedy non doppia-fattura)');
+SELECT results_eq(
+  $q$SELECT COALESCE((SELECT quantita FROM tmp_batch WHERE ddt_id=(SELECT ddt1_id FROM tmp_f)), 0),
+            COALESCE((SELECT quantita FROM tmp_batch WHERE ddt_id=(SELECT ddt2_id FROM tmp_f)), 0)$q$,
+  $q$VALUES (1::numeric, 4::numeric)$q$,
+  '7) F batch: ogni spedizione porta il SUO residuo (1 e 4), non piu'' 5 e 0');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -473,3 +473,5 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 473,44,fattura_sorgente_id,Id fattura,Serve al frontend per aprire il documento,fattura_sorgente_id,informazione,numeric,,100,150,right,,,f,f,f,f,f,t,2026-08-15 00:00:00,mctit,vendite.fondi_fattura_da_decidere.col_fattura_sorgente_id,10
 474,44,fondo_source_id,Id atto,,fondo_source_id,informazione,numeric,,100,160,right,,,f,f,f,f,f,t,2026-08-15 00:00:00,mctit,vendite.fondi_fattura_da_decidere.col_fondo_source_id,10
 475,38,fatturata_il,Fatturata il,"Quando la riga e' stata portata in fattura: la nascita della riga di fattura, non l'ultimo aggiornamento",fatturata_il,informazione,datetime,datetime_short,150,80,center,,,f,t,t,f,f,t,2026-08-16 00:00:00,mctit,vendite.commesse.col_fatturata_il,65
+476,42,ba_codice_fatturazione,Codice BA,,ba_codice_fatturazione,informazione,string,,,80,left,,,t,t,t,f,f,t,2026-08-17 00:00:00,mctit,vendite.dashboard_competenza.col_ba_codice_fatturazione,40
+477,42,id_fiscale,Id fiscale,,id_fiscale,informazione,string,,,90,left,,,t,t,t,f,f,t,2026-08-17 00:00:00,mctit,vendite.dashboard_competenza.col_id_fiscale,35

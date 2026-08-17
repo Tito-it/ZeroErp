@@ -287,6 +287,7 @@
 - [trgfn_resi_guard_transizione](manual/trgfn_resi_guard_transizione.md) — (rev 2026-07-13)
 - [trgfn_resi_normalize](manual/trgfn_resi_normalize.md) — (rev 2026-07-13)
 - [trgfn_resi_riconsegne_guard](manual/trgfn_resi_riconsegne_guard.md) — (rev 2026-07-26)
+- [trgfn_resi_righe_guard_origine_coerente](manual/trgfn_resi_righe_guard_origine_coerente.md) — (rev 2026-08-17 — nuovo, slice S6a della partita di merce generalizzata)
 - [trgfn_resi_righe_guard_quantita](manual/trgfn_resi_righe_guard_quantita.md) — (rev 2026-07-13)
 - [trgfn_resi_rinunce_guard](manual/trgfn_resi_rinunce_guard.md) — (rev 2026-07-26)
 - [trgfn_tipi_indirizzi_only_allowed](manual/trgfn_tipi_indirizzi_only_allowed.md) — (rev 2026-07-11)
@@ -294,7 +295,8 @@
 - [trgfn_v_resi_protect_num](manual/trgfn_v_resi_protect_num.md) — (rev 2026-07-13)
 
 ## 🔍 Views (manuale)
-- [vw_contatore_merce](manual/vw_contatore_merce.md) — (latest review 2026-07-18)
+- [vw_af_merce_per_riga](manual/vw_af_merce_per_riga.md) — (latest review 2026-08-17)
+- [vw_contatore_merce](manual/vw_contatore_merce.md) — (latest review 2026-08-17)
 - [vw_dash_aperto_documenti](manual/vw_dash_aperto_documenti.md) — (latest review 08-07-2026 — v2 serbatoio pre-commessa, DL-14..18) Vista dettaglio della **Situazione aperta v2 — serbatoio pre-commessa**: lo **stock dei documenti aperti e non conclusi** delle 4 aree documento (PREVENTIVI, ORDINI, OFFERTE, CONTRATTI), **senza asse temporale**. Risponde a: *"quali documenti aperti, se conclusi, andrebbero in commessa/fatturazione ma non ci sono ancora arrivati, e in che fase sono?"*. Il concetto **"transitato"** è **eliminato** (DL-14): in una vista senza asse temporale totalizzava *dalla notte dei tempi* documenti già passati avanti, informazione non azionabile.
 - [vw_dash_aperto_riepilogo](manual/vw_dash_aperto_riepilogo.md) — (latest review 08-07-2026 — v2 serbatoio pre-commessa, DL-14..18) Le **card della Situazione aperta v2**: aggregata `area × fase` sullo stock degli **aperti-non-conclusi** (`vw_dash_aperto_documenti` v2). Alimenta le card senza aggregazione BE-side (DB-first). Le fasi presenti sono solo APERTO/IN_ATTESA/IN_CORSO (CHIUSO escluso a monte dalla dettaglio) → il FE le rappresenta con un **donut a spicchi per fase** (maturità verso la commessa).
 - [vw_dash_backlog_documenti](manual/vw_dash_backlog_documenti.md) — (latest review 2026-07-18) **Lente 2 Backlog** (cruscotti fatturazione a due lenti): la lista dei **non-collegati azionabili** — cosa è fermo prima della commessa, da quanto, e cosa serve per sbloccarlo. L'asse **non è la competenza** (i fermi non ce l'hanno): è l'**anzianità** (`data_riferimento`/`anzianita_giorni`) e l'**azionabilità** (`classe` dalla lookup `config.motivi_fermo`).
@@ -322,6 +324,7 @@
 - [vw_ordini_lista](manual/vw_ordini_lista.md) — (rev 2026-06-03 — rev1)
 - [vw_ordini_riepilogo_iva_dettaglio](manual/vw_ordini_riepilogo_iva_dettaglio.md) — (latest review 05-06-2026)
 - [vw_ordini_righe_iva_base](manual/vw_ordini_righe_iva_base.md) — (latest review 05-06-2026)
+- [vw_partite_merce](manual/vw_partite_merce.md) — (latest review 2026-08-17)
 - [vw_preventivi](manual/vw_preventivi.md) — (rev 15-05-2026)
 - [vw_preventivi_lista](manual/vw_preventivi_lista.md) — (rev 2026-06-03 — rev1)
 - [vw_preventivi_pratiche](manual/vw_preventivi_pratiche.md) — (latest review 03-04-2026) `vendite.vw_preventivi_pratiche` espone le **pratiche collegate a ciascun preventivo vendita** tramite la tabella ponte `pratiche.pratiche_sorgenti` con `sorgente_tipo = 'PREVENTIVO'`.
@@ -330,7 +333,7 @@
 - [vw_preventivi_righe_smistabili_ordine](manual/vw_preventivi_righe_smistabili_ordine.md) — Vista **predicato unico** del ramo ordine: le righe preventivo **eleggibili** allo smistamento merce→ordine. Capability (`fn_preventivo_ha_residuo_ordine`), push (`fn_push_preventivo_a_ordine`) e Pannello Smistamento leggono da qui la stessa verita' (brief-preventivi-ordini.md D8).
 - [vw_preventivi_smistamento](manual/vw_preventivi_smistamento.md) — Aggregata per preventivo della vista righe smistamento: **contatori per ramo** per badge e progress della UI. Sostituisce `vw_preventivi_stato_fatturazione` (rename + rework natura-aware, 2026-06-12).
 - [vw_preventivi_smistamento_righe](manual/vw_preventivi_smistamento_righe.md) — Fonte dati del **Pannello Smistamento** (brief-db-smistamento-preventivi.md, B): una riga per ogni riga **attiva** del preventivo, con natura, destinazione e lo **stato di smistamento autorevole** per la UI. Sostituisce `vw_preventivi_stato_fatturazione_righe` (rename + rework natura-aware, 2026-06-12): i flag booleani `in_commessa`/`emessa_af`/`fatturata` sono stati **rimossi** — `stato_smistamento` e' l'unica verita'.
-- [vw_resi_da_accreditare](manual/vw_resi_da_accreditare.md) — (rev 2026-07-26 — etichetta ora reso-aware; rev 2026-07-18 forma cambiata)
+- [vw_resi_da_accreditare](manual/vw_resi_da_accreditare.md) — (rev 2026-08-17 — agganciata alla partita di merce; rev 2026-07-26 etichetta reso-aware; rev 2026-07-18 forma cambiata)
 - [vw_resi_da_riconsegnare](manual/vw_resi_da_riconsegnare.md) — (rev 2026-07-26)
 - [vw_resi_lista](manual/vw_resi_lista.md) — (rev 2026-07-13)
 - [vw_resi_righe_effettive](manual/vw_resi_righe_effettive.md) — (latest review 2026-07-18)

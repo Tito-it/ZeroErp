@@ -1,0 +1,267 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL CONTATORE DIVENTA UN AGGREGATO — vw_contatore_merce
+#   Slice S3 di docs/it/dev/work-in-progress/brief-design-partita-merce-generalizzata.md
+#
+# ── COSA CAMBIA, E COSA NON DEVE CAMBIARE ───────────────────────────────
+#
+#   La vista **resta**, con lo stesso nome e le stesse sei colonne, e smette di
+#   calcolare: diventa la lettura PER RIGA D'ORDINE delle partite di merce
+#   (vw_partite_merce, S2), piu' il fatturato nato sull'ordine.
+#
+#   ⚠️ **Il nome non si tocca perche' e' un contratto.** Ha due consumatori vivi
+#   — vw_resi_da_accreditare e fn_list_ddt_da_pushare — e il secondo decide
+#   QUANTITA' IN RIGA DI FATTURA (rev 2026-07-17, step 3: la funzione proietta
+#   `ct.differenza` come quantita' da fatturare). Non e' una lettura per persone:
+#   e' un dosatore. Per questo la parita' non e' una gentilezza — e' cio' che
+#   impedisce a questo cantiere di cambiare importi di documenti fiscali.
+#
+# ── PARITA' MISURATA (fotografia S0, 2026-08-17) ────────────────────────
+#
+#   10 righe su 12 .......... valori IDENTICI
+#    2 righe (236, 239) ...... cambiate, ed e' la decisione D1
+#   +6 righe nuove ........... i kit, che l'esclusione teneva fuori
+#
+#   Riferimento: db/pgtap/vendite/fixtures/S0-fotografia-partita-merce-20260817.md
+#
+#   Le due righe che cambiano sono il giro della RI-CONSEGNA: merce resa e gia'
+#   messa su un documento di rispedizione **non ancora emesso**. Il cliente ne
+#   ha in mano 2, il contatore diceva 5. Il cambio e' isolato — quelle righe
+#   hanno fatturati 0, non sono in coda accrediti, e le bozze non passano il
+#   cancello del push.
+#
+# ── SPARISCE `WHERE NOT is_composito` ───────────────────────────────────
+#
+#   L'esclusione era una rinuncia dichiarata dal changeSet 20260717-11:
+#   «mismatch di unita' che il contatore non puo' riconciliare senza la macchina
+#   BoM. Esclusi qui, follow-up a se'». La macchina ora c'e' (S1 normalizza i kit
+#   in unita' del padre leggendo `meta->>'coeff_qta'`), quindi il follow-up si
+#   chiude e i kit entrano.
+#
+#   ⭐ E portano con se' un accredito che oggi nessuno vede: ORD0000227, 1 kit
+#   consegnato, fatturato e RESO -> differenza −1. Non e' un caso costruito per
+#   il test: e' nel DB di sviluppo da prima di questo cantiere.
+#
+# ── LE COLONNE NUOVE, TUTTE IN CODA ─────────────────────────────────────
+#
+#   consegnato · reso · in_riconsegna · fatturato_su_merce · fatturato_su_ordine
+#   fatturato_anticipato · partite_merce · misurabile
+#
+#   ⭐ Aggiungere SOLO in coda ha una conseguenza pratica che vale la pena
+#   sfruttare: `CREATE OR REPLACE VIEW` le accetta, quindi **non serve il DROP**
+#   — e senza DROP non si tocca vw_resi_da_accreditare, che da questa vista
+#   dipende. Se anche una sola colonna esistente cambiasse nome, tipo o
+#   posizione, servirebbe la coreografia a tre changeSet numerati in ordine.
+#
+#   `fatturato_anticipato` e' la grandezza che mancava: quanto e' stato
+#   fatturato di merce **non ancora uscita**. 93 ordini su 95 fatturano alla
+#   conferma, quindi non e' un caso di scuola — sono 12 righe d'ordine
+#   fatturate e mai spedite. Fino a oggi quel numero non aveva un posto dove
+#   stare e finiva dentro `differenza`, dove somiglia a un accredito dovuto.
+#
+# ── ⚠️ PERCHE' `differenza` QUI NON DIVENTA MAI NULL ────────────────────
+#
+#   Su vw_partite_merce `differenza` e' NULL quando il conto «non si applica»
+#   (causale non fatturabile, kit non misurabile). Qui NO, e non e' una
+#   dimenticanza: `fn_list_ddt_da_pushare` fa `COALESCE(ct.differenza, 0)`, e un
+#   NULL diventerebbe zero, cioe' **una riga che smette di essere fatturata in
+#   silenzio**. La parita' viene prima.
+#
+#   Questa vista resta quindi il contatore GREZZO che era — lo diceva gia'
+#   l'intestazione del 20260717-11: «Qui non si maschera nulla: si espone il
+#   conto». Chi vuole la semantica parlante (`stato`, il NULL che dice «non lo
+#   so») legge **vw_partite_merce**, che e' la nuova sede. `misurabile` esce
+#   comunque come colonna, cosi' chi legge puo' decidere da se'.
+#
+# ── ⚠️ IL TEST VA AGGIORNATO NELLO STESSO PASSO ─────────────────────────
+#
+#   db/pgtap/vendite/test-vw-contatore-merce-v1.sql:
+#     - il test 3 elenca le sei colonne con `columns_are`: aggiungerne otto lo
+#       fa fallire;
+#     - il test 10 verificava «riga d'ordine con articolo COMPOSITO ESCLUSA
+#       dalla vista (follow-up)»: **verificava la toppa**, e va riscritto per
+#       verificare l'opposto.
+#
+# security_invoker=on: ri-specificato — la reloption non e' visibile in
+#   pg_get_viewdef e PG la azzera se omessa.
+#
+# Dipendenze: vendite.vw_partite_merce (20260817-07),
+#   vendite.vw_af_merce_per_riga (20260817-06), vendite.ordini_righe.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260817-08-update-vw-contatore-merce-aggregato-mctit.yaml
+
+  - changeSet:
+      id: 20260817-08-update-vw-contatore-merce-aggregato
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        S3 della partita generalizzata: vw_contatore_merce smette di calcolare e
+        diventa l'aggregato per riga d'ordine di vw_partite_merce piu' il
+        fatturato nato sull'ordine. Sei colonne invariate (parita' verificata su
+        10 righe su 12; le 2 che cambiano sono la decisione D1), otto colonne
+        nuove in coda fra cui fatturato_anticipato. Sparisce l'esclusione dei
+        compositi. security_invoker=on.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_partite_merce
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_af_merce_per_riga
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_contatore_merce
+              WITH (security_invoker=on) AS
+              WITH pm AS (
+                  -- Le partite di merce che hanno un'origine ordine, raccolte
+                  -- per riga d'ordine. E' l'universo della vista: una riga
+                  -- d'ordine senza merce uscita non ha nulla da contare, ed e'
+                  -- lo stesso perimetro di prima (`ful UNION res`), perche' un
+                  -- reso presuppone una riga di DDT consegnata.
+                  SELECT p.ordine_riga_id,
+                         SUM(p.consegnato)          AS consegnato,
+                         SUM(p.reso)                AS reso,
+                         SUM(p.in_riconsegna)       AS in_riconsegna,
+                         SUM(p.tenuti)              AS tenuti,
+                         SUM(p.fatturato_merce)     AS fatturato_su_merce,
+                         SUM(p.fatturato_da_ordine) AS allocato,
+                         COUNT(*)::integer          AS partite_merce,
+                         bool_and(p.misurabile)     AS misurabile
+                    FROM vendite.vw_partite_merce p
+                   WHERE p.ordine_riga_id IS NOT NULL
+                   GROUP BY p.ordine_riga_id
+              ),
+              ord AS (
+                  -- Il fatturato nato sull'ORDINE (trigger CONFERMATO), gia'
+                  -- normalizzato in unita' del padre da S1: e' il pezzo che non
+                  -- appartiene a nessuna riga di merce finche' non si spedisce.
+                  SELECT f.riga_id AS ordine_riga_id,
+                         f.quantita,
+                         f.misurabile
+                    FROM vendite.vw_af_merce_per_riga f
+                   WHERE f.corsia = 'ORD'
+                     AND f.tipo_movimento = 'NORMALE'
+              )
+              SELECT orr.id                                            AS ordine_riga_id,
+                     orr.ordine_id,
+                     orr.articolo_id,
+                     pm.tenuti                                         AS tenuti,
+                     -- `fatturati` invariato nella semantica: le due corsie si
+                     -- sommano, e chi non c'e' vale zero. E' la colonna che
+                     -- dosa la fatturazione: non cambia di un pezzo.
+                     (COALESCE(pm.fatturato_su_merce, 0)
+                      + COALESCE(o.quantita, 0))                       AS fatturati,
+                     (pm.tenuti - (COALESCE(pm.fatturato_su_merce, 0)
+                                   + COALESCE(o.quantita, 0)))         AS differenza,
+                     -- ── da qui in giu': colonne NUOVE, aggiunte in coda ──
+                     pm.consegnato,
+                     pm.reso,
+                     pm.in_riconsegna,
+                     COALESCE(pm.fatturato_su_merce, 0)                AS fatturato_su_merce,
+                     COALESCE(o.quantita, 0)                           AS fatturato_su_ordine,
+                     -- Fatturato sull'ordine che NON ha trovato merce in cui
+                     -- versarsi: merce non ancora uscita. Non e' un accredito
+                     -- dovuto, ed e' il motivo per cui ha una colonna sua.
+                     GREATEST(0::numeric,
+                              COALESCE(o.quantita, 0)
+                              - COALESCE(pm.allocato, 0))              AS fatturato_anticipato,
+                     pm.partite_merce,
+                     (pm.misurabile AND COALESCE(o.misurabile, true))  AS misurabile
+                FROM pm
+                JOIN vendite.ordini_righe orr ON orr.id = pm.ordine_riga_id
+                LEFT JOIN ord o               ON o.ordine_riga_id = pm.ordine_riga_id;
+
+              COMMENT ON VIEW vendite.vw_contatore_merce IS
+                'Il contatore, come AGGREGATO per riga d''ordine delle partite di merce '
+                '(brief-design-partita-merce-generalizzata S3, rev 2026-08-17). Non calcola piu'': '
+                'somma vw_partite_merce (grana = riga di DDT) e ci aggiunge il fatturato nato sulla '
+                'corsia ORD. Le sei colonne storiche sono INVARIATE nella semantica — parita'' '
+                'verificata su 10 righe su 12 contro la fotografia S0; le 2 che cambiano (righe '
+                'd''ordine 236 e 239) sono la decisione D1, cioe'' la merce su DDT in bozza che non '
+                'e'' uscita dal magazzino. Sparisce WHERE NOT is_composito: i kit entrano, contati in '
+                'unita'' del PADRE (S1). Colonne nuove in coda: consegnato, reso, in_riconsegna, '
+                'fatturato_su_merce, fatturato_su_ordine, fatturato_anticipato (fatturato di merce '
+                'NON ancora uscita — non e'' un accredito dovuto), partite_merce, misurabile. '
+                '⚠️ Qui `differenza` NON e'' mai NULL, a differenza di vw_partite_merce: '
+                'fn_list_ddt_da_pushare fa COALESCE(differenza,0) e un NULL smetterebbe di fatturare '
+                'una riga in silenzio. Questa resta il contatore GREZZO che dosa le macchine; chi '
+                'vuole la semantica parlante (stato, NULL = «non si applica») legge vw_partite_merce. '
+                'security_invoker=on + RLS.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristino della definizione precedente (20260717-11):
+              -- contatore calcolato, per riga d'ordine, compositi esclusi.
+              CREATE OR REPLACE VIEW vendite.vw_contatore_merce
+              WITH (security_invoker=on) AS
+              WITH ful AS (
+                  SELECT f.ordine_riga_id, SUM(f.qta_evasa) AS evaso
+                    FROM vendite.ordini_righe_fulfillment f
+                   GROUP BY f.ordine_riga_id
+              ),
+              res AS (
+                  SELECT e.ordine_riga_id, SUM(e.quantita) AS reso
+                    FROM vendite.vw_resi_righe_effettive e
+                   WHERE e.ordine_riga_id IS NOT NULL
+                   GROUP BY e.ordine_riga_id
+              ),
+              af_seg AS (
+                  SELECT af.quantita,
+                         split_part(ca.segment_key, ':', 1)                      AS seg_tipo,
+                         (substring(ca.segment_key FROM ':R:([0-9]+)'))::bigint   AS seg_riga_id
+                    FROM vendite.attivita_fatturabili af
+                    JOIN vendite.commesse_attivita ca ON ca.id = af.commessa_attivita_id
+                   WHERE af.tipo_movimento = 'NORMALE'
+                     AND split_part(ca.segment_key, ':', 1) IN ('ORD', 'DDT')
+                     AND ca.segment_key ~ ':R:[0-9]+'
+              ),
+              fatt AS (
+                  SELECT ordine_riga_id, SUM(quantita) AS fatturati
+                    FROM (
+                        SELECT s.seg_riga_id AS ordine_riga_id, s.quantita
+                          FROM af_seg s
+                         WHERE s.seg_tipo = 'ORD'
+                        UNION ALL
+                        SELECT f.ordine_riga_id, s.quantita
+                          FROM af_seg s
+                          JOIN vendite.ordini_righe_fulfillment f ON f.ddt_riga_id = s.seg_riga_id
+                         WHERE s.seg_tipo = 'DDT'
+                    ) x
+                   GROUP BY ordine_riga_id
+              ),
+              partite AS (
+                  SELECT ful.ordine_riga_id FROM ful
+                  UNION
+                  SELECT res.ordine_riga_id FROM res
+              )
+              SELECT orr.id                                    AS ordine_riga_id,
+                     orr.ordine_id,
+                     orr.articolo_id,
+                     COALESCE(ful.evaso, 0) - COALESCE(res.reso, 0)                        AS tenuti,
+                     COALESCE(fatt.fatturati, 0)                                           AS fatturati,
+                     (COALESCE(ful.evaso, 0) - COALESCE(res.reso, 0)) - COALESCE(fatt.fatturati, 0) AS differenza
+                FROM partite p
+                JOIN vendite.ordini_righe orr ON orr.id = p.ordine_riga_id
+                JOIN catalogo.articoli art    ON art.id = orr.articolo_id
+                LEFT JOIN ful  ON ful.ordine_riga_id  = orr.id
+                LEFT JOIN res  ON res.ordine_riga_id  = orr.id
+                LEFT JOIN fatt ON fatt.ordine_riga_id = orr.id
+               WHERE NOT COALESCE(art.is_composito, false);
