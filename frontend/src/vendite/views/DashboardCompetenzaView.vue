@@ -11,6 +11,7 @@ import { computed, nextTick, onActivated, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import Checkbox from 'primevue/checkbox'
+import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
@@ -38,6 +39,7 @@ import { useNotify } from '../../core/composables/useNotify'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useActionPermission } from '../../core/composables/useActionPermission'
+import { useDebouncedAction } from '../../core/composables/useDebouncedAction'
 import { useJobPolling } from '../../core/composables/useJobPolling'
 import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS } from '../../core/constants'
 import { STATO_EMISSIONE_ATTIVITA } from '../constants'
@@ -51,7 +53,11 @@ import { getFatturazioneRun, runFatturazione, runNumerazione } from '../api/lott
 import { useDocumentoDrawer } from '../_shared/documenti/useDocumentoDrawer'
 import { buildApriDocumentoAction } from '../dashboardAree'
 import { useSelezioneToggle } from '../_shared/righe/useSelezioneToggle'
-import { STADIO_GRUPPI, useDashboardCompetenzaStore } from '../stores/dashboardCompetenza'
+import {
+  GRUPPI_CLIENTE_NON_DETERMINABILE,
+  STADIO_GRUPPI,
+  useDashboardCompetenzaStore,
+} from '../stores/dashboardCompetenza'
 
 const { t, te } = useI18n()
 const notify = useNotify()
@@ -110,6 +116,9 @@ const {
   gruppiRiepilogo,
   gruppiTipo,
   gruppiTipi,
+  gruppiCliente,
+  gruppiClienti,
+  gruppiSearch,
   errori,
   erroriCount,
   erroriPage,
@@ -555,15 +564,61 @@ const opzioniTipoGruppo = computed(() => [
   })),
 ])
 
-// Scopo: cambio del filtro tipo — riparte da pagina 1 (le pagine successive
-//        appartengono al perimetro precedente) e azzera la selezione: le righe
-//        selezionate potrebbero non essere piu' a video, e fatturare una
-//        selezione invisibile e' esattamente il tipo di sorpresa da evitare.
-function onGruppiTipoChange() {
+// Scopo: cambio di QUALUNQUE filtro della lista gruppi — riparte da pagina 1
+//        (le pagine successive appartengono al perimetro precedente) e azzera
+//        la selezione.
+// ⚠️ L'azzeramento della selezione non e' prudenza: e' la regola che regge il
+//    verbo. La selezione sopravvive al cambio PAGINA di proposito (le chiavi
+//    sono di dominio, non indici di riga), ma al cambio di PERIMETRO no —
+//    altrimenti si fattura roba che non si ha davanti, che e' esattamente
+//    l'incidente da cui nasce tutto questo cantiere.
+// Una sede sola per i tre filtri (tipo, cliente, ricerca): tre copie di queste
+// tre righe sarebbero tre occasioni perche' una si dimentichi la selezione.
+function applicaFiltroGruppi() {
   gruppiPage.value = 1
   selezioneGruppi.value = []
   loadGruppi()
 }
+
+// Debounce della ricerca libera (BB `useDebouncedAction`): ritardo standard e,
+// soprattutto, cleanup su unmount/deactivate — un timer che scatta su un tab in
+// background ricaricherebbe una lista che l'operatore ha lasciato.
+const onGruppiSearchInput = useDebouncedAction(applicaFiltroGruppi)
+
+// Voci del filtro CLIENTE (facet dal BE, sul perimetro del mese/stadio).
+// L'etichetta porta SEMPRE il codice BA accanto alla ragione sociale, e non e'
+// decorazione: lo stesso soggetto puo' avere piu' alberi di billing account
+// — anche sotto emittenti diversi — con nome e codice fiscale identici, e
+// quegli alberi finiscono su fatture diverse. Senza il codice la tendina
+// mostrerebbe due voci uguali senza modo di distinguerle.
+const opzioniCliente = computed(() => {
+  const voci = gruppiClienti.value.map((c) => {
+    // Cliente non determinabile (padre fuori scope): voce esplicita col suo
+    // conteggio, non una riga che sparisce. E' la riga che sfugge — il caso da
+    // cui nasce il filtro — e nasconderla sarebbe il difetto, non il rimedio.
+    if (c.ba_fatturazione_id === null || c.ba_fatturazione_id === undefined) {
+      return {
+        value: GRUPPI_CLIENTE_NON_DETERMINABILE,
+        label: t('vendite.dashboard_competenza.cliente_non_determinabile', { n: c.n_gruppi }),
+      }
+    }
+    const nome = c.cliente_display || t('vendite.dashboard_competenza.cliente_senza_nome')
+    const codice = c.ba_codice_fatturazione
+    return {
+      value: c.ba_fatturazione_id,
+      label: `${codice ? `${nome} — ${codice}` : nome} (${c.n_gruppi})`,
+    }
+  })
+  return [
+    {
+      value: null,
+      label: t('vendite.dashboard_competenza.cliente_tutti', {
+        n: gruppiClienti.value.reduce((acc, x) => acc + Number(x.n_gruppi ?? 0), 0),
+      }),
+    },
+    ...voci,
+  ]
+})
 
 // Scopo: etichetta del gruppo — riferimento leggibile del documento
 //        (PRV-0012…) oppure, per gli oneri sourceless, la commessa che li
@@ -673,11 +728,20 @@ const contestoLista = computed(() => {
     return {
       lista: listaGruppiRef.value,
       exportFn: exportDashboardCompetenzaGruppi,
+      // ⚠️ TUTTI i filtri a video, cliente e ricerca compresi: un export che
+      // non corrisponde a cio' che si ha davanti e' peggio di nessun export —
+      // chi lo apre crede di avere quel perimetro e non ha modo di accorgersi
+      // che non e' cosi'. Il sentinella «non determinabile» si traduce qui
+      // esattamente come nello store: fuori viaggia solo il flag.
       params: (formato) => ({
         formato,
         competenza_mese: competenzaCorrente.value,
         stadio: STADIO_GRUPPI,
         tipo_gruppo: gruppiTipo.value,
+        ...(gruppiCliente.value === GRUPPI_CLIENTE_NON_DETERMINABILE
+          ? { ba_non_determinabile: true }
+          : { ba_fatturazione_id: gruppiCliente.value }),
+        search: gruppiSearch.value || null,
         order_by: gruppiOrderBy.value,
         order_dir: gruppiOrderDir.value,
       }),
@@ -1684,7 +1748,38 @@ onActivated(() => {
                   class="app-form-select"
                   :placeholder="t('vendite.dashboard_competenza.filtro_tipo')"
                   v-tooltip.bottom="t('vendite.dashboard_competenza.filtro_tipo')"
-                  @change="onGruppiTipoChange"
+                  @change="applicaFiltroGruppi"
+                />
+                <!-- Filtro CLIENTE: scelta strutturata, mai testo libero. Il
+                     valore è l'id del BA di FATTURAZIONE — lo stesso elemento
+                     che il DB mette nella chiave della fattura — e l'etichetta
+                     porta il codice BA accanto al nome perché lo stesso
+                     soggetto può avere più alberi omonimi che finiscono su
+                     fatture diverse. `filter` perché su un mese pieno la
+                     tendina è lunga. -->
+                <Select
+                  v-model="gruppiCliente"
+                  :options="opzioniCliente"
+                  option-label="label"
+                  option-value="value"
+                  filter
+                  :filter-placeholder="t('vendite.dashboard_competenza.filtro_cliente_cerca')"
+                  class="app-form-select app-dash-filtro-cliente"
+                  :placeholder="t('vendite.dashboard_competenza.filtro_cliente')"
+                  v-tooltip.bottom="t('vendite.dashboard_competenza.filtro_cliente_tooltip')"
+                  @change="applicaFiltroGruppi"
+                />
+                <!-- Ricerca libera: risponde a «dov'è finito ORD0005174», che è
+                     una domanda diversa da «dammi tutto di Rossi» — per quella
+                     c'è il filtro qui accanto. Sotto i 3 caratteri il backend la
+                     ignora: la lista resta quella di prima invece di svuotarsi
+                     dicendo «non c'è niente» mentre si sta ancora digitando. -->
+                <InputText
+                  v-model="gruppiSearch"
+                  class="app-dash-ricerca-gruppi"
+                  :placeholder="t('vendite.dashboard_competenza.ricerca_gruppi')"
+                  v-tooltip.bottom="t('vendite.dashboard_competenza.ricerca_gruppi_tooltip')"
+                  @input="onGruppiSearchInput"
                 />
                 <!-- ⚠️ Il tooltip sta sul WRAPPER e non sul Button: un bottone
                      disabilitato non riceve eventi del mouse, quindi il

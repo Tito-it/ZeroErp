@@ -20,10 +20,18 @@ import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useContextStore } from '../../stores/context'
 import { BREAKPOINTS, MANAGE_ICONS, PAGINATION } from '../constants'
+import { SEARCH_DEBOUNCE_MS } from './useDebouncedAction'
 
 export function useSearchTable(store, options = {}) {
   const {
-    debounceMs = 400,
+    // Ritardo standard della ricerca a video: la costante vive in
+    // `useDebouncedAction` insieme all'altra sede che la usa (i cruscotti, che
+    // questo composable non puo' servire — pretende uno store «ricerca + sort +
+    // limit»). Il timer qui resta suo, perche' ha una logica in piu'
+    // (`skipNextDebounce` per i termini precaricati da ricerca universale/AI,
+    // che devono partire SUBITO); a essere condiviso e' il valore, che e'
+    // l'unica cosa che non deve divergere fra le due.
+    debounceMs = SEARCH_DEBOUNCE_MS,
     extraFilters = null, // funzione che ritorna filtri aggiuntivi da applicare
     defaultSortField = null, // campo sort iniziale (es. 'descrizione')
     defaultSortOrder = 'asc' // direzione sort iniziale
