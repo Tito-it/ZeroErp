@@ -31,12 +31,12 @@
 Quattro cantieri nati fra il 2026-08-16 e il 2026-08-17. Tre sono in catena,
 uno è indipendente.
 
-| # | Cantiere | Brief | Perché in questa posizione |
-| --- | --- | --- | --- |
-| **1** | **Partita generalizzata** | **questo** | È la nozione su cui gli altri due poggiano. Cambiarla dopo obbliga a rifarli |
-| **2** | Pannello «situazione merce» su ordine **e DDT** | [brief-design-situazione-merce-ordine.md](brief-design-situazione-merce-ordine.md) | Legge la partita. Fatto prima, mostrerebbe spedizioni miste con conti parziali **sul DDT**, dove l'incoerenza si vede a occhio |
-| **3** | Nota di credito (emissione dell'accredito) | [brief-design-note-credito-resi.md](brief-design-note-credito-resi.md) | Attribuisce l'accredito **alla partita**. Scritta sulla chiave di oggi, andrebbe riscritta — e nel frattempo avrà emesso **documenti fiscali** |
-| **—** | Righe DDT a prezzo zero | [brief-ddt-righe-senza-prezzo.md](brief-ddt-righe-senza-prezzo.md) | **Indipendente**: riguarda il pricing in inserimento, non la partita. Può procedere in parallelo e sblocca la validazione DL-28 |
+| #     | Cantiere                                        | Brief                                                                              | Perché in questa posizione                                                                                                                     |
+| ----- | ----------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1** | **Partita generalizzata**                       | **questo**                                                                         | È la nozione su cui gli altri due poggiano. Cambiarla dopo obbliga a rifarli                                                                   |
+| **2** | Pannello «situazione merce» su ordine **e DDT** | [brief-design-situazione-merce-ordine.md](brief-design-situazione-merce-ordine.md) | Legge la partita. Fatto prima, mostrerebbe spedizioni miste con conti parziali **sul DDT**, dove l'incoerenza si vede a occhio                 |
+| **3** | Nota di credito (emissione dell'accredito)      | [brief-design-note-credito-resi.md](brief-design-note-credito-resi.md)             | Attribuisce l'accredito **alla partita**. Scritta sulla chiave di oggi, andrebbe riscritta — e nel frattempo avrà emesso **documenti fiscali** |
+| **—** | Righe DDT a prezzo zero                         | [brief-ddt-righe-senza-prezzo.md](brief-ddt-righe-senza-prezzo.md)                 | **Indipendente**: riguarda il pricing in inserimento, non la partita. Può procedere in parallelo e sblocca la validazione DL-28                |
 
 ⚠️ **La catena 1 → 2 → 3 non è una preferenza di comodo.** Il punto 3 produce
 documenti fiscali: rifarlo significa riconciliare note di credito già emesse,
@@ -98,11 +98,11 @@ contatore non vede.
 Ne discende che **la merce senza partita non è un caso di nicchia**: sono almeno
 tre famiglie.
 
-| Famiglia | Perché fuori | Frequenza |
-| --- | --- | --- |
-| Righe di DDT aggiunte a mano | nessun fulfillment | il caso che ha aperto la questione |
-| Articoli **compositi** | esclusi dalla vista per costruzione | **12 righe d'ordine su 107** (misurato 2026-08-17): l'11%, non un caso di nicchia |
-| DDT **standalone** (senza ordine) | nessuna riga d'ordine a monte | `fn_list_ddt_da_pushare` li fattura da sempre, ramo standalone |
+| Famiglia                          | Perché fuori                        | Frequenza                                                                         |
+| --------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------- |
+| Righe di DDT aggiunte a mano      | nessun fulfillment                  | il caso che ha aperto la questione                                                |
+| Articoli **compositi**            | esclusi dalla vista per costruzione | **12 righe d'ordine su 107** (misurato 2026-08-17): l'11%, non un caso di nicchia |
+| DDT **standalone** (senza ordine) | nessuna riga d'ordine a monte       | `fn_list_ddt_da_pushare` li fattura da sempre, ramo standalone                    |
 
 ⚠️ **La terza riga è la più significativa**: un DDT standalone viene **fatturato**
 (l'abbiamo verificato oggi, `DDT0000034`) e non ha **mai** avuto un conto della
@@ -241,14 +241,14 @@ ordine invisibile — fanno da coperchio a difetti di misura che stanno sotto.
 sotto ci sono sei cose. Quattro producono numeri sbagliati, una li produce
 illeggibili, una riguarda la fatturazione e non la lettura.
 
-| # | Rilievo | Oggi è nascosto perché | Misura (dev, 2026-08-17) | Gravità |
-| --- | --- | --- | --- | --- |
-| **A** | La corsia ORD fattura **prima** che la merce esca | quelle righe non hanno fulfillment → non entrano nella `UNION` delle partite | **16** righe d'ordine fatturate più di quanto spedito, di cui **12 mai spedite** | 🔴 |
-| **B** | I compositi contano i **componenti** contro un consegnato in **pezzi del padre** | `WHERE NOT is_composito` | **4** partite darebbero **−2** invece di 0 · una quinta riga cumula B e A (17 ordinati, **51** fatturati, 0 spediti) | 🔴 |
-| **C** | Il fulfillment conta anche i DDT in **bozza** | il `differenza` positivo si legge come «da fatturare», che non allarma nessuno | **4** righe di fulfillment su DDT `DRAFT`, **6 pezzi**, su **2** partite | 🟠 |
-| **D** | Le causali **non fatturabili** entrerebbero come «da fatturare» | quelle righe non hanno partita | **5** righe (CONTO_VISIONE 2, CONTO_LAVORO 2, CAMPIONATURA 1) | 🟠 |
-| **E** | `resi_righe.ordine_riga_id` è nullable **senza guard di coerenza** | nessuno lo compila male, per ora | **0** violazioni — e **0 guard** | 🟡 |
-| **F** | La RLS di `commesse_attivita` passa da una **strada diversa** da quella dei DDT | il contatore non è mai stato mostrato a un utente applicativo | 2 percorsi di scope distinti | 🟡 |
+| #     | Rilievo                                                                          | Oggi è nascosto perché                                                         | Misura (dev, 2026-08-17)                                                                                             | Gravità |
+| ----- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- | ------- |
+| **A** | La corsia ORD fattura **prima** che la merce esca                                | quelle righe non hanno fulfillment → non entrano nella `UNION` delle partite   | **16** righe d'ordine fatturate più di quanto spedito, di cui **12 mai spedite**                                     | 🔴       |
+| **B** | I compositi contano i **componenti** contro un consegnato in **pezzi del padre** | `WHERE NOT is_composito`                                                       | **4** partite darebbero **−2** invece di 0 · una quinta riga cumula B e A (17 ordinati, **51** fatturati, 0 spediti) | 🔴       |
+| **C** | Il fulfillment conta anche i DDT in **bozza**                                    | il `differenza` positivo si legge come «da fatturare», che non allarma nessuno | **4** righe di fulfillment su DDT `DRAFT`, **6 pezzi**, su **2** partite                                             | 🟠       |
+| **D** | Le causali **non fatturabili** entrerebbero come «da fatturare»                  | quelle righe non hanno partita                                                 | **5** righe (CONTO_VISIONE 2, CONTO_LAVORO 2, CAMPIONATURA 1)                                                        | 🟠       |
+| **E** | `resi_righe.ordine_riga_id` è nullable **senza guard di coerenza**               | nessuno lo compila male, per ora                                               | **0** violazioni — e **0 guard**                                                                                     | 🟡       |
+| **F** | La RLS di `commesse_attivita` passa da una **strada diversa** da quella dei DDT  | il contatore non è mai stato mostrato a un utente applicativo                  | 2 percorsi di scope distinti                                                                                         | 🟡       |
 
 ### 8.0 ✅ Precisazione al §2 — la prova del DDT standalone è un'altra, ed è più forte
 
@@ -298,11 +298,11 @@ corsia ORD.
 ⭐ **La lettura giusta del rilievo**: `differenza` oggi ha **tre** significati
 diversi appiattiti in un numero.
 
-| `differenza` | Significa | È un compito? |
-| --- | --- | --- |
-| `> 0` | merce consegnata e non ancora fatturata | sì: **fatturare** |
-| `< 0` **con un reso** | merce resa dopo essere stata fatturata | sì: **accreditare** |
-| `< 0` **senza reso** | fatturato in anticipo, merce non ancora uscita | **no**: è un arretrato di **spedizione** |
+| `differenza`          | Significa                                      | È un compito?                            |
+| --------------------- | ---------------------------------------------- | ---------------------------------------- |
+| `> 0`                 | merce consegnata e non ancora fatturata        | sì: **fatturare**                        |
+| `< 0` **con un reso** | merce resa dopo essere stata fatturata         | sì: **accreditare**                      |
+| `< 0` **senza reso**  | fatturato in anticipo, merce non ancora uscita | **no**: è un arretrato di **spedizione** |
 
 Le prime due sono il conto della merce. La terza non lo è, ed è la maggioranza.
 
@@ -391,12 +391,12 @@ SELECT ordine_riga_id, sum(qta_evasa) FROM vendite.ordini_righe_fulfillment GROU
 **Nessun join al DDT.** Quindi non guarda in che stato è il documento. Misurato:
 
 | Stato del DDT | Righe di fulfillment | Pezzi |
-| --- | --- | --- |
-| CONSEGNATO | 16 | 86 |
-| **DRAFT** | **4** | **6** |
-| SPEDITO | 2 | 5 |
-| EMESSO | 1 | 6 |
-| RESO | 1 | 1 |
+| ------------- | -------------------- | ----- |
+| CONSEGNATO    | 16                   | 86    |
+| **DRAFT**     | **4**                | **6** |
+| SPEDITO       | 2                    | 5     |
+| EMESSO        | 1                    | 6     |
+| RESO          | 1                    | 1     |
 
 Due delle 12 partite (righe d'ordine 236 e 239) hanno dentro `tenuti` la merce di
 un DDT **ancora in bozza**: merce che non è uscita dal magazzino.
@@ -434,10 +434,10 @@ ri-consegnate e i due resi **non compaiono più nella coda** (verificato: 0 righ
 ⭐ **Ma qui la lettura cambia, e non è un secondo difetto: è la stessa
 constatazione che significa due cose diverse.**
 
-| Vista | Domanda | Cosa deve fare la bozza |
-| --- | --- | --- |
+| Vista                     | Domanda                      | Cosa deve fare la bozza                                                                                                                                |
+| ------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `vw_resi_da_riconsegnare` | «cosa devo ancora **fare**?» | ✅ **uscire dalla coda** — qualcuno se ne sta già occupando. È una prenotazione, e il modello la usa così apposta (stessa scelta del guard over-return) |
-| il contatore della merce | «dove **sta** la merce?» | ❌ **non contare** — la bozza non ha mosso nulla |
+| il contatore della merce  | «dove **sta** la merce?»     | ❌ **non contare** — la bozza non ha mosso nulla                                                                                                        |
 
 **Ne discende che le due viste non vanno allineate fra loro, e che correggere il
 solo contatore è corretto** — ma apre un buco di lettura: con `tenuti = 2` e
@@ -510,11 +510,11 @@ FROM vendite.vw_resi_righe_effettive e WHERE e.ordine_riga_id IS NOT NULL
 
 Un reso con `ordine_riga_id` vuoto **non viene sottratto**. Sui 17 resi:
 
-| | Righe |
-| --- | --- |
-| con `ordine_riga_id` | 15 |
-| vuoto, e riga DDT **standalone** (corretto: non c'è ordine) | 2 |
-| vuoto, ma riga DDT **agganciata a un ordine** ← incoerente | **0** |
+|                                                             | Righe |
+| ----------------------------------------------------------- | ----- |
+| con `ordine_riga_id`                                        | 15    |
+| vuoto, e riga DDT **standalone** (corretto: non c'è ordine) | 2     |
+| vuoto, ma riga DDT **agganciata a un ordine** ← incoerente  | **0** |
 
 Zero, oggi. Ma `ordine_riga_id` è **nullable** e **nessun trigger** verifica che
 sia compilato quando il DDT di origine ha un fulfillment. Un reso registrato così
@@ -527,11 +527,11 @@ serve comunque, perché `ordine_riga_id` resta e resta letto altrove.
 
 ### 8.6 🟡 Rilievo F — la RLS arriva alla merce da due strade diverse
 
-| Tabella | RLS | Come si decide se la vedi |
-| --- | --- | --- |
-| `vendite.ddt` | ✅ | `fn_scope_ef_whitelist(utente, emittente_fiscale_id)` |
-| `vendite.commesse_attivita` | ✅ | `fn_scope_ef_whitelist_via_commessa(utente, commessa_id)` |
-| `ddt_righe`, `ordini_righe`, `ordini_righe_fulfillment`, `resi_righe`, `attivita_fatturabili` | ❌ | ereditano dal padre via `security_invoker` |
+| Tabella                                                                                       | RLS | Come si decide se la vedi                                 |
+| --------------------------------------------------------------------------------------------- | --- | --------------------------------------------------------- |
+| `vendite.ddt`                                                                                 | ✅   | `fn_scope_ef_whitelist(utente, emittente_fiscale_id)`     |
+| `vendite.commesse_attivita`                                                                   | ✅   | `fn_scope_ef_whitelist_via_commessa(utente, commessa_id)` |
+| `ddt_righe`, `ordini_righe`, `ordini_righe_fulfillment`, `resi_righe`, `attivita_fatturabili` | ❌   | ereditano dal padre via `security_invoker`                |
 
 ⚠️ **Il consegnato e il fatturato passano da due cancelli diversi.** In pratica
 l'emittente è lo stesso, ma **non è garantito per costruzione**: sono due funzioni
@@ -635,13 +635,13 @@ un terzo criterio.
 
 **Prova su dati reali** che la regola tiene insieme parità e correzione:
 
-| Caso | Consegnato | Fatturato ORD | Allocato | Anticipato | Differenza | Oggi |
-| --- | --- | --- | --- | --- | --- | --- |
-| riga 588 | 1 | 1 | 1 | 0 | **0** | 0 ✅ parità |
-| riga 607 | 1 | 1 | 1 | 0 | **0** | 0 ✅ parità |
-| riga 172 (kit) | 1 | 3 → **1** padre | 1 | 0 | **0** | *esclusa* ✅ entra a zero |
-| riga 5405 (kit) | 0 | 51 → **17** padre | 0 | 17 | — | *invisibile* ✅ nessun falso accredito |
-| riga 18946 (corsia DDT) | 21 | — | — | — | **−8** | −8 ✅ parità |
+| Caso                    | Consegnato | Fatturato ORD     | Allocato | Anticipato | Differenza | Oggi                                  |
+| ----------------------- | ---------- | ----------------- | -------- | ---------- | ---------- | ------------------------------------- |
+| riga 588                | 1          | 1                 | 1        | 0          | **0**      | 0 ✅ parità                            |
+| riga 607                | 1          | 1                 | 1        | 0          | **0**      | 0 ✅ parità                            |
+| riga 172 (kit)          | 1          | 3 → **1** padre   | 1        | 0          | **0**      | *esclusa* ✅ entra a zero              |
+| riga 5405 (kit)         | 0          | 51 → **17** padre | 0        | 17         | —          | *invisibile* ✅ nessun falso accredito |
+| riga 18946 (corsia DDT) | 21         | —                 | —        | —          | **−8**     | −8 ✅ parità                           |
 
 ⭐ **La terza riga è la prova che la normalizzazione in unità del padre è la
 scelta giusta e non una preferenza**: fa tornare a **zero** un conto che a unità
@@ -652,12 +652,12 @@ componente darebbe −2, e lo fa senza alcuna eccezione scritta per i kit.
 Il §8.1 ha mostrato che `differenza` porta tre significati. Il modello li separa,
 e **`differenza` conserva il suo**, che è l'unico che riguarda la merce:
 
-| Grandezza | Domanda a cui risponde | Dove vive |
-| --- | --- | --- |
-| `differenza` | «di questa merce, cosa resta da fatturare o da accreditare?» | partita di merce |
-| `fatturato_anticipato` | «quanto è stato fatturato di merce non ancora uscita?» | riga d'ordine |
-| `in_riconsegna` | «quanto è tornato e sta già su un DDT non ancora emesso?» | partita di merce — **solo se D1 = `EMESSO`** (§8.3-bis) |
-| `da_riconsegnare` | «quanto deve ancora tornare al cliente?» | già esistente, `vw_resi_da_riconsegnare` |
+| Grandezza              | Domanda a cui risponde                                       | Dove vive                                               |
+| ---------------------- | ------------------------------------------------------------ | ------------------------------------------------------- |
+| `differenza`           | «di questa merce, cosa resta da fatturare o da accreditare?» | partita di merce                                        |
+| `fatturato_anticipato` | «quanto è stato fatturato di merce non ancora uscita?»       | riga d'ordine                                           |
+| `in_riconsegna`        | «quanto è tornato e sta già su un DDT non ancora emesso?»    | partita di merce — **solo se D1 = `EMESSO`** (§8.3-bis) |
+| `da_riconsegnare`      | «quanto deve ancora tornare al cliente?»                     | già esistente, `vw_resi_da_riconsegnare`                |
 
 ⭐ **Le prime tre hanno la stessa forma**: sono ciò che resta quando si smette di
 appiattire in un solo numero cose che accadono in momenti diversi. Il fatturato
@@ -752,12 +752,12 @@ il push, quindi la ricostruzione è **completa** e non c'è nulla da bonificare.
 
 **La domanda com'era posta, e le due strade valutate:**
 
-| | Se **EMESSO** (raccomandato) | Se **DRAFT**, cioè come oggi |
-| --- | --- | --- |
-| Righe d'ordine 236 e 239 | `tenuti` 5 → **2** · `differenza` 5 → **2** | invariate |
-| Corrisponde a | quanti pezzi il cliente ha **davvero** in mano | quanti ne avrà **se** la ri-consegna parte |
-| Costo | 2 valori cambiano · serve la colonna `in_riconsegna` (§8.3-bis) | zero |
-| Rischio | nessuno a valle: quelle 2 righe hanno `fatturati = 0`, non sono in coda accrediti e le bozze non passano il cancello del push | il pannello del cantiere 2 **nasce dicendo il falso**, e lo dice sul DDT accanto allo stato «Bozza» |
+|                          | Se **EMESSO** (raccomandato)                                                                                                  | Se **DRAFT**, cioè come oggi                                                                        |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Righe d'ordine 236 e 239 | `tenuti` 5 → **2** · `differenza` 5 → **2**                                                                                   | invariate                                                                                           |
+| Corrisponde a            | quanti pezzi il cliente ha **davvero** in mano                                                                                | quanti ne avrà **se** la ri-consegna parte                                                          |
+| Costo                    | 2 valori cambiano · serve la colonna `in_riconsegna` (§8.3-bis)                                                               | zero                                                                                                |
+| Rischio                  | nessuno a valle: quelle 2 righe hanno `fatturati = 0`, non sono in coda accrediti e le bozze non passano il cancello del push | il pannello del cantiere 2 **nasce dicendo il falso**, e lo dice sul DDT accanto allo stato «Bozza» |
 
 ✅ **Raccomandazione: `EMESSO`.** Il numero corretto è 2, e i due valori che
 cambiano sono **isolati** — verificato che non toccano né la fatturazione né la
@@ -778,16 +778,16 @@ si fanno insieme o nessuna delle due.
 > numeri sotto sono **indicativi**: si assegnano quando si scrive, guardando cosa
 > c'è.
 
-| Slice | Cosa | Cartella | Rischio | Stato |
-| --- | --- | --- | --- | --- |
-| **S0** | Fotografia di riferimento delle 12 partite | *(nessun changeSet)* | — | ✅ **fatta** — `db/pgtap/vendite/fixtures/S0-fotografia-partita-merce-20260817.md` |
-| **S1** | `vw_af_merce_per_riga` — normalizza kit e corsie | `20_code` | 🟢 nuovo oggetto | ✅ **APPLICATA** — `20260817-06`, pgTAP **11/11** come applicazione |
-| **S2** | `vw_partite_merce` — **la partita** | `20_code` | 🟢 nuovo oggetto | ✅ **APPLICATA** — `20260817-07`, pgTAP **10/10** come applicazione |
-| **S3** | `vw_contatore_merce` riscritta come aggregato | `20_code` | 🔴 **dosa la fatturazione** | ✅ **APPLICATA** — `20260817-08` (+ `-12`), pgTAP **11/11**, parità 18/18 |
-| **S4** | `vw_resi_da_accreditare` riancorata | `20_code` | 🟠 documenti fiscali a valle | ✅ **APPLICATA** — `20260817-09`, pgTAP **10/10**, output identico |
-| **S5** | `fn_list_ddt_da_pushare` legge la partita | `20_code` | 🔴 **cambia le quantità in fattura** | ✅ **APPLICATA** — `20260817-10` + `-11`/`-12`, parità piena |
-| **S6** | Guard di coerenza + avviso riga sospetta | `20_code` | 🟠 vedi §11 | ✅ **APPLICATA** — `20260817-13`/`-14`, pgTAP **6/6** e **11/11** |
-| **S7** | Doc manuale + richieste ad altri perimetri | `docs/` | 🟢 | ✅ **fatta** — §19 |
+| Slice  | Cosa                                             | Cartella             | Rischio                             | Stato                                                                             |
+| ------ | ------------------------------------------------ | -------------------- | ----------------------------------- | --------------------------------------------------------------------------------- |
+| **S0** | Fotografia di riferimento delle 12 partite       | *(nessun changeSet)* | —                                   | ✅ **fatta** — `db/pgtap/vendite/fixtures/S0-fotografia-partita-merce-20260817.md` |
+| **S1** | `vw_af_merce_per_riga` — normalizza kit e corsie | `20_code`            | 🟢 nuovo oggetto                     | ✅ **APPLICATA** — `20260817-06`, pgTAP **11/11** come applicazione                |
+| **S2** | `vw_partite_merce` — **la partita**              | `20_code`            | 🟢 nuovo oggetto                     | ✅ **APPLICATA** — `20260817-07`, pgTAP **10/10** come applicazione                |
+| **S3** | `vw_contatore_merce` riscritta come aggregato    | `20_code`            | 🔴 **dosa la fatturazione**          | ✅ **APPLICATA** — `20260817-08` (+ `-12`), pgTAP **11/11**, parità 18/18          |
+| **S4** | `vw_resi_da_accreditare` riancorata              | `20_code`            | 🟠 documenti fiscali a valle         | ✅ **APPLICATA** — `20260817-09`, pgTAP **10/10**, output identico                 |
+| **S5** | `fn_list_ddt_da_pushare` legge la partita        | `20_code`            | 🔴 **cambia le quantità in fattura** | ✅ **APPLICATA** — `20260817-10` + `-11`/`-12`, parità piena                       |
+| **S6** | Guard di coerenza + avviso riga sospetta         | `20_code`            | 🟠 vedi §11                          | ✅ **APPLICATA** — `20260817-13`/`-14`, pgTAP **6/6** e **11/11**                  |
+| **S7** | Doc manuale + richieste ad altri perimetri       | `docs/`              | 🟢                                   | ✅ **fatta** — §19                                                                 |
 
 > ✅ **S1 e S2 applicate da Tid il 2026-08-17 alle 18:45** (`DATABASECHANGELOG`
 > 12492 e 12493), con l'auto-gen della doc rigenerato.
@@ -824,13 +824,13 @@ contatore, ed è il motivo per cui i kit lo rompono.
 
 **Grana**: una riga per `(corsia, riga_id, tipo_movimento)`.
 
-| Colonna | Contenuto |
-| --- | --- |
-| `corsia` | `'ORD'` \| `'DDT'` — da `split_part(segment_key, ':', 1)` |
-| `riga_id` | `substring(segment_key, ':R:([0-9]+)')::bigint` — riga d'ordine o riga di DDT **secondo la corsia** |
-| `tipo_movimento` | `NORMALE` \| `RETTIFICA` \| `ONERE` — **esposto, non filtrato** |
-| `quantita` | in **unità della riga sorgente** (kit già normalizzati) |
-| `misurabile` | `false` se un kit ha `coeff_qta` mancante o zero |
+| Colonna          | Contenuto                                                                                           |
+| ---------------- | --------------------------------------------------------------------------------------------------- |
+| `corsia`         | `'ORD'` \| `'DDT'` — da `split_part(segment_key, ':', 1)`                                           |
+| `riga_id`        | `substring(segment_key, ':R:([0-9]+)')::bigint` — riga d'ordine o riga di DDT **secondo la corsia** |
+| `tipo_movimento` | `NORMALE` \| `RETTIFICA` \| `ONERE` — **esposto, non filtrato**                                     |
+| `quantita`       | in **unità della riga sorgente** (kit già normalizzati)                                             |
+| `misurabile`     | `false` se un kit ha `coeff_qta` mancante o zero                                                    |
 
 **Le due regole che stanno qui e in nessun altro posto:**
 
@@ -863,22 +863,22 @@ uno stato **da EMESSO in poi** (`stati_doc_ddt.ordine >= 20`).
 `tenuti` 5 → 2). Con `EMESSO` la vista porta anche `in_riconsegna`; con `DRAFT`
 si scrive come oggi e non serve.
 
-| Colonna | Note |
-| --- | --- |
-| `ddt_riga_id` | **la chiave della partita** |
-| `ddt_id`, `ddt_uid`, `articolo_id`, `is_composito` | contesto |
-| `ordine_riga_id`, `ordine_id` | **nullable** — l'origine |
-| `origine` | `ORDINE` \| `NESSUNA` \| `MULTIPLA` (§9.1) |
-| `fatturabile` | da `config.causali_trasporto` (§8.4) |
-| `consegnato` | `ddt_righe.quantita` — vedi la nota qui sotto |
-| `reso` | Σ `vw_resi_righe_effettive.quantita` **per `ddt_riga_id`** ⭐ |
-| `in_riconsegna` | reso già impegnato su un DDT **non emesso** — solo se D1 = `EMESSO` |
-| `tenuti` | `consegnato − reso` |
-| `fatturato_merce` | da S1, corsia `DDT` |
-| `fatturato_da_ordine` | quota allocata della corsia `ORD` (§9.2) |
-| `fatturato` | somma dei due |
-| `differenza` | `tenuti − fatturato`, **NULL** se non fatturabile o non misurabile |
-| `stato` | l'etichetta del §9.3 — **la traduzione unica del verso del saldo** |
+| Colonna                                            | Note                                                                |
+| -------------------------------------------------- | ------------------------------------------------------------------- |
+| `ddt_riga_id`                                      | **la chiave della partita**                                         |
+| `ddt_id`, `ddt_uid`, `articolo_id`, `is_composito` | contesto                                                            |
+| `ordine_riga_id`, `ordine_id`                      | **nullable** — l'origine                                            |
+| `origine`                                          | `ORDINE` \| `NESSUNA` \| `MULTIPLA` (§9.1)                          |
+| `fatturabile`                                      | da `config.causali_trasporto` (§8.4)                                |
+| `consegnato`                                       | `ddt_righe.quantita` — vedi la nota qui sotto                       |
+| `reso`                                             | Σ `vw_resi_righe_effettive.quantita` **per `ddt_riga_id`** ⭐        |
+| `in_riconsegna`                                    | reso già impegnato su un DDT **non emesso** — solo se D1 = `EMESSO` |
+| `tenuti`                                           | `consegnato − reso`                                                 |
+| `fatturato_merce`                                  | da S1, corsia `DDT`                                                 |
+| `fatturato_da_ordine`                              | quota allocata della corsia `ORD` (§9.2)                            |
+| `fatturato`                                        | somma dei due                                                       |
+| `differenza`                                       | `tenuti − fatturato`, **NULL** se non fatturabile o non misurabile  |
+| `stato`                                            | l'etichetta del §9.3 — **la traduzione unica del verso del saldo**  |
 
 ⭐ **La riga `reso` è il cuore della generalizzazione.** Passare da
 `ordine_riga_id` a `ddt_riga_id` fa entrare nel conto i **2 resi standalone** che
@@ -922,10 +922,10 @@ posizione, servirebbe la coreografia del §11.2.
 
 **Il collaudo è la parità, e ha due metà:**
 
-| | Atteso |
-| --- | --- |
-| **12 righe di oggi** | **stessi identici valori** su `tenuti`/`fatturati`/`differenza` — tranne 236 e 239, che cambiano per la correzione dichiarata di S2 |
-| **6 righe nuove** (kit order-backed) | compaiono, con `differenza 0` o positiva — **mai negativa** |
+|                                      | Atteso                                                                                                                              |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| **12 righe di oggi**                 | **stessi identici valori** su `tenuti`/`fatturati`/`differenza` — tranne 236 e 239, che cambiano per la correzione dichiarata di S2 |
+| **6 righe nuove** (kit order-backed) | compaiono, con `differenza 0` o positiva — **mai negativa**                                                                         |
 
 ⚠️ **`columns_are` va aggiornato nello stesso changeSet.** Il test 3 di
 `test-vw-contatore-merce-v1.sql` elenca le sei colonne una per una: aggiungerne
@@ -1128,20 +1128,20 @@ riga di dati.
 
 ### Al backend
 
-| # | Richiesta | Perché |
-| --- | --- | --- |
-| **BE-1** | Esporre `vw_partite_merce` filtrata per DDT e per ordine | È il pannello del cantiere 2. La vista porta già `ddt_id` e `ordine_id`: sono due filtri, non due letture |
-| **BE-2** | **Non ri-tradurre il verso del saldo in Python** | La colonna `stato` esiste apposta (§9.3, e §5.4 del brief pannello: *«una volta sola, in un punto condiviso»*). Due traduzioni divergono |
-| **BE-3** | Trattare `differenza = NULL` come **«non si applica»**, non come 0 | §8.4 e §8.6. Un `COALESCE(…, 0)` nel repository rimette dentro esattamente i falsi allarmi che questo cantiere toglie |
-| **BE-4** | Verificare che `_kit_meta` continui a scrivere `coeff_qta` | Da S1 in poi quel campo non serve più solo alla fattura: senza, la partita del kit diventa `NON_MISURABILE` |
+| #        | Richiesta                                                          | Perché                                                                                                                                   |
+| -------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| **BE-1** | Esporre `vw_partite_merce` filtrata per DDT e per ordine           | È il pannello del cantiere 2. La vista porta già `ddt_id` e `ordine_id`: sono due filtri, non due letture                                |
+| **BE-2** | **Non ri-tradurre il verso del saldo in Python**                   | La colonna `stato` esiste apposta (§9.3, e §5.4 del brief pannello: *«una volta sola, in un punto condiviso»*). Due traduzioni divergono |
+| **BE-3** | Trattare `differenza = NULL` come **«non si applica»**, non come 0 | §8.4 e §8.6. Un `COALESCE(…, 0)` nel repository rimette dentro esattamente i falsi allarmi che questo cantiere toglie                    |
+| **BE-4** | Verificare che `_kit_meta` continui a scrivere `coeff_qta`         | Da S1 in poi quel campo non serve più solo alla fattura: senza, la partita del kit diventa `NON_MISURABILE`                              |
 
 ### Al frontend
 
-| # | Richiesta | Perché |
-| --- | --- | --- |
+| #        | Richiesta                                                   | Perché                                                                                               |
+| -------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | **FE-1** | `NON_MISURABILE` e `PAREGGIATA` devono **apparire diversi** | §5.2 del brief pannello: *«tutto regolare deve essere visibilmente diverso da non ancora calcolato»* |
-| **FE-2** | Mostrare `sospetto_duplicato_ordine` sulla riga | È la risposta al §6.4, e senza il FE l'avviso non esiste |
-| **FE-3** | `fatturato_anticipato` non è un accredito | §8.1. Se il pannello lo somma alla differenza, torna il difetto che il piano ha appena tolto |
+| **FE-2** | Mostrare `sospetto_duplicato_ordine` sulla riga             | È la risposta al §6.4, e senza il FE l'avviso non esiste                                             |
+| **FE-3** | `fatturato_anticipato` non è un accredito                   | §8.1. Se il pannello lo somma alla differenza, torna il difetto che il piano ha appena tolto         |
 
 ### 🔴 Al cantiere 3 (nota di credito) — due cose che si vedono solo da qui
 
@@ -1196,13 +1196,13 @@ comportamento è **S3**, e ci si arriva con la fotografia in mano.
 
 ### 14.1 Cosa c'è nel repository
 
-| File | Cos'è |
-| --- | --- |
-| `db/pgtap/vendite/fixtures/S0-fotografia-partita-merce-20260817.md` | La misura di riferimento: contatore, due code, dosatore. **Non è un test**, è l'unica copia del «prima» |
-| `db/changelog/migrations_v2/20_code/vendite/20260817-06-create-vw-af-merce-per-riga-mctit.yaml` | S1 — la base che normalizza kit e corsie |
-| `db/pgtap/vendite/test-vw-af-merce-per-riga-v1.sql` | 11 test, **11 verdi** |
-| `db/changelog/migrations_v2/20_code/vendite/20260817-07-create-vw-partite-merce-mctit.yaml` | S2 — la partita |
-| `db/pgtap/vendite/test-vw-partite-merce-v1.sql` | 10 test, **10 verdi** |
+| File                                                                                            | Cos'è                                                                                                   |
+| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `db/pgtap/vendite/fixtures/S0-fotografia-partita-merce-20260817.md`                             | La misura di riferimento: contatore, due code, dosatore. **Non è un test**, è l'unica copia del «prima» |
+| `db/changelog/migrations_v2/20_code/vendite/20260817-06-create-vw-af-merce-per-riga-mctit.yaml` | S1 — la base che normalizza kit e corsie                                                                |
+| `db/pgtap/vendite/test-vw-af-merce-per-riga-v1.sql`                                             | 11 test, **11 verdi**                                                                                   |
+| `db/changelog/migrations_v2/20_code/vendite/20260817-07-create-vw-partite-merce-mctit.yaml`     | S2 — la partita                                                                                         |
+| `db/pgtap/vendite/test-vw-partite-merce-v1.sql`                                                 | 10 test, **10 verdi**                                                                                   |
 
 Cancelli statici: `guardrail_run_on_change` ✅ · `guardrail_pgtap_preambolo` ✅
 (debito `throws_ok` invariato a 137, la soglia) · `check_license` ✅ · YAML ✅.
@@ -1345,11 +1345,11 @@ servirà leggerlo, è una lettura a sé e non un allargamento di questa vista.
 
 `20260817-09`. Tre cambi, e solo il terzo può spostare numeri.
 
-| | |
-| --- | --- |
-| 1 | la CTE `acc` legge **vw_partite_merce** invece di `vw_contatore_merce` |
-| 2 | il `JOIN` con i resi passa da `ordine_riga_id` a **`ddt_riga_id`** |
-| 3 | la finestra che scala i resi già serviti partiziona per **riga di DDT** |
+|     |                                                                         |
+| --- | ----------------------------------------------------------------------- |
+| 1   | la CTE `acc` legge **vw_partite_merce** invece di `vw_contatore_merce`  |
+| 2   | il `JOIN` con i resi passa da `ordine_riga_id` a **`ddt_riga_id`**      |
+| 3   | la finestra che scala i resi già serviti partiziona per **riga di DDT** |
 
 ⭐ **Il punto 2 è il cantiere in una riga**: `ordine_riga_id` è *facoltativo*,
 `ddt_riga_id` è **obbligatorio**. Agganciarsi al primo significa che un reso su
@@ -1466,11 +1466,11 @@ entrambi.
 
 ### 17.3 Verifiche, dopo `-10` + `-11` + `-12`
 
-| | |
-| --- | --- |
-| contatore | **18 righe su 18 identiche** |
-| dosatore (quantità in fattura) | **2 su 2 identiche** |
-| coda accrediti | **3 su 3 identiche** |
+|                                |                              |
+| ------------------------------ | ---------------------------- |
+| contatore                      | **18 righe su 18 identiche** |
+| dosatore (quantità in fattura) | **2 su 2 identiche**         |
+| coda accrediti                 | **3 su 3 identiche**         |
 
 pgTAP: `fn-list-ddt-da-pushare-contatore` **7/7** (compreso il caso D che aveva
 fermato tutto), `vw-partite-merce` **10/10**, `vw-contatore-merce` **11/11**,
@@ -1622,13 +1622,13 @@ nessuno: finché FE-2 non è fatta, il presidio è a metà.
 
 ### 19.1 Backend — le cinque cose
 
-| # | Cosa | Perché, in una riga | Dove |
-| --- | --- | --- | --- |
-| **BE-1** | Esporre `vw_partite_merce` filtrata per DDT e per ordine | è il pannello del cantiere 2; la vista porta già `ddt_id` e `ordine_id`, sono due filtri non due letture | nuovo endpoint |
-| **BE-2** | **Non ri-tradurre** il verso del saldo in Python | la colonna `stato` esiste apposta; due traduzioni divergono e diventano due frasi per lo stesso numero | — |
-| **BE-3** | Trattare `differenza = NULL` come «non si applica», **mai** come 0 | un `COALESCE(…, 0)` nel repository rimette dentro i falsi allarmi che il cantiere ha tolto | repository |
-| **BE-4** | 🔴 **Correggere il commento in `resi_repository.py`** | dice *«`ddt_numero`/`ddt_id` possono essere NULL (aggancio via `ordine_riga_id`)»*: **da S4 è l'opposto** — il DDT c'è sempre, a mancare è `ordine_riga_id` | `resi_repository.py`, coda accrediti |
-| **BE-5** | Verificare che nulla usi `ordine_riga_id` come **chiave** sulla coda accrediti | può essere NULL: è la merce senza ordine che finalmente entra | `resi_repository.py`, `resi_service.py` |
+| #        | Cosa                                                                           | Perché, in una riga                                                                                                                                         | Dove                                    |
+| -------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| **BE-1** | Esporre `vw_partite_merce` filtrata per DDT e per ordine                       | è il pannello del cantiere 2; la vista porta già `ddt_id` e `ordine_id`, sono due filtri non due letture                                                    | nuovo endpoint                          |
+| **BE-2** | **Non ri-tradurre** il verso del saldo in Python                               | la colonna `stato` esiste apposta; due traduzioni divergono e diventano due frasi per lo stesso numero                                                      | —                                       |
+| **BE-3** | Trattare `differenza = NULL` come «non si applica», **mai** come 0             | un `COALESCE(…, 0)` nel repository rimette dentro i falsi allarmi che il cantiere ha tolto                                                                  | repository                              |
+| **BE-4** | 🔴 **Correggere il commento in `resi_repository.py`**                           | dice *«`ddt_numero`/`ddt_id` possono essere NULL (aggancio via `ordine_riga_id`)»*: **da S4 è l'opposto** — il DDT c'è sempre, a mancare è `ordine_riga_id` | `resi_repository.py`, coda accrediti    |
+| **BE-5** | Verificare che nulla usi `ordine_riga_id` come **chiave** sulla coda accrediti | può essere NULL: è la merce senza ordine che finalmente entra                                                                                               | `resi_repository.py`, `resi_service.py` |
 
 ⚠️ **BE-4 è quello da fare per primo**, e non perché sia grosso: è un commento
 che oggi **dice il falso** a chi legge, ed è il tipo di errore che nessun test
@@ -1642,11 +1642,11 @@ tutti i suoi gemelli. Va confermato che il cancello del terzo lato
 
 ### 19.2 Frontend — le tre cose
 
-| # | Cosa | Perché |
-| --- | --- | --- |
+| #        | Cosa                                                        | Perché                                                                                          |
+| -------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | **FE-1** | `NON_MISURABILE` e `PAREGGIATA` devono **apparire diversi** | *«tutto regolare»* e *«non ancora calcolato»* non sono la stessa cosa (§5.2 del brief pannello) |
-| **FE-2** | Mostrare `sospetto_duplicato_ordine` sulla riga | è la risposta al §6.4, e **senza il FE non esiste** |
-| **FE-3** | `fatturato_anticipato` **non è** un accredito | se il pannello lo somma alla differenza, torna il falso allarme appena tolto |
+| **FE-2** | Mostrare `sospetto_duplicato_ordine` sulla riga             | è la risposta al §6.4, e **senza il FE non esiste**                                             |
+| **FE-3** | `fatturato_anticipato` **non è** un accredito               | se il pannello lo somma alla differenza, torna il falso allarme appena tolto                    |
 
 Nuovi stati da mappare nella tavolozza: `RICONSEGNA` e `NON_MISURABILE` si
 aggiungono ai quattro già previsti.
@@ -1688,17 +1688,17 @@ insegnarglielo**, o quella cintura si apre.
 
 ### 20.1 I nove changeSet, tutti applicati
 
-| # | ChangeSet | Cosa |
-| --- | --- | --- |
-| S1 | `20260817-06` | `vw_af_merce_per_riga` — la base: attività fatturabili → quantità per riga di documento, kit normalizzati in unità del padre |
-| S2 | `20260817-07` | `vw_partite_merce` — **la partita** |
-| S3 | `20260817-08` | `vw_contatore_merce` diventa un aggregato |
-| S4 | `20260817-09` | `vw_resi_da_accreditare` agganciata alla partita |
-| S5 | `20260817-10` | `fn_list_ddt_da_pushare` legge la partita |
-| 🔴 | `20260817-11` | **correzione**: la ri-consegna non è merce nuova |
-| 🔴 | `20260817-12` | **correzione**: l'aggregato esclude le ri-consegne |
-| S6a | `20260817-13` | guard di coerenza sull'origine del reso |
-| S6b | `20260817-14` | `sospetto_duplicato_ordine` |
+| #   | ChangeSet     | Cosa                                                                                                                         |
+| --- | ------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| S1  | `20260817-06` | `vw_af_merce_per_riga` — la base: attività fatturabili → quantità per riga di documento, kit normalizzati in unità del padre |
+| S2  | `20260817-07` | `vw_partite_merce` — **la partita**                                                                                          |
+| S3  | `20260817-08` | `vw_contatore_merce` diventa un aggregato                                                                                    |
+| S4  | `20260817-09` | `vw_resi_da_accreditare` agganciata alla partita                                                                             |
+| S5  | `20260817-10` | `fn_list_ddt_da_pushare` legge la partita                                                                                    |
+| 🔴   | `20260817-11` | **correzione**: la ri-consegna non è merce nuova                                                                             |
+| 🔴   | `20260817-12` | **correzione**: l'aggregato esclude le ri-consegne                                                                           |
+| S6a | `20260817-13` | guard di coerenza sull'origine del reso                                                                                      |
+| S6b | `20260817-14` | `sospetto_duplicato_ordine`                                                                                                  |
 
 Più il codice errore `E_RESO_ORIGINE_INCOERENTE` (`config/codici_errore.csv` +
 `messaggi_errore.csv`), la fotografia S0 e la documentazione concettuale (S7).
@@ -1742,11 +1742,11 @@ allarme è entrato insieme alla generalizzazione.
 
 ### 20.4 Cosa questo cantiere ha lasciato agli altri
 
-| | |
-| --- | --- |
-| **Cantiere 2** — pannello situazione merce | ✅ **sbloccato**: legge `vw_partite_merce`, che copre ordine, DDT, righe manuali e kit con una lettura sola, e porta `stato` già tradotto |
-| **Cantiere 3** — nota di credito | ✅ **sbloccato**, e con tre avvertenze precise (§19.3) — la più importante è che `fn_get_stato_push_segment` è l'**unica** cintura che impedirà di ri-fatturare una riga rettificata |
-| **Backend / Frontend** | ⏳ otto richieste in §19, nessuna bloccante per il DB |
+|                                            |                                                                                                                                                                                     |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Cantiere 2** — pannello situazione merce | ✅ **sbloccato**: legge `vw_partite_merce`, che copre ordine, DDT, righe manuali e kit con una lettura sola, e porta `stato` già tradotto                                            |
+| **Cantiere 3** — nota di credito           | ✅ **sbloccato**, e con tre avvertenze precise (§19.3) — la più importante è che `fn_get_stato_push_segment` è l'**unica** cintura che impedirà di ri-fatturare una riga rettificata |
+| **Backend / Frontend**                     | ⏳ otto richieste in §19, nessuna bloccante per il DB                                                                                                                                |
 
 ### 20.5 Le tre cose che questo cantiere ha insegnato
 

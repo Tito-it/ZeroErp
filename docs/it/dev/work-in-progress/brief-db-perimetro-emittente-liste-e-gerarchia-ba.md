@@ -14,9 +14,11 @@
 > Sono stati messi qui perché sono cantieri loro: toccano l'anagrafica e
 > l'accesso, non la dashboard.
 >
-> **Stato al 2026-08-17: nulla eseguito.** Nessun changeSet, nessuna migrazione,
-> nessun seed. Diagnosi verificata contro il codice, **decisioni prese**, ordine
-> di applicazione in **§7-bis**, piano eseguibile in **§12**.
+> **Stato al 2026-08-17: nulla eseguito, ma niente più da decidere.** Nessun
+> changeSet, nessuna migrazione, nessun seed. Diagnosi verificata contro il
+> codice, **undici decisioni prese** (sei di forma in §7, cinque di attuazione
+> in Q1–Q5), piano eseguibile in **§12**. Il prossimo passo è il **DL-A**, che è
+> una misura.
 >
 > 🔬 **Revisione critica del 2026-08-17 (§11).** Tutte le sei decisioni reggono e
 > non ne cambia nessuna. Cambiano invece **quattro cose di attuazione**, e una è
@@ -25,7 +27,7 @@
 > | | Cosa è emerso | Effetto |
 > | --- | --- | --- |
 > | 🔴 | Lo **Strato 1 di P-2b** (permesso a livello di colonna) **non regge**: un changeSet `runOnChange` ri-concede `UPDATE` di tabella su tutto lo schema `ui` a ogni passata | Il permesso va sostituito da un **trigger** (§11.5) |
-> | 🟠 | La **ricerca universale è fail-open sullo scope vuoto**, lato backend, e P-2a lo trasforma da latente a sistematico | Richiesta al BE **prima** di P-2a (§11.6, §13) |
+> | 🟠 | La **ricerca universale è fail-open sullo scope vuoto**: lo scope esce dal DB con tre significati e rientra da Python con due | ✅ **Q2 chiusa**: le due funzioni di ricerca **si risolvono lo scope da sé** (passo 1). Non è più una dipendenza dal BE |
 > | 🟠 | «L'emittente di un BA» **non è la riga di mapping**: è una risoluzione *specifico ∨ default globale* | P-1 confronta il **valore risolto**, e il movimento 2 ha **tre** eventi, non uno (§11.2, §11.3) |
 > | 🟢 | **P-4 esiste già su 6 liste**: c'è un pattern da copiare, non da inventare | Il costo vero è nelle **viste**, non nel seed (§11.4) |
 >
@@ -34,9 +36,19 @@
 > aperto**, più il super admin (§11.1). La conclusione operativa non cambia; il
 > motivo sì, e il motivo è quello che si usa per scrivere i test.
 >
-> ❓ **Cinque domande aperte per Tid, in §7 in fondo.** Nessuna riapre una
-> decisione presa: **Q1** (lo Strato 1 diventa un trigger — e perde le colonne
-> future) e **Q2** (P-2a aspetta una correzione BE) **bloccano**; Q3, Q4, Q5 no.
+> ✅ **Q1, Q2 e Q3 chiuse il 2026-08-17** (§7 in fondo). Q1 → **trigger**,
+> accettando che copra una colonna sola. Q2 → **P-2a non aspetta nessuno**, e la
+> ricerca universale **si risolve lo scope da sé** (passo 1): non per l'urgenza
+> di una finestra — argomento ritirato, non siamo in produzione — ma perché una
+> convenzione a tre stati non sopravvive al viaggio attraverso Python. Q3 →
+> **sì al guard** sul cambio di `is_default`, scritto sulla **coppia mista**.
+>
+> Q4 → pilota **Competenza — gruppi fatturabili**, e l'ordine delle altre cinque
+> per lavoro condiviso, non per gravità. Q5 → il messaggio d'errore provvisorio
+> **non si tocca**: sparisce da sé con P-1.
+>
+> ⛔ **Nessuna domanda aperta. Il cantiere è pronto a partire dal passo 0.1**
+> (§12) — e da lì in poi è esecuzione.
 >
 > ⭐ **Le decisioni prese** — sei, con Tid il 2026-08-17, registrate in **§7**:
 >
@@ -700,12 +712,29 @@ una bonifica che non si fa: servono a sapere **quanti guard scatteranno** una
 volta applicato P-1, cioè quanto rumore aspettarsi. Restano utili, **non
 bloccano**.
 
-### ❓ Aperte dalla revisione del 2026-08-17 — cinque, due bloccano
+### ✅ Aperte dalla revisione del 2026-08-17 — cinque, **tutte chiuse il 2026-08-17**
 
 > Nessuna riapre una decisione già presa. Sono tutte **nate dalla verifica**
 > (§11), e due di esse cambiano cosa si scrive, non solo quando.
 
-#### Q1 ⛔ *blocca il passo 7* — Lo Strato 1 diventa un trigger. Si accetta il baratto?
+#### ✅ Q1 — CHIUSA il 2026-08-17: **trigger**
+
+> **Decisione Tid.** Lo Strato 1 di P-2b si fa con un **trigger** su
+> `ui.lista_definizione`, non con un permesso a livello di colonna.
+>
+> **Si accetta consapevolmente il baratto**: il trigger nomina **una** colonna e
+> non copre quelle future, mentre il permesso — sulla carta — le avrebbe coperte
+> tutte. Ma quella copertura **oggi non esiste**, perché il presidio che la
+> offriva si annulla a ogni passata di `ci_apply` (§11.5). Si sceglie una difesa
+> che tiene su una colonna invece di una che sembra coprirle tutte e non ne
+> copre nessuna.
+>
+> Perimetro del trigger, per non doverlo ridedurre: **una tabella, una colonna**
+> (§11.4-bis). Tutto il resto di `ui.lista_definizione` resta come oggi.
+
+*La domanda com'era posta, per la storia:*
+
+##### Q1 ⛔ *blocca il passo 7* — Lo Strato 1 diventa un trigger. Si accetta il baratto?
 
 Il permesso a livello di colonna **non tiene** (§11.5). Il rimedio proposto è un
 trigger. Ma **non è lo stesso presidio con un altro attrezzo**, e la differenza va
@@ -725,59 +754,307 @@ notte.
 > ⭐ **Proposta**: trigger. Un presidio che tiene su una colonna vale più di un
 > presidio che si spegne su tutte.
 
-#### Q2 ⛔ *blocca il passo 2* — P-2a aspetta una correzione che non è nel perimetro DB
+#### Q2 — P-2a dipende da una correzione BE. La si aspetta, o si toglie la dipendenza?
 
-`search_repository.py` è fail-open sullo scope vuoto (§11.6, BE-1). Applicare
+`search_repository.py` è fail-open sullo scope vuoto (§11.6, BE-1): applicare
 P-2a prima di quella correzione **allarga** la visibilità sulla ricerca
-universale invece di restringerla. Ma la correzione sta in `backend/`, cioè su un
-altro branch e in un'altra testa.
+universale invece di restringerla. E la correzione sta in `backend/`, cioè fuori
+perimetro, su un altro branch.
 
-Due strade, e la seconda non è irragionevole:
+⭐ **Aggiornamento del 2026-08-17: c'è una terza strada, ed è dentro il perimetro
+DB.** Verificato: `fn_search_soggetti_universale` e `fn_get_search_detail` **non
+leggono nessuna GUC** — si fidano interamente dell'array che il backend passa.
+Sono le uniche due funzioni della famiglia a farlo, e sono chiamate **da un solo
+punto ciascuna**, tutto sul percorso web (nessun batch).
 
-| | Cosa comporta |
+| | Cosa comporta | Il difetto |
+| --- | --- | --- |
+| **A. Aspettare BE-1** | il cantiere DB si ferma su una dipendenza che non controlla | corregge **l'istanza**: il prossimo che scrive `if ids:` lo riapre |
+| **B. Applicare comunque** | finestra in cui l'operatore non configurato non vede niente **tranne** nella ricerca, dove vede tutto | è il difetto del brief, in miniatura — e colpisce **proprio** la persona per cui P-2a esiste |
+| ⭐ **C. Togliere la dipendenza** | le due funzioni **risolvono lo scope da sé** dalla GUC, via `fn_get_emittenti_scope_sr_ids`; il parametro resta ma può solo **restringere**, mai allargare | corregge **la classe**: nessun errore del chiamante può più aprire |
+
+**Perché C, e perché non è una furbizia:**
+
+- è **DB-first**: lo scope è una regola di dominio, e il posto giusto in cui
+  vive è il database. Che il backend risolva lo scope in Python e lo spedisca
+  come array è una **seconda sede della stessa verità** — la duplicazione che il
+  progetto non ammette;
+- **il pattern esiste già in casa, ed è quello vendite**: `get_scope_user_id`
+  passa l'`auth_user_id` e le funzioni SQL risolvono internamente
+  ([api.md §Scope emittente](../api.md)). Delle due strade che convivono, C
+  adotta quella che non si rompe;
+- **anche l'invariante è già in casa**: *«solo restringente, mai allargante»* è
+  la regola con cui l'emittente attivo si interseca con lo scope di diritto
+  (rev 2026-08-04). Qui si applica al parametro invece che alla GUC, ed è lo
+  stesso ragionamento;
+- **toglie il blocco**: P-2a non aspetta più nessuno.
+
+⚠️ **BE-1 non si annulla, cambia grado.** Con C il difetto Python non può più
+aprire niente, ma resta un punto che scrive una cosa falsa: retrocede da 🟠
+*bloccante* a 🔵 *igiene*, da fare quando comodo. E la **regola generale** di
+§11.6 — questa convenzione a tre stati non si legge mai con un test di verità —
+vale lo stesso, perché il prossimo consumatore potrebbe non essere una funzione
+che possiamo blindare.
+
+⚠️ **Da decidere dentro C**, e va scritto prima di scrivere il codice: cosa fa la
+funzione quando `app.current_user_id` è **vuota** (job, canale di sistema). La
+convenzione della famiglia è *attore nullo → nessun filtro*
+(`fn_scope_ef_whitelist_via_efba` ramo 1). Coerenza dice di seguirla; il fatto
+che oggi nessun batch chiami queste due funzioni dice che si può anche essere
+più stretti. **Proposta: seguire la convenzione** — una famiglia che si comporta
+in due modi è peggio di un ramo largo e dichiarato.
+
+> ⭐ **Proposta**: **C**, con BE-1 declassato a igiene. Aspettare corregge un
+> punto; spostare la decisione nel database chiude la strada.
+
+##### ✅ Q2 — CHIUSA il 2026-08-17: **B per la sequenza, C per il merito** — e non erano alternative
+
+> **Obiezione di Tid, ed è fondata**: *«non siamo in produzione, quindi la
+> finestra non costa niente. Se C si sceglie, si sceglie perché è meglio
+> tecnicamente — non perché il BE ha un problema temporaneo.»*
+>
+> ⛔ **L'argomento della finestra è ritirato.** Era il perno di tutta la
+> domanda, ed era debole: una finestra su un ambiente senza produzione non è un
+> costo, è un fastidio. Averla usata per ordinare i passi ha prodotto una scelta
+> a tre vie che **non esisteva**.
+
+**Tolta la finestra, le opzioni si riducono e si separano:**
+
+| | Esito |
 | --- | --- |
-| ⭐ **Bloccare P-2a** finché BE-1 non è a `dev/backend-tid` | Il cantiere DB si ferma su una dipendenza che non controlla |
-| Applicare P-2a comunque, e accettare la finestra | Per la durata della finestra, l'operatore non configurato **non vede niente ovunque tranne la ricerca universale, dove vede tutto**. È il difetto peggiore dei due che stiamo chiudendo, in miniatura |
+| **A** — aspettare BE-1 | ⛔ **decade**: esisteva **solo** per evitare la finestra |
+| **B** — non bloccare P-2a | ✅ è una scelta di **sequenza** |
+| **C** — lo scope si risolve nel DB | ✅ è una scelta di **progetto** |
 
-> ⭐ **Proposta**: bloccare. La finestra è esattamente il difetto del brief.
+> **B e C non erano in concorrenza: rispondevano a due domande diverse.**
+> «P-2a aspetta?» → no (B). «La ricerca resta com'è?» → no (C). Le avevo messe
+> in alternativa perché le tenevo insieme la finestra, che era il presupposto
+> sbagliato.
 
-#### Q3 — Il quarto movimento di P-1 rende il gestore globale quasi immutabile
+**Perché C regge anche senza l'argomento della finestra** — la ragione è una
+sola, e non è «il BE ha sbagliato»:
 
-Spostare `is_default` cambia in blocco l'emittente di **tutti** i BA non mappati
-(§11.3). Un guard che lo impedisce quando spaccherebbe un albero è coerente con
-P-1 — ma di fatto **congela il gestore globale** appena esiste un albero appeso
-al default, e per rimuovere il blocco bisogna mappare esplicitamente i BA
-coinvolti.
+> ⭐ **La convenzione a tre stati non sopravvive al viaggio.** Lo scope esce dal
+> database con tre significati distinti (`NULL` = tutto, `{}` = niente, array =
+> whitelist), attraversa Python e **rientra con due**: in Python `[]` e `None`
+> sono entrambi falsi, e ogni idioma naturale del linguaggio — `if ids:`,
+> `ids or []` — li fonde. Non è una svista di chi ha scritto quella riga: è un
+> **canale che perde per costruzione**, e infatti la stessa fusione è già
+> avvenuta in due punti indipendenti.
+>
+> C non «corregge il backend»: **toglie il viaggio**. Una risposta che non esce
+> dal database non può degradarsi nel tragitto.
 
-Serve `DL-D` per sapere se il caso è teorico o quotidiano. Ma la domanda di
-principio è: **il gestore globale è una configurazione che si cambia, o un dato
-d'impianto che si sceglie una volta?** Se è la seconda, il guard non costa
-niente.
+Due ragioni di contorno, vere ma non decisive da sole:
 
-> ⭐ **Proposta**: guard anche lì, e si misura `DL-D` prima di scriverlo. Un
-> cambio a raggio N che nessuno vede è la definizione del difetto che P-1 chiude.
+- **la famiglia è altrimenti uniforme**: tutti gli adapter `fn_scope_ef_whitelist_via_*`
+  risolvono internamente da `p_auth_user_id`; queste due sono **le uniche** che
+  accettano un array già calcolato. Una famiglia con due convenzioni è una
+  famiglia in cui bisogna ricordarsi in quale si è;
+- **le policy RLS risolvono lo scope da sole**, dalle GUC. Oggi convivono quindi
+  due meccanismi di applicazione dello scope con **due modelli di fiducia
+  diversi**, e solo uno dei due può essere aggirato da chi chiama.
 
-#### Q4 — Lista pilota per P-4 + P-2b
+⚠️ **Il costo di C, per onestà**: le due funzioni diventano **dipendenti dal
+contesto** (leggono una GUC), quindi un pgTAP deve impostarlo e un futuro
+chiamante batch cade nel ramo *«nessun attore → nessun filtro»*. È il prezzo che
+il progetto **paga già ovunque**, e in cambio si compra che quel ramo sia scritto
+una volta in un posto invece che assunto a ogni chiamata.
 
-Proposta `vendite.dash_competenza_gruppi` (42): è dove l'operatore **sceglie cosa
+**Decisione operativa:**
+
+1. **P-2a non aspetta nessuno** (passo 2 sbloccato — era Q2/B);
+2. **C si fa**, come passo **a sé**, per merito architetturale e non per urgenza:
+   diventa il **passo 1** del piano, che da «richiesta al BE» si trasforma in
+   lavoro DB (§12);
+3. **BE-1 decade a 🔵 igiene** — o sparisce del tutto, perché con C quella riga
+   non decide più niente. Resta in §13 con la sua ragione: la **regola** che ne
+   discende (⚠️ *questa convenzione non si legge mai con un test di verità*) vale
+   per il prossimo consumatore, che potrebbe non essere una funzione blindabile.
+
+#### ✅ Q3 — CHIUSA il 2026-08-17: **sì al guard**
+
+> **Decisione Tid.** Il quarto movimento (cambio di `is_default`) prende il suo
+> guard, scritto sulla **coppia mista**: un BA non mappato con padre o figlio
+> mappato. Non su «esiste un albero».
+>
+> **La domanda di principio decade**: non c'era da decidere se il gestore globale
+> sia modificabile, perché dall'applicazione **non lo è già oggi** — tre presidi
+> in esercizio lo impediscono, e resta raggiungibile solo da una migrazione o da
+> un intervento manuale (verifica qui sotto). Il guard non toglie una libertà:
+> mette un avviso sull'unica strada che resta.
+>
+> ⚠️ **Conseguenza accettata**, e non è una domanda nuova: uno spostamento
+> *legittimo* del gestore globale richiederà di mappare **prima** i BA delle
+> coppie miste. È la stessa forma della decisione 5 — *il guard afferma
+> l'invariante, i casi emergono quando qualcuno li tocca* — applicata a
+> un'operazione che tocca N righe invece di una.
+>
+> **Resta da fare, ma è misura non decisione**: la sottomisura di `DL-D` (quante
+> coppie miste esistono), che dimensiona il rumore senza bloccare niente.
+
+*La domanda com'era posta, per la storia:*
+
+> ~~Spostare `is_default` cambia in blocco l'emittente di tutti i BA non mappati
+> (§11.3), quindi un guard **congela il gestore globale** appena esiste un albero
+> appeso al default. La domanda di principio: il gestore globale è una
+> configurazione che si cambia, o un dato d'impianto che si sceglie una volta?~~
+
+##### 🔬 Perché era mal posta — verifica del 2026-08-17: **è già congelato**
+
+> **La premessa «il guard congela il gestore globale» è falsa**, e va corretta
+> prima di rispondere: dall'applicazione **il gestore globale non si può già
+> spostare oggi**. Il guard non toglierebbe una libertà che c'è: presidierebbe
+> una strada che passa solo da un intervento deliberato sul database.
+
+Tre presidi già in esercizio, che si chiudono a tenaglia:
+
+| Presidio | Cosa impedisce |
+| --- | --- |
+| `uq_emittenti_fiscali_ba_default` — indice unico parziale su `is_default` | **non possono esistere due default**: creare quello di *Pippo* mentre esiste quello di *Tito* viola l'indice |
+| `trgfn_emittenti_fiscali_default_guard` — ⚠️ `CONSTRAINT TRIGGER … DEFERRABLE INITIALLY DEFERRED` | al **commit** pretende **esattamente un** default: cancellare quello di *Tito* e fermarsi lì fallisce |
+| Il repository **non ha** un `update_mapping` | esistono `create_mapping` e `delete_mapping`, non una modifica: l'emittente di un mapping non si cambia dall'API |
+
+**Messi insieme**: spostare il default richiede `DELETE` + `INSERT` **nella
+stessa transazione** — che è esattamente ciò che il trigger differito consente e
+che due chiamate HTTP separate **non sono**. Dall'interfaccia la sequenza
+fallisce a metà, e non esiste un verbo che la faccia atomicamente.
+
+> **Quindi il quarto movimento è raggiungibile solo da una migrazione o da un
+> intervento manuale sul database.** Cioè da un atto deliberato, raro, fatto da
+> chi sa cosa sta facendo — e proprio per la rarità mai coperto da un test.
+
+**Cosa cambia nella decisione:**
+
+- **il costo quotidiano del guard è ~zero**: non può scattare a un operatore,
+  perché un operatore non ci arriva;
+- **il valore è alto proprio dove serve**: presidia l'unica operazione del
+  cantiere con **raggio N**, quella in cui un errore è silenzioso e grande;
+- ⭐ **e non congela niente, se scritto sulla condizione giusta.** Spostare il
+  default rompe un albero **solo** quando un BA non mappato ha padre o figlio
+  **mappato**. Se entrambi i lati sono non mappati si spostano insieme e
+  l'albero resta omogeneo; se entrambi sono mappati non si sposta nessuno.
+  **La condizione da presidiare è la coppia mista**, non «esiste un albero».
+
+⚠️ **Conseguenza su DL-D**: la misura utile non è «quanti BA senza mapping» — è
+la sua sottomisura, **quanti BA senza mapping stanno in coppia padre/figlio con
+un BA mappato**. Solo quelli farebbero scattare il guard, e sono verosimilmente
+molti meno.
+
+> ⭐ **Proposta rivista, poi accettata**: **sì al guard**. Non stiamo scegliendo
+> se il gestore globale sia modificabile — è già di fatto un dato d'impianto.
+> Stiamo scegliendo se l'unico modo di cambiarlo, a mano sul database, debba
+> **avvisare** quando sta per spaccare qualcosa. Costa un ramo in una funzione
+> che stiamo comunque scrivendo.
+
+#### ✅ Q4 — CHIUSA il 2026-08-17: pilota **Competenza — gruppi fatturabili**
+
+> **Decisione Tid.** Si comincia da **Competenza — gruppi fatturabili**
+> (`vendite.dash_competenza_gruppi`), e le altre cinque seguono nell'ordine
+> stabilito qui sotto — che **non è alfabetico né per gravità**: è per *quanto
+> lavoro condividono*.
+>
+> Il criterio che ha deciso, e che vale anche per i cantieri futuri: **fra due
+> candidate, si sceglie quella in cui il lavoro è dentro il perimetro.** «Lotti
+> di fatturazione» sembrava più semplice, ma i suoi dati nascono da SQL scritto
+> nel backend: era semplice *perché non era nostro*, e un pilota che non tocca
+> il database non collauda il pattern che va replicato cinque volte.
+
+#### Q4 — la domanda, e come è stata istruita
+
+> ℹ️ **I numeri fra parentesi non sono dati di sviluppo.** Sono gli `id` del
+> catalogo delle liste, che vive in `80_data/sql/ui/lista_definizione.csv` — un
+> file **versionato nel repository** e applicato da una migrazione, quindi
+> identico su ogni database, compreso uno ricostruito da zero. Restano indicati
+> perché servono a chi scriverà il seed, ma **la lista si nomina per nome**: un
+> numero da solo non dice niente a chi legge.
+
+**Le sei schermate del perimetro** — quelle che oggi non dichiarano da quale
+emittente arriva la riga:
+
+| Schermata | `codice` | id |
+| --- | --- | --- |
+| Lotti di fatturazione | `vendite.lotti` | 12 |
+| Situazione aperta — documenti | `vendite.dash_aperto_documenti` | 39 |
+| Backlog — documenti fermi | `vendite.dash_backlog_documenti` | 40 |
+| Competenza — errori vivi | `vendite.dash_competenza_errori` | 41 |
+| **Competenza — gruppi fatturabili** | `vendite.dash_competenza_gruppi` | 42 |
+| Competenza — drill-down commesse | `vendite.dash_competenza_commesse` | 43 |
+
+**La domanda è una sola: da quale si comincia.** Il lavoro è lo stesso su tutte
+e sei; la prima serve a collaudare il metodo, le altre vengono a ricalco.
+
+Proposta: **Competenza — gruppi fatturabili**. È dove l'operatore **sceglie cosa
 fatturare**, quindi il posto in cui l'ambiguità di emittente si paga subito.
-Alternativa naturale: `vendite.lotti` (12), più semplice ma meno esposta.
+Alternativa considerata: **Lotti di fatturazione**, che sembrava più semplice.
 
-#### Q5 — Il messaggio sbagliato di oggi si corregge o si aspetta?
+##### 🔬 Verifica del 2026-08-17 — «più semplice» era sbagliato: **Lotti non fa lavoro DB**
+
+| | **Lotti di fatturazione** | **Competenza — gruppi fatturabili** |
+| --- | --- | --- |
+| **Da dove nascono le righe** | SQL grezzo nel repository BE (`vendite_repository.list_lotti`), direttamente su `vendite.fatturazione_lotti` — **nessuna vista** | la vista `vw_dash_competenza_gruppi` |
+| **L'emittente c'è già?** | ✅ `emittente_soggetto_ruolo_id`, `NOT NULL` sulla tabella | ✅ `emittente_soggetto_ruolo_id` in proiezione |
+| **Lavoro DB** | ⚠️ **nessuno** | la JOIN che produce `emittente_ragione_sociale` |
+| **Lavoro BE** | JOIN + colonna + mapping | colonna + mapping |
+| **C'è un'azione attaccata?** | numera, ristampa | ⭐ **emissione mirata**: da lì si sceglie *cosa* fatturare |
+
+**Cinque ragioni per 42, e la prima da sola basterebbe:**
+
+1. ⭐ **è l'unica delle due che fa lavoro DB.** Su `lotti` il perimetro di questo
+   cantiere non ha niente da fare: la lista nasce da SQL scritto nel backend. Un
+   pilota che non tocca il database **non collauda il pattern** che dobbiamo
+   replicare cinque volte, e sposta il lavoro fuori perimetro — quindi lo
+   rallenta, non lo semplifica. *«Più semplice» era una misura sbagliata: era
+   semplice per noi perché non era nostro;*
+2. **il pattern è già scritto sei volte**, identico:
+   `s_ef.ragione_sociale_completa AS emittente_ragione_sociale`
+   (`vw_ordini_lista`, `vw_contratti_lista`, `vw_preventivi_lista`,
+   `vw_offerte_commerciali_lista`, `vw_ddt_lista`, `vw_resi_lista`);
+3. **la vista è già mezza pronta**: fa **già** la JOIN a `soggetti`, per il
+   cliente (`sog.ragione_sociale_completa AS cliente_fatturazione_display`).
+   Quella dell'emittente è la stessa JOIN una seconda volta;
+4. **è il posto dove la scelta ha una conseguenza.** Da lì parte l'emissione
+   mirata: si selezionano i gruppi e si fattura. Una lista che mescola emittenti
+   senza dirlo, **con un pulsante «fattura» sotto**, è il caso peggiore. E
+   quando il flag entrerà, il cancello dirà *«scegli un emittente prima di
+   decidere cosa fatturare»* — la richiesta giusta nel momento giusto;
+5. **niente collisione**: la vista è stata toccata oggi dall'altro cantiere
+   (commit `4ec3d9f5c`), ma quel lavoro è **chiuso e committato**.
+
+##### ⭐ E ne esce anche l'ordine delle altre cinque
+
+| Giro | Schermate | Perché insieme |
+| --- | --- | --- |
+| **1° (pilota)** | Competenza — gruppi fatturabili | vista propria, JOIN ai soggetti già presente, azione attaccata |
+| **2°** | Situazione aperta — documenti **+** Backlog — documenti fermi | sono **due proiezioni della stessa vista a monte** (`vw_dash_fatturazione_documenti`): la JOIN si aggiunge **una volta sola** e ne escono due schermate |
+| **3°** | Competenza — errori vivi · Competenza — drill-down commesse | viste proprie, stesso pattern del pilota |
+| **ultima** | Lotti di fatturazione | ⚠️ **interamente lavoro BE**: nessuna vista da estendere. In fondo non perché conti meno, ma perché non insegna niente al database e dipende da un altro branch |
+
+#### ✅ Q5 — CHIUSA il 2026-08-17: **non si tocca**
+
+> **Decisione Tid.** Il messaggio provvisorio resta com'è fino a P-1.
+>
+> **Il criterio, e vale oltre questo caso**: non essendoci produzione, un difetto
+> *cosmetico e temporaneo* non giustifica codice intermedio. Ogni correzione di
+> passaggio è codice che qualcuno dovrà togliere, e in questo progetto ciò che si
+> mette «per ora» tende a restare.
 
 Fino a P-1, l'albero misto tentato da un operatore configurato viene rifiutato
 con `E_ID_FISCALI_DIVERSI` **su due BA che hanno il CF identico** (§11.1). Con
 P-1 il messaggio giusto arriva e questo sparisce da sé.
 
-> ⭐ **Proposta**: non si tocca. È rumore che dura quanto il cantiere, e ogni
-> correzione intermedia è codice da togliere.
+⚠️ **Una cosa però resta, e non è cosmetica**: quello stesso messaggio può far
+passare un pgTAP **per la ragione sbagliata** (§9, §11.1). Non è un motivo per
+correggerlo — è un motivo per **asserire sempre il codice errore atteso** nei
+test di P-1, che è già scritto nel passo 4 e in §9. La decisione di non toccare
+il messaggio non tocca quel presidio.
 
 ### Da misurare prima di applicare
 
 | # | Cosa | Blocca |
 | --- | --- | --- |
 | **DL-A** | Utenti con identità OPERATORE, **non** super admin, **senza** riga in `config.user_emittenti_fiscali` | ⛔ **Blocca P-2a**: dopo la correzione non vedono più nulla |
-| **DL-D** ⭐ | Billing account **senza** riga in `anagrafiche.emittenti_fiscali_billing_account` (quindi appesi al gestore globale) | 🔵 Informativo ma pesante: sono i BA che **cambiano padrone** se cambia il default, e i falsi positivi del guard P-1 se lo si scrive sulla riga invece che sul valore risolto (§11.2) |
+| **DL-D** ⭐ | Billing account **senza** riga in `anagrafiche.emittenti_fiscali_billing_account` (quindi appesi al gestore globale) — e la **sottomisura che conta davvero**: quanti di quelli stanno in coppia padre/figlio con un BA **mappato** | 🔵 Informativo: i primi sono i falsi positivi del guard P-1 se lo si scrive sulla riga invece che sul valore risolto (§11.2); **i secondi sono gli unici** che farebbero scattare il guard sul cambio di `is_default` (Q3) |
 | **DL-B** | Alberi BA che attraversano due emittenti | 🔵 Informativo: quanti guard scatteranno dopo P-1 |
 | **DL-C** | BA con `parent_account_id` valorizzato e `id_fiscale_univoco_cf_piva` NULL su uno dei due lati | 🔵 Informativo: quanti guard scatteranno dopo P-3 |
 
@@ -1016,6 +1293,32 @@ Ma la misura dice anche dove sta il lavoro vero, e **non è il CSV**:
   emittente in `ui.lista_colonna` è una query di due join, e non ha bisogno di
   sapere niente delle viste.
 
+### 11.4-bis ⚠️ Due cose che si chiamano quasi uguale — e non sono la stessa
+
+Il cantiere ne maneggia **due**, legate da una regola ma diverse per tabella, per
+mestiere e per chi le scrive. Confonderle è facile, ed è già successo:
+
+| | `multi_emittente` (P-2b) | la colonna emittente (P-4) |
+| --- | --- | --- |
+| **Cos'è** | un sì/no: *«questa lista sa dire da quale emittente arriva ogni riga»* | una colonna **visibile a video** con la ragione sociale dell'emittente |
+| **Dove sta** | `ui.lista_definizione` — una riga per **lista** | `ui.lista_colonna` — una riga per **colonna** di una lista |
+| **Chi la scrive** | ⛔ **solo** il seed, presidiato dal trigger (§11.5) | il seed, come qualunque altra colonna di catalogo |
+| **Chi la guarda** | il cancello all'ingresso della lista | l'operatore |
+
+**La regola che le lega**, ed è l'unica: il flag si può mettere a `true` **solo**
+su una lista che ha già la colonna. Quindi si fanno **in quest'ordine** — prima
+la colonna, poi il flag — e mai al contrario.
+
+> Detto in una riga: **la colonna è il lavoro, il flag è la ricevuta.** Una
+> ricevuta senza il lavoro è esattamente il difetto che il flag doveva impedire.
+
+⚠️ **Il trigger di §11.5 sorveglia una tabella e una colonna**: `multi_emittente`
+su `ui.lista_definizione`. Non tocca `ui.lista_colonna`, e non tocca le altre
+colonne di `lista_definizione` (`codice`, `descrizione`, `schema_dati`,
+`vista_sql`, `note`, `attivo`) — che restano scrivibili dall'amministrazione
+super-admin esattamente come oggi, con la whitelist del service come unico
+filtro.
+
 ### 11.5 🔴 Lo Strato 1 di P-2b non regge — e il modo in cui cede è invisibile su dev
 
 Il brief chiedeva di verificare *«che nessun changeSet di `90_end` ri-conceda
@@ -1043,16 +1346,41 @@ viene **annullata** dal giro successivo.
 
 ⛔ **E non è un problema d'ordine, quindi non si risolve numerando più avanti.**
 Essendo `runOnChange: true` in contesto `ci_apply`, quel changeSet ri-esegue **a
-ogni passata**: in CI a ogni build (la pipeline invoca Liquibase due volte, la
-seconda proprio con `--contexts=ci_apply`), su sviluppo col giro serale del
-pgagent. La revoca applicata a mano **funzionerebbe fino alle 21:00** e poi
-morirebbe in silenzio — e chi la controllasse il giorno dopo troverebbe la
-colonna scrivibile senza che nessuno abbia toccato niente.
+ogni passata di quel contesto**, e quel contesto è sempre **l'ultimo**.
 
-> Vale la pena fermarsi un attimo su questo, perché è il caso di scuola: la
-> difesa più forte fra le tre proposte è anche l'**unica** che si disattiva da
-> sola, di notte, senza log e senza rosso. Una difesa che si spegne è peggio di
-> una difesa che non c'è, perché la prima la dai per buona.
+#### ⚠️ Chi lo esegue davvero — verificato il 2026-08-17
+
+> 🔴 **Una prima stesura di questo paragrafo diceva «ci pensa il giro serale del
+> pgagent». È falso, e la correzione conta**: il *quando* cambia da «ogni notte»
+> a «ogni build della CI», e cambia in peggio.
+
+| Dove | Chi lancia | Quando |
+| --- | --- | --- |
+| **CI** | il workflow, `update --contexts=ci_apply` | ⚠️ **a ogni build**, e sempre **dopo** `update --contexts="!provision"` che ha applicato la revoca |
+| **Sviluppo** | una persona, `make db-ci-apply` (o `make db-setup`, che lo concatena) | solo quando qualcuno lo digita — **niente lo pianifica** |
+
+⚠️ **I job pgagent non c'entrano.** Verificato: i nove job di `85_pgagent` hanno
+tutti step di tipo SQL (`jstkind = 's'`) e chiamano `maintenance.proc_*` —
+automazioni `tx_id` / `audit` / `storico` / `attivo` / `lock_columns`, policy
+indici FK, cleanup. **Nessuno di essi esegue un `GRANT`.** La confusione nasce
+dal fatto che automazioni e grant **condividono il contesto `ci_apply`**, ma
+hanno due esecutori diversi: le automazioni ne hanno **due** (Liquibase +
+pgagent), i grant **uno solo** (Liquibase).
+
+**La conseguenza è peggiore di quella che avevo scritto, non migliore:**
+
+- su **sviluppo** la revoca sopravvive fino al successivo `make db-ci-apply`. Non
+  è una notte: è finché nessuno riallinea il database. Sembra funzionare, e più a
+  lungo — il che la rende più credibile;
+- in **CI** non funziona **mai**, nemmeno per un istante utile. Il database è
+  ricostruito da zero: la passata `!provision` applica la revoca, la passata
+  `ci_apply` che viene **dopo** la annulla, nello stesso build. Su un database
+  nuovo la colonna è scrivibile **sempre**.
+
+> È il caso di scuola della divergenza dev/CI, nella forma più insidiosa: la
+> difesa più forte fra le tre proposte funziona **solo** dove la si prova a mano,
+> e **non** dove conta. Una difesa che si spegne è peggio di una difesa che non
+> c'è, perché la prima la dai per buona.
 
 **Le tre strade, e quale si sceglie:**
 
@@ -1186,16 +1514,54 @@ Non è una formalità: sono i punti su cui **non serve tornare**.
 
 ### Fase 1 — Chiudere il perimetro di lettura
 
-#### Passo 1 · Richiesta al BE: la lista vuota non è «nessun filtro» ⛔ *precede il passo 2*
+#### Passo 1 · La ricerca universale si risolve lo scope da sé · *decisione Q2/C*
 
-Correzione di `search_repository.py` (§11.6, dettaglio in §13). **Fuori perimetro
-DB**: qui si scrive la richiesta, non il codice.
+> ⚠️ **Questo passo era «richiesta al BE, e blocca il passo 2». Non lo è più.**
+> Con la decisione Q2 il lavoro rientra nel perimetro DB e **non blocca niente**:
+> si fa perché è il posto giusto, non perché qualcosa lo aspetta.
 
-**Fatto quando**: la richiesta è in §13, comunicata, e la correzione è a
-`dev/backend-tid`. Applicare P-2a prima significherebbe **allargare** la
-visibilità sulla ricerca universale invece di restringerla.
+`script.fn_search_soggetti_universale` e `script.fn_get_search_detail` sono **le
+uniche due** funzioni di scope che si fidano di un array calcolato dal chiamante
+invece di risolverlo. Passano a risolverlo da sé.
 
-#### Passo 2 · P-2a — fail-closed nella catena canonica ⛔ *dopo 0.1 e 1*
+| File (indicativo) | Cartella | Cosa |
+| --- | --- | --- |
+| `AAAAMMGG-NN-update-fn-search-soggetti-universale-scope-interno-mctit.yaml` | `20_code/script` | risolve `fn_get_emittenti_scope_sr_ids` da `app.current_user_id`; `p_emittente_ids` **interseca**, non sostituisce |
+| `AAAAMMGG-NN-update-fn-get-search-detail-scope-interno-mctit.yaml` | `20_code/script` | idem |
+
+**Regole di costruzione**
+
+- ⭐ **il parametro può solo restringere.** `scope_effettivo = scope_dalla_GUC ∩
+  p_emittente_ids`, con `NULL` = universo su entrambi i lati. È lo stesso
+  invariante *«solo restringente, mai allargante»* dell'emittente attivo
+  (rev 2026-08-04): non si inventa una regola, se ne riusa una;
+- **il parametro non si toglie dalla firma.** Toglierlo romperebbe i due
+  chiamanti e obbligherebbe a coordinare un rilascio BE — che è esattamente la
+  dipendenza da cui questo passo ci sta liberando. Resta, e diventa innocuo;
+- **attore nullo → nessun filtro**, come `fn_scope_ef_whitelist_via_efba` ramo 1
+  (decisione dentro Q2: si segue la convenzione della famiglia);
+- ⚠️ `fn_search_soggetti_universale` applica lo scope **solo per tipo ruolo `CL`**:
+  non è un difetto da correggere qui, ma va **saputo** — sulle altre tipologie
+  non c'è scope da restringere, e il passo non lo introduce.
+
+**Verifica** — `db/pgtap/script/test-search-scope-interno-v1.sql`:
+
+1. operatore con scope di 1 emittente, parametro `NULL` → vede **solo il suo**
+   (oggi, senza parametro, vedrebbe tutto);
+2. operatore senza riga (dopo P-2a) → **zero risultati**;
+3. parametro con un emittente **fuori** dal proprio scope → zero risultati
+   (l'intersezione non allarga);
+4. parametro `'{}'` → zero risultati;
+5. stessi quattro su `fn_get_search_detail`.
+
+> ⚠️ Il caso 2 va rifatto **dopo** il passo 2: prima di P-2a l'operatore senza
+> riga ha scope `NULL`, quindi il test misurerebbe il vecchio comportamento e
+> sarebbe verde per la ragione sbagliata.
+
+**Fatto quando**: i cinque casi sono verdi e nessun valore passato dal chiamante
+può più **allargare** ciò che la funzione mostra.
+
+#### Passo 2 · P-2a — fail-closed nella catena canonica ⛔ *dopo 0.1*
 
 | File (indicativo) | Cartella | Cosa |
 | --- | --- | --- |
@@ -1320,23 +1686,35 @@ emittenti» a chi **non dovrebbe vederne nessuno**. Onesta rispetto a ciò che
 succede, sbagliata rispetto a ciò che dovrebbe succedere: è un motivo in più per
 mettere il passo 1 davanti.
 
-#### Passo 6 · P-4 su una lista pilota
+#### Passo 6 · P-4 sulla pilota — **Competenza — gruppi fatturabili** · *decisione Q4*
 
-**Pilota consigliata: `vendite.dash_competenza_gruppi` (42).** È l'unità
-dell'emissione mirata, cioè il posto dove l'operatore **sceglie cosa fatturare**:
-se c'è una lista in cui l'ambiguità di emittente si paga subito, è quella.
+È l'unità dell'emissione mirata, cioè il posto dove l'operatore **sceglie cosa
+fatturare**: se c'è una schermata in cui l'ambiguità di emittente si paga
+subito, è quella.
 
-1. estendere la proiezione della vista con la **ragione sociale** (oggi c'è solo
-   l'id — §11.4) → `20_code/vendite`;
-2. **append** a `lista_colonna.csv`, copiando il pattern delle sei liste
-   documento (`campo_sorgente = emittente_ragione_sociale`, `tipo_colonna =
-   informazione`);
-3. ⚠️ verificare che il **backend** produca davvero quella chiave: `vista_sql` è
-   NULL, i dati passano dal repository di dominio. Una colonna a catalogo senza
-   il campo a monte è una colonna che si spunta e resta vuota — cioè
-   esattamente la garanzia che il flag pretende, non mantenuta.
+1. estendere `vendite.vw_dash_competenza_gruppi` con la **ragione sociale**
+   dell'emittente (oggi c'è solo l'id — §11.4) → `20_code/vendite`.
+   ⭐ La vista fa **già** la JOIN a `soggetti` per il cliente
+   (`sog.ragione_sociale_completa AS cliente_fatturazione_display`): questa è la
+   stessa JOIN una seconda volta, nella forma delle sei viste documento
+   (`s_ef.ragione_sociale_completa AS emittente_ragione_sociale`);
+2. **append** a `lista_colonna.csv`, copiando la riga delle sei liste documento
+   (`campo_sorgente = emittente_ragione_sociale`, `tipo_colonna = informazione`);
+3. ⚠️ **richiesta al BE** (BE-2): `vista_sql` è NULL, quindi le righe le compone
+   il repository di dominio — che oggi elenca le colonne **esplicitamente**
+   (`vendite_repository`, `SELECT g.gruppo_key, …`). Senza aggiungerla lì, la
+   colonna si spunta e **resta vuota**: cioè la garanzia che il flag pretende,
+   non mantenuta.
 
 **Fatto quando**: la colonna si spunta e **mostra un nome**.
+
+##### L'ordine delle altre cinque · *deciso con Q4*
+
+| Giro | Schermate | Perché insieme |
+| --- | --- | --- |
+| **2°** | Situazione aperta — documenti **+** Backlog — documenti fermi | due proiezioni della **stessa vista a monte** (`vw_dash_fatturazione_documenti`): una JOIN sola, due schermate |
+| **3°** | Competenza — errori vivi · Competenza — drill-down commesse | viste proprie, stesso pattern della pilota |
+| **ultima** | Lotti di fatturazione | ⚠️ **niente lavoro DB**: le righe nascono da SQL nel backend (`vendite_repository.list_lotti`, su `vendite.fatturazione_lotti`, che ha già `emittente_soggetto_ruolo_id NOT NULL`). Va in fondo perché è **tutta** una richiesta al BE |
 
 #### Passo 7 · P-2b — il flag, e il cancello che lo protegge
 
@@ -1380,8 +1758,8 @@ accendere in blocco vorrebbe dire che ha smesso di significare qualcosa.
 | Passo | Perimetro | Prerequisito | Reversibile |
 | --- | --- | --- | --- |
 | 0.1–0.5 | misure | — | n/a |
-| 1 — richiesta BE | **backend** | — | sì |
-| 2 — P-2a | `20_code/script`, `config`, `dbops` | ⛔ 0.1, 1 | sì (`CREATE OR REPLACE` inverso) |
+| 1 — scope interno alla ricerca | `20_code/script` | — (non blocca, e non è bloccato) | sì |
+| 2 — P-2a | `20_code/script`, `config`, `dbops` | ⛔ 0.1 | sì (`CREATE OR REPLACE` inverso) |
 | 3 — P-3 | `20_code/anagrafiche` | 0.5 | sì |
 | 4 — P-1 | `20_code/anagrafiche` | ⛔ 0.4, 0.5; **dopo** 3 | sì (drop dei due trigger) |
 | 5 — P-2c | FE/BE | — | sì |
@@ -1403,7 +1781,13 @@ a metà vede tutti gli emittenti e non lo sa né lui né nessun altro.
 
 > Perimetro DB: qui si scrive la richiesta, il codice lo scrive il BE.
 
-### BE-1 🟠 `search_repository`: la lista vuota non è «nessun filtro» ⛔ *precede P-2a*
+### BE-1 🔵 `search_repository`: la lista vuota non è «nessun filtro» · *declassata*
+
+> ⚠️ **Era 🟠 e bloccava P-2a. Dal 2026-08-17 non blocca più niente** (decisione
+> Q2/C): il passo 1 fa risolvere lo scope alla funzione SQL, quindi quella riga
+> Python **non decide più** cosa si vede. Resta qui perché continua a scrivere
+> una cosa falsa, e perché la **regola** che ne discende vale oltre questo punto.
+> Da fare quando comodo, o mai — ma la regola in fondo va letta comunque.
 
 **Dove**: `backend/apps/core/db/search_repository.py`, righe **42** e **98**.
 
@@ -1426,9 +1810,12 @@ deve **arrivare come array vuoto** — e se la funzione SQL su `'{}'` non
 restituisce zero righe, la seconda metà è una richiesta al team DB e va aperta
 qui.
 
-**Perché prima e non dopo**: P-2a rende `[]` lo stato normale dell'operatore non
+~~**Perché prima e non dopo**: P-2a rende `[]` lo stato normale dell'operatore non
 configurato. Applicata per prima, una correzione pensata per **chiudere** si
-tradurrebbe in un **allargamento** su quella superficie.
+tradurrebbe in un **allargamento** su quella superficie.~~
+→ **Ritirato**: l'argomento poggiava sulla «finestra», e su un ambiente senza
+produzione la finestra non è un costo (obiezione di Tid, Q2). Il passo 1 chiude
+comunque quella superficie, dal lato database.
 
 **Come si verifica**: un test con `emittenti = []` che asserisce **zero
 risultati**, non «nessun errore».
@@ -1437,13 +1824,26 @@ risultati**, non «nessun errore».
 **non si legge mai con un test di verità.** `if ids:` e `ids or []` collassano i
 due estremi opposti sullo stesso valore, e lo fanno dalla parte che apre.
 
-### BE-2 🟢 `dash_competenza_gruppi`: la ragione sociale dell'emittente nella riga
+### BE-2 🟢 Competenza — gruppi fatturabili: la ragione sociale dell'emittente nella riga
 
-Dipende dal passo 6. Quando la vista esporrà `emittente_ragione_sociale`, il
-repository/serializer della lista gruppi fatturabili deve **portarla nella riga**
-con quella chiave: `vendite.dash_competenza_gruppi` ha `vista_sql = NULL`, quindi
-è il backend a decidere cosa arriva a video. Senza, la colonna a catalogo si
-spunta e resta vuota.
+Dipende dal passo 6 (pilota, decisione Q4). Quando
+`vendite.vw_dash_competenza_gruppi` esporrà `emittente_ragione_sociale`, il
+repository deve **portarla nella riga** con quella chiave. Non è automatico:
+`vendite_repository` elenca le colonne **esplicitamente** (`SELECT g.gruppo_key,
+g.tipo_gruppo, …`), quindi una colonna nuova nella vista **non arriva a video da
+sola** — e la lista ha `vista_sql = NULL`, quindi il catalogo non può pescarla.
+
+Serve: una riga nel `SELECT`, una nel mapping della `DashCompetenzaGruppoRow`.
+Senza, la colonna a catalogo si spunta e resta vuota — che è peggio di non
+averla, perché *sembra* la garanzia che il flag pretende.
+
+### BE-4 🔵 Lotti di fatturazione: l'emittente nella riga · *ultima del giro P-4*
+
+Fuori dal perimetro DB **per intero**: `vendite_repository.list_lotti` costruisce
+la lista con SQL diretto su `vendite.fatturazione_lotti`, senza passare da
+nessuna vista. Il dato c'è già sulla tabella (`emittente_soggetto_ruolo_id`,
+`NOT NULL`): serve la JOIN a `soggetti_ruoli`/`soggetti`, la colonna e il
+mapping. È il motivo per cui questa schermata è **l'ultima** del giro (Q4).
 
 ### BE-3 🔵 `multi_emittente`: cancello e non raccomandazione
 
