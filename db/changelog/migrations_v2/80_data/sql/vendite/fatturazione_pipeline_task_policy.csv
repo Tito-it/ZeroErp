@@ -22,3 +22,5 @@ id,pipeline_id,task_code,annullabile,resume_mode,attivo,meta,data_insert,user_in
 21,2,genera_fondi_source_lotto,t,RESUME_STEP,t,"{""scope"":""EMESSA"",""tipo_lotto"":""GIORNALIERO""}",2026-08-01 00:00:00+02,titodb,,
 22,2,applica_fondi_lotto,t,RESUME_STEP,t,"{""scope"":""EMESSA"",""tipo_lotto"":""GIORNALIERO""}",2026-08-01 00:00:00+02,titodb,,
 23,2,ricalcola_iva_lotto,t,RESUME_STEP,t,"{""scope"":""EMESSA"",""tipo_lotto"":""GIORNALIERO""}",2026-08-01 00:00:00+02,titodb,,
+24,4,popola_fatture_rettifiche,f,RESUME_TASK,t,"{""scope"":""DEFINITIVA""}",2026-08-18 00:00:00+02,mctit,,
+25,6,popola_fatture_rettifiche,f,RESUME_TASK,t,"{""scope"":""DEFINITIVA"",""tipo_lotto"":""GIORNALIERO""}",2026-08-18 00:00:00+02,mctit,,

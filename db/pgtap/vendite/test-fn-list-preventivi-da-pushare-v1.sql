@@ -50,7 +50,16 @@ SELECT ok(
 -- 0b) Riferimenti minimi
 -- ============================================================
 CREATE TEMP TABLE tmp_refs_prev AS
+-- 🔴 `iva_id` AGGIUNTA IL 2026-08-18.
+--   Le righe di preventivo esigono `iva_id` (> 0): senza, il guard risponde
+--   «Parametro non valido: p_iva_id obbligatorio e > 0» e il file moriva alla
+--   prima INSERT, senza eseguire nessuna asserzione.
+--   ⚠️ Si sceglie un'aliquota POSITIVA e una volta sola: un'IVA a zero passa il
+--   NOT NULL ma renderebbe muti i totali che qualche test piu' avanti confronta.
 SELECT
+  (SELECT i.id FROM config.iva i
+    WHERE i.attivo IS TRUE AND i.aliquota_iva > 0
+    ORDER BY i.id LIMIT 1) AS iva_id,
   (SELECT ba.id
      FROM anagrafiche.billing_account ba
     WHERE ba.utility_id IS NOT NULL
@@ -132,11 +141,11 @@ CREATE TEMP TABLE tmp_prev_riga AS
 WITH ins AS (
   INSERT INTO vendite.preventivi_righe (
     preventivo_id, articolo_id, qta_operativa, quantita, prezzo_unitario,
-    attivo, meta
+    iva_id, attivo, meta
   )
   SELECT
     p.id, r.articolo_id, 10.000000, 10.000000, 25.500000,
-    true, jsonb_build_object('test_scope', 'pgtap_fn_list_prev')
+    r.iva_id, true, jsonb_build_object('test_scope', 'pgtap_fn_list_prev')
   FROM tmp_prev p, tmp_refs_prev r
   RETURNING id
 )
@@ -215,11 +224,11 @@ SELECT * FROM ins;
 
 INSERT INTO vendite.preventivi_righe (
   preventivo_id, articolo_id, qta_operativa, quantita, prezzo_unitario,
-  attivo, meta
+  iva_id, attivo, meta
 )
 SELECT
   pb.id, r.articolo_id, 5.000000, 5.000000, 10.000000,
-  true, jsonb_build_object('test_scope', 'pgtap_fn_list_prev', 'case', 'bozza')
+  r.iva_id, true, jsonb_build_object('test_scope', 'pgtap_fn_list_prev', 'case', 'bozza')
 FROM tmp_prev_bozza pb, tmp_refs_prev r;
 
 -- Riesegui la funzione (devo ricreare per evitare dati stantii)
@@ -269,11 +278,11 @@ SELECT * FROM ins;
 -- e il test passa comunque. Usiamo qta > 0 ma attivo = false come alternativa.
 INSERT INTO vendite.preventivi_righe (
   preventivo_id, articolo_id, qta_operativa, quantita, prezzo_unitario,
-  attivo, meta
+  iva_id, attivo, meta
 )
 SELECT
   pz.id, r.articolo_id, 5.000000, 5.000000, 10.000000,
-  false, jsonb_build_object('test_scope', 'pgtap_fn_list_prev', 'case', 'zero_qta')
+  r.iva_id, false, jsonb_build_object('test_scope', 'pgtap_fn_list_prev', 'case', 'zero_qta')
 FROM tmp_prev_zero pz, tmp_refs_prev r;
 
 CREATE TEMP TABLE tmp_result_prev_zero AS

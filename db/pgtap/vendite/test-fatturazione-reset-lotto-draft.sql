@@ -16,6 +16,17 @@
 -- 10) Cleanup completato (note + righe + fatture)
 -- 11) Reset singola fattura DRAFT (nuova funzione)
 -- 12) Chiusura test e rollback
+--
+-- ⚠️ rev 2026-08-18 (bonifica baseline). I due inserimenti di
+-- attivita_fatturabili erano "nudi": non e' piu' un caso possibile
+-- (commessa_id / commessa_attivita_id NOT NULL + guard a10). Il soggetto —
+-- il rollback tecnico del lotto in DRAFT — e' intatto. Modello:
+-- test-vw-dash-competenza-v1.
+-- ⚠️ Le due attivita' hanno commesse_attivita DISTINTE:
+-- uq_attivita_fatturabili_commessa_attivita e' 1:1, riusare la stessa avrebbe
+-- fatto scattare quella UNIQUE al posto di cio' che il test verifica.
+-- ⚠️ E i riferimenti sceglievano articolo, istanza utility e billing account
+-- da tre LIMIT 1 scorrelati: ora il billing account si sceglie una volta sola.
 -- ------------------------------------------------------------
 BEGIN;
 -- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
@@ -41,56 +52,37 @@ CREATE TEMP TABLE tmp_costanti_rl AS
 SELECT 'pgtap_reset_lotto_draft'::text AS test_scope,
   uuidv7() AS lock_batch_id;
 CREATE TEMP TABLE tmp_refs_rl AS
-SELECT (
-    SELECT id
-    FROM config.stati_doc_fiscale
-    WHERE upper(btrim(codice)) = 'DRAFT'
-    LIMIT 1
-  ) AS stato_draft_id,
-  (
-    SELECT id
-    FROM config.stati_doc_fiscale
-    WHERE upper(btrim(codice)) = 'ANNULLATA'
-    LIMIT 1
-  ) AS stato_annullata_id,
-  (
-    SELECT id
-    FROM catalogo.articoli
-    WHERE attivo IS TRUE
-    ORDER BY data_insert DESC NULLS LAST
-    LIMIT 1
-  ) AS articolo_id,
-  (
-    SELECT id
-    FROM anagrafiche.istanze_utilities
-    ORDER BY data_insert DESC NULLS LAST
-    LIMIT 1
-  ) AS istanza_utility_id,
-  (
-    SELECT id
-    FROM anagrafiche.billing_account
-    ORDER BY data_insert DESC NULLS LAST
-    LIMIT 1
-  ) AS billing_account_id,
-  (
-    SELECT utility_id
-    FROM anagrafiche.billing_account
-    ORDER BY data_insert DESC NULLS LAST
-    LIMIT 1
-  ) AS utility_id,
-  (
-    SELECT id
-    FROM config.tipi_doc_fiscale
-    WHERE attivo IS TRUE
-    ORDER BY id
-    LIMIT 1
-  ) AS tipo_doc_fiscale_id,
-  (
-    SELECT id
-    FROM config.valute
-    ORDER BY id
-    LIMIT 1
-  ) AS valuta_id;
+-- Il billing account si sceglie UNA volta: utility e istanza vengono da li'.
+WITH ba AS (
+  SELECT b.id, b.utility_id, b.istanza_utility_id
+    FROM anagrafiche.billing_account b
+   WHERE b.utility_id IS NOT NULL
+     AND b.istanza_utility_id IS NOT NULL
+     AND b.soggetto_ruolo_id IS NOT NULL
+   ORDER BY b.id
+   LIMIT 1
+)
+SELECT
+  (SELECT id FROM config.stati_doc_fiscale
+    WHERE upper(btrim(codice)) = 'DRAFT' ORDER BY id LIMIT 1)     AS stato_draft_id,
+  (SELECT id FROM config.stati_doc_fiscale
+    WHERE upper(btrim(codice)) = 'ANNULLATA' ORDER BY id LIMIT 1) AS stato_annullata_id,
+  (SELECT id FROM ba)                 AS billing_account_id,
+  (SELECT utility_id FROM ba)         AS utility_id,
+  (SELECT istanza_utility_id FROM ba) AS istanza_utility_id,
+  (SELECT a.id FROM catalogo.articoli a
+    WHERE a.attivo IS TRUE AND a.is_composito = FALSE
+    ORDER BY a.id LIMIT 1)            AS articolo_id,
+  (SELECT u.id FROM catalogo.unita_misura u
+    WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1)   AS uom_id,
+  (SELECT t.id FROM config.tipi_doc_fiscale t
+    WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)   AS tipo_doc_fiscale_id,
+  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
+  (SELECT sc.id FROM vendite.stati_commessa sc
+    WHERE sc.attivo IS TRUE AND sc.codice_interno <> 'ANNULLATA'
+    ORDER BY sc.id LIMIT 1)           AS stato_commessa_id,
+  (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
+    WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1) AS emittente_sr_id;
 SELECT ok(
     (
       SELECT stato_draft_id IS NOT NULL
@@ -98,15 +90,79 @@ SELECT ok(
         AND articolo_id IS NOT NULL
         AND istanza_utility_id IS NOT NULL
         AND billing_account_id IS NOT NULL
+        AND utility_id IS NOT NULL
         AND tipo_doc_fiscale_id IS NOT NULL
         AND valuta_id IS NOT NULL
+        AND stato_commessa_id IS NOT NULL
+        AND emittente_sr_id IS NOT NULL
       FROM tmp_refs_rl
     ),
     'Riferimenti minimi presenti'
   );
+
+-- ============================================================
+-- Fixture commessa: una commessa e DUE attivita' di commessa, una per
+-- ciascuna delle due attivita_fatturabili del file (la UNIQUE su
+-- commessa_attivita_id e' 1:1, non si possono condividere).
+-- ============================================================
+CREATE TEMP TABLE tmp_commessa_rl AS
+WITH ins AS (
+  INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
+                                emittente_soggetto_ruolo_id, stato_commessa_id)
+  SELECT 'PGTAP-RL-' || substr(md5(clock_timestamp()::text), 1, 8),
+         r.billing_account_id, r.utility_id, r.emittente_sr_id, r.stato_commessa_id
+    FROM tmp_refs_rl r
+  RETURNING id)
+SELECT id FROM ins;
+
+CREATE TEMP TABLE tmp_ca_rl (slot text, attivita_id bigint);
+
+WITH ins AS (
+  INSERT INTO vendite.commesse_attivita (
+    commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
+    uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
+    tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
+    stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+  SELECT (SELECT id FROM tmp_commessa_rl),
+         'PGTAP-RL-SEG-1-' || substr(md5(clock_timestamp()::text), 1, 12),
+         r.articolo_id, r.istanza_utility_id, current_date, r.uom_id, 1,
+         date_trunc('month', current_date)::date,
+         date_trunc('month', current_date)::date,
+         (date_trunc('month', current_date) + INTERVAL '1 month - 1 day')::date,
+         r.tipo_doc_fiscale_id, r.valuta_id, 10.000000, 'FIXED',
+         'BOZZA', 'NON_EMESSA', NULL, NULL
+    FROM tmp_refs_rl r
+  RETURNING id)
+INSERT INTO tmp_ca_rl SELECT 'RL1', id FROM ins;
+
+WITH ins AS (
+  INSERT INTO vendite.commesse_attivita (
+    commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
+    uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
+    tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
+    stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+  SELECT (SELECT id FROM tmp_commessa_rl),
+         'PGTAP-RL-SEG-2-' || substr(md5(clock_timestamp()::text), 1, 12),
+         r.articolo_id, r.istanza_utility_id, current_date, r.uom_id, 1,
+         date_trunc('month', current_date)::date,
+         date_trunc('month', current_date)::date,
+         (date_trunc('month', current_date) + INTERVAL '1 month - 1 day')::date,
+         r.tipo_doc_fiscale_id, r.valuta_id, 10.000000, 'FIXED',
+         'BOZZA', 'NON_EMESSA', NULL, NULL
+    FROM tmp_refs_rl r
+  RETURNING id)
+INSERT INTO tmp_ca_rl SELECT 'RL2', id FROM ins;
 -- ============================================================
 -- 1) Inserimento lotto DRAFT
 -- ============================================================
+-- 🔴 EMITTENTE, aggiunto il 2026-08-18 (vale per entrambi gli inserimenti di
+--   lotto di questo file). La policy `rls_fatturazione_lotti_ef_whitelist`
+--   ammette, per OPERATORE, solo gli emittenti nella whitelist dell'utente, e
+--   la stessa espressione sta nel `WITH CHECK`: senza
+--   `emittente_soggetto_ruolo_id` l'INSERT moriva con «la nuova riga viola la
+--   regola di sicurezza per riga». `script.fn_pgtap_emittente_sr_operatore()`
+--   e' la compagna esatta di `fn_scope_ef_whitelist_via_sr`, che la policy
+--   interroga. Brief: brief-db-pgtap-runner-rls-baseline §26.
 CREATE TEMP TABLE tmp_lotto_rl AS WITH ins AS (
   INSERT INTO vendite.fatturazione_lotti (
       lock_batch_id,
@@ -114,7 +170,8 @@ CREATE TEMP TABLE tmp_lotto_rl AS WITH ins AS (
       tipo_doc_fiscale_id,
       utility_id,
       billing_account_id,
-      stato_doc_fiscale_id
+      stato_doc_fiscale_id,
+      emittente_soggetto_ruolo_id
     )
   SELECT (
       SELECT lock_batch_id
@@ -124,7 +181,8 @@ CREATE TEMP TABLE tmp_lotto_rl AS WITH ins AS (
     r.tipo_doc_fiscale_id,
     r.utility_id,
     r.billing_account_id,
-    r.stato_draft_id
+    r.stato_draft_id,
+    script.fn_pgtap_emittente_sr_operatore()
   FROM tmp_refs_rl r
   RETURNING id,
     lock_batch_id
@@ -148,12 +206,16 @@ CREATE TEMP TABLE tmp_attivita_rl AS WITH ins AS (
       billing_account_id,
       data_attivita,
       competenza_mese,
+      competenza_dal,
+      competenza_al,
       quantita,
       approvato,
       fatturato,
       sospesa,
       tipo_doc_fiscale_id,
       valuta_id,
+      commessa_id,
+      commessa_attivita_id,
       meta
     )
   SELECT r.articolo_id,
@@ -161,12 +223,16 @@ CREATE TEMP TABLE tmp_attivita_rl AS WITH ins AS (
     r.billing_account_id,
     current_date,
     date_trunc('month', current_date)::date,
+    date_trunc('month', current_date)::date,
+    (date_trunc('month', current_date) + INTERVAL '1 month - 1 day')::date,
     1,
     true,
     false,
     false,
     r.tipo_doc_fiscale_id,
     r.valuta_id,
+    (SELECT id FROM tmp_commessa_rl),
+    (SELECT attivita_id FROM tmp_ca_rl WHERE slot = 'RL1'),
     jsonb_build_object(
       'test_scope',
       (
@@ -359,14 +425,16 @@ CREATE TEMP TABLE tmp_lotto_rl2 AS WITH ins AS (
       tipo_doc_fiscale_id,
       utility_id,
       billing_account_id,
-      stato_doc_fiscale_id
+      stato_doc_fiscale_id,
+      emittente_soggetto_ruolo_id
     )
   SELECT uuidv7(),
     date_trunc('month', current_date)::date,
     r.tipo_doc_fiscale_id,
     r.utility_id,
     r.billing_account_id,
-    r.stato_draft_id
+    r.stato_draft_id,
+    script.fn_pgtap_emittente_sr_operatore()
   FROM tmp_refs_rl r
   RETURNING id,
     lock_batch_id
@@ -380,12 +448,16 @@ CREATE TEMP TABLE tmp_attivita_rl2 AS WITH ins AS (
       billing_account_id,
       data_attivita,
       competenza_mese,
+      competenza_dal,
+      competenza_al,
       quantita,
       approvato,
       fatturato,
       sospesa,
       tipo_doc_fiscale_id,
       valuta_id,
+      commessa_id,
+      commessa_attivita_id,
       meta
     )
   SELECT r.articolo_id,
@@ -393,12 +465,16 @@ CREATE TEMP TABLE tmp_attivita_rl2 AS WITH ins AS (
     r.billing_account_id,
     current_date,
     date_trunc('month', current_date)::date,
+    date_trunc('month', current_date)::date,
+    (date_trunc('month', current_date) + INTERVAL '1 month - 1 day')::date,
     1,
     true,
     false,
     false,
     r.tipo_doc_fiscale_id,
     r.valuta_id,
+    (SELECT id FROM tmp_commessa_rl),
+    (SELECT attivita_id FROM tmp_ca_rl WHERE slot = 'RL2'),
     jsonb_build_object(
       'test_scope',
       (

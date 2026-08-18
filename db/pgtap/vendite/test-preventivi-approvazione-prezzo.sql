@@ -60,11 +60,36 @@ SELECT plan(10);
 -- =========================================================
 -- Setup fixture comuni
 -- =========================================================
+CREATE TEMP TABLE _t_ba AS
+SELECT ba.utility_id, ba.istanza_utility_id
+  FROM anagrafiche.billing_account ba
+ WHERE ba.utility_id IS NOT NULL
+   AND ba.istanza_utility_id IS NOT NULL
+ ORDER BY ba.id
+ LIMIT 1;
+
 CREATE TEMP TABLE _t_ctx AS
 SELECT
     (SELECT id     FROM catalogo.articoli WHERE codice = 'ART_TEST_BASE') AS articolo_id,
     (SELECT uom_id FROM catalogo.articoli WHERE codice = 'ART_TEST_BASE') AS uom_id,
-    (SELECT id FROM config.utilities ORDER BY id LIMIT 1) AS utility_id,
+    -- 🔴 ISTANZA + UTILITY DALLO STESSO BA, 2026-08-18.
+    --   `vendite.preventivi.istanza_utility_id` e' diventata NOT NULL dopo che
+    --   questa fixture era stata scritta: le cinque INSERT morivano sul vincolo
+    --   e il file non eseguiva NESSUNA asserzione (10 su 10 rosse).
+    --   ⚠️ Non basta aggiungere una istanza qualunque: istanza e utility devono
+    --   descrivere lo stesso rapporto, o si costruisce un preventivo incoerente
+    --   che i guard a valle rifiuteranno per un motivo diverso. Si prende quindi
+    --   la coppia da UN solo billing account — scelto una volta, non due volte
+    --   con due LIMIT 1 che potrebbero divergere.
+    (SELECT ba.utility_id FROM _t_ba ba) AS utility_id,
+    (SELECT ba.istanza_utility_id FROM _t_ba ba) AS istanza_utility_id,
+    -- ⚠️ E l'IVA: `iva_id` e' obbligatorio sulle righe di preventivo — il guard
+    --   risponde «Parametro non valido: p_iva_id obbligatorio e > 0». Era lo
+    --   strato successivo, comparso appena le INSERT di testata hanno smesso di
+    --   morire.
+    (SELECT i.id FROM config.iva i
+      WHERE i.attivo IS TRUE AND i.aliquota_iva > 0
+      ORDER BY i.id LIMIT 1) AS iva_id,
     -- Emittente fiscale: il trigger BEFORE INSERT lo pretende quando la GUC
     -- app.current_user_id e' vuota, cioe' sempre in contesto pgTAP. La sua
     -- assenza teneva questo file a ERRORE_FIXTURE in baseline-rossi: falliva
@@ -81,8 +106,8 @@ DO $pgtap$
 BEGIN
     IF (SELECT articolo_id IS NULL OR utility_id IS NULL OR stato_draft_id IS NULL
                OR stato_emesso_id IS NULL OR stato_accettato_id IS NULL
-               OR emittente_fiscale_id IS NULL FROM _t_ctx) THEN
-        RAISE EXCEPTION 'Seed fixture mancante (ART_TEST_BASE / utility / stati_doc_preventivi); impossibile eseguire test.';
+               OR emittente_fiscale_id IS NULL OR iva_id IS NULL FROM _t_ctx) THEN
+        RAISE EXCEPTION 'Seed fixture mancante (ART_TEST_BASE / billing account con istanza+utility / stati_doc_preventivi); impossibile eseguire test.';
     END IF;
 END
 $pgtap$;
@@ -94,20 +119,20 @@ CREATE TEMP TABLE _t_prev (tag text, preventivo_id bigint, riga_id bigint);
 -- p_pending: riga stato=PENDING
 WITH ins_p AS (
     INSERT INTO vendite.preventivi (
-        numero, stato_doc_preventivo_id, utility_id, data, emittente_fiscale_id
+        numero, stato_doc_preventivo_id, utility_id, istanza_utility_id, data, emittente_fiscale_id
     )
     SELECT 'pgtap_appr_pnd_' || substring(md5(clock_timestamp()::text) from 1 for 6),
-           stato_draft_id, utility_id, CURRENT_DATE, emittente_fiscale_id
+           stato_draft_id, utility_id, istanza_utility_id, CURRENT_DATE, emittente_fiscale_id
       FROM _t_ctx
     RETURNING id
 ),
 ins_r AS (
     INSERT INTO vendite.preventivi_righe (
         preventivo_id, articolo_id, quantita, qta_operativa, uom_operativa_id,
-        prezzo_unitario, stato_approvazione_prezzo
+        prezzo_unitario, iva_id, stato_approvazione_prezzo
     )
     SELECT p.id, c.articolo_id, 1, 1, c.uom_id,
-           100, 'PENDING'::config.stato_approvazione_prezzo
+           100, c.iva_id, 'PENDING'::config.stato_approvazione_prezzo
       FROM ins_p p, _t_ctx c
     RETURNING preventivo_id, id AS riga_id
 )
@@ -116,18 +141,18 @@ SELECT 'p_pending', preventivo_id, riga_id FROM ins_r;
 
 -- p_approved: riga stato=APPROVED
 WITH ins_p AS (
-    INSERT INTO vendite.preventivi (numero, stato_doc_preventivo_id, utility_id, data, emittente_fiscale_id)
+    INSERT INTO vendite.preventivi (numero, stato_doc_preventivo_id, utility_id, istanza_utility_id, data, emittente_fiscale_id)
     SELECT 'pgtap_appr_app_' || substring(md5(clock_timestamp()::text) from 1 for 6),
-           stato_draft_id, utility_id, CURRENT_DATE, emittente_fiscale_id FROM _t_ctx
+           stato_draft_id, utility_id, istanza_utility_id, CURRENT_DATE, emittente_fiscale_id FROM _t_ctx
     RETURNING id
 ),
 ins_r AS (
     INSERT INTO vendite.preventivi_righe (
         preventivo_id, articolo_id, quantita, qta_operativa, uom_operativa_id,
-        prezzo_unitario, stato_approvazione_prezzo
+        prezzo_unitario, iva_id, stato_approvazione_prezzo
     )
     SELECT p.id, c.articolo_id, 1, 1, c.uom_id,
-           100, 'APPROVED'::config.stato_approvazione_prezzo
+           100, c.iva_id, 'APPROVED'::config.stato_approvazione_prezzo
       FROM ins_p p, _t_ctx c
     RETURNING preventivo_id, id AS riga_id
 )
@@ -136,18 +161,18 @@ SELECT 'p_approved', preventivo_id, riga_id FROM ins_r;
 
 -- p_rejected: riga stato=REJECTED
 WITH ins_p AS (
-    INSERT INTO vendite.preventivi (numero, stato_doc_preventivo_id, utility_id, data, emittente_fiscale_id)
+    INSERT INTO vendite.preventivi (numero, stato_doc_preventivo_id, utility_id, istanza_utility_id, data, emittente_fiscale_id)
     SELECT 'pgtap_appr_rej_' || substring(md5(clock_timestamp()::text) from 1 for 6),
-           stato_draft_id, utility_id, CURRENT_DATE, emittente_fiscale_id FROM _t_ctx
+           stato_draft_id, utility_id, istanza_utility_id, CURRENT_DATE, emittente_fiscale_id FROM _t_ctx
     RETURNING id
 ),
 ins_r AS (
     INSERT INTO vendite.preventivi_righe (
         preventivo_id, articolo_id, quantita, qta_operativa, uom_operativa_id,
-        prezzo_unitario, stato_approvazione_prezzo
+        prezzo_unitario, iva_id, stato_approvazione_prezzo
     )
     SELECT p.id, c.articolo_id, 1, 1, c.uom_id,
-           100, 'REJECTED'::config.stato_approvazione_prezzo
+           100, c.iva_id, 'REJECTED'::config.stato_approvazione_prezzo
       FROM ins_p p, _t_ctx c
     RETURNING preventivo_id, id AS riga_id
 )
@@ -156,18 +181,18 @@ SELECT 'p_rejected', preventivo_id, riga_id FROM ins_r;
 
 -- p_null: riga stato=NULL (non in approvazione, baseline libero)
 WITH ins_p AS (
-    INSERT INTO vendite.preventivi (numero, stato_doc_preventivo_id, utility_id, data, emittente_fiscale_id)
+    INSERT INTO vendite.preventivi (numero, stato_doc_preventivo_id, utility_id, istanza_utility_id, data, emittente_fiscale_id)
     SELECT 'pgtap_appr_nul_' || substring(md5(clock_timestamp()::text) from 1 for 6),
-           stato_draft_id, utility_id, CURRENT_DATE, emittente_fiscale_id FROM _t_ctx
+           stato_draft_id, utility_id, istanza_utility_id, CURRENT_DATE, emittente_fiscale_id FROM _t_ctx
     RETURNING id
 ),
 ins_r AS (
     INSERT INTO vendite.preventivi_righe (
         preventivo_id, articolo_id, quantita, qta_operativa, uom_operativa_id,
-        prezzo_unitario
+        prezzo_unitario, iva_id
     )
     SELECT p.id, c.articolo_id, 1, 1, c.uom_id,
-           100
+           100, c.iva_id
       FROM ins_p p, _t_ctx c
     RETURNING preventivo_id, id AS riga_id
 )
@@ -319,18 +344,18 @@ SELECT lives_ok(
 -- =========================================================
 CREATE TEMP TABLE _t_prev_draft2 AS
 WITH ins_p AS (
-    INSERT INTO vendite.preventivi (numero, stato_doc_preventivo_id, utility_id, data, emittente_fiscale_id)
+    INSERT INTO vendite.preventivi (numero, stato_doc_preventivo_id, utility_id, istanza_utility_id, data, emittente_fiscale_id)
     SELECT 'pgtap_appr_drt_' || substring(md5(clock_timestamp()::text) from 1 for 6),
-           stato_draft_id, utility_id, CURRENT_DATE, emittente_fiscale_id FROM _t_ctx
+           stato_draft_id, utility_id, istanza_utility_id, CURRENT_DATE, emittente_fiscale_id FROM _t_ctx
     RETURNING id
 ),
 ins_r AS (
     INSERT INTO vendite.preventivi_righe (
         preventivo_id, articolo_id, quantita, qta_operativa, uom_operativa_id,
-        prezzo_unitario, stato_approvazione_prezzo
+        prezzo_unitario, iva_id, stato_approvazione_prezzo
     )
     SELECT p.id, c.articolo_id, 1, 1, c.uom_id,
-           100, 'PENDING'::config.stato_approvazione_prezzo
+           100, c.iva_id, 'PENDING'::config.stato_approvazione_prezzo
       FROM ins_p p, _t_ctx c
     RETURNING preventivo_id
 )

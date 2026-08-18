@@ -289,14 +289,24 @@ SELECT ok(
 -- ============================================================
 CREATE TEMP TABLE tmp_commessa_p2 AS
 WITH ins AS (
+-- 🔴 EMITTENTE, aggiunto il 2026-08-18.
+--   La policy `rls_commesse_ef_whitelist` ammette, per il ruolo OPERATORE, solo gli
+--   emittenti nella whitelist dell'utente — e la stessa espressione sta nel
+--   `WITH CHECK`, quindi vale in scrittura. Senza
+--   `emittente_soggetto_ruolo_id` l'INSERT moriva con «la nuova riga viola la
+--   regola di sicurezza per riga» e il file si fermava li'.
+--   L'emittente non si sceglie a mano: `script.fn_pgtap_emittente_sr_operatore()`
+--   e' la compagna esatta della `fn_scope_ef_whitelist_via_sr` che la policy
+--   interroga. Brief: brief-db-pgtap-runner-rls-baseline §26.
   INSERT INTO vendite.commesse (
-    codice, billing_account_id, utility_id, stato_commessa_id
+    codice, billing_account_id, utility_id, stato_commessa_id, emittente_soggetto_ruolo_id
   )
   SELECT
     'PGTAP-CMD-' || substr(md5(clock_timestamp()::text), 1, 8),
     r.billing_account_id,
     r.utility_id,
-    r.stato_commessa_id
+    r.stato_commessa_id,
+    script.fn_pgtap_emittente_sr_operatore()
   FROM tmp_refs_p2 r
   RETURNING id
 )

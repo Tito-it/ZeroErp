@@ -116,7 +116,7 @@ WITH ins AS (
     r.billing_account_id, r.istanza_utility_id,
     r.utility_id,
     DATE '2026-06-01', DATE '2026-12-31',
-    r.stato_attivo_id, DATE '2026-06-01',
+    r.stato_draft_id, DATE '2026-06-01',
     jsonb_build_object('test_scope', 'pgtap_fn_list_contr')
   FROM tmp_refs_contr r
   RETURNING id, uid, valido_dal, data
@@ -125,18 +125,50 @@ SELECT * FROM ins;
 
 CREATE TEMP TABLE tmp_contratto_riga AS
 WITH ins AS (
+-- 🔴 COLONNA RINOMINATA, corretto il 2026-08-18.
+--   `quantita_fissa` non esiste piu': il `20260511-31` l'ha RINOMINATA in
+--   `quantita` (prerequisito di `contratti_righe_componenti`, pattern BoM CASO
+--   A: le helper generiche `script.*` assumono che sul padre la colonna si
+--   chiami `quantita`). L'INSERT falliva in parsing e il file non eseguiva
+--   nessuna asserzione.
+--   ⚠️ E dietro ce n'era una seconda: `fonte_quantita_attesa` e' NOT NULL senza
+--   default. E' il concetto che ha ereditato il significato del vecchio nome —
+--   `FISSA` e' letteralmente «la quantita' e' quella scritta qui» — ed e' il
+--   valore di 23 righe su 24 in tabella. ⚠️ Non e' libero: il CHECK
+--   `chk_contrighe_coerenza_fonte_erogazione` lo incrocia con `tipo_erogazione`.
   INSERT INTO vendite.contratti_righe (
     contratto_id, articolo_id, prezzo_unitario,
-    qta_operativa, quantita_fissa, attivo, meta
+    qta_operativa, quantita, fonte_quantita_attesa, tipo_eccezione, attivo, meta
   )
   SELECT
     c.id, r.articolo_id, 50.000000,
-    1.000000, 1.000000, true,
+    1.000000, 1.000000, 'FISSA',
+    -- ⚠️ `tipo_eccezione` e' NOT NULL e il CHECK
+    --   `chk_contrighe_prezzo_per_tipo_eccezione` lo lega al prezzo:
+    --   ESCLUSIONE pretende prezzo NULL, OVERRIDE/AGGIUNTA lo pretendono
+    --   valorizzato. Qui il prezzo c'e' (50), quindi ESCLUSIONE e' esclusa; fra
+    --   le due che restano AGGIUNTA e' quella giusta — la riga aggiunge un
+    --   articolo al contratto, non riscrive il prezzo di uno gia' a listino.
+    'AGGIUNTA'::vendite.tipo_eccezione_contratto, true,
     jsonb_build_object('test_scope', 'pgtap_fn_list_contr')
   FROM tmp_contratto c, tmp_refs_contr r
   RETURNING id
 )
 SELECT * FROM ins;
+
+-- 🔴 ATTIVAZIONE SPOSTATA IN CODA, 2026-08-18.
+--   Il contratto nasceva gia' ATTIVO e le righe si inserivano dopo: da quando
+--   esiste `trg_contratti_righe_a10_lock_post_attivazione` (Step 2.3) quella
+--   sequenza e' vietata — il pricing di un contratto attivo e' immutabile.
+--   L'ordine giusto e' quello che segue anche l'applicazione: si compone in
+--   DRAFT, poi si attiva. Lo stato finale del fixture non cambia (ATTIVO, che
+--   e' cio' che `fn_list_contratti_da_pushare` deve vedere): cambia il momento
+--   in cui ci si arriva.
+--   ⚠️ Il secondo contratto del file nasceva gia' in DRAFT e resta com'e': li'
+--   la sequenza era gia' quella giusta.
+UPDATE vendite.contratti
+   SET stato_doc_contratto_id = (SELECT stato_attivo_id FROM tmp_refs_contr)
+ WHERE id = (SELECT id FROM tmp_contratto);
 
 CREATE TEMP TABLE tmp_result_contr AS
 SELECT *
@@ -225,11 +257,12 @@ SELECT * FROM ins;
 
 INSERT INTO vendite.contratti_righe (
   contratto_id, articolo_id, prezzo_unitario,
-  qta_operativa, quantita_fissa, attivo, meta
+  qta_operativa, quantita, fonte_quantita_attesa, tipo_eccezione, attivo, meta
 )
 SELECT
   c.id, r.articolo_id, 30.000000,
-  1.000000, 1.000000, true,
+  1.000000, 1.000000, 'FISSA',
+  'AGGIUNTA'::vendite.tipo_eccezione_contratto, true,
   jsonb_build_object('test_scope', 'pgtap_fn_list_contr', 'case', 'draft')
 FROM tmp_contratto_draft c, tmp_refs_contr r;
 

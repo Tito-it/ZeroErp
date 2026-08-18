@@ -11,8 +11,8 @@
 --   2) la vista espone ANCORA `emittente_soggetto_ruolo_id` (nessuna regressione)
 --   3) il catalogo ha la colonna emittente per la lista pilota
 --   4) * COERENZA catalogo -> vista: il `campo_sorgente` dichiarato esiste davvero
---   5) * la lista pilota e' l'UNICA delle sei del perimetro ad averla (registro
---        di debito che cala: le altre cinque devono ancora guadagnarsela)
+--   5) * tutte e sei le liste del perimetro dichiarano la colonna a catalogo
+--        (passo 8, META' DB, completo)
 --
 -- Scopo:
 --  - il 4 e' il test che conta. Il «prezzo del biglietto» di P-2b dice che una
@@ -26,11 +26,41 @@
 --   sarebbe 0 = 0, cioe' verde per sottrazione. Si verifica la STRUTTURA, che
 --   e' quello che il passo 6 introduce, e i dati li verifica il consumo reale.
 --
--- ⚠️ Il test 4 NON prova che la colonna arrivi a VIDEO: la lista ha
+-- ⚠️ Il test 4 NON prova che la colonna arrivi a VIDEO: le liste hanno
 --   `vista_sql = NULL`, quindi le righe le compone il repository di dominio,
 --   che elenca le colonne esplicitamente. Quella meta' e' la richiesta BE-2 del
 --   brief e vive nel backend. Il DB garantisce che il campo esista; che venga
 --   selezionato no.
+--
+-- ============================================================================
+-- rev 2026-08-18 — il test 5 ha fatto il suo lavoro, e va riscritto proprio
+-- per questo.
+--
+-- Diceva: «una sola delle sei ha la colonna: la pilota», e avvertiva che se il
+-- numero fosse salito senza il lavoro dietro voleva dire adesivo senza
+-- collaudo. Il numero e' salito a SEI col commit di Fase E (714efd6e7), che ha
+-- messo a catalogo la riga emittente per tutte e sei le liste.
+--
+-- ⭐ Meta' del lavoro c'e' davvero: cinque delle sei viste-sorgente espongono
+-- `emittente_ragione_sociale`, e il test 4 — ora GENERALIZZATO a tutte — lo
+-- verifica invece di fidarsi. Il registro di debito quindi non e' piu' «quante
+-- liste hanno la riga di catalogo» (sono tutte), ma si ribasa su cio' che il
+-- DB possiede: la riga c'e' E il campo dichiarato esiste alla sorgente.
+--
+-- 🔴 L'altra meta' NON c'e', e il DB non puo' vederla: il repository di dominio
+-- SELEZIONA `emittente_ragione_sociale` solo per la PILOTA
+-- (`vendite_repository.py:1293`). Per le altre cinque la colonna si spunta e
+-- resta vuota — esattamente cio' che questo file chiama «peggio di una colonna
+-- assente». Non e' un difetto di questo test ne' del catalogo: e' la richiesta
+-- BE-2, che ora e' scritta lista per lista nel brief §13.
+--
+-- 🔴 E `vendite.lotti` sta peggio delle altre quattro: non ha nemmeno una
+-- vista-sorgente. Il repository compone da `vendite.fatturazione_lotti`, che
+-- porta `emittente_soggetto_ruolo_id` ma NON la ragione sociale — quindi li'
+-- il campo dichiarato non esiste da nessuna parte nel DB, e serve una JOIN che
+-- oggi nessuno fa. Per questo e' l'unica esclusa dalla mappa del test 4, con
+-- il motivo dichiarato e non taciuto.
+-- ============================================================================
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -67,30 +97,47 @@ SELECT ok(
     '3. il catalogo ha la colonna emittente per la lista pilota'
 );
 
--- ⭐ Il test che conta: cio' che il catalogo DICHIARA deve esistere davvero.
+-- ⭐ Il test che conta, ora su TUTTE le liste del perimetro e non sulla sola
+--    pilota: cio' che il catalogo DICHIARA deve esistere davvero alla sorgente.
 --    Una colonna che si spunta e resta vuota e' peggio di una colonna assente,
 --    perche' *sembra* il collaudo che il flag multi_emittente pretendera'.
-SELECT ok(
-    NOT EXISTS (
-        SELECT 1
-          FROM ui.lista_colonna lc
-          JOIN ui.lista_definizione ld ON ld.id = lc.lista_id
-         WHERE ld.codice = 'vendite.dash_competenza_gruppi'
-           AND lc.attivo
-           AND lc.campo_sorgente = 'emittente_ragione_sociale'
-           AND NOT EXISTS (
-                   SELECT 1
-                     FROM information_schema.columns c
-                    WHERE c.table_schema = 'vendite'
-                      AND c.table_name   = 'vw_dash_competenza_gruppi'
-                      AND c.column_name  = lc.campo_sorgente)
-    ),
-    '4. * coerenza catalogo -> vista: il campo_sorgente dichiarato esiste davvero'
+--
+--    ⚠️ La mappa lista -> vista sta QUI e non nel catalogo perche' le sei liste
+--    hanno `vista_sql = NULL`: la sorgente la sceglie il repository di dominio.
+--    E' verificata sul codice BE, non indovinata (vendite_repository.py e
+--    commesse_repository.py). `vendite.lotti` non compare: non ha una vista,
+--    compone da `vendite.fatturazione_lotti` — vedi la nota 🔴 in testa.
+CREATE TEMP TABLE tmp_perimetro_liste (lista_codice text, vista text);
+INSERT INTO tmp_perimetro_liste VALUES
+    ('vendite.dash_competenza_gruppi',   'vw_dash_competenza_gruppi'),
+    ('vendite.dash_competenza_errori',   'vw_dash_competenza_errori'),
+    ('vendite.dash_aperto_documenti',    'vw_dash_aperto_documenti'),
+    ('vendite.dash_backlog_documenti',   'vw_dash_backlog_documenti'),
+    -- il drill-down commesse aggrega vw_dash_competenza_attivita
+    ('vendite.dash_competenza_commesse', 'vw_dash_competenza_attivita');
+
+SELECT is(
+    (SELECT count(*)::int
+       FROM tmp_perimetro_liste m
+       JOIN ui.lista_definizione ld ON ld.codice = m.lista_codice
+       JOIN ui.lista_colonna lc
+         ON lc.lista_id = ld.id
+        AND lc.attivo
+        AND lc.campo_sorgente = 'emittente_ragione_sociale'
+      WHERE EXISTS (
+            SELECT 1
+              FROM information_schema.columns c
+             WHERE c.table_schema = 'vendite'
+               AND c.table_name   = m.vista
+               AND c.column_name  = lc.campo_sorgente)),
+    5,
+    '4. * coerenza catalogo -> vista su tutte le liste mappate: il campo_sorgente dichiarato esiste davvero'
 );
 
--- Il registro di debito: oggi UNA sola delle sei liste del perimetro ha la
--- colonna. Se un giorno questo numero sale senza che nessuno abbia fatto il
--- lavoro, vuol dire che qualcuno ha attaccato l'adesivo senza collaudare.
+-- Il registro di debito, ribasato. Il passo 8 ha portato la riga di catalogo su
+-- tutte e sei: questa e' la meta' DB, ed e' completa. Se il numero SCENDE
+-- qualcuno ha tolto una riga; se la mappa del test 4 e questo numero divergono,
+-- e' comparsa una lista nel perimetro senza che nessuno l'abbia mappata.
 SELECT is(
     (SELECT count(DISTINCT ld.codice)
        FROM ui.lista_definizione ld
@@ -102,8 +149,8 @@ SELECT is(
                           'vendite.dash_competenza_gruppi',
                           'vendite.dash_competenza_commesse')
         AND lc.campo_sorgente = 'emittente_ragione_sociale'),
-    1::bigint,
-    '5. * una sola delle sei liste del perimetro ha la colonna: la pilota'
+    6::bigint,
+    '5. * tutte e sei le liste del perimetro dichiarano la colonna a catalogo (passo 8, meta DB)'
 );
 
 -- ============================================================
