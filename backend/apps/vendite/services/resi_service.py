@@ -8,7 +8,7 @@
 
 # Orchestrazione resi di vendita: validazione, guard su stato, delega al
 # repository e alle funzioni madri DB (`fn_conferma_reso`, `fn_annulla_reso`,
-# `fn_genera_ddt_riconsegna`). Clone strutturale ridotto di `ddt_service`
+# `fn_genera_ddt_riconsegna`, `fn_accredita_riga_reso`). Clone strutturale ridotto di `ddt_service`
 # (modulo di funzioni libere): niente prezzi/componenti/push/PDF/note.
 #
 # Punti di modello (brief brief-be-fe-resi-vendita.md):
@@ -211,6 +211,41 @@ def list_righe_ddt_per_reso(ddt_id: int) -> list[dict[str, Any]]:
 # Scopo: Coda "da accreditare" (forma contatore: righe reso CONFERMATE con
 #        accredito dovuto = fatturati - tenuti > 0, qualunque tipo; vista
 #        vw_resi_da_accreditare). Predisposizione slice nota di credito.
+# Scopo: I due id documento sono ALTERNATIVI, non componibili: una riga di coda
+#        appartiene a un DDT e, tramite il fulfillment, a un ordine — chiedere
+#        entrambi vorrebbe dire due domande in una, e la seconda restringerebbe
+#        la prima in silenzio. Meglio un errore parlante che un elenco corto di
+#        cui nessuno sa perche' e' corto.
+def _valida_filtro_documento(
+    *, ddt_id: int | None, ordine_id: int | None, function_name: str
+) -> None:
+    ErrorManager.require(
+        ddt_id is None or ordine_id is None,
+        code="E_RESO_VALIDAZIONE",
+        message="Filtri documento incompatibili.",
+        detail="ddt_id e ordine_id sono alternativi: indicarne uno solo",
+        context={"field": "ordine_id"},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    # 🔴 Guard sui valori, e non e' pedanteria: `?ddt_id=0` passa il parsing
+    #    strict (0 e' un intero valido) e produce `WHERE v.ddt_id = 0`, cioe' una
+    #    coda VUOTA. E una coda vuota si legge «non c'e' niente da fare», che e'
+    #    il messaggio piu' sbagliato possibile su un elenco di accrediti dovuti.
+    #    Disciplina AGENTS.md per gli ID: NULL o <= 0 -> errore parlante, mai
+    #    normalizzazione silenziosa.
+    for nome, valore in (("ddt_id", ddt_id), ("ordine_id", ordine_id)):
+        ErrorManager.require(
+            valore is None or valore > 0,
+            code="E_RESO_VALIDAZIONE",
+            message="Identificativo documento non valido.",
+            detail=f"{nome} deve essere maggiore di zero (ricevuto: {valore})",
+            context={"field": nome},
+            function_name=function_name,
+            log_to_db=True,
+        )
+
+
 def list_da_accreditare(
     *,
     billing_account_id: int | None = None,
@@ -218,6 +253,8 @@ def list_da_accreditare(
     data_al: date | None = None,
     search: str | None = None,
     etichetta: str | None = None,
+    ddt_id: int | None = None,
+    ordine_id: int | None = None,
     auth_user_id: int | None = None,
     limit: int,
     offset: int,
@@ -225,6 +262,11 @@ def list_da_accreditare(
     order_dir: str = "desc",
     max_limit: int = 200,
 ) -> tuple[list[Any], int]:
+    _valida_filtro_documento(
+        ddt_id=ddt_id,
+        ordine_id=ordine_id,
+        function_name="vendite.resi_service.list_da_accreditare",
+    )
     # Filtro etichetta strict (DOVUTA = NC obbligatoria, a credito;
     # FACOLTATIVA = opzione dell'operatore su merce da ri-spedire, DL-26):
     # whitelist fail-fast, un valore ignoto e' un errore del chiamante,
@@ -243,6 +285,8 @@ def list_da_accreditare(
         data_al=data_al,
         search=search,
         etichetta=etichetta,
+        ddt_id=ddt_id,
+        ordine_id=ordine_id,
         auth_user_id=auth_user_id,
         limit=limit,
         offset=offset,
@@ -260,6 +304,8 @@ def list_da_riconsegnare(
     data_da: date | None = None,
     data_al: date | None = None,
     search: str | None = None,
+    ddt_id: int | None = None,
+    ordine_id: int | None = None,
     auth_user_id: int | None = None,
     limit: int,
     offset: int,
@@ -267,11 +313,18 @@ def list_da_riconsegnare(
     order_dir: str = "desc",
     max_limit: int = 200,
 ) -> tuple[list[Any], int]:
+    _valida_filtro_documento(
+        ddt_id=ddt_id,
+        ordine_id=ordine_id,
+        function_name="vendite.resi_service.list_da_riconsegnare",
+    )
     return ResiRepository().list_da_riconsegnare(
         billing_account_id=billing_account_id,
         data_da=data_da,
         data_al=data_al,
         search=search,
+        ddt_id=ddt_id,
+        ordine_id=ordine_id,
         auth_user_id=auth_user_id,
         limit=limit,
         offset=offset,
@@ -292,6 +345,8 @@ def resolve_filtri_coda_export_label(
     data_da: date | None = None,
     data_al: date | None = None,
     etichetta: str | None = None,
+    ddt_id: int | None = None,
+    ordine_id: int | None = None,
 ) -> dict[str, Any]:
     out: dict[str, Any] = {}
     if search:
@@ -306,6 +361,13 @@ def resolve_filtri_coda_export_label(
         # Senza questa riga l'export filtrato DOVUTA/FACOLTATIVA verrebbe
         # letto come coda completa (il file non dichiarerebbe il filtro).
         out["Etichetta NC"] = etichetta
+    # Stessa ragione dell'etichetta: un export lanciato dalla coda filtrata su
+    # un documento contiene le sole righe di quel documento, e senza questa
+    # riga il file si leggerebbe come la coda intera.
+    if ddt_id is not None:
+        out["DDT (id)"] = ddt_id
+    if ordine_id is not None:
+        out["Ordine (id)"] = ordine_id
     return out
 
 
@@ -552,6 +614,35 @@ def riapri_riconsegna(reso_id: int, righe_raw: Any = None) -> dict[str, Any]:
     with _db_errors("riapri_riconsegna"):
         righe_riaperte = repo.riapri_riconsegna(int(reso_id), righe)
     return {"reso_id": int(reso_id), "righe_riaperte": righe_riaperte}
+
+
+# Scopo: Accredita una riga di reso via fn madre atomica
+#        `fn_accredita_riga_reso`: dalla coda accrediti genera le righe di
+#        RETTIFICA in commessa (quantita' negativa, prezzo/sconto/IVA copiati
+#        dalla riga di fattura rettificata) e le registra sul ponte
+#        `resi_righe_accrediti`. Ritorna UNA riga per rettifica creata: su un
+#        kit ne nasce una per componente, e se l'accredito dovuto consuma piu'
+#        righe di fattura a prezzi diversi ne nascono altrettante.
+#        ⭐ Il DOCUMENTO non nasce qui: la nota di credito nasce al giro di
+#        fatturazione successivo. E' la ragione per cui l'esito PARZIALE del
+#        fan-out (endpoint massivo) non lascia mai mezzo documento fiscale —
+#        lascia righe non lavorate, che restano in coda.
+# ⚠️ NESSUN guard applicativo: «e' in coda» (e quanto vale l'accredito),
+#    «l'attivita' e' finita in una riga di fattura», «non e' gia' accreditata»,
+#    «la copertura e' PIENA» sono TUTTI nella madre — E_ACCREDITO_NON_IN_CODA,
+#    E_ACCREDITO_ATTIVITA_NON_FATTURATA, E_ACCREDITO_GIA_ESEGUITO,
+#    E_ACCREDITO_QUOTA_NON_COPERTA. Ripeterli qui sarebbe la stessa regola in
+#    due posti: le due copie divergono, e la piu' vecchia non fa rumore.
+# ⚠️ Nessun `transaction.atomic()`: una sola `SELECT fn_()` e' atomica per
+#    costruzione (api.md §Atomicita' — qui non c'e' orchestrazione Python).
+def accredita_riga_reso(resi_riga_id: int) -> dict[str, Any]:
+    repo = ResiRepository()
+    # Anche il guard sul parametro (NULL / <= 0 -> E_PARAMETRO_INVALIDO) e'
+    # nella madre: qui un pre-check risponderebbe con un codice diverso da
+    # quello che il DB solleva per lo stesso fatto.
+    with _db_errors("accredita_riga_reso"):
+        accrediti = repo.accredita_riga_reso(int(resi_riga_id))
+    return {"resi_riga_id": int(resi_riga_id), "accrediti": accrediti}
 
 
 # ══════════════════════════════════════════════════════════

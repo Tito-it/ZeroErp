@@ -16,7 +16,13 @@
 | ✅ **R-1** | Un **codice errore nuovo** a catalogo: il rifiuto del cancello `multi_emittente` | append a due CSV | ⛔ il passo **C-2** del piano BE/FE |
 | ✅ **R-2** | Una **chiave nel context** dei ~~due~~ **cinque** punti: `'campo'` al posto di `'column'` | ~~una riga per changeSet~~ | 🔵 niente — è il campo del form che non si evidenzia |
 
-> ## ✅ Entrambe fatte e applicate il 2026-08-18 (`d28d4a2f2`)
+> ## 🟢 CHIUSO il 2026-08-18 — entrambe fatte e applicate (`d28d4a2f2`)
+>
+> Lato backend: policy rigenerate (**702** voci) e messaggio di ripiego
+> aggiunto per `E_UI_LISTA_EMITTENTE_DA_SCEGLIERE` — `422` con la frase giusta,
+> verificato. Il canale `COLUMN` dei guard parte, e `campiErrati` porta
+> `parent_account_id` al form. Niente resta aperto: il ⛔ sulla riga R-1 qui
+> sotto descrive cosa **bloccava** allora, non oggi.
 >
 > **E il team DB ha corretto il perimetro di R-2 in tre punti — tutti e tre
 > fondati.** Le rettifiche stanno in §13-bis.2 del brief principale; qui resta

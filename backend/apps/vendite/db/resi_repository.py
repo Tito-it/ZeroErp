@@ -9,7 +9,7 @@
 # Repository resi di vendita: letture sulla vista canonica
 # `vendite.vw_resi_lista` (lista) e `vendite.resi` (dettaglio), scritture
 # dirette su tabelle, chiamate alle funzioni madri DB (`fn_conferma_reso`,
-# `fn_annulla_reso`, `fn_genera_ddt_riconsegna`). Clone strutturale ridotto di
+# `fn_annulla_reso`, `fn_genera_ddt_riconsegna`, `fn_accredita_riga_reso`). Clone strutturale ridotto di
 # `ddt_repository` (niente componenti BoM / prezzi / push / PDF): il reso non
 # inventa articoli — le righe sono snapshot delle righe del DDT sorgente
 # (copiate qui, nessun trigger di copia a DB). La numerazione a CONFERMATO e
@@ -31,6 +31,7 @@ from apps.core.db._helpers import (
     sql_tiebreak_direction,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
+from apps.vendite.db._coda_documento_filtro import filtro_coda_per_documento
 from apps.core.db.sql_write_helpers import execute_dynamic_update
 
 # Scopo: Whitelist colonne ORDER BY per la lista resi (SQL injection safe). Le
@@ -462,6 +463,8 @@ class ResiRepository:
         data_al: date | None = None,
         search: str | None = None,
         etichetta: str | None = None,
+        ddt_id: int | None = None,
+        ordine_id: int | None = None,
         auth_user_id: int | None = None,
         limit: int,
         offset: int,
@@ -484,6 +487,8 @@ class ResiRepository:
             data_da=data_da,
             data_al=data_al,
             search=search,
+            ddt_id=ddt_id,
+            ordine_id=ordine_id,
             auth_user_id=auth_user_id,
             limit=limit,
             offset=offset,
@@ -505,6 +510,8 @@ class ResiRepository:
         data_da: date | None = None,
         data_al: date | None = None,
         search: str | None = None,
+        ddt_id: int | None = None,
+        ordine_id: int | None = None,
         auth_user_id: int | None = None,
         limit: int,
         offset: int,
@@ -518,6 +525,8 @@ class ResiRepository:
             data_da=data_da,
             data_al=data_al,
             search=search,
+            ddt_id=ddt_id,
+            ordine_id=ordine_id,
             auth_user_id=auth_user_id,
             limit=limit,
             offset=offset,
@@ -537,6 +546,8 @@ class ResiRepository:
         data_da: date | None,
         data_al: date | None,
         search: str | None = None,
+        ddt_id: int | None = None,
+        ordine_id: int | None = None,
         extra_conditions: list[str] | None = None,
         extra_params: list[Any] | None = None,
         auth_user_id: int | None,
@@ -572,6 +583,18 @@ class ResiRepository:
         if data_al is not None:
             conditions.append("v.data <= %s")
             params.append(data_al)
+        # Restrizione al documento: filtro COMUNE alle due code, quindi vive qui
+        # accanto a billing_account_id e alle date — non negli `extra_conditions`
+        # dei wrapper, che sono per le colonne di UNA vista sola (l'etichetta).
+        # ⭐ Il predicato e' il BB condiviso col pannello situazione merce: le due
+        # schermate rispondono alla stessa domanda e devono contare le stesse
+        # righe.
+        condizione_doc, params_doc = filtro_coda_per_documento(
+            ddt_id=ddt_id, ordine_id=ordine_id
+        )
+        if condizione_doc is not None:
+            conditions.append(condizione_doc)
+            params.extend(params_doc)
         if extra_conditions:
             # Condizioni vista-specifiche costruite dal wrapper chiamante
             # (es. etichetta della coda accrediti): il builder resta neutro
@@ -838,6 +861,34 @@ class ResiRepository:
             row = cursor.fetchone()
             assert row is not None
             return int(row[0])
+
+    # ══════════════════════════════════════════════════════════
+    #  FUNZIONE MADRE DB — accredito (nota di credito sui resi)
+    # ══════════════════════════════════════════════════════════
+
+    # Scopo: Accredita una riga di reso via fn madre
+    #        `vendite.fn_accredita_riga_reso` (atomica, DB-first): dalla coda
+    #        accrediti genera le righe di RETTIFICA in commessa (quantita'
+    #        NEGATIVA, prezzo/sconto/IVA copiati dalla riga di fattura
+    #        rettificata) e le registra sul ponte
+    #        `vendite.resi_righe_accrediti`. Il DOCUMENTO non nasce qui: la nota
+    #        di credito nasce al giro di fatturazione successivo.
+    # ⚠️ `RETURNS TABLE`, non uno scalare (brief §20.4): una riga per rettifica
+    #    creata — su un kit ne nasce una per componente, e se l'accredito dovuto
+    #    consuma piu' righe di fattura a prezzi diversi ne nascono altrettante.
+    #    Quindi `rows_to_list`, MAI `fetchone()`: qui un fetchone perderebbe in
+    #    silenzio tutte le rettifiche dopo la prima — e la coda, che sottrae la
+    #    quota accreditata, direbbe il vero mentre la risposta mente.
+    #    Colonne: accredito_id, commessa_attivita_id,
+    #    fattura_riga_rettificata_id, qta (unita' di RIGA DI FATTURA),
+    #    qta_partita (unita' di MERCE).
+    def accredita_riga_reso(self, resi_riga_id: int) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM vendite.fn_accredita_riga_reso(%s)",
+                [int(resi_riga_id)],
+            )
+            return rows_to_list(cursor)
 
     # ══════════════════════════════════════════════════════════
     #  LOOKUP — Risoluzione config/sorgente per creazione

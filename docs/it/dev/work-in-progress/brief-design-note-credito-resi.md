@@ -4,7 +4,9 @@
 > + **piano BE/FE** ·
 > **Data**: 2026-08-17 · **rev**: 2026-08-18 (PARTE IV) · **Owner**: Tid ·
 > **Stato**: ✅ **PERIMETRO DB CHIUSO E APPLICATO** (2026-08-18) ·
-> 📋 **PIANO BE/FE SCRITTO, NIENTE ANCORA IMPLEMENTATO**.
+> 🟡 **BE IN CORSO: 3 slice su 9 chiuse e committate** (`24b09c7f2`) ·
+> ⛔ **FE non iniziato** · 🔴 **5 prerequisiti in attesa del team DB**.
+> **Stato slice per slice e ripartenza nel §27.**
 > Ventitré changeSet (`20260818-24` → `-46`) applicati, due pgTAP nuovi (22
 > asserzioni), quattro pgTAP esistenti riallineati, baseline `vendite` e
 > `script` **senza regressioni**, doc concettuale aggiornata. Cronaca
@@ -2911,7 +2913,7 @@ body: { "motivo": "…" }        ← obbligatorio, come sull'annullo riga manual
 * ⛔ **Non si aggiunge nessuna strada per annullare il DOCUMENTO**: quella è la
   pipeline, esiste, ed è la stessa delle fatture (§21.4).
 
-### B3 — La coda si filtra sul documento *(prerequisito di FE-2)*
+### B3 — ✅ FATTO — La coda si filtra sul documento *(prerequisito di FE-2)*
 
 `GET /resi/da-accreditare/?ddt_id=…` e `?ordine_id=…`.
 
@@ -2931,6 +2933,51 @@ EXISTS (SELECT 1 FROM vendite.ordini_righe_fulfillment f
          WHERE f.ddt_riga_id = v.ddt_riga_id AND orr.ordine_id = %s)
 ```
 
+#### ✅ Esito (2026-08-18)
+
+Predicato estratto in `apps/vendite/db/_coda_documento_filtro.py`
+(`filtro_coda_per_documento`), consumato dai **due** chiamanti: il pannello
+(`VenditeRepository._list_coda_su_partite`) e le code
+(`ResiRepository._list_coda` via `_aggiungi_filtro_documento`). Query param
+`?ddt_id=` / `?ordine_id=` su **list ed export** di **entrambe** le code,
+documentati nei quattro `@extend_schema`.
+
+⭐ **Fatto su entrambe le code, non solo sugli accrediti.** Il pannello mostra «da
+accreditare» e «da ri-consegnare» una sopra l'altra: dare il collegamento
+filtrato a una sola sarebbe un'asimmetria visibile a colpo d'occhio — e la regola
+del progetto è simmetria piena subito, non rinviata a una fase 2.
+
+⚠️ **I due id sono alternativi**, con guard nel service (`E_RESO_VALIDAZIONE`) e
+il repository che **non viene chiamato affatto**: accettarli insieme sarebbe due
+domande in una, con la seconda che restringe la prima in silenzio.
+
+⚠️ **E l'export li dichiara** nel foglio «Filtri applicati», per la stessa
+ragione per cui dichiarava già l'etichetta: un file estratto dalla coda filtrata
+su un documento, senza quella riga, si legge come la coda intera.
+
+**Verificato sui dati** (2026-08-18, contesto operatore — le viste hanno la RLS):
+
+```text
+coda accrediti = 3 righe
+  DDT 140   → 1     ORD 240   → 1
+  DDT 15848 → 2     ORD 19151 → 2
+  somma per DDT = totale ✅        id inesistente → 0, non «tutto» ✅
+```
+
+🔴 **E una cosa trovata scrivendo i test**: `apps/vendite/tests/db/` **non aveva
+`__init__.py`**, quindi i 6 test del BB nuovo non venivano scoperti dalla suite —
+passavano solo se invocati per nome. Un test che non gira è peggio di un test
+assente: è copertura che *sembra* esserci. Aggiunto il file; ora la suite ne
+conta 1557 su `apps.vendite` invece di 1551.
+
+⚠️ **L'unica rete sulla stringa SQL sono i test del BB**: i test del service
+situazione merce mockano il repository, quindi il predicato non lo attraversano.
+Verificato per **mutazione** (sostituendo `v.ddt_id` con `v.ordine_riga_id`
+diventano rossi) e a mano sui dati, non per lettura.
+
+**Collaudo**: 6 test nuovi sul BB + 6 sul service, **3757 verdi** sull'intera
+suite.
+
 ✅ **REGOLA DEL 2 — approvata da Tid il 2026-08-18.** Questa è la
 **seconda** occorrenza dello stesso predicato su `vw_resi_da_accreditare` /
 `vw_resi_da_riconsegnare`. Se le due copie divergono, il pannello dirà «8 da
@@ -2944,7 +2991,7 @@ entrambi i chiamanti. **Ok ricevuto: si estrae.**
 aggiunti anche all'**export** della coda, o l'export di una coda filtrata
 esporterebbe tutto.
 
-### B4 — 🔴 Il generatore righe impara la rettifica *(BE-4 + BE-5)* — la slice critica
+### B4 — ✅ FATTO — Il generatore righe impara la rettifica *(BE-4 + BE-5)*
 
 È la slice che decide se la nota di credito è un documento **leggibile accanto
 alla fattura che rettifica** o un foglio di carta con dei numeri sopra.
@@ -3002,6 +3049,42 @@ errore parlante, non lasciata scorrere a prezzo zero.
 **6. Cosa NON cambia**: `natura_doc_id` **non si scrive sulla riga**. Vive
 sulla testata, e la testata la crea `fn_get_or_create_fattura_header` dalla
 chiave a 11 elementi. Il generatore non deve saperne nulla.
+
+#### ✅ Esito (2026-08-18) — e il rischio del kit, misurato invece che temuto
+
+Fatto come progettato, con **una scelta di forma** che il piano non specificava e
+**una trappola trovata scrivendo**.
+
+⭐ **La forma: `fattura_riga_rettificata_id` sta NELLA CHIAVE di gruppo**, non in
+un ramo `if` dentro `_aggrega`. Ne discende, senza scrivere altro, che due
+rettifiche di righe di fattura **diverse** non si fondono mai — anche quando
+articolo, prezzo, uom e IVA coincidono, che è il caso in cui l'errore sarebbe
+invisibile. E due rettifiche della **stessa** riga restano aggregabili, il che è
+corretto: la riga prodotta è comunque la gemella di quella, e il tetto per riga
+di fattura lo tiene il guard DB.
+
+🔴 **La trappola: `sconto_percentuale` ha `DEFAULT 0` a DB e finora la colonna
+non era NOMINATA nella `INSERT`.** Nominarla passando `NULL` per le righe
+normali l'avrebbe portata a NULL su **ogni** riga di fattura futura — un cambio
+di comportamento silenzioso su tutto lo storico, per una colonna che serve alle
+sole note di credito. Risolto con `COALESCE(d.sconto_percentuale, 0)` nella
+`SELECT` della CTE: il default resta il default.
+
+✅ **Il kit non è un rischio, ed è misurato**: al 2026-08-18 i componenti di kit
+in `commesse_attivita` sono **15, tutti con `coeff_qta = 1.000000`** (letto in
+contesto operatore — la tabella ha la RLS, e come applicazione senza GUC il
+conteggio esce 0 e non è un dato). Quindi le quantità dei componenti sono
+uguali fra loro e **R10 regge**, sia sul kit normale sia su quello di rettifica.
+⚠️ La trappola resta **latente**: il giorno in cui un kit avrà un coefficiente
+diverso da 1, `E_KIT_QUANTITA_DISOMOGENEE` fermerà la generazione **anche sul
+percorso normale**. È un difetto pre-esistente, non di questa slice, e va
+guardato quando succederà.
+
+**Collaudo**: 10 test nuovi in `test_fatture_righe_service.py` (28 in tutto nel
+file), **3745 verdi** sull'intera suite. ⭐ E i quattro test centrali sono stati
+**verificati per mutazione**: azzerando il campo nella chiave diventano rossi —
+senza quella prova sarebbero verdi per sottrazione, che è il difetto che il §16
+mette in guardia di non commettere.
 
 #### ⚠️ Il rischio specifico di questa slice: il kit, e non è teorico
 
@@ -3238,6 +3321,68 @@ della fattura 2026/1234 valeva 12 €»*.
 
 ---
 
+## 23-bis. 🔎 La revisione critica di B0/B3/B4 (2026-08-18)
+
+> Richiesta di Tid a slice fatte: *«controllo critico alla ricerca e correzione
+> di bug, codice fragile, duplicato e hardcoded»*. Sette rilievi, tutti
+> **verificati** prima di toccare e **corretti**. Due erano pre-esistenti e uno
+> era un test che non verificava niente — il mio.
+
+| # | Rilievo | Gravità | Esito |
+| --- | --- | --- | --- |
+| **R-1** | `get_group_attivita_input` faceva `articolo_id=int(row[1])` su una colonna che è un **UUID** → `ValueError` a ogni chiamata. La gemella batch faceva `str()`. **Pre-esistente** | 🔴 bug | ✅ risolto **togliendo la seconda copia** — §R-1 |
+| **R-2** | `?ddt_id=0` passava il parsing strict (0 è un intero valido) e produceva `WHERE v.ddt_id = 0`, cioè **coda vuota in silenzio**. Codice mio | 🟠 bug | ✅ guard `> 0` nel service, con test |
+| **R-3** | Guard **asimmetrico** sulla coppia `(tipo_movimento, fattura_riga_rettificata_id)`: bloccava «RETTIFICA senza puntatore», lasciava passare «puntatore senza RETTIFICA». Codice mio | 🟠 fragile | ✅ guard simmetrico, estratto in un metodo unico usato **anche dalla facade** |
+| **R-4** | `gk` usato per **due cose diverse** nella stessa funzione (la chiave dell'attività e quella del gruppo). Codice mio | 🟡 fragile | ✅ rinominata la prima in `chiave` |
+| **R-5** | `_aggiungi_filtro_documento` + due call-site nei wrapper, per un filtro **comune alle due code** quando `_list_coda` è già la sede dei filtri comuni. Codice mio | 🟠 duplicato | ✅ spostato **dentro** `_list_coda`: −20 righe, un solo punto |
+| **R-6** | `"NORMALE"` ×5 e `"RETTIFICA"` ×1 come literal, con **`TIPO_MOVIMENTO_NORMALE` già esistente** in `commesse_repository`. Codice mio | 🟠 hardcoded | ✅ costanti; aggiunta `TIPO_MOVIMENTO_RETTIFICA` accanto alla gemella, con il vocabolario del CHECK scritto |
+| **R-7** | Cinque cast `%s::int[]` su colonne **bigint** (`fattura_id`, `uom_id`, `dest_billing_account_id`, `attivita_fatturabili.id`). **Pre-esistente**, nel blocco che B4 modificava | 🟡 fragile | ✅ allargati a `bigint[]`. ⚠️ Trigger **remoto** (gli id di oggi sono decine di migliaia contro un tetto di 2,1 miliardi): non era un difetto in esercizio, ma il cast giusto costa lo stesso |
+
+### R-1 — 🔴 il bug e la duplicazione erano la stessa cosa
+
+Le due letture di `GroupAttivitaInput` — singola e batch — proiettavano le
+**stesse 19 colonne** in due `SELECT` copiate, con **due mapping riga→dataclass
+scritti a mano**. E le due copie erano già divergenti: quella singola castava a
+`int` un UUID.
+
+⭐ **Non l'ho corretto in due punti: ho tolto il secondo punto.** Una costante
+`_GROUP_ATTIVITA_SELECT` e una funzione `_group_attivita_input_da_row`, e il
+difetto non ha più due posti in cui esistere. Il commento in testa alla costante
+racconta perché, così chi la trova non la ri-espande.
+
+⚠️ **Nessun test lo vedeva** — i test mockano il repository — e **nessun percorso
+vivo la invocava**: la facade `pipeline_service.fn_group_attivita_fatturabili`
+non ha chiamanti. Il difetto stava lì ad aspettare il primo. È il motivo per cui
+l'ho corretto invece di lasciarlo: un ramo morto non è un ramo sicuro.
+
+### 🔴 E un test mio che non verificava niente
+
+Scrivendo R-2 ho aggiunto un `test_puntatore_senza_etichetta_rettifica_solleva`
+che importava due simboli e li cancellava. **Verde, e verificava zero.** È
+esattamente il difetto contro cui il §16 mette in guardia, commesso mentre lo
+citavo. Rimosso, e il test vero scritto nel file giusto
+(`test_fatture_righe_service.py`), dove ha accesso al fixture del generatore.
+
+### Come sono state verificate le correzioni
+
+* **mutazione sui guard nuovi**: sabotando il guard simmetrico e quello `> 0`, la
+  suite dà **5 rossi**. Senza questa prova sarebbero verdi per sottrazione;
+* **`EXPLAIN` sul DB vero** per l'SQL che i test non eseguono (i mock coprono il
+  cursore, non la query): il `WITH … unnest(…)` di
+  `batch_insert_righe_and_mark` pianifica, e la proiezione condivisa pianifica in
+  **entrambe** le forme (`= %s` e `= ANY(%s)`) proiettando **19 colonne** — le
+  stesse che il mapper indicizza da `row[0]` a `row[18]`;
+* **3772 test**, un solo rosso: la divergenza `error_policies_generated.py`,
+  che è il DB locale **avanti rispetto a git** (P-5 seminato dal team DB e non
+  ancora pushato). Non è una regressione di queste slice.
+
+⚠️ **Un difetto trovato nella struttura dei test, non nel codice**:
+`apps/vendite/tests/db/` non aveva `__init__.py`, quindi i test del BB nuovo
+**non venivano scoperti** dalla suite. Un test che non gira è copertura che
+*sembra* esserci.
+
+---
+
 ## 24. Sequenza e dipendenze
 
 ```text
@@ -3350,3 +3495,93 @@ disponibile» sposta la contraddizione invece di chiuderla.
 8. ⚠️ **La regola del 2 morde una volta sola in questo giro** (B3, il predicato
    di filtro sul documento): si dichiara a Tid **prima** di estrarre, e si
    aspetta l'ok.
+
+---
+
+## 27. 📍 Stato dei lavori e ripartenza (aggiornato 2026-08-18, sera)
+
+> Da leggere per primo aprendo una chat nuova. Tutto ciò che è marcato ✅ è
+> **committato su `dev/backend-tid`** (`24b09c7f2` «Aggiornamenti BE / FE», più
+> `85593e754` per B0) e ha la suite verde.
+
+### 27.1 Le slice
+
+| Slice | Stato | Dove |
+| --- | --- | --- |
+| **B0** dizionario codici *(BE-6)* | ✅ **FATTO** — 9 codici (8 accredito + `W_MESSAGGIO_ARITA`) e 9 ripieghi | `error_policies_generated.py`, `error_messages_fallback.py` |
+| **B4** generatore righe *(BE-4+BE-5)* | ✅ **FATTO** — niente aggregazione fra rettifiche di righe diverse, prezzo/sconto/IVA copiati dalla riga di fattura, `riga_rettificata_id` scritto, guard simmetrico sulla coppia | `fatture_righe_service.py`, `pipeline_repository.py`, `types.py` |
+| **B3** filtro documento sulle code | ✅ **FATTO** — BB `filtro_coda_per_documento`, `?ddt_id=`/`?ordine_id=` su list **ed export** di **entrambe** le code | `_coda_documento_filtro.py`, `resi_repository.py`, `resi_service.py`, `views_resi.py` |
+| **revisione critica** | ✅ **FATTA** — 7 rilievi corretti, §23-bis | — |
+| **B1** repository + service del verbo | ✅ **FATTO** (2026-08-18, sera) — `ResiRepository.accredita_riga_reso` (`SELECT * FROM fn_()` + `rows_to_list`) e `resi_service.accredita_riga_reso`; 7 test, verificati per **mutazione** (4 rossi sabotando fetchone / forma SQL / cast / slicing) e **binding provato sul DB vero** con `EXPLAIN` (Function Scan: nome, arita' e forma `SELECT * FROM` reggono **senza eseguire il corpo**) | `resi_repository.py`, `resi_service.py`, `tests/db/test_resi_repository_accredito.py` |
+| **B5** la natura esce dal backend *(BE-10)* | 🟢 **libero** | `natura_doc_id` non è nominata da nessun punto di `backend/apps/` |
+| **B7** legame riga↔riga nel drawer fattura | 🟢 **libero** | il dato arriva con B4 |
+| **B2** endpoint del verbo | 🟡 scrivibile, **non consegnabile** | serve **P-1** (azione di processo) |
+| **B6** task pipeline legame documentale | 🟡 handler scrivibile, **irraggiungibile** | serve **P-2** (registry) |
+| **B2-bis** annullo dell'accredito | 🔴 **fermo** | serve **P-5** (madre) |
+| **B8** test | 🟡 parziale | i test di B3/B4 sono scritti; mancano quelli del verbo e lo smoke end-to-end |
+| **F1 → F6** tutto il frontend | ⛔ **non iniziato** | F1/F3 dipendono da B2 |
+
+### 27.2 🔴 I cinque prerequisiti, e uno è a metà strada
+
+Il brief di passaggio è
+[brief-db-note-credito-prerequisiti-be-fe.md](brief-db-note-credito-prerequisiti-be-fe.md).
+
+| # | Cosa | Stato al 2026-08-18 sera |
+| --- | --- | --- |
+| **P-1** | azione `accredita_riga_reso` | 🟡 **nel DB vivo, NON in git** (verificato 2026-08-18 sera: `config.azioni_processo` id **31**, `pericolosa=t`, `attivo=t`, `user_insert=titodb`; il CSV di `80_data` si ferma a id 30) |
+| **P-2** | registry task `popola_fatture_rettifiche` | 🟡 **nel DB vivo, NON in git**: registry id **21** + impl `default` → `popola_fatture_rettifiche_default`, e il task e' nel JSON `processi` delle pipeline **4 e 6**. In git: solo la fn `fn_popola_fatture_rettifiche` (`20260818-41`), nessuna riga di registry |
+| **P-3** | gate `fn_check_rinuncia_reversibile` (soglia **al verbo**) | ⏳ attesa |
+| **P-4** | i quattro valori del sezionale | ✅ confermati, **nessun lavoro** |
+| **P-5** | madre `fn_annulla_accredito_riga_reso` | 🟡 **iniziata, invariata**: i tre codici errore (`E_ACCREDITO_ANNULLO_NON_AMMESSO`, `E_ACCREDITO_MOTIVO_OBBLIGATORIO`, `E_ACCREDITO_NON_TROVATO`) sono **nel DB vivo**, la fn **no**. ⭐ Le loro `note` a catalogo dicono gia' due decisioni di merito che il brief di passaggio non chiedeva: l'annullo **rifiuta l'intero accredito** e non una parte (N rettifiche per consumo LIFO e per componente di kit: annullarne una parte lascerebbe la coda a chiedere un residuo insoddisfabile — «la stessa dottrina di `E_ACCREDITO_QUOTA_NON_COPERTA`, allo specchio»), e un **secondo** annullo cade su `E_ACCREDITO_NON_TROVATO` perche' dopo il primo le righe di ponte non ci sono piu' (stato osservabile identico a «mai accreditato»). Sono materia di **B2-bis**: il messaggio dell'endpoint deve dire quale delle due strade prendere |
+| **P-6** | registri non intestati, due emittenti che emettono | ⏳ cantiere suo |
+
+### 27.3 ⚠️ Il rosso che si trova aprendo la chat, e non è una regressione
+
+```bash
+ZEROERP_TEST_DB_E2E=1 ./manage-test.sh
+# 1 FAIL: test_il_file_generato_e_allineato_al_catalogo
+```
+
+**Il DB locale è AVANTI rispetto a git**: il team DB ha seminato i tre codici di
+P-5 (714 voci a catalogo contro 711 nel modulo generato) e non ha ancora pushato
+il CSV. **Non rigenerare** `error_policies_generated.py` in questo stato: si
+aggancerebbe il ramo BE a un changeSet non mergiato, e in CI il cancello
+diventerebbe rosso **al contrario** (la CI ricostruisce il suo DB dal changelog e
+non troverebbe i tre codici).
+
+✅ **Cosa fare, quando il team DB pusha**: `git pull`, poi
+
+```bash
+./manage-env.sh genera_error_policies          # riscrive il modulo
+./manage-env.sh genera_error_policies --check   # deve uscire pulito
+```
+
+e **scrivere i tre messaggi di ripiego** in `error_messages_fallback.py` —
+obbligatori per ogni codice vivo, senza `%s` (§21.2-bis: il segnaposto a
+catalogo è la *ragione* del ripiego, non la sua esenzione).
+
+Senza la flag `ZEROERP_TEST_DB_E2E` la suite è **verde: 3772 test**.
+
+### 27.4 Da dove ripartire
+
+1. ✅ **B1 fatta** (vedi §27.1).
+2. **B5** e **B7** in parallelo: sono letture, non toccano il verbo.
+3. **B2** — 🔴 **P-1 non blocca più lo sviluppo, e questo cambia il rischio, non
+   lo toglie** (vedi il riquadro qui sotto); **F1+F3 insieme** subito dopo (§24:
+   dare il verbo lasciando il pannello che dichiara «non disponibile» sposta la
+   contraddizione del §21.1 invece di chiuderla).
+
+⚠️ **E l'ordine che resta vincolante**: B4 doveva precedere il verbo, ed è fatto.
+Da adesso il rischio si sposta: **appena B2+P-1 esistono, un giro di
+fatturazione non presidiato emetterà il documento** — worker e cron girano.
+Prima di consegnare il verbo, lo smoke end-to-end di B8 va eseguito.
+
+🔴 **E dal 2026-08-18 sera quella frase non è più al futuro: P-1 è nel DB di
+sviluppo** (§27.2). Il fail-closed che teneva il verbo al solo SUPER_ADMIN su
+questo ambiente **non c'è più**: il giorno in cui B2 esiste, il primo click
+scrive la rettifica e il primo giro di fatturazione emette la nota di credito.
+E la strada indietro **non esiste ancora**: P-5 è la fn che manca, e il reset di
+lotto — l'unica leva disponibile — non annulla l'accredito, **rigenera** la NC al
+giro dopo (§21.4). Quindi: **lo smoke B8 prima di B2**, non dopo. E in git il CSV
+non c'è: in CI e su qualunque DB ricostruito il verbo resta fail-closed, quindi
+**il seed va comunque chiesto pushato** — non è «già fatto».

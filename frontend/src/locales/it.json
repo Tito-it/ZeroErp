@@ -643,7 +643,8 @@
       "RESELLER": "Reseller",
       "VETTORE": "Vettori",
       "BANK": "Istituti di credito"
-    }
+    },
+    "col_emittenti": "Emittenti presso cui è cliente"
   },
   "context": {
     "tooltip_search": "Ricerca universale",
@@ -1853,7 +1854,8 @@
       "col_unita": "Unità",
       "col_motivo": "Motivo",
       "col_azione": "Azione suggerita",
-      "col_stato": "Stato"
+      "col_stato": "Stato",
+      "col_emittente": "Emittente"
     },
     "dashboard_competenza": {
       "page_title": "Competenza fatturazione",
@@ -2496,7 +2498,8 @@
         "fattura_non_pre_fiscale": "La fattura è oltre lo stato pre-fiscale: non può essere eliminata.",
         "fattura_numerata": "La fattura è già numerata: eliminarla aprirebbe un buco nella numerazione fiscale."
       },
-      "azione_non_piu_disponibile": "Azione non più disponibile su questo lotto: la lista è stata aggiornata."
+      "azione_non_piu_disponibile": "Azione non più disponibile su questo lotto: la lista è stata aggiornata.",
+      "col_emittente": "Emittente"
     },
     "offerte": {
       "stato_info": {
@@ -3220,7 +3223,8 @@
       "col_motivo": "Motivo",
       "apri_documento": "Apri documento",
       "nessun_documento": "Nessun documento aperto con i filtri correnti.",
-      "non_caricato": "Dati non ancora caricati."
+      "non_caricato": "Dati non ancora caricati.",
+      "col_emittente": "Emittente"
     },
     "situazione_merce": {
       "anticipato": "di cui {n} gia' fatturati e non ancora spediti",

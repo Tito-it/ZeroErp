@@ -23,6 +23,21 @@ Indice test (0..N):
  2. test_nessun_lista_codice_punta_a_una_lista_inesistente
  3. test_lista_ed_export_stanno_o_cadono_insieme
  4. test_il_codice_citato_dal_frontend_esiste_a_catalogo
+
+🕳️ **Buco dichiarato, e vale la pena saperlo**: qui NON c'e' un presidio che
+   leghi la riga di catalogo al MAPPING del repository — «la colonna emittente
+   dichiarata a catalogo arriva davvero nella riga?». Ci ho provato due volte,
+   e nessuna delle due reggeva: la prima cercava la chiave in tutti i
+   repository concatenati (verde anche togliendola da uno), la seconda contava
+   le occorrenze (12 liste attese contro 15 mapping: il margine la rende cieca).
+   Il presidio vero richiede una mappa lista → repository che oggi non esiste —
+   il legame passa dalla view, e non e' ispezionabile staticamente.
+   Quello che copre il rischio oggi: `test_liste_configurabili_seed` lega
+   catalogo e whitelist di ORDINAMENTO per lista (ed e' vero, non un
+   conteggio), e sulla lista pilota
+   `test_ogni_campo_sorgente_di_catalogo_e_una_chiave_della_riga` apre il
+   catalogo davvero. Sulle altre cinque il mapping e' stato verificato
+   ESEGUENDO le query contro il database (Fase E, 2026-08-18).
 """
 
 import ast
@@ -32,7 +47,11 @@ import unittest
 from functools import lru_cache
 from pathlib import Path
 
-from apps.core.tests.test_liste_configurabili_seed import _LISTE, _seed
+from apps.core.tests.test_liste_configurabili_seed import (
+    _LISTE,
+    _colonne_attive,
+    _seed,
+)
 
 
 # Scopo: root del repo, cercata risalendo (vedi test_liste_configurabili_seed).
