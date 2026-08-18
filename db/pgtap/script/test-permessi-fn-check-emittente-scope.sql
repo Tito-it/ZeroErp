@@ -178,14 +178,18 @@ DELETE FROM config.profili_accesso_bindings
  WHERE identita_digitale_id = (SELECT identita_id FROM tmp_refs_scope)
    AND profilo_accesso_id = 9100;
 
--- 8) OPERATIVO senza whitelist → true (nessuna restrizione)
+-- 8) OPERATIVO senza whitelist → FALSE (fail-closed, P-2a 2026-08-18)
+--    ⚠️ Diceva `true`, «nessuna restrizione»: era il vecchio contratto, non
+--    una fixture rimasta indietro. La riga mancante e' una configurazione
+--    incompleta, non un permesso — e lo stesso utente in SCRITTURA era gia'
+--    rifiutato. Brief perimetro-emittente §2.5.
 SELECT is(
     script.fn_check_user_emittente_scope(
         (SELECT user_id FROM tmp_refs_scope),
         (SELECT emittente_id_1 FROM tmp_emittenti)
     ),
-    true,
-    '8) fn_check_user_emittente_scope: OPERATIVO senza whitelist → true'
+    false,
+    '8) fn_check_user_emittente_scope: OPERATIVO senza whitelist → false (P-2a)'
 );
 
 -- ============================================================

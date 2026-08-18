@@ -1,0 +1,103 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Passo 4 (P-1) — MOVIMENTO 1: si imposta o si cambia parent_account_id.
+#
+# ⚠️ PERCHE' E' UN TRIGGER `AFTER` E SI CHIAMA `z95`, contro la convenzione
+#    che vuole i guard in fascia `_a10_` (BEFORE). La ragione e' misurata,
+#    non stilistica:
+#
+#    L'emittente di un BA NON esiste finche' non esiste la sua riga in
+#    emittenti_fiscali_billing_account — e quella riga la crea il trigger
+#    `trg_billing_account_z90_link_ef_ins`, che e' AFTER INSERT. Un guard
+#    BEFORE INSERT risolverebbe l'emittente del figlio sul GESTORE GLOBALE
+#    (il ripiego), non su quello che il figlio avra' un istante dopo:
+#    rifiuterebbe ogni albero creato da un operatore il cui emittente non
+#    e' il gestore globale. E' lo stesso motivo per cui la policy RLS di
+#    INSERT su billing_account e' gate-only, ed e' scritto nel suo changeSet.
+#
+#    L'alternativa — replicare in un BEFORE la logica di link_ef — sarebbe
+#    un SECONDO risolutore dell'emittente. Il brief lo esclude esplicitamente
+#    (§11.2): un guard che risolve diversamente dalla fatturazione dichiara
+#    omogeneo un albero che la fattura spacca comunque.
+#
+#    `z95` perche' deve ordinarsi DOPO `z90_link_ef` (i trigger di pari
+#    timing scattano in ordine alfabetico di nome).
+#
+# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260818-09-create-trg-billing-account-guard-albero-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260818-09-create-trg-billing-account-guard-albero-emittente
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        P-1 movimento 1: guard «albero omogeneo per emittente» sull'impostazione
+        o modifica di parent_account_id. AFTER INSERT OR UPDATE OF
+        parent_account_id, fascia z95 per ordinarsi DOPO z90_link_ef, che e' il
+        trigger che crea il mapping da cui l'emittente del BA nuovo si risolve.
+        Nessuna eccezione per il pregresso, nessuna GUC di override.
+        Brief P-1 §3.5, §11.2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche' AND p.proname = 'fn_guard_albero_ba_emittente';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_guard_albero_emittente()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- Il lavoro vero sta nel guard, che e' SECURITY DEFINER perche'
+                  -- deve vedere padre e figli anche fuori dal perimetro di chi
+                  -- scrive (brief §11.1). Qui resta solo il quando.
+                  PERFORM anagrafiche.fn_guard_albero_ba_emittente(NEW.id);
+                  RETURN NULL;   -- trigger AFTER: il valore di ritorno e' ignorato
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_billing_account_guard_albero_emittente() IS
+                  'Trigger AFTER INSERT OR UPDATE OF parent_account_id su '
+                  'anagrafiche.billing_account: delega a fn_guard_albero_ba_emittente la '
+                  'verifica che l''albero non attraversi due emittenti. AFTER e non BEFORE '
+                  'perche'' l''emittente del BA nuovo nasce dal mapping creato da '
+                  'trg_billing_account_z90_link_ef_ins, che e'' AFTER INSERT: un guard BEFORE '
+                  'leggerebbe il gestore globale al posto dell''emittente reale. Brief P-1.';
+
+              DROP TRIGGER IF EXISTS trg_billing_account_z95_guard_albero_emittente_ins_upd
+                  ON anagrafiche.billing_account;
+
+              CREATE TRIGGER trg_billing_account_z95_guard_albero_emittente_ins_upd
+                  AFTER INSERT OR UPDATE OF parent_account_id
+                  ON anagrafiche.billing_account
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_billing_account_guard_albero_emittente();
+
+              COMMENT ON TRIGGER trg_billing_account_z95_guard_albero_emittente_ins_upd
+                  ON anagrafiche.billing_account IS
+                  'P-1 movimento 1. Fascia z95 (non a10) perche'' deve scattare DOPO '
+                  'z90_link_ef: i trigger di pari timing girano in ordine alfabetico di nome, '
+                  'e prima di link_ef il BA nuovo non ha ancora il suo emittente.';
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_billing_account_z95_guard_albero_emittente_ins_upd
+                  ON anagrafiche.billing_account;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_billing_account_guard_albero_emittente();

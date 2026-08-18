@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # `vw_dash_competenza_gruppi`: esporre il CLIENTE DI FATTURAZIONE.
 #   Secondo dei due passi DB del brief
-#   docs/it/dev/work-in-progress/brief-db-dash-competenza-gruppi-cliente-e-ricerca.md
+#   docs/it/dev/work-done/brief-db-dash-competenza-gruppi-cliente-e-ricerca.md
 #   (§5.2, decisioni D-2/D-3/D-4/D-5). Consuma la colonna aggiunta dal -04.
 #
 # ── IL BISOGNO, IN UNA RIGA ─────────────────────────────────────────────

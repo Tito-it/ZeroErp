@@ -427,14 +427,16 @@ SELECT is(
 
 SELECT pg_temp.unset_admin((SELECT identita_id FROM tmp_ctx));
 
--- 16) OPERATIVO senza whitelist → true (nessuna restrizione)
+-- 16) OPERATIVO senza whitelist → FALSE (fail-closed, P-2a 2026-08-18)
+--     ⚠️ Diceva `true`. Vedi la nota al test 28: non e' una fixture da
+--     riallineare, e' il contratto che e' cambiato.
 SELECT is(
     script.fn_check_user_emittente_scope(
         (SELECT user_id FROM tmp_ctx),
         (SELECT emittente_id FROM tmp_ctx)
     ),
-    true,
-    '16) fn_check_user_emittente_scope: OPERATIVO senza whitelist → true'
+    false,
+    '16) fn_check_user_emittente_scope: OPERATIVO senza whitelist → false (P-2a)'
 );
 
 -- Inserisce whitelist per emittente_id (reale)
@@ -603,13 +605,19 @@ DELETE FROM config.user_emittenti_fiscali
  WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
 SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
 
--- 28) OPERATIVO senza whitelist → NULL (nessuna restrizione)
+-- 28) OPERATIVO senza whitelist → '{}' (fail-closed, P-2a 2026-08-18)
+--     ⚠️ Diceva `NULL`, cioe' «nessuna restrizione». Nella convenzione a tre
+--     stati NULL = TUTTO e '{}' = NIENTE: un operatore senza riga finiva
+--     dalla parte che apre, ed era indistinguibile da un super admin.
+--     Questa asserzione verifica anche l'EREDITA': _sr_ids non e' stata
+--     modificata da P-2a, cambia perche' e' un wrapper sulla canonica _pk_ids.
+--     Brief perimetro-emittente §2.5.
 SELECT is(
     script.fn_get_emittenti_scope_sr_ids(
         (SELECT user_id FROM tmp_ctx)
     ),
-    NULL::bigint[],
-    '28) fn_get_emittenti_scope_sr_ids: OPERATIVO senza whitelist → NULL'
+    '{}'::bigint[],
+    '28) fn_get_emittenti_scope_sr_ids: OPERATIVO senza whitelist → ''{}'' (P-2a)'
 );
 
 -- 29) DISABILITATO → array vuoto (nessun accesso)

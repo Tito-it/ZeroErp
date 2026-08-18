@@ -337,7 +337,7 @@
 - [vw_resi_da_riconsegnare](manual/vw_resi_da_riconsegnare.md) — (rev 2026-07-26)
 - [vw_resi_lista](manual/vw_resi_lista.md) — (rev 2026-07-13)
 - [vw_resi_righe_effettive](manual/vw_resi_righe_effettive.md) — (latest review 2026-07-18)
-- [vw_situazione_merce_ordine](manual/vw_situazione_merce_ordine.md) — (rev 2026-08-17 — nuova)
+- [vw_situazione_merce_ordine](manual/vw_situazione_merce_ordine.md) — (rev 2026-08-18 — soglia dell'impegno · rev 2026-08-17 — nuova)
 - [vw_stato_sorgente_contratto](manual/vw_stato_sorgente_contratto.md) — (latest review 2026-07-02) `vendite.vw_stato_sorgente_contratto` è il **resolver del dominio CONTRATTO** per la proiezione dello stato di dominio (brief-db-proiezione-stato-dominio, deliverable D2): espone il **descrittore normalizzato** dello stato **vivo** di ogni contratto — stato nativo + mapping `fase`/`esito`/`terminale` dichiarato su `config.stati_doc_contratti` — con chiave `(sorgente_tipo_id, sorgente_uid)` coerente con `pratiche.pratiche_sorgenti`.
 - [vw_stato_sorgente_ddt](manual/vw_stato_sorgente_ddt.md) — (latest review 2026-07-18)
 - [vw_stato_sorgente_offerta](manual/vw_stato_sorgente_offerta.md) — (latest review 2026-07-02) `vendite.vw_stato_sorgente_offerta` è il **resolver del dominio OFFERTA** per la proiezione dello stato di dominio (brief-db-proiezione-stato-dominio, deliverable D2): espone il **descrittore normalizzato** dello stato **vivo** di ogni offerta commerciale — stato nativo + mapping `fase`/`esito`/`terminale` dichiarato su `config.stati_doc_offerte` — con chiave `(sorgente_tipo_id, sorgente_uid)` coerente con `pratiche.pratiche_sorgenti`.

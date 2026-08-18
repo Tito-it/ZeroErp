@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # `vw_dash_competenza_attivita`: esporre `billing_account_id` della commessa.
 #   Primo dei due passi DB del brief
-#   docs/it/dev/work-in-progress/brief-db-dash-competenza-gruppi-cliente-e-ricerca.md
+#   docs/it/dev/work-done/brief-db-dash-competenza-gruppi-cliente-e-ricerca.md
 #   (§5.1). Il secondo e' il changeSet -05, che lo consuma.
 #
 # ── PERCHE' ─────────────────────────────────────────────────────────────

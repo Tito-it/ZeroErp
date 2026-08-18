@@ -2090,6 +2090,16 @@ nuova è **accanto**, non al posto — la stessa forma della raccomandazione del
 cambi rispetto alla richiesta. Brief chiuso e archiviato:
 [work-done/brief-db-situazione-merce-ordine.md](../work-done/brief-db-situazione-merce-ordine.md).
 
+🟡 **RIAPERTO il 2026-08-18** — rilievo del perimetro BE: alla vista mancava la
+**soglia sullo stato dell'ordine**, gemella della decisione D1 sul DDT. 60 righe
+su 107, tutte su ordini in bozza, dichiaravano «N da spedire» — un'intenzione
+presentata come un arretrato — e su un ordine annullato mai spedito il numero
+sarebbe rimasto lì per sempre. Rilievo accolto, **rimedio modificato**: la riga
+NON sparisce (il pannello è per ordine e sparire lo renderebbe vuoto), sparisce
+il numero — `da_spedire` NULL e `stato` col **settimo** valore `NON_IMPEGNATA`,
+con le partite che hanno la precedenza. changeSet `20260818-06`, pgTAP a 17.
+⛔ **Non applicato.** Analisi e richieste BE/FE nel §10 del brief archiviato.
+
 ⚠️ **Applicata al DB di sviluppo, non ancora pushata**: il backend ci costruisce
 sopra introspezionando la vista viva, ma **non è mergiabile prima del push**.
 
