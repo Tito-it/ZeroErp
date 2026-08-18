@@ -1573,7 +1573,7 @@ ricordarsi che i posti da toccare sono **due**, non uno.
 
 #### 🔴 Aggiornamento 2026-08-18 — non è più «quando si aprirà». Il cantiere è aperto ORA
 
-Il brief [brief-db-note-credito-prerequisiti-be-fe.md](../work-in-progress/brief-db-note-credito-prerequisiti-be-fe.md),
+Il brief [brief-db-note-credito-prerequisiti-be-fe.md](brief-db-note-credito-prerequisiti-be-fe.md),
 richiesta **P-6**, chiede di intestare i registri di numerazione agli emittenti:
 oggi tutti e tre hanno `emittente_soggetto_ruolo_id = NULL` e **due aziende
 numerano sulla stessa serie** — dal gennaio 2026, sulle fatture.

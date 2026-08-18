@@ -3130,7 +3130,8 @@
       "rinuncia_riapri_conferma": "Undo the final declaration for {qta}? The quantity becomes reshippable again and the order goes back to partially fulfilled.",
       "rinuncia_riaperta": "Declaration undone: the quantity is reshippable again",
       "rinuncia_reason": {
-        "riga_inesistente": "The specified return line does not exist"
+        "riga_inesistente": "The specified return line does not exist",
+        "accredito_eseguito": "The quantity has already been credited: to reopen the waiver you must first cancel the credit"
       },
       "riconsegna_col_resa": "Returned (base)",
       "riconsegna_col_riconsegnata": "Redelivered (base)",
