@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Passo 7 (P-2b) — il controllo automatico chiesto dalla decisione 3 di §7.
+#
+# LA REGOLA CHE PRESIDIA (il «prezzo del biglietto»):
+#     una lista puo' dichiarare multi_emittente = true SOLO se espone
+#     l'emittente nella riga.
+#
+# Senza questo controllo il flag sarebbe un adesivo: qualcuno lo mette per far
+# sparire un fastidio, e da quel momento la lista mescola emittenti senza dirlo
+# — cioe' esattamente il difetto che il flag doveva impedire. Con il controllo,
+# il flag e' qualcosa che si GUADAGNA facendo un lavoro.
+#
+# ⚠️ DEVE RESTARE A ZERO RIGHE. Una riga qui e' una lista con l'adesivo
+#    «collaudato» addosso e nessun collaudo dietro.
+#
+# ⚠️ Il controllo e' PURO CATALOGO, ed e' il motivo per cui e' onesto e
+#    facile: non deve sapere niente delle viste ne' del backend. Non prova che
+#    la colonna arrivi a video (quello dipende dal repository di dominio per le
+#    liste con vista_sql NULL): prova che qualcuno l'abbia almeno dichiarata.
+#
+# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260818-18-create-vw-liste-multi-emittente-non-certificate-mctit.yaml
+
+  - changeSet:
+      id: 20260818-18-create-vw-liste-multi-emittente-non-certificate
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        P-2b: il controllo automatico della decisione 3 — elenca le liste con
+        multi_emittente = true PRIVE di una colonna emittente in
+        ui.lista_colonna. Deve restare a zero righe: una riga e' l'adesivo
+        «collaudato» senza collaudo. Puro catalogo. Brief P-2b, §7 decisione 3.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - columnExists:
+              schemaName: ui
+              tableName: lista_definizione
+              columnName: multi_emittente
+          - tableExists:
+              schemaName: ui
+              tableName: lista_colonna
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_liste_multi_emittente_non_certificate AS
+              SELECT ld.id      AS lista_id,
+                     ld.codice  AS lista_codice,
+                     ld.descrizione,
+                     ld.schema_dati,
+                     ld.attivo  AS lista_attiva
+                FROM ui.lista_definizione ld
+               WHERE ld.multi_emittente
+                 AND NOT EXISTS (
+                         SELECT 1
+                           FROM ui.lista_colonna lc
+                          WHERE lc.lista_id = ld.id
+                            AND lc.attivo
+                            -- Convenzione: il campo canonico e'
+                            -- `emittente_ragione_sociale` (le sei liste
+                            -- documento + la pilota). Il match e' un po' piu'
+                            -- largo perche' in catalogo esistono anche
+                            -- `emittente_codice` e `emittenti_descrizione`:
+                            -- dichiarano comunque l'emittente nella riga.
+                            AND lc.campo_sorgente ~ '^emittent');
+
+              COMMENT ON VIEW dbops.vw_liste_multi_emittente_non_certificate IS
+                  'Controllo automatico di P-2b (brief perimetro-emittente, §7 decisione 3): '
+                  'liste che dichiarano multi_emittente = true SENZA esporre l''emittente in '
+                  'nessuna colonna attiva di ui.lista_colonna. ⚠️ DEVE restare a ZERO righe: '
+                  'una riga qui e'' una lista con l''adesivo «collaudato» addosso e nessun '
+                  'collaudo dietro — cioe'' il flag usato per far sparire un fastidio invece '
+                  'che per dichiarare un lavoro fatto. E'' il «prezzo del biglietto» reso '
+                  'verificabile a macchina: una lista si guadagna il flag esponendo '
+                  'l''emittente nella riga (P-4), non prima. Controllo di PURO CATALOGO: non '
+                  'sa nulla delle viste ne'' del backend, quindi non prova che la colonna '
+                  'arrivi a video — prova che qualcuno l''abbia dichiarata.';
+      rollback:
+        - sql:
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_liste_multi_emittente_non_certificate;

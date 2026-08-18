@@ -1,45 +1,45 @@
-id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert
-1,anagrafiche.clienti,Elenco Clienti,anagrafiche,vw_clienti_lista,t,2026-05-07 00:00:00,mctit
-2,anagrafiche.soggetti,Soggetti,anagrafiche,NULL,t,2026-05-22 00:00:00,mctit
-3,anagrafiche.fornitori,Fornitori,anagrafiche,vw_fornitori_dettaglio,t,2026-05-24 00:00:00,mctit
-4,vendite.contratti,Contratti,vendite,vw_contratti_lista,t,2026-06-02 00:00:00,mctit
-5,vendite.preventivi,Preventivi,vendite,vw_preventivi_lista,t,2026-06-03 00:00:00,mctit
-6,vendite.offerte,Offerte commerciali,vendite,vw_offerte_commerciali_lista,t,2026-06-03 00:00:00,mctit
-7,vendite.ordini,Ordini di vendita,vendite,vw_ordini_lista,t,2026-06-03 00:00:00,mctit
-8,vendite.ddt,DDT di vendita,vendite,vw_ddt_lista,t,2026-07-09 00:00:00,mctit
-9,vendite.resi,Resi di vendita,vendite,vw_resi_lista,t,2026-07-13 00:00:00,mctit
-10,vendite.resi_da_accreditare,Resi da accreditare,vendite,vw_resi_da_accreditare,t,2026-07-14 00:00:00,mctit
-11,vendite.resi_da_riconsegnare,Resi da ri-consegnare,vendite,vw_resi_da_riconsegnare,t,2026-07-14 00:00:00,mctit
-12,vendite.lotti,Lotti di fatturazione,vendite,NULL,t,2026-07-30 00:00:00,mctit
-13,anagrafiche.categorie_clienti,Categorie clienti,anagrafiche,categorie_clienti,t,2026-07-31 00:00:00,mctit
-14,config.utilities_tipi_ruolo,Matrice utility / tipi ruolo,config,NULL,t,2026-07-31 00:00:00,mctit
-15,anagrafiche.indirizzi,Indirizzi,anagrafiche,vw_indirizzi_dettaglio,t,2026-07-31 00:00:00,mctit
-16,config.tipi_ruolo_tipi_indirizzo,Matrice tipi ruolo / tipi indirizzo,config,NULL,t,2026-07-31 00:00:00,mctit
-17,pratiche.pratiche,Pratiche,pratiche,NULL,t,2026-07-31 00:00:00,mctit
-18,anagrafiche.emittenti_fiscali,Emittenti fiscali,anagrafiche,NULL,t,2026-07-31 00:00:00,mctit
-19,anagrafiche.emittente_billing_account,Billing account dell emittente fiscale,anagrafiche,NULL,t,2026-07-31 00:00:00,mctit
-20,catalogo.uom_tipi,Tipi di unita di misura,catalogo,uom_tipi,t,2026-07-31 00:00:00,mctit
-21,catalogo.unita_misura,Unita di misura,catalogo,NULL,t,2026-07-31 00:00:00,mctit
-22,catalogo.conversioni_uom,Conversioni tra unita di misura,catalogo,NULL,t,2026-07-31 00:00:00,mctit
-23,vendite.promo_articoli,Promozioni articolo,vendite,NULL,t,2026-08-01 00:00:00,mctit
-24,documenti.template_documenti,Template documenti,documenti,NULL,t,2026-08-01 00:00:00,mctit
-25,documenti.template_asset,Asset dei template documenti,documenti,NULL,t,2026-08-01 00:00:00,mctit
-26,catalogo.articoli,Articoli di catalogo,catalogo,vw_articoli_dettaglio,t,2026-08-01 00:00:00,mctit
-27,vendite.listini,Listini di vendita,vendite,NULL,t,2026-08-01 00:00:00,mctit
-28,anagrafiche.operatori,Operatori,anagrafiche,NULL,t,2026-08-01 00:00:00,mctit
-29,config.email_account,Account email,config,NULL,t,2026-08-01 00:00:00,mctit
-30,config.email_template,Template email,config,NULL,t,2026-08-01 00:00:00,mctit
-31,config.email_log,Log invii email,config,NULL,t,2026-08-01 00:00:00,mctit
-32,storico.audit_log,Log di audit,storico,NULL,t,2026-08-01 00:00:00,mctit
-33,anagrafiche.categorie_clienti_listini,Listini per categoria cliente,anagrafiche,NULL,t,2026-08-01 00:00:00,mctit
-34,dbops.coda_lavori,Coda lavori,dbops,NULL,t,2026-08-02 00:00:00,mctit
-35,vendite.fatture_stampa_coda,Coda stampa documenti,vendite,NULL,t,2026-08-02 00:00:00,mctit
-36,vendite.approvazioni_prezzo,Coda approvazioni prezzo,vendite,NULL,t,2026-08-02 00:00:00,mctit
-37,vendite.listini_righe,Righe di versione listino,vendite,NULL,t,2026-08-03 00:00:00,mctit
-38,vendite.commesse_attivita,Attivita di commessa,vendite,NULL,t,2026-08-03 00:00:00,mctit
-39,vendite.dash_aperto_documenti,Situazione aperta — documenti,vendite,NULL,t,2026-08-03 00:00:00,mctit
-40,vendite.dash_backlog_documenti,Backlog — documenti fermi,vendite,NULL,t,2026-08-03 00:00:00,mctit
-41,vendite.dash_competenza_errori,Competenza — errori vivi,vendite,NULL,t,2026-08-03 00:00:00,mctit
-42,vendite.dash_competenza_gruppi,Competenza — gruppi fatturabili,vendite,NULL,t,2026-08-03 00:00:00,mctit
-43,vendite.dash_competenza_commesse,Competenza — drill-down commesse,vendite,NULL,t,2026-08-03 00:00:00,mctit
-44,vendite.fondi_fattura_da_decidere,Fondi fattura — casi da decidere,vendite,NULL,t,2026-08-15 00:00:00,mctit
+id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert,multi_emittente
+1,anagrafiche.clienti,Elenco Clienti,anagrafiche,vw_clienti_lista,t,2026-05-07 00:00:00,mctit,f
+2,anagrafiche.soggetti,Soggetti,anagrafiche,NULL,t,2026-05-22 00:00:00,mctit,f
+3,anagrafiche.fornitori,Fornitori,anagrafiche,vw_fornitori_dettaglio,t,2026-05-24 00:00:00,mctit,f
+4,vendite.contratti,Contratti,vendite,vw_contratti_lista,t,2026-06-02 00:00:00,mctit,f
+5,vendite.preventivi,Preventivi,vendite,vw_preventivi_lista,t,2026-06-03 00:00:00,mctit,f
+6,vendite.offerte,Offerte commerciali,vendite,vw_offerte_commerciali_lista,t,2026-06-03 00:00:00,mctit,f
+7,vendite.ordini,Ordini di vendita,vendite,vw_ordini_lista,t,2026-06-03 00:00:00,mctit,f
+8,vendite.ddt,DDT di vendita,vendite,vw_ddt_lista,t,2026-07-09 00:00:00,mctit,f
+9,vendite.resi,Resi di vendita,vendite,vw_resi_lista,t,2026-07-13 00:00:00,mctit,f
+10,vendite.resi_da_accreditare,Resi da accreditare,vendite,vw_resi_da_accreditare,t,2026-07-14 00:00:00,mctit,f
+11,vendite.resi_da_riconsegnare,Resi da ri-consegnare,vendite,vw_resi_da_riconsegnare,t,2026-07-14 00:00:00,mctit,f
+12,vendite.lotti,Lotti di fatturazione,vendite,NULL,t,2026-07-30 00:00:00,mctit,f
+13,anagrafiche.categorie_clienti,Categorie clienti,anagrafiche,categorie_clienti,t,2026-07-31 00:00:00,mctit,f
+14,config.utilities_tipi_ruolo,Matrice utility / tipi ruolo,config,NULL,t,2026-07-31 00:00:00,mctit,f
+15,anagrafiche.indirizzi,Indirizzi,anagrafiche,vw_indirizzi_dettaglio,t,2026-07-31 00:00:00,mctit,f
+16,config.tipi_ruolo_tipi_indirizzo,Matrice tipi ruolo / tipi indirizzo,config,NULL,t,2026-07-31 00:00:00,mctit,f
+17,pratiche.pratiche,Pratiche,pratiche,NULL,t,2026-07-31 00:00:00,mctit,f
+18,anagrafiche.emittenti_fiscali,Emittenti fiscali,anagrafiche,NULL,t,2026-07-31 00:00:00,mctit,f
+19,anagrafiche.emittente_billing_account,Billing account dell emittente fiscale,anagrafiche,NULL,t,2026-07-31 00:00:00,mctit,f
+20,catalogo.uom_tipi,Tipi di unita di misura,catalogo,uom_tipi,t,2026-07-31 00:00:00,mctit,f
+21,catalogo.unita_misura,Unita di misura,catalogo,NULL,t,2026-07-31 00:00:00,mctit,f
+22,catalogo.conversioni_uom,Conversioni tra unita di misura,catalogo,NULL,t,2026-07-31 00:00:00,mctit,f
+23,vendite.promo_articoli,Promozioni articolo,vendite,NULL,t,2026-08-01 00:00:00,mctit,f
+24,documenti.template_documenti,Template documenti,documenti,NULL,t,2026-08-01 00:00:00,mctit,f
+25,documenti.template_asset,Asset dei template documenti,documenti,NULL,t,2026-08-01 00:00:00,mctit,f
+26,catalogo.articoli,Articoli di catalogo,catalogo,vw_articoli_dettaglio,t,2026-08-01 00:00:00,mctit,f
+27,vendite.listini,Listini di vendita,vendite,NULL,t,2026-08-01 00:00:00,mctit,f
+28,anagrafiche.operatori,Operatori,anagrafiche,NULL,t,2026-08-01 00:00:00,mctit,f
+29,config.email_account,Account email,config,NULL,t,2026-08-01 00:00:00,mctit,f
+30,config.email_template,Template email,config,NULL,t,2026-08-01 00:00:00,mctit,f
+31,config.email_log,Log invii email,config,NULL,t,2026-08-01 00:00:00,mctit,f
+32,storico.audit_log,Log di audit,storico,NULL,t,2026-08-01 00:00:00,mctit,f
+33,anagrafiche.categorie_clienti_listini,Listini per categoria cliente,anagrafiche,NULL,t,2026-08-01 00:00:00,mctit,f
+34,dbops.coda_lavori,Coda lavori,dbops,NULL,t,2026-08-02 00:00:00,mctit,f
+35,vendite.fatture_stampa_coda,Coda stampa documenti,vendite,NULL,t,2026-08-02 00:00:00,mctit,f
+36,vendite.approvazioni_prezzo,Coda approvazioni prezzo,vendite,NULL,t,2026-08-02 00:00:00,mctit,f
+37,vendite.listini_righe,Righe di versione listino,vendite,NULL,t,2026-08-03 00:00:00,mctit,f
+38,vendite.commesse_attivita,Attivita di commessa,vendite,NULL,t,2026-08-03 00:00:00,mctit,f
+39,vendite.dash_aperto_documenti,Situazione aperta — documenti,vendite,NULL,t,2026-08-03 00:00:00,mctit,f
+40,vendite.dash_backlog_documenti,Backlog — documenti fermi,vendite,NULL,t,2026-08-03 00:00:00,mctit,f
+41,vendite.dash_competenza_errori,Competenza — errori vivi,vendite,NULL,t,2026-08-03 00:00:00,mctit,f
+42,vendite.dash_competenza_gruppi,Competenza — gruppi fatturabili,vendite,NULL,t,2026-08-03 00:00:00,mctit,f
+43,vendite.dash_competenza_commesse,Competenza — drill-down commesse,vendite,NULL,t,2026-08-03 00:00:00,mctit,f
+44,vendite.fondi_fattura_da_decidere,Fondi fattura — casi da decidere,vendite,NULL,t,2026-08-15 00:00:00,mctit,f

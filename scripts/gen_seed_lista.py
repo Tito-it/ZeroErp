@@ -295,7 +295,10 @@ NUCLEO_ORDINABILE: dict[str, tuple[str, ...]] = {
 }
 
 CAMPI_DEF = ["id", "codice", "descrizione", "schema_dati", "vista_sql", "attivo",
-             "data_insert", "user_insert"]
+             "data_insert", "user_insert",
+              # P-2b: senza questa voce il generatore riscriverebbe il CSV
+              # SENZA la colonna, spegnendo il flag su tutte le liste in silenzio.
+              "multi_emittente"]
 CAMPI_COL = ["id", "lista_id", "codice", "etichetta", "etichetta_estesa", "campo_sorgente",
              "tipo_colonna", "tipo_dato", "formato", "larghezza_default", "ordine_default",
              "allineamento", "gruppo", "gruppo_ordine", "filtrabile", "ordinabile",
