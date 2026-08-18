@@ -3,7 +3,8 @@
 > **Origine**: nota del 2026-08-18 su `E_ARTICOLO_NON_COMPOSITO` — «il `%s` arriva
 > a video letterale: nessun chiamante lo riempie».
 > **Stato**: catalogo corretto (2 codici) · presidio scritto · **8 correzioni ai
-> chiamanti da decidere e applicare** (§7).
+> chiamanti specificate, non applicate** (§7) — decise il 2026-08-18, vanno in un
+> lotto loro subito dopo questo; poi il ripiego di `fn_log_and_raise_error` (§8, D-2).
 > **Perimetro**: DB. Le richieste al backend stanno in §10.
 
 ---
@@ -241,15 +242,16 @@ ma il messaggio dice «non ha valori per». Segnalato, non toccato.
 
 ---
 
-## 8. Decisioni aperte per Tid
+## 8. Decisioni — prese il 2026-08-18
 
-**D-1 — Si applicano le 8 correzioni in questo lotto o in uno suo?**
+**D-1 — Si applicano le 8 correzioni in questo lotto o in uno suo? → LOTTO SUO, SUBITO DOPO.**
 Sono 8 funzioni vive su 6 schemi. Il lotto è meccanico (una riga di argomenti
 ciascuno) ma tocca guard di dominio, e finché non entra il test 5 resta rosso in
 baseline. *Raccomandazione: lotto suo, subito dopo questo, così il rosso dura
-poco e la revisione resta leggibile.*
+poco e la revisione resta leggibile.* ✅ **Deciso così.** Prossimo passo:
+changeSet `20260818-47` .. `-54`, uno per funzione, corpo dalla doc auto-gen.
 
-**D-2 — `fn_log_and_raise_error` va resa a prova di arità?**
+**D-2 — `fn_log_and_raise_error` va resa a prova di arità? → SÌ, IN UN CHANGESET A SÉ.**
 Oggi, se il conteggio non torna, la funzione che serve a **riportare** un errore
 lo **distrugge**. Si può fare in modo che, quando i valori sono meno dei
 segnaposto, invece di alzare `22023` cada sul template grezzo (cioè degradi da
@@ -260,9 +262,17 @@ Il contro è reale: un ripiego rende il prossimo disallineamento silenzioso. Con
 il test 5 in piedi non lo sarebbe — il presidio parla comunque — quindi le due
 cose stanno insieme bene. *Raccomandazione: sì, ma solo dopo D-1, e come
 changeSet suo:* è la funzione con **1001 punti di chiamata**, non è il posto
-dove mettere due modifiche nello stesso commit.
+dove mettere due modifiche nello stesso commit. ✅ **Deciso così**: entra
+**dopo** il lotto delle 8, da sola. A quel punto le due metà si tengono — il
+ripiego impedisce che un errore di dominio si perda, il test 5 impedisce che il
+ripiego diventi il modo normale di funzionare.
 
-**D-3 — Il test 5 va anche in `guardrail_codice_errore_strutturato.sql`?**
+⚠️ Nota per chi la scriverà: il ripiego va nel ramo `format()`, non intorno al
+`RAISE`. E deve distinguere i due esiti — `array_length` `NULL` (già oggi salta
+la `format()`) è la classe A e resta com'è; il ripiego serve solo al caso
+«array non vuoto ma corto», che è l'unico che oggi alza.
+
+**D-3 — Il test 5 va anche in `guardrail_codice_errore_strutturato.sql`? → NON ORA.**
 Il pgTAP in CI gira sulle PR verso `main` e sui push a `Tito-dev` che toccano
 `db/`; il guardrail gira a ogni `ci-validate`. Portarci il controllo (come
 controllo `(G)`) lo anticiperebbe. *Raccomandazione: no per ora* — sarebbe la
@@ -313,4 +323,5 @@ osservato: se da qualche parte c'è un test che si aspetta il generico, va rifat
 - `db/changelog/migrations_v2/80_data/sql/config/messaggi_errore.csv` — 2 righe
 - `db/pgtap/script/test-catalogo-messaggi-errore-completo.sql` — test 4/5 scritti, vecchio 4 → 6
 - `db/pgtap/baseline-rossi.tsv` — registrato il rosso con la causa
-- *(da fare, §7)* 8 changeSet in `20_code/`, da `20260818-47`
+- *(da fare, §7 — lotto successivo)* 8 changeSet in `20_code/`, da `20260818-47`
+- *(da fare, §8 D-2 — dopo il lotto delle 8)* 1 changeSet su `script.fn_log_and_raise_error`
