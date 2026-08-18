@@ -1746,7 +1746,7 @@ allarme è entrato insieme alla generalizzazione.
 |                                            |                                                                                                                                                                                     |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Cantiere 2** — pannello situazione merce | ✅ **sbloccato**: legge `vw_partite_merce`, che copre ordine, DDT, righe manuali e kit con una lettura sola, e porta `stato` già tradotto                                            |
-| **Cantiere 3** — nota di credito           | ✅ **sbloccato**, e con tre avvertenze precise (§19.3) — la più importante è che `fn_get_stato_push_segment` è l'**unica** cintura che impedirà di ri-fatturare una riga rettificata |
+| **Cantiere 3** — nota di credito           | ✅ **sbloccato**, e con tre avvertenze precise (§19.3) — la più importante è che `fn_get_stato_push_segment` è l'**unica** cintura che impedirà di ri-fatturare una riga rettificata. ⭐ **PARTITO il 2026-08-18**: analisi critica e piano DB (nove slice) nella PARTE II di [brief-design-note-credito-resi.md](brief-design-note-credito-resi.md). ⚠️ Lì il **NC-3 di questo §19.3 è corretto**: la cintura tiene, ma nel caso ri-consegna **impedisce ciò che deve succedere** — la correzione `20260817-11/-12` ha chiuso il segmento vergine su cui la «riga 9» di luglio contava |
 | **Backend / Frontend**                     | ✅ otto richieste in §19 **tutte fatte** (BE 2026-08-17, FE 2026-08-18)                                                                                                                                |
 
 ### 20.5 Le tre cose che questo cantiere ha insegnato
@@ -2276,10 +2276,82 @@ verde perché **nessuna riga attraversa la divergenza**, non perché la
 divergenza non ci sia. La sua intestazione dice «indipendente dai dati»: vero
 della forma, falso della copertura.
 
-✅ **Presa in carico dal team DB** (2026-08-18) come **richiesta**, non come
-residuo accettato. La richiesta giusta non è «aggiungi un motivo nuovo» ma:
-**riallineare `fn_ddt_push_diagnosi` alla partita, e far girare l'equivalenza
-anche sulle fixture** — il motivo nuovo cade fuori da sé.
+✅ **CHIUSA dal team DB il 2026-08-18** — `20260818-20`, più il pgTAP spostato.
+⛔ **Scritta, non applicata**: la applica chi ha il DB.
+
+**La diagnosi ora legge la partita**, con gli stessi join del lister (gli `INNER`
+diventano `LEFT` perché la diagnosi deve *spiegare* l'esclusione, non ripeterla).
+Via la ridistribuzione greedy, via il caso speciale sui compositi.
+
+⭐ **E i tre motivi nuovi non sono stati ri-derivati: si leggono da
+`vw_partite_merce.stato`**, che *è già* la decomposizione di «differenza IS NULL»
+nelle sue tre cause (`e_riconsegna` → `RICONSEGNA`, `NOT conta_fatturazione` →
+`NON_FATTURABILE`, `NOT misurabile` → `NON_MISURABILE`). Ricostruirle con
+predicati propri avrebbe creato la **terza** sede della stessa regola mentre se
+ne chiudeva la seconda.
+
+Le rank passano da 7 a 11, e i motivi della partita stanno **prima** di
+`DDT_CONTATORE`: una partita senza conto ha `differenza` NULL, quindi quantità 0,
+quindi il contatore scatterebbe per primo mascherando la ragione vera — che è il
+difetto di oggi. ⚠️ Rinumerare si può: `fn_available_actions_ddt` fa
+`ORDER BY motivo_rank` ma mappa **per stringa**, e il suo `CASE` ha un
+`ELSE 'DDT_NON_PUSHABILE'`, quindi i motivi nuovi cadono da soli nel generico
+senza chiavi i18n mancanti.
+
+| rank | motivo | |
+| --- | --- | --- |
+| 1 | `DDT_ANNULLATO` / `DDT_RESO` | |
+| 2 | `DDT_SOLO_TRASPORTO` | ⭐ ora copre anche la causale **assente** |
+| 3 | `DDT_SENZA_BA` | |
+| 4 | `DDT_ROUTED` | |
+| 5 | `DDT_MERCE_IN_VIAGGIO` | |
+| 6 | `DDT_FATTURA_DA_ORDINE` | |
+| 7 | `DDT_RICONSEGNA` | 🆕 |
+| 8 | `DDT_NON_FATTURABILE` | 🆕 |
+| 9 | `DDT_NON_MISURABILE` | 🆕 ← il motivo che il §19.4 chiedeva |
+| 10 | `DDT_SENZA_PARTITA` | 🆕 fallback |
+| 11 | `DDT_CONTATORE` | c'è un conto, ed è ≤ 0 |
+
+⭐ **Il rank 10 è deliberato**: una riga esclusa dal lister non deve **mai** uscire
+con motivo NULL, perché per questa funzione NULL significa «eleggibile» — la
+bugia peggiore possibile. Se un join non previsto escludesse una riga, il
+fallback la marca invece di dichiararla buona.
+
+**Due divergenze minori chiuse per strada**, nessuna delle due nel rilievo
+originale:
+
+* **causale assente** — il lister fa `JOIN causali_trasporto … AND fatturabile IS TRUE`,
+  un `INNER`, quindi una causale NULL esclude. La diagnosi vecchia la trattava
+  come `MERCE_IN_VIAGGIO` in un ramo e la lasciava **passare** nell'altro: un DDT
+  standalone SPEDITO senza causale usciva *eleggibile* mentre il lister lo
+  escludeva. Ora il predicato è `IS NOT TRUE`, che copre entrambe;
+* **billing account** — il lister ci fa un `INNER JOIN`; qui resta `LEFT` più il
+  rank 3, che è la differenza fra escludere e spiegare.
+
+**La rete**: il test 1 di `test-fn-available-actions-ddt-reason-catch-all-v1` è
+stato **spostato dopo il `CREATE TEMP TABLE f`** — dove le fixture nascono
+davvero — e si è aggiunto un **test 8** di coerenza `rank ↔ motivo`, perché un
+`CASE` che dimentica un ramo non fallisce: restituisce NULL, cioè «eleggibile».
+Con 11 rank rinumerate a mano quel rischio è concreto.
+
+⚠️ **Attesa dichiarata**: con l'equivalenza che ora gira sulle fixture, il test 1
+può **andare in rosso** — ed è il punto. Se resta verde vuol dire che nemmeno le
+fixture attraversano la divergenza, e allora la rete va **allargata**, non solo
+spostata. Va misurato, non dato per buono.
+
+### 23.2-bis 📌 Il seguito, che non era nella richiesta
+
+`DDT_NON_MISURABILE` oggi cade nel generico `DDT_NON_PUSHABILE`: la funzione
+sa il motivo, il **drawer** ancora no. Chiudere davvero il reclamo del §19.4
+(«chi cerca *perché* non lo trova») vuole un ramo proprio in
+`script.fn_available_actions_ddt` più una chiave i18n
+`vendite.ddt.push_commessa_reason.non_misurabile`.
+
+⛔ **Non fatto qui, di proposito**: è una `CREATE OR REPLACE` su una funzione
+plpgsql di ~250 righe per aggiungere due righe a un `CASE`, e riprodurla intera
+per quello è più rischio che valore — soprattutto perché l'`ELSE` esistente
+garantisce che nulla si rompa nel frattempo. Slice a sé, con la richiesta FE
+accanto.
 
 ### 23.3 Il secondo residuo, con un invariante invece di una dichiarazione
 
@@ -2292,6 +2364,20 @@ dal conto.
 *nessun ponte copre meno della quantità della sua riga di DDT*. Una
 dichiarazione invecchia da sola e nessuno se ne accorge; un invariante fallisce
 il giorno in cui l'assunzione cade.
+
+✅ **Scritto il 2026-08-18**: `db/pgtap/vendite/test-ponte-riconsegna-copre-riga-v1.sql`.
+⛔ Non applicato — non ha changeSet, è solo un test da far girare.
+
+Due asserzioni, e la prima è quella che di solito manca: **la copertura della
+misura**. Se in quel contesto non esiste nessun ponte, il file fa `skip()` con
+la ragione scritta invece di passare — perché un invariante su un insieme vuoto
+è verde per sottrazione, che è il modo in cui questo cantiere si è già quasi
+fatto ingannare due volte.
+
+⚠️ **Non è un guard e non deve diventarlo**: il caso misto non è vietato dal
+modello, è solo non gestito dal conto. Se comparirà, la decisione — vietarlo,
+spezzare la riga, o contare per quantità invece che per riga — va presa allora,
+con il caso vero davanti.
 
 ### 23.4 ⛔ Perché il brief NON va in `work-done/`
 
