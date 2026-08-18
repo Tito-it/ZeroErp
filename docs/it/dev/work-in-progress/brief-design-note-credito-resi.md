@@ -2656,7 +2656,7 @@ verdi.**
 > Questi vanno mandati **prima** di aprire il ramo BE.
 >
 > ✅ **Tutti e sei approvati da Tid il 2026-08-18** (sera). Il brief di
-> passaggio è [brief-db-note-credito-prerequisiti-be-fe.md](brief-db-note-credito-prerequisiti-be-fe.md);
+> passaggio è [brief-db-note-credito-prerequisiti-be-fe.md](../work-done/brief-db-note-credito-prerequisiti-be-fe.md);
 > le tre decisioni che li hanno chiusi sono nel §21.4.
 
 | # | Cosa | Perché blocca | Blocca chi |
@@ -2669,7 +2669,7 @@ verdi.**
 | **P-6** | 🔴 **Nessun registro è intestato a un emittente** — misurato il 2026-08-18: i tre registri (`Front-office` 3, `Back-office` 4, `NC` 5) hanno tutti `emittente_soggetto_ruolo_id` NULL, e gli **emittenti fiscali attivi sono 2**, che ✅ **emettono entrambi** (Tid). Non è un difetto della NC: vale sulle fatture da gennaio. §21.5 | due aziende emittenti **condividono lo stesso progressivo**, ed è un difetto fiscale in esercizio. La macchina sa separarli da `20260818-32` (N2b): manca la **configurazione**, non il codice | ⛔ non blocca BE/FE. Sul **registro NC** si separa subito e costa un registro + due righe di mapping; sui registri **3 e 4** è un cantiere suo, perché tocca numerazione già emessa |
 
 📌 **Tutti e sei sono nel brief di passaggio**
-[brief-db-note-credito-prerequisiti-be-fe.md](brief-db-note-credito-prerequisiti-be-fe.md),
+[brief-db-note-credito-prerequisiti-be-fe.md](../work-done/brief-db-note-credito-prerequisiti-be-fe.md),
 pronto per `dev/db-tid`.
 
 ⚠️ **P-3, P-5 e P-6 questo piano li ha *trovati*, non ereditati.** La slice DB
@@ -3517,7 +3517,7 @@ disponibile» sposta la contraddizione invece di chiuderla.
 
 ---
 
-## 27. 📍 Stato dei lavori e ripartenza (aggiornato 2026-08-18, fine giornata)
+## 27. 📍 Stato dei lavori e ripartenza (aggiornato 2026-08-19)
 
 > Da leggere per primo aprendo una chat nuova. ⚠️ È un'istantanea: prima di
 > citarla, verificare contro il codice.
@@ -3549,21 +3549,22 @@ disponibile» sposta la contraddizione invece di chiuderla.
 | **sede dell'annullo** *(decisione Tid)* | ✅ **FATTA** (2026-08-18) — drawer del reso: `gia_accreditato` sulle righe (dalla fn unica del DB), punto d'innesto `extraRowActions` nel BB delle righe, dialog condiviso con la coda. §30.2 | `resi_repository.py`, `RigheMasterDetailTable.vue`, `ResoRigheTable.vue`, `AccreditoAnnullaDialog.vue` |
 | **F4 → F6** il resto del frontend | ⛔ **non iniziato** | F4/F5 dipendono da B5/B7 |
 
-### 27.2 ✅ I prerequisiti: quattro chiusi, due aperti (e i due aperti non sono di BE/FE)
+### 27.2 ✅ I prerequisiti: **tutti e sette chiusi** (2026-08-19)
 
 Il brief di passaggio è
-[brief-db-note-credito-prerequisiti-be-fe.md](brief-db-note-credito-prerequisiti-be-fe.md),
-che la sera del 18 è cresciuto di 962 righe: contiene ora l'**analisi critica del
-team DB** (§7, rilievi C-1→C-7) e la **cronaca dell'esecuzione** (§9).
+[brief-db-note-credito-prerequisiti-be-fe.md](../work-done/brief-db-note-credito-prerequisiti-be-fe.md)
+— **chiuso e spostato in `work-done` il 2026-08-19**. Contiene l'**analisi
+critica del team DB** (§7, rilievi C-1→C-7) e la **cronaca dell'esecuzione**
+(§9), oltre all'esito di ogni passo.
 
 | # | Cosa | Stato al 2026-08-18, tarda sera |
 | --- | --- | --- |
 | **P-1** | azione `accredita_riga_reso` | ✅ **in git e applicata** — `azioni_processo.csv` id **31**, area 2, `pericolosa=t` |
 | **P-2** | registry task `popola_fatture_rettifiche` | ✅ **in git e applicato** — registry **21** + impl `default → popola_fatture_rettifiche_default` (`is_default=t`), il task nelle pipeline **4 e 6** fra `numera_fatture` e `stampa_documenti_lotto`, **più** due righe di `fatturazione_pipeline_task_policy` in `RESUME_TASK` che il piano non chiedeva |
-| **P-3** | gate `fn_check_rinuncia_reversibile` | 🔴 **aperto**, è il loro passo 4. ⭐ C-3: si auto-ripara grazie a P-5 (l'annullo **cancella** le righe di ponte, quindi la rinuncia torna reversibile da sé) — ma solo perché P-5 cancella invece di marcare. Un soft-delete futuro romperebbe il gate **in silenzio** |
+| **P-3** | gate `fn_check_rinuncia_reversibile` | ✅ **CHIUSO** (`20260819-02`, 8/8 pgTAP) — il motivo `ACCREDITO_ESEGUITO` (codice **929**) esce quando esiste una riga in `resi_righe_accrediti`, e `fn_riapri_riconsegna_reso` lo solleva da sé: la madre non è stata toccata. ⚠️ La soglia è **al verbo**, non all'emissione (D-NC-12): fra accredito e fattura la quota è già impegnata e la riga è già fuori dalla coda. ⭐ E si auto-ripara, perché l'annullo **cancella** il ponte — verificato nei due versi |
 | **P-4** | i quattro valori del sezionale | ✅ confermati, **nessun lavoro** |
 | **P-5** | madre `fn_annulla_accredito_riga_reso` | ✅ **APPLICATA E VERDE** (`20260818-71`, 17 pgTAP). Firma: `(p_resi_riga_id bigint, p_motivo text)` → **`RETURNS TABLE`** con le stesse 5 colonne della madre (`accredito_id, commessa_attivita_id, fattura_riga_rettificata_id, qta, qta_partita`) |
-| **P-6** | registri non intestati, due emittenti che emettono | 🔴 **aperto**, loro passo 5 — cantiere suo, non blocca niente di BE/FE |
+| **P-6** | registri non intestati, due emittenti che emettono | ✅ **CHIUSO** (`20260819-03/-04/-05`, 6/6 pgTAP + 12 suite di regressione sulla numerazione) — i tre registri esistenti all'emittente `sr 72`, tre nuovi per `sr 159`, e le quattro mappature `(tipo_doc, natura)`. Le serie si ripetono per **canale** (R2/R1/vuota): la serie significa canale, non azienda. Le 6 fatture già numerate restano sul registro 3 — l'intestazione **dichiara** la storia, non la riscrive |
 | **P-7** | il `meta` kit della rettifica | ✅ **APPLICATA E VERDE** (`20260818-75`) — il `meta` della riga rettificata si **eredita** invece di copiarne due chiavi, più il guard `E_ACCREDITO_KIT_SENZA_PADRE` (928). Trovata dallo smoke B8, §28 |
 
 #### ⭐ Le tre correzioni che il team DB ha fatto alle mie richieste, e vanno lette
@@ -3627,24 +3628,47 @@ stesso step, e lì l'esito parziale è la scelta giusta.
 
 ### 27.4 Da dove ripartire
 
-1. ✅ **B6 fatta** (§27.1): handler, registry, whitelist e dipendenza d'ordine.
-2. ✅ **B8 smoke end-to-end fatto** — e ha trovato quello che i test mockati non
-   potevano trovare: **§28**. Il giro su articolo semplice è verde dalla coda al
-   legame documentale; sul **kit** si ferma prima del documento.
-3. ✅ **B2 e B2-bis fatti** (§29).
-4. ✅ **F1+F2+F3 fatti** (§30). La contraddizione del §21.1 è chiusa: i tre posti
-   dicono la stessa cosa.
-5. ✅ **Sede dell'annullo**: drawer del reso (§30.2), fatta.
-6. **B5** e **B7**: sono letture, non toccano il verbo. **F4/F5** ne discendono.
-7. **F6** le due verifiche e l'annuncio.
+> ⚠️ Questa è la lista di **cosa resta**, non il diario di cosa è stato fatto:
+> quello sta nel §27.1 e nei §28→§32. Un elenco di ✅ in testa alla sezione
+> «ripartenza» fa scorrere l'occhio oltre proprio le righe che contano.
 
-⚠️ **E l'ordine che resta vincolante**: B4 doveva precedere il verbo, ed è fatto.
-Da adesso il rischio è tutto sull'altro lato — **P-1 è applicata, quindi il
-fail-closed che teneva il verbo al solo SUPER_ADMIN non c'è più**: il giorno in
-cui B2 esiste, il primo click scrive la rettifica e il primo giro di fatturazione
-emette la nota di credito. La strada indietro **adesso esiste** (P-5), ma è
-stretta: vale solo finché **tutte** le rettifiche sono `NON_EMESSA`. Quindi lo
-smoke end-to-end di B8 va eseguito **prima** di consegnare il verbo, non dopo.
+**Prerequisiti DB: nessuno.** Tutti e sette chiusi (§27.2), brief di passaggio
+in `work-done`.
+
+#### Lavoro rimasto
+
+1. **B5** — la natura del documento esce dal backend *(BE-10)*. Oggi
+   `natura_doc_id` non è nominata da nessun punto di `backend/apps/`: il drawer
+   del lotto non «assume» che siano tutte fatture, **non ha il dato**. È una
+   lettura, non tocca il verbo.
+2. **B7** — il legame riga↔riga si legge dal drawer fattura. Il dato lo scrive
+   già B4 (`riga_rettificata_id`).
+3. **F4** e **F5** discendono da B5 e B7: la natura a video, il legame a video.
+4. **F6** — le due verifiche del §21.2 (label del motivo, `valore_fermo` NULL
+   che non diventa `0 €`) e l'annuncio.
+
+#### Decisioni aperte, non lavoro
+
+* 🔴 **«Aggiungere un emittente» non è più una riga di anagrafica** (§32.3).
+  Tre strade, la mia proposta è l'avviso nel drawer. Non è del cantiere ma nasce
+  da qui;
+* 🟡 **Il `reason_key` della rinuncia non lo rende nessuna superficie** (§32.2):
+  la chiave i18n c'è, il meccanismo (`fn_available_actions_reso` +
+  `useDrawerActions`) pure, ma nessuno li collega. Vale anche per
+  `riga_inesistente`, ferma da luglio.
+
+#### ⚠️ Cosa NON è più un rischio, e cosa lo è ancora
+
+Il rischio del §27.3 — «appena B2 esiste un giro non presidiato emette il
+documento» — **è stato attraversato**: B4 era finito prima del verbo, lo smoke
+end-to-end ha percorso il giro intero su dati veri (in transazione annullata)
+**prima** che B2 fosse consegnato, e il kit ha smesso di fermarsi prima del
+documento.
+
+Resta vero, e va detto a chi consegna: **il verbo è a portata di click e i
+worker girano**. La strada indietro esiste (P-5) ma è stretta — vale solo finché
+**tutte** le rettifiche sono `NON_EMESSA`; oltre, l'unica leva è il reset del
+lotto, che **rigenera** la nota al giro dopo invece di annullarla.
 
 ---
 
@@ -3981,3 +4005,77 @@ anche un buco: se il fixture non produce attività fatturabili, ora il test lo
 * **smoke rieseguito** dopo il refactor del fixture: **15/15**, un solo
   `INSERT INTO fatturazione_lotti` nel file invece di due;
 * **suite 3812 verde** in entrambe le modalità, build ed eslint puliti.
+
+---
+
+## 32. ✅ P-3 e P-6 chiusi — e le due cose che ne discendono (2026-08-19)
+
+> Push del team DB: `20260819-02` → `-05`. Con questi il brief di passaggio è
+> **chiuso su tutti e sette i passi** ed è stato spostato in `work-done`.
+
+### 32.1 Cosa è arrivato
+
+**P-3 — il gate della rinuncia si è svegliato.**
+`script.fn_check_rinuncia_reversibile` non ritorna più sempre `[]`: produce
+`ACCREDITO_ESEGUITO` (codice **929** `E_RESO_RINUNCIA_ACCREDITO_ESEGUITO`,
+`CONFLITTO_STATO`) quando esiste una riga in `resi_righe_accrediti`, e
+`fn_riapri_riconsegna_reso` lo solleva da sé — **la madre non è stata toccata**,
+che era il pregio del disegno di luglio.
+
+⚠️ La condizione è «accreditata», **non** «nota di credito emessa»: la finestra
+pericolosa si apre al **verbo**, e aspettare il documento avrebbe lasciato
+scoperta la parte più lunga del giro. È la soglia D-NC-12, e ora è codice.
+
+⭐ E si auto-ripara: annullato l'accredito la rinuncia torna riapribile, perché
+l'annullo **cancella** le righe di ponte. È il vincolo reciproco di C-3, ora
+verificato nei due versi.
+
+**P-6 — i registri sono intestati.** Tre all'emittente `sr 72`, tre nuovi per
+`sr 159`, quattro mappature `(tipo_doc, natura)`. Le serie si ripetono per
+**canale** (R2 front-office, R1 back-office, vuota per NC): la serie significa
+canale, non azienda. Le 6 fatture già numerate restano sul registro 3 —
+l'intestazione **dichiara** la storia, non la riscrive.
+
+⭐ E una correzione che vale la pena tenere: il piano dava per mancante il guard
+sulla disattivazione di un emittente. **Esisteva già**
+(`anagrafiche.trgfn_emittenti_fiscali_guard_attivo`), e l'ha trovato il pgTAP
+diventando verde subito. Il piano cercava la famiglia
+`prevent_deactivate_if_children`: **cercava nel posto sbagliato**, non nel posto
+vuoto. È la stessa lezione del §R-1 di §23-bis, all'incontrario.
+
+### 32.2 Le due richieste al lato applicativo — fatte
+
+* **FE-1, la chiave i18n**: `vendite.resi.rinuncia_reason.accredito_eseguito` in
+  `it.json` e `en.json`, sul modello di `…riga_inesistente`. ⚠️ **Verificata
+  contro la funzione, non contro il messaggio**: il `reason_key` che il DB
+  scrive è esattamente quella stringa;
+* **BE, il codice 929**: `error_policies_generated.py` era **già rigenerato** —
+  con il ripiego senza `%s` — nel commit del BE. Verificato, non rifatto: DB e
+  CSV in pari a **718** codici, `--check` pulito, e il cancello dei ripieghi
+  verde.
+
+⚠️ **Una cosa che ho misurato e che vale la pena sapere**: oggi **nessuna
+superficie rende quel `reason_key`**. La madre solleva con il *codice* e mette i
+motivi nel `context`, che finisce in `dbops.error_log` e non arriva al client —
+quindi l'operatore legge il messaggio di catalogo, che è corretto e completo. La
+chiave è a posto e non costa nulla, ma il giro si chiude davvero solo il giorno
+in cui una **capability** del reso esporrà il motivo (il meccanismo c'è già:
+`fn_available_actions_reso` porta `reason_key`, e `useDrawerActions` lo rende).
+Vale anche per `riga_inesistente`, che è lì da luglio e non lo legge nessuno.
+
+### 32.3 🔴 Quello che resta aperto, e non è del cantiere
+
+Da oggi **non esiste più un registro generico**: il livello 4 del fallback
+(«utility NULL e emittente NULL») non copre più nessuno. Un **terzo emittente**
+prenderebbe `E_CONFIG_MANCANTE` alla prima fattura.
+
+È fail-closed ed è giusto. Ma il punto in cui si paga è a **monte**, e quel
+punto **esiste già nel frontend**: `EmittenteFiscaleDrawer.vue` +
+`createEmittenteFiscale` creano un emittente in tre click, e nulla dice che
+servono anche tre registri e quattro mappature.
+
+📌 Le tre strade (avviso nel drawer · seed automatico dei registri · niente, con
+l'errore parlante alla prima fattura) sono elencate in fondo al brief di
+passaggio, con i rispettivi costi. **Serve una decisione**: la mia proposta è
+l'avviso nel drawer — il seed automatico no, perché «quale serie» è una scelta
+fiscale e sceglierla per conto dell'operatore è la cosa che D-P6-2 evita.

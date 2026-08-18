@@ -1,7 +1,7 @@
 # Sei richieste al team DB dal lato applicativo · *nota di credito*
 
 > **Cos'è.** Le sei cose che il piano BE/FE di
-> [brief-design-note-credito-resi.md](brief-design-note-credito-resi.md)
+> [brief-design-note-credito-resi.md](../work-in-progress/brief-design-note-credito-resi.md)
 > (**PARTE IV**, §21 → §26) **non può scrivere da sé**, perché stanno nel
 > database. Tutto il resto del piano procede in parallelo e non le aspetta —
 > tranne dove è scritto il contrario nella colonna «blocca».
@@ -30,6 +30,26 @@
 > chiuse** (D-P6-1/2/3, §8 passo 5).
 
 ---
+
+## ✅ CHIUSO — 2026-08-19
+
+> Tutti e sette i passi sono applicati e verdi. Il brief è in `work-done`.
+>
+> Ultimi due: **P-3** (`20260819-02`, il gate della rinuncia si è svegliato) e
+> **P-6** (`20260819-03/-04/-05`, i registri sono intestati agli emittenti),
+> con `test-rinuncia-gate-accredito-v1` 8/8, `test-registri-per-emittente-v1`
+> 6/6 e 12 suite di regressione sulla numerazione. **P-7** era già chiuso
+> (`20260818-75`).
+>
+> Le due richieste al lato applicativo che ne discendevano sono **fatte**
+> (2026-08-19): la chiave i18n `vendite.resi.rinuncia_reason.accredito_eseguito`
+> in `it.json`/`en.json`, e `error_policies_generated.py` per il codice **929**
+> `E_RESO_RINUNCIA_ACCREDITO_ESEGUITO` — quest'ultimo era già rigenerato, con il
+> ripiego, nel commit del BE.
+>
+> ⚠️ **Resta una conseguenza operativa aperta, e non è del cantiere**: da oggi
+> non esiste più un registro generico, quindi «aggiungere un emittente» non è
+> più una riga di anagrafica. Vedi in fondo.
 
 ## ▶ Stato del cantiere — 2026-08-18, fine giornata
 
@@ -1728,8 +1748,39 @@ numerazione.
 
 ## Riferimenti
 
-* Brief principale e piano BE/FE: [brief-design-note-credito-resi.md](brief-design-note-credito-resi.md)
+* Brief principale e piano BE/FE: [brief-design-note-credito-resi.md](../work-in-progress/brief-design-note-credito-resi.md)
   — decisioni §21.4, numeratore §21.5, piano §22 → §26
-* Partita generalizzata (cantiere 1): [brief-design-partita-merce-generalizzata.md](brief-design-partita-merce-generalizzata.md)
-* Pannello situazione merce (cantiere 2): [brief-design-situazione-merce-ordine.md](brief-design-situazione-merce-ordine.md)
+* Partita generalizzata (cantiere 1): [brief-design-partita-merce-generalizzata.md](../work-in-progress/brief-design-partita-merce-generalizzata.md)
+* Pannello situazione merce (cantiere 2): [brief-design-situazione-merce-ordine.md](../work-in-progress/brief-design-situazione-merce-ordine.md)
 * Perimetro emittente (cantiere **chiuso** il 2026-08-18): [brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](../work-done/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md)
+
+---
+
+## ⚠️ Dopo la chiusura: «aggiungere un emittente» non è più una riga di anagrafica
+
+Conseguenza di P-6, verificata dal lato applicativo il 2026-08-19.
+
+Prima i tre registri avevano `emittente_soggetto_ruolo_id = NULL` e facevano da
+**fallback per chiunque**: il livello 4 di `fn_get_registro_id` («utility NULL e
+emittente NULL») copriva qualunque emittente. Ora ogni registro è intestato,
+quindi un **terzo emittente** prenderebbe `E_CONFIG_MANCANTE` alla prima
+fattura.
+
+⭐ È fail-closed ed è la scelta giusta — meglio un errore parlante che numerare
+sul registro di un'altra azienda. Ma il punto in cui si paga è a **monte**, e
+quel punto esiste già nel frontend: `EmittenteFiscaleDrawer.vue` +
+`createEmittenteFiscale` (POST `/amministrazione/emittenti-fiscali/`) creano un
+emittente in tre click, e nulla dice che servono anche **tre registri e le
+quattro mappature** `(tipo_doc, natura)`.
+
+Le tre strade, per chi la prenderà in carico:
+
+| Strada | Costo | Cosa lascia |
+| --- | --- | --- |
+| **avviso nel drawer** di creazione emittente | FE, piccolo | l'operatore sa cosa manca, ma deve farlo a mano (ed è configurazione DB) |
+| **seed automatico** dei registri alla creazione | DB + BE | l'emittente nasce completo. ⚠️ Ma «quali serie» è una decisione fiscale, non un default |
+| **niente** | zero | il difetto si scopre alla prima fattura, con un errore parlante e nessun documento sbagliato |
+
+📌 Non è stata presa: **serve una decisione**. La terza è difendibile (il
+fail-closed funziona), la prima costa poco. La seconda no: la serie significa
+canale, e sceglierla per conto dell'operatore è la cosa che D-P6-2 evita.

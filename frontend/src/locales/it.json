@@ -3130,7 +3130,8 @@
       "rinuncia_riapri_conferma": "Annullare la dichiarazione di definitività per {qta}? La quantità torna ri-spedibile e l'ordine torna parzialmente evaso.",
       "rinuncia_riaperta": "Dichiarazione annullata: la quantità torna ri-spedibile",
       "rinuncia_reason": {
-        "riga_inesistente": "La riga di reso indicata non esiste"
+        "riga_inesistente": "La riga di reso indicata non esiste",
+        "accredito_eseguito": "La quota è già stata accreditata: per riaprire la rinuncia occorre prima annullare l'accredito"
       },
       "riconsegna_col_resa": "Resa (base)",
       "riconsegna_col_riconsegnata": "Ri-consegnata (base)",
