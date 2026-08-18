@@ -27,6 +27,17 @@ import {
 // gate della fetch e il template.
 export const STADIO_GRUPPI = 'DA_EMETTERE'
 
+// Voce «cliente non determinabile» del filtro cliente: sono i gruppi il cui BA
+// di fatturazione non e' risolvibile (tipicamente il padre e' fuori dallo scope
+// dell'operatore). Si MOSTRA e non si nasconde — una riga che non si riesce ad
+// attribuire e' precisamente la riga che sfugge, ed e' il caso da cui nasce
+// tutto il filtro.
+// ⚠️ E' un sentinella di sola INTERFACCIA (una `<Select>` ha un valore solo):
+// lo store lo traduce nel parametro `ba_non_determinabile`, cosi' l'API non
+// riceve mai un id finto in un campo che trasporta chiavi vere. Stringa e non
+// numero apposta: non puo' collidere con nessun id.
+export const GRUPPI_CLIENTE_NON_DETERMINABILE = '__NON_DETERMINABILE__'
+
 // Riepilogo di perimetro vuoto: forma stabile per il render prima della prima
 // risposta (mai `undefined` nel template).
 const RIEPILOGO_VUOTO = { n_gruppi: 0, n_attivita: 0, valore: null, n_gruppi_oneri: 0 }
@@ -110,12 +121,29 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
   // esiste davvero, con il conteggio. Non seguono il filtro (se lo seguissero,
   // scegliendo un tipo le altre voci sparirebbero dalla tendina).
   const gruppiTipi = ref([])
+  // Filtro CLIENTE. Il valore e' l'`id` del billing account di FATTURAZIONE —
+  // lo stesso elemento che il DB mette nella chiave della fattura — e MAI la
+  // ragione sociale: lo stesso soggetto puo' avere piu' alberi di BA, anche
+  // sotto emittenti diversi, con nome e codice fiscale identici, e quegli
+  // alberi finiscono su fatture DIVERSE.
+  // `null` = tutti; il sentinella `GRUPPI_CLIENTE_NON_DETERMINABILE` e' la voce
+  // dei gruppi il cui cliente di fatturazione non e' risolvibile (padre fuori
+  // scope): vive SOLO nel frontend e viene tradotto in un parametro dedicato,
+  // cosi' l'API non porta id finti in un campo che trasporta chiavi vere.
+  const gruppiCliente = ref(null)
+  const gruppiClienti = ref([])
+  // Ricerca libera. Separata dal filtro cliente perche' risponde a un'altra
+  // domanda — «dov'e' finito ORD0005174» invece di «dammi tutto di Rossi» —
+  // e sotto i 3 caratteri il BE la ignora (non svuota la lista).
+  const gruppiSearch = ref('')
   const gruppiFetch = usePagedDashFetch(
     (paging, competenzaMese) =>
       listDashboardCompetenzaGruppi({
         competenza_mese: competenzaMese,
         stadio: STADIO_GRUPPI,
         tipo_gruppo: gruppiTipo.value,
+        ...gruppiClienteParams(),
+        search: gruppiSearch.value || null,
         order_by: gruppiSort.orderBy.value,
         order_dir: gruppiSort.orderDir.value,
         ...paging,
@@ -124,9 +152,20 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
       onPayload: (payload) => {
         gruppiRiepilogo.value = payload.riepilogo ?? { ...RIEPILOGO_VUOTO }
         gruppiTipi.value = payload.tipi ?? []
+        gruppiClienti.value = payload.clienti ?? []
       },
     }
   )
+
+  // Scopo: traduce la scelta della tendina nei parametri dell'API. Il
+  //        sentinella non esce mai da qui: fuori viaggiano o un id vero, o il
+  //        flag `ba_non_determinabile`.
+  function gruppiClienteParams() {
+    if (gruppiCliente.value === GRUPPI_CLIENTE_NON_DETERMINABILE) {
+      return { ba_non_determinabile: true }
+    }
+    return { ba_fatturazione_id: gruppiCliente.value }
+  }
 
   // Scopo: carica una pagina di gruppi fatturabili del mese. Parte solo sullo
   //        stadio che ha «Fattura» come verbo: sugli altri la lista di
@@ -144,6 +183,9 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
     gruppiRiepilogo.value = { ...RIEPILOGO_VUOTO }
     gruppiTipo.value = null
     gruppiTipi.value = []
+    gruppiCliente.value = null
+    gruppiClienti.value = []
+    gruppiSearch.value = ''
   }
 
   // Ordinamento del pannello errori: default `data_evento desc` (eventi
@@ -206,6 +248,13 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
     gruppiRiepilogo.value = { ...RIEPILOGO_VUOTO }
     gruppiTipo.value = null
     gruppiTipi.value = []
+    // ⚠️ Anche il filtro cliente e la ricerca: sono STATO UTENTE (chi stavo
+    // guardando, cosa stavo cercando) e sopravvivere al logout li porterebbe
+    // nella sessione di un altro operatore, che magari quel cliente non lo vede
+    // nemmeno (memoria feedback_pinia_userscoped).
+    gruppiCliente.value = null
+    gruppiClienti.value = []
+    gruppiSearch.value = ''
     gruppiFetch.resetAll()
     erroriSort.reset()
     erroriFetch.resetAll()
@@ -237,6 +286,9 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
     gruppiRiepilogo,
     gruppiTipo,
     gruppiTipi,
+    gruppiCliente,
+    gruppiClienti,
+    gruppiSearch,
     applyGruppiPage: gruppiFetch.applyPageEvent,
     applyGruppiSort: gruppiSort.apply,
     fetchGruppi,

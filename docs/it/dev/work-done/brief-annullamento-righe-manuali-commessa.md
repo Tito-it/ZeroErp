@@ -10,7 +10,7 @@
 > piano operativo DB in **§9**, piano eseguito BE/FE in **§10**. Vedi registro §8.
 >
 > **Origine**: emerso il 2026-07-28 durante la validazione in-app della porta
-> oneri ([brief-db-immutabilita-quantita-e-porta-oneri](../work-in-progress/brief-db-immutabilita-quantita-e-porta-oneri.md)
+> oneri ([brief-db-immutabilita-quantita-e-porta-oneri](brief-db-immutabilita-quantita-e-porta-oneri.md)
 > step 10). Domanda di Tid: *«un onere caricato manualmente potrebbe essere
 > cancellato o corretto?»*
 >

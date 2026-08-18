@@ -37,6 +37,11 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { mapAvailableActionsToDrawerActions } from '../../core/composables/useDrawerActions'
 import { useSelezioneToggle } from '../_shared/righe/useSelezioneToggle'
 import { DRAWER_WIDTH, PAGINATION } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
+import DocumentoDrawerHost from '../_shared/documenti/DocumentoDrawerHost.vue'
+import { DOCUMENTO_DRAWER_TIPI } from '../_shared/documenti/documentoDrawers'
+import { useDocumentoDrawer } from '../_shared/documenti/useDocumentoDrawer'
+import { buildApriDocumentoAction } from '../dashboardAree'
 import { STATO_APPROVAZIONE_ATTIVITA, STATO_EMISSIONE_ATTIVITA } from '../constants'
 import { toDateString } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
@@ -64,6 +69,16 @@ const props = defineProps({
   commessaId: { type: [Number, null], default: null },
   // Ispezione pura (feedback_drawer_readonly): nasconde ogni azione.
   readonly: { type: Boolean, default: false },
+  // Filtro stato emissione PREIMPOSTATO dal chiamante: la lista si apre sullo
+  // stesso stato della card da cui si arriva (Fatturate → EMESSA, Da emettere
+  // → NON_EMESSA), cosi' il valore mostrato dalla card e il contenuto della
+  // lista raccontano la stessa cosa. Chi apre la commessa dalla lista generica
+  // non lo passa e vede tutte le righe.
+  // ⚠️ E' un DEFAULT, non un vincolo: il filtro resta visibile e azzerabile
+  // (vedi il Select in toolbar). Nasconderlo produrrebbe una lista di una riga
+  // senza spiegazione — la stessa confusione che questo filtro esiste per
+  // togliere, solo piu' difficile da diagnosticare.
+  statoEmissione: { type: [String, null], default: null },
 })
 
 const emit = defineEmits(['update:visible', 'saved'])
@@ -109,6 +124,14 @@ const selected = ref([])
 // null = ordine storico per id (removable-sort riporta qui).
 const righeSortBy = ref(null)
 const righeSortDir = ref(1)
+// Filtro stato emissione applicato alla lista: parte dalla prop (card di
+// provenienza) ed e' modificabile a video. null = tutte.
+const filtroStatoEmissione = ref(props.statoEmissione)
+// Totale FILTRATO, dal `count` della risposta lista. Non si usa
+// `stato.total_attivita` (contatore di testata, sempre su TUTTE le righe):
+// con un filtro attivo il paginator direbbe 4 righe mostrandone 1, e la
+// seconda pagina sarebbe vuota.
+const righeTotale = ref(0)
 
 const capabilities = computed(() => stato.value?.capabilities ?? {})
 
@@ -156,8 +179,13 @@ async function loadRighe() {
       params.order_by = righeSortBy.value
       params.order_dir = righeSortDir.value === -1 ? 'desc' : 'asc'
     }
+    if (filtroStatoEmissione.value) {
+      params.stato_emissione = filtroStatoEmissione.value
+    }
     const res = await listCommessaAttivita(props.commessaId, params)
     righe.value = res.data?.data?.rows ?? []
+    // `count` e' il totale gia' filtrato (stessa WHERE della pagina).
+    righeTotale.value = res.data?.data?.count ?? 0
   } catch (err) {
     // Fail-visible: una tabella vuota per errore non deve sembrare "no righe".
     notify.error(extractApiError(err, t('common.error')))
@@ -178,14 +206,31 @@ watch(
     if (!visible || !props.commessaId) return
     stato.value = null
     righe.value = []
+    righeTotale.value = 0
     righePage.value = 1
     righeSortBy.value = null
     righeSortDir.value = 1
+    // Il filtro torna al default del chiamante a ogni apertura: riaprendo la
+    // stessa commessa da una card diversa deve valere la card nuova, non
+    // quella di prima.
+    filtroStatoEmissione.value = props.statoEmissione
     selected.value = []
     await reloadAll()
   },
   { immediate: true },
 )
+
+// Host del drawer documento (origine o fattura) aperto dal kebab di riga.
+// ⚠️ Alla chiusura si ricarica: dal drawer della fattura o dell'ordine
+// l'operatore può aver fatto avanzare il documento, e la riga che lo ha
+// aperto sarebbe stantia.
+const {
+  visible: docDrawerVisible,
+  tipo: docDrawerTipo,
+  id: docDrawerId,
+  apri: apriDocumentoDrawer,
+  onVisibleChange: onDocDrawerVisible,
+} = useDocumentoDrawer(() => reloadAll())
 
 // Ref alla lista configurabile (per il modale «personalizza», raggiungibile
 // dal drawer tramite l'azione dedicata sotto).
@@ -194,7 +239,7 @@ const listaRef = ref(null)
 // Prop paginator per il BB: qui non c'e' useSearchTable (il drawer non e' una
 // pagina lista), quindi la compone il drawer con lo stato che gia' possiede.
 const righePaginatorOptions = computed(() => ({
-  totalRecords: stato.value?.total_attivita ?? 0,
+  totalRecords: righeTotale.value,
   rows: righePageSize.value,
   first: (righePage.value - 1) * righePageSize.value,
   rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
@@ -216,6 +261,25 @@ function onConfigLoaded(config) {
 function onRighePage(event) {
   righePage.value = Math.floor(event.first / event.rows) + 1
   righePageSize.value = event.rows
+  loadRighe()
+}
+
+// Opzioni del filtro stato emissione: i tre valori del dominio + «tutte»
+// (null). Derivate dalla costante, non riscritte a mano.
+const opzioniStatoEmissione = computed(() => [
+  { value: null, label: t('vendite.commesse.filtro_stato_tutte') },
+  ...Object.values(STATO_EMISSIONE_ATTIVITA).map((v) => ({
+    value: v,
+    label: t(`vendite.commesse.stato_emissione_${v.toLowerCase()}`),
+  })),
+])
+
+// Scopo: cambio filtro stato → si riparte da pagina 1 (l'offset corrente
+//        apparterrebbe a un insieme di righe diverso) e si azzera la
+//        selezione, che potrebbe contenere righe ora fuori filtro.
+function onFiltroStatoChange() {
+  righePage.value = 1
+  selected.value = []
   loadRighe()
 }
 
@@ -375,8 +439,49 @@ const sbloccaMotivo = ref('')
 // funzione: due permessi diversi non possono condividere una sola porta.
 // Restano condizioni comuni solo quelle che valgono per QUALUNQUE azione di
 // riga: ispezione pura e commessa non piu' modificabile.
+// Scopo: le due azioni di NAVIGAZIONE della riga — «apri il documento da cui
+//        arriva» e «apri la fattura in cui è finita». Separate da
+//        `buildRowActions` perché non sono azioni di modifica: valgono anche
+//        in sola lettura e su riga già fatturata, dove tutte le azioni prezzo
+//        sono legittimamente spente. Guardare un documento non è un'azione di
+//        governo.
+//        Le tre colonne che le alimentano (`sorgente_area`,
+//        `sorgente_documento_id`, `fattura_id`) arrivano dalla lista dal
+//        2026-08-16 (changeSet 20260816-04): prima si fermavano al database.
+function buildRowNavActions(row) {
+  return [
+    // Documento di ORIGINE: stesso BB del Backlog fatturazione, stessa
+    // meccanica area → drawer. L'azione si nasconde da sé quando l'id è
+    // nullo, che copre due casi diversi e ugualmente corretti: la voce
+    // manuale (nessun documento a monte) e il documento non visibile a chi
+    // guarda (RLS) — in entrambi non c'è nulla da aprire.
+    buildApriDocumentoAction({
+      area: row.sorgente_area,
+      documentoId: row.sorgente_documento_id,
+      label: t('vendite.commesse.azione_apri_sorgente'),
+      onApri: apriDocumentoDrawer,
+    }),
+    {
+      key: 'apri_fattura',
+      // L'etichetta porta il NUMERO quando c'è: una fattura non ancora
+      // numerata non ne ha, e inventarne uno sarebbe peggio che ometterlo.
+      label: row.fattura_numero
+        ? t('vendite.commesse.azione_apri_fattura_numerata', { numero: row.fattura_numero })
+        : t('vendite.commesse.azione_apri_fattura'),
+      // Icona di NAVIGAZIONE delle fatture, la stessa del menu: chi la vede
+      // sa già dove sta per andare. Non se ne inventa una nuova qui.
+      icon: NAV_ICONS.FATTURE,
+      // ⚠️ `fattura_id`, non `fatturata`: il flag resta true anche per chi non
+      // vede la fattura (è calcolato su una tabella senza RLS), e proporre
+      // un'apertura che non può funzionare è peggio che non proporla.
+      visible: row.fattura_id != null,
+      command: () => apriDocumentoDrawer(DOCUMENTO_DRAWER_TIPI.FATTURA, row.fattura_id),
+    },
+  ]
+}
+
 function buildRowActions(row) {
-  if (isReadonly.value || !canEditRighe.value) return []
+  if (isReadonly.value || !canEditRighe.value) return buildRowNavActions(row)
   // Riga fatturata: nessuna azione prezzo (le tre sono tutte rifiutate dal
   // guard BE `_assert_non_fatturata`). `fatturata` = EXISTS di un'AF con
   // fattura_riga_id valorizzato, esposta dalla lista (changeset 20260724-07):
@@ -433,6 +538,9 @@ function buildRowActions(row) {
         && row.stato_emissione === STATO_EMISSIONE_ATTIVITA.NON_EMESSA,
       command: () => apriAnnullaRiga(row),
     },
+    // Navigazione in coda: prima si governa la riga, poi si va a vedere da
+    // dove viene e dove è finita.
+    ...buildRowNavActions(row),
   ]
 }
 
@@ -613,6 +721,21 @@ const drawerActions = computed(() => [
         <!-- Righe attivita' + approvazione (A-1). -->
         <div class="app-page-toolbar" style="margin-top: 1rem;">
           <h4 style="margin: 0;">{{ t('vendite.commesse.righe_titolo') }}</h4>
+          <!-- Filtro stato emissione: SEMPRE a video, anche quando arriva
+               preimpostato dalla card di provenienza. E' il punto della
+               funzione — l'utente deve vedere perche' la lista mostra meno
+               righe del contatore di testata, e poterlo togliere. -->
+          <Select
+            v-model="filtroStatoEmissione"
+            :options="opzioniStatoEmissione"
+            option-label="label"
+            option-value="value"
+            size="small"
+            :aria-label="t('vendite.commesse.filtro_stato_label')"
+            v-tooltip.bottom="t('vendite.commesse.filtro_stato_label')"
+            style="min-width: 12rem;"
+            @change="onFiltroStatoChange"
+          />
           <!-- Difetto D1 (§6-bis, corretto 2026-07-27): la visibilita' era sul
                SOLO permesso, quindi su una commessa gia' PRONTA_FATTURAZIONE i
                due verbi restavano a video disabilitati — rumore che suggerisce
@@ -643,7 +766,7 @@ const drawerActions = computed(() => [
           codice="vendite.commesse_attivita"
           data-key="id"
           :rows="righe"
-          :total="stato?.total_attivita ?? 0"
+          :total="righeTotale"
           :loading="righeLoading"
           :paginator-options="righePaginatorOptions"
           :page="righePage"
@@ -702,7 +825,12 @@ const drawerActions = computed(() => [
             <Tag :value="data.stato_emissione" :severity="statoEmissioneAttivitaSeverity(data.stato_emissione)" />
           </template>
 
-          <template v-if="!isReadonly" #actions="{ data, compact }">
+          <!-- La colonna azioni resta anche in sola lettura: dal 2026-08-16 il
+               kebab porta due voci di NAVIGAZIONE (documento di origine,
+               fattura) che non modificano nulla. Nasconderla in readonly
+               toglierebbe la sola strada per arrivare al documento proprio a
+               chi sta ispezionando. -->
+          <template #actions="{ data, compact }">
             <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
           </template>
         </ListaConfigurabile>
@@ -857,6 +985,15 @@ const drawerActions = computed(() => [
           :invalid="campiErrati.includes('motivo')" />
       </div>
     </AppDialog>
+
+    <!-- Host del drawer documento aperto dal kebab di riga: documento di
+         ORIGINE (tipo dal registry via `sorgente_area`) o FATTURA in cui la
+         riga è finita. Stesso BB dei drill-down dei cruscotti. -->
+    <DocumentoDrawerHost
+      :visible="docDrawerVisible"
+      :tipo-codice="docDrawerTipo"
+      :doc-id="docDrawerId"
+      @update:visible="onDocDrawerVisible" />
   </Drawer>
 </template>
 

@@ -119,6 +119,12 @@ DASH_APERTO_FASI: tuple[str, ...] = (
 # questo valore non esiste).
 TIPO_GRUPPO_ONERI = "ONERI_COMMESSA"
 
+# Minimo di caratteri della ricerca libera (Policy-ricerca-e-paginazione).
+# Vive QUI e non nel service perche' il repository lo applica anche quando la
+# chiamata arriva dall'export, che non passa dalla validazione della view: una
+# sola sede, mai un 3 scritto in due posti che poi divergono.
+SEARCH_MIN_LEN = 3
+
 DASH_STADIO_DA_APPROVARE = "DA_APPROVARE"
 DASH_COMPETENZA_STADI: tuple[str, ...] = (
     DASH_STADIO_DA_APPROVARE,
@@ -1098,7 +1104,37 @@ class VenditeRepository:
         "n_attivita": "n_attivita",
         "valore": "valore",
         "data_attivita_max": "data_attivita_max",
+        # Colonne cliente di fatturazione (BE-5, brief-db-dash-competenza-gruppi
+        # §D-4). ⚠️ Queste due chiavi e le righe 476/477 del CSV
+        # `ui/lista_colonna.csv` sono UN SOLO passo: il presidio
+        # `apps/core/tests/test_liste_configurabili_seed.py` lega catalogo e
+        # whitelist nei DUE versi — una colonna `ordinabile = t` fuori whitelist
+        # fa rosso (la freccia a video risponderebbe 400), e una in whitelist
+        # marcata `ordinabile = f` fa rosso pure lei. Separarli rende la CI rossa
+        # in un verso o nell'altro.
+        "ba_codice_fatturazione": "ba_codice_fatturazione",
+        "id_fiscale": "id_fiscale",
     }
+
+    # Scopo: colonne su cui lavora la ricerca libera della lista gruppi (D-6).
+    #        Sono cinque perche' l'operatore fa due domande diverse — «dammi
+    #        tutto di questo cliente» e «dov'e' finito ORD0005174» — e la seconda
+    #        non si risponde con un filtro strutturato.
+    # ⚠️ Costo dichiarato, non scoperto dopo: quattro di queste hanno un indice
+    #        trigram a monte (ragione sociale, id fiscale, codice BA, codice
+    #        commessa), `riferimento` NO — e' `COALESCE(doc.codice, …)` su una
+    #        LEFT JOIN LATERAL che unisce sei rami, quindi va valutata per ogni
+    #        gruppo del perimetro PRIMA di poter filtrare. Resta dentro perche'
+    #        e' la domanda che l'operatore fa davvero; se un mese pieno non
+    #        reggesse, il rimedio NON e' togliere il campo ma ancorare la ricerca
+    #        alla sorgente del documento (DL-2 del brief).
+    DASH_COMPETENZA_GRUPPI_SEARCH_COLUMNS = (
+        "g.cliente_display",
+        "g.id_fiscale",
+        "g.ba_codice_fatturazione",
+        "g.commessa_codice",
+        "g.riferimento",
+    )
 
     # Scopo: Elenco dei GRUPPI FATTURABILI di un mese/stadio — l'unita' su cui
     #        l'operatore decide nella card «Da emettere»: un documento sorgente
@@ -1117,12 +1153,23 @@ class VenditeRepository:
     #        vedere tutti i tipi anche quando uno e' selezionato (altrimenti
     #        scegliendo «Preventivi» le altre voci sparirebbero dalla tendina e
     #        non si potrebbe piu' cambiare idea).
+    # ⚠️ `ba_fatturazione_id` e `ba_non_determinabile` sono ALTERNATIVI e non si
+    #        sommano: il secondo e' la voce «cliente non determinabile» (D-5), che
+    #        e' l'assenza del primo. Rappresentarla con un id sentinella (0, -1)
+    #        avrebbe messo un valore finto in un campo che porta chiavi vere —
+    #        e prima o poi qualcuno lo confronta con una PK.
+    # ⚠️ La ricerca sotto i 3 caratteri viene IGNORATA (non svuota la lista):
+    #        policy ricerca e paginazione. Il gate vero e' nel service, qui c'e'
+    #        la rete perche' il repository e' chiamato anche dall'export.
     @staticmethod
     def _where_gruppi(
         *,
         competenza_mese: date,
         stadio: str | None,
         tipo_gruppo: str | None = None,
+        ba_fatturazione_id: int | None = None,
+        ba_non_determinabile: bool = False,
+        search: str | None = None,
     ) -> tuple[list[str], list[Any]]:
         conditions: list[str] = ["g.competenza_mese = %s"]
         params: list[Any] = [competenza_mese]
@@ -1132,6 +1179,22 @@ class VenditeRepository:
         if tipo_gruppo is not None:
             conditions.append("g.tipo_gruppo = %s")
             params.append(tipo_gruppo)
+        if ba_non_determinabile:
+            conditions.append("g.ba_fatturazione_id IS NULL")
+        elif ba_fatturazione_id is not None:
+            conditions.append("g.ba_fatturazione_id = %s")
+            params.append(ba_fatturazione_id)
+        termine = (search or "").strip()
+        if len(termine) >= SEARCH_MIN_LEN:
+            # OR fra le cinque colonne, in UN solo gruppo parentesizzato: senza
+            # le parentesi l'OR si legherebbe all'ultima AND della catena e il
+            # filtro mese/stadio smetterebbe di valere per i rami successivi —
+            # una ricerca che allarga il perimetro invece di restringerlo.
+            rami = " OR ".join(
+                f"{col} ILIKE %s" for col in VenditeRepository.DASH_COMPETENZA_GRUPPI_SEARCH_COLUMNS
+            )
+            conditions.append(f"({rami})")
+            params.extend([f"%{termine}%"] * len(VenditeRepository.DASH_COMPETENZA_GRUPPI_SEARCH_COLUMNS))
         return conditions, params
 
     def list_dash_competenza_gruppi(
@@ -1140,6 +1203,9 @@ class VenditeRepository:
         competenza_mese: date,
         stadio: str | None,
         tipo_gruppo: str | None = None,
+        ba_fatturazione_id: int | None = None,
+        ba_non_determinabile: bool = False,
+        search: str | None = None,
         order_by: str | None = None,
         order_dir: str | None = None,
         limit: int,
@@ -1147,6 +1213,9 @@ class VenditeRepository:
     ) -> tuple[list[DashCompetenzaGruppoRow], int]:
         conditions, params = self._where_gruppi(
             competenza_mese=competenza_mese, stadio=stadio, tipo_gruppo=tipo_gruppo,
+            ba_fatturazione_id=ba_fatturazione_id,
+            ba_non_determinabile=ba_non_determinabile,
+            search=search,
         )
         where_clause = "WHERE " + " AND ".join(conditions)
 
@@ -1207,7 +1276,9 @@ class VenditeRepository:
                 g.documento_id,
                 g.commessa_emittibile,
                 g.commessa_stato_codice_interno,
-                g.commessa_stato_descrizione
+                g.commessa_stato_descrizione,
+                g.ba_codice_fatturazione,
+                g.id_fiscale
             FROM vendite.vw_dash_competenza_gruppi g
             {where_clause}
             """,
@@ -1238,6 +1309,14 @@ class VenditeRepository:
                     "commessa_emittibile": None if row[14] is None else bool(row[14]),
                     "commessa_stato_codice_interno": None if row[15] is None else str(row[15]),
                     "commessa_stato_descrizione": None if row[16] is None else str(row[16]),
+                    # Cliente di FATTURAZIONE (padre se c'e', altrimenti se
+                    # stesso): e' l'elemento che `fn_build_fattura_key` mette in
+                    # chiave, non il BA della riga. NULL quando il padre e'
+                    # fuori scope RLS — il gruppo resta comunque in lista (D-5),
+                    # perche' una riga che non si riesce ad attribuire e'
+                    # precisamente la riga dimenticata da cui nasce il cantiere.
+                    "ba_codice_fatturazione": None if row[17] is None else str(row[17]),
+                    "id_fiscale": None if row[18] is None else str(row[18]),
                 }
             )
         return result, total_count
@@ -1263,9 +1342,15 @@ class VenditeRepository:
         competenza_mese: date,
         stadio: str | None,
         tipo_gruppo: str | None = None,
+        ba_fatturazione_id: int | None = None,
+        ba_non_determinabile: bool = False,
+        search: str | None = None,
     ) -> DashCompetenzaGruppiRiepilogoRow:
         conditions, params = self._where_gruppi(
             competenza_mese=competenza_mese, stadio=stadio, tipo_gruppo=tipo_gruppo,
+            ba_fatturazione_id=ba_fatturazione_id,
+            ba_non_determinabile=ba_non_determinabile,
+            search=search,
         )
         where_clause = "WHERE " + " AND ".join(conditions)
 
@@ -1332,6 +1417,70 @@ class VenditeRepository:
                 "area_documento": None if r[1] is None else str(r[1]),
                 "n_gruppi": int(r[2]),
                 "n_attivita": int(r[3]),
+            }
+            for r in rows
+        ]
+
+    # Scopo: Voci del filtro CLIENTE della lista gruppi (facet), calcolate sui
+    #        dati del perimetro con il conteggio accanto. L'asse e'
+    #        `ba_fatturazione_id` — lo STESSO elemento che `fn_build_fattura_key`
+    #        mette in chiave — e non la ragione sociale.
+    # ⚠️ Perche' NON per ragione sociale, che sarebbe l'ovvio: un soggetto puo'
+    #        avere piu' alberi di billing account, anche sotto emittenti diversi,
+    #        tutti con la stessa ragione sociale e lo stesso codice fiscale (caso
+    #        reale: quattro BA sotto un emittente e quattro sotto un altro).
+    #        Filtrando per nome si raccoglierebbero alberi che finiscono su
+    #        fatture DIVERSE, e la tendina mostrerebbe la stessa voce due volte
+    #        senza modo di distinguerle. Per questo il `codice` sta
+    #        nell'etichetta e non e' decorativo.
+    # ⚠️ Il predicato NON include cliente ne' ricerca — stessa ragione della
+    #        facet dei tipi: le voci devono restare tutte visibili anche quando
+    #        una e' selezionata, altrimenti l'operatore resta chiuso dentro il
+    #        filtro appena messo. E non include nemmeno `tipo_gruppo`, cosi' le
+    #        due facet descrivono lo STESSO perimetro (competenza+stadio) e non
+    #        una l'altra a seconda dell'ordine in cui si scelgono.
+    # ⚠️ La voce «cliente non determinabile» (`ba_fatturazione_id` NULL) e'
+    #        emessa come le altre, col suo conteggio: e' il caso in cui il padre
+    #        e' fuori dallo scope dell'operatore. Nasconderla la renderebbe
+    #        invisibile pur restando in lista — la riga dimenticata, di nuovo.
+    # Perimetro: sola lettura su vw_dash_competenza_gruppi (scope GUC in vista).
+    def list_dash_competenza_gruppi_clienti(
+        self,
+        *,
+        competenza_mese: date,
+        stadio: str | None,
+    ) -> list[DashCompetenzaGruppoClienteRow]:
+        conditions, params = self._where_gruppi(
+            competenza_mese=competenza_mese, stadio=stadio,
+        )
+        where_clause = "WHERE " + " AND ".join(conditions)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT
+                    g.ba_fatturazione_id,
+                    MIN(g.cliente_fatturazione_display) AS cliente_display,
+                    MIN(g.ba_codice_fatturazione)       AS ba_codice,
+                    MIN(g.id_fiscale)                   AS id_fiscale,
+                    COUNT(*)::int                       AS n_gruppi,
+                    COALESCE(SUM(g.n_attivita), 0)::bigint AS n_attivita
+                FROM vendite.vw_dash_competenza_gruppi g
+                {where_clause}
+                GROUP BY g.ba_fatturazione_id
+                ORDER BY COUNT(*) DESC, MIN(g.cliente_fatturazione_display) ASC NULLS LAST,
+                         g.ba_fatturazione_id ASC NULLS LAST
+                """,
+                params,
+            )
+            rows = cursor.fetchall()
+        return [
+            {
+                "ba_fatturazione_id": None if r[0] is None else int(r[0]),
+                "cliente_display": None if r[1] is None else str(r[1]),
+                "ba_codice_fatturazione": None if r[2] is None else str(r[2]),
+                "id_fiscale": None if r[3] is None else str(r[3]),
+                "n_gruppi": int(r[4]),
+                "n_attivita": int(r[5]),
             }
             for r in rows
         ]
@@ -2445,3 +2594,209 @@ class VenditeRepository:
                 }
             )
         return result
+
+    # ------------------------------------------------------------------
+    # Situazione merce (pannello ordine/DDT — brief-design-situazione-merce-ordine)
+    # Letture sulle viste della partita generalizzata. Tutte
+    # `security_invoker=on`: la RLS del chiamante si applica da sola, quindi
+    # NIENTE `auth_user_id` e niente filtro applicativo di scope.
+    # ⚠️ E vale il §8.6 del brief partita: su una vista con RLS uno zero non e'
+    # un dato, e' fail-closed. Il cancello di perimetro sono le due `exists_*`
+    # qui sotto, che interrogano la TESTATA (l'unica tabella con la policy).
+    # ------------------------------------------------------------------
+
+    # Scopo: Esistenza (e visibilita' nello scope) di un ordine. `vendite.ordini`
+    #        ha la RLS, `ordini_righe` NO: e' la testata a fare da cancello, ed
+    #        e' lo stesso ordine di lettura del dettaglio fattura (api.md).
+    #        False = inesistente OPPURE fuori scope, indistinguibili di proposito.
+    def exists_ordine(self, ordine_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT 1 FROM vendite.ordini WHERE id = %s", [int(ordine_id)]
+            )
+            return cursor.fetchone() is not None
+
+    # Scopo: Gemella della precedente per il DDT (`vendite.ddt` ha la RLS,
+    #        `ddt_righe` no).
+    def exists_ddt(self, ddt_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT 1 FROM vendite.ddt WHERE id = %s", [int(ddt_id)]
+            )
+            return cursor.fetchone() is not None
+
+    # Scopo: Il riassunto PER RIGA D'ORDINE (livello 1 del pannello), da
+    #        `vw_situazione_merce_ordine`. E' l'aggregato PARLANTE: `differenza`
+    #        NULL dove il conto non si applica e `stato` gia' tradotto.
+    # Risultato: una riga per riga d'ordine ATTIVA, comprese quelle mai spedite
+    #        (`stato = 'NON_SPEDITA'`, 89 su 107 in sviluppo) — che nel contatore
+    #        non ci sono affatto.
+    # ⚠️ NON e' `vw_contatore_merce`: quello e' il contatore GREZZO che dosa la
+    #        fatturazione, non ha `stato` e appiattisce i NULL a un numero.
+    def list_situazione_merce_ordine(self, ordine_id: int) -> list[dict[str, Any]]:
+        sql = """
+            SELECT
+                s.ordine_riga_id,
+                s.ordine_id,
+                s.riga_nr,
+                s.articolo_id,
+                a.codice            AS articolo_codice,
+                orr.descrizione,
+                s.ordinato,
+                s.consegnato,
+                s.reso,
+                s.in_riconsegna,
+                s.tenuti,
+                s.fatturato_merce,
+                s.fatturato_da_ordine,
+                s.fatturato,
+                s.fatturato_anticipato,
+                s.da_spedire,
+                s.partite_merce,
+                s.misurabile,
+                s.differenza,
+                s.stato,
+                orr.uom_operativa_id,
+                um.codice           AS uom_codice
+              FROM vendite.vw_situazione_merce_ordine s
+              JOIN vendite.ordini_righe orr      ON orr.id = s.ordine_riga_id
+              LEFT JOIN catalogo.articoli a      ON a.id   = s.articolo_id
+              LEFT JOIN catalogo.unita_misura um ON um.id  = orr.uom_operativa_id
+             WHERE s.ordine_id = %s
+             ORDER BY s.riga_nr, s.ordine_riga_id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(ordine_id)])
+            return rows_to_list(cursor)
+
+    # Scopo: Le PARTITE DI MERCE (livello 2 del pannello), da
+    #        `vw_partite_merce`. Grana = riga di DDT. Due filtri, una lettura
+    #        (richiesta BE-1): per DDT = «la situazione di QUESTA spedizione»,
+    #        per ordine = tutte le spedizioni di quell'ordine.
+    # ⚠️ Esattamente uno dei due parametri va valorizzato: il chiamante e' il
+    #        service, e un filtro assente restituirebbe TUTTE le partite del
+    #        database — errore di programmazione, non input utente.
+    def list_partite_merce(
+        self,
+        *,
+        ddt_id: int | None = None,
+        ordine_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        if (ddt_id is None) == (ordine_id is None):
+            raise ValueError(
+                "list_partite_merce: passare ESATTAMENTE uno fra ddt_id e ordine_id"
+            )
+        if ddt_id is not None:
+            condizione, param = "p.ddt_id = %s", int(ddt_id)
+        else:
+            assert ordine_id is not None
+            condizione, param = "p.ordine_id = %s", int(ordine_id)
+        sql = f"""
+            SELECT
+                p.ddt_riga_id,
+                p.ddt_id,
+                d.numero            AS ddt_numero,
+                d.data              AS ddt_data,
+                p.articolo_id,
+                a.codice            AS articolo_codice,
+                dr.descrizione,
+                dr.riga_nr,
+                dr.uom_operativa_id,
+                um.codice           AS uom_codice,
+                p.is_composito,
+                p.ordine_riga_id,
+                p.ordine_id,
+                o.numero            AS ordine_numero,
+                p.origine,
+                p.fatturabile,
+                p.consegnato,
+                p.reso,
+                p.in_riconsegna,
+                p.tenuti,
+                p.fatturato_merce,
+                p.fatturato_da_ordine,
+                p.fatturato,
+                p.misurabile,
+                p.differenza,
+                p.stato,
+                p.e_riconsegna,
+                p.sospetto_duplicato_ordine
+              FROM vendite.vw_partite_merce p
+              JOIN vendite.ddt d                 ON d.id   = p.ddt_id
+              JOIN vendite.ddt_righe dr          ON dr.id  = p.ddt_riga_id
+              LEFT JOIN vendite.ordini o         ON o.id   = p.ordine_id
+              LEFT JOIN catalogo.articoli a      ON a.id   = p.articolo_id
+              LEFT JOIN catalogo.unita_misura um ON um.id  = dr.uom_operativa_id
+             WHERE {condizione}
+             ORDER BY d.data, p.ddt_id, dr.riga_nr, p.ddt_riga_id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [param])
+            return rows_to_list(cursor)
+
+    # Scopo: Le due code di lavoro del documento (D-4: un round-trip solo, cosi'
+    #        il pannello NON PUO' contraddire le code — e' l'ultima voce della
+    #        definizione di fatto del cantiere 2).
+    # ⭐ L'aggancio e' `ddt_riga_id`, MAI `ordine_riga_id`: quest'ultimo e'
+    #        nullable e sulla merce senza origine ordine e' vuoto — usarlo come
+    #        chiave farebbe uscire quelle righe dal conto SENZA ERRORE, che e'
+    #        il difetto §8.5 che questo cantiere ha chiuso. Le partite del
+    #        documento sono il ponte.
+    def _list_coda_su_partite(
+        self,
+        vista: str,
+        colonne: str,
+        *,
+        ddt_id: int | None,
+        ordine_id: int | None,
+    ) -> list[dict[str, Any]]:
+        # `vista` e `colonne` arrivano SOLO dai due wrapper qui sotto
+        # (letterali statici, nessun input utente).
+        if ddt_id is not None:
+            condizione, param = "p.ddt_id = %s", int(ddt_id)
+        else:
+            assert ordine_id is not None
+            condizione, param = "p.ordine_id = %s", int(ordine_id)
+        sql = f"""
+            SELECT {colonne}
+              FROM {vista} v
+             WHERE EXISTS (
+                    SELECT 1
+                      FROM vendite.vw_partite_merce p
+                     WHERE p.ddt_riga_id = v.ddt_riga_id
+                       AND {condizione}
+             )
+             ORDER BY v.reso_id, v.resi_riga_id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [param])
+            return rows_to_list(cursor)
+
+    # Scopo: Coda «da accreditare» del documento. `etichetta` DOVUTA|FACOLTATIVA
+    #        arriva dalla vista: il pannello mostra la STESSA parola della coda.
+    def list_situazione_merce_accrediti(
+        self, *, ddt_id: int | None = None, ordine_id: int | None = None
+    ) -> list[dict[str, Any]]:
+        return self._list_coda_su_partite(
+            "vendite.vw_resi_da_accreditare",
+            "v.resi_riga_id, v.reso_id, v.reso_numero, v.data, v.articolo_id, "
+            "v.descrizione, v.quantita, v.qta_operativa, v.ddt_riga_id, "
+            "v.ddt_id, v.ddt_numero, v.ordine_riga_id, v.tenuti, v.fatturati, "
+            "v.accredito_dovuto, v.etichetta, v.motivo",
+            ddt_id=ddt_id,
+            ordine_id=ordine_id,
+        )
+
+    # Scopo: Coda «da ri-consegnare» del documento (residuo aperto).
+    def list_situazione_merce_riconsegne(
+        self, *, ddt_id: int | None = None, ordine_id: int | None = None
+    ) -> list[dict[str, Any]]:
+        return self._list_coda_su_partite(
+            "vendite.vw_resi_da_riconsegnare",
+            "v.resi_riga_id, v.reso_id, v.reso_numero, v.data, v.articolo_id, "
+            "v.descrizione, v.ddt_riga_id, v.ddt_id, v.ddt_numero, "
+            "v.ordine_riga_id, v.qta_resa, v.qta_riconsegnata, "
+            "v.qta_rinunciata, v.qta_residua, v.stato_riconsegna",
+            ddt_id=ddt_id,
+            ordine_id=ordine_id,
+        )

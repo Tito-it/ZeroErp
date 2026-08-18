@@ -164,10 +164,23 @@ SELECT id AS reso_id FROM ins;
 -- discriminante del test 8 regge identico.
 CREATE TEMP TABLE tmp_riga_rin AS
 WITH ins AS (
-  INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, articolo_id,
+  INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
+                                  articolo_id,
                                   descrizione, qta_operativa, uom_operativa_id,
                                   factor_to_base, tipo_reso_id, attivo, storicizza)
-  SELECT (SELECT reso_id FROM tmp_reso_rin), 1, r.ddt_riga_id, r.articolo_id,
+  SELECT (SELECT reso_id FROM tmp_reso_rin), 1, r.ddt_riga_id,
+         -- ⚠️ `ordine_riga_id` va RICAVATO dal fulfillment, non omesso.
+         -- Prima del 2026-08-17 questa fixture lo lasciava vuoto e passava:
+         -- la riga di DDT che sceglie dai dati di dev evade un ordine, quindi
+         -- il reso risultava su merce ordinata senza riferimento all'ordine —
+         -- e in quella condizione `fn_ordine_riga_qta_riconsegna` non riapre
+         -- il residuo, cioe' la merce torna e l'ordine non se ne accorge.
+         -- Dal guard trgfn_resi_righe_guard_origine_coerente (20260817-13)
+         -- quella riga non e' piu' scrivibile. NULL resta corretto solo se la
+         -- riga di DDT non evade nulla, ed e' il senso del sotto-select.
+         (SELECT f.ordine_riga_id FROM vendite.ordini_righe_fulfillment f
+           WHERE f.ddt_riga_id = r.ddt_riga_id ORDER BY f.id LIMIT 1),
+         r.articolo_id,
          r.descrizione, 3.000000, r.uom_operativa_id, r.factor_to_base,
          r.tipo_reso_ric_id, true, false
   FROM tmp_refs_rin r

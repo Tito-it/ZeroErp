@@ -147,6 +147,7 @@
 - [fn_get_pipeline_task_policy](funzioni/fn_get_pipeline_task_policy.md) — Restituisce la policy runtime attiva di un task pipeline (`annullabile`, `resume_mode`, `meta`).
 - [fn_get_registro_id](funzioni/fn_get_registro_id.md) — (latest review 27-01-2026) La funzione **`vendite.fn_get_registro_id`** risolve il registro di fatturazione in base al mapping **tipo documento → registro**, considerando utility/emittente se presenti.
 - [fn_get_scope_fatture_lotto](funzioni/fn_get_scope_fatture_lotto.md) — (latest review 15-08-2026)
+- [fn_get_sorgente_documento_id](funzioni/fn_get_sorgente_documento_id.md)
 - [fn_get_tipo_doc_fiscale_id](funzioni/fn_get_tipo_doc_fiscale_id.md) — (latest review 27-01-2026) La funzione **`vendite.fn_get_tipo_doc_fiscale_id`** risolve il tipo documento fiscale a partire dalla sorgente o dalla utility.
 - [fn_get_totale_fondi_fattura](funzioni/fn_get_totale_fondi_fattura.md) — La funzione **`vendite.fn_get_totale_fondi_fattura()`** restituisce il totale dei fondi fattura **attivi** associati alla testata.
 - [fn_get_valuta_id](funzioni/fn_get_valuta_id.md) — (latest review 26-01-2026) La funzione **`vendite.fn_get_valuta_id`** risolve la valuta con fallback al **gestore** quando non esistono valori specifici su BA/utility.
@@ -306,6 +307,7 @@
 - [trgfn_resi_guard_transizione](funzioni/trgfn_resi_guard_transizione.md) — (rev 2026-07-13)
 - [trgfn_resi_normalize](funzioni/trgfn_resi_normalize.md) — (rev 2026-07-13)
 - [trgfn_resi_riconsegne_guard](funzioni/trgfn_resi_riconsegne_guard.md) — (rev 2026-07-26)
+- [trgfn_resi_righe_guard_origine_coerente](funzioni/trgfn_resi_righe_guard_origine_coerente.md) — (rev 2026-08-17 — nuovo, slice S6a della partita di merce generalizzata)
 - [trgfn_resi_righe_guard_quantita](funzioni/trgfn_resi_righe_guard_quantita.md) — (rev 2026-07-13)
 - [trgfn_resi_rinunce_guard](funzioni/trgfn_resi_rinunce_guard.md) — (rev 2026-07-26)
 - [trgfn_tipi_indirizzi_only_allowed](funzioni/trgfn_tipi_indirizzi_only_allowed.md) — (rev 2026-07-11)
@@ -313,7 +315,8 @@
 - [trgfn_v_resi_protect_num](funzioni/trgfn_v_resi_protect_num.md) — (rev 2026-07-13)
 
 ## 🔍 Views
-- [vw_contatore_merce](views/vw_contatore_merce.md) — (latest review 2026-07-18)
+- [vw_af_merce_per_riga](views/vw_af_merce_per_riga.md) — (latest review 2026-08-17)
+- [vw_contatore_merce](views/vw_contatore_merce.md) — (latest review 2026-08-17)
 - [vw_contratti_lista](views/vw_contratti_lista.md)
 - [vw_dash_aperto_documenti](views/vw_dash_aperto_documenti.md) — (latest review 08-07-2026 — v2 serbatoio pre-commessa, DL-14..18) Vista dettaglio della **Situazione aperta v2 — serbatoio pre-commessa**: lo **stock dei documenti aperti e non conclusi** delle 4 aree documento (PREVENTIVI, ORDINI, OFFERTE, CONTRATTI), **senza asse temporale**. Risponde a: *"quali documenti aperti, se conclusi, andrebbero in commessa/fatturazione ma non ci sono ancora arrivati, e in che fase sono?"*. Il concetto **"transitato"** è **eliminato** (DL-14): in una vista senza asse temporale totalizzava *dalla notte dei tempi* documenti già passati avanti, informazione non azionabile.
 - [vw_dash_aperto_riepilogo](views/vw_dash_aperto_riepilogo.md) — (latest review 08-07-2026 — v2 serbatoio pre-commessa, DL-14..18) Le **card della Situazione aperta v2**: aggregata `area × fase` sullo stock degli **aperti-non-conclusi** (`vw_dash_aperto_documenti` v2). Alimenta le card senza aggregazione BE-side (DB-first). Le fasi presenti sono solo APERTO/IN_ATTESA/IN_CORSO (CHIUSO escluso a monte dalla dettaglio) → il FE le rappresenta con un **donut a spicchi per fase** (maturità verso la commessa).
@@ -345,6 +348,7 @@
 - [vw_ordini_lista](views/vw_ordini_lista.md) — (rev 2026-06-03 — rev1)
 - [vw_ordini_riepilogo_iva_dettaglio](views/vw_ordini_riepilogo_iva_dettaglio.md) — (latest review 05-06-2026)
 - [vw_ordini_righe_iva_base](views/vw_ordini_righe_iva_base.md) — (latest review 05-06-2026)
+- [vw_partite_merce](views/vw_partite_merce.md) — (latest review 2026-08-17)
 - [vw_preventivi](views/vw_preventivi.md) — (rev 15-05-2026)
 - [vw_preventivi_lista](views/vw_preventivi_lista.md) — (rev 2026-06-03 — rev1)
 - [vw_preventivi_pratiche](views/vw_preventivi_pratiche.md) — (latest review 03-04-2026) `vendite.vw_preventivi_pratiche` espone le **pratiche collegate a ciascun preventivo vendita** tramite la tabella ponte `pratiche.pratiche_sorgenti` con `sorgente_tipo = 'PREVENTIVO'`.
@@ -354,10 +358,11 @@
 - [vw_preventivi_righe_smistabili_ordine](views/vw_preventivi_righe_smistabili_ordine.md) — Vista **predicato unico** del ramo ordine: le righe preventivo **eleggibili** allo smistamento merce→ordine. Capability (`fn_preventivo_ha_residuo_ordine`), push (`fn_push_preventivo_a_ordine`) e Pannello Smistamento leggono da qui la stessa verita' (brief-preventivi-ordini.md D8).
 - [vw_preventivi_smistamento](views/vw_preventivi_smistamento.md) — Aggregata per preventivo della vista righe smistamento: **contatori per ramo** per badge e progress della UI. Sostituisce `vw_preventivi_stato_fatturazione` (rename + rework natura-aware, 2026-06-12).
 - [vw_preventivi_smistamento_righe](views/vw_preventivi_smistamento_righe.md) — Fonte dati del **Pannello Smistamento** (brief-db-smistamento-preventivi.md, B): una riga per ogni riga **attiva** del preventivo, con natura, destinazione e lo **stato di smistamento autorevole** per la UI. Sostituisce `vw_preventivi_stato_fatturazione_righe` (rename + rework natura-aware, 2026-06-12): i flag booleani `in_commessa`/`emessa_af`/`fatturata` sono stati **rimossi** — `stato_smistamento` e' l'unica verita'.
-- [vw_resi_da_accreditare](views/vw_resi_da_accreditare.md) — (rev 2026-07-26 — etichetta ora reso-aware; rev 2026-07-18 forma cambiata)
+- [vw_resi_da_accreditare](views/vw_resi_da_accreditare.md) — (rev 2026-08-17 — agganciata alla partita di merce; rev 2026-07-26 etichetta reso-aware; rev 2026-07-18 forma cambiata)
 - [vw_resi_da_riconsegnare](views/vw_resi_da_riconsegnare.md) — (rev 2026-07-26)
 - [vw_resi_lista](views/vw_resi_lista.md) — (rev 2026-07-13)
 - [vw_resi_righe_effettive](views/vw_resi_righe_effettive.md) — (latest review 2026-07-18)
+- [vw_situazione_merce_ordine](views/vw_situazione_merce_ordine.md) — (rev 2026-08-18 — soglia dell'impegno · rev 2026-08-17 — nuova)
 - [vw_stato_sorgente_contratto](views/vw_stato_sorgente_contratto.md) — (latest review 2026-07-02) `vendite.vw_stato_sorgente_contratto` è il **resolver del dominio CONTRATTO** per la proiezione dello stato di dominio (brief-db-proiezione-stato-dominio, deliverable D2): espone il **descrittore normalizzato** dello stato **vivo** di ogni contratto — stato nativo + mapping `fase`/`esito`/`terminale` dichiarato su `config.stati_doc_contratti` — con chiave `(sorgente_tipo_id, sorgente_uid)` coerente con `pratiche.pratiche_sorgenti`.
 - [vw_stato_sorgente_ddt](views/vw_stato_sorgente_ddt.md) — (latest review 2026-07-18)
 - [vw_stato_sorgente_offerta](views/vw_stato_sorgente_offerta.md) — (latest review 2026-07-02) `vendite.vw_stato_sorgente_offerta` è il **resolver del dominio OFFERTA** per la proiezione dello stato di dominio (brief-db-proiezione-stato-dominio, deliverable D2): espone il **descrittore normalizzato** dello stato **vivo** di ogni offerta commerciale — stato nativo + mapping `fase`/`esito`/`terminale` dichiarato su `config.stati_doc_offerte` — con chiave `(sorgente_tipo_id, sorgente_uid)` coerente con `pratiche.pratiche_sorgenti`.

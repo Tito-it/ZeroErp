@@ -88,7 +88,14 @@ class BuildContextHappyPathTests(SimpleTestCase):
             {"iva_id": 1, "iva_aliquota": "22.00", "imponibile": "100.00", "imposta": "22.00"},
         ]
         repo.list_indirizzi.return_value = [
-            {"tipo_indirizzo_id": 1, "snapshot": {"via": "X", "comune": "Roma"}},
+            {
+                "tipo_indirizzo_id": 10,
+                "tipo_indirizzo_codice": "CON",
+                "snapshot": {
+                    "intestazione": "Acme Srl", "via": "VIA X 1", "cap": "00100",
+                    "citta": "ROMA", "prov": "RM", "stato": "IT",
+                },
+            },
         ]
 
         builder = PreventivoDocumentContextBuilder(repo=repo)
@@ -129,8 +136,29 @@ class BuildContextHappyPathTests(SimpleTestCase):
         self.assertEqual(ctx["riepilogo_iva"][0]["iva_aliquota"], "22,00")
         self.assertEqual(ctx["riepilogo_iva"][0]["imponibile"], "100,00")
 
-        # Indirizzi pass-through.
-        self.assertEqual(ctx["indirizzi"][0]["snapshot"]["via"], "X")
+        # Indirizzi: forma unica cross-dominio (context v2, 2026-08-16). Non
+        # piu' la lista pass-through della v1 ma slot con nome, TUTTI presenti
+        # anche quando il documento non li ha — e' cio' che permette al
+        # template l'accesso diretto `indirizzi.consegna.via` sotto
+        # StrictUndefined invece del `.get()` difensivo che rese silenzioso il
+        # difetto del Preventivo (brief-db-template-preventivo-indirizzi §2).
+        indirizzi = ctx["indirizzi"]
+        self.assertEqual(
+            set(indirizzi.keys()),
+            {"consegna", "fatturazione", "fornitura", "residenza"},
+        )
+        self.assertEqual(indirizzi["consegna"]["via"], "VIA X 1")
+        self.assertEqual(indirizzi["consegna"]["prov"], "RM")
+        # Chiavi opzionali comunque presenti (valore None), mai assenti.
+        self.assertIsNone(indirizzi["consegna"]["display"])
+        self.assertEqual(
+            indirizzi["consegna"]["display_compatto"],
+            "Acme Srl — VIA X 1, 00100 ROMA, RM",
+        )
+        # Slot ammessi dall'ambito ma non valorizzati sul documento: None.
+        self.assertIsNone(indirizzi["fatturazione"])
+        self.assertIsNone(indirizzi["fornitura"])
+        self.assertIsNone(indirizzi["residenza"])
 
         # _meta: locale + auth_user_id + context_code + version.
         # NIENTE timestamp/random: context_hash deve essere deterministico
@@ -138,7 +166,7 @@ class BuildContextHappyPathTests(SimpleTestCase):
         self.assertEqual(ctx["_meta"]["locale"], "it-IT")
         self.assertEqual(ctx["_meta"]["auth_user_id"], 5)
         self.assertEqual(ctx["_meta"]["context_code"], "PREVENTIVO")
-        self.assertEqual(ctx["_meta"]["context_version"], 1)
+        self.assertEqual(ctx["_meta"]["context_version"], 2)
         self.assertNotIn("built_at", ctx["_meta"])
         # Doppia chiamata a parita' di input -> dict identici (deterministico).
         ctx2 = PreventivoDocumentContextBuilder(repo=repo).build_context(

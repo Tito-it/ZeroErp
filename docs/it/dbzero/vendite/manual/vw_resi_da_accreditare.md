@@ -17,7 +17,28 @@
 
 ### 🎯 Scopo Principale
 
-(rev 2026-07-26 — etichetta ora reso-aware; rev 2026-07-18 forma cambiata)
+(rev 2026-08-17 — agganciata alla partita di merce; rev 2026-07-26 etichetta reso-aware;
+rev 2026-07-18 forma cambiata)
+
+> ⭐ **Dal 2026-08-17 la coda si aggancia alla PARTITA DI MERCE**
+> ([vw_partite_merce](vw_partite_merce.md)) invece che alla riga d'ordine.
+> Cambia una cosa sola, ed è il motivo di tutto il cantiere:
+> `resi_righe.ordine_riga_id` è **facoltativo**, `ddt_riga_id` è
+> **obbligatorio**. Agganciarsi al primo significava che un reso su merce senza
+> ordine — una riga aggiunta a mano, un documento di trasporto senza ordine
+> dietro — **usciva dal conto senza dare errore**: registrato, e mai
+> accreditato.
+>
+> ⚠️ **Ne discende che `ordine_riga_id` può ora essere vuoto** in questa coda,
+> ed è proprio la merce che prima non compariva. Resta esposto per risalire
+> all'ordine quando c'è, ma **non è più la chiave**.
+>
+> ⚠️ **E l'accredito si distribuisce per spedizione**, non per riga d'ordine: un
+> reso appartiene alla spedizione da cui la merce è tornata. Su una riga
+> d'ordine evasa da più documenti di trasporto le due letture danno numeri
+> diversi — e la seconda è quella giusta, perché un reso su merce **non
+> fatturata** di una spedizione non deve diluire l'accredito dovuto su
+> un'altra.
 
 **Coda di lavoro** delle righe reso per cui c'è un **accredito dovuto**: merce che il cliente
 ha reso ma che gli **risulta già fatturata**. La generazione della nota di credito arriva con

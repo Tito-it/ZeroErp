@@ -8,6 +8,7 @@
 from django.urls import path
 
 from apps.vendite.api.lineage_views import ApiOrdinePassaggi
+from apps.vendite.api.situazione_merce_views import ApiOrdineSituazioneMerce
 from apps.vendite.api.note_views import ApiOrdineNoteDetail, ApiOrdineNoteList
 from apps.vendite.api.ordini_documenti_views import (
     ApiOrdineDocumentiList,
@@ -62,6 +63,10 @@ urlpatterns = [
     # Genealogia/lineage (pannello "Passaggi", brief-be-fe-lineage).
     path("<int:ordine_id>/passaggi/", ApiOrdinePassaggi.as_view(),
          name="vendite-ordine-passaggi"),
+    # Situazione merce (pannello cantiere 2): riassunto per riga d'ordine +
+    # partite + le due code, in un round-trip. Sola lettura.
+    path("<int:ordine_id>/situazione-merce/", ApiOrdineSituazioneMerce.as_view(),
+         name="vendite-ordine-situazione-merce"),
 
     # Indirizzi documento (pannello slot-per-tipo, factory condiviso)
     path("<int:ordine_id>/indirizzi/", ApiOrdineIndirizzi.as_view(),

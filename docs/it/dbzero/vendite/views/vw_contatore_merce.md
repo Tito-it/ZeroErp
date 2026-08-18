@@ -3,65 +3,50 @@
 
 > 📝 **Descrizione**
 >
-> Il contatore (brief-db-fatturazione-ddt-resi §3a, step 1): per riga d'ordine (partita di merce ORDER-BACKED, non composita) espone tenuti (Σ ordini_righe_fulfillment.qta_evasa − Σ vw_resi_righe_effettive.quantita, tutti i tipi) e fatturati (Σ attivita_fatturabili.quantita NORMALE sui segmenti ORD:*:R:&lt;ordine_riga&gt; + DDT:*:R:&lt;ddt_riga&gt; attribuiti via fulfillment; l'esistenza della AF E' la frontiera EMESSA). differenza = tenuti − fatturati: &gt;0 fattura, &lt;0 accredita, =0 niente. Fonte unica per lister DDT / coda accrediti / resolver. STANDALONE e COMPOSITI esclusi (follow-up). security_invoker=on + RLS. rev 2026-07-17.
+> Il contatore, come AGGREGATO per riga d'ordine delle partite di merce (brief-design-partita-merce-generalizzata S3, rev 2026-08-17). Non calcola piu': somma vw_partite_merce (grana = riga di DDT) e ci aggiunge il fatturato nato sulla corsia ORD. ⚠️ Le righe di RI-CONSEGNA sono ESCLUSE (e_riconsegna): i loro pezzi sono gia' nel consegnato della partita d'origine, e senza il filtro verrebbero contati due volte — hanno una riga d'ordine, perche' fn_genera_ddt_riconsegna crea un fulfillment. Le sei colonne storiche sono INVARIATE nella semantica: parita' 18/18 contro la fotografia S0 post-decisione D1. Sparisce WHERE NOT is_composito: i kit entrano, contati in unita' del PADRE (S1). Colonne in coda: consegnato, reso, in_riconsegna, fatturato_su_merce, fatturato_su_ordine, fatturato_anticipato (fatturato di merce NON ancora uscita — non e' un accredito dovuto), partite_merce, misurabile. ⚠️ Qui `differenza` NON e' mai NULL, a differenza di vw_partite_merce: fn_list_ddt_da_pushare fa COALESCE(differenza,0) e un NULL smetterebbe di fatturare una riga in silenzio. Questa resta il contatore GREZZO che dosa le macchine; chi vuole la semantica parlante (stato, NULL = «non si applica») legge vw_partite_merce. security_invoker=on + RLS.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_contatore_merce
 WITH (security_invoker=on) AS
-WITH ful AS (
-         SELECT f.ordine_riga_id,
-            sum(f.qta_evasa) AS evaso
-           FROM vendite.ordini_righe_fulfillment f
-          GROUP BY f.ordine_riga_id
-        ), res AS (
-         SELECT e.ordine_riga_id,
-            sum(e.quantita) AS reso
-           FROM vendite.vw_resi_righe_effettive e
-          WHERE (e.ordine_riga_id IS NOT NULL)
-          GROUP BY e.ordine_riga_id
-        ), af_seg AS (
-         SELECT af.quantita,
-            split_part((ca.segment_key)::text, ':'::text, 1) AS seg_tipo,
-            ("substring"((ca.segment_key)::text, ':R:([0-9]+)'::text))::bigint AS seg_riga_id
-           FROM (vendite.attivita_fatturabili af
-             JOIN vendite.commesse_attivita ca ON ((ca.id = af.commessa_attivita_id)))
-          WHERE (((af.tipo_movimento)::text = 'NORMALE'::text) AND (split_part((ca.segment_key)::text, ':'::text, 1) = ANY (ARRAY['ORD'::text, 'DDT'::text])) AND ((ca.segment_key)::text ~ ':R:[0-9]+'::text))
-        ), fatt AS (
-         SELECT x.ordine_riga_id,
-            sum(x.quantita) AS fatturati
-           FROM ( SELECT s.seg_riga_id AS ordine_riga_id,
-                    s.quantita
-                   FROM af_seg s
-                  WHERE (s.seg_tipo = 'ORD'::text)
-                UNION ALL
-                 SELECT f.ordine_riga_id,
-                    s.quantita
-                   FROM (af_seg s
-                     JOIN vendite.ordini_righe_fulfillment f ON ((f.ddt_riga_id = s.seg_riga_id)))
-                  WHERE (s.seg_tipo = 'DDT'::text)) x
-          GROUP BY x.ordine_riga_id
-        ), partite AS (
-         SELECT ful_1.ordine_riga_id
-           FROM ful ful_1
-        UNION
-         SELECT res_1.ordine_riga_id
-           FROM res res_1
+WITH pm AS (
+         SELECT p.ordine_riga_id,
+            sum(p.consegnato) AS consegnato,
+            sum(p.reso) AS reso,
+            sum(p.in_riconsegna) AS in_riconsegna,
+            sum(p.tenuti) AS tenuti,
+            sum(p.fatturato_merce) AS fatturato_su_merce,
+            sum(p.fatturato_da_ordine) AS allocato,
+            (count(*))::integer AS partite_merce,
+            bool_and(p.misurabile) AS misurabile
+           FROM vendite.vw_partite_merce p
+          WHERE ((p.ordine_riga_id IS NOT NULL) AND (NOT p.e_riconsegna))
+          GROUP BY p.ordine_riga_id
+        ), ord AS (
+         SELECT f.riga_id AS ordine_riga_id,
+            f.quantita,
+            f.misurabile
+           FROM vendite.vw_af_merce_per_riga f
+          WHERE (((f.corsia)::text = 'ORD'::text) AND ((f.tipo_movimento)::text = 'NORMALE'::text))
         )
  SELECT orr.id AS ordine_riga_id,
     orr.ordine_id,
     orr.articolo_id,
-    (COALESCE(ful.evaso, (0)::numeric) - COALESCE(res.reso, (0)::numeric)) AS tenuti,
-    COALESCE(fatt.fatturati, (0)::numeric) AS fatturati,
-    ((COALESCE(ful.evaso, (0)::numeric) - COALESCE(res.reso, (0)::numeric)) - COALESCE(fatt.fatturati, (0)::numeric)) AS differenza
-   FROM (((((partite p
-     JOIN vendite.ordini_righe orr ON ((orr.id = p.ordine_riga_id)))
-     JOIN catalogo.articoli art ON ((art.id = orr.articolo_id)))
-     LEFT JOIN ful ON ((ful.ordine_riga_id = orr.id)))
-     LEFT JOIN res ON ((res.ordine_riga_id = orr.id)))
-     LEFT JOIN fatt ON ((fatt.ordine_riga_id = orr.id)))
-  WHERE (NOT COALESCE(art.is_composito, false));
+    pm.tenuti,
+    (COALESCE(pm.fatturato_su_merce, (0)::numeric) + COALESCE(o.quantita, (0)::numeric)) AS fatturati,
+    (pm.tenuti - (COALESCE(pm.fatturato_su_merce, (0)::numeric) + COALESCE(o.quantita, (0)::numeric))) AS differenza,
+    pm.consegnato,
+    pm.reso,
+    pm.in_riconsegna,
+    COALESCE(pm.fatturato_su_merce, (0)::numeric) AS fatturato_su_merce,
+    COALESCE(o.quantita, (0)::numeric) AS fatturato_su_ordine,
+    GREATEST((0)::numeric, (COALESCE(o.quantita, (0)::numeric) - COALESCE(pm.allocato, (0)::numeric))) AS fatturato_anticipato,
+    pm.partite_merce,
+    (pm.misurabile AND COALESCE(o.misurabile, true)) AS misurabile
+   FROM ((pm
+     JOIN vendite.ordini_righe orr ON ((orr.id = pm.ordine_riga_id)))
+     LEFT JOIN ord o ON ((o.ordine_riga_id = pm.ordine_riga_id)));
 ```
 
 

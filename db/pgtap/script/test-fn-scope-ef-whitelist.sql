@@ -178,14 +178,25 @@ SELECT ok(
 );
 
 -- =========================================================
--- 5) PK: identita attiva, whitelist vuota -> true (accesso globale)
+-- 5) PK: identita attiva, whitelist vuota -> FALSE (fail-closed)
+--
+-- ⚠️ Fino al 2026-08-18 questa asserzione diceva `true`, con la nota
+--   «accesso globale». Non era una fixture stantia: era il VECCHIO
+--   contratto, scritto. P-2a lo ha rovesciato, e la ragione sta
+--   nell'asimmetria che nessuno aveva mai messo a confronto — lo stesso
+--   utente, sul lato SCRITTURA, non poteva nemmeno creare un billing
+--   account (fn_check_user_can_create_ba -> false) mentre in LETTURA
+--   vedeva tutti gli emittenti. Le due letture non potevano essere
+--   entrambe intenzionali.
+--   Una riga mancante e' un errore di configurazione, non un permesso.
+--   Brief: brief-db-perimetro-emittente-liste-e-gerarchia-ba §2.5 (P-2a).
 -- =========================================================
 SELECT ok(
     script.fn_scope_ef_whitelist(
         (SELECT auth_user_id FROM _t_au WHERE idx = 1),
         (SELECT ef_id FROM _t_ef)
-    ) = true,
-    '5. PK: identita attiva, whitelist vuota -> true (accesso globale)'
+    ) = false,
+    '5. PK: identita attiva, whitelist vuota -> false (fail-closed, P-2a)'
 );
 
 -- =========================================================

@@ -26,6 +26,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.payload_validators import (
     qp_bool_optional,
+    qp_int_optional,
     qp_int_strict,
     qp_iso_date_optional,
     qp_str,
@@ -377,6 +378,44 @@ class ApiDashboardCompetenzaGruppi(DomainAPIView):
                 ),
             ),
             OpenApiParameter(
+                name="ba_fatturazione_id",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Filtro CLIENTE: id del billing account di FATTURAZIONE "
+                    "(padre se esiste, altrimenti se stesso) — lo stesso "
+                    "elemento che la chiave della fattura usa. NON e' un filtro "
+                    "per ragione sociale: lo stesso soggetto puo' avere piu' "
+                    "alberi BA che finiscono su fatture diverse. Le voci "
+                    "disponibili sono nel blocco `clienti` della risposta."
+                ),
+            ),
+            OpenApiParameter(
+                name="ba_non_determinabile",
+                type=bool,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "true = solo i gruppi il cui cliente di fatturazione NON e' "
+                    "determinabile (padre fuori scope). E' l'alternativa a "
+                    "`ba_fatturazione_id`, non un valore aggiuntivo: se "
+                    "valorizzato, `ba_fatturazione_id` viene ignorato."
+                ),
+            ),
+            OpenApiParameter(
+                name="search",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Ricerca libera su ragione sociale, identificativo fiscale, "
+                    "codice BA di fatturazione, codice commessa e riferimento "
+                    "documento. Sotto i 3 caratteri viene IGNORATA (nessun 400, "
+                    "nessuna lista svuotata)."
+                ),
+            ),
+            OpenApiParameter(
                 name="order_by",
                 type=str,
                 location=OpenApiParameter.QUERY,
@@ -384,7 +423,8 @@ class ApiDashboardCompetenzaGruppi(DomainAPIView):
                 description=(
                     "Colonna di ordinamento (whitelist): riferimento | "
                     "tipo_gruppo | cliente_display | commessa_codice | "
-                    "n_attivita | valore (default) | data_attivita_max. "
+                    "n_attivita | valore (default) | data_attivita_max | "
+                    "ba_codice_fatturazione | id_fiscale. "
                     "Colonna non ammessa -> 400."
                 ),
             ),
@@ -424,6 +464,7 @@ class ApiDashboardCompetenzaGruppi(DomainAPIView):
                             "results": serializers.ListField(child=serializers.DictField()),
                             "riepilogo": serializers.DictField(),
                             "tipi": serializers.ListField(child=serializers.DictField()),
+                            "clienti": serializers.ListField(child=serializers.DictField()),
                         },
                     ),
                     "meta": serializers.DictField(required=False),
@@ -451,6 +492,20 @@ class ApiDashboardCompetenzaGruppi(DomainAPIView):
         # injection) e le voci valide le dichiara il blocco `tipi` della
         # risposta, calcolato sui dati.
         tipo_gruppo = qp_str_upper(qp.get("tipo_gruppo"))
+        # Filtro cliente: id numerico validato (un non-numero -> 400, non un
+        # filtro silenziosamente ignorato che mostrerebbe TUTTI i clienti
+        # facendo credere di averne scelto uno).
+        ba_fatturazione_id = qp_int_optional(
+            qp.get("ba_fatturazione_id"), "ba_fatturazione_id",
+        )
+        # ⚠️ `qp_bool_optional` e non `qp_bool`: quest'ultimo torna True quando il
+        # parametro e' ASSENTE (default=True), quindi la lista si sarebbe aperta
+        # mostrando i soli gruppi senza cliente determinabile — cioe' quasi
+        # nulla, senza che nessun filtro risultasse attivo a video.
+        ba_non_determinabile = bool(
+            qp_bool_optional(qp.get("ba_non_determinabile"), "ba_non_determinabile")
+        )
+        search = qp_str(qp.get("search"))
         order_by = qp_str(qp.get("order_by"))
         order_dir = qp_str(qp.get("order_dir"))
         page = qp_int_strict(qp.get("page"), "page", 1)
@@ -460,6 +515,9 @@ class ApiDashboardCompetenzaGruppi(DomainAPIView):
             competenza_mese=competenza_mese,
             stadio=stadio,
             tipo_gruppo=tipo_gruppo,
+            ba_fatturazione_id=ba_fatturazione_id,
+            ba_non_determinabile=ba_non_determinabile,
+            search=search,
             order_by=order_by,
             order_dir=order_dir,
             page=page,
@@ -601,12 +659,19 @@ class ApiDashboardCompetenzaGruppiExport(DomainAPIView):
             OpenApiParameter(name="competenza_mese", type=str, required=True),
             OpenApiParameter(name="stadio", type=str, required=False),
             OpenApiParameter(name="tipo_gruppo", type=str, required=False),
+            OpenApiParameter(name="ba_fatturazione_id", type=int, required=False),
+            OpenApiParameter(name="ba_non_determinabile", type=bool, required=False),
+            OpenApiParameter(name="search", type=str, required=False),
             OpenApiParameter(name="order_by", type=str, required=False),
             OpenApiParameter(name="order_dir", type=str, required=False),
         ],
         responses={(200, "text/csv"): OpenApiTypes.BINARY},
     )
     # Scopo: Genera il file (CSV/XLSX) dei gruppi fatturabili del mese.
+    # ⚠️ I filtri sono gli STESSI della lista, filtro cliente e ricerca compresi:
+    #        un export che non corrisponde a cio' che si vede a video e' peggio
+    #        di nessun export — chi lo apre crede di avere il perimetro che
+    #        aveva davanti, e non ha modo di accorgersi che non e' cosi'.
     def get(self, request: Request) -> HttpResponse:
         qp = request.query_params
         competenza_mese = _competenza_mese_obbligatoria(
@@ -621,6 +686,15 @@ class ApiDashboardCompetenzaGruppiExport(DomainAPIView):
                 "competenza_mese": competenza_mese,
                 "stadio": qp_str_upper(qp.get("stadio")),
                 "tipo_gruppo": qp_str_upper(qp.get("tipo_gruppo")),
+                "ba_fatturazione_id": qp_int_optional(
+                    qp.get("ba_fatturazione_id"), "ba_fatturazione_id",
+                ),
+                "ba_non_determinabile": bool(
+                    qp_bool_optional(
+                        qp.get("ba_non_determinabile"), "ba_non_determinabile",
+                    )
+                ),
+                "search": qp_str(qp.get("search")),
                 "order_by": qp_str(qp.get("order_by")),
                 "order_dir": qp_str(qp.get("order_dir")),
             },

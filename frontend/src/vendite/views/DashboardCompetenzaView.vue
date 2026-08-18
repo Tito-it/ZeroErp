@@ -11,6 +11,7 @@ import { computed, nextTick, onActivated, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import Checkbox from 'primevue/checkbox'
+import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
@@ -38,8 +39,10 @@ import { useNotify } from '../../core/composables/useNotify'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useActionPermission } from '../../core/composables/useActionPermission'
+import { useDebouncedAction } from '../../core/composables/useDebouncedAction'
 import { useJobPolling } from '../../core/composables/useJobPolling'
 import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS } from '../../core/constants'
+import { STATO_EMISSIONE_ATTIVITA } from '../constants'
 import { extractApiError } from '../../core/utils/apiError'
 import { displayDate } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
@@ -50,7 +53,11 @@ import { getFatturazioneRun, runFatturazione, runNumerazione } from '../api/lott
 import { useDocumentoDrawer } from '../_shared/documenti/useDocumentoDrawer'
 import { buildApriDocumentoAction } from '../dashboardAree'
 import { useSelezioneToggle } from '../_shared/righe/useSelezioneToggle'
-import { STADIO_GRUPPI, useDashboardCompetenzaStore } from '../stores/dashboardCompetenza'
+import {
+  GRUPPI_CLIENTE_NON_DETERMINABILE,
+  STADIO_GRUPPI,
+  useDashboardCompetenzaStore,
+} from '../stores/dashboardCompetenza'
 
 const { t, te } = useI18n()
 const notify = useNotify()
@@ -72,6 +79,14 @@ const canFatturare = computed(() => canGenerareFatture.value && !areaReadonly.va
 // Gate del verbo RENDI DEFINITIVE (C-7, atto fiscale I-7): permesso dedicato
 // dell'endpoint C-4 (numera_fatture_lotti) + readonly d'area.
 const { isAllowed: canNumerareFatture } = useActionPermission('numera_fatture_lotti')
+
+// Permesso del verbo che sblocca DAVVERO la commessa («Rendi pronta», dentro il
+// drawer di governo). Serve qui, non solo là: senza, «Sblocca commessa»
+// porterebbe in un drawer dove il verbo non compare — il gate FE lo NASCONDE a
+// chi non ha l'azione — e il lucchetto prometterebbe una via d'uscita che non
+// esiste. Misurato in app il 2026-08-16: peggio di non offrire niente, perche'
+// il vicolo cieco lo si scopre solo dopo averlo imboccato.
+const { isAllowed: canCambiareStatoCommessa } = useActionPermission('cambia_stato_commessa')
 const canNumerare = computed(() => canNumerareFatture.value && !areaReadonly.value)
 const { execute, loading: azioneLoading } = useApiHandler()
 const { confirmAction } = useConfirmAction()
@@ -101,6 +116,9 @@ const {
   gruppiRiepilogo,
   gruppiTipo,
   gruppiTipi,
+  gruppiCliente,
+  gruppiClienti,
+  gruppiSearch,
   errori,
   erroriCount,
   erroriPage,
@@ -344,7 +362,56 @@ function isGruppoEmittibile(row) {
   // NULL (gruppo senza commessa) non e' un blocco: decide il motore a valle.
   return row.commessa_emittibile !== false
 }
-const gruppiSelezionabili = computed(() => gruppi.value.filter(isGruppoEmittibile))
+
+// Gruppi attualmente IN LAVORAZIONE, per GIRO: `jobId → gruppo_key[]`. Non un
+// insieme piatto, e il motivo e' tutto qui: con piu' giri in volo la
+// conclusione del primo deve togliere le marcature SOLO sue: un insieme unico
+// si potrebbe unire all'avvio ma non sottrarre selettivamente alla fine, e il
+// secondo giro resterebbe senza segno mentre e' ancora vivo.
+// ⚠️ Dichiarata QUI e non piu' accanto ai verbi: alimenta `gruppiSelezionabili`
+// poche righe sotto, e in `<script setup>` una const usata piu' in alto e' una
+// TDZ silenziosa (memoria feedback_vue_watch_immediate_tdz).
+const gruppiInCorsoPerGiro = ref(new Map())
+
+// Scopo: marca/smarca i gruppi di UN giro. La mappa si sostituisce (mai mutata
+//        in place): un `.set`/`.delete` sull'istanza dentro il ref non cambia
+//        l'identita' dell'oggetto e Vue non riesegue i computed che ne
+//        dipendono — le righe resterebbero senza spinner con lo stato interno
+//        gia' avanti.
+function marcaGiro(jobId, gruppi) {
+  const mappa = new Map(gruppiInCorsoPerGiro.value)
+  mappa.set(jobId, gruppi)
+  gruppiInCorsoPerGiro.value = mappa
+}
+
+function smarcaGiro(jobId) {
+  if (!gruppiInCorsoPerGiro.value.has(jobId)) return
+  const mappa = new Map(gruppiInCorsoPerGiro.value)
+  mappa.delete(jobId)
+  gruppiInCorsoPerGiro.value = mappa
+}
+
+// Vista piatta per il template e per i predicati: `.has(gruppo_key)` resta
+// l'interfaccia di prima, chi la usa non sa che sotto c'e' una mappa.
+const gruppiInCorso = computed(() => {
+  const piatto = new Set()
+  for (const chiavi of gruppiInCorsoPerGiro.value.values()) {
+    for (const chiave of chiavi) piatto.add(chiave)
+  }
+  return piatto
+})
+
+// Selezionabile = testata emittibile E non gia' presa da un giro vivo. Il
+// secondo pezzo e' la difesa contro la sovrapposizione parziale, e deve stare
+// QUI perche' il backend non ce l'ha: due giri con perimetri che si
+// intersecano ([A,B] poi [B,C]) sono due job distinti e nessuno li ferma —
+// B verrebbe sottomesso due volte e il secondo giro lo troverebbe gia' preso,
+// riportandolo come «non servito» per una ragione che non e' un problema.
+const gruppiSelezionabili = computed(
+  () => gruppi.value.filter(
+    (row) => isGruppoEmittibile(row) && !gruppiInCorso.value.has(row.gruppo_key),
+  ),
+)
 
 // Scopo: elenco leggibile in un toast/conferma — primi 3 per esteso, il resto
 //        riassunto da «…». Stessa soglia del compositore BE
@@ -365,19 +432,25 @@ const {
 })
 
 // La selezione sopravvive alle pagine e ai reload DI PROPOSITO — ma una riga
-// selezionata da emittibile puo' tornare BLOCCATA a un refresh (un collega
-// riporta la commessa in BOZZA). Senza questo prune resterebbe spuntata con la
-// checkbox disabilitata — il guard del BB rende il de-toggle un no-op — quindi
-// non rimovibile, contata nel pulsante e ri-sottomessa a ogni giro. Il prune
-// toglie dalla selezione le chiavi che la pagina fresca dichiara bloccate: la
-// checkbox si spegne a video, che e' la comunicazione onesta.
-watch(gruppi, (rows) => {
-  const bloccate = new Set(
-    (rows ?? []).filter((r) => !isGruppoEmittibile(r)).map((r) => r.gruppo_key),
+// selezionata puo' smettere di essere selezionabile sotto i piedi: tornare
+// BLOCCATA a un refresh (un collega riporta la commessa in BOZZA), oppure
+// entrare in un giro avviato nel frattempo. Senza questo prune resterebbe
+// spuntata con la checkbox disabilitata — il guard del BB rende il de-toggle un
+// no-op — quindi non rimovibile, contata nel pulsante e ri-sottomessa a ogni
+// giro. Il prune toglie dalla selezione le chiavi che la pagina dichiara non
+// piu' selezionabili: la checkbox si spegne a video, che e' la comunicazione
+// onesta.
+// ⚠️ Sorvegliati ENTRAMBI i motivi: il secondo non dipende da una fetch, quindi
+// un watch sul solo `gruppi` non scatterebbe quando parte un giro.
+watch([gruppi, gruppiInCorso], ([rows]) => {
+  const nonSelezionabili = new Set(
+    (rows ?? [])
+      .filter((r) => !isGruppoEmittibile(r) || gruppiInCorso.value.has(r.gruppo_key))
+      .map((r) => r.gruppo_key),
   )
-  if (!bloccate.size) return
+  if (!nonSelezionabili.size) return
   selezioneGruppi.value = selezioneGruppi.value.filter(
-    (r) => !bloccate.has(r.gruppo_key),
+    (r) => !nonSelezionabili.has(r.gruppo_key),
   )
 })
 
@@ -415,19 +488,45 @@ function toggleTuttiGruppi() {
   ]
 }
 
-// Lotti prodotti dall'ultima emissione mirata: sono N, non uno (un gruppo con
-// righe di tipo doc fiscale diverso finisce in lotti diversi). Alimentano
+// Lotti prodotti dalle emissioni mirate: sono N per giro, non uno (un gruppo
+// con righe di tipo doc fiscale diverso finisce in lotti diversi). Alimentano
 // l'aggancio «vai al lotto» — senza, l'operatore dovrebbe cercarsi a mano nella
 // lista lotti il contenitore appena creato per andare a numerarlo.
+// Ogni voce porta la COMPETENZA del giro che l'ha prodotta: con piu' giri in
+// volo un giro puo' concludersi DOPO che l'operatore ha cambiato mese, e i suoi
+// link si appoggerebbero al mese sbagliato — su una schermata il cui passo
+// successivo e' numerare, cioe' un atto fiscale, e' un'informazione falsa nel
+// punto peggiore. Non si cancellano al cambio mese: ricompaiono tornando sul
+// loro.
 const lottiEmessi = ref([])
 
-// Scopo: azzera lo stato di selezione/esito che vive nella view (lo store
-//        azzera il suo). Dichiarata come `function` per essere invocabile dai
-//        callback registrati piu' in alto (nessun watch immediate la chiama in
-//        setup: `useDashMesiNav` scatta solo su azione utente).
+const lottiEmessiVisibili = computed(
+  () => lottiEmessi.value.filter((l) => l.competenza === competenzaCorrente.value),
+)
+
+// Scopo: registra i lotti di un giro concluso senza duplicati (`lotto_id` e'
+//        univoco) e senza perdere quelli dei giri precedenti — con piu' giri
+//        concorrenti sovrascrivere significherebbe buttare via l'aggancio del
+//        giro che ha finito per primo.
+function registraLottiEmessi(lotti, competenza) {
+  const gia = new Set(lottiEmessi.value.map((l) => l.lotto_id))
+  const nuovi = lotti
+    .filter((l) => !gia.has(l.lotto_id))
+    .map((l) => ({ ...l, competenza }))
+  if (!nuovi.length) return
+  lottiEmessi.value = [...lottiEmessi.value, ...nuovi]
+}
+
+// Scopo: azzera lo stato di selezione che vive nella view (lo store azzera il
+//        suo). Dichiarata come `function` per essere invocabile dai callback
+//        registrati piu' in alto (nessun watch immediate la chiama in setup:
+//        `useDashMesiNav` scatta solo su azione utente).
+// ⚠️ NON tocca `lottiEmessi` ne' le marcature dei giri vivi: i primi sono
+//    filtrati per mese e devono sopravvivere all'andata e ritorno, le seconde
+//    appartengono a job che stanno ancora girando — spegnerle qui le farebbe
+//    sparire da una lista in cui il lavoro e' ancora in corso.
 function azzeraStatoGruppi() {
   selezioneGruppi.value = []
-  lottiEmessi.value = []
 }
 
 const gruppiSortOrder = computed(() => (gruppiOrderDir.value === 'desc' ? -1 : 1))
@@ -465,15 +564,61 @@ const opzioniTipoGruppo = computed(() => [
   })),
 ])
 
-// Scopo: cambio del filtro tipo — riparte da pagina 1 (le pagine successive
-//        appartengono al perimetro precedente) e azzera la selezione: le righe
-//        selezionate potrebbero non essere piu' a video, e fatturare una
-//        selezione invisibile e' esattamente il tipo di sorpresa da evitare.
-function onGruppiTipoChange() {
+// Scopo: cambio di QUALUNQUE filtro della lista gruppi — riparte da pagina 1
+//        (le pagine successive appartengono al perimetro precedente) e azzera
+//        la selezione.
+// ⚠️ L'azzeramento della selezione non e' prudenza: e' la regola che regge il
+//    verbo. La selezione sopravvive al cambio PAGINA di proposito (le chiavi
+//    sono di dominio, non indici di riga), ma al cambio di PERIMETRO no —
+//    altrimenti si fattura roba che non si ha davanti, che e' esattamente
+//    l'incidente da cui nasce tutto questo cantiere.
+// Una sede sola per i tre filtri (tipo, cliente, ricerca): tre copie di queste
+// tre righe sarebbero tre occasioni perche' una si dimentichi la selezione.
+function applicaFiltroGruppi() {
   gruppiPage.value = 1
   selezioneGruppi.value = []
   loadGruppi()
 }
+
+// Debounce della ricerca libera (BB `useDebouncedAction`): ritardo standard e,
+// soprattutto, cleanup su unmount/deactivate — un timer che scatta su un tab in
+// background ricaricherebbe una lista che l'operatore ha lasciato.
+const onGruppiSearchInput = useDebouncedAction(applicaFiltroGruppi)
+
+// Voci del filtro CLIENTE (facet dal BE, sul perimetro del mese/stadio).
+// L'etichetta porta SEMPRE il codice BA accanto alla ragione sociale, e non e'
+// decorazione: lo stesso soggetto puo' avere piu' alberi di billing account
+// — anche sotto emittenti diversi — con nome e codice fiscale identici, e
+// quegli alberi finiscono su fatture diverse. Senza il codice la tendina
+// mostrerebbe due voci uguali senza modo di distinguerle.
+const opzioniCliente = computed(() => {
+  const voci = gruppiClienti.value.map((c) => {
+    // Cliente non determinabile (padre fuori scope): voce esplicita col suo
+    // conteggio, non una riga che sparisce. E' la riga che sfugge — il caso da
+    // cui nasce il filtro — e nasconderla sarebbe il difetto, non il rimedio.
+    if (c.ba_fatturazione_id === null || c.ba_fatturazione_id === undefined) {
+      return {
+        value: GRUPPI_CLIENTE_NON_DETERMINABILE,
+        label: t('vendite.dashboard_competenza.cliente_non_determinabile', { n: c.n_gruppi }),
+      }
+    }
+    const nome = c.cliente_display || t('vendite.dashboard_competenza.cliente_senza_nome')
+    const codice = c.ba_codice_fatturazione
+    return {
+      value: c.ba_fatturazione_id,
+      label: `${codice ? `${nome} — ${codice}` : nome} (${c.n_gruppi})`,
+    }
+  })
+  return [
+    {
+      value: null,
+      label: t('vendite.dashboard_competenza.cliente_tutti', {
+        n: gruppiClienti.value.reduce((acc, x) => acc + Number(x.n_gruppi ?? 0), 0),
+      }),
+    },
+    ...voci,
+  ]
+})
 
 // Scopo: etichetta del gruppo — riferimento leggibile del documento
 //        (PRV-0012…) oppure, per gli oneri sourceless, la commessa che li
@@ -583,11 +728,20 @@ const contestoLista = computed(() => {
     return {
       lista: listaGruppiRef.value,
       exportFn: exportDashboardCompetenzaGruppi,
+      // ⚠️ TUTTI i filtri a video, cliente e ricerca compresi: un export che
+      // non corrisponde a cio' che si ha davanti e' peggio di nessun export —
+      // chi lo apre crede di avere quel perimetro e non ha modo di accorgersi
+      // che non e' cosi'. Il sentinella «non determinabile» si traduce qui
+      // esattamente come nello store: fuori viaggia solo il flag.
       params: (formato) => ({
         formato,
         competenza_mese: competenzaCorrente.value,
         stadio: STADIO_GRUPPI,
         tipo_gruppo: gruppiTipo.value,
+        ...(gruppiCliente.value === GRUPPI_CLIENTE_NON_DETERMINABILE
+          ? { ba_non_determinabile: true }
+          : { ba_fatturazione_id: gruppiCliente.value }),
+        search: gruppiSearch.value || null,
         order_by: gruppiOrderBy.value,
         order_dir: gruppiOrderDir.value,
       }),
@@ -696,47 +850,160 @@ function onApprovaMese() {
 // coda" invece di girare all'infinito; colpi a vuoto del polling silenziosi.
 // `avvia(opzioni)`: `messageParams` per i verbi la cui conferma non parla di un
 // mese ma di una selezione (l'emissione mirata), `apiOptions` per gli argomenti
-// extra della chiamata (i gruppi). Entrambi vuoti = comportamento dei due verbi
-// storici, invariato.
-function useVerboFatturazione({ apiFn, keys, buildEsitoOk }) {
-  const { start, polling } = useJobPolling({
+// extra della chiamata (i gruppi), `giro` per l'etichetta con cui l'esito verra'
+// attribuito. Tutti vuoti = comportamento dei due verbi di perimetro.
+//
+// ⭐ CONCORRENZA (2026-08-17, brief-fe-fatturazione-job-concorrenti). L'emissione
+// mirata ammette piu' giri in volo insieme (`maxConcurrent: Infinity`, decisione
+// D1: nessun tetto); i due verbi di perimetro restano a uno per volta col
+// default del BB. Il pezzo che rende la cosa sostenibile non e' il polling
+// multi-job — quello e' la meccanica — ma il fatto che ogni giro si porti
+// dietro il PROPRIO contesto (`gruppi`, `etichetta`, `competenza`) fino
+// all'esito: senza, due esiti che arrivano a distanza di secondi sono
+// indistinguibili, e un elenco di «non serviti» che non dice di quale giro sia
+// non e' interpretabile.
+function useVerboFatturazione({ apiFn, keys, buildEsitoOk, maxConcurrent = 1 }) {
+  // Scopo: chiude un giro — toglie le marcature dei SOLI suoi gruppi (gli altri
+  //        giri stanno ancora lavorando) e riallinea i dati.
+  function concludiGiro(context) {
+    if (context?.jobId !== undefined && context?.jobId !== null) {
+      smarcaGiro(context.jobId)
+    }
+    // Ricaricare sotto i piedi di un giro ancora vivo e' sicuro: le marcature
+    // sono per chiave di dominio (`gruppo_key`), non per indice di riga, quindi
+    // sopravvivono al reload. Cio' che cambia e' che le righe consumate
+    // spariscono e le pagine scorrono — per questo il conteggio dei giri vivi
+    // sta in TESTATA e non solo sulle righe.
+    reloadDopoAzione()
+  }
+
+  const { start, isFollowing, nJobsInCorso, resume } = useJobPolling({
     fetchStatus: (jobId) => getFatturazioneRun(jobId),
-    onDone: (stato) => {
+    maxConcurrent,
+    onDone: (stato, context) => {
       if (stato.stato === 'FATTO') {
-        buildEsitoOk(stato.result ?? {})
+        buildEsitoOk(stato.result ?? {}, context)
       } else {
         // ERRORE/ANNULLATO: non andato a buon fine (payload, revoca…).
-        notify.error(stato.ultimo_errore?.message || t(keys.errore))
+        // ⚠️ Il messaggio da solo non basta piu'. Un giro MIRATO che non
+        // produce nessun lotto SOLLEVA (E_FATTURAZIONE_GIRO_NESSUN_LOTTO) e
+        // porta i gruppi non serviti col loro motivo dentro
+        // `ultimo_errore.context` — che fin qui veniva buttato via. Con un giro
+        // per volta era raro; con piu' giri concorrenti e' l'esito TIPICO del
+        // secondo giro che tocca gli stessi gruppi (le righe se le e' prese il
+        // primo), e dire «errore» al posto di «quel gruppo l'ha fatturato
+        // l'altro giro» manderebbe a cercare un guasto che non esiste.
+        const nonServiti = normalizzaLista(stato.ultimo_errore?.context?.gruppi_non_serviti)
+        if (nonServiti.length > 0) {
+          notificaNonServiti(nonServiti, 0, context)
+        } else {
+          notify.error(stato.ultimo_errore?.message || t(keys.errore))
+        }
       }
-      reloadDopoAzione()
+      concludiGiro(context)
     },
-    onTimeout: () => {
+    onTimeout: (context) => {
       notify.warn(t(keys.inCoda))
-      reloadDopoAzione()
+      // ⚠️ Si sblocca anche qui: il job PROSEGUE in coda ma noi smettiamo di
+      // seguirlo, e lasciare le righe marcate «in corso» per sempre sarebbe
+      // peggio del silenzio — un'indicazione che non si spegne più non è
+      // informazione, è un guasto apparente.
+      concludiGiro(context)
     },
   })
-  function avvia({ messageParams = null, apiOptions = null } = {}) {
+
+  function avvia({ messageParams = null, apiOptions = null, giro = null } = {}) {
     confirmAction({
       title: t(keys.header),
       message: t(keys.conferma, messageParams ?? {
         mese: `${nomiMesi.value[meseIdx.value]} ${anno.value}`,
       }),
       onAccept: async () => {
+        // La competenza si congela QUI: il giro puo' concludersi dopo che
+        // l'operatore ha cambiato mese, e i suoi lotti appartengono al mese in
+        // cui e' partito, non a quello che si sta guardando all'arrivo.
+        const competenza = competenzaCorrente.value
         const res = await execute(() =>
-          apiOptions ? apiFn(competenzaCorrente.value, apiOptions)
-                     : apiFn(competenzaCorrente.value))
+          apiOptions ? apiFn(competenza, apiOptions)
+                     : apiFn(competenza))
         if (res === null) return
+        // Stessa selezione ancora viva → il BE non crea un secondo job:
+        // restituisce l'id di QUELLO in corso (chiave di idempotenza
+        // competenza+scope+gruppi). Seguirlo di nuovo lo conterebbe due volte;
+        // e all'operatore va detto che non ha avviato niente di nuovo.
+        if (isFollowing(res.job_id)) {
+          notify.info(t('vendite.dashboard_competenza.fattura_giro_gia_in_corso'))
+          return
+        }
+        const gruppiGiro = apiOptions?.gruppi ?? []
+        const avviato = start(res.job_id, {
+          jobId: res.job_id, competenza, giro, gruppi: gruppiGiro,
+        })
+        if (!avviato) {
+          // Job accodato ma non seguito (tetto raggiunto sui verbi di
+          // perimetro): il lavoro parte lo stesso, l'esito no — dirlo e' il
+          // minimo, tacere lascerebbe credere che non sia successo nulla.
+          notify.warn(t(keys.inCoda))
+          return
+        }
         notify.success(t(keys.accodato))
-        start(res.job_id)
+        // Marcatura DOPO l'avvio riuscito: se il POST fallisce non devono
+        // restare righe segnate per un giro che non è mai partito.
+        if (gruppiGiro.length) {
+          marcaGiro(res.job_id, gruppiGiro)
+          // La selezione si libera ORA, non a fine giro: e' cio' che permette
+          // di comporre subito il giro successivo senza aspettare — il punto
+          // di tutto questo cantiere. Escono solo i gruppi di QUESTO giro.
+          const inviati = new Set(gruppiGiro)
+          selezioneGruppi.value = selezioneGruppi.value.filter(
+            (r) => !inviati.has(r.gruppo_key),
+          )
+        }
       },
     })
   }
-  return { avvia, polling }
+  return { avvia, nGiriInCorso: nJobsInCorso, resume }
+}
+
+// Scopo: lista dal payload BE, sempre un array (il campo puo' mancare del
+//        tutto: `gruppi_non_serviti` esiste solo sui giri mirati).
+function normalizzaLista(valore) {
+  return Array.isArray(valore) ? valore : []
+}
+
+// Scopo: etichetta del giro per gli esiti. Con piu' giri in volo un toast che
+//        dice «2 gruppi rimasti fuori» senza dire DI QUALE giro non e'
+//        interpretabile: l'operatore ne ha due o tre aperti e non sa a quale
+//        tornare. L'identita' del giro sono i riferimenti che ha spedito —
+//        nessuna tabella di corrispondenza da consultare.
+function etichettaGiro(context) {
+  return context?.giro || t('vendite.dashboard_competenza.giro_senza_etichetta')
+}
+
+// Scopo: il messaggio dei gruppi richiesti ma rimasti FUORI, con il motivo
+//        classificato dal BE. Un solo compositore per i due percorsi in cui la
+//        stessa notizia arriva: nel `result` di un giro riuscito a meta', e nel
+//        `ultimo_errore.context` di un giro che non ha prodotto NULLA (li' il
+//        BE solleva). Scriverlo due volte significherebbe che prima o poi i due
+//        rami raccontano la stessa cosa in modo diverso.
+function notificaNonServiti(nonServiti, nLotti, context) {
+  // «N su M, chi manca e perche'»: primi 3 per esteso (un toast non regge un
+  // elenco), il resto riassunto. Il dettaglio pieno resta nell'esito del job.
+  // `dettaglio` e' prosa del BE (come `ultimo_errore.message`), resa cosi'.
+  notify.warn(t('vendite.dashboard_competenza.fattura_gruppi_esito_non_serviti', {
+    giro: etichettaGiro(context),
+    lotti: nLotti,
+    // Gruppi DISTINTI, non righe: la fotografia BE ha grana
+    // `(gruppo_key, commessa_id)` e un gruppo su due commesse darebbe due
+    // righe — «2 mancanti» per un solo gruppo non servito.
+    mancanti: new Set(nonServiti.map((s) => s.gruppo_key)).size,
+    dettagli: elencoTroncato(nonServiti, (s) => `${s.commessa_codice || s.gruppo_key}: ${s.dettaglio}`, '; '),
+  }))
 }
 
 // Verbo FATTURA (C-6): card DA_EMETTERE. Corsia differita → ferma a EMESSA,
 // cumulativo su competenza ≤ M.
-const { avvia: onFatturaMese, polling: giroInCorso } = useVerboFatturazione({
+const { avvia: onFatturaMese, nGiriInCorso: nGiriMese, resume: resumeMese } = useVerboFatturazione({
   apiFn: runFatturazione,
   keys: {
     header: 'vendite.dashboard_competenza.fattura_mese_header',
@@ -758,7 +1025,9 @@ const { avvia: onFatturaMese, polling: giroInCorso } = useVerboFatturazione({
 
 // Verbo RENDI DEFINITIVE (C-7): card EMESSA_NON_FATTURATA. Numerazione di
 // perimetro (step DEFINITIVA sui lotti EMESSA del mese) — atto fiscale.
-const { avvia: onRendiDefinitive, polling: numeraInCorso } = useVerboFatturazione({
+const {
+  avvia: onRendiDefinitive, nGiriInCorso: nGiriNumera, resume: resumeNumera,
+} = useVerboFatturazione({
   apiFn: runNumerazione,
   keys: {
     header: 'vendite.dashboard_competenza.numera_mese_header',
@@ -786,8 +1055,16 @@ const { avvia: onRendiDefinitive, polling: numeraInCorso } = useVerboFatturazion
 // (I-1), ma con il perimetro ristretto ai gruppi selezionati. Si ferma a
 // EMESSA come l'altro; l'esito porta gli N lotti prodotti, che diventano
 // l'aggancio «vai al lotto».
-const { avvia: avviaFatturaGruppi, polling: giroMirataInCorso } = useVerboFatturazione({
+// Con piu' giri concorrenti l'esito NON sovrascrive piu': accumula i lotti e
+// nomina il giro di provenienza.
+const {
+  avvia: avviaFatturaGruppi, nGiriInCorso: nGiriMirata, resume: resumeMirata,
+} = useVerboFatturazione({
   apiFn: runFatturazione,
+  // Nessun tetto (decisione D1, 2026-08-17): il verbo resta premibile con
+  // giri vivi. Cio' che tiene leggibile la cosa non e' un divieto — e'
+  // l'attribuzione degli esiti qui sotto e il conteggio in testata.
+  maxConcurrent: Infinity,
   keys: {
     header: 'vendite.dashboard_competenza.fattura_gruppi_header',
     conferma: 'vendite.dashboard_competenza.fattura_gruppi_conferma',
@@ -795,17 +1072,19 @@ const { avvia: avviaFatturaGruppi, polling: giroMirataInCorso } = useVerboFattur
     errore: 'vendite.dashboard_competenza.fattura_mese_errore',
     inCoda: 'vendite.dashboard_competenza.fattura_mese_in_coda',
   },
-  buildEsitoOk: (r) => {
-    const lotti = Array.isArray(r.lotti) ? r.lotti : []
-    lottiEmessi.value = lotti
-    selezioneGruppi.value = []
+  buildEsitoOk: (r, context) => {
+    const giro = etichettaGiro(context)
+    const lotti = normalizzaLista(r.lotti)
+    // Accumulo, non sostituzione: il giro che finisce per secondo non deve
+    // cancellare l'aggancio «vai al lotto» di quello finito per primo.
+    registraLottiEmessi(lotti, context?.competenza ?? competenzaCorrente.value)
     const falliti = Number(r.falliti ?? 0)
     // Gruppi richiesti ma rimasti FUORI dal giro (BE `gruppi_non_serviti`,
     // rev 2026-08-15): ognuno porta il motivo classificato dalla diagnosi.
     // Era il caso silenzioso — «2 su 3» sembrava un successo pieno e il
     // terzo restava fermo senza che nessuno lo cercasse.
-    const nonServiti = Array.isArray(r.gruppi_non_serviti) ? r.gruppi_non_serviti : []
-    const altrove = Array.isArray(r.gruppi_fatturati_altrove) ? r.gruppi_fatturati_altrove : []
+    const nonServiti = normalizzaLista(r.gruppi_non_serviti)
+    const altrove = normalizzaLista(r.gruppi_fatturati_altrove)
     // ⚠️ Non e' una catena else-if: falliti e non-serviti possono COESISTERE
     // (una terna fallita E un gruppo fuori perimetro nello stesso giro), e
     // subordinare il secondo al primo ricreerebbe proprio il silenzio che
@@ -813,22 +1092,11 @@ const { avvia: avviaFatturaGruppi, polling: giroMirataInCorso } = useVerboFattur
     // gruppo bloccato torna a sparire senza che nessuno lo nomini.
     if (falliti > 0) {
       notify.warn(t('vendite.dashboard_competenza.fattura_gruppi_esito_parziale', {
-        lotti: lotti.length, falliti,
+        giro, lotti: lotti.length, falliti,
       }))
     }
     if (nonServiti.length > 0) {
-      // «N su M, chi manca e perche'»: primi 3 per esteso (un toast non regge
-      // un elenco), il resto riassunto. Il dettaglio pieno resta nell'esito
-      // del job. `dettaglio` e' prosa del BE (come `ultimo_errore.message`,
-      // resa cosi' com'e').
-      notify.warn(t('vendite.dashboard_competenza.fattura_gruppi_esito_non_serviti', {
-        lotti: lotti.length,
-        // Gruppi DISTINTI, non righe: la fotografia BE ha grana
-        // `(gruppo_key, commessa_id)` e un gruppo su due commesse darebbe due
-        // righe — «2 mancanti» per un solo gruppo non servito.
-        mancanti: new Set(nonServiti.map((s) => s.gruppo_key)).size,
-        dettagli: elencoTroncato(nonServiti, (s) => `${s.commessa_codice || s.gruppo_key}: ${s.dettaglio}`, '; '),
-      }))
+      notificaNonServiti(nonServiti, lotti.length, context)
     }
     // Terzo esito del consuntivo (BE `gruppi_fatturati_altrove`): il gruppo non
     // e' entrato in QUESTI lotti ma non resta nulla da emettere — le righe sono
@@ -836,6 +1104,7 @@ const { avvia: avviaFatturaGruppi, polling: giroMirataInCorso } = useVerboFattur
     // raccontarlo come «non servito» manderebbe a cercare un guasto che non c'e'.
     if (altrove.length > 0) {
       notify.info(t('vendite.dashboard_competenza.fattura_gruppi_esito_altrove', {
+        giro,
         n: altrove.length,
         // Il BE manda le CHIAVI (`ORDINE_VENDITA:<uuid>`): a video va il
         // riferimento leggibile della riga, come ovunque in questa lista. Il
@@ -854,9 +1123,10 @@ const { avvia: avviaFatturaGruppi, polling: giroMirataInCorso } = useVerboFattur
         // Zero lotti senza errori: nulla era davvero fatturabile (righe gia'
         // prese da un altro giro, o commessa non piu' emittibile). Va detto —
         // un «fatto» muto farebbe pensare a una fattura che non esiste.
-        notify.warn(t('vendite.dashboard_competenza.fattura_gruppi_esito_vuoto'))
+        notify.warn(t('vendite.dashboard_competenza.fattura_gruppi_esito_vuoto', { giro }))
       } else {
         notify.success(t('vendite.dashboard_competenza.fattura_gruppi_esito', {
+          giro,
           lotti: lotti.length,
         }))
       }
@@ -871,13 +1141,20 @@ const { avvia: avviaFatturaGruppi, polling: giroMirataInCorso } = useVerboFattur
 function fatturaGruppi(righe) {
   if (!righe.length) return
   const nAttivita = righe.reduce((acc, r) => acc + Number(r.n_attivita ?? 0), 0)
+  // I riferimenti servono due volte e vanno calcolati ORA, mentre le righe
+  // sono ancora a video: sono il testo della conferma e, portati nel contesto
+  // del giro, l'etichetta con cui l'esito verra' attribuito quando arrivera' —
+  // magari dopo che la lista si e' gia' ricaricata e quelle righe non ci sono
+  // piu'.
+  const riferimenti = elencoTroncato(righe, gruppoRiferimento)
   avviaFatturaGruppi({
     messageParams: {
       n: righe.length,
       attivita: nAttivita,
-      riferimenti: elencoTroncato(righe, gruppoRiferimento),
+      riferimenti,
     },
     apiOptions: { gruppi: righe.map((r) => r.gruppo_key) },
+    giro: riferimenti,
   })
 }
 
@@ -898,6 +1175,58 @@ function fatturaGruppi(righe) {
 // e `area_documento` sono NULL e il BB nasconde da se' la voce — lasciando la
 // sola commessa, che per loro E' il riferimento (il `riferimento` di quelle
 // righe e' infatti il codice commessa).
+// Scopo: il motivo del blocco, con la via d'uscita SOLO a chi puo' percorrerla.
+//        Chi non ha `cambia_stato_commessa` non vedrebbe «Rendi pronta» nel
+//        drawer: indicargliela sarebbe una promessa falsa, e il rimedio giusto
+//        per lui e' sapere a chi chiedere.
+function tooltipBloccato(row) {
+  const stato = row.commessa_stato_descrizione
+    ?? row.commessa_stato_codice_interno ?? '?'
+  return canCambiareStatoCommessa.value
+    ? t('vendite.dashboard_competenza.gruppo_bloccato_tooltip', { stato })
+    : t('vendite.dashboard_competenza.gruppo_bloccato_tooltip_senza_permesso', { stato })
+}
+
+// ⚠️ MUTUA ESCLUSIONE COL VERBO DI MESE (2026-08-17). Il giro di mese non passa
+// gruppi, quindi la sua chiave di idempotenza (competenza+scope+digest) non
+// collide con quella di nessun giro mirato: il BE lo lascerebbe partire mentre i
+// mirati sono vivi, e il suo perimetro li INGLOBA. Non nascono fatture doppie
+// (il DB prende le attivita' con SKIP LOCKED e ricontrolla), ma i due si
+// contendono le righe e chi perde torna come «non servito» per una ragione che
+// non e' un guasto: manderebbe a cercare un problema inesistente. Sono quindi
+// alternativi, e chi e' spento lo dice.
+const giroMeseInCorso = computed(() => nGiriMese.value > 0)
+const giriMirataInCorso = computed(() => nGiriMirata.value > 0)
+
+// Scopo: motivo del pulsante «Fattura selezionati», soprattutto quando è
+//        SPENTO. Le cause sono distinte e dirle è il punto: «nessuna selezione»
+//        richiede un'azione dell'operatore, «giro di mese in corso» passa da sé.
+//        Senza, il pulsante grigio si legge uguale nei due casi.
+// ⚠️ Non c'è più il caso «un'altra fatturazione mirata è in corso»: da oggi non
+//    è un motivo di blocco — i giri mirati convivono (decisione D1, nessun
+//    tetto) e il pulsante resta premibile.
+const tooltipFatturaSelezionati = computed(() => {
+  if (giroMeseInCorso.value) {
+    return t('vendite.dashboard_competenza.fattura_selezionati_attesa_mese_tooltip')
+  }
+  if (!selezioneGruppi.value.length) {
+    return t('vendite.dashboard_competenza.fattura_selezionati_vuoto_tooltip')
+  }
+  return t('vendite.dashboard_competenza.fattura_selezionati_tooltip', {
+    n: selezioneGruppi.value.length,
+  })
+})
+
+// Scopo: motivo del verbo di MESE quando è spento perché ci sono emissioni
+//        mirate in volo (l'altra faccia della mutua esclusione).
+const tooltipFatturaMese = computed(() => (
+  giriMirataInCorso.value
+    ? t('vendite.dashboard_competenza.fattura_mese_attesa_mirata_tooltip', {
+      n: nGiriMirata.value,
+    })
+    : t('vendite.dashboard_competenza.fattura_mese_tooltip')
+))
+
 function buildGruppoRowActions(row) {
   // Testata bloccata: «Fattura questo» nasce DISABILITATO col motivo (brief
   // emittibilita' §3.1 — partiva e non faceva nulla), e compare «Sblocca
@@ -905,25 +1234,46 @@ function buildGruppoRowActions(row) {
   // esposto data-driven dalle capability (fn_available_actions_commessa,
   // enabled+reasons dalla stessa funzione pura del guard).
   const bloccato = !isGruppoEmittibile(row)
+  // Riga già in lavorazione: il motivo lo dice la riga stessa (chip «in
+  // corso»), ma l'azione resta disabilitata col suo tooltip — chi apre il
+  // kebab senza aver visto il chip deve leggere perché non può premere.
+  const inCorso = gruppiInCorso.value.has(row.gruppo_key)
+  // ⚠️ Fino al 2026-08-17 c'era anche un terzo motivo di blocco — «un'altra
+  // fatturazione è in corso» — che spegneva OGNI riga per tutta la durata di un
+  // qualsiasi giro. Non serviva contro il doppio invio (quello lo copre
+  // `azioneLoading` durante la POST): serviva a non perdere l'esito del giro in
+  // corso, perché il polling ne seguiva uno solo. Ora ne segue N, quindi il
+  // blocco è caduto: resta solo ciò che riguarda QUESTA riga, più il verbo di
+  // mese che è alternativo per costruzione.
+  const attesaMese = !inCorso && giroMeseInCorso.value
   return [
     {
       key: 'fattura_gruppo',
       label: t('vendite.dashboard_competenza.azione_fattura_gruppo'),
       icon: 'pi pi-file-export',
       visible: canFatturare.value,
-      disabled: azioneLoading.value || giroMirataInCorso.value || bloccato,
-      tooltip: bloccato
-        ? t('vendite.dashboard_competenza.gruppo_bloccato_tooltip', {
-            stato: row.commessa_stato_descrizione ?? row.commessa_stato_codice_interno ?? '?',
-          })
-        : '',
+      // Precedenza dei motivi: prima ciò che riguarda QUESTA riga (in corso,
+      // testata bloccata), poi la causa di contesto (il giro di mese).
+      tooltip: inCorso
+        ? t('vendite.dashboard_competenza.gruppo_in_corso_tooltip')
+        : bloccato
+          ? tooltipBloccato(row)
+          : attesaMese
+            ? t('vendite.dashboard_competenza.fattura_selezionati_attesa_mese_tooltip')
+            : '',
+      disabled: azioneLoading.value || inCorso || bloccato || giroMeseInCorso.value,
       command: () => fatturaGruppi([row]),
     },
     {
       key: 'sblocca_commessa',
       label: t('vendite.dashboard_competenza.azione_sblocca_commessa'),
       icon: 'pi pi-unlock',
-      visible: bloccato && !!row.commessa_id && canFatturare.value,
+      // ⚠️ Gate sul permesso del verbo di DESTINAZIONE, non su quello di
+      // fatturazione: chi non puo' cambiare stato non troverebbe «Rendi
+      // pronta» nel drawer. Meglio nessuna scorciatoia che una che non porta
+      // da nessuna parte.
+      visible: bloccato && !!row.commessa_id
+        && canFatturare.value && canCambiareStatoCommessa.value,
       command: () => apriCommessa(row),
     },
     buildApriDocumentoAction({
@@ -971,6 +1321,23 @@ function onApprovaCommessa(row) {
 // Drawer di governo commessa (A-4), aperto dal kebab del drill-down.
 const commessaDrawerVisible = ref(false)
 const commessaDrawerId = ref(null)
+
+// Filtro stato emissione con cui aprire il drawer: lo STESSO stato della card
+// da cui si arriva, cosi' il numero della card e le righe della lista
+// raccontano la stessa cosa. Senza, «Fatturate» mostrava 1.089,00 e la
+// commessa apriva 4 righe di cui 3 estranee a quel valore, senza che nulla
+// spiegasse la differenza (rilievo di Tid, 2026-08-16).
+// ⚠️ Solo i due stadi che vivono sull'asse EMISSIONE: `DA_APPROVARE` sta
+// sull'asse approvazione e non ha una corrispondenza — li' non si filtra e la
+// lista si apre completa, come prima. Il filtro resta comunque visibile e
+// azzerabile nel drawer: e' un default, non un vincolo.
+const FILTRO_EMISSIONE_PER_STADIO = Object.freeze({
+  FATTURATA: STATO_EMISSIONE_ATTIVITA.EMESSA,
+  [STADIO_GRUPPI]: STATO_EMISSIONE_ATTIVITA.NON_EMESSA,
+})
+const commessaDrawerStatoEmissione = computed(
+  () => FILTRO_EMISSIONE_PER_STADIO[stadioSelezionato.value] ?? null,
+)
 
 function apriCommessa(row) {
   commessaDrawerId.value = row.commessa_id
@@ -1034,6 +1401,15 @@ function buildCommessaRowActions(row) {
 onActivated(() => {
   loadMensile()
   if (stadioSelezionato.value) loadDrillDown()
+  // ⚠️ Riprende il follow-up dei giri vivi. Il BB SOSPENDE i tick quando il tab
+  // va in background (mai timer che girano su una pagina che nessuno guarda),
+  // ma fino al 2026-08-17 li DIMENTICAVA: uscivi dal tab, il job finiva lato
+  // server e il suo esito — lotti prodotti, gruppi non serviti col motivo — non
+  // arrivava mai. La fatturazione era avvenuta e da qui non si vedeva.
+  // Idempotente: senza giri vivi non fa nulla (memoria feedback_keepalive_onactivated).
+  resumeMese()
+  resumeNumera()
+  resumeMirata()
 })
 </script>
 
@@ -1207,17 +1583,26 @@ onActivated(() => {
             />
             <!-- Verbo FATTURA a grana mese (C-6): solo sul card DA_EMETTERE,
                  gate permesso+readonly; @click.stop per non attivare il
-                 drill-down. Loading = giro in corso (polling non bloccante). -->
-            <Button
+                 drill-down. Loading = giro in corso (polling non bloccante).
+                 ⚠️ Spento anche mentre ci sono emissioni MIRATE in volo: i due
+                 verbi sono alternativi (il mese ingloba i loro gruppi). Il
+                 tooltip sta sul WRAPPER perché un bottone disabilitato non
+                 riceve eventi del mouse — ed è spento che il motivo serve. -->
+            <span
               v-if="card.stadio === 'DA_EMETTERE' && card.nAttivita > 0 && canFatturare"
-              :label="t('vendite.dashboard_competenza.fattura_mese')"
-              icon="pi pi-file-export"
-              size="small"
-              :loading="giroInCorso"
-              :disabled="azioneLoading || giroInCorso"
+              v-tooltip.bottom="tooltipFatturaMese"
+              class="app-dash-fattura-wrap"
               style="margin-top: 0.5rem;"
-              @click.stop="onFatturaMese"
-            />
+            >
+              <Button
+                :label="t('vendite.dashboard_competenza.fattura_mese')"
+                icon="pi pi-file-export"
+                size="small"
+                :loading="giroMeseInCorso"
+                :disabled="azioneLoading || giroMeseInCorso || giriMirataInCorso"
+                @click.stop="onFatturaMese"
+              />
+            </span>
             <!-- Verbo RENDI DEFINITIVE a grana mese (C-7): sulla card
                  FATTURATA, dove stanno le fatture ancora EMESSA — cioe' quelle
                  che questo verbo numera (fix difetto D2, §6-bis). Atto FISCALE
@@ -1229,8 +1614,8 @@ onActivated(() => {
               icon="pi pi-lock"
               size="small"
               severity="warn"
-              :loading="numeraInCorso"
-              :disabled="azioneLoading || numeraInCorso"
+              :loading="nGiriNumera > 0"
+              :disabled="azioneLoading || nGiriNumera > 0"
               v-tooltip.bottom="t('vendite.dashboard_competenza.numera_mese_tooltip', { n: nDaNumerare })"
               style="margin-top: 0.5rem;"
               @click.stop="onRendiDefinitive"
@@ -1363,27 +1748,80 @@ onActivated(() => {
                   class="app-form-select"
                   :placeholder="t('vendite.dashboard_competenza.filtro_tipo')"
                   v-tooltip.bottom="t('vendite.dashboard_competenza.filtro_tipo')"
-                  @change="onGruppiTipoChange"
+                  @change="applicaFiltroGruppi"
                 />
-                <Button
+                <!-- Filtro CLIENTE: scelta strutturata, mai testo libero. Il
+                     valore è l'id del BA di FATTURAZIONE — lo stesso elemento
+                     che il DB mette nella chiave della fattura — e l'etichetta
+                     porta il codice BA accanto al nome perché lo stesso
+                     soggetto può avere più alberi omonimi che finiscono su
+                     fatture diverse. `filter` perché su un mese pieno la
+                     tendina è lunga. -->
+                <Select
+                  v-model="gruppiCliente"
+                  :options="opzioniCliente"
+                  option-label="label"
+                  option-value="value"
+                  filter
+                  :filter-placeholder="t('vendite.dashboard_competenza.filtro_cliente_cerca')"
+                  class="app-form-select app-dash-filtro-cliente"
+                  :placeholder="t('vendite.dashboard_competenza.filtro_cliente')"
+                  v-tooltip.bottom="t('vendite.dashboard_competenza.filtro_cliente_tooltip')"
+                  @change="applicaFiltroGruppi"
+                />
+                <!-- Ricerca libera: risponde a «dov'è finito ORD0005174», che è
+                     una domanda diversa da «dammi tutto di Rossi» — per quella
+                     c'è il filtro qui accanto. Sotto i 3 caratteri il backend la
+                     ignora: la lista resta quella di prima invece di svuotarsi
+                     dicendo «non c'è niente» mentre si sta ancora digitando. -->
+                <InputText
+                  v-model="gruppiSearch"
+                  class="app-dash-ricerca-gruppi"
+                  :placeholder="t('vendite.dashboard_competenza.ricerca_gruppi')"
+                  v-tooltip.bottom="t('vendite.dashboard_competenza.ricerca_gruppi_tooltip')"
+                  @input="onGruppiSearchInput"
+                />
+                <!-- ⚠️ Il tooltip sta sul WRAPPER e non sul Button: un bottone
+                     disabilitato non riceve eventi del mouse, quindi il
+                     tooltip appeso a lui non comparirebbe mai — ed è proprio
+                     quando è spento che il motivo serve. -->
+                <span
                   v-if="canFatturare"
+                  v-tooltip.bottom="tooltipFatturaSelezionati"
+                  class="app-dash-fattura-wrap"
+                >
+                <!-- ⚠️ `loading` sul solo `azioneLoading` (la POST), NON sui
+                     giri in corso: da oggi il verbo resta PREMIBILE con giri
+                     vivi (decisione D1, nessun tetto), e un pulsante «in
+                     caricamento» che però si può premere è una contraddizione
+                     a video. -->
+                <Button
                   :label="t('vendite.dashboard_competenza.fattura_selezionati', { n: selezioneGruppi.length })"
                   icon="pi pi-file-export"
                   size="small"
-                  :loading="giroMirataInCorso"
-                  :disabled="selezioneGruppi.length === 0 || azioneLoading || giroMirataInCorso"
+                  :loading="azioneLoading"
+                  :disabled="selezioneGruppi.length === 0 || azioneLoading || giroMeseInCorso"
                   @click="fatturaGruppi(selezioneGruppi)"
                 />
+                </span>
+                <!-- Quante fatturazioni sono in volo. Senza tetto è l'UNICA cosa
+                     che lo dice: le marcature stanno sulle righe, e quelle
+                     scorrono di pagina a ogni ricarica post-esito. Sta in
+                     testata proprio perché non dipende da cosa si ha davanti. -->
+                <span v-if="giriMirataInCorso" class="app-dash-giri-in-corso">
+                  <i class="pi pi-spin pi-spinner" />
+                  {{ t('vendite.dashboard_competenza.giri_in_corso', nGiriMirata, { n: nGiriMirata }) }}
+                </span>
               </div>
             </div>
 
             <!-- Aggancio al lotto (§5.2): dopo l'emissione l'operatore deve
                  poterci arrivare per numerare. Sono N e non uno: un gruppo con
                  righe di tipo doc fiscale diverso finisce in lotti diversi. -->
-            <div v-if="lottiEmessi.length" class="app-dash-lotti-emessi">
-              <span>{{ t('vendite.dashboard_competenza.lotti_emessi', { n: lottiEmessi.length }) }}</span>
+            <div v-if="lottiEmessiVisibili.length" class="app-dash-lotti-emessi">
+              <span>{{ t('vendite.dashboard_competenza.lotti_emessi', { n: lottiEmessiVisibili.length }) }}</span>
               <Button
-                v-for="lotto in lottiEmessi"
+                v-for="lotto in lottiEmessiVisibili"
                 :key="lotto.lotto_id"
                 link
                 class="app-cell-link"
@@ -1464,9 +1902,16 @@ onActivated(() => {
                 <i
                   v-if="!isGruppoEmittibile(data)"
                   class="pi pi-lock app-dash-gruppo-bloccato"
-                  v-tooltip.bottom="t('vendite.dashboard_competenza.gruppo_bloccato_tooltip', {
-                    stato: data.commessa_stato_descrizione ?? data.commessa_stato_codice_interno ?? '?',
-                  })"
+                  v-tooltip.bottom="tooltipBloccato(data)"
+                />
+                <!-- Fatturazione in corso su QUESTA riga: il verbo è asincrono
+                     (accoda + polling) e senza un segno qui la riga restava
+                     identica per tutta la durata, spunta compresa. Sta accanto
+                     al nome, dove l'occhio è già posato. -->
+                <i
+                  v-if="gruppiInCorso.has(data.gruppo_key)"
+                  class="pi pi-spin pi-spinner app-dash-gruppo-in-corso"
+                  v-tooltip.bottom="t('vendite.dashboard_competenza.gruppo_in_corso_tooltip')"
                 />
               </template>
               <template #cell-tipo_gruppo="{ data }">
@@ -1583,6 +2028,7 @@ onActivated(() => {
     <CommessaGestioneDrawer
       v-model:visible="commessaDrawerVisible"
       :commessa-id="commessaDrawerId"
+      :stato-emissione="commessaDrawerStatoEmissione"
       @saved="reloadDopoAzione"
     />
 

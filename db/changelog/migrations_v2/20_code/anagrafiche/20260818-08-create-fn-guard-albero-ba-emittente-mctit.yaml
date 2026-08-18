@@ -1,0 +1,291 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Passo 4 (P-1) del cantiere «perimetro emittente» — le funzioni.
+# I trigger che le usano arrivano in -07 (billing_account) e -08 (efba).
+#
+# LA REGOLA, in una riga (brief §3.5): un soggetto puo' essere cliente di
+# PIU' emittenti — piu' alberi separati, ed e' legittimo — ma un SINGOLO
+# albero non puo' avere un piede in un emittente e uno in un altro.
+#
+# ⚠️ TRE SCELTE DI COSTRUZIONE, tutte con una ragione misurata:
+#
+# 1) L'emittente si risolve con anagrafiche.fn_get_emittente_fiscale_id, cioe'
+#    con LA STESSA funzione che usa vendite.fn_build_fattura_key. Non e'
+#    pigrizia: e' l'unico modo per cui «albero omogeneo» e «la fattura esce da
+#    un solo emittente» siano la stessa affermazione. Un secondo risolutore
+#    dichiarerebbe omogeneo un albero che la fatturazione spacca comunque —
+#    peggio di nessun guard. (brief §11.2)
+#
+# 2) Si confronta il valore RISOLTO, non la riga di mapping. Un BA senza riga
+#    in emittenti_fiscali_billing_account non e' «senza emittente»: e' del
+#    gestore globale. Un guard scritto sulle righe giudicherebbe su un NULL,
+#    cioe' riprodurrebbe su un'altra colonna il difetto che P-3 ha appena
+#    chiuso. (brief §11.2)
+#
+# 3) I due fn_guard_* sono SECURITY DEFINER. Devono leggere
+#    anagrafiche.billing_account, che ha la RLS attiva: un guard SECURITY
+#    INVOKER non vedrebbe il padre o i figli di un altro emittente — e
+#    «non lo vedo» diventerebbe indistinguibile da «e' a posto». E' esattamente
+#    il difetto documentato in §11.1: ripeterlo qui sarebbe grottesco.
+#    Owner: le tabelle e il migrate sono entrambi `titodb`, quindi la funzione
+#    nasce di proprieta' dell'owner e supera la RLS senza FORCE. Nessuna riga
+#    in dbops.sec_functions_owner: quella serve alle DEFINER che richiedono
+#    `postgres`, e qui non serve.
+#
+# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260818-08-create-fn-guard-albero-ba-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260818-08-create-fn-guard-albero-ba-emittente
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        P-1: le funzioni del guard «albero omogeneo per emittente». Un check
+        puro per la coppia (fn_check_ba_coppia_emittente_omogenea) e due guard
+        fail-fast SECURITY DEFINER: uno per il singolo BA (padre + figli), uno
+        per lo spostamento del gestore globale, che ha raggio N. L'emittente e'
+        quello RISOLTO da anagrafiche.fn_get_emittente_fiscale_id, la stessa
+        usata da vendite.fn_build_fattura_key. Brief §3.5, §11.2, §11.3.
+      # ⛔ NIENTE preCondition sulla presenza di E_ALBERO_EMITTENTE_MISTO in
+      #    config.codici_errore, per quanto sembri la cosa giusta da fare:
+      #    il catalogo dei codici si semina in `80_data`, che gira DOPO `20_code`.
+      #    Una preCondition del genere fallisce sempre al primo apply su un
+      #    changelog nuovo — e non e' un difetto del seed, e' l'ordine delle fasi.
+      #    Il codice serve quando l'errore SCATTA, non quando la funzione nasce.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche' AND p.proname = 'fn_get_emittente_fiscale_id';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- 1) CHECK PURO: la coppia figlio/padre e' omogenea?
+              -- =========================================================
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_check_ba_coppia_emittente_omogenea(
+                  p_figlio_id anagrafiche.billing_account.id%TYPE,
+                  p_padre_id  anagrafiche.billing_account.id%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_ef_figlio anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE;
+                  v_ef_padre  anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE;
+              BEGIN
+                  -- Convenzione fn_check_*: boolean, nessun raise proprio.
+                  -- ⚠️ Puo' pero' PROPAGARE E_EMITTENTE_DEFAULT_MISSING dal
+                  --   risolutore: quello non e' un verdetto di dominio, e' un
+                  --   difetto di configurazione (nessun gestore globale), e
+                  --   mascherarlo qui lo renderebbe invisibile.
+
+                  -- Nessun padre = nessun albero = niente da presidiare.
+                  IF p_padre_id IS NULL THEN
+                      RETURN true;
+                  END IF;
+
+                  -- Auto-riferimento: gia' bloccato da E_PARENT_SELF, qui e'
+                  -- difensivo e non e' un albero misto.
+                  IF p_figlio_id = p_padre_id THEN
+                      RETURN true;
+                  END IF;
+
+                  v_ef_figlio := anagrafiche.fn_get_emittente_fiscale_id(p_figlio_id);
+                  v_ef_padre  := anagrafiche.fn_get_emittente_fiscale_id(p_padre_id);
+
+                  -- ⚠️ NULL = fail-closed, e NON `IS NOT DISTINCT FROM`.
+                  --   Il risolutore non torna mai NULL (solleva prima), ma se un
+                  --   giorno lo facesse, `NULL IS NOT DISTINCT FROM NULL` direbbe
+                  --   «omogeneo» — cioe' la stessa trappola del NULL nella
+                  --   chiave che P-3 ha appena chiuso, riaperta qui.
+                  IF v_ef_figlio IS NULL OR v_ef_padre IS NULL THEN
+                      RETURN false;
+                  END IF;
+
+                  RETURN v_ef_figlio = v_ef_padre;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_check_ba_coppia_emittente_omogenea(bigint, bigint) IS
+                  'Pure check (boolean, no raise): la coppia figlio/padre di billing_account '
+                  'appartiene allo STESSO emittente fiscale? L''emittente e'' quello RISOLTO da '
+                  'anagrafiche.fn_get_emittente_fiscale_id (mapping specifico oppure gestore '
+                  'globale) — la stessa funzione usata da vendite.fn_build_fattura_key, cosi'' '
+                  '«albero omogeneo» e «la fattura esce da un solo emittente» sono la stessa '
+                  'affermazione. Padre NULL -> true (nessun albero). Emittente non risolto -> '
+                  'false (fail-closed). Puo'' propagare E_EMITTENTE_DEFAULT_MISSING: e'' un '
+                  'difetto di configurazione, non un verdetto di dominio. Brief P-1 §3.5/§11.2.';
+
+              -- =========================================================
+              -- 2) GUARD sul singolo BA: verso il padre E verso i figli
+              -- =========================================================
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_albero_ba_emittente(
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path = pg_catalog, public
+              AS $function$
+              DECLARE
+                  v_padre_id anagrafiche.billing_account.id%TYPE;
+                  r          record;
+              BEGIN
+                  -- ⚠️ SECURITY DEFINER: legge anagrafiche.billing_account, che ha
+                  --   la RLS. Da SECURITY INVOKER un padre o un figlio di un altro
+                  --   emittente sarebbe INVISIBILE, e il guard direbbe «a posto»
+                  --   proprio nel caso che deve bloccare (brief §11.1).
+                  IF p_billing_account_id IS NULL THEN
+                      RETURN;
+                  END IF;
+
+                  SELECT ba.parent_account_id
+                    INTO v_padre_id
+                    FROM anagrafiche.billing_account ba
+                   WHERE ba.id = p_billing_account_id;
+
+                  -- BA inesistente: non e' compito di questo guard (lo dice la FK,
+                  -- o E_PARENT_NON_RAGGIUNGIBILE del guard di coerenza).
+                  IF NOT FOUND THEN
+                      RETURN;
+                  END IF;
+
+                  -- a) verso il PADRE
+                  IF v_padre_id IS NOT NULL
+                     AND NOT anagrafiche.fn_check_ba_coppia_emittente_omogenea(
+                               p_billing_account_id, v_padre_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'fn_guard_albero_ba_emittente',
+                          'E_ALBERO_EMITTENTE_MISTO',
+                          jsonb_build_object(
+                              'verso', 'padre',
+                              'billing_account_id', p_billing_account_id,
+                              'parent_account_id', v_padre_id,
+                              'column', 'parent_account_id',
+                              'emittente_sr_figlio', anagrafiche.fn_get_emittente_fiscale_id(p_billing_account_id),
+                              'emittente_sr_padre',  anagrafiche.fn_get_emittente_fiscale_id(v_padre_id)
+                          ),
+                          NULL::uuid,
+                          p_billing_account_id::text,
+                          v_padre_id::text,
+                          anagrafiche.fn_get_emittente_fiscale_id(p_billing_account_id)::text,
+                          anagrafiche.fn_get_emittente_fiscale_id(v_padre_id)::text
+                      );
+                  END IF;
+
+                  -- b) verso i FIGLI
+                  --    ⚠️ Il movimento che si dimentica sempre: cambiare
+                  --    l'emittente di un BA non spacca solo il legame verso
+                  --    l'alto, spacca anche quelli verso il basso.
+                  FOR r IN
+                      SELECT ba.id
+                        FROM anagrafiche.billing_account ba
+                       WHERE ba.parent_account_id = p_billing_account_id
+                       ORDER BY ba.id
+                  LOOP
+                      IF NOT anagrafiche.fn_check_ba_coppia_emittente_omogenea(
+                               r.id, p_billing_account_id) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'anagrafiche', 'fn_guard_albero_ba_emittente',
+                              'E_ALBERO_EMITTENTE_MISTO',
+                              jsonb_build_object(
+                                  'verso', 'figlio',
+                                  'billing_account_id', r.id,
+                                  'parent_account_id', p_billing_account_id,
+                                  'column', 'parent_account_id',
+                                  'emittente_sr_figlio', anagrafiche.fn_get_emittente_fiscale_id(r.id),
+                                  'emittente_sr_padre',  anagrafiche.fn_get_emittente_fiscale_id(p_billing_account_id)
+                              ),
+                              NULL::uuid,
+                              r.id::text,
+                              p_billing_account_id::text,
+                              anagrafiche.fn_get_emittente_fiscale_id(r.id)::text,
+                              anagrafiche.fn_get_emittente_fiscale_id(p_billing_account_id)::text
+                          );
+                      END IF;
+                  END LOOP;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_guard_albero_ba_emittente(bigint) IS
+                  'Guard fail-fast: verifica che il billing account indicato sia omogeneo per '
+                  'emittente con il PADRE e con TUTTI i FIGLI. Solleva E_ALBERO_EMITTENTE_MISTO '
+                  'nominando i due BA e i due emittenti. SECURITY DEFINER perche'' legge '
+                  'anagrafiche.billing_account, che ha la RLS: da SECURITY INVOKER un padre o un '
+                  'figlio di un altro emittente sarebbe invisibile e il guard direbbe «a posto» '
+                  'proprio nel caso da bloccare (brief §11.1). Nessuna eccezione per il pregresso '
+                  'e nessuna GUC di override: un invariante con l''interruttore non e'' un '
+                  'invariante. Brief P-1 §3.5.';
+
+              -- =========================================================
+              -- 3) GUARD sullo spostamento del GESTORE GLOBALE (raggio N)
+              -- =========================================================
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_albero_ba_gestore_globale()
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path = pg_catalog, public
+              AS $function$
+              DECLARE
+                  r record;
+              BEGIN
+                  -- ⚠️ E' l'unica operazione del cantiere con RAGGIO N: cambiare
+                  --   il gestore globale sposta in blocco l'emittente di TUTTI i
+                  --   BA che non hanno un mapping specifico. Una riga sola puo'
+                  --   spaccare un numero arbitrario di alberi. (brief §11.3, Q3)
+                  --
+                  -- ⚠️ Si guardano SOLO i BA senza mapping specifico E che stanno
+                  --   in un albero: se entrambi i lati di una coppia sono non
+                  --   mappati si spostano INSIEME e l'albero resta omogeneo;
+                  --   se sono entrambi mappati non si sposta nessuno dei due.
+                  --   La condizione che conta e' la COPPIA MISTA — non
+                  --   «esiste un albero». (decisione Q3)
+                  FOR r IN
+                      SELECT ba.id
+                        FROM anagrafiche.billing_account ba
+                       WHERE NOT EXISTS (
+                                 SELECT 1
+                                   FROM anagrafiche.emittenti_fiscali_billing_account e
+                                  WHERE e.billing_account_id = ba.id)
+                         AND (
+                               ba.parent_account_id IS NOT NULL
+                            OR EXISTS (SELECT 1
+                                         FROM anagrafiche.billing_account f
+                                        WHERE f.parent_account_id = ba.id)
+                             )
+                       ORDER BY ba.id
+                  LOOP
+                      PERFORM anagrafiche.fn_guard_albero_ba_emittente(r.id);
+                  END LOOP;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_guard_albero_ba_gestore_globale() IS
+                  'Guard fail-fast per lo spostamento del gestore globale (is_default), l''unica '
+                  'operazione del cantiere con raggio N: cambia in blocco l''emittente di tutti i '
+                  'BA senza mapping specifico. Verifica i soli BA non mappati che stanno in un '
+                  'albero — se entrambi i lati di una coppia sono non mappati si spostano insieme '
+                  'e l''albero resta omogeneo (decisione Q3: la condizione e'' la COPPIA MISTA). '
+                  'SECURITY DEFINER: legge billing_account, che ha la RLS. Brief P-1 §11.3.';
+      rollback:
+        - sql:
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_guard_albero_ba_gestore_globale();
+              DROP FUNCTION IF EXISTS anagrafiche.fn_guard_albero_ba_emittente(bigint);
+              DROP FUNCTION IF EXISTS anagrafiche.fn_check_ba_coppia_emittente_omogenea(bigint, bigint);

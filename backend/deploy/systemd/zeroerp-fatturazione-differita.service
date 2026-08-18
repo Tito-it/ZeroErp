@@ -1,0 +1,22 @@
+# Template systemd — batch fatturazione, corsia DIFFERITA (lotti MASSIVO).
+# Fonte di verità versionata: si edita QUI e si ri-renderizza con
+# `sudo backend/bin/install-timers.sh`. Placeholder per-host sostituiti
+# dall'installer: __APP_DIR__ (cartella backend), __APP_USER__ (owner app).
+#
+# Stesso canale di sistema e stesse credenziali della corsia immediata (vedi
+# `zeroerp-fatturazione-immediata.service`): cambia solo il filtro
+# (`fatturazione_immediata = false`) e il punto in cui il giro si ferma —
+# **EMESSA**, mentre l'immediata arriva a DEFINITIVA numerando da sé.
+#
+# ⚠️ NON abilitato dall'installer: vedi la nota sul gemello immediata.
+[Unit]
+Description=ZeroERP fatturazione batch — corsia differita (MASSIVO)
+After=network.target
+
+[Service]
+Type=oneshot
+User=__APP_USER__
+Group=www-data
+WorkingDirectory=__APP_DIR__
+EnvironmentFile=__APP_DIR__/.env.systemd
+ExecStart=__APP_DIR__/bin/run-command.sh run_fatturazione_batch --modalita differita

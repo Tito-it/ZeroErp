@@ -17,7 +17,7 @@
 > `carica_voce_manuale` non è pushato dal team DB (la riga CSV non si vede dal
 > branch BE, ma è applicata su dev).
 > **Origine**: step 10 («comunicazione BE/FE») del
-> [brief-db-immutabilita-quantita-e-porta-oneri.md](../work-in-progress/brief-db-immutabilita-quantita-e-porta-oneri.md),
+> [brief-db-immutabilita-quantita-e-porta-oneri.md](brief-db-immutabilita-quantita-e-porta-oneri.md),
 > che copre anche gli step 2 (ponte approvazione) e 8 (permessi prezzo N5/N7)
 > lì dichiarati «fuori perimetro DB». Design a monte:
 > [brief-design-fatturazione-due-lenti.md](brief-design-fatturazione-due-lenti.md) DL-27.

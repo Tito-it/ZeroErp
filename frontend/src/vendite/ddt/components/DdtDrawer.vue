@@ -19,6 +19,7 @@ import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { useDrawerClose } from '../../../core/composables/useDrawerClose'
 import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLoad'
 import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve } from '../../../core/composables/useDrawerFormPreserve'
 import { useEmittenteFiscaleField } from '../../../core/composables/useEmittenteFiscaleField'
 import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
 import { useBaFormDefaults } from '../../_shared/baDefaults/useBaFormDefaults'
@@ -69,6 +70,11 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 
 const isEdit = computed(() => props.mode === 'edit')
 const form = ref({})
+// Preserva le modifiche non salvate quando `loadDetail` sostituisce il form
+// (BB condiviso con ordini e preventivi). ⚠️ Dichiarato qui, sopra `resetForm`
+// e i watch che lo toccano: in questo progetto una var usata da un watch
+// immediate e dichiarata dopo ha già prodotto una TDZ silenziosa.
+const { preserva: preservaForm, reset: resetFormPreserve } = useDrawerFormPreserve(form)
 const detail = ref(null)
 
 // Riepilogo IVA aggregato per aliquota (lettura da `vw_ddt_riepilogo_iva_dettaglio`).
@@ -214,13 +220,20 @@ function defaultForm() {
 
 function resetForm() {
   form.value = defaultForm()
+  resetFormPreserve()
   detail.value = null
   createdId.value = null
 }
 
+// ⚠️ `loadDetail` SOSTITUISCE il form coi dati del server, ed è chiamata da
+// SETTE punti (apertura, auto-save bozza, salvataggio riga via `@changed`,
+// cambio stato, azioni): senza il BB `useDrawerFormPreserve` ogni chiamata
+// butterebbe via i campi di testata digitati e non ancora salvati.
+
 async function loadDetail(id = null) {
   const targetId = id ?? effectiveDdtId.value
   if (!targetId) return
+  const applicaModifiche = preservaForm()
   const data = await loadDetailOrClose(() => store.fetchDetail(targetId))
   if (!data) return
   detail.value = data
@@ -257,6 +270,9 @@ async function loadDetail(id = null) {
     autista: data.autista ?? null,
     tracking_code: data.tracking_code ?? null,
   }
+  // Fissa la baseline e ripristina il non-salvato che la sostituzione
+  // avrebbe cancellato.
+  applicaModifiche()
   await nextTick()
   // Restore BillingAccountLookup _obj per visualizzazione ricca. Best-effort.
   if (data.billing_account_id) {
@@ -363,6 +379,10 @@ const { close, onVisibleChange } = useDrawerAutosaveBozza({
   buildDraftPayload: async () => buildTestataPayload({ includeBa: true }),
   tabEntity: TAB_ENTITIES.DDT,
   fetchDetail: (id) => loadDetail(id),
+  // Il BB preserva i campi compilati MENTRE la POST di creazione viaggia:
+  // senza il form li perderebbe, perche' `loadDetail` sostituisce il form
+  // coi dati del server (fix 2026-08-17).
+  form,
   deleteDraft: (id) => store.elimina(id),
   righeCountGetter: () => detail.value?.righe_count ?? 0,
   messages: {

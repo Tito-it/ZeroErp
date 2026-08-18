@@ -1,0 +1,263 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA CODA ACCREDITI SI RIANCORA SULLA PARTITA — vw_resi_da_accreditare
+#   Slice S4 di docs/it/dev/work-in-progress/brief-design-partita-merce-generalizzata.md
+#
+# ── IL BISOGNO, IN UNA RIGA ─────────────────────────────────────────────
+#
+#   Un reso su merce che non nasce da un ordine **si registra e non produce
+#   alcun accredito**: la coda non lo vede. Non e' un difetto di questa vista,
+#   e' la conseguenza della chiave con cui e' scritta.
+#
+# ── COSA CAMBIA: TRE PUNTI, E IL TERZO E' L'UNICO CHE SPOSTA NUMERI ─────
+#
+#   1. la CTE `acc` legge **vw_partite_merce** (grana: riga di DDT) invece di
+#      vw_contatore_merce (grana: riga d'ordine);
+#   2. il JOIN con vw_resi_righe_effettive passa da `ordine_riga_id` a
+#      **`ddt_riga_id`**;
+#   3. la finestra che scala i resi gia' contati passa da
+#      `PARTITION BY ordine_riga_id` a `PARTITION BY ddt_riga_id`.
+#
+#   ⭐ **Il punto 2 e' il cantiere in una riga.** `resi_righe.ordine_riga_id` e'
+#   NULLABLE, `ddt_riga_id` e' **NOT NULL**: agganciarsi al primo significa che
+#   un reso senza ordine esce dal conto **senza dare errore** — fatturato, reso,
+#   e nessuno che se ne accorga. Misurato: 2 righe di reso su 17 hanno l'ordine
+#   vuoto. Agganciarsi al secondo chiude il buco per costruzione.
+#
+#   ⚠️ **Il punto 3 sposta valori quando una riga d'ordine e' stata evasa da
+#   PIU' DDT**: oggi l'accredito si distribuisce sui resi di tutta la riga
+#   d'ordine, dopo su quelli di ogni spedizione. Sono due risposte diverse, e la
+#   seconda e' quella giusta — un reso appartiene alla spedizione da cui la
+#   merce e' tornata.
+#
+#   ✅ **Oggi non sposta nulla, misurato**: 3 righe d'ordine sono evase da 3 DDT
+#   ciascuna, e **nessuna** ha resi provenienti da piu' di un DDT. Ma «non
+#   sposta nulla» non e' «e' verificato»: il ramo esiste e nessun dato lo
+#   attraversa, quindi il pgTAP ne costruisce uno apposta.
+#
+# ── COSA NON CAMBIA ─────────────────────────────────────────────────────
+#
+#   - **le 24 colonne esposte**, una per una: il backend le whitelista per nome
+#     (`_CODA_META` in resi_repository.py) e il frontend ci mappa le severity;
+#   - **la regola dell'etichetta** DOVUTA / FACOLTATIVA (rev 2026-07-26): resta
+#     FACOLTATIVA finche' la merce puo' ANCORA tornare al cliente;
+#   - **l'importo non viene dalle rinunce**: continua a venire dal conto della
+#     merce, che le rinunce non toccano. Cambia la natura della quota, non il
+#     numero.
+#
+# ── ⚠️ `ordine_riga_id` PUO' ORA ESSERE NULL ────────────────────────────
+#
+#   Ed e' esattamente il punto: e' la merce senza origine ordine che finalmente
+#   entra in coda. La colonna resta esposta — serve a chi vuole risalire — ma
+#   **non e' piu' la chiave**, e chi la usa come tale trovera' un vuoto.
+#   Richiesta al backend scritta nel brief (§12).
+#
+#   Per simmetria `ddt_righe`/`ddt` passano da LEFT a INNER JOIN: la riga di DDT
+#   ora c'e' **sempre**, perche' e' la chiave stessa della partita.
+#
+# ── ⚠️ IL `differenza` NULL LAVORA DA SE' ───────────────────────────────
+#
+#   Su vw_partite_merce `differenza` e' NULL quando il conto non si applica
+#   (causale non fatturabile senza fatturato, kit non misurabile). Il filtro
+#   `< 0` scarta i NULL per costruzione: **niente accrediti su conti che
+#   nessuno ha saputo fare**. Non serve una condizione in piu', e non va
+#   aggiunta una COALESCE «per sicurezza» — trasformerebbe un «non lo so» in
+#   uno zero.
+#
+# security_invoker=on: legge vw_partite_merce (gia' invoker) + resi/resi_righe
+#   (RLS emittente su resi). Ri-specificato — la reloption non e' visibile in
+#   pg_get_viewdef e PG la azzera se omessa.
+#
+# Dipendenze: vendite.vw_partite_merce (20260817-07),
+#   vendite.vw_resi_righe_effettive, vendite.fn_resi_riga_residuo_riconsegna,
+#   vendite.resi_righe, vendite.resi, vendite.ddt_righe, vendite.ddt.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260817-09-update-vw-resi-da-accreditare-partita-mctit.yaml
+
+  - changeSet:
+      id: 20260817-09-update-vw-resi-da-accreditare-partita
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        S4 della partita generalizzata: vw_resi_da_accreditare si aggancia alla
+        PARTITA DI MERCE (vw_partite_merce, chiave ddt_riga_id NOT NULL) invece
+        che alla riga d'ordine (nullable), cosi' un reso su merce senza ordine
+        produce finalmente un accredito calcolabile. Finestra di distribuzione
+        per riga di DDT. Colonne, etichetta e importo invariati; ordine_riga_id
+        resta esposto ma puo' essere NULL. security_invoker=on.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_partite_merce
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_resi_righe_effettive
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_resi_da_accreditare
+              WITH (security_invoker=on) AS
+              WITH acc AS (
+                  -- Le partite di merce in debito verso il cliente: e' stato
+                  -- fatturato piu' di quanto il cliente tenga.
+                  -- ⚠️ `differenza < 0` scarta i NULL per costruzione, ed e'
+                  -- voluto: un conto che non si applica (causale non
+                  -- fatturabile, kit non misurabile) non deve generare un
+                  -- accredito. Niente COALESCE «per sicurezza».
+                  SELECT p.ddt_riga_id,
+                         p.tenuti,
+                         p.fatturato        AS fatturati,
+                         (- p.differenza)   AS accredito_partita
+                    FROM vendite.vw_partite_merce p
+                   WHERE p.differenza < 0
+              ),
+              dist AS (
+                  -- L'accredito della partita si distribuisce sulle righe di
+                  -- reso, in ordine, scalando quelle gia' servite.
+                  -- ⚠️ La finestra partiziona per RIGA DI DDT, non per riga
+                  -- d'ordine: un reso appartiene alla spedizione da cui la
+                  -- merce e' tornata. Su una riga d'ordine evasa da piu' DDT le
+                  -- due partizioni danno risposte diverse.
+                  SELECT e.resi_riga_id,
+                         e.reso_id,
+                         e.ddt_riga_id,
+                         e.ordine_riga_id,
+                         e.riapre_residuo,
+                         e.quantita AS qta_resa,
+                         a.tenuti,
+                         a.fatturati,
+                         GREATEST(0::numeric, LEAST(
+                           e.quantita,
+                           a.accredito_partita - COALESCE(SUM(e.quantita) OVER (
+                               PARTITION BY e.ddt_riga_id
+                               ORDER BY e.resi_riga_id
+                               ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0)
+                         )) AS accredito_dovuto
+                    FROM vendite.vw_resi_righe_effettive e
+                    JOIN acc a ON a.ddt_riga_id = e.ddt_riga_id
+              )
+              SELECT x.resi_riga_id,
+                     r.id                              AS reso_id,
+                     r.uid                             AS reso_uid,
+                     r.numero                          AS reso_numero,
+                     r.data,
+                     r.emittente_fiscale_id,
+                     r.billing_account_id,
+                     ba.codice                         AS ba_codice,
+                     r.destinatario_soggetto_ruolo_id,
+                     s_dest.ragione_sociale_completa   AS destinatario_denominazione,
+                     rr.articolo_id,
+                     rr.descrizione,
+                     rr.quantita,
+                     rr.qta_operativa,
+                     rr.uom_operativa_id,
+                     rr.motivo,
+                     x.ddt_riga_id,
+                     dr.ddt_id,
+                     d.numero                          AS ddt_numero,
+                     -- ⚠️ Puo' essere NULL: e' la merce senza origine ordine,
+                     -- cioe' quella che questa slice fa finalmente entrare.
+                     -- Resta esposta per risalire, non e' piu' la chiave.
+                     x.ordine_riga_id,
+                     x.tenuti,
+                     x.fatturati,
+                     x.accredito_dovuto,
+                     (CASE
+                        WHEN x.riapre_residuo
+                             AND vendite.fn_resi_riga_residuo_riconsegna(x.resi_riga_id) > 0
+                          THEN 'FACOLTATIVA'
+                        ELSE 'DOVUTA'
+                      END)::character varying          AS etichetta
+                FROM dist x
+                JOIN vendite.resi_righe rr             ON rr.id = x.resi_riga_id
+                JOIN vendite.resi r                    ON r.id = x.reso_id
+                JOIN anagrafiche.soggetti_ruoli sr_dest ON sr_dest.id = r.destinatario_soggetto_ruolo_id
+                JOIN anagrafiche.soggetti s_dest       ON s_dest.id = sr_dest.soggetto_id
+                LEFT JOIN anagrafiche.billing_account ba ON ba.id = r.billing_account_id
+                -- INNER, non piu' LEFT: la riga di DDT e' la chiave della
+                -- partita, quindi c'e' sempre. Prima poteva mancare perche'
+                -- l'aggancio passava dalla riga d'ordine.
+                JOIN vendite.ddt_righe dr              ON dr.id = x.ddt_riga_id
+                JOIN vendite.ddt d                     ON d.id = dr.ddt_id
+               WHERE x.accredito_dovuto > 0;
+
+              COMMENT ON VIEW vendite.vw_resi_da_accreditare IS
+                'Coda degli accrediti dovuti al cliente, derivata dalla PARTITA DI MERCE '
+                '(vw_partite_merce, differenza < 0). rev 2026-08-17 (partita generalizzata S4): la '
+                'chiave passa da ordine_riga_id (NULLABLE) a ddt_riga_id (NOT NULL) — un reso su '
+                'merce senza origine ordine produce finalmente un accredito calcolabile, mentre '
+                'prima usciva dal conto senza errore. La finestra che scala i resi gia'' serviti '
+                'partiziona per RIGA DI DDT: un reso appartiene alla spedizione da cui la merce e'' '
+                'tornata. ⚠️ ordine_riga_id resta esposto ma PUO'' ESSERE NULL: non e'' piu'' la '
+                'chiave. ⚠️ Il filtro differenza < 0 scarta i NULL per costruzione: un conto che non '
+                'si applica (causale non fatturabile, kit non misurabile) non genera accrediti. '
+                'rev 2026-07-26 INVARIATA: etichetta FACOLTATIVA solo se la merce puo'' ANCORA '
+                'tornare al cliente; l''importo viene dal conto della merce, che le rinunce non '
+                'toccano — cambia la natura della quota, non il numero. security_invoker=on.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristino della definizione precedente (20260726-08):
+              -- aggancio per riga d'ordine, finestra per ordine_riga_id.
+              CREATE OR REPLACE VIEW vendite.vw_resi_da_accreditare
+              WITH (security_invoker=on) AS
+              WITH acc AS (
+                  SELECT ct.ordine_riga_id, ct.tenuti, ct.fatturati,
+                         (- ct.differenza) AS accredito_partita
+                    FROM vendite.vw_contatore_merce ct
+                   WHERE ct.differenza < 0
+              ),
+              dist AS (
+                  SELECT e.resi_riga_id, e.reso_id, e.ddt_riga_id, e.ordine_riga_id,
+                         e.riapre_residuo, e.quantita AS qta_resa, a.tenuti, a.fatturati,
+                         GREATEST(0::numeric, LEAST(
+                           e.quantita,
+                           a.accredito_partita - COALESCE(SUM(e.quantita) OVER (
+                               PARTITION BY e.ordine_riga_id
+                               ORDER BY e.resi_riga_id
+                               ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0)
+                         )) AS accredito_dovuto
+                    FROM vendite.vw_resi_righe_effettive e
+                    JOIN acc a ON a.ordine_riga_id = e.ordine_riga_id
+              )
+              SELECT x.resi_riga_id,
+                     r.id AS reso_id, r.uid AS reso_uid, r.numero AS reso_numero, r.data,
+                     r.emittente_fiscale_id, r.billing_account_id, ba.codice AS ba_codice,
+                     r.destinatario_soggetto_ruolo_id,
+                     s_dest.ragione_sociale_completa AS destinatario_denominazione,
+                     rr.articolo_id, rr.descrizione, rr.quantita, rr.qta_operativa,
+                     rr.uom_operativa_id, rr.motivo,
+                     x.ddt_riga_id, dr.ddt_id, d.numero AS ddt_numero, x.ordine_riga_id,
+                     x.tenuti, x.fatturati, x.accredito_dovuto,
+                     (CASE
+                        WHEN x.riapre_residuo
+                             AND vendite.fn_resi_riga_residuo_riconsegna(x.resi_riga_id) > 0
+                          THEN 'FACOLTATIVA'
+                        ELSE 'DOVUTA'
+                      END)::character varying AS etichetta
+                FROM dist x
+                JOIN vendite.resi_righe rr ON rr.id = x.resi_riga_id
+                JOIN vendite.resi r        ON r.id = x.reso_id
+                JOIN anagrafiche.soggetti_ruoli sr_dest ON sr_dest.id = r.destinatario_soggetto_ruolo_id
+                JOIN anagrafiche.soggetti s_dest        ON s_dest.id = sr_dest.soggetto_id
+                LEFT JOIN anagrafiche.billing_account ba ON ba.id = r.billing_account_id
+                LEFT JOIN vendite.ddt_righe dr ON dr.id = x.ddt_riga_id
+                LEFT JOIN vendite.ddt d        ON d.id = dr.ddt_id
+               WHERE x.accredito_dovuto > 0;

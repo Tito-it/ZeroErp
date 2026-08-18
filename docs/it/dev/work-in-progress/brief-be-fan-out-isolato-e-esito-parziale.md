@@ -14,6 +14,58 @@
 > **Stato al 2026-08-10**: ✅ commit fatto e pushato · 🔴 restano le **due validazioni
 > in-app** (V1 esito parziale del pull, V2 slice 3-ter) e il **build docs**.
 >
+> **Stato al 2026-08-16**: ✅ **build docs fatto e verde** (§13.3 — `zensical` nel
+> frattempo è installato) · 🔴 restano **solo le due validazioni in-app**. Misurato
+> oggi: il pull **non è mai stato lanciato dopo il fix** — nessun task run in tutta
+> la pipeline dal 2026-08-03 — quindi V1 è aperta nei fatti, non solo sulla carta
+> (§13.1). Per V2 mancano dei soggetti su cui provare: dettaglio in §13.2.
+>
+> **Stato al 2026-08-16, sera** — avanzamento su entrambe:
+>
+> * **V1**: ✅ **caso normale passato** (lotto `LTF-0003953`, 8 task run su 8
+>   `COMPLETATO`): il fan-out estratto a BB è girato in app per la prima volta dal
+>   2026-08-03. Restano il caso **parziale** e il caso **tutto-rosso** (§13.1);
+> * **V2**: ✅ **DL-19 chiuso su entrambi i rami** — e per farlo è emerso un
+>   difetto a sé sull'ordine, già passato al team DB (§13.2). Restano DL-28,
+>   DL-23, card/drill-down, coda accrediti e DL-27.
+>
+> **Stato al 2026-08-17**: ✅ **DL-27 e la lista coda accrediti** — il caso è
+> stato costruito a mano (`DDT0010839` → fattura → `RESO0005122`) e la coda, che
+> era **vuota da sempre**, ha la sua prima riga: accredito dovuto 5, etichetta
+> DOVUTA, verificata a video. ⏸️ **DL-28 sospeso**: la metà «blocco parlante»
+> non è costruibile finché le righe a prezzo zero non sono ammesse
+> ([brief dedicato](brief-ddt-righe-senza-prezzo.md), decisione di Tid presa).
+> Restano provabili: **DL-23** (da costruire), le **card DDT/RESI con i
+> drill-down**, la seconda metà di DL-28 e il ramo «reso in DRAFT» di DL-27.
+>
+> 🐛 Validando sono emersi **due difetti FE fuori slice**, entrambi corretti in
+> giornata (testata DDT non salvata in creazione, per due finestre distinte —
+> dettaglio in §13.2). E un cantiere nuovo: la coda accrediti è un **ramo
+> morto** senza il verbo che emette la nota di credito
+> ([brief-design-note-credito-resi.md](brief-design-note-credito-resi.md),
+> decisioni di dominio già prese).
+>
+> **Stato al 2026-08-17, fine giornata — V2 quasi chiusa.** Fatti anche:
+> **DL-27 ramo DRAFT** (un reso in bozza non entra in coda: non ha nemmeno il
+> numero), **DL-28 seconda metà** (`DDT0010840` CONTO_VISIONE resta fuori dai
+> pushabili), **DL-23 primo ramo** (`ORD0018587` da 10 evaso per 4: serbatoio
+> 6 + DDT 4, nessun doppio conteggio) e il **drill-down dell'area DDT**.
+>
+> **Resta aperto di V2**: il ramo `CONFERMATO` di DL-23 (nessun soggetto, va
+> costruito), la metà «blocco parlante» di DL-28 (⏸️ sospesa) e l'area RESI
+> delle card (vuota per progetto finché non esiste la NC). **Di V1**: il caso
+> parziale e il caso tutto-rosso.
+>
+> 📌 Emersa validando, e messa nel brief NC: **la merce aggiunta a mano su un
+> DDT da ordine resta fuori partita** — fatturata ma non accreditabile. Tre
+> opzioni in valutazione da Tid (§7-bis del brief NC).
+>
+> ℹ️ **Il §14 non sposta questa riga.** È la ricognizione dei residui BE che il
+> team DB aveva consegnato «fuori da questa linea»: riverificati contro il
+> codice, **nessuno dei quattro richiede lavoro BE**. Non toglie né aggiunge
+> nulla a «cosa resta», che è e rimane il §13. Quel che il §14 lascia sono due
+> voci di *registro*, non di sviluppo (§14.4).
+>
 > **Origine**: [piano-residui-orchestrazione-e-cruscotti-vendite.md](../work-done/piano-residui-orchestrazione-e-cruscotti-vendite.md) §1 (R-1)
 > ← [analisi-orchestrazione-vendite-simmetrie.md](../work-done/analisi-orchestrazione-vendite-simmetrie.md) §B/§B.1.
 >
@@ -435,27 +487,290 @@ senza il segnale in-app gira ancora il codice vecchio.
   l'eccezione, il problema non è la segnalazione — sono i dati, e si apre un'altra analisi.
   Non si "abbassa" la segnalazione per far tornare il verde.
 
+> **Misura del 2026-08-16 (mattina) — il ramo nuovo non è mai stato percorso.** In
+> `vendite.fatturazione_lotti_task_runs` **non c'è un solo run dal 2026-08-03**, e i
+> 13 run storici di `pull_attivita_da_commessa` sono **tutti `COMPLETATO`**, tutti
+> precedenti al fix (pushato il 2026-08-10). Non è che la validazione sia andata e
+> non sia stata annotata: la pipeline non è proprio stata lanciata da allora. Resta
+> valido il prerequisito in testa a questa sezione — senza `kill -HUP` sul master
+> gunicorn il backend gira ancora col codice vecchio, e la prova direbbe il falso.
+
+---
+
+> ✅ **Caso normale: PASSATO (2026-08-16, 15:39 UTC).** Tid ha fatturato un gruppo
+> da «Competenza fatturazione / Da emettere». Letto dal database (canale di
+> sistema, non dall'app):
+>
+> | | |
+> | --- | --- |
+> | Lotto | **4135 `LTF-0003953`**, MASSIVO, competenza 2026-08-01, `stato_lotto` COMPLETATO, `riaperto_il` NULL |
+> | Task run | **8 su 8 `COMPLETATO`**, tentativo 1, `pull_attivita_da_commessa` in testa |
+> | Fattura | **9691** EMESSA, `numero` NULL, 1 riga, imponibile 1.089,00 → totale 1.328,58 |
+>
+> È il **primo run della pipeline dal 2026-08-03**, quindi la prima volta che il
+> fan-out estratto a BB gira davvero in applicazione. Il prerequisito `kill -HUP`
+> era soddisfatto (gunicorn riavviato più volte nel frattempo).
+>
+> **Cosa prova e cosa no.** Prova che l'estrazione del BB **non ha rotto il caso
+> sano** — che era il rischio concreto di un ciclo riscritto e mai eseguito.
+> **Non** prova il fix: per quello serve il caso parziale (una commessa che
+> fallisce mentre le altre passano) e il rilancio che la ritenta invece di
+> saltarla. Restano quindi aperti i punti 2 e 3 della lista qui sopra, e servirà
+> costruire una commessa che fallisca l'emit dopo aver superato la scoperta.
+>
+> ⚠️ **Trovato guardando i dati, e non riguarda questo cantiere.** Le tre
+> attività di agosto sono legate a **tre fatture diverse, tutte EMESSA e tutte
+> senza numero**: 2263, 2457 e la 9691 appena creata. Il verbo «Rendi
+> definitive» numera **tutte** le fatture del mese in stato EMESSA — e la
+> **2263 non va numerata**. Prima di provare la numerazione va deciso come
+> escluderla, altrimenti la prova la trascina dentro.
+
 ### 13.2 V2 — Slice 3-ter: DDT e resi nelle lenti (dal brief due-lenti)
 
 Checklist in ordine di rischio, derivata dalle decisioni DL-19..28:
 
-- **DL-19 — il bug che ha originato la slice**: un DDT che ha **superato** lo stato-trigger
+- ✅ **DL-19 — il bug che ha originato la slice**: un DDT che ha **superato** lo stato-trigger
   è ancora eleggibile al push (prima usciva per sempre, senza segnalazione). Prova: DDT
   order-backed con trigger `SPEDITO`, portalo a `CONSEGNATO`, verifica che risulti ancora
-  da pushare.
-- **DL-28 — gate causale**: DDT con causale fatturabile e una riga senza prezzo risolvibile
+  da pushare. **Fatto il 2026-08-16 su entrambi i rami** — esito e contesto nel riquadro
+  in fondo alla sezione.
+- ⏸️ **DL-28 — gate causale**: DDT con causale fatturabile e una riga senza prezzo risolvibile
   → **blocco parlante** all'emissione, non silenzio. E causale non fatturabile (es.
-  CONTO_VISIONE) → fuori dalle card.
-- **DL-23 — nessun doppio conteggio**: ordine parzialmente spedito con trigger
+  CONTO_VISIONE) → fuori dalle card. **SOSPESO il 2026-08-17**: la metà «blocco parlante»
+  non è provabile perché il caso **non è costruibile** — vedi il riquadro in fondo alla
+  sezione e [brief-ddt-righe-senza-prezzo.md](brief-ddt-righe-senza-prezzo.md). ✅ La metà
+  «causale non fatturabile fuori dalle card» è invece **provata**: `DDT0010840`
+  (CONTO_VISIONE, prezzo valorizzato, `SPEDITO`) resta fuori dai pushabili.
+- 🟡 **DL-23 — nessun doppio conteggio**: ordine parzialmente spedito con trigger
   `SPEDITO/CONSEGNATO` → serbatoio mostra il **residuo**; con `CONFERMATO` → mostra il
-  **pieno**.
-- **DL-27 — il contatore**: reso confermato su merce già fatturata → riga in coda accrediti
-  con differenza **negativa**; reso in DRAFT → **non** conta.
-- **Card e drill-down**: le due aree nuove (DDT, RESI) si aprono davvero — la whitelist a 7
-  aree era fail-closed, senza quella le card non erano drillabili.
-- **Lista coda accrediti**: colonne 200-203 e i 3 preset resi, priorità responsive.
+  **pieno**. **Primo ramo fatto il 2026-08-17** (esito in fondo alla sezione); il ramo
+  `CONFERMATO` non ha soggetti e va costruito.
+- ✅ **DL-27 — il contatore**: reso confermato su merce già fatturata → riga in coda accrediti
+  con differenza **negativa**; reso in DRAFT → **non** conta. **Entrambi i rami fatti il
+  2026-08-17** (caso costruito da zero, esito in fondo alla sezione).
+- 🟡 **Card e drill-down**: le due aree nuove (DDT, RESI) si aprono davvero — la whitelist a 7
+  aree era fail-closed, senza quella le card non erano drillabili. **Parziale al 2026-08-17**:
+  l'area **DDT** ha dati, si vede e **il drill-down si apre** (verificato da Tid); l'area
+  **RESI resta vuota per progetto** e non è verificabile oggi — vedi il riquadro in fondo.
+- ✅ **DL-24 — accredito dovuto vs facoltativo**: l'etichetta distingue l'obbligo dall'opzione
+  (`riapre_residuo` + residuo di riconsegna ancora aperto → FACOLTATIVA). **Provato il
+  2026-08-17**, e non era in programma: confermando un `RESO_PER_RICONSEGNA` sulla stessa
+  merce, lo **stesso reso** compare in **entrambe** le code — `RESO0005123` con accredito
+  **3 FACOLTATIVA** fra gli accrediti e **3 DA_RICONSEGNARE** fra le riconsegne — mentre il
+  `RESO_A_CREDITO` precedente resta **5 DOVUTA**. Fino a stamattina la distinzione non aveva
+  soggetti su cui mostrarsi.
+- ✅ **Lista coda accrediti**: colonne 200-203 e i 3 preset resi, priorità responsive.
+  **Guardata il 2026-08-17** sul primo soggetto mai esistito (`RESO0005122`).
   ⚠️ Le etichette ora dicono **«Accredito dovuto / facoltativo»**, non più «NC dovuta /
   facoltativa» (allineamento a DL-24: si nomina il fatto, non il rimedio).
+
+> **Misura del 2026-08-16 — due dei sei punti oggi non hanno un soggetto su cui
+> girare.** Letto dal database:
+>
+> | Punto | Soggetti disponibili |
+> | --- | --- |
+> | DL-19 (DDT oltre lo stato-trigger, ancora eleggibile) | `fn_list_ddt_da_pushare()` → **1 riga**: un soggetto c'è, ed è l'unico |
+> | Card DDT | `vw_dash_fatturazione_ddt` → **7 righe**: l'area si può guardare |
+> | DL-27 (reso confermato su merce già fatturata → coda accrediti) | `vw_resi_da_accreditare` → **vuota**, pur con **5 resi CONFERMATO** su 10 |
+>
+> Il caso di DL-27 **va costruito** prima di poterlo provare: nessuno dei resi
+> confermati oggi presenti alimenta la coda accrediti. Non è un difetto — è che il
+> dato non c'è — ma è la ragione per cui quel punto non si spunta guardando l'app
+> così com'è. (La misura non è un falso zero da RLS: le tabelle `resi` e `ddt` hanno
+> RLS senza `FORCE` e l'interrogazione gira come proprietario.)
+>
+> 🔴 **Correzione alla riga DL-19 di questa tabella (2026-08-16, sera).** «Un
+> soggetto c'è, ed è l'unico» era **una lettura sbagliata della misura**: quella
+> riga è `DDT0000034`, un DDT **standalone** che imbocca il ramo
+> `src_fatturazione_trigger IS NULL` della funzione. DL-19 vive invece sul ramo
+> **order-backed**, che nessun dato percorreva. Il soggetto c'era per la card,
+> non per il bug — e contare le righe di una lista non dice **quale ramo** le ha
+> prodotte.
+
+#### Esito DL-19 (2026-08-16, sera) — chiuso su entrambi i rami
+
+`vendite.fn_list_ddt_da_pushare` ha due rami, e DL-19 va provato su quello
+order-backed. Provati tutti e due, con verifica sul database a ogni passo:
+
+| Ramo | Soggetto | Percorso | Esito |
+| --- | --- | --- | --- |
+| **standalone** (`trigger IS NULL`, riga 118) | `DDT0000034` | `SPEDITO` → `CONSEGNATO` | ✅ resta eleggibile |
+| **order-backed** (`trigger != CONFERMATO`, righe 105-113) | `ORD0018586` → `DDT0010839` | ordine con trigger `SPEDITO`, DDT `SPEDITO` → `CONSEGNATO` | ✅ resta eleggibile |
+
+⭐ **Il ramo order-backed non era mai stato percorso da un dato in questo
+database.** La prova di DL-19 è stata anche il suo collaudo iniziale, non la
+conferma di qualcosa di rodato: prima di stasera `fn_list_ddt_da_pushare`
+restituiva **una sola** riga, sempre dal ramo standalone.
+
+**Perché non c'erano soggetti, ed è un difetto a sé** (segnalato al team DB,
+correzione scritta nei changeSet `20260817-01/-02/-03`): `trgfn_ordini_normalize`
+sovrascriveva `fatturazione_trigger` con il valore del billing account a **ogni
+INSERT**, quindi la scelta fatta in testata veniva scartata in silenzio. Con
+tutti i 42 BA a `CONFERMATO`, **nessun ordine poteva nascere con `SPEDITO`** — e
+il ramo restava irraggiungibile dall'applicazione. Correzione: `DROP DEFAULT`
+sulla colonna + `COALESCE(testata, BA, 'CONFERMATO')` nel trigger, più il
+`COALESCE` da togliere in `fn_push_preventivo_a_ordine`. Il contratto BE
+richiesto («testata vuota = eredita») **era già rispettato**: form, drawer,
+service e repository mandano già NULL quando l'operatore non sceglie.
+
+> ℹ️ **Il caso era però già costruibile, e non ce n'eravamo accorti** (rilievo
+> del team DB): `fatturazione_trigger` è in `_UPDATE_KEYS_ORDINE` e il normalize
+> agisce solo su INSERT, quindi **crea → resta in DRAFT → riapri → imposta
+> `SPEDITO` → salva** funziona senza migrazione. È la strada usata stasera.
+> ⚠️ E il workaround era **già scritto in tre fixture pgTAP da mesi**, con il
+> commento che spiegava perché la INSERT non tenesse: una segnalazione lasciata
+> dentro una suite di test non è una segnalazione, è un promemoria che nessuno
+> legge finché non sbatte nello stesso muro.
+
+**Sul `>=` e non `>`** (riga 111, `sdd.ordine >= sdd_trg.ordine`): l'eleggibilità
+parte **dallo** stato-trigger, non da quello successivo. Se l'ordine dice
+`SPEDITO`, il momento in cui la merce diventa fatturabile *è* la spedizione —
+col `>` stretto un DDT spedito e mai consegnato non sarebbe fatturabile mai, che
+è il difetto opposto con lo stesso effetto pratico. Le due prove qui sopra
+coprono i due lati di quella riga: sullo stato-trigger e oltre.
+
+⚠️ **`DDT0010839` è ancora da inviare a commessa**, ed è oggi l'unico DDT
+order-backed con trigger `SPEDITO` esistente. Inviandolo si consuma: se servisse
+rifare DL-19 da capo, su quel soggetto non si potrebbe più.
+*(Superato: è stato inviato e fatturato il 2026-08-17 — vedi qui sotto.)*
+
+#### Esito DL-27 (2026-08-17) — il caso costruito, e la coda ha la sua prima riga
+
+`vw_resi_da_accreditare` era **vuota da sempre**, pur con 5 resi `CONFERMATO` in
+database: nessuno di quelli alimentava la coda. Il caso è stato costruito a
+mano, proseguendo lo stesso filo di DL-19.
+
+| Passo | Soggetto | Contatore dopo |
+| --- | --- | --- |
+| DDT inviato a commessa | `DDT0010839` → `CMM-20260816224228686-b9946f`, 21 pz a 2,50 | tenuti 21 · fatturati 0 |
+| Gruppo fatturato | lotto **`LTF-0004017`**, fattura 9908 EMESSA non numerata | tenuti 21 · **fatturati 21** · differenza 0 |
+| Reso parziale confermato | **`RESO0005122`**, 5 pz contro il DDT | tenuti 16 · fatturati 21 · **differenza −5** |
+
+**Esito**: 1 riga in coda accrediti — `RESO0005122` · `DDT0010839` · resa 5 ·
+**accredito dovuto 5** · etichetta **DOVUTA**. Verificata a video da Tid
+(scheda **Vendite → Resi → «Da accreditare»**): riga presente, etichette nella
+forma nuova «Accredito dovuto», colonne del contatore leggibili accanto
+all'accredito.
+
+⭐ **L'ordine delle mosse È la funzionalità, e spiega la coda vuota di prima.**
+`differenza = tenuti − fatturati` diventa negativa solo se si **fattura prima** e
+si **rende dopo**: rendendo prima, i tenuti scendono mentre la fattura non
+esiste ancora, la fattura nasce già ridotta e la differenza resta a zero —
+nessun accredito, correttamente. I 5 resi confermati che non alimentavano nulla
+non erano un difetto: erano resi fatti nell'ordine che non genera accredito.
+
+> ℹ️ Controllato anche il rischio del «più volte»: Tid ha ripetuto il tentativo
+> di fatturazione, e l'attività 24553 risulta legata a **una sola** riga di
+> fattura (AF 7980 → riga 5020 → fattura 9908). Nessun doppio conteggio.
+
+**Non ancora provato di DL-27**: il ramo *«reso in DRAFT non conta»*, che si
+verifica con un secondo reso lasciato in bozza — la coda non deve mostrarlo.
+
+#### DL-28 (2026-08-17) — ⏸️ sospeso: il gate presidia una porta murata
+
+Provando a costruire il caso, Tid ha trovato che **una riga di DDT senza prezzo
+non è inseribile**: il pricing la respinge con *«impossibile risolvere il prezzo
+listino»*, **per qualunque causale** — comprese le sette non fatturabili.
+
+⚠️ **Ma DL-28 nasce dalla premessa opposta**, testuale: *«Il DDT ammette righe
+senza prezzo **per design** ("solo trasporto")»*. Se quella riga non si può
+caricare, la metà «blocco parlante» del gate **non è mai scattata e non può
+scattare**: non è un gate sbagliato, è un gate che presidia una porta murata.
+
+**Decisione di Tid (2026-08-17): le righe a prezzo zero devono essere ammesse.**
+Perimetro e domande aperte in [brief-ddt-righe-senza-prezzo.md](brief-ddt-righe-senza-prezzo.md);
+va corretta anche la **premessa nel design-of-record**, che oggi descrive come
+esistente un caso che il prodotto non consente.
+
+**Cosa resta provabile subito**: la seconda metà — DDT con causale non
+fatturabile (CONTO_VISIONE) e prezzo valorizzato, portato a SPEDITO, deve
+restare **fuori** da card e lister.
+
+✅ **Seconda metà fatta (2026-08-17)**: `DDT0010840`, causale `CONTO_VISIONE`
+(`fatturabile = false`), prezzo valorizzato, stato **SPEDITO** — cioè in uno
+stato che lo renderebbe eleggibile — e `fn_list_ddt_da_pushare()` **non lo
+restituisce**. La regola «dentro chi fattura, fuori chi no» regge sul lato che
+si può provare.
+
+#### DL-27, ramo «reso in DRAFT» (2026-08-17) — ✅ chiuso
+
+Secondo reso sulla stessa merce, lasciato in **DRAFT**: la coda accrediti
+continua a mostrare **una sola** riga, quella di `RESO0005122`.
+
+⭐ **La difesa non è un filtro, è la struttura del documento**: un reso in bozza
+non ha nemmeno il **numero** (`numero = NULL`, la numerazione arriva alla
+conferma). Non è ancora un documento — e questo è più solido di una condizione
+scritta in una vista, perché non si può disattivare per sbaglio.
+
+#### DL-23 (2026-08-17) — ✅ il ramo che previene il doppio conteggio
+
+Caso costruito: `ORD0018587` (riga da **10** pezzi a 14,45, trigger `SPEDITO`
+impostato dopo il salvataggio), evaso in parte con `DDT0010841` per **4** pezzi
+→ ordine a `PARZIALMENTE_EVASO`. Letto da `vw_dash_aperto_documenti`:
+
+| Area | Documento | Valore | Pezzi | Motivo fermo |
+| --- | --- | --- | --- | --- |
+| ORDINI | `ORD0018587` | **86,70** | 6 (residuo) | `IN_ATTESA_DDT` |
+| DDT | `DDT0010841` | **57,80** | 4 (spediti) | `PUSH_NON_ESEGUITO` |
+
+**6 + 4 = 10**: la merce compare **una volta sola** nel serbatoio, in due punti
+diversi del percorso, e la somma torna all'ordine. Senza DL-23 l'ordine
+mostrerebbe 144,50 (il pieno) e il DDT altri 57,80 — 14 pezzi a fronte di 10.
+
+⚠️ **Il pezzo si legge dal valore, non da `unita_totali`**: quella colonna vale
+`1` per entrambe le righe perché conta le **righe documento**, non i pezzi. Un
+errore facile da fare guardando la lente a video.
+
+⬜ **Ramo `CONFERMATO` non provato — nessun soggetto**: cercando un ordine con
+trigger `CONFERMATO` **e** parzialmente evaso non ne esiste nemmeno uno (i 91 a
+`CONFERMATO` o sono interi o non sono parzialmente evasi). Va costruito: ordine
+da 10 lasciato a `CONFERMATO`, DDT di 4, e il serbatoio deve mostrare il
+**pieno**.
+
+> 🐛 **Due difetti FE trovati validando, entrambi corretti in giornata.** Non
+> appartengono alla slice ma sono emersi solo perché qualcuno usava l'app sul
+> serio:
+>
+> 1. **la testata del DDT non si salvava in creazione** — causale di trasporto,
+>    aspetto beni, addebito. Causa: `loadDetail` **sostituisce** il form coi dati
+>    del server ed è invocata da **sette** punti, fra cui `@changed` del
+>    salvataggio di una RIGA. Si sceglieva la causale, si salvava la riga, e la
+>    causale tornava vuota senza che nulla lo segnalasse. Corretto rendendo
+>    `loadDetail` non distruttivo verso il non-salvato (baseline = ultima forma
+>    ricevuta dal server), invece di rincorrere i sette chiamanti;
+> 2. **una seconda finestra, nel BB `useDrawerAutosaveBozza`**: la POST di
+>    creazione fotografa il form all'istante del trigger, e la ricarica al
+>    ritorno cancellava quanto digitato nel frattempo. Corretta nel BB, quindi
+>    per **tutti e tre** i drawer che lo usano (DDT, ordini, preventivi).
+>
+> ⚠️ **Residuo**: il rimedio del punto 1 vive nel solo drawer DDT. Ordini e
+> preventivi hanno la stessa struttura (`loadDetail` che sostituisce + righe che
+> emettono `@changed`) e restano scoperti su quella finestra.
+
+#### Card e drill-down (2026-08-17) — l'area RESI è vuota **per progetto**
+
+Misurato sulle viste che alimentano le due lenti:
+
+| Lente | Aree con dati |
+| --- | --- |
+| Backlog fatturazione | PREVENTIVI 64 · ORDINI 25 · **DDT 2** |
+| Situazione aperta | PREVENTIVI 76 · ORDINI 59 · CONTRATTI 15 · OFFERTE 2 · **DDT 1** |
+
+L'area **RESI non compare**, e non per mancanza di soggetti: `RESO0005122` ha
+accredito dovuto e attraversa il ramo. Cade sull'ultimo filtro della vista —
+`WHERE COALESCE(mf.classe,'ANOMALIA') <> 'FISIOLOGICO'` — perché il motivo
+`MERCE_RESA_GIA_FATTURATA` è classificato **`FISIOLOGICO`** con `azione = NULL`,
+mentre il gemello `RICONSEGNA_NON_ESEGUITA` è `RECUPERABILE` e compare.
+
+✅ **È DL-24 che funziona come scritto**: il Backlog elenca ciò che è fermo e
+**recuperabile**; un motivo senza rimedio non è arretrato. La decisione lo dice
+già — *«è 🟢 perché nessuna azione esiste oggi»*.
+
+**Conseguenza sulla checklist**: la voce si spunta **a metà**. L'area DDT è
+verificabile ora (resta da confermare che il drill-down si apra: era il difetto
+della whitelist fail-closed); l'area RESI lo diventerà **con la slice NC**, e
+allora basteranno due celle di seed — vedi §6.1 di
+[brief-design-note-credito-resi.md](brief-design-note-credito-resi.md).
 
 ### 13.3 Le due cose non-validazione — una chiusa, una aperta
 
@@ -463,8 +778,112 @@ Checklist in ordine di rischio, derivata dalle decisioni DL-19..28:
   parziale sono in `388b7dfee`; il resto della linea (guida cruscotti, archiviazione dei
   tre doc, bonifica link) nello stesso commit, più `4828258d6` per la rigenerazione di
   `error_policies_generated.py`. Ramo `dev/backend-tid`, allineato con origin.
-- 🔴 **Build docs**: ancora da fare. `python scripts/build_docs_zensical.py` non è
-  eseguibile in questo ambiente (`zensical` non installato, `ModuleNotFoundError`). La
-  coerenza delle tabelle e dei riferimenti interni è stata verificata a mano — e la
-  verifica ha trovato e corretto un salto di numerazione (una §5.2 senza 5.1) — ma il
-  build resta da fare al primo giro utile.
+- ✅ **Build docs**: **fatto il 2026-08-16**, verde. `zensical` nel frattempo è
+  installato nel `.venv` di radice, quindi `python scripts/build_docs_zensical.py`
+  gira: **exit 0**, 14 secondi, 2575 pagine preprocessate, 3455 include espansi,
+  9348 link riscritti, **zero warning di include**.
+
+  Restano **5 warning, tutti preesistenti e nessuno di questo cantiere**:
+
+  | Dove | Cosa |
+  | --- | --- |
+  | `docs/it/dbzero/pratiche/index.md` e il gemello `index.ci.md` | 4 link morti: `vw_definizioni_drift.md` e `fn_pubblica_definizione.md` |
+  | `docs/it/dev/frontend/i18n-namespace-radici.md` | 1 àncora morta verso `frontend-standards.md#struttura-chiavi--radici-dei-namespace` |
+
+  > ℹ️ **I 4 link morti non sono un contenuto sbagliato: è il generatore.**
+  > L'index di schema è **auto-generato** (`scripts/gen_db_docs.py`) e ricopia la
+  > prima frase delle pagine `manual/`. Dentro `manual/` un link
+  > `[fn_pubblica_definizione](fn_pubblica_definizione.md)` è **corretto** — le due
+  > pagine sono sorelle — ma issato di un livello nell'index punta a una cartella
+  > dove quel file non c'è. Il generatore non riscrive i link relativi quando li
+  > sposta di cartella. Si corregge lì, una volta per tutti gli schemi.
+
+  ⚠️ **E una cosa che va saputa a proposito di questo residuo: non poteva
+  validare nulla di questo cantiere.** `work-done/` e `work-in-progress/` sono
+  **esclusi** dal build (`exclude_docs` in `mkdocs.yml` e pruning del preprocess:
+  `excluded_dirs_removed=2`). I brief non entrano nel sito: il build vale come
+  controllo **globale** della documentazione pubblicata, non come verifica dei
+  testi di questa linea. La coerenza interna dei brief resta quella verificata a
+  mano il 2026-08-10.
+
+---
+
+## 14. Ricognizione dei residui BE consegnati dal DB (2026-08-16)
+
+> Il team DB ha ricontrollato contro il codice i residui che il lato DB aveva
+> consegnato al BE «fuori da questa linea», e ne ha segnati **quattro**: due
+> chiusi, due aperti. Riverificati qui uno per uno, con le righe di codice.
+> **Esito: dei due segnati 🔴 aperti, nessuno lo è**; il terzo 🔴 era già stato
+> deciso lo stesso giorno. Le due ✅ sono confermate.
+>
+> ⚠️ Il DB ha dichiarato di aver **corretto la propria memoria di progetto** su
+> questa base. Va rettificata, altrimenti alla prossima sessione tornano a galla
+> due residui inesistenti — lo stesso danno del registro sbagliato, col segno
+> rovesciato.
+
+| Voce | Segnata | Verificata | Dove |
+| --- | --- | --- | --- |
+| `terne_pronte` | 🔴 aperta | ✅ **consumata** | `commesse_repository.py:1267` → `GruppoDiagnosi` → `_fatturazione_job_helpers.py:221` |
+| `riaperto_il` | 🔴 aperta | ✅ **consumata** | `pipeline_repository.py:2132/2144` → `pipeline_runner.py:392/546` |
+| Slot indirizzi (§10.5) | 🔴 aperta | ✅ **decisa** «non si restringe» | §11.1 di `brief-db-indirizzi-su-ordini-contratti-offerte.md` |
+| Pricing v5 F2-BE | ✅ fatta | ✅ confermata | `pricing_repository.py:90` chiama `fn_resolve_prezzo_listino_v2` |
+| Documenti Fase A | ✅ fatta | ✅ confermata | `_REL_CONSENTITE` in `core/db/dbops_repository.py:26`, usata come guard in 2 punti |
+
+### 14.1 `riaperto_il` — non è «girante ma inutile», governa il giro
+
+Il rilievo diceva «compare solo in `smoke-ritorno-lotto-a-draft.py`, niente in
+`backend/apps/`». Non regge: `is_lotto_riaperto()` lo legge
+(`pipeline_repository.py:2132`), `azzera_riaperto_il()` lo spegne (`:2144`), e
+`pipeline_runner.py:392` lo usa come **terzo motivo per rifare lo step corrente**
+invece di avanzare — con l'azzeramento a `:546` quando il giro l'ha onorato,
+senza il quale il lotto rifarebbe lo stesso step all'infinito.
+
+⏱️ **E non è codice di oggi**: è entrato il **2026-08-03** (`6728e58cb`), quasi
+due settimane prima della misura. Qui non c'è una spiegazione di tempistica: la
+verifica ha guardato nel posto sbagliato.
+
+**Cosa sopravvive del rilievo, in forma molto più stretta**: il segnale non
+risale all'API e **il FE non mostra da nessuna parte che un lotto è stato
+riaperto**. È una richiesta di *visibilità*, non un residuo di consumo — e come
+tale va valutata a sé, non ereditata come «funzione DB inutile».
+
+### 14.2 `terne_pronte` — misura scattata 49 minuti troppo presto
+
+Anche qui il consumo c'è: `commesse_repository.py:1267` lo decodifica con
+`_decode_jsonb` (col commento sul jsonb che su questa connessione arriva come
+stringa), finisce in `GruppoDiagnosi` e `_fatturazione_job_helpers.py:221` lo
+usa per distinguere i gruppi le cui terne sono fallite da quelli fermi per
+un'altra causa. Tre test lo coprono.
+
+⏱️ **Ma qui la spiegazione c'è, ed è onesta**: quel codice è entrato alle
+**15:13** del 2026-08-16 (`4129f5a22`), il commit della verifica è delle
+**16:02**. Su un checkout precedente il grep torna vuoto legittimamente. Non è
+un errore di metodo — è una fotografia scattata prima del fatto.
+
+### 14.3 Slot indirizzi — decisa, non aperta
+
+«contratto ne dichiara 3, off-comm 4, i template ne stampano 1» è vero come
+descrizione dello stato, ma la voce **non è aperta**: il 2026-08-16 è stato
+deciso di **non restringere**, perché gli slot seguono
+`config.tipi_indirizzi_allowed` — la stessa whitelist che il pannello FE legge a
+runtime — e toglierli farebbe sparire in silenzio un indirizzo che l'operatore
+può già inserire. Motivazione estesa in §11.1 del brief citato. Anche qui è
+questione di minuti: la nota è delle 16:02, la chiusura è stata pushata alle
+16:04.
+
+### 14.4 Cosa lascia questa ricognizione
+
+Nessun lavoro BE nuovo: **zero** delle quattro voci richiede codice. Restano due
+cose da fare, entrambe di registro e non di sviluppo:
+
+- la **memoria del DB va rettificata** sulle due voci `terne_pronte` e
+  `riaperto_il`, altrimenti si autoconfermano alla prossima sessione;
+- se la **visibilità FE del lotto riaperto** interessa davvero (§14.1), va
+  aperta come richiesta sua, con il suo perimetro — non lasciata implicita
+  dentro un residuo che nel merito è chiuso.
+
+⭐ **La lezione, che è la stessa di due volte oggi**: una misura contro il codice
+vale quanto il momento in cui è scattata e il posto in cui ha guardato. Una
+frase che dichiara *chiuso* ciò che è aperto e una che dichiara *aperto* ciò che
+è chiuso costano uguale — restano scritte, e la sessione dopo nessuno le
+rimette in discussione.

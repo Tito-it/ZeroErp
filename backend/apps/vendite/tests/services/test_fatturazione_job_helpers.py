@@ -28,6 +28,12 @@
 #   7. priorita_testata_sopra_le_righe
 #   8. messaggio_singolo_gruppo
 #   9. messaggio_molti_gruppi_tronca_e_conta
+#  10. (MessaggioGruppiNonServitiGranaTests) conta_gruppi_distinti_non_righe
+#  11. (MessaggioGruppiNonServitiGranaTests) due_gruppi_distinti_contano_due
+#  12. (CorsiaRottaVsPerimetroTests) corsia_fallita_dice_di_riprovare_non_di_controllare_il_perimetro
+#  13. (CorsiaRottaVsPerimetroTests) corsia_sana_resta_non_determinato
+#  14. (CorsiaRottaVsPerimetroTests) testata_bloccata_vince_sulla_corsia_rotta
+#  15. (CorsiaRottaVsPerimetroTests) senza_terne_fallite_comportamento_invariato
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -36,6 +42,7 @@ from django.test import SimpleTestCase
 
 from apps.vendite.services._fatturazione_job_helpers import (
     MOTIVO_COMMESSA_NON_EMITTIBILE,
+    MOTIVO_ESECUZIONE_FALLITA,
     MOTIVO_FUORI_COMPETENZA,
     MOTIVO_GIA_EMESSE,
     MOTIVO_GRUPPO_SCONOSCIUTO,
@@ -46,6 +53,7 @@ from apps.vendite.services._fatturazione_job_helpers import (
     classifica_gruppo_non_servito,
     messaggio_gruppi_non_serviti,
     spiega_gruppi_non_serviti,
+    terna_key,
 )
 
 
@@ -64,6 +72,8 @@ def _foto(**kwargs) -> dict:
         "n_righe": 0, "n_emesse": 0, "n_annullate": 0, "n_rifiutate": 0,
         "n_non_approvate": 0, "n_fuori_competenza": 0,
         "n_pronte": 0,
+        # `[]` e mai None: «nessuna corsia» e «non calcolato» restano distinti.
+        "terne_pronte": [],
     }
     base.update(kwargs)
     return base
@@ -248,3 +258,60 @@ class MessaggioGruppiNonServitiGranaTests(SimpleTestCase):
             totale_richiesti=3,
         )
         self.assertIn("2 gruppi su 3", msg)
+
+
+# Corsia usata dai test dell'incrocio: stessa forma nelle due sorgenti
+# (`terne_pronte` dal DB, esiti per terna dal core).
+_CORSIA = {"emittente_soggetto_ruolo_id": 3, "tipo_doc_fiscale_id": 1, "utility_id": 9}
+_ALTRA_CORSIA = {"emittente_soggetto_ruolo_id": 7, "tipo_doc_fiscale_id": 1, "utility_id": 9}
+
+
+class CorsiaRottaVsPerimetroTests(SimpleTestCase):
+    """«Non servito perché il perimetro non lo ammetteva» ≠ «l'esecuzione si è rotta».
+
+    Il primo si corregge, il secondo si riprova: sono due azioni diverse, e
+    prima ricevevano lo stesso messaggio — «verificare emittente e utility
+    della commessa», su cose che erano a posto (§10.6 → §11 del brief).
+    """
+
+    # Il caso del difetto: righe pronte, testata SANA, corsia fra le fallite.
+    # Prima cadeva nel fallback NON_DETERMINATO con la causa inventata.
+    def test_corsia_fallita_dice_di_riprovare_non_di_controllare_il_perimetro(self) -> None:
+        motivo, testo = classifica_gruppo_non_servito(
+            _foto(n_righe=3, n_pronte=3, terne_pronte=[_CORSIA]),
+            terne_fallite=frozenset({terna_key(_CORSIA)}),
+        )
+        self.assertEqual(motivo, MOTIVO_ESECUZIONE_FALLITA)
+        self.assertIn("rilanciare", testo)
+        # La causa inventata non deve piu' comparire.
+        self.assertNotIn("verificare emittente e utility", testo)
+
+    # Non-regressione: se la corsia NON e' fra le fallite, il fallback resta
+    # quello di prima. Il ramo nuovo non deve mangiarsi il vecchio.
+    def test_corsia_sana_resta_non_determinato(self) -> None:
+        motivo, _ = classifica_gruppo_non_servito(
+            _foto(n_righe=3, n_pronte=3, terne_pronte=[_CORSIA]),
+            terne_fallite=frozenset({terna_key(_ALTRA_CORSIA)}),
+        )
+        self.assertEqual(motivo, MOTIVO_NON_DETERMINATO)
+
+    # ⚠️ Precedenza: una testata BLOCCATA e' una causa CERTA e vince comunque.
+    # `terne_pronte` e' popolato anche per una commessa in BOZZA (il predicato
+    # e' di RIGA, non guarda l'emittibilita'), quindi senza quest'ordine una
+    # commessa bloccata la cui corsia si e' rotta verrebbe raccontata come
+    # «riprova» — e riprovare non la sbloccherebbe mai.
+    def test_testata_bloccata_vince_sulla_corsia_rotta(self) -> None:
+        motivo, _ = classifica_gruppo_non_servito(
+            _foto(n_righe=3, n_pronte=3, commessa_emittibile=False,
+                  commessa_stato_descrizione="Bozza", terne_pronte=[_CORSIA]),
+            terne_fallite=frozenset({terna_key(_CORSIA)}),
+        )
+        self.assertEqual(motivo, MOTIVO_COMMESSA_NON_EMITTIBILE)
+
+    # Senza contesto (giro senza terne fallite) il comportamento e' quello
+    # storico: il parametro e' opzionale e non cambia nulla da solo.
+    def test_senza_terne_fallite_comportamento_invariato(self) -> None:
+        motivo, _ = classifica_gruppo_non_servito(
+            _foto(n_righe=3, n_pronte=3, terne_pronte=[_CORSIA]),
+        )
+        self.assertEqual(motivo, MOTIVO_NON_DETERMINATO)

@@ -60,6 +60,11 @@ ATTIVITA_SORT_COLUMNS: frozenset[str] = frozenset({
     "prezzo_snapshot",
     "stato_approvazione",
     "stato_emissione",
+    # Aggiunte con le sette colonne del 2026-08-16 (changeSet 20260816-04):
+    # `fatturata_il` e' la domanda da cui e' nata la richiesta — «fatturata
+    # ieri o tre mesi fa» — e senza ordinamento la si risponde solo a occhio.
+    "fatturata_il",
+    "fattura_numero",
 })
 
 # Nomi delle 26 colonne condivise da tutte le fn_list_*_da_pushare.
@@ -1232,7 +1237,8 @@ class CommesseRepository:
                        commessa_stato_codice_interno, commessa_stato_descrizione,
                        commessa_emittibile,
                        n_righe, n_emesse, n_annullate, n_rifiutate,
-                       n_non_approvate, n_fuori_competenza, n_pronte
+                       n_non_approvate, n_fuori_competenza, n_pronte,
+                       terne_pronte
                 FROM vendite.fn_diagnostica_gruppi_fatturabili(
                     p_gruppi => %s::text[],
                     p_competenza_mese => %s
@@ -1255,6 +1261,15 @@ class CommesseRepository:
                     n_non_approvate=int(row[10]),
                     n_fuori_competenza=int(row[11]),
                     n_pronte=int(row[12]),
+                    # ⚠️ jsonb: su questa connessione psycopg lo consegna come
+                    # STRINGA (misurato sul DB vero il 2026-08-16: scritto
+                    # `list(valore or [])`, `'[]'` diventava `['[', ']']` — e i
+                    # mock non potevano vederlo, consegnano gia' una lista).
+                    # Si decodifica con `_decode_jsonb`, l'«unico punto di
+                    # decodifica» che questo file gia' dichiara: fail-soft a
+                    # `[]` su payload malformato, che su un campo diagnostico
+                    # e' meglio di un raise che scavalca il messaggio parlante.
+                    terne_pronte=_decode_jsonb(row[13], []),
                 )
                 for row in cursor.fetchall()
             ]
@@ -1319,10 +1334,31 @@ class CommesseRepository:
         # `_assert_non_fatturata`. Il FE lo usa per nascondere le azioni prezzo
         # su riga già fatturata. Bool nativo: nessuna decodifica speciale.
         "fatturata",
+        # Sette colonne additive (changeSet 20260816-04): la riga porta a valle
+        # QUANDO e' stata portata in fattura, QUALE fattura e QUALE documento
+        # di origine — tre informazioni che prima si fermavano al database.
+        #
+        # ⚠️ `fatturata_il` e' `fatture_righe.data_insert`, NON il `data_update`
+        # dell'attivita': il momento in cui la riga e' stata portata in fattura
+        # e' un fatto che nessuna modifica successiva puo' spostare. Sulle 37
+        # righe gia' fatturate le due colonne divergono gia' in 10 casi.
+        #
+        # ⚠️ `fattura_*` e `sorgente_documento_id` sono NULL anche quando il
+        # documento esiste ma NON e' visibile a chi chiede (RLS su
+        # `vendite.fatture`). `fatturata` resta invece calcolato su
+        # `attivita_fatturabili`, che RLS non ce l'ha: chi non vede la fattura
+        # legge comunque `fatturata=true` con le colonne documento a NULL — sa
+        # che e' fatturata e sa di non poterci navigare. Derivare il flag dalla
+        # join lo renderebbe FALSO per quell'utente, cioe' una riga fatturata
+        # si presenterebbe come da fatturare.
+        "fatturata_il",
+        "fattura_id", "fattura_numero", "fattura_stato",
+        "sorgente_uid", "sorgente_area", "sorgente_documento_id",
     )
     # Type mapping per serializzazione colonne attivita.
     _ATTIVITA_DATE_COLS = frozenset({
         "data_attivita", "competenza_mese", "competenza_dal", "competenza_al", "data_update",
+        "fatturata_il",
     })
     _ATTIVITA_JSONB_COLS = frozenset({"meta"})
     _ATTIVITA_UUID_COLS = frozenset({"articolo_id"})

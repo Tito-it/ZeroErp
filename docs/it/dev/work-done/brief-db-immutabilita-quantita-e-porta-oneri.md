@@ -1,5 +1,18 @@
 # Brief DB — Quantità immutabili sulla commessa + porta oneri (il libro giornale)
 
+> 🟢 **CHIUSO — 2026-08-16.** L'ultima voce aperta era la validazione in-app della
+> porta oneri (step 10), rimasta appesa perché il 2026-07-23 `vendite.commesse` era
+> vuota su dev e non c'era niente su cui provarla. **È stata fatta il 2026-07-28 e
+> nessuno l'ha annotata**: la ricognizione di oggi l'ha trovata scritta nei dati.
+> Prove in **§8** — tre oneri caricati da UI su una commessa reale, due annullati,
+> uno arrivato **fino a una riga di fattura con l'IVA giusta** (penale fuori campo
+> art. 15). Non resta niente da fare.
+>
+> ⚠️ **Due righe di questo brief erano rimaste indietro e sono corrette in §8**: lo
+> step 9 diceva «manca solo lo step 2 (BE)» quando lo step 2 era già chiuso, e la
+> nota dello step 10 diceva «changeset non ancora pushato» per il permesso
+> `carica_voce_manuale`, che è invece in repo e committato.
+>
 > **Tipo**: brief al team DB · **Target**: `dev/db-tid` · **Data**: 2026-07-17 · **Owner**: Tid
 > **Stato**: 🟢 **step 3 + step 1 + PORTA ONERI (step 4/5/6/7) FATTI** — porta oneri
 > **applicata su dev + pgTAP verde (2026-07-21)**. Step 3 (`tipo_movimento` colonna+CHECK incl.
@@ -18,7 +31,7 @@
 > (step 2), permessi prezzo N5/N7 (step 8)». **Entrambi chiusi il 2026-07-23** e registrati
 > nella tabella di §7, ma la testata non era stata aggiornata — verificato sul codice vivo:
 > `p_righe_ids` è passato dal ponte (`commesse_repository`), `prezzo_override_manuale` è su
-> tutte e tre le view prezzo, e il [brief BE/FE compagno](../work-done/brief-be-fe-immutabilita-quantita-e-porta-oneri.md)
+> tutte e tre le view prezzo, e il [brief BE/FE compagno](brief-be-fe-immutabilita-quantita-e-porta-oneri.md)
 > è già in `work-done`. **Resta la sola voce dello step 10: la validazione in-app della porta
 > oneri**, che al 2026-07-23 era senza bersaglio (`vendite.commesse` vuota su dev).
 >
@@ -85,7 +98,7 @@ conseguenze:
 | Intento | Porta | Governo |
 |---|---|---|
 | **Onere / voce di valore** senza contratto specifico (caso Tid) | azione dedicata «aggiungi onere»: riga in commessa, **quantità fissa = 1, solo positiva**, il prezzo È l'importo, causale obbligatoria da vocabolario config | approvazione umana + `post_permission` dedicato |
-| **Correzione merce** (resa, in più/in meno) | il percorso dei **fatti**: reso → contatore → sottrazione/NC ([brief DDT/resi](../work-done/brief-db-fatturazione-ddt-resi.md) §3) | i fatti, non l'operatore |
+| **Correzione merce** (resa, in più/in meno) | il percorso dei **fatti**: reso → contatore → sottrazione/NC ([brief DDT/resi](brief-db-fatturazione-ddt-resi.md) §3) | i fatti, non l'operatore |
 | **Aggiustamento prezzo** | `fn_riallinea_prezzo` / `fn_variazione_prezzo_eccezionale` — esistono già | `post_permission` da **cablare** (oggi manca, §3-T2) |
 
 La chiave di volta: **la riga manuale non porta quantità, porta valore** (`quantita = 1`
@@ -321,7 +334,7 @@ sempre** → la misura del contatore su AF è stabile per costruzione.
 |---|---|---|
 | 0 | Decisioni: **TUTTE CHIUSE** (2026-07-17) — drift storico verificato: **zero righe** (query §6 eseguita da Tid). Unica coda operativa: le **voci concrete** del vocabolario causali (Tid, in fase di seed) | ✅ |
 | 1 | Guard immutabilità su `commesse_attivita.quantita` **e** `attivita_fatturabili.quantita`, bypass GUC di percorso (§4a, deciso) | ✅ **FATTO (2026-07-21)** — `20260721-01` guard CA (blocca `UPDATE OF quantita` su EMESSA), `20260721-02` guard AF **mirror-enforcement** (blocca se `quantita ≠ CA madre`; scelta 2026-07-21 perché l'emit fa UPSERT `SET quantita` → un "blocca-sempre" lo romperebbe). Bypass GUC riusato: `zeroerp.maintenance_reset_lotto_draft`. Codici `E_COMMESSA_ATTIVITA_QUANTITA_IMMUTABILE` (550) / `E_ATTIVITA_FATTURABILE_QUANTITA_IMMUTABILE` (551). pgTAP `test-guard-quantita-immutabile-v1` **plan(16) verde** (senza emit: CA sourceless + flip EMESSA + AF INSERT diretto, per aggirare il guard esistenza-sorgente 2026-07-18). |
-| 2 | Fix ponte approvazione: il push approva le proprie righe (`p_righe_ids`) (§4b) — **hardening raccomandato**, non più prerequisito | ✅ **FATTO BE (2026-07-23)** — nessuna modifica DB: gli id delle righe upsertate si risolvono dalle chiavi naturali `(commessa_id, segment_key)` (il batch DB ritorna solo contatori) e il ponte li passa a `p_righe_ids`. Dettaglio: [brief BE/FE](../work-done/brief-be-fe-immutabilita-quantita-e-porta-oneri.md) step B1 |
+| 2 | Fix ponte approvazione: il push approva le proprie righe (`p_righe_ids`) (§4b) — **hardening raccomandato**, non più prerequisito | ✅ **FATTO BE (2026-07-23)** — nessuna modifica DB: gli id delle righe upsertate si risolvono dalle chiavi naturali `(commessa_id, segment_key)` (il batch DB ritorna solo contatori) e il ponte li passa a `p_righe_ids`. Dettaglio: [brief BE/FE](brief-be-fe-immutabilita-quantita-e-porta-oneri.md) step B1 |
 | 3 | `tipo_movimento` a colonna + CHECK + backfill NORMALE (CA e AF) (§4c.2) | ✅ **FATTO E APPLICATO** (committato) — **anticipato nella slice DDT/resi** (step 0b del piano di ripartenza): changeset `20260717-01..04` + pgTAP `test-tipo-movimento-colonna-v1`. Motivo dell'anticipo: il contatore filtra `tipo_movimento = 'NORMALE'` (§5) e deve nascere sulla colonna vera, non riaprirsi dopo. Dettaglio in §4c.2 |
 | 4 | Vocabolario causali config + seed (§4c.3) | ✅ **SCRITTO (2026-07-21)** — `config.causali_onere` (`20260721-03`) mono-lingua + seed 5 voci (`20260721-08`); colonna FK `causale_onere_id`+CHECK biconditional (`20260721-04`); `fn_upsert`+`p_causale_onere_id` (`20260721-06`). **Applicato dev + pgTAP verde.** |
 | 5 | Sorgente `DIRECT_ENTRY` accesa + convenzione `segment_key` manuale (§4c.1/.6) | ➖ **RIVISTO (2026-07-21)** — riga **SOURCELESS** (§4c.8: `sorgente_pair` entrambi-o-nessuno, nessun documento) → `DIRECT_ENTRY` non serve a questa slice. Convenzione `segment_key` = `MAN:<commessa>:<progressivo>` implementata nella madre. |
@@ -329,7 +342,75 @@ sempre** → la misura del contatore su AF è stabile per costruzione.
 | 7 | Writer `commesse_attivita_log` (primo evento: la voce manuale) — **dopo** riscrittura del suo manuale (§4c.7) | ✅ **SCRITTO (2026-07-21)** — writer dentro la madre (evento `ONERE_AGGIUNTO`); manuale `commesse_attivita_log` riscritto sul comportamento reale (rimosso il «push/pull» inesistente). |
 | 8 | `post_permission` su N5/N7 prezzo (§4d) — indipendente, può andare per primo | ✅ **FATTO BE (2026-07-23)** — `prezzo_override_manuale` (codename esistente, già seedato) sulle tre view riallinea/variazione/sblocca + gate speculare nel kebab FE. T2 chiusa, test API a presidio |
 | 9 | pgTAP: UPDATE quantita su EMESSA bloccato (CA **e** AF) · re-push su NON_EMESSA passa (via GUC) · riga onere nasce APPROVATA e fa il giro completo fino in fattura · porta rifiuta qta ≠ 1 e negative · contatore cieco alle righe MAN (§5) · se fatto lo step 2: riga BOZZA di terzi non approvata dal push | ✅ **VERDE (2026-07-21, migrate applicato)** — immutabilità: `test-guard-quantita-immutabile-v1` `plan(16)`. Porta base: `test-porta-oneri-v1` `plan(19)`. Contatore cieco alle MAN: `test-porta-oneri-contatore-cieco-v1` `plan(5)` (tripla cintura §5 sulla porta reale: `tipo_movimento`≠NORMALE + segment MAN:∉ORD/DDT + no `:R:`). **Giro completo**: `test-porta-oneri-giro-completo-v1` **`plan(12)` 12/12** — onere→emissione→AF→**fattura**, con **IVA per-onere fino in fattura** (penale fuori campo). Ha richiesto: fix `20260721-11` del bug **pre-esistente** `fn_group_attivita_fatturabili` (`SELECT INTO v_regole` senza alias + senza fallback no-row → `fn_generate_fatture_righe` rotto per QUALUNQUE articolo; la pipeline reale genera via BE, la fn DB non era mai stata esercitata così) + seed regole onere `20260721-10`. **Manca solo**: step 2 (BE). |
-| 10 | Apply dev + comunicazione BE/FE (endpoint nuovi, permessi, vocabolari i18n) | 🟡 **BE/FE REALIZZATI (2026-07-23)** — brief dedicato [brief-be-fe-immutabilita-quantita-e-porta-oneri.md](../work-done/brief-be-fe-immutabilita-quantita-e-porta-oneri.md): endpoint `POST /vendite/commesse/<id>/oneri/`, lookup `articoli/lookup/?solo_oneri=true`, pannello nel `CommessaGestioneDrawer`, mapping errori 550-554, manuale `api_commessa_oneri.md`. Permesso **`carica_voce_manuale`: seed CSV scritto dal team DB e applicato su dev** (2026-07-23, `config.azioni_processo` id 29, area vendite, attivo — verificato sul DB vivo; changeset non ancora pushato) → **porta operativa in-app**, backend ricaricato. **Resta solo** la validazione in-app, oggi senza bersaglio: `vendite.commesse` su dev è vuota |
+| 10 | Apply dev + comunicazione BE/FE (endpoint nuovi, permessi, vocabolari i18n) | 🟡 **BE/FE REALIZZATI (2026-07-23)** — brief dedicato [brief-be-fe-immutabilita-quantita-e-porta-oneri.md](brief-be-fe-immutabilita-quantita-e-porta-oneri.md): endpoint `POST /vendite/commesse/<id>/oneri/`, lookup `articoli/lookup/?solo_oneri=true`, pannello nel `CommessaGestioneDrawer`, mapping errori 550-554, manuale `api_commessa_oneri.md`. Permesso **`carica_voce_manuale`: seed CSV scritto dal team DB e applicato su dev** (2026-07-23, `config.azioni_processo` id 29, area vendite, attivo — verificato sul DB vivo; changeset non ancora pushato) → **porta operativa in-app**, backend ricaricato. **Resta solo** la validazione in-app, oggi senza bersaglio: `vendite.commesse` su dev è vuota |
+
+---
+
+## 8. Chiusura — la validazione in-app c'era già, scritta nei dati (2026-08-16)
+
+Lo step 10 era fermo su una frase vera al 2026-07-23: *«resta solo la validazione
+in-app, oggi senza bersaglio: `vendite.commesse` su dev è vuota»*. Cinque giorni
+dopo il bersaglio è arrivato e qualcuno ha provato la porta, senza tornare a
+segnarlo qui. Letto oggi dal database:
+
+### 8.1 La porta è stata usata da UI, non da uno script
+
+`vendite.commesse` ha **58 righe** (non è più vuota), e `commesse_attivita` ha
+**3 righe `ONERE`** — tutte sulla commessa 188, tutte del 2026-07-28:
+
+| Riga | `segment_key` | Qta | Importo | Causale | Stato emissione |
+| --- | --- | --- | --- | --- | --- |
+| 1497 | `MAN:188:1` | 1 | 120,00 | MAGGIORAZIONE_URGENZA | ANNULLATA |
+| 1952 | `MAN:188:2` | 1 | 100,00 | MAGGIORAZIONE_URGENZA | ANNULLATA |
+| 1953 | `MAN:188:3` | 1 | 5.000,00 | PENALE | EMESSA |
+
+Tutte e tre **APPROVATA alla nascita** e **sourceless**, come deciso in §4c.5 e
+§4c.8: la forma è quella della madre, non un `INSERT` a mano.
+
+> ℹ️ **Che sia stato un giro in-app e non un test lo dicono i dati stessi.**
+> `commesse_attivita_log` porta 5 eventi — 3 `ONERE_AGGIUNTO` e 2
+> `RIGA_MANUALE_ANNULLATA` — scritti fra le **17:57:13 e le 17:58:22**, a
+> distanza di secondi, con motivi digitati a caso (`"gagadg"`, `"fhdfhdf"`,
+> `"gsdfgsdfg"`). È la traccia di una persona che clicca, non di uno script. E
+> conferma anche il punto 7 del §4c: il writer del log funziona sul percorso
+> vero.
+
+### 8.2 Il giro completo, fino all'IVA in fattura
+
+L'onere rimasto vivo è arrivato in fondo alla catena:
+
+```text
+commesse_attivita 1953 (PENALE, qta 1, 5.000 €)
+  → attivita_fatturabili 1123  (quantita 1, tipo_movimento ONERE)
+    → fatture_righe 456        → fattura 834, stato EMESSA, totale 5.023,18
+```
+
+E la riga di fattura porta **IVA `ES` — «Escluso I.V.A. Art.15»**, cioè
+esattamente la decisione del §4c.8: la penale non è corrispettivo e non poteva
+uscire al 22%. È la prova di ciò che il pgTAP `plan(12)` aveva verificato in
+laboratorio, qui ripetuta sul percorso reale.
+
+Le altre due righe sono state **annullate da UI** con
+`fn_annulla_commessa_attivita` — la funzione del brief successivo
+([annullamento righe manuali](brief-annullamento-righe-manuali-commessa.md),
+già chiuso): il che dimostra anche che le due slice convivono sulla stessa riga.
+
+### 8.3 Le due righe stale, corrette
+
+- **Step 9** chiudeva con «**Manca solo**: step 2 (BE)». Lo step 2 risulta ✅ nella
+  riga sopra dalla stessa giornata: la frase era già superata quando è stata
+  scritta. Non manca nulla.
+- **Step 10** annotava «changeset non ancora pushato» per il permesso
+  `carica_voce_manuale`. È in repo — `80_data/sql/config/azioni_processo.csv`,
+  riga id 29 — e committato (`49eed89d0`).
+
+### 8.4 Che cosa resta
+
+**Niente.** Tutti e dieci gli step sono chiusi, il perimetro BE/FE ha il suo brief
+già in `work-done`, e la validazione in-app è documentata sopra con i dati che
+l'hanno registrata.
+
+---
 
 > **Decisioni — stato (2026-07-17)**: perimetro guard ✅ (CA+AF, bypass GUC) · valore
 > discriminatore ✅ (`ONERE`, dominio esteso) · vocabolario causali ✅ (approccio; **voci

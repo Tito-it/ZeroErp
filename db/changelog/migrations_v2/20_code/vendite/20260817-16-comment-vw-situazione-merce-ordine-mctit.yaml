@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# SOLO IL COMMENTO — vw_situazione_merce_ordine
+#
+#   Il commento della vista (20260817-15) rimandava a un brief che non esiste:
+#   la richiesta del perimetro BE e' arrivata in chat e la risposta e' tornata
+#   in chat, quindi quel documento non e' mai entrato nel repository.
+#
+#   ⚠️ Un riferimento a un file inesistente dentro la documentazione di un
+#   oggetto vivo e' peggio di nessun riferimento: chi lo legge lo cerca. La
+#   correzione va in AVANTI e non riscrivendo il -15, che e' gia' applicato:
+#   editarlo lascerebbe il file e il database a raccontare due cose diverse
+#   fino a una ricostruzione da zero.
+#
+#   ⭐ Nessuna modifica alla vista: qui c'e' un solo `COMMENT ON VIEW`.
+#
+# Dipendenze: vendite.vw_situazione_merce_ordine (20260817-15).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260817-16-comment-vw-situazione-merce-ordine-mctit.yaml
+
+  - changeSet:
+      id: 20260817-16-comment-vw-situazione-merce-ordine
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        Corregge il solo COMMENT ON VIEW di vw_situazione_merce_ordine: rimandava
+        a un brief mai entrato nel repository (la richiesta BE e la risposta sono
+        rimaste in chat). Nessuna modifica alla vista.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_situazione_merce_ordine
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON VIEW vendite.vw_situazione_merce_ordine IS
+                'Aggregato PARLANTE per riga d''ordine, per il pannello situazione merce '
+                'richiesta BE/FE del 2026-08-17; ragioni di disegno nell''intestazione del changeSet 20260817-15 e in dbzero/vendite/manual/vw_situazione_merce_ordine.md. Una riga per riga d''ordine ATTIVA, '
+                'comprese quelle mai spedite — che vw_contatore_merce non contiene, ed erano 89 su '
+                '107. ⚠️ NON sostituisce vw_contatore_merce, che resta il contatore grezzo e dosa la '
+                'fatturazione: questa gli sta accanto. `differenza` = Σ dei saldi delle PARTITE, con '
+                'propagazione dei NULL (nessuna partita, o nessuna con un conto che si applica -> '
+                'NULL, MAI zero: e'' la differenza fra «non si applica» e «non c''e'' nulla da fare»). '
+                'Il fatturato in anticipo resta FUORI dal saldo, in `fatturato_anticipato`: ne '
+                'discende che una riga fatturata alla conferma e spedita a meta'' esce PAREGGIATA e '
+                'non «da accreditare», che sul contatore non era ottenibile senza rompere la parita''. '
+                '⚠️ `da_spedire` viene dalla formula del residuo GIA'' esistente (ordinato − Σ '
+                'qta_evasa + fn_ordine_riga_qta_riconsegna), NON da ordinato − consegnato: le due '
+                'divergono, perche'' il consegnato delle partite include le ri-consegne. Le righe di '
+                'RI-CONSEGNA sono escluse (conterebbero due volte). origine MULTIPLA -> misurabile '
+                'false: si dichiara, non si ripartisce. `stato`: NON_SPEDITA | NON_MISURABILE | '
+                'NON_FATTURABILE | DA_FATTURARE | DA_ACCREDITARE | PAREGGIATA — i consumatori NON '
+                'devono ri-tradurre il segno. security_invoker=on. rev 2026-08-17.';

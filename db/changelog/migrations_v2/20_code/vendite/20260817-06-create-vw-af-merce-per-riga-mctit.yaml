@@ -1,0 +1,207 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA BASE DEL CONTATORE — vw_af_merce_per_riga
+#   Slice S1 di docs/it/dev/work-in-progress/brief-design-partita-merce-generalizzata.md
+#
+# ── COSA FA, IN UNA RIGA ────────────────────────────────────────────────
+#
+#   Traduce «un'attivita' fatturabile» in «N pezzi di quale riga di documento».
+#   Nient'altro. Non decide cosa e' fatturato, non sottrae, non giudica.
+#
+# ── PERCHE' ESISTE, cioe' cosa era rotto ────────────────────────────────
+#
+#   Quella traduzione oggi vive DENTRO vw_contatore_merce (CTE af_seg), ed e'
+#   esattamente il punto in cui i kit lo rompono. Il contatore estrae la riga
+#   sorgente cosi':
+#
+#       substring(segment_key FROM ':R:([0-9]+)')
+#
+#   e su un componente di kit — 'ORD:<uid>:R:172#CMP:<comp>' — quella
+#   espressione restituisce **172**, cioe' la riga del PADRE. Il che e'
+#   giusto come attribuzione e **sbagliato come quantita'**: al push il kit
+#   viene esploso in N attivita' con `quantita = quantita_padre × coeff_qta`
+#   (BoMComponentExpander, DEC-2/DEC-3), quindi sommarle da' l'unita' del
+#   COMPONENTE contro un consegnato in pezzi del PADRE.
+#
+#   Misurato sul DB di sviluppo il 2026-08-17: la riga d'ordine 172 ha
+#   consegnato **1 kit** e riceve **3** attivita' da 1 pezzo. Il contatore, se
+#   non fosse per il suo `WHERE NOT is_composito`, direbbe **differenza −2**.
+#
+#   ⭐ E l'esclusione non e' una dimenticanza: e' scritta nell'intestazione del
+#   changeSet 20260717-11 come rinuncia dichiarata — «mismatch di unita' che il
+#   contatore non puo' riconciliare senza la macchina BoM. Esclusi qui,
+#   follow-up a se'». Questa vista E' quella macchina, e costa poco: il
+#   moltiplicatore usato al push e' gia' scritto nel meta dell'attivita'.
+#
+# ── LA REGOLA DEI KIT: max, NON sum ─────────────────────────────────────
+#
+#   I componenti di una stessa istanza di kit sono **N letture della stessa
+#   quantita' di padre**, non addendi. Ciascuno vale `padre × coeff_qta`,
+#   quindi ciascuno da' `padre` una volta diviso per il suo coefficiente:
+#
+#       padre = quantita_componente / coeff_qta      (per OGNI componente)
+#
+#   Si prende `max(...)`, e si pretende che coincida con `min(...)`: se i
+#   componenti NON concordano — succede se il kit e' stato fatturato solo in
+#   parte — la quantita' del padre e' ambigua e la riga si dichiara
+#   **non misurabile**, non si sceglie il valore piu' comodo.
+#
+#   Verificato sulle 5 istanze di kit presenti: min = max su tutte, e il valore
+#   coincide con la quantita' ordinata.
+#   ⚠️ **Ma in sviluppo tutti i coeff_qta valgono 1**, quindi la divisione non e'
+#   davvero esercitata: il pgTAP ne costruisce uno con coeff 2 apposta.
+#
+# ── PERCHE' `tipo_movimento` SI ESPONE E NON SI FILTRA ───────────────────
+#
+#   Il contatore di oggi filtra `= 'NORMALE'` qui dentro. Qui no: la colonna
+#   esce e il filtro resta nel consumatore. Serve al cantiere «nota di credito»
+#   (brief-design-note-credito-resi §4): la rettifica dovra' far SCENDERE i
+#   fatturati, e con questa forma sara' un WHERE in un consumatore invece di una
+#   riscrittura della base su cui poggia tutto. Vincolo §4.3 del brief S1.
+#
+# ── COSA NON FA (di proposito) ──────────────────────────────────────────
+#
+#   - non guarda `fatturato` ne' `stato_emissione`: l'ESISTENZA dell'attivita'
+#     e' la frontiera EMESSA (§3c della slice di luglio, invariato);
+#   - non conosce i resi, il fulfillment, le causali: quelli sono di S2;
+#   - non decide se una riga_id e' una riga d'ordine o di DDT — lo dice
+#     `corsia`, e chi legge deve usarla. ⚠️ I due id vengono da SEQUENZE
+#     DIVERSE: `riga_id = 172` con corsia 'ORD' e con corsia 'DDT' sono due
+#     righe di documento **senza alcun rapporto**.
+#
+# security_invoker=on: legge commesse_attivita, che ha RLS (policy
+#   rls_commesse_attivita_ef_whitelist, scope via commessa). Ri-specificato — la
+#   reloption non e' visibile in pg_get_viewdef e PG la azzera se omessa.
+#
+# Dipendenze: vendite.attivita_fatturabili (+ colonna tipo_movimento,
+#   20260717-02), vendite.commesse_attivita (+ meta, segment_key).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260817-06-create-vw-af-merce-per-riga-mctit.yaml
+
+  - changeSet:
+      id: 20260817-06-create-vw-af-merce-per-riga
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        S1 della partita generalizzata: vw_af_merce_per_riga traduce le attivita'
+        fatturabili in «quantita' per riga di documento sorgente», normalizzando i
+        kit in unita' del PADRE via meta->>'coeff_qta' (max fra i componenti, con
+        pretesa di coerenza min=max). Espone corsia ORD/DDT e tipo_movimento senza
+        filtrarli. Base condivisa di vw_partite_merce e vw_contatore_merce.
+        security_invoker=on.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: attivita_fatturabili
+                columnName: tipo_movimento
+            - columnExists:
+                schemaName: vendite
+                tableName: commesse_attivita
+                columnName: segment_key
+            - columnExists:
+                schemaName: vendite
+                tableName: commesse_attivita
+                columnName: meta
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_af_merce_per_riga
+              WITH (security_invoker=on) AS
+              WITH base AS (
+                  -- Attivita' fatturabili agganciate a una riga di documento
+                  -- merce, con la segment_key scomposta nei suoi pezzi.
+                  -- Il filtro corsia ORD/DDT tiene fuori PREV, CONS, MAN.
+                  SELECT af.quantita                                          AS quantita,
+                         af.tipo_movimento                                    AS tipo_movimento,
+                         split_part(ca.segment_key, ':', 1)                   AS corsia,
+                         (substring(ca.segment_key FROM ':R:([0-9]+)'))::bigint AS riga_id,
+                         -- Istanza di kit = tutto cio' che sta a SINISTRA del
+                         -- separatore. Identifica il kit venduto, non l'articolo:
+                         -- lo stesso kit puo' comparire due volte da righe diverse.
+                         split_part(ca.segment_key, '#CMP:', 1)               AS kit_key,
+                         (ca.segment_key LIKE '%#CMP:%')                      AS e_componente,
+                         -- Moltiplicatore scritto al push. Il controllo di forma
+                         -- e' una cintura: un valore non numerico farebbe fallire
+                         -- il cast a lettura, cioe' fermerebbe la FATTURAZIONE
+                         -- (il contatore dosa il push). Meglio «non misurabile».
+                         CASE
+                           WHEN (ca.meta ->> 'coeff_qta') ~ '^[0-9]+(\.[0-9]+){0,1}$'
+                             THEN NULLIF((ca.meta ->> 'coeff_qta')::numeric, 0)
+                         END                                                  AS coeff_qta
+                    FROM vendite.attivita_fatturabili af
+                    JOIN vendite.commesse_attivita ca ON ca.id = af.commessa_attivita_id
+                   WHERE split_part(ca.segment_key, ':', 1) IN ('ORD', 'DDT')
+                     AND ca.segment_key ~ ':R:[0-9]+'
+              ),
+              kit AS (
+                  -- Una riga per ISTANZA di kit, riportata in unita' del padre.
+                  -- max e non sum: i componenti sono N letture della stessa
+                  -- quantita' di padre. Se non concordano (min <> max) il valore
+                  -- e' ambiguo -> non misurabile, e non si sceglie per comodita'.
+                  SELECT b.corsia,
+                         b.riga_id,
+                         b.tipo_movimento,
+                         b.kit_key,
+                         max(b.quantita / b.coeff_qta)                        AS quantita_padre,
+                         ( bool_and(b.coeff_qta IS NOT NULL)
+                           AND min(b.quantita / b.coeff_qta)
+                             = max(b.quantita / b.coeff_qta) )                AS misurabile
+                    FROM base b
+                   WHERE b.e_componente
+                   GROUP BY b.corsia, b.riga_id, b.tipo_movimento, b.kit_key
+              ),
+              unita_padre AS (
+                  -- Kit normalizzati e righe semplici, ormai nella stessa unita'.
+                  SELECT k.corsia, k.riga_id, k.tipo_movimento,
+                         k.quantita_padre AS quantita, k.misurabile, TRUE AS da_componenti
+                    FROM kit k
+                  UNION ALL
+                  SELECT b.corsia, b.riga_id, b.tipo_movimento,
+                         b.quantita, TRUE, FALSE
+                    FROM base b
+                   WHERE NOT b.e_componente
+              )
+              SELECT u.corsia::varchar                                        AS corsia,
+                     u.riga_id                                                AS riga_id,
+                     u.tipo_movimento                                         AS tipo_movimento,
+                     COALESCE(SUM(u.quantita), 0)                             AS quantita,
+                     bool_and(u.misurabile)                                   AS misurabile,
+                     bool_or(u.da_componenti)                                 AS da_componenti,
+                     COUNT(*)::integer                                        AS voci
+                FROM unita_padre u
+               GROUP BY u.corsia, u.riga_id, u.tipo_movimento;
+
+              COMMENT ON VIEW vendite.vw_af_merce_per_riga IS
+                'Base del contatore merce (brief-design-partita-merce-generalizzata S1): traduce le '
+                'attivita'' fatturabili in quantita'' PER RIGA DI DOCUMENTO SORGENTE. Grana '
+                '(corsia, riga_id, tipo_movimento). corsia ORD/DDT da split_part(segment_key), riga_id '
+                'da substring(... ):R:([0-9]+)) — ⚠️ i due id vengono da sequenze diverse, la corsia e'' '
+                'obbligatoria per interpretarli. I kit (segmenti #CMP) sono normalizzati in unita'' del '
+                'PADRE: quantita_padre = max(quantita / meta->>''coeff_qta'') per istanza di kit, con '
+                'pretesa di coerenza min=max — se i componenti non concordano, o il coefficiente manca '
+                'o non e'' numerico, misurabile=false e il valore NON va usato come zero. '
+                'tipo_movimento e'' ESPOSTO e NON filtrato: il filtro NORMALE resta nei consumatori, '
+                'cosi'' la nota di credito (RETTIFICA) entrera'' cambiando un WHERE e non questa base. '
+                'Non guarda fatturato/stato_emissione: l''esistenza dell''attivita'' E'' la frontiera '
+                'EMESSA. security_invoker=on (RLS su commesse_attivita). rev 2026-08-17.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_af_merce_per_riga;

@@ -499,6 +499,25 @@ a {
   min-height: 2.5rem;
 }
 
+/* ⚠️ Il controllo NON si comprime, la nota sì. Senza queste due regole il
+   ToggleSwitch — che è un flex item come gli altri, quindi `flex-shrink: 1`
+   di default — veniva schiacciato dalla nota accanto fino a diventare
+   parzialmente visibile e NON cliccabile (rilevato da Tid sul drawer DDT,
+   2026-08-16: sembrava «coperto dal messaggio», in realtà era compresso).
+   La nota è testo e può andare a capo; il toggle è l'unico elemento
+   interattivo della riga e deve restare intero a qualsiasi larghezza. */
+.app-form-inline-toggle > * {
+  flex-shrink: 0;
+}
+
+/* `min-width: 0` è indispensabile: senza, la larghezza minima automatica del
+   contenuto impedisce al testo di andare a capo e la compressione ricadrebbe
+   comunque sul toggle. */
+.app-form-inline-toggle > small {
+  flex-shrink: 1;
+  min-width: 0;
+}
+
 .app-form-select.p-select .p-select-label {
   display: flex;
   align-items: center;
@@ -1958,6 +1977,23 @@ a {
   flex-wrap: wrap;
 }
 
+/* Filtro cliente e ricerca della lista gruppi fatturabili. Larghezze massime e
+ * non fisse: la toolbar è flex-wrap e su schermi stretti i due controlli devono
+ * poter stringersi invece di spingere fuori il pulsante «Fattura selezionati».
+ * Il filtro cliente è il più largo dei due perché la sua etichetta porta
+ * ragione sociale + codice BA, e troncarla a metà toglierebbe proprio il pezzo
+ * che distingue due alberi omonimi. */
+.app-dash-filtro-cliente {
+  max-width: 22rem;
+  min-width: 0;
+}
+
+.app-dash-ricerca-gruppi {
+  max-width: 16rem;
+  min-width: 0;
+  font-size: 0.85rem;
+}
+
 /* Aggancio ai lotti prodotti da una emissione mirata: sono N, non uno. */
 .app-dash-lotti-emessi {
   display: flex;
@@ -2021,6 +2057,15 @@ a {
   font-size: 0.85rem;
 }
 
+/* Spinner «fatturazione in corso su questa riga»: il verbo accoda un job e la
+ * riga resta a video per tutta la durata. Colore d'accento e non di allarme —
+ * è un'attività normale in corso, non un problema. */
+.app-dash-gruppo-in-corso {
+  margin-left: 0.4rem;
+  color: var(--app-in-corso-color);
+  font-size: 0.85rem;
+}
+
 /* Stepper compatto anno/mese — solo piccoli schermi. Sostituisce il pannello
  * 12 mesi: ◀ Mese Anno + semaforo ▶, le card restano sempre visibili sotto.
  * Il passo mese scavalca l'anno (dic ▶ = gennaio anno successivo). */
@@ -2063,4 +2108,58 @@ a {
   .app-dash-header {
     display: none;
   }
+}
+
+/* Wrapper del pulsante «Fattura selezionati»: esiste solo per ospitare il
+ * tooltip quando il bottone è DISABILITATO — un bottone spento non riceve
+ * eventi del mouse, quindi il tooltip appeso a lui non comparirebbe proprio
+ * quando il motivo serve. `display: inline-flex` per non alterare la toolbar. */
+.app-dash-fattura-wrap {
+  display: inline-flex;
+}
+
+/* «N fatturazioni in corso» in testata della lista gruppi. Le emissioni mirate
+ * concorrenti non hanno un tetto: le marcature per riga da sole non bastano a
+ * dire quanto si ha in volo, perché stanno sulle righe e quelle scorrono di
+ * pagina a ogni ricarica post-esito. Questo conteggio non dipende da cosa si ha
+ * davanti. Colore d'accento e non di allarme: è attività normale in corso. */
+.app-dash-giri-in-corso {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  color: var(--app-in-corso-color);
+}
+
+/* Ripartizione per AREA sotto le card di classe (Backlog fatturazione): chip
+ * cliccabili che dicono di cosa sono i documenti contati dalla card. Stessa
+ * grammatica visiva delle card — bordo che si accende sulla selezione — ma
+ * peso minore: è una lettura di dettaglio, non il livello principale. */
+.app-dash-aree-riepilogo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.6rem 0 0;
+}
+
+.app-dash-area-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--app-card-border);
+  border-radius: 999px;
+  background: var(--app-card-bg);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color var(--app-transition-fast, 0.15s);
+}
+
+.app-dash-area-chip:hover {
+  border-color: var(--app-card-hover-border);
+}
+
+.app-dash-area-chip.is-selected {
+  border-color: var(--app-in-corso-color);
+  box-shadow: 0 0 0 1px var(--app-in-corso-color);
 }

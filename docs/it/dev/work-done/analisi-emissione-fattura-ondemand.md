@@ -3,10 +3,23 @@
 > **Tipo**: analisi + design · **Data**: 2026-07-26/27 · **Owner**: Tid ·
 > **Stato**: 🟢 **ANALISI COMPLETA — design stabilito e confermato** (2026-07-27).
 > Tutte le decisioni chiuse (§5). Il
-> [brief DB](../work-done/brief-db-emissione-fattura-per-documento-sorgente.md) è stato
+> [brief DB](brief-db-emissione-fattura-per-documento-sorgente.md) è stato
 > consegnato, analizzato criticamente e **contiene ora il piano di sviluppo a
-> step + il piano pgTAP** (§9-§10 del brief). BE/FE attendono. **Nessun codice
-> scritto** per questa slice.
+> step + il piano pgTAP** (§9-§10 del brief). ~~BE/FE attendono. **Nessun codice
+> scritto** per questa slice.~~
+>
+> ✅ **CHIUSA il 2026-08-16 — archiviata in `work-done`.** Verificati uno per uno
+> gli **11 punti** del perimetro §8 contro il codice e il database: tutti fatti,
+> incluse le due voci marcate «opzionale» e i tre difetti del cockpit del §6-bis.
+> L'ultimo a cadere è stato il **punto 7 — il deploy**: i timer
+> `immediata`/`differita` sono ora **versionati** in `backend/deploy/systemd/` e
+> installati da `bin/install-timers.sh` (scritti ma non abilitati: il batch emette
+> documenti, e accenderlo resta una decisione di chi installa). Tabella di
+> riscontro e prove in **§9**.
+>
+> 🔵 **Una cosa resta aperta e non è di questa analisi**: 3 righe morte nella coda
+> di stampa, che per decisione di Tid **si lasciano dov'erano** — §9.2 ne scrive
+> il costo e la via d'uscita.
 >
 > ⚠️ Due punti di questa analisi sono stati **superati** dall'analisi critica DB
 > del 2026-07-27: §6.1 (chiuso: nessun conflitto di identità lotto) e §5.3
@@ -46,7 +59,7 @@
   Approva sempre visibili · verbo «Rendi definitive» sulla card sbagliata ·
   `Emesse non fatturate` è un secchio di residui, non un passaggio.
 - **Richiede lavoro DB** → brief dedicato
-  [brief-db-emissione-fattura-per-documento-sorgente.md](../work-done/brief-db-emissione-fattura-per-documento-sorgente.md).
+  [brief-db-emissione-fattura-per-documento-sorgente.md](brief-db-emissione-fattura-per-documento-sorgente.md).
   BE/FE **attendono** ([[feedback_be_fe_attende_prerequisiti_db]]).
 
 ---
@@ -115,11 +128,14 @@ dell'endpoint `run/`, invariante «mai due implementazioni»).
 | **differita** | MASSIVO | `fatturazione_immediata = false` | **EMESSA** | timer **1° del mese 02:00** |
 
 - `_MODALITA` in `fatturazione_driver_service.py:42-45`.
-- ⚠️ **I timer del batch NON sono versionati nel repo**: esistono solo come
-  esempio nella play-book (`docs/it/dev/backend/play-book-operativo-backend.md`
-  §15). Nel repo ci sono solo i systemd dei **drainer**: `coda-lavori` (ogni
-  minuto, **abilitato**) e `coda-stampa` (ogni 2 min, **scritto ma non abilitato**,
-  attende i GRANT del ruolo batch). Vedi §6.
+- ✅ **I timer del batch sono versionati** dal 2026-08-16 in
+  `backend/deploy/systemd/zeroerp-fatturazione-{immediata,differita}.{service,timer}`,
+  renderizzati da `bin/install-timers.sh` come i drainer. ⚠️ **Scritti ma NON
+  abilitati dall'installer**, e non è un gate in attesa di un prerequisito: è
+  una differenza di natura — un drainer a coda vuota non fa nulla, il batch
+  **emette documenti**, quindi accenderlo resta una decisione di chi installa
+  (l'installer stampa il comando). Stato dei drainer: `coda-lavori` (ogni
+  minuto) e `coda-stampa` (ogni 2 min), **entrambi abilitati e in esercizio**.
 
 ---
 
@@ -225,7 +241,7 @@ Fatto verificato che **smonta l'assunto** «per isolare un preventivo basta
 selezionare la sua commessa»:
 
 - La commessa è **multi-sorgente per progetto**: modello `ROOT + N COLLEGATO`
-  ([brief chiuso 2026-06-09](../work-done/brief-db-commesse-multi-sorgente.md)).
+  ([brief chiuso 2026-06-09](brief-db-commesse-multi-sorgente.md)).
   L'indice `uq_commesse_sorgenti_commessa_root` è **parziale su `ROOT`** → una
   sola sorgente primaria ma **N contributori** ammessi.
 - `fn_get_or_create_commessa` riusa la commessa su chiave **(BA, utility,
@@ -508,7 +524,7 @@ Ordine proposto. I punti 1-2 sono **DB e vanno per primi**: BE/FE attendono
 
 1. **[DB, prerequisito]** asse **documento sorgente** lungo la catena +
    decisione sulla collisione identità lotto → brief
-   [brief-db-emissione-fattura-per-documento-sorgente.md](../work-done/brief-db-emissione-fattura-per-documento-sorgente.md).
+   [brief-db-emissione-fattura-per-documento-sorgente.md](brief-db-emissione-fattura-per-documento-sorgente.md).
 2. **[DB]** **simmetria del flag** `fatturazione_immediata`: colonna su
    ordini/contratti/DDT/consumi + `fn_list_*_da_pushare` che leggono il valore
    reale invece della costante `FALSE` (§5.3).
@@ -534,8 +550,8 @@ Ordine proposto. I punti 1-2 sono **DB e vanno per primi**: BE/FE attendono
    2026-07-27, fuori da questa slice**: `cambia_stato_commessa` a catalogo
    (id 30), `post_permission` su `ApiCommessaStato`, gate FE sulle azioni di
    stato del drawer commessa
-   ([brief chiuso](../work-done/brief-db-permesso-cambio-stato-commessa.md) ·
-   E-BE-4 del [brief cockpit processi](../work-done/brief-be-fe-processi-fatturazione.md)).
+   ([brief chiuso](brief-db-permesso-cambio-stato-commessa.md) ·
+   E-BE-4 del [brief cockpit processi](brief-be-fe-processi-fatturazione.md)).
    Resta solo l'assegnazione dell'azione ai profili, da UI amministrazione.
    Lasciato qui come traccia: era l'unico punto di permessi che toccava le
    stesse corde della slice.
@@ -546,3 +562,83 @@ Ordine proposto. I punti 1-2 sono **DB e vanno per primi**: BE/FE attendono
 
 I punti 3-6 sono **riuso/esposizione** di capacità esistenti; la sostanza nuova
 è tutta nei punti 1-2.
+
+---
+
+## 9. Ricognizione del 2026-08-16 — che cosa resta davvero
+
+> Ogni riga è stata verificata sul codice o interrogando il database, non letta
+> da un consuntivo.
+
+| # | Punto del §8 | Esito | Prova |
+|---|---|---|---|
+| 1 | **[DB]** asse documento sorgente | ✅ | il [brief DB](brief-db-emissione-fattura-per-documento-sorgente.md) è chiuso; a database ci sono `fn_build_gruppo_fatturabile_key`, `fn_diagnostica_gruppi_fatturabili`, `fn_esito_gruppi_giro`, `vw_dash_competenza_gruppi`, `vw_dash_competenza_gruppi_riepilogo`, `vw_lotti_gruppi_serviti` |
+| 2 | **[DB]** simmetria `fatturazione_immediata` | ✅ | colonna reale su `ordini`, `contratti`, `ddt` (oltre a `preventivi` e `commesse`); **consumi esclusi**, com'era deciso in D-6 |
+| 3 | **[BE]** endpoint di emissione mirata | ✅ | `ApiFatturazioneRun` accetta `gruppi[]` — «senza `gruppi` è il giro di massa, con `gruppi` è l'emissione mirata» — e `GET /vendite/dashboard-competenza/gruppi/` espone le chiavi da passargli |
+| 4 | **[FE]** liste differenziate per stadio | ✅ | il drill-down di «Da emettere» scende sui **gruppi fatturabili** (store `dashboardCompetenza.js`, view `DashboardCompetenzaView.vue`) |
+| 4-bis | **[FE]** aggancio «vai al lotto» | ✅ | `apriLotto(data.lotto_id)` sulla riga dell'esito |
+| 4-ter | **[FE/BE]** riga di totali | ✅ | `gruppiRiepilogo` nel FE, alimentato da `vw_dash_competenza_gruppi_riepilogo` |
+| 4-quater | **[FE]** i 3 difetti del cockpit | ✅ | **D1** la visibilità dei verbi Approva è ora gated su `total_non_approvate > 0`; **D2** corretto il 2026-07-27, con la ragione scritta nel file; **D3** «Emesse non fatturate» ha ora l'hint + tooltip che la presentano come **residui** |
+| 5 | **[FE]** flag in creazione/accettazione documenti | ✅ | esposto su preventivi, ordini, contratti e DDT (form e drawer) |
+| 6 | **[FE]** verbi di avanzamento in lista lotti *(opzionale)* | ✅ | fatti: `LottiListView.vue` ha le azioni di governo senza passare dal drawer |
+| **7** | **[Deploy]** timer batch versionati + coda-stampa | ✅ **CHIUSO** (2026-08-16) | vedi sotto |
+
+### 9.1 Il punto 7, in dettaglio — ✅ **chiuso il 2026-08-16**
+
+* ✅ **I timer del batch sono nel repo.** Aggiunte
+  `zeroerp-fatturazione-{immediata,differita}.{service,timer}` in
+  `backend/deploy/systemd/`, sul modello dei drainer: template con i placeholder
+  per-host (`__APP_DIR__`, `__APP_USER__`, `__ONCALENDAR__`), renderizzati da
+  `bin/install-timers.sh`, che ora ne installa **quattro** invece di due.
+  Cadenze verificate con `systemd-analyze calendar`: `*:0/2` = ogni 2 minuti,
+  `*-*-01 02:00` = il 1° del mese alle 02:00. Tutte e otto le unit passano
+  `systemd-analyze verify` (lo stesso cancello che gira in CI).
+* ⚠️ **Scritte ma NON abilitate dall'installer** — decisione di Tid. I due
+  drainer restano `enable --now`; le corsie no, e la ragione non è un
+  prerequisito mancante ma una **differenza di natura**: un drainer a coda vuota
+  non fa nulla, il batch **emette documenti**. Accenderlo come effetto
+  collaterale di un `sudo install-timers.sh` vorrebbe dire iniziare a fatturare
+  su un host che nessuno ha dichiarato pronto. L'installer stampa il comando per
+  accenderle, così la decisione resta di chi installa invece di finire in un
+  file che nessuno apre.
+* 🔵 **Misurato scrivendo, e vale più del file mancante**: in
+  `maintenance.job_run_log` i due drainer hanno **37.863** e **18.936** run,
+  mentre di `run_fatturazione_batch:{immediata,differita}` non c'è **nessuna
+  riga**. Il batch non è mai partito — né via systemd, né via cron, né a mano.
+  Non era «un deploy da riprodurre»: era una corsia mai accesa. *L'assenza del
+  file diceva che il deploy non era versionato; il diario dice che non è mai
+  esistito.*
+* ✅ **Il prerequisito della coda-stampa non è più un blocco.** Il §6.2 diceva
+  «attende i GRANT del ruolo batch»: il ruolo `zeroerp_batch_fatturazione`
+  esiste, è `BYPASSRLS`, e ha `SELECT`+`UPDATE` su `vendite.fatture_stampa_coda`
+  più `SELECT` su `dbops.coda_lavori`/`coda_lavori_tipi`. ✅ E l'unità **è
+  abilitata e in esercizio** sul server backend (verificato con
+  `systemctl list-timers`: `zeroerp-coda-stampa.timer` attivo, ultimo run di
+  pochi secondi prima) — il dubbio lasciato aperto dalla ricognizione DB, che
+  girava sul server sbagliato per rispondere.
+
+### 9.2 Trovato per strada: 3 righe morte nella coda di stampa
+
+`vendite.fatture_stampa_coda` ha **3 righe in `ERRORE` ferme a 5 tentativi**
+(esauriti), del 2026-07-21 e 2026-07-28:
+
+| id | Lotto | Errore |
+| --- | --- | --- |
+| 1 | 117 | `E_DOCUMENTI_RENDER_FAILED` — «'dict object' has no attribute 'denominazione'» |
+| 26, 27 | 245, 278 | «la colonna `r.imposta_riga` non esiste» |
+
+⚠️ **Sono residui di difetti già corretti**, non difetti vivi: `imposta_riga` non
+compare più nel codice come colonna — `vendite_repository.py` dichiara
+esplicitamente che «`imposta_riga`/`totale_riga` NON esistono più» e un test lo
+presidia. Ma avendo esaurito i tentativi **non si ridrenano da sole**: o si
+azzerano a mano, o restano lì a far sembrare rotta la stampa. Decisione di Tid,
+non c'è codice da scrivere.
+
+✅ **Deciso il 2026-08-16: si lasciano dove sono.** Restano come memoria dei due
+difetti e della data in cui sono stati chiusi. ⚠️ **Il costo è dichiarato**: chi
+guarda la coda di stampa continuerà a vedere 3 righe in `ERRORE` che non
+significano un guasto attuale — e chi ci arriva senza questa nota non ha modo di
+distinguerle da un difetto vivo. Se un giorno diventassero rumore di fondo, la
+strada è il **requeue** (`tracciamento/coda-stampa/<id>/requeue/`, che azzera i
+tentativi) e non il `DELETE`: se i difetti sono davvero chiusi le righe si
+drenano da sole, e quella è anche la prova che lo erano.

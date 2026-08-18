@@ -1,0 +1,71 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Passo 2 (P-2a) — la descrizione della tabella diceva il contrario.
+#
+# ⚠️ NON e' una rifinitura. Il COMMENT di config.user_emittenti_fiscali
+#    dichiarava, testualmente:
+#
+#      «Whitelist opzionale: se l'utente non ha righe puo' operare su TUTTI
+#       gli emittenti; se ha almeno una riga e' limitato a quelli elencati.»
+#
+#    Dopo 20260818-11/-12 quella frase e' FALSA. E finisce nella
+#    documentazione auto-generata (docs/it/dbzero/config/tabelle/), cioe' nel
+#    posto in cui il progetto dice di andare a leggere la struttura del DB
+#    prima di scrivere codice: una descrizione falsa li' e' peggio di nessuna
+#    descrizione, perche' viene creduta.
+#
+# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260818-13-comment-user-emittenti-fiscali-fail-closed-mctit.yaml
+
+  - changeSet:
+      id: 20260818-13-comment-user-emittenti-fiscali-fail-closed
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        P-2a: riscrive il COMMENT di config.user_emittenti_fiscali, che
+        dichiarava «se l'utente non ha righe puo' operare su TUTTI gli
+        emittenti» — falso dopo 20260818-11/-12, e per giunta pubblicato nella
+        doc auto-generata. Brief P-2a punto 2.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: user_emittenti_fiscali
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TABLE config.user_emittenti_fiscali IS
+                  'Scope operativo: l''emittente fiscale su cui l''utente puo'' operare. '
+                  'Modello 1-a-1, presidiato da UNIQUE(auth_user_id): al massimo una riga per '
+                  'utente, quindi al massimo un emittente. '
+                  'FAIL-CLOSED dal 2026-08-18 (P-2a): un operatore SENZA riga non vede NESSUN '
+                  'emittente. La riga mancante e'' un errore di configurazione, non un permesso '
+                  '— prima di questa data valeva il contrario (vedeva tutti gli emittenti ed era '
+                  'indistinguibile da un super admin), ed era il difetto che P-2a ha chiuso. '
+                  'L''unico attore legittimamente multi-emittente e'' il SUPER_ADMIN, che passa '
+                  'da fn_is_super_admin e non da questa tabella. Per restringersi a un singolo '
+                  'emittente il super admin usa la GUC app.current_emittente_id (solo '
+                  'restringente, mai allargante). '
+                  'Chi e'' senza riga si vede con dbops.vw_operatori_senza_emittente. '
+                  'Catena: script.fn_get_emittenti_scope_pk_ids (canonica) -> _sr_ids -> '
+                  'fn_scope_ef_whitelist_via_*. Brief perimetro-emittente §2.5.';
+      rollback:
+        - sql:
+            sql: |
+              -- Il testo precedente descriveva un comportamento che non esiste
+              -- piu': ripristinarlo rimetterebbe una descrizione falsa nella doc
+              -- auto-generata. Rollback deliberatamente vuoto.
+              SELECT 1;

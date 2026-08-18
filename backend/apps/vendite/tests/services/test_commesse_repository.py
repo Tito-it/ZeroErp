@@ -37,6 +37,9 @@ Indice test eseguiti:
 24) CommesseRepositoryUnitTests.test_batch_upsert_attivita_empty_list
 25) CommesseRepositoryUnitTests.test_upsert_attivita_passes_snapshot_v5_params
 26) CommesseRepositoryUnitTests.test_inp_to_jsonb_row_includes_snapshot_v5_keys
+27) DiagnosticaGruppiTernePronteTests.test_terne_pronte_stringa_json_viene_decodificata
+28) DiagnosticaGruppiTernePronteTests.test_terne_pronte_vuote_restano_lista_vuota
+29) DiagnosticaGruppiTernePronteTests.test_terne_pronte_gia_lista_passa_intatta
 """
 
 from datetime import date, datetime, timezone
@@ -541,6 +544,15 @@ class CommesseRepositoryUnitTests(TestCase):
             "APPROVATA", "NON_EMESSA", 3,
             "PREVENTIVO", {"note": "test"}, datetime(2026, 2, 26, 10, 0, 0),
             True,  # fatturata (in coda, changeset 20260724-07)
+            # Sette colonne del changeSet 20260816-04, nell'ordine della
+            # RETURNS TABLE. ⚠️ `fatturata_il` e' un istante DIVERSO dal
+            # `data_update` qui sopra, ed e' il punto della colonna: e'
+            # `fatture_righe.data_insert`, che nessuna modifica successiva
+            # all'attivita' puo' spostare.
+            datetime(2026, 3, 2, 9, 30, 0),      # fatturata_il
+            77, 210, "DEFINITIVA",               # fattura_id, _numero, _stato
+            "019fc716-7386-7b0d-9c26-0a4d30f3a022",  # sorgente_uid
+            "ORDINI", 100,                       # sorgente_area, _documento_id
         )
         # Due execute: 1) COUNT → fetchone, 2) data → fetchall.
         mock_cursor_factory.return_value = _mock_cursor(
@@ -559,6 +571,17 @@ class CommesseRepositoryUnitTests(TestCase):
         self.assertEqual(row["stato_emissione"], "NON_EMESSA")
         self.assertEqual(row["meta"], {"note": "test"})
         self.assertIs(row["fatturata"], True)  # colonna in coda (20260724-07)
+        # Sette colonne del 20260816-04: quando, quale fattura, quale sorgente.
+        # `fatturata_il` serializzata come le altre date (isoformat) e DISTINTA
+        # da `data_update`: se un giorno qualcuno la ricablasse su quest'ultima
+        # il test lo direbbe, che e' l'unico modo di accorgersene.
+        self.assertEqual(row["fatturata_il"], "2026-03-02T09:30:00")
+        self.assertNotEqual(row["fatturata_il"], row["data_update"])
+        self.assertEqual(row["fattura_id"], 77)
+        self.assertEqual(row["fattura_numero"], 210)
+        self.assertEqual(row["fattura_stato"], "DEFINITIVA")
+        self.assertEqual(row["sorgente_area"], "ORDINI")
+        self.assertEqual(row["sorgente_documento_id"], 100)
         # Seconda execute (data query) contiene fn_list_commessa_attivita.
         sql = mock_cursor_factory.return_value.execute.call_args[0][0]
         self.assertIn("fn_list_commessa_attivita", sql)
@@ -681,3 +704,49 @@ class CommesseRepositoryUnitTests(TestCase):
         self.assertIsNone(row["contratto_id"])
         self.assertIsNone(row["categoria_cliente_id_snapshot"])
         self.assertEqual(row["classe_utenza_id_snapshot"], 4)
+
+
+class DiagnosticaGruppiTernePronteTests(TestCase):
+    """`terne_pronte` è jsonb, e su questa connessione arriva come STRINGA.
+
+    Difetto misurato sul DB vero il 2026-08-16: scritto `list(valore or [])`
+    la stringa `'[]'` diventa `['[', ']']` — due elementi finti dove il DB
+    diceva «nessuna corsia». I test con mock non potevano vederlo, perché un
+    mock consegna già una lista: per questo il caso stringa è asserito qui
+    esplicitamente.
+    """
+
+    _COLS = (
+        "ORDINE_VENDITA:aa", 1, "CMM-1", "BOZZA", "Bozza", False,
+        5, 0, 0, 0, 0, 0, 5,
+    )
+
+    # Scopo: il caso reale — jsonb consegnato come stringa JSON: va decodificato.
+    @patch("apps.vendite.db.commesse_repository.connection.cursor")
+    def test_terne_pronte_stringa_json_viene_decodificata(self, mock_cursor_factory):
+        corsia = '[{"emittente_soggetto_ruolo_id": 3, "tipo_doc_fiscale_id": 1, "utility_id": 9}]'
+        mock_cursor_factory.return_value = _mock_cursor(
+            fetchall=[(*self._COLS, corsia)],
+        )
+        righe = CommesseRepository().diagnostica_gruppi(gruppi=["ORDINE_VENDITA:aa"])
+        self.assertEqual(
+            righe[0]["terne_pronte"],
+            [{"emittente_soggetto_ruolo_id": 3, "tipo_doc_fiscale_id": 1,
+              "utility_id": 9}],
+        )
+
+    # Scopo: il caso che produceva `['[', ']']` — `'[]'` deve dare lista VUOTA.
+    @patch("apps.vendite.db.commesse_repository.connection.cursor")
+    def test_terne_pronte_vuote_restano_lista_vuota(self, mock_cursor_factory):
+        mock_cursor_factory.return_value = _mock_cursor(fetchall=[(*self._COLS, "[]")])
+        righe = CommesseRepository().diagnostica_gruppi(gruppi=["ORDINE_VENDITA:aa"])
+        self.assertEqual(righe[0]["terne_pronte"], [])
+
+    # Scopo: se un giorno la connessione decodificasse da se', il valore passa intatto.
+    @patch("apps.vendite.db.commesse_repository.connection.cursor")
+    def test_terne_pronte_gia_lista_passa_intatta(self, mock_cursor_factory):
+        gia = [{"emittente_soggetto_ruolo_id": 3, "tipo_doc_fiscale_id": 1,
+                "utility_id": 9}]
+        mock_cursor_factory.return_value = _mock_cursor(fetchall=[(*self._COLS, gia)])
+        righe = CommesseRepository().diagnostica_gruppi(gruppi=["ORDINE_VENDITA:aa"])
+        self.assertEqual(righe[0]["terne_pronte"], gia)

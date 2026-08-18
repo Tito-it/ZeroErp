@@ -15,6 +15,7 @@ import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { useDrawerClose } from '../../../core/composables/useDrawerClose'
 import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLoad'
 import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
+import { useDrawerFormPreserve } from '../../../core/composables/useDrawerFormPreserve'
 import { useEmittenteFiscaleField } from '../../../core/composables/useEmittenteFiscaleField'
 import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
@@ -67,6 +68,11 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 
 const isEdit = computed(() => props.mode === 'edit')
 const form = ref({})
+// Preserva le modifiche non salvate quando `loadDetail` sostituisce il form:
+// senza, compilare la testata e poi salvare una RIGA (`@changed` → loadDetail)
+// la riportava com'era sul server, in silenzio. BB condiviso coi drawer
+// gemelli (difetto trovato sul DDT, 2026-08-17, identico qui).
+const { preserva: preservaForm, reset: resetFormPreserve } = useDrawerFormPreserve(form)
 const detail = ref(null)
 const noteDrawerVisible = ref(false)
 // Riepilogo IVA aggregato per aliquota (lettura da `vw_ordini_riepilogo_iva_dettaglio`).
@@ -216,6 +222,7 @@ function defaultForm() {
 
 function resetForm() {
   form.value = defaultForm()
+  resetFormPreserve()
   detail.value = null
   createdId.value = null
   riepilogoIva.value = []
@@ -237,6 +244,7 @@ async function loadRiepilogoIva(targetId = null) {
 async function loadDetail(id = null) {
   const targetId = id ?? effectiveOrdineId.value
   if (!targetId) return
+  const applicaModifiche = preservaForm()
   const data = await loadDetailOrClose(() => store.fetchDetail(targetId))
   if (!data) return
   detail.value = data
@@ -252,6 +260,9 @@ async function loadDetail(id = null) {
     fatturazione_immediata: data.fatturazione_immediata ?? false,
     data: data.data ? new Date(data.data + 'T00:00:00') : null,
   }
+  // Fissa la baseline e ripristina il non-salvato che la sostituzione
+  // avrebbe cancellato (BB useDrawerFormPreserve).
+  applicaModifiche()
   await nextTick()
   // Restore BillingAccountLookup _obj per visualizzazione ricca. Best-effort.
   if (data.billing_account_id) {
@@ -345,6 +356,10 @@ const { close, onVisibleChange } = useDrawerAutosaveBozza({
   },
   tabEntity: TAB_ENTITIES.ORDINE,
   fetchDetail: (id) => loadDetail(id),
+  // Il BB preserva i campi compilati MENTRE la POST di creazione viaggia:
+  // senza il form li perderebbe, perche' `loadDetail` sostituisce il form
+  // coi dati del server (fix 2026-08-17).
+  form,
   deleteDraft: (id) => store.elimina(id),
   righeCountGetter: () => detail.value?.righe_count ?? 0,
   messages: {

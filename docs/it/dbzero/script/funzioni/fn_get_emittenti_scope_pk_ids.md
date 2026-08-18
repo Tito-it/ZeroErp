@@ -27,6 +27,9 @@ BEGIN
     -- interseca con l'emittente attivo in un solo punto. I RETURN
     -- anticipati di prima rendevano impossibile intersecare il
     -- ramo super admin, che e' proprio quello da restringere.
+    --
+    -- Rev 2026-08-18 (P-2a): l'operatore SENZA riga non vede piu'
+    -- tutto. Vedi il ramo OPERATIVO.
     -- =========================================================
 
     v_attivo := NULLIF(
@@ -46,13 +49,26 @@ BEGIN
     -- 2. Scope di diritto.
     IF script.fn_is_super_admin(p_auth_user_id) THEN
         -- Nessuna restrizione: NULL = universo.
+        -- ⭐ E' l'UNICO attore legittimamente multi-emittente
+        --    (decisione Tid 2026-08-17). Non toccato da P-2a.
         v_ids := NULL;
     ELSE
         -- OPERATIVO: whitelist PK reale. Lettura diretta da
         -- user_emittenti_fiscali (la colonna e' gia' la PK).
-        -- NULL (whitelist vuota) = nessuna restrizione
-        -- (parita' con _sr_ids).
-        SELECT array_agg(uef.emittente_fiscale_id)
+        --
+        -- ⚠️ Rev 2026-08-18 (P-2a): `coalesce(..., '{}')`.
+        --   PRIMA: array_agg su zero righe torna NULL, e NULL in
+        --   questa convenzione significa «nessuna restrizione» —
+        --   quindi un operatore senza riga vedeva TUTTI gli
+        --   emittenti, ed era indistinguibile da un super admin.
+        --   Non era uno stato del modello: era un errore di
+        --   configurazione che il sistema non rilevava.
+        --   ORA: '{}' = nessun accesso. La riga mancante e' un
+        --   difetto che si annuncia, invece di aprire in silenzio.
+        --   Stessa identica correzione fatta il 2026-08-04 su
+        --   fn_get_emittenti_scope_sr_ids, nello stesso punto
+        --   logico: qui era rimasta indietro (brief §2.5).
+        SELECT coalesce(array_agg(uef.emittente_fiscale_id), '{}'::bigint[])
           INTO v_ids
           FROM config.user_emittenti_fiscali uef
          WHERE uef.auth_user_id = p_auth_user_id;
@@ -76,7 +92,7 @@ END
 $function$
 
 COMMENT ON FUNCTION script.fn_get_emittenti_scope_pk_ids(p_auth_user_id integer)
-IS 'Scope emittenti per filtri su colonne PK (emittenti_fiscali.id). Semantica: NULL=tutto, ''{}''=nessuno, array=whitelist. Identita OPERATORE mancante -> []; SUPER_ADMIN -> NULL; altrimenti whitelist PK. Post 2026-08-04: uscita unica e intersezione con la GUC app.current_emittente_id (universo ∩ {X} = {X}; whitelist senza X -> []). Gemella di fn_get_emittenti_scope_sr_ids (che e'' un wrapper su questa). Vedi guida soggetti-e-ruoli §5b.';
+IS 'Scope emittenti per filtri su colonne PK (emittenti_fiscali.id). Semantica: NULL=tutto, ''{}''=nessuno, array=whitelist. Identita OPERATORE mancante -> []; SUPER_ADMIN -> NULL; altrimenti whitelist PK. Post 2026-08-04: uscita unica e intersezione con la GUC app.current_emittente_id (universo ∩ {X} = {X}; whitelist senza X -> []). Post 2026-08-18 (P-2a): operatore non super admin SENZA riga in config.user_emittenti_fiscali -> ''{}'' e non piu'' NULL. Prima vedeva TUTTI gli emittenti ed era indistinguibile da un super admin: non uno stato del modello, un errore di configurazione non rilevato. Allinea la lettura alla scrittura, che gia'' rispondeva false (fn_check_user_can_create_ba). Gemella di fn_get_emittenti_scope_sr_ids (che e'' un wrapper su questa e aveva gia'' ricevuto la correzione). Vedi guida soggetti-e-ruoli §5b e brief perimetro-emittente §2.5.';
 ```
 
 ---

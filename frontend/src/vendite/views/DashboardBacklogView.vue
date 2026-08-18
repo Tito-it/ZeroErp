@@ -124,6 +124,46 @@ const totaleValore = computed(() =>
   cards.value.reduce((s, c) => s + c.valoreFermo, 0)
 )
 
+// Riepilogo PER AREA della classe selezionata: risponde alla domanda che ci si
+// fa dopo aver scelto una classe — «30 documenti da recuperare: di COSA sono?».
+// Prima si poteva scoprire solo provando le aree una per una nella tendina.
+//
+// ⚠️ Il dato non costa una chiamata: `vw_dash_backlog_riepilogo` è aggregata
+// per **(classe, area)**, e il BE la consegna già pronta — ogni classe porta la
+// propria ripartizione nell'array annidato `aree`. Il FE finora leggeva i soli
+// totali di classe e lasciava `aree` inutilizzato: il dettaglio era già in
+// mano, si poteva scoprire solo provando le aree una per una nella tendina.
+//
+// Con «tutte le classi» (`classeSelezionata === null`) si somma per area su
+// tutte le classi; con una classe scelta si prende la sua sola ripartizione.
+// Aree a zero ESCLUSE (decisione Tid 2026-08-17): un elenco di sei voci di cui
+// quattro a zero è rumore, non informazione.
+const riepilogoAree = computed(() => {
+  const perArea = new Map()
+  for (const r of classi.value) {
+    if (classeSelezionata.value && r.classe !== classeSelezionata.value) continue
+    for (const a of r.aree ?? []) {
+      const n = Number(a.n_documenti ?? 0)
+      if (!n) continue
+      perArea.set(a.area, (perArea.get(a.area) ?? 0) + n)
+    }
+  }
+  // Ordine del funnel (DASH_AREE), non alfabetico né per conteggio: la lente
+  // racconta un percorso, e un ordine che cambia a ogni click è illeggibile.
+  return DASH_AREE
+    .filter((area) => perArea.has(area))
+    .map((area) => ({ area, label: areaLabel(area), nDocumenti: perArea.get(area) }))
+})
+
+// Scopo: click su una voce del riepilogo = filtro area, sullo STESSO stato
+//        della tendina (`areaSelezionata`): due comandi, una sola verità.
+//        Ri-cliccare l'area già attiva la azzera — senza, per tornare a
+//        «tutte» si dovrebbe passare per la tendina.
+function selezionaArea(area) {
+  areaSelezionata.value = areaSelezionata.value === area ? null : area
+  onAreaChange()
+}
+
 // Opzioni filtro area (tutte + 5 aree funnel dal BB condiviso, label
 // condivise con la 5-card).
 const areaOptions = computed(() => [
@@ -335,6 +375,27 @@ onActivated(() => {
             {{ t('vendite.dashboard_backlog.anzianita_max', { n: card.anzianitaMax }) }}
           </span>
         </div>
+      </div>
+
+      <!-- Ripartizione per AREA della classe selezionata: dice DI COSA sono i
+           documenti contati dalla card sopra. Ogni voce è un filtro (stesso
+           stato della tendina); le aree a zero non compaiono. Solo conteggi,
+           mai importi: offerte, contratti e resi vanno a conteggi per
+           decisione (DL-11, DL-24) e un «€ 0» accanto sarebbe falso. -->
+      <div v-if="riepilogoAree.length" class="app-dash-aree-riepilogo">
+        <span
+          v-for="v in riepilogoAree"
+          :key="v.area"
+          class="app-dash-area-chip"
+          :class="{ 'is-selected': areaSelezionata === v.area }"
+          role="button"
+          tabindex="0"
+          @click="selezionaArea(v.area)"
+          @keydown.enter="selezionaArea(v.area)"
+        >
+          {{ v.label }}
+          <strong>{{ v.nDocumenti }}</strong>
+        </span>
       </div>
 
       <!-- Lista per anzianita' con filtro area. Niente data-key: la union e'

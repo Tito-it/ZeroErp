@@ -307,9 +307,23 @@ function buildRowActions(data) {
   visible?: boolean,        // default true — azioni non applicabili si nascondono
   disabled?: boolean,       // default false — azione grigia ma presente
   allowWhenInactive?: boolean, // default false — escape per azioni ammesse su record inattivi
+  action?: string,          // codename permesso processo (auth.isActionAllowed) — senza, la voce NON si renderizza
   command: () => void,      // handler click
 }
 ```
+
+⚠️ **`action` è lo stesso campo di `PageActionsBar`/`DrawerActionsBar`**, con lo
+stesso effetto: **nasconde**. Fino al 2026-08-17 `RowActionsMenu` lo **ignorava**
+— chi lo passava credeva di aver messo un cancello che non esisteva, e le azioni
+di governo del lotto («Riporta in lavorazione», «Annulla», «Numera») comparivano
+nel kebab della lista anche a chi non aveva il permesso (rilievo in-app di Tid).
+Un campo dichiarato e non letto è peggio della sua assenza: sembra presidiato.
+Il gate vero resta il backend; questo è il non-proporre.
+
+**Permesso ⇒ nascondi, stato ⇒ disabilita col motivo.** Il permesso non è
+qualcosa che l'operatore possa risolvere dal kebab, quindi una voce grigia
+sarebbe una promessa che non si mantiene; ciò che invece dipende dallo stato del
+record può cambiare, e lì `disabled` + `tooltip` spiega e resta a video.
 
 **Regola record inattivo (`attivo=false` / `is_active=false`):**
 

@@ -1,0 +1,349 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PARTITA DI MERCE — vw_partite_merce
+#   Slice S2 di docs/it/dev/work-in-progress/brief-design-partita-merce-generalizzata.md
+#
+# ── LA NOZIONE, IN UNA RIGA ─────────────────────────────────────────────
+#
+#   **La partita e' la riga di DDT. La riga d'ordine e' una delle sue possibili
+#   origini** (l'altra e' «nessuna»).
+#
+#   Fino a oggi era l'opposto: vw_contatore_merce e' per riga d'ORDINE, e cio'
+#   che una riga d'ordine non ce l'ha non compare a conto zero — **non esiste**.
+#   Ne restavano fuori tre famiglie di merce che il sistema muove e fattura:
+#   righe di DDT aggiunte a mano, DDT standalone, articoli compositi.
+#
+# ── PERCHE' LA CHIAVE E' `ddt_righe.id` E NON UNA NUOVA ─────────────────
+#
+#   1. la merce passa tutta di li': ogni pezzo che si muove e' una riga di DDT;
+#   2. chi torna indietro sa gia' da dove viene — `resi_righe.ddt_riga_id` e'
+#      **NOT NULL**, mentre `ordine_riga_id` e' nullable e nessun guard lo
+#      presidia: la chiave robusta era gia' quella, ed era gia' obbligatoria;
+#   3. l'origine e' gia' un attributo della riga di merce
+#      (`ordini_righe_fulfillment`): non c'e' niente da costruire, c'e' da
+#      smettere di PRETENDERLA;
+#   4. la fatturazione parla gia' questa lingua: il segmento
+#      `DDT:<uid>:R:<ddt_riga_id>` esiste dal primo giorno.
+#
+#   ⭐ Ed e' il motivo per cui questa e' una VISTA e non una tabella: la partita
+#   ha gia' una chiave primaria vera. Una tabella aggiungerebbe una SECONDA
+#   identita' alla stessa cosa, e andrebbe tenuta allineata a quattro tabelle
+#   che hanno gia' i loro trigger. Come vista, anche la retroattivita' non
+#   esiste come problema: non c'e' un «prima».
+#
+# ── ⚠️ LA CORSIA ORD NON HA UNA RIGA DI MERCE: la regola di allocazione ──
+#
+#   93 ordini su 95 hanno `fatturazione_trigger = 'CONFERMATO'`: si fattura
+#   l'ordine confermato, e la spedizione e' ortogonale. Quindi il fatturato
+#   nasce sull'ORDINE, quando di DDT non ce n'e' ancora nessuno, e una partita
+#   ancorata alla riga di DDT non avrebbe dove metterlo.
+#
+#   Regola: il fatturato della corsia ORD si VERSA nelle righe di merce di
+#   quella riga d'ordine, dalla piu' vecchia, fino a CAPIENZA. Cio' che avanza
+#   non appartiene a nessuna merce ed e' fatturato in anticipo (lo espone
+#   l'aggregato d'ordine, slice S3).
+#
+#   ⚠️ **CAPIENZA = `consegnato`, NON `tenuti`.** Sembra un dettaglio e decide
+#   tutto: con `tenuti` (consegnato − reso) un reso «libererebbe» capienza,
+#   l'accredito verrebbe riassorbito e la coda accrediti resterebbe VUOTA —
+#   cioe' esattamente il difetto contro cui mette in guardia il §2 del brief
+#   nota di credito.
+#
+#   Non e' un criterio nuovo: e' la stessa distribuzione greedy oldest-first
+#   che usano gia' fn_list_ddt_da_pushare (dosaggio) e vw_resi_da_accreditare.
+#
+# ── ⚠️ LA SOGLIA: dal DDT EMESSO in poi (decisione D1, Tid 2026-08-17) ───
+#
+#   La CTE `ful` del vecchio contatore non fa alcun join al DDT, quindi non
+#   guarda in che stato e': un documento appena preparato pesa quanto uno
+#   partito. Misurato: 4 righe di fulfillment su DDT in bozza, 6 pezzi.
+#
+#   Il caso vero e' il giro della RI-CONSEGNA: il cliente rende 3 pezzi,
+#   qualcuno prepara il DDT per rispedirglieli e non lo emette. Il cliente ha
+#   in mano 2 pezzi; il contatore diceva 5.
+#
+#   Qui la partita nasce da `EMESSO` in poi. **Rompe la parita' su due righe
+#   d'ordine (236 e 239: tenuti 5 -> 2), ed e' voluto.** Verificato che il
+#   cambio e' isolato: quelle righe hanno fatturati 0, non sono in coda
+#   accrediti, e le bozze non passano il cancello del push.
+#
+#   ⚠️ E la correzione da sola non basterebbe: quei 3 pezzi non sono nemmeno
+#   nella coda «da riconsegnare», che li considera gia' sistemati (qualcuno il
+#   documento l'ha preparato). Sparirebbero dalla lettura. Per questo esiste
+#   **`in_riconsegna`**: merce tornata, gia' impegnata su un DDT non emesso.
+#   Ne' dal cliente, ne' in coda: sul banco.
+#
+#   ⚠️ Le due code NON vanno allineate fra loro: rispondono a domande diverse.
+#   «Cosa devo fare» -> la bozza e' un'azione gia' presa, giusto che esca dalla
+#   coda. «Dove sta la merce» -> la bozza non ha mosso nulla.
+#
+# ── ⚠️ `differenza` PUO' ESSERE NULL, E NON E' ZERO ──────────────────────
+#
+#   - causale di trasporto NON fatturabile (conto visione, campionatura,
+#     trasferimento...) **E nessun fatturato**: quella merce non verra' mai
+#     fatturata, quindi il conto di fatturazione **non si applica**. Misurato:
+#     5 righe. Con `0` il pannello direbbe «5 da fatturare» su un conto visione.
+#     ⚠️ La congiunzione non e' un di piu': la riga di DDT 47 viaggia su causale
+#     non fatturabile e il suo ordine e' stato fatturato lo stesso (corsia ORD).
+#     La causale dice cosa ci si aspetta dal VIAGGIO, non se la merce e' stata
+#     fatturata — e se un fatturato c'e', il conto si applica;
+#   - conto **non misurabile** (kit senza coefficiente, o componenti che non
+#     concordano — vedi S1).
+#
+#   `0` e' un'affermazione, `NULL` e' un'astensione. La colonna `stato` le
+#   distingue a valle, cosi' la traduzione del verso del saldo avviene UNA
+#   VOLTA SOLA e non in ogni consumatore (richiesta §5.4 del brief pannello).
+#
+# ── COSA NON FA ─────────────────────────────────────────────────────────
+#
+#   - non tocca il vecchio vw_contatore_merce: quello lo riscrive S3, e la sua
+#     parita' si misura contro db/pgtap/vendite/fixtures/S0-fotografia-*.md;
+#   - non espone ancora `sospetto_duplicato_ordine` (riga manuale sospetta):
+#     e' S6, e si aggiunge in coda senza DROP.
+#
+# security_invoker=on: legge vendite.ddt (RLS emittente) e, via S1,
+#   commesse_attivita (RLS via commessa). Ri-specificato — la reloption non e'
+#   visibile in pg_get_viewdef e PG la azzera se omessa.
+#
+# Dipendenze: vendite.vw_af_merce_per_riga (20260817-06),
+#   vendite.vw_resi_righe_effettive, vendite.ddt_righe, vendite.ddt,
+#   vendite.ordini_righe_fulfillment, vendite.ordini_righe,
+#   vendite.resi_righe_riconsegne, config.stati_doc_ddt,
+#   config.causali_trasporto, catalogo.articoli.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260817-07-create-vw-partite-merce-mctit.yaml
+
+  - changeSet:
+      id: 20260817-07-create-vw-partite-merce
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        S2 della partita generalizzata: vw_partite_merce = una partita per riga di
+        DDT attiva su documento EMESSO in poi (decisione D1), con la riga d'ordine
+        come ORIGINE nullable. Espone consegnato/reso/in_riconsegna/tenuti,
+        fatturato di merce + quota allocata della corsia ORD (greedy oldest-first,
+        capienza = consegnato), differenza NULL se non fatturabile o non
+        misurabile, e lo `stato` che traduce il verso del saldo una volta sola.
+        security_invoker=on.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_af_merce_per_riga
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_resi_righe_effettive
+            - columnExists:
+                schemaName: config
+                tableName: causali_trasporto
+                columnName: fatturabile
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_partite_merce
+              WITH (security_invoker=on) AS
+              WITH soglia AS (
+                  -- La merce esiste da quando il documento esce dalla bozza.
+                  -- Per codice_interno (immutabile), non per numero: il rank e'
+                  -- un dato di configurazione e puo' essere rinumerato.
+                  SELECT s.ordine AS ordine_emesso
+                    FROM config.stati_doc_ddt s
+                   WHERE s.codice_interno = 'EMESSO'
+              ),
+              riga AS (
+                  -- L'universo delle partite: una riga di DDT attiva, su un
+                  -- documento non abortito e almeno EMESSO (decisione D1).
+                  SELECT dr.id                                  AS ddt_riga_id,
+                         dr.ddt_id                              AS ddt_id,
+                         d.uid                                  AS ddt_uid,
+                         d.data                                 AS ddt_data,
+                         dr.articolo_id                         AS articolo_id,
+                         COALESCE(art.is_composito, false)      AS is_composito,
+                         -- Merce USCITA con questo documento. E' la quantita'
+                         -- della riga, non il fulfillment: la riga di merce dice
+                         -- quanta merce e' uscita, il fulfillment dice quanta di
+                         -- quella e' attribuita a un ordine. Oggi coincidono
+                         -- sempre (24 righe order-backed, 0 discordanze), ma
+                         -- sono due domande diverse — ed e' il caso della riga
+                         -- mista, dove una parte e' ordinata e una no.
+                         dr.quantita                            AS consegnato,
+                         -- Causale assente: impossibile da EMESSO in poi (gate
+                         -- trgfn_ddt_guard_causale_emissione). Il COALESCE e' una
+                         -- cintura, e sceglie di NON fatturare: dichiara «non si
+                         -- applica» invece di inventare un conto.
+                         COALESCE(caus.fatturabile, false)      AS fatturabile
+                    FROM vendite.ddt_righe dr
+                    JOIN vendite.ddt d              ON d.id = dr.ddt_id
+                    JOIN config.stati_doc_ddt sdd   ON sdd.id = d.stato_doc_ddt_id
+                    JOIN catalogo.articoli art      ON art.id = dr.articolo_id
+                    LEFT JOIN config.causali_trasporto caus ON caus.id = d.causale_trasporto_id
+                   CROSS JOIN soglia sg
+                   WHERE dr.attivo IS TRUE
+                     AND NOT sdd.is_abortito
+                     AND sdd.ordine >= sg.ordine_emesso
+              ),
+              orig AS (
+                  -- L'origine della merce, quando c'e'. L'unicita' e' sulla
+                  -- COPPIA, non su ddt_riga_id: una riga di DDT POTREBBE evadere
+                  -- due righe d'ordine. Oggi non succede (24 righe, tutte con
+                  -- una sola origine), ma il modello lo ammette — quindi qui si
+                  -- conta, e se sono due la partita si DICHIARA a origine
+                  -- multipla invece di moltiplicare la merce.
+                  SELECT f.ddt_riga_id,
+                         COUNT(DISTINCT f.ordine_riga_id)  AS n_origini,
+                         MIN(f.ordine_riga_id)             AS ordine_riga_id
+                    FROM vendite.ordini_righe_fulfillment f
+                   GROUP BY f.ddt_riga_id
+              ),
+              res AS (
+                  -- Merce tornata indietro, PER RIGA DI MERCE. E' il cuore della
+                  -- generalizzazione: il vecchio contatore raggruppava per
+                  -- ordine_riga_id scartando i NULL, e cosi' un reso su merce
+                  -- senza ordine spariva dal conto senza errore.
+                  SELECT e.ddt_riga_id, SUM(e.quantita) AS reso
+                    FROM vendite.vw_resi_righe_effettive e
+                   GROUP BY e.ddt_riga_id
+              ),
+              ric_bozza AS (
+                  -- Quote di reso gia' impegnate su un DDT di ri-consegna NON
+                  -- ancora emesso, attribuite alla riga di merce ORIGINARIA
+                  -- (quella da cui la merce e' tornata), non a quella nuova.
+                  -- Senza questa CTE quei pezzi sparirebbero dalla lettura:
+                  -- non piu' dal cliente, e gia' fuori dalla coda ri-consegne.
+                  SELECT rr.ddt_riga_id            AS ddt_riga_origine,
+                         SUM(rc.qta)               AS in_riconsegna
+                    FROM vendite.resi_righe_riconsegne rc
+                    JOIN vendite.resi_righe rr      ON rr.id = rc.resi_riga_id
+                    JOIN vendite.ddt_righe dr_new   ON dr_new.id = rc.ddt_riga_id
+                    JOIN vendite.ddt d_new          ON d_new.id = dr_new.ddt_id
+                    JOIN config.stati_doc_ddt sdd_n ON sdd_n.id = d_new.stato_doc_ddt_id
+                   CROSS JOIN soglia sg
+                   WHERE sdd_n.ordine < sg.ordine_emesso
+                   GROUP BY rr.ddt_riga_id
+              ),
+              alloc AS (
+                  -- Allocazione della corsia ORD sulle righe di merce, greedy
+                  -- dalla piu' vecchia, capienza = consegnato (vedi header).
+                  -- Le righe senza origine non partecipano: il loro fatturato,
+                  -- se c'e', e' tutto sulla corsia DDT.
+                  SELECT r.ddt_riga_id,
+                         GREATEST(0::numeric, LEAST(
+                           r.consegnato,
+                           COALESCE(fo.quantita, 0)
+                           - COALESCE(SUM(r.consegnato) OVER (
+                                 PARTITION BY o.ordine_riga_id
+                                 ORDER BY r.ddt_data, r.ddt_riga_id
+                                 ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0)
+                         ))                                        AS fatturato_da_ordine,
+                         COALESCE(fo.misurabile, true)              AS ord_misurabile
+                    FROM riga r
+                    JOIN orig o ON o.ddt_riga_id = r.ddt_riga_id
+                    LEFT JOIN vendite.vw_af_merce_per_riga fo
+                           ON fo.corsia = 'ORD'
+                          AND fo.riga_id = o.ordine_riga_id
+                          AND fo.tipo_movimento = 'NORMALE'
+              )
+              SELECT r.ddt_riga_id,
+                     r.ddt_id,
+                     r.ddt_uid,
+                     r.articolo_id,
+                     r.is_composito,
+                     o.ordine_riga_id,
+                     orr.ordine_id,
+                     (CASE
+                        WHEN o.ddt_riga_id IS NULL   THEN 'NESSUNA'
+                        WHEN o.n_origini > 1         THEN 'MULTIPLA'
+                        ELSE 'ORDINE'
+                      END)::varchar                                        AS origine,
+                     r.fatturabile,
+                     r.consegnato,
+                     COALESCE(res.reso, 0)                                 AS reso,
+                     COALESCE(rb.in_riconsegna, 0)                         AS in_riconsegna,
+                     v.tenuti,
+                     COALESCE(fd.quantita, 0)                              AS fatturato_merce,
+                     COALESCE(al.fatturato_da_ordine, 0)                   AS fatturato_da_ordine,
+                     v.fatturato,
+                     v.misurabile,
+                     -- differenza: NULL = «non si applica», e non e' zero.
+                     (CASE WHEN w.conta_fatturazione AND v.misurabile
+                           THEN w.saldo
+                      END)                                                 AS differenza,
+                     -- La traduzione del verso del saldo, UNA VOLTA SOLA.
+                     (CASE
+                        WHEN NOT w.conta_fatturazione THEN 'NON_FATTURABILE'
+                        WHEN NOT v.misurabile         THEN 'NON_MISURABILE'
+                        WHEN w.saldo > 0              THEN 'DA_FATTURARE'
+                        WHEN w.saldo < 0              THEN 'DA_ACCREDITARE'
+                        ELSE 'PAREGGIATA'
+                      END)::varchar                                        AS stato
+                FROM riga r
+                LEFT JOIN orig o        ON o.ddt_riga_id = r.ddt_riga_id
+                LEFT JOIN vendite.ordini_righe orr ON orr.id = o.ordine_riga_id
+                LEFT JOIN res           ON res.ddt_riga_id = r.ddt_riga_id
+                LEFT JOIN ric_bozza rb  ON rb.ddt_riga_origine = r.ddt_riga_id
+                LEFT JOIN alloc al      ON al.ddt_riga_id = r.ddt_riga_id
+                LEFT JOIN vendite.vw_af_merce_per_riga fd
+                       ON fd.corsia = 'DDT'
+                      AND fd.riga_id = r.ddt_riga_id
+                      AND fd.tipo_movimento = 'NORMALE'
+                CROSS JOIN LATERAL (
+                    -- Le tre grandezze composte, calcolate una volta sola.
+                    -- Il conto e' misurabile solo se lo sono ENTRAMBE le corsie
+                    -- che concorrono: basta un kit senza coefficiente da una
+                    -- parte perche' la somma non voglia dire niente.
+                    SELECT r.consegnato - COALESCE(res.reso, 0)              AS tenuti,
+                           COALESCE(fd.quantita, 0)
+                             + COALESCE(al.fatturato_da_ordine, 0)          AS fatturato,
+                           COALESCE(fd.misurabile, true)
+                             AND COALESCE(al.ord_misurabile, true)          AS misurabile
+                ) v
+                CROSS JOIN LATERAL (
+                    -- ⚠️ `fatturabile` NON basta a spegnere il conto, e il caso
+                    -- che lo dimostra e' reale: la riga di DDT 47 viaggia su una
+                    -- causale non fatturabile, ma il suo ordine e' stato
+                    -- fatturato per intero (corsia ORD, trigger CONFERMATO).
+                    -- Dichiararla «non fatturabile» direbbe che quella merce non
+                    -- si fattura MENTRE la si sta fatturando — e nasconderebbe
+                    -- l'accredito se poi tornasse indietro.
+                    --
+                    -- La causale dice cosa ci si ASPETTA da quel viaggio, non se
+                    -- la merce e' stata fatturata. Se un fatturato c'e', il conto
+                    -- si applica: e' un fatto, non una previsione.
+                    SELECT (r.fatturabile OR v.fatturato > 0) AS conta_fatturazione,
+                           v.tenuti - v.fatturato             AS saldo
+                ) w;
+
+              COMMENT ON VIEW vendite.vw_partite_merce IS
+                'La partita di merce (brief-design-partita-merce-generalizzata S2): UNA riga per riga '
+                'di DDT attiva su documento non abortito e almeno EMESSO (decisione D1, Tid 2026-08-17 '
+                '— la merce in bozza non e'' uscita dal magazzino). La riga d''ordine e'' l''ORIGINE, '
+                'nullable: righe manuali e DDT standalone hanno una partita come le altre. reso e '
+                'accrediti si agganciano a ddt_riga_id, che e'' NOT NULL su resi_righe. fatturato = '
+                'corsia DDT (diretta) + quota allocata della corsia ORD (greedy oldest-first, ⚠️ '
+                'capienza = CONSEGNATO e non tenuti: con tenuti un reso riassorbirebbe l''accredito e '
+                'la coda resterebbe vuota). in_riconsegna = merce tornata e gia'' impegnata su un DDT '
+                'NON emesso — ne'' dal cliente ne'' in coda ri-consegne. ⚠️ differenza e'' NULL (non '
+                'zero) se la causale non e'' fatturabile o se il conto non e'' misurabile: 0 e'' '
+                'un''affermazione, NULL un''astensione. `stato` traduce il verso del saldo UNA VOLTA '
+                'SOLA (PAREGGIATA / DA_FATTURARE / DA_ACCREDITARE / NON_FATTURABILE / NON_MISURABILE): '
+                'i consumatori NON devono ri-tradurlo. security_invoker=on. rev 2026-08-17.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_partite_merce;

@@ -41,7 +41,12 @@
    frontend — chi monta `<ListaConfigurabile codice="X">` dichiara di aver
    convertito X.
 
-7. test_il_debito_non_cresce
+7. test_colonna_sensibile_ha_sempre_un_grant
+   `sensibile = t` senza riga in `ui.lista_colonna_permesso` non protegge: la
+   colonna viene RIMOSSA per tutti, e il badge «colonne nuove» continua a
+   contarla. Cancello su un difetto DB noto e non ancora corretto.
+
+8. test_il_debito_non_cresce
    `_DEBITO_WHITELIST_LOGICA` e' un registro di debito, non una lista di
    eccezioni: una lista rientrata va tolta, o il debito residuo risulta piu'
    grande del vero e l'eccezione diventa permanente.
@@ -287,6 +292,19 @@ def _colonne_attive(codice: str) -> list[dict[str, str]]:
     ]
 
 
+# Scopo: colonne per cui ESISTE un grant esplicito in `ui.lista_colonna_permesso`.
+#        Il seed di quella tabella oggi NON esiste nella cartella `ui`: la
+#        funzione ritorna un insieme vuoto e il cancello sotto blocca qualunque
+#        colonna sensibile. Il giorno in cui il seed arrivera', il test si stringe
+#        da se' sulla singola colonna, senza modifiche.
+def _colonne_con_grant() -> set[str]:
+    percorso = _SEED_DIR / "lista_colonna_permesso.csv"
+    if not percorso.exists():
+        return set()
+    with percorso.open(newline="", encoding="utf-8") as fh:
+        return {r["colonna_id"] for r in csv.DictReader(fh)}
+
+
 class ListeConfigurabiliSeedTests(unittest.TestCase):
     """Il contratto seed <-> whitelist, che nessun altro test copre.
 
@@ -415,6 +433,46 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
             "non sono coperte da nessun test di questo modulo. Aggiungere una "
             "riga a `_LISTE` con la whitelist del rispettivo repository.",
         )
+
+    # 8. `sensibile = t` senza grant = colonna MORTA per tutti, e badge bugiardo.
+    #    Non e' una regola di stile: e' il cancello che tiene innocuo un difetto
+    #    noto e volutamente NON corretto lato DB.
+    #
+    #    `ui.fn_resolve_lista_config` §5 calcola
+    #       COALESCE(permesso, CASE WHEN lc.sensibile THEN 'BLOCCATO' ELSE 'TUTTO' END)
+    #    e subito dopo RIMUOVE le colonne 'BLOCCATO'. Quindi una colonna
+    #    `sensibile = t` senza una riga in `ui.lista_colonna_permesso` non e'
+    #    "nascosta a chi non ha il permesso": e' invisibile a CHIUNQUE, per
+    #    sempre. Ed e' peggio, perche' `colonne_nuove` viene contato PRIMA di
+    #    quel filtro e non viene decrementato: il pannello annuncia una colonna
+    #    nuova che la funzione stessa ha appena tolto, e l'operatore non ha modo
+    #    di distinguere fra «cerco male», «e' rotto» e «esiste ma non mi spetta».
+    #
+    #    Successo reale (2026-08-17): la colonna «Id fiscale» della lista gruppi
+    #    fatturabili, seminata `sensibile = t` credendo che il flag fosse
+    #    un'etichetta. Il tag esiste davvero in `ListaColonneModal.vue` — ma e'
+    #    cio' che resta DOPO il cancello, non il cancello.
+    #
+    #    ⚠️ Il giorno in cui una colonna andra' protetta davvero, la strada e'
+    #    completa: `sensibile = t` PIU' i grant. Questo test lo pretende, ed e'
+    #    anche il momento in cui va corretto il contatore lato DB — vedi §4-ter
+    #    di `brief-db-dash-competenza-gruppi-cliente-e-ricerca.md`.
+    def test_colonna_sensibile_ha_sempre_un_grant(self) -> None:
+        con_grant = _colonne_con_grant()
+        for codice, _ in _LISTE:
+            with self.subTest(lista=codice):
+                orfane = [
+                    r["codice"] for r in _colonne_attive(codice)
+                    if r["sensibile"] == "t" and r["id"] not in con_grant
+                ]
+                self.assertEqual(
+                    orfane, [],
+                    f"lista '{codice}': colonne con sensibile=t e nessun grant in "
+                    f"ui.lista_colonna_permesso -> {orfane}. Non sono protette: "
+                    "sono RIMOSSE per tutti da fn_resolve_lista_config, e il "
+                    "contatore colonne_nuove continua ad annunciarle. O si "
+                    "seminano i grant, o la colonna va a sensibile=f.",
+                )
 
     def test_il_debito_non_cresce(self) -> None:
         # Il registro di debito deve CALARE. Questo test lo verifica dal verso

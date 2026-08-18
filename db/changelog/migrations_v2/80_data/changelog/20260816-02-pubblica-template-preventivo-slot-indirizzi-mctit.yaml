@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Pubblica la BOZZA del Preventivo scritta dal changeSet 20260816-01.
+#   Richiesta del BE del 2026-08-16; sede DB del cantiere:
+#   docs/it/dev/work-in-progress/brief-db-template-preventivo-slot-indirizzi.md
+#
+#   `valido_dal = current_date`, `valido_al = NULL`. La versione precedente
+#   passa a OBSOLETA e resta **ri-renderizzabile**: i preventivi gia' generati
+#   sono pinnati alla loro versione e non si toccano (§5 del brief BE).
+#
+# ⭐ QUESTO CHANGESET CHIUDE LA FINESTRA ROTTA. Dal merge del BE il Preventivo
+#   non renderizza: il contesto passa un dict di slot e il template v3 lo itera
+#   come lista. Fino a questo `migrate` l'anteprima e la generazione del
+#   preventivo falliscono — e' dichiarato e accettato dal BE (§4), ma va saputo
+#   che e' QUI che si riaccende.
+#
+# ⚠️ preCondition su MERITO, non su presenza. Non basta «esiste una bozza»:
+#   dev'essere la bozza GIUSTA — nata da questo cantiere e con dentro
+#   `indirizzi.consegna`. Un marker senza la verifica del contenuto
+#   pubblicherebbe qualunque bozza qualcuno avesse lasciato in giro.
+#
+# ⚠️ `CONTINUE` per la stessa ragione del changeSet precedente (i template non
+#   sono a seed, in CI la tabella e' vuota), ma l'eccezione DENTRO il DO resta:
+#   se sono entrato, la bozza dev'essere esattamente una. Un no-op silenzioso
+#   qui significherebbe un preventivo che continua a non renderizzare mentre il
+#   registro dice «fatto».
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260816-02-pubblica-template-preventivo-slot-indirizzi-mctit.yaml
+
+  - changeSet:
+      id: 20260816-02-pubblica-template-preventivo-slot-indirizzi
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Pubblica la BOZZA del template Preventivo con gli indirizzi a slot:
+        diventa la versione viva, la precedente passa a OBSOLETA e resta
+        ri-renderizzabile. E' il changeSet che riaccende la stampa del
+        preventivo dopo il merge del BE.
+      preConditions:
+        - onFail: CONTINUE
+        - onError: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM documenti.template_documenti_versioni v
+              WHERE v.stato = 'BOZZA' AND v.attivo IS TRUE
+                AND v.meta ->> 'brief' = 'brief-db-template-preventivo-slot-indirizzi.md'
+                AND v.html_template LIKE '%indirizzi.consegna%'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $pubblica$
+              DECLARE
+                  b       record;
+                  v_esito record;
+                  v_conta integer := 0;
+              BEGIN
+                  FOR b IN
+                      SELECT v.id, v.versione,
+                             coalesce(t.codice_interno, t.codice, '?') AS codice
+                        FROM documenti.template_documenti_versioni v
+                        JOIN documenti.template_documenti t
+                          ON t.id = v.template_documento_id
+                       WHERE v.stato = 'BOZZA'
+                         AND v.attivo IS TRUE
+                         AND v.meta ->> 'brief' = 'brief-db-template-preventivo-slot-indirizzi.md'
+                         -- Il marker dice da quale cantiere nasce; questo dice
+                         -- che la modifica c'e' davvero.
+                         AND v.html_template LIKE '%indirizzi.consegna%'
+                       ORDER BY v.id
+                  LOOP
+                      SELECT * INTO v_esito
+                        FROM documenti.fn_pubblica_template_documento_versione(
+                               p_versione_id => b.id,
+                               p_valido_dal  => current_date,
+                               p_valido_al   => NULL);
+
+                      v_conta := v_conta + 1;
+
+                      RAISE NOTICE
+                        'template % : pubblicata versione % (id %), versioni rese obsolete: %',
+                        b.codice, b.versione, b.id, v_esito.versioni_obsolete;
+                  END LOOP;
+
+                  IF v_conta <> 1 THEN
+                      RAISE EXCEPTION
+                        'Pubblicate % versioni invece di 1: il changeSet precedente non ha prodotto quello che doveva.',
+                        v_conta;
+                  END IF;
+              END
+              $pubblica$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              SELECT 1;

@@ -1,0 +1,24 @@
+# 🔍 View `vw_operatori_senza_emittente`
+
+> 📝 **Descrizione**
+>
+> Diagnostica P-2a: operatori configurati a META' — identita' OPERATORE attiva, NON super admin, e nessuna riga in config.user_emittenti_fiscali. Dal fail-closed del 2026-08-18 queste persone non vedono NULLA, e il difetto non si annuncia: nessun errore, solo schermate vuote. ⚠️ DEVE restare a zero righe: una riga qui e' qualcuno che apre l'applicazione e non trova niente. Il super admin e' escluso di proposito (il suo scope passa da fn_is_super_admin). Per assegnare l'emittente mancante si usa la funzione di dominio script.fn_change_user_emittenti_scope(auth_user_id, ARRAY[ef_id]), non un INSERT a mano. Brief perimetro-emittente P-2a.
+
+```sql
+CREATE OR REPLACE VIEW dbops.vw_operatori_senza_emittente AS
+SELECT DISTINCT idg.auth_user_id,
+    sr.id AS soggetto_ruolo_id,
+    s.id AS soggetto_id,
+    s.ragione_sociale_completa AS operatore,
+    idg.attivo AS identita_attiva
+   FROM ((anagrafiche.identita_digitali idg
+     JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = idg.soggetto_ruolo_id)))
+     JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+  WHERE ((idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo) AND idg.attivo AND (NOT script.fn_is_super_admin(idg.auth_user_id)) AND (NOT (EXISTS ( SELECT 1
+           FROM config.user_emittenti_fiscali uef
+          WHERE (uef.auth_user_id = idg.auth_user_id)))));
+```
+
+
+---
+{% include-markdown "signature-core.md" %}

@@ -1,0 +1,326 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BOZZA del template Preventivo sulla forma a SLOT degli indirizzi — l'ultimo
+#   dei sei domini. La pubblicazione e' il changeSet successivo: qui si scrive.
+#   Richiesta del BE del 2026-08-16; sede DB del cantiere:
+#   docs/it/dev/work-in-progress/brief-db-template-preventivo-slot-indirizzi.md
+#
+# IL FATTO. Dal merge del BE il context builder del Preventivo espone
+#   `indirizzi` come DICT DI SLOT (`indirizzi.consegna`, `.fatturazione`,
+#   `.fornitura`, `.residenza`) invece che come lista. Il template v3 la itera
+#   come lista e legge con `.get()`: con la forma nuova il render FALLISCE.
+#   La finestra rotta e' dichiarata e accettata dal BE (§4 del loro brief).
+#
+# ── ⭐ SI STAMPA UN SOLO SLOT, `consegna` — decisione di Tid ─────────────
+#
+#   «La stampa e' identica agli altri documenti». E' anche la risposta alla
+#   domanda del §7 del brief BE («quattro etichette hanno senso?»): no, non si
+#   stampano quattro aree. Il Preventivo prende lo STESSO blocco che ord-ven,
+#   contratto, off-comm e ddt-ven hanno gia' pubblicato, nella stessa
+#   posizione — dentro il riquadro «Cliente», non in una sezione a se'.
+#
+#   ✅ E il dato dice la stessa cosa. Misurato il 2026-08-16, su TUTTI i
+#   domini: 46 snapshot indirizzo di documento, **46 su 46 di tipo CON**. I 12
+#   dei preventivi sono 12 su 12 CON. Nessuna riga FATT, FORNITURA o RES e' mai
+#   stata scritta da nessuna parte. Il contesto continua a esporre i quattro
+#   slot (segue la whitelist dell'ambito, §11.1 del brief BE): e' il TEMPLATE a
+#   scegliere cosa stampare, e stampare tre aree che nessun documento reale
+#   popola sarebbe codice che nessuno puo' verificare.
+#
+# ── ⚠️ LA GUARDIA E' PER CAMPO, e qui si vede perche' ───────────────────
+#
+#   Sui 12 snapshot dei preventivi: `intestazione` valorizzata su 9,
+#   `cap`/`citta`/`prov` su 7, `via` e `stato` su 12. Il BE garantisce le
+#   CHIAVI, non i VALORI (§9.2): con la sola guardia sullo slot, 3 preventivi
+#   stamperebbero una riga vuota e 5 una riga tronca. Il `select | join(" ")`
+#   sulla riga geografica e' la stessa ragione — la trappola `None ROMA` che il
+#   BE ha trovato rendendo il blocco (§3 del loro brief).
+#
+# ── COSA CAMBIA, ESATTAMENTE: due modifiche ─────────────────────────────
+#
+#   1. ENTRA il blocco `indirizzi.consegna` dentro il riquadro «Cliente»,
+#      identico a quello dei quattro template gia' sulla forma unica.
+#   2. ESCE la sezione «Indirizzi documento», che e' la forma v1 (lista +
+#      `.get()`). ⚠️ Toglierla non e' un extra: e' cio' che chiude il §2 del
+#      brief di agosto — il Preventivo era **l'ultimo template** a leggere in
+#      modo che un nome sbagliato stampi vuoto invece di far fallire il render.
+#      Lasciarla, oltre a piantare il render, stamperebbe l'indirizzo due volte.
+#
+# ── ⚠️ ANCORE VERIFICATE, NON SPERATE ───────────────────────────────────
+#
+#   Entrambe le sostituzioni sono ancorate a testo che deve comparire
+#   ESATTAMENTE una volta, e il risultato deve essere diverso dall'originale.
+#   Se qualcuno ha ritoccato il template, il migrate si ferma invece di
+#   pubblicare una versione identica alla vecchia — che sarebbe il fallimento
+#   silenzioso: registro «fatto», PDF invariato.
+#
+# ⚠️ preCondition `CONTINUE` e non `HALT`: i template documento NON sono a
+#   seed, sono nati a mano sul database di sviluppo. Su un DB costruito da zero
+#   (la CI) la tabella e' vuota e `HALT` fermerebbe la migrazione. `CONTINUE`
+#   salta senza marcare, quindi il changeSet si riprende da solo il giorno in
+#   cui i template esistono.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260816-01-template-bozza-preventivo-slot-indirizzi-mctit.yaml
+
+  - changeSet:
+      id: 20260816-01-template-bozza-preventivo-slot-indirizzi
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        BOZZA del template Preventivo (`test`) sulla forma a slot degli
+        indirizzi: entra il blocco indirizzi.consegna dentro il riquadro
+        Cliente, esce la sezione «Indirizzi documento» in forma di lista con
+        .get(). Un solo slot, come gli altri cinque domini. Non pubblica.
+      preConditions:
+        - onFail: CONTINUE
+        - onError: HALT
+        - and:
+            - tableExists:
+                schemaName: documenti
+                tableName: template_documenti_versioni
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM documenti.template_documenti t
+                  JOIN documenti.template_documenti_versioni v
+                    ON v.template_documento_id = t.id
+                  WHERE t.codice_interno = 'test'
+                    AND v.stato = 'PUBBLICATA' AND v.attivo IS TRUE
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $bozza$
+              DECLARE
+                  c_brief CONSTANT text := 'brief-db-template-preventivo-slot-indirizzi.md';
+
+                  -- Il blocco: copia esatta di quello pubblicato su ord-ven v4,
+                  -- contratto v3, off-comm v3 e ddt-ven v3. Accesso diretto su
+                  -- ogni campo, MAI .get(): se una chiave sparisce il render si
+                  -- pianta in sviluppo invece di stampare un indirizzo monco.
+                  c_blocco CONSTANT text := concat_ws(chr(10),
+                      '          {% if indirizzi.consegna %}',
+                      '            <div class="muted">Luogo di consegna:</div>',
+                      '            {% if indirizzi.consegna.intestazione %}',
+                      '              <div>{{ indirizzi.consegna.intestazione }}</div>',
+                      '            {% endif %}',
+                      '            {% if indirizzi.consegna.via %}',
+                      '              <div>{{ indirizzi.consegna.via }}</div>',
+                      '            {% elif indirizzi.consegna.display %}',
+                      '              <div>{{ indirizzi.consegna.display }}</div>',
+                      '            {% endif %}',
+                      '            {% if indirizzi.consegna.cap or indirizzi.consegna.citta or indirizzi.consegna.prov %}',
+                      '              <div>',
+                      '                {{ [indirizzi.consegna.cap, indirizzi.consegna.citta] | select | join(" ") }}',
+                      '                {%- if indirizzi.consegna.prov %} ({{ indirizzi.consegna.prov }}){% endif %}',
+                      '              </div>',
+                      '            {% endif %}',
+                      '            {% if indirizzi.consegna.stato %}',
+                      '              <div>{{ indirizzi.consegna.stato }}</div>',
+                      '            {% endif %}',
+                      '          {% endif %}',
+                      '');
+
+                  -- Ancora 1: chiusura del riquadro «Cliente» + apertura della
+                  -- colonna di destra. Il blocco entra PRIMA, cioe' dentro il
+                  -- riquadro — stessa posizione degli altri quattro template.
+                  c_ancora CONSTANT text := concat_ws(chr(10),
+                      '        </div>',
+                      '      </div>',
+                      '',
+                      '      <div class="column">',
+                      '        <div class="label">Dati documento</div>');
+
+                  -- Ancora 2: la sezione da TOGLIERE, per intero, riga di
+                  -- chiusura e riga vuota comprese. E' la forma v1 — lista +
+                  -- .get() — che con il dict non gira piu' e che comunque
+                  -- stamperebbe l'indirizzo una seconda volta.
+                  c_vecchia CONSTANT text := concat_ws(chr(10),
+                      '    {% if indirizzi %}',
+                      '      <section class="section">',
+                      '        <div class="label">Indirizzi documento</div>',
+                      '        <div class="box">',
+                      '          {% for ind in indirizzi %}',
+                      '            {% set s = ind.get("snapshot") or {} %}',
+                      '            <div{% if not loop.last %} style="margin-bottom: 8px;"{% endif %}>',
+                      '              <strong>{{ ind.get("tipo_indirizzo_descrizione") or "Indirizzo" }}</strong><br>',
+                      '              {{ s.get("intestazione") or cliente.denominazione or "" }}',
+                      '              {% if s.get("via") %}<br>{{ s.get("via") }}{% endif %}',
+                      '              {% if s.get("cap") or s.get("citta") or s.get("prov") %}',
+                      '                <br>{{ s.get("cap") or "" }} {{ s.get("citta") or "" }}{% if s.get("prov") %} ({{ s.get("prov") }}){% endif %}',
+                      '              {% endif %}',
+                      '              {% if s.get("stato") %}<br>{{ s.get("stato") }}{% endif %}',
+                      '            </div>',
+                      '          {% endfor %}',
+                      '        </div>',
+                      '      </section>',
+                      '    {% endif %}',
+                      '',
+                      '');
+
+                  v_src        documenti.template_documenti_versioni%ROWTYPE;
+                  v_occorrenze integer;
+                  v_html       text;
+                  v_bozza_id   bigint;
+                  v_versione   integer;
+              BEGIN
+                  -- Sorgente: la versione PUBBLICATA attiva, cioe' quella che i
+                  -- preventivi stampano oggi.
+                  SELECT v.* INTO v_src
+                    FROM documenti.template_documenti t
+                    JOIN documenti.template_documenti_versioni v
+                      ON v.template_documento_id = t.id
+                   WHERE t.codice_interno = 'test'
+                     AND v.stato = 'PUBBLICATA'
+                     AND v.attivo IS TRUE;
+
+                  IF NOT FOUND THEN
+                      RAISE EXCEPTION
+                        'Template preventivo (test) senza versione PUBBLICATA attiva: non c''e'' da cosa partire.';
+                  END IF;
+
+                  -- ===== Modifica 1: entra il blocco a slot =====
+                  v_occorrenze := (length(v_src.html_template)
+                                   - length(replace(v_src.html_template, c_ancora, '')))
+                                  / length(c_ancora);
+
+                  IF v_occorrenze <> 1 THEN
+                      RAISE EXCEPTION
+                        'Ancora del riquadro Cliente trovata % volte invece di 1: il template e'' stato ritoccato, rivedere il changeSet invece di pubblicare una copia identica.',
+                        v_occorrenze;
+                  END IF;
+
+                  v_html := replace(v_src.html_template, c_ancora, c_blocco || c_ancora);
+
+                  -- ===== Modifica 2: esce la sezione in forma di lista =====
+                  v_occorrenze := (length(v_html)
+                                   - length(replace(v_html, c_vecchia, '')))
+                                  / length(c_vecchia);
+
+                  IF v_occorrenze <> 1 THEN
+                      RAISE EXCEPTION
+                        'Sezione «Indirizzi documento» trovata % volte invece di 1: il template e'' stato ritoccato.',
+                        v_occorrenze;
+                  END IF;
+
+                  v_html := replace(v_html, c_vecchia, '');
+
+                  -- Rete di sicurezza: nessuna delle due deve poter no-oppare.
+                  IF v_html = v_src.html_template THEN
+                      RAISE EXCEPTION 'Le sostituzioni non hanno cambiato nulla.';
+                  END IF;
+
+                  -- Le due meta' della modifica, verificate sul risultato e non
+                  -- sperate: la forma nuova c'e', la vecchia non c'e' piu'.
+                  IF v_html NOT LIKE '%indirizzi.consegna%' THEN
+                      RAISE EXCEPTION 'Nell''HTML risultante manca il blocco indirizzi.consegna.';
+                  END IF;
+
+                  IF v_html LIKE '%for ind in indirizzi%' THEN
+                      RAISE EXCEPTION
+                        'Nell''HTML risultante resta il ciclo sulla lista `indirizzi`: con il dict di slot il render fallisce.';
+                  END IF;
+
+                  -- ⚠️ NON si verifica l''assenza di `.get(` su tutto il file, e
+                  --    la prima stesura lo faceva: il template ne ha altri 20 su
+                  --    `righe` e `iva`, fuori dal perimetro di questo cantiere
+                  --    (§5 del brief BE: gli altri blocchi non si toccano).
+                  --    🔴 Ne discende che «il Preventivo e' l'ultimo template a
+                  --    leggere con .get()» — §3.1 del brief BE — vale per il
+                  --    blocco INDIRIZZI e non per il template: misurato il
+                  --    2026-08-16, ord-ven ne ha 29, off-comm 37, contratto 21,
+                  --    ddt-ven 11. Quello che si chiude qui e' il §2 del
+                  --    cantiere indirizzi, non il `.get()` in generale.
+
+                  -- Bozza: si riusa quella eventualmente gia' presente, come per
+                  -- il contratto ad agosto; altrimenti se ne crea una nuova.
+                  SELECT b.id, b.versione INTO v_bozza_id, v_versione
+                    FROM documenti.template_documenti_versioni b
+                   WHERE b.template_documento_id = v_src.template_documento_id
+                     AND b.stato = 'BOZZA'
+                     AND b.attivo IS TRUE
+                   ORDER BY b.versione DESC
+                   LIMIT 1;
+
+                  IF FOUND THEN
+                      UPDATE documenti.template_documenti_versioni
+                         SET html_template = v_html,
+                             meta = coalesce(meta, '{}'::jsonb) || jsonb_build_object(
+                                      'origine_versione_id', v_src.id,
+                                      'origine_versione',    v_src.versione,
+                                      'motivo',              'indirizzi a slot, un solo slot consegna',
+                                      'brief',               c_brief)
+                       WHERE id = v_bozza_id;
+
+                      RAISE NOTICE 'template test : riusata la BOZZA v% (id %)', v_versione, v_bozza_id;
+                  ELSE
+                      INSERT INTO documenti.template_documenti_versioni (
+                          template_documento_id, versione, stato, titolo,
+                          formato_template, html_template, css_template,
+                          markdown_template, render_engine_id, page_format,
+                          page_orientation, margin_top_mm, margin_right_mm,
+                          margin_bottom_mm, margin_left_mm, context_schema,
+                          meta, attivo)
+                      SELECT v_src.template_documento_id,
+                             -- Numero successivo PER TEMPLATE: la versione non e'
+                             -- globale, due template possono avere la stessa.
+                             (SELECT max(v2.versione) + 1
+                                FROM documenti.template_documenti_versioni v2
+                               WHERE v2.template_documento_id = v_src.template_documento_id),
+                             'BOZZA',
+                             v_src.titolo,
+                             v_src.formato_template,
+                             v_html,
+                             v_src.css_template,
+                             v_src.markdown_template,
+                             v_src.render_engine_id,
+                             v_src.page_format,
+                             v_src.page_orientation,
+                             v_src.margin_top_mm, v_src.margin_right_mm,
+                             v_src.margin_bottom_mm, v_src.margin_left_mm,
+                             v_src.context_schema,
+                             coalesce(v_src.meta, '{}'::jsonb) || jsonb_build_object(
+                                 'origine_versione_id', v_src.id,
+                                 'origine_versione',    v_src.versione,
+                                 'motivo',              'indirizzi a slot, un solo slot consegna',
+                                 'brief',               c_brief),
+                             v_src.attivo
+                      RETURNING id, versione INTO v_bozza_id, v_versione;
+
+                      RAISE NOTICE 'template test : creata la BOZZA v% (id %)', v_versione, v_bozza_id;
+                  END IF;
+              END
+              $bozza$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Una bozza RIUSATA torna al contenuto della pubblicata da cui era
+              -- stata copiata; una CREATA si cancella.
+              UPDATE documenti.template_documenti_versioni b
+                 SET html_template = s.html_template,
+                     meta = b.meta - 'origine_versione_id' - 'origine_versione'
+                                   - 'motivo' - 'brief'
+                FROM documenti.template_documenti_versioni s
+               WHERE b.stato = 'BOZZA'
+                 AND b.meta ->> 'brief' = 'brief-db-template-preventivo-slot-indirizzi.md'
+                 AND s.id = (b.meta ->> 'origine_versione_id')::bigint
+                 AND b.versione <= s.versione;
+
+              DELETE FROM documenti.template_documenti_versioni b
+               WHERE b.stato = 'BOZZA'
+                 AND b.meta ->> 'brief' = 'brief-db-template-preventivo-slot-indirizzi.md';

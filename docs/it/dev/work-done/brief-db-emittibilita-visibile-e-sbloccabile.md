@@ -16,11 +16,13 @@ vanno **segnalate, non nascoste**: sono lavoro reale.
 > (`20260815-24` … `-32`, `-36`), migrati e verificati, pgTAP verdi, baseline
 > `vendite` senza regressioni, e il giro provato a video.
 >
-> ⚠️ **Una cosa esce dal cantiere ancora da fare, e va detta qui perché non si
-> perda**: il §11.4 — il BE deve **consumare `terne_pronte`** per smettere di
-> raccontare come problema di perimetro un gruppo che non è stato servito perché
-> la pipeline si è rotta. Il DB c'è, il consumatore no. Non riapre questo brief:
-> va portata dove il BE tiene la propria coda.
+> ~~⚠️ **Una cosa esce dal cantiere ancora da fare, e va detta qui perché non si
+> perda**: il §11.4 — il BE deve **consumare `terne_pronte`**.~~
+> ✅ **CONSUMATA il 2026-08-16**, il giorno dopo: il BE legge `terne_pronte`, la
+> incrocia con le terne fallite del giro (che aveva già negli esiti come fatti) e
+> distingue «bloccato dal perimetro» da «l'esecuzione si è rotta, si rilancia».
+> La soppressione è **per gruppo** come il §11.4 punto 3 pretendeva. Consuntivo
+> nel **§12**. Il residuo è durato meno del documento che lo dichiarava.
 >
 > ---
 >
@@ -56,8 +58,22 @@ vanno **segnalate, non nascoste**: sono lavoro reale.
 >   ✅ **RISPOSTA DATA il 2026-08-16, §11**: la corsia non si prevede, si
 >   **misura** — `terne_pronte` sulla diagnostica (`20260815-36`). Incrociata con
 >   le terne fallite, che avete già negli esiti come fatti, distingue «perimetro»
->   da «esecuzione rotta» senza rimettere in gioco `gruppi_coperti`. Resta da
->   **consumarla lato BE**: §11.4.
+>   da «esecuzione rotta» senza rimettere in gioco `gruppi_coperti`.
+>   ~~Resta da **consumarla lato BE**: §11.4.~~ ✅ **consumata il 2026-08-16** — §12.
+>
+> 🟢 **CANTIERE CHIUSO (2026-08-16, sera).** La **prova in app è stata eseguita con
+> successo** su una commessa reale: lucchetto → sblocca → rendi pronta → fattura,
+> il giro si chiude (**§12.6**). La prova ha trovato un difetto che nessuna review
+> aveva visto — «Sblocca commessa» portava a un drawer dove il verbo era nascosto
+> a chi non ha `cambia_stato_commessa`: una via d'uscita promessa e non mantenuta,
+> **corretta lo stesso giorno**.
+>
+> ✅ **Deciso da Tid nella stessa giornata**: `rendi_pronta` **resta** gattato col
+> permesso delle azioni terminali — sbloccare una commessa è governo, non un
+> gesto operativo, e chi fattura passa da chi governa (**§12.7**).
+>
+> **Nessun residuo aperto.** Il cantiere è chiuso per intero: DB, BE/FE, prova in
+> app e decisioni. Chi cerca «cosa resta» qui non trova niente, ed è corretto.
 
 **Correlati:**
 [vw_dash_competenza_attivita](/dbzero/vendite/views/vw_dash_competenza_attivita) ·
@@ -569,10 +585,11 @@ stesso rilascio.
 
 ### 8.4 Cosa resta aperto, dichiarato
 
-- 🔴 **La prova in app di Tid** — sbloccare una commessa dall'interfaccia e
-  fatturarne le attività, una volta. È l'unica voce del §6 ancora senza spunta,
-  ed è l'unica che nessuno può fare al posto suo;
-- 🟠 le due richieste qui sopra;
+- ~~🔴 **La prova in app di Tid** — sbloccare una commessa dall'interfaccia e
+  fatturarne le attività, una volta.~~ ✅ **eseguita con successo il 2026-08-16**,
+  e ha trovato un difetto che nessuna review aveva visto — **§12.6**;
+- ~~🟠 le due richieste qui sopra~~ ✅ **fatte dal DB** (§9) e **consumate dal
+  BE/FE** (§10, §12);
 - ℹ️ il **dettaglio dei motivi è prosa italiana del BE** anche in locale EN
   (stesso trade-off già accettato per `ultimo_errore.message`): non lo tocchiamo
   in questa slice, ma è scritto perché non venga scambiato per una svista.
@@ -1021,9 +1038,10 @@ fotografavano decisioni superate, non debito:
 
 ### 10.5 Cosa resta
 
-- 🔴 **La prova in app di Tid** (§8.4): sbloccare una commessa dall'interfaccia e
-  fatturarne le attività, una volta. È l'unica voce del §6 ancora senza spunta;
-- 🟠 **la domanda del §10.6**, aperta e non risolta di nostra iniziativa;
+- ~~🔴 **La prova in app di Tid** (§8.4)~~ ✅ **eseguita con successo il
+  2026-08-16** — §12.6;
+- ~~🟠 **la domanda del §10.6**, aperta e non risolta di nostra iniziativa~~
+  ✅ **risposta dal DB** (§11, `terne_pronte`) e **consumata dal BE** (§12);
 - ℹ️ il caso `E_FATTURAZIONE_MIRATA_TRONCATA` non è mai stato visto in esercizio
   (le mirate sono da pochi gruppi): la policy e il messaggio ci sono, la prova a
   video no. È dichiarato, non dimenticato.
@@ -1164,6 +1182,9 @@ finché il changeSet non è applicato — è il rosso corretto.
 
 ### 11.4 Cosa serve da voi
 
+> ✅ **Fatto il 2026-08-16** — consuntivo, correzioni della review e il punto
+> sul ramo a vuoto nel **§12**.
+
 1. **leggere `terne_pronte`** nella `SELECT` di `diagnostica_gruppi` e portarla
    in `GruppoDiagnosi`;
 2. su un gruppo `NON_SERVITO` la cui corsia è fra le **terne fallite** del giro,
@@ -1178,3 +1199,179 @@ finché il changeSet non è applicato — è il rosso corretto.
 costo era una colonna in una funzione che quella passata la faceva già, e il
 messaggio sbagliato manda una persona a controllare emittente e utility che sono
 a posto. Fra dichiarare un difetto e toglierlo a quel prezzo, si toglie.
+
+---
+
+## 12. Consuntivo BE sul §11.4 (2026-08-16)
+
+> **Chi scrive:** BE (`dev/backend-tid`). Chiude il residuo che il timbro di
+> chiusura dichiarava, il giorno dopo che è stato dichiarato.
+
+### 12.1 Cosa è stato fatto
+
+| # | Richiesta §11.4 | Esito |
+| --- | --- | --- |
+| 1 | leggere `terne_pronte` e portarla in `GruppoDiagnosi` | ✅ colonna nella `SELECT` di `diagnostica_gruppi` + campo nel TypedDict |
+| 2 | su un `NON_SERVITO` la cui corsia è fra le fallite, sopprimere la diagnosi di perimetro e dire che si riprova | ✅ motivo nuovo `ESECUZIONE_FALLITA`: «il perimetro è valido, si può rilanciare l'emissione su questo gruppo» |
+| 3 | ⚠️ soppressione **per gruppo**, non per giro | ✅ il contesto entra nel classificatore, che decide riga per riga. Presidiato dal test `test_corsia_rotta_e_testata_bloccata_convivono_nello_stesso_giro` |
+
+**Le terne fallite non sono una query nuova**: sono un fatto che il giro ha
+appena registrato (`esiti` per terna, con `ok` False). Si leggono da lì — e
+`_terne_fallite` va chiamata **prima** della compattazione del `result`, che
+toglie `esiti`.
+
+### 12.2 L'ordine dei rami è la regola
+
+Nel classificatore il ramo nuovo sta **dopo** la testata bloccata e **prima** del
+fallback, e non è un dettaglio:
+
+- `terne_pronte` è popolata dal predicato di **riga** (`e_pronta`), che non
+  guarda l'emittibilità della testata. Quindi anche una commessa in `BOZZA` ha
+  la sua corsia elencata;
+- se quella corsia si rompe per un'**altra** commessa della stessa terna, senza
+  l'ordine giusto il gruppo bloccato si sentirebbe dire «riprova» — e riprovare
+  non lo sbloccherebbe **mai**;
+- una testata bloccata è una causa **certa** e vince comunque; la corsia rotta
+  spiega il caso che restava, quello che prima cadeva nel fallback e si prendeva
+  una causa di perimetro inventata.
+
+Presidiato da `test_testata_bloccata_vince_sulla_corsia_rotta`.
+
+### 12.3 ⚠️ Un difetto che solo la prova sul DB vero poteva trovare
+
+`terne_pronte` è `jsonb`, e su questa connessione **psycopg la consegna come
+STRINGA**, non come oggetto Python già decodificato. Scritta come
+`list(valore or [])` — che è come l'avevo scritta — la stringa `'[]'` diventa
+**`['[', ']']`**: due elementi finti dove il DB diceva «nessuna corsia».
+
+I test con mock **non potevano vederlo**, perché un mock consegna già una lista:
+sarebbero rimasti verdi su un comportamento inesistente. È emerso solo perché la
+verifica è stata fatta anche contro il database reale, controllando l'invariante
+«lista vuota ⟺ `n_pronte` = 0» — che rispondeva `False`.
+
+Corretto con `_jsonb_lista`, lo stesso pattern già usato in
+`core/db/email_repository` e `core/db/auth_repository`, e presidiato con **tre
+test** che asseriscono esplicitamente il caso stringa, il caso `'[]'` e il caso
+già-lista.
+
+### 12.4 Verifiche
+
+- suite backend **3674 verdi** (8 test nuovi: 4 sul classificatore, 1
+  sull'handler, 3 sulla decodifica jsonb);
+- `diagnostica_gruppi` provata **sul DB vero**: `terne_pronte` arriva come
+  `list`, e l'invariante «lista vuota ⟺ `n_pronte` = 0» regge;
+- build FE verde, guard i18n verde, gunicorn ricaricato.
+
+### 12.5 Correzioni dalla review critica (2026-08-16, sera)
+
+La review multi-finder sul codice del §12.1 ha trovato **e corretto** quattro
+cose, una delle quali smentiva una frase di questo stesso documento:
+
+1. ⭐ **Il §12.1 dichiarava la soppressione per-gruppo come chiusa, ma copriva
+   solo il giro PARZIALE.** Sul giro a **vuoto** con `falliti > 0` il ramo
+   per-errori-terna sollevava **prima** di ogni diagnosi — soppressione
+   per-giro: una commessa in BOZZA nello stesso giro della corsia rotta
+   restava muta, e il job non-terminale veniva ritentato 5 volte senza che
+   nessuno la nominasse. La motivazione storica di quel ramo («la diagnosi
+   racconterebbe la cosa sbagliata») era caduta proprio con `terne_pronte`:
+   ora la diagnosi gira anche lì, le cause non-di-corsia entrano nel
+   messaggio («Inoltre: …») e tutte nel context. Il test che fissava la
+   decisione superata è stato riscritto, non messo a tacere;
+2. **`not e.get("ok")` scambiava «chiave assente» per «fallito»**: gli esiti
+   dry-run non hanno la chiave `ok`, e ogni corsia sarebbe risultata rotta →
+   `e.get("ok") is False`;
+3. **il testo affermava «il perimetro è valido»**, un claim che il codice non
+   verifica (la corsia è condivisa fra commesse, il codice d'errore della
+   terna non è ispezionato): riformulato su ciò che È misurato, con l'uscita
+   onesta «se l'errore si ripete, verificare l'esito del giro»;
+4. **il decoder jsonb del §12.3 era la quarta copia privata** del pattern — lo
+   stesso file dichiara `_decode_jsonb` «unico punto di decodifica» 96 righe
+   sopra, e il BB `jsonb_out` è a catalogo con «da usare in OGNI lettura raw».
+   Sostituito, guadagnando anche il fail-soft sul percorso del giro a vuoto
+   (un payload malformato non scavalca più il messaggio parlante).
+
+Due rischi **dichiarati e non corretti**, con la ragione: il drift dei nomi
+chiave della terna (verificato da test su entrambi i lati + pgTAP; il fail-fast
+scavalcherebbe il messaggio parlante) e l'edge `fino_a_stato` anteriore
+all'emissione via API diretta (fermata scelta dall'operatore, fallback
+impreciso ma non dannoso).
+
+### 12.6 ✅ La prova in app — eseguita con successo (2026-08-16)
+
+**La catena è provata a video, su una commessa reale.** Tid ha percorso i cinque
+passi su `CMM-20260610175449872-e059eb` (la commessa 108 del §1, una delle cinque
+di giugno nate prima del ponte): lucchetto col motivo → riga non selezionabile →
+«Fattura questo» disabilitato → «Sblocca commessa» → «Rendi pronta» → riga
+selezionabile → emissione. **Il giro si chiude.**
+
+⚠️ **La prova ha trovato un difetto che nessuna review aveva visto**, ed è
+esattamente il genere di cosa per cui una prova in app esiste.
+
+Ai primi tentativi «Rendi pronta» **non compariva affatto** nel drawer. Non era
+un dato vecchio né una commessa incoerente: è il **gate del permesso**. Il verbo
+sta dietro `cambia_stato_commessa`, e il gate FE — per convenzione di progetto —
+**nasconde** il pulsante a chi non ha l'azione invece di disabilitarlo. Con
+un'utenza SUPER_ADMIN (bypass totale) tutto si vede correttamente.
+
+**Il difetto non è il permesso: è che ci portavamo l'operatore.** La sequenza
+era: lucchetto → «Sblocca commessa» → *drawer senza il verbo*. Una via d'uscita
+promessa e non mantenuta, che è **peggio di nessuna via d'uscita** — il vicolo
+cieco lo si scopre solo dopo averlo imboccato. È la stessa classe di difetto che
+questo brief ha passato due settimane a togliere, reintrodotta dalla scorciatoia
+che doveva chiuderlo.
+
+**Corretto lo stesso giorno**: «Sblocca commessa» compare solo a chi ha davvero
+`cambia_stato_commessa`, e il tooltip del lucchetto ha **due voci** — a chi può
+sbloccare indica il verbo, a chi non può dice che serve il permesso e di
+chiedere a un amministratore. Nominare l'ostacolo vero invece di indicare una
+porta chiusa.
+
+### 12.7 ✅ Decisione di Tid — `rendi_pronta` resta gattato con le azioni terminali
+
+Emersa dalla prova, e non è una svista di nessuno: è una **sovrapposizione di
+date**.
+
+- Il **2026-07-27** nasce `cambia_stato_commessa`, per **chiudi/annulla**: portano
+  la commessa in uno stato *terminale irreversibile*, e gattarli è giusto. Il
+  commento nel codice lo dice: «un solo codename per i tre verbi»;
+- il **2026-08-04**, una settimana dopo, questo cantiere rende manuale
+  `rendi_pronta` — che è l'**opposto**: non distrugge, **sblocca**. Ha ereditato
+  un cancello disegnato per le azioni irreversibili.
+
+**Conseguenza pratica**: un operatore che può fatturare (`genera_fatture_lotti`)
+ma non cambiare stato vede il lavoro bloccato, ne legge il motivo, e non può
+farci niente — deve chiedere a un altro. Può essere **esattamente ciò che si
+vuole** (sbloccare una commessa è una decisione di governo, non un gesto
+operativo) oppure un effetto collaterale non voluto.
+
+Le due strade erano: lasciare com'è, oppure separare i codename — che significa
+un'azione di processo nuova a catalogo, quindi lavoro DB e un brief.
+
+> 🟢 **DECISO da Tid il 2026-08-16: si lascia com'è.** Sbloccare una commessa è
+> una decisione di **governo**, non un gesto operativo: è corretto che chi
+> fattura debba passare da chi governa. Nessun brief al DB, nessuna azione di
+> processo nuova.
+
+**Cosa comporta, scritto perché non si riapra fra sei mesi**: un operatore con
+`genera_fatture_lotti` ma senza `cambia_stato_commessa` vede il lavoro bloccato,
+ne legge il motivo, e **chiede a chi ha il permesso**. Il comportamento è
+onesto — non vede una scorciatoia che non porta da nessuna parte, e il tooltip
+gli dice che serve il permesso — quindi non è un difetto da correggere: è la
+divisione dei ruoli, resa visibile.
+
+⚠️ **Se un giorno si volesse cambiare idea**, la strada è quella scartata oggi:
+un'azione di processo dedicata (es. `rendi_pronta_commessa`) a catalogo DB, e il
+gate FE che punta a quella invece che a `cambia_stato_commessa`
+(`DashboardCompetenzaView` e `CommessaGestioneDrawer`). Non è un lavoro grande —
+è una decisione, ed è già stata presa.
+
+### 12.8 Cosa resta
+
+- ℹ️ il messaggio nuovo (`ESECUZIONE_FALLITA`) non è mai stato visto a video: per
+  vederlo serve una corsia che si rompe davvero durante un giro parziale, che è
+  un caso raro. Il percorso è coperto dai test, la prova a video no — dichiarato,
+  non dimenticato;
+- ~~🟠 la domanda del §12.7~~ ✅ **decisa il 2026-08-16**: si lascia com'è (§12.7).
+
+🟢 **Nessun residuo aperto: il cantiere è chiuso per intero.** Questo documento
+non ha più voci in sospeso — l'unica nota rimasta è informativa e dichiarata.

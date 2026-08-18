@@ -1,0 +1,194 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL RIFERIMENTO ALL'ORDINE SUL RESO DEVE COMBACIARE — slice S6a
+#   trgfn_resi_righe_guard_origine_coerente + trigger su vendite.resi_righe.
+#   Brief: docs/it/dev/work-in-progress/brief-design-partita-merce-generalizzata.md §8.5
+#
+# ── IL BUCO ─────────────────────────────────────────────────────────────
+#
+#   `vendite.resi_righe` porta DUE riferimenti alla merce resa:
+#       ddt_riga_id     NOT NULL   — la riga di merce da cui e' tornata
+#       ordine_riga_id  NULLABLE   — la riga d'ordine, quando c'e'
+#
+#   Il secondo e' una **denormalizzazione**: si ricava dal fulfillment della
+#   prima. Ma nessun vincolo lo verifica, e il costo di sbagliarlo non e'
+#   estetico.
+#
+#   ⚠️ **Chi lo legge, e cosa succede se e' sbagliato**:
+#   `fn_ordine_riga_qta_riconsegna` calcola il residuo dell'ORDINE sommando i
+#   resi per `ordine_riga_id`. Con quel campo vuoto su merce ordinata, la merce
+#   torna indietro e **l'ordine non se ne accorge**: resta evaso, e non si
+#   rispedisce nulla. Con quel campo su una riga d'ordine SBAGLIATA, si riapre
+#   il residuo di un ordine che non c'entra.
+#
+#   ⭐ Fino al 2026-08-17 il campo vuoto faceva anche sparire il reso dal conto
+#   della merce. Quel danno e' gia' chiuso — la partita si aggancia a
+#   `ddt_riga_id`, che e' obbligatorio (slice S4) — ma il residuo d'ordine
+#   resta appeso a questa colonna, e quindi il guard serve ancora.
+#
+# ── LA REGOLA: un bicondizionale, non una meta' ─────────────────────────
+#
+#       la riga di DDT ha un fulfillment  ->  ordine_riga_id NON vuoto
+#                                              e coincidente con uno di quelli
+#       la riga di DDT non ne ha          ->  ordine_riga_id VUOTO
+#
+#   Le due direzioni sono lo stesso errore visto dai due lati: un riferimento
+#   che non descrive la merce. Presidiarne una sola lascerebbe passare l'altra.
+#
+#   ⚠️ Il fulfillment ammette in teoria PIU' righe d'ordine per una riga di DDT
+#   (l'unicita' e' sulla coppia). Il guard chiede che il valore sia **uno di
+#   quelli**, non «il primo»: sarebbe una scelta arbitraria travestita da
+#   controllo.
+#
+# ── PERCHE' E' SICURO INTRODURLO ORA ────────────────────────────────────
+#
+#   Misurato il 2026-08-17: **0 violazioni** sulle 17 righe di reso esistenti.
+#   E il backend fa gia' la cosa giusta — `_crea_riga` **deriva**
+#   `ordine_riga_id` dallo snapshot della riga DDT, il chiamante passa solo
+#   `ddt_riga_id` (`resi_service.py`, «Articolo/descrizione/UoM/factor/
+#   ordine_riga_id copiati dalla riga DDT»). Il guard non cambia il percorso
+#   normale: copre le scritture che non ci passano.
+#
+#   ⚠️ Verificati anche gli 11 file pgTAP che inseriscono in `resi_righe`:
+#   tutti ricavano `ordine_riga_id` dal fulfillment, quindi nessuno diventa
+#   rosso. Il controllo e' stato fatto PRIMA di scrivere il guard, ed e' la
+#   ragione per cui questo changeSet esiste in questa forma e non piu' stretta.
+#
+# ── FASE `_a20_`, non `_a10_` ───────────────────────────────────────────
+#
+#   Dopo i guard di esistenza dei padri (`_a10_`, che verificano che la riga
+#   DDT e la riga d'ordine siano attive) e accanto a
+#   `trg_resi_righe_a20_guard_quantita_ins_upd`, che e' l'altro guard di merito
+#   della stessa tabella. Un controllo di coerenza fra due campi ha senso solo
+#   dopo che entrambi puntano a qualcosa che esiste.
+#
+# ── ⚠️ NIENTE preCondition SUL CODICE ERRORE, ed e' una lezione ─────────
+#
+#   Il primo tentativo verificava con una `sqlCheck` che
+#   `E_RESO_ORIGINE_INCOERENTE` fosse gia' in `config.codici_errore`. Il
+#   migrate e' fallito: **«Expected '1' got '0'»**.
+#
+#   Il motivo e' l'ordine delle fasi. Liquibase applica `20_code` PRIMA di
+#   `80_data`, quindi quando questo changeSet gira il seed del codice non e'
+#   ancora passato — e non lo sara' mai, per costruzione. Una preCondition su
+#   un dato di `80_data` dentro un changeSet di `20_code` **non puo'** essere
+#   soddisfatta al primo migrate.
+#
+#   E non serve: il codice viene risolto a RUNTIME da `fn_log_and_raise_error`,
+#   cioe' quando il guard scatta — non alla creazione della funzione. Il
+#   presidio che il codice esista sta altrove (il cancello del terzo lato sui
+#   codici non dichiarati), che e' la sua sede giusta.
+#
+# Dipendenze: vendite.resi_righe, vendite.ordini_righe_fulfillment,
+#   script.fn_log_and_raise_error, codice E_RESO_ORIGINE_INCOERENTE
+#   (config/codici_errore.csv + messaggi_errore.csv, id 909) — risolto a
+#   runtime, NON verificabile qui: vedi il riquadro sopra.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260817-13-create-trgfn-resi-righe-guard-origine-coerente-mctit.yaml
+
+  - changeSet:
+      id: 20260817-13-create-trgfn-resi-righe-guard-origine-coerente
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        S6a della partita generalizzata: guard di coerenza fra resi_righe.ordine_riga_id
+        e il fulfillment della riga DDT resa. Bicondizionale — order-backed =>
+        valorizzato e coincidente, standalone => vuoto. Chiude il buco per cui un
+        riferimento all'ordine sbagliato o mancante lascia il residuo dell'ordine
+        non riaperto. 0 violazioni misurate, backend gia' conforme (deriva il campo).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: ordini_righe_fulfillment
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_righe_guard_origine_coerente()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: coerenza fra il riferimento all'ordine portato dalla riga
+              --   di reso e il fulfillment della riga di DDT da cui la merce e'
+              --   tornata. `ordine_riga_id` e' una denormalizzazione, e un
+              --   riferimento che non descrive la merce lascia il residuo
+              --   dell'ordine non riaperto (fn_ordine_riga_qta_riconsegna).
+              DECLARE
+                  v_n_origini  integer;
+                  v_combacia   boolean;
+              BEGIN
+                  -- Quante righe d'ordine sono evase da questa riga di DDT, e se
+                  -- il valore proposto e' fra quelle. Una sola scansione.
+                  SELECT COUNT(*),
+                         COALESCE(bool_or(f.ordine_riga_id = NEW.ordine_riga_id), false)
+                    INTO v_n_origini, v_combacia
+                    FROM vendite.ordini_righe_fulfillment f
+                   WHERE f.ddt_riga_id = NEW.ddt_riga_id;
+
+                  -- Riga di merce ORDER-BACKED: il riferimento va valorizzato, e
+                  -- dev'essere UNA delle origini. Non «la prima»: il fulfillment
+                  -- ne ammette piu' di una, e scegliere sarebbe arbitrio.
+                  IF v_n_origini > 0 AND NOT v_combacia THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_righe_guard_origine_coerente','E_RESO_ORIGINE_INCOERENTE',
+                      jsonb_build_object('ddt_riga_id',    NEW.ddt_riga_id,
+                                         'ordine_riga_id', NEW.ordine_riga_id,
+                                         'origini_valide', v_n_origini,
+                                         'motivo',         CASE WHEN NEW.ordine_riga_id IS NULL
+                                                                THEN 'mancante su merce ordinata'
+                                                                ELSE 'non fra le origini della riga DDT' END),
+                      NEW.tx_id,
+                      -- ⚠️ Il valore VARIADIC non e' decorativo: senza almeno un
+                      -- argomento la risoluzione dell'overload fallisce e l'errore
+                      -- che esce e' «la funzione non esiste» (42883) invece del
+                      -- codice di dominio. Un `throws_ok` senza SQLSTATE lo
+                      -- accetterebbe, e il guard sembrerebbe funzionare.
+                      NEW.ddt_riga_id::text, NEW.ordine_riga_id::text);
+                  END IF;
+
+                  -- Riga di merce SENZA ordine (standalone, o aggiunta a mano):
+                  -- un riferimento qui riaprirebbe il residuo di un ordine che
+                  -- non ha spedito questa merce.
+                  IF v_n_origini = 0 AND NEW.ordine_riga_id IS NOT NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_righe_guard_origine_coerente','E_RESO_ORIGINE_INCOERENTE',
+                      jsonb_build_object('ddt_riga_id',    NEW.ddt_riga_id,
+                                         'ordine_riga_id', NEW.ordine_riga_id,
+                                         'origini_valide', 0,
+                                         'motivo',         'valorizzato su merce senza ordine'),
+                      NEW.tx_id,
+                      NEW.ddt_riga_id::text, NEW.ordine_riga_id::text);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_resi_righe_guard_origine_coerente()
+              IS 'Guard di coerenza dell''origine sul reso (partita merce generalizzata S6a): resi_righe.ordine_riga_id deve combaciare col fulfillment di resi_righe.ddt_riga_id — valorizzato e coincidente con UNA delle origini se la riga di DDT e'' order-backed, VUOTO se non lo e''. Bicondizionale: le due direzioni sono lo stesso errore visto dai due lati. Perche'' serve: `ordine_riga_id` e'' una denormalizzazione ricavabile dal fulfillment, e la legge fn_ordine_riga_qta_riconsegna per riaprire il residuo dell''ordine — sbagliata o vuota, la merce torna e l''ordine non se ne accorge. ⚠️ Il fulfillment ammette piu'' righe d''ordine per una riga di DDT (unicita'' sulla COPPIA): si chiede che il valore sia una delle origini, non «la prima». Il backend deriva gia'' il campo dallo snapshot della riga DDT: questo guard copre le scritture che non passano dal service. Errore E_RESO_ORIGINE_INCOERENTE (DATO_ERRATO).';
+
+              DROP TRIGGER IF EXISTS trg_resi_righe_a20_guard_origine_coerente_ins_upd ON vendite.resi_righe;
+              CREATE TRIGGER trg_resi_righe_a20_guard_origine_coerente_ins_upd
+              BEFORE INSERT OR UPDATE OF ddt_riga_id, ordine_riga_id ON vendite.resi_righe
+              FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_resi_righe_guard_origine_coerente();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_resi_righe_a20_guard_origine_coerente_ins_upd ON vendite.resi_righe;
+              DROP FUNCTION IF EXISTS vendite.trgfn_resi_righe_guard_origine_coerente();
