@@ -9,6 +9,7 @@
 // flip DDT) — nessun cambia-stato generico.
 
 import api from '../../../core/api'
+import { generateIdempotencyKey } from '../../../core/utils/idempotency'
 
 const BASE = '/vendite/resi'
 
@@ -129,6 +130,35 @@ export function exportDaAccreditare(params = {}) {
 
 export function exportDaRiconsegnare(params = {}) {
   return api.get(`${BASE}/da-riconsegnare/export/`, { params, responseType: 'blob' })
+}
+
+// --- Verbo dell'accredito (nota di credito sui resi) ---
+
+// Accredita N righe di reso in un giro solo: genera le RETTIFICHE da cui
+// nascera' la nota di credito al prossimo giro di fatturazione.
+// ⭐ Un endpoint solo, e la riga singola e' una lista di uno (D-NC-7): due
+// superfici per lo stesso verbo divergerebbero su permessi e forma dell'esito.
+// Risposta 200 SEMPRE, anche a righe tutte rifiutate: e' un REPORT
+// { esito: COMPLETATO|PARZIALE|ERRORE, totale, ok, accrediti[], falliti[] }.
+// Idempotency-Key: modifica lo stato di un documento fiscale.
+export function accreditaRighe(resiRigaIds) {
+  return api.post(
+    `${BASE}/accrediti/`,
+    { resi_riga_ids: resiRigaIds },
+    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+  )
+}
+
+// Annulla l'accredito di una riga (il caso «ho cliccato la riga sbagliata»):
+// toglie le rettifiche e l'accredito torna dovuto in coda. Motivo obbligatorio.
+// ⛔ NON annulla il documento: quella e' la pipeline di fatturazione — e il
+// reset di lotto fa l'opposto, RIGENERA la nota al giro dopo.
+export function annullaAccredito(resoId, rigaId, motivo) {
+  return api.post(
+    `${BASE}/${resoId}/righe/${rigaId}/annulla-accredito/`,
+    { motivo },
+    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+  )
 }
 
 // --- Dominio DDT (sorgente): righe con residuo rendibile ---

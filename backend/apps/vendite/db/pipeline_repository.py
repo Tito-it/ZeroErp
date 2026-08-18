@@ -318,6 +318,14 @@ class VenditePipelineRepository:
         # ancora — l'ordine e' presidiato da `_TASK_ORDER_DEPENDENCIES` in
         # `pipeline_step_executor`, non lasciato alla sola configurazione.
         "genera_scadenze_lotto": "vendite.fn_genera_scadenze_lotto",
+        # Legame documentale delle note di credito (N10 + BE-8). Vive nello step
+        # DEFINITIVA e va DOPO `numera_fatture`: prima della numerazione il reset
+        # di lotto puo' ancora passare, e `fn_cleanup_fatture_by_ids` non
+        # cancella `vendite.fatture_rettifiche` — la FK non e' ON DELETE CASCADE,
+        # quindi il reset sbatterebbe su una violazione grezza dentro una
+        # funzione che i suoi chiamanti danno per infallibile. L'ordine e'
+        # presidiato da `_TASK_ORDER_DEPENDENCIES`, non lasciato al solo seed.
+        "popola_fatture_rettifiche": "vendite.fn_popola_fatture_rettifiche",
     }
 
     # Scopo: Gestisce `_to_jsonb_param` nel flusso applicativo del modulo.
@@ -1656,6 +1664,25 @@ class VenditePipelineRepository:
                 "SELECT vendite.fn_numera_fattura_opz_emessa(%s)",
                 [fattura_id],
             )
+
+    # Scopo: Proietta il legame documentale di UNA fattura via
+    #        `vendite.fn_popola_fatture_rettifiche`: da cio' che le righe gia'
+    #        dicono (`fatture_righe.riga_rettificata_id`, scritto dal generatore
+    #        righe) alla coppia documento-a-documento `vendite.fatture_rettifiche`,
+    #        che serve al blocco `DatiFattureCollegate` di una TD04.
+    #        Ritorna quante coppie ha aggiunto.
+    # ⭐ Idempotente (`ON CONFLICT DO NOTHING`) e non cancella mai: rieseguirla su
+    #    un documento gia' proiettato non ha effetti. E' la proprieta' su cui si
+    #    appoggia il RESUME del task — senza, un rilancio raddoppierebbe.
+    def popola_fatture_rettifiche(self, fattura_id: int) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT vendite.fn_popola_fatture_rettifiche(%s)",
+                [int(fattura_id)],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return int(row[0])
 
     # Scopo: Accoda in vendite.fatture_stampa_coda una riga PENDING per ogni
     #        fattura del lotto (outbox stampa, Fase C C-2c).

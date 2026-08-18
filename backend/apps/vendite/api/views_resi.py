@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import Any
 
 from django.http import HttpResponse, JsonResponse
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
@@ -558,6 +559,97 @@ class ApiResoRiapriRiconsegna(DomainAPIView):
             handler=lambda payload: resi_service.riapri_riconsegna(
                 int(reso_id), payload.get("righe")
             ),
+        )
+
+
+class ApiResiAccrediti(DomainAPIView):
+    """POST /api/v1/vendite/resi/accrediti/ — accredita N righe di reso
+    (genera le rettifiche da cui nascera' la nota di credito).
+    Body: `{resi_riga_ids: [5797, 5799, ...]}`.
+
+    ⭐ **Un endpoint solo, e la riga singola e' una lista di uno** (D-NC-7): due
+    superfici per lo stesso verbo divergerebbero su permessi, conferme e forma
+    della risposta, e il frontend avrebbe due strade da tenere allineate per
+    sempre.
+
+    Risposta 200 con un REPORT a tre stati
+    (`COMPLETATO` | `PARZIALE` | `ERRORE`), `accrediti` con le rettifiche
+    create e `falliti` con codice e messaggio per riga.
+    ⚠️ **Anche «tutte fallite» e' 200**: il verbo non e' l'atto fiscale — il
+    documento nasce dopo, nel giro di fatturazione — quindi un esito parziale
+    non lascia mai mezzo documento, lascia righe che restano in coda. E
+    sollevare butterebbe via l'esito delle righe riuscite."""
+
+    area_funzionale = "vendite"
+    # Porta di un documento fiscale: il presidio sta qui e non nella madre, che
+    # deve restare usabile da un processo autorizzato (P-1, azione id 31).
+    post_permission = "accredita_riga_reso"
+
+    @extend_schema(
+        summary="Accredita righe di reso (massivo)",
+        request=inline_serializer(
+            name="ResiAccreditiRequest",
+            fields={
+                "resi_riga_ids": serializers.ListField(
+                    child=serializers.IntegerField(), allow_empty=False,
+                ),
+            },
+        ),
+        responses={200: OpenApiTypes.OBJECT},
+        tags=["vendite-resi"],
+    )
+    # Scopo: Accredita le righe di reso selezionate (fan-out isolato per riga).
+    def post(self, request: Request) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda payload: resi_service.accredita_righe_reso(
+                payload.get("resi_riga_ids"),
+            ),
+            # Modifica di stato su un documento fiscale: la chiave e'
+            # obbligatoria (api.md §Idempotency-Key).
+            require_idempotency_key=True,
+        )
+
+
+class ApiResoRigaAnnullaAccredito(DomainAPIView):
+    """POST /api/v1/vendite/resi/<reso_id>/righe/<riga_id>/annulla-accredito/
+    — annulla l'accredito di una riga di reso via fn madre
+    `fn_annulla_accredito_riga_reso` (D-NC-11). Body: `{motivo: "..."}`,
+    obbligatorio.
+
+    E' il caso «ho cliccato la riga sbagliata», e sta **a monte** del
+    documento: porta le rettifiche ad ANNULLATA e cancella le righe di ponte,
+    cosi' l'accredito torna dovuto in coda.
+
+    ⛔ **Non** e' l'annullo del DOCUMENTO: quello e' gia' la pipeline, ed e' lo
+    stesso delle fatture. ⚠️ E il reset di lotto **non** annulla l'accredito:
+    la nota di credito viene RIGENERATA al giro dopo, perche' la merce resa non
+    e' cambiata. Le due strade restano distinte, e il messaggio del DB dice
+    all'operatore quale prendere."""
+
+    area_funzionale = "vendite"
+    # Stesso permesso dell'accredito: chi puo' accreditare puo' disfare il
+    # proprio click. Due codename per le due facce dello stesso atto si
+    # sfilerebbero al primo profilo configurato a mano.
+    post_permission = "accredita_riga_reso"
+
+    @extend_schema(
+        summary="Annulla l'accredito di una riga di reso",
+        request=inline_serializer(
+            name="ResoAnnullaAccreditoRequest",
+            fields={"motivo": serializers.CharField()},
+        ),
+        responses={200: OpenApiTypes.OBJECT},
+        tags=["vendite-resi"],
+    )
+    # Scopo: Annulla l'accredito della riga (fn madre atomica DB).
+    def post(self, request: Request, reso_id: int, riga_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda payload: resi_service.annulla_accredito_riga_reso(
+                int(reso_id), int(riga_id), payload.get("motivo"),
+            ),
+            require_idempotency_key=True,
         )
 
 

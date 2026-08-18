@@ -900,8 +900,12 @@ significa ereditare il difetto e renderlo più difficile da togliere. **Va sanat
 nella stessa slice**: `fn_build_fattura_key` conosce già emittente e utility —
 li ha calcolati tre righe più su — e deve solo passarli.
 
-⚠️ Il perimetro emittente è un cantiere **attivo** (`dev/db-tid`): questo
-rilievo va portato anche lì, perché è un pezzo dello stesso quadro.
+⚠️ ~~Il perimetro emittente è un cantiere **attivo** (`dev/db-tid`): questo
+rilievo va portato anche lì, perché è un pezzo dello stesso quadro.~~ —
+**aggiornato il 2026-08-18**: quel cantiere è
+[**chiuso e archiviato**](../work-done/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md).
+Il rilievo **resta in carico qui**, dentro **P-6** (i registri per emittente),
+che ne ha ereditato anche il residuo §11.11.
 
 #### 12.4-bis.5 La fattura elettronica
 
@@ -2003,8 +2007,9 @@ due registri in seed hanno entrambi i campi `NULL`, quindi il livello 4 del
 fallback resta quello scelto), **sì** appena esisterà un registro intestato — ed
 è l'intento. La parità va **misurata**, non assunta: è il punto 7 di N0.
 
-⭐ Va segnalata anche al cantiere **perimetro emittente**, che è aperto: è un
-pezzo dello stesso quadro.
+⭐ È un pezzo dello stesso quadro del **perimetro emittente** — cantiere
+[**chiuso il 2026-08-18**](../work-done/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md),
+quindi non c'è nessuno a cui segnalarla: la porta chi tiene **P-6**.
 
 ---
 
@@ -2258,7 +2263,13 @@ Oltre a quelle già citate slice per slice, sei che valgono per tutto il giro.
 | --- | --- | --- |
 | **PG-1** | 🔴 **Il processo rimborsi non esiste**, e una NC **fuori dalla banda del minimo** non ha né rata né fondo automatico | §12.4-bis.7. Dentro la banda il fondo fattura la regola da sé; fuori, il credito resta **senza un posto che dica «va rimborsato»**. La strada è nominata dal modello (fondo `origine = MANUALE`, motivo obbligatorio, *«arriva dal processo rimborsi di `pagamenti`»*) ma non è costruita. È la domanda **D8** di [brief-incassi-riconciliazione-rate-promemoria.md](brief-incassi-riconciliazione-rate-promemoria.md), ora precisata |
 
-### 17.4 Al cantiere perimetro emittente
+### 17.4 ~~Al cantiere perimetro emittente~~ → a **P-6**, dentro questo cantiere
+
+> ⚠️ **Aggiornato il 2026-08-18.** Il cantiere perimetro emittente è
+> [**chiuso e archiviato**](../work-done/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md):
+> EM-1 non ha più un destinatario esterno. Rientra in **P-6** — i registri di
+> numerazione per emittente sono materia sua — insieme al residuo §11.11 che
+> quel cantiere gli ha lasciato in eredità come prerequisito.
 
 | # | Cosa | Perché |
 | --- | --- | --- |
@@ -3231,6 +3242,14 @@ nota di credito» promette un documento che l'operatore poi non trova.
 worker/cron. Appena il verbo esiste, un giro non presidiato emetterà il
 documento. È il motivo per cui **B4 deve essere finito prima** di F1 (§25).
 
+⚠️ **E il bottone si spegne quando l'accredito non è possibile** (nota del team
+DB, 2026-08-18, accolta). Il caso vivo è il kit nato senza `componente_di`: la
+madre lo rifiuta al clic con `E_ACCREDITO_KIT_SENZA_PADRE`, ma **il rimedio non
+è dell'operatore** — sta sul documento di origine. Far cliccare per restituire
+un errore che chi clicca non può risolvere è peggio di non offrire il verbo:
+dove la coda espone già il motivo di blocco (`blocco_codice`), la riga si
+presenta disabilitata con la ragione a portata di tooltip.
+
 ### F2 — L'esito parziale si legge *(FE-4)*
 
 `run_fan_out` risponde «19 su 20, una segnalata» — *«va mostrato, non
@@ -3498,7 +3517,7 @@ disponibile» sposta la contraddizione invece di chiuderla.
 
 ---
 
-## 27. 📍 Stato dei lavori e ripartenza (aggiornato 2026-08-18, tarda sera)
+## 27. 📍 Stato dei lavori e ripartenza (aggiornato 2026-08-18, fine giornata)
 
 > Da leggere per primo aprendo una chat nuova. ⚠️ È un'istantanea: prima di
 > citarla, verificare contro il codice.
@@ -3513,18 +3532,22 @@ disponibile» sposta la contraddizione invece di chiuderla.
 
 | Slice | Stato | Dove |
 | --- | --- | --- |
-| **B0** dizionario codici *(BE-6)* | ✅ **FATTO e CHIUSO** — 9 codici + 9 ripieghi (`85593e754`), poi **+4** la sera del 18 per l'annullo di P-5 (`E_ACCREDITO_NON_TROVATO`, `_ANNULLO_NON_AMMESSO`, `_MOTIVO_OBBLIGATORIO`, `_ANNULLO_INCOMPLETO`): modulo rigenerato, `--check` pulito, 4 ripieghi scritti senza `%s` | `error_policies_generated.py`, `error_messages_fallback.py` |
+| **B0** dizionario codici *(BE-6)* | ✅ **FATTO** — 9 codici + 9 ripieghi (`85593e754`), poi **+4** per l'annullo di P-5 e **+1** per il kit (`E_ACCREDITO_KIT_SENZA_PADRE`, 928): **14 in tutto**, modulo rigenerato, `--check` pulito, ripieghi scritti senza `%s`. ⚠️ L'ultimo giro è una **deroga autorizzata** (DB avanti rispetto a git, §28) | `error_policies_generated.py`, `error_messages_fallback.py` |
 | **B4** generatore righe *(BE-4+BE-5)* | ✅ **FATTO** — niente aggregazione fra rettifiche di righe diverse, prezzo/sconto/IVA copiati dalla riga di fattura, `riga_rettificata_id` scritto, guard simmetrico sulla coppia. ⚠️ Il brief di passaggio le dà ancora per aperte (§«Stato del cantiere»): **da correggere al team DB** | `fatture_righe_service.py`, `pipeline_repository.py`, `types.py` |
 | **B3** filtro documento sulle code | ✅ **FATTO** — BB `filtro_coda_per_documento`, `?ddt_id=`/`?ordine_id=` su list **ed export** di **entrambe** le code | `_coda_documento_filtro.py`, `resi_repository.py`, `resi_service.py`, `views_resi.py` |
-| **revisione critica** | ✅ **FATTA** — 7 rilievi corretti, §23-bis | — |
+| **revisione critica** ×2 | ✅ **FATTE** — 7 rilievi su B0/B3/B4 (**§23-bis**) e 7 su B1→B6, B2/B2-bis, F1→F3 (**§31**), tutti corretti e verificati per mutazione | — |
 | **B1** repository + service del verbo | ✅ **FATTO** (`67670212c`) — `ResiRepository.accredita_riga_reso` (`SELECT * FROM fn_()` + `rows_to_list`) e `resi_service.accredita_riga_reso`; 7 test verificati per **mutazione** (4 rossi sabotando fetchone / forma SQL / cast / slicing) e **binding provato sul DB vero** con `EXPLAIN` (Function Scan: nome, arità e forma `SELECT * FROM` reggono **senza eseguire il corpo**) | `resi_repository.py`, `resi_service.py`, `tests/db/test_resi_repository_accredito.py` |
-| **B6** task pipeline legame documentale | 🔴 **SBLOCCATA E URGENTE — è la prossima** | vedi §27.3: il task è già nelle pipeline **vive** e l'handler non esiste |
-| **B2** endpoint del verbo | 🟢 **libero e consegnabile**: P-1 è in git e applicato | ⚠️ ma lo **smoke B8 va davanti**, non dietro |
-| **B2-bis** annullo dell'accredito | 🟢 **libero**: la madre P-5 esiste, applicata e con 17 pgTAP verdi | firma sotto, §27.2 |
+| **B6** task pipeline legame documentale | ✅ **FATTO** (2026-08-18, tarda sera) — handler `_handle_popola_fatture_rettifiche_task` + registry + voce di whitelist + **dipendenza d'ordine dichiarata**; 8 test, verificati per **mutazione** (5 rossi togliendo dipendenza, registry e whitelist) e binding provato con `EXPLAIN` sul DB vero | `pipeline_step_executor.py`, `pipeline_repository.py`, `test_pipeline_step_executor.py`, `test_pipeline_repository.py` |
+| **B2** endpoint del verbo | ✅ **FATTO** (2026-08-18) — `POST /vendite/resi/accrediti/`, massivo dal primo giorno, `run_fan_out` (savepoint per riga), report a tre stati **sempre 200**, `Idempotency-Key` obbligatoria, lista vuota rifiutata, dedup con ordine preservato, cap 200 | `views_resi.py`, `urls_resi.py`, `resi_service.py` |
+| **B2-bis** annullo dell'accredito | ✅ **FATTO** (2026-08-18) — `POST /vendite/resi/<reso>/righe/<riga>/annulla-accredito/`, stesso permesso, motivo normalizzato e rifiutato dalla madre, guard di appartenenza della riga al reso | `views_resi.py`, `resi_service.py`, `resi_repository.py` |
 | **B5** la natura esce dal backend *(BE-10)* | 🟢 **libero** | `natura_doc_id` non è nominata da nessun punto di `backend/apps/` |
 | **B7** legame riga↔riga nel drawer fattura | 🟢 **libero** | il dato arriva con B4 |
-| **B8** test | 🟡 parziale | i test di B3/B4/B1 sono scritti; manca lo **smoke end-to-end**, che ora è un prerequisito di consegna di B2 |
-| **F1 → F6** tutto il frontend | ⛔ **non iniziato** | F1/F3 dipendono da B2 |
+| **B8** test | ✅ **smoke end-to-end SCRITTO ed ESEGUITO** (2026-08-18) — `scripts/tests/smoke-nota-credito-resi.py`, 15 asserzioni, tutto dentro una transazione annullata (niente persiste). Ha trovato il difetto del kit (§28); dopo la correzione DB `20260818-75`: **15/15 verde** | `backend/scripts/tests/smoke-nota-credito-resi.py` |
+| **F1** il verbo nella coda *(FE-3, FE-4)* | ✅ **FATTO** (2026-08-18) — selezione multipla (slot `selection` + `useSelezioneToggle`), azione massiva e di riga, gate su `blocco_codice`, permesso `accredita_riga_reso`, conferma che dice **che il documento non nasce adesso**, annullo con motivo obbligatorio | `ResiCodaTable.vue`, `resiApi.js`, `resiCoda.js` |
+| **F2** l'esito parziale si legge *(FE-4)* | ✅ **FATTO** — toast per esito + dialog con l'elenco delle righe non servite e il loro motivo | `AccreditoEsitoDialog.vue` |
+| **F3** il pannello collega *(FE-1 + FE-2)* | ✅ **FATTO** — via la nota temporanea, al suo posto il collegamento alla coda **già filtrata** sul documento; deep-link in `onActivated` (KeepAlive) e coda che **dichiara** il filtro | `SituazioneMerceContenuto/Dialog/Bar.vue`, `ResiView.vue` |
+| **sede dell'annullo** *(decisione Tid)* | ✅ **FATTA** (2026-08-18) — drawer del reso: `gia_accreditato` sulle righe (dalla fn unica del DB), punto d'innesto `extraRowActions` nel BB delle righe, dialog condiviso con la coda. §30.2 | `resi_repository.py`, `RigheMasterDetailTable.vue`, `ResoRigheTable.vue`, `AccreditoAnnullaDialog.vue` |
+| **F4 → F6** il resto del frontend | ⛔ **non iniziato** | F4/F5 dipendono da B5/B7 |
 
 ### 27.2 ✅ I prerequisiti: quattro chiusi, due aperti (e i due aperti non sono di BE/FE)
 
@@ -3541,6 +3564,7 @@ team DB** (§7, rilievi C-1→C-7) e la **cronaca dell'esecuzione** (§9).
 | **P-4** | i quattro valori del sezionale | ✅ confermati, **nessun lavoro** |
 | **P-5** | madre `fn_annulla_accredito_riga_reso` | ✅ **APPLICATA E VERDE** (`20260818-71`, 17 pgTAP). Firma: `(p_resi_riga_id bigint, p_motivo text)` → **`RETURNS TABLE`** con le stesse 5 colonne della madre (`accredito_id, commessa_attivita_id, fattura_riga_rettificata_id, qta, qta_partita`) |
 | **P-6** | registri non intestati, due emittenti che emettono | 🔴 **aperto**, loro passo 5 — cantiere suo, non blocca niente di BE/FE |
+| **P-7** | il `meta` kit della rettifica | ✅ **APPLICATA E VERDE** (`20260818-75`) — il `meta` della riga rettificata si **eredita** invece di copiarne due chiavi, più il guard `E_ACCREDITO_KIT_SENZA_PADRE` (928). Trovata dallo smoke B8, §28 |
 
 #### ⭐ Le tre correzioni che il team DB ha fatto alle mie richieste, e vanno lette
 
@@ -3553,51 +3577,66 @@ dice già quale strada prendere, e va **passato**, non riscritto: *«se il
 documento non è ancora numerato la strada è il reset del lotto … ⚠️ dopo un reset
 la nota di credito viene RIGENERATA al giro successivo»*.
 
-### 27.3 🔴 Il rischio nuovo: il task è nelle pipeline vive e l'handler non esiste
+### 27.3 ✅ Il rischio del task senza handler — chiuso in giornata
 
-> Il rosso del §27.3 di ieri (divergenza `error_policies_generated.py`) **non
-> esiste più**: B0 l'ha chiuso, DB e git sono in pari. Al suo posto c'è questo,
-> che è peggio perché non lo vede nessun test.
+> Il rosso del §27.3 di ieri (divergenza `error_policies_generated.py`) non
+> esiste più: B0 l'ha chiuso, DB e git sono in pari. Al suo posto era comparso
+> **questo**, che era peggio perché non lo vedeva nessun test — ed è stato
+> chiuso da **B6** la sera stessa. Resta scritto perché la lezione è generale.
 
-`popola_fatture_rettifiche` è **già** nel JSON `processi` delle pipeline 4 e 6
-(DEFINITIVA), in quest'ordine:
+**Il fatto.** Il seed di P-2 ha messo `popola_fatture_rettifiche` nel JSON
+`processi` delle pipeline **4 e 6** (DEFINITIVA), in quest'ordine:
 
 ```text
 numera_fatture  →  popola_fatture_rettifiche  →  stampa_documenti_lotto
 ```
 
-ma **`popola_fatture_rettifiche_default` non è nell'`handler_registry` di
-`PipelineStepExecutor`** — è la slice B6, non scritta. E `execute_step` esegue i
-task **in sequenza, senza una transazione che li avvolga**.
+ma `popola_fatture_rettifiche_default` **non era nell'`handler_registry`** di
+`PipelineStepExecutor`, e `execute_step` esegue i task **in sequenza, senza una
+transazione che li avvolga**. Il primo giro DEFINITIVA avrebbe numerato —
+irreversibile — e poi sollevato `E_TASK_IMPLEMENTATION_NOT_FOUND` (severità C),
+lasciando il lotto numerato e non stampato. I timer `zeroerp-coda-lavori` e
+`zeroerp-coda-stampa` girano ogni minuto.
 
-🔴 **Ne discende che il prossimo giro DEFINITIVA numera — irreversibile — e poi
-solleva `E_TASK_IMPLEMENTATION_NOT_FOUND` (severità C)**, lasciando il lotto
-numerato e non stampato. I timer `zeroerp-coda-lavori` e `zeroerp-coda-stampa`
-girano ogni minuto.
+⭐ **La lezione, che vale oltre questo caso**: un seed di configurazione e il
+codice che lo esegue sono **due metà dello stesso cambiamento**. La metà DB può
+essere applicata da sola, verde e corretta in sé, e nel farlo arma una pipeline
+che nessun test copre. Il presidio non è «ricordarselo»: è il test
+`test_popola_fatture_rettifiche_agganciata_al_registry_reale`, che legge gli
+oggetti **reali** (registry, whitelist, dipendenza d'ordine) invece della mappa
+specchio del fixture — perché uno specchio non prova che l'originale esista.
 
-⭐ **Attenua, non risolve**: la `task_policy` seedata è **`RESUME_TASK`**, quindi
-appena l'handler esiste il rilancio riprende dal task fallito invece di
-ricominciare. È il motivo per cui la cosa è recuperabile e non un incidente.
+✅ **Chiuso da B6.** Ed è rimasta attenuata anche la coda del guasto: la
+`task_policy` seedata è **`RESUME_TASK`**, quindi un fallimento riprende dal task
+invece di ricominciare, e la funzione DB è idempotente (`ON CONFLICT DO
+NOTHING`), quindi il secondo giro non raddoppia.
 
-⚠️ **Ne discende anche l'inversione dell'ordine di lavoro**: B6 non è più «la
-slice del legame documentale da fare quando arriva P-2». È la **riparazione di
-una pipeline in esercizio**, e viene prima di B5, B7 e B2.
+#### ⚠️ Una scelta di B6 che va saputa: qui il fail-fast è voluto
+
+`popola_fatture_rettifiche` **non** ritorna un `TaskEsitoParziale` come
+`genera_scadenze_lotto` e `snapshot_indirizzi_lotto`: una fattura in errore
+**ferma lo step**. La ragione non è nel task, è **a valle**:
+`stampa_documenti_lotto` viene subito dopo e **consuma** questo legame
+(`DatiFattureCollegate` di una TD04 vuole numero e data del documento
+rettificato). Proseguire non lascerebbe una riga da rilavorare: stamperebbe un
+documento fiscale incompleto. Gli altri due task non hanno nessuno a valle nello
+stesso step, e lì l'esito parziale è la scelta giusta.
+
+⭐ Il precedente è nello stesso step e a due righe di distanza:
+`numera_fatture` è per-fattura e fail-fast per la stessa famiglia di ragioni.
 
 ### 27.4 Da dove ripartire
 
-1. 🔴 **B6** — l'handler `_handle_popola_fatture_rettifiche_task` +
-   registrazione in `handler_registry` + la dipendenza d'ordine
-   (`popola_fatture_rettifiche` → `numera_fatture`) in
-   `_TASK_ORDER_DEPENDENCIES`, che la verifica **prima** che il primo task dello
-   step scriva. È la voce del §27.3.
-2. **B8 smoke end-to-end**, che a questo punto esercita anche B6.
-3. **B2** (endpoint massivo, `run_fan_out`, lista vuota rifiutata e dedup con
-   ordine preservato) e **B2-bis** (annullo: `RETURNS TABLE`, motivo
-   obbligatorio, messaggio che dice **quale** delle due strade prendere).
-4. **F1+F3 insieme** subito dopo (§24: dare il verbo lasciando il pannello che
-   dichiara «non disponibile» sposta la contraddizione del §21.1 invece di
-   chiuderla).
-5. **B5** e **B7** in parallelo quando serve: sono letture, non toccano il verbo.
+1. ✅ **B6 fatta** (§27.1): handler, registry, whitelist e dipendenza d'ordine.
+2. ✅ **B8 smoke end-to-end fatto** — e ha trovato quello che i test mockati non
+   potevano trovare: **§28**. Il giro su articolo semplice è verde dalla coda al
+   legame documentale; sul **kit** si ferma prima del documento.
+3. ✅ **B2 e B2-bis fatti** (§29).
+4. ✅ **F1+F2+F3 fatti** (§30). La contraddizione del §21.1 è chiusa: i tre posti
+   dicono la stessa cosa.
+5. ✅ **Sede dell'annullo**: drawer del reso (§30.2), fatta.
+6. **B5** e **B7**: sono letture, non toccano il verbo. **F4/F5** ne discendono.
+7. **F6** le due verifiche e l'annuncio.
 
 ⚠️ **E l'ordine che resta vincolante**: B4 doveva precedere il verbo, ed è fatto.
 Da adesso il rischio è tutto sull'altro lato — **P-1 è applicata, quindi il
@@ -3606,3 +3645,339 @@ cui B2 esiste, il primo click scrive la rettifica e il primo giro di fatturazion
 emette la nota di credito. La strada indietro **adesso esiste** (P-5), ma è
 stretta: vale solo finché **tutte** le rettifiche sono `NON_EMESSA`. Quindi lo
 smoke end-to-end di B8 va eseguito **prima** di consegnare il verbo, non dopo.
+
+---
+
+## 28. ✅ Quello che ha trovato lo smoke: il kit non arrivava al documento
+
+> Eseguito il 2026-08-18 sera, `scripts/tests/smoke-nota-credito-resi.py`.
+> Tutto dentro `transaction.atomic()` con `set_rollback(True)`: rettifiche,
+> ponte, lotto, fattura, numero e legame **non persistono** — verificato dopo la
+> corsa (coda accrediti di nuovo a 3 righe, zero righe di ponte, zero legami).
+> L'unico effetto che sopravvive è l'avanzamento delle sequenze: un progressivo
+> con un buco, non un documento.
+
+### Cosa è verde — e non lo era da nessun'altra parte
+
+Il giro intero su una riga di coda **semplice** (`resi_riga_id=5797`), dalla
+coda al legame documentale:
+
+```text
+verbo → 1 rettifica (qta -5, prezzo 2,50 COPIATO dalla riga di fattura)
+      → esce dalla coda AL VERBO, il secondo click dice E_ACCREDITO_GIA_ESEGUITO
+      → pull da commessa → attivita' fatturabile RETTIFICA, natura NOTA_CREDITO
+      → generatore → riga con riga_rettificata_id, su una fattura SEPARATA
+        (NC 13347, rettifica la 9914)
+      → testata natura NOTA_CREDITO, registro NC
+      → numerazione: numero 1 sul sezionale NC
+      → B6: legame (13347 → 9914) scritto, rilancio idempotente (0 coppie)
+```
+
+E l'annullo di P-5 sulla riga con **tre** rettifiche: tolte tutte e tre, ponte a
+zero, `accredito_dovuto` che **risale** da 0 a 1 — la merce torna accreditabile.
+È la prova d'insieme che il team DB ha chiesto in C-2, presa sui dati.
+
+⚠️ **Due cose che il giro ha imposto e che nessun test mockato avrebbe mostrato:**
+
+* prima di numerare va chiuso lo **step EMESSA** (ricalcolo IVA e totali):
+  `fn_assign_numero_fattura` rifiuta un documento senza riepilogo IVA — *«la
+  numerazione consuma un progressivo, e nextval non torna indietro»*. Sull'NC le
+  **rate non servono**: il totale a pagare è negativo e il guard le chiede solo
+  se è positivo;
+* un errore atteso va racchiuso in un **savepoint**, o il primo `E_ACCREDITO_*`
+  abortisce la transazione e tutto il resto dello smoke muore dopo di lui.
+
+### 🔴 Cosa è rosso: la rettifica di un componente di kit
+
+```text
+riga di coda 24 (articolo composito) → 3 rettifiche, una per componente
+generate_fatture_righe → E_ATTIVITA_KIT_SENZA_PADRE
+                         «componente_di assente nel meta dell'attivita»
+```
+
+Il contratto dello snapshot kit (`_kit_meta.py`) ha **quattro** chiavi di
+`meta`; `fn_accredita_riga_reso` ne copia **una** (`coeff_qta`) e si ferma.
+Il segmento della rettifica dichiara di essere un componente (`#CMP:`) e non
+dice di chi — e il generatore, giustamente, si rifiuta di indovinare: trattarla
+come riga normale la fatturerebbe **due volte**, dentro il totale del padre e
+per conto suo (R11).
+
+⚠️ **Ed è lo stato peggiore fra i tre possibili**: non è «il kit non è ancora
+supportato». È che **il verbo riesce, la riga esce dalla coda, e il documento
+non nasce** — la coda dice fatto e la nota di credito non c'è.
+
+### ✅ Chiuso in giornata — e la correzione è migliore di quella che avevo chiesto
+
+Richiesta al team DB come **P-7**, applicata la sera stessa (`20260818-75`).
+Lo smoke, rieseguito senza toccare una riga di backend, passa a **15/15**.
+
+Avevo chiesto di copiare **le due chiavi mancanti**. Il team DB ha fatto
+**ereditare il `meta` intero** della riga rettificata, e la ragione vale più
+della correzione:
+
+> *«enumerarle avrebbe messo quei letterali in un terzo posto, in SQL, dove
+> `_kit_meta.py` non si può importare — cioè esattamente il difetto contro cui
+> quel file è nato.»*
+
+⚠️ **Avevo diagnosticato «copia a metà» e proposto un rimedio della stessa
+famiglia**: due chiavi invece di una. La forma giusta era smettere di contarle.
+Le due che potrebbero mentire sono coperte perché stanno a destra del `||`
+(`tipo_consumo` e `segment_key` li riscrive comunque la catena a valle).
+
+**E un codice che non avevo chiesto**: `E_ACCREDITO_KIT_SENZA_PADRE` (928).
+L'ereditarietà ripara i kit corretti; uno nato **senza** `componente_di` sarebbe
+rimasto nella forma peggiore. Ora la madre lo rifiuta **al clic**, non a fine
+pipeline — gemello di `E_ACCREDITO_KIT_NON_MISURABILE`.
+
+✅ **BE-7 (che ne discende) è verifica, non lavoro**: l'unico produttore di
+segmenti `#CMP:` nel backend scrive tutte e tre le chiavi senza condizioni, il
+padre non può essere nullo su quel percorso (`expand()` esce prima), ed è
+presidiato da test. Dettaglio e prove nel §BE-7 del brief di passaggio.
+
+📌 **Per F1**: se una riga di kit non è accreditabile, **il bottone si spegne in
+lista** — non si fa cliccare per restituire un errore il cui rimedio sta sul
+documento di origine, fuori dalla portata dell'operatore.
+
+✅ **Dizionario codici rigenerato per il 928** (ripiego compreso, senza `%s`):
+suite verde **anche con `ZEROERP_TEST_DB_E2E=1`**, 3790.
+
+⚠️ **Ed è una deroga consapevole alla regola del §27.3, decisa da Tid**
+(2026-08-18): si rigenera pur essendo il DB **avanti rispetto a git** (716 contro
+715), perché `20260818-75` non è ancora pushato. *«Si allineeranno appena faccio
+i commit; se un giro sono rossi, pazienza.»* Il costo è noto e limitato: finché
+il changeset DB non atterra, la CI ricostruisce il proprio database dal changelog
+e **non trova il 928**, quindi il cancello diventa rosso **al contrario** — un
+codice dichiarato nel modulo che a catalogo non c'è. Non è una regressione: è la
+stessa divergenza vista dall'altra parte, e si chiude col commit del DB.
+⭐ La regola resta quella del §27.3 (non rigenerare col DB avanti); questa è
+un'eccezione autorizzata, non il nuovo criterio.
+
+---
+
+## 29. Il verbo esce dal backend — B2 e B2-bis
+
+> 2026-08-18. Le due porte dell'accredito, sopra madri già provate sui dati
+> dallo smoke del §28. Suite **3809 verde** in entrambe le modalità, smoke
+> **15/15**, e sette sabotaggi che producono sette rossi distinti.
+
+### 29.1 Le due porte
+
+```text
+POST /api/v1/vendite/resi/accrediti/
+     { "resi_riga_ids": [5797, 5799, …] }        → report 200
+
+POST /api/v1/vendite/resi/<reso>/righe/<riga>/annulla-accredito/
+     { "motivo": "…" }                            → coppie rimosse
+```
+
+Entrambe dietro `post_permission = "accredita_riga_reso"` — **lo stesso**: chi
+può accreditare può disfare il proprio click, e due codename per le due facce
+dello stesso atto si sfilano al primo profilo configurato a mano. Entrambe con
+`Idempotency-Key` obbligatoria: modificano lo stato di un documento fiscale.
+
+### 29.2 🔴 La decisione che vale la pena leggere: il report torna **sempre** 200
+
+Il brief chiedeva «PARZIALE è 200». Scrivendolo è emersa la domanda che non era
+scritta: **e quando falliscono tutte?** La risposta è che torna 200 anche allora,
+ed è la stessa ragione per cui l'endpoint è uno solo.
+
+* il verbo **non è l'atto fiscale**: il documento nasce dopo, nel giro di
+  fatturazione. Un esito parziale non lascia mai mezzo documento — lascia righe
+  che restano in coda;
+* sollevare sul «tutte fallite» darebbe al frontend **due forme da leggere** per
+  la stessa domanda: una lista di esiti quando va male a metà, un envelope di
+  errore quando va male del tutto. È l'argomento del §12.7-ter applicato alla
+  risposta invece che alla superficie;
+* i codici per-riga non si perdono: stanno in `falliti`, uno per riga, ed è su
+  quelli che il frontend instrada.
+
+⚠️ **Il codice per-riga non arriva da solo.** `FanOutEsito` porta il messaggio
+normalizzato, non il codice: serve un `FanOutRunLogger` che catturi
+`exc.code` riga per riga. È l'unica parte di dominio del giro — il BB sa
+**quando** chiamare, il dominio sa **cosa** tenere.
+
+### 29.3 ⭐ Un campo che si perdeva da sempre: l'`hint` del database
+
+B2-bis chiedeva che il messaggio dicesse **quale strada prendere** quando
+l'annullo non è ammesso. Quella frase **esiste già**, ed è a catalogo: è la
+`soluzione` che il team DB scrive per ogni codice, e PostgreSQL la consegna come
+`HINT`.
+
+🔴 **Ma non arrivava.** `ErrorTranslator._from_database_error` la legge dalla
+diag psycopg — solo che quel ramo vale per un `DatabaseError` che arriva **nudo**
+al middleware, e appena un service traduce (cioè sempre) non ci passa:
+`translate_db_errors` costruiva un `ServiceError` **senza `hint`**, lasciando la
+frase annegata nel testo grezzo di `detail`.
+
+Ne discendeva che un dominio che volesse mostrarla all'operatore doveva
+**riscriverla in Python** — cioè duplicare il catalogo, che è la cosa che questo
+progetto non fa. Ora il campo viaggia strutturato fino all'envelope.
+
+⚠️ **È una modifica CORE**: vale per ogni dominio che usa `_db_errors`, cioè
+tutti. Nessun rischio visivo oggi — il frontend non legge ancora `error.hint`
+(zero occorrenze) — ed è precisamente ciò che F1 deve iniziare a rendere: senza,
+l'operatore legge «non si può» e non «resetta il lotto, ma sappi che la nota si
+rigenera».
+
+### 29.4 Cosa NON è stato messo
+
+* **nessun guard applicativo** che ripeta la madre: «è in coda», «non è già
+  accreditata», «tutte le rettifiche sono NON_EMESSA», «il motivo è
+  obbligatorio» stanno nel DB. L'unico guard applicativo è l'**appartenenza
+  della riga al reso**, che non è una regola di dominio ripetuta — la madre non
+  conosce il reso — ma la coerenza del percorso: senza,
+  `/resi/999/righe/24/annulla-accredito/` annullerebbe l'accredito della riga 24
+  di un altro reso;
+* **nessuna strada per annullare il DOCUMENTO**: quella è la pipeline, esiste,
+  ed è la stessa delle fatture.
+
+---
+
+## 30. Il verbo a video — F1, F2, F3
+
+> 2026-08-18. Build e lint puliti; **non ancora validato in-app** (è di Tid).
+
+### 30.1 Cosa è cambiato
+
+**Coda accrediti** (`ResiCodaTable.vue`, variante `accreditare`): colonna di
+selezione come **chrome** della lista (slot `selection` + `useSelezioneToggle`,
+perché PrimeVue 4 non ha più il predicato per-riga), azione massiva con il
+conteggio, azione di riga, e l'annullo con **motivo obbligatorio** in dialog —
+stesso pattern dell'annullo riga manuale sulle commesse, e per la stessa
+ragione: l'annullo cancella le righe di ponte, quindi il motivo è l'unica
+traccia del perché.
+
+Tre cose che il piano chiedeva e che vale la pena rileggere insieme:
+
+* **il gate si fa sui codici che la riga porta** (`blocco_codice`), mai una
+  capability per riga — che sarebbe una chiamata per riga;
+* la riga bloccata ha l'azione **disabilitata con il motivo reso**, non
+  nascosta: il rimedio sta sul documento di origine, e un click che restituisce
+  un errore irrisolvibile è peggio di un'azione spenta che dice perché;
+* **la conferma dice che il documento non nasce adesso**. «Emetti nota di
+  credito» prometterebbe un documento che l'operatore poi non trova.
+
+**Esito** (`AccreditoEsitoDialog.vue`): il report a tre stati si legge. Il toast
+dà il conto, il dialog dà l'elenco — «19 su 20» senza dire *quale* non è
+interpretabile.
+
+**Pannello situazione merce**: tolta la nota «l'emissione non è ancora
+disponibile» (il promemoria `TEMPORANEO PER COSTRUZIONE` ha funzionato: era lì
+per essere onorato oggi) e al suo posto il collegamento alla coda **già
+filtrata** sul documento. Il pannello resta una **lettura** (D-NC-8): non c'è il
+verbo, c'è la strada per raggiungerlo. Il deep-link si applica in
+**`onActivated`** — sotto KeepAlive un mount non c'è — è idempotente, e la query
+si **pulisce** dopo l'uso, o tornare sulla vista ri-filtrerebbe la coda dopo che
+l'operatore ha tolto il filtro a mano. E la coda **dichiara** di essere filtrata,
+con il modo per togliere il filtro: un elenco corto senza spiegazione si legge
+come «non c'è quasi niente da fare».
+
+⚠️ **Un difetto trovato scrivendo, che sarebbe stato silenzioso**: avevo letto
+la risposta come `res.data.data`, ma `useApiHandler.execute` **scarta già**
+l'envelope. Il report sarebbe arrivato `undefined` e a video ci sarebbe stato un
+«0 su 0» perfettamente credibile — nessun errore, nessun toast rosso, solo un
+numero sbagliato.
+
+### 30.2 ✅ La sede dell'annullo — decisa e fatta: il drawer del reso
+
+Il piano (F1) diceva: *«annulla accredito — azione secondaria sulla riga,
+visibile solo se `gia_accreditato > 0`»*. Misurato sul database:
+
+```text
+prima del verbo:  la riga è in coda con accredito_dovuto = 5
+dopo il verbo:    SELECT … FROM vw_resi_da_accreditare WHERE resi_riga_id = …
+                  → 0 righe
+```
+
+⭐ **La riga esce dalla coda AL VERBO** — è la correzione §20.3, ed è giusta
+così. Ma ne discende che `gia_accreditato > 0` in coda si vede **solo** se il
+conto della merce ha riportato dentro la riga (nuova quota fatturata): il caso
+per cui B2-bis esiste — *«ho cliccato la riga sbagliata, disfa»* — **da lì non
+si raggiunge**.
+
+L'azione l'ho messa lo stesso (copre il caso «la riga è tornata», e costa
+niente), ma la sede del caso principale è una decisione aperta:
+
+| Sede | Cosa comporta |
+| --- | --- |
+| **drawer del reso**, sulle sue righe *(proposta)* | è dove la riga vive, e ci si arriva dalla coda con un click. ⚠️ Serve una lettura BE nuova: `list_righe` oggi non porta né `gia_accreditato` né se l'annullo è ancora ammesso |
+| filtro «accreditate» sulla coda | tiene tutto in una schermata, ma cambia la natura della coda: da *lavoro da fare* a *elenco di stato* |
+| nessuna sede | l'annullo resta esercitabile solo via API. ⛔ Non regge: il caso è «l'operatore ha sbagliato», cioè esattamente chi non usa le API |
+
+✅ **Decisione di Tid (2026-08-18): il drawer del reso.** Fatta lo stesso
+giorno.
+
+#### Cosa è servito
+
+* **backend, una colonna**: `list_righe` espone `gia_accreditato`. ⭐ Letto dalla
+  fn del DB `fn_resi_riga_accreditato_partita`, che è il **punto unico della
+  formula** — la consuma anche `vw_resi_da_accreditare`. Rifare qui la somma sul
+  ponte darebbe una seconda verità *e sbagliata*: su un kit N righe portano la
+  **stessa** quota padre, e sommarle la moltiplicherebbe. C'è un test che
+  fallisce se qualcuno la riscrive inline;
+* **il BB delle righe ha ora un punto d'innesto**:
+  `RigheMasterDetailTable.extraRowActions(riga)`. Serviva perché l'azione vive
+  su un reso **CONFERMATO**, dove le righe non si toccano più: la colonna azioni
+  dipendeva dal solo `isModificabile` e un'azione dichiarata lì non si sarebbe
+  vista **mai**. Ora la colonna compare anche quando almeno una riga porta
+  un'azione di dominio;
+* **un dialog solo per le due sedi** (`AccreditoAnnullaDialog.vue`): coda e
+  drawer condividono il componente. Due copie divergerebbero sul **testo**, ed è
+  il testo la parte che conta — la distinzione fra «annulla l'accredito» e
+  «resetta il lotto, che però la rigenera».
+
+#### ⚠️ Una scelta di merito: si offre sul FATTO, non sulla REGOLA
+
+L'azione compare quando `gia_accreditato > 0` — un fatto. **Non** ricalcola
+«tutte le rettifiche sono ancora NON_EMESSA», che è una **precondizione della
+madre**: ricalcolarla nel frontend sarebbe una seconda copia destinata a
+divergere, e per giunta più povera. Se è troppo tardi la madre rifiuta con
+`E_ACCREDITO_ANNULLO_NON_AMMESSO`, il cui messaggio dice **quale strada
+prendere** — cosa che un gate spento non saprebbe dire.
+
+⭐ Ed è la stessa dottrina del kit, applicata all'altro verso: lì il bottone si
+spegne perché il rimedio **non è dell'operatore** (sta sul documento di
+origine); qui resta acceso perché il rimedio **è suo** (il reset del lotto), e
+il messaggio glielo indica.
+
+📌 Rifinitura possibile, non fatta: una `fn_check_accredito_annullabile` a DB
+darebbe il motivo *prima* del click, come `blocco_codice` fa per la coda. Vale
+un giro solo se in esercizio i rifiuti diventano frequenti.
+
+---
+
+## 31. 🔎 La revisione critica di B1→B6, B2/B2-bis e F1→F3 (2026-08-18)
+
+> Richiesta di Tid a slice fatte: *«controllo critico alla ricerca e correzione
+> di bug, codice fragile, duplicato e hardcoded»*. Sette rilievi, tutti
+> **verificati** prima di toccare e **corretti**. Cinque erano miei di oggi.
+
+| # | Rilievo | Gravità | Esito |
+| --- | --- | --- | --- |
+| **R-1** | Il motivo dell'annullo normalizzato a mano (`empty_to_none` se è `str`, **altrimenti passa**) mentre il modulo ha già `_parse_note_rinuncia`, che i tipi non stringa li **rifiuta**. Un dict sarebbe arrivato a psycopg | 🟠 duplicato + più debole | ✅ parser unico `_parse_motivo_testo` per entrambi i chiamanti, con test sui tipi degeneri |
+| **R-2** | `diario.esiti.get(id, (FALLBACK, ""))[0]` e `.get(id, ("", msg))[1]`: **due lookup con default diversi** sullo stesso item — nel caso in cui il diario non ha visto l'errore raccontano due storie | 🟡 fragile | ✅ un lookup solo, in `_riga_fallita` |
+| **R-3** | `'accredita_riga_reso'` scritto in **due** componenti FE | 🟠 hardcoded | ✅ `AZIONE_ACCREDITA_RESO` in `resi/constants.js` |
+| **R-4** | `'COMPLETATO'`/`'PARZIALE'` come literal in due file: è il vocabolario del **fan-out del backend**, non nostro | 🟠 hardcoded | ✅ `ESITO_ACCREDITO`, con l'avviso che `PARZIALE` esiste già con **altro significato** in `STATO_RICONSEGNA` |
+| **R-5** | Nomi dei tab e della rotta ripetuti fra `ResiView` e il deep-link del pannello — e sono un **contratto fra due moduli**, non un dettaglio interno | 🟠 hardcoded | ✅ `TAB_RESI` + `ROUTE_RESI` |
+| **R-6** | 🔴 `basePath.endsWith('/ddt') ? 'ddt_id' : 'ordine_id'`: un basePath nuovo o scritto storto sarebbe finito **in silenzio** nel ramo ordine — coda filtrata sull'id sbagliato, cioè le righe di un altro documento | 🟠 fragile | ✅ mappa esplicita; un dominio non previsto **non naviga** e lo dice |
+| **R-7** | 🔴 Il deep-link decideva se ricaricare da `store.hasSearched` — proxy sbagliato di «il pannello è montato»: vero anche dopo una visita in una sessione precedente, quindi **doppia fetch** | 🟡 fragile | ✅ la decisione è del componente, che osserva i filtri: niente da indovinare |
+
+### E una duplicazione nel fixture dello smoke
+
+Il giro principale e la prova sul kit facevano gli stessi tre passi — pull da
+commessa, lotto dedicato, lock delle attività — in **due copie identiche** di
+~40 righe. Estratte in `prepara_lotto(cur, ca_ids, marker=…)`.
+
+⚠️ Non è pulizia estetica: **due copie di un fixture divergono come qualunque
+altra cosa**, con l'aggravante che un fixture divergente fa passare il test *per
+una ragione diversa* da quella per cui passa il sistema. E nel farlo ho chiuso
+anche un buco: se il fixture non produce attività fatturabili, ora il test lo
+**dice** invece di dare la colpa al generatore con l'errore di un lotto `None`.
+
+### Come sono state verificate
+
+* **mutazione**: rimettendo la normalizzazione permissiva di R-1 e i due lookup
+  di R-2 la suite dà **5 rossi** — e ciascuno sul proprio test;
+* **smoke rieseguito** dopo il refactor del fixture: **15/15**, un solo
+  `INSERT INTO fatturazione_lotti` nel file invece di due;
+* **suite 3812 verde** in entrambe le modalità, build ed eslint puliti.

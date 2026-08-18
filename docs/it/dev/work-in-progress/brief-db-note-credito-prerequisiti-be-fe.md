@@ -22,8 +22,9 @@
 > In due righe: **P-1/P-2/P-3/P-4 reggono** (e la domanda aperta di P-2 ha
 > risposta: *no*, ma per un motivo diverso da quello scritto); **P-5 va
 > corretto** — un accredito non è una riga, è N; **P-6 è reale ma non è
-> «collisione»** — sono buchi nella serie, ed **ha un prerequisito** nel
-> cantiere perimetro emittente.
+> «collisione»** — sono buchi nella serie, ed **ha un prerequisito** che il
+> cantiere perimetro emittente, **chiuso il 2026-08-18**, ha lasciato **in
+> carico a P-6** (§11.11): non è più un'attesa, è lavoro di qui.
 >
 > ✅ **La misura di P-6 è stata fatta** (C-5) e le **tre decisioni aperte sono
 > chiuse** (D-P6-1/2/3, §8 passo 5).
@@ -43,6 +44,7 @@
 | **§10** | `20260818-73` — il conto della merce smette di contare l'annullato | ✅ **applicato e verde** |
 | **4** · P-3 | il gate della rinuncia in `fn_check_rinuncia_reversibile` | 🔴 **aperto** — dipendeva dal passo 3, che ora è chiuso |
 | **5** · P-6 | i registri per emittente (5b prerequisito nel cantiere perimetro, 5c il guard sulla disattivazione) | 🔴 **aperto** |
+| **6** · P-7 | il `meta` kit della rettifica: ereditato per intero + guard 928 · `20260818-75` | ✅ **applicato e verde** — trovato dallo smoke end-to-end del BE, verificato dallo stesso smoke (15/15) |
 
 **Verifica end-to-end** (2026-08-18): sette file pgTAP verdi, compresi i sei che
 insistono sul conto della merce — nessuna regressione. Dettaglio in §10.
@@ -64,6 +66,7 @@ più quelli del cantiere).
 | **P-4** | I quattro valori del sezionale NC | ✅ **nessun lavoro**: confermati come seedati | — |
 | **P-5** | 🔴 La madre `fn_annulla_accredito_riga_reso` | 1 fn nuova + 2 codici a catalogo | ⛔ la slice **B2-bis**, F1 |
 | **P-6** | 🔴 Nessun registro è intestato a un emittente, e gli emittenti che emettono sono **due** | riconfigurazione del seed registri + mapping | ⛔ niente di BE/FE — è un **difetto fiscale in esercizio** |
+| **P-7** | ✅ **CHIUSO** (`20260818-75`) — il `meta` della riga rettificata si **eredita** invece di copiarne due chiavi, più il guard `E_ACCREDITO_KIT_SENZA_PADRE` (928) | 1 fn + 1 codice | era ⛔ la nota di credito su **articoli compositi**; smoke B8 ora 15/15 |
 
 ---
 
@@ -418,9 +421,12 @@ a sapere **a quale dei due** intestare i registri esistenti.
 * ⭐ **sul registro NC costa niente farlo subito**: zero documenti emessi.
   Sui registri 3 e 4 è una riconfigurazione vera, e resta materia di chi tiene i
   registri IVA;
-* 📌 va portato anche al cantiere **perimetro emittente**, che è aperto: è la
-  richiesta **EM-1** del §17.4 del brief principale, e questa misura la rende
-  concreta invece che latente.
+* 📌 è la richiesta **EM-1** del §17.4 del brief principale, e questa misura la
+  rende concreta invece che latente. ⚠️ **Aggiornato il 2026-08-18**: il
+  cantiere **perimetro emittente è chiuso**
+  ([brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](../work-done/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md)),
+  quindi EM-1 non «va portato» da nessuna parte — **resta in carico qui**,
+  dentro **P-6**, che è il cantiere dei registri per emittente.
 
 ---
 
@@ -647,8 +653,15 @@ non ancora avvenuto — ed è il momento giusto per chiuderlo, perché costa zer
 ### C-6 ⭐ P-6 tocca il cantiere **perimetro emittente** in un punto preciso — ed è un **prerequisito**, non un rimando
 
 Il brief chiude dicendo che P-6 «va portato anche al cantiere perimetro
-emittente». È vero e c'è di più: **P-6 non è scrivibile in sicurezza finché quel
-cantiere non chiude il suo residuo §11.11.**
+emittente». È vero e c'è di più: **P-6 non è scrivibile in sicurezza finché il
+residuo §11.11 non è chiuso.**
+
+> ⚠️ **Aggiornato il 2026-08-18 — cambia il proprietario, non il vincolo.** Il
+> cantiere perimetro emittente è **chiuso e archiviato**
+> ([brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](../work-done/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md)),
+> e nel farlo ha instradato proprio questo residuo al **cantiere numerazione
+> (P-6)**, «di cui è prerequisito» — cioè **qui**. Non c'è più un altro
+> cantiere che lo chiuderà: o lo fa P-6, o P-6 non parte.
 
 La catena che decide su quale registro numera una fattura è questa:
 
@@ -867,7 +880,7 @@ utilities, contratti, DDT, ordini, resi, preventivi e altri otto.
 > 72 è anche il gestore globale (`is_default`) che copre i 41 billing account
 > non mappati esplicitamente.
 
-#### 5b — ⛔ il prerequisito: unificare la terza copia *(cantiere perimetro emittente, §11.11)*
+#### 5b — ⛔ il prerequisito: unificare la terza copia *(§11.11, ereditato dal cantiere perimetro emittente ora chiuso)*
 
 Far delegare `anagrafiche.fn_get_emittente_fiscale_id` a
 `script.fn_get_ba_emittente_sr_id`, mantenendo il raise
@@ -928,6 +941,146 @@ registro 3, che diventa suo. La serie 1→6 continua senza salti.
   la domanda ha risposta **no** (C-1). Si scrive solo il commento;
 * il **backfill** della numerazione: deciso da Tid, non si fa;
 * tutto ciò che è già in *«Cosa NON è di questo brief»* qui sotto.
+
+---
+
+## ✅ P-7 — La rettifica di un COMPONENTE di kit non attraversa il generatore — CHIUSO
+
+> **Origine**: smoke end-to-end del lato applicativo (B8), eseguito il
+> 2026-08-18 sera — `backend/scripts/tests/smoke-nota-credito-resi.py`. È il
+> caso che il brief principale indicava di provare *«sui DATI, sulla riga 24
+> della coda»*. Il giro completo è **verde su una riga semplice** e **rosso sul
+> kit**, e si ferma prima del documento.
+
+### Il fatto, misurato
+
+```text
+riga di coda 24 (articolo composito) → il verbo crea 3 rettifiche, una per componente
+  segment_key: DDT:<uid>:R:126#RET:1#CMP:<uuid componente>
+  meta:        {"coeff_qta": 1.0, "accredito_da": "RESO",
+                "resi_riga_id": 24, "tipo_consumo": "CONGUAGLIO"}
+
+FattureRigheService.generate_fatture_righe
+  → E_ATTIVITA_KIT_SENZA_PADRE
+    «componente_di assente nel meta dell'attivita»
+```
+
+### Perché succede, e perché il rifiuto è **giusto**
+
+Il contratto dello snapshot kit è dichiarato in
+`backend/apps/vendite/services/_kit_meta.py` e ha **quattro** chiavi, scritte
+dal push (`BoMComponentExpander`) e lette dal generatore:
+
+| chiave `meta` | la scrive il push | la copia `fn_accredita_riga_reso` |
+| --- | --- | --- |
+| `coeff_qta` | ✅ | ✅ |
+| `componente_di` | ✅ | ❌ |
+| `esposto_in_fattura` | ✅ | ❌ |
+| `segment_key` | ✅ | (la aggiunge il pull, presente) |
+
+Il generatore decide di essere su un componente **dal segment_key** (`#CMP:`) e
+poi pretende `componente_di`. Il suo fail-loud è deliberato e va tenuto: senza,
+la riga verrebbe trattata come normale e **fatturata due volte** — una dentro il
+totale del padre e una per conto suo (R11).
+
+⭐ **Il difetto non è nel generatore: è una copia a metà.** La madre copia
+`coeff_qta` dal componente e si ferma, quindi produce un segmento che **dichiara
+di essere un componente** senza dire di chi. Qualunque altro consumatore di quel
+`meta` sbatterebbe sullo stesso muro.
+
+### La richiesta
+
+Che `vendite.fn_accredita_riga_reso`, quando la partita è un componente di kit,
+copi dal `meta` dell'attività rettificata anche **`componente_di`** e
+**`esposto_in_fattura`**, accanto al `coeff_qta` che copia già. Nessuna
+risoluzione di distinta base: sono valori da **copiare**, come il prezzo (N-1) —
+solo il documento sorgente sa quale kit è stato venduto.
+
+### Le due strade valutate, e perché questa
+
+| Strada | Perché no / sì |
+| --- | --- |
+| **A · la madre completa il `meta`** *(proposta)* | ✅ Il `meta` della rettifica torna coerente con il proprio `segment_key`; il generatore resta con un solo ramo; vale per ogni consumatore futuro |
+| **B · il generatore, per le rettifiche, copia le 4 colonne `kit_*` dalla riga di fattura rettificata** | Difendibile — è la stessa dottrina del prezzo — ma introduce nel generatore un **secondo ramo** per un caso particolare, e lascia nel database un segmento di componente orfano del suo padre. Il difetto si sposta, non si chiude |
+
+⚠️ **Fino ad allora il perimetro dell'accredito è di fatto limitato agli
+articoli semplici**: sul kit il verbo riesce, la rettifica nasce, e il documento
+non si genera — cioè la riga esce dalla coda e la nota di credito non arriva.
+È lo stato peggiore fra i tre, e vale la pena dirlo: **non** è «non funziona
+ancora», è «la coda dice fatto e il documento non c'è».
+
+### ✅ Esito — `20260818-75`, applicato e verde (team DB, 2026-08-18 sera)
+
+**Verificato dal lato BE lo stesso giorno**: lo smoke `smoke-nota-credito-resi.py`
+passa da 14/15 a **15/15**, kit compreso — stesso comando, stessi dati, **nessuna
+modifica al backend**.
+
+⭐ **La soluzione scelta è migliore di quella che avevo chiesto, e la ragione va
+tenuta.** Avevo chiesto di copiare **due chiavi** (`componente_di`,
+`esposto_in_fattura`); il team DB ha fatto **ereditare il `meta` intero** della
+riga rettificata (`ca.meta || {coeff_qta, accredito_da, resi_riga_id}`). Parola
+loro:
+
+> *«enumerarle avrebbe messo quei letterali in un terzo posto, in SQL, dove
+> `_kit_meta.py` non si può importare — cioè esattamente il difetto contro cui
+> quel file è nato. Se domani aggiungete un quinto tasto al contratto, viaggia
+> da solo.»*
+
+Hanno ragione, e la mia richiesta portava dentro proprio il difetto che il §28
+del brief principale descriveva: **un contratto a quattro chiavi trattato una
+chiave alla volta**. ⚠️ Le due chiavi che potrebbero mentire sono coperte perché
+stanno a **destra** del `||`: `tipo_consumo` lo riscrive
+`fn_upsert_commessa_attivita`, `segment_key` lo riscrive
+`fn_emit_attivita_fatturabili_da_commessa`.
+
+**E un codice in più che non avevo chiesto**: `E_ACCREDITO_KIT_SENZA_PADRE`
+(928, `NON_ESEGUIBILE`). L'ereditarietà ripara i kit **corretti**; un kit che
+nasce senza `componente_di` restava nella forma peggiore (verbo ok, riga fuori
+dalla coda, niente documento). Ora la madre lo rifiuta **al clic**. È il gemello
+di `E_ACCREDITO_KIT_NON_MISURABILE`: *la madre controllava un tasto su quattro
+del contratto, ora li tratta come contratto.*
+
+### ✅ BE-7 — verificato, ed è **verifica, non lavoro**
+
+La richiesta era: *«serve che il push garantisca `componente_di` su ogni
+componente»*. Misurato contro il codice:
+
+* l'**unico** produttore di un segmento `#CMP:` in tutto `backend/apps/` è
+  `BoMComponentExpander._build_componente_pushable_row`, che scrive **tutte e
+  tre** le chiavi del contratto senza condizioni;
+* il padre non può essere nullo su quel percorso: `expand()` esce prima
+  (`if row.articolo_id is None: return [row]`) — quindi il `str(None)` che
+  scriverebbe la stringa `"None"` (truthy, e perciò invisibile a **entrambi** i
+  guard) **non è raggiungibile**;
+* ed è **presidiato da test**, non solo vero oggi:
+  `test_caso_a_meta_arricchito_componente_di_e_esposto` asserisce
+  `meta["componente_di"] == str(row.articolo_id)`, e la R11 del generatore ha il
+  suo test in `test_fatture_righe_service.py`.
+
+🔵 Nessuna riga di backend da scrivere. Il guard 928 resta il presidio giusto per
+i dati **già** nati storti, che nessun fix del push può raggiungere.
+
+### 📌 Per F1 (frontend), preso in carico
+
+Nota operativa accolta: se una riga di kit non è accreditabile, **il bottone va
+spento in lista** invece di far cliccare per ricevere un errore che l'operatore
+non può risolvere da solo — il rimedio è sul documento di origine. Registrato
+nel piano FE del brief principale.
+
+### ✅ Dizionario codici — fatto, con una deroga dichiarata
+
+`error_policies_generated.py` **rigenerato** per il codice 928, con il messaggio
+di ripiego senza `%s`: la suite è verde anche con `ZEROERP_TEST_DB_E2E=1`.
+
+⚠️ **Deroga autorizzata da Tid**, e va detta perché ha un effetto sul vostro
+lato: si è rigenerato pur essendo il DB **avanti rispetto a git** (716 contro
+715), cioè con `20260818-75` non ancora pushato. Finché quel commit non atterra,
+la CI — che ricostruisce il database dal changelog — **non trova il 928** e il
+cancello del terzo lato diventa rosso *al contrario*: un codice dichiarato nel
+modulo BE che a catalogo non esiste.
+
+📌 **Si chiude da sé con il vostro push**, e non serve che facciate nulla di
+diverso: è la stessa divergenza di prima, vista dall'altra parte.
 
 ---
 
@@ -998,8 +1151,10 @@ vendite.resi_righe_accrediti  -> NON ce l'ha
 Il ponte dice sempre la verità su **quante** rettifiche esistono; la `UPDATE` ad
 `ANNULLATA` gira sotto RLS e una rettifica fuori perimetro emittente la
 salterebbe **in silenzio**. È esattamente l'annullo parziale che la semantica
-d'insieme di C-2 vieta, nella forma più difficile da vedere — e con il cantiere
-perimetro emittente in corso, i due scope possono divergere.
+d'insieme di C-2 vieta, nella forma più difficile da vedere. ⚠️ E il cantiere
+perimetro emittente, **chiuso il 2026-08-18**, non toglie il rischio: ha
+presidiato **liste ed endpoint**, non la RLS di questa tabella — i due scope
+possono divergere lo stesso.
 → `E_ACCREDITO_ANNULLO_INCOMPLETO` (927), sollevato in **tre punti**: un
 controllo di visibilità *prima* di scrivere (diagnosi pulita, nessun effetto da
 annullare) e un `ROW_COUNT` *dopo* ciascuna delle due scritture (copre la
@@ -1319,4 +1474,4 @@ dopo.
   — decisioni §21.4, numeratore §21.5, piano §22 → §26
 * Partita generalizzata (cantiere 1): [brief-design-partita-merce-generalizzata.md](brief-design-partita-merce-generalizzata.md)
 * Pannello situazione merce (cantiere 2): [brief-design-situazione-merce-ordine.md](brief-design-situazione-merce-ordine.md)
-* Perimetro emittente (cantiere aperto): [brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](brief-db-perimetro-emittente-liste-e-gerarchia-ba.md)
+* Perimetro emittente (cantiere **chiuso** il 2026-08-18): [brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](../work-done/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md)

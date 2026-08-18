@@ -28,6 +28,11 @@ Indice test eseguiti:
 15) test_coda_filtro_ddt_propagato — ?ddt_id= arriva al service (FE-2)
 16) test_coda_filtro_ordine_propagato — ?ordine_id= arriva al service
 17) test_coda_filtro_documento_non_numerico_400 — garbage NON sparisce come filtro
+18) test_accrediti_ok                  — POST massivo, ids propagati al service
+19) test_accrediti_parziale_e_200      — PARZIALE non e' un errore HTTP
+20) test_accrediti_senza_idempotency_key — chiave obbligatoria (documento fiscale)
+21) test_annulla_accredito_ok          — motivo propagato, reso+riga dal path
+22) test_verbi_accredito_dietro_il_permesso — post_permission sulle due porte
 """
 
 from unittest.mock import Mock, patch
@@ -293,3 +298,90 @@ class TestResiApi(JwtMockedApiTest):
         data = resp.json()["data"]
         self.assertEqual(data[0]["qta_resa_residua"], "8")
         mock_righe.assert_called_once_with(30)
+
+    # ── Verbo dell'accredito (B2) e annullo (B2-bis) ──────────────────
+
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_SVC}.accredita_righe_reso")
+    def test_accrediti_ok(self, mock_acc, _auth) -> None:
+        mock_acc.return_value = {
+            "esito": "COMPLETATO", "totale": 2, "ok": 2,
+            "accrediti": [{"resi_riga_id": 5797, "accredito_id": 901}],
+            "falliti": [],
+        }
+        resp = self.client.post(
+            f"{_BASE}accrediti/",
+            data={"resi_riga_ids": [5797, 5799]},
+            content_type="application/json",
+            headers={"idempotency-key": "smoke-accrediti-1"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["data"]["esito"], "COMPLETATO")
+        mock_acc.assert_called_once_with([5797, 5799])
+
+    # Scopo: 🔴 PARZIALE e' 200, non un errore. Il verbo non e' l'atto fiscale
+    # — il documento nasce dopo, nel giro di fatturazione — quindi un esito
+    # parziale non lascia mai mezzo documento: lascia righe che restano in
+    # coda. Rispondere 4xx butterebbe via l'esito delle righe riuscite.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_SVC}.accredita_righe_reso")
+    def test_accrediti_parziale_e_200(self, mock_acc, _auth) -> None:
+        mock_acc.return_value = {
+            "esito": "PARZIALE", "totale": 2, "ok": 1, "accrediti": [],
+            "falliti": [{"resi_riga_id": 5799,
+                         "codice": "E_ACCREDITO_GIA_ESEGUITO",
+                         "messaggio": "gia' eseguito"}],
+        }
+        resp = self.client.post(
+            f"{_BASE}accrediti/",
+            data={"resi_riga_ids": [5797, 5799]},
+            content_type="application/json",
+            headers={"idempotency-key": "smoke-accrediti-2"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["data"]["falliti"][0]["codice"],
+                         "E_ACCREDITO_GIA_ESEGUITO")
+
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_SVC}.accredita_righe_reso")
+    def test_accrediti_senza_idempotency_key(self, mock_acc, _auth) -> None:
+        # Modifica di stato su un documento fiscale: senza chiave il service
+        # non viene nemmeno chiamato.
+        resp = self.client.post(
+            f"{_BASE}accrediti/",
+            data={"resi_riga_ids": [5797]},
+            content_type="application/json",
+        )
+        self.assertNotEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["error"]["code"], "E_IDEMPOTENCY_KEY_REQUIRED")
+        mock_acc.assert_not_called()
+
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_SVC}.annulla_accredito_riga_reso")
+    def test_annulla_accredito_ok(self, mock_ann, _auth) -> None:
+        mock_ann.return_value = {"reso_id": 7, "resi_riga_id": 24, "rimosse": []}
+        resp = self.client.post(
+            f"{_BASE}7/righe/24/annulla-accredito/",
+            data={"motivo": "riga sbagliata"},
+            content_type="application/json",
+            headers={"idempotency-key": "smoke-annullo-1"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        mock_ann.assert_called_once_with(7, 24, "riga sbagliata")
+
+    # Scopo: 🔴 il presidio del permesso si legge dalle CLASSI REALI. Fino al
+    # seed di P-1 il codename non era a catalogo e il verbo restava
+    # fail-closed; ora c'e', e questa e' la porta di un documento fiscale.
+    # ⚠️ Le due facce dello stesso atto condividono il codename: due permessi
+    # distinti si sfilerebbero al primo profilo configurato a mano.
+    def test_verbi_accredito_dietro_il_permesso(self) -> None:
+        from apps.vendite.api.views_resi import (
+            ApiResiAccrediti,
+            ApiResoRigaAnnullaAccredito,
+        )
+
+        self.assertEqual(ApiResiAccrediti.post_permission, "accredita_riga_reso")
+        self.assertEqual(
+            ApiResoRigaAnnullaAccredito.post_permission, "accredita_riga_reso",
+        )
+        self.assertEqual(ApiResiAccrediti.area_funzionale, "vendite")

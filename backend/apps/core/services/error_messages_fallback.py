@@ -37,6 +37,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_ACCREDITO_ATTIVITA_NON_FATTURATA": "La merce resa non risulta mai finita in una fattura: non c'e' un prezzo da cui accreditare.",
     "E_ACCREDITO_GIA_ESEGUITO": "Accredito gia' registrato per questa riga di reso.",
     "E_ACCREDITO_KIT_NON_MISURABILE": "Articolo composito senza coefficienti: la quantita' da accreditare non e' calcolabile.",
+    "E_ACCREDITO_KIT_SENZA_PADRE": "Il kit da accreditare non dichiara l'articolo padre dei suoi componenti: la nota di credito non si puo' comporre. Il difetto e' sul documento di origine.",
     "E_ACCREDITO_MOTIVO_OBBLIGATORIO": "Motivo obbligatorio per annullare l'accredito.",
     "E_ACCREDITO_NON_IN_CODA": "Nessun accredito dovuto per questa riga di reso.",
     "E_ACCREDITO_NON_TROVATO": "Nessun accredito da annullare per questa riga di reso: non e' mai stato accreditato, oppure e' gia' stato annullato.",

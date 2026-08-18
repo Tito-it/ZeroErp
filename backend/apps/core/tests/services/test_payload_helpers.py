@@ -646,3 +646,50 @@ class TestMapIntegrityError(TestCase):
             )
         # Il constraint esatto vince (word boundary esclude fk_foo).
         self.assertEqual(ctx.exception.code, "E_FK_SPECIFIC")
+
+
+from apps.core.services.payload_helpers import make_db_errors_translator
+from apps.core.services.service_errors import ServiceError
+from apps.core.tests.db_error_fakes import make_db_error
+
+
+class TestTranslateDbErrorsHint(TestCase):
+    """L'AZIONE SUGGERITA del catalogo arriva strutturata fino al chiamante."""
+
+    # Scopo: 🔴 il campo che si perdeva. Per ogni codice il team DB scrive a
+    # catalogo una `soluzione` — «se il documento non e' ancora numerato, la
+    # strada e' il reset del lotto…» — che PostgreSQL consegna come HINT. Fino
+    # al 2026-08-18 il traduttore la lasciava annegata nel testo di `detail`, e
+    # un dominio che volesse mostrarla all'operatore doveva RISCRIVERLA in
+    # Python: cioe' duplicare il catalogo, che e' la cosa che questo progetto
+    # non fa. Ora viaggia in `hint`, dove l'envelope API la espone.
+    def test_hint_del_db_arriva_nel_service_error(self) -> None:
+        traduttore = make_db_errors_translator(
+            fn_prefix="test.dominio",
+            fallback_code="E_TEST_FALLBACK",
+            fallback_message="fallback",
+        )
+        with self.assertRaises(ServiceError) as cm:
+            with traduttore("op"):
+                raise make_db_error(
+                    "Riga di reso 24: rettifiche gia' emesse.",
+                    codice="E_ACCREDITO_ANNULLO_NON_AMMESSO",
+                    hint="Se il documento non e' ancora numerato, resetta il lotto.",
+                )
+        self.assertEqual(cm.exception.code, "E_ACCREDITO_ANNULLO_NON_AMMESSO")
+        self.assertEqual(
+            cm.exception.hint,
+            "Se il documento non e' ancora numerato, resetta il lotto.",
+        )
+
+    # Scopo: un errore DB senza HINT non deve inventarne uno.
+    def test_senza_hint_il_campo_resta_vuoto(self) -> None:
+        traduttore = make_db_errors_translator(
+            fn_prefix="test.dominio",
+            fallback_code="E_TEST_FALLBACK",
+            fallback_message="fallback",
+        )
+        with self.assertRaises(ServiceError) as cm:
+            with traduttore("op"):
+                raise make_db_error("errore secco", codice="E_TEST_SECCO")
+        self.assertIsNone(cm.exception.hint)

@@ -12,6 +12,8 @@ Indice test eseguiti:
 1) test_tutte_le_rettifiche_lette_con_fetchall — N righe, fetchone MAI chiamato
 2) test_select_star_dalla_madre_non_select_scalare — la forma dell'SQL
 3) test_id_castato_a_intero_nei_parametri — nessuna stringa al driver
+4) test_annullo_letto_con_fetchall — anche l'annullo e' RETURNS TABLE
+5) test_gia_accreditato_dalla_fn_condivisa — la formula non si riscrive
 """
 
 from unittest import TestCase
@@ -107,3 +109,51 @@ class ResiRepositoryAccreditoTests(TestCase):
         ResiRepository().accredita_riga_reso("5797")
 
         self.assertEqual(cursor.execute.call_args[0][1], [5797])
+
+    # Scopo: l'annullo e' `RETURNS TABLE` come la madre che crea — ritorna le
+    # coppie RIMOSSE, che su un kit sono N. Stessa trappola del fetchone.
+    @patch("apps.vendite.db.resi_repository.connection")
+    def test_annullo_letto_con_fetchall(self, mock_conn) -> None:
+        cursor = _mock_cursor([
+            (901, 5501, 7101, "-3.000000", "-3.000000"),
+            (902, 5502, 7102, "-1.000000", "-1.000000"),
+        ])
+        _mock_connection(mock_conn, cursor)
+
+        from apps.vendite.db.resi_repository import ResiRepository
+
+        out = ResiRepository().annulla_accredito_riga_reso(5797, "riga sbagliata")
+
+        cursor.fetchone.assert_not_called()
+        self.assertEqual(len(out), 2)
+        sql = " ".join(cursor.execute.call_args[0][0].split())
+        self.assertEqual(
+            sql, "SELECT * FROM vendite.fn_annulla_accredito_riga_reso(%s, %s)",
+        )
+        self.assertEqual(cursor.execute.call_args[0][1], [5797, "riga sbagliata"])
+
+
+class ResiRigheGiaAccreditatoTests(TestCase):
+    """Il fatto «quanto e' gia' stato accreditato» sulle righe del reso."""
+
+    # Scopo: 🔴 la quota accreditata si legge dalla fn del DB, che e' il punto
+    # UNICO della formula (la usa anche `vw_resi_da_accreditare`). Rifarla qui
+    # con un SUM sul ponte darebbe una seconda verita' — e sbagliata: su un kit
+    # N righe di ponte portano la STESSA quota padre, e sommarle la
+    # moltiplicherebbe. Se questo test diventa rosso perche' qualcuno ha
+    # scritto un SUM inline, il difetto e' quello, non il test.
+    @patch("apps.vendite.db.resi_repository.connection")
+    def test_gia_accreditato_dalla_fn_condivisa(self, mock_conn) -> None:
+        cursor = MagicMock()
+        cursor.description = []
+        cursor.fetchall.return_value = []
+        _mock_connection(mock_conn, cursor)
+
+        from apps.vendite.db.resi_repository import ResiRepository
+
+        ResiRepository().list_righe(7)
+
+        sql = cursor.execute.call_args[0][0]
+        self.assertIn("vendite.fn_resi_riga_accreditato_partita(rr.id)", sql)
+        self.assertIn("AS gia_accreditato", sql)
+        self.assertNotIn("SUM(qta_partita)", sql)

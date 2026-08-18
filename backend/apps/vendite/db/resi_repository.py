@@ -327,6 +327,17 @@ class ResiRepository:
                         THEN 'PARZIALE'
                     ELSE 'COMPLETATA'
                 END AS stato_riconsegna,
+                -- Quanto di questa riga e' GIA' stato accreditato, in unita'
+                -- di merce. ⭐ Si legge dalla fn del DB, che e' il punto UNICO
+                -- della formula (la consuma anche `vw_resi_da_accreditare` per
+                -- non ri-offrire una quota gia' accreditata): rifare qui la
+                -- somma sul ponte darebbe una seconda verita' — e sbagliata,
+                -- perche' su un kit N righe portano la STESSA quota padre e
+                -- sommarle la moltiplicherebbe.
+                -- Serve al drawer per offrire l'ANNULLO dell'accredito: dopo il
+                -- verbo la riga esce dalla coda, quindi il reso e' l'unica sede
+                -- da cui si puo' ancora disfare (§30.2 del brief).
+                acc.accreditato AS gia_accreditato,
                 rr.meta,
                 rr.data_insert,
                 rr.data_update
@@ -350,6 +361,9 @@ class ResiRepository:
               CROSS JOIN LATERAL (
                     SELECT vendite.fn_resi_riga_residuo_riconsegna(rr.id) AS residuo
               ) res
+              CROSS JOIN LATERAL (
+                    SELECT vendite.fn_resi_riga_accreditato_partita(rr.id) AS accreditato
+              ) acc
              WHERE rr.reso_id = %s
                AND rr.attivo IS TRUE
              ORDER BY rr.riga_nr, rr.id
@@ -887,6 +901,31 @@ class ResiRepository:
             cursor.execute(
                 "SELECT * FROM vendite.fn_accredita_riga_reso(%s)",
                 [int(resi_riga_id)],
+            )
+            return rows_to_list(cursor)
+
+    # Scopo: Annulla l'accredito di una riga di reso via fn madre
+    #        `vendite.fn_annulla_accredito_riga_reso` (atomica, DB-first):
+    #        porta le rettifiche a `stato_emissione = 'ANNULLATA'`, cancella le
+    #        righe di ponte — ed e' quella cancellazione a far RISALIRE
+    #        l'accredito dovuto della coda — e traccia il motivo su
+    #        `commesse_attivita_log`. Ritorna le coppie rimosse.
+    # ⚠️ E' tutto-o-niente sull'INSIEME, non riga per riga: un accredito e' N
+    #    rettifiche (consumo LIFO su piu' righe di fattura, una per componente
+    #    di kit) e annullarne una parte lascerebbe la coda a chiedere un residuo
+    #    che nessuno puo' piu' soddisfare. La decisione e' della madre.
+    # ⚠️ `RETURNS TABLE` come la gemella che crea (§20.4): `rows_to_list`, mai
+    #    `fetchone` — su un kit le coppie rimosse sono N.
+    # ⛔ Nessuna strada per annullare il DOCUMENTO: quella e' la pipeline, ed e'
+    #    la stessa delle fatture. Il reset di lotto pero' NON annulla
+    #    l'accredito: RIGENERA la nota al giro dopo (§21.4).
+    def annulla_accredito_riga_reso(
+        self, resi_riga_id: int, motivo: str | None,
+    ) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM vendite.fn_annulla_accredito_riga_reso(%s, %s)",
+                [int(resi_riga_id), motivo],
             )
             return rows_to_list(cursor)
 
