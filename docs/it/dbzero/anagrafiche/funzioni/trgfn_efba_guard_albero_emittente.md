@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_efba_guard_albero_emittente.md" %}
 # ⚙️ Funzione `trgfn_efba_guard_albero_emittente`
 
 ```sql

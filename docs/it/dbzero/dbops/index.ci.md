@@ -91,6 +91,8 @@
 - [vw_fk_senza_indice](manual/vw_fk_senza_indice.md) — (latest review 27-07-26)
 - [vw_function_list](manual/vw_function_list.md) — * Agevolare il **discovery** delle funzioni personalizzate per manutenzione e documentazione. * Rendere immediatamente disponibili:
 - [vw_indici_ridondanti_prefisso](manual/vw_indici_ridondanti_prefisso.md) — (latest review 27-07-26)
+- [vw_liste_multi_emittente_non_certificate](manual/vw_liste_multi_emittente_non_certificate.md) — (latest review 18-08-26)
 - [vw_non_editable_fields](manual/vw_non_editable_fields.md) — (latest review 2026-05-22 — aggiunto riferimento al sistema lock condizionali)
+- [vw_operatori_senza_emittente](manual/vw_operatori_senza_emittente.md) — (latest review 18-08-26)
 - [vw_parameter_fk_surrogate_dangling](manual/vw_parameter_fk_surrogate_dangling.md) — (latest review 02-05-2026)
 - [vw_trigger_functions](manual/vw_trigger_functions.md) — * Fornire una panoramica centralizzata dei trigger utente presenti in ogni tabella del database. * Rendere immediatamente accessibili:

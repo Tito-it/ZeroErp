@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_billing_account_guard_albero_emittente.md" %}
 # ⚙️ Funzione `trgfn_billing_account_guard_albero_emittente`
 
 ```sql

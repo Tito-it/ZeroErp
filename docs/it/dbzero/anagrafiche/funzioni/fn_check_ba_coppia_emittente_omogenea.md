@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_check_ba_coppia_emittente_omogenea.md" %}
 # ⚙️ Funzione `fn_check_ba_coppia_emittente_omogenea`
 
 ```sql
