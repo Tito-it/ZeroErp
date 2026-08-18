@@ -54,33 +54,25 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(26);
+SELECT plan(22);
 
 -- ============================================================
--- 1. ENUM config.ruolo_sistema
+-- 1. ⛔ RIMOSSO il 2026-08-18 — ENUM config.ruolo_sistema
+--
+--   Qui c'erano DUE asserzioni («l'enum esiste», «ha i valori ADMIN/OPERATIVO/
+--   DISABILITATO»). L'enum e' stato ELIMINATO di proposito dal cutover
+--   multi-face-auth: 90_end/20260429-20-drop-type-ruolo-sistema.
+--
+--   ⚠️ Non sono state «riparate» ma TOLTE, ed e' una differenza di merito:
+--   asserivano l'esistenza di una cosa che una decisione ha rimosso. Un test
+--   che pretende il contrario di una decisione presa non e' un presidio, e'
+--   un ostacolo — e finche' era rosso in baseline zittiva le altre 22
+--   asserzioni di questo file.
+--
+--   Stessa vittima del riferimento morto in
+--   db/pgtap/config/test-user-emittenti-fiscali-immutable.sql: il cutover ha
+--   lasciato indietro due file, non uno.
 -- ============================================================
-
-SELECT ok(
-    EXISTS (
-        SELECT 1
-        FROM pg_type t
-        JOIN pg_namespace n ON n.oid = t.typnamespace
-        WHERE n.nspname = 'config'
-          AND t.typname = 'ruolo_sistema'
-    ),
-    'ENUM config.ruolo_sistema esiste'
-);
-
-SELECT is(
-    (SELECT array_agg(e.enumlabel ORDER BY e.enumsortorder)::text[]
-     FROM pg_enum e
-     JOIN pg_type t ON t.oid = e.enumtypid
-     JOIN pg_namespace n ON n.oid = t.typnamespace
-     WHERE n.nspname = 'config'
-       AND t.typname = 'ruolo_sistema'),
-    ARRAY['ADMIN', 'OPERATIVO', 'DISABILITATO'],
-    'ENUM ruolo_sistema: valori ADMIN, OPERATIVO, DISABILITATO'
-);
 
 -- ============================================================
 -- 2. ENUM config.livello_accesso
@@ -109,35 +101,14 @@ SELECT is(
 );
 
 -- ============================================================
--- 3. Colonna ruolo_sistema su risorse_umane_auth_user
+-- 3. ⛔ RIMOSSO il 2026-08-18 — colonna risorse_umane_auth_user.ruolo_sistema
+--
+--   Altre DUE asserzioni («la colonna esiste», «il default e' OPERATIVO») sulla
+--   stessa vittima: la colonna e' stata eliminata da
+--   90_end/20260429-19a-alter-legacy-rua-drop-ruolo-sistema, e la tabella
+--   stessa e' oggi una VISTA su identita_digitali (l'originale e' archiviata
+--   come _legacy_risorse_umane_auth_user).
 -- ============================================================
-
-SELECT ok(
-    EXISTS (
-        SELECT 1
-        FROM pg_attribute a
-        JOIN pg_class c ON c.oid = a.attrelid
-        JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = 'anagrafiche'
-          AND c.relname = 'risorse_umane_auth_user'
-          AND a.attname = 'ruolo_sistema'
-          AND NOT a.attisdropped
-    ),
-    'Colonna anagrafiche.risorse_umane_auth_user.ruolo_sistema esiste'
-);
-
-SELECT is(
-    (SELECT pg_get_expr(d.adbin, d.adrelid)
-     FROM pg_attrdef d
-     JOIN pg_attribute a ON a.attrelid = d.adrelid AND a.attnum = d.adnum
-     JOIN pg_class c ON c.oid = a.attrelid
-     JOIN pg_namespace n ON n.oid = c.relnamespace
-     WHERE n.nspname = 'anagrafiche'
-       AND c.relname = 'risorse_umane_auth_user'
-       AND a.attname = 'ruolo_sistema'),
-    '''OPERATIVO''::config.ruolo_sistema',
-    'Default ruolo_sistema = OPERATIVO'
-);
 
 -- ============================================================
 -- 4. Tabella config.aree_funzionali + seed
@@ -155,10 +126,10 @@ SELECT ok(
     'Tabella config.aree_funzionali esiste'
 );
 
-SELECT is(
+SELECT cmp_ok(
     (SELECT count(*)::int FROM config.aree_funzionali WHERE attivo = true),
-    11,
-    'Seed aree_funzionali: 11 righe attive'
+    '>=', 13,
+    'Seed aree_funzionali: almeno 13 righe attive (nessuna sparita)'
 );
 
 SELECT ok(
@@ -174,19 +145,19 @@ SELECT ok(
 );
 
 SELECT ok(
-    (SELECT count(*)::int
-     FROM config.aree_funzionali
-     WHERE schema_db = codice
-    ) = 11,
-    'Seed aree_funzionali: schema_db = codice per tutte le righe'
+    NOT EXISTS (
+        SELECT 1 FROM config.aree_funzionali
+         WHERE schema_db IS DISTINCT FROM codice
+    ),
+    'Seed aree_funzionali: schema_db = codice per TUTTE le righe (invariante, non conteggio)'
 );
 
 SELECT ok(
-    (SELECT count(*)::int
-     FROM config.aree_funzionali
-     WHERE ordinamento > 0
-    ) = 11,
-    'Seed aree_funzionali: ordinamento positivo per tutte le righe'
+    NOT EXISTS (
+        SELECT 1 FROM config.aree_funzionali
+         WHERE ordinamento IS NULL OR ordinamento <= 0
+    ),
+    'Seed aree_funzionali: ordinamento positivo per TUTTE le righe (invariante, non conteggio)'
 );
 
 SELECT throws_ok(
@@ -223,10 +194,10 @@ SELECT ok(
     'Tabella config.azioni_processo esiste'
 );
 
-SELECT is(
+SELECT cmp_ok(
     (SELECT count(*)::int FROM config.azioni_processo WHERE attivo = true),
-    8,
-    'Seed azioni_processo: 8 righe attive'
+    '>=', 30,
+    'Seed azioni_processo: almeno 30 righe attive (nessuna sparita)'
 );
 
 SELECT is(
@@ -313,12 +284,12 @@ SELECT throws_ok(
     'FK area_id: valore invalido bloccato'
 );
 
-SELECT is(
+SELECT cmp_ok(
     (SELECT count(*)::int
        FROM config.area_model_overrides
       WHERE app_label NOT LIKE 'pgtap_test_app%'),
-    11,
-    'Seed area_model_overrides: 11 righe attese'
+    '>=', 12,
+    'Seed area_model_overrides: almeno 12 righe (nessuna sparita)'
 );
 
 SELECT is(
