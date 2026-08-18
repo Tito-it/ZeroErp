@@ -1,0 +1,191 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# La colonna `emittente_*` diventa DAVVERO un emittente
+#   (brief-db-note-credito-prerequisiti-be-fe §12 · B2).
+#
+# ⚠️ NATO COME PREREQUISITO DI P-6/5c, NON LO E' PIU' — e la storia va letta,
+#   perche' e' il motivo per cui questo changeSet resta comunque.
+#
+# ── LA DOMANDA DI PARTENZA, E LA SUA RISPOSTA VERA ─────────────────────
+#   «Per il guard sulla disattivazione basta far girare l'automazione?»
+#   La risposta e' NO, ma non per il motivo che sembrava: ⭐ il guard ESISTE
+#   GIA'. Lo tiene anagrafiche.trgfn_emittenti_fiscali_guard_attivo, scritto a
+#   mano, con un codice dedicato (E_EMITTENTE_DISATTIVAZIONE_BLOCCATA), e fa
+#   esattamente cio' che D-P6-1 chiede: blocca la disattivazione di un
+#   emittente che ha mapping in emittenti_fiscali_billing_account.
+#   ⚠️ Il piano lo dava per mancante perche' cercava la famiglia
+#   `prevent_deactivate_if_children`. Cercava nel posto sbagliato — l'ha
+#   scoperto il pgTAP di 5e, sollevando l'errore che credeva assente.
+#   ⛔ Quindi 5c NON HA LAVORO, e l'automazione non serve.
+#
+# ── ⭐ MA LA CHIAVE ESTERNA RESTA GIUSTA, PER L'ALTRO MOTIVO ───────────
+#   L'indagine sull'automazione aveva trovato un secondo difetto, indipendente
+#   e ancora aperto — ed e' quello per cui questo changeSet vive:
+#
+#   dbops.fn_run_automations_attivo legge le regole da
+#   dbops.automation_rules_tbl (per tabella PADRE) e scopre le FIGLIE da
+#   pg_constraint. Ma oggi:
+#
+#     emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id
+#         --FK--> anagrafiche.soggetti_ruoli (id)        ⛔ NON ha `attivo`
+#
+#   Il padre giusto — anagrafiche.emittenti_fiscali, che `attivo` ce l'ha e ha
+#   gia' QUINDICI trigger prevent_deactivate_if_children (contratti, ddt,
+#   ordini, resi, preventivi, pratiche, offerte, template, utilities…) — con
+#   questa figlia non ha NESSUNA chiave esterna. L'automazione quindi non puo'
+#   vederla: non e' una passata da rifare, e' un percorso che non esiste.
+#
+#   ⚠️ Ed e' il tipo di verifica che sembra fatta e non lo e': lanciare
+#   l'automazione avrebbe prodotto zero trigger e nessun errore. Vale la pena
+#   saperlo comunque, perche' la prossima persona che cerca di coprire una
+#   figlia con quell'automazione incontrera' lo stesso muro.
+#
+# ── ⭐ IL DIFETTO CHE RESTA, E CHE QUESTO CHANGESET CHIUDE ─────────────
+#   Verificato il 2026-08-19: **nessun presidio** impone oggi che
+#   `emittente_soggetto_ruolo_id` sia davvero un emittente fiscale. I due guard
+#   che esistono sulla tabella — trgfn_efba_guard_albero_emittente e il default
+#   guard — parlano di OMOGENEITA' DELL'ALBERO e di unicita' del default, non
+#   dell'identita' del bersaglio. Si puo' mappare un billing account a un
+#   soggetto_ruolo qualunque: un cliente, un fornitore. La colonna si chiama
+#   `emittente_*` e la promessa la mantiene solo la disciplina di chi scrive.
+#
+#   ⭐ Questa FK la trasforma in un vincolo — ed e' l'UNICO scopo che le resta.
+#   ⚠️ Il guard esistente blocca la DISATTIVAZIONE di un emittente mappato, ma
+#   non dice nulla su COSA si puo' mappare: sono due invarianti diversi, e
+#   quello che manca e' questo.
+#
+# ── ⚠️ PERCHE' SI SOSTITUISCE E NON SI AGGIUNGE ────────────────────────
+#   Due chiavi esterne sulla stessa colonna sarebbero ridondanti, e quella
+#   verso soggetti_ruoli e' STRETTAMENTE PIU' DEBOLE: ogni
+#   emittenti_fiscali.soggetto_ruolo_id e' per costruzione un soggetti_ruoli.id
+#   (lo impone la FK di emittenti_fiscali). L'integrita' verso soggetti_ruoli
+#   sopravvive quindi per transitivita', e tenerne due direbbe due volte una
+#   cosa sola — con il rischio che un domani divergano.
+#   Il NOME del vincolo resta lo stesso (`..._emittente`): significa ancora
+#   «l'emittente», e cambiarlo sarebbe churn su ogni riferimento esistente.
+#
+# ── ⚠️ COSA SUCCEDE SE CI SONO RIGHE ORFANE ────────────────────────────
+#   Se esiste anche una sola riga che punta a un soggetto_ruolo che NON e' un
+#   emittente fiscale, l'ADD CONSTRAINT **fallisce al migrate**. Non e' un
+#   effetto collaterale da evitare: e' il modo giusto di scoprirlo. Quelle
+#   righe sono mapping verso un emittente che non esiste, e il rimedio e'
+#   correggerle a mano — non siamo in produzione.
+#   ⛔ Non e' una condizione per applicare: la FK e' giusta a prescindere da
+#   quante righe la violino oggi.
+#
+# ── INDICE SULLA FK: DELIBERATAMENTE NESSUNO ───────────────────────────
+#   dbops.apply_fk_index_policy() e' OPT-IN e per questa tabella non esiste
+#   riga di policy: quindi nessun indice, ed e' la scelta giusta e non una
+#   dimenticanza. `emittenti_fiscali_billing_account` ha poche decine di righe
+#   (41 BA mappati al 2026-08-18): un indice su emittente_soggetto_ruolo_id
+#   costerebbe manutenzione per risparmiare una scansione che non si misura.
+#   ⚠️ Se un giorno la tabella crescesse, si aggiunge la riga di policy — con
+#   `dll_command` valorizzato, che un CHECK impone anche a consentito = false.
+#
+# ── EFFETTO COLLATERALE, non piu' lo scopo ─────────────────────────────
+#   Dopo questo changeSet l'automazione POTREBBE anche vedere la coppia
+#   (padre emittenti_fiscali, figlia emittenti_fiscali_billing_account, ref su
+#   soggetto_ruolo_id — il supporto alla colonna referenziata diversa dalla PK
+#   esiste dal 20260408-05, «add ref col») e generare un sedicesimo trigger.
+#   ⚠️ Sarebbe RIDONDANTE con trgfn_emittenti_fiscali_guard_attivo, che gia'
+#   copre lo stesso caso con un messaggio migliore. Non e' un danno — due
+#   guard che dicono la stessa cosa non si contraddicono — ma se l'automazione
+#   lo genera, il messaggio che l'operatore vedra' potrebbe cambiare: e'
+#   l'unica conseguenza da tenere d'occhio dopo l'apply.
+#
+# Dipendenze: anagrafiche.emittenti_fiscali (uq_emittenti_fiscali_ruolo su
+#   soggetto_ruolo_id — verificato UNIQUE, quindi bersaglio valido di FK),
+#   anagrafiche.emittenti_fiscali_billing_account (20260123-01).
+# Verifica: db/pgtap/vendite/test-registri-per-emittente-v1.sql (5e), test
+#   «il guard di D-P6-1 morde».
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260819-04-replace-fk-efba-emittente-verso-emittenti-fiscali-mctit.yaml
+
+  - changeSet:
+      id: 20260819-04-replace-fk-efba-emittente-verso-emittenti-fiscali
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id punta a
+        anagrafiche.emittenti_fiscali(soggetto_ruolo_id) invece che a soggetti_ruoli(id): diventa un
+        VINCOLO il fatto che il bersaglio sia davvero un emittente, che oggi nessun guard impone -
+        si puo' mappare un billing account a un cliente o a un fornitore. ⚠️ Nato come prerequisito
+        di P-6/5c, non lo e' piu': il guard sulla disattivazione ESISTE GIA'
+        (trgfn_emittenti_fiscali_guard_attivo), lo ha scoperto il pgTAP di 5e. Resta per il difetto
+        suo. Sostituzione e non aggiunta: la vecchia FK e' strettamente piu' debole.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - foreignKeyConstraintExists:
+                schemaName: anagrafiche
+                foreignKeyTableName: emittenti_fiscali_billing_account
+                foreignKeyName: fk_emittenti_fiscali_billing_account_emittente
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  -- Il bersaglio dev'essere UNIQUE, o non puo' reggere una FK.
+                  SELECT count(*) FROM pg_indexes
+                   WHERE schemaname = 'anagrafiche'
+                     AND tablename  = 'emittenti_fiscali'
+                     AND indexname  = 'uq_emittenti_fiscali_ruolo'
+      changes:
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: emittenti_fiscali_billing_account
+            constraintName: fk_emittenti_fiscali_billing_account_emittente
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: emittenti_fiscali_billing_account
+            baseColumnNames: emittente_soggetto_ruolo_id
+            constraintName: fk_emittenti_fiscali_billing_account_emittente
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: emittenti_fiscali
+            referencedColumnNames: soggetto_ruolo_id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON CONSTRAINT fk_emittenti_fiscali_billing_account_emittente
+                ON anagrafiche.emittenti_fiscali_billing_account IS
+                'Il bersaglio e'' anagrafiche.emittenti_fiscali(soggetto_ruolo_id), non soggetti_ruoli(id): '
+                'la colonna si chiama emittente_* e da qui in poi lo E'', invece di prometterlo. '
+                'Prima del 2026-08-19 puntava a soggetti_ruoli e nessun guard impediva di mappare un '
+                'billing account a un cliente o a un fornitore — i due guard della tabella parlano di '
+                'omogeneita'' dell''albero e di unicita'' del default, non dell''identita'' del bersaglio. '
+                'SECONDO EFFETTO, ed e'' il motivo per cui il cambio e'' stato fatto ora: '
+                'dbops.fn_run_automations_attivo scopre le figlie da pg_constraint, e con la FK verso '
+                'soggetti_ruoli — che non ha la colonna `attivo` — la coppia era INVISIBILE. Ora il padre '
+                'e'' emittenti_fiscali, che `attivo` ce l''ha e porta gia'' quindici trigger '
+                'prevent_deactivate_if_children: il sedicesimo lo genera l''automazione da se''. '
+                'Riferimento: brief-db-note-credito-prerequisiti-be-fe P-6/5c (D-P6-1).';
+      rollback:
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: emittenti_fiscali_billing_account
+            constraintName: fk_emittenti_fiscali_billing_account_emittente
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: emittenti_fiscali_billing_account
+            baseColumnNames: emittente_soggetto_ruolo_id
+            constraintName: fk_emittenti_fiscali_billing_account_emittente
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti_ruoli
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
