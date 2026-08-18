@@ -509,3 +509,35 @@ export const STATO_CODA_STAMPA_MAP = {
 export function statoCodaStampaSeverity(codice) {
   return resolveSeverity(STATO_CODA_STAMPA_MAP, codice)
 }
+
+// Stato del conto della merce — il vocabolario e' UNO e vive a DB
+// (`vw_situazione_merce_ordine.stato` e `vw_partite_merce.stato`, brief della
+// partita merce generalizzata §9.3). Qui si sceglie solo il colore: il verso
+// del saldo il frontend NON lo ri-traduce mai (richiesta BE-2).
+//
+// ⚠️ Il criterio dei due grigi-non-grigi e' la richiesta FE-1: «tutto regolare»
+// deve essere VISIBILMENTE diverso da «non ancora calcolato».
+//   PAREGGIATA      verde     il conto torna
+//   NON_FATTURABILE grigio    il conto non si applica, ed e' normale
+//                             (causale di trasporto non fatturabile)
+//   NON_MISURABILE  ROSSO     il conto non si PUO' calcolare: kit senza
+//                             coefficiente, oppure uno scope che nasconde la
+//                             commessa. Non e' uno zero ed e' un difetto da
+//                             guardare — grigio lo confonderebbe col caso
+//                             sopra, che invece e' sano.
+export const STATO_MERCE_MAP = {
+  PAREGGIATA: 'success',
+  // Ordine ancora sotto la soglia CONFERMATO (o abortito): non c'e' impegno,
+  // quindi non c'e' arretrato — `da_spedire` e' NULL, non 0 (20260818-06).
+  // Grigio come NON_FATTURABILE: sono entrambi «non si applica», sani.
+  NON_IMPEGNATA: 'secondary',
+  DA_FATTURARE: 'info',
+  DA_ACCREDITARE: 'warn',
+  NON_SPEDITA: 'secondary',
+  NON_FATTURABILE: 'secondary',
+  NON_MISURABILE: 'danger',
+  RICONSEGNA: 'info',
+}
+export function statoMerceSeverity(codice) {
+  return resolveSeverity(STATO_MERCE_MAP, codice)
+}

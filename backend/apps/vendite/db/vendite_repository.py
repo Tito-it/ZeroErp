@@ -2629,8 +2629,13 @@ class VenditeRepository:
     #        `vw_situazione_merce_ordine`. E' l'aggregato PARLANTE: `differenza`
     #        NULL dove il conto non si applica e `stato` gia' tradotto.
     # Risultato: una riga per riga d'ordine ATTIVA, comprese quelle mai spedite
-    #        (`stato = 'NON_SPEDITA'`, 89 su 107 in sviluppo) — che nel contatore
-    #        non ci sono affatto.
+    #        (`NON_SPEDITA`) — che nel contatore non ci sono affatto — e quelle
+    #        di ordini non ancora impegnati (`NON_IMPEGNATA`).
+    # ⚠️ Due colonne sono NULLABLE e il NULL NON e' uno zero: `differenza` dove
+    #        il conto non si applica, e `da_spedire` sotto la soglia di impegno
+    #        dell'ordine (< CONFERMATO o abortito, `20260818-06`). Un
+    #        `COALESCE(..., 0)` qui direbbe «N da spedire» su ogni bozza — 60
+    #        righe su 107 in sviluppo.
     # ⚠️ NON e' `vw_contatore_merce`: quello e' il contatore GREZZO che dosa la
     #        fatturazione, non ha `stato` e appiattisce i NULL a un numero.
     def list_situazione_merce_ordine(self, ordine_id: int) -> list[dict[str, Any]]:
@@ -2740,8 +2745,16 @@ class VenditeRepository:
     # ⭐ L'aggancio e' `ddt_riga_id`, MAI `ordine_riga_id`: quest'ultimo e'
     #        nullable e sulla merce senza origine ordine e' vuoto — usarlo come
     #        chiave farebbe uscire quelle righe dal conto SENZA ERRORE, che e'
-    #        il difetto §8.5 che questo cantiere ha chiuso. Le partite del
-    #        documento sono il ponte.
+    #        il difetto §8.5 che questo cantiere ha chiuso.
+    # ⚠️ Il filtro NON passa da `vw_partite_merce` (revisione 2026-08-18: la
+    #        prima versione faceva EXISTS sulla partita, cioe' ri-valutava la
+    #        vista piu' costosa del sistema dentro una query che gia' valuta la
+    #        vista-coda — due volte lo stesso prezzo per rispondere a un filtro):
+    #        - lato DDT basta `v.ddt_id`, che la coda espone gia' — e' il DDT
+    #          della riga resa, lo stesso della partita per costruzione;
+    #        - lato ordine il legame e' il FULFILLMENT della riga di DDT resa,
+    #          che e' la STESSA fonte da cui la partita deriva la sua origine
+    #          (CTE `orig`): un criterio solo, non un terzo criterio.
     def _list_coda_su_partite(
         self,
         vista: str,
@@ -2753,19 +2766,21 @@ class VenditeRepository:
         # `vista` e `colonne` arrivano SOLO dai due wrapper qui sotto
         # (letterali statici, nessun input utente).
         if ddt_id is not None:
-            condizione, param = "p.ddt_id = %s", int(ddt_id)
+            condizione, param = "v.ddt_id = %s", int(ddt_id)
         else:
             assert ordine_id is not None
-            condizione, param = "p.ordine_id = %s", int(ordine_id)
+            condizione = """EXISTS (
+                    SELECT 1
+                      FROM vendite.ordini_righe_fulfillment f
+                      JOIN vendite.ordini_righe orr ON orr.id = f.ordine_riga_id
+                     WHERE f.ddt_riga_id = v.ddt_riga_id
+                       AND orr.ordine_id = %s
+             )"""
+            param = int(ordine_id)
         sql = f"""
             SELECT {colonne}
               FROM {vista} v
-             WHERE EXISTS (
-                    SELECT 1
-                      FROM vendite.vw_partite_merce p
-                     WHERE p.ddt_riga_id = v.ddt_riga_id
-                       AND {condizione}
-             )
+             WHERE {condizione}
              ORDER BY v.reso_id, v.resi_riga_id
         """
         with connection.cursor() as cursor:

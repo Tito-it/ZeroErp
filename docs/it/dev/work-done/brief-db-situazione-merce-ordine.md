@@ -5,11 +5,11 @@
 > (`20260817-15`, pgTAP **11/11** come applicazione), **con tre cambi rispetto
 > alla richiesta**: §8.
 >
-> ⚠️ **Applicato al DB di sviluppo, NON ancora pushato**: il changeSet e la doc
-> auto-gen non sono nel repository. Il perimetro BE ci costruisce sopra avendo
-> introspezionato la vista **viva**, non un contratto immaginato — ma il
-> backend **non e' mergiabile prima del push del DB** (in CI la vista non
-> esiste).
+> ✅ **Pushato e integrato il 2026-08-18** (PR #1282 → `Tito-dev`): changeSet e
+> doc auto-gen sono in repository, insieme al backend che li consuma (PR #1283).
+> Il corpo pubblicato coincide con quello che il perimetro BE aveva
+> introspezionato dalla vista viva per costruirci sopra — nessuna sorpresa fra
+> il DB di sviluppo e il changeSet.
 >
 > **Origine**: [brief-design-partita-merce-generalizzata.md](brief-design-partita-merce-generalizzata.md)
 > §21.6 — misura del 2026-08-17 sul DB di sviluppo.
@@ -351,9 +351,9 @@ fattura.
 ## 9. Cosa resta al perimetro BE/FE
 
 * **BE**: l'endpoint `situazione-merce` legge questa vista come livello 1
-  (§21.2 del brief partita). ⚠️ **Non mergiabile prima del push del DB.**
+  (§21.2 del brief partita). ✅ **Fatto e integrato** (PR #1283).
 * **FE**: `NON_SPEDITA` entra nella tavolozza insieme a `RICONSEGNA` e
   `NON_MISURABILE` (FE-1); `fatturato_anticipato` e `da_spedire` **non sono
   accrediti** (FE-3).
-* **Doc auto-gen**: `docs/it/dbzero/vendite/manual/vw_situazione_merce_ordine.md`
-  arriva col push del team DB — oggi non è nel repository.
+* **Doc auto-gen**: `docs/it/dbzero/vendite/{views,manual}/vw_situazione_merce_ordine.md`
+  ✅ in repository dal push del 2026-08-18.

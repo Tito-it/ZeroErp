@@ -41,6 +41,7 @@ import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
 import RiepilogoIvaTable from '../../../core/components/RiepilogoIvaTable.vue'
 import DocumentoIndirizziSection from '../../_shared/indirizzi/DocumentoIndirizziSection.vue'
 import DocumentoCollegamentiBar from '../../_shared/lineage/DocumentoCollegamentiBar.vue'
+import SituazioneMerceBar from '../../_shared/situazioneMerce/SituazioneMerceBar.vue'
 import OrdiniForm from './OrdiniForm.vue'
 import OrdiniRigheTable from './OrdiniRigheTable.vue'
 import OrdineNoteDrawer from './OrdineNoteDrawer.vue'
@@ -176,6 +177,9 @@ const showEvasione = computed(
 const evasioneDialogVisible = ref(false)
 // Ref alla barra collegamenti (chip pratica/origine/destinazioni).
 const collegamentiRef = ref(null)
+// Ref alla barra situazione merce: l'evasione sposta merce, quindi cambia il
+// conto (consegnato sale, `da_spedire` scende) e non solo il grafo.
+const merceRef = ref(null)
 
 // Scopo: callback @evaso della dialog — generato un DDT dall'ordine: ricarica il
 // detail (lo stato ordine viene proiettato dal BE: CONFERMATO/PARZIALMENTE_EVASO/
@@ -186,6 +190,7 @@ async function onEvaso() {
   // collegamenti vanno ricaricati (senza questo il chip «DDT» comparirebbe
   // solo alla riapertura del drawer).
   collegamentiRef.value?.reload()
+  merceRef.value?.reload()
 }
 
 // Default emittente fiscale: operatore → id profilo; admin globale → null
@@ -627,6 +632,18 @@ const drawerActions = computed(() => {
              «2 DDT». Il grafo completo si apre dai chip stessi in dialog. -->
         <DocumentoCollegamentiBar
           ref="collegamentiRef"
+          base-path="/vendite/ordini"
+          :doc-id="effectiveOrdineId"
+          :readonly="isReadonlyPuro" />
+
+        <!-- Situazione merce dell'ordine: il riassunto per riga ordinata —
+             comprese quelle MAI SPEDITE, che il vecchio contatore non
+             conteneva affatto — con il dettaglio delle spedizioni e delle due
+             code a un clic. E' il rilievo in-app del 2026-08-17: cinque
+             schermate per ricostruire una storia, e la riga che la riassume
+             non esisteva. -->
+        <SituazioneMerceBar
+          ref="merceRef"
           base-path="/vendite/ordini"
           :doc-id="effectiveOrdineId"
           :readonly="isReadonlyPuro" />

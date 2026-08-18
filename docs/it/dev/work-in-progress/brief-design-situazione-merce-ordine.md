@@ -1,7 +1,9 @@
 # Brief di design — la situazione della merce di un ordine non è leggibile da nessuna parte
 
 > **Tipo**: brief di design · **Data**: 2026-08-17 · **Owner**: Tid ·
-> **Stato**: 🟡 **APERTO** — requisito posto, forma da decidere.
+> **Stato**: 🟢 **FATTO E VALIDATO IN-APP** (Tid, 2026-08-18) su `ORD0018586`
+> (l'ordine del §3, quello che ha generato il requisito) e su `ORD0018585`
+> (confermato e mai spedito). Vedi §8.
 >
 > **Origine**: rilievo in-app di Tid (2026-08-17), dopo aver percorso a mano il
 > giro completo ordine → DDT → fattura → reso a credito → reso per riconsegna:
@@ -214,12 +216,117 @@ Ne discende, per questo pannello:
 * **Nessuna azione nel pannello** in questa fase: è una lettura. I verbi vivono
   dove già stanno (code resi, dashboard).
 
-## 7. Definizione di «fatto» (bozza)
+## 7. Definizione di «fatto»
 
-* [ ] aprendo l'ordine si capisce, **senza uscire dal drawer**, quanto è stato
+* [x] aprendo l'ordine si capisce, **senza uscire dal drawer**, quanto è stato
       consegnato, fatturato, reso, e cosa resta aperto;
-* [ ] il caso del §3 è leggibile in **una** schermata invece di cinque;
-* [ ] un saldo negativo è **spiegato**, non solo esposto (§5.4);
-* [ ] ciò che non si può ancora chiudere è **dichiarato tale** (§5.3);
-* [ ] il pannello non contraddice le code: stessi numeri, stessa etichetta
-      dovuto/facoltativo.
+* [x] il caso del §3 è leggibile in **una** schermata invece di cinque;
+* [x] un saldo negativo è **spiegato**, non solo esposto (§5.4) — anzi non è
+      mai mostrato come numero negativo: è un compito;
+* [x] ciò che non si può ancora chiudere è **dichiarato tale** (§5.3);
+* [x] il pannello non contraddice le code: legge **le stesse viste**, quindi
+      stessi numeri e stessa etichetta dovuto/facoltativo per costruzione.
+
+✅ **Validato in-app da Tid il 2026-08-18** su `ORD0018586`: *«vedo 8 da
+accreditare · 3 da riconsegnare · 3 da spedire, mi sembra corretto»*.
+
+⭐ **È l'ordine del §3**, quello percorso a mano il 2026-08-17 che ha generato
+il requisito: cinque schermate per ricostruirlo, e la riga che lo riassume non
+esisteva. Ora è la prima cosa che si legge aprendo il drawer.
+
+---
+
+## 8. 📓 Come è stato realizzato (2026-08-18)
+
+**Backend** — `GET /vendite/{ordini|ddt}/<id>/situazione-merce/`, quattro
+sezioni in un round-trip, dal factory `build_situazione_merce_view`. Doc:
+[api_situazione_merce.md](../../backend/vendite/manual/api_situazione_merce.md).
+
+**Frontend** — `src/vendite/_shared/situazioneMerce/`: `SituazioneMerceBar`
+(il riassunto in testata, sotto `DocumentoCollegamentiBar`) +
+`SituazioneMerceDialog`/`Contenuto` (il dettaglio) + `sintesiSituazioneMerce`
+(funzione pura) + `statoMerceSeverity`. Montato in `OrdiniDrawer` e
+`DdtDrawer`, con `reload` agganciato alle azioni che spostano merce.
+
+**Il caso del §3, a video**, dal payload vero:
+
+```text
+Merce:  [8 da accreditare]  [3 da riconsegnare]  [3 da spedire]
+   ↓ (un clic)
+righe d'ordine   riga 1 · ordinato 21 · consegnato 21 · dal cliente 13
+                 · fatturato 21 · da spedire 3 · «8 da accreditare»
+spedizioni       DDT0010839 · consegnato 21 · reso 8 · «8 da accreditare»
+da accreditare   RESO0005122 · 5 · Dovuta      RESO0005123 · 3 · Facoltativa
+da ri-consegnare RESO0005123 · resa 3 · ri-consegnata 0 · residua 3
+```
+
+⭐ **Le cinque schermate del §3 sono una riga e un clic.**
+
+### 8.1 ✅ La soglia di impegno dell'ordine — rilievo chiuso il 2026-08-18
+
+**Com'era**: una riga d'ordine **confermata e non ancora spedita** produceva il
+chip «N da spedire». Corretto in sé, ma la review del 2026-08-18 ha misurato che
+la vista **non guardava lo stato dell'ordine**: **60 righe su 107** del pannello
+stavano su ordini in **BOZZA**, tutte con `da_spedire > 0`. Un ordine in bozza
+presentava un'intenzione come un arretrato; un ordine **annullato** lo avrebbe
+mostrato per sempre.
+
+**Come è stato chiuso** — team DB, `20260818-06`, e il rimedio è **migliore di
+quello che avevamo proposto**. Noi chiedevamo di far sparire le righe sotto
+soglia; loro hanno fatto sparire il **numero**:
+
+```text
+impegnata := stato ordine >= CONFERMATO  AND NOT is_abortito
+
+da_spedire   NULL             sotto soglia
+stato        NON_IMPEGNATA    sotto soglia e senza partite   ← settimo valore
+```
+
+⭐ **Perché la loro è la scelta giusta, e la nostra no**: il pannello si legge
+**per un ordine**. Togliere le righe non ripulisce un elenco da 107 — rende
+**vuoto il pannello di ogni bozza**, cioè «non c'è nulla» dove la verità è «non
+sto vedendo niente». È lo stesso difetto che il cancello di perimetro del
+service combatte col 404, entrato da un'altra porta.
+
+⚠️ **E la clausola di salvaguardia che avevamo chiesto era un ramo morto**:
+`fn_check_ordine_annullabile` non lascia annullare un ordine con un DDT vivo, D1
+esclude i DDT abortiti, e i due scrittori di `ordini_righe_fulfillment` creano
+entrambi il DDT da ordine — quindi *abortito ⟹ zero partite*. La protezione
+esiste comunque, come **precedenza nel `CASE`**: dove c'è merce uscita vince il
+saldo, e se quel ramo un giorno si aprisse il pannello lo mostrerebbe invece di
+nasconderlo.
+
+**Verificato come applicazione** dopo l'applicazione:
+
+```text
+cardinalita' .................. 107   (invariata)
+NON_IMPEGNATA .................  60   tutte con da_spedire NULL
+NON_SPEDITA ...................  29   (erano 89: le bozze se ne sono andate)
+arretrati dichiarati sotto soglia  0
+```
+
+#### 🔴 E il cambio ha creato un difetto nel FRONTEND, trovato provandolo
+
+Con `da_spedire` NULL spariva **l'unica voce che su una bozza faceva
+`haPendenze`** — e `tuttoRegolare` era `!haPendenze && righe.length > 0`.
+Risultato: un ordine in bozza usciva `tuttoRegolare: true`, cioè **la spunta
+verde «tutto regolare» su un ordine dove non è successo niente**.
+
+⭐ **È il requisito §5.2 di sempre, sul terzo caso che allora non esisteva**:
+«tutto regolare», «non ancora calcolato» e «non ancora impegnato» sono **tre**
+cose, e solo la prima si può affermare. `tuttoRegolare` ora pretende almeno una
+riga con un impegno vero; su un ordine interamente `NON_IMPEGNATA` la barra
+**non compare** — e il Tag di stato del drawer dice già «Bozza».
+
+✅ **Validato anche quello, da Tid il 2026-08-18**: `ORD0018585` —
+**CONFERMATO**, 1 ordinato, 0 consegnato — mostra «**1 da spedire**».
+
+⭐ **E la cosa che conta non è il chip, è ciò che NON compare accanto**:
+`differenza` è `null` e `fatturato_anticipato` è 0, quindi niente «da
+fatturare» e niente «da accreditare» su una riga che deve solo partire. È il
+rilievo A chiuso a video, sull'unico caso in cui si vedrebbe.
+
+Con questa, i due estremi del vocabolario sono provati in-app: l'ordine più
+complicato che esista in sviluppo (`ORD0018586`: consegnato, fatturato, reso a
+credito, reso per ri-consegna) e quello più semplice (`ORD0018585`: confermato
+e fermo).
