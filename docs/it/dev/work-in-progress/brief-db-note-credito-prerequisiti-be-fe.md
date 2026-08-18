@@ -17,6 +17,44 @@
 >
 > ⚠️ **Perimetro dichiarato**: siamo **solo in ambiente di test**. Breaking
 > change ammessi, nessuna fase di compatibilità, nessun backfill.
+>
+> ✅ **Analisi critica e piano di sviluppo del team DB: §7 e §8**, in fondo.
+> In due righe: **P-1/P-2/P-3/P-4 reggono** (e la domanda aperta di P-2 ha
+> risposta: *no*, ma per un motivo diverso da quello scritto); **P-5 va
+> corretto** — un accredito non è una riga, è N; **P-6 è reale ma non è
+> «collisione»** — sono buchi nella serie, ed **ha un prerequisito** nel
+> cantiere perimetro emittente.
+>
+> ✅ **La misura di P-6 è stata fatta** (C-5) e le **tre decisioni aperte sono
+> chiuse** (D-P6-1/2/3, §8 passo 5).
+
+---
+
+## ▶ Stato del cantiere — 2026-08-18, fine giornata
+
+> Aggiornato dopo l'apply di Tid. ⚠️ Istantanea: prima di citarla, verificare
+> contro il codice.
+
+| Passo | Cosa | Stato |
+| --- | --- | --- |
+| **1** · P-1 | l'azione di processo `accredita_riga_reso` (id 31) | ✅ **applicato** |
+| **2** · P-2 | il task `popola_fatture_rettifiche` a registry, impl, pipeline e task_policy · `20260818-68` (numero esplicito in `fn_check_lotto_annullabile`) · `20260818-69` (il commento che spiega perché `fn_cleanup_fatture_by_ids` **non** si tocca) | ✅ **applicato** |
+| **3** · P-5 | `20260818-71` — `fn_annulla_accredito_riga_reso` + 4 codici (924-927) + 18 pgTAP | ✅ **applicato e verde** |
+| **§10** | `20260818-73` — il conto della merce smette di contare l'annullato | ✅ **applicato e verde** |
+| **4** · P-3 | il gate della rinuncia in `fn_check_rinuncia_reversibile` | 🔴 **aperto** — dipendeva dal passo 3, che ora è chiuso |
+| **5** · P-6 | i registri per emittente (5b prerequisito nel cantiere perimetro, 5c il guard sulla disattivazione) | 🔴 **aperto** |
+
+**Verifica end-to-end** (2026-08-18): sette file pgTAP verdi, compresi i sei che
+insistono sul conto della merce — nessuna regressione. Dettaglio in §10.
+
+🔴 **Fuori dal perimetro DB, e bloccanti per il giro end-to-end**: le richieste
+**BE-4/BE-5** del §17 del brief principale (il generatore righe non deve
+aggregare le rettifiche e deve copiare prezzo/sconto/IVA dalla riga rettificata,
+scrivendo `riga_rettificata_id`) e **BE-6** (rigenerare
+`error_policies_generated.py` — ora per **sei** codici nuovi: i 4 dell'annullo
+più quelli del cantiere).
+
+---
 
 | # | Cosa | Peso | Blocca |
 | --- | --- | --- | --- |
@@ -75,7 +113,12 @@ primo gruppo.
 
 ## ✅ P-2 — Il registry del task `popola_fatture_rettifiche`
 
-**Cosa serve, tre pezzi.**
+**Cosa serve, ~~tre~~ QUATTRO pezzi.**
+
+> ⚠️ **rev 2026-08-18 — erano tre e il quarto mancava.** Il seed è stato scritto
+> con i primi tre e ha prodotto **due rossi** che non erano nella baseline:
+> `test-pipeline-processi-invariante-v1` (test 7) e
+> `test-pipeline-definitiva-numerazione-stampa-v1`. Il pezzo dimenticato è il 4.
 
 1. `dbops.pipeline_task_registry`: il task `popola_fatture_rettifiche` sul
    dominio `vendite`;
@@ -85,7 +128,46 @@ primo gruppo.
    `PipelineStepExecutor`;
 3. `vendite/fatturazione_pipeline.csv`, righe **4** (massiva DEFINITIVA) e **6**
    (giornaliera DEFINITIVA): il task nel JSON `processi`, **fra
-   `numera_fatture` e `stampa_documenti_lotto`**.
+   `numera_fatture` e `stampa_documenti_lotto`**;
+4. ⭐ `vendite/fatturazione_pipeline_task_policy.csv`: **una riga per corsia**
+   (id 24 su pipeline 4, id 25 su pipeline 6), `annullabile=f`,
+   `resume_mode=RESUME_TASK`.
+
+**Perché il pezzo 4 non è cosmetico, ed è la parte che si vede solo leggendo il
+runner.** `PipelineStepExecutor._run_task` apre il tracing dentro un
+`if self.repository.task_policy_exists(pipeline_id, task)`. Senza la riga di
+policy il task **non si ferma**: gira, e gira **fuori dal tracing**. Nessuna riga
+in `vendite.fatturazione_lotti_task_runs`, nessuna risoluzione
+`RUN/SKIP/RESUME/RESET_REQUIRED`, nessuno `SKIP` al secondo giro. È fail-**open**
+e silenzioso — l'opposto di `fn_resolve_lotto_task_execution_mode`, che con la
+riga assente solleverebbe `E_CONFIG_MANCANTE`, ma che senza `task_policy_exists`
+non viene mai chiamata.
+
+Su una tappa senza `rollback`, per un task che scrive
+`vendite.fatture_rettifiche` su documenti **già numerati**, stare fuori dal
+tracing è esattamente il posto dove non si vuole essere.
+
+**I valori, e perché.**
+
+* `resume_mode = RESUME_TASK` — `fn_popola_fatture_rettifiche` è idempotente
+  (`ON CONFLICT DO NOTHING`) e non cancella mai: rieseguire il solo task è
+  sicuro. Lo stesso valore di `stampa_documenti_lotto`, non quello di
+  `numera_fatture` (`RESUME_STEP`: i numeri non si bruciano due volte);
+* `annullabile = f` — come `numera_fatture` e a differenza di
+  `stampa_documenti_lotto`. La proiezione si scrive su un documento numerato e
+  `fn_cleanup_fatture_by_ids` **non** cancella `fatture_rettifiche`: non c'è un
+  percorso che la disfi. ⚠️ Oggi il campo è letto in `TaskExecutionMode` e non
+  consumato a valle: il valore è una **dichiarazione di semantica**, non ancora
+  un comportamento.
+
+**Effetto collaterale, e non è di questo cantiere.** Aggiungendo le due righe si
+è visto che la sequenza identity di `fatturazione_pipeline_task_policy` era ferma
+a **11** con `MAX(id) = 23`: `loadUpdateData` inserisce gli id del CSV e non
+avanza la sequenza. Misurando su tutto il database sono uscite **sei** sequenze
+indietro, tutte fuori da `ui` e `config` — cioè fuori dai due soli schemi che
+avevano un presidio. Chiuso da `20260818-73` in `90_end`, forward-only e globale.
+⚠️ Non è un problema *di questa tabella*: è che il presidio era per-schema e
+nasceva ogni volta dopo il danno.
 
 ```json
 {"task":"popola_fatture_rettifiche",
@@ -342,6 +424,513 @@ a sapere **a quale dei due** intestare i registri esistenti.
 
 ---
 
+## 7. Analisi critica del team DB — 2026-08-18
+
+> Sei richieste lette **contro il codice vivo**, non contro sé stesse. Quattro
+> reggono, due vanno corrette prima di scrivere una riga, e una domanda aperta
+> ha risposta.
+
+| # | Esito | In una riga |
+| --- | --- | --- |
+| **P-1** | 🟢 **regge, verificato** | id 31 libero, `area_id = 2` giusto, `pericolosa = t` coerente con i precedenti |
+| **P-2** | 🟠 **la conclusione regge, il ragionamento è scaduto** | e la domanda aperta ha risposta: **no** — ma per un motivo diverso da quello scritto, e una delle tre porte è chiusa per deduzione |
+| **P-3** | 🟢 **regge**, con un legame che il brief non nomina | il gate si auto-ripara **solo perché** P-5 cancella invece di marcare |
+| **P-4** | 🟢 nessun lavoro | confermato |
+| **P-5** | 🔴 **la firma tratta un insieme come un singolo** | un accredito NON è una riga: è N righe di ponte e N rettifiche |
+| **P-6** | 🟠 **il difetto è reale ma non è quello nominato**, e ha un prerequisito | non «collisioni» — **buchi nella serie**, che è peggio; e dipende dal residuo §11.11 del cantiere emittente |
+
+---
+
+### C-1 🟠 P-2 — la domanda aperta ha risposta: **no**. Ma il ragionamento del brief è scaduto di due settimane
+
+**La domanda era**: *«esiste un percorso di reset che possa raggiungere un
+documento numerato?»* — perché se sì, `fn_cleanup_fatture_by_ids` deve
+cancellare anche la coppia in `vendite.fatture_rettifiche`.
+
+**Risposta: no.** Ma l'argomento del brief — *«tutti e tre sono `*_da_draft`»* —
+**non è più vero**. Il 2026-08-04 (RD-7) `fn_elimina_fattura_da_lotto_draft` è
+stata **rinominata** `fn_elimina_fattura_da_lotto` e il suo perimetro
+**allargato**: il lotto non deve più essere in bozza, basta che sia
+*pre-fiscale*. Un argomento fondato sui **nomi** era destinato a scadere, e ha
+scaduto.
+
+⭐ **La garanzia vera è altrove, ed è più forte**: due delle tre porte hanno un
+cancello **esplicito sul numero**, scritto apposta ridondante rispetto allo
+stato.
+
+| Porta | Cancello |
+| --- | --- |
+| `fn_elimina_fattura_da_lotto` | MOTIVO 4 di `fn_check_fattura_eliminabile_da_lotto`: `E_FATTURA_GIA_NUMERATA` — *«guarda il numero e non lo stato, perché il danno sarebbe irreversibile»* |
+| `fn_riporta_lotto_a_draft` | `E_LOTTO_FATTURE_NUMERATE` — *«il controllo guarda il numero e non lo stato»* |
+| `fn_annulla_lotto_da_draft` | 🔴 **nessuno.** Stato `DRAFT` del lotto + `fn_check_lotto_fatture_pre_fiscali`, che è **solo sugli stati** |
+
+E siccome `popola_fatture_rettifiche` gira **dopo** `numera_fatture`, la
+proiezione esiste solo su documenti numerati: nessuna delle tre la incontra.
+**`fn_cleanup_fatture_by_ids` non va toccata.**
+
+#### ⚠️ Ma la terza porta è chiusa per DEDUZIONE, e da domani è portante
+
+`fn_check_lotto_fatture_pre_fiscali` dichiara nel proprio commento che
+pre-fiscale *«cioè non ancora numerate»*: **equipara** lo stato al numero. È
+esattamente l'equivalenza che le altre due porte si rifiutano di dare per buona
+— e non per scrupolo estetico: la ridondanza del MOTIVO 4 è motivata per
+iscritto con *«il danno sarebbe irreversibile»*.
+
+Finché non esiste `fatture_rettifiche`, quella deduzione costa poco. Dal momento
+in cui esiste, diventa portante su una **FK non `ON DELETE CASCADE`**: il modo in
+cui cede non è un errore di dominio, è una violazione di chiave esterna grezza
+**dentro una funzione che i suoi tre chiamanti danno per infallibile**.
+
+> ⭐ **Proposta**: aggiungere il motivo esplicito sul numero a
+> `script.fn_check_lotto_annullabile`, simmetrico alla sorella. Costa una
+> `IF`, e trasforma «probabilmente irraggiungibile» in «dimostrabilmente».
+>
+> ⚠️ **Non** dentro il delegato condiviso `fn_check_lotto_fatture_pre_fiscali`:
+> lo leggono anche le capability e l'altra sorella, e stringere lì cambierebbe
+> il comportamento di consumatori che non stiamo esaminando. La sorella
+> `fn_check_lotto_riportabile_a_draft` ha già il suo controllo **fuori** dal
+> delegato: si copia quella forma.
+
+#### 🟢 Il resto di P-2 è verificato
+
+* `dbops.pipeline_task_registry` arriva a **id 20** → il nuovo è **21**;
+  `dominio_id = 1` è quello di tutti i task di fatturazione;
+* ⚠️ `pipeline_task_registry_impl` ha una colonna che la richiesta non nomina:
+  **`is_default`**, da mettere a `true`. Senza, l'implementazione esiste e non
+  viene scelta;
+* `numera_fatture` e `stampa_documenti_lotto` sono **adiacenti** nel JSON delle
+  righe 4 e 6: l'inserimento in mezzo è meccanico.
+
+---
+
+### C-2 🔴 P-5 — un accredito NON è una riga. La firma proposta tratta un insieme come un singolo
+
+È il rilievo che cambia il lavoro, e viene dalla madre stessa.
+
+`fn_accredita_riga_reso` **non inserisce una riga di ponte**: ne inserisce
+**N**. Due ragioni indipendenti, entrambe nel suo commento:
+
+* **consumo LIFO** delle unità fatturanti (D-NC-5): una quota resa può coprire
+  più righe di fattura, e ognuna produce la sua coppia;
+* **kit**: *«una rettifica per componente, ciascuna specchio della sua riga di
+  fattura»*.
+
+Lo conferma il vincolo: `uq_resi_accrediti_pair (resi_riga_id,
+fattura_riga_rettificata_id)` — la chiave è **la coppia**, non la riga di reso.
+Il plurale è per costruzione.
+
+**Ne discende che le precondizioni 2 e 3 di P-5, così come sono scritte, non
+sono applicabili**: parlano de *«la rettifica»* al singolare.
+
+#### ⭐ La forma giusta: tutto-o-niente sull'INSIEME, e la ragione la scrive la madre
+
+```text
+NON:  «se la rettifica è NON_EMESSA, annullala»
+MA:   «se TUTTE le rettifiche di quella riga di reso sono NON_EMESSA e non
+       agganciate a un lotto vivo, annullale tutte e cancella tutte le coppie.
+       Altrimenti non si annulla NIENTE.»
+```
+
+Non è prudenza generica. È **letteralmente** la dottrina con cui la madre chiude
+il proprio giro (`E_ACCREDITO_QUOTA_NON_COPERTA`):
+
+> *«meglio non farlo che farlo a metà, perché un residuo parziale è la riga che
+> resta in coda a chiedere per sempre»*
+
+Un annullo **parziale** produce esattamente quel residuo, allo specchio:
+`accredito_dovuto` risalirebbe solo in parte, e la coda resterebbe a chiedere una
+quota che nessuno può più soddisfare — perché l'altra metà è dentro un documento
+fiscale.
+
+#### ⚠️ E l'ordine delle due scritture non è indifferente
+
+`fk_resi_accrediti_commessa_attivita` punta dal ponte alla rettifica. La riga di
+ponte si cancella **prima** (o nello stesso statement) di toccare l'attività;
+e il guard dei due tetti (`20260818-36`) va attraversato in discesa, il che è il
+verso facile — le somme calano.
+
+#### 🟢 Il resto di P-5 regge, e i precedenti citati sono quelli giusti
+
+`stato_emissione = 'ANNULLATA'` invece della cancellazione, motivo obbligatorio,
+audit su `commesse_attivita_log`, `SECURITY INVOKER`, `%TYPE`,
+`pg_advisory_xact_lock` a due argomenti dopo le guard: tutto verificato contro
+`fn_aggiungi_onere_commessa` e contro l'ANNULLA riga manuale del 2026-07-28.
+
+---
+
+### C-3 ⭐ P-3 e P-5 sono **accoppiati**, e il brief li tratta come indipendenti
+
+Il gate della rinuncia (P-3) scatta *«appena esiste una riga in
+`vendite.resi_righe_accrediti`»*. L'annullo (P-5) **cancella** quelle righe.
+
+> ⭐ **Quindi il gate si auto-ripara: annullato l'accredito, la rinuncia torna
+> reversibile — senza che P-3 sappia nulla di P-5.**
+
+È un pregio del disegno, ma è **fragile a un cambio di P-5**: se l'annullo
+scegliesse un *soft-delete* (una colonna `annullato_il`) invece della
+cancellazione, il gate di P-3 continuerebbe a vedere la riga e vieterebbe per
+sempre una rinuncia ormai reversibile — **in silenzio**, perché nessuno dei due
+lati sarebbe sbagliato da solo.
+
+**Conseguenza operativa**: P-3 va scritto **dopo** P-5, e la scelta «cancella,
+non marcare» va messa nel commento di entrambe le funzioni come vincolo
+reciproco, non come dettaglio implementativo.
+
+---
+
+### C-4 🟠 P-6 — il difetto è reale, ma non è «collisione». È **peggio**
+
+Il brief cita la doc concettuale (*«la separazione dei registri evita collisioni
+di numerazione»*) e conclude che le collisioni ci sono. **Non ci sono**, ed è
+utile sapere perché:
+
+```sql
+uq_fatture_numero ON vendite.fatture (registro_id, anno, COALESCE(serie,''), numero)
+                  WHERE numero IS NOT NULL
+```
+
+Il numero è unico **per registro**. Due emittenti sullo stesso registro non
+ottengono mai lo stesso numero: ottengono numeri **alternati**.
+
+| | Cosa succede | Chi lo blocca |
+| --- | --- | --- |
+| collisione (stesso numero due volte) | ❌ non accade | l'indice univoco |
+| 🔴 **serie con buchi** (A prende 1,3,7 — B prende 2,4,5,6) | ✅ **accade adesso** | **nessuno** |
+
+E il registro sezionale di ciascuna azienda deve essere **continuo**. Il difetto
+non è una duplicazione che un vincolo intercetta: è una **discontinuità che
+nessun vincolo può vedere**, perché per il database quei numeri sono
+perfettamente legittimi.
+
+⭐ Il che **rafforza** la richiesta invece di indebolirla — e sposta il punto:
+non è un rischio che potrebbe manifestarsi, è uno stato in cui i registri 3 e 4
+si trovano **da gennaio**.
+
+---
+
+### C-5 ✅ P-6 — la misura è stata fatta, ed è il caso buono
+
+Il brief la dava per non eseguibile («`vendite.fatture` ha la RLS, lo zero è
+fail-closed»). È vero leggendo come applicazione; letta come **proprietario** la
+RLS non si applica, e la misura è questa:
+
+```text
+fatture NUMERATE, per registro x emittente          (2026-08-18, come owner)
+  registro 3  Front-office   ef_sr 72  «Gestore Test pgTAP»
+              6 fatture · anno 2026 · serie R2 · numeri 1 → 6   ← CONTINUI
+  registro 4  Back-office    nessuna
+  registro 5  NC             nessuna
+
+emittenti fiscali attivi
+  ef_sr  72   PGTAP-EF-...   «Gestore Test pgTAP»    41 BA mappati + is_default
+  ef_sr 159   EMI-TEST       «Azienda SC REQUIRED»    1 BA mappato · 0 fatture
+```
+
+⭐ **È l'esito migliore possibile, e chiude due punti aperti in un colpo:**
+
+| Punto | Esito |
+| --- | --- |
+| «e se un registro avesse due emittenti?» | **non succede**: un solo emittente per registro. L'intestazione è vera anche del passato |
+| «la serie di 72 ha già dei buchi?» | **no**: 1→6 continui. Nessun danno da riparare, solo una porta da chiudere |
+| «meglio fare prima la NC e poi i registri 3/4?» | **no, si fa tutto insieme**: 4 e 5 non hanno documenti, e intestare il 3 a 72 non cambia niente per nessuno |
+
+🔵 Ne discende che P-6 **smette di essere «materia di chi tiene i registri IVA»**
+e diventa una riconfigurazione di seed pulita. Il secondo emittente non ha mai
+numerato: parte da 1 sui propri registri, che è corretto.
+
+⚠️ Resta vero il motivo per cui va fatto: 159 **può** emettere (ha un billing
+account mappato) e oggi lo farebbe sul registro di 72. Il difetto è preventivo,
+non ancora avvenuto — ed è il momento giusto per chiuderlo, perché costa zero.
+
+---
+
+### C-6 ⭐ P-6 tocca il cantiere **perimetro emittente** in un punto preciso — ed è un **prerequisito**, non un rimando
+
+Il brief chiude dicendo che P-6 «va portato anche al cantiere perimetro
+emittente». È vero e c'è di più: **P-6 non è scrivibile in sicurezza finché quel
+cantiere non chiude il suo residuo §11.11.**
+
+La catena che decide su quale registro numera una fattura è questa:
+
+```text
+fn_build_fattura_key
+  └─ anagrafiche.fn_get_emittente_fiscale_id(billing_account_id)   ← il residuo §11.11
+       └─ vendite.fn_get_registro_id(tipo_doc, natura, utility, EMITTENTE)
+            └─ il registro
+```
+
+Quella funzione è la **terza copia** della regola a due livelli (mapping
+specifico → ripiego sul gestore globale). Le altre due sono state unificate il
+2026-08-18 nella Fase E del cantiere emittente:
+`script.fn_get_ba_emittente_sr_id` e `fn_check_ba_visible_for_emittenti`, che
+ora delega. Le tre rispondono **alla stessa domanda**, e due lo fanno da un
+posto solo.
+
+> ⚠️ **Oggi la duplicazione non morde**, e proprio per questo non si è vista:
+> tutti i registri hanno `emittente_soggetto_ruolo_id = NULL`, quindi il
+> **livello 4** del fallback vince sempre e il parametro emittente **non sceglie
+> niente**. È un ramo che esiste e non viene mai percorso.
+>
+> 🔴 **P-6 lo rende portante per la prima volta.** Dal momento in cui i registri
+> sono intestati, *su quale registro numera una fattura* dipende da quella copia
+> non unificata.
+
+E c'è un dettaglio che rende la cosa concreta e non teorica — sta scritto nel
+commento della funzione stessa:
+
+> *«Non filtra per attivo.»*
+
+Un emittente **disattivato** può quindi essere scelto come intestatario del
+registro su cui numerare. Finché il parametro non decideva niente, era
+innocuo.
+
+⭐ **Due note di merito**, per non aggiungere lavoro dove non serve:
+
+* la funzione, malgrado il nome, restituisce già un `soggetto_ruolo_id` — non la
+  PK di `emittenti_fiscali` — quindi **non c'è nessun disallineamento di tipo**
+  con `fn_get_registro_id`. Il sospetto era legittimo e la verifica lo esclude;
+* `vendite.tipi_doc_fiscale_registri` ammette davvero **più registri** per la
+  stessa coppia `(tipo_doc, natura)`: la `UNIQUE` è a tre colonne. La forma
+  prevista dal brief regge.
+
+---
+
+### C-7 🟢 Il vincolo di sequenza di P-6 è corretto, e vale la pena capire perché
+
+Il brief avverte che intestare i vecchi registri e creare i nuovi devono stare
+**nello stesso changeSet**. Verificato sul `WHERE` di `fn_get_registro_id`:
+
+```sql
+AND (r.emittente_soggetto_ruolo_id IS NULL
+     OR r.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id)
+```
+
+Nel momento in cui il registro 3 smette di avere `NULL`, per un documento del
+**secondo** emittente non resta **nessuna riga**: né il livello 4 (non c'è più)
+né il livello 3 (il registro è dell'altro). La funzione risponde
+`E_CONFIG_MANCANTE` e la numerazione si ferma.
+
+⭐ **Ed è il comportamento giusto**: meglio fermarsi che numerare sul registro
+dell'altra azienda. Ma è anche il motivo per cui i due passi non si separano —
+in mezzo c'è una finestra in cui un emittente non può fatturare.
+
+---
+
+## 8. Piano di sviluppo — perimetro DB
+
+> Ordinato per **dipendenza**, non per numero di richiesta. I passi 1 e 2 sono
+> meccanici e sbloccano il BE subito; il 3 e il 4 sono accoppiati; il 5 è il
+> difetto fiscale e ha un prerequisito fuori da questo brief.
+>
+> ⛔ **Nessuna migrazione viene applicata dal team DB**: l'apply lo autorizza Tid
+> per quel comando.
+
+### Passo 1 — P-1 · l'azione di processo *(sblocca B2, F1)*
+
+| | |
+| --- | --- |
+| **Cosa** | 1 riga in `80_data/sql/config/azioni_processo.csv` |
+| **Valori** | `id = 31`, `area_id = 2`, `permission_codename = accredita_riga_reso`, `pericolosa = t`, `attivo = t` |
+| **Verificato** | 30 è l'ultimo id in uso; `pericolosa = t` è coerente con `numera_fatture_lotti` e `cambia_stato_commessa` |
+| **Rischio** | nessuno |
+
+Solo append al CSV: il loader `runOnChange` esistente ripesca il file.
+
+### Passo 2 — P-2 · il task a registry e in pipeline *(sblocca B6)*
+
+**2a** — `80_data/sql/dbops/pipeline_task_registry.csv`: `id = 21`,
+`dominio_id = 1`, `task_code = popola_fatture_rettifiche`.
+
+**2b** — `pipeline_task_registry_impl.csv`: `id = 21`, `task_registry_id = 21`,
+`implementation_key = default`, `handler_code = popola_fatture_rettifiche_default`,
+⚠️ **`is_default = true`** (la colonna che la richiesta non nominava).
+
+**2c** — `80_data/sql/vendite/fatturazione_pipeline.csv`, righe **4** e **6**:
+il task nel JSON `processi`, fra `numera_fatture` e `stampa_documenti_lotto`
+(sono già adiacenti).
+
+**2d** — ⭐ **la simmetria mancante** (C-1): aggiungere a
+`script.fn_check_lotto_annullabile` il motivo esplicito *«fattura già
+numerata»*, sul modello di `fn_check_lotto_riportabile_a_draft` — **fuori** dal
+delegato condiviso.
+
+> ⚠️ Prima di scriverlo: `grep` nei pgTAP dei consumatori. Un guard che stringe
+> rompe i test che si aspettavano il vecchio confine, e vanno letti prima —
+> non «aggiustati» dopo.
+
+**Non si fa**: nessuna modifica a `fn_cleanup_fatture_by_ids`. La risposta alla
+domanda del brief è **no**, e la ragione va scritta nel commento della funzione
+perché la prossima persona non debba rifare l'indagine.
+
+### Passo 3 — P-5 · l'annullo dell'accredito *(sblocca B2-bis, F1)* — ✅ **APPLICATO E VERDE** (2026-08-18)
+
+> 🟢 Changeset `20260818-71` + 4 codici a catalogo + 17 pgTAP, **verdi**. La
+> cronaca, con i **sei scostamenti dal piano**, è in **§9**. Questo testo resta
+> com'era scritto: dove il piano e §9 divergono, vale §9.
+> 🔴 Resta aperto il difetto di **§10**.
+
+**La firma resta** `vendite.fn_annulla_accredito_riga_reso(p_resi_riga_id, p_motivo)`,
+ma la **semantica è d'insieme** (C-2).
+
+1. guard sul parametro — `NULL`/`<= 0` → errore parlante;
+2. raccogliere **tutte** le coppie di `resi_righe_accrediti` per quella riga di
+   reso. Nessuna → `E_ACCREDITO_NON_TROVATO` (classe `NON_TROVATO`);
+3. ⛔ **cancello tutto-o-niente**: se **una sola** delle rettifiche è emessa,
+   fatturata o agganciata a un lotto vivo → `E_ACCREDITO_ANNULLO_NON_AMMESSO`
+   (classe `CONFLITTO_STATO`), e **non si tocca niente**;
+4. `pg_advisory_xact_lock` a due argomenti **dopo** le guard;
+5. cancellare le righe di ponte, **poi** portare le rettifiche a
+   `stato_emissione = 'ANNULLATA'` (l'ordine è imposto da
+   `fk_resi_accrediti_commessa_attivita`);
+6. motivo obbligatorio + audit su `commesse_attivita_log`, come la madre.
+
+**Codici errore**: 2 nuovi a catalogo, con classe registrata — solo append al
+CSV, nessun loader nuovo.
+
+**Test pgTAP** — ⭐ l'asserzione che conta non è «la riga è sparita», è **la
+coda**:
+
+* `accredito_dovuto` **risale** al valore di prima e `gia_accreditato` torna
+  falso — è l'unica prova osservabile che l'annullo ha funzionato;
+* un secondo accredito sulla stessa riga **riesce** (la madre non solleva più
+  `E_ACCREDITO_GIA_ESEGUITO`);
+* ⭐ **il caso plurale**: una riga di reso che ha prodotto **due** rettifiche, di
+  cui una emessa → l'annullo rifiuta **entrambe**. Senza questo test la
+  semantica d'insieme non è verificata, e una fixture a una sola rettifica
+  passerebbe anche con la versione sbagliata.
+
+### Passo 4 — P-3 · il gate della rinuncia · **dopo il passo 3**
+
+Un ramo dentro `script.fn_check_rinuncia_reversibile`, nella forma che la
+funzione già usa (`{codice, reason, reason_key, dettaglio}`): *esiste una riga in
+`resi_righe_accrediti` per questa riga di reso*.
+
+* 1 codice errore nuovo a catalogo — il commento della funzione dice
+  esplicitamente di non averlo registrato prima *«per non lasciare a catalogo un
+  codice mai sollevato»*. Ora si solleva;
+* 1 chiave i18n per il `reason_key`, sul modello di
+  `vendite.resi.rinuncia_reason.riga_inesistente`;
+* ⭐ **la madre non si tocca**: `fn_riapri_riconsegna_reso` solleva già il primo
+  motivo prodotto;
+* ⚠️ scrivere nel commento di **entrambe** le funzioni il vincolo reciproco di
+  C-3: *il gate si auto-ripara perché l'annullo CANCELLA. Se un giorno l'annullo
+  diventasse un soft-delete, questo ramo va cambiato insieme.*
+
+**Test**: accredito → rinuncia non riapribile; annullo → **riapribile di nuovo**.
+Il secondo verso è quello che verifica l'accoppiamento.
+
+### Passo 5 — P-6 · i registri per emittente · *difetto fiscale, non prerequisito BE/FE*
+
+> ✅ **5a è FATTO** (C-5): un solo emittente per registro, serie di 72 continua
+> 1→6, registri 4 e 5 vuoti, emittente 159 mai numerato. Nessun backfill,
+> nessuna discontinuità da riparare — solo una porta da chiudere prima che serva.
+
+#### ✅ Due decisioni di Tid — 2026-08-18
+
+**D-P6-1 · Emittente disattivato → il cancello va sulla DISATTIVAZIONE, non sulla
+numerazione.**
+
+Trigger `dbops.trgfn_prevent_deactivate_if_children` su
+`anagrafiche.emittenti_fiscali_billing_account`, esattamente come già esiste per
+utilities, contratti, DDT, ordini, resi, preventivi e altri otto.
+
+> ⭐ **Perché lì e non dentro `fn_get_emittente_fiscale_id`**: il problema si
+> ferma **dove nasce** — chi disattiva — invece che dove si manifesta, cioè
+> davanti a un operatore che sta fatturando e non capisce perché non può. E il
+> percorso caldo della numerazione non si tocca.
+>
+> ⚠️ **Verificato che oggi manca**: zero trigger di questa famiglia su
+> `emittenti_fiscali_billing_account`, mentre ce ne sono su tutte le altre
+> tabelle figlie. Non è una scelta passata — è una riga saltata.
+>
+> ⛔ **Scartata la difesa in profondità** (guard + filtro nella funzione): il
+> secondo strato non si esercita mai se il primo tiene, e un ramo mai percorso
+> sembra coperto senza esserlo.
+
+**D-P6-2 · I registri del secondo emittente riusano le stesse serie per canale:
+`R2` front-office, `R1` back-office, vuota per NC.**
+
+> La serie continua a significare **canale**. L'azienda si legge dalla P.IVA sul
+> documento e dalla colonna emittente che il cantiere perimetro sta portando
+> nelle liste: caricare la serie anche di quell'informazione la duplicherebbe.
+>
+> ⚠️ Tecnicamente non c'è nessun vincolo da rispettare: `uq_fatture_numero` è su
+> `(registro_id, anno, serie, numero)`, quindi due registri diversi possono
+> avere la stessa serie senza collidere.
+
+**D-P6-3 · La numerazione attuale si intesta all'emittente «Gestore Test pgTAP»
+(`soggetto_ruolo_id = 72`).**
+
+> È l'emittente che le 6 fatture numerate portano già in `vendite.fatture`
+> (C-5): l'intestazione non riscrive la storia, la **dichiara**. Registri 4 e 5
+> vanno allo stesso, non avendo documenti e appartenendo allo stesso assetto —
+> 72 è anche il gestore globale (`is_default`) che copre i 41 billing account
+> non mappati esplicitamente.
+
+#### 5b — ⛔ il prerequisito: unificare la terza copia *(cantiere perimetro emittente, §11.11)*
+
+Far delegare `anagrafiche.fn_get_emittente_fiscale_id` a
+`script.fn_get_ba_emittente_sr_id`, mantenendo il raise
+`E_EMITTENTE_DEFAULT_MISSING` dove oggi c'è (la delegata risponde `NULL`, la
+chiamante decide se sollevare).
+
+> 🔴 **Perché è un prerequisito e non igiene**: da 5c in poi è quella funzione a
+> decidere su quale registro numera una fattura (C-6). Andarci sopra dopo
+> significa cambiare il selettore mentre è in uso.
+>
+> 🟢 `attivo` **non si tocca qui**: la decisione D-P6-1 mette il cancello altrove.
+
+#### 5c — il guard sulla disattivazione *(D-P6-1)*
+
+Una riga di seed nell'automazione `prevent_deactivate_if_children`:
+tabella figlia `anagrafiche.emittenti_fiscali_billing_account`, colonna di
+collegamento `emittente_soggetto_ruolo_id` → `soggetto_ruolo_id`, flag `attivo`.
+
+⚠️ Da mettere **prima** di 5d: dopo l'intestazione dei registri la
+disattivazione di un emittente diventa una porta aperta su un percorso fiscale,
+e il guard deve esserci già.
+
+#### 5d — l'intestazione + i registri nuovi: UN SOLO changeSet (C-7)
+
+Nello stesso file, in quest'ordine:
+
+| | Cosa | Valori |
+| --- | --- | --- |
+| 1 | `UPDATE` registri **3, 4, 5** | `emittente_soggetto_ruolo_id = 72` |
+| 2 | `INSERT` tre registri nuovi | ef **159** — Front-office (`serie_default = R2`), Back-office (`R1`), NC (vuota) |
+| 3 | `INSERT` in `tipi_doc_fiscale_registri` | le coppie `(tipo_doc, natura)` → i tre registri nuovi |
+
+⚠️ `registri_fatturazione.codice` è **UNIQUE**: i codici nuovi vanno distinti
+(es. `Front-office EMI-TEST`), mentre le **serie** si ripetono — e va bene
+(D-P6-2).
+
+⛔ **Mai in due changeSet**: fra il passo 1 e il 3 esiste una finestra in cui
+l'emittente 159 non può numerare (`E_CONFIG_MANCANTE`, C-7).
+
+🟢 **Nessun rischio sui documenti esistenti**: le 6 fatture di 72 restano sul
+registro 3, che diventa suo. La serie 1→6 continua senza salti.
+
+#### 5e — test pgTAP
+
+* ogni registro attivo ha un `emittente_soggetto_ruolo_id` valorizzato — è il
+  presidio che impedisce di tornare indietro;
+* per **ciascuno** dei due emittenti, `fn_get_registro_id` risolve un registro
+  **diverso** su ogni coppia `(tipo_doc, natura)` in uso;
+* ⭐ nessun registro è raggiungibile da due emittenti — l'asserzione che dice che
+  i buchi nella serie (C-4) non possono ripresentarsi;
+* ⭐ **il guard di D-P6-1 morde**: disattivare un emittente con billing account
+  mappati fallisce. Da esercitare su un emittente di prova, non su 72 o 159.
+
+### Cosa NON è nel piano, e perché
+
+* **P-4**: confermato, zero lavoro;
+* la **cancellazione di `fatture_rettifiche`** dentro `fn_cleanup_fatture_by_ids`:
+  la domanda ha risposta **no** (C-1). Si scrive solo il commento;
+* il **backfill** della numerazione: deciso da Tid, non si fa;
+* tutto ciò che è già in *«Cosa NON è di questo brief»* qui sotto.
+
+---
+
 ## Cosa NON è di questo brief
 
 * la **rigenerazione di `error_policies_generated.py`** per gli 8 codici già
@@ -352,6 +941,375 @@ a sapere **a quale dei due** intestare i registri esistenti.
   IVA dalla riga rettificata (BE-4/BE-5): interamente Python;
 * il **processo rimborsi** per una NC fuori dalla banda del minimo: è la
   richiesta **PG-1** del §17.3, e va al cantiere incassi, non qui.
+
+---
+
+## 9. Cronaca dell'esecuzione — passo 3 (P-5), 2026-08-18
+
+> ✅ **Applicato da Tid il 2026-08-18** e verificato: `20260818-71`, le 4 righe
+> di catalogo (i messaggi 924-927 rispondono) e i 17 pgTAP **verdi**
+> (`Files=1, Tests=17, Result: PASS`).
+
+### Cosa è stato scritto
+
+| Artefatto | Contenuto |
+| --- | --- |
+| `80_data/sql/config/codici_errore.csv` | +4 codici (append, nessun loader nuovo) |
+| `80_data/sql/config/messaggi_errore.csv` | +4 messaggi, id **924-927** |
+| `20_code/vendite/20260818-71-create-fn-annulla-accredito-riga-reso-mctit.yaml` | la madre `vendite.fn_annulla_accredito_riga_reso(resi_riga_id, motivo)` |
+
+### I sei scostamenti dal piano, e perché
+
+**D-9-1 · Il lock: `FOR UPDATE` su `resi_righe`, non l'advisory lock.**
+Il piano (punto 4) diceva *«`pg_advisory_xact_lock` a due argomenti dopo le
+guard»*, per analogia con `fn_aggiungi_onere_commessa`. Decisione di Tid:
+l'appiglio giusto è quello del **guard del ponte**. La verifica conferma, con
+una precisazione sul meccanismo che vale la pena fissare:
+
+* `trgfn_resi_accrediti_guard` prende `FOR UPDATE` su `vendite.resi_righe`
+  e lo dichiara — *«nessun advisory lock, il FOR UPDATE basta, come nelle due
+  sorelle»*;
+* ⚠️ la **madre non prende quel lock direttamente**. Il suo
+  `pg_advisory_xact_lock` sta sulla **riga di DDT** e serve a un'altra cosa: far
+  girare il progressivo `#RET` sul segmento. Sulla riga di reso ci arriva **di
+  riflesso**, attraversando il proprio guard alla prima `INSERT` sul ponte.
+
+⭐ Il risultato è quello voluto — chiunque scriva sul ponte passa da lì, quindi
+l'esclusione **interseca davvero**. L'advisory intersecherebbe anch'esso, ma
+sarebbe l'appiglio sbagliato: più grosso del necessario (più righe di reso
+condividono una riga di DDT) e cieco verso il percorso che conta.
+⛔ Nessun deadlock: la madre prende advisory→riga, l'annullo solo riga e non
+attende mai l'advisory. Manca il secondo verso, quindi manca il ciclo.
+
+**D-9-2 · 🔴 Quattro codici, non due — e il quarto è il vero ritrovamento.**
+Il piano ne prevedeva 2 (`E_ACCREDITO_NON_TROVATO`,
+`E_ACCREDITO_ANNULLO_NON_AMMESSO`). Il terzo è meccanico
+(`E_ACCREDITO_MOTIVO_OBBLIGATORIO`: il piano chiede il motivo obbligatorio ma
+non registra il codice; distinto da `E_RIGA_COMMESSA_MOTIVO_OBBLIGATORIO`
+perché il messaggio deve nominare l'accredito, non la riga di commessa).
+
+Il **quarto** no, e nessuno l'aveva nominato:
+
+```text
+vendite.commesse_attivita     -> HA la RLS   (rls_commesse_attivita_ef_whitelist)
+vendite.resi_righe_accrediti  -> NON ce l'ha
+```
+
+Il ponte dice sempre la verità su **quante** rettifiche esistono; la `UPDATE` ad
+`ANNULLATA` gira sotto RLS e una rettifica fuori perimetro emittente la
+salterebbe **in silenzio**. È esattamente l'annullo parziale che la semantica
+d'insieme di C-2 vieta, nella forma più difficile da vedere — e con il cantiere
+perimetro emittente in corso, i due scope possono divergere.
+→ `E_ACCREDITO_ANNULLO_INCOMPLETO` (927), sollevato in **tre punti**: un
+controllo di visibilità *prima* di scrivere (diagnosi pulita, nessun effetto da
+annullare) e un `ROW_COUNT` *dopo* ciascuna delle due scritture (copre la
+finestra fra controllo e scrittura). Difesa in profondità gemella di
+`E_ACCREDITO_SEGMENT_DUPLICATO`: se scatta è una regressione, non un caso d'uso.
+
+**D-9-3 · ⚠️ Le tre condizioni bloccanti si tengono tutte e tre — «esiste una AF»
+sarebbe stato sbagliato.** Il piano dice *«emessa, fatturata o agganciata a un
+lotto vivo»*. La scorciatoia «esiste una riga in `attivita_fatturabili` →
+bloccato» sembra più prudente ed è invece **un difetto**: dopo un reset di lotto
+`fn_cleanup_fatture_by_ids` **non cancella** l'AF, la sblocca e le azzera
+`fattura_riga_id`. La scorciatoia vieterebbe per sempre l'annullo dopo un reset
+legittimo. Le tre condizioni si scrivono separate:
+`stato_emissione <> 'NON_EMESSA'` **oppure** `lock_in_fatturazione` **oppure**
+`fattura_riga_id IS NOT NULL`.
+
+**D-9-4 · ⛔ Non si riusa `fn_annulla_commessa_attivita`, benché passerebbe i suoi
+guard.** La tentazione è concreta: le rettifiche nascono con
+`sorgente_tipo_id NULL` (la madre passa `p_sorgente_tipo_id => NULL`), quindi
+supererebbero perfino il guard *«è sourceless»*. Non si riusa perché il suo
+**perimetro dichiarato** è la riga MANUALE (le rettifiche sono sourceless per
+costruzione, non perché le abbia caricate un operatore: passare quel guard
+sarebbe un incidente, non un contratto); perché il suo **evento di log** è
+`RIGA_MANUALE_ANNULLATA` e non è parametrizzabile — direbbe il falso proprio
+nella riga che serve a ricostruire cosa è successo; e perché è fail-fast **per
+riga**, mentre qui la decisione è d'insieme e va presa prima di toccare
+qualunque riga. Restano due statement di dominio in linea: non è logica
+duplicata, è la stessa scrittura elementare con un contratto diverso.
+
+**D-9-5 · La funzione ritorna le coppie rimosse (`RETURNS TABLE`), non uno
+scalare.** Stessa forma con cui la madre le ha create
+(`accredito_id, commessa_attivita_id, fattura_riga_rettificata_id, qta,
+qta_partita`): il chiamante può dire **cosa** ha disfatto senza rileggere il log.
+⚠️ Conseguenza da ricordare: `CREATE OR REPLACE` non cambia un `RETURNS TABLE`,
+una modifica futura esige il `DROP` prima.
+
+**D-9-6 · Riga di reso inesistente → `E_VALORE_MANCANTE`**, il codice generico
+già usato dalla porta gemella per lo stesso caso. Distinto da
+`E_ACCREDITO_NON_TROVATO`, che invece copre insieme *«mai accreditato»* e *«già
+annullato»* — indistinguibili **per costruzione**, perché l'annullo cancella. Un
+flag per separarle sarebbe il soft-delete che C-3 vieta.
+
+### ⚠️ Due cose viste di passaggio, che non sono di questo passo
+
+* **`trgfn_child_requires_active_parent` rivalida i padri a ogni `UPDATE`.** Se
+  un articolo (o una UoM, o un tipo doc) fosse stato disattivato nel frattempo,
+  l'annullo fallirebbe con l'errore di quel trigger invece che con un errore di
+  dominio. ⚠️ **Non è un difetto nuovo**: vale identico per
+  `fn_annulla_commessa_attivita` dal 2026-07-28. Si affronta dove nasce — il
+  guard sulla disattivazione — non in una delle due porte ANNULLA.
+* **`resi_righe_accrediti` non ha ancora i trigger `z90_storico`/audit/`tx_id`**,
+  pur avendone le colonne: è nata il 2026-08-18 e quelle automazioni girano solo
+  in contesto `ci_apply`. La sorella `resi_righe_riconsegne` li ha tutti, quindi
+  appena l'automazione passa il `DELETE` finirà in storico.
+  ⚠️ Da **non** usare come argomento per rilassare il motivo obbligatorio: lo
+  storico dirà **cosa** è stato tolto, non **perché**.
+
+### ✅ pgTAP — scritto (2026-08-18)
+
+`db/pgtap/vendite/test-annulla-accredito-riga-reso-v1.sql`, **17 test, verdi**
+(`Result: PASS`, 2026-08-18, runner `app` con la RLS attiva).
+
+Due partite, e non è una comodità:
+
+| | Cosa tiene | Perché separata |
+| --- | --- | --- |
+| **A** (test 1-13) | il percorso pulito: la rettifica non viene **mai emessa** | è l'unico stato in cui **la coda è osservabile**, e la coda è l'unica prova che l'annullo ha funzionato |
+| **B** (test 14-17) | la **semantica d'insieme** | il plurale esige rettifiche emesse, e l'emissione lascia `attivita_fatturabili` nel conto della merce |
+
+Le asserzioni che portano il peso: **10)** la coda risale (`accredito_dovuto`
+torna 3, `gia_accreditato` a 0); **13)** un secondo accredito **riesce**;
+**15)** una sola rettifica emessa rifiuta **l'intero** annullo; **16)** e il
+rifiuto **non tocca niente**; **17)** l'`attivita_fatturabili` sopravvissuta al
+reset **non blocca** (D-9-3). Più **6)**, che nessuno dei tre guard scriva prima
+di rifiutare — un guard che scrive passa inosservato per anni.
+
+⚠️ **La seconda coppia della partita B è costruita nella fixture**, non attesa
+dalla madre: il plurale nasce dal consumo LIFO su più righe di fattura o dai
+componenti di un kit, e nessuna delle due forme si fissa senza inseguire
+l'aritmetica della coda. Ciò che il test collauda è la semantica dell'**annullo**,
+il cui ingresso è il ponte — e la seconda rettifica nasce comunque da
+`fn_upsert_commessa_attivita`, la stessa che usa la madre. Che la **madre**
+produca N coppie resta compito del suo test.
+
+### ⚠️ La trappola che il test ha pagato di persona
+
+La prima stesura del test 17 chiamava
+`fn_annulla_accredito_riga_reso` **dentro la stessa `SELECT`** che ne verificava
+gli effetti. Esito: `have: 2|2|0` contro `want: 2|0|2` — la funzione risultava
+aver restituito due coppie senza averne cancellata nessuna.
+
+⭐ Non era un difetto della funzione. Sotto **READ COMMITTED tutte le sottoquery
+di uno stesso statement condividono la snapshot presa al suo inizio**: la
+`count(*)` sul ponte leggeva lo stato *prima* della `DELETE`. È la stessa
+trappola delle CTE che scrivono, in un'altra veste — e mente nel verso peggiore,
+perché **accusa il codice sotto test** invece di segnalare il test.
+
+> **Regola**: in un pgTAP il verbo si chiama in un'**istruzione a parte** (tipico:
+> `CREATE TEMP TABLE … AS SELECT * FROM fn_…`), e si asserisce in quella dopo.
+> Fa eccezione solo il caso in cui l'asserzione legga *unicamente* il valore di
+> ritorno della funzione, senza toccare le tabelle che ha modificato (test 13).
+
+### Cosa resta, in ordine
+
+1. ✅ **§10** — chiuso e applicato lo stesso giorno, vedi in fondo.
+2. 🔴 **Passo 4** (P-3, il gate della rinuncia): dipendeva dal passo 3, che ora
+   è chiuso. È il prossimo.
+3. 🔴 **Passo 5** (P-6, i registri per emittente), con il suo prerequisito nel
+   cantiere perimetro emittente (§11.11).
+
+---
+
+## 10. ✅ Il conto della merce smette di contare l'annullato — APPLICATO E VERDE
+
+> Non è un difetto della funzione nuova. È **a valle**, in una vista condivisa,
+> e si vede solo mettendo in fila i due meccanismi.
+>
+> ✅ **Applicato da Tid il 2026-08-18.** Changeset `20260818-73` + **test 18**.
+> Il test 18 era rosso prima dell'apply ed è verde dopo: il difetto è stato
+> **misurato** in entrambi i versi, non solo argomentato.
+
+### Il fatto
+
+`vendite.vw_af_merce_per_riga` legge `attivita_fatturabili` in join con
+`commesse_attivita` e **non filtra `stato_emissione`**:
+
+```sql
+FROM vendite.attivita_fatturabili af
+  JOIN vendite.commesse_attivita ca ON ca.id = af.commessa_attivita_id
+WHERE split_part(ca.segment_key, ':', 1) = ANY (ARRAY['ORD','DDT'])
+  AND ca.segment_key ~ ':R:[0-9]+'
+```
+
+Da lì `vw_partite_merce` compone
+`fatturato = fatturato_merce + fatturato_da_ordine + rettificato`, e
+`differenza = tenuti - fatturato`. La coda accrediti mostra la riga solo se
+`differenza < 0`.
+
+### Perché mette in crisi proprio la strada consigliata
+
+⚠️ `fn_cleanup_fatture_by_ids` **non cancella** l'`attivita_fatturabili`: la
+sblocca e le azzera `fattura_riga_id`. Quindi:
+
+```text
+accredito  ->  rettifica -3, nessuna AF          coda: differenza -3  ✅ in coda
+emissione  ->  nasce l'AF -3                     coda: differenza  0  (pareggiata)
+reset      ->  AF SOPRAVVIVE, ca -> NON_EMESSA   coda: differenza  0
+ANNULLO    ->  ponte vuoto, ca -> ANNULLATA
+               ⛔ ma l'AF -3 e' ancora li' e continua a valere come «rettificato»
+               coda: differenza  0   ->  LA RIGA NON TORNA IN CODA
+```
+
+🔴 Il ponte è vuoto, `gia_accreditato` è 0, e **la merce resa non è più
+accreditabile da nessuno**: è letteralmente la malattia per cui questo cantiere
+esiste, ricreata dal rimedio. E il percorso non è esotico — è quello che il
+messaggio di `E_ACCREDITO_ANNULLO_NON_AMMESSO` **consiglia all'operatore**:
+*«se il documento non è ancora numerato, la strada è il reset del lotto»*.
+
+⚠️ Sul percorso pulito (rettifica mai emessa) la coda risale correttamente: è il
+test 10, ed è verde. Il difetto vive **solo** oltre l'emissione, che è anche il
+motivo per cui non si è visto prima.
+
+### Non è solo dell'accredito
+
+Lo stesso vale per `fn_annulla_commessa_attivita` dal 2026-07-28: una riga
+manuale emessa, resettata e poi annullata continua a contare come fatturato.
+⭐ Il changeset del 2026-07-28 elenca **sei** porte che filtrano già `ANNULLATA`
+(`fn_emit_…`, `fn_list_commesse_emittibili`, `fn_list_emittibili_lane`,
+`fn_approva_…`, le due dashboard). `vw_af_merce_per_riga` non è nell'elenco
+perché legge `attivita_fatturabili`, non `commesse_attivita`: è una **riga
+saltata**, non una scelta.
+
+### ⭐ La soluzione — e perché è questa a prescindere dai dati
+
+Aggiungere il filtro alla CTE `base` di `vw_af_merce_per_riga`:
+
+```sql
+AND ca.stato_emissione <> 'ANNULLATA'
+```
+
+⛔ **La scelta NON dipende da quante righe siano oggi in quello stato.** Il dato
+di sviluppo è dato di test: dice se servirà una bonifica, non se il difetto vada
+corretto. La domanda è «può succedere?», e la risposta è sì per costruzione.
+
+#### Le tre alternative, e perché cadono tutte
+
+**1. Far cancellare all'annullo le `attivita_fatturabili` delle sue rettifiche.**
+⛔ Cade su due fronti: sistemerebbe solo questo percorso, lasciando scoperto ogni
+altro modo di arrivare ad `ANNULLATA` (a partire da `fn_annulla_commessa_attivita`,
+che ha lo stesso difetto dal 2026-07-28); e romperebbe il vaso. Perché —
+
+**2. Il vaso non si rompe: `attivita_fatturabili` è un mirror DUREVOLE 1:1.**
+`fn_emit_attivita_fatturabili_da_commessa` **non inserisce, fa upsert**: cerca la
+riga esistente per `(sorgente_tipo_id, sorgente_uid)`, dove `sorgente_uid` è
+derivato in modo deterministico dal `segment_key` (md5), e se la trova la
+**aggiorna**. È il motivo per cui `fn_cleanup_fatture_by_ids` la lascia in piedi
+dopo un reset: è il vaso che il ri-emit riempie di nuovo. ⭐ Ed è anche il motivo
+per cui un reset + ri-emit **non** produce due righe che si sommano: quel difetto
+non esiste, e la ragione è questa.
+
+**3. Rispecchiare lo stato dentro `attivita_fatturabili`** (una colonna
+`annullata`, o riusare `approvato`). ⛔ È l'alternativa che sembra più solida ed è
+la peggiore: **il mirror lo aggiorna SOLO l'emit**, e un annullo non chiama
+l'emit. Una colonna di stato lì sarebbe **stale per costruzione** — vera il
+giorno in cui la si scrive e falsa da subito dopo. Il join al padre è l'unica
+cosa che non può invecchiare.
+
+#### E il filtro copre tutto, non un consumatore
+
+⭐ Misurato sul codice, non sui dati: `vw_af_merce_per_riga` è **l'unico** oggetto
+in `vendite` che somma `attivita_fatturabili.quantita`. Tutto il conto della
+merce passa da lì — `vw_partite_merce`, `vw_contatore_merce_aggregato`,
+`vw_situazione_merce_ordine`, `fn_get_stato_push_segment`,
+`fn_resi_riga_tetti_accredito` leggono lei, non la tabella. Correggere quella
+riga corregge il conto **ovunque**, e non c'è un secondo lettore che domani
+ripeta il difetto.
+
+Il che chiude anche la domanda di principio: quel filtro non è una toppa sul
+sintomo, è **la definizione stessa** di «quanto ha fatturato questa riga». Una
+riga annullata non ha fatturato niente. Che sei porte su sette lo dicessero già
+e questa no era una riga saltata.
+
+### Cosa serve per scriverlo
+
+⚠️ Nessuna di queste è una condizione sul *se*: sono il come.
+
+* **leggere i 6 pgTAP che insistono sul confine vecchio** — `test-vw-af-merce-per-riga-v1`,
+  `test-vw-partite-merce-v1`, `test-vw-partite-merce-riconsegna-dopo-nc-v1`,
+  `test-vw-contatore-merce-v1`, `test-ponte-riconsegna-copre-riga-v1`,
+  `test-fn-accredita-riga-reso-v1`. Un filtro che stringe rompe i test scritti
+  sul confine di prima, e vanno **letti** prima, non aggiustati dopo;
+* ⚠️ **`security_invoker=on` va ri-specificata** nel `CREATE OR REPLACE VIEW`, o
+  PostgreSQL la azzera;
+* ⭐ **un pgTAP nuovo sul percorso completo**: accredito → emissione → reset →
+  annullo → **la coda risale**. È l'unico che dimostra la chiusura, e oggi
+  sarebbe rosso;
+* **poi**, e solo poi, la bonifica: se esistono righe con un'AF il cui padre è
+  già `ANNULLATA`, i loro conti di partita cambiano al primo refresh. Si misura
+  come owner (`commesse_attivita` ha la RLS, e come applicazione lo zero è
+  fail-closed) e si sistema a mano — non siamo in produzione.
+
+### Il resto della catena, una volta chiuso
+
+* il **test 17** di `test-annulla-accredito-riga-reso-v1` oggi verifica che
+  l'annullo **riesca** dopo il reset, ma non che la coda risalga: asserire lì un
+  comportamento rotto lo cristallizzerebbe. Dopo la correzione va esteso;
+* ⭐ **`fn_annulla_commessa_attivita` guarisce senza essere toccata**: lo stesso
+  difetto, la stessa cura, e nessuna modifica alla porta delle righe manuali.
+
+### ✅ Fatto — `20260818-73` + test 18 (2026-08-18)
+
+Tutto dentro questo cantiere, come deciso: niente rimandato.
+
+| | |
+| --- | --- |
+| `20_code/vendite/20260818-73-update-vw-af-merce-per-riga-esclude-annullate-mctit.yaml` | il filtro, con `security_invoker=on` ri-specificata e il rollback alla definizione del `20260817-06` |
+| `test-annulla-accredito-riga-reso-v1.sql` **test 18** | il percorso completo: accredito → emissione → reset → annullo → **la coda risale** |
+
+#### ⭐ La prova che il difetto è reale, non dedotto
+
+Il test 18 è stato eseguito **prima** del changeset, sul database vero:
+
+```text
+# Failed test 18: "18) percorso completo … LA CODA RISALE …"
+#     (test result was NULL)
+Files=1, Tests=18, Failed: 1
+```
+
+⭐ `NULL`, non «valore sbagliato»: la riga di reso **non è proprio presente**
+nella coda accrediti. È esattamente il sintomo previsto — il ponte è vuoto, la
+merce è persa, e nessuno può più accreditarla. Gli altri **17 restano verdi**.
+
+⛔ Il rosso del test 18 sparisce con l'apply di `20260818-73` e **non prima**:
+è la definizione stessa di quel changeset.
+
+✅ **E dopo l'apply è verde**: `Files=1, Tests=18, Result: PASS`. Il difetto è
+quindi misurato nei **due versi** — rosso senza la correzione, verde con — che è
+la sola forma in cui un test dimostra di aver collaudato qualcosa.
+
+#### I sei pgTAP del confine vecchio — letti prima, misurati dopo
+
+**Prima di scrivere**, `grep 'ANNULLATA'` su tutti e sei: **zero occorrenze**.
+Nessuno di loro produce mai un'attività annullata — le fixture usano
+`NON_EMESSA` e l'emissione. Il filtro **non poteva** cambiarne l'esito, e non
+era una previsione ma una misura sul **contenuto dei file**, indipendente dai
+dati del database.
+
+✅ **Dopo l'apply, verificato eseguendoli** (2026-08-18):
+
+| Test | Esito |
+| --- | --- |
+| `test-vw-af-merce-per-riga-v1` | ✅ PASS |
+| `test-vw-partite-merce-v1` | ✅ PASS |
+| `test-vw-partite-merce-riconsegna-dopo-nc-v1` | ✅ PASS |
+| `test-vw-contatore-merce-v1` | ✅ PASS |
+| `test-ponte-riconsegna-copre-riga-v1` | ✅ PASS |
+| `test-fn-accredita-riga-reso-v1` | ✅ PASS |
+| `test-annulla-accredito-riga-reso-v1` | ✅ PASS (18/18) |
+
+Nessuna regressione sul conto della merce.
+
+#### Cosa resta di §10
+
+Solo la **bonifica**, se emergono partite con i conti spostati: si misura come
+owner (`commesse_attivita` ha la RLS, come applicazione lo zero è fail-closed) e
+si sistema a mano — non siamo in produzione. ⚠️ È un'attività **a valle** e non
+una condizione: la soluzione si sceglie sul modello, il dato semmai si bonifica
+dopo.
+
+---
 
 ---
 

@@ -1,0 +1,219 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Passo 2d del piano §8 di brief-db-note-credito-prerequisiti-be-fe.md.
+# La terza porta di reset guarda il NUMERO e non solo lo stato.
+#
+# ⭐ IL PROBLEMA, che nasce da una domanda del backend (P-2).
+#
+#    Il task `popola_fatture_rettifiche` scrive in vendite.fatture_rettifiche il
+#    legame «questa nota di credito rettifica quella fattura», e gira DOPO
+#    numera_fatture. La domanda era: puo' un percorso di reset incontrare quella
+#    proiezione? Se si', fn_cleanup_fatture_by_ids deve cancellarla, perche'
+#    fk_fatture_ret_fattura NON e' ON DELETE CASCADE e il reset sbatterebbe su
+#    una violazione di chiave esterna grezza — dentro una funzione che i suoi
+#    chiamanti danno per infallibile.
+#
+#    ⭐ La risposta e' NO, e le porte di reset sono tre:
+#
+#      fn_elimina_fattura_da_lotto   -> E_FATTURA_GIA_NUMERATA (motivo 4 di
+#                                       fn_check_fattura_eliminabile_da_lotto)
+#      fn_riporta_lotto_a_draft      -> E_LOTTO_FATTURE_NUMERATE (motivo 3 di
+#                                       fn_check_lotto_riportabile_a_draft)
+#      fn_annulla_lotto_da_draft     -> 🔴 nessun controllo sul numero
+#
+#    Le prime due guardano il NUMERO, e lo fanno di proposito in modo ridondante
+#    rispetto allo stato: sta scritto nei loro commenti, «il danno sarebbe
+#    irreversibile». La terza no: si affida a stato DRAFT del lotto piu'
+#    fn_check_lotto_fatture_pre_fiscali, che nel proprio commento EQUIPARA lo
+#    stato al numero («DRAFT o EMESSA, cioe' non ancora numerate»).
+#
+# ⚠️ NON E' UN DIFETTO VIVO, ed e' misurato: oggi nessun lotto in DRAFT ha una
+#    fattura numerata. E' una porta chiusa per DEDUZIONE invece che per
+#    verifica — e la deduzione regge finche' nessuno ci appoggia sopra un peso.
+#    Il legame documentale delle note di credito e' quel peso.
+#
+# ⚠️ IL CONTROLLO VA QUI E NON NEL DELEGATO CONDIVISO
+#    (script.fn_check_lotto_fatture_pre_fiscali): quel delegato lo leggono
+#    anche l'altra sorella e le capability, e stringerlo li' cambierebbe il
+#    comportamento di consumatori che questo passo non sta esaminando. La
+#    sorella fn_check_lotto_riportabile_a_draft ha gia' il proprio controllo
+#    FUORI dal delegato: si copia quella forma, letteralmente.
+#
+# ⚠️ NESSUN CODICE NUOVO A CATALOGO: E_LOTTO_FATTURE_NUMERATE (801) esiste gia'
+#    e ha classe CONFLITTO_STATO — e' lo stesso motivo, sull'altra porta.
+#
+# ⚠️ Verificato che non rompe i pgTAP esistenti: i tre file che toccano
+#    l'annullamento (test-available-actions-lotto-v1, test-fatturazione-reset-
+#    lotto-draft, test-annulla-lotto-vuoto-v1) asseriscono l'EQUIVALENZA fra il
+#    check e la mutazione, e che i motivi siano > 0 fuori da DRAFT. Un motivo in
+#    piu' puo' solo far crescere quel conteggio, e l'equivalenza regge perche'
+#    fn_available_actions_lotto legge la STESSA funzione.
+#
+# docs/it/dev/work-in-progress/brief-db-note-credito-prerequisiti-be-fe.md §8
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260818-68-update-fn-check-lotto-annullabile-numero-mctit.yaml
+
+  - changeSet:
+      id: 20260818-68-update-fn-check-lotto-annullabile-numero
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        Terzo motivo in fn_check_lotto_annullabile: fatture gia' NUMERATE,
+        guardando il numero e non lo stato che dovrebbe implicarlo. Chiude
+        l'ultima delle tre porte di reset che si affidava a una deduzione: le
+        altre due hanno gia' il controllo esplicito, e da qui in poi la
+        proiezione vendite.fatture_rettifiche (che esiste solo su documenti
+        numerati) e' irraggiungibile per VERIFICA e non per inferenza.
+        Nessun codice nuovo: E_LOTTO_FATTURE_NUMERATE esiste gia'. Non tocca il
+        delegato condiviso fn_check_lotto_fatture_pre_fiscali, che ha altri
+        consumatori. Piano §8 passo 2d, risposta alla domanda P-2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*) FROM config.codici_errore
+               WHERE codice = 'E_LOTTO_FATTURE_NUMERATE' AND obsoleto_dal IS NULL;
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_lotto_annullabile(
+                  p_lotto_id vendite.fatturazione_lotti.id%TYPE
+              )
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: elencare i motivi che impediscono l'ANNULLAMENTO di un
+              --   lotto. Funzione PURA (fn_check_*): nessun raise di dominio,
+              --   nessuna scrittura. Consumatori: vendite.fn_annulla_lotto_da_draft
+              --   (che solleva il codice del primo motivo) e
+              --   script.fn_available_actions_lotto (che espone enabled + reasons).
+              -- Ritorna: [] se annullabile; altrimenti array ordinato di
+              --   {codice, reason, reason_key, dettaglio}.
+              DECLARE
+                v_motivi    jsonb := '[]'::jsonb;
+                v_stato_cod config.stati_doc_fiscale.codice_interno%TYPE;
+                v_trovato   boolean;
+                v_numerate  integer;
+              BEGIN
+                -- Guard parametro (AGENTS.md).
+                IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'script','fn_check_lotto_annullabile','E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','lotto_id','valore',p_lotto_id),
+                    NULL::uuid, 'lotto_id obbligatorio (>0)');
+                END IF;
+
+                -- Stato corrente per CODICE: il codice_interno e' la chiave
+                -- stabile, l'id no (lezione B-4). LEFT JOIN perche' un lotto
+                -- senza stato deve arrivare al confronto e fallirlo, non
+                -- sparire dalla riga.
+                SELECT true, sdf.codice_interno
+                  INTO v_trovato, v_stato_cod
+                  FROM vendite.fatturazione_lotti fl
+                  LEFT JOIN config.stati_doc_fiscale sdf
+                    ON sdf.id = fl.stato_doc_fiscale_id
+                 WHERE fl.id = p_lotto_id;
+
+                IF NOT COALESCE(v_trovato, false) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'script','fn_check_lotto_annullabile','E_LOTTO_NON_TROVATO',
+                    jsonb_build_object('lotto_id',p_lotto_id),
+                    NULL::uuid, p_lotto_id::text);
+                END IF;
+
+                -- MOTIVO 1 — il lotto non e' in bozza.
+                -- L'annullamento e' terminale (ANNULLATA chiude il lotto e non
+                -- si riapre): si concede solo prima che il lotto abbia
+                -- prodotto qualcosa. Da EMESSA la strada e' «riporta in bozza».
+                IF COALESCE(v_stato_cod, '') <> 'DRAFT' THEN
+                  v_motivi := v_motivi || jsonb_build_object(
+                    'codice',     'E_LOTTO_NON_ANNULLABILE',
+                    'reason',     'STATO_NON_DRAFT',
+                    'reason_key', 'vendite.lotti.azione_reason.stato_non_draft',
+                    'dettaglio',  COALESCE(v_stato_cod, '-'));
+                END IF;
+
+                -- MOTIVO 2 — fatture oltre il pre-fiscale. Delegato: la
+                -- definizione di «pre-fiscale» sta in un posto solo.
+                v_motivi := v_motivi
+                          || script.fn_check_lotto_fatture_pre_fiscali(p_lotto_id);
+
+                -- MOTIVO 3 — fatture gia' NUMERATE (aggiunto 2026-08-18).
+                -- ⚠️ DELIBERATAMENTE RIDONDANTE rispetto al 2, e da NON
+                --   semplificare via: e' la stessa scelta gia' fatta in
+                --   fn_check_lotto_riportabile_a_draft e nel motivo 4 di
+                --   fn_check_fattura_eliminabile_da_lotto. Il motivo 2 si
+                --   affida allo stato, che pre-fiscale IMPLICA non numerata
+                --   (C-19); qui si guarda il FATTO, perche' cancellare una
+                --   fattura numerata apre un buco nella numerazione fiscale e
+                --   il danno non si ripara.
+                -- ⭐ Da oggi non e' piu' solo prudenza: il task
+                --   popola_fatture_rettifiche scrive vendite.fatture_rettifiche
+                --   sui documenti NUMERATI, e fk_fatture_ret_fattura non e'
+                --   ON DELETE CASCADE. Senza questo motivo, l'unica cosa che
+                --   tiene lontano il reset da quella proiezione sarebbe
+                --   l'implicazione stato -> numero; e quando cede non da' un
+                --   errore di dominio, da' una violazione di chiave esterna
+                --   grezza dentro fn_cleanup_fatture_by_ids.
+                SELECT count(*)
+                  INTO v_numerate
+                  FROM vendite.fatture f
+                  JOIN vendite.fatturazione_lotti_fatture lf
+                    ON lf.fattura_id = f.id
+                 WHERE lf.lotto_id = p_lotto_id
+                   AND f.numero IS NOT NULL;
+
+                IF v_numerate > 0 THEN
+                  v_motivi := v_motivi || jsonb_build_object(
+                    'codice',     'E_LOTTO_FATTURE_NUMERATE',
+                    'reason',     'FATTURE_NUMERATE',
+                    'reason_key', 'vendite.lotti.azione_reason.fatture_numerate',
+                    'dettaglio',  v_numerate);
+                END IF;
+
+                RETURN v_motivi;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_lotto_annullabile(bigint) IS
+                  'Funzione PURA (fn_check_*): motivi ostativi all''annullamento di un lotto. '
+                  'Ritorna [] se annullabile, altrimenti array ordinato di {codice, reason, '
+                  'reason_key, dettaglio}. Motivo 1: lotto non in DRAFT (codice 798) — '
+                  'ANNULLATA e'' terminale e non si riapre, quindi si concede solo prima che il '
+                  'lotto abbia prodotto qualcosa; da EMESSA la via d''uscita non distruttiva e'' '
+                  'fn_riporta_lotto_a_draft. Motivo 2: fatture oltre il pre-fiscale (codice '
+                  '799), delegato a script.fn_check_lotto_fatture_pre_fiscali. '
+                  '⭐ Motivo 3 (2026-08-18): fatture gia'' NUMERATE (codice 801) — '
+                  '⚠️ deliberatamente ridondante rispetto al 2 e da NON semplificare via, come '
+                  'nelle due sorelle: il motivo 2 si affida allo stato, che pre-fiscale '
+                  'IMPLICA non numerata, mentre questo guarda il FATTO. Era l''ULTIMA delle tre '
+                  'porte di reset che si affidava a quella implicazione, e da oggi il peso che '
+                  'ci si appoggia sopra e'' reale: il task popola_fatture_rettifiche scrive '
+                  'vendite.fatture_rettifiche sui documenti numerati e '
+                  'fk_fatture_ret_fattura NON e'' ON DELETE CASCADE — quando l''implicazione '
+                  'cede non da'' un errore di dominio, da'' una violazione di chiave esterna '
+                  'grezza dentro fn_cleanup_fatture_by_ids. Il tipo di lotto NON e'' un motivo: '
+                  'dal 2026-08-02 (D-L pt.2 + D-T) vale per MASSIVO e GIORNALIERO. Sorgente '
+                  'UNICA condivisa da vendite.fn_annulla_lotto_da_draft (solleva) e '
+                  'script.fn_available_actions_lotto (espone enabled/reasons).';
+      rollback:
+        - sql:
+            sql: |
+              -- Nessun rollback automatico: togliere il motivo 3 riaprirebbe la
+              -- porta che questo changeSet chiude. Se serve tornare indietro si
+              -- scrive un changeSet nuovo con la ragione esplicita.
+              SELECT 1;

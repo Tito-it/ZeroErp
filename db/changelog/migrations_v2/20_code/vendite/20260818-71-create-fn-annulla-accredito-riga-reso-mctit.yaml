@@ -1,0 +1,524 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Madre DB dell'ANNULLO DELL'ACCREDITO: vendite.fn_annulla_accredito_riga_reso
+#   (brief-db-note-credito-prerequisiti-be-fe §8 passo 3, richiesta P-5,
+#    corretta da C-2). Specchio di vendite.fn_accredita_riga_reso.
+#
+# ── IL BUCO CHE CHIUDE ─────────────────────────────────────────────────
+#   Dopo il verbo «accredita» non esisteva NESSUNA strada indietro: nessuna
+#   funzione cancella da vendite.resi_righe_accrediti, e la porta ANNULLA della
+#   riga manuale (fn_annulla_commessa_attivita) non copre il caso — vedi sotto.
+#   E' il caso «ho cliccato la riga sbagliata», che sta A MONTE del documento.
+#
+#   ⚠️ NON e' l'annullo del DOCUMENTO, che esiste gia' ed e' il reset del lotto.
+#   Sono due cose diverse e restano distinte: dopo un reset la nota di credito
+#   viene RIGENERATA al giro successivo, ed e' corretto (la merce resa non e'
+#   cambiata, l'accredito e' ancora dovuto). Dopo questo annullo no.
+#
+# ── ⭐ LA SEMANTICA E' D'INSIEME, NON DI RIGA (C-2) ────────────────────
+#   Un accredito NON e' una riga di ponte: ne sono N, per due ragioni
+#   indipendenti che stanno nel commento della madre —
+#     * consumo LIFO (D-NC-5): una quota resa puo' coprire piu' righe di
+#       fattura, e ognuna produce la sua coppia;
+#     * kit: una rettifica per componente, ciascuna specchio della sua riga.
+#   Lo conferma il vincolo uq_resi_accrediti_pair (resi_riga_id,
+#   fattura_riga_rettificata_id): la chiave e' la COPPIA.
+#
+#   Quindi: o si annulla TUTTO, o non si tocca NIENTE. Non e' prudenza
+#   generica, e' la dottrina con cui la madre chiude il proprio giro
+#   (E_ACCREDITO_QUOTA_NON_COPERTA): «meglio non farlo che farlo a meta',
+#   perche' un residuo parziale e' la riga che resta in coda a chiedere per
+#   sempre». Un annullo parziale produce quel residuo ALLO SPECCHIO:
+#   accredito_dovuto risalirebbe solo in parte e la coda resterebbe a chiedere
+#   una quota che nessuno puo' piu' soddisfare, perche' l'altra meta' e' dentro
+#   un documento fiscale.
+#
+# ── ⚠️ IL LOCK: FOR UPDATE SU resi_righe, NON UN ADVISORY ──────────────
+#   Decisione di Tid, e la verifica la conferma con una precisazione sul
+#   MECCANISMO che vale la pena scrivere perche' non e' ovvia:
+#
+#     * il GUARD del ponte (trgfn_resi_accrediti_guard) prende
+#       FOR UPDATE su vendite.resi_righe WHERE id = NEW.resi_riga_id,
+#       e lo dichiara: «nessun advisory lock, il FOR UPDATE basta, come nelle
+#       due sorelle» (riconsegne e rinunce);
+#     * la MADRE non prende quel lock DIRETTAMENTE. Prende un
+#       pg_advisory_xact_lock a due argomenti sulla RIGA DI DDT, che serve a
+#       un'altra cosa: far girare il progressivo del suffisso #RET sul
+#       segmento. Sulla riga di reso arriva DI RIFLESSO, attraversando il
+#       proprio guard alla prima INSERT sul ponte.
+#
+#   ⭐ Il risultato pero' e' quello voluto: chiunque scriva sul ponte passa da
+#   quel FOR UPDATE, quindi prenderlo QUI in testa fa intersecare davvero
+#   l'esclusione con la madre. Un advisory lock sulla riga di DDT
+#   intersecherebbe anch'esso, ma sarebbe l'appiglio sbagliato: piu' grosso del
+#   necessario (piu' righe di reso condividono una riga di DDT) e cieco verso
+#   il percorso che conta, che e' il ponte.
+#
+#   ⛔ NESSUN DEADLOCK con la madre: la madre prende advisory(DDT) e poi il
+#   lock di riga su resi_righe; l'annullo prende SOLO il lock di riga e non
+#   attende mai l'advisory. Manca il secondo verso, quindi manca il ciclo.
+#
+# ── ⚠️ IL FAIL-CLOSED CHE IL PIANO NON NOMINAVA ────────────────────────
+#   Le due tabelle NON hanno la stessa visibilita', ed e' misurato:
+#     vendite.commesse_attivita     -> RLS  (rls_commesse_attivita_ef_whitelist,
+#                                            changeset 20260720-06)
+#     vendite.resi_righe_accrediti  -> NESSUNA RLS
+#   Il ponte quindi dice sempre la verita' su QUANTE rettifiche esistono; la
+#   UPDATE ad ANNULLATA gira sotto RLS e una rettifica fuori perimetro
+#   emittente la salterebbe IN SILENZIO. E' esattamente l'annullo parziale che
+#   la semantica d'insieme vieta, nella forma piu' difficile da vedere.
+#
+#   Rimedio in DUE tempi, entrambi con E_ACCREDITO_ANNULLO_INCOMPLETO:
+#     1. PRIMA di scrivere: quante rettifiche vedo vs quante ne dichiara il
+#        ponte. Diagnosi pulita, nessun effetto da annullare;
+#     2. DOPO ogni scrittura: ROW_COUNT vs atteso. Copre la finestra fra il
+#        controllo e la scrittura, e vale come la difesa in profondita' che la
+#        madre ha su E_ACCREDITO_SEGMENT_DUPLICATO — se scatta e' una
+#        regressione o un perimetro incoerente, non un caso d'uso.
+#
+# ── ⛔ PERCHE' NON SI RIUSA fn_annulla_commessa_attivita ────────────────
+#   La tentazione c'e' ed e' motivata: le rettifiche nascono con
+#   sorgente_tipo_id NULL (la madre passa p_sorgente_tipo_id => NULL), quindi
+#   passerebbero perfino il guard «e' sourceless» di quella funzione. Non si
+#   riusa per tre ragioni che vanno tutte nella stessa direzione:
+#     * il suo PERIMETRO dichiarato e' la riga MANUALE. Una rettifica di
+#       accredito e' sourceless per costruzione, non perche' l'abbia caricata
+#       un operatore: passare il suo guard sarebbe un incidente, non un
+#       contratto;
+#     * il suo EVENTO di log e' RIGA_MANUALE_ANNULLATA, e non e'
+#       parametrizzabile. Scriverlo su una rettifica direbbe il falso proprio
+#       nella riga che serve a ricostruire cosa e' successo;
+#     * e' fail-fast PER RIGA, con i suoi codici (E_RIGA_COMMESSA_GIA_EMESSA).
+#       Qui la decisione e' d'insieme e deve essere presa PRIMA di toccare
+#       qualunque riga, con un codice che nomini l'accredito.
+#   Restano due statement di dominio scritti in linea: non e' logica
+#   duplicata, e' la stessa scrittura elementare con un contratto diverso.
+#
+# ── ⭐ CANCELLA, NON MARCA — ED E' UN VINCOLO RECIPROCO (C-3) ───────────
+#   Le righe di ponte si CANCELLANO. Da questa scelta dipende, senza saperlo,
+#   il gate della rinuncia (P-3, passo 4): quel gate scatta «appena esiste una
+#   riga in resi_righe_accrediti», quindi si auto-ripara quando l'annullo la
+#   toglie. ⚠️ Se un giorno l'annullo diventasse un soft-delete (una colonna
+#   annullato_il), il gate continuerebbe a vedere la riga e vieterebbe per
+#   sempre una rinuncia ormai reversibile — IN SILENZIO, perche' nessuno dei
+#   due lati sarebbe sbagliato da solo. Le due funzioni vanno cambiate insieme.
+#
+# ── ORDINE DELLE SCRITTURE ─────────────────────────────────────────────
+#   Audit -> DELETE del ponte -> UPDATE ad ANNULLATA.
+#   L'audit sta in testa perche' legge le coppie, che dopo non ci sono piu'.
+#   ⚠️ Il DELETE prima della UPDATE e' l'ordine indicato dal piano per via di
+#   fk_resi_accrediti_commessa_attivita. Da solo quel vincolo non lo imporrebbe
+#   — la UPDATE tocca stato_emissione, non la PK referenziata, quindi la FK non
+#   se ne accorge. L'ordine si tiene lo stesso perche' costa zero ed evita che
+#   il ponte punti, sia pure per un istante dentro la transazione, a una
+#   rettifica gia' ANNULLATA.
+#
+# ── I TRIGGER DELLA TABELLA NON SI OPPONGONO (riverificato 2026-08-18) ──
+#   Stesso quadro di 20260728-19, ricontrollato sull'elenco trigger corrente:
+#   trgfn_commesse_attivita_guard_quantita_immutabile scatta solo se cambia
+#   quantita (qui non cambia); trgfn_commesse_attivita_guard_tipo_doc_emittibile
+#   ha condizione (APPROVATA + NON_EMESSA) su NEW, quindi passando ad ANNULLATA
+#   SI SPEGNE. Nessun bypass GUC necessario.
+#   ⚠️ Nota condivisa con fn_annulla_commessa_attivita, non un difetto nuovo:
+#   i trigger AFTER UPDATE dbops.trgfn_child_requires_active_parent rivalidano
+#   i padri (articolo, uom, tipo_doc_fiscale...) a ogni UPDATE. Se un padre
+#   fosse stato disattivato nel frattempo, l'annullo fallirebbe con l'errore di
+#   quel trigger. Vale per entrambe le porte ANNULLA e si affronta, se emerge,
+#   dove nasce (il guard sulla disattivazione), non qui.
+#
+# ── SEMANTICA DI «NON TROVATO» ─────────────────────────────────────────
+#   Nessuna coppia -> E_ACCREDITO_NON_TROVATO. ⚠️ Copre DUE storie che dopo
+#   l'annullo sono indistinguibili per costruzione: «non e' mai stato
+#   accreditato» e «e' gia' stato annullato» — perche' l'annullo cancella. Ed
+#   e' corretto cosi': lo stato osservabile e' identico, e inventare un flag per
+#   distinguerle riaprirebbe il soft-delete che C-3 vieta.
+#   Riga di reso inesistente -> E_VALORE_MANCANTE (codice generico gia' in uso
+#   dalla porta gemella per lo stesso caso).
+#
+# ── %TYPE OVUNQUE, E COSA SIGNIFICA DAVVERO ────────────────────────────
+#   linee-guida-sql §5b: tipi ancorati con %TYPE su parametri, DECLARE e
+#   RETURNS TABLE. Qui l'ancoraggio e' su vendite.resi_righe.id (parametro) e
+#   su vendite.resi_righe_accrediti (le cinque colonne di ritorno).
+#   ⚠️ Due punti che non si vedono leggendo la firma:
+#     * %TYPE si risolve al CREATE ed e' una FOTOGRAFIA, non un link. Se un
+#       giorno una di quelle colonne cambiasse tipo, la funzione NON si
+#       riaggancia da sola: va ri-creata. L'ancoraggio serve a far fallire il
+#       CREATE quando la colonna non esiste piu', non a inseguirla;
+#     * di conseguenza la firma REGISTRATA e' (bigint, text), ed e' quella che
+#       DROP FUNCTION nel rollback e COMMENT ON FUNCTION devono nominare.
+#       Scriverle con %TYPE non e' equivalente e non si fa.
+#   Non ancorati e detti: p_motivo (nessuna colonna: vive nel jsonb del log),
+#   v_ids (bigint[] — colonna%TYPE[] non esiste in PostgreSQL) e i contatori
+#   (integer: sono conteggi, non valori di colonna).
+#
+# ── ⭐ «CANCELLA» NON VUOL DIRE «PERDE LA STORIA» ──────────────────────
+#   vendite.resi_righe_accrediti ha gia' le colonne storicizza/tx_id/audit ma
+#   NON ha ancora i trigger z90_storico/audit/tx_id, perche' e' nata il
+#   2026-08-18 e quelle automazioni girano solo in contesto ci_apply (sul
+#   migrate manuale ci pensa il pgagent la sera). La sorella piu' vecchia
+#   resi_righe_riconsegne li ha tutti, quindi appena l'automazione passa il
+#   DELETE di questa funzione finira' in storico come qualunque altro.
+#   ⚠️ Da NON usare come argomento per rilassare il motivo obbligatorio: lo
+#   storico dira' COSA e' stato tolto, non PERCHE'.
+#
+# Dipendenze: vendite.resi_righe_accrediti (20260818-33 e seguenti),
+#   vendite.commesse_attivita (CHECK stato_emissione a 3 valori),
+#   vendite.commesse_attivita_log, vendite.attivita_fatturabili,
+#   script.fn_log_and_raise_error, codici errore 924-927 nei CSV di 80_data
+#   (E_ACCREDITO_NON_TROVATO, E_ACCREDITO_ANNULLO_NON_AMMESSO,
+#    E_ACCREDITO_MOTIVO_OBBLIGATORIO, E_ACCREDITO_ANNULLO_INCOMPLETO).
+#   ⚠️ Nessuna preCondition sui codici: 80_data gira DOPO 20_code.
+# Verifica: db/pgtap/vendite/test-annulla-accredito-riga-reso-v1.sql (da
+#   scrivere) — l'asserzione che conta non e' «la riga e' sparita» ma la CODA:
+#   accredito_dovuto risale, gia_accreditato torna falso, un secondo accredito
+#   riesce; e il caso PLURALE (due rettifiche, una emessa -> rifiuta entrambe),
+#   senza il quale la semantica d'insieme non e' verificata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260818-71-create-fn-annulla-accredito-riga-reso-mctit.yaml
+
+  - changeSet:
+      id: 20260818-71-create-fn-annulla-accredito-riga-reso
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Madre DB dell'annullo dell'accredito: fn_annulla_accredito_riga_reso(resi_riga_id, motivo).
+        Semantica d'INSIEME (C-2): un accredito e' N coppie di ponte e N rettifiche, quindi o si
+        annulla tutto o non si tocca niente. Cancella da vendite.resi_righe_accrediti e porta le
+        rettifiche a stato_emissione = ANNULLATA, con motivo obbligatorio e audit su
+        commesse_attivita_log (evento ACCREDITO_ANNULLATO). Lock FOR UPDATE sulla riga di reso, lo
+        stesso appiglio del guard del ponte. Doppio fail-closed su ROW_COUNT: commesse_attivita ha
+        la RLS e il ponte no, quindi una rettifica fuori perimetro verrebbe saltata in silenzio.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'vendite'
+                 AND c.relname = 'resi_righe_accrediti'
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite'
+                 AND p.proname = 'fn_accredita_riga_reso'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_annulla_accredito_riga_reso(
+                p_resi_riga_id vendite.resi_righe.id%TYPE,
+                -- ⚠️ p_motivo NON e' ancorabile: il motivo non ha una colonna,
+                --    vive dentro il jsonb `dettaglio` di commesse_attivita_log.
+                --    `text` esplicito e detto, non dimenticato.
+                p_motivo       text)
+               RETURNS TABLE(accredito_id                vendite.resi_righe_accrediti.id%TYPE,
+                             commessa_attivita_id        vendite.resi_righe_accrediti.commessa_attivita_id%TYPE,
+                             fattura_riga_rettificata_id vendite.resi_righe_accrediti.fattura_riga_rettificata_id%TYPE,
+                             qta                         vendite.resi_righe_accrediti.qta%TYPE,
+                             qta_partita                 vendite.resi_righe_accrediti.qta_partita%TYPE)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: madre DB del verbo «annulla accredito». Specchio di
+              --   vendite.fn_accredita_riga_reso: toglie le coppie dal ponte
+              --   vendite.resi_righe_accrediti e porta le rettifiche di
+              --   commessa a stato_emissione = 'ANNULLATA'.
+              -- Perimetro: una sola unita' atomica, e la sua unita' e'
+              --   l'ACCREDITO INTERO — non la singola coppia. Ritorna le
+              --   coppie rimosse, nella stessa forma con cui la madre le ha
+              --   create, perche' il chiamante possa dire cosa ha disfatto.
+              -- ⛔ Non e' l'annullo del DOCUMENTO: quello e' il reset del
+              --   lotto, e dopo un reset la nota di credito RIGENERA al giro
+              --   successivo. Qui no: si torna prima del verbo.
+              -- Il presidio permessi vive sul BE (post_permission), non qui:
+              --   la madre deve restare usabile da un processo autorizzato.
+              DECLARE
+                  v_motivo        text;
+                  -- ⚠️ bigint[] esplicito: colonna%TYPE[] non esiste in
+                  --    PostgreSQL (linee-guida-sql, memoria di casa).
+                  --    E' l'unica eccezione all'ancoraggio in questo DECLARE.
+                  v_ids           bigint[];
+                  -- `integer` esplicito: sono CONTEGGI, non il valore di una
+                  -- colonna. Non c'e' nulla da ancorare, e va detto invece di
+                  -- sembrare una dimenticanza.
+                  v_n_coppie      integer;
+                  v_n_rettifiche  integer;
+                  v_n_viste       integer;
+                  v_n_bloccate    integer;
+                  v_n_cancellate  integer;
+                  v_n_annullate   integer;
+                  v_r             record;
+              BEGIN
+                  -- --------------------------------------------------
+                  -- 1) Guard sui parametri (AGENTS.md: NULL o <=0 ->
+                  --    errore parlante, mai normalizzazione silenziosa).
+                  -- --------------------------------------------------
+                  IF p_resi_riga_id IS NULL OR p_resi_riga_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_annulla_accredito_riga_reso','E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro','resi_riga_id','valore',p_resi_riga_id),
+                          NULL::uuid, 'resi_riga_id obbligatorio (>0)');
+                  END IF;
+
+                  -- Motivo: btrim, poi obbligatorio non vuoto. L'annullo
+                  -- CANCELLA le coppie, quindi l'unica traccia del PERCHE'
+                  -- resta l'evento di log: senza motivo resta il fatto senza
+                  -- la ragione, e a mesi di distanza un accredito sparito
+                  -- senza spiegazione e' indistinguibile da un errore.
+                  v_motivo := btrim(COALESCE(p_motivo, ''));
+                  IF v_motivo = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_annulla_accredito_riga_reso','E_ACCREDITO_MOTIVO_OBBLIGATORIO',
+                          jsonb_build_object('resi_riga_id', p_resi_riga_id),
+                          NULL::uuid, p_resi_riga_id::text);
+                  END IF;
+
+                  -- --------------------------------------------------
+                  -- 2) IL LOCK, in testa e prima di leggere l'insieme.
+                  --    FOR UPDATE sulla riga di reso: e' lo stesso appiglio
+                  --    che trgfn_resi_accrediti_guard prende a ogni scrittura
+                  --    sul ponte, quindi e' il punto in cui l'esclusione con
+                  --    la madre INTERSECA davvero — la madre ci arriva
+                  --    attraversando il proprio guard alla prima INSERT.
+                  --    Il suo advisory lock sta sulla riga di DDT e serve al
+                  --    progressivo #RET: un altro appiglio, per un'altra cosa.
+                  --    ⛔ Nessun deadlock: qui non si attende mai l'advisory,
+                  --    quindi il secondo verso del ciclo non esiste.
+                  --    Sta DOPO le guard sui parametri: una chiamata invalida
+                  --    non deve serializzare gli altri operatori.
+                  -- --------------------------------------------------
+                  PERFORM 1 FROM vendite.resi_righe r
+                    WHERE r.id = p_resi_riga_id
+                    FOR UPDATE;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_annulla_accredito_riga_reso','E_VALORE_MANCANTE',
+                          jsonb_build_object('resi_riga_id', p_resi_riga_id),
+                          NULL::uuid, concat('resi_riga_id ', p_resi_riga_id));
+                  END IF;
+
+                  -- --------------------------------------------------
+                  -- 3) L'INSIEME. Si legge dal ponte, che non ha RLS: e'
+                  --    la sola fonte che dica la verita' su QUANTE
+                  --    rettifiche compongono questo accredito.
+                  --    Due conteggi distinti e non uno: oggi il rapporto
+                  --    coppia/rettifica e' 1:1 per costruzione, ma nessun
+                  --    vincolo lo impone (uq_resi_accrediti_pair e' sulla
+                  --    coppia, non su commessa_attivita_id). Contarli
+                  --    separatamente costa nulla e non da' per scontato un
+                  --    invariante che nessuno difende.
+                  -- --------------------------------------------------
+                  SELECT count(*)::integer,
+                         count(DISTINCT a.commessa_attivita_id)::integer,
+                         array_agg(DISTINCT a.commessa_attivita_id)
+                    INTO v_n_coppie, v_n_rettifiche, v_ids
+                    FROM vendite.resi_righe_accrediti a
+                   WHERE a.resi_riga_id = p_resi_riga_id;
+
+                  IF v_n_coppie = 0 THEN
+                      -- ⚠️ «Mai accreditato» e «gia' annullato» finiscono
+                      --    qui insieme, e non e' un difetto: l'annullo
+                      --    cancella, quindi lo stato osservabile e' lo
+                      --    stesso. Un flag per distinguerle sarebbe il
+                      --    soft-delete che romperebbe il gate della rinuncia.
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_annulla_accredito_riga_reso','E_ACCREDITO_NON_TROVATO',
+                          jsonb_build_object('resi_riga_id', p_resi_riga_id),
+                          NULL::uuid, p_resi_riga_id::text);
+                  END IF;
+
+                  -- --------------------------------------------------
+                  -- 4) FAIL-CLOSED sulla VISIBILITA', prima di scrivere.
+                  --    vendite.commesse_attivita ha la RLS, il ponte no:
+                  --    una rettifica fuori perimetro emittente si legge come
+                  --    «non c'e'» e la UPDATE la salterebbe in silenzio.
+                  --    Zero non e' un dato, e' fail-closed: qui si misura
+                  --    PRIMA, cosi' la diagnosi arriva senza che ci sia
+                  --    nulla da annullare.
+                  -- --------------------------------------------------
+                  SELECT count(*)::integer
+                    INTO v_n_viste
+                    FROM vendite.commesse_attivita ca
+                   WHERE ca.id = ANY(v_ids);
+
+                  IF v_n_viste <> v_n_rettifiche THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_annulla_accredito_riga_reso','E_ACCREDITO_ANNULLO_INCOMPLETO',
+                          jsonb_build_object('resi_riga_id',  p_resi_riga_id,
+                                             'fase',          'pre-scrittura',
+                                             'viste',         v_n_viste,
+                                             'attese',        v_n_rettifiche,
+                                             'attivita_ids',  to_jsonb(v_ids)),
+                          NULL::uuid,
+                          p_resi_riga_id::text, v_n_viste::text, v_n_rettifiche::text);
+                  END IF;
+
+                  -- --------------------------------------------------
+                  -- 5) ⛔ IL CANCELLO TUTTO-O-NIENTE.
+                  --    Le tre condizioni sono quelle con cui la catena
+                  --    tratta qualunque attivita' non ancora emessa, e vanno
+                  --    tenute TUTTE E TRE: dopo un reset di lotto la riga di
+                  --    attivita_fatturabili SOPRAVVIVE (fn_cleanup_fatture_by_ids
+                  --    la sblocca e le azzera fattura_riga_id, non la
+                  --    cancella). Scrivere «esiste una AF -> bloccato»
+                  --    vieterebbe per sempre l'annullo dopo un reset
+                  --    legittimo: e' il ramo che sembra piu' prudente e
+                  --    invece e' sbagliato.
+                  --    Basta UNA rettifica bloccata per rifiutare TUTTO: un
+                  --    annullo parziale lascerebbe la coda a chiedere un
+                  --    residuo che nessuno puo' piu' soddisfare, che e' la
+                  --    malattia per cui questo cantiere esiste.
+                  -- --------------------------------------------------
+                  SELECT count(*)::integer
+                    INTO v_n_bloccate
+                    FROM vendite.commesse_attivita ca
+                   WHERE ca.id = ANY(v_ids)
+                     AND ( ca.stato_emissione <> 'NON_EMESSA'
+                           OR EXISTS (
+                               SELECT 1
+                                 FROM vendite.attivita_fatturabili af
+                                WHERE af.commessa_attivita_id = ca.id
+                                  AND ( COALESCE(af.lock_in_fatturazione, false)
+                                        OR af.fattura_riga_id IS NOT NULL ) ) );
+
+                  IF v_n_bloccate > 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_annulla_accredito_riga_reso','E_ACCREDITO_ANNULLO_NON_AMMESSO',
+                          jsonb_build_object('resi_riga_id', p_resi_riga_id,
+                                             'bloccate',     v_n_bloccate,
+                                             'totali',       v_n_rettifiche,
+                                             'attivita_ids', to_jsonb(v_ids)),
+                          NULL::uuid,
+                          p_resi_riga_id::text, v_n_bloccate::text, v_n_rettifiche::text);
+                  END IF;
+
+                  -- --------------------------------------------------
+                  -- 6) AUDIT + risultato, PRIMA della cancellazione: dopo,
+                  --    le coppie non ci sono piu' e con loro sparirebbe
+                  --    l'unica descrizione di cosa e' stato disfatto.
+                  --    Specchio di ACCREDITO_RICHIESTO scritto dalla madre.
+                  -- --------------------------------------------------
+                  FOR v_r IN
+                      SELECT a.id, a.commessa_attivita_id, a.fattura_riga_rettificata_id,
+                             a.qta, a.qta_partita, a.gruppo, a.meta
+                        FROM vendite.resi_righe_accrediti a
+                       WHERE a.resi_riga_id = p_resi_riga_id
+                       ORDER BY a.id
+                  LOOP
+                      INSERT INTO vendite.commesse_attivita_log (commessa_attivita_id, evento, dettaglio)
+                      VALUES (v_r.commessa_attivita_id, 'ACCREDITO_ANNULLATO',
+                              jsonb_build_object(
+                                  'motivo',                      v_motivo,
+                                  'resi_riga_id',                p_resi_riga_id,
+                                  'accredito_id',                v_r.id,
+                                  'fattura_riga_rettificata_id', v_r.fattura_riga_rettificata_id,
+                                  'qta_documento',               v_r.qta,
+                                  'qta_partita',                 v_r.qta_partita,
+                                  'gruppo',                      v_r.gruppo,
+                                  'segment_key',                 v_r.meta ->> 'segment_key',
+                                  -- L'insieme di cui questa riga faceva parte:
+                                  -- senza, il log direbbe COSA e' stato tolto
+                                  -- ma non che era una operazione sola.
+                                  'coppie_dell_accredito',       v_n_coppie,
+                                  'rettifiche_dell_accredito',   v_n_rettifiche));
+
+                      accredito_id                := v_r.id;
+                      commessa_attivita_id        := v_r.commessa_attivita_id;
+                      fattura_riga_rettificata_id := v_r.fattura_riga_rettificata_id;
+                      qta                         := v_r.qta;
+                      qta_partita                 := v_r.qta_partita;
+                      RETURN NEXT;
+                  END LOOP;
+
+                  -- --------------------------------------------------
+                  -- 7) Il ponte. ⭐ CANCELLA, non marca: e' da questa riga
+                  --    che dipende il gate della rinuncia (P-3), che si
+                  --    auto-ripara solo perche' la riga sparisce davvero.
+                  --    Ed e' la cancellazione a far RISALIRE accredito_dovuto
+                  --    in vw_resi_da_accreditare: senza, la coda resterebbe
+                  --    muta per sempre e la merce non sarebbe piu'
+                  --    accreditabile da nessuno.
+                  --    Il guard del ponte e' BEFORE INSERT OR UPDATE: sul
+                  --    DELETE non si oppone, e non deve — i tetti scendono.
+                  -- --------------------------------------------------
+                  DELETE FROM vendite.resi_righe_accrediti a
+                   WHERE a.resi_riga_id = p_resi_riga_id;
+                  GET DIAGNOSTICS v_n_cancellate = ROW_COUNT;
+
+                  IF v_n_cancellate <> v_n_coppie THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_annulla_accredito_riga_reso','E_ACCREDITO_ANNULLO_INCOMPLETO',
+                          jsonb_build_object('resi_riga_id', p_resi_riga_id,
+                                             'fase',         'delete-ponte',
+                                             'toccate',      v_n_cancellate,
+                                             'attese',       v_n_coppie),
+                          NULL::uuid,
+                          p_resi_riga_id::text, v_n_cancellate::text, v_n_coppie::text);
+                  END IF;
+
+                  -- --------------------------------------------------
+                  -- 8) Le rettifiche: ANNULLATA, non DELETE. La riga resta
+                  --    con importo e storia e smette solo di essere
+                  --    eleggibile — ANNULLATA e' gia' filtrato da tutte le
+                  --    porte verso fattura e cockpit. stato_approvazione non
+                  --    si tocca: sono due assi con CHECK separati, e una
+                  --    riga annullata conserva la memoria di essere stata
+                  --    approvata.
+                  --    ⚠️ Il predicato ripete stato_emissione = 'NON_EMESSA'
+                  --    gia' verificato al punto 5: e' la scrittura stessa a
+                  --    essere fail-closed, cosi' un cambio di stato nella
+                  --    finestra fra controllo e UPDATE non passa inosservato
+                  --    ma fa scattare il ROW_COUNT qui sotto.
+                  -- --------------------------------------------------
+                  UPDATE vendite.commesse_attivita ca
+                     SET stato_emissione = 'ANNULLATA'
+                   WHERE ca.id = ANY(v_ids)
+                     AND ca.stato_emissione = 'NON_EMESSA';
+                  GET DIAGNOSTICS v_n_annullate = ROW_COUNT;
+
+                  IF v_n_annullate <> v_n_rettifiche THEN
+                      -- Difesa in profondita', gemella di
+                      -- E_ACCREDITO_SEGMENT_DUPLICATO nella madre: col lock
+                      -- in testa e il controllo di visibilita' al punto 4
+                      -- non deve mai scattare. Se scatta e' una regressione
+                      -- o un perimetro incoerente, non un caso d'uso.
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_annulla_accredito_riga_reso','E_ACCREDITO_ANNULLO_INCOMPLETO',
+                          jsonb_build_object('resi_riga_id', p_resi_riga_id,
+                                             'fase',         'update-rettifiche',
+                                             'toccate',      v_n_annullate,
+                                             'attese',       v_n_rettifiche,
+                                             'attivita_ids', to_jsonb(v_ids)),
+                          NULL::uuid,
+                          p_resi_riga_id::text, v_n_annullate::text, v_n_rettifiche::text);
+                  END IF;
+
+                  RETURN;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_annulla_accredito_riga_reso(bigint, text)
+              IS 'MADRE del verbo «annulla accredito», specchio di vendite.fn_accredita_riga_reso (brief-db-note-credito-prerequisiti-be-fe §8 passo 3, P-5 corretta da C-2). Toglie le coppie da vendite.resi_righe_accrediti e porta le rettifiche a stato_emissione = ANNULLATA, con motivo obbligatorio e audit su commesse_attivita_log (evento ACCREDITO_ANNULLATO): tre scritture, una unita'' atomica. ⛔ NON e'' l''annullo del DOCUMENTO — quello e'' il reset del lotto, dopo il quale la nota di credito RIGENERA al giro successivo perche'' la merce resa non e'' cambiata; qui si torna prima del verbo. ⭐ SEMANTICA D''INSIEME: un accredito non e'' una riga ma N coppie e N rettifiche (consumo LIFO su piu'' righe di fattura + una rettifica per componente sui kit), quindi basta UNA rettifica emessa, fatturata o agganciata a un lotto vivo per rifiutare TUTTO (E_ACCREDITO_ANNULLO_NON_AMMESSO) — un annullo parziale lascerebbe la coda a chiedere un residuo che nessuno puo'' piu'' soddisfare, che e'' la dottrina di E_ACCREDITO_QUOTA_NON_COPERTA allo specchio. ⚠️ Le tre condizioni si tengono tutte e tre: dopo un reset di lotto la riga di attivita_fatturabili SOPRAVVIVE sbloccata e senza fattura_riga_id, quindi «esiste una AF -> bloccato» vieterebbe per sempre l''annullo dopo un reset legittimo. LOCK: FOR UPDATE su vendite.resi_righe, lo stesso appiglio di trgfn_resi_accrediti_guard — e'' li'' che l''esclusione con la madre interseca davvero, perche'' la madre ci arriva attraversando il proprio guard alla prima INSERT (il suo advisory lock sta sulla riga di DDT e serve al progressivo #RET). Nessun deadlock: qui l''advisory non si attende mai. ⚠️ DOPPIO FAIL-CLOSED su ROW_COUNT (E_ACCREDITO_ANNULLO_INCOMPLETO): commesse_attivita ha la RLS e il ponte no, quindi una rettifica fuori perimetro emittente verrebbe saltata IN SILENZIO lasciando l''annullo a meta''. ⭐ CANCELLA e non marca, e non e'' un dettaglio implementativo: il gate della rinuncia (fn_check_rinuncia_reversibile) si auto-ripara SOLO perche'' la riga sparisce — se un giorno diventasse un soft-delete, quel gate va cambiato insieme. E'' anche la cancellazione a far risalire accredito_dovuto in vw_resi_da_accreditare. NON si riusa fn_annulla_commessa_attivita benche'' le rettifiche siano sourceless: il suo perimetro dichiarato e'' la riga MANUALE, il suo evento di log direbbe il falso e la sua decisione e'' per riga invece che d''insieme. «Nessun accredito» copre insieme «mai accreditato» e «gia'' annullato», indistinguibili per costruzione. SECURITY INVOKER. Presidio permessi sul BE. Ritorna le coppie rimosse. rev 2026-08-18.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_annulla_accredito_riga_reso(bigint, text);

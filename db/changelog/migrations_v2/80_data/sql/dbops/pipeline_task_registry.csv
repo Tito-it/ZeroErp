@@ -19,3 +19,4 @@ id,dominio_id,task_code,descrizione,attivo,meta,data_insert,user_insert,data_upd
 18,1,stampa_documenti_lotto,Accodamento stampa documenti del lotto (delega a coda + processo generico),true,{},2026-07-20 00:00:00+02,titodb,,
 19,1,snapshot_indirizzi_lotto,Snapshot indirizzi fattura da anagrafica cliente (step DRAFT),true,{},2026-07-31 00:00:00+02,titodb,,
 20,1,genera_scadenze_lotto,Generazione piano rate fattura (step EMESSA),true,{},2026-08-01 00:00:00+02,titodb,,
+21,1,popola_fatture_rettifiche,Legame documentale note di credito: proietta la coppia fattura rettificante -> fattura rettificata,true,{},2026-08-18 00:00:00+02,mctit,,
