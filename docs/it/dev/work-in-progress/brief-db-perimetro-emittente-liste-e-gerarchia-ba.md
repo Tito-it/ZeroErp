@@ -3468,7 +3468,7 @@ lì «per coerenza».
 > scelta di sequenza: senza la riga di catalogo la colonna **non esiste** per il
 > frontend, e senza la ragione sociale nella vista il backend non ha cosa
 > selezionare. La richiesta è scritta:
-> [brief-db-perimetro-emittente-fase-e-e-ricerca.md](brief-db-perimetro-emittente-fase-e-e-ricerca.md).
+> [brief-db-perimetro-emittente-fase-e-e-ricerca.md](../work-done/brief-db-perimetro-emittente-fase-e-e-ricerca.md).
 >
 > | Lista | Da dove nascono le righe | id | ragione sociale | serve dal DB |
 > | --- | --- | :---: | :---: | --- |

@@ -10,11 +10,36 @@
 > **Destinatario**: team DB, branch `dev/db-tid`.
 > **Autorizzazione**: Tid, 2026-08-18.
 >
-> ⛔ **La Fase E è ferma su queste richieste, tutta.** Non è una scelta di
-> comodo: senza la riga di catalogo la colonna **non esiste** per il frontend, e
-> senza la ragione sociale nella vista il backend non ha cosa selezionare. Il
-> codice BE si scrive in mezz'ora quando i due pezzi ci sono; scritto prima
-> sarebbe codice che seleziona una colonna inesistente.
+> ## 🟢 CHIUSO il 2026-08-18 — DB **e** backend
+>
+> Le tre richieste sono state consegnate e applicate (`20260818-58`→`-67`), e le
+> quattro voci di ritorno al backend (**BE-E1**→**BE-E4**) sono fatte lo stesso
+> giorno. Suite backend **verde sul perimetro di questo brief**, build frontend
+> ok, `check_i18n_keys` pulito.
+>
+> | Verifica | Esito |
+> | --- | --- |
+> | **BE-E1** whitelist di ordinamento, 5 liste | ✅ `test_liste_configurabili_seed` verde (era rosso in 10 punti) |
+> | **BE-E2** etichetta della ricerca | ✅ «Emittenti presso cui è cliente» / «Issuers where they are a customer» — **non** «Emittente» |
+> | **BE-E3** colonna nella ricerca | ✅ in tabella, per i soli **CLIENTI** |
+> | **BE-E4** non ordinabile | ✅ la `Column` non ha `sortable`, e il campo non è nella whitelist di `p_order_by` |
+>
+> ⭐ **E provando gli ordinamenti contro il database è emerso un difetto
+> preesistente**, che non c'entrava con questo brief ma che questa consegna ha
+> fatto incontrare: `list_dash_competenza_errori` produceva
+> `ORDER BY … ASC NULLS FIRST NULLS LAST` — **500 su ogni click di
+> intestazione**, su tutte e cinque le colonne, da sempre. Corretto e presidiato
+> (`test_sql_order_helpers`); poi provate **tutte** le colonne ordinabili delle
+> sei liste in entrambe le direzioni: 88 combinazioni, nessuna rotta.
+>
+> ⛔ **Cosa NON è chiuso qui, e non lo era mai**: l'accensione del flag
+> `multi_emittente`, che è perimetro DB e si fa **lista per lista** quando la
+> colonna si vede piena su dati veri. Vive nel brief madre.
+>
+> ~~⛔ **La Fase E è ferma su queste richieste, tutta.**~~ — superato. *Non era
+> una scelta di comodo: senza la riga di catalogo la colonna non esisteva per il
+> frontend, e senza la ragione sociale nella vista il backend non aveva cosa
+> selezionare.*
 
 | # | Cosa | Peso | Blocca | Stato |
 | --- | --- | --- | --- | --- |
@@ -31,9 +56,9 @@
 > asserzioni) verdi, e i tre file che presidiano la dismissione della legacy
 > verdi dopo `-67`.
 >
-> ⛔ **Resta rossa una cosa sola, ed è voluta**: `test_liste_configurabili_seed`
-> lato backend, finché non arriva **BE-E1** (sotto). È la finestra che questo
-> stesso brief prevedeva.
+> ~~⛔ **Resta rossa una cosa sola**: `test_liste_configurabili_seed` lato
+> backend, finché non arriva **BE-E1**.~~ → ✅ **rientrata il 2026-08-18**.
+
 
 > Le due domande aperte hanno risposta (in fondo a R-4 e a R-5). In breve:
 > **R-4 → sì, per costruzione** (l'emittente è una colonna della commessa, non
@@ -432,21 +457,26 @@ un documento non prende il cancello (P-2c, ultima riga della tabella).
 > ✅ Aggiornato il **2026-08-18**: catalogo, viste e funzione sono applicati e
 > verdi. Quello che segue non è più una previsione, è la lista di lavoro.
 
-### ⛔ BE-E1 — la whitelist di ordinamento, o la CI resta rossa
+### ✅ BE-E1 — la whitelist di ordinamento · *fatto il 2026-08-18*
 
 Le cinque righe di catalogo sono seedate con `ordinabile = t`, copiando la
 pilota. Il presidio `apps/core/tests/test_liste_configurabili_seed.py` pretende
 che **ogni colonna ordinabile stia nella whitelist di ordinamento del suo
 repository, nei due versi**.
 
-> ⚠️ Quindi **da adesso la CI è rossa** finché il BE non aggiunge le cinque voci.
+> ✅ **Aggiunte il 2026-08-18**: le cinque voci sono nelle whitelist dei
+> rispettivi repository (`DASH_APERTO_`/`DASH_BACKLOG_`/`DASH_COMPETENZA_ERRORI_`/
+> `DASH_COMPETENZA_COMMESSE_SORT_COLUMNS` e `LOTTI_SORT_COLUMNS`, dove il valore
+> è l'espressione SQL perché la query ha JOIN). La finestra è durata poche ore.
+>
+> ~~⚠️ Quindi **da adesso la CI è rossa** finché il BE non aggiunge le cinque voci.~~
 > Non è un difetto: è il presidio che fa il suo mestiere, e la finestra era
 > prevista nel brief («va attraversata in fretta o concordata»). Le colonne
 > interessate sono `emittente_ragione_sociale` sulle liste `dash_aperto_documenti`,
 > `dash_backlog_documenti`, `dash_competenza_errori`, `dash_competenza_commesse`,
 > `lotti`.
 
-### ⛔ BE-E2 — l'etichetta della ricerca NON può essere «Emittente»
+### ✅ BE-E2 — l'etichetta della ricerca NON può essere «Emittente» · *fatto*
 
 Su una riga-soggetto quella colonna mostra una **relazione**, non un attributo:
 il soggetto non ha un emittente, ce l'ha il suo billing account. «Emittenti
@@ -458,13 +488,13 @@ E i due scenari che motivano R-5 restano **diversi**, anche adesso che la colonn
 c'è: su due soggetti omonimi la colonna *disambigua*; su un soggetto sotto due
 emittenti *descrive*, e non c'è niente da disambiguare — quella riga è una sola.
 
-### 🔵 BE-E3 — la colonna della ricerca arriva da sola nel JSON
+### ✅ BE-E3 — la colonna della ricerca arriva da sola nel JSON · *esposta a video*
 
 `search_repository.py` usa `row_to_json(r)`: la chiave `emittente_ragione_sociale`
 compare nell'envelope **senza toccare la query**. Resta da esporla nel serializer
 e a video.
 
-### 🔵 BE-E4 — `emittente_ragione_sociale` non è ordinabile nella ricerca
+### ✅ BE-E4 — `emittente_ragione_sociale` non è ordinabile · *rispettato*
 
 È un aggregato (`string_agg`): ordinarci sopra ordinerebbe per la stringa
 concatenata, non per emittente. Non è stata messa nella whitelist di
