@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 697, di cui 79 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 702, di cui 79 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -58,6 +58,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_AI_QUERY_TOO_LONG": "DATO_ERRATO",
     "E_AI_TOOL_DENIED": "NON_PERMESSO",
     "E_AI_TOOL_NOT_FOUND": "TECNICO",
+    # Guard anagrafiche.fn_guard_albero_ba_emittente: un albero padre/figlio di billing_account attraversa DUE emittenti fiscali. E' la regola di §3.5 del brief: un soggetto puo' essere cliente di piu' emittenti (piu' alberi separati), ma un SINGOLO albero non puo' avere un piede in un emittente e uno in un altro. Perche' conta: vendite.fn_build_fattura_key prende l'emittente dal PADRE, quindi il lavoro fatto sotto un emittente finirebbe su una fattura emessa dall'altro - un documento che chi lo ha generato non puo' nemmeno vedere. L'emittente confrontato e' quello RISOLTO (mapping specifico oppure gestore globale), dalla stessa funzione che usa la fatturazione: un guard che risolvesse diversamente dichiarerebbe omogeneo un albero che la fattura spacca comunque. Campo da dichiarare al client: parent_account_id. Piano: brief-db-perimetro-emittente-liste-e-gerarchia-ba P-1, passo 4.
+    "E_ALBERO_EMITTENTE_MISTO": "DATO_ERRATO",
     "E_ALLEGATO_INSERT": "TECNICO",
     # Rimpiazzano il generico `E_NOT_FOUND` che quattro call-site · sollevavano per entita' diverse: un 404 che non dice cosa manca non · e' diagnosticabile a valle (le note usano E_NOTA_NOT_FOUND, gia' · dichiarato).
     "E_ALLEGATO_NOT_FOUND": "NON_TROVATO",
@@ -567,7 +569,11 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PARAMETRI_TABELLA": "NON_TROVATO",
     # 177 punti in 114 funzioni: 160 sono guard di parametro (NULL, <= 0, btrim vuoto), 17 altro. DATO_ERRATO copre il 90%. I 17 restanti vanno guardati con la lente messaggio-vs-condizione, non spezzati a priori.
     "E_PARAMETRO_INVALIDO": "DATO_ERRATO",
+    # Guard trgfn_billing_account_guard_normalize §2.2: il parent_account_id indicato non ha restituito nessuna riga. Due cause che il guard NON puo' distinguere e non finge di distinguere: il BA non esiste, oppure esiste ma e' fuori dal perimetro di chi scrive (la SELECT del guard passa dalle policy RLS di anagrafiche.billing_account, perche' la trigger function e' SECURITY INVOKER). Prima di questo codice il caso cadeva su E_ID_FISCALI_DIVERSI, che diceva una cosa falsa: i codici fiscali erano identici, semplicemente il padre era invisibile. Campo da dichiarare al client: parent_account_id. Piano: brief-db-perimetro-emittente-liste-e-gerarchia-ba §11.1, passo 3 (P-3).
+    "E_PARENT_NON_RAGGIUNGIBILE": "DATO_ERRATO",
     "E_PARENT_SELF": "DATO_ERRATO",
+    # Guard trgfn_billing_account_guard_normalize §2.2: padre e figlio appartengono a soggetti DIVERSI e almeno uno dei due non ha id_fiscale_univoco_cf_piva, quindi il confronto sul codice fiscale non e' utilizzabile come prova di identita'. Chiude il fail-open del NULL: `NULL IS DISTINCT FROM NULL` e' falso, quindi due BA entrambi senza CF passavano anche se di soggetti diversi. Il confronto ripiega sul soggetto, che e' sempre disponibile: due BA dello STESSO soggetto senza CF restano legittimi. Campo da dichiarare al client: parent_account_id. Piano: brief-db-perimetro-emittente-liste-e-gerarchia-ba §4, passo 3 (P-3).
+    "E_PARENT_SOGGETTO_DIVERSO": "DATO_ERRATO",
     # --- Coerenza dati (400) ---
     "E_PDP_OBBLIGATORIO": "DATO_ERRATO",
     "E_PDP_UTILITY_MISMATCH": "DATO_ERRATO",
@@ -868,8 +874,12 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_UI_EXPORT_LIMIT_EXCEEDED": "NON_ESEGUIBILE",
     # Fallback per DatabaseError non riconosciute dai marker noti · nello schema `ui` (allineato a E_VENDITE_PRICING_FAILED).
     "E_UI_GENERIC_FAILED": "DATO_ERRATO",
+    # Cancello applicativo del flag ui.lista_definizione.multi_emittente (P-2b): una lista che NON sa dire da quale emittente arriva ogni riga viene aperta da chi ha in scope piu' di un emittente. Lo solleva il BACKEND (apps/core/services/perimetro_emittente.guard_lista), non una funzione PL/pgSQL: il catalogo lo registra perche' ogni codice che l'applicazione nomina deve avere la sua classe, e il cancello del terzo lato non distingue fra codici nati nel DB e codici nati nel backend. Classe NON_ESEGUIBILE (422) e NON NON_PERMESSO (403), ed e' di merito: il diritto C'E', manca una precondizione che l'utente scioglie da se' scegliendo un emittente dalla combo di topbar. Un 403 racconterebbe una bugia sul motivo, e fra sei mesi qualcuno cercherebbe un diritto da concedere a qualcuno. Richiesta R-1 del perimetro BE, 2026-08-18.
+    "E_UI_LISTA_EMITTENTE_DA_SCEGLIERE": "NON_ESEGUIBILE",
     # E_UI_LISTA_NON_TROVATA: sollevato da fn_resolve_lista_config quando il codice · lista non esiste o e' attivo=false (seedato in messaggi_errore.csv id 427). · Gli E_UI_VISTA_SQL_NON_TROVATA / E_UI_CAMPO_SORGENTE_NON_TROVATO sono guard · admin-only dei trigger B1/B2: l'utente finale non li vede in flussi normali.
     "E_UI_LISTA_NON_TROVATA": "NON_TROVATO",
+    # Guard ui.trgfn_lista_definizione_guard_multi_emittente: tentativo di scrivere ui.lista_definizione.multi_emittente da un ruolo diverso dal proprietario della tabella (cioe' dall'applicazione). Il flag dichiara una CAPACITA' DEL SOFTWARE — «questa lista sa dire da quale emittente arriva ogni riga» — non una preferenza dell'utente, e una capacita' non si dichiara per stanchezza. Si accende SOLO dal seed lista_definizione.csv, insieme (o dopo) al lavoro di P-4 che la rende vera. ⚠️ Il presidio e' un TRIGGER e non un permesso di colonna: il GRANT verrebbe ri-concesso a ogni passata di ci_apply dal giro dei grant runtime, che cicla su tutti gli schemi. Piano: brief-db-perimetro-emittente-liste-e-gerarchia-ba Q1 e §11.5.
+    "E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE": "NON_PERMESSO",
     "E_UI_PERMESSO_NON_TROVATO": "NON_TROVATO",
     "E_UI_PERMESSO_VALIDAZIONE": "DATO_ERRATO",
     # DEF-2 "preset aggiornato": l'endpoint POST /preferenza/ignore-preset-update/ · solleva quando l'utente non ha ancora una preferenza salvata sulla lista · (banner non dovrebbe essere visibile, ma l'errore lato BE e' parlante).

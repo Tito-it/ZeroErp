@@ -1058,6 +1058,26 @@ la lettura letterale dello standard. L'alternativa RFC-stretta sarebbe 422.
 > `>= 500` → toast di sistema, 401 → refresh del token, 401/403 → il polling dei
 > contatori si ferma. **Sono tutti e tre gli effetti che esistono.**
 >
+> 🔴 **AGGIORNAMENTO (2026-08-18): la prima metà di quella misura è scaduta, la
+> seconda no — e la differenza è quella che conta.** Rimisurato:
+>
+> | Cosa | 2026-08-07 | 2026-08-18 |
+> | --- | --- | --- |
+> | il **nome** in `frontend/src` | zero | **2 occorrenze**, entrambe in `useApiHandler.js`: il commento e `azioneUi.value = err.response?.data?.error?.ui_action ?? null` |
+> | i **consumatori** di quel valore | zero | **zero** — `azioneUi` non è letto da nessun componente |
+> | i **valori** del vocabolario (`show_error_banner`, `highlight_form_fields`, `show_empty_state`, `redirect_login`, …) | zero | **zero** |
+>
+> Il campo è arrivato insieme a `fields` (2026-08-08), dallo stesso envelope e
+> nella stessa riga: `useApiHandler` **estrae** entrambi, ma solo `campiErrati`
+> ha un consumatore. Quindi `ui_action` oggi è **emessa, trasportata e non
+> consumata** — un passo più avanti di «non la legge nessuno», e **zero passi**
+> più avanti sul comportamento a video.
+>
+> ⚠️ **Le tre conseguenze pratiche qui sotto non cambiano di una virgola**, e
+> il punto 3 diventa più concreto: il giorno in cui un componente reagirà a
+> `azioneUi` non ci sarà da scrivere l'estrazione — c'è già. Ci sarà solo da
+> riguardare le 176 righe di override, **prima** di accenderlo.
+>
 > ⚠️ **Non vuol dire che `ui_action` sia da togliere**, e nemmeno che le 176
 > decisioni di override siano state inutili: è un contratto **emesso e non
 > ancora consumato**, e il costo di tenerlo è zero. Vuol dire tre cose pratiche:

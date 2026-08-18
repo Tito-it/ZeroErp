@@ -823,6 +823,21 @@ class DashCompetenzaGruppoRow(TypedDict):
     # il gruppo resta comunque in lista, marcato «non determinabile» (D-5).
     ba_codice_fatturazione: str | None
     id_fiscale: str | None
+    # Ragione sociale dell'EMITTENTE della riga (P-4, brief perimetro-emittente
+    # passo 6: questa e' la lista pilota). Serve a chi ha piu' di un emittente
+    # davanti — cioe' il super admin — che e' l'unico a poter vedere righe di
+    # emittenti diversi affiancate: senza, non c'e' nulla a video che dica da
+    # dove viene la riga, e da qui parte l'EMISSIONE MIRATA.
+    # ⚠️ La ragione sociale e non `emittente_soggetto_ruolo_id`, che pure la
+    # vista espone: un id a video non dichiara l'emittente, sposta l'ambiguita'
+    # di un passo. Colonna di catalogo «disponibile e spenta» come le due sopra
+    # (`ui.lista_colonna` codice `emittente_fiscale`, `campo_sorgente =
+    # emittente_ragione_sociale` — si nomina per codice e non per id: il seed
+    # puo' rinumerare, e un numero da solo non dice niente a chi legge):
+    # ⛔ la CHIAVE qui deve restare identica a quel `campo_sorgente`, o la
+    # colonna si spunta e resta vuota — che e' peggio di non averla, perche'
+    # SEMBRA la garanzia che il flag `multi_emittente` pretende.
+    emittente_ragione_sociale: str | None
 
 
 class DashCompetenzaGruppoClienteRow(TypedDict):
