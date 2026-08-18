@@ -1,0 +1,466 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Changelog Liquibase per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL CANALE DEL CAMPO ERA MUTO — `'column'` invece di `'campo'`
+#   Richiesta R-2 del perimetro BE (2026-08-18).
+#
+# LA MISURA. `script.fn_log_and_raise_error` porta al client DUE cose
+#   strutturate: il codice di dominio nel canale CONSTRAINT e il NOME DEL CAMPO
+#   da correggere nel canale COLUMN. Il secondo lo legge dal context, e legge
+#   una chiave precisa:
+#
+#       v_campo := nullif(btrim(coalesce(p_context ->> 'campo', '')), '');
+#       IF v_campo IS NULL THEN ... p_context ->> 'parametro' ... END IF;
+#
+#   I guard applicati il 2026-08-18 scrivevano `'column'`. Il messaggio
+#   arrivava, il campo no: banner giusto, e il campo del form spento.
+#
+# ⚠️ NON E' UN REFUSO DI DISTRAZIONE, ed e' il motivo per cui vale la pena
+#   scriverlo. `'column'` E' una chiave usata da tempo in questo codice come
+#   annotazione DIAGNOSTICA del context (`trgfn_qta_from_operativa`,
+#   `trgfn_lock_columns`, …): venti file la usano, undici usano `'campo'`. Ha
+#   l'aria giusta e in review non salta all'occhio — la differenza si vede solo
+#   leggendo il corpo della funzione che la consuma, non il nome della chiave.
+#
+# ⛔ Per questo le funzioni STORICHE non si toccano: li' `'column'` significa
+#   un'altra cosa e la sta dicendo bene. Il perimetro sono i guard nuovi, che
+#   dichiarano nel proprio `note` a catalogo «Campo da dichiarare al client:
+#   parent_account_id» — l'intenzione era esplicita e non arrivava a
+#   destinazione.
+#
+# ⭐ E IL PERIMETRO DELLA RICHIESTA ERA INCOMPLETO. La R-2 misurava 2
+#   occorrenze (nel 20260818-08). Sono CINQUE: le altre tre stanno nel
+#   20260818-05 — stesso giorno, stesso cantiere, STESSO CAMPO.
+#   ⚠️ Correggerne solo una meta' sarebbe peggio del difetto uniforme: il form
+#   si accenderebbe con un guard e resterebbe spento con un altro sullo stesso
+#   campo. Un difetto costante si nota e si segnala; uno intermittente fa
+#   cercare il problema nel frontend.
+#
+# ⛔ NON toccata la 20260818-17 (`'column', 'multi_emittente'`), che la
+#   richiesta includeva: `multi_emittente` non compare in NESSUN file del
+#   frontend e la sua colonna si scrive solo dal seed. Dichiararlo come campo
+#   direbbe al form di accendere un campo che non esiste in nessuna schermata:
+#   li' `'column'` e' l'uso diagnostico corretto.
+#
+# ⚠️ I due changeSet d'origine sono gia' pushati e non si toccano: si ridefinisce
+#   in avanti. Nessun'altra modifica al corpo — solo la chiave del context.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260818-22-update-trgfn-billing-account-guard-normalize-campo-context-mctit.yaml
+
+  - changeSet:
+      id: 20260818-22-update-trgfn-billing-account-guard-normalize-campo-context
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        R-2, la meta' che la richiesta non aveva misurato: le altre tre occorrenze di 'column' su parent_account_id piu' una su valido_dal. Resta 'column' su valido_al_requires_valido_dal, che e' il nome di una REGOLA e non di una colonna: metterlo nel canale del campo farebbe cercare al form un campo inesistente. Correggere solo il 20260818-08 avrebbe reso il difetto intermittente — form acceso con un guard e spento con l'altro sullo stesso campo — che si diagnostica peggio di uno costante.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche' AND p.proname = 'trgfn_billing_account_guard_normalize';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_guard_normalize()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                -- ⚠️ Ancorate alle colonne (AGENTS.md, linee-guida-sql §5b).
+                --   Le due preesistenti erano `text` nudo: corrette qui, non
+                --   e' un cambio di comportamento.
+                v_cf_child   anagrafiche.soggetti.id_fiscale_univoco_cf_piva%TYPE;
+                v_cf_parent  anagrafiche.soggetti.id_fiscale_univoco_cf_piva%TYPE;
+                v_sog_child  anagrafiche.soggetti.id%TYPE;
+                v_sog_parent anagrafiche.soggetti.id%TYPE;
+              BEGIN
+                ------------------------------------------------------------------
+                -- 1) NORMALIZE (pulizie/derive)
+                ------------------------------------------------------------------
+                -- (Riservato per future normalizzazioni)
+
+                ------------------------------------------------------------------
+                -- 2) GUARD (validazioni di business con errori)
+                ------------------------------------------------------------------
+
+                -- 2.0) Parent: vieta self-reference
+                IF NEW.parent_account_id IS NOT NULL AND NEW.parent_account_id = NEW.id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', TG_NAME, 'E_PARENT_SELF',
+                    jsonb_build_object('codice', NEW.codice, 'parent_account_id', NEW.parent_account_id),
+                    NULL::uuid, NEW.parent_account_id::text
+                  );
+                END IF;
+
+                -- 2.1) Se c'e parent, valido_dal e' obbligatorio
+                IF NEW.parent_account_id IS NOT NULL AND NEW.valido_dal IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', TG_NAME, 'E_VALORE_MANCANTE',
+                    jsonb_build_object('codice', NEW.codice, 'campo', 'valido_dal'),
+                    NULL::uuid, 'valido_dal'
+                  );
+                END IF;
+
+                -- 2.2) Coerenza del SOGGETTO FISCALE fra parent e child.
+                --
+                --   Rev 2026-08-18 (P-3, brief §4 e §11.1). Prima confrontava
+                --   solo il codice fiscale con IS DISTINCT FROM, e aveva due
+                --   buchi che si sommavano:
+                --
+                --   a) `NULL IS DISTINCT FROM NULL` e' FALSO -> due BA
+                --      entrambi senza CF passavano anche se di soggetti
+                --      DIVERSI. Il classico NULL in una chiave;
+                --   b) la SELECT sul padre passa dalle policy RLS (questa
+                --      funzione e' SECURITY INVOKER): un padre di un altro
+                --      emittente non viene trovato, v_cf_parent restava NULL
+                --      e il guard sollevava E_ID_FISCALI_DIVERSI su due CF
+                --      IDENTICI — un messaggio che nomina la causa sbagliata.
+                --
+                --   Ora: il padre non trovato ha il suo codice; e quando il
+                --   codice fiscale non e' utilizzabile come prova si ripiega
+                --   sul SOGGETTO, che c'e' sempre.
+                IF NEW.parent_account_id IS NOT NULL THEN
+                  SELECT s.id, s.id_fiscale_univoco_cf_piva
+                    INTO v_sog_child, v_cf_child
+                    FROM anagrafiche.istanze_utilities iu
+                    JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id
+                  WHERE iu.id = NEW.istanza_utility_id;
+
+                  SELECT s2.id, s2.id_fiscale_univoco_cf_piva
+                    INTO v_sog_parent, v_cf_parent
+                    FROM anagrafiche.billing_account ba
+                    JOIN anagrafiche.istanze_utilities iu2 ON iu2.id = ba.istanza_utility_id
+                    JOIN anagrafiche.soggetti s2 ON s2.id = iu2.soggetto_id
+                  WHERE ba.id = NEW.parent_account_id;
+
+                  -- ⚠️ FOUND si riferisce all'ULTIMA SELECT INTO, che e' quella
+                  --   sul padre: e' il test preciso, e va fatto subito — una
+                  --   SELECT INTO a vuoto AZZERA le variabili, quindi piu' in
+                  --   basso «NULL» non direbbe piu' se il padre manca o se e'
+                  --   il suo CF a mancare.
+                  IF NOT FOUND THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_PARENT_NON_RAGGIUNGIBILE',
+                      jsonb_build_object(
+                        'codice', NEW.codice,
+                        'parent_account_id', NEW.parent_account_id,
+                        'campo',  'parent_account_id',
+                        'detail', 'parent inesistente oppure fuori dal perimetro RLS di chi scrive'
+                      ),
+                      NULL::uuid,
+                      NEW.parent_account_id::text
+                    );
+                  END IF;
+
+                  IF v_cf_child IS NULL OR v_cf_parent IS NULL THEN
+                    -- Il codice fiscale non e' utilizzabile come prova di
+                    -- identita': si confronta il soggetto. Due BA dello STESSO
+                    -- soggetto senza CF restano legittimi — ed e' il motivo per
+                    -- cui qui non si rifiuta e basta.
+                    IF v_sog_child IS DISTINCT FROM v_sog_parent THEN
+                      PERFORM script.fn_log_and_raise_error(
+                        'database', TG_NAME, 'E_PARENT_SOGGETTO_DIVERSO',
+                        jsonb_build_object(
+                          'codice', NEW.codice,
+                          'parent_account_id', NEW.parent_account_id,
+                          'campo',  'parent_account_id',
+                          'soggetto_id', v_sog_child,
+                          'parent_soggetto_id', v_sog_parent
+                        ),
+                        NULL::uuid,
+                        NEW.parent_account_id::text
+                      );
+                    END IF;
+                  ELSIF v_cf_child IS DISTINCT FROM v_cf_parent THEN
+                    -- Entrambi i CF presenti e diversi: il caso storico.
+                    -- ⚠️ Due soggetti DIVERSI con lo stesso CF continuano a
+                    --   passare, ed e' voluto: quella e' identita' fiscale, che
+                    --   e' cio' che il guard presidia.
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_ID_FISCALI_DIVERSI',
+                      jsonb_build_object(
+                        'codice', NEW.codice,
+                        'parent_account_id', NEW.parent_account_id,
+                        'campo',  'parent_account_id',
+                        'id_fiscale_univoco_cf_piva', v_cf_child,
+                        'parent_id_fiscale_univoco_cf_piva', v_cf_parent
+                      ),
+                      NULL::uuid,
+                      NEW.parent_account_id::text, v_cf_child, v_cf_parent
+                    );
+                  END IF;
+                END IF;
+
+                -- 2.3) Coerenza date validita
+                IF NEW.valido_al IS NOT NULL THEN
+                  IF NEW.valido_dal IS NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_VALORE_MANCANTE',
+                      jsonb_build_object('codice', NEW.codice, 'column', 'valido_al_requires_valido_dal'),
+                      NULL::uuid, 'valido_al'
+                    );
+                  ELSIF NEW.valido_al < NEW.valido_dal THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_DATA_FINE_NON_MAGGIORE_DI_INIZIO',
+                      jsonb_build_object('valido_dal', NEW.valido_dal, 'valido_al', NEW.valido_al),
+                      NULL::uuid, NEW.valido_al::text, NEW.valido_dal::text
+                    );
+                  END IF;
+                END IF;
+
+                -- 2.4) Guard dissociazione parent: blocca la rimozione di parent_account_id
+                --      quando esistono attivita_fatturabili non ancora fatturate sul BA figlio.
+                --      Questo previene la corruzione della catena di fatturazione:
+                --        fatture.billing_account_id (padre) → fatture_righe.dest_billing_account_id (figlio)
+                IF TG_OP = 'UPDATE'
+                   AND OLD.parent_account_id IS NOT NULL
+                   AND NEW.parent_account_id IS NULL
+                THEN
+                  IF EXISTS (
+                    SELECT 1
+                      FROM vendite.attivita_fatturabili af
+                     WHERE af.billing_account_id = NEW.id
+                       AND af.fatturato IS FALSE
+                  ) THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_DISSOCIAZIONE_PARENT_CON_ATTIVITA',
+                      jsonb_build_object(
+                        'billing_account_id', NEW.id,
+                        'codice', NEW.codice,
+                        'ex_parent_account_id', OLD.parent_account_id,
+                        'detail', 'Impossibile rimuovere parent_account_id: esistono attivita non fatturate collegate a questo billing account'
+                      ),
+                      NULL::uuid,
+                      NEW.id::text, OLD.parent_account_id::text
+                    );
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_billing_account_guard_normalize() IS
+              'Guard/normalize: valida parent e date; normalizza codice se presente.
+              Include guard dissociazione parent: blocca la rimozione di parent_account_id
+              quando esistono attivita_fatturabili non fatturate sul BA figlio.
+              Rev 2026-08-18 (P-3, brief perimetro-emittente §4 e §11.1): il §2.2 non
+              confronta piu'' il solo codice fiscale con IS DISTINCT FROM. Il padre non
+              raggiungibile (inesistente o fuori dal perimetro RLS: la funzione e''
+              SECURITY INVOKER) ha ora un codice suo, E_PARENT_NON_RAGGIUNGIBILE, invece
+              di cadere su E_ID_FISCALI_DIVERSI con i due CF identici. E quando almeno un
+              codice fiscale manca, il confronto ripiega sul SOGGETTO
+              (E_PARENT_SOGGETTO_DIVERSO): chiude il fail-open di NULL IS DISTINCT FROM
+              NULL senza rifiutare due BA dello stesso soggetto privo di CF.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristino della definizione precedente: torna `'column'`,
+              -- cioe' torna il canale muto. E' il punto di questo passo.
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_guard_normalize()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                -- ⚠️ Ancorate alle colonne (AGENTS.md, linee-guida-sql §5b).
+                --   Le due preesistenti erano `text` nudo: corrette qui, non
+                --   e' un cambio di comportamento.
+                v_cf_child   anagrafiche.soggetti.id_fiscale_univoco_cf_piva%TYPE;
+                v_cf_parent  anagrafiche.soggetti.id_fiscale_univoco_cf_piva%TYPE;
+                v_sog_child  anagrafiche.soggetti.id%TYPE;
+                v_sog_parent anagrafiche.soggetti.id%TYPE;
+              BEGIN
+                ------------------------------------------------------------------
+                -- 1) NORMALIZE (pulizie/derive)
+                ------------------------------------------------------------------
+                -- (Riservato per future normalizzazioni)
+
+                ------------------------------------------------------------------
+                -- 2) GUARD (validazioni di business con errori)
+                ------------------------------------------------------------------
+
+                -- 2.0) Parent: vieta self-reference
+                IF NEW.parent_account_id IS NOT NULL AND NEW.parent_account_id = NEW.id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', TG_NAME, 'E_PARENT_SELF',
+                    jsonb_build_object('codice', NEW.codice, 'parent_account_id', NEW.parent_account_id),
+                    NULL::uuid, NEW.parent_account_id::text
+                  );
+                END IF;
+
+                -- 2.1) Se c'e parent, valido_dal e' obbligatorio
+                IF NEW.parent_account_id IS NOT NULL AND NEW.valido_dal IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', TG_NAME, 'E_VALORE_MANCANTE',
+                    jsonb_build_object('codice', NEW.codice, 'column', 'valido_dal'),
+                    NULL::uuid, 'valido_dal'
+                  );
+                END IF;
+
+                -- 2.2) Coerenza del SOGGETTO FISCALE fra parent e child.
+                --
+                --   Rev 2026-08-18 (P-3, brief §4 e §11.1). Prima confrontava
+                --   solo il codice fiscale con IS DISTINCT FROM, e aveva due
+                --   buchi che si sommavano:
+                --
+                --   a) `NULL IS DISTINCT FROM NULL` e' FALSO -> due BA
+                --      entrambi senza CF passavano anche se di soggetti
+                --      DIVERSI. Il classico NULL in una chiave;
+                --   b) la SELECT sul padre passa dalle policy RLS (questa
+                --      funzione e' SECURITY INVOKER): un padre di un altro
+                --      emittente non viene trovato, v_cf_parent restava NULL
+                --      e il guard sollevava E_ID_FISCALI_DIVERSI su due CF
+                --      IDENTICI — un messaggio che nomina la causa sbagliata.
+                --
+                --   Ora: il padre non trovato ha il suo codice; e quando il
+                --   codice fiscale non e' utilizzabile come prova si ripiega
+                --   sul SOGGETTO, che c'e' sempre.
+                IF NEW.parent_account_id IS NOT NULL THEN
+                  SELECT s.id, s.id_fiscale_univoco_cf_piva
+                    INTO v_sog_child, v_cf_child
+                    FROM anagrafiche.istanze_utilities iu
+                    JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id
+                  WHERE iu.id = NEW.istanza_utility_id;
+
+                  SELECT s2.id, s2.id_fiscale_univoco_cf_piva
+                    INTO v_sog_parent, v_cf_parent
+                    FROM anagrafiche.billing_account ba
+                    JOIN anagrafiche.istanze_utilities iu2 ON iu2.id = ba.istanza_utility_id
+                    JOIN anagrafiche.soggetti s2 ON s2.id = iu2.soggetto_id
+                  WHERE ba.id = NEW.parent_account_id;
+
+                  -- ⚠️ FOUND si riferisce all'ULTIMA SELECT INTO, che e' quella
+                  --   sul padre: e' il test preciso, e va fatto subito — una
+                  --   SELECT INTO a vuoto AZZERA le variabili, quindi piu' in
+                  --   basso «NULL» non direbbe piu' se il padre manca o se e'
+                  --   il suo CF a mancare.
+                  IF NOT FOUND THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_PARENT_NON_RAGGIUNGIBILE',
+                      jsonb_build_object(
+                        'codice', NEW.codice,
+                        'parent_account_id', NEW.parent_account_id,
+                        'column', 'parent_account_id',
+                        'detail', 'parent inesistente oppure fuori dal perimetro RLS di chi scrive'
+                      ),
+                      NULL::uuid,
+                      NEW.parent_account_id::text
+                    );
+                  END IF;
+
+                  IF v_cf_child IS NULL OR v_cf_parent IS NULL THEN
+                    -- Il codice fiscale non e' utilizzabile come prova di
+                    -- identita': si confronta il soggetto. Due BA dello STESSO
+                    -- soggetto senza CF restano legittimi — ed e' il motivo per
+                    -- cui qui non si rifiuta e basta.
+                    IF v_sog_child IS DISTINCT FROM v_sog_parent THEN
+                      PERFORM script.fn_log_and_raise_error(
+                        'database', TG_NAME, 'E_PARENT_SOGGETTO_DIVERSO',
+                        jsonb_build_object(
+                          'codice', NEW.codice,
+                          'parent_account_id', NEW.parent_account_id,
+                          'column', 'parent_account_id',
+                          'soggetto_id', v_sog_child,
+                          'parent_soggetto_id', v_sog_parent
+                        ),
+                        NULL::uuid,
+                        NEW.parent_account_id::text
+                      );
+                    END IF;
+                  ELSIF v_cf_child IS DISTINCT FROM v_cf_parent THEN
+                    -- Entrambi i CF presenti e diversi: il caso storico.
+                    -- ⚠️ Due soggetti DIVERSI con lo stesso CF continuano a
+                    --   passare, ed e' voluto: quella e' identita' fiscale, che
+                    --   e' cio' che il guard presidia.
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_ID_FISCALI_DIVERSI',
+                      jsonb_build_object(
+                        'codice', NEW.codice,
+                        'parent_account_id', NEW.parent_account_id,
+                        'column', 'parent_account_id',
+                        'id_fiscale_univoco_cf_piva', v_cf_child,
+                        'parent_id_fiscale_univoco_cf_piva', v_cf_parent
+                      ),
+                      NULL::uuid,
+                      NEW.parent_account_id::text, v_cf_child, v_cf_parent
+                    );
+                  END IF;
+                END IF;
+
+                -- 2.3) Coerenza date validita
+                IF NEW.valido_al IS NOT NULL THEN
+                  IF NEW.valido_dal IS NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_VALORE_MANCANTE',
+                      jsonb_build_object('codice', NEW.codice, 'column', 'valido_al_requires_valido_dal'),
+                      NULL::uuid, 'valido_al'
+                    );
+                  ELSIF NEW.valido_al < NEW.valido_dal THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_DATA_FINE_NON_MAGGIORE_DI_INIZIO',
+                      jsonb_build_object('valido_dal', NEW.valido_dal, 'valido_al', NEW.valido_al),
+                      NULL::uuid, NEW.valido_al::text, NEW.valido_dal::text
+                    );
+                  END IF;
+                END IF;
+
+                -- 2.4) Guard dissociazione parent: blocca la rimozione di parent_account_id
+                --      quando esistono attivita_fatturabili non ancora fatturate sul BA figlio.
+                --      Questo previene la corruzione della catena di fatturazione:
+                --        fatture.billing_account_id (padre) → fatture_righe.dest_billing_account_id (figlio)
+                IF TG_OP = 'UPDATE'
+                   AND OLD.parent_account_id IS NOT NULL
+                   AND NEW.parent_account_id IS NULL
+                THEN
+                  IF EXISTS (
+                    SELECT 1
+                      FROM vendite.attivita_fatturabili af
+                     WHERE af.billing_account_id = NEW.id
+                       AND af.fatturato IS FALSE
+                  ) THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_DISSOCIAZIONE_PARENT_CON_ATTIVITA',
+                      jsonb_build_object(
+                        'billing_account_id', NEW.id,
+                        'codice', NEW.codice,
+                        'ex_parent_account_id', OLD.parent_account_id,
+                        'detail', 'Impossibile rimuovere parent_account_id: esistono attivita non fatturate collegate a questo billing account'
+                      ),
+                      NULL::uuid,
+                      NEW.id::text, OLD.parent_account_id::text
+                    );
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_billing_account_guard_normalize() IS
+              'Guard/normalize: valida parent e date; normalizza codice se presente.
+              Include guard dissociazione parent: blocca la rimozione di parent_account_id
+              quando esistono attivita_fatturabili non fatturate sul BA figlio.
+              Rev 2026-08-18 (P-3, brief perimetro-emittente §4 e §11.1): il §2.2 non
+              confronta piu'' il solo codice fiscale con IS DISTINCT FROM. Il padre non
+              raggiungibile (inesistente o fuori dal perimetro RLS: la funzione e''
+              SECURITY INVOKER) ha ora un codice suo, E_PARENT_NON_RAGGIUNGIBILE, invece
+              di cadere su E_ID_FISCALI_DIVERSI con i due CF identici. E quando almeno un
+              codice fiscale manca, il confronto ripiega sul SOGGETTO
+              (E_PARENT_SOGGETTO_DIVERSO): chiude il fail-open di NULL IS DISTINCT FROM
+              NULL senza rifiutare due BA dello stesso soggetto privo di CF.';
