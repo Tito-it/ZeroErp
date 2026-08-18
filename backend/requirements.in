@@ -1,25 +1,22 @@
 # Core Django
-# ⚠️ TETTO A 6.1, NON A 7.0 — non e' prudenza generica, e' una rottura vera.
-#   Django 6.1 ha rimosso `django.utils.cache.cc_delim_re`, che
-#   `rest_framework/views.py` importa a livello di modulo: con 6.1 installato
-#   NON parte niente — non un test rosso, l'intero backend che non si importa
-#   (`ImportError: cannot import name 'cc_delim_re'`).
-#   Al 2026-08-06 djangorestframework 3.17.2 e' l'ULTIMA release esistente e ha
-#   ancora quell'import: non c'e' una versione di DRF a cui aggiornare, quindi
-#   l'unica leva e' il tetto qui.
-#   COME SI TOGLIE: quando esce una DRF che dichiara Django 6.1, verificare che
-#   `grep -r cc_delim_re .venv/.../rest_framework/` non trovi piu' nulla, poi
-#   rialzare a <7.0 e ricompilare. Senza quel controllo si ricasca subito.
-Django>=6.0,<6.1
+# ⚠️ # Il tetto <6.2 non e' per cc_delim_re — quella rottura e' chiusa.
+#   Storia: Django 6.1 ha rimosso `django.utils.cache.cc_delim_re`; DRF fino
+#   alla 3.17.2 lo importava a modulo -> ImportError, backend che non parte.
+#   DRF 3.18.0 (2026-08-07) usa `split_header_value` dietro shim in compat.py
+#   e dichiara Django 6.1. Per questo il floor DRF sotto e' >=3.18: NON
+#   abbassarlo, e' quello che tiene chiusa la rottura.
+#   Il <6.2 resta solo perche' simplejwt e drf-spectacular non dichiarano 6.1.
+
+Django>=6.0,<6.2
 asgiref>=3.11
-sqlparse>=0.5
+sqlparse>=0.5, <0.6
 
 # Django REST
-djangorestframework>=3.16
+djangorestframework>=3.18
 djangorestframework-simplejwt>=5.5
 
 # API schema
-drf-spectacular>=0.29
+drf-spectacular>=0.30
 
 # Database
 psycopg>=3.3
@@ -30,7 +27,7 @@ redis>=7.1
 django-redis>=6.0
 
 # WSGI
-gunicorn>=25.0
+gunicorn>=26.0
 
 # Utilities
 packaging>=26.0
@@ -51,14 +48,14 @@ openpyxl>=3.1
 
 # Generazione PDF documenti (motore documentale, Decisione 73)
 # Richiede librerie native Pango/Cairo/HarfBuzz/PixBuf — vedi Dockerfile.
-weasyprint>=68,<69
+weasyprint>=68,<70
 
 # Template engine documenti (Jinja2 stile, Decisione 4 sviluppo-documenti).
 # StrictUndefined per fail-fast su variabili context mancanti nel render.
 jinja2>=3.1,<4
 
 # AI Assistant
-anthropic>=0.52
+anthropic>=0.120
 
 # Security constraints
 PyJWT>=2.12.0

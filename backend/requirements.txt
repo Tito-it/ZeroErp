@@ -38,7 +38,7 @@ cssselect2==0.9.0
     # via weasyprint
 distro==1.9.0
     # via anthropic
-django==6.0.8
+django==6.1
     # via
     #   -r ../requirements.in
     #   django-redis
@@ -70,7 +70,7 @@ httpcore==1.0.9
     # via httpx
 httpx==0.28.1
     # via anthropic
-idna==3.18
+idna==3.19
     # via
     #   anyio
     #   httpx
@@ -130,7 +130,7 @@ rpds-py==2026.6.3
     #   referencing
 sniffio==1.3.1
     # via anthropic
-sqlparse==0.6.0
+sqlparse==0.5.5
     # via
     #   -r ../requirements.in
     #   django
@@ -150,9 +150,9 @@ typing-inspection==0.4.4
     # via pydantic
 uritemplate==4.2.0
     # via drf-spectacular
-weasyprint==68.1
+weasyprint==69.0
     # via -r ../requirements.in
-webencodings==0.5.1
+webencodings==0.6.1
     # via
     #   bleach
     #   cssselect2
