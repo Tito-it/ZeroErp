@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_dash_competenza_gruppi.md" %}
 # 🔍 View `vw_dash_competenza_gruppi`
 
+> 📝 **Descrizione**
+>
+> Lente 1 Competenza, gruppi fatturabili: l'unita' dell'emissione mirata. Una riga per (competenza_mese, gruppo_key). security_invoker=on (scope emittente). Rev 2026-08-18 (P-4, brief perimetro-emittente Q4): espone emittente_ragione_sociale, non piu' il solo emittente_soggetto_ruolo_id — un id a video non dichiara l'emittente, lo nasconde meglio. E' la lista PILOTA del giro P-4 perche' e' quella da cui parte l'emissione mirata: si spuntano i gruppi e si fattura. ⚠️ La colonna arriva a video solo con la richiesta BE-2 (la lista ha vista_sql NULL: le righe le compone il repository, che elenca le colonne esplicitamente).
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql
@@ -52,8 +56,9 @@ WITH aggregato AS (
     COALESCE(ba_riga.parent_account_id, ba_riga.id) AS ba_fatturazione_id,
     ba_fatt.codice AS ba_codice_fatturazione,
     sog.ragione_sociale_completa AS cliente_fatturazione_display,
-    sog.id_fiscale_univoco_cf_piva AS id_fiscale
-   FROM ((((((aggregato g
+    sog.id_fiscale_univoco_cf_piva AS id_fiscale,
+    s_ef.ragione_sociale_completa AS emittente_ragione_sociale
+   FROM ((((((((aggregato g
      LEFT JOIN config.sorgenti s ON ((s.id = g.sorgente_tipo_id)))
      LEFT JOIN LATERAL ( SELECT d.codice,
             d.documento_id
@@ -64,7 +69,9 @@ WITH aggregato AS (
      LEFT JOIN anagrafiche.billing_account ba_riga ON ((ba_riga.id = g.billing_account_id)))
      LEFT JOIN anagrafiche.billing_account ba_fatt ON ((ba_fatt.id = COALESCE(ba_riga.parent_account_id, ba_riga.id))))
      LEFT JOIN anagrafiche.soggetti_ruoli sr_fatt ON ((sr_fatt.id = ba_fatt.soggetto_ruolo_id)))
-     LEFT JOIN anagrafiche.soggetti sog ON ((sog.id = sr_fatt.soggetto_id)));
+     LEFT JOIN anagrafiche.soggetti sog ON ((sog.id = sr_fatt.soggetto_id)))
+     LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = g.emittente_soggetto_ruolo_id)))
+     LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)));
 ```
 
 

@@ -14,15 +14,41 @@
 > Sono stati messi qui perché sono cantieri loro: toccano l'anagrafica e
 > l'accesso, non la dashboard.
 >
-> ✅ **Stato al 2026-08-18 — passi 1, 2, 3, 4 e 6 APPLICATI, nessuna regressione
-> sui test.** Dodici changeSet (`20260818-01`, `-02`, `-03`, `-05`, `-08`→`-15`),
-> pgTAP nuovi verdi, baseline senza regressioni. Restano il **passo 5** (P-2c,
-> etichette — FE/BE, indipendente), il **passo 7** (P-2b, con l'`ALTER TABLE`
-> non reversibile) e il **passo 8** (le altre cinque liste), più le richieste al
-> backend del §13. ⚠️ **BE-2 è ora bloccante**: la vista e il catalogo del passo
-> 6 sono a posto, ma finché il repository di dominio non seleziona il campo la
-> colonna si spunta e **resta vuota** — cioè *sembra* la garanzia che P-2b
-> pretenderà, e non lo è.
+> ## ✅ Stato al 2026-08-18 — **il perimetro DB è chiuso**
+>
+> **Applicati e verdi i passi 1, 2, 3, 4, 6 e 7**: sedici changeSet
+> (`20260818-01`, `-02`, `-03`, `-05`, `-08`→`-19`), pgTAP nuovi verdi, baseline
+> senza regressioni. Misure di Fase 0 eseguite, DL-A sanato.
+>
+> **Verificato sul database a lavoro finito:**
+>
+> | | |
+> | --- | ---: |
+> | liste a catalogo | 44 |
+> | di cui `multi_emittente = true` | **0** ← il registro di debito parte pieno |
+> | controllo «adesivi senza collaudo» | **0** |
+> | operatori senza emittente (DL-A) | **0** |
+> | liste del perimetro con la colonna emittente | **1** (la pilota) |
+> | trigger del guard «albero omogeneo» | **2** |
+>
+> **Cosa resta, e di chi è:**
+>
+> | Cosa | Perimetro |
+> | --- | --- |
+> | **Passo 5** — etichette su contatori e ricerche (P-2c) | FE/BE, indipendente |
+> | **Passo 8** — le altre cinque liste, una alla volta | DB + BE |
+> | **BE-1** igiene · **BE-2** ⛔ · **BE-3** · **BE-4** | backend (§13) |
+>
+> ⛔ **BE-2 è l'unico bloccante rimasto, e blocca una cosa precisa: accendere il
+> flag sulla pilota.** La colonna esiste a catalogo e la vista la espone, ma la
+> lista ha `vista_sql = NULL` e il repository elenca le colonne esplicitamente:
+> finché non la seleziona, la colonna **si spunta e resta vuota**. Mettere
+> `multi_emittente = true` prima di allora aprirebbe esattamente la finestra che
+> la decisione 3 vietava — *«la lista mescola emittenti senza dirlo e nessuno
+> avverte»*.
+>
+> Il flag resta quindi a `false` su tutte e 44. **Ed è lo stato giusto**: è un
+> registro di debito che deve calare, e oggi non è ancora calato di uno.
 >
 > ~~**Stato al 2026-08-17: nulla eseguito.** Nessun changeSet, nessuna
 > migrazione, nessun seed; il prossimo passo è il DL-A, che è una misura.~~ —
@@ -2148,8 +2174,8 @@ whitelist** — è l'unica eccezione a una convenzione dichiarata sulla riga 192
 un'eccezione senza motivo scritto viene tolta dal primo che passa convinto di
 star sistemando una svista. Strato 2: test in CI su quelle due `frozenset`.
 
-✅ **SCRITTO il 2026-08-18 — non applicato.** ⚠️ **Metà passo**: c'è tutto il
-**presidio**, manca la **lettura** (vedi in fondo).
+✅ **SCRITTO il 2026-08-18.** Presidio (`-16`/`-17`/`-18`) **applicato e verde**;
+la lettura (`-19`) scritta e non ancora applicata.
 
 | File | Cosa |
 | --- | --- |
@@ -2190,7 +2216,35 @@ passa già; le altre attendono l'apply.
 | 5 | il registro di debito parte pieno: **zero** liste certificate |
 | 6 | la vista di controllo è a zero righe |
 
-#### ⚠️ Quello che manca al passo 7: la lettura
+#### ✅ La lettura — `20260818-19`, scritta il 2026-08-18
+
+`ui.fn_resolve_lista_config` porta ora `multi_emittente` nell'envelope. Chiave
+**additiva**: i consumatori che non la leggono non si accorgono di niente.
+
+⭐ **Come è stato prodotto il corpo, ed è la parte che conta.** La funzione supera
+le **400 righe** ed era stata modificata poche ore prima da un altro lavoro
+(`20260818-04`). Ricopiarla a mano è il modo in cui si regredisce in silenzio il
+lavoro di qualcun altro — il progetto ha già pagato per quello. Il corpo è stato
+quindi **derivato dalla definizione viva** applicando **tre sostituzioni
+testuali mirate**, e il risultato **diffato contro l'originale**: l'unica
+differenza sono le righe volute. Nessuna trascrizione manuale.
+
+1. `DECLARE` → la variabile;
+2. la `SELECT` **che c'era già** legge anche la colonna — nessun round-trip in
+   più su una funzione che gira a ogni apertura di lista;
+3. l'envelope guadagna la chiave, in coda.
+
+**Verificato in transazione con `ROLLBACK`**: la funzione compila e l'envelope
+passa da 6 a **7 chiavi**, con `multi_emittente` fra loro.
+
+Il test è salito a **9 asserzioni** (le due nuove sulla lettura).
+
+⚠️ **Una trappola pagata scrivendole**: `??` **non** è l'escape dell'operatore
+JSONB `?` in un file pgTAP. Quell'escape serve a **Liquibase**, che legge il `?`
+come segnaposto; in un file letto da `psql` è un errore di sintassi. Riscritto
+come `jsonb_exists(…)`, che toglie la domanda in entrambi i contesti.
+
+#### ~~Quello che manca al passo 7: la lettura~~ → fatto, vedi sopra
 
 `ui.fn_resolve_lista_config` deve restituire il flag nell'envelope (chiave
 additiva, non rompe i consumatori). **Non è stato fatto in questo giro**, e la
@@ -2205,8 +2259,9 @@ provare che l'unica differenza è la chiave nuova.
 
 **Fatto quando**: il flag esiste, è `false` su tutte e 44 le liste, il trigger
 rifiuta la scrittura dal ruolo applicativo, la vista di controllo restituisce
-**zero righe** — e `fn_resolve_lista_config` lo espone. I primi quattro sono
-scritti; il quinto no.
+**zero righe** e `fn_resolve_lista_config` lo espone. ✅ **Tutti e cinque
+scritti.** Resta la richiesta **BE-3** (whitelist, test in CI, motivo accanto),
+che è backend.
 
 #### Passo 8 · Le liste restanti — una alla volta, e non tutte
 
