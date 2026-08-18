@@ -43,7 +43,7 @@ BEGIN
   IF NEW.parent_account_id IS NOT NULL AND NEW.valido_dal IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
       'database', TG_NAME, 'E_VALORE_MANCANTE',
-      jsonb_build_object('codice', NEW.codice, 'column', 'valido_dal'),
+      jsonb_build_object('codice', NEW.codice, 'campo', 'valido_dal'),
       NULL::uuid, 'valido_dal'
     );
   END IF;
@@ -91,7 +91,7 @@ BEGIN
         jsonb_build_object(
           'codice', NEW.codice,
           'parent_account_id', NEW.parent_account_id,
-          'column', 'parent_account_id',
+          'campo',  'parent_account_id',
           'detail', 'parent inesistente oppure fuori dal perimetro RLS di chi scrive'
         ),
         NULL::uuid,
@@ -110,7 +110,7 @@ BEGIN
           jsonb_build_object(
             'codice', NEW.codice,
             'parent_account_id', NEW.parent_account_id,
-            'column', 'parent_account_id',
+            'campo',  'parent_account_id',
             'soggetto_id', v_sog_child,
             'parent_soggetto_id', v_sog_parent
           ),
@@ -128,7 +128,7 @@ BEGIN
         jsonb_build_object(
           'codice', NEW.codice,
           'parent_account_id', NEW.parent_account_id,
-          'column', 'parent_account_id',
+          'campo',  'parent_account_id',
           'id_fiscale_univoco_cf_piva', v_cf_child,
           'parent_id_fiscale_univoco_cf_piva', v_cf_parent
         ),

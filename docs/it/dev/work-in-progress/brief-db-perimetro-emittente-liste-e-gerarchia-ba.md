@@ -2414,6 +2414,98 @@ mappare in `error_policies.py` come tutti gli altri.
 
 ---
 
+## 13-bis. ✅ Le due richieste dal lato applicativo — fatte il 2026-08-18
+
+> **Origine**: richieste **R-1** e **R-2** del perimetro BE (2026-08-18),
+> autorizzate da Tid. **Esito**: fatte entrambe, **applicate**, nessuna
+> regressione sui test. Il perimetro di R-2 è stato corretto in **tre** punti,
+> e le note sono qui sotto perché il BE le legga prima di verificare.
+
+### 13-bis.1 R-1 — il codice del cancello `multi_emittente` ✅
+
+| | |
+| --- | --- |
+| Codice | `E_UI_LISTA_EMITTENTE_DA_SCEGLIERE` · classe `NON_ESEGUIBILE` |
+| Dove | append a `codici_errore.csv` e `messaggi_errore.csv`, `id` **914** |
+
+Fatta come chiesta. Il ragionamento **422 e non 403** è condiviso e sta nel
+`note` a catalogo: il diritto **c'è**, manca una precondizione che l'utente
+scioglie da sé scegliendo un emittente. Un 403 manderebbe qualcuno, fra sei
+mesi, a cercare un diritto da concedere.
+
+📌 **Nota al BE**: la ragione data per il «nessun segnaposto» non regge da sola —
+**411 messaggi su 913 hanno un `%s`**, quindi non è un pattern rischioso da
+evitare, è la norma. Il motivo buono è un altro, ed è scritto nel `note`: chi
+apre la lista sa già quale lista ha aperto, non c'è niente di variabile da dire.
+Senza quella riga, il primo che passa aggiunge un `%s` per uniformità.
+
+### 13-bis.2 R-2 — il canale del campo era muto ✅, con tre correzioni di perimetro
+
+La diagnosi era esatta: `fn_log_and_raise_error` legge `p_context ->> 'campo'`,
+i guard scrivevano `'column'`, e il codice arrivava al client mentre il nome del
+campo no. Ma il perimetro proposto sbagliava da tutte e due le parti.
+
+**1. 🔴 Le occorrenze erano cinque, non due.** Le altre tre stanno nel
+`20260818-05` — stesso giorno, stesso cantiere, **stesso campo**
+`parent_account_id`.
+
+⚠️ Correggere solo il `-08` sarebbe stato **peggio** del difetto uniforme: il
+form si accende con un guard e resta spento con un altro **sullo stesso campo**.
+Un difetto costante si nota e si segnala; uno intermittente fa cercare il
+problema nel frontend.
+
+**2. ⛔ `20260818-17` NON è stata toccata**, benché la richiesta la includesse.
+`multi_emittente` non compare in `frontend/src/` con nessuna grafia, e la sua
+colonna si scrive solo dal seed. Metterla nel canale COLUMN direbbe al form di
+accendere un campo **che non esiste in nessuna schermata**: si passerebbe da
+«non evidenzia» a «evidenzia il vuoto», che è più difficile da vedere. Lì
+`'column'` è l'uso diagnostico corretto — quello che la richiesta stessa voleva
+preservare nelle funzioni storiche.
+
+**3. ⭐ Il criterio non è «changeSet nuovo», è «è il nome di una colonna che il
+client può correggere».**
+
+```text
+'column', 'parent_account_id'              -> 'campo'    colonna vera        (4×)
+'column', 'valido_dal'                     -> 'campo'    colonna vera        (1×)
+'column', 'valido_al_requires_valido_dal'  -> resta      è una REGOLA
+'column', 'multi_emittente'                -> resta      non è in nessun form
+```
+
+| ChangeSet | Cosa |
+| --- | --- |
+| `20260818-21-update-fn-guard-albero-ba-emittente-campo-context` | 2 punti |
+| `20260818-22-update-trgfn-billing-account-guard-normalize-campo-context` | 4 punti |
+
+I due changeSet d'origine sono già pushati e non si toccano: si è ridefinito in
+avanti, senza nessun'altra modifica al corpo.
+
+### 13-bis.3 ⚠️ Due note al BE prima di verificare
+
+**a) Il sintomo descritto oggi NON è osservabile.** La R-2 dice *«il campo
+"Account padre" non si accende»*. Verificato: **nel frontend non esiste una
+schermata di billing account**, e `parent_account_id` non compare in
+`frontend/src/` con nessuna grafia. La correzione resta giusta — il canale deve
+portare il campo perché funzioni **quando** la schermata arriverà, e il `note` a
+catalogo dichiarava già l'intenzione — ma chi la verifica a video concluderà che
+non ha funzionato. La macchina a valle c'è tutta (`db_error_fields`,
+`ErrorTranslator`, `campiErrati`): manca il form.
+
+**b) Il test è quello giusto, e il vecchio non lo era.** La cautela su
+`throws_like` era fondata: `test-guard-albero-ba-omogeneo-v1` è rimasto **verde
+per tutto il tempo** in cui il canale era muto, perché verificava la frase.
+Aggiunte due asserzioni (plan 8 → 10) che catturano l'eccezione e leggono
+`GET STACKED DIAGNOSTICS` — `CONSTRAINT_NAME` e `COLUMN_NAME` separatamente.
+⚠️ `throws_ok` non espone `COLUMN_NAME`: non c'era un'altra strada.
+
+### 13-bis.4 Cosa resta al BE
+
+* `./manage-env.sh genera_error_policies --check` deve segnalare la divergenza,
+  poi `genera_error_policies` per rigenerare — il codice nuovo è a catalogo;
+* il passo **C-2** non è più bloccato.
+
+---
+
 ## 14. Riferimenti
 
 > ℹ️ Questa sezione era numerata **§10**. È stata spostata in fondo il 2026-08-17
