@@ -19,7 +19,7 @@
 | # | Cosa | Peso | Blocca | Stato |
 | --- | --- | --- | --- | --- |
 | **R-3** | **5 righe** in `lista_colonna.csv`: la colonna emittente sulle liste che restano | append al CSV | ⛔ tutta la Fase E | ✅ **fatto** |
-| **R-4** | `emittente_ragione_sociale` nelle viste — ~~3~~ **5**, vedi sotto | 5 `CREATE OR REPLACE VIEW` | ⛔ 4 liste su 5 | ✅ **fatto** |
+| **R-4** | `emittente_ragione_sociale` nelle viste — ~~3~~ **5**, vedi sotto | ~~5~~ **6** `CREATE OR REPLACE VIEW` | ⛔ 4 liste su 5 | ✅ **fatto**, poi 🔴 **corretto** con `-74`: `-61` consegnava la colonna vuota su 274 righe su 274 |
 | **R-5** | L'emittente nella riga della **ricerca universale** | 2 funzioni + 1 rifattorizzata | 🔵 niente — è il residuo D-3 | ✅ **fatto** |
 
 ---
@@ -35,12 +35,58 @@
 > lato backend, finché non arriva **BE-E1** (sotto). È la finestra che questo
 > stesso brief prevedeva.
 
-
 > Le due domande aperte hanno risposta (in fondo a R-4 e a R-5). In breve:
 > **R-4 → sì, per costruzione** (l'emittente è una colonna della commessa, non
 > dell'attività: il `GROUP BY` è sicuro). **R-5 → A**, ma l'etichetta non può
 > essere «Emittente»: su una riga-soggetto quella colonna mostra una
 > **relazione**, non un attributo — *il soggetto non ha un emittente*.
+
+### 🔴 Correzione del 2026-08-18 — `-61` consegnava una colonna VUOTA (changeSet `-74`)
+
+> ⚠️ **Il paragrafo qui sotto sul backlog aveva ragione a metà, e la metà
+> mancante è costata due liste.** Il ramo resi non era il *solo* posto in cui
+> `emittente_soggetto_ruolo_id` è `NULL::bigint` scritto a mano.
+
+Misurato contando le righe, non leggendo il codice:
+
+| vista | righe | con il nome |
+| --- | ---: | ---: |
+| `vw_dash_fatturazione_documenti` (`-61`) | 274 | **0** |
+| `vw_dash_aperto_documenti` (`-62`) | 156 | **0** |
+| `vw_dash_backlog_documenti` (`-63`) | 95 | **95** ✅ |
+
+**La causa.** `-61` risolve il nome da `emittente_soggetto_ruolo_id`, fidandosi
+della frase che sta nel `COMMENT` della vista stessa — *«i sei resolver portano
+tutti `emittente_soggetto_ruolo_id`»*. **Cinque dei sei la scrivono
+`NULL::bigint`**: preventivi, ordini, offerte, contratti, DDT. L'unica che porta
+il valore vero è `commesse`. `emittente_fiscale_id`, invece, è valorizzato su
+274 righe su 274.
+
+⭐ **E su «Situazione aperta» il vuoto era per sempre, non «in questa
+istanza»**: quella lente filtra `area <> 'COMMESSE'`, cioè esclude proprio
+l'unico ramo che avrebbe risolto. Nessun dataset diverso l'avrebbe mai
+riempita.
+
+**Il rimedio è la cura di `-63` portata a monte** — `COALESCE` sulla chiave,
+`emittente_soggetto_ruolo_id` altrimenti `emittenti_fiscali.soggetto_ruolo_id`
+dedotto da `emittente_fiscale_id`. Una sola catena di JOIN, un solo posto.
+`-62` non va rifatta: proietta la colonna da qui e si riempie da sola
+(verificato in transazione: 274/274, 156/156, backlog invariato 95/95).
+
+> ⭐ **La lezione, e non è quella che sembra.** La verifica che questo brief
+> prescriveva — *«guardare cosa legge il backend, non il grafo delle viste»* —
+> è stata fatta, ed è servita: ha trovato `-62` e `-63`. Non bastava, perché
+> risponde alla domanda *«la colonna arriva?»* e non a *«la colonna è piena?»*.
+> **L'unica verifica che le copre entrambe è contare le righe valorizzate** —
+> `count(*)` contro `count(colonna)` — e va fatta sulla vista che il backend
+> legge davvero, con un contesto operatore addosso.
+>
+> ⛔ **E il difetto era esattamente quello che il flag `multi_emittente` esiste
+> per impedire**: una lista con l'adesivo «so dire da quale emittente arriva
+> ogni riga» e la colonna muta. La vista di controllo di catalogo dava — e dà —
+> zero, perché è un controllo di **catalogo**: sa che la colonna è dichiarata,
+> non che porta un valore. Il collaudo riga-per-riga resta a mano, ed è la
+> ragione per cui il flag si accende una lista alla volta.
 
 ### 🔴 R-4 chiedeva 3 viste. Ne servivano 5, e le due mancanti erano quelle silenziose
 
@@ -84,6 +130,7 @@ sola catena di JOIN.
 | `20260818-64` | `vendite.vw_dash_competenza_errori` | R-4 |
 | `20260818-65` | `vendite.vw_dash_competenza_attivita` | R-4 — alimenta il drill-down commesse |
 | `20260818-66` | `script.fn_get_emittenti_scope` | **DROP** della legacy fail-open (fuori perimetro Fase E, vedi §finale) |
+| `20260818-74` | `vendite.vw_dash_fatturazione_documenti` | 🔴 **correzione di `-61`** — il nome si risolveva da una colonna che cinque resolver su sei scrivono `NULL`. Ricade su `-62`, che non va rifatta |
 | CSV | `80_data/sql/ui/lista_colonna.csv` | **R-3** — righe id **479→483** |
 
 ### Perché R-5 ha prodotto due funzioni e non una

@@ -10,7 +10,7 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert,multi
 9,vendite.resi,Resi di vendita,vendite,vw_resi_lista,t,2026-07-13 00:00:00,mctit,f
 10,vendite.resi_da_accreditare,Resi da accreditare,vendite,vw_resi_da_accreditare,t,2026-07-14 00:00:00,mctit,f
 11,vendite.resi_da_riconsegnare,Resi da ri-consegnare,vendite,vw_resi_da_riconsegnare,t,2026-07-14 00:00:00,mctit,f
-12,vendite.lotti,Lotti di fatturazione,vendite,NULL,t,2026-07-30 00:00:00,mctit,f
+12,vendite.lotti,Lotti di fatturazione,vendite,NULL,t,2026-07-30 00:00:00,mctit,t
 13,anagrafiche.categorie_clienti,Categorie clienti,anagrafiche,categorie_clienti,t,2026-07-31 00:00:00,mctit,f
 14,config.utilities_tipi_ruolo,Matrice utility / tipi ruolo,config,NULL,t,2026-07-31 00:00:00,mctit,f
 15,anagrafiche.indirizzi,Indirizzi,anagrafiche,vw_indirizzi_dettaglio,t,2026-07-31 00:00:00,mctit,f
@@ -37,9 +37,9 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert,multi
 36,vendite.approvazioni_prezzo,Coda approvazioni prezzo,vendite,NULL,t,2026-08-02 00:00:00,mctit,f
 37,vendite.listini_righe,Righe di versione listino,vendite,NULL,t,2026-08-03 00:00:00,mctit,f
 38,vendite.commesse_attivita,Attivita di commessa,vendite,NULL,t,2026-08-03 00:00:00,mctit,f
-39,vendite.dash_aperto_documenti,Situazione aperta — documenti,vendite,NULL,t,2026-08-03 00:00:00,mctit,f
-40,vendite.dash_backlog_documenti,Backlog — documenti fermi,vendite,NULL,t,2026-08-03 00:00:00,mctit,f
-41,vendite.dash_competenza_errori,Competenza — errori vivi,vendite,NULL,t,2026-08-03 00:00:00,mctit,f
-42,vendite.dash_competenza_gruppi,Competenza — gruppi fatturabili,vendite,NULL,t,2026-08-03 00:00:00,mctit,f
-43,vendite.dash_competenza_commesse,Competenza — drill-down commesse,vendite,NULL,t,2026-08-03 00:00:00,mctit,f
+39,vendite.dash_aperto_documenti,Situazione aperta — documenti,vendite,NULL,t,2026-08-03 00:00:00,mctit,t
+40,vendite.dash_backlog_documenti,Backlog — documenti fermi,vendite,NULL,t,2026-08-03 00:00:00,mctit,t
+41,vendite.dash_competenza_errori,Competenza — errori vivi,vendite,NULL,t,2026-08-03 00:00:00,mctit,t
+42,vendite.dash_competenza_gruppi,Competenza — gruppi fatturabili,vendite,NULL,t,2026-08-03 00:00:00,mctit,t
+43,vendite.dash_competenza_commesse,Competenza — drill-down commesse,vendite,NULL,t,2026-08-03 00:00:00,mctit,t
 44,vendite.fondi_fattura_da_decidere,Fondi fattura — casi da decidere,vendite,NULL,t,2026-08-15 00:00:00,mctit,f

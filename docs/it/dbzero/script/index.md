@@ -17,7 +17,7 @@
 - [fn_change_user_emittenti_scope](funzioni/fn_change_user_emittenti_scope.md)
 - [fn_check_almeno_un_super_admin_attivo](funzioni/fn_check_almeno_un_super_admin_attivo.md) — (latest review 19-04-2026)
 - [fn_check_azione_processo](funzioni/fn_check_azione_processo.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
-- [fn_check_ba_visible_for_emittenti](funzioni/fn_check_ba_visible_for_emittenti.md)
+- [fn_check_ba_visible_for_emittenti](funzioni/fn_check_ba_visible_for_emittenti.md) — (latest review 18-08-26)
 - [fn_check_blocco_login](funzioni/fn_check_blocco_login.md)
 - [fn_check_commessa_annullabile](funzioni/fn_check_commessa_annullabile.md)
 - [fn_check_commessa_chiudibile](funzioni/fn_check_commessa_chiudibile.md)
@@ -42,7 +42,7 @@
 - [fn_disdetta_cliente](funzioni/fn_disdetta_cliente.md)
 - [fn_ensure_logconn](funzioni/fn_ensure_logconn.md) — * **Stabilire una connessione persistente** a un database remoto o a se stesso attraverso l’estensione `dblink`, evitando overhead di creazione/removal di connessioni multiple. * **Supporto al logging remoto**: utilizzata da funzioni come `script.fn_log_error_only` per eseguire INSERT in un contesto transazionale separato.
 - [fn_generate_codice](funzioni/fn_generate_codice.md) — (latest review 04-02-26) * **Generazione di codici configurabili**   Costruisce un codice concatenando un **prefisso**, un **separatore** e una **parte numerica** formattata, letti da **`config.sistema_codici`** in base al `codice_interno` passato in input.
-- [fn_get_ba_emittente_sr_id](funzioni/fn_get_ba_emittente_sr_id.md)
+- [fn_get_ba_emittente_sr_id](funzioni/fn_get_ba_emittente_sr_id.md) — (latest review 18-08-26)
 - [fn_get_billing_account_by_istanza](funzioni/fn_get_billing_account_by_istanza.md)
 - [fn_get_catasto_source_by_istanza](funzioni/fn_get_catasto_source_by_istanza.md) — La funzione **`script.fn_get_catasto_source_by_istanza(p_istanza_utilities_id)`** recupera il record catastale **"sorgente"** da utilizzare come base per una **clonazione** in caso di **subentro**.
 - [fn_get_contatti](funzioni/fn_get_contatti.md) — (latest review 25-03-26) * **Selezione univoca per tipo**   Per ogni `tipo_contatto_id` vengono restituiti **al più** un record, che rappresenta il contatto “migliore” in base al contesto richiesto.

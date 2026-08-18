@@ -13,6 +13,8 @@
 --   4) * COERENZA catalogo -> vista: il `campo_sorgente` dichiarato esiste davvero
 --   5) * tutte e sei le liste del perimetro dichiarano la colonna a catalogo
 --        (passo 8, META' DB, completo)
+--   6) * la colonna dichiarata e' PIENA, non solo esistente
+--   7)   almeno una vista del perimetro ha righe (il 6 non e' vacuo)
 --
 -- Scopo:
 --  - il 4 e' il test che conta. Il «prezzo del biglietto» di P-2b dice che una
@@ -21,10 +23,16 @@
 --    che si spunta e resta VUOTA: sembra la garanzia, e non lo e'. Qui si
 --    verifica che il campo dichiarato esista nella vista.
 --
--- ⚠️ NON si asseriscono i DATI. `vw_dash_competenza_gruppi` in questa istanza
+-- ⛔ ~~NON si asseriscono i DATI. `vw_dash_competenza_gruppi` in questa istanza
 --   e' vuota (nessuna attivita' fatturabile aperta): un `count(emittente_...)`
---   sarebbe 0 = 0, cioe' verde per sottrazione. Si verifica la STRUTTURA, che
---   e' quello che il passo 6 introduce, e i dati li verifica il consumo reale.
+--   sarebbe 0 = 0, cioe' verde per sottrazione.~~
+--   🔴 **SBAGLIATO, e corretto il 2026-08-18.** Quella vista NON e' vuota: lo
+--   e' solo per una sessione SENZA operatore. Il suo filtro di perimetro passa
+--   da `fn_get_emittenti_scope_sr_ids`, che dopo P-2a risponde `'{}'` all'attore
+--   nullo — fail-closed, cioe' il cantiere che funziona. Nel contesto in cui
+--   questo file gira (operatore vero, riga 68) la vista rende **74 righe**.
+--   ⚠️ La stessa frase l'ha ripetuta il backend il 2026-08-18 leggendo la vista
+--   da psql: e' un errore che si fa in tre, non una svista. Da qui il test 6.
 --
 -- ⚠️ Il test 4 NON prova che la colonna arrivi a VIDEO: le liste hanno
 --   `vista_sql = NULL`, quindi le righe le compone il repository di dominio,
@@ -69,7 +77,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(5);
+SELECT plan(7);
 
 -- ============================================================
 -- Asserzioni
@@ -151,6 +159,64 @@ SELECT is(
         AND lc.campo_sorgente = 'emittente_ragione_sociale'),
     6::bigint,
     '5. * tutte e sei le liste del perimetro dichiarano la colonna a catalogo (passo 8, meta DB)'
+);
+
+-- ============================================================
+-- 6-7) ⭐ LA META' CHE MANCAVA — la colonna e' PIENA, non solo esistente
+--
+--   Il test 4 chiede «il campo dichiarato esiste alla sorgente?». E' una
+--   domanda di STRUTTURA, e passa anche quando la risposta a video e' NULL su
+--   ogni riga. Il 2026-08-18 e' successo esattamente questo:
+--   `20260818-61` aveva aggiunto `emittente_ragione_sociale` a
+--   `vw_dash_fatturazione_documenti` risolvendola da `emittente_soggetto_ruolo_id`
+--   — che CINQUE dei sei resolver a monte scrivono `NULL::bigint` a mano.
+--   Struttura perfetta, colonna muta su 274 righe su 274, e su
+--   `vw_dash_aperto_documenti` muta PER SEMPRE, perche' quella lente esclude
+--   l'unica area che risolveva. Il test 4 era verde per tutto il tempo.
+--
+--   ⭐ La domanda giusta e' «quante righe portano il valore?», e si scrive con
+--   due `count`. E' il collaudo che il flag `multi_emittente` pretende, ridotto
+--   a macchina per la parte che una macchina puo' vedere.
+--
+--   ⚠️ Le viste VUOTE in istanza non si possono giudicare, e non si fingono
+--   verdi: si escludono, e il test 7 impedisce che l'esclusione diventi
+--   totale — se un giorno tutte e cinque fossero vuote, il test 6 sarebbe
+--   verde senza aver verificato niente.
+-- ============================================================
+CREATE TEMP TABLE tmp_perimetro_pieno (vista text, righe bigint, pieni bigint);
+
+DO $misura$
+DECLARE
+    r       record;
+    v_tot   bigint;
+    v_pieni bigint;
+BEGIN
+    FOR r IN SELECT DISTINCT vista FROM tmp_perimetro_liste ORDER BY vista LOOP
+        EXECUTE format(
+            'SELECT count(*), count(emittente_ragione_sociale) FROM vendite.%I', r.vista)
+          INTO v_tot, v_pieni;
+        INSERT INTO tmp_perimetro_pieno VALUES (r.vista, v_tot, v_pieni);
+    END LOOP;
+END
+$misura$;
+
+-- Il valore atteso e' la stringa VUOTA e non uno zero: cosi' il rosso NOMINA
+-- la vista e il rapporto (es. «vw_dash_aperto_documenti 0/156»), invece di
+-- dire «1 <> 0» e lasciare la ricerca a chi legge.
+SELECT is(
+    (SELECT COALESCE(string_agg(vista || ' ' || pieni || '/' || righe, ', ' ORDER BY vista), '')
+       FROM tmp_perimetro_pieno
+      WHERE righe > 0
+        AND pieni <> righe),
+    '',
+    '6. * la colonna emittente e'' PIENA su ogni riga delle viste del perimetro che hanno righe'
+);
+
+SELECT cmp_ok(
+    (SELECT count(*) FROM tmp_perimetro_pieno WHERE righe > 0),
+    '>=',
+    1::bigint,
+    '7. almeno una vista del perimetro ha righe: il test 6 non e'' verde per sottrazione'
 );
 
 -- ============================================================

@@ -17,7 +17,8 @@
 --   7) sei righe di catalogo, una per lista
 --   8) ...e sono nella forma giusta (sorgente, attiva, non sensibile, i18n)
 --   9) * coerenza catalogo <-> vista: il campo dichiarato ESISTE nella vista
---  10) il flag multi_emittente e' ancora SPENTO su tutte e sei
+--  10) il flag multi_emittente e' acceso SOLO sulle liste dichiarate qui
+--      (rev 2026-08-18: tutte e sei, per decisione di Tid)
 --  11) dbops.vw_liste_multi_emittente_non_certificate resta a zero righe
 --
 -- Scopo, e perche' i due test con l'asterisco sono quelli che guadagnano il
@@ -196,13 +197,31 @@ SELECT is(
 );
 
 -- 10) Il flag si guadagna dopo, mai insieme al seed della colonna.
+--
+--     ⭐ Rev 2026-08-18: acceso su TUTTE E SEI, per decisione di Tid
+--     (brief perimetro-emittente §13-ter.5 e §13-ter.7).
+--     ⚠️ Sulla sola PILOTA il flag ha dietro il giro completo; sulle altre
+--     cinque e' stato acceso prima che il backend selezioni la colonna
+--     (BE-5), e su `vendite.lotti` il campo non esiste nemmeno in una vista
+--     (BE-4). Scritto qui perche' e' qui che qualcuno verra' a chiedersi
+--     perche' la colonna e' vuota.
+--
+--     ⚠️ Si asserisce l'ELENCO e non il conteggio, per la stessa ragione per
+--     cui il conteggio non bastava: «una accesa» sarebbe verde anche se
+--     l'accesa fosse un'altra. Chi certifica una lista deve venire QUI a
+--     scriverne il codice — e' il «prezzo del biglietto» in forma di test.
 SELECT is(
-    (SELECT count(*)
+    (SELECT COALESCE(array_agg(ld.codice::text ORDER BY ld.codice), '{}'::text[])
        FROM ui.lista_definizione ld
       WHERE ld.id IN (SELECT lista_id FROM _t_liste)
         AND ld.multi_emittente),
-    0::bigint,
-    '10. multi_emittente ancora SPENTO su tutte e sei: il flag si guadagna, non si seeda'
+    ARRAY['vendite.dash_aperto_documenti',
+          'vendite.dash_backlog_documenti',
+          'vendite.dash_competenza_commesse',
+          'vendite.dash_competenza_errori',
+          'vendite.dash_competenza_gruppi',
+          'vendite.lotti']::text[],
+    '10. multi_emittente acceso solo sulle liste certificate e dichiarate qui'
 );
 
 -- 11) Il controllo automatico di P-2b non deve avere niente da dire.
