@@ -1339,6 +1339,119 @@ Ma la misura dice anche dove sta il lavoro vero, e **non è il CSV**:
   emittente in `ui.lista_colonna` è una query di due join, e non ha bisogno di
   sapere niente delle viste.
 
+### 11.9 ⭐ Il soggetto NON ha un emittente — verificato il 2026-08-18
+
+Rilievo di Tid, nato leggendo il brief della Fase E. È il presupposto su cui
+poggia §3.5, e non era scritto da nessuna parte: era **implicito**. E ciò che è
+implicito viene letto al contrario — infatti la richiesta **R-5** del backend
+chiedeva *«l'emittente del soggetto»* come se fosse un suo attributo.
+
+**Verificato sul catalogo**: in tutta l'anagrafica l'emittente fiscale compare
+in **un solo posto**, `emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id`.
+Non esiste su `soggetti`, `soggetti_ruoli`, `clienti`, `billing_account` né
+`istanze_utilities`.
+
+| Entità | Legame con l'emittente |
+| --- | --- |
+| **billing account** | ✅ **esattamente uno**, per costruzione: `UNIQUE (billing_account_id)` sul mapping, più il ripiego sul gestore globale (che è comunque uno) |
+| **soggetto** | ❌ **nessuno.** Il legame esiste solo *transitivamente*, attraverso i suoi billing account |
+
+⭐ **Questo cantiere aveva già fatto la cosa giusta**, e ora si sa perché: P-1
+presidia **l'albero di billing account**, non il soggetto — ed è esattamente la
+distinzione di §3.5 fra la regola vera e quella sbagliata che le assomiglia. Il
+**test 6** del pgTAP di P-1 asserisce che *due alberi separati dello stesso
+soggetto su emittenti diversi* **passano**. Il modello non era solo rispettato:
+era già a test.
+
+**Misurato**: su **7 soggetti cliente, 1** ha già billing account sotto più
+emittenti. Il 14% — non un caso di laboratorio, e la conferma che il modello
+funziona come deve.
+
+**Conseguenza per chi mostra il dato**: accanto a un soggetto l'emittente è una
+**relazione**, non un attributo. Se il soggetto ne tocca due i valori sono due,
+l'etichetta deve dirlo, e la riga **non** va duplicata per emittente —
+duplicarla cambierebbe il significato di un conteggio di soggetti.
+
+> Scritto come sezione canonica in
+> [soggetti-e-ruoli-anagrafici §5a-bis](/guide/soggetti-e-ruoli-anagrafici),
+> perché è lì che si va a leggere prima di disegnare una tabella o una vista.
+
+### 11.10 ✅ La legacy `fn_get_emittenti_scope` è stata dismessa — 2026-08-18 · *applicato*
+
+Segnalata come anomalia dopo P-2a, chiusa nello stesso giro della Fase E.
+
+**Cos'era.** Rispondeva a *«quali emittenti può vedere questo utente?»* leggendo
+`config.user_emittenti_fiscali`, e per un utente **senza righe** rispondeva
+`NULL` — che nella convenzione a tre stati significa **«tutti»**. Era il
+fail-open. P-2a ha ribaltato quel comportamento su tutta la famiglia guarded
+(`nessuna riga = '{}' = nessun accesso`), ma la legacy **non è stata toccata**,
+perché non la chiamava più nessuno.
+
+**Non era un difetto vivo: era un attrezzo carico**, che è peggio. Zero chiamanti
+verificati — zero funzioni DB, zero viste, zero policy RLS; nel backend solo due
+commenti storici, ricablati il 2026-06-02 (`4201c0f75`, chiusura di B5 in
+`analisi-attivazione-rls-db.md`, dove la dismissione era già indicata come
+possibile). Il rischio non era che qualcuno la chiamasse oggi: era che domani
+qualcuno cercasse *«gli emittenti di un utente»*, trovasse una funzione dal nome
+perfetto, e la usasse — riaprendo il buco in un punto **nuovo**, e in fail-open,
+cioè senza nessun sintomo.
+
+**Come si ritira una funzione senza perdere il presidio.** Le quattro asserzioni
+pgTAP che la esercitavano non sono state cancellate: due sono state **girate di
+segno** (`hasnt_function`: *«non esiste più»*), due spostate sull'**erede
+guarded** `fn_get_emittenti_scope_pk_ids`. Il conteggio dei plan non cambia, la
+copertura del comportamento resta, e chi la ricreasse troverebbe tre file rossi.
+Cancellarle avrebbe tolto il presidio insieme al difetto.
+
+Rimossi anche i due file di documentazione (`funzioni/` e `manual/`), le voci di
+indice e il rimando in `fn_check_user_emittente_scope`; corretta la tabella
+«Dipendenze DB» di `api_search_universale.md`, che la citava ancora.
+
+#### ⛔ E una lezione pagata sul campo: `onFail: MARK_RAN`
+
+> ✅ **Chiuso il 2026-08-18**: `-67` applicato, la funzione non c'è più, i tre
+> pgTAP che la presidiano sono verdi.
+
+Il primo changeSet del drop (`20260818-66`) aveva una preCondition
+`onFail: MARK_RAN` con uno sqlCheck *«la funzione esiste»*, pensata per renderlo
+ripetibile. **MARK_RAN significa «non eseguire, ma segna come eseguito».**
+
+Lo sqlCheck non ha trovato quel che cercava, Liquibase ha registrato l'id in
+`DATABASECHANGELOG`, e la funzione è rimasta viva sotto un changeSet che giurava
+di averla tolta. Con `runOnChange: false` non ci sarebbe più tornato: correggere
+il file non serve a niente, l'id è già registrato. Si è corretto in avanti con
+`20260818-67`, senza preCondition.
+
+> ⭐ **Le due cose da portarsi dietro.**
+> 1. `DROP ... IF EXISTS` è **già** idempotente: una preCondition che ne
+>    verifica l'esistenza non aggiunge sicurezza, aggiunge un modo di fallire in
+>    silenzio.
+> 2. Lo hanno scoperto **i test**, non la migrazione — che era verde. Tre pgTAP
+>    asserivano che la funzione non ci fosse più. Senza quelle asserzioni
+>    sarebbe rimasta vera sulla carta per sempre.
+
+### 11.11 🟠 Restano TRE copie della regola «l'emittente di un BA» — ne sono state unite due
+
+§11.2 aveva già fotografato la duplicazione. La Fase E ne ha chiusa una parte, e
+vale la pena scrivere quale, perché il residuo è reale.
+
+| Funzione | Cosa restituisce | Stato |
+| --- | --- | --- |
+| `script.fn_get_ba_emittente_sr_id` | il **soggetto-ruolo** dell'emittente | ⭐ **nuova, 2026-08-18** — è ora *la* definizione |
+| `script.fn_check_ba_visible_for_emittenti` | booleano «è fra i miei?» | ✅ **delega** alla prima (`20260818-59`) |
+| `anagrafiche.fn_get_emittente_fiscale_id` | la **PK** dell'emittente fiscale | 🟠 **terza copia, ancora indipendente** |
+
+La terza è usata da `fn_build_fattura_key`, cioè dalla **numerazione delle
+fatture**. Non è stata toccata di proposito: è un percorso caldo e critico, ed
+entrarci dentro non era quello che chiedeva la Fase E. Ma la duplicazione è
+esattamente quella che §11.2 segnalava, e se un giorno la regola cambia
+(l'esempio concreto: *«l'albero eredita l'emittente del padre?»*) bisogna
+ricordarsi che i posti da toccare sono **due**, non uno.
+
+> 🔵 **Da fare, quando si aprirà il cantiere numerazione**: far delegare anche
+> `anagrafiche.fn_get_emittente_fiscale_id`, con un giro di `soggetto_ruolo_id →
+> emittenti_fiscali.id`. È l'ultimo passo per avere una definizione sola.
+
 ### 11.4-bis ⚠️ Due cose che si chiamano quasi uguale — e non sono la stessa
 
 Il cantiere ne maneggia **due**, legate da una regola ma diverse per tabella, per

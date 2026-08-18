@@ -16,11 +16,119 @@
 > codice BE si scrive in mezz'ora quando i due pezzi ci sono; scritto prima
 > sarebbe codice che seleziona una colonna inesistente.
 
-| # | Cosa | Peso | Blocca |
-| --- | --- | --- | --- |
-| **R-3** | **5 righe** in `lista_colonna.csv`: la colonna emittente sulle liste che restano | append al CSV | ⛔ tutta la Fase E |
-| **R-4** | `emittente_ragione_sociale` in **3 viste** (che ne servono 4 di liste) | 3 `CREATE OR REPLACE VIEW` | ⛔ 4 liste su 5 |
-| **R-5** | L'emittente nella riga della **ricerca universale** | 1 funzione | 🔵 niente — è il residuo D-3 |
+| # | Cosa | Peso | Blocca | Stato |
+| --- | --- | --- | --- | --- |
+| **R-3** | **5 righe** in `lista_colonna.csv`: la colonna emittente sulle liste che restano | append al CSV | ⛔ tutta la Fase E | ✅ **fatto** |
+| **R-4** | `emittente_ragione_sociale` nelle viste — ~~3~~ **5**, vedi sotto | 5 `CREATE OR REPLACE VIEW` | ⛔ 4 liste su 5 | ✅ **fatto** |
+| **R-5** | L'emittente nella riga della **ricerca universale** | 2 funzioni + 1 rifattorizzata | 🔵 niente — è il residuo D-3 | ✅ **fatto** |
+
+---
+
+## ✅ Consegnato dal team DB — 2026-08-18 · **applicato e verde**
+
+> 🟢 **Stato finale.** ChangeSet `20260818-58`→`-67` **applicati** da Tid il
+> 2026-08-18. Suite pgTAP: **nessuna regressione**; i due file nuovi (25
+> asserzioni) verdi, e i tre file che presidiano la dismissione della legacy
+> verdi dopo `-67`.
+>
+> ⛔ **Resta rossa una cosa sola, ed è voluta**: `test_liste_configurabili_seed`
+> lato backend, finché non arriva **BE-E1** (sotto). È la finestra che questo
+> stesso brief prevedeva.
+
+
+> Le due domande aperte hanno risposta (in fondo a R-4 e a R-5). In breve:
+> **R-4 → sì, per costruzione** (l'emittente è una colonna della commessa, non
+> dell'attività: il `GROUP BY` è sicuro). **R-5 → A**, ma l'etichetta non può
+> essere «Emittente»: su una riga-soggetto quella colonna mostra una
+> **relazione**, non un attributo — *il soggetto non ha un emittente*.
+
+### 🔴 R-4 chiedeva 3 viste. Ne servivano 5, e le due mancanti erano quelle silenziose
+
+È la scoperta più importante del giro, e vale la pena capire come è stata
+possibile, perché il tranello si ripresenta.
+
+Il brief dava le liste **«Situazione aperta»** e **«Backlog»** per *«eredita»* la
+colonna da `vw_dash_fatturazione_documenti`. La frase è **vera del dato** — è lì
+che nasce — e **falsa della proiezione**: sono due viste separate
+(`vw_dash_aperto_documenti`, `vw_dash_backlog_documenti`) con elenco di colonne
+**esplicito**, e sono **quelle** che il backend legge (`vendite_repository.py`,
+righe 607 e 1737), non la union a monte.
+
+> ⚠️ **Come sarebbe finita senza accorgersene**: migrazione verde, catalogo
+> seedato, presidi verdi, e la colonna **vuota a video**. Nessun errore da
+> nessuna parte a spiegare perché. È il difetto che nessuna suite trova, perché
+> non c'è niente di rotto — c'è solo una colonna che non è stata elencata.
+>
+> ⭐ **La verifica che lo ha fatto emergere è banale, e va rifatta ogni volta**:
+> guardare **cosa legge il backend**, non il grafo delle viste.
+
+E il backlog aveva **un secondo strato**: è a sua volta una `UNION` di tre rami, e
+i due rami **RESI** non hanno `emittente_soggetto_ruolo_id` (lì è `NULL`) ma
+hanno `emittente_fiscale_id`. Risolvere il nome solo dal soggetto-ruolo avrebbe
+lasciato muto **l'intero blocco resi** — e siccome i resi sono una minoranza
+delle righe, sarebbe passato per *«qualche riga senza emittente»* invece che per
+un ramo mai risolto. Si risolve con un `COALESCE` sulla **chiave**, sfruttando
+l'uno-a-uno `emittenti_fiscali.soggetto_ruolo_id` (`NOT NULL` + `UNIQUE`): una
+sola catena di JOIN.
+
+### I changeSet
+
+| # | Oggetto | Cosa |
+| --- | --- | --- |
+| `20260818-58` | `script.fn_get_ba_emittente_sr_id` | **nuova** — «quale emittente fattura questo billing account?» |
+| `20260818-59` | `script.fn_check_ba_visible_for_emittenti` | delega la regola a due livelli alla `-58`: una definizione sola |
+| `20260818-60` | `script.fn_search_soggetti_universale` | **R-5** — `emittente_ragione_sociale` in coda (DROP+CREATE: cambia il `RETURNS TABLE`) |
+| `20260818-61` | `vendite.vw_dash_fatturazione_documenti` | R-4 — la JOIN scritta **una volta**, avvolgendo la union dei sei resolver |
+| `20260818-62` | `vendite.vw_dash_aperto_documenti` | R-4 — 🔴 *non era nel brief* |
+| `20260818-63` | `vendite.vw_dash_backlog_documenti` | R-4 — 🔴 *non era nel brief*, + i due rami resi |
+| `20260818-64` | `vendite.vw_dash_competenza_errori` | R-4 |
+| `20260818-65` | `vendite.vw_dash_competenza_attivita` | R-4 — alimenta il drill-down commesse |
+| `20260818-66` | `script.fn_get_emittenti_scope` | **DROP** della legacy fail-open (fuori perimetro Fase E, vedi §finale) |
+| CSV | `80_data/sql/ui/lista_colonna.csv` | **R-3** — righe id **479→483** |
+
+### Perché R-5 ha prodotto due funzioni e non una
+
+Perché la regola *«quale emittente fattura questo billing account»* esisteva nel
+database **solo in forma booleana**, dentro `fn_check_ba_visible_for_emittenti`
+(*«è visibile per questi emittenti?»*). Ottima per filtrare, inutile per
+**mostrare**.
+
+Le strade erano due: riscriverla nel punto che deve mostrarla, o estrarla. La
+prima sembra più corta, ma due copie della stessa regola non restano uguali:
+alla prima modifica **il filtro e l'etichetta a video iniziano a raccontare cose
+diverse sullo stesso billing account**, senza che nessuna delle due sia sbagliata
+da sola. Per una regola di perimetro è il difetto peggiore, perché è silenzioso.
+
+Quindi: estratta in `-58`, e il check delega (`-59`). L'equivalenza fra vecchia e
+nuova forma è **esatta** — la garantiscono i due indici univoci
+`uq_emittenti_fiscali_ba` e `uq_emittenti_fiscali_ba_default` — ed è anche
+**esercitata sui dati**, perché una dimostrazione non è un presidio.
+
+### ⭐ La colonna della ricerca è filtrata dallo scope, non solo la riga
+
+È il punto meno ovvio di R-5, e il brief non lo poneva.
+
+Non basta che la **riga** sia visibile: se un soggetto è cliente di A e di B, e
+chi guarda ha in whitelist il solo A, la riga si vede (via A) ma la colonna deve
+dire **«A»**, non «A, B». Altrimenti una colonna nata per *disambiguare*
+finirebbe per **rivelare l'esistenza di un emittente fuori perimetro**.
+
+Con scope `NULL` (super admin) il filtro non morde e si vedono tutti: è
+esattamente il caso per cui la colonna è stata chiesta.
+
+### I test
+
+| File | Cosa presidia |
+| --- | --- |
+| `db/pgtap/script/test-ba-emittente-risoluzione-v1.sql` (13) | la risoluzione a due livelli, l'equivalenza col check, il **BA nullo che non cade nel default**, la colonna dichiarata nella ricerca |
+| `db/pgtap/vendite/test-viste-dash-emittente-v1.sql` (12) | la colonna nelle 5 viste, ⭐ `security_invoker=on` su tutte e 5, le 6 righe di catalogo, ⭐ **la coerenza catalogo↔vista** |
+
+> ⭐ Il test più importante del secondo file **non parla di emittenti**:
+> verifica che tutte e cinque le viste abbiano ancora `security_invoker = on`.
+> Quella reloption **non è visibile in `pg_get_viewdef`**: chi ricrea una vista
+> partendo dalla definizione stampata la perde senza nessun avviso, e da quel
+> momento la RLS smette di filtrare per chi legge. Cinque `CREATE OR REPLACE` in
+> un colpo solo sono cinque occasioni di sbagliarlo.
 
 ---
 
@@ -136,6 +244,31 @@ no).
 > multi-emittente — e allora la colonna su quella lista è un lavoro diverso, non
 > una riga di CSV.
 
+#### ✅ Risposta del team DB (2026-08-18): **sì, e non è una misura — è strutturale**
+
+Nella vista quella colonna è `co.emittente_soggetto_ruolo_id`, dove `co` è
+**`vendite.commesse`**; e `commessa_id` è `co.id`, cioè la sua chiave primaria.
+
+> **L'emittente è una colonna della commessa stessa.** Una commessa ha un solo
+> emittente per lo stesso motivo per cui ha un solo codice: è un campo di quella
+> riga. Una commessa **non può** avere attività di emittenti diversi, perché
+> l'emittente non sta sull'attività.
+
+Non è una proprietà dei dati che possa cambiare domani. **Il BE può aggiungere
+la colonna al `GROUP BY` in sicurezza**: non può spezzare una commessa in più
+righe.
+
+⚠️ **La colonna nel `GROUP BY` serve comunque.** PostgreSQL sa dedurre da sé la
+dipendenza funzionale quando si raggruppa per la **chiave primaria di una
+tabella**, ma qui si raggruppa su una colonna di **vista**: la deduzione non
+scatta. È solo innocua, non superflua.
+
+⚠️ **La controprova sui dati non è utilizzabile, e vale la pena sapere perché.**
+Interrogando la vista si ottengono **zero commesse** — ma quello zero *non è un
+dato*: la vista filtra sullo scope emittente e una sessione senza utente è
+fail-closed. Sulle tabelle base: **59 commesse, tutte con emittente valorizzato,
+92 attività**. La prova resta comunque la struttura, non il conteggio.
+
 ---
 
 ## R-5 · L'emittente nella riga della ricerca universale 🔵 · *residuo D-3*
@@ -195,6 +328,51 @@ scelta è di merito:
 > oggi conta soggetti — per un caso raro. Con A la riga resta una e dichiara
 > onestamente che quel cliente vive sotto due emittenti.
 
+#### ✅ Risposta del team DB (2026-08-18): **A**, e il caso non è raro — ma l'etichetta va cambiata
+
+**Il numero, prima di tutto.** Su **7 soggetti cliente, 1** ha già billing
+account sotto più emittenti: il **14%**, non un caso di laboratorio. Il che
+rafforza A — con B quel soggetto diventerebbe due righe e `total_count`
+smetterebbe di contare soggetti.
+
+##### ⚠️ Ma c'è un punto di modello che la richiesta non mette a fuoco
+
+La riga della ricerca universale è un **soggetto**. E **un soggetto non ha un
+emittente**: verificato sul catalogo, in tutta l'anagrafica l'emittente compare
+in un solo posto — `emittenti_fiscali_billing_account` — e non esiste su
+`soggetti`, `soggetti_ruoli`, `clienti`, `billing_account` né
+`istanze_utilities`. Il legame è solo **transitivo**, via billing account.
+Scritto come sezione canonica in
+[soggetti-e-ruoli-anagrafici §5a-bis](/guide/soggetti-e-ruoli-anagrafici).
+
+Ne seguono tre cose:
+
+1. **B non è solo costosa: è concettualmente sbagliata.** Moltiplicherebbe i
+   soggetti per una proprietà che non è loro;
+2. **A va bene, ma l'etichetta «Emittente» no.** Su una riga-soggetto quella
+   colonna mostra una **relazione**, non un attributo. Chiamarla «Emittente»
+   insegnerebbe un modello falso: meglio *«Emittenti presso cui è cliente»* o
+   simile. È una scelta FE, ma nasce da un vincolo di dominio;
+3. **i due scenari che motivano R-5 sono diversi**, e il brief li tratta come uno:
+
+   | Scenario | A video | La colonna cosa fa |
+   | --- | --- | --- |
+   | **(a)** due soggetti **diversi** omonimi, ciascuno sotto un emittente | due righe | **disambigua** — è il caso portato a motivazione |
+   | **(b)** **un** soggetto sotto due emittenti | una riga | **descrive** — è il caso misurato (1 su 7) |
+
+   Per (a) la colonna funziona perfettamente. Per (b) l'aggregato è l'unica
+   risposta onesta, e non disambigua niente — perché non c'è niente da
+   disambiguare: quella riga *è* una sola.
+
+##### 🔵 Una nota sul livello 2, da tenere per il futuro
+
+L'esclusione di `fn_get_search_detail` è motivata bene («non c'è una riga gemella
+accanto»). Vale però la pena annotare che il dettaglio elenca le righe
+**cliente**, e ogni riga cliente punta a **un** billing account, quindi a **un**
+emittente: è l'unico posto dove il dato è per-riga e non ambiguo. Non si chiede
+di aggiungerlo — si segnala dove sarà la sede, se un domani servirà *«di quale
+emittente è questo rapporto»*.
+
 ⚠️ **`fn_get_search_detail` (livello 2) resta fuori da questa richiesta**: il
 dettaglio si apre su **un** soggetto già scelto, quindi non c'è nessuna riga
 gemella accanto da cui distinguerlo. È la stessa ragione per cui il dettaglio di
@@ -202,9 +380,50 @@ un documento non prende il cancello (P-2c, ultima riga della tabella).
 
 ---
 
-## Cosa fa il backend, quando queste arrivano
+## Cosa fa il backend — ⭐ **adesso: le tre cose ci sono tutte**
 
-Perché si veda che la richiesta non è aperta a vuoto:
+> ✅ Aggiornato il **2026-08-18**: catalogo, viste e funzione sono applicati e
+> verdi. Quello che segue non è più una previsione, è la lista di lavoro.
+
+### ⛔ BE-E1 — la whitelist di ordinamento, o la CI resta rossa
+
+Le cinque righe di catalogo sono seedate con `ordinabile = t`, copiando la
+pilota. Il presidio `apps/core/tests/test_liste_configurabili_seed.py` pretende
+che **ogni colonna ordinabile stia nella whitelist di ordinamento del suo
+repository, nei due versi**.
+
+> ⚠️ Quindi **da adesso la CI è rossa** finché il BE non aggiunge le cinque voci.
+> Non è un difetto: è il presidio che fa il suo mestiere, e la finestra era
+> prevista nel brief («va attraversata in fretta o concordata»). Le colonne
+> interessate sono `emittente_ragione_sociale` sulle liste `dash_aperto_documenti`,
+> `dash_backlog_documenti`, `dash_competenza_errori`, `dash_competenza_commesse`,
+> `lotti`.
+
+### ⛔ BE-E2 — l'etichetta della ricerca NON può essere «Emittente»
+
+Su una riga-soggetto quella colonna mostra una **relazione**, non un attributo:
+il soggetto non ha un emittente, ce l'ha il suo billing account. «Emittenti
+presso cui è cliente», o simile. È una scelta di frontend, ma nasce da un
+vincolo di dominio — vedi
+[soggetti-e-ruoli-anagrafici §5a-bis](/guide/soggetti-e-ruoli-anagrafici).
+
+E i due scenari che motivano R-5 restano **diversi**, anche adesso che la colonna
+c'è: su due soggetti omonimi la colonna *disambigua*; su un soggetto sotto due
+emittenti *descrive*, e non c'è niente da disambiguare — quella riga è una sola.
+
+### 🔵 BE-E3 — la colonna della ricerca arriva da sola nel JSON
+
+`search_repository.py` usa `row_to_json(r)`: la chiave `emittente_ragione_sociale`
+compare nell'envelope **senza toccare la query**. Resta da esporla nel serializer
+e a video.
+
+### 🔵 BE-E4 — `emittente_ragione_sociale` non è ordinabile nella ricerca
+
+È un aggregato (`string_agg`): ordinarci sopra ordinerebbe per la stringa
+concatenata, non per emittente. Non è stata messa nella whitelist di
+`p_order_by`, e non va aggiunta senza deciderlo.
+
+### Il resto, come previsto
 
 | Lista | Lavoro BE |
 | --- | --- |
@@ -225,8 +444,8 @@ metà arriva senza l'altra. Non serve ricordarsene.
 - **il flag `multi_emittente` acceso**: si accende **dopo**, lista per lista,
   quando la colonna mostra un nome su dati veri — mai insieme al seed della
   colonna (§7, decisione 3);
-- **nessuna migrazione applicata da me**: qui si scrive la richiesta, l'apply lo
-  autorizza Tid per quel comando;
+- ~~**nessuna migrazione applicata da me**~~ → **applicata da Tid il 2026-08-18**,
+  changeSet `20260818-58`→`-67`;
 - **niente sulle 10 liste di amministrazione**: sono `AdminAPIView` e restano
   fuori dal cancello per decisione (§13-bis, C-2);
 - **`fn_get_search_detail`** (sopra).

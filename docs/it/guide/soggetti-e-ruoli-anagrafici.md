@@ -229,6 +229,49 @@ Tutte le tabelle specializzate si collegano tramite `soggetto_ruolo_id → sogge
 
 ---
 
+### 5a-bis. ⭐ Il soggetto NON ha un emittente fiscale
+
+> ⚠️ **Sezione canonica.** Aggiunta il 2026-08-18 perche' l'assenza di questo
+> legame era **implicita**, e cio' che e' implicito viene letto al contrario:
+> era gia' successo che si chiedesse «l'emittente del soggetto» come se fosse un
+> suo attributo.
+
+**In tutta l'anagrafica l'emittente fiscale compare in un solo posto:**
+
+```text
+anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id
+```
+
+Non esiste su `soggetti`, ne' su `soggetti_ruoli`, ne' su `clienti`, ne' su
+`billing_account`, ne' su `istanze_utilities`. Verificato sul catalogo, non
+dedotto.
+
+| Entita' | Legame con l'emittente |
+| --- | --- |
+| **billing account** | ✅ **esattamente uno**, per costruzione: `UNIQUE (billing_account_id)` sul mapping, piu' il ripiego sul gestore globale (che e' comunque uno) |
+| **soggetto** | ❌ **nessuno.** Il legame esiste solo *transitivamente*, attraverso i billing account del soggetto |
+
+#### Cosa ne segue, in pratica
+
+* **un soggetto puo' essere cliente di piu' emittenti**, ed e' legittimo: sono
+  alberi di billing account separati, uno per emittente. Misurato il 2026-08-18:
+  **1 soggetto cliente su 7** e' gia' in questa condizione, non e' un caso di
+  laboratorio;
+* la regola che il database presidia **non** e' *«un soggetto sta sotto un solo
+  emittente»* — sarebbe falsa e dannosa. E' *«un singolo albero di billing
+  account non attraversa due emittenti»*, ed e' un'altra cosa. Guard:
+  [`fn_guard_albero_ba_emittente`](/dbzero/anagrafiche/manual/fn_guard_albero_ba_emittente);
+* ⚠️ **quando si mostra «l'emittente» accanto a un soggetto**, si sta mostrando
+  una **relazione**, non un attributo. Se il soggetto ne tocca due, i valori sono
+  due: l'etichetta deve dirlo (*«emittenti presso cui e' cliente»*), e la riga
+  **non** va duplicata per emittente — duplicarla cambierebbe il significato di
+  un conteggio di soggetti;
+* dove invece l'emittente **e'** un dato pulito per riga e' il livello del
+  **rapporto**: ogni riga cliente punta a un billing account, quindi a un
+  emittente solo.
+
+---
+
 ### 5b. Identificazione canonica di un ruolo specializzato — PK reale vs `soggetto_ruolo_id`
 
 > ⚠️ **Sezione canonica — leggere prima di disegnare nuove tabelle / FK / fn che riferiscono un ruolo specializzato (cliente, fornitore, emittente_fiscale, reseller, ecc.).**

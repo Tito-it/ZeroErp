@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Lente 1 Competenza, blocco errori: eventi "vivi" della pipeline di fatturazione per mese di competenza. TASK_ERRORE = run in ERRORE (attivo) non superato da un COMPLETATO successivo sulla stessa chiave (lotto/step/task), competenza dal lotto. FATTURA_CRITICA = fatture.critical (sync da fatture_log), messaggio = ultimo log non disabilitato; competenza: lotto collegato -&gt; mesi distinti delle AF (una riga per mese) -&gt; fallback mese data fattura (DB-7). SCOPE EMITTENTE via fn_get_emittenti_scope_sr_ids(GUC): fail-closed. security_invoker=on.
+> Lente 1 Competenza, blocco errori: eventi "vivi" della pipeline di fatturazione per mese di competenza. TASK_ERRORE = run in ERRORE (attivo) non superato da un COMPLETATO successivo sulla stessa chiave (lotto/step/task), competenza dal lotto. FATTURA_CRITICA = fatture.critical (sync da fatture_log), messaggio = ultimo log non disabilitato; competenza: lotto collegato -&gt; mesi distinti delle AF (una riga per mese) -&gt; fallback mese data fattura (DB-7). SCOPE EMITTENTE via fn_get_emittenti_scope_sr_ids(GUC): fail-closed. security_invoker=on. ⭐ Rev 2026-08-18 (R-4, brief perimetro-emittente Fase E): aggiunta in coda `emittente_ragione_sociale`. La union dei due rami e' avvolta in una CTE e il nome si risolve una volta all'esterno — entrambi i rami portano gia' la chiave (dal LOTTO il primo, dalla FATTURA il secondo). ⚠️ Il filtro di scope NON e' stato accorpato fuori dalla union, e non e' una svista: i due rami filtrano su sorgenti diverse e unificarli significherebbe sceglierne una. Il filtro sta dove sta la ragione.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -50,7 +50,7 @@ WITH escope AS (
         UNION
          SELECT fc.id,
             af.competenza_mese,
-            NULL::bigint AS int8
+            NULL::bigint AS lotto_id
            FROM ((fatture_critiche fc
              JOIN vendite.fatture_righe fr ON ((fr.fattura_id = fc.id)))
              JOIN vendite.attivita_fatturabili af ON ((af.fattura_riga_id = fr.id)))
@@ -59,8 +59,8 @@ WITH escope AS (
                   WHERE (lf2.fattura_id = fc.id))))
         UNION
          SELECT fc.id,
-            (date_trunc('month'::text, (fc.data)::timestamp with time zone))::date AS date_trunc,
-            NULL::bigint AS int8
+            (date_trunc('month'::text, (fc.data)::timestamp with time zone))::date AS competenza_mese,
+            NULL::bigint AS lotto_id
            FROM fatture_critiche fc
           WHERE ((NOT (EXISTS ( SELECT 1
                    FROM vendite.fatturazione_lotti_fatture lf3
@@ -68,45 +68,64 @@ WITH escope AS (
                    FROM (vendite.fatture_righe fr2
                      JOIN vendite.attivita_fatturabili af2 ON ((af2.fattura_riga_id = fr2.id)))
                   WHERE (fr2.fattura_id = fc.id)))))
+        ), eventi AS (
+         SELECT 'TASK_ERRORE'::character varying AS tipo_evento,
+            l.competenza_mese,
+            l.id AS lotto_id,
+            l.codice AS lotto_codice,
+            l.stato_lotto,
+            NULL::bigint AS fattura_id,
+            NULL::smallint AS fattura_anno,
+            NULL::character varying AS fattura_serie,
+            NULL::bigint AS fattura_numero,
+            te.task_code,
+            te.error_code,
+            te.error_message AS messaggio,
+            te.started_at AS data_evento,
+            l.emittente_soggetto_ruolo_id
+           FROM ((task_err te
+             JOIN vendite.fatturazione_lotti l ON ((l.id = te.lotto_id)))
+             CROSS JOIN escope)
+          WHERE ((escope.sr_ids IS NULL) OR (l.emittente_soggetto_ruolo_id = ANY (escope.sr_ids)))
+        UNION ALL
+         SELECT 'FATTURA_CRITICA'::character varying AS tipo_evento,
+            fk.competenza_mese,
+            fk.lotto_id,
+            l2.codice AS lotto_codice,
+            l2.stato_lotto,
+            fc.id AS fattura_id,
+            fc.anno AS fattura_anno,
+            fc.serie AS fattura_serie,
+            fc.numero AS fattura_numero,
+            NULL::character varying AS task_code,
+            NULL::character varying AS error_code,
+            fc.messaggio,
+            fc.data_ora AS data_evento,
+            fc.emittente_soggetto_ruolo_id
+           FROM (((fatture_critiche fc
+             JOIN fatture_competenze fk ON ((fk.fattura_id = fc.id)))
+             LEFT JOIN vendite.fatturazione_lotti l2 ON ((l2.id = fk.lotto_id)))
+             CROSS JOIN escope)
+          WHERE ((escope.sr_ids IS NULL) OR (fc.emittente_soggetto_ruolo_id = ANY (escope.sr_ids)))
         )
- SELECT 'TASK_ERRORE'::character varying AS tipo_evento,
-    l.competenza_mese,
-    l.id AS lotto_id,
-    l.codice AS lotto_codice,
-    l.stato_lotto,
-    NULL::bigint AS fattura_id,
-    NULL::smallint AS fattura_anno,
-    NULL::character varying AS fattura_serie,
-    NULL::bigint AS fattura_numero,
-    te.task_code,
-    te.error_code,
-    te.error_message AS messaggio,
-    te.started_at AS data_evento,
-    l.emittente_soggetto_ruolo_id
-   FROM ((task_err te
-     JOIN vendite.fatturazione_lotti l ON ((l.id = te.lotto_id)))
-     CROSS JOIN escope)
-  WHERE ((escope.sr_ids IS NULL) OR (l.emittente_soggetto_ruolo_id = ANY (escope.sr_ids)))
-UNION ALL
- SELECT 'FATTURA_CRITICA'::character varying AS tipo_evento,
-    fk.competenza_mese,
-    fk.lotto_id,
-    l2.codice AS lotto_codice,
-    l2.stato_lotto,
-    fc.id AS fattura_id,
-    fc.anno AS fattura_anno,
-    fc.serie AS fattura_serie,
-    fc.numero AS fattura_numero,
-    NULL::character varying AS task_code,
-    NULL::character varying AS error_code,
-    fc.messaggio,
-    fc.data_ora AS data_evento,
-    fc.emittente_soggetto_ruolo_id
-   FROM (((fatture_critiche fc
-     JOIN fatture_competenze fk ON ((fk.fattura_id = fc.id)))
-     LEFT JOIN vendite.fatturazione_lotti l2 ON ((l2.id = fk.lotto_id)))
-     CROSS JOIN escope)
-  WHERE ((escope.sr_ids IS NULL) OR (fc.emittente_soggetto_ruolo_id = ANY (escope.sr_ids)));
+ SELECT e.tipo_evento,
+    e.competenza_mese,
+    e.lotto_id,
+    e.lotto_codice,
+    e.stato_lotto,
+    e.fattura_id,
+    e.fattura_anno,
+    e.fattura_serie,
+    e.fattura_numero,
+    e.task_code,
+    e.error_code,
+    e.messaggio,
+    e.data_evento,
+    e.emittente_soggetto_ruolo_id,
+    s_ef.ragione_sociale_completa AS emittente_ragione_sociale
+   FROM ((eventi e
+     LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = e.emittente_soggetto_ruolo_id)))
+     LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)));
 ```
 
 

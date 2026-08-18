@@ -160,7 +160,9 @@ Esempio per CLIENTE:
 | `fn_get_search_detail` | `script` | Funzione — dettaglio livello 2 (3 parametri: soggetto_id, tipo_ruolo_id, utility_id opzionale) |
 | `fn_get_indirizzo` | `script` | Funzione — risoluzione indirizzo con catena fallback (usata nel livello 2) |
 | `tipi_ruoli` | `config` | Tabella — colonna `ricerca_visibile` |
-| `fn_get_emittenti_scope` | `script` | Funzione — scope emittente |
+| `fn_get_emittenti_scope_sr_effettivo` | `script` | Funzione — scope emittente EFFETTIVO, risolto dalla GUC `app.current_user_id` dentro `fn_search_soggetti_universale` (dal 2026-08-18): `p_emittente_ids` può solo **restringere**, mai allargare |
+| `fn_check_ba_visible_for_emittenti` | `script` | Funzione — filtro di visibilità del billing account per il ramo `CL` |
+| `fn_get_ba_emittente_sr_id` | `script` | Funzione — «quale emittente fattura questo billing account»; alimenta la colonna `emittente_ragione_sociale` del livello 1 (dal 2026-08-18) |
 
 ## File backend
 

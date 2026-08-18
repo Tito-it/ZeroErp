@@ -9,7 +9,7 @@ CREATE FUNCTION fn_search_soggetti_universale(p_search_term text, p_tipo_ruolo_i
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_search_soggetti_universale(p_search_term text, p_tipo_ruolo_id integer, p_emittente_ids bigint[] DEFAULT NULL::bigint[], p_limit integer DEFAULT 50, p_offset integer DEFAULT 0, p_order_by text DEFAULT NULL::text, p_order_dir text DEFAULT 'ASC'::text)
- RETURNS TABLE(total_count bigint, soggetto_id uuid, soggetto_ruolo_id bigint, tipo_ruolo_id integer, soggetto_codice text, ragione_sociale_completa text, id_fiscale_univoco text, utility_list text)
+ RETURNS TABLE(total_count bigint, soggetto_id uuid, soggetto_ruolo_id bigint, tipo_ruolo_id integer, soggetto_codice text, ragione_sociale_completa text, id_fiscale_univoco text, utility_list text, emittente_ragione_sociale text)
  LANGUAGE plpgsql
  STABLE
 AS $function$
@@ -80,6 +80,12 @@ BEGIN
   -- Validazione e normalizzazione ordinamento.
   -- p_order_by: se NULL usa default, se valorizzato deve essere
   -- nella whitelist c_allowed_order_cols.
+  -- ⚠️ `emittente_ragione_sociale` NON e' nella whitelist, ed e'
+  --   voluto: e' un aggregato (string_agg su piu' billing
+  --   account) e ordinarci sopra ordinerebbe per la stringa
+  --   concatenata, non per emittente. Se un giorno servira'
+  --   ordinare, sara' una decisione di merito — non un'aggiunta
+  --   meccanica alla lista.
   v_order_col := COALESCE(btrim(p_order_by), 'ragione_sociale_completa');
 
   IF NOT (v_order_col = ANY(c_allowed_order_cols)) THEN
@@ -216,15 +222,39 @@ BEGIN
     with_utility AS (
       -- CTE 2: aggrega utility (codice_interno) per soggetti trovati.
       -- LEFT JOIN leggero, produce NULL per ruoli non-cliente.
+      --
+      -- ⭐ R-5: nello STESSO giro si aggrega anche l''emittente.
+      --   Un soggetto puo'' avere piu'' righe cliente (una per
+      --   billing account), quindi piu'' emittenti: string_agg
+      --   tiene la riga UNA e li elenca. E'' l''opzione A del
+      --   brief — la riga e'' un soggetto, e un soggetto non ha
+      --   un emittente: il legame e'' transitivo via BA.
       SELECT
         f.*,
         string_agg(DISTINCT u.codice_interno, '', '' ORDER BY u.codice_interno)
-          AS utility_list
+          AS utility_list,
+        string_agg(DISTINCT s_ef.ragione_sociale_completa::text, '', ''
+                   ORDER BY s_ef.ragione_sociale_completa::text)
+          AS emittente_ragione_sociale
       FROM filtered f
         LEFT JOIN anagrafiche.clienti cl
           ON cl.soggetto_ruolo_id = f.soggetto_ruolo_id
         LEFT JOIN config.utilities u
           ON u.id = cl.utility_id
+        -- ⚠️ Il filtro sullo scope sta QUI, nella ON, e non e''
+        --   ridondante col filtro di riga: la riga si vede se e''
+        --   visibile per ALMENO un emittente autorizzato, ma la
+        --   colonna deve elencare SOLO quelli autorizzati. Senza
+        --   questa riga, un soggetto cliente di A e di B
+        --   mostrerebbe «A, B» anche a chi ha in whitelist il
+        --   solo A — rivelando l''esistenza di B. Con scope NULL
+        --   (super admin) il filtro non morde: e'' il caso per
+        --   cui la colonna e'' stata chiesta.
+        LEFT JOIN anagrafiche.soggetti_ruoli sr_ef
+          ON sr_ef.id = script.fn_get_ba_emittente_sr_id(cl.billing_account_id)
+         AND ($5::bigint[] IS NULL OR sr_ef.id = ANY($5::bigint[]))
+        LEFT JOIN anagrafiche.soggetti s_ef
+          ON s_ef.id = sr_ef.soggetto_id
       GROUP BY
         f.soggetto_id, f.soggetto_ruolo_id, f.tipo_ruolo_id,
         f.soggetto_codice, f.ragione_sociale_completa,
@@ -249,7 +279,8 @@ BEGIN
       p.soggetto_codice,
       p.ragione_sociale_completa,
       p.id_fiscale_univoco,
-      p.utility_list
+      p.utility_list,
+      p.emittente_ragione_sociale
     FROM paged p
   ', v_exists_clause, v_emittente_clause, c_hard_cap, v_order_clause)
   USING p_tipo_ruolo_id, v_search_pattern, v_limit, v_offset, v_scope;
@@ -257,7 +288,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_search_soggetti_universale(p_search_term text, p_tipo_ruolo_id integer, p_emittente_ids bigint[], p_limit integer, p_offset integer, p_order_by text, p_order_dir text)
-IS 'Ricerca universale soggetti per tipo ruolo (livello 1). Cerca su ragione_sociale_completa, id_fiscale_univoco_cf_piva, codice soggetto e codice entita'' dinamico. Ordinamento dinamico: p_order_by (whitelist), p_order_dir (ASC/DESC). Paginazione LIMIT/OFFSET + COUNT(*) OVER(). Hard cap 10.000. Rev 2026-08-18 (brief perimetro-emittente Q2/C): lo scope emittente si risolve QUI, dalla GUC app.current_user_id via fn_get_emittenti_scope_sr_effettivo. p_emittente_ids resta in firma ma puo'' solo RESTRINGERE: nessun valore passato dal chiamante puo'' allargare cio'' che la funzione mostra. Prima il filtro si accendeva su p_emittente_ids IS NOT NULL, quindi lo scope vuoto — in cui Python appiattisce [] — valeva «nessuna restrizione». Filtro applicato solo per tipo ruolo CL (unico con billing account): perimetro preesistente, non ampliato qui. PARALLEL SAFE rimosso: la catena dello scope e'' STABLE e basta.';
+IS 'Ricerca universale soggetti per tipo ruolo (livello 1). Cerca su ragione_sociale_completa, id_fiscale_univoco_cf_piva, codice soggetto e codice entita'' dinamico. Ordinamento dinamico: p_order_by (whitelist), p_order_dir (ASC/DESC). Paginazione LIMIT/OFFSET + COUNT(*) OVER(). Hard cap 10.000. Rev 2026-08-18 (brief perimetro-emittente Q2/C): lo scope emittente si risolve QUI, dalla GUC app.current_user_id via fn_get_emittenti_scope_sr_effettivo. p_emittente_ids resta in firma ma puo'' solo RESTRINGERE: nessun valore passato dal chiamante puo'' allargare cio'' che la funzione mostra. Prima il filtro si accendeva su p_emittente_ids IS NOT NULL, quindi lo scope vuoto — in cui Python appiattisce [] — valeva «nessuna restrizione». Filtro applicato solo per tipo ruolo CL (unico con billing account): perimetro preesistente, non ampliato qui. PARALLEL SAFE rimosso: la catena dello scope e'' STABLE e basta. ⭐ Rev 2026-08-18 (R-5, Fase E): espone `emittente_ragione_sociale` in coda. AGGREGATA (string_agg), non moltiplicata: la riga resta UNA per soggetto perche'' un soggetto NON ha un emittente — il legame e'' transitivo via billing account (guide/soggetti-e-ruoli-anagrafici §5a-bis). Una riga per emittente spezzerebbe anche total_count, che conta soggetti. ⚠️ La colonna e'' FILTRATA dallo scope effettivo: chi ha in whitelist il solo A, su un soggetto cliente di A e di B legge «A», non «A, B» — una colonna nata per disambiguare non deve rivelare emittenti fuori perimetro. ⚠️ NULL sui rami non-CL: un fornitore non ha billing account, quindi non ha emittente. E'' la risposta giusta, non un buco. ⚠️ NON ordinabile: e'' un aggregato, ordinarci sopra ordinerebbe per la stringa concatenata.';
 ```
 
 ---

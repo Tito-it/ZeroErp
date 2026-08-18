@@ -949,8 +949,16 @@ erDiagram
     aree_funzionali ||--o{ area_model_overrides : "riassegna"
 ```
 
-> **Nota:** `user_emittenti_fiscali` e' una whitelist opzionale —
-> se l'utente non ha righe, puo' operare su tutti gli emittenti.
+> **Nota:** `user_emittenti_fiscali` e' l'assegnazione **1-a-1** fra operatore
+> ed emittente: al massimo una riga per utente (`UNIQUE(auth_user_id)`).
+> ⚠️ **Dal 2026-08-18 e' FAIL-CLOSED**: se l'utente non ha righe non vede
+> **nessun** emittente. La riga mancante e' un errore di configurazione, non un
+> permesso — prima valeva il contrario (vedeva tutti gli emittenti ed era
+> indistinguibile da un super admin), ed e' il difetto che P-2a ha chiuso.
+> L'unico attore legittimamente multi-emittente e' il **SUPER_ADMIN**, che passa
+> da `fn_is_super_admin` e non da questa tabella. Chi e' rimasto senza
+> assegnazione si vede in `dbops.vw_operatori_senza_emittente`, che **deve
+> restare a zero righe**.
 > `area_model_overrides` e' usata raramente, solo quando un model
 > deve appartenere a un'area diversa dal suo schema.
 

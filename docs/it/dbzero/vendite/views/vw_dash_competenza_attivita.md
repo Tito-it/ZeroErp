@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_dash_competenza_attivita.md" %}
 # 🔍 View `vw_dash_competenza_attivita`
 
+> 📝 **Descrizione**
+>
+> Lente 1 Competenza, grana ATTIVITA': una riga per attivita' di commessa con lo stadio del ciclo (DA_APPROVARE / DA_EMETTERE / EMESSA_NON_FATTURATA / FATTURATA), il valore, il collegamento a fattura e lotto e lo stato della commessa. Alimenta il drill-down commesse, che il backend AGGREGA per commessa. SCOPE EMITTENTE via fn_get_emittenti_scope_sr_ids(GUC): fail-closed. security_invoker=on. ⭐ Rev 2026-08-18 (R-4, brief perimetro-emittente Fase E): aggiunta in coda `emittente_ragione_sociale`. Il drill-down puo' metterla nel GROUP BY in sicurezza: l'emittente e' una colonna di vendite.commesse e commessa_id ne e' la chiave primaria, quindi una commessa non puo' avere attivita' di emittenti diversi — l'emittente non sta sull'attivita'. La colonna nel GROUP BY serve comunque: su una colonna di VISTA PostgreSQL non deduce la dipendenza funzionale. ⚠️ Due catene distinte sulle stesse tabelle: sr/s sono il CLIENTE (via billing account), sr_ef/s_ef l'EMITTENTE. Scambiarle non darebbe nessun errore, solo un nome sbagliato a video.
+
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql
@@ -54,8 +58,9 @@ SELECT ca.competenza_mese,
     sc.emittibile AS commessa_emittibile,
     sc.codice_interno AS commessa_stato_codice_interno,
     COALESCE(sc.descrizione, sc.codice) AS commessa_stato_descrizione,
-    co.billing_account_id
-   FROM (((((((((((vendite.commesse co
+    co.billing_account_id,
+    s_ef.ragione_sociale_completa AS emittente_ragione_sociale
+   FROM (((((((((((((vendite.commesse co
      JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
      JOIN vendite.commesse_attivita ca ON ((ca.commessa_id = co.id)))
      LEFT JOIN vendite.attivita_fatturabili af ON ((af.commessa_attivita_id = ca.id)))
@@ -65,6 +70,8 @@ SELECT ca.competenza_mese,
      LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = co.billing_account_id)))
      LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
      LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+     LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = co.emittente_soggetto_ruolo_id)))
+     LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
      LEFT JOIN LATERAL ( SELECT flf.lotto_id
            FROM vendite.fatturazione_lotti_fatture flf
           WHERE (flf.fattura_id = f.id)

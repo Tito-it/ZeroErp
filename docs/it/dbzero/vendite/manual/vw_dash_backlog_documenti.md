@@ -75,4 +75,40 @@ ORDER BY anzianita_giorni DESC;
 
 ---
 
+
+---
+
+### 🆕 `emittente_ragione_sociale` *(R-4, 18-08-2026)*
+
+Il nome dell'emittente arriva in coda alla proiezione, su **tutti e tre** i rami.
+
+⚠️ **Qui il problema era doppio**, e la seconda metà è la più insidiosa:
+
+1. come per la Situazione aperta, la proiezione è a colonne **esplicite** e non
+   eredita dalla vista a monte;
+2. i due rami **RESI** non hanno `emittente_soggetto_ruolo_id` (lì è `NULL`) ma
+   hanno `emittente_fiscale_id`. Risolvere il nome solo dal soggetto-ruolo
+   avrebbe lasciato muto **l'intero blocco resi** — e siccome i resi sono una
+   minoranza delle righe, sarebbe passato per «qualche riga senza emittente»
+   invece che per un ramo mai risolto.
+
+⭐ **La cura è una sola catena di JOIN, non due.**
+`emittenti_fiscali.soggetto_ruolo_id` è `NOT NULL` con `UNIQUE`: fra emittente
+fiscale e soggetto-ruolo c'è una corrispondenza uno-a-uno. Basta un `COALESCE`
+sulla **chiave** — prima il soggetto-ruolo se c'è, altrimenti quello dedotto
+dall'id fiscale — e la risoluzione del nome resta scritta una volta.
+
+⚠️ `emittente_soggetto_ruolo_id` sui rami resi **resta `NULL`** come prima.
+Valorizzarla sarebbe un miglioramento vero, ma è un cambio di semantica di una
+colonna esistente e va deciso a parte.
+
+⚠️ **Il flag `multi_emittente` della lista NON si accende insieme alla colonna.**
+Si guadagna dopo, quando la colonna mostra un nome su dati veri (brief
+perimetro-emittente §7, decisione 3). Il controllo automatico
+`dbops.vw_liste_multi_emittente_non_certificate` deve restare a zero righe.
+
+* Test: `db/pgtap/vendite/test-viste-dash-emittente-v1.sql`.
+
+---
+
 {% include-markdown "signature-core.md" %}

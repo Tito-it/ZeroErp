@@ -1,0 +1,115 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R-4 — 2 di 5. La vista che il brief dava per «eredita».
+#
+# ⚠️ 🔴 QUESTO CHANGESET NON ERA NEL BRIEF, e la ragione va scritta perche' e'
+#    un tranello che si ripresenta. R-4 elencava TRE viste, dicendo che la
+#    lista «Situazione aperta — documenti» eredita la colonna da
+#    vw_dash_fatturazione_documenti. Il dato in effetti nasce li'. Ma questa e'
+#    una vista SEPARATA, con proiezione a COLONNE ESPLICITE — e una proiezione
+#    esplicita non eredita niente: elenca. Aggiungere la colonna a monte e
+#    fermarsi avrebbe prodotto il peggiore degli esiti: migrazione verde,
+#    catalogo seedato, e la colonna a video vuota — con nessun errore da
+#    nessuna parte a spiegare perche'.
+#
+#    ⭐ La verifica che lo ha fatto emergere e' banale e va rifatta ogni volta:
+#    guardare COSA LEGGE IL BACKEND, non cosa dice il grafo delle viste.
+#    `vendite_repository.py` legge `vw_dash_aperto_documenti`, non la union a
+#    monte.
+#
+# ⚠️ Ordine dei changeSet: questo DEVE avere numero maggiore di -61, che e'
+#    quello che crea la colonna a monte. L'autogen di Liquibase ordina per
+#    numero, e senza la colonna a monte questa REPLACE fallisce con «column
+#    does not exist».
+#
+# ⚠️ security_invoker = on va RI-SPECIFICATA o PostgreSQL la azzera: su questa
+#    vista ci si appoggia lo scope emittente.
+#
+# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-fase-e-e-ricerca.md
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260818-62-update-vw-dash-aperto-documenti-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260818-62-update-vw-dash-aperto-documenti-emittente
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        R-4 (2 di 5): `emittente_ragione_sociale` in coda a
+        vw_dash_aperto_documenti. ⚠️ Non era nel brief, che dava questa lista
+        per «eredita»: la vista ha proiezione a colonne ESPLICITE e una
+        proiezione esplicita non eredita, elenca — e il backend legge questa,
+        non la union a monte. Senza, la migrazione sarebbe verde e la colonna
+        vuota a video. Brief Fase E, R-4.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM information_schema.columns
+               WHERE table_schema = 'vendite'
+                 AND table_name = 'vw_dash_fatturazione_documenti'
+                 AND column_name = 'emittente_ragione_sociale';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_aperto_documenti
+              WITH (security_invoker=on) AS
+              SELECT d.area,
+                  d.documento_id,
+                  d.documento_uid,
+                  d.codice,
+                  d.emittente_fiscale_id,
+                  d.emittente_soggetto_ruolo_id,
+                  d.cliente_display,
+                  d.fase,
+                  d.stato_codice_interno,
+                  d.stato_codice,
+                  d.valore_totale,
+                  d.unita_totali,
+                  d.motivo_fermo,
+                  d.data_riferimento,
+                  -- R-4: arriva gia' risolta da monte (20260818-61). Qui non
+                  -- c'e' nessuna JOIN da rifare: c'e' da ELENCARLA, che e'
+                  -- esattamente il punto che il brief aveva dato per scontato.
+                  d.emittente_ragione_sociale
+                 FROM vendite.vw_dash_fatturazione_documenti d
+                WHERE ((d.area)::text <> 'COMMESSE'::text)
+                  AND (NOT d.is_abortito)
+                  AND (d.is_transitato IS DISTINCT FROM true)
+                  AND ((d.fase)::text <> 'CHIUSO'::text);
+
+              COMMENT ON VIEW vendite.vw_dash_aperto_documenti IS
+                  'Situazione aperta v2 (serbatoio pre-commessa): stock dei documenti APERTI E '
+                  'NON CONCLUSI delle 4 aree (PREVENTIVI/ORDINI/OFFERTE/CONTRATTI — no '
+                  'COMMESSE, coperte dalla Lente 1), SENZA asse temporale. Perimetro (DL-15): '
+                  'area<>COMMESSE AND NOT is_abortito AND is_transitato IS DISTINCT FROM true '
+                  'AND fase<>CHIUSO. Eliminato il concetto "transitato" (DL-14): via '
+                  'is_transitato/is_aperto(col)/valore_transitato/unita_transitate dalla '
+                  'proiezione. Perimetro unico per vw_dash_aperto_riepilogo e per il '
+                  'drill-down BE (il filtro "aperti da oltre N giorni" e'' BE-side su '
+                  'data_riferimento). security_invoker=on (scope emittente RLS). '
+                  '⭐ Rev 2026-08-18 (R-4, brief perimetro-emittente Fase E): aggiunta in coda '
+                  '`emittente_ragione_sociale`, che arriva gia'' risolta da '
+                  'vw_dash_fatturazione_documenti. ⚠️ Andava ELENCATA: la proiezione e'' a '
+                  'colonne esplicite e non eredita nulla dalla vista a monte — il brief dava '
+                  'questa lista per «eredita» e sarebbe uscita una colonna vuota senza nessun '
+                  'errore a segnalarlo.';
+      rollback:
+        - sql:
+            sql: |
+              -- Nessun rollback automatico: rimuovere una colonna da una vista
+              -- richiede DROP + ricreazione della catena a valle.
+              SELECT 1;
