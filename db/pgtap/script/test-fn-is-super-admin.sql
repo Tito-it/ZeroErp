@@ -96,16 +96,44 @@ $$;
 
 CREATE TEMP TABLE _t_id (idx int, identita_id bigint);
 
--- Identita 1: attiva, aperta (per caso 4, 7)
-WITH ins AS (
-    INSERT INTO anagrafiche.identita_digitali
-        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-    SELECT s.sr_id, a.auth_user_id, 'CLIENTE_PORTALE', true
-      FROM _t_srs s JOIN _t_au a ON a.idx = s.rn
-     WHERE s.rn = 1
-    RETURNING id
-)
-INSERT INTO _t_id (idx, identita_id) SELECT 1, id FROM ins;
+-- Identita 1 (casi 4 e 7): si RIUSA un'identita OPERATORE gia' esistente.
+-- 🔴 Corretto il 2026-08-18. La fixture creava un'identita 'CLIENTE_PORTALE',
+--   ma `fn_is_super_admin` richiede per contratto «una identita OPERATORE
+--   attiva con binding SUPER_ADMIN attivo»: il filtro sul ruolo e' arrivato
+--   con PR-B del 2026-04-21 (context-aware, fail-closed sui contesti
+--   portale/shop) e la fixture non e' stata aggiornata. Il caso 4 chiedeva
+--   `true` a un'identita di PORTALE, e la funzione rispondeva `false` — cioe'
+--   correttamente.
+--   ⚠️ E il caso 7 («binding disattivato -> false») era verde per la ragione
+--   SBAGLIATA: sarebbe stato false comunque perche' portale. Ora misura la
+--   disattivazione del binding, che e' il suo oggetto.
+--
+--   ⛔ Non si CREA un'identita OPERATORE: il soggetto_ruolo di questa fixture
+--   viene da `billing_account` (e' un cliente) e i guard anagrafici la
+--   rifiutano — «non e' stata assegnata la relazione soggetti_ruoli».
+--   Costruirne una valida vorrebbe una risorsa umana con PF pura: troppa
+--   impalcatura per il soggetto di questo test.
+--   ⭐ Si riusa un'identita OPERATORE vera SENZA binding SUPER_ADMIN attivo, e
+--   glielo si aggiunge. Il file e' transazionale: il binding sparisce al
+--   ROLLBACK.
+INSERT INTO _t_id (idx, identita_id)
+SELECT 1, id.id
+  FROM anagrafiche.identita_digitali id
+ WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+   AND id.attivo = true
+   AND NOT EXISTS (
+       SELECT 1 FROM config.profili_accesso_bindings b
+         JOIN config.profili_accesso pa ON pa.id = b.profilo_accesso_id
+        WHERE b.identita_digitale_id = id.id AND b.attivo = true
+          AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+   )
+ ORDER BY id.id LIMIT 1;
+
+-- I casi 4 e 7 interrogano per auth_user: allineo _t_au all'identita scelta.
+UPDATE _t_au SET auth_user_id = (
+    SELECT id.auth_user_id FROM anagrafiche.identita_digitali id
+     WHERE id.id = (SELECT identita_id FROM _t_id WHERE idx = 1))
+ WHERE idx = 1;
 
 -- Identita 2: attiva, nessun binding (caso 5)
 WITH ins AS (

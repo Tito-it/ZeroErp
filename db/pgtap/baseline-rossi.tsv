@@ -31,7 +31,6 @@ db/pgtap/catalogo/test-articoli-componenti-solo-componente.sql	ASSERZIONE
 db/pgtap/catalogo/test-articoli-vincoli-note-uom-overlap.sql	ERRORE_FIXTURE
 db/pgtap/catalogo/test-fn-riattiva-articolo-v1.sql	ERRORE_FIXTURE
 db/pgtap/catalogo/test-vw-articoli-componenti-note.sql	ERRORE_FIXTURE
-db/pgtap/config/test-tipi-ruoli-nature-ammesse.sql	ERRORE_FIXTURE
 db/pgtap/dbops/test-automazione-guard-utility-tipo-ruolo.sql	ERRORE_FIXTURE
 db/pgtap/documenti/test-documenti-template-documenti.sql	ERRORE_FIXTURE
 db/pgtap/pagamenti/test-compensazioni-contabili-model.sql	ERRORE_FIXTURE
@@ -40,17 +39,6 @@ db/pgtap/pratiche/test-workflow-definizioni-fase2b.sql	ERRORE_FIXTURE
 db/pgtap/rls/test-rls-fatture-ef-whitelist-functional.sql	ERRORE_FIXTURE
 db/pgtap/rls/test-rls-ordini-multipolicy.sql	ERRORE_FIXTURE
 db/pgtap/rls/test-rls-viste-security-invoker.sql	ASSERZIONE
-db/pgtap/script/test-available-actions-requires-righe-v1.sql	ASSERZIONE
-db/pgtap/script/test-fn-available-actions-preventivo-genera-ordine-v1.sql	ASSERZIONE
-db/pgtap/script/test-fn-change-user-emittenti-scope.sql	ASSERZIONE
-db/pgtap/script/test-fn-check-user-can-create-ba.sql	ERRORE_FIXTURE
-db/pgtap/script/test-fn-disdetta-cliente.sql	ERRORE_FIXTURE
-db/pgtap/script/test-fn-get-soggetto-dati-and-user-profile.sql	ERRORE_FIXTURE
-db/pgtap/script/test-fn-get-uo-id-for-user.sql	ASSERZIONE
-db/pgtap/script/test-fn-get-user-emittenti-scope.sql	ERRORE_FIXTURE
-db/pgtap/script/test-fn-get-user-profile-guc-aware.sql	ERRORE_FIXTURE
-db/pgtap/script/test-fn-is-super-admin.sql	ASSERZIONE
-db/pgtap/script/test-guard-utility-tipo-ruolo.sql	ERRORE_FIXTURE
 db/pgtap/script/test-seed-stati-doc-ordini-evaso-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-attivita-fatturabili.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-attivita-lotto-info-v1.sql	ERRORE_FIXTURE

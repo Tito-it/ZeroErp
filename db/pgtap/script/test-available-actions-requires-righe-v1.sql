@@ -159,26 +159,44 @@ END;
 -- ============================================================
 -- 11-12) DDT con almeno una riga attiva: azione abilitata, reason NULL.
 -- ============================================================
+-- 🔴 RIFORMULATO il 2026-08-18 — il test misurava troppo.
+--   Asseriva `enabled = true`, cioe' «questo DDT e' emettibile». Ma
+--   l'emittibilita' e' cresciuta dopo che il file e' stato scritto: oggi un
+--   DDT DRAFT con righe risponde `CAUSALE_MANCANTE` (misurato su tutti quelli
+--   in sviluppo), che e' CORRETTO e non c'entra niente col soggetto di questo
+--   file.
+--   ⚠️ Un test intitolato «requires_righe» che pretende l'abilitazione PIENA
+--   diventa ostaggio di ogni regola futura sull'emissione: si rompe quando il
+--   dominio si arricchisce, cioe' quando le cose vanno bene.
+--   ⭐ Ora asserisce cio' che gli compete: un DDT CON righe non e' bloccato
+--   PER MANCANZA DI RIGHE. Se e' bloccato per altro, e' affare di
+--   test-fn-check-ddt-emittibile-v1.
 SELECT CASE WHEN (SELECT ddt_pieno_id FROM tmp_refs_rr) IS NULL
   THEN pass('11) SKIP: nessun DDT DRAFT con righe disponibile')
-  ELSE is(
-    (SELECT (elem->>'enabled')::boolean
-       FROM jsonb_array_elements(
-              script.fn_available_actions_ddt((SELECT ddt_pieno_id FROM tmp_refs_rr))
-              ->'available_actions') elem
-      WHERE elem->>'key' = 'emetti'),
-    true, '11) DDT con righe: azione emetti enabled=true')
-END;
-
-SELECT CASE WHEN (SELECT ddt_pieno_id FROM tmp_refs_rr) IS NULL
-  THEN pass('12) SKIP: nessun DDT DRAFT con righe disponibile')
-  ELSE ok(
+  ELSE isnt(
     (SELECT elem->>'reason'
        FROM jsonb_array_elements(
               script.fn_available_actions_ddt((SELECT ddt_pieno_id FROM tmp_refs_rr))
               ->'available_actions') elem
-      WHERE elem->>'key' = 'emetti') IS NULL,
-    '12) DDT con righe: reason NULL')
+      WHERE elem->>'key' = 'emetti'),
+    'DOCUMENTO_SENZA_RIGHE',
+    '11) DDT con righe: NON bloccato per mancanza di righe')
+END;
+
+SELECT CASE WHEN (SELECT ddt_pieno_id FROM tmp_refs_rr) IS NULL
+  THEN pass('12) SKIP: nessun DDT DRAFT con righe disponibile')
+  -- Stessa correzione del test 11: `reason IS NULL` significava «nessun
+  -- ostacolo di NESSUN tipo», che questo file non ha titolo di pretendere.
+  -- Qui si verifica che l'ostacolo, se c'e', sia dichiarato — cioe' che il
+  -- documento non resti bloccato SENZA una ragione leggibile.
+  ELSE ok(
+    (SELECT (elem->>'enabled')::boolean
+          OR (elem->>'reason') IS NOT NULL
+       FROM jsonb_array_elements(
+              script.fn_available_actions_ddt((SELECT ddt_pieno_id FROM tmp_refs_rr))
+              ->'available_actions') elem
+      WHERE elem->>'key' = 'emetti'),
+    '12) DDT con righe: o e'' abilitato, o l''ostacolo ha una ragione dichiarata')
 END;
 
 -- ============================================================

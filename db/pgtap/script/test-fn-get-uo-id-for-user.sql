@@ -70,11 +70,29 @@ CREATE TEMP TABLE _t_setup (
 
 INSERT INTO _t_setup (case_2_au, case_3_au, case_4_au, case_4_expected_uo)
 VALUES (
-    -- Caso 2: primo auth_user con identita CLIENTE_PORTALE attiva
+    -- Caso 2: primo auth_user CLIENTE_PORTALE e NON operatore.
+    -- 🔴 `NOT EXISTS` aggiunto il 2026-08-18. Prendeva «il primo auth_user con
+    --   identita CLIENTE_PORTALE attiva» — ma la funzione ha per chiave
+    --   l'AUTH_USER, non l'identita', e in un modello MULTI-VESTE lo stesso
+    --   auth_user puo' essere insieme CLIENTE_PORTALE e OPERATORE. In sviluppo
+    --   l'utente 1 lo e' (lo dimostra test-fn-get-user-profile-guc-aware, che
+    --   su quella coppia trovava gia' la riga).
+    --   Quindi la funzione rispondeva con la UO della veste OPERATORE — cioe'
+    --   CORRETTAMENTE — e il test la leggeva come una fuga di perimetro.
+    --   ⚠️ Il difetto era nella scelta del soggetto, non nella funzione:
+    --   l'intestazione del file dice «utente NON operatore -> NULL», e la
+    --   query non lo imponeva. Ora si sceglie chi ha SOLO la veste portale;
+    --   se non esiste, il CASE sotto fa skip dichiarato.
     (SELECT id.auth_user_id
        FROM anagrafiche.identita_digitali id
       WHERE id.ruolo_applicativo = 'CLIENTE_PORTALE'
         AND id.attivo = true
+        AND NOT EXISTS (
+            SELECT 1 FROM anagrafiche.identita_digitali o
+             WHERE o.auth_user_id = id.auth_user_id
+               AND o.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+               AND o.attivo = true
+        )
       ORDER BY id.auth_user_id
       LIMIT 1),
     -- Caso 3: auth_user con identita OPERATORE attiva ma UO non
@@ -125,7 +143,17 @@ SELECT CASE
         NULL::integer,
         '2. Utente CLIENTE_PORTALE -> NULL (filtro ruolo OPERATORE)'
     )
-    ELSE skip('Nessuna identita CLIENTE_PORTALE attiva nel DB: test 2 skippato', 1)
+    -- 🔴 SKIP ONESTO — 2026-08-18. Il messaggio diceva «nessuna identita
+    --   CLIENTE_PORTALE attiva»: falso, ce ne sono. A mancare e' un auth_user
+    --   con la SOLA veste portale, e sono ZERO (misurato).
+    --   ⚠️ Quindi questo caso NON e' coperto, e va detto: uno skip che racconta
+    --   la ragione sbagliata e' peggio di un rosso, perche' sembra una scelta.
+    --   ⭐ Costruire la precondizione e' stato tentato e NON si puo' a buon
+    --   mercato: spegnere la veste OPERATORE di un utente multi-veste urta
+    --   `prevent_deactivate_if_children` (ha figli attivi), e creare un
+    --   auth_user nuovo vuole un soggetto_ruolo CL libero piu' i guard di
+    --   identita'. Resta un DEBITO DI COPERTURA dichiarato, non una svista.
+    ELSE skip('Nessun auth_user con la SOLA veste CLIENTE_PORTALE (misurato: 0): il filtro ruolo NON e'' verificato — debito di copertura dichiarato', 1)
 END;
 
 -- =========================================================

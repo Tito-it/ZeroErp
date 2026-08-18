@@ -70,11 +70,16 @@ LIMIT 1;
 
 CREATE TEMP TABLE tmp_check_user AS
 SELECT au.id AS user_id
+-- 🔴 RIFERIMENTO MORTO rimosso il 2026-08-18: `rau.ruolo_sistema` non esiste
+--   piu'. Il cutover multi-face-auth (90_end/20260429-19a e -20) ha eliminato
+--   la colonna e l'enum `config.ruolo_sistema`, e ha sostituito la tabella con
+--   una VISTA su identita_digitali. `au.is_active` + `rau.attivo` dicono gia'
+--   «utente utilizzabile» nel modello nuovo: il predicato si TOGLIE, non si
+--   sostituisce con un equivalente inventato.
 FROM django.auth_user au
 JOIN anagrafiche.risorse_umane_auth_user rau ON rau.auth_user_id = au.id
 WHERE au.is_active = true
   AND rau.attivo = true
-  AND rau.ruolo_sistema <> 'DISABILITATO'::config.ruolo_sistema
 ORDER BY au.id
 LIMIT 1;
 

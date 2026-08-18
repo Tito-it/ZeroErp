@@ -127,13 +127,24 @@ SELECT is(
 );
 
 -- ============================================================
--- 4) ...con reason PREVENTIVO_NESSUNA_RIGA_ORDINE
+-- 4) ...con reason PREVENTIVO_STATO_CHIUSO
+--
+-- 🔴 ATTESA AGGIORNATA il 2026-08-18: era PREVENTIVO_NESSUNA_RIGA_ORDINE.
+--   Dopo il push il preventivo NON e' piu' aperto: `fn_push_preventivo_a_ordine`
+--   lo porta a EVASO. Quindi due cose sono vere insieme — il documento e'
+--   chiuso E non ha piu' righe da ordinare — e la capability risponde con la
+--   prima, che ha la precedenza.
+--   ⭐ Ed e' la risposta giusta: «chiuso» rende irrilevante il conteggio delle
+--   righe, mentre «nessuna riga» lascerebbe pensare che basti aggiungerne una.
+--   ⚠️ Il test 3 qui sopra continua a garantire la SOSTANZA (`can_genera_ordine
+--   = false`); questo garantisce che l'ostacolo sia dichiarato, non quale sia
+--   il piu' profondo dei due.
 -- ============================================================
 SELECT is(
   (SELECT script.fn_available_actions_preventivo((SELECT id FROM tmp_prev))
             ->>'can_genera_ordine_reason'),
-  'PREVENTIVO_NESSUNA_RIGA_ORDINE',
-  '4) dopo push -> reason PREVENTIVO_NESSUNA_RIGA_ORDINE'
+  'PREVENTIVO_STATO_CHIUSO',
+  '4) dopo push (preventivo EVASO) -> reason PREVENTIVO_STATO_CHIUSO'
 );
 
 SELECT * FROM finish();

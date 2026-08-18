@@ -96,6 +96,18 @@ BEGIN
         RETURN;
     END IF;
 
+    -- 🔴 PULIZIA D'INGRESSO, aggiunta il 2026-08-18.
+    --   Il test crea la SECONDA veste dell'utente 1 (multi-veste: OPERATORE +
+    --   CLIENTE_PORTALE) per verificare che la GUC scelga quale prevale. Ma
+    --   `uq_identita_digitali_auth_user_ruolo` e' unica su
+    --   (auth_user_id, ruolo_applicativo), e in sviluppo quella veste ORA
+    --   ESISTE gia' come dato vero: l'INSERT moriva e con lui l'intero file.
+    --   ⚠️ La fixture dava per scontato che nessuno avesse gia' quella veste.
+    --   Il file e' transazionale: l'identita' vera torna al ROLLBACK.
+    DELETE FROM anagrafiche.identita_digitali
+     WHERE auth_user_id = 1
+       AND ruolo_applicativo = 'CLIENTE_PORTALE'::config.ruolo_applicativo;
+
     INSERT INTO anagrafiche.identita_digitali
         (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
     VALUES (v_sr_cl, 1, 'CLIENTE_PORTALE', true);

@@ -40,7 +40,14 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(6);
+-- 🔴 plan 6 -> 7 il 2026-08-18: le asserzioni erano SEMPRE state sette (il
+--   punto 2 ne ha due: `changed=true` e la riga effettivamente scritta), ma il
+--   file moriva alla prima e il piano sbagliato non si e' mai visto.
+--   ⚠️ Un piano piu' basso del numero di asserzioni non e' un dettaglio
+--   formale: pgTAP lo segnala come «Bad plan» e rende ROSSO un file in cui
+--   tutte le asserzioni passano — cioe' nasconde il verde, dopo aver nascosto
+--   il rosso.
+SELECT plan(7);
 
 -- =========================================================
 -- Helper SA standard
@@ -92,6 +99,25 @@ $$;
 -- =========================================================
 -- Setup OPERATORE non-SA libero (no binding, no user_emittenti_fiscali)
 -- =========================================================
+-- 🔴 FIXTURE RICOSTRUITA il 2026-08-18.
+--   Cercava un operatore che fosse GIA' in stato GLOBAL — senza binding e senza
+--   riga in `user_emittenti_fiscali` — e si affidava al fatto che in sviluppo
+--   ne esistesse uno. Dal cantiere perimetro emittente (DL-A) quegli operatori
+--   sono a ZERO: la ricerca tornava vuota, `au_id` usciva NULL e la funzione
+--   sollevava «p_auth_user_id non valido: NULL». Sei asserzioni su sei perse.
+--
+--   ⚠️ La fixture non costruiva la precondizione: la CERCAVA, e ha smesso di
+--   trovarla il giorno in cui il progetto ha sistemato i dati. E' lo stesso
+--   difetto che ha gia' colpito test-permessi-user-overrides — «prendi il primo
+--   e spera» — solo al contrario: li' il dato reale c'era di troppo, qui manca.
+--
+--   ⭐ Ora lo stato GLOBAL si COSTRUISCE: si prende un operatore vero e gli si
+--   toglie la riga di scope. Il DELETE passa dall'override GUC perche' la
+--   tabella ha un guard sul delete.
+--   ⛔ E si toglie a mano invece di chiamare `fn_change_user_emittenti_scope`
+--   con array vuoto: sarebbe la funzione SOTTO TEST a costruire la propria
+--   precondizione, e un difetto in lei renderebbe il test verde per errore.
+--   Il file e' transazionale: lo scope vero torna al ROLLBACK.
 CREATE TEMP TABLE _t_user AS
 SELECT id.auth_user_id AS au_id
   FROM anagrafiche.identita_digitali id
@@ -101,11 +127,12 @@ SELECT id.auth_user_id AS au_id
        SELECT 1 FROM config.profili_accesso_bindings pab
         WHERE pab.identita_digitale_id = id.id AND pab.attivo = true
    )
-   AND NOT EXISTS (
-       SELECT 1 FROM config.user_emittenti_fiscali uef
-        WHERE uef.auth_user_id = id.auth_user_id
-   )
  ORDER BY id.auth_user_id LIMIT 1;
+
+SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
+DELETE FROM config.user_emittenti_fiscali
+ WHERE auth_user_id = (SELECT au_id FROM _t_user);
+SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
 
 -- Due EF attivi (per il caso SINGLE con id reale)
 CREATE TEMP TABLE _t_ef AS
