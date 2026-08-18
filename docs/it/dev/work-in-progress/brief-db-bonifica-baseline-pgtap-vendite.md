@@ -114,6 +114,117 @@ coppia commessa/attivita' — stessa storia gia' registrata da
 `test-drop-uq-commesse-attivita-src-uid-partial-v1`. L'asserzione e' stata
 **spostata** sulla chiave viva, non tolta.
 
+## `anagrafiche` — 27 rossi a 17 (2026-08-19)
+
+Lo schema col 71% del debito. **Non erano 23 bug: era una premessa decaduta**,
+la stessa in tutti i file piu' vecchi della suite:
+
+> «uso un identificativo fisso, e alla prossima corsa cancello e ricomincio»
+
+Oggi un soggetto non si cancella (`dbops.automation_delete_block_ruoli` dal
+2026-01-23 su 8 tabelle di ruolo, piu' FK RESTRICT), quindi la «pulizia
+d'ingresso» in testa al file falliva e il file moriva **prima della prima
+asserzione**. ⛔ E i residui non vanno cancellati: sotto i 16 soggetti di prova
+ci sono 37 istanze utility e 16 clienti.
+
+**Il rimedio e' non collidere invece di cancellare.** Dieci file chiusi, **96
+asserzioni** che prima non venivano eseguite affatto.
+
+### Gli strati, in ordine di comparsa
+
+Si presentano sempre in quest'ordine, ed e' il motivo per cui il conteggio dei
+rossi cala molto piu' lentamente del lavoro fatto:
+
+1. pulizia d'ingresso ormai impossibile (delete-block, FK RESTRICT);
+2. identificativo fiscale bruciato da un residuo
+   (`uq_soggetto_idstato_id_fiscale_univoco`);
+3. colonne diventate NOT NULL dopo la scrittura del test (`competenza_dal/al`,
+   `codice_fiscale` sulle PG, `categoria_cliente_id` su billing_account);
+4. ⭐ **la finestra differita** — vedi sotto;
+5. valori con UNIQUE proprio (REA, codice SDI, PEC, civico normalizzato);
+6. `finish()` rimasto dopo il `ROLLBACK` (pgTAP perde la sua temp table).
+
+### ⭐ La finestra differita, che e' la parte che non si indovina
+
+Su `anagrafiche.soggetti` ci sono **tre guard `DEFERRABLE INITIALLY DEFERRED`**
+(dati societari, indirizzi, contatti). Sono differiti **apposta**: un soggetto
+e' una SAGA — testata, dati societari, indirizzi obbligatori, contatto — e la
+completezza ha senso verificarla quando la saga e' finita.
+
+Ma il preambolo obbligatorio dei pgTAP impone `SET CONSTRAINTS ALL IMMEDIATE`
+(guardrail in CI), e con IMMEDIATE quei guard scattano sul **primo** INSERT,
+cioe' prima che la saga possa esistere. Serve aprire la finestra
+(`ALL DEFERRED`) e **richiuderla** (`ALL IMMEDIATE`) a saga completa.
+
+⚠️ La richiusura non e' facoltativa: senza, la chiusura in `ROLLBACK` porta via
+i vincoli differiti **non verificati** e il test e' verde per sottrazione.
+
+### Gli helper — `dbops`, non `script`
+
+`20260818-76` e `20260818-77`, cinque funzioni. In `dbops` e non in `script`
+non per tassonomia (i permessi sono identici) ma perche' **fabbricano dati di
+anagrafica**: una funzione che fa `INSERT INTO anagrafiche.soggetti` dentro lo
+schema in cui l'applicazione chiama e' una tentazione che qualcuno raccoglie.
+
+| funzione | cosa fa |
+| --- | --- |
+| `fn_pgtap_piva_libera()` | P.IVA valida e mai usata |
+| `fn_pgtap_piva_libera(p_skip)` | ⚠️ la stessa, saltando le prime N — **serve**: due chiamate nella stessa ISTRUZIONE tornano lo stesso valore, perche' e' l'insert a occupare un identificativo e dentro una sola SELECT non ce n'e' |
+| `fn_pgtap_cf_libero()` | codice fiscale valido e libero. Il carattere di controllo non si calcola, si **cerca** provando l'alfabeto e chiedendo a `script.fn_valida_codice_fiscale`: reimplementare l'algoritmo vorrebbe dire tenerne due copie |
+| `fn_pgtap_crea_soggetto_pg()` | la saga completa, dentro la finestra differita |
+| `fn_pgtap_crea_soggetto_ruolo()` | il layer RUOLO, che ha matrice e guard **suoi** — un indirizzo di soggetto non soddisfa il guard del ruolo |
+
+⭐ Non esisteva niente del genere: gli unici `fn_pgtap_*` impostano il
+**contesto** di sessione. `create-cliente.sql` si era scelto un CF a mano, con
+un commento che descrive parola per parola questo problema.
+
+### 🔴 Reperti fuori perimetro test
+
+1. **Il gestore del sistema e' un residuo di pgTAP.** In tutto il database c'e'
+   un solo `anagrafiche.gestori`: `Gestore Zero ERP - Test pgTAP`, del
+   2025-11-25, lasciato dal COMMIT di `create-soggetto-gestori`. E' un
+   singleton globale: se qualcosa risolve «il gestore» per valuta o
+   `cd_prod_software`, sta leggendo una riga di prova.
+2. ✅ **Messaggio d'errore che manda fuori strada — CORRETTO** (`20260819-01`,
+   vedi sotto).
+3. **`forma_giuridica` non esiste piu'** su `anagrafiche.dati_societari` (oggi
+   `forma_giuridica_id`, FK): un test la inseguiva ancora.
+
+### ✅ Il messaggio che mandava fuori strada — chiuso il 2026-08-19
+
+Due guard **diversi** condividevano `E_TIPO_INDIRIZZO_NON_PERMESSO`:
+
+* `trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo` — layer RUOLO, legge
+  `config.tipi_ruolo_tipi_indirizzo`;
+* `trgfn_indirizzi_soggetti_guard_tipo_indirizzo` — layer SOGGETTO, legge
+  `config.tipi_soggetto_dettaglio_tipi_indirizzo`.
+
+Il messaggio e' scritto per il primo: *«Tipo indirizzo %s non permesso per
+tipo_ruolo_id %s (soggetto_ruolo_id=%s)»*, nota *«Verificare
+config.tipi_ruolo_tipi_indirizzo»*.
+
+⚠️ **L'arita' torna** — tre segnaposto, tre valori — quindi niente si rompe e
+nessun cancello se ne accorge. Il guasto e' **semantico**: sul layer soggetto
+il secondo valore e' un `tipo_soggetto_dettaglio_id` e il terzo un
+`soggetto_id`, ma il messaggio li battezza altrimenti e manda a controllare una
+tabella dove il problema non c'e' e non ci sara' mai. ⭐ **Un messaggio
+plausibile e falso costa piu' di un messaggio assente**: chi lo legge non
+sospetta niente e cerca dove gli e' stato detto. E' successo davvero durante
+questa bonifica — tre query buttate a inseguire un ruolo «Gestore» che con la
+riga in errore non c'entrava nulla.
+
+**Corretto** con un codice proprio del layer soggetto,
+`E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO` (id messaggio 929), e il guard
+che lo usa (`20260819-01`). Il codice vecchio resta al guard dei ruoli, per cui
+e' sempre stato giusto: non si generalizza il messaggio a entrambi, perche' uno
+buono per due casi non e' preciso per nessuno — e la nota, che e' la parte
+utile, dovrebbe sparire.
+
+🔴 **Richiesta al backend**: rigenerare `apps/core/services/error_policies_generated.py`
+per il codice nuovo. Si somma a quella gia' aperta per `W_MESSAGGIO_ARITA`.
+
+---
+
 ## Restano 5
 
 | file | tipo | nota |

@@ -42,8 +42,8 @@
 | **2** · P-2 | il task `popola_fatture_rettifiche` a registry, impl, pipeline e task_policy · `20260818-68` (numero esplicito in `fn_check_lotto_annullabile`) · `20260818-69` (il commento che spiega perché `fn_cleanup_fatture_by_ids` **non** si tocca) | ✅ **applicato** |
 | **3** · P-5 | `20260818-71` — `fn_annulla_accredito_riga_reso` + 4 codici (924-927) + 18 pgTAP | ✅ **applicato e verde** |
 | **§10** | `20260818-73` — il conto della merce smette di contare l'annullato | ✅ **applicato e verde** |
-| **4** · P-3 | il gate della rinuncia in `fn_check_rinuncia_reversibile` | 🔴 **aperto** — dipendeva dal passo 3, che ora è chiuso |
-| **5** · P-6 | i registri per emittente (5b prerequisito nel cantiere perimetro, 5c il guard sulla disattivazione) | 🔴 **aperto** |
+| **4** · P-3 | il gate della rinuncia in `fn_check_rinuncia_reversibile` | 🟡 **piano in §12**, in lavorazione |
+| **5** · P-6 | i registri per emittente | 🟡 **piano in §12**, in lavorazione. ⭐ Il prerequisito 5b rientra QUI: il cantiere perimetro emittente ha chiuso parcheggiandolo per iscritto |
 | **6** · P-7 | il `meta` kit della rettifica: ereditato per intero + guard 928 · `20260818-75` | ✅ **applicato e verde** — trovato dallo smoke end-to-end del BE, verificato dallo stesso smoke (15/15) |
 
 **Verifica end-to-end** (2026-08-18): sette file pgTAP verdi, compresi i sei che
@@ -1465,6 +1465,120 @@ una condizione: la soluzione si sceglie sul modello, il dato semmai si bonifica
 dopo.
 
 ---
+
+---
+
+## 12. ▶ Piano di chiusura — P-3 e P-6 · 2026-08-19
+
+> Scritto per **chiudere**, non per tracciare. Il rimpallo fra cantieri finisce
+> qui: quello che segue si fa in questo brief, con questi numeri.
+>
+> ⛔ Come sempre: **nessuna migrazione viene applicata dal team DB.**
+
+### Cosa è stato verificato prima di scriverlo (2026-08-19)
+
+| Verifica | Esito |
+| --- | --- |
+| `script.fn_check_rinuncia_reversibile` | 🔴 ha **solo** il ramo «riga inesistente», poi `RETURN` con la lista vuota. Il suo commento si autodefinisce *«GATE DORMIENTE … è il PUNTO DI INNESTO»* |
+| `anagrafiche.fn_get_emittente_fiscale_id` | 🔴 legge ancora **direttamente** `emittenti_fiscali_billing_account`, due volte (mapping + `is_default`): è la terza copia, intatta |
+| trigger `prevent_deactivate` su `emittenti_fiscali_billing_account` | 🔴 assente. Ci sono `default_guard` e `guard_albero_emittente`, entrambi del cantiere emittente |
+| `vendite.fn_get_registro_id` | ✅ **la macchina è pronta**: ha già `p_emittente_soggetto_ruolo_id` e il fallback a quattro livelli con l'`ORDER BY` giusto |
+| chi la chiama | ✅ `fn_build_fattura_key` passa l'emittente, risolvendolo con `anagrafiche.fn_get_emittente_fiscale_id` |
+
+⭐ **Due conseguenze che cambiano il piano.**
+
+**1. EM-1 è già chiusa.** Il rilievo re-instradato qui dal BE — *«i registri
+intestati a un emittente sono irraggiungibili dalla pipeline»* — non è più vero:
+la catena `fn_build_fattura_key → fn_get_registro_id` passa l'emittente. Non
+serve lavoro, serve **l'asserzione** che lo fissa (5e).
+
+**2. 🔴 5b non è igiene, è chirurgia sul percorso caldo.** `fn_get_emittente_fiscale_id`
+è la funzione che `fn_build_fattura_key` usa per **scegliere il registro su cui
+numerare**. Cambiarla dopo 5d significherebbe toccare il selettore mentre è in
+uso su registri appena intestati. **Va prima**, e da sola.
+
+---
+
+### P-3 · il gate della rinuncia — passo 4
+
+Un ramo dentro `script.fn_check_rinuncia_reversibile`, nella forma che la
+funzione già usa (`{codice, reason, reason_key, dettaglio}`): *esiste una riga
+in `vendite.resi_righe_accrediti` per questa riga di reso*.
+
+| | Cosa | File |
+| --- | --- | --- |
+| **A1** | 1 codice errore nuovo a catalogo — il commento della funzione dice esplicitamente di non averlo registrato prima *«per non lasciare a catalogo un codice mai sollevato»*. Ora si solleva | append ai 2 CSV |
+| **A2** | il ramo nella funzione + il vincolo reciproco nel commento | `20260819-02` |
+| **A3** | il vincolo reciproco anche nel commento di `fn_annulla_accredito_riga_reso` | `20260819-03` (solo `COMMENT ON`) |
+| **A4** | pgTAP | `test-rinuncia-gate-accredito-v1.sql` |
+
+⚠️ **Ordine dei rami**: il nuovo va **dopo** «riga inesistente», che ritorna
+subito — quello è l'**identità** della riga, non una sua condizione.
+
+⚠️ **La funzione è pura e `STABLE`**: produce un motivo, **non solleva**. È
+`fn_riapri_riconsegna_reso` a sollevare il primo motivo prodotto, e **non si
+tocca**.
+
+⭐ **Il vincolo reciproco di C-3, scritto in ENTRAMBI i commenti**: *il gate si
+auto-ripara perché l'annullo **CANCELLA** le righe di ponte. Se un giorno
+diventasse un soft-delete, questo ramo va cambiato insieme* — altrimenti
+vieterebbe per sempre una rinuncia ormai reversibile, **in silenzio**, perché
+nessuno dei due lati sarebbe sbagliato da solo.
+
+🔴 **Richiesta al FE (FE-1), fuori dal perimetro DB**: la chiave i18n
+`vendite.resi.rinuncia_reason.accredito_eseguito` in
+`frontend/src/locales/it.json` e `en.json`, sul modello di
+`…rinuncia_reason.riga_inesistente`. Il DB scrive **solo il `reason_key`**:
+senza la chiave, l'utente vede l'identificatore grezzo.
+
+**Test**: accredito → rinuncia **non** riapribile; annullo → **riapribile di
+nuovo**. ⭐ Il secondo verso è quello che verifica l'accoppiamento: senza, il
+test passerebbe anche con un gate che non si spegne mai.
+
+---
+
+### P-6 · i registri per emittente — passo 5
+
+Quattro changeSet, in **quest'ordine**, e l'ordine è portante.
+
+**B1 · 5b — la terza copia si unifica** → `20260819-04`
+`anagrafiche.fn_get_emittente_fiscale_id` delega a
+`script.fn_get_ba_emittente_sr_id`, **mantenendo il raise
+`E_EMITTENTE_DEFAULT_MISSING` dove è oggi**: la delegata risponde `NULL`, la
+chiamante decide se sollevare. ⚠️ È la divergenza di §11.11, e va conservata —
+la delegata la usano anche i lettori, che un `NULL` lo sanno gestire.
+⭐ Le due logiche sono già identiche: mapping specifico, poi `is_default`. Cambia
+**dove vive la regola**, non cosa dice.
+
+**B2 · 5c — il guard sulla disattivazione (D-P6-1)** → `20260819-05`
+Seed nell'automazione `prevent_deactivate_if_children`: figlia
+`anagrafiche.emittenti_fiscali_billing_account`, colonna
+`emittente_soggetto_ruolo_id` → `soggetto_ruolo_id`, flag `attivo`.
+⚠️ **Prima di B3**: dopo l'intestazione dei registri, disattivare un emittente
+diventa una porta aperta su un percorso fiscale, e il guard deve esserci già.
+
+**B3 · 5d — intestazione + registri nuovi, UN SOLO changeSet (C-7)** → `20260819-06`
+Nello stesso file e in quest'ordine: `UPDATE` registri **3, 4, 5** →
+`emittente_soggetto_ruolo_id = 72`; `INSERT` dei **tre registri** dell'emittente
+**159** (Front-office `R2`, Back-office `R1`, NC serie vuota); `INSERT` in
+`tipi_doc_fiscale_registri` delle coppie `(tipo_doc, natura)` verso i tre nuovi.
+⛔ **Mai in due changeSet**: fra il passo 1 e il 3 esiste una finestra in cui
+159 non può numerare (`E_CONFIG_MANCANTE`).
+⚠️ `registri_fatturazione.codice` è **UNIQUE** → codici distinti; le **serie** si
+ripetono, ed è voluto (D-P6-2: la serie significa **canale**, non azienda).
+🟢 Nessun rischio sui documenti esistenti: le 6 fatture di 72 restano sul
+registro 3, che diventa suo, e la serie 1→6 continua senza salti.
+
+**B4 · 5e — pgTAP** → `test-registri-per-emittente-v1.sql`
+* ogni registro attivo ha un `emittente_soggetto_ruolo_id` valorizzato — è il
+  presidio che impedisce di tornare indietro;
+* per **ciascuno** dei due emittenti, `fn_get_registro_id` risolve un registro
+  **diverso** su ogni coppia `(tipo_doc, natura)` in uso — ⭐ è anche
+  l'asserzione che chiude **EM-1**;
+* ⭐ nessun registro è raggiungibile da due emittenti: dice che i buchi nella
+  serie (C-4) non possono ripresentarsi;
+* ⭐ **il guard di D-P6-1 morde**: disattivare un emittente con billing account
+  mappati fallisce. Su un emittente di prova, **non** su 72 o 159.
 
 ---
 

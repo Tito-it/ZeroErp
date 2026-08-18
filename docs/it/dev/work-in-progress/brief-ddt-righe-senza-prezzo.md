@@ -2,10 +2,12 @@
 
 > **Tipo**: brief (decisione presa, perimetro da chiudere) · **Data**: 2026-08-17 ·
 > **rev**: 2026-08-18 analisi critica e piano DB (§7–§12) · **rev**: 2026-08-19
-> tabella D-3 **chiusa** (decisione di Tid sul #3, ramo morto sul #7 → R-10, F-4) ·
-> **Owner**: Tid · **Stato**: 🟡 **APERTO** — decisione di dominio presa; il
-> perimetro DB è **verificato, misurato e pianificato** (§7, §9, §12), quello
-> BE/FE è **scritto come richiesta** (§10). Nessuna migrazione applicata.
+> **decisioni chiuse** — D-3 #3 (esito) e D-5 (K2) decise da Tid; D-3 #7 si è
+> rivelato un ramo morto (R-10, F-4) ·
+> **Owner**: Tid · **Stato**: 🟡 **APERTO** — ⭐ **nessuna decisione pendente: il
+> piano DB del §9 è eseguibile così com'è.** Perimetro DB verificato, misurato e
+> pianificato (§7, §9, §12); perimetro BE/FE scritto come richiesta (§10).
+> Nessuna migrazione applicata.
 >
 > ⚠️ **I §1, §3 e §4 sono stati scritti prima della verifica su codice e DB.**
 > Si leggano insieme al **§7**, che ne corregge tre premesse: il DB ammette già
@@ -346,10 +348,15 @@ diverse e solo una è giusta:
   categorie_clienti_listini oppure assegnare un contratto individuale al BA»* —
   è la riparazione vera.
 
-Il meccanismo esatto è **lato BE** (`_KNOWN_DB_ERROR_MARKERS` in
-`pricing_service.py` + `ErrorManager.raise_from_database_error`) e non l'ho
-isolato: non è perimetro DB e non serve al piano. Va come **F-4** nel registro,
-con il dato che lo dimostra.
+⭐ **Approfondito e documentato a parte.** Accoppiando le righe per contesto
+identico, **587 su 587** hanno una gemella: prima `E_CATEGORIA_LISTINO_NON_MAPPATA`,
+poi — **55 millisecondi dopo**, troppo poco per una seconda azione dell'operatore
+— quella col codice fantasma, entrambe sotto `function_name='pricing_service.resolve'`.
+È la stessa richiesta che logga due volte con due codici diversi. Il **meccanismo**
+non l'ho isolato (serve un debugger sul BE) ma ho escluso cinque ipotesi, e il
+tutto è in [brief-be-pricing-codice-errore-fantasma](brief-be-pricing-codice-errore-fantasma.md),
+che è la sede giusta: **il difetto non è del DDT, è del pricing**, quindi di ogni
+dominio che lo chiama. Qui resta solo il rimando (**F-4**).
 
 ---
 
@@ -432,20 +439,37 @@ Alternativa scartata: ri-valutare `fn_check_ddt_emittibile` a ogni cambio di
 causale. Costa uguale, e non copre il caso «già pushato e poi cambiato», dove il
 problema non è più la validità ma la **coerenza con quanto già in commessa**.
 
-### D-5 — Compositi: decisione **richiesta a Tid**
+### D-5 — Compositi: **K2, allentamento simmetrico** ✅ *deciso da Tid il 2026-08-19*
 
-| | K1 — limite dichiarato | K2 — allentamento simmetrico ⭐ |
+| | K1 — limite dichiarato | **K2 — allentamento simmetrico** ⭐ **scelto** |
 |---|---|---|
 | Cosa fa | Il kit non viaggia senza prezzi. Si migliora solo il **messaggio** e lo si scrive nella doc | Il componente ammette il prezzo assente quando il documento non vende, con la **stessa** regola del padre (la causale) |
-| Costo DB | ~0 (una riga di CSV messaggi + una nota) | 5 punti, di cui uno delicato (C3) |
-| Cosa resta rotto | Campionatura / conto visione **di un kit** — che è un caso di vendita ordinario | nulla di noto |
-| Rischio | zero | il ricalcolo del padre (C3): se non si tocca, produce una **somma parziale silenziosa** |
+| Costo DB | ~0 (una riga di CSV messaggi + una nota) | 5 punti (slice C), di cui uno delicato (**C2**) |
+| Cosa resta rotto | Campionatura / conto visione / riparazione **di un kit** | nulla di noto |
+| Rischio | zero | il ricalcolo del padre (**C2**): se non si tocca, produce una **somma parziale silenziosa** |
 
-Raccomando **K2**, perché K1 lascia irrisolto un caso che l'azienda incontra
-davvero (mandare in visione un prodotto composito) e perché la simmetria «padre e
-figli obbediscono alla stessa dichiarazione» è la stessa idea di DL-28. Ma è una
-decisione di dominio: sui 16 articoli compositi attivi in sviluppo, 9 righe di DDT
-li usano — non è un angolo remoto.
+**Motivazione della scelta.** K1 lasciava irrisolto un caso ordinario — mandare in
+visione, in campionatura o in riparazione un prodotto composito — e lo lasciava
+irrisolto per un motivo che non regge al confronto col padre: la riga-kit e le
+sue righe-componente descrivono **la stessa merce sullo stesso documento**, e non
+c'è ragione perché obbediscano a due regole diverse su cosa significhi «questo
+documento non vende». La simmetria «padre e figli obbediscono alla stessa
+dichiarazione» è la stessa idea di DL-28, applicata un livello più sotto.
+
+⛔ **La condizione della scelta è C2, e non è negoziabile.** Il prezzo del kit è
+`SUM(prezzo componente × coefficiente)`. Oggi
+`script.fn_ricalcola_prezzo_padre_da_componenti` usa una `SUM` semplice e il suo
+stesso commento dichiara la premessa che K2 rimuove: *«SUM standard è sufficiente
+(no NULL propagation) — prezzo sempre NOT NULL»*. Tolta la NOT NULL, quella `SUM`
+**ignora** il componente senza prezzo e restituisce la somma dei rimanenti: un
+prezzo **sbagliato**, non un prezzo **assente**, e nessuno se ne accorge. Un kit a
+prezzo assente è un caso che il gate all'emissione intercetta; un kit a prezzo
+parziale passa il gate e finisce in fattura. **C2 va scritto e va scritto prima
+di C1** (§9).
+
+⭐ Perimetro dell'allentamento: **solo `vendite.ddt_righe_componenti`**.
+Preventivi, ordini e contratti restano NOT NULL — lì il prezzo mancante è un
+difetto vero, e la quarta casella del §6 dice esattamente questo.
 
 ---
 
@@ -510,7 +534,7 @@ nuovi su fixture vecchie. Da confrontare con `scripts/pgtap-baseline.sh vendite`
 > un invariante da Python al DB, dove il progetto ha deciso che stia. Priorità
 > **media** — se il tempo è poco, si fa dopo A e C.
 
-### Slice C — I compositi *(subordinata a D-5 = K2)*
+### Slice C — I compositi *(D-5 = **K2**, deciso 2026-08-19: slice **confermata**)*
 
 | # | Oggetto | Fase | Tipo | Note |
 |---|---|---|---|---|
@@ -548,8 +572,9 @@ D (documentale) ─────────────────────�
 * **A da sola**: nessun effetto visibile. È il prerequisito di tutto il resto.
 * **A + BE-1**: chiude 3 delle 5 caselle del §6 (righe semplici, gate esercitato,
   ordini e preventivi invariati).
-* **+ C**: chiude il caso kit. Senza C, il kit resta bloccato e **va scritto**:
-  è un limite dichiarato, non una svista.
+* **+ C**: chiude il caso kit (visione, campionatura, riparazione di un
+  composito). Non è più opzionale — D-5 l'ha scelta — ma resta **l'ultima** in
+  ordine di dipendenza: senza A non ha da chi farsi dire «non risolvo».
 * **B** e **D** sono indipendenti e possono entrare in qualunque momento.
 
 ### Registro (fuori perimetro, da non perdere)
@@ -562,14 +587,17 @@ D (documentale) ─────────────────────�
 * **F-3** (R-6) — l'omaggio con rivalsa IVA non è rappresentabile: `OMAGGIO` è
   `fatturabile=false`, quindi non arriva mai a fattura. Da riprendere sull'asse
   `config.nature_doc_fiscale`, non su quello del prezzo.
-* **F-4** (R-10) — ⛔ **BE, e con effetto sull'operatore**: `pricing_service`
-  produce `E_PREZZO_LISTINO_NON_TROVATO` (587 volte) per un fallimento che è in
-  realtà `E_CATEGORIA_LISTINO_NON_MAPPATA` — e il DB quel codice non lo solleva
-  da aprile. Il banner d'errore manda a controllare i listini invece della
-  matrice categoria→listino. Da verificare in `_KNOWN_DB_ERROR_MARKERS` /
-  `ErrorManager.raise_from_database_error`. **Indipendente da questo brief e più
-  urgente di così com'è scritto qui**: tocca ogni dominio che usa il pricing,
-  non solo il DDT.
+* **F-4** (R-10) — ⛔ **BE, e con effetto sull'operatore.** ➡️ **Uscito da questo
+  registro: ha un brief suo**,
+  [brief-be-pricing-codice-errore-fantasma](brief-be-pricing-codice-errore-fantasma.md)
+  (DB → BE, 2026-08-19), perché tocca **ogni dominio che chiama il pricing** e in
+  un registro «fuori perimetro» di un brief sui DDT si sarebbe perso.
+  In sintesi: `pricing_service` scrive `E_PREZZO_LISTINO_NON_TROVATO` 587 volte
+  per un fallimento che è `E_CATEGORIA_LISTINO_NON_MAPPATA`, e il DB quel codice
+  non può sollevarlo dal 2026-04-14. Le **587 righe sbagliate hanno tutte e 587
+  una gemella corretta**, stesso contesto, scritta **55 ms prima**: è la stessa
+  richiesta che logga due volte. Il banner manda l'operatore sui listini invece
+  che sulla matrice categoria→listino.
 
 ---
 
@@ -614,7 +642,7 @@ l'indicazione di **chi** chiude ogni casella.
 | # | Casella (§6) | Chi | Stato oggi |
 |---|---|---|---|
 | 1 | Si carica una riga di DDT senza prezzo, articolo **semplice** | A + BE-1 | ⛔ bloccato dal BE |
-| 1-bis | …articolo **composito** | C (se K2) | ⛔ bloccato dal DB, tre volte |
+| 1-bis | …articolo **composito** | C (K2 ✅) | ⛔ bloccato dal DB, tre volte |
 | 2 | Causale fatturabile → emissione **blocca**, parlante, nomina la riga | — | ✅ **già fatto**, provato dai pgTAP; diventa raggiungibile in-app con la casella 1 |
 | 3 | Causale non fatturabile → si emette e resta fuori da card e lister | — | ✅ **già fatto** (`fn_list_ddt_da_pushare`, `vw_dash_fatturazione_ddt`), con controprova a test |
 | 3-bis | …**e** resta fuori anche se qualcuno cambia la causale dopo | B | ⛔ oggi difeso solo in Python |
