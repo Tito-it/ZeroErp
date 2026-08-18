@@ -2118,7 +2118,8 @@ sarebbe rimasto lì per sempre. Rilievo accolto, **rimedio modificato**: la riga
 NON sparisce (il pannello è per ordine e sparire lo renderebbe vuoto), sparisce
 il numero — `da_spedire` NULL e `stato` col **settimo** valore `NON_IMPEGNATA`,
 con le partite che hanno la precedenza. changeSet `20260818-06`, pgTAP a 17.
-⛔ **Non applicato.** Analisi e richieste BE/FE nel §10 del brief archiviato.
+✅ **Applicato**, baseline senza regressioni, e il FE l'ha gia' assorbito nella
+stessa giornata. Analisi completa nel §10 del brief archiviato.
 
 ✅ **Pushata e integrata il 2026-08-18** (PR #1282). Il backend era stato
 costruito introspezionando la vista **viva**: il corpo pubblicato coincide.
