@@ -32,6 +32,10 @@ DECLARE
   v_pagina_dim       ui.lista_preset.pagina_dimensione%TYPE := 25;
   v_profili_ids      INTEGER[];
   v_colonne_nuove    INTEGER := 0;
+  -- I codici mergiati dal catalogo al passo 3. Servono al passo 5-bis per
+  -- ricontarli DOPO il filtro dei permessi: senza, il contatore annuncia
+  -- colonne che la funzione ha appena tolto (brief §4-ter).
+  v_codici_mergiati  TEXT[]  := ARRAY[]::TEXT[];
   v_permessi         JSONB   := '{}'::JSONB;
 
   -- DB-4: veste corrente dalla GUC (raw TEXT per cast sicuro sotto)
@@ -269,8 +273,9 @@ BEGIN
       ),
       '[]'::JSONB
     ),
-    COUNT(*)::INTEGER
-  INTO v_config_colonne, v_colonne_nuove
+    COUNT(*)::INTEGER,
+    COALESCE(array_agg(lc.codice), ARRAY[]::TEXT[])
+  INTO v_config_colonne, v_colonne_nuove, v_codici_mergiati
   FROM ui.lista_colonna lc
  WHERE lc.lista_id = v_lista_id
    AND lc.attivo   = TRUE
@@ -367,6 +372,36 @@ BEGIN
 
   IF v_config_colonne IS NULL THEN
     v_config_colonne := '[]'::JSONB;
+  END IF;
+
+  -- -------------------------------------------------------
+  -- 5-bis. Ricalcolo di `colonne_nuove` DOPO il filtro dei permessi.
+  --
+  --   Il passo 3 conta le colonne mergiate dal catalogo; il passo 5 qui sopra
+  --   ne toglie quelle BLOCCATO. Senza questo ricalcolo il contatore annuncia
+  --   una colonna che la funzione ha appena rimosso: chi guarda vede il badge
+  --   «c'e' una personalizzazione nuova», apre il pannello e non trova nulla,
+  --   senza modo di distinguere fra «cerco male», «e' rotto» ed «esiste ma non
+  --   mi e' concessa».
+  --
+  --   ⚠️ Il contatore deve dire cio' che l'utente puo' davvero TROVARE, non
+  --   cio' che e' stato mergiato. I due numeri divergono ogni volta che una
+  --   colonna e' `sensibile = TRUE` senza un grant in ui.lista_colonna_permesso.
+  --
+  --   Difetto trovato dal team BE il 2026-08-17
+  --   (brief-db-dash-competenza-gruppi-cliente-e-ricerca.md §4-ter). Era
+  --   LATENTE su OGNI lista, non su una sola, e non si era mai visto perche'
+  --   nessuno aveva mai seminato una colonna sensibile.
+  --
+  --   ⚠️ La posizione e' l'intera correzione: nella funzione ci sono DUE
+  --   blocchi `IF v_config_colonne IS NULL THEN`, e l'altro sta PRIMA del
+  --   filtro dei permessi. Ricontare li' non correggerebbe nulla.
+  -- -------------------------------------------------------
+  IF v_colonne_nuove > 0 THEN
+    SELECT COUNT(*)::INTEGER
+      INTO v_colonne_nuove
+      FROM jsonb_array_elements(v_config_colonne) AS elem
+     WHERE (elem ->> 'codice') = ANY (v_codici_mergiati);
   END IF;
 
   -- -------------------------------------------------------

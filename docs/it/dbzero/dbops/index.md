@@ -111,6 +111,7 @@
 - [vw_function_list](views/vw_function_list.md) — * Agevolare il **discovery** delle funzioni personalizzate per manutenzione e documentazione. * Rendere immediatamente disponibili:
 - [vw_indici_ridondanti_prefisso](views/vw_indici_ridondanti_prefisso.md) — (latest review 27-07-26)
 - [vw_non_editable_fields](views/vw_non_editable_fields.md) — (latest review 2026-05-22 — aggiunto riferimento al sistema lock condizionali)
+- [vw_operatori_senza_emittente](views/vw_operatori_senza_emittente.md)
 - [vw_parameter_fk_surrogate_dangling](views/vw_parameter_fk_surrogate_dangling.md) — (latest review 02-05-2026)
 - [vw_riferimenti_morti_da_sanare](views/vw_riferimenti_morti_da_sanare.md)
 - [vw_riferimenti_morti_rientrati](views/vw_riferimenti_morti_rientrati.md)

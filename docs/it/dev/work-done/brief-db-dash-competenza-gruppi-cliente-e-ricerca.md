@@ -10,6 +10,19 @@
 > divergenza inesistente, una divergenza mancante e tre buchi di perimetro. Le
 > decisioni prese con Tid sono in **§4**.
 >
+> ✅ **Stato: COMPLETO E CHIUSO (2026-08-18).** DB, BE e FE realizzati, applicati
+> e mergiati; §4-bis e §4-ter chiusi (consuntivo in §4-quater); DL-1 e DL-2
+> misurati. Baseline `vendite` e `ui` senza regressioni.
+>
+> ⏸️ **Una sola casella resta aperta in §8, e non è lavoro**: la voce «cliente
+> non determinabile» (D-5) non ha soggetti su cui mostrarsi — DL-1 ha misurato
+> **zero billing account con padre**. Si chiude da sé quando finisce
+> [brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](../work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md).
+>
+> 📌 **Un lavoro è uscito da qui e vive altrove**: DL-2 ha trovato un costo che
+> la ricerca non c'entra (166 ms per 45 righe, il 78% per risolvere
+> `riferimento`) → [brief-db-riferimento-gruppi-lateral-costosa.md](../work-in-progress/brief-db-riferimento-gruppi-lateral-costosa.md).
+>
 > ⭐ **Stato al 2026-08-17 (sera): perimetro DB APPLICATO e VERDE.**
 >
 > - ✅ `20_code/vendite/20260817-04-update-vw-dash-competenza-attivita-billing-account-mctit.yaml`
@@ -40,6 +53,11 @@
 > sintomo incomprensibile è in **§4-ter**. Chi legge D-4 senza §4-bis riparte
 > dalla premessa sbagliata.
 >
+> ✅ **Entrambi CHIUSI il 2026-08-18.** `sensibile = f` era già applicato; il
+> difetto del contatore è corretto da `20_code/ui/20260818-04-update-fn-resolve-lista-config-contatore-colonne-nuove-mctit.yaml`,
+> applicato, con pgTAP dedicato (5/5) **provato rompendolo** e baseline `ui`
+> senza regressioni. Il consuntivo è in **§4-quater**.
+>
 > ⚠️ **La cosa più importante da leggere prima di tutto è §3.1**: il §1 del brief
 > originario prometteva che «i gruppi dello stesso cliente confluiscono sulla
 > stessa fattura». **Non è vero**, e non lo diventa con nessun filtro. Chi
@@ -47,7 +65,7 @@
 > promessa che il motore non può mantenere.
 >
 > **Dipendenze dichiarate**: due pezzi di questo brief poggiano su un cantiere
-> separato — [brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](brief-db-perimetro-emittente-liste-e-gerarchia-ba.md).
+> separato — [brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](../work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md).
 > Vedi **§9**.
 
 ---
@@ -158,7 +176,7 @@ costruzione**. Il manuale lo dice anche a parole.
 ⚠️ **Buco noto del guard**: il confronto è `IS DISTINCT FROM` e
 `id_fiscale_univoco_cf_piva` è **nullable**. Due BA entrambi senza codice
 fiscale passano il controllo anche se sono soggetti diversi. Registrato in
-[brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](brief-db-perimetro-emittente-liste-e-gerarchia-ba.md)
+[brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](../work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md)
 §4, non qui.
 
 ### 3.4 🔴 La ragione sociale **non è un asse di filtro**
@@ -439,8 +457,10 @@ concessa». È esattamente il sintomo incomprensibile che ha portato al rilievo.
 colonna `sensibile = t` senza grant. Non si era mai visto perché nessuno ne
 aveva mai seminata una.
 
-**Stato**: con la correzione di §4-bis il difetto torna **non attivabile** (non
-esiste più alcuna colonna `sensibile = t`). Resta da correggere.
+**Stato**: ✅ **CORRETTO il 2026-08-18** — `20260818-04`. Il consuntivo, con la
+prova che il test presidia davvero, è in §4-quater. Quanto segue resta perché
+descrive il difetto e il ragionamento con cui era stato rinviato: serve a chi
+rileggerà, non è più lavoro aperto.
 
 ⭐ **E dal 2026-08-17 non è più «non attivabile per fortuna»: c'è un cancello.**
 `apps/core/tests/test_liste_configurabili_seed.py` →
@@ -463,11 +483,92 @@ permessi — deve contare ciò che l'utente può davvero trovare, non ciò che �
 stato mergiato. In pratica: registrare al §3 i codici mergiati, e al §5
 ricontarli sull'array sopravvissuto.
 
-⚠️ **Perché non è stato corretto subito**: il rimedio è un `CREATE OR REPLACE` di
+~~⚠️ **Perché non è stato corretto subito**: il rimedio è un `CREATE OR REPLACE` di
 una funzione da ~350 righe da cui dipende **ogni lista del prodotto**, per
 sistemare un contatore che oggi non può sbagliare. Il momento giusto è quello in
 cui qualcuno userà davvero `sensibile = t` con i grant — la stessa modifica che
-lo rende visibile. Va fatto **prima** di quel seed, non dopo.
+lo rende visibile. Va fatto **prima** di quel seed, non dopo.~~
+
+⛔ **Superato il 2026-08-18 (insistenza del team BE, decisione di Tid).** Il
+rinvio aveva una logica, e un difetto: finché in un brief resta scritto «resta da
+correggere», il cantiere che l'ha scoperto **non si chiude** — e questo non è
+nemmeno un residuo suo, è un difetto dello schema `ui` che questo cantiere ha
+*trovato*. Correggerlo il giorno del seed protetto avrebbe inoltre significato
+mettere le mani in quella funzione **mentre** si introduce la condizione che la
+esercita: due cose insieme, ognuna difficile da isolare se qualcosa va storto.
+
+## 4-quater. ✅ Consuntivo della correzione (2026-08-18)
+
+`20_code/ui/20260818-04-update-fn-resolve-lista-config-contatore-colonne-nuove-mctit.yaml`,
+applicato. `ui.fn_resolve_lista_config` è **STABLE** e **SECURITY INVOKER**:
+nessun giro di `dbops.fn_sync_functions_owner`.
+
+### La modifica, in tre punti
+
+| Dove | Cosa |
+| --- | --- |
+| `DECLARE` | una variabile nuova: `v_codici_mergiati TEXT[]` |
+| passo **3** | oltre a *contarle*, registra i **codici** delle colonne mergiate |
+| passo **5-bis** | dopo il filtro dei permessi, li riconta sull'array sopravvissuto |
+
+Nient'altro è stato toccato.
+
+### ⚠️ La trappola che ha quasi rovinato la correzione
+
+Nella funzione ci sono **due** blocchi `IF v_config_colonne IS NULL THEN`: uno
+**prima** del filtro dei permessi e uno **dopo**. Il primo tentativo di ancorare
+l'inserimento è fallito su un assert proprio perché il blocco non era univoco.
+
+⭐ **Senza quell'assert il ricalcolo sarebbe finito nel punto sbagliato** — prima
+del filtro — dove avrebbe ricontato esattamente lo stesso numero. La correzione
+sarebbe risultata *applicata* e *inefficace*, che è il modo peggiore di
+chiudere un difetto. Il blocco nuovo è ancorato alla sezione 6 apposta.
+
+### Il collaudo
+
+`db/pgtap/ui/test-fn-resolve-lista-config-contatore-colonne-nuove-v1.sql`,
+`plan(5)`: la colonna sensibile senza grant non compare **e** non è contata; col
+grant torna in entrambi; una colonna nuova normale continua a essere contata.
+
+⭐ **Provato rompendolo**, ed è l'unica prova che conta qui: rieseguito contro il
+corpo **pre-correzione**, il **test 2 fallisce** con `have: 1, want: 0` — cioè
+esattamente il difetto, il contatore che annuncia la colonna appena rimossa. Gli
+altri quattro passano in entrambe le versioni: descrivono comportamento che era
+già corretto, e **solo il 2 discrimina**. Detto, per non far credere a una rete
+più larga di quella che è.
+
+⚠️ **Due cose imparate dalla fixture**, tutte e due «verde per sottrazione»
+evitato per un soffio:
+
+1. `campo_sorgente` **non si inventa**: `trgfn_ui_lista_colonna_a10_valida_campo_sorgente`
+   pretende un attributo reale della vista della lista. La fixture riusa quello
+   di una colonna già a catalogo — il codice è nuovo, ed è il codice a
+   identificare la colonna;
+2. l'utente del contesto pgTAP **non ha alcun profilo di accesso**, quindi su di
+   lui il ramo «colonna sensibile CON grant» è irraggiungibile: un grant si
+   aggancia a un profilo, e senza profili la colonna resta bloccata comunque. I
+   test 3-4 sarebbero stati verdi per la ragione sbagliata. La fixture **sceglie**
+   il primo utente che ha davvero un profilo sotto la veste corrente, con un
+   criterio esplicito e non un id fisso — e salta con motivo dichiarato se non
+   ce n'è nessuno.
+
+### Non-regressione
+
+- **44 liste su 44** restituiscono `colonne_nuove` e numero di colonne
+  **identici** a prima della modifica (confronto diretto, non a campione);
+- baseline `ui`: **4 rossi su 9, tutti già noti** — fra cui
+  `test-lista-contratti-seed`, registrato come `ASSERZIONE` da prima;
+- gli altri due pgTAP che esercitano la funzione (`test-fn-resolve-lista-config`,
+  `…-preset-aggiornato-v1`) restano verdi: 13 e 6 asserzioni.
+
+### Cosa resta possibile, e ora è sicuro
+
+Il giorno in cui una colonna andrà protetta davvero, servono **i grant** in
+`ui.lista_colonna_permesso` (il cui seed oggi non esiste) e basta: la correzione
+del contatore non è più un prerequisito da ricordare. Il cancello lato BE
+`test_colonna_sensibile_ha_sempre_un_grant` continua a impedire lo stato
+intermedio — `sensibile = t` senza grant — che non è «protetto», è **rotto per
+tutti**.
 
 ---
 
@@ -578,7 +679,7 @@ se lo fosse, perché `0 = 0` sarebbe verde per sottrazione.
 🔴 **Il caso (b) di D-5 non è coperto**: BA della riga visibile ma **padre fuori
 scope RLS**, cioè `ba_fatturazione_id` valorizzato e le tre descrittive NULL.
 Servirebbe un albero che attraversa due emittenti — che è proprio la cosa che
-[brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](brief-db-perimetro-emittente-liste-e-gerarchia-ba.md)
+[brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](../work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md)
 P-1 vuole rendere **impossibile**. Costruirla qui significherebbe seminare il
 difetto per collaudare la rete. Il test 8 verifica l'invariante che regge quel
 caso, ed è ciò che serve davvero.
@@ -641,7 +742,7 @@ riga): al cambio di **perimetro**, no.
       L'invariante è coperta dal pgTAP test 8 e la voce di filtro esiste (BE-3),
       ma **non c'è un caso su cui mostrarsi**: servirebbe un albero BA che
       attraversa due emittenti — cioè la configurazione che il cantiere
-      [perimetro emittente](brief-db-perimetro-emittente-liste-e-gerarchia-ba.md)
+      [perimetro emittente](../work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md)
       sta rendendo **impossibile** proprio ora. Costruirla apposta significherebbe
       seminare il difetto per collaudare la rete (§5-bis, «Limiti dichiarati»).
       ⭐ Si chiude **da sé** quando quel cantiere finisce: se la causa a monte
@@ -676,6 +777,9 @@ riga): al cambio di **perimetro**, no.
 - [x] ✅ **il conteggio delle righe non cambia** rispetto a prima delle
       modifiche, a parità di filtri (controllo anti-fan-out, §5.2 punto 2)
       · *pgTAP test 3, su tutto il perimetro visibile*;
+- [x] ✅ **il contatore `colonne_nuove` dice il vero** anche in presenza di una
+      colonna `sensibile` senza grant · *`20260818-04`, pgTAP 5/5 provato
+      rompendolo, 44 liste su 44 invariate — §4-quater*;
 - [x] ✅ **DL-2 misurato** (2026-08-18) · e ha trovato un costo **che la ricerca
       non c'entra**: 166 ms per 45 righe **senza filtri**, di cui il 78% per
       risolvere `riferimento`. Misura, causa e conseguenze in §10; il lavoro è
@@ -690,7 +794,7 @@ che rompono il «seleziona tutto».
 ## 9. Dipendenze da altri cantieri
 
 Due punti di questo brief **non si chiudono qui dentro**, e sono in
-[brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](brief-db-perimetro-emittente-liste-e-gerarchia-ba.md):
+[brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](../work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md):
 
 | Punto | Perché sta là |
 | --- | --- |
@@ -789,7 +893,7 @@ della union non esiste affatto.
    righe mostrate: a 450 gruppi sono ~1,3 s, e la paginazione non contiene nulla
    perché la `LATERAL` gira prima di poter impaginare.
 
-→ Aperto **[brief-db-riferimento-gruppi-lateral-costosa.md](brief-db-riferimento-gruppi-lateral-costosa.md)**
+→ Aperto **[brief-db-riferimento-gruppi-lateral-costosa.md](../work-in-progress/brief-db-riferimento-gruppi-lateral-costosa.md)**
 (perimetro DB), con la misura, la causa dal piano e il metodo per riprodurla.
 Il beneficio va oltre questa lista: `vw_dash_fatturazione_documenti` la leggono
 anche altri consumatori.
@@ -832,7 +936,7 @@ se può succedere, e per §3.5 la risposta è sì finché non c'è il guard.
 | Risoluzione colonne e merge automatico | `docs/it/dbzero/ui/funzioni/fn_resolve_lista_config.md` §3 |
 | Regola colonne sempre ordinabili | `scripts/gen_seed_lista.py` — `NUCLEO_ORDINABILE` |
 | Policy ricerca e paginazione | `docs/it/dev/Policy-ricerca-e-paginazione(API-DB).md` |
-| Cantiere perimetro emittente | [brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](brief-db-perimetro-emittente-liste-e-gerarchia-ba.md) |
+| Cantiere perimetro emittente | [brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](../work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md) |
 
 ---
 

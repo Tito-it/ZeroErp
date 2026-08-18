@@ -5,7 +5,7 @@
 > modifica applicata, nessun dato da bonificare
 >
 > **Origine**: DL-2 di
-> [brief-db-dash-competenza-gruppi-cliente-e-ricerca.md](brief-db-dash-competenza-gruppi-cliente-e-ricerca.md)
+> [brief-db-dash-competenza-gruppi-cliente-e-ricerca.md](../work-done/brief-db-dash-competenza-gruppi-cliente-e-ricerca.md)
 > §10. Doveva misurare **il costo della ricerca**; la misura ha trovato un costo
 > **che la ricerca non c'entra** — si paga a ogni apertura della lista.
 >
@@ -201,5 +201,5 @@ fredda.
 | --- | --- |
 | Vista con la `LATERAL` | `docs/it/dbzero/vendite/views/vw_dash_competenza_gruppi.md` |
 | Union a sei rami dei documenti | `docs/it/dbzero/vendite/views/vw_dash_fatturazione_documenti.md` |
-| DL-2 che ha generato la misura | [brief-db-dash-competenza-gruppi-cliente-e-ricerca.md](brief-db-dash-competenza-gruppi-cliente-e-ricerca.md) §10 |
+| DL-2 che ha generato la misura | [brief-db-dash-competenza-gruppi-cliente-e-ricerca.md](../work-done/brief-db-dash-competenza-gruppi-cliente-e-ricerca.md) §10 |
 | Presidio anti-fan-out | `db/pgtap/vendite/test-vw-dash-competenza-gruppi-cliente-v1.sql` test 3 |

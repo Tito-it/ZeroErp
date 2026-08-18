@@ -1,0 +1,126 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Passo 4 (P-1) — MOVIMENTI 2, 3 e 4: cambia l'EMITTENTE di un BA.
+#
+# ⚠️ Il brief ne prevedeva UNO («si cambia l'emittente di un BA»). Sono TRE,
+#    e il terzo e' quello grosso (brief §11.3):
+#
+#    2. modifica di emittente_soggetto_ruolo_id -> il BA cambia emittente;
+#    3. DELETE della riga specifica             -> il BA RICADE sul gestore
+#       globale, cioe' cambia emittente senza che nessuno abbia scritto un
+#       emittente;
+#    4. spostamento di is_default               -> cambia in blocco l'emittente
+#       di TUTTI i BA non mappati: raggio N, una riga sola puo' spaccare un
+#       numero arbitrario di alberi.
+#
+# ⚠️ AFTER e non BEFORE: il guard risolve l'emittente rileggendo il mapping,
+#    quindi la riga deve essere gia' scritta.
+#
+# ⚠️ Questa tabella NON ha RLS (verificato: relrowsecurity = false), a
+#    differenza di billing_account. I due guard del passo 4 lavorano quindi con
+#    due visibilita' diverse — ed e' un'altra ragione per cui la lettura di
+#    billing_account sta dentro una SECURITY DEFINER invece che qui.
+#
+# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260818-10-create-trg-efba-guard-albero-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260818-10-create-trg-efba-guard-albero-emittente
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        P-1 movimenti 2/3/4: guard «albero omogeneo» sui cambi di mapping
+        BA->emittente, su emittenti_fiscali_billing_account. Riga con
+        billing_account_id -> si verifica quel BA (padre + figli); riga del
+        gestore globale (billing_account_id NULL, is_default) -> si verificano i
+        BA non mappati che stanno in un albero, che sono gli unici a cambiare
+        padrone. Brief P-1 §11.3, decisione Q3.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'anagrafiche' AND p.proname = 'fn_guard_albero_ba_emittente';
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'anagrafiche' AND p.proname = 'fn_guard_albero_ba_gestore_globale';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_efba_guard_albero_emittente()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_ba_id anagrafiche.billing_account.id%TYPE;
+              BEGIN
+                  -- Su DELETE il BA interessato sta in OLD; in creazione in NEW.
+                  -- Se il mapping viene spostato da un BA a un altro (caso
+                  -- teorico: la UNIQUE lo rende raro) vanno verificati entrambi.
+                  v_ba_id := COALESCE(NEW.billing_account_id, OLD.billing_account_id);
+
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.billing_account_id IS DISTINCT FROM OLD.billing_account_id THEN
+                      PERFORM anagrafiche.fn_guard_albero_ba_emittente(OLD.billing_account_id);
+                      PERFORM anagrafiche.fn_guard_albero_ba_emittente(NEW.billing_account_id);
+                      RETURN NULL;
+                  END IF;
+
+                  IF v_ba_id IS NOT NULL THEN
+                      -- Movimenti 2 e 3: mapping specifico creato, cambiato o tolto.
+                      PERFORM anagrafiche.fn_guard_albero_ba_emittente(v_ba_id);
+                      RETURN NULL;
+                  END IF;
+
+                  -- Movimento 4: la riga senza billing_account_id e' quella del
+                  -- GESTORE GLOBALE. Raggio N — vedi l'intestazione del changeSet.
+                  PERFORM anagrafiche.fn_guard_albero_ba_gestore_globale();
+                  RETURN NULL;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_efba_guard_albero_emittente() IS
+                  'Trigger AFTER su anagrafiche.emittenti_fiscali_billing_account: presidia i '
+                  'TRE movimenti che cambiano l''emittente di un BA — modifica del mapping, '
+                  'cancellazione del mapping (il BA ricade sul gestore globale) e spostamento '
+                  'di is_default (raggio N). Delega a fn_guard_albero_ba_emittente / '
+                  'fn_guard_albero_ba_gestore_globale. AFTER perche'' il guard rilegge il '
+                  'mapping per risolvere l''emittente. Brief P-1 §11.3.';
+
+              DROP TRIGGER IF EXISTS trg_emittenti_fiscali_ba_z95_guard_albero_emittente_ins_upd_dlt
+                  ON anagrafiche.emittenti_fiscali_billing_account;
+
+              CREATE TRIGGER trg_emittenti_fiscali_ba_z95_guard_albero_emittente_ins_upd_dlt
+                  AFTER INSERT OR UPDATE OR DELETE
+                  ON anagrafiche.emittenti_fiscali_billing_account
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_albero_emittente();
+
+              COMMENT ON TRIGGER trg_emittenti_fiscali_ba_z95_guard_albero_emittente_ins_upd_dlt
+                  ON anagrafiche.emittenti_fiscali_billing_account IS
+                  'P-1 movimenti 2/3/4. Fascia z95: scatta dopo il default_guard singleton '
+                  '(a10), cosi'' su uno spostamento del gestore globale il conteggio e'' gia'' '
+                  'stato validato quando si verificano gli alberi.';
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_emittenti_fiscali_ba_z95_guard_albero_emittente_ins_upd_dlt
+                  ON anagrafiche.emittenti_fiscali_billing_account;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_efba_guard_albero_emittente();

@@ -10,7 +10,7 @@
 >
 > **Origine.** Emersi il **2026-08-17** analizzando la richiesta «filtrare i
 > gruppi fatturabili per cliente»
-> ([brief-db-dash-competenza-gruppi-cliente-e-ricerca.md](brief-db-dash-competenza-gruppi-cliente-e-ricerca.md)).
+> ([brief-db-dash-competenza-gruppi-cliente-e-ricerca.md](../work-done/brief-db-dash-competenza-gruppi-cliente-e-ricerca.md)).
 > Sono stati messi qui perché sono cantieri loro: toccano l'anagrafica e
 > l'accesso, non la dashboard.
 >
@@ -1499,6 +1499,41 @@ Non è una formalità: sono i punti su cui **non serve tornare**.
 
 ### Fase 0 — Misure e prerequisiti · *non produce changeSet*
 
+> ✅ **ESEGUITE il 2026-08-18** (sola lettura, come owner per non contare sotto
+> RLS — [[feedback_conteggi_rls_zero_non_errore]]).
+>
+> | Misura | Valore | Cosa vuol dire |
+> | --- | ---: | --- |
+> | **DL-A** operatori non configurati | **2 → ✅ 0** | ⛔ era il prerequisito di P-2a. **Sanato il 2026-08-18**: `auth_user_id` **8** (*Rossi Mario*) → **EMI-TEST** (`ef.id` 44, P.IVA 45807930719), **187** (*Renchi Luigi*) → **PGTAP** (`ef.id` 32, P.IVA 09999999999). Fatto con la funzione di dominio `script.fn_change_user_emittenti_scope`, non con un `INSERT` a mano. ⚠️ Verificato che l'operatore scelto da `fn_pgtap_set_contesto_operatore` **non cambi** (resta il 5): entrambi gli id nuovi sono più alti, altrimenti sarebbe cambiato il contesto di tutta la suite |
+> | **DL-B** alberi misti | **0** | — |
+> | **DL-C** coppie con CF NULL | **0** | — |
+> | **DL-D** BA senza mapping specifico | **0** | tutti e 42 i BA hanno il loro mapping: il ripiego sul gestore globale **oggi non è in gioco** |
+> | **DL-D2** coppie miste per mapping | **0** | il guard del 4° movimento (Q3) non ha nulla da far scattare |
+>
+> 🔴 **E il numero che conta più di tutti: `parent_account_id` è valorizzato su
+> ZERO billing account.** Su 42 BA non esiste **nessun albero**. Quindi:
+>
+> - **P-1 e P-3 non faranno scattare niente sul pregresso**: rumore atteso zero,
+>   e la decisione «nessuna bonifica» non ha nulla da bonificare;
+> - ⚠️ **ma i dati di sviluppo qui non misurano proprio niente.** La gerarchia
+>   padre/figlio in dev **non è mai stata usata**: il guard §2.2 non è mai
+>   scattato, e `fn_build_fattura_key` non ha mai preso l'emittente dal padre.
+>   È territorio inesplorato, non territorio sano — la domanda resta «può
+>   succedere?», non «è successo?» ([[feedback_dati_test_non_misurano_la_gravita]]);
+> - ⭐ **conseguenza operativa: i test devono costruirsi l'albero.** Non c'è
+>   niente su cui appoggiarsi, e un test che «cerca una coppia esistente»
+>   salterebbe sempre.
+>
+> ⭐ **Due cose utili emerse dalla stessa misura**, entrambe usate subito:
+>
+> - ci sono **2 emittenti attivi** (SR **72** *Gestore Test pgTAP*, che è anche
+>   il gestore globale, e SR **159** *Azienda SC REQUIRED con dati*): una
+>   fixture a due emittenti **è possibile**, quindi il «buco dichiarato» del
+>   test del passo 1 si può chiudere e P-1 può costruire un albero misto vero;
+> - **1 BA è mappato su SR 159**, cioè è **invisibile** all'operatore di
+>   contesto pgTAP (che ha scope `{72}`): è lo scenario di §11.1 **riproducibile
+>   in un test**, e infatti il passo 3 lo verifica.
+
 | # | Cosa | Blocca |
 | --- | --- | --- |
 | **0.1** | **DL-A** — operatori con identità OPERATORE, non super admin, senza riga in `config.user_emittenti_fiscali`. **Aggiungere le righe mancanti.** | ⛔ P-2a (passo 2) |
@@ -1524,10 +1559,38 @@ Non è una formalità: sono i punti su cui **non serve tornare**.
 uniche due** funzioni di scope che si fidano di un array calcolato dal chiamante
 invece di risolverlo. Passano a risolverlo da sé.
 
-| File (indicativo) | Cartella | Cosa |
+✅ **SCRITTO il 2026-08-18 — non applicato.** Tre changeSet + un pgTAP, su
+`dev/db-tid`. Nessuna migrazione eseguita, nessun commit.
+
+| File | Cartella | Cosa |
 | --- | --- | --- |
-| `AAAAMMGG-NN-update-fn-search-soggetti-universale-scope-interno-mctit.yaml` | `20_code/script` | risolve `fn_get_emittenti_scope_sr_ids` da `app.current_user_id`; `p_emittente_ids` **interseca**, non sostituisce |
-| `AAAAMMGG-NN-update-fn-get-search-detail-scope-interno-mctit.yaml` | `20_code/script` | idem |
+| `20260818-01-create-fn-get-emittenti-scope-sr-effettivo-mctit.yaml` | `20_code/script` | ⭐ **il pezzo nuovo**: `diritto ∩ richiesto`, con NULL = universo su entrambi i lati. Estratto perché serve a **due** chiamanti |
+| `20260818-02-update-fn-search-soggetti-universale-scope-interno-mctit.yaml` | `20_code/script` | il filtro si accende su `v_scope IS NOT NULL` invece che su `p_emittente_ids IS NOT NULL` |
+| `20260818-03-update-fn-get-search-detail-scope-interno-mctit.yaml` | `20_code/script` | ramo CL: `v_scope IS NULL OR …` al posto di `p_emittente_ids IS NULL OR …` |
+| `db/pgtap/script/test-search-scope-interno-v1.sql` | `db/pgtap` | 12 asserzioni (vedi sotto) |
+
+**Verifica fatta prima di consegnare** — il corpo nuovo è stato **diffato contro
+la definizione viva** (doc auto-gen) per entrambe le funzioni: le uniche
+differenze sono le righe volute. Il blocco di SQL dinamico di
+`fn_search_soggetti_universale` è identico byte per byte, il che è ciò che conta
+di più — è la parte che una ricopiatura a mano degrada senza dirlo.
+
+⚠️ **Due trappole pagate scrivendolo, entrambe già in memoria e sfuggite lo
+stesso:**
+
+1. **firma e `RETURNS TABLE` presi dalla doc auto-gen**, che scioglie i `%TYPE`.
+   Corretto: vanno dall'ultimo YAML;
+2. ⭐ **e «l'ultimo YAML» non basta.** Per `fn_get_search_detail` l'ultima
+   revisione (`20260628-10`) aveva **già** i `%TYPE` sciolti — era stata a sua
+   volta ricostruita dall'auto-gen. Copiarla non avrebbe degradato la firma:
+   l'avrebbe resa **definitiva**. La firma buona stava due revisioni indietro
+   (`20260410-02`). La regola va letta per il suo scopo: **l'ultimo YAML che li
+   ha ancora**. Due indizi visibili a colpo d'occhio: la firma su **una riga
+   sola** e i `DEFAULT NULL::integer` con cast esplicito — è la punteggiatura di
+   `pg_get_functiondef`, non di una firma scritta a mano.
+   ⛔ E non si cerca «l'ultimo» con `ls -t`: ordina per data di modifica del
+   file, che dopo un `git checkout` non dice niente. Conta l'ordine della
+   **timeline**, cioè il nome.
 
 **Regole di costruzione**
 
@@ -1544,24 +1607,110 @@ invece di risolverlo. Passano a risolverlo da sé.
   non è un difetto da correggere qui, ma va **saputo** — sulle altre tipologie
   non c'è scope da restringere, e il passo non lo introduce.
 
-**Verifica** — `db/pgtap/script/test-search-scope-interno-v1.sql`:
+**Verifica** — `db/pgtap/script/test-search-scope-interno-v1.sql`, **12
+asserzioni**, di cui la prima è una **precondizione dichiarata**: il contesto
+pgTAP è un operatore con scope proprio. Senza quella, i primi cinque test
+confronterebbero `NULL` con `NULL` e sarebbero verdi per sottrazione.
 
-1. operatore con scope di 1 emittente, parametro `NULL` → vede **solo il suo**
-   (oggi, senza parametro, vedrebbe tutto);
-2. operatore senza riga (dopo P-2a) → **zero risultati**;
-3. parametro con un emittente **fuori** dal proprio scope → zero risultati
-   (l'intersezione non allarga);
-4. parametro `'{}'` → zero risultati;
-5. stessi quattro su `fn_get_search_detail`.
+| # | Cosa | Deterministico? |
+| --- | --- | --- |
+| 0 | precondizione: scope del contesto ≠ NULL | ✅ |
+| 1 ⭐ | restrizione assente (`NULL`) **non** significa più «nessuna restrizione» | ✅ |
+| 2 | restrizione assente → vale lo scope di diritto | ✅ |
+| 3 | `'{}'` resta `'{}'`: non degrada mai a `NULL` | ✅ |
+| 4 | restrizione **fuori** scope → `'{}'` (non allarga) | ✅ |
+| 5 | restrizione = proprio scope → invariato (il caso del backend di oggi) | ✅ |
+| 6 | attore nullo senza restrizione → `NULL` (convenzione famiglia) | ✅ |
+| 7 | attore nullo **con** restrizione → la restrizione resta | ✅ |
+| 8–9 | ricerca CL: `NULL` == proprio scope · restrizione fuori scope → 0 righe | 🟡 skip dichiarato se non c'è un cliente utilizzabile |
+| 10–11 | idem su `fn_get_search_detail` | 🟡 come sopra |
 
-> ⚠️ Il caso 2 va rifatto **dopo** il passo 2: prima di P-2a l'operatore senza
-> riga ha scope `NULL`, quindi il test misurerebbe il vecchio comportamento e
-> sarebbe verde per la ragione sbagliata.
+⚠️ **Il «fuori scope» non si pesca dai dati**: è un `soggetto_ruolo_id` che **non
+esiste** (`MAX(id) + 1000000`). Scegliere un secondo emittente reale renderebbe
+il test dipendente dalla popolazione — l'istanza potrebbe averne uno solo — e
+passerebbe a giorni alterni.
 
-**Fatto quando**: i cinque casi sono verdi e nessun valore passato dal chiamante
-può più **allargare** ciò che la funzione mostra.
+🕳️ **Buco dichiarato, non coperto per sbaglio**: i test 8–11 verificano
+l'*invariante* «il parametro non decide più», confrontando due chiamate. **Non**
+dimostrano che un cliente di un altro emittente sparisce: per quello servirebbe
+una fixture a **due** emittenti con un cliente ciascuno, che questo file non
+costruisce. È scritto nell'intestazione del test, non solo qui.
 
-#### Passo 2 · P-2a — fail-closed nella catena canonica ⛔ *dopo 0.1*
+**Fatto quando**: le 12 asserzioni sono verdi e nessun valore passato dal
+chiamante può più **allargare** ciò che la funzione mostra.
+
+⚠️ **Residuo, non chiuso qui**: il filtro emittente si applica **solo al tipo
+ruolo `CL`** — è l'unico che ha un billing account da cui derivare l'emittente. I
+rami `FO` ed `ELSE` non ne hanno mai avuto uno. Il passo 1 non lo amplia, e
+l'obiettivo dichiarato regge lo stesso: *nessun valore del chiamante può
+allargare*. Ma resta vero che una ricerca fornitori non conosce perimetro.
+
+#### Passo 2 · P-2a — fail-closed nella catena canonica · *prerequisito sciolto*
+
+✅ **SCRITTO il 2026-08-18 — non applicato.** Il prerequisito DL-A è stato
+sanato lo stesso giorno (sopra), quindi il passo non è più bloccato.
+
+| File | Cartella | Cosa |
+| --- | --- | --- |
+| `20260818-11-update-fn-get-emittenti-scope-pk-ids-fail-closed` | `20_code/script` | ramo `ELSE`: `coalesce(array_agg(…), '{}')` |
+| `20260818-12-update-fn-check-user-emittente-scope-fail-closed` | `20_code/script` | ramo 5: `v_cnt = 0` → `false` |
+| `20260818-13-comment-user-emittenti-fiscali-fail-closed` | `20_code/config` | il `COMMENT` che dichiarava il contrario |
+| `20260818-14-create-vw-operatori-senza-emittente` | `20_code/dbops` | la diagnostica |
+| `db/pgtap/script/test-scope-emittenti-fail-closed-v1.sql` | — | 8 asserzioni |
+
+**Verifica a changeSet non applicati**: 4 asserzioni su 8 falliscono, e sono
+**esattamente** le quattro della correzione — con i vecchi valori (`NULL`,
+`true`). Il ramo super admin passa già, cioè non viene toccato.
+
+⚠️ **La fixture del test ha dovuto ricreare il difetto**: DL-A è ormai a zero,
+quindi un operatore senza riga **non esiste più** e va costruito togliendo lo
+scope a un operatore vero con `fn_change_user_emittenti_scope(x, '{}')`, dentro
+la transazione. Si evita di proposito l'operatore del **contesto pgTAP**: è
+quello da cui dipendono le policy RLS durante la corsa.
+
+#### 🔬 Applicato il 2026-08-18 — e ha rotto quattro asserzioni che erano il **vecchio contratto**
+
+Tre file di `script` sono diventati rossi, con **quattro** asserzioni:
+
+| File | Asserzione |
+| --- | --- |
+| `test-fn-scope-ef-whitelist.sql` | *«whitelist vuota → true (accesso globale)»* |
+| `test-permessi-fn-check-emittente-scope.sql` | *«OPERATIVO senza whitelist → true»* |
+| `test-permessi-funzioni-risoluzione.sql` | idem, **e** *«…scope_sr_ids → NULL»* |
+
+⚠️ **Non erano fixture rimaste indietro: erano la regola precedente, scritta.**
+Qualcuno l'aveva messa a contratto in quattro punti, con la nota «nessuna
+restrizione» accanto.
+
+> 🔴 **Questo corregge, in parte, una frase di §2.5.** Il brief intitola quel
+> paragrafo *«la prova che "whitelist vuota = vede tutto" è un **residuo**, non
+> una scelta»*. Quattro asserzioni che lo affermano dicono che **una scelta c'è
+> stata**, in qualche momento. Ciò che regge intatto è l'**argomento**, non la
+> ricostruzione storica: il lato scrittura rifiutava già lo stesso utente
+> (`fn_check_user_can_create_ba` → `false`), e le due letture non potevano
+> essere entrambe intenzionali. Era una scelta, ed era incoerente con l'altra
+> metà del sistema — che è una tesi più forte, non più debole.
+
+Le quattro sono state **riscritte, non riallineate**: valore invertito *e*
+motivo scritto sopra, perché un'asserzione girata senza spiegazione è il
+prossimo che la rigira. Dopo: `script` **12 rossi su 59, tutti già noti,
+nessuna regressione**.
+
+⚠️ **Errore di processo mio, da non ripetere**: il grep pgTAP del passo 0.4 lo
+avevo fatto solo su `anagrafiche.billing_account`, cioè sulla **tabella** del
+guard. Ma P-2a tocca delle **funzioni**, e i test che le esercitano stanno in un
+altro schema. Il perimetro del grep è *ciò che si modifica*, non *la tabella su
+cui si scrive*.
+
+⭐ **I test 6 e 7 misurano l'eredità invece di assumerla.** Il brief sostiene
+che gli adapter si sistemano «per costruzione» perché trattano già
+`cardinality = 0` come nessun accesso. Sostenerlo non basta: `_sr_ids` e
+`via_efba` hanno la loro asserzione, e oggi falliscono entrambe — il che prova
+che la catena è davvero quella e non un'altra.
+
+<!-- il piano originale del passo 2 resta qui sotto -->
+
+##### Il piano com'era scritto
 
 | File (indicativo) | Cartella | Cosa |
 | --- | --- | --- |
@@ -1600,22 +1749,228 @@ regressioni, e il `COMMENT` non dice più una cosa falsa.
 
 #### Passo 3 · P-3 — il fail-open del NULL nel guard CF
 
-Un solo changeSet in `20_code/anagrafiche`: nel §2.2 di
-`trgfn_billing_account_guard_normalize`, un CF non confrontabile (NULL su uno dei
-due lati) **rifiuta** invece di passare. Codice errore **registrato** — se ne
-serve uno nuovo, **solo append** a `codici_errore.csv` con la sua `classe`, mai
-un loader upsert nuovo.
+✅ **SCRITTO il 2026-08-18 — non applicato.**
 
-**Verifica**: `throws_ok` **con SQLSTATE `'P0001'`** su padre CF NULL, figlio CF
-valorizzato, e viceversa, e su entrambi NULL. Senza SQLSTATE il test accetta
-anche il crash del guard.
+| File | Cosa |
+| --- | --- |
+| `20260818-05-update-trgfn-billing-account-guard-normalize-soggetto-confrontabile-mctit.yaml` | `20_code/anagrafiche` — il §2.2 riscritto |
+| `codici_errore.csv` · `messaggi_errore.csv` | **append** di 2 codici, classe `DATO_ERRATO` |
+| `db/pgtap/anagrafiche/test-billing-account-guard-cf-confrontabile-v1.sql` | 7 asserzioni |
 
-**Fatto quando**: i tre casi sono verdi e la baseline `anagrafiche` non peggiora
-oltre quanto previsto da 0.4.
+⚠️ **DUE SCOSTAMENTI dal testo di P-2/P-3, entrambi voluti.** Il brief diceva:
+*«trattare il NULL come non confrontabile e quindi rifiutare»*.
+
+**1. Non si rifiuta sul NULL: si ripiega sul soggetto.** Rifiutare ogni coppia
+con un CF mancante avrebbe rotto un caso **legittimo** — due BA dello **stesso**
+soggetto, che semplicemente non ha il codice fiscale valorizzato. Il difetto che
+§4 descrive è *«un albero fra soggetti **diversi** diventa costruibile»*, e il
+soggetto è sempre disponibile: risponde alla domanda vera. Il CF resta il
+criterio primario (due soggetti diversi con lo **stesso** CF continuano a
+passare: quella è identità fiscale, ed è ciò che il guard presidia).
+→ nuovo codice `E_PARENT_SOGGETTO_DIVERSO`.
+
+**2. «Padre non raggiungibile» diventa un caso suo.** È §11.1 chiuso **al passo
+3 invece che al passo 4**: la `SELECT` sul padre passa dalle policy RLS, quindi
+un padre di un altro emittente non viene trovato e prima cadeva su
+`E_ID_FISCALI_DIVERSI` — con i due CF **identici**. Ora ha il suo codice.
+⚠️ Il guard **non finge** di distinguere «non esiste» da «non lo vedi»: non può,
+e il messaggio lo dichiara.
+→ nuovo codice `E_PARENT_NON_RAGGIUNGIBILE`.
+
+> 🔗 **Questo tocca Q5**, che diceva «il messaggio sbagliato non si corregge,
+> sparisce da sé con P-1». Sparisce **prima**, e senza codice usa-e-getta: non è
+> una correzione di passaggio, è il guard che smette di dire una cosa falsa
+> mentre lo si sta comunque riscrivendo. La decisione di Q5 — *niente codice
+> intermedio* — resta rispettata.
+
+**Verifica** — 7 asserzioni, di cui tre sono il cuore:
+
+| # | Caso | Atteso |
+| --- | --- | --- |
+| 1 | stesso soggetto, CF presente | ✅ passa (nessuna regressione) |
+| 2 | soggetti diversi, CF diversi | ❌ `E_ID_FISCALI_DIVERSI` (invariato) |
+| 3 ⭐ | soggetti diversi, **entrambi senza CF** | ❌ `E_PARENT_SOGGETTO_DIVERSO` — **era il fail-open** |
+| 4 ⭐ | **stesso** soggetto senza CF | ✅ passa — il falso positivo evitato |
+| 5 ⭐ | padre **fuori dal perimetro RLS** | ❌ `E_PARENT_NON_RAGGIUNGIBILE` — lo scenario §11.1, riprodotto |
+| 6 | padre inesistente | ❌ stesso codice (il guard `BEFORE` precede la FK) |
+
+⚠️ **I codici si discriminano con `throws_like` sulla frase, non con
+`throws_ok('P0001')`**: `P0001` dice *«è un errore di dominio»*, non **quale** —
+e qui i tre casi che contano si distinguono solo per il codice.
+
+⚠️ **La fixture azzera il CF dentro la transazione** (chiusa in `ROLLBACK`).
+Non è bonifica: nell'istanza esiste **un solo** soggetto senza CF, e un test che
+dipendesse da quello misurerebbe la popolazione invece della regola.
+
+**Stato al 2026-08-18: 6 asserzioni su 7 verdi**, e la settima e' bloccata da un
+difetto che il test ha scoperto (sotto). Baseline `anagrafiche`: **nessuna
+regressione** — l'unico rosso nuovo e' questo file stesso.
+
+#### 🔴 Difetto trovato eseguendo il test: tre messaggi del catalogo mandano in crash `format()`
+
+Il test 2 falliva cosi':
+
+```
+error message: 'identificatore di tipo format() non riconosciuto ")"'
+doesn't match: '%id fiscale diverso%'
+```
+
+`script.fn_log_and_raise_error` compone il messaggio con `format(...)`. Tre righe
+di `config.messaggi_errore` hanno un segnaposto che `format()` **rifiuta**:
+
+| Codice | Segnaposto rotto | Argomenti passati |
+| --- | --- | --- |
+| `E_ID_FISCALI_DIVERSI` | `%` nudo, tre volte | 3 ✅ |
+| `E_DATA_FINE_NON_MAGGIORE_DI_INIZIO` | `%S` maiuscola (`format` e' case-sensitive) | 2 ✅ |
+| `E_SOGGETTI_RUOLI_RACE` | `%."` in coda | 3 ✅ |
+
+**Nessuno dei tre e' un problema di argomenti**: il numero passato dai chiamanti
+e' giusto. E' proprio il segnaposto scritto male.
+
+⚠️ **La conseguenza e' peggiore di un messaggio brutto: l'errore di dominio
+sparisce.** `format()` solleva un `22023`, non il `P0001` che il contratto
+DB→backend richiede — quindi il campo `CONSTRAINT` non arriva, il codice non
+viene riconosciuto e l'operatore riceve un errore tecnico al posto della frase
+che qualcuno aveva scritto per lui.
+
+⚠️ **E si vede solo quando l'errore scatta davvero.** `E_ID_FISCALI_DIVERSI` e'
+rotto da sempre e non se n'e' accorto nessuno per la ragione misurata in Fase 0:
+**non esiste nessun albero di billing account**, quindi quel guard non e' mai
+scattato. Un messaggio non esercitato non e' un messaggio funzionante.
+
+**Corretti tutti e tre nel CSV** (`messaggi_errore.csv`, mirror `runOnChange`:
+si riallinea al prossimo migrate). Gli altri due sono fuori dal perimetro di
+questo cantiere, ma sono lo stesso difetto di un carattere trovato dalla stessa
+misura: lasciarli rotti sapendolo sarebbe stato peggio che correggerli.
+
+#### ⚠️ Tre trappole nella fixture, tutte pagate eseguendo
+
+Nessuna era prevedibile leggendo il brief, e valgono per chiunque scrivera' test
+su `billing_account`:
+
+1. **`ON COMMIT DROP` va DOPO l'elenco colonne.** Regge prima solo nella forma
+   `CREATE TEMP TABLE x ON COMMIT DROP AS SELECT …`;
+2. **`SET CONSTRAINTS ALL IMMEDIATE` non puo' stare in testa**, qui: il
+   constraint differito `trg_istanze_utilities_z90_require_utility_dichiarata_ins`
+   pretende che ogni istanza abbia gia' un satellite, e la fixture ne crea due
+   in due istruzioni. Va **dopo** la fixture — ed e' l'avvertenza del template,
+   che dice «dove l'unita' di lavoro e' completa», non «sempre in testa»;
+3. ⭐ **`soggetti.id_fiscale_univoco_cf_piva` e' una colonna GENERATA**
+   (`CASE` su `codice_fiscale`/`partita_iva`): non si scrive. E azzerare le
+   sorgenti **non basta** — il guard `trgfn_soggetti_guard_cf_piva_obbligatori`
+   legge da `config.tipi_soggetto_dettaglio` se CF/PIVA sono obbligatori, e
+   **nessun tipo configurato oggi li ammette entrambi nulli**: esce in testa solo
+   se il tipo non e' dichiarato.
+
+> 🔎 **Il punto 3 restringe — onestamente — la portata dello scostamento (1) di
+> P-3.** Il «caso legittimo» che il ripiego sul soggetto protegge (due BA dello
+> stesso soggetto senza CF) e' raggiungibile **solo** per un soggetto senza tipo
+> dettaglio, cioe' un record configurato a meta'. La scelta resta giusta — lo
+> schema ammette il NULL e un guard si scrive contro lo schema, non contro i
+> flag che una tabella di configurazione ha **oggi** — ma non e' il caso
+> frequente che potevo lasciar intendere.
+
+**Fatto quando**: le 7 asserzioni sono verdi. Le prime 6 lo sono; la settima lo
+diventa al primo migrate che ricarica `messaggi_errore.csv`.
 
 #### Passo 4 · P-1 — l'albero omogeneo, in **quattro** movimenti
 
 Il pezzo grosso. Si costruisce dal basso.
+
+✅ **SCRITTO il 2026-08-18 — non applicato.**
+
+| File | Cosa |
+| --- | --- |
+| `20260818-08-create-fn-guard-albero-ba-emittente-mctit.yaml` | il check puro + i due guard `SECURITY DEFINER` |
+| `20260818-09-create-trg-billing-account-guard-albero-emittente-mctit.yaml` | movimento 1 |
+| `20260818-10-create-trg-efba-guard-albero-emittente-mctit.yaml` | movimenti 2, 3, 4 |
+| `codici_errore.csv` · `messaggi_errore.csv` | `E_ALBERO_EMITTENTE_MISTO`, classe `DATO_ERRATO` |
+| `db/pgtap/anagrafiche/test-guard-albero-ba-omogeneo-v1.sql` | 8 asserzioni |
+
+⚠️ **Tre scoperte che hanno cambiato la costruzione rispetto al piano:**
+
+**1. Il 4a non serve — e non farlo è la scelta giusta.** Il piano prevedeva una
+`SECURITY DEFINER` nuova che risolvesse l'emittente senza essere cieca. Ma
+`anagrafiche.fn_get_emittente_fiscale_id` **legge solo `emittenti_fiscali_billing_account`,
+che non ha RLS** (verificato: `relrowsecurity = false`): non è cieca già di suo.
+Scriverne un'altra sarebbe stato **un secondo risolutore** — proprio ciò che
+§11.2 vieta. Si usa quella, cioè **la stessa che usa `fn_build_fattura_key`**:
+è l'unico modo perché *«albero omogeneo»* e *«la fattura esce da un solo
+emittente»* siano la stessa affermazione.
+La cecità resta invece sulla lettura di **`billing_account`** (padre e figli):
+lì i due `fn_guard_*` **sono** `SECURITY DEFINER`.
+
+**2. 🔴 Il guard del movimento 1 non può essere un `BEFORE` in fascia `a10`.**
+L'emittente di un BA nasce dal mapping che crea `trg_billing_account_z90_link_ef_ins`,
+che è **AFTER INSERT**. Un guard `BEFORE INSERT` risolverebbe l'emittente del
+figlio sul **gestore globale** — il ripiego — invece che su quello che il figlio
+avrà un istante dopo: **rifiuterebbe ogni albero creato da un operatore il cui
+emittente non è il gestore globale**. È lo stesso motivo per cui la policy RLS
+di INSERT è gate-only, ed è scritto nel suo changeSet.
+→ trigger **`AFTER`**, fascia **`z95`** per ordinarsi dopo `z90_link_ef` (i
+trigger di pari timing scattano in ordine alfabetico). La deroga alla
+convenzione `_a10_` è motivata nel file.
+
+**3. 🔴 Migrate fallito al primo tentativo — preCondition su un dato di `80_data`.**
+Il `-08` verificava che `E_ALBERO_EMITTENTE_MISTO` fosse già in
+`config.codici_errore`. Non può esserci: il catalogo dei codici si semina in
+**`80_data`, che gira DOPO `20_code`**. Errore:
+`SQL Precondition failed. Expected '1' got '0'`.
+→ preCondition rimossa, con la ragione scritta nel file. La regola generale:
+una preCondition può verificare **oggetti** della stessa fase o precedenti
+(tabelle, funzioni), **mai un dato** — il dato serve quando l'errore *scatta*,
+non quando la funzione nasce. Censite tutte e 7 le changeSet del cantiere: era
+l'unica.
+
+**4. Nessuna riga in `dbops.sec_functions_owner`.** Le `SECURITY DEFINER` che
+richiedono `postgres` vanno registrate lì; queste no: `billing_account` e il
+migrate sono **entrambi `titodb`**, quindi la funzione nasce di proprietà
+dell'owner e supera la RLS senza `FORCE`.
+
+✅ **Applicato e verde il 2026-08-18: 8/8, e la baseline `anagrafiche` non ha
+regressioni** (27 rossi, tutti già noti). Anche il test di P-3 è rientrato:
+era 6/7 in attesa della correzione del messaggio, ora è verde.
+
+⚠️ **Il primo giro era 5/8, e i tre rossi erano tutti del TEST, non del codice.**
+Vale la pena tenerli scritti, perché sono la trappola di §9 pagata da chi
+l'aveva scritta:
+
+| Rosso | Causa vera |
+| --- | --- |
+| «padre di un altro emittente» rispondeva `E_PARENT_NON_RAGGIUNGIBILE` | ⭐ **il codice aveva ragione**: spostato il padre sull'altro emittente, l'operatore non lo **vede** più, e il guard di coerenza (BEFORE) arriva prima. È §11.1 alla lettera |
+| «cancellare il mapping» non sollevava niente | dopo lo spostamento, ogni `UPDATE` successivo su quel BA toccava **zero righe in silenzio** — sempre la RLS. L'albero non era mai stato ricostruito |
+| il check «non cieco» tornava `true` | conseguenza del precedente: senza albero, la `DELETE` passava e il figlio ricadeva sul gestore globale |
+
+**Il rimedio non è stato ammorbidire le asserzioni: è stato cambiare attore.**
+Le asserzioni 2–7 girano ora nel contesto del **super admin**, che è l'unico a
+vedere entrambi i rami — cioè l'unico che un albero misto lo può davvero
+costruire. Provarlo da operatore misurava un'altra cosa, ed è precisamente
+l'avvertenza che §9 dà a chi scrive i test.
+
+> ⭐ **La conferma migliore del cantiere arriva da qui**: il difetto è
+> irraggiungibile dal basso non perché sia improbabile, ma perché la RLS lo
+> nasconde — e resta perfettamente raggiungibile da chi la RLS non ce l'ha.
+
+**Verifica** — 8 asserzioni:
+
+| # | Caso | Movimento |
+| --- | --- | --- |
+| 1 | albero omogeneo | — (nessuna regressione) |
+| 2 ⭐ | padre di un altro emittente | 1 |
+| 3 ⭐ | si sposta il **figlio** | 2 |
+| 4 ⭐ | si sposta il **padre** — il verso *verso i figli*, quello che si dimentica | 2 |
+| 5 ⭐ | si **cancella** il mapping: ricaduta sul gestore globale | 3 |
+| 6 | **due alberi separati** dello stesso soggetto su emittenti diversi → passa | §3.1, la regola sbagliata che assomiglia a quella giusta |
+| 7 | il check vede un BA **fuori perimetro** | §11.1: da `SECURITY INVOKER` questo passerebbe |
+
+🕳️ **Non coperto, e dichiarato: il movimento 4** (spostamento del gestore
+globale). Spostarlo richiede `DELETE`+`INSERT` della riga default nella stessa
+transazione, perché il constraint differito `trgfn_emittenti_fiscali_default_guard`
+pretende esattamente un default **al COMMIT** — e un file pgTAP chiude in
+`ROLLBACK`, quindi quel COMMIT non arriva mai. Il ramo passa dalla **stessa**
+funzione del test 5, ma verificarlo davvero richiede un test non transazionale.
+
+---
 
 **4a — il risolutore che non è cieco.** Una `SECURITY DEFINER` che risponde
 «qual è l'emittente di questo BA» **sempre**, anche quando chi chiede non lo
@@ -1899,5 +2254,5 @@ mappare in `error_policies.py` come tutti gli altri.
 | Gerarchia BA (manuale) | `docs/it/dbzero/anagrafiche/manual/billing_account.md` |
 | Policy RLS BA (lettura + scrittura) | `db/changelog/migrations_v2/00_schema/anagrafiche/20260601-36-…`, `20260603-25-…` |
 | GUC emittente attivo (BE) | `backend/apps/core/api/jwt_audit_authentication.py` |
-| Cantiere che ha fatto emergere i buchi | [brief-db-dash-competenza-gruppi-cliente-e-ricerca.md](brief-db-dash-competenza-gruppi-cliente-e-ricerca.md) |
+| Cantiere che ha fatto emergere i buchi | [brief-db-dash-competenza-gruppi-cliente-e-ricerca.md](../work-done/brief-db-dash-competenza-gruppi-cliente-e-ricerca.md) |
 | Architettura multi-face auth | `docs/it/guide/architettura-multi-face-auth.md` |

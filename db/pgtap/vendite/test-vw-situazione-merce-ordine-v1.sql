@@ -19,6 +19,14 @@
 --   9) la RI-CONSEGNA emessa non conta due volte, e da_spedire torna a 0
 --  10) kit senza `coeff_qta` sulla corsia ORD -> misurabile false, differenza NULL
 --  11) scope ristretto: la riga SPARISCE, non esce a zero
+--  --- soglia dell'impegno (20260818-06) ---
+--  12) riga di ordine in BOZZA: c'e', ma stato NON_IMPEGNATA e da_spedire NULL
+--  13) riga di ordine ANNULLATO mai spedito: idem — e non «N da spedire» per sempre
+--  14) la PORTA che rende irraggiungibile «abortito con partite»: un ordine con
+--      un DDT vivo non e' annullabile
+--  15) coerenza del SEED: DRAFT e' l'unico stato attivo sotto la soglia
+--  16) invariante globale: nessuna riga con da_spedire valorizzato sotto soglia
+--  17) la CARDINALITA' non cambia: una riga per riga d'ordine attiva
 --
 -- Scopo:
 --  - il 6) e' il ramo che **nessun dato attraversa oggi** e che il perimetro
@@ -40,6 +48,28 @@
 --    questo.
 --    ⚠️ Questo test ha senso SOLO col runner applicativo (il default dal
 --    2026-08-07): l'owner salta la RLS e lo vedrebbe passare per finta.
+--  - il 12) e il 13) sono la SOGLIA DELL'IMPEGNO (changeSet 20260818-06),
+--    gemella della decisione D1 sul DDT. Prima, 60 righe su 107 — tutte su
+--    ordini in bozza — dichiaravano «N da spedire»: un'intenzione presentata
+--    come un arretrato. ⚠️ Si verifica che la riga CI SIA ancora: farla
+--    sparire renderebbe VUOTO il pannello di ogni bozza (il pannello e' per
+--    ordine), cioe' «non ho il permesso di saperlo» presentato come «non c'e'
+--    nulla da fare» — lo stesso difetto dell' 11), da un'altra porta.
+--  - il 14) non misura la vista: misura la PORTA che rende il ramo «ordine
+--    abortito CON partite» irraggiungibile. Senza, la precedenza data alle
+--    partite nel CASE sarebbe una regola non verificata — e una fixture
+--    costruita a mano l'avrebbe confermata scavalcando il dominio.
+--  - il 15) inchioda un'assunzione sul SEED e non sul modello: su
+--    `config.stati_doc_ordini` la colonna `ordine` e' un ordinamento di
+--    PRESENTAZIONE (EVASO 25 sta prima di ALLOCATO 30), non un ciclo di vita.
+--    La soglia `>= CONFERMATO` e' corretta solo finche' DRAFT resta l'unico
+--    stato sotto. Se un seed futuro lo cambia, deve fallire QUI e non far
+--    ricomparire le bozze in silenzio.
+--  - il 16) e il 17) sono la rete chiesta dal perimetro BE, nella forma che
+--    non decade: non «le 47 righe di oggi» (un numero che i dati di sviluppo
+--    spostano), ma i due INVARIANTI — nessun arretrato sotto soglia, e la
+--    cardinalita' del contratto invariata. Il 17) e' cio' che rende vero
+--    «il BE non deve muovere niente».
 -- ------------------------------------------------------------
 
 -- ⚠️ 1. TRANSAZIONE. Senza, un fallimento a meta' lascia i dati di prova nel
@@ -53,7 +83,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- ⚠️ 3. CONTESTO APPLICATIVO. La vista legge ordini e ddt, che hanno RLS.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(11);
+SELECT plan(17);
 
 SET LOCAL app.ruolo_applicativo = 'OPERATORE';
 SET LOCAL app.current_user_id = '1';
@@ -322,6 +352,144 @@ SELECT is(
     WHERE ordine_riga_id = (SELECT ordine_riga_id FROM tmp_d)),
   0,
   '11) scope che non vede l''ordine: la riga sparisce, non esce con dei conti a zero');
+
+
+-- ============================================================
+-- ⭐ LA SOGLIA DELL'IMPEGNO — test 12..17 (changeSet 20260818-06)
+--
+--    ⚠️ Il test 11 ha ristretto lo scope apposta. Da qui in poi serve di
+--    nuovo l'utente che vede i documenti, altrimenti i test sotto sarebbero
+--    verdi per sottrazione — che e' esattamente il difetto che il file
+--    combatte in tre punti.
+-- ============================================================
+SELECT set_config('app.current_user_id', '1', true);
+
+-- Helper: come mk_ordine, ma con lo stato scelto per codice_interno.
+-- ⚠️ Per codice_interno e non per id: la chiave stabile (§6d linee guida SQL).
+CREATE OR REPLACE FUNCTION pg_temp.mk_ordine_stato(p_qta numeric, p_stato_codice text)
+RETURNS TABLE(ordine_id bigint, ordine_uid uuid, ordine_riga_id bigint) AS $$
+DECLARE r RECORD; v_ord bigint; v_uid uuid; v_orr bigint; v_stato bigint;
+BEGIN
+  SELECT * INTO r FROM tmp_refs;
+  SELECT s.id INTO v_stato FROM config.stati_doc_ordini s
+   WHERE s.codice_interno = p_stato_codice AND s.attivo IS TRUE;
+  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
+    valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
+  VALUES (r.soggetto_ruolo_id, r.billing_account_id, v_stato, r.valuta_id,
+          DATE '2026-08-15', 'SPEDITO', r.emittente_fiscale_id, false,
+          jsonb_build_object('test_scope','pgtap_situazione_ordine'))
+  RETURNING id, uid INTO v_ord, v_uid;
+  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
+    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
+  VALUES (v_ord, 1, r.articolo_id, 'Riga sotto soglia', p_qta, p_qta, 25, r.iva_id, true, false,
+          jsonb_build_object('test_scope','pgtap_situazione_ordine'))
+  RETURNING id INTO v_orr;
+  RETURN QUERY SELECT v_ord, v_uid, v_orr;
+END $$ LANGUAGE plpgsql;
+
+-- ============================================================
+-- G) Ordine in BOZZA — test 12
+--    Prima della soglia questa riga diceva «10 da spedire»: nessuno aspetta
+--    quei 10, l'ordine non e' ancora stato confermato.
+--    ⚠️ La riga deve ESSERCI: il pannello e' per ordine.
+-- ============================================================
+CREATE TEMP TABLE tmp_g AS SELECT * FROM pg_temp.mk_ordine_stato(10, 'DRAFT');
+
+SELECT results_eq(
+  $q$SELECT ordinato, partite_merce, da_spedire, differenza, stato::text
+       FROM vendite.vw_situazione_merce_ordine
+      WHERE ordine_riga_id = (SELECT ordine_riga_id FROM tmp_g)$q$,
+  $q$VALUES (10::numeric, 0, NULL::numeric, NULL::numeric, 'NON_IMPEGNATA')$q$,
+  '12) ordine in bozza: la riga c''e'' con il suo ordinato, ma da_spedire NULL e NON_IMPEGNATA');
+
+-- ============================================================
+-- H) Ordine ANNULLATO mai spedito — test 13
+--    Confermato -> mai spedito -> annullato: il percorso REALE, e l'unico che
+--    porta un ordine abortito ad avere righe attive (l'annullamento non
+--    disattiva le righe).
+--    🔴 Prima della soglia questa riga avrebbe detto «7 da spedire» PER
+--    SEMPRE: nessuna azione avrebbe potuto azzerarla.
+-- ============================================================
+CREATE TEMP TABLE tmp_h AS SELECT * FROM pg_temp.mk_ordine(7);
+UPDATE vendite.ordini
+   SET stato_doc_ordine_id = (SELECT s.id FROM config.stati_doc_ordini s
+                               WHERE s.codice_interno = 'ANNULLATO' AND s.attivo IS TRUE)
+ WHERE id = (SELECT ordine_id FROM tmp_h);
+
+SELECT results_eq(
+  $q$SELECT ordinato, partite_merce, da_spedire, stato::text
+       FROM vendite.vw_situazione_merce_ordine
+      WHERE ordine_riga_id = (SELECT ordine_riga_id FROM tmp_h)$q$,
+  $q$VALUES (7::numeric, 0, NULL::numeric, 'NON_IMPEGNATA')$q$,
+  '13) ordine annullato mai spedito: da_spedire NULL, non «7 da spedire» per sempre');
+
+-- ============================================================
+-- I) La PORTA — test 14
+--    ⭐ Questo test NON guarda la vista. Guarda il motivo per cui il ramo
+--    «ordine abortito CON partite» non e' raggiungibile: finche' esiste un
+--    DDT figlio VIVO l'ordine non si annulla, e la D1 esclude i DDT abortiti
+--    dalle partite. Quindi abortito => zero partite.
+--    La precedenza data alle partite nel CASE della vista resta comunque (e
+--    se un domani questa porta si apre, il pannello MOSTRA la merce invece di
+--    nasconderla) — ma senza questo test sarebbe una regola non verificata,
+--    e una fixture costruita a mano l'avrebbe confermata scavalcando il
+--    dominio.
+--    tmp_d e' l'ordine del test 8/9: ha due DDT vivi (spedizione + ri-consegna).
+-- ============================================================
+SELECT ok(
+  script.fn_check_ordine_annullabile((SELECT ordine_id FROM tmp_d))
+    @> '[{"codice":"E_ORD_ANNULLA_CON_DDT"}]'::jsonb,
+  '14) ordine con merce uscita: NON annullabile — e'' la porta che rende irraggiungibile «abortito con partite»');
+
+-- ============================================================
+-- L) Coerenza del SEED — test 15
+--    ⚠️ Su config.stati_doc_ordini la colonna `ordine` NON e' un ciclo di
+--    vita: EVASO 25 sta prima di ALLOCATO 30 e SPEDITO 40. E' un ordinamento
+--    di presentazione. La soglia `>= CONFERMATO` regge solo finche' DRAFT
+--    resta l'unico stato attivo sotto: se un seed futuro lo cambia, le bozze
+--    tornerebbero nel pannello IN SILENZIO. Qui invece fallisce.
+-- ============================================================
+--    ⚠️ E `ordine` e' NULLABLE: uno stato attivo senza ordinamento finirebbe
+--    sotto soglia per COALESCE, cioe' i suoi ordini diventerebbero tutti
+--    NON_IMPEGNATA. Si conta anche quello, qui e non a valle.
+SELECT is(
+  (SELECT COUNT(*)::int
+     FROM config.stati_doc_ordini s
+    WHERE s.attivo IS TRUE
+      AND (s.ordine IS NULL
+           OR (s.codice_interno <> 'DRAFT'
+               AND s.ordine < (SELECT c.ordine FROM config.stati_doc_ordini c
+                                WHERE c.codice_interno = 'CONFERMATO')))),
+  0,
+  '15) seed: `ordine` sempre valorizzato e DRAFT unico stato attivo sotto la soglia CONFERMATO');
+
+-- ============================================================
+-- M) Gli INVARIANTI — test 16 e 17
+--    La rete chiesta dal perimetro BE, nella forma che non decade. Non «le 47
+--    righe di oggi» — un numero che i dati di sviluppo spostano da soli — ma
+--    le due proprieta' che devono valere sempre.
+-- ============================================================
+SELECT is(
+  (SELECT COUNT(*)::int
+     FROM vendite.vw_situazione_merce_ordine s
+     JOIN vendite.ordini o             ON o.id   = s.ordine_id
+     JOIN config.stati_doc_ordini sdo  ON sdo.id = o.stato_doc_ordine_id
+    WHERE s.da_spedire IS NOT NULL
+      AND (sdo.is_abortito
+           OR sdo.ordine < (SELECT c.ordine FROM config.stati_doc_ordini c
+                             WHERE c.codice_interno = 'CONFERMATO'))),
+  0,
+  '16) invariante: nessun arretrato di spedizione dichiarato su ordini in bozza o abortiti');
+
+-- ⭐ E' questo che rende vero «il BE non deve muovere niente»: la soglia
+--    cambia i NUMERI di alcune righe, non QUANTE righe tornano.
+SELECT is(
+  (SELECT COUNT(*)::int FROM vendite.vw_situazione_merce_ordine),
+  (SELECT COUNT(*)::int
+     FROM vendite.ordini_righe orr
+     JOIN vendite.ordini o ON o.id = orr.ordine_id
+    WHERE orr.attivo IS TRUE),
+  '17) cardinalita'' invariata: una riga per riga d''ordine attiva, anche sotto soglia');
 
 SELECT * FROM finish();
 ROLLBACK;

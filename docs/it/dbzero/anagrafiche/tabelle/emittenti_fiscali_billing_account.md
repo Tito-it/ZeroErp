@@ -40,6 +40,9 @@
 | trg_emittenti_fiscali_ba_a10_default_guard_ins_upd_dlt | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_default_guard()` |
 | trg_emittenti_fiscali_ba_a10_default_guard_ins_upd_dlt | AFTER | DELETE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_default_guard()` |
 | trg_emittenti_fiscali_ba_a10_default_guard_ins_upd_dlt | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_default_guard()` |
+| trg_emittenti_fiscali_ba_z95_guard_albero_emittente_ins_upd_dlt | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_albero_emittente()` |
+| trg_emittenti_fiscali_ba_z95_guard_albero_emittente_ins_upd_dlt | AFTER | DELETE | `EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_albero_emittente()` |
+| trg_emittenti_fiscali_ba_z95_guard_albero_emittente_ins_upd_dlt | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_albero_emittente()` |
 | trg_emittenti_fiscali_billing_account_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_emittenti_fiscali_billing_account_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 

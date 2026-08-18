@@ -1,9 +1,14 @@
 # Brief al team DB — l'aggregato *parlante* per riga d'ordine
 
 > **Tipo**: brief DB · **Data**: 2026-08-17 · **Richiedente**: perimetro BE/FE ·
-> **Stato**: 🟢 **CHIUSO** — accolto e implementato dal team DB il 2026-08-17
-> (`20260817-15`, pgTAP **11/11** come applicazione), **con tre cambi rispetto
-> alla richiesta**: §8.
+> **Stato**: 🟡 **RIAPERTO il 2026-08-18** su rilievo del perimetro BE — alla
+> vista mancava la **soglia sullo stato dell'ordine**, gemella della D1 sul DDT.
+> Rilievo accolto nel merito, **rimedio modificato**: §10. changeSet
+> `20260818-06` scritto, pgTAP esteso a 17, **NON applicato**.
+>
+> **Stato precedente**: 🟢 CHIUSO — accolto e implementato dal team DB il
+> 2026-08-17 (`20260817-15`, pgTAP **11/11** come applicazione), **con tre cambi
+> rispetto alla richiesta**: §8.
 >
 > ✅ **Pushato e integrato il 2026-08-18** (PR #1282 → `Tito-dev`): changeSet e
 > doc auto-gen sono in repository, insieme al backend che li consuma (PR #1283).
@@ -103,18 +108,18 @@ un'eventuale materializzata.
 
 ### 3.1 Le colonne proposte
 
-| Colonna | Contenuto |
-| --- | --- |
-| `ordine_riga_id`, `ordine_id`, `riga_nr`, `articolo_id` | chiave e contesto |
-| `ordinato` | `ordini_righe.quantita` |
-| `consegnato`, `reso`, `in_riconsegna`, `tenuti` | Σ dalle partite (0 se non ce ne sono) |
-| `fatturato_merce`, `fatturato_da_ordine`, `fatturato` | Σ dalle partite + corsia ORD |
-| `fatturato_anticipato` | fatturato di merce non ancora uscita — **FE-3**: non è un accredito |
-| `da_spedire` | `ordinato − consegnato`, mai negativo — vedi §4.1 |
-| `partite_merce` | quante partite ci sono sotto (0 = mai spedita) |
-| `misurabile` | `bool_and` delle partite ∧ corsia ORD |
-| `differenza` | **con la propagazione dei NULL**, §3.2 |
-| `stato` | il vocabolario del §9.3 + il valore nuovo, §3.3 |
+| Colonna                                                 | Contenuto                                                           |
+| ------------------------------------------------------- | ------------------------------------------------------------------- |
+| `ordine_riga_id`, `ordine_id`, `riga_nr`, `articolo_id` | chiave e contesto                                                   |
+| `ordinato`                                              | `ordini_righe.quantita`                                             |
+| `consegnato`, `reso`, `in_riconsegna`, `tenuti`         | Σ dalle partite (0 se non ce ne sono)                               |
+| `fatturato_merce`, `fatturato_da_ordine`, `fatturato`   | Σ dalle partite + corsia ORD                                        |
+| `fatturato_anticipato`                                  | fatturato di merce non ancora uscita — **FE-3**: non è un accredito |
+| `da_spedire`                                            | `ordinato − consegnato`, mai negativo — vedi §4.1                   |
+| `partite_merce`                                         | quante partite ci sono sotto (0 = mai spedita)                      |
+| `misurabile`                                            | `bool_and` delle partite ∧ corsia ORD                               |
+| `differenza`                                            | **con la propagazione dei NULL**, §3.2                              |
+| `stato`                                                 | il vocabolario del §9.3 + il valore nuovo, §3.3                     |
 
 ### 3.2 ⭐ La regola che è il cuore della richiesta: i NULL si propagano
 
