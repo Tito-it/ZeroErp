@@ -2590,7 +2590,7 @@ insieme»; N11 è passato da solo, e il debito è aperto da oggi.
 
 | # | Il §17 dice | Verificato contro il codice, oggi |
 | --- | --- | --- |
-| **BE-6** | rigenerare `error_policies_generated.py` **e** scrivere i messaggi di ripiego | 🔴 **8 codici** a catalogo, **0** nel dizionario BE (`grep E_ACCREDITO_ error_policies_generated.py` → vuoto). ⭐ **I messaggi di ripiego NON vanno scritti**: tutti e otto portano `%s`, e `error_messages_fallback.py` è per definizione *«la variante senza segnaposto»*. La rigenerazione **è** tutto il lavoro |
+| **BE-6** | rigenerare `error_policies_generated.py` **e** scrivere i messaggi di ripiego | ✅ **FATTO** (2026-08-18). 🔴 **E i codici erano NOVE, non otto**: il generatore ha portato dentro anche `W_MESSAGGIO_ARITA` (classe `AVVISO`, di un'altra slice DB), che mancava. 🔴 **E la mia riga qui era SBAGLIATA**: avevo scritto che i ripieghi non servivano perché i messaggi a catalogo portano `%s`. È l'opposto — vedi §21.2-bis |
 | **BE-7** | la coda espone `gia_accreditato`: non ricalcolarlo in Python | ✅ **già servito, zero righe da scrivere**. `ResiRepository._list_coda` proietta `SELECT v.*`: `gia_accreditato` e `blocco_codice` sono **già** nel payload di `GET /resi/da-accreditare/` dal giorno del migrate. Il lavoro qui è **non** scrivere niente |
 | **BE-9** | verificare che la pipeline risolva uno step per la natura nuova | ✅ **verificato: nessun seed serve**. La pipeline si risolve su `(stato_doc_fiscale_id, tipo_lotto, tipo_doc_fiscale_id)` e tutte e otto le righe di `fatturazione_pipeline.csv` hanno `tipo_doc_fiscale_id = null`. La **natura non è una dimensione del lotto** (§12.4-bis.8) e non entra nella risoluzione — era «probabilmente», ora è misurato |
 | **FE-5** | label i18n del motivo `MERCE_RESA_GIA_FATTURATA` | ✅ **c'è già**, `it.json` e `en.json` riga 1823 (`"Merce resa già fatturata — accredito in attesa"`). La richiesta di luglio *«da prevedere da subito»* era stata onorata |
@@ -2600,6 +2600,41 @@ insieme»; N11 è passato da solo, e il debito è aperto da oggi.
 | **BE-3** | `post_permission` dedicato sul verbo | 🔴 il codename **non è a catalogo**: `config.azioni_processo.csv` si ferma a id 30 (`cambia_stato_commessa`). Fino al seed il verbo è **fail-closed**, cioè utilizzabile dal solo SUPER_ADMIN — stesso precedente di `code_manage` (§Coda lavori del catalogo BB). → **P-1** |
 | **BE-4/BE-5** | il generatore non aggrega e copia dalla riga rettificata | ✅ confermate entrambe, ed è la slice più grossa del giro: §22.5 |
 | **BE-10** | il drawer del lotto non deve assumere «sono tutte fatture» | ✅ confermata. ⚠️ E il perimetro è più largo di quanto suoni: **`natura_doc_id` non è nominata da nessun punto del backend** (0 occorrenze in `backend/apps/vendite/`), quindi non è che il drawer «assume»: **non ha il dato**. §22.6 |
+
+### 21.2-bis 🔴 Una correzione a questo piano, pagata subito
+
+> Scritta il 2026-08-18 dopo aver eseguito B0: il cancello ha smentito una riga
+> del §21.2, e il *perché* dell'errore vale più della correzione.
+
+**Cosa avevo scritto**: *«i messaggi di ripiego NON vanno scritti: tutti e otto
+portano `%s`, e `error_messages_fallback.py` è per definizione la variante senza
+segnaposto»*.
+
+**Cosa dice il cancello**, eseguito: `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego`
+è rosso finché **ogni** codice vivo non ha il suo ripiego. Sono due regole
+diverse, e le avevo fuse in una:
+
+| Regola | Cosa dice davvero |
+| --- | --- |
+| `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego` | **ogni** codice non ritirato **deve** avere un ripiego |
+| `test_i_messaggi_di_ripiego_non_hanno_segnaposto` | e quel ripiego **non deve** contenere `%s` |
+
+⭐ **Il `%s` nel messaggio a catalogo non è un'esenzione: è la ragione per cui il
+ripiego esiste.** Il commento del test lo dice esattamente — *«questi messaggi si
+mostrano QUANDO GLI ARGOMENTI NON CI SONO: uno con `%s` dentro arriverebbe a
+video con il segnaposto in chiaro»*. Un codice con segnaposti a catalogo è
+**quello che più ne ha bisogno**, non quello che se ne può privare.
+
+⚠️ **Come ho sbagliato, ed è il pezzo da ricordare**: ho letto la *descrizione*
+del modulo nel catalogo BB (*«la variante senza segnaposto»*) e ne ho dedotto il
+perimetro, invece di leggere il **test che lo presidia**. La descrizione dice
+com'è fatto il contenuto; il test dice chi deve esserci. Sono due domande
+diverse, e solo la seconda è un cancello.
+
+**Esito**: 9 ripieghi scritti (7 `E_ACCREDITO_*`, `E_RESO_ACCREDITO_SUPERA_RIGA_FATTURA`,
+`W_MESSAGGIO_ARITA` — quest'ultimo sul precedente di `W_TXID_NOT_REGISTERED`, che
+un ripiego ce l'ha già benché un `W_` non raggiunga mai il client). **3744 test
+verdi.**
 
 ### 21.3 🔴 I sei prerequisiti che NON sono di BE/FE
 
@@ -2761,7 +2796,7 @@ guardare una persona, con i registri IVA in mano.
 > Ordine di lettura, non di consegna: la sequenza è nel §25. Ogni slice dichiara
 > i building block che riusa — la prima difesa contro le duplicazioni.
 
-### B0 — Il dizionario dei codici torna in pari *(BE-6)* — **prima di tutto**
+### B0 — ✅ FATTO — Il dizionario dei codici torna in pari *(BE-6)*
 
 ```bash
 ./manage-env.sh genera_error_policies          # riscrive il modulo
@@ -2783,9 +2818,9 @@ guardare una persona, con i registri IVA in mano.
   | `E_ACCREDITO_SEGMENT_DUPLICATO` | `CONFLITTO_STATO` | 409 |
   | `E_RESO_ACCREDITO_SUPERA_RIGA_FATTURA` | `CONFLITTO_STATO` | 409 |
 
-* ⭐ **Nessun messaggio di ripiego**: tutti e otto hanno segnaposto `%s`, e
-  `USER_MESSAGE_FALLBACK` ospita solo i messaggi che non ne hanno. Aggiungerli
-  lì sarebbe duplicare `config.messaggi_errore` con una copia che invecchia;
+* 🔴 **E i ripieghi vanno scritti, uno per codice** — la riga opposta era mia ed
+  era sbagliata (§21.2-bis): il `%s` a catalogo è la *ragione* del ripiego, non
+  la sua esenzione. Nove messaggi, senza segnaposto;
 * è la **prima** slice perché tiene rossi i cancelli
   `test_error_codes_db_policy_guardrail` e `test_error_policies_divergenza_db`
   (opt-in `ZEROERP_TEST_DB_E2E`, **acceso in CI**): finché non è fatta, ogni PR

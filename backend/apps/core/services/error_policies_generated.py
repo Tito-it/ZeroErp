@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 702, di cui 79 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 711, di cui 79 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -42,6 +42,20 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "DEFINIZIONE_PUBBLICATA_IMMUTABILE": "CONFLITTO_STATO",
     # ⚠️ RITIRATO il 2026-08-05
     "DEFINIZIONE_TRANSIZIONE_NON_AMMESSA": "CONFLITTO_STATO",
+    # vendite.fn_accredita_riga_reso: una delle attivita' che hanno fatturato la partita non e' mai atterrata su una riga di fattura (attivita_fatturabili.fattura_riga_id vuoto). Non e' un caso da gestire con un ripiego: e' la condizione che rende l'accredito IMPOSSIBILE, perche' N-1 impone che il prezzo si copi dalla riga di fattura e non si ricalcoli mai. Piano: brief-design-note-credito-resi S12.6.
+    "E_ACCREDITO_ATTIVITA_NON_FATTURATA": "NON_ESEGUIBILE",
+    # vendite.fn_accredita_riga_reso: la riga di reso ha gia' un accredito registrato in vendite.resi_righe_accrediti e non ha piu' quota da accreditare. E' il doppio click, e l'operatore lo scopre QUANDO CLICCA invece che a fine batch su un documento fiscale. Non e' il presidio vero — quello e' la UNIQUE del ponte piu' il fatto che la coda sottrae la quota gia' accreditata — e' il messaggio parlante che arriva prima. Piano: brief-design-note-credito-resi D-NC-10.
+    "E_ACCREDITO_GIA_ESEGUITO": "CONFLITTO_STATO",
+    # vendite.fn_accredita_riga_reso: un articolo composito fra le attivita' della partita ha componenti senza coeff_qta nel meta, quindi la quantita' in unita' PADRE non e' calcolabile. Stessa condizione che rende `misurabile` falso in vw_af_merce_per_riga. Inventare il coefficiente accrediterebbe un numero che nessuno sa da dove viene. Piano: brief-design-note-credito-resi N8.
+    "E_ACCREDITO_KIT_NON_MISURABILE": "NON_ESEGUIBILE",
+    # vendite.fn_accredita_riga_reso: la riga di reso non compare nella coda accrediti, oppure il suo accredito dovuto e' sceso a zero. La coda e' la sola sede del numero (D-NC-6: l'accredito e' sempre PIENO e la quantita' non e' un input), quindi fuori di li' non c'e' nulla da accreditare. Classe NON_ESEGUIBILE e non NON_TROVATO: la riga di reso ESISTE, e' la precondizione a mancare. Piano: brief-design-note-credito-resi N8.
+    "E_ACCREDITO_NON_IN_CODA": "NON_ESEGUIBILE",
+    # vendite.fn_accredita_riga_reso: le righe di fattura della partita non bastano a coprire tutto l'accredito dovuto. E' il tetto della MERCE, tenuto dalla madre come UGUAGLIANZA e non dal guard del ponte: la merce si misura in unita' padre e su un kit tre righe di ponte valgono una sola unita', quindi un trigger di riga che le sommasse rifiuterebbe il secondo componente. Solleva invece di accreditare a meta' perche' un accredito PARZIALE lascia un residuo che nessuno puo' chiudere: ne' una rinuncia (riguarda la ri-consegna) ne' un onere (viaggia su segmenti MAN: e non entra nel conto della merce). E' la malattia per cui il cantiere esiste. Piano: brief-design-note-credito-resi D-NC-6.
+    "E_ACCREDITO_QUOTA_NON_COPERTA": "NON_ESEGUIBILE",
+    # vendite.fn_accredita_riga_reso, guard is_new: fn_upsert_commessa_attivita ha aggiornato una riga invece di crearne una. L'accredito e' una CREATE, non una upsert — riusa la fn di upsert solo per non duplicarne il mapping a 40 parametri. Con l'advisory lock sulla partita e il progressivo #RET da MAX+1 non deve mai scattare: se scatta e' una regressione, o una transazione fuori da READ COMMITTED. Gemello di E_ONERE_SEGMENT_DUPLICATO sulla porta oneri. Piano: brief-design-note-credito-resi N8.
+    "E_ACCREDITO_SEGMENT_DUPLICATO": "CONFLITTO_STATO",
+    # vendite.fn_accredita_riga_reso, guard di D-NC-1: la riga di coda non porta una riga di DDT. La condizione e' IMPOSSIBILE per costruzione su tre livelli indipendenti (resi_righe.ddt_riga_id e' NOT NULL, la partita E' la riga di DDT, la coda e' agganciata a ddt_riga_id), e c'e' la ragione di merito: la merce non puo' tornare indietro se non e' mai uscita. Esiste come guard e non come COALESCE perche' un ripiego silenzioso scriverebbe la rettifica sul segmento ORD, spostando l'accredito sulla spedizione sbagliata. Se scatta, e' una regressione del modello. Piano: brief-design-note-credito-resi D-NC-1.
+    "E_ACCREDITO_SENZA_SPEDIZIONE": "TECNICO",
     "E_ADMIN_CF_DUPLICATO": "CONFLITTO_STATO",
     "E_ADMIN_EMAIL_DUPLICATA": "CONFLITTO_STATO",
     "E_ADMIN_PIVA_DUPLICATA": "CONFLITTO_STATO",
@@ -708,6 +722,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_RESET_LOTTO_FATTURA_VALIDATION": "DATO_ERRATO",
     "E_RESET_LOTTO_VALIDATION": "DATO_ERRATO",
     "E_RESET_PASSWORD": "DATO_ERRATO",
+    # vendite.trgfn_resi_accrediti_guard: il tetto del DOCUMENTO. La somma degli accrediti su una riga di fattura non puo' superare la quantita' che quella riga ha fatturato. E' il limite che parla la lingua del documento invece che della merce, e prima non esisteva: l'unico tetto all'accredito era il conto della merce. Puo' scattare quando RESI DIVERSI accreditano la stessa riga di fattura in momenti diversi. Piano: brief-design-note-credito-resi D-NC-10.
+    "E_RESO_ACCREDITO_SUPERA_RIGA_FATTURA": "CONFLITTO_STATO",
     "E_RESO_ANNULLO_CON_RICONSEGNE": "CONFLITTO_STATO",
     # Guard DB sorgente reso (trgfn_resi_guard_ddt_consegnato, a10 INSERT): · il reso richiede il DDT sorgente in CONSEGNATO. Il service ha il · guard gemello parlante (crea_reso); questo copre le scritture non-BE.
     "E_RESO_DDT_NON_CONSEGNATO": "CONFLITTO_STATO",
@@ -1025,6 +1041,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER": "DATO_ERRATO",
     # ⚠️ RITIRATO il 2026-08-05
     "TEMPLATE_FLUSSO_PROIEZIONE_STEP_DOMINIO": "DATO_ERRATO",
+    # script.fn_log_and_raise_error: ripiego di arita' (18-08-2026). Non si SOLLEVA mai — si scrive soltanto nel log, come ogni W_: e' il controllo (E) del guardrail. Segnala che un punto di sollevamento passa meno valori dei segnaposto del suo messaggio; prima di questa data la format() interna alzava 22023 e cancellava l'errore di dominio. Gemello statico: test 5 di db/pgtap/script/test-catalogo-messaggi-errore-completo.sql.
+    "W_MESSAGGIO_ARITA": "AVVISO",
     # <- W_TXID_NOT_REGISTERED  (vivo)
     "W_TXID_NOT_REGISTERED": "AVVISO",
 }
