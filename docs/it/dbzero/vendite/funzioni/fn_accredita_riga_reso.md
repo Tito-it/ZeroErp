@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_accredita_riga_reso.md" %}
 # ⚙️ Funzione `fn_accredita_riga_reso`
 
 ```sql

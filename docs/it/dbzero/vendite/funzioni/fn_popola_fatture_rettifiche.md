@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_popola_fatture_rettifiche.md" %}
 # ⚙️ Funzione `fn_popola_fatture_rettifiche`
 
 ```sql
