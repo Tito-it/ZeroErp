@@ -21,6 +21,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Column from 'primevue/column'
 import DataTable from 'primevue/datatable'
+import Button from 'primevue/button'
 import Message from 'primevue/message'
 import Tag from 'primevue/tag'
 import { labelOrCode } from '../../../core/utils/i18nLabel'
@@ -33,6 +34,8 @@ const props = defineProps({
   loading: { type: Boolean, default: false },
   loaded: { type: Boolean, default: false },
 })
+
+const emit = defineEmits(['apri-coda-accrediti'])
 
 const { t, te } = useI18n()
 
@@ -102,20 +105,30 @@ function etichettaSeverity(riga) {
   </div>
 
   <div v-else class="app-merce-contenuto">
-    <!-- §5.3: cio' che non si puo' ancora chiudere si MOSTRA, dichiarando che
-         l'azione non c'e'. Nascondere l'accredito farebbe sembrare a posto un
-         documento su cui c'e' un dovuto al cliente; mostrarlo senza commento
-         manderebbe l'operatore a cercare un pulsante che non esiste.
-         ⚠️ TEMPORANEO PER COSTRUZIONE: va tolto quando arriva la nota di
-         credito (cantiere 3). Il promemoria e' anche nel §10-bis di quel brief,
-         cosi' chi la implementa lo trova dalla sua parte. -->
+    <!-- §5.3: cio' che non si puo' chiudere QUI si MOSTRA, e si dice dove si
+         chiude. Nascondere l'accredito farebbe sembrare a posto un documento
+         su cui c'e' un dovuto al cliente.
+         ⭐ 2026-08-18: la nota «l'emissione non e' ancora disponibile» e' stata
+         TOLTA — il verbo esiste, e lasciarla avrebbe spostato la contraddizione
+         del §21.1 invece di chiuderla. Al suo posto il collegamento alla coda
+         GIA' FILTRATA su questo documento: una coda non filtrata sarebbe «un
+         percorso spezzato uguale, solo con un click in piu'».
+         ⛔ Il pannello resta una LETTURA (D-NC-8): qui non c'e' il verbo, c'e'
+         la strada per raggiungerlo. Un'azione qui dentro vorrebbe permessi,
+         conferme, gestione errori e ricarico — quattro cose insieme. -->
     <Message
       v-if="s.daAccreditare > 0"
-      severity="info"
+      severity="warn"
       :closable="false"
       size="small"
     >
-      {{ t('vendite.situazione_merce.nc_non_disponibile') }}
+      {{ t('vendite.situazione_merce.nc_da_accreditare', { n: qta(s.daAccreditare) }) }}
+      <Button
+        link
+        size="small"
+        :label="t('vendite.situazione_merce.nc_apri_coda')"
+        @click="emit('apri-coda-accrediti')"
+      />
     </Message>
 
     <!-- 1. RIGHE D'ORDINE — il livello che risponde a «di quello che ho

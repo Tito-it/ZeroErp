@@ -88,6 +88,23 @@ ResiAccreditoTests (il verbo della nota di credito — madre fn_accredita_riga_r
 35) test_accredito_nessun_precheck_applicativo   — i guard sono nella madre
 36) test_accredito_no_atomic_extra               — una sola SELECT fn_()
 37) test_accredito_codice_dominio_dalla_madre    — E_ACCREDITO_GIA_ESEGUITO
+
+ResiAccreditoMassivoTests (il fan-out del verbo — B2 / D-NC-7)
+38) test_massivo_esito_parziale_non_solleva      — 200 con esito PARZIALE
+39) test_massivo_tutte_fallite_non_solleva       — anche ERRORE e' un report
+40) test_massivo_accrediti_portano_la_riga       — flatten con resi_riga_id
+41) test_massivo_dedup_preserva_ordine           — id ripetuto lavorato UNA volta
+42) test_massivo_lista_vuota_rifiutata           — no «tutte» per omissione
+43) test_massivo_lista_degenere_rifiutata        — non-lista, id 0/negativi/bool/testo
+44) test_massivo_cap_rispettato                  — max MAX_ACCREDITI_MASSIVI
+
+ResiAnnulloAccreditoTests (B2-bis / D-NC-11)
+45) test_annullo_delega_alla_madre               — una sola fn, ritorno light
+46) test_annullo_riga_di_altro_reso_rifiutata    — E_RESO_NOT_FOUND, madre non chiamata
+47) test_annullo_motivo_vuoto_a_null             — normalizza, il rifiuto e' della madre
+48) test_annullo_codice_dominio_dalla_madre      — E_ACCREDITO_ANNULLO_NON_AMMESSO
+49) test_annullo_no_atomic_extra                 — atomicita' nella fn madre
+50) test_annullo_motivo_non_stringa_rifiutato    — nessun tipo strano al driver
 """
 
 from contextlib import nullcontext
@@ -97,12 +114,24 @@ from django.db import DatabaseError, IntegrityError
 from django.test import SimpleTestCase
 
 from apps.core.services.error_manager import ServiceError
+from apps.core.services.fan_out import run_fan_out as _run_fan_out_vero
 from apps.vendite.services import resi_service
 from apps.vendite.services.resi_service import _db_errors
 
 _REPO = "apps.vendite.services.resi_service.ResiRepository"
 _SVC = "apps.vendite.services.resi_service"
 _ATOMIC = "apps.vendite.services.resi_service.transaction.atomic"
+
+
+# Scopo: il BB `run_fan_out` VERO, con l'isolamento per elemento spento. Il
+#        savepoint richiede un database e questi test girano su SimpleTestCase;
+#        spegnere l'isolamento lascia intatto cio' che i test misurano —
+#        aggregazione a tre stati, ordine, cattura dei codici — e non simula il
+#        BB con un finto ciclo, che sarebbe il modo migliore per verificare una
+#        cosa e consegnarne un'altra.
+def _fan_out_reale(items, process, **kwargs):
+    kwargs["isola_in_transazione"] = False
+    return _run_fan_out_vero(items, process, **kwargs)
 
 # Lettura leggera di comodo per i guard righe (get_stato_e_ddt_origine).
 _RESO_DRAFT = {"stato_codice_interno": "DRAFT", "ddt_origine_id": 30}
@@ -818,6 +847,198 @@ class ResiAccreditoTests(SimpleTestCase):
         with self.assertRaises(ServiceError) as cm:
             resi_service.accredita_riga_reso(5797)
         self.assertEqual(cm.exception.code, "E_ACCREDITO_GIA_ESEGUITO")
+
+
+class ResiAccreditoMassivoTests(SimpleTestCase):
+    """Il fan-out del verbo: un endpoint solo, e la riga singola e' una lista di uno."""
+
+    # Scopo: 🔴 il test che fissa la scelta di fondo — un esito parziale NON
+    # solleva. Il verbo non e' l'atto fiscale (il documento nasce dopo, nel
+    # giro di fatturazione), quindi sollevare butterebbe via anche le righe
+    # riuscite; e le righe rifiutate restano semplicemente in coda.
+    @patch(f"{_SVC}.run_fan_out")
+    @patch(_REPO)
+    def test_massivo_esito_parziale_non_solleva(self, repo_cls, _fan_out) -> None:
+        repo = repo_cls.return_value
+        repo.accredita_riga_reso.side_effect = [
+            [{"accredito_id": 901}],
+            DatabaseError("E_ACCREDITO_GIA_ESEGUITO: gia' eseguito."),
+            [{"accredito_id": 903}],
+        ]
+        _fan_out.side_effect = _fan_out_reale
+
+        out = resi_service.accredita_righe_reso([1, 2, 3])
+
+        self.assertEqual(out["esito"], "PARZIALE")
+        self.assertEqual((out["totale"], out["ok"]), (3, 2))
+        self.assertEqual(len(out["falliti"]), 1)
+        self.assertEqual(out["falliti"][0]["resi_riga_id"], 2)
+        self.assertEqual(out["falliti"][0]["codice"], "E_ACCREDITO_GIA_ESEGUITO")
+
+    # Scopo: anche «tutte fallite» e' un report a 200. Sollevare qui darebbe al
+    # frontend DUE forme da leggere per la stessa domanda (una lista di esiti
+    # oppure un errore): e' lo stesso argomento per cui l'endpoint e' uno solo.
+    @patch(f"{_SVC}.run_fan_out")
+    @patch(_REPO)
+    def test_massivo_tutte_fallite_non_solleva(self, repo_cls, _fan_out) -> None:
+        repo = repo_cls.return_value
+        repo.accredita_riga_reso.side_effect = DatabaseError(
+            "E_ACCREDITO_NON_IN_CODA: niente da accreditare.",
+        )
+        _fan_out.side_effect = _fan_out_reale
+
+        out = resi_service.accredita_righe_reso([1, 2])
+
+        self.assertEqual(out["esito"], "ERRORE")
+        self.assertEqual(out["ok"], 0)
+        self.assertEqual(
+            [f["codice"] for f in out["falliti"]],
+            ["E_ACCREDITO_NON_IN_CODA"] * 2,
+        )
+
+    # Scopo: le rettifiche di righe diverse finiscono in una lista sola, e ogni
+    # riga porta il proprio `resi_riga_id`: senza, il chiamante non saprebbe di
+    # chi e' la rettifica che sta guardando (su un kit ne arrivano N per riga).
+    @patch(f"{_SVC}.run_fan_out")
+    @patch(_REPO)
+    def test_massivo_accrediti_portano_la_riga(self, repo_cls, _fan_out) -> None:
+        repo = repo_cls.return_value
+        repo.accredita_riga_reso.side_effect = [
+            [{"accredito_id": 901}, {"accredito_id": 902}],
+            [{"accredito_id": 903}],
+        ]
+        _fan_out.side_effect = _fan_out_reale
+
+        out = resi_service.accredita_righe_reso([7, 9])
+
+        self.assertEqual(
+            [(a["resi_riga_id"], a["accredito_id"]) for a in out["accrediti"]],
+            [(7, 901), (7, 902), (9, 903)],
+        )
+
+    # Scopo: lo stesso id due volte nel body produrrebbe un
+    # E_ACCREDITO_GIA_ESEGUITO AUTOINFLITTO, che a video sembra un difetto del
+    # sistema e invece e' il body. L'ordine si preserva: e' quello in cui
+    # l'operatore ha spuntato le righe.
+    @patch(f"{_SVC}.run_fan_out")
+    @patch(_REPO)
+    def test_massivo_dedup_preserva_ordine(self, repo_cls, _fan_out) -> None:
+        repo = repo_cls.return_value
+        repo.accredita_riga_reso.return_value = []
+        _fan_out.side_effect = _fan_out_reale
+
+        resi_service.accredita_righe_reso([9, 7, 9, "7", 5])
+
+        self.assertEqual(
+            [c.args[0] for c in repo.accredita_riga_reso.call_args_list],
+            [9, 7, 5],
+        )
+
+    @patch(_REPO)
+    def test_massivo_lista_vuota_rifiutata(self, repo_cls) -> None:
+        # Lista vuota NON e' «tutte»: indovinare male qui significa lavorare un
+        # perimetro che nessuno ha chiesto, su un documento fiscale.
+        with self.assertRaises(ServiceError) as cm:
+            resi_service.accredita_righe_reso([])
+        self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")
+        repo_cls.return_value.accredita_riga_reso.assert_not_called()
+
+    @patch(_REPO)
+    def test_massivo_lista_degenere_rifiutata(self, repo_cls) -> None:
+        # ⚠️ `True` e' incluso apposta: in Python `bool` e' un `int`, quindi
+        # senza il controllo di tipo esplicito passerebbe come riga 1.
+        for degenere in (None, "5797", 5797, [0], [-1], ["banana"], [True], [None]):
+            with self.subTest(degenere=degenere):
+                with self.assertRaises(ServiceError) as cm:
+                    resi_service.accredita_righe_reso(degenere)
+                self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")
+        repo_cls.return_value.accredita_riga_reso.assert_not_called()
+
+    @patch(_REPO)
+    def test_massivo_cap_rispettato(self, repo_cls) -> None:
+        troppi = list(range(1, resi_service.MAX_ACCREDITI_MASSIVI + 2))
+        with self.assertRaises(ServiceError) as cm:
+            resi_service.accredita_righe_reso(troppi)
+        self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")
+        repo_cls.return_value.accredita_riga_reso.assert_not_called()
+
+
+class ResiAnnulloAccreditoTests(SimpleTestCase):
+    """L'annullo dell'accredito (D-NC-11): a monte del documento, non il reset."""
+
+    @patch(_REPO)
+    def test_annullo_delega_alla_madre(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_riga.return_value = {"id": 24, "reso_id": 7}
+        repo.annulla_accredito_riga_reso.return_value = [
+            {"accredito_id": 901}, {"accredito_id": 902},
+        ]
+
+        out = resi_service.annulla_accredito_riga_reso(7, 24, "riga sbagliata")
+
+        repo.annulla_accredito_riga_reso.assert_called_once_with(24, "riga sbagliata")
+        self.assertEqual(out["resi_riga_id"], 24)
+        self.assertEqual(len(out["rimosse"]), 2)
+
+    # Scopo: la madre non conosce il reso, quindi l'appartenenza della riga al
+    # percorso e' l'unico guard legittimo qui — senza,
+    # `/resi/999/righe/24/annulla-accredito/` annullerebbe l'accredito della
+    # riga 24 di un ALTRO reso.
+    @patch(_REPO)
+    def test_annullo_riga_di_altro_reso_rifiutata(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_riga.return_value = {"id": 24, "reso_id": 8}
+        with self.assertRaises(ServiceError) as cm:
+            resi_service.annulla_accredito_riga_reso(7, 24, "motivo")
+        self.assertEqual(cm.exception.code, "E_RESO_NOT_FOUND")
+        repo.annulla_accredito_riga_reso.assert_not_called()
+
+    # Scopo: whitespace -> NULL e' normalizzazione, non un guard: il rifiuto lo
+    # fa la madre (E_ACCREDITO_MOTIVO_OBBLIGATORIO), che e' anche l'unica a
+    # sapere perche' il motivo serve — l'annullo cancella le righe di ponte,
+    # quindi la traccia del PERCHE' resta solo nel log.
+    @patch(_REPO)
+    def test_annullo_motivo_vuoto_a_null(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_riga.return_value = {"id": 24, "reso_id": 7}
+        repo.annulla_accredito_riga_reso.return_value = []
+        resi_service.annulla_accredito_riga_reso(7, 24, "   ")
+        repo.annulla_accredito_riga_reso.assert_called_once_with(24, None)
+
+    @patch(_REPO)
+    def test_annullo_codice_dominio_dalla_madre(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_riga.return_value = {"id": 24, "reso_id": 7}
+        repo.annulla_accredito_riga_reso.side_effect = DatabaseError(
+            "E_ACCREDITO_ANNULLO_NON_AMMESSO: rettifiche gia' emesse.",
+        )
+        with self.assertRaises(ServiceError) as cm:
+            resi_service.annulla_accredito_riga_reso(7, 24, "motivo")
+        self.assertEqual(cm.exception.code, "E_ACCREDITO_ANNULLO_NON_AMMESSO")
+
+    # Scopo: il motivo passa dallo STESSO parser della nota di rinuncia, che
+    # rifiuta i tipi non stringa invece di consegnarli al driver. E' la meta'
+    # che una normalizzazione scritta al volo (`empty_to_none` se e' str, else
+    # passa) dimentica sempre: un dict sarebbe arrivato a psycopg.
+    @patch(_REPO)
+    def test_annullo_motivo_non_stringa_rifiutato(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_riga.return_value = {"id": 24, "reso_id": 7}
+        for degenere in ({"motivo": "x"}, ["x"], 42):
+            with self.subTest(degenere=degenere):
+                with self.assertRaises(ServiceError) as cm:
+                    resi_service.annulla_accredito_riga_reso(7, 24, degenere)
+                self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")
+        repo.annulla_accredito_riga_reso.assert_not_called()
+
+    @patch(f"{_SVC}.transaction")
+    @patch(_REPO)
+    def test_annullo_no_atomic_extra(self, repo_cls, mock_tx) -> None:
+        repo = repo_cls.return_value
+        repo.get_riga.return_value = {"id": 24, "reso_id": 7}
+        repo.annulla_accredito_riga_reso.return_value = []
+        resi_service.annulla_accredito_riga_reso(7, 24, "motivo")
+        mock_tx.atomic.assert_not_called()
 
 
 class ResiDbErrorsTests(SimpleTestCase):

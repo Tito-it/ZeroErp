@@ -37,6 +37,12 @@ function buildCodaParams(f, searchTerm) {
   // Solo coda accrediti (forma contatore): DOVUTA (a credito, NC obbligatoria)
   // | FACOLTATIVA (per ri-consegna, opzione DL-26). null = tutte.
   if (f.etichetta) p.etichetta = f.etichetta
+  // Restrizione a UN documento: e' il collegamento dal pannello situazione
+  // merce (FE-2). I due sono ALTERNATIVI — il backend rifiuta la coppia con
+  // E_RESO_VALIDAZIONE — e qui non si prova a comporli: sarebbe due domande
+  // in una, con la seconda che restringe la prima in silenzio.
+  if (f.ddt_id != null) p.ddt_id = f.ddt_id
+  else if (f.ordine_id != null) p.ordine_id = f.ordine_id
   return p
 }
 
@@ -52,6 +58,12 @@ function createResiCodaStore(id, fetchPage, extraFilters = {}) {
       billing_account_id: null,
       data_da: null,
       data_a: null,
+      // Filtro documento del deep-link dal pannello situazione merce: vive
+      // nello store (non solo nella query) perche' la coda lo deve DICHIARARE
+      // a video — un elenco corto senza spiegazione si legge come «non c'e'
+      // quasi niente da fare».
+      ddt_id: null,
+      ordine_id: null,
       ...extraFilters,
       limit: 25,
       offset: 0,

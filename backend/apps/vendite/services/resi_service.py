@@ -26,12 +26,14 @@
 #   trigger di editabilita', item 14c del brief DB — parita' DDT).
 
 import logging
+from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
 from django.db import transaction
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.fan_out import FanOutRunLogger, run_fan_out
 from apps.core.services.list_helpers import validate_enum_param
 from apps.core.services.payload_helpers import (
     PayloadValidator,
@@ -82,6 +84,13 @@ _STATO_DDT_SORGENTE = "CONSEGNATO"
 # Sorgente data-driven (config.sorgenti, riuso riga esistente — mai id
 # hardcoded, memoria feedback_no_hardcoded_ids).
 _SORGENTE_DDT = "DDT_VENDITA"
+
+# Tetto della selezione massiva di accrediti. Non e' una regola fiscale: e' il
+# confine oltre il quale «ho scelto queste righe» non vuol piu' dire niente, e
+# un cap esplicito e' meglio di un illimitato silenzioso — ogni riga apre una
+# transazione e produce righe di rettifica. Stesso criterio (e stesso valore)
+# di `MAX_GRUPPI_EMISSIONE_MIRATA` per l'emissione mirata.
+MAX_ACCREDITI_MASSIVI = 200
 
 # Whitelist campi testata accettati in create/update (null_vs_empty -> None).
 # Il resto (BA/destinatario/utility/valuta/emittente) e' EREDITATO dal DDT
@@ -590,7 +599,7 @@ def chiudi_riconsegna(
     # residua" — qui l'effetto silenzioso sarebbe anche peggiore che sulla
     # gemella (si rinuncerebbe a merce che l'operatore voleva ri-spedire).
     righe = _parse_righe_riconsegna(righe_raw)
-    note_norm = _parse_note_rinuncia(note)
+    note_norm = _parse_motivo_testo(note, op="chiudi_riconsegna")
     # Guard di merito (CONFERMATO, copertura pendente, over-rinuncia) nella fn
     # madre / guard ponte DB: E_RESO_NON_CONFERMATO,
     # E_RESO_NESSUNA_RICONSEGNA_PENDENTE, E_RESO_RINUNCIA_SUPERA_RESO.
@@ -629,10 +638,12 @@ def riapri_riconsegna(reso_id: int, righe_raw: Any = None) -> dict[str, Any]:
 #        lascia righe non lavorate, che restano in coda.
 # ⚠️ NESSUN guard applicativo: «e' in coda» (e quanto vale l'accredito),
 #    «l'attivita' e' finita in una riga di fattura», «non e' gia' accreditata»,
-#    «la copertura e' PIENA» sono TUTTI nella madre — E_ACCREDITO_NON_IN_CODA,
+#    «la copertura e' PIENA», «il kit dichiara il suo articolo padre» sono
+#    TUTTI nella madre — E_ACCREDITO_NON_IN_CODA,
 #    E_ACCREDITO_ATTIVITA_NON_FATTURATA, E_ACCREDITO_GIA_ESEGUITO,
-#    E_ACCREDITO_QUOTA_NON_COPERTA. Ripeterli qui sarebbe la stessa regola in
-#    due posti: le due copie divergono, e la piu' vecchia non fa rumore.
+#    E_ACCREDITO_QUOTA_NON_COPERTA, E_ACCREDITO_KIT_SENZA_PADRE. Ripeterli qui
+#    sarebbe la stessa regola in due posti: le due copie divergono, e la piu'
+#    vecchia non fa rumore.
 # ⚠️ Nessun `transaction.atomic()`: una sola `SELECT fn_()` e' atomica per
 #    costruzione (api.md §Atomicita' — qui non c'e' orchestrazione Python).
 def accredita_riga_reso(resi_riga_id: int) -> dict[str, Any]:
@@ -643,6 +654,113 @@ def accredita_riga_reso(resi_riga_id: int) -> dict[str, Any]:
     with _db_errors("accredita_riga_reso"):
         accrediti = repo.accredita_riga_reso(int(resi_riga_id))
     return {"resi_riga_id": int(resi_riga_id), "accrediti": accrediti}
+
+
+# Scopo: Diario del fan-out degli accrediti — l'unica parte di dominio del
+#        giro. Serve a tenere il CODICE di ogni riga fallita: `FanOutEsito`
+#        porta il messaggio normalizzato, non il codice, e il codice e' cio' su
+#        cui il frontend instrada («gia' accreditata» si mostra diverso da «non
+#        piu' in coda»). Il BB sa QUANDO chiamare, questo sa COSA tenere.
+@dataclass
+class _AccreditiRunLogger(FanOutRunLogger):
+    esiti: dict[int, tuple[str, str]] = field(default_factory=dict)
+
+    # Scopo: Registra codice e messaggio della riga che non e' passata.
+    def item_failed(self, *, item: Any, indice: int, exc: Exception) -> None:
+        codice = getattr(exc, "code", None) or E_VENDITE_VALIDATION
+        messaggio = getattr(exc, "message", None) or str(exc)
+        self.esiti[int(item)] = (codice, messaggio)
+
+
+# Scopo: Accredita N righe di reso in un giro solo (D-NC-7: massivo dal primo
+#        giorno). Un endpoint SOLO, e la riga singola e' una lista di uno: due
+#        superfici per lo stesso verbo divergerebbero su permessi, conferme e
+#        forma dell'esito.
+#        Isolamento per riga con il BB `run_fan_out` (savepoint per elemento,
+#        log dello stack una volta per tutte, esito a tre stati): MAI un ciclo
+#        scritto a mano.
+# ⭐ La risposta e' un REPORT, e torna sempre 200 — anche quando tutte le righe
+#    falliscono. Il verbo non e' l'atto fiscale: il documento nasce dopo, nel
+#    giro di fatturazione, quindi un esito parziale non lascia mai mezzo
+#    documento — lascia righe che restano in coda. E sollevare sul «tutte
+#    fallite» darebbe al chiamante DUE forme da leggere (una lista di esiti
+#    oppure un errore) per la stessa domanda: e' lo stesso argomento per cui
+#    l'endpoint e' uno solo. I codici per-riga stanno in `falliti`.
+def accredita_righe_reso(resi_riga_ids_raw: Any) -> dict[str, Any]:
+    ids = _parse_resi_riga_ids(resi_riga_ids_raw)
+    diario = _AccreditiRunLogger()
+    # `isola_in_transazione` resta al default: ogni riga scrive, e il savepoint
+    # per elemento e' esattamente cio' che impedisce a una riga rifiutata di
+    # portarsi via le rettifiche di quelle passate prima.
+    esito = run_fan_out(ids, accredita_riga_reso, run_logger=diario)
+    accrediti = [
+        {"resi_riga_id": r["resi_riga_id"], **riga}
+        for r in esito.risultati
+        for riga in r["accrediti"]
+    ]
+    # Un solo lookup per riga, con UN default: due `.get` con default diversi
+    # sullo stesso item possono raccontare due storie (codice di ripiego e
+    # messaggio vero, o viceversa) proprio nel caso in cui il diario non ha
+    # visto l'errore — cioe' quando serve capirlo.
+    falliti = [
+        _riga_fallita(int(e.item), diario.esiti, e.messaggio)
+        for e in esito.errori
+    ]
+    return {
+        "esito": esito.esito,
+        "totale": esito.totale,
+        "ok": esito.ok,
+        "accrediti": accrediti,
+        "falliti": falliti,
+    }
+
+
+# Scopo: Annulla l'accredito di una riga di reso via fn madre atomica
+#        `fn_annulla_accredito_riga_reso` (D-NC-11): porta le rettifiche ad
+#        ANNULLATA, cancella le righe di ponte — ed e' quella cancellazione a
+#        far RISALIRE l'accredito dovuto in coda — e traccia il motivo.
+#        E' il caso «ho cliccato la riga sbagliata», e sta A MONTE del
+#        documento.
+# ⛔ Non e' l'annullo del DOCUMENTO: quello e' gia' la pipeline, ed e' lo stesso
+#    delle fatture. ⚠️ E il reset di lotto NON annulla l'accredito: la nota di
+#    credito viene RIGENERATA al giro dopo, perche' la merce resa non e'
+#    cambiata. Le due strade sono distinte e devono restare distinte — il
+#    messaggio del DB lo dice all'operatore, e per questo non si riscrive qui.
+# ⚠️ Nessun guard applicativo sulle precondizioni: «tutte le rettifiche ancora
+#    NON_EMESSA», «nessuna in un lotto vivo», «motivo obbligatorio» sono nella
+#    madre, che decide sull'INSIEME (C-2 del team DB) — un guard per riga qui
+#    darebbe una risposta diversa dalla sua.
+def annulla_accredito_riga_reso(
+    reso_id: int, riga_id: int, motivo: Any,
+) -> dict[str, Any]:
+    repo = ResiRepository()
+    # Appartenenza della riga al reso: NON e' una regola di dominio ripetuta
+    # (la madre non conosce il reso), e' la coerenza del PERCORSO — senza,
+    # `/resi/999/righe/24/annulla-accredito/` annullerebbe l'accredito della
+    # riga 24 di un altro reso. Stesso guard di `aggiorna_riga`.
+    riga = repo.get_riga(int(riga_id))
+    ErrorManager.require(
+        riga is not None and riga["reso_id"] == int(reso_id),
+        code="E_RESO_NOT_FOUND",
+        message="Riga non trovata per questo reso.",
+        detail=f"reso_id={reso_id} riga_id={riga_id}",
+        function_name=f"{_FN}.annulla_accredito_riga_reso",
+    )
+    # Stringa vuota / soli spazi -> NULL: normalizzazione dell'input, non un
+    # guard. Il rifiuto lo fa la madre (E_ACCREDITO_MOTIVO_OBBLIGATORIO), che
+    # e' anche l'unica a sapere perche' il motivo serve — l'annullo cancella le
+    # righe di ponte, quindi la traccia del PERCHE' resta solo nel log.
+    # ⚠️ Stesso parser della nota di rinuncia, non una copia: quello RIFIUTA i
+    #    tipi non stringa invece di passarli al driver, ed e' la meta' che una
+    #    normalizzazione scritta al volo dimentica sempre.
+    motivo_norm = _parse_motivo_testo(motivo, op="annulla_accredito_riga_reso")
+    with _db_errors("annulla_accredito_riga_reso"):
+        rimosse = repo.annulla_accredito_riga_reso(int(riga_id), motivo_norm)
+    return {
+        "reso_id": int(reso_id),
+        "resi_riga_id": int(riga_id),
+        "rimosse": rimosse,
+    }
 
 
 # ══════════════════════════════════════════════════════════
@@ -859,18 +977,17 @@ def _parse_data_iso(value: Any, *, op: str) -> date | None:
 #        e va rifiutato QUI con un 400 parlante: lasciarlo passare lo farebbe
 #        arrivare come parametro varchar a psycopg (adattamento imprevedibile o
 #        errore DB nudo al posto di un messaggio all'operatore).
-def _parse_note_rinuncia(note: Any) -> str | None:
-    if note is None:
-        return None
+def _parse_motivo_testo(valore: Any, *, op: str) -> str | None:
     ErrorManager.require(
-        isinstance(note, str),
+        valore is None or isinstance(valore, str),
         code="E_RESO_VALIDAZIONE",
-        message="note deve essere un testo (motivo della chiusura).",
-        detail=f"note={note!r}",
-        function_name=f"{_FN}._parse_note_rinuncia",
+        message="Il motivo deve essere un testo.",
+        detail=f"valore={valore!r}",
+        function_name=f"{_FN}.{op}",
     )
-    assert isinstance(note, str)
-    return empty_to_none(note.strip())
+    if valore is None:
+        return None
+    return empty_to_none(valore.strip())
 
 
 def _parse_righe_riconsegna(righe_raw: Any) -> list[dict[str, Any]] | None:
@@ -912,6 +1029,75 @@ def _parse_righe_riconsegna(righe_raw: Any) -> list[dict[str, Any]] | None:
         )
         parsed.append({"resi_riga_id": resi_riga_id, "qta": qta})
     return parsed
+
+
+# Scopo: La forma di una riga non servita nel report del fan-out. Il codice
+#        viene dal diario (il BB porta il messaggio, non il codice); se il
+#        diario non l'ha visto — non dovrebbe accadere, ma il ripiego non deve
+#        mentire — si dichiara il fallback e si tiene il messaggio del BB.
+def _riga_fallita(
+    resi_riga_id: int, esiti: dict[int, tuple[str, str]], messaggio_bb: str,
+) -> dict[str, Any]:
+    codice, messaggio = esiti.get(resi_riga_id, (E_VENDITE_VALIDATION, messaggio_bb))
+    return {
+        "resi_riga_id": resi_riga_id,
+        "codice": codice,
+        "messaggio": messaggio,
+    }
+
+
+# Scopo: Normalizza e valida la lista di righe di reso da accreditare.
+#        Obiettivo: un perimetro sbagliato deve fallire con un 400 parlante,
+#        mai degenerare in un perimetro vuoto o in id spazzatura.
+#        Deduplica PRESERVANDO L'ORDINE: lo stesso id due volte nello stesso
+#        body produrrebbe un `E_ACCREDITO_GIA_ESEGUITO` autoinflitto, che a
+#        video sembra un difetto del sistema e invece e' il body.
+# ⚠️ Lista VUOTA rifiutata, non trattata come «tutte»: e' lo stesso criterio di
+#    `parse_gruppi` per l'emissione mirata — indovinare male qui significa
+#    lavorare un perimetro che nessuno ha chiesto, su un documento fiscale.
+# ⚠️ `bool` e' un `int` in Python: `[True]` passerebbe come riga 1 senza questo
+#    controllo di tipo esplicito.
+def _parse_resi_riga_ids(raw: Any) -> tuple[int, ...]:
+    fn = f"{_FN}._parse_resi_riga_ids"
+    ErrorManager.require(
+        isinstance(raw, (list, tuple)),
+        code="E_RESO_VALIDAZIONE",
+        message="`resi_riga_ids` deve essere una lista di id riga di reso.",
+        detail=f"tipo ricevuto: {type(raw).__name__}",
+        function_name=fn,
+    )
+    ids: list[int] = []
+    for elemento in raw:
+        valido = (
+            isinstance(elemento, int) and not isinstance(elemento, bool)
+            and elemento > 0
+        ) or (isinstance(elemento, str) and elemento.strip().isdigit()
+              and int(elemento) > 0)
+        ErrorManager.require(
+            valido,
+            code="E_RESO_VALIDAZIONE",
+            message="`resi_riga_ids` contiene un id non valido (atteso intero > 0).",
+            detail=repr(elemento),
+            function_name=fn,
+        )
+        valore = int(elemento)
+        if valore not in ids:
+            ids.append(valore)
+    ErrorManager.require(
+        len(ids) > 0,
+        code="E_RESO_VALIDAZIONE",
+        message="`resi_riga_ids` non puo' essere una lista vuota.",
+        detail="selezionare almeno una riga di reso da accreditare",
+        function_name=fn,
+    )
+    ErrorManager.require(
+        len(ids) <= MAX_ACCREDITI_MASSIVI,
+        code="E_RESO_VALIDAZIONE",
+        message=f"Troppe righe selezionate (max {MAX_ACCREDITI_MASSIVI}).",
+        detail=f"ricevute: {len(ids)}",
+        function_name=fn,
+    )
+    return tuple(ids)
 
 
 # Traduzione errori DB -> ServiceError parlanti via BB condiviso

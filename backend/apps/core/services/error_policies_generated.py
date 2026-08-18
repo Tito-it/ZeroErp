@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 715, di cui 79 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 716, di cui 79 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -52,6 +52,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_ACCREDITO_GIA_ESEGUITO": "CONFLITTO_STATO",
     # vendite.fn_accredita_riga_reso: un articolo composito fra le attivita' della partita ha componenti senza coeff_qta nel meta, quindi la quantita' in unita' PADRE non e' calcolabile. Stessa condizione che rende `misurabile` falso in vw_af_merce_per_riga. Inventare il coefficiente accrediterebbe un numero che nessuno sa da dove viene. Piano: brief-design-note-credito-resi N8.
     "E_ACCREDITO_KIT_NON_MISURABILE": "NON_ESEGUIBILE",
+    # vendite.fn_accredita_riga_reso: un componente del kit da rettificare non porta `componente_di` nel meta, quindi la rettifica nascerebbe dichiarandosi componente (#CMP: nel segmento, che fn_emit scrive nel meta dell'attivita' fatturabile) senza dire DI CHI. Il generatore righe la rifiuterebbe con E_ATTIVITA_KIT_SENZA_PADRE — giustamente: trattarla come riga normale la fatturerebbe DUE volte, dentro il totale del padre e per conto suo (R11). ⚠️ Ma lo rifiuterebbe A VALLE, dopo che il verbo e' riuscito e la riga e' gia' USCITA DALLA CODA: la coda dice fatto e la nota di credito non c'e'. Gemello esatto di E_ACCREDITO_KIT_NON_MISURABILE — stesso momento, stessa forma, altro tasto dello stesso contratto (backend _kit_meta.py). ⛔ Codice distinto da E_ATTIVITA_KIT_SENZA_PADRE (601), che e' del generatore, ha arita' zero e parla del documento di origine: qui il messaggio deve nominare la riga di reso e il kit. Origine: smoke BE del 2026-08-18. Piano: brief-db-note-credito-prerequisiti-be-fe §11 (P-7).
+    "E_ACCREDITO_KIT_SENZA_PADRE": "NON_ESEGUIBILE",
     # vendite.fn_annulla_accredito_riga_reso: il motivo dell'annullo e' obbligatorio. L'annullo cancella le righe di ponte, quindi la traccia del PERCHE' esiste solo in vendite.commesse_attivita_log: senza motivo resta il fatto senza la ragione. Gemello di E_RIGA_COMMESSA_MOTIVO_OBBLIGATORIO sulla porta delle righe manuali, codice distinto perche' il messaggio nomina l'oggetto giusto (l'accredito, non la riga di commessa).
     "E_ACCREDITO_MOTIVO_OBBLIGATORIO": "DATO_ERRATO",
     # vendite.fn_accredita_riga_reso: la riga di reso non compare nella coda accrediti, oppure il suo accredito dovuto e' sceso a zero. La coda e' la sola sede del numero (D-NC-6: l'accredito e' sempre PIENO e la quantita' non e' un input), quindi fuori di li' non c'e' nulla da accreditare. Classe NON_ESEGUIBILE e non NON_TROVATO: la riga di reso ESISTE, e' la precondizione a mancare. Piano: brief-design-note-credito-resi N8.

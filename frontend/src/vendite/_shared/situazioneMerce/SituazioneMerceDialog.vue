@@ -26,7 +26,10 @@ defineProps({
   readonly: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['update:visible'])
+// `apri-coda-accrediti`: il pannello non naviga da se'. La dialog va CHIUSA
+// prima di cambiare rotta, o si resta con un overlay sopra la coda — e chi sa
+// chiuderla e' chi l'ha aperta (la barra).
+const emit = defineEmits(['update:visible', 'apri-coda-accrediti'])
 </script>
 
 <template>
@@ -43,6 +46,7 @@ const emit = defineEmits(['update:visible'])
       :sezioni="sezioni"
       :loading="loading"
       :loaded="loaded"
+      @apri-coda-accrediti="emit('apri-coda-accrediti')"
     />
   </AppDialog>
 </template>

@@ -10,6 +10,7 @@ from django.urls import path
 
 from apps.vendite.api.lineage_views import ApiResoPassaggi
 from apps.vendite.api.views_resi import (
+    ApiResiAccrediti,
     ApiResiDaAccreditare,
     ApiResiDaAccreditareExport,
     ApiResiDaRiconsegnare,
@@ -22,6 +23,7 @@ from apps.vendite.api.views_resi import (
     ApiResoDetail,
     ApiResoGeneraDdtRiconsegna,
     ApiResoRiapriRiconsegna,
+    ApiResoRigaAnnullaAccredito,
     ApiResoRigaDetail,
     ApiResoRighe,
 )
@@ -43,6 +45,12 @@ urlpatterns = [
          name="vendite-resi-da-riconsegnare"),
     path("da-riconsegnare/export/", ApiResiDaRiconsegnareExport.as_view(),
          name="vendite-resi-da-riconsegnare-export"),
+
+    # Verbo dell'accredito: MASSIVO dal primo giorno (D-NC-7), un endpoint solo
+    # e la riga singola e' una lista di uno. Prima di `<int:reso_id>/` per non
+    # collidere con il path del dettaglio.
+    path("accrediti/", ApiResiAccrediti.as_view(),
+         name="vendite-resi-accrediti"),
 
     path("<int:reso_id>/", ApiResoDetail.as_view(), name="vendite-resi-detail"),
     # Genealogia/lineage (pannello "Passaggi", brief-be-fe-lineage): per il
@@ -73,4 +81,9 @@ urlpatterns = [
          name="vendite-resi-righe-list"),
     path("<int:reso_id>/righe/<int:riga_id>/", ApiResoRigaDetail.as_view(),
          name="vendite-resi-riga-detail"),
+    # Annullo dell'accredito (D-NC-11): sta A MONTE del documento ed e' un'altra
+    # cosa dal reset di lotto, che invece RIGENERA la nota al giro dopo.
+    path("<int:reso_id>/righe/<int:riga_id>/annulla-accredito/",
+         ApiResoRigaAnnullaAccredito.as_view(),
+         name="vendite-resi-riga-annulla-accredito"),
 ]

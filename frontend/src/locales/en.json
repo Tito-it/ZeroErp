@@ -3162,7 +3162,31 @@
         "DOVUTA": "Credit due",
         "FACOLTATIVA": "Credit optional — goods to be redelivered"
       },
-      "coda_search_riconsegnare": "Search (return no., recipient, item, DDT)"
+      "coda_search_riconsegnare": "Search (return no., recipient, item, DDT)",
+      "accredito_azione": "Credit ({n})",
+      "accredito_azione_riga": "Credit this line",
+      "accredito_conferma_titolo": "Credit the selected lines",
+      "accredito_conferma_messaggio": "Registers the credit for {n} return lines. ⚠️ The credit note is NOT issued now: the document is created on the next invoicing run.",
+      "accredito_conferma_accetta": "Register the credit",
+      "accredito_esito_completato": "Credit registered on {n} lines. The credit note will be created on the next invoicing run.",
+      "accredito_esito_parziale": "{ok} of {totale} lines credited: the others are listed below.",
+      "accredito_esito_errore": "None of the {n} lines was credited.",
+      "accredito_esito_header": "Credit outcome",
+      "accredito_esito_riassunto": "{ok} of {totale} lines credited.",
+      "accredito_esito_col_riga": "Return line",
+      "accredito_esito_col_codice": "Code",
+      "accredito_esito_col_messaggio": "Reason",
+      "annullo_azione": "Cancel the credit",
+      "annullo_header": "Cancel the line credit",
+      "annullo_conferma": "Removes the registered adjustments: the credit becomes due again in the queue and the returned goods can be credited again.",
+      "annullo_avviso_reset": "This cancels the CREDIT, not the document. If the credit note has been issued but not numbered yet, the way is to reset the batch — which however REGENERATES it on the next run.",
+      "annullo_motivo": "Cancellation reason (required)",
+      "annullo_salva": "Cancel the credit",
+      "annullo_esito": "Credit cancelled: the line is back in the queue.",
+      "coda_filtro_ddt": "Queue filtered on delivery note #{id}.",
+      "coda_filtro_ordine": "Queue filtered on order #{id}.",
+      "coda_filtro_documento_rimuovi": "Show the whole queue",
+      "riga_gia_accreditato": "Already credited"
     },
     "resi_da_accreditare": {
       "col_numero": "Number",
@@ -3264,7 +3288,6 @@
       "etichetta_dovuta": "Due",
       "etichetta_facoltativa": "Optional",
       "in_riconsegna": "{n} returned, already on an unissued document",
-      "nc_non_disponibile": "Credit note issuing is not available yet: the figure below is informational.",
       "nessuna_merce": "No goods to count on this document.",
       "non_disponibile": "Goods status not available.",
       "sez_accrediti": "To credit",
@@ -3274,7 +3297,9 @@
       "sospetta": "To check",
       "sospetta_hint": "Line added manually on an order-backed shipment, with an item already present in the order: it may be intended extra goods or a duplicate.",
       "titolo": "Goods status",
-      "tutto_regolare": "all settled"
+      "tutto_regolare": "all settled",
+      "nc_da_accreditare": "{n} to credit on this document: the credit is registered from the credits queue.",
+      "nc_apri_coda": "Open the filtered queue"
     }
   },
   "dash_mesi": {

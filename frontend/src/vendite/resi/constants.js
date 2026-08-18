@@ -34,3 +34,36 @@ export const ETICHETTA_ACCREDITO = Object.freeze({
   DOVUTA: 'DOVUTA',
   FACOLTATIVA: 'FACOLTATIVA',
 })
+
+// Azione di processo che apre le due porte dell'accredito (accredita e
+// annulla): stesso codename per le due facce dello stesso atto — due permessi
+// distinti si sfilerebbero al primo profilo configurato a mano. Speculare a
+// `config.azioni_processo.permission_codename` (id 31).
+export const AZIONE_ACCREDITA_RESO = 'accredita_riga_reso'
+
+// Esito del giro massivo di accredito: e' il vocabolario del fan-out del
+// backend (`apps/core/services/fan_out.py`), non uno nostro — la severity a
+// video si allinea a questi tre e non se ne inventa un quarto.
+// ⚠️ NON confondere `ESITO_ACCREDITO.PARZIALE` (una parte delle righe non e'
+//    passata) con `STATO_RICONSEGNA.PARZIALE` (copertura ri-consegna a meta'):
+//    stessa parola, due domini diversi.
+// 📌 Vive qui e non in `core/constants` perche' oggi il report del fan-out lo
+//    legge solo questa coda: al secondo dominio che lo legge, si sale.
+export const ESITO_ACCREDITO = Object.freeze({
+  COMPLETATO: 'COMPLETATO',
+  PARZIALE: 'PARZIALE',
+  ERRORE: 'ERRORE',
+})
+
+// Valori del query param `tab` della vista resi: sono il contratto del
+// deep-link (ci arriva il pannello situazione merce), non un dettaglio interno
+// della vista — per questo stanno qui e non dentro ResiView.
+export const TAB_RESI = Object.freeze({
+  LISTA: 'lista',
+  DA_ACCREDITARE: 'da-accreditare',
+  DA_RICONSEGNARE: 'da-riconsegnare',
+})
+
+// Nome della rotta della vista resi (router): lo usa il deep-link dal pannello
+// situazione merce.
+export const ROUTE_RESI = 'vendite-resi'

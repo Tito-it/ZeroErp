@@ -12,6 +12,10 @@
 // a BB → la duplicazione indotta dalla doc viene sanata (vedi frontend-standards
 // §Master-detail inline, nota B10).
 //
+// Azioni di riga: «elimina» e' del BB; il caller ne aggiunge di proprie con
+// `extraRowActions(riga) => actions[]` (vivono anche a documento non
+// modificabile — vedi la prop).
+//
 // Slot:
 //   #columns                              → le <Column> dati (caller)
 //   #form="{ riga, onSaved, onComponentiChanged, onCancel }" → il form di riga
@@ -59,6 +63,13 @@ const props = defineProps({
   sortField: { type: String, default: 'riga_nr' },
   // (riga) => bool: disabilita elimina su righe specifiche (es. approvazione PENDING).
   deleteDisabled: { type: Function, default: () => false },
+  // (riga) => actions[]: azioni di DOMINIO sulla riga, oltre a «elimina».
+  // ⚠️ Vivono anche quando la riga NON e' piu' modificabile — e' il caso che
+  // le ha rese necessarie: l'annullo dell'accredito su un reso CONFERMATO,
+  // dove le righe non si toccano piu' ma un atto registrato su di esse si puo'
+  // ancora disfare. Per questo la colonna azioni non dipende piu' dal solo
+  // `isModificabile`.
+  extraRowActions: { type: Function, default: () => [] },
 })
 
 // Eventi:
@@ -161,6 +172,9 @@ function onDeleteRiga(riga) {
 
 function buildRowActions(riga) {
   return [
+    // Le azioni di dominio PRIMA della distruttiva: «elimina» resta l'ultima
+    // voce del menu, dove l'operatore si aspetta di trovarla.
+    ...props.extraRowActions(riga),
     {
       key: 'elimina',
       label: t('common.delete'),
@@ -172,6 +186,14 @@ function buildRowActions(riga) {
     },
   ]
 }
+
+// La colonna azioni compare se c'e' qualcosa da fare: righe modificabili
+// (elimina) OPPURE almeno una riga con un'azione di dominio. ⚠️ Senza il
+// secondo ramo un'azione dichiarata su un documento non piu' modificabile non
+// si vedrebbe MAI, e il caller non avrebbe modo di accorgersene.
+const haColonnaAzioni = computed(
+  () => props.isModificabile || righe.value.some((r) => props.extraRowActions(r).length > 0),
+)
 
 function onRowClick(event) {
   if (!props.isModificabile) return
@@ -205,7 +227,7 @@ defineExpose({ loadRighe })
       removable-sort
       @row-click="onRowClick">
       <slot name="columns" />
-      <Column v-if="isModificabile" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
+      <Column v-if="haColonnaAzioni" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
         <template #body="{ data }">
           <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
         </template>

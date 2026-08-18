@@ -49,6 +49,12 @@ Indice test eseguiti:
 35) PipelineStepExecutorUnitTests.test_execute_step_genera_scadenze_prima_di_ricalcola_iva_rifiutato (ordine)
 36) PipelineStepExecutorUnitTests.test_execute_step_genera_scadenze_senza_ricalcola_iva_nello_step_ammesso (ordine)
 37) PipelineStepExecutorUnitTests.test_execute_step_ordine_non_verificato_in_rollback (ordine)
+38) PipelineStepExecutorUnitTests.test_execute_step_runs_popola_fatture_rettifiche_task (N10/BE-8)
+39) PipelineStepExecutorUnitTests.test_popola_fatture_rettifiche_dry_run_skips
+40) PipelineStepExecutorUnitTests.test_popola_fatture_rettifiche_fail_fast_su_singola_fattura
+41) PipelineStepExecutorUnitTests.test_popola_fatture_rettifiche_dopo_numera_ok (ordine)
+42) PipelineStepExecutorUnitTests.test_popola_fatture_rettifiche_prima_di_numera_rifiutato (ordine)
+43) PipelineStepExecutorUnitTests.test_popola_fatture_rettifiche_agganciata_al_registry_reale
 """
 
 from unittest.mock import MagicMock, patch
@@ -90,6 +96,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             "reset_lotto_draft": "vendite.fn_annulla_lotto_da_draft",
             "snapshot_indirizzi_lotto": "vendite.fn_snapshot_fattura_lotto",
             "genera_scadenze_lotto": "vendite.fn_genera_scadenze_lotto",
+            "popola_fatture_rettifiche": "vendite.fn_popola_fatture_rettifiche",
         }
         # Tracing: default nessuna policy → nessun tracing (test esistenti non cambiano).
         repo.get_pipeline_id_for_step.return_value = 100
@@ -1158,3 +1165,168 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         )
 
         repo.run_genera_scadenze_lotto_task.assert_called_once()
+
+    # ══════════════════════════════════════════════════════════
+    #  popola_fatture_rettifiche — il legame documentale (N10 / BE-8)
+    # ══════════════════════════════════════════════════════════
+
+    # Scopo: il task proietta il legame per OGNI fattura del lotto. Una fattura
+    #        senza righe di rettifica aggiunge zero coppie, e va chiamata lo
+    #        stesso: filtrarle a monte in Python significherebbe riscrivere qui
+    #        il predicato che la funzione DB ha gia'.
+    def test_execute_step_runs_popola_fatture_rettifiche_task(self):
+        processi = [{
+            "task": "popola_fatture_rettifiche",
+            "fase": "Legame documentale note di credito",
+            "params": {"implementation_key": "default"},
+        }]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "popola_fatture_rettifiche_default"
+        repo.popola_fatture_rettifiche.side_effect = [1, 0]
+
+        executor.execute_step(
+            lotto_id=9,
+            stato_doc_fiscale_id=8,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        repo.list_fatture_by_lotto.assert_called_once_with(9)
+        repo.popola_fatture_rettifiche.assert_any_call(101)
+        repo.popola_fatture_rettifiche.assert_any_call(102)
+
+    def test_popola_fatture_rettifiche_dry_run_skips(self):
+        processi = [{
+            "task": "popola_fatture_rettifiche",
+            "fase": "Legame documentale note di credito",
+            "params": {"implementation_key": "default"},
+        }]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "popola_fatture_rettifiche_default"
+
+        executor.execute_step(
+            lotto_id=9,
+            stato_doc_fiscale_id=8,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=True,
+        )
+
+        repo.popola_fatture_rettifiche.assert_not_called()
+
+    # Scopo: 🔴 la scelta OPPOSTA a quella di `genera_scadenze_lotto` e
+    #        `snapshot_indirizzi_lotto`, ed e' il test che la fissa: qui una
+    #        fattura in errore FERMA lo step invece di produrre un esito
+    #        parziale. Il motivo e' a valle, non qui: `stampa_documenti_lotto`
+    #        viene subito dopo e consuma questo legame, quindi proseguire
+    #        stamperebbe un documento fiscale senza `DatiFattureCollegate`.
+    #        La terza fattura NON viene tentata: il fail-fast e' fail-fast.
+    def test_popola_fatture_rettifiche_fail_fast_su_singola_fattura(self):
+        processi = [{
+            "task": "popola_fatture_rettifiche",
+            "fase": "Legame documentale note di credito",
+            "params": {"implementation_key": "default"},
+        }]
+        executor, repo, _, error_logger = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "popola_fatture_rettifiche_default"
+        repo.list_fatture_by_lotto.return_value = [101, 102, 103]
+        repo.popola_fatture_rettifiche.side_effect = [1, RuntimeError("boom-legame"), 1]
+
+        with self.assertRaises(ServiceError) as exc:
+            executor.execute_step(
+                lotto_id=9,
+                stato_doc_fiscale_id=8,
+                tipo_lotto="MASSIVO",
+                rollback=False,
+                dry_run=False,
+            )
+
+        self.assertEqual(exc.exception.code, "E_TASK_FATTURA")
+        self.assertEqual(repo.popola_fatture_rettifiche.call_count, 2)
+        kwargs = error_logger.log_error.call_args.kwargs
+        self.assertEqual(kwargs["scope"], "FATTURA")
+        self.assertEqual(kwargs["fattura_id"], 102)
+
+    def test_popola_fatture_rettifiche_dopo_numera_ok(self):
+        processi = [
+            {"task": "numera_fatture", "fase": "Numerazione", "params": {"implementation_key": "default"}},
+            {"task": "popola_fatture_rettifiche", "fase": "Legame documentale note di credito", "params": {"implementation_key": "default"}},
+        ]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.side_effect = (
+            lambda *, task_code, implementation_key: f"{task_code}_default"
+        )
+        repo.popola_fatture_rettifiche.return_value = 0
+
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=8,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        chiamati = [c[0] for c in repo.method_calls]
+        self.assertLess(
+            chiamati.index("numera_fattura_opz_emessa"),
+            chiamati.index("popola_fatture_rettifiche"),
+        )
+
+    # Scopo: ⚠️ IL TEST CHE CONTA sull'ordine. Con la proiezione scritta PRIMA
+    #        della numerazione, un reset di lotto — che a quel punto e' ancora
+    #        ammesso — sbatterebbe su `fk_fatture_ret_fattura`, che non e'
+    #        ON DELETE CASCADE, dentro `fn_cleanup_fatture_by_ids`: una
+    #        violazione di chiave esterna grezza in una funzione che i suoi
+    #        chiamanti danno per infallibile. Il rifiuto deve arrivare PRIMA che
+    #        un solo task scriva, cioe' prima della numerazione, che e'
+    #        irreversibile.
+    def test_popola_fatture_rettifiche_prima_di_numera_rifiutato(self):
+        processi = [
+            {"task": "popola_fatture_rettifiche", "fase": "Legame documentale note di credito", "params": {"implementation_key": "default"}},
+            {"task": "numera_fatture", "fase": "Numerazione", "params": {"implementation_key": "default"}},
+        ]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.side_effect = (
+            lambda *, task_code, implementation_key: f"{task_code}_default"
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            executor.execute_step(
+                lotto_id=1,
+                stato_doc_fiscale_id=8,
+                tipo_lotto="MASSIVO",
+                rollback=False,
+                dry_run=False,
+            )
+
+        self.assertEqual(ctx.exception.code, "E_PIPELINE_VALIDATION")
+        self.assertIn("popola_fatture_rettifiche", str(ctx.exception.detail))
+        self.assertIn("numera_fatture", str(ctx.exception.detail))
+        repo.numera_fattura_opz_emessa.assert_not_called()
+        repo.popola_fatture_rettifiche.assert_not_called()
+
+    # Scopo: 🔴 il test che avrebbe intercettato il buco vero. Il seed DB mette
+    #        il task nelle pipeline 4 e 6 e la sua `implementation_key` risolve
+    #        `popola_fatture_rettifiche_default`: se quel nome non e' nel
+    #        registry dell'esecutore, il giro DEFINITIVA numera — irreversibile
+    #        — e poi muore con E_TASK_IMPLEMENTATION_NOT_FOUND.
+    #        ⚠️ Si leggono gli oggetti REALI, non il mock: la mappa del fixture
+    #        e' uno specchio, e uno specchio non prova che l'originale esista.
+    def test_popola_fatture_rettifiche_agganciata_al_registry_reale(self):
+        from apps.vendite.db.pipeline_repository import VenditePipelineRepository
+
+        executor = PipelineStepExecutor(
+            repository=MagicMock(),
+            fatture_righe_service=MagicMock(),
+            error_logger=MagicMock(),
+        )
+        self.assertIn("popola_fatture_rettifiche_default", executor.handler_registry)
+        self.assertEqual(
+            VenditePipelineRepository.ALLOWED_TASK_FUNCTIONS["popola_fatture_rettifiche"],
+            "vendite.fn_popola_fatture_rettifiche",
+        )
+        self.assertEqual(
+            PipelineStepExecutor._TASK_ORDER_DEPENDENCIES["popola_fatture_rettifiche"],
+            ("numera_fatture",),
+        )

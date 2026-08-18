@@ -3162,7 +3162,31 @@
         "DOVUTA": "Accredito dovuto",
         "FACOLTATIVA": "Accredito facoltativo — merce da ri-consegnare"
       },
-      "coda_search_riconsegnare": "Cerca (n° reso, destinatario, articolo, DDT)"
+      "coda_search_riconsegnare": "Cerca (n° reso, destinatario, articolo, DDT)",
+      "accredito_azione": "Accredita ({n})",
+      "accredito_azione_riga": "Accredita questa riga",
+      "accredito_conferma_titolo": "Accredita le righe selezionate",
+      "accredito_conferma_messaggio": "Registra l'accredito di {n} righe di reso. ⚠️ La nota di credito NON viene emessa adesso: il documento nasce al prossimo giro di fatturazione.",
+      "accredito_conferma_accetta": "Registra l'accredito",
+      "accredito_esito_completato": "Accredito registrato su {n} righe. La nota di credito nascera' al prossimo giro di fatturazione.",
+      "accredito_esito_parziale": "Accreditate {ok} righe su {totale}: le altre sono elencate qui sotto.",
+      "accredito_esito_errore": "Nessuna delle {n} righe e' stata accreditata.",
+      "accredito_esito_header": "Esito dell'accredito",
+      "accredito_esito_riassunto": "{ok} righe accreditate su {totale}.",
+      "accredito_esito_col_riga": "Riga di reso",
+      "accredito_esito_col_codice": "Codice",
+      "accredito_esito_col_messaggio": "Motivo",
+      "annullo_azione": "Annulla l'accredito",
+      "annullo_header": "Annulla l'accredito della riga",
+      "annullo_conferma": "Toglie le rettifiche registrate: l'accredito torna dovuto in coda e la merce resa torna accreditabile.",
+      "annullo_avviso_reset": "Questo annulla l'ACCREDITO, non il documento. Se la nota di credito e' gia' stata emessa e non ancora numerata, la strada e' il reset del lotto — che pero' la RIGENERA al giro successivo.",
+      "annullo_motivo": "Motivo dell'annullo (obbligatorio)",
+      "annullo_salva": "Annulla l'accredito",
+      "annullo_esito": "Accredito annullato: la riga torna in coda.",
+      "coda_filtro_ddt": "Coda filtrata sul DDT #{id}.",
+      "coda_filtro_ordine": "Coda filtrata sull'ordine #{id}.",
+      "coda_filtro_documento_rimuovi": "Mostra tutta la coda",
+      "riga_gia_accreditato": "Gia' accreditato"
     },
     "resi_da_accreditare": {
       "col_numero": "Numero",
@@ -3264,7 +3288,6 @@
       "etichetta_dovuta": "Dovuta",
       "etichetta_facoltativa": "Facoltativa",
       "in_riconsegna": "{n} tornati, gia' su un documento non emesso",
-      "nc_non_disponibile": "L'emissione della nota di credito non e' ancora disponibile: il dato qui sotto e' informativo.",
       "nessuna_merce": "Nessuna merce da conteggiare su questo documento.",
       "non_disponibile": "Situazione della merce non disponibile.",
       "sez_accrediti": "Da accreditare",
@@ -3274,7 +3297,9 @@
       "sospetta": "Da verificare",
       "sospetta_hint": "Riga aggiunta a mano su una spedizione da ordine, con un articolo gia' presente nell'ordine: puo' essere merce in piu' voluta oppure un doppione.",
       "titolo": "Situazione della merce",
-      "tutto_regolare": "tutto regolare"
+      "tutto_regolare": "tutto regolare",
+      "nc_da_accreditare": "{n} da accreditare su questo documento: l'accredito si registra dalla coda accrediti.",
+      "nc_apri_coda": "Apri la coda filtrata"
     }
   },
   "dash_mesi": {

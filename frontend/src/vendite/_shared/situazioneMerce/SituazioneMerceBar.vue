@@ -23,10 +23,19 @@
 // (un DDT in bozza non ha ancora partite, soglia EMESSO) o dati non arrivati.
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import Tag from 'primevue/tag'
 import SituazioneMerceDialog from './SituazioneMerceDialog.vue'
 import { formatQtaMerce as qta, sintesiSituazioneMerce } from './situazioneMerceSintesi'
 import { useSituazioneMerce } from './useSituazioneMerce'
+import { ROUTE_RESI, TAB_RESI } from '../../resi/constants'
+
+// Da quale documento si arriva → su quale filtro si apre la coda accrediti.
+// I due filtri sono ALTERNATIVI (il backend rifiuta la coppia).
+const FILTRO_CODA_PER_BASE_PATH = Object.freeze({
+  '/vendite/ddt': 'ddt_id',
+  '/vendite/ordini': 'ordine_id',
+})
 
 const props = defineProps({
   // Path lista API del dominio ('/vendite/ordini' | '/vendite/ddt').
@@ -41,6 +50,7 @@ const props = defineProps({
 })
 
 const { t } = useI18n()
+const router = useRouter()
 
 // Fetch unica condivisa con la dialog (che non fetcha: si apre istantanea).
 const { sezioni, loaded, loading, reload } = useSituazioneMerce(
@@ -52,6 +62,32 @@ const { sezioni, loaded, loading, reload } = useSituazioneMerce(
 defineExpose({ reload })
 
 const s = computed(() => sintesiSituazioneMerce(sezioni.value))
+
+// Scopo: dal pannello alla CODA ACCREDITI, gia' filtrata su questo documento
+//        (FE-2). Il predicato del filtro e' lo stesso che alimenta la sezione
+//        «da accreditare» qui dentro — stessa vista, stessa restrizione —
+//        quindi l'elenco che si apre e' esattamente quello che il pannello
+//        conta: se divergessero, il pannello direbbe «8» e la coda ne
+//        mostrerebbe 7, e nessuno se ne accorgerebbe.
+// ⚠️ La dialog si CHIUDE prima di navigare, o si resta con un overlay sopra la
+//    coda. E la chiude chi l'ha aperta: il pannello non conosce il router.
+function apriCodaAccrediti() {
+  dialogVisible.value = false
+  // ⚠️ Mappa esplicita e non `endsWith('/ddt') ? … : 'ordine_id'`: con il
+  // ternario un basePath nuovo (o scritto storto) finirebbe SILENZIOSAMENTE
+  // nel ramo ordine, e la coda si aprirebbe filtrata sull'id sbagliato — cioe'
+  // mostrerebbe le righe di un altro documento senza dire niente. Qui un
+  // dominio non previsto non naviga, e lo dice in console.
+  const chiave = FILTRO_CODA_PER_BASE_PATH[props.basePath]
+  if (!chiave) {
+    console.warn('situazione merce: nessun filtro coda per basePath', props.basePath)
+    return
+  }
+  router.push({
+    name: ROUTE_RESI,
+    query: { tab: TAB_RESI.DA_ACCREDITARE, [chiave]: props.docId },
+  })
+}
 
 // I compiti, nell'ordine in cui contano per chi guarda: prima quello che
 // costa denaro (accreditare), poi quello che lo incassa (fatturare), poi la
@@ -132,6 +168,7 @@ const dialogVisible = ref(false)
     :loading="loading"
     :loaded="loaded"
     :readonly="readonly"
+    @apri-coda-accrediti="apriCodaAccrediti"
   />
 </template>
 
