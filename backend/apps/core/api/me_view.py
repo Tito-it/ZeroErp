@@ -151,9 +151,17 @@ class UserProfileView(DomainAPIView):
         # SESSIONE (dal claim, non dalla preferenza salvata: dopo un passaggio
         # a «Tutti gli emittenti» i due valori divergono, ed è il claim che
         # comanda la GUC e quindi ciò che l'utente vede).
+        # ⚠️ La cache seminata col valore GIA' pubblicato nel profilo, e non un
+        # dizionario vuoto: `puo_scegliere` si decide sul bypass SUPER_ADMIN, e
+        # senza il travaso `descrivi` interrogherebbe il database una seconda
+        # volta nella stessa richiesta. Non e' (solo) il round-trip: due letture
+        # indipendenti possono rispondere diverso, e questa risposta
+        # dichiarerebbe `is_super_admin` in un campo e lo contraddirebbe
+        # nell'altro. Una domanda, una risposta.
         profile["emittente_attivo"] = EmittenteAttivoService().descrivi(
             request.user.id, self._emittente_attivo_del_jwt(request),
             user=request.user,
+            cache={"is_super_admin": bool(profile.get("is_super_admin"))},
         )
         return success_response(profile)
 

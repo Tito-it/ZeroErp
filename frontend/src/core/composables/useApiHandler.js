@@ -39,10 +39,13 @@ import { useNotify } from './useNotify'
 const CODICI_SENZA_TOAST = new Set([
   // Cancello di perimetro emittente (P-2b): `<ListaConfigurabile>` mostra gia'
   // il pannello «scegli un emittente» al posto della tabella.
-  // ⭐ Si sopprime QUI e non evitando la chiamata nei caller perche' l'evento
-  //    `@perimetro-bloccato` arriva DOPO che la fetch e' partita (config e dati
-  //    si caricano in parallelo): evitarla vorrebbe dire far ASPETTARE ogni
-  //    lista la config di un componente figlio.
+  // ⭐ Si sopprime QUI e non evitando la chiamata nei caller perche' la config
+  //    (che porta `richiede_scelta_emittente`) arriva DOPO che la fetch e'
+  //    partita — si caricano in parallelo: evitarla del tutto vorrebbe dire
+  //    far ASPETTARE ogni lista la config di un componente figlio.
+  //    Dalla config in poi la lista si sospende da se'
+  //    (`store.fetchSospesa`, in `useListaConfigurabilePage`), quindi qui
+  //    passa la PRIMA chiamata e nessun'altra.
   'E_UI_LISTA_EMITTENTE_DA_SCEGLIERE',
 ])
 

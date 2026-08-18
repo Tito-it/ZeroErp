@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 711, di cui 79 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 715, di cui 79 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -42,14 +42,22 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "DEFINIZIONE_PUBBLICATA_IMMUTABILE": "CONFLITTO_STATO",
     # ⚠️ RITIRATO il 2026-08-05
     "DEFINIZIONE_TRANSIZIONE_NON_AMMESSA": "CONFLITTO_STATO",
+    # vendite.fn_annulla_accredito_riga_reso, difesa in profondita': la UPDATE ad ANNULLATA ha toccato meno rettifiche di quante il ponte ne dichiarasse. Serve perche' vendite.commesse_attivita HA la RLS (rls_commesse_attivita_ef_whitelist) mentre vendite.resi_righe_accrediti NO: una rettifica fuori perimetro emittente si legge come «non c'e'» e la UPDATE la salterebbe IN SILENZIO, lasciando esattamente l'annullo parziale che la semantica d'insieme vieta. Copre anche la finestra fra il controllo e la scrittura. Gemello di E_ACCREDITO_SEGMENT_DUPLICATO nella madre: se scatta e' una regressione o un perimetro incoerente, non un caso d'uso. Piano: brief-db-note-credito-prerequisiti-be-fe §8 passo 3 (P-5).
+    "E_ACCREDITO_ANNULLO_INCOMPLETO": "CONFLITTO_STATO",
+    # vendite.fn_annulla_accredito_riga_reso: almeno una delle rettifiche generate dall'accredito e' gia' uscita dallo stato NON_EMESSA, quindi ha gia' prodotto la sua attivita' fatturabile ed e' in viaggio verso un documento. ⚠️ Si rifiuta l'INTERO annullo, non solo la parte bloccata: un accredito e' N rettifiche (consumo LIFO su piu' righe di fattura, e una rettifica per componente sui kit), e annullarne una parte lascerebbe la coda a chiedere un residuo che nessuno puo' piu' soddisfare. E' la stessa dottrina di E_ACCREDITO_QUOTA_NON_COPERTA, allo specchio. Piano: brief-db-note-credito-prerequisiti-be-fe §7 C-2.
+    "E_ACCREDITO_ANNULLO_NON_AMMESSO": "CONFLITTO_STATO",
     # vendite.fn_accredita_riga_reso: una delle attivita' che hanno fatturato la partita non e' mai atterrata su una riga di fattura (attivita_fatturabili.fattura_riga_id vuoto). Non e' un caso da gestire con un ripiego: e' la condizione che rende l'accredito IMPOSSIBILE, perche' N-1 impone che il prezzo si copi dalla riga di fattura e non si ricalcoli mai. Piano: brief-design-note-credito-resi S12.6.
     "E_ACCREDITO_ATTIVITA_NON_FATTURATA": "NON_ESEGUIBILE",
     # vendite.fn_accredita_riga_reso: la riga di reso ha gia' un accredito registrato in vendite.resi_righe_accrediti e non ha piu' quota da accreditare. E' il doppio click, e l'operatore lo scopre QUANDO CLICCA invece che a fine batch su un documento fiscale. Non e' il presidio vero — quello e' la UNIQUE del ponte piu' il fatto che la coda sottrae la quota gia' accreditata — e' il messaggio parlante che arriva prima. Piano: brief-design-note-credito-resi D-NC-10.
     "E_ACCREDITO_GIA_ESEGUITO": "CONFLITTO_STATO",
     # vendite.fn_accredita_riga_reso: un articolo composito fra le attivita' della partita ha componenti senza coeff_qta nel meta, quindi la quantita' in unita' PADRE non e' calcolabile. Stessa condizione che rende `misurabile` falso in vw_af_merce_per_riga. Inventare il coefficiente accrediterebbe un numero che nessuno sa da dove viene. Piano: brief-design-note-credito-resi N8.
     "E_ACCREDITO_KIT_NON_MISURABILE": "NON_ESEGUIBILE",
+    # vendite.fn_annulla_accredito_riga_reso: il motivo dell'annullo e' obbligatorio. L'annullo cancella le righe di ponte, quindi la traccia del PERCHE' esiste solo in vendite.commesse_attivita_log: senza motivo resta il fatto senza la ragione. Gemello di E_RIGA_COMMESSA_MOTIVO_OBBLIGATORIO sulla porta delle righe manuali, codice distinto perche' il messaggio nomina l'oggetto giusto (l'accredito, non la riga di commessa).
+    "E_ACCREDITO_MOTIVO_OBBLIGATORIO": "DATO_ERRATO",
     # vendite.fn_accredita_riga_reso: la riga di reso non compare nella coda accrediti, oppure il suo accredito dovuto e' sceso a zero. La coda e' la sola sede del numero (D-NC-6: l'accredito e' sempre PIENO e la quantita' non e' un input), quindi fuori di li' non c'e' nulla da accreditare. Classe NON_ESEGUIBILE e non NON_TROVATO: la riga di reso ESISTE, e' la precondizione a mancare. Piano: brief-design-note-credito-resi N8.
     "E_ACCREDITO_NON_IN_CODA": "NON_ESEGUIBILE",
+    # vendite.fn_annulla_accredito_riga_reso: non esiste nessun accredito da annullare per quella riga di reso. Non e' lo stesso di «gia' annullato»: dopo l'annullo le righe di ponte SPARISCONO, quindi un secondo annullo cade qui — ed e' corretto, perche' lo stato osservabile e' identico a «non e' mai stato accreditato». Piano: brief-db-note-credito-prerequisiti-be-fe §8 passo 3 (P-5).
+    "E_ACCREDITO_NON_TROVATO": "NON_TROVATO",
     # vendite.fn_accredita_riga_reso: le righe di fattura della partita non bastano a coprire tutto l'accredito dovuto. E' il tetto della MERCE, tenuto dalla madre come UGUAGLIANZA e non dal guard del ponte: la merce si misura in unita' padre e su un kit tre righe di ponte valgono una sola unita', quindi un trigger di riga che le sommasse rifiuterebbe il secondo componente. Solleva invece di accreditare a meta' perche' un accredito PARZIALE lascia un residuo che nessuno puo' chiudere: ne' una rinuncia (riguarda la ri-consegna) ne' un onere (viaggia su segmenti MAN: e non entra nel conto della merce). E' la malattia per cui il cantiere esiste. Piano: brief-design-note-credito-resi D-NC-6.
     "E_ACCREDITO_QUOTA_NON_COPERTA": "NON_ESEGUIBILE",
     # vendite.fn_accredita_riga_reso, guard is_new: fn_upsert_commessa_attivita ha aggiornato una riga invece di crearne una. L'accredito e' una CREATE, non una upsert — riusa la fn di upsert solo per non duplicarne il mapping a 40 parametri. Con l'advisory lock sulla partita e il progressivo #RET da MAX+1 non deve mai scattare: se scatta e' una regressione, o una transazione fuori da READ COMMITTED. Gemello di E_ONERE_SEGMENT_DUPLICATO sulla porta oneri. Piano: brief-design-note-credito-resi N8.

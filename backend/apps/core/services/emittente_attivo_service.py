@@ -28,6 +28,7 @@ from typing import Any
 from apps.core.db.emittente_attivo_repository import EmittenteAttivoRepository
 from apps.core.services import perimetro_emittente
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.permissions_resolver import PermissionResolver
 
 # Errore di dominio: la scelta non è (più) percorribile per questo utente.
 # Copre entrambi i casi — emittente inesistente/disattivato e fuori scope —
@@ -121,23 +122,42 @@ class EmittenteAttivoService:
         attivo_da_claim: int | None,
         *,
         user: Any = None,
+        con_perimetro: bool = True,
+        cache: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         proprio = self._repo.get_emittente_di_permesso(auth_user_id)
-        # ⛔ `puo_scegliere` NON si riscrive sulla cardinalita' dello scope, ed
-        #    e' una correzione PROPOSTA e RITIRATA il 2026-08-18 (BE-5 del
-        #    brief perimetro-emittente). L'obiezione al testo originale era
-        #    giusta — «non ha un emittente proprio» descrive anche l'operatore
-        #    non configurato, a cui l'interfaccia offrirebbe una combo mentre
-        #    il database non gli fa vedere piu' niente — ma il rimedio no:
-        #    `script.fn_get_emittenti_scope_pk_ids` INTERSECA con
-        #    `app.current_emittente_id`, quindi il super admin che ha scelto un
-        #    emittente ha scope di cardinalita' 1. Calcolare `puo_scegliere`
-        #    cosi' gli farebbe SPARIRE la combo dalla topbar appena sceglie,
-        #    cioe' gli impedirebbe di cambiare idea.
-        #    La distinzione che serve e' fra scope DI DIRITTO (quello che
-        #    alimenta le opzioni della combo) e scope EFFETTIVO (gia'
-        #    intersecato): sono due domande diverse, e questa e' la prima.
+        # Chi sceglie l'emittente di lavoro: **il super admin senza un emittente
+        # proprio**. Due condizioni, e servono entrambe.
+        #
+        # ⚠️ Il solo `proprio is None` non basta, ed e' il difetto che questa
+        #    riga chiude: dopo P-2a descrive anche l'OPERATORE NON CONFIGURATO
+        #    — uno che il database non fa piu' vedere niente (scope `'{}'`) e a
+        #    cui l'interfaccia offriva comunque la combo, con dentro zero
+        #    opzioni. Il bypass `SUPER_ADMIN` lo distingue, ed e' la stessa
+        #    fonte di verita' che usa la catena dei permessi.
+        #
+        # ⛔ E NON si guarda la cardinalita' dello SCOPE — correzione proposta
+        #    e ritirata il 2026-08-18 (BE-5): `fn_get_emittenti_scope_pk_ids`
+        #    INTERSECA con `app.current_emittente_id`, quindi il super admin
+        #    che ha gia' scelto un emittente ha cardinalita' 1 e si sarebbe
+        #    visto SPARIRE la combo — cioe' non avrebbe piu' potuto cambiare
+        #    idea. Qui la domanda giusta e' «chi sei», non «cosa stai
+        #    guardando»: la prima non si muove quando scegli, la seconda si'.
+        #
+        # ⚠️ Senza `user` (nessun oggetto utente) resta il calcolo storico: e'
+        #    l'unico dato disponibile, e restringere al buio sarebbe peggio —
+        #    toglierebbe la combo a un super admin per mancanza di informazioni.
+        #
+        # ⚠️ `cache` non e' un'ottimizzazione facoltativa: `/me/` pubblica gia'
+        #    `is_super_admin` nel profilo, e senza la cache condivisa questa
+        #    riga interrogherebbe `script.fn_is_super_admin` una SECONDA volta
+        #    nella stessa richiesta — due risposte che possono anche divergere,
+        #    e la stessa schermata direbbe due cose sullo stesso utente.
         puo_scegliere = proprio is None
+        if user is not None:
+            puo_scegliere = puo_scegliere and PermissionResolver.is_super_admin(
+                user, cache
+            )
         mai_scelto = puo_scegliere and self._repo.get_preferenza(auth_user_id) is None
         descrizione: dict[str, Any] = {
             "emittente_fiscale_id": attivo_da_claim,
@@ -160,9 +180,9 @@ class EmittenteAttivoService:
         #    utente non si puo' risolvere lo scope, e scrivere `False` direbbe
         #    «un solo emittente» a chi magari li ha tutti. Meglio non dire
         #    niente che dire una cosa non verificata.
-        if user is not None:
+        if user is not None and con_perimetro:
             descrizione["perimetro_multi_emittente"] = (
-                perimetro_emittente.scope_multi_emittente(user)
+                perimetro_emittente.scope_multi_emittente(user, cache=cache)
             )
         return descrizione
 

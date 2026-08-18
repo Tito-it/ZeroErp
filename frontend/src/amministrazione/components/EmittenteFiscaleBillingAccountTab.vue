@@ -39,7 +39,7 @@ const adding = ref(false)
 
 const {
   searchText, onPage, onSort, reload: reloadList, paginatorProps, tablePage,
-  listaRef, dirty, onConfigLoaded, pageActions,
+  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
 } = useListaConfigurabilePage(store, {
   searchTableOptions: { defaultSortField: 'billing_account_codice' },
   // Arrow lazy: `reloadAll` e' dichiarata sotto e viene risolta al click.
@@ -168,7 +168,7 @@ function buildRowActions(data) {
     </div>
 
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <div class="app-page-filters" :inert="perimetroBloccato">
         <InputText
           v-model="searchText"
           :placeholder="t('amministrazione.emittenti_fiscali.ba_filter_placeholder')"

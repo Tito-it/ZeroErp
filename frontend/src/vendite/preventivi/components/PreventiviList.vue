@@ -43,7 +43,7 @@ const isBlocked = useInjectBlocked()
 const {
   searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
   listaRef, dirty,
-  exportDialogVisible, exportLoading, onExportConfirm, onConfigLoaded, pageActions,
+  exportDialogVisible, exportLoading, onExportConfirm, onConfigLoaded, pageActions, perimetroBloccato,
 } = useListaConfigurabilePage(store, {
   exportFn: exportPreventivi,
   getExportParams: (fmt) => buildExportParams(fmt),
@@ -148,7 +148,7 @@ onMounted(() => store.fetchList())
       <!-- Toolbar UNICA esterna (pattern lista standard): filtri a sinistra,
            PageActionsBar a destra. -->
       <div class="app-page-toolbar">
-        <div class="app-page-filters">
+        <div class="app-page-filters" :inert="perimetroBloccato">
           <InputText v-model="searchText" :placeholder="t('vendite.preventivi.search_placeholder')" style="width: 260px;" />
           <LookupSelect v-model="statoFilter" rel="config.stati_doc_preventivi" value-field="codice_interno"
             :placeholder="t('vendite.preventivi.filtro_stato')" show-clear @change="onStatoChange" style="width: 160px;" />

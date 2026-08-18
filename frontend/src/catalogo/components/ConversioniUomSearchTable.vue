@@ -26,7 +26,7 @@ const store = useConversioniUomStore()
 const isBlocked = useInjectBlocked()
 const {
   searchText, onPage, onSort, paginatorProps, tablePage,
-  listaRef, dirty, onConfigLoaded, pageActions,
+  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
 } = useListaConfigurabilePage(store, {
   newTooltipKey: 'catalogo.nuova_conversione',
   onNew: () => emit('new'),
@@ -48,7 +48,7 @@ onMounted(() => store.fetchList())
 
     <template v-else>
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <div class="app-page-filters" :inert="perimetroBloccato">
         <InputText v-model="searchText" :placeholder="t('catalogo.conv_search_placeholder')" />
       </div>
       <PageActionsBar :actions="pageActions">

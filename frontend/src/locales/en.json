@@ -4137,7 +4137,6 @@
       "scelta_titolo": "Select your working issuer",
       "scelta_messaggio": "Choose the issuer you want to work inside. You can change it any time from the top bar.",
       "scelta_conferma": "Start",
-      "globale_sola_lettura": "You are viewing all issuers: to create documents, select one from the top bar.",
       "scelta_errore": "Could not load issuers. Retry, or continue in read-only mode.",
       "scelta_rimanda": "Continue without selecting"
     }

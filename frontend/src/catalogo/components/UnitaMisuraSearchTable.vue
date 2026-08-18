@@ -28,7 +28,7 @@ const store = useUnitaMisuraStore()
 const isBlocked = useInjectBlocked()
 const {
   searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
-  listaRef, dirty, onConfigLoaded, pageActions,
+  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
 } = useListaConfigurabilePage(store, {
   newTooltipKey: 'catalogo.nuova_uom',
   onNew: () => emit('new'),
@@ -70,7 +70,7 @@ onMounted(() => store.fetchList())
 
     <template v-else>
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <div class="app-page-filters" :inert="perimetroBloccato">
         <InputText v-model="searchText" :placeholder="t('catalogo.uom_search_placeholder')" />
         <Select v-model="attivoFilter" :options="boolOptions" option-label="label" option-value="value"
           :placeholder="t('catalogo.filtro_attivo')" @change="onAttivoChange" style="width: 120px;" />

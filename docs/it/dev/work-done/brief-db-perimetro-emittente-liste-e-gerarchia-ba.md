@@ -10,7 +10,7 @@
 >
 > **Origine.** Emersi il **2026-08-17** analizzando la richiesta «filtrare i
 > gruppi fatturabili per cliente»
-> ([brief-db-dash-competenza-gruppi-cliente-e-ricerca.md](../work-done/brief-db-dash-competenza-gruppi-cliente-e-ricerca.md)).
+> ([brief-db-dash-competenza-gruppi-cliente-e-ricerca.md](brief-db-dash-competenza-gruppi-cliente-e-ricerca.md)).
 > Sono stati messi qui perché sono cantieri loro: toccano l'anagrafica e
 > l'accesso, non la dashboard.
 >
@@ -37,21 +37,93 @@
 > DB, policy dei codici, colonna emittente su **6 liste**, cancello su **34**
 > (51 view), etichette di perimetro, colonna nella ricerca universale.
 > I due brief di richiesta al team DB sono **esauriti e spostati in work-done**:
-> [le due richieste R-1/R-2](../work-done/brief-db-perimetro-emittente-due-richieste-dal-be.md)
-> e [Fase E + ricerca](../work-done/brief-db-perimetro-emittente-fase-e-e-ricerca.md).
+> [le due richieste R-1/R-2](brief-db-perimetro-emittente-due-richieste-dal-be.md)
+> e [Fase E + ricerca](brief-db-perimetro-emittente-fase-e-e-ricerca.md).
 >
+> # 🟢 CANTIERE CHIUSO — 2026-08-18
+>
+> 📦 **Archiviato in `work-done` il 2026-08-18**, a collaudo a video finito:
+> DB chiuso, BE/FE chiusi, §15 verde per intero. Nulla resta in carico al team
+> DB — le sue due richieste sono consegnate e i due documenti relativi erano
+> già qui accanto.
+>
+> **Migrato e pgTAP verdi** (conferma di Tid). Tutto il piano è fatto e
+> collaudato sui dati **e a video**: P-1, P-2a/b/c, P-3, P-4, passi 1→8, fasi
+> BE/FE A→E.
+> Flag `multi_emittente` su **6 liste su 44**, vista di controllo a **zero**,
+> **12** righe di colonna emittente a catalogo, suite backend **3790 verdi**.
+>
+> **Le due voci che restano non sono lavoro di questo brief:**
+>
+> | | Cosa | Dove vive |
+> | --- | --- | --- |
+> | 🔵 | `fn_get_emittente_fiscale_id` non delega a `fn_get_ba_emittente_sr_id` | **cantiere numerazione (P-6)**, di cui è prerequisito. ⚠️ «Non è una riga»: le due divergono sul `NULL` (§11.11) |
+> | 🕳️ | Nessun presidio lega la riga di catalogo al **mapping** del repository | debito **dichiarato** in `test_perimetro_emittente_copertura.py`, con la ragione: serve una mappa lista → repository che non esiste |
+>
+> ✅ **COLLAUDATO A VIDEO da Tid il 2026-08-18 — §15 eseguito per intero,
+> tutti i punti verdi**: il cancello (§15.1), le sei colonne emittente col loro
+> ordinamento (§15.2), le due etichette di perimetro (§15.3), il verso opposto
+> (§15.4).
+>
+> 🔴 **E ha trovato l'unico difetto rimasto**, che nessun test avrebbe preso:
+> sulle liste a ricerca obbligatoria il pannello del cancello era **nascosto
+> dal `v-show` del caller** — backend giusto, componente giusto, difetto nella
+> terza cosa: *chi dei due si vede*. Corretto e riverificato verde
+> (**C-3-bis**), insieme alla sospensione della lista bloccata e all'export che
+> scaricava un rifiuto invisibile.
+
+> ### ✅ Risposta al §13-ter — rifatta la misura, il 2026-08-18 sera
+>
+> **Il DB ha ragione su tutti e tre i punti, e il primo era un mio errore di
+> misura.** Rifatta dentro un contesto operatore completo
+> (`operator_identity_context`, **non** `system_process_context`):
+>
+> | vista | righe | con il nome |
+> | --- | ---: | ---: |
+> | `vw_dash_competenza_gruppi` | 74 | **74** |
+> | `vw_dash_competenza_attivita` | 90 | **90** |
+> | `vw_dash_backlog_documenti` | 102 | **102** |
+> | `vw_dash_aperto_documenti` | 156 | **156** ← era 0 prima di `-74` |
+> | `vw_dash_fatturazione_documenti` | 297 | **297** ← idem |
+>
+> 🔴 **«La vista è vuota in questa istanza» era falso**: quello zero era **P-2a
+> che funziona**, non assenza di dati.
+> ⚠️ **E il mio errore ha un dettaglio che vale scrivere**: la misura l'avevo
+> fatta con `system_process_context`, *credendo* di aver evitato la trappola di
+> [[feedback_rls_query_contesto_sistema]]. Non basta — il canale di sistema non
+> porta un'**identità operatore**, e queste viste risolvono lo scope da
+> `app.current_user_id`. Applicare il rimedio giusto al problema giusto e
+> ottenere lo stesso zero è il modo più insidioso di sbagliare: *sembra* una
+> verifica fatta.
+>
+> ⭐ **E i repository consegnano la colonna PIENA**, misurato negli stessi
+> contesto e dati: `lotti` **44/44**, `aperto` **156/156**, `backlog`
+> **102/102**, `gruppi` **20/20**, `commesse` **9/9** (`errori` ha zero righe
+> perché non ci sono errori vivi). **BE-4 e BE-5 erano già chiuse** — fatte in
+> parallelo alla stesura di §13-ter — e ora sono anche **collaudate sui dati**,
+> che è la verifica che il DB chiedeva.
+>
+> ✅ **Chiuso anche il residuo BE su `puo_scegliere`**, e la soluzione non era
+> una funzione DB nuova: era **la domanda giusta**. Non «quanti emittenti stai
+> guardando» — che cambia quando scegli, ed era il rimedio sbagliato che avevo
+> proposto e ritirato — ma «**chi sei**», cioè il bypass `SUPER_ADMIN`, già
+> disponibile: `puo_scegliere = nessun emittente proprio **E** super admin`.
+> L'operatore non configurato non vede più una combo con dentro zero opzioni.
+> Tre asserzioni nuove.
+
 > ### Cosa resta aperto — verificato sul codice il 2026-08-18, sera
 >
-> ⛔ **Una sola cosa è "il lavoro che manca"**; le altre cinque sono residui
-> dichiarati, nessuno dei quali blocca niente.
+> ✅ **Quattro voci su sei sono state chiuse il 2026-08-18 sera** (dal DB con
+> §13-ter, e dal BE con la correzione di `puo_scegliere`). **Restano due**, ed
+> è quello che manca all'intero cantiere.
 >
 > | | Cosa | Perimetro |
 > | --- | --- | --- |
-> | ⛔ | **Accendere `multi_emittente`**, lista per lista, quando la colonna si vede piena su dati veri. Oggi **0 su 44** — ed è lo stato giusto: è un registro di debito che cala quando qualcuno *certifica* una lista, non quando accende un interruttore. La vista di controllo dà **0 adesivi senza collaudo** | **DB** (seed) |
+> | ~~⛔~~ | ~~Accendere `multi_emittente`~~ → ✅ **acceso su tutte e sei** le liste del perimetro (decisione di Tid, §13-ter.7). Registro **6 su 44**, vista di controllo a **zero**. E la riserva del DB — «su cinque il flag precede il `SELECT`» — è **già superata**: i repository consegnano la colonna piena (sopra) | — |
 > | 🔵 | `anagrafiche.fn_get_emittente_fiscale_id` **non delega** ancora a `script.fn_get_ba_emittente_sr_id` (verificato): la regola *«quale emittente fattura questo BA»* vive in **due** definizioni. Da chiudere col cantiere **numerazione** (§11.2) | DB |
-> | 🔵 | La ricerca universale applica il perimetro **solo al tipo ruolo `CL`** (verificato): una ricerca **fornitori** non conosce perimetro emittente. Dichiarato dal passo 1, mai chiuso | DB |
-> | 🕳️ | Due buchi di **test dichiarati**: il **movimento 4** di P-1 (spostamento del gestore globale — serve un test non transazionale, perché il constraint differito pretende il COMMIT) e la fixture a **due emittenti** del passo 1, che dopo la misura di Fase 0 sarebbe ora possibile | DB (pgTAP) |
-> | 🔵 | `EmittenteAttivoService.descrivi` calcola `puo_scegliere` sull'**assenza dell'emittente proprio** (verificato, riga 140): dopo P-2a quel ramo descrive anche l'operatore non configurato, a cui l'interfaccia offre la combo mentre il database non gli mostra nulla. ⚠️ **Il rimedio ovvio è sbagliato** — vedi BE-5 ritirato in Fase D: serve una funzione di scope **non intersecata** con l'emittente attivo, che oggi non esiste | BE |
+> | ~~🔵~~ | ~~La ricerca applica il perimetro solo a `CL`~~ → ⛔ **non è un residuo: è il modello.** Un fornitore non ha billing account, quindi non ha emittente (§11.9). Chiuso dal DB | — |
+> | ~~🕳️~~ | ~~I due buchi di test dichiarati~~ → ✅ **chiusi entrambi** dal DB, e il movimento 4 **non richiedeva** un test non transazionale (12/12 e 15/15 verdi) | — |
+> | ~~🔵~~ | ~~`puo_scegliere` sull'assenza dell'emittente proprio~~ → ✅ **chiuso il 2026-08-18**: `nessun emittente proprio` **E** `SUPER_ADMIN`. Non serviva lo scope non intersecato: serviva smettere di chiedere «cosa stai guardando» e chiedere «chi sei» | — |
 > | 🕳️ | Manca il presidio che leghi la riga di **catalogo** al **mapping** del repository. Tentato due volte e **tolto**, con la ragione scritta nel file di test: serve una mappa lista → repository che non esiste | BE (test) |
 >
 > ℹ️ **Non è di questo cantiere, ma si vede nella stessa suite**: 2 test rossi
@@ -102,8 +174,10 @@
 > registro di debito che deve calare, e oggi non è ancora calato di uno.~~
 >
 > ⭐ **Dal 2026-08-18 è 6 su 44**: la pilota per collaudo, le altre cinque per
-> decisione di Tid (§13-ter.7). ⚠️ Su quelle cinque il flag è **in carico**, non
-> **collaudato**: manca BE-5.
+> decisione di Tid (§13-ter.7). ~~⚠️ Su quelle cinque il flag è **in carico**,
+> non **collaudato**: manca BE-5.~~ — **superato**: BE-4 e BE-5 erano già
+> chiuse mentre §13-ter veniva scritto, e sono state collaudate sui dati (le
+> sei colonne piene, misura in testata) e **a video** il 2026-08-18 (§15.2).
 >
 > ~~**Stato al 2026-08-17: nulla eseguito.** Nessun changeSet, nessuna
 > migrazione, nessun seed; il prossimo passo è il DL-A, che è una misura.~~ —
@@ -1499,7 +1573,7 @@ ricordarsi che i posti da toccare sono **due**, non uno.
 
 #### 🔴 Aggiornamento 2026-08-18 — non è più «quando si aprirà». Il cantiere è aperto ORA
 
-Il brief [brief-db-note-credito-prerequisiti-be-fe.md](brief-db-note-credito-prerequisiti-be-fe.md),
+Il brief [brief-db-note-credito-prerequisiti-be-fe.md](../work-in-progress/brief-db-note-credito-prerequisiti-be-fe.md),
 richiesta **P-6**, chiede di intestare i registri di numerazione agli emittenti:
 oggi tutti e tre hanno `emittente_soggetto_ruolo_id = NULL` e **due aziende
 numerano sulla stessa serie** — dal gennaio 2026, sulle fatture.
@@ -2943,10 +3017,13 @@ riceve `[]` e **non** `None` (mock su `connection.cursor`, niente DB — regola 
 > esistesse, ora il repository lo seleziona e il catalogo ha un'etichetta che
 > parla due lingue.
 >
-> ⛔ **Il flag `multi_emittente` sulla pilota resta `false`**, e non è una
-> dimenticanza: si accende dal **seed** (perimetro DB), e solo dopo aver visto
-> la colonna mostrare un nome su dati veri. Oggi la vista è vuota (sotto), quindi
-> quel momento non è ancora arrivato.
+> ~~⛔ **Il flag `multi_emittente` sulla pilota resta `false`** … Oggi la vista
+> è vuota, quindi quel momento non è ancora arrivato.~~
+> → **Superato la sera del 2026-08-18, e per due motivi che vanno letti insieme**:
+> «la vista è vuota» era una **misura sbagliata** (§13-ter.1 — quello zero era
+> P-2a che funziona: con un contesto operatore la pilota rende **74 righe, 74
+> con il nome**), e il flag è poi stato acceso su **tutte e sei** le liste per
+> decisione di Tid (§13-ter.7).
 
 > Il DB ha fatto la sua metà il 2026-08-18 (`20260818-15` + riga di catalogo
 > `lista_colonna` id **478**). **La metà che resta è l'unica visibile
@@ -3318,7 +3395,7 @@ l'interfaccia a essere sbagliata.
 > | --- | --- |
 > | il pannello | `Message severity="warn"` **al posto** della tabella (`v-if` / `v-else`), non sopra |
 > | la scelta | **nessun controllo nuovo**: il testo rimanda alla combo di topbar |
-> | l'evento | `@perimetro-bloccato` (boolean), emesso col `config-loaded` |
+> | l'evento | ~~`@perimetro-bloccato` (boolean), emesso col `config-loaded`~~ — **rimosso il 2026-08-18**, vedi C-3-bis |
 > | i18n | `common.perimetro_emittente.*` — vocabolario trasversale, in entrambe le lingue, `check_i18n_keys.py` pulito |
 >
 > ⚠️ **Il pannello prende il POSTO della tabella, non le sta sopra**: mostrarla
@@ -3371,9 +3448,124 @@ l'interfaccia a essere sbagliata.
 > Stesso mestiere di `check_i18n_keys.py`. Controprova eseguita: codice
 > inventato → rosso.
 >
-> 🔵 **`@perimetro-bloccato` resta**, e non è codice morto: serve al caller che
-> un domani vorrà davvero risparmiarsi la chiamata (per esempio sospendendo un
-> polling). Non è più obbligatorio per nessuno.
+> 🔵 ~~**`@perimetro-bloccato` resta**, e non è codice morto: serve al caller
+> che un domani vorrà davvero risparmiarsi la chiamata (per esempio sospendendo
+> un polling). Non è più obbligatorio per nessuno.~~
+>
+> 🔴 **Corretto il 2026-08-18: non reggeva.** «Serve a un domani» è il modo in
+> cui si tiene in vita un'API che nessuno chiama — e intanto la sostanza (non
+> chiedere al backend cose che rifiuterà) restava **non fatta**. Il seguito è
+> il C-3-bis: la sospensione esiste davvero, in un punto che copre tutti gli
+> ingressi, e l'evento è caduto perché diceva quello che `config-loaded` porta
+> già dentro.
+
+#### C-3-bis · Il collaudo a video, e le due cose che ha trovato
+
+> ✅ **2026-08-18, collaudo di Tid sul §15.1.** Il cancello non compariva sulla
+> lista **Clienti**, e non era il cancello: era **nascosto dal caller**.
+
+**Il difetto.** Cinque liste sono «a ricerca obbligatoria» — clienti, soggetti,
+fornitori, indirizzi, articoli — e tengono l'**intera** `<ListaConfigurabile>`
+dietro un `v-show`, mostrando al suo posto `<SearchHint>` («esegui una ricerca
+per visualizzare i risultati»):
+
+```vue
+<SearchHint v-if="!store.hasSearched && !store.loading" />
+<ListaConfigurabile v-show="store.hasSearched || store.loading" …>
+```
+
+Il pannello di C-3 vive **dentro** `ListaConfigurabile`: veniva renderizzato e
+restava invisibile finché non si cercava — cioè esattamente nello stato in cui
+doveva parlare.
+
+⭐ **A video il difetto si presentava come un lampeggio, ed è il lampeggio che
+lo ha spiegato**: cerchi → `loading` scopre la lista → il pannello **si vede** →
+il BE rifiuta con 422 (toast soppresso) → `hasSearched` resta `false`
+(`useListaEmptyStateFetch` lo scrive solo dopo una risposta buona) → il
+`finally` spegne `loading` → il `v-show` richiude tutto. Il pannello c'era, per
+il tempo della richiesta.
+
+⚠️ **Nessun test lo avrebbe preso**, ed è la ragione per cui il §15 esiste: il
+BE risponde giusto, il componente rende giusto, e il difetto sta nella terza
+cosa — *chi dei due si vede*.
+
+**La correzione, in una sede sola.** La regola non poteva stare in cinque
+template: vive in `useListaConfigurabilePage`, che la config dal BE la riceve
+già (`@config-loaded`).
+
+| Pezzo | Scelta |
+| --- | --- |
+| `perimetroBloccato` | letto da `richiede_scelta_emittente` **prima** della guardia `configAligned` — quella protegge l'allineamento del `limit`, che si fa una volta sola; il cancello no, e dopo un `return` sarebbe rimasto fermo al primo valore |
+| `mostraLista` / `mostraSearchHint` | i due nomi che i cinque caller usano al posto di `hasSearched`/`loading` |
+| `<SearchHint>` | **sparisce** quando il cancello è su: inviterebbe a cercare in una lista che il BE rifiuterà comunque, e due pannelli che dicono cose diverse sono peggio di nessuno |
+
+**La seconda cosa: `@perimetro-bloccato` era API morta.** Zero ascoltatori in
+tutto il frontend. Chiuderla ascoltandola sarebbe stato l'errore: l'evento
+arriva **dopo** che la fetch è partita, ed è il motivo per cui il toast si
+sopprime in `useApiHandler`. I due momenti vanno separati:
+
+| Chiamata | Cosa succede ora |
+| --- | --- |
+| la **prima** (liste che partono piene) | parte insieme alla config, quindi prima che si sappia del cancello: arriva il 422, il toast è soppresso. **Una, e una sola** |
+| **tutte le altre** — tasto nella ricerca, sort, pagina, F5, `reload`, refetch di `onActivated` | non partono: `fetchList` esce in testa su `sospesa` |
+
+⚠️ **Il guard sta in `useListaEmptyStateFetch`, non nel composable di pagina**,
+perché lì c'è **un** punto: gli ingressi alla fetch sono sei, e presidiarli uno
+per uno sarebbe stato un elenco di posti da ricordare — il settimo sarebbe nato
+scoperto. Lo store lo espone come `fetchSospesa`, e
+`useListaConfigurabilePage` lo scrive **nei due versi**: rientrare in un
+emittente riapre la lista senza che nessuno debba ricordarsi di abbassare la
+bandiera (memoria `feedback_pipeline_esito_parziale_ritiro_bandiere`).
+
+⭐ **E col cancello su l'export spariva nel nulla**: l'endpoint dichiara lo
+stesso `lista_codice` e cade sotto lo stesso guard (è il presidio «lista ed
+export stanno o cadono insieme», C-2), quindi il pulsante scaricava un rifiuto
+— invisibile, col toast soppresso. Ora l'azione **non viene offerta** finché il
+cancello è su. «Personalizza colonne» resta: la config c'è, ed è lecito
+preparare le colonne prima di scegliere l'emittente.
+
+> ⭐ **E il 2026-08-18, su richiesta di Tid, la toolbar si spegne tutta.** Col
+> cancello su restavano vivi due comandi che non potevano riuscire: i **filtri**
+> (si digitava e non succedeva niente — la lista e' sospesa) e le **azioni di
+> testata**, «Nuovo» compreso, che avrebbe aperto un drawer per farsi dire dal
+> database, a fine compilazione, che l'emittente non e' risolto.
+>
+> | Pezzo | Dove | Perche' li' |
+> | --- | --- | --- |
+> | le azioni | `pageActions` in `useListaConfigurabilePage` | e' il punto in cui **tutte** convergono — reload, personalizza, export, nuovo e gli `extras` del caller. Una funzione sola (`spegni`), **nessun caller toccato**. ⚠️ `disabled`, non «tolte»: una barra che sparisce e ricompare e' un'interfaccia che si riscrive sotto le mani mentre il pannello spiega cosa fare |
+> | i filtri | `:inert` sul blocco `app-page-filters` dei **36 caller** | la toolbar e' markup del caller: lo scaffolding non la raggiunge. `inert` e non `disabled` campo per campo — e' il browser a rendere inerte il sottoalbero, tastiera e screen reader compresi |
+>
+> ⚠️ **`inert` porta con se' una regola CSS gemella e opposta a una che c'era
+> gia'**: sotto `.app-readonly` i filtri restano **attivi** (filtrare e'
+> leggere, e il readonly vieta di scrivere). Col cancello no: la lista non si
+> apre affatto. Le due regole convivono in `main.css`, ciascuna col suo perche'
+> scritto accanto — altrimenti la prossima persona ne cancella una.
+>
+> ⛔ **Le azioni di RIGA non c'entrano**: con il cancello su la tabella non
+> esiste, quindi non esistono righe. Il perimetro e' la testata.
+
+#### C-3-ter · Il ripiego che questo cantiere ha reso inutile
+
+> ✅ **2026-08-18, decisione di Tid.** Rimossa l'icona occhio in topbar —
+> l'avviso *«Stai vedendo tutti gli emittenti: per creare documenti seleziona
+> un emittente»* — insieme al computed `isModalitaGlobale` (ne era l'unico
+> consumatore) e alla chiave `core.emittente_attivo.globale_sola_lettura`, it e
+> en. Il campo `modalita_globale` di `/me/` resta: è contratto.
+
+Veniva da
+[brief-db-impersonazione-scope-emittente.md](brief-db-impersonazione-scope-emittente.md)
+§9.4, dove era dichiarato per quello che era: un **ripiego**, in attesa di
+spegnere i verbi di creazione area per area. Era la risposta che ci si era dati
+al dubbio «e se guardo più emittenti?» — dubbio a cui **questo** cantiere
+risponde davvero, e con quattro sedi scritte invece di un tooltip.
+
+⚠️ **Ma le due cose non si sovrappongono, e va detto**: il cancello di P-2b
+blocca la **lettura** di una lista ambigua, l'icona avvisava che la
+**creazione** è spenta. Togliendola cade il promemoria nella finestra centrale
+(«ho scelto Tutti un'ora fa e non ci penso più»): resta il dialog di conferma
+nel momento della scelta e il rifiuto del DB al salvataggio. ⛔ **Nessuna
+protezione è cambiata** — quella è del DB. La coda 🟠 del §9.4 di quel brief
+resta aperta, e ora è scoperta: è aggiornata lì.
 
 #### C-4 · La prova, e il modo di sbagliarla
 
@@ -3555,7 +3747,7 @@ lì «per coerenza».
 > scelta di sequenza: senza la riga di catalogo la colonna **non esiste** per il
 > frontend, e senza la ragione sociale nella vista il backend non ha cosa
 > selezionare. La richiesta è scritta:
-> [brief-db-perimetro-emittente-fase-e-e-ricerca.md](../work-done/brief-db-perimetro-emittente-fase-e-e-ricerca.md).
+> [brief-db-perimetro-emittente-fase-e-e-ricerca.md](brief-db-perimetro-emittente-fase-e-e-ricerca.md).
 >
 > | Lista | Da dove nascono le righe | id | ragione sociale | serve dal DB |
 > | --- | --- | :---: | :---: | --- |
@@ -3741,7 +3933,7 @@ e il secondo non è meccanico.
 
 ⭐ **Le due richieste al team DB (C-0 e DB-1) sono partite**, scritte il
 2026-08-18 in un documento loro:
-[brief-db-perimetro-emittente-due-richieste-dal-be.md](../work-done/brief-db-perimetro-emittente-due-richieste-dal-be.md).
+[brief-db-perimetro-emittente-due-richieste-dal-be.md](brief-db-perimetro-emittente-due-richieste-dal-be.md).
 Le fasi **A** e **B** non le aspettano.
 
 ### 13-bis.5 — Quadro d'insieme
@@ -3929,9 +4121,16 @@ nome è **uno solo**. Ciò che è provato è che *ogni riga dichiara il proprio
 emittente* — la capacità che il flag certifica — non che se ne vedano due. Il
 secondo emittente esiste (SR 159) ma non ha commesse.
 
-⛔ **Le altre cinque restano a `false`**, e per un motivo che ora è misurato e
+~~⛔ **Le altre cinque restano a `false`**, e per un motivo che ora è misurato e
 non prudenziale: il repository seleziona la colonna **solo per la pilota**
-(BE-5), e su «Situazione aperta» fino a `-74` la colonna era vuota comunque.
+(BE-5), e su «Situazione aperta» fino a `-74` la colonna era vuota comunque.~~
+
+→ **Superato nello stesso giorno, e su entrambi i fronti**: il flag è stato
+acceso su tutte e sei (§13-ter.7, decisione di Tid), e la riserva che
+accompagnava quella decisione — *«su cinque il flag precede il `SELECT`»* — non
+vale più: **BE-4 e BE-5 erano già fatte** mentre questa sezione veniva scritta,
+e sono state **collaudate sui dati** la sera stessa (`lotti` 44/44, `aperto`
+156/156, `backlog` 102/102, `gruppi` 20/20, `commesse` 9/9).
 
 ### 13-ter.6 Cosa torna al backend
 
@@ -3991,6 +4190,122 @@ su 44** con il flag, e `dbops.vw_liste_multi_emittente_non_certificate` resta a
 > `want`). È il modo in cui un registro scritto per **elenco** si comporta:
 > nomina ciò che manca. Un `count` avrebbe detto «1 ≠ 6».
 
+## 15. Come si collauda a video — *la parte che i test non fanno*
+
+> **Perché serve una sezione.** Tutto il cantiere è verificato per **dati** e per
+> **contratto**; nulla è stato guardato **a schermo**. E non basta dire «apri una
+> lista»: in questa istanza il cancello **non può scattare** sulle sei liste del
+> perimetro, perché sono tutte certificate. Chi le apre e non vede niente
+> potrebbe concludere che il cancello non funziona.
+
+> ✅ **ESEGUITO INTEGRALMENTE da Tid il 2026-08-18 — tutti i punti verdi.**
+> §15.1 il cancello · §15.2 le sei colonne emittente e il loro ordinamento ·
+> §15.3 le due etichette di perimetro · §15.4 il verso opposto.
+>
+> ⚠️ **Con una correzione in mezzo, ed è la ragione per cui questa sezione
+> esiste**: il §15.1 è stato **rosso al primo giro**, e non per il cancello —
+> il pannello era nascosto dal `v-show` delle liste a ricerca obbligatoria
+> (diagnosi e rimedio nel **C-3-bis**). Corretto e **riverificato verde**.
+>
+> ⭐ Nessun test lo avrebbe preso: il backend rispondeva giusto e il componente
+> rendeva giusto: il difetto stava nella terza cosa, *chi dei due si vede*. È
+> l'unico difetto che il collaudo a schermo ha trovato, ed è tutto quello che
+> serve per giustificare il §15.
+
+### 15.0 Prima di tutto: ricaricare il backend
+
+Il backend di sviluppo è **gunicorn sotto systemd senza autoreload**: finché non
+si ricarica, in-app gira il codice di prima e ogni collaudo misura il passato.
+
+```bash
+kill -HUP $(pgrep -f 'gunicorn zeroerp_backend.wsgi' | head -1)   # master
+ps -eo pid,etimes,cmd | grep '[g]unicorn'                          # i worker devono essere NUOVI
+```
+
+Il frontend gira con `vite --host` e si ricarica da sé (HMR).
+
+### 15.1 Il cancello — ⚠️ **non sulle liste del perimetro**
+
+| Passo | Atteso |
+| --- | --- |
+| 1. login come **super admin** (`tid`) | — |
+| 2. combo di topbar → **«Tutti gli emittenti»** | scope = universo, cioè perimetro multiplo |
+| 3. aprire una lista **NON certificata** — es. **Clienti** (`anagrafiche.clienti`) | al posto della tabella il pannello **«Scegli un emittente per continuare»**, severity *warn*. ⭐ **E nessun toast rosso**: è la soppressione in `useApiHandler` |
+| 4. scegliere un emittente dalla combo | la stessa lista si apre normalmente |
+
+⛔ **Sulle sei liste del perimetro il pannello NON comparirà mai**, ed è
+corretto: hanno `multi_emittente = true`, cioè dichiarano di saper dire da quale
+emittente arriva ogni riga.
+
+> 🔴 **Eseguito il 2026-08-18, e il passo 3 è stato ROSSO**: su Clienti il
+> pannello non compariva. Non per il cancello — per il `v-show` del caller, che
+> teneva nascosta l'intera lista finché non si cercava. Diagnosi e correzione
+> nel **C-3-bis**; dopo la correzione il pannello si vede **subito, senza
+> cercare**, e `<SearchHint>` cede il posto invece di affiancarsi. ✅ **Passo
+> riverificato verde** da Tid nello stesso giro.
+>
+> ⭐ Da rifare così, perché è il passo che ha trovato il difetto: aprire la
+> lista e **non cercare**. Chi digita subito vede il pannello lampeggiare per
+> il tempo della richiesta e conclude che «qualcosa fa» — che è il modo
+> peggiore di passare un collaudo.
+
+### 15.2 Le sei colonne emittente
+
+Da **«Tutti gli emittenti»**, su ognuna: `Personalizza colonne` → spuntare
+**Emittente** (arriva **spenta**: è il merge automatico delle colonne nuove).
+
+| Lista | righe attese oggi | con il nome |
+| --- | ---: | ---: |
+| Lotti di fatturazione | 44 | 44 |
+| Situazione aperta — documenti | 156 | 156 |
+| Backlog — documenti fermi | 102 | 102 |
+| Competenza — gruppi fatturabili (luglio) | 20 | 20 |
+| Competenza — drill-down commesse (luglio) | 9 | 9 |
+| Competenza — errori vivi | 0 | — (nessun errore vivo) |
+
+⭐ **E cliccare l'intestazione «Emittente»**: deve **ordinare**. Non è un
+dettaglio — su «Competenza — errori vivi» *ogni* ordinamento rispondeva **500**
+da sempre, ed è il difetto trovato provando esattamente questo.
+
+### 15.3 Le due etichette di perimetro
+
+- **Home**: i contatori mostrano *«Tutti gli emittenti»* sotto il numero — e
+  **solo** dove un numero c'è davvero (non su una card di benvenuto, non su una
+  degradata);
+- **Ricerca universale**: riga di perimetro sopra i risultati e, cercando un
+  **cliente**, la colonna *«Emittenti presso cui è cliente»*.
+  ⚠️ Su fornitori e altri tipi ruolo la colonna **non c'è**, e non è un difetto:
+  un fornitore non ha billing account, quindi non ha emittente (§11.9).
+
+### 15.4 Il verso opposto, che è quello che si dimentica
+
+Rientrare in **un** emittente dalla combo e ripetere: le etichette
+**spariscono** (il perimetro è uno solo) e il cancello non scatta più da nessuna
+parte. Un collaudo che prova solo il caso «acceso» non distingue un presidio che
+funziona da uno sempre attivo.
+
+### 15.5 Test automatici di interfaccia: oggi **non esistono**
+
+Misurato: `frontend/package.json` ha `dev`, `build`, `preview`, `lint`,
+`format` — **nessun** runner (niente Vitest, Jest, Playwright, Cypress).
+
+⚠️ **Ma il frontend non è senza presidi**, ed è una scelta già in casa: lo
+presidiano **test Python che leggono il sorgente FE** —
+`scripts/check_i18n_keys.py` (lega le chiavi emesse dal DB alle traduzioni) e
+`test_perimetro_emittente_copertura.test_il_codice_citato_dal_frontend_esiste_a_catalogo`
+(lega il codice errore citato in `useApiHandler.js` al catalogo). È la strada
+più economica per estendere la copertura senza introdurre una suite.
+
+> ⭐ **Raccomandazione**: **non** introdurre una suite FE *per questo cantiere*.
+> Quello che il frontend fa qui sono tre `v-if` e due etichette; il rischio vero
+> stava nel backend, dove i test ci sono e hanno trovato quattro difetti. Una
+> suite FE è un cantiere a sé — Vitest + Testing Library per i composable
+> (`useListaConfig`, `useApiHandler`) e Playwright per due o tre percorsi
+> critici — e va deciso guardando **tutto** il frontend, non l'ultima cosa
+> toccata.
+
+---
+
 ## 14. Riferimenti
 
 > ℹ️ Questa sezione era numerata **§10**. È stata spostata in fondo il 2026-08-17
@@ -4027,5 +4342,5 @@ su 44** con il flag, e `dbops.vw_liste_multi_emittente_non_certificate` resta a
 | Gerarchia BA (manuale) | `docs/it/dbzero/anagrafiche/manual/billing_account.md` |
 | Policy RLS BA (lettura + scrittura) | `db/changelog/migrations_v2/00_schema/anagrafiche/20260601-36-…`, `20260603-25-…` |
 | GUC emittente attivo (BE) | `backend/apps/core/api/jwt_audit_authentication.py` |
-| Cantiere che ha fatto emergere i buchi | [brief-db-dash-competenza-gruppi-cliente-e-ricerca.md](../work-done/brief-db-dash-competenza-gruppi-cliente-e-ricerca.md) |
+| Cantiere che ha fatto emergere i buchi | [brief-db-dash-competenza-gruppi-cliente-e-ricerca.md](brief-db-dash-competenza-gruppi-cliente-e-ricerca.md) |
 | Architettura multi-face auth | `docs/it/guide/architettura-multi-face-auth.md` |

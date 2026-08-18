@@ -4137,7 +4137,6 @@
       "scelta_titolo": "Seleziona l'emittente di lavoro",
       "scelta_messaggio": "Scegli l'emittente dentro cui vuoi lavorare. Potrai cambiarlo in qualsiasi momento dalla barra in alto.",
       "scelta_conferma": "Inizia",
-      "globale_sola_lettura": "Stai vedendo tutti gli emittenti: per creare documenti seleziona un emittente dalla barra in alto.",
       "scelta_errore": "Non è stato possibile caricare gli emittenti. Riprova, oppure continua in sola lettura.",
       "scelta_rimanda": "Continua senza selezionare"
     }

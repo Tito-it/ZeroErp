@@ -24,7 +24,8 @@
 //    ignorato da `buildParams`, quindi la lista resta piena mentre si digita
 //    (no flash vuoto). Usato dalla factory `createCrudStore` con startsEmpty:false.
 //
-// Ritorna lo stato reattivo (items/totalRecords/loading/hasSearched) + fetchList.
+// Ritorna lo stato reattivo (items/totalRecords/loading/hasSearched/sospesa) +
+// fetchList.
 // Lo store espone questi ref nel proprio `return` insieme a `filters` e alle
 // azioni CRUD.
 
@@ -70,6 +71,20 @@ export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => fals
   const totalRecords = ref(0)
   const loading = ref(false)
   const hasSearched = ref(false)
+  // Sospensione della lista: quando e' alzata, `fetchList` non parte e basta.
+  // Nasce per il cancello di perimetro emittente (P-2b) — con il cancello su,
+  // il backend rifiutera' OGNI richiesta di quella lista con 422 finche'
+  // l'emittente non e' scelto, e continuare a chiederglielo a ogni tasto
+  // premuto e' solo traffico.
+  //
+  // ⚠️ Vive QUI e non nel composable di pagina perche' qui c'e' UN punto: gli
+  //    ingressi alla fetch sono sei (debounce della ricerca, page, sort, F5,
+  //    reload, refetch di `onActivated`) e presidiarli uno per uno sarebbe una
+  //    lista di posti da ricordare — il settimo nascerebbe scoperto.
+  // ⚠️ NON copre la primissima chiamata delle liste `alwaysFetch`: parte
+  //    insieme alla config, cioe' prima che si sappia se il cancello e' su.
+  //    Quella resta una richiesta rifiutata, ed e' l'unica.
+  const sospesa = ref(false)
   const fv = useFetchVersion()
 
   // Scopo: riporta la lista allo stato vuoto E scarta le risposte in volo.
@@ -89,6 +104,7 @@ export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => fals
   }
 
   async function fetchList() {
+    if (sospesa.value) return false
     const f = filters.value
     const searchTerm = (f.search || '').trim()
 
@@ -143,5 +159,5 @@ export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => fals
     }
   }
 
-  return { items, totalRecords, loading, hasSearched, fetchList, svuota }
+  return { items, totalRecords, loading, hasSearched, sospesa, fetchList, svuota }
 }

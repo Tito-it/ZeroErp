@@ -31,7 +31,7 @@ const store = usePromoArticoliStore()
 const isBlocked = useInjectBlocked()
 const {
   searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
-  listaRef, dirty, onConfigLoaded, pageActions,
+  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
 } = useListaConfigurabilePage(store, {
   newTooltipKey: 'vendite.promo_articoli.new',
   onNew: () => emit('new'),
@@ -79,7 +79,7 @@ onMounted(() => store.fetchList())
 
     <template v-else>
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <div class="app-page-filters" :inert="perimetroBloccato">
         <InputText
           v-model="searchText"
           :placeholder="t('vendite.promo_articoli.search_placeholder')"
