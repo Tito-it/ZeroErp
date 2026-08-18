@@ -14,11 +14,21 @@
 > Sono stati messi qui perché sono cantieri loro: toccano l'anagrafica e
 > l'accesso, non la dashboard.
 >
-> **Stato al 2026-08-17: nulla eseguito, ma niente più da decidere.** Nessun
-> changeSet, nessuna migrazione, nessun seed. Diagnosi verificata contro il
-> codice, **undici decisioni prese** (sei di forma in §7, cinque di attuazione
-> in Q1–Q5), piano eseguibile in **§12**. Il prossimo passo è il **DL-A**, che è
-> una misura.
+> ✅ **Stato al 2026-08-18 — passi 1, 2, 3, 4 e 6 APPLICATI, nessuna regressione
+> sui test.** Dodici changeSet (`20260818-01`, `-02`, `-03`, `-05`, `-08`→`-15`),
+> pgTAP nuovi verdi, baseline senza regressioni. Restano il **passo 5** (P-2c,
+> etichette — FE/BE, indipendente), il **passo 7** (P-2b, con l'`ALTER TABLE`
+> non reversibile) e il **passo 8** (le altre cinque liste), più le richieste al
+> backend del §13. ⚠️ **BE-2 è ora bloccante**: la vista e il catalogo del passo
+> 6 sono a posto, ma finché il repository di dominio non seleziona il campo la
+> colonna si spunta e **resta vuota** — cioè *sembra* la garanzia che P-2b
+> pretenderà, e non lo è.
+>
+> ~~**Stato al 2026-08-17: nulla eseguito.** Nessun changeSet, nessuna
+> migrazione, nessun seed; il prossimo passo è il DL-A, che è una misura.~~ —
+> superato dall'esecuzione del 2026-08-18. Resta vero il resto: diagnosi
+> verificata contro il codice, **undici decisioni prese** (sei di forma in §7,
+> cinque di attuazione in Q1–Q5), piano eseguibile in **§12**.
 >
 > 🔬 **Revisione critica del 2026-08-17 (§11).** Tutte le sei decisioni reggono e
 > non ne cambia nessuna. Cambiano invece **quattro cose di attuazione**, e una è
@@ -1559,7 +1569,7 @@ Non è una formalità: sono i punti su cui **non serve tornare**.
 uniche due** funzioni di scope che si fidano di un array calcolato dal chiamante
 invece di risolverlo. Passano a risolverlo da sé.
 
-✅ **SCRITTO il 2026-08-18 — non applicato.** Tre changeSet + un pgTAP, su
+✅ **APPLICATO il 2026-08-18 — nessuna regressione sui test.** Tre changeSet + un pgTAP, su
 `dev/db-tid`. Nessuna migrazione eseguita, nessun commit.
 
 | File | Cartella | Cosa |
@@ -1647,7 +1657,7 @@ allargare*. Ma resta vero che una ricerca fornitori non conosce perimetro.
 
 #### Passo 2 · P-2a — fail-closed nella catena canonica · *prerequisito sciolto*
 
-✅ **SCRITTO il 2026-08-18 — non applicato.** Il prerequisito DL-A è stato
+✅ **APPLICATO il 2026-08-18 — nessuna regressione sui test.** Il prerequisito DL-A è stato
 sanato lo stesso giorno (sopra), quindi il passo non è più bloccato.
 
 | File | Cartella | Cosa |
@@ -1658,9 +1668,14 @@ sanato lo stesso giorno (sopra), quindi il passo non è più bloccato.
 | `20260818-14-create-vw-operatori-senza-emittente` | `20_code/dbops` | la diagnostica |
 | `db/pgtap/script/test-scope-emittenti-fail-closed-v1.sql` | — | 8 asserzioni |
 
-**Verifica a changeSet non applicati**: 4 asserzioni su 8 falliscono, e sono
-**esattamente** le quattro della correzione — con i vecchi valori (`NULL`,
-`true`). Il ramo super admin passa già, cioè non viene toccato.
+✅ **Dopo l'applicazione: 8 su 8 verdi.**
+
+⭐ **La misura PRIMA di applicare, che è quella che vale** (tenuta qui perché è
+la prova che il test misurava il difetto e non se stesso): a changeSet non
+applicati **4 asserzioni su 8 fallivano, ed erano esattamente le quattro della
+correzione**, con i vecchi valori (`NULL`, `true`). Il ramo super admin passava
+già, cioè non veniva toccato. ⚠️ Un test scritto dopo la correzione e verde al
+primo colpo non dice niente: questo è stato visto rosso per la ragione giusta.
 
 ⚠️ **La fixture del test ha dovuto ricreare il difetto**: DL-A è ormai a zero,
 quindi un operatore senza riga **non esiste più** e va costruito togliendo lo
@@ -1749,7 +1764,7 @@ regressioni, e il `COMMENT` non dice più una cosa falsa.
 
 #### Passo 3 · P-3 — il fail-open del NULL nel guard CF
 
-✅ **SCRITTO il 2026-08-18 — non applicato.**
+✅ **APPLICATO il 2026-08-18 — nessuna regressione sui test.**
 
 | File | Cosa |
 | --- | --- |
@@ -1877,7 +1892,7 @@ diventa al primo migrate che ricarica `messaggi_errore.csv`.
 
 Il pezzo grosso. Si costruisce dal basso.
 
-✅ **SCRITTO il 2026-08-18 — non applicato.**
+✅ **APPLICATO il 2026-08-18 — nessuna regressione sui test.**
 
 | File | Cosa |
 | --- | --- |
@@ -2061,7 +2076,42 @@ subito, è quella.
    colonna si spunta e **resta vuota**: cioè la garanzia che il flag pretende,
    non mantenuta.
 
-**Fatto quando**: la colonna si spunta e **mostra un nome**.
+✅ **APPLICATO il 2026-08-18 — nessuna regressione sui test.**
+
+| File | Cosa |
+| --- | --- |
+| `20260818-15-update-vw-dash-competenza-gruppi-emittente-ragione-sociale` | `20_code/vendite` — la vista espone la ragione sociale |
+| `lista_colonna.csv` | **append** di una riga (id 478, lista 42, `ordine_default` 100) |
+| `db/pgtap/ui/test-lista-competenza-gruppi-colonna-emittente-v1.sql` | 5 asserzioni |
+
+**Applicato e collaudato**: i 5 test del file nuovo sono verdi, baseline senza
+regressioni. ⚠️ **I dati restano non verificati**, ed è una lacuna della misura
+e non del passo:
+`vw_dash_competenza_gruppi` in questa istanza è **vuota** (nessuna attività
+fatturabile aperta), quindi un `count(emittente_ragione_sociale)` sarebbe
+`0 = 0` — verde per sottrazione. Il test asserisce la **struttura**, che è ciò
+che il passo introduce.
+
+⚠️ **Due vincoli di `CREATE OR REPLACE VIEW` rispettati, entrambi silenziosi se
+sbagliati:** `security_invoker=on` va **ri-specificata** o PostgreSQL la azzera
+(e questa vista ci appoggia lo scope emittente), e si possono solo **appendere**
+colonne in coda — la nuova è per forza ultima.
+
+⭐ **Il test che conta è il 4: coerenza catalogo → vista.** Il «prezzo del
+biglietto» di P-2b dice che una lista può dichiararsi multi-emittente solo se
+espone l'emittente nella riga. Una riga di catalogo che punta a un campo
+**inesistente** è una colonna che si spunta e resta vuota: *sembra* la garanzia,
+e non lo è. Il test verifica che il `campo_sorgente` dichiarato esista davvero
+nella vista. Sta in coppia col test 3 (esistenza): da solo sarebbe verde anche
+senza la riga.
+
+⚠️ **Il test 5 è il registro di debito**: asserisce che **una sola** delle sei
+liste del perimetro ha la colonna. Se quel numero sale senza che nessuno abbia
+fatto il lavoro, qualcuno ha attaccato l'adesivo «collaudato» senza collaudare.
+
+**Fatto quando**: la colonna si spunta e **mostra un nome** — e la seconda metà
+è **BE-2**, non il database. Il DB garantisce che il campo esista; che il
+repository lo selezioni no.
 
 ##### L'ordine delle altre cinque · *deciso con Q4*
 
@@ -2098,9 +2148,65 @@ whitelist** — è l'unica eccezione a una convenzione dichiarata sulla riga 192
 un'eccezione senza motivo scritto viene tolta dal primo che passa convinto di
 star sistemando una svista. Strato 2: test in CI su quelle due `frozenset`.
 
-**Fatto quando**: il flag esiste, è `false` su 43 liste su 44, l'unica a `true`
-mostra l'emittente, il trigger rifiuta la scrittura dal ruolo applicativo, il
-test CI è verde e la vista di controllo restituisce **zero righe**.
+✅ **SCRITTO il 2026-08-18 — non applicato.** ⚠️ **Metà passo**: c'è tutto il
+**presidio**, manca la **lettura** (vedi in fondo).
+
+| File | Cosa |
+| --- | --- |
+| `20260818-16-alter-ui-lista-definizione-add-multi-emittente` | `00_schema/ui` — la colonna, `NOT NULL DEFAULT false` |
+| `20260818-17-create-trgfn-lista-definizione-guard-multi-emittente` | `20_code/ui` — **lo strato 1, nella forma nuova** |
+| `20260818-18-create-vw-liste-multi-emittente-non-certificate` | `20_code/dbops` — il controllo automatico |
+| `lista_definizione.csv` · loader `20260507-06` · `gen_seed_lista.py` | seed: colonna su tutte e 44 le righe (a `f`), `columns:` del loader, `CAMPI_DEF` |
+| `codici_errore.csv` · `messaggi_errore.csv` | `E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE`, classe `NON_PERMESSO` |
+| `db/pgtap/ui/test-lista-definizione-multi-emittente-v1.sql` | 6 asserzioni |
+
+⭐ **Il trigger non nomina il ruolo: legge il proprietario della tabella** da
+`pg_class` e usa `pg_has_role(current_user, owner, 'USAGE')`. Un nome di ruolo
+scritto a mano sarebbe giusto su questa istanza e falso sulla prossima. Il
+migrate passa perché *è* il proprietario — non perché qualcuno accende un
+interruttore, e infatti non c'è nessun interruttore da accendere.
+
+⚠️ **L'ordine Liquibase è rispettato e verificato**: `ALTER` a **-16**, i due
+lettori a **-17** e **-18**. `changelog-autogen.yaml` mescola `00_schema` e
+`20_code` ordinando per numero: al contrario, l'apply su un database ricostruito
+da zero fallirebbe e su dev no.
+
+⚠️ **Il `CAMPI_DEF` del generatore è stato esteso**, con il perché sulla riga
+sopra: senza, `gen_seed_lista.py` riscriverebbe il CSV **senza** la colonna,
+spegnendo il flag su tutte le liste in silenzio.
+
+**Il test** — 6 asserzioni, di cui la **0 è la più importante del file**:
+dichiara che il test gira **come applicazione**, non come proprietario. Girando
+come owner le asserzioni 3 e 4 lascerebbero passare la scrittura e il file
+sarebbe verde **verificando il contrario di quel che dice**. Nel dry-run la 0
+passa già; le altre attendono l'apply.
+
+| # | Cosa |
+| --- | --- |
+| 0 | precondizione: si gira come applicazione |
+| 1–2 | la colonna esiste, il default è `false` |
+| 3 ⭐ | l'applicazione **non** può accendere il flag |
+| 4 ⭐ | né crearne una già accesa |
+| 5 | il registro di debito parte pieno: **zero** liste certificate |
+| 6 | la vista di controllo è a zero righe |
+
+#### ⚠️ Quello che manca al passo 7: la lettura
+
+`ui.fn_resolve_lista_config` deve restituire il flag nell'envelope (chiave
+additiva, non rompe i consumatori). **Non è stato fatto in questo giro**, e la
+ragione è concreta: è una funzione di **oltre 400 righe** che un altro lavoro ha
+appena modificato (`20260818-04`, il contatore delle colonne nuove). Ricopiarla
+in coda a un giro lungo è il modo in cui si regredisce il lavoro di qualcun
+altro senza accorgersene — e il progetto ha già pagato per quello.
+
+Va fatta come pezzo a sé, con la verifica che ha funzionato al passo 1: **corpo
+dalla doc auto-generata, poi diff del risultato contro la definizione viva** per
+provare che l'unica differenza è la chiave nuova.
+
+**Fatto quando**: il flag esiste, è `false` su tutte e 44 le liste, il trigger
+rifiuta la scrittura dal ruolo applicativo, la vista di controllo restituisce
+**zero righe** — e `fn_resolve_lista_config` lo espone. I primi quattro sono
+scritti; il quinto no.
 
 #### Passo 8 · Le liste restanti — una alla volta, e non tutte
 
@@ -2179,11 +2285,15 @@ risultati**, non «nessun errore».
 **non si legge mai con un test di verità.** `if ids:` e `ids or []` collassano i
 due estremi opposti sullo stesso valore, e lo fanno dalla parte che apre.
 
-### BE-2 🟢 Competenza — gruppi fatturabili: la ragione sociale dell'emittente nella riga
+### BE-2 🔴 Competenza — gruppi fatturabili: la ragione sociale dell'emittente nella riga · *sbloccata, e ora è la metà che manca*
 
-Dipende dal passo 6 (pilota, decisione Q4). Quando
-`vendite.vw_dash_competenza_gruppi` esporrà `emittente_ragione_sociale`, il
-repository deve **portarla nella riga** con quella chiave. Non è automatico:
+> ⚠️ **Non è più «quando»: è adesso.** Il passo 6 è applicato dal 2026-08-18 —
+> `vendite.vw_dash_competenza_gruppi` **espone** `emittente_ragione_sociale` e la
+> riga di catalogo esiste (`lista_colonna` id 478). Da qui in poi la colonna è
+> spuntabile e **esce vuota** finché il backend non la seleziona: il DB ha fatto
+> la sua metà, e la metà che resta è l'unica visibile all'operatore.
+
+Il repository deve **portarla nella riga** con quella chiave. Non è automatico:
 `vendite_repository` elenca le colonne **esplicitamente** (`SELECT g.gruppo_key,
 g.tipo_gruppo, …`), quindi una colonna nuova nella vista **non arriva a video da
 sola** — e la lista ha `vista_sql = NULL`, quindi il catalogo non può pescarla.
