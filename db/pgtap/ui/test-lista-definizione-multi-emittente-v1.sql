@@ -47,9 +47,16 @@ SELECT plan(9);
 -- ============================================================
 -- Fixture
 -- ============================================================
+-- ⚠️ `NOT multi_emittente` non e' pignoleria: il test 8 asserisce che
+--   l'envelope risponda `false`, e dal 2026-08-18 il registro ha una lista
+--   certificata. Pescare «la prima per id» funzionava finche' erano zero;
+--   il giorno in cui la certificata fosse la prima, il test 8 diventerebbe
+--   rosso raccontando un difetto che non c'e'. Si sceglie il soggetto per la
+--   condizione che rende il caso significativo, non per la posizione.
 CREATE TEMP TABLE _t_lista ON COMMIT DROP AS
 SELECT ld.id, ld.codice
   FROM ui.lista_definizione ld
+ WHERE NOT ld.multi_emittente
  ORDER BY ld.id
  LIMIT 1;
 
@@ -94,13 +101,40 @@ SELECT throws_like($$
 $$, '%non si imposta dall%',
     '4. * l''applicazione non puo'' nemmeno crearne una gia'' accesa');
 
--- 5) Il registro di debito parte pieno: nessuna lista e' ancora certificata.
---    ⚠️ Quando questo numero cambia deve essere perche' qualcuno ha fatto il
---    lavoro di P-4 su quella lista — e il test 6 lo verifica.
+-- 5) Il registro di debito. ⭐ Rev 2026-08-18: non e' piu' «zero». Sono le SEI
+--    liste del perimetro emittente, accese per decisione di Tid nello stesso
+--    giorno (brief §13-ter.5 e §13-ter.7).
+--
+--    ⚠️ E va detto qui, perche' e' qui che si legge: sulla PILOTA il flag ha
+--    dietro il giro completo (vista + repository + i18n); sulle altre cinque
+--    e' stato acceso PRIMA che il backend selezioni la colonna (BE-5), quindi
+--    la colonna e' spuntabile e a video resta vuota finche' quel lavoro non
+--    arriva. E' una scelta presa a occhi aperti, non un adesivo scappato: non
+--    siamo in produzione e il gate serviva a proteggere un utente che qui non
+--    c'e'. Il registro torna a significare qualcosa quando BE-5 e' chiusa.
+--
+--    ⚠️ Si asserisce l'ELENCO, non il conteggio. Un numero dice «sono due» e
+--    lascia credere che siano le due giuste; l'elenco dice QUALI, e chi accende
+--    un flag deve venire qui a scriverlo. E' il «prezzo del biglietto» reso
+--    esplicito: il test non si aggiorna da solo, e non deve.
+--
+--    ⚠️ Questo test e il 6 misurano cose diverse e servono entrambi: il 6 dice
+--    «nessun flag senza la colonna a catalogo» (a macchina, sempre), il 5 dice
+--    «nessun flag che un umano non abbia dichiarato qui» — cioe' presidia
+--    anche il caso in cui la colonna c'e' ma non porta un valore, che il
+--    catalogo non puo' vedere (il difetto di `20260818-61`, vedi
+--    test-lista-competenza-gruppi-colonna-emittente-v1 test 6).
 SELECT is(
-    (SELECT count(*) FROM ui.lista_definizione WHERE multi_emittente),
-    0::bigint,
-    '5. nessuna lista dichiara multi_emittente: il registro di debito parte pieno'
+    (SELECT COALESCE(array_agg(ld.codice::text ORDER BY ld.codice), '{}'::text[])
+       FROM ui.lista_definizione ld
+      WHERE ld.multi_emittente),
+    ARRAY['vendite.dash_aperto_documenti',
+          'vendite.dash_backlog_documenti',
+          'vendite.dash_competenza_commesse',
+          'vendite.dash_competenza_errori',
+          'vendite.dash_competenza_gruppi',
+          'vendite.lotti']::text[],
+    '5. le liste certificate multi_emittente sono esattamente quelle dichiarate qui'
 );
 
 -- 6) Il controllo automatico esiste e non ha niente da segnalare.

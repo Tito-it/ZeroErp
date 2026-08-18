@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Union dei resolver per la dashboard fatturazione: preventivi, ordini, offerte, contratti, commesse e — dal 2026-07-18 (step 6, brief-db-fatturazione-ddt-resi §4a) — DDT. Le due lenti derivano da qui: il serbatoio filtra fase &lt;&gt; CHIUSO, il backlog filtra classe &lt;&gt; FISIOLOGICO. security_invoker=on (ri-specificato a ogni REPLACE: la reloption non e' visibile in pg_get_viewdef e verrebbe azzerata in silenzio -&gt; bypass RLS). ⭐ Rev 2026-08-18 (R-4, brief perimetro-emittente Fase E): aggiunta in coda `emittente_ragione_sociale`. La JOIN e' scritta UNA volta avvolgendo la union, non sei volte nei rami: i sei resolver portano tutti emittente_soggetto_ruolo_id, quindi il nome si risolve all'esterno. ⚠️ Le due lenti NON ereditano la colonna: vw_dash_aperto_documenti e vw_dash_backlog_documenti hanno proiezione a colonne esplicite e sono le viste che il backend legge davvero — vanno aggiornate a parte (changeSet 20260818-62 e -63). «Eredita» e' vero del dato, falso della proiezione.
+> Union dei resolver per la dashboard fatturazione: preventivi, ordini, offerte, contratti, commesse e — dal 2026-07-18 (step 6, brief-db-fatturazione-ddt-resi §4a) — DDT. Le due lenti derivano da qui: il serbatoio filtra fase &lt;&gt; CHIUSO, il backlog filtra classe &lt;&gt; FISIOLOGICO. security_invoker=on (ri-specificato a ogni REPLACE: la reloption non e' visibile in pg_get_viewdef e verrebbe azzerata in silenzio -&gt; bypass RLS). ⭐ Rev 2026-08-18 (R-4, brief perimetro-emittente Fase E): aggiunta in coda `emittente_ragione_sociale`. ⚠️ Rev 2026-08-18 (-74, CORREZIONE): la prima stesura risolveva il nome da `emittente_soggetto_ruolo_id` dando per buono che «i sei resolver la portano tutti». NON e' vero: cinque su sei la scrivono NULL::bigint a mano (solo commesse ha il valore), quindi la colonna usciva vuota su 274 righe su 274 — e su vw_dash_aperto_documenti, che esclude l'area COMMESSE, sarebbe stata vuota per sempre. Ora la chiave si risolve con COALESCE(emittente_soggetto_ruolo_id, emittenti_fiscali.soggetto_ruolo_id): stessa cura gia' adottata in -63 per il ramo resi, e una sola catena di JOIN. ⚠️ La colonna `emittente_soggetto_ruolo_id` esposta resta NULL sui cinque rami: cambiarne la semantica e' una decisione a parte, non una correzione. Chi filtra su quella colonna ottiene zero righe su cinque aree su sei — per il perimetro emittente si usa `emittente_fiscale_id`.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -30,7 +30,7 @@ SELECT d.area,
     d.cliente_display,
     d.data_riferimento,
     s_ef.ragione_sociale_completa AS emittente_ragione_sociale
-   FROM ((( SELECT p.area,
+   FROM (((( SELECT p.area,
             p.competenza_mese,
             p.documento_id,
             p.documento_uid,
@@ -155,7 +155,8 @@ SELECT d.area,
             t.cliente_display,
             t.data_riferimento
            FROM vendite.vw_dash_fatturazione_ddt t) d
-     LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = d.emittente_soggetto_ruolo_id)))
+     LEFT JOIN anagrafiche.emittenti_fiscali ef ON ((ef.id = d.emittente_fiscale_id)))
+     LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = COALESCE(d.emittente_soggetto_ruolo_id, ef.soggetto_ruolo_id))))
      LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)));
 ```
 

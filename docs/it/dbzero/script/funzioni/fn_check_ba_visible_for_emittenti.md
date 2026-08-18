@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_check_ba_visible_for_emittenti.md" %}
 # ⚙️ Funzione `fn_check_ba_visible_for_emittenti`
 
 ```sql

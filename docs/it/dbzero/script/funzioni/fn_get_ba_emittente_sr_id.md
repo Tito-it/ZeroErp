@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_get_ba_emittente_sr_id.md" %}
 # ⚙️ Funzione `fn_get_ba_emittente_sr_id`
 
 ```sql

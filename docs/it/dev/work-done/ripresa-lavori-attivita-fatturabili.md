@@ -925,6 +925,17 @@ Implementato lato DB:
    - aggiunto pgTAP `db/pgtap/vendite/test-attivita-lotto-info-v1.sql`;
    - aggiunto alla suite `scripts/testpgtap-fatturazione-logs.sh`.
 
+   > ⚠️ **Nota del 2026-08-18 — quel file non esiste piu'.** E' stato cancellato
+   > perche' testava solo `vendite.fn_get_attivita_lotto_info` e
+   > `vendite.fn_get_or_create_lotto_attivita`, entrambe rimosse dal
+   > `20260227-16`, che ha ritirato **l'intero sotto-sistema pipeline
+   > `attivita_fatturabili`** (15 funzioni) sostituendolo con commesse v2. Il
+   > test non toccava nessuna tabella sopravvissuta: era copertura di un
+   > sotto-sistema che non c'e' piu', e restava in `baseline-rossi.tsv` come
+   > `ERRORE_FIXTURE` senza eseguire nessuna asserzione.
+   > La riga qui sopra resta perche' racconta cosa fu fatto allora — e' cronaca,
+   > non un puntatore.
+
 **Azione richiesta al team backend (integrazione)**
 
 1. Repository:

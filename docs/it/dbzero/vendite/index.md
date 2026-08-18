@@ -91,6 +91,7 @@
 - [fn_accoda_stampe_lotto](funzioni/fn_accoda_stampe_lotto.md)
 - [fn_accredita_riga_reso](funzioni/fn_accredita_riga_reso.md) — (rev 2026-08-18)
 - [fn_aggiungi_onere_commessa](funzioni/fn_aggiungi_onere_commessa.md) — (rev 2026-07-23)
+- [fn_annulla_accredito_riga_reso](funzioni/fn_annulla_accredito_riga_reso.md)
 - [fn_annulla_commessa_attivita](funzioni/fn_annulla_commessa_attivita.md) — (rev 2026-07-28)
 - [fn_annulla_lotto_da_draft](funzioni/fn_annulla_lotto_da_draft.md) — (latest review 03-08-2026)   La funzione **`vendite.fn_annulla_lotto_da_draft()`** effettua il **rollback tecnico** di un lotto in stato **DRAFT**, eliminando i documenti generati dal draft, ripristinando le righe di `attivita_fatturabili` e **chiudendo** il lotto portandolo ad **ANNULLATA**.
 - [fn_annulla_reso](funzioni/fn_annulla_reso.md) — (rev 2026-07-13)
