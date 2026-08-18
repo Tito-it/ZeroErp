@@ -10,6 +10,16 @@
 -- 4) Lock attivato sulla riga
 -- 5) Lock_batch_id valorizzato
 -- 6) Cleanup completato
+--
+-- ⚠️ rev 2026-08-18 (bonifica baseline). La fixture inseriva una
+-- attivita_fatturabile senza commessa: non e' piu' un caso possibile
+-- (commessa_id / commessa_attivita_id NOT NULL + guard a10). Il soggetto del
+-- test — selezione e lock in DRAFT — e' intatto: passa dalla commessa come
+-- l'applicazione. Modello: test-vw-dash-competenza-v1.
+-- ⚠️ E i riferimenti sceglievano articolo, istanza utility e billing account
+-- da TRE query indipendenti: nulla garantiva che l'istanza appartenesse a
+-- quel BA, e fn_select_attivita_fatturabili filtra su entrambi. Ora il
+-- billing account si sceglie UNA volta e le colonne correlate vengono da li'.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -41,54 +51,83 @@ SELECT
   uuidv7() AS sorgente_uid;
 
 CREATE TEMP TABLE tmp_refs_fd AS
+-- Il billing account si sceglie UNA volta: utility e istanza vengono dalla
+-- stessa riga, non da tre LIMIT 1 scorrelati.
+WITH ba AS (
+  SELECT b.id, b.utility_id, b.istanza_utility_id
+    FROM anagrafiche.billing_account b
+   WHERE b.utility_id IS NOT NULL
+     AND b.istanza_utility_id IS NOT NULL
+     AND b.soggetto_ruolo_id IS NOT NULL
+   ORDER BY b.id
+   LIMIT 1
+)
 SELECT
-  (SELECT id
-     FROM catalogo.articoli
-    WHERE attivo IS TRUE
-    ORDER BY data_insert DESC NULLS LAST
-    LIMIT 1) AS articolo_id,
-  (SELECT id
-     FROM anagrafiche.istanze_utilities
-    ORDER BY data_insert DESC NULLS LAST
-    LIMIT 1) AS istanza_utility_id,
-  (SELECT id
-     FROM anagrafiche.billing_account
-    ORDER BY data_insert DESC NULLS LAST
-    LIMIT 1) AS billing_account_id,
-  (SELECT utility_id
-     FROM anagrafiche.billing_account
-    ORDER BY data_insert DESC NULLS LAST
-    LIMIT 1) AS utility_id,
-  (SELECT id
-     FROM config.sorgenti
-    WHERE attivo IS TRUE
-    ORDER BY id
-    LIMIT 1) AS sorgente_tipo_id,
-  (SELECT id
-     FROM catalogo.unita_misura
-    WHERE attivo IS TRUE
-    ORDER BY id
-    LIMIT 1) AS uom_id,
-  (SELECT id
-     FROM config.tipi_doc_fiscale
-    WHERE attivo IS TRUE
-    ORDER BY id
-    LIMIT 1) AS tipo_doc_fiscale_id,
-  (SELECT id
-     FROM config.valute
-    ORDER BY id
-    LIMIT 1) AS valuta_id;
+  (SELECT id FROM ba)                 AS billing_account_id,
+  (SELECT utility_id FROM ba)         AS utility_id,
+  (SELECT istanza_utility_id FROM ba) AS istanza_utility_id,
+  (SELECT a.id FROM catalogo.articoli a
+    WHERE a.attivo IS TRUE AND a.is_composito = FALSE
+    ORDER BY a.id LIMIT 1)            AS articolo_id,
+  (SELECT s2.id FROM config.sorgenti s2
+    WHERE s2.attivo IS TRUE ORDER BY s2.id LIMIT 1) AS sorgente_tipo_id,
+  (SELECT u.id FROM catalogo.unita_misura u
+    WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1)   AS uom_id,
+  (SELECT t.id FROM config.tipi_doc_fiscale t
+    WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)   AS tipo_doc_fiscale_id,
+  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
+  (SELECT sc.id FROM vendite.stati_commessa sc
+    WHERE sc.attivo IS TRUE AND sc.codice_interno <> 'ANNULLATA'
+    ORDER BY sc.id LIMIT 1)           AS stato_commessa_id,
+  (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
+    WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1) AS emittente_sr_id;
 
 SELECT ok(
   (SELECT articolo_id IS NOT NULL
      AND istanza_utility_id IS NOT NULL
      AND billing_account_id IS NOT NULL
+     AND utility_id IS NOT NULL
      AND sorgente_tipo_id IS NOT NULL
      AND tipo_doc_fiscale_id IS NOT NULL
      AND valuta_id IS NOT NULL
+     AND stato_commessa_id IS NOT NULL
+     AND emittente_sr_id IS NOT NULL
    FROM tmp_refs_fd),
   'Riferimenti minimi presenti'
 );
+
+-- ============================================================
+-- Fixture commessa: una attivita_fatturabile non esiste senza la coppia
+-- commessa_id / commessa_attivita_id (NOT NULL + guard a10).
+-- ============================================================
+CREATE TEMP TABLE tmp_commessa_fd AS
+WITH ins AS (
+  INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
+                                emittente_soggetto_ruolo_id, stato_commessa_id)
+  SELECT 'PGTAP-FD-' || substr(md5(clock_timestamp()::text), 1, 8),
+         r.billing_account_id, r.utility_id, r.emittente_sr_id, r.stato_commessa_id
+    FROM tmp_refs_fd r
+  RETURNING id)
+SELECT id FROM ins;
+
+CREATE TEMP TABLE tmp_ca_fd AS
+WITH ins AS (
+  INSERT INTO vendite.commesse_attivita (
+    commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
+    uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
+    tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
+    stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+  SELECT (SELECT id FROM tmp_commessa_fd),
+         'PGTAP-FD-SEG-' || substr(md5(clock_timestamp()::text), 1, 12),
+         r.articolo_id, r.istanza_utility_id, current_date, r.uom_id, 1,
+         date_trunc('month', current_date)::date,
+         date_trunc('month', current_date)::date,
+         (date_trunc('month', current_date) + INTERVAL '1 month - 1 day')::date,
+         r.tipo_doc_fiscale_id, r.valuta_id, 1.000000, 'FIXED',
+         'BOZZA', 'NON_EMESSA', NULL, NULL
+    FROM tmp_refs_fd r
+  RETURNING id)
+SELECT id FROM ins;
 
 -- ============================================================
 -- 1) Inserimento attivita_fatturabili di test
@@ -101,6 +140,8 @@ WITH ins AS (
     billing_account_id,
     data_attivita,
     competenza_mese,
+    competenza_dal,
+    competenza_al,
     quantita,
     approvato,
     fatturato,
@@ -110,6 +151,8 @@ WITH ins AS (
     sorgente_tipo_id,
     sorgente_uid,
     sorgente_riga,
+    commessa_id,
+    commessa_attivita_id,
     meta
   )
   SELECT
@@ -118,6 +161,8 @@ WITH ins AS (
     r.billing_account_id,
     current_date,
     date_trunc('month', current_date)::date,
+    date_trunc('month', current_date)::date,
+    (date_trunc('month', current_date) + INTERVAL '1 month - 1 day')::date,
     1,
     true,
     false,
@@ -127,6 +172,8 @@ WITH ins AS (
     NULL,
     NULL,
     NULL,
+    (SELECT id FROM tmp_commessa_fd),
+    (SELECT id FROM tmp_ca_fd),
     jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_fd))
   FROM tmp_refs_fd r
   RETURNING id

@@ -77,7 +77,20 @@ SELECT
     WHERE u.attivo IS TRUE
     ORDER BY u.id
     LIMIT 1
-  ) AS uom_id;
+  ) AS uom_id,
+  -- rev 2026-08-18 (bonifica baseline): mancava il tipo documento fiscale.
+  -- Entrambe le righe qui nascono APPROVATA + NON_EMESSA, cioe' emittibili, e
+  -- da trg_commesse_attivita_a10_guard_tipo_doc_emittibile quello stato senza
+  -- tipo_doc non e' piu' ammesso: una riga cosi' e' invisibile a
+  -- fn_list_emittibili_lane e nessun processo la ripesca. La fixture moriva
+  -- prima della prima asserzione (0 su 6 eseguite).
+  (
+    SELECT t.id
+    FROM config.tipi_doc_fiscale t
+    WHERE t.attivo IS TRUE
+    ORDER BY t.id
+    LIMIT 1
+  ) AS tipo_doc_fiscale_id;
 
 -- ============================================================
 -- SETUP: due commesse stesso perimetro/competenza, una immediata e una differita.
@@ -139,6 +152,7 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_contratto_id => NULL,
   p_categoria_cliente_id_snapshot => NULL,
   p_classe_utenza_id_snapshot => NULL,
+  p_tipo_doc_fiscale_id => (SELECT tipo_doc_fiscale_id FROM tmp_refs_fi),
   p_stato_approvazione => 'APPROVATA',
   p_stato_emissione => 'NON_EMESSA',
   p_tipo_movimento => 'NORMALE',
@@ -168,6 +182,7 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_contratto_id => NULL,
   p_categoria_cliente_id_snapshot => NULL,
   p_classe_utenza_id_snapshot => NULL,
+  p_tipo_doc_fiscale_id => (SELECT tipo_doc_fiscale_id FROM tmp_refs_fi),
   p_stato_approvazione => 'APPROVATA',
   p_stato_emissione => 'NON_EMESSA',
   p_tipo_movimento => 'NORMALE',

@@ -48,6 +48,23 @@ FROM anagrafiche.billing_account ba
   JOIN anagrafiche.emittenti_fiscali ef ON ef.id = 32
   JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ef.soggetto_ruolo_id
   JOIN config.valute v ON v.id = 1 -- Assumendo che il valore di default sia 1
+-- 🔴 SCOPE DAVVERO ASSENTE, aggiunto il 2026-08-18.
+--   Il test 2 si chiama «Get saldo scope assente = 0» ma i riferimenti erano
+--   scelti senza chiedere che lo scope fosse assente: prendevano il primo
+--   billing account e basta. Su quella combinazione un saldo c'era (-0.02), e
+--   il test falliva dicendo il vero.
+--   ⚠️ E' la premessa che mancava, non l'asserzione a essere sbagliata: senza
+--   questa condizione il caso «assente» non veniva mai attraversato, e il test
+--   passava o falliva a seconda dei dati del giorno.
+WHERE NOT EXISTS (
+    SELECT 1
+      FROM vendite.fatture_arrotondamenti_scope s
+     WHERE s.billing_account_id = ba.id
+       AND s.utility_id = u.id
+       AND s.tipo_doc_fiscale_id = tdf.id
+       AND s.emittente_soggetto_ruolo_id = sr.id
+       AND s.valuta_id = v.id
+)
 ORDER BY ba.id,
   u.id,
   tdf.id,
@@ -91,10 +108,18 @@ SELECT is(
     'Get saldo scope assente = 0'
   );
 -- ============================================================
--- 3) Set saldo -> ritorno saldo
+-- 3) Set saldo -> l'operazione va a buon fine
 -- ============================================================
-SELECT is(
-    vendite.fn_set_arrotondamento_scope(
+-- 🔴 `is()` -> `lives_ok()`, 2026-08-18.
+--   `vendite.fn_set_arrotondamento_scope` ritorna **void**: non ritorna piu' il
+--   saldo impostato. Il test lo confrontava con `is(...)` e PostgreSQL
+--   rispondeva «la funzione is(void, numeric, unknown) non esiste» — un errore
+--   di risoluzione, quindi il file moriva li' senza eseguire il resto.
+--   ⚠️ Non si perde copertura: che il valore sia stato scritto lo verifica gia'
+--   il test 4 con il GETTER, che e' anche il modo giusto — si controlla
+--   l'effetto dove si legge, non nel valore di ritorno di chi scrive.
+SELECT lives_ok(
+    $$SELECT vendite.fn_set_arrotondamento_scope(
       (
         SELECT billing_account_id
         FROM tmp_refs_arrotondamenti
@@ -116,9 +141,8 @@ SELECT is(
         FROM tmp_refs_arrotondamenti
       ),
       0.03::numeric
-    ),
-    0.03::numeric,
-    'Set saldo scope = 0.03'
+    )$$,
+    'Set saldo scope = 0.03 eseguito'
   );
 -- ============================================================
 -- 4) Get saldo -> valore aggiornato
@@ -152,8 +176,10 @@ SELECT is(
 -- ============================================================
 -- 5) Update saldo (upsert)
 -- ============================================================
-SELECT is(
-    vendite.fn_set_arrotondamento_scope(
+-- ⚠️ Stesso motivo del test 3: il setter ritorna void. L'effetto si verifica
+--   col getter, non nel valore di ritorno.
+SELECT lives_ok(
+    $$SELECT vendite.fn_set_arrotondamento_scope(
       (
         SELECT billing_account_id
         FROM tmp_refs_arrotondamenti
@@ -175,9 +201,8 @@ SELECT is(
         FROM tmp_refs_arrotondamenti
       ),
       -0.02::numeric
-    ),
-    -0.02::numeric,
-    'Update saldo scope = -0.02'
+    )$$,
+    'Update saldo scope = -0.02 eseguito'
   );
 -- ============================================================
 -- 6) Guard parametri numerici (NULL o <=0)

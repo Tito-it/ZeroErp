@@ -7,21 +7,24 @@
 -- 1) Riferimenti minimi presenti
 -- 2) Lotto test creato
 -- 3) Policy RESUME presente via get
--- 4) check policy RESUME true
--- 5) start run #1 (tentativo=1)
--- 6) resolve mode su IN_ESECUZIONE = RESUME
--- 7) complete run #1
--- 8) resolve mode su COMPLETATO = SKIP
--- 9) start run #2 (tentativo=2)
--- 10) fail run #2
--- 11) resolve mode su ERRORE (RESUME_TASK) = RESUME
--- 12) cancel run #2
--- 13) resolve mode su ANNULLATO = RUN
--- 14) list runs conta 2 righe
--- 15) start run RESET #1
--- 16) fail run RESET #1
--- 17) resolve mode su ERRORE (RESET_STEP) = RESET_REQUIRED
--- 18) ultimo run RESET in stato ERRORE
+-- 4) start run #1 (tentativo=1)
+-- 5) resolve mode su IN_ESECUZIONE = RESUME
+-- 6) complete run #1
+-- 7) resolve mode su COMPLETATO = SKIP
+-- 8) start run #2 (tentativo=2)
+-- 9) fail run #2
+-- 10) resolve mode su ERRORE (RESUME_TASK) = RESUME
+-- 11) cancel run #2
+-- 12) resolve mode su ANNULLATO = RUN
+-- 13) list runs conta 2 righe
+-- 14) start run RESET #1
+-- 15) fail run RESET #1
+-- 16) resolve mode su ERRORE (RESET_STEP) = RESET_REQUIRED
+-- 17) ultimo run RESET in stato ERRORE
+--
+-- ⚠️ Era 18: la vecchia 4 («check policy RESUME true») e' stata tolta il
+--   2026-08-18 perche' `vendite.fn_check_pipeline_task_policy` non esiste piu'.
+--   La proprieta' resta coperta dalla 3, che la legge dalla `get`.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -41,7 +44,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(18);
+SELECT plan(17);
 
 -- ============================================================
 -- 0) Costanti e riferimenti
@@ -171,13 +174,15 @@ SELECT ok(
   'Policy RESUME presente via get'
 );
 
-SELECT ok(
-  vendite.fn_check_pipeline_task_policy(
-    p_pipeline_id => (SELECT pipeline_id FROM tmp_refs_ptr),
-    p_task_code => (SELECT task_resume FROM tmp_costanti_ptr)
-  ),
-  'check policy RESUME true'
-);
+-- 🔴 ASSERZIONE RIMOSSA IL 2026-08-18 — `fn_check_pipeline_task_policy` non esiste piu'.
+--   Della coppia `get`/`check` e' sopravvissuta solo la `get`, che ritorna la
+--   riga di policy; la `check`, che ne dava la sola risposta booleana, e' stata
+--   ritirata. Il file moriva qui in parsing e non eseguiva NESSUNA delle 18
+--   asserzioni: copertura zero, non parziale.
+--   ⚠️ Non si perde niente: la proprieta' che questa asserzione verificava —
+--   «la policy RESUME c'e' ed e' attiva» — e' gia' verificata dall'asserzione
+--   QUI SOPRA, che legge `p.attivo IS TRUE` dalla `get`. Erano due modi di
+--   chiedere la stessa cosa, e ne e' rimasto uno.
 
 -- ============================================================
 -- 4) start run #1 + resolve RESUME

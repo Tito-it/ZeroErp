@@ -56,6 +56,38 @@ SELECT
    AND NOT EXISTS (
        SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
    )
+   -- 🔴 UTILITY COMPATIBILE CON L'EMITTENTE, aggiunto il 2026-08-18.
+   --   `config.utilities_tipi_ruolo` e' una matrice: non tutte le utility
+   --   ammettono tutti i tipi di ruolo. La fixture sceglieva il billing account
+   --   e l'emittente in modo INDIPENDENTE, e la coppia che ne usciva —
+   --   utility 4 + tipo ruolo 7 — la matrice non la ammette. Il guard
+   --   rispondeva «Tipo ruolo 7 non ammesso per utility 4» e il file moriva
+   --   nella fixture.
+   --   ⚠️ La condizione si legge dalla matrice, non si fissa una utility a
+   --   mano: cosi' la fixture segue la configurazione invece di scommetterci
+   --   contro, e non torna rossa il giorno che la matrice cambia.
+   AND EXISTS (
+       SELECT 1
+         FROM config.utilities_tipi_ruolo utr
+         JOIN anagrafiche.soggetti_ruoli sr
+           ON sr.id = (SELECT soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali
+                        WHERE attivo IS TRUE ORDER BY id LIMIT 1)
+        WHERE utr.utility_id = ba.utility_id
+          AND utr.tipo_ruolo_id = sr.tipo_ruolo_id
+          AND utr.attivo IS TRUE
+   )
+   -- ⚠️ E senza contratti sull'istanza. Spostando la scelta sulla utility
+   --   compatibile si finiva su un billing account la cui istanza ha un
+   --   contratto «modalita' C», che pretende l'articolo negoziato e fa fallire
+   --   la risoluzione con «articolo .../uom 1 non negoziato».
+   --   Questo file verifica la risoluzione del prezzo **da listino**: un
+   --   contratto di mezzo e' un'altra strada del resolver, e un'altra storia.
+   --   Escluderlo non indebolisce il test — lo mette sul percorso che dichiara
+   --   di verificare. (Candidati che soddisfano tutte le condizioni: 3.)
+   AND NOT EXISTS (
+       SELECT 1 FROM vendite.contratti c
+        WHERE c.istanza_utility_id = ba.istanza_utility_id
+   )
  ORDER BY ba.id, a.id
  LIMIT 1;
 
@@ -169,19 +201,36 @@ SELECT is(
     'STADIO 2 CATEGORIA fallback classe NULL + VALORE_FISSO -5: prezzo_finale = 95'
 );
 
--- 3) STADIO 1 CONTRATTO_OVERRIDE: creo contratto ATTIVO con riga prezzo_unitario = 42
+-- 3) STADIO 1 CONTRATTO_OVERRIDE: contratto con riga prezzo_unitario = 42
+-- 🔴 SI COMPONE IN DRAFT E POI SI ATTIVA, corretto il 2026-08-18.
+--   Il contratto nasceva gia' ATTIVO e la riga si inseriva dopo: da quando
+--   esiste `trg_contratti_righe_a10_lock_post_attivazione` quella sequenza e'
+--   vietata (il pricing di un contratto attivo e' immutabile). Lo stato finale
+--   non cambia — serve ATTIVO perche' il resolver lo consideri — cambia il
+--   momento in cui ci si arriva, che e' anche l'ordine che segue l'applicazione.
+--   ⚠️ `tipo_eccezione` = OVERRIDE, non a caso: il CHECK
+--   `chk_contrighe_prezzo_per_tipo_eccezione` pretende un prezzo valorizzato per
+--   OVERRIDE/AGGIUNTA, e qui il prezzo (42) e' proprio il punto del test —
+--   e' un prezzo che SCAVALCA il listino, che e' la definizione di OVERRIDE.
 INSERT INTO vendite.contratti(
     numero, billing_account_id, istanza_utility_id, utility_id, stato_doc_contratto_id,
-    valido_dal, listino_id, tipo_variazione_globale, valore_variazione_globale)
+    valido_dal, valido_al, listino_id, tipo_variazione_globale, valore_variazione_globale)
 SELECT 'PGTAP_V5_CONTR', t.ba_id, t.istanza_utility_id, t.utility_id,
-       (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO'),
-       CURRENT_DATE, v.listino_id, NULL, NULL
+       (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'),
+       CURRENT_DATE, CURRENT_DATE, v.listino_id, NULL, NULL
   FROM tmp_ctx t, tmp_ctx_versione v;
 
-INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, prezzo_unitario, attivo, qta_operativa)
-SELECT c.id, t.articolo_id, 42, TRUE, 1
+INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, prezzo_unitario,
+                                    tipo_eccezione, attivo, qta_operativa)
+SELECT c.id, t.articolo_id, 42,
+       'OVERRIDE'::vendite.tipo_eccezione_contratto, TRUE, 1
   FROM vendite.contratti c, tmp_ctx t
  WHERE c.numero = 'PGTAP_V5_CONTR';
+
+UPDATE vendite.contratti
+   SET stato_doc_contratto_id = (SELECT id FROM config.stati_doc_contratti
+                                  WHERE codice_interno = 'ATTIVO')
+ WHERE numero = 'PGTAP_V5_CONTR';
 
 SELECT is(
     (SELECT origine FROM vendite.fn_resolve_prezzo_listino_v2(
@@ -203,24 +252,37 @@ UPDATE anagrafiche.categorie_clienti
    SET partecipa_promo = TRUE
  WHERE id = (SELECT categoria_id FROM tmp_ctx);
 
+-- 🔴 LA PROMO PARTE DOMANI, corretto il 2026-08-18.
+--   `trgfn_promo_articoli_guard_data_driven` vieta una promo con `valido_dal`
+--   antecedente o uguale a oggi: una promozione si annuncia, non si retrodata.
+--   La fixture la faceva partire da `CURRENT_DATE` e moriva li'.
+--   ⚠️ Non basta spostare la promo: va spostata anche la DATA A CUI SI CHIEDE
+--   il prezzo, piu' sotto. Se la promo parte domani e si risolve per oggi, il
+--   test diventa verde senza aver mai attraversato lo stadio PROMO — il modo
+--   piu' silenzioso di perdere una copertura.
 INSERT INTO vendite.promo_articoli(codice, descrizione, articolo_id, uom_id,
     tipo_variazione, valore_variazione, valido_dal, valido_al)
 SELECT 'PGTAP_V5_PROMO', 'Promo test', t.articolo_id, t.uom_id,
        'PREZZO_FISSO', 12.5,
-       CURRENT_DATE, CURRENT_DATE + 365
+       CURRENT_DATE + 1, CURRENT_DATE + 365
   FROM tmp_ctx t;
 
--- Rimuovo il contratto per non far vincere STADIO 1 (la promo va comunque testata
--- ma l'assert piu' semplice e' su categoria+promo: cancello contratto).
-DELETE FROM vendite.contratti_righe
- WHERE contratto_id = (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_V5_CONTR');
-DELETE FROM vendite.contratti WHERE numero = 'PGTAP_V5_CONTR';
+-- 🔴 IL CONTRATTO NON SI CANCELLA PIU': SCADE. Corretto il 2026-08-18.
+--   Qui si cancellavano righe e contratto per non far vincere lo STADIO 1. Non
+--   e' piu' possibile: `trg_contratti_righe_a10_lock_post_attivazione` blocca
+--   anche il DELETE su un contratto ATTIVO, ed e' giusto — un contratto attivo
+--   non si smonta, si chiude.
+--   ⚠️ Cosi' il fixture dice anche una cosa piu' vera: il contratto vale FINO A
+--   OGGI (`valido_al = CURRENT_DATE`), e le asserzioni che seguono chiedono il
+--   prezzo per DOMANI, quando non applica piu'. E' la stessa data in cui vive la
+--   promo. Nessuna cancellazione, nessuno stato forzato: due documenti con
+--   validita' diverse e una domanda posta nel giorno giusto.
 
 SELECT is(
     (SELECT origine FROM vendite.fn_resolve_prezzo_listino_v2(
         (SELECT articolo_id FROM tmp_ctx),
         (SELECT uom_id FROM tmp_ctx),
-        CURRENT_DATE,
+        CURRENT_DATE + 1,   -- il giorno in cui la promo e' viva (vedi sopra)
         (SELECT ba_id FROM tmp_ctx),
         (SELECT utility_id FROM tmp_ctx),
         (SELECT emittente_srid FROM tmp_ctx),
@@ -243,7 +305,7 @@ SELECT throws_ok(
     $$SELECT * FROM vendite.fn_resolve_prezzo_listino_v2(
         (SELECT articolo_id FROM tmp_ctx),
         (SELECT uom_id FROM tmp_ctx),
-        CURRENT_DATE,
+        CURRENT_DATE + 1,   -- il contratto e' scaduto ieri: qui non applica
         (SELECT ba_id FROM tmp_ctx),
         (SELECT utility_id FROM tmp_ctx),
         (SELECT emittente_srid FROM tmp_ctx),
