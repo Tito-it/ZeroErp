@@ -2334,10 +2334,37 @@ davvero — e si è aggiunto un **test 8** di coerenza `rank ↔ motivo`, perch�
 `CASE` che dimentica un ramo non fallisce: restituisce NULL, cioè «eleggibile».
 Con 11 rank rinumerate a mano quel rischio è concreto.
 
-⚠️ **Attesa dichiarata**: con l'equivalenza che ora gira sulle fixture, il test 1
-può **andare in rosso** — ed è il punto. Se resta verde vuol dire che nemmeno le
-fixture attraversano la divergenza, e allora la rete va **allargata**, non solo
-spostata. Va misurato, non dato per buono.
+#### ⚠️ Misurato — ed è il caso che chiedeva attenzione
+
+L'attesa dichiarata era: *«spostato dopo le fixture, il test 1 può andare in
+rosso — ed è il punto. Se resta verde vuol dire che nemmeno le fixture
+attraversano la divergenza.»*
+
+✅ **Misurato il 2026-08-18: verde.** 🔴 **Ed è il secondo caso, non il primo.**
+
+Le cinque fixture di `pg_temp.mk_caso` costruiscono `FATTURA_DA_ORDINE`,
+`MERCE_IN_VIAGGIO`, `SOLO_TRASPORTO`, `ANNULLATO` e il caso di precedenza.
+**Nessuna costruisce una ri-consegna, un kit non misurabile o una spedizione
+standalone senza causale** — cioè esattamente i tre casi su cui i due oggetti
+divergevano. Il verde dice quindi *«diagnosi e lister concordano sui casi
+coperti»*, non *«la divergenza è chiusa»*.
+
+⚠️ **Il riallineamento resta giusto a prescindere** — è stato verificato
+leggendo i due oggetti, non dedotto da un test. Ma **la rete è rimasta della
+misura di prima, solo appesa nel punto giusto**, e va detto qui perché
+altrimenti passa per verificata.
+
+📌 **Residuo dichiarato**: una fixture che attraversi la divergenza. La più
+economica è la **ri-consegna**, che il pgTAP della situazione merce già sa
+costruire (`fn_conferma_reso` + `fn_genera_ddt_riconsegna`, casi D ed E di
+`test-vw-situazione-merce-ordine-v1`): con quella dentro, il test 1 misura
+davvero il rank 7 e il test 8 il resto della rinumerazione.
+
+⭐ **La lezione, che è la quinta e ha la forma delle altre quattro**: spostare un
+test nel punto in cui *può* misurare non basta, se ciò che misura non contiene
+il caso. La domanda «gira al momento giusto?» e la domanda «ha davanti il caso
+giusto?» sono due, e la prima risolta bene fa sembrare risolta anche la
+seconda.
 
 ### 23.2-bis 📌 Il seguito, che non era nella richiesta
 
