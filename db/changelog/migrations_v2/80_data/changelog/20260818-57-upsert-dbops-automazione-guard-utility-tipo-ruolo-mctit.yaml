@@ -1,0 +1,135 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# La configurazione della guard utility->tipo_ruolo passa al CSV
+#   Accompagna: 20260818-56 (il seed smette di scrivere: era lui l'altra sorgente)
+#   Rosso di partenza: db/pgtap/dbops/test-automazione-guard-utility-tipo-ruolo.sql, test 2
+#   Brief: docs/it/dev/work-done/brief-db-automazione-guard-utility-righe-sfuggite.md
+#
+# ── PERCHE' UN CSV E NON UNA BONIFICA SQL ──────────────────────────────
+#   Decisione di Tid, 2026-08-18: **tutti i seed girano da CSV**. Un misto di
+#   script SQL e CSV sulla stessa tabella e' gia' stato verificato piu' volte e
+#   non regge — sono due sorgenti di verita' che divergono fra sviluppo e CI,
+#   perche' il mirror e' `runOnChange` e ri-legge a ogni migrate mentre l'SQL
+#   gira una volta sola (`.codex/AGENTS.md`, «I dati di 80_data si cambiano dal
+#   CSV, non con UPDATE diretti»).
+#   ⚠️ `dbops.automazione_guard_utility_tipo_ruolo` era rimasta l'unica tabella
+#   `automazione_*` di dbops senza CSV: le sorelle
+#   (`automazione_chiusura_scadenze`, `automation_scope`, `automation_rules_tbl`,
+#   `automation_lock_columns`, …) sono tutte mirror di un CSV in
+#   `80_data/sql/dbops/`. Questo file la riporta in famiglia.
+#
+# ── COSA C'ERA CHE NON ANDAVA ──────────────────────────────────────────
+#   La tabella era popolata da `dbops.fn_seed_automazione_guard_utility_tipo_ruolo`,
+#   che **rileva dallo schema** e scrive. Con `ON CONFLICT DO NOTHING`, una riga
+#   scritta una volta non si raddrizzava mai piu': la configurazione e' rimasta
+#   ferma al 2026-02-16 mentre lo schema andava avanti.
+#
+#   Misurato il 2026-08-18 — delle 7 righe, **4 descrivevano uno schema che non
+#   esiste piu'**:
+#
+#     bank_branches, fornitori, vettori   -> la colonna `utility_id` non ce l'hanno piu'
+#     reseller                            -> la tabella e' stata rinominata `resellers`
+#                                            (e comunque non ha `utility_id`)
+#
+#   ⚠️ **Nessuna tabella era pero' rimasta scoperta**, ed e' giusto dirlo perche'
+#   cambia la gravita': le uniche due che oggi qualificano davvero
+#   (`categorie_clienti_listini` ed `emittenti_fiscali_utilities`) il loro
+#   trigger ce l'hanno entrambe. Il danno era che la configurazione **dichiarava
+#   protezioni inesistenti** — cinque righe `enabled = true` che `fn_apply_*`
+#   scartava in silenzio — e che una riga (`emittenti_fiscali_utilities`)
+#   portava una colonna che la sua tabella non ha, mentre il trigger vivo sulla
+#   stessa tabella ne usava un'altra. Configurazione e database che dicevano
+#   cose diverse, col database che aveva ragione per caso.
+#
+# ── COSA CONTIENE IL CSV ───────────────────────────────────────────────
+#   Sette righe, gli `id` conservati per non spezzare i riferimenti storici.
+#   **Due accese** — le uniche due tabelle che oggi qualificano davvero — e
+#   **cinque spente**, che sono la memoria di cosa e' stato considerato e perche'
+#   e' fuori:
+#
+#     4   emittenti_fiscali_utilities  emittente_soggetto_ruolo_id  enabled=t
+#     11  categorie_clienti_listini    emittente_soggetto_ruolo_id  enabled=t
+#     ----
+#     3   clienti          soggetto_ruolo_id  f   qualifica, ma ruolo generico
+#     5   bank_branches    soggetto_ruolo_id  f   non ha piu' `utility_id`
+#     7   fornitori        soggetto_ruolo_id  f   non ha piu' `utility_id`
+#     9   vettori          soggetto_ruolo_id  f   non ha piu' `utility_id`
+#     8   reseller         soggetto_ruolo_id  f   tabella rinominata `resellers`
+#
+#   · `emittenti_fiscali_utilities` e' **corretta** a `emittente_soggetto_ruolo_id`:
+#     e' il nome vero della sua colonna, ed e' gia' quello che il trigger vivo
+#     usa. Il CSV allinea la configurazione al database, non viceversa.
+#   · `clienti` era gia' spenta dal `20260216-06`: il CSV ne conserva lo stato.
+#
+# ── ⚠️ PERCHE' SPENTE E NON TOLTE ──────────────────────────────────────
+#   `loadUpdateData` **non cancella**: togliere le cinque righe dal CSV le
+#   lascerebbe sul database di sviluppo esattamente come stanno oggi —
+#   `enabled = true`, con colonne che non esistono — e il mirror non potrebbe
+#   farci niente. Portarle nel CSV **spente** e' l'unico modo di convergere
+#   restando dentro alla regola «i seed girano da CSV»: niente `DELETE`, niente
+#   SQL accanto al mirror, e sviluppo e database ricostruito finiscono nello
+#   stesso stato.
+#
+#   ⚠️ E c'e' un motivo per cui non e' un ripiego: una riga spenta **dice
+#   qualcosa**. Dice che quella tabella e' stata considerata e che oggi e'
+#   fuori — cosa che l'assenza della riga non direbbe. E' la stessa scelta del
+#   `20260216-06` su `clienti`, e la stessa logica di `dbops.fk_index_policy`,
+#   dove `consentito = false` e' un dato, non un vuoto.
+#
+#   ⚠️ Cancellarle davvero resta possibile e resta una **decisione di Tid**: e'
+#   l'unico `DELETE` che AGENTS ammette accanto a un mirror CSV. Non l'ho
+#   scritto perche' cancella dati e perche' quelle righe, spente, non fanno
+#   danno: `fn_apply_*` le scarta come fa da mesi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260818-57-upsert-dbops-automazione-guard-utility-tipo-ruolo-mctit.yaml
+
+  - changeSet:
+      id: 20260818-57-upsert-dbops-automazione-guard-utility-tipo-ruolo
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        La configurazione della guard utility->tipo_ruolo diventa un mirror del CSV, come le
+        altre automazioni di dbops. Prima la scriveva il seed rilevando dallo schema, con
+        ON CONFLICT DO NOTHING: la configurazione e' rimasta ferma al 2026-02-16 e 4 righe su 7
+        descrivevano tabelle che nel frattempo hanno perso utility_id o sono state rinominate.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: automazione_guard_utility_tipo_ruolo
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/dbops/automazione_guard_utility_tipo_ruolo.csv
+            tableName: automazione_guard_utility_tipo_ruolo
+            schemaName: dbops
+            separator: ","
+            encoding: UTF-8
+            # Token letterale, non la cella vuota: `trigger_name` e' nullable e
+            # una cella vuota genererebbe la stringa vuota, che non e' NULL.
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id,                    type: NUMERIC }
+              - column: { name: schema_name,           type: STRING }
+              - column: { name: table_name,            type: STRING }
+              - column: { name: utility_column,        type: STRING }
+              - column: { name: soggetto_ruolo_column, type: STRING }
+              - column: { name: enabled,               type: BOOLEAN }
+              - column: { name: exec_mode,             type: STRING }
+              - column: { name: trigger_name,          type: STRING }
+              # `meta` NON e' nel CSV di proposito: e' provenienza (chi ha
+              # seedato, quando, perche' e' stata spenta), non configurazione.
+              # Lasciandola fuori, il mirror non cancella la storia che le
+              # righe esistenti si portano dietro dal 2026-02-16.
