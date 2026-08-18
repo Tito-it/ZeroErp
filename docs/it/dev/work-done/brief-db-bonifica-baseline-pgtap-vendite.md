@@ -1,17 +1,57 @@
-# Bonifica baseline pgTAP — perimetro `vendite`
+# Bonifica baseline pgTAP — `vendite` e `anagrafiche`
 
+> ## 🟢 CHIUSO il 2026-08-19
+>
 > Cantiere aperto il 2026-08-18 · perimetro DB (`dev/db-tid`)
-> Registro: [`db/pgtap/baseline-rossi.tsv`](../../../db/pgtap/baseline-rossi.tsv)
+> Registro: [`db/pgtap/baseline-rossi.tsv`](../../../../db/pgtap/baseline-rossi.tsv)
 > Precedenti chiusi: `work-done/brief-db-pgtap-runner-rls-baseline.md`,
 > `work-done/brief-db-bonifica-pgtap-sorgente-polimorfa.md`
+>
+> ⚠️ **Il titolo diceva `vendite` perche' e' li' che e' cominciato.** Il grosso
+> del lavoro e' finito in `anagrafiche`, che da sola aveva il 71% del debito.
 
-## Stato
+## Stato alla chiusura
 
-| | inizio 2026-08-18 | ora |
+| | inizio 2026-08-18 | chiusura 2026-08-19 |
 |---|---|---|
+| **registro complessivo** | **45** | **28** |
 | rossi `vendite` | 12 su 189 | **5** |
-| registro complessivo | 45 | **38** |
-| `dbops`, `pagamenti`, `catalogo` | zero | zero |
+| rossi `anagrafiche` | 27 su 56 | **17** |
+| `dbops`, `pagamenti`, `catalogo`, `config`, `ui` | zero | zero |
+
+**Sedici file rientrati**, e con loro **oltre 130 asserzioni che prima non
+venivano eseguite affatto** — file che morivano nella fixture, quindi con
+copertura zero e non «parziale».
+
+### Cosa resta, e dove continua
+
+Il debito residuo e' tutto registrato in `baseline-rossi.tsv` con la causa
+classificata: 17 `anagrafiche`, 5 `vendite`, 3 `rls`, 1 a testa per `script`,
+`pratiche`, `documenti`.
+
+Il seguito naturale e' `anagrafiche`, dove i dieci file chiusi hanno gia'
+lasciato **la ricetta e cinque helper** (`20260818-76` e `-77`): i restanti
+seguono gli stessi sei strati descritti sotto. ⚠️ Ma vanno guardati uno per
+uno: fra quei 17 ci sono almeno due difetti VERI del database
+(`vw_indirizzi_resolved_soggetto` che restituisce piu' colonne di quante la
+funzione dichiari, e `istanza_utility_id` che non esiste piu' su catasto), piu'
+i quattro file del gruppo `ruolo_sistema` che chiedono una decisione — le
+funzioni `fn_crea_operatore` / `fn_crea_risorsa_umana` sono state **droppate** e
+sostituite dalle `_v2`, quindi quei test vanno riscritti o ritirati.
+
+### Reperti fuori perimetro test, ancora aperti
+
+| | stato |
+|---|---|
+| Il gestore del sistema e' un residuo di pgTAP (`Gestore Zero ERP - Test pgTAP`, 2025-11-25, singleton globale) | 🔴 **aperto** |
+| `lotto_attivita_id` colonna orfana su `attivita_fatturabili` e `attivita_consumi` (nessun padre, nessuna FK) | 🔴 **aperto** |
+| Il ramo standard di `trgfn_attivita_fatturabili_normalize` e' codice morto | 🔴 **aperto** |
+| `forma_giuridica` non esiste piu' su `dati_societari` (oggi `forma_giuridica_id`) | ✅ i test allineati |
+| Messaggio d'errore che mandava alla tabella sbagliata | ✅ chiuso (`20260819-01`) |
+
+🔴 **Richieste al backend**, entrambe aperte: rigenerare
+`apps/core/services/error_policies_generated.py` per
+`E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO` e per `W_MESSAGGIO_ARITA`.
 
 ## Il principio che ha retto tutto il lavoro
 

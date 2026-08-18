@@ -1,0 +1,210 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-6 / 5b: la TERZA copia della regola «l'emittente di un BA» si unifica
+#   (brief-db-note-credito-prerequisiti-be-fe §12 · B1; il rilievo nasce nel
+#    cantiere perimetro emittente §11.11, che l'ha chiuso PARCHEGGIANDOLO qui
+#    per iscritto: «e' il prerequisito di P-6 e si fa in quel cantiere»).
+#
+# ── 🔴 NON E' IGIENE: E' IL SELETTORE DEL REGISTRO ─────────────────────
+#   Verificato il 2026-08-19 seguendo la catena, ed e' la ragione per cui
+#   questo changeSet viene PRIMA di 5c e 5d e non dopo:
+#
+#     fatturazione -> vendite.fn_build_fattura_key
+#                     v_emittente_id := anagrafiche.fn_get_emittente_fiscale_id(ba)
+#                  -> vendite.fn_get_registro_id(..., p_emittente_soggetto_ruolo_id
+#                                                     => v_emittente_id)
+#                  -> IL REGISTRO SU CUI SI NUMERA
+#
+#   Da 5d in poi e' questa funzione a decidere su quale registro nasce il
+#   numero di una fattura. Toccarla DOPO significherebbe cambiare il selettore
+#   mentre e' in uso su registri appena intestati.
+#
+# ── ⭐ LA MACCHINA E' GIA' PRONTA ──────────────────────────────────────
+#   `fn_get_registro_id` ha gia' `p_emittente_soggetto_ruolo_id` e il fallback
+#   a quattro livelli con l'ORDER BY giusto (specifico > utility > emittente >
+#   generico). ⭐ Ne discende che EM-1 — il rilievo re-instradato dal BE, «i
+#   registri intestati a un emittente sono irraggiungibili dalla pipeline» —
+#   NON e' piu' vero: la catena l'emittente lo passa. Non serve lavoro, serve
+#   l'asserzione che lo fissa (5e).
+#
+# ── COSA CAMBIA E COSA NO ──────────────────────────────────────────────
+#   Le due logiche sono GIA' identiche, e la sostituzione e' verificata riga
+#   per riga:
+#     prima  1) mapping specifico sul BA   2) is_default   (due SELECT INTO)
+#     dopo   script.fn_get_ba_emittente_sr_id = COALESCE(specifico, default)
+#   ⭐ Cambia DOVE VIVE la regola, non cosa dice. I due indici univoci
+#   (uq_emittenti_fiscali_ba, uq_emittenti_fiscali_ba_default) restano cio' che
+#   rende «l'emittente del BA» un singolare.
+#
+# ── ⚠️ LA DIVERGENZA SUL NULL SI CONSERVA, E NON E' UN DETTAGLIO ───────
+#   La delegata risponde NULL quando non risolve; questa funzione SOLLEVA
+#   E_EMITTENTE_DEFAULT_MISSING. La divergenza e' voluta (§11.11) e resta:
+#     * la delegata la usano i LETTORI (fn_check_ba_visible_for_emittenti, la
+#       ricerca universale), che un NULL lo sanno gestire e devono poterlo
+#       vedere senza che una lettura esploda;
+#     * questa la usa lo SCRITTORE, sul percorso della numerazione, dove un
+#       NULL significa «non so su quale registro numerare» — e li' proseguire
+#       e' peggio che fermarsi.
+#   ⛔ Quindi il raise NON si sposta nella delegata: si tiene qui, dove il
+#   chiamante sa cosa sta per fare.
+#
+# ── SECURITY E RLS ─────────────────────────────────────────────────────
+#   Entrambe SECURITY INVOKER (nessuna clausola = INVOKER) e
+#   anagrafiche.emittenti_fiscali_billing_account non ha RLS: la delega non
+#   sposta di un millimetro il perimetro di lettura.
+#   ⚠️ La delegata e' STABLE PARALLEL SAFE; questa resta plpgsql non marcata,
+#   come prima. Marcarla STABLE sarebbe corretto ma cambierebbe il piano di
+#   query dei chiamanti in un changeSet che vuole essere a comportamento
+#   invariato: se si fa, si fa a parte e si misura.
+#
+# Dipendenze: script.fn_get_ba_emittente_sr_id (20260818, Fase E perimetro
+#   emittente), anagrafiche.emittenti_fiscali_billing_account.
+# Verifica: db/pgtap/vendite/test-registri-per-emittente-v1.sql (5e) e la
+#   suite esistente sulla numerazione, che passa di qui a ogni fattura.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260819-03-update-fn-get-emittente-fiscale-id-delega-mctit.yaml
+
+  - changeSet:
+      id: 20260819-03-update-fn-get-emittente-fiscale-id-delega
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        P-6/5b: anagrafiche.fn_get_emittente_fiscale_id delega a script.fn_get_ba_emittente_sr_id.
+        Terza e ultima copia della regola «l'emittente di un BA». Il raise E_EMITTENTE_DEFAULT_MISSING
+        RESTA qui: la delegata risponde NULL (la usano i lettori), la chiamante decide di sollevare
+        perche' sta sul percorso della numerazione. Prerequisito di 5c/5d: e' questa funzione a
+        scegliere il registro su cui nasce il numero, via fn_build_fattura_key -> fn_get_registro_id.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_get_ba_emittente_sr_id'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_get_emittente_fiscale_id(
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE
+              )
+               RETURNS bigint
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: «quale emittente fattura questo billing account»,
+              --   per lo SCRITTORE. Restituisce il soggetto_ruolo_id
+              --   dell'emittente e SOLLEVA se non e' risolvibile.
+              -- ⭐ 2026-08-19 (P-6/5b): la regola non vive piu' qui. Era la
+              --   TERZA copia — le altre due sono state unite il 2026-08-18
+              --   nel cantiere perimetro emittente (Fase E, R-5) dentro
+              --   script.fn_get_ba_emittente_sr_id. Ora la definizione e' UNA.
+              -- ⚠️ QUESTA FUNZIONE ESISTE ANCORA, e non e' un guscio inutile:
+              --   e' il punto in cui il NULL della delegata diventa un errore
+              --   di dominio. La delegata risponde NULL perche' la leggono
+              --   anche i CONSUMATORI DI LETTURA (il check di visibilita', la
+              --   ricerca universale), per cui «non risolvibile» e' un dato
+              --   legittimo da mostrare. Qui invece si sta per SCRIVERE: e'
+              --   questa funzione che fn_build_fattura_key usa per scegliere
+              --   il REGISTRO su cui numerare, e un NULL li' vorrebbe dire
+              --   «numera dove capita». Meglio fermarsi.
+              --   ⛔ Per questo il raise NON si sposta nella delegata.
+              DECLARE
+                v_emittente_id anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE;
+              BEGIN
+                -- Regola a due livelli (mapping specifico sul BA, poi
+                -- l'emittente is_default), invariata: la delegata fa
+                -- COALESCE(specifico, default) e sono i due indici univoci
+                -- uq_emittenti_fiscali_ba / uq_emittenti_fiscali_ba_default a
+                -- rendere «l'emittente del BA» un singolare.
+                -- ⚠️ NON risale l'albero dei billing account: un figlio senza
+                --   mapping NON eredita quello del padre, ricade sul default
+                --   globale. Comportamento preesistente, spostato e non
+                --   cambiato; l'omogeneita' dell'albero e' presidiata da
+                --   anagrafiche.fn_guard_albero_ba_emittente.
+                v_emittente_id := script.fn_get_ba_emittente_sr_id(p_billing_account_id);
+
+                IF v_emittente_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'anagrafiche',
+                    'fn_get_emittente_fiscale_id',
+                    'E_EMITTENTE_DEFAULT_MISSING',
+                    jsonb_build_object(
+                      'detail', 'Emittente fiscale di default mancante',
+                      'billing_account_id', p_billing_account_id
+                    ),
+                    NULL::uuid,
+                    concat('Emittente fiscale di default mancante ',
+                      'billing_account_id ', p_billing_account_id::text)
+                  );
+                END IF;
+
+                RETURN v_emittente_id;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_get_emittente_fiscale_id(bigint)
+              IS 'Risolve «quale emittente fattura questo billing account» PER LO SCRITTORE: restituisce il soggetto_ruolo_id dell''emittente e SOLLEVA E_EMITTENTE_DEFAULT_MISSING se non e'' risolvibile. ⭐ Dal 2026-08-19 (P-6/5b, brief note-credito §12) la regola NON vive piu'' qui: delega a script.fn_get_ba_emittente_sr_id, che il 2026-08-18 aveva gia'' unito le altre due copie (cantiere perimetro emittente, Fase E / R-5). Era la terza e ultima; ora la definizione e'' una sola. ⚠️ La funzione resta, e non e'' un guscio: e'' il punto in cui il NULL della delegata diventa un ERRORE DI DOMINIO. La delegata risponde NULL perche'' la leggono anche i consumatori di sola lettura (fn_check_ba_visible_for_emittenti, la ricerca universale), per cui «non risolvibile» e'' un dato legittimo da mostrare; qui invece si sta per scrivere — e'' questa la funzione che vendite.fn_build_fattura_key usa per scegliere il REGISTRO su cui numerare, via vendite.fn_get_registro_id, e un NULL li'' significherebbe «numera dove capita». ⛔ Per questo il raise NON si sposta nella delegata: la divergenza sul NULL fra le due e'' voluta (perimetro-emittente §11.11). Regola invariata: mapping specifico sul BA, poi l''emittente is_default; NON risale l''albero dei billing account. SECURITY INVOKER. rev 2026-08-19.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: si torna alla versione con la regola scritta in
+              -- linea (la terza copia), come prima del 2026-08-19.
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_get_emittente_fiscale_id(
+                  p_billing_account_id bigint
+              )
+               RETURNS bigint
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_emittente_id anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE;
+              BEGIN
+                SELECT m.emittente_soggetto_ruolo_id
+                  INTO v_emittente_id
+                  FROM anagrafiche.emittenti_fiscali_billing_account m
+                 WHERE m.billing_account_id = p_billing_account_id;
+
+                IF v_emittente_id IS NOT NULL THEN
+                  RETURN v_emittente_id;
+                END IF;
+
+                SELECT m.emittente_soggetto_ruolo_id
+                  INTO v_emittente_id
+                  FROM anagrafiche.emittenti_fiscali_billing_account m
+                 WHERE m.is_default = true;
+
+                IF v_emittente_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'anagrafiche',
+                    'fn_get_emittente_fiscale_id',
+                    'E_EMITTENTE_DEFAULT_MISSING',
+                    jsonb_build_object(
+                      'detail', 'Emittente fiscale di default mancante',
+                      'billing_account_id', p_billing_account_id
+                    ),
+                    NULL::uuid,
+                    concat('Emittente fiscale di default mancante ',
+                      'billing_account_id ', p_billing_account_id::text)
+                  );
+                END IF;
+
+                RETURN v_emittente_id;
+              END
+              $function$;

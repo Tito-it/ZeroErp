@@ -42,8 +42,8 @@
 | **2** · P-2 | il task `popola_fatture_rettifiche` a registry, impl, pipeline e task_policy · `20260818-68` (numero esplicito in `fn_check_lotto_annullabile`) · `20260818-69` (il commento che spiega perché `fn_cleanup_fatture_by_ids` **non** si tocca) | ✅ **applicato** |
 | **3** · P-5 | `20260818-71` — `fn_annulla_accredito_riga_reso` + 4 codici (924-927) + 18 pgTAP | ✅ **applicato e verde** |
 | **§10** | `20260818-73` — il conto della merce smette di contare l'annullato | ✅ **applicato e verde** |
-| **4** · P-3 | il gate della rinuncia in `fn_check_rinuncia_reversibile` | 🟡 **piano in §12**, in lavorazione |
-| **5** · P-6 | i registri per emittente | 🟡 **piano in §12**, in lavorazione. ⭐ Il prerequisito 5b rientra QUI: il cantiere perimetro emittente ha chiuso parcheggiandolo per iscritto |
+| **4** · P-3 | il gate della rinuncia in `fn_check_rinuncia_reversibile` | ✅ **applicato e verde** (§12) |
+| **5** · P-6 | i registri per emittente | ✅ **applicato e verde** (§12). ⭐ Il prerequisito 5b è rientrato qui, come il cantiere perimetro emittente aveva scritto |
 | **6** · P-7 | il `meta` kit della rettifica: ereditato per intero + guard 928 · `20260818-75` | ✅ **applicato e verde** — trovato dallo smoke end-to-end del BE, verificato dallo stesso smoke (15/15) |
 
 **Verifica end-to-end** (2026-08-18): sette file pgTAP verdi, compresi i sei che
@@ -1468,12 +1468,14 @@ dopo.
 
 ---
 
-## 12. ▶ Piano di chiusura — P-3 e P-6 · 2026-08-19
+## 12. ✅ P-3 e P-6 — CHIUSI, APPLICATI E VERDI · 2026-08-19
 
 > Scritto per **chiudere**, non per tracciare. Il rimpallo fra cantieri finisce
-> qui: quello che segue si fa in questo brief, con questi numeri.
+> qui.
 >
-> ⛔ Come sempre: **nessuna migrazione viene applicata dal team DB.**
+> ✅ **Applicato da Tid il 2026-08-19.** `20260819-02` · `-03` · `-04` · `-05`,
+> più i codici 929 a catalogo. **Tutti i test verdi**, comprese 12 suite di
+> regressione sulla macchina della numerazione.
 
 ### Cosa è stato verificato prima di scriverlo (2026-08-19)
 
@@ -1509,7 +1511,7 @@ in `vendite.resi_righe_accrediti` per questa riga di reso*.
 | --- | --- | --- |
 | **A1** | 1 codice errore nuovo a catalogo — il commento della funzione dice esplicitamente di non averlo registrato prima *«per non lasciare a catalogo un codice mai sollevato»*. Ora si solleva | append ai 2 CSV |
 | **A2** | il ramo nella funzione + il vincolo reciproco nel commento | `20260819-02` |
-| **A3** | il vincolo reciproco anche nel commento di `fn_annulla_accredito_riga_reso` | `20260819-03` (solo `COMMENT ON`) |
+| **A3** | il vincolo reciproco anche nel commento di `fn_annulla_accredito_riga_reso` | ✅ **già fatto**: c'è dal `20260818-71`, nessun changeSet |
 | **A4** | pgTAP | `test-rinuncia-gate-accredito-v1.sql` |
 
 ⚠️ **Ordine dei rami**: il nuovo va **dopo** «riga inesistente», che ritorna
@@ -1541,7 +1543,7 @@ test passerebbe anche con un gate che non si spegne mai.
 
 Quattro changeSet, in **quest'ordine**, e l'ordine è portante.
 
-**B1 · 5b — la terza copia si unifica** → `20260819-04`
+**B1 · 5b — la terza copia si unifica** → `20260819-03` ✅ **scritto**
 `anagrafiche.fn_get_emittente_fiscale_id` delega a
 `script.fn_get_ba_emittente_sr_id`, **mantenendo il raise
 `E_EMITTENTE_DEFAULT_MISSING` dove è oggi**: la delegata risponde `NULL`, la
@@ -1550,14 +1552,14 @@ la delegata la usano anche i lettori, che un `NULL` lo sanno gestire.
 ⭐ Le due logiche sono già identiche: mapping specifico, poi `is_default`. Cambia
 **dove vive la regola**, non cosa dice.
 
-**B2 · 5c — il guard sulla disattivazione (D-P6-1)** → `20260819-05`
+**B2 · 5c — il guard sulla disattivazione (D-P6-1)** → ✅ **ESISTE GIÀ, nessun lavoro**
 Seed nell'automazione `prevent_deactivate_if_children`: figlia
 `anagrafiche.emittenti_fiscali_billing_account`, colonna
 `emittente_soggetto_ruolo_id` → `soggetto_ruolo_id`, flag `attivo`.
 ⚠️ **Prima di B3**: dopo l'intestazione dei registri, disattivare un emittente
 diventa una porta aperta su un percorso fiscale, e il guard deve esserci già.
 
-**B3 · 5d — intestazione + registri nuovi, UN SOLO changeSet (C-7)** → `20260819-06`
+**B3 · 5d — intestazione + registri nuovi, UN SOLO changeSet (C-7)** → `20260819-05` ✅ **scritto**
 Nello stesso file e in quest'ordine: `UPDATE` registri **3, 4, 5** →
 `emittente_soggetto_ruolo_id = 72`; `INSERT` dei **tre registri** dell'emittente
 **159** (Front-office `R2`, Back-office `R1`, NC serie vuota); `INSERT` in
@@ -1569,6 +1571,97 @@ ripetono, ed è voluto (D-P6-2: la serie significa **canale**, non azienda).
 🟢 Nessun rischio sui documenti esistenti: le 6 fatture di 72 restano sul
 registro 3, che diventa suo, e la serie 1→6 continua senza salti.
 
+#### ⭐ B2 non era «far girare l'automazione» — e scoprirlo ha trovato un buco
+
+La domanda era legittima: i trigger `prevent_deactivate_if_children` li genera
+`dbops.fn_run_automations_attivo`, quindi basta lanciarla. **No**, e la ragione
+è strutturale:
+
+```text
+emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id
+    --FK--> anagrafiche.soggetti_ruoli (id)      ⛔ non ha la colonna `attivo`
+```
+
+L'automazione scopre le figlie da `pg_constraint` partendo dal **padre** della
+regola. Il padre giusto — `anagrafiche.emittenti_fiscali`, che `attivo` ce l'ha
+e porta già **quindici** trigger di quella famiglia — con questa figlia **non ha
+nessuna chiave esterna**. Lanciare l'automazione avrebbe prodotto zero trigger
+e **nessun errore**: il tipo di verifica che sembra fatta e non lo è.
+
+⭐ **E la FK mancante non è solo un abilitatore.** Verificato: **nessun presidio**
+impone oggi che `emittente_soggetto_ruolo_id` sia davvero un emittente fiscale
+— i due guard della tabella parlano di omogeneità dell'albero e di unicità del
+default, non dell'identità del bersaglio. Si può mappare un billing account a un
+cliente o a un fornitore: la colonna si chiama `emittente_*` e la promessa la
+mantiene solo la disciplina di chi scrive.
+
+`20260819-04` **sostituisce** la FK (non ne aggiunge una seconda: quella verso
+`soggetti_ruoli` è strettamente più debole, e l'integrità verso `soggetti_ruoli`
+sopravvive per transitività). Bersaglio `emittenti_fiscali(soggetto_ruolo_id)`,
+che è `UNIQUE` — verificato — e quindi valido.
+
+⚠️ **Se esistono righe che puntano a un non-emittente, l'`ADD` fallisce al
+migrate.** Non è un effetto da evitare: è il modo giusto di scoprirle. Si
+correggono a mano. ⛔ E non è una condizione per applicare.
+
+#### ⛔ E poi il pgTAP di 5e ha ribaltato la conclusione: il guard c'era già
+
+Il test 6 di `test-registri-per-emittente-v1.sql` è stato scritto per
+verificare che il guard *mordesse dopo* l'automazione. È diventato verde
+**subito**, e con un messaggio che non avevo previsto:
+
+```
+'Disattivazione emittente fiscale non consentita:
+ mapping billing_account presente. Soggetto_ruolo_id 159'
+```
+
+⭐ Lo solleva `anagrafiche.trgfn_emittenti_fiscali_guard_attivo` — un guard
+**scritto a mano**, con codice dedicato `E_EMITTENTE_DISATTIVAZIONE_BLOCCATA`,
+che fa **esattamente** ciò che D-P6-1 chiede.
+
+⚠️ Il piano lo dava per mancante perché cercava la famiglia
+`prevent_deactivate_if_children` — e in quella famiglia davvero non c'è nulla.
+Cercava nel posto sbagliato. **5c non ha lavoro**, e l'automazione non serve.
+
+⭐ **`20260819-04` resta comunque**, ma riqualificato: non è più il prerequisito
+di 5c, è la chiusura del difetto che l'indagine ha trovato per strada — nessun
+vincolo impone che quel `soggetto_ruolo` sia un emittente. Sono due invarianti
+diversi: il guard esistente dice *«non puoi disattivare un emittente mappato»*,
+questa FK dice *«non puoi mappare qualcosa che non è un emittente»*.
+
+⚠️ Effetto da tenere d'occhio dopo l'apply: con la FK nuova l'automazione
+*potrebbe* generare un sedicesimo trigger, ridondante con quello a mano. Non è
+un danno — due guard che dicono la stessa cosa non si contraddicono — ma il
+messaggio visto dall'operatore potrebbe cambiare.
+
+#### La misura che serviva a B3 — fatta il 2026-08-19
+
+| Registri | `emittente` | `serie_default` |
+| --- | --- | --- |
+| Front-office · Back-office · NC | **tutti NULL** | R2 · R1 · (vuota) |
+
+| `tipi_doc_fiscale_registri` (4 righe, `serie` tutte NULL) |
+| --- |
+| FRONTOFFICE + FATTURA → Front-office · BACKOFFICE + FATTURA → Back-office |
+| FRONTOFFICE + NOTA_CREDITO → NC · BACKOFFICE + NOTA_CREDITO → NC |
+
+Emittenti attivi: **sr 72** (42 BA, è il default globale) e **sr 159**
+(EMI-TEST, 1 BA). ⭐ La segnalazione del BE era esatta su entrambi i punti.
+
+⭐ **La UNIQUE è su `(tipo_doc, natura, REGISTRO)`** — il registro è nella
+chiave, quindi la stessa coppia **può** mappare più registri: è ciò che rende
+possibile il disegno di 5d, e andava verificato prima di scriverlo.
+
+⚠️ **La `serie` sul mapping resta `NULL`**: significa «vale il `serie_default`
+del registro», e `fn_assign_numero_fattura` lo risolve già. Valorizzarla qui
+scriverebbe il default dentro `fatture.serie`.
+
+Nel changeSet **nessun id nudo**: i registri si risolvono per `codice`,
+l'emittente principale per il flag `is_default` (che è la definizione di
+D-P6-3), il secondo come l'unico altro attivo — ognuno con il suo guard, e i
+registri nuovi **clonati** dai vecchi perché `reset_policy` e `serie_default`
+arrivino dalla sorgente invece che da una ridigitazione.
+
 **B4 · 5e — pgTAP** → `test-registri-per-emittente-v1.sql`
 * ogni registro attivo ha un `emittente_soggetto_ruolo_id` valorizzato — è il
   presidio che impedisce di tornare indietro;
@@ -1579,6 +1672,57 @@ registro 3, che diventa suo, e la serie 1→6 continua senza salti.
   serie (C-4) non possono ripresentarsi;
 * ⭐ **il guard di D-P6-1 morde**: disattivare un emittente con billing account
   mappati fallisce. Su un emittente di prova, **non** su 72 o 159.
+
+---
+
+### ✅ Esito — 2026-08-19
+
+| Changeset | Cosa | Esito |
+| --- | --- | --- |
+| `20260819-02` | il gate della rinuncia si sveglia (+ codice 929) | ✅ `test-rinuncia-gate-accredito-v1` **8/8** |
+| `20260819-03` | 5b, la terza copia delega | ✅ coperto dal test 5e e dalle regressioni |
+| `20260819-04` | la colonna `emittente_*` diventa un emittente | ✅ applicata **senza righe orfane** |
+| `20260819-05` | 5d, intestazione + registri del secondo emittente | ✅ `test-registri-per-emittente-v1` **6/6** |
+
+**La configurazione risultante**, verificata:
+
+```text
+registro            serie  reset     emittente   clonato_da
+  3 Front-office      R2   ANNUALE      72
+  4 Back-office       R1   ANNUALE      72
+  5 NC              (vuota) ANNUALE     72
+1359 Front-office-159 R2   ANNUALE     159          3
+1360 Back-office-159  R1   ANNUALE     159          4
+1361 NC-159         (vuota) ANNUALE     159          5
+```
+
+8 mappature, quattro per emittente, specchio esatto. ⭐ `serie_default` e
+`reset_policy` sono arrivati dalla clonazione, non da una ridigitazione.
+
+⭐ **La FK di `20260819-04` è passata**, e questo è un dato: significa che
+**nessuna riga puntava a un non-emittente**. Il difetto era aperto ma non
+ancora sfruttato — la cosa migliore che potesse dire quel migrate.
+
+**Regressioni**: 12 suite fra le più esposte — `test-emittenti-fiscali`,
+`test-registri-progressivi`, `test-numera-fattura-opz-emessa`,
+`test-numerazione-guard-coerenza-v1`, `test-chiave-fattura-tre-specchi-v1`,
+`test-fn-accredita-riga-reso-v1`, `test-annulla-accredito-riga-reso-v1`,
+`test-accredito-kit-meta-v1`, `test-vw-resi-da-accreditare-contatore-v1`,
+`test-vw-partite-merce-v1`, `test-snapshot-intestazione-fattura-v1`,
+`test-rls-fatture-satelliti-functional` — **tutte PASS**. Era la verifica che
+5b esigeva: `fn_get_emittente_fiscale_id` sta sul percorso caldo della
+numerazione.
+
+### ⚠️ Due cose che restano vere dopo la chiusura
+
+* **Non esiste più un registro generico.** Un terzo emittente che comparisse
+  prenderebbe `E_CONFIG_MANCANTE` alla prima fattura. È fail-closed e va bene —
+  meglio un errore parlante che numerare sul registro di un'altra azienda — ma
+  da oggi «aggiungere un emittente» vuol dire anche tre registri e le loro
+  mappature.
+* 🔴 **FE-1**: la chiave i18n `vendite.resi.rinuncia_reason.accredito_eseguito`
+  in `frontend/src/locales/it.json` e `en.json`. Senza, l'operatore a cui il
+  gate nega la riapertura vede l'identificatore grezzo.
 
 ---
 
