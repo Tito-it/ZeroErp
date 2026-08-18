@@ -14,6 +14,7 @@
 --   4) * MOVIMENTO 2: si cambia l'emittente del PADRE   -> E_ALBERO_EMITTENTE_MISTO
 --        (il verso «verso i figli», quello che si dimentica)
 --   5) * MOVIMENTO 3: si CANCELLA il mapping del figlio -> E_ALBERO_EMITTENTE_MISTO
+--   8-9) * i DUE CANALI strutturati: CONSTRAINT = codice, COLUMN = campo (R-2)
 --        (ricade sul gestore globale, che e' un altro emittente)
 --   6) due alberi SEPARATI dello stesso soggetto        -> PASSA (§3.1, legittimo)
 --   7) il guard non e' cieco: vede un figlio FUORI dal perimetro di chi scrive
@@ -42,7 +43,7 @@ BEGIN;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(8);
+SELECT plan(10);
 
 -- ============================================================
 -- Fixture
@@ -230,6 +231,54 @@ SELECT ok(
         (SELECT ba_id FROM _t_ba WHERE etichetta = 'figlio'),
         (SELECT ba_id FROM _t_ba WHERE etichetta = 'padre2')),
     '7. il check vede l''emittente anche di un BA fuori perimetro (SECURITY DEFINER, §11.1)'
+);
+
+-- ============================================================
+-- 8-9) ⭐ I DUE CANALI STRUTTURATI — richiesta R-2 del perimetro BE
+--
+--   `script.fn_log_and_raise_error` manda al client due cose in canali
+--   separati: il CODICE di dominio in CONSTRAINT e il NOME DEL CAMPO da
+--   correggere in COLUMN. Il secondo lo legge da `p_context ->> 'campo'`.
+--
+--   ⚠️ I `throws_like` qui sopra NON coprono questa parte: verificano la
+--   FRASE. Sono rimasti verdi per tutto il tempo in cui il guard scriveva
+--   `'column'` invece di `'campo'` e il canale del campo usciva VUOTO —
+--   verde per sottrazione, sul difetto stesso.
+--
+--   L'unico modo di leggere i due canali e' catturare l'eccezione:
+--   `throws_ok` non espone COLUMN_NAME.
+-- ============================================================
+CREATE TEMP TABLE _t_diag AS
+SELECT * FROM (
+  SELECT NULL::text AS vincolo, NULL::text AS campo WHERE false
+) z;
+
+DO $diag$
+DECLARE v_cst text; v_col text;
+BEGIN
+    BEGIN
+        UPDATE anagrafiche.billing_account
+           SET parent_account_id = (SELECT ba_id FROM _t_ba WHERE etichetta = 'padre2')
+         WHERE id = (SELECT ba_id FROM _t_ba WHERE etichetta = 'figlio');
+        -- Se arriva qui il guard non ha sollevato: si registra il vuoto, e le
+        -- due asserzioni sotto falliscono dicendo cosa manca.
+        INSERT INTO _t_diag VALUES (NULL, NULL);
+    EXCEPTION WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS v_cst = CONSTRAINT_NAME, v_col = COLUMN_NAME;
+        INSERT INTO _t_diag VALUES (nullif(v_cst, ''), nullif(v_col, ''));
+    END;
+END $diag$;
+
+SELECT is(
+    (SELECT vincolo FROM _t_diag),
+    'E_ALBERO_EMITTENTE_MISTO',
+    '8. canale CONSTRAINT: il codice di dominio arriva strutturato, non solo nella frase'
+);
+
+SELECT is(
+    (SELECT campo FROM _t_diag),
+    'parent_account_id',
+    '9. * canale COLUMN: il CAMPO da correggere arriva al client (context ''campo'', non ''column'')'
 );
 
 -- ============================================================

@@ -30,7 +30,7 @@
 -- >> Eseguito su DB di sviluppo: vedi nota sessione.
 --
 -- Indice test (1..6) — visibilita' di una fattura nota sotto RLS attiva:
---   1. operatore, whitelist VUOTA            -> visibile (accesso globale)
+--   1. operatore, whitelist VUOTA            -> NON visibile (fail-closed, P-2a)
 --   2. operatore, whitelist = emittente fatt -> visibile
 --   3. operatore, whitelist = ALTRO emittente-> NON visibile
 --   4. ruolo non OPERATORE (gate fallisce)   -> NON visibile
@@ -133,7 +133,10 @@ ALTER TABLE vendite.fatture FORCE  ROW LEVEL SECURITY;
 
 CREATE TEMP TABLE _res (caso text, visibile boolean);
 
--- ---- Caso 1: whitelist VUOTA -> visibile ----
+-- ---- Caso 1: whitelist VUOTA -> NON visibile (fail-closed) ----
+-- 🔴 CAMBIATO il 2026-08-18 (changeSet 20260818-11/-12, passo 2 / P-2a).
+--    Gemello del caso 1 di test-rls-fatture-satelliti-functional: prima
+--    asseriva «whitelist vuota = accesso globale», cioe' il fail-OPEN.
 DO $c1$
 BEGIN
     IF NOT (SELECT prereq FROM _flags) THEN RETURN; END IF;
@@ -218,8 +221,8 @@ SELECT 'c7', EXISTS (SELECT 1 FROM vendite.fatture WHERE id = (SELECT fattura_id
 -- =========================================================
 -- Asserzioni (soft-skip se prereq mancante: NOT prereq -> pass)
 -- =========================================================
-SELECT ok((SELECT NOT prereq FROM _flags) OR      (SELECT visibile FROM _res WHERE caso='c1'),
-    '1. operatore whitelist vuota -> fattura visibile (accesso globale)');
+SELECT ok((SELECT NOT prereq FROM _flags) OR  NOT (SELECT visibile FROM _res WHERE caso='c1'),
+    '1. operatore whitelist vuota -> fattura NON visibile (fail-closed, P-2a)');
 SELECT ok((SELECT NOT prereq FROM _flags) OR      (SELECT visibile FROM _res WHERE caso='c2'),
     '2. operatore whitelist = emittente fattura -> visibile');
 SELECT ok((SELECT NOT prereq FROM _flags) OR  NOT (SELECT visibile FROM _res WHERE caso='c3'),

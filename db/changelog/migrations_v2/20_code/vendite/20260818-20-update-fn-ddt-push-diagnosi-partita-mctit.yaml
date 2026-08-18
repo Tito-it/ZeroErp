@@ -1,0 +1,375 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA DIAGNOSI TORNA A ESSERE LA FONTE UNICA — fn_ddt_push_diagnosi
+#   §23.2 di docs/it/dev/work-in-progress/brief-design-partita-merce-generalizzata.md
+#
+# ── IL DIFETTO, E NON E' «MANCA UN MOTIVO» ──────────────────────────────
+#
+#   Il §19.4 lo elencava come lacuna minore: «la diagnosi non conosce il
+#   motivo nuovo». Riqualificato il 2026-08-18: la diagnosi non ha una
+#   lacuna, e' **ferma a prima di S5**.
+#
+#       fn_list_ddt_da_pushare (dopo 20260817-10) │ fn_ddt_push_diagnosi (prima di qui)
+#       ──────────────────────────────────────────┼──────────────────────────────────────
+#       JOIN vw_partite_merce ON ddt_riga_id      │ LEFT JOIN vw_contatore_merce (riga d'ORDINE)
+#       ridistribuzione greedy TOLTA              │ SUM() OVER (PARTITION BY ord_riga …)
+#       caso speciale compositi TOLTO             │ NOT COALESCE(a_composito, false)
+#
+#   🔴 Sono **due implementazioni della regola che dosa la fatturazione**, e
+#   una delle due dichiara nel proprio COMMENT di essere «fonte unica … che
+#   riproduce i predicati del lister». Oggi quel commento dice il falso.
+#
+#   Non e' cosmesi: script.fn_available_actions_ddt consuma il min(rank) di
+#   QUESTA funzione per il ramo `reason`, quindi il drawer puo' spiegare la
+#   mancata spinta con una regola diversa da quella che l'ha decisa.
+#
+# ── ⭐ LA SORGENTE DEI MOTIVI NUOVI ESISTE GIA': `vw_partite_merce.stato` ─
+#
+#   Il lister esclude con UN predicato — `pm.differenza IS NOT NULL` — che ha
+#   TRE cause. E la decomposizione di quelle tre cause **e' gia' calcolata**,
+#   nella colonna `stato` della partita:
+#
+#       differenza IS NULL  ⟺  NOT (conta_fatturazione AND misurabile AND NOT e_riconsegna)
+#
+#       stato = 'RICONSEGNA'       ← e_riconsegna       (merce gia' contata sull'origine)
+#       stato = 'NON_FATTURABILE'  ← NOT conta_fatturazione
+#       stato = 'NON_MISURABILE'   ← NOT misurabile     ← il motivo che il §19.4 chiedeva
+#
+#   ⭐ Quindi qui **non si ri-deriva niente**: si legge `pm.stato`. Se avessi
+#   ricostruito le tre condizioni con dei predicati miei, avrei creato la
+#   terza sede della stessa regola mentre ne stavo chiudendo la seconda.
+#
+# ── ⚠️ LE RANK SI RINUMERANO, E SI PUO' FARE ────────────────────────────
+#
+#   I motivi della partita devono stare PRIMA di DDT_CONTATORE, altrimenti
+#   sono invisibili: una partita senza conto ha `differenza NULL`, quindi
+#   `quantita_push = 0`, quindi CONTATORE scatterebbe per primo mascherando
+#   la ragione vera. E' esattamente il difetto di oggi.
+#
+#   Verificato che si puo': `fn_available_actions_ddt` fa
+#   `ORDER BY g.motivo_rank LIMIT 1` e poi mappa **per stringa** (`CASE
+#   v_push_reason WHEN 'DDT_…'`). Il numero decide solo la precedenza, non
+#   l'etichetta — quindi rinumerare non rompe il consumatore.
+#   ⭐ E quel CASE ha un `ELSE 'DDT_NON_PUSHABILE'`: i motivi nuovi cadono da
+#   soli nel generico, senza chiave i18n mancante. Dare a NON_MISURABILE un
+#   ramo proprio e' un miglioramento SEPARATO (20260818-21), non un
+#   prerequisito.
+#
+#       1  DDT_ANNULLATO / DDT_RESO      documento morto
+#       2  DDT_SOLO_TRASPORTO            causale non fatturabile o ASSENTE
+#       3  DDT_SENZA_BA
+#       4  DDT_ROUTED                    gia' instradata
+#       5  DDT_MERCE_IN_VIAGGIO
+#       6  DDT_FATTURA_DA_ORDINE         cintura XOR
+#       7  DDT_RICONSEGNA          🆕    la partita non ha un conto proprio
+#       8  DDT_NON_FATTURABILE     🆕
+#       9  DDT_NON_MISURABILE      🆕    ← il motivo del §19.4
+#      10  DDT_SENZA_PARTITA       🆕    fallback: nessuna partita affatto
+#      11  DDT_CONTATORE                 c'e' un conto, ed e' <= 0
+#
+# ── ⚠️ DUE DIVERGENZE MINORI CHIUSE INSIEME ─────────────────────────────
+#
+#   1. **La causale ASSENTE.** Il lister fa `JOIN causali_trasporto … AND
+#      caus.fatturabile IS TRUE`: un INNER JOIN, quindi una causale NULL
+#      esclude la riga. La diagnosi vecchia la trattava come MERCE_IN_VIAGGIO
+#      in un ramo e la lasciava passare nell'altro (standalone SPEDITO senza
+#      causale usciva ELEGGIBILE mentre il lister la escludeva). Ora il
+#      predicato e' `caus.fatturabile IS NOT TRUE`, che copre entrambe.
+#      ⚠️ In pratica non morde — la causale e' obbligatoria all'emissione e
+#      una bozza non ha partita — ma «in pratica non morde» e' esattamente
+#      cio' che si scrive prima di scoprire il contrario.
+#
+#   2. **Il billing account.** Il lister fa `JOIN anagrafiche.billing_account`
+#      INNER: qui resta un LEFT JOIN piu' il rank 3, perche' la diagnosi deve
+#      SPIEGARE l'esclusione, non ripeterla.
+#
+# ── LA REGOLA CHE GOVERNA QUESTO FILE ───────────────────────────────────
+#
+#   ⛔ Ogni riga che il lister NON restituisce deve avere qui un motivo NON
+#   NULL, e viceversa. Il fallback DDT_SENZA_PARTITA esiste per questo: senza,
+#   una riga esclusa da un join che non ho previsto uscirebbe con motivo NULL,
+#   cioe' «eleggibile», che e' la bugia peggiore possibile per questa funzione.
+#
+# ⚠️ L'equivalenza a pgTAP (test 1 di test-fn-available-actions-ddt-reason-
+#   catch-all-v1) va spostata DOPO le fixture nello stesso giro: oggi gira
+#   prima che esistano e confronta solo i dati vivi.
+#
+# ── TIPI ANCORATI (§ linee-guida-sql, «Tipi ancorati con %TYPE») ────────
+#
+#   Firma, RETURNS TABLE e COMMENT usano `tabella.colonna%TYPE`. La 20260719-15
+#   li aveva plain: qui si allinea alla convenzione, non si cambia niente.
+#   ⚠️ Verificato che RISOLVANO agli stessi tipi di adesso — `vendite.ddt.id` e
+#   `vendite.ddt_righe.id` sono entrambe `bigint`. Non e' pedanteria: una
+#   `CREATE OR REPLACE FUNCTION` **non puo' cambiare il tipo di ritorno**, quindi
+#   un %TYPE che risolvesse diverso farebbe fallire l'applicazione.
+#   ⚠️ `motivo_rank` e `motivo` restano espliciti: sono valori CALCOLATI (una
+#   precedenza e un vocabolario), non la proiezione di una colonna — non esiste
+#   niente a cui ancorarli, e inventare un'ancora sarebbe peggio del tipo nudo.
+#
+# CREATE OR REPLACE: la firma risolve agli stessi tipi e le 4 colonne di ritorno
+#   non cambiano, quindi non serve DROP e non si crea un overload.
+#   LANGUAGE sql STABLE come prima, nessun SECURITY DEFINER.
+#
+# Dipendenze: vendite.vw_partite_merce (20260817-14),
+#   vendite.fn_list_ddt_da_pushare (20260817-10), script.fn_get_stato_push_segment.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260818-20-update-fn-ddt-push-diagnosi-partita-mctit.yaml
+
+  - changeSet:
+      id: 20260818-20-update-fn-ddt-push-diagnosi-partita
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        fn_ddt_push_diagnosi riallineata alla partita di merce: era ferma a
+        prima di S5 (contatore per riga d'ordine, ridistribuzione greedy, caso
+        speciale compositi) mentre il lister dosa sulla partita per riga di DDT.
+        Erano due implementazioni della regola che dosa la fatturazione, e una
+        si dichiarava fonte unica. I tre motivi nuovi si LEGGONO da
+        vw_partite_merce.stato, che e' gia' la decomposizione di
+        «differenza IS NULL»: nessuna terza sede.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: vw_partite_merce
+                columnName: e_riconsegna
+            - columnExists:
+                schemaName: vendite
+                tableName: vw_partite_merce
+                columnName: stato
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_ddt_push_diagnosi(
+                       p_ddt_id vendite.ddt.id%TYPE DEFAULT NULL)
+               -- ⚠️ `motivo_rank` e `motivo` restano tipi espliciti: sono
+               -- CALCOLATI (una precedenza e un vocabolario), non la
+               -- proiezione di una colonna, quindi non c'e' niente a cui
+               -- ancorarli. Le due chiavi invece sono ancorate.
+               RETURNS TABLE(ddt_id        vendite.ddt.id%TYPE,
+                             riga_id       vendite.ddt_righe.id%TYPE,
+                             motivo_rank   integer,
+                             motivo        text)
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                -- Scopo: per ogni riga DDT, IL motivo per cui non e' inviabile
+                --   a commessa (NULL = eleggibile). Fonte unica dei predicati
+                --   del lister vendite.fn_list_ddt_da_pushare (equivalenza
+                --   blindata a pgTAP). p_ddt_id NULL = tutte le righe.
+                -- rev 2026-08-18: riallineata alla PARTITA (§23.2 del brief
+                --   partita generalizzata). Prima leggeva vw_contatore_merce
+                --   per riga d'ordine e rifaceva la ridistribuzione greedy che
+                --   S5 aveva tolto dal lister: erano due implementazioni della
+                --   stessa regola.
+                WITH cand AS (
+                  -- ⚠️ Gli INNER JOIN del lister diventano LEFT JOIN qui: la
+                  -- diagnosi deve SPIEGARE l'esclusione, non ripeterla. Ogni
+                  -- join che il lister usa per escludere ha sotto una rank.
+                  SELECT
+                    d.id   AS d_id,
+                    dr.id  AS dr_id,
+                    COALESCE(d.billing_account_id, src.src_billing_account_id) AS ba_id,
+                    sdd.codice_interno AS sdd_cod,
+                    sdd.ordine         AS sdd_ord,
+                    sdd.is_abortito    AS sdd_abort,
+                    caus.fatturabile   AS caus_fatt,
+                    dr.quantita        AS dr_quantita,
+                    src.src_fatturazione_trigger AS trg,
+                    sdd_trg.ordine     AS trg_ord,
+                    -- ⭐ LA PARTITA, per riga di DDT. `stato` e' gia' la
+                    -- decomposizione di «differenza IS NULL» nelle sue tre
+                    -- cause: si legge, non si ri-deriva.
+                    pm.ddt_riga_id     AS pm_presente,
+                    pm.stato           AS pm_stato,
+                    pm.differenza      AS pm_diff,
+                    script.fn_get_stato_push_segment(
+                      'DDT:'||d.uid::text||':R:'||dr.id::text) AS segment
+                  FROM vendite.ddt d
+                  JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
+                  JOIN vendite.ddt_righe dr ON dr.ddt_id = d.id AND dr.attivo IS TRUE
+                  LEFT JOIN config.causali_trasporto caus ON caus.id = d.causale_trasporto_id
+                  LEFT JOIN vendite.vw_partite_merce pm ON pm.ddt_riga_id = dr.id
+                  LEFT JOIN LATERAL (
+                    SELECT o.billing_account_id   AS src_billing_account_id,
+                           o.fatturazione_trigger AS src_fatturazione_trigger
+                    FROM vendite.ordini_righe_fulfillment ful
+                    JOIN vendite.ordini_righe orr ON orr.id = ful.ordine_riga_id
+                    JOIN vendite.ordini o        ON o.id = orr.ordine_id
+                    WHERE ful.ddt_riga_id = dr.id ORDER BY ful.id LIMIT 1
+                  ) src ON TRUE
+                  LEFT JOIN config.stati_doc_ddt sdd_trg
+                    ON sdd_trg.codice_interno = src.src_fatturazione_trigger
+                  WHERE (p_ddt_id IS NULL OR d.id = p_ddt_id)
+                ),
+                diag AS (
+                  -- IL motivo, per precedenza. Le rank 7..10 stanno PRIMA di
+                  -- DDT_CONTATORE apposta: una partita senza conto ha
+                  -- differenza NULL, quindi quantita 0 — e il contatore
+                  -- scatterebbe per primo mascherando la ragione vera.
+                  SELECT c.*,
+                    (SELECT r.rank FROM (VALUES
+                      (1,  c.sdd_abort),                                  -- ANNULLATO
+                      (1,  c.sdd_cod = 'RESO'),                           -- RESO
+                      -- ⚠️ `IS NOT TRUE` e non `IS FALSE`: il lister fa un
+                      -- INNER JOIN con `fatturabile IS TRUE`, quindi la
+                      -- causale ASSENTE esclude quanto quella non fatturabile.
+                      (2,  c.caus_fatt IS NOT TRUE),
+                      (3,  c.ba_id IS NULL),
+                      (4,  c.segment <> 'LIBERA'),
+                      (5,  c.trg IS NOT NULL AND c.trg <> 'CONFERMATO'
+                           AND (c.trg_ord IS NULL OR c.sdd_ord < c.trg_ord)),
+                      (5,  c.trg IS NULL
+                           AND c.sdd_cod NOT IN ('SPEDITO','CONSEGNATO')),
+                      (6,  c.trg = 'CONFERMATO'),
+                      -- 🆕 I tre motivi che il lister riassume in
+                      -- `pm.differenza IS NOT NULL`, letti dalla partita.
+                      (7,  c.pm_stato = 'RICONSEGNA'),
+                      (8,  c.pm_stato = 'NON_FATTURABILE'),
+                      (9,  c.pm_stato = 'NON_MISURABILE'),
+                      -- 🆕 Fallback: nessuna partita affatto (DDT sotto
+                      -- EMESSO, decisione D1). Esiste perche' una riga esclusa
+                      -- dal lister NON deve mai uscire di qui con motivo NULL:
+                      -- «eleggibile» e' la bugia peggiore per questa funzione.
+                      (10, c.pm_presente IS NULL),
+                      -- C'e' un conto, ed e' <= 0: tutto gia' fatturato.
+                      (11, GREATEST(0::numeric,
+                             LEAST(c.dr_quantita, COALESCE(c.pm_diff, 0))) <= 0)
+                    ) AS r(rank, hit) WHERE r.hit ORDER BY r.rank LIMIT 1) AS mrank
+                  FROM cand c
+                )
+                SELECT d_id, dr_id, mrank,
+                       CASE mrank
+                         WHEN 1  THEN CASE WHEN sdd_cod = 'RESO' THEN 'DDT_RESO' ELSE 'DDT_ANNULLATO' END
+                         WHEN 2  THEN 'DDT_SOLO_TRASPORTO'
+                         WHEN 3  THEN 'DDT_SENZA_BA'
+                         WHEN 4  THEN 'DDT_ROUTED'
+                         WHEN 5  THEN 'DDT_MERCE_IN_VIAGGIO'
+                         WHEN 6  THEN 'DDT_FATTURA_DA_ORDINE'
+                         WHEN 7  THEN 'DDT_RICONSEGNA'
+                         WHEN 8  THEN 'DDT_NON_FATTURABILE'
+                         WHEN 9  THEN 'DDT_NON_MISURABILE'
+                         WHEN 10 THEN 'DDT_SENZA_PARTITA'
+                         WHEN 11 THEN 'DDT_CONTATORE'
+                       END
+                  FROM diag
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_ddt_push_diagnosi(vendite.ddt.id%TYPE)
+              IS 'Fonte unica: per riga DDT, IL motivo di esclusione dalla push a commessa (NULL = eleggibile). Riproduce i predicati di vendite.fn_list_ddt_da_pushare in un unico posto (equivalenza righe-NULL == output lister, blindata da pgTAP). motivo_rank = precedenza: 1 ANNULLATO/RESO, 2 SOLO_TRASPORTO (causale non fatturabile O ASSENTE — il lister fa un INNER JOIN con fatturabile IS TRUE), 3 SENZA_BA, 4 ROUTED, 5 MERCE_IN_VIAGGIO, 6 FATTURA_DA_ORDINE, 7 RICONSEGNA, 8 NON_FATTURABILE, 9 NON_MISURABILE, 10 SENZA_PARTITA, 11 CONTATORE. La capability script.fn_available_actions_ddt consuma il min(rank) per il ramo reason e mappa per STRINGA, non per numero: rinumerare non la rompe, e il suo CASE ha un ELSE che fa cadere i motivi nuovi nel generico. rev 2026-08-18 (§23.2 brief-design-partita-merce-generalizzata): RIALLINEATA ALLA PARTITA. Prima leggeva vw_contatore_merce per riga d''ORDINE e rifaceva la ridistribuzione greedy + il caso speciale sui compositi che S5 (20260817-10) aveva tolto dal lister: erano DUE implementazioni della regola che dosa la fatturazione, e questa si dichiarava fonte unica di entrambe. I tre motivi 7/8/9 non ri-derivano niente: si leggono da vw_partite_merce.stato, che E'' gia'' la decomposizione di «differenza IS NULL» (e_riconsegna | NOT conta_fatturazione | NOT misurabile). Il 10 e'' un fallback deliberato: una riga esclusa dal lister non deve MAI uscire con motivo NULL. Brief: brief-db-ddt-reason-push-catch-all §3 (Decisione A) + brief-design-partita-merce-generalizzata §23.2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristino della definizione precedente (20260719-15): dosaggio
+              -- dal contatore per riga d'ordine, ridistribuzione greedy, caso
+              -- speciale compositi, 7 cause. ⚠️ Ripristina anche la divergenza
+              -- dal lister post-S5: e' il punto del rollback.
+              CREATE OR REPLACE FUNCTION vendite.fn_ddt_push_diagnosi(
+                       p_ddt_id vendite.ddt.id%TYPE DEFAULT NULL)
+               -- ⚠️ `motivo_rank` e `motivo` restano tipi espliciti: sono
+               -- CALCOLATI (una precedenza e un vocabolario), non la
+               -- proiezione di una colonna, quindi non c'e' niente a cui
+               -- ancorarli. Le due chiavi invece sono ancorate.
+               RETURNS TABLE(ddt_id        vendite.ddt.id%TYPE,
+                             riga_id       vendite.ddt_righe.id%TYPE,
+                             motivo_rank   integer,
+                             motivo        text)
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                WITH cand AS (
+                  SELECT
+                    d.id AS d_id, d.uid AS d_uid, dr.id AS dr_id,
+                    COALESCE(d.billing_account_id, src.src_billing_account_id) AS ba_id,
+                    sdd.codice_interno AS sdd_cod, sdd.ordine AS sdd_ord,
+                    sdd.is_abortito AS sdd_abort,
+                    caus.fatturabile AS caus_fatt,
+                    dr.quantita AS dr_quantita, a.is_composito AS a_composito,
+                    src.src_fatturazione_trigger AS trg,
+                    src.src_ordine_riga_id AS ord_riga,
+                    sdd_trg.ordine AS trg_ord,
+                    ct.differenza AS partita_diff,
+                    script.fn_get_stato_push_segment(
+                      'DDT:'||d.uid::text||':R:'||dr.id::text) AS segment
+                  FROM vendite.ddt d
+                  JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
+                  JOIN vendite.ddt_righe dr ON dr.ddt_id = d.id AND dr.attivo IS TRUE
+                  JOIN catalogo.articoli a ON a.id = dr.articolo_id
+                  LEFT JOIN config.causali_trasporto caus ON caus.id = d.causale_trasporto_id
+                  LEFT JOIN LATERAL (
+                    SELECT o.billing_account_id   AS src_billing_account_id,
+                           o.fatturazione_trigger AS src_fatturazione_trigger,
+                           orr.id                 AS src_ordine_riga_id
+                    FROM vendite.ordini_righe_fulfillment ful
+                    JOIN vendite.ordini_righe orr ON orr.id = ful.ordine_riga_id
+                    JOIN vendite.ordini o        ON o.id = orr.ordine_id
+                    WHERE ful.ddt_riga_id = dr.id ORDER BY ful.id LIMIT 1
+                  ) src ON TRUE
+                  LEFT JOIN config.stati_doc_ddt sdd_trg
+                    ON sdd_trg.codice_interno = src.src_fatturazione_trigger
+                  LEFT JOIN vendite.vw_contatore_merce ct
+                    ON ct.ordine_riga_id = src.src_ordine_riga_id
+                  WHERE (p_ddt_id IS NULL OR d.id = p_ddt_id)
+                ),
+                pre AS (
+                  SELECT c.*,
+                    (SELECT r.rank FROM (VALUES
+                      (1, c.sdd_abort),
+                      (1, c.sdd_cod = 'RESO'),
+                      (2, c.caus_fatt IS FALSE),
+                      (3, c.ba_id IS NULL),
+                      (4, c.segment <> 'LIBERA'),
+                      (5, c.trg IS NOT NULL AND c.trg <> 'CONFERMATO'
+                          AND (c.trg_ord IS NULL OR c.sdd_ord < c.trg_ord)),
+                      (5, c.trg IS NULL
+                          AND c.sdd_cod NOT IN ('SPEDITO','CONSEGNATO')),
+                      (5, c.caus_fatt IS NULL AND c.trg IS NOT NULL
+                          AND c.trg <> 'CONFERMATO'),
+                      (6, c.trg = 'CONFERMATO')
+                    ) AS r(rank, hit) WHERE r.hit ORDER BY r.rank LIMIT 1) AS pre_rank
+                  FROM cand c
+                ),
+                dist AS (
+                  SELECT p.*,
+                    CASE WHEN p.ord_riga IS NOT NULL AND NOT COALESCE(p.a_composito, false)
+                      THEN GREATEST(0::numeric, LEAST(p.dr_quantita,
+                             COALESCE(p.partita_diff, 0)
+                             - COALESCE(SUM(p.dr_quantita) OVER (
+                                 PARTITION BY p.ord_riga ORDER BY p.d_id, p.dr_id
+                                 ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0)))
+                      ELSE p.dr_quantita END AS quantita_push
+                  FROM pre p
+                  WHERE p.pre_rank IS NULL
+                )
+                SELECT d_id, dr_id, pre_rank,
+                       CASE pre_rank
+                         WHEN 1 THEN CASE WHEN sdd_cod = 'RESO' THEN 'DDT_RESO' ELSE 'DDT_ANNULLATO' END
+                         WHEN 2 THEN 'DDT_SOLO_TRASPORTO'
+                         WHEN 3 THEN 'DDT_SENZA_BA'
+                         WHEN 4 THEN 'DDT_ROUTED'
+                         WHEN 5 THEN 'DDT_MERCE_IN_VIAGGIO'
+                         WHEN 6 THEN 'DDT_FATTURA_DA_ORDINE'
+                       END
+                  FROM pre WHERE pre_rank IS NOT NULL
+                UNION ALL
+                SELECT d_id, dr_id,
+                       CASE WHEN ord_riga IS NOT NULL AND quantita_push <= 0 THEN 7 END,
+                       CASE WHEN ord_riga IS NOT NULL AND quantita_push <= 0 THEN 'DDT_CONTATORE' END
+                  FROM dist
+              $function$;

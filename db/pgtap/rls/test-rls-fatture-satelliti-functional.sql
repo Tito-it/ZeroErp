@@ -66,7 +66,7 @@
 -- espone i dati di un altro cliente.
 -- ------------------------------------------------------------
 -- Indice test (1..12):
---   1   righe: operatore whitelist VUOTA          -> visibili (accesso globale)
+--   1   righe: operatore whitelist VUOTA          -> NON visibili (fail-closed, P-2a)
 --   2   righe: whitelist = emittente fattura      -> visibili
 --   3   righe: whitelist = ALTRO emittente        -> NON visibili
 --   4   righe: ruolo non OPERATORE                -> NON visibili (gate)
@@ -240,7 +240,15 @@ BEGIN
 END
 $sp$;
 
--- ---- Caso 1: whitelist VUOTA -> righe visibili (accesso globale) ----
+-- ---- Caso 1: whitelist VUOTA -> righe NON visibili (fail-closed) ----
+-- 🔴 CAMBIATO il 2026-08-18 (changeSet 20260818-11/-12, passo 2 / P-2a del
+--    cantiere «perimetro emittente»). Prima questo caso asseriva l'opposto —
+--    «whitelist vuota = accesso globale» — che era il fail-OPEN: un operatore
+--    configurato a meta' vedeva TUTTI gli emittenti, e non lo sapeva ne' lui
+--    ne' nessun altro. P-2a lo ha chiuso: nessuna riga = nessun emittente.
+-- ⚠️ Il test non e' stato «riparato»: e' stato riallineato a una decisione.
+--    Se un giorno tornasse a passare col vecchio significato, il fail-open e'
+--    rientrato.
 DO $c1$
 BEGIN
     IF NOT (SELECT prereq FROM _flags) THEN RETURN; END IF;
@@ -352,8 +360,8 @@ SELECT 'c11', EXISTS (
 -- =========================================================
 -- Asserzioni (soft-skip: NOT prereq -> pass banale)
 -- =========================================================
-SELECT ok((SELECT NOT prereq FROM _flags) OR     (SELECT visibile FROM _res WHERE caso='c1'),
-    '1. righe: operatore whitelist vuota -> visibili (accesso globale)');
+SELECT ok((SELECT NOT prereq FROM _flags) OR NOT (SELECT visibile FROM _res WHERE caso='c1'),
+    '1. righe: operatore whitelist vuota -> NON visibili (fail-closed, P-2a)');
 SELECT ok((SELECT NOT prereq FROM _flags) OR     (SELECT visibile FROM _res WHERE caso='c2'),
     '2. righe: whitelist = emittente fattura -> visibili');
 SELECT ok((SELECT NOT prereq FROM _flags) OR NOT (SELECT visibile FROM _res WHERE caso='c3'),

@@ -1706,6 +1706,37 @@ sanato lo stesso giorno (sopra), quindi il passo non è più bloccato.
 
 ✅ **Dopo l'applicazione: 8 su 8 verdi.**
 
+### 🔴 I test ESISTENTI che P-2a rompe — la casella che mancava
+
+⚠️ **Questa lista non c'era, e si è visto.** Il 2026-08-18
+`test-rls-fatture-satelliti-functional` è arrivato rosso al collaudo, e la
+diagnosi iniziale è stata «regressione». Non lo era: il suo caso 1 asseriva
+*«whitelist vuota → visibili (accesso globale)»*, cioè **esattamente il
+fail-open che P-2a toglie**. Il test era vecchio, non il codice rotto.
+
+⭐ **Un cambio restrittivo va preceduto dal grep dei pgTAP che codificano il
+comportamento vecchio**, e l'elenco va scritto QUI prima di applicare — non
+ricostruito dopo, un rosso alla volta, sperando che l'ultimo sia l'ultimo.
+
+| File | Cosa asseriva | Stato |
+| --- | --- | --- |
+| `script/test-fn-scope-ef-whitelist.sql` | semantica della whitelist | ✅ aggiornato con P-2a |
+| `script/test-permessi-fn-check-emittente-scope.sql` | idem | ✅ aggiornato con P-2a |
+| `script/test-permessi-funzioni-risoluzione.sql` | idem | ✅ aggiornato con P-2a |
+| `rls/test-rls-fatture-satelliti-functional.sql` | caso 1: vuota → **visibili** | ✅ corretto il 2026-08-18 (era sfuggito) |
+| `rls/test-rls-fatture-ef-whitelist-functional.sql` | caso 1: vuota → **visibile** | ✅ corretto il 2026-08-18 (**non era ancora stato eseguito**) |
+
+🔴 **Il secondo non era ancora stato lanciato.** Aveva l'asserzione identica al
+primo (riga 222) più il commento di testata che dichiarava la vecchia
+semantica: sarebbe uscito rosso al primo giro, con la stessa diagnosi sbagliata.
+La differenza fra i tre `script/` aggiornati e i due `rls/` dimenticati è solo
+la cartella — il grep li avrebbe presi tutti e cinque.
+
+⚠️ **Cautela sul verde di questi due**: entrambi hanno un soft-skip
+(`(SELECT NOT prereq FROM _flags) OR …`). Con il `prereq` falso le asserzioni
+passano **banalmente**, quindi vanno guardate misurando, non solo contando gli
+ok — o si conferma la correzione per sottrazione.
+
 ⭐ **La misura PRIMA di applicare, che è quella che vale** (tenuta qui perché è
 la prova che il test misurava il difetto e non se stesso): a changeSet non
 applicati **4 asserzioni su 8 fallivano, ed erano esattamente le quattro della
