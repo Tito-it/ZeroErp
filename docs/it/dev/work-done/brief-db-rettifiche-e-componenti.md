@@ -1,5 +1,26 @@
 # Brief Team DB — Funzioni rettifiche listino e lookup componenti utility
 
+> ✅ **CHIUSO E ARCHIVIATO il 2026-08-18.** Non è più una richiesta aperta: è il
+> verbale di tre richieste di febbraio, una coperta altrimenti e due rimandate
+> per decisione scritta.
+>
+> | Richiesta | Esito verificato al 2026-08-18 |
+> | --- | --- |
+> | `fn_apply_rettifica` | ⚠️ **il bisogno è coperto, la forma no**: non esiste alcuna funzione DB con questo nome. Il riallineamento prezzo vive come `fn_riallinea_prezzo` **in Python**, con endpoint `commesse/<id>/attivita/<id>/riallinea-prezzo/` (Listini v3, 12-04-2026) |
+> | `fn_list_righe_da_riallineare` | ⚠️ **idem**: non esiste. `prezzo_da_riallineare` si legge da `commesse_repository.py` |
+> | `fn_list_componenti_consumo` | ⛔ **rimandata per decisione di Tid (2026-06-16)**, e la decisione vive nel codice: *«RIMANDATO, NON si fa ora: serve un modello/brief DB dedicato, da avviare solo quando la fatturazione utility per-voce sarà priorità»* (`commesse_source_handlers.py`, `HandlerConsumi`). `_fetch_componenti` resta uno stub **per progetto** |
+>
+> ⚠️ **Se un domani serviranno davvero due funzioni DB per il riallineamento**,
+> il posto da cui ripartire non è questo file: è
+> [sviluppo-rettifiche.md](../work-in-progress/sviluppo-rettifiche.md), che
+> descrive il cantiere **rettifiche di prezzo retroattive** ed è ancora aperto.
+>
+> ⚠️ **Da non confondere con le note di credito.** «Rettifica» qui significa
+> *correzione di prezzo*; la correzione di **merce** (reso già fatturato →
+> accredito) è un dominio diverso, e il suo documento è
+> [brief-design-note-credito-resi.md](../work-in-progress/brief-design-note-credito-resi.md).
+
+
 **Data:** 27-02-2026
 **Riferimento:** gestione-commesse-v2.md §25.5 (FASE 4.5) e §25.2.2 (#9)
 **Priorità:** alta (rettifiche = gap funzionale aperto, componenti = fan-out consumi)

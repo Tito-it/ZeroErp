@@ -72,4 +72,26 @@ I due filtri lavorano su assi diversi e servono entrambi.
 > ambiguo, e ogni chiamata che omette `p_gruppi` fallirebbe con *function is not
 > unique*.
 
+
+---
+
+### 🔄 rev 2026-08-18 — propaga anche natura e riga rettificata
+
+Brief: `brief-design-note-credito-resi` (slice **N1b** e **N5**).
+
+Due colonne in più nella propagazione 1:1 da `commesse_attivita` ad
+`attivita_fatturabili`, sullo stesso modello di `tipo_movimento`:
+
+* `natura_doc_id`
+* `fattura_riga_rettificata_id`
+
+⭐ **La natura deve arrivare fino alla TESTATA** — è lì che il builder XML della
+FatturaPA chiederà se sta trasmettendo un TD01 o un TD04. Fermarla qui avrebbe
+lasciato la chiave documento senza nulla da separare, e **fatture e note di
+credito sarebbero finite sulla stessa testata**.
+
+Firma e `RETURNS TABLE` invariati: `CREATE OR REPLACE` è bastato.
+
+---
+
 {% include-markdown "signature-core.md" %}

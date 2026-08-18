@@ -84,6 +84,23 @@ SELECT ok(
 -- 1. config.user_override_aree
 -- ============================================================
 
+-- 🔴 PULIZIA D'INGRESSO, aggiunta il 2026-08-18.
+--   La fixture prende «il primo auth_user attivo» e «l'area vendite», e ci
+--   inserisce un override. Ma quella coppia in sviluppo ESISTE GIA' come dato
+--   vero: l'INSERT violava `uq_user_override_aree_user_area` e il file moriva
+--   qui — 3 asserzioni eseguite su 18, le altre 15 mai viste.
+--
+--   ⚠️ La fixture non sceglieva una riga libera: sceglieva la PRIMA, e sperava.
+--   Finche' nessuno aveva un override su vendite ha funzionato per caso.
+--
+--   ⭐ Si toglie di mezzo la riga vera invece di cercare un utente «libero»:
+--   cercare il libero rende il test dipendente da quanti utenti configurati ci
+--   sono, che e' la stessa fragilita' spostata di un passo. Il file e'
+--   TRANSAZIONALE (BEGIN in testa, ROLLBACK in coda): l'override vero torna.
+DELETE FROM config.user_override_aree
+ WHERE auth_user_id = (SELECT user_id FROM tmp_refs_uo)
+   AND area_id      = (SELECT area_vendite_id FROM tmp_refs_uo);
+
 CREATE TEMP TABLE tmp_uoa_ins AS
 WITH ins AS (
     INSERT INTO config.user_override_aree
@@ -108,6 +125,15 @@ SELECT is(
 );
 
 -- UQ (auth_user_id, area_id)
+-- 🔴 SQLSTATE AGGIORNATO il 2026-08-18: 23514 -> 22000.
+--   Queste tre asserzioni aspettavano una CHECK violation. Dalla migrazione a
+--   `daterange` nativo (2026-04-12, 18 tabelle) la validita' non e' piu' due
+--   colonne con un CHECK sopra: e' un RANGE, e un intervallo rovesciato lo
+--   rifiuta il COSTRUTTORE DEL TIPO — `22000`, prima che qualunque CHECK possa
+--   guardarlo.
+--   ⭐ La garanzia non si e' indebolita, si e' spostata piu' in basso: dal
+--   vincolo di tabella al tipo della colonna. L'etichetta ora dice questo,
+--   perche' «CHECK» mandava a cercare un vincolo che non c'e' piu'.
 SELECT throws_ok(
     format(
         $$INSERT INTO config.user_override_aree
@@ -131,9 +157,9 @@ SELECT throws_ok(
         (SELECT user_id FROM tmp_refs_uo),
         (SELECT area_acquisti_id FROM tmp_refs_uo)
     ),
-    '23514',
+    '22000',
     NULL,
-    'user_override_aree: CHECK valido_dal <= valido_al'
+    'user_override_aree: validita rovesciata rifiutata dal TIPO range (22000)'
 );
 
 -- ============================================================
@@ -158,6 +184,15 @@ SELECT ok(
 );
 
 -- UQ (auth_user_id, app_label, model_name)
+-- 🔴 SQLSTATE AGGIORNATO il 2026-08-18: 23514 -> 22000.
+--   Queste tre asserzioni aspettavano una CHECK violation. Dalla migrazione a
+--   `daterange` nativo (2026-04-12, 18 tabelle) la validita' non e' piu' due
+--   colonne con un CHECK sopra: e' un RANGE, e un intervallo rovesciato lo
+--   rifiuta il COSTRUTTORE DEL TIPO — `22000`, prima che qualunque CHECK possa
+--   guardarlo.
+--   ⭐ La garanzia non si e' indebolita, si e' spostata piu' in basso: dal
+--   vincolo di tabella al tipo della colonna. L'etichetta ora dice questo,
+--   perche' «CHECK» mandava a cercare un vincolo che non c'e' piu'.
 SELECT throws_ok(
     format(
         $$INSERT INTO config.user_override_oggetti
@@ -180,9 +215,9 @@ SELECT throws_ok(
                   '2026-03-01'::date, '2026-02-01'::date)$$,
         (SELECT user_id FROM tmp_refs_uo)
     ),
-    '23514',
+    '22000',
     NULL,
-    'user_override_oggetti: CHECK valido_dal <= valido_al'
+    'user_override_oggetti: validita rovesciata rifiutata dal TIPO range (22000)'
 );
 
 -- ============================================================
@@ -212,6 +247,15 @@ SELECT is(
 );
 
 -- UQ (auth_user_id, azione_id)
+-- 🔴 SQLSTATE AGGIORNATO il 2026-08-18: 23514 -> 22000.
+--   Queste tre asserzioni aspettavano una CHECK violation. Dalla migrazione a
+--   `daterange` nativo (2026-04-12, 18 tabelle) la validita' non e' piu' due
+--   colonne con un CHECK sopra: e' un RANGE, e un intervallo rovesciato lo
+--   rifiuta il COSTRUTTORE DEL TIPO — `22000`, prima che qualunque CHECK possa
+--   guardarlo.
+--   ⭐ La garanzia non si e' indebolita, si e' spostata piu' in basso: dal
+--   vincolo di tabella al tipo della colonna. L'etichetta ora dice questo,
+--   perche' «CHECK» mandava a cercare un vincolo che non c'e' piu'.
 SELECT throws_ok(
     format(
         $$INSERT INTO config.user_override_azioni
@@ -235,9 +279,9 @@ SELECT throws_ok(
         (SELECT user_id FROM tmp_refs_uo),
         (SELECT azione_id_2 FROM tmp_refs_uo)
     ),
-    '23514',
+    '22000',
     NULL,
-    'user_override_azioni: CHECK valido_dal <= valido_al'
+    'user_override_azioni: validita rovesciata rifiutata dal TIPO range (22000)'
 );
 
 -- ============================================================
@@ -276,6 +320,20 @@ SELECT throws_ok(
 );
 
 -- FK emittente_fiscale_id invalida
+-- 🔴 SBLOCCATO il 2026-08-18. Questa asserzione non poteva riuscire: il test 16
+--   ha appena inserito la riga di QUESTO utente, e `uq_user_emittenti_fiscali_auth_user`
+--   e' unica sul solo `auth_user_id` — quindi scattava 23505 (duplicato) PRIMA
+--   che la FK potesse dire la sua, e il test aspettava 23503.
+--   ⚠️ Non e' un difetto del vincolo: e' l'ordine in cui i vincoli parlano. Per
+--   interrogare la FK bisogna prima liberare la chiave.
+--   Il DELETE passa dall'override GUC perche' la tabella ha un guard sul delete
+--   (trgfn_user_emittenti_fiscali_guard_delete) — la stessa porta che usa
+--   script.fn_change_user_emittenti_scope.
+SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
+DELETE FROM config.user_emittenti_fiscali
+ WHERE auth_user_id = (SELECT user_id FROM tmp_refs_uo);
+SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
+
 SELECT throws_ok(
     format(
         $$INSERT INTO config.user_emittenti_fiscali

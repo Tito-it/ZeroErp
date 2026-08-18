@@ -81,7 +81,8 @@ Colonna `canale_origine` di tipo `config.canale_origine` (ENUM
 
 ### 🧾 Stato, tipo e attori
 
-* **Tipo documento**: `tipo_doc_fiscale_id` → `config.tipi_doc_fiscale` (es.: fattura, nota credito, parcella, XML tipo‑doc neutrali).
+* **Canale**: `tipo_doc_fiscale_id` → `config.tipi_doc_fiscale`. ⚠️ **Correzione (2026-08-18).** Questa riga diceva «es.: fattura, nota credito, parcella»: era l'**intento** con cui la colonna è nata, non ciò che contiene. Il seed contiene `FRONTOFFICE` / `BACKOFFICE`, e la decisione di dominio del 2026-06-19 ha registrato l'uso: front/back office è **solo un esempio**, ogni azienda può usare quel campo per un asse suo (area, brand, mandante) e nessuna logica deve inferirne il valore.
+* **Natura fiscale**: `natura_doc_id` → `config.nature_doc_fiscale` (`FATTURA` / `NOTA_CREDITO` / `NOTA_DEBITO`). È l'asse che questa doc cercava sotto il nome sbagliato, ed è **ortogonale** al canale: il canale è una scelta dell'azienda, la natura è la legge. Vocabolario neutro per dichiarazione del modello; il `TipoDocumento` della FatturaPA (`TD01`/`TD04`/`TD05`) vive in `nature_doc_fiscale.meta.sdi_tipo_documento`, non in una colonna. ⛔ **Non si cambia dopo**: presidiata da `trg_fatture_a10_lock_natura_doc_upd`. Invariante verificato prima della numerazione (condizione 7 del guard D-K di `fn_assign_numero_fattura`): `natura = NOTA_CREDITO ⟺ totale_a_pagare ≤ 0`. Piano: `brief-design-note-credito-resi` D-NC-3.
 * **Stato documento**: `stato_doc_fiscale_id` → `config.stati_doc_fiscale` (bozza, emessa, registrata, inviata, annullata, ecc.).
 * **Emittente fiscale**: `emittente_soggetto_ruolo_id` → `anagrafiche.soggetti_ruoli` (stabilisce chi emette).
 * **Billing Account**: `billing_account_id` (payer).
@@ -163,7 +164,7 @@ WHERE f.sorgente_tipo_id = :src_tipo
 ### ⚠️ Osservazioni & possibili migliorie
 
 1. **Coerenza tra `stato_doc_fiscale` e numerazione**: valutare un **CHECK** o trigger che impedisca `numero IS NULL` se lo stato è *emessa/registrata*.
-2. **Gestione annulli**: la presenza del trigger *non annullabile* è corretta; per note di credito usare `tipo_doc_fiscale` adeguato, con legame alla fattura originaria (campo di riferimento in righe/testata).
+2. **Gestione annulli**: la presenza del trigger *non annullabile* è corretta. ✅ **Fatto (2026-08-18)**, con una correzione di rotta: la nota di credito si dichiara con **`natura_doc_id`**, non con `tipo_doc_fiscale` — quella colonna fa l'asse del canale. Il legame alla fattura originaria esiste su **due livelli**: riga↔riga (`fatture_righe.riga_rettificata_id`, che è anche la sorgente da cui si copiano prezzo, sconto e IVA, mai ricalcolati) e documento↔documento (`vendite.fatture_rettifiche`, popolata come **proiezione** del legame di riga da `vendite.fn_popola_fatture_rettifiche`, non come seconda verità). Piano: `brief-design-note-credito-resi` D-NC-9.
 3. **Contabilizzazione**: `data_contabilizzazione` valorizzata solo a esport avvenuto; opzionale **unique** (registro, numero) + data contabile in sottomoduli di prima nota.
 4. **Performance totali**: considerare `GENERATED ALWAYS AS` (se Postgres 12+ con funzioni stabili) o mantenere via trigger applicativi per `totale_doc`, per ridurre ricalcoli.
 

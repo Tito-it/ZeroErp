@@ -9,6 +9,35 @@
 --   meta' non ci arriva mai, e i dati di prova restano nel database a rompere
 --   la corsa successiva — che vede un rosso non suo.
 --   Brief: brief-db-pgtap-runner-rls-baseline §15.3.
+
+-- 🔴 PULIZIA D'INGRESSO — FUORI dalla transazione, e deve restare fuori.
+--   Aggiunta il 2026-08-18 dopo aver misurato **123 righe** `TOPO TEST %`
+--   accumulate in `config.toponomastica` fra gennaio e agosto: quasi ogni
+--   corsa ne lasciava due.
+--
+--   La maggior parte non dava fastidio, perche' porta un timestamp nel nome ed
+--   e' unica per costruzione. Ma UNA ha nome fisso — `TOPO TEST 22 FIX`, id
+--   143, del 27 luglio — e da allora il test 7 moriva sempre allo stesso punto:
+--   `uq_toponomastica_descrizione` violata da un residuo di se stesso. Un test
+--   che si avvelena da solo, e che nessuno vedeva perche' il file stava in
+--   baseline-rossi.tsv.
+--
+--   ⚠️ Sta PRIMA del `BEGIN` apposta: dentro la transazione ripulirebbe solo
+--   per la durata della corsa e il ROLLBACK rimetterebbe tutto, lasciando il
+--   veleno per la volta dopo. Fuori, cancella davvero.
+--
+--   ⚠️ Lo stradario prima della toponomastica: e' il figlio, e la FK lo esige.
+--
+--   📌 Resta una domanda aperta, e non la chiude questa riga: perche' delle
+--   righe sopravvivono a un file che si chiude in ROLLBACK? Finche' non si sa,
+--   questa pulizia e' un presidio necessario e non una cortesia — se un giorno
+--   il test smettesse di lasciare residui, si vedrebbe da qui.
+DELETE FROM config.stradario_generale
+ WHERE toponomastica_id IN (SELECT id FROM config.toponomastica
+                             WHERE descrizione LIKE 'TOPO TEST %');
+DELETE FROM config.toponomastica
+ WHERE descrizione LIKE 'TOPO TEST %';
+
 BEGIN;
 
 -- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
@@ -298,6 +327,24 @@ SELECT lives_ok(
 -- =========================================================
 -- 7) Cambio toponomastica_id e rinormalizzazione
 -- =========================================================
+-- 🔴 RIATTIVAZIONE NECESSARIA, aggiunta il 2026-08-18.
+--   Lo step 6 qui sopra disattiva `t2` di proposito — e' il suo oggetto: «un
+--   toponimo NON in uso si puo' disattivare». Lo step 7 poi ci attacca sopra lo
+--   stradario, e `trgfn_child_requires_active_parent` lo rifiuta: «padre non
+--   attivo, figlio attivo non consentito».
+--
+--   ⭐ Il guard ha ragione e il test aveva torto. Non si e' mai visto perche'
+--   il file moriva prima, allo step 4, su un residuo di se stesso: due difetti
+--   in fila, e il primo nascondeva il secondo.
+--
+--   Si riattiva invece di spostare lo step 7 su un terzo toponimo: l'oggetto
+--   dello step 7 e' il cambio di toponomastica_id e la rinormalizzazione, non
+--   il ciclo attivo/inattivo — e un `t3` in piu' renderebbe la fixture piu'
+--   grande per non dire niente di piu'.
+UPDATE config.toponomastica
+   SET attivo = true
+ WHERE id = (SELECT id FROM tmp_topo WHERE label = 't2');
+
 UPDATE config.stradario_generale
 SET toponomastica_id = (SELECT id FROM tmp_topo WHERE label = 't2')
 WHERE id = (SELECT id FROM tmp_stradario_gen ORDER BY id LIMIT 1);

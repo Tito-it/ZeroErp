@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# N1 — il lookup della natura per chiave naturale
+#   docs/it/dev/work-in-progress/brief-design-note-credito-resi.md §12.4-bis
+#
+# ── A COSA SERVE, E PERCHE' E' UNA FUNZIONE E NON UN NUMERO ─────────────
+#
+#   Le tre colonne `natura_doc_id` (-26) nascono NOT NULL DEFAULT «FATTURA».
+#   Un DEFAULT non puo' contenere una sottoquery, quindi le alternative erano
+#   due: scrivere l'id `1` a mano nel DDL, oppure chiamare una funzione.
+#
+#   ⛔ L'id a mano viola la regola delle chiavi naturali stabili
+#   (linee-guida-sql §6b): l'id e' dettaglio implementativo, soggetto a reseed;
+#   la chiave naturale e' `codice_interno`, immutabile per lock. Un `DEFAULT 1`
+#   sopravvive finche' nessuno ricostruisce il catalogo, e il giorno in cui
+#   qualcuno lo fa TUTTE le fatture nuove nascono con la natura sbagliata —
+#   in silenzio, perche' un id resta un id valido.
+#
+#   ⭐ Con la funzione il DEFAULT dice `config.fn_get_natura_doc_fiscale_id
+#   ('FATTURA')`: si legge come la regola che e', e segue il catalogo.
+#
+# ── ⚠️ PERCHE' RITORNA NULL INVECE DI SOLLEVARE ────────────────────────
+#
+#   E' un `fn_get_*`, non un `fn_guard_*`: legge e risponde. Se la riga non
+#   c'e' risponde NULL, e sulle tre colonne il NOT NULL trasforma il NULL in un
+#   errore nel punto giusto — cioe' sulla scrittura che sarebbe rimasta senza
+#   natura. Sollevare qui vorrebbe dire una funzione VOLATILE (fn_log_and_raise_error
+#   scrive), e una VOLATILE dentro un DEFAULT di ADD COLUMN toglie a PostgreSQL
+#   la scorciatoia del «fast default»: riscriverebbe l'intera tabella.
+#
+#   `STABLE` e non `IMMUTABLE`: legge una tabella, e il suo contenuto puo'
+#   cambiare fra due transazioni.
+#
+# Dipendenze: config.nature_doc_fiscale (20260818-24).
+# ⚠️ Il numero DEVE stare fra -24 (la tabella, che il corpo referenzia: una
+#    funzione SQL viene validata al CREATE) e -26 (le colonne che la usano come
+#    DEFAULT). L'autogen mescola 00_schema e 20_code ordinando per NUMERO.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260818-25-create-fn-get-natura-doc-fiscale-id-mctit.yaml
+
+  - changeSet:
+      id: 20260818-25-create-fn-get-natura-doc-fiscale-id
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        N1: lookup della natura documento per chiave naturale stabile. Esiste
+        perche' un DEFAULT di colonna non ammette sottoquery e un id cablato
+        violerebbe la regola delle chiavi naturali. STABLE e senza raise: il
+        NOT NULL delle colonne consumatrici trasforma il NULL in errore nel
+        punto in cui la scrittura sarebbe rimasta senza natura.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: nature_doc_fiscale
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.fn_get_natura_doc_fiscale_id(
+                  p_codice_interno config.nature_doc_fiscale.codice_interno%TYPE
+              )
+              RETURNS config.nature_doc_fiscale.id%TYPE
+              LANGUAGE sql
+              STABLE
+              AS $function$
+              -- Scopo: id della natura documento dalla sua chiave naturale
+              --   stabile. NULL se il codice non esiste o e' disattivato: e'
+              --   un fn_get_*, legge e risponde, non e' una sentinella.
+              SELECT n.id
+                FROM config.nature_doc_fiscale n
+               WHERE n.codice_interno = p_codice_interno
+                 AND n.attivo IS TRUE;
+              $function$;
+
+              COMMENT ON FUNCTION config.fn_get_natura_doc_fiscale_id(config.nature_doc_fiscale.codice_interno%TYPE)
+              IS 'Id della natura fiscale del documento dalla chiave naturale stabile (codice_interno, immutabile per lock). Nasce per il DEFAULT delle colonne natura_doc_id: un DEFAULT non ammette sottoquery e un id cablato violerebbe linee-guida-sql S6b (l''id e'' dettaglio implementativo, la chiave naturale e'' il contratto). STABLE e senza raise, deliberatamente: una VOLATILE dentro il DEFAULT di un ADD COLUMN toglierebbe a PostgreSQL il fast-default e riscriverebbe l''intera tabella; e il NULL diventa comunque un errore, sul NOT NULL della colonna, cioe'' esattamente sulla scrittura rimasta senza natura. brief-design-note-credito-resi N1. rev 2026-08-18.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS config.fn_get_natura_doc_fiscale_id(character varying);

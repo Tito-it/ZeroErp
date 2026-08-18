@@ -1,0 +1,199 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# N2 — fn_get_registro_id: la natura entra, la SERIE esce
+#   docs/it/dev/work-in-progress/brief-design-note-credito-resi.md §12.4-bis.3
+#
+# ── ⚠️ `DROP` + `CREATE`, obbligatorio ─────────────────────────────────
+#
+#   Cambia il TIPO DI RITORNO: da `bigint` a `RETURNS TABLE(registro_id, serie)`.
+#   `CREATE OR REPLACE` non cambia il tipo di ritorno di una funzione — solleva
+#   «cannot change return type of existing function». E cambia anche l'ORDINE
+#   dei parametri: la natura entra in seconda posizione, accanto al tipo
+#   documento, perche' i due sono la coppia che identifica la riga di mapping;
+#   utility ed emittente restano il raffinamento.
+#
+#   ✅ Chiamanti: **uno solo**, `vendite.fn_build_fattura_key`, che viene
+#   riscritta a -32 e -33. Zero chiamate dal backend, zero dai pgTAP
+#   (verificato: l'unica occorrenza in `db/pgtap` e' dentro un commento).
+#
+# ── PERCHE' RESTITUISCE ANCHE LA SERIE ─────────────────────────────────
+#
+#   Perche' e' il mapping a saperlo. La serie di un documento oggi si risolve
+#   tardi, dentro `fn_assign_numero_fattura`, con
+#   `COALESCE(f.serie, r.serie_default, '')` — e `f.serie` **non viene mai
+#   scritto dalla pipeline**: `fn_get_or_create_fattura_header` non nomina la
+#   colonna nella sua INSERT. Va benissimo finche' esiste una serie sola per
+#   registro; smette di funzionare nel momento in cui due nature devono
+#   numerare separate DENTRO lo stesso registro.
+#
+#   ⚠️ Si restituisce `m.serie` **grezza**, non `COALESCE(m.serie,
+#   r.serie_default)`. E' la differenza fra una slice inerte e una che cambia i
+#   documenti di oggi: con il COALESCE la serie di default finirebbe scritta
+#   dentro `fatture.serie`, dove oggi c'e' NULL, e cambierebbe il valore di una
+#   colonna su documenti gia' emessi. NULL qui continua a voler dire «vale il
+#   default del registro», che e' la catena che gia' c'e'.
+#
+# ── ⚠️ IL FALLBACK RESTA A QUATTRO LIVELLI, e la natura NON vi partecipa ─
+#
+#   utility+emittente -> utility -> emittente -> nessuno dei due: e' la
+#   gerarchia di specificita' del REGISTRO, e resta identica. La natura invece
+#   e' un filtro **esatto**: non esiste un «registro per la natura piu' vicina».
+#   Se il mapping per (tipo_doc, NOTA_CREDITO) non c'e', la risposta e'
+#   `E_CONFIG_MANCANTE` — non «ripiego sulla fattura», che emetterebbe una nota
+#   di credito nel registro delle fatture in silenzio.
+#
+#   ⚠️ Il difetto per cui i registri intestati a un emittente sono oggi
+#   IRRAGGIUNGIBILI **non e' in questa funzione**: e' nel suo unico chiamante,
+#   che la invoca con un argomento solo. Si corregge a -32 (N2b).
+#
+# Base: corpo dalla definizione VIVA
+#   (docs/it/dbzero/vendite/funzioni/fn_get_registro_id.md), con sopra le
+#   modifiche di questa slice.
+# Dipendenze: vendite.tipi_doc_fiscale_registri.natura_doc_id e .serie (-30),
+#   config.fn_get_natura_doc_fiscale_id (-25).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260818-31-update-fn-get-registro-id-natura-e-serie-mctit.yaml
+
+  - changeSet:
+      id: 20260818-31-update-fn-get-registro-id-natura-e-serie
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        N2: fn_get_registro_id guadagna la natura (2o parametro, filtro esatto e
+        non un livello di fallback) e restituisce registro + serie invece del
+        solo registro. DROP + CREATE obbligatorio: cambia il tipo di ritorno.
+        Unico chiamante fn_build_fattura_key, riscritta a -32/-33.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: tipi_doc_fiscale_registri
+                columnName: natura_doc_id
+            - columnExists:
+                schemaName: vendite
+                tableName: tipi_doc_fiscale_registri
+                columnName: serie
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⛔ MAI con CASCADE: l'unico chiamante la risolve per nome a
+              --    runtime, non c'e' dipendenza strutturale da propagare.
+              DROP FUNCTION IF EXISTS vendite.fn_get_registro_id(bigint, integer, bigint);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_get_registro_id(
+                  -- ⚠️ Tipi ANCORATI con %TYPE (linee-guida-sql §5b), firma e
+                  --    RETURNS TABLE comprese. Il %TYPE in firma e' una
+                  --    FOTOGRAFIA: si risolve al CREATE e non si riaggancia —
+                  --    chi cambia una di queste colonne ricrea la funzione.
+                  p_tipo_doc_fiscale_id         vendite.tipi_doc_fiscale_registri.tipo_doc_fiscale_id%TYPE,
+                  p_natura_doc_id               vendite.tipi_doc_fiscale_registri.natura_doc_id%TYPE          DEFAULT NULL,
+                  p_utility_id                  vendite.registri_fatturazione.utility_id%TYPE                 DEFAULT NULL,
+                  p_emittente_soggetto_ruolo_id vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE DEFAULT NULL
+              )
+               RETURNS TABLE(registro_id vendite.registri_fatturazione.id%TYPE,
+                             serie       vendite.tipi_doc_fiscale_registri.serie%TYPE)
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dato un tipo documento E UNA NATURA, il registro di
+              --   numerazione e la serie su cui il documento va scritto.
+              -- rev 2026-08-18 (brief-design-note-credito-resi N2): la natura
+              --   entra nella chiave del mapping e la serie esce insieme al
+              --   registro. Prima rispondeva al solo «su quale registro va
+              --   questo tipo di documento?», che smette di bastare nel
+              --   momento in cui due nature devono numerare separate.
+              DECLARE
+                  v_natura_doc_id config.nature_doc_fiscale.id%TYPE;
+                  v_registro_id   vendite.registri_fatturazione.id%TYPE;
+                  v_serie         vendite.tipi_doc_fiscale_registri.serie%TYPE;
+              BEGIN
+                  IF p_tipo_doc_fiscale_id IS NULL OR p_tipo_doc_fiscale_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_registro_id', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_tipo_doc_fiscale_id', 'valore', p_tipo_doc_fiscale_id),
+                          NULL::uuid, 'p_tipo_doc_fiscale_id obbligatorio e > 0');
+                  END IF;
+
+                  -- Default risolto per chiave naturale, mai un id cablato:
+                  -- l'id e' dettaglio implementativo, il codice_interno e' il
+                  -- contratto (linee-guida-sql §6b).
+                  v_natura_doc_id := COALESCE(
+                      p_natura_doc_id,
+                      config.fn_get_natura_doc_fiscale_id('FATTURA'));
+
+                  IF v_natura_doc_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_registro_id', 'E_CONFIG_MANCANTE',
+                          jsonb_build_object('parametro', 'p_natura_doc_id', 'valore', p_natura_doc_id),
+                          NULL::uuid, 'natura documento non risolta (config.nature_doc_fiscale)');
+                  END IF;
+
+                  -- Risoluzione con fallback: tipo_doc+utility+emittente → tipo_doc+utility → tipo_doc+emittente → tipo_doc
+                  -- ⚠️ Il fallback e' la gerarchia di specificita' del REGISTRO
+                  --    (utility/emittente) e resta identica. La NATURA invece e'
+                  --    un filtro esatto: non esiste un «registro della natura
+                  --    piu' vicina», e ripiegare sulla fattura emetterebbe una
+                  --    nota di credito nel registro sbagliato, in silenzio.
+                  SELECT r.id, m.serie
+                    INTO v_registro_id, v_serie
+                    FROM vendite.tipi_doc_fiscale_registri m
+                    JOIN vendite.registri_fatturazione r ON r.id = m.registro_id
+                   WHERE m.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id
+                     AND m.natura_doc_id = v_natura_doc_id
+                     AND (r.utility_id IS NULL OR r.utility_id = p_utility_id)
+                     AND (r.emittente_soggetto_ruolo_id IS NULL OR r.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id)
+                   ORDER BY
+                       CASE
+                           WHEN r.utility_id = p_utility_id AND r.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id THEN 1
+                           WHEN r.utility_id = p_utility_id AND r.emittente_soggetto_ruolo_id IS NULL THEN 2
+                           WHEN r.utility_id IS NULL AND r.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id THEN 3
+                           WHEN r.utility_id IS NULL AND r.emittente_soggetto_ruolo_id IS NULL THEN 4
+                           ELSE 9
+                       END, r.id
+                   LIMIT 1;
+
+                  IF v_registro_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_registro_id', 'E_CONFIG_MANCANTE',
+                          jsonb_build_object('tipo_doc_fiscale_id', p_tipo_doc_fiscale_id,
+                                             'natura_doc_id', v_natura_doc_id,
+                                             'utility_id', p_utility_id,
+                                             'emittente', p_emittente_soggetto_ruolo_id),
+                          NULL::uuid, concat('registro non risolto per tipo_doc ', p_tipo_doc_fiscale_id,
+                                             ' e natura ', v_natura_doc_id));
+                  END IF;
+
+                  -- ⚠️ `serie` esce GREZZA (l'override del mapping), non
+                  --    COALESCE-ata sul serie_default del registro: scrivere il
+                  --    default dentro vendite.fatture.serie cambierebbe il
+                  --    valore di una colonna su documenti gia' emessi, dove
+                  --    oggi c'e' NULL. NULL qui continua a voler dire «vale il
+                  --    default del registro», che fn_assign_numero_fattura
+                  --    risolve gia' da se'.
+                  RETURN QUERY SELECT v_registro_id, v_serie;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_registro_id(bigint, bigint, integer, bigint)
+              IS 'Dato un tipo documento fiscale E UNA NATURA (piu'', opzionalmente, utility ed emittente), il registro di numerazione e la SERIE su cui il documento va scritto. rev 2026-08-18 (brief-design-note-credito-resi N2): prima rispondeva al solo «su quale registro va questo tipo di documento?» e restituiva un bigint — cambiare tipo di ritorno ha richiesto DROP + CREATE. ⚠️ Il fallback a quattro livelli (utility+emittente, utility, emittente, nessuno) e'' la gerarchia di specificita'' del REGISTRO e resta invariato; la NATURA invece e'' un filtro ESATTO: se il mapping per quella natura non esiste la risposta e'' E_CONFIG_MANCANTE, perche'' ripiegare sulla fattura emetterebbe una nota di credito nel registro delle fatture senza dirlo. ⚠️ La serie esce grezza (l''override del mapping): NULL significa «vale il serie_default del registro», e fn_assign_numero_fattura lo risolve gia''. COALESCE-arla qui scriverebbe il default dentro fatture.serie, cambiando una colonna su documenti gia'' emessi.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Il rollback non ricrea la versione a un valore di ritorno:
+              --    va ri-applicato il changeSet che la definiva (20260331-13),
+              --    e con essa la versione di fn_build_fattura_key che la usa
+              --    (20260801-04).
+              SELECT 1;

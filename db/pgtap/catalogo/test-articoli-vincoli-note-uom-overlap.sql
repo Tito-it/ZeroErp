@@ -394,26 +394,19 @@ DECLARE
   v_id bigint;
 BEGIN
   IF (SELECT can_run FROM tmp_can_run) THEN
-    INSERT INTO catalogo.articoli_uom_operativa (
-        articolo_id,
-        uom_id,
-        is_base,
-        factor_to_base,
-        is_sell_uom,
-        is_purchase_uom,
-        is_logistic_uom,
-        attivo
-    )
-    VALUES (
-        (SELECT id FROM tmp_art_base),
-        (SELECT uom_base_id FROM tmp_ids),
-        true,
-        1,
-        true,
-        true,
-        false,
-        true
-    )
+    -- 🔴 RIUSO invece di INSERT — 2026-08-18.
+    --   Un articolo nasce gia' con la propria `articoli_uom_operativa` di base:
+    --   la crea un trigger. Questo blocco la inseriva una seconda volta e
+    --   violava `uq_artuomop_articolo_uom`, uccidendo il file.
+    --   ⚠️ Non e' un vincolo di troppo: e' la fixture che duplica un lavoro gia'
+    --   fatto dal dominio. Si prende la riga che c'e' e le si mettono i flag che
+    --   il test richiede.
+    UPDATE catalogo.articoli_uom_operativa
+       SET is_base = true, factor_to_base = 1,
+           is_sell_uom = true, is_purchase_uom = true,
+           is_logistic_uom = false, attivo = true
+     WHERE articolo_id = (SELECT id FROM tmp_art_base)
+       AND uom_id      = (SELECT uom_base_id FROM tmp_ids)
     RETURNING id INTO v_id;
 
     INSERT INTO tmp_uom_op_base (id) VALUES (v_id);
@@ -486,7 +479,21 @@ DECLARE
   v_id uuid;
 BEGIN
   IF (SELECT can_run FROM tmp_can_run) THEN
-    INSERT INTO catalogo.articoli_componenti (
+    -- 🔴 PADRE COMPOSITO, aggiunto il 2026-08-18.
+    --   Appendere un componente esige `is_composito = true` sul padre: il guard
+    --   rispondeva «Articolo deve essere composito = true» e il file moriva.
+    --   La fixture creava un articolo semplice e gli chiedeva di comportarsi da
+    --   kit — la proprieta' va dichiarata, non data per scontata.
+    --   📌 NOTA: quel messaggio arriva a video con un `(%s)` LETTERALE, non
+    --   sostituito: E_ARTICOLO_NON_COMPOSITO ha un segnaposto che nessun
+    --   chiamante riempie. Difetto del catalogo messaggi, non di questo test —
+    --   segnalato a parte.
+    UPDATE catalogo.articoli
+       SET is_composito = true
+     WHERE id = (SELECT id FROM tmp_art_base)
+       AND is_composito IS DISTINCT FROM true;
+
+        INSERT INTO catalogo.articoli_componenti (
         prodotto_id,
         componente_id,
         coeff_qta,
@@ -551,9 +558,11 @@ SELECT CASE
 END;
 
 -- Cleanup
-DELETE FROM catalogo.articoli_componenti
-WHERE id = (SELECT id FROM tmp_art_comp_rel);
-
+-- 🔴 DELETE su articoli_componenti RIMOSSA il 2026-08-18: la struttura BoM e'
+--   protetta da un guard di immutabilita' («modifica dei campi di struttura o
+--   eliminazione di righe non ammesse»), arrivato dopo questo file. Non e'
+--   un'operazione lecita per nessuno, e non serve: il ROLLBACK toglie la riga
+--   insieme all'articolo che la porta. Terza occorrenza in questa cartella.
 DELETE FROM catalogo.articoli_uom_operativa
 WHERE articolo_id = (SELECT id FROM tmp_art_base);
 
@@ -561,20 +570,21 @@ DELETE FROM catalogo.note
 WHERE target_tipo = 'ARTICOLI'
   AND id = (SELECT id FROM tmp_note);
 
-DELETE FROM catalogo.articoli
-WHERE id IN (
-    (SELECT id FROM tmp_art_base),
-    (SELECT id FROM tmp_art_comp)
-);
+-- 🔴 DELETE degli ARTICOLI rimossa il 2026-08-18, di conseguenza.
+--   La riga di BoM non si puo' cancellare (guard di immutabilita', sopra), e
+--   finche' c'e' la sua FK trattiene gli articoli: il cleanup si spezzava qui.
+--   ⭐ E' la catena che mostra perche' il cleanup manuale in coda a un file
+--   TRANSAZIONALE e' un costo senza ricavo: il ROLLBACK toglie articoli, BoM e
+--   uom insieme, e senza dover conoscere l'ordine delle FK ne' i guard che nel
+--   frattempo sono comparsi.
 
 DELETE FROM config.note_stili
 WHERE id = (SELECT id FROM tmp_note_stile);
 
-DELETE FROM catalogo.unita_misura
-WHERE id IN (
-    (SELECT uom_base_id FROM tmp_ids),
-    (SELECT uom_alt_id FROM tmp_ids)
-);
+-- 🔴 E anche questa, per la stessa catena (2026-08-18): le unita' di misura
+--   restano trattenute dalla `articoli_uom_operativa` dell'articolo, che a sua
+--   volta non si puo' togliere perche' l'articolo non si puo' togliere perche'
+--   la BoM e' immutabile. Il ROLLBACK scioglie tutto in una volta.
 
 -- Il ROLLBACK e' la garanzia: comunque vada — verde, rosso, o morto a meta' —
 -- questo file non lascia nulla dietro di se'. Le DELETE del cleanup restano

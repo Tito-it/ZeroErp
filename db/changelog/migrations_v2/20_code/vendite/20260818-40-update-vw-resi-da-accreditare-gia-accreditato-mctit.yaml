@@ -1,0 +1,255 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# N9 — LA CODA SA COSA E' GIA' STATO ACCREDITATO
+#   docs/it/dev/work-in-progress/brief-design-note-credito-resi.md §12.7 (rilievo H)
+#
+# ── 🔴 IL DIFETTO CHE IL VERBO SMASCHERA, e non era nel piano ──────────
+#
+#   Il §15 (N9) descrive questa slice come «un LEFT JOIN per esporre
+#   `gia_accreditato`». **Non basta**, e si vede provando la madre su dati veri.
+#
+#   La coda ripartisce l'accredito della PARTITA fra le righe di reso con una
+#   finestra `ORDER BY resi_riga_id`, e quella finestra **non sa nulla degli
+#   accrediti gia' fatti**. Misurato il 2026-08-18 sulla partita 17163
+#   (accredito 8, due righe di reso da 5 e da 3):
+#
+#       prima            5797 -> 5   ·  5799 -> 3           ✅
+#       accredito 5797, poi emissione: l'accredito della partita scende a 3
+#       dopo (col difetto) 5797 -> 3  ·  5799 -> 0 (sparita)  🔴
+#
+#   Cioe': la riga **gia' accreditata** torna in coda a chiedere altri 3, e la
+#   riga che quei 3 li deve davvero **esce dalla coda**. La madre respinge la
+#   prima (`E_ACCREDITO_GIA_ESEGUITO`), e la seconda non e' piu' raggiungibile:
+#   la quota resta li' per sempre. ⚠️ **E' la malattia per cui questo cantiere
+#   esiste** (§2), in una forma nuova — creata proprio dal rimedio.
+#
+#   ✅ La correzione: la finestra si applica alla quantita' ANCORA
+#   ACCREDITABILE di ogni riga, non alla sua quantita' resa.
+#
+#       accreditabile(riga) = quantita − gia_accreditato(riga)
+#       dovuto(riga) = min( accreditabile(riga),
+#                           accredito_partita − Σ accreditabile delle precedenti )
+#
+#   Sugli stessi numeri: 5797 -> accreditabile 0 -> esce; 5799 -> 3. ✅
+#
+# ── ⭐ E l'idempotenza smette di dipendere da una finestra temporale ────
+#
+#   Il §12.6-E descriveva il buco: fra il verbo e l'emissione l'attivita'
+#   fatturabile non esiste ancora, il conto della merce non e' cambiato e la
+#   riga **e' ancora in coda** — un secondo click sarebbe coerente col conto.
+#   Con `gia_accreditato` nella distribuzione la riga esce dalla coda **al
+#   verbo**, non alla generazione della fattura. Non c'e' piu' una finestra da
+#   presidiare: c'e' un numero che e' gia' sceso.
+#
+# ── COSA SERVIVA AL FRONTEND (rilievo H) ───────────────────────────────
+#
+#   Il progetto vieta le capability `fn_available_actions_*` per riga di lista:
+#   le liste si gate sui codici gia' presenti in riga, mai con N chiamate.
+#   Quindi la coda porta in riga:
+#
+#     * `gia_accreditato` — quanti pezzi (in unita' di merce) sono gia' stati
+#       accreditati per quella riga di reso. Zero nella stragrande maggioranza
+#       dei casi, **ma non per costruzione**: quando l'accredito della partita
+#       e' minore della quantita' resa, la riga viene accreditata per meno di
+#       quanto ha reso e puo' tornare in coda per il residuo;
+#     * `blocco_codice` — il motivo dell'eventuale blocco in forma di CODICE e
+#       non di frase, sul modello dei `reason_key` delle capability. Oggi un
+#       valore solo, `GIA_ACCREDITATO`; il campo esiste perche' il frontend
+#       possa gatare senza interpretare numeri.
+#
+# ── ⚠️ LE TRE COSE DA NON PERDERE ─────────────────────────────────────
+#
+#   1. **`CREATE OR REPLACE`, non `DROP` + `CREATE`.** Da questa vista dipende
+#      `vendite.vw_dash_backlog_documenti` — il ramo RESI del Backlog — e un
+#      `DROP` senza `CASCADE` fallirebbe, con `CASCADE` se la porterebbe via.
+#      Ne discende che le due colonne nuove vanno in **CODA**, dopo
+#      `etichetta`: un `CREATE OR REPLACE` non inserisce colonne in mezzo;
+#   2. **`security_invoker=on` va RI-SPECIFICATO**: la reloption non si vede in
+#      `pg_get_viewdef` e un `CREATE OR REPLACE` la azzera. Qui significa
+#      bypass della RLS su `resi`, `ddt` e `billing_account`;
+#   3. **le colonne su cui il backend ordina e cerca non si toccano**: sono
+#      dichiarate in `_CODA_META` dentro `resi_repository.py`, e la coda e' una
+#      lista configurabile con export. Qui si AGGIUNGE, non si rinomina.
+#
+# Dipendenze: vendite.fn_resi_riga_accreditato_partita (-36),
+#   vendite.vw_partite_merce con `rettificato` (-37/-38).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260818-40-update-vw-resi-da-accreditare-gia-accreditato-mctit.yaml
+
+  - changeSet:
+      id: 20260818-40-update-vw-resi-da-accreditare-gia-accreditato
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        N9: la coda accrediti espone gia_accreditato e blocco_codice (il gate
+        del bottone si fa sui codici in riga, mai con una capability per riga di
+        lista) e — soprattutto — RIPARTISCE l'accredito della partita sulla
+        quantita' ANCORA accreditabile invece che sulla quantita' resa. Senza,
+        dopo il primo accredito la riga gia' servita tornava in coda a chiedere
+        il residuo e quella che lo doveva davvero spariva: la quota diventava
+        irraggiungibile. security_invoker=on ri-specificato.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_resi_da_accreditare
+            - tableExists:
+                schemaName: vendite
+                tableName: resi_righe_accrediti
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ CREATE OR REPLACE e NON drop+create: da questa vista
+              --    dipende vendite.vw_dash_backlog_documenti (il ramo RESI del
+              --    Backlog), e un DROP la porterebbe via. Le due colonne nuove
+              --    vanno quindi in CODA, dopo `etichetta`, perche' un
+              --    CREATE OR REPLACE non inserisce colonne in mezzo.
+              CREATE OR REPLACE VIEW vendite.vw_resi_da_accreditare
+              WITH (security_invoker=on) AS
+              WITH acc AS (
+                  -- L'accredito ancora dovuto dalla PARTITA. Include gia'
+                  -- l'effetto delle note di credito emesse, perche' N6 somma
+                  -- le rettifiche nel `fatturato`.
+                  SELECT p.ddt_riga_id,
+                         p.tenuti,
+                         p.fatturato AS fatturati,
+                         - p.differenza AS accredito_partita
+                    FROM vendite.vw_partite_merce p
+                   WHERE p.differenza < 0::numeric
+              ), eff AS (
+                  -- Le righe di reso effettive, con quanto ciascuna ha GIA'
+                  -- ricevuto in accrediti (unita' di merce).
+                  SELECT e.resi_riga_id,
+                         e.reso_id,
+                         e.ddt_riga_id,
+                         e.ordine_riga_id,
+                         e.riapre_residuo,
+                         e.quantita,
+                         vendite.fn_resi_riga_accreditato_partita(e.resi_riga_id) AS gia_accreditato
+                    FROM vendite.vw_resi_righe_effettive e
+              ), dist AS (
+                  -- ⭐ La finestra si applica alla quantita' ANCORA
+                  --    ACCREDITABILE, non alla quantita' resa. Con la seconda
+                  --    la riga gia' accreditata tornava a testa alla coda e si
+                  --    riprendeva il residuo della partita, mentre la riga che
+                  --    quel residuo lo doveva davvero spariva — e la quota
+                  --    diventava irraggiungibile.
+                  SELECT e.resi_riga_id,
+                         e.reso_id,
+                         e.ddt_riga_id,
+                         e.ordine_riga_id,
+                         e.riapre_residuo,
+                         e.quantita AS qta_resa,
+                         e.gia_accreditato,
+                         a.tenuti,
+                         a.fatturati,
+                         GREATEST(0::numeric,
+                             LEAST(GREATEST(0::numeric, e.quantita - e.gia_accreditato),
+                                   a.accredito_partita
+                                   - COALESCE(sum(GREATEST(0::numeric, e.quantita - e.gia_accreditato))
+                                              OVER (PARTITION BY e.ddt_riga_id
+                                                    ORDER BY e.resi_riga_id
+                                                    ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),
+                                              0::numeric))) AS accredito_dovuto
+                    FROM eff e
+                    JOIN acc a ON a.ddt_riga_id = e.ddt_riga_id
+              )
+              SELECT x.resi_riga_id,
+                 r.id AS reso_id,
+                 r.uid AS reso_uid,
+                 r.numero AS reso_numero,
+                 r.data,
+                 r.emittente_fiscale_id,
+                 r.billing_account_id,
+                 ba.codice AS ba_codice,
+                 r.destinatario_soggetto_ruolo_id,
+                 s_dest.ragione_sociale_completa AS destinatario_denominazione,
+                 rr.articolo_id,
+                 rr.descrizione,
+                 rr.quantita,
+                 rr.qta_operativa,
+                 rr.uom_operativa_id,
+                 rr.motivo,
+                 x.ddt_riga_id,
+                 dr.ddt_id,
+                 d.numero AS ddt_numero,
+                 x.ordine_riga_id,
+                 x.tenuti,
+                 x.fatturati,
+                 x.accredito_dovuto,
+                     CASE
+                         WHEN x.riapre_residuo AND vendite.fn_resi_riga_residuo_riconsegna(x.resi_riga_id) > 0::numeric THEN 'FACOLTATIVA'::text
+                         ELSE 'DOVUTA'::text
+                     END::character varying AS etichetta,
+                 -- Cio' che serve al frontend per gatare il bottone SENZA una
+                 -- capability per riga di lista (regola di progetto).
+                 x.gia_accreditato,
+                     CASE
+                         WHEN x.gia_accreditato > 0::numeric THEN 'GIA_ACCREDITATO'::text
+                         ELSE NULL::text
+                     END::character varying AS blocco_codice
+                FROM dist x
+                JOIN vendite.resi_righe rr ON rr.id = x.resi_riga_id
+                JOIN vendite.resi r ON r.id = x.reso_id
+                JOIN anagrafiche.soggetti_ruoli sr_dest ON sr_dest.id = r.destinatario_soggetto_ruolo_id
+                JOIN anagrafiche.soggetti s_dest ON s_dest.id = sr_dest.soggetto_id
+                LEFT JOIN anagrafiche.billing_account ba ON ba.id = r.billing_account_id
+                JOIN vendite.ddt_righe dr ON dr.id = x.ddt_riga_id
+                JOIN vendite.ddt d ON d.id = dr.ddt_id
+               WHERE x.accredito_dovuto > 0::numeric;
+
+              COMMENT ON VIEW vendite.vw_resi_da_accreditare IS
+                'La CODA ACCREDITI: le righe di reso per cui il conto della merce '
+                'dichiara un accredito ancora dovuto. La quota della partita si '
+                'ripartisce fra le righe di reso con una greedy per resi_riga_id. '
+                'rev 2026-08-18 (brief-design-note-credito-resi N9): la finestra si '
+                'applica alla quantita'' ANCORA ACCREDITABILE (quantita'' resa meno '
+                'gia'' accreditato) e non alla quantita'' resa. ⚠️ Con la seconda, '
+                'dopo il primo accredito la riga gia'' servita tornava in testa alla '
+                'coda e si riprendeva il residuo della partita, mentre la riga che quel '
+                'residuo lo doveva davvero usciva dalla coda: la quota diventava '
+                'IRRAGGIUNGIBILE — la stessa malattia per cui il cantiere esiste, '
+                'creata dal rimedio. Misurato sulla partita 17163 il 2026-08-18. '
+                '⭐ Ne discende che una riga esce dalla coda AL VERBO e non alla '
+                'generazione della fattura: l''idempotenza smette di dipendere da una '
+                'finestra temporale e diventa un numero che e'' gia'' sceso. '
+                'Espone gia_accreditato e blocco_codice perche'' il frontend gate il '
+                'bottone sui dati che la riga porta gia'', mai con una capability per '
+                'riga di lista. security_invoker=on.';
+
+              COMMENT ON COLUMN vendite.vw_resi_da_accreditare.gia_accreditato IS
+                'Pezzi gia'' accreditati per questa riga di reso, in unita'' di MERCE '
+                '(vendite.fn_resi_riga_accreditato_partita). Zero nella stragrande '
+                'maggioranza dei casi ma NON per costruzione: quando l''accredito della '
+                'partita e'' minore della quantita'' resa, la riga viene accreditata per '
+                'meno di quanto ha reso e puo'' tornare in coda per il residuo.';
+
+              COMMENT ON COLUMN vendite.vw_resi_da_accreditare.blocco_codice IS
+                'Motivo dell''eventuale blocco del verbo, in forma di CODICE e non di '
+                'frase — sul modello dei reason_key delle capability. NULL = il bottone '
+                'e'' attivo. Oggi un valore solo, GIA_ACCREDITATO. Esiste perche'' il '
+                'frontend possa gatare senza interpretare numeri, e perche'' le '
+                'capability per riga di lista sono vietate dal progetto.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Va ri-applicato 20260817-09, che definisce la versione senza
+              --    gia_accreditato e con la distribuzione sulla quantita' resa.
+              SELECT 1;

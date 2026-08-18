@@ -49,6 +49,7 @@
 | emittente_snapshot | jsonb | YES |  |
 | cliente_snapshot | jsonb | YES |  |
 | utility_id | integer | YES |  |
+| natura_doc_id | bigint | NO | config.fn_get_natura_doc_fiscale_id('FATTURA'::character varying) |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -56,6 +57,7 @@
 | FOREIGN KEY | fk_fatture_ba | billing_account_id |
 | FOREIGN KEY | fk_fatture_emittente | emittente_soggetto_ruolo_id |
 | FOREIGN KEY | fk_fatture_modpag | modalita_pagamento_id |
+| FOREIGN KEY | fk_fatture_natura_doc | natura_doc_id |
 | FOREIGN KEY | fk_fatture_registro | registro_id |
 | FOREIGN KEY | fk_fatture_reseller | reseller_soggetto_ruolo_id |
 | FOREIGN KEY | fk_fatture_sorgente_tipo | sorgente_tipo_id |
@@ -93,6 +95,7 @@
 | trg_fatture_a10_guard_intestazione_congelata_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_fattura_satellite_guard_congelamento('id')` |
 | trg_fatture_a10_guard_stato_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_fatture_guard_stato()` |
 | trg_fatture_a10_guard_uscita_draft_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_fatture_guard_uscita_draft()` |
+| trg_fatture_a10_lock_natura_doc_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('natura_doc_id', 'E_COLONNA_NON_MODIFICABILE')` |
 | trg_fatture_a10_registri_fatturazione_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'registri_fatturazione', 'attivo', 'registro_id', 'id')` |
 | trg_fatture_a10_registri_fatturazione_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'registri_fatturazione', 'attivo', 'registro_id', 'id')` |
 | trg_fatture_a10_sorgenti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |

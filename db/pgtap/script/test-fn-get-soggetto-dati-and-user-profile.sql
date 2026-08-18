@@ -51,7 +51,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(26);
+SELECT plan(25);
 
 -- ============================================================
 -- 0. Setup: raccolta riferimenti da dati esistenti
@@ -62,7 +62,9 @@ CREATE TEMP TABLE tmp_profile_ctx AS
 SELECT
     rau.auth_user_id  AS user_id,
     rau.id            AS rau_id,
-    rau.ruolo_sistema,
+    -- 🔴 `rau.ruolo_sistema` RIMOSSA il 2026-08-18: la colonna non esiste piu'
+    --   (cutover multi-face-auth, 90_end/20260429-19a e -20). Non era nemmeno
+    --   usata da nessuna asserzione: stava qui per il solo test 16, tolto sotto.
     rau.risorsa_umana_id,
     ru.soggetto_ruolo_id,
     ru.soggetto_id,
@@ -242,14 +244,14 @@ SELECT isnt(
     'fn_get_user_profile: blocco utente contiene auth_user_id'
 );
 
--- 16) ruolo_sistema presente nel risultato
-SELECT isnt(
-    script.fn_get_user_profile(
-        (SELECT user_id FROM tmp_profile_ctx)
-    ) ->> 'ruolo_sistema',
-    NULL,
-    'fn_get_user_profile: ruolo_sistema presente'
-);
+-- 16) ⛔ RIMOSSO il 2026-08-18 — «fn_get_user_profile: ruolo_sistema presente»
+--   La chiave `ruolo_sistema` e' stata TOLTA dall'output della funzione il
+--   2026-04-29 (Fase 7 step 3), e il suo COMMENT lo dichiara: «rimossa la
+--   chiave ruolo_sistema dall'output - BE post-Fase 7 LANDED non la legge
+--   piu'». Questa asserzione pretendeva il contrario di una decisione presa.
+--   ⚠️ Tolta e non riparata, come le quattro gemelle in
+--   db/pgtap/config/test-permessi-strutture-base.sql: un test che chiede
+--   indietro una cosa rimossa non e' un presidio.
 
 -- 17) Blocco risorse_umane contiene risorsa_umana_id
 SELECT isnt(

@@ -13,7 +13,8 @@
 --   4) ri-consegna generata (copertura completa) -> la riga SPARISCE
 --   5) reso A CREDITO su merce FATTURATA -> in coda accrediti come DOVUTA
 --      (sanity: la fixture morde davvero)
---   6) ...ma NON in backlog: MERCE_RESA_GIA_FATTURATA e' FISIOLOGICO oggi
+--   6) ⭐ ...ed E' in backlog, RECUPERABILE con azione: dal 2026-08-18 il
+--      rimedio esiste (il verbo di accredito), quindi il motivo cambia voce
 --      (nessuna azione esiste: niente NC, quantita' immutabile). Il ramo lo
 --      EMETTE e il filtro di classe lo esclude -> la classe e' VIVA: con la
 --      slice NC basta promuovere una cella di seed
@@ -228,11 +229,29 @@ SELECT is(
   (3::numeric, 'DOVUTA'::varchar),
   '5) merce fatturata 10, resa 3 a credito -> coda accrediti: dovuto 3, DOVUTA');
 
--- 6) ...ma oggi NON in backlog: FISIOLOGICO da seed (la classe e' viva)
+-- 6) ⭐ E ORA E' IN BACKLOG. rev 2026-08-18 (brief-design-note-credito-resi
+--    N11, §6.1). Questo test asseriva il contrario, ed era giusto: il motivo
+--    era classificato FISIOLOGICO e l'ultimo filtro della vista
+--    (`classe <> 'FISIOLOGICO'`) lo teneva fuori. Il Backlog elenca cio' che e'
+--    fermo e RECUPERABILE, e un motivo senza rimedio non e' arretrato — e'
+--    uno stato di fatto.
+--
+--    ⚠️ Il rimedio adesso esiste: `vendite.fn_accredita_riga_reso`. Nel
+--    momento in cui il verbo c'e', «merce resa gia' fatturata» smette di
+--    essere una constatazione e diventa un arretrato con azione — e i TRE
+--    posti che dicevano «fatto senza rimedio» devono cambiare voce insieme,
+--    o l'applicazione si contraddice (§9-bis). Cambiarne uno solo e' il
+--    difetto che nessun test intercetta, perche' ognuno resta coerente con se'
+--    stesso.
+--
+--    ⭐ E non e' costato una riga di SQL: DUE CELLE DI SEED su
+--    config.motivi_fermo (classe FISIOLOGICO -> RECUPERABILE, azione da NULL
+--    alla frase). La vista e la union non sono state toccate.
 SELECT is(
-  (SELECT COUNT(*)::int FROM vendite.vw_dash_backlog_documenti b
+  (SELECT (b.classe, b.azione IS NOT NULL) FROM vendite.vw_dash_backlog_documenti b
     WHERE b.area='RESI' AND b.documento_id=(SELECT reso_id FROM tmp_b_reso)),
-  0, '6) MERCE_RESA_GIA_FATTURATA e'' FISIOLOGICO oggi (nessuna azione esiste) -> emesso ma filtrato');
+  ('RECUPERABILE'::varchar, true),
+  '6) MERCE_RESA_GIA_FATTURATA e'' RECUPERABILE con azione: il rimedio esiste, la riga entra in backlog');
 
 -- 7) i resi non stanno nella union pre-commessa (REVERSE_FLOW)
 SELECT is(

@@ -1,0 +1,112 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Changelog Liquibase per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'IMMUTABILITA' CHE ESISTEVA SOLO IN UN TEST
+#   config.user_emittenti_fiscali.emittente_fiscale_id
+#
+# COME E' VENUTA FUORI. `db/pgtap/config/test-user-emittenti-fiscali-immutable.sql`
+#   era fra i sei rossi storici di `config`. Riparato il suo riferimento morto —
+#   filtrava su `rau.ruolo_sistema`, colonna eliminata dal cutover
+#   multi-face-auth (90_end/20260429-19a e -20) — le sue tre asserzioni hanno
+#   girato per la prima volta da aprile, e la prima e' uscita
+#   **«no exception thrown»**.
+#
+#   ⚠️ Esclusa l'ipotesi benigna che il test stesso nomina («con un solo
+#   emittente l'UPDATE e' a valore invariato e il lock non solleva»): gli
+#   emittenti attivi sono DUE, quindi l'UPDATE cambiava davvero valore.
+#
+#   Poi il DB: sulla tabella ci sono cinque trigger — child_requires_active_parent,
+#   guard_delete, audit, tx_id, storico — e NESSUN lock_columns. E in
+#   `dbops.automation_lock_columns` non c'era nessuna riga per questa tabella.
+#
+#   🔴 L'immutabilita' non era stata PERSA: non era mai stata dichiarata. Viveva
+#   solo nel nome di un test, e quel test non ci era mai arrivato.
+#
+# PERCHE' LA REGOLA E' GIUSTA. Il DELETE era gia' guardato
+#   (`trgfn_user_emittenti_fiscali_guard_delete`): qualcuno aveva deliberatamente
+#   protetto la rimozione dell'associazione. Ma un UPDATE ottiene lo STESSO
+#   effetto — riporta l'associazione su un altro emittente — e non lo fermava
+#   nessuno. Una porta chiusa a chiave, con quella di servizio aperta accanto.
+#
+#   ⭐ E il lock non toglie nessuna operazione supportata: la porta di dominio
+#   `script.fn_change_user_emittenti_scope` fa **DELETE + INSERT** con l'override
+#   GUC, MAI un UPDATE. Verificato prima di scrivere.
+#
+#   ⚠️ Conta perche' P-2a (20260818-11/-12) ha appoggiato su questa tabella
+#   l'intero modello fail-closed dello scope emittente.
+#
+# PERCHE' QUI E NON IN 00_schema. La sede della regola e' il seed
+#   `80_data/sql/dbops/automation_lock_columns.csv`, dove la riga e' stata
+#   aggiunta. Questo changeSet non dichiara niente: fa girare il provisioning
+#   SUBITO.
+#
+#   🔴 E per questo sta in `90_end`: il runner deve LEGGERE quella riga, quindi
+#   deve girare DOPO il loader di `80_data`. In `00_schema` o `20_code`
+#   girerebbe PRIMA del seed e non provisionerebbe niente — in silenzio, che e'
+#   il modo peggiore di non funzionare.
+#
+#   ⚠️ Senza, la riga verrebbe comunque onorata, ma solo alla passata di
+#   `ci_apply` (90_end/ci_apply/20250627-31) o dal pgagent la sera: su un migrate
+#   manuale il trigger non comparirebbe subito e il pgTAP resterebbe rosso per
+#   una ragione che non e' sua.
+#
+#   ⭐ `fn_run_automations_lock_columns` e' create-if-not-exists, e qui non morde:
+#   la tabella NON ha un trigger di lock, quindi non serve il DROP-e-rigenera che
+#   servirebbe per aggiungere una colonna a un lock gia' esistente.
+#
+# Dipendenze: dbops.fn_run_automations_lock_columns,
+#   80_data/sql/dbops/automation_lock_columns.csv (riga config/user_emittenti_fiscali).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260818-23-provision-lock-user-emittenti-fiscali-mctit.yaml
+
+  - changeSet:
+      id: 20260818-23-provision-lock-user-emittenti-fiscali
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        Provisiona subito il lock su config.user_emittenti_fiscali.emittente_fiscale_id,
+        la cui riga e' stata aggiunta al seed automation_lock_columns. L'immutabilita'
+        era dichiarata solo nel nome di un pgTAP che moriva su un riferimento morto e
+        non l'aveva mai asserita: il DELETE era guardato, l'UPDATE no, e ottiene lo
+        stesso effetto. La porta di dominio fa DELETE+INSERT e mai UPDATE, quindi il
+        lock non toglie operazioni supportate.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM dbops.automation_lock_columns
+                   WHERE target_schema = 'config'
+                     AND target_table  = 'user_emittenti_fiscali'
+                     AND column_name   = 'emittente_fiscale_id'
+                     AND enabled IS TRUE;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Solo lo schema `config`: un runner a tappeto qui ri-provisionerebbe
+              -- 26 righe che non c'entrano con questo passo, e un loro eventuale
+              -- fallimento verrebbe attribuito a noi.
+              SELECT dbops.fn_run_automations_lock_columns('AUTO', ARRAY['config'], false);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il trigger provisionato dall'automazione si toglie a mano: il runner
+              -- crea, non cancella. ⚠️ La riga nel seed RESTA — la sede della regola
+              -- e' il CSV, e toglierla di qui sarebbe la seconda sorgente di verita'.
+              DROP TRIGGER IF EXISTS trg_user_emittenti_fiscali_a10_lock_columns_upd
+                ON config.user_emittenti_fiscali;

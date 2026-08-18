@@ -77,6 +77,27 @@ documento **trasversale**.
 >
 > Le due strade sono complementari, non alternative: la **Fase 6 DB** (ritorno
 > a DRAFT) copre il pre-numerazione, la **nota di credito** copre il resto.
+>
+> ---
+>
+> ⭐ **AGGIORNAMENTO 2026-08-18 — la nota di credito ha un design completo.**
+> Non è più «da progettare»: dieci decisioni chiuse con Tid e un piano DB a nove
+> slice in
+> [brief-design-note-credito-resi.md](brief-design-note-credito-resi.md).
+> **Quello è il documento unico dell'item, questa roadmap resta il perché.**
+>
+> Cosa risponde, delle caselle ❌ qui sopra:
+>
+> | Sotto-punto di questa tabella | Risposta del design |
+> | --- | --- |
+> | *«nessun tipo documento NC»* | ⭐ **asse nuovo `config.nature_doc_fiscale`**, non una riga in `tipi_doc_fiscale`: canale e natura fiscale sono due assi ortogonali, e quella colonna oggi tiene il canale |
+> | *«nessuna `fattura_riferimento_id`»* | **tracciabilità riga↔riga** (`fatture_righe.riga_rettificata_id`) + `fatture_rettifiche` popolata come proiezione — non due verità |
+> | *«`fatture_rettifiche` è legacy morto»* | smette di esserlo: diventa l'indice documento↔documento del legame di riga |
+> | *«dominio RESI completo ma la NC è fuori scope»* | è **questo** il cantiere che la porta dentro, ed è sbloccato dai due che lo precedevano |
+> | *«stati `STORNATA`/`RETTIFICATA`/`NOTA_CREDITO_EMESSA`»* | ⚠️ **non servono**: la natura sta sul documento nuovo, non come stato di quello vecchio. Uno stato `RETTIFICATA` sulla fattura originale sarebbe una seconda verità accanto al legame di riga |
+>
+> ⚠️ **Resta aperta la metà pre-numerazione** (ritorno a DRAFT): è l'altro
+> brief, e le due strade restano complementari come dice il capoverso qui sopra.
 
 **Problema:** il flusso copre solo il forward (sorgente → fattura → SDI). Il 5-15% delle fatture ha un ciclo post-emissione che oggi non è documentato né strutturato.
 

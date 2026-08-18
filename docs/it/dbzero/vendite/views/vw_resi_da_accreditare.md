@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Coda degli accrediti dovuti al cliente, derivata dalla PARTITA DI MERCE (vw_partite_merce, differenza &lt; 0). rev 2026-08-17 (partita generalizzata S4): la chiave passa da ordine_riga_id (NULLABLE) a ddt_riga_id (NOT NULL) — un reso su merce senza origine ordine produce finalmente un accredito calcolabile, mentre prima usciva dal conto senza errore. La finestra che scala i resi gia' serviti partiziona per RIGA DI DDT: un reso appartiene alla spedizione da cui la merce e' tornata. ⚠️ ordine_riga_id resta esposto ma PUO' ESSERE NULL: non e' piu' la chiave. ⚠️ Il filtro differenza &lt; 0 scarta i NULL per costruzione: un conto che non si applica (causale non fatturabile, kit non misurabile) non genera accrediti. rev 2026-07-26 INVARIATA: etichetta FACOLTATIVA solo se la merce puo' ANCORA tornare al cliente; l'importo viene dal conto della merce, che le rinunce non toccano — cambia la natura della quota, non il numero. security_invoker=on.
+> La CODA ACCREDITI: le righe di reso per cui il conto della merce dichiara un accredito ancora dovuto. La quota della partita si ripartisce fra le righe di reso con una greedy per resi_riga_id. rev 2026-08-18 (brief-design-note-credito-resi N9): la finestra si applica alla quantita' ANCORA ACCREDITABILE (quantita' resa meno gia' accreditato) e non alla quantita' resa. ⚠️ Con la seconda, dopo il primo accredito la riga gia' servita tornava in testa alla coda e si riprendeva il residuo della partita, mentre la riga che quel residuo lo doveva davvero usciva dalla coda: la quota diventava IRRAGGIUNGIBILE — la stessa malattia per cui il cantiere esiste, creata dal rimedio. Misurato sulla partita 17163 il 2026-08-18. ⭐ Ne discende che una riga esce dalla coda AL VERBO e non alla generazione della fattura: l'idempotenza smette di dipendere da una finestra temporale e diventa un numero che e' gia' sceso. Espone gia_accreditato e blocco_codice perche' il frontend gate il bottone sui dati che la riga porta gia', mai con una capability per riga di lista. security_invoker=on.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -17,6 +17,15 @@ WITH acc AS (
             (- p.differenza) AS accredito_partita
            FROM vendite.vw_partite_merce p
           WHERE (p.differenza < (0)::numeric)
+        ), eff AS (
+         SELECT e.resi_riga_id,
+            e.reso_id,
+            e.ddt_riga_id,
+            e.ordine_riga_id,
+            e.riapre_residuo,
+            e.quantita,
+            vendite.fn_resi_riga_accreditato_partita(e.resi_riga_id) AS gia_accreditato
+           FROM vendite.vw_resi_righe_effettive e
         ), dist AS (
          SELECT e.resi_riga_id,
             e.reso_id,
@@ -24,10 +33,11 @@ WITH acc AS (
             e.ordine_riga_id,
             e.riapre_residuo,
             e.quantita AS qta_resa,
+            e.gia_accreditato,
             a.tenuti,
             a.fatturati,
-            GREATEST((0)::numeric, LEAST(e.quantita, (a.accredito_partita - COALESCE(sum(e.quantita) OVER (PARTITION BY e.ddt_riga_id ORDER BY e.resi_riga_id ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), (0)::numeric)))) AS accredito_dovuto
-           FROM (vendite.vw_resi_righe_effettive e
+            GREATEST((0)::numeric, LEAST(GREATEST((0)::numeric, (e.quantita - e.gia_accreditato)), (a.accredito_partita - COALESCE(sum(GREATEST((0)::numeric, (e.quantita - e.gia_accreditato))) OVER (PARTITION BY e.ddt_riga_id ORDER BY e.resi_riga_id ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), (0)::numeric)))) AS accredito_dovuto
+           FROM (eff e
              JOIN acc a ON ((a.ddt_riga_id = e.ddt_riga_id)))
         )
  SELECT x.resi_riga_id,
@@ -57,7 +67,13 @@ WITH acc AS (
         CASE
             WHEN (x.riapre_residuo AND (vendite.fn_resi_riga_residuo_riconsegna(x.resi_riga_id) > (0)::numeric)) THEN 'FACOLTATIVA'::text
             ELSE 'DOVUTA'::text
-        END)::character varying AS etichetta
+        END)::character varying AS etichetta,
+    x.gia_accreditato,
+    (
+        CASE
+            WHEN (x.gia_accreditato > (0)::numeric) THEN 'GIA_ACCREDITATO'::text
+            ELSE NULL::text
+        END)::character varying AS blocco_codice
    FROM (((((((dist x
      JOIN vendite.resi_righe rr ON ((rr.id = x.resi_riga_id)))
      JOIN vendite.resi r ON ((r.id = x.reso_id)))

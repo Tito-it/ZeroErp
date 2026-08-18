@@ -95,6 +95,18 @@ $$;
 -- Setup: OPERATORE non-SA con riga GLOBAL (pesco un auth_user
 -- OPERATORE attivo senza binding e senza riga in user_emittenti_fiscali)
 -- =========================================================
+-- 🔴 FIXTURE RICOSTRUITA il 2026-08-18 — gemella di quella in
+--   test-fn-change-user-emittenti-scope, e rotta dalla stessa causa.
+--   Cercava un operatore GIA' in stato GLOBAL (senza riga in
+--   user_emittenti_fiscali) e si affidava al fatto che in sviluppo ne
+--   esistesse uno. Il cantiere perimetro emittente (DL-A) li ha portati a
+--   ZERO: la ricerca tornava vuota e l'INSERT del test 2 moriva su
+--   `auth_user_id` NULL.
+--   ⚠️ La precondizione non si CERCA, si COSTRUISCE: la fixture ha smesso di
+--   funzionare il giorno in cui il progetto ha sistemato i dati, che e' il
+--   momento peggiore per scoprirlo.
+--   Il DELETE passa dall'override GUC (la tabella ha un guard sul delete) e il
+--   file e' transazionale: lo scope vero torna al ROLLBACK.
 CREATE TEMP TABLE _t_user_global AS
 SELECT id.auth_user_id AS au_id
   FROM anagrafiche.identita_digitali id
@@ -104,11 +116,12 @@ SELECT id.auth_user_id AS au_id
        SELECT 1 FROM config.profili_accesso_bindings pab
         WHERE pab.identita_digitale_id = id.id AND pab.attivo = true
    )
-   AND NOT EXISTS (
-       SELECT 1 FROM config.user_emittenti_fiscali uef
-        WHERE uef.auth_user_id = id.auth_user_id
-   )
  ORDER BY id.auth_user_id LIMIT 1;
+
+SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
+DELETE FROM config.user_emittenti_fiscali
+ WHERE auth_user_id = (SELECT au_id FROM _t_user_global);
+SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
 
 -- Setup: emittente fiscale attivo per il ramo SINGLE
 CREATE TEMP TABLE _t_ef AS
@@ -123,7 +136,15 @@ SELECT ef.id AS ef_id
 SELECT is(
     (SELECT (scope_mode, emittente_id::text)
        FROM script.fn_get_user_emittenti_scope((SELECT au_id FROM _t_user_global))),
-    ROW('GLOBAL', NULL::text)::record,
+    -- 🔴 `'GLOBAL'::text` il 2026-08-18: senza il cast il letterale resta di tipo
+    --   `unknown`, e il confronto fra RECORD pretende colonne dello stesso tipo
+    --   («non e' possibile confrontare i tipi di colonne dissimili text e
+    --   unknown»). Il secondo elemento il cast ce l'aveva gia': mancava al primo.
+    --   ⚠️ Il file non falliva, MORIVA: 6 asserzioni su 6 mai eseguite.
+    --   ⭐ Verificato che NON e' una conseguenza di P-2a (20260818-11/-12): il
+    --   rosso e' storico e riguarda la forma del confronto, non il valore
+    --   restituito dalla funzione.
+    ROW('GLOBAL'::text, NULL::text)::record,
     '1. Senza riga in user_emittenti_fiscali -> scope_mode=GLOBAL, emittente_id NULL'
 );
 

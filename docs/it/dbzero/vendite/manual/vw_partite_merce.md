@@ -230,4 +230,74 @@ WHERE stato = 'DA_ACCREDITARE';
 
 ---
 
+
+---
+
+### 🔄 rev 2026-08-18 — la partita conosce la nota di credito
+
+Brief: `brief-design-note-credito-resi` (slice **N6** e **N7**).
+
+**Due colonne nuove**, entrambe in coda perché un `CREATE OR REPLACE VIEW` non
+ne inserisce in mezzo — e da questa vista dipendono `vw_contatore_merce`,
+`vw_resi_da_accreditare` e `vw_situazione_merce_ordine`.
+
+| Colonna | Cosa dice |
+|---|---|
+| `rettificato` | quanto una nota di credito ha tolto al fatturato della partita. **Negativo o zero** |
+| `riconsegna_quota_nuova` | i pezzi accreditati che hanno **cambiato casa** verso una spedizione di ri-consegna |
+
+#### N6 — il `fatturato` somma le rettifiche
+
+È la riga che chiude il **contratto del §2** del brief: *«una nota di credito che
+non abbassa i fatturati della partita è invisibile al contatore → la coda
+accrediti continuerebbe a chiedere l'accredito per sempre, anche a NC emessa»*.
+
+⚠️ **La rettifica si legge SEMPRE sulla corsia DDT**, anche quando a fatturare è
+stata la corsia ordine (decisione D-NC-1). Se entrasse nel serbatoio d'ordine, la
+greedy oldest-first della CTE `alloc` scaricherebbe l'accredito sull'**ultima**
+spedizione invece che su quella da cui la merce è tornata — con il totale
+perfettamente giusto e la **ripartizione falsa**, cioè un difetto che nessun test
+di parità vede. Per questo `alloc` non è stata toccata.
+
+⭐ **È una somma, non una sottrazione**: la quantità della rettifica è già
+negativa in catena (D-NC-2). Il segno vive nel numero, non in un'etichetta che
+ogni consumatore dovrebbe saper tradurre.
+
+#### N7 — «una ri-consegna è merce nuova SOLO per la parte accreditata»
+
+> Quando si rispedisce, i pezzi che erano stati **accreditati** contano sulla
+> spedizione **nuova**. Quelli non accreditati continuano a contare su quella
+> vecchia.
+
+| | consegnato | reso | in mano | fatturato | esito |
+|---|---|---|---|---|---|
+| DDT₁ *(resta ferma)* | 10 | 3 | 7 | 7 | 0 — a posto ✅ |
+| DDT₂ *(prende i 3 accreditati)* | **3** | 0 | 3 | 0 | **3 da fatturare** ✅ |
+
+DDT₂ è una spedizione **mai instradata**: `fn_get_stato_push_segment` la vede
+`LIBERA`, il giro di fatturazione normale la prende in carico. ⭐ Nessun verbo
+nuovo, nessuna seconda pipeline — e la cintura che impedisce di ri-spingere una
+riga già fatturata **non si allenta**.
+
+La quota si ripartisce fra più ri-consegne della stessa origine con la solita
+**greedy oldest-first**, ed è cappata alla quantità ri-consegnata: un secondo
+giro reso → NC → ri-consegna non conta due volte lo stesso accredito.
+
+⚠️ **Senza nota di credito la regola è INERTE**: nessun pezzo è stato
+accreditato, nessuno cambia casa, ogni numero resta quello di prima. È ciò che
+tiene chiuso il buco di luglio e verde il **caso D** di
+`test-fn-list-ddt-da-pushare-contatore-v1`.
+
+#### ⚠️ `consegnato` è la base CONTABILE, non la quantità fisica
+
+Su una riga di **ri-consegna** `consegnato` è ora la quota che ha cambiato casa —
+cioè **0** finché non c'è una nota di credito. Prima era la quantità della riga
+di DDT, contata **sia** sull'origine **sia** sulla riga nuova: la somma delle
+partite superava la merce realmente uscita, e l'invariante *«i pezzi si spostano,
+non si moltiplicano»* non era vero. Ora lo è.
+
+La quantità fisica resta dov'è sempre stata: `vendite.ddt_righe.quantita`.
+
+---
+
 {% include-markdown "signature-core.md" %}

@@ -53,4 +53,50 @@ FROM vendite.fn_assign_numero_fattura(
 
 ---
 
+
+---
+
+### 🔄 rev 2026-08-18 — la SETTIMA condizione del guard D-K
+
+Brief: `brief-design-note-credito-resi` (slice **N11**, §12.4-bis.6).
+
+```text
+natura = NOTA_CREDITO   ⟺   totale_a_pagare ≤ 0
+```
+
+#### Da convenzione a invariante verificato
+
+Con la decisione D-NC-2 il segno della nota di credito **vive nel numero**:
+quantità negativa in catena, totale del documento negativo, e nessun consumatore
+deve sapere che una riga «RETTIFICA» va sottratta. È una scelta forte, e fin qui
+era una **convenzione**: nulla verificava che un documento dichiarato
+`NOTA_CREDITO` avesse davvero un saldo non positivo.
+
+⭐ Il guard D-K gira **prima che il progressivo venga consumato** — cioè prima
+del punto in cui la guida dice che l'errore diventa irreparabile: *«un numero
+fiscale valido su un documento invalido si ripara solo con una nota di
+variazione»*. È esattamente il posto dove metterla, e chiude il cerchio con la
+FatturaPA, dove lo stesso invariante si legge `TipoDocumento = TD04 ⟺
+totale_doc < 0`.
+
+#### ⚠️ Due scelte dentro la condizione
+
+1. **Lo zero è ammesso da entrambe le parti.** L'equivalenza scritta con `≤`
+   renderebbe incoerente una fattura a saldo nullo, che è strana ma non
+   sbagliata — e vietarla qui sarebbe una regola **inventata da questo guard**
+   invece che decisa. Si presidia il **segno**, non l'importo;
+2. **La seconda metà dice «diverso da NOTA_CREDITO», non «uguale a FATTURA»**:
+   così copre anche `NOTA_DEBITO` senza doverla nominare, ed è letteralmente il
+   verso ⟸ dell'equivalenza — un totale negativo può appartenere solo a una nota
+   di credito.
+
+#### Cosa questa condizione NON fa
+
+Non verifica che la nota di credito abbia le rate a zero: lo fa già la
+**condizione 4** (*«un documento non positivo non si rateizza»*), ed è scritta
+`<= 0`, non «assumo positivo». ⭐ Il documento a saldo negativo non è un caso che
+qualcuno deve insegnare alla catena — è un caso che la catena **contempla già**.
+
+---
+
 {% include-markdown "signature-core.md" %}

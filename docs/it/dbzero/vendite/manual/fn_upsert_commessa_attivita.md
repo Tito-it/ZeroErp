@@ -184,4 +184,61 @@ chiamante diretto.
 
 ---
 
+
+---
+
+### 🔄 rev 2026-08-18 — due parametri nuovi, e un `DROP` obbligatorio
+
+Brief: `brief-design-note-credito-resi` (slice **N1b** e **N5**).
+
+| Parametro | Tipo | Default | Cosa porta |
+|---|---|---|---|
+| `p_natura_doc_id` | `commesse_attivita.natura_doc_id%TYPE` | `NULL` | la **natura fiscale** del documento che l'attività produrrà (`FATTURA` / `NOTA_CREDITO` / …) |
+| `p_fattura_riga_rettificata_id` | `commesse_attivita.fattura_riga_rettificata_id%TYPE` | `NULL` | per una **rettifica**, la riga di fattura che sta correggendo |
+
+#### ⚠️ Perché `DROP` + `CREATE` e non `CREATE OR REPLACE`
+
+Con 40 parametri di cui 21 con `DEFAULT`, aggiungerne uno con
+`CREATE OR REPLACE` **non sostituisce la funzione**: PostgreSQL la identifica
+dalla firma, quindi ne nascerebbe una **seconda** — un overload — e con i default
+su entrambe ogni chiamata esistente diventerebbe ambigua (*function is not
+unique*).
+
+⛔ E il `DROP` è **senza `CASCADE`**, mai con: i chiamanti la risolvono per nome a
+runtime, non c'è dipendenza strutturale da propagare.
+
+✅ **Censimento fatto prima di scrivere**: tutti i chiamanti — i quattro DB,
+`commesse_repository.upsert_attivita` e i sei smoke-test Python — usano
+**argomenti nominali**. Due parametri in coda con `DEFAULT NULL` sono quindi
+trasparenti: nessuno è stato toccato.
+
+#### ⭐ `p_natura_doc_id` ha `DEFAULT NULL`, non `DEFAULT «FATTURA»`
+
+Il default vero è `FATTURA`, ma si risolve **dentro** la funzione con un
+`COALESCE` sulla chiave naturale
+([`config.fn_get_natura_doc_fiscale_id`](/dbzero/config/funzioni/fn_get_natura_doc_fiscale_id)).
+Un id cablato nella firma sarebbe una **fotografia del catalogo di oggi**: resta
+valido — cioè sbagliato in silenzio — dopo un reseed.
+
+#### I due guard nuovi
+
+* natura non risolta → `E_CONFIG_MANCANTE`. Meglio un errore parlante qui che un
+  *not-null violation* tre livelli più in basso;
+* `fattura_riga_rettificata_id` valorizzata **solo** su una `RETTIFICA`. È
+  un'**implicazione**, non un'equivalenza: il vocabolario ammette rettifiche che
+  non nascono da una riga di fattura (i conguagli). Il `CHECK` di tabella è la
+  rete finale; qui il messaggio dice **quale** parametro è incoerente.
+
+⚠️ **Nessun guard sul segno della quantità**: una rettifica di accredito è
+negativa (D-NC-2), ma una futura nota di **debito** sarebbe positiva. Il
+predicato resta `= 0`, non `<= 0` — ed è la porta da cui la nota di credito entra
+senza una seconda pipeline.
+
+⚠️ Nell'`ON CONFLICT` natura e riga rettificata seguono il chiamante
+(`EXCLUDED`), come già `tipo_movimento`. Non serve il `COALESCE` difensivo che
+protegge `tipo_doc_fiscale_id`: i `segment_key` non si incrociano — un push
+(`ORD:`/`DDT:`) non può atterrare sul segmento di una rettifica (`…#RET:<n>`).
+
+---
+
 {% include-markdown "signature-core.md" %}
