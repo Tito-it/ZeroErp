@@ -3,9 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Scope operativo: emittenti fiscali su cui l'utente puo' operare.
->  Whitelist opzionale: se l'utente non ha righe puo' operare su TUTTI
->  gli emittenti; se ha almeno una riga e' limitato a quelli elencati.
+> Scope operativo: l'emittente fiscale su cui l'utente puo' operare. Modello 1-a-1, presidiato da UNIQUE(auth_user_id): al massimo una riga per utente, quindi al massimo un emittente. FAIL-CLOSED dal 2026-08-18 (P-2a): un operatore SENZA riga non vede NESSUN emittente. La riga mancante e' un errore di configurazione, non un permesso — prima di questa data valeva il contrario (vedeva tutti gli emittenti ed era indistinguibile da un super admin), ed era il difetto che P-2a ha chiuso. L'unico attore legittimamente multi-emittente e' il SUPER_ADMIN, che passa da fn_is_super_admin e non da questa tabella. Per restringersi a un singolo emittente il super admin usa la GUC app.current_emittente_id (solo restringente, mai allargante). Chi e' senza riga si vede con dbops.vw_operatori_senza_emittente. Catena: script.fn_get_emittenti_scope_pk_ids (canonica) -&gt; _sr_ids -&gt; fn_scope_ef_whitelist_via_*. Brief perimetro-emittente §2.5.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

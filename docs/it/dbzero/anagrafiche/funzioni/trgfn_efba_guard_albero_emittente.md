@@ -1,0 +1,47 @@
+# ⚙️ Funzione `trgfn_efba_guard_albero_emittente`
+
+```sql
+CREATE FUNCTION trgfn_efba_guard_albero_emittente()
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION anagrafiche.trgfn_efba_guard_albero_emittente()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_ba_id anagrafiche.billing_account.id%TYPE;
+BEGIN
+    -- Su DELETE il BA interessato sta in OLD; in creazione in NEW.
+    -- Se il mapping viene spostato da un BA a un altro (caso
+    -- teorico: la UNIQUE lo rende raro) vanno verificati entrambi.
+    v_ba_id := COALESCE(NEW.billing_account_id, OLD.billing_account_id);
+
+    IF TG_OP = 'UPDATE'
+       AND NEW.billing_account_id IS DISTINCT FROM OLD.billing_account_id THEN
+        PERFORM anagrafiche.fn_guard_albero_ba_emittente(OLD.billing_account_id);
+        PERFORM anagrafiche.fn_guard_albero_ba_emittente(NEW.billing_account_id);
+        RETURN NULL;
+    END IF;
+
+    IF v_ba_id IS NOT NULL THEN
+        -- Movimenti 2 e 3: mapping specifico creato, cambiato o tolto.
+        PERFORM anagrafiche.fn_guard_albero_ba_emittente(v_ba_id);
+        RETURN NULL;
+    END IF;
+
+    -- Movimento 4: la riga senza billing_account_id e' quella del
+    -- GESTORE GLOBALE. Raggio N — vedi l'intestazione del changeSet.
+    PERFORM anagrafiche.fn_guard_albero_ba_gestore_globale();
+    RETURN NULL;
+END
+$function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_efba_guard_albero_emittente()
+IS 'Trigger AFTER su anagrafiche.emittenti_fiscali_billing_account: presidia i TRE movimenti che cambiano l''emittente di un BA — modifica del mapping, cancellazione del mapping (il BA ricade sul gestore globale) e spostamento di is_default (raggio N). Delega a fn_guard_albero_ba_emittente / fn_guard_albero_ba_gestore_globale. AFTER perche'' il guard rilegge il mapping per risolvere l''emittente. Brief P-1 §11.3.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

@@ -11,11 +11,13 @@ CREATE FUNCTION fn_get_search_detail(p_soggetto_id uuid, p_tipo_ruolo_id integer
 CREATE OR REPLACE FUNCTION script.fn_get_search_detail(p_soggetto_id uuid, p_tipo_ruolo_id integer, p_utility_id integer DEFAULT NULL::integer, p_emittente_ids bigint[] DEFAULT NULL::bigint[])
  RETURNS jsonb
  LANGUAGE plpgsql
- STABLE PARALLEL SAFE
+ STABLE
 AS $function$
 DECLARE
   v_tipo_ruolo_codice  config.tipi_ruoli.codice_interno%TYPE;
   v_result             jsonb;
+  -- Scope emittente EFFETTIVO (rev 2026-08-18, vedi sotto)
+  v_scope              bigint[];
 BEGIN
   IF p_soggetto_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
@@ -44,6 +46,28 @@ BEGIN
       NULL::uuid, p_tipo_ruolo_id::text
     );
   END IF;
+
+  -- =========================================================
+  -- Scope emittente EFFETTIVO (rev 2026-08-18, brief §11.6).
+  --
+  -- ⚠️ PRIMA il ramo CL scriveva:
+  --     (p_emittente_ids IS NULL OR fn_check_ba_visible_...)
+  --   cioe' NULL = passa tutto. E NULL e' cio' in cui Python
+  --   appiattisce la lista vuota, che nella convenzione
+  --   significa l'opposto: nessun accesso.
+  --
+  --   Ora lo scope lo risolve il database, dalla GUC, e
+  --   p_emittente_ids puo' solo RESTRINGERE.
+  --
+  -- ⚠️ Il perimetro CL-only NON cambia ed e' preesistente: i
+  --   rami FO e ELSE non hanno mai avuto un filtro emittente,
+  --   perche' non hanno un billing account da cui derivarlo.
+  --   Residuo dichiarato nel brief, non chiuso qui.
+  -- =========================================================
+  v_scope := script.fn_get_emittenti_scope_sr_effettivo(
+               NULLIF(current_setting('app.current_user_id', true), '')::integer,
+               p_emittente_ids
+             );
 
   -- Dettaglio per codice_interno del tipo ruolo (immutabile).
   CASE v_tipo_ruolo_codice
@@ -90,8 +114,8 @@ BEGIN
       WHERE sr.soggetto_id = p_soggetto_id
         AND sr.tipo_ruolo_id = p_tipo_ruolo_id
         AND (p_utility_id IS NULL OR cl.utility_id = p_utility_id)
-        AND (p_emittente_ids IS NULL
-             OR script.fn_check_ba_visible_for_emittenti(cl.billing_account_id, p_emittente_ids))
+        AND (v_scope IS NULL
+             OR script.fn_check_ba_visible_for_emittenti(cl.billing_account_id, v_scope))
     ) sub;
 
   WHEN 'FO' THEN
@@ -149,7 +173,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_search_detail(p_soggetto_id uuid, p_tipo_ruolo_id integer, p_utility_id integer, p_emittente_ids bigint[])
-IS 'Dettaglio ricerca per tipo_ruolo (CASE su codice_interno). Branch CL: espone utility_codice_interno (codice_interno, logica) + utility_codice (codice, display) e stato_codice_interno (codice_interno); stato_macro = stati_cliente.codice. rev 2026-06-28 (naming stato).';
+IS 'Dettaglio ricerca per tipo_ruolo (CASE su codice_interno). Branch CL: espone utility_codice_interno (codice_interno, logica) + utility_codice (codice, display) e stato_codice_interno (codice_interno); stato_macro = stati_cliente.codice. rev 2026-06-28 (naming stato). Rev 2026-08-18 (brief perimetro-emittente Q2/C): lo scope emittente si risolve QUI, dalla GUC app.current_user_id via fn_get_emittenti_scope_sr_effettivo. p_emittente_ids resta in firma ma puo'' solo RESTRINGERE. Prima il ramo CL scriveva «p_emittente_ids IS NULL OR ...», cioe'' NULL = passa tutto: e NULL e'' cio'' in cui Python appiattisce la lista vuota, che significa l''opposto. Rami FO/ELSE senza filtro emittente (perimetro preesistente: non hanno billing account). PARALLEL SAFE rimosso: la catena dello scope e'' STABLE e basta.';
 ```
 
 ---

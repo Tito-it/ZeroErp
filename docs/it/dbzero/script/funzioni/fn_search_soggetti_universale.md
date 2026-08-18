@@ -11,7 +11,7 @@ CREATE FUNCTION fn_search_soggetti_universale(p_search_term text, p_tipo_ruolo_i
 CREATE OR REPLACE FUNCTION script.fn_search_soggetti_universale(p_search_term text, p_tipo_ruolo_id integer, p_emittente_ids bigint[] DEFAULT NULL::bigint[], p_limit integer DEFAULT 50, p_offset integer DEFAULT 0, p_order_by text DEFAULT NULL::text, p_order_dir text DEFAULT 'ASC'::text)
  RETURNS TABLE(total_count bigint, soggetto_id uuid, soggetto_ruolo_id bigint, tipo_ruolo_id integer, soggetto_codice text, ragione_sociale_completa text, id_fiscale_univoco text, utility_list text)
  LANGUAGE plpgsql
- STABLE PARALLEL SAFE
+ STABLE
 AS $function$
 DECLARE
   -- Pattern ILIKE costruito dal termine di ricerca
@@ -29,8 +29,10 @@ DECLARE
   v_tipo_ruolo_codice config.tipi_ruoli.codice_interno%TYPE;
   -- Frammento SQL EXISTS dinamico (vuoto se nessuna tabella)
   v_exists_clause     text := '';
-  -- Frammento SQL filtro emittente (vuoto se non CL o NULL)
+  -- Frammento SQL filtro emittente (vuoto se non CL o scope aperto)
   v_emittente_clause  text := '';
+  -- Scope emittente EFFETTIVO (rev 2026-08-18, vedi sotto)
+  v_scope             bigint[];
   -- Colonne ordinabili (whitelist)
   c_allowed_order_cols constant text[] := ARRAY[
     'ragione_sociale_completa',
@@ -134,14 +136,42 @@ BEGIN
     );
   END IF;
 
+  -- =========================================================
+  -- Scope emittente EFFETTIVO (rev 2026-08-18, brief §11.6).
+  --
+  -- ⚠️ PRIMA questa funzione si fidava di p_emittente_ids: il
+  --   filtro si accendeva su `p_emittente_ids IS NOT NULL`,
+  --   quindi NULL voleva dire «nessuna restrizione». E NULL e'
+  --   esattamente cio' in cui Python appiattisce la lista
+  --   vuota — che nella convenzione significa l'opposto,
+  --   «nessun accesso». I due estremi collassavano, e
+  --   collassavano dalla parte che apre.
+  --
+  --   Ora lo scope lo risolve il database, dalla GUC, e
+  --   p_emittente_ids puo' solo RESTRINGERE. Nessun valore
+  --   passato dal chiamante puo' piu' allargare.
+  --
+  -- ⚠️ Il perimetro CL-only NON cambia ed e' preesistente: il
+  --   filtro si applica solo al tipo ruolo CL, perche' e'
+  --   l'unico che ha un billing account da cui derivare
+  --   l'emittente. Non e' un difetto chiuso qui — e' un
+  --   residuo dichiarato nel brief.
+  -- =========================================================
+  v_scope := script.fn_get_emittenti_scope_sr_effettivo(
+               NULLIF(current_setting('app.current_user_id', true), '')::integer,
+               p_emittente_ids
+             );
+
   -- Costruisci frammento filtro scope emittente.
-  -- Si applica SOLO per tipo ruolo CL e SOLO se p_emittente_ids
-  -- non e' NULL. Delega la logica a 3 livelli (mapping specifico,
-  -- fallback default, non visibile) a
-  -- script.fn_check_ba_visible_for_emittenti per evitare
-  -- duplicazione con fn_get_search_detail.
-  -- $5 = p_emittente_ids (passato via USING)
-  IF v_tipo_ruolo_codice = 'CL' AND p_emittente_ids IS NOT NULL THEN
+  -- Delega la logica a 3 livelli (mapping specifico, fallback
+  -- default, non visibile) a script.fn_check_ba_visible_for_emittenti
+  -- per evitare duplicazione con fn_get_search_detail.
+  -- ⚠️ La condizione e' su v_scope, non su p_emittente_ids: con
+  --   scope '{}' (nessun accesso) il filtro si ACCENDE e
+  --   fn_check_ba_visible_for_emittenti risponde false per ogni
+  --   BA -> zero risultati. Fail-closed.
+  -- $5 = v_scope (passato via USING)
+  IF v_tipo_ruolo_codice = 'CL' AND v_scope IS NOT NULL THEN
     v_emittente_clause := '
         AND EXISTS (
           SELECT 1
@@ -155,7 +185,7 @@ BEGIN
 
   -- Query principale con paginazione e conteggio totale.
   -- $1 = p_tipo_ruolo_id, $2 = v_search_pattern,
-  -- $3 = v_limit, $4 = v_offset, $5 = p_emittente_ids
+  -- $3 = v_limit, $4 = v_offset, $5 = v_scope
   RETURN QUERY EXECUTE format('
     WITH filtered AS (
       -- CTE 1: soggetti con ruolo richiesto e match sul termine.
@@ -222,12 +252,12 @@ BEGIN
       p.utility_list
     FROM paged p
   ', v_exists_clause, v_emittente_clause, c_hard_cap, v_order_clause)
-  USING p_tipo_ruolo_id, v_search_pattern, v_limit, v_offset, p_emittente_ids;
+  USING p_tipo_ruolo_id, v_search_pattern, v_limit, v_offset, v_scope;
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_search_soggetti_universale(p_search_term text, p_tipo_ruolo_id integer, p_emittente_ids bigint[], p_limit integer, p_offset integer, p_order_by text, p_order_dir text)
-IS 'Ricerca universale soggetti per tipo ruolo (livello 1). Cerca su ragione_sociale_completa, id_fiscale_univoco_cf_piva, codice soggetto e codice entita'' dinamico. Filtro scope emittente (solo CL) via emittenti_fiscali_billing_account con fallback is_default=true (gestore globale). Ordinamento dinamico: p_order_by (whitelist), p_order_dir (ASC/DESC). Paginazione LIMIT/OFFSET + COUNT(*) OVER(). Hard cap 10.000.';
+IS 'Ricerca universale soggetti per tipo ruolo (livello 1). Cerca su ragione_sociale_completa, id_fiscale_univoco_cf_piva, codice soggetto e codice entita'' dinamico. Ordinamento dinamico: p_order_by (whitelist), p_order_dir (ASC/DESC). Paginazione LIMIT/OFFSET + COUNT(*) OVER(). Hard cap 10.000. Rev 2026-08-18 (brief perimetro-emittente Q2/C): lo scope emittente si risolve QUI, dalla GUC app.current_user_id via fn_get_emittenti_scope_sr_effettivo. p_emittente_ids resta in firma ma puo'' solo RESTRINGERE: nessun valore passato dal chiamante puo'' allargare cio'' che la funzione mostra. Prima il filtro si accendeva su p_emittente_ids IS NOT NULL, quindi lo scope vuoto — in cui Python appiattisce [] — valeva «nessuna restrizione». Filtro applicato solo per tipo ruolo CL (unico con billing account): perimetro preesistente, non ampliato qui. PARALLEL SAFE rimosso: la catena dello scope e'' STABLE e basta.';
 ```
 
 ---

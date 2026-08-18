@@ -1,0 +1,150 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Passo 1 del cantiere «perimetro emittente» (decisione Q2/C):
+# lo scope non viaggia piu' fuori dal database.
+#
+# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260818-01-create-fn-get-emittenti-scope-sr-effettivo-mctit.yaml
+
+  - changeSet:
+      id: 20260818-01-create-fn-get-emittenti-scope-sr-effettivo
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        Scope emittenti EFFETTIVO (SR id) = scope di diritto ∩ restrizione del
+        chiamante, con NULL = universo su entrambi i lati. Stessa semantica a
+        tre stati della famiglia (NULL=tutto, '{}'=nessuno, array=whitelist) e
+        stesso invariante «solo restringente, mai allargante» con cui
+        l'emittente attivo si combina con lo scope (rev 2026-08-04), applicato
+        qui a un parametro invece che a una GUC. Estratta perche' serve a DUE
+        chiamanti (fn_search_soggetti_universale, fn_get_search_detail): le
+        uniche due funzioni di scope che si fidavano di un array calcolato dal
+        chiamante. Brief §11.6, decisione Q2/C.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_get_emittenti_scope_sr_ids';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_emittenti_scope_sr_effettivo(
+                  p_auth_user_id integer,
+                  p_richiesti    bigint[] DEFAULT NULL::bigint[]
+              )
+              RETURNS bigint[]
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  v_diritto bigint[];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Scope emittenti EFFETTIVO (SR id) per un lettore che
+                  --   accetta anche una restrizione dal chiamante.
+                  --   Semantica invariata dalla famiglia:
+                  --     NULL  = nessuna restrizione
+                  --     '{}'  = nessun accesso
+                  --     array = whitelist SR
+                  --
+                  -- Regola unica: IL CHIAMANTE PUO' SOLO RESTRINGERE.
+                  --   effettivo = diritto ∩ richiesto, con NULL = universo su
+                  --   entrambi i lati. E' lo stesso invariante «solo
+                  --   restringente, mai allargante» con cui l'emittente attivo
+                  --   si combina con lo scope di diritto (rev 2026-08-04): qui
+                  --   si applica a un parametro invece che a una GUC. Non e'
+                  --   una regola nuova, e' la stessa in un altro punto.
+                  --
+                  -- Perche' esiste (brief §11.6, decisione Q2/C):
+                  --   fn_search_soggetti_universale e fn_get_search_detail
+                  --   erano le UNICHE due funzioni di scope a fidarsi
+                  --   interamente di un array calcolato dal chiamante. Lo scope
+                  --   usciva dal database con TRE significati e rientrava da
+                  --   Python con DUE: in Python la lista vuota e il NULL sono
+                  --   entrambi falsi, e ogni idioma naturale del linguaggio
+                  --   (`if ids:`, `ids or []`) li fonde. Non era una svista di
+                  --   chi scrisse quella riga: era un canale che perdeva per
+                  --   costruzione, e infatti la fusione era gia' avvenuta in
+                  --   due punti indipendenti. Qui la risposta non esce piu'.
+                  --
+                  -- ⚠️ PARALLEL: non e' marcata SAFE perche' chiama
+                  --   fn_get_emittenti_scope_sr_ids, che e' STABLE e basta.
+                  --   Dichiararla SAFE sarebbe una bugia al planner.
+                  -- =========================================================
+
+                  -- Attore nullo (batch / canale di sistema): nessuno scope di
+                  -- diritto da opporre. Convenzione della famiglia, ramo 1 di
+                  -- fn_scope_ef_whitelist_via_efba.
+                  -- ⚠️ La restrizione del chiamante resta pero' valida: e'
+                  -- restringente, e ignorarla allargherebbe — che e'
+                  -- esattamente cio' che questa funzione esiste per impedire.
+                  IF p_auth_user_id IS NULL THEN
+                      RETURN p_richiesti;
+                  END IF;
+
+                  v_diritto := script.fn_get_emittenti_scope_sr_ids(p_auth_user_id);
+
+                  -- Universo di diritto (super admin): decide il chiamante, che
+                  -- puo' solo restringere. NULL richiesto = nessuna restrizione.
+                  IF v_diritto IS NULL THEN
+                      RETURN p_richiesti;
+                  END IF;
+
+                  -- Nessun accesso di diritto: '{}' e NON NULL.
+                  -- ⚠️ E' il punto per cui questa funzione esiste: restituire
+                  -- NULL qui vorrebbe dire «vede tutto», cioe' ricreare in SQL
+                  -- lo stesso appiattimento che si voleva togliere a Python.
+                  IF cardinality(v_diritto) = 0 THEN
+                      RETURN '{}'::bigint[];
+                  END IF;
+
+                  -- Nessuna restrizione dal chiamante: vale lo scope di diritto.
+                  IF p_richiesti IS NULL THEN
+                      RETURN v_diritto;
+                  END IF;
+
+                  -- Intersezione.
+                  -- ⚠️ coalesce OBBLIGATORIO: array_agg su zero righe ritorna
+                  -- NULL, che qui significherebbe «vede tutto». E' la stessa
+                  -- trappola gia' corretta in fn_get_emittenti_scope_sr_ids il
+                  -- 2026-08-04, nello stesso identico punto logico.
+                  RETURN (
+                      SELECT coalesce(array_agg(t.x ORDER BY t.x), '{}'::bigint[])
+                        FROM unnest(v_diritto) AS t(x)
+                       WHERE t.x = ANY(p_richiesti)
+                  );
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_emittenti_scope_sr_effettivo(integer, bigint[]) IS
+                  'Scope emittenti EFFETTIVO (soggetto_ruolo_id) = scope di diritto '
+                  '(fn_get_emittenti_scope_sr_ids) ∩ restrizione del chiamante, con NULL = '
+                  'universo su entrambi i lati. Semantica: NULL=tutto, ''{}''=nessuno, '
+                  'array=whitelist. Invariante: IL CHIAMANTE PUO'' SOLO RESTRINGERE, mai '
+                  'allargare — stesso principio dell''emittente attivo (rev 2026-08-04) '
+                  'applicato a un parametro. Attore nullo -> vale la sola restrizione del '
+                  'chiamante (convenzione famiglia). Esiste perche'' fn_search_soggetti_universale '
+                  'e fn_get_search_detail erano le uniche due funzioni di scope a fidarsi di un '
+                  'array calcolato fuori dal database: la convenzione a tre stati non sopravvive '
+                  'al viaggio attraverso Python, dove [] e None sono entrambi falsi. '
+                  'Brief perimetro-emittente §11.6 (Q2/C).';
+      rollback:
+        - sql:
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_emittenti_scope_sr_effettivo(integer, bigint[]);

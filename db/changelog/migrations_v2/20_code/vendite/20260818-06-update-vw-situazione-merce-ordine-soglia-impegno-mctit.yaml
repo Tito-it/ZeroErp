@@ -1,0 +1,446 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA SOGLIA DELL'IMPEGNO — vw_situazione_merce_ordine
+#   Rilievo del perimetro BE del 2026-08-18, accolto nel merito e modificato
+#   nel rimedio. Ragioni per esteso in
+#   docs/it/dev/work-done/brief-db-situazione-merce-ordine.md §10.
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────────
+#
+#   La vista (20260817-15) filtra `WHERE orr.attivo IS TRUE` e basta: NON
+#   guarda lo stato dell'ordine. Il `JOIN vendite.ordini` c'e' solo per far
+#   scattare la RLS. Misurato dal BE sul DB di sviluppo:
+#
+#       righe attive ..........................  107
+#         su ordini DRAFT .....................   60   ← tutte con da_spedire > 0
+#         su ordini da CONFERMATO in poi ......   47
+#
+#   Due conseguenze, entrambe reali:
+#     - un ordine in BOZZA dichiara «N da spedire»: presenta un'INTENZIONE
+#       come un arretrato;
+#     - un ordine ANNULLATO mai spedito lo dichiarerebbe PER SEMPRE.
+#       ⚠️ L'annullamento NON disattiva le righe (trgfn_ordini_guard_transizione
+#       delega solo a fn_check_ordine_annullabile, non tocca `attivo`), quindi
+#       il caso e' raggiungibile: confermato -> mai spedito -> annullato.
+#
+#   E' la gemella della decisione D1 sul DDT (20260817-14): «la merce esiste da
+#   quando il documento esce dalla bozza». All'ordine mancava la soglia
+#   corrispondente sull'IMPEGNO, e per simmetria vive nella vista — un filtro
+#   nel frontend sarebbe una seconda sede della stessa regola.
+#
+# ── ⭐ PERCHE' LA RIGA NON SPARISCE ──────────────────────────────────────
+#
+#   La richiesta era di TOGLIERE le righe sintetiche NON_SPEDITA sotto soglia.
+#   Non si fa, per tre ragioni misurate.
+#
+#   1. 🔴 **Il pannello e' PER ORDINE**, non una lista globale: il BE legge
+#      `WHERE s.ordine_id = %s`. Togliere le righe non ripulisce un elenco da
+#      107: rende **VUOTO** il pannello di ogni ordine in bozza. Cioe'
+#      esattamente il fallimento che questo cantiere ha combattuto due volte —
+#      il §2.3 («su 89 righe su 107 il pannello sarebbe vuoto», che e' la
+#      ragione per cui la vista esiste) e il §8.4 («non ho il permesso di
+#      saperlo» presentato come «non c'e' nulla da fare», il difetto di RLS
+#      trovato dal test 11). Lo reintrodurremmo per scelta, su 60 righe.
+#
+#   2. 🔴 **La salvaguardia proposta era un ramo morto.** «Una riga con partite
+#      resta visibile anche su ordine annullato» non puo' mai scattare:
+#      `fn_check_ordine_annullabile` blocca l'annullamento finche' esiste un
+#      DDT figlio VIVO, la D1 esclude i DDT abortiti, e gli unici due scrittori
+#      di `ordini_righe_fulfillment` (fn_genera_ddt_da_ordine,
+#      fn_genera_ddt_riconsegna) creano entrambi il DDT con sorgente
+#      ORDINE_VENDITA. Quindi: abortito => zero DDT vivi => zero partite.
+#      ⭐ Qui la stessa protezione c'e' ed E' EFFETTIVA, perche' e' una
+#      PRECEDENZA nel vocabolario e non una presenza nel result set: se
+#      l'impossibile diventasse possibile, il pannello lo MOSTRA invece di
+#      nasconderlo.
+#
+#   3. Il difetto stava in **una colonna**, non nell'esistenza della riga: su
+#      una riga di bozza `partite_merce` e' gia' 0, `differenza` gia' NULL, i
+#      denari gia' a zero. L'unica cosa che mentiva era `da_spedire`.
+#
+# ── LA REGOLA ───────────────────────────────────────────────────────────
+#
+#       impegnata := stato dell'ordine >= soglia(CONFERMATO) AND NOT is_abortito
+#
+#       da_spedire   NULL            quando NOT impegnata
+#       stato        NON_IMPEGNATA   quando NOT impegnata E nessuna partita
+#
+#   ⭐ E' la dottrina dei NULL del §3.2 — «NULL = non si applica, 0 = non c'e'
+#   nulla da fare» — applicata alla colonna a cui non era stata applicata. Su
+#   una bozza l'impegno non c'e' ANCORA, su un ordine abortito non c'e' PIU':
+#   in entrambi i casi «quanto resta da spedire» non si applica. Non e' zero.
+#
+#   `stato` passa da SEI a SETTE valori. Il consumatore non ri-traduce: la
+#   ragione sta nell'etichetta, non in un trattino da interpretare.
+#
+# ── ⚠️ LA TRAPPOLA: `stati_doc_ordini.ordine` NON E' UN CICLO DI VITA ────
+#
+#   Sul DDT la colonna e' monotona (10 · 20 · 40 · 50 · 60 · 70) e la D1 ci si
+#   appoggia legittimamente. Sugli ORDINI non lo e':
+#
+#       DRAFT 10 · CONFERMATO 20 · PARZIALMENTE_EVASO 22 · EVASO 25
+#       ALLOCATO 30 · SPEDITO 40 · CONSEGNATO 50 · ANNULLATO 60 · FATTURATO 70
+#
+#   EVASO (25) sta PRIMA di ALLOCATO (30) e SPEDITO (40): e' un ordinamento di
+#   presentazione. Il predicato `>= 20` e' corretto oggi **solo** perche' DRAFT
+#   e' l'unico stato sotto CONFERMATO — un'assunzione sul SEED, non sul
+#   modello. Per questo il pgTAP la inchioda (test 15): un seed futuro che la
+#   rompesse fallirebbe a vista invece di far comparire in silenzio le bozze.
+#
+#   ⚠️ E per questo serve COMUNQUE `NOT is_abortito`: ANNULLATO ha ordine 60,
+#   quindi la sola soglia numerica lo lascerebbe passare. Sono due clausole,
+#   come nella D1, e nessuna delle due e' ridondante.
+#
+#   Soglia ancorata a `codice_interno` (immutabile via trgfn_lock_columns), mai
+#   al `codice` ne' all'id: §6d delle linee guida SQL.
+#   ⚠️ Fail-closed come la D1: se CONFERMATO sparisse dal catalogo la vista
+#   tornerebbe vuota invece di dichiarare tutto impegnato.
+#
+# security_invoker=on: legge ordini_righe/ordini (RLS) e, via le partite, ddt e
+#   commesse_attivita. RI-SPECIFICATO — PG azzera la reloption se omessa nel
+#   CREATE OR REPLACE e non compare in pg_get_viewdef.
+#
+# Nessuna colonna aggiunta, tolta, rinominata o cambiata di tipo: il contratto
+#   a 18 colonne e la cardinalita' (una riga per riga d'ordine attiva) restano
+#   invariati. Il BE resta passthrough. Al FE serve la sola voce di tavolozza
+#   NON_IMPEGNATA (richiesta scritta nel brief §10.6).
+#
+# Dipendenze: vendite.vw_situazione_merce_ordine (20260817-15, commento
+#   20260817-16), config.stati_doc_ordini.is_abortito.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260818-06-update-vw-situazione-merce-ordine-soglia-impegno-mctit.yaml
+
+  - changeSet:
+      id: 20260818-06-update-vw-situazione-merce-ordine-soglia-impegno
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        Soglia dell'impegno su vw_situazione_merce_ordine, gemella della D1 sul
+        DDT: da_spedire NULL e stato NON_IMPEGNATA sulle righe di ordini in
+        bozza o abortiti (60 righe su 107 in sviluppo dichiaravano un arretrato
+        che era un'intenzione). La riga NON sparisce — il pannello e' per ordine
+        e sparire lo renderebbe vuoto — e le partite hanno la precedenza sul
+        vocabolario, cosi' la merce uscita davvero resta visibile e contata.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_situazione_merce_ordine
+            - columnExists:
+                schemaName: config
+                tableName: stati_doc_ordini
+                columnName: is_abortito
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_situazione_merce_ordine
+              WITH (security_invoker=on) AS
+              WITH soglia AS (
+                  -- ⭐ LA SOGLIA DELL'IMPEGNO, gemella di quella della D1 sul
+                  -- DDT: l'impegno esiste da quando l'ordine esce dalla bozza.
+                  -- Per codice_interno (immutabile), non per numero ne' per id.
+                  SELECT s.ordine AS ordine_confermato
+                    FROM config.stati_doc_ordini s
+                   WHERE s.codice_interno = 'CONFERMATO'
+              ),
+              pm AS (
+                  -- Le partite di merce di ogni riga d'ordine.
+                  -- ⚠️ Le RI-CONSEGNE restano fuori: hanno una riga d'ordine
+                  -- (fn_genera_ddt_riconsegna crea un fulfillment) ma i loro
+                  -- pezzi sono gia' nel consegnato della partita d'origine.
+                  SELECT p.ordine_riga_id,
+                         COUNT(*)::integer                       AS partite_merce,
+                         SUM(p.consegnato)                       AS consegnato,
+                         SUM(p.reso)                             AS reso,
+                         SUM(p.in_riconsegna)                    AS in_riconsegna,
+                         SUM(p.tenuti)                           AS tenuti,
+                         SUM(p.fatturato_merce)                  AS fatturato_merce,
+                         SUM(p.fatturato_da_ordine)              AS fatturato_da_ordine,
+                         -- ⭐ LA PROPAGAZIONE DEI NULL, il cuore della vista.
+                         -- SUM ignora i NULL: se NESSUNA partita ha un conto
+                         -- che si applica il risultato e' NULL, se qualcuna ce
+                         -- l'ha somma solo quelle.
+                         SUM(p.differenza)                       AS differenza,
+                         bool_and(p.misurabile)                  AS misurabile,
+                         -- Una riga di DDT che evade DUE righe d'ordine
+                         -- renderebbe ambigua l'attribuzione: si dichiara,
+                         -- non si ripartisce d'ufficio.
+                         bool_or(p.origine = 'MULTIPLA')         AS ha_origine_multipla,
+                         COUNT(*) FILTER (WHERE p.differenza IS NOT NULL)::integer AS partite_con_conto
+                    FROM vendite.vw_partite_merce p
+                   WHERE p.ordine_riga_id IS NOT NULL
+                     AND NOT p.e_riconsegna
+                   GROUP BY p.ordine_riga_id
+              ),
+              ord AS (
+                  -- Il fatturato nato sull'ORDINE (trigger CONFERMATO), gia'
+                  -- normalizzato in unita' del padre dai kit.
+                  SELECT f.riga_id AS ordine_riga_id, f.quantita, f.misurabile
+                    FROM vendite.vw_af_merce_per_riga f
+                   WHERE f.corsia = 'ORD'
+                     AND f.tipo_movimento = 'NORMALE'
+              ),
+              ful AS (
+                  -- Quanto di questa riga d'ordine e' stato evaso. Serve al
+                  -- residuo, e viene dal fulfillment come nella formula
+                  -- esistente — NON dal `consegnato` delle partite, che
+                  -- include le ri-consegne e non e' comparabile con l'ordinato.
+                  SELECT f.ordine_riga_id, SUM(f.qta_evasa) AS evaso
+                    FROM vendite.ordini_righe_fulfillment f
+                   GROUP BY f.ordine_riga_id
+              )
+              SELECT orr.id                                            AS ordine_riga_id,
+                     orr.ordine_id,
+                     orr.riga_nr,
+                     orr.articolo_id,
+                     orr.quantita                                      AS ordinato,
+                     COALESCE(pm.consegnato, 0)                        AS consegnato,
+                     COALESCE(pm.reso, 0)                              AS reso,
+                     COALESCE(pm.in_riconsegna, 0)                     AS in_riconsegna,
+                     COALESCE(pm.tenuti, 0)                            AS tenuti,
+                     COALESCE(pm.fatturato_merce, 0)                   AS fatturato_merce,
+                     COALESCE(pm.fatturato_da_ordine, 0)               AS fatturato_da_ordine,
+                     (COALESCE(pm.fatturato_merce, 0)
+                      + COALESCE(pm.fatturato_da_ordine, 0))           AS fatturato,
+                     -- Fatturato sull'ordine che non ha ancora trovato merce in
+                     -- cui versarsi. ⚠️ NON e' un accredito dovuto: e' merce da
+                     -- spedire, gia' fatturata.
+                     GREATEST(0::numeric,
+                              COALESCE(o.quantita, 0)
+                              - COALESCE(pm.fatturato_da_ordine, 0))   AS fatturato_anticipato,
+                     -- Il residuo di spedizione, dalla formula ESISTENTE
+                     -- (fn_ordine_ha_residuo_evasione). ⚠️ Non
+                     -- `ordinato − consegnato`: le due divergono sulla riga
+                     -- d'ordine 18946 (0 contro 3), perche' il consegnato delle
+                     -- partite include le ri-consegne.
+                     --
+                     -- ⭐ NULL SOTTO SOGLIA, e non zero. Quella formula NON
+                     -- guarda lo stato — e nella funzione va benissimo, perche'
+                     -- i suoi chiamanti (fn_genera_ddt_da_ordine,
+                     -- fn_conferma_reso) garantiscono lo stato a monte. Qui la
+                     -- garanzia non c'e', quindi va messa: su una bozza
+                     -- l'impegno non c'e' ancora, su un ordine abortito non c'e'
+                     -- piu'. «Quanto resta da spedire» non si applica, e un
+                     -- numero direbbe che qualcuno lo aspetta.
+                     (CASE
+                        WHEN imp.impegnata
+                        THEN GREATEST(0::numeric,
+                                      orr.quantita
+                                      - COALESCE(f.evaso, 0)
+                                      + vendite.fn_ordine_riga_qta_riconsegna(orr.id))
+                      END)                                             AS da_spedire,
+                     COALESCE(pm.partite_merce, 0)                     AS partite_merce,
+                     v.misurabile,
+                     -- NULL = «il conto non si applica»: nessuna partita, oppure
+                     -- nessuna partita con un conto. Mai zero.
+                     (CASE WHEN v.misurabile THEN pm.differenza END)   AS differenza,
+                     (CASE
+                        -- ⭐ LA PRECEDENZA, e vale come una regola di dominio:
+                        -- NON_IMPEGNATA vale solo dove non c'e' MERCE. Se una
+                        -- partita esiste, la merce e' uscita davvero e il verso
+                        -- del saldo vince — il conto e' reale, e un eventuale
+                        -- accredito pure, anche se l'ordine e' stato annullato
+                        -- dopo. E' la salvaguardia chiesta dal perimetro BE,
+                        -- resa effettiva: oggi il ramo non e' raggiungibile
+                        -- (fn_check_ordine_annullabile non lascia annullare un
+                        -- ordine con un DDT vivo), e se un domani lo diventasse
+                        -- il pannello lo MOSTRA invece di nasconderlo.
+                        WHEN COALESCE(pm.partite_merce, 0) = 0
+                             AND NOT imp.impegnata         THEN 'NON_IMPEGNATA'
+                        WHEN COALESCE(pm.partite_merce, 0) = 0 THEN 'NON_SPEDITA'
+                        WHEN NOT v.misurabile                  THEN 'NON_MISURABILE'
+                        WHEN pm.differenza IS NULL             THEN 'NON_FATTURABILE'
+                        WHEN pm.differenza > 0                 THEN 'DA_FATTURARE'
+                        WHEN pm.differenza < 0                 THEN 'DA_ACCREDITARE'
+                        ELSE 'PAREGGIATA'
+                      END)::varchar                                    AS stato
+                FROM vendite.ordini_righe orr
+                -- 🔴 IL JOIN SU `ordini` NON E' DECORATIVO: e' l'unica cosa che
+                -- fa applicare la RLS a questa vista. `ordini_righe` NON ha
+                -- policy — ce l'ha `vendite.ordini` — quindi partendo dalle sole
+                -- righe un utente fuori scope vedrebbe TUTTE le righe d'ordine
+                -- con i conti a zero: le partite sarebbero nascoste dalla loro
+                -- RLS e i COALESCE le trasformerebbero in zeri. Cioe' «non ho il
+                -- permesso di saperlo» presentato come «non c'e' nulla da fare»,
+                -- sull'intero pannello. Trovato dal test 11 del pgTAP.
+                -- ⭐ Da questa revisione porta anche lo STATO: era gia' qui, e
+                -- non lo leggeva nessuno.
+                JOIN vendite.ordini o_rls ON o_rls.id = orr.ordine_id
+                JOIN config.stati_doc_ordini sdo ON sdo.id = o_rls.stato_doc_ordine_id
+                CROSS JOIN soglia sg
+                LEFT JOIN pm  ON pm.ordine_riga_id  = orr.id
+                LEFT JOIN ord o ON o.ordine_riga_id = orr.id
+                LEFT JOIN ful f ON f.ordine_riga_id = orr.id
+                CROSS JOIN LATERAL (
+                    -- Misurabile solo se lo sono le partite E la corsia ORD, e
+                    -- se nessuna partita ha origine ambigua.
+                    SELECT COALESCE(pm.misurabile, true)
+                           AND COALESCE(o.misurabile, true)
+                           AND NOT COALESCE(pm.ha_origine_multipla, false) AS misurabile
+                ) v
+                CROSS JOIN LATERAL (
+                    -- ⚠️ DUE clausole, nessuna ridondante. La soglia numerica da
+                    -- sola lascerebbe passare ANNULLATO, che ha ordine 60 > 20:
+                    -- su `stati_doc_ordini` la colonna `ordine` e' un
+                    -- ordinamento di PRESENTAZIONE (EVASO 25 sta prima di
+                    -- ALLOCATO 30), non un ciclo di vita. E `is_abortito` da
+                    -- solo non escluderebbe la bozza. Stessa coppia della D1.
+                    -- ⚠️ `ordine` e' NULLABLE. Senza il COALESCE il confronto
+                    -- darebbe NULL e la riga uscirebbe INCOERENTE: da_spedire
+                    -- vuoto (il CASE non entra) ma stato NON_SPEDITA (il
+                    -- `NOT NULL` non e' vero). Con -1 uno stato senza
+                    -- ordinamento sta SOTTO soglia: fail-closed. E il pgTAP 15
+                    -- lo segnala comunque, invece di lasciarlo passare qui.
+                    SELECT (COALESCE(sdo.ordine, -1) >= sg.ordine_confermato
+                            AND NOT sdo.is_abortito) AS impegnata
+                ) imp
+               WHERE orr.attivo IS TRUE;
+
+              COMMENT ON VIEW vendite.vw_situazione_merce_ordine IS
+                'Aggregato PARLANTE per riga d''ordine, per il pannello situazione merce '
+                'richiesta BE/FE del 2026-08-17; ragioni di disegno nelle intestazioni dei changeSet 20260817-15 e 20260818-06 e in dbzero/vendite/manual/vw_situazione_merce_ordine.md. Una riga per riga d''ordine ATTIVA, '
+                'comprese quelle mai spedite — che vw_contatore_merce non contiene, ed erano 89 su '
+                '107. ⚠️ NON sostituisce vw_contatore_merce, che resta il contatore grezzo e dosa la '
+                'fatturazione: questa gli sta accanto. `differenza` = Σ dei saldi delle PARTITE, con '
+                'propagazione dei NULL (nessuna partita, o nessuna con un conto che si applica -> '
+                'NULL, MAI zero: e'' la differenza fra «non si applica» e «non c''e'' nulla da fare»). '
+                'Il fatturato in anticipo resta FUORI dal saldo, in `fatturato_anticipato`: ne '
+                'discende che una riga fatturata alla conferma e spedita a meta'' esce PAREGGIATA e '
+                'non «da accreditare», che sul contatore non era ottenibile senza rompere la parita''. '
+                '⚠️ `da_spedire` viene dalla formula del residuo GIA'' esistente (ordinato − Σ '
+                'qta_evasa + fn_ordine_riga_qta_riconsegna), NON da ordinato − consegnato: le due '
+                'divergono, perche'' il consegnato delle partite include le ri-consegne. Le righe di '
+                'RI-CONSEGNA sono escluse (conterebbero due volte). origine MULTIPLA -> misurabile '
+                'false: si dichiara, non si ripartisce. '
+                'rev 2026-08-18 (20260818-06) — LA SOGLIA DELL''IMPEGNO, gemella della decisione D1 '
+                'sul DDT: impegnata := stato dell''ordine >= soglia(CONFERMATO, per codice_interno) '
+                'AND NOT is_abortito. Sotto soglia `da_spedire` e'' NULL e non un numero (su una bozza '
+                'l''impegno non c''e'' ancora, su un ordine abortito non c''e'' piu'': «quanto resta da '
+                'spedire» non si applica — erano 60 righe su 107 a dichiarare un arretrato che era '
+                'un''intenzione) e `stato` e'' NON_IMPEGNATA. ⚠️ La riga NON sparisce: il pannello e'' '
+                'per ordine e farla sparire renderebbe VUOTO il pannello di ogni bozza, cioe'' «non ho '
+                'il permesso di saperlo» presentato come «non c''e'' nulla da fare». ⚠️ Le PARTITE '
+                'hanno la precedenza: dove c''e'' merce uscita vince il verso del saldo anche su ordine '
+                'annullato. ⚠️ Servono ENTRAMBE le clausole: ANNULLATO ha ordine 60 > 20, e su '
+                'stati_doc_ordini la colonna `ordine` e'' un ordinamento di presentazione (EVASO 25 '
+                'prima di ALLOCATO 30), non un ciclo di vita — assunzione inchiodata dal pgTAP. '
+                '`stato` ha SETTE valori: NON_IMPEGNATA | NON_SPEDITA | NON_MISURABILE | '
+                'NON_FATTURABILE | DA_FATTURARE | DA_ACCREDITARE | PAREGGIATA — i consumatori NON '
+                'devono ri-tradurre il segno. security_invoker=on.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristino della definizione precedente (20260817-15 + commento
+              -- 20260817-16): nessuna soglia sullo stato dell'ordine, da_spedire
+              -- sempre valorizzato, stato a SEI valori.
+              CREATE OR REPLACE VIEW vendite.vw_situazione_merce_ordine
+              WITH (security_invoker=on) AS
+              WITH pm AS (
+                  SELECT p.ordine_riga_id,
+                         COUNT(*)::integer                       AS partite_merce,
+                         SUM(p.consegnato)                       AS consegnato,
+                         SUM(p.reso)                             AS reso,
+                         SUM(p.in_riconsegna)                    AS in_riconsegna,
+                         SUM(p.tenuti)                           AS tenuti,
+                         SUM(p.fatturato_merce)                  AS fatturato_merce,
+                         SUM(p.fatturato_da_ordine)              AS fatturato_da_ordine,
+                         SUM(p.differenza)                       AS differenza,
+                         bool_and(p.misurabile)                  AS misurabile,
+                         bool_or(p.origine = 'MULTIPLA')         AS ha_origine_multipla,
+                         COUNT(*) FILTER (WHERE p.differenza IS NOT NULL)::integer AS partite_con_conto
+                    FROM vendite.vw_partite_merce p
+                   WHERE p.ordine_riga_id IS NOT NULL
+                     AND NOT p.e_riconsegna
+                   GROUP BY p.ordine_riga_id
+              ),
+              ord AS (
+                  SELECT f.riga_id AS ordine_riga_id, f.quantita, f.misurabile
+                    FROM vendite.vw_af_merce_per_riga f
+                   WHERE f.corsia = 'ORD'
+                     AND f.tipo_movimento = 'NORMALE'
+              ),
+              ful AS (
+                  SELECT f.ordine_riga_id, SUM(f.qta_evasa) AS evaso
+                    FROM vendite.ordini_righe_fulfillment f
+                   GROUP BY f.ordine_riga_id
+              )
+              SELECT orr.id                                            AS ordine_riga_id,
+                     orr.ordine_id,
+                     orr.riga_nr,
+                     orr.articolo_id,
+                     orr.quantita                                      AS ordinato,
+                     COALESCE(pm.consegnato, 0)                        AS consegnato,
+                     COALESCE(pm.reso, 0)                              AS reso,
+                     COALESCE(pm.in_riconsegna, 0)                     AS in_riconsegna,
+                     COALESCE(pm.tenuti, 0)                            AS tenuti,
+                     COALESCE(pm.fatturato_merce, 0)                   AS fatturato_merce,
+                     COALESCE(pm.fatturato_da_ordine, 0)               AS fatturato_da_ordine,
+                     (COALESCE(pm.fatturato_merce, 0)
+                      + COALESCE(pm.fatturato_da_ordine, 0))           AS fatturato,
+                     GREATEST(0::numeric,
+                              COALESCE(o.quantita, 0)
+                              - COALESCE(pm.fatturato_da_ordine, 0))   AS fatturato_anticipato,
+                     GREATEST(0::numeric,
+                              orr.quantita
+                              - COALESCE(f.evaso, 0)
+                              + vendite.fn_ordine_riga_qta_riconsegna(orr.id)) AS da_spedire,
+                     COALESCE(pm.partite_merce, 0)                     AS partite_merce,
+                     v.misurabile,
+                     (CASE WHEN v.misurabile THEN pm.differenza END)   AS differenza,
+                     (CASE
+                        WHEN COALESCE(pm.partite_merce, 0) = 0 THEN 'NON_SPEDITA'
+                        WHEN NOT v.misurabile                  THEN 'NON_MISURABILE'
+                        WHEN pm.differenza IS NULL             THEN 'NON_FATTURABILE'
+                        WHEN pm.differenza > 0                 THEN 'DA_FATTURARE'
+                        WHEN pm.differenza < 0                 THEN 'DA_ACCREDITARE'
+                        ELSE 'PAREGGIATA'
+                      END)::varchar                                    AS stato
+                FROM vendite.ordini_righe orr
+                JOIN vendite.ordini o_rls ON o_rls.id = orr.ordine_id
+                LEFT JOIN pm  ON pm.ordine_riga_id  = orr.id
+                LEFT JOIN ord o ON o.ordine_riga_id = orr.id
+                LEFT JOIN ful f ON f.ordine_riga_id = orr.id
+                CROSS JOIN LATERAL (
+                    SELECT COALESCE(pm.misurabile, true)
+                           AND COALESCE(o.misurabile, true)
+                           AND NOT COALESCE(pm.ha_origine_multipla, false) AS misurabile
+                ) v
+               WHERE orr.attivo IS TRUE;
+
+              -- ⚠️ Il commento torna alla revisione 20260817-16: senza questo
+              -- la vista ripristinata resterebbe documentata con SETTE valori
+              -- di `stato` e una soglia che non ha piu'.
+              COMMENT ON VIEW vendite.vw_situazione_merce_ordine IS
+                'Aggregato PARLANTE per riga d''ordine, per il pannello situazione merce '
+                'richiesta BE/FE del 2026-08-17; ragioni di disegno nell''intestazione del changeSet 20260817-15 e in dbzero/vendite/manual/vw_situazione_merce_ordine.md. Una riga per riga d''ordine ATTIVA, '
+                'comprese quelle mai spedite — che vw_contatore_merce non contiene, ed erano 89 su '
+                '107. ⚠️ NON sostituisce vw_contatore_merce, che resta il contatore grezzo e dosa la '
+                'fatturazione: questa gli sta accanto. `differenza` = Σ dei saldi delle PARTITE, con '
+                'propagazione dei NULL (nessuna partita, o nessuna con un conto che si applica -> '
+                'NULL, MAI zero: e'' la differenza fra «non si applica» e «non c''e'' nulla da fare»). '
+                'Il fatturato in anticipo resta FUORI dal saldo, in `fatturato_anticipato`: ne '
+                'discende che una riga fatturata alla conferma e spedita a meta'' esce PAREGGIATA e '
+                'non «da accreditare», che sul contatore non era ottenibile senza rompere la parita''. '
+                '⚠️ `da_spedire` viene dalla formula del residuo GIA'' esistente (ordinato − Σ '
+                'qta_evasa + fn_ordine_riga_qta_riconsegna), NON da ordinato − consegnato: le due '
+                'divergono, perche'' il consegnato delle partite include le ri-consegne. Le righe di '
+                'RI-CONSEGNA sono escluse (conterebbero due volte). origine MULTIPLA -> misurabile '
+                'false: si dichiara, non si ripartisce. `stato`: NON_SPEDITA | NON_MISURABILE | '
+                'NON_FATTURABILE | DA_FATTURARE | DA_ACCREDITARE | PAREGGIATA — i consumatori NON '
+                'devono ri-tradurre il segno. security_invoker=on. rev 2026-08-17.';
