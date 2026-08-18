@@ -8,7 +8,8 @@
 -- Indice test (1..7):
 --   1) EQUIVALENZA (garanzia fonte unica): l'insieme delle righe con
 --      diagnosi motivo NULL coincide con l'output del lister. Se divergono
---      i predicati si sono sdoppiati -> rosso. Indipendente dai dati.
+--      i predicati si sono sdoppiati -> rosso. ⚠️ Gira DOPO le fixture
+--      (spostato il 2026-08-18): prima confrontava solo i dati vivi.
 --   2) DDT_FATTURA_DA_ORDINE: ordine CONFERMATO, DDT CONSEGNATO (il rilievo
 --      originale DDT0000326) -> reason FATTURA_DA_ORDINE, non piu' il falso
 --      «dev'essere spedito o consegnato».
@@ -16,6 +17,7 @@
 --      -> reason MERCE_IN_VIAGGIO (l'unico caso in cui lo stato e' vero).
 --   4) DDT_SOLO_TRASPORTO: causale non fatturabile (CONTO_LAVORO) -> reason
 --      SOLO_TRASPORTO (non e' questione di stato).
+--   8) COERENZA rank <-> motivo (rinumerazione del 2026-08-18)
 --   5) generico ANNULLATO: DDT annullato -> DDT_NON_PUSHABILE (generico),
 --      NON la frase sullo stato.
 --   6) PRECEDENZA a due livelli: DDT ANNULLATO con ordine CONFERMATO -> due
@@ -41,7 +43,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(7);
+SELECT plan(8);
 
 SET LOCAL app.ruolo_applicativo = 'OPERATORE';
 SET LOCAL app.current_user_id = '1';
@@ -104,8 +106,26 @@ BEGIN
   RETURN v_ddt;
 END $$ LANGUAGE plpgsql;
 
+-- Fixtures
+CREATE TEMP TABLE f AS SELECT
+  pg_temp.mk_caso('CONFERMATO', (SELECT stato_ddt_consegnato_id FROM tmp_refs), (SELECT causale_vendita_id FROM tmp_refs))  AS d_fattura_ordine,
+  pg_temp.mk_caso('SPEDITO',    (SELECT stato_ddt_emesso_id FROM tmp_refs),     (SELECT causale_vendita_id FROM tmp_refs))  AS d_in_viaggio,
+  pg_temp.mk_caso('SPEDITO',    (SELECT stato_ddt_spedito_id FROM tmp_refs),    (SELECT causale_no_fatt_id FROM tmp_refs))  AS d_solo_trasporto,
+  pg_temp.mk_caso('SPEDITO',    (SELECT stato_ddt_annullato_id FROM tmp_refs),  (SELECT causale_vendita_id FROM tmp_refs))  AS d_annullato,
+  pg_temp.mk_caso('CONFERMATO', (SELECT stato_ddt_annullato_id FROM tmp_refs),  (SELECT causale_vendita_id FROM tmp_refs))  AS d_prec;
+
 -- ============================================================
--- TEST 1) EQUIVALENZA fonte unica (indipendente dai dati)
+-- TEST 1) EQUIVALENZA fonte unica
+--
+-- 🔴 SPOSTATO QUI il 2026-08-18 (§23.2 brief-design-partita-merce-
+--    generalizzata). Stava PRIMA del `CREATE TEMP TABLE f`, e sembrava
+--    girare dopo gli `INSERT` — che pero' sono dentro il CORPO di
+--    `pg_temp.mk_caso`, cioe' testo che non esegue nulla finche' qualcuno
+--    non chiama la funzione. Le fixture nascono QUI.
+--    ⚠️ Il confronto girava quindi sui soli dati vivi, ed era verde perche'
+--    nessuna riga attraversava la divergenza fra diagnosi e lister — non
+--    perche' la divergenza non ci fosse. L'intestazione diceva
+--    «indipendente dai dati»: vero della forma, falso della copertura.
 -- ============================================================
 SELECT ok(
   NOT EXISTS (
@@ -118,14 +138,6 @@ SELECT ok(
   ),
   '1) EQUIVALENZA: righe eleggibili (diagnosi motivo NULL) == output lister'
 );
-
--- Fixtures
-CREATE TEMP TABLE f AS SELECT
-  pg_temp.mk_caso('CONFERMATO', (SELECT stato_ddt_consegnato_id FROM tmp_refs), (SELECT causale_vendita_id FROM tmp_refs))  AS d_fattura_ordine,
-  pg_temp.mk_caso('SPEDITO',    (SELECT stato_ddt_emesso_id FROM tmp_refs),     (SELECT causale_vendita_id FROM tmp_refs))  AS d_in_viaggio,
-  pg_temp.mk_caso('SPEDITO',    (SELECT stato_ddt_spedito_id FROM tmp_refs),    (SELECT causale_no_fatt_id FROM tmp_refs))  AS d_solo_trasporto,
-  pg_temp.mk_caso('SPEDITO',    (SELECT stato_ddt_annullato_id FROM tmp_refs),  (SELECT causale_vendita_id FROM tmp_refs))  AS d_annullato,
-  pg_temp.mk_caso('CONFERMATO', (SELECT stato_ddt_annullato_id FROM tmp_refs),  (SELECT causale_vendita_id FROM tmp_refs))  AS d_prec;
 
 -- 2) FATTURA_DA_ORDINE (il rilievo originale)
 SELECT is(
@@ -176,6 +188,19 @@ SELECT ok(
      ) q
     WHERE k IS NOT NULL),
   '7) tutte le reason_key sotto vendite.ddt.push_commessa_reason.*'
+);
+
+-- 8) COERENZA INTERNA rank <-> motivo
+--    ⚠️ Le rank sono state rinumerate da 7 a 11 il 2026-08-18 per far stare
+--    i motivi della partita PRIMA di DDT_CONTATORE. Un `CASE` che dimentica
+--    un ramo non fallisce: restituisce NULL — e per questa funzione un
+--    motivo NULL significa «eleggibile», cioe' il contrario del vero.
+SELECT ok(
+  NOT EXISTS (
+    SELECT 1 FROM vendite.fn_ddt_push_diagnosi() g
+     WHERE (g.motivo_rank IS NULL) <> (g.motivo IS NULL)
+  ),
+  '8) rank e motivo sono valorizzati insieme: nessun rank senza etichetta'
 );
 
 SELECT * FROM finish();
