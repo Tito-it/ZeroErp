@@ -31,6 +31,7 @@ from apps.core.db._helpers import (
     sql_tiebreak_direction,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
+from apps.vendite.db._coda_documento_filtro import filtro_coda_per_documento
 from apps.core.db.sql_write_helpers import execute_dynamic_update
 
 # Scopo: Whitelist colonne ORDER BY per la lista resi (SQL injection safe). Le
@@ -462,6 +463,8 @@ class ResiRepository:
         data_al: date | None = None,
         search: str | None = None,
         etichetta: str | None = None,
+        ddt_id: int | None = None,
+        ordine_id: int | None = None,
         auth_user_id: int | None = None,
         limit: int,
         offset: int,
@@ -484,6 +487,8 @@ class ResiRepository:
             data_da=data_da,
             data_al=data_al,
             search=search,
+            ddt_id=ddt_id,
+            ordine_id=ordine_id,
             auth_user_id=auth_user_id,
             limit=limit,
             offset=offset,
@@ -505,6 +510,8 @@ class ResiRepository:
         data_da: date | None = None,
         data_al: date | None = None,
         search: str | None = None,
+        ddt_id: int | None = None,
+        ordine_id: int | None = None,
         auth_user_id: int | None = None,
         limit: int,
         offset: int,
@@ -518,6 +525,8 @@ class ResiRepository:
             data_da=data_da,
             data_al=data_al,
             search=search,
+            ddt_id=ddt_id,
+            ordine_id=ordine_id,
             auth_user_id=auth_user_id,
             limit=limit,
             offset=offset,
@@ -537,6 +546,8 @@ class ResiRepository:
         data_da: date | None,
         data_al: date | None,
         search: str | None = None,
+        ddt_id: int | None = None,
+        ordine_id: int | None = None,
         extra_conditions: list[str] | None = None,
         extra_params: list[Any] | None = None,
         auth_user_id: int | None,
@@ -572,6 +583,18 @@ class ResiRepository:
         if data_al is not None:
             conditions.append("v.data <= %s")
             params.append(data_al)
+        # Restrizione al documento: filtro COMUNE alle due code, quindi vive qui
+        # accanto a billing_account_id e alle date — non negli `extra_conditions`
+        # dei wrapper, che sono per le colonne di UNA vista sola (l'etichetta).
+        # ⭐ Il predicato e' il BB condiviso col pannello situazione merce: le due
+        # schermate rispondono alla stessa domanda e devono contare le stesse
+        # righe.
+        condizione_doc, params_doc = filtro_coda_per_documento(
+            ddt_id=ddt_id, ordine_id=ordine_id
+        )
+        if condizione_doc is not None:
+            conditions.append(condizione_doc)
+            params.extend(params_doc)
         if extra_conditions:
             # Condizioni vista-specifiche costruite dal wrapper chiamante
             # (es. etichetta della coda accrediti): il builder resta neutro

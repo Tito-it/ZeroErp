@@ -25,6 +25,10 @@ from apps.core.db._helpers import (
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.services.error_manager import ErrorManager
+from apps.vendite.db.commesse_repository import (
+    TIPO_MOVIMENTO_NORMALE,
+    TIPO_MOVIMENTO_RETTIFICA,
+)
 from apps.core.services.value_normalizer import as_bool, empty_to_none
 from apps.vendite.types import (
     AnnullaLottoDaDraftResult,
@@ -91,6 +95,21 @@ class GroupAttivitaInput:
     arrotondamento_quantita_dec: int
     metodo_arrotondamento_importi: str
     metodo_arrotondamento_quantita: str
+    # ── Rettifica (nota di credito) ──────────────────────────────────────────
+    # `tipo_movimento` e' il CARTELLINO: dice cos'e' la riga (NORMALE, ONERE,
+    # RETTIFICA). Il numero lo porta la quantita', che su una rettifica e' gia'
+    # NEGATIVA a monte (D-NC-2): qui non si cambia nessun segno.
+    tipo_movimento: str = TIPO_MOVIMENTO_NORMALE
+    fattura_riga_rettificata_id: int | None = None
+    # I tre valori COPIATI dalla riga di fattura rettificata. Non sono i valori
+    # dell'attivita': su una rettifica il prezzo e' quello con cui la merce e'
+    # stata fatturata, letto dal DOCUMENTO e mai ricalcolato (N-1). Oggi
+    # coincidono con quelli dell'attivita' per costruzione — ed e' precisamente
+    # il motivo per cui prendere i secondi non darebbe nessun sintomo finche'
+    # non divergono.
+    rett_prezzo_unitario: Decimal | None = None
+    rett_sconto_percentuale: Decimal | None = None
+    rett_iva_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -110,6 +129,10 @@ class AttivitaDaFatturare:
     # appartenere a piu' kit, solo il documento sorgente sa quale e' stato
     # venduto. Vedi brief-fix-importi-riga-fattura-zero §4.7-bis (D5).
     meta: dict[str, Any] | None = None
+    # Il cartellino della riga, letto qui per l'aggregazione: una RETTIFICA non
+    # si fonde con una riga normale nemmeno se prezzo, articolo e IVA
+    # coincidessero — sono due fatti diversi dentro lo stesso documento.
+    tipo_movimento: str = TIPO_MOVIMENTO_NORMALE
 
 
 @dataclass(frozen=True)
@@ -171,6 +194,81 @@ CODA_STAMPA_SORT_SQL: dict[str, str] = {
     "lotto_id": "c.lotto_id {dir} NULLS LAST",
     "data_update": "c.data_update",
 }
+
+
+# Proiezione e mapping di `GroupAttivitaInput`, in un posto solo.
+#
+# 🔴 PERCHE' ESISTE. Le due letture — singola (`get_group_attivita_input`) e
+# batch (`batch_get_group_attivita_inputs`) — proiettavano le STESSE 19 colonne
+# in due SELECT copiate, con due mapping riga->dataclass scritti a mano. E le due
+# copie erano gia' DIVERSE: quella singola faceva `articolo_id=int(row[1])` su
+# una colonna che e' un UUID, cioe' sollevava `ValueError` a ogni chiamata.
+# Nessun test lo vedeva (i test mockano il repository) e nessun percorso vivo la
+# invocava, quindi il difetto e' rimasto la' a aspettare il primo chiamante.
+# Con una proiezione e un mapper soli il difetto non e' "corretto in due punti":
+# non ha piu' due punti in cui esistere.
+_GROUP_ATTIVITA_SELECT = """
+                SELECT
+                    a.id,
+                    a.articolo_id,
+                    a.billing_account_id AS dest_billing_account_id,
+                    COALESCE(a.uom_id, art.uom_id) AS uom_id,
+                    a.prezzo_unitario,
+                    art.iva_id,
+                    a.competenza_dal,
+                    a.competenza_al,
+                    a.data_attivita,
+                    COALESCE(r.calcolo_qta_padre, 'fissa') AS calcolo_qta_padre,
+                    COALESCE(r.arrotondamento_importi_dec, 2) AS arrotondamento_importi_dec,
+                    COALESCE(r.arrotondamento_quantita_dec, 3) AS arrotondamento_quantita_dec,
+                    COALESCE(r.metodo_arrotondamento_importi, 'HALF_UP')
+                        AS metodo_arrotondamento_importi,
+                    COALESCE(r.metodo_arrotondamento_quantita, 'HALF_UP')
+                        AS metodo_arrotondamento_quantita,
+                    a.tipo_movimento,
+                    a.fattura_riga_rettificata_id,
+                    fr.prezzo_unitario     AS rett_prezzo_unitario,
+                    fr.sconto_percentuale  AS rett_sconto_percentuale,
+                    fr.iva_id              AS rett_iva_id
+                FROM vendite.attivita_fatturabili a
+                JOIN catalogo.articoli art
+                  ON art.id = a.articolo_id
+                LEFT JOIN vendite.articolo_regole_fatturazione r
+                  ON r.articolo_id = a.articolo_id
+                -- La riga di fattura RETTIFICATA: e' da qui che una nota di
+                -- credito prende prezzo, sconto e IVA (N-1, mai ricalcolati).
+                -- LEFT perche' il puntatore e' NULL su tutto cio' che non e'
+                -- una rettifica, cioe' sul caso normale.
+                LEFT JOIN vendite.fatture_righe fr
+                  ON fr.id = a.fattura_riga_rettificata_id
+"""
+
+
+# Scopo: Costruisce un `GroupAttivitaInput` da una riga di `_GROUP_ATTIVITA_SELECT`.
+#        Unico mapping: le due letture non possono divergere.
+def _group_attivita_input_da_row(row: tuple[Any, ...]) -> GroupAttivitaInput:
+    return GroupAttivitaInput(
+        attivita_id=int(row[0]),
+        # ⚠️ `str`, non `int`: e' un UUID (catalogo.articoli.id).
+        articolo_id=None if row[1] is None else str(row[1]),
+        dest_billing_account_id=None if row[2] is None else int(row[2]),
+        uom_id=None if row[3] is None else int(row[3]),
+        prezzo_unitario=row[4],
+        iva_id=None if row[5] is None else int(row[5]),
+        competenza_dal=row[6],
+        competenza_al=row[7],
+        data_attivita=row[8],
+        calcolo_qta_padre=row[9],
+        arrotondamento_importi_dec=int(row[10]),
+        arrotondamento_quantita_dec=int(row[11]),
+        metodo_arrotondamento_importi=row[12],
+        metodo_arrotondamento_quantita=row[13],
+        tipo_movimento=row[14] or TIPO_MOVIMENTO_NORMALE,
+        fattura_riga_rettificata_id=None if row[15] is None else int(row[15]),
+        rett_prezzo_unitario=row[16],
+        rett_sconto_percentuale=row[17],
+        rett_iva_id=None if row[18] is None else int(row[18]),
+    )
 
 
 class VenditePipelineRepository:
@@ -1197,51 +1295,11 @@ class VenditePipelineRepository:
     # Scopo: Recupera `group_attivita_input` dal contesto applicativo o dal database.
     def get_group_attivita_input(self, attivita_id: int) -> GroupAttivitaInput | None:
         with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT
-                    a.id,
-                    a.articolo_id,
-                    a.billing_account_id AS dest_billing_account_id,
-                    COALESCE(a.uom_id, art.uom_id) AS uom_id,
-                    a.prezzo_unitario,
-                    art.iva_id,
-                    a.competenza_dal,
-                    a.competenza_al,
-                    a.data_attivita,
-                    COALESCE(r.calcolo_qta_padre, 'fissa') AS calcolo_qta_padre,
-                    COALESCE(r.arrotondamento_importi_dec, 2) AS arrotondamento_importi_dec,
-                    COALESCE(r.arrotondamento_quantita_dec, 3) AS arrotondamento_quantita_dec,
-                    COALESCE(r.metodo_arrotondamento_importi, 'HALF_UP') AS metodo_arrotondamento_importi,
-                    COALESCE(r.metodo_arrotondamento_quantita, 'HALF_UP') AS metodo_arrotondamento_quantita
-                FROM vendite.attivita_fatturabili a
-                JOIN catalogo.articoli art
-                  ON art.id = a.articolo_id
-                LEFT JOIN vendite.articolo_regole_fatturazione r
-                  ON r.articolo_id = a.articolo_id
-                WHERE a.id = %s
-                """,
-                [attivita_id],
-            )
+            cursor.execute(_GROUP_ATTIVITA_SELECT + " WHERE a.id = %s", [attivita_id])
             row = cursor.fetchone()
         if not row:
             return None
-        return GroupAttivitaInput(
-            attivita_id=int(row[0]),
-            articolo_id=int(row[1]),
-            dest_billing_account_id=None if row[2] is None else int(row[2]),
-            uom_id=None if row[3] is None else int(row[3]),
-            prezzo_unitario=row[4],
-            iva_id=None if row[5] is None else int(row[5]),
-            competenza_dal=row[6],
-            competenza_al=row[7],
-            data_attivita=row[8],
-            calcolo_qta_padre=row[9],
-            arrotondamento_importi_dec=int(row[10]),
-            arrotondamento_quantita_dec=int(row[11]),
-            metodo_arrotondamento_importi=row[12],
-            metodo_arrotondamento_quantita=row[13],
-        )
+        return _group_attivita_input_da_row(row)
 
     # Scopo: Fetch batch di GroupAttivitaInput per una lista di attivita_id.
     # Singola query con ANY(%s) al posto di N query singole.
@@ -1252,53 +1310,10 @@ class VenditePipelineRepository:
             return {}
         with connection.cursor() as cursor:
             cursor.execute(
-                """
-                SELECT
-                    a.id,
-                    a.articolo_id,
-                    a.billing_account_id AS dest_billing_account_id,
-                    COALESCE(a.uom_id, art.uom_id) AS uom_id,
-                    a.prezzo_unitario,
-                    art.iva_id,
-                    a.competenza_dal,
-                    a.competenza_al,
-                    a.data_attivita,
-                    COALESCE(r.calcolo_qta_padre, 'fissa') AS calcolo_qta_padre,
-                    COALESCE(r.arrotondamento_importi_dec, 2) AS arrotondamento_importi_dec,
-                    COALESCE(r.arrotondamento_quantita_dec, 3) AS arrotondamento_quantita_dec,
-                    COALESCE(r.metodo_arrotondamento_importi, 'HALF_UP')
-                        AS metodo_arrotondamento_importi,
-                    COALESCE(r.metodo_arrotondamento_quantita, 'HALF_UP')
-                        AS metodo_arrotondamento_quantita
-                FROM vendite.attivita_fatturabili a
-                JOIN catalogo.articoli art
-                  ON art.id = a.articolo_id
-                LEFT JOIN vendite.articolo_regole_fatturazione r
-                  ON r.articolo_id = a.articolo_id
-                WHERE a.id = ANY(%s)
-                """,
-                [attivita_ids],
+                _GROUP_ATTIVITA_SELECT + " WHERE a.id = ANY(%s)", [attivita_ids]
             )
             rows = cursor.fetchall()
-        result: dict[int, GroupAttivitaInput] = {}
-        for row in rows:
-            result[int(row[0])] = GroupAttivitaInput(
-                attivita_id=int(row[0]),
-                articolo_id=None if row[1] is None else str(row[1]),
-                dest_billing_account_id=None if row[2] is None else int(row[2]),
-                uom_id=None if row[3] is None else int(row[3]),
-                prezzo_unitario=row[4],
-                iva_id=None if row[5] is None else int(row[5]),
-                competenza_dal=row[6],
-                competenza_al=row[7],
-                data_attivita=row[8],
-                calcolo_qta_padre=row[9],
-                arrotondamento_importi_dec=int(row[10]),
-                arrotondamento_quantita_dec=int(row[11]),
-                metodo_arrotondamento_importi=row[12],
-                metodo_arrotondamento_quantita=row[13],
-            )
-        return result
+        return {int(row[0]): _group_attivita_input_da_row(row) for row in rows}
 
     # Scopo: Restituisce elenco `attivita_da_fatturare` in base ai filtri disponibili.
     # Safety-net: LIMIT con default alto per evitare memory explosion su lotti massivi.
@@ -1319,7 +1334,8 @@ class VenditePipelineRepository:
                     a.sorgente_uid,
                     a.sorgente_riga,
                     art.descrizione,
-                    a.meta
+                    a.meta,
+                    a.tipo_movimento
                 FROM vendite.attivita_fatturabili a
                 JOIN catalogo.articoli art
                   ON art.id = a.articolo_id
@@ -1356,6 +1372,7 @@ class VenditePipelineRepository:
                 # lo snapshot kit a valle farebbe `str.get(...)`. I test
                 # mockati non lo vedono, iniettano gia' dei dict.
                 meta=coerce_jsonb_dict(row[9]),
+                tipo_movimento=row[10] or TIPO_MOVIMENTO_NORMALE,
             )
             for row in rows
         ]
@@ -2340,6 +2357,8 @@ class VenditePipelineRepository:
         righe_kit_keys: list[str | None],
         righe_kit_esposti: list[bool | None],
         righe_kit_articolo_padre_ids: list[str | None],  # uuid
+        righe_sconti: list[Decimal | None],
+        righe_rettificate: list[int | None],
         righe_metas: list[str | None],
         att_ids: list[int],
         att_fattura_ids: list[int],
@@ -2360,6 +2379,10 @@ class VenditePipelineRepository:
             "dest_ba_ids": righe_dest_billing_account_ids,
             "kit_keys": righe_kit_keys, "kit_esposti": righe_kit_esposti,
             "kit_padri": righe_kit_articolo_padre_ids, "metas": righe_metas,
+            # Le due colonne della rettifica entrano nel guard come tutte le
+            # altre: sono esattamente il tipo di array che si dimentica di
+            # allineare, ed `unnest` non lo direbbe.
+            "sconti": righe_sconti, "rettificate": righe_rettificate,
         }
         att = {
             "att_ids": att_ids, "att_fattura_ids": att_fattura_ids,
@@ -2381,26 +2404,39 @@ class VenditePipelineRepository:
             cursor.execute(
                 """
                 WITH righe_input AS (
+                    -- ⚠️ Ogni cast dichiara il tipo della COLONNA di
+                    -- destinazione, non «un intero qualsiasi»: `fattura_id`,
+                    -- `uom_id` e `dest_billing_account_id` sono bigint, e un
+                    -- `int[]` li avrebbe fatti fallire con «integer out of
+                    -- range» il giorno in cui una sequenza supera 2.1 miliardi.
+                    -- La distanza e' enorme (gli id di oggi sono decine di
+                    -- migliaia) e non e' un difetto in esercizio — ma il cast
+                    -- giusto costa lo stesso di quello sbagliato, e questo
+                    -- documenta la colonna invece di indovinarla.
+                    -- `riga_nr` e `iva_id` restano `int[]`: lo sono davvero.
                     SELECT *
                     FROM unnest(
-                        %s::int[],
+                        %s::bigint[],
                         %s::int[],
                         %s::uuid[],
                         %s::text[],
-                        %s::int[],
+                        %s::bigint[],
                         %s::numeric[],
                         %s::numeric[],
                         %s::int[],
-                        %s::int[],
+                        %s::bigint[],
                         %s::text[],
                         %s::boolean[],
                         %s::uuid[],
+                        %s::numeric[],
+                        %s::bigint[],
                         %s::jsonb[]
                     ) AS t(
                         fattura_id, riga_nr, articolo_id, descrizione,
                         uom_id, qta, prezzo_unitario, iva_id,
                         dest_billing_account_id,
                         kit_key, kit_esposto_in_fattura, kit_articolo_padre_id,
+                        sconto_percentuale, riga_rettificata_id,
                         meta
                     )
                 ),
@@ -2412,6 +2448,7 @@ class VenditePipelineRepository:
                         sorgente_tipo_id, sorgente_uid, sorgente_riga,
                         kit_key, kit_esposto_in_fattura,
                         kit_articolo_padre_id, kit_descrizione_padre,
+                        sconto_percentuale, riga_rettificata_id,
                         meta
                     )
                     SELECT
@@ -2429,13 +2466,26 @@ class VenditePipelineRepository:
                                      FROM catalogo.articoli art
                                     WHERE art.id = d.kit_articolo_padre_id)
                         END,
+                        -- ⚠️ COALESCE e non il valore nudo: `sconto_percentuale`
+                        -- ha DEFAULT 0 a DB, e finora la colonna non era
+                        -- NOMINATA nella INSERT — quindi il default si
+                        -- applicava. Nominarla passando NULL la porterebbe a
+                        -- NULL su OGNI riga di fattura: un cambio silenzioso di
+                        -- comportamento su tutto lo storico futuro, per una
+                        -- colonna che serve alle sole note di credito.
+                        COALESCE(d.sconto_percentuale, 0),
+                        -- La riga di fattura gemella (§12.6-bis). NULL fuori
+                        -- dalla rettifica, ed e' la stragrande maggioranza.
+                        d.riga_rettificata_id,
                         d.meta
                     FROM righe_input d
                     RETURNING id, fattura_id, riga_nr
                 ),
                 att_input AS (
+                    -- Come sopra: `attivita_fatturabili.id` e `fattura_id` sono
+                    -- bigint, `riga_nr` e' integer.
                     SELECT *
-                    FROM unnest(%s::int[], %s::int[], %s::int[])
+                    FROM unnest(%s::bigint[], %s::bigint[], %s::int[])
                       AS t(attivita_id, fattura_id, riga_nr)
                 ),
                 correlated AS (
@@ -2466,6 +2516,12 @@ class VenditePipelineRepository:
                     righe_kit_keys,
                     righe_kit_esposti,
                     righe_kit_articolo_padre_ids,
+                    # ⚠️ L'ordine di questa lista È il contratto con l'`unnest`:
+                    # le due nuove vanno PRIMA di `righe_metas`, come nella
+                    # clausola. Invertirle non solleverebbe — produrrebbe righe
+                    # con lo sconto al posto del puntatore.
+                    righe_sconti,
+                    righe_rettificate,
                     righe_metas,
                     att_ids,
                     att_fattura_ids,

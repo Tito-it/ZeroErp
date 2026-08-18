@@ -193,8 +193,11 @@ class PermissionResolver:
         unwrap `if row[0]:` trattava `[]` come falsy → None (=vede tutto),
         invertendo il "nessun accesso". Ora delega alla versione guarded, che
         risolve entrambi. I nuovi call-site usino direttamente
-        `get_emittenti_pk_ids`. *(La legacy `script.fn_get_emittenti_scope`
-        resta da dismettere lato DB quando non avra' piu' lettori — brief DB.)*
+        `get_emittenti_pk_ids`. *(La legacy `script.fn_get_emittenti_scope` e'
+        stata DROPPATA dal DB il 2026-08-18, changeSet `20260818-66`: questo
+        metodo non la chiamava piu' da tempo, ed e' il motivo per cui il drop
+        e' passato senza rompere niente. Resta come alias per i call-site
+        storici.)*
 
         Semantica: None = nessuna restrizione, [] = nessun accesso.
         """
@@ -247,7 +250,8 @@ class PermissionResolver:
 
         Differenze con `get_emittenti_ids` (legacy): la fn nuova ha i guard
         completi (no identita OPERATORE attiva → '{}'; super admin → NULL)
-        come `_sr_ids`. La legacy `fn_get_emittenti_scope` non li ha.
+        come `_sr_ids`. La legacy `fn_get_emittenti_scope` non li aveva, ed e'
+        stata droppata dal DB il 2026-08-18 (`20260818-66`).
 
         Vedi guida `soggetti-e-ruoli-anagrafici §5b` per il pattern duale SR vs PK
         e memoria `feedback_emittente_pk_vs_soggetto_ruolo`.

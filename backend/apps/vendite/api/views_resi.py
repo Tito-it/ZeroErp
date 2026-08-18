@@ -26,6 +26,7 @@ from apps.core.api.payload_validators import (
     optional_iso_date,
     paginated_envelope,
     parse_list_params,
+    qp_int_optional,
     qp_str_upper,
 )
 from apps.core.api.success_responses import success_response
@@ -48,6 +49,13 @@ _LISTA_CODICE_DA_RICONSEGNARE = "vendite.resi_da_riconsegnare"
 def _extract_coda_filters(qp) -> dict[str, Any]:
     filters = extract_doc_list_filters(qp)
     filters.pop("stato_codice")
+    # Restrizione al documento: e' cio' che rende il collegamento dal pannello
+    # situazione merce un percorso intero e non «apri la coda e cercati la riga»
+    # (FE-2). ⚠️ `qp_int_optional` e' STRICT: `?ddt_id=banana` risponde 400 e non
+    # sparisce come filtro — un filtro che svanisce mostra la coda intera
+    # facendola sembrare quella del documento.
+    filters["ddt_id"] = qp_int_optional(qp.get("ddt_id"), "ddt_id")
+    filters["ordine_id"] = qp_int_optional(qp.get("ordine_id"), "ordine_id")
     return filters
 
 
@@ -199,6 +207,14 @@ class ApiResiDaAccreditare(DomainAPIView):
                              description="DOVUTA | FACOLTATIVA (default: tutte)."),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
+            OpenApiParameter(name="ddt_id", type=int, required=False,
+                             description="Restringe la coda al DDT indicato "
+                                         "(collegamento dal pannello situazione "
+                                         "merce). Alternativo a ordine_id."),
+            OpenApiParameter(name="ordine_id", type=int, required=False,
+                             description="Restringe la coda all'ordine indicato, via "
+                                         "fulfillment della riga di DDT resa. "
+                                         "Alternativo a ddt_id."),
             OpenApiParameter(name="order_by", type=str, required=False,
                              description="campo_sorgente catalogo "
                                          "'vendite.resi_da_accreditare' "
@@ -251,6 +267,14 @@ class ApiResiDaAccreditareExport(DomainAPIView):
             OpenApiParameter(name="data_a", type=str, required=False),
             OpenApiParameter(name="etichetta", type=str, required=False,
                              description="DOVUTA | FACOLTATIVA (default: tutte)."),
+            OpenApiParameter(name="ddt_id", type=int, required=False,
+                             description="Restringe la coda al DDT indicato "
+                                         "(collegamento dal pannello situazione "
+                                         "merce). Alternativo a ordine_id."),
+            OpenApiParameter(name="ordine_id", type=int, required=False,
+                             description="Restringe la coda all'ordine indicato, via "
+                                         "fulfillment della riga di DDT resa. "
+                                         "Alternativo a ddt_id."),
             OpenApiParameter(name="order_by", type=str, required=False),
             OpenApiParameter(name="order_dir", type=str, required=False),
         ],
@@ -282,6 +306,8 @@ class ApiResiDaAccreditareExport(DomainAPIView):
             data_da=f["data_da"],
             data_al=f["data_al"],
             etichetta=f["etichetta"],
+            ddt_id=f["ddt_id"],
+            ordine_id=f["ordine_id"],
         )
         return build_export_response(
             request,
@@ -311,6 +337,14 @@ class ApiResiDaRiconsegnare(DomainAPIView):
             OpenApiParameter(name="data_a", type=str, required=False),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
+            OpenApiParameter(name="ddt_id", type=int, required=False,
+                             description="Restringe la coda al DDT indicato "
+                                         "(collegamento dal pannello situazione "
+                                         "merce). Alternativo a ordine_id."),
+            OpenApiParameter(name="ordine_id", type=int, required=False,
+                             description="Restringe la coda all'ordine indicato, via "
+                                         "fulfillment della riga di DDT resa. "
+                                         "Alternativo a ddt_id."),
             OpenApiParameter(name="order_by", type=str, required=False,
                              description="campo_sorgente catalogo "
                                          "'vendite.resi_da_riconsegnare' "
@@ -360,6 +394,14 @@ class ApiResiDaRiconsegnareExport(DomainAPIView):
             OpenApiParameter(name="billing_account_id", type=int, required=False),
             OpenApiParameter(name="data_da", type=str, required=False),
             OpenApiParameter(name="data_a", type=str, required=False),
+            OpenApiParameter(name="ddt_id", type=int, required=False,
+                             description="Restringe la coda al DDT indicato "
+                                         "(collegamento dal pannello situazione "
+                                         "merce). Alternativo a ordine_id."),
+            OpenApiParameter(name="ordine_id", type=int, required=False,
+                             description="Restringe la coda all'ordine indicato, via "
+                                         "fulfillment della riga di DDT resa. "
+                                         "Alternativo a ddt_id."),
             OpenApiParameter(name="order_by", type=str, required=False),
             OpenApiParameter(name="order_dir", type=str, required=False),
         ],
@@ -390,6 +432,8 @@ class ApiResiDaRiconsegnareExport(DomainAPIView):
             billing_account_id=f["billing_account_id"],
             data_da=f["data_da"],
             data_al=f["data_al"],
+            ddt_id=f["ddt_id"],
+            ordine_id=f["ordine_id"],
         )
         return build_export_response(
             request,

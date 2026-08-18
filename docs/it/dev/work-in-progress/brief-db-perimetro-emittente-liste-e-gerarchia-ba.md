@@ -3253,6 +3253,58 @@ lì «per coerenza».
 
 ### Fase E — Il resto del giro P-4 · *dopo, e non tutto insieme*
 
+> ## ✅ Fase E BE ESEGUITA il 2026-08-18 — suite **3745 verdi**
+>
+> Il team DB ha consegnato (`20260818-58`→`-67`) e il backend ha fatto la sua
+> metà: **5 liste**, whitelist di ordinamento + colonna nel `SELECT` + mapping +
+> TypedDict + 4 chiavi i18n, più la colonna nella **ricerca universale**
+> (residuo D-3 chiuso).
+>
+> | Lista | Lavoro BE |
+> | --- | --- |
+> | aperto · backlog · errori | colonna nel `SELECT` (dalla vista) + mapping + whitelist |
+> | drill-down commesse | idem, **più** la colonna nel `GROUP BY` |
+> | lotti | **JOIN** a `soggetti_ruoli`/`soggetti` (nessuna vista da estendere) + colonna + mapping + whitelist |
+> | ricerca universale | colonna in tabella per i soli **CLIENTI**, non ordinabile |
+>
+> 🔴 **E provando gli ordinamenti contro il database è saltato fuori un difetto
+> PREESISTENTE, grave e invisibile**: `list_dash_competenza_errori` interpolava
+> `ORDER BY {sort_col} {direction} NULLS LAST`, ma `direction` porta **già** la
+> clausola (`ASC NULLS FIRST`). L'SQL usciva `ASC NULLS FIRST NULLS LAST`, che
+> PostgreSQL rifiuta: la lista «Competenza — errori vivi» rispondeva **500 su
+> ogni click di intestazione**, su tutte e cinque le colonne, **da sempre**.
+>
+> ⚠️ **Nessun presidio poteva vederlo**: quello del seed confronta catalogo e
+> whitelist senza eseguire SQL, e i test dei repository mockano
+> `_query_paged_view` — la query al database non arriva mai. Si vedeva solo
+> cliccando una freccia. Corretto (era un residuo dell'unificazione dei 29
+> call-site in `sql_order_direction`, che la sua docstring dichiara) e
+> **presidiato staticamente**: `test_sql_order_helpers` ora rifiuta un `NULLS`
+> incollato dopo `{direction}`. ⭐ Poi ho provato **ogni colonna ordinabile di
+> tutte e sei le liste, in entrambe le direzioni**: 88 combinazioni, tutte ok.
+>
+> ⚠️ **Il presidio nuovo ha dato 6 falsi positivi alla prima stesura**, ed è la
+> stessa trappola di stamattina: cercava anche `{dir}`, che in
+> `coda_lavori/repository.py` e `pipeline_repository.py` porta la direzione
+> **nuda** (asserita `ASC`/`DESC`) — lì `{dir} NULLS LAST` è scritto giusto.
+> Ristretto a `{direction}`, che è il nome con cui **tutti** i 35 call-site
+> chiamano il risultato dell'helper (misurato).
+>
+> 🕳️ **E un presidio che ho scritto e poi TOLTO**, perché non poteva funzionare:
+> volevo legare la riga di catalogo al mapping del repository. Prima stesura:
+> cercava la chiave in tutti i repository concatenati — verde anche togliendola
+> da `list_lotti`. Seconda: contava le occorrenze — 12 liste attese contro 15
+> mapping, il margine la rende **cieca**. Il presidio vero richiede una mappa
+> lista → repository che non esiste (il legame passa dalla view). L'ho tolto e
+> ho scritto il buco nel file: *un test che non può diventare rosso è peggio di
+> nessun test, perché dà l'impressione di una garanzia.*
+> ⚠️ E prima ancora era **annidato dentro un'altra funzione** e non veniva
+> nemmeno raccolto: l'ho visto solo controllando l'elenco dei test eseguiti.
+
+---
+
+### Fase E — richiesta al DB (storico) · *ferma fino al 2026-08-18*
+
 > ⛔ **FERMA, e per intero, sul team DB — misurato il 2026-08-18.** Non è una
 > scelta di sequenza: senza la riga di catalogo la colonna **non esiste** per il
 > frontend, e senza la ragione sociale nella vista il backend non ha cosa

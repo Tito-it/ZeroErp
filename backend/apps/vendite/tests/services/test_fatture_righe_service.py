@@ -18,6 +18,17 @@ Indice test eseguiti:
 16) FattureRigheServiceKitTests.test_kit_con_iva_diverse_non_e_falso_positivo
 17) FattureRigheServiceRobustezzaTests.test_prezzo_mancante_solleva_con_attivita_identificata
 18) FattureRigheServiceRobustezzaTests.test_ordinamento_per_prezzo_e_numerico
+19) FattureRigheServiceRettificaTests.test_rettifiche_di_righe_diverse_non_si_fondono
+20) FattureRigheServiceRettificaTests.test_rettifiche_della_stessa_riga_di_fattura_si_sommano
+21) FattureRigheServiceRettificaTests.test_prezzo_sconto_iva_copiati_dalla_riga_di_fattura
+22) FattureRigheServiceRettificaTests.test_sconto_arriva_solo_dalla_riga_di_fattura
+23) FattureRigheServiceRettificaTests.test_riga_rettificata_id_scritto_sulla_riga
+24) FattureRigheServiceRettificaTests.test_rettifica_senza_puntatore_solleva
+25) FattureRigheServiceRettificaTests.test_prezzo_mancante_sulla_riga_rettificata_solleva
+26) FattureRigheServiceRettificaTests.test_riga_normale_non_porta_sconto_ne_puntatore
+27) FattureRigheServiceRettificaTests.test_riga_nr_stabile_fra_due_generazioni
+28) FattureRigheServiceRettificaTests.test_array_nuovi_allineati_agli_altri
+29) FattureRigheServiceRettificaTests.test_puntatore_senza_etichetta_solleva
 """
 
 from contextlib import nullcontext
@@ -41,7 +52,8 @@ ART_PADRE = "019e2234-001d-72a4-bae6-308aba680e07"
 # sono iniettati dal test, così ogni caso descrive solo lo scenario che verifica.
 class _RepoMock:
     # Scopo: Inizializza la istanza.
-    def __init__(self, attivita=None, prezzi=None, fatture=None, iva=None):
+    def __init__(self, attivita=None, prezzi=None, fatture=None, iva=None,
+                 rettifiche=None):
         self.insert_calls = 0
         self.mark_calls = 0
         self.batch_insert_and_mark_calls = 0
@@ -54,8 +66,14 @@ class _RepoMock:
         self._fatture = fatture or {}
         # iva per attivita_id: consente di far divergere la riga padre kit.
         self._iva = iva or {}
+        # rettifiche per attivita_id: dict con la riga di fattura rettificata e
+        # i tre valori COPIATI da quella riga (prezzo, sconto, iva). Sono
+        # deliberatamente DIVERSI da quelli dell'attivita' nei test, perche' e'
+        # l'unico modo di distinguere «li ha copiati» da «ha usato i suoi».
+        self._rettifiche = rettifiche or {}
 
     def _make_group_input(self, attivita_id):
+        rett = self._rettifiche.get(attivita_id) or {}
         return GroupAttivitaInput(
             attivita_id=attivita_id,
             articolo_id=self._articolo_di(attivita_id),
@@ -74,6 +92,11 @@ class _RepoMock:
             arrotondamento_quantita_dec=3,
             metodo_arrotondamento_importi="HALF_UP",
             metodo_arrotondamento_quantita="HALF_UP",
+            tipo_movimento=rett.get("tipo_movimento", "NORMALE"),
+            fattura_riga_rettificata_id=rett.get("riga_id"),
+            rett_prezzo_unitario=rett.get("prezzo"),
+            rett_sconto_percentuale=rett.get("sconto"),
+            rett_iva_id=rett.get("iva"),
         )
 
     def _articolo_di(self, attivita_id):
@@ -387,3 +410,189 @@ class FattureRigheServiceRobustezzaTests(SimpleTestCase):
             repo.last_kwargs["righe_prezzi_unitari"],
             [Decimal("5"), Decimal("100")],
         )
+
+
+# Scopo: attività di RETTIFICA (nota di credito). La quantità è NEGATIVA a
+# monte (D-NC-2: il segno sta nel numero, non in un'etichetta da tradurre) e i
+# valori della riga di fattura rettificata sono DIVERSI da quelli dell'attività
+# — è l'unico modo di distinguere «li ha copiati dal documento» da «ha usato i
+# suoi», visto che in esercizio i due coincidono per costruzione.
+def _rettifica(riga_fattura_id, prezzo="12.00", sconto="5.00", iva=4):
+    return {
+        "tipo_movimento": "RETTIFICA",
+        "riga_id": riga_fattura_id,
+        "prezzo": None if prezzo is None else Decimal(prezzo),
+        "sconto": None if sconto is None else Decimal(sconto),
+        "iva": iva,
+    }
+
+
+class FattureRigheServiceRettificaTests(SimpleTestCase):
+    """La nota di credito: righe gemelle di righe di fattura (brief §12.6)."""
+
+    # Scopo: il cuore di BE-4. Due rettifiche di righe di fattura DIVERSE non
+    # devono fondersi, nemmeno quando articolo, prezzo, uom e IVA coincidono —
+    # e qui coincidono tutti. La riga prodotta dalla fusione sarebbe «gemella di
+    # nessuna», e l'invariante di N-1 («ogni riga di NC ha una riga di fattura
+    # gemella») smetterebbe di essere vero per costruzione.
+    def test_rettifiche_di_righe_diverse_non_si_fondono(self):
+        repo = _RepoMock(
+            attivita=[
+                _attivita_base(11, quantita="-2.0"),
+                _attivita_base(12, quantita="-3.0"),
+            ],
+            rettifiche={11: _rettifica(7001), 12: _rettifica(7002)},
+        )
+        _genera(repo)
+        self.assertEqual(len(repo.last_kwargs["righe_nrs"]), 2)
+        self.assertEqual(
+            repo.last_kwargs["righe_rettificate"], [7001, 7002]
+        )
+
+    # Scopo: il verso opposto, ed è deliberato. Due rettifiche della STESSA riga
+    # di fattura restano aggregabili: la riga prodotta è comunque la gemella di
+    # quella riga, e il tetto «Σ|qta| ≤ qta rettificata» lo tiene il guard DB
+    # `trgfn_resi_accrediti_guard`. Spezzarle darebbe due righe identiche sullo
+    # stesso documento, che è più difficile da leggere e non più corretto.
+    def test_rettifiche_della_stessa_riga_di_fattura_si_sommano(self):
+        repo = _RepoMock(
+            attivita=[
+                _attivita_base(11, quantita="-2.0"),
+                _attivita_base(12, quantita="-3.0"),
+            ],
+            rettifiche={11: _rettifica(7001), 12: _rettifica(7001)},
+        )
+        _genera(repo)
+        self.assertEqual(len(repo.last_kwargs["righe_nrs"]), 1)
+        self.assertEqual(repo.last_kwargs["righe_qtas"], [Decimal("-5.0")])
+        self.assertEqual(repo.last_kwargs["righe_rettificate"], [7001])
+
+    # Scopo: N-1 — «la nota di credito non può differire da quanto fatturato».
+    # Prezzo, sconto e IVA arrivano dalla RIGA DI FATTURA, non dall'attività:
+    # qui l'attività dice 10.50 / iva 22, la riga rettificata dice 12.00 /
+    # sconto 5 / iva 4, e a vincere deve essere la seconda.
+    def test_prezzo_sconto_iva_copiati_dalla_riga_di_fattura(self):
+        repo = _RepoMock(
+            attivita=[_attivita_base(11, quantita="-2.0")],
+            rettifiche={11: _rettifica(7001, prezzo="12.00", sconto="5.00", iva=4)},
+        )
+        _genera(repo)
+        self.assertEqual(repo.last_kwargs["righe_prezzi_unitari"], [Decimal("12.00")])
+        self.assertEqual(repo.last_kwargs["righe_sconti"], [Decimal("5.00")])
+        self.assertEqual(repo.last_kwargs["righe_iva_ids"], [4])
+
+    # Scopo: lo sconto è l'unico dei tre che sull'attività NON esiste affatto —
+    # la catena `commesse_attivita`/`attivita_fatturabili` non ha la colonna.
+    # Se la lettura dalla riga di fattura sparisse, questo test è l'unico che se
+    # ne accorgerebbe: gli altri due valori tornerebbero comunque giusti, perché
+    # in esercizio coincidono.
+    def test_sconto_arriva_solo_dalla_riga_di_fattura(self):
+        repo = _RepoMock(
+            attivita=[_attivita_base(11, quantita="-1.0")],
+            rettifiche={11: _rettifica(7001, sconto="17.50")},
+        )
+        _genera(repo)
+        self.assertEqual(repo.last_kwargs["righe_sconti"], [Decimal("17.50")])
+
+    # Scopo: BE-5 — la tracciabilità riga↔riga si scrive all'INSERT, perché
+    # oltre la soglia DRAFT/EMESSA sulle righe di fattura non si può più fare
+    # nulla: né UPDATE, né DELETE, né INSERT.
+    def test_riga_rettificata_id_scritto_sulla_riga(self):
+        repo = _RepoMock(
+            attivita=[_attivita_base(11, quantita="-1.0")],
+            rettifiche={11: _rettifica(7042)},
+        )
+        _genera(repo)
+        self.assertEqual(repo.last_kwargs["righe_rettificate"], [7042])
+
+    # Scopo: una RETTIFICA senza il puntatore è una rottura di invariante, non
+    # un caso da gestire con un ripiego: a valle si producono documenti fiscali,
+    # e la riga nascerebbe gemella di nessuna. L'errore deve dire QUALE attività.
+    def test_rettifica_senza_puntatore_solleva(self):
+        repo = _RepoMock(
+            attivita=[_attivita_base(11, quantita="-1.0")],
+            rettifiche={11: {"tipo_movimento": "RETTIFICA", "riga_id": None}},
+        )
+        with self.assertRaises(ServiceError) as exc:
+            _genera(repo)
+        self.assertEqual(exc.exception.code, "E_GROUP_ATTIVITA_INVALID_DATA")
+        self.assertIn("11", exc.exception.detail)
+
+    # Scopo: 🔴 il verso opposto della stessa coppia. Un puntatore alla riga
+    # rettificata SENZA l'etichetta RETTIFICA farebbe copiare prezzo, sconto e
+    # IVA dal documento su una riga che si dichiara normale — e nessuno saprebbe
+    # perché quel prezzo non è quello dell'attività. Il cartellino e il puntatore
+    # sono una coppia, e il guard deve essere simmetrico: la madre li scrive
+    # sempre insieme, quindi se arrivano scompagnati la catena si è rotta a monte.
+    def test_puntatore_senza_etichetta_solleva(self):
+        repo = _RepoMock(
+            attivita=[_attivita_base(11, quantita="-1.0")],
+            rettifiche={11: {"tipo_movimento": "NORMALE", "riga_id": 7001,
+                             "prezzo": Decimal("12.00")}},
+        )
+        with self.assertRaises(ServiceError) as exc:
+            _genera(repo)
+        self.assertEqual(exc.exception.code, "E_GROUP_ATTIVITA_INVALID_DATA")
+        self.assertIn("11", exc.exception.detail)
+
+    # Scopo: il prezzo che si guarda è quello EFFETTIVO. Su una rettifica
+    # l'attività può avere il suo prezzo valorizzato e la riga di fattura no:
+    # guardare `gi.prezzo_unitario` lascerebbe passare proprio il caso che il
+    # guard esiste per fermare, e l'INSERT cadrebbe su un NOT NULL anonimo.
+    def test_prezzo_mancante_sulla_riga_rettificata_solleva(self):
+        repo = _RepoMock(
+            attivita=[_attivita_base(11, quantita="-1.0")],
+            rettifiche={11: _rettifica(7001, prezzo=None)},
+        )
+        with self.assertRaises(ServiceError) as exc:
+            _genera(repo)
+        self.assertEqual(exc.exception.code, "E_GROUP_ATTIVITA_INVALID_DATA")
+
+    # Scopo: NON-regressione, ed è il test che protegge tutte le fatture del
+    # mondo. Una riga normale non porta né sconto né puntatore: lo sconto resta
+    # `None` e la INSERT lo fa collassare sul DEFAULT 0 del database, com'era
+    # prima che questa colonna venisse nominata.
+    def test_riga_normale_non_porta_sconto_ne_puntatore(self):
+        repo = _RepoMock(attivita=[_attivita_base(11)])
+        _genera(repo)
+        self.assertEqual(repo.last_kwargs["righe_sconti"], [None])
+        self.assertEqual(repo.last_kwargs["righe_rettificate"], [None])
+
+    # Scopo: il `riga_nr` deve essere lo stesso fra due generazioni dello stesso
+    # lotto anche quando i gruppi si distinguono SOLO per la riga rettificata —
+    # cioè quando articolo, prezzo, uom e IVA sono identici e l'unica differenza
+    # è il documento che si sta rettificando. È il caso che l'ordinamento
+    # precedente non sapeva discriminare.
+    def test_riga_nr_stabile_fra_due_generazioni(self):
+        def _ordine():
+            repo = _RepoMock(
+                attivita=[
+                    _attivita_base(12, quantita="-3.0"),
+                    _attivita_base(11, quantita="-2.0"),
+                ],
+                rettifiche={11: _rettifica(7001), 12: _rettifica(7002)},
+            )
+            _genera(repo)
+            return repo.last_kwargs["righe_rettificate"]
+
+        self.assertEqual(_ordine(), [7001, 7002])
+        self.assertEqual(_ordine(), _ordine())
+
+    # Scopo: tutti gli array passati all'INSERT devono restare allineati. Il
+    # guard `E_BATCH_ARRAY_DISALLINEATI` vive nel repository (qui mockato), ma
+    # se il servizio smettesse di riempire una delle due liste nuove il
+    # disallineamento nascerebbe QUI — e `unnest` non lo direbbe: riempirebbe di
+    # NULL le più corte, producendo righe di fattura silenziosamente sbagliate.
+    def test_array_nuovi_allineati_agli_altri(self):
+        repo = _RepoMock(
+            attivita=[
+                _attivita_base(11, quantita="-2.0"),
+                _attivita_base(12, quantita="-3.0"),
+                _attivita_base(13),
+            ],
+            rettifiche={11: _rettifica(7001), 12: _rettifica(7002)},
+        )
+        _genera(repo)
+        atteso = len(repo.last_kwargs["righe_nrs"])
+        for chiave in ("righe_sconti", "righe_rettificate"):
+            self.assertEqual(len(repo.last_kwargs[chiave]), atteso, chiave)

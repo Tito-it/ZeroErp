@@ -75,6 +75,13 @@ ResiDbErrorsTests
 25) test_integrity_error_fk_mappato       — E_VENDITE_FK
 26) test_integrity_error_fallback         — E_VENDITE_VALIDATION
 27) test_database_error_trigger_code      — E_RESO_QTA_SUPERA_CONSEGNATO
+28) test_filtro_ddt_passthrough            — ddt_id arriva al repository
+28b) test_filtro_documento_id_non_positivo — ddt_id=0 -> 400, non coda vuota
+29) test_filtro_ordine_passthrough         — ordine_id arriva al repository
+30) test_filtro_documento_mutuamente_esclusivo — ddt_id + ordine_id -> 400
+31) test_filtro_documento_assente_default  — None su entrambe le code
+32) test_filtro_documento_su_riconsegne    — la simmetria fra le due code
+33) test_etichette_export_dichiarano_il_documento — il file non mente sul perimetro
 """
 
 from contextlib import nullcontext
@@ -406,6 +413,104 @@ class ResiCodaAccreditareTests(SimpleTestCase):
         repo.list_da_accreditare.return_value = ([], 0)
         resi_service.list_da_accreditare(limit=25, offset=0)
         self.assertIsNone(repo.list_da_accreditare.call_args.kwargs["etichetta"])
+
+
+class ResiCodaFiltroDocumentoTests(SimpleTestCase):
+    """Restrizione delle code a un documento (slice B3, richiesta FE-2)."""
+
+    # Scopo: il filtro DDT arriva al repository. E' il caso del collegamento dal
+    #        pannello situazione merce del DDT.
+    @patch(_REPO)
+    def test_filtro_ddt_passthrough(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.list_da_accreditare.return_value = ([], 0)
+        resi_service.list_da_accreditare(ddt_id=140, limit=25, offset=0)
+        kwargs = repo.list_da_accreditare.call_args.kwargs
+        self.assertEqual(kwargs["ddt_id"], 140)
+        self.assertIsNone(kwargs["ordine_id"])
+
+    # Scopo: idem dal pannello dell'ordine, dove il legame passa dal
+    #        fulfillment della riga di DDT resa e non da una colonna.
+    @patch(_REPO)
+    def test_filtro_ordine_passthrough(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.list_da_accreditare.return_value = ([], 0)
+        resi_service.list_da_accreditare(ordine_id=240, limit=25, offset=0)
+        kwargs = repo.list_da_accreditare.call_args.kwargs
+        self.assertEqual(kwargs["ordine_id"], 240)
+        self.assertIsNone(kwargs["ddt_id"])
+
+    # Scopo: i due id sono ALTERNATIVI. Accettarli insieme vorrebbe dire due
+    #        domande in una, con la seconda che restringe la prima in silenzio:
+    #        l'operatore vedrebbe un elenco corto senza sapere perche'.
+    #        ⚠️ E il repository non deve essere chiamato affatto.
+    @patch(_REPO)
+    def test_filtro_documento_mutuamente_esclusivo(self, repo_cls) -> None:
+        for chiamata in (
+            lambda: resi_service.list_da_accreditare(
+                ddt_id=1, ordine_id=2, limit=25, offset=0
+            ),
+            lambda: resi_service.list_da_riconsegnare(
+                ddt_id=1, ordine_id=2, limit=25, offset=0
+            ),
+        ):
+            with self.subTest(chiamata=chiamata):
+                with self.assertRaises(ServiceError) as ctx:
+                    chiamata()
+                self.assertEqual(ctx.exception.code, "E_RESO_VALIDAZIONE")
+        repo_cls.return_value.list_da_accreditare.assert_not_called()
+        repo_cls.return_value.list_da_riconsegnare.assert_not_called()
+
+    # Scopo: 🔴 `?ddt_id=0` passa il parsing strict (0 e' un intero valido) e
+    #        produrrebbe `WHERE v.ddt_id = 0`, cioe' una coda VUOTA. E una coda
+    #        vuota si legge «non c'e' niente da fare» — il messaggio piu'
+    #        sbagliato possibile su un elenco di accrediti dovuti. Deve essere
+    #        un errore parlante, non una normalizzazione silenziosa.
+    @patch(_REPO)
+    def test_filtro_documento_id_non_positivo(self, repo_cls) -> None:
+        for kwargs in ({"ddt_id": 0}, {"ddt_id": -1}, {"ordine_id": 0}):
+            with self.subTest(**kwargs):
+                with self.assertRaises(ServiceError) as ctx:
+                    resi_service.list_da_accreditare(limit=25, offset=0, **kwargs)
+                self.assertEqual(ctx.exception.code, "E_RESO_VALIDAZIONE")
+        repo_cls.return_value.list_da_accreditare.assert_not_called()
+
+    # Scopo: NON-regressione. La coda aperta a mano non ha nessun documento, e
+    #        i due filtri devono arrivare `None` — non 0, che sarebbe un id.
+    @patch(_REPO)
+    def test_filtro_documento_assente_default(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.list_da_accreditare.return_value = ([], 0)
+        repo.list_da_riconsegnare.return_value = ([], 0)
+        resi_service.list_da_accreditare(limit=25, offset=0)
+        resi_service.list_da_riconsegnare(limit=25, offset=0)
+        for chiamata in (repo.list_da_accreditare, repo.list_da_riconsegnare):
+            self.assertIsNone(chiamata.call_args.kwargs["ddt_id"])
+            self.assertIsNone(chiamata.call_args.kwargs["ordine_id"])
+
+    # Scopo: la simmetria fra le due code. Il pannello situazione merce mostra
+    #        «da accreditare» e «da ri-consegnare» una sopra l'altra: dare il
+    #        collegamento filtrato a una sola sarebbe un'asimmetria visibile.
+    @patch(_REPO)
+    def test_filtro_documento_su_riconsegne(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.list_da_riconsegnare.return_value = ([], 0)
+        resi_service.list_da_riconsegnare(ddt_id=15848, limit=25, offset=0)
+        self.assertEqual(
+            repo.list_da_riconsegnare.call_args.kwargs["ddt_id"], 15848
+        )
+
+    # Scopo: un export lanciato dalla coda filtrata contiene le sole righe di
+    #        quel documento. Senza la dichiarazione nel foglio «Filtri
+    #        applicati» il file si leggerebbe come la coda intera — ed e' lo
+    #        stesso motivo per cui l'etichetta era stata dichiarata.
+    def test_etichette_export_dichiarano_il_documento(self) -> None:
+        etichette = resi_service.resolve_filtri_coda_export_label(ddt_id=140)
+        self.assertEqual(etichette, {"DDT (id)": 140})
+        etichette = resi_service.resolve_filtri_coda_export_label(ordine_id=240)
+        self.assertEqual(etichette, {"Ordine (id)": 240})
+        # Nessun documento: nessuna riga in piu' nel foglio dei filtri.
+        self.assertEqual(resi_service.resolve_filtri_coda_export_label(), {})
 
 
 class ResiEliminaTests(SimpleTestCase):

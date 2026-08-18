@@ -643,7 +643,8 @@
       "RESELLER": "Resellers",
       "VETTORE": "Carriers",
       "BANK": "Banks"
-    }
+    },
+    "col_emittenti": "Issuers where they are a customer"
   },
   "context": {
     "tooltip_search": "Universal search",
@@ -1853,7 +1854,8 @@
       "col_unita": "Units",
       "col_motivo": "Reason",
       "col_azione": "Suggested action",
-      "col_stato": "Status"
+      "col_stato": "Status",
+      "col_emittente": "Issuer"
     },
     "dashboard_competenza": {
       "page_title": "Invoicing accrual",
@@ -2496,7 +2498,8 @@
         "fattura_non_pre_fiscale": "The invoice is beyond the pre-fiscal stage: it cannot be deleted.",
         "fattura_numerata": "The invoice is already numbered: deleting it would leave a gap in the fiscal numbering."
       },
-      "azione_non_piu_disponibile": "This action is no longer available on this batch: the list has been refreshed."
+      "azione_non_piu_disponibile": "This action is no longer available on this batch: the list has been refreshed.",
+      "col_emittente": "Issuer"
     },
     "offerte": {
       "stato_info": {
@@ -3220,7 +3223,8 @@
       "col_motivo": "Reason",
       "apri_documento": "Open document",
       "nessun_documento": "No open documents with the current filters.",
-      "non_caricato": "Data not loaded yet."
+      "non_caricato": "Data not loaded yet.",
+      "col_emittente": "Issuer"
     },
     "situazione_merce": {
       "anticipato": "including {n} already invoiced and not yet shipped",

@@ -579,6 +579,39 @@ Perimetro ristretto del giro di fatturazione (brief-be-fe-emissione-fattura-mira
 | `LottoPipelineParams.gruppi` → `_resolve_lotto` | [pipeline_runner.py](../../../../backend/apps/vendite/services/pipeline_runner.py) | Scrive il perimetro **nella stessa transazione** in cui crea il lotto, e **solo alla creazione**: su lotto esistente (rerun / avanza step del `LottoDrawer`) il criterio è già a DB e va riprodotto, non riscritto. |
 | corsia `mirata` | [fatturazione_driver_service.py](../../../../backend/apps/vendite/services/fatturazione_driver_service.py) | `('MASSIVO', None, 'EMESSA')`: filtro di corsia **assente** di proposito — la lista dei gruppi non conosce la corsia, quindi mostra anche quelli di commesse a fatturazione immediata; filtrare li renderebbe selezionabili a video e produttivi di zero lotti in silenzio. Non è fra le `modalita_disponibili()` (choices del cron): senza gruppi degenererebbe in un giro di massa su entrambe le corsie, ed è un `ValueError` fail-fast. `summary["lotti"]` = estratto compatto dei lotti prodotti (sono N, non uno: tipi doc fiscale diversi → terne diverse). |
 
+## Vendite — Code resi filtrate su un documento (`apps/vendite/db/`)
+
+Il predicato «questa riga di coda appartiene a QUESTO documento», condiviso fra
+il **pannello situazione merce** e le **due code di lavoro resi**. Estratto il
+2026-08-18 (regola del 2, ok Tid) dalla slice B3 di
+[brief-design-note-credito-resi.md](../work-in-progress/brief-design-note-credito-resi.md),
+per la richiesta FE-2: dal pannello si arriva alla coda **già filtrata** sul
+documento aperto.
+
+| Building Block | File | Descrizione |
+| --- | --- | --- |
+| `filtro_coda_per_documento` | [_coda_documento_filtro.py](../../../../backend/apps/vendite/db/_coda_documento_filtro.py) | `(*, ddt_id=None, ordine_id=None) -> (condizione_sql \| None, params)`. Lato **DDT** usa `v.ddt_id`, che la coda espone già (è il DDT della riga resa, per costruzione quello della partita). Lato **ordine** il legame non è una colonna: è un `EXISTS` sul **fulfillment** della riga di DDT resa (`ordini_righe_fulfillment` → `ordini_righe`), cioè la stessa fonte da cui `vw_partite_merce` deriva la propria origine — un criterio solo, non un terzo criterio. 🔴 **E NON si passa da `v.ordine_riga_id`**, che pure c'è: con la partita generalizzata quella colonna è **nullable** (vuota sulla merce senza origine ordine — riga di DDT aggiunta a mano, DDT standalone), e usarla come chiave farebbe sparire dal filtro proprio le righe che il cantiere della partita ha appena portato dentro il conto: l'elenco corto sembrerebbe giusto. Senza documento ritorna `(None, [])` = «nessuna restrizione», **non** una condizione sempre vera. ⚠️ Assume l'alias `v` sulla vista-coda: è la convenzione di entrambi i chiamanti. ⚠️ I due id sono **alternativi**, e il divieto vive nel service (`_valida_filtro_documento` → `E_RESO_VALIDAZIONE`), non qui: il BB resta puro e deterministico (a parità arriva, vince il DDT). |
+
+**Consumer**: `VenditeRepository._list_coda_su_partite` (le sezioni «da
+accreditare» / «da ri-consegnare» del pannello) e `ResiRepository._list_coda`
+via `_aggiungi_filtro_documento` (le due code di lavoro, con i query param
+`?ddt_id=` / `?ordine_id=` su list **ed export**).
+
+⚠️ **Perché è un BB e non due copie**: le due schermate rispondono alla stessa
+domanda e devono contare le **stesse righe**. Scritto due volte, il giorno in cui
+uno dei due cambia il pannello dice «8 da accreditare» e la coda filtrata ne
+mostra 7 — e nessun test lo intercetta, perché ognuna delle due copie è coerente
+con sé stessa.
+
+⚠️ **L'unica rete sulla stringa SQL sono i test del BB**
+(`apps/vendite/tests/db/test_coda_documento_filtro.py`, 6 test): i test del
+service situazione merce mockano il repository, quindi il predicato non lo
+attraversano. Verificato inoltre **sui dati** il 2026-08-18: la partizione per
+DDT somma al totale della coda, la variante ordine dà lo stesso split, e un id
+inesistente dà **0** e non «tutto».
+
+---
+
 ## Vendite — Lineage documenti / pannello "Passaggi" (`apps/vendite/`)
 
 Genealogia/transiti dei documenti vendite (brief-be-fe-lineage-documenti-vendite,
