@@ -1,7 +1,6 @@
 # pgtap-runner: app
 db/pgtap/anagrafiche/create-gestore-indirizzo-res-domfisc.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/create-gestore-indirizzo-res.sql	ERRORE_FIXTURE
-db/pgtap/anagrafiche/create-soggetto-bank-branches.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/create-soggetto-gestori.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/soggetti-con-contatti.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-billing-account-auto-link-ef.sql	ERRORE_FIXTURE
