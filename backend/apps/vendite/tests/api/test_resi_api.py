@@ -25,6 +25,9 @@ Indice test eseguiti:
 12) test_da_accreditare_ok          — 200 coda accrediti (mock service)
 13) test_da_riconsegnare_ok         — 200 coda ri-consegne (mock service)
 14) test_ddt_righe_per_reso_ok      — 200 GET /ddt/<id>/righe-per-reso/ (mock)
+15) test_coda_filtro_ddt_propagato — ?ddt_id= arriva al service (FE-2)
+16) test_coda_filtro_ordine_propagato — ?ordine_id= arriva al service
+17) test_coda_filtro_documento_non_numerico_400 — garbage NON sparisce come filtro
 """
 
 from unittest.mock import Mock, patch
@@ -217,6 +220,43 @@ class TestResiApi(JwtMockedApiTest):
         self.assertEqual(kwargs["order_by"], "descrizione")
         self.assertEqual(kwargs["order_dir"], "asc")
         self.assertEqual(kwargs["etichetta"], "DOVUTA")
+        # Nessun documento indicato: filtri a None, non 0 (che sarebbe un id).
+        self.assertIsNone(kwargs["ddt_id"])
+        self.assertIsNone(kwargs["ordine_id"])
+
+    # Scopo: FE-2 — il collegamento dal pannello situazione merce del DDT porta
+    #        la coda GIA' FILTRATA. Se il param non arrivasse al service,
+    #        l'operatore vedrebbe la coda intera credendola quella del documento.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_SVC}.list_da_accreditare")
+    def test_coda_filtro_ddt_propagato(self, mock_coda, _auth) -> None:
+        mock_coda.return_value = ([], 0)
+        resp = self.client.get(f"{_BASE}da-accreditare/?ddt_id=15848")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(mock_coda.call_args.kwargs["ddt_id"], 15848)
+
+    # Scopo: lo stesso dal pannello dell'ordine, e sulla coda ri-consegne — la
+    #        simmetria fra le due code e' parte del contratto (il pannello le
+    #        mostra una sopra l'altra).
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_SVC}.list_da_riconsegnare")
+    def test_coda_filtro_ordine_propagato(self, mock_coda, _auth) -> None:
+        mock_coda.return_value = ([], 0)
+        resp = self.client.get(f"{_BASE}da-riconsegnare/?ordine_id=240")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(mock_coda.call_args.kwargs["ordine_id"], 240)
+
+    # Scopo: 🔴 un id malformato deve dare 400, NON sparire come filtro. Un
+    #        filtro che svanisce mostra la coda intera facendola sembrare quella
+    #        del documento — ed e' il difetto peggiore dei due, perche' sembra
+    #        aver funzionato. `qp_int_optional` e' strict e il ValueError diventa
+    #        `E_VALIDATION_INPUT` (400) via ErrorTranslator.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_SVC}.list_da_accreditare")
+    def test_coda_filtro_documento_non_numerico_400(self, mock_coda, _auth) -> None:
+        resp = self.client.get(f"{_BASE}da-accreditare/?ddt_id=banana")
+        self.assertEqual(resp.status_code, 400)
+        mock_coda.assert_not_called()
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_SVC}.list_da_riconsegnare")

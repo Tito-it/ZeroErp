@@ -40,13 +40,14 @@ const auth = useAuthStore()
 // emittenti diversi. Bloccare una ricerca sarebbe sproporzionato: si dichiara
 // il perimetro e si lascia cercare.
 //
-// 🔵 Residuo dichiarato: l'etichetta sta sul PERIMETRO della ricerca e non
-//    sulla singola voce, perche' la riga non porta l'emittente —
-//    `script.fn_search_soggetti_universale` non lo espone
-//    (`RETURNS TABLE(... soggetto_codice, ragione_sociale_completa,
-//    id_fiscale_univoco, utility_list)`). Distinguere due omonimi richiede
-//    quel dato: e' una richiesta al team DB, non una cosa che il frontend
-//    possa dedurre.
+// ✅ Residuo D-3 CHIUSO il 2026-08-18: `fn_search_soggetti_universale` espone
+//    ora `emittente_ragione_sociale` (changeSet `20260818-60`), e la colonna e'
+//    in tabella per i CLIENTI — due omonimi di emittenti diversi si
+//    distinguono.
+// ⚠️ L'etichetta di perimetro resta, e non e' ridondante: la colonna dice da
+//    quale emittente arriva OGNI RIGA, l'etichetta dice che la ricerca sta
+//    guardando piu' emittenti — che e' l'informazione utile PRIMA di leggere i
+//    risultati, e l'unica disponibile sui tipi ruolo diversi da CLIENTE.
 const results = ref([])
 const expandedRows = ref({})
 const sortField = ref('ragione_sociale_completa')
@@ -303,6 +304,25 @@ watch(() => props.visible, (newVal) => {
         >
           <template #body="{ data }">
             {{ data.utility_list || '--' }}
+          </template>
+        </Column>
+        <!-- Emittente/i presso cui il soggetto è cliente (R-5 del brief Fase E).
+             ⚠️ L'intestazione NON è «Emittente»: su una riga-soggetto questa
+             colonna mostra una RELAZIONE, non un attributo — il soggetto non
+             ha un emittente, ce l'ha il suo billing account.
+             ⚠️ Solo per i CLIENTI: sugli altri tipi ruolo il valore è NULL per
+             costruzione (una ricerca fornitori non ha perimetro emittente), e
+             una colonna sempre vuota è peggio di nessuna colonna.
+             ⚠️ NON `sortable`: il valore è un aggregato (`string_agg`) e
+             ordinarci sopra ordinerebbe per la stringa concatenata (BE-E4). -->
+        <Column
+          v-if="selectedTipoRuolo?.codice === TIPO_RUOLO.CLIENTE"
+          field="emittente_ragione_sociale"
+          :header="t('search.col_emittenti')"
+          style="width: 200px"
+        >
+          <template #body="{ data }">
+            {{ data.emittente_ragione_sociale || '--' }}
           </template>
         </Column>
 

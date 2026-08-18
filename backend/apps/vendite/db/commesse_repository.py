@@ -138,6 +138,11 @@ PRICING_MODE_FIXED = "FIXED"
 STATO_APPROVAZIONE_BOZZA = "BOZZA"
 STATO_EMISSIONE_NON_EMESSA = "NON_EMESSA"
 TIPO_MOVIMENTO_NORMALE = "NORMALE"
+# Vocabolario di `tipo_movimento`, presidiato dai CHECK `chk_*_tipo_movimento` su
+# ENTRAMBE le tabelle della catena (commesse_attivita e attivita_fatturabili):
+# NORMALE | RETTIFICA | ONERE. La rettifica e' la riga della nota di credito —
+# quantita' NEGATIVA, prezzo copiato dalla riga di fattura rettificata.
+TIPO_MOVIMENTO_RETTIFICA = "RETTIFICA"
 TIPO_CONSUMO_CONGUAGLIO = "CONGUAGLIO"
 
 

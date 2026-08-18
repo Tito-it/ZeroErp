@@ -33,6 +33,21 @@ class GroupAttivitaKey(TypedDict):
     arrotondamento_quantita_dec: int
     metodo_arrotondamento_importi: str
     metodo_arrotondamento_quantita: str
+    # ── Rettifica (nota di credito) ──────────────────────────────────────────
+    # La riga di fattura che questa riga rettifica. `None` su tutto cio' che
+    # non e' una rettifica, che e' il caso normale.
+    #
+    # ⭐ STA NELLA CHIAVE, e non e' un campo informativo: e' cio' che impedisce
+    # a due rettifiche di righe di fattura DIVERSE di fondersi in una riga sola
+    # — che sarebbe una riga «gemella di nessuna» (brief nota di credito
+    # §12.6). Due rettifiche della STESSA riga di fattura restano invece
+    # aggregabili: la riga prodotta e' comunque la gemella di quella, e il
+    # tetto per riga di fattura lo tiene il guard DB.
+    fattura_riga_rettificata_id: int | None
+    # Copiato dalla riga rettificata, mai ricalcolato (N-1). Entra nella chiave
+    # per la stessa ragione del prezzo: se la chiave prendesse un valore e la
+    # INSERT ne scrivesse un altro, le due meta' si annullerebbero in silenzio.
+    sconto_percentuale: str | None
 
 
 class AnnullaLottoDaDraftResult(TypedDict):
@@ -139,6 +154,10 @@ class LottoListRow(TypedDict):
     emittente_soggetto_ruolo_id: int | None
     data_insert: str | None
     user_insert: str
+    # Ragione sociale dell'emittente (P-4, Fase E). ⚠️ La ragione sociale e non
+    # `emittente_soggetto_ruolo_id`, che pure c'e' due righe sopra: un id a
+    # video non dichiara l'emittente, sposta l'ambiguita' di un passo.
+    emittente_ragione_sociale: str | None
 
 
 class CommessaEmitResult(TypedDict):
@@ -715,6 +734,11 @@ class DashApertoDocumentoRow(TypedDict):
     anzianita_giorni: int
     motivo_fermo: str | None
     data_riferimento: str | None
+    # Ragione sociale dell'emittente (P-4, Fase E del brief
+    # perimetro-emittente): colonna di catalogo «disponibile e spenta»,
+    # serve a chi ha piu' di un emittente davanti. La chiave e' il
+    # `campo_sorgente` dichiarato in `ui.lista_colonna`.
+    emittente_ragione_sociale: str | None
 
 
 class DashCompetenzaMensileRow(TypedDict):
@@ -779,6 +803,10 @@ class DashCompetenzaCommessaRow(TypedDict):
     valore_fatturato_tot: str | None
     data_attivita_min: str | None
     data_attivita_max: str | None
+    # Emittente della commessa (P-4, Fase E). ⚠️ E' una colonna della
+    # COMMESSA, non dell'attivita': per questo entra nel GROUP BY
+    # dell'aggregato senza spezzare le righe.
+    emittente_ragione_sociale: str | None
 
 
 class DashCompetenzaGruppoRow(TypedDict):
@@ -913,6 +941,11 @@ class DashBacklogDocumentoRow(TypedDict):
     stato_codice_interno: str | None
     stato_codice: str | None
     fase: str | None
+    # Ragione sociale dell'emittente (P-4, Fase E del brief
+    # perimetro-emittente): colonna di catalogo «disponibile e spenta»,
+    # serve a chi ha piu' di un emittente davanti. La chiave e' il
+    # `campo_sorgente` dichiarato in `ui.lista_colonna`.
+    emittente_ragione_sociale: str | None
 
 
 class DashCompetenzaErroreRow(TypedDict):
@@ -931,6 +964,11 @@ class DashCompetenzaErroreRow(TypedDict):
     error_code: str | None
     messaggio: str | None
     data_evento: str | None
+    # Ragione sociale dell'emittente (P-4, Fase E del brief
+    # perimetro-emittente): colonna di catalogo «disponibile e spenta»,
+    # serve a chi ha piu' di un emittente davanti. La chiave e' il
+    # `campo_sorgente` dichiarato in `ui.lista_colonna`.
+    emittente_ragione_sociale: str | None
 
 
 class LineageSorgenteRow(TypedDict):

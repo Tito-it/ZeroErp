@@ -29,6 +29,7 @@ from apps.core.db._helpers import (
 from apps.core.services.system_context import connection_role_bypasses_rls
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.services.error_manager import ErrorManager
+from apps.vendite.db._coda_documento_filtro import filtro_coda_per_documento
 from apps.vendite.types import (
     DashApertoDocumentoRow,
     DashApertoRiepilogoRow,
@@ -234,7 +235,8 @@ class VenditeRepository:
                 agf.descrizione    AS area_geografica_descrizione,
                 fl.emittente_soggetto_ruolo_id,
                 fl.data_insert,
-                fl.user_insert
+                fl.user_insert,
+                s_ef.ragione_sociale_completa AS emittente_ragione_sociale
     """
 
     _LOTTO_JOINS = """
@@ -246,6 +248,16 @@ class VenditeRepository:
                 ON tdf.id = fl.tipo_doc_fiscale_id
             LEFT JOIN vendite.area_geografica_fatturazione agf
                 ON agf.id = fl.area_geografica_id
+            -- Emittente della riga (P-4, Fase E). ⚠️ Qui NON c'e' una vista da
+            -- estendere: la lista nasce da SQL diretto sulla tabella, quindi
+            -- la JOIN che le altre cinque liste hanno nel DB, lotti ce l'ha
+            -- qui. Il dato di partenza c'e' gia' (`emittente_soggetto_ruolo_id`,
+            -- NOT NULL): manca solo il nome. Stessa catena delle sei viste
+            -- documento — soggetto_ruolo -> soggetto.
+            LEFT JOIN anagrafiche.soggetti_ruoli sr_ef
+                ON sr_ef.id = fl.emittente_soggetto_ruolo_id
+            LEFT JOIN anagrafiche.soggetti s_ef
+                ON s_ef.id = sr_ef.soggetto_id
     """
 
     # Scopo: mappa una riga (ordine di _LOTTO_SELECT_COLS) in LottoListRow.
@@ -270,6 +282,12 @@ class VenditeRepository:
             "emittente_soggetto_ruolo_id": None if row[15] is None else int(row[15]),
             "data_insert": row[16].isoformat() if row[16] is not None else None,
             "user_insert": str(row[17]),
+            # ⛔ La chiave DEVE restare `emittente_ragione_sociale`: e' il
+            # `campo_sorgente` dichiarato a catalogo (riga 483 di
+            # `lista_colonna.csv`). Se diverge, la colonna si spunta e resta
+            # vuota — cioe' SEMBRA la garanzia che il flag `multi_emittente`
+            # pretende, senza esserlo.
+            "emittente_ragione_sociale": row[18],
         }
 
     # Colonne ordinabili della lista lotti: chiave esposta al FE -> espressione
@@ -299,6 +317,12 @@ class VenditeRepository:
         "stato_doc_fiscale_descrizione": "sdf.descrizione",
         "data_insert": "fl.data_insert",
         "user_insert": "fl.user_insert",
+        # Emittente (Fase E). ⚠️ Il VALORE e' l'espressione SQL, non l'alias:
+        # in questa whitelist le altre voci sono qualificate (`fl.codice`,
+        # `tdf.descrizione`) perche' l'ORDER BY gira su una query con JOIN, e
+        # un alias di SELECT qui sarebbe ambiguo con la colonna omonima del
+        # soggetto. La CHIAVE resta il `campo_sorgente` del catalogo.
+        "emittente_ragione_sociale": "s_ef.ragione_sociale_completa",
     }
 
     # Perimetro: solo lettura; nessun side-effect.
@@ -557,6 +581,11 @@ class VenditeRepository:
         "area": "area",
         "fase": "fase",
         "stato_codice": "stato_codice",
+        # Emittente (P-4, Fase E del brief perimetro-emittente): la riga di
+        # catalogo e' `ordinabile = t`, e il presidio
+        # `test_liste_configurabili_seed` lega catalogo e whitelist nei DUE
+        # versi — la chiave e' il CAMPO FISICO, non il `codice` della colonna.
+        "emittente_ragione_sociale": "emittente_ragione_sociale",
     }
 
     def list_dash_aperto_documenti(
@@ -603,7 +632,12 @@ class VenditeRepository:
                 d.unita_totali,
                 GREATEST((current_date - d.data_riferimento), 0) AS anzianita_giorni,
                 d.motivo_fermo,
-                d.data_riferimento
+                d.data_riferimento,
+                -- Emittente (P-4, Fase E). ⛔ L'alias deve restare
+                -- `emittente_ragione_sociale`: e' il `campo_sorgente`
+                -- del catalogo, e la lista ha `vista_sql = NULL` —
+                -- il campo lo porta questo SELECT o non arriva.
+                d.emittente_ragione_sociale
             FROM vendite.vw_dash_aperto_documenti d
             {where_clause}
         """
@@ -655,6 +689,9 @@ class VenditeRepository:
                     "data_riferimento": (
                         row[12].isoformat() if row[12] is not None else None
                     ),
+                    # Emittente (P-4, Fase E): chiave = `campo_sorgente`
+                    # del catalogo, o la colonna resta vuota a video.
+                    "emittente_ragione_sociale": row[13],
                 }
             )
         return result, total_count
@@ -996,6 +1033,11 @@ class VenditeRepository:
         "n_attivita": "n_attivita",
         "valore_tot": "valore_tot",
         "data_attivita_max": "data_attivita_max",
+        # Emittente (P-4, Fase E del brief perimetro-emittente): la riga di
+        # catalogo e' `ordinabile = t`, e il presidio
+        # `test_liste_configurabili_seed` lega catalogo e whitelist nei DUE
+        # versi — la chiave e' il CAMPO FISICO, non il `codice` della colonna.
+        "emittente_ragione_sociale": "emittente_ragione_sociale",
     }
 
     # Scopo: Drill-down AGGREGATO per commessa (DEC-4) — una riga per commessa nel
@@ -1053,11 +1095,22 @@ class VenditeRepository:
                 SUM(a.valore)                                   AS valore_tot,
                 SUM(a.valore_fatturato)                         AS valore_fatturato_tot,
                 MIN(a.data_attivita)                            AS data_attivita_min,
-                MAX(a.data_attivita)                            AS data_attivita_max
+                MAX(a.data_attivita)                            AS data_attivita_max,
+                a.emittente_ragione_sociale
             FROM vendite.vw_dash_competenza_attivita a
             {where_clause}
-            GROUP BY a.commessa_id, a.commessa_codice, a.cliente_display
+            GROUP BY a.commessa_id, a.commessa_codice, a.cliente_display,
+                     a.emittente_ragione_sociale
         """
+        # ⚠️ `emittente_ragione_sociale` entra nel GROUP BY, e non e' indolore:
+        #    se una commessa avesse attivita' di emittenti DIVERSI si
+        #    spezzerebbe in piu' righe: i totali resterebbero giusti e il
+        #    conteggio delle commesse no, cioe' una regressione silenziosa.
+        #    Non succede — l'emittente e' una colonna della COMMESSA
+        #    (`co.emittente_soggetto_ruolo_id` nella vista), non dell'attivita',
+        #    quindi e' funzionalmente dipendente da `commessa_id`. Domanda posta
+        #    al team DB nel brief di Fase E e risposta «si', per costruzione».
+        #    Presidiato dal test `commesse_una_riga_per_commessa`.
 
         # UNA sola valutazione della vista: prima il COUNT delle commesse
         # distinte era una seconda scansione con lo stesso GROUP BY. Qui il
@@ -1088,6 +1141,9 @@ class VenditeRepository:
                     "valore_fatturato_tot": str(row[6]) if row[6] is not None else None,
                     "data_attivita_min": row[7].isoformat() if row[7] is not None else None,
                     "data_attivita_max": row[8].isoformat() if row[8] is not None else None,
+                    # Emittente (P-4, Fase E): chiave = `campo_sorgente` del
+                    # catalogo, o la colonna resta vuota a video.
+                    "emittente_ragione_sociale": row[9],
                 }
             )
         return result, total_count
@@ -1518,6 +1574,11 @@ class VenditeRepository:
         "fattura_numero": "fattura_numero",
         "error_code": "error_code",
         "data_evento": "data_evento",
+        # Emittente (P-4, Fase E del brief perimetro-emittente): la riga di
+        # catalogo e' `ordinabile = t`, e il presidio
+        # `test_liste_configurabili_seed` lega catalogo e whitelist nei DUE
+        # versi — la chiave e' il CAMPO FISICO, non il `codice` della colonna.
+        "emittente_ragione_sociale": "emittente_ragione_sociale",
     }
 
     # Scopo: Restituisce la lista paginata degli errori vivi (blocco 4 Lente 1:
@@ -1562,7 +1623,12 @@ class VenditeRepository:
                 e.task_code,
                 e.error_code,
                 e.messaggio,
-                e.data_evento
+                e.data_evento,
+                -- Emittente (P-4, Fase E). ⛔ L'alias deve restare
+                -- `emittente_ragione_sociale`: e' il `campo_sorgente`
+                -- del catalogo, e la lista ha `vista_sql = NULL` —
+                -- il campo lo porta questo SELECT o non arriva.
+                e.emittente_ragione_sociale
             FROM vendite.vw_dash_competenza_errori e
             {where_clause}
         """
@@ -1580,9 +1646,23 @@ class VenditeRepository:
             direction = sql_order_direction(order_dir)
             # Il tiebreak qui e' una catena di chiavi NATURALI (la union non ha
             # una PK): resta fissa, non e' uno spareggio tecnico da allineare.
-            order_clause = (
-                f"ORDER BY {sort_col} {direction} NULLS LAST, {_tiebreak}"
-            )
+            #
+            # 🔴 Qui c'era un ` NULLS LAST` incollato dopo `{direction}`, e
+            #    rendeva questa lista NON ORDINABILE PER NIENTE: `direction`
+            #    porta gia' la clausola (`ASC NULLS FIRST` / `DESC NULLS LAST`),
+            #    quindi l'SQL usciva `... ASC NULLS FIRST NULLS LAST` e
+            #    PostgreSQL rifiutava con un errore di sintassi — 500 su ogni
+            #    click di intestazione, su tutte e cinque le colonne.
+            #    E' un residuo dell'unificazione dei 29 call-site in
+            #    `sql_order_direction` (2026-07-19), che la sua docstring
+            #    dichiara: *«3 avevano un NULLS LAST fisso incollato al
+            #    template — semantica diversa che qui viene uniformata»*. Su
+            #    questo call-site il pezzo vecchio non e' stato tolto.
+            #    ⚠️ Nessun presidio poteva vederlo: quello del seed confronta
+            #    catalogo e whitelist (statico) e i test mockano
+            #    `_query_paged_view`, quindi l'SQL non arriva mai al database.
+            #    Trovato provando un ORDER BY vero contro il DB.
+            order_clause = f"ORDER BY {sort_col} {direction}, {_tiebreak}"
         else:
             order_clause = f"ORDER BY data_evento DESC NULLS LAST, {_tiebreak}"
 
@@ -1611,6 +1691,9 @@ class VenditeRepository:
                     "error_code": None if row[10] is None else str(row[10]),
                     "messaggio": None if row[11] is None else str(row[11]),
                     "data_evento": row[12].isoformat() if row[12] is not None else None,
+                    # Emittente (P-4, Fase E): chiave = `campo_sorgente`
+                    # del catalogo, o la colonna resta vuota a video.
+                    "emittente_ragione_sociale": row[13],
                 }
             )
         return result, total_count
@@ -1682,6 +1765,11 @@ class VenditeRepository:
         # azionabilita' e' colonna a video (Tag) e vocabolario chiuso a 3 valori —
         # ordinarla raggruppa il lavoro per tipo di intervento.
         "classe": "classe",
+        # Emittente (P-4, Fase E del brief perimetro-emittente): la riga di
+        # catalogo e' `ordinabile = t`, e il presidio
+        # `test_liste_configurabili_seed` lega catalogo e whitelist nei DUE
+        # versi — la chiave e' il CAMPO FISICO, non il `codice` della colonna.
+        "emittente_ragione_sociale": "emittente_ragione_sociale",
     }
 
     def list_dash_backlog_documenti(
@@ -1733,7 +1821,12 @@ class VenditeRepository:
                 GREATEST(d.anzianita_giorni, 0) AS anzianita_giorni,
                 d.stato_codice_interno,
                 d.stato_codice,
-                d.fase
+                d.fase,
+                -- Emittente (P-4, Fase E). ⛔ L'alias deve restare
+                -- `emittente_ragione_sociale`: e' il `campo_sorgente`
+                -- del catalogo, e la lista ha `vista_sql = NULL` —
+                -- il campo lo porta questo SELECT o non arriva.
+                d.emittente_ragione_sociale
             FROM vendite.vw_dash_backlog_documenti d
             {where_clause}
         """
@@ -1785,6 +1878,9 @@ class VenditeRepository:
                     "stato_codice_interno": None if row[13] is None else str(row[13]),
                     "stato_codice": None if row[14] is None else str(row[14]),
                     "fase": None if row[15] is None else str(row[15]),
+                    # Emittente (P-4, Fase E): chiave = `campo_sorgente`
+                    # del catalogo, o la colonna resta vuota a video.
+                    "emittente_ragione_sociale": row[16],
                 }
             )
         return result, total_count
@@ -2788,18 +2884,18 @@ class VenditeRepository:
     ) -> list[dict[str, Any]]:
         # `vista` e `colonne` arrivano SOLO dai due wrapper qui sotto
         # (letterali statici, nessun input utente).
-        if ddt_id is not None:
-            condizione, param = "v.ddt_id = %s", int(ddt_id)
-        else:
-            assert ordine_id is not None
-            condizione = """EXISTS (
-                    SELECT 1
-                      FROM vendite.ordini_righe_fulfillment f
-                      JOIN vendite.ordini_righe orr ON orr.id = f.ordine_riga_id
-                     WHERE f.ddt_riga_id = v.ddt_riga_id
-                       AND orr.ordine_id = %s
-             )"""
-            param = int(ordine_id)
+        #
+        # ⭐ Il predicato vive nel BB `_coda_documento_filtro` (estratto il
+        # 2026-08-18, regola del 2, ok Tid): lo consuma anche `ResiRepository`
+        # per filtrare le code di lavoro sul documento da cui si arriva (FE-2).
+        # Le due schermate devono contare le STESSE righe.
+        condizione, params = filtro_coda_per_documento(
+            ddt_id=ddt_id, ordine_id=ordine_id
+        )
+        # Guard di programmazione: i due wrapper passano sempre esattamente uno
+        # dei due id. Senza documento questa lettura non ha significato — non e'
+        # «tutte le code», e` un chiamante rotto.
+        assert condizione is not None
         sql = f"""
             SELECT {colonne}
               FROM {vista} v
@@ -2807,7 +2903,7 @@ class VenditeRepository:
              ORDER BY v.reso_id, v.resi_riga_id
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [param])
+            cursor.execute(sql, params)
             return rows_to_list(cursor)
 
     # Scopo: Coda «da accreditare» del documento. `etichetta` DOVUTA|FACOLTATIVA
