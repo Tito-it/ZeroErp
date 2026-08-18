@@ -5,7 +5,8 @@
 > S0→S7 fatte e **applicate** (9 changeSet, `20260817-06` → `-14`), pgTAP verdi
 > come applicazione, baseline `vendite` senza regressioni.
 >
-> ⏳ **Resta fuori dal perimetro DB**: le richieste a backend e frontend (§19) e
+> ✅ **Anche BE e FE sono chiusi dal 2026-08-18 (§23).** Il testo qui sotto è
+> quello del 2026-08-17, quando restavano fuori: le richieste a backend e frontend (§19) e
 > i due cantieri che ora possono partire — **pannello situazione merce** e
 > **nota di credito**.
 >
@@ -1248,7 +1249,7 @@ di sviluppo da prima che questo cantiere iniziasse.
    20 / 10 / 5, che devono concordare tutti sul padre **10**. È il test che i
    dati reali non potevano dare.
 
-### 14.5 ⏳ Cosa resta, e da dove riprendere
+### 14.5 Cosa resta, e da dove riprendere *(diario del 2026-08-17 — superato, vedi §23)*
 
 **S3** — riscrivere `vw_contatore_merce` come aggregato di `vw_partite_merce`.
 È la prima slice che cambia il comportamento del sistema. Due avvertenze già
@@ -1746,7 +1747,7 @@ allarme è entrato insieme alla generalizzazione.
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Cantiere 2** — pannello situazione merce | ✅ **sbloccato**: legge `vw_partite_merce`, che copre ordine, DDT, righe manuali e kit con una lettura sola, e porta `stato` già tradotto                                            |
 | **Cantiere 3** — nota di credito           | ✅ **sbloccato**, e con tre avvertenze precise (§19.3) — la più importante è che `fn_get_stato_push_segment` è l'**unica** cintura che impedirà di ri-fatturare una riga rettificata |
-| **Backend / Frontend**                     | ⏳ otto richieste in §19, nessuna bloccante per il DB                                                                                                                                |
+| **Backend / Frontend**                     | ✅ otto richieste in §19 **tutte fatte** (BE 2026-08-17, FE 2026-08-18)                                                                                                                                |
 
 ### 20.5 Le tre cose che questo cantiere ha insegnato
 
@@ -2166,7 +2167,7 @@ BE-2 vieta — presidiata da nessun pgTAP. È il motivo per cui il §9.3 dice *�
 | **BE-5**                    | nulla usi `ordine_riga_id` come chiave sulla coda accrediti | ✅ **zero occorrenze**, misurato in 4 punti                                   |
 | **§12 BE-4**                | `_kit_meta` scrive ancora `coeff_qta`                       | ✅ sì, e nella tabella che S1 legge                                           |
 | *(la «conferma» del §19.1)* | il cancello del terzo lato resta verde?                     | 🔴 **no, era rosso** — §21.1                                                  |
-| **FE-1/2/3**                | tavolozza, avviso, anticipo                                 | ⏳ **non hanno ancora una casa**: sono la definizione di fatto del cantiere 2 |
+| **FE-1/2/3** | tavolozza, avviso, anticipo | ✅ **fatte** col pannello del cantiere 2 (2026-08-18), validato in-app |
 
 ### 22.2 Cosa è stato scritto
 
@@ -2202,10 +2203,9 @@ letture attraversano **quattro viste** e la RLS.
 repository (PR #1282) e il backend che la consuma pure (PR #1283). Verificato a
 `Tito-dev`: changeSet, doc auto-gen e suite Django (3702 verdi) allineati.
 
-⏳ **Il frontend**: il pannello del cantiere 2 non esiste. Le tre richieste FE
-restano scritte nel §19.2 e vanno riprese **come definizione di fatto di quel
-cantiere**, non anticipate qui: una tavolozza di severity che nessun componente
-consuma è codice morto, e i colori si scelgono guardando il pannello.
+✅ **Il frontend**: il pannello del cantiere 2 è stato fatto il 2026-08-18 e le
+tre richieste FE vivono lì, come previsto — la tavolozza è arrivata **col** suo
+consumatore, non prima. Validato in-app su `ORD0018586` e `ORD0018585`.
 
 ### 22.5 Le tre cose imparate, dal lato backend
 
@@ -2223,3 +2223,105 @@ consuma è codice morto, e i colori si scelgono guardando il pannello.
    tratta «causale assente» come «non fatturabile»: 5 invece di 1. È lo stesso
    errore che questo brief vieta ai consumatori — commesso nello strumento con
    cui lo si dimostrava.
+
+---
+
+## 23. ✅ Stato al 2026-08-18 — i tre perimetri chiusi, e cosa NON è chiuso
+
+> Sezione di stato, non di chiusura. ⛔ **Il brief resta in
+> `work-in-progress/`** — le ragioni sono nel §23.4, e la prima non è tecnica.
+
+### 23.1 Chiuso: DB, backend, frontend
+
+| Perimetro | Stato |
+| --- | --- |
+| **DB** | ✅ nove changeSet `20260817-06`→`-15`, più `20260818-06` (soglia di impegno) |
+| **BE** | ✅ BE-1..BE-5 + il codice errore; `situazione-merce` su ordine e DDT |
+| **FE** | ✅ pannello del cantiere 2, con FE-1/2/3 dentro |
+| **Definizione di fatto** (§7 + §7-bis) | ✅ **12/12** |
+| **Validazione in-app** (Tid) | ✅ `ORD0018586` (il caso del §3) e `ORD0018585` (confermato e fermo) |
+
+⭐ **Il numero che riassume tutto è ancora il primo del §20.3**: sette partite di
+merce che prima non comparivano affatto — non a zero, **assenti** — più nove kit
+che l'esclusione teneva fuori. Oggi si leggono in una riga sul drawer.
+
+### 23.2 🔴 NON chiuso — e non era il residuo che credevamo
+
+Il §19.4 elencava *«`fn_ddt_push_diagnosi` non conosce il motivo nuovo»* come una
+lacuna minore. **Il team DB l'ha riqualificata il 2026-08-18, ed è un'altra
+cosa**: la diagnosi non ha una lacuna, è **ferma a prima di S5**.
+
+Verificato leggendo i due oggetti vivi:
+
+| | `fn_list_ddt_da_pushare` (dopo `20260817-10`) | `fn_ddt_push_diagnosi` |
+| --- | --- | --- |
+| fonte del dosaggio | `JOIN vw_partite_merce ON ddt_riga_id` | `LEFT JOIN vw_contatore_merce` (per riga d'**ordine**) |
+| ridistribuzione greedy | **tolta** | ancora `SUM() OVER (PARTITION BY ord_riga …)` |
+| caso speciale compositi | **tolto** | ancora `NOT COALESCE(a_composito, false)` |
+
+🔴 **Sono due implementazioni della regola che dosa la fatturazione** — e una
+delle due si dichiara *«Fonte unica: … Riproduce i predicati di
+`fn_list_ddt_da_pushare` in un unico posto (equivalenza … blindata da pgTAP)»*.
+Oggi quel `COMMENT` dice il falso. Non è cosmesi: `fn_available_actions_ddt`
+consuma il `min(rank)` della diagnosi per il ramo `reason`, quindi il drawer può
+spiegare la mancata spinta con una regola diversa da quella che l'ha decisa.
+
+⚠️ **E la rete che doveva accorgersene non tiene.** Il test 1 di
+`test-fn-available-actions-ddt-reason-catch-all-v1` è un `EXCEPT` bidirezionale
+fra i due oggetti — la forma giusta — ma **gira prima che le fixture esistano**:
+gli `INSERT` che sembrano precederlo sono dentro il *corpo* di
+`pg_temp.mk_caso`, e le fixture vere nascono al `CREATE TEMP TABLE f AS SELECT
+pg_temp.mk_caso(…)`, **dopo**. Quindi confronta solo i dati vivi, e dopo S5 è
+verde perché **nessuna riga attraversa la divergenza**, non perché la
+divergenza non ci sia. La sua intestazione dice «indipendente dai dati»: vero
+della forma, falso della copertura.
+
+✅ **Presa in carico dal team DB** (2026-08-18) come **richiesta**, non come
+residuo accettato. La richiesta giusta non è «aggiungi un motivo nuovo» ma:
+**riallineare `fn_ddt_push_diagnosi` alla partita, e far girare l'equivalenza
+anche sulle fixture** — il motivo nuovo cade fuori da sé.
+
+### 23.3 Il secondo residuo, con un invariante invece di una dichiarazione
+
+L'assunzione su `fn_genera_ddt_riconsegna` (§19.4): oggi il ponte copre **tutta**
+la riga di ri-consegna, verificato sui 6 ponti esistenti. Se un domani una riga
+fosse in parte ri-consegna e in parte merce nuova, quella parte resterebbe fuori
+dal conto.
+
+⭐ **Resta dichiarata qui, ma con un pgTAP** (proposta del team DB, accolta):
+*nessun ponte copre meno della quantità della sua riga di DDT*. Una
+dichiarazione invecchia da sola e nessuno se ne accorge; un invariante fallisce
+il giorno in cui l'assunzione cade.
+
+### 23.4 ⛔ Perché il brief NON va in `work-done/`
+
+1. **È l'indice della catena** (decisione di Tid, 2026-08-18). La tabella in
+   testa — «l'ordine con cui eseguire i lavori collegati» — è la roadmap dei
+   cantieri: il **3 (nota di credito)** e le **righe DDT a prezzo zero** sono
+   ancora da fare. Archiviare l'indice mentre i lavori che indicizza sono aperti
+   è il modo più rapido per perderli.
+2. **Ha lavoro vivo**: il §23.2 è una richiesta DB presa in carico, non un
+   residuo.
+3. I link, che è la ragione **più debole** e va detta col numero giusto:
+   spostandolo si romperebbero **5** link markdown con path (3 brief in
+   `work-in-progress`, il brief DB in `work-done`, il manuale BE) — non 19. Le
+   **19** occorrenze in `db/` (changeSet e pgTAP, di cui molte immutabili) sono
+   citazioni **per nome**, non path: un file che cambia cartella conserva il
+   nome, quindi non si rompono. Restano 5, tutte correggibili nello stesso
+   commit — quindi da sole non deciderebbero niente.
+
+### 23.5 La quarta cosa imparata, che è la terza volta
+
+Il §20.5 ne elencava tre. Questa è la quarta, e ha la stessa forma delle altre:
+
+> ⚠️ **Una verifica può essere fatta, essere precisa, e guardare la cosa
+> sbagliata.** Per controllare se il test 1 girasse dopo le fixture ho cercato
+> gli `INSERT` e confrontato i numeri di riga: 80-92 contro 108, quindi «le
+> fixture vengono prima». Ma quegli `INSERT` erano dentro il **corpo di una
+> funzione**, cioè testo che non esegue nulla al momento in cui lo si legge.
+> La domanda giusta non era *dove stanno gli `INSERT`* ma **dove viene chiamata
+> la funzione che li contiene**.
+
+⭐ È la stessa lezione del §20.5.3 («la domanda va posta sull'assenza, non sulla
+presenza») e del §18.2-bis, sul terzo travestimento diverso. In tutti e tre i
+casi lo strumento ha risposto con precisione a una domanda che non era quella.
