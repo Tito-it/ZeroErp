@@ -77,13 +77,48 @@ databaseChangeLog:
         Nessun codice nuovo: E_LOTTO_FATTURE_NUMERATE esiste gia'. Non tocca il
         delegato condiviso fn_check_lotto_fatture_pre_fiscali, che ha altri
         consumatori. Piano §8 passo 2d, risposta alla domanda P-2.
-      preConditions:
-        - onFail: HALT
-        - sqlCheck:
-            expectedResult: 1
-            sql: |
-              SELECT COUNT(*) FROM config.codici_errore
-               WHERE codice = 'E_LOTTO_FATTURE_NUMERATE' AND obsoleto_dal IS NULL;
+      # ⛔ rev 2026-08-19 — PRECONDITION RIMOSSA, e non per comodita'.
+      #
+      # C'era questa, con onFail: HALT:
+      #
+      #     SELECT COUNT(*) FROM config.codici_errore
+      #      WHERE codice = 'E_LOTTO_FATTURE_NUMERATE' AND obsoleto_dal IS NULL;
+      #     expectedResult: 1
+      #
+      # Chiedeva che il codice errore fosse gia' dichiarato. Sembra prudenza, ed
+      # e' invece una condizione che in questa fase non puo' essere vera su un
+      # database ricostruito da zero: `changelog-master-v2.yaml` include
+      # `migrations_v2/changelog-autogen.yaml` (00_schema + 20_code) PRIMA di
+      # `includeAll: migrations_v2/80_data`. Il codice sta in
+      # 80_data/sql/config/codici_errore.csv, quindi quando questa preCondition
+      # gira la riga NON c'e' ancora — e ci sara' qualche centinaio di changeSet
+      # piu' avanti, nello stesso identico migrate.
+      #
+      # ⚠️ Su un DB incrementale (come quello di sviluppo) il codice c'e' gia'
+      # da una passata precedente e la preCondition passa: il difetto e'
+      # INVISIBILE proprio dove si lavora, e si manifesta solo dove il database
+      # nasce vuoto — il backend appena creato, e la CI. Il 2026-08-19 ha fermato
+      # un migrate a 4434 changeSet eseguiti con
+      # «SQL Precondition failed. Expected '1' got '0'».
+      #
+      # Perche' TOGLIERLA e non ripararla:
+      #   * un CREATE OR REPLACE FUNCTION non ha bisogno che il codice esista:
+      #     la stringa si risolve quando la funzione SOLLEVA, non quando nasce;
+      #   * l'invariante «ogni codice sollevato e' dichiarato» e' gia' presidiata
+      #     dove ha senso, cioe' DOPO i seed: il pgTAP
+      #     script/test-catalogo-messaggi-errore-completo e il cancello backend
+      #     su dbops.vw_codici_errore_da_dichiarare;
+      #   * onFail: CONTINUE o MARK_RAN non sono alternative — salterebbero la
+      #     creazione della funzione in silenzio, che e' peggio del HALT.
+      #
+      # Il changeSet ha gia' `validCheckSums: ANY`, quindi togliere la
+      # preCondition non rompe i database dove e' gia' stato applicato.
+      #
+      # ⭐ REGOLA GENERALE: in 00_schema e 20_code una preCondition non puo'
+      # interrogare una tabella che semina 80_data. Nel repo l'unica altra che
+      # tocca quelle tabelle e' 00_schema/config/20260807-14 (FK
+      # messaggi_errore -> codici_errore), che pero' chiede ZERO orfani: su un
+      # database vuoto e' vera per costruzione, e infatti non ha mai dato noie.
       changes:
         - sql:
             splitStatements: false
