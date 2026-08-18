@@ -3498,90 +3498,111 @@ disponibile» sposta la contraddizione invece di chiuderla.
 
 ---
 
-## 27. 📍 Stato dei lavori e ripartenza (aggiornato 2026-08-18, sera)
+## 27. 📍 Stato dei lavori e ripartenza (aggiornato 2026-08-18, tarda sera)
 
-> Da leggere per primo aprendo una chat nuova. Tutto ciò che è marcato ✅ è
-> **committato su `dev/backend-tid`** (`24b09c7f2` «Aggiornamenti BE / FE», più
-> `85593e754` per B0) e ha la suite verde.
+> Da leggere per primo aprendo una chat nuova. ⚠️ È un'istantanea: prima di
+> citarla, verificare contro il codice.
+>
+> ⭐ **Il terreno è cambiato la sera del 2026-08-18**: il team DB ha pushato
+> (`24efa7335`) e Tid ha applicato **P-1, P-2, P-5** e il §10 del brief di
+> passaggio. Il DB non è più «avanti rispetto a git»: i due sono **in pari**
+> (715 codici a catalogo da entrambe le parti) e la suite è verde **anche con
+> `ZEROERP_TEST_DB_E2E=1`**.
 
 ### 27.1 Le slice
 
 | Slice | Stato | Dove |
 | --- | --- | --- |
-| **B0** dizionario codici *(BE-6)* | ✅ **FATTO** — 9 codici (8 accredito + `W_MESSAGGIO_ARITA`) e 9 ripieghi | `error_policies_generated.py`, `error_messages_fallback.py` |
-| **B4** generatore righe *(BE-4+BE-5)* | ✅ **FATTO** — niente aggregazione fra rettifiche di righe diverse, prezzo/sconto/IVA copiati dalla riga di fattura, `riga_rettificata_id` scritto, guard simmetrico sulla coppia | `fatture_righe_service.py`, `pipeline_repository.py`, `types.py` |
+| **B0** dizionario codici *(BE-6)* | ✅ **FATTO e CHIUSO** — 9 codici + 9 ripieghi (`85593e754`), poi **+4** la sera del 18 per l'annullo di P-5 (`E_ACCREDITO_NON_TROVATO`, `_ANNULLO_NON_AMMESSO`, `_MOTIVO_OBBLIGATORIO`, `_ANNULLO_INCOMPLETO`): modulo rigenerato, `--check` pulito, 4 ripieghi scritti senza `%s` | `error_policies_generated.py`, `error_messages_fallback.py` |
+| **B4** generatore righe *(BE-4+BE-5)* | ✅ **FATTO** — niente aggregazione fra rettifiche di righe diverse, prezzo/sconto/IVA copiati dalla riga di fattura, `riga_rettificata_id` scritto, guard simmetrico sulla coppia. ⚠️ Il brief di passaggio le dà ancora per aperte (§«Stato del cantiere»): **da correggere al team DB** | `fatture_righe_service.py`, `pipeline_repository.py`, `types.py` |
 | **B3** filtro documento sulle code | ✅ **FATTO** — BB `filtro_coda_per_documento`, `?ddt_id=`/`?ordine_id=` su list **ed export** di **entrambe** le code | `_coda_documento_filtro.py`, `resi_repository.py`, `resi_service.py`, `views_resi.py` |
 | **revisione critica** | ✅ **FATTA** — 7 rilievi corretti, §23-bis | — |
-| **B1** repository + service del verbo | ✅ **FATTO** (2026-08-18, sera) — `ResiRepository.accredita_riga_reso` (`SELECT * FROM fn_()` + `rows_to_list`) e `resi_service.accredita_riga_reso`; 7 test, verificati per **mutazione** (4 rossi sabotando fetchone / forma SQL / cast / slicing) e **binding provato sul DB vero** con `EXPLAIN` (Function Scan: nome, arita' e forma `SELECT * FROM` reggono **senza eseguire il corpo**) | `resi_repository.py`, `resi_service.py`, `tests/db/test_resi_repository_accredito.py` |
+| **B1** repository + service del verbo | ✅ **FATTO** (`67670212c`) — `ResiRepository.accredita_riga_reso` (`SELECT * FROM fn_()` + `rows_to_list`) e `resi_service.accredita_riga_reso`; 7 test verificati per **mutazione** (4 rossi sabotando fetchone / forma SQL / cast / slicing) e **binding provato sul DB vero** con `EXPLAIN` (Function Scan: nome, arità e forma `SELECT * FROM` reggono **senza eseguire il corpo**) | `resi_repository.py`, `resi_service.py`, `tests/db/test_resi_repository_accredito.py` |
+| **B6** task pipeline legame documentale | 🔴 **SBLOCCATA E URGENTE — è la prossima** | vedi §27.3: il task è già nelle pipeline **vive** e l'handler non esiste |
+| **B2** endpoint del verbo | 🟢 **libero e consegnabile**: P-1 è in git e applicato | ⚠️ ma lo **smoke B8 va davanti**, non dietro |
+| **B2-bis** annullo dell'accredito | 🟢 **libero**: la madre P-5 esiste, applicata e con 17 pgTAP verdi | firma sotto, §27.2 |
 | **B5** la natura esce dal backend *(BE-10)* | 🟢 **libero** | `natura_doc_id` non è nominata da nessun punto di `backend/apps/` |
 | **B7** legame riga↔riga nel drawer fattura | 🟢 **libero** | il dato arriva con B4 |
-| **B2** endpoint del verbo | 🟡 scrivibile, **non consegnabile** | serve **P-1** (azione di processo) |
-| **B6** task pipeline legame documentale | 🟡 handler scrivibile, **irraggiungibile** | serve **P-2** (registry) |
-| **B2-bis** annullo dell'accredito | 🔴 **fermo** | serve **P-5** (madre) |
-| **B8** test | 🟡 parziale | i test di B3/B4 sono scritti; mancano quelli del verbo e lo smoke end-to-end |
+| **B8** test | 🟡 parziale | i test di B3/B4/B1 sono scritti; manca lo **smoke end-to-end**, che ora è un prerequisito di consegna di B2 |
 | **F1 → F6** tutto il frontend | ⛔ **non iniziato** | F1/F3 dipendono da B2 |
 
-### 27.2 🔴 I cinque prerequisiti, e uno è a metà strada
+### 27.2 ✅ I prerequisiti: quattro chiusi, due aperti (e i due aperti non sono di BE/FE)
 
 Il brief di passaggio è
-[brief-db-note-credito-prerequisiti-be-fe.md](brief-db-note-credito-prerequisiti-be-fe.md).
+[brief-db-note-credito-prerequisiti-be-fe.md](brief-db-note-credito-prerequisiti-be-fe.md),
+che la sera del 18 è cresciuto di 962 righe: contiene ora l'**analisi critica del
+team DB** (§7, rilievi C-1→C-7) e la **cronaca dell'esecuzione** (§9).
 
-| # | Cosa | Stato al 2026-08-18 sera |
+| # | Cosa | Stato al 2026-08-18, tarda sera |
 | --- | --- | --- |
-| **P-1** | azione `accredita_riga_reso` | 🟡 **nel DB vivo, NON in git** (verificato 2026-08-18 sera: `config.azioni_processo` id **31**, `pericolosa=t`, `attivo=t`, `user_insert=titodb`; il CSV di `80_data` si ferma a id 30) |
-| **P-2** | registry task `popola_fatture_rettifiche` | 🟡 **nel DB vivo, NON in git**: registry id **21** + impl `default` → `popola_fatture_rettifiche_default`, e il task e' nel JSON `processi` delle pipeline **4 e 6**. In git: solo la fn `fn_popola_fatture_rettifiche` (`20260818-41`), nessuna riga di registry |
-| **P-3** | gate `fn_check_rinuncia_reversibile` (soglia **al verbo**) | ⏳ attesa |
+| **P-1** | azione `accredita_riga_reso` | ✅ **in git e applicata** — `azioni_processo.csv` id **31**, area 2, `pericolosa=t` |
+| **P-2** | registry task `popola_fatture_rettifiche` | ✅ **in git e applicato** — registry **21** + impl `default → popola_fatture_rettifiche_default` (`is_default=t`), il task nelle pipeline **4 e 6** fra `numera_fatture` e `stampa_documenti_lotto`, **più** due righe di `fatturazione_pipeline_task_policy` in `RESUME_TASK` che il piano non chiedeva |
+| **P-3** | gate `fn_check_rinuncia_reversibile` | 🔴 **aperto**, è il loro passo 4. ⭐ C-3: si auto-ripara grazie a P-5 (l'annullo **cancella** le righe di ponte, quindi la rinuncia torna reversibile da sé) — ma solo perché P-5 cancella invece di marcare. Un soft-delete futuro romperebbe il gate **in silenzio** |
 | **P-4** | i quattro valori del sezionale | ✅ confermati, **nessun lavoro** |
-| **P-5** | madre `fn_annulla_accredito_riga_reso` | 🟡 **iniziata, invariata**: i tre codici errore (`E_ACCREDITO_ANNULLO_NON_AMMESSO`, `E_ACCREDITO_MOTIVO_OBBLIGATORIO`, `E_ACCREDITO_NON_TROVATO`) sono **nel DB vivo**, la fn **no**. ⭐ Le loro `note` a catalogo dicono gia' due decisioni di merito che il brief di passaggio non chiedeva: l'annullo **rifiuta l'intero accredito** e non una parte (N rettifiche per consumo LIFO e per componente di kit: annullarne una parte lascerebbe la coda a chiedere un residuo insoddisfabile — «la stessa dottrina di `E_ACCREDITO_QUOTA_NON_COPERTA`, allo specchio»), e un **secondo** annullo cade su `E_ACCREDITO_NON_TROVATO` perche' dopo il primo le righe di ponte non ci sono piu' (stato osservabile identico a «mai accreditato»). Sono materia di **B2-bis**: il messaggio dell'endpoint deve dire quale delle due strade prendere |
-| **P-6** | registri non intestati, due emittenti che emettono | ⏳ cantiere suo |
+| **P-5** | madre `fn_annulla_accredito_riga_reso` | ✅ **APPLICATA E VERDE** (`20260818-71`, 17 pgTAP). Firma: `(p_resi_riga_id bigint, p_motivo text)` → **`RETURNS TABLE`** con le stesse 5 colonne della madre (`accredito_id, commessa_attivita_id, fattura_riga_rettificata_id, qta, qta_partita`) |
+| **P-6** | registri non intestati, due emittenti che emettono | 🔴 **aperto**, loro passo 5 — cantiere suo, non blocca niente di BE/FE |
 
-### 27.3 ⚠️ Il rosso che si trova aprendo la chat, e non è una regressione
+#### ⭐ Le tre correzioni che il team DB ha fatto alle mie richieste, e vanno lette
 
-```bash
-ZEROERP_TEST_DB_E2E=1 ./manage-test.sh
-# 1 FAIL: test_il_file_generato_e_allineato_al_catalogo
+* **C-1 — la mia risposta era giusta per il motivo sbagliato.** «`fn_cleanup_fatture_by_ids` non si tocca» è confermato, ma l'argomento che avevo scritto — *«i tre chiamanti sono tutti `*_da_draft`»* — **era scaduto il 2026-08-04**: `fn_elimina_fattura_da_lotto_draft` è stata rinominata e il suo perimetro allargato. Un ragionamento fondato sui **nomi** è deperibile; la garanzia vera è il cancello esplicito **sul numero**, che due porte su tre avevano già e la terza no (aggiunto in `20260818-68`).
+* **C-2 — 🔴 la firma che avevo proposto trattava un insieme come un singolo.** Un accredito **non è una rettifica**: ne sono N (consumo LIFO su più righe di fattura, una per componente di kit), e la `UNIQUE` del ponte è sulla **coppia**. Le precondizioni «se la rettifica è NON_EMESSA» non erano applicabili: la forma giusta è **tutto-o-niente sull'insieme**, che è la stessa dottrina di `E_ACCREDITO_QUOTA_NON_COPERTA` allo specchio.
+* **D-9-2 — il quarto codice, che nessuno aveva nominato.** `vendite.commesse_attivita` ha la RLS, `vendite.resi_righe_accrediti` no: la `UPDATE` ad `ANNULLATA` poteva **saltare in silenzio** una rettifica fuori dal perimetro emittente, producendo esattamente l'annullo parziale che C-2 vieta. → `E_ACCREDITO_ANNULLO_INCOMPLETO`, sollevato in tre punti.
+
+⚠️ **Per B2-bis**: il messaggio di `E_ACCREDITO_ANNULLO_NON_AMMESSO` a catalogo
+dice già quale strada prendere, e va **passato**, non riscritto: *«se il
+documento non è ancora numerato la strada è il reset del lotto … ⚠️ dopo un reset
+la nota di credito viene RIGENERATA al giro successivo»*.
+
+### 27.3 🔴 Il rischio nuovo: il task è nelle pipeline vive e l'handler non esiste
+
+> Il rosso del §27.3 di ieri (divergenza `error_policies_generated.py`) **non
+> esiste più**: B0 l'ha chiuso, DB e git sono in pari. Al suo posto c'è questo,
+> che è peggio perché non lo vede nessun test.
+
+`popola_fatture_rettifiche` è **già** nel JSON `processi` delle pipeline 4 e 6
+(DEFINITIVA), in quest'ordine:
+
+```text
+numera_fatture  →  popola_fatture_rettifiche  →  stampa_documenti_lotto
 ```
 
-**Il DB locale è AVANTI rispetto a git**: il team DB ha seminato i tre codici di
-P-5 (714 voci a catalogo contro 711 nel modulo generato) e non ha ancora pushato
-il CSV. **Non rigenerare** `error_policies_generated.py` in questo stato: si
-aggancerebbe il ramo BE a un changeSet non mergiato, e in CI il cancello
-diventerebbe rosso **al contrario** (la CI ricostruisce il suo DB dal changelog e
-non troverebbe i tre codici).
+ma **`popola_fatture_rettifiche_default` non è nell'`handler_registry` di
+`PipelineStepExecutor`** — è la slice B6, non scritta. E `execute_step` esegue i
+task **in sequenza, senza una transazione che li avvolga**.
 
-✅ **Cosa fare, quando il team DB pusha**: `git pull`, poi
+🔴 **Ne discende che il prossimo giro DEFINITIVA numera — irreversibile — e poi
+solleva `E_TASK_IMPLEMENTATION_NOT_FOUND` (severità C)**, lasciando il lotto
+numerato e non stampato. I timer `zeroerp-coda-lavori` e `zeroerp-coda-stampa`
+girano ogni minuto.
 
-```bash
-./manage-env.sh genera_error_policies          # riscrive il modulo
-./manage-env.sh genera_error_policies --check   # deve uscire pulito
-```
+⭐ **Attenua, non risolve**: la `task_policy` seedata è **`RESUME_TASK`**, quindi
+appena l'handler esiste il rilancio riprende dal task fallito invece di
+ricominciare. È il motivo per cui la cosa è recuperabile e non un incidente.
 
-e **scrivere i tre messaggi di ripiego** in `error_messages_fallback.py` —
-obbligatori per ogni codice vivo, senza `%s` (§21.2-bis: il segnaposto a
-catalogo è la *ragione* del ripiego, non la sua esenzione).
-
-Senza la flag `ZEROERP_TEST_DB_E2E` la suite è **verde: 3772 test**.
+⚠️ **Ne discende anche l'inversione dell'ordine di lavoro**: B6 non è più «la
+slice del legame documentale da fare quando arriva P-2». È la **riparazione di
+una pipeline in esercizio**, e viene prima di B5, B7 e B2.
 
 ### 27.4 Da dove ripartire
 
-1. ✅ **B1 fatta** (vedi §27.1).
-2. **B5** e **B7** in parallelo: sono letture, non toccano il verbo.
-3. **B2** — 🔴 **P-1 non blocca più lo sviluppo, e questo cambia il rischio, non
-   lo toglie** (vedi il riquadro qui sotto); **F1+F3 insieme** subito dopo (§24:
-   dare il verbo lasciando il pannello che dichiara «non disponibile» sposta la
-   contraddizione del §21.1 invece di chiuderla).
+1. 🔴 **B6** — l'handler `_handle_popola_fatture_rettifiche_task` +
+   registrazione in `handler_registry` + la dipendenza d'ordine
+   (`popola_fatture_rettifiche` → `numera_fatture`) in
+   `_TASK_ORDER_DEPENDENCIES`, che la verifica **prima** che il primo task dello
+   step scriva. È la voce del §27.3.
+2. **B8 smoke end-to-end**, che a questo punto esercita anche B6.
+3. **B2** (endpoint massivo, `run_fan_out`, lista vuota rifiutata e dedup con
+   ordine preservato) e **B2-bis** (annullo: `RETURNS TABLE`, motivo
+   obbligatorio, messaggio che dice **quale** delle due strade prendere).
+4. **F1+F3 insieme** subito dopo (§24: dare il verbo lasciando il pannello che
+   dichiara «non disponibile» sposta la contraddizione del §21.1 invece di
+   chiuderla).
+5. **B5** e **B7** in parallelo quando serve: sono letture, non toccano il verbo.
 
 ⚠️ **E l'ordine che resta vincolante**: B4 doveva precedere il verbo, ed è fatto.
-Da adesso il rischio si sposta: **appena B2+P-1 esistono, un giro di
-fatturazione non presidiato emetterà il documento** — worker e cron girano.
-Prima di consegnare il verbo, lo smoke end-to-end di B8 va eseguito.
-
-🔴 **E dal 2026-08-18 sera quella frase non è più al futuro: P-1 è nel DB di
-sviluppo** (§27.2). Il fail-closed che teneva il verbo al solo SUPER_ADMIN su
-questo ambiente **non c'è più**: il giorno in cui B2 esiste, il primo click
-scrive la rettifica e il primo giro di fatturazione emette la nota di credito.
-E la strada indietro **non esiste ancora**: P-5 è la fn che manca, e il reset di
-lotto — l'unica leva disponibile — non annulla l'accredito, **rigenera** la NC al
-giro dopo (§21.4). Quindi: **lo smoke B8 prima di B2**, non dopo. E in git il CSV
-non c'è: in CI e su qualunque DB ricostruito il verbo resta fail-closed, quindi
-**il seed va comunque chiesto pushato** — non è «già fatto».
+Da adesso il rischio è tutto sull'altro lato — **P-1 è applicata, quindi il
+fail-closed che teneva il verbo al solo SUPER_ADMIN non c'è più**: il giorno in
+cui B2 esiste, il primo click scrive la rettifica e il primo giro di fatturazione
+emette la nota di credito. La strada indietro **adesso esiste** (P-5), ma è
+stretta: vale solo finché **tutte** le rettifiche sono `NON_EMESSA`. Quindi lo
+smoke end-to-end di B8 va eseguito **prima** di consegnare il verbo, non dopo.
