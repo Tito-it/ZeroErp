@@ -1,14 +1,10 @@
 # pgtap-runner: app
 db/pgtap/anagrafiche/create-gestore-indirizzo-res-domfisc.sql	ERRORE_FIXTURE
-db/pgtap/anagrafiche/create-gestore-indirizzo-res.sql	ERRORE_FIXTURE
-db/pgtap/anagrafiche/create-soggetto-gestori.sql	ERRORE_FIXTURE
-db/pgtap/anagrafiche/soggetti-con-contatti.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-billing-account-auto-link-ef.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-billing-account-guard-parent.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-catasto-unita-immobiliare.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-clienti-sync-utility-pdp-policy.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-create-istanza-from-pdp.sql	ERRORE_FIXTURE
-db/pgtap/anagrafiche/test-dati-societari-policy.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-fn-crea-operatore.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-fn-crea-risorsa-umana.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-fn-get-or-create-indirizzo-dettaglio.sql	ASSERZIONE
@@ -18,13 +14,8 @@ db/pgtap/anagrafiche/test_indirizzi_unique_res.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-istanze-dati-precontrattuali.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-risorse-umane-auth-user-view.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-risorse-umane.sql	ERRORE_FIXTURE
-db/pgtap/anagrafiche/test-simula-subentro.sql	ERRORE_FIXTURE
-db/pgtap/anagrafiche/test-soggetti-guard-cf-piva-obbligatori.sql	ERRORE_FIXTURE
-db/pgtap/anagrafiche/test-soggetti-indirizzi-required.sql	ERRORE_FIXTURE
-db/pgtap/anagrafiche/test-soggetti-ruoli-guard-natura-ammessa.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-sync-auth-user-is-active-multi-role.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-trgfn-istanze-utilities-require-utility-dichiarata.sql	ASSERZIONE
-db/pgtap/anagrafiche/test-trgfn-pdp-a10-guard.sql	ERRORE_FIXTURE
 db/pgtap/documenti/test-documenti-template-documenti.sql	ERRORE_FIXTURE
 db/pgtap/pratiche/test-workflow-definizioni-fase2b.sql	ERRORE_FIXTURE
 db/pgtap/rls/test-rls-fatture-ef-whitelist-functional.sql	ERRORE_FIXTURE

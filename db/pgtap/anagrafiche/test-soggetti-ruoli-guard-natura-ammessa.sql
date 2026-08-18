@@ -19,74 +19,16 @@
 --       per rispettare i vincoli/trigger esistenti.
 -- ------------------------------------------------------------
 -- =========================================================
--- Cleanup iniziale
--- =========================================================
-DO $$ BEGIN
--- Elimino indirizzi ruolo di test
-DELETE FROM anagrafiche.indirizzi i
-WHERE i.soggetto_ruolo_id IN (
-        SELECT sr.id
-        FROM anagrafiche.soggetti_ruoli sr
-        JOIN anagrafiche.soggetti s ON sr.soggetto_id = s.id
-        WHERE s.codice IN (
-                'TST-NAT-PG-001',
-                'TST-NAT-PF-001',
-                'TST-NAT-ENC-001',
-                'TST-NAT-NULL-001'
-            )
-    );
--- Elimino soggetti_ruoli di test
-DELETE FROM anagrafiche.soggetti_ruoli sr
-WHERE sr.soggetto_id IN (
-        SELECT s.id
-        FROM anagrafiche.soggetti s
-        WHERE s.codice IN (
-                'TST-NAT-PG-001',
-                'TST-NAT-PF-001',
-                'TST-NAT-ENC-001',
-                'TST-NAT-NULL-001'
-            )
-    );
--- Elimino indirizzi_soggetti di test
-DELETE FROM anagrafiche.indirizzi_soggetti i
-WHERE i.soggetto_id IN (
-        SELECT s.id
-        FROM anagrafiche.soggetti s
-        WHERE s.codice IN (
-                'TST-NAT-PG-001',
-                'TST-NAT-PF-001',
-                'TST-NAT-ENC-001',
-                'TST-NAT-NULL-001'
-            )
-    );
--- Elimino contatti di test
-DELETE FROM anagrafiche.contatti c
-WHERE c.soggetto_id IN (
-        SELECT s.id
-        FROM anagrafiche.soggetti s
-        WHERE s.codice IN (
-                'TST-NAT-PG-001',
-                'TST-NAT-PF-001',
-                'TST-NAT-ENC-001',
-                'TST-NAT-NULL-001'
-            )
-    );
--- Elimino soggetti di test
-DELETE FROM anagrafiche.soggetti s
-WHERE s.codice IN (
-        'TST-NAT-PG-001',
-        'TST-NAT-PF-001',
-        'TST-NAT-ENC-001',
-        'TST-NAT-NULL-001'
-    );
-END;
-$$;
+-- ============================================================================
+-- rev 2026-08-18 — bonifica baseline. Qui c'era un blocco di cinque DELETE di
+-- «cleanup iniziale» sui soggetti di prova delle corse precedenti: non
+-- funziona piu' (fk_ddt_indirizzi_origine e altre FK RESTRICT li trattengono),
+-- e il file moriva alla riga 83 — ZERO asserzioni su 10.
+-- Il file e' gia' BEGIN ... ROLLBACK: residui suoi non ne fa. Il rimedio e'
+-- non collidere invece di cancellare — codici, partite IVA e codice fiscale
+-- unici per corsa.
+-- ============================================================================
 
--- ⚠️ Transazione, e non e' una formalita'. Il cleanup di questo file sta in
---   coda: col runner vero (pg_prove gira con ON_ERROR_STOP) un fallimento a
---   meta' non ci arriva mai, e i dati di prova restano nel database a rompere
---   la corsa successiva — che vede un rosso non suo.
---   Brief: brief-db-pgtap-runner-rls-baseline §15.3.
 BEGIN;
 
 -- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
@@ -108,6 +50,15 @@ SET CONSTRAINTS ALL IMMEDIATE;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(10);
+
+CREATE TEMP TABLE tmp_run_sfx AS
+SELECT substr(md5(clock_timestamp()::text), 1, 8) AS sfx,
+       -- ⚠️ fn(0) e fn(1), non due fn(): nella stessa istruzione la versione
+       --   senza argomenti tornerebbe due volte lo STESSO valore, perche' fra
+       --   l'una e l'altra non c'e' nessun insert a occuparlo.
+       dbops.fn_pgtap_piva_libera(0) AS piva_pg,
+       dbops.fn_pgtap_piva_libera(1) AS piva_enc,
+       dbops.fn_pgtap_cf_libero()   AS cf_pf;
 -- =========================================================
 -- 0) Precondizioni: stato, tipo_contatto
 -- =========================================================
@@ -170,6 +121,10 @@ FROM config.tipi_indirizzi WHERE codice_interno = 'FATT';
 -- =========================================================
 SELECT lives_ok(
         $$
+        -- ⭐ Finestra differita: i guard di completezza su soggetti sono
+        --   DEFERRABLE apposta (un soggetto e' una saga). Con IMMEDIATE
+        --   scatterebbero sul primo insert, prima che sia completo.
+        SET CONSTRAINTS ALL DEFERRED;
         INSERT INTO anagrafiche.soggetti (
                 codice,
                 ragione_sociale,
@@ -179,14 +134,14 @@ SELECT lives_ok(
                 tipo_soggetto_dettaglio_id
             )
         VALUES (
-                'TST-NAT-PG-001',
+                'TST-NAT-PG-001-' || (SELECT sfx FROM tmp_run_sfx),
                 'Azienda PG Test Natura',
                 (
                     SELECT stato_id
                     FROM tmp_stato_test
                 ),
-                '37584740775',
-                '37584740775',
+                (SELECT piva_pg FROM tmp_run_sfx),
+                (SELECT piva_pg FROM tmp_run_sfx),
                 (
                     SELECT tipo_soggetto_dettaglio_id
                     FROM tmp_tipo_sp
@@ -208,7 +163,7 @@ SELECT (
     'pg@test.com',
     TRUE
 FROM anagrafiche.soggetti s
-WHERE s.codice = 'TST-NAT-PG-001';
+WHERE s.codice = 'TST-NAT-PG-001-' || (SELECT sfx FROM tmp_run_sfx);
 INSERT INTO anagrafiche.indirizzi_soggetti (
         soggetto_id, tipo_indirizzo_id, indirizzo_libero,
         stato_id, locality, postal_box, administrative_area
@@ -219,7 +174,9 @@ SELECT s.id,
     (SELECT stato_id FROM tmp_stato_test),
     'Test City', '00100', 'TS'
 FROM anagrafiche.soggetti s
-WHERE s.codice = 'TST-NAT-PG-001';
+WHERE s.codice = 'TST-NAT-PG-001-' || (SELECT sfx FROM tmp_run_sfx);
+        -- Saga completa: qui i guard verificano davvero.
+        SET CONSTRAINTS ALL IMMEDIATE;
 $$,
 'Creazione soggetto PG (SP) con CF e PIVA: OK'
 );
@@ -228,6 +185,10 @@ $$,
 -- =========================================================
 SELECT lives_ok(
         $$
+        -- ⭐ Finestra differita: i guard di completezza su soggetti sono
+        --   DEFERRABLE apposta (un soggetto e' una saga). Con IMMEDIATE
+        --   scatterebbero sul primo insert, prima che sia completo.
+        SET CONSTRAINTS ALL DEFERRED;
         INSERT INTO anagrafiche.soggetti (
                 codice,
                 cognome,
@@ -237,14 +198,14 @@ SELECT lives_ok(
                 tipo_soggetto_dettaglio_id
             )
         VALUES (
-                'TST-NAT-PF-001',
+                'TST-NAT-PF-001-' || (SELECT sfx FROM tmp_run_sfx),
                 'Rossi',
                 'Mario',
                 (
                     SELECT stato_id
                     FROM tmp_stato_test
                 ),
-                'PLCMCL54C22E902C',
+                (SELECT cf_pf FROM tmp_run_sfx),
                 (
                     SELECT tipo_soggetto_dettaglio_id
                     FROM tmp_tipo_pr
@@ -266,7 +227,7 @@ SELECT (
     'pf@test.com',
     TRUE
 FROM anagrafiche.soggetti s
-WHERE s.codice = 'TST-NAT-PF-001';
+WHERE s.codice = 'TST-NAT-PF-001-' || (SELECT sfx FROM tmp_run_sfx);
 INSERT INTO anagrafiche.indirizzi_soggetti (
         soggetto_id, tipo_indirizzo_id, indirizzo_libero,
         stato_id, locality, postal_box, administrative_area
@@ -277,7 +238,7 @@ SELECT s.id,
     (SELECT stato_id FROM tmp_stato_test),
     'Test City', '00100', 'TS'
 FROM anagrafiche.soggetti s
-WHERE s.codice = 'TST-NAT-PF-001';
+WHERE s.codice = 'TST-NAT-PF-001-' || (SELECT sfx FROM tmp_run_sfx);
 INSERT INTO anagrafiche.indirizzi_soggetti (
         soggetto_id, tipo_indirizzo_id, indirizzo_libero,
         stato_id, locality, postal_box, administrative_area
@@ -288,7 +249,9 @@ SELECT s.id,
     (SELECT stato_id FROM tmp_stato_test),
     'Test City', '00100', 'TS'
 FROM anagrafiche.soggetti s
-WHERE s.codice = 'TST-NAT-PF-001';
+WHERE s.codice = 'TST-NAT-PF-001-' || (SELECT sfx FROM tmp_run_sfx);
+        -- Saga completa: qui i guard verificano davvero.
+        SET CONSTRAINTS ALL IMMEDIATE;
 $$,
 'Creazione soggetto PF (PR) con CF: OK'
 );
@@ -297,6 +260,10 @@ $$,
 -- =========================================================
 SELECT lives_ok(
         $$
+        -- ⭐ Finestra differita: i guard di completezza su soggetti sono
+        --   DEFERRABLE apposta (un soggetto e' una saga). Con IMMEDIATE
+        --   scatterebbero sul primo insert, prima che sia completo.
+        SET CONSTRAINTS ALL DEFERRED;
         INSERT INTO anagrafiche.soggetti (
                 codice,
                 ragione_sociale,
@@ -306,14 +273,14 @@ SELECT lives_ok(
                 tipo_soggetto_dettaglio_id
             )
         VALUES (
-                'TST-NAT-ENC-001',
+                'TST-NAT-ENC-001-' || (SELECT sfx FROM tmp_run_sfx),
                 'Ente Test Natura',
                 (
                     SELECT stato_id
                     FROM tmp_stato_test
                 ),
-                '99055740791',
-                '99055740791',
+                (SELECT piva_enc FROM tmp_run_sfx),
+                (SELECT piva_enc FROM tmp_run_sfx),
                 (
                     SELECT tipo_soggetto_dettaglio_id
                     FROM tmp_tipo_enc
@@ -335,7 +302,7 @@ SELECT (
     'enc@test.com',
     TRUE
 FROM anagrafiche.soggetti s
-WHERE s.codice = 'TST-NAT-ENC-001';
+WHERE s.codice = 'TST-NAT-ENC-001-' || (SELECT sfx FROM tmp_run_sfx);
 INSERT INTO anagrafiche.indirizzi_soggetti (
         soggetto_id, tipo_indirizzo_id, indirizzo_libero,
         stato_id, locality, postal_box, administrative_area
@@ -346,7 +313,9 @@ SELECT s.id,
     (SELECT stato_id FROM tmp_stato_test),
     'Test City', '00100', 'TS'
 FROM anagrafiche.soggetti s
-WHERE s.codice = 'TST-NAT-ENC-001';
+WHERE s.codice = 'TST-NAT-ENC-001-' || (SELECT sfx FROM tmp_run_sfx);
+        -- Saga completa: qui i guard verificano davvero.
+        SET CONSTRAINTS ALL IMMEDIATE;
 $$,
 'Creazione soggetto ENC con CF e PIVA: OK'
 );
@@ -355,11 +324,15 @@ $$,
 -- =========================================================
 SELECT lives_ok(
         $$
+        -- ⭐ Finestra differita: i guard di completezza su soggetti sono
+        --   DEFERRABLE apposta (un soggetto e' una saga). Con IMMEDIATE
+        --   scatterebbero sul primo insert, prima che sia completo.
+        SET CONSTRAINTS ALL DEFERRED;
         INSERT INTO anagrafiche.soggetti_ruoli (soggetto_id, tipo_ruolo_id)
         SELECT s.id,
             3 -- GE
         FROM anagrafiche.soggetti s
-        WHERE s.codice = 'TST-NAT-PG-001';
+        WHERE s.codice = 'TST-NAT-PG-001-' || (SELECT sfx FROM tmp_run_sfx);
         INSERT INTO anagrafiche.indirizzi (
                 soggetto_ruolo_id, tipo_indirizzo_id, indirizzo_libero,
                 stato_id, locality, postal_box, administrative_area
@@ -371,7 +344,7 @@ SELECT lives_ok(
             'Test City', '00100', 'TS'
         FROM anagrafiche.soggetti_ruoli sr
         JOIN anagrafiche.soggetti s ON sr.soggetto_id = s.id
-        WHERE s.codice = 'TST-NAT-PG-001' AND sr.tipo_ruolo_id = 3;
+        WHERE s.codice = 'TST-NAT-PG-001-' || (SELECT sfx FROM tmp_run_sfx) AND sr.tipo_ruolo_id = 3;
         INSERT INTO anagrafiche.indirizzi (
                 soggetto_ruolo_id, tipo_indirizzo_id, indirizzo_libero,
                 stato_id, locality, postal_box, administrative_area
@@ -383,7 +356,9 @@ SELECT lives_ok(
             'Test City', '00100', 'TS'
         FROM anagrafiche.soggetti_ruoli sr
         JOIN anagrafiche.soggetti s ON sr.soggetto_id = s.id
-        WHERE s.codice = 'TST-NAT-PG-001' AND sr.tipo_ruolo_id = 3;
+        WHERE s.codice = 'TST-NAT-PG-001-' || (SELECT sfx FROM tmp_run_sfx) AND sr.tipo_ruolo_id = 3;
+        -- Saga completa: qui i guard verificano davvero.
+        SET CONSTRAINTS ALL IMMEDIATE;
 $$,
 'Soggetto PG + ruolo GE: OK (PG ammesso)'
 );
@@ -396,7 +371,7 @@ SELECT throws_ok(
         SELECT s.id,
             3 -- GE
         FROM anagrafiche.soggetti s
-        WHERE s.codice = 'TST-NAT-PF-001';
+        WHERE s.codice = 'TST-NAT-PF-001-' || (SELECT sfx FROM tmp_run_sfx);
 $$,
 NULL,
 'Soggetto PF + ruolo GE: FALLISCE (PF non ammesso per GE)'
@@ -410,7 +385,7 @@ SELECT throws_ok(
         SELECT s.id,
             14 -- RIS_UMANA
         FROM anagrafiche.soggetti s
-        WHERE s.codice = 'TST-NAT-PG-001';
+        WHERE s.codice = 'TST-NAT-PG-001-' || (SELECT sfx FROM tmp_run_sfx);
 $$,
 NULL,
 'Soggetto PG + ruolo RIS_UMANA: FALLISCE (solo PF ammesso)'
@@ -420,11 +395,15 @@ NULL,
 -- =========================================================
 SELECT lives_ok(
         $$
+        -- ⭐ Finestra differita: i guard di completezza su soggetti sono
+        --   DEFERRABLE apposta (un soggetto e' una saga). Con IMMEDIATE
+        --   scatterebbero sul primo insert, prima che sia completo.
+        SET CONSTRAINTS ALL DEFERRED;
         INSERT INTO anagrafiche.soggetti_ruoli (soggetto_id, tipo_ruolo_id)
         SELECT s.id,
             1 -- CL
         FROM anagrafiche.soggetti s
-        WHERE s.codice = 'TST-NAT-PF-001';
+        WHERE s.codice = 'TST-NAT-PF-001-' || (SELECT sfx FROM tmp_run_sfx);
         INSERT INTO anagrafiche.indirizzi (
                 soggetto_ruolo_id, tipo_indirizzo_id, indirizzo_libero,
                 stato_id, locality, postal_box, administrative_area
@@ -436,7 +415,9 @@ SELECT lives_ok(
             'Test City', '00100', 'TS'
         FROM anagrafiche.soggetti_ruoli sr
         JOIN anagrafiche.soggetti s ON sr.soggetto_id = s.id
-        WHERE s.codice = 'TST-NAT-PF-001' AND sr.tipo_ruolo_id = 1;
+        WHERE s.codice = 'TST-NAT-PF-001-' || (SELECT sfx FROM tmp_run_sfx) AND sr.tipo_ruolo_id = 1;
+        -- Saga completa: qui i guard verificano davvero.
+        SET CONSTRAINTS ALL IMMEDIATE;
 $$,
 'Soggetto PF + ruolo CL: OK (PF ammesso)'
 );
@@ -445,11 +426,15 @@ $$,
 -- =========================================================
 SELECT lives_ok(
         $$
+        -- ⭐ Finestra differita: i guard di completezza su soggetti sono
+        --   DEFERRABLE apposta (un soggetto e' una saga). Con IMMEDIATE
+        --   scatterebbero sul primo insert, prima che sia completo.
+        SET CONSTRAINTS ALL DEFERRED;
         INSERT INTO anagrafiche.soggetti_ruoli (soggetto_id, tipo_ruolo_id)
         SELECT s.id,
             1 -- CL
         FROM anagrafiche.soggetti s
-        WHERE s.codice = 'TST-NAT-ENC-001';
+        WHERE s.codice = 'TST-NAT-ENC-001-' || (SELECT sfx FROM tmp_run_sfx);
         INSERT INTO anagrafiche.indirizzi (
                 soggetto_ruolo_id, tipo_indirizzo_id, indirizzo_libero,
                 stato_id, locality, postal_box, administrative_area
@@ -461,7 +446,9 @@ SELECT lives_ok(
             'Test City', '00100', 'TS'
         FROM anagrafiche.soggetti_ruoli sr
         JOIN anagrafiche.soggetti s ON sr.soggetto_id = s.id
-        WHERE s.codice = 'TST-NAT-ENC-001' AND sr.tipo_ruolo_id = 1;
+        WHERE s.codice = 'TST-NAT-ENC-001-' || (SELECT sfx FROM tmp_run_sfx) AND sr.tipo_ruolo_id = 1;
+        -- Saga completa: qui i guard verificano davvero.
+        SET CONSTRAINTS ALL IMMEDIATE;
 $$,
 'Soggetto ENC + ruolo CL: OK (ENC ammesso)'
 );

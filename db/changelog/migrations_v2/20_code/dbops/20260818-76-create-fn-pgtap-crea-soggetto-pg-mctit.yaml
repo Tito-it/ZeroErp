@@ -1,0 +1,308 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Due helper di fixture pgTAP per anagrafiche: una partita IVA libera e la
+# creazione di un soggetto PERSONA GIURIDICA completo.
+#
+# IL PROBLEMA CHE CHIUDONO. In anagrafiche 23 file su 56 sono rossi con
+# ERRORE_FIXTURE, cioe' muoiono prima della prima asserzione: la loro copertura
+# vale ZERO, non «parziale». Sono i test piu' vecchi della suite e nascono tutti
+# dalla stessa idea, che il modello non ammette piu':
+#
+#     «uso un identificativo fisso, e alla prossima corsa cancello e ricomincio»
+#
+# Oggi un soggetto non si cancella — dbops.automation_delete_block_ruoli lo
+# vieta su 8 tabelle di ruolo dal 2026-01-23, e le FK sono RESTRICT. La pulizia
+# preventiva in testa al file fallisce, e il file muore li'.
+#
+# E creare un soggetto valido non e' piu' un INSERT: e' una SAGA di quattro
+# scritture — testata, dati societari, indirizzi obbligatori, contatto — con
+# TRE guard DEFERRABLE INITIALLY DEFERRED su anagrafiche.soggetti che la
+# verificano al COMMIT. Ogni test se la ri-derivava a mano, ed e' il motivo per
+# cui sono invecchiati tutti insieme: il guard entrato dopo li rompe tutti.
+#
+# LA FINESTRA DIFFERITA, che e' la parte che non si indovina. Il preambolo
+# obbligatorio dei pgTAP impone SET CONSTRAINTS ALL IMMEDIATE (guardrail in CI)
+# perche' senza, la chiusura in ROLLBACK porterebbe via i vincoli differiti
+# SENZA verificarli — verde per sottrazione. Ma IMMEDIATE fa scattare quei tre
+# guard sul PRIMO insert, cioe' prima che la saga possa esistere. La funzione
+# apre la finestra (ALL DEFERRED), costruisce, e la RICHIUDE (ALL IMMEDIATE) a
+# saga completa: la verifica non si perde, si sposta dove il modello la vuole.
+#
+# Effetto sul chiamante: al ritorno i vincoli sono IMMEDIATE. Un test che dopo
+# questa chiamata costruisce a mano un'altra saga deve aprirsi la sua finestra.
+#
+# Perche' un building block e non una copia per file: i chiamanti sono nove dal
+# primo giorno (regola del 2 abbondantemente superata). Il prossimo guard di
+# completezza si aggiusta QUI, non in nove file.
+#
+# PERCHE' dbops E NON script, visto che le tre fn_pgtap_* esistenti stanno in
+# script. Non decidono i permessi: zeroerp_app ha USAGE su entrambi gli schemi
+# e EXECUTE su tutte e 67 le funzioni dbops, quindi da quel lato sono
+# equivalenti. Decide cosa fanno. Le tre in script impostano un CONTESTO di
+# sessione — simulano quello che il middleware da' a una richiesta, ed e'
+# materia applicativa. Questa FABBRICA DATI DI ANAGRAFICA: fa INSERT su
+# soggetti, dati societari, indirizzi e contatti. Una funzione cosi' dentro lo
+# schema in cui l'applicazione chiama e' una tentazione che prima o poi
+# qualcuno raccoglie, ed e' esattamente il tipo di scorciatoia che poi si
+# ritrova in produzione. In dbops l'intento e' leggibile e la tentazione non
+# si presenta. ⚠️ Se un giorno si volesse riunire la famiglia, la direzione e'
+# spostare le altre QUI, non riportare questa la'.
+#
+# Permessi: funzione di titodb, non SECURITY DEFINER, non in
+# dbops.sec_functions_owner -> CREATE OR REPLACE liscio, nessun GRANT
+# (precedente 20260808-04). Stessa forma di script.fn_pgtap_set_contesto_operatore.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260818-76-create-fn-pgtap-crea-soggetto-pg-mctit.yaml
+
+  - changeSet:
+      id: 20260818-76-create-fn-pgtap-crea-soggetto-pg
+      author: mctit
+      runOnChange: false
+      comment: >
+        Helper di fixture pgTAP: dbops.fn_pgtap_piva_libera() e
+        dbops.fn_pgtap_crea_soggetto_pg(). Creano un soggetto persona
+        giuridica completo (testata + dati societari + indirizzi obbligatori +
+        contatto) dentro la finestra dei guard differiti, con una partita IVA
+        valida e mai usata.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_piva_libera()
+               RETURNS text
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP una partita IVA VALIDA e non
+              --   ancora usata, cosi' nessun test deve piu' cancellare il
+              --   residuo della corsa precedente per poter ripartire.
+              DECLARE
+                  v_base   bigint := 88800000000;
+                  v_body   text;
+                  v_check  int;
+                  v_piva   text;
+                  v_i      int;
+                  v_d      int;
+                  v_sum    int;
+                  v_try    int := 0;
+              BEGIN
+                  LOOP
+                      v_try := v_try + 1;
+                      EXIT WHEN v_try > 100000;
+                      v_body := lpad(((v_base + v_try) % 10000000000)::text, 10, '0');
+
+                      -- Cifra di controllo (Luhn sulle 10 cifre del corpo).
+                      v_sum := 0;
+                      FOR v_i IN 1..10 LOOP
+                          v_d := substr(v_body, v_i, 1)::int;
+                          IF v_i % 2 = 0 THEN
+                              v_d := v_d * 2;
+                              IF v_d > 9 THEN v_d := v_d - 9; END IF;
+                          END IF;
+                          v_sum := v_sum + v_d;
+                      END LOOP;
+                      v_check := (10 - (v_sum % 10)) % 10;
+                      v_piva := v_body || v_check::text;
+
+                      -- ⚠️ Si passa comunque dal validatore di dominio invece di
+                      --   fidarsi del calcolo: se un giorno la regola cambia, qui
+                      --   si vede subito.
+                      IF script.fn_valida_partita_iva(v_piva)
+                         AND NOT EXISTS (SELECT 1 FROM anagrafiche.soggetti s
+                                          WHERE s.partita_iva = v_piva
+                                             OR s.codice_fiscale = v_piva
+                                             OR s.id_fiscale_univoco_cf_piva = v_piva) THEN
+                          RETURN v_piva;
+                      END IF;
+                  END LOOP;
+
+                  RAISE EXCEPTION 'fn_pgtap_piva_libera: nessuna partita IVA libera trovata';
+              END;
+              $function$;
+
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_soggetto_pg(
+                  p_ragione_sociale            text,
+                  p_tipo_soggetto_dettaglio_id integer DEFAULT 3,
+                  p_stato_id                   integer DEFAULT 1,
+                  p_piva                       text    DEFAULT NULL
+              )
+               RETURNS uuid
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: creare per una fixture pgTAP un soggetto PERSONA
+              --   GIURIDICA gia' valido — testata, dati societari, indirizzi
+              --   obbligatori, contatto — in un colpo solo.
+              -- Uso:
+              --   CREATE TEMP TABLE tmp_s AS
+              --   SELECT dbops.fn_pgtap_crea_soggetto_pg('Banca Zero pgTAP') AS id;
+              DECLARE
+                  v_soggetto_id uuid;
+                  v_piva        text;
+                  v_prov_id     integer;
+                  v_tipo_cont   integer;
+                  v_n_ind       integer;
+              BEGIN
+                  v_piva := COALESCE(p_piva, dbops.fn_pgtap_piva_libera());
+
+                  SELECT p.id INTO v_prov_id FROM config.province p ORDER BY p.id LIMIT 1;
+                  SELECT t.id INTO v_tipo_cont FROM config.tipi_contatti t ORDER BY t.id LIMIT 1;
+
+                  -- ⭐ FINESTRA DIFFERITA. I tre guard di completezza su
+                  --   anagrafiche.soggetti (dati societari, indirizzi, contatti)
+                  --   sono DEFERRABLE INITIALLY DEFERRED apposta, perche' un
+                  --   soggetto e' una SAGA e la completezza ha senso verificarla
+                  --   quando la saga e' finita, non dopo il primo INSERT.
+                  --   Si costruisce con i guard aperti e si RICHIUDE in fondo.
+                  --   ⚠️ La richiusura non e' facoltativa: senza, la chiusura in
+                  --   ROLLBACK del file di test se li porterebbe via NON
+                  --   verificati, e il test sarebbe verde per sottrazione.
+                  SET CONSTRAINTS ALL DEFERRED;
+
+                  INSERT INTO anagrafiche.soggetti (
+                      ragione_sociale, cognome, nome, sesso, stato_id,
+                      partita_iva, codice_fiscale, tipo_soggetto_dettaglio_id,
+                      storicizza, attivo
+                  )
+                  VALUES (
+                      p_ragione_sociale, NULL, NULL, 'S', p_stato_id,
+                      -- Per una persona giuridica italiana il codice fiscale
+                      -- coincide con la partita IVA, e il guard cf/piva lo esige.
+                      v_piva, v_piva, p_tipo_soggetto_dettaglio_id,
+                      TRUE, TRUE
+                  )
+                  RETURNING id INTO v_soggetto_id;
+
+                  INSERT INTO anagrafiche.dati_societari (
+                      soggetto_id, capitale_sociale, id_prov_iscri_rea, iscrizione_rea,
+                      socio_unico, liquidazione, destinatario_fe
+                  )
+                  -- ⚠️ uq_ds_prov_cea e' UNIQUE su (id_prov_iscri_rea,
+                  --   iscrizione_rea): il numero REA si deriva dalla partita IVA,
+                  --   che e' gia' unica per costruzione.
+                  VALUES (v_soggetto_id, 10000.00, v_prov_id, 'REA-' || v_piva,
+                          'SM', 'LN', '0000000');
+
+                  -- Gli indirizzi ammessi li decide la matrice per il
+                  -- TIPO SOGGETTO DETTAGLIO, non quella dei ruoli: si legge la
+                  -- configurazione invece di elencare i codici a mano.
+                  INSERT INTO anagrafiche.indirizzi_soggetti (
+                      soggetto_id, tipo_indirizzo_id,
+                      indirizzo_libero, stato_id, locality, postal_box, administrative_area
+                  )
+                  SELECT v_soggetto_id, m.tipo_indirizzo_id,
+                         'Via pgTAP 1', p_stato_id, 'Roma', '00100', 'RM'
+                    FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
+                   WHERE m.tipo_soggetto_dettaglio_id = p_tipo_soggetto_dettaglio_id
+                     AND m.attivo
+                     AND m.obbligatorio;
+                  GET DIAGNOSTICS v_n_ind = ROW_COUNT;
+
+                  -- Nessun tipo obbligatorio per questo tipo soggetto: ne serve
+                  -- comunque almeno uno, perche' il guard indirizzi pretende una
+                  -- riga, non un tipo preciso.
+                  IF v_n_ind = 0 THEN
+                      INSERT INTO anagrafiche.indirizzi_soggetti (
+                          soggetto_id, tipo_indirizzo_id,
+                          indirizzo_libero, stato_id, locality, postal_box, administrative_area
+                      )
+                      SELECT v_soggetto_id, m.tipo_indirizzo_id,
+                             'Via pgTAP 1', p_stato_id, 'Roma', '00100', 'RM'
+                        FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
+                       WHERE m.tipo_soggetto_dettaglio_id = p_tipo_soggetto_dettaglio_id
+                         AND m.attivo
+                       ORDER BY m.tipo_indirizzo_id
+                       LIMIT 1;
+                  END IF;
+
+                  INSERT INTO anagrafiche.contatti (
+                      tipo_contatto_id, soggetto_id, nominativo, email,
+                      is_default, default_context
+                  )
+                  VALUES (v_tipo_cont, v_soggetto_id,
+                          'Referente ' || p_ragione_sociale,
+                          'pgtap@example.com', TRUE, 'soggetto');
+
+                  -- Saga completa: i tre guard differiti scattano QUI, su un
+                  -- soggetto finito. E' esattamente la verifica che il modello vuole.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  RETURN v_soggetto_id;
+              END;
+              $function$;
+
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_soggetto_ruolo(
+                  p_soggetto_id  uuid,
+                  p_cd_int_ruolo character varying,
+                  p_stato_id     integer DEFAULT 1
+              )
+               RETURNS bigint
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: assegnare a un soggetto un ruolo GIA' completo dei suoi
+              --   indirizzi obbligatori, che sono un layer SEPARATO da quelli
+              --   del soggetto.
+              -- Uso:
+              --   SELECT dbops.fn_pgtap_crea_soggetto_ruolo(<soggetto_id>, 'GE');
+              DECLARE
+                  v_ruolo_id bigint;
+              BEGIN
+                  -- Vedi la nota sulla finestra differita in
+                  -- fn_pgtap_crea_soggetto_pg: qui vale per il layer RUOLO, che
+                  -- ha una matrice SUA (config.tipi_ruolo_tipi_indirizzo) e un
+                  -- guard suo. ⚠️ Un indirizzo di SOGGETTO, per quanto presente,
+                  -- non lo soddisfa: sono due layer distinti, e il fallback del
+                  -- guard porta a un altro TIPO, non all'altro LAYER.
+                  SET CONSTRAINTS ALL DEFERRED;
+
+                  v_ruolo_id := script.fn_get_or_create_soggetto_ruolo(
+                                    p_soggetto_id  := p_soggetto_id,
+                                    p_cd_int_ruolo := p_cd_int_ruolo
+                                );
+
+                  INSERT INTO anagrafiche.indirizzi (
+                      soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
+                      indirizzo_libero, stato_id, locality, postal_box, administrative_area
+                  )
+                  SELECT v_ruolo_id, trti.tipo_indirizzo_id, NULL,
+                         'Via pgTAP ruolo 1', p_stato_id, 'Roma', '00100', 'RM'
+                    FROM config.tipi_ruolo_tipi_indirizzo trti
+                    JOIN config.tipi_ruoli tr ON tr.id = trti.tipo_ruolo_id
+                   WHERE tr.codice_interno = p_cd_int_ruolo
+                     AND trti.obbligatorio
+                     -- Il ruolo puo' gia' esistere (fn_get_or_create): non si
+                     -- duplicano gli indirizzi che ha gia'.
+                     AND NOT EXISTS (
+                           SELECT 1 FROM anagrafiche.indirizzi i
+                            WHERE i.soggetto_ruolo_id = v_ruolo_id
+                              AND i.tipo_indirizzo_id = trti.tipo_indirizzo_id);
+
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  RETURN v_ruolo_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_piva_libera()
+              IS 'Restituisce una partita IVA VALIDA (checksum verificato da script.fn_valida_partita_iva) e non ancora presente in anagrafiche.soggetti, per le fixture pgTAP. Serve perche'' il vincolo che faceva collidere le corse dei vecchi test e'' uq_soggetto_idstato_id_fiscale_univoco: con un identificativo fisso la seconda corsa sbatte sul residuo della prima, e dal 2026-01-23 quel residuo non si puo'' piu'' cancellare (dbops.automation_delete_block_ruoli). Vede anche le righe non ancora committate, quindi due chiamate nella stessa transazione danno valori diversi. Brief: work-in-progress/brief-db-bonifica-baseline-pgtap-vendite.md';
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_soggetto_pg(text,integer,integer,text)
+              IS 'Crea per una fixture pgTAP un soggetto PERSONA GIURIDICA gia'' valido: testata, dati societari, indirizzi obbligatori letti da config.tipi_soggetto_dettaglio_tipi_indirizzo, contatto. ⭐ Apre e RICHIUDE la finestra dei tre guard DEFERRABLE INITIALLY DEFERRED di anagrafiche.soggetti: e'' il punto che nessun test indovinava, perche'' il SET CONSTRAINTS ALL IMMEDIATE del preambolo obbligatorio li fa scattare prima che la saga possa esistere. Al ritorno i vincoli sono IMMEDIATE: un chiamante che dopo costruisce a mano un''altra saga deve aprirsi la sua finestra. Ritorna l''id del soggetto. Brief: work-in-progress/brief-db-bonifica-baseline-pgtap-vendite.md';
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_soggetto_ruolo(uuid,character varying,integer)
+              IS 'Assegna a un soggetto un ruolo gia'' completo dei suoi indirizzi OBBLIGATORI, letti da config.tipi_ruolo_tipi_indirizzo. ⚠️ Gli indirizzi di RUOLO sono un layer separato da quelli di SOGGETTO: hanno una matrice propria e un guard proprio, e un indirizzo di soggetto non soddisfa il guard del ruolo — il suo fallback porta a un altro TIPO, non all''altro LAYER. Come la sorella, apre e RICHIUDE la finestra dei vincoli differiti. Idempotente sugli indirizzi: il ruolo puo'' gia'' esistere (fn_get_or_create_soggetto_ruolo) e non si duplica cio'' che ha gia''. Ritorna il soggetto_ruolo_id. Brief: work-in-progress/brief-db-bonifica-baseline-pgtap-vendite.md';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_crea_soggetto_ruolo(uuid,character varying,integer);
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_crea_soggetto_pg(text,integer,integer,text);
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_piva_libera();

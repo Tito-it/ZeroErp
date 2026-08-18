@@ -10,27 +10,23 @@
 -- - SC (P.IVA): SEDELEG obbligatorio
 -- ------------------------------------------------------------
 
--- Cleanup iniziale (solo per test precedenti non rollbackati)
-DO $$
-BEGIN
-  DELETE FROM anagrafiche.indirizzi_soggetti i
-  WHERE i.soggetto_id IN (
-    SELECT s.id
-    FROM anagrafiche.soggetti s
-    WHERE s.codice IN ('TST-IND-PR-ERR','TST-IND-PR-OK','TST-IND-SC-ERR','TST-IND-SC-OK')
-  );
-
-  DELETE FROM anagrafiche.contatti c
-  WHERE c.soggetto_id IN (
-    SELECT s.id
-    FROM anagrafiche.soggetti s
-    WHERE s.codice IN ('TST-IND-PR-ERR','TST-IND-PR-OK','TST-IND-SC-ERR','TST-IND-SC-OK')
-  );
-
-  DELETE FROM anagrafiche.soggetti s
-  WHERE s.codice IN ('TST-IND-PR-ERR','TST-IND-PR-OK','TST-IND-SC-ERR','TST-IND-SC-OK');
-END;
-$$;
+-- ============================================================================
+-- rev 2026-08-18 — bonifica baseline. Qui c'era un blocco di «cleanup
+-- iniziale» che cancellava i soggetti di prova delle corse precedenti. Non
+-- funziona piu': quei soggetti hanno nel frattempo acquisito riferimenti e le
+-- FK sono RESTRICT (fk_risorse_umane_soggetti), quindi il DELETE moriva e con
+-- lui tutto il file — ZERO asserzioni su 9.
+--
+-- ⭐ Il file NON lascia residui suoi: ogni caso e' gia' un BEGIN ... ROLLBACK
+-- a se' (e' cosi' che si collauda un guard DEFERRABLE — si inserisce
+-- l'incompleto e si forza SET CONSTRAINTS ALL IMMEDIATE dentro throws_ok).
+-- I residui in giro sono di quando non era cosi'. Il rimedio e' non collidere
+-- invece di cancellare: codici e partite IVA sono UNICI PER CORSA.
+--
+-- ⚠️ tmp_run_sfx si crea PRIMA del primo BEGIN, in autocommit: se nascesse
+-- dentro una delle transazioni di caso, il ROLLBACK se la porterebbe via e i
+-- casi successivi non la troverebbero.
+-- ============================================================================
 
 -- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
@@ -40,6 +36,11 @@ $$;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(9);
+
+CREATE TEMP TABLE tmp_run_sfx AS
+SELECT substr(md5(clock_timestamp()::text), 1, 8) AS sfx,
+       dbops.fn_pgtap_piva_libera() AS piva_sc_err,
+       dbops.fn_pgtap_piva_libera() AS piva_sc_ok;
 
 -- =========================================================
 -- Precondizioni base: stato, tipo_contatto, tipi
@@ -141,7 +142,7 @@ WITH ins AS (
       attivo
   )
   SELECT
-      'TST-IND-PR-ERR',
+      'TST-IND-PR-ERR-' || (SELECT sfx FROM tmp_run_sfx),
       NULL,
       'Test',
       'PR ERR',
@@ -176,7 +177,9 @@ SELECT throws_ok(
     $$
       SET CONSTRAINTS ALL IMMEDIATE;
     $$,
-    NULL,
+    -- ⚠️ rev 2026-08-18: era NULL, cioe' «un errore qualunque va bene» —
+    --   compreso il crash del guard che questo test deve verificare.
+    'P0001',
     NULL,
     'PR senza indirizzi obbligatori: guard blocca'
 );
@@ -202,7 +205,7 @@ WITH ins AS (
       attivo
   )
   SELECT
-      'TST-IND-PR-OK',
+      'TST-IND-PR-OK-' || (SELECT sfx FROM tmp_run_sfx),
       NULL,
       'Test',
       'PR OK',
@@ -233,27 +236,49 @@ SELECT
     TRUE
 FROM tmp_soggetto_pr_ok s;
 
+-- ⚠️ Forma libera COMPLETA: chk_indirizzi_soggetti_free_requirements vuole
+--   indirizzo_libero + stato_id + locality + postal_box + administrative_area.
+--   Il solo indirizzo_libero non basta piu'.
 INSERT INTO anagrafiche.indirizzi_soggetti (
     soggetto_id,
     tipo_indirizzo_id,
-    indirizzo_libero
+    indirizzo_libero,
+    stato_id,
+    locality,
+    postal_box,
+    administrative_area
 )
 SELECT
     s.id,
     t.tipo_indirizzo_id,
-    'Via Test PR RES'
+    'Via Test PR RES',
+    (SELECT stato_id FROM tmp_stato_test),
+    'Roma',
+    '00100',
+    'RM'
 FROM tmp_soggetto_pr_ok s
 JOIN tmp_tipo_res t ON TRUE;
 
+-- ⚠️ Forma libera COMPLETA: chk_indirizzi_soggetti_free_requirements vuole
+--   indirizzo_libero + stato_id + locality + postal_box + administrative_area.
+--   Il solo indirizzo_libero non basta piu'.
 INSERT INTO anagrafiche.indirizzi_soggetti (
     soggetto_id,
     tipo_indirizzo_id,
-    indirizzo_libero
+    indirizzo_libero,
+    stato_id,
+    locality,
+    postal_box,
+    administrative_area
 )
 SELECT
     s.id,
     t.tipo_indirizzo_id,
-    'Via Test PR DOMFISC'
+    'Via Test PR DOMFISC',
+    (SELECT stato_id FROM tmp_stato_test),
+    'Roma',
+    '00100',
+    'RM'
 FROM tmp_soggetto_pr_ok s
 JOIN tmp_tipo_domfisc t ON TRUE;
 
@@ -285,13 +310,16 @@ WITH ins AS (
       attivo
   )
   SELECT
-      'TST-IND-SC-ERR',
+      'TST-IND-SC-ERR-' || (SELECT sfx FROM tmp_run_sfx),
       'Societa Test ERR',
       NULL,
       NULL,
       (SELECT stato_id FROM tmp_stato_test),
-      NULL,
-      '55048230233',
+      -- ⚠️ rev 2026-08-18: il codice fiscale non c'era. Per una societa' di
+      --   capitali trgfn_soggetti_guard_cf_piva_obbligatori lo pretende, e per
+      --   una PG coincide con la partita IVA.
+      (SELECT piva_sc_err FROM tmp_run_sfx),
+      (SELECT piva_sc_err FROM tmp_run_sfx),
       (SELECT tipo_soggetto_dettaglio_id FROM tmp_tipo_sc),
       TRUE,
       TRUE
@@ -300,6 +328,20 @@ WITH ins AS (
 SELECT *
 INTO TEMP TABLE tmp_soggetto_sc_err
 FROM ins;
+
+-- ⚠️ Dati societari: servono a ENTRAMBI i casi SC, non solo a quello buono.
+--   Una societa' di capitali senza riga in anagrafiche.dati_societari viene
+--   bloccata da quel guard — e nel caso «ERR» il test verrebbe verde per il
+--   motivo sbagliato, non per l'indirizzo mancante che vuole verificare.
+INSERT INTO anagrafiche.dati_societari (
+    soggetto_id, capitale_sociale, id_prov_iscri_rea, iscrizione_rea,
+    socio_unico, liquidazione, destinatario_fe
+)
+SELECT s.id, 10000.00,
+       (SELECT p.id FROM config.province p ORDER BY p.id LIMIT 1),
+       'REA-' || (SELECT sfx FROM tmp_run_sfx) || '-SCERR',
+       'SM', 'LN', '0000000'
+  FROM tmp_soggetto_sc_err s;
 
 INSERT INTO anagrafiche.contatti (
     tipo_contatto_id,
@@ -320,7 +362,9 @@ SELECT throws_ok(
     $$
       SET CONSTRAINTS ALL IMMEDIATE;
     $$,
-    NULL,
+    -- ⚠️ rev 2026-08-18: era NULL, cioe' «un errore qualunque va bene» —
+    --   compreso il crash del guard che questo test deve verificare.
+    'P0001',
     NULL,
     'SC senza indirizzo SEDELEG: guard blocca'
 );
@@ -346,13 +390,16 @@ WITH ins AS (
       attivo
   )
   SELECT
-      'TST-IND-SC-OK',
+      'TST-IND-SC-OK-' || (SELECT sfx FROM tmp_run_sfx),
       'Societa Test OK',
       NULL,
       NULL,
       (SELECT stato_id FROM tmp_stato_test),
-      NULL,
-      '29878230910',
+      -- ⚠️ rev 2026-08-18: il codice fiscale non c'era. Per una societa' di
+      --   capitali trgfn_soggetti_guard_cf_piva_obbligatori lo pretende, e per
+      --   una PG coincide con la partita IVA.
+      (SELECT piva_sc_ok FROM tmp_run_sfx),
+      (SELECT piva_sc_ok FROM tmp_run_sfx),
       (SELECT tipo_soggetto_dettaglio_id FROM tmp_tipo_sc),
       TRUE,
       TRUE
@@ -361,6 +408,9 @@ WITH ins AS (
 SELECT *
 INTO TEMP TABLE tmp_soggetto_sc_ok
 FROM ins;
+
+-- ⚠️ Il caso SC-OK i suoi dati societari se li mette da se', piu' avanti
+--   (e' proprio quello che la sua asserzione verifica): qui non si duplicano.
 
 INSERT INTO anagrafiche.contatti (
     tipo_contatto_id,
@@ -377,15 +427,26 @@ SELECT
     TRUE
 FROM tmp_soggetto_sc_ok s;
 
+-- ⚠️ Forma libera COMPLETA: chk_indirizzi_soggetti_free_requirements vuole
+--   indirizzo_libero + stato_id + locality + postal_box + administrative_area.
+--   Il solo indirizzo_libero non basta piu'.
 INSERT INTO anagrafiche.indirizzi_soggetti (
     soggetto_id,
     tipo_indirizzo_id,
-    indirizzo_libero
+    indirizzo_libero,
+    stato_id,
+    locality,
+    postal_box,
+    administrative_area
 )
 SELECT
     s.id,
     t.tipo_indirizzo_id,
-    'Via Test SC SEDELEG'
+    'Via Test SC SEDELEG',
+    (SELECT stato_id FROM tmp_stato_test),
+    'Roma',
+    '00100',
+    'RM'
 FROM tmp_soggetto_sc_ok s
 JOIN tmp_tipo_sedeleg t ON TRUE;
 
@@ -395,7 +456,10 @@ SELECT lives_ok(
     $$
       INSERT INTO anagrafiche.dati_societari (
           soggetto_id,
-          forma_giuridica,
+          -- ⚠️ rev 2026-08-18: era `forma_giuridica` (stringa 'SPA'). La
+          --   colonna non esiste piu': oggi e' forma_giuridica_id, FK verso
+          --   config.forme_giuridiche. Il test inseguiva uno schema vecchio.
+          forma_giuridica_id,
           capitale_sociale,
           id_prov_iscri_rea,
           iscrizione_rea,
@@ -408,18 +472,20 @@ SELECT lives_ok(
       )
       SELECT
           s.id,
-          'SPA',
+          (SELECT fg.id FROM config.forme_giuridiche fg ORDER BY fg.id LIMIT 1),
           50000.00,
           (SELECT provincia_id FROM tmp_provincia_test),
-          'SP-REA-077',
+          -- REA e SDI unici per corsa: i valori fissi sono bruciati da un
+          --   residuo del 2025 (uq su provincia+REA).
+          'SP-REA-' || (SELECT sfx FROM tmp_run_sfx),
           'SM',
           'LN',
           'XXXXXXX002',
-          'fatturazione.ciccio@example.com',
-          'SPCOD12377',
+          'fatt.' || (SELECT sfx FROM tmp_run_sfx) || '@example.com',
+          'SP' || upper(substr((SELECT sfx FROM tmp_run_sfx), 1, 5)),
           CURRENT_DATE
       FROM anagrafiche.soggetti s
-      WHERE s.codice = 'TST-IND-SC-OK';
+      WHERE s.codice = 'TST-IND-SC-OK-' || (SELECT sfx FROM tmp_run_sfx);
     $$,
     'Soggetto SP OPTIONAL con dati_societari: insert OK'
 );

@@ -16,42 +16,16 @@
 --       per rispettare i vincoli/trigger esistenti.
 -- ------------------------------------------------------------
 -- =========================================================
--- Cleanup iniziale: rimuovo eventuali dati di test preesistenti
--- per evitare errori di chiave duplicata su anagrafiche.soggetti.codice
--- =========================================================
-DO $$
-DECLARE l_codici text [] := ARRAY [
-    'TST-DSP-PR-001','TST-DSP-SP-001','TST-DSP-SC-ERR','TST-DSP-SC-OK'
-  ];
-BEGIN
-DELETE FROM anagrafiche.dati_societari ds
-WHERE ds.soggetto_id IN (
-        SELECT s.id
-        FROM anagrafiche.soggetti s
-        WHERE s.codice = ANY(l_codici)
-    );
-DELETE FROM anagrafiche.indirizzi_soggetti i
-WHERE i.soggetto_id IN (
-        SELECT s.id
-        FROM anagrafiche.soggetti s
-        WHERE s.codice = ANY(l_codici)
-    );
-DELETE FROM anagrafiche.contatti c
-WHERE c.soggetto_id IN (
-        SELECT s.id
-        FROM anagrafiche.soggetti s
-        WHERE s.codice = ANY(l_codici)
-    );
-DELETE FROM anagrafiche.soggetti s
-WHERE s.codice = ANY(l_codici);
-END;
-$$;
+-- ============================================================================
+-- rev 2026-08-18 — bonifica baseline. Qui c'era un «cleanup iniziale» che
+-- cancellava i soggetti di prova delle corse precedenti: non funziona piu'
+-- (fk_risorse_umane_soggetti e' RESTRICT e li trattiene), e il file moriva
+-- alla riga 48 — ZERO asserzioni su 13.
+-- Il file e' gia' BEGIN ... ROLLBACK: residui suoi non ne fa. Il rimedio e'
+-- non collidere invece di cancellare — codici e identificativi fiscali unici
+-- per corsa.
+-- ============================================================================
 
--- ⚠️ Transazione, e non e' una formalita'. Il cleanup di questo file sta in
---   coda: col runner vero (pg_prove gira con ON_ERROR_STOP) un fallimento a
---   meta' non ci arriva mai, e i dati di prova restano nel database a rompere
---   la corsa successiva — che vede un rosso non suo.
---   Brief: brief-db-pgtap-runner-rls-baseline §15.3.
 BEGIN;
 
 -- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
@@ -61,6 +35,16 @@ BEGIN;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(13);
+
+-- ⚠️ fn(0), fn(1), fn(2) e non tre fn(): nella stessa istruzione la versione
+--   senza argomenti tornerebbe sempre lo stesso valore, perche' fra una
+--   chiamata e l'altra non c'e' nessun insert che lo occupi.
+CREATE TEMP TABLE tmp_run_sfx AS
+SELECT substr(md5(clock_timestamp()::text), 1, 8) AS sfx,
+       dbops.fn_pgtap_piva_libera(0) AS piva_sc_ok,
+       dbops.fn_pgtap_piva_libera(1) AS piva_sc_err,
+       dbops.fn_pgtap_piva_libera(2) AS piva_sp,
+       dbops.fn_pgtap_cf_libero()    AS cf_pr;
 -- =========================================================
 -- 0) Precondizioni base: stato, provincia, tipo_contatto
 -- =========================================================
@@ -179,6 +163,10 @@ WHERE codice_interno = 'SC';
 -- =========================================================
 SELECT lives_ok(
         $$ -- Soggetto PR: solo codice_fiscale, nessuna P.IVA
+        -- ⭐ Finestra differita: i guard di completezza su soggetti sono
+        --   DEFERRABLE apposta (un soggetto e' una saga). Con IMMEDIATE
+        --   scatterebbero sul primo insert, prima che sia completo.
+        SET CONSTRAINTS ALL DEFERRED;
         INSERT INTO anagrafiche.soggetti (
                 --id,
                 codice,
@@ -192,7 +180,7 @@ SELECT lives_ok(
             )
         VALUES (
                 --uuid_generate_v7(),
-                'TST-DSP-PR-001',
+                'TST-DSP-PR-001-' || (SELECT sfx FROM tmp_run_sfx),
                 NULL,
                 'Test PR',
                 'Policy NONE',
@@ -200,7 +188,7 @@ SELECT lives_ok(
                     SELECT stato_id
                     FROM tmp_stato_test
                 ),
-                'LLLNGL80A01G482C',
+                (SELECT cf_pr FROM tmp_run_sfx),
                 NULL,
                 (
                     SELECT tipo_soggetto_dettaglio_id
@@ -234,7 +222,7 @@ SELECT (
     'PGTAP – contatto soggetto PR',
     TRUE
 FROM anagrafiche.soggetti s
-WHERE s.codice = 'TST-DSP-PR-001';
+WHERE s.codice = 'TST-DSP-PR-001-' || (SELECT sfx FROM tmp_run_sfx);
 INSERT INTO anagrafiche.indirizzi_soggetti (
         soggetto_id,
         tipo_indirizzo_id,
@@ -258,7 +246,7 @@ SELECT s.id,
     '00100',
     'TS'
 FROM anagrafiche.soggetti s
-WHERE s.codice = 'TST-DSP-PR-001';
+WHERE s.codice = 'TST-DSP-PR-001-' || (SELECT sfx FROM tmp_run_sfx);
 INSERT INTO anagrafiche.indirizzi_soggetti (
         soggetto_id,
         tipo_indirizzo_id,
@@ -282,7 +270,9 @@ SELECT s.id,
     '00100',
     'TS'
 FROM anagrafiche.soggetti s
-WHERE s.codice = 'TST-DSP-PR-001';
+WHERE s.codice = 'TST-DSP-PR-001-' || (SELECT sfx FROM tmp_run_sfx);
+        -- Saga completa: qui i guard verificano davvero.
+        SET CONSTRAINTS ALL IMMEDIATE;
 $$,
 'Creazione soggetto PR + contatto: OK (policy NONE, senza dati_societari)'
 );
@@ -307,7 +297,7 @@ SELECT throws_ok(
                 SELECT provincia_id
                 FROM tmp_provincia_test
             ),
-            'PRX-REA-001',
+            'PRX-REA-001-' || (SELECT sfx FROM tmp_run_sfx),
             'SU',
             'LN',
             'XXXXXXX001',
@@ -315,7 +305,7 @@ SELECT throws_ok(
             NULL,
             CURRENT_DATE
         FROM anagrafiche.soggetti s
-        WHERE s.codice = 'TST-DSP-PR-001';
+        WHERE s.codice = 'TST-DSP-PR-001-' || (SELECT sfx FROM tmp_run_sfx);
 $$,
 NULL,
 'Soggetto PR (policy NONE): inserimento dati_societari non ammesso'
@@ -328,6 +318,10 @@ NULL,
 -- 3.a) Senza dati_societari
 SELECT lives_ok(
         $$
+        -- ⭐ Finestra differita: i guard di completezza su soggetti sono
+        --   DEFERRABLE apposta (un soggetto e' una saga). Con IMMEDIATE
+        --   scatterebbero sul primo insert, prima che sia completo.
+        SET CONSTRAINTS ALL DEFERRED;
         INSERT INTO anagrafiche.soggetti (
                 --id,
                 codice,
@@ -341,7 +335,7 @@ SELECT lives_ok(
             )
         VALUES (
                 --uuid_generate_v7(),
-                'TST-DSP-SP-001',
+                'TST-DSP-SP-001-' || (SELECT sfx FROM tmp_run_sfx),
                 'Azienda SP OPTIONAL',
                 NULL,
                 NULL,
@@ -349,8 +343,8 @@ SELECT lives_ok(
                     SELECT stato_id
                     FROM tmp_stato_test
                 ),
-                '18413120074',
-                '18413120074',
+                (SELECT piva_sp FROM tmp_run_sfx),
+                (SELECT piva_sp FROM tmp_run_sfx),
                 (
                     SELECT tipo_soggetto_dettaglio_id
                     FROM tmp_tipo_sp
@@ -382,7 +376,7 @@ SELECT (
     'PGTAP – contatto soggetto SP',
     TRUE
 FROM anagrafiche.soggetti s
-WHERE s.codice = 'TST-DSP-SP-001';
+WHERE s.codice = 'TST-DSP-SP-001-' || (SELECT sfx FROM tmp_run_sfx);
 INSERT INTO anagrafiche.indirizzi_soggetti (
         soggetto_id,
         tipo_indirizzo_id,
@@ -406,13 +400,19 @@ SELECT s.id,
     '00100',
     'TS'
 FROM anagrafiche.soggetti s
-WHERE s.codice = 'TST-DSP-SP-001';
+WHERE s.codice = 'TST-DSP-SP-001-' || (SELECT sfx FROM tmp_run_sfx);
+        -- Saga completa: qui i guard verificano davvero.
+        SET CONSTRAINTS ALL IMMEDIATE;
 $$,
 'Soggetto SP OPTIONAL senza dati_societari: insert OK'
 );
 -- 3.b) Inserimento successivo di dati_societari: deve essere ammesso
 SELECT lives_ok(
         $$
+        -- ⭐ Finestra differita: i guard di completezza su soggetti sono
+        --   DEFERRABLE apposta (un soggetto e' una saga). Con IMMEDIATE
+        --   scatterebbero sul primo insert, prima che sia completo.
+        SET CONSTRAINTS ALL DEFERRED;
         INSERT INTO anagrafiche.dati_societari (
                 soggetto_id,
                 capitale_sociale,
@@ -431,15 +431,19 @@ SELECT lives_ok(
                 SELECT provincia_id
                 FROM tmp_provincia_test
             ),
-            'SPR-REA-001',
+            'SPR-REA-001-' || (SELECT sfx FROM tmp_run_sfx),
             'SM',
             'LN',
             'XXXXXXX002',
-            'fatturazione.sp1@example.com',
-            'SPCOX12345',
+            -- ⚠️ PEC e codice SDI hanno un UNIQUE loro (uq_ds_pec_fatt,
+            --   uq_ds_codice_sdi): i valori fissi sono bruciati da un residuo.
+            'fatt.sp1.' || (SELECT sfx FROM tmp_run_sfx) || '@example.com',
+            'SP' || upper(substr((SELECT sfx FROM tmp_run_sfx), 1, 5)),
             CURRENT_DATE
         FROM anagrafiche.soggetti s
-        WHERE s.codice = 'TST-DSP-SP-001';
+        WHERE s.codice = 'TST-DSP-SP-001-' || (SELECT sfx FROM tmp_run_sfx);
+        -- Saga completa: qui i guard verificano davvero.
+        SET CONSTRAINTS ALL IMMEDIATE;
 $$,
 'Soggetto SP OPTIONAL con dati_societari: insert OK'
 );
@@ -464,7 +468,7 @@ SELECT throws_ok(
             )
         VALUES (
                 --uuid_generate_v7(),
-                'TST-DSP-SC-ERR',
+                'TST-DSP-SC-ERR-' || (SELECT sfx FROM tmp_run_sfx),
                 'Azienda SC REQUIRED senza dati',
                 NULL,
                 NULL,
@@ -472,8 +476,8 @@ SELECT throws_ok(
                     SELECT stato_id
                     FROM tmp_stato_test
                 ),
-                '22439650049',
-                '22439650049',
+                (SELECT piva_sc_err FROM tmp_run_sfx),
+                (SELECT piva_sc_err FROM tmp_run_sfx),
                 (
                     SELECT tipo_soggetto_dettaglio_id
                     FROM tmp_tipo_sc
@@ -505,7 +509,7 @@ SELECT (
     'PGTAP – contatto soggetto SC senza dati_societari',
     TRUE
 FROM anagrafiche.soggetti s
-WHERE s.codice = 'TST-DSP-SC-ERR';
+WHERE s.codice = 'TST-DSP-SC-ERR-' || (SELECT sfx FROM tmp_run_sfx);
 INSERT INTO anagrafiche.indirizzi_soggetti (
         soggetto_id,
         tipo_indirizzo_id,
@@ -529,7 +533,7 @@ SELECT s.id,
     '00100',
     'TS'
 FROM anagrafiche.soggetti s
-WHERE s.codice = 'TST-DSP-SC-ERR';
+WHERE s.codice = 'TST-DSP-SC-ERR-' || (SELECT sfx FROM tmp_run_sfx);
 -- Forzo l'esecuzione dei constraint deferrable
 SET CONSTRAINTS ALL IMMEDIATE;
 $$,
@@ -539,6 +543,10 @@ NULL,
 -- 4.b) Caso corretto: SC REQUIRED + dati_societari
 SELECT lives_ok(
         $$
+        -- ⭐ Finestra differita: i guard di completezza su soggetti sono
+        --   DEFERRABLE apposta (un soggetto e' una saga). Con IMMEDIATE
+        --   scatterebbero sul primo insert, prima che sia completo.
+        SET CONSTRAINTS ALL DEFERRED;
         INSERT INTO anagrafiche.soggetti (
                 --id,
                 codice,
@@ -552,7 +560,7 @@ SELECT lives_ok(
             )
         VALUES (
                 --uuid_generate_v7(),
-                'TST-DSP-SC-OK',
+                'TST-DSP-SC-OK-' || (SELECT sfx FROM tmp_run_sfx),
                 'Azienda SC REQUIRED con dati',
                 NULL,
                 NULL,
@@ -560,8 +568,8 @@ SELECT lives_ok(
                     SELECT stato_id
                     FROM tmp_stato_test
                 ),
-                '13841460473',
-                '13841460473',
+                (SELECT piva_sc_ok FROM tmp_run_sfx),
+                (SELECT piva_sc_ok FROM tmp_run_sfx),
                 (
                     SELECT tipo_soggetto_dettaglio_id
                     FROM tmp_tipo_sc
@@ -593,7 +601,7 @@ SELECT (
     'PGTAP – contatto soggetto SC con dati_societari',
     TRUE
 FROM anagrafiche.soggetti s
-WHERE s.codice = 'TST-DSP-SC-OK';
+WHERE s.codice = 'TST-DSP-SC-OK-' || (SELECT sfx FROM tmp_run_sfx);
 INSERT INTO anagrafiche.dati_societari (
         soggetto_id,
         capitale_sociale,
@@ -612,15 +620,15 @@ SELECT s.id,
         SELECT provincia_id
         FROM tmp_provincia_test
     ),
-    'SCX-REA-OK',
+    'SCX-REA-OK-' || (SELECT sfx FROM tmp_run_sfx),
     'SM',
     'LN',
     'XXXXXXX003',
-    'fatturazione.sc1@example.com',
-    'SCCOX67890',
+    'fatt.sc1.' || (SELECT sfx FROM tmp_run_sfx) || '@example.com',
+    'SCCO' || upper(substr((SELECT sfx FROM tmp_run_sfx), 1, 3)),
     CURRENT_DATE
 FROM anagrafiche.soggetti s
-WHERE s.codice = 'TST-DSP-SC-OK';
+WHERE s.codice = 'TST-DSP-SC-OK-' || (SELECT sfx FROM tmp_run_sfx);
 INSERT INTO anagrafiche.indirizzi_soggetti (
         soggetto_id,
         tipo_indirizzo_id,
@@ -644,9 +652,11 @@ SELECT s.id,
     '00100',
     'TS'
 FROM anagrafiche.soggetti s
-WHERE s.codice = 'TST-DSP-SC-OK';
+WHERE s.codice = 'TST-DSP-SC-OK-' || (SELECT sfx FROM tmp_run_sfx);
 -- Forzo l'esecuzione dei constraint deferrable per essere sicuro
 SET CONSTRAINTS ALL IMMEDIATE;
+        -- Saga completa: qui i guard verificano davvero.
+        SET CONSTRAINTS ALL IMMEDIATE;
 $$,
 'Soggetto SC REQUIRED con dati_societari: tutto OK (constraint passato)'
 );

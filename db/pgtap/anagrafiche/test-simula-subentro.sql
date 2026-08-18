@@ -46,38 +46,28 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(26);
 
 -- =========================================================
---  Pulizia preliminare (idempotente)
+--  ⚠️ rev 2026-08-18 (bonifica baseline): qui c'era una «pulizia preliminare
+--  idempotente» — cinque DELETE su codici FISSI, per togliere i residui della
+--  corsa precedente. Non e' piu' possibile: anagrafiche.clienti e' fra le
+--  tabelle di dbops.automation_delete_block_ruoli dal 2026-01-23, quindi il
+--  primo DELETE dava «Cancellazione non permessa» e il file moriva li' — ZERO
+--  asserzioni su 26.
+--
+--  Il file era gia' transazionale, quindi non lascia residui SUOI: quelli in
+--  giro sono di quando non lo era. Il rimedio e' non collidere invece di
+--  cancellare — i codici sono ora UNICI PER CORSA (suffisso in tmp_run_sfx), e
+--  i vecchi TST-*-CAT-SUB-00x restano dove sono senza dare fastidio.
 -- =========================================================
+CREATE TEMP TABLE tmp_run_sfx AS
+SELECT substr(md5(clock_timestamp()::text), 1, 8) AS sfx;
 
-DELETE FROM anagrafiche.clienti
-WHERE codice_cliente_importato IN (
-  'TST-CLI-CAT-SUB-001',
-  'TST-CLI-CAT-SUB-002'
-);
-
-DELETE FROM anagrafiche.billing_account
-WHERE codice IN (
-  'TST-BA-CAT-SUB-001',
-  'TST-BA-CAT-SUB-002'
-);
-
-DELETE FROM anagrafiche.istanze_utilities
-WHERE codice IN (
-  'TST-IU-CAT-SUB-001',
-  'TST-IU-CAT-SUB-002'
-);
-
--- Ponte + catasto (solo record test riconoscibili)
-DELETE FROM anagrafiche.catasto_unita_immobiliari_indirizzi
-WHERE catasto_unita_id IN (
-  SELECT id FROM anagrafiche.catasto_unita_immobiliari
-  WHERE foglio_catastale = 'TST01'
-    AND particella = 'TST01'
-);
-
-DELETE FROM anagrafiche.catasto_unita_immobiliari
-WHERE foglio_catastale = 'TST01'
-  AND particella = 'TST01';
+-- ⚠️ Le date dello scenario sono state spostate dal 2025 al 2085. Non e'
+--   cosmesi: ex_clienti_no_overlap_stesso_pdp vieta due clienti sullo stesso
+--   PDP con periodi sovrapposti, e sul PDP che questo test pesca c'e' gia' un
+--   cliente residuo con ESATTAMENTE le date del vecchio scenario
+--   ([2025-11-01, 2025-11-09)) — lasciato da quando il file non era
+--   transazionale. Un anno lontano toglie di mezzo il residuo senza doverlo
+--   cancellare, e mette il test al riparo anche dai dati veri.
 
 -- =========================================================
 -- 0) Precondizioni
@@ -141,6 +131,19 @@ SELECT is((SELECT count(*)::int FROM tmp_iva), 1,
 
 
 
+-- ⭐ FINESTRA DIFFERITA (rev 2026-08-18) — secondo strato trovato dopo la
+--   pulizia. Il guard trg_istanze_utilities_z90_require_utility_dichiarata_ins
+--   e' DEFERRABLE INITIALLY DEFERRED apposta: un'istanza utility acquista
+--   senso quando le si aggancia un billing account, un cliente o dei dati
+--   precontrattuali, e questo file lo fa qualche decina di righe piu' giu'.
+--   Il SET CONSTRAINTS ALL IMMEDIATE del preambolo lo fa pero' scattare
+--   sull'INSERT dell'istanza, cioe' prima che la saga possa esistere.
+--   Si riapre qui e si RICHIUDE a saga completa (sezione 4): la verifica non
+--   si perde, si sposta dove il modello la vuole.
+--   ⚠️ La richiusura non e' facoltativa: senza, il ROLLBACK finale se la
+--   porterebbe via non verificata.
+SET CONSTRAINTS ALL DEFERRED;
+
 -- =========================================================
 -- 1) Istanza 1 + catasto 1 + link ponte (via trigger sync)
 -- =========================================================
@@ -152,7 +155,7 @@ WITH ins_iu1 AS (
   )
   SELECT
     false,
-    'TST-IU-CAT-SUB-001',
+    'TST-IU-CAT-SUB-001-' || (SELECT sfx FROM tmp_run_sfx),
     'P',
     s1.id,
     p.indirizzo_dettaglio_id,
@@ -219,11 +222,11 @@ SELECT is((
 
 
 
--- 2.0) Subentro preliminare: chiude eventuale cliente già attivo sul PDP prima del Cliente 1 (2025-11-01)
+-- 2.0) Subentro preliminare: chiude eventuale cliente già attivo sul PDP prima del Cliente 1 (2085-11-01)
 CREATE TEMP TABLE tmp_subentro0 AS
 SELECT script.fn_subentro_cliente(
     (SELECT id FROM tmp_pdp),
-    DATE '2025-11-01'
+    DATE '2085-11-01'
 ) AS cliente_chiuso_id;
 
 -- Se non c'era nessuno, ritorna NULL ed è OK.
@@ -240,11 +243,11 @@ SELECT ok((
       (SELECT data_chiusura::date
        FROM anagrafiche.clienti
        WHERE id = (SELECT cliente_chiuso_id FROM tmp_subentro0)
-      ) = (DATE '2025-11-01' - 1)
+      ) = (DATE '2085-11-01' - 1)
     )
   END
 )::boolean,
-  'Subentro preliminare: se ha chiuso un cliente, data_chiusura = 2025-11-01 - 1'
+  'Subentro preliminare: se ha chiuso un cliente, data_chiusura = 2085-11-01 - 1'
 );
 
 SELECT ok((
@@ -264,14 +267,19 @@ SELECT ok((
 
 CREATE TEMP TABLE tmp_ba1 AS
 WITH ins_ba AS (
+  -- ⚠️ rev 2026-08-18: categoria_cliente_id e' diventata NOT NULL su
+  --   billing_account dopo che questo file e' stato scritto. Si legge dal
+  --   catalogo invece di inchiodare un id.
   INSERT INTO anagrafiche.billing_account (
-    istanza_utility_id, soggetto_ruolo_id, utility_id, codice
+    istanza_utility_id, soggetto_ruolo_id, utility_id, codice, categoria_cliente_id
   )
   SELECT
     iu.id,
     sr.soggetto_ruolo_id,
     p.utility_id,
-    'TST-BA-CAT-SUB-001'
+    'TST-BA-CAT-SUB-001-' || (SELECT sfx FROM tmp_run_sfx),
+    (SELECT cc.id FROM anagrafiche.categorie_clienti cc
+      WHERE cc.codice_interno = 'STANDARD' ORDER BY cc.id LIMIT 1)
   FROM tmp_iu1 iu, tmp_sr_1 sr, tmp_pdp p
   RETURNING id
 )
@@ -286,9 +294,9 @@ WITH ins_cli AS (
     sr.soggetto_ruolo_id,
     iu.id,
     st.id,
-    DATE '2025-11-01',
+    DATE '2085-11-01',
     ba.id,
-    'TST-CLI-CAT-SUB-001',
+    'TST-CLI-CAT-SUB-001-' || (SELECT sfx FROM tmp_run_sfx),
     iv.id
   FROM tmp_sr_1 sr, tmp_iu1 iu, tmp_stato_at st, tmp_ba1 ba, tmp_iva iv
   RETURNING id
@@ -296,7 +304,7 @@ WITH ins_cli AS (
 SELECT * INTO TEMP TABLE tmp_cli1 FROM ins_cli;
 
 SELECT is((SELECT count(*)::int FROM tmp_cli1), 1,
-  'Creato cliente 1 (AT) con data_attivazione=2025-11-01'
+  'Creato cliente 1 (AT) con data_attivazione=2085-11-01'
 );
 
 -- =========================================================
@@ -312,7 +320,7 @@ WITH ins_iu2 AS (
   )
   SELECT
     false,
-    'TST-IU-CAT-SUB-002',
+    'TST-IU-CAT-SUB-002-' || (SELECT sfx FROM tmp_run_sfx),
     'I',
     s2.id,
     p.indirizzo_dettaglio_id,
@@ -328,14 +336,19 @@ SELECT is((SELECT count(*)::int FROM tmp_iu2), 1,
 
 CREATE TEMP TABLE tmp_ba2 AS
 WITH ins_ba AS (
+  -- ⚠️ rev 2026-08-18: categoria_cliente_id e' diventata NOT NULL su
+  --   billing_account dopo che questo file e' stato scritto. Si legge dal
+  --   catalogo invece di inchiodare un id.
   INSERT INTO anagrafiche.billing_account (
-    istanza_utility_id, soggetto_ruolo_id, utility_id, codice
+    istanza_utility_id, soggetto_ruolo_id, utility_id, codice, categoria_cliente_id
   )
   SELECT
     iu.id,
     sr.soggetto_ruolo_id,
     p.utility_id,
-    'TST-BA-CAT-SUB-002'
+    'TST-BA-CAT-SUB-002-' || (SELECT sfx FROM tmp_run_sfx),
+    (SELECT cc.id FROM anagrafiche.categorie_clienti cc
+      WHERE cc.codice_interno = 'STANDARD' ORDER BY cc.id LIMIT 1)
   FROM tmp_iu2 iu, tmp_sr_2 sr, tmp_pdp p
   RETURNING id
 )
@@ -344,11 +357,11 @@ SELECT * FROM ins_ba;
 
 
 -- CHIUSURA EVENTUALE UTENTE ATTIVO
--- Subentro: chiude il cliente precedente sul PDP prima di creare il nuovo (2025-11-10)
+-- Subentro: chiude il cliente precedente sul PDP prima di creare il nuovo (2085-11-10)
 CREATE TEMP TABLE tmp_subentro1 AS
 SELECT script.fn_subentro_cliente(
     (SELECT id FROM tmp_pdp),
-    DATE '2025-11-10'
+    DATE '2085-11-10'
 ) AS cliente_chiuso_id;
 
 SELECT is(
@@ -363,7 +376,7 @@ SELECT is(
         FROM anagrafiche.clienti
         WHERE id = (SELECT id FROM tmp_cli1)
     ),
-    (DATE '2025-11-10' - 1),
+    (DATE '2085-11-10' - 1),
     'Cliente precedente chiuso con data_chiusura = data attivazione nuovo - 1 giorno'
 );
 
@@ -390,9 +403,9 @@ WITH ins_cli AS (
     sr.soggetto_ruolo_id,
     iu.id,
     st.id,
-    DATE '2025-11-10',
+    DATE '2085-11-10',
     ba.id,
-    'TST-CLI-CAT-SUB-002',
+    'TST-CLI-CAT-SUB-002-' || (SELECT sfx FROM tmp_run_sfx),
     iv.id
   FROM tmp_sr_2 sr, tmp_iu2 iu, tmp_stato_at st, tmp_ba2 ba, tmp_iva iv
   RETURNING id
@@ -400,8 +413,12 @@ WITH ins_cli AS (
 SELECT * INTO TEMP TABLE tmp_cli2 FROM ins_cli;
 
 SELECT is((SELECT count(*)::int FROM tmp_cli2), 1,
-  'Creato cliente 2 (AT) con data_attivazione=2025-11-10'
+  'Creato cliente 2 (AT) con data_attivazione=2085-11-10'
 );
+
+-- Saga completa (due istanze, due billing account, due clienti): si richiude
+-- la finestra. I guard differiti scattano QUI, su istanze finite.
+SET CONSTRAINTS ALL IMMEDIATE;
 
 -- =========================================================
 -- 4) Verifiche: parent chain + clone + ponte + unique

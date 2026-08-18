@@ -1,101 +1,74 @@
 -- ---------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
--- Liquibase changelog per Zero ERP
+-- pgTAP test per Zero ERP
 -- Copyright (C) 2025 Tid (Michele Carlo Titini)
 --
 -- Rilasciato sotto GNU GPLv3 o versione successiva.
 -- Vedi LICENSE.md per il testo completo della licenza.
 -- ------------------------------------------------------------
+-- Test: un soggetto ha i suoi contatti, e almeno uno con un recapito vero
+-- ------------------------------------------------------------
+-- Indice test (1..3):
+--   1) il soggetto di supporto e' stato creato
+--   2) il contatto REFERENTE aggiunto dal test c'e', ed e' uno
+--   3) il soggetto ha almeno un contatto con un recapito valido
+--
+-- ============================================================================
+-- rev 2026-08-18 — bonifica baseline. Il file era NON TRANSAZIONALE: apriva la
+-- transazione a meta' e chiudeva in COMMIT, quindi lasciava il soggetto nel
+-- database. Alla corsa dopo una «pulizia preventiva» in testa provava a
+-- cancellarlo, e falliva: il soggetto residuo aveva nel frattempo acquisito
+-- riferimenti, e dal 2026-01-23 le tabelle di ruolo non si cancellano
+-- (dbops.automation_delete_block_ruoli). Il file moriva alla riga 46 con ZERO
+-- asserzioni eseguite — copertura zero, non «parziale».
+--
+-- Ora: BEGIN ... ROLLBACK (il ROLLBACK e' la garanzia, la pulizia sparisce) e
+-- il soggetto lo costruisce dbops.fn_pgtap_crea_soggetto_pg, che sa la saga
+-- corrente — testata, dati societari, indirizzi obbligatori, contatto — e usa
+-- una partita IVA valida e mai usata. Il vecchio 01677080440 resta sul
+-- «Cliente Test pgTAP» del 2025, e da oggi non da' piu' fastidio a nessuno.
+--
+-- ⚠️ L'helper crea gia' un contatto suo (tipo PRINCIPALE), quindi il test 2
+-- conta il contatto CHE AGGIUNGE LUI — identificandolo per TIPO, non per
+-- nominativo: l'helper battezza il suo «Referente <ragione sociale>», che e'
+-- esattamente la stringa che questo test usava, e contarli per nome ne
+-- prendeva due.
+-- ============================================================================
 
+BEGIN;
 
-
--- tests/pgtap/anagrafiche/soggetti-con-contatti.sql
-
--- Numero di test che ci aspettiamo di eseguire
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
+--   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
+--   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio.
+SET CONSTRAINTS ALL IMMEDIATE;
 
 -- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
--- ⚠️ Questo file non apre una transazione propria: la riga va prima di plan().
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(3);
 
--- Costanti per il test (CF/P.IVA di  riservati ai test)
--- Cambiale se ti servono valori diversi
+-- ---------------------------------------------------------
+-- Soggetto di supporto (persona giuridica completa)
+-- ---------------------------------------------------------
+CREATE TEMP TABLE tmp_soggetto AS
+SELECT dbops.fn_pgtap_crea_soggetto_pg('Cliente Test pgTAP') AS id;
 
--- Pulizia preventiva di eventuali residui
---WITH costanti AS (
---    SELECT
---        '01677080440'::text  AS piva_test,
---        'TTNMHL68E07D042Z'::text   AS cf_test
---)
---DELETE FROM anagrafiche.contatti c
---USING anagrafiche.soggetti s, costanti k
---WHERE c.soggetto_id = s.id
---  AND s.partita_iva = k.piva_test;
- -- AND s.codice_fiscale = k.cf_test;
-
-WITH costanti AS (
-    SELECT
-        '01677080440'::text  AS piva_test,
-        'TTNMHL68E07D042Z'::text   AS cf_test
-)
-DELETE FROM anagrafiche.soggetti s
-USING costanti k
-WHERE s.partita_iva = k.piva_test;
- --AND s.codice_fiscale = k.cf_test;
-
--- Inizio transazione “applicativa”
-BEGIN;
-
-WITH costanti AS (
-    SELECT
-        '01677080440'::text  AS piva_test,
-        'TTNMHL68E07D042Z'::text   AS cf_test
-),
-nuovo_soggetto AS (
-    INSERT INTO anagrafiche.soggetti (
-        -- niente "codice", lo genera il trigger
-        ragione_sociale,
-        cognome,
-        nome,
-        sesso,
-        stato_id,
-        partita_iva,
-        --codice_fiscale,
-        tipo_soggetto_dettaglio_id,
-        storicizza,
-        attivo
-    )
-    SELECT
-        'Cliente Test pgTAP',
-        NULL,
-        NULL,
-        'S',
-        1,                 -- stato_id IT (adatta se diverso)
-        k.piva_test,
-        --k.cf_test,
-        3,                 -- tipo_soggetto_dettaglio_id (PG IT, adatta se diverso)
-        TRUE,
-        TRUE
-    FROM costanti k
-    RETURNING id, codice
-)
-SELECT *
-INTO TEMP TABLE tmp_soggetto
-FROM nuovo_soggetto;
-
--- 1) Verifico che il soggetto sia stato inserito
 SELECT is(
-    (SELECT count(*)::int FROM tmp_soggetto),
+    (SELECT count(*)::int FROM tmp_soggetto WHERE id IS NOT NULL),
     1,
-    'Inserito esattamente 1 soggetto di test'
+    'Creato esattamente 1 soggetto di test'
 );
 
--- 2) Inserisco almeno un contatto valido per quel soggetto
---    Usa un tipo_contatto_id valido dal tuo config.tipi_contatti (qui ipotizzo id = 1)
+-- ---------------------------------------------------------
+-- Il contatto del test.
+-- ⚠️ Tipo REFERENTE e non il primo disponibile: uq_contatti_soggetto_tipo e'
+--   UNIQUE su (soggetto_id, tipo_contatto_id) quando non c'e' ruolo ne'
+--   istanza, e il contatto PRINCIPALE l'ha gia' messo l'helper.
+-- is_default = FALSE per la stessa ragione: il predefinito e' gia' suo.
+-- ---------------------------------------------------------
 INSERT INTO anagrafiche.contatti (
     tipo_contatto_id,
     soggetto_id,
@@ -104,26 +77,24 @@ INSERT INTO anagrafiche.contatti (
     is_default,
     default_context
 )
-VALUES (
-    1,  -- tipo_contatto_id da adattare
-    (SELECT id FROM tmp_soggetto),
+SELECT
+    (SELECT t.id FROM config.tipi_contatti t WHERE t.codice_interno = 'REFERENTE'),
+    s.id,
     'Referente Cliente Test pgTAP',
     'cliente.pgtap@example.com',
-    TRUE,
+    FALSE,
     'soggetto'
-);
+FROM tmp_soggetto s;
 
-
--- 3) Verifico che esista almeno un contatto “valido” per il soggetto
 SELECT is(
-    (SELECT count(*)
+    (SELECT count(*)::int
        FROM anagrafiche.contatti c
       WHERE c.soggetto_id = (SELECT id FROM tmp_soggetto)
-    )::int,
+        AND c.tipo_contatto_id = (SELECT t.id FROM config.tipi_contatti t
+                                   WHERE t.codice_interno = 'REFERENTE')),
     1,
-    'Inserito esattamente 1 contatto per il soggetto di test'
+    'Inserito esattamente 1 contatto REFERENTE per il soggetto di test'
 );
-
 
 SELECT ok(
     EXISTS (
@@ -140,25 +111,10 @@ SELECT ok(
     'Il soggetto di test ha almeno un contatto con un recapito valido'
 );
 
--- Forzo la verifica dei constraint DEFERRABLE (incluso il tuo constraint trigger)
-SET CONSTRAINTS ALL IMMEDIATE;
-
-
-COMMIT;
-
-
-WITH costanti AS (
-    SELECT
-        '01677080440'::text  AS piva_test,
-        'TTNMHL68E07D042Z'::text   AS cf_test
-)
-DELETE FROM anagrafiche.soggetti s
-USING costanti k
-WHERE s.partita_iva = k.piva_test;
-  --AND s.codice_fiscale = k.cf_test;
-
-
-
-
--- Fine test
 SELECT * FROM finish();
+
+-- Il ROLLBACK e' la garanzia: comunque vada — verde, rosso, o morto a meta' —
+-- questo file non lascia nulla dietro di se'.
+-- ⚠️ finish() sta PRIMA: pgTAP tiene il suo stato in una temp table, e dopo il
+-- ROLLBACK non esiste piu'.
+ROLLBACK;
