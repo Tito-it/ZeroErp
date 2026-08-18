@@ -159,11 +159,18 @@ databaseChangeLog:
                     FROM anagrafiche.emittenti_fiscali_billing_account m
                    WHERE m.is_default IS TRUE;
 
+                  -- ⚠️ ASSENTE non vuol dire INCOERENTE. Su un database
+                  --    RICOSTRUITO DA ZERO (la CI) gli emittenti non esistono:
+                  --    non sono seedati da nessun changeSet, li crea
+                  --    l'esercizio. I registri invece SI' (20260127-57 e
+                  --    20260818-45). Quindi la CI arriva qui con tre registri
+                  --    e nessun emittente — uno stato legittimo, in cui non
+                  --    c'e' NIENTE DA INTESTARE.
+                  --    ⛔ Sollevare qui faceva fallire il migrate da zero, ed
+                  --    e' il difetto che questo blocco ha avuto per primo.
                   IF v_ef_principale IS NULL THEN
-                      PERFORM script.fn_log_and_raise_error(
-                          'vendite','20260819-05','E_EMITTENTE_DEFAULT_MISSING',
-                          jsonb_build_object('passo','risoluzione emittente principale'),
-                          NULL::uuid, 'nessun emittente is_default in emittenti_fiscali_billing_account');
+                      RAISE NOTICE '20260819-05: nessun emittente di default — database non ancora configurato, changeSet senza effetto.';
+                      RETURN;
                   END IF;
 
                   -- Il secondo: l'unico altro emittente ATTIVO. Si prende cosi'
@@ -182,11 +189,21 @@ databaseChangeLog:
                    WHERE ef.attivo IS TRUE
                      AND ef.soggetto_ruolo_id IS DISTINCT FROM v_ef_principale;
 
-                  IF v_n <> 1 THEN
-                      -- ⛔ Zero: non c'e' un secondo emittente e questo
-                      --    changeSet non ha oggetto. Piu' di uno: il piano e'
-                      --    stato scritto su due emittenti e ora sono di piu',
-                      --    quindi va ripensato invece che eseguito a meta'.
+                  -- ⭐ ZERO e PIU' DI UNO sono due cose diverse, e vanno
+                  --    trattate diversamente.
+                  IF v_n = 0 THEN
+                      -- Installazione a emittente SINGOLO: legittima. Non c'e'
+                      --   nessun secondo registro da creare, e l'intestazione
+                      --   qui sopra e' gia' tutto il lavoro utile.
+                      RAISE NOTICE '20260819-05: un solo emittente attivo — registri intestati, nessun registro secondario da creare.';
+                      RETURN;
+                  END IF;
+
+                  IF v_n > 1 THEN
+                      -- ⛔ Il piano e' stato scritto su DUE emittenti. Se ora
+                      --    sono di piu', va ripensato invece che eseguito a
+                      --    meta': «quale dei tre riceve i registri?» non ha
+                      --    una risposta che possa darsi un changeSet.
                       PERFORM script.fn_log_and_raise_error(
                           'vendite','20260819-05','E_CONFIG_MANCANTE',
                           jsonb_build_object('passo','risoluzione secondo emittente',
@@ -207,19 +224,38 @@ databaseChangeLog:
                   --    emittente: se qualcuno li ha gia' intestati, non si
                   --    sovrascrive la sua decisione.
                   -- ------------------------------------------------------
+                  SELECT count(*) INTO v_n
+                    FROM vendite.registri_fatturazione r
+                   WHERE r.codice IN ('Front-office', 'Back-office', 'NC');
+
+                  IF v_n <> 3 THEN
+                      RAISE NOTICE '20260819-05: attesi 3 registri (Front-office, Back-office, NC), trovati % — changeSet senza effetto.', v_n;
+                      RETURN;
+                  END IF;
+
+                  -- ⚠️ Si intestano solo quelli ancora SENZA emittente: se
+                  --    qualcuno li ha gia' intestati non si sovrascrive la sua
+                  --    decisione, e il blocco resta ri-eseguibile.
                   UPDATE vendite.registri_fatturazione r
                      SET emittente_soggetto_ruolo_id = v_ef_principale
                    WHERE r.codice IN ('Front-office', 'Back-office', 'NC')
                      AND r.emittente_soggetto_ruolo_id IS NULL;
 
-                  GET DIAGNOSTICS v_n = ROW_COUNT;
-                  IF v_n <> 3 THEN
+                  -- ⭐ L'invariante non e' «ne ho toccati tre» ma «nessuno dei
+                  --    tre e' rimasto senza emittente»: il primo e' falso a
+                  --    ogni ri-esecuzione, il secondo e' quello che conta.
+                  SELECT count(*) INTO v_n
+                    FROM vendite.registri_fatturazione r
+                   WHERE r.codice IN ('Front-office', 'Back-office', 'NC')
+                     AND r.emittente_soggetto_ruolo_id IS NULL;
+
+                  IF v_n <> 0 THEN
                       PERFORM script.fn_log_and_raise_error(
                           'vendite','20260819-05','E_CONFIG_MANCANTE',
                           jsonb_build_object('passo','intestazione registri',
-                                             'attesi', 3, 'toccati', v_n),
+                                             'rimasti_senza_emittente', v_n),
                           NULL::uuid,
-                          concat('attesi 3 registri da intestare, toccati ', v_n));
+                          concat('rimasti ', v_n, ' registri senza emittente dopo l intestazione'));
                   END IF;
 
                   -- ------------------------------------------------------
@@ -231,6 +267,20 @@ databaseChangeLog:
                   --    tecnico al posto di un errore di dominio.
                   -- ------------------------------------------------------
                   v_suffisso := '-' || v_ef_secondo::text;
+
+                  -- ⭐ GIA' FATTO non e' COLLISIONE. Se i registri derivati
+                  --    esistono e sono gia' del secondo emittente con la loro
+                  --    provenienza, il lavoro c'e' stato: si esce in silenzio
+                  --    invece di accusare una collisione che non c'e'.
+                  SELECT count(*) INTO v_n
+                    FROM vendite.registri_fatturazione r
+                   WHERE r.emittente_soggetto_ruolo_id = v_ef_secondo
+                     AND r.meta ? 'clonato_da';
+
+                  IF v_n = 3 THEN
+                      RAISE NOTICE '20260819-05: i tre registri di % esistono gia (clonati) — changeSet gia applicato.', v_cod_secondo;
+                      RETURN;
+                  END IF;
 
                   IF EXISTS (
                       SELECT 1
@@ -336,14 +386,17 @@ databaseChangeLog:
             sql: |
               -- Si toglie prima cio' che referenzia, poi cio' che e'
               -- referenziato; l'intestazione torna a NULL per ultima.
+              -- ⚠️ `??` e non `?`: qui siamo FUORI da un dollar-quote, e
+              --    Liquibase leggerebbe un `?` come segnaposto di bind. Nel
+              --    blocco DO sopra `?` va bene, perche' li' e' dollar-quotato.
               DELETE FROM vendite.tipi_doc_fiscale_registri m
                USING vendite.registri_fatturazione r
                WHERE r.id = m.registro_id
-                 AND r.meta ? 'clonato_da'
+                 AND r.meta ?? 'clonato_da'
                  AND r.meta ->> 'origine' = '20260819-05 (P-6/5d)';
 
               DELETE FROM vendite.registri_fatturazione r
-               WHERE r.meta ? 'clonato_da'
+               WHERE r.meta ?? 'clonato_da'
                  AND r.meta ->> 'origine' = '20260819-05 (P-6/5d)';
 
               UPDATE vendite.registri_fatturazione r
