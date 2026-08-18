@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/vw_liste_multi_emittente_non_certificate.md" %}
 # 🔍 View `vw_liste_multi_emittente_non_certificate`
 
 > 📝 **Descrizione**

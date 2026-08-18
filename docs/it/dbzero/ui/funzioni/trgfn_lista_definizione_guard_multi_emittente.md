@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/ui/manual/trgfn_lista_definizione_guard_multi_emittente.md" %}
 # ⚙️ Funzione `trgfn_lista_definizione_guard_multi_emittente`
 
 ```sql

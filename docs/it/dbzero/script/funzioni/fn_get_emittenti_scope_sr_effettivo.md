@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_get_emittenti_scope_sr_effettivo.md" %}
 # ⚙️ Funzione `fn_get_emittenti_scope_sr_effettivo`
 
 ```sql

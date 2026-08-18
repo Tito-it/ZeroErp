@@ -37,7 +37,7 @@
 
 ## ⚙️ Funzioni
 - [fn_build_indirizzo_normalizzato](funzioni/fn_build_indirizzo_normalizzato.md) — Centralizza **tutta** la logica di normalizzazione degli indirizzi fisici. E' la **unica source of truth**: il trigger `trgfn_indirizzi_dettaglio_normalize` la chiama e assegna i risultati (zero logica nel trigger). Il backend Python la usa per check duplicato via GIN index.
-- [fn_check_ba_coppia_emittente_omogenea](funzioni/fn_check_ba_coppia_emittente_omogenea.md)
+- [fn_check_ba_coppia_emittente_omogenea](funzioni/fn_check_ba_coppia_emittente_omogenea.md) — (latest review 18-08-26)
 - [fn_check_fornitore_attivo](funzioni/fn_check_fornitore_attivo.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_check_fornitore_attivo()`** verifica in modo puramente booleano se un fornitore puo' essere usato nei flussi operativi del ciclo passivo, in particolare per ordini e DDT.
 - [fn_crea_auth_user](funzioni/fn_crea_auth_user.md) — (latest review 13-03-2026) Building block atomico per la creazione di un record `auth_user` (Django). Gestisce la validazione dei parametri e i guard di unicita' su username e email.
 - [fn_crea_indirizzo_soggetto](funzioni/fn_crea_indirizzo_soggetto.md) — (latest review 13-03-2026)
@@ -50,8 +50,8 @@
 - [fn_get_emittente_fiscale_pk](funzioni/fn_get_emittente_fiscale_pk.md) — (creata 07-04-2026)
 - [fn_get_evento_stato_corrente_cliente](funzioni/fn_get_evento_stato_corrente_cliente.md) — (latest review 28-04-2026)
 - [fn_get_or_create_indirizzo_dettaglio](funzioni/fn_get_or_create_indirizzo_dettaglio.md) — (latest review 13-03-2026) Building block atomico per l'upsert di un civico normalizzato in `anagrafiche.indirizzi_dettaglio`.
-- [fn_guard_albero_ba_emittente](funzioni/fn_guard_albero_ba_emittente.md)
-- [fn_guard_albero_ba_gestore_globale](funzioni/fn_guard_albero_ba_gestore_globale.md)
+- [fn_guard_albero_ba_emittente](funzioni/fn_guard_albero_ba_emittente.md) — (latest review 18-08-26)
+- [fn_guard_albero_ba_gestore_globale](funzioni/fn_guard_albero_ba_gestore_globale.md) — (latest review 18-08-26)
 - [fn_guard_fornitore_attivo](funzioni/fn_guard_fornitore_attivo.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_guard_fornitore_attivo()`** applica una verifica fail-fast sul fornitore prima di consentirne l'uso nei flussi operativi del ciclo passivo, in particolare ordini e DDT.
 - [fn_lookup_utilities_per_ba](funzioni/fn_lookup_utilities_per_ba.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_lookup_utilities_per_ba()`** restituisce le utility selezionabili per un billing account, incrociando due vincoli:
 - [fn_notify_cambio_reparto](funzioni/fn_notify_cambio_reparto.md) — (latest review 10-03-2026) La funzione **`anagrafiche.fn_notify_cambio_reparto()`** emette una notifica PostgreSQL sul canale `cambio_reparto` quando una risorsa umana viene spostata da un'unita' organizzativa a un'altra.
@@ -62,7 +62,7 @@
 - [trgfn_bank_guard_ruolo_bank_branches](funzioni/trgfn_bank_guard_ruolo_bank_branches.md) — (latest review 05-12-25) - **Centralizzare l’assegnazione del ruolo “bank_branches”**     Delegare a `script.fn_guard_soggetto_ruolo ` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
 - [trgfn_billing_account_gen_codice](funzioni/trgfn_billing_account_gen_codice.md)
 - [trgfn_billing_account_guard_admin_globale](funzioni/trgfn_billing_account_guard_admin_globale.md)
-- [trgfn_billing_account_guard_albero_emittente](funzioni/trgfn_billing_account_guard_albero_emittente.md)
+- [trgfn_billing_account_guard_albero_emittente](funzioni/trgfn_billing_account_guard_albero_emittente.md) — (latest review 18-08-26)
 - [trgfn_billing_account_guard_normalize](funzioni/trgfn_billing_account_guard_normalize.md) — (latest review 28-12-25) Il trigger `anagrafiche.trgfn_billing_account_guard_normalize` applica le **validazioni di business** e normalizza i campi, mentre la generazione del `codice` e' demandata al sistema automatico basato su `config.sistema_codici`.
 - [trgfn_billing_account_guard_soggetto_coerenza_istanza](funzioni/trgfn_billing_account_guard_soggetto_coerenza_istanza.md) — (latest review 02-05-2026)
 - [trgfn_billing_account_link_ef](funzioni/trgfn_billing_account_link_ef.md)
@@ -76,7 +76,7 @@
 - [trgfn_conti_bancari_normalize](funzioni/trgfn_conti_bancari_normalize.md) — (latest review 15-12-26) La trigger function **`anagrafiche.trgfn_conti_bancari_normalize()`** normalizza i campi bancari principali prima della persistenza, applicando regole semplici e deterministicamente ripetibili:
 - [trgfn_dati_societari_guard_forma_giuridica](funzioni/trgfn_dati_societari_guard_forma_giuridica.md) — (latest review 28-12-25) Garantire la **coerenza paese** tra il soggetto e la forma giuridica associata nei dati societari.
 - [trgfn_dati_societari_guard_tipo_soggetto](funzioni/trgfn_dati_societari_guard_tipo_soggetto.md) — (latest review 03-12-25) Garantire che *solo* i soggetti autorizzati secondo le **policy dati societari** possano inserire o aggiornare una riga in `anagrafiche.dati_societari`.
-- [trgfn_efba_guard_albero_emittente](funzioni/trgfn_efba_guard_albero_emittente.md)
+- [trgfn_efba_guard_albero_emittente](funzioni/trgfn_efba_guard_albero_emittente.md) — (latest review 18-08-26)
 - [trgfn_emittenti_fiscali_default_bootstrap](funzioni/trgfn_emittenti_fiscali_default_bootstrap.md) — (latest review 23-01-2026) La funzione `anagrafiche.trgfn_emittenti_fiscali_default_bootstrap()` crea in modo automatico la **riga di default** nel mapping emittenti fiscali quando viene inserito il **primo emittente**.
 - [trgfn_emittenti_fiscali_default_guard](funzioni/trgfn_emittenti_fiscali_default_guard.md) — La funzione `anagrafiche.trgfn_emittenti_fiscali_default_guard()` garantisce che esista **esattamente un** emittente fiscale di default.
 - [trgfn_emittenti_fiscali_guard_attivo](funzioni/trgfn_emittenti_fiscali_guard_attivo.md) — (latest review 23-01-26) La funzione **`anagrafiche.trgfn_emittenti_fiscali_guard_attivo()`** impedisce la disattivazione (`attivo = false`) di un emittente fiscale quando esistono righe di mapping in `emittenti_fiscali_billing_account` collegate al suo `emittente_soggetto_ruolo_id`.

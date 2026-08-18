@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_guard_albero_ba_gestore_globale.md" %}
 # ⚙️ Funzione `fn_guard_albero_ba_gestore_globale`
 
 ```sql
