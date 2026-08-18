@@ -13,6 +13,15 @@
 --   criterio in scripts/testpgtap.sh: la fixture guarda un mondo che
 --   l'operatore non deve vedere.
 --
+-- pgtap-contesto: escluso — discende dalla riga sopra: se il test gira come
+--   owner PROPRIO PER non essere limitato al perimetro di un operatore,
+--   chiamare fn_pgtap_set_contesto_operatore() rimetterebbe quel limite
+--   dall'altra parte. Le GUC app.* qui non servono: nessuna delle tabelle
+--   lette (registri_fatturazione, tipi_doc_fiscale_registri,
+--   emittenti_fiscali) ha RLS, e cio' che si asserisce e' una proprieta'
+--   GLOBALE della configurazione fiscale — «nessun registro e' raggiungibile
+--   da due emittenti» — che ha senso solo vedendoli tutti.
+--
 -- ⛔ Verde dopo 20260819-05 (intestazione + registri del secondo emittente).
 --    ⭐ Il test 6 e' verde GIA' ORA: il guard sulla disattivazione esisteva
 --    gia', ed e' questo file ad averlo scoperto — il piano lo dava per
