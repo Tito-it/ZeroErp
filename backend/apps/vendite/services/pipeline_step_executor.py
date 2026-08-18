@@ -22,6 +22,14 @@ from apps.vendite.services.fatture_righe_service import FattureRigheService
 
 # Esecutore di singolo step pipeline con mapping task JSON -> azioni applicative.
 
+# Task che NON hanno (e non devono avere) un handler: segnaposto di
+# configurazione che l'esecutore attraversa senza fare niente. ⚠️ Costante e non
+# literal inline perche' la legge anche il cancello
+# `tests/db/test_pipeline_task_handler_guardrail.py`: con due copie, aggiungerne
+# un terzo qui renderebbe il cancello rosso su un task che invece e' legittimo —
+# e la reazione naturale sarebbe allentare il cancello.
+TASK_SENZA_HANDLER = frozenset({"noop", "log_only"})
+
 
 # Scopo: Esito di un task che ha COMPLETATO il proprio giro ma con una parte
 #        delle fatture in errore (D-Q p.3). Un handler che lo ritorna NON
@@ -303,7 +311,7 @@ class PipelineStepExecutor:
             },
         )
 
-        if task in {"noop", "log_only"}:
+        if task in TASK_SENZA_HANDLER:
             return
 
         handler_code = self.repository.get_task_handler_code(

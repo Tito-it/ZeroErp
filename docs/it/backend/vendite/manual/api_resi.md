@@ -11,6 +11,10 @@ nessun cambia-stato generico. Espone la lista configurabile + export e le **due
 code di lavoro** (da accreditare / da ri-consegnare), anch'esse liste
 configurabili con export.
 
+> **Dal 2026-08-18 espone anche il verbo dell'ACCREDITO** (la nota di credito
+> sui resi): vedi la sezione dedicata più sotto e
+> [brief-design-note-credito-resi.md](../../../dev/work-in-progress/brief-design-note-credito-resi.md).
+>
 > Stato: BE completo. Modello e state machine (DRAFT→CONFERMATO, +ANNULLATO),
 > residuo ordine, flip DDT→RESO: vedi
 > [brief-db-resi-vendita.md](../../../dev/work-done/brief-db-resi-vendita.md).
@@ -53,8 +57,16 @@ export via `ListaExportService`, scope emittente RLS + filtro applicativo).
 
 ### Righe
 
-- `GET/POST /<id>/righe/`, `PATCH/DELETE /<id>/righe/<riga_id>/` — solo DRAFT.
-  Articolo/UoM/factor sono **snapshot** dalla riga DDT sorgente.
+- `GET/POST /<id>/righe/`, `PATCH/DELETE /<id>/righe/<riga_id>/` — scrittura
+  solo DRAFT. Articolo/UoM/factor sono **snapshot** dalla riga DDT sorgente.
+- ⭐ **`gia_accreditato`** (2026-08-18) — quanti pezzi della riga sono già stati
+  accreditati, in unità di **merce**. Letto da
+  `vendite.fn_resi_riga_accreditato_partita`, che è il **punto unico della
+  formula** (la consuma anche `vw_resi_da_accreditare`): non si ricalcola con un
+  `SUM` sul ponte, che su un kit moltiplicherebbe la quota — N righe portano la
+  **stessa** quota padre. È il dato su cui il drawer offre l'**annullo**
+  dell'accredito: dopo il verbo la riga esce dalla coda, quindi il reso è
+  l'unica sede da cui si può ancora disfare.
 - `GET /api/v1/vendite/ddt/<ddt_id>/righe-per-reso/` — righe DDT con
   `qta_gia_resa`/`qta_resa_residua` (alimenta il pannello "crea reso").
 
@@ -64,6 +76,17 @@ Grana RIGA (`resi_riga_id` = dataKey; azione "apri reso" via `reso_id`). Filtri:
 `billing_account_id`, `data_da/data_a`, `search` (min 3), `order_by`/`order_dir`
 (whitelist per vista). Si auto-limitano ai resi CONFERMATO pertinenti (niente
 filtro stato).
+
+⭐ **Filtro documento** (2026-08-18) — `?ddt_id=<id>` **oppure** `?ordine_id=<id>`
+su **entrambe** le code, list **ed export**: è il collegamento dal pannello
+situazione merce del drawer ordine/DDT. Predicato condiviso con il pannello
+(`apps/vendite/db/_coda_documento_filtro.py`), così i due non possono divergere.
+⚠️ I due id sono **alternativi**: insieme → `E_RESO_VALIDAZIONE` (due domande in
+una, con la seconda che restringe la prima in silenzio). Lato ordine il legame è
+il **fulfillment** della riga di DDT resa, non `ordine_riga_id` — che con la
+partita generalizzata è nullable. L'export **dichiara** il filtro nel foglio
+«Filtri applicati»: un file estratto da una coda filtrata, senza quella riga, si
+legge come la coda intera.
 
 - Da accreditare `GET /api/v1/vendite/resi/da-accreditare/` (+ `…/export/`) —
   **forma contatore** (2026-07-18, brief DDT-resi §3c): righe la cui partita ha
@@ -79,6 +102,70 @@ filtro stato).
   righe con copertura incompleta + `stato_riconsegna` derivato
   (DA_RICONSEGNARE/PARZIALE/COMPLETATA), config `vendite.resi_da_riconsegnare`.
 
+### Accredito — il verbo della nota di credito (2026-08-18)
+
+Registra l'accredito della merce resa: genera le righe di **RETTIFICA** in
+commessa (quantità negativa, prezzo/sconto/IVA **copiati dalla riga di fattura
+rettificata**) e le annota sul ponte `vendite.resi_righe_accrediti`.
+
+⚠️ **Il verbo NON emette la nota di credito.** Il documento nasce al giro di
+fatturazione successivo, sul sezionale NC e con natura `NOTA_CREDITO`; il legame
+documento-a-documento lo scrive poi il task di pipeline
+`popola_fatture_rettifiche` dello step DEFINITIVA. Ogni testo mostrato
+all'operatore deve dire questo: una conferma che promette «emetti nota di
+credito» promette un documento che poi non si trova.
+
+- **Accredita** `POST /api/v1/vendite/resi/accrediti/` — body
+  `{resi_riga_ids: [5797, 5799, …]}`. Permesso di processo
+  **`accredita_riga_reso`**; `Idempotency-Key` **obbligatoria**.
+
+  ⭐ **Un endpoint solo, e la riga singola è una lista di uno** (D-NC-7): due
+  superfici per lo stesso verbo divergerebbero su permessi, conferme e forma
+  dell'esito. Fan-out isolato per riga (`run_fan_out`: savepoint per elemento),
+  lista vuota **rifiutata** (non significa «tutte»), id deduplicati **con ordine
+  preservato** (lo stesso id due volte produrrebbe un
+  `E_ACCREDITO_GIA_ESEGUITO` autoinflitto), cap `MAX_ACCREDITI_MASSIVI = 200`.
+
+  Risposta **200 sempre** — un REPORT, non un atto:
+
+  ```json
+  { "data": { "esito": "PARZIALE", "totale": 20, "ok": 19,
+              "accrediti": [ {"resi_riga_id": 5797, "accredito_id": 901,
+                              "commessa_attivita_id": 5501,
+                              "fattura_riga_rettificata_id": 7101,
+                              "qta": "-3.000000", "qta_partita": "-3.000000"} ],
+              "falliti":   [ {"resi_riga_id": 5799,
+                              "codice": "E_ACCREDITO_GIA_ESEGUITO",
+                              "messaggio": "…"} ] } }
+  ```
+
+  ⚠️ **Anche «tutte fallite» è 200** (`esito: ERRORE`). Il verbo non è l'atto
+  fiscale — il documento nasce dopo — quindi un esito parziale non lascia mai
+  mezzo documento: lascia righe che restano in coda. E sollevare darebbe al
+  client **due forme da leggere** per la stessa domanda. I codici per-riga stanno
+  in `falliti`, ed è su quelli che il frontend instrada.
+  ⭐ Una riga produce **N** accrediti, non uno: su un kit una rettifica per
+  componente, e sul consumo di più righe di fattura a prezzi diversi altrettante.
+
+- **Annulla l'accredito** `POST /api/v1/vendite/resi/<reso_id>/righe/<riga_id>/annulla-accredito/`
+  — body `{motivo: "…"}`, **obbligatorio**. Stesso permesso
+  `accredita_riga_reso` (chi può accreditare può disfare il proprio click: due
+  codename per le due facce dello stesso atto si sfilano al primo profilo
+  configurato a mano), `Idempotency-Key` obbligatoria.
+
+  Porta le rettifiche ad `ANNULLATA` e **cancella** le righe di ponte — è quella
+  cancellazione a far risalire l'accredito dovuto in coda. Ritorna le coppie
+  rimosse. È **tutto-o-niente sull'insieme**: se anche una sola rettifica è già
+  emessa non si annulla niente (un annullo parziale lascerebbe in coda un
+  residuo che nessuno può più chiudere).
+
+  ⛔ **Non è l'annullo del DOCUMENTO**: quello è la pipeline di fatturazione, ed
+  è lo stesso delle fatture. ⚠️ E il **reset di lotto fa l'opposto**: riporta le
+  rettifiche a `NON_EMESSA`, quindi la nota di credito viene **RIGENERATA** al
+  giro successivo — la merce resa non è cambiata. Le due strade sono distinte e
+  devono restare distinte; il messaggio del catalogo lo dice all'operatore
+  (campo `hint` dell'envelope, [api.md](../../../dev/api.md)).
+
 ### Lineage / genealogia (brief-be-fe-lineage, 2026-07-15)
 
 - **Passaggi** `GET /api/v1/vendite/resi/<id>/passaggi/` — genealogia del
@@ -90,7 +177,26 @@ filtro stato).
 
 `E_RESO_NOT_FOUND` (404), `E_RESO_DDT_NON_CONSEGNATO` (create su DDT non
 consegnato), `E_RESO_QTA_SUPERA_CONSEGNATO` (over-return), `E_RESO_ANNULLO_CON_RICONSEGNE`,
-`E_UI_EXPORT_FORMAT_INVALID` (400), `E_UI_EXPORT_LIMIT_EXCEEDED` (422).
+`E_RESO_VALIDAZIONE` (400: payload del verbo, filtri coda, etichetta fuori
+whitelist), `E_UI_EXPORT_FORMAT_INVALID` (400), `E_UI_EXPORT_LIMIT_EXCEEDED` (422).
+
+**Accredito** — sollevati dalle madri DB e tradotti dal service; nel massivo
+arrivano **per riga** dentro `falliti`, non come envelope di errore:
+
+| Codice | Quando |
+| --- | --- |
+| `E_ACCREDITO_NON_IN_CODA` (422) | la riga non è in coda, o il suo dovuto è già a zero |
+| `E_ACCREDITO_GIA_ESEGUITO` (409) | doppio click: l'accredito è già registrato |
+| `E_ACCREDITO_ATTIVITA_NON_FATTURATA` (422) | la merce non è mai finita in una riga di fattura: non c'è un prezzo da cui accreditare |
+| `E_ACCREDITO_QUOTA_NON_COPERTA` (422) | le righe di fattura non coprono tutto il dovuto — l'accredito è **sempre pieno** (D-NC-6) |
+| `E_ACCREDITO_KIT_NON_MISURABILE` (422) | componente senza `coeff_qta`: la quantità in unità padre non è calcolabile |
+| `E_ACCREDITO_KIT_SENZA_PADRE` (422) | componente senza `componente_di`: il difetto è sul **documento di origine**, non sul reso |
+| `E_ACCREDITO_SENZA_SPEDIZIONE` (500) | tecnico: la rettifica va sempre sul segmento della spedizione (D-NC-1) |
+| `E_ACCREDITO_SEGMENT_DUPLICATO` (409) | difesa in profondità: modifica concorrente, riprovare |
+| `E_ACCREDITO_NON_TROVATO` (404) | annullo: nessun accredito da annullare (mai fatto, oppure già annullato — indistinguibili per costruzione) |
+| `E_ACCREDITO_ANNULLO_NON_AMMESSO` (409) | annullo: una o più rettifiche sono già emesse. Il `hint` dice quale strada prendere |
+| `E_ACCREDITO_MOTIVO_OBBLIGATORIO` (400) | annullo senza motivo: l'annullo cancella il ponte, il motivo è l'unica traccia del perché |
+| `E_ACCREDITO_ANNULLO_INCOMPLETO` (409) | difesa in profondità: la UPDATE ha toccato meno rettifiche di quante ne risultano (perimetro emittente) |
 
 ## Riferimenti
 
@@ -98,5 +204,11 @@ consegnato), `E_RESO_QTA_SUPERA_CONSEGNATO` (over-return), `E_RESO_ANNULLO_CON_R
   `apps/vendite/db/resi_repository.py` (`_list_coda` = letture condivise delle
   due code, whitelist sort + search per vista) · Views: `apps/vendite/api/views_resi.py`
   · URLs: `urls_resi.py`.
-- FE: `frontend/src/vendite/resi/` (lista, drawer, code configurabili, host dal
-  drawer DDT).
+- Madri DB dell'accredito: `vendite.fn_accredita_riga_reso` e
+  `vendite.fn_annulla_accredito_riga_reso` (entrambe `RETURNS TABLE`: una riga
+  per rettifica — `rows_to_list`, mai `fetchone`).
+- Smoke end-to-end del giro (coda → rettifica → documento NC → numerazione →
+  legame → annullo), in transazione annullata:
+  `backend/scripts/tests/smoke-nota-credito-resi.py`.
+- FE: `frontend/src/vendite/resi/` (lista, drawer, code configurabili, verbo e
+  annullo, host dal drawer DDT).
