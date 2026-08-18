@@ -82,6 +82,12 @@ ResiDbErrorsTests
 31) test_filtro_documento_assente_default  — None su entrambe le code
 32) test_filtro_documento_su_riconsegne    — la simmetria fra le due code
 33) test_etichette_export_dichiarano_il_documento — il file non mente sul perimetro
+
+ResiAccreditoTests (il verbo della nota di credito — madre fn_accredita_riga_reso)
+34) test_accredito_ritorna_tutte_le_rettifiche   — RETURNS TABLE: N righe, non la prima
+35) test_accredito_nessun_precheck_applicativo   — i guard sono nella madre
+36) test_accredito_no_atomic_extra               — una sola SELECT fn_()
+37) test_accredito_codice_dominio_dalla_madre    — E_ACCREDITO_GIA_ESEGUITO
 """
 
 from contextlib import nullcontext
@@ -741,6 +747,77 @@ class ResiChiusuraRiconsegnaTests(SimpleTestCase):
         resi_service.chiudi_riconsegna(7)
         resi_service.riapri_riconsegna(7)
         mock_tx.atomic.assert_not_called()
+
+
+class ResiAccreditoTests(SimpleTestCase):
+    """Il verbo dell'accredito: delega alla madre `fn_accredita_riga_reso`."""
+
+    # Scopo: 🔴 la madre e' `RETURNS TABLE` e ritorna UNA riga per rettifica
+    # creata (kit: una per componente; consumo su piu' righe di fattura a
+    # prezzi diversi: altrettante). Il service le rilancia TUTTE: prenderne una
+    # sarebbe verde su ogni caso semplice e muto sui kit, cioe' esattamente i
+    # casi per cui il cantiere esiste.
+    @patch(_REPO)
+    def test_accredito_ritorna_tutte_le_rettifiche(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.accredita_riga_reso.return_value = [
+            {"accredito_id": 901, "commessa_attivita_id": 5501,
+             "fattura_riga_rettificata_id": 7101,
+             "qta": "-3.000000", "qta_partita": "-3.000000"},
+            {"accredito_id": 902, "commessa_attivita_id": 5502,
+             "fattura_riga_rettificata_id": 7102,
+             "qta": "-1.000000", "qta_partita": "-1.000000"},
+        ]
+
+        out = resi_service.accredita_riga_reso(5797)
+
+        repo.accredita_riga_reso.assert_called_once_with(5797)
+        self.assertEqual(out["resi_riga_id"], 5797)
+        self.assertEqual(len(out["accrediti"]), 2)
+        self.assertEqual(
+            [a["accredito_id"] for a in out["accrediti"]], [901, 902],
+        )
+
+    # Scopo: nessun guard applicativo che ripeta la madre. «E' in coda»,
+    # «l'attivita' e' finita in fattura», «non e' gia' accreditata» stanno nel
+    # DB: il service non deve leggere la coda ne' lo stato del reso prima di
+    # chiamare (due copie della stessa regola divergono, e la piu' vecchia non
+    # fa rumore).
+    @patch(_REPO)
+    def test_accredito_nessun_precheck_applicativo(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.accredita_riga_reso.return_value = []
+
+        resi_service.accredita_riga_reso(5797)
+
+        repo.list_da_accreditare.assert_not_called()
+        repo.get_stato_codice.assert_not_called()
+        repo.get_riga.assert_not_called()
+        repo.get_capabilities.assert_not_called()
+
+    @patch(f"{_SVC}.transaction")
+    @patch(_REPO)
+    def test_accredito_no_atomic_extra(self, repo_cls, mock_tx) -> None:
+        # L'atomicita' vive DENTRO fn_accredita_riga_reso: una sola
+        # SELECT fn_(), nessun transaction.atomic() nel service.
+        repo = repo_cls.return_value
+        repo.accredita_riga_reso.return_value = []
+        resi_service.accredita_riga_reso(5797)
+        mock_tx.atomic.assert_not_called()
+
+    # Scopo: i codici di dominio dell'accredito arrivano dalla madre e passano
+    # da _db_errors (routing UI del FE). Il doppio click e' il caso vivo:
+    # E_ACCREDITO_GIA_ESEGUITO, non un 500.
+    @patch(_REPO)
+    def test_accredito_codice_dominio_dalla_madre(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.accredita_riga_reso.side_effect = DatabaseError(
+            "E_ACCREDITO_GIA_ESEGUITO: Riga di reso 5797: accredito gia' "
+            "eseguito.",
+        )
+        with self.assertRaises(ServiceError) as cm:
+            resi_service.accredita_riga_reso(5797)
+        self.assertEqual(cm.exception.code, "E_ACCREDITO_GIA_ESEGUITO")
 
 
 class ResiDbErrorsTests(SimpleTestCase):

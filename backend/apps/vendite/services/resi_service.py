@@ -8,7 +8,7 @@
 
 # Orchestrazione resi di vendita: validazione, guard su stato, delega al
 # repository e alle funzioni madri DB (`fn_conferma_reso`, `fn_annulla_reso`,
-# `fn_genera_ddt_riconsegna`). Clone strutturale ridotto di `ddt_service`
+# `fn_genera_ddt_riconsegna`, `fn_accredita_riga_reso`). Clone strutturale ridotto di `ddt_service`
 # (modulo di funzioni libere): niente prezzi/componenti/push/PDF/note.
 #
 # Punti di modello (brief brief-be-fe-resi-vendita.md):
@@ -614,6 +614,35 @@ def riapri_riconsegna(reso_id: int, righe_raw: Any = None) -> dict[str, Any]:
     with _db_errors("riapri_riconsegna"):
         righe_riaperte = repo.riapri_riconsegna(int(reso_id), righe)
     return {"reso_id": int(reso_id), "righe_riaperte": righe_riaperte}
+
+
+# Scopo: Accredita una riga di reso via fn madre atomica
+#        `fn_accredita_riga_reso`: dalla coda accrediti genera le righe di
+#        RETTIFICA in commessa (quantita' negativa, prezzo/sconto/IVA copiati
+#        dalla riga di fattura rettificata) e le registra sul ponte
+#        `resi_righe_accrediti`. Ritorna UNA riga per rettifica creata: su un
+#        kit ne nasce una per componente, e se l'accredito dovuto consuma piu'
+#        righe di fattura a prezzi diversi ne nascono altrettante.
+#        ⭐ Il DOCUMENTO non nasce qui: la nota di credito nasce al giro di
+#        fatturazione successivo. E' la ragione per cui l'esito PARZIALE del
+#        fan-out (endpoint massivo) non lascia mai mezzo documento fiscale —
+#        lascia righe non lavorate, che restano in coda.
+# ⚠️ NESSUN guard applicativo: «e' in coda» (e quanto vale l'accredito),
+#    «l'attivita' e' finita in una riga di fattura», «non e' gia' accreditata»,
+#    «la copertura e' PIENA» sono TUTTI nella madre — E_ACCREDITO_NON_IN_CODA,
+#    E_ACCREDITO_ATTIVITA_NON_FATTURATA, E_ACCREDITO_GIA_ESEGUITO,
+#    E_ACCREDITO_QUOTA_NON_COPERTA. Ripeterli qui sarebbe la stessa regola in
+#    due posti: le due copie divergono, e la piu' vecchia non fa rumore.
+# ⚠️ Nessun `transaction.atomic()`: una sola `SELECT fn_()` e' atomica per
+#    costruzione (api.md §Atomicita' — qui non c'e' orchestrazione Python).
+def accredita_riga_reso(resi_riga_id: int) -> dict[str, Any]:
+    repo = ResiRepository()
+    # Anche il guard sul parametro (NULL / <= 0 -> E_PARAMETRO_INVALIDO) e'
+    # nella madre: qui un pre-check risponderebbe con un codice diverso da
+    # quello che il DB solleva per lo stesso fatto.
+    with _db_errors("accredita_riga_reso"):
+        accrediti = repo.accredita_riga_reso(int(resi_riga_id))
+    return {"resi_riga_id": int(resi_riga_id), "accrediti": accrediti}
 
 
 # ══════════════════════════════════════════════════════════

@@ -31,7 +31,35 @@
 > | liste del perimetro con la colonna emittente | **1** (la pilota) |
 > | trigger del guard «albero omogeneo» | **2** |
 >
-> **Cosa resta, e di chi è:**
+> ## 🟢 Stato al 2026-08-18, sera — **A→E chiuse, due brief archiviati**
+>
+> Il cantiere è completo su **tutte** le fasi del piano BE/FE (§13-bis): perimetro
+> DB, policy dei codici, colonna emittente su **6 liste**, cancello su **34**
+> (51 view), etichette di perimetro, colonna nella ricerca universale.
+> I due brief di richiesta al team DB sono **esauriti e spostati in work-done**:
+> [le due richieste R-1/R-2](../work-done/brief-db-perimetro-emittente-due-richieste-dal-be.md)
+> e [Fase E + ricerca](../work-done/brief-db-perimetro-emittente-fase-e-e-ricerca.md).
+>
+> ### Cosa resta aperto — verificato sul codice il 2026-08-18, sera
+>
+> ⛔ **Una sola cosa è "il lavoro che manca"**; le altre cinque sono residui
+> dichiarati, nessuno dei quali blocca niente.
+>
+> | | Cosa | Perimetro |
+> | --- | --- | --- |
+> | ⛔ | **Accendere `multi_emittente`**, lista per lista, quando la colonna si vede piena su dati veri. Oggi **0 su 44** — ed è lo stato giusto: è un registro di debito che cala quando qualcuno *certifica* una lista, non quando accende un interruttore. La vista di controllo dà **0 adesivi senza collaudo** | **DB** (seed) |
+> | 🔵 | `anagrafiche.fn_get_emittente_fiscale_id` **non delega** ancora a `script.fn_get_ba_emittente_sr_id` (verificato): la regola *«quale emittente fattura questo BA»* vive in **due** definizioni. Da chiudere col cantiere **numerazione** (§11.2) | DB |
+> | 🔵 | La ricerca universale applica il perimetro **solo al tipo ruolo `CL`** (verificato): una ricerca **fornitori** non conosce perimetro emittente. Dichiarato dal passo 1, mai chiuso | DB |
+> | 🕳️ | Due buchi di **test dichiarati**: il **movimento 4** di P-1 (spostamento del gestore globale — serve un test non transazionale, perché il constraint differito pretende il COMMIT) e la fixture a **due emittenti** del passo 1, che dopo la misura di Fase 0 sarebbe ora possibile | DB (pgTAP) |
+> | 🔵 | `EmittenteAttivoService.descrivi` calcola `puo_scegliere` sull'**assenza dell'emittente proprio** (verificato, riga 140): dopo P-2a quel ramo descrive anche l'operatore non configurato, a cui l'interfaccia offre la combo mentre il database non gli mostra nulla. ⚠️ **Il rimedio ovvio è sbagliato** — vedi BE-5 ritirato in Fase D: serve una funzione di scope **non intersecata** con l'emittente attivo, che oggi non esiste | BE |
+> | 🕳️ | Manca il presidio che leghi la riga di **catalogo** al **mapping** del repository. Tentato due volte e **tolto**, con la ragione scritta nel file di test: serve una mappa lista → repository che non esiste | BE (test) |
+>
+> ℹ️ **Non è di questo cantiere, ma si vede nella stessa suite**: 2 test rossi
+> per codici errore `E_ACCREDITO_*` del cantiere **note di credito resi** —
+> policy da rigenerare e messaggi di ripiego da scrivere da chi conosce quel
+> dominio.
+>
+> **Cosa resta, e di chi è (com'era il 2026-08-18 mattina):**
 >
 > | Cosa | Perimetro |
 > | --- | --- |
@@ -3201,8 +3229,15 @@ per costruzione, quindi il ramo del cancello non viene attraversato e il verde
 > che è una cosa diversa — un *operatore* senza emittente attivo è in modalità
 > globale ma vede **un solo** emittente, e l'etichetta gli direbbe il falso.
 >
-> 🔵 **Residuo dichiarato su D-3**: l'etichetta sta sul **perimetro della
-> ricerca**, non sulla singola voce come il §P-2c auspicava. Il motivo è che la
+> ✅ **Residuo D-3 CHIUSO il 2026-08-18**: `fn_search_soggetti_universale` espone
+> ora `emittente_ragione_sociale` (`20260818-60`) e la colonna è in tabella per
+> i **clienti**. L'etichetta di perimetro **resta accanto**, e non è ridondante:
+> la colonna dice da quale emittente arriva **ogni riga**, l'etichetta dice che
+> la ricerca ne sta guardando più d'uno — utile *prima* di leggere i risultati,
+> e l'unica informazione disponibile sui tipi ruolo diversi da CLIENTE.
+>
+> ~~🔵 **Residuo dichiarato su D-3**: l'etichetta sta sul **perimetro della
+> ricerca**, non sulla singola voce come il §P-2c auspicava.~~ Il motivo è che la
 > riga non porta l'emittente — `fn_search_soggetti_universale` restituisce
 > `soggetto_codice, ragione_sociale_completa, id_fiscale_univoco, utility_list`
 > e basta. Distinguere due omonimi di emittenti diversi richiede quel dato: è
@@ -3309,7 +3344,7 @@ lì «per coerenza».
 > scelta di sequenza: senza la riga di catalogo la colonna **non esiste** per il
 > frontend, e senza la ragione sociale nella vista il backend non ha cosa
 > selezionare. La richiesta è scritta:
-> [brief-db-perimetro-emittente-fase-e-e-ricerca.md](brief-db-perimetro-emittente-fase-e-e-ricerca.md).
+> [brief-db-perimetro-emittente-fase-e-e-ricerca.md](../work-done/brief-db-perimetro-emittente-fase-e-e-ricerca.md).
 >
 > | Lista | Da dove nascono le righe | id | ragione sociale | serve dal DB |
 > | --- | --- | :---: | :---: | --- |
@@ -3495,7 +3530,7 @@ e il secondo non è meccanico.
 
 ⭐ **Le due richieste al team DB (C-0 e DB-1) sono partite**, scritte il
 2026-08-18 in un documento loro:
-[brief-db-perimetro-emittente-due-richieste-dal-be.md](brief-db-perimetro-emittente-due-richieste-dal-be.md).
+[brief-db-perimetro-emittente-due-richieste-dal-be.md](../work-done/brief-db-perimetro-emittente-due-richieste-dal-be.md).
 Le fasi **A** e **B** non le aspettano.
 
 ### 13-bis.5 — Quadro d'insieme
@@ -3511,8 +3546,8 @@ Le fasi **A** e **B** non le aspettano.
 | ✅ **C-2** BE perimetro | `backend/apps/core`, `apps/ui`, `apps/vendite` | ✅ C-0 arrivata · autorizzazioni date | C-3 |
 | ✅ **C-3** FE-2 gate | `frontend/src/core` | ✅ C-2 | — |
 | ✅ **D-1..D-4** P-2c | BE + FE | 🔵 nessuno | — |
-| ⛔ **E** le altre liste | BE (dopo il DB) | ⛔ **R-3 e R-4** (brief a parte) | il flag |
-| 🔵 **R-5** ricerca | BE + FE (dopo il DB) | 🔵 residuo D-3 | — |
+| ✅ **E** le altre liste | BE | ✅ R-3 e R-4 consegnate | il flag |
+| ✅ **R-5** ricerca | BE + FE | ✅ residuo D-3 **chiuso** | — |
 
 ### 13-bis.6 — Cosa NON è in perimetro BE/FE
 

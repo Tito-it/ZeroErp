@@ -4,7 +4,9 @@
 > + **piano BE/FE** ·
 > **Data**: 2026-08-17 · **rev**: 2026-08-18 (PARTE IV) · **Owner**: Tid ·
 > **Stato**: ✅ **PERIMETRO DB CHIUSO E APPLICATO** (2026-08-18) ·
-> 📋 **PIANO BE/FE SCRITTO, NIENTE ANCORA IMPLEMENTATO**.
+> 🟡 **BE IN CORSO: 3 slice su 9 chiuse e committate** (`24b09c7f2`) ·
+> ⛔ **FE non iniziato** · 🔴 **5 prerequisiti in attesa del team DB**.
+> **Stato slice per slice e ripartenza nel §27.**
 > Ventitré changeSet (`20260818-24` → `-46`) applicati, due pgTAP nuovi (22
 > asserzioni), quattro pgTAP esistenti riallineati, baseline `vendite` e
 > `script` **senza regressioni**, doc concettuale aggiornata. Cronaca
@@ -3493,3 +3495,93 @@ disponibile» sposta la contraddizione invece di chiuderla.
 8. ⚠️ **La regola del 2 morde una volta sola in questo giro** (B3, il predicato
    di filtro sul documento): si dichiara a Tid **prima** di estrarre, e si
    aspetta l'ok.
+
+---
+
+## 27. 📍 Stato dei lavori e ripartenza (aggiornato 2026-08-18, sera)
+
+> Da leggere per primo aprendo una chat nuova. Tutto ciò che è marcato ✅ è
+> **committato su `dev/backend-tid`** (`24b09c7f2` «Aggiornamenti BE / FE», più
+> `85593e754` per B0) e ha la suite verde.
+
+### 27.1 Le slice
+
+| Slice | Stato | Dove |
+| --- | --- | --- |
+| **B0** dizionario codici *(BE-6)* | ✅ **FATTO** — 9 codici (8 accredito + `W_MESSAGGIO_ARITA`) e 9 ripieghi | `error_policies_generated.py`, `error_messages_fallback.py` |
+| **B4** generatore righe *(BE-4+BE-5)* | ✅ **FATTO** — niente aggregazione fra rettifiche di righe diverse, prezzo/sconto/IVA copiati dalla riga di fattura, `riga_rettificata_id` scritto, guard simmetrico sulla coppia | `fatture_righe_service.py`, `pipeline_repository.py`, `types.py` |
+| **B3** filtro documento sulle code | ✅ **FATTO** — BB `filtro_coda_per_documento`, `?ddt_id=`/`?ordine_id=` su list **ed export** di **entrambe** le code | `_coda_documento_filtro.py`, `resi_repository.py`, `resi_service.py`, `views_resi.py` |
+| **revisione critica** | ✅ **FATTA** — 7 rilievi corretti, §23-bis | — |
+| **B1** repository + service del verbo | ✅ **FATTO** (2026-08-18, sera) — `ResiRepository.accredita_riga_reso` (`SELECT * FROM fn_()` + `rows_to_list`) e `resi_service.accredita_riga_reso`; 7 test, verificati per **mutazione** (4 rossi sabotando fetchone / forma SQL / cast / slicing) e **binding provato sul DB vero** con `EXPLAIN` (Function Scan: nome, arita' e forma `SELECT * FROM` reggono **senza eseguire il corpo**) | `resi_repository.py`, `resi_service.py`, `tests/db/test_resi_repository_accredito.py` |
+| **B5** la natura esce dal backend *(BE-10)* | 🟢 **libero** | `natura_doc_id` non è nominata da nessun punto di `backend/apps/` |
+| **B7** legame riga↔riga nel drawer fattura | 🟢 **libero** | il dato arriva con B4 |
+| **B2** endpoint del verbo | 🟡 scrivibile, **non consegnabile** | serve **P-1** (azione di processo) |
+| **B6** task pipeline legame documentale | 🟡 handler scrivibile, **irraggiungibile** | serve **P-2** (registry) |
+| **B2-bis** annullo dell'accredito | 🔴 **fermo** | serve **P-5** (madre) |
+| **B8** test | 🟡 parziale | i test di B3/B4 sono scritti; mancano quelli del verbo e lo smoke end-to-end |
+| **F1 → F6** tutto il frontend | ⛔ **non iniziato** | F1/F3 dipendono da B2 |
+
+### 27.2 🔴 I cinque prerequisiti, e uno è a metà strada
+
+Il brief di passaggio è
+[brief-db-note-credito-prerequisiti-be-fe.md](brief-db-note-credito-prerequisiti-be-fe.md).
+
+| # | Cosa | Stato al 2026-08-18 sera |
+| --- | --- | --- |
+| **P-1** | azione `accredita_riga_reso` | 🟡 **nel DB vivo, NON in git** (verificato 2026-08-18 sera: `config.azioni_processo` id **31**, `pericolosa=t`, `attivo=t`, `user_insert=titodb`; il CSV di `80_data` si ferma a id 30) |
+| **P-2** | registry task `popola_fatture_rettifiche` | 🟡 **nel DB vivo, NON in git**: registry id **21** + impl `default` → `popola_fatture_rettifiche_default`, e il task e' nel JSON `processi` delle pipeline **4 e 6**. In git: solo la fn `fn_popola_fatture_rettifiche` (`20260818-41`), nessuna riga di registry |
+| **P-3** | gate `fn_check_rinuncia_reversibile` (soglia **al verbo**) | ⏳ attesa |
+| **P-4** | i quattro valori del sezionale | ✅ confermati, **nessun lavoro** |
+| **P-5** | madre `fn_annulla_accredito_riga_reso` | 🟡 **iniziata, invariata**: i tre codici errore (`E_ACCREDITO_ANNULLO_NON_AMMESSO`, `E_ACCREDITO_MOTIVO_OBBLIGATORIO`, `E_ACCREDITO_NON_TROVATO`) sono **nel DB vivo**, la fn **no**. ⭐ Le loro `note` a catalogo dicono gia' due decisioni di merito che il brief di passaggio non chiedeva: l'annullo **rifiuta l'intero accredito** e non una parte (N rettifiche per consumo LIFO e per componente di kit: annullarne una parte lascerebbe la coda a chiedere un residuo insoddisfabile — «la stessa dottrina di `E_ACCREDITO_QUOTA_NON_COPERTA`, allo specchio»), e un **secondo** annullo cade su `E_ACCREDITO_NON_TROVATO` perche' dopo il primo le righe di ponte non ci sono piu' (stato osservabile identico a «mai accreditato»). Sono materia di **B2-bis**: il messaggio dell'endpoint deve dire quale delle due strade prendere |
+| **P-6** | registri non intestati, due emittenti che emettono | ⏳ cantiere suo |
+
+### 27.3 ⚠️ Il rosso che si trova aprendo la chat, e non è una regressione
+
+```bash
+ZEROERP_TEST_DB_E2E=1 ./manage-test.sh
+# 1 FAIL: test_il_file_generato_e_allineato_al_catalogo
+```
+
+**Il DB locale è AVANTI rispetto a git**: il team DB ha seminato i tre codici di
+P-5 (714 voci a catalogo contro 711 nel modulo generato) e non ha ancora pushato
+il CSV. **Non rigenerare** `error_policies_generated.py` in questo stato: si
+aggancerebbe il ramo BE a un changeSet non mergiato, e in CI il cancello
+diventerebbe rosso **al contrario** (la CI ricostruisce il suo DB dal changelog e
+non troverebbe i tre codici).
+
+✅ **Cosa fare, quando il team DB pusha**: `git pull`, poi
+
+```bash
+./manage-env.sh genera_error_policies          # riscrive il modulo
+./manage-env.sh genera_error_policies --check   # deve uscire pulito
+```
+
+e **scrivere i tre messaggi di ripiego** in `error_messages_fallback.py` —
+obbligatori per ogni codice vivo, senza `%s` (§21.2-bis: il segnaposto a
+catalogo è la *ragione* del ripiego, non la sua esenzione).
+
+Senza la flag `ZEROERP_TEST_DB_E2E` la suite è **verde: 3772 test**.
+
+### 27.4 Da dove ripartire
+
+1. ✅ **B1 fatta** (vedi §27.1).
+2. **B5** e **B7** in parallelo: sono letture, non toccano il verbo.
+3. **B2** — 🔴 **P-1 non blocca più lo sviluppo, e questo cambia il rischio, non
+   lo toglie** (vedi il riquadro qui sotto); **F1+F3 insieme** subito dopo (§24:
+   dare il verbo lasciando il pannello che dichiara «non disponibile» sposta la
+   contraddizione del §21.1 invece di chiuderla).
+
+⚠️ **E l'ordine che resta vincolante**: B4 doveva precedere il verbo, ed è fatto.
+Da adesso il rischio si sposta: **appena B2+P-1 esistono, un giro di
+fatturazione non presidiato emetterà il documento** — worker e cron girano.
+Prima di consegnare il verbo, lo smoke end-to-end di B8 va eseguito.
+
+🔴 **E dal 2026-08-18 sera quella frase non è più al futuro: P-1 è nel DB di
+sviluppo** (§27.2). Il fail-closed che teneva il verbo al solo SUPER_ADMIN su
+questo ambiente **non c'è più**: il giorno in cui B2 esiste, il primo click
+scrive la rettifica e il primo giro di fatturazione emette la nota di credito.
+E la strada indietro **non esiste ancora**: P-5 è la fn che manca, e il reset di
+lotto — l'unica leva disponibile — non annulla l'accredito, **rigenera** la NC al
+giro dopo (§21.4). Quindi: **lo smoke B8 prima di B2**, non dopo. E in git il CSV
+non c'è: in CI e su qualunque DB ricostruito il verbo resta fail-closed, quindi
+**il seed va comunque chiesto pushato** — non è «già fatto».

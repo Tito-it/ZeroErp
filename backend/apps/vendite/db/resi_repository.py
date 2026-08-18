@@ -9,7 +9,7 @@
 # Repository resi di vendita: letture sulla vista canonica
 # `vendite.vw_resi_lista` (lista) e `vendite.resi` (dettaglio), scritture
 # dirette su tabelle, chiamate alle funzioni madri DB (`fn_conferma_reso`,
-# `fn_annulla_reso`, `fn_genera_ddt_riconsegna`). Clone strutturale ridotto di
+# `fn_annulla_reso`, `fn_genera_ddt_riconsegna`, `fn_accredita_riga_reso`). Clone strutturale ridotto di
 # `ddt_repository` (niente componenti BoM / prezzi / push / PDF): il reso non
 # inventa articoli — le righe sono snapshot delle righe del DDT sorgente
 # (copiate qui, nessun trigger di copia a DB). La numerazione a CONFERMATO e
@@ -861,6 +861,34 @@ class ResiRepository:
             row = cursor.fetchone()
             assert row is not None
             return int(row[0])
+
+    # ══════════════════════════════════════════════════════════
+    #  FUNZIONE MADRE DB — accredito (nota di credito sui resi)
+    # ══════════════════════════════════════════════════════════
+
+    # Scopo: Accredita una riga di reso via fn madre
+    #        `vendite.fn_accredita_riga_reso` (atomica, DB-first): dalla coda
+    #        accrediti genera le righe di RETTIFICA in commessa (quantita'
+    #        NEGATIVA, prezzo/sconto/IVA copiati dalla riga di fattura
+    #        rettificata) e le registra sul ponte
+    #        `vendite.resi_righe_accrediti`. Il DOCUMENTO non nasce qui: la nota
+    #        di credito nasce al giro di fatturazione successivo.
+    # ⚠️ `RETURNS TABLE`, non uno scalare (brief §20.4): una riga per rettifica
+    #    creata — su un kit ne nasce una per componente, e se l'accredito dovuto
+    #    consuma piu' righe di fattura a prezzi diversi ne nascono altrettante.
+    #    Quindi `rows_to_list`, MAI `fetchone()`: qui un fetchone perderebbe in
+    #    silenzio tutte le rettifiche dopo la prima — e la coda, che sottrae la
+    #    quota accreditata, direbbe il vero mentre la risposta mente.
+    #    Colonne: accredito_id, commessa_attivita_id,
+    #    fattura_riga_rettificata_id, qta (unita' di RIGA DI FATTURA),
+    #    qta_partita (unita' di MERCE).
+    def accredita_riga_reso(self, resi_riga_id: int) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM vendite.fn_accredita_riga_reso(%s)",
+                [int(resi_riga_id)],
+            )
+            return rows_to_list(cursor)
 
     # ══════════════════════════════════════════════════════════
     #  LOOKUP — Risoluzione config/sorgente per creazione
