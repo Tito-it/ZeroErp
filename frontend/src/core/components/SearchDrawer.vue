@@ -16,6 +16,7 @@ import { DRAWER_WIDTH, TIPO_RUOLO } from '../constants'
 import { NAV_ICONS } from '../navigation'
 import DrawerTitle from './DrawerTitle.vue'
 import SearchDetailTable from './details/SearchDetailTable.vue'
+import { useAuthStore } from '../../stores/auth'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -32,6 +33,20 @@ const emit = defineEmits(['update:visible'])
 const tipiRuolo = ref([])
 const selectedTipoRuolo = ref(null)
 const searchTerm = ref('')
+const auth = useAuthStore()
+
+// Etichetta di perimetro sulla ricerca (P-2c): qui il rischio non e' «non
+// capisco», e' «scelgo fra due voci uguali» — due clienti omonimi di due
+// emittenti diversi. Bloccare una ricerca sarebbe sproporzionato: si dichiara
+// il perimetro e si lascia cercare.
+//
+// 🔵 Residuo dichiarato: l'etichetta sta sul PERIMETRO della ricerca e non
+//    sulla singola voce, perche' la riga non porta l'emittente —
+//    `script.fn_search_soggetti_universale` non lo espone
+//    (`RETURNS TABLE(... soggetto_codice, ragione_sociale_completa,
+//    id_fiscale_univoco, utility_list)`). Distinguere due omonimi richiede
+//    quel dato: e' una richiesta al team DB, non una cosa che il frontend
+//    possa dedurre.
 const results = ref([])
 const expandedRows = ref({})
 const sortField = ref('ragione_sociale_completa')
@@ -240,6 +255,14 @@ watch(() => props.visible, (newVal) => {
 
       </div>
 
+      <!-- Perimetro della ricerca: chi cerca dentro piu' di un emittente deve
+           saperlo, perche' due omonimi di emittenti diversi sono voci
+           indistinguibili. -->
+      <div v-if="auth.perimetroMultiEmittente" class="search-perimetro">
+        <i class="pi pi-info-circle" />
+        <span>{{ t('common.perimetro_emittente.etichetta_ricerca') }}</span>
+      </div>
+
       <!-- Risultati -->
       <DataTable
         v-model:expandedRows="expandedRows"
@@ -344,6 +367,17 @@ watch(() => props.visible, (newVal) => {
 .search-clear-btn {
   position: absolute;
   right: 0.25rem;
+}
+
+.search-perimetro {
+  /* Dichiarazione di perimetro: informazione di contorno, non un avviso. */
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  font-style: italic;
+  opacity: 0.85;
+  padding: 0.25rem 0.1rem 0.5rem;
 }
 
 .search-results-table {

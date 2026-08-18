@@ -125,7 +125,13 @@
     "select_tipo_soggetto": "Seleziona tipo soggetto",
     "select_comune": "Cerca comune...",
     "select_via": "Cerca via...",
-    "retry": "Riprova"
+    "retry": "Riprova",
+    "perimetro_emittente": {
+      "titolo": "Scegli un emittente per continuare",
+      "descrizione": "Questa lista non dice da quale emittente arriva ogni riga, e in questo momento ne stai guardando piu' di uno. Scegli l'emittente dalla combo in alto a destra: la lista si apre subito dopo.",
+      "etichetta_tutti": "Tutti gli emittenti",
+      "etichetta_ricerca": "Stai cercando in tutti gli emittenti: voci con lo stesso nome possono appartenere a emittenti diversi."
+    }
   },
   "strumenti": {
     "code": {

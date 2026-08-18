@@ -13,6 +13,16 @@
 //        I dati arrivano dagli STESSI lettori che alimentano il contesto del
 //        PDF: ciò che si vede qui è ciò che finisce nel documento fiscale.
 //        Brief: docs/it/dev/work-done/brief-be-fe-drawer-fattura.md
+//
+// ⛔ NESSUN cancello ne' etichetta di perimetro emittente qui, ed e' una
+//    decisione (P-2c del brief perimetro-emittente), non una dimenticanza.
+//    Un DOCUMENTO SI DICHIARA: la testata mostra chi lo ha emesso, e non c'e'
+//    niente accanto con cui confonderlo — l'ambiguita' che il cancello e le
+//    etichette curano nasce dall'AFFIANCAMENTO di righe o dall'aggregazione di
+//    numeri, che qui non c'e'.
+//    Aggiungerlo «per coerenza» con liste e cruscotti significherebbe chiedere
+//    all'operatore di scegliere un emittente per leggere un documento che gli
+//    sta gia' dicendo da quale emittente viene.
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Drawer from 'primevue/drawer'

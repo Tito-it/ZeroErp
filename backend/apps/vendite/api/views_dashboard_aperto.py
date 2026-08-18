@@ -74,6 +74,7 @@ class ApiDashboardApertoDocumenti(DomainAPIView):
 
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.dash_aperto_documenti"
 
     @extend_schema(
         operation_id="vendite_dashboard_aperto_documenti",
@@ -218,6 +219,7 @@ class ApiDashboardApertoDocumentiExport(DomainAPIView):
 
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.dash_aperto_documenti"
 
     @extend_schema(
         operation_id="vendite_dashboard_aperto_documenti_export",

@@ -64,6 +64,7 @@ def _parse_righe_ids(payload: dict[str, object]) -> list[int] | None:
 class ApiPreventiviList(DomainAPIView):
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.preventivi"
 
     @extend_schema(
         parameters=[
@@ -170,6 +171,7 @@ class ApiPreventiviExportView(DomainAPIView):
 
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.preventivi"
 
     @extend_schema(
         parameters=[

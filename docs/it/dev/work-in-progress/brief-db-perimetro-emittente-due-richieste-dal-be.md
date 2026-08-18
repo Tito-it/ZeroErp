@@ -14,7 +14,66 @@
 | # | Cosa | Peso | Blocca |
 | --- | --- | --- | --- |
 | ✅ **R-1** | Un **codice errore nuovo** a catalogo: il rifiuto del cancello `multi_emittente` | append a due CSV | ⛔ il passo **C-2** del piano BE/FE |
-| **R-2** | Una **chiave nel context** dei due guard applicati ieri: `'campo'` al posto di `'column'` | una riga per changeSet | 🔵 niente — è il campo del form che non si evidenzia |
+| ✅ **R-2** | Una **chiave nel context** dei ~~due~~ **cinque** punti: `'campo'` al posto di `'column'` | ~~una riga per changeSet~~ | 🔵 niente — è il campo del form che non si evidenzia |
+
+> ## ✅ Entrambe fatte e applicate il 2026-08-18 (`d28d4a2f2`)
+>
+> **E il team DB ha corretto il perimetro di R-2 in tre punti — tutti e tre
+> fondati.** Le rettifiche stanno in §13-bis.2 del brief principale; qui resta
+> quello che riguarda **come avevo misurato**, perché è la parte da cui si
+> impara qualcosa.
+>
+> ### 🔴 Due errori miei nella richiesta, non uno
+>
+> **1. Il perimetro era incompleto: le occorrenze erano CINQUE, non due.** Le
+> tre che mancavano stanno in `20260818-05` — **stesso giorno, stesso cantiere,
+> stesso campo `parent_account_id`** — e sono più numerose di quelle che avevo
+> trovato (5 contro 2).
+>
+> ⚠️ **E l'errore non è «me n'è sfuggito uno»: è come ho guardato.**
+>
+> | Cosa ho fatto | Cosa è successo |
+> | --- | --- |
+> | `grep -rl "'column'," … \| head` per la ricognizione | i file erano **20**, ne ho letti **10**, e ho preso la lista troncata per completa |
+> | poi, sul `-05`, ho cercato **`'campo'`** e ho trovato zero | vero, e **inutile**: misurava l'assenza della cosa giusta senza misurare la **presenza** della cosa sbagliata. Il `-05` è uscito dalla richiesta con una verifica che sembrava averlo esaminato |
+>
+> ⛔ **`head` non va usato su un grep da cui si deriva un perimetro.** Serve a
+> guardare, non a contare: se il risultato finisce in una tabella di richiesta,
+> si conta (`wc -l`) o si legge tutto.
+>
+> ⚠️ E il danno sarebbe stato peggiore del difetto: correggere **solo** il `-08`
+> avrebbe reso il comportamento **intermittente** sullo stesso campo — un guard
+> accende il form, l'altro no. *«Un difetto costante si nota e si segnala; uno
+> intermittente fa cercare il problema nel frontend»* (team DB).
+>
+> **2. La motivazione del «nessun segnaposto» in R-1 non reggeva.** Avevo scritto
+> che un messaggio senza `%s` «non ha quel modo di rompersi», citando i tre
+> `format()` rotti. Ma **411 messaggi su 913 hanno un `%s`**: non è un pattern
+> rischioso da evitare, è la **norma**. Il motivo buono è un altro, ed è quello
+> che il team DB ha scritto nel `note`: *chi apre la lista sa già quale lista ha
+> aperto — non c'è niente di variabile da dire*. La differenza è pratica: senza
+> la ragione giusta scritta, il primo che passa aggiunge un `%s` per uniformità.
+>
+> ### ⭐ Il criterio giusto, che non avevo formulato
+>
+> Non è «changeSet nuovo» — è **«è il nome di una colonna che il client può
+> correggere»**:
+>
+> ```text
+> 'column', 'parent_account_id'              -> 'campo'   colonna vera      (4×)
+> 'column', 'valido_dal'                     -> 'campo'   colonna vera      (1×)
+> 'column', 'valido_al_requires_valido_dal'  -> resta     è una REGOLA
+> 'column', 'multi_emittente'                -> resta     non è in nessun form
+> ```
+>
+> ⛔ **`20260818-17` non è stata toccata, e ha ragione il DB.** `multi_emittente`
+> non compare in `frontend/src/` con nessuna grafia e si scrive solo dal seed:
+> mandarla nel canale `COLUMN` direbbe al form di accendere **un campo che non
+> esiste in nessuna schermata**. Si passerebbe da «non evidenzia» a «evidenzia
+> il vuoto», che è più difficile da vedere — ed è lo stesso uso diagnostico che
+> la richiesta voleva preservare nelle funzioni storiche. Avevo elencato il
+> changeSet applicando la regola *sintattica* invece di quella *di merito*.
+
 
 ---
 

@@ -49,6 +49,7 @@ class ApiDdtList(DomainAPIView):
 
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.ddt"
 
     @extend_schema(
         operation_id="vendite_ddt_list",
@@ -104,6 +105,7 @@ class ApiDdtExportView(DomainAPIView):
 
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.ddt"
 
     @extend_schema(
         operation_id="vendite_ddt_export",

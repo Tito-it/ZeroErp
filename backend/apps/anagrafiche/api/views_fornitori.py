@@ -38,6 +38,7 @@ class FornitoriView(DomainAPIView):
     area_funzionale = "anagrafiche"
     model_permission = ("anagrafiche", "fornitore")
     is_search_endpoint = True
+    lista_codice = "anagrafiche.fornitori"
 
     @extend_schema(
         parameters=[
@@ -162,6 +163,7 @@ class FornitoriExportView(DomainAPIView):
     area_funzionale = "anagrafiche"
     model_permission = ("anagrafiche", "fornitore")
     is_search_endpoint = True
+    lista_codice = "anagrafiche.fornitori"
 
     @extend_schema(
         parameters=[

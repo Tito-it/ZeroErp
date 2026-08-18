@@ -125,7 +125,13 @@
     "select_tipo_soggetto": "Select subject type",
     "select_comune": "Search municipality...",
     "select_via": "Search street...",
-    "retry": "Retry"
+    "retry": "Retry",
+    "perimetro_emittente": {
+      "titolo": "Choose an issuer to continue",
+      "descrizione": "This list does not show which issuer each row comes from, and you are currently viewing more than one. Pick an issuer from the selector at the top right: the list opens right after.",
+      "etichetta_tutti": "All issuers",
+      "etichetta_ricerca": "You are searching across all issuers: entries with the same name may belong to different issuers."
+    }
   },
   "strumenti": {
     "code": {

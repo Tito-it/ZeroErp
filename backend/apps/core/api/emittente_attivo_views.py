@@ -154,6 +154,15 @@ class EmittenteAttivoView(DomainAPIView):
                 refresh[JWT_CLAIM_EMITTENTE_ATTIVO_ID] = int(attivo)
 
             return {
+                # ⚠️ Volutamente SENZA `user=`: la chiave
+                # `perimetro_multi_emittente` resta assente qui, e non e' una
+                # dimenticanza. Il perimetro si risolve dalla GUC
+                # `app.current_emittente_id`, che in QUESTA richiesta porta
+                # ancora l'emittente PRECEDENTE — il claim nuovo esiste solo
+                # nel token che stiamo restituendo. Calcolarla qui
+                # descriverebbe la sessione che sta per finire.
+                # Il client sostituisce i token e riparte dal boot: il valore
+                # giusto arriva da `/me/` un istante dopo.
                 "emittente_attivo": EmittenteAttivoService().descrivi(
                     request.user.id, attivo,
                 ),

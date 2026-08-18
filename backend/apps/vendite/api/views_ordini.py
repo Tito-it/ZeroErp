@@ -85,6 +85,7 @@ class ApiOrdiniList(DomainAPIView):
 
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.ordini"
 
     @extend_schema(
         operation_id="vendite_ordini_list",
@@ -141,6 +142,7 @@ class ApiOrdiniExportView(DomainAPIView):
 
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.ordini"
 
     @extend_schema(
         operation_id="vendite_ordini_export",

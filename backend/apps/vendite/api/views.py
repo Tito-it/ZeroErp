@@ -501,6 +501,7 @@ def _parse_lotti_query(qp, *, function_name: str) -> dict:
 class ApiLottiList(DomainAPIView):
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.lotti"
 
     @extend_schema(
         parameters=[
@@ -573,6 +574,7 @@ class ApiLottiExportView(DomainAPIView):
 
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.lotti"
 
     @extend_schema(
         parameters=[
@@ -986,6 +988,7 @@ class ApiCommessaStato(DomainAPIView):
 class ApiCommessaAttivita(DomainAPIView):
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.commesse_attivita"
 
     @extend_schema(
         parameters=[

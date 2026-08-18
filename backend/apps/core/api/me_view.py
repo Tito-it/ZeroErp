@@ -153,6 +153,7 @@ class UserProfileView(DomainAPIView):
         # comanda la GUC e quindi ciò che l'utente vede).
         profile["emittente_attivo"] = EmittenteAttivoService().descrivi(
             request.user.id, self._emittente_attivo_del_jwt(request),
+            user=request.user,
         )
         return success_response(profile)
 

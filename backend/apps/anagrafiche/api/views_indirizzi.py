@@ -23,6 +23,7 @@ class IndirizziView(DomainAPIView):
     """GET lista, POST crea indirizzo dettaglio."""
     area_funzionale = "anagrafiche"
     is_search_endpoint = True
+    lista_codice = "anagrafiche.indirizzi"
 
     @extend_schema(
         parameters=[

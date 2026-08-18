@@ -198,6 +198,7 @@ class ApiArticoliList(DomainAPIView):
     area_funzionale = "catalogo"
     model_permission = ("catalogo", "articolo")
     is_search_endpoint = True
+    lista_codice = "catalogo.articoli"
 
     @extend_schema(
         parameters=[
@@ -674,6 +675,7 @@ class ApiUomTipiList(DomainAPIView):
     area_funzionale = "catalogo"
     model_permission = ("catalogo", "uom_tipi")
     is_search_endpoint = True
+    lista_codice = "catalogo.uom_tipi"
 
     @extend_schema(
         parameters=[
@@ -762,6 +764,7 @@ class ApiUnitaMisuraList(DomainAPIView):
     area_funzionale = "catalogo"
     model_permission = ("catalogo", "unita_misura")
     is_search_endpoint = True
+    lista_codice = "catalogo.unita_misura"
 
     @extend_schema(
         parameters=[
@@ -870,6 +873,7 @@ class ApiConversioniList(DomainAPIView):
     area_funzionale = "catalogo"
     model_permission = ("catalogo", "unita_misura")
     is_search_endpoint = True
+    lista_codice = "catalogo.conversioni_uom"
 
     @extend_schema(
         parameters=[
