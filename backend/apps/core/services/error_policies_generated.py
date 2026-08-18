@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 716, di cui 79 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 718, di cui 79 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -752,6 +752,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_RESO_RICONSEGNA_SUPERA_RESO": "CONFLITTO_STATO",
     # Guard ponte ri-consegna (trgfn_resi_riconsegne_guard): aggancio · ammesso solo su righe con tipo_reso.riapre_residuo = true.
     "E_RESO_RICONSEGNA_TIPO_NON_VALIDO": "CONFLITTO_STATO",
+    # script.fn_check_rinuncia_reversibile: la quota rinunciata risulta gia' ACCREDITATA (esiste almeno una riga in vendite.resi_righe_accrediti per quella riga di reso), quindi riaprire la rinuncia sfalserebbe un accredito gia' in viaggio verso una nota di credito. ⭐ E' il gate che il commento della funzione teneva in caldo dal 2026-07-26 dichiarando di NON registrare il codice «per non lasciare a catalogo un codice mai sollevato»: la slice NC e' arrivata, e ora si solleva. ⚠️ VINCOLO RECIPROCO con vendite.fn_annulla_accredito_riga_reso: il gate si auto-ripara perche' l'annullo CANCELLA le righe di ponte — se un giorno diventasse un soft-delete, questo ramo va cambiato insieme, o vieterebbe per sempre una rinuncia ormai reversibile e lo farebbe in silenzio. Piano: brief-db-note-credito-prerequisiti-be-fe §12 (P-3 / passo 4).
+    "E_RESO_RINUNCIA_ACCREDITO_ESEGUITO": "CONFLITTO_STATO",
     # Gemello del precedente sull'ALTRA uscita della stessa copertura · (id 560): ri-spedizioni e rinunce condividono il residuo · `quantita - Sigma ric - Sigma rin`, quindi anche la rinuncia puo' · eccederlo. Causa tipica: due operatori sulla stessa riga reso, uno · ri-spedisce e l'altro dichiara definitiva la quota -> 409, conflitto · di stato, non errore di validazione del payload.
     "E_RESO_RINUNCIA_SUPERA_RESO": "CONFLITTO_STATO",
     "E_RESO_SENZA_RIGHE": "CONFLITTO_STATO",
@@ -872,6 +874,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Trigger whitelist tipi indirizzo per ambito documento · (trgfn_tipi_indirizzi_only_allowed, fail-closed): ri-sollevato da · _db_errors del BB col codice originale del RAISE.
     "E_TIPO_INDIRIZZO": "DATO_ERRATO",
     "E_TIPO_INDIRIZZO_NON_PERMESSO": "DATO_ERRATO",
+    # anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo: il tipo di indirizzo non e' fra quelli che config.tipi_soggetto_dettaglio_tipi_indirizzo ammette per il TIPO SOGGETTO DETTAGLIO della riga. ⛔ Codice distinto da E_TIPO_INDIRIZZO_NON_PERMESSO (584) e non un doppione: quello resta del guard sui RUOLI (trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo), che legge un'altra matrice (config.tipi_ruolo_tipi_indirizzo) e ha altri identificativi in mano. I due guard hanno condiviso un codice solo fino al 2026-08-19, e il messaggio era scritto per il ruolo: chi lo incontrava sul layer soggetto leggeva «tipo_ruolo_id» dove c'era un tipo_soggetto_dettaglio_id e veniva mandato a cercare nella tabella sbagliata. Un messaggio plausibile e falso costa piu' di un messaggio assente. Origine: bonifica baseline pgTAP anagrafiche.
+    "E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO": "DATO_ERRATO",
     "E_TIPO_RUOLO_NON_TROVATO": "NON_TROVATO",
     # <- E_AI_CONFIRMATION_REQUIRED RIMOSSO il 2026-08-06 (audit coerenza · status). Non lo sollevava nessuno — ne' Python, ne' Vue, ne' il · database — e il motivo e' che il flusso di conferma dei tool in · scrittura ha scelto un'altra strada, migliore: `ai_assistant_service` · restituisce **200 con `requires_confirmation` nel payload**. Una · conferma richiesta non e' un errore HTTP. · ⚠️ E il 428 non c'entrava comunque: RFC 6585 lo definisce come «la · richiesta deve essere condizionale» (`If-Match`, per non perdere · aggiornamenti concorrenti), non «l'utente deve confermare». · Se un giorno servisse davvero un errore per questo caso, i due · presidi lo pretenderanno dichiarato: si riparte da qui, non dal 428. · --- Autenticazione: token, email, invito, cambio/reset password ---
     "E_TOKEN": "DATO_ERRATO",

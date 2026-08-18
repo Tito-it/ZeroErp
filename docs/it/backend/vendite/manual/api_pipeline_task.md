@@ -49,9 +49,16 @@ con `popola_fatture_rettifiche`: il task era nelle pipeline **vive** con
 l'handler ancora da scrivere, e il primo giro DEFINITIVA avrebbe **numerato** —
 irreversibile — per poi morire prima della stampa.
 
-⭐ Il presidio non è ricordarsene: è un test che legge gli **oggetti reali**
-(registry, whitelist, dipendenze d'ordine) invece della mappa-specchio dei
-fixture. Modello: `test_popola_fatture_rettifiche_agganciata_al_registry_reale`.
+✅ **Dal 2026-08-19 c'è un cancello**, e il presidio non è più ricordarsene:
+`apps/vendite/tests/db/test_pipeline_task_handler_guardrail.py` confronta ciò
+che le **pipeline attive chiedono** (database) con il **dizionario Python vivo**
+`PipelineStepExecutor.handler_registry`, e nomina il task, la pipeline e
+l'`handler_code` che manca. Opt-in `ZEROERP_TEST_DB_E2E=1`, acceso in CI.
+
+⚠️ Legge gli **oggetti reali**, non una mappa-specchio dei fixture: uno specchio
+non prova che l'originale esista, ed è esattamente il modo in cui il difetto era
+passato. Stessa idea, a grana di slice, in
+`test_popola_fatture_rettifiche_agganciata_al_registry_reale`.
 
 ## Input dell'handler
 
@@ -166,6 +173,12 @@ di registro.
 
 `close_lotto` ha l'handler ed è `attivo=false` a registro: spento di proposito.
 
+⛔ **I sette non sono una lista di eccezioni: sono un registro del DEBITO**, e
+vivono in `DEBITO_TASK_SENZA_HANDLER` dentro il cancello. Può solo calare, ed è
+sorvegliato nei tre versi: uno nuovo → rosso; uno che **ottiene** il suo handler
+→ rosso finché la riga non viene tolta; uno **ritirato** dal registro → rosso
+come riga orfana.
+
 ## Come si aggiunge un task
 
 1. **DB** (team DB): riga in `pipeline_task_registry`, riga in
@@ -177,9 +190,10 @@ di registro.
    task è Python-only);
 4. **ordine**: se invertirlo produce un risultato sbagliato, la dipendenza in
    `_TASK_ORDER_DEPENDENCIES`;
-5. **test**: uno che legga gli **oggetti reali** (registry, whitelist, ordine),
-   più quelli sul comportamento — dry-run, esito parziale o fail-fast, ordine
-   rifiutato se invertito;
+5. **test**: quelli sul comportamento — dry-run, esito parziale o fail-fast,
+   ordine rifiutato se invertito. L'aggancio (registro → handler → policy) lo
+   verifica già il cancello, che diventa verde da sé quando i cinque pezzi ci
+   sono tutti;
 6. **consegna**: 1 e 2 vanno **insieme**. Se il seed arriva prima dell'handler,
    la pipeline è armata a vuoto.
 
@@ -199,6 +213,11 @@ di registro.
 - Esecutore: `apps/vendite/services/pipeline_step_executor.py` · Repository:
   `apps/vendite/db/pipeline_repository.py` (`ALLOWED_TASK_FUNCTIONS`, i
   `run_*_task`, il tracing) · Runner: `pipeline_runner.py`.
-- Test: `apps/vendite/tests/services/test_pipeline_step_executor.py`.
+- Test: `apps/vendite/tests/services/test_pipeline_step_executor.py`
+  (comportamento, con mock) · `apps/vendite/tests/db/test_pipeline_task_handler_guardrail.py`
+  (il cancello configurazione ↔ handler, su DB reale).
+- Segnaposto senza handler: `TASK_SENZA_HANDLER` in `pipeline_step_executor.py`
+  (`noop`, `log_only`) — costante e non literal, perché la legge anche il
+  cancello.
 - Fan-out isolato (savepoint per elemento, esito a tre stati):
   `apps/core/services/fan_out.py`.
