@@ -1114,6 +1114,17 @@ class VenditeRepository:
         # in un verso o nell'altro.
         "ba_codice_fatturazione": "ba_codice_fatturazione",
         "id_fiscale": "id_fiscale",
+        # Emittente (P-4, brief perimetro-emittente passo 6 / BE-2). Stessa
+        # coppia inscindibile delle due righe qui sopra: la colonna
+        # `emittente_fiscale` del catalogo (`ui/lista_colonna.csv`, lista
+        # `vendite.dash_competenza_gruppi`) e' `ordinabile = t`, quindi senza
+        # questa voce
+        # il presidio `test_liste_configurabili_seed` e' rosso in un verso — e
+        # la freccia a video risponderebbe 400.
+        # ⚠️ La chiave e' il CAMPO FISICO (`emittente_ragione_sociale`), non il
+        # `codice` della colonna a catalogo (`emittente_fiscale`): il secondo
+        # verso dello stesso presidio verifica proprio questo.
+        "emittente_ragione_sociale": "emittente_ragione_sociale",
     }
 
     # Scopo: colonne su cui lavora la ricerca libera della lista gruppi (D-6).
@@ -1278,7 +1289,8 @@ class VenditeRepository:
                 g.commessa_stato_codice_interno,
                 g.commessa_stato_descrizione,
                 g.ba_codice_fatturazione,
-                g.id_fiscale
+                g.id_fiscale,
+                g.emittente_ragione_sociale
             FROM vendite.vw_dash_competenza_gruppi g
             {where_clause}
             """,
@@ -1317,6 +1329,17 @@ class VenditeRepository:
                     # precisamente la riga dimenticata da cui nasce il cantiere.
                     "ba_codice_fatturazione": None if row[17] is None else str(row[17]),
                     "id_fiscale": None if row[18] is None else str(row[18]),
+                    # Emittente della riga (P-4, lista PILOTA del giro — brief
+                    # perimetro-emittente passo 6). La vista lo espone dal
+                    # 2026-08-18 (`20260818-15`); la riga di catalogo esiste
+                    # (`ui.lista_colonna`, codice `emittente_fiscale`) e la
+                    # colonna si puo' spuntare.
+                    # ⛔ La chiave DEVE restare `emittente_ragione_sociale`: e'
+                    # il `campo_sorgente` dichiarato a catalogo, e la lista ha
+                    # `vista_sql = NULL` — quindi il catalogo non puo' pescare
+                    # il campo da se', lo deve portare questo SELECT. Se le due
+                    # divergono la colonna si spunta e resta VUOTA.
+                    "emittente_ragione_sociale": None if row[19] is None else str(row[19]),
                 }
             )
         return result, total_count

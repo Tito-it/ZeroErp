@@ -177,6 +177,13 @@ class UiAdminRepository:
     #        l'esistenza della view in pg_catalog ma skippa se attivo=
     #        FALSE o vista_sql=NULL: il workflow draft "registra prima,
     #        attiva dopo aver creato la view" e' supportato nativamente.
+    # 🚫 `multi_emittente` non compare in questo INSERT ne' nel tuple di
+    #    `update_definizione`, ed e' deliberato: il flag si accende SOLO dal
+    #    seed. Il presidio forte e' il trigger DB — la scrittura verrebbe
+    #    rifiutata comunque con `E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE` — ma la
+    #    colonna non va nominata nemmeno qui, o l'applicazione chiederebbe al
+    #    database una cosa che il database le vieta.
+    #    Perche' e come: `lista_definizione_admin_service._CREATE_KEYS`.
     def create_definizione(
         self,
         data: dict[str, Any],

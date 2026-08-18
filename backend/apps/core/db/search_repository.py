@@ -38,8 +38,14 @@ class SearchRepository:
         order_by: str | None = None,
         order_dir: str | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
-        # Converti emittente_ids in array PostgreSQL o None
-        pg_emittente_ids = emittente_ids if emittente_ids else None
+        # ⚠️ Lo scope ha TRE stati e vanno passati tutti e tre: `None` =
+        # nessuna restrizione, `[]` = nessun accesso, lista = whitelist.
+        # Qui c'era `if emittente_ids else None`: in Python la lista vuota e'
+        # falsa, quindi `[]` diventava `None` — cioe' i due estremi OPPOSTI
+        # della convenzione collassavano sullo stesso valore, e dalla parte
+        # che APRE. La convenzione non si legge mai con un test di verita'.
+        # (brief-db-perimetro-emittente-liste-e-gerarchia-ba §11.6, BE-1)
+        pg_emittente_ids = emittente_ids
 
         with connection.cursor() as cursor:
             cursor.execute(
@@ -95,7 +101,8 @@ class SearchRepository:
         utility_id: int | None = None,
         emittente_ids: list[int] | None = None,
     ) -> dict[str, Any] | None:
-        pg_emittente_ids = emittente_ids if emittente_ids else None
+        # Tre stati, come in `search_soggetti` sopra: `[]` non e' `None`.
+        pg_emittente_ids = emittente_ids
 
         with connection.cursor() as cursor:
             cursor.execute(

@@ -47,6 +47,22 @@ E_DEFINIZIONE_IN_USE = "E_UI_DEFINIZIONE_IN_USO"
 # Whitelist chiavi del payload create. Tutti i campi sono opzionali
 # tranne i tre obbligatori (codice/descrizione/schema_dati): vista_sql
 # e note possono essere NULL, attivo default TRUE applicativo.
+#
+# 🚫 `multi_emittente` NON entra qui, e NON e' una dimenticanza.
+#    E' un flag che dichiara una CAPACITA' DEL SOFTWARE — «questa lista sa
+#    dire da quale emittente arriva ogni riga» — non una preferenza di chi
+#    amministra: si accende SOLO dal seed (`80_data/.../lista_definizione.csv`),
+#    insieme (o dopo) al lavoro che la rende vera, cioe' la colonna emittente
+#    a catalogo. Un interruttore in interfaccia lo trasformerebbe da registro
+#    di debito che cala in elenco di eccezioni che cresce.
+#    Presidiato su tre strati: il TRIGGER DB
+#    (`ui.trgfn_lista_definizione_guard_multi_emittente`, che rifiuta la
+#    scrittura da qualunque ruolo non proprietario → `E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE`),
+#    il test `ListaDefinizioneMultiEmittenteFuoriScritturaTests` (che presidia
+#    TUTTI e quattro i punti di questo file e del repository che elencano
+#    campi scrivibili, non la sola whitelist), e questo commento.
+#    Decisione Tid 2026-08-17 · brief-db-perimetro-emittente-liste-e-gerarchia-ba
+#    §7 decisione 3, Q1, §11.5.
 _CREATE_KEYS: frozenset[str] = frozenset(
     {
         "codice",
@@ -189,9 +205,15 @@ class ListaDefinizioneAdminService:
         return self.get_definizione(new_id)
 
     # Scopo: Aggiorna definizione sui soli campi presenti nel payload.
-    #        Tutti i campi sono mutabili (nessun immutabile per design):
-    #        cambiare `vista_sql` su lista esistente passa per il trigger
-    #        guard come per la create.
+    #        Tutti i campi ESPOSTI sono mutabili (nessun immutabile per
+    #        design): cambiare `vista_sql` su lista esistente passa per il
+    #        trigger guard come per la create.
+    # ⚠️ «Tutti» si riferisce ai sei della whitelist, e c'e' UNA colonna della
+    #        tabella deliberatamente fuori: `multi_emittente`. Non e' un campo
+    #        che questo service ha dimenticato di esporre — e' l'unica
+    #        eccezione a questa frase, e il perche' e' scritto accanto a
+    #        `_CREATE_KEYS`. Chi riallinea le whitelist «per coerenza» legga
+    #        prima quello.
     def update_definizione(
         self,
         user: AbstractBaseUser | AnonymousUser | None,

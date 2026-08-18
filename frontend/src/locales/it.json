@@ -1881,6 +1881,7 @@
       "emessa_in_ritardo_tooltip": "Emessa in un mese successivo alla competenza",
       "col_commessa": "Commessa",
       "col_cliente": "Cliente",
+      "col_emittente": "Emittente",
       "col_articolo": "Articolo",
       "col_data_attivita": "Data attività",
       "col_valore": "Valore",

@@ -1881,6 +1881,7 @@
       "emessa_in_ritardo_tooltip": "Issued in a month after the accrual month",
       "col_commessa": "Job order",
       "col_cliente": "Customer",
+      "col_emittente": "Issuer",
       "col_articolo": "Item",
       "col_data_attivita": "Activity date",
       "col_valore": "Value",
