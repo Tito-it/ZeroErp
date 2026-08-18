@@ -48,6 +48,7 @@ class PromoArticoliView(DomainAPIView):
     area_funzionale = "vendite"
     model_permission = ("vendite", "promo_articolo")
     is_search_endpoint = True
+    lista_codice = "vendite.promo_articoli"
 
     @extend_schema(
         parameters=[

@@ -1,14 +1,20 @@
 # Brief di design — generalizzare la «partita»: dalla riga d'ordine alla riga di merce
 
 > **Tipo**: brief di design + **piano DB** · **Data**: 2026-08-17 · **Owner**: Tid ·
-> **Stato**: 🟢 **PERIMETRO DB CHIUSO** (2026-08-17) — tutte e otto le slice
-> S0→S7 fatte e **applicate** (9 changeSet, `20260817-06` → `-14`), pgTAP verdi
-> come applicazione, baseline `vendite` senza regressioni.
+> **Stato**: 🟢 **CHIUSO** (2026-08-18) — **tutti e tre i perimetri**: DB
+> (`20260817-06`→`-15`, `20260818-06`, `20260818-20`), backend, frontend.
+> Definizione di fatto **12/12**, validata in-app da Tid su `ORD0018586` e
+> `ORD0018585`. Dettaglio e misure nel **§23**.
 >
-> ✅ **Anche BE e FE sono chiusi dal 2026-08-18 (§23).** Il testo qui sotto è
-> quello del 2026-08-17, quando restavano fuori: le richieste a backend e frontend (§19) e
-> i due cantieri che ora possono partire — **pannello situazione merce** e
-> **nota di credito**.
+> ⛔ **Resta in `work-in-progress/` di proposito** (decisione di Tid, 2026-08-18):
+> la tabella qui sotto è **l'indice della catena**, e due dei quattro cantieri —
+> **nota di credito** e **righe DDT a prezzo zero** — sono ancora da fare.
+> Archiviare l'indice mentre i lavori che indicizza sono aperti è il modo più
+> rapido per perderli. Ragioni per esteso nel §23.4.
+>
+> Il testo che segue è quello del **2026-08-17**, quando il perimetro DB era
+> appena chiuso e BE/FE restavano fuori: si legge come il cantiere è andato, non
+> come sta oggi. Per lo stato di oggi, §23.
 >
 > ⚠️ **Il §8 va letto prima del §10.** L'analisi ha trovato che il conto di oggi
 > è corretto **perché è stretto**: le tre esclusioni (riga d'ordine obbligatoria,
@@ -2245,7 +2251,10 @@ consumatore, non prima. Validato in-app su `ORD0018586` e `ORD0018585`.
 merce che prima non comparivano affatto — non a zero, **assenti** — più nove kit
 che l'esclusione teneva fuori. Oggi si leggono in una riga sul drawer.
 
-### 23.2 🔴 NON chiuso — e non era il residuo che credevamo
+### 23.2 ✅ CHIUSO il 2026-08-18 — ma non era il residuo che credevamo
+
+> Il testo qui sotto resta **com'era posto**, perché il rilievo si legge meglio
+> accanto a com'è stato chiuso. L'esito è in fondo alla sezione.
 
 Il §19.4 elencava *«`fn_ddt_push_diagnosi` non conosce il motivo nuovo»* come una
 lacuna minore. **Il team DB l'ha riqualificata il 2026-08-18, ed è un'altra
@@ -2277,7 +2286,37 @@ divergenza non ci sia. La sua intestazione dice «indipendente dai dati»: vero
 della forma, falso della copertura.
 
 ✅ **CHIUSA dal team DB il 2026-08-18** — `20260818-20`, più il pgTAP spostato.
-⛔ **Scritta, non applicata**: la applica chi ha il DB.
+✅ **E applicata**: `DATABASECHANGELOG` la registra al 2026-08-18 (la riga
+«scritta, non applicata» di questo paragrafo era vera quando è stata scritta ed
+è stata corretta dopo la misura, non prima).
+
+**Verificato dal lato applicativo il 2026-08-18**, sull'oggetto vivo e non sul
+changeSet:
+
+```text
+la diagnosi legge vw_partite_merce ...................... sì
+legge ancora vw_contatore_merce ......... solo in un commento di storia
+greedy `PARTITION BY ord_riga` .......................... sparito
+ramo `NOT COALESCE(a_composito, false)` ................. sparito
+
+equivalenza LIVE, bidirezionale (diagnosi motivo NULL == lister)
+  diagnosi ma non lister .... 0
+  lister ma non diagnosi .... 0        (2 righe eleggibili, coincidono)
+
+pgTAP  test-fn-available-actions-ddt-reason-catch-all-v1 ... 8/8
+       test-ponte-riconsegna-copre-riga-v1 (§23.3) ......... 2/2
+```
+
+⚠️ **E il pgTAP è la rete vera, non l'equivalenza live**: dei tre motivi nuovi
+**nessuno compare nei dati di sviluppo** (i motivi vivi sono
+`DDT_SOLO_TRASPORTO` 17, `DDT_FATTURA_DA_ORDINE` 16, `DDT_RESO` 2,
+`DDT_ROUTED` 2, `DDT_ANNULLATO` 1, `DDT_MERCE_IN_VIAGGIO` 1, più 2 eleggibili).
+È esattamente la ragione per cui il test doveva scendere sotto le fixture: sui
+soli dati vivi sarebbe verde comunque.
+
+⚠️ I due pgTAP li ho fatti girare **come owner**, non come applicazione: in
+questo ambiente manca `~/.pgpass` per `zeroerp_app`. Provano la logica e
+l'equivalenza, **non** il comportamento sotto RLS — quella corsa resta al team DB.
 
 **La diagnosi ora legge la partita**, con gli stessi join del lister (gli `INNER`
 diventano `LEFT` perché la diagnosi deve *spiegare* l'esclusione, non ripeterla).
@@ -2380,7 +2419,20 @@ per quello è più rischio che valore — soprattutto perché l'`ELSE` esistente
 garantisce che nulla si rompa nel frattempo. Slice a sé, con la richiesta FE
 accanto.
 
-### 23.3 Il secondo residuo, con un invariante invece di una dichiarazione
+✅ **E l'`ELSE` regge davvero — verificato dal lato FE, non dedotto.** Il ramo
+di ripiego di `fn_available_actions_ddt` compone
+`'vendite.ddt.push_commessa_reason.' || … ELSE 'non_pushabile'`, e quella chiave
+**esiste** nei locales (accanto a `fattura_da_ordine`, `solo_trasporto`,
+`merce_in_viaggio`, `gia_fatturato`, `gia_inviato`). Quindi oggi il drawer mostra
+una frase vera e generica, non un codice grezzo — e il pezzo FE della slice è
+**una chiave sola**, da aggiungere il giorno in cui il ramo dedicato arriva.
+
+⚠️ Nota di sicurezza sulla catena: anche se quella chiave un giorno mancasse, il
+drawer **non** resterebbe muto — `mapAvailableActionsToDrawerActions` risolve con
+`labelOrCode`, quindi si vedrebbe il codice invece del vuoto. È la stessa scelta
+fail-visible del pannello merce (§21.3).
+
+### 23.3 ✅ Il secondo residuo, con un invariante invece di una dichiarazione
 
 L'assunzione su `fn_genera_ddt_riconsegna` (§19.4): oggi il ponte copre **tutta**
 la riga di ri-consegna, verificato sui 6 ponti esistenti. Se un domani una riga
@@ -2393,7 +2445,9 @@ dichiarazione invecchia da sola e nessuno se ne accorge; un invariante fallisce
 il giorno in cui l'assunzione cade.
 
 ✅ **Scritto il 2026-08-18**: `db/pgtap/vendite/test-ponte-riconsegna-copre-riga-v1.sql`.
-⛔ Non applicato — non ha changeSet, è solo un test da far girare.
+✅ **Fatto girare il 2026-08-18: 2/2.** Non ha changeSet — un pgTAP non si
+applica, si esegue. (Corsa come *owner*: manca `~/.pgpass` per `zeroerp_app` in
+questo ambiente, quindi prova l'invariante ma non la RLS.)
 
 Due asserzioni, e la prima è quella che di solito manca: **la copertura della
 misura**. Se in quel contesto non esiste nessun ponte, il file fa `skip()` con

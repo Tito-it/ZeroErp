@@ -116,6 +116,7 @@ const emit = defineEmits([
   'sort',
   'row-click',
   'config-loaded',
+  'perimetro-bloccato',
   'update:expandedRows',
 ])
 
@@ -141,9 +142,23 @@ const {
 // Stato modale di personalizzazione.
 const modalVisible = ref(false)
 
+// Cancello di perimetro emittente (P-2b). ⚠️ E' il BACKEND a deciderlo:
+// `richiede_scelta_emittente` arriva gia' calcolato nell'envelope, perche' la
+// cardinalita' dello scope la conosce solo lui. Qui non si ricalcola niente —
+// ricalcolarlo sarebbe una seconda sede della stessa verita'.
+const perimetroBloccato = computed(
+  () => config.value?.richiede_scelta_emittente === true,
+)
+
 onMounted(async () => {
   const data = await load()
-  if (data) emit('config-loaded', data)
+  if (data) {
+    emit('config-loaded', data)
+    // Evento a se': il caller che vuole risparmiarsi la fetch dei dati (che il
+    // BE rifiuterebbe comunque con 422) puo' ascoltarlo, senza dover sapere
+    // come si chiama la chiave dentro l'envelope.
+    emit('perimetro-bloccato', data.richiede_scelta_emittente === true)
+  }
 })
 
 // Re-fetch se il codice cambia (caso raro: tab switch dinamico).
@@ -440,7 +455,28 @@ defineExpose({
       </div>
     </Message>
 
+    <!-- Cancello di perimetro emittente (P-2b): la lista non sa dire da quale
+         emittente arriva ogni riga, e chi la sta aprendo ne ha piu' di uno
+         davanti. Si prende il posto della tabella: mostrarla comunque, con un
+         avviso sopra, non toglierebbe l'ambiguita' — le righe resterebbero
+         indistinguibili una dall'altra (P-2c: su una lista l'etichetta non
+         basta, serve la colonna o il blocco).
+         ⚠️ Non e' un errore di permesso e non va vestito da errore: il diritto
+         c'e', manca una scelta che l'utente fa in due secondi dalla combo in
+         alto. Severity `warn`, non `error`. -->
+    <div v-if="perimetroBloccato" class="lista-perimetro-gate">
+      <Message severity="warn" :closable="false">
+        <div class="lista-perimetro-gate__titolo">
+          {{ t('common.perimetro_emittente.titolo') }}
+        </div>
+        <div class="lista-perimetro-gate__testo">
+          {{ t('common.perimetro_emittente.descrizione') }}
+        </div>
+      </Message>
+    </div>
+
     <DataTable
+      v-else
       v-bind="effectivePaginatorOptions"
       :value="rows"
       :loading="loading || configLoading"
@@ -571,6 +607,20 @@ defineExpose({
 </template>
 
 <style scoped>
+/* Gate di perimetro emittente: due righe di testo dentro il Message. */
+.lista-perimetro-gate {
+  padding: var(--app-space-sm, 0.5rem) 0;
+}
+
+.lista-perimetro-gate__titolo {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.lista-perimetro-gate__testo {
+  font-size: 0.9rem;
+}
+
 .lista-configurabile {
   display: flex;
   flex-direction: column;

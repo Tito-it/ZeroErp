@@ -33,6 +33,7 @@ class ClientiView(DomainAPIView):
     area_funzionale = "anagrafiche"
     model_permission = ("anagrafiche", "cliente")
     is_search_endpoint = True
+    lista_codice = "anagrafiche.clienti"
 
     @extend_schema(
         parameters=[
@@ -190,6 +191,7 @@ class ClientiExportView(DomainAPIView):
     area_funzionale = "anagrafiche"
     model_permission = ("anagrafiche", "cliente")
     is_search_endpoint = True
+    lista_codice = "anagrafiche.clienti"
 
     @extend_schema(
         parameters=[

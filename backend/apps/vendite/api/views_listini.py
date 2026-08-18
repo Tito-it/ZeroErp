@@ -173,6 +173,7 @@ _RESOLVER_TEST_REQUEST = inline_serializer(
 class ApiListiniList(DomainAPIView):
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.listini"
 
     @extend_schema(
         parameters=[
@@ -388,6 +389,7 @@ class ApiListinoVersioneClona(DomainAPIView):
 class ApiListinoVersioneRigheList(DomainAPIView):
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.listini_righe"
 
     @extend_schema(
         parameters=[

@@ -44,6 +44,7 @@ class SoggettiView(DomainAPIView):
     area_funzionale = "anagrafiche"
     model_permission = ("anagrafiche", "soggetto")
     is_search_endpoint = True
+    lista_codice = "anagrafiche.soggetti"
 
     @extend_schema(
         parameters=[
@@ -443,6 +444,7 @@ class SoggettiExportView(DomainAPIView):
     area_funzionale = "anagrafiche"
     model_permission = ("anagrafiche", "soggetto")
     is_search_endpoint = True
+    lista_codice = "anagrafiche.soggetti"
 
     @extend_schema(
         parameters=[

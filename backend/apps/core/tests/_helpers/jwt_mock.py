@@ -54,3 +54,28 @@ class JwtMockedApiTest(SimpleTestCase):
         )
         patcher.start()
         self.addCleanup(patcher.stop)
+
+        # Scope emittente dell'utente finto: UN emittente, cioe' l'operatore
+        # configurato — lo scenario normale.
+        #
+        # ⚠️ Serve perche' dal 2026-08-18 `DomainAPIView.initial()` applica il
+        #    cancello di perimetro emittente alle view che dichiarano
+        #    `lista_codice`, e quel cancello interroga il database: senza
+        #    questo mock ogni test API di lista chiederebbe lo scope a un DB
+        #    che in `SimpleTestCase` non c'e'.
+        #
+        # ⭐ Si mocka la RISOLUZIONE DELLO SCOPE, non il guard: cosi' il codice
+        #    del cancello viene eseguito davvero in ogni test API, e se un
+        #    giorno rifiutasse a sproposito i test diventerebbero rossi. Un
+        #    `patch` sul guard lo spegnerebbe e basta — e un presidio spento
+        #    nei test e' un presidio che si scopre rotto in esercizio.
+        #    Chi vuole verificare il cancello ATTIVO (scope multiplo) sovrascrive
+        #    questo mock nel proprio test; il meccanismo ha comunque i suoi in
+        #    `apps/core/tests/api/test_base_view_perimetro_emittente.py`.
+        scope_patcher = patch(
+            "apps.core.services.perimetro_emittente.PermissionResolver"
+            ".get_emittenti_pk_ids",
+            return_value=[1],
+        )
+        scope_patcher.start()
+        self.addCleanup(scope_patcher.stop)

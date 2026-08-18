@@ -25,11 +25,14 @@
 #   8. descrivi_super_admin_senza_scelta_deve_scegliere
 #   9. descrivi_operatore_non_puo_scegliere
 #  10. descrivi_modalita_globale_esplicita
+#  11. descrivi_senza_user_non_dichiara_il_perimetro
+#  12. descrivi_con_scope_multiplo_dichiara_il_perimetro
+#  13. descrivi_con_scope_singolo_dichiara_perimetro_falso
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
 
@@ -142,3 +145,40 @@ class DescriviTests(SimpleTestCase):
         self.assertTrue(d["modalita_globale"])
         self.assertTrue(d["puo_scegliere"])
         self.assertFalse(d["deve_scegliere"])
+
+
+class DescriviPerimetroTests(SimpleTestCase):
+    """La chiave `perimetro_multi_emittente` (P-2c, etichette di perimetro)."""
+
+    _SCOPE = (
+        "apps.core.services.perimetro_emittente.PermissionResolver"
+        ".get_emittenti_pk_ids"
+    )
+
+    # 11. Senza l'oggetto utente la chiave NON compare.
+    #     ⚠️ Non vale `False`: senza utente lo scope non si risolve, e scrivere
+    #     «un solo emittente» a chi magari li ha tutti sarebbe peggio del
+    #     silenzio. E' il caso del POST di cambio emittente, dove per giunta la
+    #     GUC porta ancora la sessione precedente.
+    def test_descrivi_senza_user_non_dichiara_il_perimetro(self) -> None:
+        d = EmittenteAttivoService(_repo(permesso=32)).descrivi(_UTENTE, 32)
+        self.assertNotIn("perimetro_multi_emittente", d)
+
+    # 12. Super admin in «Tutti gli emittenti»: perimetro multiplo -> etichetta.
+    def test_descrivi_con_scope_multiplo_dichiara_il_perimetro(self) -> None:
+        with patch(self._SCOPE, return_value=None):
+            d = EmittenteAttivoService(_repo(preferenza=None)).descrivi(
+                _UTENTE, None, user=MagicMock(id=_UTENTE),
+            )
+        self.assertTrue(d["perimetro_multi_emittente"])
+
+    # 13. Operatore, o super admin che ha scelto: un perimetro solo, niente
+    #     etichetta. ⚠️ E' il caso che dimostra perche' si usa lo scope
+    #     EFFETTIVO (gia' intersecato con l'emittente attivo) e non quello di
+    #     diritto: il super admin che ha scelto sta guardando UN emittente.
+    def test_descrivi_con_scope_singolo_dichiara_perimetro_falso(self) -> None:
+        with patch(self._SCOPE, return_value=[32]):
+            d = EmittenteAttivoService(_repo(permesso=32)).descrivi(
+                _UTENTE, 32, user=MagicMock(id=_UTENTE),
+            )
+        self.assertFalse(d["perimetro_multi_emittente"])

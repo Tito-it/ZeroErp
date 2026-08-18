@@ -78,6 +78,7 @@ class ApiAuditLog(DomainAPIView):
     # l'area core (>= LETTURA).
     area_funzionale = "core"
     is_search_endpoint = True
+    lista_codice = "storico.audit_log"
     throttle_classes = [SearchBurstRateThrottle]
 
     @extend_schema(
@@ -518,6 +519,7 @@ class ApiCodaLavoriList(DomainAPIView):
 
     area_funzionale = "strumenti"
     is_search_endpoint = True
+    lista_codice = "dbops.coda_lavori"
     throttle_classes = [SearchBurstRateThrottle]
 
     @extend_schema(
@@ -552,6 +554,7 @@ class ApiCodaStampaList(DomainAPIView):
 
     area_funzionale = "strumenti"
     is_search_endpoint = True
+    lista_codice = "vendite.fatture_stampa_coda"
     throttle_classes = [SearchBurstRateThrottle]
 
     @extend_schema(

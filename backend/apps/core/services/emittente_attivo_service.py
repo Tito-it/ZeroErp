@@ -26,6 +26,7 @@ from __future__ import annotations
 from typing import Any
 
 from apps.core.db.emittente_attivo_repository import EmittenteAttivoRepository
+from apps.core.services import perimetro_emittente
 from apps.core.services.error_manager import ErrorManager
 
 # Errore di dominio: la scelta non è (più) percorribile per questo utente.
@@ -114,16 +115,56 @@ class EmittenteAttivoService:
     #        distinzione il dialog bloccante ricomparirebbe a ogni caricamento
     #        proprio a chi ha appena deciso di vedere tutto — trasformando una
     #        scelta legittima in un fastidio ricorrente.
-    def descrivi(self, auth_user_id: int, attivo_da_claim: int | None) -> dict[str, Any]:
+    def descrivi(
+        self,
+        auth_user_id: int,
+        attivo_da_claim: int | None,
+        *,
+        user: Any = None,
+    ) -> dict[str, Any]:
         proprio = self._repo.get_emittente_di_permesso(auth_user_id)
+        # ⛔ `puo_scegliere` NON si riscrive sulla cardinalita' dello scope, ed
+        #    e' una correzione PROPOSTA e RITIRATA il 2026-08-18 (BE-5 del
+        #    brief perimetro-emittente). L'obiezione al testo originale era
+        #    giusta — «non ha un emittente proprio» descrive anche l'operatore
+        #    non configurato, a cui l'interfaccia offrirebbe una combo mentre
+        #    il database non gli fa vedere piu' niente — ma il rimedio no:
+        #    `script.fn_get_emittenti_scope_pk_ids` INTERSECA con
+        #    `app.current_emittente_id`, quindi il super admin che ha scelto un
+        #    emittente ha scope di cardinalita' 1. Calcolare `puo_scegliere`
+        #    cosi' gli farebbe SPARIRE la combo dalla topbar appena sceglie,
+        #    cioe' gli impedirebbe di cambiare idea.
+        #    La distinzione che serve e' fra scope DI DIRITTO (quello che
+        #    alimenta le opzioni della combo) e scope EFFETTIVO (gia'
+        #    intersecato): sono due domande diverse, e questa e' la prima.
         puo_scegliere = proprio is None
         mai_scelto = puo_scegliere and self._repo.get_preferenza(auth_user_id) is None
-        return {
+        descrizione: dict[str, Any] = {
             "emittente_fiscale_id": attivo_da_claim,
             "modalita_globale": attivo_da_claim is None,
             "puo_scegliere": puo_scegliere,
             "deve_scegliere": attivo_da_claim is None and mai_scelto,
         }
+        # Perimetro EFFETTIVO della sessione: sta guardando piu' di un
+        # emittente? Alimenta le etichette di perimetro su contatori e ricerca
+        # (P-2c): «Da fatturare: 240.000 € — tutti gli emittenti» e'
+        # informazione completa, mentre lo stesso numero senza etichetta non lo
+        # e'. Chiave additiva.
+        #
+        # ⚠️ E' lo scope EFFETTIVO, cioe' gia' intersecato con l'emittente
+        #    attivo: un super admin che ne ha scelto uno sta guardando UN
+        #    perimetro, e l'etichetta non deve comparire. Da non confondere con
+        #    `puo_scegliere`, che riguarda lo scope DI DIRITTO (vedi sotto).
+        #
+        # ⚠️ `user=None` -> chiave assente invece che `False`: senza l'oggetto
+        #    utente non si puo' risolvere lo scope, e scrivere `False` direbbe
+        #    «un solo emittente» a chi magari li ha tutti. Meglio non dire
+        #    niente che dire una cosa non verificata.
+        if user is not None:
+            descrizione["perimetro_multi_emittente"] = (
+                perimetro_emittente.scope_multi_emittente(user)
+            )
+        return descrizione
 
     # Scopo: Opzioni della combo. Delega diretta: la lista è già filtrata dal
     #        DB sullo scope di diritto, quindi non serve nulla qui sopra.

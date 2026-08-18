@@ -292,6 +292,24 @@ export const useAuthStore = defineStore('auth', () => {
     () => emittenteAttivo.value?.deve_scegliere === true
   )
 
+  // Perimetro EFFETTIVO: sta guardando piu' di un emittente? Alimenta le
+  // etichette di perimetro su contatori e ricerca (P-2c, brief
+  // perimetro-emittente): «Da fatturare: 240.000 € — tutti gli emittenti» e'
+  // informazione completa, lo stesso numero senza etichetta non lo e'.
+  //
+  // ⚠️ Lo DERIVA IL BACKEND (`perimetro_multi_emittente` in /me/): e' l'unico
+  //    che conosce la cardinalita' dello scope. Non si ricalcola qui da
+  //    `isModalitaGlobale`, che e' una cosa diversa: un OPERATORE senza
+  //    emittente attivo e' in modalita' globale ma vede un solo emittente —
+  //    l'etichetta gli direbbe una cosa falsa.
+  //
+  // ⚠️ Chiave assente -> `false`: il POST di cambio emittente non la manda
+  //    (li' descriverebbe la sessione precedente), e in quel momento la
+  //    pagina si sta comunque ricaricando.
+  const perimetroMultiEmittente = computed(
+    () => emittenteAttivo.value?.perimetro_multi_emittente === true
+  )
+
   // Scopo: Domini visibili. Filtri applicati:
   //   - adminOnly: solo SUPER_ADMIN (es. Amm. Software).
   //   - non adminOnly: solo operatori interni (OPERATORE). I portali e lo
@@ -408,6 +426,7 @@ export const useAuthStore = defineStore('auth', () => {
     isAdminGlobale,
     emittenteCorrente,
     emittenteAttivo,
+    perimetroMultiEmittente,
     isModalitaGlobale,
     puoScegliereEmittente,
     deveScegliereEmittente,

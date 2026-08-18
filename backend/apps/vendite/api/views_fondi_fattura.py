@@ -42,6 +42,7 @@ class ApiFondiFatturaDaDecidere(DomainAPIView):
 
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.fondi_fattura_da_decidere"
 
     @extend_schema(
         operation_id="vendite_fondi_fattura_da_decidere",

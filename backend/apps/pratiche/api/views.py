@@ -39,6 +39,7 @@ _get_flusso_verificato = pratiche_service.verifica_flusso_pratica
 class ApiPraticheList(DomainAPIView):
     area_funzionale = "pratiche"
     is_search_endpoint = True
+    lista_codice = "pratiche.pratiche"
 
     @extend_schema(
         parameters=[

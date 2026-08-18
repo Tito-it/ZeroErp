@@ -67,6 +67,7 @@ class ApiResiList(DomainAPIView):
 
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.resi"
 
     @extend_schema(
         operation_id="vendite_resi_list",
@@ -122,6 +123,7 @@ class ApiResiExport(DomainAPIView):
 
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.resi"
 
     @extend_schema(
         operation_id="vendite_resi_export",
@@ -184,6 +186,7 @@ class ApiResiDaAccreditare(DomainAPIView):
 
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.resi_da_accreditare"
 
     @extend_schema(
         operation_id="vendite_resi_da_accreditare",
@@ -235,6 +238,7 @@ class ApiResiDaAccreditareExport(DomainAPIView):
 
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.resi_da_accreditare"
 
     @extend_schema(
         operation_id="vendite_resi_da_accreditare_export",
@@ -296,6 +300,7 @@ class ApiResiDaRiconsegnare(DomainAPIView):
 
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.resi_da_riconsegnare"
 
     @extend_schema(
         operation_id="vendite_resi_da_riconsegnare",
@@ -344,6 +349,7 @@ class ApiResiDaRiconsegnareExport(DomainAPIView):
 
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.resi_da_riconsegnare"
 
     @extend_schema(
         operation_id="vendite_resi_da_riconsegnare_export",
