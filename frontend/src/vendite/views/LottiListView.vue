@@ -88,6 +88,7 @@ const {
   onPage, onSort, paginatorProps, tablePage, reload,
   listaRef, dirty,
   exportDialogVisible, exportLoading, onExportConfirm, onConfigLoaded, pageActions,
+  perimetroBloccato,
 } = useListaConfigurabilePage(store, {
   exportFn: exportLotti,
   getExportParams: (fmt) => {
@@ -257,7 +258,7 @@ const azioniPagina = computed(() =>
         <FatturazioneEsitiPanel :competenza-mese="competenzaParam" />
 
         <div class="app-page-toolbar">
-          <div class="app-page-filters">
+          <div class="app-page-filters" :inert="perimetroBloccato">
             <div class="form-field">
               <label>{{ t('vendite.lotti.filtro_stato') }}</label>
               <Select

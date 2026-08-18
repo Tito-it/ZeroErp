@@ -116,7 +116,6 @@ const emit = defineEmits([
   'sort',
   'row-click',
   'config-loaded',
-  'perimetro-bloccato',
   'update:expandedRows',
 ])
 
@@ -150,23 +149,32 @@ const perimetroBloccato = computed(
   () => config.value?.richiede_scelta_emittente === true,
 )
 
-onMounted(async () => {
+// Scopo: caricare la config e DIRLO al caller. Il secondo pezzo non e'
+//        decorativo: dentro `config-loaded` viaggia anche
+//        `richiede_scelta_emittente`, da cui lo scaffolding di pagina decide
+//        se mostrare la lista o il pannello e se sospendere le fetch.
+// ⚠️ Un solo evento, e non uno dedicato al cancello. C'e' stato anche
+//    `@perimetro-bloccato`, tolto il 2026-08-18: nessuno lo ascoltava e diceva
+//    la stessa cosa che `config-loaded` porta gia' dentro. Chi la legge e'
+//    `useListaConfigurabilePage`, sede unica dello scaffolding di pagina — due
+//    strade per la stessa verita' divergono alla prima modifica.
+async function loadEdEmetti() {
   const data = await load()
-  if (data) {
-    emit('config-loaded', data)
-    // Evento a se': il caller che vuole risparmiarsi la fetch dei dati (che il
-    // BE rifiuterebbe comunque con 422) puo' ascoltarlo, senza dover sapere
-    // come si chiama la chiave dentro l'envelope.
-    emit('perimetro-bloccato', data.richiede_scelta_emittente === true)
-  }
-})
+  if (data) emit('config-loaded', data)
+}
+
+onMounted(loadEdEmetti)
 
 // Re-fetch se il codice cambia (caso raro: tab switch dinamico).
+// ⚠️ Ricaricare SENZA riemettere l'evento era un difetto: il pannello del
+//    cancello si aggiornava (lo calcola questo componente dalla `config`) ma
+//    lo stato di pagina no — restava quello della lista PRECEDENTE, e con
+//    esso la sospensione delle fetch. Chi carica dice sempre cosa ha caricato.
 watch(
   () => props.codice,
   async (newCodice, oldCodice) => {
     if (newCodice && newCodice !== oldCodice) {
-      await load()
+      await loadEdEmetti()
     }
   },
 )

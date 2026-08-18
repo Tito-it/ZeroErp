@@ -33,7 +33,7 @@ const isBlocked = useInjectBlocked()
 const { execute } = useApiHandler()
 const {
   searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
-  listaRef, dirty, onConfigLoaded, pageActions,
+  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
 } = useListaConfigurabilePage(store, {
   newTooltipKey: 'amministrazione.matrice_indirizzi_ruoli.new_row',
   onNew: () => emit('new'),
@@ -135,7 +135,7 @@ onMounted(() => { if (!store.hasSearched) store.fetchList() })
 
     <template v-else>
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <div class="app-page-filters" :inert="perimetroBloccato">
         <InputText v-model="searchText" :placeholder="t('amministrazione.matrice_indirizzi_ruoli.search_placeholder')"
           @keydown.enter="applyFilters" />
         <LookupSelect v-model="tipoRuoloFilter" rel="config.tipi_ruoli"

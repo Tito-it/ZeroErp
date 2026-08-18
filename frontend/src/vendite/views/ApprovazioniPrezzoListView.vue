@@ -56,7 +56,7 @@ async function safeFetch() {
 
 const {
   onPage, onSort, paginatorProps, tablePage,
-  listaRef, dirty, onConfigLoaded, pageActions,
+  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
 } = useListaConfigurabilePage(store, { onReload: safeFetch })
 
 // Primo caricamento al mount. La freshness al rientro tab (KeepAlive) —
@@ -206,7 +206,7 @@ function buildRowActions(data) {
 <template>
   <div class="app-page">
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <div class="app-page-filters" :inert="perimetroBloccato">
         <h2 style="margin: 0;">{{ t('vendite.approvazioni_prezzo.page_title') }}</h2>
         <small class="text-color-secondary">{{ t('vendite.approvazioni_prezzo.page_description') }}</small>
       </div>

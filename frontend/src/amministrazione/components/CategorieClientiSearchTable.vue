@@ -30,7 +30,7 @@ const isBlocked = useInjectBlocked()
 
 const {
   searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
-  listaRef, dirty, onConfigLoaded, pageActions,
+  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
 } = useListaConfigurabilePage(store, {
   newTooltipKey: 'amministrazione.categorie_clienti.new',
   onNew: () => emit('new'),
@@ -65,7 +65,7 @@ onMounted(() => store.fetchList())
 
     <template v-else>
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <div class="app-page-filters" :inert="perimetroBloccato">
         <InputText
           v-model="searchText"
           :placeholder="t('amministrazione.categorie_clienti.search_placeholder')"

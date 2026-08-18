@@ -33,7 +33,7 @@ const { t } = useI18n()
 const store = useEmittentiFiscaliStore()
 const {
   searchText, applyFilters, paginatorProps, onPage, onSort, tablePage,
-  listaRef, dirty, onConfigLoaded, pageActions,
+  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
 } = useListaConfigurabilePage(store, {
   newTooltipKey: 'amministrazione.emittenti_fiscali.new',
   onNew: () => openCreate(),
@@ -101,7 +101,7 @@ function buildRowActions(data) {
 
     <template v-else>
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <div class="app-page-filters" :inert="perimetroBloccato">
         <InputText
           v-model="searchText"
           :placeholder="t('amministrazione.emittenti_fiscali.search_placeholder')"

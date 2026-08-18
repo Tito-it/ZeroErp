@@ -63,7 +63,7 @@ async function load() {
 
 const {
   onPage, onSort, paginatorProps, tablePage,
-  listaRef, dirty, onConfigLoaded, pageActions,
+  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
 } = useListaConfigurabilePage(store, { onReload: load })
 
 // Cambio filtro toolbar: si riparte da pagina 1.
@@ -165,6 +165,7 @@ function onRowClick(data) {
       :stato-options="statoOptions"
       :ambito-options="ambitoOptions"
       :page-actions="pageActions"
+      :filtri-inerti="perimetroBloccato"
       @change="onFilterChange"
     >
       <template #actions-suffix>

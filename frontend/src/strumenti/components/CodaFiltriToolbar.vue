@@ -21,6 +21,11 @@ defineProps({
   statoOptions: { type: Array, required: true },
   ambitoOptions: { type: Array, required: true },
   pageActions: { type: Array, required: true },
+  // Cancello di perimetro emittente (P-2b): filtrare una lista che il backend
+  // rifiutera' comunque non porta da nessuna parte. `inert` e non `disabled`
+  // sui singoli campi: rende il sottoalbero non cliccabile E non raggiungibile
+  // da tastiera o screen reader, che e' quello che serve qui.
+  filtriInerti: { type: Boolean, default: false },
 })
 defineEmits(['change'])
 const { t } = useI18n()
@@ -28,7 +33,7 @@ const { t } = useI18n()
 
 <template>
   <div class="app-page-toolbar">
-    <div class="app-page-filters">
+    <div class="app-page-filters" :inert="filtriInerti">
       <div class="form-field">
         <label>{{ t('strumenti.code.filtro_stato') }}</label>
         <Select

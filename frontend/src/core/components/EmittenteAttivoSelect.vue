@@ -116,17 +116,6 @@ function onCambio(nuovoValore) {
       @update:model-value="onCambio"
     />
 
-    <!-- Modalità globale: si vede tutto e non si crea nulla. L'avviso sta
-         QUI, accanto alla causa, e non dentro i drawer: il vincolo nasce
-         dalla scelta in topbar, ed è lì che va spiegato. Il rifiuto vero
-         resta del DB (`*_EMITTENTE_NON_RISOLTO`), i cui messaggi sono stati
-         riscritti per rimandare a questa combo. -->
-    <i
-      v-if="auth.isModalitaGlobale"
-      v-tooltip.bottom="t('core.emittente_attivo.globale_sola_lettura')"
-      class="pi pi-eye topbar-emittente-globale"
-      :aria-label="t('core.emittente_attivo.globale_sola_lettura')"
-    ></i>
   </template>
 </template>
 
@@ -139,13 +128,5 @@ function onCambio(nuovoValore) {
   background: transparent;
   border-color: var(--app-topbar-border, transparent);
   font-weight: 600;
-}
-
-/* Segnale di modalità globale: informativo, non allarmante — vedere tutto
-   è una scelta legittima, non un errore. */
-.topbar-emittente-globale {
-  margin-left: 0.4rem;
-  color: var(--app-color-info, var(--p-primary-color));
-  cursor: help;
 }
 </style>
