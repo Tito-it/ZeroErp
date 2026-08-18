@@ -5,7 +5,8 @@
 -- Test: funzioni scope emittente e flag SUPER_ADMIN
 --       script.fn_is_super_admin (sostituisce fn_get_ruolo_sistema
 --         droppata in Fase 7 cleanup 2026-04-29),
---       script.fn_get_emittenti_scope,
+--       script.fn_get_emittenti_scope  [DISMESSA 2026-08-18: il test 9 ora
+--         verifica che NON esista piu'],
 --       script.fn_check_user_emittente_scope
 --
 -- Migrazione Fase 7 Chunk A (2026-04-29):
@@ -31,12 +32,12 @@
 --  5) fn_is_super_admin: utente inesistente → false (fail-closed)
 --  6) fn_check_user_emittente_scope: NULL user → true (batch)
 --  7) fn_check_user_emittente_scope: ADMIN → true qualunque emittente
---  8) fn_check_user_emittente_scope: OPERATIVO senza whitelist → true
---  9) fn_get_emittenti_scope: senza whitelist → NULL
+--  8) fn_check_user_emittente_scope: OPERATIVO senza whitelist → false (P-2a)
+--  9) legacy fn_get_emittenti_scope: DISMESSA (asserzione girata di segno)
 -- 10) Aggiunta whitelist per emittente_1
 -- 11) fn_check_user_emittente_scope: emittente_1 in whitelist → true
 -- 12) fn_check_user_emittente_scope: emittente_2 non in whitelist → false
--- 13) fn_get_emittenti_scope: con whitelist → array contenente emittente_1
+-- 13) fn_get_emittenti_scope_pk_ids (erede guarded): con whitelist → array contenente emittente_1
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -193,16 +194,21 @@ SELECT is(
 );
 
 -- ============================================================
--- 3. fn_get_emittenti_scope — senza whitelist
+-- 3. fn_get_emittenti_scope — DISMESSA
 -- ============================================================
 
--- 9) Senza whitelist → NULL
-SELECT is(
-    script.fn_get_emittenti_scope(
-        (SELECT user_id FROM tmp_refs_scope)
-    ),
-    NULL::bigint[],
-    '9) fn_get_emittenti_scope: senza whitelist → NULL'
+-- 9) ⛔ L'asserzione non e' stata CANCELLATA: e' stata GIRATA DI SEGNO, ed e'
+--    il modo giusto di ritirare una funzione.
+--    Diceva «senza whitelist → NULL», cioe' «un utente senza abilitazioni
+--    vede tutti gli emittenti»: era il fail-open che P-2a ha chiuso ovunque il
+--    2026-08-18. La legacy non e' mai stata allineata perche' non la chiamava
+--    piu' nessuno — e per questo e' stata dismessa (changeSet 20260818-66).
+--    Da qui in avanti il test dice che la funzione NON C'E' PIU': chi la
+--    ricreasse troverebbe questa riga rossa. Cancellarlo avrebbe tolto il
+--    presidio insieme al difetto.
+SELECT hasnt_function(
+    'script', 'fn_get_emittenti_scope', ARRAY['integer'],
+    '9) legacy fn_get_emittenti_scope: DISMESSA (era il fail-open «senza whitelist → tutti»)'
 );
 
 -- ============================================================
@@ -242,14 +248,18 @@ SELECT is(
     '12) fn_check_user_emittente_scope: emittente NON in whitelist → false'
 );
 
--- 13) fn_get_emittenti_scope: array contenente emittente_1
+-- 13) La COPERTURA non si perde con la funzione: la stessa domanda — «la
+--     whitelist finisce nello scope?» — si fa all'erede guarded
+--     fn_get_emittenti_scope_pk_ids, che risponde in PK emittente come la
+--     legacy. Il test 9 presidia che la vecchia non torni; questo continua a
+--     verificare il comportamento.
 SELECT ok(
     (SELECT emittente_id_1 FROM tmp_emittenti) = ANY(
-        script.fn_get_emittenti_scope(
+        script.fn_get_emittenti_scope_pk_ids(
             (SELECT user_id FROM tmp_refs_scope)
         )
     ),
-    '13) fn_get_emittenti_scope: con whitelist → array contiene emittente_1'
+    '13) fn_get_emittenti_scope_pk_ids (erede guarded): con whitelist → array contiene emittente_1'
 );
 
 SELECT * FROM finish();

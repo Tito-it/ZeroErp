@@ -111,4 +111,33 @@ ORDER BY valore_totale DESC NULLS LAST;
 
 ---
 
+
+---
+
+### 🆕 `emittente_ragione_sociale` *(R-4, 18-08-2026)*
+
+Il nome dell'emittente arriva in coda alla proiezione.
+
+⭐ **La JOIN è scritta una volta sola.** I sei resolver di ramo portano tutti
+`emittente_soggetto_ruolo_id`: la union viene avvolta e il nome si risolve
+all'esterno. Aggiungere la colonna ai sei rami avrebbe dato lo stesso risultato
+al prezzo di sei modifiche e di sei occasioni di divergere.
+
+⚠️ **Le due lenti NON ereditano la colonna.**
+[vw_dash_aperto_documenti](vw_dash_aperto_documenti.md) e
+[vw_dash_backlog_documenti](vw_dash_backlog_documenti.md) hanno proiezione a
+colonne **esplicite**, e sono loro che il backend legge. «Eredita» è vero del
+*dato* — nasce qui — ma falso della *proiezione*: va ri-elencata. Fermarsi a
+questa vista avrebbe prodotto migrazione verde, catalogo verde e colonna vuota a
+video, senza nessun errore a spiegarlo.
+
+⚠️ **Il flag `multi_emittente` della lista NON si accende insieme alla colonna.**
+Si guadagna dopo, quando la colonna mostra un nome su dati veri (brief
+perimetro-emittente §7, decisione 3). Il controllo automatico
+`dbops.vw_liste_multi_emittente_non_certificate` deve restare a zero righe.
+
+* Test: `db/pgtap/vendite/test-viste-dash-emittente-v1.sql`.
+
+---
+
 {% include-markdown "signature-core.md" %}

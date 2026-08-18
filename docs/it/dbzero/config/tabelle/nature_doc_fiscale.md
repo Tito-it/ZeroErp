@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/nature_doc_fiscale.md" %}
 # 📚 Tabella `nature_doc_fiscale`
 
 > 📝 **Descrizione**

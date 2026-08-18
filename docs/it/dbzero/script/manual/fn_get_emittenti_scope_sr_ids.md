@@ -59,8 +59,8 @@ Ritorna `bigint[]`:
 
 | Caso                           | Ritorno          | Effetto sul WHERE      |
 | ------------------------------ | ---------------- | ---------------------- |
-| ADMIN                          | `NULL`           | Nessun filtro          |
-| OPERATIVO senza whitelist      | `NULL`           | Nessun filtro          |
+| ADMIN (super admin)            | `NULL`           | Nessun filtro          |
+| OPERATIVO senza whitelist      | `'{}'::bigint[]` | Nessun match → 0 righe |
 | OPERATIVO con whitelist [A, B] | `{srA, srB}`     | `= ANY(array)`         |
 | DISABILITATO / senza bridge    | `'{}'::bigint[]` | Nessun match → 0 righe |
 

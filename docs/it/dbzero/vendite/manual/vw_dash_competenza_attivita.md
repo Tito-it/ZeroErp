@@ -133,4 +133,37 @@ che l'operatore legge come «non lo so» invece che come «manca il dato di
 catalogo». `codice` è `NOT NULL` ed è la forma leggibile del mutabile: è il
 ripiego giusto.
 
+
+---
+
+### 🆕 `emittente_ragione_sociale` *(R-4, 18-08-2026)*
+
+Il nome dell'emittente **della commessa** arriva in coda alla proiezione.
+
+⭐ **Il drill-down commesse può metterla nel `GROUP BY` in sicurezza**, e non è
+una misura sui dati: nella vista quella colonna è `co.emittente_soggetto_ruolo_id`
+dove `co` è `vendite.commesse`, e `commessa_id` è la sua **chiave primaria**.
+L'emittente è un campo *della commessa*: una commessa ne ha uno solo per lo
+stesso motivo per cui ha un solo codice, e non può avere attività di emittenti
+diversi perché l'emittente non sta sull'attività. Non è una proprietà dei dati
+che possa cambiare domani.
+
+⚠️ **La colonna nel `GROUP BY` serve comunque.** PostgreSQL deduce da sé la
+dipendenza funzionale quando si raggruppa per la chiave primaria di una
+*tabella*, ma qui si raggruppa su una colonna di **vista**: la deduzione non
+scatta. È innocua, non superflua.
+
+⚠️ **Due catene distinte sulle stesse tabelle**: `sr`/`s` sono il **cliente**
+(via billing account), `sr_ef`/`s_ef` l'**emittente**. Scambiarle non darebbe
+nessun errore — solo un nome sbagliato a video.
+
+⚠️ **Il flag `multi_emittente` della lista NON si accende insieme alla colonna.**
+Si guadagna dopo, quando la colonna mostra un nome su dati veri (brief
+perimetro-emittente §7, decisione 3). Il controllo automatico
+`dbops.vw_liste_multi_emittente_non_certificate` deve restare a zero righe.
+
+* Test: `db/pgtap/vendite/test-viste-dash-emittente-v1.sql`.
+
+---
+
 {% include-markdown "signature-core.md" %}

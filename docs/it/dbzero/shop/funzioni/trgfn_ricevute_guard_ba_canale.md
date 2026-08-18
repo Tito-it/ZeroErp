@@ -56,11 +56,14 @@ BEGIN
                 'canale_ba', COALESCE(v_ba_canale::text, 'NULL')
             ),
             NULL::uuid,
-            format(
-                'Ricevuta shop %s: il billing_account collegato ha canale_origine %s, atteso SHOP.',
-                NEW.id,
-                COALESCE(v_ba_canale::text, 'NULL')
-            )
+            -- ⚠️ ARITA' (2026-08-18): la frase composta qui dentro era la
+            --   COPIA ESATTA del messaggio a catalogo, passata come valore
+            --   unico a un template che ha due segnaposto -> 22023.
+            --   Si vede bene, in questo punto, perche' comporre nel plpgsql sia
+            --   sbagliato in se': la frase era scritta due volte, e la copia nel
+            --   codice non sarebbe stata traducibile.
+            NEW.id::text,
+            COALESCE(v_ba_canale::text, 'NULL')
         );
     END IF;
 

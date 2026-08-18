@@ -51,4 +51,28 @@ ORDER BY data_evento DESC;
 
 ---
 
+
+---
+
+### 🆕 `emittente_ragione_sociale` *(R-4, 18-08-2026)*
+
+Il nome dell'emittente arriva in coda alla proiezione. La union dei due rami
+(`TASK_ERRORE` dal **lotto**, `FATTURA_CRITICA` dalla **fattura**) viene avvolta
+in una CTE e il nome si risolve una volta all'esterno: entrambi i rami portano
+già la chiave, quindi non c'è niente da normalizzare — solo da leggere.
+
+⚠️ **Il filtro di scope NON è stato accorpato fuori dalla union**, e non è una
+svista: i due rami filtrano su **sorgenti diverse** (l'emittente del lotto e
+quello della fattura), e unificarli significherebbe sceglierne una. Il filtro
+sta dove sta la ragione.
+
+⚠️ **Il flag `multi_emittente` della lista NON si accende insieme alla colonna.**
+Si guadagna dopo, quando la colonna mostra un nome su dati veri (brief
+perimetro-emittente §7, decisione 3). Il controllo automatico
+`dbops.vw_liste_multi_emittente_non_certificate` deve restare a zero righe.
+
+* Test: `db/pgtap/vendite/test-viste-dash-emittente-v1.sql`.
+
+---
+
 {% include-markdown "signature-core.md" %}

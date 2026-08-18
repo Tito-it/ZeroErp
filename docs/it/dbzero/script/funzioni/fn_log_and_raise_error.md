@@ -73,8 +73,56 @@ BEGIN
      LIMIT 1;
 
     -- 4) Format placeholder con VARIADIC values, se presenti.
+    --
+    -- ⭐ IL RIPIEGO, 18-08-2026 — e perche' la funzione GEMELLA ce l'aveva
+    --    gia'. `format()` con MENO valori dei segnaposto non degrada: alza
+    --    `22023`. E lo alzava DA QUI, cioe' PRIMA del RAISE del punto 5:
+    --    l'errore di dominio non veniva mai sollevato. Niente `P0001`, niente
+    --    codice sul canale `CONSTRAINT`, niente campo sul canale `COLUMN`.
+    --    Il guard che aveva chiamato bloccava lo stesso — il dato restava
+    --    integro, ed e' il motivo per cui non se n'era accorto nessuno — ma il
+    --    backend perdeva il codice su cui decide 409/404/403 e l'operatore
+    --    leggeva un errore interno al posto della frase scritta per lui.
+    --
+    --    ⚠️ L'argomento decisivo non e' teorico: `script.fn_log_error_only`,
+    --    che questa funzione chiama al punto 1 CON GLI STESSI ARGOMENTI, quel
+    --    ripiego ce l'ha da sempre (`BEGIN ... EXCEPTION WHEN OTHERS THEN
+    --    NULL`). Quindi davanti allo stesso disallineamento le due funzioni
+    --    gemelle si comportavano in modo opposto: il log sopravviveva, l'errore
+    --    no. Non era una scelta, era un'asimmetria.
+    --
+    --    ⚠️ CHE COSA *NON* FA. Non ripara il messaggio e non nasconde niente:
+    --    degrada al caso «segnaposto non sostituito», che e' brutto da leggere
+    --    ma conserva il codice. La funzione che serve a RIPORTARE un errore non
+    --    puo' essere quella che lo distrugge.
+    --
+    --    ⚠️ E non diventa silenzioso: si scrive `W_MESSAGGIO_ARITA` nel log.
+    --    E' un `W_` e resta un `W_` — si LOGGA, non si solleva mai (controllo
+    --    (E) di scripts/sql/guardrail_codice_errore_strutturato.sql).
+    --    Il presidio vero resta pero' quello STATICO, che vede il difetto
+    --    prima che scatti: test 5 di
+    --    db/pgtap/script/test-catalogo-messaggi-errore-completo.sql.
+    --    Brief: docs/it/dev/work-in-progress/brief-db-segnaposti-messaggi-errore.md
     IF array_length(p_valori, 1) IS NOT NULL THEN
-        v_msg := format(v_msg, VARIADIC p_valori);
+        BEGIN
+            v_msg := format(v_msg, VARIADIC p_valori);
+        EXCEPTION WHEN OTHERS THEN
+            -- v_msg resta il template: l'assegnazione e' fallita, quindi non
+            -- l'ha toccato. Si prosegue al punto 5 e l'eccezione di dominio
+            -- parte comunque, col suo codice.
+            PERFORM script.fn_log_error_only(
+                p_area,
+                p_function_name,
+                'W_MESSAGGIO_ARITA',
+                coalesce(p_context, '{}'::jsonb) || jsonb_build_object(
+                    'codice_atteso',  p_error_code,
+                    'valori_passati', coalesce(array_length(p_valori, 1), 0),
+                    'errore_format',  SQLERRM
+                ),
+                p_tx_id,
+                VARIADIC ARRAY[]::text[]
+            );
+        END;
     END IF;
 
     -- 4-bis) Il NOME DEL CAMPO da correggere, se chi solleva
@@ -169,7 +217,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_log_and_raise_error(p_area text, p_function_name text, p_error_code text, p_context jsonb, p_tx_id uuid, VARIADIC p_valori text[])
-IS 'Logga e poi solleva exception con messaggio custom. Post 23-04-2026: causa/soluzione con fallback lingua=''it'' se la lingua richiesta (myapp.user_language) non ha riga per il codice. Messaggio delegato a fn_get_messaggio (gia'' context-aware). Post 05-08-2026: il CODICE di dominio esce nel campo strutturato CONSTRAINT dell''eccezione — contratto «P0001 + CONSTRAINT valorizzato = errore di dominio». Post 08-08-2026: esce anche il NOME DEL CAMPO da correggere, nel canale COLUMN, letto da p_context->>''campo'' e, in ripiego, da p_context->>''parametro'' col prefisso p_ tolto (convenzione gia'' in uso in 225 punti su 111 funzioni: copre 217 dei 380 punti evidenziabili senza toccarne nessuno) — contratto gemello «P0001 + COLUMN valorizzato = il campo che l''operatore deve correggere». Passa dal context e NON da un parametro nuovo perche'' la firma finisce con VARIADIC: un parametro dopo di essa e'' rifiutato, uno prima si mangerebbe in silenzio il primo valore di 973 chiamate. Si legge solo ''campo'' e mai ''valore'', e solo se sembra un identificatore. Unica sede autorizzata a scrivere CONSTRAINT e COLUMN (presidio: scripts/sql/guardrail_codice_errore_strutturato.sql, controlli A ed F). Il codice NON compare nel messaggio: quello e'' per l''utente.';
+IS 'Logga e poi solleva exception con messaggio custom. Post 23-04-2026: causa/soluzione con fallback lingua=''it'' se la lingua richiesta (myapp.user_language) non ha riga per il codice. Messaggio delegato a fn_get_messaggio (gia'' context-aware). Post 05-08-2026: il CODICE di dominio esce nel campo strutturato CONSTRAINT dell''eccezione — contratto «P0001 + CONSTRAINT valorizzato = errore di dominio». Post 08-08-2026: esce anche il NOME DEL CAMPO da correggere, nel canale COLUMN, letto da p_context->>''campo'' e, in ripiego, da p_context->>''parametro'' col prefisso p_ tolto (convenzione gia'' in uso in 225 punti su 111 funzioni: copre 217 dei 380 punti evidenziabili senza toccarne nessuno) — contratto gemello «P0001 + COLUMN valorizzato = il campo che l''operatore deve correggere». Passa dal context e NON da un parametro nuovo perche'' la firma finisce con VARIADIC: un parametro dopo di essa e'' rifiutato, uno prima si mangerebbe in silenzio il primo valore di 973 chiamate. Si legge solo ''campo'' e mai ''valore'', e solo se sembra un identificatore. Unica sede autorizzata a scrivere CONSTRAINT e COLUMN (presidio: scripts/sql/guardrail_codice_errore_strutturato.sql, controlli A ed F). Il codice NON compare nel messaggio: quello e'' per l''utente. Post 18-08-2026: la format() del punto 4 e'' avvolta in un BEGIN/EXCEPTION. Con meno valori dei segnaposto alzava 22023 DA DENTRO questa funzione, quindi il RAISE di dominio non veniva mai eseguito e il contratto P0001+CONSTRAINT saltava; ora ripiega sul messaggio non composto (il codice si conserva) e scrive W_MESSAGGIO_ARITA nel log. La funzione gemella fn_log_error_only aveva gia'' lo stesso ripiego: l''asimmetria fra le due era il difetto. Il presidio statico e'' il test 5 di db/pgtap/script/test-catalogo-messaggi-errore-completo.sql.';
 ```
 
 ---

@@ -476,3 +476,8 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 476,42,ba_codice_fatturazione,Codice BA,,ba_codice_fatturazione,informazione,string,,,80,left,,,t,t,t,f,f,t,2026-08-17 00:00:00,mctit,vendite.dashboard_competenza.col_ba_codice_fatturazione,40
 477,42,id_fiscale,Id fiscale,,id_fiscale,informazione,string,,,90,left,,,t,t,t,f,f,t,2026-08-17 00:00:00,mctit,vendite.dashboard_competenza.col_id_fiscale,35
 478,42,emittente_fiscale,Emittente,Ragione sociale dell emittente fiscale,emittente_ragione_sociale,informazione,string,,,100,left,,,t,t,t,f,f,t,2026-08-18 00:00:00,mctit,vendite.dashboard_competenza.col_emittente,30
+479,39,emittente_fiscale,Emittente,Ragione sociale dell emittente fiscale,emittente_ragione_sociale,informazione,string,,,100,left,,,t,t,t,f,f,t,2026-08-18 00:00:00,mctit,vendite.situazione_aperta.col_emittente,30
+480,40,emittente_fiscale,Emittente,Ragione sociale dell emittente fiscale,emittente_ragione_sociale,informazione,string,,,110,left,,,t,t,t,f,f,t,2026-08-18 00:00:00,mctit,vendite.dashboard_backlog.col_emittente,30
+481,41,emittente_fiscale,Emittente,Ragione sociale dell emittente fiscale,emittente_ragione_sociale,informazione,string,,,100,left,,,t,t,t,f,f,t,2026-08-18 00:00:00,mctit,vendite.dashboard_competenza.col_emittente,30
+482,43,emittente_fiscale,Emittente,Ragione sociale dell emittente fiscale,emittente_ragione_sociale,informazione,string,,,100,left,,,t,t,t,f,f,t,2026-08-18 00:00:00,mctit,vendite.dashboard_competenza.col_emittente,30
+483,12,emittente_fiscale,Emittente,Ragione sociale dell emittente fiscale del lotto,emittente_ragione_sociale,informazione,string,,180,65,left,Classificazione,2,t,t,t,f,f,t,2026-08-18 00:00:00,mctit,vendite.lotti.col_emittente,30

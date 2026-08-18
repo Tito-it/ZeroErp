@@ -1,0 +1,8 @@
+id,schema_name,table_name,utility_column,soggetto_ruolo_column,enabled,exec_mode,trigger_name
+3,anagrafiche,clienti,utility_id,soggetto_ruolo_id,f,AUTO,NULL
+4,anagrafiche,emittenti_fiscali_utilities,utility_id,emittente_soggetto_ruolo_id,t,AUTO,NULL
+5,anagrafiche,bank_branches,utility_id,soggetto_ruolo_id,f,AUTO,NULL
+7,anagrafiche,fornitori,utility_id,soggetto_ruolo_id,f,AUTO,NULL
+8,anagrafiche,reseller,utility_id,soggetto_ruolo_id,f,AUTO,NULL
+9,anagrafiche,vettori,utility_id,soggetto_ruolo_id,f,AUTO,NULL
+11,anagrafiche,categorie_clienti_listini,utility_id,emittente_soggetto_ruolo_id,t,AUTO,NULL

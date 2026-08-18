@@ -1,0 +1,138 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R-5 (brief perimetro-emittente Fase E) — il mattone che mancava.
+#
+# ⭐ LA DOMANDA CHE RISPONDE: «quale emittente fattura questo billing account?»
+#
+# Fino a oggi quella domanda esisteva solo in forma di RISPOSTA SI'/NO, dentro
+# script.fn_check_ba_visible_for_emittenti («questo BA e' visibile per questi
+# emittenti?»). Va benissimo per filtrare, ma R-5 non deve filtrare: deve
+# MOSTRARE il nome. Con la sola forma booleana l'unico modo di ottenere il nome
+# sarebbe ri-scrivere la logica a due livelli una seconda volta — cioe' avere
+# due definizioni della stessa regola, destinate a divergere alla prima
+# modifica.
+#
+# Quindi la regola si estrae qui, una volta, e il check delegherà a questa
+# (changeSet 20260818-59): stessa risposta, una sola definizione.
+#
+# ⚠️ LA REGOLA E' A DUE LIVELLI, ed e' quella gia' in vigore — non si cambia
+#    niente, si sposta soltanto:
+#      1) mapping specifico: la riga di emittenti_fiscali_billing_account su
+#         QUEL billing account. E' al massimo una (uq_emittenti_fiscali_ba);
+#      2) fallback default: se il BA non ha nessun mapping, vale l'emittente
+#         marcato is_default = true. Anche quello e' al massimo uno
+#         (uq_emittenti_fiscali_ba_default, indice parziale).
+#    Sono i due indici UNIVOCI a rendere la funzione ben definita: senza di
+#    loro «l'emittente del BA» non sarebbe nemmeno un singolare.
+#
+# ⚠️ NON risale l'albero dei billing account, ed e' voluto: e' esattamente il
+#    comportamento di fn_check_ba_visible_for_emittenti di oggi. Un figlio senza
+#    mapping proprio NON eredita quello del padre — ricade sul default globale.
+#    Cambiarlo qui sarebbe un cambio di semantica mascherato da refactor. Se un
+#    giorno si decide che l'albero eredita, si decide una volta e si cambia
+#    QUESTA funzione: da oggi c'e' un posto solo dove farlo. Il presidio
+#    dell'omogeneita' dell'albero e' un'altra cosa e vive altrove
+#    (anagrafiche.fn_guard_albero_ba_emittente, P-1).
+#
+# ⚠️ STABLE PARALLEL SAFE, e la seconda meta' non e' decorativa: la chiamante
+#    fn_check_ba_visible_for_emittenti e' PARALLEL SAFE e viene invocata dentro
+#    la query dinamica di fn_search_soggetti_universale. Se questa fosse UNSAFE
+#    la marcatura della chiamante diventerebbe una dichiarazione falsa al
+#    planner. Legge solo tabelle, nessuna GUC: SAFE e' vero.
+#
+# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-fase-e-e-ricerca.md
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260818-58-create-fn-get-ba-emittente-sr-id-mctit.yaml
+
+  - changeSet:
+      id: 20260818-58-create-fn-get-ba-emittente-sr-id
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        R-5: estrae in una funzione sola la regola «quale emittente fattura
+        questo billing account» — mapping specifico su
+        emittenti_fiscali_billing_account, altrimenti fallback sull'emittente
+        is_default. Finora la regola esisteva solo in forma booleana dentro
+        fn_check_ba_visible_for_emittenti: per MOSTRARE il nome (R-5) sarebbe
+        servito riscriverla, cioe' duplicarla. Non risale l'albero dei BA: e'
+        la semantica gia' in vigore, spostata e non cambiata. Brief Fase E, R-5.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: anagrafiche
+              tableName: emittenti_fiscali_billing_account
+          - tableExists:
+              schemaName: anagrafiche
+              tableName: billing_account
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_ba_emittente_sr_id(
+                p_billing_account_id anagrafiche.billing_account.id%TYPE
+              )
+               RETURNS anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE
+               LANGUAGE sql
+               STABLE PARALLEL SAFE
+              AS $function$
+                  -- ⚠️ Il CASE esterno non e' ridondante. Senza, un BA NULL
+                  --   cadrebbe nel ramo 2 e si vedrebbe rispondere l'emittente
+                  --   di default — cioe' «nessun billing account» verrebbe
+                  --   letto come «billing account non ancora mappato», che e'
+                  --   una cosa diversa e apre invece di chiudere.
+                  SELECT CASE
+                           WHEN p_billing_account_id IS NULL THEN NULL
+                           ELSE COALESCE(
+                                  -- 1) Mapping specifico del BA. Al massimo una
+                                  --    riga: uq_emittenti_fiscali_ba.
+                                  (SELECT efba.emittente_soggetto_ruolo_id
+                                     FROM anagrafiche.emittenti_fiscali_billing_account efba
+                                    WHERE efba.billing_account_id = p_billing_account_id),
+                                  -- 2) Fallback: l'emittente di default copre i
+                                  --    BA non ancora mappati. Al massimo uno:
+                                  --    uq_emittenti_fiscali_ba_default.
+                                  --    Il COALESCE fa da solo il «solo se non
+                                  --    c'e' mapping»: se il ramo 1 ha risposto,
+                                  --    il ramo 2 non viene nemmeno valutato.
+                                  (SELECT efba_d.emittente_soggetto_ruolo_id
+                                     FROM anagrafiche.emittenti_fiscali_billing_account efba_d
+                                    WHERE efba_d.is_default)
+                                )
+                         END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_ba_emittente_sr_id(bigint) IS
+                  'Risolve «quale emittente fattura questo billing account» e restituisce il '
+                  'soggetto_ruolo_id dell''emittente, oppure NULL se non e'' risolvibile. '
+                  'Regola a due livelli, quella gia'' in vigore: 1) mapping specifico in '
+                  'anagrafiche.emittenti_fiscali_billing_account sul BA (al massimo uno, '
+                  'uq_emittenti_fiscali_ba); 2) se il BA non ha mapping, l''emittente '
+                  'is_default = true (al massimo uno, uq_emittenti_fiscali_ba_default). Sono i '
+                  'due indici univoci a rendere «l''emittente del BA» un singolare. '
+                  '⭐ Estratta il 2026-08-18 (R-5, brief perimetro-emittente Fase E) perche'' '
+                  'la regola esisteva solo in forma booleana dentro '
+                  'fn_check_ba_visible_for_emittenti: per MOSTRARE il nome dell''emittente '
+                  'nella riga della ricerca universale sarebbe servito riscriverla. Ora il '
+                  'check delega a questa e la definizione e'' una sola. '
+                  '⚠️ NON risale l''albero dei billing account: un figlio senza mapping NON '
+                  'eredita quello del padre, ricade sul default globale. E'' il comportamento '
+                  'preesistente, spostato e non cambiato; l''omogeneita'' dell''albero e'' '
+                  'presidiata altrove (anagrafiche.fn_guard_albero_ba_emittente, P-1). '
+                  '⚠️ NON applica lo scope dell''utente: dice chi fattura, non chi puo'' '
+                  'vedere. Il filtro di perimetro e'' del chiamante.';
+      rollback:
+        - sql:
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_ba_emittente_sr_id(bigint);

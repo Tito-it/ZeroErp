@@ -42,11 +42,16 @@ BEGIN
                 'new_canale', NEW.canale_origine
             ),
             NULL::uuid,
-            format(
-                'Modifica canale_origine vietata su %s.%s (%s -> %s)',
-                TG_TABLE_SCHEMA, TG_TABLE_NAME,
-                OLD.canale_origine, NEW.canale_origine
-            )
+            -- ⚠️ ARITA' (2026-08-18): qui c'era una frase gia' composta con
+            --   format(), passata come valore UNICO. Il messaggio a catalogo
+            --   («Canale origine su %s.%s: ...») di segnaposto ne ha DUE, quindi
+            --   format(messaggio, VARIADIC ARRAY[una_frase]) alzava 22023 al
+            --   posto del P0001 di dominio.
+            --   I due canali (vecchio e nuovo) non spariscono: erano gia' nel
+            --   context qui sopra, sotto 'old_canale' e 'new_canale', ed e' li'
+            --   che devono stare — il messaggio dice all'operatore COSA non puo'
+            --   fare, il context dice al log cos'e' successo.
+            TG_TABLE_SCHEMA, TG_TABLE_NAME
         );
     END IF;
 

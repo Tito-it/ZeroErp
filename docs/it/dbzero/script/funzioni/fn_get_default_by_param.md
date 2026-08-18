@@ -62,7 +62,19 @@ BEGIN
         'valore',    v_param_val
       ),
       NULL::uuid,
-      p_table_schema, p_table_name
+      -- ⚠️ ARITA' (2026-08-18): passava 2 valori a un messaggio che ne chiede 3
+      --   («la tabella %s parametro %s non ha valori per %s»), e format() alzava
+      --   22023 al posto del P0001. Allineato al SECONDO punto di sollevamento
+      --   di questa stessa funzione (piu' sotto), che era gia' corretto: due
+      --   rami che sollevano lo stesso codice devono passare gli stessi valori,
+      --   o il messaggio funziona da uno solo dei due.
+      --   ⚠️ Resta un difetto di MERITO, non toccato qui: questo ramo scatta
+      --   quando la tabella non ha CHIAVE PRIMARIA, mentre il messaggio dice
+      --   «non ha valori per». E' materia del quarto lato
+      --   (scripts/sql/check_messaggio_vs_condizione.sql), non dell'arita'.
+      p_table_schema||'.'||p_table_name,
+      p_param_code,
+      v_param_val
     );
   END IF;
 
@@ -90,7 +102,7 @@ BEGIN
         p_param_code,
         v_param_val    
     );
-  
+
   END IF;
 
   RETURN v_lookup_id;

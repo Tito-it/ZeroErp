@@ -88,6 +88,7 @@
 - [transizioni_stati_commessa](manual/transizioni_stati_commessa.md) — (rev 2026-06-07) `vendite.transizioni_stati_commessa` definisce la **matrice delle transizioni ammesse** tra gli stati della commessa. Pattern identico a `config.transizioni_stati_ordini` / `config.transizioni_stati_preventivi`, ma collocato in schema `vendite` perché lì vive la tabella stati di riferimento `vendite.stati_commessa` (a differenza di preventivi/ordini, i cui stati sono in `config.stati_doc_*`).
 
 ## ⚙️ Funzioni (manuale)
+- [fn_accredita_riga_reso](manual/fn_accredita_riga_reso.md) — (rev 2026-08-18)
 - [fn_aggiungi_onere_commessa](manual/fn_aggiungi_onere_commessa.md) — (rev 2026-07-23)
 - [fn_annulla_commessa_attivita](manual/fn_annulla_commessa_attivita.md) — (rev 2026-07-28)
 - [fn_annulla_lotto_da_draft](manual/fn_annulla_lotto_da_draft.md) — (latest review 03-08-2026)   La funzione **`vendite.fn_annulla_lotto_da_draft()`** effettua il **rollback tecnico** di un lotto in stato **DRAFT**, eliminando i documenti generati dal draft, ripristinando le righe di `attivita_fatturabili` e **chiudendo** il lotto portandolo ad **ANNULLATA**.
@@ -174,6 +175,7 @@
 - [fn_ordine_riga_componenti_init](manual/fn_ordine_riga_componenti_init.md)
 - [fn_ordine_riga_componenti_preview](manual/fn_ordine_riga_componenti_preview.md)
 - [fn_ordine_riga_qta_riconsegna](manual/fn_ordine_riga_qta_riconsegna.md) — (rev 2026-07-26)
+- [fn_popola_fatture_rettifiche](manual/fn_popola_fatture_rettifiche.md) — (rev 2026-08-18)
 - [fn_prepare_sdi_payload](manual/fn_prepare_sdi_payload.md) — (latest review 16-02-2026)   Preparare il payload SDI di un lotto:
 - [fn_preventivo_ha_residuo_commessa](manual/fn_preventivo_ha_residuo_commessa.md) — `TRUE` se il **push commessa avrebbe effetto** sul preventivo: esistono righe eleggibili (vista predicato unico) **e** la testata e' completa. E' la meta' "servizi" della coppia simmetrica di capability del modello split-per-natura.
 - [fn_preventivo_ha_residuo_ordine](manual/fn_preventivo_ha_residuo_ordine.md) — `TRUE` se il preventivo ha righe natura **ORDINE** (merce) non ancora allocate a un ordine: il push ordine avrebbe effetto. E' la meta' "merce" della coppia simmetrica di capability del modello split-per-natura (brief-preventivi-ordini.md D6/D8).
@@ -182,7 +184,9 @@
 - [fn_push_offerta_a_contratto](manual/fn_push_offerta_a_contratto.md) — (rev6 2026-06-08 — guard **mutua esclusività** offerta→contratto/ordine; rev5 2026-06-01 — trasporto 1:1 stato approvazione prezzo anche sulle **righe**; rev4 2026-05-31 — successione contratti su overlap; rev3 2026-05-26 — copia `offerte_commerciali_eccezioni_componenti` → `contratti_righe_componenti`)
 - [fn_push_preventivo_a_ordine](manual/fn_push_preventivo_a_ordine.md) — (latest review 08-07-2026)
 - [fn_reset_fondi_fattura](manual/fn_reset_fondi_fattura.md) — (latest review 15-08-2026)
+- [fn_resi_riga_accreditato_partita](manual/fn_resi_riga_accreditato_partita.md) — (rev 2026-08-18)
 - [fn_resi_riga_residuo_riconsegna](manual/fn_resi_riga_residuo_riconsegna.md) — (rev 2026-07-26)
+- [fn_resi_riga_tetti_accredito](manual/fn_resi_riga_tetti_accredito.md) — (rev 2026-08-18)
 - [fn_resolve_fatturazione_pipeline_step](manual/fn_resolve_fatturazione_pipeline_step.md) — (latest review 08-02-2026)   La funzione risolve la configurazione pipeline per un singolo step (`stato_doc_fiscale_id`) applicando fallback su `utility_id` e `tipo_doc_fiscale_id`.
 - [fn_resolve_lotto_task_execution_mode](manual/fn_resolve_lotto_task_execution_mode.md) — Determina in modo deterministico la modalita` di esecuzione del task: `RUN`, `SKIP`, `RESUME`, `RESET_REQUIRED`.
 - [fn_resolve_lotto_utility_emittente](manual/fn_resolve_lotto_utility_emittente.md) — (latest review 22-02-2026) Helper condiviso per risolvere e validare `utility_id` ed `emittente_soggetto_ruolo_id` nei flussi lotto (`fatturazione_lotti` e `attivita_fatturabili_lotti`).
@@ -282,6 +286,7 @@
 - [trgfn_preventivi_righe_componenti_guard_pending](manual/trgfn_preventivi_righe_componenti_guard_pending.md) — - **Decisione L3 sul componente esatto** — quando un componente ha un prezzo out-of-policy in attesa di approvazione, l'approvatore L3 deve decidere sulla riga esatta che è stata proposta. Cambi a prezzo, quantita' o articolo durante la fase di approvazione renderebbero la decisione ambigua. - **Coerenza con il guard L3 esistente** — `trgfn_preventivi_guard_transizione_approvazione` blocca la transizione ad ACCETTATO se qualsiasi componente è PENDING. Insieme garantiscono che nessuna decisione commerciale avvenga con prezzi incerti sui componenti BoM CASO A. - **Pattern denylist difensivo** — elenco esplicito dei campi struttura: se `preventivi_righe_componenti` viene estesa con nuove colonne struttura, il trigger va aggiornato.
 - [trgfn_preventivi_righe_ricalcola_totali](manual/trgfn_preventivi_righe_ricalcola_totali.md) — (latest review 03-04-2026) `vendite.trgfn_preventivi_righe_ricalcola_totali()` e' la trigger function **STATEMENT-level** che mantiene i totali testata preventivo sempre coerenti con le righe. Invoca `vendite.fn_ricalcola_totali_preventivo()` **una sola volta per ogni preventivo_id coinvolto**, anche in caso di operazioni bulk (es. copia righe in revisione).
 - [trgfn_promo_articoli_guard_data_driven](manual/trgfn_promo_articoli_guard_data_driven.md) — (latest review 27-04-2026)
+- [trgfn_resi_accrediti_guard](manual/trgfn_resi_accrediti_guard.md) — (rev 2026-08-18)
 - [trgfn_resi_gen_numero](manual/trgfn_resi_gen_numero.md) — (rev 2026-07-13)
 - [trgfn_resi_guard_ddt_consegnato](manual/trgfn_resi_guard_ddt_consegnato.md) — (rev 2026-07-13)
 - [trgfn_resi_guard_emittente_ba](manual/trgfn_resi_guard_emittente_ba.md) — (rev 2026-07-13)

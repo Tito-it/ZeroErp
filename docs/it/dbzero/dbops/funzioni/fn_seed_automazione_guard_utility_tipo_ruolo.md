@@ -16,6 +16,7 @@ DECLARE
   v_schemas text[];
   rtab record;
   v_soggetto_ruolo_col text;
+  v_non_a_catalogo text[] := ARRAY[]::text[];
 BEGIN
   v_schemas := dbops.fn_resolve_scope(p_schemas);
 
@@ -70,34 +71,58 @@ BEGIN
       CONTINUE;
     END IF;
 
-    INSERT INTO dbops.automazione_guard_utility_tipo_ruolo (
-      schema_name,
-      table_name,
-      utility_column,
-      soggetto_ruolo_column,
-      enabled,
-      exec_mode,
-      meta
-    )
-    VALUES (
-      rtab.schema_name,
-      rtab.table_name,
-      'utility_id',
-      v_soggetto_ruolo_col,
-      true,
-      'AUTO',
-      jsonb_build_object(
-        'seed', 'auto_detect_fk_soggetti_ruoli',
-        'seeded_at', now()
-      )
-    )
-    ON CONFLICT (schema_name, table_name) DO NOTHING;
+    -- ⭐ QUI NON SI SCRIVE PIU' — 18-08-2026.
+    --
+    --   La configurazione di questa automazione e' un MIRROR DEL CSV
+    --   `80_data/sql/dbops/automazione_guard_utility_tipo_ruolo.csv`, come per
+    --   tutte le altre `automazione_*` di dbops. Decisione di Tid: i seed
+    --   girano da CSV, e un misto di script SQL e CSV sulla stessa tabella non
+    --   regge — sono due sorgenti di verita' che divergono fra sviluppo e CI,
+    --   perche' il mirror e' `runOnChange` e ri-legge a ogni migrate mentre chi
+    --   scrive da codice gira quando gira.
+    --
+    --   ⚠️ Il danno che ha fatto scrivere da qui non e' teorico. L'INSERT
+    --   chiudeva con `ON CONFLICT (schema_name, table_name) DO NOTHING`: una
+    --   riga scritta una volta non si raddrizzava mai piu'. La configurazione
+    --   e' rimasta ferma al 2026-02-16 mentre lo schema andava avanti, e al
+    --   2026-08-18 **4 righe su 7 descrivevano tabelle che nel frattempo
+    --   avevano perso `utility_id` o erano state rinominate**. Rilevare dallo
+    --   schema e' utile; rilevare dallo schema e *scrivere* significa che la
+    --   configurazione racconta lo schema del giorno in cui l'ha vista.
+    --
+    --   Resta la meta' utile: la funzione dice cosa vede e non lo mette in
+    --   tabella. Chi legge la diagnosi decide se aggiungere la riga al CSV —
+    --   e' l'opt-in esplicito, la stessa forma di `dbops.fk_index_policy`.
+    IF NOT EXISTS (
+      SELECT 1
+        FROM dbops.automazione_guard_utility_tipo_ruolo a
+       WHERE a.schema_name = rtab.schema_name
+         AND a.table_name  = rtab.table_name
+    ) THEN
+      v_non_a_catalogo := v_non_a_catalogo
+        || (rtab.schema_name || '.' || rtab.table_name
+            || ' (' || v_soggetto_ruolo_col || ')');
+    END IF;
   END LOOP;
+
+  -- ⚠️ Un NOTICE e non un errore: una tabella nuova che qualifica non e' un
+  --   guasto, e' una decisione da prendere. Farla fallire bloccherebbe il
+  --   `ci_apply` per una cosa che non e' rotta.
+  --   ⚠️ Ed e' anche il limite di questa forma, detto: un NOTICE in mezzo
+  --   all'output del `ci_apply` si legge se lo si va a cercare. La sede giusta
+  --   sarebbe una vista di diagnosi accanto alle altre di `dbops`; qui si e'
+  --   scelto di non aggiungerne una per non allargare il perimetro.
+  IF array_length(v_non_a_catalogo, 1) IS NOT NULL THEN
+    RAISE NOTICE
+      'dbops.fn_seed_automazione_guard_utility_tipo_ruolo: % tabelle qualificano ma non sono nel CSV di configurazione: %. Se vanno protette, aggiungerle a 80_data/sql/dbops/automazione_guard_utility_tipo_ruolo.csv.',
+      array_length(v_non_a_catalogo, 1),
+      array_to_string(v_non_a_catalogo, ', ');
+  END IF;
 END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_seed_automazione_guard_utility_tipo_ruolo(p_schemas text[])
-IS 'Popola dbops.automazione_guard_utility_tipo_ruolo autodetectando tabelle con utility_id + colonna ruolo (FK diretta o naming *_soggetto_ruolo_id).';
+IS 'Popola dbops.automazione_guard_utility_tipo_ruolo autodetectando tabelle con utility_id + colonna ruolo (FK diretta o naming *_soggetto_ruolo_id). Post 18-08-2026: NON SCRIVE PIU''. La configurazione e'' un mirror del CSV 80_data/sql/dbops/automazione_guard_utility_tipo_ruolo.csv, come le altre automazione_* di dbops; questa funzione rileva soltanto e segnala con un NOTICE le tabelle che qualificano ma non sono a catalogo. Scriveva con ON CONFLICT DO NOTHING, quindi una riga scritta una volta non si raddrizzava piu'' e la configurazione e'' rimasta ferma al 2026-02-16 mentre lo schema andava avanti: al 2026-08-18, 4 righe su 7 descrivevano tabelle che avevano perso utility_id o erano state rinominate.';
 ```
 
 ---

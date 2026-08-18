@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/fn_get_natura_doc_fiscale_id.md" %}
 # ⚙️ Funzione `fn_get_natura_doc_fiscale_id`
 
 ```sql

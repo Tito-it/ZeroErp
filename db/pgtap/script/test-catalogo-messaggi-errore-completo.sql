@@ -31,7 +31,7 @@
 --    proxy sul numero di segnaposto puo' dire quanti valori passa un
 --    chiamante. Con quel test verde, il 2026-08-18 il catalogo aveva 2 punti
 --    del primo tipo e 8 del secondo.
---    Brief: docs/it/dev/work-in-progress/brief-db-segnaposti-messaggi-errore.md
+--    Brief: docs/it/dev/work-done/brief-db-segnaposti-messaggi-errore.md
 --
 -- PERCHE' LEGGE IL DATABASE E NON I FILE. Il gemello lato BE analizza l'AST
 -- del codice Python; qui la fonte e' pg_proc.prosrc, cioe' la funzione VIVA.

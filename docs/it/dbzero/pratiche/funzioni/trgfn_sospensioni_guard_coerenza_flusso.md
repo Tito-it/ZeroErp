@@ -34,7 +34,11 @@ BEGIN
                 'pratica_id', NEW.pratica_id
             ),
             NULL::uuid,
-            concat('Il flusso ', NEW.flusso_id, ' non appartiene alla pratica ', NEW.pratica_id)
+            -- ⚠️ ARITA' (2026-08-18): il concat() ricostruiva parola per parola
+            --   la stessa frase che sta a catalogo («Il flusso %s non appartiene
+            --   alla pratica %s») e la passava come valore unico: due segnaposto,
+            --   un valore, format() alzava 22023.
+            NEW.flusso_id::text, NEW.pratica_id::text
         );
     END IF;
 

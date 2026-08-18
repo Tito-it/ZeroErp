@@ -13,8 +13,9 @@
 -- 7) Blocco tipo PSP senza soggetto_ruolo_id
 -- 8) Esiste soggetto_ruolo non-PSP candidabile
 -- 9) Blocco tipo PSP con soggetto_ruolo_id non-PSP
--- 10) Blocco tipo PSP con ruolo PSP non censito in anagrafiche.psp
--- 11) Cleanup completato
+-- 10) Esiste un soggetto di natura ammessa per PSP e senza riga anagrafiche.psp
+-- 11) Blocco tipo PSP con ruolo PSP non censito in anagrafiche.psp
+-- 12) Cleanup completato
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -34,7 +35,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(11);
+SELECT plan(12);
 
 -- ============================================================
 -- 0) Costanti e cleanup idempotente
@@ -123,10 +124,36 @@ SELECT is(
 -- ============================================================
 -- 4) Soggetto candidabile (senza PSP anagrafico)
 -- ============================================================
+-- 🔴 NATURA AMMESSA, aggiunto il 2026-08-18.
+--   `anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa` esige che la natura
+--   del soggetto sia fra quelle che `config.tipi_ruoli_nature_ammesse` prevede
+--   per il ruolo: per PSP e' la sola `PG`. Le due fixture di questo file
+--   sceglievano invece «il primo soggetto senza riga PSP», e non e' la stessa
+--   cosa — la selezione non conteneva la condizione che rende il caso
+--   significativo.
+--   ⚠️ Il test 4 passava **per fortuna** (il primo soggetto per id e' una PG);
+--   la selezione del test 10, che chiede il primo soggetto DIVERSO da quello,
+--   pescava una persona fisica e il guard uccideva il file — 2 asserzioni su 11
+--   rosse, e le altre eseguite solo perche' il rosso arrivava in fondo.
+--   La condizione si legge dalla MATRICE, non si scrive 'PG' a mano: se un
+--   domani PSP ammettera' anche altro, la fixture segue senza essere toccata.
+CREATE TEMP TABLE tmp_nature_psp AS
+SELECT m.tipo_soggetto_id
+FROM config.tipi_ruoli_nature_ammesse m
+JOIN config.tipi_ruoli tr
+  ON tr.id = m.tipo_ruolo_id
+ AND tr.codice_interno = 'PSP'
+WHERE m.attivo IS TRUE
+  AND (m.valido_dal IS NULL OR m.valido_dal <= current_date)
+  AND (m.valido_al  IS NULL OR m.valido_al  >= current_date);
+
 CREATE TEMP TABLE tmp_soggetto_ok AS
 SELECT s.id AS soggetto_id
 FROM anagrafiche.soggetti s
-WHERE NOT EXISTS (
+JOIN config.tipi_soggetto_dettaglio tsd
+  ON tsd.id = s.tipo_soggetto_dettaglio_id
+WHERE tsd.tipo_soggetto_id IN (SELECT tipo_soggetto_id FROM tmp_nature_psp)
+  AND NOT EXISTS (
   SELECT 1
   FROM anagrafiche.soggetti_ruoli sr
   JOIN config.tipi_ruoli tr
@@ -304,10 +331,17 @@ SELECT throws_ok(
 -- ============================================================
 -- 10) Blocco PSP con ruolo PSP non censito in anagrafiche.psp
 -- ============================================================
+-- 🔴 Stessa correzione del test 4: il soggetto dev'essere di una natura che
+--   PSP ammette, altrimenti la `fn_get_or_create_soggetto_ruolo` qui sotto
+--   sbatte nel guard e il file muore prima di arrivare all'asserzione.
+--   E' questo il punto in cui il rosso scattava.
 CREATE TEMP TABLE tmp_soggetto_no_psp_row AS
 SELECT s.id AS soggetto_id
 FROM anagrafiche.soggetti s
+JOIN config.tipi_soggetto_dettaglio tsd
+  ON tsd.id = s.tipo_soggetto_dettaglio_id
 WHERE s.id <> (SELECT soggetto_id FROM tmp_soggetto_ok)
+  AND tsd.tipo_soggetto_id IN (SELECT tipo_soggetto_id FROM tmp_nature_psp)
   AND NOT EXISTS (
     SELECT 1
     FROM anagrafiche.soggetti_ruoli sr
@@ -320,6 +354,17 @@ WHERE s.id <> (SELECT soggetto_id FROM tmp_soggetto_ok)
   )
 ORDER BY s.id
 LIMIT 1;
+
+-- ⚠️ La fixture non verificava di aver trovato qualcosa. Se la selezione fosse
+--   tornata vuota, la `fn_get_or_create_soggetto_ruolo` qui sotto riceverebbe
+--   `NULL` e alzerebbe un errore SUO, che il `throws_ok` del test 10 —
+--   aspettandosi un generico `P0001` — accetterebbe come se il guard avesse
+--   fatto il suo lavoro: verde per la ragione sbagliata.
+SELECT is(
+  (SELECT count(*)::int FROM tmp_soggetto_no_psp_row),
+  1,
+  'Esiste un soggetto di natura ammessa per PSP e senza riga anagrafiche.psp'
+);
 
 CREATE TEMP TABLE tmp_ruolo_psp_senza_riga AS
 SELECT script.fn_get_or_create_soggetto_ruolo(

@@ -15,6 +15,7 @@
 - [fn_change_user_emittenti_scope](manual/fn_change_user_emittenti_scope.md)
 - [fn_check_almeno_un_super_admin_attivo](manual/fn_check_almeno_un_super_admin_attivo.md) — (latest review 19-04-2026)
 - [fn_check_azione_processo](manual/fn_check_azione_processo.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
+- [fn_check_ba_visible_for_emittenti](manual/fn_check_ba_visible_for_emittenti.md) — (latest review 18-08-26) Un billing account è visibile per un insieme di emittenti autorizzati? Dal 18-08-2026 delega la regola a due livelli a `fn_get_ba_emittente_sr_id`.
 - [fn_check_blocco_login](manual/fn_check_blocco_login.md)
 - [fn_check_ddt_emittibile](manual/fn_check_ddt_emittibile.md) — (creata 2026-07-19 — brief-db-guard-righe-avanzamento-stato §1a-bis Rev 2)
 - [fn_check_fattura_eliminabile_da_lotto](manual/fn_check_fattura_eliminabile_da_lotto.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono di togliere una fattura da un lotto**. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando la fattura si può togliere.
@@ -33,13 +34,13 @@
 - [fn_current_identita_context](manual/fn_current_identita_context.md) — (latest review 19-04-2026)
 - [fn_ensure_logconn](manual/fn_ensure_logconn.md) — * **Stabilire una connessione persistente** a un database remoto o a se stesso attraverso l’estensione `dblink`, evitando overhead di creazione/removal di connessioni multiple. * **Supporto al logging remoto**: utilizzata da funzioni come `script.fn_log_error_only` per eseguire INSERT in un contesto transazionale separato.
 - [fn_generate_codice](manual/fn_generate_codice.md) — (latest review 04-02-26) * **Generazione di codici configurabili**   Costruisce un codice concatenando un **prefisso**, un **separatore** e una **parte numerica** formattata, letti da **`config.sistema_codici`** in base al `codice_interno` passato in input.
+- [fn_get_ba_emittente_sr_id](manual/fn_get_ba_emittente_sr_id.md) — (latest review 18-08-26) Quale emittente fattura questo billing account? Mapping specifico, altrimenti l'emittente di default. Un posto solo per la regola.
 - [fn_get_billing_account_by_istanza](manual/fn_get_billing_account_by_istanza.md)
 - [fn_get_catasto_source_by_istanza](manual/fn_get_catasto_source_by_istanza.md) — La funzione **`script.fn_get_catasto_source_by_istanza(p_istanza_utilities_id)`** recupera il record catastale **"sorgente"** da utilizzare come base per una **clonazione** in caso di **subentro**.
 - [fn_get_contatti](manual/fn_get_contatti.md) — (latest review 25-03-26) * **Selezione univoca per tipo**   Per ogni `tipo_contatto_id` vengono restituiti **al più** un record, che rappresenta il contatto “migliore” in base al contesto richiesto.
 - [fn_get_contatto_default](manual/fn_get_contatto_default.md) — (latest review 25-03-26) La funzione **`script.fn_get_contatto_default`** restituisce **il contatto “di default”** per un determinato **soggetto** e, opzionalmente, per un determinato:
 - [fn_get_conto_bancario_predefinito](manual/fn_get_conto_bancario_predefinito.md) — (latest review 25-03-26)
 - [fn_get_default_by_param](manual/fn_get_default_by_param.md) — (latest update 21-12-25) Recuperare in modo dinamico un valore (tipicamente una **PK**) da una tabella qualsiasi, basandosi su un **codice parametro**.
-- [fn_get_emittenti_scope](manual/fn_get_emittenti_scope.md) — (latest review 08-03-2026) La funzione **`script.fn_get_emittenti_scope`** restituisce l'array di ID emittenti fiscali autorizzati per un utente, letti dalla whitelist `config.user_emittenti_fiscali`.
 - [fn_get_emittenti_scope_pk_ids](manual/fn_get_emittenti_scope_pk_ids.md)
 - [fn_get_emittenti_scope_sr_effettivo](manual/fn_get_emittenti_scope_sr_effettivo.md) — (latest review 18-08-26)
 - [fn_get_emittenti_scope_sr_ids](manual/fn_get_emittenti_scope_sr_ids.md) — (latest review 02-05-2026 — wrapper su `_pk_ids`)

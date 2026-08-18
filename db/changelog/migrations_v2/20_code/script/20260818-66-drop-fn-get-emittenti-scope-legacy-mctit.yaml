@@ -1,0 +1,101 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Dismissione della legacy script.fn_get_emittenti_scope(integer).
+#
+# ⭐ COS'ERA E PERCHE' VA VIA. Rispondeva alla domanda «quali emittenti puo'
+#    vedere questo utente?» leggendo la whitelist config.user_emittenti_fiscali,
+#    e per un utente SENZA righe rispondeva NULL — che nella convenzione a tre
+#    stati significa «tutti». Era il fail-OPEN: nessuna abilitazione = accesso
+#    universale.
+#
+#    Il 2026-08-18 (P-2a) quel comportamento e' stato ribaltato su tutta la
+#    famiglia guarded: nessuna riga = '{}' = nessun accesso. La legacy NON e'
+#    stata toccata, perche' non la chiamava piu' nessuno.
+#
+# ⚠️ NON E' UN DIFETTO VIVO. E' UN ATTREZZO CARICO, che e' peggio.
+#    Verificato: zero chiamanti fra funzioni DB, zero viste, zero policy RLS;
+#    nel backend compare solo in due COMMENTI storici
+#    (apps/core/db/parameter_repository.py, apps/core/services/permissions_resolver.py),
+#    ricablati sulla famiglia guarded il 2026-06-02 (commit 4201c0f75, chiusura
+#    B5 di analisi-attivazione-rls-db.md, dove la dismissione era gia' indicata
+#    come possibile).
+#
+#    Il rischio non e' che qualcuno la chiami oggi: e' che domani qualcuno cerchi
+#    «gli emittenti di un utente», trovi una funzione dal nome perfetto, e la
+#    usi. Riaprirebbe il buco in un punto NUOVO — e in fail-open, cioe' senza
+#    nessun sintomo: piu' dati del dovuto non danno errore.
+#
+# ⚠️ IL PRESIDIO CONTRO LA RESURREZIONE STA NEI pgTAP, non qui. I due file che
+#    la esercitavano non perdono le asserzioni: le CAMBIANO di segno, da «senza
+#    whitelist -> NULL» a «la funzione non esiste piu'»
+#    (db/pgtap/script/test-permessi-fn-check-emittente-scope.sql,
+#     db/pgtap/script/test-permessi-funzioni-risoluzione.sql). Il conteggio del
+#    plan resta identico, e chi la ricreasse troverebbe due test rossi.
+#
+# ⚠️ NESSUN ROLLBACK che la ricrei. Ricrearla significherebbe rimettere in piedi
+#    il fail-open: e' la definizione di rollback sbagliato.
+#
+# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260818-66-drop-fn-get-emittenti-scope-legacy-mctit.yaml
+
+  - changeSet:
+      id: 20260818-66-drop-fn-get-emittenti-scope-legacy
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        Dismette la legacy script.fn_get_emittenti_scope(integer): rispondeva
+        NULL (= «tutti gli emittenti») per un utente senza whitelist, cioe' il
+        fail-open che P-2a ha chiuso ovunque il 2026-08-18. Zero chiamanti
+        verificati (funzioni, viste, policy RLS, backend: solo commenti
+        storici, ricablati il 2026-06-02 con 4201c0f75). Non e' un difetto
+        vivo, e' un attrezzo carico: chi cercasse «gli emittenti di un utente»
+        troverebbe il nome giusto e riaprirebbe il buco in un punto nuovo,
+        senza sintomi. Il presidio anti-resurrezione sta nei due pgTAP che la
+        esercitavano, con le asserzioni girate di segno.
+      # ⛔ NESSUNA preCondition, e la prima stesura ne aveva una: era un errore, e
+      #    di quelli che si pagano una volta sola ma cari.
+      #
+      #    C'era `onFail: MARK_RAN` + un sqlCheck «la funzione esiste». L'idea
+      #    era rendere il changeSet ripetibile. L'effetto reale e' l'opposto: se
+      #    per qualunque ragione lo sqlCheck non trova la funzione — un
+      #    `pg_get_function_identity_arguments` che formatta diversamente, un
+      #    search_path, una corsa su un database dove non c'e' — Liquibase la
+      #    marca ESEGUITA senza aver droppato niente. E da quel momento non ci
+      #    torna piu': l'id e' in DATABASECHANGELOG, `runOnChange: false`. La
+      #    funzione resterebbe viva per sempre con il changeSet che giura di
+      #    averla tolta.
+      #
+      #    L'idempotenza la da' gia' `DROP FUNCTION IF EXISTS`, che non ha
+      #    bisogno di nessuno che gli dica se l'oggetto c'e'.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Niente CASCADE, ed e' una scelta. Se qualcosa dipendesse da
+              --   questa funzione il DROP deve FALLIRE e farcelo sapere: un
+              --   CASCADE porterebbe via l'oggetto dipendente in silenzio, che
+              --   e' esattamente il modo in cui si perde una vista senza
+              --   accorgersene.
+              DROP FUNCTION IF EXISTS script.fn_get_emittenti_scope(integer);
+      rollback:
+        - sql:
+            sql: |
+              -- ⛔ Nessun rollback. Ricreare questa funzione significa
+              -- rimettere in servizio il fail-open che P-2a ha chiuso: un
+              -- utente senza whitelist tornerebbe a «vedere tutti gli
+              -- emittenti». Se un giorno servisse davvero una funzione che
+              -- risponde a quella domanda, si scrive nuova, guarded e
+              -- fail-closed — non si resuscita questa.
+              SELECT 1;
