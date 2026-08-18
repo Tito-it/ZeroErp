@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Associazione tipo documento fiscale -&gt; registro di fatturazione.
+> Mapping (tipo documento fiscale, natura del documento) -&gt; (registro di numerazione, serie). Risolto da vendite.fn_get_registro_id, che applica un fallback a quattro livelli su utility ed emittente. rev 2026-08-18 (brief-design-note-credito-resi N2): la natura e' entrata nella chiave, e la UNIQUE con lei — senza, mappare fattura e nota di credito sullo STESSO registro con due serie diverse sarebbe stato vietato da un vincolo che non sapeva della natura.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -17,20 +17,23 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| natura_doc_id | bigint | NO | config.fn_get_natura_doc_fiscale_id('FATTURA'::character varying) |
+| serie | character varying | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| FOREIGN KEY | fk_tipi_doc_fiscale_registri_natura_doc | natura_doc_id |
 | FOREIGN KEY | fk_tipi_doc_fiscale_registri_registro | registro_id |
 | FOREIGN KEY | fk_tipi_doc_fiscale_registri_tipo_doc | tipo_doc_fiscale_id |
 | PRIMARY KEY | pk_tipi_doc_fiscale_registri | id |
-| UNIQUE | uq_tipi_doc_fiscale_registri_tipo_doc_registro | tipo_doc_fiscale_id, registro_id |
+| UNIQUE | uq_tipi_doc_fiscale_registri_tipo_doc_natura_registro | tipo_doc_fiscale_id, natura_doc_id, registro_id |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | pk_tipi_doc_fiscale_registri | `CREATE UNIQUE INDEX pk_tipi_doc_fiscale_registri ON vendite.tipi_doc_fiscale_registri USING btree (id)` |
-| uq_tipi_doc_fiscale_registri_tipo_doc_registro | `CREATE UNIQUE INDEX uq_tipi_doc_fiscale_registri_tipo_doc_registro ON vendite.tipi_doc_fiscale_registri USING btree (tipo_doc_fiscale_id, registro_id)` |
+| uq_tipi_doc_fiscale_registri_tipo_doc_natura_registro | `CREATE UNIQUE INDEX uq_tipi_doc_fiscale_registri_tipo_doc_natura_registro ON vendite.tipi_doc_fiscale_registri USING btree (tipo_doc_fiscale_id, natura_doc_id, registro_id)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

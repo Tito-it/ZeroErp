@@ -34,6 +34,8 @@ DECLARE
     v_arr_prec    vendite.fatture.arrotondamento_precedente%TYPE;
     v_arr_att     vendite.fatture.arrotondamento_attuale%TYPE;
     v_motivi      TEXT[] := ARRAY[]::TEXT[];
+    -- D-K condizione 7: la natura del documento, per chiave naturale.
+    v_natura_cod  config.nature_doc_fiscale.codice_interno%TYPE;
 BEGIN
     -- Guard: parametro obbligatorio
     IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
@@ -103,11 +105,13 @@ BEGIN
            (SELECT count(*)::int             FROM vendite.fatture_scadenze s WHERE s.fattura_id = p_fattura_id),
            (SELECT COALESCE(sum(s.importo), 0)    FROM vendite.fatture_scadenze s WHERE s.fattura_id = p_fattura_id),
            COALESCE(vendite.fn_get_totale_fondi_fattura(p_fattura_id), 0),
-           f.arrotondamento_precedente, f.arrotondamento_attuale
+           f.arrotondamento_precedente, f.arrotondamento_attuale,
+           nd.codice_interno
       INTO v_tot_pagare, v_tot_doc, v_impo_tot, v_imps_tot,
            v_n_iva, v_sum_impo, v_sum_imps, v_n_rate, v_sum_rate,
-           v_fondi, v_arr_prec, v_arr_att
+           v_fondi, v_arr_prec, v_arr_att, v_natura_cod
       FROM vendite.fatture f
+      JOIN config.nature_doc_fiscale nd ON nd.id = f.natura_doc_id
      WHERE f.id = p_fattura_id;
 
     -- ⚠️ `array_append` e non `|| 'testo'`: con un letterale non
@@ -181,6 +185,28 @@ BEGIN
             v_tot_pagare, v_tot_doc, v_fondi, v_arr_prec, v_arr_att));
     END IF;
 
+    -- 7) IL SEGNO PORTA IL SIGNIFICATO, e qui smette di essere una
+    --    convenzione (brief nota di credito, S12.4-bis.6):
+    --      natura = NOTA_CREDITO  <=>  totale_a_pagare <= 0
+    --    Controllato PRIMA che il progressivo venga consumato, cioe'
+    --    prima del punto in cui la guida dice che l'errore diventa
+    --    irreparabile: «un numero fiscale valido su un documento
+    --    invalido si ripara solo con una nota di variazione».
+    --    ⚠️ Lo ZERO e' ammesso da entrambe le parti: un documento a
+    --    saldo nullo e' strano ma non incoerente, e vietarlo qui
+    --    sarebbe una regola inventata da questo guard invece che
+    --    decisa. Si presidia il SEGNO, non l'importo.
+    --    ⚠️ La seconda meta' e' scritta come «diverso da NOTA_CREDITO»
+    --    e non come «uguale a FATTURA»: copre anche NOTA_DEBITO senza
+    --    doverla nominare, ed e' il verso <= dell'equivalenza.
+    IF v_tot_pagare IS NOT NULL AND v_natura_cod = 'NOTA_CREDITO' AND v_tot_pagare > 0 THEN
+        v_motivi := array_append(v_motivi, format(
+            'natura NOTA_CREDITO con totale a pagare positivo (%s)', v_tot_pagare));
+    ELSIF v_tot_pagare IS NOT NULL AND v_natura_cod <> 'NOTA_CREDITO' AND v_tot_pagare < 0 THEN
+        v_motivi := array_append(v_motivi, format(
+            'natura %s con totale a pagare negativo (%s)', v_natura_cod, v_tot_pagare));
+    END IF;
+
     -- Un errore solo, con TUTTI i motivi: chi lo riceve vede in una
     -- volta cosa manca al documento invece di scoprirlo un giro
     -- alla volta.
@@ -190,6 +216,7 @@ BEGIN
             jsonb_build_object(
                 'fattura_id',      p_fattura_id,
                 'registro_id',     v_registro_id,
+                'natura',          v_natura_cod,
                 'motivi',          to_jsonb(v_motivi),
                 'totale_a_pagare', v_tot_pagare,
                 'totale_doc',      v_tot_doc,
@@ -227,7 +254,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_assign_numero_fattura(p_fattura_id bigint)
-IS 'Assegna anno/serie/numero alla fattura usando registro e progressivo con lock. E'' il punto UNICO in cui il progressivo viene assegnato — fn_numera_fattura_opz_emessa delega qui — quindi i presidi valgono per qualunque percorso senza doverli enumerare. Due guard, entrambi PRIMA di fn_get_next_progressivo: (a) E_FATTURA_SENZA_RIGHE, rev 2026-07-28, origine fatture 207 e 208 numerate e senza righe; (b) E_FATTURA_NON_NUMERABILE_INCOERENTE (D-K, Fase 4b, rev 2026-08-02) su sei condizioni che insieme verificano una catena continua — riepiloghi IVA -> totale_doc -> totale_a_pagare -> rate — senza anelli scoperti: totali non calcolati, riepilogo IVA assente, piano rate assente o non quadrante con totale_a_pagare, rate presenti su totale non positivo (D-D allo specchio), riepiloghi IVA non coerenti con i totali di testata, e totale_a_pagare diverso dalla somma dei suoi addendi (totale_doc + fondi + arrotondamento precedente e attuale). La quinta non e'' ridondante benche'' fn_ricalcola_totali_fattura derivi totale_doc dai riepiloghi: fatture_riepiloghi_iva e'' fuori dal guard di congelamento dei satelliti, quindi si puo'' riscrivere lasciando la testata al valore vecchio. La sesta chiude l''anello di mezzo, l''unico che restava aperto: senza, un fondo registrato DOPO il ricalcolo passa indisturbato e le rate quadrano con un totale che non tiene conto dell''acconto. Il guard verifica il RISULTATO e non rincorre gli scrittori, cosi'' copre anche il caso piu'' probabile — un task dello step EMESSA che non ha girato affatto — e accumula TUTTI i motivi in un errore solo. ⚠️ RETTIFICA 2026-08-02 alla motivazione che girava finora: la posizione PRIMA del progressivo NON serve a evitare un buco di numerazione. fn_get_next_progressivo non usa sequence — e'' table-based con advisory lock su registri_fatturazione_progressivi — quindi e'' transazionale e il numero fa rollback insieme al documento. Le ragioni vere sono tre: non si scrive prima di aver validato, non si entra in contesa sull''advisory lock del registro con un documento gia'' rotto, e non si dipende dal fatto che il chiamante ripulisca. Il danno che il guard evita e'' l''opposto e IRREVERSIBILE: un numero fiscale valido su un documento invalido, che una volta assegnato congela i satelliti e si ripara solo con una nota di variazione. Origine: fattura 362, DEFINITIVA con numero 6, totale 200 e zero rate. Non retroattivo. piano-db-satelliti-fattura §3.4-bis.';
+IS 'Assegna anno, serie e numero a una fattura, dopo il guard D-K di coerenza del documento. Il guard gira SEMPRE prima di consumare il progressivo, perche'' un numero fiscale valido su un documento invalido si ripara solo con una nota di variazione. rev 2026-08-18 (brief-design-note-credito-resi N11): SETTIMA condizione — natura = NOTA_CREDITO <=> totale_a_pagare <= 0. ⭐ Trasforma la scelta di D-NC-2 (il segno vive nel numero, non in un''etichetta) da convenzione a invariante VERIFICATO, e chiude il cerchio con la FatturaPA dove lo stesso invariante si legge TipoDocumento = TD04 <=> totale_doc < 0. ⚠️ Lo zero e'' ammesso da entrambe le parti: si presidia il SEGNO, non l''importo, e vietare una fattura a saldo nullo sarebbe una regola inventata da questo guard invece che decisa. ⚠️ La seconda meta'' dice «diverso da NOTA_CREDITO» e non «uguale a FATTURA»: copre anche NOTA_DEBITO senza nominarla, ed e'' letteralmente il verso <= dell''equivalenza.';
 ```
 
 ---

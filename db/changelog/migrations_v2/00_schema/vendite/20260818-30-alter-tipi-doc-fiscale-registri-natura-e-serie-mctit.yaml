@@ -1,0 +1,161 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# N2 — IL MAPPING DIVENTA (tipo_doc, natura) -> (registro, serie)
+#   docs/it/dev/work-in-progress/brief-design-note-credito-resi.md §12.4-bis.3
+#
+# ── DOVE FAR ENTRARE LA NATURA: qui, non in una gerarchia nuova ─────────
+#
+#   `vendite.tipi_doc_fiscale_registri` **e' gia'** la sede della domanda «dato
+#   un tipo di documento, su quale registro va?». La natura e' la seconda meta'
+#   della stessa domanda, non una domanda nuova:
+#
+#       OGGI   (tipo_doc)          -> registro
+#       DOMANI (tipo_doc, natura)  -> (registro, serie)
+#
+# ── ⭐ E COSI' D-NC-3b SMETTE DI ESSERE UNA DECISIONE DI MODELLO ────────
+#
+#   «Registro proprio o serie dedicata?» diventa **una riga di seed**:
+#
+#       stesso registro_id + serie = 'NC'  ->  le NC numerano in una serie a
+#                                              parte DENTRO il registro vendite
+#       registro_id diverso                ->  sezionale proprio, numerazione
+#                                              del tutto separata
+#
+#   Entrambe funzionano **senza una riga di codice diversa**, ed entrambe
+#   restano cambiabili dopo. E' la forma che il progetto usa per le scelte che
+#   appartengono all'azienda e non allo sviluppatore — `tipi_reso.riapre_residuo`,
+#   `causali_trasporto.fatturabile`: nessun IF cablato, si legge il flag.
+#   ⭐ Tid ha scelto il SEZIONALE PROPRIO (D-NC-3b): lo dice il seed, non questo
+#   DDL, ed e' esattamente il punto.
+#
+# ── ⚠️ LA UNIQUE CAMBIA FORMA, E VA CAPITO PERCHE' ─────────────────────
+#
+#   Da `(tipo_doc_fiscale_id, registro_id)` a
+#   `(tipo_doc_fiscale_id, natura_doc_id, registro_id)`.
+#   Senza, mappare FRONTOFFICE+FATTURA e FRONTOFFICE+NOTA_CREDITO su due
+#   registri diversi resterebbe possibile, ma mapparli sullo **stesso** registro
+#   con due serie diverse — che e' l'altra meta' della scelta — sarebbe vietato
+#   da un vincolo che non sa della natura. Il vincolo va allargato **prima** del
+#   seed, o il seed non entra.
+#
+# ── PERCHE' `serie` E' NULLABLE ─────────────────────────────────────────
+#
+#   E' un **override** del `serie_default` del registro, non un obbligo: NULL
+#   significa «vale il default del registro», che e' la catena gia' esistente
+#   (`COALESCE(f.serie, r.serie_default, '')` in fn_assign_numero_fattura).
+#   Con il sezionale proprio resta NULL, e va bene: il registro e' gia' distinto.
+#
+# ⚠️ Indice FK opt-in per la FK nuova: seed in 80_data, a `consentito=false`.
+#    Due righe in tabella, e cresceranno a quattro: un indice qui e' peso senza
+#    contropartita. La riga di policy serve comunque, perche' una FK senza riga
+#    di policy e' una FK che nessuno ha deciso.
+#
+# Dipendenze: config.nature_doc_fiscale (-24), config.fn_get_natura_doc_fiscale_id (-25).
+# ⚠️ Numero PRIMA di -31 (fn_get_registro_id, che legge le due colonne nuove).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260818-30-alter-tipi-doc-fiscale-registri-natura-e-serie-mctit.yaml
+
+  - changeSet:
+      id: 20260818-30-alter-tipi-doc-fiscale-registri-natura-e-serie
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        N2 (D-NC-3b): il mapping tipo documento -> registro impara la natura e
+        la serie. natura_doc_id NOT NULL DEFAULT FATTURA, serie nullable
+        (override del serie_default del registro), UNIQUE allargata a tre
+        colonne. ⭐ Da qui «registro proprio o serie dedicata?» smette di essere
+        una decisione di modello e diventa una riga di seed: entrambe le strade
+        funzionano senza codice diverso.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: nature_doc_fiscale
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: tipi_doc_fiscale_registri
+                    columnName: natura_doc_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ %TYPE non e' valido in ALTER TABLE ADD COLUMN: tipi espliciti.
+              --    `serie` e' varchar(8) come registri_fatturazione.serie_default,
+              --    vendite.fatture.serie e registri_fatturazione_progressivi.serie:
+              --    quattro colonne che portano lo stesso valore lungo la catena.
+              ALTER TABLE vendite.tipi_doc_fiscale_registri
+                  ADD COLUMN natura_doc_id bigint NOT NULL
+                      DEFAULT config.fn_get_natura_doc_fiscale_id('FATTURA'),
+                  ADD COLUMN serie character varying(8);
+
+              ALTER TABLE vendite.tipi_doc_fiscale_registri
+                  ADD CONSTRAINT fk_tipi_doc_fiscale_registri_natura_doc
+                      FOREIGN KEY (natura_doc_id)
+                      REFERENCES config.nature_doc_fiscale(id) ON UPDATE CASCADE;
+
+              -- La UNIQUE si allarga PRIMA del seed, o il seed non entra
+              -- (vedi nota in testa).
+              ALTER TABLE vendite.tipi_doc_fiscale_registri
+                  DROP CONSTRAINT IF EXISTS uq_tipi_doc_fiscale_registri_tipo_doc_registro;
+
+              ALTER TABLE vendite.tipi_doc_fiscale_registri
+                  ADD CONSTRAINT uq_tipi_doc_fiscale_registri_tipo_doc_natura_registro
+                      UNIQUE (tipo_doc_fiscale_id, natura_doc_id, registro_id);
+
+              COMMENT ON COLUMN vendite.tipi_doc_fiscale_registri.natura_doc_id IS
+                'Seconda meta'' della domanda a cui questa tabella risponde. Prima era '
+                '«dato un tipo di documento, su quale registro va?»; ora e'' «dato un '
+                'tipo documento E UNA NATURA, su quale registro e con quale serie?». '
+                'Default FATTURA: le due righe esistenti restano quelle che erano. '
+                'brief-design-note-credito-resi D-NC-3.';
+
+              COMMENT ON COLUMN vendite.tipi_doc_fiscale_registri.serie IS
+                'Override della serie di numerazione per questa combinazione '
+                '(tipo documento, natura). NULL = vale il serie_default del registro, '
+                'che e'' la catena gia'' esistente: fn_assign_numero_fattura risolve '
+                'COALESCE(fattura.serie, registro.serie_default, ''''). '
+                '⭐ E'' questa colonna, insieme al registro_id, a rendere D-NC-3b una '
+                'riga di SEED invece di una decisione di modello: stesso registro + '
+                'serie ''NC'' da'' le note di credito numerate in una serie a parte dentro '
+                'il registro vendite; un registro_id diverso da'' il sezionale proprio, '
+                'con progressivo e reset_policy indipendenti. Le due strade non hanno '
+                'una riga di codice diversa, e restano cambiabili dopo. '
+                'brief-design-note-credito-resi S12.4-bis.3.';
+
+              COMMENT ON TABLE vendite.tipi_doc_fiscale_registri IS
+                'Mapping (tipo documento fiscale, natura del documento) -> (registro di '
+                'numerazione, serie). Risolto da vendite.fn_get_registro_id, che applica '
+                'un fallback a quattro livelli su utility ed emittente. '
+                'rev 2026-08-18 (brief-design-note-credito-resi N2): la natura e'' entrata '
+                'nella chiave, e la UNIQUE con lei — senza, mappare fattura e nota di '
+                'credito sullo STESSO registro con due serie diverse sarebbe stato '
+                'vietato da un vincolo che non sapeva della natura.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.tipi_doc_fiscale_registri
+                  DROP CONSTRAINT IF EXISTS uq_tipi_doc_fiscale_registri_tipo_doc_natura_registro;
+              ALTER TABLE vendite.tipi_doc_fiscale_registri
+                  DROP COLUMN IF EXISTS serie,
+                  DROP COLUMN IF EXISTS natura_doc_id;
+              ALTER TABLE vendite.tipi_doc_fiscale_registri
+                  ADD CONSTRAINT uq_tipi_doc_fiscale_registri_tipo_doc_registro
+                      UNIQUE (tipo_doc_fiscale_id, registro_id);

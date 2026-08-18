@@ -37,17 +37,20 @@
 | kit_esposto_in_fattura | boolean | YES |  |
 | kit_articolo_padre_id | uuid | YES |  |
 | kit_descrizione_padre | character varying | YES |  |
+| riga_rettificata_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_fatture_righe_kit_coerente |  |
+| CHECK | chk_fatture_righe_rettificata_non_se_stessa |  |
 | CHECK | chk_fatture_righe_sconto |  |
 | FOREIGN KEY | fk_fatture_righe_art | articolo_id |
 | FOREIGN KEY | fk_fatture_righe_ba_dest | dest_billing_account_id |
 | FOREIGN KEY | fk_fatture_righe_fat | fattura_id |
 | FOREIGN KEY | fk_fatture_righe_iva | iva_id |
 | FOREIGN KEY | fk_fatture_righe_kit_articolo_padre | kit_articolo_padre_id |
+| FOREIGN KEY | fk_fatture_righe_riga_rettificata | riga_rettificata_id |
 | FOREIGN KEY | fk_fatture_righe_sorgente_tipo | sorgente_tipo_id |
 | FOREIGN KEY | fk_fatture_righe_uom | uom_id |
 | PRIMARY KEY | pk_fatture_righe | id |
@@ -55,6 +58,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_fatture_righe_riga_rettificata_id | `CREATE INDEX ix_fatture_righe_riga_rettificata_id ON vendite.fatture_righe USING btree (riga_rettificata_id) WHERE (riga_rettificata_id IS NOT NULL)` |
 | ix_vendite_fatture_righe_dest_billing_account_id | `CREATE INDEX ix_vendite_fatture_righe_dest_billing_account_id ON vendite.fatture_righe USING btree (dest_billing_account_id)` |
 | ix_vendite_fatture_righe_iva_id | `CREATE INDEX ix_vendite_fatture_righe_iva_id ON vendite.fatture_righe USING btree (iva_id)` |
 | pk_fatture_righe | `CREATE UNIQUE INDEX pk_fatture_righe ON vendite.fatture_righe USING btree (id)` |

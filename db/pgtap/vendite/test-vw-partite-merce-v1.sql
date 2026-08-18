@@ -63,13 +63,21 @@ SELECT ok(
     WHERE n.nspname = 'vendite' AND c.relname = 'vw_partite_merce'),
   '2) vw_partite_merce e'' security_invoker=on');
 
+-- ⚠️ `columns_are` e' un contratto, non una fotografia: fallisce anche se una
+--    colonna SPARISCE, che e' il motivo per cui esiste. Chi ne aggiunge una
+--    aggiorna QUI, dichiarando cosa porta.
+--    rev 2026-08-18 (brief-design-note-credito-resi N6/N7): due colonne nuove,
+--    entrambe in coda perche' un CREATE OR REPLACE VIEW non ne inserisce in
+--    mezzo — `rettificato` (quanto una nota di credito ha tolto al fatturato
+--    della partita, negativo o zero) e `riconsegna_quota_nuova` (i pezzi
+--    accreditati che hanno cambiato casa verso una spedizione di ri-consegna).
 SELECT columns_are('vendite', 'vw_partite_merce',
   ARRAY['ddt_riga_id','ddt_id','ddt_uid','articolo_id','is_composito',
         'ordine_riga_id','ordine_id','origine','fatturabile','consegnato',
         'reso','in_riconsegna','tenuti','fatturato_merce','fatturato_da_ordine',
         'fatturato','misurabile','differenza','stato','e_riconsegna',
-        'sospetto_duplicato_ordine'],
-  '3) espone le 21 colonne del contratto della partita');
+        'sospetto_duplicato_ordine','rettificato','riconsegna_quota_nuova'],
+  '3) espone le 23 colonne del contratto della partita');
 
 -- ============================================================
 -- Riferimenti minimi

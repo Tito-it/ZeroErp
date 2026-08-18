@@ -146,4 +146,55 @@ ORDER BY data;
 
 ---
 
+
+---
+
+### 🔄 rev 2026-08-18 — la coda sa cosa è già stato accreditato
+
+Brief: `brief-design-note-credito-resi` (slice **N9**, rilievo H).
+
+**Due colonne nuove**, in coda dopo `etichetta`:
+
+| Colonna | A cosa serve |
+|---|---|
+| `gia_accreditato` | pezzi già accreditati per quella riga di reso, in **unità di merce** |
+| `blocco_codice` | motivo dell'eventuale blocco in forma di **codice** e non di frase (oggi un valore solo: `GIA_ACCREDITATO`) |
+
+Il progetto vieta le capability `fn_available_actions_*` per riga di lista: le
+liste si gate sui **codici già presenti in riga**, mai con N chiamate. Queste due
+colonne sono ciò che il frontend usa per disabilitare il bottone.
+
+#### 🔴 Ma la modifica vera è un'altra: la distribuzione era sbagliata
+
+La coda ripartisce l'accredito della **partita** fra le righe di reso con una
+finestra `ORDER BY resi_riga_id`, e quella finestra **non sapeva nulla degli
+accrediti già fatti**. Misurato sulla partita 17163 — accredito 8, due righe di
+reso da 5 e da 3:
+
+```text
+prima                  5797 → 5   ·  5799 → 3            ✅
+si accredita 5797, poi l'emissione: l'accredito della partita scende a 3
+dopo, col difetto      5797 → 3   ·  5799 → 0 (sparita)  🔴
+```
+
+La riga **già accreditata** tornava a chiedere altri 3; la riga che quei 3 li
+doveva davvero **usciva dalla coda**, e la sua quota diventava irraggiungibile.
+⚠️ È la malattia per cui il cantiere esiste, in una forma nuova.
+
+✅ La finestra si applica ora alla quantità **ancora accreditabile**
+(`quantità − già accreditato`, da
+[`fn_resi_riga_accreditato_partita`](fn_resi_riga_accreditato_partita.md)), non
+alla quantità resa.
+
+⭐ **E ne discende l'idempotenza**: una riga esce dalla coda **al verbo**, non
+alla generazione della fattura. La finestra temporale che il brief descriveva al
+§12.6-E non esiste più — c'è un numero che è già sceso.
+
+⚠️ `gia_accreditato` vale zero nella stragrande maggioranza dei casi, **ma non
+per costruzione**: quando l'accredito della partita è minore della quantità resa,
+la riga viene accreditata per meno di quanto ha reso e può tornare in coda per il
+residuo.
+
+---
+
 {% include-markdown "signature-core.md" %}

@@ -224,6 +224,26 @@ END;
 $$;
 
 -- Prodotto non attivo
+-- 🔴 FIGLI PRIMA DEL PADRE, aggiunto il 2026-08-18.
+--   `catalogo.articoli` ha 28 tabelle figlie guardate da
+--   `prevent_deactivate_if_children`: disattivare il padre con anche un solo
+--   figlio attivo solleva. Questo file gli articoli se li crea gia' (bene), ma
+--   nel farlo si crea anche i figli — la riga di BoM che sta testando, piu' la
+--   `articoli_uom_operativa` di base che nasce da trigger.
+--   ⚠️ Il guard non e' un ostacolo del test: e' il suo contesto. Si rispetta
+--   l'ordine che impone, invece di aggirarlo.
+--   ⛔ Si DISATTIVANO, non si cancellano: `articoli_componenti` e' protetta da
+--   un guard di immutabilita' della struttura BoM.
+UPDATE catalogo.articoli_componenti
+   SET attivo = false
+ WHERE prodotto_id = (SELECT prodotto_id FROM tmp_art)
+   AND attivo = true;
+
+UPDATE catalogo.articoli_uom_operativa
+   SET attivo = false
+ WHERE articolo_id = (SELECT prodotto_id FROM tmp_art)
+   AND attivo = true;
+
 UPDATE catalogo.articoli
 SET attivo = false
 WHERE id = (SELECT prodotto_id FROM tmp_art);
@@ -258,6 +278,14 @@ SET attivo = true
 WHERE id = (SELECT prodotto_id FROM tmp_art);
 
 -- Componente non attivo
+-- 🔴 Figli prima del padre anche qui (2026-08-18): il componente ha la propria
+--   `articoli_uom_operativa` di base, nata da trigger alla creazione. Stesso
+--   ordine imposto da `prevent_deactivate_if_children`.
+UPDATE catalogo.articoli_uom_operativa
+   SET attivo = false
+ WHERE articolo_id = (SELECT componente_id FROM tmp_art)
+   AND attivo = true;
+
 UPDATE catalogo.articoli
 SET attivo = false
 WHERE id = (SELECT componente_id FROM tmp_art);

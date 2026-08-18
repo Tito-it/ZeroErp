@@ -53,6 +53,8 @@
 | classe_utenza_id_snapshot | integer | YES |  |
 | tipo_movimento | character varying | NO | 'NORMALE'::character varying |
 | causale_onere_id | bigint | YES |  |
+| natura_doc_id | bigint | NO | config.fn_get_natura_doc_fiscale_id('FATTURA'::character varying) |
+| fattura_riga_rettificata_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -65,6 +67,7 @@
 | CHECK | chk_commesse_attivita_posticipa |  |
 | CHECK | chk_commesse_attivita_prezzo |  |
 | CHECK | chk_commesse_attivita_pricing_mode |  |
+| CHECK | chk_commesse_attivita_rettificata_e_rettifica |  |
 | CHECK | chk_commesse_attivita_sorgente_pair |  |
 | CHECK | chk_commesse_attivita_stato_approvazione |  |
 | CHECK | chk_commesse_attivita_stato_emissione |  |
@@ -79,8 +82,10 @@
 | FOREIGN KEY | fk_commesse_attivita_classe_utenza_snapshot | classe_utenza_id_snapshot |
 | FOREIGN KEY | fk_commesse_attivita_commessa | commessa_id |
 | FOREIGN KEY | fk_commesse_attivita_contratto | contratto_id |
+| FOREIGN KEY | fk_commesse_attivita_fattura_riga_rettificata | fattura_riga_rettificata_id |
 | FOREIGN KEY | fk_commesse_attivita_istanza_utility | istanza_utility_id |
 | FOREIGN KEY | fk_commesse_attivita_listino_versione | listino_versione_id |
+| FOREIGN KEY | fk_commesse_attivita_natura_doc | natura_doc_id |
 | FOREIGN KEY | fk_commesse_attivita_promo | promo_id |
 | FOREIGN KEY | fk_commesse_attivita_sorgente_tipo | sorgente_tipo_id |
 | FOREIGN KEY | fk_commesse_attivita_tipo_doc | tipo_doc_fiscale_id |
@@ -94,6 +99,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_commesse_attivita_commessa_stati | `CREATE INDEX ix_commesse_attivita_commessa_stati ON vendite.commesse_attivita USING btree (commessa_id, stato_approvazione, stato_emissione)` |
+| ix_commesse_attivita_fattura_riga_rettificata_id | `CREATE INDEX ix_commesse_attivita_fattura_riga_rettificata_id ON vendite.commesse_attivita USING btree (fattura_riga_rettificata_id) WHERE (fattura_riga_rettificata_id IS NOT NULL)` |
 | ix_commesse_attivita_lane_candidate | `CREATE INDEX ix_commesse_attivita_lane_candidate ON vendite.commesse_attivita USING btree (commessa_id, competenza_mese, tipo_doc_fiscale_id) WHERE (((stato_emissione)::text = 'NON_EMESSA'::text) AND ((stato_approvazione)::text = 'APPROVATA'::text) AND (tipo_doc_fiscale_id IS NOT NULL))` |
 | ix_commesse_attivita_origine_prezzo | `CREATE INDEX ix_commesse_attivita_origine_prezzo ON vendite.commesse_attivita USING btree (origine_prezzo)` |
 | ix_commesse_attivita_segment_key | `CREATE INDEX ix_commesse_attivita_segment_key ON vendite.commesse_attivita USING btree (segment_key)` |

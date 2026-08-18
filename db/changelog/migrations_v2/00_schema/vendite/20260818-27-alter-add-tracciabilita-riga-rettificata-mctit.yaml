@@ -1,0 +1,207 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# N5 — LA TRACCIABILITA' RIGA ↔ RIGA
+#   docs/it/dev/work-in-progress/brief-design-note-credito-resi.md §12.6-bis
+#   (requisito D-NC-9, Tid 2026-08-18: «dovremmo tenere traccia di quale
+#    fattura ha generato la nota di credito e la corrispondente riga»)
+#
+# ── COSA C'ERA, E PERCHE' NON BASTAVA ───────────────────────────────────
+#
+#   documento ↔ documento : vendite.fatture_rettifiche — esiste, ZERO righe,
+#                           mai usata. Sa che due documenti si parlano, non
+#                           quali righe.
+#   riga ↔ riga           : ⛔ non esisteva.
+#
+#   E i tre campi `fatture_righe.sorgente_*` sono vuoti **per decisione**, non
+#   per dimenticanza: una riga di fattura aggrega n attivita' con n sorgenti, e
+#   dichiararne una sarebbe dichiararne una falsa (il commento sta nel
+#   generatore righe, `batch_insert_righe_and_mark`).
+#
+#   ⭐ Per una riga di RETTIFICA quel motivo cade. Il §12.6 stabilisce che le
+#   rettifiche **non si aggregano**: una rettifica e' lo specchio di UNA riga di
+#   fattura. Quindi la sorgente singola esiste, e' una sola, ed e' dichiarabile.
+#
+# ── LE CINQUE COSE CHE QUESTA COLONNA REGALA ────────────────────────────
+#
+#   1. l'invariante di N-1 diventa una QUERY, non una convenzione: stesso
+#      articolo, stesso prezzo, stesso sconto, stessa IVA, |qta| non superiore.
+#      Verificabile dal pgTAP;
+#   2. un SECONDO TETTO all'accredito, indipendente dal conto della merce:
+#      «questa riga di fattura ha fatturato 10 pezzi, non se ne possono
+#      accreditare 11». Due misure che parlano lingue diverse e devono
+#      concordare — e quando divergono c'e' un difetto da guardare, invece di
+#      un numero solo di cui fidarsi;
+#   3. l'idempotenza smette di dipendere da una finestra temporale: il secondo
+#      click sbatte contro un numero, non contro un flag da mantenere;
+#   4. `fatture_rettifiche` si popola da se', come PROIEZIONE (SELECT DISTINCT):
+#      le righe sono il fatto, la tabella-ponte e' l'indice. Niente due verita';
+#   5. il blocco `DatiFattureCollegate` di una TD04 ha numero e data del
+#      documento rettificato.
+#
+# ── ⚠️ IL SENSO DELLE TRE COLONNE, che non e' lo stesso ─────────────────
+#
+#   `attivita_fatturabili.fattura_riga_id` esiste gia' e va nel verso
+#   **attivita' -> riga di fattura prodotta**. Qui si aggiunge il verso della
+#   RETTIFICA, che e' un'altra cosa: **riga di rettifica -> riga rettificata**.
+#   Le due convivono sulla stessa riga di AF e dicono cose diverse: «dove sono
+#   finita» e «chi sto correggendo».
+#
+# ── ⚠️ ON DELETE: nessuna azione, e non e' pigrizia ─────────────────────
+#
+#   `attivita_fatturabili.fattura_riga_id` usa `ON DELETE SET NULL`, e li' e'
+#   giusto: se la bozza di fattura sparisce, l'attivita' torna disponibile.
+#   Qui NO: azzerare il puntatore alla riga **rettificata** cancellerebbe in
+#   silenzio la prova di cosa e' stato accreditato, lasciando una nota di
+#   credito che non sa piu' cosa corregge. Con NO ACTION la riga di fattura
+#   rettificata **non si puo' cancellare** finche' qualcosa la rettifica — che
+#   e' esattamente il comportamento voluto su un documento fiscale.
+#
+# ── ⚠️ Il CHECK e' una IMPLICAZIONE, non una equivalenza ────────────────
+#
+#   «porta un rettificata_id  =>  e' una RETTIFICA» e' vero e va imposto.
+#   Il verso opposto NO: il vocabolario `tipo_movimento` dichiara RETTIFICA
+#   anche per i conguagli futuri, che non nascono da una riga di fattura.
+#   Un biconditional qui vieterebbe un caso che il modello ammette.
+#
+# ⚠️ Va scritta all'INSERT: superata la soglia DRAFT/EMESSA sulle righe di
+#    fattura non si puo' piu' fare nulla — ne' UPDATE, ne' DELETE, ne' INSERT.
+# ⚠️ Indici FK OPT-IN: seed in 80_data, PARZIALE (`WHERE ... IS NOT NULL`),
+#    che su una FK nullabile e' preferibile all'indice totale (linee-guida-sql
+#    §8.4) e viene riconosciuto come copertura da dbops.vw_fk_senza_indice.
+#
+# Dipendenze: vendite.fatture_righe, vendite.commesse_attivita,
+#   vendite.attivita_fatturabili.
+# ⚠️ Numero PRIMA di -29 (dove fn_upsert_commessa_attivita impara a scriverla):
+#    l'autogen mescola 00_schema e 20_code ordinando per numero.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260818-27-alter-add-tracciabilita-riga-rettificata-mctit.yaml
+
+  - changeSet:
+      id: 20260818-27-alter-add-tracciabilita-riga-rettificata
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        N5 (D-NC-9): tracciabilita' riga di rettifica -> riga di fattura
+        rettificata lungo tutta la catena. fattura_riga_rettificata_id su
+        commesse_attivita e attivita_fatturabili, riga_rettificata_id su
+        fatture_righe (auto-riferimento). Trasforma «copia esatta compresi gli
+        sconti» da principio a cancello verificabile, da' il secondo tetto
+        all'accredito e rende fatture_rettifiche una proiezione invece di una
+        seconda verita'.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture_righe
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: fatture_righe
+                    columnName: riga_rettificata_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ %TYPE non e' valido in ALTER TABLE ADD COLUMN: tipo esplicito.
+              ALTER TABLE vendite.commesse_attivita
+                  ADD COLUMN fattura_riga_rettificata_id bigint;
+
+              ALTER TABLE vendite.attivita_fatturabili
+                  ADD COLUMN fattura_riga_rettificata_id bigint;
+
+              ALTER TABLE vendite.fatture_righe
+                  ADD COLUMN riga_rettificata_id bigint;
+
+              -- NO ACTION su DELETE (default): la riga rettificata non si puo'
+              -- cancellare finche' qualcosa la rettifica. Vedi nota in testa.
+              ALTER TABLE vendite.commesse_attivita
+                  ADD CONSTRAINT fk_commesse_attivita_fattura_riga_rettificata
+                      FOREIGN KEY (fattura_riga_rettificata_id)
+                      REFERENCES vendite.fatture_righe(id) ON UPDATE CASCADE;
+
+              ALTER TABLE vendite.attivita_fatturabili
+                  ADD CONSTRAINT fk_attivita_fatturabili_fattura_riga_rettificata
+                      FOREIGN KEY (fattura_riga_rettificata_id)
+                      REFERENCES vendite.fatture_righe(id) ON UPDATE CASCADE;
+
+              ALTER TABLE vendite.fatture_righe
+                  ADD CONSTRAINT fk_fatture_righe_riga_rettificata
+                      FOREIGN KEY (riga_rettificata_id)
+                      REFERENCES vendite.fatture_righe(id) ON UPDATE CASCADE;
+
+              -- IMPLICAZIONE, non equivalenza (vedi nota in testa): chi porta un
+              -- riferimento alla riga rettificata E' una rettifica; non tutte le
+              -- rettifiche nascono pero' da una riga di fattura.
+              ALTER TABLE vendite.commesse_attivita
+                  ADD CONSTRAINT chk_commesse_attivita_rettificata_e_rettifica
+                      CHECK (fattura_riga_rettificata_id IS NULL
+                             OR tipo_movimento::text = 'RETTIFICA');
+
+              ALTER TABLE vendite.attivita_fatturabili
+                  ADD CONSTRAINT chk_attivita_fatturabili_rettificata_e_rettifica
+                      CHECK (fattura_riga_rettificata_id IS NULL
+                             OR tipo_movimento::text = 'RETTIFICA');
+
+              -- Una riga non rettifica se stessa. Costa nulla e chiude un
+              -- cappio che renderebbe insensata la proiezione documentale.
+              ALTER TABLE vendite.fatture_righe
+                  ADD CONSTRAINT chk_fatture_righe_rettificata_non_se_stessa
+                      CHECK (riga_rettificata_id IS NULL OR riga_rettificata_id <> id);
+
+              COMMENT ON COLUMN vendite.commesse_attivita.fattura_riga_rettificata_id IS
+                'La riga di FATTURA che questa attivita'' di rettifica corregge '
+                '(vendite.fatture_righe.id). ⚠️ Verso opposto a quello di '
+                'attivita_fatturabili.fattura_riga_id, che dice «dove sono finita»: '
+                'qui si dice «chi sto correggendo». E'' la sorgente da cui il generatore '
+                'righe copiera'' prezzo, sconto e IVA — mai un ricalcolo, mai il listino: '
+                '«la nota di credito non puo'' differire da quanto fatturato» (N-1, Tid '
+                '2026-08-18). Valorizzata solo su righe tipo_movimento = RETTIFICA '
+                '(CHECK a implicazione singola: i conguagli futuri possono essere '
+                'RETTIFICA senza nascere da una riga di fattura). '
+                'brief-design-note-credito-resi D-NC-9.';
+
+              COMMENT ON COLUMN vendite.attivita_fatturabili.fattura_riga_rettificata_id IS
+                'Propagata 1:1 da commesse_attivita all''emissione. Sopravvive accanto a '
+                'fattura_riga_id, che e'' un''altra cosa: quella dice su quale riga '
+                'questa attivita'' e'' atterrata, questa quale riga sta correggendo. '
+                'brief-design-note-credito-resi D-NC-9.';
+
+              COMMENT ON COLUMN vendite.fatture_righe.riga_rettificata_id IS
+                'Auto-riferimento: la riga di fattura che QUESTA riga di nota di credito '
+                'rettifica. ⭐ E'' l''unica sorgente singola dichiarabile su questa '
+                'tabella, e non contraddice la scelta di lasciare vuoti i tre campi '
+                'sorgente_*: quelli sono vuoti perche'' una riga ordinaria aggrega n '
+                'attivita'' con n sorgenti e dichiararne una sarebbe dichiararne una '
+                'falsa. Una rettifica invece NON si aggrega — e'' lo specchio di UNA riga '
+                'di fattura (S12.6) — quindi la sorgente e'' una sola ed esiste davvero. '
+                'Da qui discendono: l''invariante «riga gemella» (stesso articolo, '
+                'prezzo, sconto, IVA, |qta| non superiore) come query invece che come '
+                'convenzione; il secondo tetto all''accredito, che parla la lingua del '
+                'documento invece che della merce; e la popolazione di '
+                'vendite.fatture_rettifiche come PROIEZIONE (SELECT DISTINCT), non come '
+                'seconda verita''. ⚠️ Si scrive all''INSERT: superata la soglia '
+                'DRAFT/EMESSA sulle righe di fattura non si puo'' piu'' fare nulla. '
+                'brief-design-note-credito-resi D-NC-9 (S12.6-bis).';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.fatture_righe        DROP COLUMN IF EXISTS riga_rettificata_id;
+              ALTER TABLE vendite.attivita_fatturabili DROP COLUMN IF EXISTS fattura_riga_rettificata_id;
+              ALTER TABLE vendite.commesse_attivita    DROP COLUMN IF EXISTS fattura_riga_rettificata_id;

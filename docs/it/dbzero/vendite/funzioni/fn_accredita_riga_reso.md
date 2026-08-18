@@ -1,0 +1,446 @@
+# ⚙️ Funzione `fn_accredita_riga_reso`
+
+```sql
+CREATE FUNCTION fn_accredita_riga_reso(p_resi_riga_id bigint)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION vendite.fn_accredita_riga_reso(p_resi_riga_id bigint)
+ RETURNS TABLE(accredito_id bigint, commessa_attivita_id bigint, fattura_riga_rettificata_id bigint, qta numeric, qta_partita numeric)
+ LANGUAGE plpgsql
+AS $function$
+-- Scopo: madre DB del verbo «accredita». Dalla coda accrediti
+--   genera le righe di RETTIFICA in commessa (quantita'
+--   NEGATIVA, prezzo copiato dalla riga di fattura) e le
+--   registra sul ponte vendite.resi_righe_accrediti.
+-- Perimetro: una sola unita' atomica (la chiamata). Riusa
+--   fn_upsert_commessa_attivita per non duplicarne il mapping.
+--   Il documento NON nasce qui: nasce nel giro di fatturazione,
+--   ed e' il motivo per cui un esito parziale del fan-out non
+--   lascia mai mezzo documento.
+-- Il presidio permessi (post_permission) vive sul BE, non qui:
+--   la madre deve restare usabile da un processo autorizzato.
+DECLARE
+    v_coda            record;
+    v_grp             record;
+    v_cmp             record;
+    v_ddt_uid         vendite.ddt.uid%TYPE;
+    v_ordine_uid      vendite.ordini.uid%TYPE;
+    v_seg_ddt         vendite.commesse_attivita.segment_key%TYPE;
+    v_seg_ord         vendite.commesse_attivita.segment_key%TYPE;
+    v_natura_nc       config.nature_doc_fiscale.id%TYPE;
+    -- Residuo e quota si misurano in unita' di MERCE, il valore
+    -- documentale in unita' di RIGA DI FATTURA: due colonne
+    -- diverse, due ancoraggi diversi. Non e' pedanteria — e'
+    -- la distinzione che il kit rende necessaria.
+    v_residuo         vendite.resi_righe_accrediti.qta_partita%TYPE;
+    v_quota           vendite.resi_righe_accrediti.qta_partita%TYPE;
+    v_qta_doc         vendite.resi_righe_accrediti.qta%TYPE;
+    -- ⚠️ `integer` esplicito: il progressivo del suffisso #RET
+    --    e' un contatore, non il valore di una colonna. Non c'e'
+    --    nulla da ancorare, e va detto invece di sembrare
+    --    una dimenticanza.
+    v_progressivo     integer;
+    v_segment_key     vendite.commesse_attivita.segment_key%TYPE;
+    v_attivita_id     vendite.commesse_attivita.id%TYPE;
+    v_is_new          boolean;
+    v_accredito_id    vendite.resi_righe_accrediti.id%TYPE;
+    v_data            vendite.commesse_attivita.data_attivita%TYPE;
+BEGIN
+    -- --------------------------------------------------
+    -- 1) Guard sul parametro (AGENTS.md: NULL o <=0 ->
+    --    errore parlante, mai normalizzazione silenziosa).
+    -- --------------------------------------------------
+    IF p_resi_riga_id IS NULL OR p_resi_riga_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite','fn_accredita_riga_reso','E_PARAMETRO_INVALIDO',
+            jsonb_build_object('parametro','resi_riga_id','valore',p_resi_riga_id),
+            NULL::uuid, 'resi_riga_id obbligatorio (>0)');
+    END IF;
+
+    -- --------------------------------------------------
+    -- 2) La riga dev'essere IN CODA. Non e' un filtro di
+    --    comodo: e' la coda a dire quanto vale l'accredito
+    --    (D-NC-6), e fuori di li' quel numero non esiste.
+    -- --------------------------------------------------
+    SELECT q.resi_riga_id, q.ddt_riga_id, q.ordine_riga_id,
+           q.accredito_dovuto, q.etichetta
+      INTO v_coda
+      FROM vendite.vw_resi_da_accreditare q
+     WHERE q.resi_riga_id = p_resi_riga_id;
+
+    IF NOT FOUND OR COALESCE(v_coda.accredito_dovuto, 0) <= 0 THEN
+        -- Stesso cancello, due messaggi: «l'hai gia' fatto» dice
+        -- una cosa diversa da «non c'e' niente da accreditare»,
+        -- e chi clicca due volte merita il primo.
+        -- ⚠️ Il presidio VERO e' che la riga esce dalla coda AL
+        --    VERBO: vw_resi_da_accreditare sottrae la quota gia'
+        --    accreditata, quindi non serve un flag da mantenere
+        --    ne' aspettare il giro di fatturazione.
+        IF EXISTS (SELECT 1 FROM vendite.resi_righe_accrediti a
+                    WHERE a.resi_riga_id = p_resi_riga_id) THEN
+            PERFORM script.fn_log_and_raise_error(
+                'vendite','fn_accredita_riga_reso','E_ACCREDITO_GIA_ESEGUITO',
+                jsonb_build_object('resi_riga_id', p_resi_riga_id),
+                NULL::uuid, p_resi_riga_id::text);
+        END IF;
+        PERFORM script.fn_log_and_raise_error(
+            'vendite','fn_accredita_riga_reso','E_ACCREDITO_NON_IN_CODA',
+            jsonb_build_object('resi_riga_id', p_resi_riga_id),
+            NULL::uuid, p_resi_riga_id::text);
+    END IF;
+
+    -- --------------------------------------------------
+    -- 3) D-NC-1. La partita e' la SPEDIZIONE, sempre.
+    --    ⛔ Qui ci andava un COALESCE («se il DDT non c'e',
+    --    prendi il primo»): sarebbe stato un ramo morto, e
+    --    il giorno in cui qualcosa lo raggiungesse
+    --    scriverebbe su ORD: spostando l'accredito sulla
+    --    spedizione sbagliata, in silenzio. La cintura c'e',
+    --    ma parla.
+    -- --------------------------------------------------
+    IF v_coda.ddt_riga_id IS NULL THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite','fn_accredita_riga_reso','E_ACCREDITO_SENZA_SPEDIZIONE',
+            jsonb_build_object('resi_riga_id', p_resi_riga_id),
+            NULL::uuid, p_resi_riga_id::text);
+    END IF;
+
+    -- Natura del documento che nascera'.
+    v_natura_nc := config.fn_get_natura_doc_fiscale_id('NOTA_CREDITO');
+    IF v_natura_nc IS NULL THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite','fn_accredita_riga_reso','E_CONFIG_MANCANTE',
+            jsonb_build_object('codice_interno','NOTA_CREDITO'),
+            NULL::uuid, 'natura NOTA_CREDITO non trovata in config.nature_doc_fiscale');
+    END IF;
+
+    -- Segmenti della partita: quello della SPEDIZIONE (su cui si
+    -- scrive) e quello dell'ORDINE (da cui si puo' aver
+    -- fatturato, e quindi da cui si legge il prezzo).
+    SELECT d.uid INTO v_ddt_uid
+      FROM vendite.ddt_righe dr
+      JOIN vendite.ddt d ON d.id = dr.ddt_id
+     WHERE dr.id = v_coda.ddt_riga_id;
+
+    v_seg_ddt := 'DDT:' || v_ddt_uid::text || ':R:' || v_coda.ddt_riga_id::text;
+
+    IF v_coda.ordine_riga_id IS NOT NULL THEN
+        SELECT o.uid INTO v_ordine_uid
+          FROM vendite.ordini_righe orr
+          JOIN vendite.ordini o ON o.id = orr.ordine_id
+         WHERE orr.id = v_coda.ordine_riga_id;
+        v_seg_ord := 'ORD:' || v_ordine_uid::text || ':R:' || v_coda.ordine_riga_id::text;
+    END IF;
+
+    -- --------------------------------------------------
+    -- 5) Advisory lock TRANSAZIONALE sulla PARTITA, forma a
+    --    DUE argomenti (namespace + chiave): lo spazio dei
+    --    lock a un argomento e' condiviso con altre feature.
+    --    Sta QUI, dopo tutte le guard: una chiamata invalida
+    --    non deve serializzare gli altri operatori.
+    --    La chiave e' la riga di DDT e non la commessa,
+    --    perche' e' sul SEGMENTO che gira il progressivo
+    --    #RET, e un segmento puo' attraversare due commesse.
+    -- --------------------------------------------------
+    PERFORM pg_advisory_xact_lock(
+        hashtext('vendite.fn_accredita_riga_reso'),
+        hashtext(v_coda.ddt_riga_id::text));
+
+    -- Progressivo del suffisso dal MASSIMO, non dal count: il
+    -- conteggio assume l'invariante «count = max», che nulla
+    -- garantisce. I buchi sono ammessi e non significano nulla.
+    SELECT COALESCE(MAX(NULLIF(substring(ca.segment_key, '#RET:([0-9]+)'), '')::integer), 0) + 1
+      INTO v_progressivo
+      FROM vendite.commesse_attivita ca
+     WHERE ca.segment_key LIKE v_seg_ddt || '#RET:%';
+
+    v_residuo := v_coda.accredito_dovuto;
+    v_data    := CURRENT_DATE;
+
+    -- --------------------------------------------------
+    -- 6) Le UNITA' FATTURANTI della partita, consumate LIFO
+    --    (D-NC-5: dall'ultima fatturata a scalare).
+    --    Il raggruppamento e' per `kit_key` e la quantita' si
+    --    legge in UNITA' PADRE — max(quantita/coeff_qta), non
+    --    la somma — esattamente come vw_af_merce_per_riga.
+    -- --------------------------------------------------
+    FOR v_grp IN
+        WITH af AS (
+            SELECT ca.id                                        AS ca_id,
+                   ca.segment_key,
+                   af.id                                        AS af_id,
+                   af.fattura_riga_id,
+                   af.quantita,
+                   split_part(ca.segment_key::text, '#CMP:', 1) AS kit_key,
+                   (ca.segment_key::text LIKE '%#CMP:%')        AS e_componente,
+                   CASE
+                       WHEN (ca.meta ->> 'coeff_qta') ~ '^[0-9]+(\.[0-9]+){0,1}$'
+                       THEN NULLIF((ca.meta ->> 'coeff_qta')::numeric, 0::numeric)
+                   END                                          AS coeff_qta,
+                   f.data                                       AS fattura_data
+              FROM vendite.commesse_attivita ca
+              JOIN vendite.attivita_fatturabili af ON af.commessa_attivita_id = ca.id
+              LEFT JOIN vendite.fatture_righe fr ON fr.id = af.fattura_riga_id
+              LEFT JOIN vendite.fatture f ON f.id = fr.fattura_id
+             WHERE ca.tipo_movimento::text = 'NORMALE'
+               AND ( ca.segment_key::text = v_seg_ddt::text
+                     OR ca.segment_key::text LIKE v_seg_ddt::text || '#CMP:%'
+                     OR ( v_seg_ord IS NOT NULL
+                          AND ( ca.segment_key::text = v_seg_ord::text
+                                OR ca.segment_key::text LIKE v_seg_ord::text || '#CMP:%' ) ) )
+        ), gia AS (
+            -- Quanto e' gia' stato accreditato su ciascun gruppo,
+            -- in UNITA' PADRE. Si legge come MAX fra le righe di
+            -- fattura del gruppo e non come somma: per un kit
+            -- ogni componente porta la stessa quota padre
+            -- replicata, quindi sommarle la moltiplicherebbe.
+            SELECT a.kit_key,
+                   COALESCE(max(x.tot), 0::numeric) AS accreditato_padre
+              FROM af a
+              LEFT JOIN LATERAL (
+                  SELECT COALESCE(sum(ra.qta_partita), 0::numeric) AS tot
+                    FROM vendite.resi_righe_accrediti ra
+                   WHERE ra.fattura_riga_rettificata_id = a.fattura_riga_id
+              ) x ON TRUE
+             GROUP BY a.kit_key
+        )
+        SELECT a.kit_key,
+               max(a.fattura_data)                                                     AS fattura_data,
+               max(CASE WHEN a.e_componente THEN a.quantita / a.coeff_qta
+                        ELSE a.quantita END)                                           AS qta_padre,
+               bool_or(a.fattura_riga_id IS NULL)                                       AS senza_fattura,
+               bool_or(a.e_componente AND a.coeff_qta IS NULL)                          AS coeff_mancante,
+               COALESCE(max(g.accreditato_padre), 0::numeric)                           AS accreditato_padre
+          FROM af a
+          LEFT JOIN gia g ON g.kit_key = a.kit_key
+         GROUP BY a.kit_key
+         -- LIFO: dall'ULTIMA fatturata a scalare.
+         ORDER BY max(a.fattura_data) DESC NULLS LAST, a.kit_key DESC
+    LOOP
+        EXIT WHEN v_residuo <= 0;
+
+        -- ⚠️ Un'attivita' mai finita in una fattura non ha un
+        --    prezzo da cui accreditare. Non e' un caso da
+        --    gestire con un ripiego: e' la condizione che rende
+        --    l'accredito impossibile, e va detta.
+        IF v_grp.senza_fattura THEN
+            PERFORM script.fn_log_and_raise_error(
+                'vendite','fn_accredita_riga_reso','E_ACCREDITO_ATTIVITA_NON_FATTURATA',
+                jsonb_build_object('resi_riga_id', p_resi_riga_id,
+                                   'segmento',     v_grp.kit_key),
+                NULL::uuid, p_resi_riga_id::text, v_grp.kit_key);
+        END IF;
+
+        -- Kit senza coefficiente: la quantita' padre non e'
+        -- calcolabile, e inventarla accrediterebbe un numero
+        -- che nessuno sa da dove viene.
+        IF v_grp.coeff_mancante THEN
+            PERFORM script.fn_log_and_raise_error(
+                'vendite','fn_accredita_riga_reso','E_ACCREDITO_KIT_NON_MISURABILE',
+                jsonb_build_object('resi_riga_id', p_resi_riga_id,
+                                   'segmento',     v_grp.kit_key),
+                NULL::uuid, p_resi_riga_id::text, v_grp.kit_key);
+        END IF;
+
+        -- Capienza residua del gruppo, in unita' padre.
+        v_quota := LEAST(v_residuo,
+                         v_grp.qta_padre - v_grp.accreditato_padre);
+        CONTINUE WHEN v_quota <= 0;
+
+        -- Una rettifica per RIGA DI FATTURA del gruppo: su un
+        -- articolo composito sono N, una per componente, e
+        -- ciascuna e' lo specchio della SUA riga di fattura.
+        FOR v_cmp IN
+            SELECT ca.id                                        AS ca_id,
+                   ca.commessa_id,
+                   ca.segment_key,
+                   ca.articolo_id,
+                   ca.istanza_utility_id,
+                   ca.uom_id,
+                   ca.uom_operativa_id,
+                   ca.factor_to_base,
+                   ca.quantita                                  AS ca_quantita,
+                   ca.qta_operativa                             AS ca_qta_operativa,
+                   COALESCE(ca.tipo_doc_fiscale_id, af.tipo_doc_fiscale_id) AS tipo_doc_fiscale_id,
+                   COALESCE(ca.valuta_id, af.valuta_id)         AS valuta_id,
+                   ca.area_geografica_id,
+                   af.fattura_riga_id,
+                   fr.prezzo_unitario,
+                   (ca.segment_key::text LIKE '%#CMP:%')        AS e_componente,
+                   split_part(ca.segment_key::text, '#CMP:', 2) AS componente,
+                   CASE
+                       WHEN (ca.meta ->> 'coeff_qta') ~ '^[0-9]+(\.[0-9]+){0,1}$'
+                       THEN NULLIF((ca.meta ->> 'coeff_qta')::numeric, 0::numeric)
+                   END                                          AS coeff_qta
+              FROM vendite.commesse_attivita ca
+              JOIN vendite.attivita_fatturabili af ON af.commessa_attivita_id = ca.id
+              JOIN vendite.fatture_righe fr ON fr.id = af.fattura_riga_id
+             WHERE ca.tipo_movimento::text = 'NORMALE'
+               AND split_part(ca.segment_key::text, '#CMP:', 1) = v_grp.kit_key
+             ORDER BY ca.segment_key
+        LOOP
+            -- Quantita' in unita' di RIGA DI FATTURA.
+            v_qta_doc := v_quota * COALESCE(v_cmp.coeff_qta, 1::numeric);
+
+            -- Il segmento porta SEMPRE la spedizione (D-NC-1),
+            -- anche quando l'attivita' consumata sta sulla
+            -- corsia ORD. `#RET:<n>` prima di `#CMP:<comp>`,
+            -- cosi' `split_part(..., '#CMP:', 1)` continua a
+            -- dare il kit_key e vw_af_merce_per_riga legge la
+            -- rettifica senza modifiche.
+            v_segment_key := v_seg_ddt || '#RET:' || v_progressivo::text
+                || CASE WHEN v_cmp.e_componente
+                        THEN '#CMP:' || v_cmp.componente
+                        ELSE '' END;
+
+            SELECT u.attivita_id, u.is_new
+              INTO v_attivita_id, v_is_new
+              FROM vendite.fn_upsert_commessa_attivita(
+                  p_commessa_id                   => v_cmp.commessa_id,
+                  p_segment_key                   => v_segment_key,
+                  p_articolo_id                   => v_cmp.articolo_id,
+                  p_istanza_utility_id            => v_cmp.istanza_utility_id,
+                  p_data_attivita                 => v_data,
+                  p_uom_id                        => v_cmp.uom_id,
+                  -- ⭐ D-NC-2: il segno sta nel NUMERO, non in
+                  --    un'etichetta che ogni consumatore
+                  --    dovrebbe saper tradurre.
+                  p_quantita                      => - v_qta_doc,
+                  p_competenza_mese               => date_trunc('month', v_data)::date,
+                  p_competenza_dal                => v_data,
+                  p_competenza_al                 => v_data,
+                  -- ⭐ N-1: COPIATO dalla riga di fattura, mai
+                  --    ricalcolato, mai riletto dal listino.
+                  p_prezzo_snapshot               => v_cmp.prezzo_unitario,
+                  p_prezzo_base_snapshot          => v_cmp.prezzo_unitario,
+                  p_origine_prezzo                => 'MANUALE',
+                  p_tipo_variazione_applicata     => 'NESSUNA',
+                  p_valore_variazione_applicata   => NULL,
+                  p_promo_id                      => NULL,
+                  p_contratto_id                  => NULL,
+                  p_categoria_cliente_id_snapshot => NULL,
+                  p_classe_utenza_id_snapshot     => NULL,
+                  p_qta_operativa                 => CASE
+                          WHEN v_cmp.ca_qta_operativa IS NOT NULL AND v_cmp.ca_quantita <> 0
+                          THEN - (v_qta_doc * v_cmp.ca_qta_operativa / v_cmp.ca_quantita)
+                      END,
+                  p_uom_operativa_id              => v_cmp.uom_operativa_id,
+                  p_factor_to_base                => COALESCE(v_cmp.factor_to_base, 1::numeric),
+                  p_posticipa_al                  => NULL,
+                  p_tipo_doc_fiscale_id           => v_cmp.tipo_doc_fiscale_id,
+                  p_valuta_id                     => v_cmp.valuta_id,
+                  p_area_geografica_id            => v_cmp.area_geografica_id,
+                  p_listino_versione_id           => NULL,
+                  p_prezzo_bloccato               => true,
+                  p_pricing_mode                  => 'FIXED',
+                  p_prezzo_da_riallineare         => false,
+                  p_stato_approvazione            => 'APPROVATA',
+                  p_stato_emissione               => 'NON_EMESSA',
+                  p_sorgente_tipo_id              => NULL,
+                  p_sorgente_uid                  => NULL,
+                  p_tipo_movimento                => 'RETTIFICA',
+                  p_meta                          => jsonb_strip_nulls(jsonb_build_object(
+                          'coeff_qta',    v_cmp.coeff_qta,
+                          'accredito_da', 'RESO',
+                          'resi_riga_id', p_resi_riga_id)),
+                  p_causale_onere_id              => NULL,
+                  p_natura_doc_id                 => v_natura_nc,
+                  p_fattura_riga_rettificata_id   => v_cmp.fattura_riga_id
+              ) AS u;
+
+            -- Difesa in profondita': l'accredito e' una CREATE,
+            -- non una upsert. Riusa fn_upsert_commessa_attivita
+            -- solo per non duplicarne il mapping a 40 parametri,
+            -- ma un «update» qui non e' MAI legittimo. Col lock
+            -- e il MAX+1 sopra non deve mai scattare: se scatta
+            -- e' una regressione.
+            IF NOT v_is_new THEN
+                PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_accredita_riga_reso','E_ACCREDITO_SEGMENT_DUPLICATO',
+                    jsonb_build_object('resi_riga_id', p_resi_riga_id,
+                                       'segment_key',  v_segment_key,
+                                       'attivita_id',  v_attivita_id),
+                    NULL::uuid, v_segment_key, p_resi_riga_id::text);
+            END IF;
+
+            -- Il FATTO e il PRESIDIO, nella stessa riga.
+            -- `gruppo` = il segmento della rettifica privato del
+            -- suffisso #CMP: identifica l'UNITA' CONSUMATA, cosi'
+            -- la quota in unita' di merce si somma una volta per
+            -- gruppo e non una volta per componente.
+            INSERT INTO vendite.resi_righe_accrediti
+                   (resi_riga_id, fattura_riga_rettificata_id,
+                    qta, qta_partita, gruppo, commessa_attivita_id, meta)
+            VALUES (p_resi_riga_id, v_cmp.fattura_riga_id,
+                    v_qta_doc, v_quota,
+                    v_seg_ddt || '#RET:' || v_progressivo::text,
+                    v_attivita_id,
+                    jsonb_build_object('segment_key',      v_segment_key,
+                                       'segmento_origine', v_cmp.segment_key,
+                                       'etichetta',        v_coda.etichetta))
+            RETURNING id INTO v_accredito_id;
+
+            -- Audit: chi, quando, quanto, contro quale riga di
+            -- fattura. Senza, la rettifica direbbe COSA e' stato
+            -- fatto, non A FRONTE DI COSA.
+            INSERT INTO vendite.commesse_attivita_log (commessa_attivita_id, evento, dettaglio)
+            VALUES (v_attivita_id, 'ACCREDITO_RICHIESTO',
+                    jsonb_build_object(
+                        'resi_riga_id',                p_resi_riga_id,
+                        'ddt_riga_id',                 v_coda.ddt_riga_id,
+                        'ordine_riga_id',              v_coda.ordine_riga_id,
+                        'etichetta',                   v_coda.etichetta,
+                        'accredito_dovuto',            v_coda.accredito_dovuto,
+                        'fattura_riga_rettificata_id', v_cmp.fattura_riga_id,
+                        'prezzo_copiato',              v_cmp.prezzo_unitario,
+                        'qta_documento',               v_qta_doc,
+                        'qta_partita',                 v_quota,
+                        'segment_key',                 v_segment_key,
+                        'accredito_id',                v_accredito_id));
+
+            accredito_id                := v_accredito_id;
+            commessa_attivita_id        := v_attivita_id;
+            fattura_riga_rettificata_id := v_cmp.fattura_riga_id;
+            qta                         := v_qta_doc;
+            qta_partita                 := v_quota;
+            RETURN NEXT;
+        END LOOP;
+
+        v_residuo     := v_residuo - v_quota;
+        v_progressivo := v_progressivo + 1;
+    END LOOP;
+
+    -- --------------------------------------------------
+    -- 8) L'UGUAGLIANZA DI D-NC-6, e il tetto della MERCE.
+    --    L'accredito e' sempre PIENO: un residuo che nessuno
+    --    puo' chiudere e' la malattia per cui questo cantiere
+    --    esiste — la riga che resta in coda a chiedere per
+    --    sempre. Meglio non farlo che farlo a meta'.
+    --    ⚠️ Sta QUI e non nel guard del ponte perche' la
+    --    merce si misura in unita' PADRE: su un kit tre righe
+    --    di ponte valgono UNA unita', e un trigger di riga
+    --    che le sommasse rifiuterebbe il secondo componente.
+    -- --------------------------------------------------
+    IF v_residuo > 0 THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite','fn_accredita_riga_reso','E_ACCREDITO_QUOTA_NON_COPERTA',
+            jsonb_build_object('resi_riga_id',     p_resi_riga_id,
+                               'accredito_dovuto', v_coda.accredito_dovuto,
+                               'non_coperto',      v_residuo),
+            NULL::uuid,
+            p_resi_riga_id::text, v_residuo::text, v_coda.accredito_dovuto::text);
+    END IF;
+
+    RETURN;
+END
+$function$
+
+COMMENT ON FUNCTION vendite.fn_accredita_riga_reso(p_resi_riga_id bigint)
+IS 'MADRE del verbo «accredita»: dalla coda accrediti genera le righe di RETTIFICA in commessa e le registra sul ponte vendite.resi_righe_accrediti. Una sola unita'' atomica; il DOCUMENTO non nasce qui, nasce nel giro di fatturazione normale — nessuna seconda pipeline, ed e'' il motivo per cui un esito parziale del fan-out non lascia mai mezzo documento fiscale. UN PARAMETRO SOLO: con D-NC-6 (l''accredito e'' sempre pieno) la quantita'' non e'' un input ma vw_resi_da_accreditare.accredito_dovuto, e con D-NC-7 il massivo lo fa il backend con run_fan_out. ⭐ D-NC-1: la rettifica porta SEMPRE il segmento della SPEDIZIONE (DDT:<uid>:R:<riga>#RET:<n>), anche quando a fatturare e'' stata la corsia ORD — sul serbatoio d''ordine la greedy scaricherebbe l''accredito sull''ultima spedizione invece che su quella da cui la merce e'' tornata. Il ripiego «se il DDT non c''e'', prendi il primo» e'' diventato un guard fail-fast (E_ACCREDITO_SENZA_SPEDIZIONE) e non un COALESCE: la condizione e'' impossibile per costruzione, e un ramo morto sembra coperto senza esserlo. ⭐ N-1: il prezzo si COPIA da vendite.fatture_righe, mai ricalcolato e mai riletto dal listino. Sconto e IVA li copia il generatore righe lato backend (BE-4), leggendo la riga rettificata: commesse_attivita non ha una colonna sconto e inventarne una toccherebbe la catena di TUTTE le fatture. D-NC-5: consumo LIFO delle unita'' fatturanti — non e'' una regola di calcolo (il prezzo si copia sempre) ma di CONSUMO. Kit: raggruppamento per kit_key e quantita'' in unita'' PADRE, max(quantita/coeff_qta) come vw_af_merce_per_riga; una rettifica per componente, ciascuna specchio della sua riga di fattura. Chiude con l''uguaglianza di D-NC-6 (E_ACCREDITO_QUOTA_NON_COPERTA): meglio non farlo che farlo a meta'', perche'' un residuo parziale e'' la riga che resta in coda a chiedere per sempre. Il presidio permessi vive sul BE (post_permission), non qui. Modello: vendite.fn_aggiungi_onere_commessa. rev 2026-08-18.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

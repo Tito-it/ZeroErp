@@ -1,0 +1,414 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# N7 — 🔴 LA RI-CONSEGNA DOPO LA NOTA DI CREDITO (D-NC-4)
+#   docs/it/dev/work-in-progress/brief-design-note-credito-resi.md §12.5, §12.5-bis
+#
+# ── IL PROBLEMA, CHE NESSUNO DEI DUE CANTIERI PRECEDENTI POTEVA VEDERE ─
+#
+#   Serve la nota di credito per manifestarsi, ed e' una promessa scritta che
+#   oggi non regge. Il brief di luglio (§3d, riga 9) dichiarava: «se la nota di
+#   credito abbassa i fatturati, la differenza torna positiva e la ri-consegna
+#   rifattura da se', zero rework». Indicava dove: sul segmento del DDT nuovo,
+#   «che e' un segmento vergine».
+#
+#   🔴 Quel segmento vergine non esiste piu'. La correzione `20260817-11/-12` —
+#   scritta per chiudere la doppia fatturazione, e giustamente — ha stabilito
+#   che una riga di RI-CONSEGNA **non e' una partita nuova**: porta
+#   `e_riconsegna = true`, `differenza` NULL, e i suoi pezzi rientrano nel
+#   `consegnato` della partita d'ORIGINE.
+#
+#   Il conto della partita d'origine, dopo la NC e la rispedizione, e' **giusto**:
+#
+#       t0   consegnato 10 · reso 3 · tenuti 7 · fatturato 10  ->  −3  DA_ACCREDITARE
+#       NC   fatturato 7                                      ->   0  PAREGGIATA
+#       ri-consegna di 3:
+#            consegnato 13 · reso 3 · tenuti 10 · fatturato 7  ->  +3  DA_FATTURARE
+#
+#   ⭐ L'aritmetica e' perfetta. Il problema e' l'ultimo passaggio: il segmento
+#   della partita d'origine **non e' LIBERA** — e' gia' stato fatturato una
+#   volta — quindi `fn_list_ddt_da_pushare` non lo spinge. E la riga di
+#   ri-consegna, che sarebbe il veicolo naturale, ha `differenza` NULL ed e'
+#   esclusa dal predicato. **La merce resta in mano al cliente non fatturata e
+#   nessuna coda lo dice.**
+#
+#   ⚠️ E la cintura `= 'LIBERA'` non si puo' allentare: e' cio' che impedisce di
+#   ri-spingere una riga gia' fatturata. Toglierla riaprirebbe il bug di luglio
+#   in forma peggiore.
+#
+# ── ✅ LA REGOLA (D-NC-4, Tid 2026-08-18) ──────────────────────────────
+#
+#       Quando si rispedisce, i pezzi che erano stati ACCREDITATI contano sulla
+#       spedizione NUOVA. Quelli non accreditati continuano a contare su quella
+#       vecchia.
+#
+#   I pezzi accreditati **cambiano casa**:
+#
+#       DDT₁ (resta ferma)      10 · reso 3 · tenuti 7 · fatt. 7  ->  0  ✅
+#       DDT₂ (prende i 3 acc.)   3 · reso 0 · tenuti 3 · fatt. 0  -> +3  ✅
+#
+#   DDT₂ e' una spedizione **mai instradata**: `fn_get_stato_push_segment` la
+#   vede LIBERA e non la blocca. Entra nel giro di fatturazione NORMALE, col
+#   prezzo della sua riga. ⭐ Nessun verbo nuovo, nessuna seconda pipeline.
+#
+#   **Le due garanzie, entrambe per costruzione:**
+#   1. DDT₁ non porta piu' quei pezzi -> non li puo' fatturare una seconda
+#      volta: il buco di luglio resta chiuso, e con esso il **caso D** di
+#      `test-fn-list-ddt-da-pushare-contatore-v1`;
+#   2. **senza NC la regola e' INERTE**: nessun pezzo e' stato accreditato,
+#      `accreditato = 0`, la quota che cambia casa e' 0 e ogni numero resta
+#      identico a oggi.
+#
+# ── IL CASO MISTO, e perche' «solo per la parte accreditata» ───────────
+#
+#   Reso 5, accreditati 3, rispediti 5:
+#       DDT₁  10 + 2 = 12   fatt. 7   ->  i 2 NON accreditati tornano qui, 0 ✅
+#       DDT₂  3             fatt. 0   ->  3 da fatturare, solo gli accreditati ✅
+#
+#   «Tutta la ri-consegna e' merce nuova» rifatturerebbe anche i 2 gia' pagati;
+#   «niente e' merce nuova» e' il blocco di oggi. ⭐ La quantita' accreditata e'
+#   l'unica misura che divide correttamente le due parti — ed e' un numero che
+#   il sistema ha gia', perche' e' la somma delle rettifiche sulla partita
+#   d'origine, che N6 espone nella colonna `rettificato`.
+#
+# ── COME SI RIPARTISCE FRA PIU' RI-CONSEGNE: greedy oldest-first ───────
+#
+#   Una partita d'origine puo' avere piu' righe di ri-consegna (nei dati di
+#   oggi: la riga di reso 177 ne ha due, 6 + 2 pezzi). La quota accreditata si
+#   versa nelle spedizioni nuove **dalla piu' vecchia, fino a capienza**: e' la
+#   stessa distribuzione greedy che la vista usa gia' per la corsia ORD e che
+#   usano `fn_list_ddt_da_pushare` e `vw_resi_da_accreditare`. Nessun criterio
+#   nuovo da imparare.
+#
+# ── ⚠️ CIO' CHE CAMBIA NEI NUMERI DI OGGI, e va detto ──────────────────
+#
+#   `consegnato` su una riga di RI-CONSEGNA smette di essere la quantita' della
+#   riga di DDT e diventa **la quota che ha cambiato casa** — cioe' 0 finche'
+#   non c'e' una nota di credito. Sui dati del 2026-08-18 sono **due righe**
+#   (ddt_righe 524 e 525: da 6 e 2 a 0 e 0), entrambe con `differenza` NULL sia
+#   prima sia dopo, quindi **nessun consumatore che calcola cambia risultato**:
+#   `fn_list_ddt_da_pushare` le esclude col predicato `differenza IS NOT NULL`
+#   sia prima sia dopo.
+#
+#   ⭐ Ed e' una correzione, non un effetto collaterale: `consegnato` e' la base
+#   CONTABILE della partita, non la quantita' fisica (sull'origine vale gia'
+#   `dr.quantita + riconsegnato`). Contando i pezzi ri-consegnati **sia**
+#   sull'origine **sia** sulla riga nuova, la somma delle partite superava la
+#   merce realmente uscita — 25 contro 17 — e l'invariante che il pgTAP deve
+#   asserire («i pezzi si spostano, non si moltiplicano») non era vero. Ora lo e'.
+#   La quantita' fisica resta dov'e' sempre stata: `vendite.ddt_righe.quantita`.
+#
+# ── ⚠️ CHANGESET SEPARATO DA N6, e non e' pignoleria ──────────────────
+#
+#   La parita' di N6 si misura PRIMA che questa cambi i numeri. Se viaggiassero
+#   insieme e la parita' si rompesse, non si saprebbe quale delle due l'ha rotta.
+#
+# ── ⚠️ IL TEST DA TENERE VERDE E' NOMINATO ────────────────────────────
+#
+#   Caso D di `test-fn-list-ddt-da-pushare-contatore-v1`: la ri-consegna
+#   **senza** NC deve continuare a proiettare 0. Se diventa rosso, e' la regola
+#   a essere sbagliata, non il test.
+#
+# Base: definizione VIVA di vw_partite_merce dopo -37.
+# Dipendenze: -37 (`rettificato`).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260818-38-update-vw-partite-merce-riconsegna-dopo-nc-mctit.yaml
+
+  - changeSet:
+      id: 20260818-38-update-vw-partite-merce-riconsegna-dopo-nc
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        N7 (D-NC-4): «una ri-consegna e' merce nuova solo per la parte
+        accreditata». La quota accreditata sulla partita d'origine si versa
+        greedy oldest-first nelle spedizioni nuove, che diventano partite vere
+        con un segmento vergine — quindi LIBERA, quindi ri-fatturabili dal giro
+        normale. Senza nota di credito la regola e' inerte e ogni numero resta
+        identico. security_invoker=on ri-specificato.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_partite_merce
+            - columnExists:
+                schemaName: vendite
+                tableName: resi_righe_accrediti
+                columnName: qta
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_partite_merce
+              WITH (security_invoker=on) AS
+              WITH soglia AS (
+                  SELECT s.ordine AS ordine_emesso
+                    FROM config.stati_doc_ddt s
+                   WHERE s.codice_interno::text = 'EMESSO'::text
+              ), ponte_riga AS (
+                  -- Il ponte alla granularita' della SINGOLA spedizione nuova.
+                  -- Serve perche' la quota accreditata va RIPARTITA fra piu'
+                  -- ri-consegne della stessa origine, e per ripartire bisogna
+                  -- poterle distinguere. `ponte` (sotto) resta l'aggregato di
+                  -- sempre, ora derivato da qui.
+                  SELECT rr.ddt_riga_id            AS ddt_riga_origine,
+                         rc.ddt_riga_id            AS ddt_riga_nuova,
+                         d_new.data                AS ddt_nuovo_data,
+                         (sdd_n.ordine >= sg.ordine_emesso) AS emesso,
+                         sum(rc.qta)               AS qta
+                    FROM vendite.resi_righe_riconsegne rc
+                    JOIN vendite.resi_righe rr ON rr.id = rc.resi_riga_id
+                    JOIN vendite.ddt_righe dr_new ON dr_new.id = rc.ddt_riga_id
+                    JOIN vendite.ddt d_new ON d_new.id = dr_new.ddt_id
+                    JOIN config.stati_doc_ddt sdd_n ON sdd_n.id = d_new.stato_doc_ddt_id
+                    CROSS JOIN soglia sg
+                   GROUP BY rr.ddt_riga_id, rc.ddt_riga_id, d_new.data,
+                            (sdd_n.ordine >= sg.ordine_emesso)
+              ), ponte AS (
+                  SELECT p.ddt_riga_origine,
+                         COALESCE(sum(p.qta) FILTER (WHERE p.emesso), 0::numeric) AS riconsegnato,
+                         COALESCE(sum(p.qta) FILTER (WHERE NOT p.emesso), 0::numeric) AS in_riconsegna
+                    FROM ponte_riga p
+                   GROUP BY p.ddt_riga_origine
+              ), acc_origine AS (
+                  -- Quanto e' stato ACCREDITATO sulla partita d'origine. E' la
+                  -- somma delle rettifiche sul suo segmento DDT, che e'
+                  -- negativa: qui si legge in positivo, perche' e' una
+                  -- capienza, non un movimento.
+                  -- ⚠️ Esiste solo dopo l'EMISSIONE della rettifica: fra il
+                  --    verbo e il giro di fatturazione vale 0, e la
+                  --    ri-consegna si comporta come oggi. E' corretto — la
+                  --    merce cambia casa quando la nota di credito e' un
+                  --    documento, non quando qualcuno la chiede.
+                  SELECT DISTINCT p.ddt_riga_origine,
+                         GREATEST(0::numeric, - COALESCE(ret.quantita, 0::numeric)) AS accreditato
+                    FROM ponte_riga p
+                    LEFT JOIN vendite.vw_af_merce_per_riga ret
+                      ON ret.corsia::text = 'DDT'::text
+                     AND ret.riga_id = p.ddt_riga_origine
+                     AND ret.tipo_movimento::text = 'RETTIFICA'::text
+              ), migra AS (
+                  -- I pezzi che CAMBIANO CASA, spedizione per spedizione.
+                  -- Greedy oldest-first, esattamente come la corsia ORD: la
+                  -- capienza accreditata si versa nelle spedizioni nuove dalla
+                  -- piu' vecchia, fino a esaurimento. Cappata alla quantita'
+                  -- ri-consegnata, cosi' un secondo giro reso->NC->ri-consegna
+                  -- non conta due volte lo stesso accredito.
+                  SELECT p.ddt_riga_nuova,
+                         p.ddt_riga_origine,
+                         GREATEST(0::numeric, LEAST(p.qta,
+                             a.accreditato
+                             - COALESCE(sum(p.qta) OVER (PARTITION BY p.ddt_riga_origine
+                                                         ORDER BY p.ddt_nuovo_data, p.ddt_riga_nuova
+                                                         ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),
+                                        0::numeric))) AS quota
+                    FROM ponte_riga p
+                    JOIN acc_origine a ON a.ddt_riga_origine = p.ddt_riga_origine
+                   WHERE p.emesso
+              ), migra_origine AS (
+                  SELECT m.ddt_riga_origine, sum(m.quota) AS quota_migrata
+                    FROM migra m GROUP BY m.ddt_riga_origine
+              ), migra_nuova AS (
+                  SELECT m.ddt_riga_nuova, sum(m.quota) AS quota_nuova
+                    FROM migra m GROUP BY m.ddt_riga_nuova
+              ), riga AS (
+                  SELECT dr.id AS ddt_riga_id,
+                         dr.ddt_id,
+                         d.uid AS ddt_uid,
+                         d.data AS ddt_data,
+                         dr.articolo_id,
+                         COALESCE(art.is_composito, false) AS is_composito,
+                         (EXISTS ( SELECT 1
+                                FROM vendite.resi_righe_riconsegne rc
+                               WHERE rc.ddt_riga_id = dr.id)) AS e_riconsegna,
+                         COALESCE(mn.quota_nuova, 0::numeric) AS quota_nuova,
+                         -- LA BASE CONTABILE DELLA PARTITA.
+                         --   riga ordinaria  : la merce uscita con questo documento
+                         --   riga ri-consegna: SOLO i pezzi che hanno cambiato casa
+                         --                     (0 finche' non c'e' una nota di credito)
+                         -- piu' cio' che le e' rientrato da ri-consegne, meno cio'
+                         -- che se n'e' andato verso spedizioni nuove. Le tre voci
+                         -- si compongono: una riga puo' essere insieme origine e
+                         -- ri-consegna (secondo giro reso -> NC -> rispedizione).
+                         ((CASE WHEN EXISTS ( SELECT 1
+                                                FROM vendite.resi_righe_riconsegne rc
+                                               WHERE rc.ddt_riga_id = dr.id)
+                                THEN COALESCE(mn.quota_nuova, 0::numeric)
+                                ELSE dr.quantita
+                           END)
+                          + COALESCE(pt.riconsegnato, 0::numeric)
+                          - COALESCE(mo.quota_migrata, 0::numeric))::numeric(18,6) AS consegnato,
+                         COALESCE(pt.in_riconsegna, 0::numeric) AS in_riconsegna,
+                         COALESCE(caus.fatturabile, false) AS fatturabile
+                    FROM vendite.ddt_righe dr
+                    JOIN vendite.ddt d ON d.id = dr.ddt_id
+                    JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
+                    JOIN catalogo.articoli art ON art.id = dr.articolo_id
+                    LEFT JOIN config.causali_trasporto caus ON caus.id = d.causale_trasporto_id
+                    LEFT JOIN ponte pt ON pt.ddt_riga_origine = dr.id
+                    LEFT JOIN migra_origine mo ON mo.ddt_riga_origine = dr.id
+                    LEFT JOIN migra_nuova mn ON mn.ddt_riga_nuova = dr.id
+                    CROSS JOIN soglia sg
+                   WHERE dr.attivo IS TRUE AND NOT sdd.is_abortito AND sdd.ordine >= sg.ordine_emesso
+              ), orig AS (
+                  SELECT f.ddt_riga_id,
+                         count(DISTINCT f.ordine_riga_id) AS n_origini,
+                         min(f.ordine_riga_id) AS ordine_riga_id
+                    FROM vendite.ordini_righe_fulfillment f
+                   GROUP BY f.ddt_riga_id
+              ), sospetto AS (
+                  SELECT dr.id AS ddt_riga_id
+                    FROM vendite.ddt_righe dr
+                   WHERE NOT (EXISTS ( SELECT 1
+                            FROM vendite.ordini_righe_fulfillment f
+                           WHERE f.ddt_riga_id = dr.id)) AND (EXISTS ( SELECT 1
+                            FROM vendite.ddt_righe dr2
+                              JOIN vendite.ordini_righe_fulfillment f2 ON f2.ddt_riga_id = dr2.id
+                              JOIN vendite.ordini_righe orr_ful ON orr_ful.id = f2.ordine_riga_id
+                              JOIN vendite.ordini_righe orr_ord ON orr_ord.ordine_id = orr_ful.ordine_id
+                           WHERE dr2.ddt_id = dr.ddt_id AND dr2.attivo IS TRUE AND orr_ord.attivo IS TRUE AND orr_ord.articolo_id = dr.articolo_id))
+              ), res AS (
+                  SELECT e.ddt_riga_id,
+                         sum(e.quantita) AS reso
+                    FROM vendite.vw_resi_righe_effettive e
+                   GROUP BY e.ddt_riga_id
+              ), alloc AS (
+                  -- ⚠️ NON SI TOCCA (vedi N6): il serbatoio d'ordine resta il
+                  --    fatturato NORMALE della corsia ORD.
+                  SELECT r_1.ddt_riga_id,
+                         GREATEST(0::numeric, LEAST(r_1.consegnato, COALESCE(fo.quantita, 0::numeric) - COALESCE(sum(r_1.consegnato) OVER (PARTITION BY o_1.ordine_riga_id ORDER BY r_1.ddt_data, r_1.ddt_riga_id ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0::numeric))) AS fatturato_da_ordine,
+                         COALESCE(fo.misurabile, true) AS ord_misurabile
+                    FROM riga r_1
+                    JOIN orig o_1 ON o_1.ddt_riga_id = r_1.ddt_riga_id
+                    LEFT JOIN vendite.vw_af_merce_per_riga fo ON fo.corsia::text = 'ORD'::text AND fo.riga_id = o_1.ordine_riga_id AND fo.tipo_movimento::text = 'NORMALE'::text
+                   WHERE NOT r_1.e_riconsegna
+              )
+              SELECT r.ddt_riga_id,
+                 r.ddt_id,
+                 r.ddt_uid,
+                 r.articolo_id,
+                 r.is_composito,
+                 o.ordine_riga_id,
+                 orr.ordine_id,
+                     CASE
+                         WHEN o.ddt_riga_id IS NULL THEN 'NESSUNA'::text
+                         WHEN o.n_origini > 1 THEN 'MULTIPLA'::text
+                         ELSE 'ORDINE'::text
+                     END::character varying AS origine,
+                 r.fatturabile,
+                 r.consegnato,
+                 COALESCE(res.reso, 0::numeric) AS reso,
+                 r.in_riconsegna,
+                 v.tenuti,
+                 COALESCE(fd.quantita, 0::numeric) AS fatturato_merce,
+                 COALESCE(al.fatturato_da_ordine, 0::numeric) AS fatturato_da_ordine,
+                 v.fatturato,
+                 v.misurabile,
+                     -- ⭐ Il conto si applica anche a una riga di ri-consegna,
+                     --    PURCHE' le abbiano cambiato casa dei pezzi. Senza
+                     --    nota di credito `quota_nuova` e' 0 e la riga resta
+                     --    muta come oggi: e' cio' che tiene chiuso il buco di
+                     --    luglio e verde il caso D del pgTAP.
+                     CASE
+                         WHEN w.conta_fatturazione AND v.misurabile
+                              AND (NOT r.e_riconsegna OR r.quota_nuova > 0::numeric) THEN w.saldo
+                         ELSE NULL::numeric
+                     END AS differenza,
+                     CASE
+                         WHEN r.e_riconsegna AND r.quota_nuova <= 0::numeric THEN 'RICONSEGNA'::text
+                         WHEN NOT w.conta_fatturazione THEN 'NON_FATTURABILE'::text
+                         WHEN NOT v.misurabile THEN 'NON_MISURABILE'::text
+                         WHEN w.saldo > 0::numeric THEN 'DA_FATTURARE'::text
+                         WHEN w.saldo < 0::numeric THEN 'DA_ACCREDITARE'::text
+                         ELSE 'PAREGGIATA'::text
+                     END::character varying AS stato,
+                 r.e_riconsegna,
+                 sos.ddt_riga_id IS NOT NULL AS sospetto_duplicato_ordine,
+                 COALESCE(fr.quantita, 0::numeric) AS rettificato,
+                 r.quota_nuova AS riconsegna_quota_nuova
+                FROM riga r
+                LEFT JOIN orig o ON o.ddt_riga_id = r.ddt_riga_id
+                LEFT JOIN vendite.ordini_righe orr ON orr.id = o.ordine_riga_id
+                LEFT JOIN res ON res.ddt_riga_id = r.ddt_riga_id
+                LEFT JOIN sospetto sos ON sos.ddt_riga_id = r.ddt_riga_id
+                LEFT JOIN alloc al ON al.ddt_riga_id = r.ddt_riga_id
+                LEFT JOIN vendite.vw_af_merce_per_riga fd ON fd.corsia::text = 'DDT'::text AND fd.riga_id = r.ddt_riga_id AND fd.tipo_movimento::text = 'NORMALE'::text
+                LEFT JOIN vendite.vw_af_merce_per_riga fr ON fr.corsia::text = 'DDT'::text AND fr.riga_id = r.ddt_riga_id AND fr.tipo_movimento::text = 'RETTIFICA'::text
+                CROSS JOIN LATERAL ( SELECT r.consegnato - COALESCE(res.reso, 0::numeric) AS tenuti,
+                       COALESCE(fd.quantita, 0::numeric)
+                         + COALESCE(al.fatturato_da_ordine, 0::numeric)
+                         + COALESCE(fr.quantita, 0::numeric) AS fatturato,
+                       COALESCE(fd.misurabile, true)
+                         AND COALESCE(al.ord_misurabile, true)
+                         AND COALESCE(fr.misurabile, true) AS misurabile) v
+                CROSS JOIN LATERAL ( SELECT r.fatturabile OR v.fatturato > 0::numeric AS conta_fatturazione,
+                       v.tenuti - v.fatturato AS saldo) w;
+
+              COMMENT ON COLUMN vendite.vw_partite_merce.riconsegna_quota_nuova IS
+                'I pezzi che hanno CAMBIATO CASA: la quota accreditata sulla partita '
+                'd''origine che questa spedizione di ri-consegna si e'' presa, e che '
+                'quindi torna a essere merce da fatturare (D-NC-4). Zero su ogni riga '
+                'che non e'' una ri-consegna, e zero su una ri-consegna senza nota di '
+                'credito a monte — li'' la regola e'' inerte e la riga resta il «conto '
+                'vuoto» di sempre. Si ripartisce fra piu'' ri-consegne della stessa '
+                'origine con la solita greedy oldest-first, ed e'' cappata alla '
+                'quantita'' ri-consegnata, cosi'' un secondo giro reso -> NC -> '
+                'ri-consegna non conta due volte lo stesso accredito.';
+
+              COMMENT ON COLUMN vendite.vw_partite_merce.consegnato IS
+                'Base CONTABILE della partita, non la quantita'' fisica (quella sta in '
+                'vendite.ddt_righe.quantita). Per una riga ordinaria: la merce uscita '
+                'con il documento, piu'' cio'' che le e'' rientrato da ri-consegne '
+                'gia'' emesse, meno i pezzi che hanno cambiato casa verso una '
+                'spedizione nuova (D-NC-4). Per una riga di RI-CONSEGNA: solo i pezzi '
+                'che hanno cambiato casa — zero finche'' non c''e'' una nota di credito. '
+                '⭐ Cosi'' la somma delle partite non supera mai la merce realmente '
+                'uscita: i pezzi si spostano, non si moltiplicano. Prima del '
+                '2026-08-18 i pezzi ri-consegnati contavano SIA sull''origine SIA sulla '
+                'riga nuova, e l''invariante non era vero (la doppia fatturazione era '
+                'evitata a valle, azzerando `differenza` sulla riga di ri-consegna).';
+
+              COMMENT ON VIEW vendite.vw_partite_merce IS
+                'La PARTITA DI MERCE: una riga per riga di DDT attiva su documento '
+                'EMESSO in poi, con la riga d''ordine come ORIGINE nullable. '
+                'rev 2026-08-18 (N6): il `fatturato` somma anche le RETTIFICHE della '
+                'corsia DDT (colonna `rettificato`, negativa o zero) — e'' cio'' che '
+                'chiude il contratto del S2 del brief nota di credito, senza il quale '
+                'una NC sarebbe invisibile al contatore e la coda continuerebbe a '
+                'chiedere l''accredito per sempre. La rettifica si legge SEMPRE sulla '
+                'corsia DDT anche quando a fatturare e'' stata la corsia ORD (D-NC-1): '
+                'nel serbatoio d''ordine la greedy la scaricherebbe sull''ULTIMA '
+                'spedizione invece che su quella da cui la merce e'' tornata, con il '
+                'totale giusto e la ripartizione falsa. '
+                'rev 2026-08-18 (N7, D-NC-4): «una ri-consegna e'' merce nuova SOLO per '
+                'la parte accreditata». La quota accreditata sulla partita d''origine '
+                'si versa greedy oldest-first nelle spedizioni nuove '
+                '(`riconsegna_quota_nuova`), che diventano partite vere con un segmento '
+                'vergine — quindi LIBERA per fn_get_stato_push_segment, quindi '
+                'ri-fatturabili dal giro normale, senza allentare la cintura che '
+                'impedisce di ri-spingere una riga gia'' fatturata. Senza nota di '
+                'credito la regola e'' INERTE: nessun pezzo cambia casa e ogni numero '
+                'resta quello di prima. '
+                'security_invoker=on ri-specificato (la reloption non si vede in '
+                'pg_get_viewdef e un CREATE OR REPLACE la azzera: qui significa bypass '
+                'della RLS, regressione V-1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Non si torna indietro da soli: va ri-applicato -37, e con
+              --    esso la definizione senza `riconsegna_quota_nuova`.
+              SELECT 1;

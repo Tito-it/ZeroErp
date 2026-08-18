@@ -79,6 +79,7 @@
 - [registri_fatturazione_progressivi](tabelle/registri_fatturazione_progressivi.md) — (latest review 26-01-2026) `vendite.registri_fatturazione_progressivi` memorizza i **progressivi di numerazione** per ciascun registro, anno, mese e serie. E` la base per l’assegnazione del numero documento in fase di emissione.
 - [resi](tabelle/resi.md) — (rev 2026-07-13)
 - [resi_righe](tabelle/resi_righe.md) — (rev 2026-07-13)
+- [resi_righe_accrediti](tabelle/resi_righe_accrediti.md)
 - [resi_righe_riconsegne](tabelle/resi_righe_riconsegne.md) — (rev 2026-07-13)
 - [resi_righe_rinunce](tabelle/resi_righe_rinunce.md) — (rev 2026-07-26)
 - [stati_commessa](tabelle/stati_commessa.md) — (latest review 26-02-2026)   `vendite.stati_commessa` e` la lookup centrale degli stati lifecycle della commessa.
@@ -88,6 +89,7 @@
 
 ## ⚙️ Funzioni
 - [fn_accoda_stampe_lotto](funzioni/fn_accoda_stampe_lotto.md)
+- [fn_accredita_riga_reso](funzioni/fn_accredita_riga_reso.md)
 - [fn_aggiungi_onere_commessa](funzioni/fn_aggiungi_onere_commessa.md) — (rev 2026-07-23)
 - [fn_annulla_commessa_attivita](funzioni/fn_annulla_commessa_attivita.md) — (rev 2026-07-28)
 - [fn_annulla_lotto_da_draft](funzioni/fn_annulla_lotto_da_draft.md) — (latest review 03-08-2026)   La funzione **`vendite.fn_annulla_lotto_da_draft()`** effettua il **rollback tecnico** di un lotto in stato **DRAFT**, eliminando i documenti generati dal draft, ripristinando le righe di `attivita_fatturabili` e **chiudendo** il lotto portandolo ad **ANNULLATA**.
@@ -176,6 +178,7 @@
 - [fn_ordine_riga_componenti_init](funzioni/fn_ordine_riga_componenti_init.md)
 - [fn_ordine_riga_componenti_preview](funzioni/fn_ordine_riga_componenti_preview.md)
 - [fn_ordine_riga_qta_riconsegna](funzioni/fn_ordine_riga_qta_riconsegna.md) — (rev 2026-07-26)
+- [fn_popola_fatture_rettifiche](funzioni/fn_popola_fatture_rettifiche.md)
 - [fn_prepare_sdi_payload](funzioni/fn_prepare_sdi_payload.md) — (latest review 16-02-2026)   Preparare il payload SDI di un lotto:
 - [fn_preventivo_ha_residuo_commessa](funzioni/fn_preventivo_ha_residuo_commessa.md) — `TRUE` se il **push commessa avrebbe effetto** sul preventivo: esistono righe eleggibili (vista predicato unico) **e** la testata e' completa. E' la meta' "servizi" della coppia simmetrica di capability del modello split-per-natura.
 - [fn_preventivo_ha_residuo_ordine](funzioni/fn_preventivo_ha_residuo_ordine.md) — `TRUE` se il preventivo ha righe natura **ORDINE** (merce) non ancora allocate a un ordine: il push ordine avrebbe effetto. E' la meta' "merce" della coppia simmetrica di capability del modello split-per-natura (brief-preventivi-ordini.md D6/D8).
@@ -184,7 +187,9 @@
 - [fn_push_offerta_a_contratto](funzioni/fn_push_offerta_a_contratto.md) — (rev6 2026-06-08 — guard **mutua esclusività** offerta→contratto/ordine; rev5 2026-06-01 — trasporto 1:1 stato approvazione prezzo anche sulle **righe**; rev4 2026-05-31 — successione contratti su overlap; rev3 2026-05-26 — copia `offerte_commerciali_eccezioni_componenti` → `contratti_righe_componenti`)
 - [fn_push_preventivo_a_ordine](funzioni/fn_push_preventivo_a_ordine.md) — (latest review 08-07-2026)
 - [fn_reset_fondi_fattura](funzioni/fn_reset_fondi_fattura.md) — (latest review 15-08-2026)
+- [fn_resi_riga_accreditato_partita](funzioni/fn_resi_riga_accreditato_partita.md)
 - [fn_resi_riga_residuo_riconsegna](funzioni/fn_resi_riga_residuo_riconsegna.md) — (rev 2026-07-26)
+- [fn_resi_riga_tetti_accredito](funzioni/fn_resi_riga_tetti_accredito.md)
 - [fn_resolve_fatturazione_pipeline_step](funzioni/fn_resolve_fatturazione_pipeline_step.md) — (latest review 08-02-2026)   La funzione risolve la configurazione pipeline per un singolo step (`stato_doc_fiscale_id`) applicando fallback su `utility_id` e `tipo_doc_fiscale_id`.
 - [fn_resolve_lotto_task_execution_mode](funzioni/fn_resolve_lotto_task_execution_mode.md) — Determina in modo deterministico la modalita` di esecuzione del task: `RUN`, `SKIP`, `RESUME`, `RESET_REQUIRED`.
 - [fn_resolve_lotto_utility_emittente](funzioni/fn_resolve_lotto_utility_emittente.md) — (latest review 22-02-2026) Helper condiviso per risolvere e validare `utility_id` ed `emittente_soggetto_ruolo_id` nei flussi lotto (`fatturazione_lotti` e `attivita_fatturabili_lotti`).
@@ -301,6 +306,7 @@
 - [trgfn_preventivi_righe_ricalcola_totali](funzioni/trgfn_preventivi_righe_ricalcola_totali.md) — (latest review 03-04-2026) `vendite.trgfn_preventivi_righe_ricalcola_totali()` e' la trigger function **STATEMENT-level** che mantiene i totali testata preventivo sempre coerenti con le righe. Invoca `vendite.fn_ricalcola_totali_preventivo()` **una sola volta per ogni preventivo_id coinvolto**, anche in caso di operazioni bulk (es. copia righe in revisione).
 - [trgfn_preventivi_righe_set_natura_vendita](funzioni/trgfn_preventivi_righe_set_natura_vendita.md)
 - [trgfn_promo_articoli_guard_data_driven](funzioni/trgfn_promo_articoli_guard_data_driven.md) — (latest review 27-04-2026)
+- [trgfn_resi_accrediti_guard](funzioni/trgfn_resi_accrediti_guard.md)
 - [trgfn_resi_gen_numero](funzioni/trgfn_resi_gen_numero.md) — (rev 2026-07-13)
 - [trgfn_resi_guard_ddt_consegnato](funzioni/trgfn_resi_guard_ddt_consegnato.md) — (rev 2026-07-13)
 - [trgfn_resi_guard_emittente_ba](funzioni/trgfn_resi_guard_emittente_ba.md) — (rev 2026-07-13)

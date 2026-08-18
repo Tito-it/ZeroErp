@@ -30,10 +30,34 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(9);
 
+-- 🔴 ARTICOLI PROPRI invece di ART_TEST_BASE / ART_TEST_FALLBACK — 2026-08-18.
+--   Il file agganciava un componente a `ART_TEST_BASE`, che NON e' composito:
+--   il guard rispondeva «Articolo deve essere composito = true» e il file
+--   moriva. Non e' un difetto del guard — e' la fixture che usa un articolo
+--   condiviso e ne assume una proprieta' che quell'articolo non ha (e non deve
+--   avere: e' l'articolo base di mezza suite).
+--   ⭐ Stesso rimedio degli altri quattro test di questa cartella: l'articolo
+--   se lo crea il test, con la proprieta' che gli serve. Il padre nasce
+--   `is_composito = true` perche' e' il presupposto del soggetto in esame.
+CREATE OR REPLACE FUNCTION pg_temp.mk_articolo(p_codice text, p_composito boolean)
+RETURNS uuid AS $mk$
+DECLARE v_id uuid;
+BEGIN
+    -- Riferimenti CLONATI da un articolo esistente: la fixture non deve
+    -- conoscere il dominio (tipo voce, gruppo, spesa, iva) ne' inseguirlo
+    -- quando cambia. ORDER BY id, non «il primo che capita».
+    INSERT INTO catalogo.articoli (codice, descrizione, uom_id, tipo_voce_id,
+                                   gruppo_voce_id, spesa_id, iva_id, is_composito)
+    SELECT p_codice, 'pgTAP note componenti',
+           a.uom_id, a.tipo_voce_id, a.gruppo_voce_id, a.spesa_id, a.iva_id, p_composito
+      FROM catalogo.articoli a ORDER BY a.id LIMIT 1
+    RETURNING id INTO v_id;
+    RETURN v_id;
+END $mk$ LANGUAGE plpgsql;
+
 CREATE TEMP TABLE tmp_seed AS
-SELECT
-  (SELECT id FROM catalogo.articoli WHERE codice = 'ART_TEST_BASE') AS prodotto_id,
-  (SELECT id FROM catalogo.articoli WHERE codice = 'ART_TEST_FALLBACK') AS componente_id;
+SELECT pg_temp.mk_articolo('PGTAP_VWNOTE_PADRE', true)  AS prodotto_id,
+       pg_temp.mk_articolo('PGTAP_VWNOTE_COMP',  false) AS componente_id;
 
 SELECT ok(
   (SELECT prodotto_id IS NOT NULL FROM tmp_seed),
@@ -199,8 +223,15 @@ SELECT throws_ok(
 DELETE FROM catalogo.note_articoli_componenti
 WHERE id = (SELECT id FROM tmp_note);
 
-DELETE FROM catalogo.articoli_componenti
-WHERE id = (SELECT id FROM tmp_art_comp_rel);
+-- 🔴 DELETE della riga di BoM RIMOSSA il 2026-08-18.
+--   `catalogo.articoli_componenti` e' protetta da un guard di immutabilita'
+--   («Struttura BoM immutabile: modifica dei campi di struttura o eliminazione
+--   di righe non ammesse»), arrivato dopo questo file. La cancellazione non e'
+--   piu' una operazione lecita, e insistere qui vorrebbe dire chiedere al test
+--   un permesso che il dominio nega a tutti.
+--   ⭐ E non serve: il ROLLBACK in coda toglie la riga insieme all'articolo che
+--   la porta. Il commento qui sotto dice che le DELETE restano «dove sono
+--   un'asserzione» — questa non lo era, era solo pulizia.
 
 -- Il ROLLBACK e' la garanzia: comunque vada — verde, rosso, o morto a meta' —
 -- questo file non lascia nulla dietro di se'. Le DELETE del cleanup restano

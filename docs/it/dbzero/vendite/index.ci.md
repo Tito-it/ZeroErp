@@ -79,6 +79,7 @@
 - [registri_fatturazione_progressivi](manual/registri_fatturazione_progressivi.md) — (latest review 26-01-2026) `vendite.registri_fatturazione_progressivi` memorizza i **progressivi di numerazione** per ciascun registro, anno, mese e serie. E` la base per l’assegnazione del numero documento in fase di emissione.
 - [resi](manual/resi.md) — (rev 2026-07-13)
 - [resi_righe](manual/resi_righe.md) — (rev 2026-07-13)
+- [resi_righe_accrediti](manual/resi_righe_accrediti.md)
 - [resi_righe_riconsegne](manual/resi_righe_riconsegne.md) — (rev 2026-07-13)
 - [resi_righe_rinunce](manual/resi_righe_rinunce.md) — (rev 2026-07-26)
 - [stati_commessa](manual/stati_commessa.md) — (latest review 26-02-2026)   `vendite.stati_commessa` e` la lookup centrale degli stati lifecycle della commessa.

@@ -1,0 +1,297 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# N4 (2/2) — IL GUARD DEL PONTE, e il lettore che vede davvero
+#   docs/it/dev/work-in-progress/brief-design-note-credito-resi.md §12.6-ter
+#
+# Due oggetti in un changeSet perche' sono un solo presidio:
+#
+#   1. `vendite.fn_resi_riga_tetti_accredito` — lettore **SECURITY DEFINER**;
+#   2. `vendite.trgfn_resi_accrediti_guard` + il trigger `_a10_`.
+#
+# ── 🔴 IL GUARD TIENE UN TETTO SOLO, ed e' una correzione al piano ─────
+#
+#   Il §15 (N4) del brief mette entrambi i tetti qui. **Non regge sul KIT**, ed
+#   e' il primo caso reale della coda: la riga di reso 24 accredita un articolo
+#   composito con TRE componenti, ognuno con la sua riga di fattura a prezzo
+#   diverso (1, 2 e 14 euro).
+#
+#       la MERCE si misura in UNITA' PADRE       -> accredito dovuto = 1
+#       il DOCUMENTO in unita' di riga di fattura -> tre righe di ponte, 1+1+1
+#
+#   Un tetto «Σ qta per riga di reso ≤ accredito dovuto» valutato riga per riga
+#   direbbe «3» dove la merce dice «1», e **rifiuterebbe il secondo componente**
+#   di un accredito legittimo. E' lo stesso motivo per cui
+#   `vw_af_merce_per_riga` calcola `quantita_padre = max(quantita / coeff_qta)`
+#   invece di sommare i componenti.
+#
+#   ✅ Ciascun tetto vive dove e' esattamente definibile:
+#
+#     * **qui** il tetto del DOCUMENTO — riga per riga, esatto, e valido anche
+#       contro una scrittura diretta sul ponte. E' anche il tetto che prima non
+#       esisteva: l'unico limite all'accredito era il conto della merce;
+#     * **nella madre** il tetto della MERCE, come UGUAGLIANZA (D-NC-6:
+#       l'accredito e' sempre pieno). E' l'unica a conoscere l'unita' padre e a
+#       sapere quando l'operazione e' finita — un trigger di riga non sa ne'
+#       l'una ne' l'altra cosa;
+#     * la **UNIQUE** del ponte ferma il doppione esatto, cioe' il doppio click.
+#
+#   ⚠️ Non e' un tetto in meno: e' lo stesso tetto messo dove puo' essere vero.
+#   Metterlo qui l'avrebbe reso una cintura che si strappa sul caso piu' comune
+#   della coda di oggi.
+#
+# ── 🔴 PERCHE' IL LETTORE E' `SECURITY DEFINER`, e non e' un lusso ─────
+#
+#   Un guard che legge sotto RLS **non distingue «non lo vedo» da «non c'e'»**.
+#   `vendite.fatture_righe` ha policy attive; la riga di fattura da accreditare
+#   potrebbe stare fuori dal perimetro di chi scrive, e la lettura tornerebbe
+#   zero righe. Un tetto letto come «0» **non blocca se il confronto e'
+#   indeterminato, e blocca a sproposito se e' zero**: in entrambi i casi il
+#   guard smette di dire la verita'. E' il difetto gia' visto in
+#   `trgfn_resi_righe_guard_origine_coerente`, e la cura e' la stessa.
+#
+#   ⚠️ `SECURITY DEFINER` **con `search_path` fissato**: senza, un chiamante
+#   potrebbe anteporre uno schema suo e dirottare i nomi. E' il pattern gia'
+#   usato da `script.fn_job_run_start`.
+#
+#   ⭐ Non e' un buco di sicurezza: la funzione restituisce **due numeri** e
+#   nulla di riservato — quanto vale l'accredito dovuto e quanti pezzi ha
+#   fatturato una riga. Chi puo' chiamarla sta gia' scrivendo su quella riga di
+#   reso.
+#
+# ── LOCK: nessun advisory lock, il `FOR UPDATE` basta ──────────────────
+#
+#   Il tetto si serializza sul gruppo di accrediti della stessa riga di fattura
+#   e sulla riga di reso padre. E' il pattern delle due sorelle
+#   (`trgfn_resi_riconsegne_guard`), e protegge anche le scritture dirette sul
+#   ponte, non solo quelle che passano dalla madre.
+#
+# ── ⚠️ `throws_ok` e il VARIADIC ───────────────────────────────────────
+#
+#   Ogni `fn_log_and_raise_error` porta almeno un valore VARIADIC: senza, la
+#   risoluzione dell'overload fallisce e l'errore che esce e' «la funzione non
+#   esiste» (42883) invece del codice di dominio (P0001). Un `throws_ok` senza
+#   SQLSTATE lo accetterebbe, e il guard sembrerebbe funzionare.
+#
+# Dipendenze: vendite.resi_righe_accrediti (-35), vendite.vw_resi_da_accreditare,
+#   codici errore E_QTA_NON_POSITIVA (esistente) e
+#   E_RESO_ACCREDITO_SUPERA_RIGA_FATTURA (nuovo, 80_data).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260818-36-create-trgfn-resi-accrediti-guard-mctit.yaml
+
+  - changeSet:
+      id: 20260818-36-create-trgfn-resi-accrediti-guard
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        N4 (2/2): lettore SECURITY DEFINER dei tetti dell'accredito (senza, un
+        guard che legge sotto RLS confonde «non lo vedo» con «non c'e'») piu' il
+        guard del ponte. Il trigger tiene il tetto del DOCUMENTO, che e' esatto
+        riga per riga; quello della MERCE lo tiene la madre come uguaglianza,
+        perche' si misura in unita' padre e su un kit tre righe di ponte valgono
+        una sola unita' di merce — sommarle qui rifiuterebbe il secondo
+        componente di un accredito legittimo.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: resi_righe_accrediti
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_resi_da_accreditare
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- 1) IL LETTORE DEI TETTI — SECURITY DEFINER
+              -- =========================================================
+              CREATE OR REPLACE FUNCTION vendite.fn_resi_riga_tetti_accredito(
+                  -- ⚠️ Tipi ANCORATI con %TYPE, firma e RETURNS TABLE comprese
+                  --    (linee-guida-sql §5b).
+                  p_resi_riga_id    vendite.resi_righe.id%TYPE,
+                  p_fattura_riga_id vendite.fatture_righe.id%TYPE
+              )
+               RETURNS TABLE(accredito_dovuto vendite.resi_righe_accrediti.qta_partita%TYPE,
+                             qta_riga_fattura vendite.fatture_righe.qta%TYPE)
+               LANGUAGE sql
+               STABLE
+               SECURITY DEFINER
+               SET search_path = pg_catalog, pg_temp
+              AS $function$
+              -- Scopo: i due tetti dell'accredito, letti SOPRA la RLS.
+              --   - accredito_dovuto: quanti pezzi (in unita' di MERCE, cioe'
+              --     unita' padre) il conto della merce dichiara accreditabili
+              --     per questa riga di reso. Lo consuma la madre, che verifica
+              --     l'uguaglianza di D-NC-6;
+              --   - qta_riga_fattura: quanti pezzi ha fatturato la riga di
+              --     fattura che si sta rettificando. Lo consuma il guard del
+              --     ponte, come tetto del DOCUMENTO.
+              -- ⚠️ SECURITY DEFINER perche' i chiamanti sono un guard e una
+              --   madre: sotto RLS una riga fuori perimetro si legge come «non
+              --   c'e'», e un tetto letto zero smette di dire la verita'. Il
+              --   search_path e' fissato perche' una SECURITY DEFINER senza e'
+              --   dirottabile.
+              -- ⚠️ Zero e non NULL sull'assenza: e' il valore fail-closed. Una
+              --   riga fuori dalla coda ha accredito dovuto 0, e qualunque
+              --   quantita' positiva lo supera.
+              SELECT
+                  COALESCE((SELECT sum(q.accredito_dovuto)
+                              FROM vendite.vw_resi_da_accreditare q
+                             WHERE q.resi_riga_id = p_resi_riga_id), 0)::numeric,
+                  COALESCE((SELECT fr.qta
+                              FROM vendite.fatture_righe fr
+                             WHERE fr.id = p_fattura_riga_id), 0)::numeric;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_resi_riga_tetti_accredito(bigint, bigint)
+              IS 'I due tetti dell''accredito di una riga di reso, letti SOPRA la RLS: l''accredito dovuto secondo il conto della merce (in unita'' PADRE, da vendite.vw_resi_da_accreditare) e la quantita'' della riga di fattura che si sta rettificando (in unita'' di riga). ⚠️ SECURITY DEFINER perche'' i consumatori sono un guard e una funzione madre: sotto RLS una riga fuori perimetro si legge come «non c''e''», e un tetto letto zero smette di dire la verita''. E'' il difetto gia'' visto in trgfn_resi_righe_guard_origine_coerente. search_path fissato: una SECURITY DEFINER senza e'' dirottabile. Restituisce 0 sull''assenza, che e'' il valore fail-closed. ⭐ Le due misure sono in UNITA'' DIVERSE e vanno consumate da due presidi diversi: su un articolo composito tre righe di documento valgono UNA unita'' di merce (vw_af_merce_per_riga calcola quantita_padre = max(quantita/coeff_qta), non la somma). brief-design-note-credito-resi D-NC-10. rev 2026-08-18.';
+
+              -- =========================================================
+              -- 2) QUANTO E' GIA' STATO ACCREDITATO, IN UNITA' DI MERCE
+              -- =========================================================
+              CREATE OR REPLACE FUNCTION vendite.fn_resi_riga_accreditato_partita(
+                  p_resi_riga_id vendite.resi_righe.id%TYPE
+              )
+               RETURNS vendite.resi_righe_accrediti.qta_partita%TYPE
+               LANGUAGE sql
+               STABLE
+              AS $function$
+              -- Scopo: quanti pezzi (in unita' di MERCE, cioe' unita' padre)
+              --   sono gia' stati accreditati per questa riga di reso.
+              --   Punto UNICO della formula: la consuma vw_resi_da_accreditare
+              --   per non ri-offrire una quota gia' accreditata.
+              -- ⚠️ La somma e' UNA VOLTA PER GRUPPO, non per riga, e i due
+              --   casi che lo impongono tirano in direzioni opposte:
+              --     kit          -> N righe con la STESSA quota padre
+              --                     (sommarle la moltiplicherebbe)
+              --     consumo LIFO -> N righe con quote padre DIVERSE
+              --                     (vanno sommate)
+              --   `gruppo` distingue i due casi: un gruppo = un'unita'
+              --   fatturante consumata.
+              -- NB: nessun raise. E' letta da una vista, su insiemi in
+              --   movimento; una riga cancellata non deve farla fallire.
+              SELECT COALESCE(sum(g.qta_partita), 0::numeric)
+                FROM (SELECT DISTINCT a.gruppo, a.qta_partita
+                        FROM vendite.resi_righe_accrediti a
+                       WHERE a.resi_riga_id = p_resi_riga_id) g;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_resi_riga_accreditato_partita(bigint)
+              IS 'Quanti pezzi, in unita'' di MERCE (unita'' padre della partita), sono gia'' stati accreditati per una riga di reso. Punto UNICO della formula, consumato da vendite.vw_resi_da_accreditare per non ri-offrire una quota gia'' accreditata — senza, dopo il primo accredito la coda ridistribuirebbe il residuo della partita sulla PRIMA riga di reso invece che su quelle non ancora accreditate, e la quota di una riga diventerebbe irraggiungibile: la stessa malattia per cui questo cantiere esiste, in forma nuova. ⚠️ La somma e'' una volta per GRUPPO e non per riga: su un kit N righe portano la stessa quota padre (sommarle la moltiplicherebbe), su un consumo LIFO N righe portano quote diverse (vanno sommate). La colonna `gruppo` distingue i due casi. brief-design-note-credito-resi D-NC-10. rev 2026-08-18.';
+
+              -- =========================================================
+              -- 3) IL GUARD DEL PONTE
+              -- =========================================================
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_accrediti_guard()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: il tetto del DOCUMENTO sul ponte accrediti.
+              --   Sigma qta per riga di FATTURA <= qta della riga.
+              --   E' il limite che parla la lingua del documento: «questa riga
+              --   di fattura ha fatturato 10 pezzi, non se ne possono
+              --   accreditare 11». Prima non esisteva: l'unico limite
+              --   all'accredito era il conto della merce.
+              -- ⚠️ Il tetto della MERCE non sta qui, e non e' una dimenticanza:
+              --   si misura in unita' PADRE, e su un articolo composito tre
+              --   righe di ponte valgono UNA unita' di merce. Sommarle riga per
+              --   riga direbbe «3» dove la merce dice «1» e rifiuterebbe il
+              --   secondo componente. Lo tiene vendite.fn_accredita_riga_reso,
+              --   come uguaglianza (D-NC-6), che e' anche piu' forte.
+              -- Mirror di trgfn_resi_riconsegne_guard e trgfn_resi_rinunce_guard.
+              DECLARE
+                  -- %TYPE anche nel DECLARE (linee-guida-sql §5b): la variabile
+                  -- segue la colonna che la riempie.
+                  v_qta_riga   vendite.fatture_righe.qta%TYPE;
+                  v_gia_riga   vendite.resi_righe_accrediti.qta%TYPE;
+              BEGIN
+                  -- 0) qta > 0 (difesa oltre al CHECK).
+                  IF NEW.qta IS NULL OR NEW.qta <= 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_accrediti_guard','E_QTA_NON_POSITIVA',
+                      jsonb_build_object('qta', NEW.qta), NEW.tx_id, NEW.qta::text);
+                  END IF;
+
+                  IF NEW.qta_partita IS NULL OR NEW.qta_partita <= 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_accrediti_guard','E_QTA_NON_POSITIVA',
+                      jsonb_build_object('qta_partita', NEW.qta_partita),
+                      NEW.tx_id, NEW.qta_partita::text);
+                  END IF;
+
+                  -- 1) Lock: la riga di reso padre e il gruppo di accrediti
+                  --    della stessa riga di fattura. Serializza due resi
+                  --    DIVERSI che accreditano la stessa riga di fattura in
+                  --    momenti diversi — che e' il caso che il tetto del
+                  --    documento esiste per fermare. Nessun advisory lock: il
+                  --    FOR UPDATE basta, come nelle due sorelle.
+                  PERFORM 1 FROM vendite.resi_righe WHERE id = NEW.resi_riga_id FOR UPDATE;
+                  PERFORM 1 FROM vendite.resi_righe_accrediti a
+                    WHERE a.fattura_riga_rettificata_id = NEW.fattura_riga_rettificata_id
+                    FOR UPDATE;
+
+                  -- 2) Il tetto, letto sopra la RLS (vedi nota in testa).
+                  SELECT t.qta_riga_fattura
+                    INTO v_qta_riga
+                    FROM vendite.fn_resi_riga_tetti_accredito(
+                             NEW.resi_riga_id, NEW.fattura_riga_rettificata_id) t;
+
+                  -- 3) TETTO DEL DOCUMENTO. La stessa riga di fattura puo'
+                  --    essere accreditata da RESI DIVERSI in momenti diversi:
+                  --    la somma e' per riga di fattura, non per riga di reso.
+                  --    Esclude la riga corrente in UPDATE.
+                  SELECT COALESCE(SUM(a.qta), 0)
+                    INTO v_gia_riga
+                    FROM vendite.resi_righe_accrediti a
+                   WHERE a.fattura_riga_rettificata_id = NEW.fattura_riga_rettificata_id
+                     AND (TG_OP <> 'UPDATE' OR a.id <> NEW.id);
+
+                  IF v_gia_riga + NEW.qta > v_qta_riga THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_accrediti_guard','E_RESO_ACCREDITO_SUPERA_RIGA_FATTURA',
+                      jsonb_build_object('resi_riga_id',     NEW.resi_riga_id,
+                                         'fattura_riga_id',  NEW.fattura_riga_rettificata_id,
+                                         'qta_riga_fattura', v_qta_riga,
+                                         'gia_accreditato',  v_gia_riga,
+                                         'qta_nuova',        NEW.qta),
+                      NEW.tx_id,
+                      NEW.fattura_riga_rettificata_id::text, v_qta_riga::text,
+                      v_gia_riga::text, NEW.qta::text);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_resi_accrediti_guard()
+              IS 'Guard del ponte accrediti: il tetto del DOCUMENTO — Sigma qta per riga di FATTURA <= qta della riga (E_RESO_ACCREDITO_SUPERA_RIGA_FATTURA). E'' il limite che parla la lingua del documento invece che della merce, e prima non esisteva: l''unico tetto all''accredito era il conto della merce. Si legge da vendite.fn_resi_riga_tetti_accredito, che e'' SECURITY DEFINER perche'' sotto RLS una riga fuori perimetro si legge come «non c''e''». ⚠️ Il tetto della MERCE NON sta qui, e non e'' una dimenticanza: si misura in unita'' PADRE, e su un articolo composito tre righe di ponte valgono UNA unita'' di merce — sommarle riga per riga direbbe «3» dove la merce dice «1» e rifiuterebbe il secondo componente di un accredito legittimo (e'' il primo caso reale della coda: la riga di reso 24, kit a tre componenti). Lo tiene vendite.fn_accredita_riga_reso come UGUAGLIANZA (D-NC-6, l''accredito e'' sempre pieno), che e'' anche piu'' forte di una disuguaglianza e costa lo stesso. Lock: FOR UPDATE sulla riga di reso padre e sul gruppo della riga di fattura, come nelle due sorelle; nessun advisory lock. rev 2026-08-18.';
+
+              DROP TRIGGER IF EXISTS trg_resi_accrediti_a10_guard_ins_upd ON vendite.resi_righe_accrediti;
+              CREATE TRIGGER trg_resi_accrediti_a10_guard_ins_upd
+                BEFORE INSERT OR UPDATE OF qta, qta_partita, resi_riga_id, fattura_riga_rettificata_id
+                ON vendite.resi_righe_accrediti
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_resi_accrediti_guard();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_resi_accrediti_a10_guard_ins_upd ON vendite.resi_righe_accrediti;
+              DROP FUNCTION IF EXISTS vendite.trgfn_resi_accrediti_guard();
+              DROP FUNCTION IF EXISTS vendite.fn_resi_riga_accreditato_partita(bigint);
+              DROP FUNCTION IF EXISTS vendite.fn_resi_riga_tetti_accredito(bigint, bigint);

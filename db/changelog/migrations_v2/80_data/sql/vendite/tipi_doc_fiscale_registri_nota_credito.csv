@@ -1,0 +1,3 @@
+id,tipo_doc_fiscale_id,natura_doc_id,registro_id,serie,codice_interno,meta,data_insert,user_insert,data_update,user_update
+3,1,2,5,NULL,FRONTOFFICE_NC,{},2026-08-18 00:00:00+02,SEED,2026-08-18 00:00:00+02,SEED
+4,2,2,5,NULL,BACKOFFICE_NC,{},2026-08-18 00:00:00+02,SEED,2026-08-18 00:00:00+02,SEED

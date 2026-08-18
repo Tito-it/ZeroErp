@@ -1,0 +1,123 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# N2 — IL SEZIONALE DELLE NOTE DI CREDITO (D-NC-3b)
+#   docs/it/dev/work-in-progress/brief-design-note-credito-resi.md §14.3
+#
+# ── ⭐ E' QUI CHE D-NC-3b DIVENTA UNA RIGA DI SEED ─────────────────────
+#
+#   «Registro proprio o serie dedicata?» non e' una decisione di modello: e'
+#   una riga di questo CSV. Il mapping `(tipo_doc, natura) -> (registro, serie)`
+#   regge entrambe le strade **senza una riga di codice diversa**:
+#
+#       registro_id diverso            ->  SEZIONALE PROPRIO  ← scelta di Tid
+#       stesso registro + serie 'NC'   ->  serie a parte dentro il registro vendite
+#
+#   Tid ha scelto il **sezionale proprio**: registro nuovo (`NC`), progressivo e
+#   `reset_policy` indipendenti, disattivabile senza toccare le fatture perche'
+#   e' un oggetto a se'.
+#
+# ── 🔴 I QUATTRO VALORI SONO DA CONFERMARE ────────────────────────────
+#
+#   Il §14.3 li elenca come «da chiedere a chi tiene i registri IVA — non blocca
+#   la scrittura, blocca il seed». Sono seedati qui con un valore ragionevole e
+#   dichiarato, perche' senza il seed la catena e' scritta ma non gira. **Sono
+#   quattro celle di CSV**: cambiarli non costa codice.
+#
+#   | valore              | seedato       | perche'                                    |
+#   | ------------------- | ------------- | ------------------------------------------ |
+#   | `codice`            | `NC`          | breve, la colonna e' varchar(16)           |
+#   | `descrizione`       | Note di credito | leggibile a video                        |
+#   | `serie_default`     | (vuota)       | il registro e' gia' distinto: una serie in piu' sarebbe una distinzione doppia |
+#   | `reset_policy`      | `ANNUALE`     | come i due registri delle fatture          |
+#
+#   ⚠️ E il quinto, che il brief pone e che qui e' risposto **no**: il registro
+#   NON e' per emittente (`emittente_soggetto_ruolo_id` vuoto), quindi vale per
+#   tutti. Il giorno in cui servisse intestarlo, la correzione che lo rende
+#   raggiungibile e' gia' applicata (N2b, `20260818-32`) — era il difetto per
+#   cui i registri intestati erano irraggiungibili dalla pipeline.
+#
+# ── DUE MAPPING, NON UNO ───────────────────────────────────────────────
+#
+#   `tipi_doc_fiscale_registri` mappa una COPPIA: entrambi i canali
+#   (FRONTOFFICE e BACKOFFICE) devono poter emettere note di credito, e
+#   puntano allo stesso registro. Il giorno in cui servissero due sezionali per
+#   canale, si cambia `registro_id` su una delle due righe.
+#
+# ── ⚠️ `NOTA_DEBITO` NON HA MAPPING, ed e' voluto ──────────────────────
+#
+#   Il vocabolario la conosce, il mapping no: `fn_get_registro_id` risponderebbe
+#   `E_CONFIG_MANCANTE`. E' fail-fast, ed e' corretto — nessuno ha ancora deciso
+#   su quale registro numerare una nota di debito, e ripiegare sul registro
+#   delle fatture la emetterebbe nel posto sbagliato in silenzio. Il giorno in
+#   cui servira', e' una riga di questo CSV.
+#
+# ⚠️ CSV separato da `tipi_doc_fiscale_registri.csv` e loader separato da
+#    20260127-58: quel mirror non conosce le colonne `natura_doc_id` e `serie`
+#    (nate oggi) e continua a caricare le sue due righe lasciandole al DEFAULT
+#    — cioe' `FATTURA` e serie vuota, che e' esattamente quello che devono
+#    avere. Estenderlo avrebbe voluto dire toccare un changeSet mergiato senza
+#    che l'ordine lo imponesse.
+#
+# Dipendenze: config.nature_doc_fiscale (20260818-24 + mirror -44),
+#   vendite.tipi_doc_fiscale_registri.natura_doc_id/serie (20260818-30),
+#   registro id 5 (mirror registri_fatturazione, 20260127-57).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260818-45-seed-registro-e-mapping-nota-credito-mctit.yaml
+
+  - changeSet:
+      id: 20260818-45-seed-registro-e-mapping-nota-credito
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        D-NC-3b: mapping (tipo documento, natura NOTA_CREDITO) -> registro NC,
+        per entrambi i canali. Il registro e' seedato per append sul mirror
+        registri_fatturazione.csv. ⚠️ I quattro valori del sezionale (codice,
+        descrizione, serie_default, reset_policy) sono da confermare con chi
+        tiene i registri IVA: sono quattro celle di CSV, cambiarli non costa
+        codice. NOTA_DEBITO resta senza mapping, ed e' fail-fast voluto.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: tipi_doc_fiscale_registri
+                columnName: natura_doc_id
+            - tableExists:
+                schemaName: config
+                tableName: nature_doc_fiscale
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/vendite/tipi_doc_fiscale_registri_nota_credito.csv
+            tableName: tipi_doc_fiscale_registri
+            schemaName: vendite
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: tipo_doc_fiscale_id, type: NUMERIC }
+              - column: { name: natura_doc_id, type: NUMERIC }
+              - column: { name: registro_id, type: NUMERIC }
+              - column: { name: serie, type: STRING }
+              - column: { name: codice_interno, type: STRING }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column: { name: data_update, type: STRING }
+              - column: { name: user_update, type: STRING }

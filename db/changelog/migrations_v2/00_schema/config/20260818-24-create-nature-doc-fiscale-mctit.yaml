@@ -1,0 +1,203 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# N1 — L'ASSE «NATURA» del documento fiscale
+#   docs/it/dev/work-in-progress/brief-design-note-credito-resi.md §12.4 (D-NC-3)
+#   e §12.4-bis (integrazione con registro, numerazione e fattura elettronica).
+#
+# ── COSA SEPARA, E PERCHE' NON E' UN ASSE NUOVO ─────────────────────────
+#
+#   `config.tipi_doc_fiscale` e' **nata** come asse della natura fiscale — la
+#   doc concettuale di vendite.fatture lo dice ancora: «tipo documento: fattura,
+#   nota credito, parcella» — ed e' **finita** a fare l'asse del CANALE: il seed
+#   contiene FRONTOFFICE / BACKOFFICE, e la decisione di dominio del 2026-06-19
+#   ha registrato quell'uso come aperto e configurabile per azienda.
+#
+#   ⭐ Non ci sono due verita' in conflitto: c'e' UNA COLONNA SOLA PER DUE ASSI.
+#   Questa tabella non inventa un asse — separa due assi che erano fusi dal
+#   primo giorno, e lascia a ciascuno cio' che davvero contiene:
+#
+#       tipo_doc_fiscale  = il CANALE       -> scelta dell'azienda
+#       natura_doc        = la NATURA       -> la legge (TD01 contro TD04)
+#
+#   Metterci dentro NOTA_CREDITO avrebbe collassato i due assi: 2 canali x 2
+#   nature = 4 valori e 4 registri, e un'azienda che usa il tipo_doc per altro
+#   (area, brand, mandante) avrebbe moltiplicato il SUO asse per due.
+#
+# ── ⚠️ IL VOCABOLARIO RESTA NEUTRO ──────────────────────────────────────
+#
+#   La doc di `vendite.fatture` dichiara fra i suoi obiettivi: «tracciare stato
+#   e tipo fiscale SENZA VINCOLI di specifico ordinamento nazionale (modello
+#   neutro, estendibile)». Quindi i codici sono FATTURA / NOTA_CREDITO /
+#   NOTA_DEBITO, e il codice italiano (TD01/TD04/TD05) **non e' una colonna**:
+#   vive in `meta.sdi_tipo_documento`, come parametro di PROFILO NAZIONALE.
+#   E' lo stesso criterio dei parametri locali a un handler (JSONB, non una
+#   tabella-vocabolario). Se un domani servisse un secondo profilo fiscale,
+#   allora — e solo allora — diventera' una tabella di mapping.
+#
+# ── PERCHE' NIENTE `label_key` ──────────────────────────────────────────
+#
+#   Mono-lingua con `descrizione`, sul modello di config.causali_onere e
+#   config.tipi_reso: precedente deciso nel brief porta oneri §4c.3. Un
+#   vocabolario di tre voci non giustifica un namespace i18n.
+#
+# ── ⚠️ IL BOOTSTRAP INLINE, E PERCHE' NON E' UNA SECONDA VERITA' ────────
+#
+#   Le tre righe sono inserite QUI, con `ON CONFLICT DO NOTHING`, e ri-upsertate
+#   dal mirror CSV di 80_data (`nature_doc_fiscale.csv`), che resta la SEDE.
+#   Serve perche' `80_data` gira DOPO tutto `00_schema` e `20_code`: la colonna
+#   `natura_doc_id NOT NULL DEFAULT FATTURA` (-26) non troverebbe la riga
+#   FATTURA da cui prendere il default, e l'apply fallirebbe su ogni database
+#   che ha gia' delle fatture.
+#
+#   Non genera divergenza perche' il bootstrap **non aggiorna mai**: inserisce
+#   se manca e tace. Su un database ricostruito da zero vince comunque il CSV,
+#   che nella timeline sta dopo. E' il precedente di
+#   `config.esiti_flussi_pratiche` (20260701-01 + mirror 20260701-04), dove la
+#   stessa nota sta scritta nel commento della tabella.
+#
+#   ⚠️ Gli id sono ESPLICITI (1/2/3) e il sequence dell'identity viene
+#   riallineato subito dopo: il CSV usa `primaryKey: id`, e un bootstrap che
+#   lasciasse decidere l'identity potrebbe dare id diversi su un database in cui
+#   qualcuno avesse gia' scritto — con il mirror che poi inserirebbe DOPPIONI
+#   invece di riallineare.
+#
+# ⚠️ Tabella nuova: audit, tx_id, storico e il lock automatico su
+#    `codice_interno` girano solo in contesto `ci_apply`. Su un migrate manuale
+#    li aggancia il job serale del pgagent, non l'apply.
+#
+# Dipendenze: nessuna. Consumatori: -25 (fn di lookup), -26 (le tre colonne
+#   natura_doc_id), -30 (mapping registro), -33 (chiave documento).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260818-24-create-nature-doc-fiscale-mctit.yaml
+
+  - changeSet:
+      id: 20260818-24-create-nature-doc-fiscale
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        N1 (D-NC-3): crea config.nature_doc_fiscale, l'asse della NATURA fiscale
+        del documento, separato dal CANALE che vive in config.tipi_doc_fiscale.
+        Vocabolario neutro FATTURA / NOTA_CREDITO / NOTA_DEBITO; il codice
+        italiano TD01/TD04/TD05 sta in meta.sdi_tipo_documento come parametro di
+        profilo nazionale, non come colonna. Bootstrap inline ON CONFLICT DO
+        NOTHING perche' 80_data gira dopo 00_schema: la sede resta il CSV.
+      preConditions:
+        - onFail: HALT
+        - not:
+            - tableExists:
+                schemaName: config
+                tableName: nature_doc_fiscale
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: nature_doc_fiscale
+            remarks: >-
+              Natura fiscale del documento (asse ortogonale al canale di
+              config.tipi_doc_fiscale). Vocabolario neutro; il codice nazionale
+              vive in meta.sdi_tipo_documento. brief-design-note-credito-resi
+              D-NC-3.
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints: { primaryKey: true, primaryKeyName: pk_nature_doc_fiscale, nullable: false }
+
+              - column: { name: codice_interno, type: VARCHAR(32), constraints: { nullable: false }, remarks: "Chiave naturale stabile (immutabile via lock automatico). E' cio' su cui si basa OGNI logica: FATTURA, NOTA_CREDITO, NOTA_DEBITO." }
+              - column: { name: codice, type: VARCHAR(32), constraints: { nullable: false }, remarks: "Etichetta modificabile dall'utente. Mai usata in logica (linee-guida-sql S6c)." }
+              - column: { name: descrizione, type: VARCHAR(120), constraints: { nullable: false }, remarks: "Descrizione a video. Mono-lingua, come causali_onere e tipi_reso." }
+              - column: { name: attivo, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: ordine, type: smallint, defaultValueNumeric: 0, constraints: { nullable: false }, remarks: "Ordine di presentazione." }
+              - column: { name: meta, type: jsonb, defaultValueComputed: "'{}'::jsonb", constraints: { nullable: false }, remarks: "Parametri di profilo nazionale. Chiave nota: sdi_tipo_documento (TD01/TD04/TD05)." }
+
+              - column: { name: data_insert, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_insert, type: text, defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+              - column: { name: data_update, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_update, type: text, defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: nature_doc_fiscale
+            columnNames: codice_interno
+            constraintName: uq_nature_doc_fiscale_codice_interno
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: nature_doc_fiscale
+            columnNames: codice
+            constraintName: uq_nature_doc_fiscale_codice
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.nature_doc_fiscale
+                ADD CONSTRAINT k_nature_doc_fiscale_codice_interno_nonvuoto
+                    CHECK (btrim(codice_interno) <> ''),
+                ADD CONSTRAINT k_nature_doc_fiscale_codice_nonvuoto
+                    CHECK (btrim(codice) <> '');
+
+              -- ============================================================
+              -- BOOTSTRAP STRUTTURALE (vedi nota in testa).
+              -- ON CONFLICT DO NOTHING: inserisce se manca, non aggiorna mai.
+              -- La sede dei valori resta il CSV di 80_data, che gira dopo e
+              -- riallinea. Id espliciti per non divergere dal mirror.
+              -- ============================================================
+              INSERT INTO config.nature_doc_fiscale
+                     (id, codice_interno, codice,        descrizione,      ordine, meta)
+              VALUES (1,  'FATTURA',      'FATTURA',      'Fattura',            10,
+                          '{"sdi_tipo_documento": "TD01"}'::jsonb),
+                     (2,  'NOTA_CREDITO', 'NOTA_CREDITO', 'Nota di credito',    20,
+                          '{"sdi_tipo_documento": "TD04"}'::jsonb),
+                     (3,  'NOTA_DEBITO',  'NOTA_DEBITO',  'Nota di debito',     30,
+                          '{"sdi_tipo_documento": "TD05"}'::jsonb)
+              ON CONFLICT (codice_interno) DO NOTHING;
+
+              -- L'identity riparte da dopo l'ultimo id scritto a mano: senza,
+              -- la prima riga inserita senza id esplicito collide sulla PK.
+              SELECT setval(
+                       pg_get_serial_sequence('config.nature_doc_fiscale', 'id'),
+                       GREATEST((SELECT COALESCE(max(id), 1) FROM config.nature_doc_fiscale), 1),
+                       true);
+
+              COMMENT ON TABLE config.nature_doc_fiscale IS
+                'Natura fiscale del documento: FATTURA / NOTA_CREDITO / NOTA_DEBITO. '
+                'E'' un asse ORTOGONALE al canale, che vive in config.tipi_doc_fiscale '
+                '(FRONTOFFICE/BACKOFFICE) ed e'' una scelta configurabile dell''azienda '
+                '(decisione di dominio 2026-06-19). La natura invece non e'' una scelta: '
+                'e'' la legge, e domani e'' il TipoDocumento della FatturaPA. '
+                '⚠️ Il vocabolario resta NEUTRO per dichiarazione del modello ("senza '
+                'vincoli di specifico ordinamento nazionale"): il codice italiano vive '
+                'in meta.sdi_tipo_documento come parametro di profilo nazionale, non '
+                'come colonna. Se servira'' un secondo profilo fiscale diventera'' una '
+                'tabella di mapping, non prima. '
+                'Le tre righe sono bootstrappate inline dal changeSet che crea la '
+                'tabella (ON CONFLICT DO NOTHING) perche'' 80_data gira DOPO 00_schema e '
+                'la colonna natura_doc_id NOT NULL DEFAULT FATTURA non troverebbe la '
+                'riga da cui prendere il default: la SEDE dei valori resta comunque il '
+                'CSV nature_doc_fiscale.csv, che ri-upserta e riallinea. Stesso pattern '
+                'di config.esiti_flussi_pratiche. '
+                'brief-design-note-credito-resi D-NC-3 e S12.4-bis. rev 2026-08-18.';
+
+              COMMENT ON COLUMN config.nature_doc_fiscale.meta IS
+                'Parametri di profilo nazionale. Chiave nota: sdi_tipo_documento '
+                '(TD01 fattura, TD04 nota di credito, TD05 nota di debito). Il builder '
+                'XML FatturaPA legge di qui, non da un IF cablato.';
+
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: nature_doc_fiscale

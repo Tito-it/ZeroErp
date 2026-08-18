@@ -21,9 +21,9 @@
 -- ------------------------------------------------------------
 -- Indice test
 -- 1) Fixture: attivita, lotto e chiave completa
--- 2) La chiave ha esattamente i 9 elementi attesi
--- 3) Specchio 1 — i 9 elementi compaiono nel WHERE del lookup
--- 4) Specchio 2 — i 9 elementi sono colonne di vendite.fatture
+-- 2) La chiave ha esattamente gli 11 elementi attesi
+-- 3) Specchio 1 — gli 11 elementi compaiono nel WHERE del lookup
+-- 4) Specchio 2 — gli 11 elementi sono colonne di vendite.fatture
 -- 5) Specchio 2 — la testata creata porta gli stessi VALORI della chiave
 -- 6) Specchio 3 — la chiave d'ambito ha esattamente le 7 colonne attese
 -- 7) Idempotenza del lookup: due chiamate, una sola fattura
@@ -99,12 +99,25 @@ SELECT ok(
 -- ============================================================
 -- Non è un test di gusto: è il punto in cui si accorge chi aggiunge un
 -- discriminante. Se questo test diventa rosso, i tre sotto vanno riletti.
+-- rev 2026-08-18 (brief-design-note-credito-resi N3): due elementi nuovi, e
+--   sono proprio il caso per cui questo file esiste.
+--     natura_doc_id -> e' cio' che impedisce a un'attivita' di RETTIFICA di
+--       finire nella fattura ordinaria: senza, nota di credito e fattura
+--       andrebbero sulla stessa testata;
+--     serie         -> ⚠️ non era MAI stata scritta dalla INSERT del lookup.
+--       Restava NULL e fn_assign_numero_fattura cadeva sul serie_default del
+--       registro: calcolarla senza scriverla avrebbe dato alla nota di credito
+--       un numero VALIDO nella serie delle fatture — un difetto che non solleva
+--       nulla e si scopre guardando un registro IVA.
+--   ⭐ Che i test 3 e 4 siano passati SENZA modifiche e' la prova che i tre
+--   specchi sono allineati: il WHERE del lookup e le colonne di testata
+--   nominano gia' entrambi i nuovi elementi.
 SELECT is(
   (SELECT array_agg(nome ORDER BY nome) FROM tmp_elementi_tsp),
   ARRAY['billing_account_id','emittente_soggetto_ruolo_id','modalita_pagamento_id',
-        'registro_id','reseller_soggetto_ruolo_id','termine_pagamento_id',
-        'tipo_doc_fiscale_id','utility_id','valuta_id']::text[],
-  '2) La chiave ha esattamente i 9 elementi attesi'
+        'natura_doc_id','registro_id','reseller_soggetto_ruolo_id','serie',
+        'termine_pagamento_id','tipo_doc_fiscale_id','utility_id','valuta_id']::text[],
+  '2) La chiave ha esattamente gli 11 elementi attesi'
 );
 
 -- ============================================================
@@ -164,6 +177,11 @@ SELECT ok(
       AND f.valuta_id                   = (k.chiave->>'valuta_id')::int
       AND f.emittente_soggetto_ruolo_id = (k.chiave->>'emittente_soggetto_ruolo_id')::bigint
       AND f.registro_id                 = (k.chiave->>'registro_id')::bigint
+      AND f.natura_doc_id               = (k.chiave->>'natura_doc_id')::bigint
+      -- ⚠️ `serie` col confronto NULL-safe: e' nullable, anzi con il sezionale
+      --    proprio delle note di credito e' NULL sempre. Con `=` il NULL non
+      --    combacia mai e il test sarebbe rosso su ogni documento normale.
+      AND f.serie                  IS NOT DISTINCT FROM NULLIF(k.chiave->>'serie','')::varchar
       AND f.utility_id             IS NOT DISTINCT FROM (k.chiave->>'utility_id')::int
       AND f.reseller_soggetto_ruolo_id IS NOT DISTINCT FROM (k.chiave->>'reseller_soggetto_ruolo_id')::bigint
       AND f.termine_pagamento_id   IS NOT DISTINCT FROM (k.chiave->>'termine_pagamento_id')::bigint
