@@ -181,6 +181,10 @@ BEGIN
                        WHEN (ca.meta ->> 'coeff_qta') ~ '^[0-9]+(\.[0-9]+){0,1}$'
                        THEN NULLIF((ca.meta ->> 'coeff_qta')::numeric, 0::numeric)
                    END                                          AS coeff_qta,
+                   -- ⭐ Il secondo tasto del contratto kit. Il primo
+                   --    (coeff_qta) era gia' qui e gia' guardato: questo no,
+                   --    ed e' l'asimmetria che P-7 chiude.
+                   NULLIF(btrim(ca.meta ->> 'componente_di'), '') AS componente_di,
                    f.data                                       AS fattura_data
               FROM vendite.commesse_attivita ca
               JOIN vendite.attivita_fatturabili af ON af.commessa_attivita_id = ca.id
@@ -214,6 +218,7 @@ BEGIN
                         ELSE a.quantita END)                                           AS qta_padre,
                bool_or(a.fattura_riga_id IS NULL)                                       AS senza_fattura,
                bool_or(a.e_componente AND a.coeff_qta IS NULL)                          AS coeff_mancante,
+               bool_or(a.e_componente AND a.componente_di IS NULL)                       AS padre_mancante,
                COALESCE(max(g.accreditato_padre), 0::numeric)                           AS accreditato_padre
           FROM af a
           LEFT JOIN gia g ON g.kit_key = a.kit_key
@@ -241,6 +246,29 @@ BEGIN
         IF v_grp.coeff_mancante THEN
             PERFORM script.fn_log_and_raise_error(
                 'vendite','fn_accredita_riga_reso','E_ACCREDITO_KIT_NON_MISURABILE',
+                jsonb_build_object('resi_riga_id', p_resi_riga_id,
+                                   'segmento',     v_grp.kit_key),
+                NULL::uuid, p_resi_riga_id::text, v_grp.kit_key);
+        END IF;
+
+        -- ⛔ Kit senza il PADRE nel meta: la rettifica nascerebbe
+        --    dichiarandosi componente (#CMP: nel segmento) senza dire
+        --    di CHI, e il generatore righe la rifiuterebbe con
+        --    E_ATTIVITA_KIT_SENZA_PADRE — giustamente, perche'
+        --    trattarla come riga normale la fatturerebbe DUE volte:
+        --    dentro il totale del padre e per conto suo (R11).
+        --    ⚠️ Senza questo guard il difetto arriva a valle nella
+        --    forma PEGGIORE fra le tre possibili: il verbo riesce, la
+        --    riga ESCE DALLA CODA e il documento non nasce. La coda
+        --    dice fatto e la nota di credito non c'e'.
+        --    Trovato dallo smoke del BE il 2026-08-18 (§28 del brief
+        --    principale) su una riga di reso a tre componenti.
+        --    Gemello esatto di E_ACCREDITO_KIT_NON_MISURABILE qui
+        --    sopra: stessa forma, stesso momento, altro tasto dello
+        --    stesso contratto.
+        IF v_grp.padre_mancante THEN
+            PERFORM script.fn_log_and_raise_error(
+                'vendite','fn_accredita_riga_reso','E_ACCREDITO_KIT_SENZA_PADRE',
                 jsonb_build_object('resi_riga_id', p_resi_riga_id,
                                    'segmento',     v_grp.kit_key),
                 NULL::uuid, p_resi_riga_id::text, v_grp.kit_key);
@@ -275,7 +303,10 @@ BEGIN
                    CASE
                        WHEN (ca.meta ->> 'coeff_qta') ~ '^[0-9]+(\.[0-9]+){0,1}$'
                        THEN NULLIF((ca.meta ->> 'coeff_qta')::numeric, 0::numeric)
-                   END                                          AS coeff_qta
+                   END                                          AS coeff_qta,
+                   -- ⭐ Il meta INTERO della riga rettificata, non due
+                   --    chiavi scelte a mano: vedi p_meta piu' sotto.
+                   COALESCE(ca.meta, '{}'::jsonb)               AS ca_meta
               FROM vendite.commesse_attivita ca
               JOIN vendite.attivita_fatturabili af ON af.commessa_attivita_id = ca.id
               JOIN vendite.fatture_righe fr ON fr.id = af.fattura_riga_id
@@ -343,7 +374,29 @@ BEGIN
                   p_sorgente_tipo_id              => NULL,
                   p_sorgente_uid                  => NULL,
                   p_tipo_movimento                => 'RETTIFICA',
-                  p_meta                          => jsonb_strip_nulls(jsonb_build_object(
+                  -- ⭐ P-7: si EREDITA il meta della riga rettificata e ci si
+                  --    sovrappone il proprio, invece di enumerare le chiavi da
+                  --    copiare. La rettifica e' lo specchio della riga
+                  --    rettificata e da lei copia gia' prezzo, IVA, unita' di
+                  --    misura e coefficiente: il meta era l'unica cosa che NON
+                  --    copiava, e quell'asimmetria era il difetto.
+                  --    ⚠️ Il contratto kit (backend _kit_meta.py) ha QUATTRO
+                  --    tasti — componente_di, esposto_in_fattura, segment_key,
+                  --    coeff_qta — e qui ne arrivava uno solo. Enumerarne due
+                  --    in piu' avrebbe messo quei letterali in un TERZO posto,
+                  --    per giunta in SQL dove _kit_meta.py non si puo'
+                  --    importare: e' esattamente il difetto contro cui quel
+                  --    file e' nato («un refuso da una parte produce righe che
+                  --    spariscono dall'esposizione in fattura senza un
+                  --    errore»). Ereditando, il quinto tasto che qualcuno
+                  --    aggiungera' viaggia da solo.
+                  --    ⛔ Le due chiavi che potrebbero mentire sono gia'
+                  --    coperte a valle: `tipo_consumo` lo riscrive comunque
+                  --    fn_upsert_commessa_attivita, `segment_key` lo riscrive
+                  --    comunque fn_emit_attivita_fatturabili_da_commessa —
+                  --    entrambi a destra del `||`, quindi vincono loro.
+                  p_meta                          => COALESCE(v_cmp.ca_meta, '{}'::jsonb)
+                                                     || jsonb_strip_nulls(jsonb_build_object(
                           'coeff_qta',    v_cmp.coeff_qta,
                           'accredito_da', 'RESO',
                           'resi_riga_id', p_resi_riga_id)),
@@ -440,7 +493,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_accredita_riga_reso(p_resi_riga_id bigint)
-IS 'MADRE del verbo «accredita»: dalla coda accrediti genera le righe di RETTIFICA in commessa e le registra sul ponte vendite.resi_righe_accrediti. Una sola unita'' atomica; il DOCUMENTO non nasce qui, nasce nel giro di fatturazione normale — nessuna seconda pipeline, ed e'' il motivo per cui un esito parziale del fan-out non lascia mai mezzo documento fiscale. UN PARAMETRO SOLO: con D-NC-6 (l''accredito e'' sempre pieno) la quantita'' non e'' un input ma vw_resi_da_accreditare.accredito_dovuto, e con D-NC-7 il massivo lo fa il backend con run_fan_out. ⭐ D-NC-1: la rettifica porta SEMPRE il segmento della SPEDIZIONE (DDT:<uid>:R:<riga>#RET:<n>), anche quando a fatturare e'' stata la corsia ORD — sul serbatoio d''ordine la greedy scaricherebbe l''accredito sull''ultima spedizione invece che su quella da cui la merce e'' tornata. Il ripiego «se il DDT non c''e'', prendi il primo» e'' diventato un guard fail-fast (E_ACCREDITO_SENZA_SPEDIZIONE) e non un COALESCE: la condizione e'' impossibile per costruzione, e un ramo morto sembra coperto senza esserlo. ⭐ N-1: il prezzo si COPIA da vendite.fatture_righe, mai ricalcolato e mai riletto dal listino. Sconto e IVA li copia il generatore righe lato backend (BE-4), leggendo la riga rettificata: commesse_attivita non ha una colonna sconto e inventarne una toccherebbe la catena di TUTTE le fatture. D-NC-5: consumo LIFO delle unita'' fatturanti — non e'' una regola di calcolo (il prezzo si copia sempre) ma di CONSUMO. Kit: raggruppamento per kit_key e quantita'' in unita'' PADRE, max(quantita/coeff_qta) come vw_af_merce_per_riga; una rettifica per componente, ciascuna specchio della sua riga di fattura. Chiude con l''uguaglianza di D-NC-6 (E_ACCREDITO_QUOTA_NON_COPERTA): meglio non farlo che farlo a meta'', perche'' un residuo parziale e'' la riga che resta in coda a chiedere per sempre. Il presidio permessi vive sul BE (post_permission), non qui. Modello: vendite.fn_aggiungi_onere_commessa. rev 2026-08-18.';
+IS 'MADRE del verbo «accredita»: dalla coda accrediti genera le righe di RETTIFICA in commessa e le registra sul ponte vendite.resi_righe_accrediti. Una sola unita'' atomica; il DOCUMENTO non nasce qui, nasce nel giro di fatturazione normale — nessuna seconda pipeline, ed e'' il motivo per cui un esito parziale del fan-out non lascia mai mezzo documento fiscale. UN PARAMETRO SOLO: con D-NC-6 (l''accredito e'' sempre pieno) la quantita'' non e'' un input ma vw_resi_da_accreditare.accredito_dovuto, e con D-NC-7 il massivo lo fa il backend con run_fan_out. ⭐ D-NC-1: la rettifica porta SEMPRE il segmento della SPEDIZIONE (DDT:<uid>:R:<riga>#RET:<n>), anche quando a fatturare e'' stata la corsia ORD — sul serbatoio d''ordine la greedy scaricherebbe l''accredito sull''ultima spedizione invece che su quella da cui la merce e'' tornata. Il ripiego «se il DDT non c''e'', prendi il primo» e'' diventato un guard fail-fast (E_ACCREDITO_SENZA_SPEDIZIONE) e non un COALESCE: la condizione e'' impossibile per costruzione, e un ramo morto sembra coperto senza esserlo. ⭐ N-1: il prezzo si COPIA da vendite.fatture_righe, mai ricalcolato e mai riletto dal listino. Sconto e IVA li copia il generatore righe lato backend (BE-4), leggendo la riga rettificata: commesse_attivita non ha una colonna sconto e inventarne una toccherebbe la catena di TUTTE le fatture. D-NC-5: consumo LIFO delle unita'' fatturanti — non e'' una regola di calcolo (il prezzo si copia sempre) ma di CONSUMO. Kit: raggruppamento per kit_key e quantita'' in unita'' PADRE, max(quantita/coeff_qta) come vw_af_merce_per_riga; una rettifica per componente, ciascuna specchio della sua riga di fattura. Chiude con l''uguaglianza di D-NC-6 (E_ACCREDITO_QUOTA_NON_COPERTA): meglio non farlo che farlo a meta'', perche'' un residuo parziale e'' la riga che resta in coda a chiedere per sempre. Il presidio permessi vive sul BE (post_permission), non qui. Modello: vendite.fn_aggiungi_onere_commessa. ⭐ P-7 (2026-08-18, dallo smoke BE): il meta della rettifica EREDITA quello della riga rettificata (`ca.meta || {coeff_qta, accredito_da, resi_riga_id}`) invece di enumerare le chiavi da copiare. Prima ne arrivava UNA sola delle quattro del contratto kit (backend _kit_meta.py: componente_di, esposto_in_fattura, segment_key, coeff_qta): la rettifica di un componente si dichiarava componente — perche'' fn_emit scrive segment_key nel meta dell''attivita'' fatturabile, e quel segmento porta #CMP: — senza dire DI CHI, e il generatore righe la rifiutava con E_ATTIVITA_KIT_SENZA_PADRE. ⚠️ Nella forma peggiore: il verbo riusciva, la riga USCIVA DALLA CODA e il documento non nasceva. Ereditare invece di enumerare evita di mettere quei letterali in un terzo posto, in SQL, dove _kit_meta.py non si puo'' importare. ⛔ E un guard nuovo (E_ACCREDITO_KIT_SENZA_PADRE) rifiuta AL VERBO il kit i cui componenti non portano componente_di: gemello esatto di E_ACCREDITO_KIT_NON_MISURABILE — stesso momento, altro tasto dello stesso contratto — cosi'' il difetto non arriva mai a valle e la riga non esce dalla coda per niente. rev 2026-08-18 (P-7).';
 ```
 
 ---

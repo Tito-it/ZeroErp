@@ -67,6 +67,10 @@
 - [fn_name_from_template](funzioni/fn_name_from_template.md) — La funzione **`fn_name_from_template`** genera in modo consistente un **nome normalizzato** (per trigger, constraint, indici, ecc.) a partire da un **template testuale** con *placeholder* e da un set di parametri (schema, tabella, parent/child, nome FK, operazione).
 - [fn_non_editable_fields](funzioni/fn_non_editable_fields.md)
 - [fn_normalize_indirizzo](funzioni/fn_normalize_indirizzo.md)
+- [fn_pgtap_cf_libero](funzioni/fn_pgtap_cf_libero.md)
+- [fn_pgtap_crea_soggetto_pg](funzioni/fn_pgtap_crea_soggetto_pg.md)
+- [fn_pgtap_crea_soggetto_ruolo](funzioni/fn_pgtap_crea_soggetto_ruolo.md)
+- [fn_pgtap_piva_libera](funzioni/fn_pgtap_piva_libera.md)
 - [fn_populate_fk_index_policy](funzioni/fn_populate_fk_index_policy.md) — (latest review 27-07-26)
 - [fn_purge_cleanup_expired](funzioni/fn_purge_cleanup_expired.md) — (latest review 07-02-26) La funzione **`dbops.fn_purge_cleanup_expired`** elimina i record con **`cleanup_at` scaduto** usando una strategia a **batch**, per ridurre lock e impatti sulle tabelle più grandi.
 - [fn_rename_triggers_by_order](funzioni/fn_rename_triggers_by_order.md)

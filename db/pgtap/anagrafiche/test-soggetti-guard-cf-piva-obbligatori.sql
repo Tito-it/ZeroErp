@@ -24,35 +24,16 @@
 -- ------------------------------------------------------------
 
 -- =========================================================
--- Cleanup iniziale
--- =========================================================
-DO $$
-DECLARE
-  l_codici text[] := ARRAY[
-    'TST-CFPIVA-PR-ERR', 'TST-CFPIVA-PR-OK',
-    'TST-CFPIVA-DI-ERR1', 'TST-CFPIVA-DI-ERR2', 'TST-CFPIVA-DI-OK',
-    'TST-CFPIVA-SP-ERR', 'TST-CFPIVA-SP-OK',
-    'TST-CFPIVA-NULL-OK'
-  ];
-BEGIN
-  DELETE FROM anagrafiche.indirizzi_soggetti i
-  WHERE i.soggetto_id IN (
-    SELECT s.id FROM anagrafiche.soggetti s WHERE s.codice = ANY(l_codici)
-  );
-  DELETE FROM anagrafiche.contatti c
-  WHERE c.soggetto_id IN (
-    SELECT s.id FROM anagrafiche.soggetti s WHERE s.codice = ANY(l_codici)
-  );
-  DELETE FROM anagrafiche.soggetti s
-  WHERE s.codice = ANY(l_codici);
-END;
-$$;
+-- ============================================================================
+-- rev 2026-08-18 — bonifica baseline. Qui c'era un blocco di «cleanup
+-- iniziale» che cancellava i soggetti di prova delle corse precedenti: non
+-- funziona piu' (FK RESTRICT verso istanze_utilities e altro), e il file
+-- moriva prima della prima asserzione — ZERO su 10.
+-- Il file e' gia' BEGIN ... ROLLBACK, quindi residui suoi non ne fa: quelli in
+-- giro sono di prima. Il rimedio e' non collidere invece di cancellare —
+-- codici e partite IVA unici per corsa.
+-- ============================================================================
 
--- ⚠️ Transazione, e non e' una formalita'. Il cleanup di questo file sta in
---   coda: col runner vero (pg_prove gira con ON_ERROR_STOP) un fallimento a
---   meta' non ci arriva mai, e i dati di prova restano nel database a rompere
---   la corsa successiva — che vede un rosso non suo.
---   Brief: brief-db-pgtap-runner-rls-baseline §15.3.
 BEGIN;
 
 -- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
@@ -74,6 +55,14 @@ SET CONSTRAINTS ALL IMMEDIATE;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(10);
+
+CREATE TEMP TABLE tmp_run_sfx AS
+-- ⚠️ Anche il codice fiscale si prende libero: quello che il file aveva
+--   inchiodato (TSTNMA80A01H501N) e' bruciato da un soggetto residuo, e
+--   uq_soggetto_idstato_id_fiscale_univoco non perdona.
+SELECT substr(md5(clock_timestamp()::text), 1, 8) AS sfx,
+       dbops.fn_pgtap_piva_libera() AS piva_libera,
+       dbops.fn_pgtap_cf_libero()   AS cf_libero;
 
 -- =========================================================
 -- 0) Precondizioni
@@ -131,7 +120,7 @@ SELECT throws_ok(
           codice, cognome, nome, stato_id,
           codice_fiscale, partita_iva, tipo_soggetto_dettaglio_id
       ) VALUES (
-          'TST-CFPIVA-PR-ERR', 'Test', 'NoCF', (SELECT stato_id FROM tmp_stato_test),
+          'TST-CFPIVA-PR-ERR-' || (SELECT sfx FROM tmp_run_sfx), 'Test', 'NoCF', (SELECT stato_id FROM tmp_stato_test),
           NULL, NULL,
           (SELECT tipo_soggetto_dettaglio_id FROM tmp_tipo_pr)
       );
@@ -145,12 +134,17 @@ SELECT throws_ok(
 -- =========================================================
 SELECT lives_ok(
     $$
+      -- ⭐ Finestra differita: i guard di completezza su soggetti sono
+      --   DEFERRABLE INITIALLY DEFERRED apposta — un soggetto e' una saga.
+      --   Il SET CONSTRAINTS ALL IMMEDIATE del preambolo li farebbe scattare
+      --   sul PRIMO insert, prima che contatto e indirizzi esistano.
+      SET CONSTRAINTS ALL DEFERRED;
       INSERT INTO anagrafiche.soggetti (
           codice, cognome, nome, stato_id,
           codice_fiscale, partita_iva, tipo_soggetto_dettaglio_id
       ) VALUES (
-          'TST-CFPIVA-PR-OK', 'Test', 'ConCF', (SELECT stato_id FROM tmp_stato_test),
-          'TSTNMA80A01H501N', NULL,
+          'TST-CFPIVA-PR-OK-' || (SELECT sfx FROM tmp_run_sfx), 'Test', 'ConCF', (SELECT stato_id FROM tmp_stato_test),
+          (SELECT cf_libero FROM tmp_run_sfx), NULL,
           (SELECT tipo_soggetto_dettaglio_id FROM tmp_tipo_pr)
       );
       INSERT INTO anagrafiche.contatti (
@@ -158,17 +152,19 @@ SELECT lives_ok(
       ) SELECT
           (SELECT tipo_contatto_id FROM tmp_tipo_contatto_test),
           s.id, 'Contatto PR', 'pr@test.com', TRUE
-      FROM anagrafiche.soggetti s WHERE s.codice = 'TST-CFPIVA-PR-OK';
+      FROM anagrafiche.soggetti s WHERE s.codice = 'TST-CFPIVA-PR-OK-' || (SELECT sfx FROM tmp_run_sfx);
       INSERT INTO anagrafiche.indirizzi_soggetti (soggetto_id, tipo_indirizzo_id, indirizzo_libero,
           stato_id, locality, postal_box, administrative_area)
       SELECT s.id, (SELECT tipo_indirizzo_id FROM tmp_tipo_ind_res), 'Via Test PR RES',
           (SELECT stato_id FROM tmp_stato_test), 'Test City', '00100', 'TS'
-      FROM anagrafiche.soggetti s WHERE s.codice = 'TST-CFPIVA-PR-OK';
+      FROM anagrafiche.soggetti s WHERE s.codice = 'TST-CFPIVA-PR-OK-' || (SELECT sfx FROM tmp_run_sfx);
       INSERT INTO anagrafiche.indirizzi_soggetti (soggetto_id, tipo_indirizzo_id, indirizzo_libero,
           stato_id, locality, postal_box, administrative_area)
       SELECT s.id, (SELECT tipo_indirizzo_id FROM tmp_tipo_ind_domfisc), 'Via Test PR DOMFISC',
           (SELECT stato_id FROM tmp_stato_test), 'Test City', '00100', 'TS'
-      FROM anagrafiche.soggetti s WHERE s.codice = 'TST-CFPIVA-PR-OK';
+      FROM anagrafiche.soggetti s WHERE s.codice = 'TST-CFPIVA-PR-OK-' || (SELECT sfx FROM tmp_run_sfx);
+      -- Saga completa: qui i guard verificano davvero.
+      SET CONSTRAINTS ALL IMMEDIATE;
     $$,
     'PR con CF, senza PIVA: OK'
 );
@@ -182,8 +178,8 @@ SELECT throws_ok(
           codice, cognome, nome, stato_id,
           codice_fiscale, partita_iva, tipo_soggetto_dettaglio_id
       ) VALUES (
-          'TST-CFPIVA-DI-ERR1', 'Test', 'NoPIVA', (SELECT stato_id FROM tmp_stato_test),
-          'TSTNMA80A01H501N', NULL,
+          'TST-CFPIVA-DI-ERR1-' || (SELECT sfx FROM tmp_run_sfx), 'Test', 'NoPIVA', (SELECT stato_id FROM tmp_stato_test),
+          (SELECT cf_libero FROM tmp_run_sfx), NULL,
           (SELECT tipo_soggetto_dettaglio_id FROM tmp_tipo_di)
       );
     $$,
@@ -200,8 +196,8 @@ SELECT throws_ok(
           codice, cognome, nome, stato_id,
           codice_fiscale, partita_iva, tipo_soggetto_dettaglio_id
       ) VALUES (
-          'TST-CFPIVA-DI-ERR2', 'Test', 'NoCF', (SELECT stato_id FROM tmp_stato_test),
-          NULL, '12345678903',
+          'TST-CFPIVA-DI-ERR2-' || (SELECT sfx FROM tmp_run_sfx), 'Test', 'NoCF', (SELECT stato_id FROM tmp_stato_test),
+          NULL, (SELECT piva_libera FROM tmp_run_sfx),
           (SELECT tipo_soggetto_dettaglio_id FROM tmp_tipo_di)
       );
     $$,
@@ -214,12 +210,17 @@ SELECT throws_ok(
 -- =========================================================
 SELECT lives_ok(
     $$
+      -- ⭐ Finestra differita: i guard di completezza su soggetti sono
+      --   DEFERRABLE INITIALLY DEFERRED apposta — un soggetto e' una saga.
+      --   Il SET CONSTRAINTS ALL IMMEDIATE del preambolo li farebbe scattare
+      --   sul PRIMO insert, prima che contatto e indirizzi esistano.
+      SET CONSTRAINTS ALL DEFERRED;
       INSERT INTO anagrafiche.soggetti (
           codice, cognome, nome, stato_id,
           codice_fiscale, partita_iva, tipo_soggetto_dettaglio_id
       ) VALUES (
-          'TST-CFPIVA-DI-OK', 'Test', 'ConTutto', (SELECT stato_id FROM tmp_stato_test),
-          'TSTNMA80A01H501N', '12345678903',
+          'TST-CFPIVA-DI-OK-' || (SELECT sfx FROM tmp_run_sfx), 'Test', 'ConTutto', (SELECT stato_id FROM tmp_stato_test),
+          (SELECT cf_libero FROM tmp_run_sfx), (SELECT piva_libera FROM tmp_run_sfx),
           (SELECT tipo_soggetto_dettaglio_id FROM tmp_tipo_di)
       );
       INSERT INTO anagrafiche.contatti (
@@ -227,12 +228,14 @@ SELECT lives_ok(
       ) SELECT
           (SELECT tipo_contatto_id FROM tmp_tipo_contatto_test),
           s.id, 'Contatto DI', 'di@test.com', TRUE
-      FROM anagrafiche.soggetti s WHERE s.codice = 'TST-CFPIVA-DI-OK';
+      FROM anagrafiche.soggetti s WHERE s.codice = 'TST-CFPIVA-DI-OK-' || (SELECT sfx FROM tmp_run_sfx);
       INSERT INTO anagrafiche.indirizzi_soggetti (soggetto_id, tipo_indirizzo_id, indirizzo_libero,
           stato_id, locality, postal_box, administrative_area)
       SELECT s.id, (SELECT tipo_indirizzo_id FROM tmp_tipo_ind_domfisc), 'Via Test DI DOMFISC',
           (SELECT stato_id FROM tmp_stato_test), 'Test City', '00100', 'TS'
-      FROM anagrafiche.soggetti s WHERE s.codice = 'TST-CFPIVA-DI-OK';
+      FROM anagrafiche.soggetti s WHERE s.codice = 'TST-CFPIVA-DI-OK-' || (SELECT sfx FROM tmp_run_sfx);
+      -- Saga completa: qui i guard verificano davvero.
+      SET CONSTRAINTS ALL IMMEDIATE;
     $$,
     'DI con CF e PIVA: OK'
 );
@@ -246,8 +249,8 @@ SELECT throws_ok(
           codice, ragione_sociale, stato_id,
           codice_fiscale, partita_iva, tipo_soggetto_dettaglio_id
       ) VALUES (
-          'TST-CFPIVA-SP-ERR', 'Azienda NoPIVA', (SELECT stato_id FROM tmp_stato_test),
-          '12345678903', NULL,
+          'TST-CFPIVA-SP-ERR-' || (SELECT sfx FROM tmp_run_sfx), 'Azienda NoPIVA', (SELECT stato_id FROM tmp_stato_test),
+          (SELECT piva_libera FROM tmp_run_sfx), NULL,
           (SELECT tipo_soggetto_dettaglio_id FROM tmp_tipo_sp)
       );
     $$,
@@ -260,12 +263,17 @@ SELECT throws_ok(
 -- =========================================================
 SELECT lives_ok(
     $$
+      -- ⭐ Finestra differita: i guard di completezza su soggetti sono
+      --   DEFERRABLE INITIALLY DEFERRED apposta — un soggetto e' una saga.
+      --   Il SET CONSTRAINTS ALL IMMEDIATE del preambolo li farebbe scattare
+      --   sul PRIMO insert, prima che contatto e indirizzi esistano.
+      SET CONSTRAINTS ALL DEFERRED;
       INSERT INTO anagrafiche.soggetti (
           codice, ragione_sociale, stato_id,
           codice_fiscale, partita_iva, tipo_soggetto_dettaglio_id
       ) VALUES (
-          'TST-CFPIVA-SP-OK', 'Azienda ConTutto', (SELECT stato_id FROM tmp_stato_test),
-          '12345678903', '12345678903',
+          'TST-CFPIVA-SP-OK-' || (SELECT sfx FROM tmp_run_sfx), 'Azienda ConTutto', (SELECT stato_id FROM tmp_stato_test),
+          (SELECT piva_libera FROM tmp_run_sfx), (SELECT piva_libera FROM tmp_run_sfx),
           (SELECT tipo_soggetto_dettaglio_id FROM tmp_tipo_sp)
       );
       INSERT INTO anagrafiche.contatti (
@@ -273,12 +281,14 @@ SELECT lives_ok(
       ) SELECT
           (SELECT tipo_contatto_id FROM tmp_tipo_contatto_test),
           s.id, 'Contatto SP', 'sp@test.com', TRUE
-      FROM anagrafiche.soggetti s WHERE s.codice = 'TST-CFPIVA-SP-OK';
+      FROM anagrafiche.soggetti s WHERE s.codice = 'TST-CFPIVA-SP-OK-' || (SELECT sfx FROM tmp_run_sfx);
       INSERT INTO anagrafiche.indirizzi_soggetti (soggetto_id, tipo_indirizzo_id, indirizzo_libero,
           stato_id, locality, postal_box, administrative_area)
       SELECT s.id, (SELECT tipo_indirizzo_id FROM tmp_tipo_ind_sedeleg), 'Via Test SP SEDELEG',
           (SELECT stato_id FROM tmp_stato_test), 'Test City', '00100', 'TS'
-      FROM anagrafiche.soggetti s WHERE s.codice = 'TST-CFPIVA-SP-OK';
+      FROM anagrafiche.soggetti s WHERE s.codice = 'TST-CFPIVA-SP-OK-' || (SELECT sfx FROM tmp_run_sfx);
+      -- Saga completa: qui i guard verificano davvero.
+      SET CONSTRAINTS ALL IMMEDIATE;
     $$,
     'SP con CF e PIVA: OK'
 );
@@ -288,11 +298,16 @@ SELECT lives_ok(
 -- =========================================================
 SELECT lives_ok(
     $$
+      -- ⭐ Finestra differita: i guard di completezza su soggetti sono
+      --   DEFERRABLE INITIALLY DEFERRED apposta — un soggetto e' una saga.
+      --   Il SET CONSTRAINTS ALL IMMEDIATE del preambolo li farebbe scattare
+      --   sul PRIMO insert, prima che contatto e indirizzi esistano.
+      SET CONSTRAINTS ALL DEFERRED;
       INSERT INTO anagrafiche.soggetti (
           codice, cognome, nome, stato_id,
           codice_fiscale, partita_iva, tipo_soggetto_dettaglio_id
       ) VALUES (
-          'TST-CFPIVA-NULL-OK', 'Test', 'NullTipo', (SELECT stato_id FROM tmp_stato_test),
+          'TST-CFPIVA-NULL-OK-' || (SELECT sfx FROM tmp_run_sfx), 'Test', 'NullTipo', (SELECT stato_id FROM tmp_stato_test),
           NULL, NULL,
           NULL
       );
@@ -301,7 +316,9 @@ SELECT lives_ok(
       ) SELECT
           (SELECT tipo_contatto_id FROM tmp_tipo_contatto_test),
           s.id, 'Contatto NULL tipo', 'null@test.com', TRUE
-      FROM anagrafiche.soggetti s WHERE s.codice = 'TST-CFPIVA-NULL-OK';
+      FROM anagrafiche.soggetti s WHERE s.codice = 'TST-CFPIVA-NULL-OK-' || (SELECT sfx FROM tmp_run_sfx);
+      -- Saga completa: qui i guard verificano davvero.
+      SET CONSTRAINTS ALL IMMEDIATE;
     $$,
     'Soggetto con tipo_soggetto_dettaglio_id NULL: OK (nessun vincolo)'
 );
