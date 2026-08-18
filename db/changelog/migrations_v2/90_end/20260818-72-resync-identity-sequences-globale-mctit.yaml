@@ -67,6 +67,11 @@ databaseChangeLog:
       id: 20260818-72-resync-identity-sequences-globale
       author: mctit
       runAlways: true
+      # Il changeSet e' gia' stato applicato prima della correzione sui
+      # permessi: senza questo, il checksum cambiato lo farebbe fallire sui
+      # database dove aveva gia' girato.
+      validCheckSums:
+        - ANY
       comment: >
         Riallinea forward-only tutte le sequenze IDENTITY/serial del database a
         MAX(id), dopo i seed loadUpdateData con id espliciti. Evita le collisioni
@@ -104,10 +109,41 @@ databaseChangeLog:
                   WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
                     AND n.nspname NOT LIKE 'pg\_%'
                     AND c.relkind IN ('r', 'p')
+                    -- ⛔ rev 2026-08-19 — SI FILTRA SU CHI POSSIEDE, non su
+                    --   «tutti gli schemi non di sistema» come diceva la prima
+                    --   versione. Su un database con PostGIS completo li' dentro
+                    --   c'e' `tiger` (schema dell'estensione postgis_tiger_geocoder,
+                    --   di proprieta' di postgres), e il DO block moriva con
+                    --   «permission denied for schema tiger» fermando il migrate
+                    --   in 90_end.
+                    --   ⚠️ Difetto invisibile dove era stato misurato: sul database
+                    --   di sviluppo `tiger` NON ESISTE (quell'estensione non e'
+                    --   installata) e si gira come owner, quindi non si incontrava.
+                    --   Si e' visto solo su un database nuovo con PostGIS intero.
+                    --
+                    --   Perche' i due rami dell'OR, e non uno solo:
+                    --   * `n.nspowner` — copre le tabelle dei NOSTRI schemi anche
+                    --     quando la singola tabella e' di qualcun altro. Succede
+                    --     davvero: 59 colonne identity di `storico` sono di
+                    --     proprieta' di postgres (le crea l'automazione), e un
+                    --     filtro sulla sola tabella le avrebbe saltate IN SILENZIO;
+                    --   * `c.relowner` — copre le nostre tabelle fuori dai nostri
+                    --     schemi, cioe' oggi public.version_info, che sta in un
+                    --     `public` di proprieta' di pg_database_owner.
+                    --   Insieme escludono per costruzione pgagent, topology e
+                    --   tiger: ne' lo schema ne' le tabelle sono nostri.
+                    --
+                    --   Elencare gli schemi a mano — come fanno i presidi
+                    --   per-schema che questo sostituisce — sarebbe stato l'altro
+                    --   modo, ma la lista invecchia, e questo changeSet esiste
+                    --   apposta per coprire da solo le tabelle future.
+                    AND (n.nspowner = current_user::regrole
+                         OR c.relowner = current_user::regrole)
                     AND pg_get_serial_sequence(format('%I.%I', n.nspname, c.relname), a.attname) IS NOT NULL
                 LOOP
                   v_viste := v_viste + 1;
                   v_seq := pg_get_serial_sequence(format('%I.%I', r.schema_name, r.table_name), r.column_name);
+
 
                   EXECUTE format('SELECT COALESCE(MAX(%I), 0) FROM %I.%I',
                                  r.column_name, r.schema_name, r.table_name)
