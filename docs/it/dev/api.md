@@ -455,12 +455,31 @@ Generato da `success_response()` in `apps.core.api.success_responses`.
 | `retryable`         | no              | `true` se il client puo` riprovare la stessa richiesta              |
 | `ui_action`         | si`             | Come dovrebbe reagire la pagina. ⚠️ **Il frontend non lo legge ancora** |
 | `fields`            | no              | I **nomi** dei campi del form da correggere (`["partita_iva"]`)     |
+| `hint`              | no              | L'**azione suggerita**: cosa può fare l'operatore adesso            |
 
 ⭐ **`fields` — dal 2026-08-08.** È l'informazione senza la quale
 `ui_action: highlight_form_fields` non è azionabile: diceva *«evidenzia il
 campo»* senza dire quale. Arriva dal `context` del `ServiceError`, dalla
 convenzione `context={"field": <nome>}` già presente in **114 punti di
 chiamata** — non è una convenzione nuova, è una che si fermava al log.
+
+⭐ **`hint` — dal 2026-08-18.** È la `soluzione` che il team DB scrive **a
+catalogo per ogni codice** (*«se il documento non è ancora numerato, la strada è
+il reset del lotto…»*): la parte che dice all'operatore cosa fare. PostgreSQL la
+consegna come `HINT` dell'eccezione.
+
+🔴 **Prima non arrivava, ed è il motivo per cui la modifica esiste.**
+`ErrorTranslator._from_database_error` la leggeva già dalla diag psycopg — ma
+quel ramo vale solo per un `DatabaseError` che arriva **nudo** al middleware, e
+appena un service traduce con `translate_db_errors` (cioè sempre, in ogni
+dominio) non ci passa: il `ServiceError` nasceva **senza `hint`** e la frase
+restava annegata nel testo grezzo di `detail`.
+
+Ne discendeva che un dominio che volesse mostrarla doveva **riscriverla in
+Python**, cioè duplicare il catalogo. Ora il campo viaggia strutturato fino
+all'envelope. ⚠️ **Il frontend non lo legge ancora** (zero occorrenze di
+`error.hint`): il primo consumatore sarà la coda accrediti, dove distingue
+«non si può» da «resetta il lotto, ma sappi che la nota si rigenera».
 
 ⚠️ **Escono solo i nomi, e solo dalla chiave `field`.** Il `context` è una borsa
 diagnostica destinata a `dbops.error_log`: contiene anche `lotto_id`,
