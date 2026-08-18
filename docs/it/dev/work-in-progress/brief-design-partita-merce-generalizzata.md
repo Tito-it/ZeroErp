@@ -1875,7 +1875,7 @@ quattro sezioni in un round-trip (`righe_ordine` · `partite` · `accrediti` ·
 `riconsegne`). Doc:
 [api_situazione_merce.md](../../backend/vendite/manual/api_situazione_merce.md).
 9 test service verdi + prova con chiamata REALE al DB (i mock non vedono il
-binding SQL). ⚠️ **Non mergiabile prima del push di `20260817-15`.**
+binding SQL). ✅ **Integrato** (PR #1283, insieme a `20260817-15`).
 
 ⭐ **La prova che vale piu' dei test**: l'ordine del §3 del brief pannello — le
 cinque schermate — torna in **una chiamata sola**.
@@ -1907,7 +1907,27 @@ convenzione di naming di `AGENTS.md`), orchestrazione in `vendite_service.py`,
 view dal factory in `apps/vendite/api/`. Test service con repository mockato
 (`unittest.TestCase`, niente DB — regola CI).
 
-### 21.3 ⏳ FE-1 / FE-2 / FE-3 — non hanno ancora una casa
+### 21.3 ✅ FE-1 / FE-2 / FE-3 — FATTE (2026-08-18)
+
+> Il testo qui sotto e' rimasto **com'era scritto** il 2026-08-17, perche' la
+> ragione per cui allora non si potevano fare si legge meglio accanto a com'e'
+> andata a finire: **avevano bisogno del pannello**, e il pannello ora c'e'.
+>
+> * **FE-1** — `NON_MISURABILE` e' **rosso** in `STATO_MERCE_MAP`, contro il
+>   grigio di `NON_FATTURABILE` e il verde di `PAREGGIATA`. I due «grigi» non
+>   sono lo stesso grigio: uno e' sano («non si applica»), l'altro e' un conto
+>   che non si **puo'** fare.
+> * **FE-2** — il chip «da verificare» su `sospetto_duplicato_ordine`, con il
+>   tooltip che spiega perche' il caso legittimo esiste. Senza, la colonna di
+>   S6b non avvisava nessuno.
+> * **FE-3** — `fatturato_anticipato` **non e'** fra i chip-compito e non entra
+>   in nessuna somma di saldo: compare nel dettaglio, dichiarato («di cui N
+>   gia' fatturati e non ancora spediti»).
+>
+> E i due stati nuovi in tavolozza (`RICONSEGNA`, `NON_MISURABILE`) sono
+> arrivati **col** loro consumatore, non prima.
+
+#### Com'era la situazione il 2026-08-17
 
 Le tre richieste frontend del §19.2 sono **requisiti sul pannello del cantiere
 2**, che non esiste: `NON_MISURABILE` contro `PAREGGIATA` (FE-1),
@@ -2090,8 +2110,8 @@ nuova è **accanto**, non al posto — la stessa forma della raccomandazione del
 cambi rispetto alla richiesta. Brief chiuso e archiviato:
 [work-done/brief-db-situazione-merce-ordine.md](../work-done/brief-db-situazione-merce-ordine.md).
 
-⚠️ **Applicata al DB di sviluppo, non ancora pushata**: il backend ci costruisce
-sopra introspezionando la vista viva, ma **non è mergiabile prima del push**.
+✅ **Pushata e integrata il 2026-08-18** (PR #1282). Il backend era stato
+costruito introspezionando la vista **viva**: il corpo pubblicato coincide.
 
 🔴 **E due cose le ho sbagliate io, scritte lì**: la formula di `da_spedire`
 (divergeva proprio sulla riga da 21 pezzi che ha generato il cantiere) e la
@@ -2167,9 +2187,9 @@ letture attraversano **quattro viste** e la RLS.
 
 ### 22.4 ⚠️ Cosa resta, e il vincolo di merge
 
-🔴 **Il backend NON è mergiabile prima del push di `20260817-15`**: in CI
-`vw_situazione_merce_ordine` non esiste. Il resto — lato DDT, partite
-sull'ordine, le due code — poggia su oggetti già in repository.
+✅ **Il vincolo di merge è caduto il 2026-08-18**: `20260817-15` è in
+repository (PR #1282) e il backend che la consuma pure (PR #1283). Verificato a
+`Tito-dev`: changeSet, doc auto-gen e suite Django (3702 verdi) allineati.
 
 ⏳ **Il frontend**: il pannello del cantiere 2 non esiste. Le tre richieste FE
 restano scritte nel §19.2 e vanno riprese **come definizione di fatto di quel

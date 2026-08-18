@@ -1548,6 +1548,9 @@ def get_situazione_merce(
             function_name=_FN_SITUAZIONE_MERCE,
         )
     else:
+        # Il guard in testa garantisce che qui `ddt_id` sia valorizzato; l'assert
+        # e' per il type checker (convenzione AGENTS.md post-require).
+        assert ddt_id is not None
         ErrorManager.require(
             repository.exists_ddt(ddt_id),
             code="E_VENDITE_NOT_FOUND",

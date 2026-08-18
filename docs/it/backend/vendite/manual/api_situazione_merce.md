@@ -65,16 +65,30 @@ riconsegne    RESO0005123 · residua 3 · DA_RICONSEGNARE
 
 ## Regole
 
-* ⛔ **`differenza = null` non è zero.** Significa «il conto non si applica»:
-  riga mai spedita, causale di trasporto non fatturabile, conto non calcolabile.
-  Un `COALESCE(..., 0)` nel repository o nel client rimette dentro i falsi
-  allarmi che il cantiere della partita ha tolto — *«da fatturare»* su un conto
-  visione, *«da accreditare»* su merce che deve solo partire.
+* ⛔ **`null` non è zero — e vale per DUE colonne.** `differenza` è `null`
+  quando il conto non si applica (ordine non ancora impegnato, riga mai spedita,
+  causale di trasporto non fatturabile, conto non calcolabile); `da_spedire` è
+  `null` quando l'ordine è **sotto la soglia** (`20260818-06`, vedi sotto). Un
+  `COALESCE(..., 0)` nel repository o nel client rimette dentro i falsi allarmi
+  che il cantiere della partita ha tolto — *«da fatturare»* su un conto visione,
+  *«da accreditare»* su merce che deve solo partire, *«N da spedire»* su una
+  bozza.
 * ⛔ **Il verso del saldo non si ri-traduce.** `stato` arriva già tradotto dalle
-  viste e ha **sei** valori: `NON_SPEDITA` · `PAREGGIATA` · `DA_FATTURARE` ·
-  `DA_ACCREDITARE` · `NON_FATTURABILE` · `NON_MISURABILE` sul livello ordine;
-  sulla partita al posto di `NON_SPEDITA` c'è `RICONSEGNA`. Due traduzioni
-  diventano due frasi diverse per lo stesso numero.
+  viste e ha **sette** valori: `NON_IMPEGNATA` · `NON_SPEDITA` · `PAREGGIATA` ·
+  `DA_FATTURARE` · `DA_ACCREDITARE` · `NON_FATTURABILE` · `NON_MISURABILE` sul
+  livello ordine; sulla partita al posto dei primi due c'è `RICONSEGNA`. Due
+  traduzioni diventano due frasi diverse per lo stesso numero.
+* ⭐ **La soglia di impegno dell'ordine** (`20260818-06`): una riga di ordine
+  **sotto CONFERMATO** o su ordine abortito esce `NON_IMPEGNATA` con
+  `da_spedire` **NULL** — non è un arretrato, è merce che nessuno si è ancora
+  impegnato a spedire. È la gemella della decisione D1 sul DDT (la partita nasce
+  da EMESSO in poi). ⚠️ **La riga resta**, con la sua quantità ordinata: la
+  cardinalità è invariata (una per riga d'ordine attiva), perché il pannello si
+  legge **per un ordine** e togliere le righe renderebbe vuoto il pannello di
+  ogni bozza — «non c'è nulla» che in realtà è «non sto vedendo niente».
+  ⚠️ E la precedenza nel `CASE` protegge il caso limite: una riga **con
+  partite** su un ordine abortito mostra il suo saldo, non `NON_IMPEGNATA` —
+  se la merce è uscita davvero, il conto è reale.
 * ⚠️ **`fatturato_anticipato` non è un accredito**: è merce fatturata e non
   ancora uscita (corsia ORD, `fatturazione_trigger = CONFERMATO` su 93 ordini su
   95). Sommarlo alla differenza riapre il falso allarme.
@@ -118,13 +132,10 @@ solo posto in cui una persona lo guarda.
 
 ## Note di migrazione
 
-⚠️ **`vw_situazione_merce_ordine` (`20260817-15`) è applicata al DB di sviluppo
-ma non ancora pushata** al momento della scrittura: il backend è stato costruito
-introspezionando la vista **viva**, e **non è mergiabile prima del push del team
-DB** — in CI la vista non esiste.
-
-Il lato **DDT**, le partite sull'ordine e le due code non dipendono da quel
-changeSet: usano oggetti già in repository dal push del 2026-08-17.
+`vw_situazione_merce_ordine` (`20260817-15`) è in repository dal 2026-08-18
+(PR #1282), insieme al backend che la consuma (PR #1283). Il backend era stato
+scritto introspezionando la vista **viva** prima del push: il corpo pubblicato
+coincide con quello su cui è costruito.
 
 **Frontend**: il pannello non esiste ancora. Le tre richieste FE del §19.2 del
 brief partita — `NON_MISURABILE` visibilmente diverso da `PAREGGIATA`,

@@ -43,6 +43,7 @@ import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
 import RiepilogoIvaTable from '../../../core/components/RiepilogoIvaTable.vue'
 import DocumentoIndirizziSection from '../../_shared/indirizzi/DocumentoIndirizziSection.vue'
 import DocumentoCollegamentiBar from '../../_shared/lineage/DocumentoCollegamentiBar.vue'
+import SituazioneMerceBar from '../../_shared/situazioneMerce/SituazioneMerceBar.vue'
 import DdtForm from './DdtForm.vue'
 import DdtRigheTable from './DdtRigheTable.vue'
 import DdtNoteDrawer from './DdtNoteDrawer.vue'
@@ -93,12 +94,17 @@ const resoDialogVisible = ref(false)
 // DDT->Reso, quindi i chip vanno ricaricati insieme al detail (senza questo,
 // il chip «Reso» comparirebbe solo alla riapertura del drawer).
 const collegamentiRef = ref(null)
+// Ref alla barra situazione merce: un reso cambia i CONTI (tenuti scende,
+// puo' comparire un accredito dovuto), non solo il grafo dei collegamenti.
+// Sono due letture diverse della stessa azione e vanno ricaricate entrambe.
+const merceRef = ref(null)
 
-// Scopo: dopo la creazione di un reso, ricarica sia il detail (residui
-//        rendibili, stato) sia i chip dei collegamenti.
+// Scopo: dopo la creazione di un reso, ricarica il detail (residui rendibili,
+//        stato), i chip dei collegamenti e il conto della merce.
 function onResoCreato() {
   loadDetail()
   collegamentiRef.value?.reload()
+  merceRef.value?.reload()
 }
 // Avviso emissione: true quando manca l'indirizzo obbligatorio (CON) —
 // alimentato dalla sezione indirizzi, mostrato nel dialog di emissione.
@@ -446,6 +452,10 @@ async function handleEmissioneConferma({ files }) {
   if (result !== null) {
     emissioneDialogVisible.value = false
     await loadDetail()
+    // L'emissione e' il momento in cui le partite di merce NASCONO (soglia
+    // EMESSO, decisione D1): senza il reload la barra resterebbe nascosta
+    // («nessuna merce») fino alla riapertura del drawer.
+    merceRef.value?.reload()
     emit('saved', result)
   }
 }
@@ -523,6 +533,10 @@ async function eseguiCambioStato(action) {
   )
   if (result !== null) {
     await loadDetail()
+    // Il cambio stato puo' spostare i conti della merce: l'ANNULLO rende il
+    // documento abortito e le sue partite ESCONO dalla vista. Ricaricare solo
+    // il detail lascerebbe la barra a raccontare partite che non esistono piu'.
+    merceRef.value?.reload()
     emit('saved', result)
   }
 }
@@ -622,6 +636,16 @@ const drawerActions = computed(() => {
              `ref` per ricaricare i chip dopo un'azione che li cambia (reso). -->
         <DocumentoCollegamentiBar
           ref="collegamentiRef"
+          base-path="/vendite/ddt"
+          :doc-id="effectiveDdtId"
+          :readonly="readonly || parentReadonly" />
+
+        <!-- Situazione merce di QUESTA spedizione: quanto e' uscito, tornato,
+             fatturato e cosa resta aperto. La barra sopra dice COSA e'
+             collegato, questa COM'E' ANDATA. Sparisce se non c'e' nulla da
+             raccontare (un DDT in bozza non ha ancora partite). -->
+        <SituazioneMerceBar
+          ref="merceRef"
           base-path="/vendite/ddt"
           :doc-id="effectiveDdtId"
           :readonly="readonly || parentReadonly" />
