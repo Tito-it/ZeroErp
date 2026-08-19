@@ -7,6 +7,7 @@
 //        segnalazioni) con le azioni di governo. Nessuna logica di dominio:
 //        stato/step/gate vivono nel motore, la lista rende e naviga.
 import { ref, computed, onActivated } from 'vue'
+import { registraDrawerChiudibile } from '../../core/composables/useDrawerChiusuraGlobale'
 import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
 import Select from 'primevue/select'
@@ -163,6 +164,11 @@ onActivated(() => {
 
 // Drawer diagnostico.
 const drawerVisible = ref(false)
+// Le sole due liste che tengono a mano lo stato del drawer invece di passare da
+// `useDrawerState`: si registrano da se' nella chiusura globale, o resterebbero
+// gli unici due pannelli a sopravvivere a un cambio di pagina.
+registraDrawerChiudibile(() => { drawerVisible.value = false })
+
 const drawerLottoId = ref(null)
 
 // Scopo: accesso alla riga con il click, come le liste standard. Il kebab

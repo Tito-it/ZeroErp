@@ -4,11 +4,20 @@
 > **rev**: 2026-08-18 analisi critica e piano DB (§7–§12) · **rev**: 2026-08-19
 > **decisioni chiuse** — D-3 #3 (esito) e D-5 (K2) decise da Tid; D-3 #7 si è
 > rivelato un ramo morto (R-10, F-4) ·
+> **rev**: 2026-08-19 (sera) **PARTE II — piano BE/FE** (§13→§20), scritta dopo
+> il push del team DB ·
 > **Owner**: Tid · **Stato**: 🟢 **PERIMETRO DB CHIUSO — 2026-08-19.** Tutte e
 > quattro le slice (A, B, C, D) scritte, applicate e collaudate: pgTAP verdi,
 > baseline senza regressioni, cancelli statici verdi. 🔴 **Resta il solo lato
 > applicativo**: le richieste **BE-1 → BE-4** del §10, da cui dipende l'unica
 > casella che l'operatore vede ancora chiusa.
+>
+> ➡️ **Il piano applicativo è la PARTE II, §13→§20** — verifica del consegnato,
+> sette rilievi (di cui tre correggono il §10: i codici da dichiarare sono
+> **due**, il FE ha **due** muri che il §10 non nomina, e il flag `fatturabile`
+> non arriva all'applicativo), sei decisioni, 4 slice BE + 5 FE. Il §10 resta
+> come richiesta originale del team DB; dove i due divergono **vale la PARTE
+> II**, che è stata scritta leggendo il codice.
 >
 > ⚠️ **I §1, §3 e §4 sono stati scritti prima della verifica su codice e DB.**
 > Si leggano insieme al **§7**, che ne corregge tre premesse: il DB ammette già
@@ -719,7 +728,15 @@ D (documentale) ✅ ────────────────────
   invisibili i DDT in bozza senza causale, mentre la vista prevede il motivo
   `DOC_BOZZA`. Preesistente, indipendente da questo brief.
 * **F-2** (R-9) — doppio log per ogni fallimento del pricing: il DB scrive, il BE
-  ri-scrive lo stesso codice. Da valutare quando si toccherà `ErrorManager`.
+  ri-scrive lo stesso codice. ✅ **CHIUSO il 2026-08-19**, e su **tutti** i domini,
+  non solo sul DDT: decisione DB+BE «il diario lo scrive il database, il backend
+  non duplica», attuata in `ErrorManager.raise_from_database_error`. Il confine e'
+  il **campo strutturato** — valorizzato solo da `fn_log_and_raise_error`, cioe'
+  esattamente la funzione che ha gia' scritto la riga; i `RAISE EXCEPTION` diretti
+  e gli errori PG veri continua a loggarli il BE, perche' li' non c'e' nessun
+  doppione da evitare ma una riga da non perdere. Storia e prove nel brief
+  [brief-be-pricing-codice-errore-fantasma](../work-done/brief-be-pricing-codice-errore-fantasma.md)
+  §13 e §14-ter.
 * **F-3** (R-6) — l'omaggio con rivalsa IVA non è rappresentabile: `OMAGGIO` è
   `fatturabile=false`, quindi non arriva mai a fattura. Da riprendere sull'asse
   `config.nature_doc_fiscale`, non su quello del prezzo.
@@ -850,3 +867,705 @@ caso non può scattare, e infatti non è mai scattato: `E_PREZZO_LISTINO_NON_TRO
 ha **0** righe di log scritte dal DB e **587** scritte dal backend, esattamente
 quante ne ha `E_CATEGORIA_LISTINO_NON_MAPPATA` dallo stesso mittente e nello
 stesso arco di date (F-4).
+
+---
+
+# PARTE II — PIANO DI SVILUPPO BE/FE
+
+> **Scritta il 2026-08-19** (sera), dopo il push del team DB (`d7fffc9f0`,
+> merge `9c4cdba40`). **Owner della parte**: BE/FE. La PARTE I sopra resta
+> intatta: qui non si ridiscute nulla di deciso, si chiude il lato applicativo
+> delle richieste **BE-1 → BE-4** e **FE-1** del §10.
+>
+> **Metodo**: le definizioni DB dalla doc auto-generata (`docs/it/dbzero/**`,
+> che riflette l'oggetto vivo), i percorsi dal codice letto riga per riga. Dove
+> il §10 e il codice non concordano, **vince il codice** — ed è successo tre
+> volte (V-1, V-3, V-4).
+
+## 13. Verifica del consegnato dal DB
+
+Tutte e quattro le slice sono nel repo e la doc auto-generata le riflette:
+gli oggetti esistono **vivi**, non solo negli YAML.
+
+| Slice | Oggetto | Riscontro |
+|---|---|---|
+| A1 | `vendite.fn_resolve_prezzo_listino_v2_esito` | ✅ 9 parametri, `RETURNS TABLE` **14 + 3** colonne (`esito_codice text`, `esito_context jsonb`, `esito_valori text[]`), `STABLE`. Il contesto di base porta **tutti e nove gli input** (P-6) |
+| A2 | `vendite.fn_resolve_prezzo_listino_v2` | ✅ riscritta come guscio, **firma invariata** — `pricing_repository.py` non va toccato |
+| A5 | ramo morto #7 | ✅ ritirato, e la doc `manual/` spiega **perché** (categoria NOT NULL dal 2026-04-14) |
+| B1/B2 | `trgfn_ddt_guard_causale_immutabile` + `trg_ddt_a10_…_upd` | ✅ presenti, `WHEN (NEW IS DISTINCT FROM OLD)`, stato letto da `OLD` |
+| C1 | `ddt_righe_componenti.prezzo_unitario` | ✅ **nullable** (`docs/…/tabelle/ddt_righe_componenti.md`). Le tre gemelle restano NOT NULL |
+| C2 | `script.fn_ricalcola_prezzo_padre_da_componenti` | ✅ tre casi: nessun figlio → `0`, un figlio senza prezzo → **`NULL`**, altrimenti `SUM` |
+| C3 | `vendite.fn_check_ddt_riga_richiede_prezzo` | ✅ nuova, pura, **fail-closed** su riga non leggibile; causale assente → `FALSE` |
+| C4 | `script.fn_check_ddt_emittibile` | ✅ i due motivi «componenti» ora condizionati a `fatturabile`; `E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE` non è più morto |
+| C5 | `fn_ddt_riga_componenti_init` / `_preview` | ✅ passano dal nucleo; l'init **inserisce con prezzo NULL** e registra `esito_codice` in `prezzo_resolver_context` |
+| B0 | `E_DDT_CAUSALE_IMMUTABILE` (932) · `E_VENDITE_PRICING_ESITO_ASSENTE` (931) | ✅ a catalogo (`codici_errore.csv` + `messaggi_errore.csv`) |
+| D | quattro documenti + cinque pagine `manual/` | ✅ presenti, col testo storico marcato come superato |
+
+⭐ **Il contratto su cui poggia tutto il BE**, dalla doc di A1, e va citato nel
+codice perché è la trappola numero uno:
+
+> *«Una riga esce sempre. Chi la legge con `SELECT … INTO` deve comunque
+> controllare `FOUND`: `SELECT INTO` senza righe non solleva, azzera le
+> variabili — e un prezzo `NULL` verrebbe scambiato per un prezzo risolto.»*
+
+Vale identico in Python: `row_to_dict(cursor)` ritorna `None` a zero righe, e
+`None.get("prezzo_finale")` non è ciò che succede — succede che il codice a
+valle legga un dict vuoto. Il guard va **esplicito** (BE-A2), non un `assert`
+che sparisce con `python -O`.
+
+⚠️ **Prerequisito operativo da spuntare prima di lanciare i test BE**: il
+`GRANT EXECUTE` a `zeroerp_app` sulla `_esito` è dentro A1, ma il migrate va
+comunque applicato sull'ambiente dove gira il BE. Se `resolve_prezzo_esito`
+risponde «permesso negato» o «la funzione non esiste», la diagnosi è
+**l'ambiente**, non il codice.
+
+## 14. Rilievi della verifica — sette cose che il §10 non dice
+
+### V-1 — I codici errore nuovi da dichiarare sono **due**, non uno
+
+Il §10 (BE-4) nomina solo `E_VENDITE_PRICING_ESITO_ASSENTE`. Misurato sui due
+file del backend:
+
+| codice | `error_policies_generated.py` | `error_messages_fallback.py` |
+|---|---|---|
+| `E_VENDITE_PRICING_ESITO_ASSENTE` (931) | ✅ già presente (`TECNICO`) | ✅ già presente |
+| **`E_DDT_CAUSALE_IMMUTABILE`** (932) | ❌ **assente** | ❌ **assente** |
+
+Il 931 è entrato con la rigenerazione del `287fc9436`; il 932 è nato **dopo**,
+con la slice B, e nessuno ha rigenerato da allora. Quindi metà di BE-4 è già
+fatta e metà no — e la metà mancante è quella di un codice che il DB **solleva
+davvero**, da un trigger.
+
+⚠️ Il ripiego del 932 non può essere il messaggio a catalogo: quello ha un
+`%s` (il numero del DDT). Il file dei ripieghi è per definizione la variante
+**senza segnaposto** — è la ragione per cui esiste.
+
+### V-2 — Il difetto che C2 ha chiuso nel DB è ancora aperto nel BE, un livello sopra
+
+`DdtRepository.list_righe` calcola:
+
+```sql
+ROUND((r.quantita * COALESCE(r.prezzo_unitario, 0::numeric)) * (1 - …), 2) AS importo_riga
+```
+
+Con il prezzo a `NULL` quel `COALESCE` produce **`0,00 €`**: un importo
+*affermato*, dove il modello dice «non si sa». È esattamente la figura di C2 —
+un valore sbagliato al posto di un valore assente — spostata dalla `SUM` dei
+componenti alla proiezione della riga. Il team DB ha rifiutato il `COALESCE`
+per la stessa ragione, testualmente: *«non torna “per sicurezza”:
+trasformerebbe il NULL in zero, cioè rifarebbe il difetto in un altro modo»*.
+
+⭐ La stessa formula è in `ordini_repository.py` ed è **legittima lì**: sugli
+ordini il prezzo non può mancare (il resolver solleva ancora — BE-3). Si tocca
+solo il DDT.
+
+### V-3 — Il FE blocca il kit senza prezzo in **due** punti, e il §10 non ne nomina nessuno
+
+FE-1 chiede un badge al posto del toast. Ma prima del badge ci sono due
+validazioni che rifiutano il salvataggio, ed entrambe sono nei building block
+**condivisi** con preventivi/ordini/contratti:
+
+| dove | riga | cosa fa |
+|---|---|---|
+| `_shared/componenti/ComponentiDialog.vue` | `obbligatoriInvalidi` → `if (prezzo == null) return true` | `canConfirm` resta `false`: la Conferma è disabilitata. **Un kit senza prezzi non si salva**, qualunque sia la causale |
+| `_shared/componenti/ComponentiPanel.vue` | `isPrezzoEditatoValido` | blocca lo zero sul componente obbligatorio **incondizionatamente** — mirror di un trigger DB che dal 2026-08-19 è invece condizionato |
+
+⛔ **Senza questi due, la slice C non si vede in-app.** Il DB ha tolto tre muri
+e il FE ne tiene due in piedi. E c'è un terzo effetto più sottile:
+`ComponentiPanel.getPrezzoVisualizzato` fa `Number(comp.prezzo_unitario)`, e
+`Number(null)` è **0** — un componente senza prezzo si mostrerebbe a
+`0,00 €`, cioè lo stesso difetto di V-2 nella cella.
+
+### V-4 — Il FE non ha modo di sapere se il documento vende
+
+`fn_check_ddt_riga_richiede_prezzo` risponde alla domanda lato DB. Lato
+applicativo la risposta **non esiste**: `vw_ddt_lista` porta
+`causale_trasporto_id`, `_codice` e `_descrizione`, ma **non** `fatturabile`.
+Quindi né il BE né il FE possono replicare la regola senza reinventarla — e
+reinventarla vorrebbe dire una whitelist di codici causale nel FE, che è
+precisamente ciò che `config.causali_trasporto.fatturabile` esiste per evitare.
+
+⭐ Non serve toccare la vista: `DdtRepository.get_ddt` già decora la vista con
+colonne che non ha (`d.fatturazione_immediata`, `ba.istanza_utility_id`). Il
+flag entra lì, con un `LEFT JOIN config.causali_trasporto`.
+
+### V-5 — Il gate all'emissione è **già cablato nel FE**: non c'è niente da scrivere
+
+Va detto per non rifarlo. `script.fn_available_actions_ddt` mette in
+`available_actions` per la transizione EMESSO il campo **`reasons`** — l'array
+completo dei motivi di `fn_check_ddt_emittibile`, ciascuno con `reason_key` —
+e `core/composables/useDrawerActions.js` lo normalizza già in tooltip. Le
+quattro chiavi i18n esistono **in entrambe** le lingue:
+
+```
+vendite.ddt.azione_reason.{causale_mancante, prezzo_non_risolvibile,
+                           componenti_prezzo_pendente, componenti_non_valorizzati}
+```
+
+Quindi la casella 2 del §11 («causale fatturabile → emissione blocca,
+parlante, nomina la riga») è chiusa **anche in-app** nel momento stesso in cui
+la casella 1 diventa costruibile. Nessuna riga di FE.
+
+### V-6 — Il ripiego a `"0"` di `_resolve_prezzo_riga` è il difetto di C2 in Python
+
+```python
+return str(prezzo) if prezzo is not None else "0"   # ddt_service.py:941
+```
+
+Oggi è irraggiungibile (il guscio solleva prima). Con il nucleo diventa **il
+ramo normale**: ogni prezzo non risolto entrerebbe come `0`, cioè come
+un'affermazione di valore nullo su un documento dove il modello vuole
+l'astensione. Va tolto, non adattato.
+
+Stessa figura sul ramo composito di `gestisci_riga`: il padre si inserisce con
+`"0"` *«per soddisfare l'eventuale guard»*. Il guard non c'è
+(`ddt_righe.prezzo_unitario` è nullable, senza CHECK — R-1) e il ricalcolo di
+C2 sovrascrive comunque; ma se l'init dei componenti fallisse a metà,
+rimarrebbe uno zero **falso** in tabella. Si inserisce `NULL`.
+
+### V-7 — Due cose che funzionano già e non vanno toccate
+
+* **Cancellare il prezzo di una riga esistente** funziona oggi:
+  `aggiorna_riga` normalizza `""` → `None` (`empty_to_none`) e
+  `execute_dynamic_update` gira senza `skip_none`, quindi scrive `NULL`.
+* **La stampa del DDT non espone prezzi**: il template di
+  `ddt_document_context_builder` non ha campi importo, e `format_importo(None)`
+  ritorna `None` senza rompersi. Nessun rischio `StrictUndefined`.
+* **Il push in commessa** non è toccato: le causali non fatturabili sono fuori
+  dal lister per INNER JOIN (R-7), e le fatturabili non escono senza prezzo per
+  il gate. `commesse_source_handlers` continua a usare il **guscio** per lo
+  snapshot d'audit, ed è giusto così.
+
+## 15. Decisioni BE/FE
+
+### DEC-1 — Due metodi distinti su `PricingService`, non un flag sul metodo esistente ✅
+
+`resolve_prezzo()` resta com'è e continua a chiamare il **guscio**. Accanto
+nasce `resolve_prezzo_esito()`, che chiama il **nucleo**.
+
+⛔ **Non** un parametro `raise_on_missing=False`: i due metodi hanno contratti
+diversi — uno garantisce «o il prezzo o un'eccezione», l'altro garantisce «una
+riga sempre, forse senza prezzo». Un flag li fonde in una firma il cui
+contratto dipende da un booleano, e il call site perde la garanzia proprio dove
+serve leggerla. È la stessa forma scelta dal DB (nucleo + guscio), e le due
+parti si somigliano apposta.
+
+### DEC-2 — `resolve_prezzo()` **non** viene riscritto come guscio Python ⛔
+
+Era la simmetria ovvia, ed è sbagliata. Il guscio DB, oltre a sollevare,
+**scrive la riga di diario** (`fn_log_and_raise_error`). Se il Python chiamasse
+il nucleo e sollevasse per conto suo, ordini, preventivi, contratti e offerte
+**perderebbero la traccia in `dbops.error_log`** — un cambio di comportamento su
+quattro domini, dentro un intervento che il §10 (BE-3) dichiara *«nessuna
+azione su ordini/preventivi»*.
+
+⭐ Effetto collaterale voluto: sul DDT il doppio log di **F-2** sparisce del
+tutto (il nucleo non scrive, e il BE non ha più un `DatabaseError` da
+ri-loggare).
+
+> ⚠️ **Aggiornamento 2026-08-19 (pomeriggio)**: la seconda metà di questa frase —
+> *«sugli altri quattro resta»* — **non è più vera, ed è una buona notizia**.
+> F-2 è stato chiuso **ovunque** poche ore dopo, per un'altra strada: il BE non
+> ri-logga più ciò che il database ha già scritto (vedi il registro, F-2).
+> **DEC-2 regge lo stesso**, e la ragione principale non cambia: se il Python
+> chiamasse il nucleo e sollevasse per conto suo, la riga di diario non la
+> scriverebbe *nessuno* dei due — il nucleo non scrive, e il BE ha smesso. Il
+> guscio DB resta l'unico che la scrive per ordini, preventivi, contratti e
+> offerte.
+
+### DEC-3 — L'avviso viaggia nel `data` della risposta, non nell'envelope errori
+
+La classe `AVVISO` del catalogo, per progetto, *«si scrive nel diario e non
+raggiunge mai il client»* (`api.md`). Un prezzo non risolto **deve** raggiungere
+il client, e non è un rifiuto: la risposta di `POST /righe/` resta `200` e porta
+un campo in più.
+
+```jsonc
+{ "data": { "ddt_id": 12, "riga_id": 88, "is_composito": false,
+            "prezzo_esito": { "codice": "E_CATEGORIA_LISTINO_NON_MAPPATA",
+                              "messaggio": "Nessuna mappa categoria → listino …" } } }
+```
+
+`prezzo_esito` è `null` quando il prezzo è stato risolto. **Nessun codice `W_`
+nuovo**: la famiglia dei warning è per ciò che finisce nel diario, e qui il
+diario non si tocca (è il punto della slice A).
+
+### DEC-4 — Il testo dell'avviso si prende dal ripiego, non si riscrive
+
+`ErrorPolicyRegistry.resolve(codice).user_message` restituisce il messaggio
+**senza segnaposto**, che è esattamente ciò che serve (i valori dell'esito non
+si vogliono mostrare all'operatore: `esito_valori` è materiale da diario).
+
+⛔ Non si aggiungono chiavi i18n nel FE per gli otto esiti: sarebbe una seconda
+copia del catalogo, e divergerebbe. Il FE mostra la stringa che riceve.
+
+### DEC-5 — «Questo documento vende?» ha **una** sede lato applicativo
+
+Il flag `causale_trasporto_fatturabile` sulla testata, esposto grezzo
+(`true` / `false` / `null`), e la regola di lettura è la stessa della funzione
+DB: **solo `=== true` significa "vende"**. Il `null` (bozza senza causale) sta
+col `false`.
+
+⚠️ **Il BE non fa `COALESCE(false)`**: al FE serve distinguere «non vende» da
+«non l'ha ancora detto» per scegliere il testo dell'avviso — «documento di solo
+trasporto» è un'altra frase da «causale non ancora scelta».
+
+### DEC-6 — Nella UI, prezzo assente ≠ prezzo zero
+
+`formatCurrency(null)` ritorna stringa vuota, e una cella vuota si legge come
+«non l'ho guardato». Serve un segno positivo: un `Tag` «senza prezzo». Lo zero
+resta `0,00 €`, come qualunque altro importo.
+
+
+### DEC-7 — La validazione input del resolver si **estrae** (regola del 2) ✅
+
+**Decisione di Tid, 2026-08-19**: *«si estrae — mai duplicare, o quasi»*.
+
+`resolve_prezzo` e `resolve_prezzo_esito` validano gli **stessi otto input**
+nello stesso modo: non e' una somiglianza, e' la stessa cosa scritta due volte.
+Va in un privato del modulo, `_valida_input_resolver(...)`, chiamato da
+entrambi.
+
+⚠️ **Cosa NON entra nell'helper**, o l'estrazione diventa un accentratore: solo
+i guard sugli input (uuid, interi positivi, `date`). La traduzione del
+`DatabaseError` resta nei due metodi, perche' li' **differiscono** — il guscio
+traduce anche i codici del listino, il nucleo no (DEC-2).
+
+⭐ Il beneficio vero non e' risparmiare otto righe: e' che una regola di
+validazione nuova entra **in un posto solo**. La forma della duplicazione che
+questo repository ha gia' pagato — due copie che divergono in silenzio, e il
+difetto vive nella copia che nessuno guarda — nasce sempre cosi'.
+
+### DEC-8 — Il *perche'* di un prezzo assente si persiste anche sulla riga semplice ✅
+
+**Decisione di Tid, 2026-08-19**: F-7 si fa, dentro BE-B.
+
+Oggi l'asimmetria e' questa, e non ha una ragione di modello:
+
+| | dove finisce il motivo | sopravvive al ricarico? |
+|---|---|---|
+| riga **composita** (figli) | `ddt_righe_componenti.prezzo_resolver_context`, scritto dall'init DB | ✅ si' |
+| riga **semplice** | solo nella risposta del save (`prezzo_esito`, DEC-3) | ⛔ no |
+
+**Sede scelta: `ddt_righe.meta`**, chiave **`prezzo_resolver_context`**.
+
+⭐ Il nome non e' una preferenza: e' **lo stesso** della colonna che il DB usa
+sui componenti. Due tabelle, un nome, una domanda sola per trovarli entrambi —
+mentre `meta.motivo_prezzo` avrebbe funzionato oggi e sarebbe stato illeggibile
+fra sei mesi.
+
+Perche' `meta` e non una colonna nuova: `ddt_righe.meta` e' `jsonb NOT NULL
+DEFAULT '{}'` ed e' **gia'** nella whitelist di create e update
+(`_CREATE_KEYS_RIGA`, `_UPDATE_KEYS_RIGA`) — quindi F-7 non chiede niente al team
+DB, e resta interamente lato BE. Se un giorno il dato servisse a una query o a
+un indice, quello sara' il momento di chiedere una colonna: non prima.
+
+⚠️ **Tre confini, o la scrittura in `meta` diventa un pozzo:**
+
+1. **si scrive solo quando il nucleo NON risolve.** Prezzo risolto = nessuna
+   chiave: l'assenza e' informazione, e una chiave `{"esito_codice": null}` su
+   ogni riga sarebbe rumore su cui poi si scrivono `if` sbagliati;
+2. **si fonde col `meta` del client, non lo sostituisce.** Il campo e' suo e
+   arriva dal payload: `{**meta_client, "prezzo_resolver_context": {...}}`;
+3. **`aggiorna_riga` non si tocca** (V-7 vale ancora). Se l'operatore cancella
+   il prezzo a mano il motivo non e' del resolver — e inventargliene uno sarebbe
+   peggio che non averlo.
+
+## 16. Piano BE
+
+> Convenzioni del progetto: header standard sui file nuovi, `# Scopo:` prima di
+> ogni `def`, `ErrorManager.require(...)` + `assert` per il type checker,
+> nessun `try/except Exception` nelle view.
+
+### BE-A — Il nucleo arriva in Python  🔴 *è il pezzo da cui dipende tutto*
+
+| # | File | Cosa |
+|---|---|---|
+| A1 | `apps/vendite/db/pricing_repository.py` | `resolve_prezzo_listino_v2_esito(...)`: **stessa** query decorata (i sei LEFT JOIN che espongono codice/descrizione), su `vendite.fn_resolve_prezzo_listino_v2_esito`, con in più `r.esito_codice`, `r.esito_context`, `r.esito_valori`. Stessi 9 argomenti posizionali |
+| A2 | idem | ⛔ **Guard esplicito su zero righe**: `row_to_dict` → `None` significa che il contratto «una riga esce sempre» è rotto. `ErrorManager.require(row is not None, code="E_VENDITE_PRICING_ESITO_ASSENTE", …)` + `assert`. È lo **stesso codice** che il guscio DB usa per lo stesso invariante: due lati, un significato. ⚠️ Non un `assert` nudo — con `-O` sparisce e il `None` prosegue |
+| A3 | `apps/vendite/services/pricing_service.py` | `resolve_prezzo_esito(...)`: stessa validazione input di `resolve_prezzo`, poi il repo A1. Il `try/except DatabaseError` **resta**: i due `E_PARAMETRO_INVALIDO` sollevano ancora anche dal nucleo (regola D-3), e il traduttore serve a dargli il codice giusto |
+| A4 | idem | ✅ **Deciso da Tid il 2026-08-19: si estrae** (DEC-7). `_valida_input_resolver(...)` privato nel modulo, chiamato da `resolve_prezzo` e `resolve_prezzo_esito`. Dentro **solo** i guard sugli input; la traduzione del `DatabaseError` resta nei due metodi, dove differisce |
+
+**Test (A5)** — `apps/vendite/tests/services/test_pricing_service.py`,
+`unittest.TestCase` con repository mockato:
+
+1. nucleo che risolve → `esito_codice is None` e prezzo valorizzato;
+2. nucleo che **non** risolve → una riga, prezzo `None`, `esito_codice`
+   valorizzato, **nessuna eccezione**;
+3. repo che torna `None` → `ServiceError` con `E_VENDITE_PRICING_ESITO_ASSENTE`
+   (il guard di A2, che è l'unica cosa che quel codice presidia);
+4. `E_PARAMETRO_INVALIDO` continua a sollevare (`DatabaseError` mockato).
+
+### BE-B — Il DDT smette di pretendere il prezzo
+
+| # | File | Cosa |
+|---|---|---|
+| B1 | `apps/vendite/services/ddt_service.py` | `_resolve_prezzo_riga` → chiama `resolve_prezzo_esito` e ritorna una coppia `(prezzo | None, esito_codice | None)` — un `NamedTuple` locale, non una tupla nuda: il call site deve poter leggere i nomi. ⛔ **Via il ripiego `"0"`** (V-6) |
+| B2 | idem | `gestisci_riga`, ramo semplice: `prezzo_unitario` resta `None` se il nucleo non risolve; l'esito entra nel dict di ritorno come `prezzo_esito` (`{codice, messaggio}` da `ErrorPolicyRegistry`, DEC-4), `None` altrimenti |
+| B3 | idem | `gestisci_riga`, ramo composito: si inserisce **`None`**, non `"0"` (V-6). Il commento va riscritto: il guard che giustificava lo zero non esiste, e il ricalcolo di C2 mette `NULL` se un figlio è scoperto |
+| B4 | `apps/vendite/db/ddt_repository.py` | `list_righe`: **via il `COALESCE(r.prezzo_unitario, 0)`** (V-2). `importo_riga` diventa `NULL` quando il prezzo manca. ⚠️ Solo qui: `ordini_repository.py` resta identico |
+| B5 | idem | `get_ddt`: `LEFT JOIN config.causali_trasporto ct ON ct.id = v.causale_trasporto_id` → `ct.fatturabile AS causale_trasporto_fatturabile` (V-4, DEC-5). Grezzo, senza `COALESCE` |
+
+| B7 | idem | **F-7 / DEC-8**: quando il nucleo non risolve su articolo **semplice**, `gestisci_riga` persiste il motivo in `meta` — `{**meta_client, "prezzo_resolver_context": {"esito_codice": <codice>}}`. Solo in create, solo quando il prezzo manca, fuso col `meta` del client |
+
+⚠️ **`aggiorna_riga` non si tocca** (V-7): cancellare il prezzo funziona già.
+Va però coperto da un test, perché oggi nessuno lo prova e diventa un
+comportamento su cui il FE si appoggia.
+
+**Test (B6)** — `apps/vendite/tests/services/test_ddt_service.py` e
+`tests/api/test_ddt_api.py`:
+
+1. articolo semplice, nucleo che non risolve → `create_riga` chiamato con
+   `prezzo_unitario=None` **e** risposta con `prezzo_esito.codice`;
+2. articolo semplice, nucleo che risolve → identico a oggi, `prezzo_esito`
+   assente;
+3. composito → `create_riga` con `prezzo_unitario=None` (non `"0"`);
+4. PATCH riga con `prezzo_unitario: ""` → `update_riga` riceve `None`;
+5. ⭐ **controprova BE-3**: `ordini_service._resolve_prezzo_riga` continua a
+   chiamare `resolve_prezzo` (il guscio) e a propagare l'eccezione. La quarta
+   casella del §6 *«si prova con una controprova, non con la lettura del
+   codice»* — quindi un test, non un commento.
+
+### BE-C — I due codici nuovi entrano nel dizionario (BE-4, esteso da V-1)
+
+| # | Cosa | Stato |
+|---|---|---|
+| C1 | `./manage-env.sh genera_error_policies` → il modulo generato prende `E_DDT_CAUSALE_IMMUTABILE: "CONFLITTO_STATO"`. ⛔ Non si edita a mano: la prossima rigenerazione butterebbe via tutto | ✅ **2026-08-19** — 719 → 720 voci |
+| C2 | `error_messages_fallback.py`, **a mano**: la variante **senza `%s`** del 932 — «La causale di trasporto non si può cambiare dopo l'emissione del DDT.» | ✅ **2026-08-19**, frase come da piano |
+| C3 | `./manage-env.sh genera_error_policies --check` verde (è il test `test_error_policies_divergenza_db` che gira in CI) | ✅ verde, **3.832 test verdi** |
+
+⭐ **Il 931 era gia' entrato prima, e non per bravura**: `E_VENDITE_PRICING_ESITO_ASSENTE`
+e' stato registrato la mattina del 2026-08-19 perche' il cancello
+`test_ogni_codice_vivo_ha_un_messaggio_di_ripiego` e' andato **rosso** appena il
+team DB ha seminato il codice. E' la terza volta in un giorno che un codice
+nuovo arriva senza il suo ripiego: il ripiego lo scrive il BE, ma saperlo quando
+il codice viene seminato costa al DB una riga e a noi una CI rossa in meno.
+
+⚠️ **Prerequisito, e non è formale**: il DB dell'ambiente deve avere applicato
+il CSV di `80_data`, e **git deve essere allineato o avanti**. Rigenerare con il
+DB avanti rispetto al repo scrive nel modulo codici che nessun commit dichiara.
+Oggi la condizione è soddisfatta: il CSV è dentro `d7fffc9f0`.
+
+⭐ Nota di proporzione sul 932: il BE **non espone** il cambio di causale fuori
+dalla bozza (`_STATI_MODIFICABILI = {"DRAFT"}`), quindi il codice non può
+arrivare all'operatore oggi. Si dichiara lo stesso — un codice che il DB
+solleva e che il dizionario non conosce diventa un 500 muto il giorno in cui la
+porta si apre, e quel giorno nessuno collegherà le due cose.
+
+### BE-D — Documentazione API
+
+`docs/it/dev/api.md` + la doc del dominio: il campo `prezzo_esito` nella
+risposta di `POST /api/v1/vendite/ddt/<id>/righe/`, e la frase che lo spiega —
+**il DDT è l'unico documento dove il prezzo mancante non è un errore**.
+
+## 17. Piano FE
+
+### FE-A — La testata dice se il documento vende
+
+`DdtDrawer.vue`: `causaleFatturabile = computed(() => detail.value?.causale_trasporto_fatturabile === true)` (DEC-5), passato come prop a
+`DdtRigheTable` → `DdtRigaForm` → `ComponentiDialog` / `DdtRigaComponentiPanel`.
+
+### FE-B — L'avviso, non l'errore (FE-1 del §10)
+
+| # | Dove | Cosa |
+|---|---|---|
+| B1 | `DdtRigaForm.vue`, `handleSave` | Se `result.prezzo_esito` → `notify.success` (la riga **è** salvata) **più** un `notify.warn` col `messaggio` dell'esito. Mai `notify.error`: il rosso è dell'emissione, ed è già scritto (V-5) |
+| B2 | `DdtRigaForm.vue`, campo prezzo | Testo dell'hint da riscrivere. Oggi: *«Lascia vuoto per risolvere il prezzo dal listino.»* Con BE-1 la frase è falsa a metà — il prezzo può restare vuoto. Nuova, in `it.json` **e** `en.json`: *«Lascia vuoto per risolvere il prezzo dal listino; se non è risolvibile la riga resta senza prezzo.»* |
+| B3 | idem | ⚠️ **In EDIT la frase è un'altra**: `aggiorna_riga` non ha auto-fill, quindi lì il campo vuoto significa «nessun prezzo», non «provaci». Due chiavi, non una — l'asimmetria esiste già oggi e questo è il primo momento in cui si vede |
+
+### FE-C — La riga senza prezzo si vede (DEC-6)
+
+`DdtRigheTable.vue`, colonna `prezzo_unitario`: quando `data.prezzo_unitario == null`,
+un `<Tag severity="secondary">` con `vendite.ddt.riga_senza_prezzo` al posto
+della cella vuota. Idem per `importo_riga`, che dopo B4 arriva `null`.
+
+### FE-D — Il kit può viaggiare senza prezzi (rimozione dei due muri di V-3)
+
+| # | File | Cosa |
+|---|---|---|
+| D1 | `_shared/componenti/ComponentiDialog.vue` | Nuova prop `prezzoRichiesto: { type: Boolean, default: true }`. Con `false`, `obbligatoriInvalidi` **non** considera invalido il prezzo `null`. ⚠️ Il `default: true` non è pigrizia: preventivi, ordini, contratti e listini non passano la prop e restano **identici bit per bit**. È la stessa scelta del team DB su C3 — non si tocca il codice condiviso, si cambia quando la regola si applica |
+| D2 | `_shared/componenti/ComponentiPanel.vue` | Stessa prop. `isPrezzoEditatoValido` diventa condizionata, come il trigger DB dopo C3 |
+| D3 | idem | `getPrezzoVisualizzato`: `Number(null)` è `0` — va restituito `null` e la cella deve mostrare il `Tag` di FE-C, non `0,00 €` |
+| D4 | `DdtRigaForm.vue` / `DdtRigaComponentiPanel.vue` | Passano `:prezzo-richiesto="causaleFatturabile"` |
+
+⭐ **Il `default: true` è ciò che rende questa slice sicura**, ed è l'unico
+motivo per cui si può toccare un componente usato da cinque contesti senza
+rileggerli tutti e cinque.
+
+### FE-E — i18n
+
+Chiavi nuove in `it.json` **e** `en.json` (il presidio
+`scripts/check_i18n_keys.py` le vuole simmetriche):
+`vendite.ddt.riga_senza_prezzo`, `vendite.ddt.riga_prezzo_auto_hint` (riscritta),
+`vendite.ddt.riga_prezzo_edit_hint`, `vendite.ddt.componenti_senza_prezzo_hint`.
+
+⛔ **Nessuna chiave per gli otto esiti del resolver** (DEC-4).
+
+## 18. Ordine dei lavori
+
+```
+BE-A (nucleo in Python) 🔴 ──┬──► BE-B (il DDT non pretende) ──┬──► FE-B/FE-C  ► riga semplice senza prezzo
+                             │                                 └──► FE-A (flag testata) ──► FE-D ► kit
+BE-C (i due codici)      ────┴── indipendente, si fa in qualunque momento
+BE-D (doc API)           ─────── dopo BE-B
+```
+
+* **BE-A da sola**: nessun effetto visibile, come la slice A lato DB. È il
+  prerequisito di tutto.
+* **BE-A + BE-B**: chiude le caselle **1** e **6** del §11 — l'articolo
+  semplice senza prezzo e la ri-consegna standalone. Da qui il gate di DL-28 è
+  **raggiungibile in-app** per la prima volta, e la casella 2 si chiude da sé
+  (V-5).
+* **+ FE-A/B/C**: l'operatore vede che cosa è successo invece di subirlo.
+* **+ FE-D**: il kit in conto visione, che il DB già ammette e che oggi il FE
+  rifiuta.
+* **BE-C**: indipendente, e la sola che ha un prerequisito d'ambiente.
+
+## 19. Definizione di «fatto» — colonna BE/FE
+
+Ripresa dal §11, con quel che manca dopo questa PARTE II.
+
+| # | Casella | Chi la chiude | Come si prova |
+|---|---|---|---|
+| 1 | Riga DDT senza prezzo, articolo **semplice** | BE-A + BE-B | test BE-B6 §1, poi in-app: articolo fuori listino su DDT in bozza → riga salvata, avviso giallo |
+| 1-bis | …articolo **composito** | FE-D | in-app: kit su DDT con causale CONTO_VISIONE → dialog confermabile, riga salvata, padre **senza** prezzo (non a zero) |
+| 2 | Causale fatturabile → emissione blocca e nomina la riga | ✅ **nessuno** | già cablato (V-5): il tooltip del pulsante Emetti elenca i motivi |
+| 3 | Causale non fatturabile → si emette e resta fuori da card e lister | ✅ già fatto | controprova a pgTAP, invariata |
+| 3-bis | …anche se qualcuno cambia la causale dopo | ✅ già fatto (slice B) | + BE-C perché l'errore sia leggibile il giorno in cui affiora |
+| 4 | Ordini e preventivi **continuano** a rifiutare | BE-B6 §5 | ⭐ una **controprova a test**, non la lettura del codice |
+| 5 | Premessa di DL-28 allineata | ✅ già fatto (slice D) | — |
+| 6 | Ri-consegna **standalone** senza digitare prezzi | BE-A + BE-B | in-app: reso standalone → ri-consegna → riga senza prezzo ereditabile, emissione bloccata **parlante** invece che a mano |
+
+⚠️ Le caselle 1, 1-bis e 6 si chiudono **in-app da Tid**: sono tutte e tre casi
+che il codice può simulare e che nessun test automatico ha mai attraversato
+davvero — ed è esattamente lo scenario in cui la slice C ha scoperto
+`20260819-19`, il changeSet che il piano non prevedeva.
+
+## 20. Registro — voci nuove, fuori dal perimetro
+
+* **F-5** — `importo_riga` con `COALESCE(prezzo, 0)` esiste anche in
+  `ordini_repository.py:305`. Lì è **innocuo** (il prezzo non può mancare), ma
+  è la stessa formula: se un giorno gli ordini ammetteranno il prezzo assente,
+  il difetto di V-2 nasce già scritto. Da guardare *insieme*, non separatamente.
+* **F-6** — Asimmetria create/edit sul prezzo di riga DDT: in create il campo
+  vuoto significa «risolvilo tu», in edit «nessun prezzo». Preesistente, resa
+  visibile da questo lavoro; FE-B3 la copre con due testi, non la rimuove.
+* **F-7** — Il *perché* di un prezzo assente si perde sull'articolo semplice.
+  Sul composito è persistito (`prezzo_resolver_context.esito_codice`, scritto
+  dall'init); sul semplice l'`esito_codice` vive solo nella risposta del save e
+  ricaricando la lista non c'è più. `ddt_righe.meta` è `jsonb NOT NULL` ed è già
+  nella whitelist di create e update: persistervi l'esito darebbe la stessa
+  simmetria padre/figli scelta dal DB con C2 e C3.
+  ✅ **Deciso da Tid il 2026-08-19: si fa** — vedi **DEC-8**, ed entra nel piano
+  come **B7** dentro BE-B. È uscita dal registro «fuori perimetro» per la via
+  giusta: posta come decisione di modello, non infilata in una slice come
+  dettaglio implementativo.
+
+---
+
+## 21. Stato dei lavori e ripartenza (2026-08-19, pomeriggio)
+
+> ⚠️ **Questa sezione non ripete il piano**: il piano e' sopra — §16 (BE), §17
+> (FE), §18 (ordine), §19 (definizione di «fatto»). Qui c'e' solo **dove siamo**,
+> perche' un piano senza lo stato accanto costringe chi riparte a rileggerlo
+> tutto per scoprire cosa manca.
+
+### 21.1 Dove siamo
+
+| blocco | stato | prova |
+|---|---|---|
+| **BE-C** — i due codici nel dizionario | ✅ **fatto** | policy 720 voci, i due ripieghi senza `%s`, `--check` verde, 3.832 test verdi |
+| **BE-A** — il nucleo arriva in Python | ✅ **fatto** | A1-A5 sotto |
+| **BE-B** — il DDT smette di pretendere il prezzo | ✅ **fatto** | B1-B7 sotto |
+| **BE-D** — doc API (`prezzo_esito`) | ✅ **fatto** | sezione nuova in `api_ddt.md` |
+| **FE-A → FE-E** | ✅ **fatto** | §21.1-quinquies |
+| caselle 1, 1-bis, 6 del §19 | ⬜ validazione **in-app di Tid** | nessun test automatico le ha mai attraversate |
+
+**Non committato al momento della scrittura**: le modifiche di BE-C vivono
+nell'albero di lavoro insieme ad altro lavoro in corso.
+
+### 21.1-bis Fatto oggi, oltre a BE-C
+
+Due cose di questo perimetro sono state chiuse il 2026-08-19 **prima** che BE-A
+partisse, e cambiano il testo del brief piu' sopra:
+
+| # | Cosa | Dove l'ho scritto |
+|---|---|---|
+| **BE-C** | i due codici nel dizionario: policy rigenerate (720 voci) + i due ripieghi senza `%s` | §16, blocco BE-C, con le prove |
+| **F-2** | il doppio log del pricing, chiuso **su tutti i domini** e non solo sul DDT | registro §20 · nota di aggiornamento su **DEC-2** |
+| **F-4** | il «codice fantasma» del pricing: non lo scriveva la produzione, lo scriveva la suite di test | gia' uscito da questo registro, ha un brief suo |
+
+⚠️ **F-2 e F-4 vengono da un altro brief e da un'altra giornata di lavoro**: sono
+qui perche' questo registro li aveva aperti, e un registro che non si chiude
+diventa un elenco di cose che «qualcuno prima o poi». Le prove stanno nel loro
+brief, non duplicate qui.
+
+⭐ La conseguenza pratica su questo piano: **DEC-2 va riletta con l'aggiornamento
+accanto**. La sua ragione principale regge — anzi si rafforza — ma la frase
+«sugli altri quattro il doppio log resta» oggi direbbe il falso a chi la legge.
+
+### 21.1-ter BE-A — fatto il 2026-08-19
+
+| # | Cosa | Dove |
+|---|---|---|
+| A1 | `resolve_prezzo_listino_v2_esito(...)` — stessa query decorata del guscio, sul nucleo, piu' le tre colonne di esito | `pricing_repository.py` |
+| A2 | guard esplicito sulle zero righe → `E_VENDITE_PRICING_ESITO_ASSENTE` (`ErrorManager.require` + `assert`, **non** un `assert` nudo) | idem |
+| A3 | `resolve_prezzo_esito(...)` — non solleva per «prezzo non risolto», il `try/except DatabaseError` **resta** per `E_PARAMETRO_INVALIDO` | `pricing_service.py` |
+| A4 | `_valida_input_resolver(...)` estratto (DEC-7), chiamato dai due metodi | idem |
+| A5 | 5 test nuovi: risolto · non risolto **senza eccezione** · riga assente · parametro invalido · input validati | `test_pricing_service.py` |
+
+**Verifiche**: 18 test sul pricing, **3.837 sull'intera suite**, tutti verdi.
+
+⭐ **E una prova che i mock non possono dare**: chiamata **reale** al DB dal
+repository nuovo. Ha risposto `E_PARAMETRO_INVALIDO` su un billing account
+inesistente — cioe' e' arrivata dentro la funzione (riga 116 del corpo): la
+`_esito` **esiste**, `zeroerp_app` **puo' eseguirla** (il `GRANT` di A1 c'e') e i
+nove argomenti combaciano per tipo. I nomi delle tre colonne di ritorno
+verificati su `pg_proc`: 17 colonne, `esito_codice`/`esito_context`/`esito_valori`
+presenti. Il prerequisito d'ambiente del §13 e' **spuntato**.
+
+⚠️ Quello che la chiamata reale **non** ha potuto provare e' un giro a buon fine
+end-to-end: `anagrafiche.billing_account` da shell risulta **vuota** — e' la RLS
+senza GUC operatore, non un database senza dati. Si prova in-app, ed e' comunque
+una delle caselle che il §19 assegna alla validazione di Tid.
+
+### 21.1-quater BE-B e BE-D — fatto il 2026-08-19
+
+| # | Cosa | Esito |
+|---|---|---|
+| B1 | `_resolve_prezzo_riga` ritorna `_EsitoPrezzoRiga(prezzo, codice)` e chiama il **nucleo**. ⛔ Via il ripiego `"0"` | fatto |
+| B2 | ramo semplice: `prezzo_unitario` resta `None`; `prezzo_esito` `{codice, messaggio}` nella risposta, testo dal ripiego (DEC-3/DEC-4) | fatto |
+| B3 | ramo composito: si inserisce `None`, non `"0"`; commento riscritto | fatto |
+| B4 | `list_righe`: via il `COALESCE(prezzo, 0)` → `importo_riga` NULL. ⚠️ `ordini_repository.py:305` **non toccato**, come da V-2 | fatto |
+| B5 | `get_ddt`: `causale_trasporto_fatturabile` grezzo, senza `COALESCE` (DEC-5) | fatto |
+| B7 | F-7/DEC-8: il motivo persiste in `meta.prezzo_resolver_context`, fuso col `meta` del client, solo quando il prezzo manca | fatto |
+| B6 | 6 test nuovi | verdi |
+| BE-D | sezione «Righe senza prezzo» in `api_ddt.md`: `prezzo_esito`, `importo_riga` NULL, i tre stati di `causale_trasporto_fatturabile` | fatto |
+
+**Suite completa: 3.843 verdi.**
+
+⭐ **Le due prove sul DB vero**, che i mock non danno: la query di `get_ddt` con
+il JOIN nuovo **gira** e restituisce 68 colonne fra cui
+`causale_trasporto_fatturabile`; `list_righe` senza `COALESCE` **gira** e
+restituisce ancora `importo_riga`. Un nome di colonna sbagliato sarebbe passato
+indenne fra i mock e sarebbe morto in-app.
+
+⭐ **La controprova del §19 casella 4 e' un test, non un commento**:
+`OrdiniPrezzoInvariatoTests` verifica che gli ordini chiamino ancora il **guscio**
+(`resolve_prezzo`) e **non** il nucleo, e che l'eccezione risalga. Che
+`ordini_service` non sia stato toccato oggi lo dice il diff; il giorno in cui
+qualcuno «uniformera' i due domini» il diff non ci sara' piu', il test si'.
+
+⚠️ **Cosa resta prima di poter dire «casella 1 chiusa»**: il FE. Oggi il BE
+salva la riga senza prezzo e dice perche', ma nessuna interfaccia lo mostra —
+FE-A/B/C. E la prova finale e' in-app, di Tid (§19).
+
+### 21.1-quinquies FE — fatto il 2026-08-19
+
+| # | Cosa | File |
+|---|---|---|
+| FE-A | `causaleFatturabile` (confronto `=== true`, cosi' `null` NON pretende il prezzo) passato a righe → form → componenti | `DdtDrawer.vue` |
+| FE-B1 | save riuscito + `notify.warn` col messaggio dell'esito. Mai rosso: il rosso e' dell'emissione | `DdtRigaForm.vue` |
+| FE-B2/B3 | due hint diversi, **create** («se non e' risolvibile la riga resta senza prezzo») e **edit** («in modifica non viene ricalcolato») | idem + i18n |
+| FE-C | `Tag` «Senza prezzo» su `prezzo_unitario` **e** su `importo_riga`, che dopo B4 arriva `null` | `DdtRigheTable.vue` |
+| FE-D1/D2 | prop `prezzoRichiesto` (default `true`) su `ComponentiDialog` e `ComponentiPanel`: con `false` il prezzo assente non e' piu' un difetto | `_shared/componenti/` |
+| FE-D3 | ⛔ `getPrezzoVisualizzato` non fa piu' `Number(null) → 0`: ritorna `null`, e la cella readonly mostra il tag | `ComponentiPanel.vue` |
+| FE-D4 | il DDT passa `:prezzo-richiesto="causaleFatturabile"` a dialog e pannello | `DdtRigaForm.vue`, `DdtRigaComponentiPanel.vue` |
+| FE-E | 4 chiavi, **it e en**, `check_i18n_keys.py` pulito | `locales/*.json` |
+
+**Verifiche**: `oxlint` pulito sui file toccati, **build FE OK**, backend **3.843
+verdi**.
+
+⭐ **Il `default: true` delle due prop nuove e' la cosa che rende sicura la
+slice**: preventivi, ordini, contratti e listino bundle non passano la prop e
+restano identici. E' la stessa scelta del team DB su C3 — il codice condiviso
+non si tocca, si cambia solo dove la regola si applica.
+
+⚠️ **Uno scostamento dal piano, dichiarato**: la frase
+`componenti_senza_prezzo_hint` l'ho messa in `DdtRigaForm.vue`, non dentro
+`ComponentiPanel`. Quel componente e' condiviso da cinque contesti, e un testo
+che parla della «causale di questo DDT» dentro un building block e' un dominio
+che tracima: al BB passa un booleano, la spiegazione resta a casa sua.
+
+⚠️ **Un errore che ho fatto e corretto, perche' e' la trappola di questi due
+file**: le quattro chiavi i18n erano finite in `vendite.ordini` invece che in
+`vendite.ddt` — `riga_prezzo_auto_hint` esiste **due volte** in `it.json`, e
+prendere «l'ultima occorrenza» pesca il blocco sbagliato. Se ne e' accorto
+`check_i18n_keys.py`, non io: le chiavi risultavano citate e mancanti. Ripristinato
+il testo di ordini, verificato che il suo blocco sia intatto.
+
+### 21.1-sexies Revisione critica del codice scritto — 7 rilievi, tutti corretti
+
+Rilettura del solo codice di oggi (documentazione esclusa), cercando bug, codice
+fragile, duplicazione e valori cablati. **Sette rilievi, tutti corretti**; i due
+piu' seri sono duplicazioni che avevo introdotto io predicando il contrario.
+
+| # | Rilievo | Dove | Cura |
+|---|---|---|---|
+| **1** | ⛔ **38 righe di SQL duplicate**: guscio e nucleo avevano la stessa decorazione (22 colonne, 6 LEFT JOIN) copiata, piu' due elenchi identici di nove argomenti posizionali | `pricing_repository.py` | estratti `_COLONNE_DECORATE`, `_JOIN_DECORAZIONE`, `_sql_resolver(...)`, `_argomenti_resolver(...)` |
+| **2** | ⛔ **contesto del diario scritto due volte**, otto chiavi uguali nei due `except` | `pricing_service.py` | estratto `_contesto_diario(...)`, col commento sul *perche'* delle due chiavi (una copia sola) |
+| **3** | **Ramo che non fa niente**: `prezzo_unitario = prezzo_unitario if ... else None`, cioe' un no-op, rimasto dove prima si forzava `"0"` | `ddt_service.py` | ramo rimosso; il *perche'* dell'assenza sta ora sopra il ramo che c'e' |
+| **4** | **Import morto**: `Decimal` non serviva piu' dopo B1 | `ddt_service.py` | tolto (verificato che non fosse usato altrove) |
+| **5** | ⚠️ **Chiave di dominio dentro un building block**: `t('vendite.ddt.riga_senza_prezzo')` in `ComponentiPanel`, usato da cinque contesti | `_shared/componenti/` | `t(localizedKey('senza_prezzo'))` + chiave in `vendite.componenti.panel` (it/en) |
+| **6** | Idioma incoerente: `=== null \|\| === undefined` dove il repository usa `== null` | `DdtRigheTable.vue` | allineato |
+| **7** | Codice errore come **stringa nuda** in mezzo al codice | `pricing_repository.py` | costante di modulo, col motivo per cui non si importa dal service (ciclo) |
+
+⭐ **Il rilievo 1 e il 5 sono lo stesso errore in due linguaggi**, ed e' quello
+su cui avevo appena scritto due decisioni (DEC-7: «mai duplicare»; e la nota sul
+BB che non deve ospitare testo di dominio). Scrivere la regola e violarla nello
+stesso pomeriggio e' il motivo per cui la rilettura serve **anche** a chi ha
+scritto le regole — anzi, soprattutto.
+
+⚠️ **Cosa NON ho cambiato, e perche'**:
+
+* `getattr(settings, "ERROR_LOG_DB_ENABLED", True)` in `ErrorManager`: il default
+  a `True` sembra difensivo di troppo, ma e' la direzione giusta — se un domani
+  la setting sparisse, il diario torna acceso invece di spegnersi in silenzio;
+* il `Tag` «senza prezzo» ripetuto su due colonne di `DdtRigheTable`: sono tre
+  righe l'una, e un componente estratto per questo costerebbe piu' della
+  duplicazione che toglie;
+* `COALESCE(prezzo, 0)` in `ordini_repository.py:305`: e' **F-5**, si guarda
+  insieme agli ordini (V-2) e non di straforo qui.
+
+**Dopo le correzioni**: 3.843 test verdi, `oxlint` pulito sui file toccati,
+build FE OK, `check_i18n_keys` pulito. E i due SQL generati sono stati
+**rieseguiti sul DB vero** dopo l'estrazione: entrambi arrivano dentro la
+funzione (errore di dominio sul BA inesistente), quindi l'estrazione non ha
+cambiato la query.
+
+### 21.2 Le decisioni sono chiuse: si puo' scrivere codice
+
+Tutte le domande aperte del piano hanno risposta. L'ultima era **A4**, sciolta
+oggi da Tid: **si estrae** (DEC-7). Nessun blocco resta in attesa di una
+decisione — BE-A e' partibile.
+
+⚠️ **Restava una cosa che non era una domanda del piano** — F-7, ora decisa — e
+**una che lo resta**:
+
+1. ✅ **F-7 — deciso il 2026-08-19: si fa** (DEC-8). Il motivo si persiste in
+   `ddt_righe.meta`, chiave `prezzo_resolver_context` — **lo stesso nome** della
+   colonna che il DB usa sui componenti. E' entrato nel piano come **B7**, dentro
+   BE-B: non piu' una domanda aperta;
+2. **F-5 — `COALESCE(prezzo, 0)` in `ordini_repository.py:305`.** Oggi innocuo
+   (sugli ordini il prezzo non puo' mancare), ed e' la **stessa formula** che su
+   DDT ha prodotto V-2. Si guarda insieme a quello, non separatamente: il giorno
+   in cui gli ordini ammetteranno il prezzo assente, il difetto e' gia' scritto.
+
+### 21.3 Prima di lanciare i test di BE-A
+
+Il `GRANT EXECUTE` a `zeroerp_app` su `fn_resolve_prezzo_listino_v2_esito` sta
+dentro la slice A1, ma **il migrate va applicato sull'ambiente dove gira il BE**.
+Se `resolve_prezzo_esito` risponde «permesso negato» o «la funzione non esiste»,
+la diagnosi e' **l'ambiente**, non il codice — e cercarla nel codice costa
+un'ora.
+
+### 21.4 Il contratto da citare nel codice, non da ricordare
+
+> *«Una riga esce sempre. Chi la legge deve comunque controllare `FOUND`:
+> `SELECT INTO` senza righe non solleva, azzera le variabili — e un prezzo
+> `NULL` verrebbe scambiato per un prezzo risolto.»*
+
+In Python la trappola e' identica: `row_to_dict(cursor)` ritorna `None` a zero
+righe. Per questo BE-A2 chiede un guard **esplicito** con
+`E_VENDITE_PRICING_ESITO_ASSENTE` — e non un `assert`, che con `python -O`
+sparisce e lascia proseguire il `None`.

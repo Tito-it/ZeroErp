@@ -34,6 +34,9 @@ const loading = ref(false)
 const props = defineProps({
   ddtId: { type: Number, required: true },
   riga: { type: Object, default: null },
+  // FE-A: la causale del DDT vende? Se no, il prezzo non e' obbligatorio —
+  // ne' sulla riga ne' sui componenti del kit (FE-D4).
+  causaleFatturabile: { type: Boolean, default: true },
 })
 const emit = defineEmits(['saved', 'cancel', 'componenti-changed'])
 
@@ -163,6 +166,13 @@ async function handleSave() {
   try {
     const result = await submitRiga(buildRigaPayload())
     notify.success(successMessage)
+    // FE-B1: la riga E' salvata, quindi il verde ci va. Se il prezzo non si e'
+    // risolto arriva anche `prezzo_esito`: e' un AVVISO, non un errore — il
+    // rosso e' dell'emissione, che ha gia' il suo messaggio parlante.
+    // Il testo lo manda il BE (DEC-4): qui non si riscrive e non si traduce.
+    if (result?.prezzo_esito?.messaggio) {
+      notify.warn(result.prezzo_esito.messaggio)
+    }
     emit('saved', result)
   } catch (err) {
     notify.error(extractApiError(err, t('vendite.ddt.errore_generico')))
@@ -202,8 +212,12 @@ async function handleSave() {
         <InputNumber v-model="form.prezzo_unitario" mode="currency" currency="EUR" locale="it-IT"
           :min-fraction-digits="6" :max-fraction-digits="6"
           :disabled="isPadreComposito" />
+        <!-- FE-B2/B3: in CREATE il campo vuoto significa «risolvilo tu», in
+             EDIT significa «nessun prezzo» — `aggiorna_riga` non ha auto-fill.
+             Due frasi diverse perche' sono due comportamenti diversi:
+             l'asimmetria esiste da sempre, questo e' il punto in cui si vede. -->
         <small v-if="!isPadreComposito" class="text-color-secondary">
-          {{ t('vendite.ddt.riga_prezzo_auto_hint') }}
+          {{ isEdit ? t('vendite.ddt.riga_prezzo_edit_hint') : t('vendite.ddt.riga_prezzo_auto_hint') }}
         </small>
       </div>
       <div class="form-field">
@@ -252,6 +266,7 @@ async function handleSave() {
       :quantita="form.qta_operativa"
       :api-preview="previewRigaComponenti"
       :initial-payload="componentiPayload"
+      :prezzo-richiesto="causaleFatturabile"
       @confirm="onComponentiConfirm"
     />
 
@@ -262,10 +277,19 @@ async function handleSave() {
       <h4 style="margin: 0 0 0.5rem 0; font-size: 1rem;">
         {{ t('vendite.ddt.componenti_section_title') }}
       </h4>
+      <!-- ⭐ La frase sta QUI e non dentro `ComponentiPanel`: quel componente e'
+           condiviso con preventivi, ordini, contratti e listino bundle, e un
+           testo che parla di «causale del DDT» dentro un BB e' un dominio che
+           tracima. Il BB riceve un booleano, non una spiegazione. -->
+      <small v-if="!causaleFatturabile" class="text-color-secondary"
+             style="display: block; margin-bottom: 0.5rem;">
+        {{ t('vendite.ddt.componenti_senza_prezzo_hint') }}
+      </small>
       <DdtRigaComponentiPanel
         :ddt-id="ddtId"
         :riga-id="props.riga.id"
         :readonly="false"
+        :prezzo-richiesto="causaleFatturabile"
         @changed="emit('componenti-changed')" />
     </div>
 

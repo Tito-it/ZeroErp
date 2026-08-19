@@ -752,3 +752,45 @@ class OrdiniFatturazioneImmediataTests(SimpleTestCase):
         self.assertIs(
             repo.update_ordine.call_args.kwargs["fatturazione_immediata"], True,
         )
+
+
+# ══════════════════════════════════════════════════════════
+#  BE-B6 §5 — controprova: gli ordini NON cambiano
+# ══════════════════════════════════════════════════════════
+# Scopo: il brief-ddt-righe-senza-prezzo cambia il comportamento del **solo**
+#        DDT. Qui si prova che gli ordini continuano a chiamare il GUSCIO
+#        (`resolve_prezzo`, che solleva) e non il nucleo, e che l'eccezione
+#        arriva al chiamante invece di diventare una riga senza prezzo.
+#
+#        ⭐ E' una **controprova a test, non una lettura del codice**: che
+#        `ordini_service` non sia stato toccato lo si vede col diff oggi, ma il
+#        giorno in cui qualcuno «uniformera' i due domini» il diff non ci sara'
+#        piu' — questo test si'.
+class OrdiniPrezzoInvariatoTests(SimpleTestCase):
+    _PRICING = "apps.vendite.services.pricing_service.PricingService"
+
+    @patch(_PRICING)
+    @patch(_REPO)
+    def test_ordini_usano_il_guscio_e_propagano(self, repo_cls, pricing_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_emittente_sr_id_by_fiscale_id.return_value = 42
+        pricing = pricing_cls.return_value
+        pricing.resolve_prezzo.side_effect = ServiceError(
+            code="E_CATEGORIA_LISTINO_NON_MAPPATA",
+            message="Nessuna mappa categoria -> listino.",
+        )
+        testata = {
+            "billing_account_id": 100, "utility_id": 5,
+            "data": "2026-08-19", "emittente_fiscale_id": 3,
+        }
+
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service._resolve_prezzo_riga(
+                repo, testata, articolo_id="ART1", uom_id=5,
+            )
+
+        # 1. l'errore risale, non diventa un prezzo assente
+        self.assertEqual(cm.exception.code, "E_CATEGORIA_LISTINO_NON_MAPPATA")
+        # 2. e la strada e' il guscio, non il nucleo del DDT
+        pricing.resolve_prezzo.assert_called_once()
+        pricing.resolve_prezzo_esito.assert_not_called()

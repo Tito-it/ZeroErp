@@ -294,19 +294,17 @@ Restituisce campi minimali per autocomplete cross-dominio:
 - `voce_utility`
 - `attivo`
 
-### 2.2 Lookup unita` di misura
+### 2.2 Lookup unita` di misura — RIMOSSO
 
-| | |
-|---|---|
-| **Metodo** | `GET` |
-| **URL** | `/api/v1/catalogo/unita-misura/lookup/` |
+⛔ **`GET /api/v1/catalogo/unita-misura/lookup/` non esiste piu'.** Verificato sul
+codice il 2026-08-19: nessuna rotta lo serve, e `catalogo/api/urls.py` lo dichiara
+in un commento accanto alle rotte UoM.
 
-#### Query param
-
-| Parametro | Tipo | Obbligatorio | Descrizione |
-|---|---|---|---|
-| `search` | string | No | Ricerca su `codice` e `descrizione` |
-| `limit` | int | No | Default `200` |
+**Cosa si usa al suo posto**: il lookup generico
+`GET /api/v1/core/lookup/codici/?rel=catalogo.unita_misura` — stessa cosa per le
+tipologie, `?rel=catalogo.uom_tipi`. E' la regola di questo repository: le tabelle
+codice/descrizione passano dalla whitelist del lookup generico, non da un endpoint
+per tabella (vedi `api_lookup_codici.md`).
 
 ### 2.3 Lookup modi di arrotondamento UoM (Fase 1)
 
@@ -621,6 +619,19 @@ Campi principali:
 
 ---
 
+### 5.3 Note di un componente di distinta
+
+| | |
+|---|---|
+| **Metodi** | `GET` `POST` |
+| **URL** | `/api/v1/catalogo/articoli/{articolo_id}/componenti/{comp_id}/note/` |
+
+Stesse note del §5, ancorate pero' alla **riga di distinta** invece che
+all'articolo: il `comp_id` in URL fa da `target_riga_id`, che quindi **non** va
+messo nel body. Il resto del contratto — campi, stile, visibilita' — e' quello
+del §5.2.
+
+
 ## 6. Conversioni UoM
 
 ### 6.1 Lista conversioni
@@ -694,6 +705,49 @@ Lista completa, no paginazione (dataset tipicamente piccolo).
   `valido_al`, `attivo` sono modificabili.
 
 ---
+
+## 7. Unita` di misura e tipologie (anagrafica)
+
+Le UoM **operative di un articolo** stanno al §3; qui c'e' l'anagrafica delle
+unita` di misura e delle loro tipologie, che vive per conto suo.
+
+⚠️ Per **leggerle in una combo** non si usano questi endpoint ma il lookup
+generico: `GET /api/v1/core/lookup/codici/?rel=catalogo.unita_misura` (oppure
+`?rel=catalogo.uom_tipi`). Questi servono a **manutenerle**.
+
+### 7.1 Tipologie UoM
+
+| | |
+|---|---|
+| **Lista** | `GET /api/v1/catalogo/uom-tipi/` — `search`, `attivo`, `limit`, `offset`, `order_by`, `order_dir` |
+| **Crea** | `POST /api/v1/catalogo/uom-tipi/` — `codice`, `codice_interno`, `descrizione` (tutti e tre obbligatori) |
+| **Dettaglio / aggiorna** | `GET` `PATCH /api/v1/catalogo/uom-tipi/{tipo_id}/` |
+
+⛔ In `PATCH` sono modificabili **solo `descrizione` e `attivo`**: `codice` e
+`codice_interno` sono la chiave con cui il resto del sistema nomina la
+tipologia, e non si rinominano da API.
+
+### 7.2 Unita` di misura
+
+| | |
+|---|---|
+| **Lista** | `GET /api/v1/catalogo/unita-misura/` — stessi query param del §7.1 |
+| **Crea** | `POST /api/v1/catalogo/unita-misura/` — `codice`, `descrizione`, `tipo_uom_id` obbligatori; `descrizione_fattura` opzionale |
+| **Dettaglio / aggiorna** | `GET` `PATCH /api/v1/catalogo/unita-misura/{uom_id}/` — modificabili `descrizione`, `descrizione_fattura`, `tipo_uom_id`, `attivo` |
+| **Disattiva** | `POST /api/v1/catalogo/unita-misura/{uom_id}/disattiva/` — body vuoto |
+
+⛔ Anche qui il `codice` e' immutabile dopo la creazione.
+
+⚠️ **La disattivazione puo' essere rifiutata dal database**, ed e' giusto cosi':
+se esistono entita` collegate ancora attive l'`IntegrityError` diventa
+`E_CATALOGO_VALIDATION` con «esistono entita' collegate attive». Una UoM
+disattivata sotto i piedi di righe listino, magazzino e documenti che la
+puntano sarebbe un dato rotto, non una comodita`. Se l'unita` non esiste (o era
+gia` disattivata): `E_CATALOGO_UOM_NOT_FOUND`.
+
+Entrambe le liste sono `is_search_endpoint` (throttling di ricerca) e
+dichiarano `lista_codice` — `catalogo.uom_tipi` e `catalogo.unita_misura` — con
+permesso di **livello oggetto** sui rispettivi modelli.
 
 ## Regole trasversali
 

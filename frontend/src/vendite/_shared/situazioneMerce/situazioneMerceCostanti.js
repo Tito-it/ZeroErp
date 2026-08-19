@@ -30,3 +30,15 @@ export const ETICHETTA_ACCREDITO_MERCE = Object.freeze({
   DOVUTA: 'DOVUTA',
   FACOLTATIVA: 'FACOLTATIVA',
 })
+
+// Il CONTESTO del pannello, dichiarato dal backend (`sezioni.contesto`): dice
+// QUALE delle due liste e' il saldo di questo documento.
+// ⭐ Dal 2026-08-19 il payload porta `righe_ordine` su ENTRAMBI i lati (il
+// pannello mostra sempre i due livelli, rilievo in-app di Tid), quindi il
+// contesto NON si puo' piu' dedurre dal fatto che una lista sia vuota. Se lo si
+// deducesse male, sul DDT si conterebbe il saldo dell'INTERA riga d'ordine —
+// tutte le sue spedizioni — al posto di questa: un numero plausibile e sbagliato.
+export const CONTESTO_MERCE = Object.freeze({
+  ORDINE: 'ORDINE',
+  DDT: 'DDT',
+})

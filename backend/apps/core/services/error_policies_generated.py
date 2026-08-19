@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 719, di cui 80 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 720, di cui 80 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -287,6 +287,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Configurazione mancante: logga ma non blocca, usa il fallback locale.
     # ⚠️ RITIRATO il 2026-08-07
     "E_DBLINK_LOG_CONN_MISSING": "AVVISO",
+    # Il DDT emesso porta stampata la sua causale: cambiarla dopo vorrebbe dire che il documento consegnato al vettore e quello in archivio dicono cose diverse. · Nasce il 2026-08-19 (brief-ddt-righe-senza-prezzo, decisione D-4): il gate all'emissione guarda solo la transizione verso EMESSO, quindi senza questo guard una causale non fatturabile poteva diventare fatturabile a documento gia' spedito — e la riga senza prezzo finiva eleggibile al lister, per fermarsi molto piu' tardi contro il NOT NULL di commesse_attivita.prezzo_snapshot.
+    "E_DDT_CAUSALE_IMMUTABILE": "CONFLITTO_STATO",
     # Gate solo-trasporto all'emissione (trgfn_ddt_guard_causale_emissione, · DL-28): la causale di trasporto dichiara se la merce e' una vendita · da fatturare; obbligatoria a DRAFT->EMESSO, e se fatturabile ogni · riga attiva deve avere un prezzo risolvibile (proprio o ereditato · dall'ordine via fulfillment).
     "E_DDT_CAUSALE_OBBLIGATORIA": "CONFLITTO_STATO",
     # Cliente (billing_account_id/destinatario) immutabile post-create: · cambiare cliente = nuovo DDT (mirror E_ORD_CLIENTE_IMMUTABILE). · 400 -> 409 il 2026-08-06 (audit coerenza status), gemello di · E_ORD_CLIENTE_IMMUTABILE. `ui_action` invariata.

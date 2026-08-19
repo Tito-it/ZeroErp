@@ -11,7 +11,7 @@
 """
 Indice test eseguiti:
 1) SituazioneMerceServiceTests.test_ordine_quattro_sezioni_e_filtro_per_ordine
-2) SituazioneMerceServiceTests.test_ddt_nessun_livello_uno_e_filtro_per_ddt
+2) SituazioneMerceServiceTests.test_ddt_livello_uno_filtrato_sulla_spedizione
 3) SituazioneMerceServiceTests.test_differenza_null_non_diventa_zero
 4) SituazioneMerceServiceTests.test_stato_non_viene_ri_tradotto
 5) SituazioneMerceServiceTests.test_ordine_fuori_scope_o_inesistente_not_found
@@ -87,9 +87,12 @@ class SituazioneMerceServiceTests(TestCase):
 
         self.assertEqual(
             sorted(out.keys()),
-            ["accrediti", "partite", "riconsegne", "righe_ordine"],
+            ["accrediti", "contesto", "partite", "riconsegne", "righe_ordine"],
         )
-        repo.list_situazione_merce_ordine.assert_called_once_with(42)
+        self.assertEqual(out["contesto"], "ORDINE")
+        repo.list_situazione_merce_ordine.assert_called_once_with(
+            ordine_id=42, ddt_id=None
+        )
         repo.list_partite_merce.assert_called_once_with(ordine_id=42, ddt_id=None)
         repo.list_situazione_merce_accrediti.assert_called_once_with(
             ordine_id=42, ddt_id=None
@@ -98,11 +101,16 @@ class SituazioneMerceServiceTests(TestCase):
             ordine_id=42, ddt_id=None
         )
 
-    # Scopo: Sul DDT il livello 1 NON esiste — la domanda e' «cosa e' successo a
-    #        QUESTA spedizione» (§5.1 del brief pannello), e le righe d'ordine
-    #        che il DDT non ha toccato non c'entrano. Lista vuota, non None: il
-    #        frontend itera sempre sulla stessa chiave.
-    def test_ddt_nessun_livello_uno_e_filtro_per_ddt(self):
+    # Scopo: Sul DDT il livello 1 C'E' (rev 2026-08-19), ma filtrato sulla
+    #        SPEDIZIONE: sono le righe d'ordine che quel DDT ha toccato, non
+    #        quelle dell'ordine intero. Serve a leggere i due livelli insieme
+    #        senza saltare da una schermata all'altra.
+    # ⚠️ La cosa che questo test presidia e' il FILTRO, non la presenza: se
+    #        `list_situazione_merce_ordine` venisse chiamata con `ordine_id`
+    #        dedotto dalla partita, la sezione mostrerebbe TUTTE le righe di
+    #        quell'ordine — comprese quelle che questa spedizione non ha mai
+    #        toccato — e il pannello del DDT parlerebbe di merce altrui.
+    def test_ddt_livello_uno_filtrato_sulla_spedizione(self):
         repo = _repo_finto()
         with patch(
             "apps.vendite.services.vendite_service.VenditeRepository",
@@ -110,8 +118,10 @@ class SituazioneMerceServiceTests(TestCase):
         ):
             out = get_situazione_merce(ddt_id=7)
 
-        self.assertEqual(out["righe_ordine"], [])
-        repo.list_situazione_merce_ordine.assert_not_called()
+        self.assertEqual(out["contesto"], "DDT")
+        repo.list_situazione_merce_ordine.assert_called_once_with(
+            ordine_id=None, ddt_id=7
+        )
         repo.list_partite_merce.assert_called_once_with(ordine_id=None, ddt_id=7)
         repo.list_situazione_merce_accrediti.assert_called_once_with(
             ordine_id=None, ddt_id=7

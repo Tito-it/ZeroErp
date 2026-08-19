@@ -199,6 +199,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO": "Soggetto non trovato.",
     "E_DATI_SOCIETARI_TIPO_DETTAGLIO_NON_CONFIGURATO": "Policy dati societari non configurata per questo tipo soggetto.",
     "E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO": "Per questo tipo soggetto i dati societari non sono previsti.",
+    "E_DDT_CAUSALE_IMMUTABILE": "La causale di trasporto non si puo' cambiare dopo l'emissione del DDT.",
     "E_DDT_CAUSALE_OBBLIGATORIA": "Causale di trasporto obbligatoria per emettere il DDT.",
     "E_DDT_CLIENTE_IMMUTABILE": "Cliente immutabile dopo la creazione: per cambiare cliente crea un nuovo DDT.",
     "E_DDT_EMISSIONE_SENZA_RIGHE": "DDT senza righe attive: impossibile emettere.",

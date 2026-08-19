@@ -1,6 +1,7 @@
 <script setup>
 // Scopo: Vista principale gestione impostazioni parametri.
 import { ref } from 'vue'
+import { registraDrawerChiudibile } from '../../core/composables/useDrawerChiusuraGlobale'
 import { useI18n } from 'vue-i18n'
 import { useImpostazioniStore } from '../stores/impostazioni'
 import { useApiHandler } from '../../core/composables/useApiHandler'
@@ -16,6 +17,11 @@ const { execute } = useApiHandler()
 useReadonlyMode(READONLY_DOMAINS.CONFIG)
 
 const drawerVisible = ref(false)
+// Le sole due liste che tengono a mano lo stato del drawer invece di passare da
+// `useDrawerState`: si registrano da se' nella chiusura globale, o resterebbero
+// gli unici due pannelli a sopravvivere a un cambio di pagina.
+registraDrawerChiudibile(() => { drawerVisible.value = false })
+
 const selectedParameter = ref(null)
 
 function onEditOverride(parameter) {

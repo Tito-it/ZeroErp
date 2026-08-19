@@ -820,6 +820,19 @@ nel detail (`/righe` interne al contratto) sia nella preview righe applicate
 `ComponentiDialog` e visibilita' `ComponentiPanel` in EDIT senza round-trip
 extra al catalogo.
 
+## Note del contratto
+
+| | |
+|---|---|
+| **Lista / creazione** | `GET` `POST` `/api/v1/vendite/contratti/{contratto_id}/note/` |
+| **Dettaglio / modifica / cancellazione** | `GET` `PATCH` `DELETE` `/api/v1/vendite/contratti/{contratto_id}/note/{note_id}/` |
+
+Contratto identico agli altri cinque domini — payload, filtri,
+`Idempotency-Key` obbligatoria sulla creazione, codici errore: **una pagina
+sola**, [api_note_documento](../../core/manual/api_note_documento.md). Qui sotto solo il delta: partizione
+`vendite.note_contratto`, `target_tipo = 'CONTRATTO'`, note di riga ancorate
+alle righe di contratto via `target_riga_id`.
+
 ## Regole
 
 1. Numero contratto generato dal service (mai in payload).
