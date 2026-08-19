@@ -354,7 +354,7 @@ poi — **55 millisecondi dopo**, troppo poco per una seconda azione dell'operat
 — quella col codice fantasma, entrambe sotto `function_name='pricing_service.resolve'`.
 È la stessa richiesta che logga due volte con due codici diversi. Il **meccanismo**
 non l'ho isolato (serve un debugger sul BE) ma ho escluso cinque ipotesi, e il
-tutto è in [brief-be-pricing-codice-errore-fantasma](brief-be-pricing-codice-errore-fantasma.md),
+tutto è in [brief-be-pricing-codice-errore-fantasma](../work-done/brief-be-pricing-codice-errore-fantasma.md),
 che è la sede giusta: **il difetto non è del DDT, è del pricing**, quindi di ogni
 dominio che lo chiama. Qui resta solo il rimando (**F-4**).
 
@@ -494,7 +494,9 @@ difetto vero, e la quarta casella del §6 dice esattamente questo.
 > |---|---|
 > | `20_code/vendite/20260819-07-create-fn-resolve-prezzo-listino-v2-esito-mctit.yaml` | A1 — il nucleo |
 > | `20_code/vendite/20260819-08-update-fn-resolve-prezzo-listino-v2-guscio-mctit.yaml` | A2 — il guscio |
-> | `db/pgtap/vendite/test-fn-resolve-prezzo-listino-esito-v1.sql` | A3 — 11 test, **11 verdi** |
+> | `db/pgtap/vendite/test-fn-resolve-prezzo-listino-esito-v1.sql` | A3 — 12 test, **12 verdi come `zeroerp_app`** |
+> | `20_code/vendite/20260819-10-…-contesto-e-ramo-morto-…yaml` | A5 — via il ramo morto (ritiro del 141) + P-6 del BE |
+> | `20_code/vendite/20260819-11-…-guscio-codice-dedicato-…yaml` | A6 — il guard prende il codice che gli spetta |
 > | `docs/it/dbzero/vendite/manual/fn_resolve_prezzo_listino_v2.md` | A4 — doc concettuale |
 >
 > **Verificato sul dato vero, non solo compilato:**
@@ -618,9 +620,9 @@ D (documentale) ─────────────────────�
 * **F-3** (R-6) — l'omaggio con rivalsa IVA non è rappresentabile: `OMAGGIO` è
   `fatturabile=false`, quindi non arriva mai a fattura. Da riprendere sull'asse
   `config.nature_doc_fiscale`, non su quello del prezzo.
-* **F-4** (R-10) — ⛔ **BE, e con effetto sull'operatore.** ➡️ **Uscito da questo
+* **F-4** (R-10) — ✅ **CHIUSO il 2026-08-19**, e la tesi era sbagliata: quelle righe le scriveva la suite di test del BE, non un percorso di produzione. Storia completa, prove e chiusura nel brief. ➡️ **Uscito da questo
   registro: ha un brief suo**,
-  [brief-be-pricing-codice-errore-fantasma](brief-be-pricing-codice-errore-fantasma.md)
+  [brief-be-pricing-codice-errore-fantasma](../work-done/brief-be-pricing-codice-errore-fantasma.md)
   (DB → BE, 2026-08-19), perché tocca **ogni dominio che chiama il pricing** e in
   un registro «fuori perimetro» di un brief sui DDT si sarebbe perso.
   In sintesi: `pricing_service` scrive `E_PREZZO_LISTINO_NON_TROVATO` 587 volte
@@ -658,6 +660,13 @@ serve che l'avviso di BE-1 arrivi al FE e sia mostrato come tale.
 il testo dell'`esito_codice`, mai un toast rosso che blocca. Il rosso arriva
 all'emissione, dal gate, ed è già scritto e già parlante
 (`E_DDT_PREZZO_NON_RISOLVIBILE`, 545, nomina la riga).
+
+**BE-4 — Rigenerare `error_policies_generated.py`: c'è un codice nuovo.** ⚠️
+`E_VENDITE_PRICING_ESITO_ASSENTE` (931, classe **TECNICO** → 500, che è
+corretto: se scatta non c'è nulla che l'operatore possa correggere). Nasce dal
+rosso del rubinetto degli accumulatori: il guard «il nucleo non ha restituito
+righe» usava `E_PARAMETRO_INVALIDO`, e lì non c'è nessun parametro invalido —
+c'è un'invariante interna rotta.
 
 **BE-3 — Nessuna azione su ordini/preventivi.** Registrato per evitare che
 qualcuno «uniformi» i quattro service: la quarta casella del §6 è un requisito, e
