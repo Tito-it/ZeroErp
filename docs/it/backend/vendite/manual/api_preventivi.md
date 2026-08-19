@@ -741,6 +741,18 @@ Errori comuni di tutta la sezione: `E_DOCUMENTI_VALIDATION` (400/422), `E_DOCUME
 
 ---
 
+## Note del preventivo
+
+| | |
+|---|---|
+| **Lista / creazione** | `GET` `POST` `/api/v1/vendite/preventivi/{preventivo_id}/note/` |
+| **Dettaglio / modifica / cancellazione** | `GET` `PATCH` `DELETE` `/api/v1/vendite/preventivi/{preventivo_id}/note/{note_id}/` |
+
+Building block note partizionate: il contratto completo sta in
+[api_note_documento](../../core/manual/api_note_documento.md). Delta del dominio: partizione
+`vendite.note_preventivo`, `target_tipo = 'PREVENTIVO'`, note di riga sulle
+righe di preventivo.
+
 ## Dipendenze DB
 
 | Tabella/funzione | Ruolo |

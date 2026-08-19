@@ -68,6 +68,13 @@ const props = defineProps({
   // Per preventivi: passare previewRigaComponenti da preventiviApi.
   // Per ordini/contratti/ddt: l'omologa di quella sorgente.
   // Per listino bundle: API che ritorna BoM + prezzi già definiti.
+  // FE-D1/D2 (brief-ddt-righe-senza-prezzo): il documento pretende un prezzo
+  // sui componenti? Il DDT in conto visione no — il kit viaggia senza prezzi.
+  // ⭐ `default: true` NON e' pigrizia: preventivi, ordini, contratti e listino
+  // bundle non passano la prop e restano identici bit per bit. E' la stessa
+  // scelta fatta dal team DB sul trigger C3 — non si tocca il codice condiviso,
+  // si cambia solo quando la regola si applica.
+  prezzoRichiesto: { type: Boolean, default: true },
   apiPreview: { type: Function, required: true },
   // Payload corrente (se l'operatore riapre la Dialog dopo conferma)
   // per ripristinare lo stato precedente
@@ -223,7 +230,11 @@ const obbligatoriInvalidi = computed(() => {
   //   - opzionali: prezzo non-null (zero ammesso)
   return componenti.value.filter((c) => {
     const prezzo = getPrezzoCorrente(c)
-    if (prezzo == null) return true
+    // FE-D1: con `prezzoRichiesto = false` il prezzo assente NON e' un difetto
+    // — e' l'esito normale di un documento che non vende. Lo zero invece resta
+    // invalido sugli obbligatori anche li': zero e' un prezzo che qualcuno ha
+    // scritto, e su una riga obbligatoria e' quasi sempre uno sbaglio.
+    if (prezzo == null) return props.prezzoRichiesto
     if (isObbligatorio(c) && Number(prezzo) === 0) return true
     return false
   })

@@ -17,6 +17,9 @@ const props = defineProps({
   ddtId: { type: Number, required: true },
   rigaId: { type: Number, required: true },
   readonly: { type: Boolean, default: true },
+  // FE-D4: inoltrata al BB condiviso. `true` di default = comportamento
+  // storico, cosi' un chiamante che non la passa non cambia di una virgola.
+  prezzoRichiesto: { type: Boolean, default: true },
 })
 
 defineEmits(['changed'])
@@ -27,6 +30,7 @@ defineEmits(['changed'])
     :documento-id="props.ddtId"
     :riga-id="props.rigaId"
     :readonly="props.readonly"
+    :prezzo-richiesto="props.prezzoRichiesto"
     :api-list="listRigaComponenti"
     :api-update="updateRigaComponente"
     :api-delete="deleteRigaComponente"

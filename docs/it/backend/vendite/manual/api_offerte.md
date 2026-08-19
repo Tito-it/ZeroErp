@@ -85,9 +85,10 @@ Tutti gli endpoint cablati:
 - `POST /<id>/crea-revisione/` + `GET /<id>/revisioni/` (step 6-7, 2026-05-25 AM)
 - `POST /<id>/push-contratto/` (step 8, 2026-05-25 PM)
 - Suite pgTAP (step 9) confermata da team DB
-- `POST /<id>/note/` + `GET/PATCH/DELETE /<id>/note/<note_id>/` —
+- `GET/POST /<id>/note/` + `GET/PATCH/DELETE /<id>/note/<note_id>/` —
   cablaggio building block `PartitionedNoteRepository` per
-  `target_tipo='OFFERTA'` (2026-05-26)
+  `target_tipo='OFFERTA'` (2026-05-26). Contratto comune in
+  [api_note_documento](../../core/manual/api_note_documento.md)
 
 ### Perimetro D7 — capability layer + refactor atomico (2026-05-26)
 

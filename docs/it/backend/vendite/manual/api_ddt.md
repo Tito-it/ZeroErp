@@ -60,9 +60,13 @@ Convenzioni identiche ad api_ordini.md (envelope, lista configurabile
   (sorgente `DDT_VENDITA`, fatturazione differita).
 - Righe `GET/POST /<id>/righe/`, `PATCH/DELETE /<id>/righe/<riga_id>/` — solo
   DRAFT; `prezzo_unitario`/`iva_id` nullable (DDT anche solo di trasporto).
+  ⭐ **Il DDT è l'unico documento dove il prezzo mancante non è un errore**:
+  vedi la sezione dedicata più sotto.
 - Componenti BoM `GET /<id>/righe/<rid>/componenti/` +
   `PATCH/DELETE .../componenti/<cid>/` + preview — mixin condiviso.
-- Note `GET/POST /<id>/note/` + `GET/PATCH/DELETE /<id>/note/<note_id>/`.
+- Note `GET/POST /<id>/note/` + `GET/PATCH/DELETE /<id>/note/<note_id>/` —
+  building block, contratto comune in [api_note_documento](../../core/manual/api_note_documento.md)
+  (partizione `vendite.note_ddt`, `target_tipo='DDT'`).
 - Documenti/Stampa `…/<id>/documenti/…` — vedi api_ordini.md §Documenti.
 
 ### Lineage / genealogia (brief-be-fe-lineage, 2026-07-15)
@@ -80,6 +84,55 @@ Convenzioni identiche ad api_ordini.md (envelope, lista configurabile
   documento: pratica + frontiera + catena transiti in entrambe le direzioni.
   Contratto completo nel manuale del BB condiviso:
   [api_lineage_passaggi.md](api_lineage_passaggi.md).
+
+## Righe senza prezzo — il campo `prezzo_esito`
+
+⭐ **Il DDT è l'unico documento dove il prezzo mancante non è un errore.** Una
+riga in conto visione, un reso in ri-consegna, un articolo fuori listino: sono
+casi legittimi, e pretendere il prezzo significherebbe impedire di salvare la
+riga. Ordini, preventivi, contratti e offerte continuano invece a **rifiutare**
+la riga: lì il prezzo assente è un difetto.
+
+### Cosa risponde `POST /api/v1/vendite/ddt/{id}/righe/`
+
+Quando il prezzo non è passato dal client, il BE lo risolve. Se **non** è
+risolvibile, la riga **si salva lo stesso** con `prezzo_unitario = null`, e la
+risposta porta il motivo:
+
+```json
+{ "data": { "ddt_id": 12, "riga_id": 31, "is_composito": false,
+            "prezzo_esito": { "codice": "E_CATEGORIA_LISTINO_NON_MAPPATA",
+                              "messaggio": "Categoria cliente non mappata a listino per la quadrupla indicata." } } }
+```
+
+Quando il prezzo si risolve, `prezzo_esito` è `null`.
+
+| | |
+|---|---|
+| **dov'è** | dentro `data`, **non** nell'envelope degli errori: la riga è stata salvata, quindi non è un fallimento (DEC-3) |
+| **il testo** | è il messaggio a catalogo del codice, **senza segnaposto** — il FE lo mostra, non lo riscrive e non ne tiene una copia i18n (DEC-4) |
+| **persistenza** | il motivo resta anche dopo il ricarico: sta in `ddt_righe.meta.prezzo_resolver_context.esito_codice`, stesso nome della colonna che il DB usa sui componenti (DEC-8) |
+
+⛔ **`importo_riga` esce `null`, non `0`.** La lista righe non fa più
+`COALESCE(prezzo, 0)`: uno zero sarebbe indistinguibile da una riga che vale
+davvero zero, e il totale del documento tornerebbe «giusto» sommando quel che
+non c'è.
+
+⛔ **Il padre di un kit si inserisce con prezzo `null`**, non `0`: il ricalcolo
+lato DB mette `NULL` se anche un solo figlio è scoperto.
+
+### Cosa serve al client per decidere
+
+`GET /api/v1/vendite/ddt/{id}/` espone **`causale_trasporto_fatturabile`**:
+
+* `true` — il documento vende: una riga senza prezzo bloccherà l'emissione;
+* `false` — non vende (conto visione, ri-consegna): il prezzo assente è normale;
+* `null` — **causale non ancora scelta**, che è un terzo caso e non un `false`.
+
+Il BE non fa `COALESCE(false)` di proposito: al client serve distinguere «non
+vende» da «non lo so ancora» (DEC-5).
+
+Riferimento: `docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md`.
 
 ## Codici errore principali
 

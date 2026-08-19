@@ -468,3 +468,137 @@ class DdtFatturazioneImmediataTests(SimpleTestCase):
         self.assertIs(
             repo.update_ddt.call_args.kwargs["fatturazione_immediata"], True,
         )
+
+
+# ══════════════════════════════════════════════════════════
+#  BE-B6 — il DDT ammette righe senza prezzo
+# ══════════════════════════════════════════════════════════
+# Scopo: presidiare il cuore del brief-ddt-righe-senza-prezzo — una riga il cui
+#        prezzo non e' risolvibile si SALVA, col prezzo a `None` e il motivo
+#        riportato. Fino al 2026-08-19 diventava `"0"`, e uno zero e' un prezzo:
+#        la riga entrava in fattura a valore nullo invece di essere fermata.
+class DdtRigaSenzaPrezzoTests(SimpleTestCase):
+    _PRICING = "apps.vendite.services.pricing_service.PricingService"
+
+    def setUp(self) -> None:
+        # `transaction.atomic()` a no-op: qui non c'e' DB, e quel che si prova
+        # sono gli argomenti con cui il repository viene chiamato.
+        patcher = patch(_ATOMIC, return_value=nullcontext())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    # Scopo: testata minima in DRAFT con quel che serve al pricing.
+    def _testata(self):
+        return {
+            "id": 7,
+            "stato_codice_interno": "DRAFT",
+            "billing_account_id": 100,
+            "utility_id": 5,
+            "data": "2026-08-19",
+            "emittente_fiscale_id": 3,
+        }
+
+    @patch(_PRICING)
+    @patch(_REPO)
+    def test_riga_semplice_senza_prezzo_si_salva(self, repo_cls, pricing_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_ddt.return_value = self._testata()
+        repo.is_articolo_composito.return_value = False
+        repo.next_riga_nr.return_value = 1
+        repo.create_riga.return_value = {"id": 31}
+        repo.get_emittente_sr_id_by_fiscale_id.return_value = 42
+        pricing_cls.return_value.resolve_prezzo_esito.return_value = {
+            "prezzo_finale": None,
+            "esito_codice": "E_CATEGORIA_LISTINO_NON_MAPPATA",
+        }
+
+        out = ddt_service.gestisci_riga(7, {"articolo_id": "ART1", "uom_operativa_id": 5})
+
+        # 1. la riga si salva, e si salva SENZA prezzo (non con "0")
+        self.assertIsNone(repo.create_riga.call_args.kwargs["prezzo_unitario"])
+        # 2. il chiamante riceve il motivo, con un testo gia' pronto (DEC-4)
+        self.assertEqual(out["prezzo_esito"]["codice"], "E_CATEGORIA_LISTINO_NON_MAPPATA")
+        self.assertTrue(out["prezzo_esito"]["messaggio"])
+        # 3. F-7/DEC-8: il motivo e' persistito, non solo restituito
+        meta = repo.create_riga.call_args.kwargs["meta"]
+        self.assertEqual(
+            meta["prezzo_resolver_context"]["esito_codice"],
+            "E_CATEGORIA_LISTINO_NON_MAPPATA",
+        )
+
+    @patch(_PRICING)
+    @patch(_REPO)
+    def test_riga_semplice_col_prezzo_invariata(self, repo_cls, pricing_cls) -> None:
+        # Controprova: quando il prezzo si risolve non cambia niente rispetto a
+        # prima, e in `meta` non compare nessuna chiave nuova.
+        repo = repo_cls.return_value
+        repo.get_ddt.return_value = self._testata()
+        repo.is_articolo_composito.return_value = False
+        repo.next_riga_nr.return_value = 1
+        repo.create_riga.return_value = {"id": 32}
+        repo.get_emittente_sr_id_by_fiscale_id.return_value = 42
+        pricing_cls.return_value.resolve_prezzo_esito.return_value = {
+            "prezzo_finale": "12.50", "esito_codice": None,
+        }
+
+        out = ddt_service.gestisci_riga(7, {"articolo_id": "ART1", "uom_operativa_id": 5})
+
+        self.assertEqual(repo.create_riga.call_args.kwargs["prezzo_unitario"], "12.50")
+        self.assertIsNone(out["prezzo_esito"])
+        self.assertIsNone(repo.create_riga.call_args.kwargs["meta"])
+
+    @patch(_PRICING)
+    @patch(_REPO)
+    def test_meta_del_client_non_viene_sovrascritto(self, repo_cls, pricing_cls) -> None:
+        # DEC-8, confine 2: `meta` e' del client, il motivo ci si FONDE.
+        repo = repo_cls.return_value
+        repo.get_ddt.return_value = self._testata()
+        repo.is_articolo_composito.return_value = False
+        repo.next_riga_nr.return_value = 1
+        repo.create_riga.return_value = {"id": 33}
+        repo.get_emittente_sr_id_by_fiscale_id.return_value = 42
+        pricing_cls.return_value.resolve_prezzo_esito.return_value = {
+            "prezzo_finale": None, "esito_codice": "E_PREZZO_LISTINO_RIGA_NON_TROVATA",
+        }
+
+        ddt_service.gestisci_riga(7, {
+            "articolo_id": "ART1", "uom_operativa_id": 5,
+            "meta": {"origine_import": "XYZ"},
+        })
+
+        meta = repo.create_riga.call_args.kwargs["meta"]
+        self.assertEqual(meta["origine_import"], "XYZ")
+        self.assertIn("prezzo_resolver_context", meta)
+
+    @patch(_REPO)
+    def test_riga_composita_niente_zero(self, repo_cls) -> None:
+        # V-6: il padre composito si inserisce con NULL. Il ricalcolo DB mette
+        # NULL se anche un solo figlio e' scoperto: partire da "0" dichiarerebbe
+        # un prezzo che nessuno ha deciso.
+        repo = repo_cls.return_value
+        repo.get_ddt.return_value = self._testata()
+        repo.is_articolo_composito.return_value = True
+        repo.next_riga_nr.return_value = 2
+        repo.create_riga.return_value = {"id": 34}
+        repo.get_emittente_sr_id_by_fiscale_id.return_value = 42
+
+        out = ddt_service.gestisci_riga(7, {"articolo_id": "KIT1", "uom_operativa_id": 5})
+
+        self.assertIsNone(repo.create_riga.call_args.kwargs["prezzo_unitario"])
+        self.assertTrue(out["is_composito"])
+        self.assertIsNone(out["prezzo_esito"])
+
+    @patch(_REPO)
+    def test_patch_prezzo_vuoto_cancella_il_prezzo(self, repo_cls) -> None:
+        # V-7: `aggiorna_riga` non e' stata toccata — cancellare il prezzo a
+        # mano funzionava gia'. Ma nessun test lo provava, e da oggi il FE ci si
+        # appoggia: la stringa vuota deve arrivare al repository come `None`,
+        # non come `""` (che il DB rifiuterebbe) e non come `0`.
+        repo = repo_cls.return_value
+        repo.get_ddt.return_value = self._testata()
+        repo.get_riga.return_value = {"id": 31, "ddt_id": 7}
+        repo.update_riga.return_value = {"id": 31}
+
+        ddt_service.aggiorna_riga(7, 31, {"prezzo_unitario": ""})
+
+        self.assertIsNone(repo.update_riga.call_args.kwargs["prezzo_unitario"])

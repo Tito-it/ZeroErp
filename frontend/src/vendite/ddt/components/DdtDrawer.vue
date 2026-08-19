@@ -117,6 +117,18 @@ const createdId = ref(null)
 // testata si nasconde per non duplicare i bottoni di DdtRigaForm.
 const formRigaAperto = ref(false)
 const effectiveDdtId = computed(() => createdId.value ?? props.ddtId)
+// FE-A: «questo documento vende?». La risposta sta nella causale di trasporto
+// (DEC-5 del brief-ddt-righe-senza-prezzo) e ha TRE stati, non due:
+//   true  -> vende: una riga senza prezzo blocchera' l'emissione
+//   false -> non vende (conto visione, ri-consegna): il prezzo assente e' normale
+//   null  -> causale non ancora scelta
+// Il confronto e' `=== true` di proposito: `null` deve comportarsi come «non
+// pretendere il prezzo», non come «vende». Il BE non fa COALESCE apposta per
+// lasciare qui la distinzione.
+const causaleFatturabile = computed(
+  () => detail.value?.causale_trasporto_fatturabile === true,
+)
+
 const hasDetail = computed(() => detail.value !== null)
 
 // Readonly cumulativo: prop esplicita OR readonly area iniettato dal parent OR
@@ -678,6 +690,7 @@ const drawerActions = computed(() => {
         <DdtRigheTable
           :ddt-id="effectiveDdtId"
           :is-modificabile="canEditRighe && !isReadonly"
+          :causale-fatturabile="causaleFatturabile"
           @changed="loadDetail()"
           @form-aperto="(v) => { formRigaAperto = v }" />
 

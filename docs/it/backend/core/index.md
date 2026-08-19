@@ -12,6 +12,7 @@
 - [api_logout](manual/api_logout.md) — Invalida il refresh token corrente (blacklist) e registra l'evento LOGOUT nella tabella dbops.sessioni_utente, chiudendo la sessione associata al JTI.
 - [api_lookup_codici](manual/api_lookup_codici.md) — Espone una ricerca generica su tabelle di configurazione con struttura id / codice / descrizione. Permette autocompletamento e ricerca ILIKE da UI senza dover creare endpoint dedicati per ogni tabella config.
 - [api_multi_veste_token](manual/api_multi_veste_token.md) — Documenta il contratto HTTP dei 6 endpoint di autenticazione post refactor multi-face (§8.3.1-§8.3.5): 3 login + 3 refresh, uno per namespace (admin / portale / shop). Ogni namespace espone solo il subset di vesti che g…
+- [api_note_documento](manual/api_note_documento.md) — Il CRUD delle **note partizionate** appese a un documento: preventivo, offerta, contratto, ordine, DDT, fattura. **Un solo contratto**, sei montaggi — qui e' descritto una volta, e le pagine di dominio dicono solo cosa…
 - [api_pagination](manual/api_pagination.md) — Fornire configurazioni DRF standard per paginazione coerente su endpoint list/search.
 - [api_parameter_settings](manual/api_parameter_settings.md) — Esporre via HTTP la gestione dei parametri di sistema con risoluzione override multi-livello (user, group, emittente fiscale) e CRUD override personale operatore.
 - [api_parameters](manual/api_parameters.md) — Espone la gestione dei parametri di sistema (config.parameters) con risoluzione override multi-livello per l'utente autenticato. Supporta:

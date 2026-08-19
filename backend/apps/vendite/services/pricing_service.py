@@ -107,18 +107,58 @@ class PricingService:
             function_name="pricing_service",
         )
 
-    # =================================================================
-    # F2-BE-09 — resolver principale (3 stadi)
-    # =================================================================
-
-    # Scopo: Risolve il prezzo unitario per (articolo, uom, data, BA, utility,
-    #        emittente, classe_utenza?). Valida input, delega al DB, converte
-    #        P0001 di dominio in ServiceError preservando il codice originale
-    #        quando riconosciuto.
+    # Scopo: il contesto che finisce nel diario quando il resolver fallisce.
+    #        Uno solo per i due metodi: sono gli stessi parametri, e un diario
+    #        che li descrive in due modi e' un diario su cui non si puo'
+    #        contare.
     #
-    #        Contratto caller: `emittente_soggetto_ruolo_id` e' derivato dal
-    #        JWT dell'operatore (mapping 1-a-1) dal chiamante API/pipeline.
-    def resolve_prezzo(
+    #        ⚠️ `classe_utenza_id` e `listino_versione_id_preferito` NON sono
+    #        decorazione: sono i due parametri che cambiano lo STADIO a cui il
+    #        resolver fallisce. Senza, due tentativi diversi lasciano un
+    #        contesto IDENTICO e diventano indistinguibili a posteriori — e'
+    #        l'ambiguita' che ha fatto perdere tempo al team DB il 2026-08-19
+    #        (brief-be-pricing-codice-errore-fantasma.md §6.3).
+    @staticmethod
+    def _contesto_diario(
+        *,
+        articolo_str: str,
+        uom_id: int,
+        data_riferimento: date,
+        ba_id: int,
+        utility_id: int,
+        classe_utenza_id: int | None,
+        padre_str: str | None,
+        listino_versione_id_preferito: int | None,
+    ) -> dict[str, Any]:
+        return {
+            "articolo_id": articolo_str,
+            "uom_id": uom_id,
+            "ba_id": ba_id,
+            "utility_id": utility_id,
+            "data_riferimento": data_riferimento.isoformat(),
+            "articolo_padre_contesto": padre_str,
+            "classe_utenza_id": classe_utenza_id,
+            "listino_versione_id_preferito": listino_versione_id_preferito,
+        }
+
+    # Scopo: i guard sugli input dei due resolver — `resolve_prezzo` (guscio) e
+    #        `resolve_prezzo_esito` (nucleo). Ritorna la coppia gia' normalizzata
+    #        `(articolo_str, padre_str)`, che e' l'unico esito che i chiamanti
+    #        usano oltre al fatto che non hanno sollevato.
+    #
+    #        ⭐ Estratto il 2026-08-19 alla SECONDA occorrenza identica (regola
+    #        del 2, decisione DEC-7 del brief-ddt-righe-senza-prezzo): otto guard
+    #        uguali in due metodi non sono due cose simili, sono la stessa cosa
+    #        scritta due volte — e la forma del difetto che ne nasce e' sempre la
+    #        stessa: una regola nuova entra in una copia sola.
+    #
+    #        ⚠️ QUI DENTRO NON ENTRA LA TRADUZIONE DEL `DatabaseError`, e non e'
+    #        una dimenticanza: li' i due metodi DIFFERISCONO davvero. Il guscio
+    #        traduce anche i codici del listino (`_KNOWN_DB_ERROR_MARKERS`), il
+    #        nucleo non solleva quei codici perche' li restituisce come esito.
+    #        Un helper che accentrasse anche quella riuscirebbe solo a rendere
+    #        difficile vedere la differenza che conta.
+    def _valida_input_resolver(
         self,
         *,
         articolo_id: UUID | str,
@@ -127,10 +167,10 @@ class PricingService:
         ba_id: int,
         utility_id: int,
         emittente_soggetto_ruolo_id: int,
-        classe_utenza_id: int | None = None,
-        articolo_padre_contesto: UUID | str | None = None,
-        listino_versione_id_preferito: int | None = None,
-    ) -> dict[str, Any]:
+        classe_utenza_id: int | None,
+        articolo_padre_contesto: UUID | str | None,
+        listino_versione_id_preferito: int | None,
+    ) -> tuple[str, str | None]:
         # require_uuid accetta solo payload dict; simulo un payload per
         # riutilizzare l'helper centralizzato del validator.
         articolo_str = self._v.require_uuid({"articolo_id": articolo_id}, "articolo_id")
@@ -161,6 +201,43 @@ class PricingService:
                 {"articolo_padre_contesto": articolo_padre_contesto},
                 "articolo_padre_contesto",
             )
+        return articolo_str, padre_str
+
+    # =================================================================
+    # F2-BE-09 — resolver principale (3 stadi)
+    # =================================================================
+
+    # Scopo: Risolve il prezzo unitario per (articolo, uom, data, BA, utility,
+    #        emittente, classe_utenza?). Valida input, delega al DB, converte
+    #        P0001 di dominio in ServiceError preservando il codice originale
+    #        quando riconosciuto.
+    #
+    #        Contratto caller: `emittente_soggetto_ruolo_id` e' derivato dal
+    #        JWT dell'operatore (mapping 1-a-1) dal chiamante API/pipeline.
+    def resolve_prezzo(
+        self,
+        *,
+        articolo_id: UUID | str,
+        uom_id: int,
+        data_riferimento: date,
+        ba_id: int,
+        utility_id: int,
+        emittente_soggetto_ruolo_id: int,
+        classe_utenza_id: int | None = None,
+        articolo_padre_contesto: UUID | str | None = None,
+        listino_versione_id_preferito: int | None = None,
+    ) -> dict[str, Any]:
+        articolo_str, padre_str = self._valida_input_resolver(
+            articolo_id=articolo_id,
+            uom_id=uom_id,
+            data_riferimento=data_riferimento,
+            ba_id=ba_id,
+            utility_id=utility_id,
+            emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
+            classe_utenza_id=classe_utenza_id,
+            articolo_padre_contesto=articolo_padre_contesto,
+            listino_versione_id_preferito=listino_versione_id_preferito,
+        )
 
         try:
             return self._repo.resolve_prezzo_listino_v2(
@@ -181,22 +258,91 @@ class PricingService:
                 fallback_code=E_VENDITE_PRICING_FAILED,
                 message="Impossibile risolvere il prezzo listino.",
                 function_name="pricing_service.resolve",
-                # ⚠️ `classe_utenza_id` e `listino_versione_id_preferito` NON
-                # sono decorazione: sono i due parametri che cambiano lo stadio
-                # a cui il resolver fallisce. Senza, due tentativi diversi
-                # scrivono nel diario un contesto IDENTICO e diventano
-                # indistinguibili a posteriori — e' esattamente l'ambiguita' che
-                # ha fatto perdere tempo al team DB il 2026-08-19
-                # (brief-be-pricing-codice-errore-fantasma.md §6.3).
-                context={
-                    "articolo_id": articolo_str,
-                    "uom_id": uom_id,
-                    "ba_id": ba_id,
-                    "utility_id": utility_id,
-                    "data_riferimento": data_riferimento.isoformat(),
-                    "articolo_padre_contesto": padre_str,
-                    "classe_utenza_id": classe_utenza_id,
-                    "listino_versione_id_preferito": listino_versione_id_preferito,
-                },
+                context=self._contesto_diario(
+                    articolo_str=articolo_str,
+                    uom_id=uom_id,
+                    data_riferimento=data_riferimento,
+                    ba_id=ba_id,
+                    utility_id=utility_id,
+                    classe_utenza_id=classe_utenza_id,
+                    padre_str=padre_str,
+                    listino_versione_id_preferito=listino_versione_id_preferito,
+                ),
             )
 
+    # =================================================================
+    # BE-A3 — resolver «a esito» (nucleo, non solleva quando non risolve)
+    # =================================================================
+
+    # Scopo: Risolve il prezzo come `resolve_prezzo`, ma sul NUCLEO: quando il
+    #        prezzo non e' risolvibile **non solleva** — torna il dict con
+    #        `prezzo_finale = None` e il motivo in `esito_codice`.
+    #
+    #        A CHI SERVE, e perche' non e' il default. Il DDT e' l'unico
+    #        documento dove il prezzo mancante non e' un errore: una riga in
+    #        conto visione o in ri-consegna nasce senza prezzo, e pretenderlo
+    #        significa impedire di salvarla. Ordini, preventivi, contratti e
+    #        offerte continuano a chiamare `resolve_prezzo`: li' il prezzo
+    #        assente e' un difetto, e il RAISE e' l'unica cosa che lo ferma.
+    #
+    #        ⚠️ IL `try/except DatabaseError` RESTA, e non e' ridondante: il
+    #        nucleo non solleva per «prezzo non risolto», ma solleva ancora per
+    #        parametri invalidi (`E_PARAMETRO_INVALIDO`) — e quella eccezione
+    #        va tradotta come sempre, o arriva al client come guasto generico.
+    #
+    #        Riferimento: brief-ddt-righe-senza-prezzo §16 BE-A3, DEC-1, DEC-2.
+    def resolve_prezzo_esito(
+        self,
+        *,
+        articolo_id: UUID | str,
+        uom_id: int,
+        data_riferimento: date,
+        ba_id: int,
+        utility_id: int,
+        emittente_soggetto_ruolo_id: int,
+        classe_utenza_id: int | None = None,
+        articolo_padre_contesto: UUID | str | None = None,
+        listino_versione_id_preferito: int | None = None,
+    ) -> dict[str, Any]:
+        articolo_str, padre_str = self._valida_input_resolver(
+            articolo_id=articolo_id,
+            uom_id=uom_id,
+            data_riferimento=data_riferimento,
+            ba_id=ba_id,
+            utility_id=utility_id,
+            emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
+            classe_utenza_id=classe_utenza_id,
+            articolo_padre_contesto=articolo_padre_contesto,
+            listino_versione_id_preferito=listino_versione_id_preferito,
+        )
+
+        try:
+            return self._repo.resolve_prezzo_listino_v2_esito(
+                articolo_id=articolo_str,
+                uom_id=uom_id,
+                data_riferimento=data_riferimento,
+                ba_id=ba_id,
+                utility_id=utility_id,
+                emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
+                classe_utenza_id=classe_utenza_id,
+                articolo_padre_contesto=padre_str,
+                listino_versione_id_preferito=listino_versione_id_preferito,
+            )
+        except DatabaseError as exc:
+            ErrorManager.raise_from_database_error(
+                exc,
+                known_markers=_KNOWN_DB_ERROR_MARKERS,
+                fallback_code=E_VENDITE_PRICING_FAILED,
+                message="Impossibile risolvere il prezzo listino.",
+                function_name="pricing_service.resolve_esito",
+                context=self._contesto_diario(
+                    articolo_str=articolo_str,
+                    uom_id=uom_id,
+                    data_riferimento=data_riferimento,
+                    ba_id=ba_id,
+                    utility_id=utility_id,
+                    classe_utenza_id=classe_utenza_id,
+                    padre_str=padre_str,
+                    listino_versione_id_preferito=listino_versione_id_preferito,
+                ),
+            )

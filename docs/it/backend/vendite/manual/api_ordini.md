@@ -316,8 +316,10 @@ del resolver (comportamento storico).
 ### Note `GET/POST /<id>/note/` + `GET/PATCH/DELETE /<id>/note/<note_id>/`
 
 Note partizionate (`vendite.note_ordini`, `target_tipo='ORDINE'`) via building
-block `PartitionedNoteRepository` + `make_note_views`. Contratto identico alle
-note preventivo/contratto/offerta (testata + riga via `target_riga_id`).
+block `PartitionedNoteRepository` + `make_note_views`. Contratto identico agli
+altri cinque domini (testata + riga via `target_riga_id`): payload, filtri,
+`Idempotency-Key`, codici errore e permessi stanno in
+[api_note_documento](../../core/manual/api_note_documento.md).
 
 ### Documenti / Stampa `…/<id>/documenti/…`
 

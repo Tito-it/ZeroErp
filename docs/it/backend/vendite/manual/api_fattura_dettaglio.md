@@ -236,7 +236,9 @@ Due punti di merito:
 
 ## Note della fattura
 
-Sesto dominio cablato sul building block note partizionate.
+Sesto dominio cablato sul building block note partizionate — il contratto
+comune (payload, filtri, `Idempotency-Key`, errori, permessi) sta in
+[api_note_documento](../../core/manual/api_note_documento.md); qui sotto solo i delta della fattura.
 
 - `GET/POST /api/v1/vendite/fatture/<fattura_id>/note/`
 - `GET/PATCH/DELETE /api/v1/vendite/fatture/<fattura_id>/note/<note_id>/`
