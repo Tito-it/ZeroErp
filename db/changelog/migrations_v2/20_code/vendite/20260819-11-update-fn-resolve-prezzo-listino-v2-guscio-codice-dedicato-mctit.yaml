@@ -1,0 +1,241 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il guard del guscio prende il codice che gli spetta.
+#
+# ⛔ NASCE DA UN ROSSO IN CI, ed e' il caso in cui il cancello ha ragione e il
+# codice ha torto. Il rubinetto degli accumulatori (B-7,
+# scripts/codici-errore-baseline.sh) ha bocciato la build:
+#
+#     🔴 ACCUMULA  E_PARAMETRO_INVALIDO — famiglia nuova: NOT_FOUND
+#                  (prima: ENUM,PARAMETRO · ora: ENUM,NOT_FOUND,PARAMETRO)
+#
+# IL DIFETTO. Il changeSet 20260819-08 aveva messo, nel guscio, un guard che
+# scatta quando il nucleo _esito non restituisce righe — e gli aveva dato
+# E_PARAMETRO_INVALIDO perche' era a portata di mano. Ma li' NESSUN parametro e'
+# invalido: e' un'invariante interna rotta, un caso che l'operatore non puo'
+# nemmeno provocare. Il classificatore
+# (dbops.vw_codici_errore_forme_condizione) legge la guardia `IF NOT FOUND` e
+# la etichetta NOT_FOUND: cosi' un codice nato per i parametri si trovava a
+# coprire anche l'assenza di risultati.
+#
+# ⭐ E' esattamente cio' che il presidio esiste per fermare: un codice che copre
+# condizioni sempre piu' diverse smette di dire qualcosa a chi lo legge, e a
+# quel punto il catalogo torna a essere il bugiardino da cui il cantiere dei
+# codici errore e' partito.
+#
+# ⚠️ LA BASELINE NON SI TOCCA. Il messaggio del cancello offre due strade —
+# creare il codice, oppure allargare la baseline dichiarando la ragione. Qui la
+# seconda sarebbe stata una scorciatoia: l'uso NON era legittimo. La baseline si
+# allarga quando un codice copre davvero una condizione nuova che gli
+# appartiene, non quando chi scrive ha scelto male.
+#
+# LA CORREZIONE. Codice nuovo E_VENDITE_PRICING_ESITO_ASSENTE, classe TECNICO
+# (append ai CSV config/codici_errore.csv e config/messaggi_errore.csv, id 931).
+# Nasce con UNA sola famiglia — NOT_FOUND — quindi non fa scattare ne' il
+# controllo sugli accumuli ne' quello sui codici che nascono gia' con due.
+#
+# ⚠️ Nota per il BE: codice nuovo ⇒ va rigenerato error_policies_generated.py.
+# Classe TECNICO ⇒ 500, che e' corretto: se scatta, non c'e' niente che
+# l'operatore possa correggere.
+#
+#
+# ⛔ NOTA SULLA PRECONDIZIONE, e nasce da un migrate fallito il 2026-08-19.
+# La prima stesura verificava che E_VENDITE_PRICING_ESITO_ASSENTE fosse gia' in
+# config.messaggi_errore. Non puo' funzionare: **20_code gira PRIMA di 80_data**,
+# e il codice nuovo arriva dai CSV, cioe' dalla fase successiva. La condizione
+# era falsa per costruzione e ha fermato la migrazione:
+#
+#     SQL Precondition failed. Expected '1' got '0'
+#
+# ⚠️ Su un DB gia' migrato una volta sarebbe passata — il CSV era stato caricato
+# nella corsa precedente — e questo la rende peggiore, non migliore: avrebbe
+# funzionato in sviluppo e sarebbe fallita sulla ricostruzione da zero, cioe' in
+# CI. Una precondizione puo' guardare solo la PROPRIA fase o quelle prima.
+#
+# Ora verifica cio' che questo changeSet richiede davvero: che esista il nucleo
+# a cui il guscio delega. Il codice errore non serve al CREATE — PL/pgSQL non
+# valida le stringhe — serve al RUNTIME, e per allora 80_data e' passata.
+#
+# Corpo: dal changeSet 20260819-08 applicato stamattina, che e' anche la doc
+# auto-generata dell'oggetto vivo (la funzione non e' stata toccata da altri).
+# Cambia SOLO la stringa del codice. Firma, RETURNS TABLE e comportamento:
+# invariati.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260819-11-update-fn-resolve-prezzo-listino-v2-guscio-codice-dedicato-mctit.yaml
+
+  - changeSet:
+      id: 20260819-11-update-fn-resolve-prezzo-listino-v2-guscio-codice-dedicato
+      author: mctit
+      runOnChange: false
+      comment: >
+        Il guard «il nucleo non ha restituito righe» in
+        vendite.fn_resolve_prezzo_listino_v2 passa da E_PARAMETRO_INVALIDO al
+        codice dedicato E_VENDITE_PRICING_ESITO_ASSENTE (TECNICO, 931).
+        Corregge il rosso del rubinetto degli accumulatori B-7: li' non c'e'
+        nessun parametro invalido, c'e' un'invariante interna rotta.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_resolve_prezzo_listino_v2_esito'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_resolve_prezzo_listino_v2(
+                  p_articolo_id                   catalogo.articoli.id%TYPE,
+                  p_uom_id                        catalogo.articoli.uom_id%TYPE,
+                  p_data_riferimento              date,
+                  p_ba_id                         anagrafiche.billing_account.id%TYPE,
+                  p_utility_id                    anagrafiche.billing_account.utility_id%TYPE,
+                  p_emittente_soggetto_ruolo_id   anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE,
+                  p_classe_utenza_id              config.classi_utenze.id%TYPE      DEFAULT NULL,
+                  p_articolo_padre_contesto       catalogo.articoli.id%TYPE         DEFAULT NULL,
+                  p_listino_versione_id_preferito vendite.listini_versioni.id%TYPE  DEFAULT NULL
+              )
+              RETURNS TABLE(
+                  prezzo_finale                   vendite.listini_righe.prezzo%TYPE,
+                  prezzo_base_snapshot            vendite.listini_righe.prezzo%TYPE,
+                  tipo_variazione_applicata       anagrafiche.categorie_clienti_listini.tipo_variazione%TYPE,
+                  valore_variazione_applicata     anagrafiche.categorie_clienti_listini.valore_variazione%TYPE,
+                  origine                         varchar,
+                  listino_id                      vendite.listini.id%TYPE,
+                  listino_versione_id             vendite.listini_versioni.id%TYPE,
+                  listino_riga_id                 vendite.listini_righe.id%TYPE,
+                  contratto_id                    vendite.contratti.id%TYPE,
+                  promo_id                        vendite.promo_articoli.id%TYPE,
+                  categoria_cliente_listino_id    anagrafiche.categorie_clienti_listini.id%TYPE,
+                  categoria_cliente_id_snapshot   anagrafiche.billing_account.categoria_cliente_id%TYPE,
+                  classe_utenza_id_snapshot       config.classi_utenze.id%TYPE,
+                  tipo_eccezione                  vendite.tipo_eccezione_contratto
+              )
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              -- Scopo: guscio storico del resolver prezzi. Delega TUTTA la
+              --   risoluzione a fn_resolve_prezzo_listino_v2_esito e converte
+              --   l'esito in eccezione, che e' il contratto che i chiamanti
+              --   esistenti si aspettano da sempre.
+              --   La logica di risoluzione NON sta piu' qui: sta nel nucleo, in
+              --   un posto solo. Chi vuole modificarla va li'.
+              DECLARE
+                  v_esito record;
+              BEGIN
+                  SELECT * INTO v_esito
+                    FROM vendite.fn_resolve_prezzo_listino_v2_esito(
+                             p_articolo_id,
+                             p_uom_id,
+                             p_data_riferimento,
+                             p_ba_id,
+                             p_utility_id,
+                             p_emittente_soggetto_ruolo_id,
+                             p_classe_utenza_id,
+                             p_articolo_padre_contesto,
+                             p_listino_versione_id_preferito
+                         );
+
+                  -- Il nucleo ritorna SEMPRE una riga: se INTO non trova nulla
+                  -- e' successo qualcosa che non deve passare in silenzio.
+                  -- ⚠️ Guard necessario perche' SELECT INTO senza righe non
+                  --   solleva: azzera le variabili e prosegue, e qui
+                  --   proseguire vorrebbe dire restituire un prezzo NULL come
+                  --   se fosse un prezzo risolto.
+                  -- ⚠️ Codice DEDICATO, non piu' E_PARAMETRO_INVALIDO come nella
+                  --   prima stesura (20260819-08): qui nessun parametro e'
+                  --   invalido, e' un'invariante interna rotta, e l'operatore
+                  --   non puo' nemmeno provocarla. Il rubinetto degli
+                  --   accumulatori (B-7) ha bocciato l'uso precedente in CI —
+                  --   E_PARAMETRO_INVALIDO acquistava la famiglia NOT_FOUND —
+                  --   e aveva ragione: un codice che copre condizioni sempre
+                  --   piu' diverse smette di dire qualcosa a chi lo legge.
+                  --
+                  --   ⚠️ E il commento sta QUI e non fra gli argomenti della
+                  --   chiamata: infilato li' in mezzo, il classificatore non
+                  --   riesce piu' ad agganciare il codice alla guardia e il
+                  --   punto sparisce dal presidio — verde per sottrazione.
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'fn_resolve_prezzo_listino_v2',
+                          'E_VENDITE_PRICING_ESITO_ASSENTE',
+                          jsonb_build_object(
+                              'motivo',      'il nucleo _esito non ha restituito righe',
+                              'articolo_id', p_articolo_id,
+                              'ba_id',       p_ba_id
+                          ),
+                          NULL::uuid,
+                          'fn_resolve_prezzo_listino_v2_esito non ha restituito righe'
+                      );
+                  END IF;
+
+                  -- Esito valorizzato: si solleva col codice, il contesto e i
+                  -- valori che il nucleo ha preparato. Identico a com'era
+                  -- quando il raise stava dentro al corpo.
+                  IF v_esito.esito_codice IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'fn_resolve_prezzo_listino_v2',
+                          v_esito.esito_codice,
+                          v_esito.esito_context,
+                          NULL::uuid,
+                          VARIADIC v_esito.esito_valori
+                      );
+                  END IF;
+
+                  -- Risolto: proiezione delle 14 colonne storiche. Le tre
+                  -- colonne di esito restano nel nucleo e non escono di qui.
+                  prezzo_finale                 := v_esito.prezzo_finale;
+                  prezzo_base_snapshot          := v_esito.prezzo_base_snapshot;
+                  tipo_variazione_applicata     := v_esito.tipo_variazione_applicata;
+                  valore_variazione_applicata   := v_esito.valore_variazione_applicata;
+                  origine                       := v_esito.origine;
+                  listino_id                    := v_esito.listino_id;
+                  listino_versione_id           := v_esito.listino_versione_id;
+                  listino_riga_id               := v_esito.listino_riga_id;
+                  contratto_id                  := v_esito.contratto_id;
+                  promo_id                      := v_esito.promo_id;
+                  categoria_cliente_listino_id  := v_esito.categoria_cliente_listino_id;
+                  categoria_cliente_id_snapshot := v_esito.categoria_cliente_id_snapshot;
+                  classe_utenza_id_snapshot     := v_esito.classe_utenza_id_snapshot;
+                  tipo_eccezione                := v_esito.tipo_eccezione;
+
+                  RETURN NEXT;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_resolve_prezzo_listino_v2(
+                  catalogo.articoli.id%TYPE,
+                  catalogo.articoli.uom_id%TYPE,
+                  date,
+                  anagrafiche.billing_account.id%TYPE,
+                  anagrafiche.billing_account.utility_id%TYPE,
+                  anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE,
+                  config.classi_utenze.id%TYPE,
+                  catalogo.articoli.id%TYPE,
+                  vendite.listini_versioni.id%TYPE)
+              IS 'GUSCIO del resolver prezzi v5 — 9 param, firma e RETURNS invariati dal '
+                 '20260520-01. Dal 20260819-08 non contiene piu'' la logica di risoluzione: '
+                 'delega a vendite.fn_resolve_prezzo_listino_v2_esito (il NUCLEO) e converte '
+                 'l''esito in eccezione via script.fn_log_and_raise_error. Per i chiamanti '
+                 'non cambia nulla — stesso prezzo, stesso codice, stessa riga di log — ed e'' '
+                 'voluto: ordini, preventivi, contratti e offerte DEVONO continuare a '
+                 'rifiutare il prezzo non risolvibile. Chi ha bisogno della risoluzione NON '
+                 'obbligatoria (il DDT) chiama il nucleo. ⚠️ Modifiche alla risoluzione vanno '
+                 'fatte nel NUCLEO, non qui: qui si romperebbe l''unicita'' del corpo, che e'' '
+                 'la ragione per cui le due funzioni esistono. '
+                 'Brief: brief-ddt-righe-senza-prezzo §9 slice A.';

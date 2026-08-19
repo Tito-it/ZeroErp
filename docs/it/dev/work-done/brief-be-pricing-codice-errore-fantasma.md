@@ -8,9 +8,33 @@
 **Perimetro:** `apps/vendite/services/pricing_service.py`,
 `apps/core/services/error_manager.py`. **Nessuna modifica DB richiesta.**
 **Origine:** trovato istruendo una domanda del
-[brief-ddt-righe-senza-prezzo](brief-ddt-righe-senza-prezzo.md) §7 R-10 / registro F-4.
+[brief-ddt-righe-senza-prezzo](../work-in-progress/brief-ddt-righe-senza-prezzo.md) §7 R-10 / registro F-4.
 Il difetto non c'entra col DDT: **tocca ogni dominio che chiama il pricing** —
 preventivi, ordini, contratti, offerte, DDT.
+
+> ## ✅ CHIUSO — 2026-08-19, entrambi i lati
+>
+> **Le sei proposte sono fatte e applicate.** P-1, P-2, P-3, P-4 lato BE
+> (§14-bis → §14-quater); **P-6** e **P-5** lato DB, più il ritiro del codice
+> 141 (§16 → §19). Migrazione `20260819-10` applicata e committata.
+>
+> **Verificato dopo l'apply, non solo scritto:**
+>
+> * il cancello `guardrail_codice_errore_strutturato.sql` è **verde** —
+>   *«nessun codice ritirato ancora sollevato (80 ritirati)»*: il controllo (D),
+>   che era il rischio concreto del ritiro, non protesta;
+> * `config.codici_errore.obsoleto_dal = 2026-08-19` per il 141, e il corpo del
+>   nucleo non nomina più quel codice fra apici;
+> * pgTAP `test-fn-resolve-prezzo-listino-esito-v1.sql` **12/12** eseguito come
+>   `zeroerp_app` con RLS attiva — la corsa definitiva, non quella da owner.
+>
+> ⚠️ **La tesi originale di questo brief era sbagliata** e la PARTE II la
+> smonta con cinque prove. Le sezioni §2→§8 restano com'erano scritte perché il
+> percorso vale più della conclusione: chi legge parta dal **§9**.
+>
+> **Coda dichiarata, non urgente** (§14-quater): fuori da `area='backend'` i
+> gruppi ripetuti di `dbops.error_log` vanno classificati a mano, perché lì una
+> soglia non separa i test dal traffico vero. Da oggi non se ne aggiungono.
 
 > ⚠️ **RISPOSTA BE del 2026-08-19 — leggere la PARTE II (§9 → §15) prima di
 > agire su questo brief.** La misura del §2 e' corretta ma l'inferenza no: le
@@ -103,11 +127,11 @@ che il DB non emette dal 14 aprile, e ne trarrà conclusioni su una funzione che
 non l'ha mai sollevato.
 
 ⭐ È la stessa forma di difetto di
-[brief-be-rinomina-codici-known-markers](../work-done/brief-be-rinomina-codici-known-markers.md)
+[brief-be-rinomina-codici-known-markers](brief-be-rinomina-codici-known-markers.md)
 §2, in un altro file: *«il database dice una cosa, l'API ne dice un'altra, e la
 differenza non si vede da nessuna parte»*. Lì il perimetro era
 `pratiche_service.py`; qui è `pricing_service.py`. Il cantiere
-[classe dei codici errore](../work-done/brief-db-be-classe-codici-errore.md) si è
+[classe dei codici errore](brief-db-be-classe-codici-errore.md) si è
 chiuso il 2026-08-08 — questa è una **ricaduta**, non un residuo.
 
 ## 5. Che cosa ho già escluso (per non farvelo rifare)
@@ -164,7 +188,7 @@ qualcuno di casa lì.
 
 Il ramo del §1 **resta nel codice** e diventerà un «esito» nel nucleo puro
 previsto dalla slice A del
-[brief-ddt-righe-senza-prezzo](brief-ddt-righe-senza-prezzo.md) §9 — **con un
+[brief-ddt-righe-senza-prezzo](../work-in-progress/brief-ddt-righe-senza-prezzo.md) §9 — **con un
 commento che dice che oggi è irraggiungibile e perché**. Non si cancella: se un
 domani la NOT NULL cadesse, il comportamento giusto è già scritto. Ma non resta
 neanche muto, che è l'errore che questo giro ha trovato **due volte** nello
@@ -475,12 +499,22 @@ non se ne aggiungono altre.
       `listino_versione_id_preferito` (§14-bis);
 * [x] **P-3** — deciso e attuato: logga il DB, il BE non duplica (§14-ter);
 * [x] **P-4** — ripulite le righe di test gia' scritte (§14-quater);
-* [ ] **P-6** — `articolo_id`, `ba_id`, `uom_id` nell'`esito_context` del
-      nucleo del resolver, altrimenti il diario li perde (§14-ter). **Lato DB.**
-* [ ] **P-5** — deciso se azzerare anche le 3 righe per run che scrive il DB dai
-      test e2e (`area='test'`), oggi auto-dichiarate. **Decisione DB.**
+* [x] **P-6** — `articolo_id`, `ba_id`, `uom_id` nell'`esito_context` del
+      nucleo del resolver, altrimenti il diario li perde (§14-ter). **Lato DB** →
+      fatto con `20260819-10`, e con dentro anche i due campi di P-2 che il
+      passaggio all'helper aveva sottratto al pricing (**§16**). applicato;
+* [x] **P-5** — deciso se azzerare anche le 3 righe per run che scrive il DB dai
+      test e2e (`area='test'`), oggi auto-dichiarate. **Decisione DB** →
+      **restano**: si dichiarano, sono lo 0,6% della tabella, e il volume ha già
+      un padrone in `cleanup_at` (**§18**).
 
 ### Cosa cambia per il §8
+
+> ⭐ **Aggiornamento DB, 2026-08-19**: il vincolo verso il BE cade come scrivete
+> qui sotto, ma ne è comparso uno **interno** che non conoscevamo — il controllo
+> (D) del guardrail dei codici errore vieta di ritirare un codice che una
+> funzione viva nomina fra apici. Il ramo morto che il §8 prometteva di
+> conservare è stato quindi **rimosso**, prima del ritiro. Dettaglio in **§17**.
 
 ⛔ **Il vincolo «non ritirare 141 prima che il BE smetta di produrlo» cade.** Il
 backend non lo produce, e non lo ha mai prodotto in produzione: lo nomina solo
@@ -495,3 +529,121 @@ emette piu'. Potete ritirarlo **quando volete**, senza aspettare noi.
   ritirati, quel test lo scoprirebbe **al posto vostro** — ditecelo prima;
 * il ripiego di `error_messages_fallback.py` per 141 **resta**: un codice
   ritirato continua a dover risolvere, perche' il diario contiene le sue righe.
+
+---
+
+# PARTE III — Chiusura DB
+
+**Chi scrive:** DB (`dev/db-tid`), 2026-08-19.
+**Cosa contiene:** P-6 fatto, il ritiro del 141 fatto, la decisione su P-5, e la
+risposta alle due avvertenze del §15.
+✅ **Applicato il 2026-08-19** (`20260819-10` + la riga di CSV), verificato
+dopo l'apply: vedi il blocco di chiusura in testa al file.
+
+## 16. P-6 — fatto, e un po' più di quanto chiesto
+
+**Changeset `20_code/vendite/20260819-10-update-fn-resolve-prezzo-listino-v2-esito-contesto-e-ramo-morto-mctit.yaml`.**
+
+La richiesta era esatta e l'abbiamo verificata prima di eseguirla: sui sette
+esiti del nucleo, `articolo_id` compariva in tre, `uom_id` in tre, `ba_id` in
+**nessuno**. E l'esito del §3 — `E_CATEGORIA_LISTINO_NON_MAPPATA` — non ne aveva
+neanche uno: portava categoria, utility, emittente, classe e data, cioè i campi
+del proprio stadio e basta.
+
+**La forma.** Un `v_ctx_base` costruito una volta sola con **tutti e nove** i
+parametri della chiamata; ogni esito diventa `v_ctx_base || jsonb_build_object(…)`.
+L'operatore `||` fa vincere l'operando destro, quindi i campi specifici di
+ciascun codice restano quelli di prima: **nessun messaggio cambia** — verificato,
+stessi valori VARIADIC e stesso testo sollevato.
+
+⭐ **Oltre ai tre chiesti ci sono `classe_utenza_id` e
+`listino_versione_id_preferito`, e non è zelo: rimette in piedi ciò che il §14-ter
+segnalava come perso.** La vostra nota su P-2 dice che l'arricchimento lato BE
+«non copre più il caso del pricing, che passa dall'helper». Ora quei due campi li
+scrive il database, sulla riga che resta — quindi il perimetro che P-2 aveva
+guadagnato non si perde, cambia solo chi lo scrive. È anche la mancanza che il
+vostro §11 dichiara «da sanare a prescindere»: sanata.
+
+**Presidio**: `db/pgtap/vendite/test-fn-resolve-prezzo-listino-esito-v1.sql`,
+test 12 — l'esito porta gli input della chiamata **e** conserva i campi del
+proprio stadio. Suite 12/12 verde.
+
+## 17. Il 141 va in pensione — fatto, con un vincolo di ordine che non conoscevamo
+
+Ritirato: `obsoleto_dal = 2026-08-19` nel CSV `80_data/sql/config/codici_errore.csv`
+(modifica del valore nel CSV, non un `UPDATE` a parte: il mirror `loadUpdateData`
+rilegge).
+
+⚠️ **Ma prima abbiamo dovuto togliere il ramo, e non per eleganza.** Il controllo
+**(D)** di `scripts/sql/guardrail_codice_errore_strutturato.sql` — che gira in CI —
+vieta che una funzione viva nomini **fra apici** un codice ritirato, e lo rileva
+con `p.prosrc LIKE '%' || quote_literal(codice) || '%'`. Il nostro §8 prometteva
+di conservare il ramo morto commentato: le due cose insieme avrebbero fatto
+fallire la build. Il cancello detta anche la sequenza — prima i call site, poi la
+data — e le due fasi Liquibase (`20_code`, poi `80_data`) la rispettano da sole,
+anche su un database ricostruito da zero.
+
+Quindi **il §8 di questo brief è superato in entrambe le direzioni**: cadeva il
+vincolo verso di voi (§15), ma ne è comparso uno interno. Il ramo è stato rimosso
+nello stesso changeset `20260819-10`.
+
+Non si scopre nulla: se un domani quella `NOT NULL` cadesse, con la categoria a
+`NULL` la ricerca sulla matrice non troverebbe righe e si uscirebbe con l'esito
+`E_CATEGORIA_LISTINO_NON_MAPPATA` — un codice vivo, il cui messaggio nomina la
+tabella giusta.
+
+### Risposta alle vostre due avvertenze
+
+**1. «Se `obsoleto_dal` cambiasse il comportamento di `fn_log_error_only` per i
+codici ritirati, ditecelo prima.»** ✅ **Non lo cambia, ed è verificato, non
+dedotto.** Provato su tre codici già in pensione dal 2026-08-07
+(`E_AI_CONFIRMATION_REQUIRED`, `E_ASSOGGETTAMENTO_NO_MOD`, `E_ATTIVO_CASCADE`):
+`script.fn_get_messaggio` restituisce il messaggio regolarmente. `obsoleto_dal`
+è l'asse «non più selezionabile per il nuovo», non un interruttore sulla
+risoluzione — e non potrebbe esserlo, perché `dbops.error_log` ha una FK verso
+`config.messaggi_errore` e le righe storiche devono continuare a leggersi. Sono
+79 i codici già ritirati con questo pattern. **Il vostro test di regressione
+resta verde.**
+
+**2. «Il ripiego di `error_messages_fallback.py` per 141 resta.»** ✅ Corretto e
+concordiamo: va lasciato.
+
+## 18. P-5 — decisione DB: **le righe `area='test'` restano, e non si zittiscono**
+
+Sono 641: 480 da `test_db_error_fields`, 161 da `pgtap.capture_diag`. Su 99.725
+righe di tabella sono lo **0,6%**.
+
+**Non le togliamo, e la ragione è la stessa che ha reso utile tutto questo brief.**
+Quelle righe **si dichiarano**: `area='test'` è precisamente l'etichetta che alle
+93.044 righe del §12 mancava, ed è ciò che le rendeva indistinguibili dal
+traffico vero. Sopprimere l'unica popolazione che si comporta bene, per un
+volume dello 0,6%, sarebbe togliere l'esempio invece del problema.
+
+**E il volume ha già un padrone**: `dbops.error_log.cleanup_at` con
+`fn_apply_cleanup_at` / `fn_purge_cleanup_expired` — 75.786 righe su 99.725 hanno
+già una scadenza. Se un giorno il diario tornasse a crescere, la leva è la
+politica di conservazione, non il silenzio dei test.
+
+⚠️ **Con una condizione, che è un impegno reciproco**: chi scrive dai test
+continua a dichiararlo (`area='test'` o l'equivalente), e chi misura filtra su
+`area`. La prima metà tocca a voi e a noi; la seconda è scritta nei commenti del
+resolver e nel test 11 del pgTAP, che conta le righe **solo** a nome della
+funzione sotto esame proprio per non farsi ingannare dal traffico altrui.
+
+## 19. Stato
+
+| # | | |
+|---|---|---|
+| P-1 | recinto sul diario | ✅ BE |
+| P-2 | contesto completo lato BE | ✅ BE |
+| P-3 | logga il DB, il BE non duplica | ✅ BE, deciso insieme |
+| P-4 | pulizia delle righe finte | ✅ BE |
+| **P-6** | input della chiamata nell'`esito_context` | ✅ **DB — `20260819-10`, applicato** |
+| **P-5** | righe `area='test'` | ✅ **DB — deciso: restano (§18)** |
+| §8 | ritiro del 141 | ✅ **DB — CSV + rimozione del ramo, applicato** |
+
+✅ **Applicato e committato il 2026-08-19.** Il cancello dei codici errore è
+verde e il pgTAP gira 12/12 come `zeroerp_app`. Per il DB il brief è **chiuso**.
+
+Fuori perimetro e non urgente, come dite voi al §14-quater: la classificazione a
+mano dei gruppi ripetuti fuori da `area='backend'`. Da oggi non se ne aggiungono.
