@@ -44,18 +44,28 @@ paginazione** (come `GET /<id>/righe/`).
 
 ## Output
 
-Envelope standard `success_response`, `data` con **quattro sezioni**:
+Envelope standard `success_response`, `data` con **quattro sezioni** più il
+contesto:
 
-| Sezione | Grana | Fonte |
+| Campo | Grana | Fonte |
 | --- | --- | --- |
-| `righe_ordine` | riga d'ordine — **solo sul lato ordine**, lista vuota sul DDT | `vw_situazione_merce_ordine` |
+| `contesto` | `"ORDINE"` \| `"DDT"` — **quale lista è il saldo del documento** | il filtro della chiamata |
+| `righe_ordine` | riga d'ordine (su entrambi i lati) | `vw_situazione_merce_ordine` |
 | `partite` | riga di DDT | `vw_partite_merce` |
 | `accrediti` | riga di reso | `vw_resi_da_accreditare` |
 | `riconsegne` | riga di reso | `vw_resi_da_riconsegnare` |
 
+⭐ **`contesto` non è ridondante** (rev 2026-08-19). Fino a questa revisione
+`righe_ordine` era vuota sul DDT, e il client capiva «quale lista contare»
+guardando quale delle due fosse popolata. Adesso sono popolate entrambe, e
+quell'euristica conterebbe sul DDT il saldo dell'**intera riga d'ordine** —
+tutte le sue spedizioni — al posto di questa: un numero plausibile e sbagliato.
+Chi consuma legge `contesto`, non indovina.
+
 Esempio reale (l'ordine del §3 del brief pannello, la riga da 21 pezzi):
 
 ```text
+contesto      ORDINE   (dal DDT sarebbe DDT, e il saldo sarebbe quello delle partite)
 righe_ordine  riga 1 · ordinato 21 · tenuti 13 · fatturato 21
                      · differenza −8 · da_spedire 3 · DA_ACCREDITARE
 partite       DDT0010839 · origine ORDINE · consegnato 21 · −8 · DA_ACCREDITARE
@@ -95,9 +105,20 @@ riconsegne    RESO0005123 · residua 3 · DA_RICONSEGNARE
 * ⚠️ **`da_spedire` non è `ordinato − consegnato`**: il `consegnato` di una
   partita include le ri-consegne. Viene dalla formula di
   `fn_ordine_ha_residuo_evasione`, l'unica del sistema.
-* **Sul DDT `righe_ordine` è vuota di proposito**: la domanda è *«cosa è successo
-  a QUESTA spedizione»*, non *«come stanno le partite che il DDT tocca»* — sono
-  due risposte diverse e la prima è quella che serve a chi apre un DDT.
+* ⭐ **Sul DDT `righe_ordine` c'è, ma è filtrata sulla SPEDIZIONE** (rev
+  2026-08-19, rilievo in-app): sono le righe d'ordine che *quel DDT ha toccato*,
+  non quelle dell'ordine intero. Servono a leggere i due livelli insieme — «la
+  riga d'ordine nel complesso sta così, questa spedizione così» — che prima
+  costringeva a cambiare schermata. **Il saldo del documento resta quello delle
+  `partite`**: è precisamente ciò che `contesto` dichiara.
+  ⚠️ Il legame DDT→riga d'ordine si legge da `vendite.ordini_righe_fulfillment`,
+  la **stessa** fonte da cui `vw_partite_merce` deriva la propria `origine`. Non
+  si passa dalla partita: sarebbe la vista più costosa del sistema ri-valutata
+  per rispondere a un filtro. Verificato su **tutti** i DDT del database: le
+  righe d'ordine restituite coincidono con i `DISTINCT ordine_riga_id` delle
+  partite, zero divergenze.
+  ⚠️ Una riga di DDT **senza origine ordine** non ha riga d'ordine: la sezione
+  resta più corta delle `partite`, ed è corretto.
 * **Le due code sono le stesse della coda di lavoro**, con la stessa etichetta
   `DOVUTA` / `FACOLTATIVA`: il pannello non può contraddirle perché legge le
   stesse viste.

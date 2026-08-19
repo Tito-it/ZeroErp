@@ -38,12 +38,19 @@ from apps.vendite.services import vendite_service
 # (quale documento) e' gia' nel path. Ripeterla due volte la farebbe divergere.
 _DOC_COMUNE = """Situazione della merce del documento (sola lettura).
 
-Un round-trip solo, quattro sezioni:
+Un round-trip solo, quattro sezioni piu' il contesto:
 
-* `righe_ordine` — il riassunto per riga d'ordine (solo sul lato ordine):
+* `contesto` — `"ORDINE"` o `"DDT"`: **quale delle due liste e' il saldo di
+  questo documento**. Dedurlo dal fatto che `righe_ordine` sia vuota non e' piu'
+  possibile (e' popolata su entrambi i lati), e sbagliarlo significa contare sul
+  DDT il saldo dell'intera riga d'ordine invece che di questa spedizione.
+* `righe_ordine` — il riassunto per riga d'ordine:
   ordinato, consegnato, reso, tenuti, fatturato, `fatturato_anticipato`,
   `da_spedire` e lo `stato` gia' tradotto. Comprende le righe **mai spedite**
   (`stato = 'NON_SPEDITA'`), che il contatore non contiene affatto.
+  Sul lato **DDT** contiene le righe d'ordine che *quella spedizione ha
+  toccato* — piu' corta delle `partite` quando una riga di DDT non ha origine
+  ordine.
 * `partite` — le partite di merce (grana: riga di DDT), con `origine`,
   `sospetto_duplicato_ordine` e lo `stato` della partita.
 * `accrediti` — la coda «da accreditare» del documento, con l'etichetta
@@ -84,6 +91,7 @@ def build_situazione_merce_view(
                 fields={"data": inline_serializer(
                     name=f"{schema_prefix}SituazioneMerceData",
                     fields={
+                        "contesto": serializers.CharField(),
                         "righe_ordine": serializers.ListField(
                             child=serializers.DictField()
                         ),

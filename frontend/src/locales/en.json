@@ -3271,7 +3271,6 @@
       "col_accredito": "Credit",
       "col_articolo": "Item",
       "col_consegnato": "Delivered",
-      "col_da_fare": "To do",
       "col_da_spedire": "To ship",
       "col_ddt": "DN",
       "col_descrizione": "Description",
@@ -3285,13 +3284,10 @@
       "col_riconsegnata": "Redelivered",
       "col_riga": "Line",
       "col_tenuti": "With customer",
-      "compito_da_accreditare": "{n} to credit",
-      "compito_da_fatturare": "{n} to invoice",
       "compito_non_fatturabile": "Not invoiced",
       "compito_non_impegnata": "Not committed",
       "compito_non_misurabile": "Cannot be computed",
       "compito_non_spedita": "Not shipped yet",
-      "compito_pareggiata": "Nothing pending",
       "compito_riconsegna": "Redelivery",
       "etichetta": "Goods:",
       "etichetta_dovuta": "Due",
@@ -3307,8 +3303,12 @@
       "sospetta_hint": "Line added manually on an order-backed shipment, with an item already present in the order: it may be intended extra goods or a duplicate.",
       "titolo": "Goods status",
       "tutto_regolare": "all settled",
-      "nc_da_accreditare": "{n} to credit on this document: the credit is registered from the credits queue.",
-      "nc_apri_coda": "Open the filtered queue"
+      "nc_apri_coda": "Open the filtered queue",
+      "sez_riepilogo": "Summary",
+      "sez_righe_ordine_hint_ddt": "How these order lines stand overall, other shipments included.",
+      "riepilogo_base_ordine": "The count below is the one of the order lines. Shipments are the same quantities seen per single delivery note: it is not extra goods.",
+      "riepilogo_base_ddt": "The count below is the one of this shipment. Order lines cover the whole order: it is not extra goods.",
+      "nc_spiegazione": "The credit is registered from the credits queue: the credit note is created at the next invoicing run."
     }
   },
   "dash_mesi": {

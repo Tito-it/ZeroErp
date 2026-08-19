@@ -15,6 +15,7 @@
 //        Chi consuma il drawer in sola consultazione (tappe dei passaggi) lo
 //        omette e usa `visible` in v-model.
 import { ref } from 'vue'
+import { registraDrawerChiudibile } from '../../../core/composables/useDrawerChiusuraGlobale'
 import { DOCUMENTO_DRAWERS } from './documentoDrawers'
 
 export function useDocumentoDrawer(onClose = null) {
@@ -40,6 +41,14 @@ export function useDocumentoDrawer(onClose = null) {
     visible.value = v
     if (!v) onClose?.()
   }
+
+  // ⭐ QUI si chiude la CASCATA. Ogni drawer impilato monta la propria barra
+  // collegamenti, che monta il proprio host: registrandosi qui, un ordine che ha
+  // aperto un DDT che ha aperto un reso si chiude tutto insieme al primo cambio
+  // di rotta — e nessuno dei tre ha dovuto sapere degli altri due.
+  // Si passa da `onVisibleChange(false)`, non da `visible.value = false`: e'
+  // esattamente la strada della X in testata, `onClose` compreso.
+  registraDrawerChiudibile(() => onVisibleChange(false))
 
   return { visible, tipo, id, apri, onVisibleChange }
 }

@@ -3271,7 +3271,6 @@
       "col_accredito": "Accredito",
       "col_articolo": "Articolo",
       "col_consegnato": "Consegnato",
-      "col_da_fare": "Da fare",
       "col_da_spedire": "Da spedire",
       "col_ddt": "DDT",
       "col_descrizione": "Descrizione",
@@ -3285,13 +3284,10 @@
       "col_riconsegnata": "Ri-consegnata",
       "col_riga": "Riga",
       "col_tenuti": "Dal cliente",
-      "compito_da_accreditare": "{n} da accreditare",
-      "compito_da_fatturare": "{n} da fatturare",
       "compito_non_fatturabile": "Non si fattura",
       "compito_non_impegnata": "Nessun impegno",
       "compito_non_misurabile": "Conto non calcolabile",
       "compito_non_spedita": "Non ancora spedita",
-      "compito_pareggiata": "Nulla in sospeso",
       "compito_riconsegna": "Ri-consegna",
       "etichetta": "Merce:",
       "etichetta_dovuta": "Dovuta",
@@ -3307,8 +3303,12 @@
       "sospetta_hint": "Riga aggiunta a mano su una spedizione da ordine, con un articolo gia' presente nell'ordine: puo' essere merce in piu' voluta oppure un doppione.",
       "titolo": "Situazione della merce",
       "tutto_regolare": "tutto regolare",
-      "nc_da_accreditare": "{n} da accreditare su questo documento: l'accredito si registra dalla coda accrediti.",
-      "nc_apri_coda": "Apri la coda filtrata"
+      "nc_apri_coda": "Apri la coda filtrata",
+      "sez_riepilogo": "Riepilogo",
+      "sez_righe_ordine_hint_ddt": "Come stanno queste righe d'ordine nel complesso, comprese le altre spedizioni.",
+      "riepilogo_base_ordine": "Il conto qui sotto e' quello delle righe d'ordine. Le spedizioni sono le stesse quantita' viste per singolo DDT: non e' merce in piu'.",
+      "riepilogo_base_ddt": "Il conto qui sotto e' quello di questa spedizione. Le righe d'ordine riguardano l'ordine intero: non e' merce in piu'.",
+      "nc_spiegazione": "L'accredito si registra dalla coda accrediti: la nota di credito nasce al prossimo giro di fatturazione."
     }
   },
   "dash_mesi": {

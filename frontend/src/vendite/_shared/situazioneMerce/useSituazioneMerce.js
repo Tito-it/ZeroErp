@@ -57,6 +57,10 @@ export function useSituazioneMerce(basePath, docId) {
   const sezioni = computed(() => {
     const d = data.value ?? {}
     return {
+      // ⚠️ `contesto` si propaga NUDO, senza ripiego: e' il campo che dice quale
+      // lista e' il saldo del documento, e un default inventato qui sarebbe un
+      // numero sbagliato invece di un avviso (vedi `_righeDelConto`).
+      contesto: d.contesto ?? null,
       righe_ordine: d.righe_ordine ?? [],
       partite: d.partite ?? [],
       accrediti: d.accrediti ?? [],
