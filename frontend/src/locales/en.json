@@ -1138,7 +1138,8 @@
       "ut_empty_matrix_hint": "Configure the system-wide Utilities/Roles matrix first, then come back here to enable utilities for this issuer.",
       "ut_empty_matrix_cta": "Open Utilities/Roles matrix",
       "ut_parent_inactive_warn": "The fiscal issuer is disabled: utility configurations can only be saved as inactive. Re-enable the issuer to activate the rows.",
-      "ut_parent_inactive_tooltip": "Issuer disabled: child cannot be active"
+      "ut_parent_inactive_tooltip": "Issuer disabled: child cannot be active",
+      "avviso_registri": "After creating the issuer you also need its numbering registers and the document-type/nature mappings: without them, its first invoice stops with «missing configuration». There is no generic fallback register — by design: better to stop than to number on another company's sequence."
     }
   },
   "indirizzi": {
@@ -2190,7 +2191,11 @@
       "col_sconto": "Discount",
       "col_iva": "VAT",
       "col_imponibile": "Taxable",
-      "nessuna_riga": "No invoice lines"
+      "nessuna_riga": "No invoice lines",
+      "rettifica_di": "Adjusts",
+      "rettificata_da": "Adjusted by",
+      "col_rettifica_riga": "Adjusted line",
+      "rettifica_riga_valore": "{numero} · line {riga}"
     },
     "indirizzi": {
       "da_soggetto": "from subject",
@@ -2499,7 +2504,10 @@
         "fattura_numerata": "The invoice is already numbered: deleting it would leave a gap in the fiscal numbering."
       },
       "azione_non_piu_disponibile": "This action is no longer available on this batch: the list has been refreshed.",
-      "col_emittente": "Issuer"
+      "col_emittente": "Issuer",
+      "tab_documenti": "Documents",
+      "col_natura": "Nature",
+      "reset_avviso_accrediti": "⚠️ A registered credit is NOT cancelled: its adjustment goes back to «to be issued» and the credit note is REGENERATED on the next run. To actually undo a credit use «Cancel the credit» on the return line."
     },
     "offerte": {
       "stato_info": {

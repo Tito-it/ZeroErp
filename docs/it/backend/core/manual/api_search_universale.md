@@ -134,6 +134,39 @@ Esempio per CLIENTE:
 }
 ```
 
+## Ricerca stradario (autocomplete indirizzi)
+
+Due endpoint distinti, e la differenza e' **quando** si usano, non come:
+
+### `GET /api/v1/core/search/stradario/`
+
+Vie di un comune gia' scelto. E' il passo che segue la selezione del comune nel
+form indirizzo.
+
+| query param | default | note |
+|---|---|---|
+| `comune_id` | — | filtra le vie del comune |
+| `search` | — | ricerca su toponimo + denominazione |
+| `limit` | 30 | **max 100** |
+
+Restituisce `stradario_id`, via completa, comune, provincia, CAP: l'indirizzo
+esce gia' normalizzato, non da ricomporre a mano.
+
+### `GET /api/v1/core/search/stradario-generale/`
+
+Vie su **tutta Italia**, senza comune ne' CAP: serve quando la via non e' ancora
+nello stradario del comune e va inserita nuova. L'operatore cerca prima la via,
+**poi** sceglie comune e CAP.
+
+| query param | obbligatorio | note |
+|---|---|---|
+| `search` | **si'** | qui non si sfoglia: senza testo non si cerca |
+| `toponomastica_id` | no | filtro per tipo di toponimo |
+| `limit` | no | come sopra |
+
+⭐ Entrambi sono `is_search_endpoint = True` (throttling di ricerca) e
+`skip_area_check = True`: l'indirizzo si compila da qualunque area.
+
 ## Regole
 
 - `q` obbligatorio, minimo 3 caratteri (validato da `require_min_search_length`)

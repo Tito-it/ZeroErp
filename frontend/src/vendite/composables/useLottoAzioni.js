@@ -110,6 +110,7 @@ export function useLottoAzioni({ onDone } = {}) {
       api: (id) => resetLottoDraft(id),
       title: 'vendite.lotti.reset_header',
       message: 'vendite.lotti.reset_conferma',
+      avviso: 'vendite.lotti.reset_avviso_accrediti',
       danger: true,
       acceptLabel: 'vendite.lotti.reset_accept',
       esito: (res) => t('vendite.lotti.reset_esito', {
@@ -121,6 +122,7 @@ export function useLottoAzioni({ onDone } = {}) {
       api: (id) => riportaLottoADraft(id),
       title: 'vendite.lotti.riporta_draft_header',
       message: 'vendite.lotti.riporta_draft_conferma',
+      avviso: 'vendite.lotti.reset_avviso_accrediti',
       danger: true,
       acceptLabel: 'vendite.lotti.riporta_draft_accept',
       esito: (res) => t('vendite.lotti.riporta_draft_esito', {
@@ -148,7 +150,12 @@ export function useLottoAzioni({ onDone } = {}) {
     if (!verbo) return
     confirmAction({
       title: t(verbo.title),
-      message: t(verbo.message),
+      // ⚠️ L'avviso si APPENDE qui e non dentro la stringa di conferma: la
+      // frase e' la stessa per i tre percorsi di reset (annulla lotto, riporta
+      // a draft, elimina la singola fattura) e tre copie divergerebbero — con
+      // l'aggravante che a divergere sarebbe cio' che l'operatore legge prima
+      // di un'operazione non annullabile.
+      message: verbo.avviso ? `${t(verbo.message)} ${t(verbo.avviso)}` : t(verbo.message),
       ...(verbo.danger ? { danger: true, acceptLabel: t(verbo.acceptLabel) } : {}),
       onAccept: async () => {
         const res = await execute(() => verbo.api(lottoId))

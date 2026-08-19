@@ -2,6 +2,7 @@
 
 ## API
 - [api-domain-conventions](manual/api-domain-conventions.md) — Definire uno standard unico per costruire future API di dominio.
+- [api_config_tables](manual/api_config_tables.md) — Un solo gruppo di endpoint per **leggere e manutenere le tabelle di configurazione** (config.* e le altre in whitelist), senza scrivere una view per ognuna. E' il lato server del pannello di configurazione generico: il…
 - [api_diagnostics_error_envelope](manual/api_diagnostics_error_envelope.md) — Fornire un endpoint tecnico per validare contratto error envelope e policy retry.
 - [api_email](manual/api_email.md) — Sistema completo di invio email con risoluzione automatica account SMTP e template per reparto/contesto. Supporta invio diretto, bozze editabili (outbox), allegati, consultazione log. Ogni email e' tracciata in config.e…
 - [api_endpoint_helpers](manual/api_endpoint_helpers.md) — Centralizzare il flusso standard dei POST JSON (parse, validazione base, envelope, idempotenza).

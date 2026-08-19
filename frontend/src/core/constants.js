@@ -205,6 +205,17 @@ export const STATO_PRATICA = {
 // modificabile (scheda + flussi in sola lettura, niente creazione step).
 export const STATI_PRATICA_TERMINALI = [STATO_PRATICA.CHIUSA, STATO_PRATICA.ANNULLATA]
 
+// Natura del documento fiscale (config.nature_doc_fiscale.codice_interno).
+// È un asse DIVERSO dal tipo documento (front/back office) e dal registro: le
+// tre cose insieme dicono su quale sezionale il documento è numerato.
+// `FATTURA` è il default della colonna a DB, quindi una testata senza natura è
+// una fattura — non un dato mancante.
+export const NATURA_DOC = Object.freeze({
+  FATTURA: 'FATTURA',
+  NOTA_CREDITO: 'NOTA_CREDITO',
+  NOTA_DEBITO: 'NOTA_DEBITO',
+})
+
 // Codici interni stati flusso pratica (codice_interno da config.stati_flussi_pratiche)
 export const STATO_FLUSSO = {
   DA_ESEGUIRE: 'DA_ESEGUIRE',

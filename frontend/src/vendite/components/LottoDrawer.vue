@@ -47,6 +47,7 @@ import { displayDate, displayTimestamp } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
 import { extractApiError } from '../../core/utils/apiError'
 import {
+  naturaDocSeverity,
   statoEsecuzioneFatturaSeverity,
   statoLottoSeverity,
   statoTaskRunSeverity,
@@ -255,7 +256,9 @@ const drawerActions = computed(() => {
 function eliminaFattura(row) {
   confirmAction({
     title: t('vendite.lotti.reset_fattura_header'),
-    message: t('vendite.lotti.reset_fattura_conferma'),
+    // Stesso avviso degli altri due percorsi di reset: la chiave e' una sola.
+    message: `${t('vendite.lotti.reset_fattura_conferma')} `
+      + t('vendite.lotti.reset_avviso_accrediti'),
     danger: true,
     acceptLabel: t('vendite.lotti.azione_reset_fattura'),
     onAccept: async () => {
@@ -415,7 +418,12 @@ function fatturaNumero(row) {
 
         <Tabs value="fatture" class="app-mt-1">
           <TabList>
-            <Tab value="fatture">{{ t('vendite.lotti.tab_fatture') }} ({{ fatture.length }})</Tab>
+            <!-- ⚠️ «Documenti», non «fatture»: dal 2026-08 un lotto puo'
+                 contenere anche NOTE DI CREDITO, e il verbo «numera» le numera
+                 entrambe sui rispettivi registri (§12.4-bis.8 del brief nota di
+                 credito). Un conteggio che dice «3 fatture» su 2 fatture e una
+                 nota e' un numero giusto con il nome sbagliato. -->
+            <Tab value="fatture">{{ t('vendite.lotti.tab_documenti') }} ({{ fatture.length }})</Tab>
             <Tab value="task">{{ t('vendite.lotti.tab_task') }} ({{ taskRuns.length }})</Tab>
             <Tab value="segnalazioni">{{ t('vendite.lotti.tab_segnalazioni') }}</Tab>
           </TabList>
@@ -432,6 +440,19 @@ function fatturaNumero(row) {
               >
                 <Column field="numero" :header="t('vendite.lotti.col_numero')" style="width: 110px;">
                   <template #body="{ data }">{{ fatturaNumero(data) }}</template>
+                </Column>
+                <!-- Natura del documento: arriva GIA' decodificata dal
+                     backend (display field via JOIN, B5). ⚠️ La nota di credito
+                     non e' un'anomalia: severity neutra, mai `danger` — e il
+                     totale negativo si mostra com'e', perche' e' il documento a
+                     essere di segno opposto. -->
+                <Column field="natura_doc_codice" :header="t('vendite.lotti.col_natura')" style="width: 130px;">
+                  <template #body="{ data }">
+                    <Tag v-if="data.natura_doc_codice"
+                      :value="data.natura_doc_descrizione || data.natura_doc_codice"
+                      :severity="naturaDocSeverity(data.natura_doc_codice)" />
+                    <span v-else>—</span>
+                  </template>
                 </Column>
                 <Column field="ragione_sociale_completa" :header="t('vendite.lotti.col_cliente')">
                   <template #body="{ data }">{{ data.ragione_sociale_completa ?? '—' }}</template>

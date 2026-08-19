@@ -3453,6 +3453,13 @@ disponibile» sposta la contraddizione invece di chiuderla.
 
 ## 25. Definizione di «fatto» — BE/FE
 
+> ✅ **Verificata voce per voce il 2026-08-19** (§35): **11 su 12 soddisfatte**.
+> L'unica aperta è la nona — `vendite.fatture_rettifiche` è ancora a **zero
+> righe in esercizio** — e per costruzione non la può chiudere il codice:
+> serve un giro di fatturazione vero. Lo smoke la percorre, ma in una
+> transazione annullata.
+
+
 * [ ] i **cancelli sono verdi**: `genera_error_policies --check` pulito, i due
       test di divergenza codici passano (B0);
 * [ ] **una riga di nota di credito è gemella di una riga di fattura**: stesso
@@ -3540,14 +3547,16 @@ disponibile» sposta la contraddizione invece di chiuderla.
 | **B6** task pipeline legame documentale | ✅ **FATTO** (2026-08-18, tarda sera) — handler `_handle_popola_fatture_rettifiche_task` + registry + voce di whitelist + **dipendenza d'ordine dichiarata**; 8 test, verificati per **mutazione** (5 rossi togliendo dipendenza, registry e whitelist) e binding provato con `EXPLAIN` sul DB vero | `pipeline_step_executor.py`, `pipeline_repository.py`, `test_pipeline_step_executor.py`, `test_pipeline_repository.py` |
 | **B2** endpoint del verbo | ✅ **FATTO** (2026-08-18) — `POST /vendite/resi/accrediti/`, massivo dal primo giorno, `run_fan_out` (savepoint per riga), report a tre stati **sempre 200**, `Idempotency-Key` obbligatoria, lista vuota rifiutata, dedup con ordine preservato, cap 200 | `views_resi.py`, `urls_resi.py`, `resi_service.py` |
 | **B2-bis** annullo dell'accredito | ✅ **FATTO** (2026-08-18) — `POST /vendite/resi/<reso>/righe/<riga>/annulla-accredito/`, stesso permesso, motivo normalizzato e rifiutato dalla madre, guard di appartenenza della riga al reso | `views_resi.py`, `resi_service.py`, `resi_repository.py` |
-| **B5** la natura esce dal backend *(BE-10)* | 🟢 **libero** | `natura_doc_id` non è nominata da nessun punto di `backend/apps/` |
-| **B7** legame riga↔riga nel drawer fattura | 🟢 **libero** | il dato arriva con B4 |
+| **B5** la natura esce dal backend *(BE-10)* | ✅ **FATTO** (2026-08-19) — `config.nature_doc_fiscale` nella whitelist del lookup generico (nessun endpoint dedicato), `natura_doc_codice`/`_descrizione` via JOIN sulla **lista fatture del lotto** e sulla **testata** del dettaglio | `dbops_repository.py`, `vendite_repository.py`, `types.py` |
+| **B7** legame riga↔riga nel drawer fattura | ✅ **FATTO** (2026-08-19) — testata: i documenti rettificati **nei due versi** (`rettifica` / `rettificata_da`); riga: `riga_rettificata_id` + numero fattura e `riga_nr` della gemella. ⚠️ Letto **dopo** il cancello di testata | `vendite_repository.py`, `vendite_service.py` |
 | **B8** test | ✅ **smoke end-to-end SCRITTO ed ESEGUITO** (2026-08-18) — `scripts/tests/smoke-nota-credito-resi.py`, 15 asserzioni, tutto dentro una transazione annullata (niente persiste). Ha trovato il difetto del kit (§28); dopo la correzione DB `20260818-75`: **15/15 verde** | `backend/scripts/tests/smoke-nota-credito-resi.py` |
 | **F1** il verbo nella coda *(FE-3, FE-4)* | ✅ **FATTO** (2026-08-18) — selezione multipla (slot `selection` + `useSelezioneToggle`), azione massiva e di riga, gate su `blocco_codice`, permesso `accredita_riga_reso`, conferma che dice **che il documento non nasce adesso**, annullo con motivo obbligatorio | `ResiCodaTable.vue`, `resiApi.js`, `resiCoda.js` |
 | **F2** l'esito parziale si legge *(FE-4)* | ✅ **FATTO** — toast per esito + dialog con l'elenco delle righe non servite e il loro motivo | `AccreditoEsitoDialog.vue` |
 | **F3** il pannello collega *(FE-1 + FE-2)* | ✅ **FATTO** — via la nota temporanea, al suo posto il collegamento alla coda **già filtrata** sul documento; deep-link in `onActivated` (KeepAlive) e coda che **dichiara** il filtro | `SituazioneMerceContenuto/Dialog/Bar.vue`, `ResiView.vue` |
 | **sede dell'annullo** *(decisione Tid)* | ✅ **FATTA** (2026-08-18) — drawer del reso: `gia_accreditato` sulle righe (dalla fn unica del DB), punto d'innesto `extraRowActions` nel BB delle righe, dialog condiviso con la coda. §30.2 | `resi_repository.py`, `RigheMasterDetailTable.vue`, `ResoRigheTable.vue`, `AccreditoAnnullaDialog.vue` |
-| **F4 → F6** il resto del frontend | ⛔ **non iniziato** | F4/F5 dipendono da B5/B7 |
+| **F4** la natura a video | ✅ **FATTO** (2026-08-19) — tab del lotto «Documenti» invece di «Fatture» + colonna natura; nel drawer fattura il Tag in testata, **solo quando non è una fattura**. ⛔ Mai `danger`: una NC non è un errore | `LottoDrawer.vue`, `FatturaDrawer.vue`, `severity.js`, `constants.js` |
+| **F5** il legame si vede | ✅ **FATTO** (2026-08-19) — riga di testata con i documenti collegati **in un verso solo** (quello che il documento *è*) e colonna «Rettifica riga» sulle righe, presente solo se il legame c'è | `FatturaDrawer.vue` |
+| **F6** le due verifiche | ✅ **VERIFICATE** — FE-5: la label `MERCE_RESA_GIA_FATTURATA` c'è in `it.json` e `en.json` (riga 1824). FE-6: `CellaConfigurabile.formatValue` apre con `if (value == null) return ''`, quindi `valore_fermo` NULL rende **stringa vuota** per costruzione; il `?? 0` della card di classe è un **totale**, e lì lo zero è corretto. 📌 Resta l'**annuncio** di rilascio, non è codice | — |
 
 ### 27.2 ✅ I prerequisiti: **tutti e sette chiusi** (2026-08-19)
 
@@ -3637,25 +3646,25 @@ in `work-done`.
 
 #### Lavoro rimasto
 
-1. **B5** — la natura del documento esce dal backend *(BE-10)*. Oggi
-   `natura_doc_id` non è nominata da nessun punto di `backend/apps/`: il drawer
-   del lotto non «assume» che siano tutte fatture, **non ha il dato**. È una
-   lettura, non tocca il verbo.
-2. **B7** — il legame riga↔riga si legge dal drawer fattura. Il dato lo scrive
-   già B4 (`riga_rettificata_id`).
-3. **F4** e **F5** discendono da B5 e B7: la natura a video, il legame a video.
-4. **F6** — le due verifiche del §21.2 (label del motivo, `valore_fermo` NULL
-   che non diventa `0 €`) e l'annuncio.
+**Nessuna slice aperta**: B0→B8 e F1→F6 sono chiuse (§27.1). Restano tre cose,
+e nessuna è codice di questo cantiere.
 
-#### Decisioni aperte, non lavoro
+1. 📌 **L'annuncio di rilascio** (§12.8): il conteggio del tab Backlog area
+   `RESI` è passato da **1 a 4** col seed di N11 — è già successo, e va detto a
+   chi usa quel cruscotto prima del rilascio;
+2. 🔴 **La validazione in-app**, che è di Tid: il giro è provato sui dati dallo
+   smoke, ma a video non l'ha ancora guardato nessuno. Il copione è scritto —
+   [collaudo-in-app-nota-credito-resi.md](collaudo-in-app-nota-credito-resi.md),
+   8 prove, le prime cinque **reversibili** e il punto di non ritorno
+   dichiarato. È anche l'unico modo di chiudere la **voce 9** del §25.
 
-* 🔴 **«Aggiungere un emittente» non è più una riga di anagrafica** (§32.3).
-  Tre strade, la mia proposta è l'avviso nel drawer. Non è del cantiere ma nasce
-  da qui;
-* 🟡 **Il `reason_key` della rinuncia non lo rende nessuna superficie** (§32.2):
-  la chiave i18n c'è, il meccanismo (`fn_available_actions_reso` +
-  `useDrawerActions`) pure, ma nessuno li collega. Vale anche per
-  `riga_inesistente`, ferma da luglio.
+⭐ **Con queste due, il brief si chiude.** Le decisioni non sono più fra i
+residui (§37).
+
+#### Decisioni: ✅ prese entrambe il 2026-08-19 (§37)
+
+Nessuna trasferita ad altri cantieri: *«altrimenti diventano storia infinita»*
+(Tid). Una è diventata codice, l'altra è chiusa con una ragione.
 
 #### ⚠️ Cosa NON è più un rischio, e cosa lo è ancora
 
@@ -4079,3 +4088,245 @@ l'errore parlante alla prima fattura) sono elencate in fondo al brief di
 passaggio, con i rispettivi costi. **Serve una decisione**: la mia proposta è
 l'avviso nel drawer — il seed automatico no, perché «quale serie» è una scelta
 fiscale e sceglierla per conto dell'operatore è la cosa che D-P6-2 evita.
+
+---
+
+## 33. B5 e B7 — il dato esce dal backend (2026-08-19)
+
+Due letture, nessun verbo toccato. Con queste il **backend del cantiere è
+finito**: resta da rendere a video (F4, F5).
+
+### 33.1 B5 — la natura del documento
+
+Fino a oggi `natura_doc_id` **non era nominata da nessun punto di
+`backend/apps/`**: non è che il drawer del lotto «assumesse» che fossero tutte
+fatture — non aveva il dato.
+
+* `config.nature_doc_fiscale` nella whitelist del **lookup generico**: la
+  tabella ha la struttura standard codice/descrizione, quindi nessun endpoint
+  dedicato (memoria `feedback_lookup_whitelist_first`);
+* `natura_doc_codice` + `natura_doc_descrizione` via **JOIN** sulla lista
+  fatture del lotto e sulla testata del dettaglio — display field lato backend,
+  mai lookup client-side.
+
+⚠️ La conseguenza che il §12.4-bis.8 chiedeva di mettere agli atti, ora è nel
+codice: **un lotto può contenere documenti di natura diversa**, e «numera» li
+numera entrambi sui rispettivi registri. Per il frontend «N fatture» diventa
+«N documenti».
+
+### 33.2 B7 — il legame, ai due livelli
+
+* **testata**: i documenti collegati letti da `vendite.fatture_rettifiche` nei
+  **due versi** — da una nota di credito cosa rettifica, da una fattura le note
+  che la rettificano. Una query sola, il verso è un **parametro**: due SQL
+  copiate divergerebbero al primo ritocco;
+* **riga**: `riga_rettificata_id` con la decodifica minima che serve a nominare
+  la gemella (numero della fattura + `riga_nr`). ⚠️ Il puntatore sta su
+  `fatture_righe`, che la vista di esposizione **non proietta**: si prende dalla
+  tabella.
+
+⚠️ **L'ordine di lettura è un vincolo di sicurezza, non di stile.** Il legame si
+legge **dopo** il cancello di testata: `vendite.fatture` ha la RLS,
+`fatture_rettifiche` **no** — leggerlo prima esporrebbe numero e data di un
+documento di un altro emittente. Il test `test_satelliti_non_letti_se_testata_none`
+ora lo copre anche per questa chiamata.
+
+### 33.3 Un test che non mordeva, trovato per mutazione
+
+La prima versione dell'asserzione su `riga_rettificata_id` faceva `assertIn` su
+**tutta** la query — e restava verde togliendo la colonna dalla `SELECT`, perché
+la stessa stringa compare nella `JOIN`. Ora guarda la sola **proiezione**
+(`sql.split(" FROM ")[0]`), e sabotandola diventa rossa.
+
+⭐ È la ragione per cui la prova di mutazione si fa **su ogni** asserzione nuova
+e non solo su quelle che sembrano delicate: quattro mutanti, tre rossi, e il
+quarto era il test che avrei giurato fosse il più semplice.
+
+---
+
+## 34. F4 e F5 — il documento si dichiara (2026-08-19)
+
+Con queste il cantiere è **completo su tutte le slice**: B0→B8, F1→F6.
+
+### 34.1 F4 — la natura a video
+
+* **drawer del lotto**: il tab non si chiama più «Fatture» ma **«Documenti»**, e
+  c'è la colonna natura. Un conteggio che dice «3 fatture» su due fatture e una
+  nota di credito è un numero giusto con il nome sbagliato — ed è il §12.4-bis.8
+  che chiedeva di metterlo agli atti;
+* **drawer fattura**: il Tag in testata, **solo quando la natura non è
+  `FATTURA`**. Dichiararla sempre aggiungerebbe rumore al caso normale e
+  toglierebbe forza al caso che conta;
+* ⛔ **nessuna delle nature è `danger`**, ed è una scelta scritta in
+  `NATURA_DOC_MAP`: una nota di credito non è un errore né un'anomalia. Colorarla
+  di rosso la farebbe cercare fra i problemi in ogni lista in cui compare, e il
+  totale negativo che porta con sé sembrerebbe un difetto invece che il suo
+  contenuto.
+
+### 34.2 F5 — il legame si vede, in un verso solo
+
+In testata i documenti collegati, sulle righe la colonna «Rettifica riga» — che
+compare **solo se almeno una riga ha il legame**: su una fattura ordinaria
+sarebbe una colonna di trattini.
+
+⚠️ **Il backend risponde nei due versi, il drawer ne mostra UNO** — quello che il
+documento *è*: una nota di credito dice cosa **rettifica**, una fattura dice da
+quali note è stata **rettificata**. Sommare le due liste sotto la stessa
+etichetta darebbe due frasi diverse nello stesso posto, e chi legge non saprebbe
+in che verso interpretarle.
+
+⭐ Insieme, testata e riga sono la forma leggibile dell'invariante del §12.6-bis:
+*«questo accredito vale 12 € perché la riga 7 della fattura 2026/1234 valeva
+12 €»*.
+
+### 34.3 F6 — verificate, non scritte
+
+* **FE-5**: `MERCE_RESA_GIA_FATTURATA` è in `it.json` e `en.json` (riga 1824) —
+  la richiesta di luglio *«da prevedere da subito»* era stata onorata;
+* **FE-6**: `CellaConfigurabile.formatValue` apre con `if (value == null)
+  return ''`, quindi `valore_fermo` NULL rende **stringa vuota** per
+  costruzione. Il `?? 0` della card di classe resta corretto: lì lo zero è un
+  **totale**, non una riga.
+
+Il guard i18n conferma il resto: 3844 chiavi per locale, parità it/en integra,
+nessuna chiave rotta e **nessuna delle 100 emesse dal DB irrisolvibile** — inclusa
+`vendite.resi.rinuncia_reason.accredito_eseguito` aggiunta oggi.
+
+---
+
+## 35. La definizione di «fatto», spuntata voce per voce (2026-08-19)
+
+> Alla domanda «lo sviluppo è concluso?» la risposta onesta si dà contro il §25,
+> che è stato scritto **prima** di cominciare — non contro l'elenco delle slice,
+> che dice solo che il lavoro è stato fatto, non che funziona.
+
+| # | Voce del §25 | Esito |
+| --- | --- | --- |
+| 1 | cancelli verdi (`--check`, i due test di divergenza) | ✅ |
+| 2 | riga di NC gemella della riga di fattura, e lo dice `riga_rettificata_id` | ✅ smoke test 9, sui dati |
+| 3 | due rettifiche non si fondono, `riga_nr` stabile fra due generazioni | ✅ `test_riga_nr_stabile_fra_due_generazioni` (B4) |
+| 4 | il **kit** della riga 24 attraversa il generatore **sui dati veri** | ✅ smoke test 15 |
+| 5 | accredito massivo dalla coda, esito parziale che dice **quali** | ✅ B2 + F1/F2 |
+| 6 | due click non fanno due accrediti, la lista si accorcia **subito** | ✅ smoke test 6 e 7 |
+| 7 | i **tre posti** dicono la stessa cosa | ✅ F1 + F3 |
+| 8 | il documento dichiara la sua **natura** dove si guarda | ✅ B5 + F4 |
+| 9 | **`fatture_rettifiche` smette di essere a zero righe** | 🔴 **NO** — vedi sotto |
+| 10 | il verbo è gated su `accredita_riga_reso` | ✅ P-1 + `post_permission` |
+| 11 | un accredito si può disfare, e **chi resetta il lotto legge** che l'accredito resta dovuto | ✅ **completata oggi** — vedi sotto |
+| 12 | non si riapre una rinuncia su quota accreditata | ✅ P-3 |
+
+### 35.1 La voce 11 mancava davvero, ed è stata chiusa
+
+L'annullo c'era (B2-bis, smoke 14), ma la **seconda metà** della voce no:
+*«chi resetta il lotto **legge** che l'accredito resta dovuto»*. I tre percorsi
+di reset — annulla lotto, riporta a DRAFT, elimina la singola fattura — dicevano
+tutto sulle fatture cancellate e **niente** sugli accrediti.
+
+È il caso operativo che il team DB aveva già segnalato: *«dopo un reset di lotto
+la nota di credito ricompare al giro successivo. Chi resetta aspettandosi di aver
+cancellato l'accredito la ritrova il giorno dopo.»*
+
+⭐ Una chiave sola, appesa in **un punto** (`useLottoAzioni`, più il call-site
+della terza porta): tre copie della stessa frase divergerebbero — e a divergere
+sarebbe ciò che l'operatore legge **prima** di un'operazione non annullabile.
+
+### 35.2 La voce 9 non la può chiudere il codice
+
+`vendite.fatture_rettifiche` è **ancora a zero righe** in esercizio. Lo smoke la
+popola e verifica il legame, ma dentro una transazione **annullata**: è la
+proprietà che rende lo smoke rieseguibile all'infinito, ed è la stessa che gli
+impedisce di soddisfare questa voce.
+
+Serve un **giro di fatturazione vero** su un accredito vero. È l'ultimo passo, ed
+è di chi valida in-app: è la **prova 6** di
+[collaudo-in-app-nota-credito-resi.md](collaudo-in-app-nota-credito-resi.md).
+
+⚠️ **E va fatto sapendo cosa comporta**: il verbo scrive una rettifica, il giro
+successivo emette e **numera** una nota di credito — irreversibile oltre la
+numerazione. La strada indietro esiste solo prima (annullo dell'accredito), e il
+reset del lotto **non** è quella strada.
+
+---
+
+## 36. 🔎 La revisione critica di B5→B7, F4→F6 e del cancello (2026-08-19)
+
+> Secondo giro di controllo critico, sul codice scritto dopo il §31. Tre
+> rilievi, tutti **verificati** prima di toccare e **corretti**.
+
+| # | Rilievo | Gravità | Esito |
+| --- | --- | --- | --- |
+| **R-8** | 🔴 Il verso del legame documentale era **due `CASE WHEN` nella stessa query** — uno nella `JOIN`, uno nella `WHERE` — che devono concordare. Un refuso in una delle due avrebbe agganciato il documento **sbagliato in silenzio**: nessun errore, solo il numero di un'altra fattura a video | 🟠 fragile | ✅ le due colonne del ponte vengono da una **whitelist** `_RETTIFICHE_VERSI`, una riga per verso: non possono più divergere |
+| **R-9** | Il numero fiscale («R1 1234/2026») formattato **due volte** nello stesso componente: intestazione e documenti collegati. Due copie mostrerebbero lo **stesso** documento in due modi diversi nella stessa schermata | 🟠 duplicato | ✅ `numeroDocumento(doc)`, sede unica, usata da entrambi |
+| **R-10** | 🔴 Il drawer rendeva **un solo verso** del legame («quello che il documento è»). Su un documento che rettifica **ed è** rettificato — raro ma ammesso dal modello — ne avrebbe nascosto uno **senza dirlo** | 🟠 bug | ✅ si rendono entrambi i blocchi quando entrambi hanno righe, ciascuno con la propria etichetta |
+
+### Una cosa considerata e NON fatta
+
+`NATURA_DOC_MAP` in `severity.js` ripete i tre codici che `NATURA_DOC` ha in
+`constants.js`. Importarli avrebbe tolto la ripetizione — ma `severity.js` non
+ha **nessun** import, e tutte le sue ~15 mappe portano i propri letterali: fare
+l'eccezione per una sola mappa avrebbe rotto la regola del file per guadagnare
+tre stringhe. Lasciato com'è, e scritto qui perché la prossima persona non lo
+riscopra da capo.
+
+### Come sono state verificate
+
+* **mutazione** su R-8: scambiando le due coppie della whitelist —
+  esattamente il difetto che il `CASE` poteva produrre — il test dei due versi
+  diventa rosso. Le asserzioni ora guardano **JOIN e WHERE separatamente**, che
+  è ciò che il vecchio test non faceva;
+* suite **3832 verde** in entrambe le modalità, smoke **15/15**, build ed
+  eslint puliti.
+
+⚠️ **R-9 e R-10 non hanno un test che li presidi**, e va detto: il frontend di
+questo progetto non ha una suite (nessuno script `test` in `package.json`). Sono
+verificati da build, lint e lettura — e lo saranno davvero alla validazione
+in-app.
+
+---
+
+## 37. ✅ Le due decisioni, prese (2026-08-19)
+
+> *«Le decisioni non le trasferiamo, le risolviamo — altrimenti diventano storia
+> infinita»* (Tid). Nessuna delle due è passata a un altro cantiere.
+
+### 37.1 Nuovo emittente fiscale → **avviso nel drawer**, fatto
+
+**Il fatto**: da P-6 ogni registro è intestato a un emittente e **non esiste più
+un registro generico di ripiego**. Un emittente creato da zero non ha registri,
+e la sua prima fattura si ferma con `E_CONFIG_MANCANTE`.
+
+**Deciso**: l'avviso nel drawer di creazione (`EmittenteFiscaleDrawer.vue`), che
+dice cosa manca **prima**, non alla prima fattura. ⭐ Implementato subito, nello
+stesso giro della decisione.
+
+**Perché non il seed automatico**: creare i registri per conto dell'operatore
+vuol dire sceglierne la **serie** — e la serie significa **canale**, non azienda
+(D-P6-2). È una scelta fiscale di chi tiene i registri IVA, e indovinarla è
+precisamente ciò che quella decisione evitava.
+
+**Perché non «niente»**: il fail-closed funziona ed è giusto, ma fa scoprire il
+buco **al primo documento** — tardi, e in un'altra schermata. L'avviso costa
+mezz'ora e sposta la scoperta nel punto in cui si può ancora rimediare.
+
+### 37.2 Il motivo della rinuncia → **basta il messaggio**, chiuso senza codice
+
+**Il fatto**: il gate P-3 rifiuta la riapertura di una rinuncia su quota già
+accreditata. L'operatore lo scopre cliccando, e legge il messaggio del catalogo
+— che è completo e **dice il rimedio**: annullare prima l'accredito.
+
+**Deciso**: si lascia così. ⭐ Ed è **coerente con la scelta già presa
+sull'annullo**: il bottone resta acceso quando il rimedio è dell'operatore, si
+spegne quando non lo è (il kit senza `componente_di`, dove il difetto sta sul
+documento di origine). Qui il rimedio è suo, quindi il bottone resta.
+
+**Perché non il bottone spento**: le due strade costavano entrambe più di quello
+che davano — una modifica DB (`fn_available_actions_reso` che consuma il gate) e
+quindi attesa, oppure un gate ricalcolato nel frontend, cioè **una seconda copia
+di una regola che vive nel DB**.
+
+📌 **Ne discende una cosa da non dimenticare**: la chiave i18n
+`vendite.resi.rinuncia_reason.accredito_eseguito` (e la gemella
+`riga_inesistente`, ferma da luglio) **restano senza consumatore**. Non sono
+debito da inseguire: sono lo specchio di una convenzione, pronte per il giorno in
+cui una capability esporrà i motivi. Scritto qui perché chi le trova non le
+prenda per un lavoro lasciato a metà.

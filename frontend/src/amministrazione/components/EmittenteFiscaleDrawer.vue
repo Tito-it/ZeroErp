@@ -239,6 +239,26 @@ function close() {
 
     <div :class="{ 'app-readonly': isReadonly }">
         <div class="form-grid">
+          <!-- ⚠️ Un emittente NON è solo una riga di anagrafica: senza i propri
+               registri di numerazione la sua prima fattura si ferma con
+               `E_CONFIG_MANCANTE`.
+               Dal 2026-08-19 (P-6) ogni registro è intestato a un emittente e
+               NON esiste più un registro generico di ripiego: è fail-closed, ed
+               è voluto — meglio fermarsi che numerare sul progressivo di
+               un'altra azienda. Ma l'operatore lo scoprirebbe solo al primo
+               documento, cioè tardi e altrove: qui lo sa prima.
+               ⛔ Non si creano i registri per conto suo: «quale serie» è una
+               scelta fiscale (la serie significa CANALE, non azienda) e
+               indovinarla è precisamente ciò che D-P6-2 evita. -->
+          <Message
+            v-if="!isEdit"
+            severity="info"
+            :closable="false"
+            class="mb-3"
+          >
+            {{ t('amministrazione.emittenti_fiscali.avviso_registri') }}
+          </Message>
+
           <!-- Soggetto -->
           <h4>{{ t('amministrazione.emittenti_fiscali.field_soggetto') }}</h4>
           <template v-if="!isEdit">

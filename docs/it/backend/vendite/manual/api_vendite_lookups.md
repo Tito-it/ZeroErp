@@ -52,7 +52,16 @@ Tutti i 4 endpoint condividono la stessa shape:
 | `/api/v1/vendite/lookup/tipi-variazione-contratto/` | `PERCENTUALE`, `VALORE_FISSO` | `TipoVariazioneSelect scope="contratto"` (in `ContrattoDrawer.vue`) |
 | `/api/v1/vendite/lookup/tipi-variazione-promo/` | `PERCENTUALE`, `VALORE_FISSO`, `PREZZO_FISSO` | `TipoVariazioneSelect scope="promo"` (in `PromoArticoloDrawer.vue`) |
 | `/api/v1/vendite/lookup/ambiti-contratto/` | `COMMODITY`, `COMMERCIO` | `AmbitoContrattoSelect` (in `ContrattoDrawer.vue`) |
-| `/api/v1/vendite/lookup/modalita-pricing-contratto/` | `A`, `B`, `C` | `ContrattoDrawer.vue` direct (`SelectButton`) |
+
+⛔ **`/api/v1/vendite/lookup/modalita-pricing-contratto/` (`A`/`B`/`C`) non
+esiste piu'**, rimosso col refactor modalita del 2026-05-15 e verificato sul
+codice il 2026-08-19: nessuna rotta lo serve e `vendite/api/lookup.js` lo
+dichiara morto in un commento. Nel modello unificato la «modalita» **non e' piu'
+una scelta dell'operatore ma una forma derivata dai dati**: `listino_id`
+valorizzato (con o senza variazione globale) = *con listino*, `listino_id` NULL =
+*interamente negoziato*. Il `SelectButton` A/B/C nel `ContrattoDrawer.vue` e'
+stato sostituito da due campi opzionali (Listino + Variazione globale) e da un
+badge «forma derivata» che mostra l'esito dopo il salvataggio.
 
 ### Nota PREZZO_FISSO
 
