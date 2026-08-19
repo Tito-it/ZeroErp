@@ -98,12 +98,18 @@ SELECT lives_ok(
 -- 3) Con mode IMMEDIATE attivo: INSERT orfana -> raise P0001
 --    Il constraint trigger fa raise direttamente sull'INSERT.
 -- ============================================================
+-- ⚠️ `%L` e non `%s`: il soggetto e' un UUID, e interpolato con `%s` finisce
+--   nell'SQL SENZA apici — PostgreSQL prova a leggerlo come numero e alza
+--   42601 («spazzatura finale dopo il letterale numerico»). Il test era rosso
+--   per questo, non per il guard. ⭐ Se `throws_ok` non avesse avuto lo SQLSTATE
+--   (`P0001`) sarebbe stato VERDE: qualunque errore avrebbe soddisfatto
+--   l'asserzione, compreso l'errore di sintassi del test stesso.
 SELECT throws_ok(
   format($SQL$
     INSERT INTO anagrafiche.istanze_utilities (
       fittizia, proprietario_inquilino, soggetto_id
     )
-    VALUES (true, 'I', %s)
+    VALUES (true, 'I', %L)
   $SQL$, (SELECT soggetto_id FROM _t_soggetto)),
   'P0001',
   NULL,

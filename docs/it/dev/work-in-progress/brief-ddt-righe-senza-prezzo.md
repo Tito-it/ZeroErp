@@ -485,7 +485,38 @@ difetto vero, e la quarta casella del §6 dice esattamente questo.
 > ⛔ **Nessuna migrazione va applicata**: il piano si scrive, si fa rivedere, e
 > l'`update` lo lancia Tid.
 
-### Slice A — Il resolver impara a dire «non risolvo» *(abilitante, non risolutiva da sola)*
+### Slice A — Il resolver impara a dire «non risolvo» ✅ **SCRITTA (2026-08-19), da applicare**
+
+> **Stato**: i quattro punti sono scritti e verificati in transazione annullata
+> sul DB di sviluppo. ⛔ **Nessuna migrazione applicata**: l'`update` lo lancia Tid.
+>
+> | file | cosa |
+> |---|---|
+> | `20_code/vendite/20260819-07-create-fn-resolve-prezzo-listino-v2-esito-mctit.yaml` | A1 — il nucleo |
+> | `20_code/vendite/20260819-08-update-fn-resolve-prezzo-listino-v2-guscio-mctit.yaml` | A2 — il guscio |
+> | `db/pgtap/vendite/test-fn-resolve-prezzo-listino-esito-v1.sql` | A3 — 11 test, **11 verdi** |
+> | `docs/it/dbzero/vendite/manual/fn_resolve_prezzo_listino_v2.md` | A4 — doc concettuale |
+>
+> **Verificato sul dato vero, non solo compilato:**
+>
+> * caso risolvibile → nucleo e guscio danno prezzo, origine, listino e riga
+>   **identici** (95,00 = 100 − 5, valore atteso scritto nel test, non dedotto);
+> * caso non risolvibile → il nucleo ritorna **una** riga con
+>   `esito_codice = E_CATEGORIA_LISTINO_NON_MAPPATA` e prezzo NULL;
+> * il guscio sullo stesso input solleva ancora `P0001` **con il codice sul
+>   canale `CONSTRAINT`** — che è ciò su cui il BE decide 409/404/422 — e col
+>   messaggio a segnaposti **sostituiti**: il giro nucleo → array → VARIADIC
+>   non perde l'arità;
+> * `E_PARAMETRO_INVALIDO` solleva ancora **anche dal nucleo** (regola D-3);
+> * ⭐ **venti risoluzioni fallite col nucleo scrivono ZERO righe** in
+>   `dbops.error_log`. È la ragione della slice, ed è un test, non una promessa.
+>
+> ⚠️ **Il collaudo è girato come owner**, perché creare funzioni richiede quei
+> permessi: la corsa definitiva come `zeroerp_app` (con RLS attiva) si può fare
+> solo dopo l'apply. Il `GRANT EXECUTE` per `zeroerp_app` è **dentro** A1, quindi
+> il test non aspetta la passata serale di `ci_apply`.
+
+#### Contenuto della slice
 
 **Forma**: nucleo puro + guscio che solleva. Non un wrapper che cattura (R-9).
 
@@ -563,7 +594,7 @@ dato sporco che poi non si sa più da dove viene.
 ### Ordine dei lavori e cosa consegna ciascuna slice
 
 ```
-A (resolver a esito) ──┬──► BE-1 (§10) ──► articolo semplice senza prezzo: FATTO
+A (resolver a esito) ✅ ┬──► BE-1 (§10) ──► articolo semplice senza prezzo: FATTO
                        └──► C (compositi) ──► kit senza prezzo: FATTO
 B (causale immutabile) ─────────────────────► invariante spostato nel DB
 D (documentale) ────────────────────────────► la doc smette di mentire

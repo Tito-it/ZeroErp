@@ -75,34 +75,82 @@ SELECT
       ORDER BY ef.id LIMIT 1)             AS other_pk
   FROM f;
 
--- auth_user + soggetto PF + SR RIS_UMANA + identita OPERATORE attiva.
-CREATE TEMP TABLE _op (auth_user_id int, soggetto_id uuid, sr_id bigint, identita_id bigint);
+-- QUATTRO operatori, uno per stato da collaudare: auth_user + soggetto PF + SR
+-- RIS_UMANA + identita OPERATORE + (eventuale) riga di whitelist.
+--
+--   'vuoto'  nessuna riga di whitelist, identita attiva                -> caso 1
+--   'in'     whitelist = emittente della fattura                       -> casi 2 e 4
+--   'out'    whitelist = ALTRO emittente                               -> casi 3 e 6
+--   'spento' whitelist = emittente della fattura, identita NON attiva  -> caso 5
+--
+-- ⚠️ QUATTRO UTENTI, E NON UNO CHE SI RIPUNTA. Il giro originale era «DELETE
+--   dalla whitelist + INSERT dell'altro emittente» sullo stesso utente: era
+--   lecito quando il file e' stato scritto, oggi no.
+--   config.user_emittenti_fiscali ha un guard sul DELETE
+--   (E_USER_EMITTENTE_DELETE_VIETATO) che ammette la cancellazione solo se
+--   l'utente Django e' disattivato: l'associazione si toglie solo dismettendo
+--   l'utente. Il file moriva li', con ZERO asserzioni eseguite.
+--
+-- ⭐ E il caso 5 ci ha guadagnato. Prima cancellava la whitelist E spegneva
+--   l'identita': due negazioni insieme, quindi passava anche se `attivo` fosse
+--   stato ignorato del tutto — bastava la whitelist vuota, che e' il caso 1.
+--   L'operatore 'spento' ha la whitelist GIUSTA: l'unica differenza col caso 2
+--   e' l'identita' spenta, ed e' cio' che il caso dichiara di misurare.
+CREATE TEMP TABLE _op (tag text, auth_user_id int, soggetto_id uuid, sr_id bigint, identita_id bigint);
 
-DO $fix$
-DECLARE
-    v_uid  int;
-    v_sog  uuid;
-    v_sr   bigint;
-    v_idn  bigint;
+CREATE FUNCTION pg_temp.mk_op(p_tag text, p_emit bigint, p_identita_attiva boolean DEFAULT true)
+RETURNS void LANGUAGE plpgsql AS $fn$
+DECLARE v_uid int; v_sog uuid; v_sr bigint; v_idn bigint; v_sfx text;
 BEGIN
+    v_sfx := substring(md5(clock_timestamp()::text || p_tag) from 1 for 8);
+
     INSERT INTO django.auth_user (username, password, is_active, is_staff,
         is_superuser, first_name, last_name, email, date_joined)
-    VALUES ('_pgtap_rls_fatt_' || substring(md5(clock_timestamp()::text) from 1 for 8),
-        '!', true, false, false, '', '', '', now())
+    VALUES ('_pgtap_rls_fatt_' || v_sfx, '!', true, false, false, '', '', '', now())
     RETURNING id INTO v_uid;
 
-    -- CF/anagrafica identici al test scope (gia' validati): transazioni
-    -- indipendenti con rollback, nessuna collisione.
+    -- ⭐ FINESTRA DIFFERITA. Un soggetto non e' un INSERT, e' una SAGA: testata
+    --   + indirizzi obbligatori + contatto. I guard di completezza su
+    --   anagrafiche.soggetti sono DEFERRABLE INITIALLY DEFERRED apposta, perche'
+    --   la completezza ha senso verificarla a saga finita. Il preambolo
+    --   obbligatorio (SET CONSTRAINTS ALL IMMEDIATE, in testa al file) li fa
+    --   scattare sul PRIMO insert, cioe' prima che un indirizzo possa esistere:
+    --   e' l'altra ragione per cui questo file moriva.
+    --   Si apre la finestra, si costruisce, e si RICHIUDE a saga completa: la
+    --   verifica non si perde, si sposta dove il modello la vuole. Stessa
+    --   ricetta di dbops.fn_pgtap_crea_soggetto_pg (20260818-76), qui su una
+    --   persona FISICA.
+    SET CONSTRAINTS ALL DEFERRED;
+
+    -- CF dal generatore (20260818-77): qui servono QUATTRO soggetti nella stessa
+    -- transazione, e un codice fisso non basterebbe comunque.
     v_sog := anagrafiche.fn_crea_soggetto_pf(
-        p_cognome           := 'PnzTestScopeEf',
+        p_cognome           := 'PnzTestScopeFatt' || p_tag,
         p_nome              := 'Fdn',
-        p_codice_fiscale    := 'PNZFDN78A01L219Y',
-        p_email             := 'pgtap_rls_fatt_' || substring(md5(clock_timestamp()::text) from 1 for 6) || '@test.local',
+        p_codice_fiscale    := dbops.fn_pgtap_cf_libero(),
+        p_email             := 'pgtap_rls_fatt_' || v_sfx || '@test.local',
         p_data_nascita      := DATE '1978-01-01',
         p_sesso             := 'M',
         p_stato_iso2        := 'IT',
         p_comune_nascita_id := (SELECT id FROM config.comuni ORDER BY id LIMIT 1),
         p_tipo_contatto_id  := NULL);
+
+    -- Quali indirizzi siano obbligatori lo decide la matrice del TIPO SOGGETTO
+    -- DETTAGLIO (config.tipi_soggetto_dettaglio_tipi_indirizzo), non quella dei
+    -- ruoli: si legge la configurazione invece di elencare i codici a mano.
+    INSERT INTO anagrafiche.indirizzi_soggetti (
+        soggetto_id, tipo_indirizzo_id,
+        indirizzo_libero, stato_id, locality, postal_box, administrative_area)
+    SELECT v_sog, m.tipo_indirizzo_id,
+           'Via pgTAP 1', 1, 'Roma', '00100', 'RM'
+      FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
+      JOIN anagrafiche.soggetti s ON s.id = v_sog
+     WHERE m.tipo_soggetto_dettaglio_id = s.tipo_soggetto_dettaglio_id
+       AND m.attivo
+       AND m.obbligatorio;
+
+    -- Saga completa: i guard differiti scattano QUI, su un soggetto finito.
+    SET CONSTRAINTS ALL IMMEDIATE;
 
     v_sr := script.fn_get_or_create_soggetto_ruolo(
         p_soggetto_id  := v_sog,
@@ -113,9 +161,30 @@ BEGIN
     VALUES (v_sr, v_uid, 'OPERATORE', true)
     RETURNING id INTO v_idn;
 
-    INSERT INTO _op VALUES (v_uid, v_sog, v_sr, v_idn);
-END
-$fix$;
+    -- Lo spegnimento e' un UPDATE dopo l'inserimento, non un INSERT a false:
+    -- e' il percorso con cui un'identita' viene dismessa davvero.
+    IF NOT p_identita_attiva THEN
+        UPDATE anagrafiche.identita_digitali SET attivo = false WHERE id = v_idn;
+    END IF;
+
+    IF p_emit IS NOT NULL THEN
+        INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
+        VALUES (v_uid, p_emit);
+    END IF;
+
+    INSERT INTO _op VALUES (p_tag, v_uid, v_sog, v_sr, v_idn);
+END $fn$;
+
+DO $ops$
+BEGIN
+    IF (SELECT count(*) FROM _refs
+         WHERE fattura_id IS NOT NULL AND emit_pk IS NOT NULL AND other_pk IS NOT NULL) = 1 THEN
+        PERFORM pg_temp.mk_op('vuoto',  NULL);
+        PERFORM pg_temp.mk_op('in',     (SELECT emit_pk  FROM _refs));
+        PERFORM pg_temp.mk_op('out',    (SELECT other_pk FROM _refs));
+        PERFORM pg_temp.mk_op('spento', (SELECT emit_pk  FROM _refs), false);
+    END IF;
+END $ops$;
 
 -- prereq: fattura + emittente PK + altro emittente disponibili.
 -- COALESCE garantisce SEMPRE una riga booleana (anche se _refs e' vuota).
@@ -124,7 +193,7 @@ SELECT COALESCE(
     (SELECT fattura_id IS NOT NULL AND emit_pk IS NOT NULL AND other_pk IS NOT NULL
        FROM _refs LIMIT 1),
     false
-) AS prereq;
+) AND (SELECT count(*) = 4 FROM _op) AS prereq;
 
 -- Attiva RLS + FORCE solo dentro questa transazione: FORCE assoggetta
 -- l'owner titodb (non-superuser) senza SET ROLE. Rollback annulla tutto.
@@ -140,9 +209,8 @@ CREATE TEMP TABLE _res (caso text, visibile boolean);
 DO $c1$
 BEGIN
     IF NOT (SELECT prereq FROM _flags) THEN RETURN; END IF;
-    DELETE FROM config.user_emittenti_fiscali WHERE auth_user_id = (SELECT auth_user_id FROM _op);
     PERFORM set_config('app.ruolo_applicativo', 'OPERATORE', true);
-    PERFORM set_config('app.current_user_id', (SELECT auth_user_id FROM _op)::text, true);
+    PERFORM set_config('app.current_user_id', (SELECT auth_user_id FROM _op WHERE tag = 'vuoto')::text, true);
     INSERT INTO _res SELECT 'c1', EXISTS (SELECT 1 FROM vendite.fatture WHERE id = (SELECT fattura_id FROM _refs));
 END $c1$;
 
@@ -150,10 +218,8 @@ END $c1$;
 DO $c2$
 BEGIN
     IF NOT (SELECT prereq FROM _flags) THEN RETURN; END IF;
-    INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
-    VALUES ((SELECT auth_user_id FROM _op), (SELECT emit_pk FROM _refs)) ON CONFLICT DO NOTHING;
     PERFORM set_config('app.ruolo_applicativo', 'OPERATORE', true);
-    PERFORM set_config('app.current_user_id', (SELECT auth_user_id FROM _op)::text, true);
+    PERFORM set_config('app.current_user_id', (SELECT auth_user_id FROM _op WHERE tag = 'in')::text, true);
     INSERT INTO _res SELECT 'c2', EXISTS (SELECT 1 FROM vendite.fatture WHERE id = (SELECT fattura_id FROM _refs));
 END $c2$;
 
@@ -161,11 +227,8 @@ END $c2$;
 DO $c3$
 BEGIN
     IF NOT (SELECT prereq FROM _flags) THEN RETURN; END IF;
-    DELETE FROM config.user_emittenti_fiscali WHERE auth_user_id = (SELECT auth_user_id FROM _op);
-    INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
-    VALUES ((SELECT auth_user_id FROM _op), (SELECT other_pk FROM _refs)) ON CONFLICT DO NOTHING;
     PERFORM set_config('app.ruolo_applicativo', 'OPERATORE', true);
-    PERFORM set_config('app.current_user_id', (SELECT auth_user_id FROM _op)::text, true);
+    PERFORM set_config('app.current_user_id', (SELECT auth_user_id FROM _op WHERE tag = 'out')::text, true);
     INSERT INTO _res SELECT 'c3', EXISTS (SELECT 1 FROM vendite.fatture WHERE id = (SELECT fattura_id FROM _refs));
 END $c3$;
 
@@ -173,8 +236,10 @@ END $c3$;
 DO $c4$
 BEGIN
     IF NOT (SELECT prereq FROM _flags) THEN RETURN; END IF;
+    -- Operatore 'in', cioe' whitelist che MATCHA: la negazione deve venire dal
+    -- gate sul ruolo, non dal perimetro.
     PERFORM set_config('app.ruolo_applicativo', '', true);
-    PERFORM set_config('app.current_user_id', (SELECT auth_user_id FROM _op)::text, true);
+    PERFORM set_config('app.current_user_id', (SELECT auth_user_id FROM _op WHERE tag = 'in')::text, true);
     INSERT INTO _res SELECT 'c4', EXISTS (SELECT 1 FROM vendite.fatture WHERE id = (SELECT fattura_id FROM _refs));
 END $c4$;
 
@@ -182,33 +247,30 @@ END $c4$;
 DO $c5$
 BEGIN
     IF NOT (SELECT prereq FROM _flags) THEN RETURN; END IF;
-    DELETE FROM config.user_emittenti_fiscali WHERE auth_user_id = (SELECT auth_user_id FROM _op);
-    UPDATE anagrafiche.identita_digitali SET attivo = false WHERE id = (SELECT identita_id FROM _op);
+    -- L'operatore 'spento' ha la whitelist GIUSTA: l'unica differenza col caso 2
+    -- e' l'identita' non attiva.
     PERFORM set_config('app.ruolo_applicativo', 'OPERATORE', true);
-    PERFORM set_config('app.current_user_id', (SELECT auth_user_id FROM _op)::text, true);
+    PERFORM set_config('app.current_user_id', (SELECT auth_user_id FROM _op WHERE tag = 'spento')::text, true);
     INSERT INTO _res SELECT 'c5', EXISTS (SELECT 1 FROM vendite.fatture WHERE id = (SELECT fattura_id FROM _refs));
-    UPDATE anagrafiche.identita_digitali SET attivo = true WHERE id = (SELECT identita_id FROM _op);
 END $c5$;
 
 -- ---- Caso 6: SUPER_ADMIN -> visibile anche con whitelist non-matching (fix C7) ----
 DO $c6$
 BEGIN
     IF NOT (SELECT prereq FROM _flags) THEN RETURN; END IF;
-    -- whitelist = altro emittente: senza super_admin la fattura sarebbe nascosta.
-    DELETE FROM config.user_emittenti_fiscali WHERE auth_user_id = (SELECT auth_user_id FROM _op);
-    INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
-    VALUES ((SELECT auth_user_id FROM _op), (SELECT other_pk FROM _refs)) ON CONFLICT DO NOTHING;
-    -- binding SUPER_ADMIN sull'identita OPERATORE dell'operatore di test.
+    -- Si usa l'operatore 'out' (whitelist = altro emittente): senza super_admin
+    -- la fattura gli e' nascosta, e il caso 3 lo ha appena dimostrato.
+    -- binding SUPER_ADMIN sulla sua identita OPERATORE.
     INSERT INTO config.profili_accesso_bindings (profilo_accesso_id, identita_digitale_id, attivo)
     VALUES (
         (SELECT id FROM config.profili_accesso
           WHERE tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso AND attivo = true
           ORDER BY id LIMIT 1),
-        (SELECT identita_id FROM _op),
+        (SELECT identita_id FROM _op WHERE tag = 'out'),
         true
     );
     PERFORM set_config('app.ruolo_applicativo', 'OPERATORE', true);
-    PERFORM set_config('app.current_user_id', (SELECT auth_user_id FROM _op)::text, true);
+    PERFORM set_config('app.current_user_id', (SELECT auth_user_id FROM _op WHERE tag = 'out')::text, true);
     INSERT INTO _res SELECT 'c6', EXISTS (SELECT 1 FROM vendite.fatture WHERE id = (SELECT fattura_id FROM _refs));
 END $c6$;
 

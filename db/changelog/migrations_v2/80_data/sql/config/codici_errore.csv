@@ -455,7 +455,7 @@ E_PREV_TRANSIZIONE_NON_AMMESSA,CONFLITTO_STATO,NULL,"Matrice del preventivo, ora
 E_PREV_UTILITY_ISTANZA_INCOERENTE,CONFLITTO_STATO,NULL,NULL
 E_PREV_VALIDAZIONE,DATO_ERRATO,NULL,NULL
 E_PREZZO_LISTINO_AMBIGUO,CONFLITTO_STATO,NULL,NULL
-E_PREZZO_LISTINO_NON_TROVATO,NON_TROVATO,NULL,NULL
+E_PREZZO_LISTINO_NON_TROVATO,NON_TROVATO,2026-08-19,"Ritirato il 2026-08-19. L'unico ramo che lo sollevava — «BA senza categoria» nel resolver prezzi — e' irraggiungibile da quando anagrafiche.billing_account.categoria_cliente_id e' NOT NULL (2026-04-14 · changeSet 20260414-03) ed e' stato rimosso dal changeSet 20260819-10, PRIMA di questa data come impone il controllo (D) del guardrail codici errore. · Il BE ha verificato di non produrlo: le righe di dbops.error_log a suo nome erano della loro suite di test. · Il ritiro chiude il NUOVO uso non la lettura del vecchio: il messaggio resta risolvibile e le righe di log storiche restano agganciate."
 E_PREZZO_LISTINO_RIGA_NON_TROVATA,NON_TROVATO,NULL,NULL
 E_PRICING_MAGGIORAZIONE_ECCESSIVA,NON_PERMESSO,NULL,NULL
 E_PRICING_OVERRIDE_NON_AUTORIZZATO,NON_PERMESSO,NULL,NULL
